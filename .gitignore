@@ -28,3 +28,19 @@ coverage
 *.sw?
 
 *.tsbuildinfo
+
+# Mobile SDK - Large files that exceed GitHub limits
+mobile-sdk/android/gradle-*.zip
+mobile-sdk/android/gradle-*/
+mobile-sdk/android/**/*.jar
+mobile-sdk/android/**/gradle-wrapper.jar
+mobile-sdk/android/app/build/
+mobile-sdk/android/build/
+mobile-sdk/ios/build/
+
+# Large binary files
+*.zip
+*.jar
+*.war
+*.ear
+*.aar
