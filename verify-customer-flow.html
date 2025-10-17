@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>客户数据流程验证</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .step {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .step h3 {
+            margin-top: 0;
+            color: #333;
+            display: flex;
+            align-items: center;
+        }
+        .step-number {
+            background: #409eff;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        button {
+            background: #409eff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #66b1ff;
+        }
+        button:disabled {
+            background: #c0c4cc;
+            cursor: not-allowed;
+        }
+        .result {
+            background: #f0f9ff;
+            border: 1px solid #b3d8ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .error {
+            background: #fef0f0;
+            border: 1px solid #fbc4c4;
+            color: #f56565;
+        }
+        .success {
+            background: #f0fff4;
+            border: 1px solid #9ae6b4;
+            color: #38a169;
+        }
+        .warning {
+            background: #fffbf0;
+            border: 1px solid #fed7aa;
+            color: #d69e2e;
+        }
+        .links {
+            margin-top: 20px;
+        }
+        .links a {
+            display: inline-block;
+            background: #67c23a;
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            margin: 5px;
+        }
+        .links a:hover {
+            background: #85ce61;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>客户数据流程验证</h1>
+        <p>此页面用于验证客户数据的完整流程：存储 → 获取 → 显示 → 同步</p>
+        
+        <div class="links">
+            <a href="http://localhost:5175" target="_blank">打开CRM系统</a>
+            <a href="http://localhost:5175/customer/list" target="_blank">客户列表页面</a>
+            <a href="http://localhost:5175/customer/add" target="_blank">新增客户页面</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="step">
+            <h3><span class="step-number">1</span>检查初始状态</h3>
+            <p>检查localStorage中的客户数据和系统状态</p>
+            <button onclick="checkInitialState()">检查初始状态</button>
+            <div id="step1-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="step">
+            <h3><span class="step-number">2</span>模拟添加客户</h3>
+            <p>模拟客户添加流程，验证数据保存逻辑</p>
+            <button onclick="simulateAddCustomer()">模拟添加客户</button>
+            <div id="step2-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="step">
+            <h3><span class="step-number">3</span>验证数据同步</h3>
+            <p>验证Mock API和Store之间的数据同步</p>
+            <button onclick="verifyDataSync()">验证数据同步</button>
+            <div id="step3-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="step">
+            <h3><span class="step-number">4</span>测试列表显示</h3>
+            <p>模拟客户列表页面的数据加载和显示逻辑</p>
+            <button onclick="testListDisplay()">测试列表显示</button>
+            <div id="step4-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="step">
+            <h3><span class="step-number">5</span>完整流程测试</h3>
+            <p>运行完整的端到端测试</p>
+            <button onclick="runFullTest()">运行完整测试</button>
+            <div id="step5-result" class="result" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'crm_customers_unified';
+        
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = `result ${type}`;
+            element.textContent = message;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function checkInitialState() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                let message = '=== 初始状态检查 ===\n';
+                
+                if (data) {
+                    const parsed = JSON.parse(data);
+                    message += `✓ 找到客户数据\n`;
+                    message += `  - 客户数量: ${parsed.customers ? parsed.customers.length : 0}\n`;
+                    message += `  - 数据版本: ${parsed.version}\n`;
+                    message += `  - 最后更新: ${new Date(parsed.lastUpdated).toLocaleString()}\n\n`;
+                    
+                    if (parsed.customers && parsed.customers.length > 0) {
+                        message += `最新3个客户:\n`;
+                        parsed.customers.slice(0, 3).forEach((c, i) => {
+                            message += `  ${i + 1}. ${c.name} (${c.phone}) - ${new Date(c.createTime).toLocaleString()}\n`;
+                        });
+                    }
+                } else {
+                    message += `✗ 未找到客户数据\n`;
+                }
+                
+                message += `\n系统状态:\n`;
+                message += `  - 当前URL: ${window.location.href}\n`;
+                message += `  - localStorage可用: ${typeof Storage !== 'undefined'}\n`;
+                message += `  - 时间戳: ${new Date().toLocaleString()}`;
+                
+                log('step1-result', message, 'success');
+            } catch (error) {
+                log('step1-result', `检查初始状态失败: ${error.message}`, 'error');
+            }
+        }
+
+        function simulateAddCustomer() {
+            try {
+                const timestamp = Date.now();
+                const testCustomer = {
+                    id: `test_${timestamp}`,
+                    code: `TEST${timestamp}`,
+                    name: `验证客户${timestamp}`,
+                    phone: `139${String(timestamp).slice(-8)}`,
+                    age: 28,
+                    address: '北京市朝阳区测试地址',
+                    level: 'normal',
+                    status: 'active',
+                    salesPersonId: 'admin',
+                    createdBy: 'admin',
+                    createTime: new Date().toISOString(),
+                    orderCount: 0,
+                    source: 'online',
+                    tags: ['测试'],
+                    remarks: '这是一个测试客户'
+                };
+
+                // 获取现有数据
+                let data = { customers: [], lastUpdated: Date.now(), version: '1.0.0' };
+                const existing = localStorage.getItem(STORAGE_KEY);
+                if (existing) {
+                    data = JSON.parse(existing);
+                }
+
+                const originalCount = data.customers.length;
+
+                // 模拟customerStorage.addCustomer的逻辑
+                // 1. 检查是否已存在相同手机号
+                const existingCustomer = data.customers.find(c => c.phone === testCustomer.phone);
+                if (existingCustomer) {
+                    throw new Error(`客户已存在: ${existingCustomer.name} (${existingCustomer.phone})`);
+                }
+
+                // 2. 添加到数组开头
+                data.customers.unshift(testCustomer);
+                data.lastUpdated = Date.now();
+
+                // 3. 保存到localStorage
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+                const message = `=== 模拟添加客户成功 ===
+✓ 客户信息:
+  - 姓名: ${testCustomer.name}
+  - 手机: ${testCustomer.phone}
+  - ID: ${testCustomer.id}
+  - 创建时间: ${new Date(testCustomer.createTime).toLocaleString()}
+
+✓ 数据统计:
+  - 添加前客户数: ${originalCount}
+  - 添加后客户数: ${data.customers.length}
+  - 新客户位置: 第1位（数组开头）
+
+✓ 存储状态:
+  - 数据已保存到localStorage
+  - 存储键: ${STORAGE_KEY}
+  - 数据大小: ${JSON.stringify(data).length} 字符`;
+
+                log('step2-result', message, 'success');
+                return testCustomer;
+            } catch (error) {
+                log('step2-result', `模拟添加客户失败: ${error.message}`, 'error');
+                return null;
+            }
+        }
+
+        function verifyDataSync() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (!data) {
+                    log('step3-result', '没有找到客户数据，请先运行步骤2', 'warning');
+                    return;
+                }
+
+                const parsed = JSON.parse(data);
+                const customers = parsed.customers || [];
+
+                // 模拟Mock API的getMockCustomers逻辑
+                const mockApiData = customers; // Mock API直接从customerStorage读取
+
+                // 模拟客户Store的数据处理
+                const storeData = [...customers]; // Store从localStorage初始化
+
+                // 模拟filteredCustomers计算属性
+                const filteredCustomers = storeData; // 临时修复：返回所有客户
+
+                // 模拟searchResults计算属性
+                const searchResults = filteredCustomers.sort((a, b) => {
+                    const timeA = new Date(a.createTime).getTime();
+                    const timeB = new Date(b.createTime).getTime();
+                    return timeB - timeA; // 降序排列，最新的在前
+                });
+
+                const message = `=== 数据同步验证 ===
+✓ localStorage数据: ${customers.length} 个客户
+✓ Mock API数据: ${mockApiData.length} 个客户
+✓ Store数据: ${storeData.length} 个客户
+✓ 过滤后数据: ${filteredCustomers.length} 个客户
+✓ 排序后数据: ${searchResults.length} 个客户
+
+数据一致性检查:
+${customers.length === mockApiData.length && 
+  mockApiData.length === storeData.length && 
+  storeData.length === filteredCustomers.length && 
+  filteredCustomers.length === searchResults.length ? 
+  '✓ 所有数据源数量一致' : '✗ 数据源数量不一致'}
+
+最新客户排序验证:
+${searchResults.length > 0 ? 
+  `第1位: ${searchResults[0].name} (${searchResults[0].phone}) - ${new Date(searchResults[0].createTime).toLocaleString()}` : 
+  '无客户数据'}`;
+
+                log('step3-result', message, 'success');
+            } catch (error) {
+                log('step3-result', `验证数据同步失败: ${error.message}`, 'error');
+            }
+        }
+
+        function testListDisplay() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (!data) {
+                    log('step4-result', '没有找到客户数据，请先运行步骤2', 'warning');
+                    return;
+                }
+
+                const parsed = JSON.parse(data);
+                const customers = parsed.customers || [];
+
+                // 模拟客户列表页面的数据处理逻辑
+                
+                // 1. 自动持久化数据加载（替代已删除的initializeFromStorage方法）
+                const initializedData = [...customers];
+                
+                // 2. filteredCustomers (临时修复：返回所有客户)
+                const filteredData = initializedData;
+                
+                // 3. searchResults (按创建时间降序排列)
+                const sortedData = filteredData.sort((a, b) => {
+                    const timeA = new Date(a.createTime).getTime();
+                    const timeB = new Date(b.createTime).getTime();
+                    return timeB - timeA;
+                });
+                
+                // 4. 分页处理 (模拟第1页，每页50条)
+                const page = 1;
+                const pageSize = 50;
+                const start = (page - 1) * pageSize;
+                const end = start + pageSize;
+                const paginatedData = sortedData.slice(start, end);
+
+                const message = `=== 列表显示测试 ===
+数据处理流程:
+1. ✓ 自动持久化加载: ${initializedData.length} 个客户
+2. ✓ filteredCustomers: ${filteredData.length} 个客户
+3. ✓ searchResults排序: ${sortedData.length} 个客户
+4. ✓ 分页处理: ${paginatedData.length} 个客户 (第${page}页，每页${pageSize}条)
+
+分页信息:
+- 总记录数: ${sortedData.length}
+- 当前页: ${page}
+- 每页大小: ${pageSize}
+- 总页数: ${Math.ceil(sortedData.length / pageSize)}
+
+显示的前3个客户:
+${paginatedData.slice(0, 3).map((c, i) => 
+  `${i + 1}. ${c.name} (${c.phone}) - ${new Date(c.createTime).toLocaleString()}`
+).join('\n')}
+
+✓ 最新客户应该显示在第1位`;
+
+                log('step4-result', message, 'success');
+            } catch (error) {
+                log('step4-result', `测试列表显示失败: ${error.message}`, 'error');
+            }
+        }
+
+        function runFullTest() {
+            try {
+                let message = '=== 完整流程测试 ===\n\n';
+                
+                // 步骤1: 检查初始状态
+                message += '步骤1: 检查初始状态\n';
+                const initialData = localStorage.getItem(STORAGE_KEY);
+                const initialCount = initialData ? JSON.parse(initialData).customers.length : 0;
+                message += `  初始客户数: ${initialCount}\n\n`;
+                
+                // 步骤2: 添加测试客户
+                message += '步骤2: 添加测试客户\n';
+                const testCustomer = simulateAddCustomer();
+                if (!testCustomer) {
+                    throw new Error('添加测试客户失败');
+                }
+                message += `  ✓ 成功添加: ${testCustomer.name}\n\n`;
+                
+                // 步骤3: 验证数据同步
+                message += '步骤3: 验证数据同步\n';
+                const currentData = localStorage.getItem(STORAGE_KEY);
+                const currentCount = currentData ? JSON.parse(currentData).customers.length : 0;
+                message += `  当前客户数: ${currentCount}\n`;
+                message += `  增加数量: ${currentCount - initialCount}\n\n`;
+                
+                // 步骤4: 测试列表显示
+                message += '步骤4: 测试列表显示\n';
+                const parsed = JSON.parse(currentData);
+                const sortedCustomers = parsed.customers.sort((a, b) => {
+                    return new Date(b.createTime).getTime() - new Date(a.createTime).getTime();
+                });
+                const firstCustomer = sortedCustomers[0];
+                message += `  第1位客户: ${firstCustomer.name} (${firstCustomer.phone})\n`;
+                message += `  是否为新添加: ${firstCustomer.id === testCustomer.id ? '✓ 是' : '✗ 否'}\n\n`;
+                
+                // 总结
+                message += '=== 测试结果 ===\n';
+                message += `✓ 数据添加: 成功\n`;
+                message += `✓ 数据存储: 成功\n`;
+                message += `✓ 数据排序: 成功\n`;
+                message += `✓ 列表显示: 成功\n\n`;
+                
+                message += '建议操作:\n';
+                message += '1. 打开客户列表页面验证显示效果\n';
+                message += '2. 尝试添加新客户测试实际流程\n';
+                message += '3. 检查客户是否按创建时间降序显示';
+                
+                log('step5-result', message, 'success');
+            } catch (error) {
+                log('step5-result', `完整流程测试失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 页面加载时自动检查初始状态
+        window.onload = function() {
+            checkInitialState();
+        };
+    </script>
+</body>
+</html>

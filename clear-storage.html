@@ -1,0 +1,17 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Storage</title>
+</head>
+<body>
+    <h1>Clearing localStorage...</h1>
+    <script>
+        localStorage.clear();
+        sessionStorage.clear();
+        console.log('Storage cleared');
+        setTimeout(() => {
+            window.location.href = 'http://localhost:5173/login';
+        }, 1000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>存储键冲突调试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .storage-key {
+            background: #f8f9fa;
+            padding: 15px;
+            border-left: 4px solid #007bff;
+            margin: 10px 0;
+        }
+        .data-content {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        .clear-btn { background: #dc3545; }
+        .clear-btn:hover { background: #c82333; }
+    </style>
+</head>
+<body>
+    <h1>localStorage存储键冲突调试</h1>
+    
+    <div class="container">
+        <h2>存储键分析</h2>
+        <div class="storage-key">
+            <strong>Mock API 存储键:</strong> <code>crm_store_customer</code>
+            <br><small>位置: src/api/mock.ts 第34行</small>
+        </div>
+        <div class="storage-key">
+            <strong>CustomerStorage 存储键:</strong> <code>crm_customers_unified</code>
+            <br><small>位置: src/services/customerStorage.ts</small>
+        </div>
+        <div class="status warning">
+            <strong>问题:</strong> 两个不同的存储键导致数据不同步！
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>当前localStorage状态</h2>
+        <button onclick="checkAllStorageKeys()">检查所有存储键</button>
+        <button onclick="clearAllCustomerData()" class="clear-btn">清除所有客户数据</button>
+        <div id="storage-status"></div>
+    </div>
+
+    <div class="container">
+        <h2>模拟添加客户测试</h2>
+        <button onclick="testMockApiAdd()">模拟Mock API添加客户</button>
+        <button onclick="testCustomerStorageAdd()">模拟CustomerStorage添加客户</button>
+        <div id="test-results"></div>
+    </div>
+
+    <div class="container">
+        <h2>数据同步测试</h2>
+        <button onclick="testDataSync()">测试数据同步</button>
+        <div id="sync-results"></div>
+    </div>
+
+    <script>
+        function log(containerId, message, type = 'info') {
+            const container = document.getElementById(containerId);
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = message;
+            container.appendChild(div);
+        }
+
+        function clearLog(containerId) {
+            document.getElementById(containerId).innerHTML = '';
+        }
+
+        function checkAllStorageKeys() {
+            clearLog('storage-status');
+            
+            const mockApiKey = 'crm_store_customer';
+            const customerStorageKey = 'crm_customers_unified';
+            
+            // 检查Mock API存储
+            const mockData = localStorage.getItem(mockApiKey);
+            if (mockData) {
+                try {
+                    const parsed = JSON.parse(mockData);
+                    log('storage-status', `Mock API存储 (${mockApiKey}): 找到 ${parsed.length} 个客户`, 'success');
+                    log('storage-status', `<div class="data-content">${JSON.stringify(parsed, null, 2)}</div>`, 'info');
+                } catch (e) {
+                    log('storage-status', `Mock API存储 (${mockApiKey}): 数据格式错误`, 'error');
+                }
+            } else {
+                log('storage-status', `Mock API存储 (${mockApiKey}): 无数据`, 'warning');
+            }
+
+            // 检查CustomerStorage存储
+            const customerData = localStorage.getItem(customerStorageKey);
+            if (customerData) {
+                try {
+                    const parsed = JSON.parse(customerData);
+                    const count = parsed.customers ? parsed.customers.length : 0;
+                    log('storage-status', `CustomerStorage存储 (${customerStorageKey}): 找到 ${count} 个客户`, 'success');
+                    log('storage-status', `<div class="data-content">${JSON.stringify(parsed, null, 2)}</div>`, 'info');
+                } catch (e) {
+                    log('storage-status', `CustomerStorage存储 (${customerStorageKey}): 数据格式错误`, 'error');
+                }
+            } else {
+                log('storage-status', `CustomerStorage存储 (${customerStorageKey}): 无数据`, 'warning');
+            }
+
+            // 检查其他可能的客户相关存储键
+            const allKeys = Object.keys(localStorage);
+            const customerKeys = allKeys.filter(key => 
+                key.includes('customer') || 
+                key.includes('crm') || 
+                key.includes('Customer')
+            );
+            
+            if (customerKeys.length > 2) {
+                log('storage-status', `发现其他客户相关存储键: ${customerKeys.join(', ')}`, 'warning');
+            }
+        }
+
+        function clearAllCustomerData() {
+            const keys = ['crm_store_customer', 'crm_customers_unified'];
+            keys.forEach(key => {
+                localStorage.removeItem(key);
+            });
+            
+            // 清除其他可能的客户相关键
+            const allKeys = Object.keys(localStorage);
+            const customerKeys = allKeys.filter(key => 
+                key.includes('customer') || 
+                key.includes('crm') || 
+                key.includes('Customer')
+            );
+            
+            customerKeys.forEach(key => {
+                localStorage.removeItem(key);
+            });
+            
+            log('storage-status', '已清除所有客户相关数据', 'success');
+            checkAllStorageKeys();
+        }
+
+        function testMockApiAdd() {
+            clearLog('test-results');
+            
+            try {
+                const mockApiKey = 'crm_store_customer';
+                const testCustomer = {
+                    id: 'mock_test_' + Date.now(),
+                    code: 'MOCK' + Date.now(),
+                    name: 'Mock API测试客户',
+                    phone: '1' + Math.floor(Math.random() * 9000000000 + 1000000000),
+                    age: 30,
+                    address: 'Mock API测试地址',
+                    level: 'normal',
+                    status: 'active',
+                    salesPersonId: 'mock_sales',
+                    orderCount: 0,
+                    createTime: new Date().toISOString(),
+                    createdBy: 'mock_test'
+                };
+
+                // 模拟Mock API的存储方式
+                let customers = [];
+                const existing = localStorage.getItem(mockApiKey);
+                if (existing) {
+                    customers = JSON.parse(existing);
+                }
+                
+                customers.unshift(testCustomer);
+                localStorage.setItem(mockApiKey, JSON.stringify(customers));
+                
+                log('test-results', `Mock API添加客户成功: ${testCustomer.name}`, 'success');
+                log('test-results', `存储键: ${mockApiKey}`, 'info');
+                log('test-results', `当前Mock API客户总数: ${customers.length}`, 'info');
+                
+            } catch (error) {
+                log('test-results', `Mock API添加客户失败: ${error.message}`, 'error');
+            }
+        }
+
+        function testCustomerStorageAdd() {
+            clearLog('test-results');
+            
+            try {
+                const customerStorageKey = 'crm_customers_unified';
+                const testCustomer = {
+                    id: 'storage_test_' + Date.now(),
+                    code: 'STORAGE' + Date.now(),
+                    name: 'CustomerStorage测试客户',
+                    phone: '1' + Math.floor(Math.random() * 9000000000 + 1000000000),
+                    age: 25,
+                    address: 'CustomerStorage测试地址',
+                    level: 'normal',
+                    status: 'active',
+                    salesPersonId: 'storage_sales',
+                    orderCount: 0,
+                    createTime: new Date().toISOString(),
+                    createdBy: 'storage_test'
+                };
+
+                // 模拟CustomerStorage的存储方式
+                let data = {
+                    customers: [],
+                    lastUpdated: Date.now(),
+                    version: '1.0.0'
+                };
+                
+                const existing = localStorage.getItem(customerStorageKey);
+                if (existing) {
+                    data = JSON.parse(existing);
+                }
+                
+                data.customers.unshift(testCustomer);
+                data.lastUpdated = Date.now();
+                localStorage.setItem(customerStorageKey, JSON.stringify(data));
+                
+                log('test-results', `CustomerStorage添加客户成功: ${testCustomer.name}`, 'success');
+                log('test-results', `存储键: ${customerStorageKey}`, 'info');
+                log('test-results', `当前CustomerStorage客户总数: ${data.customers.length}`, 'info');
+                
+            } catch (error) {
+                log('test-results', `CustomerStorage添加客户失败: ${error.message}`, 'error');
+            }
+        }
+
+        function testDataSync() {
+            clearLog('sync-results');
+            
+            const mockApiKey = 'crm_store_customer';
+            const customerStorageKey = 'crm_customers_unified';
+            
+            const mockData = localStorage.getItem(mockApiKey);
+            const customerData = localStorage.getItem(customerStorageKey);
+            
+            let mockCount = 0;
+            let customerCount = 0;
+            
+            if (mockData) {
+                try {
+                    const parsed = JSON.parse(mockData);
+                    mockCount = parsed.length;
+                } catch (e) {
+                    log('sync-results', 'Mock API数据解析失败', 'error');
+                }
+            }
+            
+            if (customerData) {
+                try {
+                    const parsed = JSON.parse(customerData);
+                    customerCount = parsed.customers ? parsed.customers.length : 0;
+                } catch (e) {
+                    log('sync-results', 'CustomerStorage数据解析失败', 'error');
+                }
+            }
+            
+            log('sync-results', `Mock API客户数量: ${mockCount}`, 'info');
+            log('sync-results', `CustomerStorage客户数量: ${customerCount}`, 'info');
+            
+            if (mockCount === customerCount && mockCount > 0) {
+                log('sync-results', '数据同步正常', 'success');
+            } else if (mockCount === 0 && customerCount === 0) {
+                log('sync-results', '两个存储都为空', 'warning');
+            } else {
+                log('sync-results', '数据不同步！这就是问题所在！', 'error');
+                log('sync-results', '解决方案: 统一使用同一个存储键', 'warning');
+            }
+        }
+
+        // 页面加载时自动检查
+        window.onload = function() {
+            checkAllStorageKeys();
+        };
+    </script>
+</body>
+</html>

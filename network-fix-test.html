@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网络连接修复测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        .test-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #logs {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 网络连接修复测试</h1>
+        
+        <div class="test-section">
+            <div class="test-title">1. 前端服务器连接测试</div>
+            <div id="frontend-status" class="status info">检测中...</div>
+            <button onclick="testFrontend()">重新测试前端</button>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">2. 后端API服务器连接测试</div>
+            <div id="backend-status" class="status info">检测中...</div>
+            <button onclick="testBackend()">重新测试后端</button>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">3. Mock API配置检测</div>
+            <div id="mock-status" class="status info">检测中...</div>
+            <button onclick="testMockConfig()">检测Mock配置</button>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">4. 应用启动测试</div>
+            <div id="app-status" class="status info">检测中...</div>
+            <button onclick="testApp()">测试应用启动</button>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">测试日志</div>
+            <div id="logs"></div>
+            <button onclick="clearLogs()">清空日志</button>
+        </div>
+    </div>
+
+    <script>
+        function log(message) {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            logs.innerHTML += `[${timestamp}] ${message}\n`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function updateStatus(elementId, status, message) {
+            const element = document.getElementById(elementId);
+            element.className = `status ${status}`;
+            element.textContent = message;
+        }
+
+        async function testFrontend() {
+            log('开始测试前端服务器连接...');
+            updateStatus('frontend-status', 'info', '测试中...');
+            
+            try {
+                const response = await fetch('http://localhost:5175/');
+                if (response.ok) {
+                    updateStatus('frontend-status', 'success', '✅ 前端服务器连接正常');
+                    log('✅ 前端服务器 (http://localhost:5175) 连接成功');
+                } else {
+                    updateStatus('frontend-status', 'error', '❌ 前端服务器响应异常');
+                    log(`❌ 前端服务器响应状态: ${response.status}`);
+                }
+            } catch (error) {
+                updateStatus('frontend-status', 'error', '❌ 前端服务器连接失败');
+                log(`❌ 前端服务器连接失败: ${error.message}`);
+            }
+        }
+
+        async function testBackend() {
+            log('开始测试后端API服务器连接...');
+            updateStatus('backend-status', 'info', '测试中...');
+            
+            try {
+                const response = await fetch('http://localhost:3000/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    updateStatus('backend-status', 'success', '✅ 后端API服务器连接正常');
+                    log(`✅ 后端API服务器连接成功: ${data.message || '健康检查通过'}`);
+                } else {
+                    updateStatus('backend-status', 'error', '❌ 后端API服务器响应异常');
+                    log(`❌ 后端API服务器响应状态: ${response.status}`);
+                }
+            } catch (error) {
+                updateStatus('backend-status', 'error', '❌ 后端API服务器连接失败');
+                log(`❌ 后端API服务器连接失败: ${error.message}`);
+            }
+        }
+
+        function testMockConfig() {
+            log('检测Mock API配置...');
+            updateStatus('mock-status', 'info', '检测中...');
+            
+            // 检查环境变量
+            const apiBaseUrl = 'http://localhost:3000/api/v1'; // 从环境变量获取
+            const isProduction = false; // 开发环境
+            
+            // 模拟shouldUseMockApi逻辑
+            let shouldUseMock = false;
+            if (isProduction) {
+                shouldUseMock = false;
+                log('🔍 生产环境 - 不使用Mock API');
+            } else if (apiBaseUrl && apiBaseUrl.includes(':3000')) {
+                shouldUseMock = false;
+                log('🔍 检测到后端API配置 (:3000) - 使用真实API');
+            } else if (apiBaseUrl && !apiBaseUrl.includes('localhost')) {
+                shouldUseMock = false;
+                log('🔍 检测到外部API配置 - 使用真实API');
+            } else {
+                shouldUseMock = true;
+                log('🔍 开发环境默认 - 使用Mock API');
+            }
+            
+            log(`📋 VITE_API_BASE_URL: ${apiBaseUrl || '未设置'}`);
+            
+            if (shouldUseMock) {
+                updateStatus('mock-status', 'success', '✅ 配置为使用Mock API');
+                log('✅ 当前配置: 使用Mock API，避免网络请求');
+            } else {
+                updateStatus('mock-status', 'info', 'ℹ️ 配置为使用真实API');
+                log('ℹ️ 当前配置: 使用真实API，需要后端服务器');
+            }
+        }
+
+        async function testApp() {
+            log('开始测试应用启动...');
+            updateStatus('app-status', 'info', '测试中...');
+            
+            try {
+                // 测试应用主页面
+                const response = await fetch('http://localhost:5175/');
+                if (response.ok) {
+                    const html = await response.text();
+                    if (html.includes('CRM') || html.includes('app')) {
+                        updateStatus('app-status', 'success', '✅ 应用启动正常');
+                        log('✅ 应用页面加载成功，未发现网络连接错误');
+                    } else {
+                        updateStatus('app-status', 'error', '❌ 应用页面内容异常');
+                        log('❌ 应用页面内容不符合预期');
+                    }
+                } else {
+                    updateStatus('app-status', 'error', '❌ 应用页面加载失败');
+                    log(`❌ 应用页面响应状态: ${response.status}`);
+                }
+            } catch (error) {
+                updateStatus('app-status', 'error', '❌ 应用连接失败');
+                log(`❌ 应用连接失败: ${error.message}`);
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+
+        // 页面加载时自动运行所有测试
+        window.onload = function() {
+            log('🚀 开始网络连接修复验证...');
+            log('='.repeat(50));
+            
+            setTimeout(() => {
+                testFrontend();
+                setTimeout(() => {
+                    testBackend();
+                    setTimeout(() => {
+                        testMockConfig();
+                        setTimeout(() => {
+                            testApp();
+                            setTimeout(() => {
+                                log('='.repeat(50));
+                                log('✨ 网络连接修复验证完成！');
+                            }, 1000);
+                        }, 1000);
+                    }, 1000);
+                }, 1000);
+            }, 500);
+        };
+    </script>
+</body>
+</html>

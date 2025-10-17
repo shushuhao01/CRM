@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>localStorage持久化存储测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 3px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .data-display {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>localStorage持久化存储测试</h1>
+    <p>此页面用于测试CRM系统中客户数据在localStorage中的持久化存储和跨页面访问功能。</p>
+
+    <div class="test-section">
+        <h3>1. 存储状态检查</h3>
+        <button onclick="checkStorageStatus()">检查存储状态</button>
+        <div id="storageStatus"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>2. 添加测试客户</h3>
+        <button onclick="addTestCustomer()">添加测试客户</button>
+        <div id="addResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>3. 读取客户数据</h3>
+        <button onclick="loadCustomerData()">读取客户数据</button>
+        <div id="customerData"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>4. 清除存储数据</h3>
+        <button onclick="clearStorage()">清除所有数据</button>
+        <div id="clearResult"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>5. 跨页面测试</h3>
+        <p>在新标签页中打开此页面，验证数据是否持久化：</p>
+        <button onclick="openNewTab()">在新标签页中打开</button>
+        <div id="crossPageResult"></div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'crm_customers_unified';
+
+        // 检查存储状态
+        function checkStorageStatus() {
+            const statusDiv = document.getElementById('storageStatus');
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (data) {
+                    const parsed = JSON.parse(data);
+                    statusDiv.innerHTML = `
+                        <div class="test-result success">
+                            <strong>存储状态：</strong>已有数据<br>
+                            <strong>客户数量：</strong>${parsed.customers ? parsed.customers.length : 0}<br>
+                            <strong>最后更新：</strong>${parsed.lastUpdated ? new Date(parsed.lastUpdated).toLocaleString() : '未知'}<br>
+                            <strong>版本：</strong>${parsed.version || '未知'}
+                        </div>
+                        <div class="data-display">${JSON.stringify(parsed, null, 2)}</div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `
+                        <div class="test-result info">
+                            <strong>存储状态：</strong>无数据
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="test-result error">
+                        <strong>错误：</strong>${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // 添加测试客户
+        function addTestCustomer() {
+            const resultDiv = document.getElementById('addResult');
+            try {
+                // 获取现有数据
+                let data = localStorage.getItem(STORAGE_KEY);
+                let customers = [];
+                
+                if (data) {
+                    const parsed = JSON.parse(data);
+                    customers = parsed.customers || [];
+                }
+
+                // 创建测试客户
+                const testCustomer = {
+                    id: `test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    code: `TEST${Date.now()}`,
+                    name: `测试客户_${new Date().getHours()}${new Date().getMinutes()}`,
+                    phone: `1380013${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`,
+                    age: 25 + Math.floor(Math.random() * 30),
+                    address: '测试地址',
+                    level: 'normal',
+                    status: 'active',
+                    salesPersonId: 'test_user',
+                    orderCount: 0,
+                    createTime: new Date().toISOString(),
+                    createdBy: 'test_user',
+                    source: '测试来源',
+                    tags: ['测试标签'],
+                    remarks: '这是一个测试客户'
+                };
+
+                // 检查手机号是否已存在
+                const existingIndex = customers.findIndex(c => c.phone === testCustomer.phone);
+                if (existingIndex !== -1) {
+                    resultDiv.innerHTML = `
+                        <div class="test-result error">
+                            <strong>添加失败：</strong>手机号 ${testCustomer.phone} 已存在
+                        </div>
+                    `;
+                    return;
+                }
+
+                // 添加到列表开头
+                customers.unshift(testCustomer);
+
+                // 保存到localStorage
+                const storageData = {
+                    customers,
+                    lastUpdated: Date.now(),
+                    version: '1.0.0'
+                };
+
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(storageData));
+
+                resultDiv.innerHTML = `
+                    <div class="test-result success">
+                        <strong>添加成功：</strong><br>
+                        客户姓名：${testCustomer.name}<br>
+                        手机号：${testCustomer.phone}<br>
+                        客户ID：${testCustomer.id}<br>
+                        总客户数：${customers.length}
+                    </div>
+                `;
+
+                // 自动刷新存储状态
+                checkStorageStatus();
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="test-result error">
+                        <strong>添加失败：</strong>${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // 读取客户数据
+        function loadCustomerData() {
+            const dataDiv = document.getElementById('customerData');
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (data) {
+                    const parsed = JSON.parse(data);
+                    const customers = parsed.customers || [];
+                    
+                    dataDiv.innerHTML = `
+                        <div class="test-result success">
+                            <strong>读取成功：</strong>共 ${customers.length} 个客户
+                        </div>
+                        <div class="data-display">${JSON.stringify(customers, null, 2)}</div>
+                    `;
+                } else {
+                    dataDiv.innerHTML = `
+                        <div class="test-result info">
+                            <strong>无数据：</strong>localStorage中没有客户数据
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                dataDiv.innerHTML = `
+                    <div class="test-result error">
+                        <strong>读取失败：</strong>${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // 清除存储数据
+        function clearStorage() {
+            const resultDiv = document.getElementById('clearResult');
+            try {
+                localStorage.removeItem(STORAGE_KEY);
+                resultDiv.innerHTML = `
+                    <div class="test-result success">
+                        <strong>清除成功：</strong>所有客户数据已从localStorage中删除
+                    </div>
+                `;
+                
+                // 自动刷新存储状态
+                checkStorageStatus();
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="test-result error">
+                        <strong>清除失败：</strong>${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // 在新标签页中打开
+        function openNewTab() {
+            window.open(window.location.href, '_blank');
+            document.getElementById('crossPageResult').innerHTML = `
+                <div class="test-result info">
+                    <strong>新标签页已打开：</strong>请在新标签页中检查数据是否一致，验证跨页面持久化功能
+                </div>
+            `;
+        }
+
+        // 页面加载时自动检查存储状态
+        window.onload = function() {
+            checkStorageStatus();
+        };
+    </script>
+</body>
+</html>

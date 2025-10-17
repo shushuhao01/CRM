@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM移动SDK</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <meta name="theme-color" content="#409EFF">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="CRM SDK">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #409EFF 0%, #36cfc9 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+        
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: #409EFF;
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        
+        .version {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .status {
+            background: #f5f7fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .status-text {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        
+        .permission-list {
+            text-align: left;
+            margin-bottom: 20px;
+        }
+        
+        .permission-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .permission-icon {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 10px;
+        }
+        
+        .granted {
+            background: #67C23A;
+        }
+        
+        .denied {
+            background: #F56C6C;
+        }
+        
+        .button {
+            background: #409EFF;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+            transition: background 0.3s;
+            min-width: 120px;
+        }
+        
+        .button:hover {
+            background: #337ECC;
+        }
+        
+        .button:disabled {
+            background: #C0C4CC;
+            cursor: not-allowed;
+        }
+        
+        .button.success {
+            background: #67C23A;
+        }
+        
+        .button.success:hover {
+            background: #529B2E;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            color: #999;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">CRM</div>
+        <h1>CRM移动SDK</h1>
+        <div class="version">版本 1.1.0</div>
+        
+        <div class="status">
+            <div class="status-text" id="statusText">正在检查权限状态...</div>
+            
+            <div class="permission-list">
+                <div class="permission-item">
+                    <div class="permission-icon denied" id="callIcon">×</div>
+                    <span>通话权限</span>
+                </div>
+                <div class="permission-item">
+                    <div class="permission-icon denied" id="micIcon">×</div>
+                    <span>麦克风权限</span>
+                </div>
+                <div class="permission-item">
+                    <div class="permission-icon denied" id="storageIcon">×</div>
+                    <span>存储权限</span>
+                </div>
+            </div>
+        </div>
+        
+        <button class="button" id="permissionBtn" onclick="requestPermissions()">
+            授予权限
+        </button>
+        
+        <button class="button success" id="testBtn" onclick="testConnection()" disabled>
+            测试连接
+        </button>
+        
+        <div class="footer">
+            CRM系统移动端SDK<br>
+            用于移动设备通话功能集成
+        </div>
+    </div>
+
+    <script>
+        let permissionsGranted = false;
+        
+        function updateStatus() {
+            const statusText = document.getElementById('statusText');
+            const permissionBtn = document.getElementById('permissionBtn');
+            const testBtn = document.getElementById('testBtn');
+            const callIcon = document.getElementById('callIcon');
+            const micIcon = document.getElementById('micIcon');
+            const storageIcon = document.getElementById('storageIcon');
+            
+            if (permissionsGranted) {
+                statusText.textContent = 'SDK已就绪，可以进行通话';
+                permissionBtn.textContent = '权限已授予';
+                permissionBtn.disabled = true;
+                testBtn.disabled = false;
+                
+                // 更新权限图标
+                [callIcon, micIcon, storageIcon].forEach(icon => {
+                    icon.className = 'permission-icon granted';
+                    icon.textContent = '✓';
+                });
+            } else {
+                statusText.textContent = '需要授予必要权限才能使用SDK';
+                permissionBtn.textContent = '授予权限';
+                permissionBtn.disabled = false;
+                testBtn.disabled = true;
+            }
+        }
+        
+        function requestPermissions() {
+            // 模拟权限请求过程
+            const permissionBtn = document.getElementById('permissionBtn');
+            permissionBtn.textContent = '正在请求权限...';
+            permissionBtn.disabled = true;
+            
+            setTimeout(() => {
+                permissionsGranted = true;
+                updateStatus();
+                alert('权限已成功授予！');
+            }, 2000);
+        }
+        
+        function testConnection() {
+            const testBtn = document.getElementById('testBtn');
+            const originalText = testBtn.textContent;
+            
+            testBtn.textContent = '测试中...';
+            testBtn.disabled = true;
+            
+            setTimeout(() => {
+                testBtn.textContent = originalText;
+                testBtn.disabled = false;
+                alert('SDK连接测试成功！\n\n设备已准备就绪，可以进行通话功能集成。');
+            }, 1500);
+        }
+        
+        // 初始化
+        updateStatus();
+        
+        // 检查是否在移动设备上运行
+        if (/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            console.log('运行在移动设备上');
+        }
+        
+        // 注册Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then((registration) => {
+                        console.log('SW注册成功: ', registration.scope);
+                    })
+                    .catch((registrationError) => {
+                        console.log('SW注册失败: ', registrationError);
+                    });
+            });
+        }
+        
+        // 添加到主屏幕提示
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            console.log('可以添加到主屏幕');
+            
+            // 可以在这里显示自定义的安装提示
+            const installBtn = document.createElement('button');
+            installBtn.textContent = '安装到手机';
+            installBtn.className = 'button';
+            installBtn.style.marginTop = '10px';
+            installBtn.onclick = () => {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('用户接受了安装');
+                    }
+                    deferredPrompt = null;
+                    installBtn.remove();
+                });
+            };
+            document.querySelector('.container').appendChild(installBtn);
+        });
+    </script>
+</body>
+</html>

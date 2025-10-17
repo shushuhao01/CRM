@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端登录测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .success {
+            color: #28a745;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .info {
+            color: #17a2b8;
+            background: #d1ecf1;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 300px;
+        }
+        .login-form input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>前端登录功能测试</h1>
+        <p>测试前端与后端API的连接和登录功能</p>
+    </div>
+
+    <div class="container">
+        <div class="test-section">
+            <h3>1. 清除前端缓存</h3>
+            <button onclick="clearAllCache()">清除所有缓存</button>
+            <div id="clearResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>2. 测试后端连接</h3>
+            <button onclick="testBackendConnection()">测试后端健康检查</button>
+            <div id="backendResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>3. 直接API登录测试</h3>
+            <div class="login-form">
+                <input type="text" id="username" placeholder="用户名" value="admin">
+                <input type="password" id="password" placeholder="密码" value="admin123">
+                <button onclick="testDirectLogin()">直接API登录</button>
+            </div>
+            <div id="loginResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>4. 前端页面跳转测试</h3>
+            <button onclick="goToLogin()">跳转到登录页面</button>
+            <button onclick="goToDashboard()">跳转到仪表板</button>
+            <button onclick="goToPerformance()">跳转到业绩分析</button>
+            <div id="navigationResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>5. 本地存储检查</h3>
+            <button onclick="checkLocalStorage()">检查本地存储</button>
+            <div id="storageResult"></div>
+        </div>
+    </div>
+
+    <script>
+        // 清除所有缓存
+        function clearAllCache() {
+            const resultDiv = document.getElementById('clearResult');
+            try {
+                // 清除localStorage
+                localStorage.clear();
+                
+                // 清除sessionStorage
+                sessionStorage.clear();
+                
+                // 清除IndexedDB（如果有的话）
+                if ('indexedDB' in window) {
+                    indexedDB.deleteDatabase('CRM_DB');
+                }
+                
+                resultDiv.innerHTML = '<div class="success">✅ 所有缓存已清除</div>';
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">❌ 清除缓存失败: ${error.message}</div>`;
+            }
+        }
+
+        // 测试后端连接
+        async function testBackendConnection() {
+            const resultDiv = document.getElementById('backendResult');
+            resultDiv.innerHTML = '<div class="info">🔄 正在测试后端连接...</div>';
+            
+            try {
+                const response = await fetch('http://localhost:3000/health');
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="success">✅ 后端连接成功</div>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">❌ 后端响应异常: ${JSON.stringify(data)}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">❌ 后端连接失败: ${error.message}</div>`;
+            }
+        }
+
+        // 直接API登录测试
+        async function testDirectLogin() {
+            const resultDiv = document.getElementById('loginResult');
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            resultDiv.innerHTML = '<div class="info">🔄 正在测试登录...</div>';
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 保存token到localStorage
+                    localStorage.setItem('auth_token', data.data.accessToken);
+                    localStorage.setItem('user', JSON.stringify(data.data.user));
+                    
+                    resultDiv.innerHTML = `
+                        <div class="success">✅ 登录成功</div>
+                        <pre>用户信息: ${JSON.stringify(data.data.user, null, 2)}</pre>
+                        <div class="info">Token已保存到localStorage</div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">❌ 登录失败: ${data.message}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">❌ 登录请求失败: ${error.message}</div>`;
+            }
+        }
+
+        // 页面跳转测试
+        function goToLogin() {
+            window.location.href = '/login';
+        }
+
+        function goToDashboard() {
+            window.location.href = '/dashboard';
+        }
+
+        function goToPerformance() {
+            window.location.href = '/performance/analysis';
+        }
+
+        // 检查本地存储
+        function checkLocalStorage() {
+            const resultDiv = document.getElementById('storageResult');
+            
+            const authToken = localStorage.getItem('auth_token');
+            const user = localStorage.getItem('user');
+            const userDatabase = localStorage.getItem('userDatabase');
+            
+            let storageInfo = '<h4>本地存储内容:</h4>';
+            
+            if (authToken) {
+                storageInfo += `<div class="success">✅ auth_token: ${authToken.substring(0, 50)}...</div>`;
+            } else {
+                storageInfo += '<div class="error">❌ 没有找到 auth_token</div>';
+            }
+            
+            if (user) {
+                try {
+                    const userObj = JSON.parse(user);
+                    storageInfo += `<div class="success">✅ user: ${userObj.realName} (${userObj.role})</div>`;
+                } catch (e) {
+                    storageInfo += '<div class="error">❌ user 数据格式错误</div>';
+                }
+            } else {
+                storageInfo += '<div class="error">❌ 没有找到 user</div>';
+            }
+            
+            if (userDatabase) {
+                storageInfo += '<div class="info">ℹ️ 找到 userDatabase (模拟数据)</div>';
+            }
+            
+            // 显示所有localStorage键
+            const allKeys = Object.keys(localStorage);
+            storageInfo += `<div class="info">所有localStorage键: ${allKeys.join(', ')}</div>`;
+            
+            resultDiv.innerHTML = storageInfo;
+        }
+
+        // 页面加载时自动检查存储
+        window.onload = function() {
+            checkLocalStorage();
+        };
+    </script>
+</body>
+</html>

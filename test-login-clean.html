@@ -1,0 +1,23 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>CRM登录测试</title>
+</head>
+<body>
+    <h1>CRM登录测试</h1>
+    <button onclick="clearStorage()">清除存储</button>
+    <button onclick="openCRM()">打开CRM</button>
+    
+    <script>
+        function clearStorage() {
+            localStorage.clear();
+            sessionStorage.clear();
+            alert('存储已清除');
+        }
+        
+        function openCRM() {
+            window.open('http://localhost:5173', '_blank');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,1540 @@
+<template>
+  <div class="super-admin-panel">
+    <div class="header">
+      <div class="header-title">
+        <h1 class="page-title">超级管理员权限配置面板</h1>
+        <div class="header-stats">
+          <el-statistic title="管理用户总数" :value="userStats.total" />
+          <el-statistic title="活跃角色数" :value="userStats.activeRoles" />
+          <el-statistic title="今日权限变更" :value="userStats.todayChanges" />
+        </div>
+      </div>
+      <div class="header-actions">
+        <el-button @click="refreshAllData" type="primary">刷新数据</el-button>
+        <el-button @click="exportPermissions" type="success">导出权限配置</el-button>
+      </div>
+    </div>
+
+    <el-tabs v-model="activeTab" type="card" class="admin-tabs">
+      <!-- 用户权限管理 -->
+      <el-tab-pane label="用户权限管理" name="users">
+        <div class="tab-content">
+          <div class="filters">
+            <el-input
+              v-model="userSearchKeyword"
+              placeholder="搜索用户姓名或邮箱"
+              style="width: 200px; margin-right: 10px;"
+              clearable
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
+            <el-select
+              v-model="filterUserRole"
+              placeholder="用户角色"
+              style="width: 150px; margin-right: 10px;"
+              clearable
+            >
+              <el-option label="全部" value="" />
+              <el-option label="超级管理员" value="super_admin" />
+              <el-option label="部门负责人" value="department_manager" />
+              <el-option label="销售员" value="sales_staff" />
+              <el-option label="客服" value="customer_service" />
+            </el-select>
+            <el-select
+              v-model="filterDepartment"
+              placeholder="部门"
+              style="width: 150px; margin-right: 10px;"
+              clearable
+            >
+              <el-option label="全部" value="" />
+              <el-option label="管理部" value="admin" />
+              <el-option label="销售一部" value="sales_1" />
+              <el-option label="销售二部" value="sales_2" />
+              <el-option label="客服部" value="service" />
+            </el-select>
+            <el-button @click="searchUsers" type="primary">
+              <el-icon><Search /></el-icon>
+              搜索
+            </el-button>
+            <el-button @click="addNewUser" type="success">
+              <el-icon><Plus /></el-icon>
+              新增用户
+            </el-button>
+            <el-button @click="batchImportUsers" type="warning">
+              <el-icon><Upload /></el-icon>
+              批量导入
+            </el-button>
+          </div>
+
+          <el-table :data="filteredUsers" style="width: 100%" v-loading="loading.users">
+            <el-table-column type="selection" width="55" />
+            <el-table-column prop="name" label="姓名" width="120" />
+            <el-table-column prop="email" label="邮箱" width="200" />
+            <el-table-column prop="department" label="部门" width="120" />
+            <el-table-column label="角色" width="120">
+              <template #default="{ row }">
+                <el-tag :type="getUserRoleTagType(row.role)">
+                  {{ getUserRoleDisplayName(row.role) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="数据权限" width="120">
+              <template #default="{ row }">
+                <el-tag :type="getDataScopeTagType(row.dataScope)" size="small">
+                  {{ getDataScopeDisplayName(row.dataScope) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="100">
+              <template #default="{ row }">
+                <el-switch
+                  v-model="row.status"
+                  active-value="active"
+                  inactive-value="inactive"
+                  @change="toggleUserStatus(row)"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column label="最后登录" width="150">
+              <template #default="{ row }">
+                {{ formatDate(row.lastLogin) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="280">
+              <template #default="{ row }">
+                <el-button
+                  @click="editUserPermission(row)"
+                  size="small"
+                  type="primary"
+                >
+                  编辑权限
+                </el-button>
+                <el-button
+                  @click="viewUserDetail(row)"
+                  size="small"
+                >
+                  查看详情
+                </el-button>
+                <el-button
+                  @click="resetUserPassword(row)"
+                  size="small"
+                  type="warning"
+                >
+                  重置密码
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div class="pagination">
+            <el-pagination
+              v-model:current-page="userPagination.currentPage"
+              v-model:page-size="userPagination.pageSize"
+              :page-sizes="[10, 20, 50, 100]"
+              :total="userPagination.total"
+              layout="total, sizes, prev, pager, next, jumper"
+              @size-change="handleUserPageSizeChange"
+              @current-change="handleUserCurrentChange"
+            />
+          </div>
+        </div>
+      </el-tab-pane>
+
+      <!-- 角色权限模板 -->
+      <el-tab-pane label="角色权限模板" name="roles">
+        <div class="tab-content">
+          <div class="template-actions">
+            <el-button @click="createRoleTemplate" type="primary">
+              <el-icon><Plus /></el-icon>
+              创建角色模板
+            </el-button>
+            <el-button @click="importRoleTemplate" type="success">
+              <el-icon><Upload /></el-icon>
+              导入模板
+            </el-button>
+            <el-button @click="exportRoleTemplates" type="warning">
+              <el-icon><Download /></el-icon>
+              导出模板
+            </el-button>
+          </div>
+
+          <el-row :gutter="20">
+            <el-col :span="8" v-for="template in roleTemplates" :key="template.id">
+              <el-card class="role-template-card">
+                <template #header>
+                  <div class="card-header">
+                    <span>{{ template.name }}</span>
+                    <el-dropdown @command="handleTemplateCommand">
+                      <el-button type="text">
+                        <el-icon><MoreFilled /></el-icon>
+                      </el-button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item :command="{action: 'edit', template}">编辑</el-dropdown-item>
+                          <el-dropdown-item :command="{action: 'copy', template}">复制</el-dropdown-item>
+                          <el-dropdown-item :command="{action: 'delete', template}" divided>删除</el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                  </div>
+                </template>
+                <div class="template-info">
+                  <p><strong>描述：</strong>{{ template.description }}</p>
+                  <p><strong>权限数量：</strong>{{ template.permissions.length }}</p>
+                  <p><strong>使用人数：</strong>{{ template.userCount }}</p>
+                  <p><strong>创建时间：</strong>{{ formatDate(template.createdAt) }}</p>
+                </div>
+                <div class="template-actions-bottom">
+                  <el-button @click="applyTemplate(template)" type="primary" size="small">应用模板</el-button>
+                  <el-button @click="previewTemplate(template)" size="small">预览权限</el-button>
+                </div>
+              </el-card>
+            </el-col>
+          </el-row>
+        </div>
+      </el-tab-pane>
+
+      <!-- 部门权限管理 -->
+      <el-tab-pane label="部门权限管理" name="departments">
+        <div class="tab-content">
+          <div class="department-actions">
+            <el-button @click="addDepartment" type="primary">
+              <el-icon><Plus /></el-icon>
+              新增部门
+            </el-button>
+            <el-button @click="batchAssignPermissions" type="success">
+              <el-icon><Setting /></el-icon>
+              批量分配权限
+            </el-button>
+            <el-button @click="syncDepartmentData" type="warning">
+              <el-icon><Refresh /></el-icon>
+              同步部门数据
+            </el-button>
+          </div>
+
+          <el-table :data="departments" style="width: 100%" v-loading="loading.departments">
+            <el-table-column prop="name" label="部门名称" width="200" />
+            <el-table-column prop="manager" label="部门负责人" width="150" />
+            <el-table-column prop="memberCount" label="成员数量" width="120" />
+            <el-table-column label="权限级别" width="150">
+              <template #default="{ row }">
+                <el-tag :type="getPermissionLevelTagType(row.permissionLevel)">
+                  {{ getPermissionLevelDisplayName(row.permissionLevel) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="数据范围" width="150">
+              <template #default="{ row }">
+                <el-tag :type="getDataScopeTagType(row.dataScope)" size="small">
+                  {{ getDataScopeDisplayName(row.dataScope) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="description" label="描述" />
+            <el-table-column label="操作" width="250">
+              <template #default="{ row }">
+                <el-button @click="editDepartment(row)" size="small" type="primary">编辑</el-button>
+                <el-button @click="manageDepartmentMembers(row)" size="small">成员管理</el-button>
+                <el-button @click="viewDepartmentPermissions(row)" size="small">权限详情</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </el-tab-pane>
+
+      <!-- 权限审计日志 -->
+      <el-tab-pane label="权限审计日志" name="audit">
+        <div class="tab-content">
+          <div class="audit-filters">
+            <el-date-picker
+              v-model="auditDateRange"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              style="margin-right: 10px;"
+            />
+            <el-select
+              v-model="auditActionType"
+              placeholder="操作类型"
+              style="width: 150px; margin-right: 10px;"
+              clearable
+            >
+              <el-option label="全部" value="" />
+              <el-option label="权限分配" value="assign" />
+              <el-option label="权限撤销" value="revoke" />
+              <el-option label="角色变更" value="role_change" />
+              <el-option label="用户创建" value="user_create" />
+              <el-option label="用户删除" value="user_delete" />
+            </el-select>
+            <el-input
+              v-model="auditUserKeyword"
+              placeholder="操作人员"
+              style="width: 150px; margin-right: 10px;"
+              clearable
+            />
+            <el-button @click="searchAuditLogs" type="primary">
+              <el-icon><Search /></el-icon>
+              搜索
+            </el-button>
+            <el-button @click="exportAuditLogs" type="success">
+              <el-icon><Download /></el-icon>
+              导出日志
+            </el-button>
+          </div>
+
+          <el-table :data="auditLogs" style="width: 100%" v-loading="loading.audit">
+            <el-table-column prop="timestamp" label="时间" width="180">
+              <template #default="{ row }">
+                {{ formatDateTime(row.timestamp) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="operator" label="操作人员" width="120" />
+            <el-table-column label="操作类型" width="120">
+              <template #default="{ row }">
+                <el-tag :type="getAuditActionTagType(row.action)">
+                  {{ getAuditActionDisplayName(row.action) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="target" label="操作对象" width="150" />
+            <el-table-column prop="description" label="操作描述" />
+            <el-table-column prop="ipAddress" label="IP地址" width="130" />
+            <el-table-column label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'success' ? 'success' : 'danger'" size="small">
+                  {{ row.status === 'success' ? '成功' : '失败' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div class="pagination">
+            <el-pagination
+              v-model:current-page="auditPagination.currentPage"
+              v-model:page-size="auditPagination.pageSize"
+              :page-sizes="[10, 20, 50, 100]"
+              :total="auditPagination.total"
+              layout="total, sizes, prev, pager, next, jumper"
+              @size-change="handleAuditPageSizeChange"
+              @current-change="handleAuditCurrentChange"
+            />
+          </div>
+        </div>
+      </el-tab-pane>
+
+      <!-- 系统配置 -->
+      <el-tab-pane label="系统配置" name="system">
+        <div class="tab-content">
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-card title="权限配置">
+                <template #header>
+                  <span>权限配置</span>
+                </template>
+                <el-form :model="systemConfig" label-width="120px">
+                  <el-form-item label="默认权限级别">
+                    <el-select v-model="systemConfig.defaultPermissionLevel">
+                      <el-option label="只读权限" value="read_only" />
+                      <el-option label="部分权限" value="partial_access" />
+                      <el-option label="完全权限" value="full_access" />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="密码策略">
+                    <el-switch v-model="systemConfig.enforcePasswordPolicy" />
+                  </el-form-item>
+                  <el-form-item label="双因子认证">
+                    <el-switch v-model="systemConfig.requireTwoFactor" />
+                  </el-form-item>
+                  <el-form-item label="会话超时(分钟)">
+                    <el-input-number v-model="systemConfig.sessionTimeout" :min="5" :max="480" />
+                  </el-form-item>
+                </el-form>
+              </el-card>
+            </el-col>
+            <el-col :span="12">
+              <el-card title="审计配置">
+                <template #header>
+                  <span>审计配置</span>
+                </template>
+                <el-form :model="systemConfig" label-width="120px">
+                  <el-form-item label="启用审计日志">
+                    <el-switch v-model="systemConfig.enableAuditLog" />
+                  </el-form-item>
+                  <el-form-item label="日志保留天数">
+                    <el-input-number v-model="systemConfig.auditLogRetentionDays" :min="30" :max="365" />
+                  </el-form-item>
+                  <el-form-item label="敏感操作通知">
+                    <el-switch v-model="systemConfig.notifySensitiveOperations" />
+                  </el-form-item>
+                  <el-form-item label="自动备份配置">
+                    <el-switch v-model="systemConfig.autoBackupConfig" />
+                  </el-form-item>
+                </el-form>
+              </el-card>
+            </el-col>
+          </el-row>
+          <div class="config-actions">
+            <el-button @click="saveSystemConfig" type="primary">保存配置</el-button>
+            <el-button @click="resetSystemConfig" type="warning">重置配置</el-button>
+            <el-button @click="exportSystemConfig" type="success">导出配置</el-button>
+          </div>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
+
+    <!-- 页面说明 - 移动到底部 -->
+    <el-alert
+      title="超级管理员权限面板说明"
+      type="info"
+      :closable="false"
+      show-icon
+      style="margin-top: 20px;"
+    >
+      <template #default>
+        <div class="panel-description">
+          <p><strong>功能说明：</strong>此面板专为超级管理员设计，提供高级权限管理功能</p>
+          <p><strong>与角色权限页面的区别：</strong></p>
+          <ul>
+            <li>• <strong>角色权限页面</strong>：管理基础角色和权限分配，适用于日常权限管理</li>
+            <li>• <strong>超级管理员面板</strong>：提供批量管理、模板配置、审计监控等高级功能</li>
+            <li>• <strong>客服权限管理</strong>：专门针对客服业务场景的权限配置</li>
+          </ul>
+          <p><strong>使用场景：</strong>系统初始化、批量用户导入、权限模板管理、安全审计等</p>
+        </div>
+      </template>
+    </el-alert>
+
+    <!-- 对话框组件 -->
+    <UserPermissionDialog
+      v-model="dialogs.userPermission"
+      :user="selectedUser"
+      @confirm="handleUserPermissionUpdate"
+    />
+    
+    <RoleTemplateDialog
+      v-model="dialogs.roleTemplate"
+      :template="selectedTemplate"
+      @confirm="handleRoleTemplateUpdate"
+    />
+
+    <!-- 部门管理对话框 -->
+    <DepartmentDialog
+      v-model="dialogs.department"
+      :department="selectedDepartment"
+      @saved="handleDepartmentSaved"
+    />
+
+    <!-- 部门成员管理对话框 -->
+    <DepartmentMembersDialog
+      v-model="dialogs.departmentMembers"
+      :department="selectedDepartment"
+      @updated="handleDepartmentMembersUpdated"
+    />
+
+    <!-- 部门权限详情对话框 -->
+    <DepartmentPermissionsDialog
+      v-model="dialogs.departmentPermissions"
+      :department="selectedDepartment"
+      @update="handleDepartmentPermissionsUpdated"
+    />
+
+    <!-- 批量分配权限对话框 -->
+    <BatchAssignPermissionsDialog
+      v-model="dialogs.batchAssignPermissions"
+      @assigned="handleBatchPermissionsAssigned"
+    />
+
+    <!-- 用户详情对话框 -->
+    <UserDetailDialog
+      v-model="dialogs.userDetail"
+      :user="selectedUser"
+      @edit="handleUserDetailEdit"
+    />
+
+    <!-- 角色模板导入对话框 -->
+    <RoleTemplateImportDialog
+      v-model="dialogs.roleTemplateImport"
+      @imported="handleRoleTemplateImported"
+    />
+
+    <!-- 角色模板预览对话框 -->
+    <RoleTemplatePreviewDialog
+      v-model="dialogs.roleTemplatePreview"
+      :template="selectedRoleTemplate"
+      @apply="handleRoleTemplateApplied"
+      @export="handleRoleTemplateExported"
+    />
+
+
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { 
+  Search, Plus, Upload, Download, MoreFilled, 
+  Setting, Refresh 
+} from '@element-plus/icons-vue'
+import UserPermissionDialog from './UserPermissionDialog.vue'
+import RoleTemplateDialog from './RoleTemplateDialog.vue'
+import DepartmentDialog from './DepartmentDialog.vue'
+import DepartmentMembersDialog from './DepartmentMembersDialog.vue'
+import DepartmentPermissionsDialog from './DepartmentPermissionsDialog.vue'
+import BatchAssignPermissionsDialog from './BatchAssignPermissionsDialog.vue'
+import UserDetailDialog from './UserDetailDialog.vue'
+import RoleTemplateImportDialog from './RoleTemplateImportDialog.vue'
+import RoleTemplatePreviewDialog from './RoleTemplatePreviewDialog.vue'
+
+
+// 接口定义
+interface User {
+  id: string
+  name: string
+  email: string
+  department: string
+  departmentId: string
+  role: string
+  dataScope: string
+  permissionLevel: string
+  status: 'active' | 'inactive'
+  lastLogin: string
+  createdAt: string
+}
+
+interface RoleTemplate {
+  id: string
+  name: string
+  description: string
+  permissions: string[]
+  userCount: number
+  createdAt: string
+}
+
+interface Department {
+  id: string
+  name: string
+  manager: string
+  memberCount: number
+  permissionLevel: string
+  dataScope: string
+  description: string
+}
+
+interface AuditLog {
+  id: string
+  timestamp: string
+  user: string
+  action: string
+  resource: string
+  details: string
+  ip: string
+  result: 'success' | 'failure'
+  duration?: number
+  userAgent?: string
+  errorMessage?: string
+  sessionId?: string
+  requestId?: string
+}
+
+// 数据状态
+const activeTab = ref('users')
+const loading = ref({
+  users: false,
+  departments: false,
+  audit: false
+})
+
+const dialogs = ref({
+  userPermission: false,
+  roleTemplate: false,
+  department: false,
+  departmentMembers: false,
+  departmentPermissions: false,
+  batchAssignPermissions: false,
+  userDetail: false,
+  roleTemplateImport: false,
+  roleTemplatePreview: false
+})
+
+const selectedUser = ref<User | null>(null)
+const selectedTemplate = ref<RoleTemplate | null>(null)
+const selectedDepartment = ref<Department | null>(null)
+const selectedRoleTemplate = ref<any>(null)
+
+// 用户管理数据
+const users = ref<User[]>([])
+const userSearchKeyword = ref('')
+const filterUserRole = ref('')
+const filterDepartment = ref('')
+
+// 审计日志数据
+const auditLogs = ref<AuditLog[]>([])
+const auditDateRange = ref<[Date, Date] | null>(null)
+const auditActionType = ref('')
+const auditUserKeyword = ref('')
+const auditSearchForm = ref({
+  startDate: '',
+  endDate: '',
+  user: '',
+  action: '',
+  resource: '',
+  result: ''
+})
+const userPagination = ref({
+  currentPage: 1,
+  pageSize: 20,
+  total: 0
+})
+
+// 角色模板数据
+const roleTemplates = ref<RoleTemplate[]>([])
+
+// 部门数据
+const departments = ref<Department[]>([])
+
+const auditPagination = ref({
+  currentPage: 1,
+  pageSize: 20,
+  total: 0
+})
+
+// 系统配置
+const systemConfig = ref({
+  defaultPermissionLevel: 'read_only',
+  enforcePasswordPolicy: true,
+  requireTwoFactor: false,
+  sessionTimeout: 120,
+  enableAuditLog: true,
+  auditLogRetentionDays: 90,
+  notifySensitiveOperations: true,
+  autoBackupConfig: true
+})
+
+// 统计数据
+const userStats = ref({
+  total: 0,
+  activeRoles: 0,
+  todayChanges: 0
+})
+
+// 计算属性
+const filteredUsers = computed(() => {
+  return users.value.filter(user => {
+    const matchesKeyword = !userSearchKeyword.value || 
+      user.name.includes(userSearchKeyword.value) || 
+      user.email.includes(userSearchKeyword.value)
+    const matchesRole = !filterUserRole.value || user.role === filterUserRole.value
+    const matchesDepartment = !filterDepartment.value || user.departmentId === filterDepartment.value
+    return matchesKeyword && matchesRole && matchesDepartment
+  })
+})
+
+// 初始化数据
+const initializeData = async () => {
+  await Promise.all([
+    loadUsers(),
+    loadRoleTemplates(),
+    loadDepartments(),
+    loadAuditLogs()
+  ])
+  updateUserStats()
+}
+
+const loadUsers = async () => {
+  loading.value.users = true
+  try {
+    // 模拟API调用
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    users.value = [
+      {
+        id: 'user_001',
+        name: '张管理员',
+        email: 'admin@example.com',
+        department: '管理部',
+        departmentId: 'admin',
+        role: 'super_admin',
+        dataScope: 'all',
+        permissionLevel: 'full_access',
+        status: 'active',
+        lastLogin: '2024-01-15 10:30:00',
+        createdAt: '2024-01-01 09:00:00'
+      },
+      {
+        id: 'user_002',
+        name: '李部长',
+        email: 'manager@example.com',
+        department: '销售一部',
+        departmentId: 'sales_1',
+        role: 'department_manager',
+        dataScope: 'department',
+        permissionLevel: 'partial_access',
+        status: 'active',
+        lastLogin: '2024-01-15 09:15:00',
+        createdAt: '2024-01-02 10:00:00'
+      }
+    ]
+    userPagination.value.total = users.value.length
+  } finally {
+    loading.value.users = false
+  }
+}
+
+const loadRoleTemplates = async () => {
+  roleTemplates.value = [
+    {
+      id: 'template_001',
+      name: '销售经理模板',
+      description: '适用于销售部门经理的权限配置',
+      permissions: ['customer_view', 'customer_edit', 'order_view', 'order_edit'],
+      userCount: 5,
+      createdAt: '2024-01-01 09:00:00'
+    },
+    {
+      id: 'template_002',
+      name: '客服专员模板',
+      description: '适用于客服部门专员的权限配置',
+      permissions: ['customer_view', 'service_view', 'service_edit'],
+      userCount: 12,
+      createdAt: '2024-01-02 10:00:00'
+    }
+  ]
+}
+
+const loadDepartments = async () => {
+  loading.value.departments = true
+  try {
+    await new Promise(resolve => setTimeout(resolve, 800))
+    departments.value = [
+      {
+        id: 'dept_001',
+        name: '销售一部',
+        manager: '李部长',
+        memberCount: 15,
+        permissionLevel: 'partial_access',
+        dataScope: 'department',
+        description: '负责华东地区销售业务'
+      },
+      {
+        id: 'dept_002',
+        name: '客服部',
+        manager: '王主管',
+        memberCount: 8,
+        permissionLevel: 'read_only',
+        dataScope: 'department',
+        description: '负责客户服务和售后支持'
+      }
+    ]
+    // 这里可以更新部门列表数据 - 实际项目中会从API获取最新数据
+    console.log('部门数据已刷新')
+  } catch (error) {
+    ElMessage.error('加载部门数据失败')
+  } finally {
+    loading.value.departments = false
+  }
+}
+
+const loadAuditLogs = async () => {
+  loading.value.audit = true
+  try {
+    await new Promise(resolve => setTimeout(resolve, 600))
+    auditLogs.value = [
+      {
+        id: 'audit_001',
+        timestamp: '2024-01-15 10:30:00',
+        operator: '张管理员',
+        action: 'assign',
+        target: '李部长',
+        description: '分配销售经理权限',
+        ipAddress: '192.168.1.100',
+        status: 'success'
+      },
+      {
+        id: 'audit_002',
+        timestamp: '2024-01-15 09:15:00',
+        operator: '张管理员',
+        action: 'user_create',
+        target: '新用户王小明',
+        description: '创建新用户账户',
+        ipAddress: '192.168.1.100',
+        status: 'success'
+      }
+    ]
+    auditPagination.value.total = auditLogs.value.length
+  } finally {
+    loading.value.audit = false
+  }
+}
+
+const updateUserStats = () => {
+  userStats.value = {
+    total: users.value.length,
+    activeRoles: new Set(users.value.map(u => u.role)).size,
+    todayChanges: Math.floor(Math.random() * 10) + 1
+  }
+}
+
+// 显示名称和标签类型方法
+const getUserRoleDisplayName = (role: string) => {
+  const roleMap: Record<string, string> = {
+    'super_admin': '超级管理员',
+    'department_manager': '部门负责人',
+    'sales_staff': '销售员',
+    'customer_service': '客服'
+  }
+  return roleMap[role] || '未知'
+}
+
+const getUserRoleTagType = (role: string) => {
+  const typeMap: Record<string, string> = {
+    'super_admin': 'danger',
+    'department_manager': 'warning',
+    'sales_staff': 'primary',
+    'customer_service': 'info'
+  }
+  return typeMap[role] || ''
+}
+
+const getDataScopeDisplayName = (scope: string) => {
+  const scopeMap: Record<string, string> = {
+    'all': '全部数据',
+    'department': '部门数据',
+    'personal': '个人数据'
+  }
+  return scopeMap[scope] || '未知'
+}
+
+const getDataScopeTagType = (scope: string) => {
+  const typeMap: Record<string, string> = {
+    'all': 'danger',
+    'department': 'warning',
+    'personal': 'info'
+  }
+  return typeMap[scope] || ''
+}
+
+const getPermissionLevelDisplayName = (level: string) => {
+  const levelMap: Record<string, string> = {
+    'full_access': '完全权限',
+    'partial_access': '部分权限',
+    'read_only': '只读权限'
+  }
+  return levelMap[level] || '未知'
+}
+
+const getPermissionLevelTagType = (level: string) => {
+  const typeMap: Record<string, string> = {
+    'full_access': 'danger',
+    'partial_access': 'warning',
+    'read_only': 'info'
+  }
+  return typeMap[level] || ''
+}
+
+const getAuditActionDisplayName = (action: string) => {
+  const actionMap: Record<string, string> = {
+    'assign': '权限分配',
+    'revoke': '权限撤销',
+    'role_change': '角色变更',
+    'user_create': '用户创建',
+    'user_delete': '用户删除'
+  }
+  return actionMap[action] || '未知操作'
+}
+
+const getAuditActionTagType = (action: string) => {
+  const typeMap: Record<string, string> = {
+    'assign': 'success',
+    'revoke': 'warning',
+    'role_change': 'primary',
+    'user_create': 'info',
+    'user_delete': 'danger'
+  }
+  return typeMap[action] || ''
+}
+
+// 格式化日期时间
+const formatDate = (dateStr: string) => {
+  return new Date(dateStr).toLocaleDateString()
+}
+
+const formatDateTime = (dateStr: string) => {
+  return new Date(dateStr).toLocaleString()
+}
+
+// 事件处理方法
+const refreshAllData = async () => {
+  await initializeData()
+  ElMessage.success('数据刷新成功')
+}
+
+
+
+const exportPermissions = () => {
+  try {
+    // 构建完整的权限配置数据
+    const permissionConfig = {
+      exportInfo: {
+        exportTime: new Date().toISOString(),
+        exportBy: '超级管理员',
+        version: '1.0',
+        description: '系统权限配置完整导出'
+      },
+      users: users.value.map(user => ({
+        id: user.id,
+        username: user.username,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        department: user.department,
+        status: user.status,
+        permissions: user.permissions || [],
+        createTime: user.createTime,
+        lastLogin: user.lastLogin
+      })),
+      departments: departments.value.map(dept => ({
+        id: dept.id,
+        name: dept.name,
+        description: dept.description,
+        parentId: dept.parentId,
+        permissions: dept.permissions || [],
+        members: dept.members || [],
+        createTime: dept.createTime
+      })),
+      roleTemplates: roleTemplates.value.map(template => ({
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        permissions: template.permissions || [],
+        applicableRoles: template.applicableRoles || [],
+        createTime: template.createTime,
+        usageCount: template.usageCount || 0
+      })),
+      systemPermissions: {
+        functionalPermissions: [
+          { module: 'customer', permissions: ['查看', '创建', '编辑', '删除', '导出', '分配'] },
+          { module: 'order', permissions: ['查看', '创建', '编辑', '取消', '审核', '导出'] },
+          { module: 'product', permissions: ['查看', '创建', '编辑', '删除', '上架', '下架'] },
+          { module: 'report', permissions: ['查看', '导出', '自定义', '分享'] },
+          { module: 'system', permissions: ['用户管理', '权限管理', '系统配置', '日志查看'] }
+        ],
+        dataPermissions: [
+          { resource: 'customer', scopes: ['全部', '部门', '个人'] },
+          { resource: 'order', scopes: ['全部', '部门', '个人'] },
+          { resource: 'product', scopes: ['全部', '分类'] },
+          { resource: 'report', scopes: ['全部', '部门', '个人'] }
+        ]
+      },
+      auditLogs: auditLogs.value.slice(0, 100).map(log => ({
+        id: log.id,
+        user: log.user,
+        action: log.action,
+        resource: log.resource,
+        details: log.details,
+        timestamp: log.timestamp,
+        ip: log.ip,
+        result: log.result
+      }))
+    }
+
+    // 创建并下载文件
+    const blob = new Blob([JSON.stringify(permissionConfig, null, 2)], {
+      type: 'application/json;charset=utf-8'
+    })
+    
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `permission-config-${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    ElMessage.success('权限配置导出成功')
+    
+    // 记录导出操作到审计日志
+    const newLog = {
+      id: Date.now().toString(),
+      user: '超级管理员',
+      action: '导出权限配置',
+      resource: '系统配置',
+      details: `导出了包含 ${users.value.length} 个用户、${departments.value.length} 个部门、${roleTemplates.value.length} 个角色模板的完整权限配置`,
+      timestamp: new Date().toISOString(),
+      ip: '127.0.0.1',
+      result: '成功'
+    }
+    auditLogs.value.unshift(newLog)
+    
+  } catch (error) {
+    console.error('导出权限配置失败:', error)
+    ElMessage.error('导出权限配置失败，请重试')
+  }
+}
+
+// 用户管理方法
+const searchUsers = () => {
+  loadUsers()
+}
+
+const addNewUser = () => {
+  selectedUser.value = null
+  dialogs.value.userPermission = true
+}
+
+const batchImportUsers = () => {
+  ElMessage.info('批量导入用户功能开发中')
+}
+
+const editUserPermission = (user: User) => {
+  selectedUser.value = user
+  dialogs.value.userPermission = true
+}
+
+const viewUserDetail = (user: User) => {
+  selectedUser.value = user
+  dialogs.value.userDetail = true
+}
+
+const resetUserPassword = async (user: User) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要重置用户 ${user.name} 的密码吗？`,
+      '确认重置',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+    ElMessage.success(`已重置用户 ${user.name} 的密码`)
+  } catch {
+    ElMessage.info('已取消重置')
+  }
+}
+
+const toggleUserStatus = (user: User) => {
+  const status = user.status === 'active' ? '启用' : '禁用'
+  ElMessage.success(`已${status}用户 ${user.name}`)
+}
+
+const handleUserPermissionUpdate = (userData: any) => {
+  ElMessage.success('用户权限更新成功')
+  loadUsers()
+}
+
+// 分页处理
+const handleUserPageSizeChange = (size: number) => {
+  userPagination.value.pageSize = size
+  loadUsers()
+}
+
+const handleUserCurrentChange = (page: number) => {
+  userPagination.value.currentPage = page
+  loadUsers()
+}
+
+// 角色模板方法
+const createRoleTemplate = () => {
+  selectedTemplate.value = null
+  dialogs.value.roleTemplate = true
+}
+
+const importRoleTemplate = () => {
+  dialogs.value.roleTemplateImport = true
+}
+
+const exportRoleTemplates = () => {
+  // 导出所有角色模板
+  const exportData = {
+    templates: roleTemplates.value,
+    exportTime: new Date().toISOString(),
+    version: '1.0'
+  }
+  
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+    type: 'application/json'
+  })
+  
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `role-templates-${new Date().toISOString().split('T')[0]}.json`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+  
+  ElMessage.success('角色模板导出成功')
+}
+
+const handleTemplateCommand = (command: any) => {
+  const { action, template } = command
+  switch (action) {
+    case 'edit':
+      selectedTemplate.value = template
+      dialogs.value.roleTemplate = true
+      break
+    case 'copy':
+      ElMessage.info(`复制模板: ${template.name}`)
+      break
+    case 'delete':
+      ElMessageBox.confirm(
+        `确定要删除模板 ${template.name} 吗？`,
+        '确认删除',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        }
+      ).then(() => {
+        ElMessage.success('删除成功')
+      }).catch(() => {
+        ElMessage.info('已取消删除')
+      })
+      break
+  }
+}
+
+const applyTemplate = (template: RoleTemplate) => {
+  ElMessage.info(`应用模板: ${template.name}`)
+}
+
+const previewTemplate = (template: RoleTemplate) => {
+  selectedRoleTemplate.value = template
+  dialogs.value.roleTemplatePreview = true
+}
+
+const handleRoleTemplateUpdate = (templateData: any) => {
+  ElMessage.success('角色模板更新成功')
+  loadRoleTemplates()
+}
+
+// 部门管理方法
+const addDepartment = () => {
+  selectedDepartment.value = null
+  dialogs.value.department = true
+}
+
+const batchAssignPermissions = () => {
+  dialogs.value.batchAssignPermissions = true
+}
+
+const syncDepartmentData = async () => {
+  try {
+    ElMessage.info('正在同步部门数据...')
+    // 模拟API调用
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    ElMessage.success('部门数据同步成功')
+    // 刷新部门列表
+    await loadDepartments()
+  } catch (error) {
+    ElMessage.error('部门数据同步失败')
+  }
+}
+
+const editDepartment = (department: Department) => {
+  selectedDepartment.value = department
+  dialogs.value.department = true
+}
+
+const manageDepartmentMembers = (department: Department) => {
+  selectedDepartment.value = department
+  dialogs.value.departmentMembers = true
+}
+
+const viewDepartmentPermissions = (department: Department) => {
+  selectedDepartment.value = department
+  dialogs.value.departmentPermissions = true
+}
+
+// 部门相关事件处理
+const handleDepartmentSaved = () => {
+  dialogs.value.department = false
+  loadDepartments()
+  ElMessage.success('部门信息保存成功')
+}
+
+const handleDepartmentMembersUpdated = () => {
+  dialogs.value.departmentMembers = false
+  loadDepartments()
+  ElMessage.success('部门成员更新成功')
+}
+
+const handleDepartmentPermissionsUpdated = (department: Department) => {
+  // 更新部门权限
+  const index = departments.value.findIndex(d => d.id === department.id)
+  if (index > -1) {
+    departments.value[index] = department
+  }
+  ElMessage.success('部门权限更新成功')
+}
+
+const handleBatchPermissionsAssigned = () => {
+  dialogs.value.batchAssignPermissions = false
+  loadDepartments()
+  ElMessage.success('批量权限分配成功')
+}
+
+// 用户详情相关事件处理
+const handleUserDetailEdit = (user: User) => {
+  dialogs.value.userDetail = false
+  selectedUser.value = user
+  dialogs.value.userPermission = true
+}
+
+// 处理角色模板导入成功
+const handleRoleTemplateImported = (templates: any[]) => {
+  ElMessage.success(`成功导入 ${templates.length} 个角色模板`)
+  loadRoleTemplates() // 重新加载模板列表
+}
+
+// 处理角色模板应用
+const handleRoleTemplateApplied = (template: any) => {
+  ElMessage.success(`角色模板 "${template.name}" 应用成功`)
+  // 这里可以添加应用模板到用户的逻辑
+}
+
+// 处理角色模板导出
+const handleRoleTemplateExported = (template: any) => {
+  const exportData = {
+    template: template,
+    exportTime: new Date().toISOString(),
+    version: '1.0'
+  }
+  
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+    type: 'application/json'
+  })
+  
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `role-template-${template.name}-${new Date().toISOString().split('T')[0]}.json`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+  
+  ElMessage.success(`角色模板 "${template.name}" 导出成功`)
+}
+
+// 审计日志方法
+
+const exportAuditLogs = async () => {
+  try {
+    loading.value.audit = true
+    
+    // 准备导出数据
+    const exportData = {
+      exportInfo: {
+        title: '权限审计日志导出',
+        exportTime: new Date().toISOString(),
+        exportUser: '当前用户',
+        totalRecords: auditLogs.value.length,
+        dateRange: {
+          start: auditSearchForm.value.startDate || '全部',
+          end: auditSearchForm.value.endDate || '全部'
+        },
+        filters: {
+          user: auditSearchForm.value.user || '全部用户',
+          action: auditSearchForm.value.action || '全部操作',
+          resource: auditSearchForm.value.resource || '全部资源',
+          result: auditSearchForm.value.result || '全部结果'
+        }
+      },
+      auditLogs: auditLogs.value.map(log => ({
+        id: log.id,
+        timestamp: log.timestamp,
+        user: log.user,
+        action: log.action,
+        resource: log.resource,
+        details: log.details,
+        ip: log.ip,
+        userAgent: log.userAgent || 'Unknown',
+        result: log.result,
+        duration: log.duration || 0,
+        errorMessage: log.errorMessage || '',
+        sessionId: log.sessionId || '',
+        requestId: log.requestId || ''
+      })),
+      summary: {
+        totalActions: auditLogs.value.length,
+        successfulActions: auditLogs.value.filter(log => log.result === 'success').length,
+        failedActions: auditLogs.value.filter(log => log.result === 'failure').length,
+        uniqueUsers: [...new Set(auditLogs.value.map(log => log.user))].length,
+        actionTypes: [...new Set(auditLogs.value.map(log => log.action))],
+        resourceTypes: [...new Set(auditLogs.value.map(log => log.resource))],
+        timeRange: {
+          earliest: auditLogs.value.length > 0 ? Math.min(...auditLogs.value.map(log => new Date(log.timestamp).getTime())) : null,
+          latest: auditLogs.value.length > 0 ? Math.max(...auditLogs.value.map(log => new Date(log.timestamp).getTime())) : null
+        }
+      },
+      statistics: {
+        actionsByType: auditLogs.value.reduce((acc, log) => {
+          acc[log.action] = (acc[log.action] || 0) + 1
+          return acc
+        }, {} as Record<string, number>),
+        actionsByUser: auditLogs.value.reduce((acc, log) => {
+          acc[log.user] = (acc[log.user] || 0) + 1
+          return acc
+        }, {} as Record<string, number>),
+        actionsByResource: auditLogs.value.reduce((acc, log) => {
+          acc[log.resource] = (acc[log.resource] || 0) + 1
+          return acc
+        }, {} as Record<string, number>),
+        actionsByResult: auditLogs.value.reduce((acc, log) => {
+          acc[log.result] = (acc[log.result] || 0) + 1
+          return acc
+        }, {} as Record<string, number>)
+      }
+    }
+
+    // 创建并下载JSON文件
+    const jsonBlob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: 'application/json;charset=utf-8'
+    })
+    
+    const jsonUrl = URL.createObjectURL(jsonBlob)
+    const jsonLink = document.createElement('a')
+    jsonLink.href = jsonUrl
+    jsonLink.download = `audit-logs-${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(jsonLink)
+    jsonLink.click()
+    document.body.removeChild(jsonLink)
+    URL.revokeObjectURL(jsonUrl)
+
+    // 同时创建CSV格式的导出
+    const csvHeaders = [
+      '时间', '用户', '操作', '资源', '详情', 'IP地址', '结果', '持续时间(ms)', '错误信息'
+    ]
+    
+    const csvRows = auditLogs.value.map(log => [
+      log.timestamp,
+      log.user,
+      log.action,
+      log.resource,
+      log.details.replace(/,/g, ';'), // 替换逗号避免CSV格式问题
+      log.ip,
+      log.result,
+      log.duration || 0,
+      (log.errorMessage || '').replace(/,/g, ';')
+    ])
+
+    const csvContent = [
+      csvHeaders.join(','),
+      ...csvRows.map(row => row.join(','))
+    ].join('\n')
+
+    const csvBlob = new Blob(['\ufeff' + csvContent], {
+      type: 'text/csv;charset=utf-8'
+    })
+    
+    const csvUrl = URL.createObjectURL(csvBlob)
+    const csvLink = document.createElement('a')
+    csvLink.href = csvUrl
+    csvLink.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`
+    document.body.appendChild(csvLink)
+    csvLink.click()
+    document.body.removeChild(csvLink)
+    URL.revokeObjectURL(csvUrl)
+
+    // 记录导出操作到审计日志
+    const exportLog: AuditLog = {
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      user: '当前用户',
+      action: '导出审计日志',
+      resource: '审计日志',
+      details: `导出了 ${auditLogs.value.length} 条审计日志记录`,
+      ip: '127.0.0.1',
+      result: 'success',
+      duration: 1000
+    }
+    
+    auditLogs.value.unshift(exportLog)
+    
+    ElMessage.success(`审计日志导出成功！已导出 ${auditLogs.value.length} 条记录`)
+  } catch (error) {
+    console.error('导出审计日志失败:', error)
+    ElMessage.error('导出审计日志失败，请重试')
+  } finally {
+    loading.value.audit = false
+  }
+}
+
+// 搜索审计日志
+const searchAuditLogs = () => {
+  // 更新搜索表单数据
+  auditSearchForm.value = {
+    startDate: auditDateRange.value?.[0]?.toISOString().split('T')[0] || '',
+    endDate: auditDateRange.value?.[1]?.toISOString().split('T')[0] || '',
+    user: auditUserKeyword.value,
+    action: auditActionType.value,
+    resource: '',
+    result: ''
+  }
+  
+  // 重新加载审计日志
+  loadAuditLogs()
+  
+  ElMessage.success('搜索完成')
+}
+
+const handleAuditPageSizeChange = (size: number) => {
+  auditPagination.value.pageSize = size
+  loadAuditLogs()
+}
+
+const handleAuditCurrentChange = (page: number) => {
+  auditPagination.value.currentPage = page
+  loadAuditLogs()
+}
+
+// 系统配置方法
+const saveSystemConfig = () => {
+  ElMessage.success('系统配置保存成功')
+}
+
+const resetSystemConfig = () => {
+  ElMessage.info('重置系统配置功能开发中')
+}
+
+const exportSystemConfig = () => {
+  ElMessage.info('导出系统配置功能开发中')
+}
+
+// 初始化
+onMounted(() => {
+  initializeData()
+})
+</script>
+
+<style scoped>
+.super-admin-panel {
+  padding: 20px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #ebeef5;
+  position: relative;
+}
+
+.header-title {
+  flex: 1;
+  margin-right: 20px;
+}
+
+.page-title {
+  margin: 0 0 15px 0;
+  font-size: 32px;
+  font-weight: 700;
+  color: #303133;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.header-stats {
+  display: flex;
+  gap: 40px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  position: sticky;
+  right: 0;
+  top: 0;
+  background: #fff;
+  padding: 10px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  flex-shrink: 0;
+}
+
+.admin-tabs {
+  margin-bottom: 20px;
+}
+
+.tab-content {
+  padding: 20px 0;
+}
+
+.filters {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.template-actions {
+  margin-bottom: 20px;
+}
+
+.role-template-card {
+  margin-bottom: 20px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.template-info p {
+  margin: 8px 0;
+  color: #606266;
+}
+
+.template-actions-bottom {
+  margin-top: 15px;
+  display: flex;
+  gap: 10px;
+}
+
+.department-actions {
+  margin-bottom: 20px;
+}
+
+.audit-filters {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.config-actions {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.pagination {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.panel-description {
+  line-height: 1.6;
+}
+
+.panel-description ul {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+
+.panel-description li {
+  margin: 5px 0;
+}
+</style>

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>客户数据调试工具</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .data { background: #f5f5f5; padding: 10px; border-radius: 3px; white-space: pre-wrap; }
+        button { padding: 8px 16px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>客户数据调试工具</h1>
+    
+    <div class="section">
+        <h2>localStorage 数据检查</h2>
+        <button onclick="checkLocalStorage()">检查所有客户相关数据</button>
+        <div id="localStorage-result"></div>
+    </div>
+    
+    <div class="section">
+        <h2>统一存储服务数据</h2>
+        <button onclick="checkUnifiedStorage()">检查统一存储数据</button>
+        <div id="unified-result"></div>
+    </div>
+    
+    <div class="section">
+        <h2>数据操作</h2>
+        <button onclick="clearAllData()">清除所有客户数据</button>
+        <button onclick="addTestCustomer()">添加测试客户</button>
+        <div id="operation-result"></div>
+    </div>
+
+    <script>
+        function checkLocalStorage() {
+            const result = document.getElementById('localStorage-result');
+            let output = '';
+            
+            // 检查所有可能的客户数据键
+            const keys = [
+                'crm_customers_unified',
+                'crm_store_customer', 
+                'crm_customers', 
+                'customers', 
+                'customer_data', 
+                'mock_customers'
+            ];
+            
+            keys.forEach(key => {
+                const data = localStorage.getItem(key);
+                if (data) {
+                    try {
+                        const parsed = JSON.parse(data);
+                        output += `\n=== ${key} ===\n`;
+                        if (Array.isArray(parsed)) {
+                            output += `数组长度: ${parsed.length}\n`;
+                            output += `数据: ${JSON.stringify(parsed, null, 2)}\n`;
+                        } else if (parsed.customers && Array.isArray(parsed.customers)) {
+                            output += `客户数量: ${parsed.customers.length}\n`;
+                            output += `最后更新: ${new Date(parsed.lastUpdated || 0).toLocaleString()}\n`;
+                            output += `版本: ${parsed.version || 'unknown'}\n`;
+                            output += `数据: ${JSON.stringify(parsed, null, 2)}\n`;
+                        } else {
+                            output += `数据类型: ${typeof parsed}\n`;
+                            output += `数据: ${JSON.stringify(parsed, null, 2)}\n`;
+                        }
+                    } catch (e) {
+                        output += `\n=== ${key} (解析错误) ===\n`;
+                        output += `原始数据: ${data}\n`;
+                        output += `错误: ${e.message}\n`;
+                    }
+                } else {
+                    output += `\n=== ${key} ===\n空\n`;
+                }
+            });
+            
+            result.innerHTML = `<div class="data">${output}</div>`;
+        }
+        
+        function checkUnifiedStorage() {
+            const result = document.getElementById('unified-result');
+            const data = localStorage.getItem('crm_customers_unified');
+            
+            if (data) {
+                try {
+                    const parsed = JSON.parse(data);
+                    result.innerHTML = `<div class="data success">统一存储数据:\n${JSON.stringify(parsed, null, 2)}</div>`;
+                } catch (e) {
+                    result.innerHTML = `<div class="data error">解析错误: ${e.message}\n原始数据: ${data}</div>`;
+                }
+            } else {
+                result.innerHTML = `<div class="data error">统一存储数据为空</div>`;
+            }
+        }
+        
+        function clearAllData() {
+            const keys = [
+                'crm_customers_unified',
+                'crm_store_customer', 
+                'crm_customers', 
+                'customers', 
+                'customer_data', 
+                'mock_customers'
+            ];
+            
+            keys.forEach(key => localStorage.removeItem(key));
+            
+            document.getElementById('operation-result').innerHTML = 
+                `<div class="success">已清除所有客户数据</div>`;
+        }
+        
+        function addTestCustomer() {
+            const testCustomer = {
+                id: 'test_' + Date.now(),
+                code: 'TEST' + Date.now(),
+                name: '测试客户_' + Date.now(),
+                phone: '1380013' + String(Date.now()).slice(-4),
+                age: 30,
+                address: '测试地址',
+                level: 'normal',
+                status: 'active',
+                salesPersonId: 'admin',
+                orderCount: 0,
+                createTime: new Date().toISOString(),
+                createdBy: 'admin'
+            };
+            
+            // 获取现有数据
+            const existingData = localStorage.getItem('crm_customers_unified');
+            let customers = [];
+            
+            if (existingData) {
+                try {
+                    const parsed = JSON.parse(existingData);
+                    customers = parsed.customers || [];
+                } catch (e) {
+                    console.error('解析现有数据失败:', e);
+                }
+            }
+            
+            // 添加新客户
+            customers.unshift(testCustomer);
+            
+            // 保存数据
+            const newData = {
+                customers: customers,
+                lastUpdated: Date.now(),
+                version: '1.0.0'
+            };
+            
+            localStorage.setItem('crm_customers_unified', JSON.stringify(newData));
+            
+            document.getElementById('operation-result').innerHTML = 
+                `<div class="success">已添加测试客户: ${testCustomer.name} (${testCustomer.phone})</div>`;
+        }
+        
+        // 页面加载时自动检查
+        window.onload = function() {
+            checkLocalStorage();
+        };
+    </script>
+</body>
+</html>

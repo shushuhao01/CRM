@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>客户新增流程测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+        }
+        .test-title {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .customer-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+        label {
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .customer-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .customer-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .customer-item:last-child {
+            border-bottom: none;
+        }
+        .customer-info {
+            flex: 1;
+        }
+        .customer-phone {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .customer-name {
+            color: #666;
+            margin-left: 10px;
+        }
+        .customer-time {
+            font-size: 12px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1 class="test-title">客户新增流程完整测试</h1>
+        
+        <!-- 测试状态显示 -->
+        <div class="test-section">
+            <h3>测试状态</h3>
+            <div id="testStatus" class="test-result info">准备开始测试...</div>
+        </div>
+
+        <!-- 当前存储状态 -->
+        <div class="test-section">
+            <h3>当前存储状态</h3>
+            <button onclick="checkStorageStatus()">检查存储状态</button>
+            <div id="storageStatus"></div>
+        </div>
+
+        <!-- 新增客户表单 -->
+        <div class="test-section">
+            <h3>新增客户测试</h3>
+            <div class="customer-form">
+                <div class="form-group">
+                    <label for="customerName">客户姓名:</label>
+                    <input type="text" id="customerName" value="测试客户">
+                </div>
+                <div class="form-group">
+                    <label for="customerPhone">手机号:</label>
+                    <input type="text" id="customerPhone" value="">
+                </div>
+                <div class="form-group">
+                    <label for="customerAge">年龄:</label>
+                    <input type="number" id="customerAge" value="25">
+                </div>
+                <div class="form-group">
+                    <label for="customerLevel">客户等级:</label>
+                    <select id="customerLevel">
+                        <option value="normal">普通客户</option>
+                        <option value="silver">银卡客户</option>
+                        <option value="gold">金卡客户</option>
+                    </select>
+                </div>
+                <div class="form-group full-width">
+                    <label for="customerAddress">地址:</label>
+                    <input type="text" id="customerAddress" value="测试地址">
+                </div>
+            </div>
+            <button onclick="generateRandomPhone()">生成随机手机号</button>
+            <button onclick="testCheckExists()">测试手机号验证</button>
+            <button onclick="testCreateCustomer()">测试新增客户</button>
+            <div id="createResult"></div>
+        </div>
+
+        <!-- 客户列表验证 -->
+        <div class="test-section">
+            <h3>客户列表验证</h3>
+            <button onclick="loadCustomerList()">刷新客户列表</button>
+            <button onclick="testDuplicatePhone()">测试重复手机号</button>
+            <div id="customerListResult"></div>
+            <div id="customerList" class="customer-list"></div>
+        </div>
+
+        <!-- 数据持久化测试 -->
+        <div class="test-section">
+            <h3>数据持久化测试</h3>
+            <button onclick="testDataPersistence()">测试数据持久化</button>
+            <button onclick="clearTestData()">清理测试数据</button>
+            <div id="persistenceResult"></div>
+        </div>
+    </div>
+
+    <script>
+        let testCustomerPhone = '';
+        let testCustomerId = '';
+
+        // 生成随机手机号
+        function generateRandomPhone() {
+            const phone = '138' + Math.floor(Math.random() * 100000000).toString().padStart(8, '0');
+            document.getElementById('customerPhone').value = phone;
+            testCustomerPhone = phone;
+            updateTestStatus(`生成随机手机号: ${phone}`);
+        }
+
+        // 更新测试状态
+        function updateTestStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('testStatus');
+            statusDiv.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            statusDiv.className = `test-result ${type}`;
+        }
+
+        // 显示结果
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="test-result ${type}">${message}</div>`;
+        }
+
+        // 检查存储状态
+        function checkStorageStatus() {
+            try {
+                const customerData = localStorage.getItem('customer_storage_data');
+                if (customerData) {
+                    const data = JSON.parse(customerData);
+                    const count = data.customers ? data.customers.length : 0;
+                    const version = data.version || '未知';
+                    const lastUpdate = data.lastUpdate || '未知';
+                    
+                    showResult('storageStatus', 
+                        `存储状态正常<br>` +
+                        `客户数量: ${count}<br>` +
+                        `数据版本: ${version}<br>` +
+                        `最后更新: ${lastUpdate}`, 
+                        'success'
+                    );
+                } else {
+                    showResult('storageStatus', '存储中没有客户数据', 'warning');
+                }
+            } catch (error) {
+                showResult('storageStatus', `检查存储状态失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试手机号验证
+        async function testCheckExists() {
+            const phone = document.getElementById('customerPhone').value;
+            if (!phone) {
+                showResult('createResult', '请先输入手机号', 'warning');
+                return;
+            }
+
+            try {
+                updateTestStatus(`正在验证手机号: ${phone}`);
+                
+                // 模拟API调用
+                const response = await fetch(`http://localhost:5173/api/customers/check-exists?phone=${phone}`);
+                const result = await response.json();
+                
+                if (result.data) {
+                    showResult('createResult', 
+                        `手机号验证结果: 客户已存在<br>` +
+                        `客户姓名: ${result.data.name}<br>` +
+                        `创建时间: ${result.data.createTime}`, 
+                        'warning'
+                    );
+                } else {
+                    showResult('createResult', '手机号验证结果: 可以创建新客户', 'success');
+                }
+            } catch (error) {
+                showResult('createResult', `手机号验证失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试新增客户
+        async function testCreateCustomer() {
+            const name = document.getElementById('customerName').value;
+            const phone = document.getElementById('customerPhone').value;
+            const age = parseInt(document.getElementById('customerAge').value);
+            const level = document.getElementById('customerLevel').value;
+            const address = document.getElementById('customerAddress').value;
+
+            if (!name || !phone) {
+                showResult('createResult', '请填写客户姓名和手机号', 'warning');
+                return;
+            }
+
+            try {
+                updateTestStatus(`正在创建客户: ${name} (${phone})`);
+
+                const customerData = {
+                    name: name,
+                    phone: phone,
+                    age: age,
+                    address: address,
+                    level: level,
+                    status: 'active',
+                    salesPersonId: 'test-user',
+                    createdBy: 'test-user',
+                    wechatId: '',
+                    email: '',
+                    fanAcquisitionTime: new Date().toISOString(),
+                    company: '',
+                    position: '',
+                    source: 'manual',
+                    tags: [],
+                    remarks: '测试客户数据',
+                    height: 170,
+                    weight: 65,
+                    gender: 'unknown',
+                    medicalHistory: '',
+                    improvementGoals: ['健康管理'],
+                    otherGoals: ''
+                };
+
+                // 模拟API调用
+                const response = await fetch('http://localhost:5173/api/customers', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(customerData)
+                });
+
+                const result = await response.json();
+                
+                if (result.success && result.data) {
+                    testCustomerId = result.data.id;
+                    showResult('createResult', 
+                        `客户创建成功!<br>` +
+                        `客户ID: ${result.data.id}<br>` +
+                        `客户姓名: ${result.data.name}<br>` +
+                        `手机号: ${result.data.phone}<br>` +
+                        `创建时间: ${result.data.createTime}`, 
+                        'success'
+                    );
+                    updateTestStatus(`客户创建成功: ${result.data.name}`, 'success');
+                    
+                    // 自动刷新客户列表
+                    setTimeout(loadCustomerList, 500);
+                } else {
+                    showResult('createResult', `客户创建失败: ${result.message || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                showResult('createResult', `客户创建失败: ${error.message}`, 'error');
+                updateTestStatus(`客户创建失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 加载客户列表
+        async function loadCustomerList() {
+            try {
+                updateTestStatus('正在加载客户列表...');
+                
+                // 模拟API调用
+                const response = await fetch('http://localhost:5173/api/customers');
+                const result = await response.json();
+                
+                if (result.success && result.data) {
+                    const customers = result.data.list || result.data;
+                    const customerListDiv = document.getElementById('customerList');
+                    
+                    if (customers.length === 0) {
+                        customerListDiv.innerHTML = '<div class="test-result warning">暂无客户数据</div>';
+                        showResult('customerListResult', '客户列表为空', 'warning');
+                    } else {
+                        customerListDiv.innerHTML = customers.map(customer => `
+                            <div class="customer-item">
+                                <div class="customer-info">
+                                    <span class="customer-phone">${customer.phone}</span>
+                                    <span class="customer-name">${customer.name}</span>
+                                    <div class="customer-time">创建时间: ${customer.createTime}</div>
+                                </div>
+                                <div>
+                                    <button onclick="deleteTestCustomer('${customer.id}', '${customer.phone}')">删除</button>
+                                </div>
+                            </div>
+                        `).join('');
+                        
+                        showResult('customerListResult', `成功加载 ${customers.length} 个客户`, 'success');
+                        
+                        // 检查测试客户是否在列表中
+                        if (testCustomerPhone) {
+                            const testCustomer = customers.find(c => c.phone === testCustomerPhone);
+                            if (testCustomer) {
+                                updateTestStatus(`✓ 测试客户已在列表中: ${testCustomer.name} (${testCustomer.phone})`, 'success');
+                            } else {
+                                updateTestStatus(`✗ 测试客户未在列表中: ${testCustomerPhone}`, 'error');
+                            }
+                        }
+                    }
+                } else {
+                    showResult('customerListResult', `加载客户列表失败: ${result.message || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                showResult('customerListResult', `加载客户列表失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试重复手机号
+        async function testDuplicatePhone() {
+            if (!testCustomerPhone) {
+                showResult('customerListResult', '请先创建一个测试客户', 'warning');
+                return;
+            }
+
+            try {
+                updateTestStatus(`测试重复手机号: ${testCustomerPhone}`);
+                
+                // 尝试用相同手机号创建客户
+                const customerData = {
+                    name: '重复客户',
+                    phone: testCustomerPhone,
+                    age: 30,
+                    address: '重复地址',
+                    level: 'normal',
+                    status: 'active',
+                    salesPersonId: 'test-user',
+                    createdBy: 'test-user'
+                };
+
+                const response = await fetch('http://localhost:5173/api/customers', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(customerData)
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showResult('customerListResult', 
+                        `⚠️ 重复手机号验证失败: 系统允许创建重复客户!<br>` +
+                        `这表明手机号唯一性验证存在问题`, 
+                        'error'
+                    );
+                } else {
+                    showResult('customerListResult', 
+                        `✓ 重复手机号验证成功: ${result.message}<br>` +
+                        `系统正确阻止了重复客户的创建`, 
+                        'success'
+                    );
+                }
+            } catch (error) {
+                showResult('customerListResult', `重复手机号测试失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 删除测试客户
+        async function deleteTestCustomer(customerId, phone) {
+            try {
+                const response = await fetch(`http://localhost:5173/api/customers/${customerId}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    updateTestStatus(`删除客户成功: ${phone}`, 'success');
+                    loadCustomerList();
+                } else {
+                    updateTestStatus(`删除客户失败: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                updateTestStatus(`删除客户失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试数据持久化
+        async function testDataPersistence() {
+            try {
+                updateTestStatus('测试数据持久化...');
+                
+                // 1. 检查localStorage中的数据
+                const storageData = localStorage.getItem('customer_storage_data');
+                if (!storageData) {
+                    showResult('persistenceResult', 'localStorage中没有客户数据', 'error');
+                    return;
+                }
+                
+                const data = JSON.parse(storageData);
+                const storageCustomers = data.customers || [];
+                
+                // 2. 通过API获取数据
+                const response = await fetch('http://localhost:5173/api/customers');
+                const result = await response.json();
+                const apiCustomers = result.data?.list || result.data || [];
+                
+                // 3. 比较数据一致性
+                if (storageCustomers.length === apiCustomers.length) {
+                    showResult('persistenceResult', 
+                        `✓ 数据持久化测试通过<br>` +
+                        `localStorage客户数: ${storageCustomers.length}<br>` +
+                        `API返回客户数: ${apiCustomers.length}<br>` +
+                        `数据一致性: 正常`, 
+                        'success'
+                    );
+                } else {
+                    showResult('persistenceResult', 
+                        `⚠️ 数据持久化存在问题<br>` +
+                        `localStorage客户数: ${storageCustomers.length}<br>` +
+                        `API返回客户数: ${apiCustomers.length}<br>` +
+                        `数据不一致!`, 
+                        'error'
+                    );
+                }
+                
+                updateTestStatus('数据持久化测试完成', 'info');
+            } catch (error) {
+                showResult('persistenceResult', `数据持久化测试失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 清理测试数据
+        function clearTestData() {
+            if (confirm('确定要清理所有测试数据吗？这将删除localStorage中的所有客户数据。')) {
+                localStorage.removeItem('customer_storage_data');
+                localStorage.removeItem('customers');
+                testCustomerPhone = '';
+                testCustomerId = '';
+                
+                showResult('persistenceResult', '测试数据已清理', 'success');
+                updateTestStatus('测试数据已清理', 'success');
+                
+                // 刷新显示
+                checkStorageStatus();
+                loadCustomerList();
+            }
+        }
+
+        // 页面加载时初始化
+        window.onload = function() {
+            updateTestStatus('测试页面已加载，可以开始测试');
+            checkStorageStatus();
+            loadCustomerList();
+            generateRandomPhone();
+        };
+    </script>
+</body>
+</html>
