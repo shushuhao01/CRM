@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>客户数据流调试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .info {
+            color: #17a2b8;
+        }
+        .log-area {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .customer-item {
+            background-color: #e9ecef;
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .step {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 客户数据流调试页面</h1>
+        <p>这个页面用于调试手动添加客户后数据不显示的问题</p>
+
+        <div class="section">
+            <h3>1. 检查当前数据状态</h3>
+            <button class="button" onclick="checkCurrentState()">检查当前状态</button>
+            <div id="currentStateResult" class="log-area"></div>
+        </div>
+
+        <div class="section">
+            <h3>2. 模拟手动添加客户</h3>
+            <button class="button" onclick="simulateManualAdd()">模拟手动添加</button>
+            <div id="manualAddResult" class="log-area"></div>
+        </div>
+
+        <div class="section">
+            <h3>3. 检查数据存储</h3>
+            <button class="button" onclick="checkStorage()">检查存储</button>
+            <div id="storageResult" class="log-area"></div>
+        </div>
+
+        <div class="section">
+            <h3>4. 检查Store状态</h3>
+            <button class="button" onclick="checkStoreState()">检查Store状态</button>
+            <div id="storeStateResult" class="log-area"></div>
+        </div>
+
+        <div class="section">
+            <h3>5. 测试数据刷新</h3>
+            <button class="button" onclick="testDataRefresh()">测试数据刷新</button>
+            <div id="refreshResult" class="log-area"></div>
+        </div>
+
+        <div class="section">
+            <h3>6. 完整流程测试</h3>
+            <button class="button" onclick="runFullTest()">运行完整测试</button>
+            <div id="fullTestResult" class="log-area"></div>
+        </div>
+
+        <div class="section">
+            <h3>7. 清理测试数据</h3>
+            <button class="button" onclick="clearTestData()">清理测试数据</button>
+            <div id="clearResult" class="log-area"></div>
+        </div>
+    </div>
+
+    <script>
+        // 生成随机手机号
+        function generateRandomPhone() {
+            const prefixes = ['138', '139', '150', '151', '152', '158', '159', '188', '189'];
+            const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+            const suffix = Math.floor(Math.random() * 100000000).toString().padStart(8, '0');
+            return prefix + suffix;
+        }
+
+        // 日志函数
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
+            element.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            element.scrollTop = element.scrollHeight;
+        }
+
+        // 清空日志
+        function clearLog(elementId) {
+            document.getElementById(elementId).innerHTML = '';
+        }
+
+        // 1. 检查当前数据状态
+        async function checkCurrentState() {
+            clearLog('currentStateResult');
+            log('currentStateResult', '开始检查当前数据状态...');
+
+            try {
+                // 检查localStorage
+                const storageData = localStorage.getItem('customers');
+                const customers = storageData ? JSON.parse(storageData) : [];
+                log('currentStateResult', `localStorage中的客户数量: ${customers.length}`, 'info');
+
+                if (customers.length > 0) {
+                    log('currentStateResult', '最近的3个客户:', 'info');
+                    customers.slice(0, 3).forEach((customer, index) => {
+                        log('currentStateResult', `${index + 1}. ${customer.name} - ${customer.phone} (${customer.createTime})`, 'info');
+                    });
+                }
+
+                // 检查是否在Vue应用中
+                if (window.Vue && window.app) {
+                    log('currentStateResult', 'Vue应用已加载', 'success');
+                } else {
+                    log('currentStateResult', 'Vue应用未加载，无法检查Store状态', 'error');
+                }
+
+            } catch (error) {
+                log('currentStateResult', `检查状态时出错: ${error.message}`, 'error');
+            }
+        }
+
+        // 2. 模拟手动添加客户
+        async function simulateManualAdd() {
+            clearLog('manualAddResult');
+            log('manualAddResult', '开始模拟手动添加客户...');
+
+            try {
+                const testCustomer = {
+                    name: `测试客户_${Date.now()}`,
+                    phone: generateRandomPhone(),
+                    level: 'normal',
+                    source: 'manual_test',
+                    createTime: new Date().toISOString()
+                };
+
+                log('manualAddResult', `准备添加客户: ${testCustomer.name} - ${testCustomer.phone}`, 'info');
+
+                // 直接操作localStorage模拟添加
+                const storageData = localStorage.getItem('customers');
+                const customers = storageData ? JSON.parse(storageData) : [];
+                
+                // 添加ID和code
+                testCustomer.id = Date.now().toString();
+                testCustomer.code = `C${Date.now()}`;
+                
+                customers.unshift(testCustomer);
+                localStorage.setItem('customers', JSON.stringify(customers));
+
+                log('manualAddResult', `客户已添加到localStorage，当前总数: ${customers.length}`, 'success');
+                log('manualAddResult', `新客户信息: ${JSON.stringify(testCustomer, null, 2)}`, 'info');
+
+            } catch (error) {
+                log('manualAddResult', `模拟添加时出错: ${error.message}`, 'error');
+            }
+        }
+
+        // 3. 检查数据存储
+        async function checkStorage() {
+            clearLog('storageResult');
+            log('storageResult', '开始检查数据存储...');
+
+            try {
+                // 检查localStorage
+                const storageData = localStorage.getItem('customers');
+                log('storageResult', `localStorage原始数据长度: ${storageData ? storageData.length : 0}`, 'info');
+
+                if (storageData) {
+                    const customers = JSON.parse(storageData);
+                    log('storageResult', `解析后的客户数量: ${customers.length}`, 'info');
+                    
+                    if (customers.length > 0) {
+                        log('storageResult', '最新的5个客户:', 'info');
+                        customers.slice(0, 5).forEach((customer, index) => {
+                            log('storageResult', `${index + 1}. ${customer.name} - ${customer.phone} - ${customer.createTime}`, 'info');
+                        });
+                    }
+                } else {
+                    log('storageResult', 'localStorage中没有客户数据', 'error');
+                }
+
+                // 检查其他可能的存储位置
+                const allKeys = Object.keys(localStorage);
+                const customerKeys = allKeys.filter(key => key.includes('customer') || key.includes('Customer'));
+                log('storageResult', `localStorage中包含customer的键: ${customerKeys.join(', ')}`, 'info');
+
+            } catch (error) {
+                log('storageResult', `检查存储时出错: ${error.message}`, 'error');
+            }
+        }
+
+        // 4. 检查Store状态
+        async function checkStoreState() {
+            clearLog('storeStateResult');
+            log('storeStateResult', '开始检查Store状态...');
+
+            try {
+                // 尝试访问Vue应用的Store
+                if (window.Vue && window.app) {
+                    log('storeStateResult', 'Vue应用可访问', 'success');
+                    
+                    // 这里需要根据实际的Store结构来访问
+                    // 由于我们无法直接访问Vue 3的composition API store，
+                    // 我们需要通过其他方式来检查
+                    log('storeStateResult', '注意: 无法直接访问Vue 3 Composition API Store', 'info');
+                    log('storeStateResult', '建议在浏览器开发者工具中手动检查Store状态', 'info');
+                } else {
+                    log('storeStateResult', 'Vue应用未加载或不可访问', 'error');
+                }
+
+            } catch (error) {
+                log('storeStateResult', `检查Store状态时出错: ${error.message}`, 'error');
+            }
+        }
+
+        // 5. 测试数据刷新
+        async function testDataRefresh() {
+            clearLog('refreshResult');
+            log('refreshResult', '开始测试数据刷新...');
+
+            try {
+                // 模拟页面刷新后的数据加载
+                log('refreshResult', '模拟页面刷新...', 'info');
+                
+                // 检查刷新前的数据
+                const beforeData = localStorage.getItem('customers');
+                const beforeCustomers = beforeData ? JSON.parse(beforeData) : [];
+                log('refreshResult', `刷新前客户数量: ${beforeCustomers.length}`, 'info');
+
+                // 模拟等待一段时间
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // 检查刷新后的数据
+                const afterData = localStorage.getItem('customers');
+                const afterCustomers = afterData ? JSON.parse(afterData) : [];
+                log('refreshResult', `刷新后客户数量: ${afterCustomers.length}`, 'info');
+
+                if (beforeCustomers.length === afterCustomers.length) {
+                    log('refreshResult', '数据在刷新后保持一致', 'success');
+                } else {
+                    log('refreshResult', '数据在刷新后发生变化', 'error');
+                }
+
+            } catch (error) {
+                log('refreshResult', `测试数据刷新时出错: ${error.message}`, 'error');
+            }
+        }
+
+        // 6. 运行完整测试
+        async function runFullTest() {
+            clearLog('fullTestResult');
+            log('fullTestResult', '开始运行完整流程测试...');
+
+            try {
+                // 步骤1: 记录初始状态
+                log('fullTestResult', '步骤1: 记录初始状态', 'info');
+                const initialData = localStorage.getItem('customers');
+                const initialCustomers = initialData ? JSON.parse(initialData) : [];
+                log('fullTestResult', `初始客户数量: ${initialCustomers.length}`, 'info');
+
+                // 步骤2: 添加测试客户
+                log('fullTestResult', '步骤2: 添加测试客户', 'info');
+                const testCustomer = {
+                    id: Date.now().toString(),
+                    code: `C${Date.now()}`,
+                    name: `完整测试客户_${Date.now()}`,
+                    phone: generateRandomPhone(),
+                    level: 'normal',
+                    source: 'full_test',
+                    createTime: new Date().toISOString()
+                };
+
+                const updatedCustomers = [testCustomer, ...initialCustomers];
+                localStorage.setItem('customers', JSON.stringify(updatedCustomers));
+                log('fullTestResult', `测试客户已添加: ${testCustomer.name}`, 'success');
+
+                // 步骤3: 验证存储
+                log('fullTestResult', '步骤3: 验证存储', 'info');
+                const verifyData = localStorage.getItem('customers');
+                const verifyCustomers = verifyData ? JSON.parse(verifyData) : [];
+                log('fullTestResult', `验证后客户数量: ${verifyCustomers.length}`, 'info');
+
+                if (verifyCustomers.length === initialCustomers.length + 1) {
+                    log('fullTestResult', '存储验证成功', 'success');
+                } else {
+                    log('fullTestResult', '存储验证失败', 'error');
+                }
+
+                // 步骤4: 检查数据结构
+                log('fullTestResult', '步骤4: 检查数据结构', 'info');
+                const firstCustomer = verifyCustomers[0];
+                if (firstCustomer && firstCustomer.name === testCustomer.name) {
+                    log('fullTestResult', '新客户位于列表首位，数据结构正确', 'success');
+                } else {
+                    log('fullTestResult', '数据结构异常', 'error');
+                }
+
+                log('fullTestResult', '完整测试完成', 'success');
+
+            } catch (error) {
+                log('fullTestResult', `完整测试时出错: ${error.message}`, 'error');
+            }
+        }
+
+        // 7. 清理测试数据
+        async function clearTestData() {
+            clearLog('clearResult');
+            log('clearResult', '开始清理测试数据...');
+
+            try {
+                const storageData = localStorage.getItem('customers');
+                if (storageData) {
+                    const customers = JSON.parse(storageData);
+                    const beforeCount = customers.length;
+                    
+                    // 移除测试数据
+                    const cleanedCustomers = customers.filter(customer => 
+                        !customer.name.includes('测试客户_') && 
+                        !customer.name.includes('完整测试客户_') &&
+                        customer.source !== 'manual_test' &&
+                        customer.source !== 'full_test'
+                    );
+                    
+                    localStorage.setItem('customers', JSON.stringify(cleanedCustomers));
+                    
+                    const afterCount = cleanedCustomers.length;
+                    log('clearResult', `清理完成: ${beforeCount} -> ${afterCount} (移除了 ${beforeCount - afterCount} 个测试客户)`, 'success');
+                } else {
+                    log('clearResult', '没有找到需要清理的数据', 'info');
+                }
+
+            } catch (error) {
+                log('clearResult', `清理测试数据时出错: ${error.message}`, 'error');
+            }
+        }
+
+        // 页面加载时自动检查状态
+        window.addEventListener('load', function() {
+            setTimeout(checkCurrentState, 1000);
+        });
+    </script>
+</body>
+</html>

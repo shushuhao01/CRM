@@ -1,0 +1,2038 @@
+<template>
+  <div class="customer-detail">
+    <!-- 全局加载状态 -->
+    <div v-if="!userStore.currentUser || loading" class="loading-container" v-loading="true" element-loading-text="加载中...">
+      <div style="height: 400px;"></div>
+    </div>
+    
+    <!-- 页面内容 -->
+    <div v-else>
+      <!-- 页面头部 -->
+      <div class="page-header">
+        <div class="header-left">
+          <el-button @click="handleBack" :icon="ArrowLeft">返回</el-button>
+          <h2>客户详情</h2>
+        </div>
+        <div class="header-actions">
+          <el-button @click="handleCall" :icon="Phone">拨打电话</el-button>
+          <el-button @click="handleOrder" :icon="ShoppingCart">创建订单</el-button>
+          <el-button type="warning" @click="handleReject" v-if="canEdit">标记拒收</el-button>
+          <el-button type="primary" @click="handleEdit" :icon="Edit" v-if="canEdit">编辑客户</el-button>
+        </div>
+      </div>
+
+      <!-- 客户基本信息卡片 -->
+      <el-card class="customer-info-card" v-loading="loading">
+      <template #header>
+        <div class="card-header">
+          <span>基本信息</span>
+          <el-tag v-if="customerInfo.level" :type="getLevelType(customerInfo.level)">
+            {{ getLevelText(customerInfo.level) }}
+          </el-tag>
+        </div>
+      </template>
+
+      <div class="customer-info" v-if="customerInfo.name">
+        <div class="info-row">
+          <div class="info-item">
+            <label>客户姓名：</label>
+            <div v-if="!editingFields.name" class="field-display">
+              <span>{{ customerInfo.name }}</span>
+              <el-button 
+                v-if="canEdit" 
+                type="text" 
+                size="small" 
+                @click="startEdit('name')"
+                :icon="Edit"
+                class="edit-btn"
+              >
+                编辑
+              </el-button>
+            </div>
+            <div v-else class="field-edit">
+              <el-input
+                v-model="editingValues.name"
+                size="small"
+                style="width: 150px; margin-right: 8px;"
+                @keyup.enter="saveField('name')"
+              />
+              <el-button size="small" type="primary" @click="saveField('name')" :loading="savingFields.name">保存</el-button>
+              <el-button size="small" @click="cancelEdit('name')">取消</el-button>
+            </div>
+          </div>
+          <div class="info-item">
+            <label>性别：</label>
+            <span>{{ getGenderText(customerInfo.gender) }}</span>
+          </div>
+          <div class="info-item">
+            <label>年龄：</label>
+            <div v-if="!editingFields.age" class="field-display">
+              <span>{{ customerInfo.age }}岁</span>
+              <el-button 
+                v-if="canEdit" 
+                type="text" 
+                size="small" 
+                @click="startEdit('age')"
+                :icon="Edit"
+                class="edit-btn"
+              >
+                编辑
+              </el-button>
+            </div>
+            <div v-else class="field-edit">
+              <el-input-number
+                v-model="editingValues.age"
+                size="small"
+                :min="1"
+                :max="120"
+                style="width: 120px; margin-right: 8px;"
+                @keyup.enter="saveField('age')"
+              />
+              <el-button size="small" type="primary" @click="saveField('age')" :loading="savingFields.age">保存</el-button>
+              <el-button size="small" @click="cancelEdit('age')">取消</el-button>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-row">
+          <div class="info-item">
+            <label>手机号：</label>
+            <div class="field-display">
+              <span>{{ formatPhone(customerInfo.phone) }}</span>
+              <el-button 
+                v-if="!userStore.isAdmin && customerInfo.phone" 
+                type="text" 
+                size="small" 
+                @click="showFullPhone = !showFullPhone"
+                style="margin-left: 8px;"
+              >
+                {{ showFullPhone ? '隐藏' : '查看完整' }}
+              </el-button>
+              <span v-if="showFullPhone && !userStore.isAdmin" style="margin-left: 8px; color: #409eff;">
+                {{ customerInfo.phone }}
+              </span>
+              <el-button 
+                v-if="canEdit" 
+                type="text" 
+                size="small" 
+                @click="handleShowAddPhoneDialog()"
+                :icon="Plus"
+                class="edit-btn"
+                style="margin-left: 8px;"
+              >
+                新增手机号
+              </el-button>
+            </div>
+          </div>
+          <div class="info-item">
+            <label>邮箱：</label>
+            <span>{{ customerInfo.email || '未填写' }}</span>
+          </div>
+          <div class="info-item">
+            <label>微信号：</label>
+            <span>{{ customerInfo.wechat || '未填写' }}</span>
+          </div>
+        </div>
+
+        <div class="info-row">
+          <div class="info-item full-width">
+            <label>地址：</label>
+            <div v-if="!editingFields.address" class="field-display">
+              <span>{{ customerInfo.address || '未填写' }}</span>
+              <el-button 
+                v-if="canEdit" 
+                type="text" 
+                size="small" 
+                @click="startEdit('address')"
+                :icon="Edit"
+                class="edit-btn"
+                style="margin-left: 8px;"
+              >
+                编辑
+              </el-button>
+              <el-button 
+                v-if="canEdit" 
+                type="text" 
+                size="small" 
+                @click="handleShowAddAddressDialog()"
+                :icon="Plus"
+                class="edit-btn"
+                style="margin-left: 4px;"
+              >
+                新增地址
+              </el-button>
+            </div>
+            <div v-else class="field-edit">
+              <el-input
+                v-model="editingValues.address"
+                size="small"
+                placeholder="请输入地址"
+                style="width: 300px; margin-right: 8px;"
+                @keyup.enter="saveField('address')"
+              />
+              <el-button size="small" type="primary" @click="saveField('address')" :loading="savingFields.address">保存</el-button>
+              <el-button size="small" @click="cancelEdit('address')">取消</el-button>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-row">
+          <div class="info-item">
+            <label>身高：</label>
+            <div v-if="!editingFields.height" class="field-display">
+              <span>{{ customerInfo.height ? customerInfo.height + 'cm' : '未填写' }}</span>
+              <el-button 
+                v-if="canEdit" 
+                type="text" 
+                size="small" 
+                @click="startEdit('height')"
+                :icon="Edit"
+                class="edit-btn"
+              >
+                编辑
+              </el-button>
+            </div>
+            <div v-else class="field-edit">
+              <el-input-number
+                v-model="editingValues.height"
+                size="small"
+                :min="50"
+                :max="250"
+                style="width: 120px; margin-right: 8px;"
+                @keyup.enter="saveField('height')"
+              />
+              <span style="margin-right: 8px;">cm</span>
+              <el-button size="small" type="primary" @click="saveField('height')" :loading="savingFields.height">保存</el-button>
+              <el-button size="small" @click="cancelEdit('height')">取消</el-button>
+            </div>
+          </div>
+          <div class="info-item">
+            <label>体重：</label>
+            <div v-if="!editingFields.weight" class="field-display">
+              <span>{{ customerInfo.weight ? customerInfo.weight + 'kg' : '未填写' }}</span>
+              <el-button 
+                v-if="canEdit" 
+                type="text" 
+                size="small" 
+                @click="startEdit('weight')"
+                :icon="Edit"
+                class="edit-btn"
+              >
+                编辑
+              </el-button>
+            </div>
+            <div v-else class="field-edit">
+              <el-input-number
+                v-model="editingValues.weight"
+                size="small"
+                :min="20"
+                :max="300"
+                :precision="1"
+                style="width: 120px; margin-right: 8px;"
+                @keyup.enter="saveField('weight')"
+              />
+              <span style="margin-right: 8px;">kg</span>
+              <el-button size="small" type="primary" @click="saveField('weight')" :loading="savingFields.weight">保存</el-button>
+              <el-button size="small" @click="cancelEdit('weight')">取消</el-button>
+            </div>
+          </div>
+          <div class="info-item">
+            <label>BMI：</label>
+            <span>{{ calculateBMI() }}</span>
+          </div>
+        </div>
+
+        <div class="info-row">
+          <div class="info-item">
+            <label>客户来源：</label>
+            <span>{{ getSourceText(customerInfo.source) }}</span>
+          </div>
+          <div class="info-item">
+            <label>负责销售：</label>
+            <span>{{ customerInfo.salesPerson }}</span>
+          </div>
+          <div class="info-item">
+            <label>创建时间：</label>
+            <span>{{ customerInfo.createTime }}</span>
+          </div>
+        </div>
+
+        <div class="info-row" v-if="customerInfo.tags && customerInfo.tags.length">
+          <div class="info-item full-width">
+            <label>客户标签：</label>
+            <div class="tags-container">
+              <el-tag
+                v-for="tag in customerInfo.tags"
+                :key="tag"
+                size="small"
+                class="tag-item"
+              >
+                {{ getTagText(tag) }}
+              </el-tag>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-row" v-if="customerInfo.remark">
+          <div class="info-item full-width">
+            <label>备注信息：</label>
+            <span>{{ customerInfo.remark }}</span>
+          </div>
+        </div>
+      </div>
+    </el-card>
+
+      <!-- 统计信息 -->
+      <el-row :gutter="20" class="stats-row" v-if="customerInfo.name">
+      <el-col :span="6">
+        <el-card class="stat-card">
+          <div class="stat-item">
+            <div class="stat-value">{{ customerStats.totalOrders }}</div>
+            <div class="stat-label">总订单数</div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card class="stat-card">
+          <div class="stat-item">
+            <div class="stat-value">¥{{ customerStats.totalAmount }}</div>
+            <div class="stat-label">总消费金额</div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card class="stat-card">
+          <div class="stat-item">
+            <div class="stat-value">{{ customerStats.lastOrderDate }}</div>
+            <div class="stat-label">最后下单</div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card class="stat-card">
+          <div class="stat-item">
+            <div class="stat-value">{{ customerStats.avgOrderAmount }}</div>
+            <div class="stat-label">平均订单金额</div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+      <!-- Tab切换 -->
+      <el-card class="tab-card" v-if="customerInfo.name">
+      <el-tabs v-model="activeTab" @tab-click="handleTabClick">
+        <el-tab-pane label="订单历史" name="orders">
+          <el-table :data="orderHistory" style="width: 100%">
+            <el-table-column prop="orderNo" label="订单号" width="180" />
+            <el-table-column prop="products" label="商品" />
+            <el-table-column prop="totalAmount" label="订单金额" width="120">
+              <template #default="{ row }">
+                <span class="amount">¥{{ row.totalAmount }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" label="订单状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="getOrderStatusType(row.status)">
+                  {{ getOrderStatusText(row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="createTime" label="下单时间" width="180" />
+            <el-table-column label="操作" width="120">
+              <template #default="{ row }">
+                <el-button size="small" @click="handleViewOrder(row.id)">查看</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div style="margin-top: 20px; text-align: right;">
+            <el-button size="small" @click="handleViewAllOrders">查看全部订单</el-button>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="跟进记录" name="followup">
+          <!-- 添加跟进记录表单 -->
+          <div v-if="showAddForm" class="add-follow-form">
+            <el-form :model="followUpForm" :rules="followUpRules" ref="followUpFormRef" label-width="80px">
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="沟通方式" prop="type">
+                    <el-select v-model="followUpForm.type" placeholder="请选择沟通方式" style="width: 100%">
+                      <el-option label="电话沟通" value="phone" />
+                      <el-option label="微信沟通" value="wechat" />
+                      <el-option label="邮件沟通" value="email" />
+                      <el-option label="面谈" value="meeting" />
+                      <el-option label="其他" value="other" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="沟通时间" prop="time">
+                    <el-date-picker
+                      v-model="followUpForm.time"
+                      type="datetime"
+                      placeholder="选择沟通时间"
+                      style="width: 100%"
+                    />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-form-item label="沟通内容" prop="content">
+                <el-input
+                  v-model="followUpForm.content"
+                  type="textarea"
+                  :rows="4"
+                  placeholder="请输入沟通内容..."
+                />
+              </el-form-item>
+              <el-form-item label="下次跟进" prop="nextFollowUp">
+                <el-date-picker
+                  v-model="followUpForm.nextFollowUp"
+                  type="datetime"
+                  placeholder="选择下次跟进时间"
+                  style="width: 100%"
+                />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="handleSaveFollowUp" :loading="saveLoading">
+                  保存
+                </el-button>
+                <el-button @click="handleCancelAdd">取消</el-button>
+              </el-form-item>
+            </el-form>
+          </div>
+
+          <!-- 添加跟进按钮 -->
+          <div style="margin-bottom: 20px;">
+            <el-button type="primary" @click="handleAddFollowUp" :icon="Plus">
+              添加跟进记录
+            </el-button>
+          </div>
+
+          <!-- 跟进记录时间轴 -->
+          <div class="timeline-container">
+            <el-timeline>
+              <el-timeline-item
+                v-for="record in followUpRecords"
+                :key="record.id"
+                :timestamp="record.time"
+                placement="top"
+                :type="getTimelineType(record.type)"
+                :icon="getTimelineIcon(record.type)"
+              >
+                <el-card class="timeline-card">
+                  <div class="timeline-header">
+                    <div class="timeline-title">
+                      <el-tag :type="getFollowUpTypeColor(record.type)" size="small">
+                        {{ getFollowUpTypeText(record.type) }}
+                      </el-tag>
+                      <span class="follow-person">{{ record.createdBy }}</span>
+                    </div>
+                    <div class="timeline-actions" v-if="canEditRecord(record)">
+                      <el-button size="small" text @click="handleEditRecord(record)">编辑</el-button>
+                      <el-button size="small" text type="danger" @click="handleDeleteRecord(record.id)">删除</el-button>
+                    </div>
+                  </div>
+                  <div class="timeline-content">
+                    {{ record.content }}
+                  </div>
+                  <div v-if="record.nextFollowUp" class="next-follow-up">
+                    <el-icon><Clock /></el-icon>
+                    <span>下次跟进：{{ record.nextFollowUp }}</span>
+                  </div>
+                </el-card>
+              </el-timeline-item>
+            </el-timeline>
+
+            <!-- 空状态 -->
+            <div v-if="followUpRecords.length === 0" class="empty-state">
+              <el-empty description="暂无跟进记录">
+                <el-button type="primary" @click="handleAddFollowUp">添加第一条跟进记录</el-button>
+              </el-empty>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </el-card>
+
+      <!-- 新增手机号对话框 -->
+      <el-dialog
+      v-model="showAddPhoneDialog"
+      title="新增手机号"
+      width="400px"
+      :before-close="handleClosePhoneDialog"
+    >
+      <el-form :model="newPhoneForm" :rules="phoneRules" ref="newPhoneFormRef" label-width="80px">
+        <el-form-item label="手机号" prop="phone">
+          <el-input
+            v-model="newPhoneForm.phone"
+            placeholder="请输入手机号"
+            clearable
+          />
+        </el-form-item>
+        <el-form-item label="备注" prop="remark">
+          <el-input
+            v-model="newPhoneForm.remark"
+            placeholder="请输入备注（可选）"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handleClosePhoneDialog">取消</el-button>
+          <el-button type="primary" @click="saveNewPhone" :loading="savingNewPhone">
+            保存
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+      <!-- 新增地址对话框 -->
+      <el-dialog
+      v-model="showAddAddressDialog"
+      title="新增地址"
+      width="600px"
+      :before-close="handleCloseAddressDialog"
+    >
+      <el-form :model="newAddressForm" :rules="addressRules" ref="newAddressFormRef" label-width="80px">
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="省份" prop="province">
+              <el-select
+                v-model="newAddressForm.province"
+                placeholder="请选择省份"
+                style="width: 100%"
+                @change="handleProvinceChange"
+              >
+                <el-option
+                  v-for="province in provinces"
+                  :key="province.value"
+                  :label="province.label"
+                  :value="province.value"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="城市" prop="city">
+              <el-select
+                v-model="newAddressForm.city"
+                placeholder="请选择城市"
+                style="width: 100%"
+                @change="handleCityChange"
+              >
+                <el-option
+                  v-for="city in cities"
+                  :key="city.value"
+                  :label="city.label"
+                  :value="city.value"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="区县" prop="district">
+              <el-select
+                v-model="newAddressForm.district"
+                placeholder="请选择区县"
+                style="width: 100%"
+                @change="handleDistrictChange"
+              >
+                <el-option
+                  v-for="district in districts"
+                  :key="district.value"
+                  :label="district.label"
+                  :value="district.value"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="街道" prop="street">
+              <el-select
+                v-model="newAddressForm.street"
+                placeholder="请选择街道"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="street in streets"
+                  :key="street.value"
+                  :label="street.label"
+                  :value="street.value"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="详细地址" prop="detailAddress">
+          <el-input
+            v-model="newAddressForm.detailAddress"
+            placeholder="请输入详细地址（门牌号、楼层等）"
+            clearable
+          />
+        </el-form-item>
+        <el-form-item label="地址标签" prop="label">
+          <el-input
+            v-model="newAddressForm.label"
+            placeholder="请输入地址标签（如：家、公司等）"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handleCloseAddressDialog">取消</el-button>
+          <el-button type="primary" @click="handleSaveAddress" :loading="savingAddress">
+            保存
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, onMounted, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, Phone, ShoppingCart, Edit, Plus, Clock, ChatDotRound, Message, VideoCamera, User } from '@element-plus/icons-vue'
+import { useUserStore } from '@/stores/user'
+import { useNotificationStore } from '@/stores/notification'
+import { maskPhone, formatPhone } from '@/utils/phone'
+
+// 路由相关
+const router = useRouter()
+const route = useRoute()
+const userStore = useUserStore()
+const notificationStore = useNotificationStore()
+
+// 响应式数据
+const loading = ref(false)
+const showFullPhone = ref(false)
+const activeTab = ref('orders')
+
+// 权限控制
+const canEdit = computed(() => {
+  // 确保数据已加载
+  if (!customerInfo.name || !userStore.currentUser) {
+    return false
+  }
+  
+  // 管理员可以编辑所有客户
+  if (userStore.isAdmin) {
+    return true
+  }
+  // 普通用户只能编辑自己负责的客户
+  return customerInfo.salesPersonId === userStore.currentUser?.id
+})
+
+// 客户信息
+const customerInfo = reactive({
+  id: '',
+  name: '',
+  gender: '',
+  age: 0,
+  phone: '',
+  email: '',
+  wechat: '',
+  address: '',
+  level: '',
+  source: '',
+  salesPersonId: '',
+  tags: [],
+  salesPerson: '',
+  remark: '',
+  createTime: '',
+  height: 0,    // 身高(cm)
+  weight: 0     // 体重(kg)
+})
+
+// 客户统计信息
+const customerStats = reactive({
+  totalOrders: 0,      // 总订单数
+  totalAmount: 0,      // 总消费金额
+  lastOrderDate: '',   // 最后下单时间
+  avgOrderAmount: 0    // 平均订单金额
+})
+
+// 订单历史
+const orderHistory = ref([])
+
+// 编辑相关状态
+const editingName = ref(false)
+const editingAge = ref(false)
+const editingAddress = ref(false)
+const editingHeight = ref(false)
+const editingWeight = ref(false)
+
+// 编辑时的临时值
+const tempName = ref('')
+const tempAge = ref(0)
+const tempAddress = ref('')
+const tempHeight = ref(0)
+const tempWeight = ref(0)
+
+// 保存状态
+const savingName = ref(false)
+const savingAge = ref(false)
+const savingAddress = ref(false)
+const savingHeight = ref(false)
+const savingWeight = ref(false)
+
+// 新增手机号对话框
+const showAddPhoneDialog = ref(false)
+const newPhoneForm = reactive({
+  phone: ''
+})
+const phoneRules = {
+  phone: [
+    { required: true, message: '请输入手机号', trigger: 'blur' },
+    { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号格式', trigger: 'blur' }
+  ]
+}
+const newPhoneFormRef = ref()
+const savingNewPhone = ref(false)
+
+// 新增地址对话框
+const showAddAddressDialog = ref(false)
+const newAddressForm = reactive({
+  province: '',
+  city: '',
+  district: '',
+  street: '',
+  detailAddress: ''
+})
+const addressRules = {
+  province: [{ required: true, message: '请选择省份', trigger: 'change' }],
+  city: [{ required: true, message: '请选择城市', trigger: 'change' }],
+  district: [{ required: true, message: '请选择区县', trigger: 'change' }],
+  street: [{ min: 0, max: 100, message: '街道长度不能超过100个字符', trigger: 'blur' }],
+  detailAddress: [{ required: true, message: '请输入详细地址', trigger: 'blur' }]
+}
+const newAddressFormRef = ref()
+
+// 省市区数据
+const provinces = ref([
+  { value: '北京市', label: '北京市' },
+  { value: '上海市', label: '上海市' },
+  { value: '广东省', label: '广东省' },
+  { value: '浙江省', label: '浙江省' },
+  { value: '江苏省', label: '江苏省' }
+])
+const cities = ref([])
+const districts = ref([])
+
+// 跟进记录相关
+const showAddForm = ref(false)
+const saveLoading = ref(false)
+const followUpFormRef = ref()
+
+// 跟进记录表单
+const followUpForm = reactive({
+  type: '',
+  time: new Date(),
+  content: '',
+  nextFollowUp: null
+})
+
+// 跟进记录验证规则
+const followUpRules = {
+  type: [{ required: true, message: '请选择沟通方式', trigger: 'change' }],
+  time: [{ required: true, message: '请选择沟通时间', trigger: 'change' }],
+  content: [{ required: true, message: '请输入沟通内容', trigger: 'blur' }]
+}
+
+// 跟进记录列表
+const followUpRecords = ref([
+  {
+    id: '1',
+    type: 'phone',
+    time: '2024-01-15 14:30:00',
+    content: '电话沟通了客户的需求，客户对我们的产品很感兴趣，希望能够提供更详细的报价方案。',
+    nextFollowUp: '2024-01-18 10:00:00',
+    createdBy: '张销售',
+    createdById: 'sales1',
+    createTime: '2024-01-15 14:35:00'
+  },
+  {
+    id: '2',
+    type: 'wechat',
+    time: '2024-01-18 10:15:00',
+    content: '通过微信发送了详细的产品报价单，客户表示需要内部讨论，预计本周五给回复。',
+    nextFollowUp: '2024-01-19 15:00:00',
+    createdBy: '张销售',
+    createdById: 'sales1',
+    createTime: '2024-01-18 10:20:00'
+  },
+  {
+    id: '3',
+    type: 'meeting',
+    time: '2024-01-19 15:30:00',
+    content: '与客户面谈，详细介绍了产品功能和优势，客户基本满意，但希望在价格上能有一些优惠。已向上级申请特殊折扣。',
+    nextFollowUp: '2024-01-22 09:00:00',
+    createdBy: '张销售',
+    createdById: 'sales1',
+    createTime: '2024-01-19 16:00:00'
+  }
+])
+
+// 方法定义
+/**
+ * 返回上一页
+ */
+const handleBack = () => {
+  router.back()
+}
+
+// 编辑相关方法
+/**
+ * 开始编辑姓名
+ */
+const startEditName = () => {
+  tempName.value = customerInfo.name
+  editingName.value = true
+}
+
+/**
+ * 取消编辑姓名
+ */
+const cancelEditName = () => {
+  editingName.value = false
+  tempName.value = ''
+}
+
+/**
+ * 保存姓名
+ */
+const saveEditName = async () => {
+  if (!tempName.value.trim()) {
+    ElMessage.warning('姓名不能为空')
+    return
+  }
+  
+  savingName.value = true
+  try {
+    // 这里应该调用API保存数据
+    await new Promise(resolve => setTimeout(resolve, 1000)) // 模拟API调用
+    customerInfo.name = tempName.value
+    editingName.value = false
+    ElMessage.success('姓名修改成功')
+  } catch (error) {
+    ElMessage.error('姓名修改失败')
+  } finally {
+    savingName.value = false
+  }
+}
+
+/**
+ * 开始编辑年龄
+ */
+const startEditAge = () => {
+  tempAge.value = customerInfo.age
+  editingAge.value = true
+}
+
+/**
+ * 取消编辑年龄
+ */
+const cancelEditAge = () => {
+  editingAge.value = false
+  tempAge.value = 0
+}
+
+/**
+ * 保存年龄
+ */
+const saveEditAge = async () => {
+  if (tempAge.value < 0 || tempAge.value > 150) {
+    ElMessage.warning('请输入有效的年龄')
+    return
+  }
+  
+  savingAge.value = true
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    customerInfo.age = tempAge.value
+    editingAge.value = false
+    ElMessage.success('年龄修改成功')
+  } catch (error) {
+    ElMessage.error('年龄修改失败')
+  } finally {
+    savingAge.value = false
+  }
+}
+
+/**
+ * 开始编辑地址
+ */
+const startEditAddress = () => {
+  tempAddress.value = customerInfo.address
+  editingAddress.value = true
+}
+
+/**
+ * 取消编辑地址
+ */
+const cancelEditAddress = () => {
+  editingAddress.value = false
+  tempAddress.value = ''
+}
+
+/**
+ * 保存地址
+ */
+const saveEditAddress = async () => {
+  if (!tempAddress.value.trim()) {
+    ElMessage.warning('地址不能为空')
+    return
+  }
+  
+  savingAddress.value = true
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    customerInfo.address = tempAddress.value
+    editingAddress.value = false
+    ElMessage.success('地址修改成功')
+  } catch (error) {
+    ElMessage.error('地址修改失败')
+  } finally {
+    savingAddress.value = false
+  }
+}
+
+/**
+ * 开始编辑身高
+ */
+const startEditHeight = () => {
+  tempHeight.value = customerInfo.height
+  editingHeight.value = true
+}
+
+/**
+ * 取消编辑身高
+ */
+const cancelEditHeight = () => {
+  editingHeight.value = false
+  tempHeight.value = 0
+}
+
+/**
+ * 保存身高
+ */
+const saveEditHeight = async () => {
+  if (tempHeight.value < 50 || tempHeight.value > 250) {
+    ElMessage.warning('请输入有效的身高')
+    return
+  }
+  
+  savingHeight.value = true
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    customerInfo.height = tempHeight.value
+    editingHeight.value = false
+    ElMessage.success('身高修改成功')
+  } catch (error) {
+    ElMessage.error('身高修改失败')
+  } finally {
+    savingHeight.value = false
+  }
+}
+
+/**
+ * 开始编辑体重
+ */
+const startEditWeight = () => {
+  tempWeight.value = customerInfo.weight
+  editingWeight.value = true
+}
+
+/**
+ * 取消编辑体重
+ */
+const cancelEditWeight = () => {
+  editingWeight.value = false
+  tempWeight.value = 0
+}
+
+/**
+ * 保存体重
+ */
+const saveEditWeight = async () => {
+  if (tempWeight.value < 20 || tempWeight.value > 300) {
+    ElMessage.warning('请输入有效的体重')
+    return
+  }
+  
+  savingWeight.value = true
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    customerInfo.weight = tempWeight.value
+    editingWeight.value = false
+    ElMessage.success('体重修改成功')
+  } catch (error) {
+    ElMessage.error('体重修改失败')
+  } finally {
+    savingWeight.value = false
+  }
+}
+
+/**
+ * 显示新增手机号对话框
+ */
+const handleShowAddPhoneDialog = () => {
+  newPhoneForm.phone = ''
+  showAddPhoneDialog.value = true
+}
+
+/**
+ * 关闭新增手机号对话框
+ */
+const handleClosePhoneDialog = () => {
+  showAddPhoneDialog.value = false
+  newPhoneForm.phone = ''
+}
+
+/**
+ * 保存新增手机号
+ */
+const saveNewPhone = async () => {
+  try {
+    const valid = await newPhoneFormRef.value.validate()
+    if (!valid) return
+    
+    savingNewPhone.value = true
+    // 这里应该调用API保存数据
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    
+    // 更新客户手机号（这里简化处理，实际可能需要支持多个手机号）
+    customerInfo.phone = newPhoneForm.phone
+    showAddPhoneDialog.value = false
+    ElMessage.success('手机号添加成功')
+  } catch (error) {
+    ElMessage.error('手机号添加失败')
+  } finally {
+    savingNewPhone.value = false
+  }
+}
+
+/**
+ * 显示新增地址对话框
+ */
+const handleShowAddAddressDialog = () => {
+  Object.assign(newAddressForm, {
+    province: '',
+    city: '',
+    district: '',
+    street: '',
+    detailAddress: ''
+  })
+  showAddAddressDialog.value = true
+}
+
+/**
+ * 关闭新增地址对话框
+ */
+const handleCloseAddressDialog = () => {
+  showAddAddressDialog.value = false
+  Object.assign(newAddressForm, {
+    province: '',
+    city: '',
+    district: '',
+    street: '',
+    detailAddress: ''
+  })
+}
+
+/**
+ * 保存新增地址
+ */
+const saveNewAddress = async () => {
+  try {
+    const valid = await newAddressFormRef.value.validate()
+    if (!valid) return
+    
+    // 这里应该调用API保存数据
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    
+    // 更新客户地址
+    const fullAddress = `${newAddressForm.province}${newAddressForm.city}${newAddressForm.district}${newAddressForm.street}${newAddressForm.detailAddress}`
+    customerInfo.address = fullAddress
+    showAddAddressDialog.value = false
+    ElMessage.success('地址添加成功')
+  } catch (error) {
+    ElMessage.error('地址添加失败')
+  }
+}
+
+/**
+ * 省份变化处理
+ */
+const handleProvinceChange = (province) => {
+  newAddressForm.city = ''
+  newAddressForm.district = ''
+  
+  // 模拟根据省份获取城市数据
+  const cityData = {
+    '北京市': [{ value: '北京市', label: '北京市' }],
+    '上海市': [{ value: '上海市', label: '上海市' }],
+    '广东省': [
+      { value: '广州市', label: '广州市' },
+      { value: '深圳市', label: '深圳市' },
+      { value: '珠海市', label: '珠海市' }
+    ],
+    '浙江省': [
+      { value: '杭州市', label: '杭州市' },
+      { value: '宁波市', label: '宁波市' },
+      { value: '温州市', label: '温州市' }
+    ],
+    '江苏省': [
+      { value: '南京市', label: '南京市' },
+      { value: '苏州市', label: '苏州市' },
+      { value: '无锡市', label: '无锡市' }
+    ]
+  }
+  cities.value = cityData[province] || []
+}
+
+/**
+ * 城市变化处理
+ */
+const handleCityChange = (city) => {
+  newAddressForm.district = ''
+  
+  // 模拟根据城市获取区县数据
+  const districtData = {
+    '北京市': [
+      { value: '朝阳区', label: '朝阳区' },
+      { value: '海淀区', label: '海淀区' },
+      { value: '西城区', label: '西城区' }
+    ],
+    '上海市': [
+      { value: '浦东新区', label: '浦东新区' },
+      { value: '黄浦区', label: '黄浦区' },
+      { value: '静安区', label: '静安区' }
+    ],
+    '广州市': [
+      { value: '天河区', label: '天河区' },
+      { value: '越秀区', label: '越秀区' },
+      { value: '海珠区', label: '海珠区' }
+    ]
+  }
+  districts.value = districtData[city] || []
+}
+
+/**
+ * 拨打电话
+ */
+const handleCall = () => {
+  if (customerInfo.phone) {
+    // 在实际应用中，这里可以调用系统电话功能
+    ElMessage.success(`正在拨打 ${customerInfo.phone}`)
+    
+    // 发送客户来电消息提醒
+    notificationStore.sendMessage(
+      notificationStore.MessageType.CUSTOMER_CALL,
+      `客户 ${customerInfo.name}（${maskPhone(customerInfo.phone)}）外呼已发起`,
+      {
+        relatedId: customerInfo.id,
+        relatedType: 'customer',
+        actionUrl: `/customer/detail/${customerInfo.id}?tab=followup`
+      }
+    )
+  } else {
+    ElMessage.warning('客户未填写手机号')
+  }
+}
+
+/**
+ * 创建订单
+ */
+const handleOrder = () => {
+  router.push({
+    path: '/order/add',
+    query: { customerId: customerInfo.id }
+  })
+}
+
+/**
+ * 编辑客户
+ */
+const handleEdit = () => {
+  router.push(`/customer/edit/${customerInfo.id}`)
+}
+
+/**
+ * 标记客户拒收
+ */
+const handleReject = async () => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要将客户 ${customerInfo.name} 标记为拒收吗？`,
+      '确认标记拒收',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    // 模拟API调用
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // 发送客户拒收消息提醒
+    notificationStore.sendMessage(
+      notificationStore.MessageType.CUSTOMER_REJECTED,
+      `客户 ${customerInfo.name}（${maskPhone(customerInfo.phone)}）已被标记为拒收`,
+      {
+        relatedId: customerInfo.id,
+        relatedType: 'customer',
+        actionUrl: `/customer/detail/${customerInfo.id}`
+      }
+    )
+    
+    ElMessage.success('客户已标记为拒收')
+    
+    // 可以选择跳转回客户列表或刷新当前页面
+    // router.push('/customer/list')
+    
+  } catch (error) {
+    // 用户取消操作
+  }
+}
+
+/**
+ * 查看所有订单
+ */
+const handleViewAllOrders = () => {
+  router.push({
+    path: '/order/list',
+    query: { customerId: customerInfo.id }
+  })
+}
+
+/**
+ * 查看订单详情
+ */
+const handleViewOrder = (orderId: string) => {
+  router.push(`/order/detail/${orderId}`)
+}
+
+/**
+ * 获取客户等级类型
+ */
+const getLevelType = (level: string) => {
+  const typeMap = {
+    normal: '',
+    silver: 'info',
+    gold: 'warning',
+    diamond: 'success'
+  }
+  return typeMap[level] || ''
+}
+
+/**
+ * 获取客户等级文本
+ */
+const getLevelText = (level: string) => {
+  const textMap = {
+    normal: '普通客户',
+    silver: '白银客户',
+    gold: '黄金客户',
+    diamond: '钻石客户'
+  }
+  return textMap[level] || level
+}
+
+/**
+ * 获取性别文本
+ */
+const getGenderText = (gender: string) => {
+  const textMap = {
+    male: '男',
+    female: '女',
+    unknown: '未知'
+  }
+  return textMap[gender] || gender
+}
+
+/**
+ * 获取客户来源文本
+ */
+const getSourceText = (source: string) => {
+  const textMap = {
+    online: '线上推广',
+    referral: '朋友介绍',
+    telemarketing: '电话营销',
+    store: '门店到访',
+    other: '其他'
+  }
+  return textMap[source] || source
+}
+
+/**
+ * 获取标签文本
+ */
+const getTagText = (tag: string) => {
+  const textMap = {
+    'high-value': '高价值',
+    'active': '活跃用户',
+    'potential': '潜在客户',
+    'focus': '重点关注',
+    'churn-risk': '流失风险'
+  }
+  return textMap[tag] || tag
+}
+
+/**
+ * 获取订单状态类型
+ */
+const getOrderStatusType = (status: string) => {
+  const typeMap = {
+    pending: 'warning',
+    paid: 'success',
+    shipped: 'info',
+    completed: 'success',
+    cancelled: 'danger'
+  }
+  return typeMap[status] || ''
+}
+
+/**
+ * 获取订单状态文本
+ */
+const getOrderStatusText = (status: string) => {
+  const textMap = {
+    pending: '待付款',
+    paid: '已付款',
+    shipped: '已发货',
+    completed: '已完成',
+    cancelled: '已取消'
+  }
+  return textMap[status] || status
+}
+
+/**
+ * 获取沟通方式图标
+ */
+const getTypeIcon = (type: string) => {
+  const iconMap = {
+    phone: Phone,
+    wechat: ChatDotRound,
+    email: Message,
+    meeting: User,
+    video: VideoCamera
+  }
+  return iconMap[type] || ChatDotRound
+}
+
+/**
+ * 获取沟通方式文本
+ */
+const getTypeText = (type: string) => {
+  const textMap = {
+    phone: '电话沟通',
+    wechat: '微信沟通',
+    email: '邮件沟通',
+    meeting: '面谈',
+    video: '视频会议'
+  }
+  return textMap[type] || type
+}
+
+/**
+ * 获取沟通方式颜色
+ */
+const getTypeColor = (type: string) => {
+  const colorMap = {
+    phone: '#409EFF',
+    wechat: '#67C23A',
+    email: '#E6A23C',
+    meeting: '#F56C6C',
+    video: '#909399'
+  }
+  return colorMap[type] || '#909399'
+}
+
+/**
+ * 获取时间轴类型
+ */
+const getTimelineType = (type: string) => {
+  const typeMap = {
+    phone: 'primary',
+    wechat: 'success',
+    email: 'warning',
+    meeting: 'danger',
+    other: 'info'
+  }
+  return typeMap[type] || 'info'
+}
+
+/**
+ * 获取时间轴图标
+ */
+const getTimelineIcon = (type: string) => {
+  const iconMap = {
+    phone: Phone,
+    wechat: ChatDotRound,
+    email: Message,
+    meeting: User,
+    other: ChatDotRound
+  }
+  return iconMap[type] || ChatDotRound
+}
+
+/**
+ * 获取跟进类型颜色
+ */
+const getFollowUpTypeColor = (type: string) => {
+  const colorMap = {
+    phone: 'primary',
+    wechat: 'success',
+    email: 'warning',
+    meeting: 'danger',
+    other: 'info'
+  }
+  return colorMap[type] || 'info'
+}
+
+/**
+ * 获取跟进类型文本
+ */
+const getFollowUpTypeText = (type: string) => {
+  const textMap = {
+    phone: '电话沟通',
+    wechat: '微信沟通',
+    email: '邮件沟通',
+    meeting: '面谈',
+    other: '其他'
+  }
+  return textMap[type] || type
+}
+
+/**
+ * 检查是否可以编辑记录
+ */
+const canEditRecord = (record: any) => {
+  // 管理员可以编辑所有记录
+  if (userStore.isAdmin) {
+    return true
+  }
+  // 普通用户只能编辑自己创建的记录
+  return record.createdById === userStore.currentUser?.id
+}
+
+/**
+ * 编辑跟进记录
+ */
+const handleEditRecord = (record: any) => {
+  // TODO: 实现编辑功能
+  ElMessage.info('编辑功能开发中...')
+}
+
+/**
+ * 删除跟进记录
+ */
+const handleDeleteRecord = async (recordId: string) => {
+  try {
+    await ElMessageBox.confirm('确定要删除这条跟进记录吗？', '确认删除', {
+      type: 'warning'
+    })
+    
+    // 模拟API调用
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // 从列表中移除
+    const index = followUpRecords.value.findIndex(record => record.id === recordId)
+    if (index > -1) {
+      followUpRecords.value.splice(index, 1)
+      ElMessage.success('删除成功')
+    }
+  } catch (error) {
+    // 用户取消删除
+  }
+}
+
+/**
+ * 显示添加跟进记录表单
+ */
+const handleAddFollowUp = () => {
+  showAddForm.value = true
+  // 重置表单
+  Object.assign(followUpForm, {
+    type: '',
+    time: new Date(),
+    content: '',
+    nextFollowUp: null
+  })
+}
+
+/**
+ * 取消添加跟进记录
+ */
+const handleCancelAdd = () => {
+  showAddForm.value = false
+  followUpFormRef.value?.resetFields()
+}
+
+/**
+ * 保存跟进记录
+ */
+const handleSaveFollowUp = async () => {
+  try {
+    await followUpFormRef.value?.validate()
+    
+    saveLoading.value = true
+    
+    // 模拟API调用
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    
+    // 添加新记录到列表
+    const newRecord = {
+      id: Date.now().toString(),
+      type: followUpForm.type,
+      time: followUpForm.time.toLocaleString('zh-CN'),
+      content: followUpForm.content,
+      nextFollowUp: followUpForm.nextFollowUp?.toLocaleString('zh-CN') || null,
+      createdBy: userStore.currentUser?.name || '未知用户',
+      createdById: userStore.currentUser?.id || '',
+      createTime: new Date().toLocaleString('zh-CN')
+    }
+    
+    followUpRecords.value.unshift(newRecord)
+    
+    // 发送跟进记录添加消息提醒
+    notificationStore.sendMessage(
+      notificationStore.MessageType.CUSTOMER_FOLLOW_UP,
+      `客户 ${customerInfo.name} 新增跟进记录：${followUpForm.content.substring(0, 30)}${followUpForm.content.length > 30 ? '...' : ''}`,
+      {
+        relatedId: customerInfo.id,
+        relatedType: 'customer',
+        actionUrl: `/customer/detail/${customerInfo.id}?tab=followup`
+      }
+    )
+    
+    ElMessage.success('跟进记录添加成功')
+    showAddForm.value = false
+    followUpFormRef.value?.resetFields()
+    
+  } catch (error) {
+    console.error('保存跟进记录失败:', error)
+  } finally {
+    saveLoading.value = false
+  }
+}
+
+/**
+ * 删除跟进记录
+ */
+const handleDeleteFollowUp = async (record: any) => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要删除这条跟进记录吗？',
+      '确认删除',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    // 模拟API调用
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // 从列表中移除
+    const index = followUpRecords.value.findIndex(item => item.id === record.id)
+    if (index > -1) {
+      followUpRecords.value.splice(index, 1)
+      ElMessage.success('跟进记录删除成功')
+    }
+    
+  } catch (error) {
+    // 用户取消删除
+  }
+}
+
+/**
+ * 加载客户详情
+ */
+const loadCustomerDetail = async () => {
+  const customerId = route.params.id
+  
+  // 检查路由参数
+  if (!customerId) {
+    ElMessage.error('客户ID不存在')
+    router.push('/customer/list')
+    return
+  }
+  
+  loading.value = true
+
+  try {
+    // 模拟API调用
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    // 模拟客户数据
+    Object.assign(customerInfo, {
+      id: customerId,
+      name: '张三',
+      gender: 'male',
+      age: 28,
+      phone: '13812345678',
+      email: 'zhangsan@example.com',
+      wechat: 'zhangsan_wx',
+      address: '北京市朝阳区xxx街道xxx号',
+      level: 'gold',
+      source: 'referral',
+      tags: ['high-value', 'active'],
+      salesPersonId: '1',
+      salesPerson: '李销售',
+      remark: '重要客户，需要重点维护',
+      createTime: '2023-01-15 10:30:00'
+    })
+
+    // 模拟统计数据
+    Object.assign(customerStats, {
+      totalOrders: 15,
+      totalAmount: 25680,
+      lastOrderDate: '2024-01-10',
+      avgOrderAmount: 1712
+    })
+
+    // 模拟订单历史
+    orderHistory.value = [
+      {
+        id: '1',
+        orderNo: 'ORD202401100001',
+        products: '商品A, 商品B',
+        totalAmount: 1299,
+        status: 'completed',
+        createTime: '2024-01-10 14:30:00'
+      },
+      {
+        id: '2',
+        orderNo: 'ORD202401050002',
+        products: '商品C',
+        totalAmount: 899,
+        status: 'shipped',
+        createTime: '2024-01-05 09:15:00'
+      },
+      {
+        id: '3',
+        orderNo: 'ORD202312280003',
+        products: '商品D, 商品E, 商品F',
+        totalAmount: 2580,
+        status: 'completed',
+        createTime: '2023-12-28 16:45:00'
+      }
+    ]
+  } catch (error) {
+    ElMessage.error('加载客户信息失败')
+    router.push('/customer/list')
+  } finally {
+    loading.value = false
+  }
+}
+
+/**
+ * Tab点击处理
+ */
+const handleTabClick = (tab: any) => {
+  // 更新URL参数
+  router.replace({
+    name: route.name,
+    params: route.params,
+    query: { ...route.query, tab: tab.name }
+  })
+}
+
+// 生命周期钩子
+onMounted(() => {
+  // 确保用户状态已初始化
+  if (!userStore.currentUser) {
+    userStore.initUser()
+  }
+  
+  // 根据URL参数设置默认tab
+  const tabParam = route.query.tab as string
+  if (tabParam && ['orders', 'followup'].includes(tabParam)) {
+    activeTab.value = tabParam
+  }
+  
+  loadCustomerDetail()
+})
+</script>
+
+<style scoped>
+.customer-detail {
+  padding: 0;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-left h2 {
+  margin: 0;
+  color: #303133;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.customer-info-card {
+  margin-bottom: 20px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.customer-info {
+  padding: 0;
+}
+
+.info-row {
+  display: flex;
+  margin-bottom: 16px;
+  gap: 40px;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+.info-item {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+}
+
+.info-item.full-width {
+  flex: none;
+  width: 100%;
+}
+
+.info-item label {
+  color: #909399;
+  margin-right: 8px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.info-item span {
+  color: #303133;
+  word-break: break-all;
+}
+
+.tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-item {
+  margin: 0;
+}
+
+.stats-row {
+  margin-bottom: 20px;
+}
+
+.tab-card {
+  margin-bottom: 20px;
+}
+
+.tab-card :deep(.el-tabs__header) {
+  margin-bottom: 20px;
+}
+
+.tab-card :deep(.el-tabs__nav-wrap) {
+  padding: 0 20px;
+}
+
+.tab-card :deep(.el-tabs__content) {
+  padding: 0 20px 20px;
+}
+
+.stat-card {
+  text-align: center;
+}
+
+.stat-item {
+  padding: 10px 0;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #409eff;
+  margin-bottom: 8px;
+}
+
+.stat-label {
+  color: #909399;
+  font-size: 14px;
+}
+
+.order-history-card {
+  margin-bottom: 20px;
+}
+
+.amount {
+  color: #f56c6c;
+  font-weight: 500;
+}
+
+/* 跟进记录样式 */
+.follow-up-card {
+  margin-bottom: 20px;
+}
+
+.follow-up-form {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.form-row:last-child {
+  margin-bottom: 0;
+}
+
+.form-item {
+  flex: 1;
+}
+
+.form-item.full-width {
+  flex: none;
+  width: 100%;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.timeline-container {
+  position: relative;
+  padding-left: 30px;
+}
+
+.timeline-item {
+  position: relative;
+  padding-bottom: 30px;
+}
+
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -22px;
+  top: 8px;
+  width: 2px;
+  height: calc(100% - 8px);
+  background: #e4e7ed;
+}
+
+.timeline-item:last-child::before {
+  display: none;
+}
+
+.timeline-dot {
+  position: absolute;
+  left: -30px;
+  top: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #fff;
+}
+
+.timeline-content {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 16px;
+  position: relative;
+}
+
+.timeline-content::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 12px;
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 8px solid #e4e7ed;
+}
+
+.timeline-content::after {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 12px;
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 8px solid #fff;
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.timeline-type {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.timeline-time {
+  color: #909399;
+  font-size: 14px;
+}
+
+.timeline-text {
+  color: #303133;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.timeline-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #909399;
+}
+
+.next-follow-up {
+  color: #e6a23c;
+  font-weight: 500;
+}
+
+.timeline-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #909399;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  color: #c0c4cc;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  .header-actions {
+    justify-content: center;
+  }
+
+  .info-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .info-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .info-item label {
+    margin-bottom: 4px;
+  }
+
+  /* 跟进记录响应式 */
+  .form-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .timeline-container {
+    padding-left: 20px;
+  }
+
+  .timeline-dot {
+    left: -20px;
+  }
+
+  .timeline-item::before {
+    left: -12px;
+  }
+
+  .timeline-content::before,
+  .timeline-content::after {
+    display: none;
+  }
+
+  .timeline-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .timeline-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+.loading-container {
+  min-height: 400px;
+  position: relative;
+}
+</style>

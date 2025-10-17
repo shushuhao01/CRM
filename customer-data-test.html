@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>客户数据流程测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        button {
+            background: #409eff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #66b1ff;
+        }
+        .result {
+            background: #f0f9ff;
+            border: 1px solid #b3d8ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .error {
+            background: #fef0f0;
+            border: 1px solid #fbc4c4;
+            color: #f56565;
+        }
+        .success {
+            background: #f0fff4;
+            border: 1px solid #9ae6b4;
+            color: #38a169;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>客户数据流程测试</h1>
+        <p>此页面用于测试客户数据的存储、获取和同步流程</p>
+    </div>
+
+    <div class="container">
+        <div class="test-section">
+            <h3>1. 检查localStorage中的客户数据</h3>
+            <button onclick="checkLocalStorage()">检查localStorage</button>
+            <div id="localStorage-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>2. 添加测试客户</h3>
+            <button onclick="addTestCustomer()">添加测试客户</button>
+            <div id="addCustomer-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>3. 模拟客户Store操作</h3>
+            <button onclick="testCustomerStore()">测试客户Store</button>
+            <div id="customerStore-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>4. 模拟Mock API调用</h3>
+            <button onclick="testMockAPI()">测试Mock API</button>
+            <div id="mockAPI-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>5. 清理测试数据</h3>
+            <button onclick="clearTestData()">清理测试数据</button>
+            <div id="clearData-result" class="result" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'crm_customers_unified';
+        
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = `result ${type}`;
+            element.textContent = message;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function checkLocalStorage() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (data) {
+                    const parsed = JSON.parse(data);
+                    const message = `找到客户数据：
+- 客户数量: ${parsed.customers ? parsed.customers.length : 0}
+- 最后更新: ${new Date(parsed.lastUpdated).toLocaleString()}
+- 版本: ${parsed.version}
+
+最新5个客户:
+${parsed.customers ? parsed.customers.slice(0, 5).map((c, i) => 
+    `${i + 1}. ${c.name} (${c.phone}) - ${c.createTime}`
+).join('\n') : '无客户数据'}`;
+                    log('localStorage-result', message, 'success');
+                } else {
+                    log('localStorage-result', '未找到客户数据', 'error');
+                }
+            } catch (error) {
+                log('localStorage-result', `检查localStorage失败: ${error.message}`, 'error');
+            }
+        }
+
+        function addTestCustomer() {
+            try {
+                const timestamp = Date.now();
+                const testCustomer = {
+                    id: `test_${timestamp}`,
+                    code: `TEST${timestamp}`,
+                    name: `测试客户${timestamp}`,
+                    phone: `138${String(timestamp).slice(-8)}`,
+                    age: 25,
+                    address: '测试地址',
+                    level: 'normal',
+                    status: 'active',
+                    salesPersonId: 'admin',
+                    createdBy: 'admin',
+                    createTime: new Date().toISOString(),
+                    orderCount: 0
+                };
+
+                // 获取现有数据
+                let data = { customers: [], lastUpdated: Date.now(), version: '1.0.0' };
+                const existing = localStorage.getItem(STORAGE_KEY);
+                if (existing) {
+                    data = JSON.parse(existing);
+                }
+
+                // 添加新客户到开头
+                data.customers.unshift(testCustomer);
+                data.lastUpdated = Date.now();
+
+                // 保存到localStorage
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+                const message = `成功添加测试客户:
+- 姓名: ${testCustomer.name}
+- 手机: ${testCustomer.phone}
+- ID: ${testCustomer.id}
+- 当前总客户数: ${data.customers.length}`;
+                
+                log('addCustomer-result', message, 'success');
+            } catch (error) {
+                log('addCustomer-result', `添加测试客户失败: ${error.message}`, 'error');
+            }
+        }
+
+        function testCustomerStore() {
+            try {
+                // 模拟客户Store的数据获取逻辑
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (!data) {
+                    log('customerStore-result', '没有找到客户数据', 'error');
+                    return;
+                }
+
+                const parsed = JSON.parse(data);
+                const customers = parsed.customers || [];
+
+                // 模拟filteredCustomers计算属性
+                const filteredCustomers = customers; // 临时修复：返回所有客户
+
+                // 模拟searchResults计算属性（按创建时间降序排列）
+                const searchResults = filteredCustomers.sort((a, b) => {
+                    const timeA = new Date(a.createTime).getTime();
+                    const timeB = new Date(b.createTime).getTime();
+                    return timeB - timeA; // 降序排列，最新的在前
+                });
+
+                const message = `客户Store模拟结果:
+- 原始客户数: ${customers.length}
+- 过滤后客户数: ${filteredCustomers.length}
+- 排序后客户数: ${searchResults.length}
+
+最新3个客户:
+${searchResults.slice(0, 3).map((c, i) => 
+    `${i + 1}. ${c.name} (${c.phone}) - ${c.createTime}`
+).join('\n')}`;
+
+                log('customerStore-result', message, 'success');
+            } catch (error) {
+                log('customerStore-result', `测试客户Store失败: ${error.message}`, 'error');
+            }
+        }
+
+        function testMockAPI() {
+            try {
+                // 模拟Mock API的getCustomerList逻辑
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (!data) {
+                    log('mockAPI-result', '没有找到客户数据', 'error');
+                    return;
+                }
+
+                const parsed = JSON.parse(data);
+                const customers = parsed.customers || [];
+
+                // 模拟分页参数
+                const page = 1;
+                const pageSize = 50;
+                const start = (page - 1) * pageSize;
+                const end = start + pageSize;
+
+                const paginatedCustomers = customers.slice(start, end);
+
+                const message = `Mock API模拟结果:
+- 总客户数: ${customers.length}
+- 分页参数: page=${page}, pageSize=${pageSize}
+- 返回客户数: ${paginatedCustomers.length}
+
+返回的前3个客户:
+${paginatedCustomers.slice(0, 3).map((c, i) => 
+    `${i + 1}. ${c.name} (${c.phone}) - ${c.createTime}`
+).join('\n')}`;
+
+                log('mockAPI-result', message, 'success');
+            } catch (error) {
+                log('mockAPI-result', `测试Mock API失败: ${error.message}`, 'error');
+            }
+        }
+
+        function clearTestData() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (!data) {
+                    log('clearData-result', '没有找到需要清理的数据', 'info');
+                    return;
+                }
+
+                const parsed = JSON.parse(data);
+                const originalCount = parsed.customers ? parsed.customers.length : 0;
+
+                // 移除所有测试客户（ID以test_开头的）
+                if (parsed.customers) {
+                    parsed.customers = parsed.customers.filter(c => !c.id.startsWith('test_'));
+                    parsed.lastUpdated = Date.now();
+                }
+
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+
+                const newCount = parsed.customers ? parsed.customers.length : 0;
+                const removedCount = originalCount - newCount;
+
+                const message = `清理完成:
+- 原始客户数: ${originalCount}
+- 清理后客户数: ${newCount}
+- 移除的测试客户数: ${removedCount}`;
+
+                log('clearData-result', message, 'success');
+            } catch (error) {
+                log('clearData-result', `清理测试数据失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 页面加载时自动检查localStorage
+        window.onload = function() {
+            checkLocalStorage();
+        };
+    </script>
+</body>
+</html>

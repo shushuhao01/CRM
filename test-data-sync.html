@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据同步测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .info {
+            color: #17a2b8;
+        }
+        .warning {
+            color: #ffc107;
+            font-weight: bold;
+        }
+        .log-area {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .step {
+            background-color: #e9ecef;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 数据同步测试页面</h1>
+        <p>这个页面用于测试客户数据在不同层级之间的同步问题</p>
+
+        <div class="section">
+            <h3>1. 检查数据层级</h3>
+            <button class="button" onclick="checkDataLayers()">检查所有数据层级</button>
+            <div id="dataLayersResult" class="log-area"></div>
+        </div>
+
+        <div class="section">
+            <h3>2. 模拟完整添加流程</h3>
+            <button class="button" onclick="simulateFullAddFlow()">模拟完整添加流程</button>
+            <div id="fullAddFlowResult" class="log-area"></div>
+        </div>
+
+        <div class="section">
+            <h3>3. 测试数据同步</h3>
+            <button class="button" onclick="testDataSync()">测试数据同步</button>
+            <div id="dataSyncResult" class="log-area"></div>
+        </div>
+
+        <div class="section">
+            <h3>4. 模拟页面刷新</h3>
+            <button class="button" onclick="simulatePageRefresh()">模拟页面刷新</button>
+            <div id="pageRefreshResult" class="log-area"></div>
+        </div>
+
+        <div class="section">
+            <h3>5. 清理测试数据</h3>
+            <button class="button" onclick="clearTestData()">清理测试数据</button>
+            <div id="clearResult" class="log-area"></div>
+        </div>
+    </div>
+
+    <script>
+        // 生成随机手机号
+        function generateRandomPhone() {
+            const prefixes = ['138', '139', '150', '151', '152', '158', '159', '188', '189'];
+            const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+            const suffix = Math.floor(Math.random() * 100000000).toString().padStart(8, '0');
+            return prefix + suffix;
+        }
+
+        // 日志函数
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'info';
+            element.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            element.scrollTop = element.scrollHeight;
+        }
+
+        // 清空日志
+        function clearLog(elementId) {
+            document.getElementById(elementId).innerHTML = '';
+        }
+
+        // 1. 检查数据层级
+        async function checkDataLayers() {
+            clearLog('dataLayersResult');
+            log('dataLayersResult', '开始检查所有数据层级...');
+
+            try {
+                // 检查localStorage
+                log('dataLayersResult', '=== 检查 localStorage ===', 'info');
+                const storageData = localStorage.getItem('customers');
+                if (storageData) {
+                    const customers = JSON.parse(storageData);
+                    log('dataLayersResult', `localStorage中的客户数量: ${customers.length}`, 'info');
+                    if (customers.length > 0) {
+                        log('dataLayersResult', `最新客户: ${customers[0].name} - ${customers[0].phone}`, 'info');
+                    }
+                } else {
+                    log('dataLayersResult', 'localStorage中没有客户数据', 'warning');
+                }
+
+                // 检查其他可能的存储键
+                log('dataLayersResult', '=== 检查其他存储键 ===', 'info');
+                const allKeys = Object.keys(localStorage);
+                const relevantKeys = allKeys.filter(key => 
+                    key.includes('customer') || 
+                    key.includes('Customer') || 
+                    key.includes('mock') ||
+                    key.includes('crm')
+                );
+                
+                if (relevantKeys.length > 0) {
+                    log('dataLayersResult', `相关存储键: ${relevantKeys.join(', ')}`, 'info');
+                    relevantKeys.forEach(key => {
+                        const value = localStorage.getItem(key);
+                        if (value) {
+                            try {
+                                const parsed = JSON.parse(value);
+                                if (Array.isArray(parsed)) {
+                                    log('dataLayersResult', `${key}: ${parsed.length} 项`, 'info');
+                                } else {
+                                    log('dataLayersResult', `${key}: 对象类型`, 'info');
+                                }
+                            } catch {
+                                log('dataLayersResult', `${key}: 字符串类型 (${value.length} 字符)`, 'info');
+                            }
+                        }
+                    });
+                } else {
+                    log('dataLayersResult', '没有找到相关的存储键', 'warning');
+                }
+
+                log('dataLayersResult', '数据层级检查完成', 'success');
+
+            } catch (error) {
+                log('dataLayersResult', `检查数据层级时出错: ${error.message}`, 'error');
+            }
+        }
+
+        // 2. 模拟完整添加流程
+        async function simulateFullAddFlow() {
+            clearLog('fullAddFlowResult');
+            log('fullAddFlowResult', '开始模拟完整添加流程...');
+
+            try {
+                // 步骤1: 记录初始状态
+                log('fullAddFlowResult', '步骤1: 记录初始状态', 'info');
+                const initialData = localStorage.getItem('customers');
+                const initialCustomers = initialData ? JSON.parse(initialData) : [];
+                log('fullAddFlowResult', `初始客户数量: ${initialCustomers.length}`, 'info');
+
+                // 步骤2: 模拟createCustomer API调用
+                log('fullAddFlowResult', '步骤2: 模拟createCustomer API调用', 'info');
+                const testCustomer = {
+                    id: Date.now().toString(),
+                    code: `C${Date.now()}`,
+                    name: `同步测试客户_${Date.now()}`,
+                    phone: generateRandomPhone(),
+                    level: 'normal',
+                    source: 'sync_test',
+                    createTime: new Date().toISOString(),
+                    orderCount: 0
+                };
+
+                // 模拟Mock API的createCustomer逻辑
+                const updatedCustomers = [testCustomer, ...initialCustomers];
+                localStorage.setItem('customers', JSON.stringify(updatedCustomers));
+                log('fullAddFlowResult', `客户已通过Mock API添加: ${testCustomer.name}`, 'success');
+
+                // 步骤3: 模拟loadCustomers API调用
+                log('fullAddFlowResult', '步骤3: 模拟loadCustomers API调用', 'info');
+                await new Promise(resolve => setTimeout(resolve, 100)); // 模拟API延迟
+
+                // 模拟Mock API的getCustomerList逻辑
+                const reloadedData = localStorage.getItem('customers');
+                const reloadedCustomers = reloadedData ? JSON.parse(reloadedData) : [];
+                log('fullAddFlowResult', `通过getCustomerList重新加载，客户数量: ${reloadedCustomers.length}`, 'info');
+
+                // 步骤4: 验证数据一致性
+                log('fullAddFlowResult', '步骤4: 验证数据一致性', 'info');
+                const foundNewCustomer = reloadedCustomers.find(c => c.name === testCustomer.name);
+                if (foundNewCustomer) {
+                    log('fullAddFlowResult', '✅ 新客户在重新加载后仍然存在', 'success');
+                } else {
+                    log('fullAddFlowResult', '❌ 新客户在重新加载后丢失', 'error');
+                }
+
+                // 步骤5: 模拟页面导航和刷新
+                log('fullAddFlowResult', '步骤5: 模拟页面导航和刷新', 'info');
+                await new Promise(resolve => setTimeout(resolve, 200)); // 模拟导航延迟
+
+                // 模拟客户列表页面的onMounted逻辑
+                log('fullAddFlowResult', '模拟客户列表页面的onMounted逻辑...', 'info');
+                
+                // 模拟自动持久化数据加载（替代已删除的initializeFromStorage方法）
+                const finalData = localStorage.getItem('customers');
+                const finalCustomers = finalData ? JSON.parse(finalData) : [];
+                log('fullAddFlowResult', `自动持久化加载后，客户数量: ${finalCustomers.length}`, 'info');
+
+                const finalFoundCustomer = finalCustomers.find(c => c.name === testCustomer.name);
+                if (finalFoundCustomer) {
+                    log('fullAddFlowResult', '✅ 新客户在页面刷新后仍然存在', 'success');
+                } else {
+                    log('fullAddFlowResult', '❌ 新客户在页面刷新后丢失', 'error');
+                }
+
+                log('fullAddFlowResult', '完整添加流程模拟完成', 'success');
+
+            } catch (error) {
+                log('fullAddFlowResult', `模拟完整添加流程时出错: ${error.message}`, 'error');
+            }
+        }
+
+        // 3. 测试数据同步
+        async function testDataSync() {
+            clearLog('dataSyncResult');
+            log('dataSyncResult', '开始测试数据同步...');
+
+            try {
+                // 测试1: 直接修改localStorage
+                log('dataSyncResult', '测试1: 直接修改localStorage', 'info');
+                const testCustomer1 = {
+                    id: `test1_${Date.now()}`,
+                    code: `T1_${Date.now()}`,
+                    name: `直接修改测试_${Date.now()}`,
+                    phone: generateRandomPhone(),
+                    level: 'normal',
+                    source: 'direct_test',
+                    createTime: new Date().toISOString(),
+                    orderCount: 0
+                };
+
+                const currentData = localStorage.getItem('customers');
+                const currentCustomers = currentData ? JSON.parse(currentData) : [];
+                const updatedCustomers = [testCustomer1, ...currentCustomers];
+                localStorage.setItem('customers', JSON.stringify(updatedCustomers));
+                log('dataSyncResult', `直接添加客户: ${testCustomer1.name}`, 'success');
+
+                // 测试2: 验证数据持久性
+                log('dataSyncResult', '测试2: 验证数据持久性', 'info');
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                const verifyData = localStorage.getItem('customers');
+                const verifyCustomers = verifyData ? JSON.parse(verifyData) : [];
+                const foundCustomer = verifyCustomers.find(c => c.id === testCustomer1.id);
+                
+                if (foundCustomer) {
+                    log('dataSyncResult', '✅ 直接修改的数据持久存在', 'success');
+                } else {
+                    log('dataSyncResult', '❌ 直接修改的数据丢失', 'error');
+                }
+
+                // 测试3: 模拟多次读写
+                log('dataSyncResult', '测试3: 模拟多次读写', 'info');
+                for (let i = 0; i < 3; i++) {
+                    const readData = localStorage.getItem('customers');
+                    const readCustomers = readData ? JSON.parse(readData) : [];
+                    log('dataSyncResult', `第${i+1}次读取，客户数量: ${readCustomers.length}`, 'info');
+                    
+                    // 模拟小的修改
+                    readCustomers[0].lastAccessTime = new Date().toISOString();
+                    localStorage.setItem('customers', JSON.stringify(readCustomers));
+                    
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+                log('dataSyncResult', '数据同步测试完成', 'success');
+
+            } catch (error) {
+                log('dataSyncResult', `测试数据同步时出错: ${error.message}`, 'error');
+            }
+        }
+
+        // 4. 模拟页面刷新
+        async function simulatePageRefresh() {
+            clearLog('pageRefreshResult');
+            log('pageRefreshResult', '开始模拟页面刷新...');
+
+            try {
+                // 记录刷新前状态
+                log('pageRefreshResult', '记录刷新前状态', 'info');
+                const beforeData = localStorage.getItem('customers');
+                const beforeCustomers = beforeData ? JSON.parse(beforeData) : [];
+                log('pageRefreshResult', `刷新前客户数量: ${beforeCustomers.length}`, 'info');
+
+                if (beforeCustomers.length > 0) {
+                    log('pageRefreshResult', `最新客户: ${beforeCustomers[0].name}`, 'info');
+                }
+
+                // 模拟页面刷新延迟
+                log('pageRefreshResult', '模拟页面刷新...', 'info');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // 检查刷新后状态
+                log('pageRefreshResult', '检查刷新后状态', 'info');
+                const afterData = localStorage.getItem('customers');
+                const afterCustomers = afterData ? JSON.parse(afterData) : [];
+                log('pageRefreshResult', `刷新后客户数量: ${afterCustomers.length}`, 'info');
+
+                // 比较数据
+                if (beforeCustomers.length === afterCustomers.length) {
+                    log('pageRefreshResult', '✅ 数据在刷新后保持一致', 'success');
+                    
+                    // 检查具体内容
+                    let contentMatch = true;
+                    for (let i = 0; i < Math.min(3, beforeCustomers.length); i++) {
+                        if (beforeCustomers[i].id !== afterCustomers[i].id) {
+                            contentMatch = false;
+                            break;
+                        }
+                    }
+                    
+                    if (contentMatch) {
+                        log('pageRefreshResult', '✅ 数据内容也保持一致', 'success');
+                    } else {
+                        log('pageRefreshResult', '⚠️ 数据数量一致但内容有变化', 'warning');
+                    }
+                } else {
+                    log('pageRefreshResult', '❌ 数据在刷新后发生变化', 'error');
+                }
+
+                log('pageRefreshResult', '页面刷新模拟完成', 'success');
+
+            } catch (error) {
+                log('pageRefreshResult', `模拟页面刷新时出错: ${error.message}`, 'error');
+            }
+        }
+
+        // 5. 清理测试数据
+        async function clearTestData() {
+            clearLog('clearResult');
+            log('clearResult', '开始清理测试数据...');
+
+            try {
+                const storageData = localStorage.getItem('customers');
+                if (storageData) {
+                    const customers = JSON.parse(storageData);
+                    const beforeCount = customers.length;
+                    
+                    // 移除测试数据
+                    const cleanedCustomers = customers.filter(customer => 
+                        !customer.name.includes('同步测试客户_') && 
+                        !customer.name.includes('直接修改测试_') &&
+                        customer.source !== 'sync_test' &&
+                        customer.source !== 'direct_test'
+                    );
+                    
+                    localStorage.setItem('customers', JSON.stringify(cleanedCustomers));
+                    
+                    const afterCount = cleanedCustomers.length;
+                    log('clearResult', `清理完成: ${beforeCount} -> ${afterCount} (移除了 ${beforeCount - afterCount} 个测试客户)`, 'success');
+                } else {
+                    log('clearResult', '没有找到需要清理的数据', 'info');
+                }
+
+            } catch (error) {
+                log('clearResult', `清理测试数据时出错: ${error.message}`, 'error');
+            }
+        }
+
+        // 页面加载时自动检查
+        window.addEventListener('load', function() {
+            setTimeout(checkDataLayers, 1000);
+        });
+    </script>
+</body>
+</html>

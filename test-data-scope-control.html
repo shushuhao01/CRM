@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据范围控制测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
+        .test-title {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .test-description {
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+        .test-steps {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .test-steps ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .test-steps li {
+            margin-bottom: 8px;
+        }
+        .expected-result {
+            background: #e8f5e8;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #4caf50;
+        }
+        .warning {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #ffc107;
+            margin-bottom: 20px;
+        }
+        .app-link {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 10px 10px 10px 0;
+        }
+        .app-link:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>数据范围控制功能测试指南</h1>
+        
+        <div class="warning">
+            <strong>注意：</strong>本测试需要在CRM系统中进行，请确保系统正在运行并且已经实现了数据范围控制功能。
+        </div>
+
+        <a href="http://localhost:5173" class="app-link" target="_blank">打开CRM系统</a>
+
+        <div class="test-section">
+            <div class="test-title">1. 超级管理员权限测试</div>
+            <div class="test-description">
+                测试超级管理员是否能查看所有订单数据，不受数据范围限制。
+            </div>
+            <div class="test-steps">
+                <strong>测试步骤：</strong>
+                <ol>
+                    <li>使用超级管理员账号登录系统（用户名：admin）</li>
+                    <li>进入订单列表页面</li>
+                    <li>查看显示的订单数量和内容</li>
+                    <li>进入客户详情页面，查看客户的订单历史</li>
+                    <li>进入物流列表和物流跟踪页面</li>
+                </ol>
+            </div>
+            <div class="expected-result">
+                <strong>预期结果：</strong>超级管理员应该能看到所有订单，包括不同销售员和部门创建的订单。
+            </div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">2. 部门负责人权限测试</div>
+            <div class="test-description">
+                测试部门负责人是否只能查看本部门员工创建的订单。
+            </div>
+            <div class="test-steps">
+                <strong>测试步骤：</strong>
+                <ol>
+                    <li>使用部门负责人账号登录系统（用户名：dept_manager）</li>
+                    <li>进入订单列表页面</li>
+                    <li>查看显示的订单数量，应该少于超级管理员看到的数量</li>
+                    <li>检查订单的创建者是否都属于同一部门</li>
+                    <li>进入客户详情页面，查看订单历史是否被正确过滤</li>
+                </ol>
+            </div>
+            <div class="expected-result">
+                <strong>预期结果：</strong>部门负责人只能看到本部门员工创建的订单，无法看到其他部门的订单。
+            </div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">3. 销售员权限测试</div>
+            <div class="test-description">
+                测试销售员是否只能查看自己创建的订单。
+            </div>
+            <div class="test-steps">
+                <strong>测试步骤：</strong>
+                <ol>
+                    <li>使用销售员账号登录系统（用户名：sales1 或 sales2）</li>
+                    <li>进入订单列表页面</li>
+                    <li>查看显示的订单数量，应该是最少的</li>
+                    <li>检查所有订单的创建者是否都是当前登录用户</li>
+                    <li>尝试查看其他销售员创建的客户详情，检查订单历史是否为空或只显示自己的订单</li>
+                </ol>
+            </div>
+            <div class="expected-result">
+                <strong>预期结果：</strong>销售员只能看到自己创建的订单，无法看到其他销售员或部门的订单。
+            </div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">4. 客服权限测试</div>
+            <div class="test-description">
+                测试客服是否只能查看自己处理的订单。
+            </div>
+            <div class="test-steps">
+                <strong>测试步骤：</strong>
+                <ol>
+                    <li>使用客服账号登录系统（用户名：service1）</li>
+                    <li>进入订单列表页面</li>
+                    <li>查看显示的订单，检查是否只显示分配给当前客服的订单</li>
+                    <li>进入客户详情页面，查看订单历史过滤情况</li>
+                </ol>
+            </div>
+            <div class="expected-result">
+                <strong>预期结果：</strong>客服只能看到分配给自己处理的订单。
+            </div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">5. 物流模块权限测试</div>
+            <div class="test-description">
+                测试物流相关页面的数据范围控制是否正常工作。
+            </div>
+            <div class="test-steps">
+                <strong>测试步骤：</strong>
+                <ol>
+                    <li>使用不同角色的账号登录</li>
+                    <li>进入物流列表页面，查看显示的物流订单</li>
+                    <li>进入物流跟踪页面，尝试查询不同的快递单号</li>
+                    <li>进入物流发货页面，查看可发货的订单列表</li>
+                    <li>验证每个角色看到的数据是否符合权限要求</li>
+                </ol>
+            </div>
+            <div class="expected-result">
+                <strong>预期结果：</strong>物流模块应该遵循相同的数据范围控制规则，不同角色看到的物流数据应该与其权限一致。
+            </div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">6. 数据一致性测试</div>
+            <div class="test-description">
+                测试在不同页面之间数据范围控制的一致性。
+            </div>
+            <div class="test-steps">
+                <strong>测试步骤：</strong>
+                <ol>
+                    <li>使用销售员账号登录</li>
+                    <li>记录订单列表页面显示的订单数量</li>
+                    <li>进入客户详情页面，统计所有客户的订单总数</li>
+                    <li>进入物流相关页面，统计相关订单数量</li>
+                    <li>验证各页面显示的数据是否一致</li>
+                </ol>
+            </div>
+            <div class="expected-result">
+                <strong>预期结果：</strong>同一用户在不同页面看到的订单数据应该保持一致，不应该出现在某个页面能看到但在另一个页面看不到的情况。
+            </div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">7. 错误处理测试</div>
+            <div class="test-description">
+                测试在用户未登录或权限异常时的处理情况。
+            </div>
+            <div class="test-steps">
+                <strong>测试步骤：</strong>
+                <ol>
+                    <li>清除浏览器存储，模拟未登录状态</li>
+                    <li>直接访问订单列表等页面</li>
+                    <li>检查是否正确跳转到登录页面或显示空数据</li>
+                    <li>登录后再次检查数据是否正常显示</li>
+                </ol>
+            </div>
+            <div class="expected-result">
+                <strong>预期结果：</strong>未登录用户应该无法看到任何订单数据，或被重定向到登录页面。
+            </div>
+        </div>
+
+        <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 6px;">
+            <h3>测试完成检查清单</h3>
+            <ul style="list-style-type: none; padding-left: 0;">
+                <li>☐ 超级管理员能看到所有订单</li>
+                <li>☐ 部门负责人只能看到本部门订单</li>
+                <li>☐ 销售员只能看到自己的订单</li>
+                <li>☐ 客服只能看到分配给自己的订单</li>
+                <li>☐ 物流模块遵循相同的权限规则</li>
+                <li>☐ 不同页面数据保持一致</li>
+                <li>☐ 未登录用户无法访问数据</li>
+                <li>☐ 没有出现权限绕过的情况</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

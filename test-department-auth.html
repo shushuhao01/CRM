@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>部门功能测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        button { padding: 8px 16px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 3px; white-space: pre-wrap; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>部门功能测试</h1>
+    
+    <div class="section">
+        <h3>1. 设置认证Token</h3>
+        <button onclick="setAuthToken()">设置认证Token</button>
+        <div id="authResult" class="result"></div>
+    </div>
+    
+    <div class="section">
+        <h3>2. 测试部门API</h3>
+        <button onclick="testDepartmentList()">获取部门列表</button>
+        <button onclick="testDepartmentStats()">获取部门统计</button>
+        <button onclick="testCreateDepartment()">创建测试部门</button>
+        <div id="apiResult" class="result"></div>
+    </div>
+    
+    <div class="section">
+        <h3>3. 前端页面测试</h3>
+        <button onclick="openDepartmentPage()">打开部门管理页面</button>
+        <button onclick="checkLocalStorage()">检查本地存储</button>
+        <div id="pageResult" class="result"></div>
+    </div>
+
+    <script>
+        const VALID_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJkZXBhcnRtZW50SWQiOjEsImlhdCI6MTc2MDUwMjE2OCwiZXhwIjoxNzYzMDk0MTY4LCJhdWQiOiJjcm0tdXNlcnMiLCJpc3MiOiJjcm0tc3lzdGVtIn0.FO9mu_KlZXinCp6X-x35Yd86N1p7HrWn_5Ni3W1Tedw';
+        const USER_INFO = {
+            id: 1,
+            username: 'admin',
+            role: 'admin',
+            departmentId: 1,
+            departmentName: '管理部'
+        };
+
+        function setAuthToken() {
+            try {
+                localStorage.setItem('authToken', VALID_TOKEN);
+                localStorage.setItem('userInfo', JSON.stringify(USER_INFO));
+                localStorage.setItem('useMockApi', 'false');
+                
+                document.getElementById('authResult').innerHTML = '✅ 认证Token设置成功！\n' +
+                    'Token: ' + VALID_TOKEN.substring(0, 50) + '...\n' +
+                    'User: ' + JSON.stringify(USER_INFO, null, 2);
+                document.getElementById('authResult').className = 'result success';
+            } catch (error) {
+                document.getElementById('authResult').innerHTML = '❌ 设置失败: ' + error.message;
+                document.getElementById('authResult').className = 'result error';
+            }
+        }
+
+        async function testDepartmentList() {
+            try {
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    throw new Error('请先设置认证Token');
+                }
+
+                const response = await fetch('http://localhost:3000/api/v1/system/departments', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('apiResult').innerHTML = '✅ 部门列表获取成功！\n' +
+                        '状态码: ' + response.status + '\n' +
+                        '部门数量: ' + data.data.length + '\n' +
+                        '数据: ' + JSON.stringify(data, null, 2);
+                    document.getElementById('apiResult').className = 'result success';
+                } else {
+                    throw new Error(`API错误: ${response.status} - ${data.message || '未知错误'}`);
+                }
+            } catch (error) {
+                document.getElementById('apiResult').innerHTML = '❌ 测试失败: ' + error.message;
+                document.getElementById('apiResult').className = 'result error';
+            }
+        }
+
+        async function testDepartmentStats() {
+            try {
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    throw new Error('请先设置认证Token');
+                }
+
+                const response = await fetch('http://localhost:3000/api/v1/system/departments/stats', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('apiResult').innerHTML = '✅ 部门统计获取成功！\n' +
+                        '状态码: ' + response.status + '\n' +
+                        '统计数据: ' + JSON.stringify(data.data, null, 2);
+                    document.getElementById('apiResult').className = 'result success';
+                } else {
+                    throw new Error(`API错误: ${response.status} - ${data.message || '未知错误'}`);
+                }
+            } catch (error) {
+                document.getElementById('apiResult').innerHTML = '❌ 测试失败: ' + error.message;
+                document.getElementById('apiResult').className = 'result error';
+            }
+        }
+
+        async function testCreateDepartment() {
+            try {
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    throw new Error('请先设置认证Token');
+                }
+
+                const newDept = {
+                    name: '测试部门_' + Date.now(),
+                    code: 'TEST_' + Date.now(),
+                    description: '这是一个测试部门',
+                    status: 'active'
+                };
+
+                const response = await fetch('http://localhost:3000/api/v1/system/departments', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(newDept)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('apiResult').innerHTML = '✅ 部门创建成功！\n' +
+                        '状态码: ' + response.status + '\n' +
+                        '新部门: ' + JSON.stringify(data.data, null, 2);
+                    document.getElementById('apiResult').className = 'result success';
+                } else {
+                    throw new Error(`API错误: ${response.status} - ${data.message || '未知错误'}`);
+                }
+            } catch (error) {
+                document.getElementById('apiResult').innerHTML = '❌ 测试失败: ' + error.message;
+                document.getElementById('apiResult').className = 'result error';
+            }
+        }
+
+        function openDepartmentPage() {
+            window.open('http://localhost:5173/#/system/departments', '_blank');
+            document.getElementById('pageResult').innerHTML = '✅ 已打开部门管理页面';
+            document.getElementById('pageResult').className = 'result success';
+        }
+
+        function checkLocalStorage() {
+            const authToken = localStorage.getItem('authToken');
+            const userInfo = localStorage.getItem('userInfo');
+            const useMockApi = localStorage.getItem('useMockApi');
+            
+            document.getElementById('pageResult').innerHTML = '本地存储状态:\n' +
+                'authToken: ' + (authToken ? authToken.substring(0, 50) + '...' : '未设置') + '\n' +
+                'userInfo: ' + (userInfo || '未设置') + '\n' +
+                'useMockApi: ' + (useMockApi || '未设置');
+            document.getElementById('pageResult').className = 'result';
+        }
+    </script>
+</body>
+</html>

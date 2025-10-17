@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Android SDK 下载测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .download-btn {
+            background: #409EFF;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        .download-btn:hover {
+            background: #337ecc;
+        }
+        .info {
+            background: #f0f9ff;
+            border: 1px solid #0ea5e9;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .success {
+            background: #f0fdf4;
+            border: 1px solid #22c55e;
+            color: #15803d;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🤖 Android SDK 下载测试</h1>
+        
+        <div class="info">
+            <h3>📋 测试信息</h3>
+            <p><strong>文件名:</strong> CRM-Mobile-SDK-1.0.0-release.apk</p>
+            <p><strong>文件大小:</strong> 1.93 MB (1,925,676 字节)</p>
+            <p><strong>下载路径:</strong> /downloads/CRM-Mobile-SDK-1.0.0-release.apk</p>
+        </div>
+
+        <h3>🔗 直接下载链接测试</h3>
+        <button class="download-btn" onclick="downloadAPK()">
+            📱 下载 Android SDK
+        </button>
+        
+        <h3>🌐 浏览器访问测试</h3>
+        <p>
+            <a href="/downloads/CRM-Mobile-SDK-1.0.0-release.apk" target="_blank">
+                直接访问 APK 文件
+            </a>
+        </p>
+
+        <div id="result" style="margin-top: 20px;"></div>
+
+        <h3>✅ 验证步骤</h3>
+        <ol>
+            <li>点击上方的"下载 Android SDK"按钮</li>
+            <li>检查浏览器下载文件夹中是否出现了 APK 文件</li>
+            <li>验证下载的文件大小是否为 1.93 MB</li>
+            <li>确认文件名为 CRM-Mobile-SDK-1.0.0-release.apk</li>
+        </ol>
+
+        <div class="info success">
+            <h4>🎉 修复说明</h4>
+            <p>已将下载链接从 <code>/downloads/crm-android-v1.0.0.apk</code> 更新为 <code>/downloads/CRM-Mobile-SDK-1.0.0-release.apk</code></p>
+            <p>现在下载的是真正的 1.93MB APK 文件，而不是 408B 的占位符文件。</p>
+        </div>
+    </div>
+
+    <script>
+        function downloadAPK() {
+            const link = document.createElement('a');
+            link.href = '/downloads/CRM-Mobile-SDK-1.0.0-release.apk';
+            link.download = 'CRM-Mobile-SDK-1.0.0-release.apk';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            document.getElementById('result').innerHTML = 
+                '<div class="info success">✅ 下载已开始！请检查浏览器下载文件夹。</div>';
+        }
+    </script>
+</body>
+</html>

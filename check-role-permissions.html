@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>检查角色权限配置</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .role-config { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .permissions { margin-left: 20px; }
+        .permission-item { margin: 2px 0; }
+    </style>
+</head>
+<body>
+    <h1>角色权限配置检查</h1>
+    <div id="result"></div>
+    <script>
+        function checkRolePermissions() {
+            const result = document.getElementById('result');
+            let html = '';
+            
+            // 检查所有可能的角色ID
+            const roleIds = ['1', '2', '3', '4', '5'];
+            const roleNames = {
+                '1': '超级管理员',
+                '2': '管理员', 
+                '3': '经理',
+                '4': '员工',
+                '5': '客服'
+            };
+            
+            roleIds.forEach(roleId => {
+                const key = `role_permissions_${roleId}`;
+                const config = localStorage.getItem(key);
+                
+                html += `<div class="role-config">`;
+                html += `<h3>角色ID: ${roleId} (${roleNames[roleId]})</h3>`;
+                
+                if (config) {
+                    try {
+                        const permissions = JSON.parse(config);
+                        html += `<div class="permissions">`;
+                        html += `<strong>权限配置:</strong><br>`;
+                        if (permissions.permissions && permissions.permissions.length > 0) {
+                            permissions.permissions.forEach(perm => {
+                                html += `<div class="permission-item">- ${perm.name} (${perm.code})</div>`;
+                            });
+                        } else {
+                            html += `<div class="permission-item">无权限配置</div>`;
+                        }
+                        html += `</div>`;
+                    } catch (e) {
+                        html += `<div style="color: red;">配置解析错误: ${e.message}</div>`;
+                    }
+                } else {
+                    html += `<div style="color: gray;">无配置</div>`;
+                }
+                
+                html += `</div>`;
+            });
+            
+            result.innerHTML = html;
+        }
+        
+        checkRolePermissions();
+    </script>
+</body>
+</html>
