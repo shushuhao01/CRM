@@ -1,85 +1,98 @@
 import { DataSource } from 'typeorm';
 import { User } from '../entities/User';
-import { Department } from '../entities/Department';
 import { Customer } from '../entities/Customer';
-import { Product } from '../entities/Product';
-import { ProductCategory } from '../entities/ProductCategory';
 import { Order } from '../entities/Order';
-import { OrderItem } from '../entities/OrderItem';
-import { OrderStatusHistory } from '../entities/OrderStatusHistory';
-import { OperationLog } from '../entities/OperationLog';
-import { SystemConfig } from '../entities/SystemConfig';
-import { MessageSubscription, DepartmentSubscriptionConfig } from '../entities/MessageSubscription';
-import { LogisticsTracking } from '../entities/LogisticsTracking';
-import { LogisticsTrace } from '../entities/LogisticsTrace';
+import { Product } from '../entities/Product';
+import { Department } from '../entities/Department';
 import { Role } from '../entities/Role';
 import { Permission } from '../entities/Permission';
-import { UserPermission } from '../entities/UserPermission';
+import { CustomerGroup } from '../entities/CustomerGroup';
+import { CustomerTag } from '../entities/CustomerTag';
+import { LogisticsStatus } from '../entities/LogisticsStatus';
+import { RejectionReason } from '../entities/RejectionReason';
+import { ImprovementGoal } from '../entities/ImprovementGoal';
+import { Call } from '../entities/Call';
+import { Message } from '../entities/Message';
+import { PerformanceMetric } from '../entities/PerformanceMetric';
+import { Notification } from '../entities/Notification';
+import { ServiceRecord } from '../entities/ServiceRecord';
+import { SmsTemplate } from '../entities/SmsTemplate';
+import { SmsRecord } from '../entities/SmsRecord';
+import { Log } from '../entities/Log';
+import path from 'path';
 
-export let AppDataSource: DataSource | null = null;
+// 根据环境选择数据库配置
+const isProduction = process.env.NODE_ENV === 'production';
 
-export const createDataSource = () => {
-  if (!AppDataSource) {
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    
-    // 开发环境使用SQLite，生产环境使用MySQL
-    const config = isDevelopment ? {
-      type: 'sqlite' as const,
-      database: 'database/crm_dev.sqlite',
-      synchronize: true,
-      logging: true,
-    } : {
-      type: 'mysql' as const,
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '3306'),
-      username: process.env.DB_USERNAME || 'root',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'crm_system',
-      synchronize: false,
-      logging: false,
-    };
-
-    const baseConfig = {
-      ...config,
-      entities: [
-        User,
-        Department,
-        Customer,
-        Product,
-        ProductCategory,
-        Order,
-        OrderItem,
-        OrderStatusHistory,
-        OperationLog,
-        SystemConfig,
-        MessageSubscription,
-        DepartmentSubscriptionConfig,
-        LogisticsTracking,
-        LogisticsTrace,
-        Role,
-        Permission,
-        UserPermission
-      ],
-      migrations: ['src/migrations/*.ts'],
-      subscribers: ['src/subscribers/*.ts'],
-    };
-
-    // 只在MySQL环境下添加extra配置
-    if (!isDevelopment) {
-      (baseConfig as any).extra = {
-        connectionLimit: 10,
-        acquireTimeout: 60000,
-        timeout: 60000,
-        reconnect: true,
-        // 字符集配置
-        charset: 'utf8mb4_unicode_ci'
-      };
-    }
-
-    AppDataSource = new DataSource(baseConfig);
-  }
-  return AppDataSource;
-};
+const AppDataSource = new DataSource(
+  isProduction
+    ? {
+        // 生产环境使用MySQL
+        type: 'mysql',
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '3306'),
+        username: process.env.DB_USERNAME || 'root',
+        password: process.env.DB_PASSWORD || '',
+        database: process.env.DB_DATABASE || 'crm',
+        synchronize: false, // 生产环境不自动同步
+        logging: false,
+        entities: [
+          User,
+          Customer,
+          Order,
+          Product,
+          Department,
+          Role,
+          Permission,
+          CustomerGroup,
+          CustomerTag,
+          LogisticsStatus,
+          RejectionReason,
+          ImprovementGoal,
+          Call,
+          Message,
+          PerformanceMetric,
+          Notification,
+          ServiceRecord,
+          SmsTemplate,
+          SmsRecord,
+          Log
+        ],
+        migrations: [],
+        subscribers: [],
+      }
+    : {
+        // 开发环境使用SQLite
+        type: 'sqlite',
+        database: path.join(process.cwd(), 'data', 'crm.db'),
+        synchronize: true,
+        logging: false,
+        entities: [
+          User,
+          Customer,
+          Order,
+          Product,
+          Department,
+          Role,
+          Permission,
+          CustomerGroup,
+          CustomerTag,
+          LogisticsStatus,
+          RejectionReason,
+          ImprovementGoal,
+          Call,
+          Message,
+          PerformanceMetric,
+          Notification,
+          ServiceRecord,
+          SmsTemplate,
+          SmsRecord,
+          Log
+        ],
+        migrations: [],
+        subscribers: [],
+      }
+);
 
 // 获取数据源实例
 export const getDataSource = (): DataSource | null => {
