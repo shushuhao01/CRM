@@ -7,12 +7,27 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
+# Dependencies
+node_modules/
+backend/node_modules/
+
+# Build outputs
 .DS_Store
-dist
-dist-ssr
-coverage
+dist/
+dist-ssr/
+coverage/
 *.local
+
+# Database files
+*.sqlite
+*.db
+
+# Upload files
+backend/uploads/
+uploads/
+
+# Log files
+backend/logs/
 
 /cypress/videos/
 /cypress/screenshots/
