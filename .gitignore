@@ -44,3 +44,19 @@ mobile-sdk/ios/build/
 *.war
 *.ear
 *.aar
+
+# Additional large files and directories
+mobile-sdk/
+public/downloads/
+backend/uploads/
+database/
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+
+# Test files that might be large
+test-*.html
+*-test.html
+debug-*.html
+*.test.js
