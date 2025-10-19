@@ -176,7 +176,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox, FormInstance } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import { 
   Box, Van, Refresh, InfoFilled, Document
 } from '@element-plus/icons-vue'

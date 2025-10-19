@@ -44,6 +44,8 @@ export default defineConfig({
     'process.env.NODE_ENV': '"production"'
   },
   optimizeDeps: {
-    include: ['vue', 'vue-router', 'pinia', 'element-plus']
+    include: ['vue', 'vue-router', 'pinia', 'element-plus'],
+    // 强制预构建Element Plus以解决模块解析问题
+    force: true
   }
 })

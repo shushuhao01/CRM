@@ -13,7 +13,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
-    },
+    }
   },
   server: {
     host: true, // 允许外部访问（修复预览连接拒绝）
@@ -35,7 +35,8 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    exclude: ['vue-demi'] // 排除可能导致重复更新的依赖
+    exclude: ['vue-demi'], // 排除可能导致重复更新的依赖
+    include: ['element-plus'] // 强制预构建Element Plus
   },
   build: {
     target: 'es2015', // 兼容更多浏览器

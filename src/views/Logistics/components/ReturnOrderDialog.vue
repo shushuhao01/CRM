@@ -189,7 +189,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue'
-import { ElMessage, ElMessageBox, FormInstance } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import { 
   Box, Warning, Clock, Document, RefreshLeft, WarningFilled
 } from '@element-plus/icons-vue'
