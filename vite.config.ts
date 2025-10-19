@@ -4,7 +4,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
-// https://vite.dev/config/
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     vue(),
@@ -36,5 +36,20 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['vue-demi'] // 排除可能导致重复更新的依赖
+  },
+  build: {
+    target: 'es2015', // 兼容更多浏览器
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['vue', 'vue-router', 'pinia'],
+          elementPlus: ['element-plus', '@element-plus/icons-vue']
+        }
+      }
+    }
+  },
+  define: {
+    // 为Node.js 16环境提供crypto.getRandomValues polyfill
+    global: 'globalThis',
   }
 })
