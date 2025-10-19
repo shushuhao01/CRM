@@ -466,7 +466,10 @@ const defaultRoles = [
 ];
 
 async function createPermissions(permissions: any[], parent: Permission | null = null): Promise<Permission[]> {
-  const permissionRepository = AppDataSource!.getTreeRepository(Permission);
+  if (!AppDataSource) {
+    throw new Error('AppDataSource is not initialized');
+  }
+  const permissionRepository = AppDataSource.getTreeRepository(Permission);
   const createdPermissions: Permission[] = [];
 
   for (const permData of permissions) {
@@ -511,6 +514,10 @@ async function initRolesAndPermissions() {
   try {
     logger.info('开始初始化角色和权限...');
 
+    if (!AppDataSource) {
+      throw new Error('AppDataSource is not initialized');
+    }
+
     // 创建权限
     logger.info('创建默认权限...');
     const allPermissions = await createPermissions(defaultPermissions);
@@ -518,8 +525,8 @@ async function initRolesAndPermissions() {
 
     // 创建角色
     logger.info('创建默认角色...');
-    const roleRepository = AppDataSource!.getRepository(Role);
-    const permissionRepository = AppDataSource!.getTreeRepository(Permission);
+    const roleRepository = AppDataSource.getRepository(Role);
+    const permissionRepository = AppDataSource.getTreeRepository(Permission);
 
     for (const roleData of defaultRoles) {
       // 检查角色是否已存在

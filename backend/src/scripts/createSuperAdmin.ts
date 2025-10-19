@@ -1,8 +1,9 @@
 import dotenv from 'dotenv';
-// 加载环境变量
-dotenv.config();
+// 加载环境变量 - 优先加载开发环境配置
+dotenv.config({ path: '.env.development' });
+dotenv.config(); // 加载默认配置作为备用
 
-import { createDataSource } from '../config/database';
+import { getDataSource } from '../config/database';
 import { User } from '../entities/User';
 import { Department } from '../entities/Department';
 import { Role } from '../entities/Role';
@@ -11,7 +12,10 @@ import bcrypt from 'bcryptjs';
 async function createSuperAdmin() {
   try {
     console.log('正在初始化数据库连接...');
-    const dataSource = createDataSource();
+    const dataSource = getDataSource();
+    if (!dataSource) {
+      throw new Error('无法获取数据源');
+    }
     await dataSource.initialize();
     
     const userRepository = dataSource.getRepository(User);

@@ -43,8 +43,8 @@ export class LogisticsController {
 
       // 搜索条件
       if (trackingNo) {
-        queryBuilder.andWhere('logistics.trackingNo LIKE :trackingNo', { 
-          trackingNo: `%${trackingNo}%` 
+        queryBuilder.andWhere('logistics.trackingNo LIKE :trackingNo', {
+          trackingNo: `%${trackingNo}%`
         });
       }
 
@@ -190,7 +190,7 @@ export class LogisticsController {
       const now = new Date();
       if (!tracking.nextSyncTime || now >= tracking.nextSyncTime) {
         await this.queryLogisticsInfo(tracking.id);
-        
+
         // 重新获取更新后的数据
         const updatedTracking = await this.logisticsTrackingRepository.findOne({
           where: { id: tracking.id },
@@ -236,7 +236,7 @@ export class LogisticsController {
           const tracking = await this.logisticsTrackingRepository.findOne({
             where: { trackingNo: trackingNo }
           });
-          
+
           if (tracking) {
             return this.queryLogisticsInfo(tracking.id);
           }

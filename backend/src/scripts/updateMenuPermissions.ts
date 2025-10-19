@@ -1,4 +1,4 @@
-import { createDataSource } from '../config/database'
+import { getDataSource } from '../config/database'
 import { Role } from '../entities/Role'
 import { Permission } from '../entities/Permission'
 
@@ -6,7 +6,11 @@ import { Permission } from '../entities/Permission'
 process.env.NODE_ENV = 'development'
 
 async function updateMenuPermissions() {
-  const AppDataSource = createDataSource()
+  const AppDataSource = getDataSource()
+  
+  if (!AppDataSource) {
+    throw new Error('无法获取数据源')
+  }
   
   try {
     await AppDataSource.initialize()

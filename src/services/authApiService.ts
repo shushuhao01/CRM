@@ -82,39 +82,6 @@ export class AuthApiService {
       if (shouldUseMockApi()) {
         // Mock模式下直接返回错误，不再提供测试账号
         throw new Error('Mock模式已禁用，请使用真实API进行登录')
-
-        const mockResponse: LoginResponse = {
-          user: {
-            id: account.id,
-            username: credentials.username,
-            email: `${credentials.username}@example.com`,
-            realName: account.realName,
-            phone: '13800138000',
-            avatar: '',
-            role: account.role as 'admin' | 'manager' | 'user',
-            status: 'active',
-            permissions: account.role === 'admin' ? ['*'] : ['basic'],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          tokens: {
-            accessToken: `mock-token-${Date.now()}`,
-            refreshToken: `mock-refresh-${Date.now()}`
-          },
-          expiresIn: 3600
-        }
-
-        // 保存token到localStorage
-        this.api.setAuthToken(mockResponse.tokens.accessToken)
-        localStorage.setItem('refresh_token', mockResponse.tokens.refreshToken)
-        localStorage.setItem('user_info', JSON.stringify(mockResponse.user))
-        
-        // 在模拟API模式下，总是设置很长的过期时间（30天），避免token过期问题
-        const expiryTime = Date.now() + (30 * 24 * 60 * 60 * 1000) // 30天
-        localStorage.setItem('token_expiry', expiryTime.toString())
-
-        console.log('[Auth] Mock API模式 - 登录成功:', mockResponse.user.username)
-        return mockResponse
       }
 
       const response = await this.api.post<LoginResponse>('/auth/login', credentials)
