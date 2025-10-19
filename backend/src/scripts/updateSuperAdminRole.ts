@@ -2,14 +2,17 @@ import dotenv from 'dotenv';
 // 加载环境变量
 dotenv.config();
 
-import { createDataSource } from '../config/database';
+import { getDataSource } from '../config/database';
 import { User } from '../entities/User';
 import { Role } from '../entities/Role';
 
 async function updateSuperAdminRole() {
   try {
     console.log('正在初始化数据库连接...');
-    const dataSource = createDataSource();
+    const dataSource = getDataSource();
+    if (!dataSource) {
+      throw new Error('无法获取数据源');
+    }
     await dataSource.initialize();
     
     const userRepository = dataSource.getRepository(User);

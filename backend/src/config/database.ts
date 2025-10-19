@@ -19,6 +19,15 @@ import { ServiceRecord } from '../entities/ServiceRecord';
 import { SmsTemplate } from '../entities/SmsTemplate';
 import { SmsRecord } from '../entities/SmsRecord';
 import { Log } from '../entities/Log';
+import { OperationLog } from '../entities/OperationLog';
+import { LogisticsTrace } from '../entities/LogisticsTrace';
+import { LogisticsTracking } from '../entities/LogisticsTracking';
+import { MessageSubscription } from '../entities/MessageSubscription';
+import { OrderItem } from '../entities/OrderItem';
+import { OrderStatusHistory } from '../entities/OrderStatusHistory';
+import { ProductCategory } from '../entities/ProductCategory';
+import { SystemConfig } from '../entities/SystemConfig';
+import { UserPermission } from '../entities/UserPermission';
 import path from 'path';
 
 // 根据环境选择数据库配置
@@ -56,7 +65,16 @@ const AppDataSource = new DataSource(
           ServiceRecord,
           SmsTemplate,
           SmsRecord,
-          Log
+          Log,
+          OperationLog,
+          LogisticsTrace,
+          LogisticsTracking,
+          MessageSubscription,
+          OrderItem,
+          OrderStatusHistory,
+          ProductCategory,
+          SystemConfig,
+          UserPermission
         ],
         migrations: [],
         subscribers: [],
@@ -87,12 +105,24 @@ const AppDataSource = new DataSource(
           ServiceRecord,
           SmsTemplate,
           SmsRecord,
-          Log
+          Log,
+          OperationLog,
+          LogisticsTrace,
+          LogisticsTracking,
+          MessageSubscription,
+          OrderItem,
+          OrderStatusHistory,
+          ProductCategory,
+          SystemConfig,
+          UserPermission
         ],
         migrations: [],
         subscribers: [],
       }
 );
+
+// 导出 AppDataSource
+export { AppDataSource };
 
 // 获取数据源实例
 export const getDataSource = (): DataSource | null => {
@@ -102,8 +132,7 @@ export const getDataSource = (): DataSource | null => {
 // 初始化数据库连接
 export const initializeDatabase = async (): Promise<void> => {
   try {
-    const dataSource = createDataSource();
-    await dataSource.initialize();
+    await AppDataSource.initialize();
     console.log('✅ 数据库连接成功');
     
     // 开发环境下同步数据库结构
@@ -130,7 +159,6 @@ export const closeDatabase = async (): Promise<void> => {
   try {
     if (AppDataSource?.isInitialized) {
       await AppDataSource.destroy();
-      AppDataSource = null;
       console.log('✅ 数据库连接已关闭');
     }
   } catch (error) {
