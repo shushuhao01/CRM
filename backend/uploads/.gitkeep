@@ -1,0 +1,2 @@
+# This file ensures the backend uploads directory is tracked by Git
+# The uploads directory is needed for backend file uploads
