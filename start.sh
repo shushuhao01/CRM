@@ -26,11 +26,31 @@ echo ""
 
 # 第一步：构建前端
 echo "🔨 第1步：构建前端应用..."
+
+# 检查Node.js版本并选择合适的构建方式
+NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+echo "📍 检测到Node.js主版本: $NODE_VERSION"
+
 npm install --production=false
-npm run build
+
+if [ "$NODE_VERSION" -lt "20" ]; then
+    echo "🔧 使用Node.js 16兼容构建..."
+    # 设置环境变量
+    export NODE_OPTIONS="--max-old-space-size=4096"
+    export VITE_LEGACY_BUILD=true
+    
+    # 使用Node.js 16兼容配置
+    npm run build-node16
+else
+    echo "🔧 使用标准构建..."
+    npm run build
+fi
 
 if [ $? -ne 0 ]; then
     echo "❌ 前端构建失败！"
+    echo "🔍 如果是Node.js版本问题，请尝试："
+    echo "   1. 升级Node.js到20+版本"
+    echo "   2. 或使用: npm run build-node16"
     exit 1
 fi
 
