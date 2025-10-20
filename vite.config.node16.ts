@@ -2,6 +2,13 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
+// 导入 Node.js 16 兼容性修复
+try {
+  require('./fix-node16-crypto.js');
+} catch (e) {
+  console.warn('⚠️ Node.js 16 兼容性修复脚本加载失败:', e.message);
+}
+
 // 宝塔面板 Node.js 16 专用配置
 export default defineConfig({
   plugins: [vue()],
@@ -10,6 +17,10 @@ export default defineConfig({
   define: {
     // 修复 crypto.getRandomValues 问题
     global: 'globalThis',
+    // 添加更多兼容性定义
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+    __VUE_OPTIONS_API__: true,
+    __VUE_PROD_DEVTOOLS__: false,
   },
   
   resolve: {

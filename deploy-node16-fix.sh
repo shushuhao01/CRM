@@ -60,17 +60,38 @@ fi
 echo "✅ 前端依赖安装完成！"
 
 # 第二步：构建前端
-echo "🔨 第2步：构建前端应用..."
-npm run build
+echo "🔨 第2步：构建前端应用（Node.js 16兼容模式）..."
+
+# 设置环境变量以解决兼容性问题
+export NODE_OPTIONS="--max-old-space-size=4096"
+export VITE_LEGACY_BUILD=true
+
+# 清理之前的构建文件
+echo "🧹 清理之前的构建文件..."
+rm -rf dist
+rm -rf node_modules/.vite
+
+# 使用Node.js 16兼容构建
+npm run build-node16
 
 if [ $? -ne 0 ]; then
-    echo "⚠️ 前端构建失败，尝试类型检查跳过模式..."
-    # 如果构建失败，尝试跳过类型检查
-    npx vite build --mode production
+    echo "⚠️ Node.js 16兼容构建失败，尝试直接使用配置文件..."
+    # 如果构建失败，直接使用Node.js 16配置文件
+    npx vite build --config vite.config.node16.ts
     
     if [ $? -ne 0 ]; then
-        echo "❌ 前端构建失败！请检查代码错误"
-        exit 1
+        echo "⚠️ 配置文件构建失败，尝试基础构建..."
+        # 最后尝试基础构建
+        npx vite build --mode production --target es2015
+        
+        if [ $? -ne 0 ]; then
+            echo "❌ 前端构建失败！请检查代码错误"
+            echo "🔍 可能的解决方案："
+            echo "   1. 检查 Node.js 版本是否为 16.x"
+            echo "   2. 清理 node_modules 重新安装"
+            echo "   3. 检查磁盘空间是否充足"
+            exit 1
+        fi
     fi
 fi
 
