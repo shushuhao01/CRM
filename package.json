@@ -11,6 +11,7 @@
     "build": "run-p type-check \"build-only {@}\" --",
     "build-bt": "vite build --config vite.config.production.ts",
     "build-simple": "vite build --mode production",
+    "build-node16": "vite build --config vite.config.node16.ts",
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
