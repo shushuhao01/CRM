@@ -74,8 +74,8 @@ read -p "数据库用户名 (默认: root): " DB_USER
 DB_USER=${DB_USER:-root}
 
 # 数据库密码
-read -s -p "数据库密码: " DB_PASSWORD
-echo ""
+echo "数据库密码 (可见输入，支持粘贴): "
+read -p "> " DB_PASSWORD
 
 # 确认配置信息
 echo ""
