@@ -40,11 +40,20 @@ export default defineConfig({
   },
   build: {
     target: 'es2015', // 兼容更多浏览器
+    chunkSizeWarningLimit: 1000, // 提高警告阈值到1MB
     rollupOptions: {
       output: {
         manualChunks: {
           vendor: ['vue', 'vue-router', 'pinia'],
-          elementPlus: ['element-plus', '@element-plus/icons-vue']
+          elementPlus: ['element-plus', '@element-plus/icons-vue'],
+          utils: ['axios', 'echarts', 'xlsx'],
+          addressData: ['@/utils/addressData'],
+          // 将大的组件分离到独立chunk
+          settings: ['@/views/System/Settings.vue'],
+          largeComponents: [
+            '@/components/System/SuperAdminPermissionPanel.vue',
+            '@/views/System/PermissionManagement.vue'
+          ]
         }
       }
     }
