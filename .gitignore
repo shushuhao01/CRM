@@ -13,7 +13,7 @@ backend/node_modules/
 
 # Build outputs
 .DS_Store
-dist/
+# dist/  # 注释掉，允许推送构建产物到GitHub用于部署
 dist-ssr/
 coverage/
 *.local
