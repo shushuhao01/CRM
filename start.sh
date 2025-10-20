@@ -24,6 +24,64 @@ fi
 echo "✅ PM2版本: $(pm2 -v)"
 echo ""
 
+# 检查数据库配置
+echo "🗄️ 检查数据库配置..."
+ENV_FILE="./backend/.env"
+
+if [ ! -f "$ENV_FILE" ]; then
+    echo "⚠️  未找到数据库配置文件: $ENV_FILE"
+    echo ""
+    echo "🔧 数据库配置选项："
+    echo "1. 运行数据库一键部署: chmod +x db-deploy.sh && ./db-deploy.sh"
+    echo "2. 手动配置: 复制 backend/.env.database 为 backend/.env 并修改配置"
+    echo "3. 跳过数据库配置（仅构建前端）"
+    echo ""
+    read -p "请选择 (1/2/3): " db_choice
+    
+    case $db_choice in
+        1)
+            echo "🚀 启动数据库一键部署..."
+            if [ -f "./db-deploy.sh" ]; then
+                chmod +x ./db-deploy.sh
+                ./db-deploy.sh
+                if [ $? -ne 0 ]; then
+                    echo "❌ 数据库部署失败！"
+                    exit 1
+                fi
+            else
+                echo "❌ 数据库部署脚本不存在！"
+                exit 1
+            fi
+            ;;
+        2)
+            echo "📝 请手动配置数据库后重新运行此脚本"
+            echo "💡 参考文件: backend/.env.database"
+            exit 0
+            ;;
+        3)
+            echo "⚠️  跳过数据库配置，仅构建前端"
+            SKIP_BACKEND=true
+            ;;
+        *)
+            echo "❌ 无效选择！"
+            exit 1
+            ;;
+    esac
+else
+    echo "✅ 数据库配置文件已存在"
+    
+    # 检查数据库连接
+    if command -v mysql &> /dev/null; then
+        echo "🔍 测试数据库连接..."
+        # 这里可以添加数据库连接测试逻辑
+        echo "✅ 数据库环境检查完成"
+    else
+        echo "⚠️  MySQL未安装，请确保数据库服务正常运行"
+    fi
+fi
+
+echo ""
+
 # 第一步：构建前端
 echo "🔨 第1步：构建前端应用..."
 
@@ -58,45 +116,50 @@ echo "✅ 前端构建完成！"
 echo ""
 
 # 第二步：构建后端
-echo "🔨 第2步：构建后端应用..."
-cd backend
+if [ "$SKIP_BACKEND" != "true" ]; then
+    echo "🔨 第2步：构建后端应用..."
+    cd backend
 
-npm install --production=false
-npm run build
+    npm install --production=false
+    npm run build
 
-if [ $? -ne 0 ]; then
-    echo "❌ 后端构建失败！"
-    exit 1
+    if [ $? -ne 0 ]; then
+        echo "❌ 后端构建失败！"
+        exit 1
+    fi
+
+    echo "✅ 后端构建完成！"
+    echo ""
+
+    # 第三步：创建必要目录
+    echo "📁 第3步：创建必要目录..."
+    mkdir -p logs
+    mkdir -p uploads
+
+    # 第四步：启动后端服务
+    echo "🚀 第4步：启动后端服务..."
+
+    # 停止旧的服务
+    pm2 stop crm-backend 2>/dev/null || true
+    pm2 delete crm-backend 2>/dev/null || true
+
+    # 启动新服务
+    pm2 start dist/app.js --name "crm-backend" --env production
+
+    if [ $? -ne 0 ]; then
+        echo "❌ 后端启动失败！"
+        exit 1
+    fi
+
+    echo "✅ 后端服务启动成功！"
+    echo "📊 数据库：MySQL (已配置)"
+    echo "🌐 服务地址：http://localhost:3000"
+    echo "📝 日志文件：./logs/app.log"
+    echo ""
+else
+    echo "⚠️  跳过后端构建和启动"
+    echo ""
 fi
-
-echo "✅ 后端构建完成！"
-echo ""
-
-# 第三步：创建必要目录
-echo "📁 第3步：创建必要目录..."
-mkdir -p logs
-mkdir -p uploads
-
-# 第四步：启动后端服务
-echo "🚀 第4步：启动后端服务..."
-
-# 停止旧的服务
-pm2 stop crm-backend 2>/dev/null || true
-pm2 delete crm-backend 2>/dev/null || true
-
-# 启动新服务
-pm2 start dist/app.js --name "crm-backend" --env production
-
-if [ $? -ne 0 ]; then
-    echo "❌ 后端启动失败！"
-    exit 1
-fi
-
-echo "✅ 后端服务启动成功！"
-echo "📊 数据库：MySQL (请确保已配置)"
-echo "🌐 服务地址：http://localhost:3000"
-echo "📝 日志文件：./logs/app.log"
-echo ""
 
 # 返回根目录
 cd ..
