@@ -462,6 +462,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { createSafeNavigator } from '@/utils/navigation'
+import { useOrderStore } from '@/stores/order'
 import { 
   ArrowLeft,
   Plus
@@ -471,6 +472,9 @@ import {
 const router = useRouter()
 const route = useRoute()
 const safeNavigator = createSafeNavigator(router)
+
+// Store
+const orderStore = useOrderStore()
 
 // 响应式数据
 const saveLoading = ref(false)
@@ -653,38 +657,37 @@ const searchOrders = async (query: string) => {
   orderLoading.value = true
   
   try {
-    // 模拟API调用
+    // 模拟API调用延迟
     await new Promise(resolve => {
       const timeoutId = setTimeout(() => {
         timeoutIds.delete(timeoutId)
         resolve(undefined)
-      }, 500)
+      }, 300)
       timeoutIds.add(timeoutId)
     })
     
     // 检查组件是否已卸载
     if (isUnmounted.value) return
     
-    // 模拟订单数据
-    orderOptions.value = [
-      {
-        orderNo: 'ORD202401090001',
-        customerName: '张三',
-        orderTime: '2024-01-09 15:30:00',
-        totalAmount: '1299.00',
-        status: 'paid'
-      },
-      {
-        orderNo: 'ORD202401090002',
-        customerName: '李四',
-        orderTime: '2024-01-09 16:45:00',
-        totalAmount: '899.00',
-        status: 'paid'
-      }
-    ].filter(order => 
-      order.orderNo.includes(query) || 
-      order.customerName.includes(query)
+    // 从订单store获取真实订单数据
+    const allOrders = orderStore.getOrders()
+    
+    // 过滤订单：只显示已审核通过且未发货或已发货的订单
+    const filteredOrders = allOrders.filter(order => 
+      (order.auditStatus === 'approved') &&
+      (order.status === 'pending_shipment' || order.status === 'shipped' || order.status === 'delivered') &&
+      (order.orderNumber.includes(query) || 
+       order.customerName.includes(query))
     )
+    
+    // 转换为选项格式
+    orderOptions.value = filteredOrders.map(order => ({
+      orderNo: order.orderNumber,
+      customerName: order.customerName,
+      orderTime: order.createTime,
+      totalAmount: order.totalAmount.toFixed(2),
+      status: order.status === 'pending_shipment' ? 'paid' : order.status === 'shipped' ? 'shipped' : 'completed'
+    }))
   } catch (error) {
     if (!isUnmounted.value) {
       ElMessage.error('搜索订单失败')
@@ -703,6 +706,41 @@ const handleOrderChange = (orderNo: string) => {
   const order = orderOptions.value.find(o => o.orderNo === orderNo)
   if (order) {
     selectedOrder.value = order
+    
+    // 从订单store获取完整订单数据
+    const fullOrder = orderStore.getOrderByNumber(orderNo)
+    if (fullOrder) {
+      // 自动填充收货信息
+      Object.assign(receiverForm, {
+        receiverName: fullOrder.receiverName || fullOrder.customerName,
+        receiverPhone: fullOrder.receiverPhone || fullOrder.customerPhone,
+        receiverAddress: fullOrder.receiverAddress || ''
+      })
+      
+      // 自动填充物流公司（如果订单已有）
+      if (fullOrder.expressCompany && !form.company) {
+        form.company = fullOrder.expressCompany
+      }
+      
+      // 自动填充物流单号（如果订单已有）
+      if (fullOrder.trackingNumber && !form.trackingNo) {
+        form.trackingNo = fullOrder.trackingNumber
+      } else if (fullOrder.expressNo && !form.trackingNo) {
+        form.trackingNo = fullOrder.expressNo
+      }
+      
+      // 自动加载商品信息
+      if (fullOrder.products && fullOrder.products.length > 0) {
+        productList.value = fullOrder.products.map(product => ({
+          productName: product.name || '未知商品',
+          specification: product.specification || product.spec || '',
+          quantity: product.quantity || 1,
+          weight: product.weight || 0,
+          volume: product.volume || 0
+        }))
+        calculateTotals()
+      }
+    }
   }
 }
 
@@ -710,16 +748,23 @@ const handleOrderChange = (orderNo: string) => {
  * 从订单复制收货信息
  */
 const copyFromOrder = () => {
-  if (!selectedOrder.value) {
+  if (!selectedOrder.value || !form.orderNo) {
     ElMessage.warning('请先选择订单')
     return
   }
   
-  // 模拟从订单复制收货信息
+  // 从订单store获取真实订单数据
+  const order = orderStore.getOrderByNumber(form.orderNo)
+  if (!order) {
+    ElMessage.error('订单不存在')
+    return
+  }
+  
+  // 从真实订单复制收货信息
   Object.assign(receiverForm, {
-    receiverName: '张三',
-    receiverPhone: '13800138001',
-    receiverAddress: '北京市朝阳区建国路88号SOHO现代城A座1001室'
+    receiverName: order.receiverName || order.customerName,
+    receiverPhone: order.receiverPhone || order.customerPhone,
+    receiverAddress: order.receiverAddress || ''
   })
   
   ElMessage.success('已从订单复制收货信息')
@@ -739,35 +784,43 @@ const loadOrderProducts = async () => {
   productLoading.value = true
   
   try {
-    // 模拟API调用
+    // 模拟API调用延迟
     await new Promise(resolve => {
       const timeoutId = setTimeout(() => {
         timeoutIds.delete(timeoutId)
         resolve(undefined)
-      }, 800)
+      }, 500)
       timeoutIds.add(timeoutId)
     })
     
     // 检查组件是否已卸载
     if (isUnmounted.value) return
     
-    // 模拟商品数据
-    productList.value = [
-      {
-        productName: 'iPhone 15 Pro',
-        specification: '256GB 深空黑色',
-        quantity: 1,
-        weight: 0.2,
-        volume: 150
-      },
-      {
-        productName: 'AirPods Pro',
-        specification: '第二代',
-        quantity: 1,
-        weight: 0.05,
-        volume: 80
+    // 从订单store获取真实订单数据
+    const order = orderStore.getOrderByNumber(form.orderNo)
+    if (!order) {
+      if (!isUnmounted.value) {
+        ElMessage.error('订单不存在')
       }
-    ]
+      return
+    }
+    
+    // 从真实订单获取商品数据
+    if (order.products && order.products.length > 0) {
+      productList.value = order.products.map(product => ({
+        productName: product.name || '未知商品',
+        specification: product.specification || product.spec || '',
+        quantity: product.quantity || 1,
+        weight: product.weight || 0,
+        volume: product.volume || 0
+      }))
+    } else {
+      // 如果没有商品数据，使用空数组
+      productList.value = []
+      if (!isUnmounted.value) {
+        ElMessage.warning('该订单暂无商品信息')
+      }
+    }
     
     calculateTotals()
     if (!isUnmounted.value) {
@@ -958,55 +1011,87 @@ const loadData = async () => {
     isEdit.value = true
     
     try {
-      // 模拟API调用
+      // 模拟API调用延迟
       await new Promise(resolve => {
         const timeoutId = setTimeout(() => {
           timeoutIds.delete(timeoutId)
           resolve(undefined)
-        }, 800)
+        }, 500)
         timeoutIds.add(timeoutId)
       })
       
       // 检查组件是否已卸载
       if (isUnmounted.value) return
       
-      // 模拟加载数据
+      // 从订单store获取真实订单数据
+      // 先尝试通过ID查找（支持字符串和数字匹配）
+      let order = orderStore.getOrderById(id.toString())
+      
+      // 如果通过ID找不到，尝试通过所有订单查找（支持数字ID匹配）
+      if (!order) {
+        const allOrders = orderStore.getOrders()
+        order = allOrders.find(o => 
+          o.id === id || 
+          o.id === String(id) ||
+          String(o.id) === String(id) ||
+          parseInt(String(o.id)) === parseInt(String(id)) ||
+          o.trackingNumber === id ||
+          o.expressNo === id
+        )
+      }
+      
+      if (!order) {
+        ElMessage.error('订单不存在')
+        return
+      }
+      
+      // 加载真实订单数据
       Object.assign(form, {
-        orderNo: 'ORD202401090001',
-        company: 'SF',
-        trackingNo: 'SF1234567890123',
-        status: 'shipped',
-        shipTime: '2024-01-10 09:30:00',
-        estimatedTime: '2024-01-12 18:00:00',
-        freight: 15.00,
-        insuranceFee: 2.00,
-        remark: '请在工作时间配送'
+        orderNo: order.orderNumber,
+        company: order.expressCompany || '',
+        trackingNo: order.trackingNumber || order.expressNo || '',
+        status: order.logisticsStatus || 'pending',
+        shipTime: order.shippingTime || order.shipTime || '',
+        estimatedTime: order.expectedDeliveryDate ? `${order.expectedDeliveryDate} 18:00:00` : '',
+        freight: 0,
+        insuranceFee: 0,
+        remark: order.remark || ''
       })
       
+      // 加载收货信息
       Object.assign(receiverForm, {
-        receiverName: '张三',
-        receiverPhone: '13800138001',
-        receiverAddress: '北京市朝阳区建国路88号SOHO现代城A座1001室'
+        receiverName: order.receiverName || order.customerName,
+        receiverPhone: order.receiverPhone || order.customerPhone,
+        receiverAddress: order.receiverAddress || ''
       })
       
-      productList.value = [
-        {
-          productName: 'iPhone 15 Pro',
-          specification: '256GB 深空黑色',
-          quantity: 1,
-          weight: 0.2,
-          volume: 150
-        }
-      ]
+      // 加载商品信息
+      if (order.products && order.products.length > 0) {
+        productList.value = order.products.map(product => ({
+          productName: product.name || '未知商品',
+          specification: product.specification || product.spec || '',
+          quantity: product.quantity || 1,
+          weight: product.weight || 0,
+          volume: product.volume || 0
+        }))
+      } else {
+        productList.value = []
+      }
       
       // 加载订单信息
       selectedOrder.value = {
-        orderNo: 'ORD202401090001',
-        customerName: '张三',
-        orderTime: '2024-01-09 15:30:00',
-        totalAmount: '1299.00',
-        status: 'paid'
+        orderNo: order.orderNumber,
+        customerName: order.customerName,
+        orderTime: order.createTime,
+        totalAmount: order.totalAmount.toFixed(2),
+        status: order.status === 'pending_shipment' ? 'paid' : order.status === 'shipped' ? 'shipped' : 'completed'
       }
+      
+      // 将订单添加到选项列表，确保下拉框可以正确显示
+      orderOptions.value = [selectedOrder.value]
+      
+      // 计算总计
+      calculateTotals()
     } catch (error) {
       ElMessage.error('加载数据失败')
     }

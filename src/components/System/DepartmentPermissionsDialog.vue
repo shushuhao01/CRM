@@ -70,38 +70,38 @@
             <el-form label-width="120px">
               <el-form-item label="数据范围">
                 <el-radio-group v-model="dataScope" :disabled="!editMode">
-                  <el-radio value="all">全部数据</el-radio>
-                  <el-radio value="department">本部门数据</el-radio>
-                  <el-radio value="personal">个人数据</el-radio>
-                  <el-radio value="custom">自定义范围</el-radio>
+                  <el-radio label="all">全部数据</el-radio>
+                  <el-radio label="department">本部门数据</el-radio>
+                  <el-radio label="personal">个人数据</el-radio>
+                  <el-radio label="custom">自定义范围</el-radio>
                 </el-radio-group>
               </el-form-item>
 
               <el-form-item label="客户数据权限" v-if="dataScope === 'custom'">
                 <el-checkbox-group v-model="customDataPermissions.customer" :disabled="!editMode">
-                  <el-checkbox value="view">查看</el-checkbox>
-                  <el-checkbox value="create">创建</el-checkbox>
-                  <el-checkbox value="edit">编辑</el-checkbox>
-                  <el-checkbox value="delete">删除</el-checkbox>
-                  <el-checkbox value="export">导出</el-checkbox>
+                  <el-checkbox label="view">查看</el-checkbox>
+                <el-checkbox label="create">创建</el-checkbox>
+                <el-checkbox label="edit">编辑</el-checkbox>
+                <el-checkbox label="delete">删除</el-checkbox>
+                <el-checkbox label="export">导出</el-checkbox>
                 </el-checkbox-group>
               </el-form-item>
 
               <el-form-item label="订单数据权限" v-if="dataScope === 'custom'">
                 <el-checkbox-group v-model="customDataPermissions.order" :disabled="!editMode">
-                  <el-checkbox value="view">查看</el-checkbox>
-                  <el-checkbox value="create">创建</el-checkbox>
-                  <el-checkbox value="edit">编辑</el-checkbox>
-                  <el-checkbox value="delete">删除</el-checkbox>
-                  <el-checkbox value="export">导出</el-checkbox>
+                  <el-checkbox label="view">查看</el-checkbox>
+                  <el-checkbox label="create">创建</el-checkbox>
+                  <el-checkbox label="edit">编辑</el-checkbox>
+                  <el-checkbox label="delete">删除</el-checkbox>
+                  <el-checkbox label="export">导出</el-checkbox>
                 </el-checkbox-group>
               </el-form-item>
 
-              <el-form-item label="报表数据权限" v-if="dataScope === 'custom'">
+              <el-form-item label="报表权限" v-if="dataScope === 'custom'">
                 <el-checkbox-group v-model="customDataPermissions.report" :disabled="!editMode">
-                  <el-checkbox value="view">查看</el-checkbox>
-                  <el-checkbox value="export">导出</el-checkbox>
-                  <el-checkbox value="share">分享</el-checkbox>
+                  <el-checkbox label="view">查看</el-checkbox>
+                  <el-checkbox label="export">导出</el-checkbox>
+                  <el-checkbox label="share">分享</el-checkbox>
                 </el-checkbox-group>
               </el-form-item>
             </el-form>
@@ -127,7 +127,7 @@
                 :props="{ children: 'children', label: 'label' }"
                 default-expand-all
                 show-checkbox
-                :check-strictly="false"
+                :check-strictly="true"
                 :default-checked-keys="inheritedPermissions"
               />
             </div>

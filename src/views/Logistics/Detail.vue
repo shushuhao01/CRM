@@ -21,9 +21,9 @@
         <el-button @click="handleEdit" type="primary" :icon="Edit">
           编辑
         </el-button>
-        <el-button 
-          @click="handleShip" 
-          type="success" 
+        <el-button
+          @click="handleShip"
+          type="success"
           :icon="Box"
           v-if="logisticsInfo.status === 'pending'"
         >
@@ -42,7 +42,7 @@
               <span>基本信息</span>
             </div>
           </template>
-          
+
           <div class="info-grid">
             <div class="info-item">
               <span class="label">物流单号：</span>
@@ -90,7 +90,7 @@
               <span>收货信息</span>
             </div>
           </template>
-          
+
           <div class="receiver-info">
             <div class="receiver-basic">
               <div class="info-item">
@@ -99,7 +99,7 @@
               </div>
               <div class="info-item">
                 <span class="label">联系电话：</span>
-            <span class="value">{{ maskPhone(logisticsInfo.receiverPhone) }}</span>
+            <span class="value">{{ displaySensitiveInfoNew(logisticsInfo.receiverPhone, 'phone') }}</span>
               </div>
             </div>
             <div class="info-item">
@@ -120,7 +120,7 @@
               <span>商品信息</span>
             </div>
           </template>
-          
+
           <el-table :data="productList" style="width: 100%">
             <el-table-column prop="productName" label="商品名称" />
             <el-table-column prop="specification" label="规格" width="120" />
@@ -128,7 +128,7 @@
             <el-table-column prop="weight" label="重量(kg)" width="100" />
             <el-table-column prop="volume" label="体积(cm³)" width="120" />
           </el-table>
-          
+
           <div class="product-summary">
             <div class="summary-item">
               <span class="label">总数量：</span>
@@ -155,7 +155,7 @@
               </el-button>
             </div>
           </template>
-          
+
           <div class="tracking-timeline">
             <el-timeline>
               <el-timeline-item
@@ -192,27 +192,27 @@
               <span>快捷操作</span>
             </div>
           </template>
-          
+
           <div class="action-buttons">
-            <el-button 
-              @click="handleTrack" 
-              type="primary" 
+            <el-button
+              @click="handleTrack"
+              type="primary"
               :icon="Search"
               style="width: 100%; margin-bottom: 12px;"
             >
               实时跟踪
             </el-button>
-            <el-button 
-              @click="handleContact" 
-              type="success" 
+            <el-button
+              @click="handleContact"
+              type="success"
               :icon="Phone"
               style="width: 100%; margin-bottom: 12px;"
             >
               联系收货人
             </el-button>
-            <el-button 
-              @click="handleComplaint" 
-              type="warning" 
+            <el-button
+              @click="handleComplaint"
+              type="warning"
               :icon="Warning"
               style="width: 100%; margin-bottom: 12px;"
             >
@@ -229,7 +229,7 @@
               <span>相关信息</span>
             </div>
           </template>
-          
+
           <div class="related-info">
             <div class="related-item">
               <div class="item-header">
@@ -243,7 +243,7 @@
                 <span class="item-meta">{{ logisticsInfo.orderTime }}</span>
               </div>
             </div>
-            
+
             <div class="related-item">
               <div class="item-header">
                 <el-icon><User /></el-icon>
@@ -253,10 +253,10 @@
                 <el-link @click="viewCustomer" type="primary">
                   {{ logisticsInfo.customerName }}
                 </el-link>
-                <span class="item-meta">{{ maskPhone(logisticsInfo.customerPhone) }}</span>
+                <span class="item-meta">{{ displaySensitiveInfoNew(logisticsInfo.customerPhone, 'phone') }}</span>
               </div>
             </div>
-            
+
             <div class="related-item">
               <div class="item-header">
                 <el-icon><Money /></el-icon>
@@ -284,10 +284,10 @@
               <span>操作日志</span>
             </div>
           </template>
-          
+
           <div class="operation-log">
-            <div 
-              v-for="(log, index) in operationLogs" 
+            <div
+              v-for="(log, index) in operationLogs"
               :key="index"
               class="log-item"
             >
@@ -360,7 +360,7 @@
           />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="handleShipDialogClose">取消</el-button>
@@ -377,7 +377,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
+import {
   ArrowLeft,
   Printer,
   Edit,
@@ -392,8 +392,9 @@ import {
   Document,
   Money
 } from '@element-plus/icons-vue'
-import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { useOrderStore } from '@/stores/order'
+import { useNotificationStore } from '@/stores/notification'
 import { createSafeNavigator } from '@/utils/navigation'
 
 // 路由
@@ -403,6 +404,7 @@ const safeNavigator = createSafeNavigator(router)
 
 // Store
 const orderStore = useOrderStore()
+const notificationStore = useNotificationStore()
 
 // 响应式数据
 const shipDialogVisible = ref(false)
@@ -576,7 +578,7 @@ const handleShip = () => {
     estimatedTime: '',
     remark: ''
   })
-  
+
   shipDialogVisible.value = true
 }
 
@@ -585,14 +587,14 @@ const handleShip = () => {
  */
 const confirmShip = async () => {
   if (isUnmounted.value) return
-  
+
   try {
     await shipFormRef.value?.validate()
-    
+
     if (isUnmounted.value) return
-    
+
     shipLoading.value = true
-    
+
     // 模拟API调用
     await new Promise(resolve => {
       const timeoutId = setTimeout(() => {
@@ -601,17 +603,28 @@ const confirmShip = async () => {
       }, 1500)
       timeoutIds.add(timeoutId)
     })
-    
+
     if (!isUnmounted.value) {
       // 添加操作记录
       const orderId = logisticsInfo.orderNo.replace('ORD', '')
       orderStore.syncOrderStatus(
-        orderId, 
-        'shipped', 
-        '物流员', 
+        orderId,
+        'shipped',
+        '物流员',
         `订单已发货，快递公司：${shipForm.company}，快递单号：${shipForm.trackingNo}`
       )
-      
+
+      // 【批次201新增】发送订单已发货消息通知，显示真实物流单号
+      notificationStore.sendMessage(
+        notificationStore.MessageType.ORDER_SHIPPED,
+        `订单 ${logisticsInfo.orderNo} 已发货，快递公司：${shipForm.company}，快递单号：${shipForm.trackingNo}`,
+        {
+          relatedId: orderId,
+          relatedType: 'order',
+          actionUrl: `/logistics/detail/${logisticsInfo.id}`
+        }
+      )
+
       ElMessage.success('发货成功')
       handleShipDialogClose()
       loadData()
@@ -660,7 +673,17 @@ const handleComplaint = () => {
  * 查看订单
  */
 const viewOrder = () => {
-  safeNavigator.push(`/order/detail/${logisticsInfo.orderNo}`)
+  if (logisticsInfo.id) {
+    safeNavigator.push(`/order/detail/${logisticsInfo.id}`)
+  } else {
+    // 如果没有ID，尝试通过订单号查找
+    const order = orderStore.getOrderByNumber(logisticsInfo.orderNo)
+    if (order) {
+      safeNavigator.push(`/order/detail/${order.id}`)
+    } else {
+      ElMessage.warning('未找到对应的订单')
+    }
+  }
 }
 
 /**
@@ -675,7 +698,7 @@ const viewCustomer = () => {
  */
 const refreshTracking = async () => {
   if (isUnmounted.value) return
-  
+
   try {
     // 模拟API调用
     await new Promise(resolve => {
@@ -685,7 +708,7 @@ const refreshTracking = async () => {
       }, 1000)
       timeoutIds.add(timeoutId)
     })
-    
+
     if (!isUnmounted.value) {
       ElMessage.success('轨迹已刷新')
       loadTrackingHistory()
@@ -700,65 +723,97 @@ const refreshTracking = async () => {
 /**
  * 加载物流轨迹
  */
-const loadTrackingHistory = async () => {
+const loadTrackingHistory = async (order?: any) => {
   if (isUnmounted.value) return
-  
+
   try {
-    // 模拟API调用
-    await new Promise(resolve => {
-      const timeoutId = setTimeout(() => {
-        timeoutIds.delete(timeoutId)
-        resolve(undefined)
-      }, 500)
-      timeoutIds.add(timeoutId)
-    })
-    
-    // 检查组件是否已卸载
-    if (isUnmounted.value) return
-    
-    // 模拟物流轨迹数据
-    trackingHistory.value = [
-      {
-        time: '2024-01-12 14:30:00',
-        status: '已签收',
-        description: '您的快件已由本人签收，感谢使用顺丰速运',
-        location: '北京市朝阳区',
-        operator: '张师傅',
-        type: 'success'
-      },
-      {
-        time: '2024-01-12 09:15:00',
-        status: '派送中',
-        description: '快件正在派送中，派送员：张师傅，联系电话：138****1234',
-        location: '北京市朝阳区',
-        operator: '张师傅',
-        type: 'primary'
-      },
-      {
-        time: '2024-01-12 06:20:00',
-        status: '到达目的地',
-        description: '快件已到达北京朝阳区分拣中心',
-        location: '北京市朝阳区',
-        type: 'info'
-      },
-      {
-        time: '2024-01-11 22:45:00',
-        status: '运输中',
-        description: '快件正在从天津转运中心发往北京朝阳区分拣中心',
-        location: '天津市',
-        type: 'info'
-      },
-      {
-        time: '2024-01-11 18:30:00',
-        status: '已发货',
-        description: '快件已从上海分拣中心发出',
-        location: '上海市',
-        type: 'warning'
+    // 如果没有传入订单，从订单store获取
+    if (!order) {
+      const id = route.params.id
+      const allOrders = orderStore.getOrders()
+      order = allOrders.find(o =>
+        o.id === id ||
+        o.trackingNumber === id ||
+        o.expressNo === id ||
+        parseInt(o.id) === parseInt(id)
+      )
+    }
+
+    if (!order) {
+      trackingHistory.value = []
+      return
+    }
+
+    // 使用订单的物流历史数据
+    if (order.logisticsHistory && Array.isArray(order.logisticsHistory) && order.logisticsHistory.length > 0) {
+      trackingHistory.value = order.logisticsHistory.map((item: any) => ({
+        time: item.time || '',
+        status: getLogisticsStatusText(item.status),
+        description: item.description || '',
+        location: item.location || '',
+        operator: item.operator || '',
+        type: getTimelineTypeByStatus(item.status)
+      })).reverse() // 倒序显示，最新的在上面
+    } else {
+      // 如果没有物流历史，从状态历史中提取物流相关信息
+      if (order.statusHistory && Array.isArray(order.statusHistory)) {
+        const logisticsStatuses = ['shipped', 'delivered', 'in_transit', 'out_for_delivery']
+        const logisticsHistoryItems = order.statusHistory
+          .filter((h: any) => logisticsStatuses.includes(h.status))
+          .map((h: any) => ({
+            time: h.time || '',
+            status: getLogisticsStatusText(h.status),
+            description: h.description || h.remark || '',
+            location: '',
+            operator: h.operator || '',
+            type: getTimelineTypeByStatus(h.status)
+          }))
+
+        trackingHistory.value = logisticsHistoryItems.reverse()
+      } else {
+        trackingHistory.value = []
       }
-    ]
+    }
   } catch (error) {
-    ElMessage.error('加载物流轨迹失败')
+    console.error('加载物流轨迹失败:', error)
+    trackingHistory.value = []
   }
+}
+
+/**
+ * 获取物流状态文本
+ */
+const getLogisticsStatusText = (status: string): string => {
+  const textMap: Record<string, string> = {
+    'pending': '待发货',
+    'picked_up': '已揽收',
+    'shipped': '已发货',
+    'in_transit': '运输中',
+    'out_for_delivery': '派送中',
+    'delivered': '已签收',
+    'exception': '异常',
+    'rejected': '拒收',
+    'returned': '已退回'
+  }
+  return textMap[status] || status
+}
+
+/**
+ * 根据状态获取时间轴类型
+ */
+const getTimelineTypeByStatus = (status: string): string => {
+  const typeMap: Record<string, string> = {
+    'delivered': 'success',
+    'out_for_delivery': 'warning',
+    'shipped': 'primary',
+    'in_transit': 'info',
+    'picked_up': 'info',
+    'exception': 'danger',
+    'rejected': 'danger',
+    'returned': 'info',
+    'pending': 'warning'
+  }
+  return typeMap[status] || 'info'
 }
 
 /**
@@ -766,86 +821,131 @@ const loadTrackingHistory = async () => {
  */
 const loadData = async () => {
   if (isUnmounted.value) return
-  
+
   try {
     const id = route.params.id
-    
-    // 模拟API调用
-    await new Promise(resolve => {
-      const timeoutId = setTimeout(() => {
-        timeoutIds.delete(timeoutId)
-        resolve(undefined)
-      }, 800)
-      timeoutIds.add(timeoutId)
-    })
-    
+
+    // 从订单store中查找对应的订单
+    // id可能是订单ID（字符串或数字）或物流单号，需要查找匹配的订单
+    const allOrders = orderStore.getOrders()
+
+    // 先尝试通过ID查找（支持字符串和数字匹配）
+    let order = allOrders.find(o =>
+      o.id === id ||
+      o.id === String(id) ||
+      String(o.id) === String(id) ||
+      parseInt(String(o.id)) === parseInt(String(id))
+    )
+
+    // 如果通过ID找不到，尝试通过物流单号查找
+    if (!order) {
+      order = allOrders.find(o =>
+        o.trackingNumber === id ||
+        o.expressNo === id ||
+        (o.trackingNumber && o.trackingNumber.toString() === id.toString()) ||
+        (o.expressNo && o.expressNo.toString() === id.toString())
+      )
+    }
+
+    if (!order) {
+      ElMessage.error('未找到对应的订单信息')
+      return
+    }
+
     // 检查组件是否已卸载
     if (isUnmounted.value) return
-    
-    // 模拟物流信息
+
+    // 使用真实订单数据填充物流信息
     Object.assign(logisticsInfo, {
-      id: id,
-      trackingNo: 'SF1234567890123',
-      orderNo: 'ORD202401090001',
-      companyName: '顺丰速运',
-      status: 'delivered',
-      shipTime: '2024-01-10 09:30:00',
-      estimatedTime: '2024-01-12 18:00:00',
-      actualTime: '2024-01-12 14:30:00',
-      freight: 15.00,
-      insuranceFee: 2.00,
-      receiverName: '张三',
-      receiverPhone: '13800138001',
-      receiverAddress: '北京市朝阳区建国路88号SOHO现代城A座1001室',
-      remark: '请在工作时间配送',
-      customerName: '张三',
-      customerPhone: '13800138001',
-      orderTime: '2024-01-09 15:30:00',
-      customerId: 'CUST001'
+      id: order.id,
+      trackingNo: order.trackingNumber || order.expressNo || '',
+      orderNo: order.orderNumber,
+      companyName: getExpressCompanyName(order.expressCompany || ''),
+      status: mapOrderStatusToLogisticsStatus(order.status, order.logisticsStatus),
+      shipTime: order.shippingTime || order.shipTime || '',
+      estimatedTime: order.estimatedDeliveryTime || '',
+      actualTime: order.logisticsStatus === 'delivered' ? (order.statusHistory?.find(h => h.status === 'delivered')?.time || '') : '',
+      freight: 0, // 运费信息需要从订单或物流信息中获取
+      insuranceFee: 0, // 保价费信息需要从订单或物流信息中获取
+      receiverName: order.receiverName || '',
+      receiverPhone: order.receiverPhone || '',
+      receiverAddress: order.receiverAddress || '',
+      remark: order.remark || '',
+      customerName: order.customerName || '',
+      customerPhone: order.customerPhone || '',
+      orderTime: order.createTime || '',
+      customerId: order.customerId || ''
     })
-    
-    // 模拟商品列表
-    productList.value = [
-      {
-        productName: 'iPhone 15 Pro',
-        specification: '256GB 深空黑色',
-        quantity: 1,
-        weight: 0.2,
-        volume: 150
-      },
-      {
-        productName: 'AirPods Pro',
-        specification: '第二代',
-        quantity: 1,
-        weight: 0.05,
-        volume: 80
-      }
-    ]
-    
-    // 模拟操作日志
-    operationLogs.value = [
-      {
-        time: '2024-01-12 14:30:00',
-        operator: '系统',
-        action: '订单已签收'
-      },
-      {
-        time: '2024-01-10 09:30:00',
-        operator: '李四',
-        action: '确认发货'
-      },
-      {
-        time: '2024-01-09 16:00:00',
-        operator: '王五',
-        action: '创建物流单'
-      }
-    ]
-    
+
+    // 使用真实订单商品数据
+    if (order.products && Array.isArray(order.products)) {
+      productList.value = order.products.map((product: any) => ({
+        productName: product.name || '',
+        specification: product.specification || '',
+        quantity: product.quantity || 0,
+        weight: product.weight || 0,
+        volume: product.volume || 0
+      }))
+    } else {
+      productList.value = []
+    }
+
+    // 使用真实操作日志
+    if (order.operationLogs && Array.isArray(order.operationLogs)) {
+      operationLogs.value = order.operationLogs.map((log: any) => ({
+        time: log.time || '',
+        operator: log.operator || '',
+        action: log.action || ''
+      })).reverse() // 倒序显示，最新的在上面
+    } else {
+      operationLogs.value = []
+    }
+
     // 加载物流轨迹
-    await loadTrackingHistory()
+    await loadTrackingHistory(order)
   } catch (error) {
+    console.error('加载数据失败:', error)
     ElMessage.error('加载数据失败')
   }
+}
+
+/**
+ * 获取物流公司名称
+ */
+const getExpressCompanyName = (code: string) => {
+  const companies: Record<string, string> = {
+    'SF': '顺丰速运',
+    'YTO': '圆通速递',
+    'ZTO': '中通快递',
+    'STO': '申通快递',
+    'YD': '韵达速递',
+    'HTKY': '百世快递',
+    'JD': '京东物流',
+    'EMS': '中国邮政',
+    'DBKD': '德邦快递',
+    'UC': '优速快递'
+  }
+  return companies[code] || code
+}
+
+/**
+ * 映射订单状态到物流状态
+ */
+const mapOrderStatusToLogisticsStatus = (orderStatus: string, logisticsStatus?: string): string => {
+  if (logisticsStatus) {
+    return logisticsStatus
+  }
+
+  const statusMap: Record<string, string> = {
+    'pending_shipment': 'pending',
+    'shipped': 'shipped',
+    'delivered': 'delivered',
+    'in_transit': 'in_transit',
+    'out_for_delivery': 'delivering',
+    'package_exception': 'exception'
+  }
+
+  return statusMap[orderStatus] || 'pending'
 }
 
 // 生命周期钩子
@@ -1106,7 +1206,7 @@ onBeforeUnmount(() => {
   .info-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .receiver-basic {
     grid-template-columns: 1fr;
   }
@@ -1118,21 +1218,21 @@ onBeforeUnmount(() => {
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .header-left {
     align-items: center;
   }
-  
+
   .header-actions {
     justify-content: center;
     flex-wrap: wrap;
   }
-  
+
   .product-summary {
     flex-direction: column;
     gap: 12px;
   }
-  
+
   .summary-item {
     flex-direction: row;
     justify-content: space-between;
@@ -1145,7 +1245,7 @@ onBeforeUnmount(() => {
   .action-card {
     display: none !important;
   }
-  
+
   .page-header {
     box-shadow: none;
     border: 1px solid #ddd;

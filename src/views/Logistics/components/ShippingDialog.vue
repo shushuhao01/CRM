@@ -24,7 +24,7 @@
           </div>
           <div class="info-item">
             <span class="label">联系电话：</span>
-            <span class="value">{{ maskPhone(order.phone) }}</span>
+            <span class="value">{{ displaySensitiveInfoNew(order.phone, 'phone') }}</span>
           </div>
           <div class="info-item">
             <span class="label">收货地址：</span>
@@ -175,14 +175,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
-import { 
+import {
   Box, Van, Refresh, InfoFilled, Document
 } from '@element-plus/icons-vue'
-import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import type { Order } from '@/stores/order'
 import { useOrderStore } from '@/stores/order'
+import { useNotificationStore } from '@/stores/notification'
 
 interface ShippingData {
   logisticsCompany: string
@@ -216,6 +217,7 @@ const loading = ref(false)
 
 // Store
 const orderStore = useOrderStore()
+const notificationStore = useNotificationStore()
 
 // 发货表单
 const shippingForm = reactive({
@@ -253,7 +255,10 @@ const logisticsCompanies = ref([
 ])
 
 // 格式化数字
-const formatNumber = (num: number) => {
+const formatNumber = (num: number | null | undefined) => {
+  if (num === null || num === undefined || isNaN(num)) {
+    return '0'
+  }
   return num.toLocaleString()
 }
 
@@ -267,12 +272,12 @@ const getProductsText = () => {
 const onLogisticsChange = (value: string) => {
   // 清空运单号，让用户重新输入或生成
   shippingForm.trackingNumber = ''
-  
-  // 根据物流公司设置预计送达时间
-  const today = new Date()
-  const deliveryDays = getDeliveryDays(value)
-  const estimatedDate = new Date(today.getTime() + deliveryDays * 24 * 60 * 60 * 1000)
-  shippingForm.estimatedDelivery = estimatedDate.toISOString().split('T')[0]
+
+  // 如果预计送达时间未设置，则设置为3天后（默认值）
+  // 如果已设置，则保持用户的选择
+  if (!shippingForm.estimatedDelivery) {
+    initEstimatedDelivery()
+  }
 }
 
 // 获取预计送达天数
@@ -298,7 +303,7 @@ const generateTrackingNumber = () => {
     ElMessage.warning('请先选择物流公司')
     return
   }
-  
+
   const company = logisticsCompanies.value.find(c => c.code === shippingForm.logisticsCompany)
   if (company) {
     const timestamp = Date.now().toString()
@@ -327,10 +332,10 @@ const saveAsDraft = async () => {
 // 确认发货
 const confirmShipping = async () => {
   if (!formRef.value) return
-  
+
   try {
     await formRef.value.validate()
-    
+
     await ElMessageBox.confirm(
       `确认发货订单 ${props.order.orderNo} 吗？发货后将无法撤销。`,
       '确认发货',
@@ -342,10 +347,10 @@ const confirmShipping = async () => {
     )
 
     loading.value = true
-    
+
     // 模拟发货处理
     await new Promise(resolve => setTimeout(resolve, 2000))
-    
+
     const shippingData = {
       orderId: props.order.id,
       orderNo: props.order.orderNo,
@@ -353,21 +358,32 @@ const confirmShipping = async () => {
       shippingTime: new Date().toISOString(),
       status: 'shipped'
     }
-    
+
     // 添加操作记录
     const orderId = props.order.orderNo.replace('ORD', '')
     const companyName = logisticsCompanies.value.find(c => c.code === shippingForm.logisticsCompany)?.name || shippingForm.logisticsCompany
     orderStore.syncOrderStatus(
-      orderId, 
-      'shipped', 
-      '物流员', 
+      orderId,
+      'shipped',
+      '物流员',
       `订单已发货，快递公司：${companyName}，快递单号：${shippingForm.trackingNumber}`
     )
-    
+
+    // 【批次201新增】发送订单已发货消息通知，显示真实物流单号
+    notificationStore.sendMessage(
+      notificationStore.MessageType.ORDER_SHIPPED,
+      `订单 ${props.order.orderNo} 已发货，快递公司：${companyName}，快递单号：${shippingForm.trackingNumber}`,
+      {
+        relatedId: props.order.id,
+        relatedType: 'order',
+        actionUrl: `/order/detail/${props.order.id}`
+      }
+    )
+
     emit('shipped', shippingData)
     ElMessage.success('发货成功！已通知客户')
     handleClose()
-    
+
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('发货失败，请重试')
@@ -391,15 +407,36 @@ const handleClose = () => {
     shippingMethod: 'standard',
     insuranceAmount: 0
   })
-  
+
   dialogVisible.value = false
 }
+
+// 初始化预计送达时间为3天后
+const initEstimatedDelivery = () => {
+  const today = new Date()
+  const threeDaysLater = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000)
+  shippingForm.estimatedDelivery = threeDaysLater.toISOString().split('T')[0]
+}
+
+// 监听弹窗打开，初始化默认值
+watch(() => props.visible, (newVal) => {
+  if (newVal) {
+    // 设置默认保价金额为订单总金额的80%
+    if (props.order?.totalAmount) {
+      shippingForm.insuranceAmount = Math.round(props.order.totalAmount * 0.8)
+    }
+    // 设置默认预计送达时间为3天后
+    initEstimatedDelivery()
+  }
+}, { immediate: true })
 
 onMounted(() => {
   // 设置默认保价金额为订单总金额的80%
   if (props.order?.totalAmount) {
     shippingForm.insuranceAmount = Math.round(props.order.totalAmount * 0.8)
   }
+  // 设置默认预计送达时间为3天后
+  initEstimatedDelivery()
 })
 </script>
 
@@ -527,13 +564,13 @@ onMounted(() => {
   .order-info-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .info-item {
     flex-direction: column;
     align-items: flex-start;
     gap: 5px;
   }
-  
+
   .info-item .label {
     min-width: auto;
   }

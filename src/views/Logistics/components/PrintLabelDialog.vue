@@ -65,7 +65,7 @@
                 <div class="company-info">
                   <h2>{{ companyInfo.name }}</h2>
                   <p>{{ companyInfo.address }}</p>
-                  <p>客服电话：{{ maskPhone(companyInfo.phone) }}</p>
+                  <p>客服电话：{{ displaySensitiveInfoNew(companyInfo.phone, 'phone') }}</p>
                 </div>
                 <div class="qr-code">
                   <div class="qr-placeholder">二维码</div>
@@ -76,14 +76,14 @@
                 <div class="sender-info">
                   <h4>寄件人信息</h4>
                   <p><strong>姓名：</strong>{{ companyInfo.senderName }}</p>
-                  <p><strong>电话：</strong>{{ maskPhone(companyInfo.senderPhone) }}</p>
+                  <p><strong>电话：</strong>{{ displaySensitiveInfoNew(companyInfo.senderPhone, 'phone') }}</p>
                   <p><strong>地址：</strong>{{ companyInfo.senderAddress }}</p>
                 </div>
                 
                 <div class="receiver-info">
                   <h4>收件人信息</h4>
                   <p><strong>姓名：</strong>{{ order.customerName }}</p>
-                  <p><strong>电话：</strong>{{ maskPhone(order.phone) }}</p>
+                  <p><strong>电话：</strong>{{ displaySensitiveInfoNew(order.phone, 'phone') }}</p>
                   <p><strong>地址：</strong>{{ order.address }}</p>
                 </div>
                 
@@ -118,7 +118,7 @@
                   <div class="to-address">
                     <h4>收件人</h4>
                     <p class="name">{{ order.customerName }}</p>
-                    <p class="phone">{{ maskPhone(order.phone) }}</p>
+                    <p class="phone">{{ displaySensitiveInfoNew(order.phone, 'phone') }}</p>
                     <p class="address">{{ order.address }}</p>
                   </div>
                 </div>
@@ -155,7 +155,7 @@
                       <td class="label-cell">收件人</td>
                       <td class="value-cell">{{ order.customerName }}</td>
                       <td class="label-cell">联系电话</td>
-                      <td class="value-cell">{{ maskPhone(order.phone) }}</td>
+                      <td class="value-cell">{{ displaySensitiveInfoNew(order.phone, 'phone') }}</td>
                     </tr>
                     <tr>
                       <td class="label-cell">收货地址</td>
@@ -182,7 +182,7 @@
                 </div>
                 <div class="service-info">
                   <p>客服微信：{{ order.serviceWechat }}</p>
-                  <p>客服电话：{{ maskPhone(companyInfo.phone) }}</p>
+                  <p>客服电话：{{ displaySensitiveInfoNew(companyInfo.phone, 'phone') }}</p>
                 </div>
               </div>
             </div>
@@ -230,7 +230,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Setting, Link, Edit, View, Printer
 } from '@element-plus/icons-vue'
-import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import type { Order } from '@/stores/order'
 
 interface Props {
@@ -286,7 +286,10 @@ const companyInfo = ref({
 })
 
 // 格式化数字
-const formatNumber = (num: number) => {
+const formatNumber = (num: number | null | undefined) => {
+  if (num === null || num === undefined || isNaN(num)) {
+    return '0'
+  }
   return num.toLocaleString()
 }
 

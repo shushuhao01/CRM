@@ -82,7 +82,11 @@ const dragStartIndex = ref<number>(-1)
 
 // 初始化列数据
 const initializeColumns = () => {
-  tableColumns.value = props.columns.map(col => ({ ...col }))
+  if (props.columns && Array.isArray(props.columns)) {
+    tableColumns.value = props.columns.map(col => ({ ...col }))
+  } else {
+    tableColumns.value = []
+  }
 }
 
 // 获取可见列

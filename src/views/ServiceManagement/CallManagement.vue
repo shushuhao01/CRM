@@ -178,7 +178,7 @@
         <el-table-column prop="customerName" label="客户姓名" width="120" />
         <el-table-column prop="phone" label="电话号码" width="140">
           <template #default="{ row }">
-            {{ maskPhone(row.phone) }}
+            {{ displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE) }}
           </template>
         </el-table-column>
         <el-table-column prop="customerLevel" label="客户等级" width="100">
@@ -928,9 +928,9 @@
           <el-form :model="callConfigForm" label-width="120px" ref="callConfigFormRef">
             <el-form-item label="外呼方式">
               <el-radio-group v-model="callConfigForm.callMethod" @change="onCallMethodChange">
-                <el-radio value="system">系统外呼路线</el-radio>
-                <el-radio value="mobile">工作手机外呼</el-radio>
-                <el-radio value="voip">网络电话</el-radio>
+                <el-radio label="system">系统外呼路线</el-radio>
+                <el-radio label="mobile">工作手机外呼</el-radio>
+                <el-radio label="voip">网络电话</el-radio>
               </el-radio-group>
             </el-form-item>
             
@@ -967,8 +967,8 @@
               
               <el-form-item label="拨号方式">
                 <el-radio-group v-model="callConfigForm.dialMethod">
-                  <el-radio value="direct">直接拨号</el-radio>
-                  <el-radio value="callback">回拨模式</el-radio>
+                  <el-radio label="direct">直接拨号</el-radio>
+                  <el-radio label="callback">回拨模式</el-radio>
                 </el-radio-group>
               </el-form-item>
               
@@ -978,11 +978,11 @@
                 
                 <el-form-item label="手机平台">
                   <el-radio-group v-model="callConfigForm.mobileConfig.platform">
-                    <el-radio value="android">
+                    <el-radio label="android">
                       <el-icon><Cellphone /></el-icon>
                       Android
                     </el-radio>
-                    <el-radio value="ios">
+                    <el-radio label="ios">
                       <el-icon><Iphone /></el-icon>
                       iOS
                     </el-radio>
@@ -1494,8 +1494,8 @@
               
               <el-form-item label="音质设置">
                 <el-radio-group v-model="callConfigForm.audioQuality">
-                  <el-radio value="standard">标准音质</el-radio>
-                  <el-radio value="high">高清音质</el-radio>
+                  <el-radio label="standard">标准音质</el-radio>
+                  <el-radio label="high">高清音质</el-radio>
                 </el-radio-group>
               </el-form-item>
               
@@ -1520,8 +1520,8 @@
           <el-form :model="callConfigForm" label-width="120px">
             <el-form-item label="呼叫模式">
               <el-radio-group v-model="callConfigForm.callMode">
-                <el-radio value="auto">自动外呼</el-radio>
-                <el-radio value="manual">手动外呼</el-radio>
+                <el-radio label="auto">自动外呼</el-radio>
+                <el-radio label="manual">手动外呼</el-radio>
               </el-radio-group>
             </el-form-item>
             

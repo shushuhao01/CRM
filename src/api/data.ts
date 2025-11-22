@@ -1,6 +1,7 @@
 import { api } from './request'
 import { shouldUseMockApi } from './mock'
 import { generateCustomerCode } from '@/utils/customerCode'
+import { isProduction } from '@/utils/env'
 
 // 资料管理相关接口
 
@@ -137,31 +138,61 @@ export interface DataListResponse {
 // 获取资料列表
 export const getDataList = (params: DataListParams): Promise<DataListResponse> => {
   if (shouldUseMockApi()) {
-    // 使用mock数据
-    const mockData = generateMockData()
+    // 从localStorage读取真实数据，而不是生成模拟数据
+    const dataListStr = localStorage.getItem('dataList')
+    let dataList: DataListItem[] = []
+
+    if (dataListStr) {
+      try {
+        dataList = JSON.parse(dataListStr)
+      } catch (error) {
+        console.error('解析dataList失败:', error)
+        dataList = []
+      }
+    }
+
+    // 如果localStorage中没有数据，返回空列表
+    if (!dataList || dataList.length === 0) {
+      console.log('localStorage中没有dataList数据，返回空列表')
+      return Promise.resolve({
+        list: [],
+        total: 0,
+        summary: {
+          totalCount: 0,
+          pendingCount: 0,
+          assignedCount: 0,
+          archivedCount: 0,
+          totalAmount: 0,
+          todayCount: 0,
+          weekCount: 0,
+          monthCount: 0
+        }
+      })
+    }
+
     const { page = 1, pageSize = 30 } = params
     const startIndex = (page - 1) * pageSize
     const endIndex = startIndex + pageSize
-    
+
     return Promise.resolve({
-      list: mockData.slice(startIndex, endIndex),
-      total: mockData.length,
+      list: dataList.slice(startIndex, endIndex),
+      total: dataList.length,
       summary: {
-        totalCount: mockData.length,
-        pendingCount: mockData.filter(item => item.status === 'pending').length,
-        assignedCount: mockData.filter(item => item.status === 'assigned').length,
-        archivedCount: mockData.filter(item => item.status === 'archived').length,
-        totalAmount: mockData.reduce((sum, item) => sum + item.orderAmount, 0),
-        todayCount: mockData.filter(item => {
+        totalCount: dataList.length,
+        pendingCount: dataList.filter(item => item.status === 'pending').length,
+        assignedCount: dataList.filter(item => item.status === 'assigned').length,
+        archivedCount: dataList.filter(item => item.status === 'archived').length,
+        totalAmount: (dataList || []).reduce((sum, item) => sum + (item.orderAmount || 0), 0),
+        todayCount: dataList.filter(item => {
           const today = new Date().toDateString()
           return new Date(item.orderDate).toDateString() === today
         }).length,
-        weekCount: mockData.filter(item => {
+        weekCount: dataList.filter(item => {
           const weekAgo = new Date()
           weekAgo.setDate(weekAgo.getDate() - 7)
           return new Date(item.orderDate) >= weekAgo
         }).length,
-        monthCount: mockData.filter(item => {
+        monthCount: dataList.filter(item => {
           const monthAgo = new Date()
           monthAgo.setMonth(monthAgo.getMonth() - 1)
           return new Date(item.orderDate) >= monthAgo
@@ -169,7 +200,7 @@ export const getDataList = (params: DataListParams): Promise<DataListResponse> =
       }
     })
   }
-  
+
   return api.get('/api/data/list', params)
 }
 
@@ -186,7 +217,7 @@ export const batchAssignData = (params: BatchAssignParams): Promise<{ success: b
     // 使用mock数据
     return Promise.resolve({ success: true, message: '批量分配成功' })
   }
-  
+
   return api.post('/api/data/batch-assign', params)
 }
 
@@ -201,7 +232,7 @@ export const batchArchiveData = (params: BatchArchiveParams): Promise<{ success:
     // 使用mock数据
     return Promise.resolve({ success: true, message: '批量封存成功' })
   }
-  
+
   return api.post('/api/data/batch-archive', params)
 }
 
@@ -216,7 +247,7 @@ export const recoverData = (params: RecoverDataParams): Promise<{ success: boole
     // 使用mock数据
     return Promise.resolve({ success: true, message: '回收成功' })
   }
-  
+
   return api.post('/api/data/recover', params)
 }
 
@@ -231,7 +262,7 @@ export const deleteData = (params: DeleteDataParams): Promise<{ success: boolean
     // 使用mock数据
     return Promise.resolve({ success: true, message: '删除成功' })
   }
-  
+
   return api.post('/api/data/delete', params)
 }
 
@@ -258,7 +289,7 @@ export const getAssigneeOptions = (): Promise<AssigneeOption[]> => {
     ]
     return Promise.resolve(mockAssigneeOptions)
   }
-  
+
   return api.get('/api/data/assignee-options')
 }
 
@@ -286,8 +317,116 @@ export interface CustomerSearchResult {
   ownerId: string
 }
 
-export const searchCustomer = (params: CustomerSearchParams): Promise<CustomerSearchResult[]> => {
-  return api.get('/api/data/search-customer', params)
+export const searchCustomer = async (params: CustomerSearchParams): Promise<CustomerSearchResult[]> => {
+  // 生产环境：调用真实API
+  if (isProduction()) {
+    try {
+      console.log('[Data API] 使用后端API搜索客户')
+      const response = await api.get('/api/data/search-customer', params)
+      return response.data || response
+    } catch (error) {
+      console.error('[Data API] 后端API调用失败，降级到localStorage:', error)
+      // 降级到localStorage
+    }
+  }
+
+  // 开发环境：从localStorage搜索
+  console.log('[Data API] 使用localStorage搜索客户')
+  try {
+    const customerStore = localStorage.getItem('customer-store')
+    const orderStoreRaw = localStorage.getItem('crm_store_order')
+    const userDatabase = localStorage.getItem('userDatabase')
+
+    if (!customerStore || !orderStoreRaw || !userDatabase) {
+      return []
+    }
+
+    // 解析订单数据（支持新旧格式）
+    let orders: any[] = []
+    try {
+      const parsed = JSON.parse(orderStoreRaw)
+      if (parsed.data && parsed.data.orders) {
+        orders = parsed.data.orders
+      } else if (parsed.orders) {
+        orders = parsed.orders
+      } else if (Array.isArray(parsed)) {
+        orders = parsed
+      }
+    } catch (e) {
+      console.error('[Data API] 解析订单数据失败:', e)
+      return []
+    }
+
+    const customers = JSON.parse(customerStore).customers || []
+    const users = JSON.parse(userDatabase) || []
+
+    const results: CustomerSearchResult[] = []
+    const keyword = params.phone || params.orderNo || params.trackingNo || params.customerName || params.customerCode || ''
+
+    // 搜索匹配的订单
+    for (const order of orders) {
+      const customer = customers.find((c: any) => c.id === order.customerId)
+      if (!customer) continue
+
+      const owner = users.find((u: unknown) => u.id === order.salesPersonId)
+
+      let matched = false
+
+      // 匹配逻辑
+      if (params.phone && customer.phone === params.phone) matched = true
+      if (params.customerName && customer.name?.includes(params.customerName)) matched = true
+      if (params.customerCode && customer.code === params.customerCode) matched = true
+      if (params.orderNo && order.orderNumber === params.orderNo) matched = true
+      if (params.trackingNo && order.trackingNumber === params.trackingNo) matched = true
+
+      // 通用关键词匹配
+      if (!matched && keyword) {
+        if (customer.name?.includes(keyword) ||
+            customer.phone === keyword ||
+            customer.code === keyword ||
+            order.orderNumber === keyword ||
+            order.orderNumber?.includes(keyword) ||
+            order.trackingNumber === keyword ||
+            order.trackingNumber?.includes(keyword)) {
+          matched = true
+        }
+      }
+
+      if (matched) {
+        results.push({
+          customerName: customer.name || '未知',
+          phone: customer.phone || '',
+          orderNo: order.orderNumber || '',
+          orderAmount: order.totalAmount || 0,
+          orderDate: order.createTime ? order.createTime.split(' ')[0] : '',
+          trackingNo: order.trackingNumber || '',
+          ownerName: owner ? (owner.realName || owner.name || '未知') : '未知',
+          ownerDepartment: owner ? (owner.department || '未知部门') : '未知部门',
+          ownerPhone: owner ? (owner.phone || '') : '',
+          ownerStatus: 'active',
+          customerId: customer.id,
+          ownerId: owner?.id || ''
+        })
+      }
+    }
+
+    // 去重
+    const uniqueResults = results.reduce((acc: CustomerSearchResult[], current) => {
+      const exists = acc.find(item =>
+        item.customerName === current.customerName &&
+        item.orderNo === current.orderNo
+      )
+      if (!exists) {
+        acc.push(current)
+      }
+      return acc
+    }, [])
+
+    return uniqueResults
+  } catch (error) {
+    console.error('[Data API] 搜索客户失败:', error)
+    return []
+  }
 }
 
 // 获取客户详情
@@ -355,7 +494,7 @@ export interface DataStatistics {
 }
 
 export const getDataStatistics = (dateRange?: string[]): Promise<DataStatistics> => {
-  return api.get('/api/data/statistics', 
+  return api.get('/api/data/statistics',
     dateRange ? { startDate: dateRange[0], endDate: dateRange[1] } : {}
   )
 }
@@ -368,7 +507,7 @@ export interface ExportDataParams {
   format: 'excel' | 'csv'
 }
 
-export const exportDataList = (params: ExportDataParams): Promise<any> => {
+export const exportDataList = (params: ExportDataParams): Promise<unknown> => {
   return api.get('/api/data/export', params)
 }
 
@@ -382,7 +521,7 @@ export const generateMockData = () => {
     { id: '2', name: '王经理', department: '销售二部' },
     { id: '3', name: '张主管', department: '销售三部' }
   ]
-  
+
   const creators = [
     { id: 'creator1', name: '系统管理员', department: '管理部' },
     { id: 'creator2', name: '数据录入员', department: '客服部' },
@@ -411,7 +550,7 @@ export const generateMockData = () => {
     for (let i = 0; i < range.count; i++) {
       const status = statuses[Math.floor(Math.random() * statuses.length)]
       const assignee = status === 'assigned' ? assignees[Math.floor(Math.random() * assignees.length)] : undefined
-      
+
       // 在指定时间范围内生成随机日期
       let orderDate: Date
       if (range.label === '今日') {
@@ -432,10 +571,10 @@ export const generateMockData = () => {
 
       // 生成重新分配标识（10%概率）
       const isReassigned = Math.random() < 0.1
-      
+
       // 生成创建者信息
       const creator = creators[Math.floor(Math.random() * creators.length)]
-      
+
       // 生成操作人信息（对于已分配、已封存、已回收状态）
       let operatorInfo = undefined
       if (status !== 'pending') {
@@ -446,10 +585,10 @@ export const generateMockData = () => {
           operatorDepartment: operator.department
         }
       }
-      
+
       // 生成操作记录
       const operationRecords: OperationRecord[] = []
-      
+
       // 添加创建记录
       operationRecords.push({
         id: `op_${id}_1`,
@@ -460,7 +599,7 @@ export const generateMockData = () => {
         remark: '客户资料创建',
         createTime: orderDate.toISOString()
       })
-      
+
       // 根据状态添加相应的操作记录
       let assignDate = undefined
       if (status === 'assigned' && assignee) {
@@ -479,7 +618,7 @@ export const generateMockData = () => {
           createTime: assignTime.toISOString()
         })
       }
-      
+
       // 生成封存信息（对于已封存状态的数据）
       let archiveInfo = undefined
       if (status === 'archived') {
@@ -487,7 +626,7 @@ export const generateMockData = () => {
         const durations = ['1个月', '3个月', '6个月', '1年']
         const archiveTime = new Date(orderDate.getTime() + Math.random() * 30 * 24 * 60 * 60 * 1000)
         const duration = durations[Math.floor(Math.random() * durations.length)]
-        
+
         // 计算解封时间
         const unarchiveTime = new Date(archiveTime)
         switch (duration) {
@@ -504,7 +643,7 @@ export const generateMockData = () => {
             unarchiveTime.setFullYear(unarchiveTime.getFullYear() + 1)
             break
         }
-        
+
         archiveInfo = {
           duration,
           reason: archiveReasons[Math.floor(Math.random() * archiveReasons.length)],
@@ -512,7 +651,7 @@ export const generateMockData = () => {
           archiveTime: archiveTime.toISOString(),
           unarchiveTime: unarchiveTime.toISOString()
         }
-        
+
         // 添加封存操作记录
         operationRecords.push({
           id: `op_${id}_archive`,
@@ -525,7 +664,7 @@ export const generateMockData = () => {
           createTime: archiveInfo.archiveTime
         })
       }
-      
+
       // 为回收状态添加操作记录
       if (status === 'recovered') {
         const recoverTime = new Date(orderDate.getTime() + Math.random() * 30 * 24 * 60 * 60 * 1000)
@@ -624,13 +763,13 @@ export const getAssignmentHistory = (params: {
         createTime: '2024-01-15 11:00:00'
       }
     ]
-    
+
     return Promise.resolve({
       list: mockHistory,
       total: mockHistory.length
     })
   }
-  
+
   return api.get('/assignment/history', { params })
 }
 
@@ -662,22 +801,22 @@ export const getDepartmentRoundRobinState = (departmentId: string): Promise<Depa
       ],
       lastUpdated: '2024-01-15 11:00:00'
     }
-    
+
     return Promise.resolve(mockState)
   }
-  
+
   return api.get(`/department/${departmentId}/roundrobin-state`)
 }
 
 // 更新部门轮流分配状态
 export const updateDepartmentRoundRobinState = (
-  departmentId: string, 
+  departmentId: string,
   state: DepartmentRoundRobinState
 ): Promise<void> => {
   if (shouldUseMockApi()) {
     return Promise.resolve()
   }
-  
+
   return api.put(`/department/${departmentId}/roundrobin-state`, state)
 }
 
@@ -714,10 +853,10 @@ export const getAssignmentStats = (params: {
         lastAssignedTime: '2024-01-15 11:00:00'
       }
     ]
-    
+
     return Promise.resolve(mockStats)
   }
-  
+
   return api.get('/assignment/stats', { params })
 }
 
@@ -726,6 +865,6 @@ export const recordAssignmentHistory = (history: Omit<AssignmentHistory, 'id' | 
   if (shouldUseMockApi()) {
     return Promise.resolve()
   }
-  
+
   return api.post('/assignment/history', history)
 }

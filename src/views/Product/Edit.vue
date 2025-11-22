@@ -282,8 +282,8 @@
               
               <el-form-item label="商品状态" prop="status">
                 <el-radio-group v-model="productForm.status">
-                  <el-radio value="active">上架</el-radio>
-                  <el-radio value="inactive">下架</el-radio>
+                  <el-radio label="active">上架</el-radio>
+                  <el-radio label="inactive">下架</el-radio>
                 </el-radio-group>
               </el-form-item>
 
@@ -390,8 +390,8 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Plus } from '@element-plus/icons-vue'
-import { useNotificationStore } from '@/stores/notification'
 import { useProductStore } from '@/stores/product'
+import { useTabsStore } from '@/stores/tabs'
 import { createSafeNavigator } from '@/utils/navigation'
 
 // 接口定义
@@ -408,11 +408,11 @@ const router = useRouter()
 const route = useRoute()
 const safeNavigator = createSafeNavigator(router)
 
-// 消息提醒store
-const notificationStore = useNotificationStore()
-
 // 商品store
 const productStore = useProductStore()
+
+// 标签页store
+const tabsStore = useTabsStore()
 
 // 响应式数据
 const saveLoading = ref(false)
@@ -455,7 +455,7 @@ const fileList = ref<UploadFile[]>([])
 
 // 分类选项 - 从 productStore 获取并转换格式
 const categoryOptions = computed(() => {
-  return productStore.categories.map(category => ({
+  return (productStore.categories || []).map(category => ({
     value: category.id,
     label: category.name,
     children: category.children?.map(child => ({
@@ -471,6 +471,27 @@ const categoryProps = {
   label: 'label',
   children: 'children',
   emitPath: false
+}
+
+// 获取分类名称
+const getCategoryName = (categoryId: string | number) => {
+  if (!categoryId) return '未分类'
+  
+  // 在一级分类中查找
+  for (const category of productStore.categories || []) {
+    if (category.id === categoryId) {
+      return category.name
+    }
+    // 在二级分类中查找
+    if (category.children) {
+      for (const child of category.children) {
+        if (child.id === categoryId) {
+          return child.name
+        }
+      }
+    }
+  }
+  return '未分类'
 }
 
 // 表单验证规则
@@ -642,7 +663,12 @@ const handleCancel = async () => {
  */
 const handleSave = async () => {
   try {
-    await productFormRef.value?.validate()
+    // 表单验证
+    const isValid = await productFormRef.value?.validate()
+    if (!isValid) {
+      ElMessage.error('请完善商品信息')
+      return
+    }
     
     // 验证库存设置
     if (productForm.minStock > productForm.maxStock) {
@@ -681,7 +707,7 @@ const handleSave = async () => {
         code: productForm.code,
         name: productForm.name,
         categoryId: productForm.categoryId,
-        categoryName: productForm.categoryName || '未分类',
+        categoryName: getCategoryName(productForm.categoryId),
         brand: productForm.brand,
         specification: productForm.specification,
         unit: productForm.unit,
@@ -699,14 +725,16 @@ const handleSave = async () => {
         image: productForm.mainImage || '/src/assets/images/product-placeholder.svg',
         images: Array.isArray(productForm.images) ? productForm.images : []
       })
-      productForm.id = newProduct.id.toString()
+      if (newProduct && newProduct.id) {
+        productForm.id = newProduct.id.toString()
+      }
     } else {
       // 更新商品
       productStore.updateProduct(productForm.id, {
         code: productForm.code,
         name: productForm.name,
         categoryId: productForm.categoryId,
-        categoryName: productForm.categoryName || '未分类',
+        categoryName: getCategoryName(productForm.categoryId),
         brand: productForm.brand,
         specification: productForm.specification,
         unit: productForm.unit,
@@ -727,31 +755,21 @@ const handleSave = async () => {
     
     ElMessage.success(isEdit.value ? '商品更新成功' : '商品创建成功')
     
-    // 发送消息提醒
-    notificationStore.addNotification({
-      type: isAddMode ? 'PRODUCT_CREATED' : 'PRODUCT_UPDATED',
-      title: isAddMode ? '商品创建' : '商品更新',
-      content: `商品"${productForm.name}"已${isAddMode ? '创建' : '更新'}成功`,
-      data: {
-        productId: productForm.id || 'new',
-        productName: productForm.name,
-        productCode: productForm.code,
-        action: isAddMode ? '创建' : '更新',
-        timestamp: new Date().toISOString()
-      },
-      link: isEdit.value ? `/product/detail/${productForm.id}` : '/product/list'
-    })
-    
-    // 跳转到商品详情页或列表页
-    if (isAddMode) {
-      // 新建商品后跳转到列表页并刷新数据
-      safeNavigator.push({ path: '/product/list', query: { refresh: 'true' } })
-    } else {
-      // 编辑商品后跳转到详情页
-      safeNavigator.push(`/product/detail/${productForm.id}`)
-    }
+    // 延迟跳转，让用户能看到成功提示
+    setTimeout(() => {
+      if (isAddMode) {
+        // 新建商品后关闭当前标签页并跳转到商品列表
+        const currentPath = route.path
+        tabsStore.removeTab(currentPath)
+        safeNavigator.push({ path: '/product/list', query: { refresh: 'true' } })
+      } else {
+        // 编辑商品后跳转到详情页
+        safeNavigator.push(`/product/detail/${productForm.id}`)
+      }
+    }, 1000) // 1秒延迟，让用户能看到成功提示
   } catch (error) {
-    console.error('表单验证失败:', error)
+    console.error('保存商品失败:', error)
+    ElMessage.error('保存失败，请检查网络连接或稍后重试')
   } finally {
     saveLoading.value = false
   }

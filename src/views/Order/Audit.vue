@@ -203,9 +203,9 @@
              </el-tab-pane>
           </el-tabs>
         </div>
-        
+
         <div class="header-spacer"></div>
-        
+
         <!-- 右侧操作区域 -->
         <div class="header-actions-right">
           <!-- 批量操作按钮 -->
@@ -228,9 +228,9 @@
             批量拒绝 ({{ selectedOrders.length }})
           </el-button>
           <el-button @click="handleRefresh" :icon="Refresh" size="small">刷新</el-button>
-          
+
           <el-divider direction="vertical" />
-          
+
           <!-- 全选框 -->
           <el-checkbox
             v-model="selectAll"
@@ -239,16 +239,30 @@
           >
             全选
           </el-checkbox>
-          
+
           <el-divider direction="vertical" />
-          
+
           <!-- 总记录数 -->
           <span class="total-info">共 {{ pagination.total }} 条记录</span>
         </div>
       </template>
 
+      <!-- 订单号列 -->
+      <template #column-orderNo="{ row }">
+        <el-link type="primary" @click="goToOrderDetail(row)" :underline="false">
+          {{ row.orderNo }}
+        </el-link>
+      </template>
+
+      <!-- 客户姓名列 -->
+      <template #column-customerName="{ row }">
+        <el-link type="primary" @click="goToCustomerDetail(row)" :underline="false">
+          {{ row.customerName }}
+        </el-link>
+      </template>
+
       <template #customerPhone="{ row }">
-        {{ maskPhone(row.customerPhone) }}
+        {{ displaySensitiveInfoNew(row.customerPhone, 'phone') }}
       </template>
 
       <template #totalAmount="{ row }">
@@ -276,13 +290,20 @@
       <template #hasBeenAudited="{ row }">
         <el-tag
           v-if="row.hasBeenAudited"
-          type="warning"
+          type="success"
           size="small"
           effect="plain"
         >
-          曾审过
+          已审核
         </el-tag>
-        <span v-else>-</span>
+        <el-tag
+          v-else
+          type="info"
+          size="small"
+          effect="plain"
+        >
+          待审核
+        </el-tag>
       </template>
 
       <template #table-actions="{ row }">
@@ -501,11 +522,11 @@
           >
             <el-form-item label="审核结果" prop="result" :required="false">
               <el-radio-group v-model="quickAuditForm.result">
-                <el-radio value="approved">
+                <el-radio label="approved">
                   <el-icon color="#67c23a"><Check /></el-icon>
                   审核通过
                 </el-radio>
-                <el-radio value="rejected">
+                <el-radio label="rejected">
                   <el-icon color="#f56c6c"><Close /></el-icon>
                   审核拒绝
                 </el-radio>
@@ -513,14 +534,14 @@
             </el-form-item>
 
             <!-- 拒绝原因选择框 -->
-            <el-form-item 
-              v-if="quickAuditForm.result === 'rejected'" 
-              label="拒绝原因" 
-              prop="rejectionReason" 
+            <el-form-item
+              v-if="quickAuditForm.result === 'rejected'"
+              label="拒绝原因"
+              prop="rejectionReason"
               required
             >
-              <el-select 
-                v-model="quickAuditForm.rejectionReason" 
+              <el-select
+                v-model="quickAuditForm.rejectionReason"
                 placeholder="请选择拒绝原因"
                 style="width: 100%"
               >
@@ -676,18 +697,18 @@
       >
         <el-form-item label="审核结果" prop="result" :required="false">
           <el-radio-group v-model="auditForm.result" @change="handleAuditResultChange">
-            <el-radio value="approved">
+            <el-radio label="approved">
               <el-icon color="#67c23a"><Check /></el-icon>
               审核通过
             </el-radio>
-            <el-radio value="rejected">
+            <el-radio label="rejected">
               <el-icon color="#f56c6c"><Close /></el-icon>
               审核拒绝
             </el-radio>
           </el-radio-group>
         </el-form-item>
 
-        
+
         <!-- 拒绝原因选择 -->
         <el-form-item
           v-if="auditForm.result === 'rejected'"
@@ -815,9 +836,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { createSafeNavigator } from '@/utils/navigation'
 import {
   Check,
   Close,
@@ -843,11 +865,11 @@ import { useOrderStore } from '@/stores/order'
 import { useNotificationStore } from '@/stores/notification'
 import { useRejectionReasonStore } from '@/stores/rejectionReason'
 import { orderApi } from '@/api/order'
-import { maskPhone } from '@/utils/phone'
-import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import DynamicTable from '@/components/DynamicTable.vue'
 import RejectionReasonManagement from '@/components/RejectionReasonManagement.vue'
+import { eventBus, EventNames } from '@/utils/eventBus'
 
 // 接口定义
 interface PaymentScreenshot {
@@ -869,6 +891,7 @@ interface AuditHistory {
 interface AuditOrder {
   id: string
   orderNo: string
+  customerId?: string
   customerName: string
   customerPhone: string
   salesPerson: string
@@ -898,7 +921,7 @@ interface SearchForm {
 }
 
 interface AuditForm {
-  result: 'approved' | 'rejected'
+  result: 'approved' | 'rejected' | null
   remark: string
   rejectionReasonId?: string
 }
@@ -908,12 +931,13 @@ interface RemarkForm {
 }
 
 interface QuickAuditForm {
-  result: 'approved' | 'rejected' | ''
+  result: 'approved' | 'rejected' | null
   rejectionReason: string
   remark: string
 }
 
 const router = useRouter()
+const safeNavigator = createSafeNavigator(router)
 const userStore = useUserStore()
 const appStore = useAppStore()
 const orderStore = useOrderStore()
@@ -969,14 +993,14 @@ const selectAll = ref(false)
 
 // 计算属性
 const isIndeterminate = computed(() => {
-  const selectedCount = selectedOrders.value.length
-  const totalCount = orderList.value.length
+  const selectedCount = selectedOrders.value?.length || 0
+  const totalCount = orderList.value?.length || 0
   return selectedCount > 0 && selectedCount < totalCount
 })
 
 const auditDialogTitle = computed(() => {
   if (isBatchAudit.value) {
-    return `批量审核订单 (${selectedOrders.value.length}个)`
+    return `批量审核订单 (${selectedOrders.value?.length || 0}个)`
   }
   return '订单审核'
 })
@@ -1124,7 +1148,7 @@ const currentOrder = ref<AuditOrder>({} as AuditOrder)
 
 // 审核表单
 const auditForm = reactive<AuditForm>({
-  result: 'approved',
+  result: null, // 使用null确保初始状态下没有选中任何选项
   remark: '',
   rejectionReasonId: ''
 })
@@ -1136,7 +1160,7 @@ const remarkForm = reactive<RemarkForm>({
 
 // 快速审核表单
 const quickAuditForm = reactive<QuickAuditForm>({
-  result: '',
+  result: null, // 使用null确保初始状态下没有选中任何选项
   rejectionReason: '',
   remark: ''
 })
@@ -1270,22 +1294,52 @@ const removeBatchOrder = (order: AuditOrder) => {
 }
 
 /**
- * 查看订单详情（打开审核弹窗）
+ * 跳转到订单详情页
  */
-const handleView = (row: AuditOrder) => {
-  currentOrder.value = row
-  // 重置快速审核表单
-  quickAuditForm.result = ''
-  quickAuditForm.rejectionReason = ''
-  quickAuditForm.remark = ''
-  orderDetailDialogVisible.value = true
+const goToOrderDetail = (row: AuditOrder) => {
+  if (row.id) {
+    safeNavigator.push(`/order/detail/${row.id}`)
+  }
 }
 
 /**
- * 单个订单审核
+ * 跳转到客户详情页
+ */
+const goToCustomerDetail = (row: AuditOrder) => {
+  // 优先使用row中的customerId，如果没有则从订单store获取
+  if (row.customerId) {
+    safeNavigator.push(`/customer/detail/${row.customerId}`)
+  } else {
+    const order = orderStore.getOrderById(row.id)
+    if (order && order.customerId) {
+      safeNavigator.push(`/customer/detail/${order.customerId}`)
+    } else {
+      ElMessage.warning('客户ID不存在')
+    }
+  }
+}
+
+/**
+ * 查看订单详情（打开审核弹窗）- 不设置默认选中状态
+ */
+const handleView = (row: AuditOrder) => {
+  currentOrder.value = row
+  // 重置快速审核表单，查看模式下不设置默认选中
+  quickAuditForm.result = null
+  quickAuditForm.rejectionReason = ''
+  quickAuditForm.remark = ''
+  // 打开订单详情审核弹窗
+  orderDetailDialogVisible.value = true
+}
+
+
+
+/**
+ * 单个订单审核 - 根据按钮类型设置默认选中状态（用于简单审核弹窗）
  */
 const handleAudit = (row: AuditOrder, result: 'approved' | 'rejected') => {
   currentOrder.value = row
+  // 根据点击的按钮设置默认选中状态
   auditForm.result = result
   auditForm.remark = ''
   auditForm.rejectionReasonId = ''
@@ -1297,7 +1351,7 @@ const handleAudit = (row: AuditOrder, result: 'approved' | 'rejected') => {
  * 批量审核
  */
 const handleBatchAudit = (result: string) => {
-  if (selectedOrders.value.length === 0) {
+  if (!selectedOrders.value || selectedOrders.value.length === 0) {
     ElMessage.warning('请先选择要审核的订单')
     return
   }
@@ -1374,7 +1428,7 @@ const updateTabCounts = () => {
   tabCounts.pending = pendingOrders.value.length
   tabCounts.approved = approvedOrders.value.length
   tabCounts.rejected = rejectedOrders.value.length
-  
+
   // 同时更新汇总数据中的待审核订单数量
   summaryData.pendingCount = pendingOrders.value.length
   summaryData.pendingAmount = pendingOrders.value.reduce((sum, order) => sum + order.totalAmount, 0)
@@ -1398,13 +1452,22 @@ const handleAuditSubmit = async () => {
 
         // 更新订单状态
         ordersToUpdate.forEach(order => {
+          // 重要：先更新订单store中的数据，确保数据持久化
+          const isApproved = auditForm.result === 'approved'
+          const rejectionReason = auditForm.rejectionReasonId
+            ? (rejectionReasonStore.getReasonById(auditForm.rejectionReasonId)?.name || auditForm.remark || '')
+            : (auditForm.remark || '')
+
+          // 更新订单存储中的订单状态，确保数据持久化
+          orderStore.auditOrder(order.id, isApproved, isApproved ? (auditForm.remark || '') : rejectionReason)
+
           // 从待审核列表移除
           const pendingIndex = pendingOrders.value.findIndex(item => item.id === order.id)
           if (pendingIndex > -1) {
             pendingOrders.value.splice(pendingIndex, 1)
           }
 
-          // 更新订单状态和审核信息
+          // 更新订单状态和审核信息（用于页面显示）
           order.auditStatus = auditForm.result
           order.auditTime = new Date().toLocaleString()
           order.auditor = userStore.user.name
@@ -1446,15 +1509,11 @@ const handleAuditSubmit = async () => {
             }
           )
 
-          // 如果审核通过，更新订单状态并流转到物流和发货列表
+          // 【批次201修复】发送待发货通知（审核通过时）
           if (auditForm.result === 'approved') {
-            // 更新订单存储中的订单状态
-            orderStore.auditOrder(order.id, 'approved', auditForm.remark, userStore.userInfo?.name || '当前用户')
-
-            // 发送物流通知
             notificationStore.sendMessage(
-              notificationStore.MessageType.ORDER_SHIPPED,
-              `订单 ${order.orderNo} 审核通过，已流转到物流发货列表`,
+              notificationStore.MessageType.ORDER_PENDING_SHIPMENT,
+              `订单 ${order.orderNo} 审核通过，已流转到物流发货列表，等待发货`,
               {
                 relatedId: order.id,
                 relatedType: 'order',
@@ -1462,13 +1521,14 @@ const handleAuditSubmit = async () => {
               }
             )
           } else {
-            // 如果审核拒绝，退回给销售员
-            orderStore.auditOrder(order.id, 'rejected', auditForm.remark, userStore.userInfo?.name || '当前用户')
+            // 发送退回通知给销售员（审核拒绝时）
+            const rejectionReason = auditForm.rejectionReasonId
+              ? (rejectionReasonStore.getReasonById(auditForm.rejectionReasonId)?.name || auditForm.remark || '')
+              : (auditForm.remark || '')
 
-            // 发送退回通知给销售员
             notificationStore.sendMessage(
               notificationStore.MessageType.ORDER_CANCELLED,
-              `订单 ${order.orderNo} 审核被拒绝，已退回修改。拒绝原因：${auditForm.remark}`,
+              `订单 ${order.orderNo} 审核被拒绝，已退回修改。拒绝原因：${rejectionReason}`,
               {
                 relatedId: order.id,
                 relatedType: 'order',
@@ -1481,7 +1541,7 @@ const handleAuditSubmit = async () => {
         auditDialogVisible.value = false
 
         // 重置表单
-        auditForm.result = 'approved'
+        auditForm.result = ''
         auditForm.remark = ''
         auditForm.rejectionReasonId = ''
       } catch (error) {
@@ -1529,8 +1589,9 @@ const handleRemarkSubmit = async () => {
  */
 const handleAuditDialogClose = () => {
   auditDialogVisible.value = false
-  auditForm.result = 'approved'
+  auditForm.result = null
   auditForm.remark = ''
+  auditForm.rejectionReasonId = ''
   isBatchAudit.value = false
   auditFormRef.value?.clearValidate()
 }
@@ -1540,7 +1601,7 @@ const handleAuditDialogClose = () => {
  */
 const handleOrderDetailDialogClose = () => {
   orderDetailDialogVisible.value = false
-  quickAuditForm.result = ''
+  quickAuditForm.result = null
   quickAuditForm.rejectionReason = ''
   quickAuditForm.remark = ''
   currentOrder.value = {}
@@ -1716,13 +1777,13 @@ const handleQuickAuditSubmit = async () => {
 
         // 如果审核通过，更新订单状态并流转到物流和发货列表
         if (result === 'approved') {
-          // 更新订单存储中的订单状态
-          orderStore.auditOrder(order.id, 'approved', quickAuditForm.remark, userStore.userInfo?.name || '当前用户')
+          // 更新订单存储中的订单状态 - 第二个参数必须是boolean类型
+          orderStore.auditOrder(order.id, true, quickAuditForm.remark || '')
 
-          // 发送物流通知
+          // 【批次201修复】发送待发货通知
           notificationStore.sendMessage(
-            notificationStore.MessageType.ORDER_SHIPPED,
-            `订单 ${order.orderNo} 审核通过，已流转到物流发货列表`,
+            notificationStore.MessageType.ORDER_PENDING_SHIPMENT,
+            `订单 ${order.orderNo} 审核通过，已流转到物流发货列表，等待发货`,
             {
               relatedId: order.id,
               relatedType: 'order',
@@ -1732,7 +1793,7 @@ const handleQuickAuditSubmit = async () => {
         } else {
           // 如果审核拒绝，退回给销售员
           const rejectionReason = quickAuditForm.rejectionReason || quickAuditForm.remark
-          orderStore.auditOrder(order.id, 'rejected', rejectionReason, userStore.userInfo?.name || '当前用户')
+          orderStore.auditOrder(order.id, false, rejectionReason)
 
           // 发送退回通知给销售员
           notificationStore.sendMessage(
@@ -1785,18 +1846,18 @@ const handleReset = () => {
  */
 const handleQuickFilter = (filterValue: string) => {
   activeQuickFilter.value = filterValue
-  
+
   // 根据筛选值设置日期范围
   const today = new Date()
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
-  
+
   const startOfWeek = new Date(today)
   startOfWeek.setDate(today.getDate() - today.getDay())
-  
+
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
   const startOfYear = new Date(today.getFullYear(), 0, 1)
-  
+
   switch (filterValue) {
     case 'today':
       searchForm.dateRange = [today, today]
@@ -1817,7 +1878,7 @@ const handleQuickFilter = (filterValue: string) => {
       searchForm.dateRange = []
       break
   }
-  
+
   // 触发搜索
   handleSearch()
 }
@@ -1908,14 +1969,14 @@ const calculateSummaryData = () => {
   // 计算待审核订单数量和金额
   const pendingCount = pendingOrders.value.length
   const pendingAmount = pendingOrders.value.reduce((sum, order) => sum + order.totalAmount, 0)
-  
+
   // 计算今日新增订单
   const today = new Date().toISOString().split('T')[0]
   const todayCount = pendingOrders.value.filter(order => {
     const orderDate = new Date(order.createTime).toISOString().split('T')[0]
     return orderDate === today
   }).length
-  
+
   // 计算超时订单（创建时间超过24小时且仍待审核）
   const now = new Date()
   const urgentCount = pendingOrders.value.filter(order => {
@@ -1961,33 +2022,62 @@ const loadSummaryData = async () => {
 // 数据范围控制函数
 const applyDataScopeControl = (orderList: any[]) => {
   const currentUser = userStore.currentUser
-  if (!currentUser) return []
+  if (!currentUser) {
+    console.log('[数据权限] 没有当前用户，返回空列表')
+    return []
+  }
 
-  // 超级管理员可以查看所有订单
-  if (currentUser.role === 'admin') {
+  console.log('[数据权限] 当前用户:', {
+    id: currentUser.id,
+    name: currentUser.name,
+    role: currentUser.role,
+    department: currentUser.department
+  })
+
+  // 超级管理员和管理员可以查看所有订单
+  if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
+    console.log('[数据权限] 超管/管理员角色，可查看全部订单:', orderList.length)
     return orderList
   }
 
   // 部门负责人可以查看本部门所有订单
   if (currentUser.role === 'department_manager') {
-    return orderList.filter(order => {
-      const orderCreator = userStore.getUserById(order.createdBy)
-      return orderCreator?.department === currentUser.department
+    const filtered = orderList.filter(order => {
+      // 使用 salesPersonId 来查找订单创建者
+      const orderCreator = userStore.getUserById(order.salesPersonId || order.createdBy)
+      const match = orderCreator?.department === currentUser.department
+      if (match) {
+        console.log('[数据权限] 部门匹配:', order.orderNumber, orderCreator?.name)
+      }
+      return match
     })
+    console.log('[数据权限] 部门经理，可查看部门订单:', filtered.length)
+    return filtered
   }
 
-  // 销售员只能查看自己创建的订单
-  if (currentUser.role === 'sales_staff') {
-    return orderList.filter(order => order.createdBy === currentUser.id)
+  // 销售员只能查看自己创建的订单（使用 salesPersonId 进行匹配）
+  if (currentUser.role === 'sales_staff' || currentUser.role === 'employee') {
+    const filtered = orderList.filter(order => {
+      const match = order.salesPersonId === currentUser.id || order.createdBy === currentUser.name
+      if (match) {
+        console.log('[数据权限] 销售员订单匹配:', order.orderNumber, order.salesPersonId, currentUser.id)
+      }
+      return match
+    })
+    console.log('[数据权限] 销售员，可查看自己的订单:', filtered.length)
+    return filtered
   }
 
-  // 客服只能查看自己处理的订单
+  // 客服可以查看所有待审核的订单（用于审核）
   if (currentUser.role === 'customer_service') {
-    return orderList.filter(order => order.servicePersonId === currentUser.id)
+    console.log('[数据权限] 客服角色，可查看全部待审核订单:', orderList.length)
+    return orderList  // 客服需要看到所有订单才能进行审核
   }
 
-  // 其他角色默认只能查看自己创建的订单
-  return orderList.filter(order => order.createdBy === currentUser.id)
+  // 其他角色默认只能查看自己创建的订单（使用 salesPersonId）
+  const filtered = orderList.filter(order => order.salesPersonId === currentUser.id || order.createdBy === currentUser.name)
+  console.log('[数据权限] 其他角色，可查看自己的订单:', filtered.length)
+  return filtered
 }
 
 /**
@@ -1999,31 +2089,75 @@ const loadOrderList = async () => {
     // 从orderStore获取订单数据，应用数据范围控制，过滤掉预留单
     const allOrders = applyDataScopeControl(orderStore.orders)
 
-    // 过滤出需要审核的订单（排除预留单和退单，且只包含已流转到审核的正常发货单）
+    // 过滤出需要审核的订单（排除预留单和退单）
     const ordersForAudit = allOrders.filter(order => {
+      console.log(`[订单审核] 检查订单 ${order.orderNumber}`, {
+        status: order.status,
+        auditStatus: order.auditStatus,
+        markType: order.markType,
+        hasBeenAudited: order.hasBeenAudited,
+        isAuditTransferred: order.isAuditTransferred
+      })
+
       // 排除预留单
       if (order.markType === 'reserved') {
+        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} 是预留单，跳过`)
         return false
       }
 
       // 排除退单 - 退单应该保留在成员系统，不流转到审核
       if (order.markType === 'return') {
+        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} 是退单，跳过`)
         return false
       }
 
-      // 只包含待审核状态的订单
+      // 关键条件：status 必须是 'pending_audit'（待审核状态）
+      // 重要：已发货或已签收的订单不应该出现在待审核列表中
+      if (order.status !== 'pending_audit') {
+        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} 状态不是pending_audit，跳过`, {
+          status: order.status
+        })
+        return false
+      }
+
+      // auditStatus 必须是 'pending'（未审核）
       if (order.auditStatus !== 'pending') {
+        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} auditStatus不是pending，跳过`, {
+          auditStatus: order.auditStatus
+        })
         return false
       }
 
-      // 对于正常发货单，只有已流转到审核的才显示
-      if (order.markType === 'normal') {
-        return order.isAuditTransferred === true
+      // 额外检查：如果订单已经发货或已签收，不应该出现在待审核列表
+      // 这可以防止数据异常导致的错误显示
+      if (order.status === 'shipped' || order.status === 'delivered' || order.status === 'cancelled') {
+        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} 状态为${order.status}，不应该出现在待审核列表，跳过`)
+        return false
       }
 
-      // 其他类型的订单需要审核
+      // 检查订单是否已经有审核记录（已审核过的订单不应该再次出现在待审核列表）
+      if (order.hasBeenAudited === true && order.auditStatus === 'approved') {
+        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} 已经审核通过，不应该出现在待审核列表，跳过`)
+        return false
+      }
+
+      // 通过筛选的订单
+      console.log(`[订单审核] ✅✅✅ 订单 ${order.orderNumber} 通过筛选`, {
+        status: order.status,
+        auditStatus: order.auditStatus,
+        markType: order.markType || 'normal'
+      })
       return true
     })
+
+    // 按创建时间倒序排序（最新的在上面）
+    ordersForAudit.sort((a, b) => {
+      const timeA = new Date(a.createTime).getTime()
+      const timeB = new Date(b.createTime).getTime()
+      return timeB - timeA // 倒序：timeB - timeA
+    })
+
+    console.log(`[订单审核] 筛选结果：共 ${ordersForAudit.length} 个待审核订单（已按时间倒序）`)
 
     // 模拟API调用延迟
     await new Promise(resolve => setTimeout(resolve, 300))
@@ -2032,6 +2166,7 @@ const loadOrderList = async () => {
     const convertedPendingOrders = ordersForAudit.map(order => ({
       id: order.id,
       orderNo: order.orderNumber,
+      customerId: order.customerId,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       salesPerson: order.createdBy,
@@ -2350,10 +2485,76 @@ const loadOrderList = async () => {
       }
     ]
 
-    // 设置订单数据 - 合并真实数据和模拟数据
-    pendingOrders.value = [...convertedPendingOrders, ...mockPendingOrders]
-    approvedOrders.value = mockApprovedOrders
-    rejectedOrders.value = mockRejectedOrders
+    // 设置订单数据 - 只使用真实数据，不使用模拟数据
+    console.log(`[订单审核] 转换后的真实订单数量: ${convertedPendingOrders.length}`)
+    pendingOrders.value = convertedPendingOrders
+
+    // 从真实数据中筛选已审核通过和拒绝的订单
+    const allOrdersWithAudit = applyDataScopeControl(orderStore.orders)
+
+    console.log('[订单审核] 开始筛选已审核订单，总订单数:', allOrdersWithAudit.length)
+
+    approvedOrders.value = allOrdersWithAudit
+      .filter(order => {
+        const match = order.auditStatus === 'approved' && order.markType !== 'reserved' && order.markType !== 'return'
+        if (match) {
+          console.log('[订单审核] ✅ 审核通过订单:', order.orderNumber, order.auditStatus)
+        }
+        return match
+      })
+      .map(order => ({
+        id: order.id,
+        orderNo: order.orderNumber,
+        customerId: order.customerId,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        salesPerson: order.createdBy,
+        totalAmount: order.totalAmount,
+        depositAmount: order.depositAmount,
+        codAmount: order.totalAmount - order.depositAmount,
+        productCount: order.products.length,
+        createTime: order.createTime,
+        auditStatus: order.auditStatus,
+        auditTime: order.auditTime || order.updateTime,
+        auditor: order.auditor || '系统',
+        auditRemark: order.auditRemark || '',
+        deliveryAddress: order.receiverAddress,
+        paymentScreenshots: order.depositScreenshot ? [
+          { id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }
+        ] : []
+      }))
+
+    rejectedOrders.value = allOrdersWithAudit
+      .filter(order => {
+        const match = order.auditStatus === 'rejected' && order.markType !== 'reserved' && order.markType !== 'return'
+        if (match) {
+          console.log('[订单审核] ❌ 审核拒绝订单:', order.orderNumber, order.auditStatus, order.status)
+        }
+        return match
+      })
+      .map(order => ({
+        id: order.id,
+        orderNo: order.orderNumber,
+        customerId: order.customerId,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        salesPerson: order.createdBy,
+        totalAmount: order.totalAmount,
+        depositAmount: order.depositAmount,
+        codAmount: order.totalAmount - order.depositAmount,
+        productCount: order.products.length,
+        createTime: order.createTime,
+        auditStatus: order.auditStatus,
+        auditTime: order.auditTime || order.updateTime,
+        auditor: order.auditor || '系统',
+        auditRemark: order.auditRemark || order.rejectReason || '',
+        deliveryAddress: order.receiverAddress,
+        paymentScreenshots: order.depositScreenshot ? [
+          { id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }
+        ] : []
+      }))
+
+    console.log(`[订单审核] 最终数据统计：待审核=${pendingOrders.value.length}, 已通过=${approvedOrders.value.length}, 已拒绝=${rejectedOrders.value.length}`)
 
     // 更新标签计数
     updateTabCounts()
@@ -2361,20 +2562,55 @@ const loadOrderList = async () => {
     // 更新汇总数据
     calculateSummaryData()
 
-    pagination.total = orderList.value.length
+    pagination.total = orderList.value?.length || 0
   } catch (error) {
+    console.error('加载订单列表失败:', error)
     ElMessage.error('加载订单列表失败')
+    // 确保在错误情况下数组仍然是有效的空数组
+    pendingOrders.value = []
+    approvedOrders.value = []
+    rejectedOrders.value = []
+    pagination.total = 0
   } finally {
     loading.value = false
   }
 }
 
+// 订单事件处理函数
+const handleOrderTransferredAudit = (transferredOrders: any[]) => {
+  console.log('[订单审核] 收到订单流转事件:', transferredOrders)
+  loadOrderList()
+  ElMessage.info(`${transferredOrders.length} 个订单已流转到审核列表`)
+}
+
+const handleRefreshAuditList = () => {
+  console.log('[订单审核] 收到刷新审核列表事件')
+  loadOrderList()
+}
+
+const handleOrderStatusChangedAudit = (order: any) => {
+  console.log('[订单审核] 订单状态变更:', order)
+  loadOrderList()
+}
+
 // 生命周期
 onMounted(async () => {
-  // 设置默认的今日筛选
-  handleQuickFilter('today')
+  // 设置默认显示全部订单
+  handleQuickFilter('all')
   // 加载汇总数据
   loadSummaryData()
+
+  // 监听订单事件总线 - 实现订单状态同步
+  eventBus.on(EventNames.ORDER_TRANSFERRED, handleOrderTransferredAudit)
+  eventBus.on(EventNames.REFRESH_AUDIT_LIST, handleRefreshAuditList)
+  eventBus.on(EventNames.ORDER_STATUS_CHANGED, handleOrderStatusChangedAudit)
+})
+
+onUnmounted(() => {
+  // 清理订单事件总线监听
+  eventBus.off(EventNames.ORDER_TRANSFERRED, handleOrderTransferredAudit)
+  eventBus.off(EventNames.REFRESH_AUDIT_LIST, handleRefreshAuditList)
+  eventBus.off(EventNames.ORDER_STATUS_CHANGED, handleOrderStatusChangedAudit)
 })
 </script>
 
@@ -2645,10 +2881,6 @@ onMounted(async () => {
 :deep(.table-card-container .el-table tr:last-child td) {
   border-bottom: none;
 }
-
-
-
-
 
 .table-card {
   margin-bottom: 20px;

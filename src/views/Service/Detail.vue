@@ -3,9 +3,9 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-left">
-        <el-button 
-          type="primary" 
-          :icon="ArrowLeft" 
+        <el-button
+          type="primary"
+          :icon="ArrowLeft"
           @click="handleBack"
           class="back-btn"
         >
@@ -14,8 +14,8 @@
         <div class="title-section">
           <h1 class="page-title">售后详情</h1>
           <div class="service-status">
-            <el-tag 
-              :type="getStatusType(serviceInfo.status)" 
+            <el-tag
+              :type="getStatusType(serviceInfo.status)"
               size="large"
               effect="dark"
             >
@@ -25,23 +25,23 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button 
-          v-if="canEdit" 
-          type="primary" 
+        <el-button
+          v-if="canEdit"
+          type="primary"
           :icon="Edit"
           @click="handleEdit"
         >
           编辑
         </el-button>
-        <el-button 
-          v-if="canProcess" 
+        <el-button
+          v-if="canProcess"
           type="success"
           @click="handleProcess"
         >
           处理
         </el-button>
-        <el-button 
-          v-if="canClose" 
+        <el-button
+          v-if="canClose"
           type="warning"
           @click="handleClose"
         >
@@ -60,7 +60,7 @@
               <h3>基本信息</h3>
             </div>
           </template>
-          
+
           <div class="info-grid">
             <div class="info-item">
               <label>售后单号：</label>
@@ -68,14 +68,13 @@
             </div>
             <div class="info-item">
               <label>原订单号：</label>
-              <span class="value">
-                <el-link 
-                  type="primary" 
-                  @click="viewOrder(serviceInfo.orderNumber)"
-                >
-                  {{ serviceInfo.orderNumber }}
-                </el-link>
-              </span>
+              <el-link
+                type="primary"
+                @click="handleViewOrder"
+                class="value-link"
+              >
+                {{ serviceInfo.orderNumber }}
+              </el-link>
             </div>
             <div class="info-item">
               <label>服务类型：</label>
@@ -105,23 +104,28 @@
               <h3>客户信息</h3>
             </div>
           </template>
-          
+
           <div class="info-grid">
             <div class="info-item">
               <label>客户姓名：</label>
-              <span class="value">{{ serviceInfo.customerName }}</span>
+              <el-link
+                type="primary"
+                @click="handleViewCustomer"
+                class="value-link"
+              >
+                {{ serviceInfo.customerName }}
+              </el-link>
             </div>
             <div class="info-item">
               <label>联系电话：</label>
               <span class="value">
-                <el-link 
-                  v-if="userStore.canViewPhone" 
-                  type="primary" 
-                  @click="handleCall"
+                <el-link
+                  type="primary"
+                  :icon="Phone"
+                  @click="handleCallCustomer"
                 >
-                  {{ maskPhone(serviceInfo.customerPhone) }}
+                  {{ displaySensitiveInfoNew(serviceInfo.customerPhone, SensitiveInfoType.PHONE) }}
                 </el-link>
-                <span v-else class="restricted-info">***-****-****</span>
               </span>
             </div>
             <div class="info-item">
@@ -145,7 +149,7 @@
               <h3>商品信息</h3>
             </div>
           </template>
-          
+
           <div class="product-info">
             <div class="product-item">
               <div class="product-details">
@@ -167,7 +171,7 @@
               <h3>问题描述</h3>
             </div>
           </template>
-          
+
           <div class="description-content">
             <div class="reason-section">
               <h4>问题原因</h4>
@@ -184,6 +188,83 @@
           </div>
         </el-card>
 
+        <!-- 跟进记录 -->
+        <el-card class="info-card" shadow="never">
+          <template #header>
+            <div class="card-header">
+              <h3>跟进记录</h3>
+              <el-button
+                type="primary"
+                size="small"
+                :icon="Plus"
+                @click="handleAddFollowUp"
+              >
+                添加跟进
+              </el-button>
+            </div>
+          </template>
+
+          <div class="follow-up-content">
+            <!-- 没有记录时的提示 -->
+            <el-empty
+              v-if="followUpRecords.length === 0"
+              description="暂无跟进记录"
+              :image-size="80"
+            />
+
+            <!-- 跟进记录列表 -->
+            <div v-else class="follow-up-list">
+              <!-- 最新一条记录(始终显示) -->
+              <div
+                v-if="followUpRecords.length > 0"
+                class="follow-up-item latest"
+              >
+                <div class="follow-up-header">
+                  <div class="follow-up-time">
+                    <el-icon><Clock /></el-icon>
+                    {{ followUpRecords[0].followUpTime }}
+                  </div>
+                  <div class="follow-up-user">
+                    {{ followUpRecords[0].createdBy }}
+                  </div>
+                </div>
+                <div class="follow-up-body">
+                  <p>{{ followUpRecords[0].content }}</p>
+                </div>
+              </div>
+
+              <!-- 历史记录(折叠显示) -->
+              <el-collapse v-if="followUpRecords.length > 1" v-model="followUpCollapseActive">
+                <el-collapse-item name="history">
+                  <template #title>
+                    <span class="history-title">
+                      查看历史记录 ({{ followUpRecords.length - 1 }}条)
+                    </span>
+                  </template>
+                  <div
+                    v-for="(record, index) in followUpRecords.slice(1)"
+                    :key="record.id"
+                    class="follow-up-item"
+                  >
+                    <div class="follow-up-header">
+                      <div class="follow-up-time">
+                        <el-icon><Clock /></el-icon>
+                        {{ record.followUpTime }}
+                      </div>
+                      <div class="follow-up-user">
+                        {{ record.createdBy }}
+                      </div>
+                    </div>
+                    <div class="follow-up-body">
+                      <p>{{ record.content }}</p>
+                    </div>
+                  </div>
+                </el-collapse-item>
+              </el-collapse>
+            </div>
+          </div>
+        </el-card>
+
         <!-- 附件信息 -->
         <el-card v-if="serviceInfo.attachments && serviceInfo.attachments.length" class="info-card" shadow="never">
           <template #header>
@@ -191,10 +272,10 @@
               <h3>相关附件</h3>
             </div>
           </template>
-          
+
           <div class="attachments-grid">
-            <div 
-              v-for="(file, index) in serviceInfo.attachments" 
+            <div
+              v-for="(file, index) in serviceInfo.attachments"
               :key="index"
               class="attachment-item"
               @click="previewFile(file)"
@@ -223,19 +304,19 @@
               <h3>处理进度</h3>
             </div>
           </template>
-          
+
           <el-timeline>
             <el-timeline-item
               v-for="(step, index) in processSteps"
               :key="index"
-              :timestamp="step.time"
-              :type="step.type"
-              :icon="step.icon"
+              :timestamp="step?.time || ''"
+              :type="step?.type || 'info'"
+              :icon="step?.icon"
             >
               <div class="timeline-content">
-                <h4>{{ step.title }}</h4>
-                <p>{{ step.description }}</p>
-                <p v-if="step.operator" class="operator">操作人：{{ step.operator }}</p>
+                <h4>{{ step?.title || '未知步骤' }}</h4>
+                <p>{{ step?.description || '' }}</p>
+                <p v-if="step?.operator" class="operator">操作人：{{ getOperatorName(step.operator) }}</p>
               </div>
             </el-timeline-item>
           </el-timeline>
@@ -248,41 +329,45 @@
               <h3>快速操作</h3>
             </div>
           </template>
-          
+
           <div class="quick-actions">
-            <el-button 
+            <el-button
               v-if="canAssign"
-              type="primary" 
-              size="small" 
+              type="primary"
+              :icon="User"
               @click="assignHandler"
               :disabled="serviceInfo.status === 'closed'"
+              class="action-btn"
             >
               分配处理人
             </el-button>
-            <el-button 
+            <el-button
               v-if="canProcess"
-              type="success" 
-              size="small" 
+              type="success"
+              :icon="Check"
               @click="updateStatus"
               :disabled="serviceInfo.status === 'closed'"
+              class="action-btn"
             >
               更新状态
             </el-button>
-            <el-button 
+            <el-button
               v-if="canEdit"
-              type="warning" 
-              size="small" 
-              @click="addRemark"
+              type="warning"
+              :icon="Edit"
+              @click="handleEdit"
+              class="action-btn"
             >
-              添加备注
+              编辑售后
             </el-button>
-            <el-button 
-              v-if="canViewDetails"
-              type="info" 
-              size="small" 
-              @click="exportReport"
+            <el-button
+              v-if="canClose"
+              type="danger"
+              :icon="Close"
+              @click="handleClose"
+              class="action-btn"
             >
-              导出报告
+              关闭售后
             </el-button>
           </div>
         </el-card>
@@ -294,11 +379,11 @@
               <h3>相关信息</h3>
             </div>
           </template>
-          
+
           <div class="related-info">
             <div class="related-item">
               <label>创建人：</label>
-              <span>{{ serviceInfo.createdBy }}</span>
+              <span>{{ getCreatorName(serviceInfo.createdBy) }}</span>
             </div>
             <div class="related-item">
               <label>最后更新：</label>
@@ -317,31 +402,79 @@
     <el-dialog
       v-model="assignDialogVisible"
       title="分配处理人"
-      width="400px"
+      width="500px"
     >
-      <el-form :model="assignForm" label-width="80px">
-        <el-form-item label="处理人员">
-          <el-select v-model="assignForm.assignedTo" placeholder="请选择处理人员" style="width: 100%">
+      <el-form :model="assignForm" label-width="100px">
+        <el-form-item label="分配方式">
+          <el-radio-group v-model="assignForm.assignType">
+            <el-radio label="user">指定用户</el-radio>
+            <el-radio label="department">部门随机</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item label="筛选部门" v-if="assignForm.assignType === 'user'">
+          <el-select
+            v-model="assignForm.filterDepartmentId"
+            placeholder="全部部门"
+            clearable
+            style="width: 100%"
+            @change="handleDepartmentFilterChange"
+          >
+            <el-option label="全部部门" value="" />
             <el-option
-              v-for="user in userOptions"
-              :key="user.id"
-              :label="user.name"
-              :value="user.name"
+              v-for="dept in departmentOptions"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
             />
           </el-select>
         </el-form-item>
+
+        <el-form-item label="选择用户" v-if="assignForm.assignType === 'user'">
+          <el-select
+            v-model="assignForm.userId"
+            placeholder="请选择处理人"
+            filterable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="user in filteredUserOptions"
+              :key="user.id"
+              :label="`${user.name} (${user.department || '未分配部门'})`"
+              :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="选择部门" v-if="assignForm.assignType === 'department'">
+          <el-select
+            v-model="assignForm.departmentId"
+            placeholder="请选择部门"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="dept in departmentOptions"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
+            />
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="备注">
           <el-input
             v-model="assignForm.remark"
             type="textarea"
             :rows="3"
-            placeholder="请输入分配备注"
+            placeholder="请输入分配备注(可选)"
           />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="assignDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmAssign">确定</el-button>
+        <el-button type="primary" @click="confirmAssign" :loading="assignLoading">
+          确定分配
+        </el-button>
       </template>
     </el-dialog>
 
@@ -349,9 +482,9 @@
     <el-dialog
       v-model="statusDialogVisible"
       title="更新状态"
-      width="400px"
+      width="500px"
     >
-      <el-form :model="statusForm" label-width="80px">
+      <el-form :model="statusForm" label-width="100px">
         <el-form-item label="新状态">
           <el-select v-model="statusForm.status" placeholder="请选择状态" style="width: 100%">
             <el-option label="待处理" value="pending" />
@@ -360,6 +493,19 @@
             <el-option label="已关闭" value="closed" />
           </el-select>
         </el-form-item>
+
+        <!-- 处理结果字段 -->
+        <el-form-item label="处理结果" v-if="currentHandleResults.length > 0">
+          <el-select v-model="statusForm.handleResult" placeholder="请选择处理结果" style="width: 100%">
+            <el-option
+              v-for="result in currentHandleResults"
+              :key="result?.value || ''"
+              :label="result?.title || result?.label || '未知'"
+              :value="result?.value || ''"
+            />
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="处理说明">
           <el-input
             v-model="statusForm.remark"
@@ -374,6 +520,64 @@
         <el-button type="primary" @click="confirmStatusUpdate">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 外呼对话框 -->
+    <el-dialog v-model="callDialogVisible" title="发起外呼" width="500px">
+      <el-form :model="callForm" label-width="80px">
+        <el-form-item label="电话号码">
+          <el-input v-model="callForm.phone" disabled />
+        </el-form-item>
+        <el-form-item label="通话目的">
+          <el-select v-model="callForm.purpose" placeholder="请选择" style="width: 100%">
+            <el-option label="售后跟进" value="service" />
+            <el-option label="客户回访" value="callback" />
+            <el-option label="问题确认" value="confirm" />
+            <el-option label="其他" value="other" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="callForm.note" type="textarea" rows="3" placeholder="请输入备注" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="callDialogVisible = false">取消</el-button>
+        <el-button @click="startCall" type="primary" :loading="calling">开始通话</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 添加跟进记录对话框 -->
+    <el-dialog
+      v-model="followUpDialogVisible"
+      title="添加跟进记录"
+      width="600px"
+    >
+      <el-form :model="followUpForm" label-width="100px">
+        <el-form-item label="跟进时间" required>
+          <el-date-picker
+            v-model="followUpForm.followUpTime"
+            type="datetime"
+            placeholder="选择跟进时间"
+            format="YYYY-MM-DD HH:mm:ss"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="跟进内容" required>
+          <el-input
+            v-model="followUpForm.content"
+            type="textarea"
+            :rows="6"
+            placeholder="请输入跟进内容"
+            maxlength="500"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="followUpDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSaveFollowUp">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -381,138 +585,222 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  ArrowLeft, 
-  Edit, 
-  Picture, 
+import {
+  ArrowLeft,
+  Edit,
+  Picture,
   Document,
   User,
   Clock,
   Check,
-  Close
+  Close,
+  Plus,
+  Phone
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { useServiceStore } from '@/stores/service'
+import { useOrderStore } from '@/stores/order'
 import { useNotificationStore } from '@/stores/notification'
-import { maskPhone, formatPhone } from '@/utils/phone'
+import { useDepartmentStore } from '@/stores/department'
+import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
+import { formatPhone } from '@/utils/phone'
 import { createSafeNavigator } from '@/utils/navigation'
+import { isProduction } from '@/utils/env'
 
 // 路由相关
 const router = useRouter()
 const route = useRoute()
 const safeNavigator = createSafeNavigator(router)
-const userStore = useUserStore()
 
-// 通知store
+// Store
+const userStore = useUserStore()
+const serviceStore = useServiceStore()
+const orderStore = useOrderStore()
 const notificationStore = useNotificationStore()
+const departmentStore = useDepartmentStore()
 
 // 响应式数据
 const loading = ref(false)
 const assignDialogVisible = ref(false)
 const statusDialogVisible = ref(false)
 
-// 售后信息
+// 售后信息(初始化为空,从store或API加载)
 const serviceInfo = reactive({
   id: '',
-  serviceNumber: 'SH202401150001',
-  orderNumber: 'ORD202401150001',
+  serviceNumber: '',
+  orderId: '',
+  orderNumber: '',
+  customerId: '',
   serviceType: 'return',
-  status: 'processing',
-  priority: 'high',
-  customerName: '张三',
-  customerPhone: '13812345678',
-  contactName: '张三',
-  contactAddress: '北京市朝阳区xxx街道xxx号',
-  productName: '智能手机',
-  productSpec: '128GB 黑色',
-  quantity: 1,
-  price: 2999,
-  reason: '商品质量问题',
-  description: '手机屏幕出现黑屏现象，无法正常使用',
-  remark: '客户要求退货处理',
-  assignedTo: '李四',
-  createdBy: '张三',
-  createTime: '2024-01-15 10:30:00',
-  updateTime: '2024-01-15 14:20:00',
-  expectedTime: '2024-01-20 18:00:00',
-  attachments: [
-    { name: '问题图片1.jpg', size: 1024000, url: '/uploads/image1.jpg' },
-    { name: '问题图片2.jpg', size: 856000, url: '/uploads/image2.jpg' }
-  ]
+  status: 'pending',
+  priority: 'normal',
+  customerName: '',
+  customerPhone: '',
+  contactName: '',
+  contactAddress: '',
+  productName: '',
+  productSpec: '',
+  quantity: 0,
+  price: 0,
+  reason: '',
+  description: '',
+  remark: '',
+  handleResult: '',  // 处理结果
+  assignedTo: '',
+  createdBy: '',
+  createTime: '',
+  updateTime: '',
+  expectedTime: '',
+  attachments: [] as Array<{ name: string; size: number; url: string }>
 })
 
-// 处理步骤
-const processSteps = ref([
-  {
-    title: '售后申请提交',
-    description: '客户提交售后申请',
-    time: '2024-01-15 10:30:00',
-    type: 'success',
-    icon: User,
-    operator: '张三'
-  },
-  {
-    title: '申请审核通过',
-    description: '售后申请已通过审核',
-    time: '2024-01-15 11:00:00',
-    type: 'success',
-    icon: Check,
-    operator: '王五'
-  },
-  {
-    title: '分配处理人员',
-    description: '已分配给李四处理',
-    time: '2024-01-15 11:30:00',
-    type: 'success',
-    icon: User,
-    operator: '王五'
-  },
-  {
-    title: '开始处理',
-    description: '处理人员开始处理售后问题',
-    time: '2024-01-15 14:00:00',
-    type: 'primary',
-    icon: Clock,
-    operator: '李四'
-  }
-])
+// 处理步骤(从售后记录动态生成)
+const processSteps = ref<Array<{
+  title: string
+  description: string
+  time: string
+  type: string
+  icon: unknown
+  operator?: string
+}>>([])
 
 // 分配表单
 const assignForm = reactive({
+  assignType: 'user',
+  filterDepartmentId: '',
+  userId: '',
+  departmentId: '',
   assignedTo: '',
   remark: ''
 })
 
+// 分配加载状态
+const assignLoading = ref(false)
+
 // 状态表单
 const statusForm = reactive({
   status: '',
+  handleResult: '',  // 处理结果
   remark: ''
 })
 
-// 用户选项
-const userOptions = ref([
-  { id: '1', name: '李四' },
-  { id: '2', name: '赵六' },
-  { id: '3', name: '孙八' },
-  { id: '4', name: '周九' }
-])
+// 跟进记录相关
+const followUpRecords = ref<Array<{
+  id: string
+  followUpTime: string
+  content: string
+  createdBy: string
+  createTime: string
+}>>([])
+
+const followUpCollapseActive = ref<string[]>([])
+const followUpDialogVisible = ref(false)
+const followUpForm = reactive({
+  followUpTime: '',
+  content: ''
+})
+
+// 外呼相关
+const callDialogVisible = ref(false)
+const calling = ref(false)
+const callForm = reactive({
+  phone: '',
+  purpose: 'service',
+  note: ''
+})
+
+// 用户选项 - 从userStore获取,修复字段映射
+const userOptions = computed(() => {
+  const users = userStore.users || []
+  return users.map((user: any) => {
+    const name = user.name || user.username || user.realName || `用户${user.id}`
+    const department = user.departmentName || user.department || user.deptName || '未分配部门'
+
+    return {
+      id: user.id,
+      name: name,
+      department: department
+    }
+  })
+})
+
+// 部门选项 - 从departmentStore获取
+const departmentOptions = computed(() => {
+  const departments = departmentStore.departments || []
+  return departments.map((dept: any) => ({
+    id: dept.id,
+    name: dept.name
+  }))
+})
+
+// 根据部门筛选的用户选项
+const filteredUserOptions = computed(() => {
+  if (!assignForm.filterDepartmentId) {
+    return userOptions.value
+  }
+
+  const dept = departmentOptions.value.find((d: any) => d.id === assignForm.filterDepartmentId)
+  if (!dept) {
+    return userOptions.value
+  }
+
+  return userOptions.value.filter((u: any) => {
+    return u.department === dept.name ||
+           u.department === dept.id ||
+           (u.department && u.department.includes(dept.name))
+  })
+})
+
+// 获取当前服务类型的处理结果选项
+const currentHandleResults = computed(() => {
+  try {
+    // 从localStorage获取服务类型配置
+    const serviceTypesStr = localStorage.getItem('crm_service_types')
+    if (!serviceTypesStr) {
+      return []
+    }
+
+    const serviceTypes = JSON.parse(serviceTypesStr)
+    const currentType = serviceTypes.find((t: any) => t.value === serviceInfo.serviceType)
+
+    if (!currentType || !currentType.handleResults) {
+      return []
+    }
+
+    // 确保每个处理结果都有完整的字段
+    return currentType.handleResults.map((result: any) => ({
+      value: result?.value || '',
+      label: result?.label || result?.title || '未知',
+      title: result?.title || result?.label || '未知'
+    }))
+  } catch (error) {
+    console.error('获取处理结果选项失败:', error)
+    return []
+  }
+})
+
+// 部门筛选变化处理
+const handleDepartmentFilterChange = () => {
+  assignForm.userId = ''
+}
 
 // 权限控制
 const canEdit = computed(() => {
   // 超级管理员或有编辑权限的用户，或者是分配给自己的售后单
-  return userStore.canEditAfterSales || 
+  return userStore.canEditAfterSales ||
          (serviceInfo.assignedTo === userStore.currentUser?.name && userStore.hasAfterSalesPermission('service:write'))
 })
 
 const canProcess = computed(() => {
   // 必须有处理权限，且售后单状态允许处理
-  return userStore.canProcessAfterSales && 
-         serviceInfo.status !== 'closed' && 
+  return userStore.canProcessAfterSales &&
+         serviceInfo.status !== 'closed' &&
          serviceInfo.status !== 'resolved'
 })
 
 const canClose = computed(() => {
   // 必须有关闭权限，且售后单状态为已解决
-  return userStore.canCloseAfterSales && 
+  return userStore.canCloseAfterSales &&
          serviceInfo.status === 'resolved'
 })
 
@@ -565,40 +853,97 @@ const handleClose = () => {
     }
   ).then(() => {
     serviceInfo.status = 'closed'
-    
+
     // 发送售后申请关闭的消息提醒
     notificationStore.sendMessage(
-      notificationStore.MessageType.AFTER_SALES_CLOSED,
+      notificationStore.MessageType.AFTER_SALES_CREATED,
       `售后申请 ${serviceInfo.serviceNumber} 已关闭，客户：${serviceInfo.customerName}`,
       {
         relatedId: serviceInfo.serviceNumber,
         relatedType: 'service',
-        actionUrl: `/service/detail/${serviceInfo.serviceNumber}`,
-        metadata: {
-          customerName: serviceInfo.customerName,
-          serviceType: serviceInfo.serviceType,
-          closedAt: new Date().toISOString()
-        }
+        actionUrl: `/service/detail/${serviceInfo.serviceNumber}`
       }
     )
-    
+
     ElMessage.success('售后申请已关闭')
   })
 }
 
 /**
- * 查看订单
+ * 查看客户详情
  */
-const viewOrder = (orderNumber: string) => {
-  // 这里应该跳转到订单详情页面
-  ElMessage.info(`查看订单 ${orderNumber}`)
+const handleViewCustomer = () => {
+  // 根据客户姓名或ID跳转到客户详情页面
+  // 这里需要根据实际的客户ID来跳转
+  if (serviceInfo.customerId) {
+    safeNavigator.push(`/customer/detail/${serviceInfo.customerId}`)
+  } else {
+    ElMessage.warning('客户信息不完整,无法跳转')
+  }
 }
 
 /**
- * 拨打电话
+ * 查看订单详情
  */
-const handleCall = () => {
-  ElMessage.success(`正在拨打 ${serviceInfo.customerPhone}`)
+const handleViewOrder = () => {
+  // 根据订单号跳转到订单详情页面
+  if (serviceInfo.orderId) {
+    safeNavigator.push(`/order/detail/${serviceInfo.orderId}`)
+  } else if (serviceInfo.orderNumber) {
+    // 如果没有orderId,尝试用orderNumber
+    safeNavigator.push(`/order/detail/${serviceInfo.orderNumber}`)
+  } else {
+    ElMessage.warning('订单信息不完整,无法跳转')
+  }
+}
+
+/**
+ * 拨打电话(弹出外呼对话框)
+ */
+const handleCallCustomer = () => {
+  callForm.phone = serviceInfo.customerPhone
+  callForm.purpose = 'service'
+  callForm.note = `售后单号: ${serviceInfo.serviceNumber}`
+  callDialogVisible.value = true
+}
+
+/**
+ * 开始通话
+ */
+const startCall = async () => {
+  if (!callForm.phone) {
+    ElMessage.warning('请输入电话号码')
+    return
+  }
+
+  if (!callForm.purpose) {
+    ElMessage.warning('请选择通话目的')
+    return
+  }
+
+  calling.value = true
+  try {
+    // 这里应该调用外呼API
+    // 模拟外呼
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    ElMessage.success('外呼成功,正在接通...')
+    callDialogVisible.value = false
+
+    // 可以记录通话记录
+    console.log('外呼记录:', {
+      phone: callForm.phone,
+      purpose: callForm.purpose,
+      note: callForm.note,
+      serviceNumber: serviceInfo.serviceNumber,
+      time: new Date().toISOString()
+    })
+  } catch (error) {
+    console.error('外呼失败:', error)
+    ElMessage.error('外呼失败')
+  } finally {
+    calling.value = false
+  }
 }
 
 /**
@@ -612,42 +957,80 @@ const assignHandler = () => {
 /**
  * 确认分配
  */
-const confirmAssign = () => {
-  if (!assignForm.assignedTo) {
-    ElMessage.warning('请选择处理人员')
-    return
-  }
-  
-  serviceInfo.assignedTo = assignForm.assignedTo
-  assignDialogVisible.value = false
-  
-  // 发送分配处理人成功的消息提醒
-  notificationStore.sendMessage(
-    notificationStore.MessageType.AFTER_SALES_ASSIGNED,
-    `售后申请 ${serviceInfo.serviceNumber} 已分配给 ${assignForm.assignedTo}，客户：${serviceInfo.customerName}`,
-    {
-      relatedId: serviceInfo.serviceNumber,
-      relatedType: 'service',
-      actionUrl: `/service/detail/${serviceInfo.serviceNumber}`,
-      metadata: {
-        customerName: serviceInfo.customerName,
-        serviceType: serviceInfo.serviceType,
-        assignedTo: assignForm.assignedTo
-      }
+const confirmAssign = async () => {
+  let assignedToName = ''
+
+  if (assignForm.assignType === 'user') {
+    if (!assignForm.userId) {
+      ElMessage.warning('请选择处理人')
+      return
     }
-  )
-  
-  ElMessage.success('分配成功')
-  
-  // 添加处理步骤
-  processSteps.value.push({
-    title: '重新分配处理人',
-    description: `已分配给${assignForm.assignedTo}处理`,
-    time: new Date().toLocaleString(),
-    type: 'success',
-    icon: User,
-    operator: userStore.currentUser?.name || '系统'
-  })
+    const user = userOptions.value.find((u: any) => u.id === assignForm.userId)
+    if (!user) {
+      ElMessage.error('找不到选择的用户')
+      return
+    }
+    assignedToName = user.name
+  } else {
+    if (!assignForm.departmentId) {
+      ElMessage.warning('请选择部门')
+      return
+    }
+
+    const dept = departmentOptions.value.find((d: any) => d.id === assignForm.departmentId)
+    if (!dept) {
+      ElMessage.error('找不到选择的部门')
+      return
+    }
+
+    const deptUsers = userOptions.value.filter((u: unknown) => {
+      return u.department === dept.name ||
+             u.department === dept.id ||
+             (u.department && u.department.includes(dept.name))
+    })
+
+    if (deptUsers.length === 0) {
+      ElMessage.warning(`部门"${dept.name}"下没有可分配的用户`)
+      return
+    }
+
+    const randomUser = deptUsers[Math.floor(Math.random() * deptUsers.length)]
+    assignedToName = randomUser.name
+  }
+
+  assignLoading.value = true
+  try {
+    serviceInfo.assignedTo = assignedToName
+
+    // 发送分配处理人成功的消息提醒
+    notificationStore.sendMessage(
+      notificationStore.MessageType.AFTER_SALES_CREATED,
+      `售后申请 ${serviceInfo.serviceNumber} 已分配给 ${assignedToName}，客户：${serviceInfo.customerName}`,
+      {
+        relatedId: serviceInfo.serviceNumber,
+        relatedType: 'service',
+        actionUrl: `/service/detail/${serviceInfo.serviceNumber}`
+      }
+    )
+
+    ElMessage.success('分配成功')
+    assignDialogVisible.value = false
+
+    // 添加处理步骤
+    processSteps.value.push({
+      title: '重新分配处理人',
+      description: `已分配给${assignedToName}处理`,
+      time: new Date().toLocaleString(),
+      type: 'success',
+      icon: User,
+      operator: userStore.currentUser?.name || '系统'
+    })
+  } catch (error) {
+    console.error('分配失败:', error)
+    ElMessage.error('分配失败')
+  } finally {
+    assignLoading.value = false
+  }
 }
 
 /**
@@ -665,33 +1048,49 @@ const confirmStatusUpdate = () => {
     ElMessage.warning('请选择状态')
     return
   }
-  
+
+  // 如果有处理结果选项但未选择(可选)
+  // if (currentHandleResults.value.length > 0 && !statusForm.handleResult) {
+  //   ElMessage.warning('请选择处理结果')
+  //   return
+  // }
+
   serviceInfo.status = statusForm.status
+  if (statusForm.handleResult) {
+    serviceInfo.handleResult = statusForm.handleResult
+  }
   statusDialogVisible.value = false
-  
+
   // 发送状态更新的消息提醒
   notificationStore.sendMessage(
-    notificationStore.MessageType.AFTER_SALES_STATUS_CHANGED,
+    notificationStore.MessageType.AFTER_SALES_CREATED,
     `售后申请 ${serviceInfo.serviceNumber} 状态已更新为${getStatusText(statusForm.status)}，客户：${serviceInfo.customerName}`,
     {
       relatedId: serviceInfo.serviceNumber,
       relatedType: 'service',
-      actionUrl: `/service/detail/${serviceInfo.serviceNumber}`,
-      metadata: {
-        customerName: serviceInfo.customerName,
-        serviceType: serviceInfo.serviceType,
-        newStatus: statusForm.status,
-        remark: statusForm.remark
-      }
+      actionUrl: `/service/detail/${serviceInfo.serviceNumber}`
     }
   )
-  
+
   ElMessage.success('状态更新成功')
-  
+
+  // 获取处理结果文本
+  let resultText = ''
+  if (statusForm.handleResult && currentHandleResults.value.length > 0) {
+    const result = currentHandleResults.value.find((r: unknown) => r.value === statusForm.handleResult)
+    resultText = result?.title || result?.label || ''
+  }
+
   // 添加处理步骤
+  const description = [
+    statusForm.remark,
+    resultText ? `处理结果: ${resultText}` : '',
+    !statusForm.remark && !resultText ? `状态更新为${getStatusText(statusForm.status)}` : ''
+  ].filter(Boolean).join(' - ')
+
   processSteps.value.push({
     title: '状态更新',
-    description: statusForm.remark || `状态更新为${getStatusText(statusForm.status)}`,
+    description: description,
     time: new Date().toLocaleString(),
     type: 'primary',
     icon: Clock,
@@ -820,30 +1219,265 @@ const getPriorityText = (priority: string) => {
 }
 
 /**
+ * 获取创建人姓名
+ * 如果createdBy是手机号或用户ID,则查找对应的用户姓名
+ */
+const getCreatorName = (createdBy: string) => {
+  if (!createdBy) return '未知'
+
+  // 如果是手机号格式(11位数字)
+  if (/^\d{11}$/.test(createdBy)) {
+    const user = userOptions.value.find((u: any) => u.phone === createdBy || u.id === createdBy)
+    return user?.name || createdBy
+  }
+
+  // 如果是用户ID
+  const user = userOptions.value.find((u: any) => u.id === createdBy)
+  if (user) {
+    return user.name
+  }
+
+  // 否则直接返回(可能已经是姓名)
+  return createdBy
+}
+
+/**
+ * 获取操作人姓名
+ * 用于处理进度中的操作人显示
+ */
+const getOperatorName = (operator: string) => {
+  if (!operator) return '系统'
+
+  // 如果是手机号格式(11位数字)
+  if (/^\d{11}$/.test(operator)) {
+    const user = userOptions.value.find((u: unknown) => u.phone === operator || u.id === operator)
+    return user?.name || operator
+  }
+
+  // 如果是用户ID
+  const user = userOptions.value.find((u: unknown) => u.id === operator)
+  if (user) {
+    return user.name
+  }
+
+  // 否则直接返回(可能已经是姓名)
+  return operator
+}
+
+/**
  * 加载售后详情
  */
 const loadServiceDetail = async () => {
   loading.value = true
   try {
-    // 这里应该调用API获取售后详情
-    const id = route.params.id
-    console.log('Loading service detail for ID:', id)
-    
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    serviceInfo.id = id as string
+    const serviceId = route.params.id as string
+
+    if (!serviceId) {
+      ElMessage.error('售后ID不能为空')
+      router.back()
+      return
+    }
+
+    console.log('[售后详情] 加载售后记录:', serviceId)
+
+    if (isProduction()) {
+      // 生产环境:调用API
+      console.log('[售后详情] 生产环境,调用API')
+      const response = await fetch(`/api/service/${serviceId}`)
+      if (!response.ok) {
+        throw new Error('API调用失败')
+      }
+      const data = await response.json()
+      Object.assign(serviceInfo, data)
+    } else {
+      // 开发环境:从store获取
+      console.log('[售后详情] 开发环境,从store获取')
+      const service = serviceStore.getServiceById(serviceId)
+
+      if (!service) {
+        ElMessage.error('售后记录不存在')
+        router.back()
+        return
+      }
+
+      // 使用真实数据填充
+      Object.assign(serviceInfo, service)
+      console.log('[售后详情] 售后信息:', serviceInfo)
+
+      // 生成处理步骤
+      generateProcessSteps()
+    }
   } catch (error) {
-    console.error('Failed to load service detail:', error)
+    console.error('[售后详情] 加载失败:', error)
     ElMessage.error('加载售后详情失败')
+    router.back()
   } finally {
     loading.value = false
   }
 }
 
+/**
+ * 生成处理步骤
+ */
+const generateProcessSteps = () => {
+  const steps: Array<{
+    title: string
+    description: string
+    time: string
+    type: string
+    icon: unknown
+    operator?: string
+  }> = []
+
+  // 创建步骤
+  steps.push({
+    title: '售后申请提交',
+    description: '客户提交售后申请',
+    time: serviceInfo.createTime,
+    type: 'success',
+    icon: User,
+    operator: serviceInfo.createdBy
+  })
+
+  // 根据状态添加步骤
+  if (serviceInfo.status !== 'pending') {
+    steps.push({
+      title: '申请已受理',
+      description: '售后申请已受理,等待处理',
+      time: serviceInfo.createTime,
+      type: 'success',
+      icon: Check,
+      operator: '系统'
+    })
+  }
+
+  if (serviceInfo.assignedTo) {
+    steps.push({
+      title: '分配处理人员',
+      description: `已分配给${serviceInfo.assignedTo}处理`,
+      time: serviceInfo.updateTime || serviceInfo.createTime,
+      type: 'success',
+      icon: User,
+      operator: '系统'
+    })
+  }
+
+  if (serviceInfo.status === 'processing') {
+    steps.push({
+      title: '开始处理',
+      description: '处理人员开始处理售后问题',
+      time: serviceInfo.updateTime || serviceInfo.createTime,
+      type: 'primary',
+      icon: Clock,
+      operator: serviceInfo.assignedTo || '系统'
+    })
+  }
+
+  if (serviceInfo.status === 'resolved') {
+    steps.push({
+      title: '问题已解决',
+      description: '售后问题已解决',
+      time: serviceInfo.updateTime || serviceInfo.createTime,
+      type: 'success',
+      icon: Check,
+      operator: serviceInfo.assignedTo || '系统'
+    })
+  }
+
+  if (serviceInfo.status === 'closed') {
+    steps.push({
+      title: '售后已关闭',
+      description: '售后申请已关闭',
+      time: serviceInfo.updateTime || serviceInfo.createTime,
+      type: 'info',
+      icon: Close,
+      operator: '系统'
+    })
+  }
+
+  processSteps.value = steps
+}
+
+/**
+ * 添加跟进记录
+ */
+const handleAddFollowUp = () => {
+  followUpDialogVisible.value = true
+  // 默认当前时间
+  followUpForm.followUpTime = new Date().toISOString().replace('T', ' ').substring(0, 19)
+  followUpForm.content = ''
+}
+
+/**
+ * 保存跟进记录
+ */
+const handleSaveFollowUp = () => {
+  if (!followUpForm.followUpTime) {
+    ElMessage.warning('请选择跟进时间')
+    return
+  }
+
+  if (!followUpForm.content || followUpForm.content.trim() === '') {
+    ElMessage.warning('请输入跟进内容')
+    return
+  }
+
+  // 创建新记录
+  const newRecord = {
+    id: Date.now().toString(),
+    followUpTime: followUpForm.followUpTime,
+    content: followUpForm.content.trim(),
+    createdBy: userStore.currentUser?.name || '当前用户',
+    createTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
+  }
+
+  // 添加到列表开头(最新的在前面)
+  followUpRecords.value.unshift(newRecord)
+
+  // 保存到localStorage
+  saveFollowUpRecords()
+
+  // 关闭对话框
+  followUpDialogVisible.value = false
+
+  ElMessage.success('跟进记录已保存')
+}
+
+/**
+ * 保存跟进记录到localStorage
+ */
+const saveFollowUpRecords = () => {
+  const storageKey = `service_follow_up_${serviceInfo.id}`
+  localStorage.setItem(storageKey, JSON.stringify(followUpRecords.value))
+}
+
+/**
+ * 加载跟进记录
+ */
+const loadFollowUpRecords = () => {
+  const storageKey = `service_follow_up_${serviceInfo.id}`
+  const saved = localStorage.getItem(storageKey)
+
+  if (saved) {
+    try {
+      followUpRecords.value = JSON.parse(saved)
+    } catch (e) {
+      console.error('加载跟进记录失败:', e)
+      followUpRecords.value = []
+    }
+  } else {
+    followUpRecords.value = []
+  }
+}
+
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
+  // 加载用户和部门数据
+  await userStore.loadUsers()
+  // 加载售后详情
   loadServiceDetail()
+  // 加载跟进记录
+  loadFollowUpRecords()
 })
 </script>
 
@@ -1102,29 +1736,29 @@ onMounted(() => {
   .service-detail {
     padding: 10px;
   }
-  
+
   .page-header {
     flex-direction: column;
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .header-left {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
-  
+
   .title-section {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
   }
-  
+
   .info-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .attachments-grid {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   }
@@ -1135,5 +1769,148 @@ onMounted(() => {
   color: #909399;
   font-style: italic;
   font-size: 13px;
+}
+
+/* 超链接样式 */
+.value-link {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.value-link:hover {
+  text-decoration: underline;
+}
+
+/* 跟进记录样式 */
+.follow-up-content {
+  min-height: 200px;
+}
+
+.follow-up-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.follow-up-item {
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  border-left: 3px solid #e4e7ed;
+  transition: all 0.3s;
+}
+
+.follow-up-item.latest {
+  background: #ecf5ff;
+  border-left-color: #409eff;
+}
+
+.follow-up-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.follow-up-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.follow-up-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #606266;
+  font-size: 13px;
+}
+
+.follow-up-time .el-icon {
+  color: #909399;
+}
+
+.follow-up-user {
+  color: #409eff;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.follow-up-body {
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.follow-up-body p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.history-title {
+  color: #606266;
+  font-size: 14px;
+}
+
+.el-collapse {
+  border: none;
+}
+
+:deep(.el-collapse-item__header) {
+  background: transparent;
+  border: none;
+  padding: 8px 0;
+}
+
+:deep(.el-collapse-item__wrap) {
+  background: transparent;
+  border: none;
+}
+
+:deep(.el-collapse-item__content) {
+  padding: 0;
+}
+
+/* 快捷操作按钮样式 */
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.action-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  font-size: 14px;
+  height: 40px;
+  border-radius: 8px;
+  transition: all 0.3s;
+  padding: 0 16px;
+}
+
+.action-btn:hover:not(:disabled) {
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 确保按钮内的图标和文字对齐 */
+.action-btn :deep(.el-icon) {
+  margin-right: 8px;
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.action-btn :deep(span) {
+  display: inline-flex;
+  align-items: center;
 }
 </style>

@@ -36,7 +36,7 @@ export class ApiService {
   private axiosInstance: AxiosInstance
   private baseURL: string
 
-  constructor(baseURL: string = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1') {
+  constructor(baseURL: string = import.meta.env.VITE_API_BASE_URL || '') {
     this.baseURL = baseURL
     this.axiosInstance = axios.create({
       baseURL,

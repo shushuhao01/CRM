@@ -61,6 +61,13 @@ export const useProductStore = createPersistentStore('product', () => {
   const categories = ref<ProductCategory[]>([])
   const loading = ref(false)
   
+  // 确保categories始终是数组的辅助函数
+  const ensureArrayCategories = () => {
+    if (!Array.isArray(categories.value)) {
+      categories.value = []
+    }
+  }
+  
   // 分页信息
   const pagination = ref({
     currentPage: 1,
@@ -83,9 +90,9 @@ export const useProductStore = createPersistentStore('product', () => {
   
   // 统计数据
   const stats = computed(() => {
-    const totalProducts = products.value.length
-    const lowStockCount = products.value.filter(p => p.stock <= p.minStock && p.stock > 0).length
-    const outOfStockCount = products.value.filter(p => p.stock === 0).length
+    const totalProducts = (products.value || []).length
+    const lowStockCount = (products.value || []).filter(p => p.stock <= p.minStock && p.stock > 0).length
+    const outOfStockCount = (products.value || []).filter(p => p.stock === 0).length
     
     return {
       totalProducts,
@@ -98,13 +105,17 @@ export const useProductStore = createPersistentStore('product', () => {
   const loadCategories = async () => {
     try {
       loading.value = true
-      const data = await productApi.getCategoryTree()
-      categories.value = data
+      const response = await productApi.getCategoryTree()
+      // 确保categories始终是数组
+      categories.value = Array.isArray(response) ? response : (response?.data || [])
+      ensureArrayCategories()
     } catch (error) {
       console.error('加载分类失败:', error)
-      // 如果API调用失败，保持当前数据不变
+      // 如果API调用失败，确保categories是空数组
+      categories.value = []
     } finally {
       loading.value = false
+      ensureArrayCategories()
     }
   }
 
@@ -112,10 +123,10 @@ export const useProductStore = createPersistentStore('product', () => {
     try {
       loading.value = true
       const response = await productApi.getList(params)
-      products.value = response.list
-      pagination.value.total = response.total
-      pagination.value.currentPage = response.page
-      pagination.value.pageSize = response.pageSize
+      products.value = response?.list || []
+      pagination.value.total = response?.total || 0
+      pagination.value.currentPage = response?.page || 1
+      pagination.value.pageSize = response?.pageSize || 10
     } catch (error) {
       console.error('加载商品失败:', error)
       // 如果API调用失败，保持当前数据不变
@@ -178,7 +189,7 @@ export const useProductStore = createPersistentStore('product', () => {
   
   // 更新商品
   const updateProduct = async (id: string | number, updates: Partial<Product>) => {
-    const index = products.value.findIndex(p => p.id === id)
+    const index = (products.value || []).findIndex(p => p.id === id)
     if (index !== -1) {
       const updatedProduct = {
         ...products.value[index],
@@ -210,7 +221,7 @@ export const useProductStore = createPersistentStore('product', () => {
   
   // 删除商品（软删除）
   const deleteProduct = async (id: string | number) => {
-    const product = products.value.find(p => p.id === id)
+    const product = (products.value || []).find(p => p.id === id)
     if (product) {
       // TODO: 当服务器部署后，取消注释以下代码以使用服务器API
       /*
@@ -258,12 +269,12 @@ export const useProductStore = createPersistentStore('product', () => {
   
   // 根据ID获取商品
   const getProductById = (id: string | number) => {
-    return products.value.find(p => p.id == id || p.id === Number(id) || String(p.id) === String(id))
+    return (products.value || []).find(p => p.id == id || p.id === Number(id) || String(p.id) === String(id))
   }
   
   // 获取过滤后的商品列表
   const getFilteredProducts = computed(() => {
-    let filtered = [...products.value]
+    let filtered = [...(products.value || [])]
     
     // 按删除状态过滤
     if (searchForm.value.onlyDeleted) {
@@ -379,14 +390,14 @@ export const useProductStore = createPersistentStore('product', () => {
       const response = await productApi.getActiveList(params)
       
       // 更新产品列表
-      products.value = response.list
+      products.value = response?.list || []
       
       // 更新分页信息
       pagination.value = {
         ...pagination.value,
-        total: response.total,
-        current: response.page,
-        pageSize: response.pageSize
+        total: response?.total || 0,
+        current: response?.page || 1,
+        pageSize: response?.pageSize || 10
       }
       
       return response
@@ -423,14 +434,14 @@ export const useProductStore = createPersistentStore('product', () => {
       const response = await productApi.getActiveList(params)
       
       // 更新产品列表
-      products.value = response.list
+      products.value = response?.list || []
       
       // 更新分页信息
       pagination.value = {
         ...pagination.value,
-        total: response.total,
-        current: response.page,
-        pageSize: response.pageSize
+        total: response?.total || 0,
+        current: response?.page || 1,
+        pageSize: response?.pageSize || 10
       }
       
       return response
@@ -505,7 +516,7 @@ export const useProductStore = createPersistentStore('product', () => {
     const searchTerm = keyword.toLowerCase().trim()
     
     // 从当前产品列表中搜索
-    const results = products.value.filter(product => {
+    const results = (products.value || []).filter(product => {
       // 排除已删除的产品
       if (product.deleted) return false
       
@@ -588,7 +599,7 @@ export const useProductStore = createPersistentStore('product', () => {
   return {
     // 状态
     products,
-    categories,
+    categories: computed(() => Array.isArray(categories.value) ? categories.value : []),
     loading,
     pagination,
     searchForm,

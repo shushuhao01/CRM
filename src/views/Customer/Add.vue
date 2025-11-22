@@ -351,9 +351,9 @@
                   placeholder="请选择客户等级"
                   style="width: 100%"
                 >
-                  <el-option label="普通客户" value="normal" />
-                  <el-option label="白银客户" value="silver" />
-                  <el-option label="黄金客户" value="gold" />
+                  <el-option label="铜牌客户" value="bronze" />
+                  <el-option label="银牌客户" value="silver" />
+                  <el-option label="金牌客户" value="gold" />
                   <el-option label="钻石客户" value="diamond" />
                 </el-select>
               </el-form-item>
@@ -542,13 +542,33 @@ const hasCreatePermission = computed(() => {
 
 // 判断是否应该禁用保存按钮
 const shouldDisableSave = computed(() => {
-  // 如果客户验证结果显示客户已存在，则禁用保存按钮
-  if (customerVerifyResult.value && customerVerifyResult.value.type === 'warning') {
+  // 如果是编辑模式，不禁用按钮
+  if (isEdit.value) {
+    return false
+  }
+
+  // 如果没有手机号，禁用按钮
+  if (!customerForm.phone || customerForm.phone.trim() === '') {
     return true
   }
 
-  // 其他情况不禁用保存按钮
-  return false
+  // 如果还没有验证客户，禁用按钮
+  if (!customerVerifyResult.value) {
+    return true
+  }
+
+  // 如果客户验证结果显示客户已存在，禁用保存按钮
+  if (customerVerifyResult.value.type === 'warning') {
+    return true
+  }
+
+  // 如果验证失败，禁用按钮
+  if (customerVerifyResult.value.type === 'error') {
+    return true
+  }
+
+  // 只有验证通过（type === 'success'）才允许保存
+  return customerVerifyResult.value.type !== 'success'
 })
 
 // 获取保存按钮的提示文本
@@ -557,11 +577,27 @@ const getSaveButtonTooltip = computed(() => {
     return ''
   }
 
-  if (customerVerifyResult.value && customerVerifyResult.value.type === 'warning') {
+  if (isEdit.value) {
+    return ''
+  }
+
+  if (!customerForm.phone || customerForm.phone.trim() === '') {
+    return '请先输入手机号'
+  }
+
+  if (!customerVerifyResult.value) {
+    return '请先验证客户手机号'
+  }
+
+  if (customerVerifyResult.value.type === 'warning') {
     return '该手机号已存在客户记录，无法重复创建。请点击"查看详情"查看已有客户信息。'
   }
 
-  return '保存按钮已禁用'
+  if (customerVerifyResult.value.type === 'error') {
+    return '客户验证失败，请重新验证'
+  }
+
+  return '请先验证客户手机号可以创建'
 })
 
 // 如果没有权限，重定向到客户列表页
@@ -591,7 +627,7 @@ const customerForm = reactive({
   medicalHistory: '', // 疾病史
   improvementGoals: [], // 改善问题
   otherGoals: '',     // 其他改善目标
-  level: 'normal',    // 客户等级
+  level: 'bronze',    // 🔥 批次262修复：客户等级默认为铜牌客户
   status: 'active',   // 客户状态（默认为活跃）
   source: '',         // 客户来源
   tags: [],           // 客户标签
@@ -852,7 +888,6 @@ const verifyCustomer = async () => {
         customerId: existingCustomer.id
       }
       console.log('客户已存在:', existingCustomer)
-      ElMessage.warning('客户已存在，请查看详情')
     } else {
       // 客户不存在，可以创建
       customerVerifyResult.value = {
@@ -860,7 +895,6 @@ const verifyCustomer = async () => {
         message: '该手机号可以创建新客户'
       }
       console.log('客户不存在，可以创建')
-      ElMessage.success('验证通过，可以创建新客户')
     }
     console.log('=== 验证客户完成 ===')
   } catch (error) {
@@ -929,14 +963,18 @@ const handleSubmit = async () => {
         console.log('表单数据:', customerForm)
 
         // 新增客户逻辑 - 先检查是否已存在
+        console.log('=== 提交前最终检查 ===')
         const existsResponse = await customerApi.checkExists(customerForm.phone)
-        console.log('检查客户是否存在响应:', existsResponse)
+        console.log('最终检查客户是否存在响应:', existsResponse)
 
         if (existsResponse.data) {
           const existingCustomer = existsResponse.data
           console.log('客户已存在，抛出错误:', existingCustomer)
+          console.log('阻止保存，抛出异常')
           throw new Error(`手机号 ${customerForm.phone} 已存在，客户姓名：${existingCustomer.name}`)
         }
+
+        console.log('检查通过，继续保存客户')
 
         // 构建完整地址
         const fullAddress = [
@@ -974,9 +1012,47 @@ const handleSubmit = async () => {
 
         console.log('准备保存的客户数据:', customerData)
 
-        // 使用customer store保存数据
+        // 使用customer store保存数据，确保数据正确写入
+        console.log('=== 开始保存客户到CustomerStore ===')
+        console.log('保存前CustomerStore中的客户数量:', customerStore.customers.length)
+        console.log('准备保存的客户数据:', customerData)
+
         const result = await customerStore.createCustomer(customerData)
-        console.log('保存客户结果:', result)
+        console.log('createCustomer返回结果:', result)
+        console.log('保存后CustomerStore中的客户数量:', customerStore.customers.length)
+
+        // 验证数据是否真正保存成功
+        const savedCustomer = customerStore.customers.find(c => c.phone === customerData.phone)
+        if (!savedCustomer) {
+          console.error('❌ 严重错误：客户数据保存失败！')
+          console.error('CustomerStore.customers:', customerStore.customers)
+          throw new Error('客户数据保存失败，请重试')
+        }
+        console.log('✅ 验证保存成功，找到客户:', savedCustomer.name)
+
+        // 再次验证localStorage中的数据
+        const storedData = localStorage.getItem('crm_store_customer')
+        if (storedData) {
+          const data = JSON.parse(storedData)
+          // 🔥 批次262修复：createPersistentStore保存的数据格式是 { data: {...}, version, timestamp }
+          // 所以需要访问 data.data.customers 而不是 data.customers
+          const customers = data.data?.customers || data.customers || []
+          console.log('localStorage中客户数量:', customers.length)
+
+          const storedCustomer = customers.find((c: any) => c.phone === customerData.phone)
+          if (storedCustomer) {
+            console.log('✅ localStorage验证成功，客户已保存:', storedCustomer.name)
+          } else {
+            console.error('❌ localStorage验证失败，客户未找到')
+            console.error('localStorage中的客户:', customers.map((c: unknown) => ({ 姓名: c.name, 电话: c.phone })))
+            throw new Error('客户数据未成功保存到localStorage')
+          }
+        } else {
+          console.error('❌ localStorage中没有数据')
+          throw new Error('localStorage保存失败')
+        }
+
+        console.log('=== 客户保存到CustomerStore完成 ===')
 
         // 发送客户添加成功的消息提醒
         if (!isEdit.value) {
@@ -997,23 +1073,22 @@ const handleSubmit = async () => {
 
     ElMessage.success(isEdit.value ? '客户信息更新成功' : '客户添加成功')
 
-    // 强化数据同步机制：
-    // 1. 等待一小段时间确保数据完全保存
-    await new Promise(resolve => setTimeout(resolve, 100))
+    // 🔥 批次262修复：createPersistentStore会自动保存，无需手动调用
+    // 等待一下确保数据保存完成
+    await new Promise(resolve => setTimeout(resolve, 300))
+    console.log('✅ 数据保存完成')
 
-    // 2. 强制触发Store数据同步（确保所有计算属性更新）
-    await customerStore.forceSyncData()
+    // 最终验证localStorage中的数据
+    const finalCheck = localStorage.getItem('crm_store_customer')
+    if (finalCheck) {
+      const data = JSON.parse(finalCheck)
+      // 🔥 批次262修复：正确访问customers数组
+      const customers = data.data?.customers || data.customers || []
+      console.log('✅ 最终验证：localStorage中有', customers.length, '个客户')
+    }
 
-    // 3. 等待Vue响应式更新完成
-    await nextTick()
-
-    console.log('客户添加成功，已完成强化数据同步')
-
-    // 返回客户列表页，并传递刷新参数
-    safeNavigator.push({
-      path: '/customer/list',
-      query: { refresh: 'true', timestamp: Date.now().toString() }
-    })
+    // 跳转到客户列表，带上refresh参数强制刷新
+    safeNavigator.push('/customer/list?refresh=true')
   } catch (error) {
     console.error('保存客户失败:', error)
     appStore.showError({
@@ -1177,10 +1252,8 @@ const handleSaveAndOrder = async () => {
       const newCustomer = await customerStore.createCustomer(customerData)
       console.log('客户创建成功，新客户信息:', newCustomer)
 
-      // 立即强制刷新客户列表数据，确保新客户显示在列表中
-      console.log('强制刷新客户列表数据以确保新客户显示')
-      await customerStore.forceRefreshCustomers()
-      console.log('客户列表数据刷新完成，当前客户数量:', customerStore.customers.length)
+      // 不调用forceRefreshCustomers，避免覆盖本地新增的客户数据
+      console.log('客户已保存到本地store，当前客户数量:', customerStore.customers.length)
 
       // 发送客户添加成功的消息提醒
       notificationStore.sendMessage(

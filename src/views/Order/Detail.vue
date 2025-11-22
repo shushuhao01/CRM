@@ -10,13 +10,13 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-tooltip 
-          :content="canCreateAfterSales ? '点击创建售后服务' : '订单需要发货后才能建立售后'" 
+        <el-tooltip
+          :content="canCreateAfterSales ? '点击创建售后服务' : '订单需要发货后才能建立售后'"
           placement="bottom"
         >
-          <el-button 
-            type="primary" 
-            :disabled="!canCreateAfterSales" 
+          <el-button
+            type="primary"
+            :disabled="!canCreateAfterSales"
             @click="createAfterSales"
           >
             建立售后
@@ -59,9 +59,9 @@
               <span class="header-title">客户信息</span>
             </div>
             <div class="header-right">
-              <el-button 
-                type="text" 
-                size="small" 
+              <el-button
+                type="text"
+                size="small"
                 @click="goToCustomerDetail"
                 class="view-more-btn"
               >
@@ -71,15 +71,15 @@
             </div>
           </div>
         </template>
-        
+
         <div class="customer-info-modern">
           <div class="customer-main">
             <div class="customer-avatar-section">
               <el-avatar :size="64" :src="orderDetail.customer.avatar" class="customer-avatar-modern">
                 {{ orderDetail.customer.name.charAt(0) }}
               </el-avatar>
-              <el-tag 
-                :type="getLevelType(orderDetail.customer.level)" 
+              <el-tag
+                :type="getLevelType(orderDetail.customer.level)"
                 size="small"
                 class="customer-level-tag"
                 effect="light"
@@ -134,7 +134,7 @@
             </div>
           </div>
         </div>
-        
+
         <div class="status-timeline-horizontal">
           <div class="timeline-item-horizontal">
             <div class="timeline-dot"></div>
@@ -186,7 +186,7 @@
             </div>
           </div>
         </template>
-        
+
         <div class="delivery-info-modern">
           <div class="delivery-grid-modern">
             <div class="delivery-field-modern">
@@ -196,7 +196,7 @@
             <div class="delivery-field-modern">
               <div class="field-label-modern">联系电话</div>
               <div class="field-value-modern phone-clickable" @click="callCustomer(orderDetail.receiverPhone)">
-                {{ maskPhone(orderDetail.receiverPhone) }}
+                {{ displaySensitiveInfoNew(orderDetail.receiverPhone, SensitiveInfoType.PHONE) }}
               </div>
             </div>
             <div class="delivery-field-modern address-field-modern">
@@ -219,7 +219,7 @@
             </div>
           </div>
         </template>
-        
+
         <div class="order-info-modern">
           <!-- 基础订单信息 -->
           <div class="order-basic-info">
@@ -248,35 +248,35 @@
             <div class="section-title">
               <el-icon><Van /></el-icon>
               <span>物流信息</span>
-              <el-tag 
-                v-if="orderDetail.status === 'shipped'" 
-                type="success" 
-                size="small" 
+              <el-tag
+                v-if="orderDetail.status === 'shipped'"
+                type="success"
+                size="small"
                 effect="light"
                 class="status-indicator"
               >
                 已发货
               </el-tag>
-              <el-tag 
-                v-else-if="orderDetail.status === 'pending_shipment'" 
-                type="warning" 
-                size="small" 
+              <el-tag
+                v-else-if="orderDetail.status === 'pending_shipment'"
+                type="warning"
+                size="small"
                 effect="light"
                 class="status-indicator"
               >
                 待发货
               </el-tag>
-              <el-tag 
-                v-else 
-                type="info" 
-                size="small" 
+              <el-tag
+                v-else
+                type="info"
+                size="small"
                 effect="light"
                 class="status-indicator"
               >
                 {{ getStatusText(orderDetail.status) }}
               </el-tag>
             </div>
-            
+
             <!-- 已发货状态的物流信息 -->
             <div v-if="orderDetail.status === 'shipped' && orderDetail.trackingNumber" class="logistics-info-grid">
               <div class="logistics-item highlight">
@@ -304,7 +304,7 @@
                 </div>
               </div>
             </div>
-            
+
             <!-- 待发货状态的物流信息 -->
             <div v-else class="logistics-info-grid pending">
               <div class="logistics-item">
@@ -325,7 +325,7 @@
               </div>
             </div>
           </div>
-          
+
           <!-- 订单备注 -->
           <div v-if="orderDetail.remark" class="order-remark-modern">
             <div class="remark-title">
@@ -347,7 +347,7 @@
             <span>商品清单</span>
           </div>
         </template>
-        
+
         <div class="products-list">
           <el-table :data="orderDetail.products" style="width: 100%">
             <el-table-column label="商品信息" min-width="200">
@@ -375,7 +375,7 @@
               </template>
             </el-table-column>
           </el-table>
-          
+
           <!-- 金额信息横向显示 -->
           <div class="amount-summary-modern">
             <!-- 金额卡片 -->
@@ -408,7 +408,7 @@
                 </div>
               </div>
             </div>
-            
+
             <!-- 第二行：商品总额和优惠 -->
             <div class="amount-row-detail">
               <div class="amount-detail-item subtotal-item">
@@ -419,16 +419,21 @@
                 <span class="detail-label">优惠金额：</span>
                 <span class="detail-value discount">-¥{{ (orderDetail.discount || 0).toFixed(2) }}</span>
               </div>
+              <!-- 【批次205新增】显示总优惠金额(商品总额-订单总额) -->
+              <div class="amount-detail-item discount-item" v-if="calculatedSubtotal > (orderDetail.totalAmount || 0)">
+                <span class="detail-label">已优惠：</span>
+                <span class="detail-value discount">-¥{{ (calculatedSubtotal - (orderDetail.totalAmount || 0)).toFixed(2) }}</span>
+              </div>
             </div>
-            
+
             <!-- 定金截图 -->
             <div v-if="depositScreenshotList.length > 0" class="deposit-screenshot-horizontal">
               <span class="label">定金截图：</span>
               <div class="screenshots-container">
-                <div 
-                  v-for="(screenshot, index) in depositScreenshotList" 
+                <div
+                  v-for="(screenshot, index) in depositScreenshotList"
                   :key="index"
-                  class="screenshot-container" 
+                  class="screenshot-container"
                   @click="previewScreenshot(index)"
                 >
                   <el-image
@@ -445,7 +450,7 @@
                 </div>
               </div>
             </div>
-            
+
             <!-- 图片查看器 -->
             <el-image-viewer
               v-if="showImageViewer"
@@ -468,7 +473,7 @@
             <el-button size="small" @click="refreshLogistics">刷新</el-button>
           </div>
         </template>
-        
+
         <div class="logistics-timeline">
           <el-timeline v-if="logisticsInfo.length > 0">
             <el-timeline-item
@@ -504,9 +509,9 @@
           <div class="card-header">
             <el-icon><List /></el-icon>
             <span>操作记录</span>
-            <el-button 
-              size="small" 
-              type="text" 
+            <el-button
+              size="small"
+              type="text"
               @click="operationLogCollapsed = !operationLogCollapsed"
               :icon="operationLogCollapsed ? ArrowDown : ArrowUp"
             >
@@ -514,7 +519,7 @@
             </el-button>
           </div>
         </template>
-        
+
         <el-collapse-transition>
           <div v-show="!operationLogCollapsed">
             <el-table :data="operationLogs" style="width: 100%">
@@ -540,9 +545,9 @@
           <div class="card-header">
             <el-icon><Clock /></el-icon>
             <span>订单状态和轨迹</span>
-            <el-button 
-              size="small" 
-              type="text" 
+            <el-button
+              size="small"
+              type="text"
               @click="statusTimelineCollapsed = !statusTimelineCollapsed"
               :icon="statusTimelineCollapsed ? ArrowDown : ArrowUp"
             >
@@ -550,7 +555,7 @@
             </el-button>
           </div>
         </template>
-        
+
         <el-collapse-transition>
           <div v-show="!statusTimelineCollapsed">
             <el-timeline>
@@ -589,9 +594,9 @@
                 {{ orderDetail.trackingNumber }}
               </span>
             </div>
-            <el-button 
-              size="small" 
-              type="text" 
+            <el-button
+              size="small"
+              type="text"
               @click="logisticsCollapsed = !logisticsCollapsed"
               :icon="logisticsCollapsed ? ArrowDown : ArrowUp"
             >
@@ -599,7 +604,7 @@
             </el-button>
           </div>
         </template>
-        
+
         <el-collapse-transition>
           <div v-show="!logisticsCollapsed">
             <div v-if="logisticsLoading" class="logistics-loading">
@@ -624,12 +629,12 @@
               </el-timeline-item>
             </el-timeline>
             <el-empty v-else description="暂无物流信息" />
-            
+
             <!-- 刷新按钮 -->
             <div class="logistics-actions">
-              <el-button 
-                size="small" 
-                type="primary" 
+              <el-button
+                size="small"
+                type="primary"
                 :loading="logisticsLoading"
                 @click="refreshLogistics"
               >
@@ -648,9 +653,9 @@
           <div class="card-header">
             <el-icon><Service /></el-icon>
             <span>售后历史轨迹</span>
-            <el-button 
-              size="small" 
-              type="text" 
+            <el-button
+              size="small"
+              type="text"
               @click="afterSalesCollapsed = !afterSalesCollapsed"
               :icon="afterSalesCollapsed ? ArrowDown : ArrowUp"
             >
@@ -658,7 +663,7 @@
             </el-button>
           </div>
         </template>
-        
+
         <el-collapse-transition>
           <div v-show="!afterSalesCollapsed">
             <el-timeline v-if="afterSalesHistory.length > 0">
@@ -781,52 +786,54 @@ const logisticsCollapsed = ref(false) // 物流轨迹默认展开
 // 物流轨迹相关
 const logisticsLoading = ref(false)
 
-// 实时更新监听
+// 事件监听器引用
+const operationLogListener = (event: CustomEvent) => {
+  const { orderId, log } = event.detail
+  if (orderId === route.params.id) {
+    operationLogs.value.unshift(log)
+  }
+}
+
+const orderStatusListener = (event: CustomEvent) => {
+  const { orderId, newStatus } = event.detail
+  if (orderId === route.params.id) {
+    orderDetail.status = newStatus
+    // 刷新操作记录和状态轨迹
+    loadOperationLogs()
+    loadOrderTimeline()
+  }
+}
+
+const logisticsStatusListener = (event: CustomEvent) => {
+  const result = event.detail
+  if (orderDetail.trackingNumber === result.trackingNumber) {
+    refreshLogistics()
+  }
+}
+
+const afterSalesUpdateListener = (event: CustomEvent) => {
+  const { orderId, serviceId } = event.detail
+  if (orderId === route.params.id) {
+    // 重新加载售后历史数据
+    loadAfterSalesHistory()
+  }
+}
+
+const serviceStatusUpdateListener = (event: CustomEvent) => {
+  const { orderId, serviceId, newStatus } = event.detail
+  if (orderId === route.params.id) {
+    // 重新加载售后历史数据
+    loadAfterSalesHistory()
+  }
+}
+
+// 设置事件监听器
 const setupEventListeners = () => {
-  // 监听操作记录更新
-  window.addEventListener('operation-log-update', (event: CustomEvent) => {
-    const { orderId, log } = event.detail
-    if (orderId === route.params.id) {
-      operationLogs.value.unshift(log)
-    }
-  })
-  
-  // 监听订单状态更新
-  window.addEventListener('order-status-update', (event: CustomEvent) => {
-    const { orderId, newStatus } = event.detail
-    if (orderId === route.params.id) {
-      orderDetail.status = newStatus
-      // 刷新操作记录和状态轨迹
-      loadOperationLogs()
-      loadOrderTimeline()
-    }
-  })
-  
-  // 监听物流状态更新
-  window.addEventListener('logistics-status-update', (event: CustomEvent) => {
-    const result = event.detail
-    if (orderDetail.trackingNumber === result.trackingNumber) {
-      refreshLogistics()
-    }
-  })
-  
-  // 监听售后服务更新
-  window.addEventListener('after-sales-update', (event: CustomEvent) => {
-    const { orderId, serviceId } = event.detail
-    if (orderId === route.params.id) {
-      // 重新加载售后历史数据
-      loadAfterSalesHistory()
-    }
-  })
-  
-  // 监听售后服务状态更新
-  window.addEventListener('service-status-update', (event: CustomEvent) => {
-    const { orderId, serviceId, newStatus } = event.detail
-    if (orderId === route.params.id) {
-      // 重新加载售后历史数据
-      loadAfterSalesHistory()
-    }
-  })
+  window.addEventListener('operation-log-update', operationLogListener)
+  window.addEventListener('order-status-update', orderStatusListener)
+  window.addEventListener('logistics-status-update', logisticsStatusListener)
+  window.addEventListener('after-sales-update', afterSalesUpdateListener)
+  window.addEventListener('service-status-update', serviceStatusUpdateListener)
 }
 
 // 加载操作记录
@@ -839,7 +846,7 @@ const loadAfterSalesHistory = async () => {
   try {
     // 从serviceStore获取该订单的售后记录
     const afterSalesServices = serviceStore.getServicesByOrderId(orderDetail.id)
-    
+
     // 将售后服务数据转换为历史轨迹格式
     afterSalesHistory.value = afterSalesServices.map(service => ({
       timestamp: service.createTime,
@@ -851,7 +858,7 @@ const loadAfterSalesHistory = async () => {
       status: service.status,
       serviceNumber: service.serviceNumber
     }))
-    
+
     // 按时间倒序排列
     afterSalesHistory.value.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
   } catch (error) {
@@ -863,18 +870,18 @@ const loadAfterSalesHistory = async () => {
 const getAfterSalesTitle = (type: string, status: string) => {
   const typeTexts = {
     'return': '退货申请',
-    'exchange': '换货申请', 
+    'exchange': '换货申请',
     'repair': '维修申请',
     'refund': '退款申请'
   }
-  
+
   const statusTexts = {
     'pending': '已提交',
     'processing': '处理中',
     'resolved': '已解决',
     'closed': '已关闭'
   }
-  
+
   return `${typeTexts[type] || '售后申请'} - ${statusTexts[status] || status}`
 }
 
@@ -882,7 +889,7 @@ const getAfterSalesTitle = (type: string, status: string) => {
 const loadOrderTimeline = () => {
   // 从订单Store获取真实的状态历史
   const statusHistory = orderStore.getOrderStatusHistory(orderId)
-  
+
   if (statusHistory && statusHistory.length > 0) {
     // 使用真实的状态历史数据
     orderTimeline.value = statusHistory.map(history => ({
@@ -908,7 +915,7 @@ const loadOrderTimeline = () => {
       }
     ]
   }
-  
+
   // 按时间倒序排列
   orderTimeline.value.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 }
@@ -917,7 +924,7 @@ const loadOrderTimeline = () => {
 const getTimelineType = (status: string) => {
   const types = {
     'pending': 'info',
-    'pending_approval': 'warning', 
+    'pending_approval': 'warning',
     'approved': 'success',
     'rejected': 'danger',
     'pending_shipment': 'warning',
@@ -950,7 +957,7 @@ const getTimelineColor = (status: string) => {
   const colors = {
     'pending': '#909399',
     'pending_approval': '#e6a23c',
-    'approved': '#67c23a', 
+    'approved': '#67c23a',
     'rejected': '#f56c6c',
     'pending_shipment': '#e6a23c',
     'shipped': '#409eff',
@@ -963,11 +970,11 @@ const getTimelineColor = (status: string) => {
 
 // 计算属性
 const showCountdown = computed(() => {
-  // 只有在订单状态为待审核且审核状态为pending时显示倒计时
-  return orderDetail.auditStatus === 'pending' && 
-         orderDetail.markType === 'normal' && 
-         !orderDetail.isAuditTransferred &&
-         countdownSeconds.value > 0
+  // 只有在订单状态为pending_transfer（待流转）时显示倒计时
+  return orderDetail.status === 'pending_transfer' &&
+         orderDetail.markType === 'normal' &&
+         orderDetail.auditTransferTime &&
+         !orderDetail.isAuditTransferred
 })
 
 const canCreateAfterSales = computed(() => {
@@ -991,14 +998,14 @@ const canModifyMark = computed(() => {
   if (orderDetail.auditStatus === 'approved') {
     return false
   }
-  
+
   // 有取消申请的订单不能修改标记（待取消、已取消、取消失败）
-  if (orderDetail.status === 'pending_cancel' || 
-      orderDetail.status === 'cancelled' || 
+  if (orderDetail.status === 'pending_cancel' ||
+      orderDetail.status === 'cancelled' ||
       orderDetail.status === 'cancel_failed') {
     return false
   }
-  
+
   // 如果是正常发货单且正在审核中
   if (orderDetail.auditStatus === 'pending' && orderDetail.markType === 'normal') {
     // 如果已经流转到审核（超过3分钟），则不能修改
@@ -1008,15 +1015,15 @@ const canModifyMark = computed(() => {
     // 如果还在3分钟内（未流转），则可以修改
     return true
   }
-  
+
   // 其他情况可以修改（包括预留单、退回的订单等）
   return true
 })
 
 // 判断是否在审核流程中（已锁定状态）
 const isInAuditProcess = computed(() => {
-  return orderDetail.auditStatus === 'pending' && 
-         orderDetail.markType === 'normal' && 
+  return orderDetail.auditStatus === 'pending' &&
+         orderDetail.markType === 'normal' &&
          orderDetail.isAuditTransferred // 只有已流转到审核才显示锁定状态
 })
 
@@ -1043,8 +1050,8 @@ const calculatedSubtotal = computed(() => {
 
 // 计算是否可以修改为预留单（流转前）
 const canChangeToReserved = computed(() => {
-  return orderDetail.markType === 'normal' && 
-         orderDetail.auditStatus === 'pending' && 
+  return orderDetail.markType === 'normal' &&
+         orderDetail.auditStatus === 'pending' &&
          !orderDetail.isAuditTransferred
 })
 
@@ -1079,7 +1086,7 @@ const createAfterSales = async () => {
   try {
     // 首先检查是否已存在售后记录
     const existingAfterSales = await checkExistingAfterSales(orderDetail.id)
-    
+
     if (existingAfterSales) {
       // 如果已存在售后记录，直接跳转到售后详情页
       safeNavigator.push(`/service/detail/${existingAfterSales.id}`)
@@ -1121,10 +1128,10 @@ const handleMarkCommand = (command: string) => {
       'normal': '正常发货单',
       'return': '退单'
     }
-    
+
     ElMessageBox.confirm(
-      `确认将此订单标记为"${markTypes[command]}"？\n注意：修改为预留单后，订单将不会流转到审核，信息将保留在系统中。`, 
-      '确认标记', 
+      `确认将此订单标记为"${markTypes[command]}"？\n注意：修改为预留单后，订单将不会流转到审核，信息将保留在系统中。`,
+      '确认标记',
       {
         type: 'warning'
       }
@@ -1134,20 +1141,20 @@ const handleMarkCommand = (command: string) => {
         clearInterval(countdownTimer.value)
         countdownTimer.value = null
       }
-      
+
       // 更新本地订单标记状态
       orderDetail.markType = command
       orderDetail.isAuditTransferred = true // 标记为已处理，防止自动流转
-      
+
       // 更新orderStore中的数据
-      const updatedOrder = orderStore.updateOrder(orderId, { 
+      const updatedOrder = orderStore.updateOrder(orderId, {
         markType: command,
         isAuditTransferred: true
       })
-      
+
       if (updatedOrder) {
         ElMessage.success(`订单已标记为${markTypes[command]}，信息已保留在系统中`)
-        
+
         // 发送通知
         notificationStore.sendMessage({
           type: 'ORDER_MARKED',
@@ -1170,7 +1177,7 @@ const handleMarkCommand = (command: string) => {
     })
     return
   }
-  
+
   // 检查是否可以修改标记
   if (!canModifyMark.value) {
     if (isInAuditProcess.value) {
@@ -1188,13 +1195,13 @@ const handleMarkCommand = (command: string) => {
     'normal': '正常发货单',
     'return': '退单'
   }
-  
+
   ElMessageBox.confirm(`确认将此订单标记为"${markTypes[command]}"？`, '确认标记', {
     type: 'warning'
   }).then(() => {
     // 更新本地订单标记状态
     orderDetail.markType = command
-    
+
     // 特殊处理不同标记类型
     const updateData: Record<string, unknown> = { markType: command }
     if (command === 'return') {
@@ -1207,20 +1214,20 @@ const handleMarkCommand = (command: string) => {
       const transferTime = new Date(Date.now() + 3 * 60 * 1000) // 3分钟后流转
       updateData.auditTransferTime = transferTime.toLocaleString('zh-CN')
     }
-    
+
     // 更新orderStore中的数据
     const updatedOrder = orderStore.updateOrder(orderId, updateData)
-    
+
     if (updatedOrder) {
       ElMessage.success(`订单已标记为${markTypes[command]}`)
-      
+
       // 根据不同标记类型给出不同提示
       if (command === 'return') {
         ElMessage.info('退单已处理完成，订单信息已保留在系统中，不会流转到审核')
       } else if (command === 'normal' && orderDetail.status === 'pending') {
         ElMessage.info('订单已变更为正常发货单，将进入审核流程')
       }
-      
+
       // 发送通知
       notificationStore.sendMessage({
         type: 'ORDER_MARKED',
@@ -1251,14 +1258,14 @@ const approveOrder = async () => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     // 使用store方法同步状态和添加操作记录
     orderStore.syncOrderStatus(orderId, 'pending_shipment', '审核员', '订单审核通过，等待发货')
     orderDetail.status = 'pending_shipment'
-    
+
     // 发送通知消息
     notificationStore.sendMessage({
       type: 'ORDER_APPROVED',
@@ -1273,7 +1280,7 @@ const approveOrder = async () => {
         auditResult: 'approved'
       }
     })
-    
+
     ElMessage.success('订单审核通过')
   } catch (error) {
     // 用户取消
@@ -1288,14 +1295,14 @@ const rejectOrder = async () => {
       inputPattern: /.+/,
       inputErrorMessage: '请输入拒绝原因'
     })
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     // 使用store方法同步状态和添加操作记录
     orderStore.syncOrderStatus(orderId, 'audit_rejected', '审核员', `订单审核拒绝：${reason}`)
     orderDetail.status = 'audit_rejected'
-    
+
     // 发送通知消息
     notificationStore.sendMessage({
       type: 'ORDER_REJECTED',
@@ -1311,7 +1318,7 @@ const rejectOrder = async () => {
         auditRemark: reason
       }
     })
-    
+
     ElMessage.success('订单已拒绝')
   } catch (error) {
     // 用户取消
@@ -1330,10 +1337,64 @@ const goToCustomerDetail = () => {
   safeNavigator.push(`/customer/detail/${orderDetail.customer.id}`)
 }
 
-const trackExpress = () => {
-  // 打开快递查询页面
-  const url = `https://www.kuaidi100.com/query?type=${orderDetail.expressCompany}&postid=${orderDetail.trackingNumber}`
-  window.open(url, '_blank')
+// 复制物流单号并提示选择跳转网站
+const trackExpress = async () => {
+  if (!orderDetail.trackingNumber) {
+    ElMessage.warning('物流单号不存在')
+    return
+  }
+
+  // 复制物流单号
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(orderDetail.trackingNumber)
+      ElMessage.success('物流单号已复制到剪贴板')
+    } else {
+      // 降级方案：使用 document.execCommand
+      const textArea = document.createElement('textarea')
+      textArea.value = orderDetail.trackingNumber
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      textArea.style.top = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+
+      const result = document.execCommand('copy')
+      document.body.removeChild(textArea)
+
+      if (result) {
+        ElMessage.success('物流单号已复制到剪贴板')
+      } else {
+        ElMessage.error('复制失败，请手动复制')
+        return
+      }
+    }
+  } catch (error) {
+    console.error('复制失败:', error)
+    ElMessage.error('复制失败，请手动复制')
+    return
+  }
+
+  // 提示选择跳转网站
+  ElMessageBox.confirm(
+    '请选择要跳转的查询网站',
+    '选择查询网站',
+    {
+      confirmButtonText: '顺丰官网',
+      cancelButtonText: '快递100',
+      distinguishCancelAndClose: true,
+      type: 'info'
+    }
+  ).then(() => {
+    // 点击确认，跳转顺丰官网
+    window.open('https://www.sf-express.com/chn/sc/waybill/list', '_blank')
+  }).catch((action) => {
+    if (action === 'cancel') {
+      // 点击取消，跳转快递100
+      window.open('https://www.kuaidi100.com/', '_blank')
+    }
+  })
 }
 
 // 动态更新预计到达时间
@@ -1342,17 +1403,17 @@ const updateEstimatedDeliveryTime = (logisticsResult: any) => {
     // 根据物流状态和位置信息计算预计到达时间
     const tracks = logisticsResult.tracks || []
     const latestTrack = tracks[0] // 最新的物流信息
-    
+
     if (!latestTrack) return
-    
+
     // 根据物流状态判断预计到达时间
     const currentTime = new Date()
     let estimatedDays = 0
-    
+
     // 根据物流状态和快递公司估算剩余时间
     const status = latestTrack.status || latestTrack.statusText || ''
     const expressCompany = orderDetail.expressCompany
-    
+
     if (status.includes('已签收') || status.includes('delivered')) {
       // 已签收，无需更新
       return
@@ -1372,11 +1433,11 @@ const updateEstimatedDeliveryTime = (logisticsResult: any) => {
     } else {
       estimatedDays = 3 // 默认3天
     }
-    
+
     // 计算预计到达时间
     const estimatedDate = new Date(currentTime.getTime() + estimatedDays * 24 * 60 * 60 * 1000)
     orderDetail.expectedDeliveryDate = estimatedDate.toISOString().split('T')[0]
-    
+
   } catch (error) {
     console.error('更新预计到达时间失败:', error)
   }
@@ -1385,33 +1446,41 @@ const updateEstimatedDeliveryTime = (logisticsResult: any) => {
 const refreshLogistics = async () => {
   if (!orderDetail.trackingNumber || !orderDetail.expressCompany) {
     ElMessage.warning('缺少快递单号或快递公司信息')
+    logisticsInfo.value = []
     return
   }
-  
+
   try {
     logisticsLoading.value = true
-    
-    // 使用物流服务查询轨迹
+
+    // 使用物流服务查询轨迹（调用真实API）
     const result = await orderStore.queryLogisticsTrack(orderId)
+
     if (result && result.tracks && result.tracks.length > 0) {
+      // 转换并显示物流轨迹数据
       logisticsInfo.value = result.tracks.map(track => ({
         time: track.time,
         status: track.status,
-        statusText: track.statusText || track.status,
-        description: track.description,
-        location: track.location
+        statusText: track.statusText || track.description || track.status,
+        description: track.description || track.statusText || '状态更新',
+        location: track.location || ''
       }))
-      
+
       // 动态更新预计到达时间
-      updateEstimatedDeliveryTime(result)
-      
+      if (result.estimatedDeliveryTime) {
+        updateEstimatedDeliveryTime(result)
+      }
+
       ElMessage.success('物流信息已更新')
     } else {
-      ElMessage.warning('暂无物流信息')
+      // 如果没有查询到数据，显示提示
+      logisticsInfo.value = []
+      ElMessage.warning('暂无物流信息，可能是单号未录入系统或查询失败')
     }
   } catch (error) {
     console.error('获取物流信息失败:', error)
-    ElMessage.error('获取物流信息失败')
+    logisticsInfo.value = []
+    ElMessage.error('获取物流信息失败，请检查网络连接或稍后重试')
   } finally {
     logisticsLoading.value = false
   }
@@ -1420,7 +1489,7 @@ const refreshLogistics = async () => {
 // 物流轨迹相关辅助方法
 const getLogisticsType = (status: string) => {
   if (!status) return 'info'
-  
+
   const types = {
     // 英文状态
     'delivered': 'success',
@@ -1443,19 +1512,19 @@ const getLogisticsType = (status: string) => {
     '拒收': 'danger',
     '退回': 'danger'
   }
-  
+
   // 检查完全匹配
   if (types[status]) {
     return types[status]
   }
-  
+
   // 检查包含关键词
   if (status.includes('签收') || status.includes('送达')) return 'success'
   if (status.includes('派送') || status.includes('运输') || status.includes('在途')) return 'primary'
   if (status.includes('揽收') || status.includes('发货')) return 'info'
   if (status.includes('异常') || status.includes('问题')) return 'warning'
   if (status.includes('拒收') || status.includes('退回')) return 'danger'
-  
+
   return 'info'
 }
 
@@ -1488,7 +1557,7 @@ const getStatusType = (status: string) => {
     'after_sales_created': 'warning', // 已建售后 - 橙色
     'cancelled': 'info',             // 已取消 - 灰色
     'draft': 'info',                 // 草稿 - 灰色
-    
+
     // 兼容旧状态
     'pending': 'warning',
     'pending_approval': 'warning',
@@ -1516,7 +1585,7 @@ const getStatusText = (status: string) => {
     'after_sales_created': '已建售后',
     'cancelled': '已取消',
     'draft': '草稿',
-    
+
     // 兼容旧状态
     'pending': '待处理',
     'pending_approval': '待审核',
@@ -1652,7 +1721,7 @@ const formatDate = (date: string) => {
 const loadOrderDetail = async () => {
   try {
     loading.value = true
-    
+
     // 从store获取订单数据
     const order = orderStore.getOrderById(orderId)
     if (!order) {
@@ -1660,10 +1729,10 @@ const loadOrderDetail = async () => {
       safeNavigator.push('/order/list')
       return
     }
-    
+
     // 获取客户信息
     const customer = customerStore.getCustomerById(order.customerId)
-    
+
     // 更新订单详情数据
     Object.assign(orderDetail, {
       id: order.id,
@@ -1719,14 +1788,14 @@ const loadOrderDetail = async () => {
     // 加载售后历史数据
     loadAfterSalesHistory()
 
-    // 加载物流信息
-    if (orderDetail.trackingNumber) {
+    // 加载物流信息（如果有物流单号和快递公司）
+    if (orderDetail.trackingNumber && orderDetail.expressCompany) {
       refreshLogistics()
     }
-    
+
     // 设置事件监听
     setupEventListeners()
-    
+
     // 初始化倒计时
     initCountdown()
   } catch (error) {
@@ -1739,60 +1808,73 @@ const loadOrderDetail = async () => {
 
 // 倒计时相关方法
 const initCountdown = () => {
+  console.log('[倒计时] 初始化倒计时', {
+    markType: orderDetail.markType,
+    status: orderDetail.status,
+    auditStatus: orderDetail.auditStatus,
+    isAuditTransferred: orderDetail.isAuditTransferred,
+    auditTransferTime: orderDetail.auditTransferTime
+  })
+
   // 清除之前的定时器
   if (countdownTimer.value) {
     clearInterval(countdownTimer.value)
     countdownTimer.value = null
   }
-  
-  // 只有正常发货单且未流转的订单才需要倒计时
-  if (orderDetail.markType !== 'normal' || 
-      orderDetail.auditStatus !== 'pending' || 
-      orderDetail.isAuditTransferred) {
+
+  // 只有正常发货单且状态为pending_transfer才需要倒计时
+  if (orderDetail.markType !== 'normal' || orderDetail.status !== 'pending_transfer') {
+    console.log('[倒计时] 不满足倒计时条件，跳过')
     return
   }
-  
-  // 如果没有设置流转时间，设置为当前时间+3分钟
+
+  // 如果已流转，不需要倒计时
+  if (orderDetail.isAuditTransferred) {
+    console.log('[倒计时] 订单已流转，跳过')
+    return
+  }
+
+  // 必须有流转时间
   if (!orderDetail.auditTransferTime) {
-    const transferTime = new Date(Date.now() + 3 * 60 * 1000).toISOString()
-    orderDetail.auditTransferTime = transferTime
-    // 更新store中的数据
-    orderStore.updateOrder(orderId, { auditTransferTime: transferTime })
-  }
-  
-  const transferTime = new Date(orderDetail.auditTransferTime).getTime()
-  const now = Date.now()
-  
-  if (transferTime <= now) {
-    // 时间已到，立即流转
-    transferToAudit()
+    console.log('[倒计时] 没有流转时间，无法启动倒计时')
     return
   }
-  
+
   // 开始倒计时
   updateCountdown()
   countdownTimer.value = setInterval(updateCountdown, 1000)
+  console.log('[倒计时] 倒计时已启动')
 }
 
 const updateCountdown = () => {
   if (!orderDetail.auditTransferTime) return
-  
+
   const transferTime = new Date(orderDetail.auditTransferTime).getTime()
   const now = Date.now()
   const remaining = Math.max(0, transferTime - now)
-  
+
+  console.log('[倒计时] 更新倒计时', {
+    流转时间字符串: orderDetail.auditTransferTime,
+    流转时间戳: transferTime,
+    当前时间戳: now,
+    剩余毫秒: remaining,
+    剩余秒数: Math.floor(remaining / 1000)
+  })
+
   if (remaining <= 0) {
-    // 时间到了，流转到审核
+    // 时间到了，显示已流转，但不在详情页面执行流转操作
+    // 流转由后台定时任务统一处理
+    countdownSeconds.value = 0
+    countdownText.value = '已到流转时间'
     if (countdownTimer.value) {
       clearInterval(countdownTimer.value)
       countdownTimer.value = null
     }
-    transferToAudit()
     return
   }
-  
+
   countdownSeconds.value = Math.floor(remaining / 1000)
-  
+
   // 格式化倒计时文本
   const minutes = Math.floor(countdownSeconds.value / 60)
   const seconds = countdownSeconds.value % 60
@@ -1802,23 +1884,23 @@ const updateCountdown = () => {
 const transferToAudit = () => {
   // 标记为已流转
   orderDetail.isAuditTransferred = true
-  
+
   // 更新订单状态为待审核
   orderDetail.status = 'pending_audit'
   orderDetail.auditStatus = 'pending'
-  
+
   // 更新store中的数据
   orderStore.updateOrder(orderId, {
     isAuditTransferred: true,
     status: 'pending_audit',
     auditStatus: 'pending'
   })
-  
+
   // 调用store的检查和流转方法
   orderStore.checkAndTransferOrders()
-  
+
   ElMessage.info('订单已自动流转到审核')
-  
+
   // 发送通知
   notificationStore.sendMessage({
     type: 'ORDER_TRANSFERRED',
@@ -1833,6 +1915,10 @@ const transferToAudit = () => {
 }
 
 onMounted(() => {
+  // 注意：不要在这里调用 initializeWithMockData
+  // createPersistentStore 会自动从 localStorage 恢复数据
+  // 如果数据为空，说明确实没有数据，不应该强制初始化
+
   loadOrderDetail()
 })
 
@@ -1842,11 +1928,13 @@ onUnmounted(() => {
     clearInterval(countdownTimer.value)
     countdownTimer.value = null
   }
-  
+
   // 清理事件监听器
-  window.removeEventListener('operation-log-update', () => {})
-  window.removeEventListener('order-status-update', () => {})
-  window.removeEventListener('logistics-status-update', () => {})
+  window.removeEventListener('operation-log-update', operationLogListener)
+  window.removeEventListener('order-status-update', orderStatusListener)
+  window.removeEventListener('logistics-status-update', logisticsStatusListener)
+  window.removeEventListener('after-sales-update', afterSalesUpdateListener)
+  window.removeEventListener('service-status-update', serviceStatusUpdateListener)
 })
 </script>
 
@@ -2522,16 +2610,16 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
     gap: 12px;
   }
-  
+
   .address-field {
     grid-column: 1;
   }
-  
+
   .delivery-grid-modern {
     grid-template-columns: 1fr;
     gap: 16px;
   }
-  
+
   .address-field-modern {
     grid-column: 1;
   }
@@ -3079,32 +3167,32 @@ onUnmounted(() => {
   .row-layout {
     flex-direction: column;
   }
-  
+
   .row-left,
   .row-right {
     flex: 1;
   }
-  
+
   .page-header {
     flex-direction: column;
     gap: 16px;
     align-items: flex-start;
   }
-  
+
   .header-actions {
     width: 100%;
     justify-content: flex-end;
   }
-  
+
   .customer-info {
     flex-direction: column;
     text-align: center;
   }
-  
+
   .status-info {
     gap: 12px;
   }
-  
+
   .status-item {
     flex-direction: column;
     gap: 4px;
@@ -3132,7 +3220,7 @@ onUnmounted(() => {
   .detail-content {
     flex-direction: column;
   }
-  
+
   .right-panel {
     width: 100%;
   }
@@ -3142,26 +3230,26 @@ onUnmounted(() => {
   .order-detail {
     padding: 12px;
   }
-  
+
   .page-header {
     flex-direction: column;
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .header-actions {
     justify-content: center;
   }
-  
+
   .customer-info {
     flex-direction: column;
     text-align: center;
   }
-  
+
   .customer-contact {
     align-items: center;
   }
-  
+
   .contact-item {
     justify-content: center;
   }
@@ -3615,29 +3703,29 @@ onUnmounted(() => {
     gap: 16px;
     align-items: center;
   }
-  
+
   .customer-avatar-section {
     flex-direction: row;
     gap: 16px;
   }
-  
+
   .customer-details-modern {
     width: 100%;
   }
-  
+
   .customer-name-modern {
     text-align: center;
     margin-bottom: 12px;
   }
-  
+
   .info-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .logistics-info-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .logistics-section {
     padding: 16px;
   }
@@ -3740,15 +3828,15 @@ onUnmounted(() => {
   .el-button {
     display: none !important;
   }
-  
+
   .order-detail {
     padding: 0;
   }
-  
+
   .detail-content {
     flex-direction: column;
   }
-  
+
   .right-panel {
     width: 100%;
   }

@@ -232,7 +232,7 @@
               </div>
               <div class="detail-item">
                 <span class="detail-label">电话：</span>
-                <span class="detail-value">{{ currentPlaying.customerPhone }}</span>
+                <span class="detail-value">{{ displaySensitiveInfoNew(currentPlaying.customerPhone, SensitiveInfoType.PHONE) }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">时长：</span>
@@ -311,7 +311,7 @@
           
           <el-table-column prop="customerPhone" label="客户电话" width="140">
             <template #default="{ row }">
-              {{ maskPhone(row.customerPhone) }}
+              {{ displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE) }}
             </template>
           </el-table-column>
           
@@ -564,6 +564,8 @@ import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import type { CallRecord } from '@/api/call'
 import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 import {
   VideoPlay,
   Download,
@@ -920,6 +922,11 @@ const deleteRecording = async (recording: CallRecord) => {
 }
 
 const batchDownload = async () => {
+  if (!selectedRecordings.value || selectedRecordings.value.length === 0) {
+    ElMessage.warning('请先选择要下载的录音')
+    return
+  }
+  
   try {
     const ids = selectedRecordings.value.map(recording => recording.id)
     await callStore.batchDownloadRecordings(ids)
@@ -931,6 +938,11 @@ const batchDownload = async () => {
 }
 
 const batchDelete = async () => {
+  if (!selectedRecordings.value || selectedRecordings.value.length === 0) {
+    ElMessage.warning('请先选择要删除的录音')
+    return
+  }
+  
   try {
     await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedRecordings.value.length} 个录音吗？删除后无法恢复！`,

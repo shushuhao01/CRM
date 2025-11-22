@@ -3,15 +3,15 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <el-button 
-          type="primary" 
-          :icon="ArrowLeft" 
+        <el-button
+          type="primary"
+          :icon="ArrowLeft"
           @click="goBack"
           class="back-btn"
         >
           返回团队业绩
         </el-button>
-        <h1 class="page-title">{{ pageTitle }}</h1>
+        <h1 class="page-title">业绩分析</h1>
       </div>
     </div>
 
@@ -30,8 +30,8 @@
     <div class="quick-filter-section">
       <div class="quick-filter-label">快速筛选：</div>
       <div class="quick-filter-buttons">
-        <el-button 
-          v-for="item in quickFilterOptions" 
+        <el-button
+          v-for="item in quickFilterOptions"
           :key="item.key"
           :type="selectedQuickFilter === item.key ? 'primary' : 'default'"
           size="small"
@@ -56,25 +56,25 @@
           value-format="YYYY-MM-DD"
           class="date-picker"
         />
-        <el-select 
-          v-if="userStore.isAdmin || userStore.isManager" 
-          v-model="selectedDepartment" 
-          placeholder="选择部门" 
+        <el-select
+          v-if="userStore.isAdmin || userStore.isManager"
+          v-model="selectedDepartment"
+          placeholder="选择部门"
           class="department-select"
           size="default"
           :disabled="!userStore.isAdmin"
         >
           <el-option v-if="userStore.isAdmin" label="全部部门" value="" />
-          <el-option 
-            v-for="dept in availableDepartments" 
-            :key="dept.id" 
-            :label="dept.name" 
-            :value="dept.id" 
+          <el-option
+            v-for="dept in availableDepartments"
+            :key="dept.id"
+            :label="dept.name"
+            :value="dept.id"
           />
         </el-select>
-        <el-select 
-          v-model="sortBy" 
-          placeholder="排序方式" 
+        <el-select
+          v-model="sortBy"
+          placeholder="排序方式"
           class="sort-select"
           size="default"
         >
@@ -92,6 +92,14 @@
           <el-icon><Download /></el-icon>
           导出数据
         </el-button>
+        <el-button
+          v-if="canManageExport"
+          @click="showExportSettings"
+          class="export-settings-btn"
+          title="导出权限设置"
+        >
+          <el-icon><Setting /></el-icon>
+        </el-button>
       </div>
     </div>
 
@@ -108,7 +116,7 @@
             <div class="metric-label">总业绩</div>
           </div>
         </div>
-        
+
         <div class="metric-card">
           <div class="metric-icon total-orders">
             <el-icon><Document /></el-icon>
@@ -118,7 +126,7 @@
             <div class="metric-label">总订单</div>
           </div>
         </div>
-        
+
         <div class="metric-card">
           <div class="metric-icon avg-performance">
             <el-icon><DataAnalysis /></el-icon>
@@ -141,7 +149,7 @@
             <div class="metric-label">签收单数</div>
           </div>
         </div>
-        
+
         <div class="metric-card">
           <div class="metric-icon sign-rate">
             <el-icon><SuccessFilled /></el-icon>
@@ -151,7 +159,7 @@
             <div class="metric-label">签收率</div>
           </div>
         </div>
-        
+
         <div class="metric-card">
           <div class="metric-icon sign-performance">
             <el-icon><Trophy /></el-icon>
@@ -173,7 +181,7 @@
           </div>
           <div class="chart-content" ref="performanceChartRef"></div>
         </div>
-        
+
         <div class="chart-card">
           <div class="chart-header">
             <h3>订单状态分布</h3>
@@ -181,14 +189,22 @@
           <div class="chart-content" ref="orderStatusChartRef"></div>
         </div>
       </div>
-      
+
 
     </div>
 
     <!-- 业绩数据概览 -->
     <div class="table-section">
       <div class="table-header">
-        <h3>{{ tableTitle }}</h3>
+        <h3>业绩数据</h3>
+        <el-button
+          @click="showTableFullscreen"
+          :icon="FullScreen"
+          class="fullscreen-btn"
+          title="全屏查看"
+        >
+          全屏查看
+        </el-button>
       </div>
       <el-table :data="tableData" stripe class="data-table" border>
         <el-table-column type="index" label="序号" width="60" align="center" />
@@ -266,25 +282,192 @@
         </el-table-column>
       </el-table>
     </div>
+
+    <!-- 导出权限设置对话框 -->
+    <el-dialog
+      v-model="exportSettingsVisible"
+      title="导出权限设置"
+      width="700px"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="exportFormData" label-width="120px">
+        <el-form-item label="启用导出功能">
+          <el-switch v-model="exportFormData.enabled" />
+          <span class="form-item-tip">关闭后所有用户将无法导出业绩数据</span>
+        </el-form-item>
+
+        <el-form-item label="导出权限">
+          <el-radio-group v-model="exportFormData.permissionType">
+            <el-radio label="all">所有人可导出</el-radio>
+            <el-radio label="admin_only">仅管理员可导出</el-radio>
+            <el-radio label="custom">自定义权限</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item v-if="exportFormData.permissionType === 'custom'" label="允许导出的角色">
+          <el-checkbox-group v-model="exportFormData.allowedRoles">
+            <el-checkbox label="super_admin">超级管理员</el-checkbox>
+            <el-checkbox label="admin">管理员</el-checkbox>
+            <el-checkbox label="department_manager">部门经理</el-checkbox>
+            <el-checkbox label="sales_staff">销售员</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+
+        <el-form-item label="每日导出限制">
+          <el-input-number
+            v-model="exportFormData.dailyLimit"
+            :min="0"
+            :max="100"
+            placeholder="0表示不限制"
+          />
+          <span class="form-item-tip">每个用户每天最多可导出的次数，0表示不限制</span>
+        </el-form-item>
+
+        <el-divider />
+
+        <el-form-item label="导出统计">
+          <div class="export-stats">
+            <div class="stat-item">
+              <span class="stat-label">今日导出次数：</span>
+              <span class="stat-value">{{ exportStats.todayCount }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">本月导出次数：</span>
+              <span class="stat-value">{{ exportStats.monthCount }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">总导出次数：</span>
+              <span class="stat-value">{{ exportStats.totalCount }}</span>
+            </div>
+          </div>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="exportSettingsVisible = false">取消</el-button>
+          <el-button type="primary" @click="saveExportSettings">保存设置</el-button>
+          <el-button @click="resetExportSettings">恢复默认</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 表格全屏查看对话框 -->
+    <el-dialog
+      v-model="tableFullscreenVisible"
+      title="业绩数据 - 全屏查看"
+      fullscreen
+      :close-on-click-modal="false"
+    >
+      <el-table
+        :data="tableData"
+        stripe
+        border
+        class="fullscreen-table"
+        height="calc(100vh - 200px)"
+      >
+        <el-table-column type="index" label="序号" width="60" align="center" fixed />
+        <el-table-column prop="name" label="部门（或成员）" width="120" align="center" fixed />
+        <el-table-column prop="orderCount" label="下单单数" width="100" align="center" />
+        <el-table-column prop="orderAmount" label="下单业绩" width="120" align="center">
+          <template #default="{ row }">
+            <span class="amount">¥{{ formatNumber(row.orderAmount) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="shipCount" label="发货单数" width="100" align="center" />
+        <el-table-column prop="shipAmount" label="发货业绩" width="120" align="center">
+          <template #default="{ row }">
+            <span class="amount">¥{{ formatNumber(row.shipAmount) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="shipRate" label="发货率" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag type="info" size="small">
+              {{ row.shipRate }}%
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="signCount" label="签收单数" width="100" align="center" />
+        <el-table-column prop="signAmount" label="签收业绩" width="120" align="center">
+          <template #default="{ row }">
+            <span class="amount">¥{{ formatNumber(row.signAmount) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="signRate" label="签收率" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.signRate >= 80 ? 'success' : row.signRate >= 70 ? 'info' : 'danger'" size="small">
+              {{ row.signRate }}%
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="transitCount" label="在途单数" width="100" align="center" />
+        <el-table-column prop="transitAmount" label="在途业绩" width="120" align="center">
+          <template #default="{ row }">
+            <span class="amount">¥{{ formatNumber(row.transitAmount) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="transitRate" label="在途率" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag type="info" size="small">
+              {{ row.transitRate }}%
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="rejectCount" label="拒收单数" width="100" align="center" />
+        <el-table-column prop="rejectAmount" label="拒收业绩" width="120" align="center">
+          <template #default="{ row }">
+            <span class="amount">¥{{ formatNumber(row.rejectAmount) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="rejectRate" label="拒收率" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getRejectRateType(row.rejectRate)" size="small">
+              {{ row.rejectRate }}%
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="returnCount" label="退货单数" width="100" align="center" />
+        <el-table-column prop="returnAmount" label="退货业绩" width="120" align="center">
+          <template #default="{ row }">
+            <span class="amount">¥{{ formatNumber(row.returnAmount) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="returnRate" label="退货率" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getReturnRateType(row.returnRate)" size="small">
+              {{ row.returnRate }}%
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <template #footer>
+        <el-button @click="tableFullscreenVisible = false">关闭</el-button>
+        <el-button type="primary" @click="exportData" :icon="Download">
+          导出数据
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useDepartmentStore } from '@/stores/department'
-import { usePerformanceStore } from '@/stores/performance'
+import { useOrderStore } from '@/stores/order'
 import { createSafeNavigator } from '@/utils/navigation'
-import * as performanceApi from '@/api/performance'
 import * as echarts from 'echarts'
-import { 
-  ArrowLeft, 
-  Search, 
-  Download, 
-  TrendCharts, 
-  Document, 
+import {
+  ArrowLeft,
+  Search,
+  Download,
+  Setting,
+  FullScreen,
+  TrendCharts,
+  Document,
   DataAnalysis,
   CircleCheck,
   SuccessFilled,
@@ -293,14 +476,25 @@ import {
 
 // 接口定义
 interface PerformanceData {
+  id?: string
   name: string
   orderCount: number
   orderAmount: number
   shipCount: number
   shipAmount: number
+  shipRate: number
   signCount: number
   signAmount: number
   signRate: number
+  transitCount: number
+  transitAmount: number
+  transitRate: number
+  rejectCount: number
+  rejectAmount: number
+  rejectRate: number
+  returnCount: number
+  returnAmount: number
+  returnRate: number
   status: string
 }
 
@@ -309,19 +503,19 @@ const router = useRouter()
 const safeNavigator = createSafeNavigator(router)
 const userStore = useUserStore()
 const departmentStore = useDepartmentStore()
-const performanceStore = usePerformanceStore()
+const orderStore = useOrderStore()
 
 // 图表引用
 const performanceChartRef = ref()
 const orderStatusChartRef = ref()
 
 // 响应式数据
-const dateRange = ref<[string, string]>(['2025-01-01', '2025-01-31'])
+const today = new Date()
+const formatDate = (date: Date) => date.toISOString().split('T')[0]
+const dateRange = ref<[string, string]>([formatDate(today), formatDate(today)])
 const selectedDepartment = ref(userStore.isAdmin ? '' : userStore.currentUser?.departmentId || '')
 const sortBy = ref('performance')
-const _currentPage = ref(1)
-const _pageSize = ref(20)
-const _total = ref(100)
+const selectedQuickFilter = ref('today')
 
 // 成员信息
 const memberInfo = ref({
@@ -346,16 +540,33 @@ const metrics = ref({
 const tableData = ref<PerformanceData[]>([])
 
 // 快速筛选相关
-const _selectedQuickFilter = ref('')
 const quickFilterOptions = ref([
+  { key: 'all', label: '全部' },
   { key: 'today', label: '今日' },
   { key: 'yesterday', label: '昨日' },
   { key: 'thisWeek', label: '本周' },
-  { key: 'lastWeek', label: '上周' },
-  { key: 'last7Days', label: '近7天' },
   { key: 'thisMonth', label: '本月' },
-  { key: 'thisYear', label: '今年' }
+  { key: 'thisQuarter', label: '本季' },
+  { key: 'thisYear', label: '本年' }
 ])
+
+// 导出设置对话框
+const exportSettingsVisible = ref(false)
+const exportFormData = reactive({
+  enabled: true,
+  permissionType: 'all',
+  allowedRoles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+  dailyLimit: 0
+})
+
+const exportStats = ref({
+  todayCount: 0,
+  monthCount: 0,
+  totalCount: 0
+})
+
+// 全屏查看对话框
+const tableFullscreenVisible = ref(false)
 
 const showMemberInfo = computed(() => {
   return !userStore.isAdmin && !userStore.isManager
@@ -384,17 +595,107 @@ const goBack = () => {
   safeNavigator.push('/performance/team')
 }
 
-const queryData = async () => {
+const queryData = () => {
   console.log('查询数据', {
     dateRange: dateRange.value,
     selectedDepartment: selectedDepartment.value,
     sortBy: sortBy.value
   })
-  await loadData()
+  loadData()
 }
 
 const exportData = () => {
   console.log('导出数据')
+  // TODO: 实现导出功能
+}
+
+// 检查是否可以管理导出设置（仅超级管理员和管理员）
+const canManageExport = computed(() => {
+  const currentUser = userStore.currentUser
+  return currentUser?.role === 'super_admin' || currentUser?.role === 'admin'
+})
+
+/**
+ * 显示导出设置对话框
+ */
+const showExportSettings = () => {
+  // 加载当前配置
+  loadExportConfig()
+  loadExportStats()
+  // 显示对话框
+  exportSettingsVisible.value = true
+}
+
+/**
+ * 加载导出配置
+ */
+const loadExportConfig = () => {
+  const config = localStorage.getItem('crm_performance_export_config')
+  if (config) {
+    try {
+      const parsedConfig = JSON.parse(config)
+      exportFormData.enabled = parsedConfig.enabled ?? true
+      exportFormData.permissionType = parsedConfig.permissionType || 'all'
+      exportFormData.allowedRoles = parsedConfig.allowedRoles || ['super_admin', 'admin', 'department_manager', 'sales_staff']
+      exportFormData.dailyLimit = parsedConfig.dailyLimit || 0
+    } catch (error) {
+      console.error('加载导出配置失败:', error)
+    }
+  }
+}
+
+/**
+ * 加载导出统计
+ */
+const loadExportStats = () => {
+  const stats = localStorage.getItem('crm_performance_export_stats')
+  if (stats) {
+    try {
+      const parsedStats = JSON.parse(stats)
+      exportStats.value = {
+        todayCount: parsedStats.todayCount || 0,
+        monthCount: parsedStats.monthCount || 0,
+        totalCount: parsedStats.totalCount || 0
+      }
+    } catch (error) {
+      console.error('加载导出统计失败:', error)
+    }
+  }
+}
+
+/**
+ * 保存导出设置
+ */
+const saveExportSettings = () => {
+  const exportConfig = {
+    enabled: exportFormData.enabled,
+    permissionType: exportFormData.permissionType,
+    allowedRoles: exportFormData.allowedRoles,
+    dailyLimit: exportFormData.dailyLimit
+  }
+  localStorage.setItem('crm_performance_export_config', JSON.stringify(exportConfig))
+  ElMessage.success('导出权限设置已保存并全局生效')
+  exportSettingsVisible.value = false
+}
+
+/**
+ * 恢复默认导出设置
+ */
+const resetExportSettings = () => {
+  exportFormData.enabled = true
+  exportFormData.permissionType = 'all'
+  exportFormData.allowedRoles = ['super_admin', 'admin', 'department_manager', 'sales_staff']
+  exportFormData.dailyLimit = 0
+
+  saveExportSettings()
+  ElMessage.success('已恢复默认设置')
+}
+
+/**
+ * 显示表格全屏查看对话框
+ */
+const showTableFullscreen = () => {
+  tableFullscreenVisible.value = true
 }
 
 
@@ -422,62 +723,44 @@ const getReturnRateType = (rate: number) => {
 
 // 快速筛选处理函数
 const handleQuickFilter = (filterKey: string) => {
-  _selectedQuickFilter.value = filterKey
+  selectedQuickFilter.value = filterKey
   const today = new Date()
-  let startDate: Date, endDate: Date
+  const formatDateLocal = (date: Date) => date.toISOString().split('T')[0]
 
   switch (filterKey) {
+    case 'all':
+      // 全部：显示所有数据，不设置日期范围
+      dateRange.value = ['', '']
+      break
     case 'today':
-      startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-      endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
+      dateRange.value = [formatDateLocal(today), formatDateLocal(today)]
       break
     case 'yesterday':
       const yesterday = new Date(today)
       yesterday.setDate(today.getDate() - 1)
-      startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate())
-      endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59)
+      dateRange.value = [formatDateLocal(yesterday), formatDateLocal(yesterday)]
       break
     case 'thisWeek':
-      const thisWeekStart = new Date(today)
-      thisWeekStart.setDate(today.getDate() - today.getDay() + 1) // 周一
-      startDate = new Date(thisWeekStart.getFullYear(), thisWeekStart.getMonth(), thisWeekStart.getDate())
-      endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
-      break
-    case 'lastWeek':
-      const lastWeekStart = new Date(today)
-      lastWeekStart.setDate(today.getDate() - today.getDay() - 6) // 上周一
-      const lastWeekEnd = new Date(lastWeekStart)
-      lastWeekEnd.setDate(lastWeekStart.getDate() + 6) // 上周日
-      startDate = new Date(lastWeekStart.getFullYear(), lastWeekStart.getMonth(), lastWeekStart.getDate())
-      endDate = new Date(lastWeekEnd.getFullYear(), lastWeekEnd.getMonth(), lastWeekEnd.getDate(), 23, 59, 59)
-      break
-    case 'last7Days':
-      const last7DaysStart = new Date(today)
-      last7DaysStart.setDate(today.getDate() - 6)
-      startDate = new Date(last7DaysStart.getFullYear(), last7DaysStart.getMonth(), last7DaysStart.getDate())
-      endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
+      const startOfWeek = new Date(today)
+      startOfWeek.setDate(today.getDate() - today.getDay() + 1)
+      dateRange.value = [formatDateLocal(startOfWeek), formatDateLocal(today)]
       break
     case 'thisMonth':
-      startDate = new Date(today.getFullYear(), today.getMonth(), 1)
-      endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+      dateRange.value = [formatDateLocal(startOfMonth), formatDateLocal(today)]
+      break
+    case 'thisQuarter':
+      const currentQuarter = Math.floor(today.getMonth() / 3)
+      const startOfQuarter = new Date(today.getFullYear(), currentQuarter * 3, 1)
+      dateRange.value = [formatDateLocal(startOfQuarter), formatDateLocal(today)]
       break
     case 'thisYear':
-      startDate = new Date(today.getFullYear(), 0, 1)
-      endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
+      const startOfYear = new Date(today.getFullYear(), 0, 1)
+      dateRange.value = [formatDateLocal(startOfYear), formatDateLocal(today)]
       break
-    default:
-      return
   }
 
-  // 格式化日期为字符串
-  const formatDate = (date: Date) => {
-    return date.toISOString().split('T')[0]
-  }
-
-  dateRange.value = [formatDate(startDate), formatDate(endDate)]
-  
   // 触发数据重新加载
-  console.log(`快速筛选: ${filterKey}`, { startDate, endDate })
   loadData()
 }
 
@@ -487,93 +770,119 @@ const handleQuickFilter = (filterKey: string) => {
 // 图表数据
 const chartData = ref({
   performanceTrend: {
-    xAxis: [],
-    data: []
+    xAxis: [] as string[],
+    data: [] as number[]
   },
-  orderStatus: []
+  orderStatus: [] as Array<{ value: number; name: string }>
 })
 
 // 加载图表数据
-const loadChartData = async () => {
+const loadChartData = () => {
   try {
-    const params: any = {
-      period: '7d' // 使用后端API支持的参数
+    let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+
+    // 应用部门筛选（通过销售人员的部门ID）
+    if (selectedDepartment.value) {
+      const departmentUsers = userStore.users?.filter(u => u.departmentId === selectedDepartment.value).map(u => u.id) || []
+      orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
     }
-    
-    // 根据用户权限设置参数
-    if (userStore.isAdmin) {
-      // 超级管理员可以查看全公司数据
-      params.type = 'company'
-    } else if (userStore.isManager) {
-      // 部门经理只能查看自己部门数据
-      params.type = 'department'
-      params.departmentId = userStore.currentUser?.departmentId
-    } else {
-      // 普通用户查看个人数据
-      params.type = 'personal'
-      params.userId = userStore.currentUser?.id
+
+    // 应用日期筛选（只有当日期范围有效时才筛选）
+    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+      const startDate = new Date(dateRange.value[0]).getTime()
+      const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
+
+      orders = orders.filter(order => {
+        const orderTime = new Date(order.createTime).getTime()
+        return orderTime >= startDate && orderTime <= endDate
+      })
     }
-    
-    // 获取业绩趋势数据 - 近7天
-    const trendParams = {
-      period: '7d'
+
+    // 生成业绩趋势数据（最近7天）
+    const trendData = new Map<string, number>()
+    const today = new Date()
+
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today)
+      date.setDate(today.getDate() - i)
+      const dateKey = date.toISOString().split('T')[0]
+      trendData.set(dateKey, 0)
     }
-    
-    // 根据用户权限设置参数
-    if (userStore.currentUser?.role === 'admin') {
-      trendParams.type = 'company'
-    } else if (userStore.currentUser?.role === 'manager' || userStore.currentUser?.role === 'department_manager') {
-      trendParams.type = 'department'
-      trendParams.departmentId = userStore.currentUser.departmentId
-    } else {
-      trendParams.type = 'personal'
-      trendParams.userId = userStore.currentUser?.id
-    }
-    
-    const trendResponse = await performanceApi.getPerformanceTrend(trendParams)
-    
-    if (trendResponse.data?.success && trendResponse.data?.data?.length > 0) {
-      chartData.value.performanceTrend = {
-        xAxis: trendResponse.data.data.map(item => {
-          // 格式化日期显示
-          const date = new Date(item.date)
-          return `${date.getMonth() + 1}/${date.getDate()}`
-        }),
-        data: trendResponse.data.data.map(item => item.sales)
+
+    orders.forEach(order => {
+      const orderDate = order.createTime.split(' ')[0]
+      if (trendData.has(orderDate)) {
+        trendData.set(orderDate, trendData.get(orderDate)! + order.totalAmount)
       }
-    } else {
-      // 无数据时清空图表数据
-      chartData.value.performanceTrend = {
-        xAxis: [],
-        data: []
+    })
+
+    chartData.value.performanceTrend = {
+      xAxis: Array.from(trendData.keys()).map(date => {
+        const d = new Date(date)
+        return `${d.getMonth() + 1}/${d.getDate()}`
+      }),
+      data: Array.from(trendData.values())
+    }
+
+    // 生成订单状态分布数据（参考个人业绩页面的逻辑）
+    const statusMap = new Map()
+    const statusNames: Record<string, string> = {
+      // 16个订单状态
+      'pending_transfer': '待流转',
+      'pending_audit': '待审核',
+      'audit_rejected': '审核拒绝',
+      'pending_shipment': '待发货',
+      'shipped': '已发货',
+      'delivered': '已签收',
+      'logistics_returned': '物流部退回',
+      'logistics_cancelled': '物流部取消',
+      'package_exception': '包裹异常',
+      'rejected': '拒收',
+      'rejected_returned': '拒收已退回',
+      'after_sales_created': '已建售后',
+      'pending_cancel': '待取消',
+      'cancel_failed': '取消失败',
+      'cancelled': '已取消',
+      'draft': '草稿',
+      'refunded': '已退款',
+      // 兼容旧状态
+      'pending': '待审核',
+      'paid': '已付款',
+      'completed': '已完成',
+      'signed': '已签收'
+    }
+
+    orders.forEach(order => {
+      const statusName = statusNames[order.status] || order.status
+      if (statusMap.has(statusName)) {
+        const existing = statusMap.get(statusName)
+        statusMap.set(statusName, {
+          count: existing.count + 1,
+          amount: existing.amount + (order.totalAmount || 0)
+        })
+      } else {
+        statusMap.set(statusName, {
+          count: 1,
+          amount: order.totalAmount || 0
+        })
       }
-    }
-    
-    // 获取订单状态分布数据
-    const statusParams = { ...params, type: 'status' }
-    const statusResponse = await performanceApi.getAnalysisMetrics(statusParams)
-    if (statusResponse.data.success && statusResponse.data.data) {
-      const statusData = statusResponse.data.data
-      const orderStatusData = [
-        { value: statusData.signCount || 0, name: '已签收' },
-        { value: statusData.transitCount || 0, name: '配送中' },
-        { value: statusData.shipCount - statusData.signCount - statusData.transitCount || 0, name: '已发货' },
-        { value: statusData.orderCount - statusData.shipCount || 0, name: '待发货' }
-      ]
-      
-      // 检查是否有有效数据
-      const hasData = orderStatusData.some(item => item.value > 0)
-      chartData.value.orderStatus = hasData ? orderStatusData : []
-    } else {
-      // 没有数据时清空图表数据
-      chartData.value.orderStatus = []
-    }
-    
+    })
+
+    // 转换为图表数据格式
+    const orderStatusData: Array<{ value: number; name: string }> = []
+    statusMap.forEach((value, name) => {
+      orderStatusData.push({
+        value: value.count,
+        name: `${name}(${value.count}单/¥${value.amount.toLocaleString()})`
+      })
+    })
+
+    chartData.value.orderStatus = orderStatusData
+
     // 初始化图表
     initCharts()
   } catch (error) {
     console.error('加载图表数据失败:', error)
-    // 出错时清空图表数据，不显示模拟数据
     chartData.value.performanceTrend = {
       xAxis: [],
       data: []
@@ -588,17 +897,17 @@ const initCharts = () => {
     // 业绩趋势图
     if (performanceChartRef.value) {
       const performanceChart = echarts.init(performanceChartRef.value)
-      
+
       // 检查是否有数据
       const hasPerformanceData = chartData.value.performanceTrend.data.length > 0
-      
+
       if (hasPerformanceData) {
         performanceChart.setOption({
           tooltip: {
             trigger: 'axis',
-            formatter: (params: any) => {
+            formatter: (params: unknown) => {
               const value = params[0].value
-              return `${params[0].axisValue}<br/>业绩: ¥${(value / 10000).toFixed(1)}万`
+              return `${params[0].axisValue}<br/>业绩: ¥${value.toLocaleString()}`
             }
           },
           xAxis: {
@@ -608,7 +917,7 @@ const initCharts = () => {
           yAxis: {
             type: 'value',
             axisLabel: {
-              formatter: (value: number) => `¥${(value / 10000).toFixed(0)}万`
+              formatter: (value: number) => `¥${value.toLocaleString()}`
             }
           },
           series: [{
@@ -645,10 +954,10 @@ const initCharts = () => {
     // 订单状态分布图
     if (orderStatusChartRef.value) {
       const orderStatusChart = echarts.init(orderStatusChartRef.value)
-      
+
       // 检查是否有数据
       const hasOrderStatusData = chartData.value.orderStatus.length > 0
-      
+
       if (hasOrderStatusData) {
         orderStatusChart.setOption({
           tooltip: {
@@ -670,16 +979,12 @@ const initCharts = () => {
           }]
         })
       } else {
-        // 没有数据时显示空状态
+        // 没有数据时显示空状态（不显示文字）
         orderStatusChart.setOption({
           title: {
-            text: '暂无数据',
+            text: '',
             left: 'center',
-            top: 'middle',
-            textStyle: {
-              color: '#999',
-              fontSize: 14
-            }
+            top: 'middle'
           }
         })
       }
@@ -701,158 +1006,232 @@ const checkPermission = () => {
   return true
 }
 
-const loadData = async () => {
+const loadData = () => {
   // 权限检查
   if (!checkPermission()) {
     return
   }
-  
+
   try {
-    // 根据用户角色加载不同数据
+    // 根据部门筛选器和用户角色加载不同数据
     if (userStore.isAdmin) {
-      await loadCompanyData()
+      // 超级管理员：如果选择了部门，加载部门数据；否则加载公司数据
+      if (selectedDepartment.value) {
+        loadDepartmentData()
+      } else {
+        loadCompanyData()
+      }
     } else if (userStore.isManager) {
-      await loadDepartmentData()
+      // 部门经理：只能查看自己部门数据
+      loadDepartmentData()
     }
-    
+
     // 同时加载统计指标和图表数据
-    await loadMetrics()
-    await loadChartData()
+    loadMetrics()
+    loadChartData()
   } catch (error) {
     console.error('加载业绩分析数据失败:', error)
     ElMessage.error('加载数据失败，请稍后重试')
   }
 }
 
-const loadDepartmentData = async () => {
-  console.log('加载部门数据')
+const loadDepartmentData = () => {
   try {
-    const params = {
-      departmentId: selectedDepartment.value || userStore.currentUser?.departmentId,
-      startDate: dateRange.value?.[0],
-      endDate: dateRange.value?.[1]
-    }
-    
+    const departmentId = selectedDepartment.value || userStore.currentUser?.departmentId
+
     // 非超级管理员只能查看自己部门的数据
-    if (!userStore.isAdmin && params.departmentId !== userStore.currentUser?.departmentId) {
+    if (!userStore.isAdmin && departmentId !== userStore.currentUser?.departmentId) {
       ElMessage.error('您只能查看自己部门的数据')
-      params.departmentId = userStore.currentUser?.departmentId
-      selectedDepartment.value = userStore.currentUser?.departmentId
+      selectedDepartment.value = userStore.currentUser?.departmentId || ''
+      return
     }
-    
-    // 调用真实API获取部门业绩数据
-    const response = await performanceApi.getDepartmentAnalysis(params)
-    if (response.data.success) {
-      const data = response.data.data
-      tableData.value = [{
-        id: data.name || '部门数据',
-        name: data.name || '部门数据',
-        orderCount: data.orderCount || 0,
-        orderAmount: data.orderAmount || 0,
-        shipCount: data.shipCount || 0,
-        shipAmount: data.shipAmount || 0,
-        shipRate: data.shipRate || 0,
-        signCount: data.signCount || 0,
-        signAmount: data.signAmount || 0,
-        signRate: data.signRate || 0,
-        transitCount: data.transitCount || 0,
-        transitAmount: data.transitAmount || 0,
-        transitRate: data.transitRate || 0,
-        rejectCount: data.rejectCount || 0,
-        rejectAmount: data.rejectAmount || 0,
-        rejectRate: data.rejectRate || 0,
-        returnCount: data.returnCount || 0,
-        returnAmount: data.returnAmount || 0,
-        returnRate: data.returnRate || 0
-      }]
+
+    let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+
+    // 应用部门筛选（通过销售人员的部门ID）
+    if (departmentId) {
+      const departmentUsers = userStore.users?.filter(u => u.departmentId === departmentId).map(u => u.id) || []
+      orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
     }
+
+    // 应用日期筛选（只有当日期范围有效时才筛选）
+    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+      const startDate = new Date(dateRange.value[0]).getTime()
+      const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
+
+      orders = orders.filter(order => {
+        const orderTime = new Date(order.createTime).getTime()
+        return orderTime >= startDate && orderTime <= endDate
+      })
+    }
+
+    // 计算各项指标（与loadCompanyData相同的逻辑）
+    const orderCount = orders.length
+    const orderAmount = orders.reduce((sum, order) => sum + order.totalAmount, 0)
+
+    const shippedOrders = orders.filter(order => order.status === 'shipped' || order.status === 'delivered')
+    const shipCount = shippedOrders.length
+    const shipAmount = shippedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const shipRate = orderCount > 0 ? parseFloat((shipCount / orderCount * 100).toFixed(1)) : 0
+
+    const signedOrders = orders.filter(order => order.status === 'delivered')
+    const signCount = signedOrders.length
+    const signAmount = signedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const signRate = orderCount > 0 ? parseFloat((signCount / orderCount * 100).toFixed(1)) : 0
+
+    const transitOrders = orders.filter(order => order.status === 'shipped')
+    const transitCount = transitOrders.length
+    const transitAmount = transitOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const transitRate = orderCount > 0 ? parseFloat((transitCount / orderCount * 100).toFixed(1)) : 0
+
+    const rejectedOrders = orders.filter(order => order.status === 'rejected' || order.status === 'rejected_returned')
+    const rejectCount = rejectedOrders.length
+    const rejectAmount = rejectedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const rejectRate = orderCount > 0 ? parseFloat((rejectCount / orderCount * 100).toFixed(1)) : 0
+
+    const returnedOrders = orders.filter(order => order.status === 'after_sales_created')
+    const returnCount = returnedOrders.length
+    const returnAmount = returnedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const returnRate = orderCount > 0 ? parseFloat((returnCount / orderCount * 100).toFixed(1)) : 0
+
+    tableData.value = [{
+      id: '部门数据',
+      name: '部门数据',
+      orderCount,
+      orderAmount,
+      shipCount,
+      shipAmount,
+      shipRate,
+      signCount,
+      signAmount,
+      signRate,
+      transitCount,
+      transitAmount,
+      transitRate,
+      rejectCount,
+      rejectAmount,
+      rejectRate,
+      returnCount,
+      returnAmount,
+      returnRate,
+      status: 'active'
+    }]
   } catch (error) {
     console.error('加载部门业绩数据失败:', error)
-    ElMessage.error('加载部门业绩数据失败')
   }
 }
 
-const loadCompanyData = async () => {
-  console.log('加载公司数据')
+const loadCompanyData = () => {
   try {
     // 只有超级管理员可以查看全公司数据
     if (!userStore.isAdmin) {
       ElMessage.error('您没有权限查看全公司数据')
-      await loadDepartmentData()
+      loadDepartmentData()
       return
     }
-    
-    const params = {
-      startDate: dateRange.value?.[0],
-      endDate: dateRange.value?.[1]
+
+    let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+
+    // 应用日期筛选（只有当日期范围有效时才筛选）
+    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+      const startDate = new Date(dateRange.value[0]).getTime()
+      const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
+
+      orders = orders.filter(order => {
+        const orderTime = new Date(order.createTime).getTime()
+        return orderTime >= startDate && orderTime <= endDate
+      })
     }
-    
-    // 调用真实API获取公司业绩数据
-    const response = await performanceApi.getCompanyAnalysis(params)
-    if (response.data.success) {
-      const data = response.data.data
-      tableData.value = [{
-        id: data.name || '公司总体',
-        name: data.name || '公司总体',
-        orderCount: data.orderCount || 0,
-        orderAmount: data.orderAmount || 0,
-        shipCount: data.shipCount || 0,
-        shipAmount: data.shipAmount || 0,
-        shipRate: data.shipRate || 0,
-        signCount: data.signCount || 0,
-        signAmount: data.signAmount || 0,
-        signRate: data.signRate || 0,
-        transitCount: data.transitCount || 0,
-        transitAmount: data.transitAmount || 0,
-        transitRate: data.transitRate || 0,
-        rejectCount: data.rejectCount || 0,
-        rejectAmount: data.rejectAmount || 0,
-        rejectRate: data.rejectRate || 0,
-        returnCount: data.returnCount || 0,
-        returnAmount: data.returnAmount || 0,
-        returnRate: data.returnRate || 0
-      }]
-    }
+
+    // 计算各项指标
+    const orderCount = orders.length
+    const orderAmount = orders.reduce((sum, order) => sum + order.totalAmount, 0)
+
+    const shippedOrders = orders.filter(order => order.status === 'shipped' || order.status === 'delivered')
+    const shipCount = shippedOrders.length
+    const shipAmount = shippedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const shipRate = orderCount > 0 ? parseFloat((shipCount / orderCount * 100).toFixed(1)) : 0
+
+    const signedOrders = orders.filter(order => order.status === 'delivered')
+    const signCount = signedOrders.length
+    const signAmount = signedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const signRate = orderCount > 0 ? parseFloat((signCount / orderCount * 100).toFixed(1)) : 0
+
+    const transitOrders = orders.filter(order => order.status === 'shipped')
+    const transitCount = transitOrders.length
+    const transitAmount = transitOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const transitRate = orderCount > 0 ? parseFloat((transitCount / orderCount * 100).toFixed(1)) : 0
+
+    const rejectedOrders = orders.filter(order => order.status === 'rejected' || order.status === 'rejected_returned')
+    const rejectCount = rejectedOrders.length
+    const rejectAmount = rejectedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const rejectRate = orderCount > 0 ? parseFloat((rejectCount / orderCount * 100).toFixed(1)) : 0
+
+    const returnedOrders = orders.filter(order => order.status === 'after_sales_created')
+    const returnCount = returnedOrders.length
+    const returnAmount = returnedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const returnRate = orderCount > 0 ? parseFloat((returnCount / orderCount * 100).toFixed(1)) : 0
+
+    tableData.value = [{
+      id: '公司总体',
+      name: '公司总体',
+      orderCount,
+      orderAmount,
+      shipCount,
+      shipAmount,
+      shipRate,
+      signCount,
+      signAmount,
+      signRate,
+      transitCount,
+      transitAmount,
+      transitRate,
+      rejectCount,
+      rejectAmount,
+      rejectRate,
+      returnCount,
+      returnAmount,
+      returnRate,
+      status: 'active'
+    }]
   } catch (error) {
     console.error('加载公司业绩数据失败:', error)
-    ElMessage.error('加载公司业绩数据失败')
   }
 }
 
-const loadMetrics = async () => {
+const loadMetrics = () => {
   try {
-    let type: 'personal' | 'department' | 'company' = 'personal'
-    const params: any = {
-      startDate: dateRange.value?.[0],
-      endDate: dateRange.value?.[1]
+    // 获取所有已审核的订单
+    let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+
+    // 应用部门筛选（通过销售人员的部门ID）
+    if (selectedDepartment.value) {
+      const departmentUsers = userStore.users?.filter(u => u.departmentId === selectedDepartment.value).map(u => u.id) || []
+      orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
     }
-    
-    if (userStore.isAdmin) {
-      type = 'company'
-    } else if (userStore.isManager) {
-      type = 'department'
-      params.departmentId = userStore.currentUser?.departmentId
-    } else {
-      type = 'personal'
-      params.userId = userStore.currentUser?.id
+
+    // 应用日期筛选（只有当日期范围有效时才筛选）
+    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+      const startDate = new Date(dateRange.value[0]).getTime()
+      const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
+
+      orders = orders.filter(order => {
+        const orderTime = new Date(order.createTime).getTime()
+        return orderTime >= startDate && orderTime <= endDate
+      })
     }
-    
-    params.type = type
-    const response = await performanceApi.getAnalysisMetrics(params)
-    
-    if (response.data.success) {
-      const data = response.data.data
-      // 更新指标数据
-      metrics.value.totalPerformance = data.totalPerformance || 0
-      metrics.value.totalOrders = data.totalOrders || 0
-      metrics.value.avgPerformance = data.avgPerformance || 0
-      metrics.value.signOrders = data.signOrders || 0
-      metrics.value.signRate = data.signRate || 0
-      metrics.value.signPerformance = data.signPerformance || 0
-    }
+
+    // 计算指标
+    metrics.value.totalOrders = orders.length
+    metrics.value.totalPerformance = orders.reduce((sum, order) => sum + order.totalAmount, 0)
+    metrics.value.avgPerformance = orders.length > 0 ? Math.round(metrics.value.totalPerformance / orders.length) : 0
+
+    const signedOrders = orders.filter(order => order.status === 'delivered')
+    metrics.value.signOrders = signedOrders.length
+    metrics.value.signPerformance = signedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    metrics.value.signRate = orders.length > 0 ? parseFloat((signedOrders.length / orders.length * 100).toFixed(1)) : 0
   } catch (error) {
     console.error('加载统计指标失败:', error)
-    ElMessage.error('加载统计指标失败')
     // 使用默认值
     metrics.value.totalPerformance = 0
     metrics.value.totalOrders = 0
@@ -868,28 +1247,30 @@ onMounted(() => {
   if (!checkPermission()) {
     return
   }
-  
+
   // 初始化部门数据
   departmentStore.initData()
-  
+
   // 加载数据（包含图表数据）
   loadData()
-  
+
   // 监听物流状态更新事件
   window.addEventListener('orderStatusUpdated', handleOrderStatusUpdate)
   window.addEventListener('todoStatusUpdated', handleTodoStatusUpdate)
 })
 
 // 处理订单状态更新事件
-const handleOrderStatusUpdate = (event: CustomEvent) => {
-  console.log('订单状态已更新，刷新业绩数据', event.detail)
+const handleOrderStatusUpdate = (event: Event) => {
+  const customEvent = event as CustomEvent
+  console.log('订单状态已更新，刷新业绩数据', customEvent.detail)
   loadData()
   ElMessage.success('业绩数据已同步更新')
 }
 
 // 处理待办状态更新事件
-const handleTodoStatusUpdate = (event: CustomEvent) => {
-  console.log('待办状态已更新，刷新业绩数据', event.detail)
+const handleTodoStatusUpdate = (event: Event) => {
+  const customEvent = event as CustomEvent
+  console.log('待办状态已更新，刷新业绩数据', customEvent.detail)
   loadData()
   ElMessage.success('业绩数据已同步更新')
 }
@@ -1137,6 +1518,9 @@ onUnmounted(() => {
 }
 
 .table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 16px;
 }
 
@@ -1210,18 +1594,73 @@ onUnmounted(() => {
   .metrics-row {
     grid-template-columns: 1fr;
   }
-  
+
   .chart-row {
     grid-template-columns: 1fr;
   }
-  
+
   .filter-section {
     flex-direction: column;
     gap: 16px;
   }
-  
+
   .filter-left {
     flex-wrap: wrap;
   }
 }
 </style>
+
+
+/* 导出设置按钮样式 */
+.export-settings-btn {
+  margin-left: 0;
+  padding: 10px 12px;
+}
+
+.export-settings-btn .el-icon {
+  font-size: 16px;
+}
+
+/* 导出设置对话框样式 */
+.form-item-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-left: 10px;
+}
+
+.export-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+}
+
+.stat-label {
+  color: #606266;
+  font-size: 14px;
+}
+
+.stat-value {
+  color: #409eff;
+  font-size: 16px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.fullscreen-btn {
+  padding: 8px 16px;
+}
+
+/* 全屏表格样式 */
+.fullscreen-table {
+  width: 100%;
+}
+
+.fullscreen-table .amount {
+  color: #409eff;
+  font-weight: 600;
+}

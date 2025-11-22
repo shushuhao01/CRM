@@ -19,7 +19,7 @@
             <template #header>
               <span>服务商配置</span>
             </template>
-            
+
             <el-form-item label="服务商" prop="provider">
               <el-select v-model="basicConfig.provider" style="width: 300px">
                 <el-option label="阿里云短信" value="aliyun" />
@@ -28,7 +28,7 @@
                 <el-option label="网易云信" value="netease" />
               </el-select>
             </el-form-item>
-            
+
             <el-form-item label="AccessKey ID" prop="accessKeyId">
               <el-input
                 v-model="basicConfig.accessKeyId"
@@ -37,7 +37,7 @@
                 show-password
               />
             </el-form-item>
-            
+
             <el-form-item label="AccessKey Secret" prop="accessKeySecret">
               <el-input
                 v-model="basicConfig.accessKeySecret"
@@ -46,7 +46,7 @@
                 show-password
               />
             </el-form-item>
-            
+
             <el-form-item label="签名名称" prop="signName">
               <el-input
                 v-model="basicConfig.signName"
@@ -55,7 +55,7 @@
               />
               <div class="form-tip">短信签名需要在服务商平台申请并审核通过</div>
             </el-form-item>
-            
+
             <el-form-item label="服务地域" prop="region">
               <el-select v-model="basicConfig.region" style="width: 200px">
                 <el-option label="华东1（杭州）" value="cn-hangzhou" />
@@ -69,7 +69,7 @@
             <template #header>
               <span>发送配置</span>
             </template>
-            
+
             <el-form-item label="单次发送上限" prop="batchLimit">
               <el-input-number
                 v-model="basicConfig.batchLimit"
@@ -79,7 +79,7 @@
               />
               <span class="unit-text">条</span>
             </el-form-item>
-            
+
             <el-form-item label="发送频率限制" prop="rateLimit">
               <el-input-number
                 v-model="basicConfig.rateLimit"
@@ -89,7 +89,7 @@
               />
               <span class="unit-text">条/分钟</span>
             </el-form-item>
-            
+
             <el-form-item label="重试次数" prop="retryCount">
               <el-input-number
                 v-model="basicConfig.retryCount"
@@ -99,7 +99,7 @@
               />
               <span class="unit-text">次</span>
             </el-form-item>
-            
+
             <el-form-item label="超时时间" prop="timeout">
               <el-input-number
                 v-model="basicConfig.timeout"
@@ -138,12 +138,12 @@
             <template #header>
               <span>审核流程</span>
             </template>
-            
+
             <el-form-item label="启用审核" prop="enabled">
               <el-switch v-model="approvalConfig.enabled" />
               <div class="form-tip">开启后，所有短信发送都需要审核</div>
             </el-form-item>
-            
+
             <el-form-item label="自动审核阈值" prop="autoApprovalLimit" v-if="approvalConfig.enabled">
               <el-input-number
                 v-model="approvalConfig.autoApprovalLimit"
@@ -154,7 +154,7 @@
               <span class="unit-text">条</span>
               <div class="form-tip">低于此数量的发送申请将自动审核通过</div>
             </el-form-item>
-            
+
             <el-form-item label="审核超时时间" prop="approvalTimeout" v-if="approvalConfig.enabled">
               <el-input-number
                 v-model="approvalConfig.approvalTimeout"
@@ -164,7 +164,7 @@
               />
               <span class="unit-text">小时</span>
             </el-form-item>
-            
+
             <el-form-item label="审核人员" prop="approvers" v-if="approvalConfig.enabled">
               <el-select
                 v-model="approvalConfig.approvers"
@@ -183,12 +183,12 @@
             <template #header>
               <span>通知设置</span>
             </template>
-            
+
             <el-form-item label="审核通知" prop="notifyOnApproval">
               <el-switch v-model="approvalConfig.notifyOnApproval" />
               <div class="form-tip">审核结果将通知申请人</div>
             </el-form-item>
-            
+
             <el-form-item label="通知方式" prop="notifyMethods" v-if="approvalConfig.notifyOnApproval">
               <el-checkbox-group v-model="approvalConfig.notifyMethods">
                 <el-checkbox label="email">邮件</el-checkbox>
@@ -222,7 +222,7 @@
             <template #header>
               <span>访问控制</span>
             </template>
-            
+
             <el-form-item label="IP白名单" prop="ipWhitelist">
               <el-input
                 v-model="securityConfig.ipWhitelist"
@@ -233,7 +233,7 @@
               />
               <div class="form-tip">只有白名单内的IP才能调用短信接口</div>
             </el-form-item>
-            
+
             <el-form-item label="API密钥" prop="apiKey">
               <el-input
                 v-model="securityConfig.apiKey"
@@ -246,7 +246,7 @@
                 </template>
               </el-input>
             </el-form-item>
-            
+
             <el-form-item label="密钥过期时间" prop="keyExpiration">
               <el-input-number
                 v-model="securityConfig.keyExpiration"
@@ -262,11 +262,11 @@
             <template #header>
               <span>内容安全</span>
             </template>
-            
+
             <el-form-item label="敏感词过滤" prop="sensitiveWordFilter">
               <el-switch v-model="securityConfig.sensitiveWordFilter" />
             </el-form-item>
-            
+
             <el-form-item label="敏感词库" prop="sensitiveWords" v-if="securityConfig.sensitiveWordFilter">
               <el-input
                 v-model="securityConfig.sensitiveWords"
@@ -276,7 +276,7 @@
                 style="width: 500px"
               />
             </el-form-item>
-            
+
             <el-form-item label="内容长度限制" prop="contentLengthLimit">
               <el-input-number
                 v-model="securityConfig.contentLengthLimit"
@@ -312,11 +312,11 @@
             <template #header>
               <span>日志配置</span>
             </template>
-            
+
             <el-form-item label="启用日志" prop="enableLogging">
               <el-switch v-model="monitoringConfig.enableLogging" />
             </el-form-item>
-            
+
             <el-form-item label="日志级别" prop="logLevel" v-if="monitoringConfig.enableLogging">
               <el-select v-model="monitoringConfig.logLevel" style="width: 200px">
                 <el-option label="DEBUG" value="debug" />
@@ -325,7 +325,7 @@
                 <el-option label="ERROR" value="error" />
               </el-select>
             </el-form-item>
-            
+
             <el-form-item label="日志保留时间" prop="logRetentionDays" v-if="monitoringConfig.enableLogging">
               <el-input-number
                 v-model="monitoringConfig.logRetentionDays"
@@ -341,11 +341,11 @@
             <template #header>
               <span>告警配置</span>
             </template>
-            
+
             <el-form-item label="启用告警" prop="enableAlerts">
               <el-switch v-model="monitoringConfig.enableAlerts" />
             </el-form-item>
-            
+
             <el-form-item label="失败率阈值" prop="failureRateThreshold" v-if="monitoringConfig.enableAlerts">
               <el-input-number
                 v-model="monitoringConfig.failureRateThreshold"
@@ -355,7 +355,7 @@
               />
               <span class="unit-text">%</span>
             </el-form-item>
-            
+
             <el-form-item label="告警接收人" prop="alertReceivers" v-if="monitoringConfig.enableAlerts">
               <el-input
                 v-model="monitoringConfig.alertReceivers"
@@ -492,14 +492,14 @@ const monitoringRules = {
 // 方法
 const saveBasicConfig = async () => {
   if (!basicFormRef.value) return
-  
+
   try {
     await basicFormRef.value.validate()
     saving.value = true
-    
+
     // 模拟保存
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     ElMessage.success('基础配置保存成功')
   } catch (error) {
     ElMessage.error('保存失败，请检查配置项')
@@ -513,7 +513,7 @@ const testConnection = async () => {
   try {
     // 模拟测试连接
     await new Promise(resolve => setTimeout(resolve, 2000))
-    
+
     if (Math.random() > 0.3) {
       ElMessage.success('连接测试成功')
     } else {
@@ -530,11 +530,11 @@ const resetBasicConfig = () => {
 
 const saveApprovalConfig = async () => {
   if (!approvalFormRef.value) return
-  
+
   try {
     await approvalFormRef.value.validate()
     saving.value = true
-    
+
     await new Promise(resolve => setTimeout(resolve, 1000))
     ElMessage.success('审核配置保存成功')
   } catch (error) {
@@ -550,11 +550,11 @@ const resetApprovalConfig = () => {
 
 const saveSecurityConfig = async () => {
   if (!securityFormRef.value) return
-  
+
   try {
     await securityFormRef.value.validate()
     saving.value = true
-    
+
     await new Promise(resolve => setTimeout(resolve, 1000))
     ElMessage.success('安全配置保存成功')
   } catch (error) {
@@ -580,11 +580,11 @@ const resetSecurityConfig = () => {
 
 const saveMonitoringConfig = async () => {
   if (!monitoringFormRef.value) return
-  
+
   try {
     await monitoringFormRef.value.validate()
     saving.value = true
-    
+
     await new Promise(resolve => setTimeout(resolve, 1000))
     ElMessage.success('监控配置保存成功')
   } catch (error) {
@@ -605,7 +605,7 @@ const exportConfig = () => {
     security: { ...securityConfig, apiKey: '***' }, // 隐藏敏感信息
     monitoring: monitoringConfig
   }
-  
+
   const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -613,7 +613,7 @@ const exportConfig = () => {
   a.download = `sms-config-${new Date().toISOString().split('T')[0]}.json`
   a.click()
   URL.revokeObjectURL(url)
-  
+
   ElMessage.success('配置导出成功')
 }
 
@@ -622,12 +622,12 @@ const importConfig = (file: File) => {
   reader.onload = (e) => {
     try {
       const config = JSON.parse(e.target?.result as string)
-      
+
       if (config.basic) Object.assign(basicConfig, config.basic)
       if (config.approval) Object.assign(approvalConfig, config.approval)
       if (config.security) Object.assign(securityConfig, config.security)
       if (config.monitoring) Object.assign(monitoringConfig, config.monitoring)
-      
+
       ElMessage.success('配置导入成功')
     } catch (error) {
       ElMessage.error('配置文件格式错误')
@@ -642,13 +642,13 @@ const resetAllConfig = async () => {
     await ElMessageBox.confirm('确定要恢复所有配置到默认值吗？', '确认重置', {
       type: 'warning'
     })
-    
+
     // 重置所有配置
     basicFormRef.value?.resetFields()
     approvalFormRef.value?.resetFields()
     securityFormRef.value?.resetFields()
     monitoringFormRef.value?.resetFields()
-    
+
     ElMessage.success('所有配置已恢复默认值')
   } catch (error) {
     // 用户取消

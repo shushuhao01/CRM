@@ -3,8 +3,8 @@
     <template #header>
       <div class="card-header">
         <div class="header-left">
-          <el-button 
-            type="text" 
+          <el-button
+            type="text"
             @click="collapsed = !collapsed"
             class="collapse-btn"
           >
@@ -15,12 +15,23 @@
             <span>自动状态同步设置</span>
           </el-button>
         </div>
-        <el-switch
-          v-model="config.enabled"
-          @change="handleEnabledChange"
-          active-text="启用"
-          inactive-text="停用"
-        />
+        <div class="header-right">
+          <el-button
+            type="primary"
+            :disabled="selectedCount === 0"
+            @click="handleBatchUpdate"
+            class="batch-update-btn"
+          >
+            <el-icon><Edit /></el-icon>
+            批量更新状态 ({{ selectedCount }})
+          </el-button>
+          <el-switch
+            v-model="config.enabled"
+            @change="handleEnabledChange"
+            active-text="启用"
+            inactive-text="停用"
+          />
+        </div>
       </div>
     </template>
 
@@ -103,7 +114,7 @@
           <el-timeline-item
             v-for="(log, index) in syncLogs"
             :key="index"
-            :timestamp="formatTime(log.time)"
+            :timestamp="formatTime(log.lastSyncTime)"
             :type="log.success ? 'success' : 'danger'"
           >
             <div class="log-content">
@@ -137,10 +148,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, inject } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, View, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
+import { Refresh, View, ArrowDown, ArrowUp, Edit } from '@element-plus/icons-vue'
 import { autoStatusSyncService, type AutoSyncConfig, type SyncResult } from '@/services/autoStatusSync'
+
+// 注入父组件提供的数据和方法
+const selectedCount = inject<any>('selectedCount', ref(0))
+const handleBatchUpdate = inject<any>('handleBatchUpdate', () => {
+  ElMessage.warning('批量更新功能未初始化')
+})
 
 // 响应式数据
 const collapsed = ref(true) // 默认折叠状态
@@ -182,7 +199,7 @@ onMounted(() => {
   loadConfig()
   refreshStatus()
   loadSyncLogs()
-  
+
   // 定时刷新状态
   statusTimer.value = setInterval(refreshStatus, 30000) // 每30秒刷新一次
 })
@@ -230,7 +247,7 @@ const saveSyncLogs = () => {
 const handleEnabledChange = (enabled: boolean) => {
   autoStatusSyncService.updateConfig({ enabled })
   refreshStatus()
-  
+
   if (enabled) {
     ElMessage.success('自动同步已启用')
   } else {
@@ -256,20 +273,20 @@ const handleSyncOptionsChange = () => {
 // 手动同步
 const handleManualSync = async () => {
   manualSyncLoading.value = true
-  
+
   try {
     const result = await autoStatusSyncService.manualSync()
-    
+
     // 添加到日志
     syncLogs.value.unshift(result)
     if (syncLogs.value.length > 10) {
       syncLogs.value = syncLogs.value.slice(0, 10)
     }
     saveSyncLogs()
-    
+
     // 刷新状态
     refreshStatus()
-    
+
     if (result.success) {
       ElMessage.success(`手动同步完成，更新了 ${result.updatedCount} 个订单`)
     } else {
@@ -292,7 +309,7 @@ const handleRefreshStatus = () => {
 // 格式化时间
 const formatTime = (timeStr: string) => {
   if (!timeStr) return ''
-  
+
   try {
     const date = new Date(timeStr)
     return date.toLocaleString('zh-CN', {
@@ -303,7 +320,7 @@ const formatTime = (timeStr: string) => {
       minute: '2-digit',
       second: '2-digit'
     })
-  } catch (error) {
+  } catch (_error) {
     return timeStr
   }
 }
@@ -323,6 +340,16 @@ const formatTime = (timeStr: string) => {
 .header-left {
   display: flex;
   align-items: center;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.batch-update-btn {
+  margin-right: 10px;
 }
 
 .collapse-btn {

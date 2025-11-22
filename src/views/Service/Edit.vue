@@ -3,9 +3,9 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-left">
-        <el-button 
-          type="primary" 
-          :icon="ArrowLeft" 
+        <el-button
+          type="primary"
+          :icon="ArrowLeft"
           @click="handleBack"
           class="back-btn"
         >
@@ -15,8 +15,8 @@
       </div>
       <div class="header-actions">
         <el-button @click="handleBack">取消</el-button>
-        <el-button 
-          type="primary" 
+        <el-button
+          type="primary"
           @click="handleSave"
           :loading="saveLoading"
         >
@@ -41,8 +41,8 @@
           <el-row :gutter="20">
             <el-col :span="isMobile ? 24 : 12">
               <el-form-item label="售后单号" prop="serviceNumber">
-                <el-input 
-                  v-model="form.serviceNumber" 
+                <el-input
+                  v-model="form.serviceNumber"
                   disabled
                   placeholder="系统自动生成"
                 />
@@ -51,13 +51,13 @@
             <el-col :span="isMobile ? 24 : 12">
               <el-form-item label="原订单号" prop="orderNumber">
                 <div class="order-input-group">
-                  <el-input 
-                    v-model="form.orderNumber" 
+                  <el-input
+                    v-model="form.orderNumber"
                     placeholder="请输入原订单号"
                     :disabled="orderLoaded"
                   />
-                  <el-button 
-                    type="primary" 
+                  <el-button
+                    type="primary"
                     :icon="Search"
                     @click="searchOrder"
                     :disabled="orderLoaded"
@@ -72,8 +72,8 @@
           <el-row :gutter="20">
             <el-col :span="isMobile ? 24 : 12">
               <el-form-item label="服务类型" prop="serviceType">
-                <el-select 
-                  v-model="form.serviceType" 
+                <el-select
+                  v-model="form.serviceType"
                   placeholder="请选择服务类型"
                   style="width: 100%"
                 >
@@ -87,8 +87,8 @@
             </el-col>
             <el-col :span="isMobile ? 24 : 12">
               <el-form-item label="优先级" prop="priority">
-                <el-select 
-                  v-model="form.priority" 
+                <el-select
+                  v-model="form.priority"
                   placeholder="请选择优先级"
                   style="width: 100%"
                 >
@@ -103,25 +103,50 @@
           <el-row :gutter="20">
             <el-col :span="isMobile ? 24 : 12">
               <el-form-item label="处理人员" prop="assignedTo">
-                <el-select 
-                  v-model="form.assignedTo" 
+                <el-select
+                  v-model="form.assignedTo"
                   placeholder="请选择处理人员"
                   style="width: 100%"
                   clearable
+                  filterable
+                  @change="handleAssignedToChange"
                 >
-                  <el-option
-                    v-for="user in userOptions"
-                    :key="user.id"
-                    :label="user.name"
-                    :value="user.name"
-                  />
+                  <!-- 最近选择的用户 -->
+                  <el-option-group v-if="recentUsers.length > 0" label="最近选择">
+                    <el-option
+                      v-for="user in recentUsers"
+                      :key="'recent-' + user.id"
+                      :label="user.name"
+                      :value="user.name"
+                    >
+                      <span>{{ user.name }}</span>
+                      <span style="float: right; color: #8492a6; font-size: 13px">
+                        {{ user.department || '未分配部门' }}
+                      </span>
+                    </el-option>
+                  </el-option-group>
+
+                  <!-- 所有用户 -->
+                  <el-option-group label="所有用户">
+                    <el-option
+                      v-for="user in sortedUserOptions"
+                      :key="user.id"
+                      :label="user.name"
+                      :value="user.name"
+                    >
+                      <span>{{ user.name }}</span>
+                      <span style="float: right; color: #8492a6; font-size: 13px">
+                        {{ user.department || '未分配部门' }}
+                      </span>
+                    </el-option>
+                  </el-option-group>
                 </el-select>
               </el-form-item>
             </el-col>
             <el-col :span="isMobile ? 24 : 12">
               <el-form-item label="状态" prop="status">
-                <el-select 
-                  v-model="form.status" 
+                <el-select
+                  v-model="form.status"
                   placeholder="请选择状态"
                   style="width: 100%"
                 >
@@ -141,8 +166,8 @@
           <el-row :gutter="20">
             <el-col :span="isMobile ? 24 : 12">
               <el-form-item label="客户姓名" prop="customerName">
-                <el-input 
-                  v-model="form.customerName" 
+                <el-input
+                  v-model="form.customerName"
                   placeholder="请输入客户姓名"
                   :disabled="orderLoaded"
                 />
@@ -160,13 +185,13 @@
                     <el-option
                       v-for="phone in customerPhones"
                       :key="phone.id"
-                      :label="maskPhone(phone.number)"
-                      :value="phone.number"
+                      :label="maskPhone(phone.phone)"
+                      :value="phone.phone"
                     />
                   </el-select>
-                  <el-button 
-                    type="primary" 
-                    size="small" 
+                  <el-button
+                    type="primary"
+                    size="small"
                     @click="showAddCustomerPhoneDialog = true"
                     style="margin-left: 8px;"
                     :icon="Plus"
@@ -185,8 +210,8 @@
           <el-row :gutter="20">
             <el-col :span="isMobile ? 24 : 12">
               <el-form-item label="商品名称" prop="productName">
-                <el-input 
-                  v-model="form.productName" 
+                <el-input
+                  v-model="form.productName"
                   placeholder="请输入商品名称"
                   :disabled="orderLoaded"
                 />
@@ -194,8 +219,8 @@
             </el-col>
             <el-col :span="isMobile ? 24 : 12">
               <el-form-item label="商品规格" prop="productSpec">
-                <el-input 
-                  v-model="form.productSpec" 
+                <el-input
+                  v-model="form.productSpec"
                   placeholder="请输入商品规格"
                   :disabled="orderLoaded"
                 />
@@ -228,7 +253,7 @@
             </el-col>
             <el-col :span="isMobile ? 24 : 8">
               <el-form-item label="总金额">
-                <el-input 
+                <el-input
                   :value="`¥${(form.quantity * form.price).toFixed(2)}`"
                   disabled
                 />
@@ -243,8 +268,8 @@
           <el-row :gutter="20">
             <el-col :span="24">
               <el-form-item label="问题原因" prop="reason">
-                <el-select 
-                  v-model="form.reason" 
+                <el-select
+                  v-model="form.reason"
                   placeholder="请选择问题原因"
                   style="width: 100%"
                   filterable
@@ -284,8 +309,8 @@
           <el-row :gutter="20">
             <el-col :span="isMobile ? 24 : 12">
               <el-form-item label="联系人" prop="contactName">
-                <el-input 
-                  v-model="form.contactName" 
+                <el-input
+                  v-model="form.contactName"
                   placeholder="请输入联系人姓名"
                 />
               </el-form-item>
@@ -302,13 +327,13 @@
                     <el-option
                       v-for="phone in contactPhones"
                       :key="phone.id"
-                      :label="maskPhone(phone.number)"
-                      :value="phone.number"
+                      :label="maskPhone(phone.phone)"
+                      :value="phone.phone"
                     />
                   </el-select>
-                  <el-button 
-                    type="primary" 
-                    size="small" 
+                  <el-button
+                    type="primary"
+                    size="small"
                     @click="showAddContactPhoneDialog = true"
                     style="margin-left: 8px;"
                     :icon="Plus"
@@ -323,8 +348,8 @@
           <el-row :gutter="20">
             <el-col :span="24">
               <el-form-item label="联系地址" prop="contactAddress">
-                <el-input 
-                  v-model="form.contactAddress" 
+                <el-input
+                  v-model="form.contactAddress"
                   placeholder="请输入详细地址"
                 />
               </el-form-item>
@@ -401,7 +426,7 @@
             <el-button :icon="Search" @click="searchOrderList" />
           </template>
         </el-input>
-        
+
         <el-table
           :data="orderSearchResults"
           style="margin-top: 16px"
@@ -507,18 +532,27 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { ArrowLeft, Plus, Search } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules, UploadUserFile } from 'element-plus'
 import { useResponsive } from '@/utils/responsive'
 import { maskPhone } from '@/utils/phone'
 import { PhoneSyncService } from '@/services/phoneSync'
 import { createSafeNavigator } from '@/utils/navigation'
+import { useServiceStore, type AfterSalesService } from '@/stores/service'
+import { useUserStore } from '@/stores/user'
+import { useOrderStore } from '@/stores/order'
+import { isProduction } from '@/utils/env'
 
 // 路由
 const router = useRouter()
 const route = useRoute()
 const safeNavigator = createSafeNavigator(router)
+
+// Store
+const serviceStore = useServiceStore()
+const userStore = useUserStore()
+const orderStore = useOrderStore()
 
 // 响应式
 const { isMobile } = useResponsive()
@@ -531,11 +565,11 @@ const previewVisible = ref(false)
 const previewUrl = ref('')
 const orderDialogVisible = ref(false)
 const orderSearchKeyword = ref('')
-const orderSearchResults = ref([])
+const orderSearchResults = ref<any[]>([])
 
 // 手机号管理相关数据
-const customerPhones = ref([])
-const contactPhones = ref([])
+const customerPhones = ref<Array<{ id: number; phone: string; remark: string }>>([])
+const contactPhones = ref<Array<{ id: number; phone: string; remark: string }>>([])
 
 // 新增客户手机号对话框
 const showAddCustomerPhoneDialog = ref(false)
@@ -570,45 +604,39 @@ const addPhoneRules = {
 // 表单数据
 const form = reactive({
   id: '',
-  serviceNumber: 'SH202401150001',
-  orderNumber: 'ORD202401150001',
-  serviceType: 'return',
-  status: 'processing',
-  priority: 'high',
-  customerName: '张三',
-  customerPhone: '13812345678',
-  assignedTo: '李四',
-  productName: '智能手机',
-  productSpec: '128GB 黑色',
+  serviceNumber: '',
+  orderNumber: '',
+  serviceType: '',
+  status: '',
+  priority: '',
+  customerName: '',
+  customerPhone: '',
+  assignedTo: '',
+  productName: '',
+  productSpec: '',
   quantity: 1,
-  price: 2999,
-  reason: '商品质量问题',
-  description: '手机屏幕出现黑屏现象，无法正常使用',
-  contactName: '张三',
-  contactPhone: '13812345678',
-  contactAddress: '北京市朝阳区xxx街道xxx号',
-  remark: '客户要求退货处理'
+  price: 0,
+  reason: '',
+  description: '',
+  contactName: '',
+  contactPhone: '',
+  contactAddress: '',
+  remark: '',
+  customerId: '',
+  contactId: '',
+  createdBy: '',
+  createTime: '',
+  updateTime: ''
 })
 
 // 文件列表
-const fileList = ref<UploadUserFile[]>([
-  {
-    name: '问题图片1.jpg',
-    url: '/uploads/image1.jpg'
-  },
-  {
-    name: '问题图片2.jpg',
-    url: '/uploads/image2.jpg'
-  }
-])
+const fileList = ref<UploadUserFile[]>([])
+
+// 最近选择的用户
+const recentUsers = ref<Array<{ id: string; name: string; department?: string }>>([])
 
 // 用户选项
-const userOptions = ref([
-  { id: '1', name: '李四' },
-  { id: '2', name: '赵六' },
-  { id: '3', name: '孙八' },
-  { id: '4', name: '周九' }
-])
+const userOptions = ref<Array<{ id: string; name: string; department?: string }>>([])
 
 // 表单验证规则
 const rules: FormRules = {
@@ -665,19 +693,58 @@ const handleBack = () => {
  */
 const handleSave = async () => {
   if (!formRef.value) return
-  
+
   try {
     await formRef.value.validate()
-    
+
     saveLoading.value = true
-    
-    // 这里应该调用API保存售后信息
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    ElMessage.success('保存成功')
+
+    if (isProduction()) {
+      // 生产环境:调用API
+      const response = await fetch(`/api/service/${form.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(form)
+      })
+
+      if (!response.ok) {
+        throw new Error('保存失败')
+      }
+
+      ElMessage.success('保存成功')
+    } else {
+      // 开发环境:更新store
+      const updateData: Partial<AfterSalesService> = {
+        serviceNumber: form.serviceNumber,
+        orderNumber: form.orderNumber,
+        serviceType: form.serviceType as 'return' | 'exchange' | 'repair' | 'refund',
+        status: form.status as 'pending' | 'processing' | 'resolved' | 'closed',
+        priority: form.priority as 'low' | 'normal' | 'high' | 'urgent',
+        customerName: form.customerName,
+        customerPhone: form.customerPhone,
+        assignedTo: form.assignedTo,
+        productName: form.productName,
+        productSpec: form.productSpec,
+        quantity: form.quantity,
+        price: form.price,
+        reason: form.reason,
+        description: form.description,
+        contactName: form.contactName,
+        contactAddress: form.contactAddress,
+        remark: form.remark,
+        updateTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
+      }
+
+      serviceStore.updateService(form.id, updateData)
+      ElMessage.success('保存成功')
+    }
+
     safeNavigator.push('/service/list')
   } catch (error) {
-    console.error('Validation failed:', error)
+    console.error('Save failed:', error)
+    ElMessage.error('保存失败')
   } finally {
     saveLoading.value = false
   }
@@ -691,7 +758,7 @@ const searchOrder = () => {
     ElMessage.warning('请输入订单号')
     return
   }
-  
+
   orderDialogVisible.value = true
   searchOrderList()
 }
@@ -731,15 +798,15 @@ const loadContactPhones = async () => {
  */
 const handleAddCustomerPhone = async () => {
   if (!addCustomerPhoneFormRef.value) return
-  
+
   try {
     await addCustomerPhoneFormRef.value.validate()
-    
+
     addingCustomerPhone.value = true
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     // 添加到列表
     const newPhone = {
       id: Date.now(),
@@ -747,10 +814,10 @@ const handleAddCustomerPhone = async () => {
       remark: addCustomerPhoneForm.remark || '无备注'
     }
     customerPhones.value.push(newPhone)
-    
+
     // 设置为当前选中的手机号
     form.customerPhone = newPhone.phone
-    
+
     // 同步手机号到客户详情页
     try {
       const customerId = form.customerId || 'default-customer-id' // 实际应用中应该从表单或路由获取
@@ -759,7 +826,7 @@ const handleAddCustomerPhone = async () => {
         phone: newPhone.phone,
         remark: newPhone.remark
       })
-      
+
       if (syncResult.success) {
         ElMessage.success('添加成功，已同步到客户详情')
       } else {
@@ -769,7 +836,7 @@ const handleAddCustomerPhone = async () => {
       console.error('同步客户手机号失败:', syncError)
       ElMessage.warning('添加成功，但同步失败')
     }
-    
+
     handleCloseAddCustomerPhoneDialog()
   } catch (error) {
     console.error('添加客户手机号失败:', error)
@@ -784,15 +851,15 @@ const handleAddCustomerPhone = async () => {
  */
 const handleAddContactPhone = async () => {
   if (!addContactPhoneFormRef.value) return
-  
+
   try {
     await addContactPhoneFormRef.value.validate()
-    
+
     addingContactPhone.value = true
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     // 添加到列表
     const newPhone = {
       id: Date.now(),
@@ -800,10 +867,10 @@ const handleAddContactPhone = async () => {
       remark: addContactPhoneForm.remark || '无备注'
     }
     contactPhones.value.push(newPhone)
-    
+
     // 设置为当前选中的手机号
     form.contactPhone = newPhone.phone
-    
+
     // 同步手机号到联系人详情页
     try {
       const contactId = form.contactId || 'default-contact-id' // 实际应用中应该从表单获取
@@ -812,7 +879,7 @@ const handleAddContactPhone = async () => {
         phone: newPhone.phone,
         remark: newPhone.remark
       })
-      
+
       if (syncResult.success) {
         ElMessage.success('添加成功，已同步到联系人详情')
       } else {
@@ -822,7 +889,7 @@ const handleAddContactPhone = async () => {
       console.error('同步联系手机号失败:', syncError)
       ElMessage.warning('添加成功，但同步失败')
     }
-    
+
     handleCloseAddContactPhoneDialog()
   } catch (error) {
     console.error('添加联系手机号失败:', error)
@@ -860,33 +927,48 @@ const handleCloseAddContactPhoneDialog = () => {
  * 搜索订单列表
  */
 const searchOrderList = () => {
-  // 模拟搜索结果
-  orderSearchResults.value = [
-    {
-      orderNumber: 'ORD202401150001',
-      customerName: '张三',
-      productName: '智能手机',
-      totalAmount: 2999,
-      createTime: '2024-01-15 10:30:00'
-    },
-    {
-      orderNumber: 'ORD202401150002',
-      customerName: '李四',
-      productName: '平板电脑',
-      totalAmount: 1999,
-      createTime: '2024-01-15 11:30:00'
+  if (isProduction()) {
+    // 生产环境:调用API搜索
+    fetch(`/api/orders/search?keyword=${orderSearchKeyword.value}`)
+      .then(res => res.json())
+      .then(data => {
+        orderSearchResults.value = data
+      })
+      .catch(error => {
+        console.error('搜索订单失败:', error)
+        ElMessage.error('搜索订单失败')
+      })
+  } else {
+    // 开发环境:从store搜索
+    const keyword = orderSearchKeyword.value.trim().toLowerCase()
+    const allOrders = orderStore.orders || []
+
+    if (!keyword) {
+      orderSearchResults.value = allOrders.slice(0, 10)
+    } else {
+      orderSearchResults.value = allOrders.filter((order: any) => {
+        return order.orderNumber?.toLowerCase().includes(keyword) ||
+               order.customerName?.toLowerCase().includes(keyword) ||
+               order.productName?.toLowerCase().includes(keyword)
+      }).slice(0, 10)
     }
-  ]
+  }
 }
 
 /**
  * 选择订单
  */
-const selectOrder = (order: { orderNumber: string; customerName: string; productName: string; totalAmount: number }) => {
+const selectOrder = (order: any) => {
   form.orderNumber = order.orderNumber
   form.customerName = order.customerName
+  form.customerPhone = order.customerPhone || ''
   form.productName = order.productName
-  form.price = order.totalAmount
+  form.productSpec = order.productSpec || ''
+  form.quantity = order.quantity || 1
+  form.price = order.price || order.totalAmount || 0
+  form.contactName = order.customerName
+  form.contactPhone = order.customerPhone || ''
+  form.contactAddress = order.shippingAddress || ''
   orderLoaded.value = true
   orderDialogVisible.value = false
   ElMessage.success('订单信息已加载')
@@ -930,17 +1012,102 @@ const beforeUpload = (file: File) => {
  */
 const loadServiceDetail = async () => {
   try {
-    const id = route.params.id
-    console.log('Loading service detail for ID:', id)
-    
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    form.id = id as string
-    orderLoaded.value = true
+    const serviceId = route.params.id as string
+    console.log('Loading service detail for ID:', serviceId)
+
+    if (!serviceId) {
+      ElMessage.error('售后ID不存在')
+      safeNavigator.push('/service/list')
+      return
+    }
+
+    if (isProduction()) {
+      // 生产环境:调用API
+      const response = await fetch(`/api/service/${serviceId}`)
+      if (!response.ok) {
+        throw new Error('加载失败')
+      }
+      const data = await response.json()
+      Object.assign(form, data)
+    } else {
+      // 开发环境:从store获取
+      const service = serviceStore.getServiceById(serviceId)
+
+      if (!service) {
+        ElMessage.error('售后记录不存在')
+        safeNavigator.push('/service/list')
+        return
+      }
+
+      // 填充表单数据
+      Object.assign(form, {
+        id: service.id,
+        serviceNumber: service.serviceNumber,
+        orderNumber: service.orderNumber,
+        serviceType: service.serviceType,
+        status: service.status,
+        priority: service.priority,
+        customerName: service.customerName,
+        customerPhone: service.customerPhone,
+        assignedTo: service.assignedTo || '',
+        productName: service.productName,
+        productSpec: service.productSpec || '',
+        quantity: service.quantity || 1,
+        price: service.price || 0,
+        reason: service.reason,
+        description: service.description,
+        contactName: service.contactName || service.customerName,
+        contactPhone: service.contactPhone || service.customerPhone,
+        contactAddress: service.contactAddress || '',
+        remark: service.remark || '',
+        customerId: service.customerId || '',
+        contactId: service.contactId || '',
+        createdBy: service.createdBy,
+        createTime: service.createTime,
+        updateTime: service.updateTime
+      })
+
+      // 如果有附件,加载附件列表
+      if (service.attachments && service.attachments.length > 0) {
+        fileList.value = service.attachments.map((url: string, index: number) => ({
+          name: `附件${index + 1}.jpg`,
+          url: url
+        }))
+      }
+
+      orderLoaded.value = true
+    }
   } catch (error) {
     console.error('Failed to load service detail:', error)
     ElMessage.error('加载售后详情失败')
+    safeNavigator.push('/service/list')
+  }
+}
+
+/**
+ * 加载用户列表
+ */
+const loadUserOptions = () => {
+  if (isProduction()) {
+    // 生产环境:调用API
+    fetch('/api/users')
+      .then(res => res.json())
+      .then(data => {
+        userOptions.value = data.map((user: any) => ({
+          id: user.id,
+          name: user.name || user.username
+        }))
+      })
+      .catch(error => {
+        console.error('加载用户列表失败:', error)
+      })
+  } else {
+    // 开发环境:从store获取
+    const users = userStore.users || []
+    userOptions.value = users.map((user: any) => ({
+      id: user.id,
+      name: user.name || user.username
+    }))
   }
 }
 
@@ -949,6 +1116,7 @@ onMounted(() => {
   loadServiceDetail()
   loadCustomerPhones()
   loadContactPhones()
+  loadUserOptions()
 })
 </script>
 
@@ -1047,25 +1215,25 @@ onMounted(() => {
   .service-edit {
     padding: 10px;
   }
-  
+
   .page-header {
     flex-direction: column;
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .header-left {
     justify-content: flex-start;
   }
-  
+
   .header-actions {
     justify-content: flex-end;
   }
-  
+
   .order-input-group {
     flex-direction: column;
   }
-  
+
   .order-input-group .el-button {
     align-self: flex-start;
   }

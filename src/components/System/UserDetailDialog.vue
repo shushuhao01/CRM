@@ -27,8 +27,8 @@
                 <el-descriptions :column="2" border>
                   <el-descriptions-item label="用户名">{{ user.username }}</el-descriptions-item>
                   <el-descriptions-item label="姓名">{{ user.name }}</el-descriptions-item>
-                  <el-descriptions-item label="邮箱">{{ user.email }}</el-descriptions-item>
-                  <el-descriptions-item label="手机号">{{ user.phone || '未设置' }}</el-descriptions-item>
+                  <el-descriptions-item label="邮箱">{{ displaySensitiveInfoNew(user.email, SensitiveInfoType.EMAIL, userStore.currentUser?.id) }}</el-descriptions-item>
+                  <el-descriptions-item label="手机号">{{ user.phone ? displaySensitiveInfoNew(user.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id) : '未设置' }}</el-descriptions-item>
                   <el-descriptions-item label="部门">{{ user.department }}</el-descriptions-item>
                   <el-descriptions-item label="职位">{{ user.position || '未设置' }}</el-descriptions-item>
                   <el-descriptions-item label="角色">
@@ -241,6 +241,8 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Close } from '@element-plus/icons-vue'
+import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
+import { useUserStore } from '@/stores/user'
 
 interface User {
   id: string
@@ -276,6 +278,7 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+const userStore = useUserStore()
 
 const activeTab = ref('basic')
 const passwordStrength = ref(75)

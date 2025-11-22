@@ -86,7 +86,8 @@ export interface ShareStats {
 export const usePerformanceStore = createPersistentStore('performance', () => {
   // 依赖的其他store
   const orderStore = useOrderStore()
-  const customerStore = useCustomerStore()
+  // 懒加载CustomerStore，避免在初始化时重新创建CustomerStore实例
+  const getCustomerStore = () => useCustomerStore()
   const userStore = useUserStore()
 
   // 日期范围
@@ -159,10 +160,32 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
 
   // 业绩分享数据
   const performanceShares = ref<PerformanceShare[]>([])
-  
+
   // 分享统计数据
   const shareStats = computed((): ShareStats => {
-    const shares = performanceShares.value
+    let shares = performanceShares.value
+
+    // 权限控制：根据用户角色过滤数据
+    const currentUser = userStore.currentUser
+    if (currentUser) {
+      // 超级管理员和管理员可以查看所有分享记录
+      if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
+        // 不做过滤，显示所有记录
+      } else if (currentUser.role === 'department_manager') {
+        // 部门经理只能查看自己创建的分享记录
+        shares = shares.filter(share =>
+          share.createdById === currentUser.id ||
+          share.createdBy === currentUser.name
+        )
+      } else {
+        // 其他角色（如销售员）只能查看自己创建的分享记录
+        shares = shares.filter(share =>
+          share.createdById === currentUser.id ||
+          share.createdBy === currentUser.name
+        )
+      }
+    }
+
     const totalShares = shares.length
     const totalAmount = shares.reduce((sum, share) => sum + share.orderAmount, 0)
     const involvedMembers = new Set(shares.flatMap(share => share.shareMembers.map(member => member.userId))).size
@@ -196,21 +219,66 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
       }
     }
 
-    // 获取当前用户的订单
-    const userOrders = orderStore.orders.filter(order => 
-      order.salesPersonId === currentUserId && 
+    // 获取当前用户的订单（已审核通过的）
+    const userOrders = orderStore.orders.filter(order =>
+      order.salesPersonId === currentUserId &&
       order.auditStatus === 'approved'
     )
 
     // 获取当前用户的客户
-    const userCustomers = customerStore.customers.filter(customer => 
+    const userCustomers = getCustomerStore().customers.filter(customer =>
       customer.salesPersonId === currentUserId
     )
 
-    const totalSales = userOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    // 计算业绩，考虑分享情况
+    let totalSales = 0
+
+    // 创建订单分享映射
+    const orderShareMap = new Map<string, Array<{ userId: string, percentage: number, shareAmount: number }>>()
+    performanceShares.value
+      .filter(share => share.status === 'active' || share.status === 'completed')
+      .forEach(share => {
+        const shareDetails = share.shareMembers
+          .filter(member => member.status === 'confirmed' || member.status === 'pending')
+          .map(member => ({
+            userId: member.userId,
+            percentage: member.percentage,
+            shareAmount: member.shareAmount
+          }))
+        orderShareMap.set(share.orderId, shareDetails)
+      })
+
+    // 计算自己下单的订单业绩（扣除分享出去的部分）
+    userOrders.forEach(order => {
+      const shareDetails = orderShareMap.get(order.id)
+      if (shareDetails && shareDetails.length > 0) {
+        // 有分享，计算保留的业绩
+        const totalSharedPercentage = shareDetails.reduce((sum, detail) => sum + detail.percentage, 0)
+        const remainingPercentage = 100 - totalSharedPercentage
+        const remainingAmount = (order.totalAmount * remainingPercentage) / 100
+        totalSales += remainingAmount
+      } else {
+        // 没有分享，全部业绩归自己
+        totalSales += order.totalAmount
+      }
+    })
+
+    // 加上别人分享给自己的业绩
+    performanceShares.value
+      .filter(share => share.status === 'active' || share.status === 'completed')
+      .forEach(share => {
+        const myShare = share.shareMembers.find(member =>
+          member.userId === currentUserId &&
+          (member.status === 'confirmed' || member.status === 'pending')
+        )
+        if (myShare) {
+          totalSales += myShare.shareAmount
+        }
+      })
+
     const totalOrders = userOrders.length
     const newCustomers = userCustomers.length
-    const conversionRate = totalOrders > 0 ? (totalOrders / newCustomers) * 100 : 0
+    const conversionRate = newCustomers > 0 ? (totalOrders / newCustomers) * 100 : 0
 
     return {
       totalSales,
@@ -262,12 +330,12 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
 
   // 方法 - 获取指定用户的业绩数据
   const getUserPerformance = (userId: string): PerformanceData => {
-    const userOrders = orderStore.orders.filter(order => 
-      order.salesPersonId === userId && 
+    const userOrders = orderStore.orders.filter(order =>
+      order.salesPersonId === userId &&
       order.auditStatus === 'approved'
     )
 
-    const userCustomers = customerStore.customers.filter(customer => 
+    const userCustomers = getCustomerStore().customers.filter(customer =>
       customer.salesPersonId === userId
     )
 
@@ -319,7 +387,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
   const refreshPerformanceData = async () => {
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     // 这里可以从API获取最新的业绩数据
     console.log('业绩数据已刷新')
   }
@@ -327,62 +395,69 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
   // 方法 - 创建业绩分享
   const createPerformanceShare = async (shareData: Omit<PerformanceShare, 'id' | 'shareNumber' | 'createTime' | 'status'>) => {
     try {
-      const notificationStore = useNotificationStore()
-      
-      // 调用后端API创建分享
-      const response = await performanceApi.createPerformanceShare({
+      console.log('[Performance Store] 创建业绩分享:', shareData)
+
+      // 尝试调用API，如果失败则使用本地存储
+      try {
+        const response = await performanceApi.createPerformanceShare({
+          orderId: shareData.orderId,
+          orderNumber: shareData.orderNumber,
+          orderAmount: shareData.orderAmount,
+          shareMembers: shareData.shareMembers.map(member => ({
+            userId: member.userId,
+            userName: member.userName,
+            percentage: member.percentage
+          })),
+          description: shareData.description
+        })
+
+        if (response.data.success) {
+          const newShare = response.data.data
+          performanceShares.value.unshift(newShare)
+          await updateMembersPerformance(newShare)
+          await syncPerformanceData()
+          console.log('[Performance Store] API创建业绩分享成功')
+          return newShare
+        }
+      } catch (apiError) {
+        console.warn('[Performance Store] API调用失败，使用本地存储:', apiError)
+      }
+
+      // API失败或开发环境，使用本地存储
+      const newShare: PerformanceShare = {
+        id: `share_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        shareNumber: generateShareNumber(),
         orderId: shareData.orderId,
         orderNumber: shareData.orderNumber,
         orderAmount: shareData.orderAmount,
         shareMembers: shareData.shareMembers.map(member => ({
-          userId: member.userId,
-          userName: member.userName,
-          percentage: member.percentage
+          ...member,
+          shareAmount: (shareData.orderAmount * member.percentage) / 100,
+          status: 'confirmed' // 默认为已确认状态
         })),
+        status: 'active',
+        createTime: new Date().toLocaleString(),
+        createdBy: shareData.createdBy,
+        createdById: shareData.createdById,
         description: shareData.description
-      })
-      
-      if (response.data.success) {
-        const newShare = response.data.data
-        
-        // 添加到本地存储
-        performanceShares.value.unshift(newShare)
-        
-        // 更新相关成员的业绩数据
-        await updateMembersPerformance(newShare)
-        
-        // 发送通知给分享对象
-        newShare.shareMembers.forEach((member: ShareMember) => {
-          if (member.userId !== userStore.currentUser?.id) {
-            notificationStore.sendMessage(
-              MessageType.PERFORMANCE_SHARE_RECEIVED,
-              `${userStore.currentUser?.name} 与您分享了订单 ${newShare.orderNumber} 的业绩，您的分成比例为 ${member.percentage}%，金额为 ¥${member.shareAmount.toFixed(2)}`,
-              {
-                relatedId: newShare.id,
-                relatedType: 'performance_share',
-                actionUrl: `/performance/share?id=${newShare.id}`
-              }
-            )
-          }
-        })
-        
-        // 发送创建通知给创建者
-        notificationStore.sendMessage(
-          MessageType.PERFORMANCE_SHARE_CREATED,
-          `成功创建业绩分享，订单 ${newShare.orderNumber}，共分享给 ${newShare.shareMembers.length} 位成员`,
-          {
-            relatedId: newShare.id,
-            relatedType: 'performance_share',
-            actionUrl: `/performance/share?id=${newShare.id}`
-          }
-        )
-        
-        return newShare
-      } else {
-        throw new Error(response.data.message || '创建业绩分享失败')
       }
+
+      console.log('[Performance Store] 新分享记录:', newShare)
+
+      // 添加到本地存储
+      performanceShares.value.unshift(newShare)
+
+      // 更新相关成员的业绩数据
+      await updateMembersPerformance(newShare)
+
+      // 触发业绩数据同步
+      await syncPerformanceData()
+
+      console.log('[Performance Store] 本地创建业绩分享成功')
+
+      return newShare
     } catch (error) {
-      console.error('创建业绩分享失败:', error)
+      console.error('[Performance Store] 创建业绩分享失败:', error)
       throw error
     }
   }
@@ -393,7 +468,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     if (index !== -1) {
       const oldShare = { ...performanceShares.value[index] }
       performanceShares.value[index] = { ...performanceShares.value[index], ...updates }
-      
+
       // 如果分享成员或比例发生变化，重新计算分享金额
       if (updates.shareMembers) {
         performanceShares.value[index].shareMembers = updates.shareMembers.map(member => ({
@@ -401,10 +476,8 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
           shareAmount: (performanceShares.value[index].orderAmount * member.percentage) / 100
         }))
       }
-      
-      // 更新相关成员的业绩数据
-      await updateMembersPerformance(performanceShares.value[index], oldShare)
-      
+
+
       return performanceShares.value[index]
     }
     return null
@@ -413,14 +486,14 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
   // 方法 - 取消业绩分享
   const cancelPerformanceShare = async (shareId: string) => {
     const notificationStore = useNotificationStore()
-    
+
     const share = performanceShares.value.find(s => s.id === shareId)
     if (share && share.status === 'active') {
       share.status = 'cancelled'
-      
+
       // 恢复原始业绩数据
       await revertMembersPerformance(share)
-      
+
       // 发送取消通知给所有相关成员
       share.shareMembers.forEach(member => {
         if (member.userId !== userStore.currentUser?.id) {
@@ -435,7 +508,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
           )
         }
       })
-      
+
       return true
     }
     return false
@@ -444,21 +517,21 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
   // 方法 - 确认分享成员
   const confirmShareMember = async (shareId: string, userId: string) => {
     const notificationStore = useNotificationStore()
-    
+
     const share = performanceShares.value.find(s => s.id === shareId)
     if (share) {
       const member = share.shareMembers.find(m => m.userId === userId)
       if (member && member.status === 'pending') {
         member.status = 'confirmed'
         member.confirmTime = new Date().toLocaleString()
-        
+
         // 检查是否所有成员都已确认
         const allConfirmed = share.shareMembers.every(m => m.status === 'confirmed')
         if (allConfirmed) {
           share.status = 'completed'
           share.completedTime = new Date().toLocaleString()
         }
-        
+
         // 发送确认通知给创建者
         notificationStore.sendMessage(
           MessageType.PERFORMANCE_SHARE_CONFIRMED,
@@ -469,7 +542,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
             actionUrl: `/performance/share?id=${shareId}`
           }
         )
-        
+
         return true
       }
     }
@@ -479,14 +552,14 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
   // 方法 - 拒绝分享成员
   const rejectShareMember = async (shareId: string, userId: string, reason?: string) => {
     const notificationStore = useNotificationStore()
-    
+
     const share = performanceShares.value.find(s => s.id === shareId)
     if (share) {
       const member = share.shareMembers.find(m => m.userId === userId)
       if (member && member.status === 'pending') {
         member.status = 'rejected'
         member.confirmTime = new Date().toLocaleString()
-        
+
         // 发送拒绝通知给创建者
         notificationStore.sendMessage(
           MessageType.PERFORMANCE_SHARE_REJECTED,
@@ -497,7 +570,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
             actionUrl: `/performance/share?id=${shareId}`
           }
         )
-        
+
         // 如果有成员拒绝，整个分享可能需要重新调整
         return true
       }
@@ -507,7 +580,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
 
   // 方法 - 获取用户的分享记录
   const getUserShares = (userId: string) => {
-    return performanceShares.value.filter(share => 
+    return performanceShares.value.filter(share =>
       share.shareMembers.some(member => member.userId === userId) ||
       share.createdById === userId
     )
@@ -529,12 +602,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
   }
 
   // 辅助方法 - 更新成员业绩数据
-  const updateMembersPerformance = async (newShare: PerformanceShare, oldShare?: PerformanceShare) => {
-    // 如果有旧分享记录，先恢复原始数据
-    if (oldShare) {
-      await revertMembersPerformance(oldShare)
-    }
-    
+  const updateMembersPerformance = async (newShare: PerformanceShare) => {
     // 应用新的分享数据
     for (const member of newShare.shareMembers) {
       const teamMember = teamMembers.value.find(tm => tm.id === member.userId)
@@ -558,82 +626,136 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
 
   // 应用数据范围控制
   const applyDataScopeControl = (orders: any[]) => {
-    const currentUser = userStore.user
+    const currentUser = userStore.currentUser
     if (!currentUser) return []
 
     // 超级管理员可以查看所有订单
-    if (currentUser.role === 'super_admin') {
+    if (currentUser.role === 'admin') {
       return orders
     }
 
     // 部门负责人可以查看本部门所有订单
-    if (currentUser.role === 'department_head') {
-      return orders.filter(order => 
-        order.salesPerson?.departmentId === currentUser.departmentId ||
-        order.customerService?.departmentId === currentUser.departmentId
+    if (currentUser.role === 'department_manager') {
+      return orders.filter((order: any) =>
+        order.salesPersonId === currentUser.id ||
+        order.createdBy === currentUser.name
       )
     }
 
     // 销售员只能查看自己的订单
-    if (currentUser.role === 'sales') {
-      return orders.filter(order => order.salesPersonId === currentUser.id)
+    if (currentUser.role === 'sales_staff') {
+      return orders.filter((order: any) => order.salesPersonId === currentUser.id)
     }
 
     // 客服只能查看自己负责的订单
     if (currentUser.role === 'customer_service') {
-      return orders.filter(order => order.customerServiceId === currentUser.id)
+      return orders.filter((order: any) => order.customerServiceId === currentUser.id)
     }
 
     // 其他角色默认只能查看自己相关的订单
-    return orders.filter(order => 
-      order.salesPersonId === currentUser.id || 
+    return orders.filter((order: unknown) =>
+      order.salesPersonId === currentUser.id ||
       order.customerServiceId === currentUser.id
     )
   }
 
   // 实时同步功能 - 刷新所有业绩数据
   const syncPerformanceData = async () => {
+    console.log('[Performance Store] 开始同步业绩数据')
+
     // 重新计算所有团队成员的业绩数据
     const orderStore = useOrderStore()
     const userStore = useUserStore()
-    
+
     // 重置所有成员的业绩数据
     teamMembers.value.forEach(member => {
       member.salesAmount = 0
       member.orderCount = 0
       member.commission = 0
     })
-    
+
     // 重新计算基础业绩（来自订单），应用数据范围控制
     const accessibleOrders = applyDataScopeControl(orderStore.orders)
-    accessibleOrders.forEach(order => {
-      if (order.status === 'completed' || order.status === 'signed') {
-        const member = teamMembers.value.find(tm => tm.id === order.salesPersonId)
-        if (member) {
-          member.salesAmount += order.totalAmount
-          member.orderCount += 1
-          member.commission += order.totalAmount * 0.1
-        }
-      }
-    })
-    
-    // 应用所有有效的业绩分享
+
+    // 创建订单分享映射，记录每个订单的分享详情
+    const orderShareMap = new Map<string, Array<{ userId: string, percentage: number, shareAmount: number }>>()
     performanceShares.value
       .filter(share => share.status === 'active' || share.status === 'completed')
       .forEach(share => {
-        share.shareMembers.forEach(member => {
-          if (member.status === 'confirmed') {
-            const teamMember = teamMembers.value.find(tm => tm.id === member.userId)
-            if (teamMember) {
-              teamMember.salesAmount += member.shareAmount
-              teamMember.commission += member.shareAmount * 0.1
-            }
-          }
-        })
+        const shareDetails = share.shareMembers
+          .filter(member => member.status === 'confirmed' || member.status === 'pending')
+          .map(member => ({
+            userId: member.userId,
+            percentage: member.percentage,
+            shareAmount: member.shareAmount
+          }))
+        orderShareMap.set(share.orderId, shareDetails)
       })
-    
-    // 重新计算业绩等级
+
+    // 计算订单业绩，考虑分享情况
+    accessibleOrders.forEach((order: unknown) => {
+      // 只计算已完成、已发货、已签收的订单
+      if (order.status === 'shipped' || order.status === 'delivered' || order.auditStatus === 'approved') {
+        const shareDetails = orderShareMap.get(order.id)
+
+        if (shareDetails && shareDetails.length > 0) {
+          // 该订单有分享，计算下单员保留的业绩
+          const totalSharedPercentage = shareDetails.reduce((sum, detail) => sum + detail.percentage, 0)
+          const remainingPercentage = 100 - totalSharedPercentage
+          const remainingAmount = (order.totalAmount * remainingPercentage) / 100
+
+          // 给下单员分配保留的业绩
+          const orderOwner = teamMembers.value.find(tm => tm.id === order.salesPersonId)
+          if (orderOwner) {
+            orderOwner.salesAmount += remainingAmount
+            orderOwner.orderCount += 1
+            orderOwner.commission += remainingAmount * 0.1
+
+            console.log(`[Performance Store] 订单 ${order.orderNumber} (有分享):`, {
+              下单员: orderOwner.name,
+              订单金额: order.totalAmount,
+              分享总比例: totalSharedPercentage + '%',
+              保留比例: remainingPercentage + '%',
+              保留金额: remainingAmount.toFixed(2)
+            })
+          }
+
+          // 给分享成员分配业绩
+          shareDetails.forEach(detail => {
+            const shareMember = teamMembers.value.find(tm => tm.id === detail.userId)
+            if (shareMember) {
+              shareMember.salesAmount += detail.shareAmount
+              shareMember.commission += detail.shareAmount * 0.1
+
+              console.log(`[Performance Store] 分享给 ${shareMember.name}:`, {
+                分享金额: detail.shareAmount.toFixed(2),
+                分享比例: detail.percentage + '%'
+              })
+            }
+          })
+        } else {
+          // 该订单没有分享，全部业绩归下单员
+          const orderOwner = teamMembers.value.find(tm => tm.id === order.salesPersonId)
+          if (orderOwner) {
+            orderOwner.salesAmount += order.totalAmount
+            orderOwner.orderCount += 1
+            orderOwner.commission += order.totalAmount * 0.1
+
+            console.log(`[Performance Store] 订单 ${order.orderNumber} (无分享):`, {
+              下单员: orderOwner.name,
+              订单金额: order.totalAmount
+            })
+          }
+        }
+      }
+    })
+
+    // 重新计算业绩等级和目标完成率
     teamMembers.value.forEach(member => {
+      // 假设每个成员的月度目标是80000元
+      const monthlyTarget = 80000
+      member.targetCompletion = Math.round((member.salesAmount / monthlyTarget) * 100)
+
       if (member.targetCompletion >= 120) {
         member.performance = 'excellent'
       } else if (member.targetCompletion >= 100) {
@@ -644,6 +766,14 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
         member.performance = 'poor'
       }
     })
+
+    console.log('[Performance Store] 业绩数据同步完成')
+    console.log('[Performance Store] 团队成员业绩:', teamMembers.value.map(m => ({
+      姓名: m.name,
+      业绩: m.salesAmount.toFixed(2),
+      订单数: m.orderCount,
+      目标完成率: m.targetCompletion + '%'
+    })))
   }
 
   // 监听业绩分享变化，自动同步数据
@@ -696,7 +826,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
   }
 
   // 业绩分析相关方法
-  
+
   // 方法 - 获取个人业绩分析数据
   const getPersonalAnalysisData = async (params?: {
     userId?: string
@@ -783,13 +913,13 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     teamMembers,
     productPerformance,
     performanceShares,
-    
+
     // 计算属性
     personalPerformance,
     teamPerformance,
     salesRanking,
     shareStats,
-    
+
     // 方法
     updateDateRange,
     getUserPerformance,
@@ -799,7 +929,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     getProductRanking,
     refreshPerformanceData,
     syncPerformanceData,
-    
+
     // 分享相关方法
     createPerformanceShare,
     updatePerformanceShare,
@@ -810,7 +940,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     loadPerformanceShares,
     loadShareStats,
     getOrderShares,
-    
+
     // 业绩分析相关方法
     getPersonalAnalysisData,
     getDepartmentAnalysisData,

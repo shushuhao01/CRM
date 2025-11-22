@@ -164,7 +164,7 @@
           </el-select>
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="batchDialogVisible = false">取消</el-button>
@@ -300,7 +300,7 @@ const getTimelineIcon = (status: string) => {
 }
 
 // 数据范围控制函数
-const applyDataScopeControl = (orderList: any[]) => {
+const applyDataScopeControl = (orderList: unknown[]) => {
   const currentUser = userStore.currentUser
   if (!currentUser) return []
 
@@ -343,19 +343,53 @@ const handleSearch = async () => {
   if (isUnmounted.value) return
 
   loading.value = true
-  
+
   try {
+    const trackingNum = searchForm.trackingNo.trim()
+
     // 从订单store中查找对应的订单，应用数据范围控制
     const accessibleOrders = applyDataScopeControl(orderStore.orders)
-    const order = accessibleOrders.find(o => o.expressNo === searchForm.trackingNo.trim())
-    
+
+    // 支持多种物流单号字段查询
+    let order = accessibleOrders.find(o =>
+      o.expressNo === trackingNum ||
+      o.trackingNumber === trackingNum ||
+      o.expressNumber === trackingNum
+    )
+
+    // 如果在订单中没找到,尝试从localStorage的其他数据源查找
+    if (!order) {
+      const logistics = JSON.parse(localStorage.getItem('crm_logistics') || '[]')
+      const shipments = JSON.parse(localStorage.getItem('crm_shipments') || '[]')
+
+      // 在物流记录中查找
+      const logisticsRecord = logistics.find(l => l.trackingNumber === trackingNum)
+      if (logisticsRecord) {
+        order = accessibleOrders.find(o => o.orderNumber === logisticsRecord.orderNumber)
+      }
+
+      // 在发货记录中查找
+      if (!order) {
+        const shipmentRecord = shipments.find(s => s.trackingNumber === trackingNum)
+        if (shipmentRecord) {
+          order = accessibleOrders.find(o => o.orderNumber === shipmentRecord.orderNumber)
+        }
+      }
+    }
+
     if (!order) {
       ElMessage.warning('未找到该快递单号对应的订单')
+      loading.value = false
       return
     }
 
-    if (!order.expressCompany || !order.expressNo) {
+    // 获取物流单号(支持多种字段)
+    const actualTrackingNo = order.expressNo || order.trackingNumber || order.expressNumber
+    const actualCompany = order.expressCompany || order.logisticsCompany || '未知快递'
+
+    if (!actualTrackingNo) {
       ElMessage.warning('该订单尚未发货或缺少物流信息')
+      loading.value = false
       return
     }
 
@@ -367,43 +401,43 @@ const handleSearch = async () => {
       }, 1000)
       timeoutIds.add(timeoutId)
     })
-    
+
     // 检查组件是否已卸载
     if (isUnmounted.value) return
-    
+
     // 使用真实订单数据
     Object.assign(trackingResult, {
-      trackingNo: order.expressNo,
-      companyName: getCompanyName(order.expressCompany) || order.expressCompany,
+      trackingNo: actualTrackingNo,
+      companyName: getCompanyName(actualCompany) || actualCompany,
       status: order.status,
       receiverName: order.customerName,
-      receiverPhone: order.phone || '138****1234',
-      receiverAddress: order.address,
-      shipTime: order.shipTime || order.createTime,
+      receiverPhone: order.phone || order.customerPhone || '138****1234',
+      receiverAddress: order.address || order.shippingAddress || order.deliveryAddress || '地址未填写',
+      shipTime: order.shipTime || order.shippedAt || order.deliveryTime || order.createTime,
       estimatedTime: order.estimatedDeliveryTime || ''
     })
-    
+
     // 生成基于订单状态的物流轨迹
     const history = []
     const currentTime = new Date()
-    
+
     // 根据订单状态生成相应的物流轨迹
     if (order.status === 'shipped' || order.status === 'delivered') {
       // 已发货轨迹
       history.push({
-        time: order.shipTime || order.createTime,
+        time: order.shipTime || order.shippedAt || order.deliveryTime || order.createTime,
         status: '已发货',
-        description: `快件已从${order.expressCompany}发出，快递单号：${order.expressNo}`,
+        description: `快件已从${actualCompany}发出，快递单号：${actualTrackingNo}`,
         location: '发货地',
         operator: '物流员',
         type: 'warning'
       })
-      
+
       // 如果是已送达，添加更多轨迹
       if (order.status === 'delivered') {
-        const deliveryTime = new Date(order.shipTime || order.createTime)
+        const deliveryTime = new Date(order.shipTime || order.shippedAt || order.deliveryTime || order.createTime)
         deliveryTime.setDate(deliveryTime.getDate() + 1)
-        
+
         history.unshift({
           time: deliveryTime.toISOString().replace('T', ' ').substring(0, 19),
           status: '运输中',
@@ -412,31 +446,32 @@ const handleSearch = async () => {
           operator: '系统',
           type: 'info'
         })
-        
+
         deliveryTime.setDate(deliveryTime.getDate() + 1)
+        const receiverAddr = order.address || order.shippingAddress || order.deliveryAddress || '目的地'
         history.unshift({
           time: deliveryTime.toISOString().replace('T', ' ').substring(0, 19),
           status: '派送中',
-          description: `快件正在派送中，派送员正在配送至${order.address}`,
-          location: order.address.split('省')[0] + '省' || '目的地',
+          description: `快件正在派送中，派送员正在配送至${receiverAddr}`,
+          location: receiverAddr.split('省')[0] + '省' || '目的地',
           operator: '派送员',
           type: 'primary'
         })
-        
+
         deliveryTime.setHours(deliveryTime.getHours() + 4)
         history.unshift({
           time: deliveryTime.toISOString().replace('T', ' ').substring(0, 19),
           status: '已签收',
-          description: `您的快件已由${order.customerName}签收，感谢使用${order.expressCompany}`,
-          location: order.address,
+          description: `您的快件已由${order.customerName}签收，感谢使用${actualCompany}`,
+          location: receiverAddr,
           operator: order.customerName,
           type: 'success'
         })
       }
     }
-    
+
     trackingHistory.value = history
-    
+
     if (!isUnmounted.value) {
       ElMessage.success('查询成功')
     }
@@ -475,9 +510,9 @@ const handleReset = () => {
  */
 const refreshTracking = async () => {
   if (!trackingResult.trackingNo || isUnmounted.value) return
-  
+
   refreshLoading.value = true
-  
+
   try {
     // 模拟API调用
     await new Promise(resolve => {
@@ -487,7 +522,7 @@ const refreshTracking = async () => {
       }, 1000)
       timeoutIds.add(timeoutId)
     })
-    
+
     if (!isUnmounted.value) {
       ElMessage.success('轨迹已刷新')
     }
@@ -510,7 +545,7 @@ const handleViewDetail = () => {
     ElMessage.warning('请先查询物流轨迹')
     return
   }
-  
+
   safeNavigator.push(`/logistics/track/detail/${trackingResult.trackingNo}`)
 }
 
@@ -522,7 +557,7 @@ const handleExport = () => {
     ElMessage.warning('请先查询物流轨迹')
     return
   }
-  
+
   ElMessage.success('导出功能开发中...')
 }
 
@@ -534,11 +569,11 @@ const handleBatchQuery = async () => {
     ElMessage.warning('请输入物流单号')
     return
   }
-  
+
   if (isUnmounted.value) return
-  
+
   batchLoading.value = true
-  
+
   try {
     // 模拟API调用
     await new Promise(resolve => {
@@ -548,7 +583,7 @@ const handleBatchQuery = async () => {
       }, 2000)
       timeoutIds.add(timeoutId)
     })
-    
+
     if (!isUnmounted.value) {
       ElMessage.success('批量查询完成')
       batchDialogVisible.value = false
@@ -577,11 +612,11 @@ onMounted(() => {
   // 启动物流同步服务
   orderStore.setupLogisticsEventListener()
   orderStore.startLogisticsAutoSync()
-  
+
   // 检查路由参数并自动搜索
   const trackingNo = route.query.trackingNo as string
   const company = route.query.company as string
-  
+
   if (trackingNo) {
     searchForm.trackingNo = trackingNo
     if (company) {
@@ -590,13 +625,13 @@ onMounted(() => {
     // 自动执行搜索
     handleSearch()
   }
-  
+
   // 监听订单变化，当物流信息更新时自动刷新
   orderStore.$subscribe((mutation, state) => {
     // 如果当前正在查看某个快递单号，且该订单的物流信息发生变化，则自动刷新
-    if (trackingResult.trackingNo && mutation.events.some(event => 
-      event.key === 'expressNo' || 
-      event.key === 'expressCompany' || 
+    if (trackingResult.trackingNo && mutation.events.some(event =>
+      event.key === 'expressNo' ||
+      event.key === 'expressCompany' ||
       event.key === 'status'
     )) {
       const accessibleOrders = applyDataScopeControl(orderStore.orders)
@@ -613,7 +648,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   // 设置组件卸载状态
   isUnmounted.value = true
-  
+
   // 清理所有未完成的超时操作
   timeoutIds.forEach(timeoutId => {
     clearTimeout(timeoutId)
@@ -737,13 +772,13 @@ onBeforeUnmount(() => {
   .info-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .header-info {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
   }
-  
+
   .timeline-meta {
     flex-direction: column;
     gap: 4px;

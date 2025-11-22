@@ -12,6 +12,7 @@ export interface Role {
   color?: string
   level?: number
   status: 'active' | 'inactive'
+  roleType?: 'system' | 'business' | 'temporary' | 'custom'  // 角色类型
   permissions?: string[]
   createdAt: string
   updatedAt: string
@@ -23,10 +24,12 @@ export interface CreateRoleData {
   description?: string
   permissions?: string[]
   level?: number
+  roleType?: 'system' | 'business' | 'temporary' | 'custom'  // 角色类型
 }
 
 export interface UpdateRoleData extends Partial<CreateRoleData> {
   id: string
+  status?: 'active' | 'inactive'
 }
 
 class RoleApiService {
@@ -41,15 +44,36 @@ class RoleApiService {
       // 后端返回的数据结构是 { success: true, data: { roles: [...] } }
       return response.data.roles || []
     } catch (error: any) {
-      console.warn('[RoleAPI] API获取失败，使用默认角色数据')
+      console.warn('[RoleAPI] API获取失败，尝试从localStorage获取')
       console.warn('[RoleAPI] 错误详情:', {
         message: error?.message,
         status: error?.response?.status,
         statusText: error?.response?.statusText,
         data: error?.response?.data
       })
-      // 如果API失败，返回默认角色数据
-      return this.getDefaultRoles()
+
+      // 降级方案1: 优先从localStorage读取
+      try {
+        const savedRoles = localStorage.getItem('crm_roles')
+        if (savedRoles) {
+          const roles = JSON.parse(savedRoles)
+          console.log('[RoleAPI] 从localStorage获取角色成功:', roles.length)
+          return roles
+        }
+      } catch (localError) {
+        console.warn('[RoleAPI] localStorage读取失败:', localError)
+      }
+
+      // 降级方案2: 如果localStorage也没有,返回默认角色并保存到localStorage
+      console.log('[RoleAPI] 使用默认角色数据')
+      const defaultRoles = this.getDefaultRoles()
+      try {
+        localStorage.setItem('crm_roles', JSON.stringify(defaultRoles))
+        console.log('[RoleAPI] 默认角色已保存到localStorage')
+      } catch (saveError) {
+        console.warn('[RoleAPI] 保存默认角色到localStorage失败:', saveError)
+      }
+      return defaultRoles
     }
   }
 
@@ -76,8 +100,39 @@ class RoleApiService {
       console.log('[RoleAPI] 创建角色成功')
       return response.data
     } catch (error) {
-      console.error('[RoleAPI] 创建角色失败', error)
-      throw error
+      console.warn('[RoleAPI] API创建失败，使用localStorage创建角色', error)
+
+      // 降级方案:直接操作localStorage
+      try {
+        const roles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
+
+        // 生成新ID
+        const maxId = roles.reduce((max: number, role: any) => {
+          const id = parseInt(role.id)
+          return id > max ? id : max
+        }, 0)
+
+        const newRole: Role = {
+          id: String(maxId + 1),
+          name: data.name,
+          code: data.code,
+          description: data.description || '',
+          status: 'active',
+          roleType: data.roleType || 'custom',
+          permissions: data.permissions || [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+
+        roles.push(newRole)
+        localStorage.setItem('crm_roles', JSON.stringify(roles))
+
+        console.log('[RoleAPI] localStorage创建角色成功:', newRole)
+        return newRole
+      } catch (localError) {
+        console.error('[RoleAPI] localStorage创建角色也失败', localError)
+        throw localError
+      }
     }
   }
 
@@ -90,8 +145,38 @@ class RoleApiService {
       console.log(`[RoleAPI] 更新角色成功: ${data.id}`)
       return response.data
     } catch (error) {
-      console.error(`[RoleAPI] 更新角色失败: ${data.id}`, error)
-      throw error
+      console.warn(`[RoleAPI] API更新失败，使用localStorage更新角色: ${data.id}`, error)
+
+      // 降级方案:直接操作localStorage
+      try {
+        const roles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
+        const roleIndex = roles.findIndex((r: any) => r.id === data.id)
+
+        if (roleIndex === -1) {
+          throw new Error(`未找到角色 ID: ${data.id}`)
+        }
+
+        // 更新角色数据
+        const updatedRole: Role = {
+          ...roles[roleIndex],
+          name: data.name || roles[roleIndex].name,
+          code: data.code || roles[roleIndex].code,
+          description: data.description !== undefined ? data.description : roles[roleIndex].description,
+          status: data.status || roles[roleIndex].status,
+          roleType: data.roleType || roles[roleIndex].roleType,
+          permissions: data.permissions || roles[roleIndex].permissions,
+          updatedAt: new Date().toISOString()
+        }
+
+        roles[roleIndex] = updatedRole
+        localStorage.setItem('crm_roles', JSON.stringify(roles))
+
+        console.log('[RoleAPI] localStorage更新角色成功:', updatedRole)
+        return updatedRole
+      } catch (localError) {
+        console.error('[RoleAPI] localStorage更新角色也失败', localError)
+        throw localError
+      }
     }
   }
 
@@ -103,8 +188,23 @@ class RoleApiService {
       await apiService.delete(`/roles/${id}`)
       console.log(`[RoleAPI] 删除角色成功: ${id}`)
     } catch (error) {
-      console.error(`[RoleAPI] 删除角色失败: ${id}`, error)
-      throw error
+      console.warn(`[RoleAPI] API删除失败，使用localStorage删除角色: ${id}`, error)
+
+      // 降级方案:直接操作localStorage
+      try {
+        const roles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
+        const filteredRoles = roles.filter((r: any) => r.id !== id)
+
+        if (filteredRoles.length === roles.length) {
+          throw new Error(`未找到角色 ID: ${id}`)
+        }
+
+        localStorage.setItem('crm_roles', JSON.stringify(filteredRoles))
+        console.log('[RoleAPI] localStorage删除角色成功:', id)
+      } catch (localError) {
+        console.error('[RoleAPI] localStorage删除角色也失败', localError)
+        throw localError
+      }
     }
   }
 
@@ -137,13 +237,13 @@ class RoleApiService {
   /**
    * 获取角色统计信息
    */
-  async getRoleStats(): Promise<any> {
+  async getRoleStats(): Promise<unknown> {
     try {
       console.log('[RoleAPI] 开始获取角色统计...')
-      const response = await apiService.get<{ success: boolean; data: any }>('/roles/stats')
+      const response = await apiService.get<{ success: boolean; data: unknown }>('/roles/stats')
       console.log('[RoleAPI] 获取角色统计成功:', response)
       return response.data
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.warn('[RoleAPI] 获取角色统计失败，使用默认数据')
       console.warn('[RoleAPI] 错误详情:', {
         message: error?.message,
@@ -158,66 +258,72 @@ class RoleApiService {
 
   /**
    * 获取默认角色数据（当API不可用时使用）
+   * 注意: 角色编码必须与 src/config/defaultRolePermissions.ts 中的配置保持一致
    */
   private getDefaultRoles(): Role[] {
     return [
       {
         id: '1',
         name: '超级管理员',
-        code: 'SUPER_ADMIN',
+        code: 'super_admin',  // 与权限配置保持一致
         description: '系统超级管理员，拥有所有权限',
         color: 'danger',
         level: 1,
         status: 'active',
-        permissions: ['*'],
+        roleType: 'system',
+        permissions: [],  // 留空,从配置文件加载
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z'
       },
       {
         id: '2',
         name: '管理员',
-        code: 'ADMIN',
-        description: '系统管理员，拥有大部分管理权限',
+        code: 'admin',  // 与权限配置保持一致
+        description: '系统管理员，拥有所有权限',
         color: 'warning',
         level: 2,
         status: 'active',
-        permissions: ['system:manage', 'user:manage', 'department:manage'],
+        roleType: 'system',
+        permissions: [],  // 留空,从配置文件加载
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z'
       },
       {
         id: '3',
-        name: '经理',
-        code: 'MANAGER',
+        name: '部门经理',
+        code: 'department_manager',  // 与权限配置保持一致
         description: '部门经理，拥有部门管理权限',
         color: 'primary',
         level: 3,
         status: 'active',
-        permissions: ['department:manage', 'user:view', 'customer:manage', 'order:manage'],
+        roleType: 'business',
+        permissions: [],  // 留空,从配置文件加载
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z'
       },
       {
         id: '4',
         name: '销售员',
-        code: 'SALES',
+        code: 'sales_staff',  // 与权限配置保持一致
         description: '销售人员，负责客户和订单管理',
         color: 'success',
         level: 4,
         status: 'active',
-        permissions: ['customer:manage', 'order:create', 'order:view'],
+        roleType: 'business',
+        permissions: [],  // 留空,从配置文件加载
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z'
       },
       {
         id: '5',
         name: '客服',
-        code: 'CUSTOMER_SERVICE',
+        code: 'customer_service',  // 与权限配置保持一致
         description: '客户服务人员，负责客户支持',
         color: 'info',
         level: 5,
         status: 'active',
-        permissions: ['customer:view', 'order:view', 'support:manage'],
+        roleType: 'business',
+        permissions: [],  // 留空,从配置文件加载
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z'
       }
@@ -227,7 +333,7 @@ class RoleApiService {
   /**
    * 获取默认角色统计数据（当API不可用时使用）
    */
-  private getDefaultRoleStats(): any {
+  private getDefaultRoleStats(): unknown {
     return {
       total: 6,
       active: 5,

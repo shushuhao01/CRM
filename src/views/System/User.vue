@@ -6,18 +6,18 @@
         <h2>用户管理</h2>
       </div>
       <div class="header-actions">
-        <el-button 
+        <el-button
           v-if="canAddUser"
-          @click="handleAdd" 
-          type="primary" 
+          @click="handleAdd"
+          type="primary"
           :icon="Plus"
         >
           新增用户
         </el-button>
-        <el-button 
+        <el-button
           v-if="canAddUser"
-          @click="handleBatchImport" 
-          type="success" 
+          @click="handleBatchImport"
+          type="success"
           :icon="Upload"
         >
           批量导入
@@ -49,12 +49,12 @@
           <el-card class="stat-card">
             <div class="stat-content">
               <div class="stat-icon success-icon">
-                <el-icon><User /></el-icon>
+                <el-icon><CircleCheck /></el-icon>
               </div>
               <div class="stat-info">
-                <div class="stat-number success-number">{{ userStats.online }}</div>
-                <div class="stat-title">在线用户</div>
-                <div class="stat-desc">当前在线用户数量</div>
+                <div class="stat-number success-number">{{ userStats.active }}</div>
+                <div class="stat-title">在职人数</div>
+                <div class="stat-desc">当前在职员工数量</div>
               </div>
             </div>
           </el-card>
@@ -63,12 +63,12 @@
           <el-card class="stat-card">
             <div class="stat-content">
               <div class="stat-icon warning-icon">
-                <el-icon><Clock /></el-icon>
+                <el-icon><CircleClose /></el-icon>
               </div>
               <div class="stat-info">
-                <div class="stat-number warning-number">{{ userStats.todayNew }}</div>
-                <div class="stat-title">今日新增</div>
-                <div class="stat-desc">今天新增用户数量</div>
+                <div class="stat-number warning-number">{{ userStats.resigned }}</div>
+                <div class="stat-title">离职人数</div>
+                <div class="stat-desc">已离职员工数量</div>
               </div>
             </div>
           </el-card>
@@ -226,17 +226,34 @@
         <template #column-enableStatus="{ row }">
           <el-switch
             v-model="row.status"
-            :active-value="'active'"
-            :inactive-value="'inactive'"
+            active-value="active"
+            inactive-value="inactive"
             :loading="row.statusLoading"
-            @change="handleStatusToggle(row)"
+            :before-change="() => beforeStatusChange(row)"
           />
+        </template>
+
+        <!-- 在职状态开关插槽 -->
+        <template #column-employmentStatus="{ row }">
+          <el-tooltip
+            :content="row.employmentStatus === 'active' ? '当前：在职，点击设为离职' : '当前：离职，点击设为在职'"
+            placement="top"
+          >
+            <el-switch
+              v-model="row.employmentStatus"
+              active-value="active"
+              inactive-value="resigned"
+              :loading="row.employmentStatusLoading"
+              :before-change="() => beforeEmploymentStatusChange(row)"
+              class="employment-status-switch"
+            />
+          </el-tooltip>
         </template>
 
         <!-- 头像插槽 -->
         <template #column-avatar="{ row }">
-          <el-avatar 
-            :src="row.avatar || '/src/assets/images/default-avatar.svg'" 
+          <el-avatar
+            :src="row.avatar || '/src/assets/images/default-avatar.svg'"
             :size="40"
             :style="{ backgroundColor: row.avatar ? 'transparent' : '#409eff' }"
           >
@@ -256,7 +273,7 @@
 
         <!-- 手机号插槽 -->
         <template #column-phone="{ row }">
-          {{ maskPhone(row.phone) }}
+          {{ displaySensitiveInfoNew(row.phone, 'phone') }}
         </template>
 
         <!-- 角色插槽 -->
@@ -278,25 +295,25 @@
           <el-button @click="handleView(row)" type="primary" size="small" link>
             查看
           </el-button>
-          <el-button 
+          <el-button
             v-if="canEditUser"
-            @click="handleEdit(row)" 
-            type="primary" 
-            size="small" 
+            @click="handleEdit(row)"
+            type="primary"
+            size="small"
             link
           >
             编辑
           </el-button>
-          <el-button 
+          <el-button
             v-if="canResetPassword"
-            @click="handleResetPassword(row)" 
-            type="warning" 
-            size="small" 
+            @click="handleResetPassword(row)"
+            type="warning"
+            size="small"
             link
           >
             重置密码
           </el-button>
-          <el-dropdown 
+          <el-dropdown
             v-if="canEditUser || canManagePermissions || canViewLogs || canDeleteUser"
             @command="(cmd) => handleDropdownCommand(cmd, row)"
           >
@@ -305,22 +322,22 @@
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item 
+                <el-dropdown-item
                   v-if="canManagePermissions"
                   command="permissions"
                 >
                   权限设置
                 </el-dropdown-item>
-                <el-dropdown-item 
+                <el-dropdown-item
                   v-if="canViewLogs"
                   command="logs"
                 >
                   操作日志
                 </el-dropdown-item>
-                <el-dropdown-item 
+                <el-dropdown-item
                   v-if="canDeleteUser"
-                  command="delete" 
-                  divided 
+                  command="delete"
+                  divided
                   class="danger-item"
                 >
                   删除
@@ -423,10 +440,40 @@
 
         <el-row :gutter="20">
           <el-col :span="12">
+            <el-form-item label="职位" prop="position">
+              <el-select
+                v-model="userForm.position"
+                placeholder="请选择或输入职位"
+                filterable
+                allow-create
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="position in commonPositions"
+                  :key="position"
+                  :label="position"
+                  :value="position"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="工号" prop="employeeNumber">
+              <el-input
+                v-model="userForm.employeeNumber"
+                placeholder="请输入工号"
+                clearable
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
             <el-form-item label="状态" prop="status">
               <el-radio-group v-model="userForm.status">
-                <el-radio value="active">启用</el-radio>
-                <el-radio value="inactive">禁用</el-radio>
+                <el-radio label="active">启用</el-radio>
+                <el-radio label="inactive">禁用</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -484,7 +531,7 @@
             {{ displaySensitiveInfoNew(currentUser.email, SensitiveInfoType.EMAIL) }}
           </el-descriptions-item>
           <el-descriptions-item label="手机号">
-            {{ maskPhone(currentUser.phone) }}
+            {{ displaySensitiveInfoNew(currentUser.phone, 'phone') }}
           </el-descriptions-item>
           <el-descriptions-item label="部门">
             <el-tag v-if="currentUser.departmentName" type="primary">
@@ -541,9 +588,9 @@
             </el-descriptions-item>
           </el-descriptions>
         </div>
-        
+
         <el-divider />
-        
+
         <div class="permission-content">
           <el-alert
             title="权限同步机制说明"
@@ -558,22 +605,23 @@
             <p v-else>• 只有超级管理员可以修改个人权限设置</p>
             <p>• 保存时会自动合并角色权限和个人权限，确保权限一致性</p>
           </el-alert>
-          
+
           <el-tabs v-model="activePermissionTab" class="permission-tabs">
             <el-tab-pane label="角色权限" name="role">
               <div class="role-permissions">
                 <el-tree
+                  ref="rolePermissionTreeRef"
                   :data="rolePermissions"
                   show-checkbox
                   node-key="id"
-                  :default-checked-keys="[]"
+                  :default-checked-keys="roleCheckedPermissions"
                   :props="{ children: 'children', label: 'name' }"
                   :check-strictly="false"
                   disabled
                 />
                 <div class="permission-note">
                   <el-icon><InfoFilled /></el-icon>
-                  角色权限由系统管理员在角色管理中配置，此处仅供查看
+                  角色权限由系统管理员在角色管理中配置，此处仅供查看,与系统管理-角色权限保持同步
                 </div>
               </div>
             </el-tab-pane>
@@ -596,15 +644,15 @@
                   @check="handlePermissionCheck"
                 />
                 <div class="permission-actions">
-                  <el-button 
+                  <el-button
                     @click="handleResetPermissions"
                     :disabled="!userStore.isSuperAdmin"
                   >
                     重置到角色默认权限
                   </el-button>
-                  <el-button 
-                    type="primary" 
-                    @click="handleSavePermissions" 
+                  <el-button
+                    type="primary"
+                    @click="handleSavePermissions"
                     :loading="permissionLoading"
                     :disabled="!userStore.isSuperAdmin"
                   >
@@ -643,7 +691,7 @@
             <el-button size="small" @click="handleExportLogs" :icon="Download">导出</el-button>
           </div>
         </div>
-        
+
         <el-table
           :data="userLogs"
           :loading="logsLoading"
@@ -670,7 +718,7 @@
             </template>
           </el-table-column>
         </el-table>
-        
+
         <div class="logs-pagination">
           <el-pagination
             v-model:current-page="logsPagination.page"
@@ -717,6 +765,10 @@
                 <li>邮箱：有效的邮箱地址</li>
                 <li>手机号：11位手机号码</li>
                 <li>角色：超级管理员、管理员、销售员、客服</li>
+                <li>部门：部门名称，可选</li>
+                <li>职位：用户职位，可选</li>
+                <li>工号：员工工号，可选</li>
+                <li>密码：登录密码，6-20个字符</li>
                 <li>备注：可选，用户备注信息</li>
               </ul>
             </div>
@@ -809,6 +861,8 @@
                 </el-table-column>
                 <el-table-column prop="role" label="角色" width="80" />
                 <el-table-column prop="department" label="部门" width="100" />
+                <el-table-column prop="position" label="职位" width="120" />
+                <el-table-column prop="employeeNumber" label="工号" width="120" />
                 <el-table-column label="密码" width="100">
                   <template #default="{ row }">
                     <span v-if="row.password">{{ row.password.replace(/./g, '*') }}</span>
@@ -841,7 +895,7 @@
                 </el-table-column>
               </el-table>
             </div>
-            
+
             <!-- 验证统计 -->
             <div class="validation-summary">
               <div class="summary-item valid">
@@ -868,17 +922,17 @@
           <div class="footer-right">
             <el-button @click="closeBatchImport">取消</el-button>
             <el-button v-if="importStep > 0" @click="prevStep">上一步</el-button>
-            <el-button 
-              v-if="importStep < 3" 
-              type="primary" 
+            <el-button
+              v-if="importStep < 3"
+              type="primary"
               @click="nextStep"
               :disabled="importStep === 2 && !uploadFile"
             >
               下一步
             </el-button>
-            <el-button 
-              v-if="importStep === 3" 
-              type="primary" 
+            <el-button
+              v-if="importStep === 3"
+              type="primary"
               @click="confirmImport"
               :loading="importing"
               :disabled="validData.length === 0"
@@ -897,7 +951,6 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useDepartmentStore } from '@/stores/department'
-import { maskPhone } from '@/utils/phone'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { passwordService } from '@/services/passwordService'
 import { userApiService } from '@/services/userApiService'
@@ -926,6 +979,8 @@ import {
   InfoFilled,
   WarningFilled,
   QuestionFilled,
+  CircleCheck,
+  CircleClose,
   CircleCheckFilled
 } from '@element-plus/icons-vue'
 
@@ -939,6 +994,8 @@ interface UserData {
   roleId: string
   departmentId?: string
   departmentName?: string
+  position?: string
+  employeeNumber?: string
   status: string
   password?: string
   remark?: string
@@ -946,6 +1003,12 @@ interface UserData {
   lastLoginTime?: string
   avatar?: string
   statusLoading?: boolean
+  employmentStatus?: 'active' | 'resigned' // 在职状态
+  employmentStatusLoading?: boolean
+  resignedDate?: string // 离职日期
+  roleName?: string
+  isOnline?: boolean
+  loginCount?: number
 }
 
 interface UploadFile {
@@ -963,6 +1026,8 @@ interface ImportUserData {
   phone: string
   role: string
   department?: string
+  position?: string
+  employeeNumber?: string
   password: string
   remark: string
   errors: string[]
@@ -993,8 +1058,8 @@ const currentUser = ref(null)
 // 用户统计
 const userStats = ref({
   total: 0,
-  online: 0,
-  todayNew: 0,
+  active: 0, // 在职人数
+  resigned: 0, // 离职人数
   monthNew: 0
 })
 
@@ -1017,6 +1082,8 @@ const userForm = reactive({
   phone: '',
   roleId: '',
   departmentId: '',
+  position: '',
+  employeeNumber: '',
   status: 'active',
   password: '',
   remark: ''
@@ -1082,8 +1149,11 @@ const permissionDialogVisible = ref(false)
 const permissionLoading = ref(false)
 const activePermissionTab = ref('role')
 const rolePermissions = ref([])
+const roleCheckedPermissions = ref([]) // 角色默认选中的权限
+const rolePermissionTreeRef = ref(null) // 角色权限树ref
 const personalPermissions = ref([])
 const userPersonalPermissions = ref([])
+const personalPermissionTree = ref(null) // 个人权限树ref
 
 // 操作日志相关数据
 const logsDialogVisible = ref(false)
@@ -1128,6 +1198,61 @@ const canBatchOperation = computed(() => {
   return userStore.isAdmin || userStore.isManager
 })
 
+// 常用职位列表
+const commonPositions = computed(() => {
+  try {
+    // 基础职位列表
+    const basePositions = [
+      '总经理',
+      '副总经理',
+      '部门经理',
+      '主管',
+      '组长',
+      '专员',
+      '助理',
+      '秘书',
+      '销售经理',
+      '销售专员',
+      '客服主管',
+      '客服专员',
+      '财务经理',
+      '会计',
+      '出纳',
+      '物流主管',
+      '物流专员',
+      '审核员',
+      '质检员'
+    ]
+
+    // 从localStorage获取真实用户的职位
+    const usersStr = localStorage.getItem('crm_mock_users')
+    if (usersStr) {
+      const users = JSON.parse(usersStr)
+      const realPositions = users
+        .map((user: unknown) => user.position)
+        .filter((pos: string) => pos && pos.trim())
+        .filter((pos: string, index: number, self: string[]) => self.indexOf(pos) === index) // 去重
+
+      // 合并基础职位和真实职位，去重
+      return [...new Set([...basePositions, ...realPositions])]
+    }
+
+    return basePositions
+  } catch (error) {
+    console.error('获取职位列表失败:', error)
+    return [
+      '总经理',
+      '副总经理',
+      '部门经理',
+      '主管',
+      '组长',
+      '专员',
+      '助理',
+      '秘书'
+    ]
+  }
+})
+
 // 表格列配置
 const tableColumns = computed(() => [
   {
@@ -1135,7 +1260,16 @@ const tableColumns = computed(() => [
     label: '启用状态',
     width: 100,
     visible: true,
-    slot: true
+    slot: true,
+    align: 'center'
+  },
+  {
+    prop: 'employmentStatus',
+    label: '在职状态',
+    width: 90,
+    visible: true,
+    slot: true,
+    align: 'center'
   },
   {
     prop: 'avatar',
@@ -1152,6 +1286,20 @@ const tableColumns = computed(() => [
     sortable: true
   },
   {
+    prop: 'realName',
+    label: '姓名',
+    width: 100,
+    visible: true,
+    sortable: true
+  },
+  {
+    prop: 'role',
+    label: '角色',
+    width: 120,
+    visible: true,
+    slot: true
+  },
+  {
     prop: 'department',
     label: '部门',
     width: 120,
@@ -1159,11 +1307,16 @@ const tableColumns = computed(() => [
     slot: true
   },
   {
-    prop: 'realName',
-    label: '姓名',
-    width: 100,
-    visible: true,
-    sortable: true
+    prop: 'employeeNumber',
+    label: '工号',
+    width: 120,
+    visible: true
+  },
+  {
+    prop: 'position',
+    label: '职位',
+    width: 120,
+    visible: true
   },
   {
     prop: 'email',
@@ -1175,13 +1328,6 @@ const tableColumns = computed(() => [
   {
     prop: 'phone',
     label: '手机号',
-    width: 120,
-    visible: true,
-    slot: true
-  },
-  {
-    prop: 'role',
-    label: '角色',
     width: 120,
     visible: true,
     slot: true
@@ -1212,9 +1358,18 @@ const tableColumns = computed(() => [
 // 方法定义
 /**
  * 获取角色名称
+ * 【批次198修复】支持通过code或id查找角色
  */
 const getRoleName = (roleId: string) => {
-  const role = roleOptions.value.find(r => r.id === roleId)
+  if (!roleId) return '未知'
+
+  // 尝试通过id、code或roleId匹配角色
+  const role = roleOptions.value.find(r =>
+    r.id === roleId ||
+    r.code === roleId ||
+    String(r.id) === String(roleId)
+  )
+
   return role?.name || '未知'
 }
 
@@ -1223,19 +1378,19 @@ const getRoleName = (roleId: string) => {
  */
 const handleRoleChange = (roleId: string) => {
   if (!roleId) return
-  
+
   // 获取选中的角色信息
   const selectedRole = roleOptions.value.find(r => r.id === roleId)
   if (!selectedRole) return
-  
+
   console.log(`角色变更为: ${selectedRole.name} (${selectedRole.code})`)
-  
+
   // 如果当前正在权限设置对话框中，更新权限显示
   if (permissionDialogVisible.value && currentUser.value) {
     // 更新当前用户的角色信息
     currentUser.value.role = selectedRole.code
     currentUser.value.roleId = roleId
-    
+
     // 重新加载权限数据
     Promise.all([
       loadRolePermissions(roleId),
@@ -1252,9 +1407,18 @@ const handleRoleChange = (roleId: string) => {
 
 /**
  * 获取角色颜色
+ * 【批次198修复】支持通过code或id查找角色
  */
 const getRoleColor = (roleId: string) => {
-  const role = roleOptions.value.find(r => r.id === roleId)
+  if (!roleId) return ''
+
+  // 尝试通过id、code或roleId匹配角色
+  const role = roleOptions.value.find(r =>
+    r.id === roleId ||
+    r.code === roleId ||
+    String(r.id) === String(roleId)
+  )
+
   return role?.color || ''
 }
 
@@ -1271,18 +1435,25 @@ const handleAdd = () => {
  * 编辑用户
  */
 const handleEdit = (row: UserData) => {
+  console.log('[User] 编辑用户:', row)
   isEdit.value = true
+
+  // 确保使用正确的字段名
   Object.assign(userForm, {
     id: row.id,
-    username: row.username,
-    realName: row.realName,
-    email: row.email,
-    phone: row.phone,
-    roleId: row.roleId,
+    username: row.username || row.name || '',
+    realName: row.realName || row.name || row.username || '',
+    email: row.email || '',
+    phone: row.phone || '',
+    roleId: row.roleId || row.role || '',
     departmentId: row.departmentId || '',
-    status: row.status,
-    remark: row.remark
+    position: row.position || '',
+    employeeNumber: row.employeeNumber || '',
+    status: row.status || 'active',
+    remark: row.remark || ''
   })
+
+  console.log('[User] 编辑表单数据:', userForm)
   userDialogVisible.value = true
 }
 
@@ -1308,10 +1479,10 @@ const handleResetPassword = async (row: UserData) => {
         type: 'warning'
       }
     )
-    
+
     // 使用密码服务重置密码
     const result = await passwordService.resetPasswordByAdmin(row.id, userStore.currentUser?.id || '')
-    
+
     if (result.success) {
       // 显示新密码给管理员
       await ElMessageBox.alert(
@@ -1325,9 +1496,9 @@ const handleResetPassword = async (row: UserData) => {
           closeOnPressEscape: false
         }
       )
-      
+
       ElMessage.success('密码重置成功')
-      
+
       // 刷新用户列表以更新状态
       await loadUserList()
     } else {
@@ -1365,7 +1536,7 @@ const handleDropdownCommand = (command: string, row: UserData) => {
 const handlePermissions = async (row: UserData) => {
   currentUser.value = row
   activePermissionTab.value = 'role'
-  
+
   try {
     // 加载角色权限和个人权限数据
     await Promise.all([
@@ -1373,10 +1544,32 @@ const handlePermissions = async (row: UserData) => {
       loadPersonalPermissions(),
       loadUserPersonalPermissions(row.id)
     ])
-    
+
     permissionDialogVisible.value = true
+
+    // 等待对话框和权限树渲染完成后设置选中状态
+    setTimeout(() => {
+      console.log('[User] 设置角色权限树选中状态')
+      console.log('[User] 角色权限数量:', roleCheckedPermissions.value.length)
+      console.log('[User] 角色权限列表:', roleCheckedPermissions.value)
+
+      if (rolePermissionTreeRef.value && roleCheckedPermissions.value.length > 0) {
+        try {
+          rolePermissionTreeRef.value.setCheckedKeys(roleCheckedPermissions.value)
+          console.log('[User] ✅ 角色权限树选中状态设置成功')
+
+          // 验证设置结果
+          const checkedKeys = rolePermissionTreeRef.value.getCheckedKeys()
+          console.log('[User] ✅ 验证选中结果:', checkedKeys)
+        } catch (error) {
+          console.error('[User] ❌ 设置角色权限树选中状态失败:', error)
+        }
+      } else {
+        console.warn('[User] ⚠️ 角色权限树引用未找到或权限列表为空')
+      }
+    }, 500)
   } catch (error) {
-    console.error('加载权限数据失败:', error)
+    console.error('[User] 加载权限数据失败:', error)
     ElMessage.error('加载权限数据失败')
   }
 }
@@ -1389,7 +1582,7 @@ const handleLogs = async (row: UserData) => {
   logDateRange.value = []
   logsPagination.page = 1
   logsPagination.size = 20
-  
+
   try {
     await loadUserLogs(row.id)
     logsDialogVisible.value = true
@@ -1400,49 +1593,32 @@ const handleLogs = async (row: UserData) => {
 }
 
 /**
- * 加载角色权限 - 使用统一权限服务
+ * 加载角色权限 - 使用统一权限服务,显示该角色的默认权限
  */
 const loadRolePermissions = async (roleId: string) => {
   try {
-    // 使用统一权限服务获取角色权限
-    const response = await permissionService.getRolePermissions(roleId)
-    
-    // 转换权限数据格式为树形结构
-    const permissionMap = new Map()
-    response.permissions.forEach(permission => {
-      if (!permission.parentId) {
-        // 顶级权限
-        if (!permissionMap.has(permission.id)) {
-          permissionMap.set(permission.id, {
-            id: permission.id,
-            name: permission.name,
-            children: []
-          })
-        }
-      } else {
-        // 子权限
-        if (!permissionMap.has(permission.parentId)) {
-          permissionMap.set(permission.parentId, {
-            id: permission.parentId,
-            name: permission.module,
-            children: []
-          })
-        }
-        permissionMap.get(permission.parentId).children.push({
-          id: permission.id,
-          name: permission.name
-        })
-      }
-    })
-    
-    rolePermissions.value = Array.from(permissionMap.values())
-    console.log('角色权限加载成功:', response.roleName)
+    console.log('[User] 加载角色权限:', roleId)
+
+    // 获取所有权限树结构
+    const allPermissions = permissionService.getAllPermissions()
+
+    // 获取该角色的默认权限ID列表
+    const roleDefaultPermissions = permissionService.getRoleDefaultPermissions(roleId)
+
+    console.log('[User] 角色默认权限:', roleDefaultPermissions)
+
+    // 设置权限树数据和默认选中
+    rolePermissions.value = allPermissions
+    roleCheckedPermissions.value = roleDefaultPermissions
+
+    console.log('[User] 角色权限加载成功,权限数:', roleDefaultPermissions.length)
   } catch (error) {
-    console.error('加载角色权限失败:', error)
-    
+    console.error('[User] 加载角色权限失败:', error)
+
     // 使用统一权限服务的默认权限树
     const allPermissions = permissionService.getAllPermissions()
     rolePermissions.value = allPermissions
+    roleCheckedPermissions.value = []
   }
 }
 
@@ -1453,7 +1629,7 @@ const loadPersonalPermissions = async () => {
   try {
     // 使用统一权限服务获取所有权限
     const allPermissions = permissionService.getAllPermissions()
-    
+
     // 标记角色默认权限为禁用状态
     if (currentUser.value && currentUser.value.role) {
       const roleDefaultPermissions = permissionService.getRoleDefaultPermissions(currentUser.value.role)
@@ -1461,11 +1637,11 @@ const loadPersonalPermissions = async () => {
     } else {
       personalPermissions.value = allPermissions
     }
-    
+
     console.log('个人权限选项加载成功')
   } catch (error) {
     console.error('加载个人权限选项失败:', error)
-    
+
     // 使用统一权限服务的默认权限树
     const allPermissions = permissionService.getAllPermissions()
     personalPermissions.value = allPermissions
@@ -1479,13 +1655,13 @@ const loadUserPersonalPermissions = async (userId: string) => {
   try {
     // 使用统一权限服务获取用户个人权限
     const response = await permissionService.getUserPersonalPermissions(parseInt(userId))
-    
+
     // 提取权限ID列表
     userPersonalPermissions.value = response.permissions.map(permission => permission.id)
     console.log('用户个人权限加载成功:', userId)
   } catch (error) {
     console.error('加载用户个人权限失败:', error)
-    
+
     // 根据用户角色获取预设权限
     const user = users.value.find(u => u.id === parseInt(userId))
     if (user && user.role) {
@@ -1505,20 +1681,24 @@ const loadUserPersonalPermissions = async (userId: string) => {
  * @returns {Array} 标记后的权限树
  */
 const markRolePermissionsDisabled = (permissions, roleDefaultPermissions) => {
+  if (!permissions || !Array.isArray(permissions)) {
+    return []
+  }
+
   const markPermission = (permission) => {
     const isRoleDefault = roleDefaultPermissions.includes(permission.id)
     const markedPermission = {
       ...permission,
       disabled: isRoleDefault
     }
-    
+
     if (permission.children && permission.children.length > 0) {
       markedPermission.children = permission.children.map(markPermission)
     }
-    
+
     return markedPermission
   }
-  
+
   return permissions.map(markPermission)
 }
 
@@ -1538,7 +1718,7 @@ const loadUserLogs = async (userId: string) => {
         endDate: logDateRange.value?.[1]
       }
     )
-    
+
     // 转换日志数据格式
     userLogs.value = response.data.map(log => ({
       time: log.createdAt,
@@ -1549,12 +1729,12 @@ const loadUserLogs = async (userId: string) => {
       userAgent: log.userAgent,
       result: 'success' // API返回的日志默认为成功
     }))
-    
+
     logsPagination.total = response.total
     console.log('用户操作日志加载成功:', userId)
   } catch (error) {
     console.error('加载操作日志失败:', error)
-    
+
     // 降级到本地模拟数据
     const mockLogs = [
       {
@@ -1594,7 +1774,7 @@ const loadUserLogs = async (userId: string) => {
         result: 'failed'
       }
     ]
-    
+
     userLogs.value = mockLogs
     logsPagination.total = mockLogs.length
   } finally {
@@ -1605,38 +1785,38 @@ const loadUserLogs = async (userId: string) => {
 /**
  * 权限选择处理 - 实现权限同步机制
  */
-const handlePermissionCheck = (data: any, checked: any) => {
+const handlePermissionCheck = (data: unknown, checked: unknown) => {
   // 检查是否为超级管理员
   if (!userStore.isSuperAdmin) {
     ElMessage.warning('只有超级管理员可以修改个人权限设置')
     return
   }
-  
+
   console.log('权限选择变化:', data, checked)
-  
+
   // 获取当前选中的权限
   const checkedKeys = checked.checkedKeys || []
   const halfCheckedKeys = checked.halfCheckedKeys || []
-  
+
   // 如果当前用户有角色，检查是否与角色权限冲突
   if (currentUser.value && currentUser.value.role) {
     const roleDefaultPermissions = permissionService.getRoleDefaultPermissions(currentUser.value.role)
-    
+
     // 检查是否试图移除角色默认权限
     const removedRolePermissions = roleDefaultPermissions.filter(
       permission => !checkedKeys.includes(permission) && !halfCheckedKeys.includes(permission)
     )
-    
+
     if (removedRolePermissions.length > 0) {
       ElMessage.warning('不能移除角色默认权限，这些权限将自动保留')
-      
+
       // 重新加载用户权限，恢复角色默认权限
       setTimeout(() => {
         loadUserPersonalPermissions(currentUser.value!.id)
       }, 100)
     }
   }
-  
+
   // 实时更新用户个人权限数组
   userPersonalPermissions.value = [...checkedKeys]
 }
@@ -1650,12 +1830,12 @@ const handleResetPermissions = () => {
     ElMessage.warning('只有超级管理员可以修改个人权限设置')
     return
   }
-  
+
   if (currentUser.value) {
     // 获取角色默认权限
     const roleDefaultPermissions = permissionService.getRoleDefaultPermissions(currentUser.value.role)
     userPersonalPermissions.value = [...roleDefaultPermissions]
-    
+
     ElMessage.success('权限已重置为角色默认权限')
     console.log(`用户 ${currentUser.value.realName} 权限已重置为角色 ${currentUser.value.role} 的默认权限`)
   }
@@ -1666,38 +1846,38 @@ const handleResetPermissions = () => {
  */
 const handleSavePermissions = async () => {
   if (!currentUser.value) return
-  
+
   // 检查是否为超级管理员
   if (!userStore.isSuperAdmin) {
     ElMessage.warning('只有超级管理员可以修改个人权限设置')
     return
   }
-  
+
   permissionLoading.value = true
   try {
     // 获取选中的权限
-    const checkedKeys = (document.querySelector('.personal-permissions .el-tree') as any)?.getCheckedKeys() || []
-    
+    const checkedKeys = (document.querySelector('.personal-permissions .el-tree') as unknown)?.getCheckedKeys() || []
+
     // 确保包含角色默认权限
     const roleDefaultPermissions = permissionService.getRoleDefaultPermissions(currentUser.value.role)
     const finalPermissions = [...new Set([...roleDefaultPermissions, ...checkedKeys])]
-    
+
     // 使用统一权限服务保存用户个人权限
     await permissionService.saveUserPersonalPermissions(
       parseInt(currentUser.value.id),
       finalPermissions
     )
-    
+
     ElMessage.success('权限保存成功')
     permissionDialogVisible.value = false
     console.log('用户权限保存成功:', currentUser.value.id, '最终权限:', finalPermissions)
-    
+
     // 刷新用户列表以显示最新权限状态
     await loadUsers()
   } catch (error) {
     console.error('保存权限失败:', error)
     ElMessage.error('保存权限失败')
-    
+
     // 保持对话框打开，让用户重试
   } finally {
     permissionLoading.value = false
@@ -1757,10 +1937,10 @@ const handleRefreshLogs = () => {
  */
 const handleExportLogs = async () => {
   if (!currentUser.value) return
-  
+
   try {
     ElMessage.info('正在导出日志，请稍候...')
-    
+
     // 使用真实API调用导出用户操作日志
     const blob = await rolePermissionService.exportUserOperationLogs(
       parseInt(currentUser.value.id),
@@ -1770,7 +1950,7 @@ const handleExportLogs = async () => {
         format: 'excel'
       }
     )
-    
+
     // 创建下载链接
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -1780,7 +1960,7 @@ const handleExportLogs = async () => {
     link.click()
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
-    
+
     ElMessage.success('日志导出成功')
     console.log('用户操作日志导出成功:', currentUser.value.id)
   } catch (error) {
@@ -1813,9 +1993,11 @@ const handleLogsPageChange = (page: number) => {
  * 删除用户
  */
 const handleDelete = async (row: UserData) => {
+  const userName = row.realName || row.name || row.username || '该用户'
+
   try {
     await ElMessageBox.confirm(
-      `确定要删除用户"${row.realName}"吗？删除后不可恢复！`,
+      `确定要删除用户"${userName}"吗？删除后不可恢复！`,
       '确认删除',
       {
         confirmButtonText: '确定',
@@ -1823,21 +2005,39 @@ const handleDelete = async (row: UserData) => {
         type: 'warning'
       }
     )
-    
-    try {
-      await userApiService.deleteUser(row.id)
-      // 清理用户关联数据
-      await UserDataSyncService.cleanupUserData(row.id.toString())
-      ElMessage.success('删除成功')
-    } catch (error) {
-      console.error('删除用户失败:', error)
-      ElMessage.error('删除用户失败，请稍后重试')
-      return
+
+    console.log('[User] 开始删除用户:', row.id, userName)
+
+    // 直接操作localStorage删除用户
+    const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+    const userIndex = users.findIndex((u: unknown) => String(u.id) === String(row.id))
+
+    if (userIndex !== -1) {
+      users.splice(userIndex, 1)
+      localStorage.setItem('crm_mock_users', JSON.stringify(users))
+      console.log('[User] 已从 crm_mock_users 删除')
     }
-    
+
+    // 同步删除 userDatabase
+    const userDatabase = JSON.parse(localStorage.getItem('userDatabase') || '[]')
+    const dbIndex = userDatabase.findIndex((u: unknown) => String(u.id) === String(row.id))
+
+    if (dbIndex !== -1) {
+      userDatabase.splice(dbIndex, 1)
+      localStorage.setItem('userDatabase', JSON.stringify(userDatabase))
+      console.log('[User] 已从 userDatabase 删除')
+    }
+
+    ElMessage.success('删除成功')
+
+    // 重新加载用户列表
     await loadUserList()
-  } catch (_error) {
-    // 用户取消操作
+    console.log('[User] 用户列表已重新加载')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('[User] 删除用户失败:', error)
+      ElMessage.error('删除失败')
+    }
   }
 }
 
@@ -1845,6 +2045,11 @@ const handleDelete = async (row: UserData) => {
  * 批量删除
  */
 const handleBatchDelete = async () => {
+  if (!selectedUsers.value || selectedUsers.value.length === 0) {
+    ElMessage.warning('请先选择要删除的用户')
+    return
+  }
+
   try {
     await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedUsers.value.length} 个用户吗？删除后不可恢复！`,
@@ -1855,9 +2060,9 @@ const handleBatchDelete = async () => {
         type: 'warning'
       }
     )
-    
+
     const userIds = selectedUsers.value.map(user => user.id)
-    
+
     try {
       await userApiService.batchDeleteUsers(userIds)
       // 批量清理用户关联数据
@@ -1868,7 +2073,7 @@ const handleBatchDelete = async () => {
       ElMessage.error('批量删除用户失败，请稍后重试')
       return
     }
-    
+
     selectedUsers.value = []
     await loadUserList()
   } catch (_error) {
@@ -1877,36 +2082,32 @@ const handleBatchDelete = async () => {
 }
 
 /**
- * 状态切换
+ * 状态切换前的检查和处理
  */
-const handleStatusToggle = async (row: UserData) => {
-  const action = row.status === 'active' ? '禁用' : '启用'
-  const newStatus = row.status === 'active' ? 'inactive' : 'active'
+const beforeStatusChange = async (row: UserData) => {
   const originalStatus = row.status
-  
+  const newStatus = originalStatus === 'active' ? 'inactive' : 'active'
+  const action = newStatus === 'active' ? '启用' : '禁用'
+
   try {
     // 设置加载状态
     row.statusLoading = true
-    
-    // 先更新UI状态
-    row.status = newStatus
-    
-    try {
-      await userApiService.updateUserStatus(row.id, newStatus)
-      ElMessage.success(`${action}用户成功`)
-    } catch (error) {
-      console.error('更新用户状态失败:', error)
-      // 如果API调用失败，恢复原状态
-      row.status = originalStatus
-      ElMessage.error(`${action}用户失败，请稍后重试`)
-    }
-    
+
+    // 调用API更新状态
+    await userApiService.updateUserStatus(row.id, newStatus)
+
+    ElMessage.success(`${action}用户成功`)
+
     // 更新统计数据
     await loadUserStats()
+
+    // 返回true允许状态切换
+    return true
   } catch (error) {
-    // 如果失败，恢复原状态
-    row.status = originalStatus
-    ElMessage.error(`${action}用户失败`)
+    console.error('更新用户状态失败:', error)
+    ElMessage.error(`${action}用户失败，请稍后重试`)
+    // 返回false阻止状态切换
+    return false
   } finally {
     // 清除加载状态
     row.statusLoading = false
@@ -1914,11 +2115,71 @@ const handleStatusToggle = async (row: UserData) => {
 }
 
 /**
+ * 在职状态切换前的检查和处理
+ */
+const beforeEmploymentStatusChange = async (row: UserData) => {
+  const originalStatus = row.employmentStatus || 'active'
+  const newStatus = originalStatus === 'active' ? 'resigned' : 'active'
+  const action = newStatus === 'active' ? '设为在职' : '设为离职'
+
+  try {
+    // 确认操作
+    await ElMessageBox.confirm(
+      newStatus === 'resigned'
+        ? `确定要将用户 ${row.realName || row.username} 设为离职状态吗？离职后该账号将无法登录，但历史数据仍然可见。`
+        : `确定要将用户 ${row.realName || row.username} 设为在职状态吗？`,
+      `确认${action}`,
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    // 设置加载状态
+    row.employmentStatusLoading = true
+
+    // 调用API更新在职状态
+    await userApiService.updateEmploymentStatus(row.id, newStatus)
+
+    // 如果设为离职，记录离职日期
+    if (newStatus === 'resigned') {
+      row.resignedDate = new Date().toISOString().split('T')[0]
+    } else {
+      row.resignedDate = undefined
+    }
+
+    ElMessage.success(`${action}成功`)
+
+    // 更新统计数据
+    await loadUserStats()
+
+    // 返回true允许状态切换
+    return true
+  } catch (error: unknown) {
+    if (error !== 'cancel') {
+      console.error('更新在职状态失败:', error)
+      ElMessage.error(`${action}失败，请稍后重试`)
+    }
+    // 返回false阻止状态切换
+    return false
+  } finally {
+    // 清除加载状态
+    row.employmentStatusLoading = false
+  }
+}
+
+/**
  * 批量状态操作
  */
 const handleBatchStatus = async (status: string) => {
+  if (!selectedUsers.value || selectedUsers.value.length === 0) {
+    ElMessage.warning('请先选择要操作的用户')
+    return
+  }
+
   const action = status === 'active' ? '启用' : '禁用'
-  
+
   try {
     await ElMessageBox.confirm(
       `确定要${action}选中的 ${selectedUsers.value.length} 个用户吗？`,
@@ -1929,9 +2190,9 @@ const handleBatchStatus = async (status: string) => {
         type: 'warning'
       }
     )
-    
+
     const userIds = selectedUsers.value.map(user => user.id)
-    
+
     try {
       await userApiService.batchUpdateUserStatus(userIds, status)
       ElMessage.success(`批量${action}成功`)
@@ -1940,7 +2201,7 @@ const handleBatchStatus = async (status: string) => {
       ElMessage.error(`批量${action}失败，请稍后重试`)
       return
     }
-    
+
     selectedUsers.value = []
     await loadUserList()
   } catch (_error) {
@@ -1954,37 +2215,45 @@ const handleBatchStatus = async (status: string) => {
 const handleExport = async () => {
   try {
     ElMessage.info('正在导出用户数据...')
-    
+
     // 获取当前筛选的用户数据
     const exportData = userList.value.map(user => ({
       '用户名': user.username,
       '姓名': user.realName,
+      '工号': user.employeeNumber || '',
       '邮箱': user.email,
       '手机号': user.phone,
       '部门': user.departmentName || '未分配',
+      '职位': user.position || '',
       '角色': user.roleName,
-      '状态': user.status === 'active' ? '启用' : '禁用',
+      '账号状态': user.status === 'active' ? '启用' : '禁用',
+      '在职状态': (user.employmentStatus || 'active') === 'active' ? '在职' : '离职',
+      '离职日期': user.resignedDate || '',
       '在线状态': user.isOnline ? '在线' : '离线',
       '最后登录时间': user.lastLoginTime || '从未登录',
       '登录次数': user.loginCount || 0,
       '创建时间': user.createTime,
       '备注': user.remark || ''
     }))
-    
+
     // 创建工作簿
     const ws = XLSX.utils.json_to_sheet(exportData)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, '用户列表')
-    
+
     // 设置列宽
     const colWidths = [
       { wch: 15 }, // 用户名
       { wch: 12 }, // 姓名
+      { wch: 12 }, // 工号
       { wch: 25 }, // 邮箱
       { wch: 15 }, // 手机号
       { wch: 15 }, // 部门
+      { wch: 12 }, // 职位
       { wch: 12 }, // 角色
-      { wch: 8 },  // 状态
+      { wch: 10 }, // 账号状态
+      { wch: 10 }, // 在职状态
+      { wch: 12 }, // 离职日期
       { wch: 10 }, // 在线状态
       { wch: 20 }, // 最后登录时间
       { wch: 10 }, // 登录次数
@@ -1992,15 +2261,15 @@ const handleExport = async () => {
       { wch: 20 }  // 备注
     ]
     ws['!cols'] = colWidths
-    
+
     // 生成文件名
     const now = new Date()
     const timestamp = now.toISOString().slice(0, 19).replace(/[:-]/g, '').replace('T', '_')
     const filename = `用户列表_${timestamp}.xlsx`
-    
+
     // 下载文件
     XLSX.writeFile(wb, filename)
-    
+
     ElMessage.success('用户数据导出成功')
   } catch (error) {
     console.error('导出失败:', error)
@@ -2055,73 +2324,192 @@ const handleCurrentChange = (page: number) => {
 }
 
 /**
+ * 更新部门成员数
+ */
+const updateDepartmentMemberCount = async (departmentId: string) => {
+  try {
+    console.log('[用户管理] 更新部门成员数，部门ID:', departmentId)
+
+    // 从localStorage获取users数据
+    const usersStr = localStorage.getItem('users')
+    if (!usersStr) return
+
+    const users = JSON.parse(usersStr)
+
+    // 统计每个部门的成员数
+    const memberCount = new Map<string, number>()
+    users.forEach((user: unknown) => {
+      const deptId = user.departmentId
+      if (deptId) {
+        memberCount.set(deptId, (memberCount.get(deptId) || 0) + 1)
+      }
+    })
+
+    // 更新departments数据
+    const deptKeys = ['departments', 'department-store', 'crm_store_department']
+
+    for (const key of deptKeys) {
+      const deptStr = localStorage.getItem(key)
+      if (deptStr) {
+        try {
+          const deptData = JSON.parse(deptStr)
+          const departments = deptData.departments || deptData.data?.departments || (Array.isArray(deptData) ? deptData : [])
+
+          if (departments.length > 0) {
+            // 更新所有部门的成员数
+            departments.forEach((dept: unknown) => {
+              dept.memberCount = memberCount.get(dept.id) || 0
+            })
+
+            // 保存回localStorage
+            if (Array.isArray(deptData)) {
+              localStorage.setItem(key, JSON.stringify(departments))
+            } else if (deptData.departments) {
+              deptData.departments = departments
+              localStorage.setItem(key, JSON.stringify(deptData))
+            } else if (deptData.data?.departments) {
+              deptData.data.departments = departments
+              localStorage.setItem(key, JSON.stringify(deptData))
+            }
+
+            console.log('[用户管理] 部门成员数已更新')
+
+            // 刷新部门store
+            await departmentStore.loadDepartments()
+            break
+          }
+        } catch (e) {
+          console.error(`[用户管理] 更新${key}失败:`, e)
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[用户管理] 更新部门成员数失败:', error)
+  }
+}
+
+/**
  * 确认用户操作
  */
 const confirmUser = async () => {
   try {
     await userFormRef.value?.validate()
-    
+
     userLoading.value = true
-    
+
     if (isEdit.value) {
       // 更新现有用户
+      // 【修复】根据roleId获取角色的code，确保role和roleId字段使用正确的角色code
+      const selectedRole = roleOptions.value.find(r => r.id === userForm.roleId)
+      const roleCode = selectedRole?.code || userForm.roleId
+
       const updateData = {
         realName: userForm.realName,
+        name: userForm.realName, // 同时更新name字段
         email: userForm.email,
         phone: userForm.phone,
-        roleId: userForm.roleId,
+        roleId: roleCode,  // 使用角色code（如'sales_staff'）
+        role: roleCode,  // 使用角色code（如'sales_staff'）
         departmentId: userForm.departmentId,
+        position: userForm.position,
+        employeeNumber: userForm.employeeNumber,
         status: userForm.status,
         remark: userForm.remark
       }
-      
+
+      console.log('[User] 更新用户数据:', updateData)
+
       try {
-        await userApiService.updateUser(userForm.id, updateData)
+        // 直接操作localStorage更新用户
+        const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+        const userIndex = users.findIndex((u: unknown) => String(u.id) === String(userForm.id))
+
+        if (userIndex !== -1) {
+          users[userIndex] = {
+            ...users[userIndex],
+            ...updateData,
+            updateTime: new Date().toLocaleString()
+          }
+          localStorage.setItem('crm_mock_users', JSON.stringify(users))
+          console.log('[User] 已更新 crm_mock_users')
+        }
+
+        // 同步更新 userDatabase
+        const userDatabase = JSON.parse(localStorage.getItem('userDatabase') || '[]')
+        const dbIndex = userDatabase.findIndex((u: unknown) => String(u.id) === String(userForm.id))
+
+        if (dbIndex !== -1) {
+          userDatabase[dbIndex] = {
+            ...userDatabase[dbIndex],
+            ...updateData
+          }
+          localStorage.setItem('userDatabase', JSON.stringify(userDatabase))
+          console.log('[User] 已更新 userDatabase')
+        }
+
+        console.log('[User] 用户更新成功')
         ElMessage.success('用户更新成功')
-        
-        // 同步用户数据到所有关联模块
-        await UserDataSyncService.syncUserData({
-          id: userForm.id,
-          realName: userForm.realName,
-          username: userForm.username,
-          email: userForm.email,
-          phone: userForm.phone,
-          departmentId: userForm.departmentId,
-          departmentName: departmentStore.departmentList.find(d => d.id === userForm.departmentId)?.name,
-          roleId: userForm.roleId,
-          status: userForm.status
-        })
       } catch (error) {
-        console.error('更新用户失败:', error)
-        ElMessage.error('更新用户失败，请检查输入信息')
+        console.error('[User] 更新用户失败:', error)
+        ElMessage.error('更新失败')
         userLoading.value = false
         return
       }
     } else {
       // 创建新用户
+      const department = departmentStore.departmentList.find(d => d.id === userForm.departmentId)
+
+      // 【修复】根据roleId获取角色的code，确保role和roleId字段使用正确的角色code
+      const selectedRole = roleOptions.value.find(r => r.id === userForm.roleId)
+      const roleCode = selectedRole?.code || userForm.roleId
+
       const createData = {
         username: userForm.username,
         password: userForm.password,
         realName: userForm.realName,
+        name: userForm.realName, // 同时设置name字段
         email: userForm.email,
         phone: userForm.phone,
-        role: userForm.roleId,
-        departmentId: userForm.departmentId ? parseInt(userForm.departmentId) : undefined
+        role: roleCode,  // 使用角色code（如'sales_staff'）
+        roleId: roleCode,  // 使用角色code（如'sales_staff'）
+        departmentId: userForm.departmentId,
+        department: department?.name || '',
+        position: userForm.position,
+        employeeNumber: userForm.employeeNumber,
+        status: userForm.status,
+        employmentStatus: 'active', // 默认在职状态
+        remark: userForm.remark,
+        createTime: new Date().toLocaleString(),
+        isOnline: false,
+        lastLoginTime: null,
+        loginCount: 0
       }
-      
+
+      console.log('[User] 创建用户数据:', createData)
+
       try {
         await userApiService.createUser(createData)
+        console.log('[User] 用户创建API调用成功')
         ElMessage.success('用户创建成功')
+
+        // 【新增】更新部门成员数
+        if (userForm.departmentId) {
+          await updateDepartmentMemberCount(userForm.departmentId)
+        }
       } catch (error) {
-        console.error('创建用户失败:', error)
+        console.error('[User] 创建用户失败:', error)
         ElMessage.error('创建用户失败，请检查输入信息')
         userLoading.value = false
         return
       }
     }
-    
-    handleDialogClose()
+
+    // 【批次210修复】先刷新列表,确保新用户立即显示
     await loadUserList()
+    console.log('[User] 用户列表已刷新,新用户应该可见')
+
+    // 然后关闭对话框
+    handleDialogClose()
   } catch (error) {
     console.error('表单验证失败:', error)
   } finally {
@@ -2150,6 +2538,8 @@ const resetUserForm = () => {
     phone: '',
     roleId: '',
     departmentId: '',
+    position: '',
+    employeeNumber: '',
     status: 'active',
     password: '123456',
     remark: ''
@@ -2165,8 +2555,16 @@ const loadRoles = async () => {
     roleOptions.value = roles.filter(role => role.status === 'active')
     console.log('角色数据加载成功:', roleOptions.value.length)
   } catch (error) {
-    console.error('加载角色数据失败:', error)
-    ElMessage.error('加载角色数据失败，请稍后重试')
+    console.warn('加载角色数据失败，使用本地数据:', error)
+    // 【批次192修复】从localStorage获取角色数据作为降级方案
+    try {
+      const localRoles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
+      roleOptions.value = localRoles.filter((role: unknown) => role.status === 'active')
+      console.log('从localStorage加载角色数据:', roleOptions.value.length)
+    } catch (localError) {
+      console.error('从localStorage加载角色数据也失败:', localError)
+      // 不显示错误提示，避免干扰用户
+    }
   }
 }
 
@@ -2175,39 +2573,33 @@ const loadRoles = async () => {
  */
 const loadUserStats = async () => {
   try {
-    // 尝试从API获取用户统计数据
-    const stats = await userApiService.getUserStatistics()
-    userStats.value = {
-      total: stats.total,
-      online: stats.active, // 使用active状态用户作为在线用户
-      todayNew: 0, // API暂不支持，设为0
-      monthNew: 0  // API暂不支持，设为0
-    }
+    // 【批次192修复】直接使用本地计算，避免不必要的API请求
+    // 在Mock模式下，API请求会失败并显示错误提示
+    throw new Error('使用本地计算')
   } catch (error) {
-    console.warn('获取用户统计数据失败，使用本地计算:', error)
-    // 如果API调用失败，基于当前用户列表数据进行实时计算
+    // 【批次192修复】静默处理，不显示错误提示
+    // 降级方案：基于当前用户列表数据进行实时计算
     const now = new Date()
-    const today = now.toDateString()
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
-    
+
     const totalUsers = userList.value.length
-    const onlineUsers = userList.value.filter(user => user.status === 'active').length
-    const todayNewUsers = userList.value.filter(user => {
-      if (!user.createTime) return false
-      const createDate = new Date(user.createTime)
-      return createDate.toDateString() === today
-    }).length
+    const activeUsers = userList.value.filter(user =>
+      (user.employmentStatus || 'active') === 'active'
+    ).length
+    const resignedUsers = userList.value.filter(user =>
+      user.employmentStatus === 'resigned'
+    ).length
     const monthNewUsers = userList.value.filter(user => {
       if (!user.createTime) return false
       const createDate = new Date(user.createTime)
       return createDate.getMonth() === currentMonth && createDate.getFullYear() === currentYear
     }).length
-    
+
     userStats.value = {
       total: totalUsers,
-      online: onlineUsers,
-      todayNew: todayNewUsers,
+      active: activeUsers,
+      resigned: resignedUsers,
       monthNew: monthNewUsers
     }
   }
@@ -2221,42 +2613,65 @@ const loadUserStats = async () => {
 const loadUserList = async () => {
   try {
     tableLoading.value = true
-    
-    // 构建查询参数
-    const params = {
-      page: pagination.page,
-      limit: pagination.size,
-      search: searchForm.username || searchForm.realName || undefined,
-      departmentId: searchForm.departmentId || undefined,
-      role: searchForm.roleId || undefined,
-      status: searchForm.status || undefined
+
+    // 直接从localStorage读取用户数据
+    const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+    console.log('[User] 从localStorage加载用户:', users.length)
+
+    // 模拟API响应格式
+    const response = {
+      data: users,
+      total: users.length
     }
-    
-    // 调用API获取用户列表
-    const response = await userApiService.getUsers(params)
-    
-    userList.value = response.data.map((user: any) => {
+
+    // 映射用户数据
+    const mappedUsers = response.data.map((user: unknown) => {
       const department = departmentStore.getDepartmentById(user.departmentId)
+
+      // 【修复】确保字段正确映射
+      // username: 用户名（登录用），必须存在
+      // realName: 真实姓名（显示用）
+      const username = user.username || 'user_' + user.id
+      const realName = user.realName || user.name || username
+
       return {
         id: user.id.toString(),
-        username: user.username,
-        realName: user.realName,
-        email: user.email,
-        phone: user.phone,
-        roleId: user.role,
-        departmentId: user.departmentId?.toString(),
+        username: username,  // ✅ 用户名字段
+        realName: realName,  // ✅ 姓名字段
+        name: realName, // 同时设置name字段（兼容性）
+        email: user.email || '',
+        phone: user.phone || '',
+        roleId: user.role || user.roleId || '',  // ✅ 使用角色code
+        role: user.role || user.roleId || '',    // ✅ 使用角色code
+        departmentId: user.departmentId?.toString() || '',
         departmentName: user.department?.name || department?.name || '',
-        status: user.status,
-        createTime: user.createdAt,
-        lastLoginTime: user.lastLoginAt,
-        avatar: user.avatar,
+        position: user.position || user.roleName || '',
+        employeeNumber: user.employeeNumber || '',
+        status: user.status || 'active',
+        employmentStatus: user.employmentStatus || 'active', // 在职状态，默认在职
+        resignedDate: user.resignedDate || '',
+        createTime: user.createTime || user.createdAt || '',
+        lastLoginTime: user.lastLoginTime || user.lastLoginAt || '',
+        avatar: user.avatar || '',
         remark: user.remark || '',
-        statusLoading: false
+        roleName: user.roleName || '',
+        isOnline: user.isOnline || false,
+        loginCount: user.loginCount || 0,
+        statusLoading: false,
+        employmentStatusLoading: false
       }
     })
-    
+
+    // 按创建时间倒序排序（最新的在上面）
+    mappedUsers.sort((a, b) => {
+      const timeA = new Date(a.createTime || 0).getTime()
+      const timeB = new Date(b.createTime || 0).getTime()
+      return timeB - timeA
+    })
+
+    userList.value = mappedUsers
     pagination.total = response.total
-    
+
     // 加载用户统计数据
     await loadUserStats()
   } catch (error) {
@@ -2378,16 +2793,16 @@ const prevStep = () => {
 const downloadTemplate = () => {
   // 创建模板数据
   const templateData = [
-    ['用户名', '姓名', '邮箱', '手机号', '角色', '部门', '密码', '备注'],
-    ['zhangsan', '张三', 'zhangsan@example.com', '13800138001', '销售员', '销售部', '123456', '示例用户1'],
-    ['lisi', '李四', 'lisi@example.com', '13800138002', '客服', '客服部', '123456', '示例用户2']
+    ['用户名', '姓名', '邮箱', '手机号', '角色', '部门', '职位', '工号', '密码', '备注'],
+    ['zhangsan', '张三', 'zhangsan@example.com', '13800138001', '销售员', '销售部', '销售专员', 'EMP0001', '123456', '示例用户1'],
+    ['lisi', '李四', 'lisi@example.com', '13800138002', '客服', '客服部', '客服专员', 'EMP0002', '123456', '示例用户2']
   ]
-  
+
   // 创建工作簿
   const ws = XLSX.utils.aoa_to_sheet(templateData)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, '用户导入模板')
-  
+
   // 设置列宽
   const colWidths = [
     { wch: 15 }, // 用户名
@@ -2396,11 +2811,13 @@ const downloadTemplate = () => {
     { wch: 15 }, // 手机号
     { wch: 12 }, // 角色
     { wch: 12 }, // 部门
+    { wch: 15 }, // 职位
+    { wch: 12 }, // 工号
     { wch: 12 }, // 密码
     { wch: 20 }  // 备注
   ]
   ws['!cols'] = colWidths
-  
+
   // 下载文件
   XLSX.writeFile(wb, '用户导入模板.xlsx')
   ElMessage.success('模板下载成功')
@@ -2413,7 +2830,7 @@ const handleFileChange = (file: UploadFile) => {
 
 // 文件上传前检查
 const beforeUpload = (file: UploadFile) => {
-  const isExcel = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+  const isExcel = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
                   file.type === 'application/vnd.ms-excel'
   const isLt10M = file.size / 1024 / 1024 < 10
 
@@ -2441,60 +2858,60 @@ const parseExcelFile = async () => {
   }
 
   parsing.value = true
-  
+
   try {
     const reader = new FileReader()
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer)
-        const workbook = XLSX.read(data, { 
+        const workbook = XLSX.read(data, {
           type: 'array',
           cellDates: true,
           cellNF: false,
           cellText: false
         })
-        
+
         if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
           throw new Error('Excel文件中没有找到工作表')
         }
-        
+
         const sheetName = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[sheetName]
-        
+
         if (!worksheet) {
           throw new Error('无法读取工作表内容')
         }
-        
+
         // 使用更宽松的解析选项
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, {
           header: 1,
           defval: '',
           blankrows: false
         })
-        
+
         if (!jsonData || jsonData.length < 2) {
           throw new Error('Excel文件内容为空或格式不正确，请确保至少有标题行和一行数据')
         }
-        
+
         // 检查标题行
-        const headers = jsonData[0] as any[]
+        const headers = jsonData[0] as unknown[]
         const expectedHeaders = ['用户名', '姓名', '邮箱', '手机号', '角色', '部门', '密码', '备注']
         const headerValid = expectedHeaders.every((header, index) => {
           const cellValue = headers[index]
           return cellValue && cellValue.toString().trim() === header
         })
-        
+
         if (!headerValid) {
           throw new Error(`Excel文件标题行不正确。期望的标题行为：${expectedHeaders.join('、')}`)
         }
-        
+
         // 跳过标题行，解析数据
-        const rows = jsonData.slice(1) as any[]
-        
+        const rows = jsonData.slice(1) as unknown[]
+
         if (rows.length === 0) {
           throw new Error('Excel文件中没有数据行')
         }
-        
+
         const parsedData = rows
           .filter(row => row && row.some(cell => cell !== null && cell !== undefined && cell.toString().trim() !== ''))
           .map((row, index) => ({
@@ -2505,18 +2922,20 @@ const parseExcelFile = async () => {
             phone: (row[3] || '').toString().trim(),
             role: (row[4] || '').toString().trim(),
             department: (row[5] || '').toString().trim(),
-            password: (row[6] || '').toString().trim(),
-            remark: (row[7] || '').toString().trim(),
+            position: (row[6] || '').toString().trim(),
+            employeeNumber: (row[7] || '').toString().trim(),
+            password: (row[8] || '').toString().trim(),
+            remark: (row[9] || '').toString().trim(),
             errors: [] as string[]
           }))
-        
+
         if (parsedData.length === 0) {
           throw new Error('Excel文件中没有有效的数据行')
         }
-        
+
         // 验证数据
         validateImportData(parsedData)
-        
+
         ElMessage.success(`解析完成，共${parsedData.length}条数据`)
         nextStep()
       } catch (error: Error) {
@@ -2526,12 +2945,12 @@ const parseExcelFile = async () => {
         parsing.value = false
       }
     }
-    
+
     reader.onerror = () => {
       ElMessage.error('文件读取失败，请重新选择文件')
       parsing.value = false
     }
-    
+
     reader.readAsArrayBuffer(uploadFile.value)
   } catch (error: Error) {
     console.error('文件读取错误:', error)
@@ -2551,7 +2970,7 @@ const validateImportData = (data: ImportUserData[]) => {
 
   data.forEach((item, index) => {
     const errors: string[] = []
-    
+
     // 验证用户名
     if (!item.username.trim()) {
       errors.push('用户名不能为空')
@@ -2566,7 +2985,7 @@ const validateImportData = (data: ImportUserData[]) => {
     } else {
       duplicateCheck.set(`username:${item.username}`, index + 1)
     }
-    
+
     // 验证真实姓名
     if (!item.realName.trim()) {
       errors.push('姓名不能为空')
@@ -2575,7 +2994,7 @@ const validateImportData = (data: ImportUserData[]) => {
     } else if (!/^[\u4e00-\u9fa5a-zA-Z\s]+$/.test(item.realName)) {
       errors.push('姓名只能包含中文、英文字母和空格')
     }
-    
+
     // 验证邮箱
     if (!item.email.trim()) {
       errors.push('邮箱不能为空')
@@ -2588,7 +3007,7 @@ const validateImportData = (data: ImportUserData[]) => {
     } else {
       duplicateCheck.set(`email:${item.email}`, index + 1)
     }
-    
+
     // 验证手机号
     if (!item.phone.trim()) {
       errors.push('手机号不能为空')
@@ -2601,20 +3020,28 @@ const validateImportData = (data: ImportUserData[]) => {
     } else {
       duplicateCheck.set(`phone:${item.phone}`, index + 1)
     }
-    
+
     // 验证角色
     if (!item.role.trim()) {
       errors.push('角色不能为空')
     } else {
-      const roleExists = roleOptions.value.some(role => role.name === item.role)
+      // 【批次175修复】同时支持角色名称(name)和角色代码(code)匹配
+      const roleExists = roleOptions.value && roleOptions.value.some(
+        role => role.name === item.role || role.code === item.role
+      )
       if (!roleExists) {
-        errors.push(`角色"${item.role}"不存在。可选角色：${roleOptions.value.map(r => r.name).join('、')}`)
+        const availableRoles = roleOptions.value && roleOptions.value.length > 0
+          ? roleOptions.value.map(r => `${r.name}(${r.code})`).join('、')
+          : '暂无可用角色'
+        errors.push(`角色"${item.role}"不存在。可选角色：${availableRoles}`)
       } else {
-        const role = roleOptions.value.find(r => r.name === item.role)
-        item.roleId = role?.id
+        // 【批次175修复】查找角色并使用code，确保role和roleId都是英文code
+        const role = roleOptions.value.find(r => r.name === item.role || r.code === item.role)
+        item.roleId = role?.code  // 使用code而不是id
+        item.role = role?.code    // 确保role字段也是code
       }
     }
-    
+
     // 验证部门（可选）
     if (item.department && item.department.trim()) {
       const departmentExists = departmentStore.departmentList.some(dept => dept.name === item.department)
@@ -2625,7 +3052,7 @@ const validateImportData = (data: ImportUserData[]) => {
         item.departmentId = department?.id
       }
     }
-    
+
     // 验证密码
     if (!item.password.trim()) {
       item.password = '123456'
@@ -2637,25 +3064,25 @@ const validateImportData = (data: ImportUserData[]) => {
     } else {
       item.needChangePassword = false
     }
-    
+
     // 验证备注长度
     if (item.remark && item.remark.length > 200) {
       errors.push('备注长度不能超过200个字符')
     }
-    
+
     item.errors = errors
-    
+
     if (errors.length === 0) {
       valid.push(item)
     } else {
       invalid.push(item)
     }
   })
-  
+
   previewData.value = data
   validData.value = valid
   invalidData.value = invalid
-  
+
   // 显示验证结果摘要
   if (invalid.length > 0) {
     ElMessage.warning(`数据验证完成：${valid.length}条有效，${invalid.length}条无效。请修复错误后重新导入。`)
@@ -2670,9 +3097,9 @@ const confirmImport = async () => {
     ElMessage.error('没有有效数据可导入')
     return
   }
-  
+
   importing.value = true
-  
+
   try {
     // 准备导入数据
     const importData = validData.value.map(userData => ({
@@ -2682,12 +3109,14 @@ const confirmImport = async () => {
       email: userData.email,
       phone: userData.phone,
       role: userData.roleId,
-      departmentId: userData.departmentId ? parseInt(userData.departmentId) : undefined
+      departmentId: userData.departmentId ? parseInt(userData.departmentId) : undefined,
+      position: userData.position || '',
+      employeeNumber: userData.employeeNumber || ''
     }))
-    
+
     // 调用批量导入API
     const result = await userApiService.importUsers(importData)
-    
+
     ElMessage.success(`导入成功：共${result.successCount || validData.value.length}条用户数据`)
     batchImportVisible.value = false
     loadUserList() // 刷新用户列表
@@ -2895,11 +3324,11 @@ onMounted(async () => {
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .header-stats {
     justify-content: space-around;
   }
-  
+
   .header-actions {
     justify-content: center;
   }
@@ -2910,13 +3339,13 @@ onMounted(async () => {
     flex-direction: column;
     gap: 16px;
   }
-  
+
   .table-header {
     flex-direction: column;
     gap: 12px;
     align-items: stretch;
   }
-  
+
   .table-actions {
     justify-content: center;
     flex-wrap: wrap;
@@ -3082,7 +3511,7 @@ onMounted(async () => {
   .user-info {
     margin-bottom: 20px;
   }
-  
+
   .permission-content {
     .permission-tabs {
       .role-permissions {
@@ -3098,7 +3527,7 @@ onMounted(async () => {
           font-size: 14px;
         }
       }
-      
+
       .personal-permissions {
         .permission-note {
           display: flex;
@@ -3111,12 +3540,12 @@ onMounted(async () => {
           border-radius: 6px;
           color: #1890ff;
           font-size: 14px;
-          
+
           .el-icon {
             font-size: 16px;
           }
         }
-        
+
         .permission-actions {
           display: flex;
           justify-content: flex-end;
@@ -3139,19 +3568,19 @@ onMounted(async () => {
     margin-bottom: 20px;
     padding-bottom: 16px;
     border-bottom: 1px solid #e4e7ed;
-    
+
     .user-info {
       font-weight: 600;
       color: #303133;
     }
-    
+
     .logs-actions {
       display: flex;
       align-items: center;
       gap: 12px;
     }
   }
-  
+
   .logs-pagination {
     display: flex;
     justify-content: center;
@@ -3159,5 +3588,20 @@ onMounted(async () => {
     padding-top: 16px;
     border-top: 1px solid #e4e7ed;
   }
+}
+
+/* 在职状态开关自定义样式 */
+.employment-status-switch :deep(.el-switch__core) {
+  background-color: #909399 !important; /* 离职状态：灰色 */
+  border-color: #909399 !important;
+}
+
+.employment-status-switch.is-checked :deep(.el-switch__core) {
+  background-color: #67c23a !important; /* 在职状态：绿色 */
+  border-color: #67c23a !important;
+}
+
+.employment-status-switch :deep(.el-switch__action) {
+  background-color: #fff;
 }
 </style>

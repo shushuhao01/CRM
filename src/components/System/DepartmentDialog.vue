@@ -48,9 +48,9 @@
       
       <el-form-item label="数据范围" prop="dataScope">
         <el-radio-group v-model="formData.dataScope">
-          <el-radio value="all">全部数据</el-radio>
-          <el-radio value="department">部门数据</el-radio>
-          <el-radio value="personal">个人数据</el-radio>
+          <el-radio label="all">全部数据</el-radio>
+            <el-radio label="department">部门数据</el-radio>
+            <el-radio label="personal">个人数据</el-radio>
         </el-radio-group>
       </el-form-item>
       

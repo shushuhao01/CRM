@@ -611,7 +611,11 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+defineOptions({
+  name: 'OrderEdit'
+})
+
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -621,6 +625,8 @@ import { maskPhone } from '@/utils/phone'
 import { useOrderStore } from '@/stores/order'
 import { useCustomerStore } from '@/stores/customer'
 import { useProductStore } from '@/stores/product'
+import { useUserStore } from '@/stores/user'
+import { useConfigStore } from '@/stores/config'
 import { createSafeNavigator } from '@/utils/navigation'
 
 const route = useRoute()
@@ -631,6 +637,8 @@ const safeNavigator = createSafeNavigator(router)
 const orderStore = useOrderStore()
 const customerStore = useCustomerStore()
 const productStore = useProductStore()
+const userStore = useUserStore()
+const configStore = useConfigStore()
 
 // 获取订单ID
 const orderId = route.params.id
@@ -706,12 +714,30 @@ const discountPercentage = computed(() => {
   return 0
 })
 
+// 根据用户角色获取最大优惠比例
+const maxDiscountRate = computed(() => {
+  const userRole = userStore.currentUser?.role || 'employee'
+  const mappedRole = userRole === 'employee' ? 'sales' : userRole
+  // 【批次202修复】直接从productConfig读取,确保实时同步
+  let discountValue = 0
+  if (mappedRole === 'admin' || mappedRole === 'super_admin') {
+    discountValue = configStore.productConfig.adminMaxDiscount
+  } else if (mappedRole === 'department_manager' || mappedRole === 'manager') {
+    discountValue = configStore.productConfig.managerMaxDiscount
+  } else if (mappedRole === 'sales') {
+    discountValue = configStore.productConfig.salesMaxDiscount
+  } else {
+    discountValue = 0
+  }
+  return discountValue / 100
+})
+
 // 过滤后的产品列表
 const filteredProducts = computed(() => {
   if (!productSearchKeyword.value) {
     return productStore.products.filter(product => product.status === 'active')
   }
-  return productStore.products.filter(product => 
+  return productStore.products.filter(product =>
     product.status === 'active' &&
     (product.name.toLowerCase().includes(productSearchKeyword.value.toLowerCase()) ||
      product.code?.toLowerCase().includes(productSearchKeyword.value.toLowerCase()))
@@ -885,20 +911,20 @@ const handleCustomerChange = async (customerId) => {
       orderForm.customerName = customer.name
       orderForm.customerPhone = customer.phone
       orderForm.deliveryAddress = customer.address || ''
-      
+
       // 同步收货人信息（默认使用客户信息）
       orderForm.receiverName = customer.name
       orderForm.receiverPhone = customer.phone
-      
+
       // 同步客户微信号到客服微信号字段
       orderForm.serviceWechat = customer.wechatId || ''
-      
+
       // 同步客户订单来源
       orderForm.orderSource = customer.source || ''
-      
+
       // 自动展开收货信息区域
       deliveryCollapsed.value = false
-      
+
       // 加载客户电话列表
       await loadCustomerPhones(customerId)
     }
@@ -927,8 +953,58 @@ const viewProductDetail = (product) => {
   safeNavigator.push(`/product/detail/${product.id}`)
 }
 
-// 处理总金额变更
-const handleTotalAmountChange = () => {
+// 处理总金额变更（包含优惠校验）
+const handleTotalAmountChange = (value: number | null) => {
+  // 如果value为null或undefined，不处理
+  if (value === null || value === undefined) {
+    return
+  }
+
+  // 计算最低可优惠价格（基于管理员设置的优惠比例）
+  const minAllowedAmount = subtotal.value * (1 - maxDiscountRate.value)
+
+  // 检查是否低于最低允许金额
+  if (value < minAllowedAmount) {
+    ElMessageBox.alert(
+      `订单总额不能低于 ¥${minAllowedAmount.toFixed(2)}（最大优惠${(maxDiscountRate.value * 100).toFixed(0)}%）`,
+      '优惠限制提示',
+      {
+        confirmButtonText: '确定',
+        type: 'warning',
+        callback: () => {
+          // 弹窗关闭后自动调整到最低允许金额
+          orderForm.totalAmount = minAllowedAmount
+          calculateCollectAmount()
+        }
+      }
+    )
+    return
+  }
+
+  // 检查是否超过商品小计
+  if (value > subtotal.value) {
+    ElMessageBox.alert(
+      '订单总额不能超过商品小计',
+      '提示',
+      {
+        confirmButtonText: '确定',
+        type: 'warning',
+        callback: () => {
+          orderForm.totalAmount = subtotal.value
+          calculateCollectAmount()
+        }
+      }
+    )
+    return
+  }
+
+  // 如果定金大于新的订单总额，自动调整定金
+  if ((orderForm.depositAmount || 0) > value) {
+    orderForm.depositAmount = value
+    ElMessage.info('定金已自动调整为订单总额')
+  }
+
+  orderForm.totalAmount = value
   calculateCollectAmount()
 }
 
@@ -969,17 +1045,17 @@ const selectCustomer = async (customer) => {
   orderForm.customerName = customer.name
   orderForm.customerPhone = customer.phone
   orderForm.deliveryAddress = customer.address || ''
-  
+
   // 同步收货人信息（默认使用客户信息）
   orderForm.receiverName = customer.name
   orderForm.receiverPhone = customer.phone
-  
+
   // 同步客户微信号到客服微信号字段
   orderForm.serviceWechat = customer.wechatId || ''
-  
+
   // 同步客户订单来源
   orderForm.orderSource = customer.source || ''
-  
+
   // 自动展开收货信息区域
   deliveryCollapsed.value = false
 

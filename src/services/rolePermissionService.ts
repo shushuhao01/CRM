@@ -210,6 +210,28 @@ export class RolePermissionService {
   }
 
   /**
+   * 获取所有操作日志（超管权限）
+   */
+  async getOperationLogs(
+    params: PaginationParams & {
+      startDate?: string
+      endDate?: string
+      action?: string
+      module?: string
+      userId?: number
+    } = {}
+  ): Promise<PaginatedResponse<OperationLog>> {
+    try {
+      const response = await this.api.paginate<OperationLog>('/operation-logs', params)
+      console.log('[RolePermissionAPI] 获取所有操作日志成功')
+      return response
+    } catch (error) {
+      console.error('[RolePermissionAPI] 获取所有操作日志失败:', error)
+      throw error
+    }
+  }
+
+  /**
    * 导出用户操作日志
    */
   async exportUserOperationLogs(

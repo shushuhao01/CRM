@@ -44,7 +44,7 @@
             <el-checkbox-group v-model="formData.permissions">
               <el-row :gutter="20">
                 <el-col :span="8" v-for="permission in customerPermissions" :key="permission.value">
-                  <el-checkbox :value="permission.value">
+                  <el-checkbox :label="permission.value">
                     <span>{{ permission.label }}</span>
                     <el-tooltip :content="permission.description" placement="top">
                       <el-icon style="margin-left: 5px; color: #909399;"><QuestionFilled /></el-icon>
@@ -59,7 +59,7 @@
             <el-checkbox-group v-model="formData.permissions">
               <el-row :gutter="20">
                 <el-col :span="8" v-for="permission in orderPermissions" :key="permission.value">
-                  <el-checkbox :value="permission.value">
+                  <el-checkbox :label="permission.value">
                     <span>{{ permission.label }}</span>
                     <el-tooltip :content="permission.description" placement="top">
                       <el-icon style="margin-left: 5px; color: #909399;"><QuestionFilled /></el-icon>
@@ -74,7 +74,7 @@
             <el-checkbox-group v-model="formData.permissions">
               <el-row :gutter="20">
                 <el-col :span="8" v-for="permission in reportPermissions" :key="permission.value">
-                  <el-checkbox :value="permission.value">
+                  <el-checkbox :label="permission.value">
                     <span>{{ permission.label }}</span>
                     <el-tooltip :content="permission.description" placement="top">
                       <el-icon style="margin-left: 5px; color: #909399;"><QuestionFilled /></el-icon>
@@ -89,7 +89,7 @@
             <el-checkbox-group v-model="formData.permissions">
               <el-row :gutter="20">
                 <el-col :span="8" v-for="permission in systemPermissions" :key="permission.value">
-                  <el-checkbox :value="permission.value">
+                  <el-checkbox :label="permission.value">
                     <span>{{ permission.label }}</span>
                     <el-tooltip :content="permission.description" placement="top">
                       <el-icon style="margin-left: 5px; color: #909399;"><QuestionFilled /></el-icon>
@@ -104,9 +104,9 @@
 
       <el-form-item label="数据范围">
         <el-radio-group v-model="formData.dataScope">
-          <el-radio value="all">全部数据</el-radio>
-          <el-radio value="department">部门数据</el-radio>
-          <el-radio value="personal">个人数据</el-radio>
+          <el-radio label="all">全部数据</el-radio>
+          <el-radio label="department">部门数据</el-radio>
+          <el-radio label="personal">个人数据</el-radio>
         </el-radio-group>
       </el-form-item>
 

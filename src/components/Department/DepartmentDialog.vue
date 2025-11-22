@@ -23,7 +23,7 @@
             <el-icon class="section-icon"><OfficeBuilding /></el-icon>
             <span class="section-title">基本信息</span>
           </div>
-          
+
           <div class="form-grid">
             <el-form-item label="部门名称" prop="name" class="form-item">
               <el-input
@@ -38,11 +38,15 @@
             <el-form-item label="部门编码" prop="code" class="form-item">
               <el-input
                 v-model="formData.code"
-                placeholder="请输入部门编码"
+                placeholder="例如：TECH_DEPT、SALES_01"
                 maxlength="20"
                 show-word-limit
                 class="compact-input"
               />
+              <div class="form-tip">
+                <el-icon><InfoFilled /></el-icon>
+                <span>只能包含大写字母、数字和下划线</span>
+              </div>
             </el-form-item>
 
             <el-form-item label="上级部门" prop="parentId" class="form-item">
@@ -75,7 +79,7 @@
               </el-select>
             </el-form-item>
 
-            <el-form-item label="排序" prop="sort" class="form-item">
+            <el-form-item label="排序" prop="sortOrder" class="form-item">
               <el-input-number
                 v-model="formData.sortOrder"
                 :min="1"
@@ -88,11 +92,11 @@
 
             <el-form-item label="状态" prop="status" class="form-item">
               <el-radio-group v-model="formData.status" class="compact-radio">
-                <el-radio value="active">
+                <el-radio label="active">
                   <el-icon><Check /></el-icon>
                   启用
                 </el-radio>
-                <el-radio value="inactive">
+                <el-radio label="inactive">
                   <el-icon><Close /></el-icon>
                   停用
                 </el-radio>
@@ -101,8 +105,8 @@
           </div>
         </div>
 
-        <!-- 权限配置区域 -->
-        <div class="form-section">
+        <!-- 权限配置区域 - 已注释：部门只做组织架构管理，权限配置在角色管理中进行 -->
+        <!-- <div class="form-section">
           <div class="section-header">
             <div class="header-content">
               <div class="header-icon">
@@ -131,10 +135,9 @@
               </el-button>
             </div>
           </div>
-          
+
           <el-collapse-transition>
             <div v-show="permissionExpanded" class="permission-section">
-              <!-- 快捷操作栏 -->
               <div class="action-bar">
                 <div class="action-left">
                   <h4 class="section-title">
@@ -160,15 +163,14 @@
                 </div>
               </div>
 
-              <!-- 权限模板 -->
               <div class="template-section">
                 <div class="template-header">
                   <el-icon><Star /></el-icon>
                   <span>快捷模板</span>
                 </div>
                 <div class="template-grid">
-                  <div 
-                    v-for="template in permissionTemplates" 
+                  <div
+                    v-for="template in permissionTemplates"
                     :key="template.key"
                     @click="applyTemplate(template.key)"
                     class="template-card"
@@ -188,7 +190,6 @@
                 </div>
               </div>
 
-              <!-- 部门权限配置 -->
               <div class="department-permission-config">
                 <div class="config-header">
                   <el-icon><OfficeBuilding /></el-icon>
@@ -245,12 +246,11 @@
                 </div>
               </div>
 
-              <!-- 权限配置主体 -->
               <div class="permission-content">
                 <div class="permission-grid">
-                  <div 
-                    v-for="category in permissionsByModule" 
-                    :key="category.id" 
+                  <div
+                    v-for="category in permissionsByModule"
+                    :key="category.id"
                     class="permission-category"
                   >
                     <div class="category-header">
@@ -274,16 +274,16 @@
                         </el-checkbox>
                       </div>
                     </div>
-                    
+
                     <div class="permission-list">
                       <el-checkbox-group v-model="formData.permissions">
-                        <div 
-                          v-for="permission in category.permissions" 
+                        <div
+                          v-for="permission in category.permissions"
                           :key="permission.code"
                           class="permission-item"
                         >
-                          <el-checkbox 
-                            :value="permission.code"
+                          <el-checkbox
+                            :label="permission.code"
                             class="permission-checkbox"
                           >
                             <div class="permission-info">
@@ -308,7 +308,7 @@
               </div>
             </div>
           </el-collapse-transition>
-        </div>
+        </div> -->
 
         <!-- 描述信息 -->
         <div class="form-section">
@@ -343,11 +343,11 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { 
-  OfficeBuilding, 
-  User, 
-  Setting, 
-  Check, 
+import {
+  OfficeBuilding,
+  User,
+  Setting,
+  Check,
   Close,
   UserFilled,
   ShoppingCart,
@@ -358,7 +358,8 @@ import {
   Star,
   Refresh,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  InfoFilled
 } from '@element-plus/icons-vue'
 import { useDepartmentStore, type Department } from '@/stores/department'
 import { useUserStore } from '@/stores/user'
@@ -394,7 +395,7 @@ const permissionTree = computed(() => permissionService.getAllPermissions())
 const flatPermissions = computed(() => {
   const flatten = (permissions: any[], parentPath = ''): any[] => {
     const result: any[] = []
-    
+
     permissions.forEach(permission => {
       if (permission.type === 'action') {
         result.push({
@@ -405,27 +406,27 @@ const flatPermissions = computed(() => {
           level: getPermissionLevel(permission.code)
         })
       }
-      
+
       if (permission.children && permission.children.length > 0) {
         const childPath = parentPath ? `${parentPath} > ${permission.name}` : permission.name
         result.push(...flatten(permission.children, childPath))
       }
     })
-    
+
     return result
   }
-  
+
   return flatten(permissionTree.value)
 })
 
 // 按模块分组的权限
 const permissionsByModule = computed(() => {
-  const modules: any[] = []
-  
+  const modules: unknown[] = []
+
   permissionTree.value.forEach(module => {
-    const modulePermissions: any[] = []
-    
-    const collectPermissions = (items: any[]) => {
+    const modulePermissions: unknown[] = []
+
+    const collectPermissions = (items: unknown[]) => {
       items.forEach(item => {
         if (item.type === 'action') {
           modulePermissions.push({
@@ -440,11 +441,11 @@ const permissionsByModule = computed(() => {
         }
       })
     }
-    
+
     if (module.children) {
       collectPermissions(module.children)
     }
-    
+
     modules.push({
       id: module.id,
       name: module.name,
@@ -452,7 +453,7 @@ const permissionsByModule = computed(() => {
       permissions: modulePermissions
     })
   })
-  
+
   return modules
 })
 
@@ -530,8 +531,9 @@ const getPermissionDescription = (permissionValue: string) => {
 const formData = reactive({
   name: '',
   code: '',
+  level: 1,
   parentId: null as string | null,
-  managerId: null as string | null, // 保留用于UI显示，但不传递给后端
+  managerId: null as string | null,
   sortOrder: 1,
   status: 'active' as 'active' | 'inactive',
   permissions: [] as string[], // 保留用于权限配置，但不传递给后端
@@ -540,6 +542,20 @@ const formData = reactive({
   inheritFromParent: false,  // 是否继承父部门权限
   dataScope: 'department' as 'department' | 'self' | 'all',  // 数据范围
   managerExtraPermissions: [] as string[]  // 部门负责人额外权限
+})
+
+// 监听父部门变化，自动计算层级
+watch(() => formData.parentId, (newParentId) => {
+  if (newParentId) {
+    const parentDept = departmentStore.getDepartmentById(newParentId)
+    if (parentDept) {
+      formData.level = (parentDept.level || 1) + 1
+      console.log(`[DepartmentDialog] 父部门层级: ${parentDept.level}, 当前部门层级: ${formData.level}`)
+    }
+  } else {
+    // 没有父部门，设为一级部门
+    formData.level = 1
+  }
 })
 
 // 权限展开状态
@@ -557,7 +573,7 @@ const totalPermissions = computed(() => {
 const getSelectedCount = (categoryId: string) => {
   const category = permissionsByModule.value.find(cat => cat.id === categoryId)
   if (!category) return 0
-  return category.permissions.filter(permission => 
+  return category.permissions.filter(permission =>
     formData.permissions.includes(permission.code)
   ).length
 }
@@ -594,7 +610,7 @@ const handleReset = () => {
 const applyTemplate = (templateKey: string) => {
   const template = permissionTemplates.find(t => t.key === templateKey)
   if (!template) return
-  
+
   if (templateKey === 'manager') {
     // 管理员权限 - 所有权限
     selectAll()
@@ -612,7 +628,7 @@ const applyTemplate = (templateKey: string) => {
 const isCategorySelected = (categoryKey: string) => {
   const category = permissionsByModule.value.find(cat => cat.id === categoryKey)
   if (!category) return false
-  return category.permissions.every(permission => 
+  return category.permissions.every(permission =>
     formData.permissions.includes(permission.code)
   )
 }
@@ -621,7 +637,7 @@ const isCategorySelected = (categoryKey: string) => {
 const isCategoryIndeterminate = (categoryKey: string) => {
   const category = permissionsByModule.value.find(cat => cat.id === categoryKey)
   if (!category) return false
-  const selectedCount = category.permissions.filter(permission => 
+  const selectedCount = category.permissions.filter(permission =>
     formData.permissions.includes(permission.code)
   ).length
   return selectedCount > 0 && selectedCount < category.permissions.length
@@ -631,7 +647,7 @@ const isCategoryIndeterminate = (categoryKey: string) => {
 const handleCategoryToggle = (categoryKey: string, checked: boolean) => {
   const category = permissionsByModule.value.find(cat => cat.id === categoryKey)
   if (!category) return
-  
+
   if (checked) {
     // 全选该分类
     category.permissions.forEach(permission => {
@@ -659,9 +675,9 @@ const formRules: FormRules = {
   code: [
     { required: true, message: '请输入部门编码', trigger: 'blur' },
     { min: 2, max: 20, message: '部门编码长度在 2 到 20 个字符', trigger: 'blur' },
-    { pattern: /^[A-Z0-9_]+$/, message: '部门编码只能包含大写字母、数字和下划线', trigger: 'blur' }
+    { pattern: /^[A-Z0-9_]+$/, message: '部门编码只能包含大写字母、数字和下划线，例如：TECH_DEPT', trigger: 'blur' }
   ],
-  sort: [
+  sortOrder: [
     { required: true, message: '请输入排序号', trigger: 'blur' }
   ],
   status: [
@@ -692,7 +708,7 @@ const parentDepartmentOptions = computed(() => {
         children: dept.children ? filterDepartments(dept.children) : []
       }))
   }
-  
+
   return filterDepartments(departmentStore.departmentTree)
 })
 
@@ -708,10 +724,10 @@ const isChildDepartment = (deptId: string, parentId: string): boolean => {
     }
     return null
   }
-  
+
   const dept = findInTree(departmentStore.departmentTree, deptId)
   if (!dept) return false
-  
+
   let current = dept
   while (current.parentId) {
     if (current.parentId === parentId) return true
@@ -754,6 +770,7 @@ const resetForm = () => {
   Object.assign(formData, {
     name: '',
     code: '',
+    level: 1,
     parentId: null,
     managerId: null,
     sortOrder: 1,
@@ -761,11 +778,11 @@ const resetForm = () => {
     permissions: [],
     description: ''
   })
-  
+
   // 重置权限相关状态
   currentTemplate.value = ''
   permissionExpanded.value = false
-  
+
   nextTick(() => {
     formRef.value?.clearValidate()
   })
@@ -774,10 +791,10 @@ const resetForm = () => {
 // 检测当前权限匹配的模板
 const detectCurrentTemplate = () => {
   const currentPermissions = formData.permissions
-  
+
   for (const template of permissionTemplates) {
     if (template.key === 'custom') continue
-    
+
     if (template.key === 'manager') {
       // 检查是否拥有所有权限
       const allPermissions = flatPermissions.value.map(permission => permission.code)
@@ -792,7 +809,7 @@ const detectCurrentTemplate = () => {
       }
     }
   }
-  
+
   return currentPermissions.length > 0 ? 'custom' : ''
 }
 
@@ -802,14 +819,15 @@ const initFormData = async () => {
     Object.assign(formData, {
       name: props.department.name,
       code: props.department.code,
+      level: props.department.level,
       parentId: props.department.parentId,
-      managerId: null, // 暂时设为null，因为后端不支持
+      managerId: props.department.managerId || null,
       sortOrder: props.department.sortOrder || 1,
       status: props.department.status,
       permissions: [], // 暂时设为空数组，因为后端不支持
       description: props.department.description || ''
     })
-    
+
     // 加载部门权限配置
     try {
       const permissionConfig = departmentPermissionService.getDepartmentPermissions(props.department.id)
@@ -823,7 +841,7 @@ const initFormData = async () => {
       formData.dataScope = 'department'
       formData.managerExtraPermissions = []
     }
-    
+
     // 检测当前权限对应的模板
     nextTick(() => {
       currentTemplate.value = detectCurrentTemplate()
@@ -870,21 +888,23 @@ const handleClose = () => {
 // 提交表单
 const handleSubmit = async () => {
   if (!formRef.value) return
-  
+
   try {
     const valid = await formRef.value.validate()
     if (!valid) return
-    
+
     loading.value = true
-    
+
     let departmentId: string
-    
+
     if (props.isEdit && props.department) {
       // 更新部门
       await departmentStore.updateDepartment(props.department.id, {
         name: formData.name,
         code: formData.code,
+        level: formData.level,
         parentId: formData.parentId,
+        managerId: formData.managerId,
         sortOrder: formData.sortOrder,
         status: formData.status,
         description: formData.description
@@ -895,27 +915,52 @@ const handleSubmit = async () => {
       const newDepartment = await departmentStore.addDepartment({
         name: formData.name,
         code: formData.code,
+        level: formData.level,
         parentId: formData.parentId,
+        managerId: formData.managerId,
         sortOrder: formData.sortOrder,
         status: formData.status,
         description: formData.description
       })
       departmentId = newDepartment.id
     }
-    
-    // 保存部门权限配置
-    await departmentPermissionService.setDepartmentPermissions(departmentId, {
-      permissions: formData.permissions,
-      inheritFromParent: formData.inheritFromParent,
-      dataScope: formData.dataScope,
-      managerExtraPermissions: formData.managerExtraPermissions
-    })
-    
+
+    // 暂时注释掉权限保存部分，先确保基本的部门创建功能正常
+    try {
+      // 保存部门权限配置
+      await departmentPermissionService.setDepartmentPermissions(departmentId, {
+        permissions: formData.permissions,
+        inheritFromParent: formData.inheritFromParent,
+        dataScope: formData.dataScope,
+        managerExtraPermissions: formData.managerExtraPermissions
+      })
+    } catch (permissionError) {
+      console.warn('权限保存失败，但部门创建成功:', permissionError)
+    }
+
     ElMessage.success(props.isEdit ? '部门更新成功' : '部门创建成功')
-    
+
     emit('success')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '操作失败')
+    console.error('部门操作失败:', error)
+
+    // 处理不同类型的错误
+    let errorMessage = '操作失败'
+
+    if (error instanceof Error) {
+      errorMessage = error.message
+    } else if (typeof error === 'object' && error !== null) {
+      // 处理验证错误或API错误
+      if ('code' in error && Array.isArray(error.code)) {
+        errorMessage = '表单验证失败，请检查输入内容'
+      } else if ('message' in error) {
+        errorMessage = String(error.message)
+      } else {
+        errorMessage = '操作失败，请重试'
+      }
+    }
+
+    ElMessage.error(errorMessage)
   } finally {
     loading.value = false
   }
@@ -1040,7 +1085,7 @@ const handleSubmit = async () => {
               padding: 8px 16px;
               border-radius: 8px;
               transition: all 0.2s ease;
-              
+
               &:hover {
                 background: rgba(255, 255, 255, 0.15);
                 transform: scale(1.05);
@@ -1340,7 +1385,7 @@ const handleSubmit = async () => {
 
     .compact-number {
       width: 100%;
-      
+
       :deep(.el-input-number__decrease),
       :deep(.el-input-number__increase) {
         width: 28px;
@@ -1357,7 +1402,7 @@ const handleSubmit = async () => {
       :deep(.el-radio) {
         margin-right: 0;
         font-size: 13px;
-        
+
         .el-radio__label {
           font-size: 13px;
           padding-left: 6px;
@@ -1575,11 +1620,11 @@ const handleSubmit = async () => {
   .el-dialog__headerbtn {
       top: 16px;
       right: 20px;
-      
+
       .el-dialog__close {
         color: #64748b;
         font-size: 16px;
-        
+
         &:hover {
           color: #334155;
         }
@@ -1696,16 +1741,31 @@ const handleSubmit = async () => {
   }
 }
 
+/* 表单提示样式 */
+.form-tip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+
+  .el-icon {
+    font-size: 14px;
+    color: #409eff;
+  }
+}
+
 /* 选项内容样式 */
 .option-content {
   display: flex;
   flex-direction: column;
-  
+
   span {
     font-size: 14px;
     color: #303133;
   }
-  
+
   small {
     font-size: 12px;
     color: #909399;

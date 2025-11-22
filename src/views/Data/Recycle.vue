@@ -445,7 +445,7 @@ const handleRestore = (row: RecycleItem) => {
 }
 
 const handleBatchRestore = () => {
-  if (selectedItems.value.length === 0) {
+  if (!selectedItems.value || selectedItems.value.length === 0) {
     ElMessage.warning('请选择要恢复的记录')
     return
   }
@@ -481,7 +481,7 @@ const handlePermanentDelete = (row: RecycleItem) => {
 }
 
 const handleBatchPermanentDelete = () => {
-  if (selectedItems.value.length === 0) {
+  if (!selectedItems.value || selectedItems.value.length === 0) {
     ElMessage.warning('请选择要删除的记录')
     return
   }

@@ -1,77 +1,90 @@
-# Logs
-logs
+# 依赖目录
+node_modules/
+backend/node_modules/
+
+# 构建输出
+dist/
+backend/dist/
+
+# 日志文件
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+logs/
+*.log.*
 
-# Dependencies
-node_modules/
-backend/node_modules/
-
-# Build outputs
-.DS_Store
-# dist/  # 注释掉，允许推送构建产物到GitHub用于部署
-dist-ssr/
-coverage/
-*.local
-
-# Database files
-*.sqlite
-*.db
-
-# Upload files
-backend/uploads/
-uploads/
-
-# Log files
-backend/logs/
-
-/cypress/videos/
-/cypress/screenshots/
-
-# Editor directories and files
+# 编辑器配置
 .vscode/*
 !.vscode/extensions.json
 .idea
+.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-*.tsbuildinfo
+# 环境变量文件（重要！不要上传到GitHub）
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+backend/.env
+backend/.env.local
+backend/.env.production
+backend/.env.development
 
-# Mobile SDK - Large files that exceed GitHub limits
-mobile-sdk/android/gradle-*.zip
-mobile-sdk/android/gradle-*/
-mobile-sdk/android/**/*.jar
-mobile-sdk/android/**/gradle-wrapper.jar
-mobile-sdk/android/app/build/
-mobile-sdk/android/build/
-mobile-sdk/ios/build/
+# PM2配置（如果包含敏感信息，取消注释）
+# ecosystem.config.js
+# backend/ecosystem.config.js
 
-# Large binary files
-*.zip
-*.jar
-*.war
-*.ear
-*.aar
+# 临时文件
+*.tmp
+*.temp
+.cache/
+.temp/
 
-# Additional large files and directories
-mobile-sdk/
-public/downloads/
-backend/uploads/
-database/
+# 测试覆盖率
+coverage/
+.nyc_output/
+
+# 操作系统文件
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# 备份文件
+*.bak
+*.backup
+*.old
+
+# 数据库文件
 *.sql
-*.db
 *.sqlite
-*.sqlite3
+*.db
 
-# Test files that might be large
-test-*.html
-*-test.html
-debug-*.html
-*.test.js
+# 上传文件
+uploads/
+public/uploads/
+
+# 证书文件
+*.pem
+*.key
+*.crt
+*.csr
+
+# 压缩文件
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Electron 打包输出
+dist-electron/
+dist_electron/
+out/

@@ -18,7 +18,7 @@
             <div class="metric-label">待发货订单</div>
           </div>
         </div>
-        
+
         <div class="metric-card">
           <div class="metric-icon total-amount">
             <el-icon><Money /></el-icon>
@@ -28,7 +28,7 @@
             <div class="metric-label">待发货金额</div>
           </div>
         </div>
-        
+
         <div class="metric-card">
           <div class="metric-icon shipped-today">
             <el-icon><Van /></el-icon>
@@ -51,7 +51,7 @@
             <div class="metric-label">紧急订单</div>
           </div>
         </div>
-        
+
         <div class="metric-card">
           <div class="metric-icon cod-orders">
             <el-icon><CreditCard /></el-icon>
@@ -61,7 +61,7 @@
             <div class="metric-label">代收款订单</div>
           </div>
         </div>
-        
+
         <div class="metric-card">
           <div class="metric-icon cod-amount">
             <el-icon><Coin /></el-icon>
@@ -76,8 +76,8 @@
 
     <!-- 快速筛选 -->
     <div class="quick-filters">
-      <el-button 
-        v-for="filter in quickFilters" 
+      <el-button
+        v-for="filter in quickFilters"
         :key="filter.value"
         :type="selectedQuickFilter === filter.value ? 'primary' : ''"
         @click="handleQuickFilter(filter.value)"
@@ -100,18 +100,18 @@
           value-format="YYYY-MM-DD"
           class="date-picker"
         />
-        <el-select 
-          v-model="selectedDepartment" 
-          placeholder="选择部门" 
+        <el-select
+          v-model="selectedDepartment"
+          placeholder="选择部门"
           class="department-select"
           size="default"
         >
           <el-option label="全部部门" value="" />
-          <el-option 
-            v-for="dept in departmentStore.departmentList" 
-            :key="dept.id" 
-            :label="dept.name" 
-            :value="dept.id" 
+          <el-option
+            v-for="dept in departmentStore.departmentList"
+            :key="dept.id"
+            :label="dept.name"
+            :value="dept.id"
           />
         </el-select>
         <el-input
@@ -231,8 +231,17 @@
       </template>
 
       <!-- 订单号列 -->
-      <template #orderNo="{ row }">
-        <el-link type="primary" @click="viewOrderDetail(row)">{{ row.orderNo }}</el-link>
+      <template #column-orderNo="{ row }">
+        <el-link type="primary" @click="goToOrderDetail(row)" :underline="false">
+          {{ row.orderNo }}
+        </el-link>
+      </template>
+
+      <!-- 客户名字列 -->
+      <template #column-customerName="{ row }">
+        <el-link type="primary" @click="goToCustomerDetail(row)" :underline="false">
+          {{ row.customerName }}
+        </el-link>
       </template>
 
       <!-- 状态列 -->
@@ -291,9 +300,9 @@
           <el-link type="primary" @click="trackLogistics(row)">
             {{ row.expressNo }}
           </el-link>
-          <el-button 
-            size="small" 
-            type="text" 
+          <el-button
+            size="small"
+            type="text"
             @click="copyExpressNo(row.expressNo)"
             class="copy-btn"
           >
@@ -305,8 +314,8 @@
 
       <!-- 物流状态列 -->
       <template #logisticsStatus="{ row }">
-        <el-tag 
-          v-if="row.logisticsStatus" 
+        <el-tag
+          v-if="row.logisticsStatus"
           :type="getLogisticsStatusType(row.logisticsStatus)"
         >
           {{ getLogisticsStatusText(row.logisticsStatus) }}
@@ -333,12 +342,12 @@
             <el-icon><View /></el-icon>
             查看
           </el-button>
-          
+
           <!-- 已退回和已取消订单：只显示查看按钮 -->
           <template v-if="activeTab === 'returned' || activeTab === 'cancelled'">
             <!-- 只显示查看按钮，其他操作按钮都隐藏 -->
           </template>
-          
+
           <!-- 草稿订单的特殊操作 -->
           <template v-else-if="row.status === 'draft'">
             <el-button size="small" type="warning" @click="editDraft(row)">
@@ -354,7 +363,7 @@
               删除
             </el-button>
           </template>
-          
+
           <!-- 被退回订单的特殊操作 -->
           <template v-else-if="row.status === 'rejected_returned'">
             <el-button size="small" type="warning" @click="editReturnedOrder(row)">
@@ -370,17 +379,24 @@
               取消
             </el-button>
           </template>
-          
+
           <!-- 非草稿订单的常规操作 -->
           <template v-else>
-            <el-button size="small" type="success" @click="printLabel(row)">
-              <el-icon><Printer /></el-icon>
-              打印面单
-            </el-button>
-            <el-button size="small" type="warning" @click="shipOrder(row)">
-              <el-icon><Van /></el-icon>
-              发货
-            </el-button>
+            <!-- 已发货标签页：隐藏打印面单和发货按钮 -->
+            <template v-if="activeTab === 'shipped'">
+              <!-- 已发货订单只显示查看和更多按钮 -->
+            </template>
+            <!-- 待发货等其他标签页：显示所有操作按钮 -->
+            <template v-else>
+              <el-button size="small" type="success" @click="printLabel(row)">
+                <el-icon><Printer /></el-icon>
+                打印面单
+              </el-button>
+              <el-button size="small" type="warning" @click="shipOrder(row)">
+                <el-icon><Van /></el-icon>
+                发货
+              </el-button>
+            </template>
             <el-dropdown @command="handleCommand" trigger="click">
               <el-button size="small">
                 更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
@@ -391,14 +407,17 @@
                     <el-icon><Download /></el-icon>
                     导出
                   </el-dropdown-item>
-                  <el-dropdown-item :command="{action: 'return', row}">
-                    <el-icon><Back /></el-icon>
-                    退回
-                  </el-dropdown-item>
-                  <el-dropdown-item :command="{action: 'cancel', row}">
-                    <el-icon><Close /></el-icon>
-                    取消
-                  </el-dropdown-item>
+                  <!-- 已发货订单不显示退回和取消 -->
+                  <template v-if="activeTab !== 'shipped'">
+                    <el-dropdown-item :command="{action: 'return', row}">
+                      <el-icon><Back /></el-icon>
+                      退回
+                    </el-dropdown-item>
+                    <el-dropdown-item :command="{action: 'cancel', row}">
+                      <el-icon><Close /></el-icon>
+                      取消
+                    </el-dropdown-item>
+                  </template>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -408,40 +427,40 @@
     </DynamicTable>
 
     <!-- 订单详情弹窗 -->
-    <OrderDetailDialog 
+    <OrderDetailDialog
       v-model:visible="orderDetailVisible"
       :order="selectedOrder"
     />
 
     <!-- 打印面单弹窗 -->
-    <PrintLabelDialog 
+    <PrintLabelDialog
       v-model:visible="printLabelVisible"
       :order="selectedOrder"
     />
 
     <!-- 发货弹窗 -->
-    <ShippingDialog 
+    <ShippingDialog
       v-model:visible="shipOrderVisible"
       :order="selectedOrder"
       @shipped="handleOrderShipped"
     />
 
     <!-- 批量发货弹窗 -->
-    <BatchShippingDialog 
+    <BatchShippingDialog
       v-model:visible="batchShipVisible"
       :selectedOrders="selectedOrders"
       @batch-shipped="handleBatchShipped"
     />
 
     <!-- 退回确认弹窗 -->
-    <ReturnOrderDialog 
+    <ReturnOrderDialog
       v-model:visible="returnOrderVisible"
       :order="selectedOrder"
       @returned="handleOrderReturned"
     />
 
     <!-- 取消确认弹窗 -->
-    <CancelOrderDialog 
+    <CancelOrderDialog
       v-model:visible="cancelOrderVisible"
       :order="selectedOrder"
       @cancelled="handleOrderCancelled"
@@ -468,9 +487,9 @@
               value-format="YYYY-MM-DD"
               class="date-picker"
             />
-            <el-select 
-              v-model="selectedDepartment" 
-              placeholder="选择部门" 
+            <el-select
+              v-model="selectedDepartment"
+              placeholder="选择部门"
               class="department-select"
             >
               <el-option label="全部部门" value="" />
@@ -509,9 +528,9 @@
 
         <!-- 完整的发货列表 -->
         <div class="fullscreen-table">
-          <el-table 
-            :data="orderList" 
-            stripe 
+          <el-table
+            :data="orderList"
+            stripe
             class="data-table"
             border
             @selection-change="handleSelectionChange"
@@ -522,7 +541,12 @@
             <el-table-column type="index" label="序号" width="50" align="center" />
             <el-table-column prop="orderNo" label="订单号" width="120" align="center">
               <template #default="{ row }">
-                <el-link type="primary" @click="viewOrderDetail(row)">{{ row.orderNo }}</el-link>
+                <el-link type="primary" @click="goToOrderDetail(row)">{{ row.orderNo }}</el-link>
+              </template>
+            </el-table-column>
+            <el-table-column prop="customerName" label="客户姓名" width="100" align="center" show-overflow-tooltip>
+              <template #default="{ row }">
+                <el-link type="primary" @click="goToCustomerDetail(row)">{{ row.customerName }}</el-link>
               </template>
             </el-table-column>
             <el-table-column prop="status" label="状态" width="80" align="center">
@@ -535,8 +559,8 @@
             <el-table-column prop="customerName" label="客户姓名" width="100" align="center" show-overflow-tooltip />
             <el-table-column prop="phone" label="联系电话" width="120" align="center" show-overflow-tooltip>
               <template #default="{ row }">
-                {{ maskPhone(row.phone) }}
-              </template>
+              {{ displaySensitiveInfoNew(row.phone, 'phone') }}
+            </template>
             </el-table-column>
             <el-table-column prop="address" label="收货地址" width="180" align="left" show-overflow-tooltip />
             <el-table-column prop="productsText" label="商品信息" width="160" align="left" show-overflow-tooltip />
@@ -602,10 +626,14 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({
+  name: 'LogisticsShipping'
+})
+
 import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
+import {
   Box, Money, Van, Warning, CreditCard, Coin,
   Search, Phone, Download, View, Printer, ArrowDown, Back, Close, Document,
   Edit, Check, Delete, FullScreen, CopyDocument
@@ -613,10 +641,12 @@ import {
 import { useOrderStore } from '@/stores/order'
 import { useNotificationStore } from '@/stores/notification'
 import { useDepartmentStore } from '@/stores/department'
+import { useCustomerStore } from '@/stores/customer'
 import { exportBatchOrders, exportSingleOrder, type ExportOrder } from '@/utils/export'
 import { useUserStore } from '@/stores/user'
-import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { createSafeNavigator } from '@/utils/navigation'
+import { eventBus, EventNames } from '@/utils/eventBus'
 import OrderDetailDialog from './components/OrderDetailDialog.vue'
 import PrintLabelDialog from './components/PrintLabelDialog.vue'
 import ShippingDialog from './components/ShippingDialog.vue'
@@ -671,8 +701,8 @@ const searchOrderNo = ref('')
 const searchCustomerPhone = ref('')
 
 // 列表数据
-const orderList = ref([])
-const selectedOrders = ref([])
+const orderList = ref<any[]>([])
+const selectedOrders = ref<any[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(50)
@@ -686,13 +716,14 @@ const batchShipVisible = ref(false)
 const returnOrderVisible = ref(false)
 const cancelOrderVisible = ref(false)
 const fullscreenVisible = ref(false)
-const selectedOrder = ref(null)
+const selectedOrder = ref<any>(null)
 
 // Store
 const orderStore = useOrderStore()
 const notificationStore = useNotificationStore()
 const userStore = useUserStore()
 const departmentStore = useDepartmentStore()
+const customerStore = useCustomerStore()
 
 // 表格标题
 const tableTitle = computed(() => {
@@ -823,6 +854,14 @@ const tableColumns = computed(() => [
     visible: true
   },
   {
+    prop: 'orderSource',
+    label: '订单来源',
+    width: 110,
+    align: 'center',
+    visible: true,
+    formatter: (row: any) => row ? getOrderSourceText(row.orderSource) : '-'
+  },
+  {
     prop: 'remark',
     label: '订单备注',
     width: 150,
@@ -860,7 +899,10 @@ const tableColumns = computed(() => [
 ])
 
 // 格式化数字
-const formatNumber = (num: number) => {
+const formatNumber = (num: number | null | undefined) => {
+  if (num === null || num === undefined || isNaN(num)) {
+    return '0'
+  }
   return num.toLocaleString()
 }
 
@@ -875,6 +917,22 @@ const formatDateTime = (dateTime: string) => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+// 获取订单来源文本
+const getOrderSourceText = (source: string | null) => {
+  if (!source) return '-'
+  const sourceMap: Record<string, string> = {
+    online_store: '🛒 线上商城',
+    wechat_mini: '📱 微信小程序',
+    wechat_service: '💬 微信客服',
+    phone_call: '📞 电话咨询',
+    offline_store: '🏪 线下门店',
+    referral: '👥 客户推荐',
+    advertisement: '📺 广告投放',
+    other: '🎯 其他渠道'
+  }
+  return sourceMap[source] || source
 }
 
 // 获取订单状态类型
@@ -921,7 +979,7 @@ const getMarkText = (markType: string) => {
 }
 
 // 获取行类名
-const getRowClassName = ({ row }) => {
+const getRowClassName = ({ row }: { row: any }) => {
   if (row.status === 'urgent') return 'urgent-row'
   if (row.status === 'cod') return 'cod-row'
   return ''
@@ -962,28 +1020,39 @@ const queryData = () => {
 const loadOrderList = async () => {
   try {
     loading.value = true
+    console.log('[发货列表] 开始加载订单列表，当前标签页:', activeTab.value)
+
     // 根据当前选中的标签页获取对应状态的订单
     const orders = await orderStore.getOrdersByShippingStatus(activeTab.value)
-    
+
+    console.log('[发货列表] getOrdersByShippingStatus 返回的订单数量:', orders?.length || 0)
+
     // 确保返回的是数组
     if (!Array.isArray(orders)) {
-      console.error('getOrdersByShippingStatus 返回的不是数组:', orders)
+      console.error('[发货列表] getOrdersByShippingStatus 返回的不是数组:', orders)
       orderList.value = []
       total.value = 0
       return
     }
-    
 
-    
+    console.log('[发货列表] 获取到的订单列表:', orders.map(o => ({
+      orderNumber: o.orderNumber,
+      status: o.status,
+      auditStatus: o.auditStatus,
+      customerName: o.customerName
+    })))
+
+
+
     // 应用筛选条件
     let filteredOrders = [...orders]
-    
+
     // 快速筛选
     if (selectedQuickFilter.value !== 'all') {
       switch (selectedQuickFilter.value) {
         case 'today':
           const today = new Date().toISOString().split('T')[0]
-          filteredOrders = filteredOrders.filter(order => 
+          filteredOrders = filteredOrders.filter(order =>
             order.createTime && order.createTime.startsWith(today)
           )
           break
@@ -991,7 +1060,7 @@ const loadOrderList = async () => {
           const yesterday = new Date()
           yesterday.setDate(yesterday.getDate() - 1)
           const yesterdayStr = yesterday.toISOString().split('T')[0]
-          filteredOrders = filteredOrders.filter(order => 
+          filteredOrders = filteredOrders.filter(order =>
             order.createTime && order.createTime.startsWith(yesterdayStr)
           )
           break
@@ -1037,7 +1106,7 @@ const loadOrderList = async () => {
           break
       }
     }
-    
+
     // 日期范围筛选
     if (dateRange.value && dateRange.value.length === 2) {
       const [startDate, endDate] = dateRange.value
@@ -1046,63 +1115,111 @@ const loadOrderList = async () => {
         return orderDate >= startDate && orderDate <= endDate
       })
     }
-    
+
     // 部门筛选
     if (selectedDepartment.value) {
-      filteredOrders = filteredOrders.filter(order => 
+      filteredOrders = filteredOrders.filter(order =>
         order.department && order.department === selectedDepartment.value
       )
     }
-    
+
     // 订单号搜索
     if (searchOrderNo.value) {
-      filteredOrders = filteredOrders.filter(order => 
-        order.orderNo && order.orderNo.includes(searchOrderNo.value)
+      filteredOrders = filteredOrders.filter(order =>
+        order.orderNumber && order.orderNumber.includes(searchOrderNo.value)
       )
     }
-    
+
     // 客户电话搜索
     if (searchCustomerPhone.value) {
-      filteredOrders = filteredOrders.filter(order => 
-        order.phone && order.phone.includes(searchCustomerPhone.value)
+      filteredOrders = filteredOrders.filter(order =>
+        order.customerPhone && order.customerPhone.includes(searchCustomerPhone.value)
       )
     }
-    
+
+    // 按创建时间倒序排序（最新的在上面）
+    filteredOrders.sort((a, b) => {
+      const timeA = new Date(a.createTime || a.shippingTime || 0).getTime()
+      const timeB = new Date(b.createTime || b.shippingTime || 0).getTime()
+      return timeB - timeA // 倒序：最新的在上面
+    })
+
     // 分页处理
     const startIndex = (currentPage.value - 1) * pageSize.value
     const endIndex = startIndex + pageSize.value
-    
+
     orderList.value = filteredOrders.slice(startIndex, endIndex)
     total.value = filteredOrders.length
-    
-    // 为每个订单添加真实的操作记录
+
+    // 为每个订单添加真实的操作记录并同步客户信息和订单信息
     orderList.value = orderList.value.map(order => {
       // 获取真实的操作记录
       const operationLogs = orderStore.getOperationLogs(order.id) || []
-      
+
       // 获取最近的操作记录
-      const lastOperation = operationLogs.length > 0 
+      const lastOperation = operationLogs.length > 0
         ? operationLogs[operationLogs.length - 1]
         : {
             action: '创建订单',
             operator: order.createdBy || '系统',
             time: order.createTime
           }
-      
+
+      // 同步客户信息
+      let customerInfo = {}
+      if (order.customerId) {
+        const customer = customerStore.getCustomerById(order.customerId)
+        if (customer) {
+          customerInfo = {
+            customerAge: customer.age || null,
+            customerHeight: customer.height || null,
+            customerWeight: customer.weight || null,
+            medicalHistory: customer.medicalHistory || customer.disease || null,
+            serviceWechat: order.serviceWechat || customer.serviceWechat || customer.wechat || customer.wechatId || null
+          }
+        }
+      }
+
+      // 计算订单相关字段
+      const products = Array.isArray(order.products) ? order.products : []
+      const productsText = products.map(p => `${p.name} × ${p.quantity}`).join('，') || '-'
+      const totalQuantity = products.reduce((sum, p) => sum + (p.quantity || 0), 0) || 0
+      const deposit = order.depositAmount || 0
+      const codAmount = order.collectAmount || (order.totalAmount || 0) - (order.depositAmount || 0)
+
+      // 统一字段映射
       return {
         ...order,
+        // 字段映射
+        orderNo: order.orderNumber || '-',
+        phone: order.customerPhone || order.receiverPhone || '-',
+        address: order.receiverAddress || '-',
+        // 同步的客户信息
+        ...customerInfo,
+        // 计算的订单字段
+        productsText,
+        totalQuantity,
+        deposit,
+        codAmount,
+        // 物流字段映射
+        expressCompany: order.expressCompany || null,
+        expressNo: order.trackingNumber || null,
+        logisticsStatus: order.logisticsStatus || null,
+        // 订单来源
+        orderSource: order.orderSource || null,
+        // 操作记录
         lastOperation,
         operationLogs
       }
     })
-    
+
     // 同步物流状态（异步执行，不阻塞页面加载）
     syncLogisticsData()
-    
+
     // 更新概览数据
     updateOverviewData(filteredOrders)
-  } catch (error) {
-    console.error('加载订单列表失败:', error)
+  } catch (_error) {
+    console.error('加载订单列表失败:', _error)
     ElMessage.error('加载订单列表失败')
     orderList.value = []
     total.value = 0
@@ -1114,19 +1231,19 @@ const loadOrderList = async () => {
 // 更新概览数据
 const updateOverviewData = (allOrders = []) => {
   // 确保 allOrders 和 orderList.value 都是数组
-  const orders = Array.isArray(allOrders) && allOrders.length > 0 
-    ? allOrders 
+  const orders = Array.isArray(allOrders) && allOrders.length > 0
+    ? allOrders
     : Array.isArray(orderList.value) ? orderList.value : []
-  
+
   overviewData.totalOrders = orders.length
   overviewData.totalAmount = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0)
-  
+
   // 今日发货数量
   const today = new Date().toISOString().split('T')[0]
-  overviewData.shippedToday = orders.filter(order => 
+  overviewData.shippedToday = orders.filter(order =>
     order.shipTime && order.shipTime.startsWith(today)
   ).length
-  
+
   overviewData.urgentOrders = orders.filter(order => order.status === 'urgent').length
   overviewData.codOrders = orders.filter(order => (order.codAmount || 0) > 0).length
   overviewData.codAmount = orders.reduce((sum, order) => sum + (order.codAmount || 0), 0)
@@ -1137,7 +1254,7 @@ const syncLogisticsData = async () => {
   try {
     // 批量同步物流状态
     await orderStore.batchSyncLogistics()
-    
+
     // 重新加载当前页面数据以反映最新状态
     const currentOrders = await orderStore.getOrdersByShippingStatus(activeTab.value)
     if (Array.isArray(currentOrders)) {
@@ -1145,27 +1262,65 @@ const syncLogisticsData = async () => {
       const startIndex = (currentPage.value - 1) * pageSize.value
       const endIndex = startIndex + pageSize.value
       const updatedList = currentOrders.slice(startIndex, endIndex)
-      
-      // 更新操作记录
-      orderList.value = updatedList.map(order => {
+
+      // 更新操作记录并同步客户信息
+      orderList.value = updatedList.map((order: any) => {
         const operationLogs = orderStore.getOperationLogs(order.id) || []
-        const lastOperation = operationLogs.length > 0 
+        const lastOperation = operationLogs.length > 0
           ? operationLogs[operationLogs.length - 1]
           : {
               action: '创建订单',
               operator: order.createdBy || '系统',
               time: order.createTime
             }
-        
+
+        // 同步客户信息
+        let customerInfo: any = {}
+        if (order.customerId) {
+          const customer = customerStore.getCustomerById(order.customerId)
+          if (customer) {
+            customerInfo = {
+              customerAge: customer.age || null,
+              customerHeight: customer.height || null,
+              customerWeight: customer.weight || null,
+              medicalHistory: customer.medicalHistory || null,
+              serviceWechat: customer.wechatId || null
+            }
+          }
+        }
+
+        // 计算订单相关字段
+        const products = Array.isArray(order.products) ? order.products : []
+        const productsText = products.map((p: any) => `${p.name} × ${p.quantity}`).join('，') || '-'
+        const totalQuantity = products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) || 0
+        const deposit = order.depositAmount || 0
+        const codAmount = order.collectAmount || (order.totalAmount || 0) - (order.depositAmount || 0)
+
         return {
           ...order,
+          // 字段映射
+          orderNo: order.orderNumber || '-',
+          phone: order.customerPhone || order.receiverPhone || '-',
+          address: order.receiverAddress || '-',
+          // 同步的客户信息
+          ...customerInfo,
+          // 计算的订单字段
+          productsText,
+          totalQuantity,
+          deposit,
+          codAmount,
+          // 物流字段映射
+          expressCompany: order.expressCompany || null,
+          expressNo: order.trackingNumber || null,
+          logisticsStatus: order.logisticsStatus || null,
+          // 操作记录
           lastOperation,
           operationLogs
         }
       })
     }
-  } catch (error) {
-    console.error('同步物流数据失败:', error)
+  } catch (_error) {
+    console.error('同步物流数据失败:', _error)
   }
 }
 
@@ -1177,17 +1332,17 @@ let syncTimer: NodeJS.Timeout | null = null
 const startAutoSync = () => {
   // 启动物流状态自动同步
   orderStore.startLogisticsAutoSync()
-  
+
   // 设置物流事件监听器
   orderStore.setupLogisticsEventListener()
-  
+
   // 每30秒同步物流数据
   syncTimer = setInterval(() => {
     if (!loading.value) {
       syncLogisticsData()
     }
   }, 30000)
-  
+
   // 每60秒刷新订单列表数据
   refreshTimer = setInterval(() => {
     if (!loading.value) {
@@ -1210,7 +1365,7 @@ const stopAutoSync = () => {
 }
 
 // 选择变化处理
-const handleSelectionChange = (selection) => {
+const handleSelectionChange = (selection: any[]) => {
   selectedOrders.value = selection
 }
 
@@ -1225,9 +1380,69 @@ const handleCurrentChange = (page: number) => {
   loadOrderList()
 }
 
-// 查看订单详情
-const viewOrderDetail = (order) => {
-  selectedOrder.value = order
+// 格式化订单数据供弹窗使用
+const formatOrderForDialog = (order: any) => {
+  // 同步客户信息
+  let customerInfo = {}
+  if (order.customerId) {
+    const customer = customerStore.getCustomerById(order.customerId)
+    if (customer) {
+      customerInfo = {
+        customerAge: customer.age || null,
+        customerHeight: customer.height || null,
+        customerWeight: customer.weight || null,
+        medicalHistory: customer.medicalHistory || null,
+        serviceWechat: customer.wechatId || null
+      }
+    }
+  }
+
+  // 计算订单相关字段
+  const products = Array.isArray(order.products) ? order.products : []
+  const productsText = products.map(p => `${p.name} × ${p.quantity}`).join('，') || ''
+  const totalQuantity = products.reduce((sum, p) => sum + (p.quantity || 0), 0) || 0
+  const deposit = order.depositAmount || 0
+  const codAmount = order.collectAmount || (order.totalAmount || 0) - (order.depositAmount || 0)
+
+  return {
+    ...order,
+    // 字段映射
+    orderNo: order.orderNumber || order.orderNo || '-',
+    phone: order.customerPhone || order.receiverPhone || order.phone || '-',
+    address: order.receiverAddress || order.address || '-',
+    // 同步的客户信息
+    ...customerInfo,
+    // 计算的订单字段
+    productsText,
+    totalQuantity,
+    deposit,
+    codAmount,
+    // 物流字段映射
+    expressCompany: order.expressCompany || null,
+    expressNo: order.trackingNumber || order.expressNo || null,
+    logisticsStatus: order.logisticsStatus || null
+  }
+}
+
+// 跳转到订单详情页
+const goToOrderDetail = (order: any) => {
+  if (order.id) {
+    safeNavigator.push(`/order/detail/${order.id}`)
+  }
+}
+
+// 跳转到客户详情页
+const goToCustomerDetail = (order: any) => {
+  if (order.customerId) {
+    safeNavigator.push(`/customer/detail/${order.customerId}`)
+  } else {
+    ElMessage.warning('客户ID不存在')
+  }
+}
+
+// 查看订单详情（弹窗）
+const viewOrderDetail = (order: any) => {
+  selectedOrder.value = formatOrderForDialog(order)
   orderDetailVisible.value = true
 }
 
@@ -1237,24 +1452,24 @@ const showFullscreenView = () => {
 }
 
 // 打印面单
-const printLabel = (order) => {
-  selectedOrder.value = order
+const printLabel = (order: any) => {
+  selectedOrder.value = formatOrderForDialog(order)
   printLabelVisible.value = true
 }
 
 // 发货
-const shipOrder = (order) => {
-  selectedOrder.value = order
+const shipOrder = (order: any) => {
+  selectedOrder.value = formatOrderForDialog(order)
   shipOrderVisible.value = true
 }
 
 // 批量导出
 const exportSelected = async () => {
-  if (selectedOrders.value.length === 0) {
+  if (!selectedOrders.value || selectedOrders.value.length === 0) {
     ElMessage.warning('请选择要导出的订单')
     return
   }
-  
+
   try {
     // 转换订单数据格式
     const exportData: ExportOrder[] = selectedOrders.value.map(order => ({
@@ -1264,10 +1479,10 @@ const exportSelected = async () => {
       receiverName: order.receiverName || '',
       receiverPhone: order.receiverPhone || '',
       receiverAddress: order.receiverAddress || '',
-      products: order.productsText || (Array.isArray(order.products) 
+      products: order.productsText || (Array.isArray(order.products)
         ? order.products.map(p => `${p.name} x${p.quantity}`).join(', ')
         : order.products || ''),
-      totalQuantity: Array.isArray(order.products) 
+      totalQuantity: Array.isArray(order.products)
         ? order.products.reduce((sum, p) => sum + (p.quantity || 0), 0)
         : 0,
       totalAmount: order.totalAmount || 0,
@@ -1283,7 +1498,7 @@ const exportSelected = async () => {
       status: order.status || '',
       shippingStatus: order.shippingStatus || ''
     }))
-    
+
     const filename = exportBatchOrders(exportData, userStore.isAdmin)
     ElMessage.success(`导出成功：${filename}`)
   } catch (error) {
@@ -1294,7 +1509,7 @@ const exportSelected = async () => {
 
 // 批量发货
 const batchShip = () => {
-  if (selectedOrders.value.length === 0) {
+  if (!selectedOrders.value || selectedOrders.value.length === 0) {
     ElMessage.warning('请选择要发货的订单')
     return
   }
@@ -1302,7 +1517,7 @@ const batchShip = () => {
 }
 
 // 命令处理
-const handleCommand = async ({ action, row }) => {
+const handleCommand = async ({ action, row }: { action: string, row: any }) => {
   selectedOrder.value = row
   switch (action) {
     case 'export':
@@ -1315,10 +1530,10 @@ const handleCommand = async ({ action, row }) => {
           receiverName: row.receiverName || '',
           receiverPhone: row.receiverPhone || '',
           receiverAddress: row.receiverAddress || '',
-          products: row.productsText || (Array.isArray(row.products) 
+          products: row.productsText || (Array.isArray(row.products)
             ? row.products.map(p => `${p.name} x${p.quantity}`).join(', ')
             : row.products || ''),
-          totalQuantity: Array.isArray(row.products) 
+          totalQuantity: Array.isArray(row.products)
             ? row.products.reduce((sum, p) => sum + (p.quantity || 0), 0)
             : 0,
           totalAmount: row.totalAmount || 0,
@@ -1334,7 +1549,7 @@ const handleCommand = async ({ action, row }) => {
           status: row.status || '',
           shippingStatus: row.shippingStatus || ''
         }
-        
+
         const filename = exportSingleOrder(exportData, userStore.isAdmin)
         ElMessage.success(`导出成功：${filename}`)
       } catch (error) {
@@ -1352,60 +1567,112 @@ const handleCommand = async ({ action, row }) => {
 }
 
 // 订单发货成功
-const handleOrderShipped = (shippingData) => {
+const handleOrderShipped = (shippingData: any) => {
   // 更新订单状态为已发货
-  const updatedOrder = orderStore.shipOrder(shippingData.orderId, shippingData)
-  if (updatedOrder) {
-    ElMessage.success('发货成功')
-    loadOrderList()
-  } else {
-    ElMessage.error('发货失败，订单不存在')
+  if (shippingData.orderId && shippingData.logisticsCompany && shippingData.trackingNumber) {
+    orderStore.shipOrder(shippingData.orderId, shippingData.logisticsCompany, shippingData.trackingNumber)
   }
+  ElMessage.success('发货成功')
+  loadOrderList()
 }
 
 // 批量发货成功
-const handleBatchShipped = (orders) => {
+const handleBatchShipped = (orders: any[]) => {
   // 批量更新订单状态
   orders.forEach(order => {
-    orderStore.shipOrder(order.orderId, order)
+    if (order.orderId && order.logisticsCompany && order.trackingNumber) {
+      orderStore.shipOrder(order.orderId, order.logisticsCompany, order.trackingNumber)
+    }
   })
   ElMessage.success(`成功发货 ${orders.length} 个订单`)
   loadOrderList()
 }
 
 // 订单退回成功
-const handleOrderReturned = (returnData) => {
+const handleOrderReturned = (returnData: any) => {
   // 更新订单状态为退回
-  const updatedOrder = orderStore.returnOrder(returnData.orderId, returnData.returnReason)
-  if (updatedOrder) {
-    ElMessage.success('订单已退回')
-    loadOrderList()
-  } else {
-    ElMessage.error('退回失败，订单不存在')
+  if (returnData.orderId && returnData.reason) {
+    const returnReason = `${returnData.returnType ? getReturnTypeText(returnData.returnType) + '：' : ''}${returnData.reason}`
+    orderStore.returnOrder(returnData.orderId, returnReason)
+
+    // 发送通知给销售人员
+    const order = orderStore.getOrderById(returnData.orderId)
+    if (order && returnData.notificationMethod && returnData.notificationMethod.length > 0) {
+      notificationStore.sendMessage(
+        notificationStore.MessageType.ORDER_CANCELLED,
+        `订单 ${order.orderNumber} 已被退回，原因：${returnReason}`,
+        {
+          relatedId: order.id,
+          relatedType: 'order',
+          actionUrl: `/order/detail/${order.id}`
+        }
+      )
+    }
   }
+  ElMessage.success('订单已退回')
+  loadOrderList()
+  updateTabCounts()
 }
 
 // 订单取消成功
-const handleOrderCancelled = (cancelData) => {
+const handleOrderCancelled = (cancelData: any) => {
   // 更新订单状态为取消
-  const updatedOrder = orderStore.cancelOrder(cancelData.orderId, cancelData.cancelReason)
-  if (updatedOrder) {
-    ElMessage.success('订单已取消')
-    loadOrderList()
-  } else {
-    ElMessage.error('取消失败，订单不存在')
+  if (cancelData.orderId && cancelData.reason) {
+    const cancelReason = `${cancelData.cancelType ? getCancelTypeText(cancelData.cancelType) + '：' : ''}${cancelData.reason}`
+    orderStore.cancelOrder(cancelData.orderId, cancelReason)
+
+    // 发送通知给客户（如果需要）
+    const order = orderStore.getOrderById(cancelData.orderId)
+    if (order && cancelData.notifyCustomer && cancelData.notificationMethod && cancelData.notificationMethod.length > 0) {
+      // 这里可以添加客户通知逻辑
+      console.log('通知客户订单已取消:', order.orderNumber)
+    }
   }
+  ElMessage.success('订单已取消')
+  loadOrderList()
+  updateTabCounts()
+}
+
+// 获取退回类型文本
+const getReturnTypeText = (returnType: string) => {
+  const typeMap: Record<string, string> = {
+    'address_error': '地址信息错误',
+    'customer_info_error': '客户信息不符',
+    'product_error': '商品信息错误',
+    'price_error': '价格信息错误',
+    'stock_shortage': '库存不足',
+    'customer_request': '客户要求修改',
+    'logistics_issue': '物流配送问题',
+    'other': '其他原因'
+  }
+  return typeMap[returnType] || '未知类型'
+}
+
+// 获取取消类型文本
+const getCancelTypeText = (cancelType: string) => {
+  const typeMap: Record<string, string> = {
+    'customer_cancel': '客户主动取消',
+    'customer_unreachable': '客户联系不上',
+    'address_undeliverable': '地址无法配送',
+    'out_of_stock': '商品缺货',
+    'price_dispute': '价格争议',
+    'duplicate_order': '重复订单',
+    'fraud_order': '欺诈订单',
+    'system_error': '系统错误',
+    'other': '其他原因'
+  }
+  return typeMap[cancelType] || '未知类型'
 }
 
 // 草稿管理方法
 // 编辑草稿
-const editDraft = (row) => {
+const editDraft = (_row: any) => {
   ElMessage.info('编辑草稿功能开发中...')
   // TODO: 跳转到订单编辑页面或打开编辑弹窗
 }
 
 // 提交草稿
-const submitDraft = async (row) => {
+const submitDraft = async (row: any) => {
   try {
     await ElMessageBox.confirm(
       `确定要提交草稿订单 ${row.orderNumber} 吗？提交后将进入审核流程。`,
@@ -1416,7 +1683,7 @@ const submitDraft = async (row) => {
         type: 'warning'
       }
     )
-    
+
     // 更新订单状态为pending，进入审核流程
     const orderIndex = orderStore.orders.findIndex(order => order.id === row.id)
     if (orderIndex !== -1) {
@@ -1429,7 +1696,7 @@ const submitDraft = async (row) => {
         orderStore.orders[orderIndex].isAuditTransferred = false
       }
     }
-    
+
     ElMessage.success('草稿已提交，进入审核流程')
     loadOrderList()
     updateTabCounts()
@@ -1453,13 +1720,13 @@ const deleteDraft = async (row) => {
         type: 'error'
       }
     )
-    
+
     // 从订单列表中删除
     const orderIndex = orderStore.orders.findIndex(order => order.id === row.id)
     if (orderIndex !== -1) {
       orderStore.orders.splice(orderIndex, 1)
     }
-    
+
     ElMessage.success('草稿已删除')
     loadOrderList()
     updateTabCounts()
@@ -1479,7 +1746,7 @@ const updateTabCounts = async () => {
     const returnedOrders = await orderStore.getOrdersByShippingStatus('returned')
     const cancelledOrders = await orderStore.getOrdersByShippingStatus('cancelled')
     const draftOrders = await orderStore.getOrdersByShippingStatus('draft')
-    
+
     tabCounts.pending = Array.isArray(pendingOrders) ? pendingOrders.length : 0
     tabCounts.shipped = Array.isArray(shippedOrders) ? shippedOrders.length : 0
     tabCounts.returned = Array.isArray(returnedOrders) ? returnedOrders.length : 0
@@ -1492,13 +1759,13 @@ const updateTabCounts = async () => {
 
 // 被退回订单操作方法
 // 编辑被退回订单
-const editReturnedOrder = (row) => {
+const editReturnedOrder = (_row: any) => {
   ElMessage.info('编辑被退回订单功能开发中...')
   // TODO: 跳转到订单编辑页面或打开编辑弹窗
 }
 
 // 提审被退回订单
-const submitForAudit = async (row) => {
+const submitForAudit = async (row: any) => {
   try {
     await ElMessageBox.confirm(
       `确定要重新提审订单 ${row.orderNumber} 吗？提审后将重新进入审核流程。`,
@@ -1509,10 +1776,10 @@ const submitForAudit = async (row) => {
         type: 'warning'
       }
     )
-    
+
     // 使用store的重新提审方法
     const result = orderStore.resubmitForAudit(row.id, userStore.user?.name || '系统')
-    
+
     if (result) {
       ElMessage.success('订单已重新提审，进入审核流程')
       loadOrderList()
@@ -1529,7 +1796,7 @@ const submitForAudit = async (row) => {
 }
 
 // 取消被退回订单
-const cancelReturnedOrder = async (row) => {
+const cancelReturnedOrder = async (row: any) => {
   try {
     await ElMessageBox.confirm(
       `确定要取消订单 ${row.orderNumber} 吗？取消后订单状态将变为已取消。`,
@@ -1540,14 +1807,14 @@ const cancelReturnedOrder = async (row) => {
         type: 'error'
       }
     )
-    
+
     // 更新订单状态为cancelled
     const orderIndex = orderStore.orders.findIndex(order => order.id === row.id)
     if (orderIndex !== -1) {
       orderStore.orders[orderIndex].status = 'cancelled'
       orderStore.orders[orderIndex].shippingStatus = 'cancelled'
     }
-    
+
     ElMessage.success('订单已取消')
     loadOrderList()
     updateTabCounts()
@@ -1607,12 +1874,12 @@ const getLogisticsStatusText = (status: string) => {
 }
 
 // 跟踪物流
-const trackLogistics = (row) => {
+const trackLogistics = (row: any) => {
   if (!row.expressNo || !row.expressCompany) {
     ElMessage.warning('物流信息不完整，无法跟踪')
     return
   }
-  
+
   // 跳转到物流跟踪页面
   safeNavigator.push({
     path: '/logistics/track/detail/' + row.expressNo,
@@ -1640,15 +1907,49 @@ const copyExpressNo = async (expressNo: string) => {
 }
 
 // 监听标签页变化，重新加载数据
-watch(activeTab, (newTab) => {
+watch(activeTab, () => {
   loadOrderList()
   updateTabCounts()
 })
 
 // 监听快速筛选变化，重新加载数据
-watch(selectedQuickFilter, (newFilter) => {
+watch(selectedQuickFilter, () => {
   loadOrderList()
 })
+
+// 事件处理函数
+const handleOrderAudited = (data?: any): void => {
+  console.log('[发货列表] 收到订单审核事件', data)
+  if (data && data.approved) {
+    console.log('[发货列表] 订单审核通过，刷新列表:', data.order?.orderNumber)
+  }
+  loadOrderList()
+  updateTabCounts()
+}
+
+const handleOrderShippedEvent = () => {
+  console.log('[发货列表] 收到订单发货事件')
+  loadOrderList()
+  updateTabCounts()
+}
+
+const handleOrderCancelledEvent = () => {
+  console.log('[发货列表] 收到订单取消事件')
+  loadOrderList()
+  updateTabCounts()
+}
+
+const handleOrderReturnedEvent = () => {
+  console.log('[发货列表] 收到订单退回事件')
+  loadOrderList()
+  updateTabCounts()
+}
+
+const handleRefreshShippingList = () => {
+  console.log('[发货列表] 收到刷新列表事件')
+  loadOrderList()
+  updateTabCounts()
+}
 
 onMounted(() => {
   loadOrderList()
@@ -1656,11 +1957,27 @@ onMounted(() => {
   startAutoSync() // 启动自动同步
   // 初始化部门数据
   departmentStore.initData()
+
+  // 监听订单事件总线 - 实现订单状态同步
+  eventBus.on(EventNames.ORDER_AUDITED, handleOrderAudited)
+  eventBus.on(EventNames.ORDER_SHIPPED, handleOrderShippedEvent)
+  eventBus.on(EventNames.ORDER_CANCELLED, handleOrderCancelledEvent)
+  eventBus.on(EventNames.ORDER_RETURNED, handleOrderReturnedEvent)
+  eventBus.on(EventNames.REFRESH_SHIPPING_LIST, handleRefreshShippingList)
+  console.log('[发货列表] 事件监听器已注册')
 })
 
 onUnmounted(() => {
   // 清理定时器
   stopAutoSync()
+
+  // 清理订单事件总线监听
+  eventBus.off(EventNames.ORDER_AUDITED, handleOrderAudited)
+  eventBus.off(EventNames.ORDER_SHIPPED, handleOrderShippedEvent)
+  eventBus.off(EventNames.ORDER_CANCELLED, handleOrderCancelledEvent)
+  eventBus.off(EventNames.ORDER_RETURNED, handleOrderReturnedEvent)
+  eventBus.off(EventNames.REFRESH_SHIPPING_LIST, handleRefreshShippingList)
+  console.log('[发货列表] 事件监听器已清理')
 })
 </script>
 
@@ -1886,13 +2203,13 @@ onUnmounted(() => {
 .tabs-actions {
   display: flex;
   align-items: center;
-  
+
   .fullscreen-btn {
     border-radius: 6px;
     font-size: 14px;
     padding: 8px 16px;
     transition: all 0.3s ease;
-    
+
     &:hover {
       transform: translateY(-1px);
       box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
@@ -1919,7 +2236,7 @@ onUnmounted(() => {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
     border: 1px solid #e5e7eb;
   }
-  
+
   .el-dialog__header {
     background: #ffffff;
     color: #374151;
@@ -1927,27 +2244,27 @@ onUnmounted(() => {
     padding: 20px 24px;
     border-bottom: 1px solid #f3f4f6;
   }
-  
+
   .el-dialog__title {
     font-size: 18px;
     font-weight: 500;
     color: #374151;
   }
-  
+
   .el-dialog__headerbtn {
     top: 20px;
     right: 24px;
-    
+
     .el-dialog__close {
       color: #6b7280;
       font-size: 18px;
-      
+
       &:hover {
         color: #374151;
       }
     }
   }
-  
+
   .el-dialog__body {
     padding: 0;
     background: #ffffff;
@@ -1970,26 +2287,26 @@ onUnmounted(() => {
   align-items: center;
   flex-wrap: wrap;
   gap: 16px;
-  
+
   .filter-left {
     display: flex;
     gap: 12px;
     flex-wrap: wrap;
     align-items: center;
   }
-  
+
   .filter-right {
     display: flex;
     gap: 12px;
     align-items: center;
   }
-  
+
   .date-picker,
   .department-select,
   .search-input {
     width: 180px;
   }
-  
+
   .query-btn {
     background: #3b82f6;
     border: 1px solid #3b82f6;
@@ -1998,13 +2315,13 @@ onUnmounted(() => {
     font-weight: 400;
     color: white;
     transition: all 0.2s ease;
-    
+
     &:hover {
       background: #2563eb;
       border-color: #2563eb;
     }
   }
-  
+
   .export-btn {
     background: #10b981;
     border: 1px solid #10b981;
@@ -2013,12 +2330,12 @@ onUnmounted(() => {
     font-weight: 400;
     color: white;
     transition: all 0.2s ease;
-    
+
     &:hover:not(:disabled) {
       background: #059669;
       border-color: #059669;
     }
-    
+
     &:disabled {
       background: #d1d5db;
       border-color: #d1d5db;
@@ -2035,15 +2352,15 @@ onUnmounted(() => {
   margin: 0 20px 20px 20px;
   border-radius: 6px;
   border: 1px solid #e5e7eb;
-  
+
   :deep(.el-table) {
     border-radius: 6px;
     overflow: hidden;
     border: 1px solid #e5e7eb;
-    
+
     .el-table__header {
       background: #f9fafb;
-      
+
       th {
         background: #f9fafb !important;
         color: #374151;
@@ -2052,16 +2369,16 @@ onUnmounted(() => {
         font-size: 14px;
       }
     }
-    
+
     .el-table__body {
       tr {
         transition: all 0.2s ease;
-        
+
         &:hover {
           background: #f8fafc !important;
         }
       }
-      
+
       td {
         border-bottom: 1px solid #f3f4f6;
         padding: 12px 8px;
@@ -2069,44 +2386,44 @@ onUnmounted(() => {
       }
     }
   }
-  
+
   .operation-buttons {
     display: flex;
     flex-direction: column;
     gap: 6px;
     align-items: center;
-    
+
     .el-button {
       width: 80px;
       font-size: 12px;
       padding: 6px 8px;
       border-radius: 4px;
       transition: all 0.2s ease;
-      
+
       &.el-button--primary {
         background: #3b82f6;
         border-color: #3b82f6;
-        
+
         &:hover {
           background: #2563eb;
           border-color: #2563eb;
         }
       }
-      
+
       &.el-button--info {
         background: #6b7280;
         border-color: #6b7280;
-        
+
         &:hover {
           background: #4b5563;
           border-color: #4b5563;
         }
       }
-      
+
       &.el-button--success {
         background: #10b981;
         border-color: #10b981;
-        
+
         &:hover {
           background: #059669;
           border-color: #059669;
@@ -2126,7 +2443,7 @@ onUnmounted(() => {
       word-break: break-all;
     }
   }
-  
+
   /* 产品列表特殊处理 */
   .product-list {
     .product-item {
@@ -2135,13 +2452,13 @@ onUnmounted(() => {
       white-space: nowrap;
       line-height: 1.4;
       margin-bottom: 2px;
-      
+
       &:last-child {
         margin-bottom: 0;
       }
     }
   }
-  
+
   /* 备注文本处理 */
   .remark-text {
     display: block;
@@ -2159,28 +2476,28 @@ onUnmounted(() => {
   border-top: 1px solid #e5e7eb;
   display: flex;
   justify-content: center;
-  
+
   :deep(.el-pagination) {
     .el-pager li {
       border-radius: 4px;
       margin: 0 2px;
       transition: all 0.2s ease;
-      
+
       &:hover {
         background: #f3f4f6;
       }
-      
+
       &.is-active {
         background: #3b82f6;
         color: white;
       }
     }
-    
+
     .btn-prev,
     .btn-next {
       border-radius: 4px;
       transition: all 0.2s ease;
-      
+
       &:hover {
         background: #f3f4f6;
       }
@@ -2196,18 +2513,18 @@ onUnmounted(() => {
     margin-bottom: 4px;
     font-size: 13px;
   }
-  
+
   .operation-meta {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    
+
     .operation-user {
       color: #409eff;
       font-size: 12px;
       font-weight: 500;
     }
-    
+
     .operation-time {
       color: #909399;
       font-size: 11px;
@@ -2222,7 +2539,7 @@ onUnmounted(() => {
       width: 100%;
       justify-content: flex-start;
     }
-    
+
     .filter-right {
       width: 100%;
       justify-content: flex-end;
@@ -2238,7 +2555,7 @@ onUnmounted(() => {
       width: 150px;
     }
   }
-  
+
   .fullscreen-table {
     margin: 0 12px 12px 12px;
     padding: 16px;

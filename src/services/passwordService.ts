@@ -1,16 +1,9 @@
 import type { User } from '@/stores/user'
+import { useConfigStore } from '@/stores/config'
 
-// 密码策略配置
-export const PASSWORD_POLICY = {
-  minLength: 8,
-  requireUppercase: true,
-  requireLowercase: true,
-  requireNumbers: true,
-  requireSpecialChars: true,
-  expirationDays: 60, // 密码60天过期
-  reminderDays: 7, // 过期前7天提醒
-  defaultPassword: '123456' // 默认密码
-}
+// 🔥 批次263修复：移除硬编码的密码策略，改为从系统安全设置动态读取
+// 保留默认密码常量
+export const DEFAULT_PASSWORD = '123456'
 
 // 密码验证结果
 export interface PasswordValidationResult {
@@ -35,31 +28,54 @@ export interface PasswordResetRequest {
 }
 
 class PasswordService {
-  // 验证密码强度
+  // 🔥 批次263修复：动态获取密码策略（从系统安全设置）
+  private getPasswordPolicy() {
+    const configStore = useConfigStore()
+    const config = configStore.securityConfig
+
+    return {
+      minLength: config.passwordMinLength,
+      requireUppercase: config.passwordComplexity.includes('uppercase'),
+      requireLowercase: config.passwordComplexity.includes('lowercase'),
+      requireNumbers: config.passwordComplexity.includes('number'),
+      requireSpecialChars: config.passwordComplexity.includes('special'),
+      expirationDays: config.passwordExpireDays,
+      reminderDays: 7, // 固定7天提醒
+      defaultPassword: DEFAULT_PASSWORD
+    }
+  }
+
+  // 🔥 批次263修复：获取当前密码策略（供外部使用）
+  getCurrentPolicy() {
+    return this.getPasswordPolicy()
+  }
+
+  // 验证密码强度（使用动态策略）
   validatePassword(password: string): PasswordValidationResult {
+    const policy = this.getPasswordPolicy() // 🔥 批次263修复：动态获取策略
     const errors: string[] = []
 
-    if (password.length < PASSWORD_POLICY.minLength) {
-      errors.push(`密码长度至少${PASSWORD_POLICY.minLength}位`)
+    if (password.length < policy.minLength) {
+      errors.push(`密码长度至少${policy.minLength}位`)
     }
 
-    if (PASSWORD_POLICY.requireUppercase && !/[A-Z]/.test(password)) {
+    if (policy.requireUppercase && !/[A-Z]/.test(password)) {
       errors.push('密码必须包含大写字母')
     }
 
-    if (PASSWORD_POLICY.requireLowercase && !/[a-z]/.test(password)) {
+    if (policy.requireLowercase && !/[a-z]/.test(password)) {
       errors.push('密码必须包含小写字母')
     }
 
-    if (PASSWORD_POLICY.requireNumbers && !/\d/.test(password)) {
+    if (policy.requireNumbers && !/\d/.test(password)) {
       errors.push('密码必须包含数字')
     }
 
-    if (PASSWORD_POLICY.requireSpecialChars && !/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    if (policy.requireSpecialChars && !/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
       errors.push('密码必须包含特殊字符')
     }
 
-    if (password === PASSWORD_POLICY.defaultPassword) {
+    if (password === policy.defaultPassword) {
       errors.push('不能使用默认密码')
     }
 
@@ -71,46 +87,52 @@ class PasswordService {
 
   // 检查是否为默认密码
   isDefaultPassword(password: string): boolean {
-    return password === PASSWORD_POLICY.defaultPassword
+    return password === DEFAULT_PASSWORD
   }
 
-  // 检查密码是否过期
+  // 检查密码是否过期（使用动态策略）
   isPasswordExpired(user: User): boolean {
+    const policy = this.getPasswordPolicy() // 🔥 批次263修复：动态获取策略
+
     if (!user.passwordLastChanged) {
       return true // 如果没有修改记录，认为已过期
     }
 
     const expirationDate = new Date(user.passwordLastChanged)
-    expirationDate.setDate(expirationDate.getDate() + PASSWORD_POLICY.expirationDays)
-    
+    expirationDate.setDate(expirationDate.getDate() + policy.expirationDays)
+
     return new Date() > expirationDate
   }
 
-  // 检查是否需要密码过期提醒
+  // 检查是否需要密码过期提醒（使用动态策略）
   needsPasswordReminder(user: User): boolean {
+    const policy = this.getPasswordPolicy() // 🔥 批次263修复：动态获取策略
+
     if (!user.passwordLastChanged) {
       return true
     }
 
     const reminderDate = new Date(user.passwordLastChanged)
-    reminderDate.setDate(reminderDate.getDate() + PASSWORD_POLICY.expirationDays - PASSWORD_POLICY.reminderDays)
-    
+    reminderDate.setDate(reminderDate.getDate() + policy.expirationDays - policy.reminderDays)
+
     return new Date() > reminderDate && !this.isPasswordExpired(user)
   }
 
-  // 计算密码剩余天数
+  // 计算密码剩余天数（使用动态策略）
   getPasswordRemainingDays(user: User): number {
+    const policy = this.getPasswordPolicy() // 🔥 批次263修复：动态获取策略
+
     if (!user.passwordLastChanged) {
       return 0
     }
 
     const expirationDate = new Date(user.passwordLastChanged)
-    expirationDate.setDate(expirationDate.getDate() + PASSWORD_POLICY.expirationDays)
-    
+    expirationDate.setDate(expirationDate.getDate() + policy.expirationDays)
+
     const today = new Date()
     const diffTime = expirationDate.getTime() - today.getTime()
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    
+
     return Math.max(0, diffDays)
   }
 
@@ -154,7 +176,7 @@ class PasswordService {
           success: true,
           message: response.message || '密码修改成功'
         }
-      } catch (apiError: any) {
+      } catch (apiError: unknown) {
         // 如果API调用失败，返回错误信息
         const errorMessage = apiError.response?.data?.message || apiError.message || '密码修改失败'
         return {
@@ -237,18 +259,18 @@ class PasswordService {
   generateTemporaryPassword(): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*'
     let result = ''
-    
+
     // 确保包含各种字符类型
     result += 'A' // 大写字母
     result += 'a' // 小写字母
     result += '1' // 数字
     result += '!' // 特殊字符
-    
+
     // 填充剩余位数
     for (let i = 4; i < 12; i++) {
       result += chars.charAt(Math.floor(Math.random() * chars.length))
     }
-    
+
     // 打乱字符顺序
     return result.split('').sort(() => Math.random() - 0.5).join('')
   }
@@ -257,12 +279,12 @@ class PasswordService {
   initializeUserPasswordInfo(userId: string): void {
     const users = this.getStoredUsers()
     const user = users.find(u => u.id === userId)
-    
+
     if (user && !user.passwordLastChanged) {
       user.isDefaultPassword = true
       user.passwordLastChanged = new Date()
       user.forcePasswordChange = true
-      
+
       localStorage.setItem('users', JSON.stringify(users))
     }
   }
@@ -271,7 +293,7 @@ class PasswordService {
   private updateUserPasswordInfo(userId: string, updates: Partial<User>): void {
     const users = this.getStoredUsers()
     const userIndex = users.findIndex(u => u.id === userId)
-    
+
     if (userIndex !== -1) {
       users[userIndex] = { ...users[userIndex], ...updates }
       localStorage.setItem('users', JSON.stringify(users))

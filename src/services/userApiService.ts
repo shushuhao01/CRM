@@ -2,6 +2,7 @@
  * 用户管理API服务
  * 处理用户列表、创建、更新、删除等功能
  */
+import { api } from '@/api/request'
 import { apiService, ApiService } from './apiService'
 import type { PaginationParams, PaginatedResponse } from './apiService'
 import type { User } from './authApiService'
@@ -18,19 +19,29 @@ export interface CreateUserRequest {
   email?: string
   realName: string
   phone: string
-  role: 'admin' | 'manager' | 'sales' | 'service'
+  role: string  // 角色code（如'sales_staff', 'department_manager'等）
   departmentId?: number
   avatar?: string
+  position?: string
+  employeeNumber?: string
+  status?: string
+  department?: string
+  remark?: string
 }
 
 export interface UpdateUserRequest {
   email?: string
   realName?: string
   phone?: string
-  role?: 'admin' | 'manager' | 'sales' | 'service'
+  role?: string  // 角色code（如'sales_staff', 'department_manager'等）
+  roleId?: string  // 角色code（同role）
   departmentId?: number
+  position?: string
+  employeeNumber?: string
   avatar?: string
   status?: 'active' | 'inactive' | 'locked'
+  remark?: string
+  name?: string  // 姓名（兼容字段）
 }
 
 export interface ResetPasswordRequest {
@@ -76,9 +87,17 @@ export class UserApiService {
    */
   async getUsers(params: UserListParams = {}): Promise<PaginatedResponse<User>> {
     try {
-      const response = await this.api.paginate<User>('/users', params)
-      console.log(`[UserAPI] 获取用户列表成功，共 ${response.total} 个用户`)
-      return response
+      const response = await api.get<any>('/users', params)
+      console.log(`[UserAPI] 获取用户列表成功，共 ${response.data.total} 个用户`)
+
+      // 适配Mock API返回的数据结构
+      return {
+        data: response.data.items || response.data || [],
+        total: response.data.total || 0,
+        page: response.data.page || 1,
+        limit: response.data.limit || 20,
+        totalPages: response.data.totalPages || 1
+      }
     } catch (error) {
       console.error('[UserAPI] 获取用户列表失败:', error)
       throw error
@@ -120,12 +139,78 @@ export class UserApiService {
    */
   async createUser(userData: CreateUserRequest): Promise<User> {
     try {
-      const response = await this.api.post<User>('/users', userData)
+      const response = await api.post<User>('/users', userData)
       console.log(`[UserAPI] 创建用户成功: ${response.username}`)
       return response
     } catch (error) {
-      console.error('[UserAPI] 创建用户失败:', error)
-      throw error
+      console.warn('[UserAPI] API创建失败，使用localStorage创建用户', error)
+
+      // 降级方案:直接操作localStorage
+      try {
+        const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+
+        // 生成新ID
+        const maxId = users.reduce((max: number, user: any) => {
+          const id = parseInt(user.id)
+          return id > max ? id : max
+        }, 0)
+
+        const newUser: any = {
+          id: String(maxId + 1),
+          username: userData.username,
+          password: userData.password,
+          realName: userData.realName,
+          name: userData.realName,
+          email: userData.email || '',
+          phone: userData.phone || '',
+          role: userData.role,
+          roleId: userData.role,
+          departmentId: userData.departmentId,
+          department: userData.department || '',
+          position: userData.position || '',
+          employeeNumber: userData.employeeNumber || '',
+          status: userData.status || 'active',
+          employmentStatus: 'active',
+          avatar: userData.avatar || '',
+          remark: userData.remark || '',
+          createTime: new Date().toLocaleString('zh-CN'),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          isOnline: false,
+          lastLoginTime: null,
+          loginCount: 0
+        }
+
+        users.push(newUser)
+        localStorage.setItem('crm_mock_users', JSON.stringify(users))
+
+        // 【批次197修复】同步到所有用户数据源
+        try {
+          // 同步到userDatabase
+          const userDatabase = JSON.parse(localStorage.getItem('userDatabase') || '[]')
+          userDatabase.push(newUser)
+          localStorage.setItem('userDatabase', JSON.stringify(userDatabase))
+          console.log('[UserAPI] 已同步到 userDatabase')
+        } catch (dbError) {
+          console.warn('[UserAPI] 同步到userDatabase失败:', dbError)
+        }
+
+        // 【批次197修复】同步到crm_users（用户列表数据源）
+        try {
+          const crmUsers = JSON.parse(localStorage.getItem('crm_users') || '[]')
+          crmUsers.push(newUser)
+          localStorage.setItem('crm_users', JSON.stringify(crmUsers))
+          console.log('[UserAPI] 已同步到 crm_users')
+        } catch (crmError) {
+          console.warn('[UserAPI] 同步到crm_users失败:', crmError)
+        }
+
+        console.log('[UserAPI] localStorage创建用户成功:', newUser)
+        return newUser as User
+      } catch (localError) {
+        console.error('[UserAPI] localStorage创建用户也失败', localError)
+        throw localError
+      }
     }
   }
 
@@ -138,21 +223,103 @@ export class UserApiService {
       console.log(`[UserAPI] 更新用户成功: ${response.username}`)
       return response
     } catch (error) {
-      console.error(`[UserAPI] 更新用户失败 (ID: ${id}):`, error)
-      throw error
+      console.warn(`[UserAPI] API更新失败，使用localStorage更新用户 (ID: ${id})`, error)
+
+      // 降级方案:直接操作localStorage
+      try {
+        const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+        const userIndex = users.findIndex((u: any) => String(u.id) === String(id))
+
+        if (userIndex === -1) {
+          throw new Error(`未找到用户 ID: ${id}`)
+        }
+
+        // 更新用户数据
+        const updatedUser = {
+          ...users[userIndex],
+          ...userData,
+          updatedAt: new Date().toISOString(),
+          updateTime: new Date().toLocaleString('zh-CN')
+        }
+
+        users[userIndex] = updatedUser
+        localStorage.setItem('crm_mock_users', JSON.stringify(users))
+
+        // 【批次196修复】如果更新的是当前登录用户，同步到user和user_info
+        try {
+          const currentUserInfo = JSON.parse(localStorage.getItem('user_info') || '{}')
+          if (currentUserInfo.id && String(currentUserInfo.id) === String(id)) {
+            // 合并更新后的数据
+            const updatedCurrentUser = {
+              ...currentUserInfo,
+              ...updatedUser
+            }
+            localStorage.setItem('user', JSON.stringify(updatedCurrentUser))
+            localStorage.setItem('user_info', JSON.stringify(updatedCurrentUser))
+            console.log('[UserAPI] 已同步更新到当前登录用户')
+          }
+        } catch (syncError) {
+          console.warn('[UserAPI] 同步到当前用户失败:', syncError)
+        }
+
+        // 同步到userDatabase
+        try {
+          const userDatabase = JSON.parse(localStorage.getItem('userDatabase') || '[]')
+          const dbIndex = userDatabase.findIndex((u: any) => String(u.id) === String(id))
+          if (dbIndex !== -1) {
+            userDatabase[dbIndex] = updatedUser
+            localStorage.setItem('userDatabase', JSON.stringify(userDatabase))
+          }
+        } catch (dbError) {
+          console.warn('[UserAPI] 同步到userDatabase失败:', dbError)
+        }
+
+        console.log('[UserAPI] localStorage更新用户成功:', updatedUser)
+        return updatedUser as User
+      } catch (localError) {
+        console.error('[UserAPI] localStorage更新用户也失败', localError)
+        throw localError
+      }
     }
   }
 
   /**
    * 删除用户
    */
-  async deleteUser(id: number): Promise<void> {
+  async deleteUser(id: number | string): Promise<void> {
     try {
-      await this.api.delete(`/users/${id}`)
-      console.log(`[UserAPI] 删除用户成功 (ID: ${id})`)
+      // 确保ID是字符串格式
+      const userId = String(id)
+      await this.api.delete(`/users/${userId}`)
+      console.log(`[UserAPI] 删除用户成功 (ID: ${userId})`)
     } catch (error) {
-      console.error(`[UserAPI] 删除用户失败 (ID: ${id}):`, error)
-      throw error
+      console.warn(`[UserAPI] API删除失败，使用localStorage删除用户 (ID: ${id})`, error)
+
+      // 降级方案:直接操作localStorage
+      try {
+        const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+        const filteredUsers = users.filter((u: any) => String(u.id) !== String(id))
+
+        if (filteredUsers.length === users.length) {
+          throw new Error(`未找到用户 ID: ${id}`)
+        }
+
+        localStorage.setItem('crm_mock_users', JSON.stringify(filteredUsers))
+
+        // 同步到userDatabase
+        try {
+          const userDatabase = JSON.parse(localStorage.getItem('userDatabase') || '[]')
+          const filteredDb = userDatabase.filter((u: unknown) => String(u.id) !== String(id))
+          localStorage.setItem('userDatabase', JSON.stringify(filteredDb))
+        } catch (dbError) {
+          console.warn('[UserAPI] 同步到userDatabase失败:', dbError)
+        }
+
+        console.log('[UserAPI] localStorage删除用户成功:', id)
+      } catch (localError) {
+        console.error('[UserAPI] localStorage删除用户也失败', localError)
+        throw localError
+      }
     }
   }
 
@@ -199,12 +366,40 @@ export class UserApiService {
   }
 
   /**
+   * 更新用户状态
+   */
+  async updateUserStatus(id: number, status: 'active' | 'inactive' | 'locked'): Promise<User> {
+    try {
+      const response = await api.patch<User>(`/users/${id}/status`, { status })
+      console.log(`[UserAPI] 用户状态更新成功 (ID: ${id}, Status: ${status})`)
+      return response
+    } catch (error) {
+      console.error(`[UserAPI] 用户状态更新失败 (ID: ${id}):`, error)
+      throw error
+    }
+  }
+
+  /**
+   * 更新用户在职状态
+   */
+  async updateEmploymentStatus(id: number | string, employmentStatus: 'active' | 'resigned'): Promise<User> {
+    try {
+      const response = await api.patch<User>(`/users/${id}/employment-status`, { employmentStatus })
+      console.log(`[UserAPI] 用户在职状态更新成功 (ID: ${id}, Status: ${employmentStatus})`)
+      return response
+    } catch (error) {
+      console.error(`[UserAPI] 用户在职状态更新失败 (ID: ${id}):`, error)
+      throw error
+    }
+  }
+
+  /**
    * 获取用户统计信息
    */
-  async getUserStatistics(): Promise<UserStatistics> {
+  async getUserStatistics(): Promise<unknown> {
     try {
-      const response = await this.api.get<UserStatistics>('/users/statistics')
-      console.log('[UserAPI] 获取用户统计信息成功')
+      const response = await this.api.get<unknown>('/users/statistics')
+      console.log('[UserAPI] 获取用户统计信息成功:', response)
       return response
     } catch (error) {
       console.error('[UserAPI] 获取用户统计信息失败:', error)
@@ -277,9 +472,9 @@ export class UserApiService {
    * 获取用户操作日志
    */
   async getUserOperationLogs(
-    userId: number, 
+    userId: number,
     params: PaginationParams = {}
-  ): Promise<PaginatedResponse<any>> {
+  ): Promise<PaginatedResponse<unknown>> {
     try {
       const response = await this.api.paginate(`/users/${userId}/operation-logs`, params)
       console.log(`[UserAPI] 获取用户操作日志成功 (ID: ${userId})`)

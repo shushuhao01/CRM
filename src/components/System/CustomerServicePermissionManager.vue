@@ -11,7 +11,8 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button @click="refreshData" type="primary">刷新数据</el-button>
+        <el-button @click="showAddCustomerService" type="primary" icon="Plus">新增客服</el-button>
+        <el-button @click="refreshData" type="default">刷新数据</el-button>
         <el-button @click="exportPermissions" type="success">导出配置</el-button>
         <el-button @click="showBatchConfig" type="warning">批量配置</el-button>
       </div>
@@ -41,13 +42,28 @@
 
     <el-table :data="filteredCustomerServices" style="width: 100%">
       <el-table-column prop="name" label="姓名" width="120" />
-      <el-table-column prop="email" label="邮箱" width="200" />
+      <el-table-column label="邮箱" width="200">
+        <template #default="{ row }">
+          {{ displaySensitiveInfo(row.email, SensitiveInfoType.EMAIL, userStore.currentUser?.id) }}
+        </template>
+      </el-table-column>
       <el-table-column prop="department" label="部门" width="120" />
       <el-table-column label="客服类型" width="120">
         <template #default="{ row }">
           <el-tag :type="getServiceTypeTagType(row.customerServiceType)">
             {{ getServiceTypeDisplayName(row.customerServiceType) }}
           </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="成员数量" width="100">
+        <template #default="{ row }">
+          <el-link 
+            type="primary" 
+            @click="showMemberDetails(row.customerServiceType)"
+            style="font-weight: bold;"
+          >
+            {{ getMemberCount(row.customerServiceType) }}
+          </el-link>
         </template>
       </el-table-column>
       <el-table-column label="数据范围" width="120">
@@ -81,7 +97,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
           <el-button
             @click="editPermissions(row)"
@@ -312,6 +328,220 @@
       </template>
     </el-dialog>
 
+    <!-- 新增客服对话框 -->
+    <el-dialog
+      v-model="addCustomerServiceVisible"
+      title="新增客服"
+      width="800px"
+    >
+      <div class="add-customer-service">
+        <el-alert
+          title="新增客服说明"
+          type="info"
+          :closable="false"
+          style="margin-bottom: 20px;"
+        >
+          选择系统成员作为客服，并配置相应的客服类型和权限
+        </el-alert>
+        
+        <el-form :model="addCustomerServiceForm" label-width="120px">
+          <el-form-item label="选择成员" required>
+            <el-select 
+              v-model="addCustomerServiceForm.userId" 
+              placeholder="选择系统成员"
+              style="width: 100%"
+              filterable
+            >
+              <el-option
+                v-for="user in availableUsers"
+                :key="user.id"
+                :label="`${user.name} (${displaySensitiveInfo(user.email, SensitiveInfoType.EMAIL, userStore.currentUser?.id)})`"
+                :value="user.id"
+              />
+            </el-select>
+          </el-form-item>
+          
+          <el-form-item label="客服类型" required>
+            <el-select v-model="addCustomerServiceForm.customerServiceType" placeholder="选择客服类型">
+              <el-option label="售后客服" :value="CustomerServiceType.AFTER_SALES" />
+              <el-option label="审核客服" :value="CustomerServiceType.AUDIT" />
+              <el-option label="物流客服" :value="CustomerServiceType.LOGISTICS" />
+              <el-option label="商品客服" :value="CustomerServiceType.PRODUCT" />
+              <el-option label="通用客服" :value="CustomerServiceType.GENERAL" />
+            </el-select>
+          </el-form-item>
+          
+          <el-form-item label="数据范围" required>
+            <el-select v-model="addCustomerServiceForm.dataScope" placeholder="选择数据范围">
+              <el-option label="个人数据" :value="DataScope.PERSONAL" />
+              <el-option label="部门数据" :value="DataScope.DEPARTMENT" />
+              <el-option label="全部数据" :value="DataScope.ALL" />
+            </el-select>
+          </el-form-item>
+          
+          <el-form-item label="所属部门">
+            <el-select 
+              v-model="addCustomerServiceForm.departmentId" 
+              placeholder="选择部门"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="dept in departments"
+                :key="dept.id"
+                :label="dept.name"
+                :value="dept.id"
+              />
+            </el-select>
+          </el-form-item>
+          
+          <el-form-item label="权限模板">
+            <el-select 
+              v-model="addCustomerServiceForm.permissionTemplate" 
+              placeholder="选择权限模板（可选）"
+              style="width: 100%"
+              clearable
+              @change="onPermissionTemplateChange"
+            >
+              <el-option
+                v-for="template in permissionTemplates"
+                :key="template.id"
+                :label="template.name"
+                :value="template.id"
+              >
+                <div style="display: flex; flex-direction: column;">
+                  <span>{{ template.name }}</span>
+                  <span style="font-size: 12px; color: #999; margin-top: 2px;">{{ template.description }}</span>
+                </div>
+              </el-option>
+            </el-select>
+            <div style="margin-top: 8px; font-size: 12px; color: #666;">
+              选择模板后将自动勾选对应权限，您也可以手动调整
+            </div>
+          </el-form-item>
+          
+          <el-form-item label="自定义权限">
+            <div class="permission-config-container">
+              <div class="permission-header">
+                <div class="permission-actions">
+                  <el-button size="small" @click="selectAllPermissions">全选</el-button>
+                  <el-button size="small" @click="clearAllPermissions">清空</el-button>
+                  <el-button size="small" @click="expandAllPermissions">展开全部</el-button>
+                  <el-button size="small" @click="collapseAllPermissions">收起全部</el-button>
+                </div>
+                <div class="permission-count">
+                  已选择 {{ getSelectedPermissionCount() }} 项权限
+                </div>
+              </div>
+              
+              <div class="permission-tree-wrapper">
+                <el-tree
+                  ref="addPermissionTreeRef"
+                  :data="permissionTreeData"
+                  show-checkbox
+                  node-key="key"
+                  :default-checked-keys="addCustomerServiceForm.customPermissions"
+                  :props="{ children: 'children', label: 'name' }"
+                  :default-expand-all="false"
+                  :check-strictly="true"
+                  @check="onPermissionCheck"
+                  class="permission-tree"
+                >
+                  <template #default="{ node, data }">
+                    <div class="permission-node">
+                      <span class="permission-label">{{ data.name }}</span>
+                      <span v-if="!data.children" class="permission-key">{{ data.key }}</span>
+                    </div>
+                  </template>
+                </el-tree>
+              </div>
+              
+              <div class="permission-tips">
+                <el-alert
+                  title="权限说明"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                >
+                  <template #default>
+                    <ul>
+                      <li>选择权限模板可快速配置常用权限组合</li>
+                      <li>您可以在模板基础上进行个性化调整</li>
+                      <li>父级权限被选中时，子级权限会自动选中</li>
+                      <li>建议根据客服的实际工作需要分配最小必要权限</li>
+                    </ul>
+                  </template>
+                </el-alert>
+              </div>
+            </div>
+          </el-form-item>
+        </el-form>
+      </div>
+      
+      <template #footer>
+        <el-button @click="addCustomerServiceVisible = false">取消</el-button>
+        <el-button @click="confirmAddCustomerService" type="primary">确认添加</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 成员详情对话框 -->
+    <el-dialog
+      v-model="memberDetailsVisible"
+      :title="`${getServiceTypeDisplayName(selectedServiceType)} - 成员详情`"
+      width="700px"
+    >
+      <div class="member-details">
+        <el-alert
+          :title="`当前共有 ${memberDetails.length} 名${getServiceTypeDisplayName(selectedServiceType)}`"
+          type="info"
+          :closable="false"
+          style="margin-bottom: 20px;"
+        />
+        
+        <el-table :data="memberDetails" style="width: 100%">
+          <el-table-column prop="name" label="姓名" width="120" />
+          <el-table-column label="邮箱" width="200">
+            <template #default="{ row }">
+              {{ displaySensitiveInfo(row.email, SensitiveInfoType.EMAIL, userStore.currentUser?.id) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="department" label="部门" width="120" />
+          <el-table-column label="数据范围" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getDataScopeTagType(row.dataScope)" size="small">
+                {{ getDataScopeDisplayName(row.dataScope) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="80">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
+                {{ row.status === 'active' ? '启用' : '禁用' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="120">
+            <template #default="{ row }">
+              <el-button
+                @click="editPermissions(row)"
+                size="small"
+                type="primary"
+              >
+                配置权限
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        
+        <div v-if="memberDetails.length === 0" class="no-members">
+          <el-empty description="暂无该类型的客服成员" />
+        </div>
+      </div>
+      
+      <template #footer>
+        <el-button @click="memberDetailsVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 底部页面说明 -->
     <div class="bottom-info" style="margin-top: 30px;">
       <div class="info-content">
@@ -335,10 +565,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElTree } from 'element-plus'
 import { InfoFilled } from '@element-plus/icons-vue'
 import { CustomerServiceType, DataScope } from '@/services/permission'
+import { displaySensitiveInfo, SensitiveInfoType } from '@/utils/sensitiveInfo'
+import { useUserStore } from '@/stores/user'
+import { userApiService } from '@/services/userApiService'
+import { getDepartmentList } from '@/api/department'
 
 interface CustomerServiceUser {
   id: string
@@ -364,12 +598,28 @@ interface PermissionTreeNode {
   children?: PermissionTreeNode[]
 }
 
+interface SystemUser {
+  id: string
+  name: string
+  email: string
+  department: string
+  role: string
+}
+
+// Store
+const userStore = useUserStore()
+
 // 数据状态
 const customerServices = ref<CustomerServiceUser[]>([])
 const departments = ref<Department[]>([])
+const availableUsers = ref<SystemUser[]>([])
 const searchKeyword = ref('')
 const filterServiceType = ref('')
 const batchConfigVisible = ref(false)
+const addCustomerServiceVisible = ref(false)
+const memberDetailsVisible = ref(false)
+const selectedServiceType = ref<CustomerServiceType>('aftersale')
+const memberDetails = ref<CustomerServiceUser[]>([])
 
 // 统计数据
 const serviceStats = ref({
@@ -400,6 +650,122 @@ const permissionForm = ref({
 
 // 权限树引用
 const permissionTreeRef = ref<InstanceType<typeof ElTree>>()
+const addPermissionTreeRef = ref<InstanceType<typeof ElTree>>()
+
+// 新增客服表单
+const addCustomerServiceForm = ref({
+  userId: '',
+  customerServiceType: CustomerServiceType.GENERAL,
+  dataScope: DataScope.PERSONAL,
+  departmentId: '',
+  permissionTemplate: '', // 权限模板
+  customPermissions: [] as string[]
+})
+
+// 权限模板定义
+const permissionTemplates = ref([
+  {
+    id: 'basic',
+    name: '基础权限',
+    description: '适用于新手客服，包含基本的查看和编辑权限',
+    permissions: [
+      'customer:list:view',
+      'order:list:view',
+      'service:list:view'
+    ]
+  },
+  {
+    id: 'standard',
+    name: '标准权限',
+    description: '适用于经验丰富的客服，包含大部分常用权限',
+    permissions: [
+      'customer:list:view',
+      'customer:list:edit',
+      'order:list:view',
+      'order:list:edit',
+      'service:list:view',
+      'service:list:edit',
+      'logistics:shipping:view'
+    ]
+  },
+  {
+    id: 'advanced',
+    name: '高级权限',
+    description: '适用于资深客服，包含完整的业务权限',
+    permissions: [
+      'customer:list:view',
+      'customer:list:edit',
+      'customer:list:create',
+      'customer:list:assign',
+      'order:list:view',
+      'order:list:edit',
+      'order:add:create',
+      'order:audit:view',
+      'service:list:view',
+      'service:list:edit',
+      'service:afterSales:view',
+      'service:afterSales:edit',
+      'logistics:shipping:view',
+      'logistics:shipping:edit',
+      'product:list:view'
+    ]
+  },
+  {
+    id: 'aftersales_specialist',
+    name: '售后专员',
+    description: '专门处理售后服务的客服权限',
+    permissions: [
+      'customer:list:view',
+      'order:list:view',
+      'order:detail:cancel',
+      'service:list:view',
+      'service:list:edit',
+      'service:afterSales:view',
+      'service:afterSales:edit',
+      'logistics:shipping:view'
+    ]
+  },
+  {
+    id: 'audit_specialist',
+    name: '审核专员',
+    description: '专门负责订单审核的客服权限',
+    permissions: [
+      'customer:list:view',
+      'order:list:view',
+      'order:audit:view',
+      'order:audit:approve',
+      'service:list:view',
+      'product:list:view'
+    ]
+  },
+  {
+    id: 'logistics_specialist',
+    name: '物流专员',
+    description: '专门处理物流相关事务的客服权限',
+    permissions: [
+      'customer:list:view',
+      'order:list:view',
+      'logistics:shipping:view',
+      'logistics:shipping:edit',
+      'logistics:shipping:batchExport',
+      'service:list:view'
+    ]
+  },
+  {
+    id: 'product_specialist',
+    name: '商品专员',
+    description: '专门处理商品相关事务的客服权限',
+    permissions: [
+      'customer:list:view',
+      'order:list:view',
+      'product:list:view',
+      'product:list:edit',
+      'product:add:create',
+      'product:inventory:manage',
+      'service:list:view'
+    ]
+  }
+])
 
 // 权限树数据
 const permissionTreeData: PermissionTreeNode[] = [
@@ -539,50 +905,7 @@ const getPermissionDisplayName = (permission: string) => {
   return permissionMap[permission] || permission
 }
 
-// 模拟数据
-const mockCustomerServices: CustomerServiceUser[] = [
-  {
-    id: 'cs_001',
-    name: '张客服',
-    email: 'zhangcs@example.com',
-    department: '客服部',
-    departmentId: 'dept_cs',
-    customerServiceType: CustomerServiceType.AFTER_SALES,
-    dataScope: DataScope.CUSTOM,
-    customPermissions: ['service:afterSales:view', 'service:afterSales:edit', 'order:list:view'],
-    status: 'active'
-  },
-  {
-    id: 'cs_002',
-    name: '李客服',
-    email: 'lics@example.com',
-    department: '客服部',
-    departmentId: 'dept_cs',
-    customerServiceType: CustomerServiceType.AUDIT,
-    dataScope: DataScope.CUSTOM,
-    customPermissions: ['order:audit:view', 'order:audit:approve', 'customer:list:view'],
-    status: 'active'
-  },
-  {
-    id: 'cs_003',
-    name: '王客服',
-    email: 'wangcs@example.com',
-    department: '客服部',
-    departmentId: 'dept_cs',
-    customerServiceType: CustomerServiceType.LOGISTICS,
-    dataScope: DataScope.CUSTOM,
-    customPermissions: ['logistics:shipping:view', 'logistics:shipping:edit', 'order:list:view'],
-    status: 'active'
-  }
-]
-
-const mockDepartments: Department[] = [
-  { id: 'dept_001', name: '销售一部' },
-  { id: 'dept_002', name: '销售二部' },
-  { id: 'dept_003', name: '销售三部' },
-  { id: 'dept_cs', name: '客服部' },
-  { id: 'dept_logistics', name: '物流部' }
-]
+// 已移除模拟客服数据，只使用真实新增的客服数据
 
 // 方法
 const refreshData = async () => {
@@ -597,6 +920,171 @@ const exportPermissions = () => {
 
 const showBatchConfig = () => {
   batchConfigVisible.value = true
+}
+
+const showAddCustomerService = () => {
+  // 重置表单
+  addCustomerServiceForm.value = {
+    userId: '',
+    customerServiceType: CustomerServiceType.GENERAL,
+    dataScope: DataScope.PERSONAL,
+    departmentId: '',
+    permissionTemplate: '',
+    customPermissions: []
+  }
+  addCustomerServiceVisible.value = true
+}
+
+// 权限模板变更处理
+const onPermissionTemplateChange = (templateId: string) => {
+  if (!templateId) {
+    // 清空模板时，清空权限选择
+    addCustomerServiceForm.value.customPermissions = []
+    nextTick(() => {
+      addPermissionTreeRef.value?.setCheckedKeys([])
+    })
+    return
+  }
+  
+  const template = permissionTemplates.value.find(t => t.id === templateId)
+  if (template) {
+    // 应用模板权限
+    addCustomerServiceForm.value.customPermissions = [...template.permissions]
+    
+    // 更新权限树的选中状态
+    nextTick(() => {
+      addPermissionTreeRef.value?.setCheckedKeys(template.permissions)
+    })
+    
+    ElMessage.success(`已应用 ${template.name} 模板`)
+  }
+}
+
+// 权限树操作方法
+const selectAllPermissions = () => {
+  const allKeys: string[] = []
+  const collectKeys = (nodes: any[]) => {
+    nodes.forEach(node => {
+      allKeys.push(node.key)
+      if (node.children) {
+        collectKeys(node.children)
+      }
+    })
+  }
+  collectKeys(permissionTreeData)
+  
+  addPermissionTreeRef.value?.setCheckedKeys(allKeys)
+  addCustomerServiceForm.value.customPermissions = allKeys
+  ElMessage.success('已选择全部权限')
+}
+
+const clearAllPermissions = () => {
+  addPermissionTreeRef.value?.setCheckedKeys([])
+  addCustomerServiceForm.value.customPermissions = []
+  ElMessage.success('已清空权限选择')
+}
+
+const expandAllPermissions = () => {
+  const expandKeys: string[] = []
+  const collectParentKeys = (nodes: any[]) => {
+    nodes.forEach(node => {
+      if (node.children && node.children.length > 0) {
+        expandKeys.push(node.key)
+        collectParentKeys(node.children)
+      }
+    })
+  }
+  collectParentKeys(permissionTreeData)
+  
+  expandKeys.forEach(key => {
+    const node = addPermissionTreeRef.value?.getNode(key)
+    if (node) {
+      node.expand()
+    }
+  })
+}
+
+const collapseAllPermissions = () => {
+  const collapseKeys: string[] = []
+  const collectParentKeys = (nodes: any[]) => {
+    nodes.forEach(node => {
+      if (node.children && node.children.length > 0) {
+        collapseKeys.push(node.key)
+        collectParentKeys(node.children)
+      }
+    })
+  }
+  collectParentKeys(permissionTreeData)
+  
+  collapseKeys.forEach(key => {
+    const node = addPermissionTreeRef.value?.getNode(key)
+    if (node) {
+      node.collapse()
+    }
+  })
+}
+
+const getSelectedPermissionCount = () => {
+  if (!addPermissionTreeRef.value) return 0
+  const checkedKeys = addPermissionTreeRef.value.getCheckedKeys() || []
+  return checkedKeys.length
+}
+
+const onPermissionCheck = () => {
+  // 权限选择变化时更新表单数据
+  const checkedKeys = addPermissionTreeRef.value?.getCheckedKeys() || []
+  const halfCheckedKeys = addPermissionTreeRef.value?.getHalfCheckedKeys() || []
+  addCustomerServiceForm.value.customPermissions = [...checkedKeys, ...halfCheckedKeys] as string[]
+}
+
+const confirmAddCustomerService = async () => {
+  if (!addCustomerServiceForm.value.userId || !addCustomerServiceForm.value.customerServiceType) {
+    ElMessage.warning('请选择成员和客服类型')
+    return
+  }
+  
+  try {
+    // 获取选中的权限
+    const checkedKeys = addPermissionTreeRef.value?.getCheckedKeys() || []
+    const halfCheckedKeys = addPermissionTreeRef.value?.getHalfCheckedKeys() || []
+    const allCheckedKeys = [...checkedKeys, ...halfCheckedKeys] as string[]
+    
+    // 查找选中的用户信息
+    const selectedUser = availableUsers.value.find(user => user.id === addCustomerServiceForm.value.userId)
+    if (!selectedUser) {
+      ElMessage.error('未找到选中的用户')
+      return
+    }
+    
+    // 创建新的客服记录
+    const newCustomerService: CustomerServiceUser = {
+      id: `cs_${Date.now()}`,
+      name: selectedUser.name,
+      email: selectedUser.email,
+      department: selectedUser.department,
+      departmentId: addCustomerServiceForm.value.departmentId || 'dept_cs',
+      customerServiceType: addCustomerServiceForm.value.customerServiceType,
+      dataScope: addCustomerServiceForm.value.dataScope,
+      customPermissions: allCheckedKeys,
+      status: 'active'
+    }
+    
+    // 添加到客服列表
+    customerServices.value.push(newCustomerService)
+    
+    // 从可用用户列表中移除
+    const userIndex = availableUsers.value.findIndex(user => user.id === addCustomerServiceForm.value.userId)
+    if (userIndex > -1) {
+      availableUsers.value.splice(userIndex, 1)
+    }
+    
+    ElMessage.success('新增客服成功')
+    addCustomerServiceVisible.value = false
+    updateServiceStats()
+  } catch (error) {
+    ElMessage.error('新增客服失败')
+    console.error('Add customer service error:', error)
+  }
 }
 
 const confirmBatchConfig = async () => {
@@ -632,12 +1120,57 @@ const searchCustomerService = () => {
   ElMessage.info('搜索完成')
 }
 
+const getMemberCount = (serviceType: CustomerServiceType) => {
+  return customerServices.value.filter(cs => cs.customerServiceType === serviceType).length
+}
+
+const showMemberDetails = (serviceType: CustomerServiceType) => {
+  selectedServiceType.value = serviceType
+  memberDetails.value = customerServices.value.filter(cs => cs.customerServiceType === serviceType)
+  memberDetailsVisible.value = true
+}
+
 const loadCustomerServices = async () => {
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 500))
-    customerServices.value = [...mockCustomerServices]
-    departments.value = [...mockDepartments]
+    // 初始化为空数组，只显示真实新增的客服
+    customerServices.value = []
+    
+    // 使用真实API加载部门数据
+    try {
+      const departmentResponse = await getDepartmentList()
+      departments.value = (departmentResponse.data || []).map(dept => ({
+        id: dept.id,
+        name: dept.name,
+        code: dept.code || dept.id,
+        description: dept.description || ''
+      }))
+    } catch (deptError) {
+      console.warn('加载部门数据失败:', deptError)
+      ElMessage.warning('加载部门数据失败，请检查网络连接')
+      departments.value = []
+    }
+    
+    // 使用真实API加载系统用户
+    try {
+      const usersResponse = await userApiService.getUsers()
+      const allUsers = usersResponse.data || []
+      
+      // 加载可用用户（排除已经是客服的用户）
+      const existingCustomerServiceIds = customerServices.value.map(cs => cs.email)
+      availableUsers.value = allUsers
+        .filter(user => !existingCustomerServiceIds.includes(user.email))
+        .map(user => ({
+          id: user.id.toString(),
+          name: user.realName,
+          email: user.email,
+          department: user.department?.name || '未分配',
+          role: user.role
+        }))
+    } catch (userError) {
+      console.warn('加载用户数据失败:', userError)
+      ElMessage.warning('加载用户数据失败，请检查网络连接')
+      availableUsers.value = []
+    }
   } catch (error) {
     ElMessage.error('加载客服数据失败')
     console.error('Load customer services error:', error)
@@ -769,6 +1302,121 @@ onMounted(() => {
 .no-permissions {
   color: #999;
   font-size: 12px;
+}
+
+.member-details {
+  .no-members {
+    text-align: center;
+    padding: 40px 0;
+  }
+  
+  .el-table {
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  
+  .el-alert {
+    border-radius: 8px;
+  }
+}
+
+/* 权限配置容器样式 */
+.permission-config-container {
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.permission-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.permission-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.permission-count {
+  font-size: 14px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.permission-tree-wrapper {
+  max-height: 350px;
+  overflow-y: auto;
+  padding: 16px;
+  background: #fff;
+}
+
+.permission-tree {
+  border: none;
+  padding: 0;
+}
+
+.permission-tree .el-tree-node__content {
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 4px;
+  margin: 2px 0;
+  transition: all 0.2s ease;
+}
+
+.permission-tree .el-tree-node__content:hover {
+  background-color: #f5f7fa;
+}
+
+.permission-node {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding-right: 8px;
+}
+
+.permission-label {
+  font-size: 14px;
+  color: #303133;
+  font-weight: 500;
+}
+
+.permission-key {
+  font-size: 12px;
+  color: #909399;
+  background: #f0f2f5;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+}
+
+.permission-tips {
+  padding: 16px;
+  background: #fafbfc;
+  border-top: 1px solid #e4e7ed;
+}
+
+.permission-tips .el-alert {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+.permission-tips ul {
+  margin: 8px 0 0 0;
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
+.permission-tips li {
+  margin: 4px 0;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.4;
 }
 
 .permission-tree {

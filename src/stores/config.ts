@@ -12,6 +12,12 @@ export interface SystemConfig {
   companyAddress: string
   systemDescription: string
   systemLogo: string
+  // 🔥 批次274新增：联系二维码（统一一个）
+  contactQRCode?: string // 联系二维码
+  contactQRCodeLabel?: string // 二维码标签（如：微信、企业微信等）
+  // 🔥 批次275新增：用户协议
+  userAgreement?: string // 用户使用协议
+  privacyPolicy?: string // 用户隐私协议
 }
 
 // 安全配置接口
@@ -59,6 +65,16 @@ export interface ThemeConfig {
   sidebarCollapsed: boolean
   language: string
   timezone: string
+}
+
+// 业绩分享配置接口
+export interface PerformanceShareConfig {
+  enabled: boolean // 是否启用业绩分享功能
+  allowCopy: boolean // 是否允许复制
+  allowDownload: boolean // 是否允许下载
+  watermarkEnabled: boolean // 是否显示水印
+  watermarkType: 'username' | 'account' | 'department' | 'phone' | 'custom' // 水印类型
+  watermarkText: string // 自定义水印文字
 }
 
 // 短信配置接口
@@ -166,7 +182,7 @@ export const useConfigStore = defineStore('config', () => {
   const storageConfig = ref<StorageConfig>({
     storageType: 'local',
     localPath: '/uploads',
-    localDomain: 'http://localhost:3000',
+    localDomain: 'http://localhost:3001',
     accessKey: '',
     secretKey: '',
     bucketName: '',
@@ -176,6 +192,16 @@ export const useConfigStore = defineStore('config', () => {
     allowedTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx'
   })
 
+  // 业绩分享配置
+  const performanceShareConfig = ref<PerformanceShareConfig>({
+    enabled: true,
+    allowCopy: true,
+    allowDownload: true,
+    watermarkEnabled: true,
+    watermarkType: 'account',
+    watermarkText: ''
+  })
+
   // 计算属性
   const isPasswordComplexityEnabled = computed(() => {
     return securityConfig.value.passwordComplexity.length > 0
@@ -183,7 +209,7 @@ export const useConfigStore = defineStore('config', () => {
 
   const canUserModifyPrice = computed(() => {
     return (userRole: string) => {
-      return productConfig.value.allowPriceModification && 
+      return productConfig.value.allowPriceModification &&
              productConfig.value.priceModificationRoles.includes(userRole)
     }
   })
@@ -234,12 +260,12 @@ export const useConfigStore = defineStore('config', () => {
   const updateThemeConfig = (config: Partial<ThemeConfig>) => {
     Object.assign(themeConfig.value, config)
     saveConfigToStorage('theme', themeConfig.value)
-    
+
     // 应用主题变更
     if (config.primaryColor) {
       document.documentElement.style.setProperty('--el-color-primary', config.primaryColor)
     }
-    
+
 
   }
 
@@ -249,19 +275,33 @@ export const useConfigStore = defineStore('config', () => {
    * 初始化主题
    */
   const initTheme = () => {
-    // 从本地存储加载主题配置
-    const themeConfigStr = localStorage.getItem('crm_config_theme')
-    if (themeConfigStr) {
-      try {
-        const savedTheme = JSON.parse(themeConfigStr)
-        Object.assign(themeConfig.value, savedTheme)
-      } catch (error) {
-        console.error('加载主题配置失败:', error)
+    try {
+      // 检查localStorage是否可用
+      if (typeof localStorage === 'undefined') {
+        console.warn('[Config] localStorage不可用，使用默认主题配置')
+        updateThemeConfig({})
+        return
       }
+
+      // 从本地存储加载主题配置
+      const themeConfigStr = localStorage.getItem('crm_config_theme')
+      if (themeConfigStr) {
+        try {
+          const savedTheme = JSON.parse(themeConfigStr)
+          Object.assign(themeConfig.value, savedTheme)
+          console.log('[Config] 主题配置已从本地存储加载')
+        } catch (error) {
+          console.error('[Config] 解析主题配置失败:', error)
+        }
+      }
+
+      // 应用当前主题配置
+      updateThemeConfig({})
+    } catch (error) {
+      console.error('[Config] 初始化主题失败:', error)
+      // 使用默认配置
+      updateThemeConfig({})
     }
-    
-    // 应用当前主题配置
-    updateThemeConfig({})
   }
 
   /**
@@ -278,6 +318,14 @@ export const useConfigStore = defineStore('config', () => {
   const updateStorageConfig = (config: Partial<StorageConfig>) => {
     Object.assign(storageConfig.value, config)
     saveConfigToStorage('storage', storageConfig.value)
+  }
+
+  /**
+   * 更新业绩分享配置
+   */
+  const updatePerformanceShareConfig = (config: Partial<PerformanceShareConfig>) => {
+    Object.assign(performanceShareConfig.value, config)
+    saveConfigToStorage('performanceShare', performanceShareConfig.value)
   }
 
   /**
@@ -300,18 +348,28 @@ export const useConfigStore = defineStore('config', () => {
       const systemConfigStr = localStorage.getItem('crm_config_system')
       if (systemConfigStr) {
         Object.assign(systemConfig.value, JSON.parse(systemConfigStr))
+      } else {
+        // 【批次202修复】首次加载时保存默认配置
+        saveConfigToStorage('system', systemConfig.value)
       }
 
       // 加载安全配置
       const securityConfigStr = localStorage.getItem('crm_config_security')
       if (securityConfigStr) {
         Object.assign(securityConfig.value, JSON.parse(securityConfigStr))
+      } else {
+        // 【批次202修复】首次加载时保存默认配置
+        saveConfigToStorage('security', securityConfig.value)
       }
 
       // 加载商品配置
       const productConfigStr = localStorage.getItem('crm_config_product')
       if (productConfigStr) {
         Object.assign(productConfig.value, JSON.parse(productConfigStr))
+      } else {
+        // 【批次202修复】首次加载时保存默认配置
+        console.log('[配置初始化] 商品配置不存在,保存默认配置:', productConfig.value)
+        saveConfigToStorage('product', productConfig.value)
       }
 
       // 加载主题配置
@@ -320,12 +378,27 @@ export const useConfigStore = defineStore('config', () => {
         Object.assign(themeConfig.value, JSON.parse(themeConfigStr))
         // 应用主题
         updateThemeConfig({})
+      } else {
+        // 【批次202修复】首次加载时保存默认配置
+        saveConfigToStorage('theme', themeConfig.value)
       }
 
       // 加载存储配置
       const storageConfigStr = localStorage.getItem('crm_config_storage')
       if (storageConfigStr) {
         Object.assign(storageConfig.value, JSON.parse(storageConfigStr))
+      } else {
+        // 【批次202修复】首次加载时保存默认配置
+        saveConfigToStorage('storage', storageConfig.value)
+      }
+
+      // 加载业绩分享配置
+      const performanceShareConfigStr = localStorage.getItem('crm_config_performanceShare')
+      if (performanceShareConfigStr) {
+        Object.assign(performanceShareConfig.value, JSON.parse(performanceShareConfigStr))
+      } else {
+        // 【批次202修复】首次加载时保存默认配置
+        saveConfigToStorage('performanceShare', performanceShareConfig.value)
       }
     } catch (error) {
       console.error('加载配置失败:', error)
@@ -374,7 +447,7 @@ export const useConfigStore = defineStore('config', () => {
         salesMaxDiscount: 15.0,
         discountApprovalThreshold: 20.0,
         allowPriceModification: true,
-        priceModificationRoles: ['admin', 'manager'],
+        priceModificationRoles: ['admin', 'department_manager'],
         enablePriceHistory: true,
         pricePrecision: '2',
         enableInventory: true,
@@ -382,7 +455,14 @@ export const useConfigStore = defineStore('config', () => {
         allowNegativeStock: false,
         defaultCategory: '未分类',
         maxCategoryLevel: 3,
-        enableCategoryCode: true
+        enableCategoryCode: true,
+        // 【批次202修复】添加缺失的权限配置字段
+        enablePermissionControl: true,
+        costPriceViewRoles: ['super_admin', 'admin', 'finance'],
+        salesDataViewRoles: ['super_admin', 'admin', 'department_manager'],
+        stockInfoViewRoles: ['super_admin', 'admin', 'department_manager', 'warehouse'],
+        operationLogsViewRoles: ['super_admin', 'admin', 'audit'],
+        sensitiveInfoHideMethod: 'eye_icon'
       }
       saveConfigToStorage('product', productConfig.value)
     }
@@ -464,12 +544,13 @@ export const useConfigStore = defineStore('config', () => {
     themeConfig,
     smsConfig,
     storageConfig,
-    
+    performanceShareConfig,
+
     // 计算属性
     isPasswordComplexityEnabled,
     canUserModifyPrice,
     getMaxDiscountForRole,
-    
+
     // 方法
     updateSystemConfig,
     updateSecurityConfig,
@@ -478,6 +559,7 @@ export const useConfigStore = defineStore('config', () => {
     initTheme,
     updateSmsConfig,
     updateStorageConfig,
+    updatePerformanceShareConfig,
     resetConfig,
     resetSystemConfig,
     resetSecurityConfig,

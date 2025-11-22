@@ -3,8 +3,9 @@ import { ref, computed } from 'vue'
 import { permissionService, UserRole, PermissionLevel, SensitiveInfoType, DataScope, CustomerServiceType } from '@/services/permission'
 import { authApiService } from '@/services/authApiService'
 import { autoStatusSyncService } from '@/services/autoStatusSync'
-import { setUserPermissions, hasPermission, hasAnyPermission, hasAllPermissions, getAccessibleMenus } from '@/utils/permission'
+import { setUserPermissions } from '@/utils/permission'
 import { rolePermissionService } from '@/services/rolePermissionService'
+import { getDefaultRolePermissions } from '@/config/defaultRolePermissions'
 
 export interface User {
   id: string
@@ -26,6 +27,9 @@ export interface User {
   passwordLastChanged?: Date // 密码最后修改时间
   passwordExpiresAt?: Date // 密码过期时间
   forcePasswordChange?: boolean // 是否强制修改密码
+  // 在职状态
+  employmentStatus?: 'active' | 'resigned' // active=在职, resigned=离职
+  resignedDate?: string // 离职日期
 }
 
 export interface PhoneViewSettings {
@@ -61,7 +65,7 @@ export const useUserStore = defineStore('user', () => {
   const getRoleIdByRole = (role: string): string => {
     const roleMap: Record<string, string> = {
       'admin': '2',
-      'manager': '3', 
+      'manager': '3',
       'employee': '4',
       'customer_service': '5'
     }
@@ -71,11 +75,11 @@ export const useUserStore = defineStore('user', () => {
   // 刷新用户权限
   const refreshUserPermissions = async () => {
     if (!currentUser.value) return
-    
+
     try {
       const userRoleId = getRoleIdByRole(currentUser.value.role)
       const rolePermissions = await rolePermissionService.getRolePermissions(userRoleId)
-      
+
       if (rolePermissions && rolePermissions.permissions) {
         const permissionCodes = rolePermissions.permissions.map(p => p.code)
         permissions.value = permissionCodes
@@ -103,11 +107,11 @@ export const useUserStore = defineStore('user', () => {
   initPermissionListener()
 
   // 计算属性 - 根据新的角色体系重新定义
-  const isAdmin = computed(() => currentUser.value?.role === 'admin') // 超级管理员
+  const isAdmin = computed(() => currentUser.value?.role === 'super_admin') // 超级管理员
   const isDepartmentManager = computed(() => currentUser.value?.role === 'department_manager') // 部门管理员（部门负责人）
   const isSalesStaff = computed(() => currentUser.value?.role === 'sales_staff') // 销售员
   const isCustomerService = computed(() => currentUser.value?.role === 'customer_service') // 客服
-  
+
   // 兼容性计算属性（保留以避免破坏现有代码）
   const isManager = computed(() => isDepartmentManager.value || isAdmin.value) // 兼容：管理员权限
   const isEmployee = computed(() => isSalesStaff.value) // 兼容：员工权限映射到销售员
@@ -116,36 +120,35 @@ export const useUserStore = defineStore('user', () => {
     return isAdmin.value || isDepartmentManager.value
   })
   const user = computed(() => currentUser.value)
-  
+
   // 新的权限系统计算属性
   const isSuperAdmin = computed(() => {
     if (!currentUser.value) return false
     // 直接检查用户角色，而不依赖权限服务
-    return currentUser.value.role === 'admin' || currentUser.value.userRole === UserRole.SUPER_ADMIN
+    return currentUser.value.role === 'super_admin' || currentUser.value.userRole === UserRole.SUPER_ADMIN
   })
-  
+
   const isWhitelistMember = computed(() => {
     if (!currentUser.value) return false
     // 检查用户是否为白名单成员或部门管理员
-    return currentUser.value.userRole === UserRole.WHITELIST_MEMBER || 
-           isDepartmentManager.value || 
+    return currentUser.value.userRole === UserRole.WHITELIST_MEMBER ||
+           isDepartmentManager.value ||
            isSuperAdmin.value
   })
-  
+
   const userPermissionLevel = computed(() => {
     if (!currentUser.value) return PermissionLevel.RESTRICTED
     const permission = permissionService.getUserPermission(currentUser.value.id)
     return permission?.permissions[0] || PermissionLevel.RESTRICTED
   })
-  
-  // 手机号查看权限：超级管理员或在白名单中的用户
+
+  // 手机号查看权限：使用新的权限服务检查
   const canViewPhone = computed(() => {
     if (!currentUser.value) return false
-    if (isAdmin.value) return true
-    if (!phoneViewSettings.value.enabled) return false
-    return phoneViewSettings.value.whitelist.includes(currentUser.value.id)
+    const result = permissionService.checkSensitiveInfoAccess(currentUser.value.id, SensitiveInfoType.PHONE)
+    return result.hasAccess
   })
-  
+
   // 新的敏感信息访问权限检查
   const canAccessSensitiveInfo = computed(() => {
     return (infoType: SensitiveInfoType) => {
@@ -183,7 +186,7 @@ export const useUserStore = defineStore('user', () => {
     // 超级管理员有完全权限
     if (isAdmin.value) return true
     // 检查用户是否有售后处理权限
-    return permissions.value.includes('service:process') || 
+    return permissions.value.includes('service:process') ||
            permissions.value.includes('service:write') ||
            isDepartmentManager.value
   })
@@ -194,7 +197,7 @@ export const useUserStore = defineStore('user', () => {
     // 超级管理员有完全权限
     if (isAdmin.value) return true
     // 检查用户是否有售后编辑权限
-    return permissions.value.includes('service:edit') || 
+    return permissions.value.includes('service:edit') ||
            permissions.value.includes('service:write') ||
            isDepartmentManager.value
   })
@@ -205,7 +208,7 @@ export const useUserStore = defineStore('user', () => {
     // 超级管理员有完全权限
     if (isAdmin.value) return true
     // 检查用户是否有售后关闭权限
-    return permissions.value.includes('service:close') || 
+    return permissions.value.includes('service:close') ||
            permissions.value.includes('service:write') ||
            isDepartmentManager.value
   })
@@ -222,23 +225,23 @@ export const useUserStore = defineStore('user', () => {
   // 物流状态更新权限检查
   const canAccessLogisticsStatusUpdate = computed(() => {
     if (!currentUser.value) return false
-    
+
     // 超级管理员有完全权限
     if (isSuperAdmin.value) return true
-    
+
     // 白名单成员有权限
     if (isWhitelistMember.value) return true
-    
+
     // 检查用户是否有物流状态更新权限
-    if (permissions.value.includes('logistics:status_update')) return true
-    
+    if (permissions.value.includes('logistics:status')) return true
+
     // 部门管理员有权限
     if (isDepartmentManager.value) return true
-    
+
     // 物流部门主管有权限
-    if (currentUser.value.department === 'logistics' && 
+    if (currentUser.value.department === 'logistics' &&
         currentUser.value.position === 'supervisor') return true
-    
+
     return false
   })
 
@@ -266,7 +269,7 @@ export const useUserStore = defineStore('user', () => {
       if (savedData) {
         const userData = JSON.parse(savedData)
         // 检查是否有旧的角色配置（manager角色应该是department_manager）
-        const hasOldRoleConfig = userData.some((user: any) => 
+        const hasOldRoleConfig = userData.some((user: unknown) =>
           (user.username === 'manager' && user.roleId === 'manager') ||
           (user.username === 'sales001' && user.roleId === 'employee') ||
           (user.username === 'service001' && user.roleId === 'employee')
@@ -358,57 +361,58 @@ export const useUserStore = defineStore('user', () => {
     return new Promise((resolve, reject) => {
       setTimeout(() => {
         const userDatabase = getUserDatabase()
-        
+
         // 查找用户
         const user = userDatabase.find((u: User & { username: string; password: string }) => u.username === username)
-        
+
         if (!user) {
           reject(new Error('用户不存在'))
           return
         }
-        
+
         if (user.status !== 'active') {
           reject(new Error('用户已被禁用'))
           return
         }
-        
+
         if (user.password !== password) {
           reject(new Error('密码错误'))
           return
         }
-        
+
         // 登录成功
         token.value = 'token-' + user.id + '-' + Date.now()
         isLoggedIn.value = true
-        
+
         // 更新用户登录信息
         user.lastLoginTime = new Date().toLocaleString()
         user.loginCount = (user.loginCount || 0) + 1
         user.isOnline = true
-        
+
         // 保存更新后的用户数据库
         localStorage.setItem('userDatabase', JSON.stringify(userDatabase))
-        
+
         // 设置当前用户信息
         currentUser.value = {
           id: user.id,
           name: user.realName,
           email: user.email,
-          role: user.roleId === 'admin' ? 'super_admin' : 
+          role: user.roleId === 'admin' ? 'super_admin' :
                 user.roleId === 'department_manager' ? 'department_manager' :
                 user.roleId === 'sales_staff' ? 'sales_staff' :
-                user.roleId === 'customer_service' ? 'customer_service' : 'employee',
+                user.roleId === 'customer_service' ? 'customer_service' :
+                user.roleId || user.role || 'sales_staff',  // 【批次180修复】使用实际的role，默认为sales_staff
           department: user.department || '销售部',
           avatar: user.avatar,
-          userRole: user.roleId === 'admin' ? UserRole.SUPER_ADMIN : 
+          userRole: user.roleId === 'admin' ? UserRole.SUPER_ADMIN :
                    user.roleId === 'department_manager' ? UserRole.DEPARTMENT_MANAGER :
                    user.roleId === 'sales_staff' ? UserRole.SALES_STAFF :
                    user.roleId === 'customer_service' ? UserRole.CUSTOMER_SERVICE :
                    UserRole.REGULAR_USER,
-          permissionLevel: user.roleId === 'admin' ? PermissionLevel.FULL_ACCESS : 
+          permissionLevel: user.roleId === 'admin' ? PermissionLevel.FULL_ACCESS :
                           user.roleId === 'department_manager' ? PermissionLevel.PARTIAL_ACCESS :
                           PermissionLevel.RESTRICTED,
-          dataScope: user.dataScope || (user.roleId === 'admin' ? DataScope.ALL : 
+          dataScope: user.dataScope || (user.roleId === 'admin' ? DataScope.ALL :
                     user.roleId === 'department_manager' ? DataScope.DEPARTMENT : DataScope.SELF),
           departmentId: user.departmentId,
           departmentIds: user.departmentIds,
@@ -416,12 +420,14 @@ export const useUserStore = defineStore('user', () => {
           forcePasswordChange: user.needChangePassword
         }
 
-        // 设置用户权限 - 使用新的权限系统
+        // 设置用户权限 - 从默认配置中获取
         let userPermissions: string[] = []
-        
-        if (user.roleId === 'admin') {
-          // 超级管理员拥有所有权限
-          userPermissions = ['*'] // 特殊标识，表示拥有所有权限
+
+        // 从默认权限配置文件中获取该角色的权限
+        userPermissions = getDefaultRolePermissions(user.roleId)
+
+        // 设置权限服务
+        if (user.roleId === 'admin' || user.roleId === 'super_admin') {
           permissionService.setUserPermission({
             userId: user.id,
             role: UserRole.SUPER_ADMIN,
@@ -429,15 +435,6 @@ export const useUserStore = defineStore('user', () => {
             dataScope: DataScope.ALL
           })
         } else if (user.roleId === 'department_manager') {
-          // 部门负责人权限：可管理部门数据
-          userPermissions = [
-            'dashboard:view',
-            'customer:list:view', 'customer:list:edit', 'customer:list:create', 'customer:list:assign',
-            'order:list:view', 'order:list:edit', 'order:add:create',
-            'order:audit:view', 'order:audit:approve',
-            'performance:personal:view', 'performance:team:view', 'performance:analysis:view',
-            'product:add:create', 'product:inventory:manage'
-          ]
           permissionService.setUserPermission({
             userId: user.id,
             role: UserRole.DEPARTMENT_MANAGER,
@@ -448,21 +445,6 @@ export const useUserStore = defineStore('user', () => {
             whitelistTypes: [SensitiveInfoType.PHONE, SensitiveInfoType.EMAIL, SensitiveInfoType.WECHAT]
           })
         } else if (user.roleId === 'sales_staff') {
-          // 销售员权限：只能查看自己的数据
-          userPermissions = [
-            'dashboard', 'dashboard:personal',
-            'customer', 'customer:list', 'customer:view:personal', 'customer:add',
-            'customer:groups', 'customer:tags',
-            'order', 'order:list', 'order:view:personal', 'order:add',
-            'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
-            'service:sms',
-            'performance', 'performance:personal', 'performance:personal:view',
-            'performance:team', 'performance:team:view', 'performance:share',
-            'logistics', 'logistics:list', 'logistics:view',
-            'logistics:tracking', 'logistics:tracking:view', 'logistics:shipping',
-            'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:add',
-            'data', 'data:customer', 'data:customer:search', 'data:list'
-          ]
           permissionService.setUserPermission({
             userId: user.id,
             role: UserRole.SALES_STAFF,
@@ -471,29 +453,15 @@ export const useUserStore = defineStore('user', () => {
             departmentId: user.departmentId || 'dept_001'
           })
         } else if (user.roleId === 'customer_service') {
-          // 客服权限：由超级管理员配置
-          userPermissions = [
-            'dashboard:view',
-            'customer:list:view', 'customer:list:edit',
-            'order:list:view', 'order:list:edit',
-            'service:list:view', 'service:list:edit'
-          ]
           permissionService.setUserPermission({
             userId: user.id,
             role: UserRole.CUSTOMER_SERVICE,
-            permissions: [PermissionLevel.RESTRICTED],
-            dataScope: DataScope.CUSTOM,
+            permissions: [PermissionLevel.PARTIAL_ACCESS],
+            dataScope: DataScope.ALL,
             customerServiceType: user.customerServiceType || CustomerServiceType.GENERAL,
-            customPermissions: user.customPermissions || []
+            whitelistTypes: [SensitiveInfoType.PHONE]
           })
         } else {
-          // 普通员工：基础权限
-          userPermissions = [
-            'dashboard:view',
-            'customer:list:view',
-            'order:list:view',
-            'performance:personal:view'
-          ]
           permissionService.setUserPermission({
             userId: user.id,
             role: UserRole.REGULAR_USER,
@@ -501,20 +469,20 @@ export const useUserStore = defineStore('user', () => {
             dataScope: DataScope.SELF
           })
         }
-        
+
         // 设置权限到新的权限系统
         permissions.value = userPermissions
         setUserPermissions(userPermissions)
-        
+
         localStorage.setItem('auth_token', token.value)
         localStorage.setItem('user', JSON.stringify(currentUser.value))
-        
+
         // 启动自动同步服务
         const config = autoStatusSyncService.getConfig()
         if (config.enabled) {
           autoStatusSyncService.start()
         }
-        
+
         resolve(true)
       }, 1000)
     })
@@ -532,7 +500,7 @@ export const useUserStore = defineStore('user', () => {
       // 立即设置token和登录状态，确保状态同步
       token.value = response.tokens.accessToken
       isLoggedIn.value = true
-      
+
       console.log('[Auth] 登录成功，token已设置:', response.tokens.accessToken ? response.tokens.accessToken.substring(0, 20) + '...' : 'undefined')
 
       // 设置当前用户信息，映射API响应到本地用户格式
@@ -540,21 +508,22 @@ export const useUserStore = defineStore('user', () => {
         id: response.user.id.toString(),
         name: response.user.realName,
         email: response.user.email,
-        role: response.user.role === 'admin' ? 'super_admin' : 
+        role: (response.user.role === 'admin' || response.user.role === 'super_admin') ? 'super_admin' :
               response.user.role === 'department_manager' ? 'department_manager' :
               response.user.role === 'sales_staff' ? 'sales_staff' :
-              response.user.role === 'customer_service' ? 'customer_service' : 'employee',
+              response.user.role === 'customer_service' ? 'customer_service' :
+              response.user.role || 'sales_staff',  // 【批次180修复】使用实际的role，默认为sales_staff
         department: response.user.department?.name || '未分配',
         avatar: response.user.avatar,
-        userRole: response.user.role === 'admin' ? UserRole.SUPER_ADMIN : 
+        userRole: (response.user.role === 'admin' || response.user.role === 'super_admin') ? UserRole.SUPER_ADMIN :
                  response.user.role === 'department_manager' ? UserRole.DEPARTMENT_MANAGER :
                  response.user.role === 'sales_staff' ? UserRole.SALES_STAFF :
                  response.user.role === 'customer_service' ? UserRole.CUSTOMER_SERVICE :
                  UserRole.REGULAR_USER,
-        permissionLevel: response.user.role === 'admin' ? PermissionLevel.FULL_ACCESS : 
+        permissionLevel: (response.user.role === 'admin' || response.user.role === 'super_admin') ? PermissionLevel.FULL_ACCESS :
                         response.user.role === 'department_manager' ? PermissionLevel.PARTIAL_ACCESS :
                         PermissionLevel.RESTRICTED,
-        dataScope: response.user.dataScope || (response.user.role === 'admin' ? DataScope.ALL : 
+        dataScope: response.user.dataScope || ((response.user.role === 'admin' || response.user.role === 'super_admin') ? DataScope.ALL :
                   response.user.role === 'department_manager' ? DataScope.DEPARTMENT : DataScope.SELF),
         departmentId: response.user.departmentId,
         departmentIds: response.user.departmentIds,
@@ -564,21 +533,21 @@ export const useUserStore = defineStore('user', () => {
 
       // 设置用户权限 - 使用新的权限系统，优先从localStorage读取角色权限配置
       let userPermissions: string[] = []
-      
+
       // 获取角色ID映射 - 与rolePermissionService中的角色定义保持一致
       const roleIdMap: Record<string, string> = {
         'admin': '1',           // 超级管理员
         'manager': '3',         // 经理
         'department_manager': '3', // 部门经理 -> 经理
         'sales': '4',           // 销售员 -> 员工
-        'sales_staff': '4',     // 销售员工 -> 员工  
+        'sales_staff': '4',     // 销售员工 -> 员工
         'employee': '4',        // 员工
         'service': '5',         // 客服
         'customer_service': '5' // 客户服务 -> 客服
       }
-      
+
       const roleId = roleIdMap[response.user.role] || '4'
-      
+
       try {
         // 尝试从localStorage获取角色权限配置
         const rolePermissions = await rolePermissionService.getRolePermissions(roleId)
@@ -590,65 +559,75 @@ export const useUserStore = defineStore('user', () => {
         }
       } catch (error) {
         console.warn(`[Auth] 无法获取角色权限配置，使用默认权限: ${response.user.role}`, error)
-        
-        // 如果无法获取配置的权限，使用默认权限
-        if (response.user.role === 'admin') {
-          userPermissions = ['*'] // 特殊标识，表示拥有所有权限
-        } else if (response.user.role === 'department_manager') {
-          userPermissions = [
-            'dashboard:view',
-            'customer:list:view', 'customer:list:edit', 'customer:list:create', 'customer:list:assign',
-            'order:list:view', 'order:list:edit', 'order:add:create',
-            'order:audit:view', 'order:audit:approve',
-            'performance:personal:view', 'performance:team:view', 'performance:analysis:view',
-            'product:add:create', 'product:inventory:manage'
-          ]
-        } else if (response.user.role === 'sales') {
-          userPermissions = [
-            'dashboard:view',
-            'customer:list:view', 'customer:list:edit', 'customer:list:create',
-            'order:list:view', 'order:list:edit', 'order:add:create',
-            'performance:personal:view', 'performance:team:view'
-          ]
-        } else {
-          userPermissions = [
-            'dashboard:view',
-            'customer:list:view',
-            'order:list:view',
-            'performance:personal:view'
-          ]
-        }
+
+        // 如果无法获取配置的权限，使用默认权限配置文件
+        userPermissions = getDefaultRolePermissions(response.user.role)
       }
-      
+
       // 设置权限到新的权限系统
-      if (response.user.role === 'admin') {
+      if (response.user.role === 'admin' || response.user.role === 'super_admin') {
         permissionService.setUserPermission({
           userId: response.user.id.toString(),
           role: UserRole.SUPER_ADMIN,
-          permissions: [PermissionLevel.FULL_ACCESS]
+          permissions: [PermissionLevel.FULL_ACCESS],
+          dataScope: DataScope.ALL
         })
       } else if (response.user.role === 'department_manager') {
         permissionService.setUserPermission({
           userId: response.user.id.toString(),
           role: UserRole.DEPARTMENT_MANAGER,
           permissions: [PermissionLevel.PARTIAL_ACCESS],
+          dataScope: DataScope.DEPARTMENT,
+          departmentId: response.user.departmentId || 'dept_001',
+          departmentIds: response.user.departmentIds || ['dept_001'],
           whitelistTypes: [SensitiveInfoType.PHONE, SensitiveInfoType.EMAIL, SensitiveInfoType.WECHAT]
+        })
+      } else if (response.user.role === 'sales_staff') {
+        permissionService.setUserPermission({
+          userId: response.user.id.toString(),
+          role: UserRole.SALES_STAFF,
+          permissions: [PermissionLevel.RESTRICTED],
+          dataScope: DataScope.SELF,
+          departmentId: response.user.departmentId || 'dept_001'
+        })
+      } else if (response.user.role === 'customer_service') {
+        permissionService.setUserPermission({
+          userId: response.user.id.toString(),
+          role: UserRole.CUSTOMER_SERVICE,
+          permissions: [PermissionLevel.PARTIAL_ACCESS],
+          dataScope: DataScope.ALL,
+          customerServiceType: response.user.customerServiceType || CustomerServiceType.GENERAL,
+          whitelistTypes: [SensitiveInfoType.PHONE] // 客服可以访问手机号
         })
       } else {
         permissionService.setUserPermission({
           userId: response.user.id.toString(),
           role: UserRole.REGULAR_USER,
-          permissions: [PermissionLevel.RESTRICTED]
+          permissions: [PermissionLevel.RESTRICTED],
+          dataScope: DataScope.SELF
         })
       }
-      
+
       // 设置权限到新的权限系统
       permissions.value = userPermissions
       setUserPermissions(userPermissions)
 
+      // 【批次190修复】确保权限保存到用户对象中
+      const completeUserInfo = {
+        ...currentUser.value,
+        permissions: userPermissions
+      }
+
       // 保存到localStorage（注意：API服务期望auth_token作为key）
       localStorage.setItem('auth_token', token.value)
-      localStorage.setItem('user', JSON.stringify(currentUser.value))
+      localStorage.setItem('user', JSON.stringify(completeUserInfo))
+      localStorage.setItem('user_info', JSON.stringify(completeUserInfo))
+      localStorage.setItem('userPermissions', JSON.stringify(userPermissions))
+
+      console.log('[Auth] 已保存用户信息和权限:')
+      console.log('  - 用户:', completeUserInfo.name)
+      console.log('  - 角色:', completeUserInfo.role)
+      console.log('  - 权限数量:', userPermissions.length)
 
       // 启动自动同步服务
       const config = autoStatusSyncService.getConfig()
@@ -665,21 +644,21 @@ export const useUserStore = defineStore('user', () => {
 
   // 带重试机制的登录方法
   const loginWithRetry = async (username: string, password: string, rememberMe = false, maxRetries = 3) => {
-    let lastError: any
-    
+    let lastError: unknown
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const result = await loginWithApi(username, password, rememberMe)
-        
+
         // 如果登录成功，确保状态已同步并立即返回
         if (result && token.value && isLoggedIn.value) {
           console.log('[Auth] 登录重试成功，状态已同步')
           return result
         }
-        
-      } catch (error: any) {
+
+      } catch (error: unknown) {
         lastError = error
-        
+
         // 如果是频率限制错误且不是最后一次尝试，进行重试
         if ((error.message?.includes('频繁') || error.message?.includes('429') || error.message === 'RATE_LIMITED') && attempt < maxRetries) {
           const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000) // 指数退避，最大延迟10秒
@@ -687,45 +666,65 @@ export const useUserStore = defineStore('user', () => {
           await new Promise(resolve => setTimeout(resolve, delay))
           continue
         }
-        
+
         // 其他错误或最后一次尝试，直接抛出错误
         if (attempt === maxRetries) {
           throw lastError
         }
       }
     }
-    
+
     throw lastError || new Error('登录失败，请稍后重试')
   }
 
   const logout = () => {
     // 调用API登出
     authApiService.logout().catch(console.error)
-    
+
+    // 【批次190修复】清除所有认证和权限相关数据
     currentUser.value = null
     token.value = ''
     permissions.value = []
     isLoggedIn.value = false
     users.value = []
+
+    // 清除所有localStorage中的认证数据
     localStorage.removeItem('auth_token')
     localStorage.removeItem('user')
+    localStorage.removeItem('user_info')
+    localStorage.removeItem('userPermissions')
+    localStorage.removeItem('refresh_token')
+    localStorage.removeItem('token_expiry')
+
+    console.log('[Auth] 已清除所有认证数据')
   }
 
   const loadUsers = async () => {
     try {
-      // 从本地存储获取用户数据库
-      const savedData = localStorage.getItem('userDatabase')
-      if (savedData) {
-        const userDatabase = JSON.parse(savedData)
-        users.value = userDatabase.map((user: any) => ({
+      // 使用统一的用户数据服务,自动适配localStorage和API
+      const { default: userDataService } = await import('@/services/userDataService')
+      const loadedUsers = await userDataService.getUsers()
+
+      if (loadedUsers.length > 0) {
+        users.value = loadedUsers.map((user: unknown) => ({
           id: user.id,
           name: user.name,
+          username: user.username,
+          employeeNumber: user.employeeNumber,
           email: user.email,
           role: user.role,
           department: user.department,
+          departmentId: user.departmentId,
+          position: user.position,
           avatar: user.avatar,
-          status: user.status || 'active'
+          status: user.status || 'active',
+          createTime: user.createTime,
+          createdAt: user.createdAt,
+          employmentStatus: user.employmentStatus || 'active'
         }))
+
+        console.log('[UserStore] 用户列表已加载:', users.value.length, '个用户')
+        console.log('[UserStore] 数据来源:', userDataService.getCurrentMode())
       } else {
         // 如果没有保存的数据，创建默认用户列表
         users.value = [
@@ -771,7 +770,7 @@ export const useUserStore = defineStore('user', () => {
             status: 'active'
           }
         ]
-        
+
         // 保存默认用户列表到本地存储
         localStorage.setItem('userDatabase', JSON.stringify(users.value))
       }
@@ -810,19 +809,19 @@ export const useUserStore = defineStore('user', () => {
 
   // 根据用户ID获取用户信息
   const getUserById = (userId: string) => {
-    return users.value.find(user => user.id === userId)
+    return users.value.find(user => String(user.id) === String(userId))
   }
 
   const initUser = async () => {
     const savedToken = localStorage.getItem('auth_token')
     const savedUser = localStorage.getItem('user')
-    
+
     // 如果没有token或用户信息，直接返回，不进行任何API调用
     if (!savedToken || !savedUser) {
       console.log('[Auth] 没有保存的登录信息，跳过初始化')
       return
     }
-    
+
     if (savedToken && savedUser) {
       try {
         // 检查是否为模拟登录token（以'token-'开头）
@@ -832,11 +831,11 @@ export const useUserStore = defineStore('user', () => {
           currentUser.value = JSON.parse(savedUser)
           isLoggedIn.value = true
           console.log('[Auth] 模拟登录状态已恢复:', currentUser.value?.name)
-          
+
           // 立即恢复用户权限到权限服务中
           if (currentUser.value?.role === 'admin') {
             permissions.value = [
-              'customer.export', 'customer.edit', 'customer.delete', 
+              'customer.export', 'customer.edit', 'customer.delete',
               'order.export', 'order.edit',
               'service:read', 'service:write', 'service:edit', 'service:process', 'service:close', 'service:assign'
             ]
@@ -849,14 +848,56 @@ export const useUserStore = defineStore('user', () => {
             console.log('[Auth] 超级管理员权限已设置:', currentUser.value.id)
           } else if (currentUser.value?.role === 'department_manager') {
             permissions.value = [
-              'customer.export', 'customer.edit', 'order.export',
-              'service:read', 'service:write', 'service:process', 'service:close', 'service:assign'
+              'dashboard', 'dashboard:personal', 'dashboard:department',
+              'customer', 'customer:list', 'customer:view:personal', 'customer:view:department',
+              'customer:add', 'customer:edit', 'customer:import', 'customer:export',
+              'order', 'order:list', 'order:view:personal', 'order:view:department',
+              'order:add', 'order:edit',
+              'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
+              'performance', 'performance:personal', 'performance:personal:view',
+              'performance:team', 'performance:team:view', 'performance:analysis', 'performance:share',
+              'logistics', 'logistics:list', 'logistics:view', 'logistics:tracking', 'logistics:tracking:view',
+              'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:view:department',
+              'aftersale:add', 'aftersale:edit', 'aftersale:analysis',
+              'data', 'data:customer', 'data:customer:search'
             ]
             permissionService.setUserPermission({
               userId: currentUser.value.id,
               role: UserRole.DEPARTMENT_MANAGER,
               permissions: [PermissionLevel.PARTIAL_ACCESS],
               whitelistTypes: [SensitiveInfoType.PHONE, SensitiveInfoType.EMAIL, SensitiveInfoType.WECHAT]
+            })
+          } else if (currentUser.value?.role === 'sales_staff') {
+            permissions.value = [
+              'dashboard', 'dashboard:personal',
+              'customer', 'customer:list', 'customer:view:personal', 'customer:add',
+              'order', 'order:list', 'order:view:personal', 'order:add',
+              'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
+              'performance', 'performance:personal', 'performance:personal:view',
+              'performance:team', 'performance:team:view',
+              'logistics', 'logistics:list', 'logistics:view', 'logistics:tracking', 'logistics:tracking:view',
+              'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:add', 'aftersale:analysis',
+              'data', 'data:customer', 'data:customer:search'
+            ]
+            permissionService.setUserPermission({
+              userId: currentUser.value.id,
+              role: UserRole.SALES_STAFF,
+              permissions: [PermissionLevel.PARTIAL_ACCESS],
+              whitelistTypes: [SensitiveInfoType.PHONE]
+            })
+          } else if (currentUser.value?.role === 'customer_service') {
+            permissions.value = [
+              'dashboard', 'order', 'order:list', 'order:audit',
+              'service', 'service:read', 'service:write', 'service:process',
+              'aftersale', 'aftersale:order',
+              'logistics', 'logistics:shipping', 'logistics:list', 'logistics:view', 'logistics:tracking', 'logistics:status',
+              'data', 'data:customer'
+            ]
+            permissionService.setUserPermission({
+              userId: currentUser.value.id,
+              role: UserRole.CUSTOMER_SERVICE,
+              permissions: [PermissionLevel.PARTIAL_ACCESS],
+              whitelistTypes: [SensitiveInfoType.PHONE]
             })
           } else {
             permissions.value = ['customer.view', 'order.view', 'service:read']
@@ -866,7 +907,7 @@ export const useUserStore = defineStore('user', () => {
               permissions: [PermissionLevel.RESTRICTED]
             })
           }
-          
+
           // 启动自动同步服务
           const config = autoStatusSyncService.getConfig()
           if (config.enabled) {
@@ -881,7 +922,7 @@ export const useUserStore = defineStore('user', () => {
             currentUser.value = userData
             isLoggedIn.value = true
             console.log('[Auth] API登录状态已恢复:', currentUser.value?.name)
-            
+
             // 同样需要恢复权限服务中的权限信息
             if (userData?.role === 'admin') {
               permissionService.setUserPermission({
@@ -891,20 +932,67 @@ export const useUserStore = defineStore('user', () => {
               })
               console.log('[Auth] API超级管理员权限已设置:', userData.id)
             } else if (userData?.role === 'department_manager') {
+              permissions.value = [
+                'dashboard', 'dashboard:personal', 'dashboard:department',
+                'customer', 'customer:list', 'customer:view:personal', 'customer:view:department',
+                'customer:add', 'customer:edit', 'customer:import', 'customer:export',
+                'order', 'order:list', 'order:view:personal', 'order:view:department',
+                'order:add', 'order:edit',
+                'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
+                'performance', 'performance:personal', 'performance:personal:view',
+                'performance:team', 'performance:team:view', 'performance:analysis', 'performance:share',
+                'logistics', 'logistics:list', 'logistics:view', 'logistics:tracking', 'logistics:tracking:view',
+                'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:view:department',
+                'aftersale:add', 'aftersale:edit', 'aftersale:analysis',
+                'data', 'data:customer', 'data:customer:search'
+              ]
               permissionService.setUserPermission({
                 userId: userData.id,
                 role: UserRole.DEPARTMENT_MANAGER,
                 permissions: [PermissionLevel.PARTIAL_ACCESS],
                 whitelistTypes: [SensitiveInfoType.PHONE, SensitiveInfoType.EMAIL, SensitiveInfoType.WECHAT]
               })
+            } else if (userData?.role === 'sales_staff') {
+              permissions.value = [
+                'dashboard', 'dashboard:personal',
+                'customer', 'customer:list', 'customer:view:personal', 'customer:add',
+                'order', 'order:list', 'order:view:personal', 'order:add',
+                'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
+                'performance', 'performance:personal', 'performance:personal:view',
+                'performance:team', 'performance:team:view',
+                'logistics', 'logistics:list', 'logistics:view', 'logistics:tracking', 'logistics:tracking:view',
+                'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:add', 'aftersale:analysis',
+                'data', 'data:customer', 'data:customer:search'
+              ]
+              permissionService.setUserPermission({
+                userId: userData.id,
+                role: UserRole.SALES_STAFF,
+                permissions: [PermissionLevel.PARTIAL_ACCESS],
+                whitelistTypes: [SensitiveInfoType.PHONE]
+              })
+            } else if (userData?.role === 'customer_service') {
+              permissions.value = [
+                'dashboard', 'order', 'order:list', 'order:audit',
+                'service', 'service:read', 'service:write', 'service:process',
+                'aftersale', 'aftersale:order',
+                'logistics', 'logistics:shipping', 'logistics:list', 'logistics:view', 'logistics:tracking', 'logistics:status',
+                'data', 'data:customer'
+              ]
+              permissionService.setUserPermission({
+                userId: userData.id,
+                role: UserRole.CUSTOMER_SERVICE,
+                permissions: [PermissionLevel.PARTIAL_ACCESS],
+                whitelistTypes: [SensitiveInfoType.PHONE]
+              })
             } else {
+              permissions.value = ['dashboard']
               permissionService.setUserPermission({
                 userId: userData.id,
                 role: UserRole.REGULAR_USER,
                 permissions: [PermissionLevel.RESTRICTED]
               })
             }
-            
+
             // 启动自动同步服务
             const config = autoStatusSyncService.getConfig()
             if (config.enabled) {
@@ -988,25 +1076,25 @@ export const useUserStore = defineStore('user', () => {
 
   const updateUserPermission = (userRole: UserRole, sensitiveInfoTypes?: SensitiveInfoType[]) => {
     if (!currentUser.value) return false
-    
+
     const permission = {
       userId: currentUser.value.id,
       role: userRole,
-      permissions: userRole === UserRole.SUPER_ADMIN 
-        ? [PermissionLevel.FULL_ACCESS] 
-        : userRole === UserRole.WHITELIST_MEMBER 
-          ? [PermissionLevel.PARTIAL_ACCESS] 
+      permissions: userRole === UserRole.SUPER_ADMIN
+        ? [PermissionLevel.FULL_ACCESS]
+        : userRole === UserRole.WHITELIST_MEMBER
+          ? [PermissionLevel.PARTIAL_ACCESS]
           : [PermissionLevel.RESTRICTED],
       whitelistTypes: sensitiveInfoTypes
     }
-    
+
     permissionService.setUserPermission(permission)
-    
+
     // 更新当前用户信息
     currentUser.value.userRole = userRole
     currentUser.value.permissionLevel = permission.permissions[0]
     currentUser.value.sensitiveInfoAccess = sensitiveInfoTypes
-    
+
     return true
   }
 

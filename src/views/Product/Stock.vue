@@ -23,87 +23,72 @@
     </div>
 
     <!-- 统计卡片 -->
-    <div class="stats-section">
-      <el-row :gutter="16">
-        <!-- 库存总值 - 主要卡片 -->
-        <el-col :span="8">
-          <div class="stat-card primary-card">
-            <div class="card-header">
-              <div class="card-icon primary">
-                <el-icon><Money /></el-icon>
-              </div>
-              <div class="card-title">库存总值</div>
-            </div>
-            <div class="card-content">
-              <div class="primary-value" :title="`¥${stats.totalStockValue.toLocaleString()}`">
-                ¥{{ formatLargeNumber(stats.totalStockValue) }}
-              </div>
-              <div class="card-description">当前库存商品总价值</div>
+    <div class="metrics-grid">
+      <el-card class="metric-card">
+        <div class="metric-content">
+          <div class="metric-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)">
+            <el-icon :size="24"><Money /></el-icon>
+          </div>
+          <div class="metric-info">
+            <div class="metric-value">¥{{ formatStockValue(stats.totalStockValue) }}</div>
+            <div class="metric-label">库存总值</div>
+            <div class="metric-change stable">
+              <el-icon :size="12"><Minus /></el-icon>
+              <span>当前库存商品总价值</span>
             </div>
           </div>
-        </el-col>
-        
-        <!-- 其他统计卡片 -->
-        <el-col :span="16">
-          <el-row :gutter="16">
-            <el-col :span="8">
-              <div class="stat-card secondary-card">
-                <div class="card-header">
-                  <div class="card-icon total">
-                    <el-icon><Box /></el-icon>
-                  </div>
-                  <div class="card-title">商品总数</div>
-                </div>
-                <div class="card-content">
-                  <div class="secondary-value">{{ stats.totalProducts.toLocaleString() }}</div>
-                  <div class="card-trend positive">
-                    <el-icon><ArrowUp /></el-icon>
-                    <span>+12</span>
-                  </div>
-                </div>
-              </div>
-            </el-col>
-            
-            <el-col :span="8">
-              <div class="stat-card secondary-card">
-                <div class="card-header">
-                  <div class="card-icon warning">
-                    <el-icon><Warning /></el-icon>
-                  </div>
-                  <div class="card-title">库存预警</div>
-                </div>
-                <div class="card-content">
-                  <div class="secondary-value warning-text">{{ stats.lowStockProducts }}</div>
-                  <div class="card-trend" :class="stats.lowStockProducts > 0 ? 'negative' : 'neutral'">
-                    <el-icon v-if="stats.lowStockProducts > 0"><Warning /></el-icon>
-                    <el-icon v-else><Check /></el-icon>
-                    <span>{{ stats.lowStockProducts > 0 ? '需关注' : '正常' }}</span>
-                  </div>
-                </div>
-              </div>
-            </el-col>
-            
-            <el-col :span="8">
-              <div class="stat-card secondary-card">
-                <div class="card-header">
-                  <div class="card-icon danger">
-                    <el-icon><CircleClose /></el-icon>
-                  </div>
-                  <div class="card-title">缺货商品</div>
-                </div>
-                <div class="card-content">
-                  <div class="secondary-value danger-text">{{ stats.outOfStockProducts }}</div>
-                  <div class="card-trend" :class="stats.outOfStockProducts > 0 ? 'negative' : 'positive'">
-                    <el-icon v-if="stats.outOfStockProducts > 0"><CircleClose /></el-icon>
-                    <el-icon v-else><Check /></el-icon>
-                    <span>{{ stats.outOfStockProducts > 0 ? '需补货' : '充足' }}</span>
-                  </div>
-                </div>
-              </div>
-            </el-col>
-          </el-row>
-        </el-col>
-      </el-row>
+        </div>
+      </el-card>
+
+      <el-card class="metric-card">
+        <div class="metric-content">
+          <div class="metric-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%)">
+            <el-icon :size="24"><Box /></el-icon>
+          </div>
+          <div class="metric-info">
+            <div class="metric-value">{{ stats.totalProducts }}</div>
+            <div class="metric-label">商品总数</div>
+            <div class="metric-change up">
+              <el-icon :size="12"><ArrowUp /></el-icon>
+              <span>较上月增长</span>
+            </div>
+          </div>
+        </div>
+      </el-card>
+
+      <el-card class="metric-card">
+        <div class="metric-content">
+          <div class="metric-icon" style="background: linear-gradient(135deg, #fad0c4 0%, #ffd1ff 100%)">
+            <el-icon :size="24"><Warning /></el-icon>
+          </div>
+          <div class="metric-info">
+            <div class="metric-value">{{ stats.lowStockProducts }}</div>
+            <div class="metric-label">库存预警</div>
+            <div class="metric-change" :class="stats.lowStockProducts > 0 ? 'down' : 'stable'">
+              <el-icon :size="12" v-if="stats.lowStockProducts > 0"><Warning /></el-icon>
+              <el-icon :size="12" v-else><Check /></el-icon>
+              <span>{{ stats.lowStockProducts > 0 ? '需关注' : '正常' }}</span>
+            </div>
+          </div>
+        </div>
+      </el-card>
+
+      <el-card class="metric-card">
+        <div class="metric-content">
+          <div class="metric-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%)">
+            <el-icon :size="24"><CircleClose /></el-icon>
+          </div>
+          <div class="metric-info">
+            <div class="metric-value">{{ stats.outOfStockProducts }}</div>
+            <div class="metric-label">缺货商品</div>
+            <div class="metric-change" :class="stats.outOfStockProducts > 0 ? 'down' : 'up'">
+              <el-icon :size="12" v-if="stats.outOfStockProducts > 0"><CircleClose /></el-icon>
+              <el-icon :size="12" v-else><Check /></el-icon>
+              <span>{{ stats.outOfStockProducts > 0 ? '需补货' : '充足' }}</span>
+            </div>
+          </div>
+        </div>
+      </el-card>
     </div>
 
     <!-- 搜索筛选区域 -->
@@ -127,11 +112,11 @@
         </el-form-item>
         <el-form-item label="商品分类">
           <el-select v-model="searchForm.categoryId" placeholder="请选择分类" clearable>
-            <el-option 
-              v-for="category in productStore.categories" 
-              :key="category.id" 
-              :label="category.name" 
-              :value="category.id" 
+            <el-option
+              v-for="category in productStore.categories"
+              :key="category.id"
+              :label="category.name"
+              :value="category.id"
             />
           </el-select>
         </el-form-item>
@@ -180,6 +165,11 @@
         <el-table-column prop="costPrice" label="成本价" width="100" align="center">
           <template #default="{ row }">
             ¥{{ row.costPrice.toFixed(2) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="salePrice" label="销售价" width="100" align="center">
+          <template #default="{ row }">
+            ¥{{ row.salePrice.toFixed(2) }}
           </template>
         </el-table-column>
         <el-table-column prop="stockValue" label="库存价值" width="120" align="center">
@@ -366,7 +356,7 @@
           </div>
         </div>
       </div>
-      
+
       <el-table
         v-loading="historyLoading"
         :data="historyList"
@@ -404,14 +394,182 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="reason" label="变动原因" width="100" />
+        <el-table-column label="变动原因" width="100">
+          <template #default="{ row }">
+            {{ getReasonText(row.reason) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="operator" label="操作人" width="80" />
         <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
       </el-table>
-      
+
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="historyDialogVisible = false">关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 批量导入对话框 -->
+    <el-dialog
+      v-model="batchImportDialogVisible"
+      title="批量导入商品"
+      width="80%"
+      top="5vh"
+      :before-close="handleBatchImportDialogClose"
+    >
+      <el-tabs v-model="importActiveTab">
+        <!-- 在线快速添加 -->
+        <el-tab-pane label="在线快速添加" name="quick">
+          <div class="quick-add-section">
+            <el-button type="primary" @click="addQuickProduct" :icon="Plus" size="small" style="margin-bottom: 16px">
+              新增一行
+            </el-button>
+
+            <el-table :data="quickAddProducts" border style="width: 100%">
+              <el-table-column type="index" label="序号" width="60" />
+              <el-table-column label="商品图片" width="100">
+                <template #default="{ row, $index }">
+                  <el-upload
+                    class="avatar-uploader"
+                    :show-file-list="false"
+                    :before-upload="(file) => handleImageUpload(file, $index)"
+                    accept="image/*"
+                  >
+                    <img v-if="row.image" :src="row.image" class="avatar" />
+                    <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
+                  </el-upload>
+                </template>
+              </el-table-column>
+              <el-table-column label="商品名称" min-width="180">
+                <template #default="{ row }">
+                  <el-input v-model="row.name" placeholder="请输入" size="small" />
+                </template>
+              </el-table-column>
+              <el-table-column label="商品编码" min-width="140">
+                <template #default="{ row }">
+                  <el-input v-model="row.code" placeholder="自动生成" size="small" />
+                </template>
+              </el-table-column>
+              <el-table-column label="分类" min-width="140">
+                <template #default="{ row }">
+                  <el-select v-model="row.categoryId" placeholder="请选择" size="small" style="width: 100%">
+                    <el-option
+                      v-for="cat in productStore.categories"
+                      :key="cat.id"
+                      :label="cat.name"
+                      :value="cat.id"
+                    />
+                  </el-select>
+                </template>
+              </el-table-column>
+              <el-table-column label="单位" min-width="120">
+                <template #default="{ row }">
+                  <el-select v-model="row.unit" placeholder="请选择" size="small" allow-create filterable style="width: 100%">
+                    <el-option label="件" value="件" />
+                    <el-option label="盒" value="盒" />
+                    <el-option label="瓶" value="瓶" />
+                    <el-option label="袋" value="袋" />
+                    <el-option label="箱" value="箱" />
+                    <el-option label="个" value="个" />
+                    <el-option label="套" value="套" />
+                  </el-select>
+                </template>
+              </el-table-column>
+              <el-table-column label="销售价" min-width="120">
+                <template #default="{ row }">
+                  <el-input-number v-model="row.price" :min="0" :precision="2" size="small" style="width: 100%" controls-position="right" />
+                </template>
+              </el-table-column>
+              <el-table-column label="成本价" min-width="120">
+                <template #default="{ row }">
+                  <el-input-number v-model="row.costPrice" :min="0" :precision="2" size="small" style="width: 100%" controls-position="right" />
+                </template>
+              </el-table-column>
+              <el-table-column label="库存" min-width="100">
+                <template #default="{ row }">
+                  <el-input-number v-model="row.stock" :min="0" size="small" style="width: 100%" controls-position="right" />
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" min-width="110">
+                <template #default="{ row }">
+                  <el-select v-model="row.status" size="small" style="width: 100%">
+                    <el-option label="上架" value="active" />
+                    <el-option label="下架" value="inactive" />
+                  </el-select>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="80" fixed="right">
+                <template #default="{ $index }">
+                  <el-button type="danger" link size="small" @click="removeQuickProduct($index)">
+                    删除
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-tab-pane>
+
+        <!-- 表格导入 -->
+        <el-tab-pane label="表格导入" name="excel">
+          <div class="excel-import-section">
+            <el-alert
+              title="导入说明"
+              type="info"
+              :closable="false"
+              style="margin-bottom: 16px"
+            >
+              <p>1. 请先下载模板文件，按照模板格式填写商品信息</p>
+              <p>2. 支持.xlsx格式的Excel文件</p>
+              <p>3. 必填字段：商品名称、销售价、库存</p>
+            </el-alert>
+
+            <div class="import-actions">
+              <el-button type="success" @click="downloadTemplate" :icon="Download">
+                下载模板
+              </el-button>
+              <el-upload
+                ref="uploadRef"
+                :auto-upload="false"
+                :on-change="handleFileChange"
+                :show-file-list="false"
+                accept=".xlsx"
+              >
+                <el-button type="primary" :icon="Upload">
+                  选择文件
+                </el-button>
+              </el-upload>
+            </div>
+
+            <div v-if="excelFileName" class="file-info">
+              <el-tag type="success">{{ excelFileName }}</el-tag>
+              <el-button type="text" @click="clearExcelFile">清除</el-button>
+            </div>
+
+            <div v-if="excelPreviewData.length > 0" class="preview-section">
+              <h4>数据预览（前10条）</h4>
+              <el-table :data="excelPreviewData.slice(0, 10)" border style="width: 100%">
+                <el-table-column prop="name" label="商品名称" />
+                <el-table-column prop="code" label="商品编码" />
+                <el-table-column prop="categoryName" label="分类" />
+                <el-table-column prop="unit" label="单位" />
+                <el-table-column prop="price" label="销售价" />
+                <el-table-column prop="costPrice" label="成本价" />
+                <el-table-column prop="stock" label="库存" />
+                <el-table-column prop="status" label="状态" />
+              </el-table>
+              <p style="margin-top: 8px; color: #909399;">共 {{ excelPreviewData.length }} 条数据</p>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="handleBatchImportDialogClose">取消</el-button>
+          <el-button type="primary" @click="handleBatchImportSubmit" :loading="batchImportLoading">
+            确定导入
+          </el-button>
         </div>
       </template>
     </el-dialog>
@@ -420,7 +578,21 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import {
+  Edit,
+  Upload,
+  Download,
+  Money,
+  Box,
+  Warning,
+  CircleClose,
+  Check,
+  ArrowUp,
+  ArrowRight,
+  Minus,
+  Plus
+} from '@element-plus/icons-vue'
 import { useProductStore } from '@/stores/product'
 import { productApi } from '@/api/product'
 
@@ -549,7 +721,16 @@ const warningFormRules = {
 const adjustDialogVisible = ref(false)
 const warningDialogVisible = ref(false)
 const historyDialogVisible = ref(false)
+const batchImportDialogVisible = ref(false)
 const submitLoading = ref(false)
+const batchImportLoading = ref(false)
+
+// 批量导入相关
+const importActiveTab = ref('quick')
+const quickAddProducts = ref<any[]>([])
+const excelFileName = ref('')
+const excelPreviewData = ref<any[]>([])
+const uploadRef = ref()
 const adjustFormRef = ref()
 const warningFormRef = ref()
 const selectedRows = ref([])
@@ -567,10 +748,10 @@ const historyPagination = reactive({
 // 统计数据 - 从API获取
 const stats = computed(() => {
   return {
-    totalProducts: stockStatistics.value.totalProducts,
-    lowStockProducts: stockStatistics.value.lowStockCount,
-    outOfStockProducts: stockStatistics.value.outOfStockCount,
-    totalStockValue: stockStatistics.value.totalValue
+    totalProducts: stockStatistics.value.totalProducts || 0,
+    lowStockProducts: stockStatistics.value.lowStockCount || 0,
+    outOfStockProducts: stockStatistics.value.outOfStockCount || 0,
+    totalStockValue: stockStatistics.value.totalValue || 0
   }
 })
 
@@ -578,41 +759,93 @@ const stats = computed(() => {
 const loadData = async () => {
   try {
     loading.value = true
-    
-    // 获取产品列表
-    const params = {
-      page: pagination.page,
-      pageSize: pagination.pageSize,
-      keyword: searchForm.keyword || searchForm.productName || undefined,
-      categoryId: searchForm.categoryId || undefined,
-      status: searchForm.status || undefined,
-      brand: searchForm.brand || undefined,
-      lowStock: searchForm.lowStock || undefined
+
+    // 从productStore获取商品数据
+    let products = productStore.products || []
+
+    // 应用筛选条件
+    if (searchForm.keyword || searchForm.productName) {
+      const keyword = (searchForm.keyword || searchForm.productName || '').toLowerCase()
+      products = products.filter(p =>
+        p.name.toLowerCase().includes(keyword) ||
+        p.code.toLowerCase().includes(keyword)
+      )
     }
-    
-    const response = await productApi.getList(params)
-    
+
+    if (searchForm.categoryId) {
+      products = products.filter(p => p.categoryId === searchForm.categoryId)
+    }
+
+    if (searchForm.status) {
+      products = products.filter(p => p.status === searchForm.status)
+    }
+
+    if (searchForm.brand) {
+      products = products.filter(p => p.brand === searchForm.brand)
+    }
+
+    // 库存状态筛选
+    if (searchForm.stockStatus) {
+      if (searchForm.stockStatus === 'normal') {
+        products = products.filter(p => {
+          const stock = p.stock || 0
+          const minStock = p.minStock || 10
+          return stock > minStock
+        })
+      } else if (searchForm.stockStatus === 'warning') {
+        products = products.filter(p => {
+          const stock = p.stock || 0
+          const minStock = p.minStock || 10
+          return stock > 0 && stock <= minStock
+        })
+      } else if (searchForm.stockStatus === 'out_of_stock') {
+        products = products.filter(p => (p.stock || 0) === 0)
+      }
+    }
+
+    if (searchForm.lowStock) {
+      products = products.filter(p => p.stock <= (p.minStock || 10))
+    }
+
     // 转换数据格式以匹配界面需求
-    stockList.value = response.data.list.map((item: any) => ({
+    const allStockData = products.map((item: any) => ({
       id: item.id,
       productCode: item.code,
       productName: item.name,
-      category: item.categoryName,
+      category: item.categoryName || item.category,
       image: item.image,
       currentStock: item.stock,
-      minStock: item.minStock,
-      maxStock: item.maxStock,
-      unit: item.unit,
-      costPrice: item.price,
+      minStock: item.minStock || 10,
+      maxStock: item.maxStock || 9999,
+      unit: item.unit || '件',
+      costPrice: item.costPrice || item.price * 0.7,  // 成本价，如果没有则按销售价的70%估算
+      salePrice: item.price,  // 销售价
       lastUpdateTime: item.updateTime || item.createTime
     }))
-    
-    pagination.total = response.data.total
-    
-    // 获取库存统计
-    const statsResponse = await productApi.getStockStatistics()
-    stockStatistics.value = statsResponse.data
-    
+
+    // 分页处理
+    pagination.total = allStockData.length
+    const startIndex = (pagination.page - 1) * pagination.pageSize
+    const endIndex = startIndex + pagination.pageSize
+    stockList.value = allStockData.slice(startIndex, endIndex)
+
+    // 计算库存统计 - 使用真实数据动态计算
+    const totalStockValue = products.reduce((sum, p) => sum + ((p.stock || 0) * (p.price || 0)), 0)
+    const lowStockProducts = products.filter(p => {
+      const stock = p.stock || 0
+      const minStock = p.minStock || 10
+      return stock > 0 && stock <= minStock
+    }).length
+    const outOfStockProducts = products.filter(p => (p.stock || 0) === 0).length
+
+    stockStatistics.value = {
+      totalProducts: products.length,
+      totalValue: totalStockValue,
+      lowStockCount: lowStockProducts,
+      outOfStockCount: outOfStockProducts,
+      totalStock: products.reduce((sum, p) => sum + (p.stock || 0), 0)
+    }
+
   } catch (error) {
     console.error('加载数据失败:', error)
     ElMessage.error('加载数据失败')
@@ -676,39 +909,23 @@ const handleViewHistory = async (row: any) => {
     currentProductHistory.value = row
     historyDialogVisible.value = true
     historyLoading.value = true
-    
-    const response = await productApi.getStockAdjustments({
-      productId: row.id,
-      page: historyPagination.page,
-      pageSize: historyPagination.pageSize
-    })
-    
-    // 转换历史数据格式
-    historyList.value = response.data.list.map((item: any) => ({
-      ...item,
-      date: item.createTime,
-      typeName: item.type === 'increase' ? '增加' : item.type === 'decrease' ? '减少' : '设置'
-    }))
-    
-    historyPagination.total = response.data.total
+
+    // 从localStorage读取真实的库存变动记录
+    const historyKey = `stock_history_${row.id}`
+    const storedHistory = JSON.parse(localStorage.getItem(historyKey) || '[]')
+
+    if (storedHistory.length > 0) {
+      historyList.value = storedHistory
+      historyPagination.total = storedHistory.length
+    } else {
+      // 如果没有记录，显示空状态
+      historyList.value = []
+      historyPagination.total = 0
+    }
   } catch (error) {
     console.error('获取库存历史失败:', error)
     ElMessage.error('获取库存历史失败')
-    // 使用模拟数据作为后备
-    historyList.value = [
-      {
-        id: '1',
-        date: '2024-01-15 14:30:25',
-        type: 'increase',
-        typeName: '增加',
-        quantity: 50,
-        beforeStock: 100,
-        afterStock: 150,
-        reason: '采购入库',
-        operator: '张三',
-        remark: '新到货50件商品'
-      }
-    ]
+    historyList.value = []
   } finally {
     historyLoading.value = false
   }
@@ -716,56 +933,259 @@ const handleViewHistory = async (row: any) => {
 
 // 批量导入功能
 const handleBatchImport = () => {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = '.xlsx,.xls,.csv'
-  input.onchange = async (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0]
-    if (!file) return
-    
+  // 打开批量导入对话框
+  batchImportDialogVisible.value = true
+  importActiveTab.value = 'quick'
+
+  // 初始化一行数据
+  if (quickAddProducts.value.length === 0) {
+    addQuickProduct()
+  }
+}
+
+// 添加快速添加商品行
+const addQuickProduct = () => {
+  quickAddProducts.value.push({
+    image: '',
+    name: '',
+    code: `P${Date.now()}`,
+    categoryId: '',
+    unit: '件',
+    price: 0,
+    costPrice: 0,
+    stock: 0,
+    status: 'active'
+  })
+}
+
+// 删除快速添加商品行
+const removeQuickProduct = (index: number) => {
+  quickAddProducts.value.splice(index, 1)
+}
+
+// 处理图片上传
+const handleImageUpload = (file: File, index: number) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    quickAddProducts.value[index].image = e.target?.result as string
+  }
+  reader.readAsDataURL(file)
+  return false // 阻止自动上传
+}
+
+// 下载模板
+const downloadTemplate = () => {
+  // 创建工作簿
+  const headers = ['商品名称*', '商品编码', '分类', '单位', '销售价*', '成本价', '库存*', '状态']
+  const sampleData = [
+    ['示例商品1', 'P001', '体重管理', '件', '100', '70', '50', '上架'],
+    ['示例商品2', 'P002', '体重管理', '盒', '200', '140', '30', '上架']
+  ]
+
+  // 使用xlsx库创建真正的Excel文件
+  import('xlsx').then(XLSX => {
+    const wb = XLSX.utils.book_new()
+    const wsData = [headers, ...sampleData]
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
+
+    // 设置列宽
+    ws['!cols'] = [
+      { wch: 20 }, // 商品名称
+      { wch: 15 }, // 商品编码
+      { wch: 15 }, // 分类
+      { wch: 10 }, // 单位
+      { wch: 12 }, // 销售价
+      { wch: 12 }, // 成本价
+      { wch: 10 }, // 库存
+      { wch: 10 }  // 状态
+    ]
+
+    XLSX.utils.book_append_sheet(wb, ws, '商品导入模板')
+    XLSX.writeFile(wb, '商品导入模板.xlsx')
+
+    ElMessage.success('模板下载成功')
+  }).catch(() => {
+    ElMessage.error('下载失败，请重试')
+  })
+}
+
+// 处理文件选择
+const handleFileChange = (file: any) => {
+  excelFileName.value = file.name
+
+  // 使用xlsx库读取Excel文件
+  const reader = new FileReader()
+  reader.onload = (e) => {
     try {
-      loading.value = true
-      const formData = new FormData()
-      formData.append('file', file)
-      
-      await productApi.batchImport(formData)
-      ElMessage.success('批量导入成功')
-      loadData() // 重新加载数据
+      import('xlsx').then(XLSX => {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as unknown[][]
+
+        const parsedData = []
+        // 跳过表头，从第二行开始
+        for (let i = 1; i < jsonData.length; i++) {
+          const row = jsonData[i]
+          if (!row || row.length === 0) continue
+
+          parsedData.push({
+            name: String(row[0] || '').trim(),
+            code: String(row[1] || '').trim() || `P${Date.now() + i}`,
+            categoryName: String(row[2] || '').trim(),
+            unit: String(row[3] || '').trim() || '件',
+            price: parseFloat(row[4]) || 0,
+            costPrice: parseFloat(row[5]) || 0,
+            stock: parseInt(row[6]) || 0,
+            status: String(row[7] || '').trim() === '上架' ? '上架' : '下架'
+          })
+        }
+
+        excelPreviewData.value = parsedData
+        ElMessage.success(`文件解析成功，共${parsedData.length}条数据`)
+      }).catch(error => {
+        console.error('文件解析失败:', error)
+        ElMessage.error('文件格式错误，请使用xlsx格式')
+      })
     } catch (error) {
-      console.error('批量导入失败:', error)
-      ElMessage.error('批量导入失败')
-    } finally {
-      loading.value = false
+      console.error('文件读取失败:', error)
+      ElMessage.error('文件读取失败')
     }
   }
-  input.click()
+  reader.readAsArrayBuffer(file.raw)
+}
+
+// 清除Excel文件
+const clearExcelFile = () => {
+  excelFileName.value = ''
+  excelPreviewData.value = []
+}
+
+// 关闭批量导入对话框
+const handleBatchImportDialogClose = () => {
+  batchImportDialogVisible.value = false
+  quickAddProducts.value = []
+  excelFileName.value = ''
+  excelPreviewData.value = []
+}
+
+// 提交批量导入
+const handleBatchImportSubmit = async () => {
+  try {
+    batchImportLoading.value = true
+
+    let productsToAdd: unknown[] = []
+
+    if (importActiveTab.value === 'quick') {
+      // 在线快速添加
+      productsToAdd = quickAddProducts.value.filter(p => p.name && p.price > 0)
+
+      if (productsToAdd.length === 0) {
+        ElMessage.warning('请至少填写一个商品的名称和价格')
+        batchImportLoading.value = false
+        return
+      }
+    } else {
+      // 表格导入
+      if (excelPreviewData.value.length === 0) {
+        ElMessage.warning('请先选择并解析Excel文件')
+        batchImportLoading.value = false
+        return
+      }
+      productsToAdd = excelPreviewData.value
+    }
+
+    // 转换数据格式并添加到productStore
+    for (const product of productsToAdd) {
+      const categoryId = product.categoryId || productStore.categories[0]?.id || '1'
+      const newProduct = {
+        code: product.code || `P${Date.now()}`,
+        name: product.name,
+        categoryId: categoryId,
+        categoryName: productStore.categories.find((c: unknown) => c.id === categoryId)?.name || '未分类',
+        brand: '',
+        specification: '',
+        image: product.image || 'https://via.placeholder.com/100',
+        price: product.price,
+        costPrice: product.costPrice || product.price * 0.7,
+        stock: product.stock || 0,
+        minStock: 10,
+        maxStock: 9999,
+        unit: product.unit || '件',
+        weight: 0,
+        dimensions: '',
+        description: '',
+        status: product.status === 'active' || product.status === '上架' ? 'active' : 'inactive',
+        salesCount: 0,
+        updateTime: new Date().toISOString()
+      }
+
+      await productStore.addProduct(newProduct)
+    }
+
+    ElMessage.success(`成功导入${productsToAdd.length}个商品`)
+
+    // 关闭对话框并刷新数据
+    handleBatchImportDialogClose()
+    loadData()
+  } catch (error) {
+    console.error('批量导入失败:', error)
+    ElMessage.error('批量导入失败')
+  } finally {
+    batchImportLoading.value = false
+  }
 }
 
 // 导出功能
 const handleExport = async () => {
   try {
     loading.value = true
-    const params = {
-      categoryId: searchForm.categoryId || undefined,
-      status: searchForm.status || undefined,
-      keyword: searchForm.keyword || undefined,
-      format: 'xlsx'
+
+    // 获取当前筛选后的数据
+    const exportData = stockList.value
+
+    // 如果没有数据，提示用户
+    if (exportData.length === 0) {
+      ElMessage.warning('没有可导出的数据')
+      loading.value = false
+      return
     }
-    
-    const response = await productApi.exportProducts(params)
-    
+
+    // 构建Excel数据
+    const headers = ['商品编码', '商品名称', '分类', '当前库存', '最低库存', '最高库存', '单位', '成本价', '销售价', '库存价值', '库存状态']
+    const data = exportData.map((item: unknown) => [
+      item.productCode,
+      item.productName,
+      item.category,
+      item.currentStock,
+      item.minStock,
+      item.maxStock,
+      item.unit,
+      item.costPrice.toFixed(2),
+      (item.salePrice || item.costPrice * 1.3).toFixed(2),
+      (item.currentStock * item.costPrice).toFixed(2),
+      getStockStatusText(item)
+    ])
+
+    // 创建CSV内容
+    const csvContent = [
+      headers.join(','),
+      ...data.map(row => row.join(','))
+    ].join('\n')
+
+    // 添加BOM以支持中文
+    const BOM = '\uFEFF'
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+
     // 创建下载链接
-    const blob = new Blob([response], { 
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-    })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `库存数据_${new Date().toISOString().slice(0, 10)}.xlsx`
+    link.download = `库存数据_${new Date().toISOString().slice(0, 10)}.csv`
     link.click()
     window.URL.revokeObjectURL(url)
-    
-    ElMessage.success('导出成功')
+
+    ElMessage.success(`导出成功，共导出${exportData.length}条数据`)
   } catch (error) {
     console.error('导出失败:', error)
     ElMessage.error('导出失败')
@@ -787,19 +1207,19 @@ const handleCurrentChange = (page: number) => {
 }
 
 // 辅助方法
-const getStockStatusClass = (row: any) => {
+const getStockStatusClass = (row: unknown) => {
   if (row.currentStock <= 0) return 'stock-out'
   if (row.currentStock <= row.minStock) return 'stock-warning'
   return 'stock-normal'
 }
 
-const getStockStatusType = (row: any) => {
+const getStockStatusType = (row: unknown) => {
   if (row.currentStock <= 0) return 'danger'
   if (row.currentStock <= row.minStock) return 'warning'
   return 'success'
 }
 
-const getStockStatusText = (row: any) => {
+const getStockStatusText = (row: unknown) => {
   if (row.currentStock <= 0) return '缺货'
   if (row.currentStock <= row.minStock) return '预警'
   return '正常'
@@ -814,7 +1234,17 @@ const formatLargeNumber = (num: number) => {
   return num.toLocaleString()
 }
 
-const handleSelectionChange = (selection: any[]) => {
+// 格式化库存总值：万元单位，保留2位小数
+const formatStockValue = (num: number) => {
+  if (num >= 100000000) {
+    return (num / 100000000).toFixed(2) + '亿'
+  } else if (num >= 10000) {
+    return (num / 10000).toFixed(2) + '万'
+  }
+  return num.toFixed(2)
+}
+
+const handleSelectionChange = (selection: unknown[]) => {
   selectedRows.value = selection
 }
 
@@ -823,28 +1253,65 @@ const handleStockAdjustment = () => {
     ElMessage.warning('请先选择要调整的商品')
     return
   }
-  // 批量调整逻辑
-  ElMessage.info('批量调整功能开发中')
+
+  // 批量调整：打开第一个选中商品的调整对话框
+  const firstSelected = selectedRows.value[0] as unknown
+  handleAdjustStock(firstSelected)
+
+  ElMessage.info(`已选择${selectedRows.value.length}个商品，当前调整第一个商品`)
 }
 
 const handleSubmitAdjust = async () => {
   if (!adjustFormRef.value) return
-  
+
   try {
     await adjustFormRef.value.validate()
     submitLoading.value = true
-    
-    await productApi.adjustStock({
+
+    // 计算调整后的库存
+    let newStock = adjustForm.currentStock
+    if (adjustForm.adjustType === 'increase') {
+      newStock = adjustForm.currentStock + adjustForm.adjustQuantity
+    } else if (adjustForm.adjustType === 'decrease') {
+      newStock = Math.max(0, adjustForm.currentStock - adjustForm.adjustQuantity)
+    } else if (adjustForm.adjustType === 'set') {
+      newStock = adjustForm.adjustQuantity
+    }
+
+    // 更新商品库存
+    await productStore.updateProduct(adjustForm.productId, { stock: newStock })
+
+    // 记录库存变动历史
+    const historyRecord = {
+      id: Date.now().toString(),
       productId: adjustForm.productId,
+      productCode: adjustForm.productCode,
+      productName: adjustForm.productName,
       type: adjustForm.adjustType,
+      typeName: adjustForm.adjustType === 'increase' ? '增加' : adjustForm.adjustType === 'decrease' ? '减少' : '设置',
       quantity: adjustForm.adjustQuantity,
+      beforeStock: adjustForm.currentStock,
+      afterStock: newStock,
       reason: adjustForm.reason,
-      remark: adjustForm.remark
-    })
-    
+      remark: adjustForm.remark,
+      operator: '当前用户',
+      date: new Date().toLocaleString(),
+      createTime: new Date().toISOString()
+    }
+
+    // 保存到localStorage
+    const historyKey = `stock_history_${adjustForm.productId}`
+    const existingHistory = JSON.parse(localStorage.getItem(historyKey) || '[]')
+    existingHistory.unshift(historyRecord)
+    localStorage.setItem(historyKey, JSON.stringify(existingHistory.slice(0, 100))) // 只保留最近100条
+
     ElMessage.success('库存调整成功')
-    adjustDialogVisible.value = false
-    loadData()
+
+    // 1秒后自动关闭对话框并刷新数据
+    setTimeout(() => {
+      adjustDialogVisible.value = false
+      loadData()
+    }, 1000)
   } catch (error) {
     console.error('库存调整失败:', error)
     ElMessage.error('库存调整失败')
@@ -855,20 +1322,24 @@ const handleSubmitAdjust = async () => {
 
 const handleSubmitWarning = async () => {
   if (!warningFormRef.value) return
-  
+
   try {
     await warningFormRef.value.validate()
     submitLoading.value = true
-    
-    // 调用更新产品API设置预警值
-    await productApi.update(warningForm.productId, {
+
+    // 更新商品预警设置
+    await productStore.updateProduct(warningForm.productId, {
       minStock: warningForm.minStock,
       maxStock: warningForm.maxStock
     })
-    
+
     ElMessage.success('预警设置成功')
-    warningDialogVisible.value = false
-    loadData()
+
+    // 1秒后自动关闭对话框并刷新数据
+    setTimeout(() => {
+      warningDialogVisible.value = false
+      loadData()
+    }, 1000)
   } catch (error) {
     console.error('预警设置失败:', error)
     ElMessage.error('预警设置失败')
@@ -919,6 +1390,19 @@ const getAdjustedStock = () => {
   return currentStock
 }
 
+// 获取原因中文文本
+const getReasonText = (reason: string) => {
+  const reasonMap: Record<string, string> = {
+    'inventory': '盘点调整',
+    'loss': '损耗调整',
+    'return': '退货入库',
+    'purchase': '采购入库',
+    'sale': '销售出库',
+    'other': '其他'
+  }
+  return reasonMap[reason] || reason
+}
+
 // 生命周期
 onMounted(() => {
   loadData()
@@ -966,112 +1450,97 @@ watch(() => searchForm.lowStock, () => {
   gap: 12px;
 }
 
-.stats-section {
-  margin-bottom: 20px;
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
-.stat-card {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  height: 120px;
+.metric-card {
+  border: none;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
 }
 
-.primary-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-
-.secondary-card {
-  border: 1px solid #e4e7ed;
-}
-
-.card-header {
+.metric-content {
   display: flex;
   align-items: center;
-  margin-bottom: 16px;
+  gap: 16px;
 }
 
-.card-icon {
-  width: 40px;
-  height: 40px;
+.metric-icon {
+  width: 48px;
+  height: 48px;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 12px;
-  font-size: 20px;
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
-.card-icon.primary {
-  background: rgba(255, 255, 255, 0.2);
+.metric-icon::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
 }
 
-.card-icon.total {
-  background: #e3f2fd;
-  color: #1976d2;
+.metric-card:hover .metric-icon::before {
+  left: 100%;
 }
 
-.card-icon.warning {
-  background: #fff3e0;
-  color: #f57c00;
+.metric-card:hover .metric-icon {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 
-.card-icon.danger {
-  background: #ffebee;
-  color: #d32f2f;
+.metric-info {
+  flex: 1;
+  min-width: 0;
 }
 
-.card-title {
+.metric-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #303133;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metric-label {
   font-size: 14px;
-  font-weight: 500;
-  opacity: 0.9;
-}
-
-.primary-value {
-  font-size: 28px;
-  font-weight: 700;
+  color: #909399;
   margin-bottom: 4px;
 }
 
-.secondary-value {
-  font-size: 24px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 8px;
-}
-
-.warning-text {
-  color: #f57c00;
-}
-
-.danger-text {
-  color: #d32f2f;
-}
-
-.card-description {
-  font-size: 12px;
-  opacity: 0.8;
-}
-
-.card-trend {
+.metric-change {
   display: flex;
   align-items: center;
-  font-size: 12px;
   gap: 4px;
+  font-size: 12px;
 }
 
-.card-trend.positive {
-  color: #4caf50;
+.metric-change.up {
+  color: #67C23A;
 }
 
-.card-trend.negative {
-  color: #f44336;
+.metric-change.down {
+  color: #F56C6C;
 }
 
-.card-trend.neutral {
-  color: #9e9e9e;
+.metric-change.stable {
+  color: #909399;
 }
 
 .search-section {
@@ -1209,5 +1678,67 @@ watch(() => searchForm.lowStock, () => {
 .set-text {
   color: #e6a23c;
   font-weight: 600;
+}
+
+/* 批量导入对话框样式 */
+.quick-add-section {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.avatar-uploader {
+  width: 60px;
+  height: 60px;
+  border: 1px dashed #d9d9d9;
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-uploader:hover {
+  border-color: #409eff;
+}
+
+.avatar-uploader-icon {
+  font-size: 28px;
+  color: #8c939d;
+}
+
+.avatar {
+  width: 60px;
+  height: 60px;
+  display: block;
+  object-fit: cover;
+}
+
+.excel-import-section {
+  padding: 20px 0;
+}
+
+.import-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.preview-section {
+  margin-top: 20px;
+}
+
+.preview-section h4 {
+  margin-bottom: 12px;
+  color: #303133;
 }
 </style>

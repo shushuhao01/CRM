@@ -251,11 +251,11 @@ const formRules = {
 }
 
 // 分类列表数据 - 从 productStore 获取
-const categoryList = computed(() => productStore.categories)
+const categoryList = computed(() => Array.isArray(productStore.categories) ? productStore.categories : [])
 
 // 上级分类选项（一级分类）- 从 productStore 获取
 const parentCategoryOptions = computed(() => 
-  productStore.categories.filter(cat => cat.level === 1)
+  (Array.isArray(productStore.categories) ? productStore.categories : []).filter(cat => cat.level === 1)
 )
 
 // 方法
@@ -264,6 +264,18 @@ const loadData = async () => {
   try {
     // 从API加载分类数据
     await productStore.loadCategories()
+    
+    // 初始化状态标记，防止初始化时触发状态变化事件
+    const categories = Array.isArray(productStore.categories) ? productStore.categories : []
+    categories.forEach(category => {
+      category._initializing = true
+      category._lastStatus = category.status
+      // 使用 nextTick 确保 DOM 更新后再移除初始化标记
+      setTimeout(() => {
+        category._initializing = false
+      }, 100)
+    })
+    
     console.log('分类数据加载完成')
   } catch (error) {
     console.error('加载数据失败:', error)
@@ -341,15 +353,34 @@ const handleDelete = async (row: Category) => {
 
 const handleStatusChange = async (row: Category) => {
   const originalStatus = row.status
+  
+  // 防止重复调用和初始化时的意外触发
+  if (row._updating || row._initializing || !row.id) {
+    return
+  }
+  
+  // 检查状态是否真的发生了变化
+  if (row._lastStatus !== undefined && row._lastStatus === row.status) {
+    return
+  }
+  
   try {
+    row._updating = true
     // 调用真实API更新状态
     await productStore.updateCategory(row.id.toString(), { status: row.status })
+    
+    // 更新最后状态记录
+    row._lastStatus = row.status
+    
     ElMessage.success(`${row.status ? '启用' : '禁用'}成功`)
   } catch (error) {
     // 恢复原状态
     row.status = originalStatus
+    row._lastStatus = originalStatus
     console.error('状态更新失败:', error)
     ElMessage.error('状态更新失败')
+  } finally {
+    row._updating = false
   }
 }
 
@@ -374,8 +405,8 @@ const handleSubmit = async () => {
       const newCategoryData = {
         name: categoryForm.name,
         code: categoryForm.code,
-        level: categoryForm.parentId === '0' ? 1 : 2,
-        parentId: categoryForm.parentId,
+        level: (!categoryForm.parentId || categoryForm.parentId === '0') ? 1 : 2,
+        parentId: (!categoryForm.parentId || categoryForm.parentId === '0') ? null : categoryForm.parentId,
         productCount: 0,
         sort: categoryForm.sort,
         status: categoryForm.status

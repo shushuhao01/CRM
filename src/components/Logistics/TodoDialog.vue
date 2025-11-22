@@ -102,7 +102,7 @@ interface Props {
 
 interface Emits {
   (e: 'update:modelValue', value: boolean): void
-  (e: 'success'): void
+  (e: 'success', todoInfo?: { orderNo: string, days: number, remark?: string }): void
 }
 
 const props = defineProps<Props>()
@@ -179,16 +179,16 @@ const getStatusType = (status?: string): string => {
 // 获取预计时间
 const getExpectedTime = (): string => {
   if (!form.days) return ''
-  
+
   const now = new Date()
   const expectedDate = new Date(now.getTime() + form.days * 24 * 60 * 60 * 1000)
-  
+
   const year = expectedDate.getFullYear()
   const month = String(expectedDate.getMonth() + 1).padStart(2, '0')
   const day = String(expectedDate.getDate()).padStart(2, '0')
   const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
   const weekday = weekdays[expectedDate.getDay()]
-  
+
   return `${year}-${month}-${day} (${weekday})`
 }
 
@@ -198,7 +198,7 @@ const handleSubmit = async () => {
 
   try {
     await formRef.value.validate()
-    
+
     const confirmMessage = `确定要将订单"${props.orderInfo.orderNo}"设置为${form.days}天后处理吗？`
 
     await ElMessageBox.confirm(confirmMessage, '确认设置', {
@@ -216,7 +216,11 @@ const handleSubmit = async () => {
     )
 
     ElMessage.success('待办设置成功')
-    emit('success')
+    emit('success', {
+      orderNo: props.orderInfo.orderNo,
+      days: form.days!,
+      remark: form.remark || undefined
+    })
     handleClose()
   } catch (error: any) {
     if (error !== 'cancel') {

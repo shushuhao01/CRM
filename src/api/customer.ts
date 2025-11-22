@@ -3,6 +3,7 @@ import { api } from './request'
 import { API_ENDPOINTS } from './config'
 import { mockApi, shouldUseMockApi } from './mock'
 import type { Customer } from '@/stores/customer'
+import { useCustomerStore } from '@/stores/customer'
 
 // 客户查询参数接口
 export interface CustomerSearchParams {
@@ -36,21 +37,34 @@ export const customerApi = {
   // 检查客户是否存在
   checkExists: async (phone: string) => {
     try {
-      console.log('Customer API: checkExists 调用', phone)
+      console.log('=== 验证客户是否存在 ===')
+      console.log('验证手机号:', phone)
       
-      // 验证输入参数
-      if (!phone || typeof phone !== 'string') {
-        console.error('Customer API: 无效的手机号参数:', phone)
-        return { data: null, code: 400, message: '无效的手机号参数', success: false }
-      }
+      // 使用静态导入的CustomerStore，确保使用同一个实例
+      const customerStore = useCustomerStore()
       
-      // 统一使用路由系统调用API（无论是Mock还是真实API）
-      console.log('Customer API: 调用路径:', `${API_ENDPOINTS.CUSTOMERS.LIST}/check-exists`)
-      try {
-        return await api.get<Customer | null>(`${API_ENDPOINTS.CUSTOMERS.LIST}/check-exists`, { phone })
-      } catch (apiError) {
-        console.error('Customer API: API 调用失败:', apiError)
-        return { data: null, code: 500, message: 'API 调用失败', success: false }
+      console.log('验证时CustomerStore实例ID:', (customerStore as any).instanceId)
+      console.log('验证时CustomerStore客户数量:', customerStore.customers.length)
+      console.log('验证时所有客户手机号:', customerStore.customers.map(c => c.phone))
+      
+      const existingCustomer = customerStore.customers.find(c => c.phone === phone)
+      
+      if (existingCustomer) {
+        console.log('找到重复客户:', existingCustomer.name)
+        return { 
+          data: existingCustomer, 
+          code: 200, 
+          message: '该手机号已存在客户记录', 
+          success: true 
+        }
+      } else {
+        console.log('客户不存在，可以创建')
+        return { 
+          data: null, 
+          code: 200, 
+          message: '该手机号不存在，可以创建', 
+          success: true 
+        }
       }
     } catch (error) {
       console.error('Customer API: checkExists 执行失败:', error)

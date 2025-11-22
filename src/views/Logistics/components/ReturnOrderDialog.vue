@@ -24,7 +24,7 @@
           </div>
           <div class="info-item">
             <span class="label">联系电话：</span>
-            <span class="value">{{ maskPhone(order.phone) }}</span>
+            <span class="value">{{ displaySensitiveInfoNew(order.phone, 'phone') }}</span>
           </div>
           <div class="info-item">
             <span class="label">订单金额：</span>
@@ -193,7 +193,7 @@ import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import { 
   Box, Warning, Clock, Document, RefreshLeft, WarningFilled
 } from '@element-plus/icons-vue'
-import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import type { Order } from '@/stores/order'
 
 interface ReturnData {

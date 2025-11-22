@@ -93,8 +93,8 @@
 
       <el-form-item label="用户状态" prop="status">
         <el-radio-group v-model="formData.status">
-          <el-radio value="active">启用</el-radio>
-          <el-radio value="inactive">禁用</el-radio>
+          <el-radio label="active">启用</el-radio>
+            <el-radio label="inactive">禁用</el-radio>
         </el-radio-group>
       </el-form-item>
 
@@ -102,7 +102,7 @@
         <el-checkbox-group v-model="formData.permissions">
           <el-row :gutter="20">
             <el-col :span="8" v-for="permission in availablePermissions" :key="permission.value">
-              <el-checkbox :value="permission.value">{{ permission.label }}</el-checkbox>
+              <el-checkbox :label="permission.value">{{ permission.label }}</el-checkbox>
             </el-col>
           </el-row>
         </el-checkbox-group>

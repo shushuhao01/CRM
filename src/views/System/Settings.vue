@@ -7,7 +7,11 @@
     </div>
 
     <!-- 设置选项卡 -->
-    <el-tabs v-model="activeTab" class="settings-tabs">
+    <div class="settings-tabs-container">
+      <!-- 标签页头部导航区域 -->
+      <div class="tabs-nav-container">
+        <div class="tabs-nav-wrapper">
+          <el-tabs v-model="activeTab" class="settings-tabs" ref="tabsRef">
       <!-- 基本设置 -->
       <el-tab-pane label="基本设置" name="basic">
         <el-card class="setting-card">
@@ -118,6 +122,71 @@
               </el-upload>
               <div class="upload-tip">建议尺寸：200x60px，支持 jpg、png 格式</div>
             </el-form-item>
+
+            <!-- 🔥 批次274新增：联系二维码上传（统一一个） -->
+            <el-divider content-position="left">联系二维码</el-divider>
+
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item label="二维码标签">
+                  <el-input
+                    v-model="basicForm.contactQRCodeLabel"
+                    placeholder="请输入二维码标签（如：微信、企业微信、QQ等）"
+                  />
+                  <div class="upload-tip">用于说明二维码的用途</div>
+                </el-form-item>
+              </el-col>
+
+              <el-col :span="12">
+                <el-form-item label="上传二维码">
+                  <!-- 🔥 批次275优化：添加粘贴图片按钮 -->
+                  <div class="qr-upload-buttons">
+                    <el-button type="primary" size="small" :icon="Upload" @click="triggerQRUpload">
+                      点击上传
+                    </el-button>
+                    <el-button type="success" size="small" :icon="DocumentCopy" @click="pasteQRImage">
+                      粘贴图片
+                    </el-button>
+                  </div>
+
+                  <!-- 二维码预览区域 -->
+                  <div class="qr-preview-area" v-if="basicForm.contactQRCode">
+                    <div class="qr-thumbnail" @click="previewQRCode">
+                      <img :src="basicForm.contactQRCode" alt="二维码" />
+                      <div class="qr-overlay">
+                        <el-icon class="zoom-icon"><ZoomIn /></el-icon>
+                      </div>
+                    </div>
+                    <el-button
+                      size="small"
+                      type="danger"
+                      text
+                      :icon="Delete"
+                      @click="removeQRCode"
+                    >
+                      删除
+                    </el-button>
+                  </div>
+
+                  <!-- 空状态提示 -->
+                  <div v-else class="qr-empty-state">
+                    <el-icon size="48" color="#dcdfe6"><Picture /></el-icon>
+                    <p>点击上传或粘贴二维码图片</p>
+                  </div>
+
+                  <div class="upload-tip">建议尺寸：200x200px，支持 jpg、png 格式，大小不超过2MB</div>
+
+                  <!-- 隐藏的文件输入 -->
+                  <input
+                    ref="qrFileInput"
+                    type="file"
+                    accept="image/*"
+                    style="display: none"
+                    @change="handleQRFileSelect"
+                  />
+                </el-form-item>
+              </el-col>
+            </el-row>
           </el-form>
         </el-card>
       </el-tab-pane>
@@ -158,10 +227,10 @@
 
             <el-form-item label="密码复杂度要求" prop="passwordComplexity">
               <el-checkbox-group v-model="securityForm.passwordComplexity">
-                <el-checkbox value="uppercase">包含大写字母</el-checkbox>
-                <el-checkbox value="lowercase">包含小写字母</el-checkbox>
-                <el-checkbox value="number">包含数字</el-checkbox>
-                <el-checkbox value="special">包含特殊字符</el-checkbox>
+                <el-checkbox label="uppercase">包含大写字母</el-checkbox>
+                <el-checkbox label="lowercase">包含小写字母</el-checkbox>
+                <el-checkbox label="number">包含数字</el-checkbox>
+                <el-checkbox label="special">包含特殊字符</el-checkbox>
               </el-checkbox-group>
             </el-form-item>
 
@@ -320,9 +389,9 @@
 
               <el-form-item label="传输协议" prop="sipTransport">
                 <el-radio-group v-model="callForm.sipTransport">
-                  <el-radio value="UDP">UDP</el-radio>
-                  <el-radio value="TCP">TCP</el-radio>
-                  <el-radio value="TLS">TLS</el-radio>
+                  <el-radio label="UDP">UDP</el-radio>
+                  <el-radio label="TCP">TCP</el-radio>
+                  <el-radio label="TLS">TLS</el-radio>
                 </el-radio-group>
               </el-form-item>
             </div>
@@ -432,26 +501,26 @@
 
               <el-form-item label="外呼权限" prop="outboundPermission">
                 <el-checkbox-group v-model="callForm.outboundPermission">
-                  <el-checkbox value="admin">管理员</el-checkbox>
-                  <el-checkbox value="manager">经理</el-checkbox>
-                  <el-checkbox value="sales">销售</el-checkbox>
-                  <el-checkbox value="service">客服</el-checkbox>
+                  <el-checkbox label="admin">管理员</el-checkbox>
+                  <el-checkbox label="manager">经理</el-checkbox>
+                  <el-checkbox label="sales">销售</el-checkbox>
+                  <el-checkbox label="service">客服</el-checkbox>
                 </el-checkbox-group>
               </el-form-item>
 
               <el-form-item label="录音访问权限" prop="recordAccessPermission">
                 <el-checkbox-group v-model="callForm.recordAccessPermission">
-                  <el-checkbox value="admin">管理员</el-checkbox>
-                  <el-checkbox value="manager">经理</el-checkbox>
-                  <el-checkbox value="self">仅本人</el-checkbox>
+                  <el-checkbox label="admin">管理员</el-checkbox>
+                  <el-checkbox label="manager">经理</el-checkbox>
+                  <el-checkbox label="self">仅本人</el-checkbox>
                 </el-checkbox-group>
               </el-form-item>
 
               <el-form-item label="通话统计权限" prop="statisticsPermission">
                 <el-checkbox-group v-model="callForm.statisticsPermission">
-                  <el-checkbox value="admin">管理员</el-checkbox>
-                  <el-checkbox value="manager">经理</el-checkbox>
-                  <el-checkbox value="sales">销售</el-checkbox>
+                  <el-checkbox label="admin">管理员</el-checkbox>
+                  <el-checkbox label="manager">经理</el-checkbox>
+                  <el-checkbox label="sales">销售</el-checkbox>
                 </el-checkbox-group>
               </el-form-item>
 
@@ -742,8 +811,8 @@
           >
             <el-form-item label="存储类型" prop="storageType">
               <el-radio-group v-model="storageForm.storageType">
-                <el-radio value="local">本地存储</el-radio>
-                <el-radio value="oss">阿里云OSS</el-radio>
+                <el-radio label="local">本地存储</el-radio>
+                <el-radio label="oss">阿里云OSS</el-radio>
               </el-radio-group>
             </el-form-item>
 
@@ -1078,9 +1147,9 @@
 
               <el-form-item label="价格修改权限" prop="priceModificationRoles">
                 <el-checkbox-group v-model="productForm.priceModificationRoles">
-                  <el-checkbox value="admin">管理员</el-checkbox>
-                  <el-checkbox value="manager">经理</el-checkbox>
-                  <el-checkbox value="sales">销售员</el-checkbox>
+                  <el-checkbox label="admin">管理员</el-checkbox>
+                  <el-checkbox label="manager">经理</el-checkbox>
+                  <el-checkbox label="sales">销售员</el-checkbox>
                 </el-checkbox-group>
               </el-form-item>
 
@@ -1182,48 +1251,48 @@
 
               <el-form-item label="成本价格查看权限" prop="costPriceViewRoles">
                 <el-checkbox-group v-model="productForm.costPriceViewRoles">
-                  <el-checkbox value="super_admin">超级管理员</el-checkbox>
-                  <el-checkbox value="admin">管理员</el-checkbox>
-                  <el-checkbox value="manager">经理</el-checkbox>
-                  <el-checkbox value="finance">财务人员</el-checkbox>
+                  <el-checkbox label="super_admin">超级管理员</el-checkbox>
+                  <el-checkbox label="admin">管理员</el-checkbox>
+                  <el-checkbox label="manager">经理</el-checkbox>
+                  <el-checkbox label="finance">财务人员</el-checkbox>
                 </el-checkbox-group>
                 <div class="form-tip">选择可以查看商品成本价格的角色</div>
               </el-form-item>
 
               <el-form-item label="销售数据查看权限" prop="salesDataViewRoles">
                 <el-checkbox-group v-model="productForm.salesDataViewRoles">
-                  <el-checkbox value="super_admin">超级管理员</el-checkbox>
-                  <el-checkbox value="admin">管理员</el-checkbox>
-                  <el-checkbox value="manager">经理</el-checkbox>
-                  <el-checkbox value="sales_manager">销售经理</el-checkbox>
+                  <el-checkbox label="super_admin">超级管理员</el-checkbox>
+                  <el-checkbox label="admin">管理员</el-checkbox>
+                  <el-checkbox label="manager">经理</el-checkbox>
+                  <el-checkbox label="sales_manager">销售经理</el-checkbox>
                 </el-checkbox-group>
                 <div class="form-tip">选择可以查看销售数据的角色</div>
               </el-form-item>
 
               <el-form-item label="库存信息查看权限" prop="stockInfoViewRoles">
                 <el-checkbox-group v-model="productForm.stockInfoViewRoles">
-                  <el-checkbox value="super_admin">超级管理员</el-checkbox>
-                  <el-checkbox value="admin">管理员</el-checkbox>
-                  <el-checkbox value="manager">经理</el-checkbox>
-                  <el-checkbox value="warehouse">仓库管理员</el-checkbox>
+                  <el-checkbox label="super_admin">超级管理员</el-checkbox>
+                  <el-checkbox label="admin">管理员</el-checkbox>
+                  <el-checkbox label="manager">经理</el-checkbox>
+                  <el-checkbox label="warehouse">仓库管理员</el-checkbox>
                 </el-checkbox-group>
                 <div class="form-tip">选择可以查看库存信息的角色</div>
               </el-form-item>
 
               <el-form-item label="操作日志查看权限" prop="operationLogsViewRoles">
                 <el-checkbox-group v-model="productForm.operationLogsViewRoles">
-                  <el-checkbox value="super_admin">超级管理员</el-checkbox>
-                  <el-checkbox value="admin">管理员</el-checkbox>
-                  <el-checkbox value="audit">审计人员</el-checkbox>
+                  <el-checkbox label="super_admin">超级管理员</el-checkbox>
+                  <el-checkbox label="admin">管理员</el-checkbox>
+                  <el-checkbox label="audit">审计人员</el-checkbox>
                 </el-checkbox-group>
                 <div class="form-tip">选择可以查看操作日志的角色</div>
               </el-form-item>
 
               <el-form-item label="敏感信息隐藏方式" prop="sensitiveInfoHideMethod">
                 <el-radio-group v-model="productForm.sensitiveInfoHideMethod">
-                  <el-radio value="asterisk">星号（****）</el-radio>
-                  <el-radio value="eye_icon">眼睛图标</el-radio>
-                  <el-radio value="dash">横线（----）</el-radio>
+                  <el-radio label="asterisk">星号（****）</el-radio>
+                  <el-radio label="eye_icon">眼睛图标</el-radio>
+                  <el-radio label="dash">横线（----）</el-radio>
                 </el-radio-group>
                 <div class="form-tip">选择敏感信息的隐藏显示方式</div>
               </el-form-item>
@@ -1387,6 +1456,11 @@
             </div>
           </div>
         </el-card>
+      </el-tab-pane>
+
+      <!-- 订单设置 -->
+      <el-tab-pane label="订单设置" name="order">
+        <OrderSettings />
       </el-tab-pane>
 
       <!-- 数据备份 -->
@@ -1725,6 +1799,130 @@
         <HealthCheckNotificationSettings />
       </el-tab-pane>
 
+      <!-- 🔥 批次287重构：用户协议列表管理 -->
+      <el-tab-pane label="用户协议" name="agreement">
+        <el-card class="setting-card">
+          <template #header>
+            <div class="card-header">
+              <span>用户协议管理</span>
+              <div class="header-actions">
+                <el-button
+                  v-if="canEditAgreement"
+                  @click="handleAddAgreement"
+                  type="success"
+                  :icon="Plus"
+                >
+                  新增协议
+                </el-button>
+                <el-button
+                  v-if="canEditAgreement"
+                  @click="handleSaveAgreementList"
+                  type="primary"
+                  :loading="agreementLoading"
+                >
+                  保存配置
+                </el-button>
+              </div>
+            </div>
+          </template>
+
+          <el-alert
+            title="协议说明"
+            type="info"
+            :closable="false"
+            style="margin-bottom: 20px;"
+          >
+            <p>用户协议将在登录页面显示，用户必须同意协议才能登录系统。</p>
+            <p>点击"编辑"按钮可以使用富文本编辑器编辑协议内容，启用后的协议将在登录页面显示。</p>
+          </el-alert>
+
+          <!-- 协议列表 -->
+          <el-table
+            :data="agreementList"
+            border
+            stripe
+            style="width: 100%"
+            class="agreement-table"
+          >
+            <el-table-column type="index" label="序号" width="60" align="center" />
+
+            <el-table-column prop="title" label="标题" width="180">
+              <template #default="{ row }">
+                <div class="agreement-title">
+                  <el-icon v-if="row.type === 'user'" color="#409EFF"><Document /></el-icon>
+                  <el-icon v-else color="#67C23A"><Lock /></el-icon>
+                  <span>{{ row.title }}</span>
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column prop="type" label="类型" width="120" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.type === 'user' ? 'primary' : 'success'" size="small">
+                  {{ row.type === 'user' ? '使用协议' : '隐私协议' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+
+            <el-table-column prop="wordCount" label="字数" width="100" align="center">
+              <template #default="{ row }">
+                <span class="word-count">{{ row.wordCount }} 字</span>
+              </template>
+            </el-table-column>
+
+            <el-table-column prop="summary" label="内容概述" min-width="200">
+              <template #default="{ row }">
+                <div class="content-summary">{{ row.summary }}</div>
+              </template>
+            </el-table-column>
+
+            <el-table-column prop="updateTime" label="更新日期" width="160" align="center">
+              <template #default="{ row }">
+                <div class="update-time">
+                  <el-icon><Clock /></el-icon>
+                  <span>{{ row.updateTime }}</span>
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="状态" width="80" align="center">
+              <template #default="{ row }">
+                <el-tooltip
+                  :content="row.enabled ? '已启用' : '已禁用'"
+                  placement="top"
+                >
+                  <el-switch
+                    v-model="row.enabled"
+                    @change="handleAgreementStatusChange(row)"
+                  />
+                </el-tooltip>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="操作" width="200" align="center" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  type="primary"
+                  size="small"
+                  :icon="Edit"
+                  @click="handleEditAgreement(row)"
+                >
+                  编辑
+                </el-button>
+                <el-button
+                  type="info"
+                  size="small"
+                  :icon="View"
+                  @click="handlePreviewAgreement(row)"
+                >
+                  预览
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+
       <!-- 移动应用 -->
       <el-tab-pane label="移动应用" name="mobile">
         <el-card class="setting-card">
@@ -1793,7 +1991,7 @@
                 <el-icon><Download /></el-icon>
                 SDK 下载和管理
               </h4>
-              
+
               <div class="sdk-grid">
                 <!-- Android SDK -->
                 <div class="sdk-item">
@@ -1944,7 +2142,7 @@
                 <el-icon><Connection /></el-icon>
                 连接状态和配置
               </h4>
-              
+
               <el-row :gutter="20">
                 <el-col :span="12">
                   <el-card class="config-card">
@@ -1999,7 +2197,7 @@
                 <el-icon><Connection /></el-icon>
                 二维码连接管理
               </h4>
-              
+
               <el-row :gutter="20">
                 <el-col :span="12">
                   <el-card class="qr-card">
@@ -2025,14 +2223,14 @@
                           </el-select>
                         </el-form-item>
                         <el-form-item>
-                          <el-button 
-                            type="primary" 
+                          <el-button
+                            type="primary"
                             @click="generateSystemQRCode"
                             :loading="qrConnectionLoading"
                           >
                             生成二维码
                           </el-button>
-                          <el-button 
+                          <el-button
                             v-if="systemQRConnection.connectionId"
                             @click="refreshSystemQRCode"
                             :loading="qrConnectionLoading"
@@ -2051,15 +2249,15 @@
                     </template>
                     <div class="qr-display">
                       <div v-if="systemQRConnection.qrCodeUrl" class="qr-code-container">
-                        <img 
-                          :src="systemQRConnection.qrCodeUrl" 
-                          alt="连接二维码" 
+                        <img
+                          :src="systemQRConnection.qrCodeUrl"
+                          alt="连接二维码"
                           class="qr-code-image"
                         />
                         <div class="qr-info">
                           <p class="qr-status">
-                            <el-tag 
-                              :type="getQRStatusType(systemQRConnection.status)" 
+                            <el-tag
+                              :type="getQRStatusType(systemQRConnection.status)"
                               size="small"
                             >
                               {{ getQRStatusText(systemQRConnection.status) }}
@@ -2089,7 +2287,7 @@
                 <el-icon><Platform /></el-icon>
                 替代连接方式
               </h4>
-              
+
               <el-row :gutter="20">
                 <!-- 蓝牙连接 -->
                 <el-col :span="8">
@@ -2102,8 +2300,8 @@
                     </template>
                     <div class="connection-content">
                       <div class="connection-status">
-                        <el-tag 
-                          :type="bluetoothConnection.enabled ? 'success' : 'info'" 
+                        <el-tag
+                          :type="bluetoothConnection.enabled ? 'success' : 'info'"
                           size="small"
                         >
                           {{ bluetoothConnection.enabled ? '已启用' : '未启用' }}
@@ -2115,14 +2313,14 @@
                       <div class="connection-config">
                         <el-form size="small">
                           <el-form-item label="设备名称">
-                            <el-input 
-                              v-model="bluetoothConnection.deviceName" 
+                            <el-input
+                              v-model="bluetoothConnection.deviceName"
                               placeholder="CRM-Server"
                             />
                           </el-form-item>
                           <el-form-item label="配对码">
-                            <el-input 
-                              v-model="bluetoothConnection.pairingCode" 
+                            <el-input
+                              v-model="bluetoothConnection.pairingCode"
                               placeholder="自动生成"
                               readonly
                             />
@@ -2130,7 +2328,7 @@
                         </el-form>
                       </div>
                       <div class="connection-actions">
-                        <el-button 
+                        <el-button
                           :type="bluetoothConnection.enabled ? 'danger' : 'primary'"
                           @click="toggleBluetoothConnection"
                           :loading="bluetoothLoading"
@@ -2154,8 +2352,8 @@
                     </template>
                     <div class="connection-content">
                       <div class="connection-status">
-                        <el-tag 
-                          :type="networkConnection.enabled ? 'success' : 'info'" 
+                        <el-tag
+                          :type="networkConnection.enabled ? 'success' : 'info'"
                           size="small"
                         >
                           {{ networkConnection.enabled ? '已启用' : '未启用' }}
@@ -2167,8 +2365,8 @@
                       <div class="connection-config">
                         <el-form size="small">
                           <el-form-item label="服务端口">
-                            <el-input-number 
-                              v-model="networkConnection.port" 
+                            <el-input-number
+                              v-model="networkConnection.port"
                               :min="1024"
                               :max="65535"
                               placeholder="8080"
@@ -2184,7 +2382,7 @@
                         </el-form>
                       </div>
                       <div class="connection-actions">
-                        <el-button 
+                        <el-button
                           :type="networkConnection.enabled ? 'danger' : 'primary'"
                           @click="toggleNetworkConnection"
                           :loading="networkLoading"
@@ -2208,8 +2406,8 @@
                     </template>
                     <div class="connection-content">
                       <div class="connection-status">
-                        <el-tag 
-                          :type="digitalPairing.enabled ? 'success' : 'info'" 
+                        <el-tag
+                          :type="digitalPairing.enabled ? 'success' : 'info'"
                           size="small"
                         >
                           {{ digitalPairing.enabled ? '已启用' : '未启用' }}
@@ -2223,7 +2421,7 @@
                           <el-form-item label="当前配对码">
                             <div class="pairing-code-display">
                               <span class="pairing-code">{{ digitalPairing.currentCode || '------' }}</span>
-                              <el-button 
+                              <el-button
                                 @click="generatePairingCode"
                                 :loading="pairingCodeLoading"
                                 size="small"
@@ -2243,7 +2441,7 @@
                         </el-form>
                       </div>
                       <div class="connection-actions">
-                        <el-button 
+                        <el-button
                           :type="digitalPairing.enabled ? 'danger' : 'primary'"
                           @click="toggleDigitalPairing"
                           :loading="digitalPairingLoading"
@@ -2297,7 +2495,7 @@
                 <template #header>
                   <div class="card-header">
                     <span>已连接设备</span>
-                    <el-button 
+                    <el-button
                       @click="refreshConnectedDevices"
                       :loading="devicesLoading"
                       type="primary"
@@ -2308,8 +2506,8 @@
                     </el-button>
                   </div>
                 </template>
-                <el-table 
-                  :data="connectedDevices" 
+                <el-table
+                  :data="connectedDevices"
                   v-loading="devicesLoading"
                   style="width: 100%"
                 >
@@ -2332,8 +2530,8 @@
                   </el-table-column>
                   <el-table-column prop="status" label="状态" width="100">
                     <template #default="{ row }">
-                      <el-tag 
-                        :type="row.status === 'connected' ? 'success' : 'warning'" 
+                      <el-tag
+                        :type="row.status === 'connected' ? 'success' : 'warning'"
                         size="small"
                       >
                         {{ row.status === 'connected' ? '在线' : '离线' }}
@@ -2342,9 +2540,9 @@
                   </el-table-column>
                   <el-table-column label="操作" width="120">
                     <template #default="{ row }">
-                      <el-button 
-                        type="danger" 
-                        size="small" 
+                      <el-button
+                        type="danger"
+                        size="small"
                         plain
                         @click="handleDisconnectDevice(row.deviceId)"
                       >
@@ -2365,7 +2563,7 @@
                 <el-icon><Document /></el-icon>
                 使用说明
               </h4>
-              
+
               <el-tabs v-model="activeGuideTab" class="guide-tabs">
                 <el-tab-pane label="Android安装" name="android">
                   <div class="guide-content">
@@ -2464,7 +2662,10 @@
           </div>
         </el-card>
       </el-tab-pane>
-    </el-tabs>
+        </el-tabs>
+        </div>
+      </div>
+    </div>
 
     <!-- 短信管理弹窗 -->
     <el-dialog
@@ -2476,13 +2677,20 @@
     >
       <SmsManagement />
     </el-dialog>
+
+    <!-- 🔥 批次287：协议编辑对话框 -->
+    <AgreementEditorDialog
+      v-model="agreementDialogVisible"
+      :agreement="currentEditingAgreement"
+      @save="handleSaveAgreementContent"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Discount, Money, Box, Grid, Setting, Lock, Upload, Download, Check, Phone, Connection, VideoPlay, Refresh, Platform, Iphone, Monitor, Link, Document } from '@element-plus/icons-vue'
+import { Plus, Discount, Money, Box, Grid, Setting, Lock, Upload, Download, Check, Phone, Connection, VideoPlay, Refresh, Platform, Iphone, Monitor, Link, Document, ArrowLeft, ArrowRight, DocumentCopy, ZoomIn, Delete, Picture, Edit, View, Clock } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useConfigStore } from '@/stores/config'
 import { dataSyncService } from '@/services/dataSyncService'
@@ -2492,6 +2700,9 @@ import { runAllTests } from '@/utils/testBackupService'
 import { DataExportTool } from '@/utils/dataExport'
 import SmsManagement from '@/components/SmsManagement.vue'
 import HealthCheckNotificationSettings from '@/components/HealthCheckNotificationSettings.vue'
+import OrderSettings from '@/views/Settings/OrderSettings.vue'
+import RichTextEditor from '@/components/Common/RichTextEditor.vue'
+import AgreementEditorDialog from '@/components/System/AgreementEditorDialog.vue'
 import * as logsApi from '@/api/logs'
 import type { SystemLog } from '@/api/logs'
 import * as alternativeConnectionApi from '@/api/alternative-connection'
@@ -2520,6 +2731,13 @@ const configStore = useConfigStore()
 
 // 响应式数据
 const activeTab = ref('basic')
+
+
+
+
+
+
+
 const basicLoading = ref(false)
 const securityLoading = ref(false)
 const emailLoading = ref(false)
@@ -2540,6 +2758,37 @@ const basicForm = computed(() => configStore.systemConfig)
 
 // 安全设置表单 - 从配置store获取
 const securityForm = computed(() => configStore.securityConfig)
+
+// 🔥 批次289：用户协议列表管理（已填充用户使用协议内容）
+const agreementList = ref([
+  {
+    id: 1,
+    type: 'user',
+    title: '用户使用协议',
+    content: '<div style="font-family: Microsoft YaHei, PingFang SC, sans-serif; line-height: 1.8; color: #333; padding: 20px;"><h1 style="text-align: center; color: #409eff; font-size: 20px; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #409eff; font-weight: bold;">用户使用协议</h1><p style="text-indent: 2em; margin-bottom: 15px; font-size: 14px; color: #606266;">欢迎使用本CRM客户管理系统（以下简称<strong style="color: #409eff;">"本系统"</strong>）。在使用本系统之前，请您<strong style="color: #409eff;">仔细阅读并充分理解</strong>本协议的全部内容。</p><h2 style="color: #409eff; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #409eff; font-weight: bold;">一、协议的接受</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">1.1 本协议是您与本系统运营方之间关于使用本系统服务所订立的协议。</p><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">1.2 您点击<strong style="color: #409eff;">"同意"</strong>按钮即表示您<strong style="color: #409eff;">完全接受</strong>本协议的全部条款。</p><h2 style="color: #409eff; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #409eff; font-weight: bold;">二、服务内容</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">2.1 本系统为企业提供<strong style="color: #409eff;">客户关系管理服务</strong>，包括但不限于：</p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">客户信息管理</li><li style="margin-bottom: 5px; font-size: 14px;">订单管理</li><li style="margin-bottom: 5px; font-size: 14px;">业绩统计</li><li style="margin-bottom: 5px; font-size: 14px;">数据分析</li><li style="margin-bottom: 5px; font-size: 14px;">团队协作</li></ul><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">2.2 本系统保留随时修改或中断服务而不需通知用户的权利。</p><h2 style="color: #409eff; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #409eff; font-weight: bold;">三、用户权利和义务</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #409eff;">3.1 用户权利：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">使用本系统提供的各项功能</li><li style="margin-bottom: 5px; font-size: 14px;">管理自己的客户数据</li><li style="margin-bottom: 5px; font-size: 14px;">查看业绩统计报表</li><li style="margin-bottom: 5px; font-size: 14px;">获得技术支持服务</li></ul><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #409eff;">3.2 用户义务：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">遵守国家法律法规</li><li style="margin-bottom: 5px; font-size: 14px;">不得利用本系统从事违法活动</li><li style="margin-bottom: 5px; font-size: 14px;">妥善保管账号密码</li><li style="margin-bottom: 5px; font-size: 14px;">对账号下的所有行为负责</li><li style="margin-bottom: 5px; font-size: 14px;">不得恶意攻击系统</li><li style="margin-bottom: 5px; font-size: 14px;">不得泄露客户隐私信息</li></ul><h2 style="color: #409eff; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #409eff; font-weight: bold;">四、数据安全</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">4.1 本系统采用<strong style="color: #409eff;">行业标准的安全措施</strong>保护用户数据。</p><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">4.2 用户应定期备份重要数据，本系统不对数据丢失承担责任。</p><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">4.3 未经授权访问、使用、修改或破坏系统数据的行为将<strong style="color: #f56c6c;">承担法律责任</strong>。</p><h2 style="color: #409eff; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #409eff; font-weight: bold;">五、知识产权</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">5.1 本系统的所有内容，包括但不限于<strong style="color: #409eff;">文字、图片、软件、程序</strong>等，均受知识产权法保护。</p><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">5.2 未经许可，用户不得复制、传播、修改本系统的任何内容。</p><h2 style="color: #409eff; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #409eff; font-weight: bold;">六、免责声明</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">6.1 本系统不对因以下原因导致的损失承担责任：</p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">不可抗力因素</li><li style="margin-bottom: 5px; font-size: 14px;">网络故障</li><li style="margin-bottom: 5px; font-size: 14px;">用户操作不当</li><li style="margin-bottom: 5px; font-size: 14px;">第三方侵权行为</li></ul><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">6.2 本系统提供的数据分析结果仅供参考，不构成任何投资建议。</p><h2 style="color: #409eff; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #409eff; font-weight: bold;">七、协议的变更</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">7.1 本系统有权随时修改本协议条款。</p><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">7.2 协议变更后，继续使用本系统即视为<strong style="color: #409eff;">接受新协议</strong>。</p><h2 style="color: #409eff; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #409eff; font-weight: bold;">八、争议解决</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">8.1 本协议的解释、效力及纠纷的解决，适用<strong style="color: #409eff;">中华人民共和国法律</strong>。</p><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">8.2 若发生争议，双方应友好协商解决；协商不成的，可向本系统所在地人民法院提起诉讼。</p><h2 style="color: #409eff; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #409eff; font-weight: bold;">九、其他</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">9.1 本协议自用户点击同意之日起生效。</p><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">9.2 如本协议中的任何条款无论因何种原因完全或部分无效或不具有执行力，本协议的其余条款仍应有效并且有约束力。</p><p style="text-align: center; margin-top: 30px; color: #909399; font-size: 13px;">最后更新日期：2025年11月22日</p></div>',
+    wordCount: 1456,
+    summary: '欢迎使用本CRM客户管理系统（以下简称"本系统"）。在使用本系统之前，请您仔细阅读并充分理解本协议的全部内容。一、协议的接受1.1 本协议是您与本系统运营方之间关于使用本系统服务所订立的协议。1.2 您点击"同意"按钮即表示您完全接受本协议的全部条款...',
+    updateTime: '2025/11/22 17:30:00',
+    enabled: true
+  },
+  {
+    id: 2,
+    type: 'privacy',
+    title: '用户隐私协议',
+    content: '<div style="font-family: Microsoft YaHei, PingFang SC, sans-serif; line-height: 1.8; color: #333; padding: 20px;"><h1 style="text-align: center; color: #67C23A; font-size: 20px; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #67C23A; font-weight: bold;">用户隐私协议</h1><p style="text-indent: 2em; margin-bottom: 15px; font-size: 14px; color: #606266;">本隐私协议（以下简称<strong style="color: #67C23A;">"本协议"</strong>）适用于本CRM客户管理系统（以下简称<strong style="color: #67C23A;">"本系统"</strong>）。我们非常重视用户的隐私保护，特制定本协议。</p><h2 style="color: #67C23A; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #67C23A; font-weight: bold;">一、信息收集</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">1.1 我们收集的信息类型：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">账号信息：用户名、密码、邮箱、手机号</li><li style="margin-bottom: 5px; font-size: 14px;">个人信息：姓名、部门、职位</li><li style="margin-bottom: 5px; font-size: 14px;">业务信息：客户数据、订单信息、业绩数据</li><li style="margin-bottom: 5px; font-size: 14px;">使用信息：登录日志、操作记录、访问时间</li></ul><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">1.2 信息收集方式：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">用户主动提供</li><li style="margin-bottom: 5px; font-size: 14px;">系统自动收集</li><li style="margin-bottom: 5px; font-size: 14px;">第三方合法提供</li></ul><h2 style="color: #67C23A; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #67C23A; font-weight: bold;">二、信息使用</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">2.1 我们使用收集的信息用于：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">提供系统服务</li><li style="margin-bottom: 5px; font-size: 14px;">改进用户体验</li><li style="margin-bottom: 5px; font-size: 14px;">数据统计分析</li><li style="margin-bottom: 5px; font-size: 14px;">安全监控</li><li style="margin-bottom: 5px; font-size: 14px;">技术支持</li><li style="margin-bottom: 5px; font-size: 14px;">发送系统通知</li></ul><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">2.2 我们承诺：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">不会将用户信息用于本协议未载明的其他用途</li><li style="margin-bottom: 5px; font-size: 14px;">不会向第三方出售用户信息</li><li style="margin-bottom: 5px; font-size: 14px;">严格限制信息访问权限</li></ul><h2 style="color: #67C23A; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #67C23A; font-weight: bold;">三、信息存储</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">3.1 存储位置：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">用户数据存储在本地浏览器</li><li style="margin-bottom: 5px; font-size: 14px;">部分数据可能存储在服务器</li><li style="margin-bottom: 5px; font-size: 14px;">采用加密技术保护敏感信息</li></ul><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">3.2 存储期限：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">账号存续期间持续存储</li><li style="margin-bottom: 5px; font-size: 14px;">账号注销后，数据将在30天内删除</li><li style="margin-bottom: 5px; font-size: 14px;">法律法规要求保留的除外</li></ul><h2 style="color: #67C23A; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #67C23A; font-weight: bold;">四、信息保护</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">4.1 安全措施：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">数据加密传输（HTTPS）</li><li style="margin-bottom: 5px; font-size: 14px;">密码加密存储</li><li style="margin-bottom: 5px; font-size: 14px;">访问权限控制</li><li style="margin-bottom: 5px; font-size: 14px;">定期安全审计</li><li style="margin-bottom: 5px; font-size: 14px;">异常行为监控</li></ul><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">4.2 安全承诺：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">采用行业标准的安全技术</li><li style="margin-bottom: 5px; font-size: 14px;">建立数据安全管理制度</li><li style="margin-bottom: 5px; font-size: 14px;">定期进行安全培训</li><li style="margin-bottom: 5px; font-size: 14px;">及时修复安全漏洞</li></ul><h2 style="color: #67C23A; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #67C23A; font-weight: bold;">五、信息共享</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">5.1 我们不会与第三方共享用户信息，除非：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">获得用户明确同意</li><li style="margin-bottom: 5px; font-size: 14px;">法律法规要求</li><li style="margin-bottom: 5px; font-size: 14px;">保护系统安全所必需</li><li style="margin-bottom: 5px; font-size: 14px;">维护用户合法权益所必需</li></ul><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">5.2 共享原则：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">最小必要原则</li><li style="margin-bottom: 5px; font-size: 14px;">合法正当原则</li><li style="margin-bottom: 5px; font-size: 14px;">安全可控原则</li></ul><h2 style="color: #67C23A; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #67C23A; font-weight: bold;">六、用户权利</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">6.1 您享有以下权利：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">访问您的个人信息</li><li style="margin-bottom: 5px; font-size: 14px;">更正不准确的信息</li><li style="margin-bottom: 5px; font-size: 14px;">删除您的个人信息</li><li style="margin-bottom: 5px; font-size: 14px;">撤回信息使用授权</li><li style="margin-bottom: 5px; font-size: 14px;">注销您的账号</li><li style="margin-bottom: 5px; font-size: 14px;">投诉举报</li></ul><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">6.2 权利行使方式：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">通过系统设置自行操作</li><li style="margin-bottom: 5px; font-size: 14px;">联系客服协助处理</li><li style="margin-bottom: 5px; font-size: 14px;">发送邮件申请</li></ul><h2 style="color: #67C23A; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #67C23A; font-weight: bold;">七、Cookie使用</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;"><strong style="color: #67C23A;">7.1 本系统使用Cookie技术：</strong></p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">记住登录状态</li><li style="margin-bottom: 5px; font-size: 14px;">保存用户偏好设置</li><li style="margin-bottom: 5px; font-size: 14px;">统计访问数据</li><li style="margin-bottom: 5px; font-size: 14px;">改善用户体验</li></ul><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">7.2 您可以通过浏览器设置管理Cookie。</p><h2 style="color: #67C23A; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #67C23A; font-weight: bold;">八、未成年人保护</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">8.1 本系统不向未满18周岁的未成年人提供服务。</p><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">8.2 如发现未成年人使用本系统，我们将立即停止服务并删除相关信息。</p><h2 style="color: #67C23A; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #67C23A; font-weight: bold;">九、隐私协议的变更</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">9.1 我们可能适时修订本协议。</p><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">9.2 变更后的协议将在系统内公布，继续使用即视为<strong style="color: #67C23A;">接受新协议</strong>。</p><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">9.3 重大变更将通过系统通知或邮件方式告知用户。</p><h2 style="color: #67C23A; font-size: 16px; margin: 20px 0 10px; padding-left: 10px; border-left: 3px solid #67C23A; font-weight: bold;">十、联系我们</h2><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">如您对本隐私协议有任何疑问、意见或建议，请通过以下方式联系我们：</p><ul style="margin-left: 3em; margin-bottom: 15px; list-style: disc; color: #606266;"><li style="margin-bottom: 5px; font-size: 14px;">客服电话：<strong style="color: #67C23A;">13570727364</strong></li><li style="margin-bottom: 5px; font-size: 14px;">客服微信：<strong style="color: #67C23A;">nxys789</strong></li><li style="margin-bottom: 5px; font-size: 14px;">客服邮箱：<strong style="color: #67C23A;">xianhuquwang@163.com</strong></li><li style="margin-bottom: 5px; font-size: 14px;">公司地址：<strong style="color: #67C23A;">广州市黄埔区南翔一路68号</strong></li></ul><p style="text-indent: 2em; margin-bottom: 10px; font-size: 14px;">我们将在收到您的反馈后<strong style="color: #67C23A;">15个工作日</strong>内予以回复。</p><p style="text-align: center; margin-top: 30px; color: #909399; font-size: 13px;">最后更新日期：2025年11月22日</p></div>',
+    wordCount: 1523,
+    summary: '本隐私协议（以下简称"本协议"）适用于本CRM客户管理系统（以下简称"本系统"）。我们非常重视用户的隐私保护，特制定本协议。一、信息收集1.1 我们收集的信息类型：账号信息：用户名、密码、邮箱、手机号；个人信息：姓名、部门、职位；业务信息：客户数据、订单信息、业绩数据...',
+    updateTime: '2025/11/22 17:45:00',
+    enabled: true
+  }
+])
+
+const agreementLoading = ref(false)
+const canEditAgreement = computed(() => userStore.isAdmin)
+
+// 协议编辑对话框
+const agreementDialogVisible = ref(false)
+const currentEditingAgreement = ref<any>(null)
 
 // 邮件设置表单
 const emailForm = reactive({
@@ -2596,53 +2845,130 @@ const productForm = computed(() => configStore.productConfig)
 const syncConfig = ref(dataSyncService.getSyncConfig())
 const syncStatus = ref(dataSyncService.getSyncStatus())
 
-// 监控数据
+// 🔥 批次266修复：监控数据使用真实数据
 const monitorData = ref({
   systemInfo: {
-    os: 'Windows 10',
-    arch: 'x64',
-    cpuCores: 8,
-    totalMemory: '16 GB',
-    nodeVersion: 'v18.17.0',
-    uptime: '5天 12小时 30分钟'
+    os: '',
+    arch: '',
+    cpuCores: 0,
+    totalMemory: '',
+    nodeVersion: '',
+    uptime: ''
   },
   performance: {
-    cpuUsage: 25,
-    memoryUsage: 68,
-    diskUsage: 45,
-    networkLatency: 12
+    cpuUsage: 0,
+    memoryUsage: 0,
+    diskUsage: 0,
+    networkLatency: 0
   },
   database: {
-    type: 'MySQL',
-    version: '8.0.33',
+    type: 'localStorage',
+    version: '浏览器存储',
     connected: true,
-    activeConnections: 15,
-    size: '2.5 GB',
-    lastBackup: '2024-01-15 02:00:00'
+    activeConnections: 0,
+    size: '0 KB',
+    lastBackup: '未备份'
   },
-  services: [
-    {
-      name: 'Web服务器',
-      status: 'running',
-      port: 3000,
-      uptime: '5天 12小时',
-      memory: '256 MB'
-    },
-    {
-      name: 'API服务',
-      status: 'running',
-      port: 3001,
-      uptime: '5天 12小时',
-      memory: '128 MB'
-    },
-    {
-      name: 'Redis缓存',
-      status: 'running',
-      port: 6379,
-      uptime: '5天 12小时',
-      memory: '64 MB'
+  services: []
+})
+
+// 🔥 批次266修复：获取真实的系统监控数据
+const getRealMonitorData = () => {
+  try {
+    // 1. 获取系统信息
+    monitorData.value.systemInfo = {
+      os: navigator.platform || '未知',
+      arch: navigator.userAgent.includes('x64') ? 'x64' : (navigator.userAgent.includes('ARM') ? 'ARM' : 'x86'),
+      cpuCores: navigator.hardwareConcurrency || 0,
+      totalMemory: performance.memory ? `${(performance.memory.jsHeapSizeLimit / 1024 / 1024 / 1024).toFixed(2)} GB (JS堆)` : '未知',
+      nodeVersion: '浏览器环境',
+      uptime: `页面运行 ${Math.floor(performance.now() / 1000 / 60)} 分钟`
     }
-  ]
+
+    // 2. 获取性能指标
+    if (performance && performance.memory) {
+      const memory = performance.memory
+      monitorData.value.performance.memoryUsage = Math.round((memory.usedJSHeapSize / memory.jsHeapSizeLimit) * 100)
+    } else {
+      monitorData.value.performance.memoryUsage = 0
+    }
+
+    // CPU使用率（浏览器无法直接获取，使用性能指标估算）
+    const perfEntries = performance.getEntriesByType('navigation')
+    if (perfEntries.length > 0) {
+      const navTiming = perfEntries[0] as PerformanceNavigationTiming
+      const loadTime = navTiming.loadEventEnd - navTiming.fetchStart
+      // 根据加载时间估算CPU使用率（简化算法）
+      monitorData.value.performance.cpuUsage = Math.min(Math.round(loadTime / 100), 100)
+    }
+
+    // 磁盘使用率（使用localStorage使用量估算）
+    let totalSize = 0
+    for (const key in localStorage) {
+      if (localStorage.hasOwnProperty(key)) {
+        totalSize += localStorage[key].length
+      }
+    }
+    // 假设localStorage配额为10MB
+    const quotaMB = 10
+    monitorData.value.performance.diskUsage = Math.min(Math.round((totalSize / 1024 / 1024 / quotaMB) * 100), 100)
+
+    // 网络延迟
+    if (navigator.connection && navigator.connection.rtt) {
+      monitorData.value.performance.networkLatency = navigator.connection.rtt
+    } else {
+      // 使用性能API估算
+      const resourceEntries = performance.getEntriesByType('resource')
+      if (resourceEntries.length > 0) {
+        const avgLatency = resourceEntries.reduce((sum, entry: any) => sum + entry.duration, 0) / resourceEntries.length
+        monitorData.value.performance.networkLatency = Math.round(avgLatency)
+      }
+    }
+
+    // 3. 获取数据库信息（localStorage）
+    monitorData.value.database = {
+      type: 'localStorage',
+      version: '浏览器存储',
+      connected: true,
+      activeConnections: 1,
+      size: `${(totalSize / 1024).toFixed(2)} KB`,
+      lastBackup: localStorage.getItem('lastBackupTime') || '未备份'
+    }
+
+    // 4. 获取服务状态（前端服务）
+    monitorData.value.services = [
+      {
+        name: '前端应用',
+        status: 'running',
+        port: window.location.port || '80',
+        uptime: `${Math.floor(performance.now() / 1000 / 60)} 分钟`,
+        memory: performance.memory ? `${(performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2)} MB` : '未知'
+      },
+      {
+        name: 'localStorage',
+        status: 'running',
+        port: '-',
+        uptime: '持久化',
+        memory: `${(totalSize / 1024).toFixed(2)} KB`
+      },
+      {
+        name: '网络连接',
+        status: navigator.onLine ? 'running' : 'stopped',
+        port: '-',
+        uptime: navigator.onLine ? '在线' : '离线',
+        memory: navigator.connection ? `${navigator.connection.effectiveType || '未知'}` : '未知'
+      }
+    ]
+
+    console.log('[系统监控] 真实数据已加载:', monitorData.value)
+  } catch (error) {
+    console.error('[系统监控] 获取真实数据失败:', error)
+  }
+}
+
+// 🔥 批次266修复：初始化时加载真实数据
+onMounted(() => {
+  getRealMonitorData()
 })
 
 // 备份相关数据
@@ -3070,7 +3396,568 @@ const handleLogoSuccess = (response: UploadResponse, file: UploadFile) => {
 }
 
 /**
+ * 🔥 批次275优化：二维码上传相关方法
+ */
+// 文件输入引用
+const qrFileInput = ref<HTMLInputElement>()
+
+// 触发文件选择
+const triggerQRUpload = () => {
+  qrFileInput.value?.click()
+}
+
+// 处理文件选择
+const handleQRFileSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const files = target.files
+  if (files && files.length > 0) {
+    handleQRImageFile(files[0])
+  }
+  // 清空input值，允许重复选择同一文件
+  target.value = ''
+}
+
+// 粘贴图片功能
+const pasteQRImage = async () => {
+  try {
+    const clipboardItems = await navigator.clipboard.read()
+    for (const clipboardItem of clipboardItems) {
+      for (const type of clipboardItem.types) {
+        if (type.startsWith('image/')) {
+          const blob = await clipboardItem.getType(type)
+          const file = new File([blob], 'qr-code.png', { type })
+          handleQRImageFile(file)
+          return
+        }
+      }
+    }
+    ElMessage.warning('剪贴板中没有图片')
+  } catch (error) {
+    ElMessage.error('粘贴图片失败，请检查浏览器权限')
+  }
+}
+
+// 处理图片文件
+const handleQRImageFile = (file: File) => {
+  // 验证文件类型
+  const isImage = file.type.startsWith('image/')
+  const isLt2M = file.size / 1024 / 1024 < 2
+
+  if (!isImage) {
+    ElMessage.error('只能上传图片文件!')
+    return
+  }
+  if (!isLt2M) {
+    ElMessage.error('图片大小不能超过 2MB!')
+    return
+  }
+
+  // 转换为Base64并保存
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const base64 = e.target?.result as string
+    basicForm.value.contactQRCode = base64
+    ElMessage.success('二维码上传成功')
+  }
+  reader.readAsDataURL(file)
+}
+
+// 预览二维码
+const previewQRCode = () => {
+  if (basicForm.value.contactQRCode) {
+    ElMessageBox.alert(
+      `<div style="text-align: center; padding: 20px;">
+        <img src="${basicForm.value.contactQRCode}" alt="二维码" style="max-width: 400px; max-height: 400px; border: 1px solid #ddd; border-radius: 8px;" />
+      </div>`,
+      '二维码预览',
+      {
+        confirmButtonText: '关闭',
+        dangerouslyUseHTMLString: true
+      }
+    )
+  }
+}
+
+/**
+ * 🔥 批次274新增：删除二维码
+ */
+const removeQRCode = () => {
+  ElMessageBox.confirm('确定要删除该二维码吗？', '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    basicForm.value.contactQRCode = ''
+    basicForm.value.contactQRCodeLabel = ''
+    ElMessage.success('删除成功')
+  }).catch(() => {
+    // 取消删除
+  })
+}
+
+/**
+ * 🔥 批次275新增：用户协议相关方法
+ */
+// 默认协议内容
+const getDefaultUserAgreement = () => {
+  return `<div style="line-height: 2.2; padding: 30px; font-size: 15px;">
+<h2 style="color: #303133; border-bottom: 3px solid #409eff; padding-bottom: 15px; margin-bottom: 30px; text-align: center; font-size: 26px; font-weight: 700;">用户使用协议</h2>
+
+<p style="color: #606266; margin: 25px 0; font-size: 16px; line-height: 2.5; background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #409eff;">
+  <strong>欢迎使用本CRM客户管理系统</strong>（以下简称"本系统"）。在使用本系统之前，<strong style="color: #409eff;">请您仔细阅读并充分理解本协议的全部内容</strong>。
+</p>
+
+<h3 style="color: #409eff; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #409eff;">一、协议的接受</h3>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>1.1</strong> 本协议是您与本系统运营方之间关于使用本系统服务所订立的协议。
+</p>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>1.2</strong> 您点击<strong style="color: #409eff;">"同意"</strong>按钮即表示您完全接受本协议的全部条款。
+</p>
+
+<h3 style="color: #409eff; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #409eff;">二、服务内容</h3>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>2.1</strong> 本系统为企业提供客户关系管理服务，包括但不限于：
+</p>
+
+<ul style="color: #606266; padding-left: 50px; margin: 20px 0; line-height: 2.5;">
+  <li style="margin: 12px 0;">✓ 客户信息管理</li>
+  <li style="margin: 12px 0;">✓ 订单管理</li>
+  <li style="margin: 12px 0;">✓ 业绩统计</li>
+  <li style="margin: 12px 0;">✓ 数据分析</li>
+  <li style="margin: 12px 0;">✓ 团队协作</li>
+</ul>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>2.2</strong> 本系统保留随时修改或中断服务而不需通知用户的权利。
+</p>
+
+<h3 style="color: #409eff; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #409eff;">三、用户权利和义务</h3>
+
+<p style="color: #606266; margin: 25px 0; padding-left: 15px;">
+  <strong style="font-size: 17px; color: #333;">3.1 用户权利：</strong>
+</p>
+
+<ul style="color: #606266; padding-left: 50px; margin: 20px 0; line-height: 2.5;">
+  <li style="margin: 12px 0;">✓ 使用本系统提供的各项功能</li>
+  <li style="margin: 12px 0;">✓ 管理自己的客户数据</li>
+  <li style="margin: 12px 0;">✓ 查看业绩统计报表</li>
+  <li style="margin: 12px 0;">✓ 获得技术支持服务</li>
+</ul>
+
+<p style="color: #606266; margin: 25px 0; padding-left: 15px;">
+  <strong style="font-size: 17px; color: #333;">3.2 用户义务：</strong>
+</p>
+
+<ul style="color: #606266; padding-left: 50px; margin: 20px 0; line-height: 2.5;">
+  <li style="margin: 15px 0; padding: 15px; background: #fff3f3; border-left: 4px solid #f56c6c; border-radius: 4px;">
+    <strong style="color: #f56c6c; font-size: 16px;">⚠️ 严禁将本系统用于任何违法犯罪活动，包括但不限于诈骗、洗钱、传销等</strong>
+  </li>
+  <li style="margin: 12px 0;">• 遵守国家法律法规和社会公德</li>
+  <li style="margin: 12px 0;">• 不得利用本系统侵害他人合法权益</li>
+  <li style="margin: 12px 0;">• 妥善保管账号密码，对账号下的所有行为负责</li>
+  <li style="margin: 12px 0;">• 不得恶意攻击、破坏系统</li>
+  <li style="margin: 12px 0;">• 不得泄露客户隐私信息</li>
+  <li style="margin: 12px 0;">• 不得传播虚假信息或进行欺诈行为</li>
+</ul>
+
+<h3 style="color: #409eff; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #409eff;">四、免责声明</h3>
+
+<p style="color: #f56c6c; font-weight: bold; margin: 25px 0; padding: 20px; background: #fff3f3; border-left: 5px solid #f56c6c; border-radius: 8px; font-size: 16px;">
+  <strong>⚠️ 重要提示：</strong>本系统仅作为工具提供服务，<strong>不对用户使用本系统产生的内容、行为及后果承担任何责任</strong>。
+</p>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>4.2</strong> 本系统不对因以下原因导致的损失承担责任：
+</p>
+
+<ul style="color: #606266; padding-left: 50px; margin: 20px 0; line-height: 2.5;">
+  <li style="margin: 12px 0;">• 用户违法违规使用本系统</li>
+  <li style="margin: 12px 0;">• 用户利用本系统从事诈骗、欺诈等违法活动</li>
+  <li style="margin: 12px 0;">• 不可抗力因素（自然灾害、战争、政府行为等）</li>
+  <li style="margin: 12px 0;">• 网络故障、设备故障</li>
+  <li style="margin: 12px 0;">• 用户操作不当或误操作</li>
+  <li style="margin: 12px 0;">• 第三方侵权行为</li>
+  <li style="margin: 12px 0;">• 数据丢失或损坏</li>
+</ul>
+
+<p style="color: #f56c6c; font-weight: bold; margin: 25px 0; padding: 20px; background: #fff3f3; border-left: 5px solid #f56c6c; border-radius: 8px; font-size: 16px;">
+  <strong>4.3</strong> 用户应对其使用本系统的行为<strong>承担全部法律责任</strong>。如因用户违法违规使用本系统导致任何法律纠纷或损失，用户应自行承担全部责任，并赔偿本系统因此遭受的损失。
+</p>
+
+<h3 style="color: #409eff; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #409eff;">五、数据安全</h3>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>5.1</strong> 本系统采用<strong style="color: #409eff;">行业标准的安全措施</strong>保护用户数据。
+</p>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>5.2</strong> 用户应定期备份重要数据，本系统不对数据丢失承担责任。
+</p>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>5.3</strong> 未经授权访问、使用、修改或破坏系统数据的行为将<strong style="color: #f56c6c;">承担法律责任</strong>。
+</p>
+
+<h3 style="color: #409eff; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #409eff;">六、知识产权</h3>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>6.1</strong> 本系统的所有内容，包括但不限于文字、图片、软件、程序等，均受<strong style="color: #409eff;">知识产权法保护</strong>。
+</p>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>6.2</strong> 未经许可，用户不得复制、传播、修改本系统的任何内容。
+</p>
+
+<h3 style="color: #409eff; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #409eff;">七、违规处理</h3>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>7.1</strong> 如发现用户违反本协议或从事违法活动，本系统有权：
+</p>
+
+<ul style="color: #606266; padding-left: 50px; margin: 20px 0; line-height: 2.5;">
+  <li style="margin: 12px 0;">• 立即终止服务</li>
+  <li style="margin: 12px 0;">• 删除违规内容</li>
+  <li style="margin: 12px 0;">• 冻结或注销账号</li>
+  <li style="margin: 12px 0;">• 向有关部门报告</li>
+  <li style="margin: 12px 0;">• 追究法律责任</li>
+</ul>
+
+<h3 style="color: #409eff; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #409eff;">八、协议的变更</h3>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>8.1</strong> 本系统有权随时修改本协议条款。
+</p>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>8.2</strong> 协议变更后，继续使用本系统即视为接受新协议。
+</p>
+
+<h3 style="color: #409eff; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #409eff;">九、争议解决</h3>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>9.1</strong> 本协议的解释、效力及纠纷的解决，适用<strong style="color: #409eff;">中华人民共和国法律</strong>。
+</p>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>9.2</strong> 若发生争议，双方应友好协商解决；协商不成的，可向本系统所在地人民法院提起诉讼。
+</p>
+
+<h3 style="color: #409eff; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #409eff;">十、其他</h3>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>10.1</strong> 本协议自用户点击同意之日起生效。
+</p>
+
+<p style="color: #606266; margin: 18px 0; padding-left: 15px;">
+  <strong>10.2</strong> 如本协议中的任何条款无论因何种原因完全或部分无效或不具有执行力，本协议的其余条款仍应有效并且有约束力。
+</p>
+
+<div style="margin-top: 50px; padding-top: 25px; border-top: 2px dashed #e0e0e0; text-align: center;">
+  <p style="color: #909399; font-size: 13px; margin: 0;">最后更新日期：${new Date().toLocaleDateString('zh-CN')}</p>
+</div>
+</div>`
+}
+
+const getDefaultPrivacyPolicy = () => {
+  return `<div style="line-height: 2; padding: 20px;">
+<h2 style="color: #303133; border-bottom: 2px solid #409eff; padding-bottom: 10px;">用户隐私协议</h2>
+
+<p style="color: #606266; margin: 20px 0;">本隐私协议（以下简称"本协议"）适用于本CRM客户管理系统（以下简称"本系统"）。我们非常重视用户的隐私保护，特制定本协议。</p>
+
+<h3 style="color: #409eff; margin-top: 30px;">一、信息收集</h3>
+<p style="color: #606266;"><strong>1.1 我们收集的信息类型：</strong></p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li><strong>账号信息：</strong>用户名、密码、邮箱、手机号</li>
+  <li><strong>个人信息：</strong>姓名、部门、职位、头像</li>
+  <li><strong>业务信息：</strong>客户数据、订单信息、业绩数据、通话记录</li>
+  <li><strong>使用信息：</strong>登录日志、操作记录、访问时间、IP地址</li>
+  <li><strong>设备信息：</strong>浏览器类型、操作系统、设备型号</li>
+</ul>
+
+<p style="color: #606266;"><strong>1.2 信息收集方式：</strong></p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li>用户主动提供</li>
+  <li>系统自动收集</li>
+  <li>第三方合法提供</li>
+</ul>
+
+<h3 style="color: #409eff; margin-top: 30px;">二、信息使用</h3>
+<p style="color: #606266;"><strong>2.1 我们使用收集的信息用于：</strong></p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li>提供系统服务和功能</li>
+  <li>改进用户体验</li>
+  <li>数据统计和分析</li>
+  <li>安全监控和风险防范</li>
+  <li>技术支持和客户服务</li>
+  <li>发送系统通知和重要消息</li>
+</ul>
+
+<p style="color: #606266;"><strong>2.2 我们承诺：</strong></p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li>不会将用户信息用于本协议未载明的其他用途</li>
+  <li>不会向第三方出售、出租或共享用户信息</li>
+  <li>严格限制信息访问权限，仅授权人员可访问</li>
+</ul>
+
+<h3 style="color: #409eff; margin-top: 30px;">三、信息存储</h3>
+<p style="color: #606266;"><strong>3.1 存储位置：</strong></p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li>用户数据主要存储在本地浏览器（localStorage）</li>
+  <li>部分数据可能存储在服务器</li>
+  <li>采用加密技术保护敏感信息</li>
+</ul>
+
+<p style="color: #606266;"><strong>3.2 存储期限：</strong></p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li>账号存续期间持续存储</li>
+  <li>账号注销后，数据将在30天内删除</li>
+  <li>法律法规要求保留的除外</li>
+</ul>
+
+<h3 style="color: #409eff; margin-top: 30px;">四、信息保护</h3>
+<p style="color: #606266;"><strong>4.1 安全措施：</strong></p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li>数据加密传输（HTTPS）</li>
+  <li>密码加密存储（不可逆加密）</li>
+  <li>访问权限控制（角色权限管理）</li>
+  <li>定期安全审计</li>
+  <li>异常行为监控和预警</li>
+  <li>数据备份和恢复机制</li>
+</ul>
+
+<p style="color: #606266;"><strong>4.2 安全承诺：</strong></p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li>采用行业标准的安全技术和管理措施</li>
+  <li>建立完善的数据安全管理制度</li>
+  <li>定期对员工进行安全培训</li>
+  <li>及时修复发现的安全漏洞</li>
+</ul>
+
+<h3 style="color: #409eff; margin-top: 30px;">五、信息共享</h3>
+<p style="color: #f56c6c; font-weight: bold;">5.1 我们不会与第三方共享用户信息，除非：</p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li>获得用户明确同意</li>
+  <li>法律法规明确要求</li>
+  <li>司法机关或行政机关依法要求</li>
+  <li>保护系统安全所必需</li>
+  <li>维护用户合法权益所必需</li>
+</ul>
+
+<p style="color: #606266;"><strong>5.2 共享原则：</strong></p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li>最小必要原则</li>
+  <li>合法正当原则</li>
+  <li>安全可控原则</li>
+</ul>
+
+<h3 style="color: #409eff; margin-top: 30px;">六、用户权利</h3>
+<p style="color: #606266;"><strong>6.1 您享有以下权利：</strong></p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li>访问您的个人信息</li>
+  <li>更正不准确的信息</li>
+  <li>删除您的个人信息</li>
+  <li>撤回信息使用授权</li>
+  <li>注销您的账号</li>
+  <li>投诉举报</li>
+  <li>获取个人信息副本</li>
+</ul>
+
+<p style="color: #606266;"><strong>6.2 权利行使方式：</strong></p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li>通过系统设置自行操作</li>
+  <li>联系客服协助处理</li>
+  <li>发送邮件申请</li>
+</ul>
+
+<h3 style="color: #409eff; margin-top: 30px;">七、Cookie和类似技术</h3>
+<p style="color: #606266;">7.1 本系统使用Cookie和localStorage技术：</p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li>记住登录状态</li>
+  <li>保存用户偏好设置</li>
+  <li>统计访问数据</li>
+  <li>改善用户体验</li>
+</ul>
+<p style="color: #606266;">7.2 您可以通过浏览器设置管理Cookie和localStorage。</p>
+
+<h3 style="color: #409eff; margin-top: 30px;">八、未成年人保护</h3>
+<p style="color: #606266;">8.1 本系统不向未满18周岁的未成年人提供服务。</p>
+<p style="color: #606266;">8.2 如发现未成年人使用本系统，我们将立即停止服务并删除相关信息。</p>
+
+<h3 style="color: #409eff; margin-top: 30px;">九、数据跨境传输</h3>
+<p style="color: #606266;">9.1 您的数据主要存储在中国境内。</p>
+<p style="color: #606266;">9.2 如需跨境传输，我们将遵守相关法律法规，并采取必要的安全措施。</p>
+
+<h3 style="color: #409eff; margin-top: 30px;">十、隐私协议的变更</h3>
+<p style="color: #606266;">10.1 我们可能适时修订本协议。</p>
+<p style="color: #606266;">10.2 变更后的协议将在系统内公布，继续使用即视为接受新协议。</p>
+<p style="color: #606266;">10.3 重大变更将通过系统通知或邮件方式告知用户。</p>
+
+<h3 style="color: #409eff; margin-top: 30px;">十一、联系我们</h3>
+<p style="color: #606266;">如您对本隐私协议有任何疑问、意见或建议，请通过以下方式联系我们：</p>
+<ul style="color: #606266; padding-left: 30px;">
+  <li><strong>客服电话：</strong>${basicForm.value.contactPhone || '400-xxx-xxxx'}</li>
+  <li><strong>客服邮箱：</strong>${basicForm.value.contactEmail || 'service@example.com'}</li>
+  <li><strong>公司地址：</strong>${basicForm.value.companyAddress || '请在系统设置中配置'}</li>
+</ul>
+<p style="color: #606266;">我们将在收到您的反馈后15个工作日内予以回复。</p>
+
+<p style="color: #909399; margin-top: 30px; font-size: 12px;">最后更新日期：${new Date().toLocaleDateString('zh-CN')}</p>
+</div>`
+}
+
+// 🔥 批次287：旧的协议函数已废弃，保留注释供参考
+// 这些函数已被新的协议列表管理函数替代
+// initAgreementContent, handleSaveAgreement, previewAgreement, resetAgreementToDefault
+
+/**
+ * 🔥 批次287：协议列表管理函数
+ */
+
+// 计算字数（去除HTML标签）
+const countWords = (html: string): number => {
+  const text = html.replace(/<[^>]+>/g, '').replace(/\s+/g, '')
+  return text.length
+}
+
+// 生成内容概述
+const generateSummary = (html: string): string => {
+  const text = html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+  return text.substring(0, 50) + (text.length > 50 ? '...' : '')
+}
+
+// 从localStorage加载协议列表
+const loadAgreementList = () => {
+  try {
+    const savedList = localStorage.getItem('crm_agreement_list')
+    if (savedList) {
+      agreementList.value = JSON.parse(savedList)
+      console.log('[协议列表] 已加载:', agreementList.value.length, '个协议')
+    } else {
+      console.log('[协议列表] 未找到保存的数据，使用默认空列表')
+    }
+  } catch (error) {
+    console.error('[协议列表] 加载失败:', error)
+  }
+}
+
+// 保存协议列表到localStorage
+const saveAgreementList = () => {
+  try {
+    localStorage.setItem('crm_agreement_list', JSON.stringify(agreementList.value))
+
+    // 同时更新configStore
+    const userAgreement = agreementList.value.find(a => a.type === 'user')
+    const privacyPolicy = agreementList.value.find(a => a.type === 'privacy')
+
+    if (userAgreement && privacyPolicy) {
+      configStore.updateSystemConfig({
+        userAgreement: userAgreement.content,
+        privacyPolicy: privacyPolicy.content
+      })
+    }
+
+    console.log('[协议列表] 已保存')
+  } catch (error) {
+    console.error('[协议列表] 保存失败:', error)
+    throw error
+  }
+}
+
+// 编辑协议
+const handleEditAgreement = (agreement: any) => {
+  currentEditingAgreement.value = { ...agreement }
+  agreementDialogVisible.value = true
+}
+
+// 保存编辑的协议
+const handleSaveAgreementContent = (content: string) => {
+  if (!currentEditingAgreement.value) return
+
+  const index = agreementList.value.findIndex(a => a.id === currentEditingAgreement.value.id)
+  if (index !== -1) {
+    // 更新现有协议
+    agreementList.value[index].content = content
+    agreementList.value[index].wordCount = countWords(content)
+    agreementList.value[index].summary = generateSummary(content)
+    agreementList.value[index].updateTime = new Date().toLocaleString('zh-CN')
+    ElMessage.success('协议内容已更新')
+  } else {
+    // 新增协议
+    const newAgreement = {
+      ...currentEditingAgreement.value,
+      content,
+      wordCount: countWords(content),
+      summary: generateSummary(content),
+      updateTime: new Date().toLocaleString('zh-CN')
+    }
+    agreementList.value.push(newAgreement)
+    ElMessage.success('协议已添加')
+  }
+}
+
+// 预览协议
+const handlePreviewAgreement = (agreement: unknown) => {
+  ElMessageBox.alert(
+    `<div style="max-height: 500px; overflow-y: auto; padding: 10px; text-align: left; font-size: 14px; line-height: 1.8;">${agreement.content}</div>`,
+    agreement.title,
+    {
+      confirmButtonText: '关闭',
+      dangerouslyUseHTMLString: true,
+      customStyle: {
+        width: '65%',
+        maxWidth: '800px'
+      }
+    }
+  )
+}
+
+// 协议状态变更
+const handleAgreementStatusChange = (agreement: unknown) => {
+  ElMessage.success(`${agreement.title}已${agreement.enabled ? '启用' : '禁用'}`)
+}
+
+// 新增协议
+const handleAddAgreement = () => {
+  const newId = Math.max(...agreementList.value.map(a => a.id), 0) + 1
+  const newAgreement = {
+    id: newId,
+    type: 'custom',
+    title: '新协议',
+    content: '<p>请输入协议内容...</p>',
+    wordCount: 0,
+    summary: '暂无内容',
+    updateTime: new Date().toLocaleString('zh-CN'),
+    enabled: false
+  }
+
+  currentEditingAgreement.value = newAgreement
+  agreementDialogVisible.value = true
+}
+
+// 保存协议列表配置
+const handleSaveAgreementList = async () => {
+  try {
+    agreementLoading.value = true
+
+    // 保存到localStorage和configStore
+    saveAgreementList()
+
+    ElMessage.success('协议配置保存成功')
+  } catch (error) {
+    console.error('[协议列表] 保存配置失败:', error)
+    ElMessage.error('保存失败，请重试')
+  } finally {
+    agreementLoading.value = false
+  }
+}
+
+/**
  * 保存基本设置
+ * 🔥 批次273修复：添加真实API调用，支持生产环境自动无缝切换
  */
 const handleSaveBasic = async () => {
   try {
@@ -3078,15 +3965,32 @@ const handleSaveBasic = async () => {
 
     basicLoading.value = true
 
-    // 使用配置store保存数据
+    // 1. 先保存到localStorage（本地缓存，立即生效）
     configStore.updateSystemConfig(basicForm.value)
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    console.log('[基本设置] 已保存到localStorage:', basicForm.value)
 
-    ElMessage.success('基本设置保存成功')
-  } catch (error) {
-    console.error('表单验证失败:', error)
+    // 2. 尝试保存到后端API（生产环境持久化）
+    try {
+      const { apiService } = await import('@/services/apiService')
+      await apiService.put('/system/basic-settings', basicForm.value)
+      console.log('[基本设置] 已同步到后端API')
+      ElMessage.success('基本设置保存成功')
+    } catch (apiError: unknown) {
+      // API调用失败时降级处理
+      console.warn('[基本设置] API调用失败，已保存到本地:', apiError.message || apiError)
+
+      // 如果是网络错误或API不存在，仍然提示成功（因为localStorage已保存）
+      if (apiError.code === 'ECONNREFUSED' || apiError.response?.status === 404) {
+        ElMessage.success('基本设置保存成功（本地模式）')
+      } else {
+        // 其他错误提示警告
+        ElMessage.warning('基本设置已保存到本地，但未能同步到服务器')
+      }
+    }
+  } catch (error: unknown) {
+    console.error('[基本设置] 表单验证失败:', error)
+    ElMessage.error('保存基本设置失败，请重试')
   } finally {
     basicLoading.value = false
   }
@@ -3094,6 +3998,7 @@ const handleSaveBasic = async () => {
 
 /**
  * 保存安全设置
+ * 🔥 批次264修复：添加真实API调用，支持生产环境自动无缝切换
  */
 const handleSaveSecurity = async () => {
   try {
@@ -3101,15 +4006,32 @@ const handleSaveSecurity = async () => {
 
     securityLoading.value = true
 
-    // 使用配置store保存数据
+    // 1. 先保存到localStorage（本地缓存，立即生效）
     configStore.updateSecurityConfig(securityForm.value)
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    console.log('[安全设置] 已保存到localStorage:', securityForm.value)
 
-    ElMessage.success('安全设置保存成功')
-  } catch (error) {
-    console.error('表单验证失败:', error)
+    // 2. 尝试保存到后端API（生产环境持久化）
+    try {
+      const { apiService } = await import('@/services/apiService')
+      await apiService.put('/system/security-settings', securityForm.value)
+      console.log('[安全设置] 已同步到后端API')
+      ElMessage.success('安全设置保存成功')
+    } catch (apiError: unknown) {
+      // API调用失败时降级处理
+      console.warn('[安全设置] API调用失败，已保存到本地:', apiError.message || apiError)
+
+      // 如果是网络错误或API不存在，仍然提示成功（因为localStorage已保存）
+      if (apiError.code === 'ECONNREFUSED' || apiError.response?.status === 404) {
+        ElMessage.success('安全设置保存成功（本地模式）')
+      } else {
+        // 其他错误提示警告
+        ElMessage.warning('安全设置已保存到本地，但未能同步到服务器')
+      }
+    }
+  } catch (error: unknown) {
+    console.error('[安全设置] 表单验证失败:', error)
+    ElMessage.error('保存安全设置失败，请重试')
   } finally {
     securityLoading.value = false
   }
@@ -3341,7 +4263,7 @@ const handleDisconnectDevice = async (deviceId: string) => {
 const toggleBluetoothConnection = async () => {
   try {
     bluetoothLoading.value = true
-    
+
     if (bluetoothConnection.value.enabled) {
       // 停止蓝牙服务
       await alternativeConnectionApi.stopBluetoothService()
@@ -3357,7 +4279,7 @@ const toggleBluetoothConnection = async () => {
       bluetoothConnection.value.pairingCode = response.data.pairingCode || generateRandomCode(6)
       ElMessage.success('蓝牙服务已启动')
     }
-    
+
     // 更新连接统计
     await updateConnectionStats()
   } catch (error) {
@@ -3374,7 +4296,7 @@ const toggleBluetoothConnection = async () => {
 const toggleNetworkConnection = async () => {
   try {
     networkLoading.value = true
-    
+
     if (networkConnection.value.enabled) {
       // 停止网络发现
       await alternativeConnectionApi.stopNetworkDiscovery()
@@ -3389,7 +4311,7 @@ const toggleNetworkConnection = async () => {
       networkConnection.value.enabled = true
       ElMessage.success(`网络发现已启动，端口: ${networkConnection.value.port}`)
     }
-    
+
     // 更新连接统计
     await updateConnectionStats()
   } catch (error) {
@@ -3406,7 +4328,7 @@ const toggleNetworkConnection = async () => {
 const toggleDigitalPairing = async () => {
   try {
     digitalPairingLoading.value = true
-    
+
     if (digitalPairing.value.enabled) {
       // 停止数字配对
       await alternativeConnectionApi.stopDigitalPairing()
@@ -3422,7 +4344,7 @@ const toggleDigitalPairing = async () => {
       digitalPairing.value.currentCode = response.data.pairingCode || generateRandomCode(6)
       ElMessage.success('数字配对已启动')
     }
-    
+
     // 更新连接统计
     await updateConnectionStats()
   } catch (error) {
@@ -3471,7 +4393,7 @@ const updateConnectionStats = async () => {
     // 从API获取真实的连接统计数据
     const response = await alternativeConnectionApi.getConnectionStatistics()
     const stats = response.data
-    
+
     connectionStats.value = {
       qr: stats.qr || connectionStats.value.qr,
       bluetooth: stats.bluetooth || 0,
@@ -3487,23 +4409,23 @@ const updateConnectionStats = async () => {
     } else {
       connectionStats.value.bluetooth = 0
     }
-    
+
     if (networkConnection.value.enabled) {
       connectionStats.value.network = Math.floor(Math.random() * 8) + 1
     } else {
       connectionStats.value.network = 0
     }
-    
+
     if (digitalPairing.value.enabled) {
       connectionStats.value.digital = Math.floor(Math.random() * 3) + 1
     } else {
       connectionStats.value.digital = 0
     }
-    
+
     // 更新总连接数
-    connectionStats.value.active = connectionStats.value.qr + 
-                                   connectionStats.value.bluetooth + 
-                                   connectionStats.value.network + 
+    connectionStats.value.active = connectionStats.value.qr +
+                                   connectionStats.value.bluetooth +
+                                   connectionStats.value.network +
                                    connectionStats.value.digital
   }
 }
@@ -3536,6 +4458,7 @@ const handleSaveStorage = async () => {
 
 /**
  * 保存商品设置
+ * 🔥 批次264修复：添加真实API调用，支持生产环境自动无缝切换
  */
 const handleSaveProduct = async () => {
   try {
@@ -3559,20 +4482,31 @@ const handleSaveProduct = async () => {
 
     productLoading.value = true
 
-    // 使用配置store保存数据
+    // 1. 先保存到localStorage（本地缓存，立即生效）
     configStore.updateProductConfig(productForm.value)
 
-    console.log('保存商品设置:', productForm.value)
+    console.log('[商品设置] 已保存到localStorage:', productForm.value)
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    // 2. 尝试保存到后端API（生产环境持久化）
+    try {
+      const { apiService } = await import('@/services/apiService')
+      await apiService.put('/system/product-settings', productForm.value)
+      console.log('[商品设置] 已同步到后端API')
+      ElMessage.success('商品设置保存成功')
+    } catch (apiError: unknown) {
+      // API调用失败时降级处理
+      console.warn('[商品设置] API调用失败，已保存到本地:', apiError.message || apiError)
 
-    // 实际API调用示例：
-    // await request.put('/api/system/product-settings', productForm.value)
-
-    ElMessage.success('商品设置保存成功')
-  } catch (error) {
-    console.error('表单验证失败:', error)
+      // 如果是网络错误或API不存在，仍然提示成功（因为localStorage已保存）
+      if (apiError.code === 'ECONNREFUSED' || apiError.response?.status === 404) {
+        ElMessage.success('商品设置保存成功（本地模式）')
+      } else {
+        // 其他错误提示警告
+        ElMessage.warning('商品设置已保存到本地，但未能同步到服务器')
+      }
+    }
+  } catch (error: unknown) {
+    console.error('[商品设置] 表单验证失败:', error)
     if (error.message) {
       ElMessage.error(error.message)
     } else {
@@ -3610,22 +4544,64 @@ const handleResetProduct = () => {
 
 /**
  * 刷新监控数据
+ * 🔥 批次266修复：使用真实数据，支持API调用
  */
 const handleRefreshMonitor = async () => {
   try {
     monitorLoading.value = true
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // 1. 先刷新前端可获取的真实数据
+    getRealMonitorData()
 
-    // 模拟数据更新
-    monitorData.value.performance.cpuUsage = Math.floor(Math.random() * 100)
-    monitorData.value.performance.memoryUsage = Math.floor(Math.random() * 100)
-    monitorData.value.performance.diskUsage = Math.floor(Math.random() * 100)
-    monitorData.value.performance.networkLatency = Math.floor(Math.random() * 50) + 5
+    // 2. 尝试从后端API获取服务器监控数据
+    try {
+      const { apiService } = await import('@/services/apiService')
+      const serverData = await apiService.get('/system/monitor')
 
-    ElMessage.success('监控数据刷新成功')
-  } catch (error) {
+      // 合并服务器数据
+      if (serverData.systemInfo) {
+        monitorData.value.systemInfo = {
+          ...monitorData.value.systemInfo,
+          ...serverData.systemInfo
+        }
+      }
+
+      if (serverData.performance) {
+        monitorData.value.performance = {
+          ...monitorData.value.performance,
+          ...serverData.performance
+        }
+      }
+
+      if (serverData.database) {
+        monitorData.value.database = {
+          ...monitorData.value.database,
+          ...serverData.database
+        }
+      }
+
+      if (serverData.services && serverData.services.length > 0) {
+        // 合并前端服务和后端服务
+        monitorData.value.services = [
+          ...monitorData.value.services,
+          ...serverData.services
+        ]
+      }
+
+      console.log('[系统监控] 已同步服务器监控数据')
+      ElMessage.success('监控数据刷新成功（包含服务器数据）')
+    } catch (apiError: unknown) {
+      // API调用失败时降级处理
+      console.warn('[系统监控] API调用失败，使用前端数据:', apiError.message || apiError)
+
+      if (apiError.code === 'ECONNREFUSED' || apiError.response?.status === 404) {
+        ElMessage.success('监控数据刷新成功（前端模式）')
+      } else {
+        ElMessage.warning('监控数据已刷新，但未能获取服务器数据')
+      }
+    }
+  } catch (error: unknown) {
+    console.error('[系统监控] 刷新失败:', error)
     ElMessage.error('刷新监控数据失败')
   } finally {
     monitorLoading.value = false
@@ -3855,7 +4831,7 @@ const handleTestBackup = async () => {
 /**
  * 恢复备份
  */
-const handleRestoreBackup = async (backup: any) => {
+const handleRestoreBackup = async (backup: unknown) => {
   try {
     await ElMessageBox.confirm(
       `确定要恢复备份 "${backup.filename}" 吗？这将覆盖当前所有数据！`,
@@ -3888,7 +4864,7 @@ const handleRestoreBackup = async (backup: any) => {
 /**
  * 下载备份
  */
-const handleDownloadBackup = async (backup: any) => {
+const handleDownloadBackup = async (backup: unknown) => {
   try {
     const url = await dataBackupService.getBackupDownloadUrl(backup.filename)
     const link = document.createElement('a')
@@ -3907,7 +4883,7 @@ const handleDownloadBackup = async (backup: any) => {
 /**
  * 删除备份
  */
-const handleDeleteBackup = async (backup: any) => {
+const handleDeleteBackup = async (backup: unknown) => {
   try {
     await ElMessageBox.confirm(
       `确定要删除备份 "${backup.filename}" 吗？`,
@@ -3954,12 +4930,17 @@ const loadBackupStatus = async () => {
     Object.assign(backupForm, config)
 
     const list = await dataBackupService.getBackupList()
-    backupCount.value = list.length
-    totalBackupSize.value = list.reduce((total, backup) => total + backup.size, 0)
+    if (list && Array.isArray(list)) {
+      backupCount.value = list.length
+      totalBackupSize.value = list.reduce((total, backup) => total + backup.size, 0)
 
-    if (list.length > 0) {
-      const latest = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
-      lastBackupTime.value = latest.timestamp
+      if (list.length > 0) {
+        const latest = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
+        lastBackupTime.value = latest.timestamp
+      }
+    } else {
+      backupCount.value = 0
+      totalBackupSize.value = 0
     }
   } catch (error) {
     console.error('加载备份状态失败:', error)
@@ -4093,10 +5074,10 @@ const getLogLevelType = (level: string) => {
 const refreshLogs = async () => {
   try {
     logsLoading.value = true
-    
+
     // 调用真实的API获取系统日志
     const response = await logsApi.getSystemLogs({ limit: 100 })
-    if (response.success) {
+    if (response.success && response.data) {
       systemLogs.value = response.data
       ElMessage.success(`已刷新 ${response.data.length} 条日志`)
     } else {
@@ -4124,7 +5105,7 @@ const clearLogs = async () => {
         type: 'warning'
       }
     )
-    
+
     // 调用真实的API清空系统日志
     const response = await logsApi.clearSystemLogs()
     if (response.success) {
@@ -4144,7 +5125,7 @@ const clearLogs = async () => {
 /**
  * 显示日志详情
  */
-const showLogDetails = (log: any) => {
+const showLogDetails = (log: unknown) => {
   ElMessageBox.alert(log.details, `日志详情 - ${log.message}`, {
     confirmButtonText: '确定',
     type: 'info'
@@ -4161,16 +5142,16 @@ const refreshMobileSDKInfo = async () => {
   try {
     // 模拟API调用获取SDK信息
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     // 更新SDK信息
     mobileSDKInfo.value.android.updateTime = new Date().toLocaleString()
     mobileSDKInfo.value.ios.updateTime = new Date().toLocaleString()
-    
+
     // 更新连接统计
     connectionStats.value.active = Math.floor(Math.random() * 10) + 1
     connectionStats.value.today = Math.floor(Math.random() * 50) + 10
     connectionStats.value.lastConnection = new Date().toLocaleString()
-    
+
     ElMessage.success('SDK信息已刷新')
   } catch (error) {
     ElMessage.error('刷新SDK信息失败')
@@ -4187,7 +5168,7 @@ const downloadAndroidSDK = () => {
     ElMessage.warning('Android SDK暂不可用')
     return
   }
-  
+
   // 创建下载链接 - 使用最新版本的APK
   const link = document.createElement('a')
   link.href = '/downloads/CRM-Mobile-SDK-v2.1.3.apk'
@@ -4195,7 +5176,7 @@ const downloadAndroidSDK = () => {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-  
+
   ElMessage.success('开始下载Android SDK v2.1.3 (6MB)')
 }
 
@@ -4207,7 +5188,7 @@ const downloadIOSSDK = () => {
     ElMessage.warning('iOS SDK暂不可用')
     return
   }
-  
+
   // 创建下载链接
   const link = document.createElement('a')
   link.href = '/downloads/crm-ios-v1.0.0.ipa'
@@ -4215,7 +5196,7 @@ const downloadIOSSDK = () => {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-  
+
   ElMessage.success('开始下载iOS SDK')
 }
 
@@ -4245,11 +5226,11 @@ const openPWAApp = () => {
  */
 const showQRCode = async () => {
   const pwaUrl = `${window.location.origin}/mobile`
-  
+
   try {
     // 生成二维码图片
     const qrCodeDataUrl = await generateQRCodeImage(pwaUrl)
-    
+
     ElMessageBox.alert(
       `<div style="text-align: center; padding: 20px;">
         <div style="margin-bottom: 16px; font-size: 16px; font-weight: 600;">扫描二维码访问PWA应用</div>
@@ -4280,7 +5261,7 @@ const generateQRCodeImage = async (data: string): Promise<string> => {
   try {
     // 动态导入qrcode库
     const QRCode = await import('qrcode')
-    
+
     // 生成二维码数据URL
     const qrCodeDataUrl = await QRCode.toDataURL(data, {
       width: 200,
@@ -4291,7 +5272,7 @@ const generateQRCodeImage = async (data: string): Promise<string> => {
       },
       errorCorrectionLevel: 'M'
     })
-    
+
     return qrCodeDataUrl
   } catch (error) {
     console.error('生成二维码图片失败:', error)
@@ -4308,11 +5289,11 @@ const generateSystemQRCode = async () => {
   try {
     // 生成连接ID
     const connectionId = 'qr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
-    
+
     // 计算过期时间
     const expireMinutes = parseInt(qrConnectionForm.expireTime)
     const expiresAt = new Date(Date.now() + expireMinutes * 60 * 1000)
-    
+
     // 构建连接数据
     const connectionData = {
       connectionId,
@@ -4321,10 +5302,10 @@ const generateSystemQRCode = async () => {
       expiresAt: expiresAt.getTime(),
       type: 'system_connection'
     }
-    
+
     // 生成二维码
     const qrCodeUrl = await generateQRCodeImage(JSON.stringify(connectionData))
-    
+
     // 更新系统二维码连接状态
     systemQRConnection.value = {
       qrCodeUrl,
@@ -4333,7 +5314,7 @@ const generateSystemQRCode = async () => {
       expiresAt: expiresAt.toISOString(),
       connectedDevices: []
     }
-    
+
     ElMessage.success('二维码生成成功')
   } catch (error) {
     console.error('生成二维码失败:', error)
@@ -4351,7 +5332,7 @@ const refreshSystemQRCode = async () => {
     ElMessage.warning('请先生成二维码')
     return
   }
-  
+
   await generateSystemQRCode()
   ElMessage.success('二维码已刷新')
 }
@@ -4397,12 +5378,12 @@ const refreshConnectedDevices = async () => {
     // 调用API获取已连接设备
     const response = await alternativeConnectionApi.getAllConnectedDevices()
     connectedDevices.value = response.data || []
-    
+
     ElMessage.success('设备列表已刷新')
   } catch (error) {
     console.error('刷新设备列表失败:', error)
     ElMessage.error('刷新设备列表失败')
-    
+
     // 如果API调用失败，使用模拟数据作为备用
     connectedDevices.value = [
       {
@@ -4442,9 +5423,14 @@ onMounted(() => {
   // 初始化数据
   loadBackupStatus()
   loadBackupList()
-  
+
   // 初始化系统日志
   refreshLogs()
+
+  // 🔥 批次287修复：注释掉旧的协议初始化，改用列表加载
+  // initAgreementContent()
+  // 改为加载协议列表
+  loadAgreementList()
 
   // 初始化数据统计
   const initDataStatistics = async () => {
@@ -4537,6 +5523,80 @@ onMounted(() => {
   background: #fff;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 标签页滑动容器样式 */
+.settings-tabs-container {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tabs-nav-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 8px 8px 0 0;
+  border-bottom: 1px solid #e4e7ed;
+  padding: 0 8px;
+  min-height: 54px;
+}
+
+.tabs-nav-wrapper {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  margin: 0 8px;
+}
+
+.tabs-nav-wrapper::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
+}
+
+.tabs-nav-wrapper .settings-tabs {
+  background: transparent;
+  box-shadow: none;
+}
+
+.tabs-nav-wrapper .el-tabs__header {
+  margin: 0;
+  border-bottom: none;
+}
+
+.tabs-nav-wrapper .el-tabs__nav-wrap {
+  overflow: visible;
+}
+
+.tabs-nav-wrapper .el-tabs__nav-scroll {
+  overflow: visible;
+}
+
+
+
+/* 标签页内容区域样式 */
+.settings-tabs .el-tabs__content {
+  padding: 20px;
+  background: #fff;
+  border-radius: 0 0 8px 8px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .tabs-nav-container {
+    padding: 0 4px;
+    min-height: 48px;
+  }
+
+  .tabs-nav-wrapper {
+    margin: 0;
+  }
+
+  .settings-tabs .el-tabs__content {
+    padding: 16px;
+  }
 }
 
 .setting-card {
@@ -5179,24 +6239,184 @@ onMounted(() => {
   .sdk-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .status-info {
     flex-direction: column;
     gap: 8px;
     align-items: flex-start;
   }
-  
+
   .sdk-actions {
     justify-content: center;
   }
-  
+
   .alternative-connections .el-col {
     margin-bottom: 20px;
   }
-  
+
   .pairing-code {
     font-size: 16px;
     min-width: 100px;
   }
 }
+
+/* 🔥 批次275新增：二维码上传优化样式 */
+.qr-upload-buttons {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.qr-preview-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.qr-thumbnail {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border: 2px solid #dcdfe6;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.qr-thumbnail:hover {
+  border-color: #409eff;
+  transform: scale(1.05);
+}
+
+.qr-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+
+.qr-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.qr-thumbnail:hover .qr-overlay {
+  opacity: 1;
+}
+
+.zoom-icon {
+  font-size: 32px;
+  color: #fff;
+}
+
+.qr-empty-state {
+  text-align: center;
+  padding: 30px;
+  background: #f5f7fa;
+  border: 2px dashed #dcdfe6;
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.qr-empty-state p {
+  margin-top: 12px;
+  color: #909399;
+  font-size: 14px;
+}
+
+.upload-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
+}
+
+/* 🔥 批次275新增：用户协议样式 */
+.agreement-form {
+  max-width: 1200px;
+}
+
+.agreement-textarea {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.agreement-textarea :deep(textarea) {
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.6;
+}
+
+.form-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.form-tip .el-icon {
+  font-size: 14px;
+}
 </style>
+
+
+/* 🔥 批次274新增：二维码上传样式 */
+.qr-uploader {
+  width: 100%;
+}
+
+.qr-uploader :deep(.el-upload) {
+  border: 1px dashed #d9d9d9;
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s;
+  width: 100%;
+  height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-uploader :deep(.el-upload:hover) {
+  border-color: #409eff;
+}
+
+.qr-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 10px;
+}
+
+.qr-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #8c939d;
+  font-size: 14px;
+}
+
+.qr-placeholder .el-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.qr-text {
+  font-size: 12px;
+  color: #999;
+}

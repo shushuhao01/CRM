@@ -10,21 +10,21 @@
   >
     <template v-for="item in accessibleMenus" :key="item.id">
       <!-- 有子菜单的项 -->
-      <el-sub-menu v-if="item.children && item.children.length > 0" :index="item.id">
+      <el-sub-menu v-if="item.children && (item.children?.length || 0) > 0" :index="item.id">
         <template #title>
           <el-icon v-if="item.icon">
             <component :is="getIconComponent(item.icon)" />
           </el-icon>
           <span>{{ item.title }}</span>
         </template>
-        
+
         <template v-for="child in item.children" :key="child.id">
           <el-menu-item v-if="child.path" :index="child.path">
             {{ child.title }}
           </el-menu-item>
         </template>
       </el-sub-menu>
-      
+
       <!-- 没有子菜单的项 -->
       <el-menu-item v-else-if="item.path" :index="item.path">
         <el-icon v-if="item.icon">
@@ -37,17 +37,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineProps, defineEmits } from 'vue'
+import { computed, defineProps, defineEmits, watch, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { 
-  Odometer, 
-  User, 
-  ShoppingCart, 
-  TrendCharts, 
-  Van, 
-  Files, 
-  Box, 
-  Setting 
+import {
+  Odometer,
+  User,
+  ShoppingCart,
+  TrendCharts,
+  Van,
+  Files,
+  Box,
+  Setting
 } from '@element-plus/icons-vue'
 import { menuConfig } from '@/config/menu'
 import { getUserAccessibleMenus } from '@/utils/menu'
@@ -89,12 +89,41 @@ const emit = defineEmits<Emits>()
 const route = useRoute()
 const userStore = useUserStore()
 
+// 🔥 批次279修复: 添加菜单刷新键，用于强制更新菜单
+const menuRefreshKey = ref(0)
+
 // 当前激活的菜单
 const activeMenu = computed(() => route.path)
 
+// 🔥 批次279修复: 监听权限变化，权限加载完成后强制刷新菜单
+watch(() => userStore.permissions, (newPermissions, oldPermissions) => {
+  console.log('[DynamicMenu] 权限变化检测:', {
+    旧权限数量: oldPermissions?.length || 0,
+    新权限数量: newPermissions?.length || 0,
+    新权限: newPermissions
+  })
+
+  // 如果权限从空变为有值，强制刷新菜单
+  if ((!oldPermissions || oldPermissions.length === 0) && newPermissions && newPermissions.length > 0) {
+    menuRefreshKey.value++
+    console.log('[DynamicMenu] 🔄 权限已加载，强制刷新菜单 (key:', menuRefreshKey.value, ')')
+  }
+}, { deep: true, immediate: true })
+
 // 获取用户可访问的菜单
 const accessibleMenus = computed(() => {
-  return getUserAccessibleMenus(menuConfig)
+  // 添加menuRefreshKey作为依赖，确保权限变化时重新计算
+  const _ = menuRefreshKey.value
+
+  console.log('[DynamicMenu] 开始计算可访问菜单 (刷新键:', _, ')')
+  console.log('[DynamicMenu] 当前用户:', userStore.currentUser)
+  console.log('[DynamicMenu] 用户权限:', userStore.permissions)
+  console.log('[DynamicMenu] 菜单配置:', menuConfig)
+
+  const menus = getUserAccessibleMenus(menuConfig)
+  console.log('[DynamicMenu] 过滤后的菜单:', menus)
+
+  return menus
 })
 
 // 获取图标组件

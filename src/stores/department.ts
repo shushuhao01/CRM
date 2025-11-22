@@ -8,6 +8,9 @@ export interface Department {
   code: string
   description?: string
   parentId?: string | null
+  level: number
+  managerId?: string | null
+  managerName?: string
   sortOrder: number
   status: 'active' | 'inactive'
   memberCount: number
@@ -71,19 +74,24 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     totalMembers: 0,
     departmentsByType: {}
   })
-  
+
   // 统计数据优先使用API数据，如果API数据为空则使用计算属性
   const stats = computed<DepartmentStats>(() => {
     // 如果API统计数据有效，使用API数据
     if (apiStats.value.totalDepartments > 0) {
       return apiStats.value
     }
+
+    // 确保departments.value和members.value是数组
+    const departmentsArray = Array.isArray(departments.value) ? departments.value : []
+    const membersArray = Array.isArray(members.value) ? members.value : []
+
     // 否则使用计算属性作为备用
     return {
-      totalDepartments: departments.value.length,
-      activeDepartments: departments.value.filter(d => d.status === 'active').length,
-      totalMembers: members.value.filter(m => m.status === 'active').length,
-      departmentsByType: departments.value.reduce((acc, dept) => {
+      totalDepartments: departmentsArray.length,
+      activeDepartments: departmentsArray.filter(d => d.status === 'active').length,
+      totalMembers: membersArray.filter(m => m.status === 'active').length,
+      departmentsByType: departmentsArray.reduce((acc, dept) => {
         const type = dept.parentId ? '子部门' : '主部门'
         acc[type] = (acc[type] || 0) + 1
         return acc
@@ -98,10 +106,15 @@ export const useDepartmentStore = createPersistentStore('department', () => {
 
   // 获取部门树形结构
   const departmentTree = computed(() => {
+    // 确保departments.value是数组
+    if (!Array.isArray(departments.value)) {
+      return []
+    }
+
     const buildTree = (parentId: string | null): Department[] => {
       return departments.value
         .filter(dept => dept.parentId === parentId)
-        .sort((a, b) => a.sort - b.sort)
+        .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
         .map(dept => ({
           ...dept,
           children: buildTree(dept.id)
@@ -112,9 +125,14 @@ export const useDepartmentStore = createPersistentStore('department', () => {
 
   // 获取部门列表（扁平化）
   const departmentList = computed(() => {
+    // 确保departments.value是数组
+    if (!Array.isArray(departments.value)) {
+      return []
+    }
+
     return departments.value.sort((a, b) => {
-      if (a.level !== b.level) return a.level - b.level
-      return a.sort - b.sort
+      // 使用sortOrder字段进行排序
+      return (a.sortOrder || 0) - (b.sortOrder || 0)
     })
   })
 
@@ -123,9 +141,57 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     return departments.value.find(dept => dept.id === id)
   }
 
-  // 获取部门成员
-  const getDepartmentMembers = (departmentId: string) => {
-    return members.value.filter(member => member.departmentId === departmentId)
+  // 获取部门成员（从localStorage的crm_mock_users数据中读取）
+  const getDepartmentMembers = (departmentId: string): DepartmentMember[] => {
+    try {
+      // 从localStorage获取真实用户数据（用户管理页面使用的数据）
+      const userDatabaseStr = localStorage.getItem('userDatabase')
+      let users: any[] = []
+
+      if (userDatabaseStr) {
+        users = JSON.parse(userDatabaseStr)
+        console.log('[部门Store] 从userDatabase加载用户:', users.length, '个')
+      } else {
+        // 如果userDatabase不存在，尝试从crm_mock_users获取
+        const mockUsersStr = localStorage.getItem('crm_mock_users')
+        if (mockUsersStr) {
+          users = JSON.parse(mockUsersStr)
+          console.log('[部门Store] 从crm_mock_users加载用户:', users.length, '个')
+        }
+      }
+
+      console.log('[部门Store] 查询部门ID:', departmentId)
+
+      // 获取部门信息
+      const department = departments.value.find(d => String(d.id) === String(departmentId))
+      console.log('[部门Store] 部门信息:', department?.name)
+
+      // 筛选该部门的用户并转换为DepartmentMember格式
+      const departmentUsers = users.filter((user: any) => {
+        // departmentId字段匹配（转为字符串比较）
+        const match = String(user.departmentId) === String(departmentId)
+        if (match) {
+          console.log('[部门Store] 匹配到用户:', user.name || user.realName || user.username, '部门ID:', user.departmentId)
+        }
+        return match
+      })
+
+      console.log(`[部门Store] 部门${departmentId}的成员数:`, departmentUsers.length)
+
+      return departmentUsers.map((user: unknown) => ({
+        id: user.id,
+        departmentId: user.departmentId,
+        userId: user.id,
+        userName: user.name || user.realName || user.username,
+        userAvatar: user.avatar || '',
+        position: user.position || user.role || '成员',
+        joinDate: user.createTime || user.createdAt || new Date().toISOString(),
+        status: user.status || 'active'
+      }))
+    } catch (error) {
+      console.error('[部门Store] 获取部门成员失败:', error)
+      return []
+    }
   }
 
   // 添加部门
@@ -152,7 +218,19 @@ export const useDepartmentStore = createPersistentStore('department', () => {
       const { updateDepartment: updateDepartmentAPI } = await import('@/api/department')
       const response = await updateDepartmentAPI(id, updates)
       const updatedDepartment = response.data
-      
+
+      // 设置负责人名称
+      if (updatedDepartment.managerId) {
+        const usersStr = localStorage.getItem('crm_mock_users')
+        if (usersStr) {
+          const users = JSON.parse(usersStr)
+          const manager = users.find((u: unknown) => String(u.id) === String(updatedDepartment.managerId))
+          if (manager) {
+            updatedDepartment.managerName = manager.realName || manager.username
+          }
+        }
+      }
+
       const index = departments.value.findIndex(d => d.id === id)
       if (index !== -1) {
         departments.value[index] = updatedDepartment
@@ -173,7 +251,7 @@ export const useDepartmentStore = createPersistentStore('department', () => {
       const { updateDepartmentStatus: updateDepartmentStatusAPI } = await import('@/api/department')
       const response = await updateDepartmentStatusAPI(id, status)
       const updatedDepartment = response.data
-      
+
       const index = departments.value.findIndex(d => d.id === id)
       if (index !== -1) {
         departments.value[index] = updatedDepartment
@@ -193,7 +271,7 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     try {
       const { deleteDepartment: deleteDepartmentAPI } = await import('@/api/department')
       await deleteDepartmentAPI(id)
-      
+
       const index = departments.value.findIndex(d => d.id === id)
       if (index !== -1) {
         departments.value.splice(index, 1)
@@ -233,15 +311,15 @@ export const useDepartmentStore = createPersistentStore('department', () => {
       const { addDepartmentMember: addDepartmentMemberAPI } = await import('@/api/department')
       const response = await addDepartmentMemberAPI(member.departmentId, member.userId, member.role)
       const newMember = response.data
-      
+
       members.value.push(newMember)
-      
+
       // 更新部门成员数量
       const dept = departments.value.find(d => d.id === member.departmentId)
       if (dept) {
         dept.memberCount = (dept.memberCount || 0) + 1
       }
-      
+
       return newMember
     } catch (error) {
       console.error('添加部门成员失败:', error)
@@ -257,17 +335,17 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     try {
       const { removeDepartmentMember: removeDepartmentMemberAPI } = await import('@/api/department')
       await removeDepartmentMemberAPI(departmentId, userId)
-      
+
       const index = members.value.findIndex(m => m.departmentId === departmentId && m.userId === userId)
       if (index !== -1) {
         members.value.splice(index, 1)
-        
+
         // 更新部门成员数量
         const dept = departments.value.find(d => d.id === departmentId)
         if (dept && dept.memberCount > 0) {
           dept.memberCount -= 1
         }
-        
+
         return true
       }
       return false
@@ -340,7 +418,7 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     departments.value.forEach(dept => {
       stats.totalPermissions += dept.permissions.length
       stats.departmentPermissions[dept.id] = dept.permissions.length
-      
+
       dept.permissions.forEach(permission => {
         stats.permissionUsage[permission] = (stats.permissionUsage[permission] || 0) + 1
       })
@@ -477,16 +555,84 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     }
   }
 
-  // 获取部门数据（调用真实API）
+  // 获取部门数据（开发环境从localStorage，生产环境调用API）
+  // 根据managerId设置managerName
+  const enrichDepartmentsWithManagerNames = async (depts: Department[]) => {
+    try {
+      // 获取所有用户数据
+      const usersStr = localStorage.getItem('crm_mock_users')
+      if (!usersStr) return depts
+
+      const users = JSON.parse(usersStr)
+
+      // 为每个部门设置managerName
+      return depts.map(dept => {
+        if (dept.managerId) {
+          const manager = users.find((u: unknown) => String(u.id) === String(dept.managerId))
+          if (manager) {
+            return {
+              ...dept,
+              managerName: manager.realName || manager.username
+            }
+          }
+        }
+        return dept
+      })
+    } catch (error) {
+      console.error('[DepartmentStore] 设置负责人名称失败:', error)
+      return depts
+    }
+  }
+
   const fetchDepartments = async () => {
     loading.value = true
     try {
+      console.log('[DepartmentStore] 开始获取部门数据...')
+
+      // 先尝试从localStorage读取（开发环境）
+      const localDeptsStr = localStorage.getItem('crm_mock_departments')
+      if (localDeptsStr) {
+        let localDepts = JSON.parse(localDeptsStr)
+        // 设置负责人名称
+        localDepts = await enrichDepartmentsWithManagerNames(localDepts)
+        departments.value = localDepts
+        console.log('[DepartmentStore] 从localStorage加载部门数据:', departments.value.length, '个部门')
+        loading.value = false
+        return
+      }
+
+      // 如果localStorage没有，尝试调用API（生产环境）
       const { getDepartmentList } = await import('@/api/department')
+      console.log('[DepartmentStore] API方法已导入，开始调用...')
       const response = await getDepartmentList()
-      departments.value = response.data || []
+      console.log('[DepartmentStore] API响应:', response)
+
+      // 确保departments.value始终是数组
+      if (response && response.data) {
+        console.log('[DepartmentStore] 响应包含data字段:', response.data)
+        let depts = Array.isArray(response.data) ? response.data : []
+        // 设置负责人名称
+        depts = await enrichDepartmentsWithManagerNames(depts)
+        departments.value = depts
+      } else {
+        console.log('[DepartmentStore] 响应不包含data字段，设置为空数组')
+        departments.value = []
+      }
+
+      console.log('[DepartmentStore] 部门数据已更新:', departments.value.length, '个部门')
     } catch (error) {
-      console.error('获取部门列表失败:', error)
-      departments.value = []
+      console.error('[DepartmentStore] 获取部门列表失败:', error)
+      // API失败时，尝试从localStorage读取
+      const localDeptsStr = localStorage.getItem('crm_mock_departments')
+      if (localDeptsStr) {
+        let localDepts = JSON.parse(localDeptsStr)
+        // 设置负责人名称
+        localDepts = await enrichDepartmentsWithManagerNames(localDepts)
+        departments.value = localDepts
+        console.log('[DepartmentStore] API失败，从localStorage加载部门数据:', departments.value.length, '个部门')
+      } else {
+        departments.value = []
+      }
     } finally {
       loading.value = false
     }
@@ -497,13 +643,23 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     try {
       const { getDepartmentStats } = await import('@/api/department')
       const response = await getDepartmentStats()
-      if (response.data) {
-        apiStats.value = response.data
-        console.log('[DepartmentStore] 统计数据已更新:', response.data)
+      console.log('[DepartmentStore] 统计API响应:', response)
+
+      if (response && response.data) {
+        apiStats.value = {
+          totalDepartments: response.data.totalDepartments || 0,
+          activeDepartments: response.data.activeDepartments || 0,
+          totalMembers: response.data.totalMembers || 0,
+          departmentsByType: response.data.departmentsByType || {}
+        }
+        console.log('[DepartmentStore] 统计数据已更新:', apiStats.value)
+      } else {
+        console.log('[DepartmentStore] 统计API无数据，使用计算属性')
       }
     } catch (error) {
       console.error('获取部门统计数据失败:', error)
       // 如果API失败，保持使用计算属性
+      console.log('[DepartmentStore] 统计API失败，使用计算属性')
     }
   }
 
@@ -513,7 +669,7 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     try {
       const { getDepartmentMembers: getDepartmentMembersAPI } = await import('@/api/department')
       const allMembers: DepartmentMember[] = []
-      
+
       // 为每个部门获取成员数据
       for (const dept of departments.value) {
         try {
@@ -523,7 +679,7 @@ export const useDepartmentStore = createPersistentStore('department', () => {
           console.warn(`获取部门 ${dept.name} 成员失败:`, error)
         }
       }
-      
+
       members.value = allMembers
     } catch (error) {
       console.error('获取部门成员失败:', error)
@@ -539,7 +695,7 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     try {
       const { getDepartmentRoles: getDepartmentRolesAPI } = await import('@/api/department')
       const allRoles: DepartmentRole[] = []
-      
+
       // 为每个部门获取角色数据
       for (const dept of departments.value) {
         try {
@@ -549,7 +705,7 @@ export const useDepartmentStore = createPersistentStore('department', () => {
           console.warn(`获取部门 ${dept.name} 角色失败:`, error)
         }
       }
-      
+
       roles.value = allRoles
     } catch (error) {
       console.error('获取部门角色失败:', error)
@@ -559,12 +715,86 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     }
   }
 
+  // 更新部门成员数量（从localStorage的users数据同步）
+  const updateDepartmentMemberCount = async (departmentId: string) => {
+    const dept = departments.value.find(d => d.id === departmentId)
+    if (dept) {
+      const members = getDepartmentMembers(departmentId)
+      dept.memberCount = members.length
+      dept.updatedAt = new Date().toISOString()
+      console.log(`[部门Store] 更新部门${departmentId}成员数:`, dept.memberCount)
+    }
+  }
+
+  // 同步所有部门的成员数量（从localStorage的crm_mock_users数据）
+  const syncAllDepartmentMemberCounts = () => {
+    try {
+      console.log('[部门Store] 开始同步所有部门成员数量...')
+      const usersStr = localStorage.getItem('crm_mock_users')
+      if (!usersStr) {
+        console.log('[部门Store] 未找到crm_mock_users数据')
+        return
+      }
+
+      const users = JSON.parse(usersStr)
+      console.log('[部门Store] 用户总数:', users.length)
+
+      // 统计每个部门的活跃成员数
+      const departmentMemberCounts: Record<string, number> = {}
+      users.forEach((user: unknown) => {
+        if (user.departmentId && user.status === 'active') {
+          const deptId = String(user.departmentId)
+          departmentMemberCounts[deptId] = (departmentMemberCounts[deptId] || 0) + 1
+        }
+      })
+
+      console.log('[部门Store] 部门成员统计:', departmentMemberCounts)
+
+      // 更新crm_mock_departments中的成员数
+      const deptsStr = localStorage.getItem('crm_mock_departments')
+      if (deptsStr) {
+        const depts = JSON.parse(deptsStr)
+        let updated = false
+
+        depts.forEach((dept: unknown) => {
+          const newCount = departmentMemberCounts[String(dept.id)] || 0
+          if (dept.memberCount !== newCount) {
+            console.log(`[部门Store] 更新部门${dept.name}(${dept.id})成员数: ${dept.memberCount} -> ${newCount}`)
+            dept.memberCount = newCount
+            dept.updatedAt = new Date().toISOString()
+            updated = true
+          }
+        })
+
+        if (updated) {
+          localStorage.setItem('crm_mock_departments', JSON.stringify(depts))
+          console.log('[部门Store] 已保存更新到localStorage')
+        }
+      }
+
+      // 同时更新store中的departments
+      departments.value.forEach(dept => {
+        const newCount = departmentMemberCounts[String(dept.id)] || 0
+        if (dept.memberCount !== newCount) {
+          dept.memberCount = newCount
+          dept.updatedAt = new Date().toISOString()
+        }
+      })
+
+      console.log('[部门Store] 所有部门成员数量同步完成')
+    } catch (error) {
+      console.error('[部门Store] 同步部门成员数量失败:', error)
+    }
+  }
+
   // 初始化所有数据
   const initData = async () => {
     await fetchDepartments()
     await fetchDepartmentMembers()
     await fetchDepartmentRoles()
     await fetchDepartmentStats()
+    // 同步部门成员数量
+    syncAllDepartmentMemberCounts()
   }
 
   return {
@@ -602,6 +832,8 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     fetchDepartmentMembers,
     fetchDepartmentRoles,
     fetchDepartmentStats,
+    updateDepartmentMemberCount,
+    syncAllDepartmentMemberCounts,
     initData,
     initMockData
   }

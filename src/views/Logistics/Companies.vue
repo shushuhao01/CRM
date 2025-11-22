@@ -88,7 +88,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="150" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <el-button @click="handleView(row)" type="primary" link size="small">
               查看
@@ -96,10 +96,30 @@
             <el-button @click="handleEdit(row)" type="success" link size="small">
               编辑
             </el-button>
-            <el-button 
-              @click="handleToggleStatus(row)" 
-              :type="row.status === 'active' ? 'warning' : 'success'" 
-              link 
+            <el-button
+              v-if="row.code === 'SF'"
+              @click="handleSFConfig(row)"
+              type="warning"
+              link
+              size="small"
+            >
+              <el-icon><Setting /></el-icon>
+              配置
+            </el-button>
+            <el-button
+              v-if="row.code === 'YTO'"
+              @click="handleYTOConfig(row)"
+              type="warning"
+              link
+              size="small"
+            >
+              <el-icon><Setting /></el-icon>
+              配置
+            </el-button>
+            <el-button
+              @click="handleToggleStatus(row)"
+              :type="row.status === 'active' ? 'warning' : 'success'"
+              link
               size="small"
             >
               {{ row.status === 'active' ? '禁用' : '启用' }}
@@ -124,6 +144,20 @@
         />
       </div>
     </el-card>
+
+    <!-- 顺丰配置对话框 -->
+    <SFExpressConfigDialog
+      v-model:visible="sfConfigVisible"
+      :config="sfConfig"
+      @success="handleSFConfigSuccess"
+    />
+
+    <!-- 圆通配置对话框 -->
+    <YTOExpressConfigDialog
+      v-model:visible="ytoConfigVisible"
+      :config="ytoConfig"
+      @success="handleYTOConfigSuccess"
+    />
 
     <!-- 新增/编辑对话框 -->
     <el-dialog
@@ -151,16 +185,16 @@
           <el-input v-model="formData.website" placeholder="请输入官网地址" />
         </el-form-item>
         <el-form-item label="跟踪地址" prop="trackingUrl">
-          <el-input 
-            v-model="formData.trackingUrl" 
+          <el-input
+            v-model="formData.trackingUrl"
             placeholder="请输入跟踪地址模板，如：https://www.sf-express.com/cn/sc/dynamic_function/waybill/#search/bill-number/{trackingNo}"
             type="textarea"
             :rows="2"
           />
         </el-form-item>
         <el-form-item label="API地址" prop="apiUrl">
-          <el-input 
-            v-model="formData.apiUrl" 
+          <el-input
+            v-model="formData.apiUrl"
             placeholder="请输入API地址"
             type="textarea"
             :rows="2"
@@ -179,15 +213,15 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
-          <el-input 
-            v-model="formData.remark" 
+          <el-input
+            v-model="formData.remark"
             placeholder="请输入备注信息"
             type="textarea"
             :rows="3"
           />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="handleDialogClose">取消</el-button>
@@ -205,13 +239,16 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createSafeNavigator } from '@/utils/navigation'
-import { 
-  Plus, 
-  Upload, 
-  Download, 
-  Search, 
-  Refresh 
+import {
+  Plus,
+  Upload,
+  Download,
+  Search,
+  Refresh,
+  Setting
 } from '@element-plus/icons-vue'
+import SFExpressConfigDialog from '@/components/Logistics/SFExpressConfigDialog.vue'
+import YTOExpressConfigDialog from '@/components/Logistics/YTOExpressConfigDialog.vue'
 
 interface LogisticsCompany {
   id: string
@@ -237,6 +274,10 @@ const loading = ref(false)
 const dialogVisible = ref(false)
 const submitLoading = ref(false)
 const isEdit = ref(false)
+const sfConfigVisible = ref(false)
+const sfConfig = ref(null)
+const ytoConfigVisible = ref(false)
+const ytoConfig = ref(null)
 
 // 超时ID跟踪，用于清理异步操作
 const timeoutIds = new Set<NodeJS.Timeout>()
@@ -335,6 +376,62 @@ const handleAdd = () => {
 }
 
 /**
+ * 顺丰配置
+ */
+const handleSFConfig = (row: LogisticsCompany) => {
+  // 从localStorage加载已保存的配置
+  const savedConfig = localStorage.getItem('sf_express_config')
+  if (savedConfig) {
+    try {
+      sfConfig.value = JSON.parse(savedConfig)
+    } catch (error) {
+      console.error('解析顺丰配置失败:', error)
+      sfConfig.value = null
+    }
+  } else {
+    sfConfig.value = null
+  }
+
+  sfConfigVisible.value = true
+}
+
+/**
+ * 顺丰配置成功回调
+ */
+const handleSFConfigSuccess = (config: unknown) => {
+  ElMessage.success('顺丰配置已保存,现在可以使用顺丰API功能了')
+  // 可以在这里更新顺丰公司的状态或其他操作
+}
+
+/**
+ * 圆通配置
+ */
+const handleYTOConfig = (row: LogisticsCompany) => {
+  // 从localStorage加载已保存的配置
+  const savedConfig = localStorage.getItem('yto_express_config')
+  if (savedConfig) {
+    try {
+      ytoConfig.value = JSON.parse(savedConfig)
+    } catch (error) {
+      console.error('解析圆通配置失败:', error)
+      ytoConfig.value = null
+    }
+  } else {
+    ytoConfig.value = null
+  }
+
+  ytoConfigVisible.value = true
+}
+
+/**
+ * 圆通配置成功回调
+ */
+const handleYTOConfigSuccess = (config: unknown) => {
+  ElMessage.success('圆通配置已保存,现在可以使用圆通API功能了')
+  // 可以在这里更新圆通公司的状态或其他操作
+}
+
+/**
  * 查看
  */
 const handleView = (row: LogisticsCompany) => {
@@ -355,7 +452,7 @@ const handleEdit = (row: LogisticsCompany) => {
  */
 const handleToggleStatus = async (row: LogisticsCompany) => {
   if (isUnmounted.value) return
-  
+
   const action = row.status === 'active' ? '禁用' : '启用'
   try {
     await ElMessageBox.confirm(`确定要${action}该物流公司吗？`, '提示', {
@@ -363,9 +460,9 @@ const handleToggleStatus = async (row: LogisticsCompany) => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    
+
     if (isUnmounted.value) return
-    
+
     // 模拟API调用
     await new Promise(resolve => {
       const timeoutId = setTimeout(() => {
@@ -374,7 +471,7 @@ const handleToggleStatus = async (row: LogisticsCompany) => {
       }, 500)
       timeoutIds.add(timeoutId)
     })
-    
+
     if (!isUnmounted.value) {
       row.status = row.status === 'active' ? 'inactive' : 'active'
       ElMessage.success(`${action}成功`)
@@ -389,16 +486,16 @@ const handleToggleStatus = async (row: LogisticsCompany) => {
  */
 const handleDelete = async (row: LogisticsCompany) => {
   if (isUnmounted.value) return
-  
+
   try {
     await ElMessageBox.confirm('确定要删除该物流公司吗？此操作不可撤销', '提示', {
       confirmButtonText: '确定删除',
       cancelButtonText: '取消',
       type: 'warning'
     })
-    
+
     if (isUnmounted.value) return
-    
+
     // 模拟API调用
     await new Promise(resolve => {
       const timeoutId = setTimeout(() => {
@@ -407,7 +504,7 @@ const handleDelete = async (row: LogisticsCompany) => {
       }, 500)
       timeoutIds.add(timeoutId)
     })
-    
+
     if (!isUnmounted.value) {
       ElMessage.success('删除成功')
       loadData()
@@ -462,7 +559,7 @@ const handleSubmit = async () => {
           }, 1000)
           timeoutIds.add(timeoutId)
         })
-        
+
         if (!isUnmounted.value) {
           ElMessage.success(isEdit.value ? '编辑成功' : '新增成功')
           dialogVisible.value = false
@@ -514,9 +611,9 @@ const resetForm = () => {
  */
 const loadData = async () => {
   if (isUnmounted.value) return
-  
+
   loading.value = true
-  
+
   try {
     // 模拟API调用
     await new Promise(resolve => {
@@ -526,10 +623,10 @@ const loadData = async () => {
       }, 500)
       timeoutIds.add(timeoutId)
     })
-    
+
     // 检查组件是否已卸载
     if (isUnmounted.value) return
-    
+
     // 模拟数据
     const mockData = [
       {
@@ -603,7 +700,7 @@ const loadData = async () => {
         remark: '韵达速递暂停合作'
       }
     ]
-    
+
     if (!isUnmounted.value) {
       tableData.value = mockData
       pagination.total = 5
@@ -628,7 +725,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   // 设置组件卸载状态
   isUnmounted.value = true
-  
+
   // 清理所有未完成的超时操作
   timeoutIds.forEach(timeoutId => {
     clearTimeout(timeoutId)

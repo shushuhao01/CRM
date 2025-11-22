@@ -189,31 +189,31 @@
             <div class="header-left">
               <div class="status-tabs">
                 <el-button-group size="small">
-                  <el-button 
+                  <el-button
                     @click="handleQuickFilter('all')"
                     :type="quickFilter === 'all' ? 'primary' : ''"
                   >
                     全部
                   </el-button>
-                  <el-button 
+                  <el-button
                     @click="handleQuickFilter('active')"
                     :type="quickFilter === 'active' ? 'primary' : ''"
                   >
                     在售
                   </el-button>
-                  <el-button 
+                  <el-button
                     @click="handleQuickFilter('inactive')"
                     :type="quickFilter === 'inactive' ? 'primary' : ''"
                   >
                     下架
                   </el-button>
-                  <el-button 
+                  <el-button
                     @click="handleQuickFilter('out_of_stock')"
                     :type="quickFilter === 'out_of_stock' ? 'primary' : ''"
                   >
                     缺货
                   </el-button>
-                  <el-button 
+                  <el-button
                     @click="handleQuickFilter('deleted')"
                     :type="quickFilter === 'deleted' ? 'primary' : ''"
                   >
@@ -225,7 +225,7 @@
             <div class="header-right">
               <el-button
                 @click="handleBatchRecommend"
-                :disabled="!selectedRows.length"
+                :disabled="!selectedRows || !selectedRows.length"
                 type="success"
                 size="small"
               >
@@ -234,21 +234,21 @@
               <el-button
                 @click="handleBatchDelete"
                 type="danger"
-                :disabled="!selectedRows.length"
+                :disabled="!selectedRows || !selectedRows.length"
                 size="small"
               >
                 批量删除
               </el-button>
               <el-button
                 @click="handleBatchUpdateStatus"
-                :disabled="!selectedRows.length"
+                :disabled="!selectedRows || !selectedRows.length"
                 size="small"
               >
                 批量上下架
               </el-button>
               <el-button
                 @click="handleBatchUpdateStock"
-                :disabled="!selectedRows.length"
+                :disabled="!selectedRows || !selectedRows.length"
                 size="small"
               >
                 批量调库存
@@ -276,9 +276,9 @@
 
         <!-- 商品编码列 -->
         <template #column-code="{ row }">
-          <el-link 
-            @click="handleView(row)" 
-            type="primary" 
+          <el-link
+            @click="handleView(row)"
+            type="primary"
             :underline="false"
             class="product-code-link"
           >
@@ -321,10 +321,10 @@
               <el-button @click="handleStockAdjust(row)" type="warning" link size="small">
                 调库存
               </el-button>
-              <el-button 
-                @click="handleToggleStatus(row)" 
-                :type="row.status === 'active' ? 'info' : 'success'" 
-                link 
+              <el-button
+                @click="handleToggleStatus(row)"
+                :type="row.status === 'active' ? 'info' : 'success'"
+                link
                 size="small"
               >
                 {{ row.status === 'active' ? '下架' : '上架' }}
@@ -406,9 +406,9 @@
         </el-form-item>
         <el-form-item label="调整类型" prop="type">
           <el-radio-group v-model="stockForm.type">
-            <el-radio value="increase">增加</el-radio>
-            <el-radio value="decrease">减少</el-radio>
-            <el-radio value="set">设置</el-radio>
+            <el-radio label="increase">增加</el-radio>
+            <el-radio label="decrease">减少</el-radio>
+            <el-radio label="set">设置</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="调整数量" prop="quantity">
@@ -441,7 +441,7 @@
           />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="handleStockDialogClose">取消</el-button>
@@ -485,7 +485,7 @@
         </el-form-item>
         <el-form-item label="价格变化">
           <span v-if="priceForm.newPrice && priceForm.originalPrice">
-            <el-tag 
+            <el-tag
               :type="priceForm.newPrice > priceForm.originalPrice ? 'success' : 'danger'"
               size="small"
             >
@@ -518,7 +518,7 @@
           />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="handlePriceDialogClose">取消</el-button>
@@ -542,7 +542,7 @@
             添加分类
           </el-button>
         </div>
-        
+
         <el-table :data="categoryList" style="width: 100%">
           <el-table-column prop="name" label="分类名称" />
           <el-table-column prop="code" label="分类编码" />
@@ -616,7 +616,7 @@
           />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="handleCategoryFormDialogClose">取消</el-button>
@@ -634,6 +634,144 @@
       :initial-index="currentImageIndex"
       @close="closeImageViewer"
     />
+
+    <!-- 批量导入对话框 - 复用库存管理的功能 -->
+    <el-dialog
+      v-model="batchImportDialogVisible"
+      title="批量导入商品"
+      width="80%"
+      top="5vh"
+      :before-close="handleBatchImportDialogClose"
+    >
+      <el-tabs v-model="importActiveTab">
+        <el-tab-pane label="在线快速添加" name="quick">
+          <div class="quick-add-section">
+            <el-button type="primary" @click="addQuickProduct" :icon="Plus" size="small" style="margin-bottom: 16px">
+              新增一行
+            </el-button>
+
+            <el-table :data="quickAddProducts" border style="width: 100%">
+              <el-table-column type="index" label="序号" width="60" />
+              <el-table-column label="商品图片" width="100">
+                <template #default="{ row, $index }">
+                  <el-upload
+                    class="avatar-uploader"
+                    :show-file-list="false"
+                    :before-upload="(file) => handleImageUpload(file, $index)"
+                    accept="image/*"
+                  >
+                    <img v-if="row.image" :src="row.image" class="avatar" />
+                    <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
+                  </el-upload>
+                </template>
+              </el-table-column>
+              <el-table-column label="商品名称" min-width="180">
+                <template #default="{ row }">
+                  <el-input v-model="row.name" placeholder="请输入" size="small" />
+                </template>
+              </el-table-column>
+              <el-table-column label="商品编码" min-width="140">
+                <template #default="{ row }">
+                  <el-input v-model="row.code" placeholder="自动生成" size="small" />
+                </template>
+              </el-table-column>
+              <el-table-column label="分类" min-width="140">
+                <template #default="{ row }">
+                  <el-select v-model="row.categoryId" placeholder="请选择" size="small" style="width: 100%">
+                    <el-option
+                      v-for="cat in categoryOptions"
+                      :key="cat.id"
+                      :label="cat.name"
+                      :value="cat.id"
+                    />
+                  </el-select>
+                </template>
+              </el-table-column>
+              <el-table-column label="单位" min-width="120">
+                <template #default="{ row }">
+                  <el-select v-model="row.unit" placeholder="请选择" size="small" allow-create filterable style="width: 100%">
+                    <el-option label="件" value="件" />
+                    <el-option label="盒" value="盒" />
+                    <el-option label="瓶" value="瓶" />
+                  </el-select>
+                </template>
+              </el-table-column>
+              <el-table-column label="销售价" min-width="120">
+                <template #default="{ row }">
+                  <el-input-number v-model="row.price" :min="0" :precision="2" size="small" style="width: 100%" controls-position="right" />
+                </template>
+              </el-table-column>
+              <el-table-column label="成本价" min-width="120">
+                <template #default="{ row }">
+                  <el-input-number v-model="row.costPrice" :min="0" :precision="2" size="small" style="width: 100%" controls-position="right" />
+                </template>
+              </el-table-column>
+              <el-table-column label="库存" min-width="100">
+                <template #default="{ row }">
+                  <el-input-number v-model="row.stock" :min="0" size="small" style="width: 100%" controls-position="right" />
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" min-width="110">
+                <template #default="{ row }">
+                  <el-select v-model="row.status" size="small" style="width: 100%">
+                    <el-option label="上架" value="active" />
+                    <el-option label="下架" value="inactive" />
+                  </el-select>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="80" fixed="right">
+                <template #default="{ $index }">
+                  <el-button type="danger" link size="small" @click="removeQuickProduct($index)">
+                    删除
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="表格导入" name="excel">
+          <div class="excel-import-section">
+            <el-alert title="导入说明" type="info" :closable="false" style="margin-bottom: 16px">
+              <p>1. 请先下载模板文件，按照模板格式填写商品信息</p>
+              <p>2. 支持.xlsx格式的Excel文件</p>
+              <p>3. 必填字段：商品名称、销售价、库存</p>
+            </el-alert>
+
+            <div class="import-actions">
+              <el-button type="success" @click="downloadTemplate" :icon="Download">下载模板</el-button>
+              <el-upload :auto-upload="false" :on-change="handleFileChange" :show-file-list="false" accept=".xlsx">
+                <el-button type="primary" :icon="Upload">选择文件</el-button>
+              </el-upload>
+            </div>
+
+            <div v-if="excelFileName" class="file-info">
+              <el-tag type="success">{{ excelFileName }}</el-tag>
+              <el-button type="text" @click="clearExcelFile">清除</el-button>
+            </div>
+
+            <div v-if="excelPreviewData.length > 0" class="preview-section">
+              <h4>数据预览（前10条）</h4>
+              <el-table :data="excelPreviewData.slice(0, 10)" border style="width: 100%">
+                <el-table-column prop="name" label="商品名称" />
+                <el-table-column prop="code" label="商品编码" />
+                <el-table-column prop="unit" label="单位" />
+                <el-table-column prop="price" label="销售价" />
+                <el-table-column prop="stock" label="库存" />
+              </el-table>
+              <p style="margin-top: 8px; color: #909399;">共 {{ excelPreviewData.length }} 条数据</p>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="handleBatchImportDialogClose">取消</el-button>
+          <el-button type="primary" @click="handleBatchImportSubmit" :loading="batchImportLoading">确定导入</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -641,12 +779,12 @@
 import { ref, reactive, computed, onMounted, watch, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  Search, 
-  Refresh, 
-  Plus, 
-  Setting, 
-  Upload, 
+import {
+  Search,
+  Refresh,
+  Plus,
+  Setting,
+  Upload,
   Download,
   ArrowDown,
   Box,
@@ -710,6 +848,14 @@ const tableLoading = ref(false)
 const stockLoading = ref(false)
 const categoryFormLoading = ref(false)
 
+// 批量导入相关
+const batchImportDialogVisible = ref(false)
+const batchImportLoading = ref(false)
+const importActiveTab = ref('quick')
+const quickAddProducts = ref<any[]>([])
+const excelFileName = ref('')
+const excelPreviewData = ref<any[]>([])
+
 // 组件引用
 const dynamicTableRef = ref()
 
@@ -771,7 +917,7 @@ const priceForm = reactive({
 
 // 分类数据 - 从 productStore 获取统一数据
 const categoryOptions = computed(() => {
-  return productStore.categories.map(cat => ({
+  return (productStore.categories || []).map(cat => ({
     id: cat.id,
     name: cat.name
   }))
@@ -1084,7 +1230,7 @@ const handleEdit = (row: Product) => {
  */
 const handleStockAdjust = (row: Product) => {
   currentProduct.value = row
-  
+
   // 重置表单
   Object.assign(stockForm, {
     type: 'increase',
@@ -1092,7 +1238,7 @@ const handleStockAdjust = (row: Product) => {
     reason: '',
     remark: ''
   })
-  
+
   stockDialogVisible.value = true
 }
 
@@ -1101,7 +1247,7 @@ const handleStockAdjust = (row: Product) => {
  */
 const handlePriceAdjust = (row: Product) => {
   currentProduct.value = row
-  
+
   // 重置表单
   Object.assign(priceForm, {
     originalPrice: row.price,
@@ -1109,7 +1255,7 @@ const handlePriceAdjust = (row: Product) => {
     reason: '',
     remark: ''
   })
-  
+
   priceDialogVisible.value = true
 }
 
@@ -1151,7 +1297,7 @@ const handleColumnSettings = () => {
  */
 const handleToggleStatus = async (row: Product) => {
   const action = row.status === 'active' ? '下架' : '上架'
-  
+
   try {
     await ElMessageBox.confirm(
       `确定要${action}商品"${row.name}"吗？`,
@@ -1162,13 +1308,13 @@ const handleToggleStatus = async (row: Product) => {
         type: 'warning'
       }
     )
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     row.status = row.status === 'active' ? 'inactive' : 'active'
     ElMessage.success(`${action}成功`)
-    
+
     // 发送消息提醒
     notificationStore.addNotification({
       type: 'PRODUCT_STATUS_CHANGED',
@@ -1203,17 +1349,17 @@ const handleDelete = async (row: Product) => {
         type: 'warning'
       }
     )
-    
+
     // 调用store删除商品
     const success = productStore.deleteProduct(row.id)
-    
+
     if (success) {
       ElMessage.success('删除成功')
     } else {
       ElMessage.error('删除失败')
       return
     }
-    
+
     // 发送消息提醒
     notificationStore.addNotification({
       type: 'PRODUCT_DELETED',
@@ -1227,7 +1373,7 @@ const handleDelete = async (row: Product) => {
       },
       link: '/product/list'
     })
-    
+
     loadData()
   } catch (error) {
     // 用户取消操作
@@ -1238,6 +1384,11 @@ const handleDelete = async (row: Product) => {
  * 批量删除
  */
 const handleBatchDelete = async () => {
+  if (!selectedRows.value || selectedRows.value.length === 0) {
+    ElMessage.warning('请先选择要删除的商品')
+    return
+  }
+
   try {
     await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedRows.value.length} 个商品吗？删除后不可恢复！`,
@@ -1248,17 +1399,17 @@ const handleBatchDelete = async () => {
         type: 'warning'
       }
     )
-    
+
     // 批量删除商品
     selectedRows.value.forEach(product => {
       productStore.deleteProduct(product.id)
     })
-    
+
     // 模拟API调用延迟
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     ElMessage.success('批量删除成功')
-    
+
     // 发送消息提醒
     notificationStore.addNotification({
       type: 'PRODUCT_BATCH_DELETED',
@@ -1271,7 +1422,7 @@ const handleBatchDelete = async () => {
       },
       link: '/product/list'
     })
-    
+
     loadData()
   } catch (error) {
     // 用户取消操作
@@ -1292,17 +1443,17 @@ const handleRestore = async (row: Product) => {
         type: 'info'
       }
     )
-    
+
     // 调用store恢复商品
     const success = productStore.restoreProduct(row.id)
-    
+
     if (success) {
       ElMessage.success('恢复成功')
     } else {
       ElMessage.error('恢复失败')
       return
     }
-    
+
     // 发送消息提醒
     notificationStore.addNotification({
       type: 'PRODUCT_RESTORED',
@@ -1316,7 +1467,7 @@ const handleRestore = async (row: Product) => {
       },
       link: `/product/detail/${row.id}`
     })
-    
+
     loadData()
   } catch (error) {
     // 用户取消操作
@@ -1339,17 +1490,17 @@ const handlePermanentDelete = async (row: Product) => {
         message: `<div style="color: #f56c6c; font-weight: bold;">⚠️ 警告：此操作不可逆！</div><br/>确定要彻底删除商品"${row.name}"吗？<br/><br/>彻底删除后：<br/>• 商品将从所有列表中移除<br/>• 无法通过任何方式恢复<br/>• 相关数据将被永久清除`
       }
     )
-    
+
     // 调用store彻底删除商品
     const success = productStore.permanentDeleteProduct(row.id)
-    
+
     if (success) {
       ElMessage.success('彻底删除成功')
     } else {
       ElMessage.error('彻底删除失败')
       return
     }
-    
+
     // 发送消息提醒
     notificationStore.addNotification({
       type: 'PRODUCT_PERMANENT_DELETED',
@@ -1363,7 +1514,7 @@ const handlePermanentDelete = async (row: Product) => {
       },
       link: '/product/list'
     })
-    
+
     loadData()
   } catch (error) {
     // 用户取消操作
@@ -1374,6 +1525,11 @@ const handlePermanentDelete = async (row: Product) => {
  * 批量更新状态
  */
 const handleBatchUpdateStatus = async () => {
+  if (!selectedRows.value || selectedRows.value.length === 0) {
+    ElMessage.warning('请先选择要更新状态的商品')
+    return
+  }
+
   try {
     const { value: status } = await ElMessageBox({
       title: '批量状态更新',
@@ -1386,7 +1542,7 @@ const handleBatchUpdateStatus = async () => {
             style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;',
             onChange: (e: Event) => {
               const target = e.target as HTMLSelectElement
-              ;(ElMessageBox as any).inputValue = target.value
+              ;(ElMessageBox as unknown).inputValue = target.value
             }
           }, [
             h('option', { value: 'active' }, '上架'),
@@ -1398,7 +1554,7 @@ const handleBatchUpdateStatus = async () => {
       inputValue: 'active',
       confirmButtonText: '确定',
       cancelButtonText: '取消',
-      beforeClose: (action: string, instance: any, done: Function) => {
+      beforeClose: (action: string, instance: unknown, done: Function) => {
         if (action === 'confirm') {
           const selectElement = document.getElementById('status-select') as HTMLSelectElement
           if (selectElement) {
@@ -1408,17 +1564,17 @@ const handleBatchUpdateStatus = async () => {
         done()
       }
     })
-    
+
     // 批量更新商品状态
     selectedRows.value.forEach(product => {
       productStore.updateProduct(product.id, { status: status as 'active' | 'inactive' })
     })
-    
+
     // 模拟API调用延迟
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     ElMessage.success('批量状态更新成功')
-    
+
     // 发送消息提醒
     const statusText = status === 'active' ? '上架' : '下架'
     notificationStore.addNotification({
@@ -1434,7 +1590,7 @@ const handleBatchUpdateStatus = async () => {
       },
       link: '/product/list'
     })
-    
+
     loadData()
   } catch (error) {
     // 用户取消操作
@@ -1457,17 +1613,258 @@ const handleCategoryManage = () => {
 }
 
 /**
- * 批量导入
+ * 批量导入 - 打开批量导入对话框
  */
 const handleBatchImport = () => {
-  ElMessage.info('批量导入功能开发中...')
+  batchImportDialogVisible.value = true
+  importActiveTab.value = 'quick'
+
+  // 初始化一行数据
+  if (quickAddProducts.value.length === 0) {
+    addQuickProduct()
+  }
+}
+
+// 添加快速添加商品行
+const addQuickProduct = () => {
+  quickAddProducts.value.push({
+    name: '',
+    code: `P${Date.now()}`,
+    categoryId: '',
+    image: '',
+    unit: '件',
+    price: 0,
+    costPrice: 0,
+    stock: 0,
+    status: 'active'
+  })
+}
+
+// 处理图片上传
+const handleImageUpload = (file: File, index: number) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    quickAddProducts.value[index].image = e.target?.result as string
+  }
+  reader.readAsDataURL(file)
+  return false // 阻止自动上传
+}
+
+// 删除快速添加商品行
+const removeQuickProduct = (index: number) => {
+  quickAddProducts.value.splice(index, 1)
+}
+
+// 下载模板
+const downloadTemplate = () => {
+  const headers = ['商品名称*', '商品编码', '分类', '单位', '销售价*', '成本价', '库存*', '状态']
+  const sampleData = [
+    ['示例商品1', 'P001', '体重管理', '件', '100', '70', '50', '上架'],
+    ['示例商品2', 'P002', '体重管理', '盒', '200', '140', '30', '上架']
+  ]
+
+  // 使用xlsx库创建真正的Excel文件
+  import('xlsx').then(XLSX => {
+    const wb = XLSX.utils.book_new()
+    const wsData = [headers, ...sampleData]
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
+
+    // 设置列宽
+    ws['!cols'] = [
+      { wch: 20 }, // 商品名称
+      { wch: 15 }, // 商品编码
+      { wch: 15 }, // 分类
+      { wch: 10 }, // 单位
+      { wch: 12 }, // 销售价
+      { wch: 12 }, // 成本价
+      { wch: 10 }, // 库存
+      { wch: 10 }  // 状态
+    ]
+
+    XLSX.utils.book_append_sheet(wb, ws, '商品导入模板')
+    XLSX.writeFile(wb, '商品导入模板.xlsx')
+
+    ElMessage.success('模板下载成功')
+  }).catch(() => {
+    ElMessage.error('下载失败，请重试')
+  })
+}
+
+// 处理文件选择
+const handleFileChange = (file: any) => {
+  excelFileName.value = file.name
+
+  // 使用xlsx库读取Excel文件
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      import('xlsx').then(XLSX => {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as any[][]
+
+        const parsedData = []
+        // 跳过表头，从第二行开始
+        for (let i = 1; i < jsonData.length; i++) {
+          const row = jsonData[i]
+          if (!row || row.length === 0) continue
+
+          parsedData.push({
+            name: String(row[0] || '').trim(),
+            code: String(row[1] || '').trim() || `P${Date.now() + i}`,
+            categoryName: String(row[2] || '').trim(),
+            unit: String(row[3] || '').trim() || '件',
+            price: parseFloat(row[4]) || 0,
+            costPrice: parseFloat(row[5]) || 0,
+            stock: parseInt(row[6]) || 0,
+            status: String(row[7] || '').trim() === '上架' ? '上架' : '下架'
+          })
+        }
+
+        excelPreviewData.value = parsedData
+        ElMessage.success(`文件解析成功，共${parsedData.length}条数据`)
+      }).catch(error => {
+        console.error('文件解析失败:', error)
+        ElMessage.error('文件格式错误，请使用xlsx格式')
+      })
+    } catch (error) {
+      console.error('文件读取失败:', error)
+      ElMessage.error('文件读取失败')
+    }
+  }
+  reader.readAsArrayBuffer(file.raw)
+}
+
+// 清除Excel文件
+const clearExcelFile = () => {
+  excelFileName.value = ''
+  excelPreviewData.value = []
+}
+
+// 关闭批量导入对话框
+const handleBatchImportDialogClose = () => {
+  batchImportDialogVisible.value = false
+  quickAddProducts.value = []
+  excelFileName.value = ''
+  excelPreviewData.value = []
+}
+
+// 提交批量导入
+const handleBatchImportSubmit = async () => {
+  try {
+    batchImportLoading.value = true
+
+    let productsToAdd: unknown[] = []
+
+    if (importActiveTab.value === 'quick') {
+      productsToAdd = quickAddProducts.value.filter(p => p.name && p.price > 0)
+
+      if (productsToAdd.length === 0) {
+        ElMessage.warning('请至少填写一个商品的名称和价格')
+        batchImportLoading.value = false
+        return
+      }
+    } else {
+      if (excelPreviewData.value.length === 0) {
+        ElMessage.warning('请先选择并解析Excel文件')
+        batchImportLoading.value = false
+        return
+      }
+      productsToAdd = excelPreviewData.value
+    }
+
+    // 添加到productStore
+    for (const product of productsToAdd) {
+      const categoryId = product.categoryId || categoryOptions.value[0]?.id || '1'
+      const newProduct = {
+        code: product.code || `P${Date.now()}`,
+        name: product.name,
+        categoryId: categoryId,
+        categoryName: categoryOptions.value.find((c: unknown) => c.id === categoryId)?.name || '未分类',
+        brand: '',
+        specification: '',
+        image: 'https://via.placeholder.com/100',
+        price: product.price,
+        costPrice: product.costPrice || product.price * 0.7,
+        stock: product.stock || 0,
+        minStock: 10,
+        maxStock: 9999,
+        unit: product.unit || '件',
+        weight: 0,
+        dimensions: '',
+        description: '',
+        status: product.status === 'active' || product.status === '上架' ? 'active' : 'inactive',
+        salesCount: 0,
+        updateTime: new Date().toISOString()
+      }
+
+      await productStore.addProduct(newProduct)
+    }
+
+    ElMessage.success(`成功导入${productsToAdd}个商品`)
+
+    handleBatchImportDialogClose()
+    loadData()
+  } catch (error) {
+    ElMessage.error('批量导入失败')
+  } finally {
+    batchImportLoading.value = false
+  }
 }
 
 /**
  * 导出数据
  */
-const handleExport = () => {
-  ElMessage.info('数据导出功能开发中...')
+const handleExport = async () => {
+  try {
+    // 获取当前显示的商品数据
+    const exportData = tableData.value
+
+    if (exportData.length === 0) {
+      ElMessage.warning('没有可导出的数据')
+      return
+    }
+
+    // 构建CSV数据
+    const headers = ['商品编码', '商品名称', '分类', '规格', '单位', '销售价', '成本价', '库存', '销量', '状态', '创建时间']
+    const data = exportData.map((item: unknown) => [
+      item.code,
+      item.name,
+      item.categoryName,
+      item.specification || '',
+      item.unit || '件',
+      item.price.toFixed(2),
+      (item.costPrice || item.price * 0.7).toFixed(2),
+      item.stock,
+      item.salesCount || 0,
+      item.status === 'active' ? '上架' : '下架',
+      item.createTime
+    ])
+
+    // 创建CSV内容
+    const csvContent = [
+      headers.join(','),
+      ...data.map(row => row.join(','))
+    ].join('\n')
+
+    // 添加BOM以支持中文
+    const BOM = '\uFEFF'
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+
+    // 创建下载链接
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `商品数据_${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    window.URL.revokeObjectURL(url)
+
+    ElMessage.success(`导出成功，共导出${exportData.length}条数据`)
+  } catch (error) {
+    console.error('导出失败:', error)
+    ElMessage.error('导出失败')
+  }
 }
 
 /**
@@ -1475,15 +1872,15 @@ const handleExport = () => {
  */
 const handleQuickFilter = (filter: string) => {
   quickFilter.value = filter
-  
+
   // 重置搜索表单的状态和库存状态
   searchForm.status = ''
   searchForm.stockStatus = ''
-  
+
   // 重置删除状态筛选
   searchForm.showDeleted = false
   searchForm.onlyDeleted = false
-  
+
   switch (filter) {
     case 'all':
       // 显示所有商品（包括已删除的）
@@ -1506,7 +1903,7 @@ const handleQuickFilter = (filter: string) => {
       searchForm.stockStatus = 'out_of_stock'
       break
   }
-  
+
   // 重置到第一页并搜索
   pagination.currentPage = 1
   loadData()
@@ -1534,12 +1931,12 @@ const handleBatchRecommend = async () => {
         type: 'info'
       }
     )
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     ElMessage.success('批量推荐设置成功')
-    
+
     // 发送消息提醒
     notificationStore.addNotification({
       type: 'PRODUCT_BATCH_RECOMMENDED',
@@ -1552,7 +1949,7 @@ const handleBatchRecommend = async () => {
       },
       link: '/product/list'
     })
-    
+
     loadData()
   } catch (error) {
     // 用户取消操作
@@ -1565,30 +1962,36 @@ const handleBatchRecommend = async () => {
 const confirmStockAdjust = async () => {
   try {
     await stockFormRef.value?.validate()
-    
+
     stockLoading.value = true
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     // 更新商品库存
     const product = currentProduct.value
     const currentStock = product.stock
     const adjustQuantity = stockForm.quantity
-    const newStock = stockForm.type === 'increase' 
-      ? currentStock + adjustQuantity 
-      : currentStock - adjustQuantity
-    
+    let newStock = currentStock
+
+    if (stockForm.type === 'increase') {
+      newStock = currentStock + adjustQuantity
+    } else if (stockForm.type === 'decrease') {
+      newStock = currentStock - adjustQuantity
+    } else if (stockForm.type === 'set') {
+      newStock = adjustQuantity
+    }
+
     // 确保库存不为负数
     const finalStock = Math.max(0, newStock)
-    
+
     // 更新store中的商品库存
     productStore.updateProduct(product.id, { stock: finalStock })
-    
+
     ElMessage.success('库存调整成功')
-    
+
     // 发送消息提醒
-    const adjustType = stockForm.type === 'increase' ? '增加' : '减少'
+    const adjustType = stockForm.type === 'increase' ? '增加' : stockForm.type === 'decrease' ? '减少' : '设置'
     notificationStore.addNotification({
       type: 'PRODUCT_STOCK_ADJUSTED',
       title: '库存调整',
@@ -1605,12 +2008,15 @@ const confirmStockAdjust = async () => {
       },
       link: `/product/detail/${currentProduct.value.id}`
     })
-    
-    handleStockDialogClose()
-    loadData()
+
+    // 1秒后自动关闭对话框并刷新数据
+    setTimeout(() => {
+      stockLoading.value = false
+      handleStockDialogClose()
+      loadData()
+    }, 1000)
   } catch (error) {
     console.error('表单验证失败:', error)
-  } finally {
     stockLoading.value = false
   }
 }
@@ -1630,22 +2036,22 @@ const handleStockDialogClose = () => {
 const confirmPriceAdjust = async () => {
   try {
     await priceFormRef.value?.validate()
-    
+
     stockLoading.value = true
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     // 更新商品价格
     const product = currentProduct.value
     const oldPrice = product.price
     const newPrice = priceForm.newPrice
-    
+
     // 更新store中的商品价格
     productStore.updateProduct(product.id, { price: newPrice })
-    
+
     ElMessage.success('改价成功')
-    
+
     // 发送消息提醒
     const priceChange = newPrice - oldPrice
     const changeType = priceChange > 0 ? '上调' : '下调'
@@ -1667,12 +2073,15 @@ const confirmPriceAdjust = async () => {
       },
       link: `/product/detail/${product.id}`
     })
-    
-    handlePriceDialogClose()
-    loadData()
+
+    // 1秒后自动关闭对话框并刷新数据
+    setTimeout(() => {
+      stockLoading.value = false
+      handlePriceDialogClose()
+      loadData()
+    }, 1000)
   } catch (error) {
     console.error('表单验证失败:', error)
-  } finally {
     stockLoading.value = false
   }
 }
@@ -1691,7 +2100,7 @@ const handlePriceDialogClose = () => {
  */
 const handleAddCategory = () => {
   categoryFormMode.value = 'add'
-  
+
   // 重置表单
   Object.assign(categoryForm, {
     name: '',
@@ -1700,7 +2109,7 @@ const handleAddCategory = () => {
     status: 'active',
     description: ''
   })
-  
+
   categoryFormDialogVisible.value = true
 }
 
@@ -1709,7 +2118,7 @@ const handleAddCategory = () => {
  */
 const handleEditCategory = (row: CategoryForm) => {
   categoryFormMode.value = 'edit'
-  
+
   // 填充表单
   Object.assign(categoryForm, {
     id: row.id,
@@ -1719,7 +2128,7 @@ const handleEditCategory = (row: CategoryForm) => {
     status: row.status,
     description: row.description
   })
-  
+
   categoryFormDialogVisible.value = true
 }
 
@@ -1731,7 +2140,7 @@ const handleDeleteCategory = async (row: CategoryForm) => {
     ElMessage.warning('该分类下还有商品，无法删除')
     return
   }
-  
+
   try {
     await ElMessageBox.confirm(
       `确定要删除分类"${row.name}"吗？`,
@@ -1742,12 +2151,12 @@ const handleDeleteCategory = async (row: CategoryForm) => {
         type: 'warning'
       }
     )
-    
+
     // 调用真实API删除分类
     await productStore.deleteCategory(row.id)
-    
+
     ElMessage.success('删除成功')
-    
+
     // 发送消息提醒
     notificationStore.addNotification({
       type: 'PRODUCT_CATEGORY_DELETED',
@@ -1761,7 +2170,7 @@ const handleDeleteCategory = async (row: CategoryForm) => {
       },
       link: '/product/list'
     })
-    
+
     await loadCategoryList()
   } catch (error) {
     if (error !== 'cancel') {
@@ -1777,11 +2186,11 @@ const handleDeleteCategory = async (row: CategoryForm) => {
 const confirmCategoryForm = async () => {
   try {
     await categoryFormRef.value?.validate()
-    
+
     categoryFormLoading.value = true
-    
+
     const isAdd = categoryFormMode.value === 'add'
-    
+
     if (isAdd) {
       // 添加分类
       await productStore.addCategory({
@@ -1804,9 +2213,9 @@ const confirmCategoryForm = async () => {
         description: categoryForm.description
       })
     }
-    
+
     ElMessage.success(isAdd ? '添加成功' : '更新成功')
-    
+
     // 发送消息提醒
     notificationStore.addNotification({
       type: isAdd ? 'PRODUCT_CATEGORY_CREATED' : 'PRODUCT_CATEGORY_UPDATED',
@@ -1821,7 +2230,7 @@ const confirmCategoryForm = async () => {
       },
       link: '/product/list'
     })
-    
+
     handleCategoryFormDialogClose()
     await loadCategoryList()
   } catch (error) {
@@ -1852,22 +2261,22 @@ const handleCategoryFormDialogClose = () => {
  */
 const loadData = async () => {
   tableLoading.value = true
-  
+
   try {
     // 模拟API调用延迟
     await new Promise(resolve => setTimeout(resolve, 300))
-    
+
     // 设置store的搜索条件
     productStore.setSearchForm(searchForm)
-    
+
     // 从store获取过滤后的商品数据
-    const filteredProducts = productStore.getFilteredProducts
-    
+    const filteredProducts = productStore.getFilteredProducts || []
+
     // 计算分页
     const startIndex = (pagination.currentPage - 1) * pagination.pageSize
     const endIndex = startIndex + pagination.pageSize
     const paginatedData = filteredProducts.slice(startIndex, endIndex)
-    
+
     tableData.value = paginatedData
     pagination.total = filteredProducts.length
   } catch (error) {
@@ -1886,10 +2295,10 @@ const loadCategoryList = async () => {
   try {
     // 确保分类数据已加载
     await productStore.loadCategories()
-    
+
     // 从store获取分类数据并计算商品数量
-    categoryList.value = productStore.categories.map(cat => {
-      const productCount = productStore.products.filter(p => p.categoryId === cat.id).length
+    categoryList.value = (productStore.categories || []).map(cat => {
+      const productCount = (productStore.products || []).filter(p => p.categoryId === cat.id).length
       return {
         id: cat.id,
         name: cat.name,
@@ -1938,8 +2347,8 @@ watch(() => route.query, (newQuery, oldQuery) => {
 // 生命周期钩子
 onMounted(() => {
   // 只在首次加载时初始化模拟数据
-  if (productStore.products.length === 0) {
-    productStore.initMockData()
+  if (!productStore.products || productStore.products.length === 0) {
+    productStore.initData()
   }
   loadData()
 })
@@ -2299,7 +2708,7 @@ onMounted(() => {
     flex-direction: column;
     gap: 12px;
   }
-  
+
   .stat-item {
     flex-direction: row;
     justify-content: space-between;
@@ -2313,18 +2722,18 @@ onMounted(() => {
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .header-actions {
     justify-content: center;
     flex-wrap: wrap;
   }
-  
+
   .table-header {
     flex-direction: column;
     gap: 12px;
     align-items: stretch;
   }
-  
+
   .table-actions {
     justify-content: center;
     flex-wrap: wrap;
@@ -2450,7 +2859,7 @@ onMounted(() => {
 :deep(.deleted-row) {
   background-color: #f5f5f5 !important;
   opacity: 0.6;
-  
+
   td {
     color: #999 !important;
   }
@@ -2460,5 +2869,65 @@ onMounted(() => {
   background-color: #f0f0f0 !important;
 }
 
+/* 批量导入对话框样式 */
+.quick-add-section {
+  max-height: 500px;
+  overflow-y: auto;
+}
 
+.avatar-uploader {
+  width: 60px;
+  height: 60px;
+  border: 1px dashed #d9d9d9;
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-uploader:hover {
+  border-color: #409eff;
+}
+
+.avatar-uploader-icon {
+  font-size: 28px;
+  color: #8c939d;
+}
+
+.avatar {
+  width: 60px;
+  height: 60px;
+  display: block;
+  object-fit: cover;
+}
+
+.excel-import-section {
+  padding: 20px 0;
+}
+
+.import-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.preview-section {
+  margin-top: 20px;
+}
+
+.preview-section h4 {
+  margin-bottom: 12px;
+  color: #303133;
+}
 </style>
