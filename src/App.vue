@@ -41,7 +41,7 @@
           <el-dropdown @command="handleCommand">
             <span class="user-info">
               <el-icon><User /></el-icon>
-              {{ userStore.user?.name || '管理员' }}
+              {{ userStore.currentUser?.name || '管理员' }}
               <el-icon><ArrowDown /></el-icon>
             </span>
             <template #dropdown>
@@ -122,6 +122,28 @@
               </keep-alive>
             </router-view>
           </div>
+
+          <!-- 🔥 批次274新增：页面底部版权信息 - 滚动到底部才显示 -->
+          <footer class="app-footer">
+            <div class="footer-content">
+              <span>版权归 {{ configStore.systemConfig.companyName || 'CRM系统' }} 所有</span>
+              <span class="separator">|</span>
+              <span>v{{ configStore.systemConfig.systemVersion || '1.0.0' }}</span>
+              <span class="separator" v-if="configStore.systemConfig.websiteUrl">|</span>
+              <a
+                v-if="configStore.systemConfig.websiteUrl"
+                :href="configStore.systemConfig.websiteUrl"
+                target="_blank"
+                class="footer-link"
+              >
+                官网
+              </a>
+              <span class="separator">|</span>
+              <a href="javascript:void(0)" class="footer-link" @click="showContactDialog">
+                联系我们
+              </a>
+            </div>
+          </footer>
         </el-main>
       </el-container>
     </el-container>
@@ -160,6 +182,55 @@
       v-model:visible="showPersonalSettingsModal"
       @success="handlePersonalSettingsSuccess"
     />
+
+    <!-- 🔥 批次274新增：联系我们对话框 -->
+    <el-dialog
+      v-model="contactDialogVisible"
+      title="联系我们"
+      width="500px"
+      :show-close="true"
+    >
+      <div class="contact-dialog-content">
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="公司名称">
+            {{ configStore.systemConfig.companyName || 'CRM系统' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="联系电话" v-if="configStore.systemConfig.contactPhone">
+            <a :href="`tel:${configStore.systemConfig.contactPhone}`" class="contact-link">
+              {{ configStore.systemConfig.contactPhone }}
+            </a>
+          </el-descriptions-item>
+          <el-descriptions-item label="联系邮箱" v-if="configStore.systemConfig.contactEmail">
+            <a :href="`mailto:${configStore.systemConfig.contactEmail}`" class="contact-link">
+              {{ configStore.systemConfig.contactEmail }}
+            </a>
+          </el-descriptions-item>
+          <el-descriptions-item label="官方网站" v-if="configStore.systemConfig.websiteUrl">
+            <a :href="configStore.systemConfig.websiteUrl" target="_blank" class="contact-link">
+              {{ configStore.systemConfig.websiteUrl }}
+            </a>
+          </el-descriptions-item>
+          <el-descriptions-item label="公司地址" v-if="configStore.systemConfig.companyAddress">
+            {{ configStore.systemConfig.companyAddress }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 二维码区域 -->
+        <div class="qr-codes-section" v-if="configStore.systemConfig.contactQRCode">
+          <el-divider>扫码联系</el-divider>
+          <div class="qr-code-center">
+            <div class="qr-code-item">
+              <img :src="configStore.systemConfig.contactQRCode" alt="联系二维码" class="qr-image" />
+              <p>{{ configStore.systemConfig.contactQRCodeLabel || '扫码联系' }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="contactDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -189,9 +260,9 @@ import IconHeadset from '@/components/icons/IconHeadset.vue'
 import IconCustomerService from '@/components/icons/IconCustomerService.vue'
 import DynamicMenu from '@/components/DynamicMenu.vue'
 import { createSafeNavigator } from '@/utils/navigation'
-import { 
-  Menu, TrendCharts, User, ArrowDown, Odometer, ShoppingCart, 
-  Box, Setting, Headset, CustomerService 
+import {
+  Menu, TrendCharts, User, ArrowDown, Odometer, ShoppingCart,
+  Box, Setting, Headset, CustomerService
 } from '@element-plus/icons-vue'
 
 
@@ -224,6 +295,14 @@ const dontRemindTodayKey = ref('')
 
 // 个人设置相关状态
 const showPersonalSettingsModal = ref(false)
+
+// 🔥 批次274新增：联系我们对话框
+const contactDialogVisible = ref(false)
+
+// 显示联系我们对话框
+const showContactDialog = () => {
+  contactDialogVisible.value = true
+}
 
 
 
@@ -1293,6 +1372,106 @@ watch(isMobile, (newValue) => {
   .page-tabs :deep(.el-tabs__item) {
     padding: 0 8px;
     font-size: 10px;
+  }
+}
+
+/* 🔥 批次274新增：页面底部版权信息样式 - 灰色低调，滚动到底部才看到 */
+.app-footer {
+  background: transparent;
+  padding: 8px 20px;
+  text-align: center;
+  flex-shrink: 0;
+  min-height: auto;
+}
+
+.footer-content {
+  color: #ccc;
+  font-size: 11px;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.footer-content .separator {
+  color: #ddd;
+  margin: 0 5px;
+}
+
+.footer-content .footer-link {
+  color: #ccc;
+  text-decoration: none;
+  transition: color 0.3s;
+}
+
+.footer-content .footer-link:hover {
+  color: #409eff;
+}
+
+/* 联系我们对话框样式 */
+.contact-dialog-content {
+  padding: 10px 0;
+}
+
+.contact-link {
+  color: #409eff;
+  text-decoration: none;
+}
+
+.contact-link:hover {
+  text-decoration: underline;
+}
+
+.qr-codes-section {
+  margin-top: 20px;
+}
+
+.qr-code-center {
+  display: flex;
+  justify-content: center;
+}
+
+.qr-code-item {
+  text-align: center;
+}
+
+.qr-image {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  padding: 10px;
+  background: #fff;
+}
+
+.qr-code-item p {
+  margin: 12px 0 0 0;
+  font-size: 14px;
+  color: #606266;
+  font-weight: 500;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .app-footer {
+    padding: 6px 12px;
+  }
+
+  .footer-content {
+    font-size: 10px;
+    gap: 2px;
+  }
+
+  .footer-content .separator {
+    margin: 0 3px;
+  }
+
+  .qr-image {
+    width: 100px;
+    height: 100px;
   }
 }
 

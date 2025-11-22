@@ -4,17 +4,17 @@
     <div class="page-header">
       <h2>业绩分享</h2>
       <div class="header-actions">
-        <el-button 
-          @click="showShareDialog = true" 
-          type="primary" 
+        <el-button
+          @click="handleOpenShareDialog"
+          type="primary"
           :icon="Plus"
           class="action-btn-primary"
           :loading="submitLoading"
         >
           新建分享
         </el-button>
-        <el-button 
-          @click="exportShareRecords" 
+        <el-button
+          @click="exportShareRecords"
           :icon="Download"
           class="action-btn-secondary"
           :loading="exportLoading"
@@ -88,6 +88,14 @@
         <div class="card-header">
           <span>分享记录</span>
           <div class="header-filters">
+            <el-button
+              @click="showFullscreenView"
+              :icon="FullScreen"
+              class="fullscreen-btn"
+              title="全屏查看"
+            >
+              全屏查看
+            </el-button>
             <el-select v-model="filterStatus" placeholder="状态筛选" clearable style="width: 120px">
               <el-option label="全部" value="" />
               <el-option label="生效中" value="active" />
@@ -117,15 +125,15 @@
                   <el-icon><Search /></el-icon>
                 </template>
               </el-input>
-              <el-button 
-                type="primary" 
+              <el-button
+                type="primary"
                 @click="handleSearch"
                 :disabled="!searchOrderNumber.trim()"
                 class="search-btn"
               >
                 搜索
               </el-button>
-              <el-button 
+              <el-button
                 v-if="isSearching"
                 @click="handleClearSearch"
                 class="clear-btn"
@@ -137,8 +145,8 @@
         </div>
       </template>
 
-      <el-table 
-        :data="filteredShareRecords" 
+      <el-table
+        :data="filteredShareRecords"
         v-loading="loading"
         class="share-table"
         :row-class-name="getTableRowClassName"
@@ -269,7 +277,7 @@
                 </el-tooltip>
               </template>
             </el-input>
-            
+
             <!-- 搜索结果提示 -->
             <div v-if="orderSearchQuery && !orderSearchLoading" class="search-result-tip">
               <span v-if="availableOrders.length === 0" class="no-result">
@@ -285,7 +293,7 @@
                 找到 {{ availableOrders.length }} 个匹配订单，请从下方选择
               </span>
             </div>
-            
+
             <!-- 多个搜索结果时显示选择框 -->
             <el-select
               v-if="availableOrders.length > 1 && !selectedOrder"
@@ -345,7 +353,7 @@
         </div>
 
         <!-- 分享成员配置 -->
-        <el-form-item label="分享成员" prop="shareMembers">
+        <el-form-item label="分享成员" prop="shareMembers" style="margin-top: 20px;">
           <div class="share-members-config">
             <div
               v-for="(member, index) in shareForm.shareMembers"
@@ -355,7 +363,9 @@
               <el-select
                 v-model="member.userId"
                 placeholder="选择成员"
-                style="width: 200px"
+                filterable
+                clearable
+                style="width: 280px"
                 @change="handleMemberChange(index)"
               >
                 <el-option
@@ -395,7 +405,7 @@
               添加成员
             </el-button>
             <div class="percentage-summary">
-              总比例: {{ totalPercentage }}% 
+              总比例: {{ totalPercentage }}%
               <span v-if="totalPercentage !== 100" class="error-text">
                 (比例总和必须为100%)
               </span>
@@ -450,8 +460,8 @@
         <div class="share-details-section">
           <h4 class="section-title">分享明细</h4>
           <div class="share-members-grid">
-            <div 
-              v-for="(member, index) in selectedShareDetail.shareMembers" 
+            <div
+              v-for="(member, index) in selectedShareDetail.shareMembers"
               :key="index"
               class="member-share-card"
             >
@@ -461,8 +471,8 @@
                 </div>
                 <div class="member-info">
                   <div class="member-name">{{ member.userName }}</div>
-                  <el-tag 
-                    :type="member.status === 'confirmed' ? 'success' : 'warning'" 
+                  <el-tag
+                    :type="member.status === 'confirmed' ? 'success' : 'warning'"
                     size="small"
                     class="member-status"
                   >
@@ -470,7 +480,7 @@
                   </el-tag>
                 </div>
               </div>
-              
+
               <div class="share-amount-section">
                 <div class="percentage-display">
                   <div class="percentage-circle">
@@ -484,7 +494,7 @@
                   </div>
                 </div>
               </div>
-              
+
               <div class="member-footer">
                 <div class="confirm-time" v-if="member.confirmTime">
                   确认时间：{{ member.confirmTime }}
@@ -500,6 +510,76 @@
         </div>
       </div>
     </el-dialog>
+
+    <!-- 全屏查看对话框 -->
+    <el-dialog
+      v-model="fullscreenVisible"
+      title="分享记录 - 全屏查看"
+      fullscreen
+      :close-on-click-modal="false"
+    >
+      <el-table
+        :data="filteredShareRecords"
+        v-loading="loading"
+        class="fullscreen-table"
+        height="calc(100vh - 200px)"
+        :row-class-name="getTableRowClassName"
+      >
+        <el-table-column prop="shareNumber" label="分享编号" width="140" fixed />
+        <el-table-column prop="orderNumber" label="订单编号" width="140" fixed>
+          <template #default="{ row }">
+            <el-link type="primary" @click="viewOrderDetail(row.orderId)">
+              {{ row.orderNumber }}
+            </el-link>
+          </template>
+        </el-table-column>
+        <el-table-column prop="fromMember" label="分享人" width="120" />
+        <el-table-column prop="toMember" label="接收人" width="120" />
+        <el-table-column prop="shareAmount" label="分享金额" width="120" align="right">
+          <template #default="{ row }">
+            <span class="amount">¥{{ row.shareAmount.toLocaleString() }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="shareRatio" label="分享比例" width="100" align="center">
+          <template #default="{ row }">
+            {{ row.shareRatio }}%
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getStatusType(row.status)">
+              {{ getStatusText(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="shareDate" label="分享日期" width="180" />
+        <el-table-column prop="effectiveDate" label="生效日期" width="180" />
+        <el-table-column prop="description" label="分享说明" min-width="200" show-overflow-tooltip />
+        <el-table-column label="操作" width="180" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click="viewShareDetail(row)">
+              查看详情
+            </el-button>
+            <el-button
+              v-if="row.status === 'active' && canCancelShare(row)"
+              link
+              type="danger"
+              size="small"
+              @click="handleCancelShare(row)"
+            >
+              取消分享
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <template #footer>
+        <el-button @click="fullscreenVisible = false">关闭</el-button>
+        <el-button type="primary" @click="exportShareRecords" :icon="Download">
+          导出数据
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -509,6 +589,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus,
   Download,
+  FullScreen,
   Share,
   Money,
   UserFilled,
@@ -580,6 +661,7 @@ const performanceStore = usePerformanceStore()
 const loading = ref(false)
 const showShareDialog = ref(false)
 const showDetailDialog = ref(false)
+const fullscreenVisible = ref(false)
 const isEditMode = ref(false)
 const submitLoading = ref(false)
 const orderSearchLoading = ref(false)
@@ -631,11 +713,32 @@ const shareStats = computed(() => performanceStore.shareStats)
 // 计算属性
 const filteredShareRecords = computed(() => {
   let records = shareRecords.value
-  
+
+  // 权限控制：根据用户角色过滤数据
+  const currentUser = userStore.currentUser
+  if (currentUser) {
+    // 超级管理员和管理员可以查看所有分享记录
+    if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
+      // 不做过滤，显示所有记录
+    } else if (currentUser.role === 'department_manager') {
+      // 部门经理只能查看自己创建的分享记录
+      records = records.filter(record =>
+        record.createdById === currentUser.id ||
+        record.createdBy === currentUser.name
+      )
+    } else {
+      // 其他角色（如销售员）只能查看自己创建的分享记录
+      records = records.filter(record =>
+        record.createdById === currentUser.id ||
+        record.createdBy === currentUser.name
+      )
+    }
+  }
+
   if (filterStatus.value) {
     records = records.filter(record => record.status === filterStatus.value)
   }
-  
+
   if (filterDateRange.value && filterDateRange.value.length === 2) {
     const [startDate, endDate] = filterDateRange.value
     records = records.filter(record => {
@@ -643,15 +746,15 @@ const filteredShareRecords = computed(() => {
       return recordDate >= startDate && recordDate <= endDate
     })
   }
-  
+
   // 搜索功能：按订单号搜索
   if (isSearching.value && searchOrderNumber.value.trim()) {
     const searchTerm = searchOrderNumber.value.trim().toLowerCase()
-    records = records.filter(record => 
+    records = records.filter(record =>
       record.orderNumber.toLowerCase().includes(searchTerm)
     )
   }
-  
+
   return records
 })
 
@@ -670,10 +773,10 @@ const loadShareRecords = async () => {
       status: filterStatus.value || undefined,
       userId: userStore.currentUser?.id
     }
-    
+
     const result = await performanceStore.loadPerformanceShares(params)
     totalRecords.value = result.total
-    
+
     // 如果没有数据，创建一些示例数据（仅在开发环境）
     if (result.shares.length === 0 && process.env.NODE_ENV === 'development') {
       try {
@@ -689,7 +792,7 @@ const loadShareRecords = async () => {
           createdById: userStore.currentUser?.id || 'admin',
           description: '重要客户订单，按贡献度分配'
         })
-        
+
         await performanceStore.createPerformanceShare({
           orderId: '2',
           orderNumber: 'ORD202401160002',
@@ -702,7 +805,7 @@ const loadShareRecords = async () => {
           createdById: userStore.currentUser?.id || 'admin',
           description: '团队协作订单'
         })
-        
+
         // 重新加载数据
         const newResult = await performanceStore.loadPerformanceShares(params)
         totalRecords.value = newResult.total
@@ -720,43 +823,43 @@ const loadShareRecords = async () => {
 
 const loadAvailableUsers = async () => {
   try {
-    // 从用户store中获取真实的用户列表
-    await userStore.loadUsers()
-    
+    console.log('[业绩分享] 开始加载用户列表')
+
+    // 从localStorage直接获取用户数据库
+    const userDatabaseStr = localStorage.getItem('userDatabase')
+    if (!userDatabaseStr) {
+      console.warn('[业绩分享] 未找到用户数据库')
+      availableUsers.value = []
+      return
+    }
+
+    const userDatabase = JSON.parse(userDatabaseStr)
+    console.log('[业绩分享] 用户数据库总数:', userDatabase.length)
+
     // 过滤出可以参与业绩分享的用户（销售人员、经理等）
-    const eligibleRoles = ['sales_staff', 'sales_manager', 'department_manager']
-    availableUsers.value = userStore.users
-      .filter(user => eligibleRoles.includes(user.role) && user.status === 'active')
+    const eligibleRoles = ['sales_staff', 'sales_manager', 'department_manager', 'admin']
+    availableUsers.value = userDatabase
+      .filter(user => {
+        const isEligible = eligibleRoles.includes(user.roleId || user.role) && user.status === 'active'
+        return isEligible
+      })
       .map(user => ({
         id: user.id,
-        name: user.name,
-        department: user.department,
-        role: user.role
+        name: user.realName || user.name,
+        department: user.department || '未分配',
+        role: user.roleId || user.role
       }))
-    
-    // 如果没有找到用户，使用模拟数据作为后备
-    if (availableUsers.value.length === 0) {
-      availableUsers.value = [
-        { id: 'sales1', name: '小明', department: '销售部', role: 'sales_staff' },
-        { id: 'sales2', name: '张三', department: '销售部', role: 'sales_staff' },
-        { id: 'sales3', name: '李四', department: '销售部', role: 'sales_staff' },
-        { id: 'manager1', name: '王经理', department: '销售部', role: 'sales_manager' }
-      ]
-    }
+
+    console.log('[业绩分享] 可用用户数:', availableUsers.value.length)
+    console.log('[业绩分享] 可用用户列表:', availableUsers.value)
   } catch (error) {
-    console.error('加载用户列表失败:', error)
-    // 使用模拟数据作为后备
-    availableUsers.value = [
-      { id: 'sales1', name: '小明', department: '销售部', role: 'sales_staff' },
-      { id: 'sales2', name: '张三', department: '销售部', role: 'sales_staff' },
-      { id: 'sales3', name: '李四', department: '销售部', role: 'sales_staff' },
-      { id: 'manager1', name: '王经理', department: '销售部', role: 'sales_manager' }
-    ]
+    console.error('[业绩分享] 加载用户列表失败:', error)
+    availableUsers.value = []
   }
 }
 
 // 数据范围控制函数
-const applyDataScopeControl = (orderList: any[]) => {
+const applyDataScopeControl = (orderList: unknown[]) => {
   const currentUser = userStore.currentUser
   if (!currentUser) return []
 
@@ -794,30 +897,29 @@ const handleOrderSearch = async (query: string) => {
     shareForm.value.orderId = ''
     return
   }
-  
+
   orderSearchLoading.value = true
   try {
-    // 确保订单数据已加载
-    if (orderStore.orders.length === 0) {
-      await orderStore.initializeWithMockData()
-    }
-    
+    // 注意：不要在这里调用 initializeWithMockData
+    // createPersistentStore 会自动从 localStorage 恢复数据
+    // 如果数据为空，说明确实没有数据，不应该强制初始化
+
     // 模拟搜索延迟
     await new Promise(resolve => setTimeout(resolve, 200))
-    
+
     // 使用订单store的搜索函数进行全局真实数据搜索
     const searchResults = orderStore.searchOrders(query)
-    
+
     // 过滤掉已经分享过的订单
-    const filteredResults = searchResults.filter(order => 
+    const filteredResults = searchResults.filter(order =>
       !shareRecords.value.some(share => share.orderId === order.id)
     )
-    
+
     // 精确匹配订单号（优先级最高）
     const exactOrderMatch = filteredResults.find(order =>
       order.orderNumber.toLowerCase() === query.toLowerCase().trim()
     )
-    
+
     if (exactOrderMatch) {
       // 如果找到精确匹配的订单号，直接选中该订单
       selectedOrder.value = exactOrderMatch
@@ -825,16 +927,16 @@ const handleOrderSearch = async (query: string) => {
       availableOrders.value = [exactOrderMatch]
       return
     }
-    
+
     // 限制搜索结果数量
     availableOrders.value = filteredResults.slice(0, 10)
-    
+
     // 如果只有一个匹配结果，自动选中
     if (availableOrders.value.length === 1) {
       selectedOrder.value = availableOrders.value[0]
       shareForm.value.orderId = availableOrders.value[0].id
     }
-    
+
   } catch (error) {
     console.error('搜索订单失败:', error)
     ElMessage.error('搜索订单失败，请重试')
@@ -863,7 +965,7 @@ const handleMemberChange = (index: number) => {
 }
 
 const isUserSelected = (userId: string, currentIndex: number) => {
-  return shareForm.value.shareMembers.some((member, index) => 
+  return shareForm.value.shareMembers.some((member, index) =>
     index !== currentIndex && member.userId === userId
   )
 }
@@ -885,63 +987,71 @@ const validatePercentages = () => {
 
 const submitShare = async () => {
   if (!shareFormRef.value) return
-  
+
   try {
     await shareFormRef.value.validate()
-    
+
     if (totalPercentage.value !== 100) {
       ElMessage.error('分享比例总和必须为100%')
       return
     }
-    
+
     submitLoading.value = true
-    
+
+    console.log('[业绩分享] 开始提交分享数据')
+
     // 准备分享数据
     const shareData = {
       orderId: shareForm.value.orderId,
       orderNumber: selectedOrder.value?.orderNumber || '',
       orderAmount: selectedOrder.value?.totalAmount || 0,
-      shareMembers: shareForm.value.shareMembers.map(member => ({
-        userId: member.userId,
-        userName: availableUsers.value.find(u => u.id === member.userId)?.name || '',
-        percentage: member.percentage,
-        shareAmount: 0, // 将在store中计算
-        status: 'pending' as const
-      })),
+      shareMembers: shareForm.value.shareMembers.map(member => {
+        const shareAmount = (selectedOrder.value?.totalAmount || 0) * member.percentage / 100
+        return {
+          userId: member.userId,
+          userName: availableUsers.value.find(u => u.id === member.userId)?.name || '',
+          percentage: member.percentage,
+          shareAmount: shareAmount,
+          status: 'pending' as const
+        }
+      }),
       createdBy: userStore.currentUser?.name || '',
       createdById: userStore.currentUser?.id || '',
       description: shareForm.value.description
     }
-    
+
+    console.log('[业绩分享] 分享数据:', shareData)
+
     if (isEditMode.value) {
       // 更新现有记录
       const currentShare = shareRecords.value.find(record => record.id === shareForm.value.orderId)
       if (currentShare) {
         await performanceStore.updatePerformanceShare(currentShare.id, shareData)
         ElMessage.success('分享更新成功')
-        // 重新加载数据
-        await loadShareRecords()
-        // 触发数据同步
-        await performanceStore.syncPerformanceData()
       }
     } else {
       // 创建新记录
       const newShare = await performanceStore.createPerformanceShare(shareData)
-      ElMessage.success('分享创建成功')
-      
-      // 发送通知给分享成员
-      await sendShareNotifications(newShare)
-      // 重新加载数据
-      await loadShareRecords()
-      // 触发数据同步
-      await performanceStore.syncPerformanceData()
+      console.log('[业绩分享] 分享创建成功:', newShare)
+      // 移除这里的成功提示，统一在最后显示
     }
-    
+
+    // 关闭对话框
     cancelShareForm()
-    // 刷新数据
+
+    // 重新加载分享记录
     await loadShareRecords()
+
+    // 触发业绩数据同步更新
+    console.log('[业绩分享] 触发业绩数据同步')
+    await performanceStore.syncPerformanceData()
+
+    console.log('[业绩分享] 分享流程完成')
+
+    // 只在这里显示成功提示
+    ElMessage.success('分享创建成功')
   } catch (error) {
-    console.error('提交分享失败:', error)
+    console.error('[业绩分享] 提交分享失败:', error)
     ElMessage.error('提交分享失败')
   } finally {
     submitLoading.value = false
@@ -966,6 +1076,14 @@ const sendShareNotifications = async (shareData: ShareDetail) => {
 
 
 
+const handleOpenShareDialog = async () => {
+  console.log('[业绩分享] 打开新建分享对话框')
+  // 加载用户列表
+  await loadAvailableUsers()
+  // 打开对话框
+  showShareDialog.value = true
+}
+
 const cancelShareForm = () => {
   showShareDialog.value = false
   isEditMode.value = false
@@ -978,6 +1096,8 @@ const cancelShareForm = () => {
     description: ''
   }
   selectedOrder.value = null
+  orderSearchQuery.value = ''
+  availableOrders.value = []
   shareFormRef.value?.resetFields()
 }
 
@@ -1002,7 +1122,7 @@ const cancelShare = async (share: ShareDetail) => {
     await ElMessageBox.confirm('确定要取消这个业绩分享吗？', '确认取消', {
       type: 'warning'
     })
-    
+
     const success = await performanceStore.cancelPerformanceShare(share.id)
     if (success) {
       ElMessage.success('业绩分享已取消')
@@ -1030,6 +1150,13 @@ const canCancelShare = (share: ShareDetail) => {
 const viewOrderDetail = (orderId: string) => {
   // 跳转到订单详情页面
   window.open(`/order/detail/${orderId}`, '_blank')
+}
+
+/**
+ * 显示全屏查看对话框
+ */
+const showFullscreenView = () => {
+  fullscreenVisible.value = true
 }
 
 const exportShareRecords = async () => {
@@ -1075,7 +1202,7 @@ const exportShareRecords = async () => {
     )
 
     // 准备导出参数
-    const params: any = {
+    const params: unknown = {
       format: exportFormat.value
     }
 
@@ -1160,16 +1287,20 @@ const getOrderStatusText = (status: string) => {
     confirmed: '已确认',
     shipped: '已发货',
     delivered: '已送达',
-    cancelled: '已取消'
+    cancelled: '已取消',
+    completed: '已完成',
+    processing: '处理中',
+    paid: '已支付',
+    unpaid: '未支付'
   }
   return statusMap[status] || status
 }
 
-const getTableRowClassName = ({ row, rowIndex }: { row: any, rowIndex: number }) => {
+const getTableRowClassName = ({ row, rowIndex }: { row: unknown, rowIndex: number }) => {
   return `table-row-${rowIndex % 2 === 0 ? 'even' : 'odd'}`
 }
 
-const handleRowClick = (row: any) => {
+const handleRowClick = (row: unknown) => {
   // 添加行点击的视觉反馈
   ElMessage.info(`点击了分享记录: ${row.shareNumber}`)
 }
@@ -1257,8 +1388,9 @@ watch(
 )
 
 // 生命周期
-onMounted(() => {
-  loadShareRecords()
+onMounted(async () => {
+  await loadShareRecords()
+  await loadAvailableUsers()
   startAutoRefresh()
 })
 
@@ -1516,12 +1648,12 @@ watch([filterStatus, filterDateRange], () => {
     flex-wrap: wrap;
     gap: 12px;
   }
-  
+
   .search-container {
     margin-left: 0;
     margin-top: 8px;
   }
-  
+
   .search-input {
     width: 160px;
   }
@@ -1533,18 +1665,18 @@ watch([filterStatus, filterDateRange], () => {
     align-items: stretch;
     gap: 12px;
   }
-  
+
   .search-container {
     margin-left: 0;
     margin-top: 0;
     justify-content: stretch;
   }
-  
+
   .search-input {
     flex: 1;
     width: auto;
   }
-  
+
   .search-btn, .clear-btn {
     flex-shrink: 0;
   }
@@ -1631,8 +1763,9 @@ watch([filterStatus, filterDateRange], () => {
 
 /* 订单信息卡片样式 */
 .order-info-card {
-  margin-top: 20px;
-  padding: 20px;
+  margin-top: 24px;
+  margin-bottom: 24px;
+  padding: 24px;
   background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
   border-radius: 16px;
   border: 2px solid #e2e8f0;
@@ -1643,6 +1776,85 @@ watch([filterStatus, filterDateRange], () => {
 .order-info-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+/* 搜索结果提示样式 */
+.search-result-tip {
+  margin-top: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-result-tip .no-result {
+  color: #d97706;
+  background: #fef3c7;
+  padding: 8px 12px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-result-tip .found-result {
+  color: #059669;
+  background: #d1fae5;
+  padding: 8px 12px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-result-tip .multiple-results {
+  color: #2563eb;
+  background: #dbeafe;
+  padding: 8px 12px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 订单选项样式 */
+.order-option {
+  padding: 8px 0;
+}
+
+.order-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.customer-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.order-amount {
+  font-weight: 700;
+  color: #059669;
+  margin-left: auto;
+}
+
+.order-sub {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.phone {
+  color: #6b7280;
+}
+
+.time {
+  color: #9ca3af;
 }
 
 .order-info-header {
@@ -1999,59 +2211,59 @@ watch([filterStatus, filterDateRange], () => {
   .performance-share {
     padding: 16px;
   }
-  
+
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 16px;
     padding: 20px;
   }
-  
+
   .page-header h2 {
     font-size: 28px;
   }
-  
+
   .header-actions {
     width: 100%;
     justify-content: flex-end;
   }
-  
+
   .overview-card {
     height: 120px;
   }
-  
+
   .card-content {
     padding: 20px;
   }
-  
+
   .card-icon {
     width: 60px;
     height: 60px;
     margin-right: 16px;
     font-size: 24px;
   }
-  
+
   .card-value {
     font-size: 28px;
   }
-  
+
   .card-label {
     font-size: 14px;
   }
-  
+
   .card-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 16px;
     padding: 20px;
   }
-  
+
   .header-filters {
     width: 100%;
     justify-content: flex-end;
     flex-wrap: wrap;
   }
-  
+
   .member-item {
     flex-direction: column;
     align-items: flex-start;
@@ -2302,23 +2514,23 @@ watch([filterStatus, filterDateRange], () => {
   .share-members-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .share-amount-section {
     flex-direction: column;
     gap: 12px;
     text-align: center;
   }
-  
+
   .amount-display {
     margin-left: 0;
     text-align: center;
   }
-  
+
   .action-buttons {
     flex-direction: column;
     gap: 4px;
   }
-  
+
   .action-btn {
     width: 100%;
     justify-content: center;

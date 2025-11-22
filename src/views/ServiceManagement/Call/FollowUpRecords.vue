@@ -206,7 +206,7 @@
           
           <el-table-column prop="customerPhone" label="客户电话" width="140">
             <template #default="{ row }">
-              {{ maskPhone(row.customerPhone) }}
+              {{ displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE) }}
             </template>
           </el-table-column>
           
@@ -478,6 +478,8 @@ import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import type { FollowUpRecord } from '@/api/call'
 import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 import {
   EditPen,
   Plus,
@@ -847,6 +849,11 @@ const deleteRecord = async (record: FollowUpRecord) => {
 }
 
 const batchComplete = async () => {
+  if (!selectedRecords.value || selectedRecords.value.length === 0) {
+    ElMessage.warning('请先选择要完成的记录')
+    return
+  }
+  
   try {
     const ids = selectedRecords.value.map(record => record.id)
     await callStore.batchUpdateFollowUpRecords(ids, { status: 'completed' })
@@ -860,6 +867,11 @@ const batchComplete = async () => {
 }
 
 const batchDelete = async () => {
+  if (!selectedRecords.value || selectedRecords.value.length === 0) {
+    ElMessage.warning('请先选择要删除的记录')
+    return
+  }
+  
   try {
     await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedRecords.value.length} 条记录吗？`,

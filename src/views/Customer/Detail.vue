@@ -6,8 +6,8 @@
         <el-button :icon="ArrowLeft" @click="goBack" class="back-btn" />
         <div class="customer-title">
           <h2>{{ customerInfo.name }}</h2>
-          <el-tag :class="getLevelClass(customerInfo.level)" size="large">
-            {{ customerInfo.level }}
+          <el-tag :type="getLevelType(customerInfo.level)" size="large">
+            {{ getLevelText(customerInfo.level) }}
           </el-tag>
         </div>
       </div>
@@ -395,9 +395,10 @@
             <el-col :span="8">
               <el-form-item label="客户等级">
                 <el-select v-model="editForm.level" placeholder="请选择">
-                  <el-option label="普通客户" value="普通客户" />
-                  <el-option label="VIP客户" value="VIP客户" />
-                  <el-option label="SVIP客户" value="SVIP客户" />
+                  <el-option label="铜牌客户" value="bronze" />
+                  <el-option label="银牌客户" value="silver" />
+                  <el-option label="金牌客户" value="gold" />
+                  <el-option label="钻石客户" value="diamond" />
                 </el-select>
               </el-form-item>
             </el-col>
@@ -552,20 +553,20 @@
               </el-input>
             </div>
             <el-table :data="filteredOrders" style="width: 100%" v-loading="loadingOrders">
-              <el-table-column prop="orderNo" label="订单号" width="180" />
-              <el-table-column prop="products" label="商品" />
-              <el-table-column prop="totalAmount" label="订单金额" width="120">
+              <el-table-column prop="orderNo" label="订单号" width="160" show-overflow-tooltip />
+              <el-table-column prop="products" label="商品" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="totalAmount" label="订单金额" width="110">
                 <template #default="{ row }">
                   <span class="amount">¥{{ row.totalAmount.toLocaleString() }}</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="status" label="订单状态" width="100">
+              <el-table-column prop="status" label="订单状态" width="90">
                 <template #default="{ row }">
-                  <el-tag :type="getOrderStatusType(row.status)">{{ row.status }}</el-tag>
+                  <el-tag :type="getOrderStatusType(row.status)" size="small">{{ row.status }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="orderDate" label="下单时间" width="180" />
-              <el-table-column label="操作" width="200">
+              <el-table-column prop="orderDate" label="下单时间" width="160" show-overflow-tooltip />
+              <el-table-column label="操作" width="180" fixed="right">
                 <template #default="{ row }">
                   <el-button @click="viewOrder(row.id)" size="small" type="primary" link>查看</el-button>
                   <el-button @click="editOrder(row.id)" size="small" type="warning" link v-if="row.status === '待付款'">编辑</el-button>
@@ -583,27 +584,27 @@
               <el-button @click="createAfterSales" icon="Plus" type="primary" size="small">新建售后</el-button>
             </div>
             <el-table :data="serviceRecords" style="width: 100%" v-loading="loadingService">
-              <el-table-column prop="serviceNo" label="售后单号" width="180" />
-              <el-table-column prop="orderNo" label="关联订单" width="180" />
-              <el-table-column prop="type" label="售后类型" width="100">
+              <el-table-column prop="serviceNo" label="售后单号" width="160" show-overflow-tooltip />
+              <el-table-column prop="orderNo" label="关联订单" width="160" show-overflow-tooltip />
+              <el-table-column prop="type" label="售后类型" width="90">
                 <template #default="{ row }">
-                  <el-tag :type="getServiceType(row.type)">{{ row.type }}</el-tag>
+                  <el-tag :type="getServiceType(row.type)" size="small">{{ row.type }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="reason" label="售后原因" />
-              <el-table-column prop="amount" label="退款金额" width="120">
+              <el-table-column prop="reason" label="售后原因" min-width="180" show-overflow-tooltip />
+              <el-table-column prop="amount" label="退款金额" width="100">
                 <template #default="{ row }">
                   <span class="amount" v-if="row.amount">¥{{ row.amount.toLocaleString() }}</span>
                   <span v-else>-</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="status" label="处理状态" width="100">
+              <el-table-column prop="status" label="处理状态" width="90">
                 <template #default="{ row }">
-                  <el-tag :type="getServiceStatusType(row.status)">{{ row.status }}</el-tag>
+                  <el-tag :type="getServiceStatusType(row.status)" size="small">{{ row.status }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="createTime" label="申请时间" width="180" />
-              <el-table-column label="操作" width="150">
+              <el-table-column prop="createTime" label="申请时间" width="160" show-overflow-tooltip />
+              <el-table-column label="操作" width="140" fixed="right">
                 <template #default="{ row }">
                   <el-button @click="viewService(row.id)" size="small" type="primary" link>查看</el-button>
                   <el-button @click="handleService(row.id)" size="small" type="warning" link v-if="row.status === '待处理'">处理</el-button>
@@ -621,29 +622,29 @@
                 v-if="permissionService.checkCallPermission(userStore.userInfo?.id || 'guest', 'MAKE_CALL').hasAccess">发起通话</el-button>
             </div>
             <el-table :data="callRecords" style="width: 100%" v-loading="loadingCalls">
-              <el-table-column prop="callType" label="通话类型" width="100">
+              <el-table-column prop="callType" label="通话类型" width="90">
                 <template #default="{ row }">
-                  <el-tag :type="row.callType === '呼出' ? 'success' : 'info'">{{ row.callType }}</el-tag>
+                  <el-tag :type="row.callType === '呼出' ? 'success' : 'info'" size="small">{{ row.callType }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="phone" label="电话号码" width="150">
+              <el-table-column prop="phone" label="电话号码" width="130">
                 <template #default="{ row }">
-                  {{ maskPhone(row.phone) }}
+                  {{ displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE) }}
                 </template>
               </el-table-column>
-              <el-table-column prop="duration" label="通话时长" width="120" />
-              <el-table-column prop="status" label="通话状态" width="100">
+              <el-table-column prop="duration" label="通话时长" width="100" />
+              <el-table-column prop="status" label="通话状态" width="90">
                 <template #default="{ row }">
-                  <el-tag :type="getCallStatusType(row.status)">{{ row.status }}</el-tag>
+                  <el-tag :type="getCallStatusType(row.status)" size="small">{{ row.status }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="summary" label="通话摘要" />
-              <el-table-column prop="callTime" label="通话时间" width="180" />
-              <el-table-column label="操作" width="200">
+              <el-table-column prop="summary" label="通话摘要" min-width="180" show-overflow-tooltip />
+              <el-table-column prop="callTime" label="通话时间" width="160" show-overflow-tooltip />
+              <el-table-column label="操作" width="180" fixed="right">
                 <template #default="{ row }">
-                  <el-button @click="viewCallDetail(row.id)" size="small" type="primary" link 
+                  <el-button @click="viewCallDetail(row.id)" size="small" type="primary" link
                     v-if="permissionService.checkCallPermission(userStore.userInfo?.id || 'guest', 'VIEW_RECORDS').hasAccess">详情</el-button>
-                  <el-button @click="playRecording(row.id)" size="small" type="success" link 
+                  <el-button @click="playRecording(row.id)" size="small" type="success" link
                     v-if="row.status === '已接通' && permissionService.checkCallPermission(userStore.userInfo?.id || 'guest', 'PLAY_RECORDING').hasAccess">播放</el-button>
                   <el-button @click="addFollowUpFromCall(row)" size="small" type="warning" link>跟进</el-button>
                   <el-dropdown trigger="click">
@@ -652,7 +653,7 @@
                     </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item @click="downloadRecording(row.id)" 
+                        <el-dropdown-item @click="downloadRecording(row.id)"
                           v-if="row.status === '已接通' && permissionService.checkCallPermission(userStore.userInfo?.id || 'guest', 'DOWNLOAD_RECORDING').hasAccess">
                           <el-icon><Download /></el-icon>下载录音
                         </el-dropdown-item>
@@ -765,13 +766,13 @@
           <el-select v-model="callForm.phone" placeholder="请选择客户号码" filterable allow-create>
             <el-option
               v-if="customerInfo.phone"
-              :label="`${maskPhone(customerInfo.phone)} (主号码)`"
+              :label="`${displaySensitiveInfoNew(customerInfo.phone, SensitiveInfoType.PHONE)} (主号码)`"
               :value="customerInfo.phone"
             />
             <el-option
               v-for="(phone, index) in customerInfo.otherPhones"
               :key="phone"
-              :label="`${maskPhone(phone)} (备用号码${index + 1})`"
+              :label="`${displaySensitiveInfoNew(phone, SensitiveInfoType.PHONE)} (备用号码${index + 1})`"
               :value="phone"
             />
           </el-select>
@@ -831,13 +832,13 @@
           <el-select v-model="smsForm.phone" placeholder="请选择客户号码" filterable>
             <el-option
               v-if="customerInfo.phone"
-              :label="`${maskPhone(customerInfo.phone)} (主号码)`"
+              :label="`${displaySensitiveInfoNew(customerInfo.phone, SensitiveInfoType.PHONE)} (主号码)`"
               :value="customerInfo.phone"
             />
             <el-option
               v-for="(phone, index) in customerInfo.otherPhones"
               :key="phone"
-              :label="`${maskPhone(phone)} (备用号码${index + 1})`"
+              :label="`${displaySensitiveInfoNew(phone, SensitiveInfoType.PHONE)} (备用号码${index + 1})`"
               :value="phone"
             />
           </el-select>
@@ -944,7 +945,7 @@ import { useOrderStore } from '@/stores/order'
 import { useServiceStore } from '@/stores/service'
 import { useCustomerStore } from '@/stores/customer'
 import { useCallStore } from '@/stores/call'
-import { maskPhone } from '@/utils/phone'
+
 import { displaySensitiveInfo } from '@/utils/sensitive'
 import { permissionService, CallPermissionType } from '@/services/permission'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
@@ -952,6 +953,7 @@ import { SensitiveInfoType } from '@/services/permission'
 import { copyToClipboard } from '@/utils/customerCode'
 import CreateTemplateDialog from '@/components/CreateTemplateDialog.vue'
 import { createSafeNavigator } from '@/utils/navigation'
+import { customerDetailApi } from '@/api/customerDetail'
 
 const route = useRoute()
 const router = useRouter()
@@ -1390,7 +1392,7 @@ const startEdit = () => {
   isEditing.value = true
   Object.assign(editForm, customerInfo.value)
   // 在编辑表单中显示加密的手机号
-  editForm.phone = maskPhone(customerInfo.value.phone)
+  editForm.phone = displaySensitiveInfoNew(customerInfo.value.phone, SensitiveInfoType.PHONE)
   phoneNumbers.value = customerInfo.value.otherPhones || []
 }
 
@@ -1405,20 +1407,36 @@ const getLevelClass = (level: string) => {
 
 const getLevelType = (level: string) => {
   const levelMap: Record<string, string> = {
+    'bronze': '',
+    'silver': 'info',
+    'gold': 'warning',
+    'diamond': 'danger',
+    // 兼容旧数据
+    'normal': '',
+    'vip': 'warning',
+    'svip': 'danger',
+    '普通客户': '',
     'VIP客户': 'warning',
-    'SVIP客户': 'danger',
-    '普通客户': 'info'
+    'SVIP客户': 'danger'
   }
-  return levelMap[level] || 'info'
+  return levelMap[level] || ''
 }
 
 const getLevelText = (level: string) => {
   const levelMap: Record<string, string> = {
-    'normal': '普通客户',
-    'vip': 'VIP客户',
-    'svip': 'SVIP客户'
+    'bronze': '铜牌客户',
+    'silver': '银牌客户',
+    'gold': '金牌客户',
+    'diamond': '钻石客户',
+    // 兼容旧数据
+    'normal': '铜牌客户',
+    'vip': '金牌客户',
+    'svip': '钻石客户',
+    '普通客户': '铜牌客户',
+    'VIP客户': '金牌客户',
+    'SVIP客户': '钻石客户'
   }
-  return levelMap[level] || level
+  return levelMap[level] || '铜牌客户'
 }
 
 const getOrderStatusType = (status: string) => {
@@ -1729,7 +1747,7 @@ const startCall = async () => {
     userStore.userInfo?.id || 'guest',
     CallPermissionType.MAKE_CALL
   )
-  
+
   if (!permissionCheck.hasAccess) {
     ElMessage.error(permissionCheck.reason || '无权限发起通话')
     return
@@ -1746,11 +1764,11 @@ const startCall = async () => {
       notes: callForm.notes,
       type: 'outbound' as const
     }
-    
+
     await callStore.startCall(callData)
     ElMessage.success('通话已发起')
     showCallDialog.value = false
-    
+
     // 重新加载通话记录
     await loadCallRecords()
   } catch (error) {
@@ -1809,11 +1827,17 @@ const saveFollowUp = async () => {
 
   savingFollowUp.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    const customerId = route.params.id as string
 
     if (isEditingFollowUp.value) {
-      // 编辑模式：更新现有记录
+      // 编辑模式：使用API更新记录
+      await customerDetailApi.updateFollowUp(customerId, editingFollowUpId.value, {
+        type: followUpForm.type,
+        title: followUpForm.title,
+        content: followUpForm.content
+      })
+
+      // 更新本地数据
       const index = followUpRecords.value.findIndex(item => item.id === editingFollowUpId.value)
       if (index > -1) {
         const existingRecord = followUpRecords.value[index]
@@ -1821,34 +1845,29 @@ const saveFollowUp = async () => {
           ...existingRecord,
           type: followUpForm.type,
           title: followUpForm.title,
-          content: followUpForm.content,
-          // 保持原有的创建时间和作者
-          createTime: existingRecord.createTime,
-          author: existingRecord.author
+          content: followUpForm.content
         }
-        ElMessage.success('跟进记录更新成功')
       }
+      ElMessage.success('跟进记录更新成功')
     } else {
-      // 新增模式：创建新记录
-      const newRecord = {
-        id: Date.now().toString(),
+      // 新增模式：使用API创建记录
+      const newRecord = await customerDetailApi.addFollowUp(customerId, {
         type: followUpForm.type,
         title: followUpForm.title,
         content: followUpForm.content,
-        author: userStore.currentUser?.name || '当前用户',
-        createTime: new Date().toLocaleString('zh-CN', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit'
-        }),
-        canEdit: true
-      }
+        author: userStore.currentUser?.name || '当前用户'
+      })
 
-      // 将新记录添加到数组开头（最新的在前面）
-      followUpRecords.value.unshift(newRecord)
+      // 添加到本地数据
+      followUpRecords.value.unshift({
+        id: newRecord.id,
+        type: newRecord.type,
+        title: newRecord.title || newRecord.type,
+        content: newRecord.content,
+        createTime: newRecord.createTime,
+        author: newRecord.author || newRecord.createdBy || '未知',
+        canEdit: true
+      })
       ElMessage.success('跟进记录保存成功')
     }
 
@@ -1863,6 +1882,7 @@ const saveFollowUp = async () => {
     followUpForm.nextFollowUp = ''
 
   } catch (error) {
+    console.error('保存跟进记录失败:', error)
     ElMessage.error('保存失败')
   } finally {
     savingFollowUp.value = false
@@ -1883,16 +1903,22 @@ const saveTag = async () => {
 
   savingTag.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 500))
-    customerTags.value.push({
-      id: Date.now(),
+    // 使用统一的API添加标签
+    const customerId = route.params.id as string
+    const newTag = await customerDetailApi.addCustomerTag(customerId, {
       name: tagForm.name,
       type: tagForm.type
+    })
+
+    customerTags.value.push({
+      id: newTag.id,
+      name: newTag.name,
+      type: newTag.type
     })
     ElMessage.success('标签添加成功')
     showTagDialog.value = false
   } catch (error) {
+    console.error('添加标签失败:', error)
     ElMessage.error('添加失败')
   } finally {
     savingTag.value = false
@@ -1907,10 +1933,18 @@ const removeTag = async (tagId: number) => {
       type: 'warning'
     })
 
+    // 使用统一的API删除标签
+    const customerId = route.params.id as string
+    await customerDetailApi.removeCustomerTag(customerId, tagId.toString())
+
     customerTags.value = customerTags.value.filter(tag => tag.id !== tagId)
     ElMessage.success('标签删除成功')
-  } catch {
-    // 用户取消删除
+  } catch (error: any) {
+    // 如果不是用户取消操作,显示错误信息
+    if (error !== 'cancel') {
+      console.error('删除标签失败:', error)
+      ElMessage.error('删除失败')
+    }
   }
 }
 
@@ -1980,7 +2014,7 @@ const playRecording = async (callId: string) => {
     userStore.userInfo?.id || 'guest',
     CallPermissionType.PLAY_RECORDING
   )
-  
+
   if (!permissionCheck.hasAccess) {
     ElMessage.error(permissionCheck.reason || '无权限播放录音')
     return
@@ -2002,7 +2036,7 @@ const downloadRecording = async (callId: string) => {
     userStore.userInfo?.id || 'guest',
     CallPermissionType.DOWNLOAD_RECORDING
   )
-  
+
   if (!permissionCheck.hasAccess) {
     ElMessage.error(permissionCheck.reason || '无权限下载录音')
     return
@@ -2037,7 +2071,7 @@ const editCallRecord = (callId: string) => {
     userStore.userInfo?.id || 'guest',
     CallPermissionType.EDIT_RECORDS
   )
-  
+
   if (!permissionCheck.hasAccess) {
     ElMessage.error(permissionCheck.reason || '无权限编辑通话记录')
     return
@@ -2047,7 +2081,7 @@ const editCallRecord = (callId: string) => {
 }
 
 // 从通话记录添加跟进
-const addFollowUpFromCall = (callRecord: any) => {
+const addFollowUpFromCall = (callRecord: unknown) => {
   followUpForm.type = '电话跟进'
   followUpForm.title = `${callRecord.callType}跟进`
   followUpForm.content = `基于${callRecord.callTime}的${callRecord.callType}通话进行跟进`
@@ -2103,8 +2137,9 @@ const deleteFollowUp = async (followUpId: string) => {
       }
     )
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // 使用API删除跟进记录
+    const customerId = route.params.id as string
+    await customerDetailApi.deleteFollowUp(customerId, followUpId)
 
     // 从列表中移除记录
     const index = followUpRecords.value.findIndex(item => item.id === followUpId)
@@ -2112,8 +2147,12 @@ const deleteFollowUp = async (followUpId: string) => {
       followUpRecords.value.splice(index, 1)
       ElMessage.success('跟进记录删除成功')
     }
-  } catch (error) {
-    // 用户取消删除，不做任何操作
+  } catch (error: any) {
+    // 如果不是用户取消操作,显示错误信息
+    if (error !== 'cancel') {
+      console.error('删除跟进记录失败:', error)
+      ElMessage.error('删除失败')
+    }
   }
 }
 
@@ -2193,11 +2232,18 @@ const loadCustomerDetail = async () => {
 
     // 客户统计数据将通过 calculateCustomerStats() 方法实时计算
 
-    // 加载标签
-    customerTags.value = [
-      { id: 1, name: '优质客户', type: 'success' },
-      { id: 2, name: '重点关注', type: 'warning' }
-    ]
+    // 加载标签 - 使用统一的API
+    try {
+      const tags = await customerDetailApi.getCustomerTags(customerId)
+      customerTags.value = tags.map((tag: any) => ({
+        id: tag.id,
+        name: tag.name,
+        type: tag.type || 'info'
+      }))
+    } catch (error) {
+      console.error('加载客户标签失败:', error)
+      customerTags.value = []
+    }
 
     // 初始化疾病史数据
     medicalHistory.value = [
@@ -2233,53 +2279,22 @@ const loadCustomerDetail = async () => {
 const loadOrderHistory = async () => {
   loadingOrders.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    // 从store中获取当前客户的订单，应用数据范围控制
+    // 使用统一的API获取客户订单
     const customerId = route.params.id as string
-    const allOrders = applyDataScopeControl(orderStore.orders)
-    const customerOrders = allOrders.filter(order => order.customerId === customerId)
+    const customerOrders = await customerDetailApi.getCustomerOrders(customerId)
 
     // 转换为页面显示格式
-    orderHistory.value = customerOrders.map(order => ({
+    orderHistory.value = customerOrders.map((order: any) => ({
       id: order.id,
-      orderNo: order.orderNumber,
-      products: order.products.map(p => p.name).join(', '),
-      totalAmount: order.totalAmount,
+      orderNo: order.orderNumber || order.orderNo,
+      products: order.products ? order.products.map((p: any) => p.name).join(', ') : order.productNames || '暂无商品信息',
+      totalAmount: order.totalAmount || order.amount || 0,
       status: getOrderStatusText(order.status),
-      orderDate: order.createTime
+      orderDate: order.createTime || order.orderDate
     }))
-
-    // 如果没有订单，显示默认数据
-    if (orderHistory.value.length === 0) {
-      orderHistory.value = [
-        {
-          id: '1',
-          orderNo: 'ORD20240120001',
-          products: '商品A, 商品B',
-          totalAmount: 599.00,
-          status: '已完成',
-          orderDate: '2024-01-20 14:30:00'
-        },
-        {
-          id: '2',
-          orderNo: 'ORD20240115002',
-          products: '商品C',
-          totalAmount: 299.00,
-          status: '进行中',
-          orderDate: '2024-01-15 09:15:00'
-        },
-        {
-          id: '3',
-          orderNo: 'ORD20240110003',
-          products: '商品D, 商品E, 商品F',
-          totalAmount: 899.00,
-          status: '待付款',
-          orderDate: '2024-01-10 16:45:00'
-        }
-      ]
-    }
+  } catch (error) {
+    console.error('加载订单历史失败:', error)
+    ElMessage.error('加载订单历史失败')
   } finally {
     loadingOrders.value = false
   }
@@ -2323,39 +2338,24 @@ const getServiceStatusText = (status: string) => {
 const loadServiceRecords = async () => {
   loadingService.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 800))
-
-    // 从store中获取当前客户的售后记录
+    // 使用统一的API获取客户售后记录
     const customerId = route.params.id as string
-    const customerServices = serviceStore.services.filter(service => service.customerId === customerId)
+    const customerServices = await customerDetailApi.getCustomerServices(customerId)
 
     // 转换为页面显示格式
-    serviceRecords.value = customerServices.map(service => ({
+    serviceRecords.value = customerServices.map((service: any) => ({
       id: service.id,
-      serviceNo: service.serviceNumber,
-      orderNo: service.orderNumber,
-      type: getServiceTypeText(service.serviceType),
-      reason: service.reason,
-      amount: service.price || 0,
+      serviceNo: service.serviceNumber || service.serviceNo,
+      orderNo: service.orderNumber || service.orderNo,
+      type: getServiceTypeText(service.serviceType || service.type),
+      reason: service.reason || service.description || '暂无描述',
+      amount: service.price || service.amount || 0,
       status: getServiceStatusText(service.status),
       createTime: service.createTime
     }))
-
-    // 如果没有售后记录，显示默认数据
-    if (serviceRecords.value.length === 0) {
-      serviceRecords.value = [
-        {
-          id: '1',
-          serviceNo: 'SER20240118001',
-          orderNo: 'ORD20240115002',
-          type: '退货',
-          reason: '商品质量问题',
-          amount: 299.00,
-          status: '已完成',
-          createTime: '2024-01-18 10:20:00'
-        }
-      ]
-    }
+  } catch (error) {
+    console.error('加载售后记录失败:', error)
+    ElMessage.error('加载售后记录失败')
   } finally {
     loadingService.value = false
   }
@@ -2364,26 +2364,22 @@ const loadServiceRecords = async () => {
 const loadCallRecords = async () => {
   loadingCalls.value = true
   try {
-    // 使用通话管理store获取客户的通话记录
+    // 使用统一的API获取客户通话记录
     const customerId = route.params.id as string
-    await callStore.loadCallRecords({
-      customerId,
-      pageSize: 10,
-      currentPage: 1
-    })
-    
-    // 将store中的数据转换为页面需要的格式
-    callRecords.value = callStore.callRecords.map(record => ({
-      id: record.id,
-      callType: record.type === 'inbound' ? '呼入' : '呼出',
-      phone: record.phone,
-      duration: record.duration ? `${Math.floor(record.duration / 60)}分${record.duration % 60}秒` : '-',
-      status: record.status === 'connected' ? '已接通' : 
-              record.status === 'busy' ? '忙线' :
-              record.status === 'no_answer' ? '未接听' :
-              record.status === 'failed' ? '失败' : '未知',
-      summary: record.summary || '-',
-      callTime: record.startTime
+    const customerCalls = await customerDetailApi.getCustomerCalls(customerId)
+
+    // 转换为页面显示格式
+    callRecords.value = customerCalls.map((call: any) => ({
+      id: call.id,
+      callType: call.direction === 'outbound' || call.type === '呼出' ? '呼出' : '呼入',
+      phone: call.customerPhone || call.phone,
+      duration: call.duration ? `${Math.floor(call.duration / 60)}分${call.duration % 60}秒` : '-',
+      status: call.status === 'connected' || call.status === '已接通' ? '已接通' :
+              call.status === 'busy' || call.status === '忙线' ? '忙线' :
+              call.status === 'no_answer' || call.status === '未接听' ? '未接听' :
+              call.status === 'failed' || call.status === '失败' ? '失败' : '未知',
+      summary: call.summary || call.remark || '-',
+      callTime: call.startTime || call.callTime
     }))
   } catch (error) {
     console.error('加载通话记录失败:', error)
@@ -2395,28 +2391,29 @@ const loadCallRecords = async () => {
 
 const loadFollowUpRecords = async () => {
   try {
-    followUpRecords.value = [
-      {
-        id: '1',
-        type: '电话跟进',
-        title: '产品咨询跟进',
-        content: '客户对新产品很感兴趣，已发送详细资料，约定下周再次联系。',
-        author: '李销售',
-        createTime: '2024-01-19 16:00:00',
-        canEdit: true
-      },
-      {
-        id: '2',
-        type: '微信沟通',
-        title: '售后问题处理',
-        content: '客户反馈商品质量问题，已安排退货处理，客户表示满意。',
-        author: '李销售',
-        createTime: '2024-01-18 14:30:00',
-        canEdit: true
+    // 使用统一的API获取客户跟进记录
+    const customerId = route.params.id as string
+    const customerFollowUps = await customerDetailApi.getCustomerFollowUps(customerId)
+
+    // 转换为页面显示格式并检查编辑权限
+    followUpRecords.value = customerFollowUps.map((followUp: unknown) => {
+      const createTime = new Date(followUp.createTime)
+      const now = new Date()
+      const hoursDiff = (now.getTime() - createTime.getTime()) / (1000 * 60 * 60)
+
+      return {
+        id: followUp.id,
+        type: followUp.type,
+        title: followUp.title || followUp.type,
+        content: followUp.content,
+        createTime: followUp.createTime,
+        author: followUp.author || followUp.createdBy || '未知',
+        canEdit: hoursDiff <= 24 // 24小时内可编辑
       }
-    ]
+    })
   } catch (error) {
     console.error('加载跟进记录失败:', error)
+    ElMessage.error('加载跟进记录失败')
   }
 }
 

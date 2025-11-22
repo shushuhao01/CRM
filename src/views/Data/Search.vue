@@ -17,7 +17,7 @@
         <h3>查询条件</h3>
         <p class="search-tip">支持精确匹配和模糊搜索，输入关键信息即可快速定位客户</p>
       </div>
-      
+
       <div class="search-form">
         <div class="search-input-group">
           <div class="input-item">
@@ -36,8 +36,8 @@
         </div>
 
         <div class="search-actions">
-          <el-button 
-            type="primary" 
+          <el-button
+            type="primary"
             @click="handleSearch"
             :loading="searching"
             size="large"
@@ -46,7 +46,7 @@
             <el-icon><Search /></el-icon>
             搜索
           </el-button>
-          <el-button 
+          <el-button
             @click="handleReset"
             size="large"
             class="reset-btn"
@@ -74,8 +74,8 @@
 
       <!-- 结果列表 -->
       <div v-if="searchResults.length > 0" class="result-list">
-        <div 
-          v-for="(result, index) in searchResults" 
+        <div
+          v-for="(result, index) in searchResults"
           :key="index"
           class="result-item"
         >
@@ -162,8 +162,8 @@
         </el-button>
       </div>
       <div class="history-list">
-        <div 
-          v-for="(item, index) in searchHistory" 
+        <div
+          v-for="(item, index) in searchHistory"
           :key="index"
           class="history-item"
           @click="useHistorySearch(item)"
@@ -182,8 +182,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { 
-  Search, Phone, Document, Van, User, RefreshLeft, UserFilled,
+import {
+  Search, User, RefreshLeft, UserFilled,
   DocumentRemove, Delete, Clock
 } from '@element-plus/icons-vue'
 import { useDataStore } from '@/stores/data'
@@ -206,6 +206,9 @@ const searchForm = reactive({
 
 // 方法
 const handleSearch = async () => {
+  console.log('[客户查询] ========== 开始搜索 ==========')
+  console.log('[客户查询] 搜索表单:', searchForm)
+
   // 检查是否填写了搜索关键词
   if (!searchForm.keyword.trim()) {
     ElMessage.warning('请输入搜索关键词')
@@ -216,97 +219,218 @@ const handleSearch = async () => {
 
   try {
     const keyword = searchForm.keyword.trim()
-    const searchParams: CustomerSearchParams = {}
-    
-    // 根据关键词的特征判断搜索类型
-    if (/^1[3-9]\d{9}$/.test(keyword)) {
-      // 手机号格式（11位数字，以1开头）
-      searchParams.phone = keyword
-    } else if (/^[A-Z]{2}\d{12}$/.test(keyword)) {
-      // 客户编码格式（2个字母 + 12位数字）
-      searchParams.customerCode = keyword
-    } else if (/^[A-Z0-9]{10,20}$/.test(keyword)) {
-      // 订单号或物流单号格式（大写字母和数字组合）
-      searchParams.orderNo = keyword
-      searchParams.trackingNo = keyword
-    } else {
-      // 客户姓名或其他
-      searchParams.customerName = keyword
-      // 同时也尝试作为订单号和物流单号搜索
-      searchParams.orderNo = keyword
-      searchParams.trackingNo = keyword
+    console.log('[客户查询] 搜索关键词（trim后）:', keyword)
+
+    // 从localStorage获取真实数据
+    const customerStore = localStorage.getItem('customer-store')
+    const orderStoreRaw = localStorage.getItem('crm_store_order')  // 修复：使用正确的键名
+    const userDatabase = localStorage.getItem('userDatabase')
+
+    console.log('[客户查询] localStorage数据检查:')
+    console.log('  - customerStore存在:', !!customerStore)
+    console.log('  - orderStoreRaw存在:', !!orderStoreRaw)
+    console.log('  - userDatabase存在:', !!userDatabase)
+
+    if (!customerStore || !orderStoreRaw || !userDatabase) {
+      console.error('[客户查询] ❌ 缺少必要数据')
+      ElMessage.warning('系统数据未加载，请刷新页面重试')
+      return
     }
-    
-    // 模拟数据库中的所有数据
-    const allMockData = [
-      {
-        customerName: '张三',
-        phone: '13812345678',
-        customerCode: 'ZS202401151102',
-        orderNo: 'ORD2024010001',
-        orderAmount: 1299.00,
-        orderDate: '2024-01-15',
-        trackingNo: 'SF1234567890',
-        ownerName: '李销售',
-        ownerPhone: '13987654321',
-        ownerDepartment: '销售一部',
-        ownerStatus: 'active'
-      },
-      {
-        customerName: '李四',
-        phone: '13923456789',
-        customerCode: 'LS202401161203',
-        orderNo: 'ORD2024010002',
-        orderAmount: 2599.00,
-        orderDate: '2024-01-16',
-        trackingNo: 'YTO9876543210',
-        ownerName: '王经理',
-        ownerPhone: '13876543210',
-        ownerDepartment: '销售二部',
-        ownerStatus: 'active'
-      },
-      {
-        customerName: '王五',
-        phone: '13734567890',
-        customerCode: 'WW202401171304',
-        orderNo: 'ORD2024010003',
-        orderAmount: 899.00,
-        orderDate: '2024-01-17',
-        trackingNo: 'ZTO5678901234',
-        ownerName: '赵主管',
-        ownerPhone: '13765432109',
-        ownerDepartment: '销售三部',
-        ownerStatus: 'inactive'
+
+    // 解析订单数据（支持新旧格式）
+    let orders: any[] = []
+    try {
+      const parsed = JSON.parse(orderStoreRaw)
+      console.log('[客户查询] 订单数据格式:', Object.keys(parsed))
+
+      // 新格式：{ data: { orders: [...] } }
+      if (parsed.data && parsed.data.orders) {
+        orders = parsed.data.orders
+        console.log('[客户查询] 使用新格式: { data: { orders: [...] } }')
       }
-    ]
-    
-    // 精确匹配搜索
-    let filteredResults = []
-    
-    if (searchParams.phone) {
-      // 精确匹配手机号
-      filteredResults = allMockData.filter(item => item.phone === searchParams.phone)
-    } else if (searchParams.customerCode) {
-      // 精确匹配客户编码
-      filteredResults = allMockData.filter(item => item.customerCode === searchParams.customerCode)
-    } else if (searchParams.orderNo) {
-      // 精确匹配订单号
-      filteredResults = allMockData.filter(item => item.orderNo === searchParams.orderNo)
-    } else if (searchParams.trackingNo) {
-      // 精确匹配物流单号
-      filteredResults = allMockData.filter(item => item.trackingNo === searchParams.trackingNo)
-    } else if (searchParams.customerName) {
-      // 精确匹配客户姓名
-      filteredResults = allMockData.filter(item => item.customerName === searchParams.customerName)
+      // 旧格式：{ orders: [...] }
+      else if (parsed.orders) {
+        orders = parsed.orders
+        console.log('[客户查询] 使用旧格式: { orders: [...] }')
+      }
+      // 直接是数组
+      else if (Array.isArray(parsed)) {
+        orders = parsed
+        console.log('[客户查询] 使用数组格式: [...]')
+      } else {
+        console.error('[客户查询] ❌ 未知的订单数据格式:', parsed)
+      }
+    } catch (e) {
+      console.error('[客户查询] ❌ 解析订单数据失败:', e)
+      ElMessage.error('订单数据解析失败')
+      return
     }
-    
-    // 设置精确匹配的结果
+
+    // 解析客户和用户数据
+    const customers = JSON.parse(customerStore).customers || []
+    const users = JSON.parse(userDatabase) || []
+
+    console.log('[客户查询] 搜索关键词:', keyword)
+    console.log('[客户查询] 客户总数:', customers.length)
+    console.log('[客户查询] 订单总数:', orders.length)
+    console.log('[客户查询] 用户总数:', users.length)
+
+    // 显示前3个客户和订单的示例数据
+    if (customers.length > 0) {
+      console.log('[客户查询] 客户示例:', customers.slice(0, 3).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        phone: c.phone,
+        code: c.code
+      })))
+    }
+
+    if (orders.length > 0) {
+      console.log('[客户查询] 第一个订单完整对象:', orders[0])
+      console.log('[客户查询] 第一个订单的所有字段:', Object.keys(orders[0]))
+      console.log('[客户查询] 订单示例:', orders.slice(0, 3).map((o: any) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        customerId: o.customerId,
+        trackingNumber: o.trackingNumber,
+        auditStatus: o.auditStatus
+      })))
+    }
+
+    const searchResults: any[] = []
+    let processedCount = 0
+    let skippedCount = 0
+
+    console.log('[客户查询] 开始遍历订单，订单数组长度:', orders.length)
+    console.log('[客户查询] 订单数组类型:', Array.isArray(orders))
+
+    // 使用for循环代替forEach，避免响应式数据问题
+    for (let i = 0; i < orders.length; i++) {
+      const order: any = orders[i]
+      processedCount++
+
+      if (i < 3) {
+        console.log(`[客户查询] 处理第${i + 1}个订单:`, order.orderNumber, order.customerId)
+      }
+
+      // 查找对应的客户
+      const customer = customers.find((c: any) => c.id === order.customerId)
+      if (!customer) {
+        skippedCount++
+        console.warn('[客户查询] 订单找不到客户:', {
+          orderNumber: order.orderNumber,
+          customerId: order.customerId,
+          订单ID: order.id
+        })
+        continue
+      }
+
+      // 查找销售人员（归属人）
+      const owner = users.find((u: any) => u.id === order.salesPersonId)
+
+      let matched = false
+      let matchType = ''
+
+      // 匹配客户姓名（模糊匹配）
+      if (customer.name && customer.name.includes(keyword)) {
+        matched = true
+        matchType = '客户姓名'
+        console.log('[客户查询] ✅ 匹配客户姓名:', customer.name, '订单号:', order.orderNumber)
+      }
+
+      // 匹配客户电话（精确匹配）
+      if (customer.phone && customer.phone === keyword) {
+        matched = true
+        matchType = '客户电话'
+        console.log('[客户查询] ✅ 匹配客户电话:', customer.phone, '订单号:', order.orderNumber)
+      }
+
+      // 匹配客户编码（精确匹配）
+      if (customer.code && customer.code === keyword) {
+        matched = true
+        matchType = '客户编码'
+        console.log('[客户查询] ✅ 匹配客户编码:', customer.code, '订单号:', order.orderNumber)
+      }
+
+      // 匹配订单号（精确匹配或模糊匹配）
+      if (order.orderNumber && (order.orderNumber === keyword || order.orderNumber.includes(keyword))) {
+        matched = true
+        matchType = '订单号'
+        console.log('[客户查询] ✅ 匹配订单号:', order.orderNumber)
+      }
+
+      // 匹配物流单号（精确匹配或模糊匹配）
+      if (order.trackingNumber && (order.trackingNumber === keyword || order.trackingNumber.includes(keyword))) {
+        matched = true
+        matchType = '物流单号'
+        console.log('[客户查询] ✅ 匹配物流单号:', order.trackingNumber, '订单号:', order.orderNumber)
+      }
+
+      if (matched) {
+        searchResults.push({
+          customerName: customer.name || '未知',
+          phone: customer.phone || '',
+          customerCode: customer.code || '',
+          orderNo: order.orderNumber || '',
+          orderAmount: order.totalAmount || 0,
+          orderDate: order.createTime ? order.createTime.split(' ')[0] : '',
+          trackingNo: order.trackingNumber || '',
+          ownerName: owner ? (owner.realName || owner.name || '未知') : '未知',
+          ownerPhone: owner ? (owner.phone || '') : '',
+          ownerDepartment: owner ? (owner.department || '未知部门') : '未知部门',
+          ownerStatus: 'active',
+          matchType: matchType
+        })
+      }
+    }
+
+    console.log('[客户查询] 处理订单数:', processedCount)
+    console.log('[客户查询] 跳过订单数:', skippedCount)
+    console.log('[客户查询] 搜索结果数量:', searchResults.length)
+
+    // 去重（同一个客户可能有多个订单）
+    const uniqueResults = searchResults.reduce((acc: unknown[], current: unknown) => {
+      const exists = acc.find((item: unknown) =>
+        item.customerName === current.customerName &&
+        item.orderNo === current.orderNo
+      )
+      if (!exists) {
+        acc.push(current)
+      }
+      return acc
+    }, [])
+
+    console.log('[客户查询] 去重后结果数量:', uniqueResults.length)
+    console.log('[客户查询] 去重后结果:', uniqueResults)
+
+    // 设置搜索结果 - 使用$patch确保响应式更新
     dataStore.$patch({
-      searchResults: filteredResults,
+      searchResults: uniqueResults,
       searchLoading: false
     })
-    
+
+    console.log('[客户查询] dataStore.searchResults已更新:', dataStore.searchResults.length)
+    console.log('[客户查询] hasSearched设置为true')
+
+    // 保存搜索历史
+    if (dataStore.addToSearchHistory) {
+      dataStore.addToSearchHistory({
+        text: keyword,
+        time: new Date().toLocaleString('zh-CN'),
+        params: {}
+      })
+    }
+
+    if (uniqueResults.length > 0) {
+      ElMessage.success(`找到 ${uniqueResults.length} 条匹配记录`)
+      console.log('[客户查询] ✅ 搜索成功，应该显示结果')
+    } else {
+      ElMessage.info('未找到匹配的客户信息')
+      console.log('[客户查询] ⚠️ 未找到匹配结果')
+    }
+
   } catch (error) {
+    console.error('搜索失败:', error)
     ElMessage.error('搜索失败，请重试')
   }
 }
@@ -329,7 +453,7 @@ const clearHistory = () => {
 }
 
 const getOwnerStatusType = (status: string) => {
-  const types = {
+  const types: Record<string, string> = {
     active: 'success',
     inactive: 'warning',
     offline: 'info'
@@ -338,7 +462,7 @@ const getOwnerStatusType = (status: string) => {
 }
 
 const getOwnerStatusText = (status: string) => {
-  const texts = {
+  const texts: Record<string, string> = {
     active: '在线',
     inactive: '忙碌',
     offline: '离线'
@@ -782,11 +906,11 @@ const getOwnerStatusText = (status: string) => {
     grid-template-columns: 1fr 1fr;
     gap: 20px;
   }
-  
+
   .owner-info {
     grid-column: 1 / -1;
   }
-  
+
   .result-actions {
     grid-column: 1 / -1;
     flex-direction: row;
@@ -798,20 +922,20 @@ const getOwnerStatusText = (status: string) => {
   .customer-search-container {
     padding: 16px;
   }
-  
+
   .search-input-group {
     grid-template-columns: 1fr;
   }
-  
+
   .result-card {
     grid-template-columns: 1fr;
     gap: 16px;
   }
-  
+
   .search-actions {
     flex-direction: column;
   }
-  
+
   .search-btn,
   .reset-btn {
     width: 100%;

@@ -173,7 +173,7 @@ export class StorageModeService {
     try {
       // 检查API可用性
       const apiAvailable = await this.checkApiHealth()
-      
+
       if (apiAvailable && authApiService.isAuthenticated()) {
         console.log('[StorageMode] API可用且已认证，选择API模式')
         await this.switchMode('api', true)
@@ -197,7 +197,7 @@ export class StorageModeService {
     try {
       const isHealthy = await apiService.healthCheck()
       this.status.value.apiAvailable = isHealthy
-      
+
       if (isHealthy) {
         this.status.value.errorCount = 0
         this.status.value.lastError = null
@@ -210,10 +210,10 @@ export class StorageModeService {
       this.status.value.errorCount++
       const errorMessage = error instanceof Error ? error.message : '未知错误'
       this.status.value.lastError = errorMessage
-      
+
       // 使用新的通知服务来处理错误提示（只对超级管理员显示）
       await healthCheckNotificationService.showHealthCheckFailureNotification(errorMessage)
-      
+
       return false
     }
   }
@@ -233,7 +233,7 @@ export class StorageModeService {
 
       // 根据方向执行同步
       let success = false
-      
+
       if (direction === 'auto') {
         // 自动选择同步方向
         if (this.isApiMode() && this.isApiAvailable()) {
@@ -268,10 +268,10 @@ export class StorageModeService {
   updateConfig(newConfig: Partial<StorageModeConfig>): void {
     Object.assign(this.config.value, newConfig)
     this.saveConfig()
-    
+
     // 重新启动定时器
     this.restartSyncTimer()
-    
+
     console.log('[StorageMode] 配置已更新:', this.config.value)
   }
 
@@ -301,7 +301,7 @@ export class StorageModeService {
     try {
       // 根据配置的模式进行初始化
       const configMode = this.config.value.mode
-      
+
       if (configMode === 'api') {
         // 检查API可用性
         const apiAvailable = await this.checkApiHealth()
@@ -320,7 +320,7 @@ export class StorageModeService {
 
       // 启动自动同步
       this.restartSyncTimer()
-      
+
       console.log(`[StorageMode] 初始化完成，当前模式: ${this.status.value.currentMode}`)
     } catch (error) {
       console.error('[StorageMode] 初始化失败:', error)
@@ -350,10 +350,11 @@ export class StorageModeService {
    * 启动健康检查定时器
    */
   private startHealthCheck(): void {
-    // 每30秒检查一次API健康状态
+    // 🔥 批次271修复：将健康检查间隔从30秒改为12小时（43200000毫秒）
+    // 每天只检查2次，避免频繁请求
     this.healthCheckTimer = window.setInterval(() => {
       this.checkApiHealth()
-    }, 30000)
+    }, 43200000) // 12小时 = 12 * 60 * 60 * 1000
   }
 
   /**
@@ -372,7 +373,7 @@ export class StorageModeService {
       this.syncTimer = window.setInterval(() => {
         this.syncData('auto')
       }, intervalMs)
-      
+
       console.log(`[StorageMode] 自动同步定时器已启动，间隔: ${this.config.value.syncInterval}分钟`)
     }
   }
@@ -421,7 +422,7 @@ export class StorageModeService {
       clearInterval(this.syncTimer)
       this.syncTimer = null
     }
-    
+
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer)
       this.healthCheckTimer = null

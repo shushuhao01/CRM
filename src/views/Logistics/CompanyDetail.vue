@@ -46,11 +46,11 @@
             </div>
             <div class="info-item">
               <span class="label">联系电话：</span>
-              <span class="value">{{ maskPhone(companyInfo.phone) }}</span>
+              <span class="value">{{ displaySensitiveInfoNew(companyInfo.phone, 'phone') }}</span>
             </div>
             <div class="info-item">
               <span class="label">客服热线：</span>
-              <span class="value">{{ maskPhone(companyInfo.servicePhone) }}</span>
+              <span class="value">{{ displaySensitiveInfoNew(companyInfo.servicePhone, 'phone') }}</span>
             </div>
             <div class="info-item">
               <span class="label">官方网站：</span>
@@ -259,7 +259,7 @@ import {
   Link,
   ChatDotRound
 } from '@element-plus/icons-vue'
-import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 
 // 路由
 const router = useRouter()

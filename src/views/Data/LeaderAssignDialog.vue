@@ -25,16 +25,16 @@
         <el-form :model="assignForm" label-width="100px">
           <el-form-item label="分配方式">
             <el-radio-group v-model="assignForm.assignType">
-              <el-radio value="roundrobin">轮流分配</el-radio>
-              <el-radio value="specific">指定成员</el-radio>
-              <el-radio value="custom">自定义分配</el-radio>
-            </el-radio-group>
+          <el-radio label="leader_roundrobin">轮流分配</el-radio>
+          <el-radio label="leader_specific">指定成员</el-radio>
+          <el-radio label="leader_custom">自定义分配</el-radio>
+        </el-radio-group>
           </el-form-item>
 
           <el-form-item 
-            label="选择成员" 
-            v-if="assignForm.assignType === 'specific'"
-          >
+              label="选择成员" 
+              v-if="assignForm.assignType === 'leader_specific'"
+            >
             <el-select 
               v-model="assignForm.assignTo" 
               placeholder="选择部门成员"
@@ -50,9 +50,9 @@
           </el-form-item>
 
           <el-form-item 
-            label="分配预览" 
-            v-if="assignForm.assignType === 'roundrobin'"
-          >
+              label="分配说明" 
+              v-if="assignForm.assignType === 'leader_roundrobin'"
+            >
             <div class="preview-section">
               <el-table 
                 :data="assignmentPreview" 
@@ -68,9 +68,9 @@
           </el-form-item>
 
           <el-form-item 
-            label="自定义分配" 
-            v-if="assignForm.assignType === 'custom'"
-          >
+              label="自定义分配" 
+              v-if="assignForm.assignType === 'leader_custom'"
+            >
             <div class="custom-assign-section">
               <div 
                 v-for="member in departmentMembers" 
@@ -151,9 +151,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
+import { useDepartmentStore } from '@/stores/department'
+import { useUserStore } from '@/stores/user'
+import { getDepartmentMembers } from '@/api/department'
+import { getAssignmentStats } from '@/api/data'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 
 interface PendingAssignment {
@@ -184,6 +188,8 @@ const emit = defineEmits<{
 }>()
 
 const dataStore = useDataStore()
+const departmentStore = useDepartmentStore()
+const userStore = useUserStore()
 
 const visible = computed({
   get: () => props.modelValue,
@@ -192,22 +198,56 @@ const visible = computed({
 
 const pendingAssignments = computed(() => props.pendingData || [])
 
-// 部门成员（模拟数据，实际应该从API获取）
-const departmentMembers = ref<DepartmentMember[]>([
-  { id: '1', name: '张三', assignmentCount: 5 },
-  { id: '2', name: '李四', assignmentCount: 3 },
-  { id: '3', name: '王五', assignmentCount: 7 },
-  { id: '4', name: '赵六', assignmentCount: 2 }
-])
+// 部门成员列表
+const departmentMembers = ref<DepartmentMember[]>([])
+const loading = ref(false)
 
 const assignForm = reactive({
-  assignType: 'roundrobin',
+  assignType: 'leader_roundrobin',
   assignTo: '',
   remark: ''
 })
 
 const customAssignments = ref<Record<string, number>>({})
 const assigning = ref(false)
+
+// 加载部门成员
+const loadDepartmentMembers = async () => {
+  try {
+    loading.value = true
+    const currentUser = userStore.currentUser
+    if (!currentUser?.departmentId) {
+      ElMessage.error('无法获取当前用户部门信息')
+      return
+    }
+
+    // 获取部门成员
+    const members = await getDepartmentMembers(currentUser.departmentId)
+    
+    // 获取成员分配统计
+    const stats = await getAssignmentStats({
+      departmentId: currentUser.departmentId
+    })
+
+    // 合并成员信息和分配统计
+    departmentMembers.value = members.map(member => {
+      const memberStats = stats.find(stat => stat.userId === member.id)
+      return {
+        id: member.id,
+        name: member.name,
+        assignmentCount: memberStats?.totalAssigned || 0
+      }
+    })
+
+    // 初始化自定义分配
+    initCustomAssignments()
+  } catch (error) {
+    console.error('加载部门成员失败:', error)
+    ElMessage.error('加载部门成员失败')
+  } finally {
+    loading.value = false
+  }
+}
 
 // 初始化自定义分配
 const initCustomAssignments = () => {
@@ -220,7 +260,7 @@ const initCustomAssignments = () => {
 
 // 轮流分配预览
 const assignmentPreview = computed(() => {
-  if (assignForm.assignType !== 'roundrobin') return []
+  if (assignForm.assignType !== 'leader_roundrobin') return []
   
   const members = [...departmentMembers.value].sort((a, b) => a.assignmentCount - b.assignmentCount)
   const totalToAssign = pendingAssignments.value.length
@@ -244,13 +284,13 @@ const totalCustomAssigned = computed(() => {
 
 // 是否可以分配
 const canAssign = computed(() => {
-  if (assignForm.assignType === 'specific') {
+  if (assignForm.assignType === 'leader_specific') {
     return !!assignForm.assignTo
   }
-  if (assignForm.assignType === 'custom') {
+  if (assignForm.assignType === 'leader_custom') {
     return totalCustomAssigned.value === pendingAssignments.value.length
   }
-  return true // roundrobin
+  return true // leader_roundrobin
 })
 
 // 格式化日期
@@ -269,7 +309,7 @@ const confirmAssign = async () => {
       assigneeName: string
     }> = []
 
-    if (assignForm.assignType === 'specific') {
+    if (assignForm.assignType === 'leader_specific') {
       // 指定成员分配
       const member = departmentMembers.value.find(m => m.id === assignForm.assignTo)
       if (!member) {
@@ -282,7 +322,7 @@ const confirmAssign = async () => {
         assigneeId: member.id,
         assigneeName: member.name
       }))
-    } else if (assignForm.assignType === 'roundrobin') {
+    } else if (assignForm.assignType === 'leader_roundrobin') {
       // 轮流分配
       const sortedMembers = [...departmentMembers.value].sort((a, b) => a.assignmentCount - b.assignmentCount)
       
@@ -337,16 +377,23 @@ const confirmAssign = async () => {
 const handleClose = () => {
   visible.value = false
   // 重置表单
-  assignForm.assignType = 'roundrobin'
+  assignForm.assignType = 'leader_roundrobin'
   assignForm.assignTo = ''
   assignForm.remark = ''
   initCustomAssignments()
 }
 
-// 监听对话框打开
+// 监听弹窗打开，加载部门成员
 watch(visible, (newVal) => {
   if (newVal) {
-    initCustomAssignments()
+    loadDepartmentMembers()
+  }
+})
+
+// 组件挂载时加载数据
+onMounted(() => {
+  if (visible.value) {
+    loadDepartmentMembers()
   }
 })
 </script>

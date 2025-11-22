@@ -32,12 +32,22 @@
             {{ advancedSearchVisible ? '收起' : '高级筛选' }}
           </el-button>
           <el-button
+            v-if="canExport"
             text
             type="primary"
             @click="handleExport"
             :icon="'Download'"
           >
             导出
+          </el-button>
+          <el-button
+            v-if="canManageExport"
+            @click="showExportSettings"
+            class="export-settings-btn"
+            title="导出权限设置"
+            text
+          >
+            <el-icon><Setting /></el-icon>
           </el-button>
         </div>
       </div>
@@ -87,6 +97,14 @@
             <el-option label="预留单" value="reserved" />
             <el-option label="退单" value="return" />
           </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="searchForm.onlyAuditPendingSubmitted">
+            已提审待审核
+          </el-checkbox>
+          <el-checkbox v-model="searchForm.onlyResubmittable" style="margin-left: 16px;">
+            可再次提审
+          </el-checkbox>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch" :icon="'Search'">搜索</el-button>
@@ -233,39 +251,12 @@
             刷新
           </el-button>
           <!-- 6. 列设置 -->
-          <el-dropdown trigger="click" @visible-change="handleDropdownVisible">
-            <el-button size="small">
-              列设置 <el-icon><ArrowDown /></el-icon>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <div class="column-settings-container">
-                  <div class="column-settings-header">
-                    <span>列显示设置</span>
-                    <el-button size="small" text @click="resetColumns">重置</el-button>
-                  </div>
-                  <div
-                    class="column-item"
-                    v-for="(col, index) in tableColumns"
-                    :key="col.prop"
-                    draggable="true"
-                    @dragstart="handleDragStart($event, index)"
-                    @dragover="handleDragOver"
-                    @drop="handleDrop($event, index)"
-                  >
-                    <el-icon class="drag-handle"><Rank /></el-icon>
-                    <el-checkbox
-                      v-model="col.visible"
-                      @click.stop
-                      @change="saveColumnSettings"
-                    >
-                      {{ col.label }}
-                    </el-checkbox>
-                  </div>
-                </div>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <TableColumnSettings
+            :columns="tableColumns"
+            :storage-key="COLUMN_STORAGE_KEY"
+            @columns-change="handleColumnsChange"
+            ref="columnSettingsRef"
+          />
         </div>
       </div>
 
@@ -331,7 +322,7 @@
 
             <!-- 客户电话特殊处理 -->
             <span v-else-if="column.prop === 'customerPhone'">
-              {{ row.customerPhone ? maskPhone(row.customerPhone) : '-' }}
+              {{ row.customerPhone ? displaySensitiveInfoNew(row.customerPhone, 'phone') : '-' }}
             </span>
 
             <!-- 商品特殊处理 -->
@@ -383,7 +374,7 @@
                   type="text"
                   size="small"
                   @click="handleSubmitAudit(row)"
-                  v-if="canSubmitAudit(row.status, row.auditStatus, row.isAuditTransferred, row.operatorId)"
+                  v-if="canSubmitAudit(row.status, row.auditStatus, row.isAuditTransferred, row.operatorId, row.markType)"
                   :loading="submitAuditLoading[row.id]"
                 >
                   提审
@@ -514,20 +505,20 @@
               </template>
             </el-table-column>
           </el-table>
-          
+
           <div class="audit-footer" style="margin-top: 20px; text-align: right;">
             <el-button @click="handleCloseCancelAudit">关闭</el-button>
-            <el-button 
-              type="success" 
-              @click="handleAuditApprove" 
+            <el-button
+              type="success"
+              @click="handleAuditApprove"
               :loading="auditSubmitting"
               :disabled="selectedAuditOrders.length === 0"
             >
               审核取消通过
             </el-button>
-            <el-button 
-              type="danger" 
-              @click="handleAuditReject" 
+            <el-button
+              type="danger"
+              @click="handleAuditReject"
               :loading="auditSubmitting"
               :disabled="selectedAuditOrders.length === 0"
             >
@@ -568,12 +559,113 @@
               </template>
             </el-table-column>
           </el-table>
-          
+
           <div class="audit-footer" style="margin-top: 20px; text-align: right;">
             <el-button @click="handleCloseCancelAudit">关闭</el-button>
           </div>
         </el-tab-pane>
       </el-tabs>
+    </el-dialog>
+
+    <!-- 导出权限设置对话框 -->
+    <el-dialog
+      v-model="exportSettingsVisible"
+      title="订单导出权限设置"
+      width="700px"
+      :close-on-click-modal="false"
+    >
+      <el-form
+        ref="exportFormRef"
+        :model="exportFormData"
+        label-width="140px"
+      >
+        <el-form-item label="启用导出功能">
+          <el-switch
+            v-model="exportFormData.enabled"
+            active-text="启用"
+            inactive-text="禁用"
+          />
+          <div class="form-item-tip">
+            关闭后，所有成员将无法使用订单导出功能
+          </div>
+        </el-form-item>
+
+        <el-form-item label="权限控制方式" v-if="exportFormData.enabled">
+          <el-radio-group v-model="exportFormData.permissionType">
+            <el-radio label="all">所有人可用</el-radio>
+            <el-radio label="role">按角色控制</el-radio>
+            <el-radio label="whitelist">白名单控制</el-radio>
+          </el-radio-group>
+          <div class="form-item-tip">
+            选择导出功能的权限控制方式
+          </div>
+        </el-form-item>
+
+        <el-form-item label="允许的角色" v-if="exportFormData.enabled && exportFormData.permissionType === 'role'">
+          <el-checkbox-group v-model="exportFormData.allowedRoles">
+            <el-checkbox label="super_admin">超级管理员</el-checkbox>
+            <el-checkbox label="admin">管理员</el-checkbox>
+            <el-checkbox label="department_manager">部门经理</el-checkbox>
+            <el-checkbox label="sales_staff">销售人员</el-checkbox>
+            <el-checkbox label="customer_service">客服人员</el-checkbox>
+          </el-checkbox-group>
+          <div class="form-item-tip">
+            选择允许使用导出功能的角色
+          </div>
+        </el-form-item>
+
+        <el-form-item label="白名单成员" v-if="exportFormData.enabled && exportFormData.permissionType === 'whitelist'">
+          <el-select
+            v-model="exportFormData.whitelist"
+            multiple
+            filterable
+            placeholder="选择允许导出的成员"
+            style="width: 100%;"
+          >
+            <el-option
+              v-for="user in allUsers"
+              :key="user.id"
+              :label="`${user.name} (${user.id})`"
+              :value="user.id"
+            />
+          </el-select>
+          <div class="form-item-tip">
+            只有白名单中的成员可以使用导出功能，其他人看不到导出按钮
+          </div>
+        </el-form-item>
+
+        <el-form-item label="导出限制" v-if="exportFormData.enabled">
+          <el-input-number
+            v-model="exportFormData.dailyLimit"
+            :min="0"
+            :max="100"
+            placeholder="每日导出次数限制"
+          />
+          <span style="margin-left: 10px;">次/天（0表示不限制）</span>
+          <div class="form-item-tip">
+            限制每个成员每天的导出次数，防止滥用
+          </div>
+        </el-form-item>
+      </el-form>
+
+      <el-divider />
+
+      <div class="stats-section">
+        <h3>导出统计</h3>
+        <el-descriptions :column="3" border>
+          <el-descriptions-item label="今日导出次数">{{ exportStats.todayCount }}</el-descriptions-item>
+          <el-descriptions-item label="本周导出次数">{{ exportStats.weekCount }}</el-descriptions-item>
+          <el-descriptions-item label="本月导出次数">{{ exportStats.monthCount }}</el-descriptions-item>
+        </el-descriptions>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="exportSettingsVisible = false">取消</el-button>
+          <el-button type="primary" @click="saveExportSettings">保存设置</el-button>
+          <el-button @click="resetExportSettings">恢复默认</el-button>
+        </div>
+      </template>
     </el-dialog>
 
   </div>
@@ -591,13 +683,19 @@ import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
 import { useNotificationStore } from '@/stores/notification'
 import { usePerformanceStore } from '@/stores/performance'
+import { useCustomerStore } from '@/stores/customer'
+import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, Refresh, ArrowDown, Download, Check, Close, DocumentChecked, Rank, DocumentRemove, Clock, CircleCheck, User, Document, Warning, Edit, CircleClose, Select, Loading } from '@element-plus/icons-vue'
+import { eventBus, EventNames } from '@/utils/eventBus'
+import { Plus, Refresh, Download, Check, Close, DocumentChecked, Setting } from '@element-plus/icons-vue'
+import TableColumnSettings from '@/components/TableColumnSettings.vue'
 import { request } from '@/api/request'
 import { exportBatchOrders, type ExportOrder } from '@/utils/export'
 import { orderApi } from '@/api/order'
 import { createSafeNavigator } from '@/utils/navigation'
 import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 
 // 类型定义
 interface ProductItem {
@@ -616,11 +714,17 @@ interface OrderItem {
   paymentMethod: string
   status: string
   markType: string
+  serviceWechat?: string
+  orderSource?: string
+  customFields?: Record<string, unknown>
   createTime: string
   operator: string
   operatorId: string
   completedTime?: string
   shippingStatus?: string
+  auditStatus?: string
+  isAuditTransferred?: boolean
+  auditTransferTime?: string
 }
 
 interface TableColumn {
@@ -636,11 +740,6 @@ interface TableColumn {
 interface SortChangeEvent {
   prop: string
   order: string
-}
-
-interface ColumnSetting {
-  prop: string
-  visible: boolean
 }
 
 interface ApiError {
@@ -664,8 +763,10 @@ const route = useRoute()
 const safeNavigator = createSafeNavigator(router)
 const orderStore = useOrderStore()
 const userStore = useUserStore()
+const customerStore = useCustomerStore()
 const appStore = useAppStore()
 const performanceStore = usePerformanceStore()
+const fieldConfigStore = useOrderFieldConfigStore()
 
 const notificationStore = useNotificationStore()
 
@@ -716,7 +817,81 @@ const searchForm = reactive({
   operator: '',
   productName: '',
   customerPhone: '',
-  paymentMethod: ''
+  paymentMethod: '',
+  onlyAuditPendingSubmitted: false,
+  onlyResubmittable: false
+})
+
+// 导出权限设置相关数据
+const exportSettingsVisible = ref(false)
+const exportFormRef = ref()
+const exportFormData = reactive({
+  enabled: true,
+  permissionType: 'all', // all | role | whitelist
+  allowedRoles: ['super_admin', 'admin'],
+  whitelist: [],
+  dailyLimit: 0
+})
+
+// 导出统计
+const exportStats = reactive({
+  todayCount: 0,
+  weekCount: 0,
+  monthCount: 0
+})
+
+// 所有用户列表（用于白名单选择）
+const allUsers = computed(() => {
+  return userStore.users || []
+})
+
+// 检查是否可以管理导出设置（仅超级管理员）
+const canManageExport = computed(() => {
+  const currentUser = userStore.currentUser
+  if (!currentUser) return false
+  return currentUser.role === 'super_admin'
+})
+
+// 检查是否有导出权限
+const canExport = computed(() => {
+  const exportConfigStr = localStorage.getItem('crm_order_export_config')
+  if (!exportConfigStr) {
+    return true // 默认允许
+  }
+
+  try {
+    const exportConfig = JSON.parse(exportConfigStr)
+
+    // 功能未启用
+    if (!exportConfig.enabled) {
+      return false
+    }
+
+    const currentUser = userStore.currentUser
+    if (!currentUser) {
+      return false
+    }
+
+    // 所有人可用
+    if (exportConfig.permissionType === 'all') {
+      return true
+    }
+
+    // 按角色控制
+    if (exportConfig.permissionType === 'role') {
+      return exportConfig.allowedRoles?.includes(currentUser.role) || false
+    }
+
+    // 白名单控制
+    if (exportConfig.permissionType === 'whitelist') {
+      return exportConfig.whitelist?.includes(currentUser.id) || false
+    }
+
+    return false
+  } catch (error) {
+    console.error('解析导出配置失败:', error)
+    return true
+  }
 })
 
 const pagination = reactive({
@@ -751,8 +926,34 @@ const tableColumns = ref([
   { prop: 'collectAmount', label: '代收金额', visible: true },
   { prop: 'receiverPhone', label: '收货电话', visible: true },
   { prop: 'paymentMethod', label: '支付方式', visible: false },
+  { prop: 'serviceWechat', label: '客服微信号', visible: true },
+  { prop: 'orderSource', label: '订单来源', visible: true },
   { prop: 'createTime', label: '创建时间', visible: true }
 ])
+
+// 初始化自定义字段列
+const initializeCustomFieldColumns = () => {
+  // 获取自定义字段配置
+  const customFields = fieldConfigStore.customFields.filter(field => field.showInList)
+
+  // 找到创建时间列的索引
+  const createTimeIndex = tableColumns.value.findIndex(col => col.prop === 'createTime')
+
+  // 在创建时间之前插入自定义字段列
+  customFields.forEach((field, index) => {
+    const customColumn = {
+      prop: `customFields.${field.fieldKey}`,
+      label: field.fieldName,
+      visible: false
+    }
+
+    // 检查是否已存在该列
+    const existingIndex = tableColumns.value.findIndex(col => col.prop === customColumn.prop)
+    if (existingIndex === -1) {
+      tableColumns.value.splice(createTimeIndex + index, 0, customColumn)
+    }
+  })
+}
 
 // 销售人员数据
 const salesUsers = ref([
@@ -820,7 +1021,7 @@ const getStatusText = (status: string, markType?: string, isAuditTransferred?: b
     cancel_failed: '取消失败',
     cancelled: '已取消',
     draft: '草稿',
-    
+
     // 兼容旧状态
     approved: '已审核',
     confirmed: '已确认',
@@ -852,7 +1053,7 @@ const getStatusType = (status: string, markType?: string) => {
     cancel_failed: 'danger',       // 取消失败 - 红色
     cancelled: 'info',             // 已取消 - 灰色
     draft: 'info',                 // 草稿 - 灰色
-    
+
     // 兼容旧状态
     pending: 'warning',            // 待处理 - 橙色
     approved: 'success',           // 已审核 - 绿色
@@ -863,7 +1064,7 @@ const getStatusType = (status: string, markType?: string) => {
 }
 
 // 数据范围控制函数
-const applyDataScopeControl = (orders: any[]) => {
+const applyDataScopeControl = (orders: unknown[]) => {
   const currentUser = userStore.currentUser
   if (!currentUser) {
     return []
@@ -873,7 +1074,7 @@ const applyDataScopeControl = (orders: any[]) => {
   if (userStore.isSuperAdmin) {
     return orders
   }
-  
+
   // 部门负责人可以看到部门内的订单
   if (userStore.isDepartmentManager) {
     const accessibleDepts = userStore.accessibleDepartments
@@ -887,12 +1088,12 @@ const applyDataScopeControl = (orders: any[]) => {
       return salesPerson && accessibleDepts.includes(salesPerson.department)
     })
   }
-  
+
   // 销售员只能看到自己创建的订单
   if (userStore.isSalesStaff) {
     return orders.filter(order => order.salesPersonId === currentUser.id)
   }
-  
+
   // 客服根据类型看到相应的订单
   if (userStore.isCustomerService) {
     const customerServiceType = currentUser.customerServiceType
@@ -914,7 +1115,7 @@ const applyDataScopeControl = (orders: any[]) => {
       return []
     }
   }
-  
+
   // 其他角色只能看到自己创建的订单
   return orders.filter(order => order.createdBy === currentUser.id)
 }
@@ -981,6 +1182,18 @@ const filteredOrderList = computed(() => {
       order.paymentMethod === searchForm.paymentMethod
     )
   }
+  // 仅显示已提审的待审核订单
+  if (searchForm.onlyAuditPendingSubmitted) {
+    filtered = filtered.filter(order =>
+      order.status === 'pending_audit' && (order.auditStatus === 'pending' || order.isAuditTransferred === true)
+    )
+  }
+  // 仅显示可再次提审的订单
+  if (searchForm.onlyResubmittable) {
+    filtered = filtered.filter(order =>
+      canSubmitAudit(order.status, order.auditStatus, order.isAuditTransferred, order.operatorId)
+    )
+  }
   if (searchForm.minAmount !== undefined) {
     filtered = filtered.filter(order => order.totalAmount >= searchForm.minAmount)
   }
@@ -992,6 +1205,36 @@ const filteredOrderList = computed(() => {
     filtered = filtered.filter(order => {
       const orderDate = new Date(order.createTime)
       return orderDate >= startDate && orderDate <= endDate
+    })
+  }
+  // 应用排序（自定义排序）
+  const { prop, order } = sortConfig.value || { prop: 'createTime', order: 'descending' }
+  if (prop && order && order !== null) {
+    const normalize = (o, p) => {
+      switch (p) {
+        case 'createTime':
+          return new Date(o.createTime).getTime() || 0
+        case 'totalAmount':
+        case 'depositAmount':
+          return Number(o[p] ?? 0)
+        case 'products':
+          return Array.isArray(o.products) ? o.products.length : 0
+        default:
+          const v = o[p]
+          if (typeof v === 'string') return v.toLowerCase()
+          return Number(v ?? 0)
+      }
+    }
+    filtered = filtered.slice().sort((a, b) => {
+      const av = normalize(a, prop)
+      const bv = normalize(b, prop)
+      let cmp = 0
+      if (typeof av === 'string' && typeof bv === 'string') {
+        cmp = av.localeCompare(bv)
+      } else {
+        cmp = (av as number) - (bv as number)
+      }
+      return order === 'ascending' ? cmp : -cmp
     })
   }
 
@@ -1013,7 +1256,7 @@ const pendingCancelOrders = computed(() => {
 // 已审核的取消订单列表（包括已取消和取消失败）（应用数据范围控制）
 const auditedCancelOrders = computed(() => {
   const baseFiltered = applyDataScopeControl(orderList.value)
-  return baseFiltered.filter(order => 
+  return baseFiltered.filter(order =>
     order.status === 'cancelled' || order.status === 'cancel_failed'
   )
 })
@@ -1042,7 +1285,7 @@ const tableHeight = computed(() => {
   const searchHeight = 120 // 搜索区域高度
   const paginationHeight = 60 // 分页区域高度
   const bottomMargin = 40  // 底部边距
-  
+
   return windowHeight - headerHeight - titleHeight - searchHeight - paginationHeight - bottomMargin
 })
 
@@ -1100,10 +1343,14 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
       return getStatusText(row.status)
     case 'markType':
       return getMarkText(row.markType || 'normal')
+    case 'serviceWechat':
+      return row.serviceWechat || '-'
+    case 'orderSource':
+      return getOrderSourceLabel(row.orderSource)
     case 'totalAmount':
       return `¥${(row.totalAmount || 0).toLocaleString()}`
     case 'receiverPhone':
-      return row.receiverPhone ? maskPhone(row.receiverPhone) : '-'
+      return row.receiverPhone ? displaySensitiveInfoNew(row.receiverPhone, SensitiveInfoType.PHONE) : '-'
     case 'products':
       return Array.isArray(row.products)
         ? row.products.map((p: ProductItem) => `${p.name} × ${p.quantity}`).join(', ')
@@ -1119,8 +1366,48 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
     case 'operator':
       return row.operator
     default:
+      // 处理自定义字段
+      if (column.prop.startsWith('customFields.')) {
+        const fieldKey = column.prop.replace('customFields.', '')
+        return getCustomFieldValue(row, fieldKey)
+      }
       return row[column.prop] || '-'
   }
+}
+
+// 获取订单来源标签
+const getOrderSourceLabel = (value: string) => {
+  if (!value) return '-'
+  const option = fieldConfigStore.orderSourceOptions.find(opt => opt.value === value)
+  return option ? option.label : value
+}
+
+// 获取自定义字段值
+const getCustomFieldValue = (row: unknown, fieldKey: string) => {
+  if (!row.customFields || !row.customFields[fieldKey]) {
+    return '-'
+  }
+
+  const value = row.customFields[fieldKey]
+  const field = fieldConfigStore.customFields.find(f => f.fieldKey === fieldKey)
+
+  if (!field) return value
+
+  // 如果是选择类型字段，显示标签而不是值
+  if (field.fieldType === 'select' || field.fieldType === 'radio') {
+    const option = field.options?.find(opt => opt.value === value)
+    return option ? option.label : value
+  }
+
+  // 如果是多选字段，显示所有选中的标签
+  if (field.fieldType === 'checkbox' && Array.isArray(value)) {
+    return value.map(v => {
+      const option = field.options?.find(opt => opt.value === v)
+      return option ? option.label : v
+    }).join(', ')
+  }
+
+  return value
 }
 
 const getPaymentMethodText = (method: string) => {
@@ -1137,7 +1424,7 @@ const getPaymentMethodText = (method: string) => {
 const canEdit = (status: string, operatorId?: string, markType?: string, auditStatus?: string, isAuditTransferred?: boolean) => {
   // 编辑按钮在待流转、审核拒绝、物流部退回、取消失败时显示
   const allowedStatuses = ['pending_transfer', 'audit_rejected', 'logistics_returned', 'cancel_failed']
-  
+
   if (!allowedStatuses.includes(status)) {
     return false
   }
@@ -1153,7 +1440,8 @@ const canEdit = (status: string, operatorId?: string, markType?: string, auditSt
   }
 
   // 销售人员只能编辑自己创建的订单
-  return operatorId === userStore.user.id
+  const userId = userStore.user?.id || userStore.currentUser?.id
+  return operatorId === userId
 }
 
 const canCancel = (status: string, operatorId?: string) => {
@@ -1161,7 +1449,7 @@ const canCancel = (status: string, operatorId?: string) => {
   // 但被物流部取消的不显示（logistics_cancelled状态不显示取消按钮）
   // 已取消的订单也不显示取消按钮（cancelled状态不显示取消按钮）
   const allowedStatuses = ['pending_transfer', 'pending_audit', 'audit_rejected', 'pending_shipment', 'logistics_returned', 'cancel_failed']
-  
+
   if (!allowedStatuses.includes(status)) {
     return false
   }
@@ -1182,7 +1470,8 @@ const canCancel = (status: string, operatorId?: string) => {
   }
 
   // 销售人员只能取消自己创建的订单
-  return operatorId === userStore.user.id
+  const userId = userStore.user?.id || userStore.currentUser?.id
+  return operatorId === userId
 }
 
 
@@ -1190,15 +1479,20 @@ const canCancel = (status: string, operatorId?: string) => {
 const canCreateAfterSales = (status: string) => {
   // 售后按钮在已发货、已签收、拒收、包裹异常、拒收已退回时显示
   const allowedStatuses = ['shipped', 'delivered', 'rejected', 'package_exception', 'rejected_returned']
-  
+
   return allowedStatuses.includes(status)
 }
 
-const canSubmitAudit = (status: string, auditStatus?: string, isAuditTransferred?: boolean, operatorId?: string) => {
+const canSubmitAudit = (status: string, auditStatus?: string, isAuditTransferred?: boolean, operatorId?: string, markType?: string) => {
   // 提审按钮在待流转、审核拒绝、物流部退回、取消失败时显示
   const allowedStatuses = ['pending_transfer', 'audit_rejected', 'logistics_returned', 'cancel_failed']
-  
+
   if (!allowedStatuses.includes(status)) {
+    return false
+  }
+
+  // ✅ 只有正常发货单才能提审，预留单和退单不显示提审按钮
+  if (markType && markType !== 'normal') {
     return false
   }
 
@@ -1208,7 +1502,8 @@ const canSubmitAudit = (status: string, auditStatus?: string, isAuditTransferred
   }
 
   // 销售人员只能提审自己创建的订单
-  return operatorId === userStore.user.id
+  const userId = userStore.user?.id || userStore.currentUser?.id
+  return operatorId === userId
 }
 
 // 提审处理
@@ -1236,11 +1531,11 @@ const handleSubmitAudit = async (row: OrderItem) => {
     // 更新订单状态 - 同时更新前端列表和store中的数据
     const order = orderList.value.find(o => o.id === row.id)
     const storeOrder = orderStore.getOrderById(row.id)
-    
+
     if (order && storeOrder) {
       // 更新前端列表中的订单状态
       order.auditStatus = 'pending'
-      
+
       // 更新store中的订单状态
       storeOrder.auditStatus = 'pending'
       storeOrder.status = 'pending_audit' // 同时更新订单主状态
@@ -1249,7 +1544,7 @@ const handleSubmitAudit = async (row: OrderItem) => {
       if (order.markType === 'normal') {
         order.isAuditTransferred = true
         order.auditTransferTime = new Date().toLocaleString('zh-CN')
-        
+
         // 同步更新store中的流转状态
         storeOrder.isAuditTransferred = true
         storeOrder.auditTransferTime = new Date().toLocaleString('zh-CN')
@@ -1315,85 +1610,18 @@ const handleSelectionChange = (selection: OrderItem[]) => {
   selectedOrders.value = selection
 }
 
-// 列设置处理
-const handleDropdownVisible = (visible: boolean) => {
-  if (!visible) {
-    saveColumnSettings()
-  }
-}
+// 列设置相关
+const COLUMN_STORAGE_KEY = 'order-list-columns'
+const columnSettingsRef = ref()
 
-// 保存列设置到本地存储
-const saveColumnSettings = () => {
-  const settings = tableColumns.value.map(col => ({
-    prop: col.prop,
-    label: col.label,
-    visible: col.visible
-  }))
-  localStorage.setItem('orderListColumnSettings', JSON.stringify(settings))
-}
-
-// 从本地存储加载列设置
-const loadColumnSettings = () => {
-  const saved = localStorage.getItem('orderListColumnSettings')
-  if (saved) {
-    try {
-      const settings: ColumnSetting[] = JSON.parse(saved)
-      settings.forEach((setting: ColumnSetting) => {
-        const column = tableColumns.value.find(col => col.prop === setting.prop)
-        if (column) {
-          column.visible = setting.visible
-        }
-      })
-    } catch (e) {
-      console.warn('Failed to load column settings:', e)
-    }
-  }
-}
-
-// 重置列设置
-const resetColumns = () => {
-  tableColumns.value.forEach(col => {
-    col.visible = ['orderNumber', 'customerName', 'status', 'markType', 'products', 'totalAmount', 'createTime', 'operator'].includes(col.prop)
-  })
-  saveColumnSettings()
-}
-
-// 拖动相关变量
-let draggedIndex = -1
-
-// 拖动开始
-const handleDragStart = (event: DragEvent, index: number) => {
-  draggedIndex = index
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-  }
-}
-
-// 拖动悬停
-const handleDragOver = (event: DragEvent) => {
-  event.preventDefault()
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = 'move'
-  }
-}
-
-// 拖动放置
-const handleDrop = (event: DragEvent, targetIndex: number) => {
-  event.preventDefault()
-
-  if (draggedIndex !== -1 && draggedIndex !== targetIndex) {
-    const draggedItem = tableColumns.value[draggedIndex]
-    tableColumns.value.splice(draggedIndex, 1)
-    tableColumns.value.splice(targetIndex, 0, draggedItem)
-    saveColumnSettings()
-  }
-
-  draggedIndex = -1
+// 处理列变化
+const handleColumnsChange = (columns: TableColumn[]) => {
+  tableColumns.value = columns
 }
 
 // 批量取消订单
 const handleBatchCancel = async () => {
-  if (selectedOrders.value.length === 0) {
+  if (!selectedOrders.value || selectedOrders.value.length === 0) {
     ElMessage.warning('请先选择要取消的订单')
     return
   }
@@ -1445,8 +1673,13 @@ const handleBatchCancel = async () => {
 
 // 批量导出订单
 const handleBatchExport = async () => {
-  if (selectedOrders.value.length === 0) {
+  if (!selectedOrders.value || selectedOrders.value.length === 0) {
     ElMessage.warning('请先选择要导出的订单')
+    return
+  }
+
+  // 检查导出限制
+  if (!checkExportLimit()) {
     return
   }
 
@@ -1454,32 +1687,50 @@ const handleBatchExport = async () => {
     loading.value = true
 
     // 将选中的订单数据转换为导出格式
-    const exportData: ExportOrder[] = selectedOrders.value.map(order => ({
-      orderNumber: order.orderNumber || '',
-      customerName: order.customerName || '',
-      customerPhone: order.customerPhone || '',
-      receiverName: order.receiverName || '',
-      receiverPhone: order.receiverPhone || '',
-      receiverAddress: order.receiverAddress || '',
-      products: order.products || [],
-      totalQuantity: order.totalQuantity || 0,
-      totalAmount: order.totalAmount || 0,
-      depositAmount: order.depositAmount || 0,
-      codAmount: order.codAmount || 0,
-      customerAge: order.customerAge || 0,
-      customerHeight: order.customerHeight || 0,
-      customerWeight: order.customerWeight || 0,
-      medicalHistory: order.medicalHistory || '',
-      serviceWechat: order.serviceWechat || '',
-      remark: order.remark || '',
-      createTime: order.createTime || '',
-      status: order.status || '',
-      shippingStatus: order.shippingStatus || ''
-    }))
+    const exportData: ExportOrder[] = selectedOrders.value.map(order => {
+      // 获取客户信息
+      const customer = customerStore.getCustomerById(order.customerId)
+
+      // 格式化商品信息为字符串
+      const productsText = Array.isArray(order.products)
+        ? order.products.map(p => `${p.name} x${p.quantity}`).join(', ')
+        : ''
+
+      // 计算总数量
+      const totalQuantity = Array.isArray(order.products)
+        ? order.products.reduce((sum, p) => sum + (p.quantity || 0), 0)
+        : 0
+
+      return {
+        orderNumber: order.orderNumber || '',
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
+        receiverName: order.receiverName || order.customerName || '',
+        receiverPhone: order.receiverPhone || order.customerPhone || '',
+        receiverAddress: order.receiverAddress || '',
+        products: productsText,
+        totalQuantity: totalQuantity,
+        totalAmount: order.totalAmount || 0,
+        depositAmount: order.depositAmount || 0,
+        codAmount: order.collectAmount || 0,
+        customerAge: customer?.age || 0,
+        customerHeight: customer?.height ? String(customer.height) : '',
+        customerWeight: customer?.weight ? String(customer.weight) : '',
+        medicalHistory: customer?.medicalHistory || customer?.disease || '',
+        serviceWechat: order.serviceWechat || customer?.serviceWechat || customer?.wechat || customer?.wechatId || '',
+        remark: order.remark || '',
+        createTime: order.createTime || '',
+        status: orderStore.getStatusText(order.status) || order.status || '',
+        shippingStatus: order.logisticsStatus || ''
+      }
+    })
 
     await exportBatchOrders(exportData, userStore.isAdmin)
 
-    ElMessage.success(`成功导出 ${selectedOrders.value.length} 条订单数据`)
+    // 记录导出统计
+    recordExportStats()
+
+    ElMessage.success(`成功导出 ${selectedOrders.value?.length || 0} 条订单数据`)
 
   } catch {
     ElMessage.error('导出失败，请重试')
@@ -1488,35 +1739,237 @@ const handleBatchExport = async () => {
   }
 }
 
+/**
+ * 显示导出设置对话框
+ */
+const showExportSettings = () => {
+  // 加载当前配置
+  loadExportConfig()
+  // 加载导出统计
+  loadExportStats()
+  // 显示对话框
+  exportSettingsVisible.value = true
+}
+
+/**
+ * 加载导出配置
+ */
+const loadExportConfig = () => {
+  try {
+    const exportConfigStr = localStorage.getItem('crm_order_export_config')
+    if (exportConfigStr) {
+      const exportConfig = JSON.parse(exportConfigStr)
+      Object.assign(exportFormData, exportConfig)
+    }
+  } catch (error) {
+    console.error('加载导出配置失败:', error)
+  }
+}
+
+/**
+ * 加载导出统计
+ */
+const loadExportStats = () => {
+  try {
+    const statsStr = localStorage.getItem('crm_order_export_stats')
+    if (!statsStr) {
+      exportStats.todayCount = 0
+      exportStats.weekCount = 0
+      exportStats.monthCount = 0
+      return
+    }
+
+    const stats = JSON.parse(statsStr)
+    const today = new Date().toISOString().split('T')[0]
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    exportStats.todayCount = stats[today] || 0
+    exportStats.weekCount = Object.keys(stats)
+      .filter(date => date >= weekAgo)
+      .reduce((sum, date) => sum + stats[date], 0)
+    exportStats.monthCount = Object.keys(stats)
+      .filter(date => date >= monthAgo)
+      .reduce((sum, date) => sum + stats[date], 0)
+  } catch (error) {
+    console.error('加载导出统计失败:', error)
+  }
+}
+
+/**
+ * 保存导出设置
+ */
+const saveExportSettings = () => {
+  const exportConfig = {
+    enabled: exportFormData.enabled,
+    permissionType: exportFormData.permissionType,
+    allowedRoles: exportFormData.allowedRoles,
+    whitelist: exportFormData.whitelist,
+    dailyLimit: exportFormData.dailyLimit
+  }
+
+  localStorage.setItem('crm_order_export_config', JSON.stringify(exportConfig))
+  ElMessage.success('订单导出权限设置已保存并全局生效')
+  exportSettingsVisible.value = false
+}
+
+/**
+ * 恢复默认导出设置
+ */
+const resetExportSettings = () => {
+  exportFormData.enabled = true
+  exportFormData.permissionType = 'all'
+  exportFormData.allowedRoles = ['super_admin', 'admin']
+  exportFormData.whitelist = []
+  exportFormData.dailyLimit = 0
+
+  ElMessage.success('已恢复默认设置')
+}
+
+/**
+ * 检查导出限制
+ */
+const checkExportLimit = () => {
+  try {
+    const exportConfigStr = localStorage.getItem('crm_order_export_config')
+    if (!exportConfigStr) {
+      return true
+    }
+
+    const exportConfig = JSON.parse(exportConfigStr)
+    const dailyLimit = exportConfig.dailyLimit || 0
+
+    if (dailyLimit === 0) {
+      return true // 不限制
+    }
+
+    const today = new Date().toISOString().split('T')[0]
+    const statsStr = localStorage.getItem('crm_order_export_stats')
+    const stats = statsStr ? JSON.parse(statsStr) : {}
+    const todayCount = stats[today] || 0
+
+    if (todayCount >= dailyLimit) {
+      ElMessage.warning(`每日导出次数已达上限（${dailyLimit}次）`)
+      return false
+    }
+
+    return true
+  } catch (error) {
+    console.error('检查导出限制失败:', error)
+    return true
+  }
+}
+
+/**
+ * 记录导出统计
+ */
+const recordExportStats = () => {
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    const statsStr = localStorage.getItem('crm_order_export_stats')
+    const stats = statsStr ? JSON.parse(statsStr) : {}
+
+    stats[today] = (stats[today] || 0) + 1
+
+    localStorage.setItem('crm_order_export_stats', JSON.stringify(stats))
+  } catch (error) {
+    console.error('记录导出统计失败:', error)
+  }
+}
+
+/**
+ * 🔥 批次270新增：获取订单来源文本
+ */
+const getOrderSourceText = (orderSource?: string) => {
+  if (!orderSource) return ''
+
+  try {
+    const configStr = localStorage.getItem('crm_order_field_config')
+    if (configStr) {
+      const config = JSON.parse(configStr)
+      const option = config.orderSource?.options?.find((opt: unknown) => opt.value === orderSource)
+      return option?.label || orderSource
+    }
+  } catch (error) {
+    console.error('获取订单来源文本失败:', error)
+  }
+
+  return orderSource
+}
+
 // 导出订单
 const handleExport = async () => {
+  // 检查导出限制
+  if (!checkExportLimit()) {
+    return
+  }
+
   try {
     loading.value = true
 
-    const exportData: ExportOrder[] = filteredOrderList.value.map(order => ({
-      orderNumber: order.orderNumber || '',
-      customerName: order.customerName || '',
-      customerPhone: order.customerPhone || '',
-      receiverName: order.receiverName || '',
-      receiverPhone: order.receiverPhone || '',
-      receiverAddress: order.receiverAddress || '',
-      products: order.products || [],
-      totalQuantity: order.totalQuantity || 0,
-      totalAmount: order.totalAmount || 0,
-      depositAmount: order.depositAmount || 0,
-      codAmount: order.codAmount || 0,
-      customerAge: order.customerAge || 0,
-      customerHeight: order.customerHeight || 0,
-      customerWeight: order.customerWeight || 0,
-      medicalHistory: order.medicalHistory || '',
-      serviceWechat: order.serviceWechat || '',
-      remark: order.remark || '',
-      createTime: order.createTime || '',
-      status: order.status || '',
-      shippingStatus: order.shippingStatus || ''
-    }))
+    const exportData: ExportOrder[] = filteredOrderList.value.map(order => {
+      // 获取客户信息
+      const customer = customerStore.getCustomerById(order.customerId)
+
+      // 格式化商品信息为字符串
+      const productsText = Array.isArray(order.products)
+        ? order.products.map(p => `${p.name} x${p.quantity}`).join(', ')
+        : ''
+
+      // 计算总数量
+      const totalQuantity = Array.isArray(order.products)
+        ? order.products.reduce((sum, p) => sum + (p.quantity || 0), 0)
+        : 0
+
+      // 🔥 批次270新增：获取标记类型文本
+      const markTypeText = getMarkText(order.markType || 'normal')
+
+      // 🔥 批次270新增：获取负责销售名称
+      const salesPersonName = order.salesPersonName ||
+                             order.createdBy ||
+                             (order.salesPersonId ? userStore.getUserById(order.salesPersonId)?.name : '') ||
+                             ''
+
+      // 🔥 批次270新增：获取支付方式文本
+      const paymentMethodText = getPaymentMethodText(order.paymentMethod)
+
+      // 🔥 批次270新增：获取订单来源文本
+      const orderSourceText = getOrderSourceText(order.orderSource)
+
+      return {
+        orderNumber: order.orderNumber || '',
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
+        receiverName: order.receiverName || order.customerName || '',
+        receiverPhone: order.receiverPhone || order.customerPhone || '',
+        receiverAddress: order.receiverAddress || '',
+        products: productsText,
+        totalQuantity: totalQuantity,
+        totalAmount: order.totalAmount || 0,
+        depositAmount: order.depositAmount || 0,
+        codAmount: order.collectAmount || 0,
+        customerAge: customer?.age || 0,
+        customerHeight: customer?.height ? String(customer.height) : '',
+        customerWeight: customer?.weight ? String(customer.weight) : '',
+        medicalHistory: customer?.medicalHistory || customer?.disease || '',
+        serviceWechat: order.serviceWechat || customer?.serviceWechat || customer?.wechat || customer?.wechatId || '',
+        // 🔥 批次270新增字段
+        markType: markTypeText,
+        salesPersonName: salesPersonName,
+        paymentMethod: paymentMethodText,
+        orderSource: orderSourceText,
+        customFields: order.customFields || {},
+        remark: order.remark || '',
+        createTime: order.createTime || '',
+        status: orderStore.getStatusText(order.status) || order.status || '',
+        shippingStatus: order.logisticsStatus || ''
+      }
+    })
 
     await exportBatchOrders(exportData, userStore.isAdmin)
+
+    // 记录导出统计
+    recordExportStats()
 
     ElMessage.success(`成功导出 ${exportData.length} 条订单数据`)
 
@@ -1698,19 +2151,33 @@ const handleAuditApprove = async () => {
     return
   }
 
+  // 防止重复提交
+  if (auditSubmitting.value) {
+    return
+  }
+
   try {
     auditSubmitting.value = true
     const orderIds = selectedAuditOrders.value.map(order => order.id)
-    
-    // 调用审核通过接口
-    await orderStore.approveCancelOrders(orderIds)
-    
+
+    // 仅围绕“审核通过”本身做结果判断，避免后续刷新失败触发失败提示
+    const ok = await orderStore.approveCancelOrders(orderIds)
+    if (!ok) {
+      ElMessage.error('审核通过失败，请重试')
+      return
+    }
+
+    // 审核成功提示只显示一次
     ElMessage.success('审核通过成功')
     selectedAuditOrders.value = []
-    
-    // 刷新订单列表
-    await loadOrders()
-    
+
+    // 刷新订单列表（若失败仅记录日志，不再弹失败提示）
+    try {
+      await loadOrders()
+    } catch (e) {
+      console.error('审核通过后刷新订单列表失败:', e)
+    }
+
     // 关闭审核弹窗
     handleCloseCancelAudit()
   } catch (error) {
@@ -1727,19 +2194,33 @@ const handleAuditReject = async () => {
     return
   }
 
+  // 防止重复提交
+  if (auditSubmitting.value) {
+    return
+  }
+
   try {
     auditSubmitting.value = true
     const orderIds = selectedAuditOrders.value.map(order => order.id)
-    
-    // 调用审核拒绝接口
-    await orderStore.rejectCancelOrders(orderIds)
-    
+
+    // 仅围绕“审核拒绝”本身做结果判断，避免后续刷新失败触发失败提示
+    const ok = await orderStore.rejectCancelOrders(orderIds)
+    if (!ok) {
+      ElMessage.error('审核拒绝失败，请重试')
+      return
+    }
+
+    // 成功提示只显示一次
     ElMessage.success('审核拒绝成功')
     selectedAuditOrders.value = []
-    
-    // 刷新订单列表
-    await loadOrders()
-    
+
+    // 刷新订单列表（若失败仅记录日志，不再弹失败提示）
+    try {
+      await loadOrders()
+    } catch (e) {
+      console.error('审核拒绝后刷新订单列表失败:', e)
+    }
+
     // 关闭审核弹窗
     handleCloseCancelAudit()
   } catch (error) {
@@ -1768,6 +2249,8 @@ const handleReset = () => {
   searchForm.productName = ''
   searchForm.customerPhone = ''
   searchForm.paymentMethod = ''
+  searchForm.onlyAuditPendingSubmitted = false
+  searchForm.onlyResubmittable = false
   activeQuickFilter.value = 'all'
   advancedSearchVisible.value = false
   pagination.page = 1
@@ -1790,26 +2273,51 @@ const updatePagination = () => {
 }
 
 const loadOrderList = async () => {
+  console.log('[订单列表] 开始刷新订单列表')
   try {
     const response = await appStore.withLoading(async () => {
-      // 模拟API调用
-      await new Promise(resolve => setTimeout(resolve, 800))
+      // 强制从 localStorage 重新加载订单数据
+      await orderStore.loadOrders()
+      console.log('[订单列表] 订单数据已重新加载，数量:', orderStore.orders.length)
+
+      // 模拟API调用延迟
+      await new Promise(resolve => setTimeout(resolve, 300))
       return {
         data: orderStore.orders,
-        total: 150
+        total: orderStore.orders.length
       }
-    }, '正在加载订单列表...')
+    }, '正在刷新订单列表...')
 
-    // 确保orderStore有数据，如果没有则初始化
-    if (orderStore.orders.length === 0) {
-      orderStore.initializeWithMockData()
-    }
-    
+    // 注意：不要在这里调用 initializeWithMockData
+    // createPersistentStore 会自动从 localStorage 恢复数据
+    // 如果数据为空，说明确实没有数据，不应该强制初始化
+
     updatePagination()
     updateQuickFilterCounts()
+
+    console.log('[订单列表] 订单列表刷新完成')
+    ElMessage.success('订单列表已刷新')
   } catch (error) {
+    console.error('[订单列表] 刷新失败:', error)
     appStore.showError('加载订单列表失败', error as Error)
   }
+}
+
+// 订单事件处理函数
+const handleOrderTransferred = (transferredOrders: unknown[]) => {
+  console.log('[订单列表] 收到订单流转事件:', transferredOrders)
+  loadOrderList()
+  ElMessage.success(`${transferredOrders.length} 个订单已自动流转到审核`)
+}
+
+const handleRefreshOrderList = () => {
+  console.log('[订单列表] 收到刷新列表事件')
+  loadOrderList()
+}
+
+const handleOrderStatusChanged = (order: unknown) => {
+  console.log('[订单列表] 订单状态变更:', order)
+  loadOrderList()
 }
 
 // 窗口大小变化监听器
@@ -1818,20 +2326,28 @@ const handleResize = () => {
 }
 
 onMounted(() => {
-  loadColumnSettings()
+  initializeCustomFieldColumns()
+  // 列设置由TableColumnSettings组件自动加载
   loadOrderList()
-  
+  // 注意：不在页面加载时立即检查流转，由后台定时任务统一处理
+  // 避免在创建订单后立即进入列表页时误触发流转
+
   // 初始化物流状态同步
   orderStore.setupLogisticsEventListener()
   orderStore.startLogisticsAutoSync()
-  
+
   // 添加窗口大小变化监听器
   window.addEventListener('resize', handleResize)
-  
+
   // 监听物流状态更新事件
   window.addEventListener('orderStatusUpdated', handleOrderStatusUpdate)
   window.addEventListener('orderUpdated', handleOrderUpdate)
   window.addEventListener('todoStatusUpdated', handleTodoStatusUpdate)
+
+  // 监听订单事件总线 - 实现订单状态同步
+  eventBus.on(EventNames.ORDER_TRANSFERRED, handleOrderTransferred)
+  eventBus.on(EventNames.REFRESH_ORDER_LIST, handleRefreshOrderList)
+  eventBus.on(EventNames.ORDER_STATUS_CHANGED, handleOrderStatusChanged)
 })
 
 // 处理订单状态更新事件
@@ -1860,10 +2376,10 @@ watch(() => route.query, (newQuery) => {
   if (newQuery.refresh === 'true') {
     // 刷新订单列表数据
     loadOrderList()
-    
+
     // 显示刷新成功提示
     ElMessage.success('订单列表已刷新')
-    
+
     // 清除查询参数，避免重复刷新
     safeNavigator.replace({ path: '/order/list' })
   }
@@ -1872,11 +2388,16 @@ watch(() => route.query, (newQuery) => {
 onUnmounted(() => {
   // 清理窗口大小变化监听器
   window.removeEventListener('resize', handleResize)
-  
+
   // 清理物流状态更新事件监听器
   window.removeEventListener('orderStatusUpdated', handleOrderStatusUpdate)
   window.removeEventListener('todoStatusUpdated', handleTodoStatusUpdate)
-  
+
+  // 清理订单事件总线监听
+  eventBus.off(EventNames.ORDER_TRANSFERRED, handleOrderTransferred)
+  eventBus.off(EventNames.REFRESH_ORDER_LIST, handleRefreshOrderList)
+  eventBus.off(EventNames.ORDER_STATUS_CHANGED, handleOrderStatusChanged)
+
   // 清理所有可能存在的blob URL
   const existingLinks = document.querySelectorAll('a[href^="blob:"]')
   existingLinks.forEach(link => {
@@ -2336,4 +2857,33 @@ onUnmounted(() => {
 
 
 
+/* 导出设置按钮样式 */
+.export-settings-btn {
+  margin-left: 0;
+  padding: 8px 12px;
+  color: #606266;
+}
+
+.export-settings-btn:hover {
+  color: #409EFF;
+  background-color: #ecf5ff;
+}
+
+/* 导出设置对话框样式 */
+.form-item-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+
+.stats-section {
+  margin-top: 20px;
+}
+
+.stats-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #303133;
+}
 </style>

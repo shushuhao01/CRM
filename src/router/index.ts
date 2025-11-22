@@ -119,7 +119,14 @@ const router = createRouter({
       path: '/performance/share',
       name: 'PerformanceShare',
       component: () => import('../views/Performance/Share.vue'),
-      meta: { title: '业绩分享', requiresAuth: true, requiresAdmin: true }
+      meta: { title: '业绩分享', requiresAuth: true }
+    },
+    // 系统设置 - 业绩分享设置
+    {
+      path: '/settings/performance-share',
+      name: 'SettingsPerformanceShare',
+      component: () => import('../views/Settings/PerformanceShare.vue'),
+      meta: { title: '业绩分享设置', requiresAuth: true, requiresSuperAdmin: true }
     },
 
 
@@ -179,39 +186,64 @@ const router = createRouter({
       component: () => import('../views/Logistics/StatusUpdate.vue'),
       meta: { title: '状态更新', requiresAuth: true, requiresSpecialPermission: true }
     },
-    
+
     // 售后管理
     {
       path: '/service/list',
       name: 'ServiceList',
       component: () => import('../views/Service/List.vue'),
-      meta: { title: '售后订单', requiresAuth: true }
+      meta: {
+        title: '售后订单',
+        requiresAuth: true,
+        roles: ['admin', 'manager', 'sales', 'customer_service'],
+        permissions: ['service:list:view']
+      }
     },
     {
       path: '/service/add',
       name: 'ServiceAdd',
       component: () => import('../views/Service/Add.vue'),
-      meta: { title: '新建售后', requiresAuth: true }
+      meta: {
+        title: '新建售后',
+        requiresAuth: true,
+        roles: ['admin', 'manager', 'sales', 'customer_service'],
+        permissions: ['service:add']
+      }
     },
     {
       path: '/service/detail/:id',
       name: 'ServiceDetail',
       component: () => import('../views/Service/Detail.vue'),
-      meta: { title: '售后详情', requiresAuth: true }
+      meta: {
+        title: '售后详情',
+        requiresAuth: true,
+        roles: ['admin', 'manager', 'sales', 'customer_service'],
+        permissions: ['service:detail:view']
+      }
     },
     {
       path: '/service/edit/:id',
       name: 'ServiceEdit',
       component: () => import('../views/Service/Edit.vue'),
-      meta: { title: '编辑售后', requiresAuth: true }
+      meta: {
+        title: '编辑售后',
+        requiresAuth: true,
+        roles: ['admin', 'manager', 'customer_service'],
+        permissions: ['service:edit']
+      }
     },
     {
       path: '/service/data',
       name: 'ServiceData',
       component: () => import('../views/Service/Data.vue'),
-      meta: { title: '售后数据', requiresAuth: true }
+      meta: {
+        title: '售后数据',
+        requiresAuth: true,
+        roles: ['admin', 'manager'],
+        permissions: ['service:data:view']
+      }
     },
-    
+
     // 资料管理
     {
       path: '/data/list',
@@ -222,8 +254,14 @@ const router = createRouter({
     {
       path: '/data/search',
       name: 'DataSearch',
-      component: () => import('../views/Data/Search.vue'),
+      component: () => import('../views/Data/SearchNew.vue'),
       meta: { title: '客户查询', requiresAuth: true }
+    },
+    {
+      path: '/data/search-debug',
+      name: 'SearchDebug',
+      component: () => import('../views/Debug/SearchDebug.vue'),
+      meta: { title: '搜索调试工具', requiresAuth: true }
     },
     {
       path: '/data/recycle',
@@ -231,7 +269,7 @@ const router = createRouter({
       component: () => import('../views/Data/Recycle.vue'),
       meta: { title: '回收站', requiresAuth: true }
     },
-    
+
     // 商品管理
     {
       path: '/product/list',
@@ -275,7 +313,7 @@ const router = createRouter({
       component: () => import('../views/Product/Analytics.vue'),
       meta: { title: '商品分析', requiresAuth: true }
     },
-    
+
     // 服务管理
     {
       path: '/service-management/sms',
@@ -326,7 +364,7 @@ const router = createRouter({
       component: () => import('../views/ServiceManagement/Call/PhoneConfig.vue'),
       meta: { title: '电话配置', requiresAuth: true }
     },
-    
+
     // 调试页面
     {
       path: '/debug/storage',
@@ -382,6 +420,13 @@ const router = createRouter({
       name: 'SystemSettings',
       component: () => import('../views/System/Settings.vue'),
       meta: { title: '系统设置', requiresAuth: true }
+    },
+    // 🔥 批次274新增：关于我们页面
+    {
+      path: '/about',
+      name: 'About',
+      component: () => import('../views/About.vue'),
+      meta: { title: '关于我们', requiresAuth: true }
     },
     {
       path: '/system/sms-templates',
@@ -489,63 +534,63 @@ const router = createRouter({
 // 路由守卫
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
-  
+
   // 设置页面标题
   if (to.meta.title) {
     document.title = `${to.meta.title} - CRM系统`
   }
-  
+
   // 如果已登录用户访问登录页，重定向到首页
   if (to.path === '/login' && userStore.token) {
     next('/dashboard')
     return
   }
-  
+
   // 检查是否需要登录
   if (to.meta.requiresAuth && !userStore.token) {
     ElMessage.error('请先登录')
     next('/login')
     return
   }
-  
+
   // 检查是否需要管理员权限
   if (to.meta.requiresAdmin && !userStore.isAdmin) {
     ElMessage.error('需要管理员权限')
     next('/dashboard')
     return
   }
-  
+
   // 检查是否需要经理权限
   if (to.meta.requiresManager && !userStore.isManager && !userStore.isAdmin) {
     ElMessage.error('需要经理权限')
     next('/dashboard')
     return
   }
-  
+
   // 检查是否需要超级管理员权限
   if (to.meta.requiresSuperAdmin && !userStore.isSuperAdmin) {
     ElMessage.error('需要超级管理员权限')
     next('/dashboard')
     return
   }
-  
+
   // 检查是否需要特殊权限（如物流状态更新）
   if (to.meta.requiresSpecialPermission) {
-    const hasSpecialAccess = userStore.isSuperAdmin || 
+    const hasSpecialAccess = userStore.isSuperAdmin ||
                             userStore.isWhitelistMember ||
-                            userStore.permissions?.includes('logistics:status_update') ||
+                            userStore.permissions?.includes('logistics:status') ||
                             userStore.currentUser?.role === 'manager' ||
                             userStore.currentUser?.role === 'department_head' ||
-                            (userStore.currentUser?.department === 'logistics' && 
+                            (userStore.currentUser?.department === 'logistics' &&
                              userStore.currentUser?.position === 'supervisor')
-    
+
     if (!hasSpecialAccess) {
       ElMessage.error('您没有访问该功能的权限，请联系管理员')
       next('/dashboard')
       return
     }
   }
-  
+
   next()
 })
 
@@ -561,7 +606,7 @@ router.onError((error) => {
     // 完全静默处理，不输出任何日志和消息
     return
   }
-  
+
   console.error('路由错误:', error)
   ElMessage.error('页面加载失败，请刷新重试')
 })
@@ -579,7 +624,7 @@ router.afterEach((to, from, failure) => {
       // 完全静默处理，不输出任何日志和消息
       return
     }
-    
+
     console.error('导航失败:', failure)
     ElMessage.error('页面导航失败，请重试')
   }

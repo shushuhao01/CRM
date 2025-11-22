@@ -202,10 +202,14 @@ import {
   Printer,
   Location
 } from '@element-plus/icons-vue'
+import { useOrderStore } from '@/stores/order'
 
 // 路由
 const router = useRouter()
 const route = useRoute()
+
+// Store
+const orderStore = useOrderStore()
 
 // 响应式数据
 const loading = ref(false)
@@ -396,6 +400,39 @@ const handlePrint = () => {
 }
 
 /**
+ * 获取物流公司名称
+ */
+const getExpressCompanyName = (code: string) => {
+  const companies: Record<string, string> = {
+    'SF': '顺丰速运',
+    'YTO': '圆通速递',
+    'ZTO': '中通快递',
+    'STO': '申通快递',
+    'YD': '韵达速递',
+    'HTKY': '百世快递',
+    'JD': '京东物流',
+    'EMS': '中国邮政',
+    'DBKD': '德邦快递',
+    'UC': '优速快递'
+  }
+  return companies[code] || code
+}
+
+/**
+ * 获取物流公司联系方式
+ */
+const getCompanyContact = (code: string) => {
+  const contacts: Record<string, { service: string; complaint: string; website: string }> = {
+    'SF': { service: '95338', complaint: '400-889-5338', website: 'https://www.sf-express.com' },
+    'YTO': { service: '95554', complaint: '400-500-6666', website: 'https://www.yto.net.cn' },
+    'ZTO': { service: '95311', complaint: '400-827-0270', website: 'https://www.zto.com' },
+    'STO': { service: '95543', complaint: '400-889-5543', website: 'https://www.sto.cn' },
+    'YD': { service: '95546', complaint: '400-821-6789', website: 'https://www.yundaex.com' }
+  }
+  return contacts[code] || { service: '400-800-8888', complaint: '400-800-9999', website: 'https://www.express.com' }
+}
+
+/**
  * 加载物流数据
  */
 const loadTrackingData = async () => {
@@ -407,86 +444,79 @@ const loadTrackingData = async () => {
     const trackingNo = route.params.trackingNo || route.query.trackingNo
     const companyCode = route.query.company
     
-    // 模拟API调用
-    await new Promise(resolve => {
-      const timeoutId = setTimeout(() => {
-        timeoutIds.delete(timeoutId)
-        resolve(undefined)
-      }, 1000)
-      timeoutIds.add(timeoutId)
-    })
+    // 从订单store中查找对应的订单
+    const allOrders = orderStore.getOrders()
+    const order = allOrders.find(o => 
+      o.trackingNumber === trackingNo || 
+      o.expressNo === trackingNo
+    )
+    
+    if (!order) {
+      ElMessage.error('未找到对应的订单信息')
+      if (!isUnmounted.value) {
+        loading.value = false
+      }
+      return
+    }
     
     // 检查组件是否已卸载
     if (isUnmounted.value) return
     
-    // 模拟数据
+    // 获取物流公司信息
+    const expressCompany = order.expressCompany || companyCode || 'SF'
+    const companyContact = getCompanyContact(expressCompany)
+    
+    // 使用真实订单数据
     Object.assign(trackingInfo, {
-      trackingNo: trackingNo || 'SF1234567890123',
-      companyName: '顺丰速运',
-      companyCode: companyCode || 'SF',
-      senderName: '北京总仓',
-      senderAddress: '北京市朝阳区建国路88号',
-      receiverName: '张三',
-      receiverAddress: '上海市浦东新区陆家嘴环路1000号',
-      shipTime: '2024-01-10 09:30:00',
-      estimatedTime: '2024-01-12 18:00:00',
-      status: 'delivered',
-      serviceType: '顺丰特快',
-      servicePhone: '95338',
-      complaintPhone: '400-889-5338',
-      website: 'https://www.sf-express.com'
+      trackingNo: order.trackingNumber || order.expressNo || trackingNo || '',
+      companyName: getExpressCompanyName(expressCompany),
+      companyCode: expressCompany,
+      senderName: '发货方', // 可以从订单或配置中获取
+      senderAddress: '', // 可以从订单或配置中获取
+      receiverName: order.receiverName || '',
+      receiverAddress: order.receiverAddress || '',
+      shipTime: order.shippingTime || order.shipTime || '',
+      estimatedTime: order.estimatedDeliveryTime || '',
+      status: order.logisticsStatus || mapOrderStatusToLogisticsStatus(order.status),
+      serviceType: '标准快递', // 可以从订单或配置中获取
+      servicePhone: companyContact.service,
+      complaintPhone: companyContact.complaint,
+      website: companyContact.website
     })
     
-    // 模拟物流轨迹
-    trackingHistory.value = [
-      {
-        time: '2024-01-12 14:30:00',
-        status: '已签收',
-        description: '您的快件已由本人签收，感谢使用顺丰速运',
-        location: '上海市浦东新区',
-        operator: '张配送员',
-        type: 'success'
-      },
-      {
-        time: '2024-01-12 09:15:00',
-        status: '派送中',
-        description: '快件正在派送途中，配送员将尽快与您联系',
-        location: '上海市浦东新区营业点',
-        operator: '张配送员',
-        type: 'warning'
-      },
-      {
-        time: '2024-01-12 06:20:00',
-        status: '到达目的地',
-        description: '快件已到达目的地分拣中心',
-        location: '上海浦东分拣中心',
-        type: 'info'
-      },
-      {
-        time: '2024-01-11 22:45:00',
-        status: '运输中',
-        description: '快件正在从北京运往上海',
-        location: '北京分拣中心',
-        type: 'info'
-      },
-      {
-        time: '2024-01-11 15:30:00',
-        status: '已发出',
-        description: '快件已从北京分拣中心发出',
-        location: '北京分拣中心',
-        type: 'info'
-      },
-      {
-        time: '2024-01-10 09:30:00',
-        status: '已揽收',
-        description: '顺丰速运已收取快件',
-        location: '北京市朝阳区营业点',
-        operator: '李收件员',
-        type: 'info'
+    // 使用真实物流轨迹数据
+    if (order.logisticsHistory && Array.isArray(order.logisticsHistory) && order.logisticsHistory.length > 0) {
+      trackingHistory.value = order.logisticsHistory.map((item: any) => ({
+        time: item.time || '',
+        status: getLogisticsStatusText(item.status),
+        description: item.description || '',
+        location: item.location || '',
+        operator: item.operator || '',
+        type: getTimelineTypeByStatus(item.status)
+      })).reverse() // 倒序显示，最新的在上面
+    } else {
+      // 如果没有物流历史，从状态历史中提取物流相关信息
+      if (order.statusHistory && Array.isArray(order.statusHistory)) {
+        const logisticsStatuses = ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'picked_up']
+        const logisticsHistoryItems = order.statusHistory
+          .filter((h: any) => logisticsStatuses.includes(h.status))
+          .map((h: any) => ({
+            time: h.time || '',
+            status: getLogisticsStatusText(h.status),
+            description: h.description || h.remark || '',
+            location: '',
+            operator: h.operator || '',
+            type: getTimelineTypeByStatus(h.status)
+          }))
+        
+        trackingHistory.value = logisticsHistoryItems.reverse()
+      } else {
+        trackingHistory.value = []
       }
-    ]
+    }
     
   } catch (error) {
+    console.error('加载物流信息失败:', error)
     if (!isUnmounted.value) {
       ElMessage.error('加载物流信息失败')
     }
@@ -495,6 +525,57 @@ const loadTrackingData = async () => {
       loading.value = false
     }
   }
+}
+
+/**
+ * 获取物流状态文本
+ */
+const getLogisticsStatusText = (status: string): string => {
+  const textMap: Record<string, string> = {
+    'pending': '待发货',
+    'picked_up': '已揽收',
+    'shipped': '已发货',
+    'in_transit': '运输中',
+    'out_for_delivery': '派送中',
+    'delivered': '已签收',
+    'exception': '异常',
+    'rejected': '拒收',
+    'returned': '已退回'
+  }
+  return textMap[status] || status
+}
+
+/**
+ * 根据状态获取时间轴类型
+ */
+const getTimelineTypeByStatus = (status: string): string => {
+  const typeMap: Record<string, string> = {
+    'delivered': 'success',
+    'out_for_delivery': 'warning',
+    'shipped': 'primary',
+    'in_transit': 'info',
+    'picked_up': 'info',
+    'exception': 'danger',
+    'rejected': 'danger',
+    'returned': 'info',
+    'pending': 'warning'
+  }
+  return typeMap[status] || 'info'
+}
+
+/**
+ * 映射订单状态到物流状态
+ */
+const mapOrderStatusToLogisticsStatus = (orderStatus: string): string => {
+  const statusMap: Record<string, string> = {
+    'pending_shipment': 'pending',
+    'shipped': 'shipped',
+    'delivered': 'delivered',
+    'in_transit': 'in_transit',
+    'out_for_delivery': 'out_for_delivery',
+    'package_exception': 'exception'
+  }
+  return statusMap[orderStatus] || 'pending'
 }
 
 // 页面加载时获取数据

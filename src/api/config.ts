@@ -1,7 +1,7 @@
 // API配置文件
 export const API_CONFIG = {
   // 基础URL - 根据环境变量或默认值设置
-  BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1',
+  BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1',
   
   // 请求超时时间
   TIMEOUT: 10000,

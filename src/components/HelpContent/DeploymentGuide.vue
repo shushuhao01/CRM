@@ -138,7 +138,7 @@ cd frontend
 npm run dev</code></pre>
             </div>
             <div class="note">
-              <p><strong>注意：</strong>前端服务默认运行在 http://localhost:5173，后端服务运行在 http://localhost:3000</p>
+              <p><strong>注意：</strong>前端服务默认运行在 http://localhost:5173，后端服务运行在 http://localhost:3001</p>
             </div>
           </div>
         </div>
@@ -296,7 +296,7 @@ server {
 
     # API 代理配置
     location /api/ {
-        proxy_pass http://localhost:3000/;
+        proxy_pass http://localhost:3001/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -416,7 +416,7 @@ pm2 start ecosystem.config.js</code></pre>
     
     # API 代理
     location /api {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:3001;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

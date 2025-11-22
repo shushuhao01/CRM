@@ -78,34 +78,86 @@ app.use(createPinia())
 // 初始化用户状态
 const userStore = useUserStore()
 
+// 检查localStorage是否可用
+const checkLocalStorage = () => {
+  try {
+    const test = 'localStorage-test'
+    localStorage.setItem(test, test)
+    localStorage.removeItem(test)
+    return true
+  } catch (error) {
+    console.error('[App] localStorage不可用:', error)
+    return false
+  }
+}
+
 // 异步初始化用户状态，确保token验证完成后再挂载应用
 const initializeApp = async () => {
-  try {
-    await userStore.initUser()
-  } catch (error) {
-    console.error('[App] 用户状态初始化失败:', error)
+  console.log('[App] 开始初始化应用...')
+  
+  // 等待DOM完全加载
+  if (document.readyState !== 'complete') {
+    await new Promise(resolve => {
+      window.addEventListener('load', resolve)
+    })
   }
   
-  // 初始化主题配置
-  const configStore = useConfigStore()
-  configStore.initTheme()
+  // 检查localStorage可用性
+  if (!checkLocalStorage()) {
+    console.warn('[App] localStorage不可用，使用默认配置')
+  }
   
-  app.use(router)
-  app.use(ElementPlus)
-  app.use(permissionPlugin)
-  
-  // 注册全局指令
-  setupDirectives(app)
-  
-  // 注意：不再需要将router实例设置到window对象
-  // 也不需要postMessage监听器，因为路由守卫会统一处理导航
-  
-  app.mount('#app')
-  
-  // 运行部署检查
-  autoCheck()
-  
-  // 注意：自动同步服务将在用户登录后启动，避免在未登录时进行API调用
+  try {
+    // 先初始化配置存储
+    const configStore = useConfigStore()
+    
+    // 安全地初始化主题配置
+    try {
+      configStore.initTheme()
+      console.log('[App] 主题配置初始化成功')
+    } catch (error) {
+      console.error('[App] 主题配置初始化失败:', error)
+    }
+    
+    // 安全地初始化用户状态
+    try {
+      await userStore.initUser()
+      console.log('[App] 用户状态初始化成功')
+    } catch (error) {
+      console.error('[App] 用户状态初始化失败:', error)
+    }
+    
+    // 注册插件和组件
+    app.use(router)
+    app.use(ElementPlus)
+    app.use(permissionPlugin)
+    
+    // 注册全局指令
+    setupDirectives(app)
+    
+    // 挂载应用
+    app.mount('#app')
+    console.log('[App] 应用挂载成功')
+    
+    // 运行部署检查
+    try {
+      autoCheck()
+    } catch (error) {
+      console.error('[App] 部署检查失败:', error)
+    }
+    
+  } catch (error) {
+    console.error('[App] 应用初始化失败:', error)
+    // 即使初始化失败，也要尝试挂载应用
+    try {
+      app.use(router)
+      app.use(ElementPlus)
+      app.mount('#app')
+      console.log('[App] 应用已在错误恢复模式下挂载')
+    } catch (mountError) {
+      console.error('[App] 应用挂载失败:', mountError)
+    }
+  }
 }
 
 // 启动应用

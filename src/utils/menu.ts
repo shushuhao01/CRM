@@ -13,34 +13,47 @@ export function hasMenuPermission(
   userRole: string,
   userPermissions: string[]
 ): boolean {
+  console.log(`[hasMenuPermission] 检查菜单权限: ${menuItem.title}`)
+  
   // 如果菜单项被隐藏，直接返回false
   if (menuItem.hidden) {
+    console.log(`[hasMenuPermission] 菜单项被隐藏: ${menuItem.title}`)
     return false
   }
 
   // 超级管理员拥有所有权限，跳过所有权限检查
   if (userRole === 'super_admin' || userPermissions.includes('*')) {
+    console.log(`[hasMenuPermission] 超级管理员权限，允许访问: ${menuItem.title}`)
     return true
   }
 
   // 检查角色权限
   if (menuItem.roles && menuItem.roles.length > 0) {
+    console.log(`[hasMenuPermission] 检查角色权限 - 要求角色:`, menuItem.roles, '用户角色:', userRole)
     if (!menuItem.roles.includes(userRole)) {
+      console.log(`[hasMenuPermission] 角色权限不匹配: ${menuItem.title}`)
       return false
     }
+    console.log(`[hasMenuPermission] 角色权限匹配: ${menuItem.title}`)
   }
 
   // 检查具体权限
   if (menuItem.permissions && menuItem.permissions.length > 0) {
+    console.log(`[hasMenuPermission] 检查具体权限 - 要求权限:`, menuItem.permissions, '用户权限:', userPermissions)
     if (menuItem.requireAll) {
       // 需要所有权限
-      return menuItem.permissions.every(permission => userPermissions.includes(permission))
+      const hasAllPerms = menuItem.permissions.every(permission => userPermissions.includes(permission))
+      console.log(`[hasMenuPermission] 需要所有权限，检查结果: ${hasAllPerms}`)
+      return hasAllPerms
     } else {
       // 只需要其中一个权限
-      return menuItem.permissions.some(permission => userPermissions.includes(permission))
+      const hasAnyPerm = menuItem.permissions.some(permission => userPermissions.includes(permission))
+      console.log(`[hasMenuPermission] 需要任一权限，检查结果: ${hasAnyPerm}`)
+      return hasAnyPerm
     }
   }
 
+  console.log(`[hasMenuPermission] 无特殊权限要求，允许访问: ${menuItem.title}`)
   return true
 }
 
@@ -56,29 +69,50 @@ export function filterMenuItems(
   userRole: string,
   userPermissions: string[]
 ): MenuItem[] {
+  console.log('[filterMenuItems] 开始过滤菜单项')
+  console.log('[filterMenuItems] 输入菜单项数量:', menuItems.length)
+  console.log('[filterMenuItems] 用户角色:', userRole)
+  console.log('[filterMenuItems] 用户权限:', userPermissions)
+  
   const filteredItems: MenuItem[] = []
 
   for (const item of menuItems) {
+    console.log(`[filterMenuItems] 检查菜单项: ${item.title} (${item.id})`)
+    console.log(`[filterMenuItems] 菜单项角色要求:`, item.roles)
+    console.log(`[filterMenuItems] 菜单项权限要求:`, item.permissions)
+    
     // 检查当前菜单项权限
-    if (hasMenuPermission(item, userRole, userPermissions)) {
+    const hasPermission = hasMenuPermission(item, userRole, userPermissions)
+    console.log(`[filterMenuItems] 权限检查结果: ${hasPermission}`)
+    
+    if (hasPermission) {
       const filteredItem: MenuItem = { ...item }
 
       // 如果有子菜单，递归过滤
       if (item.children && item.children.length > 0) {
+        console.log(`[filterMenuItems] 菜单项 ${item.title} 有子菜单，递归过滤`)
         const filteredChildren = filterMenuItems(item.children, userRole, userPermissions)
+        console.log(`[filterMenuItems] 子菜单过滤结果数量: ${filteredChildren.length}`)
 
         // 只有当子菜单不为空时才添加父菜单
         if (filteredChildren.length > 0) {
           filteredItem.children = filteredChildren
           filteredItems.push(filteredItem)
+          console.log(`[filterMenuItems] 添加父菜单: ${item.title}`)
+        } else {
+          console.log(`[filterMenuItems] 子菜单为空，不添加父菜单: ${item.title}`)
         }
       } else {
         // 没有子菜单的直接添加
         filteredItems.push(filteredItem)
+        console.log(`[filterMenuItems] 添加菜单项: ${item.title}`)
       }
+    } else {
+      console.log(`[filterMenuItems] 跳过菜单项: ${item.title}`)
     }
   }
 
+  console.log('[filterMenuItems] 过滤完成，结果数量:', filteredItems.length)
   return filteredItems
 }
 
@@ -90,19 +124,32 @@ export function filterMenuItems(
 export function getUserAccessibleMenus(menuItems: MenuItem[]): MenuItem[] {
   const userStore = useUserStore()
 
+  console.log('[getUserAccessibleMenus] 开始获取用户可访问菜单')
+  console.log('[getUserAccessibleMenus] userStore.currentUser:', userStore.currentUser)
+  console.log('[getUserAccessibleMenus] userStore.permissions:', userStore.permissions)
+
   if (!userStore.currentUser) {
+    console.log('[getUserAccessibleMenus] 用户未登录，返回空菜单')
     return []
   }
 
   const userRole = userStore.currentUser.role
   const userPermissions = userStore.permissions
 
+  console.log('[getUserAccessibleMenus] 用户角色:', userRole)
+  console.log('[getUserAccessibleMenus] 用户权限列表:', userPermissions)
+
   // 超级管理员和管理员拥有所有权限
   if (userRole === 'super_admin' || userRole === 'admin' || userPermissions.includes('*')) {
+    console.log('[getUserAccessibleMenus] 超级管理员或管理员，返回所有菜单')
     return menuItems
   }
 
-  return filterMenuItems(menuItems, userRole, userPermissions)
+  console.log('[getUserAccessibleMenus] 普通用户，开始过滤菜单')
+  const filteredMenus = filterMenuItems(menuItems, userRole, userPermissions)
+  console.log('[getUserAccessibleMenus] 过滤后的菜单:', filteredMenus)
+  
+  return filteredMenus
 }
 
 /**

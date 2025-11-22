@@ -37,32 +37,32 @@
             <div class="permission-group">
               <h5>客户管理</h5>
               <el-checkbox-group v-model="permissions.customer">
-                <el-checkbox value="view">查看客户</el-checkbox>
-                <el-checkbox value="create">创建客户</el-checkbox>
-                <el-checkbox value="edit">编辑客户</el-checkbox>
-                <el-checkbox value="delete">删除客户</el-checkbox>
-                <el-checkbox value="export">导出客户</el-checkbox>
+                <el-checkbox label="view">查看客户</el-checkbox>
+            <el-checkbox label="create">创建客户</el-checkbox>
+            <el-checkbox label="edit">编辑客户</el-checkbox>
+            <el-checkbox label="delete">删除客户</el-checkbox>
+            <el-checkbox label="export">导出客户</el-checkbox>
               </el-checkbox-group>
             </div>
 
             <div class="permission-group">
               <h5>订单管理</h5>
               <el-checkbox-group v-model="permissions.order">
-                <el-checkbox value="view">查看订单</el-checkbox>
-                <el-checkbox value="create">创建订单</el-checkbox>
-                <el-checkbox value="edit">编辑订单</el-checkbox>
-                <el-checkbox value="delete">删除订单</el-checkbox>
-                <el-checkbox value="audit">审核订单</el-checkbox>
+                <el-checkbox label="view">查看订单</el-checkbox>
+            <el-checkbox label="create">创建订单</el-checkbox>
+            <el-checkbox label="edit">编辑订单</el-checkbox>
+            <el-checkbox label="delete">删除订单</el-checkbox>
+            <el-checkbox label="audit">审核订单</el-checkbox>
               </el-checkbox-group>
             </div>
 
             <div class="permission-group">
               <h5>系统管理</h5>
               <el-checkbox-group v-model="permissions.system">
-                <el-checkbox value="user">用户管理</el-checkbox>
-                <el-checkbox value="role">角色管理</el-checkbox>
-                <el-checkbox value="permission">权限管理</el-checkbox>
-                <el-checkbox value="config">系统配置</el-checkbox>
+                <el-checkbox label="user">用户管理</el-checkbox>
+            <el-checkbox label="role">角色管理</el-checkbox>
+            <el-checkbox label="permission">权限管理</el-checkbox>
+            <el-checkbox label="config">系统配置</el-checkbox>
               </el-checkbox-group>
             </div>
           </el-tab-pane>

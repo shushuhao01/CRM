@@ -3,26 +3,6 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <h1 class="page-title">售后数据看板</h1>
-      <div class="header-actions">
-        <el-date-picker
-          v-model="dateRange"
-          type="daterange"
-          range-separator="至"
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
-          format="YYYY-MM-DD"
-          value-format="YYYY-MM-DD"
-          @change="handleDateChange"
-        />
-        <el-button type="primary" @click="exportData">
-          <el-icon><Download /></el-icon>
-          导出数据
-        </el-button>
-        <el-button @click="refreshData">
-          <el-icon><Refresh /></el-icon>
-          刷新
-        </el-button>
-      </div>
     </div>
 
     <!-- 核心指标卡片 -->
@@ -150,9 +130,33 @@
 
     <!-- 售后订单列表 -->
     <div class="orders-section">
+      <!-- 快速筛选 -->
+      <div class="quick-filters">
+        <el-button
+          v-for="filter in quickFilters"
+          :key="filter.value"
+          :type="selectedQuickFilter === filter.value ? 'primary' : ''"
+          @click="handleQuickFilterChange(filter.value)"
+          class="filter-btn"
+        >
+          {{ filter.label }}
+        </el-button>
+      </div>
+
       <div class="section-header">
         <h3>售后订单明细</h3>
         <div class="section-actions">
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            @change="handleDateChange"
+            style="margin-right: 10px;"
+          />
           <el-input
             v-model="searchKeyword"
             placeholder="搜索订单号、客户名称"
@@ -163,29 +167,48 @@
               <el-icon><Search /></el-icon>
             </template>
           </el-input>
-          <el-select v-model="statusFilter" placeholder="状态筛选" @change="handleFilter">
+          <el-select v-model="statusFilter" placeholder="状态筛选" @change="handleFilter" style="margin-right: 10px;">
             <el-option label="全部" value="" />
             <el-option label="待处理" value="pending" />
             <el-option label="处理中" value="processing" />
             <el-option label="已解决" value="resolved" />
             <el-option label="已关闭" value="closed" />
           </el-select>
+          <el-button type="primary" @click="exportData">
+            <el-icon><Download /></el-icon>
+            导出数据
+          </el-button>
+          <el-button @click="refreshData">
+            <el-icon><Refresh /></el-icon>
+            刷新
+          </el-button>
         </div>
       </div>
 
       <el-table :data="filteredOrders" v-loading="loading" stripe>
-        <el-table-column prop="orderNo" label="售后单号" width="140" />
-        <el-table-column prop="originalOrderNo" label="原订单号" width="140" />
-        <el-table-column prop="customerName" label="客户姓名" width="100" />
-        <el-table-column prop="productName" label="商品名称" min-width="150" />
-        <el-table-column prop="serviceType" label="售后类型" width="100">
+        <el-table-column prop="orderNo" label="售后单号" width="160" show-overflow-tooltip />
+        <el-table-column prop="originalOrderNo" label="原订单号" width="160" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-link type="primary" @click="viewOrder(row)">
+              {{ row.originalOrderNo }}
+            </el-link>
+          </template>
+        </el-table-column>
+        <el-table-column prop="customerName" label="客户姓名" width="120" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-link type="primary" @click="viewCustomer(row)">
+              {{ row.customerName }}
+            </el-link>
+          </template>
+        </el-table-column>
+        <el-table-column prop="serviceType" label="售后类型" width="110">
           <template #default="{ row }">
             <el-tag :type="getServiceTypeTag(row.serviceType)">
               {{ getServiceTypeText(row.serviceType) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="amount" label="涉及金额" width="100">
+        <el-table-column prop="amount" label="涉及金额" width="110" align="right">
           <template #default="{ row }">
             ¥{{ row.amount.toLocaleString() }}
           </template>
@@ -197,19 +220,21 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="priority" label="优先级" width="80">
+        <el-table-column prop="priority" label="优先级" width="90">
           <template #default="{ row }">
             <el-tag v-if="row.priority === 'urgent'" type="danger" size="small">紧急</el-tag>
             <el-tag v-else-if="row.priority === 'high'" type="warning" size="small">高</el-tag>
             <el-tag v-else type="info" size="small">普通</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="120" />
-        <el-table-column prop="updateTime" label="更新时间" width="120" />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column prop="createTime" label="创建时间" width="160" show-overflow-tooltip />
+        <el-table-column prop="updateTime" label="更新时间" width="160" show-overflow-tooltip />
+        <el-table-column prop="productName" label="商品名称" min-width="180" show-overflow-tooltip />
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" size="small" @click="viewDetail(row)">查看</el-button>
             <el-button type="success" size="small" @click="processOrder(row)" v-if="row.status === 'pending'">处理</el-button>
+            <el-button type="warning" size="small" @click="editOrder(row)" v-if="row.status === 'pending' || row.status === 'processing'">编辑</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -286,7 +311,10 @@ const userStore = useUserStore()
 const orderStore = useOrderStore()
 
 // 响应式数据
-const dateRange = ref<[string, string]>(['2024-01-01', '2024-01-31'])
+// 默认显示今日数据
+const today = new Date()
+const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+const dateRange = ref<[string, string]>([todayStr, todayStr])
 const loading = ref(false)
 const searchKeyword = ref('')
 const statusFilter = ref('')
@@ -294,6 +322,19 @@ const trendPeriod = ref('30days')
 const currentPage = ref(1)
 const pageSize = ref(20)
 const totalOrders = ref(0)
+const selectedQuickFilter = ref('today')
+
+// 快捷筛选选项
+const quickFilters = [
+  { label: '今日', value: 'today' },
+  { label: '昨日', value: 'yesterday' },
+  { label: '本周', value: 'thisWeek' },
+  { label: '上周', value: 'lastWeek' },
+  { label: '近7天', value: 'last7Days' },
+  { label: '本月', value: 'thisMonth' },
+  { label: '今年', value: 'thisYear' },
+  { label: '全部', value: 'all' }
+]
 
 // 图表引用
 const trendChart = ref<HTMLElement>()
@@ -311,37 +352,37 @@ let refundChartInstance: echarts.ECharts | null = null
 const metrics = computed((): ServiceMetrics => {
   const services = getFilteredServicesByPermission()
   const today = new Date().toISOString().slice(0, 10)
-  
+
   // 计算总订单数
   const totalOrders = services.length
-  
+
   // 计算今日订单数
-  const todayOrders = services.filter(service => 
+  const todayOrders = services.filter(service =>
     service.createTime.slice(0, 10) === today
   ).length
-  
+
   // 计算待处理订单数
-  const pendingOrders = services.filter(service => 
+  const pendingOrders = services.filter(service =>
     service.status === 'pending'
   ).length
-  
+
   // 计算紧急订单数
-  const urgentOrders = services.filter(service => 
+  const urgentOrders = services.filter(service =>
     service.priority === 'urgent'
   ).length
-  
+
   // 计算退款金额（退货和退款类型）
   const refundAmount = services
     .filter(service => service.serviceType === 'return' || service.serviceType === 'refund')
     .reduce((sum, service) => sum + (service.price || 0), 0)
-  
+
   // 模拟趋势计算（实际项目中应该与历史数据对比）
   const ordersTrend = totalOrders > 0 ? Math.random() * 20 - 10 : 0
   const todayTrend = todayOrders > 0 ? Math.random() * 30 - 15 : 0
   const pendingTrend = pendingOrders > 0 ? Math.random() * 25 - 12.5 : 0
   const urgentTrend = urgentOrders > 0 ? Math.random() * 40 - 20 : 0
   const refundTrend = refundAmount > 0 ? Math.random() * 15 - 7.5 : 0
-  
+
   return {
     totalOrders,
     ordersTrend: Number(ordersTrend.toFixed(1)),
@@ -360,14 +401,23 @@ const metrics = computed((): ServiceMetrics => {
 const getFilteredServicesByPermission = () => {
   const currentUser = userStore.currentUser
   if (!currentUser) return []
-  
-  const allServices = serviceStore.services
-  
+
+  let allServices = serviceStore.services
+
+  // 根据日期范围筛选
+  if (dateRange.value && dateRange.value.length === 2) {
+    const [startDate, endDate] = dateRange.value
+    allServices = allServices.filter(service => {
+      const createDate = service.createTime.slice(0, 10) // 提取日期部分 YYYY-MM-DD
+      return createDate >= startDate && createDate <= endDate
+    })
+  }
+
   // 超级管理员看全部
   if (currentUser.role === 'admin') {
     return allServices
   }
-  
+
   // 部门管理员看部门内的数据
   if (currentUser.role === 'manager' || currentUser.role === 'department_manager') {
     // 根据部门过滤数据
@@ -384,32 +434,32 @@ const getFilteredServicesByPermission = () => {
              service.handlerId === currentUser.id
     })
   }
-  
+
   // 客服人员看分配给自己的和自己创建的
   if (currentUser.role === 'customer_service') {
-    return allServices.filter(service => 
-      service.createdBy === currentUser.id || 
+    return allServices.filter(service =>
+      service.createdBy === currentUser.id ||
       service.assignedTo === currentUser.name ||
       service.assignedTo === currentUser.id ||
       service.handlerId === currentUser.id ||
       service.handlerName === currentUser.name
     )
   }
-  
+
   // 销售人员看自己相关的客户售后
   if (currentUser.role === 'sales_staff') {
-    return allServices.filter(service => 
-      service.createdBy === currentUser.id || 
+    return allServices.filter(service =>
+      service.createdBy === currentUser.id ||
       service.salesPersonId === currentUser.id ||
       service.salesPerson === currentUser.name ||
       service.assignedTo === currentUser.name ||
       service.assignedTo === currentUser.id
     )
   }
-  
+
   // 普通员工只看自己创建的或分配给自己的
-  return allServices.filter(service => 
-    service.createdBy === currentUser.id || 
+  return allServices.filter(service =>
+    service.createdBy === currentUser.id ||
     service.assignedTo === currentUser.name ||
     service.assignedTo === currentUser.id
   )
@@ -438,7 +488,7 @@ const filteredOrders = computed(() => {
   let result = orders.value
 
   if (searchKeyword.value) {
-    result = result.filter(order => 
+    result = result.filter(order =>
       order.orderNo.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
       order.customerName.includes(searchKeyword.value) ||
       order.originalOrderNo.toLowerCase().includes(searchKeyword.value.toLowerCase())
@@ -454,6 +504,61 @@ const filteredOrders = computed(() => {
 })
 
 // 方法
+const handleQuickFilterChange = (filterValue: string) => {
+  selectedQuickFilter.value = filterValue
+  const today = new Date()
+  let startDate: Date
+  let endDate: Date = new Date(today)
+
+  switch (filterValue) {
+    case 'today':
+      startDate = new Date(today)
+      break
+    case 'yesterday':
+      startDate = new Date(today)
+      startDate.setDate(today.getDate() - 1)
+      endDate = new Date(startDate)
+      break
+    case 'thisWeek':
+      startDate = new Date(today)
+      startDate.setDate(today.getDate() - today.getDay())
+      break
+    case 'lastWeek':
+      startDate = new Date(today)
+      startDate.setDate(today.getDate() - today.getDay() - 7)
+      endDate = new Date(startDate)
+      endDate.setDate(startDate.getDate() + 6)
+      break
+    case 'last7Days':
+      startDate = new Date(today)
+      startDate.setDate(today.getDate() - 6)
+      break
+    case 'thisMonth':
+      startDate = new Date(today.getFullYear(), today.getMonth(), 1)
+      break
+    case 'thisYear':
+      startDate = new Date(today.getFullYear(), 0, 1)
+      break
+    case 'all':
+    default:
+      // 全部数据,设置一个较大的时间范围
+      startDate = new Date(2020, 0, 1)
+      endDate = new Date(2099, 11, 31)
+      break
+  }
+
+  // 格式化日期为 YYYY-MM-DD
+  const formatDate = (date: Date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  dateRange.value = [formatDate(startDate), formatDate(endDate)]
+  handleDateChange(dateRange.value)
+}
+
 const handleDateChange = (dates: [string, string]) => {
   console.log('日期范围变更:', dates)
   // 重新加载数据和更新图表
@@ -547,13 +652,39 @@ const viewDetail = (row: ServiceOrder) => {
   safeNavigator.push(`/service/detail/${row.id}`)
 }
 
+const viewOrder = (row: ServiceOrder) => {
+  // 根据原订单号查找订单ID
+  const order = orderStore.orders.find(o => o.orderNumber === row.originalOrderNo)
+  if (order) {
+    safeNavigator.push(`/order/detail/${order.id}`)
+  } else {
+    ElMessage.warning('未找到对应的订单信息')
+  }
+}
+
+const viewCustomer = (row: ServiceOrder) => {
+  // 从serviceStore中获取完整的售后服务信息
+  const service = serviceStore.services.find(s => s.id === row.id)
+  if (service && service.customerId) {
+    safeNavigator.push(`/customer/detail/${service.customerId}`)
+  } else {
+    ElMessage.warning('未找到对应的客户信息')
+  }
+}
+
 const processOrder = async (row: ServiceOrder) => {
   try {
     await serviceStore.updateServiceStatus(row.id, 'processing', '开始处理')
     ElMessage.success(`开始处理订单 ${row.orderNo}`)
+    // 刷新数据
+    await loadData()
   } catch (error) {
     ElMessage.error('处理失败')
   }
+}
+
+const editOrder = (row: ServiceOrder) => {
+  safeNavigator.push(`/service/edit/${row.id}`)
 }
 
 const updateTrendChart = () => {
@@ -564,20 +695,20 @@ const updateTrendChart = () => {
 // 初始化趋势图
 const initTrendChart = () => {
   if (!trendChart.value) return
-  
+
   if (trendChartInstance) {
     trendChartInstance.dispose()
   }
-  
+
   trendChartInstance = echarts.init(trendChart.value)
-  
+
   const services = getFilteredServicesByPermission()
-  
+
   // 根据选择的时间段生成对应的日期数组和数据
   let days: string[] = []
   let dateFormat = ''
   let periodLength = 0
-  
+
   switch (trendPeriod.value) {
     case '7days':
       periodLength = 7
@@ -623,7 +754,7 @@ const initTrendChart = () => {
         return date.toISOString().slice(5, 10)
       })
   }
-  
+
   // 根据日期筛选数据
   const data = days.map(day => {
     return services.filter(service => {
@@ -631,7 +762,7 @@ const initTrendChart = () => {
       return serviceDate === day
     }).length
   })
-  
+
   // 对于长时间段，只显示部分标签以避免拥挤
   let xAxisData = days
   if (periodLength > 30) {
@@ -639,7 +770,7 @@ const initTrendChart = () => {
     const step = Math.ceil(periodLength / 10)
     xAxisData = days.map((day, index) => index % step === 0 ? day : '')
   }
-  
+
   const option = {
     title: {
       text: '售后订单趋势',
@@ -648,7 +779,7 @@ const initTrendChart = () => {
     },
     tooltip: {
       trigger: 'axis',
-      formatter: (params: any) => {
+      formatter: (params: unknown) => {
         const dataIndex = params[0].dataIndex
         return `${days[dataIndex]}: ${params[0].value}个订单`
       }
@@ -670,20 +801,20 @@ const initTrendChart = () => {
       itemStyle: { color: '#409EFF' }
     }]
   }
-  
+
   trendChartInstance.setOption(option)
 }
 
 // 初始化类型分布图
 const initTypeChart = () => {
   if (!typeChart.value) return
-  
+
   if (typeChartInstance) {
     typeChartInstance.dispose()
   }
-  
+
   typeChartInstance = echarts.init(typeChart.value)
-  
+
   const services = getFilteredServicesByPermission()
   const typeData = [
     { name: '退货', value: services.filter(s => s.serviceType === 'return').length },
@@ -691,7 +822,7 @@ const initTypeChart = () => {
     { name: '维修', value: services.filter(s => s.serviceType === 'repair').length },
     { name: '退款', value: services.filter(s => s.serviceType === 'refund').length }
   ]
-  
+
   const option = {
     title: {
       text: '售后类型分布',
@@ -714,31 +845,31 @@ const initTypeChart = () => {
       }
     }]
   }
-  
+
   typeChartInstance.setOption(option)
 }
 
 // 初始化处理时长分析图
 const initDurationChart = () => {
   if (!durationChart.value) return
-  
+
   if (durationChartInstance) {
     durationChartInstance.dispose()
   }
-  
+
   durationChartInstance = echarts.init(durationChart.value)
-  
+
   const services = getFilteredServicesByPermission()
   const completedServices = services.filter(s => s.status === 'resolved' || s.status === 'closed')
-  
+
   // 计算处理时长分布
   const durationData = [0, 0, 0, 0, 0] // 对应 0-1天, 1-3天, 3-7天, 7-15天, 15天以上
-  
+
   completedServices.forEach(service => {
     const createTime = new Date(service.createTime)
     const updateTime = new Date(service.updateTime || service.createTime)
     const diffDays = Math.ceil((updateTime - createTime) / (1000 * 60 * 60 * 24))
-    
+
     if (diffDays <= 1) {
       durationData[0]++
     } else if (diffDays <= 3) {
@@ -751,7 +882,7 @@ const initDurationChart = () => {
       durationData[4]++
     }
   })
-  
+
   const option = {
     title: {
       text: '处理时长分析',
@@ -775,35 +906,35 @@ const initDurationChart = () => {
       itemStyle: { color: '#67C23A' }
     }]
   }
-  
+
   durationChartInstance.setOption(option)
 }
 
 // 初始化退款金额趋势图
 const initRefundChart = () => {
   if (!refundChart.value) return
-  
+
   if (refundChartInstance) {
     refundChartInstance.dispose()
   }
-  
+
   refundChartInstance = echarts.init(refundChart.value)
-  
+
   const services = getFilteredServicesByPermission()
   const refundServices = services.filter(s => s.serviceType === 'return' || s.serviceType === 'refund')
-  
+
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = new Date()
     date.setDate(date.getDate() - 6 + i)
     return date.toISOString().slice(5, 10)
   })
-  
+
   const data = days.map(day => {
     return refundServices
       .filter(service => service.createTime.slice(5, 10) === day)
       .reduce((sum, service) => sum + (service.price || 0), 0)
   })
-  
+
   const option = {
     title: {
       text: '退款金额趋势',
@@ -828,7 +959,7 @@ const initRefundChart = () => {
       itemStyle: { color: '#F56C6C' }
     }]
   }
-  
+
   refundChartInstance.setOption(option)
 }
 
@@ -1033,12 +1164,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   color: #909399;
-  background: linear-gradient(45deg, #f8f9fa 25%, transparent 25%),
-              linear-gradient(-45deg, #f8f9fa 25%, transparent 25%),
-              linear-gradient(45deg, transparent 75%, #f8f9fa 75%),
-              linear-gradient(-45deg, transparent 75%, #f8f9fa 75%);
-  background-size: 20px 20px;
-  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+  background: #ffffff;
 }
 
 .orders-section {
@@ -1048,12 +1174,27 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.quick-filters {
+  padding: 16px 20px;
+  border-bottom: 1px solid #ebeef5;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: #f8f9fa;
+}
+
+.filter-btn {
+  min-width: 80px;
+}
+
 .section-header {
   padding: 20px;
   border-bottom: 1px solid #ebeef5;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .section-header h3 {
@@ -1080,31 +1221,31 @@ onUnmounted(() => {
   .service-data-container {
     padding: 12px;
   }
-  
+
   .page-header {
     flex-direction: column;
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .header-actions {
     justify-content: center;
   }
-  
+
   .metrics-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .chart-row {
     grid-template-columns: 1fr;
   }
-  
+
   .section-header {
     flex-direction: column;
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .section-actions {
     justify-content: center;
   }

@@ -12,7 +12,7 @@ const router = Router();
 router.use(authenticateToken);
 
 // 模拟业绩分享数据存储
-let performanceShares: any[] = [];
+const performanceShares: any[] = [];
 let shareIdCounter = 1;
 
 /**

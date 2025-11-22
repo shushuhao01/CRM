@@ -4,7 +4,7 @@ import { MessageSubscription, DepartmentSubscriptionConfig, MessageType, Notific
 import { Department } from '../entities/Department';
 
 // 内存存储订阅规则数据（模拟数据库）
-let subscriptionRulesStorage: any[] = [
+const subscriptionRulesStorage: any[] = [
   {
     id: 1,
     departmentId: '1',

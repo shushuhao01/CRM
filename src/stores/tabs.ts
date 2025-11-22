@@ -96,10 +96,7 @@ export const useTabsStore = defineStore('tabs', () => {
     tabs.value = tabs.value.filter(tab => tab.name === '/dashboard')
     cachedViews.value = ['Dashboard']
     activeTab.value = '/dashboard'
-    
-    const router = useRouter()
-    const safeNavigator = createSafeNavigator(router)
-    safeNavigator.push('/dashboard')
+    // 路由跳转将在组件中处理
   }
 
   const setActiveTab = (name: string) => {

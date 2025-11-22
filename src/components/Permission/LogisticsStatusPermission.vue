@@ -30,29 +30,34 @@ const hasAccess = computed(() => {
   if (userStore.isSuperAdmin) {
     return true
   }
-  
+
   // 检查用户是否在白名单中或有特殊权限
   if (userStore.isWhitelistMember) {
     return true
   }
-  
+
   // 检查用户是否有物流状态更新权限
-  if (userStore.permissions.includes('logistics:status_update')) {
+  if (userStore.permissions.includes('logistics:status')) {
     return true
   }
-  
+
+  // 客服角色有权限访问
+  if (userStore.currentUser?.role === 'customer_service') {
+    return true
+  }
+
   // 检查用户角色是否为管理员或部门负责人
-  if (userStore.currentUser?.role === 'manager' || 
+  if (userStore.currentUser?.role === 'manager' ||
       userStore.currentUser?.role === 'department_head') {
     return true
   }
-  
+
   // 检查用户是否在指定的物流管理部门
-  if (userStore.currentUser?.department === 'logistics' && 
+  if (userStore.currentUser?.department === 'logistics' &&
       userStore.currentUser?.position === 'supervisor') {
     return true
   }
-  
+
   return false
 })
 
@@ -60,7 +65,7 @@ const hasAccess = computed(() => {
 onMounted(async () => {
   try {
     await logisticsStatusStore.fetchUserPermission()
-    
+
     if (!hasAccess.value) {
       ElMessage.warning('您没有访问此功能的权限')
     }

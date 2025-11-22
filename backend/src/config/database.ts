@@ -30,13 +30,14 @@ import { SystemConfig } from '../entities/SystemConfig';
 import { UserPermission } from '../entities/UserPermission';
 import path from 'path';
 
-// 根据环境选择数据库配置
+// 根据环境变量选择数据库配置
+const dbType = process.env.DB_TYPE || (process.env.NODE_ENV === 'production' ? 'mysql' : 'sqlite');
 const isProduction = process.env.NODE_ENV === 'production';
 
 const AppDataSource = new DataSource(
-  isProduction
+  dbType === 'mysql'
     ? {
-        // 生产环境使用MySQL
+        // MySQL配置
         type: 'mysql',
         host: process.env.DB_HOST || 'localhost',
         port: parseInt(process.env.DB_PORT || '3306'),

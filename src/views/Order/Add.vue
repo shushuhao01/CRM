@@ -16,7 +16,7 @@
             </div>
           </div>
         </template>
-        
+
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="选择客户" prop="customerId" required>
@@ -54,20 +54,18 @@
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="订单来源" prop="orderSource" required>
+            <el-form-item :label="fieldConfigStore.orderSourceFieldName" prop="orderSource" required>
               <el-select
                 v-model="orderForm.orderSource"
-                placeholder="请选择订单来源"
+                :placeholder="`请选择${fieldConfigStore.orderSourceFieldName}`"
                 style="width: 100%"
               >
-                <el-option label="🛒 线上商城" value="online_store" />
-                <el-option label="📱 微信小程序" value="wechat_mini" />
-                <el-option label="💬 微信客服" value="wechat_service" />
-                <el-option label="📞 电话咨询" value="phone_call" />
-                <el-option label="🏪 线下门店" value="offline_store" />
-                <el-option label="👥 客户推荐" value="referral" />
-                <el-option label="📺 广告投放" value="advertisement" />
-                <el-option label="🎯 其他渠道" value="other" />
+                <el-option
+                  v-for="option in fieldConfigStore.orderSourceOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
               </el-select>
             </el-form-item>
           </el-col>
@@ -102,9 +100,9 @@
                       :value="phone.number"
                     />
                   </el-select>
-                  <el-button 
-                    type="primary" 
-                    size="small" 
+                  <el-button
+                    type="primary"
+                    size="small"
                     @click="showAddPhoneDialog = true"
                     style="margin-left: 8px;"
                     :icon="Plus"
@@ -142,9 +140,9 @@
                   clearable
                 >
                   <template #suffix v-if="selectedCustomer && selectedCustomer.address">
-                    <el-button 
-                      size="small" 
-                      type="text" 
+                    <el-button
+                      size="small"
+                      type="text"
                       @click="syncCustomerAddress"
                       title="同步客户地址"
                     >
@@ -157,6 +155,9 @@
           </el-row>
         </div>
       </el-card>
+
+      <!-- 自定义字段 -->
+      <CustomFieldsCard v-model="orderForm.customFields" :show="!!selectedCustomer" />
 
       <!-- 产品搜索和选择区域 -->
       <el-card class="product-card">
@@ -195,9 +196,9 @@
 
         <!-- 产品列表 -->
         <div class="product-list">
-          <div 
-            v-for="product in filteredProducts" 
-            :key="product.id" 
+          <div
+            v-for="product in filteredProducts"
+            :key="product.id"
             class="product-item"
             @click="addProduct(product)"
           >
@@ -210,10 +211,10 @@
               <div class="product-stock">库存: {{ product.stock }}</div>
             </div>
             <div class="product-actions">
-              <el-button 
-                type="info" 
-                size="small" 
-                :icon="View" 
+              <el-button
+                type="info"
+                size="small"
+                :icon="View"
                 @click.stop="viewProductDetail(product)"
                 title="查看商品详情"
               >
@@ -264,9 +265,9 @@
             </el-table-column>
             <el-table-column label="操作" width="80">
               <template #default="{ $index }">
-                <el-button 
-                  type="danger" 
-                  size="small" 
+                <el-button
+                  type="danger"
+                  size="small"
                   :icon="Delete"
                   @click="removeProduct($index)"
                 />
@@ -287,10 +288,10 @@
               <span class="field-label">
                 订单总额
                 <el-tooltip content="点击同步商品小计" placement="top" v-if="isManuallyModified">
-                  <el-button 
-                    type="text" 
-                    size="small" 
-                    :icon="Refresh" 
+                  <el-button
+                    type="text"
+                    size="small"
+                    :icon="Refresh"
                     @click="resetToSubtotal"
                     class="sync-button"
                   />
@@ -319,7 +320,7 @@
               />
             </div>
           </div>
-          
+
           <!-- 第二行：代收金额、优惠金额、定金截图 -->
           <div class="amount-row">
             <div class="amount-field">
@@ -348,8 +349,8 @@
               <div class="screenshot-content">
                 <!-- 图片缩略图列表 -->
                 <div class="screenshot-thumbnails" v-if="depositScreenshots.length > 0">
-                  <div 
-                    v-for="(screenshot, index) in depositScreenshots" 
+                  <div
+                    v-for="(screenshot, index) in depositScreenshots"
                     :key="index"
                     class="thumbnail-item"
                     @mouseenter="showZoomIcon = index"
@@ -368,7 +369,7 @@
                   </div>
                 </div>
               </div>
-              
+
               <input
                 ref="fileInput"
                 type="file"
@@ -390,10 +391,10 @@
             <el-col :span="12">
               <el-form-item label="订单类型" prop="markType" required>
                 <el-radio-group v-model="orderForm.markType" @change="handleMarkTypeChange">
-                  <el-radio value="normal">
+                  <el-radio label="normal">
                     <el-tag type="success" size="small">正常发货单</el-tag>
                   </el-radio>
-                  <el-radio value="reserved">
+                  <el-radio label="reserved">
                     <el-tag type="warning" size="small">预留单</el-tag>
                   </el-radio>
                 </el-radio-group>
@@ -453,7 +454,7 @@
     >
       <div class="order-confirm">
         <h4>请确认以下订单信息：</h4>
-        
+
         <div class="confirm-section customer-info">
           <h5>客户信息</h5>
           <div class="info-grid">
@@ -485,8 +486,8 @@
           <div class="mark-content">
             <div class="mark-item">
               <span class="label">订单类型：</span>
-              <el-tag 
-                :type="orderForm.markType === 'normal' ? 'success' : 'warning'" 
+              <el-tag
+                :type="orderForm.markType === 'normal' ? 'success' : 'warning'"
                 size="small"
               >
                 {{ orderForm.markType === 'normal' ? '正常发货单' : '预留单' }}
@@ -517,7 +518,7 @@
                 </div>
               </div>
             </div>
-            
+
             <!-- 第二列：重要金额信息（带颜色标识） -->
             <div class="amount-column important-amounts">
               <div class="amount-item highlight total-amount">
@@ -613,9 +614,9 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, ElImageViewer } from 'element-plus'
-import { 
-  User, Message, Location, ShoppingBag, Search, Plus, 
-  Delete, Money, Upload, Check, DocumentCopy, ZoomIn, Refresh, View 
+import {
+  User, Message, Location, ShoppingBag, Search, Plus,
+  Delete, Money, Upload, Check, DocumentCopy, ZoomIn, Refresh, View
 } from '@element-plus/icons-vue'
 import { useOrderStore } from '@/stores/order'
 import { useCustomerStore } from '@/stores/customer'
@@ -623,10 +624,12 @@ import { useUserStore } from '@/stores/user'
 import { useNotificationStore } from '@/stores/notification'
 import { useConfigStore } from '@/stores/config'
 import { useProductStore } from '@/stores/product'
+import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 import { maskPhone } from '@/utils/phone'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { createSafeNavigator } from '@/utils/navigation'
+import CustomFieldsCard from '@/components/Order/CustomFieldsCard.vue'
 
 // 接口定义
 interface Product {
@@ -681,6 +684,7 @@ interface OrderForm {
   depositScreenshot: string
   markType: string
   remark: string
+  customFields: Record<string, unknown>
 }
 
 interface AddPhoneForm {
@@ -707,6 +711,7 @@ const userStore = useUserStore()
 const notificationStore = useNotificationStore()
 const configStore = useConfigStore()
 const productStore = useProductStore()
+const fieldConfigStore = useOrderFieldConfigStore()
 
 // 响应式数据
 const orderFormRef = ref()
@@ -727,21 +732,35 @@ const customerOptions = computed(() => customerStore.customers)
 
 // 产品列表 - 从productStore获取，只显示有库存的上架在售产品
 const productList = computed(() => {
-  return productStore.products.filter(product => 
-    product.status === 'active' && 
-    !product.isDeleted && 
+  // 【批次204新增】读取价格优惠配置
+  const priceConfig = JSON.parse(localStorage.getItem('crm_product_price_config') || '{}')
+
+  return productStore.products.filter(product =>
+    product.status === 'active' &&
+    !product.isDeleted &&
     product.stock > 0
-  ).map(product => ({
-    id: product.id,
-    name: product.name,
-    code: product.code,
-    price: product.price,
-    originalPrice: product.originalPrice,
-    stock: product.stock,
-    category: product.category,
-    image: product.image,
-    isHot: product.isHot
-  }))
+  ).map(product => {
+    // 【批次204新增】检查是否有优惠价格
+    let finalPrice = product.price
+    if (priceConfig.enabled && priceConfig.products && priceConfig.products[product.id]) {
+      const configPrice = priceConfig.products[product.id].price
+      if (configPrice !== undefined && configPrice !== null) {
+        finalPrice = configPrice
+      }
+    }
+
+    return {
+      id: product.id,
+      name: product.name,
+      code: product.code,
+      price: finalPrice, // 【批次204修复】使用优惠价格
+      originalPrice: product.price, // 【批次204新增】保存原价
+      stock: product.stock,
+      category: product.category,
+      image: product.image,
+      isHot: product.isHot
+    }
+  })
 })
 
 // 选中的客户
@@ -784,7 +803,8 @@ const orderForm = reactive<OrderForm>({
   depositAmount: 0,
   depositScreenshot: '',
   markType: 'normal',
-  remark: ''
+  remark: '',
+  customFields: {}
 })
 
 // 表单验证规则
@@ -810,7 +830,24 @@ const maxDiscountRate = computed(() => {
   const userRole = userStore.currentUser?.role || 'employee'
   // 将用户角色映射到配置store期望的角色
   const mappedRole = userRole === 'employee' ? 'sales' : userRole
-  return configStore.getMaxDiscountForRole(mappedRole) / 100
+  // 【批次202修复】直接从productConfig读取,确保实时同步
+  let discountValue = 0
+  if (mappedRole === 'admin' || mappedRole === 'super_admin') {
+    discountValue = configStore.productConfig.adminMaxDiscount
+  } else if (mappedRole === 'department_manager' || mappedRole === 'manager') {
+    discountValue = configStore.productConfig.managerMaxDiscount
+  } else if (mappedRole === 'sales') {
+    discountValue = configStore.productConfig.salesMaxDiscount
+  } else {
+    discountValue = 0
+  }
+  console.log('[优惠折扣] 当前角色:', userRole, '映射角色:', mappedRole, '优惠比例:', discountValue, '%')
+  console.log('[优惠折扣] 配置详情:', {
+    admin: configStore.productConfig.adminMaxDiscount,
+    manager: configStore.productConfig.managerMaxDiscount,
+    sales: configStore.productConfig.salesMaxDiscount
+  })
+  return discountValue / 100
 })
 
 // 标记用户是否手动修改过订单总额
@@ -838,11 +875,16 @@ const discountPercentage = computed(() => {
   return (discountAmount.value / subtotal.value) * 100
 })
 
+// 计算最低可优惠金额（基于管理员设置的优惠比例）
+const minAllowedAmount = computed(() => {
+  return subtotal.value * (1 - maxDiscountRate.value)
+})
+
 const filteredProducts = computed(() => {
   if (!productSearchKeyword.value) {
     return productList.value
   }
-  return productList.value.filter(product => 
+  return productList.value.filter(product =>
     product.name.toLowerCase().includes(productSearchKeyword.value.toLowerCase())
   )
 })
@@ -853,11 +895,11 @@ const uploadAction = ref('')
 // 方法
 const handleUpload = (options: UploadOptions) => {
   const { file, onSuccess, onError } = options
-  
+
   // 模拟上传过程
   const formData = new FormData()
   formData.append('file', file)
-  
+
   // 模拟异步上传
   setTimeout(() => {
     try {
@@ -887,7 +929,7 @@ const handleCustomerChange = (customerId: string) => {
     // 同步收货信息
     orderForm.receiverName = customer.name
     orderForm.receiverAddress = customer.address
-    
+
     // 加载客户手机号列表
     loadCustomerPhones(customerId)
   }
@@ -901,7 +943,7 @@ const loadCustomerPhones = async (customerId: string) => {
       { id: 1, number: selectedCustomer.value?.phone || '', remark: '默认手机号', isDefault: true }
     ]
     customerPhones.value = phones
-    
+
     // 设置默认手机号
     if (phones.length > 0) {
       orderForm.receiverPhone = phones[0].number
@@ -916,7 +958,7 @@ const handleAddPhone = async () => {
   try {
     await addPhoneFormRef.value.validate()
     addingPhone.value = true
-    
+
     // 模拟API调用
     setTimeout(() => {
       const newPhone = {
@@ -925,15 +967,15 @@ const handleAddPhone = async () => {
         remark: addPhoneForm.remark || '新增手机号',
         isDefault: false
       }
-      
+
       customerPhones.value.push(newPhone)
-      
+
       // 重置表单
       addPhoneForm.phone = ''
       addPhoneForm.remark = ''
       showAddPhoneDialog.value = false
       addingPhone.value = false
-      
+
       ElMessage.success('手机号添加成功')
     }, 1000)
   } catch (error) {
@@ -972,6 +1014,18 @@ const handleRefreshProducts = async () => {
 }
 
 const addProduct = (product: Product) => {
+  // 【批次204新增】检查价格优惠配置
+  let finalPrice = product.price
+  const priceConfig = JSON.parse(localStorage.getItem('crm_product_price_config') || '{}')
+
+  if (priceConfig.enabled && priceConfig.products && priceConfig.products[product.id]) {
+    const configPrice = priceConfig.products[product.id].price
+    if (configPrice !== undefined && configPrice !== null) {
+      finalPrice = configPrice
+      console.log(`[订单创建] 商品 ${product.name} 应用优惠价格: ¥${product.price} → ¥${finalPrice}`)
+    }
+  }
+
   const existingProduct = orderForm.products.find(p => p.id === product.id)
   if (existingProduct) {
     if (existingProduct.quantity < product.stock) {
@@ -985,8 +1039,10 @@ const addProduct = (product: Product) => {
   } else {
     orderForm.products.push({
       ...product,
+      price: finalPrice, // 【批次204修复】使用优惠价格
+      originalPrice: product.price, // 【批次204新增】保存原价
       quantity: 1,
-      total: product.price * 1
+      total: finalPrice * 1
     })
     calculateTotal()
     ElMessage.success(`${product.name} 已添加到订单`)
@@ -1010,7 +1066,7 @@ const calculateTotal = () => {
   orderForm.products.forEach(product => {
     product.total = product.price * product.quantity
   })
-  
+
   // 只有在用户没有手动修改过订单总额时，才自动同步商品小计
   if (!isManuallyModified.value) {
     orderForm.totalAmount = subtotal.value
@@ -1022,47 +1078,65 @@ const calculateCollectAmount = () => {
 }
 
 // 处理订单总额变化
-const handleTotalAmountChange = (value: number) => {
+const handleTotalAmountChange = (value: number | null) => {
+  // 如果value为null或undefined，不处理
+  if (value === null || value === undefined) {
+    return
+  }
+
   // 标记用户手动修改了订单总额
   isManuallyModified.value = true
-  
-  // 验证订单总额不能超过商品小计
-  if (value > subtotal.value) {
-    ElMessage.warning('订单总额不能超过商品小计')
-    orderForm.totalAmount = subtotal.value
-    return
-  }
-  
-  // 验证订单总额不能小于0
-  if (value < 0) {
-    ElMessage.warning('订单总额不能小于0')
-    orderForm.totalAmount = 0
-    return
-  }
-  
+
   // 计算最低可优惠价格（基于管理员设置的优惠比例）
-  const minAllowedAmount = subtotal.value * (1 - maxDiscountRate.value)
-  
-  // 检查是否超过优惠比例限制
-  if (value < minAllowedAmount) {
+  const minAllowedAmountValue = subtotal.value * (1 - maxDiscountRate.value)
+  const discountPercent = (maxDiscountRate.value * 100).toFixed(0)
+
+  console.log('[订单总额变更] 详细信息:', {
+    修改后的值: value,
+    商品小计: subtotal.value,
+    最大优惠比例: maxDiscountRate.value,
+    优惠百分比显示: discountPercent,
+    最低允许金额: minAllowedAmountValue
+  })
+
+  // 检查是否低于最低允许金额
+  if (value < minAllowedAmountValue) {
+    // 立即调整到最低允许金额
+    orderForm.totalAmount = minAllowedAmountValue
+    // 显示弹窗提示
     ElMessageBox.alert(
-      `订单总额不能低于 ¥${minAllowedAmount.toFixed(2)}（最大优惠${(maxDiscountRate.value * 100).toFixed(0)}%）`,
+      `订单总额不能低于 ¥${minAllowedAmountValue.toFixed(2)}（最大优惠${discountPercent}%）`,
       '优惠限制提示',
       {
         confirmButtonText: '确定',
         type: 'warning'
       }
     )
-    orderForm.totalAmount = minAllowedAmount
     return
   }
-  
+
+  // 检查是否超过商品小计
+  if (value > subtotal.value) {
+    // 立即调整到商品小计
+    orderForm.totalAmount = subtotal.value
+    // 显示弹窗提示
+    ElMessageBox.alert(
+      '订单总额不能超过商品小计',
+      '提示',
+      {
+        confirmButtonText: '确定',
+        type: 'warning'
+      }
+    )
+    return
+  }
+
   // 如果定金大于新的订单总额，自动调整定金
   if (orderForm.depositAmount > value) {
     orderForm.depositAmount = value
     ElMessage.info('定金已自动调整为订单总额')
   }
-  
+
   // 当手动修改订单总额时，重新计算代收金额
   calculateCollectAmount()
 }
@@ -1105,7 +1179,7 @@ const pasteImage = async () => {
     ElMessage.warning('最多只能上传3张图片')
     return
   }
-  
+
   try {
     const clipboardItems = await navigator.clipboard.read()
     for (const clipboardItem of clipboardItems) {
@@ -1129,12 +1203,12 @@ const handleImageFile = (file: File) => {
   if (!beforeUpload(file)) {
     return
   }
-  
+
   if (depositScreenshots.value.length >= 3) {
     ElMessage.warning('最多只能上传3张图片')
     return
   }
-  
+
   // 创建预览URL
   const reader = new FileReader()
   reader.onload = (e) => {
@@ -1199,7 +1273,7 @@ const handleMarkTypeChange = (value: string) => {
 const handleSaveOrder = async () => {
   try {
     await orderFormRef.value.validate()
-    
+
     if (orderForm.products.length === 0) {
       ElMessage.warning('请至少选择一个商品')
       return
@@ -1214,7 +1288,7 @@ const handleSaveOrder = async () => {
 const handleSubmitOrder = async () => {
   try {
     submitting.value = true
-    
+
     // 检查库存是否充足
     for (const product of orderForm.products) {
       const currentProduct = productStore.products.find(p => p.id === product.id)
@@ -1227,12 +1301,13 @@ const handleSubmitOrder = async () => {
         return
       }
     }
-    
-    // 计算订单金额
+
+    // 【批次204修复】使用用户修改后的订单金额,不重新计算
     const subtotal = orderForm.products.reduce((sum, product) => sum + (product.price * product.quantity || 0), 0)
-    const totalAmount = subtotal - (orderForm.discount || 0)
+    // 使用orderForm.totalAmount(用户可能手动修改过)
+    const totalAmount = orderForm.totalAmount || (subtotal - (orderForm.discount || 0))
     const collectAmount = totalAmount - (orderForm.depositAmount || 0)
-    
+
     // 构建订单数据
     const orderData = {
       customerId: orderForm.customerId,
@@ -1241,7 +1316,7 @@ const handleSubmitOrder = async () => {
       products: orderForm.products,
       subtotal: subtotal,
       discount: orderForm.discount,
-      totalAmount: totalAmount,
+      totalAmount: totalAmount, // 【批次204修复】使用用户修改后的金额
       collectAmount: collectAmount,
       depositAmount: orderForm.depositAmount,
       depositScreenshot: orderForm.depositScreenshot,
@@ -1252,22 +1327,26 @@ const handleSubmitOrder = async () => {
       markType: orderForm.markType,
       remark: orderForm.remark,
       salesPersonId: userStore.user?.id || '1',
-      createdBy: userStore.user?.name || '系统用户'
+      createdBy: userStore.user?.name || '系统用户',
+      // 新增字段：客服微信和订单来源
+      serviceWechat: orderForm.serviceWechat,
+      orderSource: orderForm.orderSource,
+      expressCompany: orderForm.expressCompany
     }
-    
+
     // 使用订单store创建订单
     const newOrder = await orderStore.createOrder(orderData)
-    
+
     // 减少商品库存
     for (const product of orderForm.products) {
       await productStore.updateProductStock(product.id, -product.quantity)
     }
-    
+
     // 更新客户统计数据
     if (orderData.customerId) {
       customerStore.incrementOrderCount(orderData.customerId)
     }
-    
+
     // 发送订单提交消息提醒
     notificationStore.sendMessage(
       notificationStore.MessageType.ORDER_SUBMITTED,
@@ -1278,7 +1357,7 @@ const handleSubmitOrder = async () => {
         actionUrl: `/order/detail/${newOrder?.id || Date.now().toString()}`
       }
     )
-    
+
     // 根据订单类型显示不同的提示信息
     if (orderData.markType === 'normal') {
       ElMessage.success('订单已提交，该订单3分钟后将流转至审核')
@@ -1287,9 +1366,9 @@ const handleSubmitOrder = async () => {
     } else {
       ElMessage.success('订单已提交')
     }
-    
+
     confirmDialogVisible.value = false
-    
+
     // 跳转到订单列表并传递刷新参数
     safeNavigator.push({
       path: '/order/list',
@@ -1346,28 +1425,28 @@ const getExpressCompanyText = (code: string) => {
 onMounted(async () => {
   // 首先加载客户数据
   await customerStore.loadCustomers()
-  
+
   // 初始化商品数据
   if (productStore.products.length === 0) {
-    productStore.initMockData()
+    productStore.initData()
   }
-  
+
   // 检查是否有传递的客户信息和商品信息
   const { customerId, customerName, customerPhone, customerAddress, productId } = route.query
-  
+
   if (customerId) {
     // 查找客户信息
     let customerInfo = customerStore.customers.find(c => c.id === customerId)
-    
+
     if (customerInfo) {
       // 从store中找到客户，使用store中的完整信息
       orderForm.customerId = customerInfo.id
       orderForm.receiverName = customerInfo.name
       orderForm.receiverPhone = customerInfo.phone
       orderForm.receiverAddress = customerInfo.address || ''
-      
+
       selectedCustomer.value = customerInfo
-      
+
       ElMessage.success(`已自动选择客户：${customerInfo.name}`)
     } else if (customerName && customerPhone) {
       // 如果store中找不到但有传递的客户信息，使用传递的信息
@@ -1375,7 +1454,7 @@ onMounted(async () => {
       orderForm.receiverName = customerName as string
       orderForm.receiverPhone = customerPhone as string
       orderForm.receiverAddress = customerAddress as string || ''
-      
+
       // 创建一个临时的客户对象
       customerInfo = {
         id: customerId as string,
@@ -1389,21 +1468,21 @@ onMounted(async () => {
         createTime: '',
         createdBy: ''
       }
-      
+
       selectedCustomer.value = customerInfo
-      
+
       ElMessage.success(`已自动选择客户：${customerName}`)
     } else {
       // 只有customerId但找不到客户信息
       ElMessage.warning('未找到指定的客户信息，请手动选择客户')
     }
   }
-  
+
   // 检查是否有传递的商品信息
   if (productId) {
     // 查找商品信息
     const product = productStore.products.find(p => p.id === productId)
-    
+
     if (product) {
       // 自动添加商品到订单
       const productToAdd = {
@@ -1413,9 +1492,9 @@ onMounted(async () => {
         quantity: 1,
         total: product.price
       }
-      
+
       orderForm.products.push(productToAdd)
-      
+
       ElMessage.success(`已自动添加商品：${product.name}`)
     } else {
       ElMessage.warning('未找到指定的商品信息')
@@ -2373,7 +2452,7 @@ onMounted(async () => {
   .screenshot-field { /* 定金截图 */
     flex: 0 0 20% !important;
   }
-  
+
   .field-input .el-input-number {
     min-width: 100px;
   }
@@ -2384,76 +2463,76 @@ onMounted(async () => {
   .order-form {
     padding: 12px;
   }
-  
+
   .product-list {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 12px;
   }
-  
+
   .form-footer {
     flex-direction: column;
   }
-  
+
   .form-footer .el-button {
     width: 100%;
   }
-  
+
   /* 订单确认弹窗响应式 */
   .info-item {
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
   }
-  
+
   .info-item .label {
     min-width: auto;
     font-weight: 600;
   }
-  
+
   .amount-summary-grid {
     padding: 16px;
   }
-  
+
   .amount-row-main {
     flex-direction: column;
     gap: 12px;
   }
-  
+
   .amount-card {
     min-width: auto;
     max-width: none;
     padding: 16px 12px;
   }
-  
+
   .amount-value {
     font-size: 20px;
   }
-  
+
   .amount-row-detail {
     flex-direction: column;
     gap: 16px;
     padding: 12px 16px;
   }
-  
+
   .discount-input-section {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
   }
-  
+
   /* 响应式输入框样式 */
   .amount-row {
     flex-direction: column;
     gap: 16px;
     margin-bottom: 20px;
   }
-  
+
   .amount-field {
     flex: 1 1 100%;
     min-width: 100%;
     justify-content: space-between;
   }
-  
+
   .amount-field:nth-child(1),
   .amount-field:nth-child(2),
   .amount-field:nth-child(3),
@@ -2462,17 +2541,17 @@ onMounted(async () => {
   .screenshot-field {
     flex: 1 1 100% !important;
   }
-  
+
   .field-label {
     min-width: 80px;
     flex-shrink: 0;
   }
-  
+
   .field-input {
     flex: 1;
     min-width: 120px;
   }
-  
+
   .field-input .el-input-number {
     width: 100%;
     min-width: 120px;
@@ -2615,27 +2694,27 @@ onMounted(async () => {
     flex-direction: column;
     gap: 16px;
   }
-  
+
   .amount-column {
     padding: 12px;
   }
-  
+
   .amount-column .amount-item {
     padding: 10px 0;
   }
-  
+
   .amount-column .amount-item .label {
     font-size: 12px;
   }
-  
+
   .amount-column .amount-item .value {
     font-size: 14px;
   }
-  
+
   .amount-column.important-amounts .amount-item .value {
     font-size: 15px;
   }
-  
+
   .amount-column.important-amounts .amount-item.total-amount .value {
     font-size: 16px;
   }

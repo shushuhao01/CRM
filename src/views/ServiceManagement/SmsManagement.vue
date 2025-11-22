@@ -91,7 +91,7 @@
               <el-badge :value="pendingTemplatesCount" :hidden="pendingTemplatesCount === 0" />
             </span>
           </template>
-          
+
           <!-- 子标签页：待审核和审核通过 -->
           <el-tabs v-model="templateSubTab" type="card" class="sub-tabs">
             <el-tab-pane label="待审核" name="pending">
@@ -106,10 +106,10 @@
                   />
                 </div>
               </div>
-              
+
               <div class="templates-list" v-loading="loadingTemplates">
-                <div 
-                  v-for="template in filteredPendingTemplates" 
+                <div
+                  v-for="template in filteredPendingTemplates"
                   :key="template.id"
                   class="template-item"
                 >
@@ -121,13 +121,13 @@
                         <span class="apply-time">{{ formatTime(template.createdAt) }}</span>
                       </div>
                     </div>
-                    
+
                     <div class="template-content">
                       <p class="content-text">{{ template.content }}</p>
                       <div class="variables" v-if="template.variables?.length">
                         <span class="variables-label">变量：</span>
-                        <el-tag 
-                          v-for="variable in template.variables" 
+                        <el-tag
+                          v-for="variable in template.variables"
                           :key="variable"
                           size="small"
                           class="variable-tag"
@@ -136,39 +136,39 @@
                         </el-tag>
                       </div>
                     </div>
-                    
+
                     <div class="template-description" v-if="template.description">
                       <span class="desc-label">申请说明：</span>
                       <p class="desc-text">{{ template.description }}</p>
                     </div>
-                    
+
                     <div class="applicant-info">
                       <span class="applicant-label">申请人：</span>
                       <span class="applicant-name">{{ template.applicantName }}</span>
                       <span class="applicant-dept">{{ template.applicantDept }}</span>
                     </div>
                   </div>
-                  
+
                   <div class="template-actions">
-                    <el-button 
-                      type="success" 
-                      :icon="Check" 
+                    <el-button
+                      type="success"
+                      :icon="Check"
                       @click="handleApproveTemplate(template)"
                       class="approve-btn"
                     >
                       通过
                     </el-button>
-                    <el-button 
-                      type="danger" 
-                      :icon="Close" 
+                    <el-button
+                      type="danger"
+                      :icon="Close"
                       @click="handleRejectTemplate(template)"
                       class="reject-btn"
                     >
                       拒绝
                     </el-button>
-                    <el-button 
-                      type="info" 
-                      :icon="View" 
+                    <el-button
+                      type="info"
+                      :icon="View"
                       @click="handlePreviewTemplate(template)"
                       class="preview-btn"
                     >
@@ -176,15 +176,15 @@
                     </el-button>
                   </div>
                 </div>
-                
-                <el-empty 
+
+                <el-empty
                   v-if="filteredPendingTemplates.length === 0 && !loadingTemplates"
                   description="暂无待审核模板"
                   :image-size="120"
                 />
               </div>
             </el-tab-pane>
-            
+
             <el-tab-pane label="审核通过" name="approved">
               <div class="tab-header">
                 <div class="tab-actions">
@@ -197,10 +197,10 @@
                   />
                 </div>
               </div>
-              
+
               <div class="templates-list" v-loading="loadingApprovedTemplates">
-                <div 
-                  v-for="template in filteredApprovedTemplates" 
+                <div
+                  v-for="template in filteredApprovedTemplates"
                   :key="template.id"
                   class="template-item approved"
                 >
@@ -213,22 +213,22 @@
                         <span class="approve-time">{{ formatTime(template.approvedAt) }}</span>
                       </div>
                     </div>
-                    
+
                     <div class="template-content">
                       <p class="content-text">{{ template.content }}</p>
                     </div>
-                    
+
                     <div class="approval-info">
                       <span class="approval-label">审核人：</span>
                       <span class="approval-name">{{ template.approvedBy }}</span>
                       <span class="approval-time">{{ formatTime(template.approvedAt) }}</span>
                     </div>
                   </div>
-                  
+
                   <div class="template-actions">
-                    <el-button 
-                      type="primary" 
-                      :icon="View" 
+                    <el-button
+                      type="primary"
+                      :icon="View"
                       @click="handlePreviewTemplate(template)"
                       size="small"
                     >
@@ -236,8 +236,8 @@
                     </el-button>
                   </div>
                 </div>
-                
-                <el-empty 
+
+                <el-empty
                   v-if="filteredApprovedTemplates.length === 0 && !loadingApprovedTemplates"
                   description="暂无已通过模板"
                   :image-size="120"
@@ -246,7 +246,7 @@
             </el-tab-pane>
           </el-tabs>
         </el-tab-pane>
-        
+
         <!-- 短信审核 -->
         <el-tab-pane name="sms">
           <template #label>
@@ -255,7 +255,7 @@
               <el-badge :value="pendingSmsCount" :hidden="pendingSmsCount === 0" />
             </span>
           </template>
-          
+
           <!-- 子标签页：待审核和审核通过 -->
           <el-tabs v-model="smsSubTab" type="card" class="sub-tabs">
             <el-tab-pane label="待审核" name="pending">
@@ -270,10 +270,10 @@
                   />
                 </div>
               </div>
-              
+
               <div class="sms-list" v-loading="loadingSms">
-                <div 
-                  v-for="sms in filteredPendingSms" 
+                <div
+                  v-for="sms in filteredPendingSms"
                   :key="sms.id"
                   class="sms-item"
                 >
@@ -285,7 +285,7 @@
                         <span class="apply-time">{{ formatTime(sms.createdAt) }}</span>
                       </div>
                     </div>
-                    
+
                     <div class="sms-content">
                       <p class="content-text">{{ sms.content }}</p>
                       <div class="recipients">
@@ -293,34 +293,34 @@
                         <span class="recipients-count">{{ sms.recipients?.length || 0 }} 人</span>
                       </div>
                     </div>
-                    
+
                     <div class="applicant-info">
                       <span class="applicant-label">申请人：</span>
                       <span class="applicant-name">{{ sms.applicantName }}</span>
                       <span class="applicant-dept">{{ sms.applicantDept }}</span>
                     </div>
                   </div>
-                  
+
                   <div class="sms-actions">
-                    <el-button 
-                      type="success" 
-                      :icon="Check" 
+                    <el-button
+                      type="success"
+                      :icon="Check"
                       @click="handleApproveSms(sms)"
                       class="approve-btn"
                     >
                       通过
                     </el-button>
-                    <el-button 
-                      type="danger" 
-                      :icon="Close" 
+                    <el-button
+                      type="danger"
+                      :icon="Close"
                       @click="handleRejectSms(sms)"
                       class="reject-btn"
                     >
                       拒绝
                     </el-button>
-                    <el-button 
-                      type="info" 
-                      :icon="View" 
+                    <el-button
+                      type="info"
+                      :icon="View"
                       @click="handlePreviewSms(sms)"
                       class="preview-btn"
                     >
@@ -328,15 +328,15 @@
                     </el-button>
                   </div>
                 </div>
-                
-                <el-empty 
+
+                <el-empty
                   v-if="filteredPendingSms.length === 0 && !loadingSms"
                   description="暂无待审核短信"
                   :image-size="120"
                 />
               </div>
             </el-tab-pane>
-            
+
             <el-tab-pane label="审核通过" name="approved">
               <div class="tab-header">
                 <div class="tab-actions">
@@ -349,10 +349,10 @@
                   />
                 </div>
               </div>
-              
+
               <div class="sms-list" v-loading="loadingApprovedSms">
-                <div 
-                  v-for="sms in filteredApprovedSms" 
+                <div
+                  v-for="sms in filteredApprovedSms"
                   :key="sms.id"
                   class="sms-item approved"
                 >
@@ -364,7 +364,7 @@
                         <span class="approve-time">{{ formatTime(sms.approvedAt) }}</span>
                       </div>
                     </div>
-                    
+
                     <div class="sms-content">
                       <p class="content-text">{{ sms.content }}</p>
                       <div class="recipients">
@@ -372,18 +372,18 @@
                         <span class="recipients-count">{{ sms.recipients?.length || 0 }} 人</span>
                       </div>
                     </div>
-                    
+
                     <div class="approval-info">
                       <span class="approval-label">审核人：</span>
                       <span class="approval-name">{{ sms.approvedBy }}</span>
                       <span class="approval-time">{{ formatTime(sms.approvedAt) }}</span>
                     </div>
                   </div>
-                  
+
                   <div class="sms-actions">
-                    <el-button 
-                      type="primary" 
-                      :icon="View" 
+                    <el-button
+                      type="primary"
+                      :icon="View"
                       @click="handlePreviewSms(sms)"
                       size="small"
                     >
@@ -391,8 +391,8 @@
                     </el-button>
                   </div>
                 </div>
-                
-                <el-empty 
+
+                <el-empty
                   v-if="filteredApprovedSms.length === 0 && !loadingApprovedSms"
                   description="暂无已通过短信"
                   :image-size="120"
@@ -401,7 +401,7 @@
             </el-tab-pane>
           </el-tabs>
         </el-tab-pane>
-        
+
         <!-- 发送记录 -->
         <el-tab-pane label="发送记录" name="records">
           <div class="tab-header">
@@ -423,7 +423,7 @@
               />
             </div>
           </div>
-          
+
           <el-table :data="filteredRecords" v-loading="loadingRecords">
             <el-table-column prop="templateName" label="模板名称" />
             <el-table-column prop="content" label="短信内容" show-overflow-tooltip />
@@ -451,14 +451,14 @@
         </el-tab-pane>
       </el-tabs>
     </el-card>
-    
+
     <!-- 对话框组件 -->
     <CreateTemplateDialog
       v-model="showCreateTemplateDialog"
       mode="apply"
       @submit="handleTemplateSubmit"
     />
-    
+
     <SendSmsDialog
       v-model="showSendSmsDialog"
       :templates="approvedTemplates"
@@ -484,17 +484,17 @@
             </el-tag>
           </el-descriptions-item>
         </el-descriptions>
-        
+
         <div class="template-content-section">
           <h4>模板内容：</h4>
           <div class="content-display">{{ previewTemplate.content }}</div>
         </div>
-        
+
         <div v-if="previewTemplate.variables && previewTemplate.variables.length > 0" class="variables-section">
           <h4>包含变量：</h4>
           <div class="variables-list">
-            <el-tag 
-              v-for="variable in previewTemplate.variables" 
+            <el-tag
+              v-for="variable in previewTemplate.variables"
               :key="variable"
               class="variable-tag"
               type="info"
@@ -503,13 +503,13 @@
             </el-tag>
           </div>
         </div>
-        
+
         <div class="preview-section">
           <h4>预览效果：</h4>
           <div class="preview-content">{{ getPreviewContent(previewTemplate) }}</div>
         </div>
       </div>
-      
+
       <template #footer>
         <el-button @click="showTemplatePreviewDialog = false">关闭</el-button>
       </template>
@@ -534,17 +534,17 @@
             </el-tag>
           </el-descriptions-item>
         </el-descriptions>
-        
+
         <div class="sms-content-section">
           <h4>短信内容：</h4>
           <div class="content-display">{{ detailSms.content }}</div>
         </div>
-        
+
         <div v-if="detailSms.recipients && detailSms.recipients.length > 0" class="recipients-section">
           <h4>收件人列表：</h4>
           <div class="recipients-list">
-            <el-tag 
-              v-for="(recipient, index) in detailSms.recipients.slice(0, 10)" 
+            <el-tag
+              v-for="(recipient, index) in detailSms.recipients.slice(0, 10)"
               :key="index"
               class="recipient-tag"
             >
@@ -555,13 +555,13 @@
             </span>
           </div>
         </div>
-        
+
         <div v-if="detailSms.remark" class="remark-section">
           <h4>备注说明：</h4>
           <div class="remark-content">{{ detailSms.remark }}</div>
         </div>
       </div>
-      
+
       <template #footer>
         <el-button @click="showSmsDetailDialog = false">关闭</el-button>
       </template>
@@ -585,12 +585,12 @@
           <el-descriptions-item label="失败数量">{{ detailRecord.failCount }}</el-descriptions-item>
           <el-descriptions-item label="发送时间">{{ detailRecord.sentAt }}</el-descriptions-item>
         </el-descriptions>
-        
+
         <div class="record-content-section">
           <h4>短信内容：</h4>
           <div class="content-display">{{ detailRecord.content }}</div>
         </div>
-        
+
         <div class="send-details-section">
           <h4>发送详情：</h4>
           <el-table :data="detailRecord.sendDetails || []" max-height="300">
@@ -607,7 +607,7 @@
           </el-table>
         </div>
       </div>
-      
+
       <template #footer>
         <el-button @click="showRecordDetailDialog = false">关闭</el-button>
       </template>
@@ -620,20 +620,22 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  Plus, 
-  Message, 
+import {
+  Plus,
+  Message,
   Setting,
-  Clock, 
-  TrendCharts, 
-  DataAnalysis, 
-  Search, 
-  Check, 
-  Close, 
-  View 
+  Clock,
+  TrendCharts,
+  DataAnalysis,
+  Search,
+  Check,
+  Close,
+  View
 } from '@element-plus/icons-vue'
 import CreateTemplateDialog from '@/components/CreateTemplateDialog.vue'
 import SendSmsDialog from '@/components/SendSmsDialog.vue'
+import * as smsApi from '@/api/sms'
+import type { SmsTemplate, SmsRequest, SendRecord, SmsStatistics } from '@/api/sms'
 
 // 接口定义
 interface SmsTemplate {
@@ -739,114 +741,23 @@ const detailSms = ref(null)
 const detailRecord = ref(null)
 
 // 统计数据
-const stats = ref({
-  pendingTemplates: 5,
-  pendingSms: 3,
-  todaySent: 128,
-  totalSent: 15420
+const stats = ref<SmsStatistics>({
+  pendingTemplates: 0,
+  pendingSms: 0,
+  todaySent: 0,
+  totalSent: 0
 })
 
 // 模板数据
-const pendingTemplates = ref([
-  {
-    id: '1',
-    name: '订单确认通知',
-    category: 'order',
-    content: '您的订单{orderNo}已确认，预计{deliveryTime}送达。',
-    variables: ['{orderNo}', '{deliveryTime}'],
-    description: '用于订单确认后通知客户',
-    applicant: '张三',
-    applicantName: '张三',
-    applicantDept: '销售部',
-    createdAt: '2024-01-15 10:30:00',
-    status: 'pending'
-  },
-  {
-    id: '3',
-    name: '付款提醒',
-    category: 'reminder',
-    content: '尊敬的{customerName}，您的订单{orderNo}还有{amount}元未付款，请及时处理。',
-    variables: ['{customerName}', '{orderNo}', '{amount}'],
-    description: '用于提醒客户付款',
-    applicant: '王五',
-    applicantName: '王五',
-    applicantDept: '财务部',
-    createdAt: '2024-01-15 11:20:00',
-    status: 'pending'
-  }
-])
-
-const approvedTemplates = ref([
-  {
-    id: '2',
-    name: '发货通知',
-    category: 'logistics',
-    content: '您的订单{orderNo}已发货，快递单号：{trackingNo}',
-    variables: ['{orderNo}', '{trackingNo}'],
-    applicant: '李四',
-    approvedBy: '管理员',
-    approvedAt: '2024-01-14 15:20:00',
-    status: 'approved'
-  }
-])
+const pendingTemplates = ref<SmsTemplate[]>([])
+const approvedTemplates = ref<SmsTemplate[]>([])
 
 // 短信数据
-const pendingSms = ref([
-  {
-    id: '1',
-    templateName: '促销活动通知',
-    content: '新年大促销，全场8折优惠！活动时间：1月15日-1月31日',
-    recipients: ['13800138001', '13800138002', '13800138003'],
-    recipientCount: 3,
-    applicant: '李四',
-    applicantName: '李四',
-    applicantDept: '市场部',
-    createdAt: '2024-01-15 14:20:00',
-    status: 'pending',
-    remark: '春节促销活动推广'
-  },
-  {
-    id: '3',
-    templateName: '会员生日祝福',
-    content: '亲爱的{customerName}，祝您生日快乐！专属生日礼品等您领取。',
-    recipients: ['13800138004', '13800138005'],
-    recipientCount: 2,
-    applicant: '赵六',
-    applicantName: '赵六',
-    applicantDept: '客服部',
-    createdAt: '2024-01-15 15:30:00',
-    status: 'pending',
-    remark: '会员生日关怀'
-  }
-])
-
-const approvedSms = ref([
-  {
-    id: '2',
-    templateName: '发货通知',
-    content: '您的订单ORD001已发货，快递单号：SF1234567890',
-    recipients: ['13800138001'],
-    recipientCount: 1,
-    applicant: '张三',
-    approvedBy: '管理员',
-    approvedAt: '2024-01-14 16:30:00',
-    status: 'approved'
-  }
-])
+const pendingSms = ref<SmsRequest[]>([])
+const approvedSms = ref<SmsRequest[]>([])
 
 // 发送记录
-const sendRecords = ref([
-  {
-    id: '1',
-    templateName: '发货通知',
-    content: '您的订单已发货',
-    recipientCount: 100,
-    successCount: 98,
-    failCount: 2,
-    status: 'completed',
-    sentAt: '2024-01-15 09:00:00'
-  }
-])
+const sendRecords = ref<SendRecord[]>([])
 
 // 计算属性
 const pendingTemplatesCount = computed(() => pendingTemplates.value.length)
@@ -854,7 +765,7 @@ const pendingSmsCount = computed(() => pendingSms.value.length)
 
 const filteredPendingTemplates = computed(() => {
   if (!templateSearch.value) return pendingTemplates.value
-  return pendingTemplates.value.filter(template => 
+  return pendingTemplates.value.filter(template =>
     template.name.includes(templateSearch.value) ||
     template.applicantName.includes(templateSearch.value)
   )
@@ -862,14 +773,14 @@ const filteredPendingTemplates = computed(() => {
 
 const filteredApprovedTemplates = computed(() => {
   if (!approvedTemplateSearch.value) return approvedTemplates.value
-  return approvedTemplates.value.filter(template => 
+  return approvedTemplates.value.filter(template =>
     template.name.includes(approvedTemplateSearch.value)
   )
 })
 
 const filteredPendingSms = computed(() => {
   if (!smsSearch.value) return pendingSms.value
-  return pendingSms.value.filter(sms => 
+  return pendingSms.value.filter(sms =>
     sms.templateName.includes(smsSearch.value) ||
     sms.content.includes(smsSearch.value) ||
     sms.applicantName.includes(smsSearch.value)
@@ -878,7 +789,7 @@ const filteredPendingSms = computed(() => {
 
 const filteredApprovedSms = computed(() => {
   if (!approvedSmsSearch.value) return approvedSms.value
-  return approvedSms.value.filter(sms => 
+  return approvedSms.value.filter(sms =>
     sms.templateName.includes(approvedSmsSearch.value) ||
     sms.content.includes(approvedSmsSearch.value)
   )
@@ -886,7 +797,7 @@ const filteredApprovedSms = computed(() => {
 
 const filteredRecords = computed(() => {
   if (!recordSearch.value) return sendRecords.value
-  return sendRecords.value.filter(record => 
+  return sendRecords.value.filter(record =>
     record.templateName.includes(recordSearch.value) ||
     record.content.includes(recordSearch.value)
   )
@@ -936,7 +847,7 @@ const handleApproveTemplate = async (template: SmsTemplate) => {
     await ElMessageBox.confirm('确认通过此模板申请？', '确认操作', {
       type: 'warning'
     })
-    
+
     // 移除待审核列表
     const index = pendingTemplates.value.findIndex(t => t.id === template.id)
     if (index > -1) {
@@ -948,7 +859,7 @@ const handleApproveTemplate = async (template: SmsTemplate) => {
         approvedAt: new Date().toLocaleString()
       })
     }
-    
+
     ElMessage.success('模板审核通过')
   } catch {
     // 用户取消
@@ -960,13 +871,13 @@ const handleRejectTemplate = async (template: SmsTemplate) => {
     await ElMessageBox.confirm('确认拒绝此模板申请？', '确认操作', {
       type: 'warning'
     })
-    
+
     // 移除待审核列表
     const index = pendingTemplates.value.findIndex(t => t.id === template.id)
     if (index > -1) {
       pendingTemplates.value.splice(index, 1)
     }
-    
+
     ElMessage.success('模板申请已拒绝')
   } catch {
     // 用户取消
@@ -978,7 +889,7 @@ const handleApproveSms = async (sms: SmsRequest) => {
     await ElMessageBox.confirm('确认通过此短信发送申请？', '确认操作', {
       type: 'warning'
     })
-    
+
     // 移除待审核列表
     const index = pendingSms.value.findIndex(s => s.id === sms.id)
     if (index > -1) {
@@ -990,7 +901,7 @@ const handleApproveSms = async (sms: SmsRequest) => {
         approvedAt: new Date().toLocaleString()
       })
     }
-    
+
     ElMessage.success('短信发送申请已通过')
   } catch {
     // 用户取消
@@ -1002,13 +913,13 @@ const handleRejectSms = async (sms: SmsRequest) => {
     await ElMessageBox.confirm('确认拒绝此短信发送申请？', '确认操作', {
       type: 'warning'
     })
-    
+
     // 移除待审核列表
     const index = pendingSms.value.findIndex(s => s.id === sms.id)
     if (index > -1) {
       pendingSms.value.splice(index, 1)
     }
-    
+
     ElMessage.success('短信发送申请已拒绝')
   } catch {
     // 用户取消
@@ -1043,7 +954,7 @@ const handleViewRecord = (record: SendRecord) => {
 // 获取模板预览内容
 const getPreviewContent = (template: SmsTemplate) => {
   if (!template || !template.content) return ''
-  
+
   let content = template.content
   const exampleValues: Record<string, string> = {
     orderNo: 'ORD20240115001',
@@ -1056,7 +967,7 @@ const getPreviewContent = (template: SmsTemplate) => {
     phone: '138****8888',
     code: '123456'
   }
-  
+
   // 替换变量为示例值
   if (template.variables) {
     template.variables.forEach((variable: string) => {
@@ -1065,7 +976,7 @@ const getPreviewContent = (template: SmsTemplate) => {
       content = content.replace(new RegExp(`\\${variable}`, 'g'), value)
     })
   }
-  
+
   return content
 }
 
@@ -1219,7 +1130,7 @@ const loadApprovedTemplates = () => {
       usage: 123
     }
   ]
-  
+
   approvedTemplates.value = mockTemplates
 }
 </script>

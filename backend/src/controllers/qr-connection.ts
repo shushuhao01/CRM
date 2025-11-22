@@ -217,7 +217,7 @@ export class QRConnectionController {
       const { userId } = req.query;
 
       // 过滤用户的设备（如果指定了userId）
-      let devices = Array.from(connectedDevices.values());
+      const devices = Array.from(connectedDevices.values());
       
       if (userId) {
         // 这里可以根据userId过滤设备，目前返回所有设备

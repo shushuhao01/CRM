@@ -38,7 +38,7 @@ async function createSuperAdmin() {
     }
 
     // 确保超级管理员角色存在
-    let superAdminRole = await roleRepository.findOne({
+    const superAdminRole = await roleRepository.findOne({
       where: { code: 'super_admin' }
     });
 

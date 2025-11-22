@@ -68,19 +68,19 @@
 
             <el-form-item label="快速设置">
               <el-button-group>
-                <el-button 
+                <el-button
                   @click="setNotificationPreference('none')"
                   :type="preferences.suppressType === 'none' ? 'primary' : 'default'"
                 >
                   恢复通知
                 </el-button>
-                <el-button 
+                <el-button
                   @click="setNotificationPreference('today')"
                   :type="preferences.suppressType === 'today' ? 'primary' : 'default'"
                 >
                   今天不再提醒
                 </el-button>
-                <el-button 
+                <el-button
                   @click="setNotificationPreference('month')"
                   :type="preferences.suppressType === 'month' ? 'primary' : 'default'"
                 >
@@ -91,9 +91,9 @@
 
             <el-form-item label="上次通知时间">
               <span class="last-notification">
-                {{ preferences.lastNotificationTime ? 
-                  new Date(preferences.lastNotificationTime).toLocaleString() : 
-                  '暂无通知记录' 
+                {{ preferences.lastNotificationTime ?
+                  new Date(preferences.lastNotificationTime).toLocaleString() :
+                  '暂无通知记录'
                 }}
               </span>
             </el-form-item>
@@ -105,8 +105,8 @@
           <h4>测试功能</h4>
           <el-form label-width="140px">
             <el-form-item label="手动测试">
-              <el-button 
-                @click="testNotification" 
+              <el-button
+                @click="testNotification"
                 :loading="testLoading"
                 type="warning"
               >
@@ -118,9 +118,9 @@
             </el-form-item>
 
             <el-form-item label="清除设置">
-              <el-button 
-                @click="clearAllPreferences" 
-                type="danger" 
+              <el-button
+                @click="clearAllPreferences"
+                type="danger"
                 plain
               >
                 清除所有通知偏好
@@ -142,7 +142,7 @@
           >
             <template #default>
               <ul class="info-list">
-                <li>API健康检查每30秒自动执行一次</li>
+                <li>API健康检查每12小时自动执行一次（每天2次）</li>
                 <li>只有超级管理员才能看到API失败通知</li>
                 <li>可以设置"今天不再提醒"或"一个月不再提醒"</li>
                 <li>系统会自动记住您的通知偏好设置</li>

@@ -24,8 +24,8 @@
 
     <!-- 核心指标卡片 -->
     <div class="metrics-grid">
-      <el-card 
-        v-for="metric in coreMetrics" 
+      <el-card
+        v-for="metric in coreMetrics"
         :key="metric.key"
         class="metric-card"
         shadow="hover"
@@ -256,10 +256,28 @@ const analyticsData = ref({
   }
 })
 
-// 核心指标数据 - 基于真实API数据
+// 核心指标数据 - 基于ProductStore的实时数据
 const coreMetrics = computed(() => {
-  const stats = analyticsData.value.salesStatistics
-  
+  // 从ProductStore获取实时商品数据
+  const products = productStore.products || []
+
+  // 计算实时统计数据
+  const totalProducts = products.length
+  const totalSales = products.reduce((sum, p) => sum + (p.salesCount || 0), 0)
+  const totalRevenue = products.reduce((sum, p) => sum + ((p.salesCount || 0) * p.price), 0)
+  const lowStockCount = products.filter(p => p.stock <= p.minStock && p.stock > 0).length
+
+  const stats = {
+    totalRevenue,
+    revenueChange: '+0%',
+    totalSales,
+    salesChange: '+0%',
+    totalProducts,
+    productsChange: '+0%',
+    lowStockCount,
+    stockChange: '+0%'
+  }
+
   // 格式化大数字
   const formatNumber = (num: number) => {
     if (num >= 100000000) {
@@ -270,41 +288,41 @@ const coreMetrics = computed(() => {
       return num.toLocaleString()
     }
   }
-  
+
   return [
     {
       key: 'totalRevenue',
       label: '总销售额',
-      value: `¥${formatNumber(stats.totalRevenue)}`,
-      change: stats.revenueChange,
-      trend: stats.revenueChange.startsWith('+') ? 'up' : stats.revenueChange.startsWith('-') ? 'down' : 'stable',
+      value: `¥${formatNumber(stats.totalRevenue || 0)}`,
+      change: stats.revenueChange || '+0%',
+      trend: (stats.revenueChange || '+0%').startsWith('+') ? 'up' : (stats.revenueChange || '+0%').startsWith('-') ? 'down' : 'stable',
       color: '#409EFF',
       icon: Coin
     },
     {
       key: 'totalSales',
       label: '总销量',
-      value: formatNumber(stats.totalSales),
-      change: stats.salesChange,
-      trend: stats.salesChange.startsWith('+') ? 'up' : stats.salesChange.startsWith('-') ? 'down' : 'stable',
+      value: formatNumber(stats.totalSales || 0),
+      change: stats.salesChange || '+0%',
+      trend: (stats.salesChange || '+0%').startsWith('+') ? 'up' : (stats.salesChange || '+0%').startsWith('-') ? 'down' : 'stable',
       color: '#67C23A',
       icon: TrendCharts
     },
     {
       key: 'totalProducts',
       label: '商品总数',
-      value: stats.totalProducts.toString(),
-      change: stats.productsChange,
-      trend: stats.productsChange.startsWith('+') ? 'up' : stats.productsChange.startsWith('-') ? 'down' : 'stable',
+      value: (stats.totalProducts || 0).toString(),
+      change: stats.productsChange || '+0%',
+      trend: (stats.productsChange || '+0%').startsWith('+') ? 'up' : (stats.productsChange || '+0%').startsWith('-') ? 'down' : 'stable',
       color: '#E6A23C',
       icon: Box
     },
     {
       key: 'lowStockWarning',
       label: '库存预警',
-      value: stats.lowStockWarning.toString(),
-      change: stats.warningChange,
-      trend: stats.warningChange.startsWith('+') ? 'up' : stats.warningChange.startsWith('-') ? 'down' : 'stable',
+      value: (stats.lowStockCount || 0).toString(),
+      change: stats.stockChange || '+0%',
+      trend: (stats.stockChange || '+0%').startsWith('+') ? 'up' : (stats.stockChange || '+0%').startsWith('-') ? 'down' : 'stable',
       color: '#F56C6C',
       icon: Warning
     }
@@ -313,7 +331,7 @@ const coreMetrics = computed(() => {
 
 // 商品分类 - 从商品store获取
 const categories = computed(() => {
-  return productStore.categories.map(cat => ({
+  return (productStore.categories || []).map(cat => ({
     label: cat.name,
     value: cat.name
   }))
@@ -325,7 +343,7 @@ const productData = computed(() => {
     const revenue = product.salesCount * product.price
     const profit = product.salesCount * (product.price - product.costPrice)
     const profitRate = product.price > 0 ? (product.price - product.costPrice) / product.price : 0
-    
+
     return {
       id: product.id,
       name: product.name,
@@ -349,19 +367,25 @@ const topProductsChart = ref()
 // 计算属性
 const filteredProductData = computed(() => {
   let data = productData.value
-  
+
+  // 确保data不为null或undefined
+  if (!data || !Array.isArray(data)) {
+    total.value = 0
+    return []
+  }
+
   if (searchKeyword.value) {
-    data = data.filter(item => 
+    data = data.filter(item =>
       item.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
     )
   }
-  
+
   if (categoryFilter.value) {
     data = data.filter(item => item.category === categoryFilter.value)
   }
-  
+
   total.value = data.length
-  
+
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
   return data.slice(start, end)
@@ -380,8 +404,59 @@ const handleDateChange = (dates: [Date, Date]) => {
   }
 }
 
-const exportData = () => {
-  ElMessage.success('数据导出功能开发中...')
+const exportData = async () => {
+  try {
+    ElMessage.info('正在导出数据...')
+
+    // 准备导出数据
+    const exportProducts = filteredProductData.value.map(item => ({
+      '商品名称': item.name,
+      '分类': item.category,
+      '单价': item.price.toFixed(2),
+      '库存': item.stock,
+      '销量': item.sales,
+      '销售额': item.revenue.toFixed(2),
+      '利润': item.profit.toFixed(2),
+      '利润率': (item.profitRate * 100).toFixed(1) + '%',
+      '状态': getStockStatusText(item.stock)
+    }))
+
+    // 使用xlsx库导出
+    import('xlsx').then(XLSX => {
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.json_to_sheet(exportProducts)
+
+      // 设置列宽
+      ws['!cols'] = [
+        { wch: 25 }, // 商品名称
+        { wch: 15 }, // 分类
+        { wch: 12 }, // 单价
+        { wch: 10 }, // 库存
+        { wch: 10 }, // 销量
+        { wch: 15 }, // 销售额
+        { wch: 15 }, // 利润
+        { wch: 12 }, // 利润率
+        { wch: 12 }  // 状态
+      ]
+
+      XLSX.utils.book_append_sheet(wb, ws, '商品分析数据')
+
+      // 生成文件名（包含日期范围）
+      const [startDate, endDate] = dateRange.value
+      const startStr = startDate.toISOString().split('T')[0]
+      const endStr = endDate.toISOString().split('T')[0]
+      const fileName = `商品分析数据_${startStr}_${endStr}.xlsx`
+
+      XLSX.writeFile(wb, fileName)
+
+      ElMessage.success('数据导出成功')
+    }).catch(() => {
+      ElMessage.error('导出失败，请重试')
+    })
+  } catch (error) {
+    console.error('导出数据失败:', error)
+    ElMessage.error('导出失败')
+  }
 }
 
 const refreshData = async () => {
@@ -441,7 +516,7 @@ const loadAnalyticsData = async () => {
       startDate: startDate?.toISOString().split('T')[0],
       endDate: endDate?.toISOString().split('T')[0]
     }
-    
+
     // 并行加载所有分析数据
     const [
       salesStats,
@@ -459,7 +534,7 @@ const loadAnalyticsData = async () => {
       productApi.getTopProducts({ limit: 5, ...dateParams }),
       productApi.getInventoryWarning({})
     ])
-    
+
     // 更新分析数据
     analyticsData.value = {
       salesStatistics: salesStats,
@@ -468,7 +543,7 @@ const loadAnalyticsData = async () => {
       topProducts: topProducts,
       inventoryWarning: inventoryWarning
     }
-    
+
     ElMessage.success('数据已更新')
   } catch (error) {
     console.error('加载分析数据失败:', error)
@@ -479,11 +554,9 @@ const loadAnalyticsData = async () => {
 }
 
 const loadData = async () => {
-  // 加载基础产品数据
-  if (productStore.products.length === 0) {
-    await productStore.fetchProducts()
-  }
-  
+  // 不调用fetchProducts，直接使用本地存储的商品数据
+  // 这样可以避免覆盖用户新增的商品数据
+
   // 加载分析数据
   await loadAnalyticsData()
 }
@@ -508,10 +581,11 @@ const initCharts = () => {
 
 const initSalesTrendChart = () => {
   const chart = echarts.init(salesTrendChart.value)
-  
+
   // 使用真实API数据
-  const { timeLabels, revenueData } = analyticsData.value.salesTrend
-  
+  const salesTrend = analyticsData.value?.salesTrend || { timeLabels: [], revenueData: [] }
+  const { timeLabels, revenueData } = salesTrend
+
   const option = {
     title: {
       text: `销售趋势 (${salesTrendPeriod.value === '7days' ? '近7天' : salesTrendPeriod.value === '30days' ? '近30天' : '近90天'})`,
@@ -572,13 +646,13 @@ const initSalesTrendChart = () => {
 
 const initCategoryPieChart = () => {
   const chart = echarts.init(categoryPieChart.value)
-  
+
   // 使用真实API数据
-  const chartData = analyticsData.value.categorySales.map(item => ({
+  const chartData = (analyticsData.value?.categorySales || []).map(item => ({
     name: item.name,
     value: item.value
   }))
-  
+
   const option = {
     title: {
       text: '分类销售占比',
@@ -608,11 +682,12 @@ const initCategoryPieChart = () => {
 
 const initInventoryChart = () => {
   const chart = echarts.init(inventoryChart.value)
-  
+
   // 使用真实API数据
-  const categories = analyticsData.value.inventoryWarning.categories.map(cat => cat.name)
-  const inventoryData = analyticsData.value.inventoryWarning.categories.map(cat => cat.totalStock)
-  
+  const inventoryWarning = analyticsData.value?.inventoryWarning || { categories: [] }
+  const categories = inventoryWarning.categories.map(cat => cat.name)
+  const inventoryData = inventoryWarning.categories.map(cat => cat.totalStock)
+
   const option = {
     title: {
       text: '库存状况',
@@ -639,7 +714,7 @@ const initInventoryChart = () => {
       name: '库存',
       data: inventoryData,
       type: 'bar',
-      itemStyle: { 
+      itemStyle: {
         color: '#67C23A',
         borderRadius: [4, 4, 0, 0]
       },
@@ -655,12 +730,12 @@ const initInventoryChart = () => {
 
 const initTopProductsChart = () => {
   const chart = echarts.init(topProductsChart.value)
-  
+
   // 使用真实API数据
-  const topProducts = analyticsData.value.topProducts
+  const topProducts = analyticsData.value?.topProducts || []
   const productNames = topProducts.map(p => p.name)
   const salesData = topProducts.map(p => p.sales)
-  
+
   const option = {
     title: {
       text: '热销商品TOP5',
@@ -693,7 +768,7 @@ const initTopProductsChart = () => {
       name: '销量',
       data: salesData,
       type: 'bar',
-      itemStyle: { 
+      itemStyle: {
         color: '#E6A23C',
         borderRadius: [0, 4, 4, 0]
       },
@@ -881,21 +956,21 @@ onMounted(() => {
   .product-analytics {
     padding: 10px;
   }
-  
+
   .page-header {
     flex-direction: column;
     gap: 15px;
     align-items: stretch;
   }
-  
+
   .header-actions {
     justify-content: center;
   }
-  
+
   .metrics-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .chart-container {
     height: 250px;
   }

@@ -273,6 +273,16 @@ export class PermissionService {
       }
     }
 
+    // 客服角色根据whitelistTypes配置检查敏感信息访问权限
+    if (userPermission.role === UserRole.CUSTOMER_SERVICE) {
+      const hasTypeAccess = userPermission.whitelistTypes?.includes(infoType) || false
+      return {
+        hasAccess: hasTypeAccess,
+        level: hasTypeAccess ? PermissionLevel.PARTIAL_ACCESS : PermissionLevel.RESTRICTED,
+        reason: hasTypeAccess ? undefined : '该类型敏感信息不在客服权限范围内'
+      }
+    }
+
     // 普通用户无权访问敏感信息
     return {
       hasAccess: false,
@@ -431,9 +441,9 @@ export class PermissionService {
       return false
     }
 
-    // 检查自定义权限
-    if (userPermission.customPermissions?.includes(permission)) {
-      return true
+    // 如果有自定义权限，优先检查自定义权限
+    if (userPermission.customPermissions && userPermission.customPermissions.length > 0) {
+      return userPermission.customPermissions.includes(permission)
     }
 
     // 根据客服类型检查默认权限
@@ -447,9 +457,11 @@ export class PermissionService {
       case CustomerServiceType.PRODUCT:
         return this.checkProductPermission(permission)
       case CustomerServiceType.GENERAL:
-        return userPermission.customPermissions?.includes(permission) || false
+        // 通用客服使用基础权限
+        return this.checkGeneralCustomerServicePermission(permission)
       default:
-        return false
+        // 未指定类型的客服使用基础权限
+        return this.checkGeneralCustomerServicePermission(permission)
     }
   }
 
@@ -505,6 +517,18 @@ export class PermissionService {
       'customer:list:view'
     ]
     return productPermissions.includes(permission)
+  }
+
+  /**
+   * 检查通用客服权限
+   */
+  private checkGeneralCustomerServicePermission(permission: string): boolean {
+    const generalPermissions = [
+      'customer:list:view',
+      'order:list:view',
+      'service:basic:view'
+    ]
+    return generalPermissions.includes(permission)
   }
 
   /**

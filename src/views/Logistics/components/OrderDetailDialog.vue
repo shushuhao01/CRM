@@ -31,45 +31,49 @@
           </div>
           <div class="info-item">
             <label>联系电话：</label>
-            <span class="value">{{ maskPhone(order.phone) }}</span>
+            <span class="value">{{ displaySensitiveInfoNew(order.customerPhone, 'phone') }}</span>
           </div>
           <div class="info-item">
-            <label>下单时间：</label>
-            <span class="value">{{ order.createTime || '2024-01-15 10:30:00' }}</span>
+            <label>下单日期：</label>
+            <span class="value">{{ order.orderDate || order.shippingTime || '-' }}</span>
           </div>
           <div class="info-item">
-            <label>客服微信：</label>
-            <span class="value">{{ order.serviceWechat }}</span>
+            <label>归属人：</label>
+            <span class="value">{{ order.assignedTo || '-' }}</span>
+          </div>
+          <div class="info-item">
+            <label>客服微信号：</label>
+            <span class="value">{{ order.serviceWechat || '-' }}</span>
+          </div>
+          <div class="info-item">
+            <label>订单来源：</label>
+            <span class="value">{{ getOrderSourceText(order.orderSource) }}</span>
           </div>
           <div class="info-item full-width">
-            <label>收货地址：</label>
-            <span class="value">{{ order.address }}</span>
+            <label>备注：</label>
+            <span class="value">{{ order.remark || '-' }}</span>
           </div>
         </div>
       </div>
 
-      <!-- 客户详细信息 -->
+      <!-- 物流信息 -->
       <div class="detail-section compact-section">
         <h3 class="section-title small">
-          <el-icon><User /></el-icon>
-          客户详情
+          <el-icon><Van /></el-icon>
+          物流信息
         </h3>
         <div class="info-grid compact">
           <div class="info-item">
-            <label>年龄：</label>
-            <span class="value">{{ order.customerAge }}岁</span>
+            <label>快递单号：</label>
+            <span class="value">{{ order.trackingNo || '-' }}</span>
           </div>
           <div class="info-item">
-            <label>身高：</label>
-            <span class="value">{{ order.customerHeight }}cm</span>
+            <label>快递公司：</label>
+            <span class="value">{{ order.logisticsCompany || '-' }}</span>
           </div>
-          <div class="info-item">
-            <label>体重：</label>
-            <span class="value">{{ order.customerWeight }}kg</span>
-          </div>
-          <div class="info-item">
-            <label>疾病史：</label>
-            <span class="value">{{ order.medicalHistory || '无' }}</span>
+          <div class="info-item full-width">
+            <label>最新动态：</label>
+            <span class="value">{{ order.latestUpdate || '-' }}</span>
           </div>
         </div>
       </div>
@@ -80,22 +84,16 @@
           <el-icon><Box /></el-icon>
           商品信息
         </h3>
-        <el-table :data="Array.isArray(order.products) ? order.products : []" border class="product-table">
-          <el-table-column type="index" label="序号" width="60" align="center" />
-          <el-table-column prop="name" label="商品名称" />
-          <el-table-column prop="specification" label="规格" width="120" />
-          <el-table-column prop="quantity" label="数量" width="80" align="center" />
-          <el-table-column prop="price" label="单价" width="100" align="center">
-            <template #default="{ row }">
-              <span class="amount">¥{{ formatNumber(row.price || 0) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="subtotal" label="小计" width="120" align="center">
-            <template #default="{ row }">
-              <span class="amount">¥{{ formatNumber((row.price || 0) * row.quantity) }}</span>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="info-grid compact">
+          <div class="info-item">
+            <label>商品名称：</label>
+            <span class="value">{{ order.productName || '-' }}</span>
+          </div>
+          <div class="info-item">
+            <label>数量：</label>
+            <span class="value">{{ order.quantity || 0 }}</span>
+          </div>
+        </div>
       </div>
 
       <!-- 金额信息 -->
@@ -107,16 +105,8 @@
         <div class="amount-summary compact">
           <div class="amount-row">
             <div class="amount-item">
-              <label>订单总额：</label>
-              <span class="value total">¥{{ formatNumber(order.totalAmount) }}</span>
-            </div>
-            <div class="amount-item">
-              <label>已付定金：</label>
-              <span class="value paid">¥{{ formatNumber(order.deposit) }}</span>
-            </div>
-            <div class="amount-item">
-              <label>代收款：</label>
-              <span class="value cod">¥{{ formatNumber(order.codAmount) }}</span>
+              <label>订单金额：</label>
+              <span class="value total">¥{{ formatNumber(order.amount) }}</span>
             </div>
           </div>
         </div>
@@ -146,7 +136,7 @@
             class="audit-item compact"
           >
             <div class="audit-header">
-              <el-tag 
+              <el-tag
                 size="small"
                 :type="audit.result === 'approved' ? 'success' : 'danger'"
               >
@@ -163,17 +153,17 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="handleClose">关闭</el-button>
-        <el-button 
+        <el-button
           v-if="showActionButtons"
-          type="warning" 
+          type="warning"
           @click="handleSetTodo"
         >
           <el-icon><Timer /></el-icon>
           设置待办
         </el-button>
-        <el-button 
+        <el-button
           v-if="showActionButtons"
-          type="success" 
+          type="success"
           @click="handleUpdateStatus"
         >
           <el-icon><Edit /></el-icon>
@@ -189,24 +179,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { 
-  Document, User, Box, Money, ChatDotRound, List, Printer, Timer, Edit
+import {
+  Document, Box, Money, Printer, Timer, Edit, Van
 } from '@element-plus/icons-vue'
-import { maskPhone } from '@/utils/phone'
-import type { Order } from '@/stores/order'
+import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 
+// 使用any类型避免类型错误，因为这个对话框接收的是物流订单格式
 interface Props {
   visible: boolean
-  order: Order
+  order: any
   showActionButtons?: boolean
 }
 
 interface Emits {
   (e: 'update:visible', value: boolean): void
-  (e: 'update-status', order: Order): void
-  (e: 'set-todo', order: Order): void
+  (e: 'update-status', order: any): void
+  (e: 'set-todo', order: unknown): void
 }
 
 const props = defineProps<Props>()
@@ -218,28 +208,85 @@ const dialogVisible = computed({
 })
 
 // 格式化数字
-const formatNumber = (num: number) => {
+const formatNumber = (num: number | null | undefined) => {
+  if (num === null || num === undefined || isNaN(num)) {
+    return '0'
+  }
   return num.toLocaleString()
 }
 
 // 获取状态类型
 const getStatusType = (status: string) => {
-  const statusMap = {
-    'urgent': 'danger',
-    'normal': 'success',
-    'cod': 'warning'
+  const statusMap: Record<string, string> = {
+    // 订单状态
+    pending_transfer: 'info',
+    pending_audit: 'warning',
+    audit_rejected: 'danger',
+    pending_shipment: 'primary',
+    shipped: 'success',
+    delivered: 'success',
+    logistics_returned: 'warning',
+    logistics_cancelled: 'info',
+    package_exception: 'danger',
+    rejected: 'danger',
+    rejected_returned: 'warning',
+    cancelled: 'info',
+    draft: 'info',
+    // 物流状态
+    picked_up: 'primary',
+    in_transit: 'primary',
+    out_for_delivery: 'warning',
+    exception: 'danger',
+    returned: 'danger',
+    refunded: 'danger',
+    abnormal: 'danger'
   }
   return statusMap[status] || 'info'
 }
 
 // 获取状态文本
 const getStatusText = (status: string) => {
-  const statusMap = {
-    'urgent': '紧急',
-    'normal': '正常',
-    'cod': '代收款'
+  const statusMap: Record<string, string> = {
+    // 订单状态
+    pending_transfer: '待流转',
+    pending_audit: '待审核',
+    audit_rejected: '审核拒绝',
+    pending_shipment: '待发货',
+    shipped: '已发货',
+    delivered: '已签收',
+    logistics_returned: '物流部退回',
+    logistics_cancelled: '物流部取消',
+    package_exception: '包裹异常',
+    rejected: '拒收',
+    rejected_returned: '拒收已退回',
+    cancelled: '已取消',
+    draft: '草稿',
+    // 物流状态
+    picked_up: '已揽收',
+    in_transit: '运输中',
+    out_for_delivery: '派送中',
+    exception: '异常',
+    returned: '已退回',
+    refunded: '退货退款',
+    abnormal: '状态异常'
   }
-  return statusMap[status] || '未知'
+  return statusMap[status] || status || '未知'
+}
+
+// 获取订单来源文本
+const getOrderSourceText = (source: string | null | undefined) => {
+  if (!source) return '-'
+  const sourceMap: Record<string, string> = {
+    online_store: '🛒 线上商城',
+    wechat_mini: '📱 微信小程序',
+    wechat_service: '💬 微信客服',
+    phone_call: '📞 电话咨询',
+    offline_store: '🏪 线下门店',
+    referral: '👥 客户推荐',
+    advertisement: '📺 广告投放',
+    other: '🎯 其他渠道'
+  }
+  return sourceMap[source] || source
 }
 
 // 高亮关键词

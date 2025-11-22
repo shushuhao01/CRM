@@ -76,7 +76,7 @@
             </div>
           </div>
         </el-col>
-        
+
         <el-col :span="8">
           <div class="stats-card">
             <div class="card-header">
@@ -211,6 +211,78 @@
       </div>
     </div>
 
+    <!-- 部门成员列表 -->
+    <div class="members-section">
+      <div class="section-card">
+        <div class="card-header">
+          <h3>部门成员</h3>
+          <div class="header-actions-inline">
+            <el-button type="primary" size="small" :icon="Plus" @click="handleAddMember">
+              添加成员
+            </el-button>
+          </div>
+        </div>
+        <el-table
+          :data="departmentMembers"
+          style="width: 100%"
+          v-loading="membersLoading"
+        >
+          <el-table-column type="index" label="序号" width="60" />
+          <el-table-column prop="userName" label="姓名" width="180">
+            <template #default="{ row }">
+              <div class="member-name-cell">
+                <el-avatar :size="32" class="member-avatar">
+                  {{ row.userName?.charAt(0) }}
+                </el-avatar>
+                <span>{{ row.userName }}</span>
+                <el-tag
+                  v-if="department?.managerId && String(row.userId) === String(department.managerId)"
+                  type="warning"
+                  size="small"
+                  class="manager-badge"
+                >
+                  负责人
+                </el-tag>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="position" label="职位" width="150" />
+          <el-table-column prop="userId" label="用户ID" width="200" />
+          <el-table-column prop="joinDate" label="加入时间" width="180">
+            <template #default="{ row }">
+              {{ formatDateTime(row.joinDate) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
+                {{ row.status === 'active' ? '在职' : '离职' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="250" fixed="right">
+            <template #default="{ row }">
+              <el-button type="primary" link size="small" @click="handleEditMember(row)">
+                <el-icon><Edit /></el-icon>
+                编辑
+              </el-button>
+              <el-button type="warning" link size="small" @click="handleMoveMember(row)">
+                <el-icon><Rank /></el-icon>
+                移动
+              </el-button>
+              <el-button type="danger" link size="small" @click="handleRemoveMember(row)">
+                <el-icon><Delete /></el-icon>
+                移除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div v-if="departmentMembers.length === 0 && !membersLoading" class="empty-members">
+          <el-empty description="暂无成员数据" />
+        </div>
+      </div>
+    </div>
+
     <!-- 编辑部门弹窗 -->
     <DepartmentDialog
       v-model="editDialogVisible"
@@ -224,7 +296,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { createSafeNavigator } from '@/utils/navigation'
 import {
   ArrowLeft,
@@ -238,7 +310,10 @@ import {
   Setting,
   Collection,
   OfficeBuilding,
-  Key
+  Key,
+  Plus,
+  Rank,
+  Delete
 } from '@element-plus/icons-vue'
 import { useDepartmentStore, type Department } from '@/stores/department'
 import DepartmentDialog from '@/components/Department/DepartmentDialog.vue'
@@ -251,6 +326,8 @@ const departmentStore = useDepartmentStore()
 // 响应式数据
 const departmentId = ref(route.params.id as string)
 const editDialogVisible = ref(false)
+const membersLoading = ref(false)
+const departmentMembers = ref<unknown[]>([])
 
 // 计算属性
 const department = computed(() => {
@@ -269,7 +346,7 @@ const childDepartments = computed(() => {
 
 const groupedPermissions = computed(() => {
   if (!department.value?.permissions) return {}
-  
+
   const groups: Record<string, string[]> = {}
   department.value.permissions.forEach(permission => {
     const [category] = permission.split(':')
@@ -278,7 +355,7 @@ const groupedPermissions = computed(() => {
     }
     groups[category].push(permission)
   })
-  
+
   return groups
 })
 
@@ -302,6 +379,65 @@ const handleViewChild = (child: Department) => {
 const handleEditSuccess = () => {
   editDialogVisible.value = false
   ElMessage.success('部门信息已更新')
+}
+
+// 加载部门成员
+const loadDepartmentMembers = async () => {
+  membersLoading.value = true
+  try {
+    console.log('[DepartmentDetail] 加载部门成员，部门ID:', departmentId.value)
+    console.log('[DepartmentDetail] 当前部门信息:', department.value)
+
+    const members = departmentStore.getDepartmentMembers(departmentId.value)
+    console.log('[DepartmentDetail] 获取到的成员数:', members.length)
+    console.log('[DepartmentDetail] 成员列表:', members)
+
+    departmentMembers.value = members
+  } catch (error) {
+    console.error('加载部门成员失败:', error)
+    ElMessage.error('加载部门成员失败')
+  } finally {
+    membersLoading.value = false
+  }
+}
+
+// 添加成员
+const handleAddMember = () => {
+  safeNavigator.push(`/system/department/members/${departmentId.value}`)
+}
+
+// 编辑成员
+const handleEditMember = (member: unknown) => {
+  ElMessage.info('编辑成员功能开发中')
+}
+
+// 移动成员
+const handleMoveMember = (member: unknown) => {
+  ElMessage.info('移动成员功能开发中')
+}
+
+// 移除成员
+const handleRemoveMember = async (member: unknown) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要将 ${member.userName} 从该部门移除吗？`,
+      '确认移除',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    await departmentStore.removeDepartmentMember(departmentId.value, member.userId)
+    ElMessage.success('成员已移除')
+    loadDepartmentMembers()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('移除成员失败:', error)
+      ElMessage.error('移除成员失败')
+    }
+  }
 }
 
 const formatDateTime = (dateString?: string) => {
@@ -353,6 +489,8 @@ watch(
   (newId) => {
     if (newId) {
       departmentId.value = newId as string
+      // 重新加载成员数据
+      loadDepartmentMembers()
     }
   },
   { immediate: true }
@@ -362,6 +500,8 @@ onMounted(() => {
   if (!department.value) {
     ElMessage.error('部门不存在')
     safeNavigator.push('/system/departments')
+  } else {
+    loadDepartmentMembers()
   }
 })
 </script>
@@ -724,5 +864,50 @@ onMounted(() => {
 :deep(.el-tag) {
   border-radius: 6px;
   font-weight: 500;
+}
+
+.members-section {
+  margin-bottom: 24px;
+}
+
+.header-actions-inline {
+  display: flex;
+  gap: 8px;
+}
+
+.member-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.manager-badge {
+  margin-left: 8px;
+  font-weight: 600;
+}
+
+.member-avatar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.empty-members {
+  padding: 40px 0;
+}
+
+:deep(.el-table) {
+  border-radius: 8px;
+}
+
+:deep(.el-table th) {
+  background: #f8f9fa;
+  color: #303133;
+  font-weight: 600;
+}
+
+:deep(.el-table td) {
+  padding: 12px 0;
 }
 </style>

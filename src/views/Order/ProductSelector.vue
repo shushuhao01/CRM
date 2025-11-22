@@ -374,7 +374,7 @@ const allProducts = computed(() => {
 
 // 从store获取分类数据
 const categories = computed(() => {
-  return productStore.categories.map(cat => ({
+  return (productStore.categories || []).map(cat => ({
     id: cat.id,
     name: cat.name
   }))
@@ -587,7 +587,7 @@ const getStockStatusClass = (stock: number) => {
 onMounted(() => {
   // 确保商品数据已初始化
   if (productStore.products.length === 0) {
-    productStore.initMockData()
+    productStore.initData()
   }
   
   // 如果有预选产品，添加到购物车

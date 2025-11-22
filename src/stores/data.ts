@@ -101,7 +101,7 @@ export const useDataStore = createPersistentStore('data', () => {
     // 客户归属权限控制
     if (userStore.currentUser) {
       const currentUserId = userStore.currentUser.id
-      const isSuperAdmin = userStore.currentUser.role === 'admin'
+      const isSuperAdmin = userStore.currentUser.role === 'super_admin' || userStore.currentUser.role === 'admin'
       
       // 超级管理员可以查看所有数据
       if (!isSuperAdmin) {
@@ -213,9 +213,9 @@ export const useDataStore = createPersistentStore('data', () => {
       }
       
       const response = await dataApi.getDataList(requestParams)
-      dataList.value = response.list
-      total.value = response.total
-      summary.value = response.summary
+      dataList.value = response?.list || []
+      total.value = response?.total || 0
+      summary.value = response?.summary || {}
       
       return response
     } catch (error) {
@@ -713,8 +713,8 @@ export const useDataStore = createPersistentStore('data', () => {
     try {
       assignmentHistoryLoading.value = true
       const response = await dataApi.getAssignmentHistory(params)
-      assignmentHistory.value = response.list
-      assignmentHistoryTotal.value = response.total
+      assignmentHistory.value = response?.list || []
+      assignmentHistoryTotal.value = response?.total || 0
       return response
     } catch (error) {
       console.error('获取分配历史失败:', error)

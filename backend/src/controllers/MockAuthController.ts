@@ -12,6 +12,19 @@ export class MockAuthController {
     // 模拟用户数据
     const mockUsers = [
       {
+        id: 0,
+        username: 'superadmin',
+        password: 'super123456',
+        realName: '超级管理员',
+        email: 'superadmin@company.com',
+        role: 'super_admin',
+        status: 'active',
+        department: {
+          id: 1,
+          name: '管理部'
+        }
+      },
+      {
         id: 1,
         username: 'admin',
         password: 'admin123',
@@ -43,7 +56,7 @@ export class MockAuthController {
         password: 'sales123',
         realName: '销售员工',
         email: 'sales001@company.com',
-        role: 'sales',
+        role: 'sales_staff',
         status: 'active',
         department: {
           id: 2,
@@ -106,7 +119,7 @@ export class MockAuthController {
           status: user.status,
           departmentId: user.department?.id,
           department: user.department,
-          permissions: user.role === 'admin' ? ['*'] : ['read'], // 添加权限字段
+          permissions: (user.role === 'admin' || user.role === 'super_admin') ? ['*'] : ['read'], // 添加权限字段
           lastLoginAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
@@ -137,6 +150,12 @@ export class MockAuthController {
     // 根据用户名获取详细信息
     const getUserDetails = (username: string, role: string) => {
       switch (username) {
+        case 'superadmin':
+          return {
+            realName: '超级管理员',
+            email: 'superadmin@company.com',
+            department: { id: 1, name: '管理部' }
+          };
         case 'admin':
           return {
             realName: '系统管理员',
@@ -234,6 +253,12 @@ export class MockAuthController {
       // 模拟用户信息
       const getUserDetails = (username: string, role: string) => {
         switch (username) {
+          case 'superadmin':
+            return {
+              realName: '超级管理员',
+              email: 'superadmin@company.com',
+              department: { id: 1, name: '管理部' }
+            };
           case 'admin':
             return {
               realName: '系统管理员',
@@ -283,7 +308,7 @@ export class MockAuthController {
             status: 'active',
             departmentId: userDetails.department?.id,
             department: userDetails.department,
-            permissions: payload.role === 'admin' ? ['*'] : ['read'],
+            permissions: (payload.role === 'admin' || payload.role === 'super_admin') ? ['*'] : ['read'],
             lastLoginAt: new Date().toISOString(),
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
@@ -344,6 +369,12 @@ export class MockAuthController {
     // 获取用户详细信息
     const getUserDetails = (username: string, role: string) => {
       switch (username) {
+        case 'superadmin':
+          return {
+            realName: '超级管理员',
+            email: 'superadmin@company.com',
+            department: { id: 1, name: '管理部' }
+          };
         case 'admin':
           return {
             realName: '系统管理员',
@@ -391,7 +422,7 @@ export class MockAuthController {
       status: 'active',
       departmentId: userDetails.department?.id,
       department: userDetails.department,
-      permissions: userInfo.role === 'admin' ? ['*'] : ['read'],
+      permissions: (userInfo.role === 'admin' || userInfo.role === 'super_admin') ? ['*'] : ['read'],
       lastLoginAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()

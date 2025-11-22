@@ -114,7 +114,7 @@
         <div class="section-actions">
           <!-- 视图切换 -->
           <el-button-group class="view-toggle">
-            <el-button 
+            <el-button
               :type="viewMode === 'card' ? 'primary' : 'default'"
               @click="handleViewModeChange('card')"
               size="small"
@@ -122,7 +122,7 @@
               <el-icon><Grid /></el-icon>
               卡片
             </el-button>
-            <el-button 
+            <el-button
               :type="viewMode === 'table' ? 'primary' : 'default'"
               @click="handleViewModeChange('table')"
               size="small"
@@ -131,7 +131,7 @@
               列表
             </el-button>
           </el-button-group>
-          
+
           <el-button type="primary" @click="handleAddDepartment">
             <el-icon><Plus /></el-icon>
             新建部门
@@ -144,11 +144,11 @@
         <div v-if="filteredDepartments.length === 0" class="empty-state">
           <el-empty description="暂无部门数据" />
         </div>
-        
+
         <div v-else class="department-cards-grid">
-          <div 
-            v-for="department in filteredDepartments" 
-            :key="department.id" 
+          <div
+            v-for="department in filteredDepartments"
+            :key="department.id"
             class="department-card"
             :class="{ 'inactive': department.status === 'inactive' }"
           >
@@ -222,17 +222,18 @@
                    <el-icon><Edit /></el-icon>
                    编辑
                  </el-button>
-                 <el-dropdown trigger="click" @command="(command) => handleDropdownCommand(command, department)">
+                 <el-dropdown trigger="click" @command="(command: string) => handleDropdownCommand(command, department)">
                    <el-button type="primary" link size="small">
                      <el-icon><MoreFilled /></el-icon>
                      更多
                    </el-button>
                    <template #dropdown>
                      <el-dropdown-menu>
-                       <el-dropdown-item command="permission">
+                       <!-- 权限配置已注释 - 部门只做组织架构管理，不涉及权限配置 -->
+                       <!-- <el-dropdown-item command="permission">
                          <el-icon><Lock /></el-icon>
                          权限配置
-                       </el-dropdown-item>
+                       </el-dropdown-item> -->
                        <el-dropdown-item command="members">
                          <el-icon><UserFilled /></el-icon>
                          成员配置
@@ -251,9 +252,17 @@
                </div>
              </div>
 
-            <!-- 子部门指示器 -->
+            <!-- 子部门指示器 - 可点击查看子部门 -->
             <div v-if="department.children && department.children.length > 0" class="children-indicator">
-              <span>{{ department.children.length }}个子部门</span>
+              <el-button
+                type="primary"
+                link
+                @click="handleViewDepartment(department)"
+                class="children-link"
+              >
+                <el-icon><Collection /></el-icon>
+                {{ department.children.length }}个子部门
+              </el-button>
             </div>
           </div>
         </div>
@@ -262,8 +271,10 @@
       <!-- 表格视图 -->
       <div v-else-if="viewMode === 'table'" v-loading="departmentStore.loading">
         <DynamicTable
-          :data="filteredDepartments"
+          :data="filteredDepartments as any"
           :columns="tableColumns"
+          storage-key="department-list-columns"
+          title="部门列表"
           :show-selection="false"
           :show-index="true"
           :show-pagination="true"
@@ -333,28 +344,29 @@
               <el-icon><Edit /></el-icon>
               编辑
             </el-button>
-            <el-button type="primary" link size="small" @click="handlePermissionConfig(row)">
+            <!-- 权限配置已注释 - 部门只做组织架构管理，不涉及权限配置 -->
+            <!-- <el-button type="primary" link size="small" @click="handlePermissionConfig(row)">
               <el-icon><Lock /></el-icon>
               权限
-            </el-button>
+            </el-button> -->
             <el-button type="primary" link size="small" @click="handleMemberConfig(row)">
               <el-icon><UserFilled /></el-icon>
               成员
             </el-button>
-            <el-button 
-              type="warning" 
-              link 
-              size="small" 
+            <el-button
+              type="warning"
+              link
+              size="small"
               @click="handleMoveDepartment(row)"
               :disabled="row.level === 1"
             >
               <el-icon><Rank /></el-icon>
               移动
             </el-button>
-            <el-button 
-              type="danger" 
-              link 
-              size="small" 
+            <el-button
+              type="danger"
+              link
+              size="small"
               @click="handleDeleteDepartment(row)"
               :disabled="row.children && row.children.length > 0"
             >
@@ -587,7 +599,6 @@ import {
   View,
   Edit,
   MoreFilled,
-  Lock,
   Rank,
   Delete,
   Grid,
@@ -619,34 +630,34 @@ const viewMode = ref<'card' | 'table'>('card') // 视图模式：卡片或表格
 // 计算属性
 const filteredDepartments = computed(() => {
   let departments = departmentStore.departmentTree
-  
+
   // 搜索过滤
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase()
     departments = filterDepartmentsByKeyword(departments, keyword)
   }
-  
+
   // 状态过滤
   if (statusFilter.value) {
     departments = filterDepartmentsByStatus(departments, statusFilter.value)
   }
-  
+
   // 层级过滤
   if (levelFilter.value) {
     departments = filterDepartmentsByLevel(departments, parseInt(levelFilter.value))
   }
-  
+
   return departments
 })
 
 // 递归搜索部门
 const filterDepartmentsByKeyword = (departments: Department[], keyword: string): Department[] => {
   return departments.filter(dept => {
-    const matchesCurrent = dept.name.toLowerCase().includes(keyword) || 
+    const matchesCurrent = dept.name.toLowerCase().includes(keyword) ||
                           dept.code.toLowerCase().includes(keyword)
-    const matchesChildren = dept.children && dept.children.length > 0 && 
+    const matchesChildren = dept.children && dept.children.length > 0 &&
                            filterDepartmentsByKeyword(dept.children, keyword).length > 0
-    
+
     if (matchesCurrent || matchesChildren) {
       return {
         ...dept,
@@ -662,10 +673,19 @@ const filterDepartmentsByKeyword = (departments: Department[], keyword: string):
 
 // 按状态过滤
 const filterDepartmentsByStatus = (departments: Department[], status: string): Department[] => {
-  return departments.filter(dept => dept.status === status).map(dept => ({
-    ...dept,
-    children: dept.children ? filterDepartmentsByStatus(dept.children, status) : []
-  }))
+  return departments.map(dept => {
+    // 递归过滤子部门
+    const filteredChildren = dept.children ? filterDepartmentsByStatus(dept.children, status) : []
+
+    // 如果当前部门匹配状态，或者有子部门匹配，则保留
+    if (dept.status === status || filteredChildren.length > 0) {
+      return {
+        ...dept,
+        children: filteredChildren
+      }
+    }
+    return null
+  }).filter(dept => dept !== null) as Department[]
 }
 
 // 按层级过滤
@@ -713,10 +733,6 @@ const handleEditDepartment = (department: Department) => {
   currentDepartment.value = department
   isEdit.value = true
   dialogVisible.value = true
-}
-
-const handleViewDetail = (department: Department) => {
-  safeNavigator.push(`/system/department/detail/${department.id}`)
 }
 
 const handleViewDepartment = (department: Department) => {
@@ -768,18 +784,27 @@ const handleDeleteDepartment = async (department: Department) => {
   }
 }
 
+// 防止意外触发的标志
+const isUpdatingData = ref(false)
+
 // 处理部门状态切换
 const handleStatusToggle = async (department: Department) => {
+  // 如果正在更新数据，忽略状态切换事件
+  if (isUpdatingData.value) {
+    console.log('[Departments] 正在更新数据，忽略状态切换事件')
+    return
+  }
+
   const newStatus = department.status
   const statusText = newStatus === 'active' ? '启用' : '禁用'
-  
+
   try {
     // 设置加载状态
     department.statusLoading = true
-    
+
     // 调用store方法更新部门状态
     await departmentStore.updateDepartmentStatus(department.id, newStatus)
-    
+
     ElMessage.success(`部门${statusText}成功`)
   } catch (error) {
     // 如果失败，恢复原状态
@@ -791,18 +816,25 @@ const handleStatusToggle = async (department: Department) => {
   }
 }
 
-const handleDialogSuccess = () => {
+const handleDialogSuccess = async () => {
   dialogVisible.value = false
-  
-  // 强制刷新部门数据
-  nextTick(async () => {
-    // 强制触发响应式更新
+
+  try {
+    // 设置更新标志，防止状态切换事件被意外触发
+    isUpdatingData.value = true
+
+    // 重新加载部门数据
+    console.log('[Departments] 部门操作成功，重新加载数据')
+    await departmentStore.fetchDepartments()
+    await departmentStore.fetchDepartmentStats()
+
+    // 等待数据更新完成
     await nextTick()
-    
-    console.log('[Departments] 部门操作成功，当前部门数量:', departmentStore.departments.length)
+
+    console.log('[Departments] 数据重新加载完成，当前部门数量:', departmentStore.departments.length)
     console.log('[Departments] 部门树结构:', departmentStore.departmentTree.length)
     console.log('[Departments] 过滤后的部门数量:', filteredDepartments.value.length)
-    
+
     // 如果是新增操作且列表为空，尝试重置过滤条件
     if (!isEdit.value && filteredDepartments.value.length === 0 && departmentStore.departments.length > 0) {
       console.log('[Departments] 检测到新增部门但列表为空，重置过滤条件')
@@ -810,19 +842,23 @@ const handleDialogSuccess = () => {
       statusFilter.value = ''
       levelFilter.value = ''
     }
-  })
-  
-  ElMessage.success(isEdit.value ? '部门更新成功' : '部门创建成功')
+
+    ElMessage.success(isEdit.value ? '部门更新成功' : '部门创建成功')
+  } catch (error) {
+    console.error('[Departments] 重新加载数据失败:', error)
+    ElMessage.success(isEdit.value ? '部门更新成功' : '部门创建成功')
+  } finally {
+    // 清除更新标志
+    setTimeout(() => {
+      isUpdatingData.value = false
+      console.log('[Departments] 数据更新完成，恢复状态切换功能')
+    }, 1000) // 延迟1秒确保所有更新完成
+  }
 }
 
 const handleMoveSuccess = () => {
   moveDialogVisible.value = false
   ElMessage.success('部门移动成功')
-}
-
-const handleConfigPermissions = (department: Department) => {
-  currentDepartment.value = department
-  permissionDialogVisible.value = true
 }
 
 const handlePermissionSuccess = () => {
@@ -935,7 +971,7 @@ const tableColumns = computed(() => [
 
 ])
 
-const handleColumnSettingsChange = (columns) => {
+const handleColumnSettingsChange = (columns: unknown) => {
   console.log('列设置变化:', columns)
 }
 
@@ -1280,9 +1316,20 @@ onMounted(async () => {
   background: #f0f9ff;
   border: 1px solid #bae6fd;
   border-radius: 6px;
-  font-size: 12px;
-  color: #0369a1;
   text-align: center;
+}
+
+.children-link {
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: center;
+}
+
+.children-link:hover {
+  color: #409eff;
 }
 
 .dept-icon {

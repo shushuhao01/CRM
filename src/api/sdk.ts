@@ -62,7 +62,7 @@ export const downloadSDK = async (platform: 'android' | 'ios'): Promise<{
     let fileName: string
     
     if (platform === 'android') {
-      downloadUrl = '/api/v1/mobile-sdk/download/android'
+      downloadUrl = '/mobile-sdk/download/android'
       fileName = 'CRM-Mobile-SDK-v2.1.3.apk'
     } else {
       // iOS暂时使用PWA方式

@@ -1,6 +1,6 @@
 <template>
   <div class="customer-list">
-    
+
     <!-- 第一行：统计汇总卡片 -->
     <div class="summary-cards-row">
       <el-card class="summary-card">
@@ -14,7 +14,7 @@
           </div>
         </div>
       </el-card>
-      
+
       <el-card class="summary-card">
         <div class="card-content">
           <div class="card-icon active">
@@ -26,7 +26,7 @@
           </div>
         </div>
       </el-card>
-      
+
       <el-card class="summary-card">
         <div class="card-content">
           <div class="card-icon new">
@@ -38,7 +38,7 @@
           </div>
         </div>
       </el-card>
-      
+
       <el-card class="summary-card">
         <div class="card-content">
           <div class="card-icon high-value">
@@ -55,8 +55,8 @@
     <!-- 第二行：快捷筛选 -->
     <div class="quick-filters-row">
       <div class="quick-filter-buttons">
-        <el-button 
-          v-for="filter in quickFilterOptions" 
+        <el-button
+          v-for="filter in quickFilterOptions"
           :key="filter.value"
           :type="quickFilter === filter.value ? 'primary' : ''"
           :plain="quickFilter !== filter.value"
@@ -75,10 +75,10 @@
         <el-row :gutter="20">
           <el-col :span="6">
             <el-form-item label="关键词">
-              <el-input 
-                v-model="searchForm.keyword" 
-                placeholder="客户姓名、电话或编码" 
-                clearable 
+              <el-input
+                v-model="searchForm.keyword"
+                placeholder="客户姓名、电话或编码"
+                clearable
                 @keyup.enter="handleSearch"
               />
             </el-form-item>
@@ -158,30 +158,38 @@
     >
       <!-- 头部操作区 -->
       <template #header-actions>
-        <el-button 
-          type="primary" 
+        <el-button
+          type="primary"
           @click="handleAdd"
           v-if="userStore.isAdmin || userStore.currentUser?.role === 'manager'"
         >
           <el-icon><Plus /></el-icon>
           新建客户
         </el-button>
-        <el-button 
-          type="success" 
+        <el-button
+          type="success"
           @click="handleBatchExport"
-          v-if="showExportButtons"
+          v-if="canExport"
         >
           <el-icon><Download /></el-icon>
           批量导出
         </el-button>
-        <el-button 
-          type="warning" 
+        <el-button
+          type="warning"
           @click="handleSelectedExport"
           :disabled="selectedCustomers.length === 0"
-          v-if="showExportButtons && selectedCustomers.length > 0"
+          v-if="canExport && selectedCustomers.length > 0"
         >
           <el-icon><Download /></el-icon>
           导出选中 ({{ selectedCustomers.length }})
+        </el-button>
+        <el-button
+          v-if="canManageExport"
+          @click="showExportSettings"
+          class="export-settings-btn"
+          title="导出权限设置"
+        >
+          <el-icon><Setting /></el-icon>
         </el-button>
         <el-button @click="handleRefresh" :loading="loading">
           <el-icon><Refresh /></el-icon>
@@ -191,8 +199,8 @@
 
       <!-- 客户编码列 -->
       <template #column-code="{ row }">
-        <el-button 
-          type="text" 
+        <el-button
+          type="text"
           @click="handleView(row)"
           class="code-link"
         >
@@ -202,8 +210,8 @@
 
       <!-- 客户姓名列 -->
       <template #column-name="{ row }">
-        <el-button 
-          type="text" 
+        <el-button
+          type="text"
           @click="handleView(row)"
           class="name-link"
         >
@@ -213,8 +221,8 @@
 
       <!-- 手机号列 -->
       <template #column-phone="{ row }">
-        <el-button 
-          type="text" 
+        <el-button
+          type="text"
           @click="handleView(row)"
           class="phone-link"
         >
@@ -297,19 +305,33 @@
             <el-form-item label="分享给" required>
               <el-select
                 v-model="shareForm.targetUserId"
-                placeholder="请选择销售人员"
+                placeholder="请输入姓名或选择销售人员"
                 style="width: 100%"
                 filterable
+                clearable
+                :filter-method="filterUsers"
               >
                 <el-option
-                  v-for="user in salesUsers.filter(u => u.id !== currentShareCustomer.salesPersonId)"
+                  v-for="user in filteredSalesUsers"
                   :key="user.id"
-                  :label="`${user.name} (${user.department})`"
+                  :label="`${user.name} - ${user.department || '未分配部门'} (${getRoleText(user.role)})`"
                   :value="user.id"
-                />
+                >
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>{{ user.name }}</span>
+                    <span style="color: #8492a6; font-size: 12px;">
+                      {{ user.department || '未分配部门' }} | {{ getRoleText(user.role) }}
+                    </span>
+                  </div>
+                </el-option>
               </el-select>
+              <div class="user-select-tip" style="margin-top: 5px;">
+                <el-text size="small" type="info">
+                  共 {{ filteredSalesUsers.length }} 个可选用户
+                </el-text>
+              </div>
             </el-form-item>
-            
+
             <el-form-item label="时间限制" required>
               <el-select v-model="shareForm.timeLimit" style="width: 100%">
                 <el-option
@@ -325,7 +347,7 @@
                 </el-text>
               </div>
             </el-form-item>
-            
+
             <el-form-item label="分享备注">
               <el-input
                 v-model="shareForm.remark"
@@ -349,6 +371,108 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 导出权限设置对话框 -->
+    <el-dialog
+      v-model="exportSettingsVisible"
+      title="客户导出权限设置"
+      width="700px"
+      :close-on-click-modal="false"
+    >
+      <el-form
+        ref="exportFormRef"
+        :model="exportFormData"
+        label-width="140px"
+      >
+        <el-form-item label="启用导出功能">
+          <el-switch
+            v-model="exportFormData.enabled"
+            active-text="启用"
+            inactive-text="禁用"
+          />
+          <div class="form-item-tip">
+            关闭后，所有成员将无法使用客户导出功能
+          </div>
+        </el-form-item>
+
+        <el-form-item label="权限控制方式" v-if="exportFormData.enabled">
+          <el-radio-group v-model="exportFormData.permissionType">
+            <el-radio label="all">所有人可用</el-radio>
+            <el-radio label="role">按角色控制</el-radio>
+            <el-radio label="whitelist">白名单控制</el-radio>
+          </el-radio-group>
+          <div class="form-item-tip">
+            选择导出功能的权限控制方式
+          </div>
+        </el-form-item>
+
+        <el-form-item label="允许的角色" v-if="exportFormData.enabled && exportFormData.permissionType === 'role'">
+          <el-checkbox-group v-model="exportFormData.allowedRoles">
+            <el-checkbox label="super_admin">超级管理员</el-checkbox>
+            <el-checkbox label="admin">管理员</el-checkbox>
+            <el-checkbox label="department_manager">部门经理</el-checkbox>
+            <el-checkbox label="sales_staff">销售人员</el-checkbox>
+            <el-checkbox label="customer_service">客服人员</el-checkbox>
+          </el-checkbox-group>
+          <div class="form-item-tip">
+            选择允许使用导出功能的角色
+          </div>
+        </el-form-item>
+
+        <el-form-item label="白名单成员" v-if="exportFormData.enabled && exportFormData.permissionType === 'whitelist'">
+          <el-select
+            v-model="exportFormData.whitelist"
+            multiple
+            filterable
+            placeholder="选择允许导出的成员"
+            style="width: 100%;"
+          >
+            <el-option
+              v-for="user in allUsers"
+              :key="user.id"
+              :label="`${user.name} (${user.id})`"
+              :value="user.id"
+            />
+          </el-select>
+          <div class="form-item-tip">
+            只有白名单中的成员可以使用导出功能，其他人看不到导出按钮
+          </div>
+        </el-form-item>
+
+        <el-form-item label="导出限制" v-if="exportFormData.enabled">
+          <el-input-number
+            v-model="exportFormData.dailyLimit"
+            :min="0"
+            :max="100"
+            placeholder="每日导出次数限制"
+          />
+          <span style="margin-left: 10px;">次/天（0表示不限制）</span>
+          <div class="form-item-tip">
+            限制每个成员每天的导出次数，防止滥用
+          </div>
+        </el-form-item>
+      </el-form>
+
+      <el-divider />
+
+      <div class="stats-section">
+        <h3>导出统计</h3>
+        <el-descriptions :column="3" border>
+          <el-descriptions-item label="今日导出次数">{{ exportStats.todayCount }}</el-descriptions-item>
+          <el-descriptions-item label="本周导出次数">{{ exportStats.weekCount }}</el-descriptions-item>
+          <el-descriptions-item label="本月导出次数">{{ exportStats.monthCount }}</el-descriptions-item>
+        </el-descriptions>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="exportSettingsVisible = false">取消</el-button>
+          <el-button type="primary" @click="saveExportSettings">保存设置</el-button>
+          <el-button @click="resetExportSettings">恢复默认</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -356,7 +480,7 @@
 import { ref, reactive, onMounted, onUnmounted, computed, watch, onActivated, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Download, Refresh, User, UserFilled, Star, Search } from '@element-plus/icons-vue'
+import { Plus, Download, Refresh, User, UserFilled, Star, Search, Setting } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
 import { useCustomerStore } from '@/stores/customer'
@@ -367,6 +491,7 @@ import { SensitiveInfoType } from '@/services/permission'
 import { exportBatchCustomers, exportSingleCustomer, type ExportCustomer } from '@/utils/export'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { createSafeNavigator } from '@/utils/navigation'
+import customerShareApi, { type ShareRequest } from '@/api/customerShare'
 
 // 接口定义
 interface Customer {
@@ -402,7 +527,7 @@ const ensureUserLoggedIn = async () => {
   console.log('=== 检查用户登录状态 ===')
   console.log('当前用户:', userStore.currentUser)
   console.log('是否已登录:', userStore.isLoggedIn)
-  
+
   if (!userStore.isLoggedIn || !userStore.currentUser) {
     console.log('用户未登录，跳转到登录页面...')
     ElMessage.warning('请先登录')
@@ -416,7 +541,7 @@ const ensureUserLoggedIn = async () => {
 
 // 响应式数据
 const loading = ref(false)
-const selectedCustomers = ref([])
+const selectedCustomers = ref<Customer[]>([])
 const searchForm = reactive({
   keyword: '',  // 统一搜索框，支持姓名、手机号、编码
   level: '',
@@ -452,13 +577,43 @@ const pagination = reactive({
   total: 0
 })
 
-// 销售人员数据
-const salesUsers = ref([
-  { id: 'sales1', name: '张销售', department: '销售一部' },
-  { id: 'sales2', name: '李销售', department: '销售二部' },
-  { id: 'sales3', name: '王销售', department: '销售一部' },
-  { id: 'admin', name: '管理员', department: '管理部' }
-])
+// 导出权限设置相关数据
+const exportSettingsVisible = ref(false)
+const exportFormRef = ref()
+const exportFormData = reactive({
+  enabled: true,
+  permissionType: 'all', // all | role | whitelist
+  allowedRoles: ['super_admin', 'admin'],
+  whitelist: [],
+  dailyLimit: 0
+})
+
+// 导出统计
+const exportStats = reactive({
+  todayCount: 0,
+  weekCount: 0,
+  monthCount: 0
+})
+
+// 所有用户列表（用于白名单选择）
+const allUsers = computed(() => {
+  return userStore.users || []
+})
+
+// 销售人员数据 - 从用户列表动态加载
+const salesUsers = computed(() => {
+  console.log('[CustomerShare] userStore.users:', userStore.users.length)
+  const filtered = userStore.users.filter(u =>
+    ['sales_staff', 'department_manager', 'admin', 'super_admin'].includes(u.role)
+  ).map(u => ({
+    id: u.id,
+    name: u.name,
+    department: u.department || '未分配部门',
+    role: u.role
+  }))
+  console.log('[CustomerShare] 可分享的销售人员:', filtered.length)
+  return filtered
+})
 
 // 权限检查
 const hasExportPermission = computed(() => {
@@ -466,7 +621,7 @@ const hasExportPermission = computed(() => {
   if (userStore.isSuperAdmin) {
     return true
   }
-  
+
   // 检查是否有customer.export权限
   return userStore.permissions.includes('customer.export')
 })
@@ -474,6 +629,55 @@ const hasExportPermission = computed(() => {
 // 是否显示导出按钮
 const showExportButtons = computed(() => {
   return userStore.isSuperAdmin || hasExportPermission.value
+})
+
+// 检查是否可以管理导出设置（仅超级管理员）
+const canManageExport = computed(() => {
+  const currentUser = userStore.currentUser
+  if (!currentUser) return false
+  return currentUser.role === 'super_admin'
+})
+
+// 检查是否有导出权限
+const canExport = computed(() => {
+  const exportConfigStr = localStorage.getItem('crm_customer_export_config')
+  if (!exportConfigStr) {
+    return true // 默认允许
+  }
+
+  try {
+    const exportConfig = JSON.parse(exportConfigStr)
+
+    // 功能未启用
+    if (!exportConfig.enabled) {
+      return false
+    }
+
+    const currentUser = userStore.currentUser
+    if (!currentUser) {
+      return false
+    }
+
+    // 所有人可用
+    if (exportConfig.permissionType === 'all') {
+      return true
+    }
+
+    // 按角色控制
+    if (exportConfig.permissionType === 'role') {
+      return exportConfig.allowedRoles?.includes(currentUser.role) || false
+    }
+
+    // 白名单控制
+    if (exportConfig.permissionType === 'whitelist') {
+      return exportConfig.whitelist?.includes(currentUser.id) || false
+    }
+
+    return false
+  } catch (error) {
+    console.error('解析导出配置失败:', error)
+    return true
+  }
 })
 
 // 表格列配置
@@ -485,18 +689,18 @@ const tableColumns = computed(() => [
   { prop: 'address', label: '地址', minWidth: 180, showOverflowTooltip: true, visible: true },
   { prop: 'level', label: '客户等级', width: 90, visible: true },
   { prop: 'allocationSource', label: '来源', width: 70, visible: true },
-  { 
-    prop: 'status', 
-    label: '客户状态', 
-    width: 90, 
-    visible: userStore.isManager || userStore.isSuperAdmin 
+  {
+    prop: 'status',
+    label: '客户状态',
+    width: 90,
+    visible: userStore.isManager || userStore.isSuperAdmin
   },
   { prop: 'salesPerson', label: '负责销售', minWidth: 100, visible: true },
-  { 
-    prop: 'shareStatus', 
-    label: '分享状态', 
-    width: 120, 
-    visible: userStore.isAdmin 
+  {
+    prop: 'shareStatus',
+    label: '分享状态',
+    width: 120,
+    visible: userStore.isAdmin
   },
   { prop: 'orderCount', label: '订单数', width: 70, visible: true },
   { prop: 'createTime', label: '添加时间', width: 160, visible: true }
@@ -504,11 +708,13 @@ const tableColumns = computed(() => [
 
 // 计算搜索结果 - 直接使用所有客户数据，与订单和商品模块保持一致
 const searchResults = computed(() => {
-  console.log('=== searchResults computed 被调用 ===')
+  console.log('=== searchResults computed ===')
+  console.log('customerStore实例ID:', customerStore.instanceId)
   console.log('customerStore.customers.length:', customerStore.customers.length)
-  
+
   // 直接使用所有客户数据，不进行权限过滤（与订单和商品模块保持一致）
-  let results = customerStore.customers
+  // 注意：这里直接使用customerStore.customers，它会自动响应数据变化
+  let results = [...customerStore.customers] // 使用展开运算符创建新数组，确保响应式更新
 
   // 应用搜索过滤
   if (searchForm.keyword) {
@@ -516,37 +722,37 @@ const searchResults = computed(() => {
     results = results.filter(customer => {
       // 搜索客户姓名
       if (customer.name.toLowerCase().includes(keyword)) return true
-      
+
       // 搜索电话号码
       if (customer.phone.includes(searchForm.keyword)) return true
-      
+
       // 搜索客户编码
       if (customer.code && customer.code.toLowerCase().includes(keyword)) return true
-      
+
       // 搜索微信号
       if (customer.wechatId && customer.wechatId.toLowerCase().includes(keyword)) return true
-      
+
       // 搜索邮箱
       if (customer.email && customer.email.toLowerCase().includes(keyword)) return true
-      
+
       // 搜索公司名称
       if (customer.company && customer.company.toLowerCase().includes(keyword)) return true
-      
+
       // TODO: 后续可以添加订单号和物流单号的搜索
       // 这需要查询订单数据来匹配客户
-      
+
       return false
     })
   }
 
   if (searchForm.level) {
-    results = results.filter(customer => 
+    results = results.filter(customer =>
       customer.level === searchForm.level
     )
   }
 
   if (searchForm.status) {
-    results = results.filter(customer => 
+    results = results.filter(customer =>
       customer.status === searchForm.status
     )
   }
@@ -555,7 +761,7 @@ const searchResults = computed(() => {
     const [startDate, endDate] = searchForm.dateRange
     results = results.filter(customer => {
       if (!customer.createTime) return false
-      
+
       // 处理不同格式的日期
       let createTime: Date
       try {
@@ -569,10 +775,10 @@ const searchResults = computed(() => {
         console.warn('解析createTime失败:', customer.createTime, error)
         return false
       }
-      
+
       const start = new Date(startDate + 'T00:00:00')
       const end = new Date(endDate + 'T23:59:59')
-      
+
       return createTime >= start && createTime <= end
     })
   }
@@ -594,29 +800,53 @@ const totalCount = computed(() => searchResults.value.length)
 
 // 使用computed获取客户列表数据
 const customerList = computed(() => {
+  console.log('=== customerList computed ===')
+  console.log('searchResults.value.length:', searchResults.value.length)
+  console.log('pagination:', pagination)
+
   const start = (pagination.page - 1) * pagination.size
   const end = start + pagination.size
-  return searchResults.value.slice(start, end)
+
+  console.log('分页范围:', start, 'to', end)
+
+  const result = searchResults.value.slice(start, end)
+  console.log('分页结果数量:', result.length)
+  console.log('分页结果:', result.map(c => ({ name: c.name, phone: c.phone })))
+
+  return result
 })
 
 
 
 const getLevelType = (level: string) => {
   const types: Record<string, string> = {
-    normal: '',
+    bronze: '',
     silver: 'info',
-    gold: 'warning'
+    gold: 'warning',
+    diamond: 'danger',
+    // 兼容旧数据
+    normal: '',
+    vip: 'warning',
+    svip: 'danger'
   }
   return types[level] || ''
 }
 
 const getLevelText = (level: string) => {
   const texts: Record<string, string> = {
-    normal: '普通',
-    silver: '白银',
-    gold: '黄金'
+    bronze: '铜牌客户',
+    silver: '银牌客户',
+    gold: '金牌客户',
+    diamond: '钻石客户',
+    // 兼容旧数据
+    normal: '铜牌客户',
+    vip: '金牌客户',
+    svip: '钻石客户',
+    '普通客户': '铜牌客户',
+    'VIP客户': '金牌客户',
+    'SVIP客户': '钻石客户'
   }
-  return texts[level] || '普通'
+  return texts[level] || '铜牌客户'
 }
 
 const getStatusType = (status: string) => {
@@ -655,19 +885,19 @@ const handleRefresh = () => {
 const handleQuickFilterChange = (value: string) => {
   // 更新快捷筛选器的选中状态
   quickFilter.value = value
-  
+
   const today = new Date()
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
-  
+
   const weekAgo = new Date(today)
   weekAgo.setDate(weekAgo.getDate() - 7)
-  
+
   const monthAgo = new Date(today)
   monthAgo.setDate(monthAgo.getDate() - 30)
-  
+
   const yearStart = new Date(today.getFullYear(), 0, 1)
-  
+
   switch (value) {
     case 'today':
       searchForm.dateRange = [
@@ -703,7 +933,7 @@ const handleQuickFilterChange = (value: string) => {
       searchForm.dateRange = []
       break
   }
-  
+
   // 自动触发搜索
   handleSearch()
 }
@@ -733,25 +963,25 @@ const handleCall = async (row: Customer) => {
   try {
     // 模拟外呼API调用
     ElMessage.info('正在发起外呼...')
-    
+
     // 这里应该调用实际的外呼API
     // await callCustomer(row.phone)
-    
+
     // 模拟外呼成功
     setTimeout(() => {
       ElMessage.success('外呼已发起')
-      
-      // 发送客户来电消息提醒
+
+      // 发送外呼消息提醒(不是客户来电,是主动外呼)
       notificationStore.sendMessage(
         notificationStore.MessageType.CUSTOMER_CALL,
-        `客户 ${row.name}（${displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '')}）外呼已发起`,
+        `已向客户 ${row.name}（${displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '')}）发起外呼`,
         {
           relatedId: row.id,
           relatedType: 'customer',
           actionUrl: `/customer/detail/${row.id}?tab=followup`
         }
       )
-      
+
       // 跳转到客户详情页面的跟进记录tab
       safeNavigator.push({
         name: 'CustomerDetail',
@@ -770,18 +1000,161 @@ const handleSelectionChange = (selection: Customer[]) => {
   selectedCustomers.value = selection
 }
 
+/**
+ * 显示导出设置对话框
+ */
+const showExportSettings = () => {
+  // 加载当前配置
+  loadExportConfig()
+  // 加载导出统计
+  loadExportStats()
+  // 显示对话框
+  exportSettingsVisible.value = true
+}
+
+/**
+ * 加载导出配置
+ */
+const loadExportConfig = () => {
+  try {
+    const exportConfigStr = localStorage.getItem('crm_customer_export_config')
+    if (exportConfigStr) {
+      const exportConfig = JSON.parse(exportConfigStr)
+      Object.assign(exportFormData, exportConfig)
+    }
+  } catch (error) {
+    console.error('加载导出配置失败:', error)
+  }
+}
+
+/**
+ * 加载导出统计
+ */
+const loadExportStats = () => {
+  try {
+    const statsStr = localStorage.getItem('crm_customer_export_stats')
+    if (!statsStr) {
+      exportStats.todayCount = 0
+      exportStats.weekCount = 0
+      exportStats.monthCount = 0
+      return
+    }
+
+    const stats = JSON.parse(statsStr)
+    const today = new Date().toISOString().split('T')[0]
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    exportStats.todayCount = stats[today] || 0
+    exportStats.weekCount = Object.keys(stats)
+      .filter(date => date >= weekAgo)
+      .reduce((sum, date) => sum + stats[date], 0)
+    exportStats.monthCount = Object.keys(stats)
+      .filter(date => date >= monthAgo)
+      .reduce((sum, date) => sum + stats[date], 0)
+  } catch (error) {
+    console.error('加载导出统计失败:', error)
+  }
+}
+
+/**
+ * 保存导出设置
+ */
+const saveExportSettings = () => {
+  const exportConfig = {
+    enabled: exportFormData.enabled,
+    permissionType: exportFormData.permissionType,
+    allowedRoles: exportFormData.allowedRoles,
+    whitelist: exportFormData.whitelist,
+    dailyLimit: exportFormData.dailyLimit
+  }
+
+  localStorage.setItem('crm_customer_export_config', JSON.stringify(exportConfig))
+  ElMessage.success('客户导出权限设置已保存并全局生效')
+  exportSettingsVisible.value = false
+}
+
+/**
+ * 恢复默认导出设置
+ */
+const resetExportSettings = () => {
+  exportFormData.enabled = true
+  exportFormData.permissionType = 'all'
+  exportFormData.allowedRoles = ['super_admin', 'admin']
+  exportFormData.whitelist = []
+  exportFormData.dailyLimit = 0
+
+  ElMessage.success('已恢复默认设置')
+}
+
+/**
+ * 检查导出限制
+ */
+const checkExportLimit = () => {
+  try {
+    const exportConfigStr = localStorage.getItem('crm_customer_export_config')
+    if (!exportConfigStr) {
+      return true
+    }
+
+    const exportConfig = JSON.parse(exportConfigStr)
+    const dailyLimit = exportConfig.dailyLimit || 0
+
+    if (dailyLimit === 0) {
+      return true // 不限制
+    }
+
+    const today = new Date().toISOString().split('T')[0]
+    const statsStr = localStorage.getItem('crm_customer_export_stats')
+    const stats = statsStr ? JSON.parse(statsStr) : {}
+    const todayCount = stats[today] || 0
+
+    if (todayCount >= dailyLimit) {
+      ElMessage.warning(`每日导出次数已达上限（${dailyLimit}次）`)
+      return false
+    }
+
+    return true
+  } catch (error) {
+    console.error('检查导出限制失败:', error)
+    return true
+  }
+}
+
+/**
+ * 记录导出统计
+ */
+const recordExportStats = () => {
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    const statsStr = localStorage.getItem('crm_customer_export_stats')
+    const stats = statsStr ? JSON.parse(statsStr) : {}
+
+    stats[today] = (stats[today] || 0) + 1
+
+    localStorage.setItem('crm_customer_export_stats', JSON.stringify(stats))
+  } catch (error) {
+    console.error('记录导出统计失败:', error)
+  }
+}
+
 // 批量导出所有客户
 const handleBatchExport = async () => {
-  if (!showExportButtons.value) {
+  // 检查导出限制
+  if (!checkExportLimit()) {
+    return
+  }
+
+  if (!canExport.value) {
     ElMessage.warning('您没有客户导出权限')
     return
   }
 
   try {
-    const confirmMessage = userStore.isSuperAdmin 
+    const confirmMessage = userStore.isSuperAdmin
       ? '确定要导出所有客户数据吗？导出的数据将包含完整的客户信息。'
       : '确定要导出所有客户数据吗？敏感信息将进行脱敏处理。'
-    
+
     await ElMessageBox.confirm(
       confirmMessage,
       '批量导出确认',
@@ -793,7 +1166,7 @@ const handleBatchExport = async () => {
     )
 
     loading.value = true
-    
+
     try {
       // 准备导出数据
       const exportCustomers: ExportCustomer[] = searchResults.value.map(customer => ({
@@ -820,7 +1193,10 @@ const handleBatchExport = async () => {
 
       // 使用新的导出工具函数
       const filename = exportBatchCustomers(exportCustomers, hasExportPermission.value)
-      
+
+      // 记录导出统计
+      recordExportStats()
+
       ElMessage.success(`客户数据导出成功：${filename}`)
     } catch (exportError) {
       console.error('导出失败:', exportError)
@@ -842,16 +1218,21 @@ const handleSelectedExport = async () => {
     return
   }
 
-  if (!showExportButtons.value) {
+  // 检查导出限制
+  if (!checkExportLimit()) {
+    return
+  }
+
+  if (!canExport.value) {
     ElMessage.warning('您没有客户导出权限')
     return
   }
 
   try {
-    const confirmMessage = userStore.isSuperAdmin 
+    const confirmMessage = userStore.isSuperAdmin
       ? `确定要导出选中的 ${selectedCustomers.value.length} 个客户数据吗？导出的数据将包含完整的客户信息。`
       : `确定要导出选中的 ${selectedCustomers.value.length} 个客户数据吗？敏感信息将进行脱敏处理。`
-    
+
     await ElMessageBox.confirm(
       confirmMessage,
       '导出选中客户',
@@ -863,7 +1244,7 @@ const handleSelectedExport = async () => {
     )
 
     loading.value = true
-    
+
     try {
       // 准备导出数据
       const exportCustomers: ExportCustomer[] = selectedCustomers.value.map(customer => ({
@@ -890,7 +1271,10 @@ const handleSelectedExport = async () => {
 
       // 使用新的导出工具函数
       const filename = exportBatchCustomers(exportCustomers, hasExportPermission.value)
-      
+
+      // 记录导出统计
+      recordExportStats()
+
       ElMessage.success(`选中客户数据导出成功：${filename}`)
       selectedCustomers.value = []
     } catch (exportError) {
@@ -913,7 +1297,43 @@ const shareForm = reactive({
   timeLimit: 7, // 默认7天
   remark: ''
 })
-const currentShareCustomer = ref(null)
+const currentShareCustomer = ref<Customer | null>(null)
+const userSearchKeyword = ref('')
+
+// 过滤后的销售人员列表
+const filteredSalesUsers = computed(() => {
+  if (!currentShareCustomer.value) return []
+
+  let users = salesUsers.value.filter(u => u.id !== currentShareCustomer.value?.salesPersonId)
+
+  if (userSearchKeyword.value) {
+    const keyword = userSearchKeyword.value.toLowerCase()
+    users = users.filter(u =>
+      u.name.toLowerCase().includes(keyword) ||
+      (u.department && u.department.toLowerCase().includes(keyword)) ||
+      u.id.toLowerCase().includes(keyword)
+    )
+  }
+
+  return users
+})
+
+// 用户搜索过滤方法
+const filterUsers = (query: string) => {
+  userSearchKeyword.value = query
+}
+
+// 获取角色文本
+const getRoleText = (role: string) => {
+  const roleMap: Record<string, string> = {
+    'super_admin': '超级管理员',
+    'admin': '管理员',
+    'department_manager': '部门经理',
+    'sales_staff': '销售人员',
+    'customer_service': '客服人员'
+  }
+  return roleMap[role] || role
+}
 
 // 时间限制选项
 const timeLimitOptions = [
@@ -936,6 +1356,7 @@ const handleShare = async (row: Customer) => {
   shareForm.targetUserId = ''
   shareForm.timeLimit = 7
   shareForm.remark = ''
+  userSearchKeyword.value = '' // 重置搜索关键词
   showShareDialog.value = true
 }
 
@@ -946,35 +1367,52 @@ const confirmShare = async () => {
     return
   }
 
+  if (!currentShareCustomer.value) {
+    ElMessage.warning('请选择要分享的客户')
+    return
+  }
+
   try {
     loading.value = true
-    
-    // 计算到期时间
-    const expireTime = shareForm.timeLimit === 0 ? null : new Date(Date.now() + shareForm.timeLimit * 24 * 60 * 60 * 1000)
-    
-    // 模拟分享API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    // 更新客户归属和分享信息
+
     const customer = currentShareCustomer.value
-    const originalOwner = customer.salesPersonId
-    customer.salesPersonId = shareForm.targetUserId
-    customer.shareInfo = {
-      originalOwner,
-      sharedBy: userStore.currentUser.id,
-      sharedAt: new Date().toISOString(),
-      expireTime: expireTime ? expireTime.toISOString() : null,
+
+    // 调用真实的分享API
+    const shareRequest: ShareRequest = {
+      customerId: customer.id,
+      sharedTo: shareForm.targetUserId,
       timeLimit: shareForm.timeLimit,
-      remark: shareForm.remark,
-      status: 'active'
+      remark: shareForm.remark
     }
-    
-    const targetUser = salesUsers.value.find(user => user.id === shareForm.targetUserId)
-    const timeLimitText = shareForm.timeLimit === 0 ? '永久' : `${shareForm.timeLimit}天`
-    
-    ElMessage.success(`客户 ${customer.name} 已成功分享给 ${targetUser.name}，时间限制：${timeLimitText}`)
-    showShareDialog.value = false
+
+    const result = await customerShareApi.shareCustomer(shareRequest)
+
+    if (result.success) {
+      const targetUser = salesUsers.value.find(user => user.id === shareForm.targetUserId)
+      const timeLimitText = shareForm.timeLimit === 0 ? '永久' : `${shareForm.timeLimit}天`
+
+      ElMessage.success(`客户 ${customer.name} 已成功分享给 ${targetUser?.name || '目标用户'}，时间限制：${timeLimitText}`)
+
+      // 发送系统消息提醒
+      notificationStore.sendMessage(
+        notificationStore.MessageType.CUSTOMER_SHARE,
+        `客户 ${customer.name} 已分享给 ${targetUser?.name || '目标用户'}（时间限制：${timeLimitText}）`,
+        {
+          relatedId: customer.id,
+          relatedType: 'customer',
+          actionUrl: `/customer/detail/${customer.id}`
+        }
+      )
+
+      // 刷新客户列表
+      await loadCustomerList(true)
+
+      showShareDialog.value = false
+    } else {
+      ElMessage.error(result.message || '分享失败')
+    }
   } catch (error) {
+    console.error('分享失败:', error)
     ElMessage.error('分享失败，请重试')
   } finally {
     loading.value = false
@@ -990,33 +1428,17 @@ const getSalesPersonName = (salesPersonId: string) => {
 
 
 // 检查并回收过期分享
-const checkExpiredShares = () => {
-  const now = new Date()
-  let expiredCount = 0
-  
-  customerStore.customers.forEach(customer => {
-    if (customer.shareInfo && customer.shareInfo.status === 'active' && customer.shareInfo.expireTime) {
-      const expireTime = new Date(customer.shareInfo.expireTime)
-      if (now >= expireTime) {
-        // 回收到原归属人
-        customer.salesPersonId = customer.shareInfo.originalOwner
-        customer.shareInfo.status = 'expired'
-        customer.shareInfo.expiredAt = now.toISOString()
-        expiredCount++
-        
-        // 发送通知
-        const originalOwner = salesUsers.value.find(user => user.id === customer.shareInfo.originalOwner)
-        const sharedUser = salesUsers.value.find(user => user.id === customer.shareInfo.sharedBy)
-        
-        if (originalOwner && sharedUser) {
-          ElMessage.info(`客户 ${customer.name} 的分享已到期，已自动回收到 ${originalOwner.name}`)
-        }
-      }
+const checkExpiredShares = async () => {
+  try {
+    const expiredCount = await customerShareApi.autoRecallExpiredShares()
+
+    if (expiredCount > 0) {
+      console.log(`[CustomerShare] 自动回收了 ${expiredCount} 个过期分享`)
+      // 重新加载客户列表
+      await loadCustomerList(true)
     }
-  })
-  
-  if (expiredCount > 0) {
-    loadCustomers() // 重新加载客户列表
+  } catch (error) {
+    console.error('[CustomerShare] 检查过期分享失败:', error)
   }
 }
 
@@ -1025,14 +1447,14 @@ const formatRemainingTime = (expireTime: string) => {
   const now = new Date()
   const expire = new Date(expireTime)
   const diff = expire.getTime() - now.getTime()
-  
+
   if (diff <= 0) {
     return '已过期'
   }
-  
+
   const days = Math.floor(diff / (1000 * 60 * 60 * 24))
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-  
+
   if (days > 0) {
     return `${days}天${hours}小时`
   } else if (hours > 0) {
@@ -1048,16 +1470,16 @@ const getShareStatusType = (shareInfo: { status: string; expireTime?: string } |
   if (!shareInfo || shareInfo.status !== 'active') {
     return ''
   }
-  
+
   if (!shareInfo.expireTime) {
     return 'success' // 永久分享
   }
-  
+
   const now = new Date()
   const expire = new Date(shareInfo.expireTime)
   const diff = expire.getTime() - now.getTime()
   const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-  
+
   if (days <= 1) {
     return 'danger' // 即将过期
   } else if (days <= 3) {
@@ -1106,7 +1528,7 @@ const handleExport = async () => {
       const exportData = customerList.value.map(customer => {
         const salesPerson = salesUsers.value.find(user => user.id === customer.salesPersonId)
         const createdByUser = salesUsers.value.find(user => user.id === customer.createdBy)
-        
+
         return {
           '客户姓名': customer.name,
           '手机号': displaySensitiveInfoNew(customer.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || ''),
@@ -1119,16 +1541,16 @@ const handleExport = async () => {
           '创建时间': customer.createTime
         }
       })
-      
+
       // 创建CSV内容
       const headers = Object.keys(exportData[0] || {})
       const csvContent = [
         headers.join(','),
-        ...exportData.map(row => 
+        ...exportData.map(row =>
           headers.map(header => `"${row[header] || ''}"`).join(',')
         )
       ].join('\n')
-      
+
       // 创建并下载文件
       const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
       const link = document.createElement('a')
@@ -1145,7 +1567,10 @@ const handleExport = async () => {
       // 清理 URL 对象
       URL.revokeObjectURL(url)
     }, '正在导出客户数据...')
-    
+
+    // 记录导出统计
+    recordExportStats()
+
     ElMessage.success('客户数据导出成功')
   } catch (error) {
     appStore.showError('导出客户数据失败', error as Error)
@@ -1155,46 +1580,19 @@ const handleExport = async () => {
 const loadCustomerList = async (forceReload = false) => {
   try {
     loading.value = true
-    
-    console.log('=== loadCustomerList 开始 ===')
-    console.log('forceReload:', forceReload)
-    console.log('customerStore.customers.length:', customerStore.customers.length)
-    
-    // 只在强制刷新时才从API重新加载数据
-    // 或者在客户数据完全为空时进行初始化
-    if (forceReload) {
-      console.log('强制刷新：重新从API加载客户数据')
-      await customerStore.forceRefreshCustomers()
-      
-      // 强制刷新后，等待响应式更新完成
-      await nextTick()
-      console.log('强制刷新完成，当前客户数量:', customerStore.customers.length)
-    } else if (customerStore.customers.length === 0) {
-      console.log('初始化：客户数据为空，从API加载')
-      await customerStore.loadCustomers()
-      
-      // 初始化加载后，等待响应式更新完成
-      await nextTick()
-      console.log('初始化加载完成，当前客户数量:', customerStore.customers.length)
-    } else {
-      console.log('使用现有客户数据，保持本地新增的客户')
-    }
-    
+
+    // 简化逻辑：直接使用本地数据，与商品模块保持一致
+    // 不调用API，避免覆盖本地新增的客户数据
+
     // 确保搜索结果已更新
     await nextTick()
-    
-    console.log('当前客户数量:', customerStore.customers.length)
-    console.log('搜索结果数量:', searchResults.value.length)
-    
+
     // 更新分页总数（基于搜索结果）
     pagination.total = searchResults.value.length
-    console.log('分页总数:', pagination.total)
-    
+
     // 加载统计数据
     await loadSummaryData()
-    
-    console.log('=== loadCustomerList 完成 ===')
-    
+
   } catch (error) {
     console.error('loadCustomerList 错误:', error)
     appStore.showError('加载客户列表失败', error as Error)
@@ -1210,21 +1608,21 @@ const loadSummaryData = () => {
     const customers = searchResults.value
     const today = new Date()
     const todayStr = today.toISOString().split('T')[0]
-    
+
     // 总客户数（筛选后的）
     summaryData.totalCustomers = customers.length
-    
+
     // 活跃客户数（状态为active的客户）
     summaryData.activeCustomers = customers.filter(c => c.status === 'active').length
-    
+
     // 新增客户数（今日创建的客户）
     summaryData.newCustomers = customers.filter(c => {
       if (!c.createTime) return false
-      
+
       try {
         const createTime = new Date(c.createTime)
         if (isNaN(createTime.getTime())) return false
-        
+
         const createDate = createTime.toISOString().split('T')[0]
         return createDate === todayStr
       } catch (error) {
@@ -1232,12 +1630,12 @@ const loadSummaryData = () => {
         return false
       }
     }).length
-    
+
     // 高价值客户数（黄金等级的客户）
     summaryData.highValueCustomers = customers.filter(c => c.level === 'gold').length
-    
+
     console.log('统计数据已更新:', summaryData)
-    
+
   } catch (error) {
     console.error('加载统计数据失败:', error)
   }
@@ -1266,27 +1664,27 @@ watch(searchResults, () => {
 watch(() => route.path, async (newPath, oldPath) => {
   if (newPath === '/customer/list') {
     console.log('路由切换到客户列表页面，从:', oldPath, '到:', newPath)
-    
+
     // 如果是从添加页面返回，强制重新加载数据以确保显示最新客户
     if (oldPath === '/customer/add') {
       console.log('从添加页面返回，执行强化数据同步流程')
-      
+
       // 1. 重置分页到第一页，确保新客户能被看到
       pagination.page = 1
-      
+
       // 2. 清除搜索条件，确保显示所有客户
       searchForm.keyword = ''
       searchForm.level = ''
       searchForm.status = ''
       searchForm.dateRange = null
       quickFilter.value = 'all'
-      
+
       // 3. 等待一个tick确保状态更新
       await nextTick()
-      
+
       // 4. 强制重新加载列表数据（这会触发forceRefreshCustomers）
       await loadCustomerList(true)
-      
+
       console.log('强化数据同步完成，新客户应该已显示，当前客户数量:', customerStore.customers.length)
     } else if (oldPath?.startsWith('/customer/edit/')) {
       console.log('从编辑页面返回，重新加载数据')
@@ -1301,34 +1699,37 @@ watch(() => route.path, async (newPath, oldPath) => {
   }
 }, { immediate: true })
 
-// 监听路由查询参数变化，处理刷新请求
-watch(() => route.query, async (newQuery) => {
-  if (route.path === '/customer/list' && newQuery.refresh === 'true' && !refreshHandled.value) {
-    // 标记已处理，防止重复触发 replace 导致导航取消
-    refreshHandled.value = true
-    console.log('接收到刷新参数，强制重新加载客户列表')
-    
+// 监听路由查询参数变化，处理刷新请求（参考商品模块的简单实现）
+watch(() => route.query, (newQuery) => {
+  if (route.path === '/customer/list' && newQuery.refresh === 'true') {
+    console.log('检测到刷新参数，更新客户列表显示')
+    console.log('当前客户总数:', customerStore.customers.length)
+    console.log('搜索结果数量:', searchResults.value.length)
+
     // 重置分页到第一页，确保新客户能被看到
     pagination.page = 1
-    
-    // 清除搜索条件，确保显示所有客户（包括新添加的）
-    searchForm.keyword = ''
-    searchForm.level = ''
-    searchForm.dateRange = null
-    quickFilter.value = 'all'
-    
-    // 等待一个微任务周期，确保状态更新
-    await nextTick()
-    
-    // 强制重新加载，确保从第1页开始显示
-    loadCustomerList(true)
-    
-    // 仅移除 refresh/timestamp 查询参数，保留其他查询参数，且在渲染后执行，避免初始导航阶段的取消日志
-    const { refresh, timestamp, ...rest } = newQuery as Record<string, any>
-    const cleanedUrl = router.resolve({ path: route.path, query: rest }).href
-    window.history.replaceState(null, '', cleanedUrl)
+
+    // 立即更新分页总数
+    pagination.total = searchResults.value.length
+
+    // 强制触发多次响应式更新，确保数据正确显示
+    nextTick(() => {
+      console.log('第一次nextTick - 分页总数:', pagination.total)
+      console.log('第一次nextTick - 当前页客户数:', customerList.value.length)
+
+      // 再次确保数据更新
+      nextTick(() => {
+        pagination.total = searchResults.value.length
+        console.log('第二次nextTick - 最终分页总数:', pagination.total)
+        console.log('第二次nextTick - 最终客户数:', customerList.value.length)
+        console.log('第二次nextTick - 客户列表:', customerList.value.map(c => c.name))
+      })
+    })
+
+    // 清除刷新参数
+    safeNavigator.replace({ path: '/customer/list' })
   }
-}, { flush: 'post' })
+}, { immediate: false })
 
 // 定时器引用
 const shareCheckTimer = ref<NodeJS.Timeout | null>(null)
@@ -1339,91 +1740,95 @@ onMounted(async () => {
   if (!isLoggedIn) {
     return // 如果用户未登录，直接返回，不执行后续逻辑
   }
-  
-  // 添加调试信息
-  console.log('onMounted - customerStore:', customerStore)
-  console.log('onMounted - customerStore.customers:', customerStore.customers)
-  console.log('onMounted - customerStore.customers.length:', customerStore.customers.length)
-  
+
+  console.log('[客户列表] onMounted - 开始初始化')
+  console.log('[客户列表] 当前customerStore中的客户数量:', customerStore.customers.length)
+
+  // 加载用户列表(用于分享功能)
+  await userStore.loadUsers()
+  console.log('[客户列表] 用户列表已加载:', userStore.users.length, '个用户')
+
+  // 🔥 批次262修复：createPersistentStore会自动加载数据，无需手动调用
+  console.log('[客户列表] 当前客户数量:', customerStore.customers.length)
+
   // 检查是否有refresh参数
   const shouldRefresh = route.query.refresh === 'true'
   const hasTimestamp = !!route.query.timestamp
-  console.log('onMounted: 检查refresh参数:', shouldRefresh, '时间戳:', hasTimestamp)
-  
-  // 自动持久化store会自动加载数据，无需手动初始化
-  console.log('onMounted: 使用自动持久化的客户数据')
-  
+
   // 等待一个tick确保数据加载完成
   await nextTick()
-  
+
   // 检查是否需要强制刷新：有refresh参数、有时间戳参数或客户数据为空
   const needsForceRefresh = shouldRefresh || hasTimestamp || customerStore.customers.length === 0
-  console.log('onMounted: 是否需要强制刷新:', needsForceRefresh, '原因:', {
-    shouldRefresh,
-    hasTimestamp,
-    isEmpty: customerStore.customers.length === 0
-  })
-  
+
   // 如果有refresh参数或时间戳，重置分页到第一页并清除搜索条件
   if (shouldRefresh || hasTimestamp) {
-    console.log('onMounted: 检测到refresh参数或时间戳，重置分页和搜索条件')
-    pagination.currentPage = 1
+    pagination.page = 1  // 修复：使用正确的分页字段名
     searchForm.keyword = ''
     searchForm.level = ''
     searchForm.status = ''
     searchForm.dateRange = null
     quickFilter.value = 'all'
-    
+
     // 等待下一个tick确保数据更新
     await nextTick()
   }
-  
+
   // 加载客户数据
-  console.log('onMounted: 加载客户数据，强制刷新:', needsForceRefresh)
   await loadCustomerList(needsForceRefresh)
-  
+
+  console.log('[客户列表] onMounted - 初始化完成，当前显示客户数量:', customerList.value.length)
+
   // 启动定时检查过期分享（每分钟检查一次）
   shareCheckTimer.value = setInterval(() => {
     checkExpiredShares()
   }, 60000)
-  
+
   // 立即检查一次
   checkExpiredShares()
 })
 
 // 当组件被激活时检查是否需要刷新数据（用于keep-alive场景）
 onActivated(async () => {
-  console.log('组件激活，检查是否需要刷新客户数据')
-  
+  console.log('[客户列表] onActivated - 组件激活')
+  console.log('[客户列表] 当前customerStore中的客户数量:', customerStore.customers.length)
+
   // 检查是否有refresh参数
   const shouldRefresh = route.query.refresh === 'true'
-  console.log('onActivated: 检查refresh参数:', shouldRefresh)
-  
+  console.log('[客户列表] 检查refresh参数:', shouldRefresh)
+
   if (shouldRefresh) {
-    console.log('onActivated: 检测到refresh参数，重新加载客户数据')
-    
+    console.log('[客户列表] 检测到refresh参数，重置筛选条件')
+
+    // 🔥 批次262修复：createPersistentStore会自动同步数据
+    console.log('[客户列表] 当前客户数量:', customerStore.customers.length)
+
     // 重置分页到第一页并清除搜索条件
-    pagination.currentPage = 1
+    pagination.page = 1
     searchForm.keyword = ''
     searchForm.level = ''
     searchForm.status = ''
     searchForm.dateRange = null
     quickFilter.value = 'all'
-    
-    // 自动持久化store会自动同步数据，无需手动初始化
-    // 等待一个tick确保数据同步完成
+
+    // 等待Vue响应式更新完成
     await nextTick()
-    
+
     // 强制重新加载客户数据
     await loadCustomerList(true)
-    
+
     // 清除URL中的refresh参数
     await router.replace({ path: '/customer/list' })
   } else {
-    // 正常情况下，自动持久化store已经加载了最新数据
+    // 🔥 批次262修复：createPersistentStore会自动同步数据
+    console.log('[客户列表] 当前客户数量:', customerStore.customers.length)
+
     // 更新分页总数
     pagination.total = totalCount.value
+    console.log('[客户列表] 更新分页总数:', pagination.total)
   }
+
+  console.log('[客户列表] onActivated完成，当前显示客户数量:', customerList.value.length)
 })
 
 // 组件卸载时清理定时器和blob URL
@@ -1432,7 +1837,7 @@ onUnmounted(() => {
     clearInterval(shareCheckTimer.value)
     shareCheckTimer.value = null
   }
-  
+
   // 清理所有可能存在的blob URL
   const existingLinks = document.querySelectorAll('a[href^="blob:"]')
   existingLinks.forEach(link => {

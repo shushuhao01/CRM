@@ -29,7 +29,7 @@
             </div>
           </div>
         </div>
-        
+
         <div class="orders-table">
           <el-table :data="selectedOrders" style="width: 100%" max-height="300">
             <el-table-column prop="orderNo" label="订单号" width="120" />
@@ -67,7 +67,7 @@
           <el-icon><Setting /></el-icon>
           批量设置
         </h3>
-        
+
         <el-form :model="batchForm" :rules="rules" ref="formRef" label-width="120px">
           <div class="form-grid">
             <el-form-item label="物流公司" prop="logisticsCompany" required>
@@ -167,7 +167,8 @@
             drag
             :auto-upload="false"
             :on-change="handleFileChange"
-            accept=".xlsx,.xls,.csv"
+            accept=".xlsx,.xls"
+            :limit="1"
           >
             <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
             <div class="el-upload__text">
@@ -175,11 +176,13 @@
             </div>
             <template #tip>
               <div class="el-upload__tip">
-                支持 Excel 或 CSV 格式，第一列为订单号，第二列为运单号
+                支持 Excel 格式（.xlsx），包含：订单号、客户姓名、联系电话、收货地址、运单号、物流公司
+                <br />
+                <span style="color: #f56c6c;">注意：请先下载模板，填写完整后再导入</span>
               </div>
             </template>
           </el-upload>
-          
+
           <div class="import-template">
             <el-button type="text" @click="downloadTemplate">
               <el-icon><Download /></el-icon>
@@ -278,11 +281,12 @@
 <script setup lang="ts">
 import { ref, computed, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
-import { 
+import {
   Box, Setting, Edit, Upload, View, Delete, UploadFilled,
   Download, Document, Van, WarningFilled
 } from '@element-plus/icons-vue'
 import type { Order } from '@/stores/order'
+import * as XLSX from 'xlsx'
 
 interface BatchShippingData {
   company: string
@@ -360,6 +364,21 @@ const previewData = computed(() => {
   return Array.isArray(props.selectedOrders) ? props.selectedOrders : []
 })
 
+// 初始化预计送达时间为3天后
+const initEstimatedDelivery = () => {
+  const today = new Date()
+  const threeDaysLater = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000)
+  batchForm.estimatedDelivery = threeDaysLater.toISOString().split('T')[0]
+}
+
+// 监听弹窗打开，初始化默认值
+watch(() => props.visible, (newVal) => {
+  if (newVal) {
+    // 设置默认预计送达时间为3天后
+    initEstimatedDelivery()
+  }
+}, { immediate: true })
+
 // 监听选中订单变化，初始化运单号数组
 watch(() => props.selectedOrders, (newOrders) => {
   if (Array.isArray(newOrders)) {
@@ -384,11 +403,11 @@ const removeOrder = (index: number) => {
 
 // 物流公司变化
 const onLogisticsChange = (value: string) => {
-  // 根据物流公司设置预计送达时间
-  const today = new Date()
-  const deliveryDays = getDeliveryDays(value)
-  const estimatedDate = new Date(today.getTime() + deliveryDays * 24 * 60 * 60 * 1000)
-  batchForm.estimatedDelivery = estimatedDate.toISOString().split('T')[0]
+  // 如果预计送达时间未设置，则设置为3天后（默认值）
+  // 如果已设置，则根据物流公司调整（可选）
+  if (!batchForm.estimatedDelivery) {
+    initEstimatedDelivery()
+  }
 }
 
 // 获取预计送达天数
@@ -410,11 +429,11 @@ const getPreviewStatus = (index: number) => {
   if (!batchForm.logisticsCompany) {
     return { type: 'danger', text: '未设置' }
   }
-  
+
   if (batchForm.trackingMode === 'auto') {
     return { type: 'success', text: '就绪' }
   } else if (batchForm.trackingMode === 'manual') {
-    return trackingNumbers.value[index] 
+    return trackingNumbers.value[index]
       ? { type: 'success', text: '就绪' }
       : { type: 'warning', text: '待输入' }
   } else {
@@ -430,21 +449,170 @@ const disabledDate = (time: Date) => {
 }
 
 // 处理文件变化
-const handleFileChange = (file: File) => {
-  // 这里应该解析Excel/CSV文件
-  ElMessage.info('文件解析功能开发中...')
+const handleFileChange = (uploadFile: unknown) => {
+  const file = uploadFile.raw
+  if (!file) return
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const data = e.target?.result
+      if (!data) {
+        ElMessage.error('文件内容为空')
+        return
+      }
+
+      // 解析Excel文件
+      const workbook = XLSX.read(data, { type: 'binary' })
+      const firstSheetName = workbook.SheetNames[0]
+      const worksheet = workbook.Sheets[firstSheetName]
+
+      // 转换为JSON数据
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][]
+
+      if (jsonData.length < 2) {
+        ElMessage.error('文件格式错误，至少需要包含表头和一行数据')
+        return
+      }
+
+      // 跳过表头，解析数据行
+      const dataRows = jsonData.slice(1)
+      const importedData: { orderNo: string; trackingNo: string; company: string }[] = []
+
+      dataRows.forEach((row, rowIndex) => {
+        if (Array.isArray(row) && row.length >= 5) {
+          // 处理订单号，可能是字符串或数字
+          let orderNo = String(row[0] || '').trim()
+          // 如果订单号是数字，转换为字符串
+          if (typeof row[0] === 'number') {
+            orderNo = row[0].toString()
+          }
+
+          const trackingNo = String(row[4] || '').trim()
+          const company = String(row[5] || '').trim()
+
+          console.log(`第${rowIndex + 2}行数据:`, { orderNo, trackingNo, company })
+
+          if (orderNo && trackingNo) {
+            importedData.push({ orderNo, trackingNo, company })
+          }
+        }
+      })
+
+      console.log('导入的数据:', importedData)
+      console.log('选中的订单号:', props.selectedOrders.map(o => o.orderNo))
+
+      if (importedData.length === 0) {
+        ElMessage.error('未找到有效的运单号数据，请确保第5列填写了运单号')
+        return
+      }
+
+      // 匹配导入的数据到选中的订单
+      let matchedCount = 0
+      const unmatchedOrders: string[] = []
+
+      props.selectedOrders.forEach((order, index) => {
+        // 宽松匹配：去除空格、转换为字符串后比较
+        const orderNoStr = String(order.orderNo || '').trim()
+        const found = importedData.find(item => {
+          const importOrderNo = String(item.orderNo || '').trim()
+          return importOrderNo === orderNoStr
+        })
+
+        if (found) {
+          importedTrackingNumbers.value[index] = found.trackingNo
+          // 如果导入的数据包含物流公司，也更新物流公司
+          if (found.company && !batchForm.logisticsCompany) {
+            const companyMatch = logisticsCompanies.value.find(
+              c => c.name === found.company || c.code === found.company
+            )
+            if (companyMatch) {
+              batchForm.logisticsCompany = companyMatch.code
+            }
+          }
+          matchedCount++
+        } else {
+          unmatchedOrders.push(orderNoStr)
+        }
+      })
+
+      if (matchedCount > 0) {
+        ElMessage.success(`成功导入 ${matchedCount} 个订单的运单号`)
+        if (unmatchedOrders.length > 0) {
+          console.warn('未匹配的订单号:', unmatchedOrders)
+          ElMessage.warning(`有 ${unmatchedOrders.length} 个订单未匹配到运单号`)
+        }
+      } else {
+        console.error('未匹配到任何订单')
+        console.error('导入的订单号:', importedData.map(d => d.orderNo))
+        console.error('系统中的订单号:', props.selectedOrders.map(o => o.orderNo))
+        ElMessage.error('未匹配到任何订单，请检查订单号是否与系统中的订单号完全一致')
+      }
+
+    } catch (error) {
+      console.error('文件解析失败:', error)
+      ElMessage.error('文件解析失败，请确保文件格式正确')
+    }
+  }
+
+  reader.onerror = () => {
+    ElMessage.error('文件读取失败')
+  }
+
+  reader.readAsBinaryString(file)
 }
 
 // 下载模板
 const downloadTemplate = () => {
-  // 创建模板数据
-  const templateData = props.selectedOrders.map(order => ({
-    '订单号': order.orderNo,
-    '运单号': ''
-  }))
-  
-  // 这里应该生成并下载Excel文件
-  ElMessage.success('模板下载功能开发中...')
+  try {
+    // 创建表头
+    const headers = ['订单号', '客户姓名', '联系电话', '收货地址', '运单号', '物流公司']
+
+    // 创建数据行
+    const data = props.selectedOrders.map(order => [
+      order.orderNo || '',
+      order.customerName || '',
+      order.phone || order.customerPhone || '',
+      order.address || order.receiverAddress || '',
+      '', // 运单号留空待填写
+      ''  // 物流公司留空待填写
+    ])
+
+    // 合并表头和数据
+    const wsData = [headers, ...data]
+
+    // 创建工作表
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
+
+    // 设置列宽（根据内容自适应）
+    const colWidths = headers.map((header, colIndex) => {
+      // 计算该列的最大宽度
+      let maxWidth = header.length
+      data.forEach(row => {
+        const cellValue = String(row[colIndex] || '')
+        // 中文字符按2个字符宽度计算
+        const cellWidth = cellValue.split('').reduce((width, char) => {
+          return width + (/[\u4e00-\u9fa5]/.test(char) ? 2 : 1)
+        }, 0)
+        maxWidth = Math.max(maxWidth, cellWidth)
+      })
+      // 添加一些额外空间，最小宽度10，最大宽度50
+      return { wch: Math.min(Math.max(maxWidth + 2, 10), 50) }
+    })
+    ws['!cols'] = colWidths
+
+    // 创建工作簿
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '批量发货模板')
+
+    // 生成Excel文件并下载
+    XLSX.writeFile(wb, `批量发货模板_${new Date().getTime()}.xlsx`)
+
+    ElMessage.success('模板下载成功！请填写运单号和物流公司后导入')
+  } catch (error) {
+    console.error('下载模板失败:', error)
+    ElMessage.error('模板下载失败，请重试')
+  }
 }
 
 // 保存草稿
@@ -461,10 +629,10 @@ const saveAsDraft = async () => {
 // 确认批量发货
 const confirmBatchShipping = async () => {
   if (!formRef.value) return
-  
+
   try {
     await formRef.value.validate()
-    
+
     // 验证运单号
     if (batchForm.trackingMode === 'manual') {
       const emptyTrackingCount = trackingNumbers.value.filter(num => !num.trim()).length
@@ -472,8 +640,14 @@ const confirmBatchShipping = async () => {
         ElMessage.error(`还有 ${emptyTrackingCount} 个订单的运单号未填写`)
         return
       }
+    } else if (batchForm.trackingMode === 'import') {
+      const emptyTrackingCount = importedTrackingNumbers.value.filter(num => !num.trim()).length
+      if (emptyTrackingCount > 0) {
+        ElMessage.error(`还有 ${emptyTrackingCount} 个订单的运单号未导入，请先导入完整数据`)
+        return
+      }
     }
-    
+
     await ElMessageBox.confirm(
       `确认批量发货 ${props.selectedOrders.length} 个订单吗？发货后将无法撤销。`,
       '确认批量发货',
@@ -485,11 +659,11 @@ const confirmBatchShipping = async () => {
     )
 
     loading.value = true
-    
+
     // 生成发货数据
     const shippingData = props.selectedOrders.map((order, index) => {
       let trackingNumber = ''
-      
+
       if (batchForm.trackingMode === 'auto') {
         // 自动生成运单号
         const company = logisticsCompanies.value.find(c => c.code === batchForm.logisticsCompany)
@@ -501,7 +675,7 @@ const confirmBatchShipping = async () => {
       } else {
         trackingNumber = importedTrackingNumbers.value[index]
       }
-      
+
       return {
         orderId: order.id,
         orderNo: order.orderNo,
@@ -514,14 +688,31 @@ const confirmBatchShipping = async () => {
         status: 'shipped'
       }
     })
-    
+
     // 模拟批量发货处理
     await new Promise(resolve => setTimeout(resolve, 3000))
-    
+
+    // 更新订单store中的数据
+    const { useOrderStore } = await import('@/stores/order')
+    const orderStore = useOrderStore()
+
+    shippingData.forEach(data => {
+      orderStore.updateOrder(data.orderId, {
+        status: 'shipped',
+        trackingNumber: data.trackingNumber,
+        expressNo: data.trackingNumber, // 同时更新expressNo字段
+        expressCompany: data.logisticsCompany, // 使用expressCompany字段
+        logisticsCompany: data.logisticsCompany, // 同时保留logisticsCompany字段
+        shippingTime: data.shippingTime,
+        estimatedDelivery: data.estimatedDelivery,
+        remarks: data.remarks
+      })
+    })
+
     emit('batch-shipped', shippingData)
     ElMessage.success(`成功批量发货 ${props.selectedOrders.length} 个订单！`)
     handleClose()
-    
+
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('批量发货失败，请重试')
@@ -544,10 +735,10 @@ const handleClose = () => {
     estimatedDelivery: '',
     remarks: ''
   })
-  
+
   trackingNumbers.value = []
   importedTrackingNumbers.value = []
-  
+
   dialogVisible.value = false
 }
 </script>
@@ -561,7 +752,7 @@ const handleClose = () => {
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
     border: 1px solid #e5e7eb;
   }
-  
+
   .el-dialog__header {
     background: #ffffff;
     color: #374151;
@@ -569,28 +760,28 @@ const handleClose = () => {
     margin: 0;
     border-bottom: 1px solid #f3f4f6;
   }
-  
+
   .el-dialog__title {
     font-size: 20px;
     font-weight: 600;
     color: #1f2937;
   }
-  
+
   .el-dialog__headerbtn {
     top: 24px;
     right: 24px;
-    
+
     .el-dialog__close {
       color: #6b7280;
       font-size: 18px;
       transition: color 0.2s ease;
-      
+
       &:hover {
         color: #374151;
       }
     }
   }
-  
+
   .el-dialog__body {
     padding: 24px;
     max-height: 70vh;
@@ -642,7 +833,7 @@ const handleClose = () => {
   text-align: center;
   border: 1px solid #e2e8f0;
   transition: all 0.2s ease;
-  
+
   &:hover {
     border-color: #cbd5e1;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
@@ -810,11 +1001,11 @@ const handleClose = () => {
   .summary-cards {
     grid-template-columns: 1fr;
   }
-  
+
   .form-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .tracking-inputs {
     grid-template-columns: 1fr;
   }

@@ -3,19 +3,45 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <h2>个人业绩</h2>
-      <div class="header-actions">
+      <el-button
+        v-if="userStore.currentUser?.role === 'super_admin'"
+        @click="goToShareSettings"
+        type="primary"
+        link
+        :icon="Setting"
+      >
+        业绩分享设置
+      </el-button>
+    </div>
+
+    <!-- 快速筛选和操作栏 -->
+    <div class="filters-actions-bar">
+      <div class="quick-filters">
+        <el-button
+          v-for="filter in quickFilters"
+          :key="filter.value"
+          :type="selectedQuickFilter === filter.value ? 'primary' : ''"
+          @click="handleQuickFilter(filter.value)"
+          size="default"
+        >
+          {{ filter.label }}
+        </el-button>
+      </div>
+      <div class="actions-group">
         <el-date-picker
           v-model="dateRange"
-          type="monthrange"
+          type="daterange"
           range-separator="至"
-          start-placeholder="开始月份"
-          end-placeholder="结束月份"
-          format="YYYY-MM"
-          value-format="YYYY-MM"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          format="YYYY-MM-DD"
+          value-format="YYYY-MM-DD"
           @change="handleDateChange"
+          size="default"
         />
-        <el-button @click="sharePerformance" :icon="Share">分享业绩</el-button>
-        <el-button @click="exportData" :icon="Download">导出数据</el-button>
+        <el-button type="primary" @click="queryData" :icon="Search" size="default">查询</el-button>
+        <el-button @click="sharePerformance" :icon="Share" size="default">分享业绩</el-button>
+        <el-button v-if="canExport" @click="exportData" :icon="Download" size="default">导出数据</el-button>
       </div>
     </div>
 
@@ -49,7 +75,7 @@
                 <el-icon><Document /></el-icon>
               </div>
               <div class="card-info">
-                <div class="card-value">{{ performanceData.totalOrders }}</div>
+                <div class="card-value">{{ typeof performanceData.totalOrders === 'number' ? (performanceData.totalOrders % 1 === 0 ? performanceData.totalOrders : performanceData.totalOrders.toFixed(1)) : performanceData.totalOrders }}</div>
                 <div class="card-label">订单数量</div>
                 <div class="card-trend">
                   <span :class="['trend', performanceData.ordersTrend > 0 ? 'up' : 'down']">
@@ -66,15 +92,15 @@
           <el-card class="overview-card">
             <div class="card-content">
               <div class="card-icon customers">
-                <el-icon><User /></el-icon>
+                <el-icon><CircleCheck /></el-icon>
               </div>
               <div class="card-info">
-                <div class="card-value">{{ performanceData.newCustomers }}</div>
-                <div class="card-label">新增客户</div>
+                <div class="card-value">¥{{ formatNumber(performanceData.signedAmount) }}</div>
+                <div class="card-label">签收业绩</div>
                 <div class="card-trend">
-                  <span :class="['trend', performanceData.customersTrend > 0 ? 'up' : 'down']">
-                    <el-icon><ArrowUp v-if="performanceData.customersTrend > 0" /><ArrowDown v-else /></el-icon>
-                    {{ Math.abs(performanceData.customersTrend) }}%
+                  <span :class="['trend', performanceData.signedTrend > 0 ? 'up' : 'down']">
+                    <el-icon><ArrowUp v-if="performanceData.signedTrend > 0" /><ArrowDown v-else /></el-icon>
+                    {{ Math.abs(performanceData.signedTrend) }}%
                   </span>
                   <span class="trend-text">较上期</span>
                 </div>
@@ -86,15 +112,15 @@
           <el-card class="overview-card">
             <div class="card-content">
               <div class="card-icon conversion">
-                <el-icon><Promotion /></el-icon>
+                <el-icon><SuccessFilled /></el-icon>
               </div>
               <div class="card-info">
-                <div class="card-value">{{ performanceData.conversionRate }}%</div>
-                <div class="card-label">转化率</div>
+                <div class="card-value">{{ typeof performanceData.signedOrders === 'number' ? (performanceData.signedOrders % 1 === 0 ? performanceData.signedOrders : performanceData.signedOrders.toFixed(1)) : performanceData.signedOrders }}</div>
+                <div class="card-label">签收订单数量</div>
                 <div class="card-trend">
-                  <span :class="['trend', performanceData.conversionTrend > 0 ? 'up' : 'down']">
-                    <el-icon><ArrowUp v-if="performanceData.conversionTrend > 0" /><ArrowDown v-else /></el-icon>
-                    {{ Math.abs(performanceData.conversionTrend) }}%
+                  <span :class="['trend', performanceData.signedOrdersTrend > 0 ? 'up' : 'down']">
+                    <el-icon><ArrowUp v-if="performanceData.signedOrdersTrend > 0" /><ArrowDown v-else /></el-icon>
+                    {{ Math.abs(performanceData.signedOrdersTrend) }}%
                   </span>
                   <span class="trend-text">较上期</span>
                 </div>
@@ -114,10 +140,13 @@
             <template #header>
               <div class="card-header">
                 <span>销售趋势</span>
-                <el-radio-group v-model="salesChartType" size="small">
+                <el-radio-group v-model="salesChartType" size="small" @change="handleChartTypeChange">
                   <el-radio-button label="daily">日</el-radio-button>
                   <el-radio-button label="weekly">周</el-radio-button>
                   <el-radio-button label="monthly">月</el-radio-button>
+                  <el-radio-button label="quarterly">季</el-radio-button>
+                  <el-radio-button label="yearly">年</el-radio-button>
+                  <el-radio-button label="all">全部</el-radio-button>
                 </el-radio-group>
               </div>
             </template>
@@ -174,28 +203,73 @@
 
       <!-- 订单明细表格 -->
       <div v-show="activeTab === 'orders'">
-        <el-table :data="orderDetails" style="width: 100%" v-loading="tableLoading">
-          <el-table-column prop="orderNo" label="订单号" width="150" />
-          <el-table-column prop="customerName" label="客户姓名" width="120" />
-          <el-table-column prop="totalAmount" label="订单金额" width="120">
+        <el-table :data="orderDetails" style="width: 100%" v-loading="tableLoading" class="order-detail-table">
+          <el-table-column type="index" label="序号" width="60" align="center" />
+          <el-table-column prop="orderNo" label="订单号" width="160">
             <template #default="{ row }">
-              <span class="amount">¥{{ row.totalAmount }}</span>
+              <span>{{ row.orderNo }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="订单状态" width="100">
+          <el-table-column prop="customerName" label="客户姓名" width="110" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-link type="primary" @click="navigateToCustomerDetail(row.customerId)">
+                {{ row.customerName }}
+              </el-link>
+            </template>
+          </el-table-column>
+          <el-table-column prop="customerPhone" label="客户电话" width="120" show-overflow-tooltip />
+          <el-table-column prop="totalAmount" label="订单金额" width="110" align="right">
+            <template #default="{ row }">
+              <span class="amount">¥{{ formatNumber(row.totalAmount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="depositAmount" label="定金" width="100" align="right">
+            <template #default="{ row }">
+              <span>¥{{ formatNumber(row.depositAmount || 0) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="订单状态" width="110">
             <template #default="{ row }">
               <el-tag :type="getOrderStatusType(row.status)" size="small">
                 {{ getOrderStatusText(row.status) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="createTime" label="下单时间" width="180" />
-          <el-table-column prop="commission" label="佣金" width="100">
+          <el-table-column prop="auditStatus" label="审核状态" width="100">
             <template #default="{ row }">
-              <span class="commission">¥{{ row.commission }}</span>
+              <el-tag :type="getAuditStatusType(row.auditStatus)" size="small">
+                {{ getAuditStatusText(row.auditStatus) }}
+              </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="120">
+          <el-table-column prop="trackingNumber" label="物流单号" width="170" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div v-if="row.trackingNumber" class="tracking-no-wrapper">
+                <el-link type="primary" @click="handleTrackingNoClick(row.trackingNumber)">
+                  {{ row.trackingNumber }}
+                </el-link>
+                <el-button
+                  size="small"
+                  type="text"
+                  @click.stop="copyTrackingNo(row.trackingNumber)"
+                  class="copy-btn"
+                  title="复制物流单号"
+                >
+                  <el-icon><CopyDocument /></el-icon>
+                </el-button>
+              </div>
+              <span v-else class="no-data">未发货</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="createTime" label="下单时间" width="160" />
+          <el-table-column prop="productInfo" label="商品信息" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div class="product-info-cell">
+                {{ row.productInfo }}
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="100" align="center" fixed="right">
             <template #default="{ row }">
               <el-button @click="viewOrderDetail(row)" type="primary" link size="small">
                 查看详情
@@ -203,8 +277,11 @@
             </template>
           </el-table-column>
         </el-table>
-        
+
         <div class="pagination-wrapper">
+          <div class="data-summary">
+            <span class="summary-text">共 {{ orderPagination.total }} 个订单</span>
+          </div>
           <el-pagination
             v-model:current-page="orderPagination.currentPage"
             v-model:page-size="orderPagination.pageSize"
@@ -221,23 +298,20 @@
       <div v-show="activeTab === 'customers'">
         <el-table :data="customerDetails" style="width: 100%" v-loading="tableLoading">
           <el-table-column type="index" label="序号" width="60" :index="getCustomerIndex" />
-          <el-table-column prop="code" label="客户编码" width="140">
+          <el-table-column prop="code" label="客户编码" min-width="140">
             <template #default="{ row }">
-              <span 
-                class="code-link" 
-                @click="navigateToCustomerDetail(row.code)"
+              <span
+                class="code-link"
+                @click="navigateToCustomerDetail(row.id)"
                 :title="row.code"
+                style="cursor: pointer; color: #409EFF; text-decoration: underline;"
               >
                 {{ row.code || 'N/A' }}
               </span>
             </template>
           </el-table-column>
-          <el-table-column prop="name" label="客户姓名" width="120" />
-          <el-table-column prop="phone" label="电话" width="140">
-            <template #default="{ row }">
-              {{ maskPhone(row.phone) }}
-            </template>
-          </el-table-column>
+          <el-table-column prop="name" label="客户姓名" min-width="100" />
+          <el-table-column prop="phone" label="电话" min-width="120" />
           <el-table-column prop="level" label="客户等级" width="100">
             <template #default="{ row }">
               <el-tag :type="getCustomerLevelType(row.level)" size="small">
@@ -245,23 +319,26 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="orderCount" label="订单数" width="80" />
+          <el-table-column prop="orderCount" label="订单数" width="80" align="center" />
           <el-table-column prop="totalAmount" label="消费总额" width="120">
             <template #default="{ row }">
-              <span class="amount">¥{{ row.totalAmount }}</span>
+              <span class="amount">¥{{ formatNumber(row.totalAmount) }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="lastOrderTime" label="最后下单" width="180" />
-          <el-table-column label="操作" width="120">
+          <el-table-column prop="lastOrderTime" label="最后下单" min-width="140" />
+          <el-table-column label="操作" width="80" fixed="right">
             <template #default="{ row }">
               <el-button @click="viewCustomerDetail(row)" type="primary" link size="small">
-                查看详情
+                详情
               </el-button>
             </template>
           </el-table-column>
         </el-table>
-        
+
         <div class="pagination-wrapper">
+          <div class="data-summary">
+            <span class="summary-text">共 {{ customerPagination.total }} 个客户</span>
+          </div>
           <el-pagination
             v-model:current-page="customerPagination.currentPage"
             v-model:page-size="customerPagination.pageSize"
@@ -277,27 +354,26 @@
       <!-- 商品明细表格 -->
       <div v-show="activeTab === 'products'">
         <el-table :data="productDetails" style="width: 100%" v-loading="tableLoading">
+          <el-table-column type="index" label="序号" width="60" />
           <el-table-column prop="productName" label="商品名称" />
           <el-table-column prop="salesCount" label="销售数量" width="100" />
           <el-table-column prop="salesAmount" label="销售金额" width="120">
             <template #default="{ row }">
-              <span class="amount">¥{{ row.salesAmount }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="commission" label="佣金" width="100">
-            <template #default="{ row }">
-              <span class="commission">¥{{ row.commission }}</span>
+              <span class="amount">¥{{ formatNumber(row.salesAmount) }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="avgPrice" label="平均单价" width="100">
             <template #default="{ row }">
-              <span>¥{{ row.avgPrice }}</span>
+              <span>¥{{ formatNumber(row.avgPrice) }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="lastSaleTime" label="最后销售" width="180" />
         </el-table>
-        
+
         <div class="pagination-wrapper">
+          <div class="data-summary">
+            <span class="summary-text">共 {{ productPagination.total }} 个商品</span>
+          </div>
           <el-pagination
             v-model:current-page="productPagination.currentPage"
             v-model:page-size="productPagination.pageSize"
@@ -310,49 +386,97 @@
         </div>
       </div>
     </el-card>
+
+    <!-- 业绩分享对话框 -->
+    <el-dialog
+      v-model="shareDialogVisible"
+      title="业绩分享"
+      width="900px"
+      :close-on-click-modal="false"
+    >
+      <div v-loading="shareImageLoading" class="share-dialog-content">
+        <div v-if="shareImageUrl" class="share-image-container">
+          <img :src="shareImageUrl" alt="业绩报告" class="share-image" />
+        </div>
+        <div v-else class="share-loading-text">
+          正在生成业绩报告...
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="shareDialogVisible = false">取消</el-button>
+          <el-button
+            v-if="configStore.performanceShareConfig.allowCopy"
+            type="primary"
+            @click="copyPerformanceImage"
+            :disabled="!shareImageUrl"
+          >
+            复制图片
+          </el-button>
+          <el-button
+            v-if="configStore.performanceShareConfig.allowDownload"
+            type="success"
+            @click="downloadPerformanceImage"
+            :disabled="!shareImageUrl"
+          >
+            下载图片
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, nextTick, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { 
-  Download, 
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  Download,
   Share,
-  TrendCharts, 
-  Document, 
-  User, 
-  Promotion,
+  TrendCharts,
+  Document,
+  Search,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  CircleCheck,
+  SuccessFilled,
+  Setting,
+  CopyDocument
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import { maskPhone } from '@/utils/phone'
 import { usePerformanceStore } from '@/stores/performance'
 import { useUserStore } from '@/stores/user'
 import { useOrderStore } from '@/stores/order'
 import { useCustomerStore } from '@/stores/customer'
-import { useProductStore } from '@/stores/product'
+import { useConfigStore } from '@/stores/config'
 import { createSafeNavigator } from '@/utils/navigation'
+import html2canvas from 'html2canvas'
 
 // 接口定义
 interface OrderDetail {
   id: string
-  orderNumber: string
+  customerId: string
+  orderNo: string
   customerName: string
-  productName: string
-  amount: number
+  customerPhone: string
+  productInfo: string
+  totalAmount: number
+  depositAmount: number
   status: string
+  auditStatus: string
+  trackingNumber: string
   createTime: string
 }
 
 interface CustomerDetail {
   id: string
-  customerName: string
+  code: string
+  name: string
   phone: string
   level: string
-  totalOrders: number
+  orderCount: number
   totalAmount: number
   lastOrderTime: string
 }
@@ -362,7 +486,6 @@ interface ProductDetail {
   productName: string
   salesCount: number
   salesAmount: number
-  commission: number
   avgPrice: number
   lastSaleTime: string
 }
@@ -376,12 +499,25 @@ const performanceStore = usePerformanceStore()
 const userStore = useUserStore()
 const orderStore = useOrderStore()
 const customerStore = useCustomerStore()
-const productStore = useProductStore()
+const configStore = useConfigStore()
 
 // 响应式数据
 const dateRange = ref<string[]>([])
 const salesChartType = ref('daily')
 const activeTab = ref('orders')
+const selectedQuickFilter = ref('today')
+
+// 快速筛选选项
+const quickFilters = [
+  { label: '今日', value: 'today' },
+  { label: '昨日', value: 'yesterday' },
+  { label: '本周', value: 'thisWeek' },
+  { label: '上周', value: 'lastWeek' },
+  { label: '近7天', value: 'last7days' },
+  { label: '本月', value: 'thisMonth' },
+  { label: '今年', value: 'thisYear' },
+  { label: '全部', value: 'all' }
+]
 const tableLoading = ref(false)
 
 // 图表引用
@@ -396,18 +532,92 @@ let orderStatusChart: echarts.ECharts | null = null
 let customerLevelChart: echarts.ECharts | null = null
 let productRankingChart: echarts.ECharts | null = null
 
-// 业绩数据 - 从store获取
+// 业绩数据 - 从store获取，支持日期筛选
 const performanceData = computed(() => {
   const data = performanceStore.personalPerformance
+  const currentUserId = userStore.currentUser?.id
+
+  // 获取用户订单
+  let userOrders = orderStore.orders.filter(order =>
+    order.salesPersonId === currentUserId && order.auditStatus === 'approved'
+  )
+
+  // 应用日期筛选
+  if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+    const startDate = new Date(dateRange.value[0]).getTime()
+    const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1 // 包含结束日期的全天
+
+    userOrders = userOrders.filter(order => {
+      const orderTime = new Date(order.createTime).getTime()
+      return orderTime >= startDate && orderTime <= endDate
+    })
+  }
+
+  // 计算总销售额和订单数
+  const originalTotalSales = userOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+  const originalTotalOrders = userOrders.length
+
+  // 【批次208修复】计算业绩分享影响 - 同时处理金额和订单数量
+  let sharedAmount = 0  // 分享出去的业绩
+  let receivedAmount = 0 // 接收到的业绩
+  let sharedOrderCount = 0  // 分享出去的订单数量
+  let receivedOrderCount = 0 // 接收到的订单数量
+
+  if (currentUserId && performanceStore.performanceShares) {
+    performanceStore.performanceShares.forEach(share => {
+      if (share.status !== 'active') return
+
+      // 【批次208修复】只计算属于当前用户订单的分享
+      if (String(share.createdById) === String(currentUserId)) {
+        // 检查分享的订单是否在当前筛选的订单中
+        const shareOrder = userOrders.find(o => o.orderNumber === share.orderNumber)
+        if (shareOrder) {
+          // 计算分享出去的总比例
+          const totalSharedPercentage = share.shareMembers.reduce((sum, member) => sum + member.percentage, 0)
+          const sharedRatio = totalSharedPercentage / 100
+
+          // 按实际分享比例扣除业绩和订单数
+          sharedAmount += (share.orderAmount || 0) * sharedRatio
+          sharedOrderCount += sharedRatio
+        }
+      }
+
+      // 计算接收到的业绩和订单数量
+      share.shareMembers.forEach(member => {
+        if (String(member.userId) === String(currentUserId)) {
+          const percentage = member.percentage / 100
+          receivedAmount += (share.orderAmount || 0) * percentage
+          receivedOrderCount += percentage
+        }
+      })
+    })
+  }
+
+  // 【批次208修复】计算净业绩和净订单数,确保不小于0
+  const netTotalSales = Math.max(0, originalTotalSales - sharedAmount + receivedAmount)
+  const netTotalOrders = Math.max(0, originalTotalOrders - sharedOrderCount + receivedOrderCount)
+
+  // 计算签收业绩和签收订单数量
+  const signedOrders = userOrders.filter(order => order.status === 'delivered')
+  const originalSignedAmount = signedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+
+  // 【批次205修复】签收业绩也需要考虑分享影响,确保不小于0
+  const netSignedAmount = Math.max(0, originalSignedAmount - sharedAmount + receivedAmount)
+
+  const signedOrdersCount = signedOrders.length
+
   return {
-    totalSales: `¥${data.totalSales.toLocaleString()}`,
+    totalSales: `¥${netTotalSales.toLocaleString()}`, // 【批次208修复】使用净业绩
+    originalSales: originalTotalSales, // 【批次203新增】原始业绩
+    sharedAmount: sharedAmount,        // 【批次203新增】分享出去的业绩
+    receivedAmount: receivedAmount,    // 【批次203新增】接收到的业绩
     salesTrend: data.salesTrend,
-    totalOrders: data.totalOrders,
+    totalOrders: netTotalOrders,       // 【批次208修复】使用净订单数
     ordersTrend: data.ordersTrend,
-    newCustomers: data.newCustomers,
-    customersTrend: data.customersTrend,
-    conversionRate: data.conversionRate.toFixed(1),
-    conversionTrend: data.conversionTrend
+    signedAmount: netSignedAmount, // 【批次203修复】使用净签收业绩
+    signedTrend: 0,
+    signedOrders: signedOrdersCount,
+    signedOrdersTrend: 0
   }
 })
 
@@ -437,75 +647,603 @@ const productPagination = reactive({
 
 // 方法定义
 /**
+ * 快速筛选处理
+ */
+const handleQuickFilter = (value: string) => {
+  selectedQuickFilter.value = value
+  const today = new Date()
+  const formatDate = (date: Date) => date.toISOString().split('T')[0]
+
+  switch (value) {
+    case 'all':
+      dateRange.value = []
+      break
+    case 'today':
+      dateRange.value = [formatDate(today), formatDate(today)]
+      break
+    case 'yesterday':
+      const yesterday = new Date(today)
+      yesterday.setDate(today.getDate() - 1)
+      dateRange.value = [formatDate(yesterday), formatDate(yesterday)]
+      break
+    case 'thisWeek':
+      const startOfWeek = new Date(today)
+      startOfWeek.setDate(today.getDate() - today.getDay())
+      dateRange.value = [formatDate(startOfWeek), formatDate(today)]
+      break
+    case 'lastWeek':
+      const lastWeekEnd = new Date(today)
+      lastWeekEnd.setDate(today.getDate() - today.getDay() - 1)
+      const lastWeekStart = new Date(lastWeekEnd)
+      lastWeekStart.setDate(lastWeekEnd.getDate() - 6)
+      dateRange.value = [formatDate(lastWeekStart), formatDate(lastWeekEnd)]
+      break
+    case 'last7days':
+      const last7days = new Date(today)
+      last7days.setDate(today.getDate() - 7)
+      dateRange.value = [formatDate(last7days), formatDate(today)]
+      break
+    case 'thisMonth':
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+      dateRange.value = [formatDate(startOfMonth), formatDate(today)]
+      break
+    case 'thisYear':
+      const startOfYear = new Date(today.getFullYear(), 0, 1)
+      dateRange.value = [formatDate(startOfYear), formatDate(today)]
+      break
+  }
+
+  // 立即刷新所有数据和图表
+  nextTick(() => {
+    loadTableData()
+    initAllCharts()
+  })
+}
+
+/**
+ * 查询数据
+ */
+const queryData = () => {
+  nextTick(() => {
+    loadTableData()
+    initAllCharts()
+  })
+}
+
+/**
+ * 跳转到业绩分享设置页面
+ */
+const goToShareSettings = () => {
+  safeNavigator.push('/settings/performance-share')
+}
+
+/**
  * 日期范围变化处理
  */
-const handleDateChange = (value: [string, string] | null) => {
-  console.log('日期范围变化:', value)
-  performanceStore.updateDateRange(value)
-  // 重新加载数据
-  loadPerformanceData()
-  loadTableData()
+const handleDateChange = () => {
+  selectedQuickFilter.value = '' // 清空快捷筛选
+}
+
+// 检查是否有导出权限
+const canExport = computed(() => {
+  const exportConfigStr = localStorage.getItem('crm_performance_export_config')
+  if (!exportConfigStr) {
+    return true // 默认允许
+  }
+
+  try {
+    const exportConfig = JSON.parse(exportConfigStr)
+
+    // 功能未启用
+    if (!exportConfig.enabled) {
+      return false
+    }
+
+    const currentUser = userStore.currentUser
+    if (!currentUser) {
+      return false
+    }
+
+    // 所有人可用
+    if (exportConfig.permissionType === 'all') {
+      return true
+    }
+
+    // 按角色控制
+    if (exportConfig.permissionType === 'role') {
+      return exportConfig.allowedRoles?.includes(currentUser.role) || false
+    }
+
+    // 白名单控制
+    if (exportConfig.permissionType === 'whitelist') {
+      return exportConfig.whitelist?.includes(currentUser.id) || false
+    }
+
+    return false
+  } catch (error) {
+    console.error('解析导出配置失败:', error)
+    return true
+  }
+})
+
+/**
+ * 获取水印文本
+ */
+const getWatermarkText = () => {
+  const config = configStore.performanceShareConfig
+  const currentUser = userStore.currentUser
+
+  if (!currentUser) {
+    return configStore.systemConfig.systemName
+  }
+
+  switch (config.watermarkType) {
+    case 'username':
+      return currentUser.name || currentUser.email
+    case 'account':
+      return currentUser.email
+    case 'department':
+      return currentUser.department || '未知部门'
+    case 'phone':
+      const phone = currentUser.phone || ''
+      return phone ? phone.slice(-4) : '****'
+    case 'custom':
+      return config.watermarkText || configStore.systemConfig.systemName
+    default:
+      return currentUser.email
+  }
+}
+
+/**
+ * 记录导出统计
+ */
+const recordExportStats = () => {
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    const statsStr = localStorage.getItem('crm_performance_export_stats')
+    const stats = statsStr ? JSON.parse(statsStr) : {}
+
+    stats[today] = (stats[today] || 0) + 1
+
+    localStorage.setItem('crm_performance_export_stats', JSON.stringify(stats))
+  } catch (error) {
+    console.error('记录导出统计失败:', error)
+  }
+}
+
+/**
+ * 检查导出限制
+ */
+const checkExportLimit = () => {
+  try {
+    const exportConfigStr = localStorage.getItem('crm_performance_export_config')
+    if (!exportConfigStr) {
+      return true
+    }
+
+    const exportConfig = JSON.parse(exportConfigStr)
+    const dailyLimit = exportConfig.dailyLimit || 0
+
+    if (dailyLimit === 0) {
+      return true // 不限制
+    }
+
+    const today = new Date().toISOString().split('T')[0]
+    const statsStr = localStorage.getItem('crm_performance_export_stats')
+    const stats = statsStr ? JSON.parse(statsStr) : {}
+    const todayCount = stats[today] || 0
+
+    if (todayCount >= dailyLimit) {
+      ElMessage.warning(`每日导出次数已达上限（${dailyLimit}次）`)
+      return false
+    }
+
+    return true
+  } catch (error) {
+    console.error('检查导出限制失败:', error)
+    return true
+  }
 }
 
 /**
  * 导出数据
  */
-const exportData = () => {
-  ElMessage.success('数据导出功能开发中...')
+const exportData = async () => {
+  // 检查导出限制
+  if (!checkExportLimit()) {
+    return
+  }
+
+  try {
+    // 动态导入xlsx库
+    const XLSX = await import('xlsx')
+
+    const currentUser = userStore.currentUser
+    const dateRangeText = dateRange.value && dateRange.value.length === 2
+      ? `${dateRange.value[0]}_${dateRange.value[1]}`
+      : '全部时间'
+
+    // 创建工作簿
+    const wb = XLSX.utils.book_new()
+
+    // 1. 业绩汇总表
+    const summaryData = [
+      ['个人业绩汇总报表'],
+      ['销售人员', currentUser?.name || ''],
+      ['统计时间', dateRangeText.replace('_', ' 至 ')],
+      ['生成时间', new Date().toLocaleString('zh-CN')],
+      [],
+      ['指标', '数值', '较上期'],
+      ['总销售额', performanceData.value.totalSales, `${performanceData.value.salesTrend > 0 ? '+' : ''}${performanceData.value.salesTrend}%`],
+      ['订单数量', performanceData.value.totalOrders, `${performanceData.value.ordersTrend > 0 ? '+' : ''}${performanceData.value.ordersTrend}%`],
+      ['签收业绩', `¥${formatNumber(performanceData.value.signedAmount)}`, `${performanceData.value.signedTrend > 0 ? '+' : ''}${performanceData.value.signedTrend}%`],
+      ['签收订单数量', performanceData.value.signedOrders, `${performanceData.value.signedOrdersTrend > 0 ? '+' : ''}${performanceData.value.signedOrdersTrend}%`]
+    ]
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryData)
+
+    // 设置列宽
+    wsSummary['!cols'] = [
+      { wch: 15 },
+      { wch: 20 },
+      { wch: 15 }
+    ]
+
+    XLSX.utils.book_append_sheet(wb, wsSummary, '业绩汇总')
+
+    // 2. 订单明细表
+    if (orderDetails.value.length > 0) {
+      const orderData = [
+        ['订单明细'],
+        [],
+        ['序号', '订单号', '客户姓名', '客户电话', '商品信息', '订单金额', '定金', '订单状态', '审核状态', '下单时间']
+      ]
+
+      orderDetails.value.forEach((order, index) => {
+        orderData.push([
+          index + 1,
+          order.orderNo,
+          order.customerName,
+          order.customerPhone,
+          order.productInfo,
+          order.totalAmount,
+          order.depositAmount,
+          getOrderStatusText(order.status),
+          getAuditStatusText(order.auditStatus),
+          order.createTime
+        ])
+      })
+
+      const wsOrders = XLSX.utils.aoa_to_sheet(orderData)
+      wsOrders['!cols'] = [
+        { wch: 6 },
+        { wch: 18 },
+        { wch: 12 },
+        { wch: 15 },
+        { wch: 30 },
+        { wch: 12 },
+        { wch: 10 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 20 }
+      ]
+
+      XLSX.utils.book_append_sheet(wb, wsOrders, '订单明细')
+    }
+
+    // 3. 客户明细表
+    if (customerDetails.value.length > 0) {
+      const customerData = [
+        ['客户明细'],
+        [],
+        ['序号', '客户编码', '客户姓名', '电话', '客户等级', '订单数', '消费总额', '最后下单时间']
+      ]
+
+      customerDetails.value.forEach((customer, index) => {
+        customerData.push([
+          index + 1,
+          customer.code,
+          customer.name,
+          customer.phone,
+          getCustomerLevelText(customer.level),
+          customer.orderCount,
+          customer.totalAmount,
+          customer.lastOrderTime
+        ])
+      })
+
+      const wsCustomers = XLSX.utils.aoa_to_sheet(customerData)
+      wsCustomers['!cols'] = [
+        { wch: 6 },
+        { wch: 15 },
+        { wch: 12 },
+        { wch: 15 },
+        { wch: 12 },
+        { wch: 10 },
+        { wch: 15 },
+        { wch: 20 }
+      ]
+
+      XLSX.utils.book_append_sheet(wb, wsCustomers, '客户明细')
+    }
+
+    // 4. 商品明细表
+    if (productDetails.value.length > 0) {
+      const productData = [
+        ['商品明细'],
+        [],
+        ['序号', '商品名称', '销售数量', '销售金额', '平均单价', '最后销售时间']
+      ]
+
+      productDetails.value.forEach((product, index) => {
+        productData.push([
+          index + 1,
+          product.productName,
+          product.salesCount,
+          product.salesAmount,
+          product.avgPrice,
+          product.lastSaleTime
+        ])
+      })
+
+      const wsProducts = XLSX.utils.aoa_to_sheet(productData)
+      wsProducts['!cols'] = [
+        { wch: 6 },
+        { wch: 30 },
+        { wch: 12 },
+        { wch: 15 },
+        { wch: 12 },
+        { wch: 20 }
+      ]
+
+      XLSX.utils.book_append_sheet(wb, wsProducts, '商品明细')
+    }
+
+    // 5. 销售趋势数据
+    const trendData = getSalesTrendData()
+    if (trendData.months.length > 0) {
+      const salesTrendData = [
+        ['销售趋势'],
+        [],
+        ['时间', '销售额(元)', '订单数']
+      ]
+
+      trendData.months.forEach((month, index) => {
+        salesTrendData.push([
+          month,
+          trendData.salesAmounts[index],
+          trendData.orderCounts[index]
+        ])
+      })
+
+      const wsTrend = XLSX.utils.aoa_to_sheet(salesTrendData)
+      wsTrend['!cols'] = [
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 12 }
+      ]
+
+      XLSX.utils.book_append_sheet(wb, wsTrend, '销售趋势')
+    }
+
+    // 6. 订单状态分布
+    const statusData = getOrderStatusData()
+    if (statusData.length > 0) {
+      const orderStatusData = [
+        ['订单状态分布'],
+        [],
+        ['状态', '订单数', '金额(元)']
+      ]
+
+      statusData.forEach(item => {
+        orderStatusData.push([
+          item.name,
+          item.value,
+          item.amount
+        ])
+      })
+
+      const wsStatus = XLSX.utils.aoa_to_sheet(orderStatusData)
+      wsStatus['!cols'] = [
+        { wch: 30 },
+        { wch: 12 },
+        { wch: 15 }
+      ]
+
+      XLSX.utils.book_append_sheet(wb, wsStatus, '订单状态分布')
+    }
+
+    // 生成文件
+    const fileName = `个人业绩报表_${currentUser?.name || '销售人员'}_${dateRangeText}.xlsx`
+    XLSX.writeFile(wb, fileName)
+
+    // 记录导出统计
+    recordExportStats()
+
+    ElMessage.success('数据导出成功')
+  } catch (error) {
+    console.error('导出失败:', error)
+    ElMessage.error('数据导出失败，请重试')
+  }
 }
+
+// 业绩分享对话框
+const shareDialogVisible = ref(false)
+const shareImageUrl = ref('')
+const shareImageLoading = ref(false)
 
 /**
  * 分享业绩
  */
-const sharePerformance = () => {
-  // 生成分享内容
-  const shareContent = `
-🎉 我的业绩报告 🎉
+const sharePerformance = async () => {
+  // 检查是否启用业绩分享功能
+  if (!configStore.performanceShareConfig.enabled) {
+    ElMessage.warning('业绩分享功能已被管理员关闭')
+    return
+  }
 
-📊 总销售额：${performanceData.value.totalSales}
-📈 订单数量：${performanceData.value.totalOrders}
-👥 新增客户：${performanceData.value.newCustomers}
-💯 转化率：${performanceData.value.conversionRate}%
+  shareDialogVisible.value = true
+  shareImageLoading.value = true
 
-时间范围：${dateRange.value?.[0] || '当前月份'} 至 ${dateRange.value?.[1] || '当前月份'}
-
-#业绩分享 #销售成果 #CRM系统
-  `.trim()
-
-  // 检查是否支持Web Share API
-  if (navigator.share) {
-    navigator.share({
-      title: '我的业绩报告',
-      text: shareContent,
-      url: window.location.href
-    }).then(() => {
-      ElMessage.success('分享成功')
-    }).catch((error) => {
-      console.log('分享失败:', error)
-      fallbackShare(shareContent)
-    })
-  } else {
-    fallbackShare(shareContent)
+  try {
+    // 生成业绩报告图片
+    await generatePerformanceImage()
+  } catch (error) {
+    console.error('生成业绩报告失败:', error)
+    ElMessage.error('生成业绩报告失败')
+    shareDialogVisible.value = false
+  } finally {
+    shareImageLoading.value = false
   }
 }
 
 /**
- * 备用分享方法（复制到剪贴板）
+ * 生成业绩报告图片
  */
-const fallbackShare = async (content: string) => {
+const generatePerformanceImage = async () => {
+  // 创建一个临时容器
+  const container = document.createElement('div')
+  container.style.cssText = `
+    position: fixed;
+    left: -9999px;
+    top: 0;
+    width: 800px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  `
+
+  const currentUser = userStore.currentUser
+  const dateRangeText = dateRange.value && dateRange.value.length === 2
+    ? `${dateRange.value[0]} 至 ${dateRange.value[1]}`
+    : '全部时间'
+
+  container.innerHTML = `
+    <div style="background: white; border-radius: 12px; padding: 32px; position: relative;">
+      <!-- 标题 -->
+      <div style="text-align: center; margin-bottom: 32px;">
+        <h1 style="margin: 0 0 8px 0; font-size: 32px; color: #303133; font-weight: 700;">
+          📊 业绩报告
+        </h1>
+        <p style="margin: 0; color: #909399; font-size: 16px;">
+          ${currentUser?.name || '销售人员'} · ${dateRangeText}
+        </p>
+      </div>
+
+      <!-- 业绩卡片 -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 32px;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px; border-radius: 12px; color: white;">
+          <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">总销售额</div>
+          <div style="font-size: 32px; font-weight: 700;">${performanceData.value.totalSales}</div>
+          <div style="font-size: 12px; opacity: 0.8; margin-top: 8px;">
+            ${performanceData.value.salesTrend > 0 ? '↑' : '↓'} ${Math.abs(performanceData.value.salesTrend)}% 较上期
+          </div>
+        </div>
+        <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 24px; border-radius: 12px; color: white;">
+          <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">订单数量</div>
+          <div style="font-size: 32px; font-weight: 700;">${performanceData.value.totalOrders}</div>
+          <div style="font-size: 12px; opacity: 0.8; margin-top: 8px;">
+            ${performanceData.value.ordersTrend > 0 ? '↑' : '↓'} ${Math.abs(performanceData.value.ordersTrend)}% 较上期
+          </div>
+        </div>
+        <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); padding: 24px; border-radius: 12px; color: white;">
+          <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">签收业绩</div>
+          <div style="font-size: 32px; font-weight: 700;">¥${formatNumber(performanceData.value.signedAmount)}</div>
+          <div style="font-size: 12px; opacity: 0.8; margin-top: 8px;">
+            ${performanceData.value.signedTrend > 0 ? '↑' : '↓'} ${Math.abs(performanceData.value.signedTrend)}% 较上期
+          </div>
+        </div>
+        <div style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); padding: 24px; border-radius: 12px; color: white;">
+          <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">签收订单数量</div>
+          <div style="font-size: 32px; font-weight: 700;">${performanceData.value.signedOrders}</div>
+          <div style="font-size: 12px; opacity: 0.8; margin-top: 8px;">
+            ${performanceData.value.signedOrdersTrend > 0 ? '↑' : '↓'} ${Math.abs(performanceData.value.signedOrdersTrend)}% 较上期
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部信息 -->
+      <div style="text-align: center; padding-top: 24px; border-top: 2px solid #f0f0f0;">
+        <p style="margin: 0 0 8px 0; color: #909399; font-size: 14px;">
+          ${configStore.systemConfig.systemName}
+        </p>
+        <p style="margin: 0; color: #c0c4cc; font-size: 12px;">
+          生成时间：${new Date().toLocaleString('zh-CN')}
+        </p>
+      </div>
+
+      ${configStore.performanceShareConfig.watermarkEnabled ? `
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg);
+                    font-size: 48px; color: rgba(0,0,0,0.03); font-weight: 700; white-space: nowrap; pointer-events: none;">
+          ${getWatermarkText()}
+        </div>
+      ` : ''}
+    </div>
+  `
+
+  document.body.appendChild(container)
+
   try {
-    await navigator.clipboard.writeText(content)
-    ElMessage.success('业绩内容已复制到剪贴板，可以粘贴分享')
-  } catch (error) {
-    // 如果剪贴板API也不支持，显示分享内容
-    ElMessage({
-      message: '请手动复制以下内容进行分享',
-      type: 'info',
-      duration: 0,
-      showClose: true
+    // 使用html2canvas生成图片
+    const canvas = await html2canvas(container, {
+      backgroundColor: null,
+      scale: 2,
+      logging: false,
+      useCORS: true
     })
-    console.log('分享内容:', content)
+
+    shareImageUrl.value = canvas.toDataURL('image/png')
+  } finally {
+    document.body.removeChild(container)
   }
+}
+
+/**
+ * 复制业绩报告图片
+ */
+const copyPerformanceImage = async () => {
+  if (!configStore.performanceShareConfig.allowCopy) {
+    ElMessage.warning('复制功能已被管理员关闭')
+    return
+  }
+
+  try {
+    // 将base64转换为blob
+    const response = await fetch(shareImageUrl.value)
+    const blob = await response.blob()
+
+    // 复制到剪贴板
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'image/png': blob
+      })
+    ])
+
+    ElMessage.success('业绩报告已复制到剪贴板')
+  } catch (error) {
+    console.error('复制失败:', error)
+    ElMessage.error('复制失败，请尝试下载')
+  }
+}
+
+/**
+ * 下载业绩报告图片
+ */
+const downloadPerformanceImage = () => {
+  if (!configStore.performanceShareConfig.allowDownload) {
+    ElMessage.warning('下载功能已被管理员关闭')
+    return
+  }
+
+  const link = document.createElement('a')
+  const currentUser = userStore.currentUser
+  const dateStr = new Date().toISOString().split('T')[0]
+  link.download = `业绩报告_${currentUser?.name || '销售人员'}_${dateStr}.png`
+  link.href = shareImageUrl.value
+  link.click()
+
+  ElMessage.success('业绩报告已下载')
 }
 
 /**
@@ -520,26 +1258,59 @@ const handleTabChange = (tabName: string) => {
  * 获取订单状态类型
  */
 const getOrderStatusType = (status: string) => {
-  const typeMap = {
+  const typeMap: Record<string, string> = {
+    // 订单状态
+    pending_transfer: 'info',
+    pending_audit: 'warning',
+    audit_rejected: 'danger',
+    pending_shipment: 'primary',
+    shipped: 'success',
+    delivered: 'success',
+    logistics_returned: 'warning',
+    logistics_cancelled: 'info',
+    package_exception: 'danger',
+    rejected: 'danger',
+    rejected_returned: 'warning',
+    after_sales_created: 'info',
+    pending_cancel: 'warning',
+    cancel_failed: 'danger',
+    cancelled: 'info',
+    draft: 'info',
+    // 兼容旧状态
     pending: 'warning',
     paid: 'success',
-    shipped: 'info',
-    completed: 'success',
-    cancelled: 'danger'
+    completed: 'success'
   }
-  return typeMap[status] || ''
+  return typeMap[status] || 'info'
 }
 
 /**
  * 获取订单状态文本
  */
 const getOrderStatusText = (status: string) => {
-  const textMap = {
+  const textMap: Record<string, string> = {
+    // 订单状态
+    pending_transfer: '待流转',
+    pending_audit: '待审核',
+    audit_rejected: '审核拒绝',
+    pending_shipment: '待发货',
+    shipped: '已发货',
+    delivered: '已签收',
+    logistics_returned: '物流部退回',
+    logistics_cancelled: '物流部取消',
+    package_exception: '包裹异常',
+    rejected: '拒收',
+    rejected_returned: '拒收已退回',
+    after_sales_created: '已建售后',
+    pending_cancel: '待取消',
+    cancel_failed: '取消失败',
+    cancelled: '已取消',
+    draft: '草稿',
+    refunded: '已退款',
+    // 兼容旧状态
     pending: '待审核',
     paid: '已付款',
-    shipped: '已发货',
-    completed: '已完成',
-    cancelled: '已取消'
+    completed: '已完成'
   }
   return textMap[status] || status
 }
@@ -548,7 +1319,7 @@ const getOrderStatusText = (status: string) => {
  * 获取客户等级类型
  */
 const getCustomerLevelType = (level: string) => {
-  const typeMap = {
+  const typeMap: Record<string, string> = {
     normal: '',
     silver: 'info',
     gold: 'warning',
@@ -561,7 +1332,7 @@ const getCustomerLevelType = (level: string) => {
  * 获取客户等级文本
  */
 const getCustomerLevelText = (level: string) => {
-  const textMap = {
+  const textMap: Record<string, string> = {
     normal: '普通客户',
     silver: '白银客户',
     gold: '黄金客户',
@@ -575,6 +1346,97 @@ const getCustomerLevelText = (level: string) => {
  */
 const viewOrderDetail = (order: OrderDetail) => {
   safeNavigator.push(`/order/detail/${order.id}`)
+}
+
+/**
+ * 复制物流单号
+ */
+const copyTrackingNo = async (trackingNo: string) => {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(trackingNo)
+      ElMessage.success('物流单号已复制到剪贴板')
+    } else {
+      // 降级方案：使用 document.execCommand
+      const textArea = document.createElement('textarea')
+      textArea.value = trackingNo
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      textArea.style.top = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+
+      const result = document.execCommand('copy')
+      document.body.removeChild(textArea)
+
+      if (result) {
+        ElMessage.success('物流单号已复制到剪贴板')
+      } else {
+        ElMessage.error('复制失败，请手动复制')
+      }
+    }
+  } catch (error) {
+    console.error('复制失败:', error)
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
+/**
+ * 点击物流单号：复制并提示选择跳转网站
+ */
+const handleTrackingNoClick = async (trackingNo: string) => {
+  // 复制物流单号
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(trackingNo)
+      ElMessage.success('物流单号已复制到剪贴板')
+    } else {
+      // 降级方案：使用 document.execCommand
+      const textArea = document.createElement('textarea')
+      textArea.value = trackingNo
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      textArea.style.top = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+
+      const result = document.execCommand('copy')
+      document.body.removeChild(textArea)
+
+      if (result) {
+        ElMessage.success('物流单号已复制到剪贴板')
+      } else {
+        ElMessage.error('复制失败，请手动复制')
+        return
+      }
+    }
+  } catch (error) {
+    console.error('复制失败:', error)
+    ElMessage.error('复制失败，请手动复制')
+    return
+  }
+
+  // 提示选择跳转网站
+  ElMessageBox.confirm(
+    '请选择要跳转的查询网站',
+    '选择查询网站',
+    {
+      confirmButtonText: '顺丰官网',
+      cancelButtonText: '快递100',
+      distinguishCancelAndClose: true,
+      type: 'info'
+    }
+  ).then(() => {
+    // 点击确认，跳转顺丰官网
+    window.open('https://www.sf-express.com/chn/sc/waybill/list', '_blank')
+  }).catch((action) => {
+    if (action === 'cancel') {
+      // 点击取消，跳转快递100
+      window.open('https://www.kuaidi100.com/', '_blank')
+    }
+  })
 }
 
 /**
@@ -592,13 +1454,10 @@ const getCustomerIndex = (index: number) => {
 }
 
 /**
- * 通过客户编码跳转到客户详情页面
+ * 通过客户ID跳转到客户详情页面
  */
-const navigateToCustomerDetail = (customerCode: string) => {
-  safeNavigator.push({
-    path: '/customer/detail',
-    query: { code: customerCode }
-  })
+const navigateToCustomerDetail = (customerId: string) => {
+  safeNavigator.push(`/customer/detail/${customerId}`)
 }
 
 /**
@@ -647,7 +1506,7 @@ const getSalesTrendData = () => {
   const userStore = useUserStore()
   const orderStore = useOrderStore()
   const currentUserId = userStore.currentUser?.id
-  
+
   if (!currentUserId) {
     return {
       months: ['1月', '2月', '3月', '4月', '5月', '6月'],
@@ -655,52 +1514,201 @@ const getSalesTrendData = () => {
       orderCounts: [0, 0, 0, 0, 0, 0]
     }
   }
-  
+
   // 获取当前用户的订单
-  const userOrders = orderStore.orders.filter(order => 
-    order.salesPersonId === currentUserId && 
+  let userOrders = orderStore.orders.filter(order =>
+    order.salesPersonId === currentUserId &&
     order.auditStatus === 'approved'
   )
-  
-  // 按月份统计数据
-  const monthlyData = new Map()
-  const currentDate = new Date()
-  const currentYear = currentDate.getFullYear()
-  
-  // 初始化最近6个月的数据
-  for (let i = 5; i >= 0; i--) {
-    const date = new Date(currentYear, currentDate.getMonth() - i, 1)
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-    const monthLabel = `${date.getMonth() + 1}月`
-    monthlyData.set(monthKey, {
-      label: monthLabel,
-      salesAmount: 0,
-      orderCount: 0
+
+  // 应用日期筛选
+  if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+    const startDate = new Date(dateRange.value[0]).getTime()
+    const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
+
+    userOrders = userOrders.filter(order => {
+      const orderTime = new Date(order.createTime).getTime()
+      return orderTime >= startDate && orderTime <= endDate
     })
   }
-  
-  // 统计订单数据
-  userOrders.forEach(order => {
-    const orderDate = new Date(order.createTime)
-    const monthKey = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}`
-    
-    if (monthlyData.has(monthKey)) {
-      const data = monthlyData.get(monthKey)
+
+  const currentDate = new Date()
+  const timeData = new Map()
+  const months: string[] = []
+  const salesAmounts: number[] = []
+  const orderCounts: number[] = []
+
+  // 根据图表类型生成不同的时间维度数据
+  console.log('[个人业绩] getSalesTrendData - 图表类型:', salesChartType.value)
+
+  if (salesChartType.value === 'daily' || salesChartType.value === 'day') {
+    // 最近7天
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(currentDate.getTime() - i * 24 * 60 * 60 * 1000)
+      const dateKey = date.toISOString().split('T')[0]
+      const dateLabel = `${date.getMonth() + 1}/${date.getDate()}`
+      timeData.set(dateKey, {
+        label: dateLabel,
+        salesAmount: 0,
+        orderCount: 0
+      })
+    }
+
+    // 统计每日数据
+    userOrders.forEach(order => {
+      const orderDate = new Date(order.createTime).toISOString().split('T')[0]
+      if (timeData.has(orderDate)) {
+        const data = timeData.get(orderDate)
+        data.salesAmount += order.totalAmount
+        data.orderCount += 1
+      }
+    })
+  } else if (salesChartType.value === 'weekly' || salesChartType.value === 'week') {
+    // 最近8周
+    for (let i = 7; i >= 0; i--) {
+      const weekStart = new Date(currentDate.getTime() - i * 7 * 24 * 60 * 60 * 1000)
+      const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000)
+      const weekNum = Math.ceil((weekStart.getDate() - weekStart.getDay()) / 7)
+      const weekKey = `${weekStart.getFullYear()}-W${weekNum}`
+      timeData.set(weekKey, {
+        label: `第${weekNum}周`,
+        salesAmount: 0,
+        orderCount: 0,
+        startDate: weekStart.getTime(),
+        endDate: weekEnd.getTime()
+      })
+    }
+
+    // 统计每周数据
+    userOrders.forEach(order => {
+      const orderTime = new Date(order.createTime).getTime()
+      timeData.forEach((data) => {
+        if (orderTime >= data.startDate && orderTime < data.endDate) {
+          data.salesAmount += order.totalAmount
+          data.orderCount += 1
+        }
+      })
+    })
+  } else if (salesChartType.value === 'quarterly') {
+    // 最近4个季度
+    for (let i = 3; i >= 0; i--) {
+      const currentQuarter = Math.floor(currentDate.getMonth() / 3)
+      const quarterIndex = currentQuarter - i
+      const year = currentDate.getFullYear() + Math.floor(quarterIndex / 4)
+      const quarter = ((quarterIndex % 4) + 4) % 4
+      const quarterKey = `${year}-Q${quarter + 1}`
+      const quarterLabel = `Q${quarter + 1}`
+
+      const quarterStartMonth = quarter * 3
+      const quarterStart = new Date(year, quarterStartMonth, 1).getTime()
+      const quarterEnd = new Date(year, quarterStartMonth + 3, 1).getTime()
+
+      timeData.set(quarterKey, {
+        label: quarterLabel,
+        salesAmount: 0,
+        orderCount: 0,
+        startDate: quarterStart,
+        endDate: quarterEnd
+      })
+    }
+
+    // 统计每季度数据
+    userOrders.forEach(order => {
+      const orderTime = new Date(order.createTime).getTime()
+      timeData.forEach((data) => {
+        if (orderTime >= data.startDate && orderTime < data.endDate) {
+          data.salesAmount += order.totalAmount
+          data.orderCount += 1
+        }
+      })
+    })
+  } else if (salesChartType.value === 'yearly') {
+    // 最近3年
+    for (let i = 2; i >= 0; i--) {
+      const year = currentDate.getFullYear() - i
+      const yearKey = `${year}`
+      const yearLabel = `${year}年`
+
+      const yearStart = new Date(year, 0, 1).getTime()
+      const yearEnd = new Date(year + 1, 0, 1).getTime()
+
+      timeData.set(yearKey, {
+        label: yearLabel,
+        salesAmount: 0,
+        orderCount: 0,
+        startDate: yearStart,
+        endDate: yearEnd
+      })
+    }
+
+    // 统计每年数据
+    userOrders.forEach(order => {
+      const orderTime = new Date(order.createTime).getTime()
+      timeData.forEach((data) => {
+        if (orderTime >= data.startDate && orderTime < data.endDate) {
+          data.salesAmount += order.totalAmount
+          data.orderCount += 1
+        }
+      })
+    })
+  } else if (salesChartType.value === 'all') {
+    // 全部：按月统计所有数据
+    const allMonths = new Map()
+
+    userOrders.forEach(order => {
+      const orderDate = new Date(order.createTime)
+      const monthKey = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}`
+      const monthLabel = `${orderDate.getFullYear()}年${orderDate.getMonth() + 1}月`
+
+      if (!allMonths.has(monthKey)) {
+        allMonths.set(monthKey, {
+          label: monthLabel,
+          salesAmount: 0,
+          orderCount: 0
+        })
+      }
+
+      const data = allMonths.get(monthKey)
       data.salesAmount += order.totalAmount
       data.orderCount += 1
+    })
+
+    // 按时间排序
+    const sortedMonths = Array.from(allMonths.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+    sortedMonths.forEach(([_, data]) => {
+      timeData.set(_, data)
+    })
+  } else {
+    // 最近6个月（默认）
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      const monthLabel = `${date.getMonth() + 1}月`
+      timeData.set(monthKey, {
+        label: monthLabel,
+        salesAmount: 0,
+        orderCount: 0
+      })
     }
-  })
-  
-  const months = []
-  const salesAmounts = []
-  const orderCounts = []
-  
-  monthlyData.forEach(data => {
+
+    // 统计每月数据
+    userOrders.forEach(order => {
+      const orderDate = new Date(order.createTime)
+      const monthKey = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}`
+      if (timeData.has(monthKey)) {
+        const data = timeData.get(monthKey)
+        data.salesAmount += order.totalAmount
+        data.orderCount += 1
+      }
+    })
+  }
+
+  timeData.forEach(data => {
     months.push(data.label)
-    salesAmounts.push(Math.round(data.salesAmount / 10000 * 100) / 100) // 转换为万元，保留2位小数
+    salesAmounts.push(data.salesAmount) // 使用原始金额，不转换为万元
     orderCounts.push(data.orderCount)
   })
-  
+
   return { months, salesAmounts, orderCounts }
 }
 
@@ -709,12 +1717,12 @@ const getSalesTrendData = () => {
  */
 const initSalesChart = () => {
   if (!salesChartRef.value) return
-  
+
   salesChart = echarts.init(salesChartRef.value)
-  
+
   // 获取真实的销售趋势数据
   const salesTrendData = getSalesTrendData()
-  
+
   const option = {
     tooltip: {
       trigger: 'axis',
@@ -732,8 +1740,11 @@ const initSalesChart = () => {
     yAxis: [
       {
         type: 'value',
-        name: '销售额(万元)',
-        position: 'left'
+        name: '销售额(元)',
+        position: 'left',
+        axisLabel: {
+          formatter: '¥{value}'
+        }
       },
       {
         type: 'value',
@@ -762,7 +1773,7 @@ const initSalesChart = () => {
       }
     ]
   }
-  
+
   salesChart.setOption(option)
 }
 
@@ -773,44 +1784,83 @@ const getOrderStatusData = () => {
   const userStore = useUserStore()
   const orderStore = useOrderStore()
   const currentUserId = userStore.currentUser?.id
-  
+
   if (!currentUserId) {
     return []
   }
-  
+
   // 获取当前用户的订单
-  const userOrders = orderStore.orders.filter(order => 
-    order.salesPersonId === currentUserId && 
+  let userOrders = orderStore.orders.filter(order =>
+    order.salesPersonId === currentUserId &&
     order.auditStatus === 'approved'
   )
-  
-  // 统计各状态的订单数量
+
+  // 应用日期筛选
+  if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+    const startDate = new Date(dateRange.value[0]).getTime()
+    const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
+
+    userOrders = userOrders.filter(order => {
+      const orderTime = new Date(order.createTime).getTime()
+      return orderTime >= startDate && orderTime <= endDate
+    })
+  }
+
+  // 统计各状态的订单数量和业绩
   const statusMap = new Map()
-  const statusNames = {
-    'pending': '待审核',
-    'paid': '已付款', 
+  const statusNames: Record<string, string> = {
+    // 16个订单状态
+    'pending_transfer': '待流转',
+    'pending_audit': '待审核',
+    'audit_rejected': '审核拒绝',
+    'pending_shipment': '待发货',
     'shipped': '已发货',
-    'completed': '已完成',
+    'delivered': '已签收',
+    'logistics_returned': '物流部退回',
+    'logistics_cancelled': '物流部取消',
+    'package_exception': '包裹异常',
+    'rejected': '拒收',
+    'rejected_returned': '拒收已退回',
+    'after_sales_created': '已建售后',
+    'pending_cancel': '待取消',
+    'cancel_failed': '取消失败',
     'cancelled': '已取消',
+    'draft': '草稿',
+    'refunded': '已退款',
+    // 兼容旧状态
+    'pending': '待审核',
+    'paid': '已付款',
+    'completed': '已完成',
     'signed': '已签收'
   }
-  
+
   userOrders.forEach(order => {
     const statusName = statusNames[order.status] || order.status
     if (statusMap.has(statusName)) {
-      statusMap.set(statusName, statusMap.get(statusName) + 1)
+      const existing = statusMap.get(statusName)
+      statusMap.set(statusName, {
+        count: existing.count + 1,
+        amount: existing.amount + (order.totalAmount || 0)
+      })
     } else {
-      statusMap.set(statusName, 1)
+      statusMap.set(statusName, {
+        count: 1,
+        amount: order.totalAmount || 0
+      })
     }
   })
-  
+
   // 转换为图表数据格式
-  const data = []
+  const chartData: Array<{ value: number; name: string; amount: number }> = []
   statusMap.forEach((value, name) => {
-    data.push({ value, name })
+    chartData.push({
+      value: value.count,
+      name: `${name}(${value.count}单/¥${value.amount.toLocaleString()})`,
+      amount: value.amount
+    })
   })
-  
-  return data
+
+  return chartData
 }
 
 /**
@@ -818,12 +1868,12 @@ const getOrderStatusData = () => {
  */
 const initOrderStatusChart = () => {
   if (!orderStatusChartRef.value) return
-  
+
   orderStatusChart = echarts.init(orderStatusChartRef.value)
-  
+
   // 获取真实的订单状态分布数据
   const statusData = getOrderStatusData()
-  
+
   const option = {
     tooltip: {
       trigger: 'item',
@@ -849,7 +1899,7 @@ const initOrderStatusChart = () => {
       }
     ]
   }
-  
+
   orderStatusChart.setOption(option)
 }
 
@@ -860,42 +1910,51 @@ const getCustomerLevelData = () => {
   const userStore = useUserStore()
   const customerStore = useCustomerStore()
   const currentUserId = userStore.currentUser?.id
-  
+
   if (!currentUserId) {
     return []
   }
-  
+
   // 获取当前用户的客户
-  const userCustomers = customerStore.customers.filter(customer => 
+  let userCustomers = customerStore.customers.filter(customer =>
     customer.salesPersonId === currentUserId
   )
-  
+
+  console.log('[个人业绩-客户等级分布] 当前用户的客户数:', userCustomers.length)
+
+  // 如果没有匹配的客户，显示所有客户
+  if (userCustomers.length === 0 && customerStore.customers.length > 0) {
+    console.log('[个人业绩-客户等级分布] 警告：没有匹配的客户，显示所有客户')
+    userCustomers = customerStore.customers
+  }
+
   // 统计各等级的客户数量
-  const levelMap = new Map()
-  const levelNames = {
+  const levelMap = new Map<string, number>()
+  const levelNames: Record<string, string> = {
     'normal': '普通客户',
     'silver': '白银客户',
     'gold': '黄金客户',
     'diamond': '钻石客户'
   }
-  
+
   userCustomers.forEach(customer => {
     const level = customer.level || 'normal'
     const levelName = levelNames[level] || level
-    if (levelMap.has(levelName)) {
-      levelMap.set(levelName, levelMap.get(levelName) + 1)
+    const currentCount = levelMap.get(levelName)
+    if (currentCount !== undefined) {
+      levelMap.set(levelName, currentCount + 1)
     } else {
       levelMap.set(levelName, 1)
     }
   })
-  
+
   // 转换为图表数据格式
-  const data = []
+  const chartData: Array<{ value: number; name: string }> = []
   levelMap.forEach((value, name) => {
-    data.push({ value, name })
+    chartData.push({ value, name })
   })
-  
-  return data
+
+  return chartData
 }
 
 /**
@@ -903,15 +1962,31 @@ const getCustomerLevelData = () => {
  */
 const initCustomerLevelChart = () => {
   if (!customerLevelChartRef.value) return
-  
+
   customerLevelChart = echarts.init(customerLevelChartRef.value)
-  
+
   // 获取真实的客户等级分布数据
   const levelData = getCustomerLevelData()
-  
+
+  // 计算总客户数
+  const totalCustomers = levelData.reduce((sum, item) => sum + item.value, 0)
+
   const option = {
     tooltip: {
-      trigger: 'item'
+      trigger: 'item',
+      formatter: '{b}: {c}人 ({d}%)'
+    },
+    graphic: {
+      type: 'text',
+      left: 'center',
+      top: 'center',
+      style: {
+        text: `${totalCustomers}`,
+        textAlign: 'center',
+        fill: '#333',
+        fontSize: 24,
+        fontWeight: 'normal'
+      }
     },
     series: [
       {
@@ -920,24 +1995,28 @@ const initCustomerLevelChart = () => {
         radius: ['40%', '70%'],
         avoidLabelOverlap: false,
         label: {
-          show: false,
-          position: 'center'
+          show: true,
+          formatter: '{c}',
+          fontSize: 12,
+          fontWeight: 'normal'
         },
         emphasis: {
           label: {
             show: true,
-            fontSize: '18',
-            fontWeight: 'bold'
+            fontSize: 14,
+            fontWeight: 'normal'
           }
         },
         labelLine: {
-          show: false
+          show: true,
+          length: 10,
+          length2: 10
         },
         data: levelData
       }
     ]
   }
-  
+
   customerLevelChart.setOption(option)
 }
 
@@ -945,56 +2024,68 @@ const initCustomerLevelChart = () => {
  * 获取商品销售排行数据
  */
 const getProductSalesData = () => {
-  const userStore = useUserStore()
-  const orderStore = useOrderStore()
-  const productStore = useProductStore()
   const currentUserId = userStore.currentUser?.id
-  
+
   if (!currentUserId) {
     return {
       names: ['暂无数据'],
       values: [0]
     }
   }
-  
+
   // 获取当前用户的订单
-  const userOrders = orderStore.orders.filter(order => 
-    order.salesPersonId === currentUserId && 
+  let userOrders = orderStore.orders.filter(order =>
+    order.salesPersonId === currentUserId &&
     order.auditStatus === 'approved'
   )
-  
+
+  // 应用日期筛选
+  if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+    const startDate = new Date(dateRange.value[0]).getTime()
+    const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
+
+    userOrders = userOrders.filter(order => {
+      const orderTime = new Date(order.createTime).getTime()
+      return orderTime >= startDate && orderTime <= endDate
+    })
+  }
+
   // 统计商品销售数据
   const productSalesMap = new Map()
-  
+
   userOrders.forEach(order => {
-    order.items?.forEach(item => {
-      const productId = item.productId
-      const product = productStore.products.find(p => p.id === productId)
-      
-      if (product) {
-        if (productSalesMap.has(productId)) {
+    // 使用products字段
+    const products = order.products || []
+    products.forEach((item) => {
+      const productId = item.id
+      const productName = item.name || '未知商品'
+      const productValue = item.total || 0
+
+      if (productId) {
+        const existing = productSalesMap.get(productId)
+        if (existing) {
           productSalesMap.set(productId, {
-            name: product.name,
-            value: productSalesMap.get(productId).value + item.totalPrice
+            name: productName,
+            value: existing.value + productValue
           })
         } else {
           productSalesMap.set(productId, {
-            name: product.name,
-            value: item.totalPrice
+            name: productName,
+            value: productValue
           })
         }
       }
     })
   })
-  
+
   // 转换为数组并排序
   const salesArray = Array.from(productSalesMap.values())
     .sort((a, b) => b.value - a.value)
     .slice(0, 5) // 取前5名
-  
+
   return {
     names: salesArray.map(item => item.name),
-    values: salesArray.map(item => Math.round(item.value / 100) / 100) // 转换为万元
+    values: salesArray.map(item => item.value) // 使用原始金额，不转换为万元
   }
 }
 
@@ -1003,12 +2094,12 @@ const getProductSalesData = () => {
  */
 const initProductRankingChart = () => {
   if (!productRankingChartRef.value) return
-  
+
   productRankingChart = echarts.init(productRankingChartRef.value)
-  
+
   // 获取真实的商品销售排行数据
   const salesData = getProductSalesData()
-  
+
   const option = {
     tooltip: {
       trigger: 'axis',
@@ -1031,78 +2122,87 @@ const initProductRankingChart = () => {
     },
     series: [
       {
-        name: '销售额',
+        name: '销售额(元)',
         type: 'bar',
         data: salesData.values,
         itemStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: '#83bff6' },
-            { offset: 0.5, color: '#188df0' },
-            { offset: 1, color: '#188df0' }
-          ])
+          color: '#409EFF'
+        },
+        label: {
+          show: true,
+          position: 'right',
+          formatter: '¥{c}'
         }
       }
     ]
   }
-  
+
   productRankingChart.setOption(option)
 }
 
-/**
- * 加载业绩数据
- */
-const loadPerformanceData = async () => {
-  try {
-    // 获取个人业绩分析数据
-    const params = {
-      startDate: dateRange.value?.[0] ? `${dateRange.value[0]}-01` : undefined,
-      endDate: dateRange.value?.[1] ? `${dateRange.value[1]}-31` : undefined
-    }
-    
-    await performanceStore.getPersonalAnalysisData(params)
-    
-    // 刷新业绩数据
-    await performanceStore.refreshPerformanceData()
-    
-    console.log('业绩数据加载完成')
-  } catch (error) {
-    console.error('加载业绩数据失败:', error)
-    ElMessage.error('加载业绩数据失败')
-  }
-}
+
 
 /**
  * 加载表格数据
  */
 const loadTableData = async () => {
   tableLoading.value = true
-  
+
   try {
     if (activeTab.value === 'orders') {
       // 从orderStore获取当前用户的订单数据
       const currentUserId = userStore.currentUser?.id
-      
+
       if (currentUserId) {
-        const userOrders = orderStore.orders.filter(order => 
-          order.salesPersonId === currentUserId && 
+        // 获取用户订单
+        let userOrders = orderStore.orders.filter(order =>
+          order.salesPersonId === currentUserId &&
           order.auditStatus === 'approved'
         )
-        
+
+        // 应用日期筛选
+        if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+          const startDate = new Date(dateRange.value[0]).getTime()
+          const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
+
+          userOrders = userOrders.filter(order => {
+            const orderTime = new Date(order.createTime).getTime()
+            return orderTime >= startDate && orderTime <= endDate
+          })
+        }
+
+        // 倒序排列（最新的在前面）
+        userOrders = userOrders.sort((a, b) => {
+          return new Date(b.createTime).getTime() - new Date(a.createTime).getTime()
+        })
+
         // 分页处理
         const startIndex = (orderPagination.currentPage - 1) * orderPagination.pageSize
         const endIndex = startIndex + orderPagination.pageSize
         const paginatedOrders = userOrders.slice(startIndex, endIndex)
-        
-        orderDetails.value = paginatedOrders.map(order => ({
-          id: order.id,
-          orderNo: order.orderNumber,
-          customerName: order.customerName,
-          totalAmount: order.totalAmount,
-          status: order.status,
-          createTime: order.createTime,
-          commission: order.totalAmount * 0.1 // 10%佣金率
-        }))
-        
+
+        orderDetails.value = paginatedOrders.map(order => {
+          // 获取商品信息
+          const productInfo = order.products && order.products.length > 0
+            ? order.products.map(p => `${p.name} x${p.quantity}`).join(', ')
+            : '暂无商品信息'
+
+          return {
+            id: order.id,
+            customerId: order.customerId,
+            orderNo: order.orderNumber,
+            customerName: order.customerName,
+            customerPhone: order.customerPhone || '未填写',
+            productInfo,
+            totalAmount: order.totalAmount,
+            depositAmount: order.depositAmount || 0,
+            status: order.status,
+            auditStatus: order.auditStatus,
+            trackingNumber: order.trackingNumber || '',
+            createTime: order.createTime
+          }
+        })
+
         orderPagination.total = userOrders.length
       } else {
         orderDetails.value = []
@@ -1111,27 +2211,48 @@ const loadTableData = async () => {
     } else if (activeTab.value === 'customers') {
       // 从customerStore获取当前用户的客户数据
       const currentUserId = userStore.currentUser?.id
-      
+
+      console.log('[个人业绩-客户明细] 当前用户ID:', currentUserId)
+      console.log('[个人业绩-客户明细] 客户总数:', customerStore.customers.length)
+      console.log('[个人业绩-客户明细] 客户salesPersonId列表:', [...new Set(customerStore.customers.map(c => c.salesPersonId))])
+
       if (currentUserId) {
-        const userCustomers = customerStore.customers.filter(customer => 
+        // 先尝试按salesPersonId过滤
+        let userCustomers = customerStore.customers.filter(customer =>
           customer.salesPersonId === currentUserId
         )
-        
-        // 分页处理
-        const startIndex = (customerPagination.currentPage - 1) * customerPagination.pageSize
-        const endIndex = startIndex + customerPagination.pageSize
-        const paginatedCustomers = userCustomers.slice(startIndex, endIndex)
-        
-        customerDetails.value = paginatedCustomers.map(customer => {
-          // 计算客户的订单统计
-          const customerOrders = orderStore.orders.filter(order => 
+
+        console.log('[个人业绩-客户明细] 当前用户的客户数:', userCustomers.length)
+
+        // 如果没有匹配的客户，显示所有客户（可能是数据中没有salesPersonId字段）
+        if (userCustomers.length === 0 && customerStore.customers.length > 0) {
+          console.log('[个人业绩-客户明细] 警告：没有匹配的客户，显示所有客户')
+          userCustomers = customerStore.customers
+        }
+
+        // 计算客户详情（包含日期筛选）
+        const customerDetailsWithOrders = userCustomers.map(customer => {
+          // 获取客户的订单
+          let customerOrders = orderStore.orders.filter(order =>
             order.customerId === customer.id && order.auditStatus === 'approved'
           )
+
+          // 应用日期筛选
+          if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+            const startDate = new Date(dateRange.value[0]).getTime()
+            const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
+
+            customerOrders = customerOrders.filter(order => {
+              const orderTime = new Date(order.createTime).getTime()
+              return orderTime >= startDate && orderTime <= endDate
+            })
+          }
+
           const totalAmount = customerOrders.reduce((sum, order) => sum + order.totalAmount, 0)
-          const lastOrder = customerOrders.sort((a, b) => 
+          const lastOrder = customerOrders.sort((a, b) =>
             new Date(b.createTime).getTime() - new Date(a.createTime).getTime()
           )[0]
-          
+
           return {
             id: customer.id,
             code: customer.code,
@@ -1143,8 +2264,12 @@ const loadTableData = async () => {
             lastOrderTime: lastOrder?.createTime || '暂无订单'
           }
         })
-        
-        customerPagination.total = userCustomers.length
+
+        // 分页处理
+        const startIndex = (customerPagination.currentPage - 1) * customerPagination.pageSize
+        const endIndex = startIndex + customerPagination.pageSize
+        customerDetails.value = customerDetailsWithOrders.slice(startIndex, endIndex)
+        customerPagination.total = customerDetailsWithOrders.length
       } else {
         customerDetails.value = []
         customerPagination.total = 0
@@ -1152,42 +2277,70 @@ const loadTableData = async () => {
     } else if (activeTab.value === 'products') {
       // 从productStore和orderStore获取商品销售数据
       const currentUserId = userStore.currentUser?.id
-      
+
+      console.log('[个人业绩-商品明细] 当前用户ID:', currentUserId)
+      console.log('[个人业绩-商品明细] 订单总数:', orderStore.orders.length)
+
       if (currentUserId) {
-        const userOrders = orderStore.orders.filter(order => 
-          order.salesPersonId === currentUserId && 
+        let userOrders = orderStore.orders.filter(order =>
+          order.salesPersonId === currentUserId &&
           order.auditStatus === 'approved'
         )
-        
+
+        // 应用日期筛选
+        if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+          const startDate = new Date(dateRange.value[0]).getTime()
+          const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
+
+          userOrders = userOrders.filter(order => {
+            const orderTime = new Date(order.createTime).getTime()
+            return orderTime >= startDate && orderTime <= endDate
+          })
+        }
+
+        console.log('[个人业绩-商品明细] 当前用户的订单数:', userOrders.length)
+        console.log('[个人业绩-商品明细] 订单products字段:', userOrders.map(o => ({ id: o.id, products: o.products })))
+
         // 统计商品销售数据
         const productSalesMap = new Map()
-        
+
         userOrders.forEach(order => {
-          order.items?.forEach(item => {
-            const productId = item.productId
-            const product = productStore.products.find(p => p.id === productId)
-            
-            if (product && productSalesMap.has(productId)) {
-              const existing = productSalesMap.get(productId)
-              existing.salesCount += item.quantity
-              existing.salesAmount += item.totalPrice
-              existing.lastSaleTime = order.createTime > existing.lastSaleTime ? order.createTime : existing.lastSaleTime
-            } else if (product) {
-              productSalesMap.set(productId, {
-                id: productId,
-                productName: product.name,
-                salesCount: item.quantity,
-                salesAmount: item.totalPrice,
-                commission: item.totalPrice * 0.1,
-                avgPrice: item.price,
-                lastSaleTime: order.createTime
-              })
+          // 使用products字段
+          const products = order.products || []
+
+          products.forEach((item) => {
+            const productId = item.id
+            const productName = item.name || '未知商品'
+            const quantity = item.quantity || 0
+            const price = item.price || 0
+            const total = item.total || 0
+
+            if (productId) {
+              if (productSalesMap.has(productId)) {
+                const existing = productSalesMap.get(productId)
+                if (existing) {
+                  existing.salesCount += quantity
+                  existing.salesAmount += total
+                  existing.lastSaleTime = order.createTime > existing.lastSaleTime ? order.createTime : existing.lastSaleTime
+                }
+              } else {
+                productSalesMap.set(productId, {
+                  id: productId,
+                  productName: productName,
+                  salesCount: quantity,
+                  salesAmount: total,
+                  avgPrice: price,
+                  lastSaleTime: order.createTime
+                })
+              }
             }
           })
         })
-        
+
+        console.log('[个人业绩-商品明细] 统计到的商品数:', productSalesMap.size)
+
         const productSalesArray = Array.from(productSalesMap.values())
-        
+
         // 分页处理
         const startIndex = (productPagination.currentPage - 1) * productPagination.pageSize
         const endIndex = startIndex + productPagination.pageSize
@@ -1204,6 +2357,42 @@ const loadTableData = async () => {
   } finally {
     tableLoading.value = false
   }
+}
+
+// 格式化数字
+const formatNumber = (num: number) => {
+  if (typeof num !== 'number' || isNaN(num)) {
+    return '0'
+  }
+  return num.toLocaleString()
+}
+
+// 处理图表类型变化
+const handleChartTypeChange = (value: string) => {
+  console.log('[个人业绩] 图表类型手动变化:', value)
+  nextTick(() => {
+    initSalesChart()
+  })
+}
+
+// 获取审核状态文本
+const getAuditStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    'pending': '待审核',
+    'approved': '已通过',
+    'rejected': '已拒绝'
+  }
+  return statusMap[status] || status
+}
+
+// 获取审核状态类型
+const getAuditStatusType = (status: string) => {
+  const typeMap: Record<string, unknown> = {
+    'pending': 'warning',
+    'approved': 'success',
+    'rejected': 'danger'
+  }
+  return typeMap[status] || 'info'
 }
 
 /**
@@ -1229,22 +2418,25 @@ const handleResize = () => {
 }
 
 // 监听销售图表类型变化
-watch(salesChartType, () => {
+watch(salesChartType, (newValue) => {
+  console.log('[个人业绩] 销售图表类型变化:', newValue)
   // 重新加载销售图表数据
-  initSalesChart()
+  nextTick(() => {
+    console.log('[个人业绩] 重新初始化销售图表')
+    initSalesChart()
+  })
 })
 
 // 监听数据变化，实时更新图表
 watch(() => [
   orderStore.orders,
-  customerStore.customers,
-  productStore.products,
-  performanceStore.performanceData
+  customerStore.customers
 ], () => {
   // 重新加载数据和图表
-  loadPerformanceData()
   loadTableData()
-  initAllCharts()
+  nextTick(() => {
+    initAllCharts()
+  })
 }, { deep: true })
 
 // 监听日期范围变化
@@ -1254,46 +2446,52 @@ watch(dateRange, () => {
 
 // 生命周期钩子
 onMounted(() => {
-  // 设置默认日期范围为当前月份
-  const currentDate = new Date()
-  const currentMonth = currentDate.getFullYear() + '-' + String(currentDate.getMonth() + 1).padStart(2, '0')
-  dateRange.value = [currentMonth, currentMonth]
-  
+  // 设置默认日期范围为今天
+  const today = new Date()
+  const formatDate = (date: Date) => date.toISOString().split('T')[0]
+  dateRange.value = [formatDate(today), formatDate(today)]
+  selectedQuickFilter.value = 'today'
+
   // 加载数据
-  loadPerformanceData()
   loadTableData()
-  
+
   // 初始化图表
-  initAllCharts()
-  
+  nextTick(() => {
+    initAllCharts()
+  })
+
   // 监听窗口大小变化
   window.addEventListener('resize', handleResize)
-  
+
   // 监听物流状态更新事件
   window.addEventListener('orderStatusUpdated', handleOrderStatusUpdate)
   window.addEventListener('todoStatusUpdated', handleTodoStatusUpdate)
-  
+
   // 添加数据同步事件监听
   window.addEventListener('dataSync', handleDataSync)
   window.addEventListener('performanceDataUpdate', handlePerformanceDataUpdate)
-  
-  // 启动数据同步监听
-  performanceStore.syncPerformanceData()
+
 })
 
 // 处理订单状态更新事件
-const handleOrderStatusUpdate = (event: CustomEvent) => {
-  console.log('订单状态已更新，刷新个人业绩数据', event.detail)
-  loadPerformanceData()
+const handleOrderStatusUpdate = (event: Event) => {
+  const customEvent = event as CustomEvent
+  console.log('订单状态已更新，刷新个人业绩数据', customEvent.detail)
   loadTableData()
+  nextTick(() => {
+    initAllCharts()
+  })
   ElMessage.success('个人业绩数据已同步更新')
 }
 
 // 处理待办状态更新事件
-const handleTodoStatusUpdate = (event: CustomEvent) => {
-  console.log('待办状态已更新，刷新个人业绩数据', event.detail)
-  loadPerformanceData()
+const handleTodoStatusUpdate = (event: Event) => {
+  const customEvent = event as CustomEvent
+  console.log('待办状态已更新，刷新个人业绩数据', customEvent.detail)
   loadTableData()
+  nextTick(() => {
+    initAllCharts()
+  })
   ElMessage.success('个人业绩数据已同步更新')
 }
 
@@ -1302,9 +2500,10 @@ const handleTodoStatusUpdate = (event: CustomEvent) => {
  */
 const handleDataSync = () => {
   // 重新加载所有数据
-  loadPerformanceData()
   loadTableData()
-  initAllCharts()
+  nextTick(() => {
+    initAllCharts()
+  })
 }
 
 /**
@@ -1312,8 +2511,9 @@ const handleDataSync = () => {
  */
 const handlePerformanceDataUpdate = () => {
   // 重新加载业绩数据和图表
-  loadPerformanceData()
-  initAllCharts()
+  nextTick(() => {
+    initAllCharts()
+  })
 }
 
 // 组件卸载时清理
@@ -1339,7 +2539,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .page-header h2 {
@@ -1347,10 +2547,25 @@ onUnmounted(() => {
   color: #303133;
 }
 
-.header-actions {
+.filters-actions-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 20px;
+  gap: 16px;
+}
+
+.quick-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.actions-group {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .performance-overview {
@@ -1504,8 +2719,49 @@ onUnmounted(() => {
 
 .pagination-wrapper {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 20px;
+}
+
+.data-summary {
+  flex: 1;
+}
+
+.summary-text {
+  font-size: 14px;
+  color: #909399;
+  font-weight: normal;
+}
+
+/* 业绩分享对话框样式 */
+.share-dialog-content {
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.share-image-container {
+  width: 100%;
+  text-align: center;
+}
+
+.share-image {
+  max-width: 100%;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.share-loading-text {
+  font-size: 16px;
+  color: #909399;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 /* 响应式设计 */
@@ -1513,7 +2769,7 @@ onUnmounted(() => {
   .performance-overview .el-col {
     margin-bottom: 16px;
   }
-  
+
   .charts-section .el-col {
     margin-bottom: 20px;
   }
@@ -1548,5 +2804,50 @@ onUnmounted(() => {
   .chart-container {
     height: 220px;
   }
+}
+
+/* 订单号和物流单号样式 */
+.order-no-wrapper,
+.tracking-no-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copy-btn {
+  padding: 0;
+  margin-left: 4px;
+  color: #909399;
+  transition: color 0.3s;
+}
+
+.copy-btn:hover {
+  color: #409eff;
+}
+
+.no-data {
+  color: #909399;
+}
+
+/* 订单明细表格优化 */
+.order-detail-table {
+  font-size: 13px;
+}
+
+.order-detail-table :deep(.el-table__cell) {
+  padding: 10px 0;
+  white-space: nowrap;
+}
+
+.product-info-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.order-detail-table :deep(.el-table__fixed-right) {
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
 }
 </style>

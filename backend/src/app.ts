@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+// Trigger restart
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
@@ -33,6 +34,8 @@ import performanceRoutes from './routes/performance';
 import logisticsRoutes from './routes/logistics';
 import roleRoutes from './routes/roles';
 import permissionRoutes from './routes/permissions';
+import sfExpressRoutes from './routes/sfExpress';
+import ytoExpressRoutes from './routes/ytoExpress';
 
 // 加载环境变量
 dotenv.config();
@@ -122,12 +125,12 @@ app.use(morgan('combined', {
 }));
 
 // 解析中间件
-app.use(express.json({ 
+app.use(express.json({
   limit: process.env.UPLOAD_MAX_SIZE || '10mb',
   type: ['application/json', 'text/plain']
 }));
-app.use(express.urlencoded({ 
-  extended: true, 
+app.use(express.urlencoded({
+  extended: true,
   limit: process.env.UPLOAD_MAX_SIZE || '10mb'
 }));
 
@@ -152,8 +155,29 @@ app.get(`${API_PREFIX}/health`, (req, res) => {
     message: 'CRM API服务运行正常',
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version || '1.0.0',
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// 根路径处理 - 返回API信息
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'CRM API服务',
+    version: process.env.npm_package_version || '1.0.0',
     environment: process.env.NODE_ENV || 'development',
-    apiPrefix: API_PREFIX
+    apiPrefix: API_PREFIX,
+    endpoints: {
+      health: '/health',
+      apiHealth: `${API_PREFIX}/health`,
+      auth: `${API_PREFIX}/auth`,
+      users: `${API_PREFIX}/users`,
+      customers: `${API_PREFIX}/customers`,
+      products: `${API_PREFIX}/products`,
+      orders: `${API_PREFIX}/orders`,
+      dashboard: `${API_PREFIX}/dashboard`
+    },
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -184,6 +208,8 @@ app.use(`${API_PREFIX}/performance`, performanceRoutes);
 app.use(`${API_PREFIX}/logistics`, logisticsRoutes);
 app.use(`${API_PREFIX}/roles`, roleRoutes);
 app.use(`${API_PREFIX}/permissions`, permissionRoutes);
+app.use(`${API_PREFIX}/sf-express`, sfExpressRoutes);
+app.use(`${API_PREFIX}/yto-express`, ytoExpressRoutes);
 
 // 404处理
 app.use(notFoundHandler);
@@ -197,7 +223,7 @@ const startServer = async () => {
     // 初始化数据库连接
     await initializeDatabase();
     logger.info('✅ 数据库初始化完成');
-    
+
     // 启动HTTP服务器
     const server = app.listen(PORT, () => {
       logger.info(`🚀 CRM API服务已启动`);
@@ -210,10 +236,10 @@ const startServer = async () => {
     // 优雅关闭处理
     const gracefulShutdown = async (signal: string) => {
       logger.info(`收到 ${signal} 信号，开始优雅关闭...`);
-      
+
       server.close(async () => {
         logger.info('HTTP服务器已关闭');
-        
+
         try {
           await closeDatabase();
           logger.info('数据库连接已关闭');

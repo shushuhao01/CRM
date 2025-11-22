@@ -41,8 +41,8 @@
             <el-form :model="importOptions" label-width="120px">
               <el-form-item label="导入模式">
                 <el-radio-group v-model="importOptions.mode">
-                  <el-radio value="merge">合并模式（保留现有模板）</el-radio>
-                  <el-radio value="replace">替换模式（覆盖同名模板）</el-radio>
+                  <el-radio label="merge">合并模式（保留现有模板）</el-radio>
+          <el-radio label="replace">替换模式（覆盖同名模板）</el-radio>
                 </el-radio-group>
               </el-form-item>
               <el-form-item label="冲突处理">

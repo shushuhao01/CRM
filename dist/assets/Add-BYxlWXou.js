@@ -1,1 +1,0 @@
-import o from"./Edit-CprYmHLM.js";import{l as t,M as r,p as e}from"./vendor-D8Vxqhr-.js";import"./elementPlus-Bmwh7Rh8.js";import"./settings-CuxbDWOu.js";import"./utils-ywHRn0uI.js";import"./product-DLyzXkG9.js";const f=t({__name:"Add",setup(p){return(m,a)=>(e(),r(o))}});export{f as default};

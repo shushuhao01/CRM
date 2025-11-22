@@ -389,8 +389,8 @@ const loadData = async () => {
       pageSize: pagination.pageSize
     }
     const response = await smsApi.getSmsSendList(params)
-    tableData.value = response.list
-    pagination.total = response.total
+    tableData.value = response?.list || []
+    pagination.total = response?.total || 0
   } catch (error) {
     ElMessage.error('加载数据失败')
   } finally {
@@ -401,7 +401,7 @@ const loadData = async () => {
 const loadTemplates = async () => {
   try {
     const response = await smsApi.getSmsTemplateList({ status: 'active' })
-    templates.value = response.list
+    templates.value = response?.list || []
   } catch (error) {
     ElMessage.error('加载模板失败')
   }

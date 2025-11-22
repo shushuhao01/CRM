@@ -741,76 +741,10 @@ const loadProductData = async () => {
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
     
-    // 模拟商品数据
-    productList.value = [
-      {
-        id: '1',
-        name: 'iPhone 15 Pro Max',
-        category: '电子产品',
-        price: 9999,
-        salesQuantity: 312,
-        salesAmount: 3119688,
-        profit: 623938,
-        stock: 45,
-        status: 'hot',
-        image: '',
-        lastSaleTime: '2024-01-10 14:30:00'
-      },
-      {
-        id: '2',
-        name: 'MacBook Pro 16英寸',
-        category: '电子产品',
-        price: 19999,
-        salesAmount: 2679865,
-        salesQuantity: 134,
-        profit: 535973,
-        stock: 23,
-        status: 'hot',
-        image: '',
-        lastSaleTime: '2024-01-10 13:45:00'
-      },
-      {
-        id: '3',
-        name: '耐克运动鞋',
-        category: '服装鞋帽',
-        price: 899,
-        salesQuantity: 268,
-        salesAmount: 240932,
-        profit: 72280,
-        stock: 156,
-        status: 'normal',
-        image: '',
-        lastSaleTime: '2024-01-10 12:20:00'
-      },
-      {
-        id: '4',
-        name: '智能扫地机器人',
-        category: '家居用品',
-        price: 2599,
-        salesQuantity: 89,
-        salesAmount: 231311,
-        profit: 69393,
-        stock: 34,
-        status: 'normal',
-        image: '',
-        lastSaleTime: '2024-01-10 11:15:00'
-      },
-      {
-        id: '5',
-        name: '办公椅',
-        category: '家居用品',
-        price: 1299,
-        salesQuantity: 156,
-        salesAmount: 202644,
-        profit: 60793,
-        stock: 8,
-        status: 'slow',
-        image: '',
-        lastSaleTime: '2024-01-09 16:30:00'
-      }
-    ]
+    // 清空模拟商品数据，支持动态创建
+    productList.value = []
     
-    pagination.total = 128
+    pagination.total = 0
   } catch (error) {
     ElMessage.error('加载商品数据失败')
   } finally {

@@ -266,9 +266,10 @@
                   placeholder="请选择客户等级"
                   style="width: 100%"
                 >
-                  <el-option label="普通客户" value="normal" />
-                  <el-option label="VIP客户" value="vip" />
-                  <el-option label="SVIP客户" value="svip" />
+                  <el-option label="铜牌客户" value="bronze" />
+                  <el-option label="银牌客户" value="silver" />
+                  <el-option label="金牌客户" value="gold" />
+                  <el-option label="钻石客户" value="diamond" />
                 </el-select>
               </el-form-item>
             </el-col>
@@ -389,11 +390,11 @@ const canEditCustomer = computed(() => {
     if (customer.createdBy === currentUser.id || customer.salesPersonId === currentUser.id) {
       return true
     }
-    
+
     // 可以编辑本部门成员创建的客户
     const customerCreator = userStore.users.find(u => u.id === customer.createdBy)
     const customerSalesPerson = userStore.users.find(u => u.id === customer.salesPersonId)
-    
+
     return (customerCreator && customerCreator.departmentId === currentUser.departmentId) ||
            (customerSalesPerson && customerSalesPerson.departmentId === currentUser.departmentId)
   }
@@ -520,7 +521,7 @@ const handleSubmit = async () => {
   try {
     await customerFormRef.value.validate()
     loading.value = true
-    
+
     // 构建完整地址
     const fullAddress = [
       customerForm.province,
@@ -529,7 +530,7 @@ const handleSubmit = async () => {
       customerForm.street,
       customerForm.detailAddress
     ].filter(Boolean).join('')
-    
+
     // 准备更新数据
     const updateData = {
       ...customerForm,
@@ -542,10 +543,10 @@ const handleSubmit = async () => {
       detailAddress: customerForm.detailAddress,
       overseasAddress: customerForm.overseasAddress
     }
-    
+
     // 使用客户store更新数据
     await customerStore.updateCustomer(updateData)
-    
+
     ElMessage.success('客户信息更新成功')
     safeNavigator.push('/customer/list')
   } catch (error) {
@@ -563,10 +564,10 @@ const loadCustomerDetail = async () => {
     safeNavigator.push('/customer/list')
     return
   }
-  
+
   try {
     loading.value = true
-    
+
     // 从客户store中获取客户数据
     const customer = customerStore.getCustomerById(customerId)
     if (!customer) {
@@ -591,7 +592,7 @@ const loadCustomerDetail = async () => {
       safeNavigator.push('/customer/list')
       return
     }
-    
+
     // 填充表单数据
     Object.assign(customerForm, {
       name: customer.name || '',
@@ -616,7 +617,7 @@ const loadCustomerDetail = async () => {
       salesPerson: customer.salesPersonId || '',
       remark: customer.remark || ''
     })
-    
+
     // 根据省份、城市和区县加载对应的下拉选项
     if (customerForm.province) {
       handleProvinceChange(customerForm.province)
@@ -627,7 +628,7 @@ const loadCustomerDetail = async () => {
     if (customerForm.district) {
       handleDistrictChange(customerForm.district)
     }
-    
+
   } catch (error) {
     console.error('加载客户详情失败:', error)
     ElMessage.error('加载客户信息失败')
@@ -709,17 +710,17 @@ onMounted(() => {
   .customer-form {
     padding: 10px;
   }
-  
+
   .page-header {
     flex-direction: column;
     gap: 15px;
     align-items: stretch;
   }
-  
+
   .header-actions {
     justify-content: flex-end;
   }
-  
+
   .form-card {
     padding: 16px;
   }

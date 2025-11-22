@@ -73,21 +73,50 @@
       </el-form>
     </el-card>
 
-    <!-- 操作按钮区域 -->
-    <div class="action-bar">
-      <div class="action-left">
+    <!-- 标签页和操作按钮区域 -->
+    <div class="tabs-action-bar">
+      <!-- 标签页 -->
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange" class="service-tabs">
+        <el-tab-pane label="待处理" name="pending">
+          <template #label>
+            <span class="tab-label">
+              待处理
+              <el-badge :value="pendingCount" :max="99" type="danger" v-if="pendingCount > 0" />
+            </span>
+          </template>
+        </el-tab-pane>
+
+        <el-tab-pane label="处理中" name="processing">
+          <template #label>
+            <span class="tab-label">
+              处理中
+              <el-badge :value="processingCount" :max="99" type="primary" v-if="processingCount > 0" />
+            </span>
+          </template>
+        </el-tab-pane>
+
+        <el-tab-pane label="已解决" name="resolved">
+          <template #label>
+            <span class="tab-label">已解决</span>
+          </template>
+        </el-tab-pane>
+
+        <el-tab-pane label="已关闭" name="closed">
+          <template #label>
+            <span class="tab-label">已关闭</span>
+          </template>
+        </el-tab-pane>
+      </el-tabs>
+
+      <!-- 操作按钮 -->
+      <div class="action-buttons">
         <el-button type="primary" :icon="Plus" @click="handleAdd">
           新建售后
         </el-button>
         <el-button :icon="Download" @click="handleExport">
           导出数据
         </el-button>
-      </div>
-      <div class="action-right">
-        <el-button-group>
-          <el-button :icon="Refresh" @click="handleRefresh" />
-          <el-button :icon="Setting" @click="handleColumnSetting" />
-        </el-button-group>
+        <el-button :icon="Refresh" @click="handleRefresh" style="margin-left: 12px" />
       </div>
     </div>
 
@@ -100,45 +129,59 @@
       :loading="tableLoading"
       :show-selection="true"
       :show-index="true"
-      :pagination="{
-        currentPage: pagination.currentPage,
-        pageSize: pagination.pageSize,
-        total: pagination.total,
-        pageSizes: [10, 20, 50, 100]
-      }"
+      :pagination="paginationConfig"
       @selection-change="handleSelectionChange"
       @sort-change="handleSortChange"
       @size-change="handleSizeChange"
       @current-change="handleCurrentChange"
     >
       <!-- 售后单号列 -->
-      <template #serviceNumber="{ row }">
+      <template #column-serviceNumber="{ row }">
         <el-link type="primary" @click="handleView(row)">
           {{ row.serviceNumber }}
         </el-link>
       </template>
 
+      <!-- 原订单号列 -->
+      <template #column-orderNumber="{ row }">
+        <el-link type="primary" @click="handleViewOrder(row)">
+          {{ row.orderNumber }}
+        </el-link>
+      </template>
+
+      <!-- 客户姓名列 -->
+      <template #column-customerName="{ row }">
+        <el-link type="primary" @click="handleViewCustomer(row)">
+          {{ row.customerName }}
+        </el-link>
+      </template>
+
       <!-- 联系电话列 -->
-      <template #customerPhone="{ row }">
-        {{ maskPhone(row.customerPhone) }}
+      <template #column-customerPhone="{ row }">
+        {{ displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE) }}
       </template>
 
       <!-- 服务类型列 -->
-      <template #serviceType="{ row }">
+      <template #column-serviceType="{ row }">
         <el-tag :type="getServiceTypeTagType(row.serviceType)">
           {{ getServiceTypeText(row.serviceType) }}
         </el-tag>
       </template>
 
+      <!-- 申请原因列 -->
+      <template #column-reason="{ row }">
+        {{ getReasonText(row.reason) }}
+      </template>
+
       <!-- 处理状态列 -->
-      <template #status="{ row }">
+      <template #column-status="{ row }">
         <el-tag :type="getStatusTagType(row.status)">
           {{ getStatusText(row.status) }}
         </el-tag>
       </template>
 
       <!-- 优先级列 -->
-      <template #priority="{ row }">
+      <template #column-priority="{ row }">
         <el-tag :type="getPriorityTagType(row.priority)" size="small">
           {{ getPriorityText(row.priority) }}
         </el-tag>
@@ -170,32 +213,78 @@
     <el-dialog
       v-model="assignDialogVisible"
       title="分配处理人"
-      width="400px"
+      width="500px"
     >
-      <el-form :model="assignForm" label-width="80px">
-        <el-form-item label="处理人">
-          <el-select v-model="assignForm.assignedTo" placeholder="请选择处理人" style="width: 100%">
+      <el-form :model="assignForm" label-width="100px">
+        <el-form-item label="分配方式">
+          <el-radio-group v-model="assignForm.assignType">
+            <el-radio label="user">指定用户</el-radio>
+            <el-radio label="department">部门随机</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item label="筛选部门" v-if="assignForm.assignType === 'user'">
+          <el-select
+            v-model="assignForm.filterDepartmentId"
+            placeholder="全部部门"
+            clearable
+            style="width: 100%"
+            @change="handleDepartmentFilterChange"
+          >
+            <el-option label="全部部门" value="" />
             <el-option
-              v-for="user in userOptions"
+              v-for="dept in departmentOptions"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="选择用户" v-if="assignForm.assignType === 'user'">
+          <el-select
+            v-model="assignForm.userId"
+            placeholder="请选择处理人"
+            filterable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="user in filteredUserOptions"
               :key="user.id"
-              :label="user.name"
+              :label="`${user.name} (${user.department || '未分配部门'})`"
               :value="user.id"
             />
           </el-select>
         </el-form-item>
+
+        <el-form-item label="选择部门" v-if="assignForm.assignType === 'department'">
+          <el-select
+            v-model="assignForm.departmentId"
+            placeholder="请选择部门"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="dept in departmentOptions"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
+            />
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="备注">
           <el-input
             v-model="assignForm.remark"
             type="textarea"
             :rows="3"
-            placeholder="请输入分配备注"
+            placeholder="请输入分配备注(可选)"
           />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="assignDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleAssignConfirm" :loading="assignLoading">
-          确定
+          确定分配
         </el-button>
       </template>
     </el-dialog>
@@ -209,10 +298,10 @@
       <el-form :model="priorityForm" label-width="80px">
         <el-form-item label="优先级">
           <el-radio-group v-model="priorityForm.priority">
-            <el-radio value="low">低</el-radio>
-            <el-radio value="medium">中</el-radio>
-            <el-radio value="high">高</el-radio>
-            <el-radio value="urgent">紧急</el-radio>
+            <el-radio label="low">低</el-radio>
+            <el-radio label="normal">普通</el-radio>
+            <el-radio label="high">高</el-radio>
+            <el-radio label="urgent">紧急</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="备注">
@@ -220,7 +309,7 @@
             v-model="priorityForm.remark"
             type="textarea"
             :rows="3"
-            placeholder="请输入设置原因"
+            placeholder="请输入设置原因(可选)"
           />
         </el-form-item>
       </el-form>
@@ -235,7 +324,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue'
 
 defineOptions({
   name: 'ServiceList'
@@ -248,12 +337,13 @@ import {
   Refresh,
   Plus,
   Download,
-  Setting,
   MoreFilled
 } from '@element-plus/icons-vue'
 import { useServiceStore } from '@/stores/service'
 import { useNotificationStore } from '@/stores/notification'
-import { maskPhone } from '@/utils/phone'
+import { useUserStore } from '@/stores/user'
+import { useDepartmentStore } from '@/stores/department'
+import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import DynamicTable from '@/components/DynamicTable.vue'
 import type { AfterSalesService } from '@/stores/service'
 import { createSafeNavigator } from '@/utils/navigation'
@@ -265,6 +355,8 @@ const safeNavigator = createSafeNavigator(router)
 // stores
 const serviceStore = useServiceStore()
 const notificationStore = useNotificationStore()
+const userStore = useUserStore()
+const departmentStore = useDepartmentStore()
 
 // 响应式数据
 const tableLoading = ref(false)
@@ -272,6 +364,9 @@ const assignLoading = ref(false)
 const priorityLoading = ref(false)
 const assignDialogVisible = ref(false)
 const priorityDialogVisible = ref(false)
+
+// 当前激活的标签页
+const activeTab = ref('pending')
 
 // 搜索表单
 const searchForm = reactive({
@@ -289,14 +384,50 @@ const pagination = reactive({
   total: 0
 })
 
-// 表格数据 - 从serviceStore获取
-const tableData = computed(() => serviceStore.afterSalesServices)
+// 表格数据 - 根据标签页筛选
+const tableData = computed(() => {
+  let services = serviceStore.services || []
+
+  // 根据当前标签页筛选
+  services = services.filter((s: AfterSalesService) => s.status === activeTab.value)
+
+  // 应用搜索条件
+  if (searchForm.orderNumber) {
+    services = services.filter((s: AfterSalesService) =>
+      s.orderNumber.includes(searchForm.orderNumber)
+    )
+  }
+
+  if (searchForm.customerName) {
+    services = services.filter((s: AfterSalesService) =>
+      s.customerName.includes(searchForm.customerName)
+    )
+  }
+
+  if (searchForm.serviceType) {
+    services = services.filter((s: AfterSalesService) =>
+      s.serviceType === searchForm.serviceType)
+  }
+
+  return services
+})
+
+// 分页配置 - 使用computed确保响应式
+const paginationConfig = computed(() => ({
+  currentPage: pagination.currentPage,
+  pageSize: pagination.pageSize,
+  total: pagination.total,
+  pageSizes: [10, 20, 50, 100]
+}))
 
 const selectedRows = ref([])
 
 // 分配表单
 const assignForm = reactive({
-  assignedTo: '',
+  assignType: 'user',
+  userId: '',
+  departmentId: '',
+  filterDepartmentId: '',
   remark: ''
 })
 
@@ -307,15 +438,53 @@ const priorityForm = reactive({
 })
 
 // 当前操作的行
-const currentRow = ref(null)
+const currentRow = ref<AfterSalesService | null>(null)
 
-// 用户选项
-const userOptions = ref([
-  { id: '1', name: '李四' },
-  { id: '2', name: '赵六' },
-  { id: '3', name: '孙八' },
-  { id: '4', name: '周九' }
-])
+// 用户选项 - 从userStore获取,修复字段映射
+const userOptions = computed(() => {
+  const users = userStore.users || []
+  return users.map((user: unknown) => {
+    // 尝试多种字段名
+    const name = user.name || user.username || user.realName || `用户${user.id}`
+    const department = user.departmentName || user.department || user.deptName || '未分配部门'
+
+    return {
+      id: user.id,
+      name: name,
+      department: department,
+      roleId: user.roleId,
+      role: user.role
+    }
+  })
+})
+
+// 部门选项 - 从departmentStore获取
+const departmentOptions = computed(() => {
+  const departments = departmentStore.departments || []
+  return departments.map((dept: unknown) => ({
+    id: dept.id,
+    name: dept.name
+  }))
+})
+
+// 根据部门筛选的用户选项 - 修复筛选逻辑
+const filteredUserOptions = computed(() => {
+  if (!assignForm.filterDepartmentId) {
+    return userOptions.value
+  }
+
+  const dept = departmentOptions.value.find((d: unknown) => d.id === assignForm.filterDepartmentId)
+  if (!dept) {
+    return userOptions.value
+  }
+
+  return userOptions.value.filter((u: unknown) => {
+    // 多种匹配方式
+    return u.department === dept.name ||
+           u.department === dept.id ||
+           (u.department && u.department.includes(dept.name))
+  })
+})
 
 // 表格列配置
 const tableColumns = computed(() => [
@@ -330,25 +499,29 @@ const tableColumns = computed(() => [
     prop: 'orderNumber',
     label: '原订单号',
     width: 160,
-    visible: true
+    visible: true,
+    slot: 'orderNumber'
   },
   {
     prop: 'customerName',
     label: '客户姓名',
     width: 120,
-    visible: true
+    visible: true,
+    slot: 'customerName'
   },
   {
     prop: 'customerPhone',
     label: '联系电话',
     width: 130,
-    visible: true
+    visible: true,
+    slot: 'customerPhone'
   },
   {
     prop: 'serviceType',
     label: '服务类型',
     width: 100,
-    visible: true
+    visible: true,
+    slot: 'serviceType'
   },
   {
     prop: 'productName',
@@ -362,19 +535,22 @@ const tableColumns = computed(() => [
     label: '申请原因',
     minWidth: 150,
     visible: true,
-    showOverflowTooltip: true
+    showOverflowTooltip: true,
+    slot: 'reason'
   },
   {
     prop: 'status',
     label: '处理状态',
     width: 100,
-    visible: true
+    visible: true,
+    slot: 'status'
   },
   {
     prop: 'priority',
     label: '优先级',
     width: 100,
-    visible: true
+    visible: true,
+    slot: 'priority'
   },
   {
     prop: 'assignedTo',
@@ -383,14 +559,14 @@ const tableColumns = computed(() => [
     visible: true
   },
   {
-    prop: 'createdAt',
+    prop: 'createTime',
     label: '创建时间',
     width: 160,
     visible: true,
     sortable: true
   },
   {
-    prop: 'updatedAt',
+    prop: 'updateTime',
     label: '更新时间',
     width: 160,
     visible: true,
@@ -401,7 +577,32 @@ const tableColumns = computed(() => [
 // 计算属性
 const _hasSelection = computed(() => selectedRows.value.length > 0)
 
+// 各状态数量统计
+const pendingCount = computed(() => {
+  return serviceStore.services.filter((s: AfterSalesService) => s.status === 'pending').length
+})
+
+const processingCount = computed(() => {
+  return serviceStore.services.filter((s: AfterSalesService) => s.status === 'processing').length
+})
+
+const resolvedCount = computed(() => {
+  return serviceStore.services.filter((s: AfterSalesService) => s.status === 'resolved').length
+})
+
+const closedCount = computed(() => {
+  return serviceStore.services.filter((s: AfterSalesService) => s.status === 'closed').length
+})
+
 // 方法
+// 标签页切换
+const handleTabChange = (tabName: string) => {
+  activeTab.value = tabName
+  searchForm.status = tabName
+  pagination.currentPage = 1
+  loadData()
+}
+
 const handleSearch = () => {
   pagination.currentPage = 1
   loadData()
@@ -434,13 +635,35 @@ const handleEdit = (row: AfterSalesService) => {
   safeNavigator.push(`/service/edit/${row.id}`)
 }
 
+/**
+ * 查看订单详情
+ */
+const handleViewOrder = (row: AfterSalesService) => {
+  if (row.orderId) {
+    safeNavigator.push(`/order/detail/${row.orderId}`)
+  } else if (row.orderNumber) {
+    safeNavigator.push(`/order/detail/${row.orderNumber}`)
+  } else {
+    ElMessage.warning('订单信息不完整,无法跳转')
+  }
+}
+
+/**
+ * 查看客户详情
+ */
+const handleViewCustomer = (row: AfterSalesService) => {
+  if (row.customerId) {
+    safeNavigator.push(`/customer/detail/${row.customerId}`)
+  } else {
+    ElMessage.warning('客户信息不完整,无法跳转')
+  }
+}
+
 const handleExport = () => {
   ElMessage.success('导出功能开发中...')
 }
 
-const handleColumnSetting = () => {
-  ElMessage.info('列设置功能开发中...')
-}
+// 列设置功能已由DynamicTable组件提供,无需单独实现
 
 const handleSelectionChange = (selection: AfterSalesService[]) => {
   selectedRows.value = selection
@@ -461,17 +684,26 @@ const handleCurrentChange = (page: number) => {
   loadData()
 }
 
+// 部门筛选变化
+const handleDepartmentFilterChange = () => {
+  // 清空已选择的用户
+  assignForm.userId = ''
+}
+
 const handleMoreAction = (command: string, row: AfterSalesService) => {
   currentRow.value = row
-  
+
   switch (command) {
     case 'assign':
-      assignForm.assignedTo = row.assignedTo || ''
+      assignForm.assignType = 'user'
+      assignForm.userId = ''
+      assignForm.departmentId = ''
+      assignForm.filterDepartmentId = ''
       assignForm.remark = ''
       assignDialogVisible.value = true
       break
     case 'priority':
-      priorityForm.priority = row.priority
+      priorityForm.priority = row.priority || 'normal'
       priorityForm.remark = ''
       priorityDialogVisible.value = true
       break
@@ -485,28 +717,54 @@ const handleMoreAction = (command: string, row: AfterSalesService) => {
 }
 
 const handleAssignConfirm = async () => {
-  if (!assignForm.assignedTo) {
-    ElMessage.warning('请选择处理人')
-    return
+  let assignedToName = ''
+
+  if (assignForm.assignType === 'user') {
+    // 指定用户
+    if (!assignForm.userId) {
+      ElMessage.warning('请选择处理人')
+      return
+    }
+    const user = userOptions.value.find((u: unknown) => u.id === assignForm.userId)
+    assignedToName = user?.name || ''
+  } else {
+    // 部门随机分配
+    if (!assignForm.departmentId) {
+      ElMessage.warning('请选择部门')
+      return
+    }
+
+    // 获取部门下的用户
+    const dept = departmentOptions.value.find((d: unknown) => d.id === assignForm.departmentId)
+    const deptUsers = userOptions.value.filter((u: unknown) => u.department === dept?.name)
+
+    if (deptUsers.length === 0) {
+      ElMessage.warning('该部门下没有可分配的用户')
+      return
+    }
+
+    // 随机选择一个用户
+    const randomUser = deptUsers[Math.floor(Math.random() * deptUsers.length)]
+    assignedToName = randomUser.name
   }
-  
+
   assignLoading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    // 更新表格数据
-    const index = tableData.value.findIndex(item => item.id === currentRow.value.id)
-    if (index !== -1) {
-      tableData.value[index].assignedTo = userOptions.value.find(u => u.id === assignForm.assignedTo)?.name || ''
-      tableData.value[index].updatedAt = new Date().toLocaleString()
+    // 更新售后记录
+    const result = serviceStore.updateService(currentRow.value.id, {
+      assignedTo: assignedToName,
+      status: 'processing', // 分配后自动变为处理中
+      remark: assignForm.remark
+    })
+
+    if (!result) {
+      throw new Error('更新售后记录失败')
     }
-    
+
     // 发送分配处理人成功的消息提醒
-    const assignedUserName = userOptions.value.find(u => u.id === assignForm.assignedTo)?.name || ''
     notificationStore.sendMessage(
       notificationStore.MessageType.AFTER_SALES_ASSIGNED,
-      `售后申请 ${currentRow.value.serviceNumber} 已分配给 ${assignedUserName}，客户：${currentRow.value.customerName}`,
+      `售后申请 ${currentRow.value.serviceNumber} 已分配给 ${assignedToName}，客户：${currentRow.value.customerName}`,
       {
         relatedId: currentRow.value.serviceNumber,
         relatedType: 'service',
@@ -514,59 +772,66 @@ const handleAssignConfirm = async () => {
         metadata: {
           customerName: currentRow.value.customerName,
           serviceType: currentRow.value.serviceType,
-          assignedTo: assignedUserName
+          assignedTo: assignedToName
         }
       }
     )
-    
+
+    // 分配成功,显示提示并关闭对话框
     ElMessage.success('分配成功')
     assignDialogVisible.value = false
-  } catch (_error) {
-    ElMessage.error('分配失败')
+
+    // 重置表单
+    assignForm.assignedTo = ''
+    assignForm.remark = ''
+  } catch (error) {
+    console.error('分配失败:', error)
+    ElMessage.error(`分配失败: ${error.message || error}`)
   } finally {
     assignLoading.value = false
   }
 }
 
 const handlePriorityConfirm = async () => {
+  if (!currentRow.value) {
+    ElMessage.error('请先选择售后记录')
+    return
+  }
+
   if (!priorityForm.priority) {
     ElMessage.warning('请选择优先级')
     return
   }
-  
+
   priorityLoading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    // 更新表格数据
-    const index = tableData.value.findIndex(item => item.id === currentRow.value.id)
-    if (index !== -1) {
-      tableData.value[index].priority = priorityForm.priority
-      tableData.value[index].updatedAt = new Date().toLocaleString()
-    }
-    
+    // 更新售后记录
+    serviceStore.updateService(currentRow.value.id, {
+      priority: priorityForm.priority as 'low' | 'normal' | 'high' | 'urgent',
+      remark: priorityForm.remark,
+      updateTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
+    })
+
     // 发送优先级设置成功的消息提醒
-    const priorityText = priorityForm.priority === 'high' ? '高' : priorityForm.priority === 'medium' ? '中' : '低'
+    const priorityText = getPriorityText(priorityForm.priority)
     notificationStore.sendMessage(
-      notificationStore.MessageType.AFTER_SALES_PRIORITY_CHANGED,
+      notificationStore.MessageType.AFTER_SALES_CREATED,
       `售后申请 ${currentRow.value.serviceNumber} 优先级已设置为${priorityText}，客户：${currentRow.value.customerName}`,
       {
         relatedId: currentRow.value.serviceNumber,
         relatedType: 'service',
-        actionUrl: `/service/detail/${currentRow.value.serviceNumber}`,
-        metadata: {
-          customerName: currentRow.value.customerName,
-          serviceType: currentRow.value.serviceType,
-          priority: priorityForm.priority
-        }
+        actionUrl: `/service/detail/${currentRow.value.serviceNumber}`
       }
     )
-    
+
     ElMessage.success('优先级设置成功')
     priorityDialogVisible.value = false
-  } catch (_error) {
-    ElMessage.error('设置失败')
+
+    // 重新加载数据
+    await loadData()
+  } catch (error) {
+    console.error('设置优先级失败:', error)
+    ElMessage.error('设置优先级失败')
   } finally {
     priorityLoading.value = false
   }
@@ -585,7 +850,7 @@ const handleClose = async (row: AfterSalesService) => {
     try {
       // 使用serviceStore更新状态
       await serviceStore.updateServiceStatus(row.id, 'closed', '手动关闭')
-      
+
       // 发送售后申请关闭的消息提醒
       notificationStore.sendMessage(
         notificationStore.MessageType.AFTER_SALES_CLOSED,
@@ -601,7 +866,7 @@ const handleClose = async (row: AfterSalesService) => {
           }
         }
       )
-      
+
       ElMessage.success('售后单已关闭')
     } catch (error) {
       ElMessage.error('关闭售后单失败')
@@ -623,11 +888,11 @@ const handleDelete = async (row: AfterSalesService) => {
     try {
       // 使用serviceStore删除售后单
       const success = serviceStore.deleteService(row.id)
-      
+
       if (success) {
         // 更新分页总数
         pagination.total = serviceStore.afterSalesServices.length
-        
+
         // 发送售后申请删除的消息提醒
         notificationStore.sendMessage(
           notificationStore.MessageType.AFTER_SALES_DELETED,
@@ -643,7 +908,7 @@ const handleDelete = async (row: AfterSalesService) => {
             }
           }
         )
-        
+
         ElMessage.success('删除成功')
       } else {
         ElMessage.error('删除失败')
@@ -660,25 +925,64 @@ const loadData = async () => {
   try {
     // 从serviceStore获取数据
     await serviceStore.loadAfterSalesServices()
-    
-    // 更新分页总数
-    pagination.total = serviceStore.afterSalesServices.length
+
+    // 强制更新视图
+    await nextTick(() => {
+      pagination.total = tableData.value.length
+    })
   } catch (error) {
+    console.error('加载数据失败:', error)
     ElMessage.error('加载数据失败')
-    console.error('加载售后服务数据失败:', error)
   } finally {
     tableLoading.value = false
   }
 }
 
 // 辅助方法
+const getReasonText = (reason: string) => {
+  if (!reason) return '未知原因'
+
+  const map: Record<string, string> = {
+    // 完整键名
+    'quality_issue': '质量问题',
+    'damaged': '商品损坏',
+    'not_as_described': '描述不符',
+    'wrong_item': '发错商品',
+    'logistics_damage': '物流损坏',
+    'not_satisfied': '不满意',
+    'size_issue': '尺寸问题',
+    'color_issue': '颜色问题',
+    'defective': '商品缺陷',
+    'expired': '商品过期',
+    'other': '其他原因',
+    // 简短键名(兼容)
+    'quality': '质量问题',
+    'damage': '商品损坏',
+    'wrong': '发错商品',
+    'size': '尺寸不符',
+    'description': '描述不符',
+    'logistics': '物流问题',
+    'complaint': '投诉',
+    'return': '退货',
+    'exchange': '换货',
+    'refund': '退款',
+    'repair': '维修',
+    'inquiry': '咨询',
+    // 其他可能的值
+    'osmogd': '其他原因'
+  }
+
+  return map[reason] || reason
+}
+
 const getServiceTypeText = (type: string) => {
   const map: Record<string, string> = {
     return: '退货',
     exchange: '换货',
     repair: '维修',
     complaint: '投诉',
-    inquiry: '咨询'
+    inquiry: '咨询',
+    refund: '退款'
   }
   return map[type] || type
 }
@@ -695,12 +999,17 @@ const getServiceTypeTagType = (type: string) => {
 }
 
 const getStatusText = (status: string) => {
+  if (!status) return '未知状态'
+
   const map: Record<string, string> = {
     pending: '待处理',
     processing: '处理中',
+    resolved: '已解决',
     completed: '已完成',
-    closed: '已关闭'
+    closed: '已关闭',
+    cancelled: '已取消'
   }
+
   return map[status] || status
 }
 
@@ -708,25 +1017,32 @@ const getStatusTagType = (status: string) => {
   const map: Record<string, string> = {
     pending: 'warning',
     processing: 'primary',
+    resolved: 'success',
     completed: 'success',
-    closed: 'info'
+    closed: 'info',
+    cancelled: 'info'
   }
   return map[status] || ''
 }
 
 const getPriorityText = (priority: string) => {
+  if (!priority) return '普通'
+
   const map: Record<string, string> = {
     low: '低',
+    normal: '普通',
     medium: '中',
     high: '高',
     urgent: '紧急'
   }
+
   return map[priority] || priority
 }
 
 const getPriorityTagType = (priority: string) => {
   const map: Record<string, string> = {
     low: 'info',
+    normal: '',
     medium: '',
     high: 'warning',
     urgent: 'danger'
@@ -734,8 +1050,29 @@ const getPriorityTagType = (priority: string) => {
   return map[priority] || ''
 }
 
+// 监听数据变化,更新分页总数
+watch(
+  [
+    () => serviceStore.services,
+    () => activeTab.value,
+    () => searchForm.orderNumber,
+    () => searchForm.customerName,
+    () => searchForm.serviceType
+  ],
+  () => {
+    nextTick(() => {
+      pagination.total = tableData.value.length
+      console.log('统计数量更新:', pagination.total)
+    })
+  },
+  { immediate: true }
+)
+
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
+  // 加载用户数据(修复分配处理人获取不到用户的问题)
+  await userStore.loadUsers()
+  // 加载售后数据
   loadData()
 })
 </script>
@@ -766,16 +1103,35 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
-.action-bar {
+.tabs-action-bar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 20px;
+  gap: 20px;
 }
 
-.action-left {
+.service-tabs {
+  flex: 1;
+  min-width: 0;
+}
+
+.service-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+}
+
+.service-tabs .tab-label {
   display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-buttons {
+  display: flex;
+  align-items: center;
   gap: 12px;
+  flex-shrink: 0;
+  padding-top: 8px;
 }
 
 .table-card {
@@ -793,17 +1149,17 @@ onMounted(() => {
   .service-list-container {
     padding: 10px;
   }
-  
+
   .action-bar {
     flex-direction: column;
     gap: 12px;
     align-items: stretch;
   }
-  
+
   .action-left {
     justify-content: center;
   }
-  
+
   .action-right {
     align-self: center;
   }

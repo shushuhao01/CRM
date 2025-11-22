@@ -115,7 +115,7 @@
               <el-icon><Search /></el-icon>
             </template>
           </el-input>
-          
+
           <el-date-picker
             v-model="dateRange"
             type="daterange"
@@ -173,6 +173,14 @@
                 批量分配 ({{ selectedItems.length }})
               </el-button>
 
+              <el-button
+                type="success"
+                @click="handleRefresh"
+              >
+                <el-icon><Refresh /></el-icon>
+                刷新
+              </el-button>
+
               <template v-if="isSuperAdmin || !isDepartmentLeader">
                 <el-button
                   type="warning"
@@ -184,7 +192,7 @@
                 </el-button>
               </template>
             </div>
-            
+
             <!-- 表格设置 -->
             <div class="table-settings">
               <TableColumnSettings
@@ -219,13 +227,42 @@
     >
           <!-- 客户编码列 -->
           <template #column-customerCode="{ row }">
-            <span 
-              class="code-link" 
-              @click="navigateToCustomerDetail(row.customerCode)"
-              :title="row.customerCode"
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <el-button
+                type="primary"
+                link
+                @click="navigateToCustomerDetail(row.customerCode)"
+              >
+                {{ row.customerCode || 'N/A' }}
+              </el-button>
+              <el-button
+                type="primary"
+                link
+                size="small"
+                @click="copyCustomerCode(row.customerCode)"
+                title="复制客户编码"
+              >
+                <el-icon><CopyDocument /></el-icon>
+              </el-button>
+            </div>
+          </template>
+
+          <!-- 订单号列 -->
+          <template #column-orderNo="{ row }">
+            <el-button
+              type="primary"
+              link
+              @click="navigateToOrderDetail(row.orderNo)"
             >
-              {{ row.customerCode || 'N/A' }}
-            </span>
+              {{ row.orderNo || 'N/A' }}
+            </el-button>
+          </template>
+
+          <!-- 订单状态列 -->
+          <template #column-orderStatus="{ row }">
+            <el-tag :type="getOrderStatusType(row.orderStatus || row.status)">
+              {{ getOrderStatusText(row.orderStatus || row.status) }}
+            </el-tag>
           </template>
 
           <!-- 订单金额列 -->
@@ -395,11 +432,11 @@
         <el-form :model="assignForm" label-width="100px">
           <el-form-item label="分配方式" v-if="!isReassigning">
             <el-radio-group v-model="assignForm.assignType">
-              <el-radio value="roundrobin">部门内轮流分配</el-radio>
-              <el-radio value="specific">指定成员分配</el-radio>
-              <el-radio value="cross_department" v-if="isSuperAdmin">跨部门智能分配</el-radio>
+              <el-radio label="batch_roundrobin">部门内轮流分配</el-radio>
+              <el-radio label="batch_specific">指定成员分配</el-radio>
+              <el-radio label="batch_cross_department" v-if="isSuperAdmin">跨部门智能分配</el-radio>
             </el-radio-group>
-            <div style="margin-top: 8px;" v-if="assignForm.assignType === 'cross_department'">
+            <div style="margin-top: 8px;" v-if="assignForm.assignType === 'batch_cross_department'">
               <el-text type="warning" size="small">
                 <el-icon><Warning /></el-icon>
                 超级管理员权限：可跨部门分配资料，系统将根据各部门工作负载智能分配
@@ -407,13 +444,13 @@
             </div>
           </el-form-item>
 
-          <el-form-item label="分配模式" v-if="assignForm.assignType === 'roundrobin'">
+          <el-form-item label="分配模式" v-if="assignForm.assignType === 'batch_roundrobin'">
             <el-radio-group v-model="assignForm.assignMode">
-              <el-radio value="direct">直接分配给成员</el-radio>
-              <el-radio value="leader">先分配给部门负责人</el-radio>
+              <el-radio label="batch_direct">直接分配给成员</el-radio>
+              <el-radio label="batch_leader">先分配给部门负责人</el-radio>
             </el-radio-group>
             <div style="margin-top: 8px;">
-              <el-text type="info" size="small" v-if="assignForm.assignMode === 'direct'">
+              <el-text type="info" size="small" v-if="assignForm.assignMode === 'batch_direct'">
                 系统将按轮流顺序直接分配给部门成员，确保每个人都能轮流获得资料
               </el-text>
               <el-text type="info" size="small" v-else>
@@ -422,17 +459,17 @@
             </div>
           </el-form-item>
 
-          <el-form-item label="分配策略" v-if="assignForm.assignType === 'cross_department'">
+          <el-form-item label="分配策略" v-if="assignForm.assignType === 'batch_cross_department'">
             <el-radio-group v-model="assignForm.crossDepartmentStrategy">
-              <el-radio value="workload">按工作负载均衡</el-radio>
-              <el-radio value="performance">按业绩表现分配</el-radio>
-              <el-radio value="manual">手动选择部门</el-radio>
+              <el-radio label="batch_workload">按工作负载均衡</el-radio>
+              <el-radio label="batch_performance">按业绩表现分配</el-radio>
+              <el-radio label="batch_manual">手动选择部门</el-radio>
             </el-radio-group>
             <div style="margin-top: 8px;">
-              <el-text type="info" size="small" v-if="assignForm.crossDepartmentStrategy === 'workload'">
+              <el-text type="info" size="small" v-if="assignForm.crossDepartmentStrategy === 'batch_workload'">
                 系统将根据各部门当前工作负载自动分配，确保负载均衡
               </el-text>
-              <el-text type="info" size="small" v-else-if="assignForm.crossDepartmentStrategy === 'performance'">
+              <el-text type="info" size="small" v-else-if="assignForm.crossDepartmentStrategy === 'batch_performance'">
                 优先分配给业绩表现较好的部门，激励团队竞争
               </el-text>
               <el-text type="info" size="small" v-else>
@@ -441,7 +478,7 @@
             </div>
           </el-form-item>
 
-          <el-form-item label="参与部门" v-if="assignForm.assignType === 'cross_department' && assignForm.crossDepartmentStrategy === 'manual'">
+          <el-form-item label="参与部门" v-if="assignForm.assignType === 'batch_cross_department' && assignForm.crossDepartmentStrategy === 'batch_manual'">
             <el-select
               v-model="assignForm.selectedDepartments"
               multiple
@@ -457,7 +494,7 @@
             </el-select>
           </el-form-item>
 
-          <el-form-item label="选择部门" v-if="assignForm.assignType === 'roundrobin'">
+          <el-form-item label="选择部门" v-if="assignForm.assignType === 'batch_roundrobin'">
             <el-select v-model="assignForm.departmentId" placeholder="选择部门" style="width: 100%">
               <el-option
                 v-for="dept in departments"
@@ -470,11 +507,13 @@
 
           <el-form-item
             :label="isReassigning ? '转移给' : '指定成员'"
-            v-if="isReassigning || assignForm.assignType === 'specific'"
+            v-if="isReassigning || assignForm.assignType === 'batch_specific'"
           >
+            <!-- 重分配时使用单选 -->
             <el-select
+              v-if="isReassigning"
               v-model="assignForm.assignTo"
-              :placeholder="isReassigning ? '选择新的负责人' : '搜索成员姓名、账号、手机号或部门'"
+              placeholder="选择新的负责人"
               style="width: 100%"
               filterable
               remote
@@ -500,6 +539,49 @@
                 </div>
               </el-option>
             </el-select>
+
+            <!-- 批量分配时使用多选 -->
+            <el-select
+              v-else
+              v-model="assignForm.assignToList"
+              placeholder="搜索成员姓名、账号、手机号或部门"
+              style="width: 100%"
+              filterable
+              remote
+              :remote-method="searchMembers"
+              :loading="searchingMembers"
+              @focus="initMembersList"
+              clearable
+              multiple
+              collapse-tags
+              collapse-tags-tooltip
+              :max-collapse-tags="3"
+            >
+              <el-option
+                v-for="member in filteredMembers"
+                :key="member.id"
+                :label="`${member.name} (${member.account}) - ${member.department}`"
+                :value="member.id"
+              >
+                <div class="member-info">
+                  <div class="member-main-info">
+                    <div class="member-name">{{ member.name }} ({{ member.account }})</div>
+                    <div class="member-details">
+                      <span class="member-department">{{ member.department }}</span>
+                      <span class="member-phone">{{ member.phone }}</span>
+                    </div>
+                  </div>
+                </div>
+              </el-option>
+            </el-select>
+
+            <!-- 多选时显示已选成员数量 -->
+            <div v-if="!isReassigning && assignForm.assignToList.length > 0" class="selected-members-info" style="margin-top: 8px;">
+              <el-text type="info" size="small">
+                <el-icon><User /></el-icon>
+                已选择 {{ assignForm.assignToList.length }} 位成员
+              </el-text>
+            </div>
           </el-form-item>
 
           <el-form-item label="备注">
@@ -528,7 +610,7 @@
                 <el-icon class="target-icon"><User /></el-icon>
                 <span class="target-title">{{ getAssignTargetText() }}</span>
               </div>
-              <div class="target-detail-compact" v-if="assignForm.assignType === 'specific' && assignForm.assignTo">
+              <div class="target-detail-compact" v-if="assignForm.assignType === 'batch_specific' && assignForm.assignTo">
                 <span class="detail-item">
                   <el-icon><Phone /></el-icon>
                   {{ getSelectedMemberPhone() }}
@@ -540,9 +622,9 @@
               </div>
             </div>
           </div>
-          
 
-          
+
+
           <!-- 客户列表预览 -->
           <div class="customer-preview" v-if="selectedItems.length > 0">
             <div class="preview-table-header">
@@ -557,11 +639,11 @@
                 </el-button>
               </div>
             </div>
-            
+
             <div class="preview-table-container" :class="{ expanded: expandPreview }">
-              <el-table 
-                :data="selectedItems.slice(0, expandPreview ? selectedItems.length : 3)" 
-                size="small" 
+              <el-table
+                :data="selectedItems.slice(0, expandPreview ? selectedItems.length : 3)"
+                size="small"
                 stripe
                 :max-height="expandPreview ? 400 : 200"
                 class="preview-table"
@@ -589,7 +671,7 @@
                   </template>
                 </el-table-column>
               </el-table>
-              
+
               <div v-if="!expandPreview && selectedItems.length > 3" class="more-data-tip">
                 <el-text type="info" size="small">
                   <el-icon><MoreFilled /></el-icon>
@@ -598,7 +680,7 @@
               </div>
             </div>
           </div>
-          
+
           <!-- 分配备注预览 -->
           <div class="remark-preview" v-if="assignForm.remark">
             <div class="remark-header">
@@ -648,10 +730,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import {
-  Document, User, Clock, Check, Lock, Search, UserFilled,
+  Document, User, Clock, Lock, Search, UserFilled,
   RefreshRight, View, FolderOpened, Delete, Warning,
-  Phone, OfficeBuilding, DataAnalysis, List, ArrowDown, ArrowUp,
-  MoreFilled, EditPen, Money
+  Phone, OfficeBuilding, List, ArrowDown, ArrowUp,
+  MoreFilled, EditPen, Money, Refresh, CopyDocument
 } from '@element-plus/icons-vue'
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
@@ -687,13 +769,28 @@ const columnSettingsRef = ref()
 const summaryData = computed(() => {
   const filteredData = dataStore.filteredDataList
 
+  // 确保filteredData不为null或undefined
+  if (!filteredData || !Array.isArray(filteredData)) {
+    return {
+      totalCount: 0,
+      pendingCount: 0,
+      assignedCount: 0,
+      archivedCount: 0,
+      recoveredCount: 0,
+      totalAmount: 0,
+      todayCount: 0,
+      weekCount: 0,
+      monthCount: 0
+    }
+  }
+
   return {
     totalCount: filteredData.length,
     pendingCount: filteredData.filter(item => item.status === 'pending').length,
     assignedCount: filteredData.filter(item => item.status === 'assigned').length,
     archivedCount: filteredData.filter(item => item.status === 'archived').length,
     recoveredCount: filteredData.filter(item => item.status === 'recovered').length,
-    totalAmount: filteredData.reduce((sum, item) => sum + item.orderAmount, 0),
+    totalAmount: (filteredData || []).reduce((sum, item) => sum + (item.orderAmount || 0), 0),
     todayCount: filteredData.filter(item => {
       const today = new Date().toDateString()
       return new Date(item.orderDate).toDateString() === today
@@ -808,12 +905,36 @@ const allTableColumns = [
     showOverflowTooltip: true
   },
   {
+    prop: 'status',
+    label: '状态',
+    width: 100,
+    visible: true,
+    sortable: true,
+    showOverflowTooltip: false
+  },
+  {
     prop: 'phone',
     label: '手机号',
     width: 130,
     visible: true,
     sortable: false,
     showOverflowTooltip: true
+  },
+  {
+    prop: 'orderNo',
+    label: '订单号',
+    width: 140,
+    visible: true,
+    sortable: true,
+    showOverflowTooltip: true
+  },
+  {
+    prop: 'orderStatus',
+    label: '订单状态',
+    width: 100,
+    visible: true,
+    sortable: true,
+    showOverflowTooltip: false
   },
   {
     prop: 'orderAmount',
@@ -838,15 +959,6 @@ const allTableColumns = [
     visible: true,
     sortable: true,
     showOverflowTooltip: true
-  },
-  {
-    prop: 'status',
-    label: '状态',
-    width: 100,
-    visible: true,
-    sortable: true,
-    showOverflowTooltip: false,
-    formatter: (row: DataListItem) => getStatusText(row.status)
   },
   {
     prop: 'allocationSource',
@@ -900,11 +1012,12 @@ const total = computed(() => dataStore.total)
 
 // 分配表单
 const assignForm = reactive({
-  assignType: 'specific', // 'roundrobin' | 'specific' | 'cross_department'
-  assignMode: 'direct', // 'direct' | 'leader' (仅用于轮流分配)
-  assignTo: '',
+  assignType: null, // 'batch_roundrobin' | 'batch_specific' | 'batch_cross_department'
+  assignMode: 'batch_direct', // 'batch_direct' | 'batch_leader' (仅用于轮流分配)
+  assignTo: '', // 单选时使用（重分配）
+  assignToList: [] as string[], // 多选时使用（批量分配）
   departmentId: '',
-  crossDepartmentStrategy: 'workload', // 'workload' | 'performance' | 'manual' (跨部门分配策略)
+  crossDepartmentStrategy: 'batch_workload', // 'batch_workload' | 'batch_performance' | 'batch_manual' (跨部门分配策略)
   selectedDepartments: [], // 手动选择的部门列表
   remark: ''
 })
@@ -919,7 +1032,15 @@ const isReassigning = computed(() => {
 
 // 团队成员和部门
 const teamMembers = computed(() => dataStore.assigneeOptions)
-const filteredMembers = ref([])
+const filteredMembers = ref<Array<{
+  id: string
+  name: string
+  account: string
+  department: string
+  phone: string
+  status: string
+  role: string
+}>>([])
 const searchingMembers = ref(false)
 
 // 部门数据
@@ -928,82 +1049,60 @@ const departments = computed(() => departmentStore.departmentList)
 // 方法
 // 获取分配目标文本
 const getAssignTargetText = () => {
-  if (assignForm.assignType === 'roundrobin') {
+  if (assignForm.assignType === 'batch_roundrobin') {
     const department = departments.value.find(dept => dept.id === assignForm.departmentId)
     return department ? department.name : '请选择部门'
-  } else if (assignForm.assignType === 'cross_department') {
-    if (assignForm.crossDepartmentStrategy === 'manual') {
-      const selectedDepts = departments.value.filter(dept => 
+  } else if (assignForm.assignType === 'batch_cross_department') {
+    if (assignForm.crossDepartmentStrategy === 'batch_manual') {
+      const selectedDepts = departments.value.filter(dept =>
         assignForm.selectedDepartments.includes(dept.id)
       )
       return selectedDepts.length > 0 ? selectedDepts.map(d => d.name).join('、') : '请选择部门'
     } else {
       return '全部门智能分配'
     }
-  } else if (assignForm.assignType === 'specific') {
+  } else if (assignForm.assignType === 'batch_specific') {
     const member = allSystemMembers.value.find(m => m.id === assignForm.assignTo)
     return member ? `${member.name} (${member.department})` : '请选择成员'
   }
   return ''
 }
 
-// 获取分配类型标签类型
-const getAssignTypeTagType = () => {
-  switch (assignForm.assignType) {
-    case 'roundrobin': return 'primary'
-    case 'specific': return 'success'
-    case 'cross_department': return 'warning'
-    default: return 'info'
-  }
+// 分配类型配置
+const ASSIGN_TYPE_CONFIG: Record<string, { text: string; type: string }> = {
+  batch_roundrobin: { text: '轮流分配', type: 'primary' },
+  batch_specific: { text: '指定成员', type: 'success' },
+  batch_cross_department: { text: '跨部门分配', type: 'warning' }
 }
 
-// 获取分配类型文本
-const getAssignTypeText = () => {
-  switch (assignForm.assignType) {
-    case 'roundrobin': return '轮流分配'
-    case 'specific': return '指定成员'
-    case 'cross_department': return '跨部门分配'
-    default: return '未选择'
-  }
-}
+const getAssignTypeTagType = () => ASSIGN_TYPE_CONFIG[assignForm.assignType]?.type || 'info'
+const getAssignTypeText = () => ASSIGN_TYPE_CONFIG[assignForm.assignType]?.text || '未选择'
 
-// 获取选中成员的手机号
-const getSelectedMemberPhone = () => {
-  const member = allSystemMembers.value.find(m => m.id === assignForm.assignTo)
-  return member ? member.phone : ''
-}
+// 获取选中成员信息
+const getSelectedMember = () => allSystemMembers.value.find(m => m.id === assignForm.assignTo)
+const getSelectedMemberPhone = () => getSelectedMember()?.phone || ''
+const getSelectedMemberDepartment = () => getSelectedMember()?.department || ''
 
-// 获取选中成员的部门
-const getSelectedMemberDepartment = () => {
-  const member = allSystemMembers.value.find(m => m.id === assignForm.assignTo)
-  return member ? member.department : ''
-}
+// 高价值客户阈值
+const HIGH_VALUE_THRESHOLD = 50000
 
 // 计算总订单金额
 const getTotalOrderAmount = () => {
-  const total = selectedItems.value.reduce((sum, item) => sum + item.orderAmount, 0)
+  const total = selectedItems.value.reduce((sum, item) => sum + (item.orderAmount || 0), 0)
   return `¥${total.toLocaleString()}`
 }
 
 // 计算高价值客户数量
-const getHighValueCount = () => {
-  return selectedItems.value.filter(item => item.orderAmount >= 50000).length
-}
+const getHighValueCount = () => selectedItems.value.filter(item => item.orderAmount >= HIGH_VALUE_THRESHOLD).length
 
-// 获取状态标签类型
-const getStatusTagType = (status: string) => {
-  switch (status) {
-    case 'pending': return 'warning'
-    case 'assigned': return 'success'
-    case 'archived': return 'info'
-    case 'recovered': return 'danger'
-    default: return 'info'
-  }
-}
+// 获取状态标签类型（复用STATUS_CONFIG）
+const getStatusTagType = (status: string) => STATUS_CONFIG[status]?.type || 'info'
 
 // 格式化日期
 const formatDate = (dateStr: string) => {
+  if (!dateStr) return '-'
   const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return '-'
   return `${date.getMonth() + 1}/${date.getDate()}`
 }
 
@@ -1042,74 +1141,64 @@ const handleLeaderAssignConfirm = (assignmentData: AssignmentData) => {
 }
 
 // 加载部门负责人待分配数据
-const loadPendingLeaderAssignments = () => {
+const loadPendingLeaderAssignments = async () => {
   // 只有部门负责人（非超级管理员）才需要加载待分配数据
   if (!isDepartmentLeader.value || isSuperAdmin.value) {
     pendingLeaderAssignments.value = []
     return
   }
 
-  // 这里应该从后端API获取当前用户作为部门负责人的待分配资料
-  // 查询条件：assigneeId = userStore.currentUser.id && assignMode = 'leader' && status = 'pending_reassign'
-
-  // 模拟根据当前用户ID查询被分配给该负责人的资料
-  const mockAssignedData = [
-    {
-      id: 'pending_1',
-      customerName: '王五',
-      phone: '13800138003',
-      orderAmount: 6500,
-      orderDate: '2024-01-16',
-      assignedAt: '2024-01-16 09:30:00',
-      assignedBy: '系统管理员',
-      departmentName: '销售一部'
-    },
-    {
-      id: 'pending_2',
-      customerName: '赵六',
-      phone: '13800138004',
-      orderAmount: 7200,
-      orderDate: '2024-01-16',
-      assignedAt: '2024-01-16 10:15:00',
-      assignedBy: '系统管理员',
-      departmentName: '销售一部'
+  try {
+    const currentUser = userStore.currentUser
+    if (!currentUser?.id) {
+      pendingLeaderAssignments.value = []
+      return
     }
-  ]
 
-  // 模拟：只有当前用户确实被分配了需要二次分配的资料时才显示
-  // 实际应用中这里应该调用API: getLeaderPendingAssignments(userStore.currentUser.id)
-  // 超级管理员不需要显示待分配数据，只有部门负责人才需要
-  const hasAssignedData = isDepartmentLeader.value
-  pendingLeaderAssignments.value = hasAssignedData ? mockAssignedData : []
-}
+    // 获取分配给当前负责人的待二次分配资料
+    // 查询条件：assigneeId = currentUser.id && status = 'assigned' && assignMode = 'leader'
+    const response = await dataStore.getDataList({
+      assigneeId: currentUser.id,
+      status: 'assigned'
+    })
 
+    // 筛选出需要二次分配的资料（分配模式为leader的）
+    const leaderAssignments = response.list.filter(item =>
+      item.currentAssignment?.assignMode === 'leader' &&
+      item.status === 'assigned'
+    )
 
-
-
-
-const handleDateFilter = (value: string) => {
-  currentDateFilter.value = value
-  dateRange.value = null
-  dataStore.setFilters({ dateFilter: value })
-}
-
-const handleCustomDateChange = () => {
-  currentDateFilter.value = ''
-  const filters: Partial<DataListParams> = {}
-  if (dateRange.value) {
-    filters.dateRange = Array.isArray(dateRange.value)
-      ? dateRange.value.map(d => d.toISOString().split('T')[0])
-      : []
+    pendingLeaderAssignments.value = leaderAssignments
+  } catch (error) {
+    console.error('加载待分配数据失败:', error)
+    pendingLeaderAssignments.value = []
   }
+}
+
+
+
+
+
+// 统一的日期筛选处理
+const applyDateFilter = (filterValue: string | null, dateRangeValue: [Date, Date] | null = null) => {
+  currentDateFilter.value = filterValue || ''
+  dateRange.value = dateRangeValue
+
+  const filters: Partial<DataListParams> = {}
+  if (filterValue) {
+    filters.dateFilter = filterValue
+  } else if (dateRangeValue) {
+    filters.dateRange = dateRangeValue.map(d => d.toISOString().split('T')[0])
+  }
+
   dataStore.setFilters(filters)
 }
 
-const handleQuickFilter = (value: string) => {
-  currentDateFilter.value = value
-  dateRange.value = null
-  dataStore.setFilters({ dateFilter: value })
-}
+const handleDateFilter = (value: string) => applyDateFilter(value, null)
+const handleQuickFilter = (value: string) => applyDateFilter(value, null)
+const handleCustomDateChange = () => applyDateFilter(null, dateRange.value)
 
+// 搜索处理
 const handleSearch = () => {
   currentPage.value = 1
   const filters: Partial<DataListParams> = {
@@ -1117,29 +1206,31 @@ const handleSearch = () => {
   }
 
   if (dateRange.value) {
-    filters.dateRange = Array.isArray(dateRange.value)
-      ? dateRange.value.map(d => d.toISOString().split('T')[0])
-      : []
+    filters.dateRange = dateRange.value.map(d => d.toISOString().split('T')[0])
   }
 
   dataStore.setFilters(filters)
 }
 
+// 状态筛选处理
 const handleStatusFilter = () => {
   currentPage.value = 1
   dataStore.setFilters({ status: statusFilter.value })
 }
 
+// 标签页切换
 const handleTabChange = (tab: string) => {
   currentTab.value = tab
   currentPage.value = 1
   selectedItems.value = []
 }
 
+// 选择变化
 const handleSelectionChange = (selection: DataListItem[]) => {
   selectedItems.value = selection
 }
 
+// 分页变化
 const handlePageChange = (page: number) => {
   currentPage.value = page
 }
@@ -1173,31 +1264,20 @@ const handleColumnSettingsChange = (columns: TableColumn[]) => {
   visibleColumns.value = columns.filter(col => col.visible).map(col => col.prop)
 }
 
-const getStatusType = (status: string) => {
-  const types = {
-    pending: '',
-    assigned: 'success',
-    archived: 'warning',
-    recovered: 'info'
-  }
-  return types[status] || ''
+// 状态配置映射
+const STATUS_CONFIG: Record<string, { text: string; type: string }> = {
+  pending: { text: '待分配', type: '' },
+  assigned: { text: '已分配', type: 'success' },
+  archived: { text: '已封存', type: 'warning' },
+  recovered: { text: '已回收', type: 'info' }
 }
 
-const getStatusText = (status: string) => {
-  const texts = {
-    pending: '待分配',
-    assigned: '已分配',
-    archived: '已封存',
-    recovered: '已回收'
-  }
-  return texts[status] || status
-}
+const getStatusType = (status: string) => STATUS_CONFIG[status]?.type || ''
+const getStatusText = (status: string) => STATUS_CONFIG[status]?.text || status
 
 // 判断数据是否为分配来的
 const isAllocatedData = (row: DataListItem) => {
-  const userStore = useUserStore()
   const currentUserId = userStore.currentUser?.id
-  
   // 如果创建者不是当前用户，则认为是分配来的数据
   return row.createdBy && row.createdBy !== currentUserId
 }
@@ -1207,80 +1287,193 @@ const viewDetail = (row: DataListItem) => {
   showCustomerDetailDialog.value = true
 }
 
-// 跳转到客户详情页面
-const navigateToCustomerDetail = (customerCode: string) => {
-  if (customerCode && customerCode !== 'N/A') {
-    safeNavigator.push(`/customer/detail?code=${customerCode}`)
+// 复制到剪贴板工具函数
+const copyToClipboard = async (text: string, successMsg: string = '已复制到剪贴板') => {
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success(successMsg)
+  } catch (error) {
+    console.error('复制失败:', error)
+    ElMessage.error('复制失败')
   }
 }
 
-// 打开批量分配弹窗
-const openBatchAssignDialog = () => {
-  // 初始化成员列表
-  initMembersList()
-  showBatchAssignDialog.value = true
-}
+// 复制客户编码
+const copyCustomerCode = (customerCode: string) => copyToClipboard(customerCode, '客户编码已复制到剪贴板')
 
-const assignSingle = (row: DataListItem) => {
-  selectedItems.value = [row]
-  // 初始化成员列表
-  initMembersList()
-  showBatchAssignDialog.value = true
-}
-
-const reassignSingle = (row: DataListItem) => {
-  selectedItems.value = [row]
-  // 对于重新分配，强制设置为指定成员分配模式
-  assignForm.assignType = 'specific'
-  assignForm.assignMode = 'direct'
-  assignForm.assignTo = ''
-  assignForm.departmentId = ''
-  assignForm.remark = ''
-  // 初始化成员列表
-  initMembersList()
-  showBatchAssignDialog.value = true
-}
-
-const recoverSingle = async (row: DataListItem) => {
+// 统一的localStorage数据获取工具
+const getStorageData = <T>(key: string, fallback: T = [] as T): T => {
   try {
-    await ElMessageBox.confirm('确认要回收这条客户资料吗？', '确认操作', {
-      type: 'warning'
-    })
+    const data = localStorage.getItem(key)
+    return data ? JSON.parse(data) : fallback
+  } catch (error) {
+    console.error(`读取${key}失败:`, error)
+    return fallback
+  }
+}
 
-    await dataStore.recoverData(row.id)
-    ElMessage.success('回收成功')
+// 查找客户信息
+const findCustomerByCode = (customerCode: string) => {
+  // 尝试多个可能的存储位置
+  const storageKeys = ['customers', 'customer-store', 'crm_store_customer']
+
+  for (const key of storageKeys) {
+    const data = getStorageData<any>(key, null)
+    if (!data) continue
+
+    // 处理不同的数据结构
+    const customers = data.customers || data.data?.customers || (Array.isArray(data) ? data : [])
+    const customer = customers.find((c: any) => c.code === customerCode)
+
+    if (customer?.id) return customer
+  }
+
+  return null
+}
+
+// 跳转到客户详情页面
+const navigateToCustomerDetail = (customerCode: string) => {
+  if (!customerCode || customerCode === 'N/A') {
+    ElMessage.warning('客户编码无效')
+    return
+  }
+
+  const customer = findCustomerByCode(customerCode)
+  if (customer) {
+    safeNavigator.push(`/customer/detail/${customer.id}`)
+  } else {
+    ElMessage.warning('未找到对应的客户信息')
+  }
+}
+
+// 订单状态配置映射
+const ORDER_STATUS_CONFIG: Record<string, { text: string; type: string }> = {
+  pending: { text: '待审核', type: 'warning' },
+  pending_audit: { text: '待审核', type: 'warning' },
+  approved: { text: '已审核', type: 'success' },
+  rejected: { text: '已拒绝', type: 'danger' },
+  shipped: { text: '已发货', type: 'primary' },
+  delivered: { text: '已签收', type: 'success' },
+  cancelled: { text: '已取消', type: 'info' },
+  pending_cancel: { text: '待取消', type: 'warning' },
+  refunded: { text: '已退款', type: 'danger' },
+  after_sales_created: { text: '已建售后', type: 'warning' },
+  package_exception: { text: '包裹异常', type: 'danger' }
+}
+
+const getOrderStatusText = (status: string) => ORDER_STATUS_CONFIG[status]?.text || status || '未知'
+const getOrderStatusType = (status: string) => ORDER_STATUS_CONFIG[status]?.type || 'info'
+
+// 查找订单信息
+const findOrderByNo = (orderNo: string) => {
+  // 尝试多个可能的存储位置
+  const storageKeys = ['orders', 'crm_store_order']
+
+  for (const key of storageKeys) {
+    const data = getStorageData<any>(key, null)
+    if (!data) continue
+
+    // 处理不同的数据结构
+    const orders = data.orders || data.data?.orders || (Array.isArray(data) ? data : [])
+    const order = orders.find((o: any) => o.orderNo === orderNo || o.orderNumber === orderNo)
+
+    if (order?.id) return order
+  }
+
+  return null
+}
+
+// 跳转到订单详情页面
+const navigateToOrderDetail = (orderNo: string) => {
+  if (!orderNo || orderNo === 'N/A') {
+    ElMessage.warning('订单号无效')
+    return
+  }
+
+  const order = findOrderByNo(orderNo)
+  if (order) {
+    safeNavigator.push(`/order/detail/${order.id}`)
+  } else {
+    ElMessage.warning('未找到对应的订单信息')
+  }
+}
+
+// 重置分配表单
+const resetAssignForm = () => {
+  assignForm.assignType = null
+  assignForm.assignMode = 'batch_direct'
+  assignForm.assignTo = ''
+  assignForm.assignToList = []
+  assignForm.departmentId = ''
+  assignForm.crossDepartmentStrategy = 'batch_workload'
+  assignForm.selectedDepartments = []
+  assignForm.remark = ''
+}
+
+// 打开分配对话框的通用方法
+const openAssignDialog = (items: DataListItem[], isReassign: boolean = false) => {
+  selectedItems.value = items
+  if (isReassign) {
+    assignForm.assignType = 'batch_specific'
+    assignForm.assignMode = 'batch_direct'
+  }
+  initMembersList()
+  showBatchAssignDialog.value = true
+}
+
+// 打开批量分配弹窗
+const openBatchAssignDialog = () => openAssignDialog(selectedItems.value)
+
+// 单个分配
+const assignSingle = (row: DataListItem) => openAssignDialog([row])
+
+// 单个重新分配
+const reassignSingle = (row: DataListItem) => {
+  resetAssignForm()
+  openAssignDialog([row], true)
+}
+
+// 通用确认操作
+const confirmAction = async (
+  message: string,
+  action: () => Promise<void>,
+  successMsg: string,
+  errorMsg: string = '操作失败'
+) => {
+  try {
+    await ElMessageBox.confirm(message, '确认操作', { type: 'warning' })
+    await action()
+    ElMessage.success(successMsg)
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('回收失败')
+      ElMessage.error(errorMsg)
     }
   }
 }
 
+// 单个回收
+const recoverSingle = (row: DataListItem) =>
+  confirmAction(
+    '确认要回收这条客户资料吗？',
+    () => dataStore.recoverData(row.id),
+    '回收成功',
+    '回收失败'
+  )
+
+// 单个封存
 const archiveSingle = (row: DataListItem) => {
   currentArchiveData.value = row
   showArchiveDialog.value = true
 }
 
-const deleteSingle = async (row: DataListItem) => {
-  try {
-    await ElMessageBox.confirm(
-      '确认要删除这条客户资料吗？删除后将移至回收站，30天后永久删除。',
-      '确认删除',
-      {
-        type: 'warning',
-        confirmButtonText: '确认删除',
-        cancelButtonText: '取消'
-      }
-    )
-
-    await dataStore.deleteData(row.id)
-    ElMessage.success('删除成功，已移至回收站')
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除失败')
-    }
-  }
-}
+// 单个删除
+const deleteSingle = (row: DataListItem) =>
+  confirmAction(
+    '确认要删除这条客户资料吗？删除后将移至回收站，30天后永久删除。',
+    () => dataStore.deleteData(row.id),
+    '删除成功，已移至回收站',
+    '删除失败'
+  )
 
 // 确认封存
 const handleArchiveConfirm = async (archiveData: {
@@ -1308,51 +1501,60 @@ const handleArchiveConfirm = async (archiveData: {
   }
 }
 
-// 所有系统成员数据
-const allSystemMembers = ref([
-  { id: '1', name: '张三', account: 'zhangsan', department: '销售一部', phone: '13800138001', status: 'active' },
-  { id: '2', name: '李四', account: 'lisi', department: '销售一部', phone: '13800138002', status: 'active' },
-  { id: '3', name: '王五', account: 'wangwu', department: '销售二部', phone: '13800138003', status: 'active' },
-  { id: '4', name: '赵六', account: 'zhaoliu', department: '销售二部', phone: '13800138004', status: 'active' },
-  { id: '5', name: '钱七', account: 'qianqi', department: '销售三部', phone: '13800138005', status: 'active' },
-  { id: '6', name: '孙八', account: 'sunba', department: '客服部', phone: '13800138006', status: 'active' },
-  { id: '7', name: '周九', account: 'zhoujiu', department: '技术部', phone: '13800138007', status: 'active' },
-  { id: '8', name: '吴十', account: 'wushi', department: '销售一部', phone: '13800138008', status: 'active' },
-  { id: '9', name: '郑十一', account: 'zhengshiyi', department: '销售二部', phone: '13800138009', status: 'active' },
-  { id: '10', name: '王十二', account: 'wangshier', department: '销售三部', phone: '13800138010', status: 'active' },
-  { id: '11', name: '李十三', account: 'lishisan', department: '客服部', phone: '13800138011', status: 'active' },
-  { id: '12', name: '张十四', account: 'zhangshisi', department: '技术部', phone: '13800138012', status: 'active' }
-])
+// 所有系统成员数据 - 从localStorage获取真实用户数据
+const allSystemMembers = computed(() => {
+  const users = getStorageData<unknown[]>('users', [])
 
-// 成员搜索方法
-const searchMembers = async (query: string) => {
-  searchingMembers.value = true
+  if (!Array.isArray(users)) {
+    console.error('users不是数组:', users)
+    return []
+  }
 
-  // 模拟搜索延迟
-  setTimeout(() => {
-    if (!query || query.trim() === '') {
-      // 如果没有搜索条件，显示所有活跃成员
-      filteredMembers.value = allSystemMembers.value.filter(member => member.status === 'active')
-    } else {
-      // 根据姓名、账号或手机号搜索
-      const searchTerm = query.toLowerCase().trim()
-      filteredMembers.value = allSystemMembers.value.filter(member =>
-        member.status === 'active' && (
-          member.name.includes(query) ||
-          member.account.toLowerCase().includes(searchTerm) ||
-          member.phone.includes(searchTerm) ||
-          member.department.includes(query)
-        )
-      )
-    }
+  return users
+    .filter((user: unknown) => user.status === 'active') // 只显示活跃用户
+    .map((user: unknown) => ({
+      id: user.id,
+      name: user.name || user.username,
+      account: user.account || user.username,
+      department: user.departmentName || user.department || '未分配部门',
+      phone: user.phone || user.mobile || '',
+      status: user.status,
+      role: user.role || user.roleName || ''
+    }))
+})
 
-    searchingMembers.value = false
-  }, 200)
-}
 
 // 初始化成员列表
 const initMembersList = () => {
   filteredMembers.value = allSystemMembers.value.filter(member => member.status === 'active')
+  console.log('[资料列表] 初始化成员列表:', filteredMembers.value.length)
+}
+
+// 搜索成员
+const searchMembers = (query: string) => {
+  console.log('[资料列表] 搜索成员:', query)
+
+  if (!query) {
+    // 如果没有搜索关键词，显示所有活跃成员
+    filteredMembers.value = allSystemMembers.value.filter(member => member.status === 'active')
+    return
+  }
+
+  const keyword = query.toLowerCase()
+
+  // 搜索：姓名、账号、手机号、部门
+  filteredMembers.value = allSystemMembers.value.filter(member => {
+    if (member.status !== 'active') return false
+
+    return (
+      member.name.toLowerCase().includes(keyword) ||
+      member.account.toLowerCase().includes(keyword) ||
+      member.phone.includes(keyword) ||
+      member.department.toLowerCase().includes(keyword)
+    )
+  })
+
+  console.log('[资料列表] 搜索结果:', filteredMembers.value.length)
 }
 
 // 客户详情弹窗的快捷操作
@@ -1374,41 +1576,49 @@ const handleQuickRecover = async (data: DataListItem) => {
   await recoverSingle(data)
 }
 
-const handleBatchArchive = async () => {
+// 刷新数据
+const handleRefresh = async () => {
   try {
-    await ElMessageBox.confirm(`确认要封存选中的 ${selectedItems.value.length} 条资料吗？`, '确认操作', {
+    ElMessage.info('正在刷新数据...')
+    await dataStore.fetchDataList()
+    selectedItems.value = []
+    ElMessage.success('数据刷新成功')
+  } catch (error) {
+    console.error('刷新数据失败:', error)
+    ElMessage.error('刷新数据失败')
+  }
+}
+
+// 批量操作通用方法
+const batchAction = async (
+  actionName: string,
+  action: (dataIds: string[]) => Promise<void>
+) => {
+  const count = selectedItems.value.length
+  try {
+    await ElMessageBox.confirm(`确认要${actionName}选中的 ${count} 条资料吗？`, '确认操作', {
       type: 'warning'
     })
 
     const dataIds = selectedItems.value.map(row => row.id)
-    await dataStore.batchArchiveData({ dataIds })
+    await action(dataIds)
 
-    ElMessage.success('封存成功')
+    ElMessage.success(`${actionName}成功`)
     selectedItems.value = []
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('封存失败')
+      ElMessage.error(`${actionName}失败`)
     }
   }
 }
 
-const handleBatchRecover = async () => {
-  try {
-    await ElMessageBox.confirm(`确认要回收选中的 ${selectedItems.value.length} 条资料吗？`, '确认操作', {
-      type: 'warning'
-    })
+// 批量封存
+const handleBatchArchive = () =>
+  batchAction('封存', (dataIds) => dataStore.batchArchiveData({ dataIds }))
 
-    const dataIds = selectedItems.value.map(row => row.id)
-    await dataStore.batchRecoverData({ dataIds })
-
-    ElMessage.success('回收成功')
-    selectedItems.value = []
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('回收失败')
-    }
-  }
-}
+// 批量回收
+const handleBatchRecover = () =>
+  batchAction('回收', (dataIds) => dataStore.batchRecoverData({ dataIds }))
 
 const confirmBatchAssign = async () => {
   // 验证分配方式
@@ -1420,12 +1630,17 @@ const confirmBatchAssign = async () => {
     }
   } else {
     // 普通分配的验证
-    if (assignForm.assignType === 'specific' && !assignForm.assignTo) {
-      ElMessage.warning('请选择分配成员')
+    if (!assignForm.assignType) {
+      ElMessage.warning('请选择分配方式')
       return
     }
 
-    if (assignForm.assignType === 'roundrobin' && !assignForm.departmentId) {
+    if (assignForm.assignType === 'batch_specific' && (!assignForm.assignToList || assignForm.assignToList.length === 0)) {
+      ElMessage.warning('请至少选择一位成员')
+      return
+    }
+
+    if (assignForm.assignType === 'batch_roundrobin' && !assignForm.departmentId) {
       ElMessage.warning('请选择分配部门')
       return
     }
@@ -1435,27 +1650,61 @@ const confirmBatchAssign = async () => {
   try {
     const dataIds = selectedItems.value.map(row => row.id)
 
-    if (isReassigning.value || assignForm.assignType === 'specific') {
+    if (isReassigning.value || assignForm.assignType === 'batch_specific') {
       // 指定成员分配
-      const assignee = filteredMembers.value.find(item => item.id === assignForm.assignTo)
-      if (!assignee) {
-        ElMessage.error('分配人员信息错误')
-        return
-      }
-
-      await dataStore.batchAssignData({
-        dataIds,
-        assigneeId: assignForm.assignTo,
-        assigneeName: assignee.name,
-        remark: assignForm.remark
-      })
-
       if (isReassigning.value) {
+        // 重分配：单选
+        const assignee = allSystemMembers.value.find(item => item.id === assignForm.assignTo)
+        if (!assignee) {
+          ElMessage.error('分配人员信息错误')
+          return
+        }
+
+        await dataStore.batchAssignData({
+          dataIds,
+          assigneeId: assignForm.assignTo,
+          assigneeName: assignee.name,
+          remark: assignForm.remark
+        })
+
         ElMessage.success('成功将 ' + selectedItems.value.length + ' 条资料重新分配给 ' + assignee.name)
       } else {
-        ElMessage.success('成功分配 ' + selectedItems.value.length + ' 条资料给 ' + assignee.name)
+        // 批量分配：多选
+        const assigneeIds = assignForm.assignToList
+        if (!assigneeIds || assigneeIds.length === 0) {
+          ElMessage.error('请选择分配成员')
+          return
+        }
+
+        // 获取选中成员的信息
+        const assignees = allSystemMembers.value.filter(item => assigneeIds.includes(item.id))
+        if (assignees.length === 0) {
+          ElMessage.error('分配人员信息错误')
+          return
+        }
+
+        // 平均分配给选中的成员
+        // 将资料平均分配给多个成员
+        const itemsPerMember = Math.ceil(dataIds.length / assigneeIds.length)
+
+        for (let i = 0; i < assigneeIds.length; i++) {
+          const start = i * itemsPerMember
+          const end = Math.min(start + itemsPerMember, dataIds.length)
+          const assignDataIds = dataIds.slice(start, end)
+
+          if (assignDataIds.length > 0) {
+            await dataStore.batchAssignData({
+              dataIds: assignDataIds,
+              assigneeId: assigneeIds[i],
+              assigneeName: assignees[i].name,
+              remark: assignForm.remark
+            })
+          }
+        }
+
+        ElMessage.success(`成功将 ${selectedItems.value.length} 条资料分配给 ${assignees.length} 位成员`)
       }
-    } else if (assignForm.assignType === 'roundrobin') {
+    } else if (assignForm.assignType === 'batch_roundrobin') {
       // 轮流分配
       const department = departments.value.find(dept => dept.id === assignForm.departmentId)
       if (!department) {
@@ -1463,52 +1712,69 @@ const confirmBatchAssign = async () => {
         return
       }
 
-      // 获取部门成员（模拟数据）
-      const departmentMembers = [
-        { id: '1', name: '张三', account: 'zhangsan', department: '销售一部' },
-        { id: '2', name: '李四', account: 'lisi', department: '销售一部' },
-        { id: '3', name: '王五', account: 'wangwu', department: '销售二部' },
-        { id: '4', name: '赵六', account: 'zhaoliu', department: '销售二部' },
-        { id: '5', name: '钱七', account: 'qianqi', department: '销售三部' },
-        { id: '6', name: '孙八', account: 'sunba', department: '客服部' },
-        { id: '7', name: '周九', account: 'zhoujiu', department: '技术部' }
-      ].filter(member => member.department === department.name)
+      // 获取部门成员（从localStorage）
+      try {
+        console.log('[资料列表] 获取部门成员，部门ID:', assignForm.departmentId)
 
-      if (departmentMembers.length === 0) {
-        ElMessage.error('该部门暂无可分配成员')
+        // 从allSystemMembers中筛选该部门的成员
+        const departmentMembers = allSystemMembers.value
+          .filter(member => {
+            // 匹配部门名称
+            return member.department === department.name
+          })
+          .map(member => ({
+            id: member.id,
+            name: member.name,
+            account: member.account,
+            department: member.department,
+            phone: member.phone,
+            isLeader: member.role === 'department_manager' || member.role === 'manager'
+          }))
+
+        console.log('[资料列表] 部门成员数量:', departmentMembers.length)
+        console.log('[资料列表] 部门成员:', departmentMembers)
+
+        if (departmentMembers.length === 0) {
+          ElMessage.error(`${department.name}暂无可分配成员`)
+          return
+        }
+
+        // 获取部门负责人
+        const departmentLeader = departmentMembers.find(member => member.isLeader) || departmentMembers[0]
+        console.log('[资料列表] 部门负责人:', departmentLeader.name)
+
+        // 轮流分配
+        await dataStore.batchRoundRobinAssignData({
+          dataIds,
+          departmentId: assignForm.departmentId,
+          departmentName: department.name,
+          members: departmentMembers,
+          mode: assignForm.assignMode,
+          leaderId: assignForm.assignMode === 'batch_leader' ? departmentLeader.id : undefined,
+          leaderName: assignForm.assignMode === 'batch_leader' ? departmentLeader.name : undefined,
+          remark: assignForm.remark
+        })
+
+        if (assignForm.assignMode === 'batch_leader') {
+          ElMessage.success(`成功将 ${selectedItems.value.length} 条资料分配给 ${department.name} 负责人 ${departmentLeader.name}，请负责人进行二次分配`)
+        } else {
+          ElMessage.success(`成功将 ${selectedItems.value.length} 条资料轮流分配给 ${department.name} 的 ${departmentMembers.length} 名成员`)
+        }
+      } catch (error) {
+        console.error('[资料列表] 获取部门成员失败:', error)
+        ElMessage.error('获取部门成员失败，无法进行分配')
         return
       }
-
-      // 获取部门负责人（模拟数据）
-      const departmentLeader = departmentMembers[0] // 假设第一个成员是负责人
-
-      // 轮流分配
-      await dataStore.batchRoundRobinAssignData({
-        dataIds,
-        departmentId: assignForm.departmentId,
-        departmentName: department.name,
-        members: departmentMembers,
-        mode: assignForm.assignMode,
-        leaderId: assignForm.assignMode === 'leader' ? departmentLeader.id : undefined,
-        leaderName: assignForm.assignMode === 'leader' ? departmentLeader.name : undefined,
-        remark: assignForm.remark
-      })
-
-      if (assignForm.assignMode === 'leader') {
-        ElMessage.success('成功将 ' + selectedItems.value.length + ' 条资料分配给 ' + department.name + ' 负责人 ' + departmentLeader.name + '，请负责人进行二次分配')
-      } else {
-        ElMessage.success('成功将 ' + selectedItems.value.length + ' 条资料轮流分配给 ' + department.name + ' 的 ' + departmentMembers.length + ' 名成员')
-      }
-    } else if (assignForm.assignType === 'cross_department') {
+    } else if (assignForm.assignType === 'batch_cross_department') {
       // 跨部门智能分配
-      if (assignForm.crossDepartmentStrategy === 'manual' && assignForm.selectedDepartments.length === 0) {
+      if (assignForm.crossDepartmentStrategy === 'batch_manual' && assignForm.selectedDepartments.length === 0) {
         ElMessage.warning('请选择参与分配的部门')
         return
       }
 
       // 获取参与分配的部门
       let targetDepartments = []
-      if (assignForm.crossDepartmentStrategy === 'manual') {
+      if (assignForm.crossDepartmentStrategy === 'batch_manual') {
         targetDepartments = departments.value.filter(dept =>
           assignForm.selectedDepartments.includes(dept.id)
         )
@@ -1522,52 +1788,85 @@ const confirmBatchAssign = async () => {
         return
       }
 
-      // 模拟跨部门智能分配逻辑
-      const allMembers = [
-        { id: '1', name: '张三', account: 'zhangsan', department: '销售一部', workload: 5, performance: 85 },
-        { id: '2', name: '李四', account: 'lisi', department: '销售一部', workload: 3, performance: 92 },
-        { id: '3', name: '王五', account: 'wangwu', department: '销售二部', workload: 7, performance: 78 },
-        { id: '4', name: '赵六', account: 'zhaoliu', department: '销售二部', workload: 2, performance: 88 },
-        { id: '5', name: '钱七', account: 'qianqi', department: '销售三部', workload: 4, performance: 90 },
-        { id: '6', name: '孙八', account: 'sunba', department: '客服部', workload: 6, performance: 82 },
-        { id: '7', name: '周九', account: 'zhoujiu', department: '技术部', workload: 1, performance: 95 }
-      ]
+      // 获取跨部门成员数据（从localStorage）
+      try {
+        const allMembers = []
 
-      // 筛选目标部门的成员
-      const targetMembers = allMembers.filter(member =>
-        targetDepartments.some(dept => dept.name === member.department)
-      )
+        // 获取所有目标部门的成员
+        for (const dept of targetDepartments) {
+          console.log('[资料列表] 获取部门成员:', dept.name)
 
-      // 根据策略排序成员
-      const sortedMembers = [...targetMembers]
-      if (assignForm.crossDepartmentStrategy === 'workload') {
-        // 按工作负载升序排序（负载低的优先）
-        sortedMembers.sort((a, b) => a.workload - b.workload)
-      } else if (assignForm.crossDepartmentStrategy === 'performance') {
-        // 按业绩降序排序（业绩高的优先）
-        sortedMembers.sort((a, b) => b.performance - a.performance)
-      }
+          // 从allSystemMembers中筛选该部门的成员
+          const deptMembers = allSystemMembers.value
+            .filter(member => member.department === dept.name)
+            .map(member => ({
+              id: member.id,
+              name: member.name,
+              account: member.account,
+              department: member.department,
+              phone: member.phone
+            }))
 
-      // 智能分配逻辑
-      const assignments = []
-      dataIds.forEach((dataId, index) => {
-        const memberIndex = index % sortedMembers.length
-        const member = sortedMembers[memberIndex]
-        assignments.push({
-          dataId,
-          assigneeId: member.id,
-          assigneeName: member.name,
-          department: member.department
+          console.log('[资料列表] 部门成员数量:', deptMembers.length)
+
+          // 合并成员信息和统计数据（简化版，不调用API）
+          const membersWithStats = deptMembers.map(member => {
+            return {
+              id: member.id,
+              name: member.name,
+              account: member.account,
+              department: dept.name,
+              workload: memberStats?.totalAssigned || 0,
+              performance: memberStats?.conversionRate || 0
+            }
+          })
+
+          allMembers.push(...membersWithStats)
+        }
+
+        // 筛选目标部门的成员
+        const targetMembers = allMembers
+
+        if (targetMembers.length === 0) {
+          ElMessage.error('目标部门暂无可分配成员')
+          return
+        }
+
+        // 根据策略排序成员
+        const sortedMembers = [...targetMembers]
+        if (assignForm.crossDepartmentStrategy === 'workload') {
+          // 按工作负载升序排序（负载低的优先）
+          sortedMembers.sort((a, b) => a.workload - b.workload)
+        } else if (assignForm.crossDepartmentStrategy === 'performance') {
+          // 按业绩降序排序（业绩高的优先）
+          sortedMembers.sort((a, b) => b.performance - a.performance)
+        }
+
+        // 智能分配逻辑
+        const assignments = []
+        dataIds.forEach((dataId, index) => {
+          const memberIndex = index % sortedMembers.length
+          const member = sortedMembers[memberIndex]
+          assignments.push({
+            dataId,
+            assigneeId: member.id,
+            assigneeName: member.name,
+            department: member.department
+          })
         })
-      })
 
-      // 批量跨部门分配
-      await dataStore.batchCrossDepartmentAssignData({
-        assignments,
-        strategy: assignForm.crossDepartmentStrategy,
-        targetDepartments: targetDepartments.map(dept => ({ id: dept.id, name: dept.name })),
-        remark: assignForm.remark
-      })
+        // 批量跨部门分配
+        await dataStore.batchCrossDepartmentAssignData({
+          assignments,
+          strategy: assignForm.crossDepartmentStrategy,
+          targetDepartments: targetDepartments.map(dept => ({ id: dept.id, name: dept.name })),
+          remark: assignForm.remark
+        })
+      } catch (error) {
+        console.error('获取跨部门成员失败:', error)
+        ElMessage.error('获取跨部门成员失败，无法进行分配')
+        return
+      }
 
       const strategyText = {
         workload: '工作负载均衡',
@@ -1581,11 +1880,11 @@ const confirmBatchAssign = async () => {
     showBatchAssignDialog.value = false
     selectedItems.value = []
     // 重置表单
-    assignForm.assignType = 'specific'
-    assignForm.assignMode = 'direct'
+    assignForm.assignType = null
+    assignForm.assignMode = 'batch_direct'
     assignForm.assignTo = ''
     assignForm.departmentId = ''
-    assignForm.crossDepartmentStrategy = 'workload'
+    assignForm.crossDepartmentStrategy = 'batch_workload'
     assignForm.selectedDepartments = []
     assignForm.remark = ''
     filteredMembers.value = []
@@ -1608,7 +1907,7 @@ onMounted(async () => {
   try {
     // 初始化可见列
     visibleColumns.value = allTableColumns.filter(col => col.visible).map(col => col.prop)
-    
+
     // 设置默认日期筛选为今日
     dataStore.setFilters({ dateFilter: 'today' })
     // 获取可分配成员列表
@@ -2562,15 +2861,15 @@ onMounted(async () => {
   .main-filters {
     gap: 12px;
   }
-  
+
   .date-picker {
     width: 35%;
   }
-  
+
   .search-input {
     width: 280px;
   }
-  
+
   .status-select {
     width: 120px;
   }
@@ -2582,11 +2881,11 @@ onMounted(async () => {
     gap: 12px;
     padding: 16px;
   }
-  
+
   .customer-preview {
     margin: 0 16px 16px 16px;
   }
-  
+
   .remark-preview {
     margin: 0 16px 16px 16px;
   }

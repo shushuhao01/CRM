@@ -17,7 +17,7 @@
               </div>
             </div>
           </el-card>
-          
+
           <el-card class="stat-card success" shadow="hover">
             <div class="stat-content">
               <div class="stat-icon success">
@@ -30,7 +30,7 @@
               </div>
             </div>
           </el-card>
-          
+
           <el-card class="stat-card warning" shadow="hover">
             <div class="stat-content">
               <div class="stat-icon warning">
@@ -46,17 +46,17 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button 
+        <el-button
           v-if="canAddRole"
-          @click="handleAdd" 
-          type="primary" 
+          @click="handleAdd"
+          type="primary"
           :icon="Plus"
         >
           新增角色
         </el-button>
-        <el-button 
+        <el-button
           v-if="canManagePermissions"
-          @click="handlePermissionManage" 
+          @click="handlePermissionManage"
           :icon="Setting"
         >
           权限管理
@@ -161,6 +161,21 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="角色类型" width="140">
+          <template #default="{ row }">
+            <el-select
+              v-model="row.roleType"
+              size="small"
+              @change="handleRoleTypeChange(row)"
+              :disabled="!canEditRole"
+            >
+              <el-option label="系统角色" value="system" />
+              <el-option label="业务角色" value="business" />
+              <el-option label="临时角色" value="temporary" />
+              <el-option label="自定义角色" value="custom" />
+            </el-select>
+          </template>
+        </el-table-column>
         <el-table-column label="用户数量" width="100">
           <template #default="{ row }">
             <el-link @click="handleViewUsers(row)" type="primary">
@@ -179,25 +194,25 @@
         <el-table-column prop="createTime" label="创建时间" width="160" />
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button 
+            <el-button
               v-if="canEditRole"
-              @click="handleEdit(row)" 
-              type="primary" 
-              size="small" 
+              @click="handleEdit(row)"
+              type="primary"
+              size="small"
               link
             >
               编辑
             </el-button>
-            <el-button 
+            <el-button
               v-if="canAssignPermissions"
-              @click="handlePermissions(row)" 
-              type="primary" 
-              size="small" 
+              @click="handlePermissions(row)"
+              type="primary"
+              size="small"
               link
             >
               权限设置
             </el-button>
-            <el-dropdown 
+            <el-dropdown
               v-if="canEditRole || canDeleteRole"
               @command="(cmd) => handleDropdownCommand(cmd, row)"
             >
@@ -206,22 +221,22 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item 
+                  <el-dropdown-item
                     v-if="canEditRole"
                     command="copy"
                   >
                     复制角色
                   </el-dropdown-item>
-                  <el-dropdown-item 
+                  <el-dropdown-item
                     v-if="canEditRole"
                     command="toggle"
                   >
                     {{ row.status === 'active' ? '禁用' : '启用' }}
                   </el-dropdown-item>
-                  <el-dropdown-item 
+                  <el-dropdown-item
                     v-if="canDeleteRole"
-                    command="delete" 
-                    divided 
+                    command="delete"
+                    divided
                     class="danger-item"
                   >
                     删除
@@ -273,10 +288,18 @@
             :disabled="isEdit"
           />
         </el-form-item>
+        <el-form-item label="角色类型" prop="roleType">
+          <el-select v-model="roleForm.roleType" placeholder="请选择角色类型">
+            <el-option label="系统角色" value="system" />
+            <el-option label="业务角色" value="business" />
+            <el-option label="临时角色" value="temporary" />
+            <el-option label="自定义角色" value="custom" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="roleForm.status">
-            <el-radio value="active">启用</el-radio>
-            <el-radio value="inactive">禁用</el-radio>
+            <el-radio label="active">启用</el-radio>
+            <el-radio label="inactive">禁用</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="描述" prop="description">
@@ -311,9 +334,9 @@
           <h4>角色：{{ currentRole?.name }}</h4>
           <p>{{ currentRole?.description }}</p>
         </div>
-        
+
         <el-divider />
-        
+
         <div class="permission-tree">
           <el-tree
             ref="permissionTreeRef"
@@ -322,6 +345,7 @@
             show-checkbox
             node-key="id"
             :default-checked-keys="checkedPermissions"
+            :check-strictly="true"
             @check="handlePermissionCheck"
           >
             <template #default="{ node, data }">
@@ -367,7 +391,7 @@
             收起全部
           </el-button>
         </div>
-        
+
         <el-table
           :data="allPermissions"
           row-key="id"
@@ -467,8 +491,8 @@
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="permissionForm.status">
-            <el-radio value="active">启用</el-radio>
-            <el-radio value="inactive">禁用</el-radio>
+            <el-radio label="active">启用</el-radio>
+            <el-radio label="inactive">禁用</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
@@ -482,16 +506,320 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 用户列表弹窗 -->
+    <el-dialog
+      v-model="userListDialogVisible"
+      :title="`角色「${currentViewRole?.name}」的用户列表`"
+      width="1200px"
+      @close="handleCloseUserDialog"
+    >
+      <div class="user-list-content">
+        <!-- 用户统计卡片 -->
+        <el-row :gutter="20" class="stats-row">
+          <el-col :span="6">
+            <el-card shadow="hover" class="stat-card-mini">
+              <div class="stat-mini-content">
+                <el-icon class="stat-mini-icon primary"><UserFilled /></el-icon>
+                <div class="stat-mini-info">
+                  <div class="stat-mini-value">{{ userStats.total }}</div>
+                  <div class="stat-mini-label">总用户数</div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card shadow="hover" class="stat-card-mini">
+              <div class="stat-mini-content">
+                <el-icon class="stat-mini-icon success"><User /></el-icon>
+                <div class="stat-mini-info">
+                  <div class="stat-mini-value">{{ userStats.active }}</div>
+                  <div class="stat-mini-label">在职用户</div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card shadow="hover" class="stat-card-mini">
+              <div class="stat-mini-content">
+                <el-icon class="stat-mini-icon warning"><OfficeBuilding /></el-icon>
+                <div class="stat-mini-info">
+                  <div class="stat-mini-value">{{ userStats.departments }}</div>
+                  <div class="stat-mini-label">涉及部门</div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card shadow="hover" class="stat-card-mini">
+              <div class="stat-mini-content">
+                <el-icon class="stat-mini-icon info"><Clock /></el-icon>
+                <div class="stat-mini-info">
+                  <div class="stat-mini-value">{{ userStats.lastLogin }}</div>
+                  <div class="stat-mini-label">近7天活跃</div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+
+        <!-- 搜索和筛选 -->
+        <div class="list-header">
+          <el-row :gutter="20">
+            <el-col :span="8">
+              <el-input
+                v-model="userSearchKeyword"
+                placeholder="搜索用户名、姓名或邮箱"
+                clearable
+                @input="handleUserSearch"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+            </el-col>
+            <el-col :span="6">
+              <el-select
+                v-model="userStatusFilter"
+                placeholder="状态筛选"
+                clearable
+                @change="handleUserSearch"
+              >
+                <el-option label="全部" value="" />
+                <el-option label="在职" value="active" />
+                <el-option label="离职" value="inactive" />
+              </el-select>
+            </el-col>
+            <el-col :span="6">
+              <el-select
+                v-model="userDepartmentFilter"
+                placeholder="部门筛选"
+                clearable
+                @change="handleUserSearch"
+              >
+                <el-option label="全部" value="" />
+                <el-option
+                  v-for="dept in userDepartmentList"
+                  :key="dept"
+                  :label="dept"
+                  :value="dept"
+                />
+              </el-select>
+            </el-col>
+            <el-col :span="4">
+              <el-button type="primary" @click="handleExportUsers" style="width: 100%">
+                <el-icon><Download /></el-icon>
+                导出
+              </el-button>
+            </el-col>
+          </el-row>
+        </div>
+
+        <!-- 用户表格 -->
+        <el-table
+          :data="paginatedRoleUsers"
+          style="width: 100%; margin-top: 20px"
+          v-loading="userListLoading"
+          stripe
+        >
+          <el-table-column prop="username" label="用户名" width="120" />
+          <el-table-column prop="realName" label="姓名" width="120" />
+          <el-table-column prop="email" label="邮箱" width="200" show-overflow-tooltip />
+          <el-table-column prop="department" label="部门" width="150" />
+          <el-table-column prop="position" label="职位" width="120" />
+          <el-table-column label="状态" width="80">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
+                {{ row.status === 'active' ? '在职' : '离职' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="lastLoginTime" label="最后登录" width="160" />
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button type="primary" size="small" link @click="handleViewUserDetail(row)">
+                详情
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <!-- 分页 -->
+        <div class="pagination-container" v-if="filteredRoleUsers.length > 0">
+          <el-pagination
+            v-model:current-page="userPagination.page"
+            v-model:page-size="userPagination.size"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="filteredRoleUsers.length"
+            layout="total, sizes, prev, pager, next, jumper"
+            small
+          />
+        </div>
+      </div>
+    </el-dialog>
+
+    <!-- 权限列表弹窗 -->
+    <el-dialog
+      v-model="permissionListDialogVisible"
+      :title="`角色「${currentViewRole?.name}」的权限列表`"
+      width="1200px"
+      @close="handleClosePermissionDialog"
+    >
+      <div class="permission-list-content">
+        <!-- 权限统计卡片 -->
+        <el-row :gutter="20" class="stats-row">
+          <el-col :span="6">
+            <el-card shadow="hover" class="stat-card-mini">
+              <div class="stat-mini-content">
+                <el-icon class="stat-mini-icon primary"><Lock /></el-icon>
+                <div class="stat-mini-info">
+                  <div class="stat-mini-value">{{ permissionStats.total }}</div>
+                  <div class="stat-mini-label">总权限数</div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card shadow="hover" class="stat-card-mini">
+              <div class="stat-mini-content">
+                <el-icon class="stat-mini-icon success"><Menu /></el-icon>
+                <div class="stat-mini-info">
+                  <div class="stat-mini-value">{{ permissionStats.menu }}</div>
+                  <div class="stat-mini-label">菜单权限</div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card shadow="hover" class="stat-card-mini">
+              <div class="stat-mini-content">
+                <el-icon class="stat-mini-icon warning"><Operation /></el-icon>
+                <div class="stat-mini-info">
+                  <div class="stat-mini-value">{{ permissionStats.action }}</div>
+                  <div class="stat-mini-label">操作权限</div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card shadow="hover" class="stat-card-mini">
+              <div class="stat-mini-content">
+                <el-icon class="stat-mini-icon info"><Grid /></el-icon>
+                <div class="stat-mini-info">
+                  <div class="stat-mini-value">{{ permissionStats.modules }}</div>
+                  <div class="stat-mini-label">功能模块</div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+
+        <!-- 搜索和筛选 -->
+        <div class="list-header">
+          <el-row :gutter="20">
+            <el-col :span="8">
+              <el-input
+                v-model="permissionSearchKeyword"
+                placeholder="搜索权限名称、编码或描述"
+                clearable
+                @input="handlePermissionSearch"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+            </el-col>
+            <el-col :span="6">
+              <el-select
+                v-model="permissionTypeFilter"
+                placeholder="类型筛选"
+                clearable
+                @change="handlePermissionSearch"
+              >
+                <el-option label="全部" value="" />
+                <el-option label="菜单" value="menu" />
+                <el-option label="操作" value="action" />
+              </el-select>
+            </el-col>
+            <el-col :span="6">
+              <el-select
+                v-model="permissionModuleFilter"
+                placeholder="模块筛选"
+                clearable
+                @change="handlePermissionSearch"
+              >
+                <el-option label="全部" value="" />
+                <el-option
+                  v-for="module in permissionModuleList"
+                  :key="module"
+                  :label="module"
+                  :value="module"
+                />
+              </el-select>
+            </el-col>
+            <el-col :span="4">
+              <el-button type="primary" @click="handleExportPermissions" style="width: 100%">
+                <el-icon><Download /></el-icon>
+                导出
+              </el-button>
+            </el-col>
+          </el-row>
+        </div>
+
+        <!-- 权限表格 -->
+        <el-table
+          :data="paginatedRolePermissions"
+          style="width: 100%; margin-top: 20px"
+          v-loading="permissionListLoading"
+          stripe
+        >
+          <el-table-column prop="name" label="权限名称" width="200" />
+          <el-table-column prop="code" label="权限编码" width="250" show-overflow-tooltip />
+          <el-table-column label="类型" width="100">
+            <template #default="{ row }">
+              <el-tag
+                :type="row.type === 'menu' ? 'success' : 'warning'"
+                size="small"
+              >
+                {{ row.type === 'menu' ? '菜单' : '操作' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="module" label="所属模块" width="150" />
+          <el-table-column prop="description" label="描述" show-overflow-tooltip />
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button type="primary" size="small" link @click="handleViewPermissionDetail(row)">
+                详情
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <!-- 分页 -->
+        <div class="pagination-container" v-if="filteredRolePermissions.length > 0">
+          <el-pagination
+            v-model:current-page="permissionPagination.page"
+            v-model:page-size="permissionPagination.size"
+            :page-sizes="[20, 50, 100]"
+            :total="filteredRolePermissions.length"
+            layout="total, sizes, prev, pager, next, jumper"
+            small
+          />
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import permissionService from '@/services/permissionService'
-import { rolePermissionService } from '@/services/rolePermissionService'
 import { roleApiService } from '@/services/roleApiService'
+import { DEFAULT_ROLE_PERMISSIONS, getDefaultRolePermissions } from '@/config/defaultRolePermissions'
+import { userDataService } from '@/services/userDataService'
 import {
   Plus,
   Setting,
@@ -507,7 +835,13 @@ import {
   User,
   Lock,
   Key,
-  Headset
+  Headset,
+  OfficeBuilding,
+  Clock,
+  Download,
+  Menu,
+  Operation,
+  Grid
 } from '@element-plus/icons-vue'
 
 // 接口定义
@@ -516,6 +850,7 @@ interface RoleData {
   name: string
   code: string
   status: string
+  roleType?: 'system' | 'business' | 'temporary' | 'custom'
   description?: string
   createTime?: string
   userCount?: number
@@ -553,11 +888,40 @@ const roleDialogVisible = ref(false)
 const permissionDialogVisible = ref(false)
 const permissionManageDialogVisible = ref(false)
 const permissionFormDialogVisible = ref(false)
+const userListDialogVisible = ref(false)
+const permissionListDialogVisible = ref(false)
 const isEdit = ref(false)
 const isPermissionEdit = ref(false)
 const selectedRoles = ref([])
 const currentRole = ref(null)
+const currentViewRole = ref(null)
 const checkedPermissions = ref([])
+
+// 用户列表相关
+const roleUsers = ref([])
+const filteredRoleUsers = ref([])
+const userSearchKeyword = ref('')
+const userStatusFilter = ref('')
+const userDepartmentFilter = ref('')
+const userDepartmentList = ref([])
+const userListLoading = ref(false)
+const userPagination = reactive({
+  page: 1,
+  size: 10
+})
+
+// 权限列表相关
+const rolePermissions = ref([])
+const filteredRolePermissions = ref([])
+const permissionSearchKeyword = ref('')
+const permissionTypeFilter = ref('')
+const permissionModuleFilter = ref('')
+const permissionModuleList = ref([])
+const permissionListLoading = ref(false)
+const permissionPagination = reactive({
+  page: 1,
+  size: 20
+})
 
 // 角色统计
 const roleStats = ref({
@@ -579,6 +943,7 @@ const roleForm = reactive({
   name: '',
   code: '',
   status: 'active',
+  roleType: 'custom' as 'system' | 'business' | 'temporary' | 'custom',
   description: ''
 })
 
@@ -648,6 +1013,60 @@ const permissionTreeRef = ref()
 const dialogTitle = computed(() => isEdit.value ? '编辑角色' : '新增角色')
 const permissionDialogTitle = computed(() => isPermissionEdit.value ? '编辑权限' : '新增权限')
 
+// 用户统计
+const userStats = computed(() => {
+  const users = roleUsers.value
+  const active = users.filter(u => u.status === 'active').length
+  const departments = new Set(users.map(u => u.department)).size
+  const lastLogin = users.filter(u => {
+    if (!u.lastLoginTime || u.lastLoginTime === '从未登录') return false
+    try {
+      const lastLoginDate = new Date(u.lastLoginTime)
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      return lastLoginDate > sevenDaysAgo
+    } catch {
+      return false
+    }
+  }).length
+
+  return {
+    total: users.length,
+    active,
+    departments,
+    lastLogin
+  }
+})
+
+// 权限统计
+const permissionStats = computed(() => {
+  const permissions = rolePermissions.value
+  const menu = permissions.filter(p => p.type === 'menu').length
+  const action = permissions.filter(p => p.type === 'action').length
+  const modules = new Set(permissions.map(p => p.module)).size
+
+  return {
+    total: permissions.length,
+    menu,
+    action,
+    modules
+  }
+})
+
+// 分页后的用户列表
+const paginatedRoleUsers = computed(() => {
+  const start = (userPagination.page - 1) * userPagination.size
+  const end = start + userPagination.size
+  return filteredRoleUsers.value.slice(start, end)
+})
+
+// 分页后的权限列表
+const paginatedRolePermissions = computed(() => {
+  const start = (permissionPagination.page - 1) * permissionPagination.size
+  const end = start + permissionPagination.size
+  return filteredRolePermissions.value.slice(start, end)
+})
+
 // 权限控制计算属性
 const canAddRole = computed(() => {
   return userStore.isAdmin
@@ -705,18 +1124,122 @@ const handleEdit = (row: RoleData) => {
     name: row.name,
     code: row.code,
     status: row.status,
+    roleType: row.roleType || 'custom',
     description: row.description
   })
   roleDialogVisible.value = true
 }
 
 /**
+ * 角色类型变更处理
+ */
+const handleRoleTypeChange = async (row: RoleData) => {
+  try {
+    // 调用API更新角色类型
+    await roleApiService.updateRole({
+      id: row.id,
+      name: row.name,
+      code: row.code,
+      status: row.status,
+      roleType: row.roleType,
+      description: row.description
+    })
+
+    ElMessage.success('角色类型更新成功')
+
+    // 重新加载角色列表
+    await loadRoleList()
+  } catch (error) {
+    console.error('更新角色类型失败:', error)
+    ElMessage.error('更新角色类型失败，请重试')
+
+    // 失败时重新加载列表以恢复原值
+    await loadRoleList()
+  }
+}
+
+/**
  * 权限设置
  */
 const handlePermissions = (row: RoleData) => {
+  console.log('[角色权限] 开始配置权限:', row)
+
   currentRole.value = row
-  checkedPermissions.value = row.permissions || []
+
+  // 根据角色设置默认权限
+  let defaultPermissions = row.permissions || []
+
+  // 如果角色还没有权限，根据角色类型设置默认权限
+  if (!defaultPermissions.length) {
+    console.log('[角色权限] 角色权限为空,从默认配置加载:', row.code)
+    defaultPermissions = getDefaultPermissionsByRole(row.code || row.name)
+  }
+
+  console.log('[角色权限] 配置权限详情:', {
+    roleId: row.id,
+    roleName: row.name,
+    roleCode: row.code,
+    originalPermissions: row.permissions?.length || 0,
+    defaultPermissions: defaultPermissions.length,
+    permissions: defaultPermissions
+  })
+
+  checkedPermissions.value = defaultPermissions
   permissionDialogVisible.value = true
+
+  // 使用 setTimeout 确保对话框和权限树完全渲染 - 增加延迟时间到1000ms
+  setTimeout(() => {
+    console.log('[角色权限] 开始设置权限树选中状态')
+    console.log('[角色权限] 权限树引用:', !!permissionTreeRef.value)
+    console.log('[角色权限] 权限数量:', defaultPermissions.length)
+    console.log('[角色权限] 权限列表:', defaultPermissions)
+
+    if (permissionTreeRef.value) {
+      if (defaultPermissions.length > 0) {
+        try {
+          permissionTreeRef.value.setCheckedKeys(defaultPermissions)
+          console.log('✅ 权限树选中状态设置成功:', defaultPermissions)
+
+          // 验证设置结果
+          const checkedKeys = permissionTreeRef.value.getCheckedKeys()
+          console.log('✅ 验证选中结果:', checkedKeys)
+
+          if (checkedKeys.length === 0) {
+            console.error('❌ 权限树选中失败,尝试使用 setChecked 方法')
+            // 尝试逐个设置
+            defaultPermissions.forEach(key => {
+              try {
+                permissionTreeRef.value.setChecked(key, true, false)
+              } catch (e) {
+                console.error(`设置权限 ${key} 失败:`, e)
+              }
+            })
+          }
+        } catch (error) {
+          console.error('❌ 设置权限树选中状态失败:', error)
+        }
+      } else {
+        console.warn('⚠️ 权限列表为空,无法设置选中状态')
+      }
+    } else {
+      console.error('❌ 权限树组件引用未找到')
+    }
+  }, 1000) // 增加延迟时间到1000ms确保组件完全渲染
+}
+
+/**
+ * 根据角色获取默认权限 - 从配置文件读取
+ */
+const getDefaultPermissionsByRole = (roleCode: string): string[] => {
+  console.log('[角色权限] 获取角色默认权限:', roleCode)
+
+  // 使用配置文件中的默认权限
+  const permissions = getDefaultRolePermissions(roleCode)
+
+  console.log('[角色权限] 默认权限数量:', permissions.length)
+  console.log('[角色权限] 默认权限列表:', permissions)
+
+  return permissions
 }
 
 /**
@@ -730,15 +1253,146 @@ const handlePermissionManage = () => {
 /**
  * 查看用户
  */
-const handleViewUsers = (row: RoleData) => {
-  ElMessage.info(`查看角色"${row.name}"的用户列表功能开发中...`)
+const handleViewUsers = async (row: RoleData) => {
+  console.log('[角色权限] 查看角色用户:', row)
+  currentViewRole.value = row
+  userListLoading.value = true
+  userListDialogVisible.value = true
+
+  // 重置筛选条件和分页
+  userSearchKeyword.value = ''
+  userStatusFilter.value = ''
+  userDepartmentFilter.value = ''
+  userPagination.page = 1
+
+  try {
+    // 从 localStorage 获取真实用户数据 - 使用 crm_mock_users 键
+    const allUsers = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+    console.log('[角色权限] 所有用户数据:', allUsers.length)
+    console.log('[角色权限] 查找角色:', row.code)
+
+    // 筛选该角色的用户 - 使用 roleId 字段匹配
+    const users = allUsers
+      .filter((user: any) => {
+        // 支持多种角色字段匹配
+        const userRole = user.roleId || user.role
+        console.log(`[角色权限] 用户 ${user.username} 的角色: ${userRole}`)
+        return userRole === row.code
+      })
+      .map((user: any) => ({
+        id: user.id,
+        username: user.username,
+        realName: user.realName || user.name || user.username,
+        email: user.email || `${user.username}@example.com`,
+        department: user.departmentName || user.department || '未分配',
+        position: user.position || '员工',
+        status: user.status || 'active',
+        lastLoginTime: user.lastLoginTime || '从未登录'
+      }))
+
+    console.log('[角色权限] 筛选后的用户:', users.length)
+    roleUsers.value = users
+    filteredRoleUsers.value = users
+
+    // 获取部门列表
+    const departments = new Set(users.map(u => u.department))
+    userDepartmentList.value = Array.from(departments).filter(d => d !== '未分配')
+
+    if (users.length > 0) {
+      ElMessage.success(`成功加载 ${users.length} 个用户`)
+    } else {
+      ElMessage.info('该角色暂无用户')
+    }
+  } catch (error) {
+    console.error('获取角色用户失败:', error)
+    ElMessage.error('获取用户列表失败')
+    roleUsers.value = []
+    filteredRoleUsers.value = []
+  } finally {
+    userListLoading.value = false
+  }
 }
 
 /**
  * 查看权限
  */
-const handleViewPermissions = (row: RoleData) => {
-  ElMessage.info(`查看角色"${row.name}"的权限列表功能开发中...`)
+const handleViewPermissions = async (row: RoleData) => {
+  console.log('[角色权限] 查看角色权限:', row)
+  currentViewRole.value = row
+  permissionListLoading.value = true
+  permissionListDialogVisible.value = true
+
+  // 重置筛选条件和分页
+  permissionSearchKeyword.value = ''
+  permissionTypeFilter.value = ''
+  permissionModuleFilter.value = ''
+  permissionPagination.page = 1
+
+  try {
+    // 获取该角色的权限列表
+    const rolePermIds = row.permissions || []
+    console.log('[角色权限] 角色权限ID列表:', rolePermIds.length)
+
+    // 获取完整的权限树数据
+    const allPermissions = permissionService.getAllPermissions()
+    console.log('[角色权限] 所有权限数据:', allPermissions.length)
+
+    // 将权限ID转换为权限详情
+    const permissionDetails = []
+    const findPermission = (permissions, targetId, parentModule = '') => {
+      for (const perm of permissions) {
+        const currentModule = parentModule || perm.name
+
+        if (perm.id === targetId) {
+          return {
+            ...perm,
+            module: currentModule
+          }
+        }
+        if (perm.children && perm.children.length > 0) {
+          const found = findPermission(perm.children, targetId, currentModule)
+          if (found) return found
+        }
+      }
+      return null
+    }
+
+    rolePermIds.forEach(permId => {
+      const perm = findPermission(allPermissions, permId)
+      if (perm) {
+        permissionDetails.push({
+          id: perm.id,
+          name: perm.name,
+          code: perm.code || perm.id,
+          type: perm.type || 'menu',
+          module: perm.module || '系统',
+          description: perm.description || perm.name,
+          path: perm.path || ''
+        })
+      }
+    })
+
+    console.log('[角色权限] 权限详情:', permissionDetails.length)
+    rolePermissions.value = permissionDetails
+    filteredRolePermissions.value = permissionDetails
+
+    // 获取模块列表
+    const modules = new Set(permissionDetails.map(p => p.module))
+    permissionModuleList.value = Array.from(modules)
+
+    if (permissionDetails.length > 0) {
+      ElMessage.success(`成功加载 ${permissionDetails.length} 个权限`)
+    } else {
+      ElMessage.info('该角色暂无权限')
+    }
+  } catch (error) {
+    console.error('获取角色权限失败:', error)
+    ElMessage.error('获取权限列表失败')
+    rolePermissions.value = []
+    filteredRolePermissions.value = []
+  } finally {
+    permissionListLoading.value = false
+  }
 }
 
 /**
@@ -768,6 +1422,7 @@ const handleCopy = (row: RoleData) => {
     name: `${row.name}_副本`,
     code: `${row.code}_COPY`,
     status: row.status,
+    roleType: row.roleType || 'custom',
     description: row.description
   })
   roleDialogVisible.value = true
@@ -777,8 +1432,11 @@ const handleCopy = (row: RoleData) => {
  * 切换角色状态
  */
 const handleToggleStatus = async (row: RoleData) => {
-  const action = row.status === 'active' ? '禁用' : '启用'
-  
+  // 保存原始状态
+  const originalStatus = row.status
+  const newStatus = originalStatus === 'active' ? 'inactive' : 'active'
+  const action = newStatus === 'active' ? '启用' : '禁用'
+
   try {
     await ElMessageBox.confirm(
       `确定要${action}角色"${row.name}"吗？`,
@@ -789,19 +1447,29 @@ const handleToggleStatus = async (row: RoleData) => {
         type: 'warning'
       }
     )
-    
+
     // 调用真实API切换角色状态
-    const newStatus = row.status === 'active' ? 'inactive' : 'active'
-    await roleApiService.updateRole(row.id, { ...row, status: newStatus })
-    
+    await roleApiService.updateRole({
+      id: row.id,
+      name: row.name,
+      code: row.code,
+      status: newStatus,
+      roleType: row.roleType,
+      description: row.description
+    })
+
+    // API调用成功后更新UI状态
     row.status = newStatus
     ElMessage.success(`${action}成功`)
-    
-    // 重新加载角色统计数据
+
+    // 重新加载角色列表和统计数据
+    await loadRoleList()
     await loadRoleStats()
   } catch (error) {
     if (error !== 'cancel') {
       console.error('切换角色状态失败:', error)
+      // 如果API调用失败，恢复原状态
+      row.status = originalStatus
       ElMessage.error(`${action}失败，请重试`)
     }
   }
@@ -821,10 +1489,10 @@ const handleDelete = async (row: RoleData) => {
         type: 'warning'
       }
     )
-    
+
     // 调用真实API删除角色
     await roleApiService.deleteRole(row.id)
-    
+
     ElMessage.success('删除成功')
     loadRoleList()
     loadRoleStats() // 重新加载统计数据
@@ -851,11 +1519,11 @@ const handleBatchDelete = async () => {
         type: 'warning'
       }
     )
-    
+
     // 调用真实API批量删除角色
     const roleIds = selectedRoles.value.map(role => role.id)
     await roleApiService.batchDeleteRoles(roleIds)
-    
+
     ElMessage.success('批量删除成功')
     selectedRoles.value = []
     loadRoleList()
@@ -874,7 +1542,7 @@ const handleBatchDelete = async () => {
  */
 const handleBatchStatus = async (status: string) => {
   const action = status === 'active' ? '启用' : '禁用'
-  
+
   try {
     await ElMessageBox.confirm(
       `确定要${action}选中的 ${selectedRoles.value.length} 个角色吗？`,
@@ -885,11 +1553,11 @@ const handleBatchStatus = async (status: string) => {
         type: 'warning'
       }
     )
-    
+
     // 调用真实API批量更新角色状态
     const roleIds = selectedRoles.value.map(role => role.id)
     await roleApiService.batchUpdateRoleStatus(roleIds, status)
-    
+
     ElMessage.success(`批量${action}成功`)
     selectedRoles.value = []
     loadRoleList()
@@ -948,50 +1616,37 @@ const handleCurrentChange = (page: number) => {
 /**
  * 权限选择变化
  */
-const handlePermissionCheck = (data: PermissionData, checked: boolean) => {
-  // 获取当前选中的权限
-  const checkedKeys = permissionTreeRef.value?.getCheckedKeys() || []
-  const halfCheckedKeys = permissionTreeRef.value?.getHalfCheckedKeys() || []
-  
-  // 处理父子权限的级联选择逻辑
-  if (checked) {
-    // 选中时，自动选中所有父级权限
-    const parentIds = getParentIds(data.id, permissionTree.value)
-    parentIds.forEach(parentId => {
-      if (!checkedKeys.includes(parentId)) {
-        checkedKeys.push(parentId)
+const handlePermissionCheck = (data: PermissionData, checked: unknown) => {
+  if (!permissionTreeRef.value) return
+
+  // 获取当前选中的节点
+  const checkedNodes = checked.checkedNodes || []
+  const node = checked.checkedKeys.includes(data.id) ? data : null
+
+  if (node) {
+    // 选中节点：递归选中所有子节点
+    const selectChildren = (nodeData: PermissionData) => {
+      permissionTreeRef.value?.setChecked(nodeData.id, true, false)
+      if (nodeData.children && nodeData.children.length > 0) {
+        nodeData.children.forEach(child => selectChildren(child))
       }
-    })
-  } else {
-    // 取消选中时，如果没有子权限被选中，则取消父级权限
-    const childIds = getChildIds(data.id, permissionTree.value)
-    const hasSelectedChildren = childIds.some(childId => checkedKeys.includes(childId))
-    
-    if (!hasSelectedChildren) {
-      const parentIds = getParentIds(data.id, permissionTree.value)
-      parentIds.forEach(parentId => {
-        const siblings = getSiblingIds(parentId, permissionTree.value)
-        const hasSelectedSiblings = siblings.some(siblingId => 
-          siblingId !== data.id && checkedKeys.includes(siblingId)
-        )
-        
-        if (!hasSelectedSiblings) {
-          const index = checkedKeys.indexOf(parentId)
-          if (index > -1) {
-            checkedKeys.splice(index, 1)
-          }
-        }
-      })
     }
+    selectChildren(data)
+  } else {
+    // 取消节点：递归取消所有子节点
+    const unselectChildren = (nodeData: PermissionData) => {
+      permissionTreeRef.value?.setChecked(nodeData.id, false, false)
+      if (nodeData.children && nodeData.children.length > 0) {
+        nodeData.children.forEach(child => unselectChildren(child))
+      }
+    }
+    unselectChildren(data)
   }
-  
-  // 更新选中的权限
-  checkedPermissions.value = [...checkedKeys, ...halfCheckedKeys]
-  
+
   console.log('权限选择变化:', {
     permission: data.name,
-    checked,
-    totalSelected: checkedPermissions.value.length
+    checked: checked.checkedKeys.includes(data.id),
+    totalSelected: checked.checkedKeys.length
   })
 }
 
@@ -1011,7 +1666,7 @@ const handleExpandAll = () => {
       })
     }
     collectKeys(permissionTree.value)
-    
+
     // 展开所有节点
     permissionTreeRef.value.setExpandedKeys(allKeys)
     ElMessage.success('已展开所有权限节点')
@@ -1071,10 +1726,10 @@ const handleDeletePermission = async (row: PermissionData) => {
         type: 'warning'
       }
     )
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     ElMessage.success('删除成功')
     loadAllPermissions()
   } catch (error) {
@@ -1088,16 +1743,18 @@ const handleDeletePermission = async (row: PermissionData) => {
 const confirmRole = async () => {
   try {
     await roleFormRef.value?.validate()
-    
+
     roleLoading.value = true
-    
+
     if (isEdit.value) {
       // 更新角色
-      await roleApiService.updateRole(roleForm.id, {
+      await roleApiService.updateRole({
+        id: roleForm.id,
         name: roleForm.name,
         code: roleForm.code,
         description: roleForm.description,
-        status: roleForm.status
+        status: roleForm.status,
+        roleType: roleForm.roleType
       })
       ElMessage.success('角色更新成功')
     } else {
@@ -1106,11 +1763,12 @@ const confirmRole = async () => {
         name: roleForm.name,
         code: roleForm.code,
         description: roleForm.description,
-        status: roleForm.status
+        status: roleForm.status,
+        roleType: roleForm.roleType
       })
       ElMessage.success('角色创建成功')
     }
-    
+
     handleDialogClose()
     loadRoleList()
     loadRoleStats() // 重新加载统计数据
@@ -1128,24 +1786,63 @@ const confirmRole = async () => {
 const confirmPermissions = async () => {
   try {
     permissionLoading.value = true
-    
+
     // 获取选中的权限
     const checkedKeys = permissionTreeRef.value?.getCheckedKeys()
-    
+
     if (!currentRole.value) {
       ElMessage.error('未选择角色')
       return
     }
-    
-    // 调用真正的API保存角色权限
-    await rolePermissionService.saveRolePermissions(currentRole.value.id, checkedKeys || [])
-    
-    ElMessage.success('权限设置成功')
-    handlePermissionDialogClose()
-    loadRoleList()
+
+    console.log('[角色权限] 开始保存权限:', {
+      roleId: currentRole.value.id,
+      roleName: currentRole.value.name,
+      permissionCount: checkedKeys?.length || 0
+    })
+
+    // 直接保存到localStorage
+    try {
+      // 获取角色列表
+      const roles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
+
+      // 查找目标角色
+      const roleIndex = roles.findIndex(r => r.id === currentRole.value.id)
+
+      if (roleIndex === -1) {
+        throw new Error(`未找到角色 ID: ${currentRole.value.id}`)
+      }
+
+      // 更新权限
+      roles[roleIndex].permissions = checkedKeys || []
+      roles[roleIndex].permissionCount = checkedKeys?.length || 0
+      roles[roleIndex].updatedAt = new Date().toISOString()
+
+      // 保存到localStorage
+      localStorage.setItem('crm_roles', JSON.stringify(roles))
+
+      console.log('[角色权限] 权限保存成功:', {
+        role: roles[roleIndex].name,
+        permissions: checkedKeys?.length || 0
+      })
+
+      // 同时更新当前用户的权限(如果当前用户是这个角色)
+      const currentUser = userStore.user
+      if (currentUser && (currentUser.roleId === currentRole.value.code || currentUser.role === currentRole.value.code)) {
+        console.log('[角色权限] 当前用户角色匹配,更新用户权限')
+        userStore.updatePermissions(checkedKeys || [])
+      }
+
+      ElMessage.success('权限设置成功')
+      handlePermissionDialogClose()
+      loadRoleList()
+    } catch (saveError) {
+      console.error('[角色权限] 保存失败:', saveError)
+      throw saveError
+    }
   } catch (error) {
-    console.error('权限设置失败:', error)
-    ElMessage.error('权限设置失败')
+    console.error('[角色权限] 权限设置失败:', error)
+    ElMessage.error(`权限设置失败: ${error.message || '未知错误'}`)
   } finally {
     permissionLoading.value = false
   }
@@ -1157,12 +1854,12 @@ const confirmPermissions = async () => {
 const confirmPermissionForm = async () => {
   try {
     await permissionFormRef.value?.validate()
-    
+
     permissionFormLoading.value = true
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     ElMessage.success(isPermissionEdit.value ? '权限更新成功' : '权限创建成功')
     permissionFormDialogVisible.value = false
     resetPermissionForm()
@@ -1201,6 +1898,7 @@ const resetRoleForm = () => {
     name: '',
     code: '',
     status: 'active',
+    roleType: 'custom',
     description: ''
   })
 }
@@ -1223,55 +1921,206 @@ const resetPermissionForm = () => {
 }
 
 /**
- * 加载角色统计
+ * 加载角色统计 - 基于真实数据统计
  */
 const loadRoleStats = async () => {
   try {
-    // 调用真实API获取角色统计
-    const stats = await roleApiService.getRoleStats()
-    
-    roleStats.value = {
-      total: stats.total || 0,
-      active: stats.active || 0,
-      permissions: stats.permissions || 0
+    console.log('[角色权限] 开始加载角色统计')
+
+    // 1. 获取角色数据
+    const roles = await roleApiService.getRoles()
+    const totalRoles = roles.length
+    const activeRoles = roles.filter((r: any) => r.status === 'active').length
+
+    console.log('[角色权限] 角色统计:', { total: totalRoles, active: activeRoles })
+
+    // 2. 获取所有权限数量 - 从权限服务获取
+    let totalPermissions = 0
+    try {
+      const allPermissions = permissionService.getAllPermissions()
+
+      // 递归统计所有权限(包括子权限)
+      const countPermissions = (permissions: any[]): number => {
+        let count = 0
+        permissions.forEach(perm => {
+          count++ // 计数当前权限
+          if (perm.children && perm.children.length > 0) {
+            count += countPermissions(perm.children) // 递归计数子权限
+          }
+        })
+        return count
+      }
+
+      totalPermissions = countPermissions(allPermissions)
+      console.log('[角色权限] 权限统计:', totalPermissions)
+
+    } catch (error) {
+      console.error('[角色权限] 获取权限数据失败:', error)
+      // 如果获取失败,使用默认值
+      totalPermissions = 0
     }
-  } catch (error) {
-    console.error('加载角色统计失败:', error)
-    ElMessage.error('加载统计数据失败')
-    
-    // 降级到默认数据
+
+    // 3. 更新统计数据
     roleStats.value = {
-      total: 0,
-      active: 0,
-      permissions: 0
+      total: totalRoles,
+      active: activeRoles,
+      permissions: totalPermissions
+    }
+
+    console.log('[角色权限] 统计数据更新完成:', roleStats.value)
+
+  } catch (error) {
+    console.error('[角色权限] 加载角色统计失败:', error)
+
+    // 降级方案:从localStorage直接读取
+    try {
+      const savedRoles = localStorage.getItem('crm_roles')
+      if (savedRoles) {
+        const roles = JSON.parse(savedRoles)
+        const totalRoles = roles.length
+        const activeRoles = roles.filter((r: any) => r.status === 'active').length
+
+        // 尝试获取权限数量
+        let totalPermissions = 0
+        try {
+          const allPermissions = permissionService.getAllPermissions()
+          const countPermissions = (permissions: any[]): number => {
+            let count = 0
+            permissions.forEach(perm => {
+              count++
+              if (perm.children && perm.children.length > 0) {
+                count += countPermissions(perm.children)
+              }
+            })
+            return count
+          }
+          totalPermissions = countPermissions(allPermissions)
+        } catch (e) {
+          console.error('[角色权限] 降级方案获取权限失败:', e)
+        }
+
+        roleStats.value = {
+          total: totalRoles,
+          active: activeRoles,
+          permissions: totalPermissions
+        }
+
+        console.log('[角色权限] 使用降级方案,统计数据:', roleStats.value)
+      } else {
+        // 完全降级到默认值
+        roleStats.value = {
+          total: 0,
+          active: 0,
+          permissions: 0
+        }
+      }
+    } catch (fallbackError) {
+      console.error('[角色权限] 降级方案也失败:', fallbackError)
+      roleStats.value = {
+        total: 0,
+        active: 0,
+        permissions: 0
+      }
     }
   }
 }
 
 /**
- * 加载角色列表
+ * 加载角色列表 - 从默认配置加载权限并统计用户数量
+ * 使用 userDataService 支持环境自动切换(localStorage/API)
  */
 const loadRoleList = async () => {
   try {
     tableLoading.value = true
-    
-    // 调用真实API
+    console.log('[角色权限] 开始加载角色列表')
+
+    // 调用真实API获取角色
     const roles = await roleApiService.getRoles()
-    
-    // 转换数据格式以适配前端显示
-    roleList.value = roles.map(role => ({
-      id: role.id,
-      name: role.name,
-      code: role.code,
-      status: role.status,
-      userCount: role.userCount || 0,
-      permissionCount: role.permissionCount || 0,
-      description: role.description || '',
-      createTime: role.createdAt ? new Date(role.createdAt).toLocaleString() : '',
-      permissions: role.permissions || []
-    }))
-    
+    console.log('[角色权限] API返回角色数据:', roles)
+
+    // 直接从localStorage获取用户数据
+    const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+    console.log('[角色权限] ========== 开始统计用户数量 ==========')
+    console.log('[角色权限] 用户总数:', users.length)
+    console.log('[角色权限] 数据来源: localStorage (crm_mock_users)')
+
+    // 显示每个用户的角色信息(用于调试)
+    if (users.length > 0) {
+      console.log('[角色权限] 用户角色详情:')
+      users.forEach((user: any, index: number) => {
+        const userRoleCode = user.roleId || user.role
+        console.log(`  ${index + 1}. ${user.realName || user.username}:`)
+        console.log(`     - roleId: "${user.roleId}" (主要字段,匹配角色code)`)
+        console.log(`     - role: "${user.role}" (兼容字段)`)
+        console.log(`     - position: "${user.position}" (职位标识,不用于角色匹配)`)
+        console.log(`     - 使用: "${userRoleCode}"`)
+      })
+    }
+
+    // 统计每个角色的用户数量
+    // 关键: 使用 user.roleId 字段匹配 role.code 字段
+    const roleUserCount: Record<string, number> = {}
+    users.forEach((user: any) => {
+      // 优先使用 roleId,如果没有则使用 role 字段(向后兼容)
+      const userRoleCode = user.roleId || user.role
+      if (userRoleCode) {
+        roleUserCount[userRoleCode] = (roleUserCount[userRoleCode] || 0) + 1
+      }
+    })
+
+    console.log('[角色权限] 角色用户统计结果:')
+    Object.entries(roleUserCount).forEach(([roleCode, count]) => {
+      const matchedRole = roles.find((r: any) => r.code === roleCode)
+      console.log(`  - ${roleCode}: ${count}人 ${matchedRole ? `✓ 匹配角色: ${matchedRole.name}` : '✗ 未匹配到角色'}`)
+    })
+    console.log('[角色权限] ========== 统计完成 ==========')
+
+    // 转换数据格式以适配前端显示,并从默认配置加载权限
+    roleList.value = roles.map(role => {
+      // 从默认配置获取权限
+      const defaultPermissions = getDefaultRolePermissions(role.code)
+
+      // 如果角色已有权限配置,使用已有的;否则使用默认配置
+      const permissions = role.permissions && role.permissions.length > 0
+        ? role.permissions
+        : defaultPermissions
+
+      // 使用 role.code 匹配统计结果
+      const userCount = roleUserCount[role.code] || 0
+
+      console.log(`[角色权限] 处理角色: ${role.name} (code: ${role.code})`)
+      console.log(`  - 默认权限: ${defaultPermissions.length}个`)
+      console.log(`  - 实际权限: ${permissions.length}个`)
+      console.log(`  - 用户数量: ${userCount}人 ${userCount === 0 ? '⚠️ 无用户' : '✓'}`)
+      console.log(`  - 角色状态: ${role.status}`)
+
+      return {
+        id: role.id,
+        name: role.name,
+        code: role.code,
+        status: role.status,
+        roleType: role.roleType || 'custom',
+        userCount: userCount, // 使用统计的用户数量
+        permissionCount: permissions.length, // 使用实际权限数量
+        description: role.description || '',
+        createTime: role.createdAt ? new Date(role.createdAt).toLocaleString() : '',
+        permissions: permissions
+      }
+    })
+
     pagination.total = roles.length
+
+    // 持久化到 localStorage
+    localStorage.setItem('crm_roles', JSON.stringify(roleList.value))
+    console.log('[角色权限] 角色列表已保存到 localStorage:', {
+      roleCount: roleList.value.length,
+      totalUsers: users.length
+    })
+
+    // 输出最终结果
+    roleList.value.forEach(role => {
+      console.log(`[角色权限] 最终角色数据: ${role.name} - 权限:${role.permissionCount}, 用户:${role.userCount}`)
+    })
   } catch (error) {
     console.error('加载角色列表失败:', error)
     ElMessage.error('加载角色列表失败')
@@ -1289,7 +2138,7 @@ const loadPermissionTree = async () => {
     console.log('权限树加载成功');
   } catch (error) {
     console.error('加载权限树失败:', error);
-    
+
     // 降级到本地权限树
     permissionTree.value = [
        {
@@ -2095,7 +2944,7 @@ const loadAllPermissions = async () => {
     console.log('所有权限加载成功');
   } catch (error) {
     console.error('加载所有权限失败:', error);
-    
+
     // 降级到本地权限数据
     allPermissions.value = [
       {
@@ -2525,7 +3374,7 @@ const loadAllPermissions = async () => {
         ]
       }
     ]
-    
+
     // 构建权限树选择数据
     permissionTreeSelect.value = buildTreeSelect(allPermissions.value)
   }
@@ -2568,7 +3417,7 @@ const getParentIds = (permissionId: string, tree: PermissionData[], parentIds: s
  */
 const getChildIds = (permissionId: string, tree: PermissionData[]): string[] => {
   const childIds: string[] = []
-  
+
   const findChildren = (nodes: PermissionData[]) => {
     for (const node of nodes) {
       if (node.id === permissionId && node.children) {
@@ -2588,7 +3437,7 @@ const getChildIds = (permissionId: string, tree: PermissionData[]): string[] => 
       }
     }
   }
-  
+
   findChildren(tree)
   return childIds
 }
@@ -2598,7 +3447,7 @@ const getChildIds = (permissionId: string, tree: PermissionData[]): string[] => 
  */
 const getSiblingIds = (parentId: string, tree: PermissionData[]): string[] => {
   const siblingIds: string[] = []
-  
+
   const findSiblings = (nodes: PermissionData[]) => {
     for (const node of nodes) {
       if (node.id === parentId && node.children) {
@@ -2612,9 +3461,234 @@ const getSiblingIds = (parentId: string, tree: PermissionData[]): string[] => {
       }
     }
   }
-  
+
   findSiblings(tree)
   return siblingIds
+}
+
+/**
+ * 用户搜索
+ */
+const handleUserSearch = () => {
+  let filtered = roleUsers.value
+
+  // 关键词搜索
+  if (userSearchKeyword.value) {
+    const keyword = userSearchKeyword.value.toLowerCase()
+    filtered = filtered.filter((user: any) =>
+      user.username.toLowerCase().includes(keyword) ||
+      user.realName.toLowerCase().includes(keyword) ||
+      user.email.toLowerCase().includes(keyword)
+    )
+  }
+
+  // 状态筛选
+  if (userStatusFilter.value) {
+    filtered = filtered.filter((user: unknown) => user.status === userStatusFilter.value)
+  }
+
+  // 部门筛选
+  if (userDepartmentFilter.value) {
+    filtered = filtered.filter((user: unknown) => user.department === userDepartmentFilter.value)
+  }
+
+  filteredRoleUsers.value = filtered
+  userPagination.page = 1
+}
+
+/**
+ * 权限搜索
+ */
+const handlePermissionSearch = () => {
+  let filtered = rolePermissions.value
+
+  // 关键词搜索
+  if (permissionSearchKeyword.value) {
+    const keyword = permissionSearchKeyword.value.toLowerCase()
+    filtered = filtered.filter((perm: unknown) =>
+      perm.name.toLowerCase().includes(keyword) ||
+      perm.code.toLowerCase().includes(keyword) ||
+      perm.description.toLowerCase().includes(keyword)
+    )
+  }
+
+  // 类型筛选
+  if (permissionTypeFilter.value) {
+    filtered = filtered.filter((perm: unknown) => perm.type === permissionTypeFilter.value)
+  }
+
+  // 模块筛选
+  if (permissionModuleFilter.value) {
+    filtered = filtered.filter((perm: unknown) => perm.module === permissionModuleFilter.value)
+  }
+
+  filteredRolePermissions.value = filtered
+  permissionPagination.page = 1
+}
+
+/**
+ * 导出用户列表
+ */
+const handleExportUsers = () => {
+  try {
+    if (filteredRoleUsers.value.length === 0) {
+      ElMessage.warning('没有可导出的用户数据')
+      return
+    }
+
+    // 准备导出数据
+    const exportData = filteredRoleUsers.value.map(user => ({
+      '用户名': user.username,
+      '姓名': user.realName,
+      '邮箱': user.email,
+      '部门': user.department,
+      '职位': user.position,
+      '状态': user.status === 'active' ? '在职' : '离职',
+      '最后登录': user.lastLoginTime
+    }))
+
+    // 转换为CSV格式
+    const headers = Object.keys(exportData[0])
+    const csvContent = [
+      headers.join(','),
+      ...exportData.map(row => headers.map(header => `"${row[header]}"`).join(','))
+    ].join('\n')
+
+    // 创建下载链接
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `${currentViewRole.value?.name}_用户列表_${new Date().toLocaleDateString()}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
+    ElMessage.success('用户列表导出成功')
+  } catch (error) {
+    console.error('导出用户列表失败:', error)
+    ElMessage.error('导出失败')
+  }
+}
+
+/**
+ * 导出权限列表
+ */
+const handleExportPermissions = () => {
+  try {
+    if (filteredRolePermissions.value.length === 0) {
+      ElMessage.warning('没有可导出的权限数据')
+      return
+    }
+
+    // 准备导出数据
+    const exportData = filteredRolePermissions.value.map(perm => ({
+      '权限名称': perm.name,
+      '权限编码': perm.code,
+      '类型': perm.type === 'menu' ? '菜单' : '操作',
+      '所属模块': perm.module,
+      '描述': perm.description
+    }))
+
+    // 转换为CSV格式
+    const headers = Object.keys(exportData[0])
+    const csvContent = [
+      headers.join(','),
+      ...exportData.map(row => headers.map(header => `"${row[header]}"`).join(','))
+    ].join('\n')
+
+    // 创建下载链接
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `${currentViewRole.value?.name}_权限列表_${new Date().toLocaleDateString()}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
+    ElMessage.success('权限列表导出成功')
+  } catch (error) {
+    console.error('导出权限列表失败:', error)
+    ElMessage.error('导出失败')
+  }
+}
+
+/**
+ * 查看用户详情
+ */
+const handleViewUserDetail = (user: unknown) => {
+  ElMessageBox.alert(
+    `
+      <div style="line-height: 2;">
+        <p><strong>用户名：</strong>${user.username}</p>
+        <p><strong>姓名：</strong>${user.realName}</p>
+        <p><strong>邮箱：</strong>${user.email}</p>
+        <p><strong>部门：</strong>${user.department}</p>
+        <p><strong>职位：</strong>${user.position}</p>
+        <p><strong>状态：</strong>${user.status === 'active' ? '在职' : '离职'}</p>
+        <p><strong>最后登录：</strong>${user.lastLoginTime}</p>
+      </div>
+    `,
+    '用户详情',
+    {
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: '关闭'
+    }
+  )
+}
+
+/**
+ * 查看权限详情
+ */
+const handleViewPermissionDetail = (permission: unknown) => {
+  ElMessageBox.alert(
+    `
+      <div style="line-height: 2;">
+        <p><strong>权限名称：</strong>${permission.name}</p>
+        <p><strong>权限编码：</strong>${permission.code}</p>
+        <p><strong>类型：</strong>${permission.type === 'menu' ? '菜单' : '操作'}</p>
+        <p><strong>所属模块：</strong>${permission.module}</p>
+        <p><strong>描述：</strong>${permission.description}</p>
+        ${permission.path ? `<p><strong>路径：</strong>${permission.path}</p>` : ''}
+      </div>
+    `,
+    '权限详情',
+    {
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: '关闭'
+    }
+  )
+}
+
+/**
+ * 关闭用户列表弹窗
+ */
+const handleCloseUserDialog = () => {
+  userListDialogVisible.value = false
+  userSearchKeyword.value = ''
+  userStatusFilter.value = ''
+  userDepartmentFilter.value = ''
+  roleUsers.value = []
+  filteredRoleUsers.value = []
+  currentViewRole.value = null
+  userPagination.page = 1
+}
+
+/**
+ * 关闭权限列表弹窗
+ */
+const handleClosePermissionDialog = () => {
+  permissionListDialogVisible.value = false
+  permissionSearchKeyword.value = ''
+  permissionTypeFilter.value = ''
+  permissionModuleFilter.value = ''
+  rolePermissions.value = []
+  filteredRolePermissions.value = []
+  currentViewRole.value = null
+  permissionPagination.page = 1
 }
 
 // 生命周期钩子
@@ -2828,15 +3902,15 @@ onMounted(() => {
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .stats-section {
     gap: 16px;
   }
-  
+
   .stat-card {
     min-width: 160px;
   }
-  
+
   .header-actions {
     justify-content: center;
   }
@@ -2846,22 +3920,22 @@ onMounted(() => {
   .stats-section {
     gap: 12px;
   }
-  
+
   .stat-card {
     min-width: 140px;
   }
-  
+
   .stat-content {
     gap: 12px;
     padding: 6px;
   }
-  
+
   .stat-icon {
     width: 50px;
     height: 50px;
     font-size: 20px;
   }
-  
+
   .stat-number {
     font-size: 24px;
   }
@@ -2872,41 +3946,128 @@ onMounted(() => {
     flex-direction: column;
     gap: 16px;
   }
-  
+
   .stat-card {
     min-width: auto;
     max-width: none;
   }
-  
+
   .stat-content {
     gap: 16px;
     padding: 8px;
   }
-  
+
   .stat-icon {
     width: 60px;
     height: 60px;
     font-size: 24px;
   }
-  
+
   .stat-number {
     font-size: 28px;
   }
-  
+
   .table-header {
     flex-direction: column;
     gap: 12px;
     align-items: stretch;
   }
-  
+
   .table-actions {
     justify-content: center;
     flex-wrap: wrap;
   }
-  
+
   .manage-header {
     flex-wrap: wrap;
     justify-content: center;
   }
+}
+
+/* 用户和权限列表弹窗样式 */
+.user-list-content,
+.permission-list-content {
+  padding: 0;
+}
+
+.stats-row {
+  margin-bottom: 20px;
+}
+
+.stat-card-mini {
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.stat-card-mini:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.stat-mini-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px;
+}
+
+.stat-mini-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: white;
+}
+
+.stat-mini-icon.primary {
+  background: linear-gradient(135deg, #409eff, #66b3ff);
+}
+
+.stat-mini-icon.success {
+  background: linear-gradient(135deg, #67c23a, #85ce61);
+}
+
+.stat-mini-icon.warning {
+  background: linear-gradient(135deg, #e6a23c, #f0c78a);
+}
+
+.stat-mini-icon.info {
+  background: linear-gradient(135deg, #909399, #b1b3b8);
+}
+
+.stat-mini-info {
+  flex: 1;
+}
+
+.stat-mini-value {
+  font-size: 24px;
+  font-weight: bold;
+  font-family: Arial, sans-serif;
+  line-height: 1;
+  margin-bottom: 4px;
+  color: #303133;
+}
+
+.stat-mini-label {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.list-header {
+  margin-bottom: 16px;
+}
+
+.list-header .el-row {
+  width: 100%;
+}
+
+.list-header .el-input,
+.list-header .el-select {
+  width: 100%;
 }
 </style>

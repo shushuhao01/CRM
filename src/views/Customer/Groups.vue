@@ -31,8 +31,8 @@
 
     <!-- 分组列表 -->
     <el-card class="table-card">
-      <el-table 
-        :data="groupList" 
+      <el-table
+        :data="groupList"
         v-loading="loading"
         @selection-change="handleSelectionChange"
       >
@@ -97,8 +97,8 @@
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="form.status">
-            <el-radio value="active">启用</el-radio>
-            <el-radio value="inactive">禁用</el-radio>
+            <el-radio label="active">启用</el-radio>
+            <el-radio label="inactive">禁用</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="分组条件">
@@ -124,7 +124,7 @@
           </div>
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
@@ -140,14 +140,35 @@
       width="800px"
     >
       <el-table :data="groupCustomers" v-loading="customersLoading">
-        <el-table-column prop="name" label="客户姓名" />
+        <el-table-column prop="name" label="客户姓名" width="120">
+          <template #default="{ row }">
+            <el-link
+              type="primary"
+              @click="handleViewCustomerDetail(row)"
+              :underline="false"
+            >
+              {{ row.name }}
+            </el-link>
+          </template>
+        </el-table-column>
         <el-table-column prop="phone" label="手机号">
           <template #default="{ row }">
             {{ displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') }}
           </template>
         </el-table-column>
-        <el-table-column prop="level" label="客户等级" />
-        <el-table-column prop="totalAmount" label="消费金额" />
+        <el-table-column prop="level" label="客户等级">
+          <template #default="{ row }">
+            <el-tag v-if="row.level === 'diamond'" type="danger">钻石</el-tag>
+            <el-tag v-else-if="row.level === 'gold'" type="warning">金牌</el-tag>
+            <el-tag v-else-if="row.level === 'silver'" type="info">银牌</el-tag>
+            <el-tag v-else type="">铜牌</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="totalAmount" label="消费金额">
+          <template #default="{ row }">
+            ¥{{ (row.totalAmount || 0).toFixed(2) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="lastOrderTime" label="最后消费时间" />
       </el-table>
     </el-dialog>
@@ -158,14 +179,17 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { maskPhone } from '@/utils/phone'
+import { useRouter } from 'vue-router'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { useUserStore } from '@/stores/user'
+import { useCustomerStore } from '@/stores/customer'
 import { customerGroupApi, type CustomerGroup, type GroupSearchParams } from '@/api/customerGroups'
 
 // 响应式数据
+const router = useRouter()
 const userStore = useUserStore()
+const customerStore = useCustomerStore()
 const loading = ref(false)
 const submitLoading = ref(false)
 const customersLoading = ref(false)
@@ -173,6 +197,7 @@ const dialogVisible = ref(false)
 const customersDialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref()
+const currentGroup = ref<CustomerGroup | null>(null)
 
 // 搜索表单
 const searchForm = reactive({
@@ -181,9 +206,9 @@ const searchForm = reactive({
 })
 
 // 分组列表
-const groupList = ref([])
-const selectedGroups = ref([])
-const groupCustomers = ref([])
+const groupList = ref<CustomerGroup[]>([])
+const selectedGroups = ref<CustomerGroup[]>([])
+const groupCustomers = ref<any[]>([])
 
 // 分页
 const pagination = reactive({
@@ -193,7 +218,17 @@ const pagination = reactive({
 })
 
 // 表单数据
-const form = reactive({
+const form = reactive<{
+  id: string
+  name: string
+  description: string
+  status: 'active' | 'inactive'
+  conditions: Array<{
+    field: string
+    operator: string
+    value: string
+  }>
+}>({
   id: '',
   name: '',
   description: '',
@@ -224,17 +259,26 @@ const loadData = async () => {
       page: pagination.currentPage,
       pageSize: pagination.pageSize
     }
-    
+
     const response = await customerGroupApi.getList(params)
-    
+
     if (response.success) {
-      groupList.value = response.data.list
-      pagination.total = response.data.total
+      const groups = response.data?.list || []
+
+      // 实时计算每个分组的客户数量
+      groups.forEach(group => {
+        group.customerCount = calculateGroupCustomerCount(group)
+      })
+
+      groupList.value = groups
+      pagination.total = response.data?.total || 0
+
+      console.log('[CustomerGroups] 加载分组列表成功:', groups.length)
     } else {
       ElMessage.error(response.message || '加载数据失败')
     }
   } catch (error) {
-    console.error('加载分组数据失败:', error)
+    console.error('[CustomerGroups] 加载分组数据失败:', error)
     ElMessage.error('加载数据失败')
   } finally {
     loading.value = false
@@ -247,9 +291,8 @@ const handleSearch = () => {
 }
 
 const handleReset = () => {
-  Object.keys(searchForm).forEach(key => {
-    searchForm[key] = ''
-  })
+  searchForm.name = ''
+  searchForm.status = ''
   handleSearch()
 }
 
@@ -279,9 +322,9 @@ const handleDelete = async (row: CustomerGroup) => {
         type: 'warning'
       }
     )
-    
+
     const response = await customerGroupApi.delete(row.id)
-    
+
     if (response.success) {
       ElMessage.success('删除成功')
       loadData()
@@ -297,44 +340,98 @@ const handleDelete = async (row: CustomerGroup) => {
 }
 
 const handleViewCustomers = async (row: CustomerGroup) => {
+  currentGroup.value = row
   customersDialogVisible.value = true
   customersLoading.value = true
-  
+
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    groupCustomers.value = [
-      {
-        name: '张三',
-        phone: '13800138001',
-        level: 'gold',
-        totalAmount: 15000,
-        lastOrderTime: '2024-01-20 14:30:00'
-      },
-      {
-        name: '李四',
-        phone: '13800138002',
-        level: 'silver',
-        totalAmount: 8500,
-        lastOrderTime: '2024-01-18 10:15:00'
-      }
-    ]
+    // 从customerStore获取所有客户
+    const allCustomers = customerStore.customers || []
+
+    // 根据分组条件筛选客户
+    const filteredCustomers = filterCustomersByConditions(allCustomers, row.conditions)
+
+    groupCustomers.value = filteredCustomers
+
+    console.log('[CustomerGroups] 分组客户数量:', filteredCustomers.length)
   } catch (error) {
+    console.error('[CustomerGroups] 加载客户数据失败:', error)
     ElMessage.error('加载客户数据失败')
   } finally {
     customersLoading.value = false
   }
 }
 
+// 根据条件筛选客户
+const filterCustomersByConditions = (customers: any[], conditions: any[]) => {
+  if (!conditions || conditions.length === 0) {
+    return customers
+  }
+
+  return customers.filter(customer => {
+    return conditions.every(condition => {
+      const { field, operator, value } = condition
+
+      if (!field || !operator || value === undefined || value === '') {
+        return true
+      }
+
+      let customerValue = customer[field]
+
+      // 处理不同字段的值
+      switch (field) {
+        case 'level':
+          customerValue = customer.level || 'bronze'
+          break
+        case 'registerTime':
+          customerValue = customer.createTime ? new Date(customer.createTime).getTime() : 0
+          break
+        case 'lastOrderTime':
+          customerValue = customer.lastOrderTime ? new Date(customer.lastOrderTime).getTime() : 0
+          break
+        case 'totalAmount':
+          customerValue = customer.totalAmount || 0
+          break
+      }
+
+      // 执行条件匹配
+      switch (operator) {
+        case 'eq':
+          return customerValue === value
+        case 'ne':
+          return customerValue !== value
+        case 'gt':
+          return Number(customerValue) > Number(value)
+        case 'lt':
+          return Number(customerValue) < Number(value)
+        case 'gte':
+          return Number(customerValue) >= Number(value)
+        case 'lte':
+          return Number(customerValue) <= Number(value)
+        case 'contains':
+          return String(customerValue).toLowerCase().includes(String(value).toLowerCase())
+        default:
+          return false
+      }
+    })
+  })
+}
+
+// 计算分组客户数量
+const calculateGroupCustomerCount = (group: CustomerGroup) => {
+  const allCustomers = customerStore.customers || []
+  const filteredCustomers = filterCustomersByConditions(allCustomers, group.conditions)
+  return filteredCustomers.length
+}
+
 const handleSubmit = async () => {
   if (!formRef.value) return
-  
+
   try {
     await formRef.value.validate()
-    
+
     submitLoading.value = true
-    
+
     let response
     if (form.id) {
       // 更新分组
@@ -353,7 +450,7 @@ const handleSubmit = async () => {
         conditions: form.conditions
       })
     }
-    
+
     if (response.success) {
       ElMessage.success(form.id ? '更新成功' : '创建成功')
       dialogVisible.value = false
@@ -375,13 +472,11 @@ const handleDialogClose = () => {
 }
 
 const resetForm = () => {
-  Object.assign(form, {
-    id: '',
-    name: '',
-    description: '',
-    status: 'active',
-    conditions: []
-  })
+  form.id = ''
+  form.name = ''
+  form.description = ''
+  form.status = 'active'
+  form.conditions = []
 }
 
 const handleSelectionChange = (selection: CustomerGroup[]) => {
@@ -398,6 +493,15 @@ const addCondition = () => {
 
 const removeCondition = (index: number) => {
   form.conditions.splice(index, 1)
+}
+
+// 查看客户详情
+const handleViewCustomerDetail = (customer: unknown) => {
+  // 跳转到客户详情页面
+  router.push({
+    name: 'CustomerDetail',
+    params: { id: customer.id }
+  })
 }
 
 // 生命周期

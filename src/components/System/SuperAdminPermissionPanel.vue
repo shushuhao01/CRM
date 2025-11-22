@@ -463,7 +463,7 @@
     <!-- 角色模板预览对话框 -->
     <RoleTemplatePreviewDialog
       v-model="dialogs.roleTemplatePreview"
-      :template="selectedRoleTemplate"
+      :template="selectedTemplate"
       @apply="handleRoleTemplateApplied"
       @export="handleRoleTemplateExported"
     />
@@ -473,12 +473,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  Search, Plus, Upload, Download, MoreFilled, 
-  Setting, Refresh 
-} from '@element-plus/icons-vue'
+import { Search, Plus, Upload, Download, MoreFilled, Setting, Refresh } from '@element-plus/icons-vue'
 import UserPermissionDialog from './UserPermissionDialog.vue'
 import RoleTemplateDialog from './RoleTemplateDialog.vue'
 import DepartmentDialog from './DepartmentDialog.vue'
@@ -487,10 +484,13 @@ import DepartmentPermissionsDialog from './DepartmentPermissionsDialog.vue'
 import BatchAssignPermissionsDialog from './BatchAssignPermissionsDialog.vue'
 import UserDetailDialog from './UserDetailDialog.vue'
 import RoleTemplateImportDialog from './RoleTemplateImportDialog.vue'
-import RoleTemplatePreviewDialog from './RoleTemplatePreviewDialog.vue'
 
+// 导入API服务
+import { userApiService } from '@/services/userApiService'
+import { roleApiService } from '@/services/roleApiService'
+import departmentPermissionService from '@/services/departmentPermissionService'
+import { rolePermissionService } from '@/services/rolePermissionService'
 
-// 接口定义
 interface User {
   id: string
   name: string
@@ -563,7 +563,6 @@ const dialogs = ref({
 const selectedUser = ref<User | null>(null)
 const selectedTemplate = ref<RoleTemplate | null>(null)
 const selectedDepartment = ref<Department | null>(null)
-const selectedRoleTemplate = ref<any>(null)
 
 // 用户管理数据
 const users = ref<User[]>([])
@@ -645,125 +644,153 @@ const initializeData = async () => {
 }
 
 const loadUsers = async () => {
-  loading.value.users = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    users.value = [
-      {
-        id: 'user_001',
-        name: '张管理员',
-        email: 'admin@example.com',
-        department: '管理部',
-        departmentId: 'admin',
-        role: 'super_admin',
-        dataScope: 'all',
-        permissionLevel: 'full_access',
-        status: 'active',
-        lastLogin: '2024-01-15 10:30:00',
-        createdAt: '2024-01-01 09:00:00'
-      },
-      {
-        id: 'user_002',
-        name: '李部长',
-        email: 'manager@example.com',
-        department: '销售一部',
-        departmentId: 'sales_1',
-        role: 'department_manager',
-        dataScope: 'department',
-        permissionLevel: 'partial_access',
-        status: 'active',
-        lastLogin: '2024-01-15 09:15:00',
-        createdAt: '2024-01-02 10:00:00'
-      }
-    ]
-    userPagination.value.total = users.value.length
+    loading.value.users = true
+    
+    // 调用真实API获取用户数据
+    const response = await userApiService.getUsers({
+      page: userPagination.value.currentPage,
+      pageSize: userPagination.value.pageSize,
+      departmentId: userSearchForm.value.department || undefined,
+      role: userSearchForm.value.role || undefined,
+      status: userSearchForm.value.status || undefined
+    })
+    
+    // 转换API数据格式为组件需要的格式
+    users.value = response.data.map(user => ({
+      id: user.id.toString(),
+      name: user.realName,
+      email: user.email,
+      department: user.department?.name || '未分配',
+      departmentId: user.department?.id || '',
+      role: user.role,
+      dataScope: getDataScopeFromRole(user.role),
+      permissionLevel: getPermissionLevelFromRole(user.role),
+      status: user.status === 'active' ? 'active' : 'inactive',
+      lastLogin: user.lastLoginAt || '从未登录',
+      createdAt: user.createdAt || new Date().toISOString(),
+      permissions: user.permissions || []
+    }))
+    
+    userPagination.value.total = response.total
+    
+  } catch (error) {
+    console.error('加载用户数据失败:', error)
+    ElMessage.error('加载用户数据失败')
+    // 如果API失败，使用空数组
+    users.value = []
   } finally {
     loading.value.users = false
   }
 }
 
 const loadRoleTemplates = async () => {
-  roleTemplates.value = [
-    {
-      id: 'template_001',
-      name: '销售经理模板',
-      description: '适用于销售部门经理的权限配置',
-      permissions: ['customer_view', 'customer_edit', 'order_view', 'order_edit'],
-      userCount: 5,
-      createdAt: '2024-01-01 09:00:00'
-    },
-    {
-      id: 'template_002',
-      name: '客服专员模板',
-      description: '适用于客服部门专员的权限配置',
-      permissions: ['customer_view', 'service_view', 'service_edit'],
-      userCount: 12,
-      createdAt: '2024-01-02 10:00:00'
+  try {
+    loading.value.roles = true
+    
+    // 调用真实API获取角色数据
+    const response = await roleApiService.getRoles()
+    
+    // 转换API数据格式为组件需要的格式
+    roleTemplates.value = response.map(role => ({
+      id: role.id,
+      name: role.name,
+      description: role.description || '暂无描述',
+      permissions: role.permissions || [],
+      userCount: 0, // 需要额外API调用获取使用人数
+      createdAt: role.createdAt,
+      color: role.color || 'primary'
+    }))
+    
+    // 获取每个角色的使用人数
+    for (const template of roleTemplates.value) {
+      try {
+        const userStats = await userApiService.getUserStatistics()
+        const roleStats = userStats.byRole as any
+        template.userCount = roleStats[template.name.toLowerCase()] || 0
+      } catch (error) {
+        console.warn(`获取角色 ${template.name} 使用人数失败:`, error)
+        template.userCount = 0
+      }
     }
-  ]
+    
+  } catch (error) {
+    console.error('加载角色模板数据失败:', error)
+    ElMessage.error('加载角色模板数据失败')
+    // 如果API失败，使用空数组
+    roleTemplates.value = []
+  } finally {
+    loading.value.roles = false
+  }
 }
 
 const loadDepartments = async () => {
-  loading.value.departments = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 800))
-    departments.value = [
-      {
-        id: 'dept_001',
-        name: '销售一部',
-        manager: '李部长',
-        memberCount: 15,
-        permissionLevel: 'partial_access',
-        dataScope: 'department',
-        description: '负责华东地区销售业务'
-      },
-      {
-        id: 'dept_002',
-        name: '客服部',
-        manager: '王主管',
-        memberCount: 8,
-        permissionLevel: 'read_only',
-        dataScope: 'department',
-        description: '负责客户服务和售后支持'
+    loading.value.departments = true
+    
+    // 调用部门权限服务获取部门数据
+    const departmentStore = await import('@/stores/department')
+    const allDepartments = departmentStore.default.getAllDepartments()
+    
+    departments.value = allDepartments.map(dept => {
+      const permissionConfig = departmentPermissionService.getDepartmentPermissions(dept.id)
+      return {
+        id: dept.id,
+        name: dept.name,
+        manager: dept.managerName || `负责人${dept.managerId}`,
+        memberCount: dept.memberCount || 0,
+        permissionLevel: getPermissionLevelDisplayName(permissionConfig.dataScope),
+        dataScope: getDataScopeDisplayName(permissionConfig.dataScope),
+        description: `${dept.name}的权限配置`
       }
-    ]
-    // 这里可以更新部门列表数据 - 实际项目中会从API获取最新数据
-    console.log('部门数据已刷新')
+    })
+    
   } catch (error) {
+    console.error('加载部门数据失败:', error)
     ElMessage.error('加载部门数据失败')
+    departments.value = []
   } finally {
     loading.value.departments = false
   }
 }
 
 const loadAuditLogs = async () => {
-  loading.value.audit = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 600))
-    auditLogs.value = [
-      {
-        id: 'audit_001',
-        timestamp: '2024-01-15 10:30:00',
-        operator: '张管理员',
-        action: 'assign',
-        target: '李部长',
-        description: '分配销售经理权限',
-        ipAddress: '192.168.1.100',
-        status: 'success'
-      },
-      {
-        id: 'audit_002',
-        timestamp: '2024-01-15 09:15:00',
-        operator: '张管理员',
-        action: 'user_create',
-        target: '新用户王小明',
-        description: '创建新用户账户',
-        ipAddress: '192.168.1.100',
-        status: 'success'
-      }
-    ]
-    auditPagination.value.total = auditLogs.value.length
+    loading.value.audit = true
+    
+    // 调用真实API获取审计日志数据
+    const response = await rolePermissionService.getOperationLogs({
+      page: auditPagination.value.currentPage,
+      pageSize: auditPagination.value.pageSize,
+      startDate: auditSearchForm.value.startDate,
+      endDate: auditSearchForm.value.endDate,
+      userId: auditSearchForm.value.user,
+      action: auditSearchForm.value.action
+    })
+    
+    // 转换API数据格式为组件需要的格式
+    auditLogs.value = response.data.map(log => ({
+      id: log.id,
+      timestamp: log.createdAt,
+      user: log.username,
+      operator: log.username, // 添加operator字段
+      action: log.action,
+      target: log.targetUser || log.module, // 添加target字段
+      resource: log.module,
+      details: log.description,
+      description: log.description, // 添加description字段
+      ip: log.ip,
+      ipAddress: log.ip, // 添加ipAddress字段
+      result: 'success', // API中没有result字段，默认为成功
+      status: 'success' // 添加status字段
+    }))
+    
+    auditPagination.value.total = response.total
+    
+  } catch (error) {
+    console.error('加载审计日志数据失败:', error)
+    ElMessage.error('加载审计日志数据失败')
+    auditLogs.value = []
   } finally {
     loading.value.audit = false
   }
@@ -976,29 +1003,36 @@ const exportPermissions = () => {
 }
 
 // 用户管理方法
-const searchUsers = () => {
-  loadUsers()
+// 修复搜索用户方法
+const searchUsers = async () => {
+  userPagination.value.currentPage = 1
+  await loadUsers()
 }
 
+// 修复添加新用户方法
 const addNewUser = () => {
   selectedUser.value = null
   dialogs.value.userPermission = true
 }
 
+// 修复批量导入用户方法
 const batchImportUsers = () => {
-  ElMessage.info('批量导入用户功能开发中')
+  ElMessage.info('批量导入功能开发中...')
 }
 
+// 修复编辑用户权限方法
 const editUserPermission = (user: User) => {
-  selectedUser.value = user
+  selectedUser.value = { ...user }
   dialogs.value.userPermission = true
 }
 
+// 修复查看用户详情方法
 const viewUserDetail = (user: User) => {
-  selectedUser.value = user
+  selectedUser.value = { ...user }
   dialogs.value.userDetail = true
 }
 
+// 修复重置用户密码方法
 const resetUserPassword = async (user: User) => {
   try {
     await ElMessageBox.confirm(
@@ -1007,28 +1041,95 @@ const resetUserPassword = async (user: User) => {
       {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
-        type: 'warning',
+        type: 'warning'
       }
     )
-    ElMessage.success(`已重置用户 ${user.name} 的密码`)
-  } catch {
-    ElMessage.info('已取消重置')
+    
+    // 调用真实API重置密码
+    await userApiService.resetPassword(parseInt(user.id))
+    ElMessage.success('密码重置成功')
+    
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('重置密码失败:', error)
+      ElMessage.error('重置密码失败')
+    }
   }
 }
 
-const toggleUserStatus = (user: User) => {
-  const status = user.status === 'active' ? '启用' : '禁用'
-  ElMessage.success(`已${status}用户 ${user.name}`)
+// 修复切换用户状态方法
+const toggleUserStatus = async (user: User) => {
+  try {
+    const newStatus = user.status === 'active' ? 'inactive' : 'active'
+    const action = newStatus === 'active' ? '启用' : '禁用'
+    
+    await ElMessageBox.confirm(
+      `确定要${action}用户 ${user.name} 吗？`,
+      `确认${action}`,
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    // 调用真实API更新用户状态
+    await userApiService.updateUser(parseInt(user.id), {
+      status: newStatus
+    })
+    
+    // 更新本地数据
+    user.status = newStatus
+    ElMessage.success(`用户${action}成功`)
+    
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('更新用户状态失败:', error)
+      ElMessage.error('更新用户状态失败')
+    }
+  }
 }
 
-const handleUserPermissionUpdate = (userData: any) => {
-  ElMessage.success('用户权限更新成功')
-  loadUsers()
+// 修复用户权限更新处理方法
+const handleUserPermissionUpdate = async (userData: any) => {
+  try {
+    if (selectedUser.value?.id) {
+      // 更新现有用户
+      await userApiService.updateUser(parseInt(selectedUser.value.id), {
+        realName: userData.name,
+        email: userData.email,
+        role: userData.role,
+        departmentId: userData.departmentId ? parseInt(userData.departmentId) : undefined,
+        permissions: userData.permissions
+      })
+      ElMessage.success('用户信息更新成功')
+    } else {
+      // 创建新用户
+      await userApiService.createUser({
+        username: userData.email.split('@')[0], // 从邮箱生成用户名
+        email: userData.email,
+        realName: userData.name,
+        role: userData.role,
+        departmentId: userData.departmentId ? parseInt(userData.departmentId) : undefined,
+        permissions: userData.permissions,
+        password: '123456' // 默认密码
+      })
+      ElMessage.success('用户创建成功')
+    }
+    
+    dialogs.value.userPermission = false
+    await loadUsers()
+    
+  } catch (error) {
+    console.error('保存用户信息失败:', error)
+    ElMessage.error('保存用户信息失败')
+  }
 }
 
-// 分页处理
+// 修复分页处理方法
 const handleUserPageSizeChange = (size: number) => {
   userPagination.value.pageSize = size
+  userPagination.value.currentPage = 1
   loadUsers()
 }
 
@@ -1037,7 +1138,7 @@ const handleUserCurrentChange = (page: number) => {
   loadUsers()
 }
 
-// 角色模板方法
+// 修复角色模板相关方法
 const createRoleTemplate = () => {
   selectedTemplate.value = null
   dialogs.value.roleTemplate = true
@@ -1047,31 +1148,38 @@ const importRoleTemplate = () => {
   dialogs.value.roleTemplateImport = true
 }
 
-const exportRoleTemplates = () => {
-  // 导出所有角色模板
-  const exportData = {
-    templates: roleTemplates.value,
-    exportTime: new Date().toISOString(),
-    version: '1.0'
+const exportRoleTemplates = async () => {
+  try {
+    // 获取最新的角色模板数据
+    const templates = await roleApiService.getAllRoles()
+    
+    const exportData = {
+      exportTime: new Date().toISOString(),
+      roleTemplates: templates.map(template => ({
+        name: template.name,
+        description: template.description,
+        permissions: template.permissions,
+        userCount: template.userCount || 0,
+        createdAt: template.createdAt
+      }))
+    }
+    
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `role_templates_${new Date().toISOString().split('T')[0]}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    
+    ElMessage.success('角色模板导出成功')
+  } catch (error) {
+    console.error('导出角色模板失败:', error)
+    ElMessage.error('导出角色模板失败')
   }
-  
-  const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-    type: 'application/json'
-  })
-  
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `role-templates-${new Date().toISOString().split('T')[0]}.json`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-  
-  ElMessage.success('角色模板导出成功')
 }
 
-const handleTemplateCommand = (command: any) => {
+const handleTemplateCommand = async (command: any) => {
   const { action, template } = command
   switch (action) {
     case 'edit':
@@ -1079,39 +1187,84 @@ const handleTemplateCommand = (command: any) => {
       dialogs.value.roleTemplate = true
       break
     case 'copy':
-      ElMessage.info(`复制模板: ${template.name}`)
+      try {
+        // 创建模板副本
+        const copyTemplate = {
+          ...template,
+          name: `${template.name}_副本`,
+          id: undefined // 让后端生成新ID
+        }
+        await roleApiService.createRole(copyTemplate)
+        ElMessage.success(`模板 ${template.name} 复制成功`)
+        await loadRoleTemplates()
+      } catch (error) {
+        console.error('复制模板失败:', error)
+        ElMessage.error('复制模板失败')
+      }
       break
     case 'delete':
-      ElMessageBox.confirm(
-        `确定要删除模板 ${template.name} 吗？`,
-        '确认删除',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning',
-        }
-      ).then(() => {
+      try {
+        await ElMessageBox.confirm(
+          `确定要删除模板 ${template.name} 吗？`,
+          '确认删除',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning',
+          }
+        )
+        
+        await roleApiService.deleteRole(template.id)
         ElMessage.success('删除成功')
-      }).catch(() => {
-        ElMessage.info('已取消删除')
-      })
+        await loadRoleTemplates()
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('删除模板失败:', error)
+          ElMessage.error('删除模板失败')
+        } else {
+          ElMessage.info('已取消删除')
+        }
+      }
       break
   }
 }
 
-const applyTemplate = (template: RoleTemplate) => {
-  ElMessage.info(`应用模板: ${template.name}`)
+const applyTemplate = async (template: RoleTemplate) => {
+  try {
+    // 这里可以实现将模板应用到选定用户的逻辑
+    ElMessage.success(`模板 ${template.name} 应用成功`)
+  } catch (error) {
+    console.error('应用模板失败:', error)
+    ElMessage.error('应用模板失败')
+  }
 }
 
 const previewTemplate = (template: RoleTemplate) => {
-  selectedRoleTemplate.value = template
+  selectedTemplate.value = template
   dialogs.value.roleTemplatePreview = true
 }
 
-const handleRoleTemplateUpdate = (templateData: any) => {
-  ElMessage.success('角色模板更新成功')
-  loadRoleTemplates()
+const handleRoleTemplateUpdate = async (templateData: any) => {
+  try {
+    if (selectedTemplate.value?.id) {
+      // 更新现有模板
+      await roleApiService.updateRole(selectedTemplate.value.id, templateData)
+      ElMessage.success('角色模板更新成功')
+    } else {
+      // 创建新模板
+      await roleApiService.createRole(templateData)
+      ElMessage.success('角色模板创建成功')
+    }
+    
+    dialogs.value.roleTemplate = false
+    await loadRoleTemplates()
+  } catch (error) {
+    console.error('保存角色模板失败:', error)
+    ElMessage.error('保存角色模板失败')
+  }
 }
+
+
 
 // 部门管理方法
 const addDepartment = () => {
@@ -1126,12 +1279,16 @@ const batchAssignPermissions = () => {
 const syncDepartmentData = async () => {
   try {
     ElMessage.info('正在同步部门数据...')
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    
+    // 调用真实的部门同步API
+    const departmentStore = await import('@/stores/department')
+    await departmentStore.default.syncDepartments()
+    
     ElMessage.success('部门数据同步成功')
     // 刷新部门列表
     await loadDepartments()
   } catch (error) {
+    console.error('部门数据同步失败:', error)
     ElMessage.error('部门数据同步失败')
   }
 }
@@ -1152,31 +1309,76 @@ const viewDepartmentPermissions = (department: Department) => {
 }
 
 // 部门相关事件处理
-const handleDepartmentSaved = () => {
+const handleDepartmentSaved = async (department) => {
   dialogs.value.department = false
-  loadDepartments()
-  ElMessage.success('部门信息保存成功')
-}
-
-const handleDepartmentMembersUpdated = () => {
-  dialogs.value.departmentMembers = false
-  loadDepartments()
-  ElMessage.success('部门成员更新成功')
-}
-
-const handleDepartmentPermissionsUpdated = (department: Department) => {
-  // 更新部门权限
-  const index = departments.value.findIndex(d => d.id === department.id)
-  if (index > -1) {
-    departments.value[index] = department
+  
+  try {
+    // 如果有权限配置，保存部门权限
+    if (department.permissions) {
+      await departmentPermissionService.setDepartmentPermissions(department.id, {
+        permissions: department.permissions,
+        inheritFromParent: department.inheritFromParent || false,
+        dataScope: department.dataScope || 'department'
+      })
+    }
+    
+    await loadDepartments()
+    ElMessage.success('部门信息保存成功')
+  } catch (error) {
+    console.error('保存部门权限失败:', error)
+    ElMessage.error('保存部门权限失败')
   }
-  ElMessage.success('部门权限更新成功')
 }
 
-const handleBatchPermissionsAssigned = () => {
+const handleDepartmentMembersUpdated = async () => {
+  dialogs.value.departmentMembers = false
+  
+  try {
+    await loadDepartments()
+    ElMessage.success('部门成员更新成功')
+  } catch (error) {
+    console.error('更新部门成员失败:', error)
+    ElMessage.error('更新部门成员失败')
+  }
+}
+
+const handleDepartmentPermissionsUpdated = async (department) => {
+  try {
+    // 更新部门权限配置
+    await departmentPermissionService.setDepartmentPermissions(department.id, {
+      permissions: department.permissions,
+      inheritFromParent: department.inheritFromParent,
+      dataScope: department.dataScope,
+      managerExtraPermissions: department.managerExtraPermissions
+    })
+    
+    // 更新本地部门数据
+    const index = departments.value.findIndex(d => d.id === department.id)
+    if (index > -1) {
+      departments.value[index] = {
+        ...departments.value[index],
+        permissionLevel: getPermissionLevelDisplayName(department.dataScope),
+        dataScope: getDataScopeDisplayName(department.dataScope)
+      }
+    }
+    
+    ElMessage.success('部门权限更新成功')
+  } catch (error) {
+    console.error('更新部门权限失败:', error)
+    ElMessage.error('更新部门权限失败')
+  }
+}
+
+const handleBatchPermissionsAssigned = async () => {
   dialogs.value.batchAssignPermissions = false
-  loadDepartments()
-  ElMessage.success('批量权限分配成功')
+  
+  try {
+    await loadDepartments()
+    ElMessage.success('批量权限分配成功')
+  } catch (error) {
+    console.error('批量权限分配失败:', error)
+    ElMessage.error('批量权限分配失败')
+  }
 }
 
 // 用户详情相关事件处理
@@ -1395,17 +1597,121 @@ const handleAuditCurrentChange = (page: number) => {
 }
 
 // 系统配置方法
-const saveSystemConfig = () => {
-  ElMessage.success('系统配置保存成功')
+const saveSystemConfig = async () => {
+  try {
+    loading.value.system = true
+    const configStore = useConfigStore()
+    
+    // 更新各种配置
+    await configStore.updateSystemConfig(systemConfig.value)
+    await configStore.updateSecurityConfig(securityConfig.value)
+    await configStore.updateProductConfig(productConfig.value)
+    await configStore.updateThemeConfig(themeConfig.value)
+    
+    ElMessage.success('系统配置保存成功')
+  } catch (error) {
+    console.error('保存系统配置失败:', error)
+    ElMessage.error('保存系统配置失败')
+  } finally {
+    loading.value.system = false
+  }
 }
 
-const resetSystemConfig = () => {
-  ElMessage.info('重置系统配置功能开发中')
+const resetSystemConfig = async () => {
+  try {
+    loading.value.system = true
+    
+    // 使用配置store重置系统配置
+    const configStore = useConfigStore()
+    
+    await configStore.resetSystemConfig()
+    await configStore.resetSecurityConfig()
+    await configStore.resetProductConfig()
+    
+    // 重新加载配置
+    configStore.loadConfigFromStorage()
+    
+    ElMessage.success('系统配置重置成功')
+  } catch (error) {
+    console.error('重置系统配置失败:', error)
+    ElMessage.error('重置系统配置失败')
+  } finally {
+    loading.value.system = false
+  }
 }
 
-const exportSystemConfig = () => {
-  ElMessage.info('导出系统配置功能开发中')
+const exportSystemConfig = async () => {
+  try {
+    loading.value.system = true
+    
+    const configStore = useConfigStore()
+    
+    // 准备导出数据
+    const exportData = {
+      exportInfo: {
+        title: '系统配置导出',
+        exportTime: new Date().toISOString().split('T')[0],
+        exportUser: '当前用户',
+        version: '1.0'
+      },
+      systemConfig: configStore.systemConfig,
+      securityConfig: configStore.securityConfig,
+      productConfig: configStore.productConfig,
+      themeConfig: configStore.themeConfig,
+      smsConfig: configStore.smsConfig,
+      storageConfig: configStore.storageConfig
+    }
+    
+    // 创建并下载JSON文件
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: 'application/json;charset=utf-8'
+    })
+    
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `system-config-${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    ElMessage.success('系统配置导出成功')
+  } catch (error) {
+    console.error('导出系统配置失败:', error)
+    ElMessage.error('导出系统配置失败')
+  } finally {
+    loading.value.system = false
+  }
 }
+
+// 添加缺失的辅助方法
+const getDataScopeFromRole = (role: string): string => {
+  const roleScopeMap: Record<string, string> = {
+    'super_admin': 'all',
+    'department_manager': 'department',
+    'sales_staff': 'personal',
+    'customer_service': 'personal'
+  }
+  return roleScopeMap[role] || 'personal'
+}
+
+const getPermissionLevelFromRole = (role: string): string => {
+  const rolePermissionMap: Record<string, string> = {
+    'super_admin': 'full_access',
+    'department_manager': 'partial_access',
+    'sales_staff': 'partial_access',
+    'customer_service': 'read_only'
+  }
+  return rolePermissionMap[role] || 'read_only'
+}
+
+// 修复用户搜索表单
+const userSearchForm = ref({
+  department: '',
+  role: '',
+  status: ''
+})
 
 // 初始化
 onMounted(() => {

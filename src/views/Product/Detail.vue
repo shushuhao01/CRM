@@ -179,28 +179,16 @@
             </template>
             
             <el-row :gutter="20">
-              <el-col :span="6">
+              <el-col :span="12">
                 <div class="stat-item">
                   <div class="stat-value">{{ productInfo.salesCount }}</div>
                   <div class="stat-label">总销量</div>
                 </div>
               </el-col>
-              <el-col :span="6">
+              <el-col :span="12">
                 <div class="stat-item">
                   <div class="stat-value">¥{{ productInfo.salesAmount }}</div>
                   <div class="stat-label">销售金额</div>
-                </div>
-              </el-col>
-              <el-col :span="6">
-                <div class="stat-item">
-                  <div class="stat-value">{{ productInfo.viewCount }}</div>
-                  <div class="stat-label">浏览次数</div>
-                </div>
-              </el-col>
-              <el-col :span="6">
-                <div class="stat-item">
-                  <div class="stat-value">{{ productInfo.favoriteCount }}</div>
-                  <div class="stat-label">收藏次数</div>
                 </div>
               </el-col>
             </el-row>
@@ -382,9 +370,9 @@
         </el-form-item>
         <el-form-item label="调整类型" prop="type">
           <el-radio-group v-model="stockForm.type">
-            <el-radio value="increase">增加</el-radio>
-            <el-radio value="decrease">减少</el-radio>
-            <el-radio value="set">设置</el-radio>
+            <el-radio label="increase">增加</el-radio>
+            <el-radio label="decrease">减少</el-radio>
+            <el-radio label="set">设置</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="调整数量" prop="quantity">
@@ -1043,8 +1031,6 @@ const loadProductInfo = async () => {
         ...product,
         salesCount: product.salesCount || 0,
         salesAmount: (product.salesCount || 0) * product.price,
-        viewCount: Math.floor(Math.random() * 1000) + 500, // 模拟浏览次数
-        favoriteCount: Math.floor(Math.random() * 100) + 10, // 模拟收藏次数
         mainImage: product.image,
         images: product.images || [product.image],
         createTime: product.createTime,
@@ -1208,7 +1194,7 @@ const loadRelatedStats = async () => {
     }, 0)
     
     // 计算库存周转率（简化计算：月销量 / 平均库存 * 100）
-    const currentProduct = productStore.products.find(p => p.id === productId || p.id === Number(productId))
+    const currentProduct = (productStore.products || []).find(p => p.id === productId || p.id === Number(productId))
     const avgStock = currentProduct ? (currentProduct.stock + currentProduct.maxStock) / 2 : 1
     const turnoverRate = avgStock > 0 ? (monthlySales / avgStock * 100) : 0
     

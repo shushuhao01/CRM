@@ -41,7 +41,7 @@ const buildUrl = (endpoint: string, params?: RequestParams): string => {
   const base = API_CONFIG.BASE_URL.replace(/\/+$/, '')
   const path = String(endpoint || '').replace(/^\/+/, '')
   const url = new URL(`${base}/${path}`)
-  
+
   if (params) {
     Object.keys(params).forEach(key => {
       if (params[key] !== undefined && params[key] !== null) {
@@ -49,21 +49,21 @@ const buildUrl = (endpoint: string, params?: RequestParams): string => {
       }
     })
   }
-  
+
   return url.toString()
 }
 
 // 处理响应
 const handleResponse = async (response: Response): Promise<unknown> => {
   const contentType = response.headers.get('content-type')
-  
+
   let data: unknown
   if (contentType && contentType.includes('application/json')) {
     data = await response.json()
   } else {
     data = await response.text()
   }
-  
+
   if (!response.ok) {
     const error = new Error(
       (data as { message?: string })?.message || `HTTP Error: ${response.status}`
@@ -72,7 +72,7 @@ const handleResponse = async (response: Response): Promise<unknown> => {
     error.data = data
     throw error
   }
-  
+
   return data
 }
 
@@ -90,7 +90,7 @@ const mockApiRoutes: Record<string, MockApiHandler> = {
   'GET:/orders/audited-cancel': () => mockApi.getAuditedCancelOrderList(),
   'POST:/orders/([^/]+)/cancel-audit': (params, data, orderId) => mockApi.auditCancelRequest(orderId, data),
   'GET:/orders/statistics': () => mockApi.getOrderStatistics(),
-  
+
   // 客户相关路由
   'GET:/customers': (params) => mockApi.getCustomerList(params),
   'GET:/customers/check-exists': (params) => {
@@ -103,17 +103,17 @@ const mockApiRoutes: Record<string, MockApiHandler> = {
   'PUT:/customers/([^/]+)': (params, data, customerId) => mockApi.updateCustomer(customerId, data),
   'DELETE:/customers/([^/]+)': (params, data, customerId) => mockApi.deleteCustomer(customerId),
   'GET:/customers/([^/]+)': (params, data, customerId) => mockApi.getCustomerDetail(customerId),
-  
+
   // 短信相关路由
   'GET:/sms/templates': (params) => mockApi.getSmsTemplateList(params),
   'GET:/sms/approvals': (params) => mockApi.getSmsApprovalList(params),
   'GET:/sms/sends': (params) => mockApi.getSmsSendList(params),
   'GET:/sms/statistics': () => mockApi.getSmsStatistics(),
-  
+
   // 日志相关路由
   'GET:/logs/system': (params) => mockApi.getSystemLogs(params),
   'DELETE:/logs/clear': () => mockApi.clearSystemLogs(),
-  
+
   // 消息管理相关路由
   'GET:/message/subscriptions': () => mockApi.getMessageSubscriptions(),
   'PUT:/message/subscriptions/([^/]+)': (params, data, id) => mockApi.updateMessageSubscription(id, data),
@@ -128,9 +128,74 @@ const mockApiRoutes: Record<string, MockApiHandler> = {
   'PUT:/message/system-messages/([^/]+)/read': (params, data, id) => mockApi.markMessageAsRead(id),
   'PUT:/message/system-messages/read-all': () => mockApi.markAllMessagesAsRead(),
   'GET:/message/stats': () => mockApi.getMessageStats(),
-  
+
+  // 产品分类相关路由
+  'GET:/products/categories': () => mockApi.getCategoryList(),
+  'GET:/products/categories/tree': () => mockApi.getCategoryTree(),
+  'POST:/products/categories': (params, data) => mockApi.createCategory(data),
+  'PUT:/products/categories/([^/]+)': (params, data, categoryId) => mockApi.updateCategory(categoryId, data),
+  'DELETE:/products/categories/([^/]+)': (params, data, categoryId) => mockApi.deleteCategory(categoryId),
+  'GET:/products/categories/([^/]+)': (params, data, categoryId) => mockApi.getCategoryDetail(categoryId),
+
+  // 部门相关路由
+  'GET:/system/departments': () => mockApi.getDepartmentList(),
+  'GET:/system/departments/tree': () => mockApi.getDepartmentTree(),
+  'POST:/system/departments': (params, data) => mockApi.createDepartment(data),
+  'PUT:/system/departments/([^/]+)': (params, data, departmentId) => mockApi.updateDepartment(departmentId, data),
+  'DELETE:/system/departments/([^/]+)': (params, data, departmentId) => mockApi.deleteDepartment(departmentId),
+  'GET:/system/departments/([^/]+)': (params, data, departmentId) => mockApi.getDepartmentDetail(departmentId),
+  'PATCH:/system/departments/([^/]+)/status': (params, data, departmentId) => mockApi.updateDepartmentStatus(departmentId, data),
+  'GET:/system/departments/stats': () => mockApi.getDepartmentStats(),
+
+  // 用户相关路由
+  'GET:/users': (params) => mockApi.getUserList(params),
+  'POST:/users': (params, data) => mockApi.createUser(data),
+  'PUT:/users/([^/]+)': (params, data, userId) => mockApi.updateUser(userId, data),
+  'DELETE:/users/([^/]+)': (params, data, userId) => mockApi.deleteUser(userId),
+  'PATCH:/users/([^/]+)/status': (params, data, userId) => mockApi.updateUserStatus(userId, data),
+  'PATCH:/users/([^/]+)/employment-status': (params, data, userId) => mockApi.updateEmploymentStatus(userId, data),
+  'GET:/users/statistics': () => mockApi.getUserStatistics(),
+
   // 健康检查端点
   'GET:/health': () => Promise.resolve({ status: 'ok', timestamp: new Date().toISOString() }),
+
+  // 🔥 批次273新增：基本设置API
+  'PUT:/system/basic-settings': (data: unknown) => {
+    try {
+      localStorage.setItem('crm_config_system', JSON.stringify(data))
+      return Promise.resolve({
+        success: true,
+        message: '基本设置保存成功',
+        data: data
+      })
+    } catch (error) {
+      return Promise.reject({
+        success: false,
+        message: '保存失败'
+      })
+    }
+  },
+
+  'GET:/system/basic-settings': () => {
+    try {
+      const configStr = localStorage.getItem('crm_config_system')
+      if (configStr) {
+        return Promise.resolve({
+          success: true,
+          data: JSON.parse(configStr)
+        })
+      }
+      return Promise.resolve({
+        success: true,
+        data: null
+      })
+    } catch (error) {
+      return Promise.reject({
+        success: false,
+        message: '获取失败'
+      })
+    }
+  },
 }
 
 // 主要的请求函数
@@ -145,20 +210,33 @@ export const request = async <T = unknown>(
     data,
     timeout = API_CONFIG.TIMEOUT
   } = config
-  
+
   // 检查是否使用Mock API
   if (shouldUseMockApi()) {
     const routeKey = `${method}:${endpoint}`
     console.log('Mock API: 尝试匹配路由', routeKey)
     console.log('Mock API: 请求参数', params)
     console.log('Mock API: 请求数据', data)
-    
+
     // 直接匹配
     if (mockApiRoutes[routeKey]) {
       console.log('Mock API: 找到直接匹配的路由', routeKey)
       try {
         const result = await mockApiRoutes[routeKey](params, data)
         console.log('Mock API: 路由处理结果', result)
+
+        // 如果Mock API返回的结果已经是标准格式，直接返回
+        if (result && typeof result === 'object' && 'success' in result && 'data' in result) {
+          console.log('Mock API: 返回标准格式数据', result)
+          return {
+            code: result.success ? 200 : 400,
+            message: result.message || 'success',
+            data: result.data,
+            success: result.success
+          }
+        }
+
+        // 否则包装为标准格式
         return {
           code: 200,
           message: 'success',
@@ -175,7 +253,7 @@ export const request = async <T = unknown>(
           }
       }
     }
-    
+
     // 正则匹配（用于带参数的路由）
     console.log('Mock API: 开始正则匹配')
     for (const [pattern, handler] of Object.entries(mockApiRoutes)) {
@@ -189,6 +267,19 @@ export const request = async <T = unknown>(
           try {
             const result = await handler(params, data, ...match.slice(1))
             console.log('Mock API: 正则路由处理结果', result)
+
+            // 如果Mock API返回的结果已经是标准格式，直接返回
+            if (result && typeof result === 'object' && 'success' in result && 'data' in result) {
+              console.log('Mock API: 返回标准格式数据', result)
+              return {
+                code: result.success ? 200 : 400,
+                message: result.message || 'success',
+                data: result.data,
+                success: result.success
+              }
+            }
+
+            // 否则包装为标准格式
             return {
               code: 200,
               message: 'success',
@@ -207,7 +298,7 @@ export const request = async <T = unknown>(
         }
       }
     }
-    
+
     // 如果没有匹配的Mock路由，返回错误
     console.warn(`Mock API: 未找到匹配的路由 ${method}:${endpoint}`)
     return {
@@ -217,31 +308,31 @@ export const request = async <T = unknown>(
       success: false
     }
   }
-  
+
   // 构建请求头
   const requestHeaders: Record<string, string> = {
     ...API_CONFIG.HEADERS,
     ...headers
   }
-  
+
   // 添加认证token
   const token = getAuthToken()
   if (token) {
     requestHeaders.Authorization = `Bearer ${token}`
   }
-  
+
   // 构建请求配置
   const requestConfig: RequestInit = {
     method,
     headers: requestHeaders,
     signal: AbortSignal.timeout(timeout)
   }
-  
+
   // 添加请求体（对于POST、PUT、PATCH请求）
   if (data && ['POST', 'PUT', 'PATCH'].includes(method)) {
     requestConfig.body = JSON.stringify(data)
   }
-  
+
   try {
     const url = buildUrl(endpoint, params)
     const response = await fetch(url, requestConfig)
@@ -251,7 +342,7 @@ export const request = async <T = unknown>(
     if ((error as Error)?.name === 'AbortError') {
       throw new Error('请求超时')
     }
-    
+
     // 重新抛出其他错误
     throw error
   }
@@ -261,16 +352,16 @@ export const request = async <T = unknown>(
 export const api = {
   get: <T = unknown>(endpoint: string, params?: RequestParams) =>
     request<T>(endpoint, { method: 'GET', params }),
-    
+
   post: <T = unknown>(endpoint: string, data?: RequestData) =>
     request<T>(endpoint, { method: 'POST', data }),
-    
+
   put: <T = unknown>(endpoint: string, data?: RequestData) =>
     request<T>(endpoint, { method: 'PUT', data }),
-    
+
   patch: <T = unknown>(endpoint: string, data?: RequestData) =>
     request<T>(endpoint, { method: 'PATCH', data }),
-    
+
   delete: <T = unknown>(endpoint: string) =>
     request<T>(endpoint, { method: 'DELETE' })
 }

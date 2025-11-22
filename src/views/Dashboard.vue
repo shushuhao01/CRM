@@ -42,10 +42,10 @@
           </div>
         </template>
         <div class="chart-container">
-          <v-chart 
-            v-if="performanceChartData.xAxisData.length > 0" 
-            :option="performanceChartOption" 
-            autoresize 
+          <v-chart
+            v-if="performanceChartData.xAxisData && performanceChartData.xAxisData.length > 0"
+            :option="performanceChartOption"
+            autoresize
           />
           <div v-else class="empty-chart">
             <el-empty description="暂无业绩数据" />
@@ -59,10 +59,10 @@
           <span class="chart-title">订单状态分布</span>
         </template>
         <div class="chart-container">
-          <v-chart 
-            v-if="orderStatusChartData.length > 0" 
-            :option="orderStatusChartOption" 
-            autoresize 
+          <v-chart
+            v-if="orderStatusChartData && orderStatusChartData.length > 0"
+            :option="orderStatusChartOption"
+            autoresize
           />
           <div v-else class="empty-chart">
             <el-empty description="暂无订单数据" />
@@ -82,34 +82,30 @@
           </div>
         </template>
         <div class="ranking-list">
-          <div 
-            class="ranking-item" 
-            v-for="(item, index) in rankings.sales" 
+          <div
+            class="ranking-item"
+            v-for="(item, index) in (rankings.sales || [])"
             :key="item.id"
           >
             <div class="ranking-position">
-              <el-tag 
-                :type="index < 3 ? 'warning' : 'info'" 
+              <el-tag
+                :type="index < 3 ? 'warning' : 'info'"
                 size="small"
                 effect="plain"
               >
                 {{ index + 1 }}
               </el-tag>
             </div>
-            <el-avatar :size="32" :src="item.avatar" />
+            <el-avatar :size="32" :src="item.avatar || undefined">
+              {{ item.name ? item.name.charAt(0) : '?' }}
+            </el-avatar>
             <div class="ranking-info">
               <div class="ranking-name">{{ item.name }}</div>
-              <div class="ranking-change" :class="item.trend">
-                <el-icon :size="12">
-                  <ArrowUp v-if="item.trend === 'up'" />
-                  <ArrowDown v-if="item.trend === 'down'" />
-                </el-icon>
-                <span>{{ item.change }}</span>
-              </div>
+              <div class="ranking-department">{{ item.department || '未分配部门' }}</div>
             </div>
             <div class="ranking-performance">
               <div class="performance-value">¥{{ item.revenue.toLocaleString() }}</div>
-              <div class="performance-orders">{{ item.orders }}单</div>
+              <div class="performance-orders">{{ typeof item.orders === 'number' ? (item.orders % 1 === 0 ? item.orders : item.orders.toFixed(1)) : item.orders }}单</div>
             </div>
           </div>
         </div>
@@ -121,9 +117,9 @@
           <span class="chart-title">快捷操作</span>
         </template>
         <div class="quick-actions">
-          <div 
-            class="action-item" 
-            v-for="action in quickActions" 
+          <div
+            class="action-item"
+            v-for="action in (quickActions || [])"
             :key="action.key"
             @click="handleQuickAction(action)"
           >
@@ -142,11 +138,34 @@
         <template #header>
           <div class="chart-header">
             <span class="chart-title">消息提醒</span>
-            <el-badge :value="unreadCount > 99 ? '99+' : unreadCount" :hidden="unreadCount === 0">
-              <el-button type="text" size="small" @click="showMessageDialog = true">
-                查看全部
-              </el-button>
-            </el-badge>
+            <div class="message-actions">
+              <el-tooltip content="全部已读" placement="top">
+                <el-button
+                  type="text"
+                  size="small"
+                  @click="markAllAsRead"
+                  :disabled="unreadCount === 0"
+                  class="action-icon-btn"
+                >
+                  <el-icon :size="18"><CircleCheck /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <el-tooltip content="清空消息" placement="top">
+                <el-button
+                  type="text"
+                  size="small"
+                  @click="clearAllMessages"
+                  class="action-icon-btn"
+                >
+                  <el-icon :size="18"><Delete /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <el-badge :value="unreadCount > 99 ? '99+' : unreadCount" :hidden="unreadCount === 0">
+                <el-button type="text" size="small" @click="showMessageDialog = true">
+                  查看全部
+                </el-button>
+              </el-badge>
+            </div>
           </div>
         </template>
         <div class="message-list">
@@ -182,11 +201,11 @@
             清空消息
           </el-button>
         </div>
-        
+
         <div class="message-dialog-list">
-          <div 
-            class="message-dialog-item" 
-            v-for="message in messages" 
+          <div
+            class="message-dialog-item"
+            v-for="message in messages"
             :key="message.id"
             :class="{ 'unread': !message.read }"
             @click="handleMessageDetailClick(message)"
@@ -203,9 +222,9 @@
             </div>
             <div class="message-dialog-actions">
               <el-badge :is-dot="!message.read" />
-              <el-button 
-                type="text" 
-                size="small" 
+              <el-button
+                type="text"
+                size="small"
                 @click.stop="markAsRead(message)"
                 v-if="!message.read"
               >
@@ -234,8 +253,8 @@
       </div>
       <template #footer>
         <el-button @click="showMessageDetailDialog = false">关闭</el-button>
-        <el-button 
-          type="primary" 
+        <el-button
+          type="primary"
           @click="markAsReadAndClose"
           v-if="selectedMessage && !selectedMessage.read"
         >
@@ -247,10 +266,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { CircleCheck, Delete } from '@element-plus/icons-vue'
+import { eventBus, EventNames } from '@/utils/eventBus'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, PieChart, BarChart } from 'echarts/charts'
@@ -263,6 +284,8 @@ import {
 import VChart from 'vue-echarts'
 import { useUserStore } from '@/stores/user'
 import { useNotificationStore } from '@/stores/notification'
+import { useOrderStore } from '@/stores/order'
+import { usePerformanceStore } from '@/stores/performance'
 import { dashboardApi, type DashboardTodo, type DashboardQuickAction } from '@/api/dashboard'
 import { messageApi } from '@/api/message'
 
@@ -304,6 +327,7 @@ const safeNavigator = createSafeNavigator(router)
 // 使用 stores
 const userStore = useUserStore()
 const notificationStore = useNotificationStore()
+const orderStore = useOrderStore()
 
 // 响应式数据
 const performancePeriod = ref('day')
@@ -311,24 +335,33 @@ const performancePeriod = ref('day')
 // 消息提醒相关数据
 const showMessageDialog = ref(false)
 const showMessageDetailDialog = ref(false)
-const selectedMessage = ref(null)
+const selectedMessage = ref<Message | null>(null)
 
 // 系统消息数据 - 使用新的消息服务
-const messages = computed(() => notificationStore.messages)
+const messages = computed(() => notificationStore.messages || [])
 
 // 计算属性 - 使用新的消息服务
 const unreadCount = computed(() => notificationStore.unreadCount)
 
-const recentMessages = computed(() => notificationStore.recentMessages.slice(0, 5))
+const recentMessages = computed(() => {
+  // 确保消息按时间倒序排列（最新的在前）
+  const sortedMessages = [...(notificationStore.messages || [])]
+    .sort((a, b) => {
+      const timeA = new Date(a.time).getTime()
+      const timeB = new Date(b.time).getTime()
+      return timeB - timeA // 倒序：最新的在前
+    })
+  return sortedMessages.slice(0, 5)
+})
 
 // 核心指标数据 - 根据用户权限动态生成标签
 const getMetricLabels = () => {
   const user = userStore.currentUser
   if (!user) return {}
-  
+
   const isAdmin = user.role === 'super_admin' || user.role === 'admin'
   const isDeptManager = user.role === 'department_manager' || user.role === 'manager'
-  
+
   if (isAdmin) {
     return {
       orders: '今日订单（全部）',
@@ -363,10 +396,10 @@ const getMetricLabels = () => {
 const getRankingTitle = () => {
   const user = userStore.currentUser
   if (!user) return '本月业绩排名'
-  
+
   const isAdmin = user.role === 'super_admin' || user.role === 'admin'
   const isDeptManager = user.role === 'department_manager' || user.role === 'manager'
-  
+
   if (isAdmin) {
     return '本月业绩排名（全部）'
   } else if (isDeptManager) {
@@ -458,21 +491,50 @@ const loading = ref(false)
 
 // 业绩排名数据 - 使用API动态获取
 const rankings = ref({
-  sales: [],
-  products: []
+  sales: [] as Array<{ id: string; name: string; avatar: string; department: string; orders: number; revenue: number; trend?: string; change?: string }>,
+  products: [] as unknown[]
 })
 
 // 待办事项数据 - 从API获取
 const todos = ref<TodoItem[]>([])
 
-// 快捷操作数据 - 从API获取
-const quickActions = ref<QuickAction[]>([])
+// 快捷操作数据 - 固定的快捷入口
+const quickActions = ref<QuickAction[]>([
+  {
+    key: 'add-customer',
+    label: '新增客户',
+    icon: 'UserFilled',
+    route: '/customer/add',
+    color: '#409EFF'
+  },
+  {
+    key: 'add-order',
+    label: '新增订单',
+    icon: 'DocumentAdd',
+    route: '/order/add',
+    color: '#67C23A'
+  },
+  {
+    key: 'search-customer',
+    label: '客户查询',
+    icon: 'Search',
+    route: '/data/search',
+    color: '#E6A23C'
+  },
+  {
+    key: 'search-logistics',
+    label: '物流查询',
+    icon: 'Van',
+    route: '/logistics/list',
+    color: '#F56C6C'
+  }
+])
 
 // 业绩趋势图表数据
 const performanceChartData = ref({
-  xAxisData: [],
-  orderData: [],
-  signData: [],
+  xAxisData: [] as string[],
+  orderData: [] as number[],
+  signData: [] as number[],
   title: '业绩趋势'
 })
 
@@ -568,17 +630,24 @@ const performanceChartOption = computed(() => {
 })
 
 // 订单状态分布图数据
-const orderStatusChartData = ref([])
+const orderStatusChartData = ref([] as Array<{ value: number; name: string; amount: number; itemStyle: { color: string } }>)
 
 // 订单状态分布图配置
 const orderStatusChartOption = computed(() => ({
   tooltip: {
     trigger: 'item',
-    formatter: '{a} <br/>{b}: {c} ({d}%)'
+    formatter: (params: unknown) => {
+      const data = params.data
+      return `${params.name}: ${data.value}<br/>金额: ¥${data.amount.toLocaleString()}`
+    }
   },
   legend: {
     orient: 'vertical',
-    left: 'left'
+    left: 'left',
+    formatter: (name: string) => {
+      const item = orderStatusChartData.value.find(d => d.name === name)
+      return item ? `${name}: ${item.value}` : name
+    }
   },
   series: [
     {
@@ -594,7 +663,7 @@ const orderStatusChartOption = computed(() => ({
         label: {
           show: true,
           fontSize: '18',
-          fontWeight: 'bold'
+          fontWeight: 'normal'
         }
       },
       labelLine: {
@@ -609,13 +678,29 @@ const orderStatusChartOption = computed(() => ({
 const getStatusColor = (status: string): string => {
   const colorMap: Record<string, string> = {
     '已签收': '#67C23A',
-    '待发货': '#409EFF', 
+    '待发货': '#409EFF',
+    '已发货': '#E6A23C',
     '运输中': '#E6A23C',
     '待审核': '#909399',
+    '待流转': '#C0C4CC',
+    '审核拒绝': '#F56C6C',
     '已取消': '#F56C6C',
+    '物流部退回': '#F78989',
+    '物流部取消': '#F56C6C',
+    '包裹异常': '#E6A23C',
+    '拒收': '#F56C6C',
+    '拒收已退回': '#F78989',
+    '已建售后': '#E6A23C',
+    '待取消': '#909399',
+    '取消失败': '#F56C6C',
+    '草稿': '#C0C4CC',
+    '已退款': '#909399',
+    '已付款': '#67C23A',
+    '已完成': '#67C23A',
     'delivered': '#67C23A',
     'pending_shipment': '#409EFF',
-    'in_transit': '#E6A23C', 
+    'shipped': '#E6A23C',
+    'in_transit': '#E6A23C',
     'pending_audit': '#909399',
     'cancelled': '#F56C6C'
   }
@@ -682,9 +767,23 @@ const markAllAsRead = async () => {
   }
 }
 
-const clearAllMessages = () => {
-  notificationStore.clearAllMessages()
-  showMessageDialog.value = false
+const clearAllMessages = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要清空所有消息吗？此操作不可恢复。',
+      '清空消息',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    notificationStore.clearAllMessages()
+    ElMessage.success('已清空所有消息')
+    showMessageDialog.value = false
+  } catch {
+    // 用户取消操作
+  }
 }
 
 const handleCloseMessageDialog = () => {
@@ -695,14 +794,14 @@ const handleCloseMessageDialog = () => {
 const getUserPermissionParams = () => {
   const user = userStore.currentUser
   if (!user) return {}
-  
+
   // 根据用户角色设置数据访问范围
-  const params: any = {
+  const params: unknown = {
     userRole: user.role,
     userId: user.id,
     departmentId: user.departmentId || user.department
   }
-  
+
   // 根据角色设置数据范围
   switch (user.role) {
     case 'super_admin':
@@ -724,7 +823,7 @@ const getUserPermissionParams = () => {
       params.userId = user.id
       break
   }
-  
+
   return params
 }
 
@@ -732,127 +831,411 @@ const getUserPermissionParams = () => {
 const loadDashboardData = async () => {
   try {
     loading.value = true
-    
-    // 获取权限参数
-    const permissionParams = getUserPermissionParams()
-    const chartParams = { ...permissionParams, period: performancePeriod.value }
-    
-    // 并行加载所有数据
-    const [metricsData, rankingsData, chartData] = await Promise.all([
-      dashboardApi.getMetrics(permissionParams),
-      dashboardApi.getRankings(),
-      dashboardApi.getChartData(chartParams)
-    ])
-    
-    // 单独加载待办事项和快捷操作
-    const [todosData, quickActionsData] = await Promise.all([
-      dashboardApi.getTodos(),
-      dashboardApi.getQuickActions()
-    ])
-    
-    // 更新核心指标
-    if (metricsData) {
-      // 根据用户权限更新标签
-      const labels = getMetricLabels()
-      
-      metrics.value[0].value = metricsData.todayOrders.toString()
-      metrics.value[0].label = labels.orders || '今日订单'
-      
-      metrics.value[1].value = metricsData.newCustomers.toString()
-      metrics.value[1].label = labels.customers || '新增客户'
-      
-      metrics.value[2].value = `¥${metricsData.todayRevenue.toLocaleString()}`
-      metrics.value[2].label = labels.revenue || '今日业绩'
-      
-      metrics.value[3].value = metricsData.monthlyOrders.toString()
-      metrics.value[3].label = labels.monthlyOrders || '本月单数'
-      
-      if (metrics.value[4]) {
-        metrics.value[4].value = `¥${metricsData.monthlyRevenue?.toLocaleString() || '0'}`
-        metrics.value[4].label = labels.monthlyRevenue || '本月业绩'
-      }
-      
-      if (metrics.value[5] && metricsData.pendingService !== undefined) {
-        metrics.value[5].value = metricsData.pendingService.toString()
-        metrics.value[5].label = labels.service || '待处理售后'
-      }
-    }
-    
-    // 更新排行榜数据
-    if (rankingsData) {
-      rankings.value = rankingsData
-    }
-    
-    // 更新图表数据
-    if (chartData) {
-      // 更新业绩趋势图表
-      if (chartData.revenue && chartData.revenue.length > 0) {
-        performanceChartData.value = {
-          xAxisData: chartData.revenue.map(item => item.date),
-          orderData: chartData.revenue.map(item => item.amount),
-          signData: chartData.revenue.map(item => item.orders),
-          title: getPerformanceTitle()
-        }
-      } else {
-        // 空数据状态
-        performanceChartData.value = {
-          xAxisData: [],
-          orderData: [],
-          signData: [],
-          title: getPerformanceTitle()
-        }
-      }
-      
-      // 更新订单状态分布图表
-      if (chartData.orderStatus && chartData.orderStatus.length > 0) {
-        orderStatusChartData.value = chartData.orderStatus.map(item => ({
-          value: item.count,
-          name: item.status,
-          itemStyle: { 
-            color: getStatusColor(item.status)
-          }
-        }))
-      } else {
-        // 空数据状态
-        orderStatusChartData.value = []
-      }
-    }
-    
-    // 更新待办事项
-    if (todosData && Array.isArray(todosData)) {
-      // 根据用户角色过滤待办事项
-      const userRole = userStore.currentUser?.role || 'sales_staff'
-      const filteredTodos = todosData.filter(todo => {
-        if (userRole === 'super_admin') return true
-        if (userRole === 'department_manager') return todo.type !== 'system'
-        return todo.type === 'order' || todo.type === 'customer'
-      })
-      todos.value = filteredTodos
-    }
-    
-    // 更新快捷操作
-    if (quickActionsData && Array.isArray(quickActionsData)) {
-      quickActions.value = quickActionsData
-    }
-    
-    // 加载系统消息 - 从API获取真实数据
+
+    // 使用真实的localStorage数据
+    loadRealMetrics()
+    loadRealRankings()
+    loadRealChartData()
+
+    // 待办事项已移除，不再加载
+
+    // 加载系统消息
     try {
+      const permissionParams = getUserPermissionParams()
       const messagesResponse = await notificationStore.loadMessagesFromAPI(permissionParams)
       if (messagesResponse && messagesResponse.length > 0) {
-        // 消息已经在store中处理，这里不需要额外操作
         console.log('系统消息加载成功:', messagesResponse.length, '条消息')
       }
     } catch (messageError) {
       console.warn('加载系统消息失败:', messageError)
-      // 消息加载失败不影响其他数据的显示
     }
-    
+
   } catch (error) {
     console.error('加载仪表板数据失败:', error)
     ElMessage.error('加载数据失败，请稍后重试')
   } finally {
     loading.value = false
   }
+}
+
+// 加载真实的核心指标数据
+const loadRealMetrics = () => {
+  const currentUserId = userStore.currentUser?.id
+  let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+
+  // 根据用户角色筛选订单
+  if (!userStore.isAdmin && !userStore.isManager) {
+    orders = orders.filter(order => order.salesPersonId === currentUserId)
+  } else if (userStore.isManager && !userStore.isAdmin) {
+    const departmentUsers = userStore.users?.filter(u => u.departmentId === userStore.currentUser?.departmentId).map(u => u.id) || []
+    orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
+  }
+
+  const today = new Date()
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+  const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1
+
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
+
+  // 今日订单
+  const todayOrders = orders.filter(order => {
+    const orderTime = new Date(order.createTime).getTime()
+    return orderTime >= todayStart && orderTime <= todayEnd
+  })
+
+  // 本月订单
+  const monthOrders = orders.filter(order => {
+    const orderTime = new Date(order.createTime).getTime()
+    return orderTime >= monthStart
+  })
+
+  // 更新指标
+  const labels = getMetricLabels()
+
+  metrics.value[0].value = todayOrders.length.toString()
+  metrics.value[0].label = labels.orders || '今日订单'
+
+  metrics.value[1].value = '0' // 新增客户需要从客户数据中获取
+  metrics.value[1].label = labels.customers || '新增客户'
+
+  metrics.value[2].value = `¥${todayOrders.reduce((sum, order) => sum + order.totalAmount, 0).toLocaleString()}`
+  metrics.value[2].label = labels.revenue || '今日业绩'
+
+  metrics.value[3].value = monthOrders.length.toString()
+  metrics.value[3].label = labels.monthlyOrders || '本月单数'
+
+  if (metrics.value[4]) {
+    metrics.value[4].value = `¥${monthOrders.reduce((sum, order) => sum + order.totalAmount, 0).toLocaleString()}`
+    metrics.value[4].label = labels.monthlyRevenue || '本月业绩'
+  }
+
+  if (metrics.value[5]) {
+    const pendingService = orders.filter(order => order.status === 'after_sales_created').length
+    metrics.value[5].value = pendingService.toString()
+    metrics.value[5].label = labels.service || '待处理售后'
+  }
+}
+
+// 加载真实的排名数据
+const loadRealRankings = () => {
+  let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+
+  // 根据用户角色筛选
+  if (userStore.isManager && !userStore.isAdmin) {
+    const departmentUsers = userStore.users?.filter(u => u.departmentId === userStore.currentUser?.departmentId).map(u => u.id) || []
+    orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
+  }
+
+  // 本月订单
+  const today = new Date()
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
+  const monthOrders = orders.filter(order => {
+    const orderTime = new Date(order.createTime).getTime()
+    return orderTime >= monthStart
+  })
+
+  // 统计每个销售人员的业绩
+  const salesMap = new Map()
+  monthOrders.forEach(order => {
+    const salesPersonId = order.salesPersonId
+    if (salesMap.has(salesPersonId)) {
+      const existing = salesMap.get(salesPersonId)
+      salesMap.set(salesPersonId, {
+        ...existing,
+        orders: existing.orders + 1,
+        revenue: existing.revenue + order.totalAmount,
+        sharedAmount: existing.sharedAmount || 0,
+        receivedAmount: existing.receivedAmount || 0
+      })
+    } else {
+      // 【批次189修复】简化用户信息获取逻辑，直接从crm_mock_users获取
+      let userName = '未知'
+      let userAvatar = ''
+      let userDepartment = ''
+
+      // 直接从crm_mock_users获取用户信息（主数据源）
+      try {
+        const usersData = localStorage.getItem('crm_mock_users')
+        if (usersData) {
+          const users = JSON.parse(usersData)
+          const user = users.find((u: unknown) =>
+            String(u.id) === String(salesPersonId) ||
+            u.username === salesPersonId
+          )
+
+          if (user) {
+            // 直接使用字段，不做复杂判断
+            userName = user.realName || user.name || user.username || '未知'
+            userAvatar = user.avatar || ''
+            userDepartment = user.department || ''
+
+            // 如果没有department但有departmentId，查找部门名称
+            if (!userDepartment && user.departmentId) {
+              const departments = JSON.parse(localStorage.getItem('crm_mock_departments') || '[]')
+              const dept = departments.find((d: unknown) => String(d.id) === String(user.departmentId))
+              userDepartment = dept?.name || ''
+            }
+
+            console.log(`[业绩排名] 找到用户: ${userName}, 部门: ${userDepartment}`)
+          } else {
+            console.warn(`[业绩排名] 未找到用户: ${salesPersonId}`)
+          }
+        }
+      } catch (error) {
+        console.error('[业绩排名] 获取用户信息失败:', error)
+      }
+
+      salesMap.set(salesPersonId, {
+        id: salesPersonId,
+        name: userName,
+        avatar: userAvatar,
+        department: userDepartment,
+        orders: 1,
+        revenue: order.totalAmount,
+        sharedAmount: 0,
+        receivedAmount: 0
+      })
+    }
+  })
+
+  // 【批次207修复】处理业绩分享数据 - 同时处理金额和订单数量
+  const performanceStore = usePerformanceStore()
+  if (performanceStore.performanceShares) {
+    performanceStore.performanceShares.forEach(share => {
+      if (share.status !== 'active') return
+
+      // 检查分享的订单是否在本月
+      const shareOrder = monthOrders.find(o => o.orderNumber === share.orderNumber)
+      if (!shareOrder) return
+
+      // 【批次207修复】减少原下单员的业绩和订单数
+      if (salesMap.has(share.createdById)) {
+        const creator = salesMap.get(share.createdById)
+        creator.sharedAmount = (creator.sharedAmount || 0) + share.orderAmount
+        // 初始化分享出去的订单数量字段
+        if (!creator.sharedOrderCount) {
+          creator.sharedOrderCount = 0
+        }
+        // 分享出去1个完整订单
+        creator.sharedOrderCount += 1
+      }
+
+      // 【批次207修复】增加被分享用户的业绩和订单数量
+      share.shareMembers.forEach(member => {
+        if (!salesMap.has(member.userId)) {
+          // 如果用户不在map中,创建新记录
+          let userName = member.userName || '未知'
+          let userAvatar = ''
+          let userDepartment = ''
+
+          try {
+            const usersData = localStorage.getItem('crm_mock_users')
+            if (usersData) {
+              const users = JSON.parse(usersData)
+              const user = users.find((u: unknown) => String(u.id) === String(member.userId))
+              if (user) {
+                userName = user.realName || user.name || user.username || userName
+                userAvatar = user.avatar || ''
+                userDepartment = user.department || ''
+              }
+            }
+          } catch (error) {
+            console.error('[业绩排名] 获取分享用户信息失败:', error)
+          }
+
+          salesMap.set(member.userId, {
+            id: member.userId,
+            name: userName,
+            avatar: userAvatar,
+            department: userDepartment,
+            orders: 0,
+            revenue: 0,
+            sharedAmount: 0,
+            receivedAmount: 0,
+            sharedOrderCount: 0,
+            receivedOrderCount: 0
+          })
+        }
+
+        const memberData = salesMap.get(member.userId)
+        const percentage = member.percentage / 100
+        memberData.receivedAmount = (memberData.receivedAmount || 0) + (share.orderAmount * percentage)
+        // 【批次207新增】按比例接收订单数量
+        if (!memberData.receivedOrderCount) {
+          memberData.receivedOrderCount = 0
+        }
+        memberData.receivedOrderCount += percentage
+      })
+    })
+  }
+
+  // 【批次207修复】转换为数组,计算净业绩和净订单数并按净业绩倒序排序
+  const salesRankings = Array.from(salesMap.values())
+    .map(item => ({
+      ...item,
+      revenue: item.revenue - (item.sharedAmount || 0) + (item.receivedAmount || 0), // 计算净业绩
+      orders: Math.max(0, item.orders - (item.sharedOrderCount || 0) + (item.receivedOrderCount || 0)) // 【批次207新增】计算净订单数
+    }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 10) // 只取前10名
+
+  rankings.value = {
+    sales: salesRankings,
+    products: []
+  }
+}
+
+// 加载真实的图表数据
+const loadRealChartData = () => {
+  const currentUserId = userStore.currentUser?.id
+  let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+
+  // 根据用户角色筛选订单
+  if (!userStore.isAdmin && !userStore.isManager) {
+    orders = orders.filter(order => order.salesPersonId === currentUserId)
+  } else if (userStore.isManager && !userStore.isAdmin) {
+    const departmentUsers = userStore.users?.filter(u => u.departmentId === userStore.currentUser?.departmentId).map(u => u.id) || []
+    orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
+  }
+
+  // 生成业绩趋势数据（参考个人业绩页面）
+  const today = new Date()
+  const timeData = new Map()
+
+  if (performancePeriod.value === 'day') {
+    // 今日每小时数据
+    for (let i = 0; i < 24; i++) {
+      timeData.set(i, { label: `${i}:00`, amount: 0, orders: 0 })
+    }
+
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+    const todayOrders = orders.filter(order => {
+      const orderTime = new Date(order.createTime).getTime()
+      return orderTime >= todayStart
+    })
+
+    todayOrders.forEach(order => {
+      const hour = new Date(order.createTime).getHours()
+      const data = timeData.get(hour)
+      if (data) {
+        data.amount += order.totalAmount
+        data.orders += 1
+      }
+    })
+  } else if (performancePeriod.value === 'week') {
+    // 最近7天
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today.getTime() - i * 24 * 60 * 60 * 1000)
+      const dateKey = date.toISOString().split('T')[0]
+      const dateLabel = `${date.getMonth() + 1}/${date.getDate()}`
+      timeData.set(dateKey, { label: dateLabel, amount: 0, orders: 0 })
+    }
+
+    orders.forEach(order => {
+      const orderDate = new Date(order.createTime).toISOString().split('T')[0]
+      if (timeData.has(orderDate)) {
+        const data = timeData.get(orderDate)
+        data.amount += order.totalAmount
+        data.orders += 1
+      }
+    })
+  } else {
+    // 本月每天
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+    for (let i = 1; i <= daysInMonth; i++) {
+      const date = new Date(today.getFullYear(), today.getMonth(), i)
+      const dateKey = date.toISOString().split('T')[0]
+      timeData.set(dateKey, { label: `${i}日`, amount: 0, orders: 0 })
+    }
+
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
+    const monthOrders = orders.filter(order => {
+      const orderTime = new Date(order.createTime).getTime()
+      return orderTime >= monthStart
+    })
+
+    monthOrders.forEach(order => {
+      const orderDate = new Date(order.createTime).toISOString().split('T')[0]
+      if (timeData.has(orderDate)) {
+        const data = timeData.get(orderDate)
+        data.amount += order.totalAmount
+        data.orders += 1
+      }
+    })
+  }
+
+  const xAxisData: string[] = []
+  const orderData: number[] = []
+  const signData: number[] = []
+
+  timeData.forEach(data => {
+    xAxisData.push(data.label)
+    orderData.push(data.amount)
+    signData.push(data.orders)
+  })
+
+  performanceChartData.value = {
+    xAxisData,
+    orderData,
+    signData,
+    title: getPerformanceTitle()
+  }
+
+  // 生成订单状态分布数据（参考个人业绩页面）
+  const statusMap = new Map<string, { count: number; amount: number }>()
+  const statusNames: Record<string, string> = {
+    'pending_transfer': '待流转',
+    'pending_audit': '待审核',
+    'audit_rejected': '审核拒绝',
+    'pending_shipment': '待发货',
+    'shipped': '已发货',
+    'delivered': '已签收',
+    'logistics_returned': '物流部退回',
+    'logistics_cancelled': '物流部取消',
+    'package_exception': '包裹异常',
+    'rejected': '拒收',
+    'rejected_returned': '拒收已退回',
+    'after_sales_created': '已建售后',
+    'pending_cancel': '待取消',
+    'cancel_failed': '取消失败',
+    'cancelled': '已取消',
+    'draft': '草稿',
+    'refunded': '已退款',
+    'pending': '待审核',
+    'paid': '已付款',
+    'completed': '已完成',
+    'signed': '已签收'
+  }
+
+  orders.forEach(order => {
+    const statusName = statusNames[order.status] || order.status
+    if (statusMap.has(statusName)) {
+      const existing = statusMap.get(statusName)!
+      statusMap.set(statusName, {
+        count: existing.count + 1,
+        amount: existing.amount + order.totalAmount
+      })
+    } else {
+      statusMap.set(statusName, {
+        count: 1,
+        amount: order.totalAmount
+      })
+    }
+  })
+
+  const orderStatusData: Array<{ value: number; name: string; amount: number; itemStyle: { color: string } }> = []
+  statusMap.forEach((data, name) => {
+    orderStatusData.push({
+      value: data.count,
+      name: name,  // 只使用状态名，不包含数量
+      amount: data.amount,
+      itemStyle: {
+        color: getStatusColor(name)
+      }
+    })
+  })
+
+  orderStatusChartData.value = orderStatusData
 }
 
 // 获取业绩图表标题
@@ -870,45 +1253,11 @@ const getPerformanceTitle = () => {
 }
 
 // 监听时间段变化，重新加载图表数据
-watch(performancePeriod, async () => {
+watch(performancePeriod, () => {
   try {
     loading.value = true
-    const permissionParams = getUserPermissionParams()
-    const chartParams = { ...permissionParams, period: performancePeriod.value }
-    
-    const chartData = await dashboardApi.getChartData(chartParams)
-    
-    if (chartData) {
-      // 更新业绩趋势图表
-      if (chartData.revenue && chartData.revenue.length > 0) {
-        performanceChartData.value = {
-          xAxisData: chartData.revenue.map(item => item.date),
-          orderData: chartData.revenue.map(item => item.amount),
-          signData: chartData.revenue.map(item => item.orders),
-          title: getPerformanceTitle()
-        }
-      } else {
-        performanceChartData.value = {
-          xAxisData: [],
-          orderData: [],
-          signData: [],
-          title: getPerformanceTitle()
-        }
-      }
-      
-      // 更新订单状态分布图表
-      if (chartData.orderStatus && chartData.orderStatus.length > 0) {
-        orderStatusChartData.value = chartData.orderStatus.map(item => ({
-          value: item.count,
-          name: item.status,
-          itemStyle: { 
-            color: getStatusColor(item.status)
-          }
-        }))
-      } else {
-        orderStatusChartData.value = []
-      }
-    }
+    // 重新加载图表数据
+    loadRealChartData()
   } catch (error) {
     console.error('重新加载图表数据失败:', error)
     ElMessage.error('加载图表数据失败')
@@ -917,9 +1266,25 @@ watch(performancePeriod, async () => {
   }
 })
 
+// 处理订单状态变化
+const handleOrderStatusChanged = () => {
+  console.log('[数据看板] 收到订单状态变化事件，刷新数据')
+  loadDashboardData()
+}
+
 onMounted(() => {
   // 加载仪表板数据
   loadDashboardData()
+
+  // 监听订单状态变化事件
+  eventBus.on(EventNames.ORDER_STATUS_CHANGED, handleOrderStatusChanged)
+  eventBus.on(EventNames.REFRESH_ORDER_LIST, handleOrderStatusChanged)
+})
+
+onUnmounted(() => {
+  // 清理事件监听
+  eventBus.off(EventNames.ORDER_STATUS_CHANGED, handleOrderStatusChanged)
+  eventBus.off(EventNames.REFRESH_ORDER_LIST, handleOrderStatusChanged)
 })
 </script>
 
@@ -1089,6 +1454,12 @@ onMounted(() => {
   font-size: 14px;
   font-weight: 500;
   color: #303133;
+  margin-bottom: 2px;
+}
+
+.ranking-department {
+  font-size: 12px;
+  color: #909399;
 }
 
 .ranking-change {
@@ -1233,7 +1604,7 @@ onMounted(() => {
   .charts-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .bottom-grid {
     grid-template-columns: 1fr;
   }
@@ -1243,7 +1614,7 @@ onMounted(() => {
   .metrics-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .quick-actions {
     grid-template-columns: 1fr;
   }
@@ -1415,5 +1786,32 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 消息操作按钮样式 */
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-icon-btn {
+  padding: 4px 8px;
+  color: #606266;
+  transition: all 0.3s;
+}
+
+.action-icon-btn:hover {
+  color: #409EFF;
+  background-color: #ecf5ff;
+}
+
+.action-icon-btn:disabled {
+  color: #c0c4cc;
+  cursor: not-allowed;
+}
+
+.action-icon-btn:disabled:hover {
+  background-color: transparent;
 }
 </style>

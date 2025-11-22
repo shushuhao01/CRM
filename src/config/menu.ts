@@ -23,9 +23,9 @@ export const menuConfig: MenuItem[] = [
     title: '数据看板',
     icon: 'Odometer',
     path: '/dashboard',
-    roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
+    roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
     permissions: ['dashboard'],
-    dataScope: 'all' // 超级管理员看全部，部门管理员看本部门，销售员看个人
+    dataScope: 'department' // 部门管理员看本部门数据，销售员看个人数据
   },
   {
     id: 'customer',
@@ -40,7 +40,7 @@ export const menuConfig: MenuItem[] = [
         path: '/customer/list',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
         permissions: ['customer:list'],
-        dataScope: 'department' // 部门管理员看本部门，销售员看个人
+        dataScope: 'self' // 销售员看个人客户，部门管理员看本部门
       },
       {
         id: 'customer-add',
@@ -53,14 +53,14 @@ export const menuConfig: MenuItem[] = [
         id: 'customer-groups',
         title: '客户分组',
         path: '/customer/groups',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        roles: ['super_admin', 'admin', 'sales_staff'],
         permissions: ['customer:groups']
       },
       {
         id: 'customer-tags',
         title: '客户标签',
         path: '/customer/tags',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        roles: ['super_admin', 'admin', 'sales_staff'],
         permissions: ['customer:tags']
       }
     ]
@@ -76,9 +76,9 @@ export const menuConfig: MenuItem[] = [
         id: 'order-list',
         title: '订单列表',
         path: '/order/list',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
         permissions: ['order:list'],
-        dataScope: 'department' // 部门管理员看本部门，销售员看个人
+        dataScope: 'all' // 销售员看个人订单，部门管理员看本部门
       },
       {
         id: 'order-add',
@@ -91,8 +91,9 @@ export const menuConfig: MenuItem[] = [
         id: 'order-audit',
         title: '订单审核',
         path: '/order/audit',
-        roles: ['super_admin', 'admin', 'department_manager'], // 如果有独立审核员就不给部门管理员
-        permissions: ['order:audit']
+        roles: ['super_admin', 'admin', 'customer_service'],
+        permissions: ['order:audit'],
+        dataScope: 'all' // 客服处理全公司订单审核
       }
     ]
   },
@@ -100,7 +101,7 @@ export const menuConfig: MenuItem[] = [
     id: 'service-management',
     title: '服务管理',
     icon: 'IconCustomerService',
-    roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
+    roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
     permissions: ['service'],
     children: [
       {
@@ -108,14 +109,16 @@ export const menuConfig: MenuItem[] = [
         title: '通话管理',
         path: '/service-management/call',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
-        permissions: ['service:call']
+        permissions: ['service:call'],
+        dataScope: 'self' // 销售员看个人通话记录，部门管理员看本部门
       },
       {
         id: 'service-sms',
         title: '短信管理',
         path: '/service-management/sms',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
-        permissions: ['service:sms']
+        roles: ['super_admin', 'admin', 'sales_staff', 'customer_service'],
+        permissions: ['service:sms'],
+        dataScope: 'self' // 销售员看个人短信记录
       }
     ]
   },
@@ -148,13 +151,13 @@ export const menuConfig: MenuItem[] = [
         path: '/performance/analysis',
         roles: ['super_admin', 'admin', 'department_manager'],
         permissions: ['performance:analysis'],
-        dataScope: 'department' // 部门管理员看本部门数据分析
+        dataScope: 'self' // 部门管理员看本部门
       },
       {
         id: 'performance-share',
         title: '业绩分享',
         path: '/performance/share',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        roles: ['super_admin', 'admin', 'department_manager'],
         permissions: ['performance:share']
       }
     ]
@@ -163,42 +166,46 @@ export const menuConfig: MenuItem[] = [
     id: 'logistics',
     title: '物流管理',
     icon: 'Van',
-    roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+    roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
     permissions: ['logistics'],
     children: [
       {
         id: 'logistics-shipping',
         title: '发货列表',
         path: '/logistics/shipping',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
-        permissions: ['logistics:shipping']
+        roles: ['super_admin', 'admin', 'sales_staff', 'customer_service'],
+        permissions: ['logistics:shipping'],
+        dataScope: 'all' // 客服处理全公司发货
       },
       {
         id: 'logistics-list',
         title: '物流列表',
         path: '/logistics/list',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
-        permissions: ['logistics:list']
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
+        permissions: ['logistics:list'],
+        dataScope: 'all' // 客服处理全公司物流
       },
       {
         id: 'logistics-track',
         title: '物流跟踪',
         path: '/logistics/track',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
-        permissions: ['logistics:tracking']
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
+        permissions: ['logistics:tracking'],
+        dataScope: 'all' // 客服处理全公司物流跟踪
       },
       {
         id: 'logistics-status-update',
         title: '状态更新',
         path: '/logistics/status-update',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
-        permissions: ['logistics:status']
+        roles: ['super_admin', 'admin', 'sales_staff', 'customer_service'],
+        permissions: ['logistics:status'],
+        dataScope: 'all' // 客服处理全公司状态更新
       },
       {
         id: 'logistics-companies',
         title: '物流公司',
         path: '/logistics/companies',
-        roles: ['super_admin', 'admin', 'department_manager'],
+        roles: ['super_admin', 'admin'],
         permissions: ['logistics:companies']
       }
     ]
@@ -216,22 +223,22 @@ export const menuConfig: MenuItem[] = [
         path: '/service/list',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
         permissions: ['aftersale:order'],
-        dataScope: 'department' // 部门管理员看本部门，销售员看个人
+        dataScope: 'all' // 客服处理全公司售后订单
       },
       {
         id: 'service-add',
         title: '新建售后',
         path: '/service/add',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
         permissions: ['aftersale:add']
       },
       {
         id: 'service-data',
         title: '售后数据',
         path: '/service/data',
-        roles: ['super_admin', 'admin', 'department_manager'],
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
         permissions: ['aftersale:analysis'],
-        dataScope: 'department' // 部门管理员看本部门售后数据
+        dataScope: 'all' // 客服处理全公司售后数据
       }
     ]
   },
@@ -246,21 +253,23 @@ export const menuConfig: MenuItem[] = [
         id: 'data-list',
         title: '资料列表',
         path: '/data/list',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
-        permissions: ['data:list']
+        roles: ['super_admin', 'admin', 'department_manager', 'customer_service'],
+        permissions: ['data:list'],
+        dataScope: 'all' // 客服处理全公司资料
       },
       {
         id: 'data-search',
         title: '客户查询',
         path: '/data/search',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
-        permissions: ['data:customer']
+        permissions: ['data:customer'],
+        dataScope: 'all' // 客服查询全公司客户
       },
       {
         id: 'data-recycle',
         title: '回收站',
         path: '/data/recycle',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        roles: ['super_admin', 'admin', 'sales_staff'],
         permissions: ['data:recycle']
       }
     ]
@@ -292,6 +301,13 @@ export const menuConfig: MenuItem[] = [
         path: '/product/inventory',
         roles: ['super_admin', 'admin'],
         permissions: ['sales:product:edit']
+      },
+      {
+        id: 'product-category',
+        title: '商品分类',
+        path: '/product/category',
+        roles: ['super_admin', 'admin'],
+        permissions: ['sales:product:view']
       },
       {
         id: 'product-analytics',
@@ -338,13 +354,6 @@ export const menuConfig: MenuItem[] = [
         permissions: ['system:permission']
       },
       {
-        id: 'system-settings',
-        title: '系统设置',
-        path: '/system/settings',
-        roles: ['super_admin', 'admin'],
-        permissions: ['system:settings']
-      },
-      {
         id: 'system-super-admin-panel',
         title: '超管面板',
         path: '/system/super-admin-panel',
@@ -357,6 +366,20 @@ export const menuConfig: MenuItem[] = [
         path: '/system/customer-service-permissions',
         roles: ['super_admin', 'admin'],
         permissions: ['customer_service:manage']
+      },
+      {
+        id: 'system-message-management',
+        title: '消息管理',
+        path: '/system/message-management',
+        roles: ['super_admin', 'admin'],
+        permissions: ['system:message']
+      },
+      {
+        id: 'system-settings',
+        title: '系统设置',
+        path: '/system/settings',
+        roles: ['super_admin', 'admin'],
+        permissions: ['system:settings']
       }
     ]
   }
@@ -412,79 +435,124 @@ export const rolePermissions: Record<string, string[]> = {
     'system:role', 'system:role:view', 'system:role:add', 'system:role:edit', 'system:role:delete', 'system:role:assign-permission',
     'system:department', 'system:department:view', 'system:department:add', 'system:department:edit', 'system:department:delete',
     'system:permission', 'system:permission:view', 'system:permission:edit',
-    'system:settings', 'system:admin', 'customer_service:manage'
+    'system:settings', 'system:admin', 'customer_service:manage',
+    'system:message', 'system:message:view', 'system:message:subscription', 'system:message:announcement', 'system:message:config'
   ],
 
   // 部门管理员：管理本部门的业务
   department_manager: [
-    // 数据看板（本部门数据）
+    // 数据看板权限
     'dashboard', 'dashboard:personal', 'dashboard:department',
 
-    // 客户管理（本部门权限）
+    // 客户管理权限 - 一级菜单和二级菜单
     'customer', 'customer:list', 'customer:view:personal', 'customer:view:department',
     'customer:add', 'customer:edit', 'customer:import', 'customer:export',
-    'customer:groups', 'customer:tags',
 
-    // 订单管理（本部门权限）
+    // 订单管理权限 - 一级菜单和二级菜单
     'order', 'order:list', 'order:view:personal', 'order:view:department',
-    'order:add', 'order:edit', 'order:audit',
+    'order:add', 'order:edit',
 
-    // 服务管理
+    // 服务管理权限 - 一级菜单和二级菜单
     'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
-    'service:sms',
 
-    // 业绩统计
+    // 业绩统计权限 - 一级菜单和二级菜单
     'performance', 'performance:personal', 'performance:personal:view',
     'performance:team', 'performance:team:view', 'performance:analysis', 'performance:share',
 
-    // 物流管理
+    // 物流管理权限 - 一级菜单和二级菜单
     'logistics', 'logistics:list', 'logistics:view', 'logistics:add', 'logistics:edit',
-    'logistics:tracking', 'logistics:tracking:view', 'logistics:shipping', 'logistics:status',
+    'logistics:tracking', 'logistics:tracking:view',
 
-    // 售后管理（本部门权限）
+    // 售后管理权限 - 一级菜单和二级菜单
     'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:view:department',
     'aftersale:add', 'aftersale:edit', 'aftersale:analysis',
 
-    // 资料管理
-    'data', 'data:customer', 'data:customer:search', 'data:list', 'data:recycle'
+    // 资料管理权限 - 一级菜单和二级菜单
+    'data', 'data:customer', 'data:customer:search', 'data:list'
   ],
 
   // 销售员：只能管理自己的客户和订单
   sales_staff: [
-    // 数据看板（仅限个人数据）
+    // 数据看板
     'dashboard', 'dashboard:personal',
-
-    // 客户管理和子菜单：客户列表（可查看本人的），新增客户
+    
+    // 客户管理
     'customer', 'customer:list', 'customer:view:personal', 'customer:add',
     'customer:groups', 'customer:tags',
-
-    // 订单管理和子菜单订单列表，新增订单
+    
+    // 订单管理
     'order', 'order:list', 'order:view:personal', 'order:add',
-
-    // 服务管理和子菜单通话管理
+    
+    // 服务管理
     'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
     'service:sms',
-
-    // 业绩统计和子菜单个人业绩，团队业绩
+    
+    // 业绩统计
     'performance', 'performance:personal', 'performance:personal:view',
-    'performance:team', 'performance:team:view', 'performance:share',
-
-    // 物流管理和子菜单物流列表，物流跟踪
+    'performance:team', 'performance:team:view',
+    
+    // 物流管理
     'logistics', 'logistics:list', 'logistics:view',
-    'logistics:tracking', 'logistics:tracking:view', 'logistics:shipping',
-
-    // 售后管理和子菜单售后订单（本人的），新建售后
-    'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:add',
-
-    // 资料管理和子菜单客户查询
-    'data', 'data:customer', 'data:customer:search', 'data:list'
+    'logistics:tracking', 'logistics:tracking:view', 'logistics:shipping', 'logistics:status',
+    
+    // 售后管理
+    'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:add', 'aftersale:analysis',
+    
+    // 资料管理
+    'data', 'data:customer', 'data:customer:search', 'data:recycle'
   ],
 
-  // 客服：基础权限，具体权限由超级管理员配置
+  // 客服默认权限：根据客服类型动态配置
   customer_service: [
-    // 基础权限，具体权限由超级管理员配置
-    'customer', 'customer:list', 'customer:view:personal',
-    'service', 'service:call', 'service:call:view', 'service:call:add', 'service:sms',
-    'data', 'data:customer', 'data:list'
+    // 订单审核权限（保留）
+    'order:audit', 'order:audit:view',
+    
+    // 物流管理权限
+    'logistics', 'logistics:list', 'logistics:list:view', 'logistics:shipping', 'logistics:shipping:view',
+    'logistics:tracking', 'logistics:tracking:view', 'logistics:status_update',
+    
+    // 售后管理权限
+    'aftersale', 'aftersale:order', 'aftersale:order:view', 'aftersale:add', 'aftersale:data',
+    
+    // 资料管理权限
+    'data', 'data:customer', 'data:customer:search', 'data:list'
+  ],
+  
+  // 售后客服专用权限
+  customer_service_after_sales: [
+    'dashboard', 'dashboard:view',
+    'order', 'order:list', 'order:list:view',
+    'aftersale', 'aftersale:order', 'aftersale:order:view', 'aftersale:order:edit', 
+    'aftersale:add', 'aftersale:data', 'aftersale:data:view',
+    'service', 'service:afterSales:view', 'service:afterSales:edit',
+    'data', 'data:customer', 'data:customer:search'
+  ],
+  
+  // 审核客服专用权限
+  customer_service_audit: [
+    'dashboard', 'dashboard:view',
+    'order', 'order:list', 'order:list:view', 'order:audit', 'order:audit:view', 
+    'order:audit:approve', 'order:audit:reject',
+    'customer', 'customer:list', 'customer:list:view',
+    'data', 'data:customer', 'data:customer:search'
+  ],
+  
+  // 物流客服专用权限
+  customer_service_logistics: [
+    'dashboard', 'dashboard:view',
+    'order', 'order:list', 'order:list:view',
+    'logistics', 'logistics:list', 'logistics:list:view', 'logistics:shipping', 'logistics:shipping:view',
+    'logistics:shipping:edit', 'logistics:tracking', 'logistics:tracking:view', 'logistics:tracking:edit',
+    'logistics:status_update', 'logistics:status_update:edit',
+    'data', 'data:customer', 'data:customer:search'
+  ],
+  
+  // 商品客服专用权限
+  customer_service_product: [
+    'dashboard', 'dashboard:view',
+    'customer', 'customer:list', 'customer:list:view',
+    'order', 'order:list', 'order:list:view',
+    'product', 'product:list', 'product:list:view',
+    'data', 'data:customer', 'data:customer:search'
   ]
 }

@@ -7,6 +7,7 @@ export enum MessageType {
   ORDER_CREATED = 'order_created',
   ORDER_SUBMITTED = 'order_submitted', // 订单提交成功
   ORDER_PAID = 'order_paid',
+  ORDER_PENDING_SHIPMENT = 'order_pending_shipment', // 【批次201新增】订单待发货
   ORDER_SHIPPED = 'order_shipped',
   ORDER_DELIVERED = 'order_delivered',
   ORDER_SIGNED = 'order_signed',
@@ -15,25 +16,29 @@ export enum MessageType {
   ORDER_CANCEL_APPROVED = 'order_cancel_approved', // 订单取消通过
   ORDER_MODIFY_APPROVED = 'order_modify_approved', // 订单修改申请通过
   ORDER_REFUNDED = 'order_refunded',
-  
+
   // 售后相关
   AFTER_SALES_CREATED = 'after_sales_created',
+  AFTER_SALES_ASSIGNED = 'after_sales_assigned', // 售后分配
   AFTER_SALES_PROCESSING = 'after_sales_processing', // 售后处理
   AFTER_SALES_URGENT = 'after_sales_urgent', // 紧急售后
   AFTER_SALES_COMPLETED = 'after_sales_completed', // 售后完成
-  
+  AFTER_SALES_CLOSED = 'after_sales_closed', // 售后关闭
+  AFTER_SALES_DELETED = 'after_sales_deleted', // 售后删除
+
   // 客户相关
   CUSTOMER_CREATED = 'customer_created', // 客户添加成功
   CUSTOMER_UPDATED = 'customer_updated',
   CUSTOMER_CALL = 'customer_call',
+  CUSTOMER_SHARE = 'customer_share', // 客户分享
   CUSTOMER_COMPLAINT = 'customer_complaint',
   CUSTOMER_REJECTED = 'customer_rejected', // 客户拒收
-  
+
   // 商品相关
   PRODUCT_CREATED = 'product_created', // 商品添加成功
   PRODUCT_UPDATED = 'product_updated',
   PRODUCT_OUT_OF_STOCK = 'product_out_of_stock',
-  
+
   // 系统相关
   SYSTEM_MAINTENANCE = 'system_maintenance',
   SYSTEM_UPDATE = 'system_update',
@@ -42,25 +47,25 @@ export enum MessageType {
   PERMISSION_CONFIGURED = 'permission_configured', // 权限配置成功
   DATA_EXPORT_SUCCESS = 'data_export_success', // 导出成功
   DATA_IMPORT_COMPLETED = 'data_import_completed', // 导入完成
-  
+
   // 物流相关
   LOGISTICS_PICKUP = 'logistics_pickup',
   LOGISTICS_IN_TRANSIT = 'logistics_in_transit',
   LOGISTICS_DELIVERED = 'logistics_delivered',
   PACKAGE_ANOMALY = 'package_anomaly',
-  
+
   // 审核相关
   AUDIT_PENDING = 'audit_pending',
   AUDIT_APPROVED = 'audit_approved',
   AUDIT_REJECTED = 'audit_rejected',
-  
+
   // 业绩分享相关
   PERFORMANCE_SHARE_CREATED = 'performance_share_created', // 业绩分享创建
   PERFORMANCE_SHARE_RECEIVED = 'performance_share_received', // 收到业绩分享
   PERFORMANCE_SHARE_CONFIRMED = 'performance_share_confirmed', // 业绩分享确认
   PERFORMANCE_SHARE_REJECTED = 'performance_share_rejected', // 业绩分享拒绝
   PERFORMANCE_SHARE_CANCELLED = 'performance_share_cancelled', // 业绩分享取消
-  
+
   // 短信相关
   SMS_TEMPLATE_APPLIED = 'sms_template_applied', // 短信模板申请
   SMS_TEMPLATE_APPROVED = 'sms_template_approved', // 短信模板审核通过
@@ -127,6 +132,13 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
     category: '订单通知',
     priority: MessagePriority.HIGH
   },
+  [MessageType.ORDER_PENDING_SHIPMENT]: {
+    title: '订单待发货',
+    icon: 'Box',
+    color: '#E6A23C',
+    category: '订单通知',
+    priority: MessagePriority.NORMAL
+  },
   [MessageType.ORDER_SHIPPED]: {
     title: '订单已发货',
     icon: 'Van',
@@ -192,6 +204,13 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
     category: '售后通知',
     priority: MessagePriority.HIGH
   },
+  [MessageType.AFTER_SALES_ASSIGNED]: {
+    title: '售后分配',
+    icon: 'User',
+    color: '#409EFF',
+    category: '售后通知',
+    priority: MessagePriority.NORMAL
+  },
   [MessageType.AFTER_SALES_PROCESSING]: {
     title: '售后处理',
     icon: 'Loading',
@@ -213,6 +232,20 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
     category: '售后通知',
     priority: MessagePriority.NORMAL
   },
+  [MessageType.AFTER_SALES_CLOSED]: {
+    title: '售后关闭',
+    icon: 'CircleClose',
+    color: '#909399',
+    category: '售后通知',
+    priority: MessagePriority.LOW
+  },
+  [MessageType.AFTER_SALES_DELETED]: {
+    title: '售后删除',
+    icon: 'Delete',
+    color: '#F56C6C',
+    category: '售后通知',
+    priority: MessagePriority.LOW
+  },
 
   // 客户相关模板
   [MessageType.CUSTOMER_CREATED]: {
@@ -230,11 +263,18 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
     priority: MessagePriority.LOW
   },
   [MessageType.CUSTOMER_CALL]: {
-    title: '客户来电',
+    title: '客户外呼',
     icon: 'Phone',
     color: '#722ED1',
     category: '客服通知',
     priority: MessagePriority.HIGH
+  },
+  [MessageType.CUSTOMER_SHARE]: {
+    title: '客户分享',
+    icon: 'Share',
+    color: '#409EFF',
+    category: '客户通知',
+    priority: MessagePriority.NORMAL
   },
   [MessageType.CUSTOMER_COMPLAINT]: {
     title: '客户投诉',
@@ -377,7 +417,7 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
     category: '审核通知',
     priority: MessagePriority.HIGH
   },
-  
+
   // 业绩分享相关模板
   [MessageType.PERFORMANCE_SHARE_CREATED]: {
     title: '业绩分享创建',
@@ -414,7 +454,7 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
     category: '业绩通知',
     priority: MessagePriority.NORMAL
   },
-  
+
   // 短信相关模板
   [MessageType.SMS_TEMPLATE_APPLIED]: {
     title: '短信模板申请',
@@ -476,8 +516,30 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
 
 // Pinia Store
 export const useNotificationStore = defineStore('notification', () => {
+  // 从localStorage加载消息
+  const loadMessagesFromStorage = (): NotificationMessage[] => {
+    try {
+      const stored = localStorage.getItem('notification-messages')
+      if (stored) {
+        return JSON.parse(stored)
+      }
+    } catch (error) {
+      console.error('加载消息失败:', error)
+    }
+    return []
+  }
+
+  // 保存消息到localStorage
+  const saveMessagesToStorage = (msgs: NotificationMessage[]) => {
+    try {
+      localStorage.setItem('notification-messages', JSON.stringify(msgs))
+    } catch (error) {
+      console.error('保存消息失败:', error)
+    }
+  }
+
   // 状态
-  const messages = ref<NotificationMessage[]>([])
+  const messages = ref<NotificationMessage[]>(loadMessagesFromStorage())
 
   // 计算属性
   const unreadCount = computed(() => {
@@ -529,6 +591,7 @@ export const useNotificationStore = defineStore('notification', () => {
     }
 
     messages.value.unshift(message)
+    saveMessagesToStorage(messages.value)
     return message
   }
 
@@ -536,6 +599,7 @@ export const useNotificationStore = defineStore('notification', () => {
     const message = messages.value.find(msg => msg.id === messageId)
     if (message) {
       message.read = true
+      saveMessagesToStorage(messages.value)
     }
   }
 
@@ -543,17 +607,20 @@ export const useNotificationStore = defineStore('notification', () => {
     messages.value.forEach(msg => {
       msg.read = true
     })
+    saveMessagesToStorage(messages.value)
   }
 
   const deleteMessage = (messageId: string) => {
     const index = messages.value.findIndex(msg => msg.id === messageId)
     if (index > -1) {
       messages.value.splice(index, 1)
+      saveMessagesToStorage(messages.value)
     }
   }
 
   const clearAllMessages = () => {
     messages.value = []
+    saveMessagesToStorage(messages.value)
   }
 
   const batchSendMessages = (messageConfigs: Array<{
@@ -565,28 +632,33 @@ export const useNotificationStore = defineStore('notification', () => {
       actionUrl?: string
     }
   }>) => {
-    return messageConfigs.map(config => 
+    return messageConfigs.map(config =>
       sendMessage(config.type, config.content, config.options)
     )
   }
 
   // 从API加载消息
-  const loadMessagesFromAPI = async (permissionParams: any = {}) => {
+  const loadMessagesFromAPI = async (permissionParams: unknown = {}) => {
     try {
       // 动态导入messageApi以避免循环依赖
       const { messageApi } = await import('@/api/message')
-      
-      const response = await messageApi.getSystemMessages({ 
+
+      const response = await messageApi.getSystemMessages({
         limit: 50,
-        ...permissionParams 
+        ...permissionParams
       })
-      
+
       if (response.success && response.data) {
-        // 清空现有消息
-        messages.value = []
-        
+        // 不清空现有消息，而是合并
+        const existingIds = new Set(messages.value.map(m => m.id))
+
         const apiMessages = response.data.messages || []
         apiMessages.forEach(msg => {
+          // 跳过已存在的消息
+          if (existingIds.has(msg.id)) {
+            return
+          }
+
           // 将API消息格式转换为notification store格式
           const notificationMessage: NotificationMessage = {
             id: msg.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -603,14 +675,17 @@ export const useNotificationStore = defineStore('notification', () => {
             relatedType: msg.relatedType,
             actionUrl: msg.actionUrl
           }
-          
+
           // 直接添加到messages数组
           messages.value.push(notificationMessage)
         })
-        
+
+        // 保存到localStorage
+        saveMessagesToStorage(messages.value)
+
         return apiMessages
       }
-      
+
       return []
     } catch (error) {
       console.error('从API加载消息失败:', error)
@@ -621,12 +696,12 @@ export const useNotificationStore = defineStore('notification', () => {
   return {
     // 状态
     messages,
-    
+
     // 计算属性
     unreadCount,
     recentMessages,
     messagesByCategory,
-    
+
     // 方法
     sendMessage,
     markAsRead,
@@ -635,7 +710,7 @@ export const useNotificationStore = defineStore('notification', () => {
     clearAllMessages,
     batchSendMessages,
     loadMessagesFromAPI,
-    
+
     // 导出枚举供外部使用
     MessageType,
     MessagePriority

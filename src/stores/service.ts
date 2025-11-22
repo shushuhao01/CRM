@@ -30,9 +30,14 @@ export interface AfterSalesService {
   price?: number
   contactAddress?: string
   contactName?: string
+  contactPhone?: string
+  contactId?: string
 }
 
 export const useServiceStore = createPersistentStore('service', () => {
+  // 懒加载CustomerStore，避免在初始化时重新创建CustomerStore实例
+  const getCustomerStore = () => useCustomerStore()
+
   // 售后服务列表数据
   const services = ref<AfterSalesService[]>([
     {
@@ -66,14 +71,14 @@ export const useServiceStore = createPersistentStore('service', () => {
 
   // 计算属性
   const serviceCount = computed(() => services.value.length)
-  
+
   const afterSalesServices = computed(() => services.value)
-  
-  const pendingServices = computed(() => 
+
+  const pendingServices = computed(() =>
     services.value.filter(service => service.status === 'pending')
   )
-  
-  const processingServices = computed(() => 
+
+  const processingServices = computed(() =>
     services.value.filter(service => service.status === 'processing')
   )
 
@@ -92,8 +97,8 @@ export const useServiceStore = createPersistentStore('service', () => {
   const updateService = (id: string, updates: Partial<AfterSalesService>) => {
     const index = services.value.findIndex(s => s.id === id)
     if (index !== -1) {
-      services.value[index] = { 
-        ...services.value[index], 
+      services.value[index] = {
+        ...services.value[index],
         ...updates,
         updateTime: new Date().toISOString().slice(0, 19).replace('T', ' ')
       }
@@ -106,7 +111,7 @@ export const useServiceStore = createPersistentStore('service', () => {
     const index = services.value.findIndex(s => s.id === id)
     if (index !== -1) {
       const service = services.value[index]
-      
+
       // 如果删除的是退货类型的售后服务，需要减少客户的退货统计
       if (service.serviceType === 'return' && service.customerId) {
         const customerStore = useCustomerStore()
@@ -117,7 +122,7 @@ export const useServiceStore = createPersistentStore('service', () => {
           })
         }
       }
-      
+
       services.value.splice(index, 1)
       return true
     }
@@ -140,12 +145,12 @@ export const useServiceStore = createPersistentStore('service', () => {
   const checkExistingAfterSales = async (orderId: string): Promise<AfterSalesService | null> => {
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     // 模拟检查逻辑：如果订单ID包含特定字符，则认为已有售后记录
     if (orderId.includes('202') && Math.random() > 0.7) {
       return services.value.find(service => service.orderNumber === orderId) || null
     }
-    
+
     return null
   }
 
@@ -153,7 +158,7 @@ export const useServiceStore = createPersistentStore('service', () => {
   const createAfterSalesService = async (serviceData: Partial<AfterSalesService>): Promise<AfterSalesService> => {
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     const newService: AfterSalesService = {
       id: `SH${Date.now()}`,
       serviceNumber: `SH${Date.now()}`,
@@ -177,24 +182,28 @@ export const useServiceStore = createPersistentStore('service', () => {
       updateTime: new Date().toISOString().slice(0, 19).replace('T', ' '),
       attachments: serviceData.attachments || []
     }
-    
+
     services.value.unshift(newService)
-    
+
     // 更新订单状态为已建售后
     if (newService.orderNumber) {
       const orderStore = useOrderStore()
       // 根据订单号查找订单
       const order = orderStore.orders.find(o => o.orderNumber === newService.orderNumber)
       if (order) {
-        // 使用订单store的createAfterSales方法更新状态
-        orderStore.createAfterSales(order.id, newService.createdBy, newService.reason)
+        // 直接更新订单状态为已建售后
+        orderStore.updateOrder(order.id, {
+          status: 'after_sales_created' as any,
+          afterSalesReason: newService.reason,
+          afterSalesTime: newService.createTime
+        })
         console.log(`订单 ${newService.orderNumber} 状态已更新为已建售后`)
       }
     }
-    
+
     // 如果是退货类型，更新客户的退货统计
     if (newService.serviceType === 'return' && newService.customerId) {
-      const customerStore = useCustomerStore()
+      const customerStore = getCustomerStore()
       const customer = customerStore.customers.find(c => c.id === newService.customerId)
       if (customer) {
         customerStore.updateCustomerStats(newService.customerId, {
@@ -202,7 +211,7 @@ export const useServiceStore = createPersistentStore('service', () => {
         })
       }
     }
-    
+
     // 触发售后服务更新事件
     window.dispatchEvent(new CustomEvent('after-sales-update', {
       detail: {
@@ -212,7 +221,7 @@ export const useServiceStore = createPersistentStore('service', () => {
         service: newService
       }
     }))
-    
+
     return newService
   }
 
@@ -220,7 +229,7 @@ export const useServiceStore = createPersistentStore('service', () => {
   const updateServiceStatus = async (serviceId: string, status: AfterSalesService['status'], remark?: string): Promise<void> => {
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     const service = services.value.find(s => s.id === serviceId)
     if (service) {
       const previousStatus = service.status
@@ -229,9 +238,9 @@ export const useServiceStore = createPersistentStore('service', () => {
       if (remark) {
         service.remark = remark
       }
-      
+
       // 如果售后从处理中变为已解决或已关闭，且是退货类型，可能需要更新客户统计
-      if ((status === 'resolved' || status === 'closed') && 
+      if ((status === 'resolved' || status === 'closed') &&
           previousStatus !== 'resolved' && previousStatus !== 'closed' &&
           service.serviceType === 'return' && service.customerId) {
         // 这里可以根据业务需求决定是否需要调整客户统计
@@ -241,7 +250,7 @@ export const useServiceStore = createPersistentStore('service', () => {
           lastServiceDate: service.updateTime
         })
       }
-      
+
       // 触发售后服务状态更新事件
       window.dispatchEvent(new CustomEvent('service-status-update', {
         detail: {
@@ -259,7 +268,7 @@ export const useServiceStore = createPersistentStore('service', () => {
   const createService = async (serviceData: Omit<AfterSalesService, 'id' | 'serviceNumber' | 'createTime'>) => {
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     const newService = addService(serviceData)
     return newService
   }
@@ -268,7 +277,7 @@ export const useServiceStore = createPersistentStore('service', () => {
   const getServicesByStatus = async (status: string) => {
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 300))
-    
+
     return services.value.filter(service => service.status === status)
   }
 
@@ -276,7 +285,7 @@ export const useServiceStore = createPersistentStore('service', () => {
   const loadAfterSalesServices = async () => {
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     // 这里可以从API获取最新数据，目前使用现有的services数据
     return services.value
   }

@@ -94,8 +94,33 @@
     >
       <!-- 物流单号列 -->
       <template #column-trackingNo="{ row }">
-        <el-link type="primary" @click="handleViewDetail(row)">
-          {{ row.trackingNo }}
+        <div v-if="row.trackingNo" class="tracking-no-wrapper">
+          <el-link type="primary" @click="handleTrackingNoClick(row.trackingNo)">
+            {{ row.trackingNo }}
+          </el-link>
+          <el-button
+            size="small"
+            type="text"
+            @click.stop="copyTrackingNo(row.trackingNo)"
+            class="copy-btn"
+          >
+            <el-icon><CopyDocument /></el-icon>
+          </el-button>
+        </div>
+        <span v-else class="no-data">未发货</span>
+      </template>
+
+      <!-- 订单号列 -->
+      <template #column-orderNo="{ row }">
+        <el-link type="primary" @click="handleOrderClick(row.orderId)">
+          {{ row.orderNo }}
+        </el-link>
+      </template>
+
+      <!-- 客户姓名列 -->
+      <template #column-customerName="{ row }">
+        <el-link type="primary" @click="handleCustomerClick(row.customerId)">
+          {{ row.customerName }}
         </el-link>
       </template>
 
@@ -140,14 +165,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, RefreshLeft } from '@element-plus/icons-vue'
+import { Search, Refresh, RefreshLeft, CopyDocument } from '@element-plus/icons-vue'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
 import { createSafeNavigator } from '@/utils/navigation'
+import { eventBus, EventNames } from '@/utils/eventBus'
 
 interface LogisticsItem {
   id: number
@@ -195,49 +221,52 @@ const tableColumns = computed(() => [
   {
     prop: 'trackingNo',
     label: '物流单号',
-    width: 180,
-    visible: true
+    minWidth: 160,
+    visible: true,
+    slot: true
   },
   {
     prop: 'orderNo',
     label: '订单号',
-    width: 150,
-    visible: true
+    minWidth: 140,
+    visible: true,
+    slot: true
   },
   {
     prop: 'customerName',
     label: '客户姓名',
-    width: 120,
-    visible: true
+    minWidth: 100,
+    visible: true,
+    slot: true
   },
   {
     prop: 'company',
     label: '物流公司',
-    width: 120,
+    minWidth: 100,
     visible: true
   },
   {
     prop: 'status',
     label: '状态',
-    width: 100,
+    minWidth: 90,
     visible: true
   },
   {
     prop: 'destination',
     label: '目的地',
-    width: 150,
+    minWidth: 120,
     visible: true
   },
   {
     prop: 'shipDate',
     label: '发货时间',
-    width: 180,
+    minWidth: 150,
     visible: true
   },
   {
     prop: 'estimatedDate',
     label: '预计送达',
-    width: 180,
+    minWidth: 150,
     visible: true
   }
 ])
@@ -254,28 +283,52 @@ const getCompanyName = (code: string) => {
   return companies[code] || code
 }
 
+// 获取状态文本
+const getStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    // 订单状态
+    pending_transfer: '待流转',
+    pending_audit: '待审核',
+    audit_rejected: '审核拒绝',
+    pending_shipment: '待发货',
+    shipped: '已发货',
+    delivered: '已签收',
+    logistics_returned: '物流部退回',
+    logistics_cancelled: '物流部取消',
+    package_exception: '包裹异常',
+    rejected: '拒收',
+    rejected_returned: '拒收已退回',
+    after_sales_created: '已建售后',
+    cancelled: '已取消',
+    // 物流状态
+    pending: '待发货',
+    picked_up: '已揽收',
+    in_transit: '运输中',
+    out_for_delivery: '派送中',
+    exception: '异常',
+    returned: '已退回',
+    refunded: '退货退款',
+    abnormal: '状态异常'
+  }
+  return statusMap[status] || status
+}
+
 // 获取状态类型
 const getStatusType = (status: string) => {
   const types: Record<string, string> = {
     pending: 'info',
-    shipped: 'primary',
+    shipped: 'success',
+    picked_up: 'primary',
     in_transit: 'warning',
+    out_for_delivery: 'warning',
     delivered: 'success',
-    exception: 'danger'
+    rejected: 'danger',
+    rejected_returned: 'warning',
+    exception: 'danger',
+    abnormal: 'danger',
+    package_exception: 'danger'
   }
   return types[status] || 'info'
-}
-
-// 获取状态文本
-const getStatusText = (status: string) => {
-  const texts: Record<string, string> = {
-    pending: '待发货',
-    shipped: '已发货',
-    in_transit: '运输中',
-    delivered: '已送达',
-    exception: '异常'
-  }
-  return texts[status] || status
 }
 
 // 搜索
@@ -301,97 +354,74 @@ const handleRefresh = () => {
   loadData()
 }
 
-// 数据范围控制函数
-const applyDataScopeControl = (orderList: any[]) => {
-  const currentUser = userStore.currentUser
-  if (!currentUser) return []
-
-  // 超级管理员可以查看所有订单
-  if (currentUser.role === 'admin') {
-    return orderList
-  }
-
-  // 部门负责人可以查看本部门所有订单
-  if (currentUser.role === 'department_manager') {
-    return orderList.filter(order => {
-      const orderCreator = userStore.getUserById(order.createdBy)
-      return orderCreator?.department === currentUser.department
-    })
-  }
-
-  // 销售员只能查看自己创建的订单
-  if (currentUser.role === 'sales_staff') {
-    return orderList.filter(order => order.createdBy === currentUser.id)
-  }
-
-  // 客服只能查看自己处理的订单
-  if (currentUser.role === 'customer_service') {
-    return orderList.filter(order => order.servicePersonId === currentUser.id)
-  }
-
-  // 其他角色默认只能查看自己创建的订单
-  return orderList.filter(order => order.createdBy === currentUser.id)
-}
-
 // 加载数据
 const loadData = async () => {
   loading.value = true
   try {
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
-    
-    // 从订单store获取已发货且有快递单号的订单，应用数据范围控制
-    const allOrders = applyDataScopeControl(orderStore.orders)
-    const shippedOrders = allOrders.filter(order => 
-      order.status === 'shipped' && 
-      order.expressNo && 
+
+    // 【修复】统一使用 orderStore.getOrders() 获取经过权限过滤的订单
+    const allOrders = orderStore.getOrders()
+    const shippedOrders = allOrders.filter(order =>
+      (order.status === 'shipped' || order.status === 'delivered') &&
+      (order.trackingNumber || order.expressNo) &&
       order.expressCompany
     )
-    
+
     // 转换为物流列表格式
     let logisticsData = shippedOrders.map(order => ({
       id: parseInt(order.id),
-      trackingNo: order.expressNo,
+      orderId: order.id,
+      customerId: order.customerId,
+      trackingNo: order.trackingNumber || '',
       orderNo: order.orderNumber,
       customerName: order.customerName,
-      company: order.expressCompany,
+      company: order.expressCompany || '',
       status: 'shipped' as const,
-      destination: order.address,
-      shipDate: order.shipTime || new Date().toISOString(),
-      estimatedDate: order.estimatedDeliveryTime || ''
+      destination: order.receiverAddress || '',
+      shipDate: order.shippingTime || new Date().toISOString(),
+      estimatedDate: ''
     }))
-    
+
     // 应用搜索过滤
     if (searchForm.trackingNo) {
-      logisticsData = logisticsData.filter(item => 
+      logisticsData = logisticsData.filter(item =>
         item.trackingNo.includes(searchForm.trackingNo)
       )
     }
-    
+
     if (searchForm.orderNo) {
-      logisticsData = logisticsData.filter(item => 
+      logisticsData = logisticsData.filter(item =>
         item.orderNo.includes(searchForm.orderNo)
       )
     }
-    
+
     if (searchForm.status) {
-      logisticsData = logisticsData.filter(item => 
+      logisticsData = logisticsData.filter(item =>
         item.status === searchForm.status
       )
     }
-    
+
     if (searchForm.company) {
-      logisticsData = logisticsData.filter(item => 
+      logisticsData = logisticsData.filter(item =>
         item.company === searchForm.company
       )
     }
-    
+
+    // 按发货时间倒序排序（最新的在上面）
+    logisticsData.sort((a, b) => {
+      const timeA = new Date(a.shipDate || 0).getTime()
+      const timeB = new Date(b.shipDate || 0).getTime()
+      return timeB - timeA // 倒序：最新的在上面
+    })
+
     // 分页处理
     const startIndex = (pagination.page - 1) * pagination.size
     const endIndex = startIndex + pagination.size
     tableData.value = logisticsData.slice(startIndex, endIndex)
     total.value = logisticsData.length
-    
+
   } catch (error) {
     ElMessage.error('加载数据失败')
     console.error('Load data error:', error)
@@ -433,25 +463,168 @@ const handleViewDetail = (row: LogisticsItem) => {
   safeNavigator.push(`/logistics/detail/${row.id}`)
 }
 
+// 点击物流单号：复制并提示选择跳转网站
+const handleTrackingNoClick = async (trackingNo: string) => {
+  // 复制物流单号
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(trackingNo)
+      ElMessage.success('物流单号已复制到剪贴板')
+    } else {
+      // 降级方案：使用 document.execCommand
+      const textArea = document.createElement('textarea')
+      textArea.value = trackingNo
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      textArea.style.top = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+
+      const result = document.execCommand('copy')
+      document.body.removeChild(textArea)
+
+      if (result) {
+        ElMessage.success('物流单号已复制到剪贴板')
+      } else {
+        ElMessage.error('复制失败，请手动复制')
+        return
+      }
+    }
+  } catch (error) {
+    console.error('复制失败:', error)
+    ElMessage.error('复制失败，请手动复制')
+    return
+  }
+
+  // 提示选择跳转网站
+  ElMessageBox.confirm(
+    '请选择要跳转的查询网站',
+    '选择查询网站',
+    {
+      confirmButtonText: '顺丰官网',
+      cancelButtonText: '快递100',
+      distinguishCancelAndClose: true,
+      type: 'info'
+    }
+  ).then(() => {
+    // 点击确认，跳转顺丰官网
+    window.open('https://www.sf-express.com/chn/sc/waybill/list', '_blank')
+  }).catch((action) => {
+    if (action === 'cancel') {
+      // 点击取消，跳转快递100
+      window.open('https://www.kuaidi100.com/', '_blank')
+    }
+  })
+}
+
+// 复制物流单号（用于复制按钮）
+const copyTrackingNo = async (trackingNo: string) => {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(trackingNo)
+      ElMessage.success('物流单号已复制到剪贴板')
+    } else {
+      // 降级方案：使用 document.execCommand
+      const textArea = document.createElement('textarea')
+      textArea.value = trackingNo
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      textArea.style.top = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+
+      const result = document.execCommand('copy')
+      document.body.removeChild(textArea)
+
+      if (result) {
+        ElMessage.success('物流单号已复制到剪贴板')
+      } else {
+        ElMessage.error('复制失败，请手动复制')
+      }
+    }
+  } catch (error) {
+    console.error('复制失败:', error)
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
+// 点击订单号：跳转到订单详情
+const handleOrderClick = (orderId: string) => {
+  if (orderId) {
+    router.push(`/order/detail/${orderId}`)
+  }
+}
+
+// 点击客户姓名：跳转到客户详情
+const handleCustomerClick = (customerId: string) => {
+  if (customerId) {
+    router.push(`/customer/detail/${customerId}`)
+  }
+}
+
 // 组件挂载
+// 事件处理函数
+const handleOrderShipped = () => {
+  console.log('[物流列表] 收到订单发货事件')
+  loadData()
+}
+
+const handleOrderCancelled = () => {
+  console.log('[物流列表] 收到订单取消事件')
+  loadData()
+}
+
+const handleOrderReturned = () => {
+  console.log('[物流列表] 收到订单退回事件')
+  loadData()
+}
+
+const handleRefreshLogisticsList = () => {
+  console.log('[物流列表] 收到刷新列表事件')
+  loadData()
+}
+
 onMounted(() => {
   loadData()
-  
+
   // 监听订单状态变化，当有新的发货订单时自动刷新列表
   orderStore.setupLogisticsEventListener()
   orderStore.startLogisticsAutoSync()
-  
+
   // 监听订单变化
   orderStore.$subscribe((mutation, state) => {
     // 当订单状态变化时，重新加载物流数据
-    if (mutation.events.some(event => 
-      event.key === 'status' || 
-      event.key === 'expressNo' || 
+    if (mutation.events.some(event =>
+      event.key === 'status' ||
+      event.key === 'expressNo' ||
       event.key === 'expressCompany'
     )) {
       loadData()
     }
   })
+
+  // 监听订单事件总线 - 实现订单状态同步
+  eventBus.on(EventNames.ORDER_SHIPPED, handleOrderShipped)
+  eventBus.on(EventNames.ORDER_CANCELLED, handleOrderCancelled)
+  eventBus.on(EventNames.ORDER_RETURNED, handleOrderReturned)
+  eventBus.on(EventNames.REFRESH_LOGISTICS_LIST, handleRefreshLogisticsList)
+  eventBus.on(EventNames.ORDER_STATUS_CHANGED, handleRefreshLogisticsList)
+  console.log('[物流列表] 事件监听器已注册')
+})
+
+onUnmounted(() => {
+  // 停止物流自动同步
+  orderStore.stopLogisticsAutoSync()
+
+  // 清理订单事件总线监听
+  eventBus.off(EventNames.ORDER_SHIPPED, handleOrderShipped)
+  eventBus.off(EventNames.ORDER_CANCELLED, handleOrderCancelled)
+  eventBus.off(EventNames.ORDER_RETURNED, handleOrderReturned)
+  eventBus.off(EventNames.REFRESH_LOGISTICS_LIST, handleRefreshLogisticsList)
+  eventBus.off(EventNames.ORDER_STATUS_CHANGED, handleRefreshLogisticsList)
+  console.log('[物流列表] 事件监听器已清理')
 })
 </script>
 
@@ -511,20 +684,41 @@ onMounted(() => {
   .logistics-list {
     padding: 10px;
   }
-  
+
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
   }
-  
+
   .search-form {
     flex-direction: column;
   }
-  
+
   .search-form .el-form-item {
     margin-right: 0;
     margin-bottom: 10px;
   }
+}
+
+.tracking-no-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copy-btn {
+  padding: 0;
+  margin-left: 4px;
+  color: #909399;
+  transition: color 0.3s;
+}
+
+.copy-btn:hover {
+  color: #409eff;
+}
+
+.no-data {
+  color: #909399;
 }
 </style>

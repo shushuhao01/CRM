@@ -250,7 +250,7 @@
           <el-table-column prop="customerPhone" label="客户电话" width="140">
             <template #default="{ row }">
               <div class="phone-info">
-                <span>{{ maskPhone(row.customerPhone) }}</span>
+                <span>{{ displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE) }}</span>
                 <el-button
                   text
                   type="primary"
@@ -415,7 +415,7 @@
                   {{ currentRecord.customerName || '未知客户' }}
                 </el-descriptions-item>
                 <el-descriptions-item label="客户电话">
-                  {{ currentRecord.customerPhone }}
+                  {{ displaySensitiveInfoNew(currentRecord.customerPhone, SensitiveInfoType.PHONE) }}
                 </el-descriptions-item>
                 <el-descriptions-item label="通话人员">
                   {{ currentRecord.userName }}
@@ -556,6 +556,8 @@ import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import type { CallRecord } from '@/api/call'
 import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 import {
   Headset,
   Download,
@@ -870,6 +872,11 @@ const deleteRecord = async (record: CallRecord) => {
 }
 
 const batchExport = async () => {
+  if (!selectedRecords.value || selectedRecords.value.length === 0) {
+    ElMessage.warning('请先选择要导出的记录')
+    return
+  }
+  
   try {
     const ids = selectedRecords.value.map(record => record.id)
     await callStore.exportCallRecords({ recordIds: ids })
@@ -881,6 +888,11 @@ const batchExport = async () => {
 }
 
 const batchDelete = async () => {
+  if (!selectedRecords.value || selectedRecords.value.length === 0) {
+    ElMessage.warning('请先选择要删除的记录')
+    return
+  }
+  
   try {
     await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedRecords.value.length} 条记录吗？`,
