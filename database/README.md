@@ -11,7 +11,7 @@
 - **更新时间**：2024-11-23
 - **说明**：完整的数据库结构和初始化数据
 - **包含内容**：
-  - 15个核心数据表
+  - 19个核心数据表
   - 5个预设用户账号
   - 3个默认部门
   - 5个默认角色
@@ -90,12 +90,19 @@
 - id: 订单ID (VARCHAR(50))
 - order_number: 订单号 (唯一)
 - customer_id: 客户ID
+- service_wechat: 客服微信号 ✨新增
+- order_source: 订单来源 ✨新增
 - products: 商品列表 (JSON)
 - total_amount: 订单总金额
+- deposit_amount: 定金金额 ✨新增
+- deposit_screenshots: 定金截图 (JSON) ✨新增
 - final_amount: 实付金额
 - status: 订单状态
 - payment_status: 支付状态
 - shipping_address: 收货地址
+- express_company: 快递公司 ✨新增
+- mark_type: 订单标记类型 ✨新增
+- custom_fields: 自定义字段 (JSON) ✨新增
 ```
 
 ### 2. 业务表（5个）
@@ -116,6 +123,82 @@
 - **customer_tags** - 客户标签表
 - **customer_groups** - 客户分组表
 - **system_configs** - 系统配置表
+
+### 5. 通话管理表（2个）✨新增
+
+#### call_records - 通话记录表
+```sql
+- id: 通话ID (VARCHAR(50))
+- customer_id: 客户ID
+- customer_name: 客户姓名
+- customer_phone: 客户电话
+- call_type: 通话类型 (outbound/inbound)
+- call_status: 通话状态 (connected/missed/busy/failed/rejected)
+- start_time: 开始时间
+- end_time: 结束时间
+- duration: 通话时长(秒)
+- recording_url: 录音文件URL
+- notes: 通话备注
+- follow_up_required: 是否需要跟进
+- user_id: 操作员ID
+- user_name: 操作员姓名
+- department: 所属部门
+```
+
+#### follow_up_records - 跟进记录表
+```sql
+- id: 跟进ID (VARCHAR(50))
+- call_id: 关联通话ID
+- customer_id: 客户ID
+- customer_name: 客户姓名
+- follow_up_type: 跟进方式 (call/visit/email/message)
+- content: 跟进内容
+- next_follow_up_date: 下次跟进时间
+- priority: 优先级 (low/medium/high/urgent)
+- status: 状态 (pending/completed/cancelled)
+- user_id: 跟进人ID
+- user_name: 跟进人姓名
+```
+
+### 6. 短信管理表（2个）✨新增
+
+#### sms_templates - 短信模板表
+```sql
+- id: 模板ID (VARCHAR(50))
+- name: 模板名称
+- category: 模板分类
+- content: 模板内容
+- variables: 变量列表 (JSON)
+- description: 模板描述
+- applicant: 申请人ID
+- applicant_name: 申请人姓名
+- applicant_dept: 申请人部门
+- status: 审核状态 (pending/approved/rejected)
+- approved_by: 审核人ID
+- approved_at: 审核时间
+- is_system: 是否系统模板
+```
+
+#### sms_records - 短信发送记录表
+```sql
+- id: 记录ID (VARCHAR(50))
+- template_id: 模板ID
+- template_name: 模板名称
+- content: 短信内容
+- recipients: 接收人列表 (JSON)
+- recipient_count: 接收人数量
+- success_count: 成功数量
+- fail_count: 失败数量
+- status: 发送状态 (pending/sending/completed/failed)
+- send_details: 发送详情 (JSON)
+- applicant: 申请人ID
+- applicant_name: 申请人姓名
+- applicant_dept: 申请人部门
+- approved_by: 审核人ID
+- approved_at: 审核时间
+- sent_at: 发送时间
+- remark: 备注
+```
 
 ---
 

@@ -189,16 +189,23 @@ CREATE TABLE `orders` (
   `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
   `customer_name` VARCHAR(100) COMMENT '客户姓名',
   `customer_phone` VARCHAR(20) COMMENT '客户电话',
+  `service_wechat` VARCHAR(100) COMMENT '客服微信号',
+  `order_source` VARCHAR(50) COMMENT '订单来源',
   `products` JSON COMMENT '商品列表',
   `total_amount` DECIMAL(10,2) NOT NULL COMMENT '订单总金额',
   `discount_amount` DECIMAL(10,2) DEFAULT 0.00 COMMENT '优惠金额',
   `final_amount` DECIMAL(10,2) NOT NULL COMMENT '实付金额',
+  `deposit_amount` DECIMAL(10,2) DEFAULT 0.00 COMMENT '定金金额',
+  `deposit_screenshots` JSON COMMENT '定金截图',
   `status` VARCHAR(20) DEFAULT 'pending' COMMENT '订单状态',
   `payment_status` VARCHAR(20) DEFAULT 'unpaid' COMMENT '支付状态',
   `payment_method` VARCHAR(50) COMMENT '支付方式',
   `shipping_address` TEXT COMMENT '收货地址',
   `shipping_phone` VARCHAR(20) COMMENT '收货电话',
   `shipping_name` VARCHAR(50) COMMENT '收货人',
+  `express_company` VARCHAR(50) COMMENT '快递公司',
+  `mark_type` VARCHAR(20) DEFAULT 'normal' COMMENT '订单标记类型',
+  `custom_fields` JSON COMMENT '自定义字段',
   `remark` TEXT COMMENT '订单备注',
   `operator_id` VARCHAR(50) COMMENT '操作员ID',
   `operator_name` VARCHAR(50) COMMENT '操作员姓名',
@@ -210,6 +217,8 @@ CREATE TABLE `orders` (
   INDEX `idx_customer` (`customer_id`),
   INDEX `idx_status` (`status`),
   INDEX `idx_payment_status` (`payment_status`),
+  INDEX `idx_order_source` (`order_source`),
+  INDEX `idx_mark_type` (`mark_type`),
   INDEX `idx_created_by` (`created_by`),
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单表';
@@ -343,6 +352,110 @@ CREATE TABLE `system_configs` (
   INDEX `idx_key` (`key`),
   INDEX `idx_public` (`is_public`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置表';
+
+-- 16. 通话记录表
+DROP TABLE IF EXISTS `call_records`;
+CREATE TABLE `call_records` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '通话ID',
+  `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
+  `customer_name` VARCHAR(100) COMMENT '客户姓名',
+  `customer_phone` VARCHAR(20) COMMENT '客户电话',
+  `call_type` ENUM('outbound', 'inbound') NOT NULL COMMENT '通话类型',
+  `call_status` ENUM('connected', 'missed', 'busy', 'failed', 'rejected') NOT NULL COMMENT '通话状态',
+  `start_time` TIMESTAMP NOT NULL COMMENT '开始时间',
+  `end_time` TIMESTAMP NULL COMMENT '结束时间',
+  `duration` INT DEFAULT 0 COMMENT '通话时长(秒)',
+  `recording_url` VARCHAR(500) COMMENT '录音文件URL',
+  `notes` TEXT COMMENT '通话备注',
+  `follow_up_required` BOOLEAN DEFAULT FALSE COMMENT '是否需要跟进',
+  `user_id` VARCHAR(50) NOT NULL COMMENT '操作员ID',
+  `user_name` VARCHAR(50) COMMENT '操作员姓名',
+  `department` VARCHAR(100) COMMENT '所属部门',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_customer` (`customer_id`),
+  INDEX `idx_user` (`user_id`),
+  INDEX `idx_call_type` (`call_type`),
+  INDEX `idx_call_status` (`call_status`),
+  INDEX `idx_start_time` (`start_time`),
+  INDEX `idx_follow_up` (`follow_up_required`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通话记录表';
+
+-- 17. 跟进记录表
+DROP TABLE IF EXISTS `follow_up_records`;
+CREATE TABLE `follow_up_records` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '跟进ID',
+  `call_id` VARCHAR(50) COMMENT '关联通话ID',
+  `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
+  `customer_name` VARCHAR(100) COMMENT '客户姓名',
+  `follow_up_type` ENUM('call', 'visit', 'email', 'message') NOT NULL COMMENT '跟进方式',
+  `content` TEXT NOT NULL COMMENT '跟进内容',
+  `next_follow_up_date` TIMESTAMP NULL COMMENT '下次跟进时间',
+  `priority` ENUM('low', 'medium', 'high', 'urgent') DEFAULT 'medium' COMMENT '优先级',
+  `status` ENUM('pending', 'completed', 'cancelled') DEFAULT 'pending' COMMENT '状态',
+  `user_id` VARCHAR(50) NOT NULL COMMENT '跟进人ID',
+  `user_name` VARCHAR(50) COMMENT '跟进人姓名',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_call` (`call_id`),
+  INDEX `idx_customer` (`customer_id`),
+  INDEX `idx_user` (`user_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_priority` (`priority`),
+  INDEX `idx_next_follow_up` (`next_follow_up_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='跟进记录表';
+
+-- 18. 短信模板表
+DROP TABLE IF EXISTS `sms_templates`;
+CREATE TABLE `sms_templates` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '模板ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '模板名称',
+  `category` VARCHAR(50) COMMENT '模板分类',
+  `content` TEXT NOT NULL COMMENT '模板内容',
+  `variables` JSON COMMENT '变量列表',
+  `description` TEXT COMMENT '模板描述',
+  `applicant` VARCHAR(50) NOT NULL COMMENT '申请人ID',
+  `applicant_name` VARCHAR(50) COMMENT '申请人姓名',
+  `applicant_dept` VARCHAR(100) COMMENT '申请人部门',
+  `status` ENUM('pending', 'approved', 'rejected') DEFAULT 'pending' COMMENT '审核状态',
+  `approved_by` VARCHAR(50) COMMENT '审核人ID',
+  `approved_at` TIMESTAMP NULL COMMENT '审核时间',
+  `is_system` BOOLEAN DEFAULT FALSE COMMENT '是否系统模板',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_category` (`category`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_applicant` (`applicant`),
+  INDEX `idx_is_system` (`is_system`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='短信模板表';
+
+-- 19. 短信发送记录表
+DROP TABLE IF EXISTS `sms_records`;
+CREATE TABLE `sms_records` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '记录ID',
+  `template_id` VARCHAR(50) COMMENT '模板ID',
+  `template_name` VARCHAR(100) COMMENT '模板名称',
+  `content` TEXT NOT NULL COMMENT '短信内容',
+  `recipients` JSON NOT NULL COMMENT '接收人列表',
+  `recipient_count` INT DEFAULT 0 COMMENT '接收人数量',
+  `success_count` INT DEFAULT 0 COMMENT '成功数量',
+  `fail_count` INT DEFAULT 0 COMMENT '失败数量',
+  `status` ENUM('pending', 'sending', 'completed', 'failed') DEFAULT 'pending' COMMENT '发送状态',
+  `send_details` JSON COMMENT '发送详情',
+  `applicant` VARCHAR(50) NOT NULL COMMENT '申请人ID',
+  `applicant_name` VARCHAR(50) COMMENT '申请人姓名',
+  `applicant_dept` VARCHAR(100) COMMENT '申请人部门',
+  `approved_by` VARCHAR(50) COMMENT '审核人ID',
+  `approved_at` TIMESTAMP NULL COMMENT '审核时间',
+  `sent_at` TIMESTAMP NULL COMMENT '发送时间',
+  `remark` TEXT COMMENT '备注',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_template` (`template_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_applicant` (`applicant`),
+  INDEX `idx_sent_at` (`sent_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='短信发送记录表';
 
 -- =============================================
 -- 初始化数据
