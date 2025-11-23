@@ -11,7 +11,7 @@
 - **更新时间**：2024-11-23
 - **说明**：完整的数据库结构和初始化数据
 - **包含内容**：
-  - 19个核心数据表
+  - 29个核心数据表
   - 5个预设用户账号
   - 3个默认部门
   - 5个默认角色
@@ -198,6 +198,204 @@
 - approved_at: 审核时间
 - sent_at: 发送时间
 - remark: 备注
+```
+
+### 7. 消息通知表（2个）✨新增
+
+#### notifications - 消息通知表
+```sql
+- id: 通知ID (VARCHAR(50))
+- user_id: 接收用户ID
+- type: 消息类型
+- title: 消息标题
+- content: 消息内容
+- category: 消息分类
+- priority: 优先级 (low/normal/high/urgent)
+- is_read: 是否已读
+- read_at: 阅读时间
+- related_id: 关联业务ID
+- related_type: 关联业务类型
+- action_url: 操作链接
+- icon: 图标
+- color: 颜色
+```
+
+#### system_announcements - 系统公告表
+```sql
+- id: 公告ID (VARCHAR(50))
+- title: 公告标题
+- content: 公告内容
+- type: 公告类型 (system/maintenance/update/notice)
+- priority: 优先级
+- status: 状态 (draft/published/archived)
+- target_users: 目标用户 (JSON)
+- target_roles: 目标角色 (JSON)
+- target_departments: 目标部门 (JSON)
+- publish_time: 发布时间
+- expire_time: 过期时间
+- is_popup: 是否弹窗显示
+- is_top: 是否置顶
+- read_count: 阅读次数
+- attachments: 附件列表 (JSON)
+- created_by: 创建人ID
+- created_by_name: 创建人姓名
+```
+
+### 8. 订单审核表（1个）✨新增
+
+#### order_audits - 订单审核记录表
+```sql
+- id: 审核ID (VARCHAR(50))
+- order_id: 订单ID
+- order_number: 订单号
+- audit_type: 审核类型 (create/modify/cancel/return)
+- audit_status: 审核状态 (pending/approved/rejected)
+- audit_level: 审核级别
+- auditor_id: 审核人ID
+- auditor_name: 审核人姓名
+- audit_time: 审核时间
+- audit_result: 审核结果
+- audit_remark: 审核备注
+- before_data: 修改前数据 (JSON)
+- after_data: 修改后数据 (JSON)
+- applicant_id: 申请人ID
+- applicant_name: 申请人姓名
+- apply_reason: 申请原因
+- apply_time: 申请时间
+```
+
+### 9. 业绩分享表（2个）✨新增
+
+#### performance_shares - 业绩分享记录表
+```sql
+- id: 分享ID (VARCHAR(50))
+- share_number: 分享编号
+- order_id: 订单ID
+- order_number: 订单号
+- order_amount: 订单金额
+- total_share_amount: 总分享金额
+- share_count: 分享人数
+- status: 状态 (active/completed/cancelled)
+- description: 分享说明
+- created_by: 创建人ID
+- created_by_name: 创建人姓名
+- completed_at: 完成时间
+- cancelled_at: 取消时间
+```
+
+#### performance_share_members - 业绩分享成员表
+```sql
+- id: 成员ID (VARCHAR(50))
+- share_id: 分享记录ID
+- user_id: 用户ID
+- user_name: 用户姓名
+- department: 所属部门
+- share_percentage: 分享比例
+- share_amount: 分享金额
+- status: 确认状态 (pending/confirmed/rejected)
+- confirm_time: 确认时间
+- reject_reason: 拒绝原因
+```
+
+### 10. 物流扩展表（4个）✨新增
+
+#### logistics_companies - 物流公司表
+```sql
+- id: 公司ID (VARCHAR(50))
+- code: 公司代码
+- name: 公司名称
+- short_name: 公司简称
+- logo: Logo URL
+- website: 官网地址
+- tracking_url: 跟踪查询地址
+- api_url: API接口地址
+- api_key: API密钥
+- api_secret: API密钥
+- contact_phone: 联系电话
+- contact_email: 联系邮箱
+- service_area: 服务区域
+- price_info: 价格信息 (JSON)
+- status: 状态 (active/inactive)
+- sort_order: 排序
+- remark: 备注
+```
+
+#### logistics_status_history - 物流状态历史表
+```sql
+- id: 历史ID (VARCHAR(50))
+- logistics_id: 物流记录ID
+- order_id: 订单ID
+- order_number: 订单号
+- tracking_number: 物流单号
+- old_status: 原状态
+- new_status: 新状态
+- status_text: 状态描述
+- location: 当前位置
+- operator: 操作人
+- operator_name: 操作人姓名
+- update_source: 更新来源 (manual/auto/api)
+- remark: 备注
+```
+
+#### logistics_exceptions - 物流异常记录表
+```sql
+- id: 异常ID (VARCHAR(50))
+- logistics_id: 物流记录ID
+- order_id: 订单ID
+- order_number: 订单号
+- tracking_number: 物流单号
+- exception_type: 异常类型
+- exception_desc: 异常描述
+- exception_time: 异常时间
+- status: 处理状态 (pending/processing/resolved/closed)
+- handler_id: 处理人ID
+- handler_name: 处理人姓名
+- handle_time: 处理时间
+- handle_result: 处理结果
+- solution: 解决方案
+- images: 相关图片 (JSON)
+```
+
+#### logistics_todos - 物流待办事项表
+```sql
+- id: 待办ID (VARCHAR(50))
+- logistics_id: 物流记录ID
+- order_id: 订单ID
+- order_number: 订单号
+- tracking_number: 物流单号
+- todo_type: 待办类型
+- todo_title: 待办标题
+- todo_content: 待办内容
+- priority: 优先级 (low/normal/high/urgent)
+- status: 状态 (pending/processing/completed/cancelled)
+- assigned_to: 负责人ID
+- assigned_to_name: 负责人姓名
+- due_date: 截止时间
+- remind_time: 提醒时间
+- completed_time: 完成时间
+- remark: 备注
+- created_by: 创建人ID
+- created_by_name: 创建人姓名
+```
+
+### 11. 订单配置表（1个）✨新增
+
+#### order_field_configs - 订单字段配置表
+```sql
+- id: 配置ID (VARCHAR(50))
+- field_key: 字段键名
+- field_name: 字段名称
+- field_type: 字段类型 (text/number/date/datetime/select/radio/checkbox)
+- field_options: 字段选项 (JSON)
+- default_value: 默认值
+- placeholder: 占位符
+- is_required: 是否必填
+- is_visible: 是否可见
+- show_in_list: 列表显示
+- show_in_detail: 详情显示
+- sort_order: 排序
+- validation_rules: 验证规则 (JSON)
+- description: 字段描述
 ```
 
 ---
