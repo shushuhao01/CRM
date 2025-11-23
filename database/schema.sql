@@ -457,6 +457,281 @@ CREATE TABLE `sms_records` (
   INDEX `idx_sent_at` (`sent_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='短信发送记录表';
 
+-- 20. 消息通知表
+DROP TABLE IF EXISTS `notifications`;
+CREATE TABLE `notifications` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '通知ID',
+  `user_id` VARCHAR(50) NOT NULL COMMENT '接收用户ID',
+  `type` VARCHAR(50) NOT NULL COMMENT '消息类型',
+  `title` VARCHAR(200) NOT NULL COMMENT '消息标题',
+  `content` TEXT NOT NULL COMMENT '消息内容',
+  `category` VARCHAR(50) COMMENT '消息分类',
+  `priority` ENUM('low', 'normal', 'high', 'urgent') DEFAULT 'normal' COMMENT '优先级',
+  `is_read` BOOLEAN DEFAULT FALSE COMMENT '是否已读',
+  `read_at` TIMESTAMP NULL COMMENT '阅读时间',
+  `related_id` VARCHAR(50) COMMENT '关联业务ID',
+  `related_type` VARCHAR(50) COMMENT '关联业务类型',
+  `action_url` VARCHAR(500) COMMENT '操作链接',
+  `icon` VARCHAR(50) COMMENT '图标',
+  `color` VARCHAR(20) COMMENT '颜色',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_user` (`user_id`),
+  INDEX `idx_type` (`type`),
+  INDEX `idx_category` (`category`),
+  INDEX `idx_is_read` (`is_read`),
+  INDEX `idx_priority` (`priority`),
+  INDEX `idx_related` (`related_type`, `related_id`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息通知表';
+
+-- 21. 系统公告表
+DROP TABLE IF EXISTS `system_announcements`;
+CREATE TABLE `system_announcements` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '公告ID',
+  `title` VARCHAR(200) NOT NULL COMMENT '公告标题',
+  `content` TEXT NOT NULL COMMENT '公告内容',
+  `type` ENUM('system', 'maintenance', 'update', 'notice') DEFAULT 'notice' COMMENT '公告类型',
+  `priority` ENUM('low', 'normal', 'high', 'urgent') DEFAULT 'normal' COMMENT '优先级',
+  `status` ENUM('draft', 'published', 'archived') DEFAULT 'draft' COMMENT '状态',
+  `target_users` JSON COMMENT '目标用户（为空表示全员）',
+  `target_roles` JSON COMMENT '目标角色',
+  `target_departments` JSON COMMENT '目标部门',
+  `publish_time` TIMESTAMP NULL COMMENT '发布时间',
+  `expire_time` TIMESTAMP NULL COMMENT '过期时间',
+  `is_popup` BOOLEAN DEFAULT FALSE COMMENT '是否弹窗显示',
+  `is_top` BOOLEAN DEFAULT FALSE COMMENT '是否置顶',
+  `read_count` INT DEFAULT 0 COMMENT '阅读次数',
+  `attachments` JSON COMMENT '附件列表',
+  `created_by` VARCHAR(50) NOT NULL COMMENT '创建人ID',
+  `created_by_name` VARCHAR(50) COMMENT '创建人姓名',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_type` (`type`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_priority` (`priority`),
+  INDEX `idx_publish_time` (`publish_time`),
+  INDEX `idx_is_top` (`is_top`),
+  INDEX `idx_created_by` (`created_by`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统公告表';
+
+-- 22. 订单审核记录表
+DROP TABLE IF EXISTS `order_audits`;
+CREATE TABLE `order_audits` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '审核ID',
+  `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID',
+  `order_number` VARCHAR(50) NOT NULL COMMENT '订单号',
+  `audit_type` ENUM('create', 'modify', 'cancel', 'return') DEFAULT 'create' COMMENT '审核类型',
+  `audit_status` ENUM('pending', 'approved', 'rejected') DEFAULT 'pending' COMMENT '审核状态',
+  `audit_level` INT DEFAULT 1 COMMENT '审核级别',
+  `auditor_id` VARCHAR(50) COMMENT '审核人ID',
+  `auditor_name` VARCHAR(50) COMMENT '审核人姓名',
+  `audit_time` TIMESTAMP NULL COMMENT '审核时间',
+  `audit_result` VARCHAR(20) COMMENT '审核结果',
+  `audit_remark` TEXT COMMENT '审核备注',
+  `before_data` JSON COMMENT '修改前数据',
+  `after_data` JSON COMMENT '修改后数据',
+  `applicant_id` VARCHAR(50) NOT NULL COMMENT '申请人ID',
+  `applicant_name` VARCHAR(50) COMMENT '申请人姓名',
+  `apply_reason` TEXT COMMENT '申请原因',
+  `apply_time` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '申请时间',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_order` (`order_id`),
+  INDEX `idx_order_number` (`order_number`),
+  INDEX `idx_audit_type` (`audit_type`),
+  INDEX `idx_audit_status` (`audit_status`),
+  INDEX `idx_auditor` (`auditor_id`),
+  INDEX `idx_applicant` (`applicant_id`),
+  INDEX `idx_apply_time` (`apply_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单审核记录表';
+
+-- 23. 业绩分享记录表
+DROP TABLE IF EXISTS `performance_shares`;
+CREATE TABLE `performance_shares` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '分享ID',
+  `share_number` VARCHAR(50) UNIQUE NOT NULL COMMENT '分享编号',
+  `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID',
+  `order_number` VARCHAR(50) NOT NULL COMMENT '订单号',
+  `order_amount` DECIMAL(10,2) NOT NULL COMMENT '订单金额',
+  `total_share_amount` DECIMAL(10,2) NOT NULL COMMENT '总分享金额',
+  `share_count` INT DEFAULT 0 COMMENT '分享人数',
+  `status` ENUM('active', 'completed', 'cancelled') DEFAULT 'active' COMMENT '状态',
+  `description` TEXT COMMENT '分享说明',
+  `created_by` VARCHAR(50) NOT NULL COMMENT '创建人ID',
+  `created_by_name` VARCHAR(50) COMMENT '创建人姓名',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `completed_at` TIMESTAMP NULL COMMENT '完成时间',
+  `cancelled_at` TIMESTAMP NULL COMMENT '取消时间',
+  INDEX `idx_share_number` (`share_number`),
+  INDEX `idx_order` (`order_id`),
+  INDEX `idx_order_number` (`order_number`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_created_by` (`created_by`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='业绩分享记录表';
+
+-- 24. 业绩分享成员表
+DROP TABLE IF EXISTS `performance_share_members`;
+CREATE TABLE `performance_share_members` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '成员ID',
+  `share_id` VARCHAR(50) NOT NULL COMMENT '分享记录ID',
+  `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
+  `user_name` VARCHAR(50) NOT NULL COMMENT '用户姓名',
+  `department` VARCHAR(100) COMMENT '所属部门',
+  `share_percentage` DECIMAL(5,2) NOT NULL COMMENT '分享比例',
+  `share_amount` DECIMAL(10,2) NOT NULL COMMENT '分享金额',
+  `status` ENUM('pending', 'confirmed', 'rejected') DEFAULT 'pending' COMMENT '确认状态',
+  `confirm_time` TIMESTAMP NULL COMMENT '确认时间',
+  `reject_reason` TEXT COMMENT '拒绝原因',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_share` (`share_id`),
+  INDEX `idx_user` (`user_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_created_at` (`created_at`),
+  FOREIGN KEY (`share_id`) REFERENCES `performance_shares`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='业绩分享成员表';
+
+-- 25. 物流公司表
+DROP TABLE IF EXISTS `logistics_companies`;
+CREATE TABLE `logistics_companies` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '公司ID',
+  `code` VARCHAR(50) UNIQUE NOT NULL COMMENT '公司代码',
+  `name` VARCHAR(100) NOT NULL COMMENT '公司名称',
+  `short_name` VARCHAR(50) COMMENT '公司简称',
+  `logo` VARCHAR(500) COMMENT 'Logo URL',
+  `website` VARCHAR(200) COMMENT '官网地址',
+  `tracking_url` VARCHAR(500) COMMENT '跟踪查询地址',
+  `api_url` VARCHAR(500) COMMENT 'API接口地址',
+  `api_key` VARCHAR(200) COMMENT 'API密钥',
+  `api_secret` VARCHAR(200) COMMENT 'API密钥',
+  `contact_phone` VARCHAR(50) COMMENT '联系电话',
+  `contact_email` VARCHAR(100) COMMENT '联系邮箱',
+  `service_area` TEXT COMMENT '服务区域',
+  `price_info` JSON COMMENT '价格信息',
+  `status` ENUM('active', 'inactive') DEFAULT 'active' COMMENT '状态',
+  `sort_order` INT DEFAULT 0 COMMENT '排序',
+  `remark` TEXT COMMENT '备注',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_code` (`code`),
+  INDEX `idx_name` (`name`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_sort_order` (`sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流公司表';
+
+-- 26. 物流状态历史表
+DROP TABLE IF EXISTS `logistics_status_history`;
+CREATE TABLE `logistics_status_history` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '历史ID',
+  `logistics_id` VARCHAR(50) NOT NULL COMMENT '物流记录ID',
+  `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID',
+  `order_number` VARCHAR(50) NOT NULL COMMENT '订单号',
+  `tracking_number` VARCHAR(100) NOT NULL COMMENT '物流单号',
+  `old_status` VARCHAR(50) COMMENT '原状态',
+  `new_status` VARCHAR(50) NOT NULL COMMENT '新状态',
+  `status_text` VARCHAR(200) COMMENT '状态描述',
+  `location` VARCHAR(200) COMMENT '当前位置',
+  `operator` VARCHAR(50) COMMENT '操作人',
+  `operator_name` VARCHAR(50) COMMENT '操作人姓名',
+  `update_source` ENUM('manual', 'auto', 'api') DEFAULT 'manual' COMMENT '更新来源',
+  `remark` TEXT COMMENT '备注',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `idx_logistics` (`logistics_id`),
+  INDEX `idx_order` (`order_id`),
+  INDEX `idx_tracking_number` (`tracking_number`),
+  INDEX `idx_new_status` (`new_status`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流状态历史表';
+
+-- 27. 物流异常记录表
+DROP TABLE IF EXISTS `logistics_exceptions`;
+CREATE TABLE `logistics_exceptions` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '异常ID',
+  `logistics_id` VARCHAR(50) NOT NULL COMMENT '物流记录ID',
+  `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID',
+  `order_number` VARCHAR(50) NOT NULL COMMENT '订单号',
+  `tracking_number` VARCHAR(100) NOT NULL COMMENT '物流单号',
+  `exception_type` VARCHAR(50) NOT NULL COMMENT '异常类型',
+  `exception_desc` TEXT NOT NULL COMMENT '异常描述',
+  `exception_time` TIMESTAMP NOT NULL COMMENT '异常时间',
+  `status` ENUM('pending', 'processing', 'resolved', 'closed') DEFAULT 'pending' COMMENT '处理状态',
+  `handler_id` VARCHAR(50) COMMENT '处理人ID',
+  `handler_name` VARCHAR(50) COMMENT '处理人姓名',
+  `handle_time` TIMESTAMP NULL COMMENT '处理时间',
+  `handle_result` TEXT COMMENT '处理结果',
+  `solution` TEXT COMMENT '解决方案',
+  `images` JSON COMMENT '相关图片',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_logistics` (`logistics_id`),
+  INDEX `idx_order` (`order_id`),
+  INDEX `idx_tracking_number` (`tracking_number`),
+  INDEX `idx_exception_type` (`exception_type`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_handler` (`handler_id`),
+  INDEX `idx_exception_time` (`exception_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流异常记录表';
+
+-- 28. 物流待办事项表
+DROP TABLE IF EXISTS `logistics_todos`;
+CREATE TABLE `logistics_todos` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '待办ID',
+  `logistics_id` VARCHAR(50) NOT NULL COMMENT '物流记录ID',
+  `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID',
+  `order_number` VARCHAR(50) NOT NULL COMMENT '订单号',
+  `tracking_number` VARCHAR(100) COMMENT '物流单号',
+  `todo_type` VARCHAR(50) NOT NULL COMMENT '待办类型',
+  `todo_title` VARCHAR(200) NOT NULL COMMENT '待办标题',
+  `todo_content` TEXT COMMENT '待办内容',
+  `priority` ENUM('low', 'normal', 'high', 'urgent') DEFAULT 'normal' COMMENT '优先级',
+  `status` ENUM('pending', 'processing', 'completed', 'cancelled') DEFAULT 'pending' COMMENT '状态',
+  `assigned_to` VARCHAR(50) COMMENT '负责人ID',
+  `assigned_to_name` VARCHAR(50) COMMENT '负责人姓名',
+  `due_date` TIMESTAMP NULL COMMENT '截止时间',
+  `remind_time` TIMESTAMP NULL COMMENT '提醒时间',
+  `completed_time` TIMESTAMP NULL COMMENT '完成时间',
+  `remark` TEXT COMMENT '备注',
+  `created_by` VARCHAR(50) NOT NULL COMMENT '创建人ID',
+  `created_by_name` VARCHAR(50) COMMENT '创建人姓名',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_logistics` (`logistics_id`),
+  INDEX `idx_order` (`order_id`),
+  INDEX `idx_todo_type` (`todo_type`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_priority` (`priority`),
+  INDEX `idx_assigned_to` (`assigned_to`),
+  INDEX `idx_due_date` (`due_date`),
+  INDEX `idx_created_by` (`created_by`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流待办事项表';
+
+-- 29. 订单字段配置表
+DROP TABLE IF EXISTS `order_field_configs`;
+CREATE TABLE `order_field_configs` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '配置ID',
+  `field_key` VARCHAR(100) UNIQUE NOT NULL COMMENT '字段键名',
+  `field_name` VARCHAR(100) NOT NULL COMMENT '字段名称',
+  `field_type` ENUM('text', 'number', 'date', 'datetime', 'select', 'radio', 'checkbox') NOT NULL COMMENT '字段类型',
+  `field_options` JSON COMMENT '字段选项',
+  `default_value` VARCHAR(500) COMMENT '默认值',
+  `placeholder` VARCHAR(200) COMMENT '占位符',
+  `is_required` BOOLEAN DEFAULT FALSE COMMENT '是否必填',
+  `is_visible` BOOLEAN DEFAULT TRUE COMMENT '是否可见',
+  `show_in_list` BOOLEAN DEFAULT FALSE COMMENT '列表显示',
+  `show_in_detail` BOOLEAN DEFAULT TRUE COMMENT '详情显示',
+  `sort_order` INT DEFAULT 0 COMMENT '排序',
+  `validation_rules` JSON COMMENT '验证规则',
+  `description` TEXT COMMENT '字段描述',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_field_key` (`field_key`),
+  INDEX `idx_is_visible` (`is_visible`),
+  INDEX `idx_sort_order` (`sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单字段配置表';
+
 -- =============================================
 -- 初始化数据
 -- =============================================
