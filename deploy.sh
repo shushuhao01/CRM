@@ -19,8 +19,8 @@ NC='\033[0m' # No Color
 # 检查Node.js版本
 echo "📋 检查环境..."
 NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-if [ "$NODE_VERSION" -lt 22 ]; then
-    echo -e "${RED}❌ Node.js版本过低，需要22.x或更高版本${NC}"
+if [ "$NODE_VERSION" -lt 18 ]; then
+    echo -e "${RED}❌ Node.js版本过低，需要18.x或更高版本${NC}"
     echo "当前版本: $(node -v)"
     exit 1
 fi
@@ -39,16 +39,24 @@ fi
 # 1. 安装前端依赖
 echo ""
 echo "📦 步骤1/6: 安装前端依赖..."
-npm install --production
-echo -e "${GREEN}✅ 前端依赖安装完成${NC}"
+if [ -d "node_modules" ]; then
+    echo "node_modules已存在，跳过安装（如需重新安装，请删除node_modules目录）"
+else
+    npm install
+fi
+echo -e "${GREEN}✅ 前端依赖就绪${NC}"
 
 # 2. 安装后端依赖
 echo ""
 echo "📦 步骤2/6: 安装后端依赖..."
 cd backend
-npm install --production
+if [ -d "node_modules" ]; then
+    echo "backend/node_modules已存在，跳过安装"
+else
+    npm install
+fi
 cd ..
-echo -e "${GREEN}✅ 后端依赖安装完成${NC}"
+echo -e "${GREEN}✅ 后端依赖就绪${NC}"
 
 # 3. 构建前端
 echo ""
