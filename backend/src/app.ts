@@ -81,8 +81,8 @@ if (process.env.COMPRESSION_ENABLED !== 'false') {
 
 // 通用限流中间件 - 开发环境使用更宽松的限制
 const generalLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '300000'), // 5分钟（开发环境）
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000'), // 限制每个IP 5分钟内最多1000个请求（开发环境）
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15分钟
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '5000'), // 限制每个IP 15分钟内最多5000个请求
   message: {
     success: false,
     message: '请求过于频繁，请稍后再试',
@@ -99,7 +99,7 @@ const generalLimiter = rateLimit({
 // 登录专用限流中间件 - 更严格但合理的限制
 const loginLimiter = rateLimit({
   windowMs: parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || '900000'), // 15分钟
-  max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || '10'), // 限制每个IP 15分钟内最多10次登录尝试
+  max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || '50'), // 限制每个IP 15分钟内最多50次登录尝试
   message: {
     success: false,
     message: '登录尝试过于频繁，请15分钟后再试',
