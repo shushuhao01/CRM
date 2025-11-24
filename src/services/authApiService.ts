@@ -427,6 +427,23 @@ export class AuthApiService {
         }
       }
 
+      // 真实 API 调用
+      console.log('[Auth] 使用真实 API 登录:', credentials.username)
+      const response = await this.api.post<unknown>('/auth/login', credentials)
+
+      // 适配后端返回格式：将 token 转换为 tokens.accessToken
+      const loginResponse: LoginResponse = {
+        user: response.user,
+        tokens: {
+          accessToken: response.token || response.tokens?.accessToken,
+          refreshToken: response.refreshToken || response.tokens?.refreshToken || ''
+        },
+        expiresIn: response.expiresIn || 3600
+      }
+
+      console.log('[Auth] 真实 API 登录成功')
+      return loginResponse
+
     } catch (error) {
       console.error('[Auth] 登录失败:', error)
       throw error

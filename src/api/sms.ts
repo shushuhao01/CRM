@@ -1,4 +1,4 @@
-import request from './request'
+import { api as request, type ApiResponse } from './request'
 import { shouldUseMockApi } from './mock'
 
 // 短信模板接口
@@ -287,11 +287,7 @@ export function getTemplates(params?: {
     })
   }
 
-  return request({
-    url: '/api/sms/templates',
-    method: 'get',
-    params
-  })
+  return request.get('/api/sms/templates', { params })
 }
 
 // 获取短信申请列表
@@ -317,11 +313,7 @@ export function getSmsRequests(params?: {
     })
   }
 
-  return request({
-    url: '/api/sms/requests',
-    method: 'get',
-    params
-  })
+  return request.get('/api/sms/requests', { params })
 }
 
 // 获取发送记录
@@ -347,11 +339,7 @@ export function getSendRecords(params?: {
     })
   }
 
-  return request({
-    url: '/api/sms/records',
-    method: 'get',
-    params
-  })
+  return request.get('/api/sms/records', { params })
 }
 
 // 获取统计数据
@@ -378,10 +366,7 @@ export function getStatistics() {
     })
   }
 
-  return request({
-    url: '/api/sms/statistics',
-    method: 'get'
-  })
+  return request.get('/api/sms/statistics')
 }
 
 // 审核模板
@@ -402,11 +387,7 @@ export function approveTemplate(id: string, data: { approved: boolean; reason?: 
     })
   }
 
-  return request({
-    url: `/api/sms/templates/${id}/approve`,
-    method: 'post',
-    data
-  })
+  return request.post(`/api/sms/templates/${id}/approve`, data)
 }
 
 // 审核短信
@@ -427,11 +408,7 @@ export function approveSms(id: string, data: { approved: boolean; reason?: strin
     })
   }
 
-  return request({
-    url: `/api/sms/requests/${id}/approve`,
-    method: 'post',
-    data
-  })
+  return request.post(`/api/sms/requests/${id}/approve`, data)
 }
 
 // 创建模板
@@ -461,11 +438,7 @@ export function createTemplate(data: Partial<SmsTemplate>) {
     })
   }
 
-  return request({
-    url: '/api/sms/templates',
-    method: 'post',
-    data
-  })
+  return request.post('/api/sms/templates', data)
 }
 
 // 创建短信申请
@@ -495,11 +468,7 @@ export function createSmsRequest(data: Partial<SmsRequest>) {
     })
   }
 
-  return request({
-    url: '/api/sms/requests',
-    method: 'post',
-    data
-  })
+  return request.post('/api/sms/requests', data)
 }
 
 // 发送短信
@@ -537,11 +506,7 @@ export function sendSms(data: {
     })
   }
 
-  return request({
-    url: '/api/sms/send',
-    method: 'post',
-    data
-  })
+  return request.post('/api/sms/send', data)
 }
 
 // 获取预设模板
