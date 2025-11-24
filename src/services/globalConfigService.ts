@@ -24,7 +24,7 @@ export interface GlobalConfigResponse {
 
 export class GlobalConfigService {
   private static instance: GlobalConfigService
-  
+
   // 全局配置状态
   public readonly config = ref<GlobalStorageConfig>({
     mode: 'local',
@@ -112,6 +112,13 @@ export class GlobalConfigService {
         return this.config.value
       }
 
+      // 检查是否已登录，未登录时不调用 API
+      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
+      if (!token) {
+        console.log('[GlobalConfig] 未登录，跳过配置同步')
+        return this.config.value
+      }
+
       const response = await apiService.get<GlobalConfigResponse>('/system/global-config')
       const serverConfig = response.storageConfig
 
@@ -120,7 +127,7 @@ export class GlobalConfigService {
         this.config.value = serverConfig
         this.saveLocalConfig()
         console.log('[GlobalConfig] 全局配置已从服务器更新:', serverConfig)
-        
+
         ElMessage.success('全局配置已更新')
       }
 

@@ -39,21 +39,15 @@ export default defineConfig({
     include: ['element-plus'] // 强制预构建Element Plus
   },
   build: {
-    target: 'es2015', // 兼容更多浏览器
+    target: 'esnext', // 使用现代浏览器特性
     chunkSizeWarningLimit: 1000, // 提高警告阈值到1MB
+    minify: 'terser', // 使用 terser 压缩
     rollupOptions: {
       output: {
         manualChunks: {
           vendor: ['vue', 'vue-router', 'pinia'],
           elementPlus: ['element-plus', '@element-plus/icons-vue'],
-          utils: ['axios', 'echarts', 'xlsx'],
-          addressData: ['@/utils/addressData'],
-          // 将大的组件分离到独立chunk
-          settings: ['@/views/System/Settings.vue'],
-          largeComponents: [
-            '@/components/System/SuperAdminPermissionPanel.vue',
-            '@/views/System/PermissionManagement.vue'
-          ]
+          utils: ['axios', 'echarts', 'xlsx']
         }
       }
     }

@@ -498,10 +498,12 @@ export const useUserStore = defineStore('user', () => {
       })
 
       // 立即设置token和登录状态，确保状态同步
-      token.value = response.tokens.accessToken
+      // 兼容两种返回格式：response.tokens.accessToken 或 response.token
+      const accessToken = response.tokens?.accessToken || (response as unknown).token
+      token.value = accessToken
       isLoggedIn.value = true
 
-      console.log('[Auth] 登录成功，token已设置:', response.tokens.accessToken ? response.tokens.accessToken.substring(0, 20) + '...' : 'undefined')
+      console.log('[Auth] 登录成功，token已设置:', accessToken ? accessToken.substring(0, 20) + '...' : 'undefined')
 
       // 设置当前用户信息，映射API响应到本地用户格式
       currentUser.value = {
