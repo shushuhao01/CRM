@@ -199,9 +199,10 @@ router.post('/disable-mock', async (req, res) => {
       message: 'Mock模式已禁用'
     })
   } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : '禁用Mock模式失败'
     return res.status(500).json({
       success: false,
-      message: error.message || '禁用Mock模式失败'
+      message: errorMessage
     })
   }
 })

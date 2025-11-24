@@ -360,9 +360,10 @@ class SFExpressService {
       }
 
       // 其他错误
+      const errorMessage = error instanceof Error ? error.message : '连接失败'
       return {
         success: false,
-        message: `✗ ${error?.message || '连接失败'}`
+        message: `✗ ${errorMessage}`
       }
     }
   }
