@@ -22,11 +22,12 @@ router.post('/test-connection', async (req, res) => {
     const result = await ytoExpressService.testConnection(userId, appKey, apiUrl)
 
     res.json(result)
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('圆通API测试连接错误:', error)
+    const errorMessage = error instanceof Error ? error.message : '服务器内部错误'
     res.status(500).json({
       success: false,
-      message: error.message || '服务器内部错误'
+      message: errorMessage
     })
   }
 })
@@ -50,11 +51,12 @@ router.post('/query-tracking', async (req, res) => {
     const result = await ytoExpressService.queryTracking(userId, appKey, apiUrl, waybillNo)
 
     res.json(result)
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('圆通物流查询错误:', error)
+    const errorMessage = error instanceof Error ? error.message : '服务器内部错误'
     res.status(500).json({
       success: false,
-      message: error.message || '服务器内部错误'
+      message: errorMessage
     })
   }
 })
