@@ -41,9 +41,9 @@ const AppDataSource = new DataSource(
         type: 'mysql',
         host: process.env.DB_HOST || 'localhost',
         port: parseInt(process.env.DB_PORT || '3306'),
-        username: process.env.DB_USERNAME || 'root',
+        username: process.env.DB_USERNAME || process.env.DB_USER || 'root',
         password: process.env.DB_PASSWORD || '',
-        database: process.env.DB_DATABASE || 'crm',
+        database: process.env.DB_DATABASE || process.env.DB_NAME || 'crm',
         synchronize: false, // 生产环境不自动同步
         logging: false,
         entities: [
@@ -135,7 +135,7 @@ export const initializeDatabase = async (): Promise<void> => {
   try {
     await AppDataSource.initialize();
     console.log('✅ 数据库连接成功');
-    
+
     // 开发环境下同步数据库结构
     if (process.env.NODE_ENV === 'development') {
       console.log('🔄 开发环境：同步数据库结构...');
