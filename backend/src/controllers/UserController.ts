@@ -43,22 +43,26 @@ export class UserController {
     const user = await this.userRepository.findOne({
       where: { username },
       relations: ['department'],
-      select: ['id', 'username', 'password', 'realName', 'email', 'role', 'status', 'departmentId', 'loginFailCount', 'lockedAt']
+      select: ['id', 'username', 'password', 'name', 'realName', 'email', 'role', 'roleId', 'status', 'departmentId', 'loginFailCount', 'lockedAt', 'lastLoginAt', 'lastLoginIp', 'loginCount']
     });
 
     console.log('[Login Debug] 查询到的用户对象:', user);
     console.log('[Login Debug] 用户对象的keys:', user ? Object.keys(user) : 'null');
 
     if (!user) {
-      // 记录登录失败日志
-      await this.logOperation({
-        action: 'login',
-        module: 'auth',
-        description: `用户登录失败: 用户名不存在 - ${username}`,
-        result: 'failed',
-        ipAddress: req.ip,
-        userAgent: req.get('User-Agent')
-      });
+      // 记录登录失败日志（失败不影响错误返回）
+      try {
+        await this.logOperation({
+          action: 'login',
+          module: 'auth',
+          description: `用户登录失败: 用户名不存在 - ${username}`,
+          result: 'failed',
+          ipAddress: req.ip,
+          userAgent: req.get('User-Agent')
+        });
+      } catch (logError) {
+        console.error('[Login] 记录日志失败:', logError);
+      }
 
       throw new BusinessError('用户名或密码错误', 'INVALID_CREDENTIALS');
     }
@@ -94,26 +98,35 @@ export class UserController {
 
       await this.userRepository.save(user);
 
-      // 记录登录失败日志
-      await this.logOperation({
-        userId: user.id,
-        username: user.username,
-        action: 'login',
-        module: 'auth',
-        description: `用户登录失败: 密码错误 - ${username}`,
-        result: 'failed',
-        ipAddress: req.ip,
-        userAgent: req.get('User-Agent')
-      });
+      // 记录登录失败日志（失败不影响错误返回）
+      try {
+        await this.logOperation({
+          userId: user.id,
+          username: user.username,
+          action: 'login',
+          module: 'auth',
+          description: `用户登录失败: 密码错误 - ${username}`,
+          result: 'failed',
+          ipAddress: req.ip,
+          userAgent: req.get('User-Agent')
+        });
+      } catch (logError) {
+        console.error('[Login] 记录日志失败:', logError);
+      }
 
       throw new BusinessError('用户名或密码错误', 'INVALID_CREDENTIALS');
     }
 
     // 登录成功，重置失败次数
-    user.loginFailCount = 0;
-    user.lastLoginAt = new Date();
-    user.lastLoginIp = req.ip || '';
-    await this.userRepository.save(user);
+    try {
+      user.loginFailCount = 0;
+      user.loginCount = (user.loginCount || 0) + 1;
+      user.lastLoginAt = new Date();
+      user.lastLoginIp = req.ip || '';
+      await this.userRepository.save(user);
+    } catch (saveError) {
+      console.error('[Login] 保存用户信息失败，但继续登录流程:', saveError);
+    }
 
     // 生成JWT令牌
     const tokenPayload = {
@@ -125,17 +138,21 @@ export class UserController {
 
     const tokens = JwtConfig.generateTokenPair(tokenPayload);
 
-    // 记录登录成功日志
-    await this.logOperation({
-      userId: user.id,
-      username: user.username,
-      action: 'login',
-      module: 'auth',
-      description: `用户登录成功 - ${username}`,
-      result: 'success',
-      ipAddress: req.ip,
-      userAgent: req.get('User-Agent')
-    });
+    // 记录登录成功日志（失败不影响登录）
+    try {
+      await this.logOperation({
+        userId: user.id,
+        username: user.username,
+        action: 'login',
+        module: 'auth',
+        description: `用户登录成功 - ${username}`,
+        result: 'success',
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent')
+      });
+    } catch (logError) {
+      console.error('[Login] 记录日志失败，但继续登录流程:', logError);
+    }
 
     // 返回用户信息和令牌
     const { password: _, ...userInfo } = user;
