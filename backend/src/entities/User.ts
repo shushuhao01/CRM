@@ -90,11 +90,11 @@ export class User {
   @Column({ name: 'last_login_at', type: 'timestamp', nullable: true, comment: '最后登录时间' })
   lastLoginAt?: Date;
 
-  @Column({ name: 'login_count', type: 'int', default: 0, nullable: true, comment: '登录次数' })
-  loginCount?: number;
+  @Column({ name: 'login_count', type: 'int', default: 0, comment: '登录次数' })
+  loginCount: number;
 
-  @Column({ name: 'loginFailCount', type: 'int', default: 0, nullable: true, comment: '登录失败次数' })
-  loginFailCount?: number;
+  @Column({ name: 'loginFailCount', type: 'int', default: 0, comment: '登录失败次数' })
+  loginFailCount: number;
 
   @Column({ name: 'lockedAt', type: 'datetime', nullable: true, comment: '账户锁定时间' })
   lockedAt?: Date;
