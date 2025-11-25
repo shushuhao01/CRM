@@ -634,10 +634,15 @@ export const useUserStore = defineStore('user', () => {
       localStorage.setItem('user_info', JSON.stringify(completeUserInfo))
       localStorage.setItem('userPermissions', JSON.stringify(userPermissions))
 
+      // 设置Token过期时间（7天）
+      const expiryTime = Date.now() + (7 * 24 * 60 * 60 * 1000)
+      localStorage.setItem('token_expiry', expiryTime.toString())
+
       console.log('[Auth] 已保存用户信息和权限:')
       console.log('  - 用户:', completeUserInfo.name)
       console.log('  - 角色:', completeUserInfo.role)
       console.log('  - 权限数量:', userPermissions.length)
+      console.log('  - Token过期时间:', new Date(expiryTime).toLocaleString())
 
       // 启动自动同步服务
       const config = autoStatusSyncService.getConfig()
