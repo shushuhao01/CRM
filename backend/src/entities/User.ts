@@ -103,7 +103,7 @@ export class User {
   lastLoginIp?: string;
 
   @Column({ type: 'json', nullable: true, comment: '用户设置' })
-  settings?: any;
+  settings?: Record<string, unknown>;
 
   @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
   createdAt: Date;
@@ -134,7 +134,7 @@ export class User {
 
   // 虚拟字段（不存储到数据库）
   toJSON() {
-    const { password, ...result } = this;
+    const { password: _password, ...result } = this;
     return result;
   }
 }
