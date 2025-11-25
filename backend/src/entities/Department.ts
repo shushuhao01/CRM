@@ -6,16 +6,16 @@ export class Department {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 100, comment: '部门名称' })
+  @Column({ type: 'varchar', length: 100, comment: '部门名称' })
   name: string;
 
   @Column({ type: 'text', nullable: true, comment: '部门描述' })
   description?: string;
 
-  @Column({ name: 'parent_id', length: 50, nullable: true, comment: '上级部门ID' })
+  @Column({ name: 'parent_id', type: 'varchar', length: 50, nullable: true, comment: '上级部门ID' })
   parentId?: string;
 
-  @Column({ name: 'manager_id', length: 50, nullable: true, comment: '部门经理ID' })
+  @Column({ name: 'manager_id', type: 'varchar', length: 50, nullable: true, comment: '部门经理ID' })
   managerId?: string;
 
   @Column({ type: 'int', default: 1, comment: '部门层级' })

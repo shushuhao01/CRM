@@ -9,25 +9,25 @@ export class User {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 50, unique: true, comment: '用户名' })
+  @Column({ type: 'varchar', length: 50, unique: true, comment: '用户名' })
   username: string;
 
-  @Column({ length: 255, comment: '密码哈希' })
+  @Column({ type: 'varchar', length: 255, comment: '密码哈希' })
   password: string;
 
-  @Column({ length: 50, comment: '姓名' })
+  @Column({ type: 'varchar', length: 50, comment: '姓名' })
   name: string;
 
-  @Column({ name: 'real_name', length: 50, nullable: true, comment: '真实姓名' })
+  @Column({ name: 'real_name', type: 'varchar', length: 50, nullable: true, comment: '真实姓名' })
   realName?: string;
 
-  @Column({ length: 100, nullable: true, comment: '邮箱' })
+  @Column({ type: 'varchar', length: 100, nullable: true, comment: '邮箱' })
   email?: string;
 
-  @Column({ length: 20, nullable: true, comment: '手机号' })
+  @Column({ type: 'varchar', length: 20, nullable: true, comment: '手机号' })
   phone?: string;
 
-  @Column({ length: 500, nullable: true, comment: '头像URL' })
+  @Column({ type: 'varchar', length: 500, nullable: true, comment: '头像URL' })
   avatar?: string;
 
   @Column({ type: 'enum', enum: ['male', 'female', 'unknown'], default: 'unknown', nullable: true, comment: '性别' })
@@ -36,25 +36,25 @@ export class User {
   @Column({ type: 'date', nullable: true, comment: '生日' })
   birthday?: Date;
 
-  @Column({ name: 'id_card', length: 255, nullable: true, comment: '身份证号（加密）' })
+  @Column({ name: 'id_card', type: 'varchar', length: 255, nullable: true, comment: '身份证号（加密）' })
   idCard?: string;
 
-  @Column({ length: 50, comment: '角色' })
+  @Column({ type: 'varchar', length: 50, comment: '角色' })
   role: string;
 
-  @Column({ name: 'role_id', length: 50, comment: '角色ID' })
+  @Column({ name: 'role_id', type: 'varchar', length: 50, comment: '角色ID' })
   roleId: string;
 
-  @Column({ name: 'department_id', length: 50, nullable: true, comment: '部门ID' })
+  @Column({ name: 'department_id', type: 'varchar', length: 50, nullable: true, comment: '部门ID' })
   departmentId?: string;
 
-  @Column({ name: 'department_name', length: 100, nullable: true, comment: '部门名称' })
+  @Column({ name: 'department_name', type: 'varchar', length: 100, nullable: true, comment: '部门名称' })
   departmentName?: string;
 
-  @Column({ length: 50, nullable: true, comment: '职位' })
+  @Column({ type: 'varchar', length: 50, nullable: true, comment: '职位' })
   position?: string;
 
-  @Column({ name: 'employee_number', length: 50, nullable: true, comment: '工号' })
+  @Column({ name: 'employee_number', type: 'varchar', length: 50, nullable: true, comment: '工号' })
   employeeNumber?: string;
 
   @Column({ name: 'entry_date', type: 'date', nullable: true, comment: '入职日期' })
@@ -63,25 +63,25 @@ export class User {
   @Column({ name: 'leave_date', type: 'date', nullable: true, comment: '离职日期' })
   leaveDate?: Date;
 
-  @Column({ length: 255, nullable: true, comment: '工资（加密）' })
+  @Column({ type: 'varchar', length: 255, nullable: true, comment: '工资（加密）' })
   salary?: string;
 
-  @Column({ name: 'bank_account', length: 255, nullable: true, comment: '银行账号（加密）' })
+  @Column({ name: 'bank_account', type: 'varchar', length: 255, nullable: true, comment: '银行账号（加密）' })
   bankAccount?: string;
 
-  @Column({ name: 'emergency_contact', length: 50, nullable: true, comment: '紧急联系人' })
+  @Column({ name: 'emergency_contact', type: 'varchar', length: 50, nullable: true, comment: '紧急联系人' })
   emergencyContact?: string;
 
-  @Column({ name: 'emergency_phone', length: 20, nullable: true, comment: '紧急联系电话' })
+  @Column({ name: 'emergency_phone', type: 'varchar', length: 20, nullable: true, comment: '紧急联系电话' })
   emergencyPhone?: string;
 
   @Column({ type: 'text', nullable: true, comment: '家庭住址' })
   address?: string;
 
-  @Column({ length: 20, nullable: true, comment: '学历' })
+  @Column({ type: 'varchar', length: 20, nullable: true, comment: '学历' })
   education?: string;
 
-  @Column({ length: 100, nullable: true, comment: '专业' })
+  @Column({ type: 'varchar', length: 100, nullable: true, comment: '专业' })
   major?: string;
 
   @Column({ type: 'enum', enum: ['active', 'inactive', 'resigned', 'locked'], default: 'active', comment: '状态' })
@@ -90,16 +90,16 @@ export class User {
   @Column({ name: 'last_login_at', type: 'timestamp', nullable: true, comment: '最后登录时间' })
   lastLoginAt?: Date;
 
-  @Column({ name: 'login_count', type: 'int', default: 0, comment: '登录次数' })
-  loginCount: number;
+  @Column({ name: 'login_count', type: 'int', default: 0, nullable: true, comment: '登录次数' })
+  loginCount?: number;
 
-  @Column({ name: 'loginFailCount', type: 'int', default: 0, comment: '登录失败次数' })
-  loginFailCount: number;
+  @Column({ name: 'loginFailCount', type: 'int', default: 0, nullable: true, comment: '登录失败次数' })
+  loginFailCount?: number;
 
   @Column({ name: 'lockedAt', type: 'datetime', nullable: true, comment: '账户锁定时间' })
   lockedAt?: Date;
 
-  @Column({ name: 'lastLoginIp', length: 45, nullable: true, comment: '最后登录IP' })
+  @Column({ name: 'lastLoginIp', type: 'varchar', length: 45, nullable: true, comment: '最后登录IP' })
   lastLoginIp?: string;
 
   @Column({ type: 'json', nullable: true, comment: '用户设置' })
