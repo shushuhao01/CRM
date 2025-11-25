@@ -45,10 +45,10 @@ export class User {
   @Column({ name: 'role_id', type: 'varchar', length: 50, comment: '角色ID' })
   roleId: string;
 
-  @Column({ name: 'department_id', type: 'varchar', length: 50, nullable: true, comment: '部门ID' })
+  @Column({ name: 'department_id', nullable: true, comment: '部门ID' })
   departmentId?: string;
 
-  @Column({ name: 'department_name', type: 'varchar', length: 100, nullable: true, comment: '部门名称' })
+  @Column({ name: 'department_name', nullable: true, comment: '部门名称' })
   departmentName?: string;
 
   @Column({ type: 'varchar', length: 50, nullable: true, comment: '职位' })
