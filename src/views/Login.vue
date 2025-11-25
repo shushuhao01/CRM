@@ -537,13 +537,8 @@ const handleLogin = async () => {
           if (userStore.currentUser?.forcePasswordChange) {
             safeNavigator.push('/change-password')
           } else {
-            // 🔥 批次281修复：登录成功后跳转并无痕刷新，确保菜单正常显示
+            // 登录成功后直接跳转，不刷新页面
             await safeNavigator.push('/')
-            // 使用nextTick + router.go(0)实现无痕刷新，避免页面闪烁
-            await nextTick()
-            setTimeout(() => {
-              router.go(0)
-            }, 30)
           }
         } else {
           ElMessage.error('登录失败')
