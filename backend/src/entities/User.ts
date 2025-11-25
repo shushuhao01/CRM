@@ -35,6 +35,9 @@ export class User {
   })
   role: 'admin' | 'manager' | 'sales' | 'service';
 
+  @Column({ name: 'role_id', type: 'varchar', length: 50, nullable: true, comment: '角色ID' })
+  roleId?: string;
+
   @Column({
     type: 'varchar',
     length: 50,
