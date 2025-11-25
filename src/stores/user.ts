@@ -498,19 +498,29 @@ export const useUserStore = defineStore('user', () => {
       })
 
       // 立即设置token和登录状态，确保状态同步
-      // 从response.data.tokens或response.tokens获取accessToken
+      console.log('[Auth] === 开始提取Token ===')
+      console.log('[Auth] response:', response)
+      console.log('[Auth] response.data:', response.data)
+
       const tokensData = response.data?.tokens || response.tokens
+      console.log('[Auth] tokensData:', tokensData)
+
       const accessToken = tokensData?.accessToken || tokensData?.access_token || response.token
+      console.log('[Auth] accessToken:', accessToken)
 
       if (!accessToken) {
-        console.error('[Auth] 登录响应中未找到Token:', response)
+        console.error('[Auth] ❌ 登录响应中未找到Token!')
         throw new Error('登录响应格式错误：未找到Token')
       }
 
       token.value = accessToken
       isLoggedIn.value = true
 
-      console.log('[Auth] 登录成功，token已设置:', accessToken.substring(0, 20) + '...')
+      // 立即保存到localStorage
+      localStorage.setItem('auth_token', accessToken)
+
+      console.log('[Auth] ✅ Token已设置:', accessToken.substring(0, 30) + '...')
+      console.log('[Auth] ✅ localStorage已保存:', localStorage.getItem('auth_token')?.substring(0, 30) + '...')
 
       // 设置当前用户信息，映射API响应到本地用户格式
       const userData = response.data?.user || response.user
