@@ -17,22 +17,6 @@ export class UserController {
     return dataSource.getRepository(User);
   }
 
-  private get departmentRepository() {
-    const dataSource = getDataSource();
-    if (!dataSource) {
-      throw new BusinessError('数据库连接未初始化');
-    }
-    return dataSource.getRepository(Department);
-  }
-
-  private get operationLogRepository() {
-    const dataSource = getDataSource();
-    if (!dataSource) {
-      throw new BusinessError('数据库连接未初始化');
-    }
-    return dataSource.getRepository(OperationLog);
-  }
-
   /**
    * 用户登录
    */
@@ -41,9 +25,7 @@ export class UserController {
 
     // 查找用户
     const user = await this.userRepository.findOne({
-      where: { username },
-      relations: ['department'],
-      select: ['id', 'username', 'password', 'name', 'realName', 'email', 'role', 'roleId', 'status', 'departmentId', 'loginFailCount', 'lockedAt', 'lastLoginAt', 'lastLoginIp', 'loginCount']
+      where: { username }
     });
 
     console.log('[Login Debug] 查询到的用户对象:', user);
@@ -540,21 +522,18 @@ export class UserController {
    * 记录操作日志
    */
   private async logOperation(data: {
-    userId?: number;
+    userId?: string;
     username?: string;
-    action: 'create' | 'update' | 'delete' | 'login' | 'logout' | 'export' | 'import' | 'other';
+    action: string;
     module: string;
     description: string;
-    result: 'success' | 'failed' | 'warning';
+    result?: string;
     details?: any;
     ipAddress?: string;
     userAgent?: string;
   }) {
     try {
-      const log = this.operationLogRepository.create(data);
-      await this.operationLogRepository.save(log);
-
-      // 同时记录到文件日志
+      // 只记录到文件日志，不写数据库
       operationLogger.info('操作日志', data);
     } catch (error) {
       logger.error('记录操作日志失败:', error);

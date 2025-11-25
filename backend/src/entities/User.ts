@@ -1,139 +1,113 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, ManyToMany, JoinColumn, JoinTable } from 'typeorm';
-import { Department } from './Department';
-import { OperationLog } from './OperationLog';
-import { Role } from './Role';
-import { UserPermission } from './UserPermission';
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity('users')
 export class User {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryColumn('varchar', { length: 50 })
+  id: string;
 
-  @Column({ type: 'varchar', length: 50, unique: true, comment: '用户名' })
+  @Column('varchar', { length: 50, unique: true })
   username: string;
 
-  @Column({ type: 'varchar', length: 255, comment: '密码哈希' })
+  @Column('varchar', { length: 255 })
   password: string;
 
-  @Column({ type: 'varchar', length: 50, comment: '姓名' })
+  @Column('varchar', { length: 50 })
   name: string;
 
-  @Column({ name: 'real_name', type: 'varchar', length: 50, nullable: true, comment: '真实姓名' })
-  realName?: string;
+  @Column('varchar', { name: 'real_name', length: 50, nullable: true })
+  realName: string | null;
 
-  @Column({ type: 'varchar', length: 100, nullable: true, comment: '邮箱' })
-  email?: string;
+  @Column('varchar', { length: 100, nullable: true })
+  email: string | null;
 
-  @Column({ type: 'varchar', length: 20, nullable: true, comment: '手机号' })
-  phone?: string;
+  @Column('varchar', { length: 20, nullable: true })
+  phone: string | null;
 
-  @Column({ type: 'varchar', length: 500, nullable: true, comment: '头像URL' })
-  avatar?: string;
+  @Column('varchar', { length: 500, nullable: true })
+  avatar: string | null;
 
-  @Column({ type: 'enum', enum: ['male', 'female', 'unknown'], default: 'unknown', nullable: true, comment: '性别' })
-  gender?: 'male' | 'female' | 'unknown';
+  @Column('enum', { enum: ['male', 'female', 'unknown'], default: 'unknown', nullable: true })
+  gender: 'male' | 'female' | 'unknown' | null;
 
-  @Column({ type: 'date', nullable: true, comment: '生日' })
-  birthday?: Date;
+  @Column('date', { nullable: true })
+  birthday: Date | null;
 
-  @Column({ name: 'id_card', type: 'varchar', length: 255, nullable: true, comment: '身份证号（加密）' })
-  idCard?: string;
+  @Column('varchar', { name: 'id_card', length: 255, nullable: true })
+  idCard: string | null;
 
-  @Column({ type: 'varchar', length: 50, comment: '角色' })
+  @Column('varchar', { length: 50 })
   role: string;
 
-  @Column({ name: 'role_id', type: 'varchar', length: 50, comment: '角色ID' })
+  @Column('varchar', { name: 'role_id', length: 50 })
   roleId: string;
 
-  @Column({ name: 'department_name', type: 'varchar', length: 100, nullable: true, comment: '部门名称' })
-  departmentName?: string;
+  @Column('varchar', { name: 'department_id', length: 50, nullable: true })
+  departmentId: string | null;
 
-  @Column({ type: 'varchar', length: 50, nullable: true, comment: '职位' })
-  position?: string;
+  @Column('varchar', { name: 'department_name', length: 100, nullable: true })
+  departmentName: string | null;
 
-  @Column({ name: 'employee_number', type: 'varchar', length: 50, nullable: true, comment: '工号' })
-  employeeNumber?: string;
+  @Column('varchar', { length: 50, nullable: true })
+  position: string | null;
 
-  @Column({ name: 'entry_date', type: 'date', nullable: true, comment: '入职日期' })
-  entryDate?: Date;
+  @Column('varchar', { name: 'employee_number', length: 50, nullable: true })
+  employeeNumber: string | null;
 
-  @Column({ name: 'leave_date', type: 'date', nullable: true, comment: '离职日期' })
-  leaveDate?: Date;
+  @Column('date', { name: 'entry_date', nullable: true })
+  entryDate: Date | null;
 
-  @Column({ type: 'varchar', length: 255, nullable: true, comment: '工资（加密）' })
-  salary?: string;
+  @Column('date', { name: 'leave_date', nullable: true })
+  leaveDate: Date | null;
 
-  @Column({ name: 'bank_account', type: 'varchar', length: 255, nullable: true, comment: '银行账号（加密）' })
-  bankAccount?: string;
+  @Column('varchar', { length: 255, nullable: true })
+  salary: string | null;
 
-  @Column({ name: 'emergency_contact', type: 'varchar', length: 50, nullable: true, comment: '紧急联系人' })
-  emergencyContact?: string;
+  @Column('varchar', { name: 'bank_account', length: 255, nullable: true })
+  bankAccount: string | null;
 
-  @Column({ name: 'emergency_phone', type: 'varchar', length: 20, nullable: true, comment: '紧急联系电话' })
-  emergencyPhone?: string;
+  @Column('varchar', { name: 'emergency_contact', length: 50, nullable: true })
+  emergencyContact: string | null;
 
-  @Column({ type: 'text', nullable: true, comment: '家庭住址' })
-  address?: string;
+  @Column('varchar', { name: 'emergency_phone', length: 20, nullable: true })
+  emergencyPhone: string | null;
 
-  @Column({ type: 'varchar', length: 20, nullable: true, comment: '学历' })
-  education?: string;
+  @Column('text', { nullable: true })
+  address: string | null;
 
-  @Column({ type: 'varchar', length: 100, nullable: true, comment: '专业' })
-  major?: string;
+  @Column('varchar', { length: 20, nullable: true })
+  education: string | null;
 
-  @Column({ type: 'enum', enum: ['active', 'inactive', 'resigned', 'locked'], default: 'active', comment: '状态' })
+  @Column('varchar', { length: 100, nullable: true })
+  major: string | null;
+
+  @Column('enum', { enum: ['active', 'inactive', 'resigned', 'locked'], default: 'active' })
   status: 'active' | 'inactive' | 'resigned' | 'locked';
 
-  @Column({ name: 'last_login_at', type: 'timestamp', nullable: true, comment: '最后登录时间' })
-  lastLoginAt?: Date;
+  @Column('timestamp', { name: 'last_login_at', nullable: true })
+  lastLoginAt: Date | null;
 
-  @Column({ name: 'login_count', type: 'int', default: 0, comment: '登录次数' })
+  @Column('int', { name: 'login_count', default: 0, nullable: true })
   loginCount: number;
 
-  @Column({ name: 'loginFailCount', type: 'int', default: 0, comment: '登录失败次数' })
+  @Column('int', { name: 'loginFailCount', default: 0, nullable: true })
   loginFailCount: number;
 
-  @Column({ name: 'lockedAt', type: 'datetime', nullable: true, comment: '账户锁定时间' })
-  lockedAt?: Date;
+  @Column('datetime', { name: 'lockedAt', nullable: true })
+  lockedAt: Date | null;
 
-  @Column({ name: 'lastLoginIp', type: 'varchar', length: 45, nullable: true, comment: '最后登录IP' })
-  lastLoginIp?: string;
+  @Column('varchar', { name: 'lastLoginIp', length: 45, nullable: true })
+  lastLoginIp: string | null;
 
-  @Column({ type: 'json', nullable: true, comment: '用户设置' })
-  settings?: Record<string, unknown>;
+  @Column('json', { nullable: true })
+  settings: any;
 
-  @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', comment: '更新时间' })
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
-  // 部门ID（外键）
-  @Column({ name: 'department_id', type: 'varchar', length: 50, nullable: true, comment: '部门ID' })
-  departmentId?: string;
-
-  // 关联关系 - 不使用JoinColumn避免冲突
-  @ManyToOne(() => Department, department => department.users, { createForeignKeyConstraints: false })
-  @JoinColumn({ name: 'department_id' })
-  department?: Department;
-
-  @OneToMany(() => OperationLog, log => log.user)
-  operationLogs: OperationLog[];
-
-  // 用户拥有的角色
-  @ManyToMany(() => Role, role => role.users)
-  @JoinTable({
-    name: 'user_roles',
-    joinColumn: { name: 'userId', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'roleId', referencedColumnName: 'id' }
-  })
-  roles: Role[];
-
-  // 用户的个人权限
-  @OneToMany(() => UserPermission, userPermission => userPermission.user)
-  personalPermissions: UserPermission[];
-
-  // 虚拟字段（不存储到数据库）
+  // 虚拟字段
   toJSON() {
     const { password: _password, ...result } = this;
     return result;
