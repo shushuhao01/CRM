@@ -1,55 +1,37 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { User } from './User';
+import { Entity, PrimaryColumn, Column, CreateDateColumn } from 'typeorm';
 
 @Entity('operation_logs')
 export class OperationLog {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryColumn('varchar', { length: 50 })
+  id: string;
 
-  @Column({ type: 'int', nullable: true, comment: '操作用户ID' })
-  userId?: number;
+  @Column('varchar', { name: 'user_id', length: 50, nullable: true })
+  userId: string | null;
 
-  @Column({ length: 50, nullable: true, comment: '操作用户名' })
-  username?: string;
+  @Column('varchar', { name: 'user_name', length: 50, nullable: true })
+  username: string | null;
 
-  @Column({ 
-    type: 'varchar',
-    length: 50,
-    comment: '操作类型'
-  })
-  action: 'create' | 'update' | 'delete' | 'login' | 'logout' | 'export' | 'import' | 'other';
+  @Column('varchar', { length: 100 })
+  action: string;
 
-  @Column({ length: 50, comment: '操作模块' })
+  @Column('varchar', { length: 50 })
   module: string;
 
-  @Column({ length: 100, comment: '操作描述' })
+  @Column('varchar', { name: 'resource_type', length: 50, nullable: true })
+  resourceType: string | null;
+
+  @Column('varchar', { name: 'resource_id', length: 50, nullable: true })
+  resourceId: string | null;
+
+  @Column('text')
   description: string;
 
-  @Column({ type: 'json', nullable: true, comment: '操作详情（JSON）' })
-  details?: Record<string, any>;
+  @Column('varchar', { name: 'ip_address', length: 45, nullable: true })
+  ipAddress: string | null;
 
-  @Column({ length: 45, nullable: true, comment: '操作IP地址' })
-  ipAddress?: string;
+  @Column('text', { name: 'user_agent', nullable: true })
+  userAgent: string | null;
 
-  @Column({ length: 200, nullable: true, comment: '用户代理' })
-  userAgent?: string;
-
-  @Column({ 
-    type: 'varchar',
-    length: 50,
-    default: 'success',
-    comment: '操作结果'
-  })
-  result: 'success' | 'failed' | 'warning';
-
-  @Column({ type: 'text', nullable: true, comment: '错误信息' })
-  errorMessage?: string;
-
-  @CreateDateColumn({ comment: '创建时间' })
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
-
-  // 关联关系
-  @ManyToOne(() => User, user => user.operationLogs)
-  @JoinColumn({ name: 'userId' })
-  user?: User;
 }
