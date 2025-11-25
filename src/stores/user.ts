@@ -498,38 +498,46 @@ export const useUserStore = defineStore('user', () => {
       })
 
       // 立即设置token和登录状态，确保状态同步
-      // 兼容两种返回格式：response.tokens.accessToken 或 response.token
-      const accessToken = response.tokens?.accessToken || (response as unknown).token
+      // 从response.data.tokens或response.tokens获取accessToken
+      const tokensData = response.data?.tokens || response.tokens
+      const accessToken = tokensData?.accessToken || tokensData?.access_token || response.token
+
+      if (!accessToken) {
+        console.error('[Auth] 登录响应中未找到Token:', response)
+        throw new Error('登录响应格式错误：未找到Token')
+      }
+
       token.value = accessToken
       isLoggedIn.value = true
 
-      console.log('[Auth] 登录成功，token已设置:', accessToken ? accessToken.substring(0, 20) + '...' : 'undefined')
+      console.log('[Auth] 登录成功，token已设置:', accessToken.substring(0, 20) + '...')
 
       // 设置当前用户信息，映射API响应到本地用户格式
+      const userData = response.data?.user || response.user
       currentUser.value = {
-        id: response.user.id.toString(),
-        name: response.user.realName,
-        email: response.user.email,
-        role: (response.user.role === 'admin' || response.user.role === 'super_admin') ? 'super_admin' :
-              response.user.role === 'department_manager' ? 'department_manager' :
-              response.user.role === 'sales_staff' ? 'sales_staff' :
-              response.user.role === 'customer_service' ? 'customer_service' :
-              response.user.role || 'sales_staff',  // 【批次180修复】使用实际的role，默认为sales_staff
-        department: response.user.department?.name || '未分配',
-        avatar: response.user.avatar,
-        userRole: (response.user.role === 'admin' || response.user.role === 'super_admin') ? UserRole.SUPER_ADMIN :
-                 response.user.role === 'department_manager' ? UserRole.DEPARTMENT_MANAGER :
-                 response.user.role === 'sales_staff' ? UserRole.SALES_STAFF :
-                 response.user.role === 'customer_service' ? UserRole.CUSTOMER_SERVICE :
+        id: userData.id.toString(),
+        name: userData.realName || userData.name,
+        email: userData.email,
+        role: (userData.role === 'admin' || userData.role === 'super_admin') ? 'super_admin' :
+              userData.role === 'department_manager' ? 'department_manager' :
+              userData.role === 'sales_staff' ? 'sales_staff' :
+              userData.role === 'customer_service' ? 'customer_service' :
+              userData.role || 'sales_staff',
+        department: userData.department?.name || userData.departmentName || '未分配',
+        avatar: userData.avatar,
+        userRole: (userData.role === 'admin' || userData.role === 'super_admin') ? UserRole.SUPER_ADMIN :
+                 userData.role === 'department_manager' ? UserRole.DEPARTMENT_MANAGER :
+                 userData.role === 'sales_staff' ? UserRole.SALES_STAFF :
+                 userData.role === 'customer_service' ? UserRole.CUSTOMER_SERVICE :
                  UserRole.REGULAR_USER,
-        permissionLevel: (response.user.role === 'admin' || response.user.role === 'super_admin') ? PermissionLevel.FULL_ACCESS :
-                        response.user.role === 'department_manager' ? PermissionLevel.PARTIAL_ACCESS :
+        permissionLevel: (userData.role === 'admin' || userData.role === 'super_admin') ? PermissionLevel.FULL_ACCESS :
+                        userData.role === 'department_manager' ? PermissionLevel.PARTIAL_ACCESS :
                         PermissionLevel.RESTRICTED,
-        dataScope: response.user.dataScope || ((response.user.role === 'admin' || response.user.role === 'super_admin') ? DataScope.ALL :
-                  response.user.role === 'department_manager' ? DataScope.DEPARTMENT : DataScope.SELF),
-        departmentId: response.user.departmentId,
-        departmentIds: response.user.departmentIds,
-        customerServiceType: response.user.customerServiceType,
+        dataScope: userData.dataScope || ((userData.role === 'admin' || userData.role === 'super_admin') ? DataScope.ALL :
+                  userData.role === 'department_manager' ? DataScope.DEPARTMENT : DataScope.SELF),
+        departmentId: userData.departmentId,
+        departmentIds: userData.departmentIds,
+        customerServiceType: userData.customerServiceType,
         forcePasswordChange: false // API会在响应中提供这个信息
       }
 
@@ -538,17 +546,17 @@ export const useUserStore = defineStore('user', () => {
 
       // 获取角色ID映射 - 与rolePermissionService中的角色定义保持一致
       const roleIdMap: Record<string, string> = {
-        'admin': '1',           // 超级管理员
-        'manager': '3',         // 经理
-        'department_manager': '3', // 部门经理 -> 经理
-        'sales': '4',           // 销售员 -> 员工
-        'sales_staff': '4',     // 销售员工 -> 员工
-        'employee': '4',        // 员工
-        'service': '5',         // 客服
-        'customer_service': '5' // 客户服务 -> 客服
+        'admin': '1',
+        'manager': '3',
+        'department_manager': '3',
+        'sales': '4',
+        'sales_staff': '4',
+        'employee': '4',
+        'service': '5',
+        'customer_service': '5'
       }
 
-      const roleId = roleIdMap[response.user.role] || '4'
+      const roleId = roleIdMap[userData.role] || '4'
 
       try {
         // 尝试从localStorage获取角色权限配置
@@ -567,43 +575,43 @@ export const useUserStore = defineStore('user', () => {
       }
 
       // 设置权限到新的权限系统
-      if (response.user.role === 'admin' || response.user.role === 'super_admin') {
+      if (userData.role === 'admin' || userData.role === 'super_admin') {
         permissionService.setUserPermission({
-          userId: response.user.id.toString(),
+          userId: userData.id.toString(),
           role: UserRole.SUPER_ADMIN,
           permissions: [PermissionLevel.FULL_ACCESS],
           dataScope: DataScope.ALL
         })
-      } else if (response.user.role === 'department_manager') {
+      } else if (userData.role === 'department_manager') {
         permissionService.setUserPermission({
-          userId: response.user.id.toString(),
+          userId: userData.id.toString(),
           role: UserRole.DEPARTMENT_MANAGER,
           permissions: [PermissionLevel.PARTIAL_ACCESS],
           dataScope: DataScope.DEPARTMENT,
-          departmentId: response.user.departmentId || 'dept_001',
-          departmentIds: response.user.departmentIds || ['dept_001'],
+          departmentId: userData.departmentId || 'dept_001',
+          departmentIds: userData.departmentIds || ['dept_001'],
           whitelistTypes: [SensitiveInfoType.PHONE, SensitiveInfoType.EMAIL, SensitiveInfoType.WECHAT]
         })
-      } else if (response.user.role === 'sales_staff') {
+      } else if (userData.role === 'sales_staff') {
         permissionService.setUserPermission({
-          userId: response.user.id.toString(),
+          userId: userData.id.toString(),
           role: UserRole.SALES_STAFF,
           permissions: [PermissionLevel.RESTRICTED],
           dataScope: DataScope.SELF,
-          departmentId: response.user.departmentId || 'dept_001'
+          departmentId: userData.departmentId || 'dept_001'
         })
-      } else if (response.user.role === 'customer_service') {
+      } else if (userData.role === 'customer_service') {
         permissionService.setUserPermission({
-          userId: response.user.id.toString(),
+          userId: userData.id.toString(),
           role: UserRole.CUSTOMER_SERVICE,
           permissions: [PermissionLevel.PARTIAL_ACCESS],
           dataScope: DataScope.ALL,
-          customerServiceType: response.user.customerServiceType || CustomerServiceType.GENERAL,
-          whitelistTypes: [SensitiveInfoType.PHONE] // 客服可以访问手机号
+          customerServiceType: userData.customerServiceType || CustomerServiceType.GENERAL,
+          whitelistTypes: [SensitiveInfoType.PHONE]
         })
       } else {
         permissionService.setUserPermission({
-          userId: response.user.id.toString(),
+          userId: userData.id.toString(),
           role: UserRole.REGULAR_USER,
           permissions: [PermissionLevel.RESTRICTED],
           dataScope: DataScope.SELF
