@@ -45,10 +45,7 @@ export class User {
   @Column({ name: 'role_id', type: 'varchar', length: 50, comment: '角色ID' })
   roleId: string;
 
-  @Column({ name: 'department_id', nullable: true, comment: '部门ID' })
-  departmentId?: string;
-
-  @Column({ name: 'department_name', nullable: true, comment: '部门名称' })
+  @Column({ name: 'department_name', type: 'varchar', length: 100, nullable: true, comment: '部门名称' })
   departmentName?: string;
 
   @Column({ type: 'varchar', length: 50, nullable: true, comment: '职位' })
@@ -111,8 +108,12 @@ export class User {
   @UpdateDateColumn({ name: 'updated_at', comment: '更新时间' })
   updatedAt: Date;
 
-  // 关联关系
-  @ManyToOne(() => Department, department => department.users)
+  // 部门ID（外键）
+  @Column({ name: 'department_id', type: 'varchar', length: 50, nullable: true, comment: '部门ID' })
+  departmentId?: string;
+
+  // 关联关系 - 不使用JoinColumn避免冲突
+  @ManyToOne(() => Department, department => department.users, { createForeignKeyConstraints: false })
   @JoinColumn({ name: 'department_id' })
   department?: Department;
 
