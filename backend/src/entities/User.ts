@@ -15,7 +15,7 @@ export class User {
   @Column({ length: 255, comment: '密码哈希' })
   password: string;
 
-  @Column({ length: 50, comment: '真实姓名' })
+  @Column({ name: 'name', length: 50, comment: '真实姓名' })
   realName: string;
 
   @Column({ length: 100, unique: true, comment: '邮箱' })
@@ -27,46 +27,46 @@ export class User {
   @Column({ length: 100, nullable: true, comment: '头像URL' })
   avatar?: string;
 
-  @Column({ 
+  @Column({
     type: 'varchar',
-    length: 50, 
+    length: 50,
     default: 'sales',
     comment: '角色：admin-管理员，manager-经理，sales-销售，service-客服'
   })
   role: 'admin' | 'manager' | 'sales' | 'service';
 
-  @Column({ 
+  @Column({
     type: 'varchar',
-    length: 50, 
+    length: 50,
     default: 'active',
     comment: '状态：active-活跃，inactive-非活跃，locked-锁定'
   })
   status: 'active' | 'inactive' | 'locked';
 
-  @Column({ type: 'int', nullable: true, comment: '部门ID' })
-  departmentId?: number;
+  @Column({ name: 'department_id', type: 'varchar', length: 50, nullable: true, comment: '部门ID' })
+  departmentId?: string;
 
-  @Column({ type: 'datetime', nullable: true, comment: '最后登录时间' })
+  @Column({ name: 'last_login_at', type: 'timestamp', nullable: true, comment: '最后登录时间' })
   lastLoginAt?: Date;
 
-  @Column({ length: 45, nullable: true, comment: '最后登录IP' })
+  @Column({ name: 'last_login_ip', length: 45, nullable: true, comment: '最后登录IP' })
   lastLoginIp?: string;
 
-  @Column({ type: 'int', default: 0, comment: '登录失败次数' })
+  @Column({ name: 'login_fail_count', type: 'int', default: 0, comment: '登录失败次数' })
   loginFailCount: number;
 
-  @Column({ type: 'datetime', nullable: true, comment: '账户锁定时间' })
+  @Column({ name: 'locked_at', type: 'datetime', nullable: true, comment: '账户锁定时间' })
   lockedAt?: Date;
 
-  @CreateDateColumn({ comment: '创建时间' })
+  @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
   createdAt: Date;
 
-  @UpdateDateColumn({ comment: '更新时间' })
+  @UpdateDateColumn({ name: 'updated_at', comment: '更新时间' })
   updatedAt: Date;
 
   // 关联关系
   @ManyToOne(() => Department, department => department.users)
-  @JoinColumn({ name: 'departmentId' })
+  @JoinColumn({ name: 'department_id' })
   department?: Department;
 
   @OneToMany(() => OperationLog, log => log.user)
