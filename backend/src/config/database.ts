@@ -1,5 +1,9 @@
 import { DataSource } from 'typeorm';
+import dotenv from 'dotenv';
 import { User } from '../entities/User';
+
+// 确保环境变量被加载
+dotenv.config();
 import { Customer } from '../entities/Customer';
 import { Order } from '../entities/Order';
 import { Product } from '../entities/Product';
