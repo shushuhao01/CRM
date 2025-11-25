@@ -69,17 +69,25 @@ export class UserController {
     }
 
     // 验证密码
+    console.log('[Login Debug] 开始验证密码');
+    console.log('[Login Debug] 用户名:', username);
+    console.log('[Login Debug] 输入密码:', password);
+    console.log('[Login Debug] 数据库密码哈希:', user.password);
+    console.log('[Login Debug] 密码哈希长度:', user.password?.length);
+
     const isPasswordValid = await bcrypt.compare(password, user.password);
+    console.log('[Login Debug] 密码验证结果:', isPasswordValid);
+
     if (!isPasswordValid) {
       // 增加登录失败次数
       user.loginFailCount += 1;
-      
+
       // 如果失败次数超过5次，锁定账户
       if (user.loginFailCount >= 5) {
         user.status = 'locked';
         user.lockedAt = new Date();
       }
-      
+
       await this.userRepository.save(user);
 
       // 记录登录失败日志
@@ -127,7 +135,7 @@ export class UserController {
 
     // 返回用户信息和令牌
     const { password: _, ...userInfo } = user;
-    
+
     res.json({
       success: true,
       message: '登录成功',
@@ -182,7 +190,7 @@ export class UserController {
    */
   getCurrentUser = catchAsync(async (req: Request, res: Response) => {
     const user = req.currentUser!;
-    
+
     res.json({
       success: true,
       data: user
@@ -524,7 +532,7 @@ export class UserController {
     try {
       const log = this.operationLogRepository.create(data);
       await this.operationLogRepository.save(log);
-      
+
       // 同时记录到文件日志
       operationLogger.info('操作日志', data);
     } catch (error) {
