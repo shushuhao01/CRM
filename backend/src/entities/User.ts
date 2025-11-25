@@ -15,11 +15,14 @@ export class User {
   @Column({ length: 255, comment: '密码哈希' })
   password: string;
 
-  @Column({ name: 'name', length: 50, comment: '真实姓名' })
-  realName: string;
+  @Column({ name: 'real_name', length: 50, nullable: true, comment: '真实姓名' })
+  realName?: string;
 
-  @Column({ length: 100, unique: true, comment: '邮箱' })
-  email: string;
+  @Column({ name: 'name', length: 50, comment: '姓名' })
+  name: string;
+
+  @Column({ length: 100, nullable: true, comment: '邮箱' })
+  email?: string;
 
   @Column({ length: 20, nullable: true, comment: '手机号' })
   phone?: string;
@@ -52,13 +55,13 @@ export class User {
   @Column({ name: 'last_login_at', type: 'timestamp', nullable: true, comment: '最后登录时间' })
   lastLoginAt?: Date;
 
-  @Column({ name: 'last_login_ip', length: 45, nullable: true, comment: '最后登录IP' })
+  @Column({ name: 'lastLoginIp', length: 45, nullable: true, comment: '最后登录IP' })
   lastLoginIp?: string;
 
-  @Column({ name: 'login_fail_count', type: 'int', default: 0, comment: '登录失败次数' })
+  @Column({ name: 'loginFailCount', type: 'int', default: 0, comment: '登录失败次数' })
   loginFailCount: number;
 
-  @Column({ name: 'locked_at', type: 'datetime', nullable: true, comment: '账户锁定时间' })
+  @Column({ name: 'lockedAt', type: 'datetime', nullable: true, comment: '账户锁定时间' })
   lockedAt?: Date;
 
   @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
