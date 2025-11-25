@@ -120,7 +120,7 @@ export class UserController {
     // 登录成功，重置失败次数
     try {
       user.loginFailCount = 0;
-      user.loginCount = (user.loginCount || 0) + 1;
+      user.loginCount = user.loginCount + 1;
       user.lastLoginAt = new Date();
       user.lastLoginIp = req.ip || '';
       await this.userRepository.save(user);
