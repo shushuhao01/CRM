@@ -42,8 +42,12 @@ export class UserController {
     // 查找用户
     const user = await this.userRepository.findOne({
       where: { username },
-      relations: ['department']
+      relations: ['department'],
+      select: ['id', 'username', 'password', 'realName', 'email', 'role', 'status', 'departmentId', 'loginFailCount', 'lockedAt']
     });
+
+    console.log('[Login Debug] 查询到的用户对象:', user);
+    console.log('[Login Debug] 用户对象的keys:', user ? Object.keys(user) : 'null');
 
     if (!user) {
       // 记录登录失败日志
