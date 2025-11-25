@@ -46,7 +46,7 @@ export class User {
   })
   status: 'active' | 'inactive' | 'locked';
 
-  @Column({ name: 'department_id', type: 'varchar', length: 50, nullable: true, comment: '部门ID' })
+  @Column({ name: 'department_id', nullable: true, comment: '部门ID' })
   departmentId?: string;
 
   @Column({ name: 'last_login_at', type: 'timestamp', nullable: true, comment: '最后登录时间' })
