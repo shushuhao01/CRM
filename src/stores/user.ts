@@ -939,14 +939,23 @@ export const useUserStore = defineStore('user', () => {
             autoStatusSyncService.start()
           }
         } else {
-          // API登录，验证token有效性
-          const isValid = await authApiService.validateToken()
-          if (isValid) {
-            token.value = savedToken
-            const userData = JSON.parse(savedUser)
-            currentUser.value = userData
-            isLoggedIn.value = true
-            console.log('[Auth] API登录状态已恢复:', currentUser.value?.name)
+          // API登录，暂时跳过token验证，直接恢复登录状态
+          // TODO: 等后端JWT配置正确后再启用验证
+          console.log('[Auth] 跳过token验证，直接恢复登录状态')
+          token.value = savedToken
+          const userData = JSON.parse(savedUser)
+          currentUser.value = userData
+          isLoggedIn.value = true
+          console.log('[Auth] API登录状态已恢复:', currentUser.value?.name)
+
+          // 注释掉的原始验证逻辑：
+          // const isValid = await authApiService.validateToken()
+          // if (isValid) {
+          //   token.value = savedToken
+          //   const userData = JSON.parse(savedUser)
+          //   currentUser.value = userData
+          //   isLoggedIn.value = true
+          //   console.log('[Auth] API登录状态已恢复:', currentUser.value?.name)
 
             // 同样需要恢复权限服务中的权限信息
             if (userData?.role === 'admin') {
@@ -1023,16 +1032,16 @@ export const useUserStore = defineStore('user', () => {
             if (config.enabled) {
               autoStatusSyncService.start()
             }
-          } else {
-            // token无效，静默清除本地数据，不显示错误提示
-            console.log('[Auth] Token已过期，静默清除本地登录状态')
-            currentUser.value = null
-            token.value = ''
-            permissions.value = []
-            isLoggedIn.value = false
-            localStorage.removeItem('auth_token')
-            localStorage.removeItem('user')
-          }
+          // } else {
+          //   // token无效，静默清除本地数据，不显示错误提示
+          //   console.log('[Auth] Token已过期，静默清除本地登录状态')
+          //   currentUser.value = null
+          //   token.value = ''
+          //   permissions.value = []
+          //   isLoggedIn.value = false
+          //   localStorage.removeItem('auth_token')
+          //   localStorage.removeItem('user')
+          // }
         }
       } catch (error) {
         // token验证失败，静默清除本地数据，不显示错误提示
