@@ -111,12 +111,12 @@ export class ApiService {
         // 检查是否为健康检查请求或token验证请求，如果是则不显示错误提示
         const isHealthCheck = error.config?.metadata?.isHealthCheck
         const isTokenValidation = error.config?.metadata?.isTokenValidation
-        
+
         if (!isHealthCheck && !isTokenValidation) {
           // 处理不同类型的错误
           if (error.response) {
             const { status, data } = error.response
-            
+
             switch (status) {
               case 401:
                 this.handleUnauthorized(true)
@@ -167,17 +167,37 @@ export class ApiService {
   /**
    * 处理未授权错误
    */
-  private handleUnauthorized(showMessage: boolean = true): void {
-    // 清除认证信息
+  private async handleUnauthorized(showMessage: boolean = true): Promise<void> {
+    console.log('[API] 收到401错误，尝试刷新token')
+
+    // 尝试刷新token
+    const refreshToken = localStorage.getItem('refresh_token')
+    if (refreshToken) {
+      try {
+        // 动态导入authApiService避免循环依赖
+        const { authApiService } = await import('./authApiService')
+        await authApiService.refreshToken()
+        console.log('[API] Token刷新成功，继续请求')
+        return
+      } catch (error) {
+        console.error('[API] Token刷新失败:', error)
+      }
+    }
+
+    // 刷新失败或没有refreshToken，清除认证信息
+    console.log('[API] 清除认证信息')
     localStorage.removeItem('auth_token')
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('user')
-    
+    localStorage.removeItem('user_info')
+    localStorage.removeItem('userPermissions')
+    localStorage.removeItem('token_expiry')
+
     // 根据参数决定是否显示错误消息
     if (showMessage) {
       ElMessage.error('登录已过期，请重新登录')
     }
-    
+
     // 不在这里进行导航，让路由守卫来处理
     // 这样可以避免导航冲突
     console.log('[API] Token已清除，等待路由守卫处理导航')
@@ -237,8 +257,8 @@ export class ApiService {
    * 分页查询
    */
   async paginate<T = any>(
-    url: string, 
-    params: PaginationParams = {}, 
+    url: string,
+    params: PaginationParams = {},
     config?: AxiosRequestConfig
   ): Promise<PaginatedResponse<T>> {
     const queryParams = {
@@ -257,8 +277,8 @@ export class ApiService {
    * 文件上传
    */
   async upload<T = any>(
-    url: string, 
-    file: File, 
+    url: string,
+    file: File,
     onProgress?: (progress: number) => void
   ): Promise<T> {
     const formData = new FormData()
@@ -303,7 +323,7 @@ export class ApiService {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      await this.get('/health', undefined, { 
+      await this.get('/health', undefined, {
         // 标记这是健康检查请求，避免在拦截器中显示错误提示
         metadata: { isHealthCheck: true }
       })
