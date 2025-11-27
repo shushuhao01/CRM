@@ -69,21 +69,30 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     next();
   } catch (error) {
     logger.error('JWT认证失败:', error);
-    
+    logger.error('Token内容:', token?.substring(0, 50) + '...');
+
     if (error instanceof Error) {
+      logger.error('错误详情:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
+
       if (error.message.includes('expired')) {
         return res.status(401).json({
           success: false,
           message: '访问令牌已过期',
-          code: 'TOKEN_EXPIRED'
+          code: 'TOKEN_EXPIRED',
+          error: error.message
         });
       }
-      
+
       if (error.message.includes('invalid')) {
         return res.status(401).json({
           success: false,
           message: '访问令牌无效',
-          code: 'TOKEN_INVALID'
+          code: 'TOKEN_INVALID',
+          error: error.message
         });
       }
     }
@@ -91,7 +100,8 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     return res.status(401).json({
       success: false,
       message: '认证失败',
-      code: 'AUTH_FAILED'
+      code: 'AUTH_FAILED',
+      error: error instanceof Error ? error.message : '未知错误'
     });
   }
 };
@@ -114,7 +124,7 @@ export const requireRole = (roles: string | string[]) => {
 
     if (!allowedRoles.includes(userRole)) {
       logger.warn(`用户 ${req.user.username} 尝试访问需要 ${allowedRoles.join('/')} 权限的资源，但用户角色为 ${userRole}`);
-      
+
       return res.status(403).json({
         success: false,
         message: '权限不足',

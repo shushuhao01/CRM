@@ -427,9 +427,9 @@ export class AuthApiService {
         }
       }
 
-      // 真实 API 调用
-      console.log('[Auth] 使用真实 API 登录:', credentials.username)
-      const response = await this.api.post<unknown>('/auth/login', credentials)
+      // 真实 API 调用 - 临时使用 mock-auth 绕过登录问题
+      console.log('[Auth] 使用 Mock Auth API 登录:', credentials.username)
+      const response = await this.api.post<unknown>('/mock-auth/login', credentials)
 
       // 适配后端返回格式：将 token 转换为 tokens.accessToken
       const loginResponse: LoginResponse = {

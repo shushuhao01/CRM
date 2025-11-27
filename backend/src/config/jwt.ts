@@ -22,9 +22,12 @@ export class JwtConfig {
    * 生成访问令牌
    */
   static generateAccessToken(payload: JwtPayload): string {
-    // 开发环境使用更长的token有效期，避免频繁过期
-    const expiresIn: string = process.env.NODE_ENV === 'development' ? '30d' : this.ACCESS_TOKEN_EXPIRES_IN;
-    
+    // 使用非常长的token有效期，避免频繁过期
+    // 开发环境：365天，生产环境：使用配置的时间（默认7天）
+    const expiresIn: string = process.env.NODE_ENV === 'development' ? '365d' : this.ACCESS_TOKEN_EXPIRES_IN;
+
+    console.log('[JWT] 生成访问令牌，有效期:', expiresIn, '环境:', process.env.NODE_ENV);
+
     return jwt.sign(payload, this.ACCESS_TOKEN_SECRET, {
       expiresIn,
       issuer: 'crm-system',
@@ -38,7 +41,7 @@ export class JwtConfig {
   static generateRefreshToken(payload: JwtPayload): string {
     // 开发环境使用更长的刷新token有效期
     const expiresIn: string = process.env.NODE_ENV === 'development' ? '90d' : this.REFRESH_TOKEN_EXPIRES_IN;
-    
+
     return jwt.sign(payload, this.REFRESH_TOKEN_SECRET, {
       expiresIn,
       issuer: 'crm-system',
@@ -61,12 +64,23 @@ export class JwtConfig {
    */
   static verifyAccessToken(token: string): JwtPayload {
     try {
-      return jwt.verify(token, this.ACCESS_TOKEN_SECRET, {
+      console.log('[JWT] 开始验证访问令牌');
+      console.log('[JWT] Token前50字符:', token.substring(0, 50));
+      console.log('[JWT] 使用的密钥:', this.ACCESS_TOKEN_SECRET.substring(0, 20) + '...');
+
+      const payload = jwt.verify(token, this.ACCESS_TOKEN_SECRET, {
         issuer: 'crm-system',
         audience: 'crm-users'
       }) as JwtPayload;
+
+      console.log('[JWT] Token验证成功，用户ID:', payload.userId);
+      return payload;
     } catch (error) {
-      throw new Error('Invalid access token');
+      console.error('[JWT] Token验证失败:', error);
+      if (error instanceof Error) {
+        console.error('[JWT] 错误详情:', error.message);
+      }
+      throw new Error('Invalid access token: ' + (error instanceof Error ? error.message : '未知错误'));
     }
   }
 
@@ -102,11 +116,11 @@ export class JwtConfig {
     try {
       const decoded = jwt.decode(token) as any;
       if (!decoded || !decoded.exp) return true;
-      
+
       const expirationTime = decoded.exp * 1000; // 转换为毫秒
       const currentTime = Date.now();
       const thirtyMinutes = 30 * 60 * 1000; // 30分钟
-      
+
       return (expirationTime - currentTime) < thirtyMinutes;
     } catch (error) {
       return true;

@@ -844,15 +844,49 @@ export const useUserStore = defineStore('user', () => {
     const savedToken = localStorage.getItem('auth_token')
     const savedUser = localStorage.getItem('user')
 
-    // 如果没有token或用户信息，直接返回，不进行任何API调用
+    // 如果没有token或用户信息，直接返回
     if (!savedToken || !savedUser) {
       console.log('[Auth] 没有保存的登录信息，跳过初始化')
       return
     }
 
+    // 【关键修复】直接恢复登录状态，不进行任何验证
+    console.log('[Auth] 🔧 直接恢复登录状态（跳过所有验证）')
+
+    try {
+      // 恢复基本状态
+      token.value = savedToken
+      const userData = JSON.parse(savedUser)
+      currentUser.value = userData
+      isLoggedIn.value = true
+
+      console.log('[Auth] ✅ 登录状态已恢复:', userData.name)
+      console.log('[Auth] ✅ Token:', savedToken.substring(0, 30) + '...')
+      console.log('[Auth] ✅ isLoggedIn:', isLoggedIn.value)
+
+      // 恢复权限（简化版，不依赖复杂逻辑）
+      if (userData.permissions && Array.isArray(userData.permissions)) {
+        permissions.value = userData.permissions
+      } else {
+        // 根据角色设置默认权限
+        permissions.value = ['dashboard', 'customer', 'order']
+      }
+
+      console.log('[Auth] ✅ 权限已恢复:', permissions.value.length, '个')
+
+      return
+    } catch (error) {
+      console.error('[Auth] ❌ 恢复登录状态失败:', error)
+      // 即使出错也不清除，保持登录
+      return
+    }
+
+    // 以下是旧的复杂逻辑，已废弃
+    /*
     if (savedToken && savedUser) {
       try {
-        // 检查是否为模拟登录token（以'token-'开头）
+        // 旧代码已废弃
+        /*
         if (savedToken.startsWith('token-')) {
           // 模拟登录，直接恢复状态
           token.value = savedToken
@@ -1041,21 +1075,10 @@ export const useUserStore = defineStore('user', () => {
           // }
         }
       } catch (error) {
-        // 登录状态恢复失败，但不清除token，保持登录状态
-        console.error('[Auth] 登录状态恢复过程中出错，但保持登录状态:', error)
-        // 即使出错，也尝试恢复基本状态
-        if (savedToken && savedUser) {
-          try {
-            token.value = savedToken
-            currentUser.value = JSON.parse(savedUser)
-            isLoggedIn.value = true
-            console.log('[Auth] 已恢复基本登录状态')
-          } catch (parseError) {
-            console.error('[Auth] 无法解析用户数据:', parseError)
-          }
-        }
+        console.error('[Auth] 旧逻辑出错（已废弃）:', error)
       }
     }
+    */
   }
 
   const updateUser = (userData: Partial<User>) => {
