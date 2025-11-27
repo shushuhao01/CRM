@@ -703,6 +703,9 @@ export const useUserStore = defineStore('user', () => {
   }
 
   const logout = () => {
+    // 打印调用栈，找出是谁调用了 logout
+    console.trace('[Auth] ⚠️ logout 被调用！调用栈：')
+
     // 调用API登出
     authApiService.logout().catch(console.error)
 
