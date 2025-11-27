@@ -1041,14 +1041,19 @@ export const useUserStore = defineStore('user', () => {
           // }
         }
       } catch (error) {
-        // token验证失败，静默清除本地数据，不显示错误提示
-        console.log('[Auth] 登录状态恢复失败，静默清除本地登录状态:', error)
-        currentUser.value = null
-        token.value = ''
-        permissions.value = []
-        isLoggedIn.value = false
-        localStorage.removeItem('auth_token')
-        localStorage.removeItem('user')
+        // 登录状态恢复失败，但不清除token，保持登录状态
+        console.error('[Auth] 登录状态恢复过程中出错，但保持登录状态:', error)
+        // 即使出错，也尝试恢复基本状态
+        if (savedToken && savedUser) {
+          try {
+            token.value = savedToken
+            currentUser.value = JSON.parse(savedUser)
+            isLoggedIn.value = true
+            console.log('[Auth] 已恢复基本登录状态')
+          } catch (parseError) {
+            console.error('[Auth] 无法解析用户数据:', parseError)
+          }
+        }
       }
     }
   }
