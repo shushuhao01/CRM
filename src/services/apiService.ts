@@ -119,9 +119,8 @@ export class ApiService {
 
             switch (status) {
               case 401:
-                // 禁用401错误时的token清除逻辑，保持登录状态
-                console.log('[API] 收到401错误，但不清除token，保持登录状态')
-                // this.handleUnauthorized(true)
+                // 【关键修复】完全忽略401错误，不做任何处理
+                console.log('[API] ⚠️ 收到401错误，已忽略（保持登录状态）')
                 break
               case 403:
                 ElMessage.error('没有权限访问该资源')
@@ -136,7 +135,6 @@ export class ApiService {
                 ElMessage.error('请求过于频繁，请稍后再试')
                 // 对于429错误，抛出特殊错误以便上层处理重试
                 throw new Error('RATE_LIMITED')
-                break
               case 500:
                 ElMessage.error('服务器内部错误')
                 break
@@ -149,9 +147,8 @@ export class ApiService {
             ElMessage.error('请求配置错误')
           }
         } else if (isTokenValidation && error.response?.status === 401) {
-          // Token验证失败时，不清除认证信息，保持登录状态
-          console.log('[API] Token验证失败，但不清除认证信息，保持登录状态')
-          // this.handleUnauthorized(false)
+          // 【关键修复】Token验证失败也忽略
+          console.log('[API] ⚠️ Token验证失败，已忽略（保持登录状态）')
         }
 
         return Promise.reject(error)

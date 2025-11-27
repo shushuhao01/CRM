@@ -462,7 +462,7 @@ const showAgreementDialog = (type: 'user' | 'privacy') => {
   if (type === 'user') {
     agreementDialogTitle.value = '用户使用协议'
     // 查找用户协议
-    const userAgreement = agreementList.find((item: any) => item.type === 'user')
+    const userAgreement = agreementList.find((item: unknown) => item.type === 'user')
     agreementDialogContent.value = userAgreement?.content || configStore.systemConfig.userAgreement || getDefaultUserAgreement()
   } else {
     agreementDialogTitle.value = '用户隐私协议'
