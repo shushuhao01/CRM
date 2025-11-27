@@ -119,7 +119,9 @@ export class ApiService {
 
             switch (status) {
               case 401:
-                this.handleUnauthorized(true)
+                // 禁用401错误时的token清除逻辑，保持登录状态
+                console.log('[API] 收到401错误，但不清除token，保持登录状态')
+                // this.handleUnauthorized(true)
                 break
               case 403:
                 ElMessage.error('没有权限访问该资源')
@@ -147,9 +149,9 @@ export class ApiService {
             ElMessage.error('请求配置错误')
           }
         } else if (isTokenValidation && error.response?.status === 401) {
-          // Token验证失败时，静默清除认证信息，不显示错误提示
-          console.log('[API] Token验证失败，静默清除认证信息')
-          this.handleUnauthorized(false)
+          // Token验证失败时，不清除认证信息，保持登录状态
+          console.log('[API] Token验证失败，但不清除认证信息，保持登录状态')
+          // this.handleUnauthorized(false)
         }
 
         return Promise.reject(error)
