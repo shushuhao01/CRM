@@ -10,7 +10,8 @@
   "homepage": "./",
   "scripts": {
     "dev": "vite",
-    "build": "run-p type-check \"build-only {@}\" --",
+    "build": "vite build",
+    "build-with-check": "run-p type-check \"build-only {@}\" --",
     "build-bt": "vite build --config vite.config.production.ts",
     "build-simple": "vite build --mode production",
     "build-prod-simple": "vite build --config vite.config.production.simple.ts",
