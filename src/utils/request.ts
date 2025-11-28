@@ -46,29 +46,29 @@ service.interceptors.request.use(
   (config: RequestConfig) => {
     const userStore = useUserStore()
     const appStore = useAppStore()
-    
+
     // 添加认证token
     if (userStore.token) {
       config.headers = config.headers || {}
       config.headers.Authorization = `Bearer ${userStore.token}`
     }
-    
+
     // 添加请求ID
     config.headers = config.headers || {}
     config.headers['X-Request-ID'] = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    
+
     // 处理重复请求
     const requestKey = generateRequestKey(config)
     if (pendingRequests.has(requestKey)) {
       // 取消之前的请求
       pendingRequests.get(requestKey)?.abort()
     }
-    
+
     // 创建新的AbortController
     const controller = new AbortController()
     config.signal = controller.signal
     pendingRequests.set(requestKey, controller)
-    
+
     // 显示加载状态
     if (config.showLoading !== false) {
       requestCount++
@@ -79,7 +79,7 @@ service.interceptors.request.use(
         })
       }
     }
-    
+
     // 添加时间戳防止缓存
     if (config.method?.toLowerCase() === 'get') {
       config.params = {
@@ -87,23 +87,23 @@ service.interceptors.request.use(
         _t: Date.now()
       }
     }
-    
+
     console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, {
       params: config.params,
       data: config.data,
       headers: config.headers
     })
-    
+
     return config
   },
   (error: AxiosError) => {
     const appStore = useAppStore()
-    
+
     requestCount = Math.max(0, requestCount - 1)
     if (requestCount === 0) {
       appStore.hideLoading('global')
     }
-    
+
     console.error('[API Request Error]', error)
     return Promise.reject(error)
   }
@@ -114,32 +114,34 @@ service.interceptors.response.use(
   (response: AxiosResponse<ResponseData>) => {
     const appStore = useAppStore()
     const config = response.config as RequestConfig
-    
+
     // 移除请求计数
     requestCount = Math.max(0, requestCount - 1)
     if (requestCount === 0) {
       appStore.hideLoading('global')
     }
-    
+
     // 移除pending请求
     const requestKey = generateRequestKey(config)
     pendingRequests.delete(requestKey)
-    
+
     console.log(`[API Response] ${config.method?.toUpperCase()} ${config.url}`, {
       status: response.status,
       data: response.data
     })
-    
+
     const { code, message, data, success } = response.data
-    
+
     // 处理业务错误
     if (!success || code !== 200) {
       const errorMessage = message || '请求失败'
-      
+
       // 特殊错误码处理
       switch (code) {
         case 401:
-          handleUnauthorized()
+          // 【关键修复】禁用401错误处理，不退出登录
+          console.log('[Request] ⚠️ 收到401错误，已忽略（保持登录状态）')
+          // handleUnauthorized()
           break
         case 403:
           ElMessage.error('没有权限访问此资源')
@@ -159,48 +161,50 @@ service.interceptors.response.use(
             })
           }
       }
-      
+
       return Promise.reject(new Error(errorMessage))
     }
-    
+
     return data
   },
   async (error: AxiosError) => {
     const appStore = useAppStore()
     const config = error.config as RequestConfig
-    
+
     // 移除请求计数
     requestCount = Math.max(0, requestCount - 1)
     if (requestCount === 0) {
       appStore.hideLoading('global')
     }
-    
+
     // 移除pending请求
     if (config) {
       const requestKey = generateRequestKey(config)
       pendingRequests.delete(requestKey)
     }
-    
+
     console.error(`[API Error] ${config?.method?.toUpperCase()} ${config?.url}`, error)
-    
+
     // 请求被取消
     if (axios.isCancel(error)) {
       console.log('Request canceled:', error.message)
       return Promise.reject(error)
     }
-    
+
     let errorMessage = '网络错误，请稍后重试'
-    
+
     if (error.response) {
       // 服务器响应错误
       const { status, data } = error.response
-      
+
       switch (status) {
         case 400:
           errorMessage = data?.message || '请求参数错误'
           break
         case 401:
-          handleUnauthorized()
+          // 【关键修复】禁用401错误处理，不退出登录
+          console.log('[Request] ⚠️ 收到401错误，已忽略（保持登录状态）')
+          // handleUnauthorized()
           return Promise.reject(error)
         case 403:
           errorMessage = '没有权限访问此资源'
@@ -238,19 +242,19 @@ service.interceptors.response.use(
         errorMessage = '网络连接失败，请检查网络设置'
       }
     }
-    
+
     // 重试机制
     if (config?.retry && (config.maxRetries || 3) > 0) {
       config.maxRetries = (config.maxRetries || 3) - 1
-      
+
       // 延迟重试
       await new Promise(resolve => setTimeout(resolve, 1000))
-      
+
       console.log(`[API Retry] ${config.method?.toUpperCase()} ${config.url}, remaining retries: ${config.maxRetries}`)
-      
+
       return service(config)
     }
-    
+
     // 显示错误信息
     if (config?.showError !== false) {
       appStore.showError({
@@ -259,7 +263,7 @@ service.interceptors.response.use(
         type: 'error'
       })
     }
-    
+
     return Promise.reject(new Error(errorMessage))
   }
 )
@@ -268,7 +272,7 @@ service.interceptors.response.use(
 const handleUnauthorized = () => {
   const userStore = useUserStore()
   const safeNavigator = createSafeNavigator(router)
-  
+
   ElMessageBox.confirm(
     '登录状态已过期，请重新登录',
     '提示',
@@ -290,29 +294,29 @@ export const request = {
   get<T = any>(url: string, config?: RequestConfig): Promise<T> {
     return service.get(url, config)
   },
-  
+
   post<T = any>(url: string, data?: any, config?: RequestConfig): Promise<T> {
     return service.post(url, data, config)
   },
-  
+
   put<T = any>(url: string, data?: any, config?: RequestConfig): Promise<T> {
     return service.put(url, data, config)
   },
-  
+
   delete<T = any>(url: string, config?: RequestConfig): Promise<T> {
     return service.delete(url, config)
   },
-  
+
   patch<T = any>(url: string, data?: any, config?: RequestConfig): Promise<T> {
     return service.patch(url, data, config)
   },
-  
+
   upload<T = any>(url: string, file: File, config?: RequestConfig & {
     onProgress?: (progress: number) => void
   }): Promise<T> {
     const formData = new FormData()
     formData.append('file', file)
-    
+
     return service.post(url, formData, {
       ...config,
       headers: {
@@ -334,7 +338,7 @@ export const cancelAllRequests = () => {
   pendingRequests.forEach(controller => controller.abort())
   pendingRequests.clear()
   requestCount = 0
-  
+
   const appStore = useAppStore()
   appStore.hideLoading('global')
 }
