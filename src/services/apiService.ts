@@ -183,6 +183,14 @@ export class ApiService {
       }
     }
 
+    // 【修复】只在真正需要时才清除认证信息
+    // 检查是否在Mock API模式下
+    const { shouldUseMockApi } = await import('@/api/mock')
+    if (shouldUseMockApi()) {
+      console.log('[API] Mock API模式下，忽略401错误，保持登录状态')
+      return
+    }
+
     // 刷新失败或没有refreshToken，清除认证信息
     console.log('[API] 清除认证信息')
     localStorage.removeItem('auth_token')
@@ -308,7 +316,7 @@ export class ApiService {
   /**
    * 文件下载
    */
-  async download(url: string, params?: any, config?: AxiosRequestConfig): Promise<Blob> {
+  async download(url: string, params?: unknown, config?: AxiosRequestConfig): Promise<Blob> {
     const response = await this.axiosInstance.get(url, {
       ...config,
       params,

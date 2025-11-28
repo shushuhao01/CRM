@@ -36,21 +36,35 @@ const getAuthToken = (): string | null => {
   return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
 }
 
-// 构建完整URL（修复：保留 BASE_URL 中的 /api/v1 前缀）
+// 构建完整URL（修复：支持相对路径和绝对路径）
 const buildUrl = (endpoint: string, params?: RequestParams): string => {
   const base = API_CONFIG.BASE_URL.replace(/\/+$/, '')
   const path = String(endpoint || '').replace(/^\/+/, '')
-  const url = new URL(`${base}/${path}`)
 
-  if (params) {
-    Object.keys(params).forEach(key => {
-      if (params[key] !== undefined && params[key] !== null) {
-        url.searchParams.append(key, String(params[key]))
-      }
-    })
+  // 如果 BASE_URL 是相对路径（如 /api/v1），直接拼接
+  let urlString: string
+  if (base.startsWith('/')) {
+    urlString = `${base}/${path}`
+  } else {
+    // 如果是绝对路径（如 http://...），使用 URL 对象
+    urlString = `${base}/${path}`
   }
 
-  return url.toString()
+  // 添加查询参数
+  if (params && Object.keys(params).length > 0) {
+    const searchParams = new URLSearchParams()
+    Object.keys(params).forEach(key => {
+      if (params[key] !== undefined && params[key] !== null) {
+        searchParams.append(key, String(params[key]))
+      }
+    })
+    const queryString = searchParams.toString()
+    if (queryString) {
+      urlString += `?${queryString}`
+    }
+  }
+
+  return urlString
 }
 
 // 处理响应
