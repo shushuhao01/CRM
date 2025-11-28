@@ -268,25 +268,11 @@ service.interceptors.response.use(
   }
 )
 
-// 处理未授权
+// 处理未授权 - 已完全禁用
 const handleUnauthorized = () => {
-  const userStore = useUserStore()
-  const safeNavigator = createSafeNavigator(router)
-
-  ElMessageBox.confirm(
-    '登录状态已过期，请重新登录',
-    '提示',
-    {
-      confirmButtonText: '重新登录',
-      cancelButtonText: '取消',
-      type: 'warning'
-    }
-  ).then(() => {
-    userStore.logout()
-    safeNavigator.push('/login')
-  }).catch(() => {
-    // 用户取消
-  })
+  // 【关键修复】完全禁用此函数，不做任何处理
+  console.log('[Request] ⚠️ handleUnauthorized 被调用，但已禁用（保持登录状态）')
+  return
 }
 
 // 请求方法封装
