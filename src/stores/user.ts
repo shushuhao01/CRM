@@ -850,13 +850,15 @@ export const useUserStore = defineStore('user', () => {
       return
     }
 
-    // 【关键修复】直接恢复登录状态，不进行任何验证
-    console.log('[Auth] 🔧 直接恢复登录状态（跳过所有验证）')
+    console.log('[Auth] 🔧 开始恢复登录状态...')
 
     try {
-      // 恢复基本状态
-      token.value = savedToken
+      // 解析用户数据
       const userData = JSON.parse(savedUser)
+
+      // 【修复】直接恢复登录状态，不进行API验证（避免秒退）
+      // 但保留TOKEN机制，确保有TOKEN才能登录
+      token.value = savedToken
       currentUser.value = userData
       isLoggedIn.value = true
 
@@ -864,20 +866,67 @@ export const useUserStore = defineStore('user', () => {
       console.log('[Auth] ✅ Token:', savedToken.substring(0, 30) + '...')
       console.log('[Auth] ✅ isLoggedIn:', isLoggedIn.value)
 
-      // 恢复权限（简化版，不依赖复杂逻辑）
+      // 恢复权限
       if (userData.permissions && Array.isArray(userData.permissions)) {
         permissions.value = userData.permissions
+        setUserPermissions(userData.permissions)
       } else {
         // 根据角色设置默认权限
-        permissions.value = ['dashboard', 'customer', 'order']
+        const defaultPerms = getDefaultRolePermissions(userData.role)
+        permissions.value = defaultPerms
+        setUserPermissions(defaultPerms)
+      }
+
+      // 恢复权限服务配置
+      if (userData.role === 'admin' || userData.role === 'super_admin') {
+        permissionService.setUserPermission({
+          userId: userData.id,
+          role: UserRole.SUPER_ADMIN,
+          permissions: [PermissionLevel.FULL_ACCESS],
+          dataScope: DataScope.ALL
+        })
+      } else if (userData.role === 'department_manager') {
+        permissionService.setUserPermission({
+          userId: userData.id,
+          role: UserRole.DEPARTMENT_MANAGER,
+          permissions: [PermissionLevel.PARTIAL_ACCESS],
+          dataScope: DataScope.DEPARTMENT,
+          departmentId: userData.departmentId || 'dept_001',
+          departmentIds: userData.departmentIds || ['dept_001'],
+          whitelistTypes: [SensitiveInfoType.PHONE, SensitiveInfoType.EMAIL, SensitiveInfoType.WECHAT]
+        })
+      } else if (userData.role === 'sales_staff') {
+        permissionService.setUserPermission({
+          userId: userData.id,
+          role: UserRole.SALES_STAFF,
+          permissions: [PermissionLevel.RESTRICTED],
+          dataScope: DataScope.SELF,
+          departmentId: userData.departmentId || 'dept_001'
+        })
+      } else if (userData.role === 'customer_service') {
+        permissionService.setUserPermission({
+          userId: userData.id,
+          role: UserRole.CUSTOMER_SERVICE,
+          permissions: [PermissionLevel.PARTIAL_ACCESS],
+          dataScope: DataScope.ALL,
+          customerServiceType: userData.customerServiceType || CustomerServiceType.GENERAL,
+          whitelistTypes: [SensitiveInfoType.PHONE]
+        })
       }
 
       console.log('[Auth] ✅ 权限已恢复:', permissions.value.length, '个')
 
+      // 启动自动同步服务
+      const config = autoStatusSyncService.getConfig()
+      if (config.enabled) {
+        autoStatusSyncService.start()
+      }
+
       return
     } catch (error) {
       console.error('[Auth] ❌ 恢复登录状态失败:', error)
-      // 即使出错也不清除，保持登录
+      // 出错时清除登录状态
+      logout()
       return
     }
 
