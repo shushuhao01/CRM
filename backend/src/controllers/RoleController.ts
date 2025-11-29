@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getDataSource } from '../config/database';
+import { getDataSource, AppDataSource } from '../config/database';
 import { Role } from '../entities/Role';
 import { Permission } from '../entities/Permission';
 import { User } from '../entities/User';
@@ -34,11 +34,9 @@ export class RoleController {
   async getRoles(req: Request, res: Response) {
     try {
       const { page = 1, limit = 20, search, status } = req.query;
-      
+
       const queryBuilder = this.roleRepository.createQueryBuilder('role')
         .leftJoinAndSelect('role.permissions', 'permission')
-        .leftJoin('role.users', 'user')
-        .addSelect('COUNT(DISTINCT user.id)', 'userCount')
         .groupBy('role.id');
 
       if (search) {
@@ -98,7 +96,7 @@ export class RoleController {
   async getRoleById(req: Request, res: Response): Promise<any> {
     try {
       const { id } = req.params;
-      
+
       const role = await this.roleRepository.findOne({
         where: { id: Number(id) },
         relations: ['permissions', 'users']
@@ -260,11 +258,16 @@ export class RoleController {
         });
       }
 
-      // 检查是否有用户使用此角色
-      if (role.users && role.users.length > 0) {
+      // 检查是否有用户使用此角色（通过查询User表）
+      const userRepository = AppDataSource.getRepository(User);
+      const usersWithRole = await userRepository.count({
+        where: { roleId: id }
+      });
+
+      if (usersWithRole > 0) {
         return res.status(400).json({
           success: false,
-          message: '该角色下还有用户，无法删除'
+          message: `该角色下还有${usersWithRole}个用户，无法删除`
         });
       }
 

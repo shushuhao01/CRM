@@ -22,8 +22,8 @@ export class UserPermission {
   @CreateDateColumn()
   grantedAt: Date
 
-  // 关联用户
-  @ManyToOne(() => User, user => user.personalPermissions)
+  // 关联用户（移除反向关联，因为User实体没有personalPermissions字段）
+  @ManyToOne(() => User)
   @JoinColumn({ name: 'userId' })
   user: User
 
