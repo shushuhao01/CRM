@@ -8,6 +8,9 @@ export class Department {
   @Column('varchar', { length: 100 })
   name: string;
 
+  @Column('varchar', { length: 50, nullable: true })
+  code: string | null;
+
   @Column('text', { nullable: true })
   description: string | null;
 
@@ -34,4 +37,7 @@ export class Department {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  // 关联关系（可选）
+  users?: any[];
 }

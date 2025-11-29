@@ -122,7 +122,7 @@ export class DepartmentController {
     try {
       const { id } = req.params;
       const department = await this.departmentRepository.findOne({
-        where: { id: parseInt(id) },
+        where: { id },
         relations: ['users']
       });
 
@@ -165,7 +165,18 @@ export class DepartmentController {
    */
   async createDepartment(req: Request, res: Response): Promise<void> {
     try {
-      const { name, code, description, parentId, sortOrder = 0, status = 'active' } = req.body;
+      const { name, code, description, parentId, sortOrder = 0, status = 'active', level = 1 } = req.body;
+
+      console.log('[创建部门] 接收到的数据:', { name, code, description, parentId, sortOrder, status, level });
+
+      // 验证必填字段
+      if (!name || !code) {
+        res.status(400).json({
+          success: false,
+          message: '部门名称和编码不能为空'
+        });
+        return;
+      }
 
       // 检查部门名称是否重复
       const existingByName = await this.departmentRepository.findOne({
@@ -180,21 +191,23 @@ export class DepartmentController {
       }
 
       // 检查部门代码是否重复
-      const existingByCode = await this.departmentRepository.findOne({
-        where: { code }
-      });
-      if (existingByCode) {
-        res.status(400).json({
-          success: false,
-          message: '部门代码已存在'
+      if (code) {
+        const existingByCode = await this.departmentRepository.findOne({
+          where: { code }
         });
-        return;
+        if (existingByCode) {
+          res.status(400).json({
+            success: false,
+            message: '部门代码已存在'
+          });
+          return;
+        }
       }
 
       // 如果有父部门，检查父部门是否存在
       if (parentId) {
         const parentDept = await this.departmentRepository.findOne({
-          where: { id: parseInt(parentId) }
+          where: { id: parentId }
         });
         if (!parentDept) {
           res.status(400).json({
@@ -205,25 +218,36 @@ export class DepartmentController {
         }
       }
 
+      // 生成部门ID
+      const departmentId = `dept_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
       const department = this.departmentRepository.create({
+        id: departmentId,
         name,
         code,
-        description,
-        parentId: parentId ? parseInt(parentId) : undefined,
-        sortOrder,
-        status
+        description: description || null,
+        parentId: parentId || null,
+        sortOrder: sortOrder || 0,
+        status: status || 'active',
+        level: level || 1,
+        memberCount: 0
       });
+
+      console.log('[创建部门] 准备保存的部门对象:', department);
 
       const savedDepartment = await this.departmentRepository.save(department);
 
+      console.log('[创建部门] 保存成功:', savedDepartment);
+
       const result = {
-        id: savedDepartment.id.toString(),
+        id: savedDepartment.id,
         name: savedDepartment.name,
         code: savedDepartment.code,
         description: savedDepartment.description,
-        parentId: savedDepartment.parentId?.toString(),
+        parentId: savedDepartment.parentId,
         sortOrder: savedDepartment.sortOrder,
         status: savedDepartment.status,
+        level: savedDepartment.level,
         memberCount: 0,
         createdAt: savedDepartment.createdAt.toISOString(),
         updatedAt: savedDepartment.updatedAt.toISOString()
@@ -234,11 +258,12 @@ export class DepartmentController {
         data: result,
         message: '部门创建成功'
       });
-    } catch (error) {
-      console.error('创建部门失败:', error);
+    } catch (error: any) {
+      console.error('[创建部门] 失败:', error);
+      console.error('[创建部门] 错误堆栈:', error.stack);
       res.status(500).json({
         success: false,
-        message: '创建部门失败'
+        message: `创建部门失败: ${error.message || '未知错误'}`
       });
     }
   }
@@ -252,7 +277,7 @@ export class DepartmentController {
       const { name, code, description, parentId, sortOrder, status } = req.body;
 
       const department = await this.departmentRepository.findOne({
-        where: { id: parseInt(id) },
+        where: { id },
         relations: ['users']
       });
 
@@ -269,7 +294,7 @@ export class DepartmentController {
         const existingByName = await this.departmentRepository.findOne({
           where: { name }
         });
-        if (existingByName) {
+        if (existingByName && existingByName.id !== id) {
           res.status(400).json({
             success: false,
             message: '部门名称已存在'
@@ -283,7 +308,7 @@ export class DepartmentController {
         const existingByCode = await this.departmentRepository.findOne({
           where: { code }
         });
-        if (existingByCode) {
+        if (existingByCode && existingByCode.id !== id) {
           res.status(400).json({
             success: false,
             message: '部门代码已存在'
@@ -294,7 +319,7 @@ export class DepartmentController {
 
       // 如果有父部门，检查父部门是否存在且不是自己
       if (parentId) {
-        if (parseInt(parentId) === parseInt(id)) {
+        if (parentId === id) {
           res.status(400).json({
             success: false,
             message: '不能将自己设为父部门'
@@ -303,7 +328,7 @@ export class DepartmentController {
         }
 
         const parentDept = await this.departmentRepository.findOne({
-          where: { id: parseInt(parentId) }
+          where: { id: parentId }
         });
         if (!parentDept) {
           res.status(400).json({
@@ -318,7 +343,7 @@ export class DepartmentController {
       if (name !== undefined) department.name = name;
       if (code !== undefined) department.code = code;
       if (description !== undefined) department.description = description;
-      if (parentId !== undefined) department.parentId = parentId ? parseInt(parentId) : undefined;
+      if (parentId !== undefined) department.parentId = parentId || null;
       if (sortOrder !== undefined) department.sortOrder = sortOrder;
       if (status !== undefined) department.status = status;
 
@@ -359,7 +384,7 @@ export class DepartmentController {
       const { id } = req.params;
 
       const department = await this.departmentRepository.findOne({
-        where: { id: parseInt(id) },
+        where: { id },
         relations: ['users']
       });
 
@@ -373,7 +398,7 @@ export class DepartmentController {
 
       // 检查是否有子部门
       const childDepartments = await this.departmentRepository.find({
-        where: { parentId: parseInt(id) }
+        where: { parentId: id }
       });
 
       if (childDepartments.length > 0) {
@@ -425,7 +450,7 @@ export class DepartmentController {
       }
 
       const department = await this.departmentRepository.findOne({
-        where: { id: parseInt(id) },
+        where: { id },
         relations: ['users']
       });
 
@@ -475,7 +500,7 @@ export class DepartmentController {
       const { id } = req.params;
 
       const users = await this.userRepository.find({
-        where: { departmentId: parseInt(id) },
+        where: { departmentId: id },
         relations: ['department']
       });
 
@@ -515,7 +540,7 @@ export class DepartmentController {
 
       // 检查部门是否存在
       const department = await this.departmentRepository.findOne({
-        where: { id: parseInt(departmentId) }
+        where: { id: departmentId }
       });
 
       if (!department) {
@@ -528,7 +553,7 @@ export class DepartmentController {
 
       // 检查用户是否存在
       const user = await this.userRepository.findOne({
-        where: { id: parseInt(userId) }
+        where: { id: userId }
       });
 
       if (!user) {
@@ -540,7 +565,7 @@ export class DepartmentController {
       }
 
       // 更新用户的部门
-      user.departmentId = parseInt(departmentId);
+      user.departmentId = departmentId;
       if (role) {
         user.role = role;
       }
@@ -583,9 +608,9 @@ export class DepartmentController {
 
       // 检查用户是否存在且属于该部门
       const user = await this.userRepository.findOne({
-        where: { 
-          id: parseInt(userId),
-          departmentId: parseInt(departmentId)
+        where: {
+          id: userId,
+          departmentId: departmentId
         }
       });
 
@@ -597,8 +622,8 @@ export class DepartmentController {
         return;
       }
 
-      // 将用户的部门设为undefined
-      user.departmentId = undefined;
+      // 将用户的部门设为null
+      user.departmentId = null;
       await this.userRepository.save(user);
 
       res.json({
