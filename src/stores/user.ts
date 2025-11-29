@@ -498,16 +498,19 @@ export const useUserStore = defineStore('user', () => {
       })
 
       // 立即设置token和登录状态，确保状态同步
-      console.log('[Auth] === 开始提取Token ===')
-      console.log('[Auth] response:', response)
+      console.log('[Auth] ========== 开始提取Token ==========')
+      console.log('[Auth] response完整对象:', JSON.stringify(response, null, 2))
       console.log('[Auth] response类型:', typeof response)
+      console.log('[Auth] response的keys:', Object.keys(response || {}))
       console.log('[Auth] response.tokens:', response.tokens)
+      console.log('[Auth] response.tokens的keys:', response.tokens ? Object.keys(response.tokens) : 'undefined')
       console.log('[Auth] response.user:', response.user)
 
       // 【关键修复】apiService.post()返回的是response.data.data，即LoginResponse对象
       // 所以response.tokens就是我们需要的tokens对象
       const accessToken = response.tokens?.accessToken || response.tokens?.access_token
-      console.log('[Auth] accessToken:', accessToken)
+      console.log('[Auth] 提取的accessToken:', accessToken)
+      console.log('[Auth] =========================================')
 
       if (!accessToken) {
         console.error('[Auth] ❌ 登录响应中未找到Token!')
