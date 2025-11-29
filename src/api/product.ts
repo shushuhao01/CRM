@@ -2,6 +2,7 @@ import { api } from './request'
 import { API_ENDPOINTS } from './config'
 import { mockApi, shouldUseMockApi } from './mock'
 import type { Product, ProductCategory } from '@/stores/product'
+import { isProduction } from '@/utils/env'
 
 export interface ProductListParams {
   page?: number
@@ -170,7 +171,7 @@ export const productApi = {
     categoryId?: string
     status?: string
     format?: 'json' | 'csv'
-  }): Promise<any> {
+  }): Promise<unknown> {
     try {
       const response = await api.get('/products/export', { params })
       return response.data
@@ -184,6 +185,13 @@ export const productApi = {
    * 获取产品分类列表
    */
   async getCategoryList(): Promise<ProductCategory[]> {
+    // 生产环境：强制使用真实API
+    if (isProduction()) {
+      const response = await api.get('/products/categories')
+      return response.data?.data || response.data || []
+    }
+
+    // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
       const mockResponse = await mockApi.getCategoryList()
       // Mock API返回的是包含data字段的对象，需要提取data
@@ -204,6 +212,13 @@ export const productApi = {
    * 获取产品分类树形结构
    */
   async getCategoryTree(): Promise<ProductCategory[]> {
+    // 生产环境：强制使用真实API
+    if (isProduction()) {
+      const response = await api.get('/products/categories/tree')
+      return response.data?.data || response.data || []
+    }
+
+    // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
       const mockResponse = await mockApi.getCategoryTree()
       // Mock API返回的是包含data字段的对象，需要提取data
@@ -224,6 +239,13 @@ export const productApi = {
    * 创建产品分类
    */
   async createCategory(data: Partial<ProductCategory>): Promise<ProductCategory> {
+    // 生产环境：强制使用真实API
+    if (isProduction()) {
+      const response = await api.post('/products/categories', data)
+      return response.data
+    }
+
+    // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
       return mockApi.createCategory(data)
     }
@@ -241,6 +263,13 @@ export const productApi = {
    * 更新产品分类
    */
   async updateCategory(id: string, data: Partial<ProductCategory>): Promise<ProductCategory> {
+    // 生产环境：强制使用真实API
+    if (isProduction()) {
+      const response = await api.put(`/products/categories/${id}`, data)
+      return response.data
+    }
+
+    // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
       return mockApi.updateCategory(id, data)
     }
@@ -258,6 +287,13 @@ export const productApi = {
    * 删除产品分类
    */
   async deleteCategory(id: string): Promise<void> {
+    // 生产环境：强制使用真实API
+    if (isProduction()) {
+      await api.delete(`/products/categories/${id}`)
+      return
+    }
+
+    // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
       return mockApi.deleteCategory(id)
     }
@@ -274,6 +310,13 @@ export const productApi = {
    * 获取产品分类详情
    */
   async getCategoryDetail(id: string): Promise<ProductCategory> {
+    // 生产环境：强制使用真实API
+    if (isProduction()) {
+      const response = await api.get(`/products/categories/${id}`)
+      return response.data
+    }
+
+    // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
       return mockApi.getCategoryDetail(id)
     }

@@ -318,20 +318,15 @@ export interface CustomerSearchResult {
 }
 
 export const searchCustomer = async (params: CustomerSearchParams): Promise<CustomerSearchResult[]> => {
-  // 生产环境：调用真实API
+  // 生产环境：强制使用真实API，不降级
   if (isProduction()) {
-    try {
-      console.log('[Data API] 使用后端API搜索客户')
-      const response = await api.get('/api/data/search-customer', params)
-      return response.data || response
-    } catch (error) {
-      console.error('[Data API] 后端API调用失败，降级到localStorage:', error)
-      // 降级到localStorage
-    }
+    console.log('[Data API] 生产环境：使用后端API搜索客户')
+    const response = await api.get('/api/data/search-customer', params)
+    return response.data || response
   }
 
   // 开发环境：从localStorage搜索
-  console.log('[Data API] 使用localStorage搜索客户')
+  console.log('[Data API] 开发环境：使用localStorage搜索客户')
   try {
     const customerStore = localStorage.getItem('customer-store')
     const orderStoreRaw = localStorage.getItem('crm_store_order')
@@ -365,7 +360,7 @@ export const searchCustomer = async (params: CustomerSearchParams): Promise<Cust
 
     // 搜索匹配的订单
     for (const order of orders) {
-      const customer = customers.find((c: any) => c.id === order.customerId)
+      const customer = customers.find((c: unknown) => c.id === order.customerId)
       if (!customer) continue
 
       const owner = users.find((u: unknown) => u.id === order.salesPersonId)

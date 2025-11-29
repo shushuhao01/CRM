@@ -302,11 +302,12 @@ export class ProfileApiService {
 
         // 【批次197修复】如果user_info中字段缺失，从crm_mock_users中补充
         let completeUserInfo = { ...userInfo }
-        if (!userInfo.realName || !userInfo.phone) {
-          console.log('[ProfileAPI] user_info字段不完整，从crm_mock_users补充')
+        // 【生产环境修复】仅在开发环境从localStorage补充字段
+        if (!import.meta.env.PROD && (!userInfo.realName || !userInfo.phone)) {
+          console.log('[ProfileAPI] 开发环境：user_info字段不完整，从crm_mock_users补充')
           try {
             const mockUsers = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
-            const fullUser = mockUsers.find((u: any) => String(u.id) === String(userInfo.id))
+            const fullUser = mockUsers.find((u: unknown) => String(u.id) === String(userInfo.id))
             if (fullUser) {
               completeUserInfo = { ...fullUser, ...userInfo }
               console.log('[ProfileAPI] 已从crm_mock_users补充字段:', completeUserInfo)
@@ -326,7 +327,8 @@ export class ProfileApiService {
 
         // 3. 部门字段：优先使用departmentName，其次是department
         let departmentName = completeUserInfo.departmentName || completeUserInfo.department || ''
-        if (!departmentName && completeUserInfo.departmentId) {
+        // 【生产环境修复】仅在开发环境从localStorage查找部门名称
+        if (!import.meta.env.PROD && !departmentName && completeUserInfo.departmentId) {
           // 如果没有部门名称但有部门ID，从部门列表中查找
           try {
             const departments = JSON.parse(localStorage.getItem('crm_mock_departments') || '[]')

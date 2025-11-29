@@ -66,20 +66,15 @@ export const getPersonalPerformance = async (params: {
   startDate?: string
   endDate?: string
 }): Promise<PersonalPerformance> => {
-  // 生产环境：调用真实API
+  // 生产环境：强制使用真实API，不降级
   if (isProduction()) {
-    try {
-      console.log('[Performance API] 使用后端API获取个人业绩')
-      const response = await request.get('/api/performance/personal', { params })
-      return response.data || response
-    } catch (error) {
-      console.error('[Performance API] 后端API调用失败，降级到localStorage:', error)
-      // 降级到localStorage
-    }
+    console.log('[Performance API] 生产环境：使用后端API获取个人业绩')
+    const response = await request.get('/api/performance/personal', { params })
+    return response.data || response
   }
 
   // 开发环境：从localStorage获取数据
-  console.log('[Performance API] 使用localStorage获取个人业绩')
+  console.log('[Performance API] 开发环境：使用localStorage获取个人业绩')
   try {
     const ordersData = localStorage.getItem('crm_store_order')
     const customersData = localStorage.getItem('customer-store')
@@ -145,20 +140,15 @@ export const getTeamPerformance = async (params: {
   startDate?: string
   endDate?: string
 }): Promise<TeamPerformance> => {
-  // 生产环境：调用真实API
+  // 生产环境：强制使用真实API，不降级
   if (isProduction()) {
-    try {
-      console.log('[Performance API] 使用后端API获取团队业绩')
-      const response = await request.get('/api/performance/team', { params })
-      return response.data || response
-    } catch (error) {
-      console.error('[Performance API] 后端API调用失败，降级到localStorage:', error)
-      // 降级到localStorage
-    }
+    console.log('[Performance API] 生产环境：使用后端API获取团队业绩')
+    const response = await request.get('/api/performance/team', { params })
+    return response.data || response
   }
 
   // 开发环境：从localStorage获取数据
-  console.log('[Performance API] 使用localStorage获取团队业绩')
+  console.log('[Performance API] 开发环境：使用localStorage获取团队业绩')
   try {
     const ordersData = localStorage.getItem('crm_store_order')
     const usersData = localStorage.getItem('user-store')
@@ -235,20 +225,15 @@ export const getPerformanceAnalysis = async (params: {
   startDate?: string
   endDate?: string
 }): Promise<PerformanceAnalysis> => {
-  // 生产环境：调用真实API
+  // 生产环境：强制使用真实API，不降级
   if (isProduction()) {
-    try {
-      console.log('[Performance API] 使用后端API获取业绩分析')
-      const response = await request.get('/api/performance/analysis', { params })
-      return response.data || response
-    } catch (error) {
-      console.error('[Performance API] 后端API调用失败，降级到localStorage:', error)
-      // 降级到localStorage
-    }
+    console.log('[Performance API] 生产环境：使用后端API获取业绩分析')
+    const response = await request.get('/api/performance/analysis', { params })
+    return response.data || response
   }
 
   // 开发环境：从localStorage获取数据
-  console.log('[Performance API] 使用localStorage获取业绩分析')
+  console.log('[Performance API] 开发环境：使用localStorage获取业绩分析')
   try {
     const ordersData = localStorage.getItem('crm_store_order')
     const customersData = localStorage.getItem('customer-store')
@@ -316,7 +301,7 @@ export const getPerformanceAnalysis = async (params: {
       })
 
       const revenue = periodOrders.reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0)
-      const periodCustomers = customers.filter((c: any) => {
+      const periodCustomers = customers.filter((c: unknown) => {
         if (params.period === 'day') {
           return c.createTime?.startsWith(dateStr)
         } else if (params.period === 'month') {

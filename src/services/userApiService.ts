@@ -143,9 +143,15 @@ export class UserApiService {
       console.log(`[UserAPI] 创建用户成功: ${response.username}`)
       return response
     } catch (error) {
-      console.warn('[UserAPI] API创建失败，使用localStorage创建用户', error)
+      // 【生产环境修复】生产环境不降级到localStorage
+      if (import.meta.env.PROD) {
+        console.error('[UserAPI] 生产环境：API创建用户失败', error)
+        throw error
+      }
 
-      // 降级方案:直接操作localStorage
+      console.warn('[UserAPI] 开发环境：API创建失败，使用localStorage创建用户', error)
+
+      // 降级方案:直接操作localStorage（仅开发环境）
       try {
         const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
 
@@ -223,9 +229,15 @@ export class UserApiService {
       console.log(`[UserAPI] 更新用户成功: ${response.username}`)
       return response
     } catch (error) {
-      console.warn(`[UserAPI] API更新失败，使用localStorage更新用户 (ID: ${id})`, error)
+      // 【生产环境修复】生产环境不降级到localStorage
+      if (import.meta.env.PROD) {
+        console.error(`[UserAPI] 生产环境：API更新用户失败 (ID: ${id})`, error)
+        throw error
+      }
 
-      // 降级方案:直接操作localStorage
+      console.warn(`[UserAPI] 开发环境：API更新失败，使用localStorage更新用户 (ID: ${id})`, error)
+
+      // 降级方案:直接操作localStorage（仅开发环境）
       try {
         const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
         const userIndex = users.findIndex((u: any) => String(u.id) === String(id))
@@ -293,12 +305,18 @@ export class UserApiService {
       await this.api.delete(`/users/${userId}`)
       console.log(`[UserAPI] 删除用户成功 (ID: ${userId})`)
     } catch (error) {
-      console.warn(`[UserAPI] API删除失败，使用localStorage删除用户 (ID: ${id})`, error)
+      // 【生产环境修复】生产环境不降级到localStorage
+      if (import.meta.env.PROD) {
+        console.error(`[UserAPI] 生产环境：API删除用户失败 (ID: ${id})`, error)
+        throw error
+      }
 
-      // 降级方案:直接操作localStorage
+      console.warn(`[UserAPI] 开发环境：API删除失败，使用localStorage删除用户 (ID: ${id})`, error)
+
+      // 降级方案:直接操作localStorage（仅开发环境）
       try {
         const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
-        const filteredUsers = users.filter((u: any) => String(u.id) !== String(id))
+        const filteredUsers = users.filter((u: unknown) => String(u.id) !== String(id))
 
         if (filteredUsers.length === users.length) {
           throw new Error(`未找到用户 ID: ${id}`)

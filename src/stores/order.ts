@@ -251,9 +251,14 @@ export const useOrderStore = createPersistentStore('order', () => {
         customerId: order.customerId
       })
 
-      // 从localStorage获取现有的dataList
-      const dataListStr = localStorage.getItem('dataList')
+      // 【生产环境修复】只在开发环境从localStorage读取
       let dataList = []
+      if (!import.meta.env.PROD) {
+        const dataListStr = localStorage.getItem('dataList')
+        if (dataListStr) {
+          dataList = JSON.parse(dataListStr)
+        }
+      }
 
       if (dataListStr) {
         try {
@@ -333,8 +338,11 @@ export const useOrderStore = createPersistentStore('order', () => {
       // 添加到dataList
       dataList.unshift(dataRecord)
 
-      // 保存到localStorage
-      localStorage.setItem('dataList', JSON.stringify(dataList))
+      // 【生产环境修复】只在开发环境保存到localStorage
+      if (!import.meta.env.PROD) {
+        localStorage.setItem('dataList', JSON.stringify(dataList))
+        console.log('[订单Store] 开发环境：已保存到localStorage')
+      }
 
       console.log('[订单Store] ✓ 成功创建资料记录:', dataRecord)
     } catch (error) {
@@ -1263,13 +1271,19 @@ export const useOrderStore = createPersistentStore('order', () => {
   // 初始化模拟数据（安全版）：优先使用持久化数据，必要时一次性迁移旧键
   // 重要：此函数只在 store 初始化时调用一次，不应该在页面组件中调用
   const initializeWithMockData = () => {
+    // 【生产环境修复】生产环境不从localStorage读取Mock数据
+    if (import.meta.env.PROD) {
+      console.log('[Order Store] 生产环境：跳过localStorage初始化，等待API数据加载')
+      return
+    }
+
     // 1) 若内存已有数据，绝不覆盖（这是最重要的保护）
     if (orders.value.length > 0) {
       console.log('[Order Store] 订单数据已存在，跳过初始化（保护已有数据）')
       return
     }
 
-    // 2) 优先尝试从统一持久化键恢复（由持久化工具负责加载，但此处再次兜底）
+    // 2) 开发环境：优先尝试从统一持久化键恢复
     try {
       const persistedRaw = localStorage.getItem('crm_store_order')
       if (persistedRaw) {
