@@ -190,11 +190,8 @@ export class AuthApiService {
 
                 console.log('[Auth] localStorage用户登录成功:', user.realName)
 
-                // 【关键修复】确保返回格式与user.ts期望的一致
-                return {
-                  ...loginResponse,
-                  data: loginResponse  // 同时提供data字段
-                } as unknown
+                // 直接返回LoginResponse对象
+                return loginResponse
               } else {
                 console.log('[Auth] 密码验证失败')
               }
@@ -246,11 +243,8 @@ export class AuthApiService {
           console.log('[Auth] 源代码预设账号登录成功:', presetAccount.name)
           console.log('  - Token:', loginResponse.tokens.accessToken.substring(0, 30) + '...')
 
-          // 【关键修复】确保返回格式与user.ts期望的一致
-          return {
-            ...loginResponse,
-            data: loginResponse  // 同时提供data字段
-          } as unknown
+          // 直接返回LoginResponse对象
+          return loginResponse
         }
 
         // 【批次193注释】注释掉测试账号，只使用真实预设账号
@@ -435,11 +429,8 @@ export class AuthApiService {
           console.log('[Auth] Mock API模式 - 登录成功:', mockResponse.user.username)
           console.log('  - Token:', mockResponse.tokens.accessToken.substring(0, 30) + '...')
 
-          // 【关键修复】确保返回格式与user.ts期望的一致
-          return {
-            ...mockResponse,
-            data: mockResponse  // 同时提供data字段
-          } as unknown
+          // 直接返回LoginResponse对象
+          return mockResponse
         } else {
           throw new Error('用户名或密码错误。请使用用户管理中的真实账号登录。')
         }
