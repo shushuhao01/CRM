@@ -40,7 +40,7 @@ export class Role {
   })
   permissions: Permission[]
 
-  // 拥有此角色的用户
-  @ManyToMany(() => User, user => user.roles)
-  users: User[]
+  // 拥有此角色的用户（注释掉，因为User实体使用字符串role而不是关联）
+  // @ManyToMany(() => User, user => user.roles)
+  // users: User[]
 }
