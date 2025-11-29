@@ -688,8 +688,9 @@ export const useNotificationStore = defineStore('notification', () => {
 
       return []
     } catch (error) {
-      console.error('从API加载消息失败:', error)
-      throw error
+      // 静默处理API加载失败，不影响主流程
+      console.log('[Notification] 从API加载消息失败（非关键功能）:', error)
+      return []
     }
   }
 
