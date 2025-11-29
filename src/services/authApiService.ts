@@ -436,22 +436,15 @@ export class AuthApiService {
         }
       }
 
-      // 真实 API 调用 - 临时使用 mock-auth 绕过登录问题
-      console.log('[Auth] 使用 Mock Auth API 登录:', credentials.username)
-      const response = await this.api.post<unknown>('/mock-auth/login', credentials)
+      // 真实 API 调用 - 连接后端数据库
+      console.log('[Auth] 使用真实后端API登录:', credentials.username)
+      const response = await this.api.post<LoginResponse>('/auth/login', credentials)
 
-      // 适配后端返回格式：将 token 转换为 tokens.accessToken
-      const loginResponse: LoginResponse = {
-        user: response.user,
-        tokens: {
-          accessToken: response.token || response.tokens?.accessToken,
-          refreshToken: response.refreshToken || response.tokens?.refreshToken || ''
-        },
-        expiresIn: response.expiresIn || 3600
-      }
+      console.log('[Auth] 真实API登录成功，TOKEN已获取')
+      console.log('[Auth] 用户:', response.user?.realName || response.user?.username)
+      console.log('[Auth] TOKEN:', response.tokens?.accessToken?.substring(0, 30) + '...')
 
-      console.log('[Auth] 真实 API 登录成功')
-      return loginResponse
+      return response
 
     } catch (error) {
       console.error('[Auth] 登录失败:', error)
