@@ -502,13 +502,11 @@ export const useUserStore = defineStore('user', () => {
       console.log('[Auth] response:', response)
       console.log('[Auth] response类型:', typeof response)
       console.log('[Auth] response.tokens:', response.tokens)
-      console.log('[Auth] response.data:', response.data)
+      console.log('[Auth] response.user:', response.user)
 
-      // 【关键修复】authApiService.login()直接返回LoginResponse对象，不需要.data
-      const tokensData = response.tokens || response.data?.tokens
-      console.log('[Auth] tokensData:', tokensData)
-
-      const accessToken = tokensData?.accessToken || tokensData?.access_token || response.token
+      // 【关键修复】apiService.post()返回的是response.data.data，即LoginResponse对象
+      // 所以response.tokens就是我们需要的tokens对象
+      const accessToken = response.tokens?.accessToken || response.tokens?.access_token
       console.log('[Auth] accessToken:', accessToken)
 
       if (!accessToken) {
@@ -527,7 +525,7 @@ export const useUserStore = defineStore('user', () => {
       console.log('[Auth] ✅ localStorage已保存:', localStorage.getItem('auth_token')?.substring(0, 30) + '...')
 
       // 设置当前用户信息，映射API响应到本地用户格式
-      const userData = response.data?.user || response.user
+      const userData = response.user
       currentUser.value = {
         id: userData.id.toString(),
         name: userData.realName || userData.name,
