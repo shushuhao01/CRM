@@ -500,9 +500,12 @@ export const useUserStore = defineStore('user', () => {
       // 立即设置token和登录状态，确保状态同步
       console.log('[Auth] === 开始提取Token ===')
       console.log('[Auth] response:', response)
+      console.log('[Auth] response类型:', typeof response)
+      console.log('[Auth] response.tokens:', response.tokens)
       console.log('[Auth] response.data:', response.data)
 
-      const tokensData = response.data?.tokens || response.tokens
+      // 【关键修复】authApiService.login()直接返回LoginResponse对象，不需要.data
+      const tokensData = response.tokens || response.data?.tokens
       console.log('[Auth] tokensData:', tokensData)
 
       const accessToken = tokensData?.accessToken || tokensData?.access_token || response.token
@@ -510,6 +513,7 @@ export const useUserStore = defineStore('user', () => {
 
       if (!accessToken) {
         console.error('[Auth] ❌ 登录响应中未找到Token!')
+        console.error('[Auth] 完整响应对象:', JSON.stringify(response, null, 2))
         throw new Error('登录响应格式错误：未找到Token')
       }
 
