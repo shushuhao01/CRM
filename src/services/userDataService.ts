@@ -36,18 +36,26 @@ class UserDataService {
 
   /**
    * 自动检测环境
-   * 优先级: 环境变量 > API可用性检测 > localStorage
+   * 优先级: 生产环境强制API > 环境变量 > localStorage
    */
   private detectEnvironment(): UserDataServiceConfig {
-    // 1. 检查环境变量
+    // 1. 检查是否为生产环境
+    const isProduction = import.meta.env.PROD
+
+    // 2. 检查环境变量
     const envUseAPI = import.meta.env.VITE_USE_API === 'true'
     const envAPIURL = import.meta.env.VITE_API_BASE_URL || ''
 
-    // 2. 检查是否有API配置
+    // 3. 检查是否有API配置
     const hasAPIConfig = envAPIURL && envAPIURL !== ''
 
-    // 3. 决定使用哪种模式
-    const useAPI = envUseAPI && hasAPIConfig
+    // 4. 决定使用哪种模式
+    // 【生产环境修复】生产环境必须使用API，不允许使用localStorage
+    const useAPI = isProduction || (envUseAPI && hasAPIConfig)
+
+    if (isProduction && !hasAPIConfig) {
+      console.warn('[UserDataService] 生产环境未配置API地址，将无法获取数据！')
+    }
 
     return {
       useAPI,
@@ -87,10 +95,15 @@ class UserDataService {
     } catch (error) {
       console.error('[UserDataService] 获取用户失败:', error)
 
-      // 降级处理: 如果API失败,尝试从localStorage获取
-      if (this.config.useAPI) {
-        console.log('[UserDataService] API失败,降级到localStorage')
+      // 【生产环境修复】生产环境下不降级到localStorage
+      if (this.config.useAPI && !import.meta.env.PROD) {
+        console.log('[UserDataService] 开发环境：API失败,降级到localStorage')
         return this.getUsersFromLocalStorage()
+      }
+
+      // 生产环境下API失败直接返回空数组
+      if (import.meta.env.PROD) {
+        console.error('[UserDataService] 生产环境：API失败，无法获取用户数据')
       }
 
       return []
@@ -98,9 +111,15 @@ class UserDataService {
   }
 
   /**
-   * 从localStorage获取用户
+   * 从localStorage获取用户（仅开发环境）
    */
   private async getUsersFromLocalStorage(): Promise<User[]> {
+    // 【生产环境修复】生产环境禁止使用localStorage
+    if (import.meta.env.PROD) {
+      console.warn('[UserDataService] 生产环境不支持从localStorage获取数据')
+      return []
+    }
+
     try {
       // 尝试多个可能的键名
       const possibleKeys = [
@@ -114,13 +133,13 @@ class UserDataService {
         if (data) {
           const users = JSON.parse(data)
           if (Array.isArray(users) && users.length > 0) {
-            console.log(`[UserDataService] 从 ${key} 加载了 ${users.length} 个用户`)
+            console.log(`[UserDataService] 开发环境：从 ${key} 加载了 ${users.length} 个用户`)
             return users
           }
         }
       }
 
-      console.warn('[UserDataService] localStorage中没有用户数据')
+      console.warn('[UserDataService] 开发环境：localStorage中没有用户数据')
       return []
     } catch (error) {
       console.error('[UserDataService] 从localStorage获取用户失败:', error)
