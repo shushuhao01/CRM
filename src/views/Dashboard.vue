@@ -839,15 +839,16 @@ const loadDashboardData = async () => {
 
     // 待办事项已移除，不再加载
 
-    // 加载系统消息
+    // 加载系统消息（非关键功能，失败不影响主流程）
     try {
       const permissionParams = getUserPermissionParams()
       const messagesResponse = await notificationStore.loadMessagesFromAPI(permissionParams)
       if (messagesResponse && messagesResponse.length > 0) {
-        console.log('系统消息加载成功:', messagesResponse.length, '条消息')
+        console.log('[Dashboard] 系统消息加载成功:', messagesResponse.length, '条消息')
       }
     } catch (messageError) {
-      console.warn('加载系统消息失败:', messageError)
+      // 静默处理消息加载失败，不显示错误提示
+      console.log('[Dashboard] 系统消息加载失败（非关键功能）:', messageError)
     }
 
   } catch (error) {
