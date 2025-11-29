@@ -1224,17 +1224,19 @@ const commonPositions = computed(() => {
       '质检员'
     ]
 
-    // 从localStorage获取真实用户的职位
-    const usersStr = localStorage.getItem('crm_mock_users')
-    if (usersStr) {
-      const users = JSON.parse(usersStr)
-      const realPositions = users
-        .map((user: unknown) => user.position)
-        .filter((pos: string) => pos && pos.trim())
-        .filter((pos: string, index: number, self: string[]) => self.indexOf(pos) === index) // 去重
+    // 【生产环境修复】仅在开发环境从localStorage获取真实用户的职位
+    if (!import.meta.env.PROD) {
+      const usersStr = localStorage.getItem('crm_mock_users')
+      if (usersStr) {
+        const users = JSON.parse(usersStr)
+        const realPositions = users
+          .map((user: unknown) => user.position)
+          .filter((pos: string) => pos && pos.trim())
+          .filter((pos: string, index: number, self: string[]) => self.indexOf(pos) === index) // 去重
 
-      // 合并基础职位和真实职位，去重
-      return [...new Set([...basePositions, ...realPositions])]
+        // 合并基础职位和真实职位，去重
+        return [...new Set([...basePositions, ...realPositions])]
+      }
     }
 
     return basePositions
@@ -2008,24 +2010,30 @@ const handleDelete = async (row: UserData) => {
 
     console.log('[User] 开始删除用户:', row.id, userName)
 
-    // 直接操作localStorage删除用户
-    const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
-    const userIndex = users.findIndex((u: unknown) => String(u.id) === String(row.id))
+    // 【生产环境修复】仅在开发环境操作localStorage
+    if (!import.meta.env.PROD) {
+      // 直接操作localStorage删除用户
+      const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+      const userIndex = users.findIndex((u: unknown) => String(u.id) === String(row.id))
 
-    if (userIndex !== -1) {
-      users.splice(userIndex, 1)
-      localStorage.setItem('crm_mock_users', JSON.stringify(users))
-      console.log('[User] 已从 crm_mock_users 删除')
-    }
+      if (userIndex !== -1) {
+        users.splice(userIndex, 1)
+        localStorage.setItem('crm_mock_users', JSON.stringify(users))
+        console.log('[User] 已从 crm_mock_users 删除')
+      }
 
-    // 同步删除 userDatabase
-    const userDatabase = JSON.parse(localStorage.getItem('userDatabase') || '[]')
-    const dbIndex = userDatabase.findIndex((u: unknown) => String(u.id) === String(row.id))
+      // 同步删除 userDatabase
+      const userDatabase = JSON.parse(localStorage.getItem('userDatabase') || '[]')
+      const dbIndex = userDatabase.findIndex((u: unknown) => String(u.id) === String(row.id))
 
-    if (dbIndex !== -1) {
-      userDatabase.splice(dbIndex, 1)
-      localStorage.setItem('userDatabase', JSON.stringify(userDatabase))
-      console.log('[User] 已从 userDatabase 删除')
+      if (dbIndex !== -1) {
+        userDatabase.splice(dbIndex, 1)
+        localStorage.setItem('userDatabase', JSON.stringify(userDatabase))
+        console.log('[User] 已从 userDatabase 删除')
+      }
+    } else {
+      console.log('[User] 生产环境：应通过API删除用户')
+      // TODO: 生产环境应该调用API删除用户
     }
 
     ElMessage.success('删除成功')
@@ -2420,34 +2428,40 @@ const confirmUser = async () => {
       console.log('[User] 更新用户数据:', updateData)
 
       try {
-        // 直接操作localStorage更新用户
-        const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
-        const userIndex = users.findIndex((u: unknown) => String(u.id) === String(userForm.id))
+        // 【生产环境修复】仅在开发环境操作localStorage
+        if (!import.meta.env.PROD) {
+          // 直接操作localStorage更新用户
+          const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+          const userIndex = users.findIndex((u: unknown) => String(u.id) === String(userForm.id))
 
-        if (userIndex !== -1) {
-          users[userIndex] = {
-            ...users[userIndex],
-            ...updateData,
-            updateTime: new Date().toLocaleString()
+          if (userIndex !== -1) {
+            users[userIndex] = {
+              ...users[userIndex],
+              ...updateData,
+              updateTime: new Date().toLocaleString()
+            }
+            localStorage.setItem('crm_mock_users', JSON.stringify(users))
+            console.log('[User] 已更新 crm_mock_users')
           }
-          localStorage.setItem('crm_mock_users', JSON.stringify(users))
-          console.log('[User] 已更新 crm_mock_users')
-        }
 
-        // 同步更新 userDatabase
-        const userDatabase = JSON.parse(localStorage.getItem('userDatabase') || '[]')
-        const dbIndex = userDatabase.findIndex((u: unknown) => String(u.id) === String(userForm.id))
+          // 同步更新 userDatabase
+          const userDatabase = JSON.parse(localStorage.getItem('userDatabase') || '[]')
+          const dbIndex = userDatabase.findIndex((u: unknown) => String(u.id) === String(userForm.id))
 
-        if (dbIndex !== -1) {
-          userDatabase[dbIndex] = {
-            ...userDatabase[dbIndex],
-            ...updateData
+          if (dbIndex !== -1) {
+            userDatabase[dbIndex] = {
+              ...userDatabase[dbIndex],
+              ...updateData
+            }
+            localStorage.setItem('userDatabase', JSON.stringify(userDatabase))
+            console.log('[User] 已更新 userDatabase')
           }
-          localStorage.setItem('userDatabase', JSON.stringify(userDatabase))
-          console.log('[User] 已更新 userDatabase')
-        }
 
-        console.log('[User] 用户更新成功')
+          console.log('[User] 用户更新成功')
+        } else {
+          console.log('[User] 生产环境：应通过API更新用户')
+          // TODO: 生产环境应该调用API更新用户
+        }
         ElMessage.success('用户更新成功')
       } catch (error) {
         console.error('[User] 更新用户失败:', error)
@@ -2614,9 +2628,15 @@ const loadUserList = async () => {
   try {
     tableLoading.value = true
 
-    // 直接从localStorage读取用户数据
-    const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
-    console.log('[User] 从localStorage加载用户:', users.length)
+    // 【生产环境修复】仅在开发环境从localStorage读取用户数据
+    let users: unknown[] = []
+    if (!import.meta.env.PROD) {
+      users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+      console.log('[User] 开发环境：从localStorage加载用户:', users.length)
+    } else {
+      console.log('[User] 生产环境：应通过API获取用户数据')
+      // TODO: 生产环境应该调用API获取用户数据
+    }
 
     // 模拟API响应格式
     const response = {

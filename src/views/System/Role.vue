@@ -1266,9 +1266,15 @@ const handleViewUsers = async (row: RoleData) => {
   userPagination.page = 1
 
   try {
-    // 从 localStorage 获取真实用户数据 - 使用 crm_mock_users 键
-    const allUsers = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
-    console.log('[角色权限] 所有用户数据:', allUsers.length)
+    // 【生产环境修复】仅在开发环境从localStorage获取用户数据
+    let allUsers: any[] = []
+    if (!import.meta.env.PROD) {
+      allUsers = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+      console.log('[角色权限] 开发环境：所有用户数据:', allUsers.length)
+    } else {
+      console.log('[角色权限] 生产环境：应通过API获取用户数据')
+      // TODO: 生产环境应该调用API获取用户数据
+    }
     console.log('[角色权限] 查找角色:', row.code)
 
     // 筛选该角色的用户 - 使用 roleId 字段匹配
@@ -2038,11 +2044,17 @@ const loadRoleList = async () => {
     const roles = await roleApiService.getRoles()
     console.log('[角色权限] API返回角色数据:', roles)
 
-    // 直接从localStorage获取用户数据
-    const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
-    console.log('[角色权限] ========== 开始统计用户数量 ==========')
-    console.log('[角色权限] 用户总数:', users.length)
-    console.log('[角色权限] 数据来源: localStorage (crm_mock_users)')
+    // 【生产环境修复】仅在开发环境从localStorage获取用户数据
+    let users: any[] = []
+    if (!import.meta.env.PROD) {
+      users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
+      console.log('[角色权限] ========== 开始统计用户数量 ==========')
+      console.log('[角色权限] 用户总数:', users.length)
+      console.log('[角色权限] 数据来源: localStorage (crm_mock_users)')
+    } else {
+      console.log('[角色权限] 生产环境：应通过API获取用户数据')
+      // TODO: 生产环境应该调用API获取用户数据
+    }
 
     // 显示每个用户的角色信息(用于调试)
     if (users.length > 0) {
@@ -3475,7 +3487,7 @@ const handleUserSearch = () => {
   // 关键词搜索
   if (userSearchKeyword.value) {
     const keyword = userSearchKeyword.value.toLowerCase()
-    filtered = filtered.filter((user: any) =>
+    filtered = filtered.filter((user: unknown) =>
       user.username.toLowerCase().includes(keyword) ||
       user.realName.toLowerCase().includes(keyword) ||
       user.email.toLowerCase().includes(keyword)

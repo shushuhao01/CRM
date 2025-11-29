@@ -125,9 +125,14 @@ export const useLogisticsStatusStore = defineStore('logisticsStatus', () => {
   // 创建资料记录（从订单）
   const createDataRecordFromOrder = async (order: unknown) => {
     try {
-      // 从localStorage获取现有的dataList
-      const dataListStr = localStorage.getItem('dataList')
+      // 【生产环境修复】只在开发环境从localStorage读取
       let dataList = []
+      if (!import.meta.env.PROD) {
+        const dataListStr = localStorage.getItem('dataList')
+        if (dataListStr) {
+          dataList = JSON.parse(dataListStr)
+        }
+      }
 
       if (dataListStr) {
         try {
@@ -173,8 +178,11 @@ export const useLogisticsStatusStore = defineStore('logisticsStatus', () => {
       // 添加到dataList
       dataList.unshift(dataRecord)
 
-      // 保存到localStorage
-      localStorage.setItem('dataList', JSON.stringify(dataList))
+      // 【生产环境修复】只在开发环境保存到localStorage
+      if (!import.meta.env.PROD) {
+        localStorage.setItem('dataList', JSON.stringify(dataList))
+        console.log('[物流状态Store] 开发环境：已保存到localStorage')
+      }
 
       console.log('成功创建资料记录:', dataRecord)
     } catch (error) {

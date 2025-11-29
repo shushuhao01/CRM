@@ -949,41 +949,43 @@ const loadRealRankings = () => {
         receivedAmount: existing.receivedAmount || 0
       })
     } else {
-      // 【批次189修复】简化用户信息获取逻辑，直接从crm_mock_users获取
+      // 【批次189修复】简化用户信息获取逻辑
       let userName = '未知'
       let userAvatar = ''
       let userDepartment = ''
 
-      // 直接从crm_mock_users获取用户信息（主数据源）
-      try {
-        const usersData = localStorage.getItem('crm_mock_users')
-        if (usersData) {
-          const users = JSON.parse(usersData)
-          const user = users.find((u: unknown) =>
-            String(u.id) === String(salesPersonId) ||
-            u.username === salesPersonId
-          )
+      // 【生产环境修复】仅在开发环境从localStorage获取用户信息
+      if (!import.meta.env.PROD) {
+        try {
+          const usersData = localStorage.getItem('crm_mock_users')
+          if (usersData) {
+            const users = JSON.parse(usersData)
+            const user = users.find((u: unknown) =>
+              String(u.id) === String(salesPersonId) ||
+              u.username === salesPersonId
+            )
 
-          if (user) {
-            // 直接使用字段，不做复杂判断
-            userName = user.realName || user.name || user.username || '未知'
-            userAvatar = user.avatar || ''
-            userDepartment = user.department || ''
+            if (user) {
+              // 直接使用字段，不做复杂判断
+              userName = user.realName || user.name || user.username || '未知'
+              userAvatar = user.avatar || ''
+              userDepartment = user.department || ''
 
-            // 如果没有department但有departmentId，查找部门名称
-            if (!userDepartment && user.departmentId) {
-              const departments = JSON.parse(localStorage.getItem('crm_mock_departments') || '[]')
-              const dept = departments.find((d: unknown) => String(d.id) === String(user.departmentId))
-              userDepartment = dept?.name || ''
+              // 如果没有department但有departmentId，查找部门名称
+              if (!userDepartment && user.departmentId) {
+                const departments = JSON.parse(localStorage.getItem('crm_mock_departments') || '[]')
+                const dept = departments.find((d: unknown) => String(d.id) === String(user.departmentId))
+                userDepartment = dept?.name || ''
+              }
+
+              console.log(`[业绩排名] 找到用户: ${userName}, 部门: ${userDepartment}`)
+            } else {
+              console.warn(`[业绩排名] 未找到用户: ${salesPersonId}`)
             }
-
-            console.log(`[业绩排名] 找到用户: ${userName}, 部门: ${userDepartment}`)
-          } else {
-            console.warn(`[业绩排名] 未找到用户: ${salesPersonId}`)
           }
+        } catch (error) {
+          console.error('[业绩排名] 获取用户信息失败:', error)
         }
-      } catch (error) {
-        console.error('[业绩排名] 获取用户信息失败:', error)
       }
 
       salesMap.set(salesPersonId, {
@@ -1029,19 +1031,22 @@ const loadRealRankings = () => {
           let userAvatar = ''
           let userDepartment = ''
 
-          try {
-            const usersData = localStorage.getItem('crm_mock_users')
-            if (usersData) {
-              const users = JSON.parse(usersData)
-              const user = users.find((u: unknown) => String(u.id) === String(member.userId))
-              if (user) {
-                userName = user.realName || user.name || user.username || userName
-                userAvatar = user.avatar || ''
-                userDepartment = user.department || ''
+          // 【生产环境修复】仅在开发环境从localStorage获取用户信息
+          if (!import.meta.env.PROD) {
+            try {
+              const usersData = localStorage.getItem('crm_mock_users')
+              if (usersData) {
+                const users = JSON.parse(usersData)
+                const user = users.find((u: unknown) => String(u.id) === String(member.userId))
+                if (user) {
+                  userName = user.realName || user.name || user.username || userName
+                  userAvatar = user.avatar || ''
+                  userDepartment = user.department || ''
+                }
               }
+            } catch (error) {
+              console.error('[业绩排名] 获取分享用户信息失败:', error)
             }
-          } catch (error) {
-            console.error('[业绩排名] 获取分享用户信息失败:', error)
           }
 
           salesMap.set(member.userId, {

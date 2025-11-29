@@ -719,11 +719,17 @@ export const useDepartmentStore = createPersistentStore('department', () => {
 
   // 同步所有部门的成员数量（从localStorage的crm_mock_users数据）
   const syncAllDepartmentMemberCounts = () => {
+    // 【生产环境修复】生产环境不从localStorage同步
+    if (import.meta.env.PROD) {
+      console.log('[部门Store] 生产环境：跳过localStorage同步，使用API数据')
+      return
+    }
+
     try {
-      console.log('[部门Store] 开始同步所有部门成员数量...')
+      console.log('[部门Store] 开发环境：开始同步所有部门成员数量...')
       const usersStr = localStorage.getItem('crm_mock_users')
       if (!usersStr) {
-        console.log('[部门Store] 未找到crm_mock_users数据')
+        console.log('[部门Store] 开发环境：未找到crm_mock_users数据')
         return
       }
 

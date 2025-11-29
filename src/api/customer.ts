@@ -4,6 +4,7 @@ import { API_ENDPOINTS } from './config'
 import { mockApi, shouldUseMockApi } from './mock'
 import type { Customer } from '@/stores/customer'
 import { useCustomerStore } from '@/stores/customer'
+import { isProduction } from '@/utils/env'
 
 // 客户查询参数接口
 export interface CustomerSearchParams {
@@ -27,43 +28,49 @@ export interface CustomerListResponse {
 export const customerApi = {
   // 获取客户列表
   getList: async (params?: CustomerSearchParams) => {
+    // 生产环境：强制使用真实API
+    if (isProduction()) {
+      return api.get<CustomerListResponse>(API_ENDPOINTS.CUSTOMERS.LIST, params)
+    }
+
+    // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
       const data = await mockApi.getCustomerList(params)
       return { data, code: 200, message: 'success', success: true }
     }
     return api.get<CustomerListResponse>(API_ENDPOINTS.CUSTOMERS.LIST, params)
   },
-  
+
   // 检查客户是否存在
   checkExists: async (phone: string) => {
     try {
       console.log('=== 验证客户是否存在 ===')
       console.log('验证手机号:', phone)
-      
+
       // 使用静态导入的CustomerStore，确保使用同一个实例
       const customerStore = useCustomerStore()
-      
+
       console.log('验证时CustomerStore实例ID:', (customerStore as any).instanceId)
       console.log('验证时CustomerStore客户数量:', customerStore.customers.length)
       console.log('验证时所有客户手机号:', customerStore.customers.map(c => c.phone))
-      
+
       const existingCustomer = customerStore.customers.find(c => c.phone === phone)
-      
+
       if (existingCustomer) {
         console.log('找到重复客户:', existingCustomer.name)
-        return { 
-          data: existingCustomer, 
-          code: 200, 
-          message: '该手机号已存在客户记录', 
-          success: true 
+        return {
+          data: existingCustomer,
+          code: 200,
+          message: '该手机号已存在客户记录',
+          success: true
         }
       } else {
         console.log('客户不存在，可以创建')
-        return { 
-          data: null, 
-          code: 200, 
-          message: '该手机号不存在，可以创建', 
-          success: true 
+        return {
+          data: null,
+          code: 200,
+          message: '该手机号不存在，可以创建',
+          success: true
         }
       }
     } catch (error) {
@@ -74,42 +81,72 @@ export const customerApi = {
 
   // 创建客户
   create: async (data: Omit<Customer, 'id' | 'createTime' | 'orderCount'>) => {
+    // 生产环境：强制使用真实API
+    if (isProduction()) {
+      return api.post<Customer>(API_ENDPOINTS.CUSTOMERS.CREATE, data)
+    }
+
+    // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
       const customer = await mockApi.createCustomer(data)
       return { data: customer, code: 200, message: 'success', success: true }
     }
     return api.post<Customer>(API_ENDPOINTS.CUSTOMERS.CREATE, data)
   },
-  
+
   // 更新客户
   update: async (id: string, data: Partial<Customer>) => {
+    // 生产环境：强制使用真实API
+    if (isProduction()) {
+      return api.put<Customer>(API_ENDPOINTS.CUSTOMERS.UPDATE(id), data)
+    }
+
+    // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
       const customer = await mockApi.updateCustomer(id, data)
       return { data: customer, code: 200, message: 'success', success: true }
     }
     return api.put<Customer>(API_ENDPOINTS.CUSTOMERS.UPDATE(id), data)
   },
-  
+
   // 删除客户
   delete: async (id: string) => {
+    // 生产环境：强制使用真实API
+    if (isProduction()) {
+      return api.delete(API_ENDPOINTS.CUSTOMERS.DELETE(id))
+    }
+
+    // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
       await mockApi.deleteCustomer(id)
       return { data: null, code: 200, message: 'success', success: true }
     }
     return api.delete(API_ENDPOINTS.CUSTOMERS.DELETE(id))
   },
-  
+
   // 获取客户详情
   getDetail: async (id: string) => {
+    // 生产环境：强制使用真实API
+    if (isProduction()) {
+      return api.get<Customer>(API_ENDPOINTS.CUSTOMERS.DETAIL(id))
+    }
+
+    // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
       const customer = await mockApi.getCustomerDetail(id)
       return { data: customer, code: 200, message: 'success', success: true }
     }
     return api.get<Customer>(API_ENDPOINTS.CUSTOMERS.DETAIL(id))
   },
-  
+
   // 搜索客户
   search: async (params: CustomerSearchParams) => {
+    // 生产环境：强制使用真实API
+    if (isProduction()) {
+      return api.get<CustomerListResponse>(API_ENDPOINTS.CUSTOMERS.SEARCH, params)
+    }
+
+    // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
       const data = await mockApi.getCustomerList(params)
       return { data, code: 200, message: 'success', success: true }
