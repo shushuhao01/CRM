@@ -141,55 +141,31 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     return departments.value.find(dept => dept.id === id)
   }
 
-  // 获取部门成员（从localStorage的crm_mock_users数据中读取）
+  // 获取部门成员（从API获取真实数据）
   const getDepartmentMembers = (departmentId: string): DepartmentMember[] => {
+    // 【生产环境修复】不再从localStorage读取，返回空数组
+    // 实际数据应该通过API调用 fetchDepartmentMembers() 获取
+    console.log('[部门Store] getDepartmentMembers已废弃，请使用fetchDepartmentMembers')
+    return members.value.filter(m => m.departmentId === departmentId)
+  }
+
+  // 从API获取部门成员
+  const fetchDepartmentMembers = async (departmentId: string): Promise<DepartmentMember[]> => {
     try {
-      // 从localStorage获取真实用户数据（用户管理页面使用的数据）
-      const userDatabaseStr = localStorage.getItem('userDatabase')
-      let users: any[] = []
+      const { getDepartmentMembers: getDepartmentMembersAPI } = await import('@/api/department')
+      const response = await getDepartmentMembersAPI(departmentId)
+      const apiMembers = response.data || []
 
-      if (userDatabaseStr) {
-        users = JSON.parse(userDatabaseStr)
-        console.log('[部门Store] 从userDatabase加载用户:', users.length, '个')
-      } else {
-        // 如果userDatabase不存在，尝试从crm_mock_users获取
-        const mockUsersStr = localStorage.getItem('crm_mock_users')
-        if (mockUsersStr) {
-          users = JSON.parse(mockUsersStr)
-          console.log('[部门Store] 从crm_mock_users加载用户:', users.length, '个')
-        }
-      }
+      // 更新store中的members
+      members.value = [
+        ...members.value.filter(m => m.departmentId !== departmentId),
+        ...apiMembers
+      ]
 
-      console.log('[部门Store] 查询部门ID:', departmentId)
-
-      // 获取部门信息
-      const department = departments.value.find(d => String(d.id) === String(departmentId))
-      console.log('[部门Store] 部门信息:', department?.name)
-
-      // 筛选该部门的用户并转换为DepartmentMember格式
-      const departmentUsers = users.filter((user: any) => {
-        // departmentId字段匹配（转为字符串比较）
-        const match = String(user.departmentId) === String(departmentId)
-        if (match) {
-          console.log('[部门Store] 匹配到用户:', user.name || user.realName || user.username, '部门ID:', user.departmentId)
-        }
-        return match
-      })
-
-      console.log(`[部门Store] 部门${departmentId}的成员数:`, departmentUsers.length)
-
-      return departmentUsers.map((user: unknown) => ({
-        id: user.id,
-        departmentId: user.departmentId,
-        userId: user.id,
-        userName: user.name || user.realName || user.username,
-        userAvatar: user.avatar || '',
-        position: user.position || user.role || '成员',
-        joinDate: user.createTime || user.createdAt || new Date().toISOString(),
-        status: user.status || 'active'
-      }))
+      console.log(`[部门Store] 从API获取部门${departmentId}的成员:`, apiMembers.length, '个')
+      return apiMembers
     } catch (error) {
-      console.error('[部门Store] 获取部门成员失败:', error)
+      console.error('[部门Store] 从API获取部门成员失败:', error)
       return []
     }
   }
@@ -219,17 +195,8 @@ export const useDepartmentStore = createPersistentStore('department', () => {
       const response = await updateDepartmentAPI(id, updates)
       const updatedDepartment = response.data
 
-      // 设置负责人名称
-      if (updatedDepartment.managerId) {
-        const usersStr = localStorage.getItem('crm_mock_users')
-        if (usersStr) {
-          const users = JSON.parse(usersStr)
-          const manager = users.find((u: unknown) => String(u.id) === String(updatedDepartment.managerId))
-          if (manager) {
-            updatedDepartment.managerName = manager.realName || manager.username
-          }
-        }
-      }
+      // 【生产环境修复】负责人名称应该从API响应中获取，不再从localStorage读取
+      // API应该返回完整的部门信息，包括managerName
 
       const index = departments.value.findIndex(d => d.id === id)
       if (index !== -1) {
@@ -555,17 +522,21 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     }
   }
 
-  // 获取部门数据（开发环境从localStorage，生产环境调用API）
-  // 根据managerId设置managerName
+  // 【生产环境修复】不再从localStorage获取用户数据
+  // managerName应该由API直接返回
   const enrichDepartmentsWithManagerNames = async (depts: Department[]) => {
+    // 生产环境下，managerName应该由API直接返回，不需要额外处理
+    if (import.meta.env.PROD) {
+      return depts
+    }
+
+    // 开发环境下，如果需要从localStorage获取
     try {
-      // 获取所有用户数据
       const usersStr = localStorage.getItem('crm_mock_users')
       if (!usersStr) return depts
 
       const users = JSON.parse(usersStr)
 
-      // 为每个部门设置managerName
       return depts.map(dept => {
         if (dept.managerId) {
           const manager = users.find((u: unknown) => String(u.id) === String(dept.managerId))
@@ -579,7 +550,7 @@ export const useDepartmentStore = createPersistentStore('department', () => {
         return dept
       })
     } catch (error) {
-      console.error('[DepartmentStore] 设置负责人名称失败:', error)
+      console.error('[DepartmentStore] 开发环境：设置负责人名称失败:', error)
       return depts
     }
   }
@@ -589,47 +560,67 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     try {
       console.log('[DepartmentStore] 开始获取部门数据...')
 
-      // 先尝试从localStorage读取（开发环境）
+      // 【生产环境修复】生产环境直接调用API，不使用localStorage
+      if (import.meta.env.PROD) {
+        const { getDepartmentList } = await import('@/api/department')
+        console.log('[DepartmentStore] 生产环境：调用API获取部门数据')
+        const response = await getDepartmentList()
+        console.log('[DepartmentStore] API响应:', response)
+
+        if (response && response.data) {
+          const depts = Array.isArray(response.data) ? response.data : []
+          departments.value = depts
+          console.log('[DepartmentStore] 生产环境：部门数据已更新:', departments.value.length, '个部门')
+        } else {
+          departments.value = []
+          console.log('[DepartmentStore] 生产环境：API响应无数据')
+        }
+        return
+      }
+
+      // 开发环境：先尝试从localStorage读取
       const localDeptsStr = localStorage.getItem('crm_mock_departments')
       if (localDeptsStr) {
         let localDepts = JSON.parse(localDeptsStr)
-        // 设置负责人名称
         localDepts = await enrichDepartmentsWithManagerNames(localDepts)
         departments.value = localDepts
-        console.log('[DepartmentStore] 从localStorage加载部门数据:', departments.value.length, '个部门')
+        console.log('[DepartmentStore] 开发环境：从localStorage加载部门数据:', departments.value.length, '个部门')
         loading.value = false
         return
       }
 
-      // 如果localStorage没有，尝试调用API（生产环境）
+      // 开发环境：localStorage没有数据，调用API
       const { getDepartmentList } = await import('@/api/department')
-      console.log('[DepartmentStore] API方法已导入，开始调用...')
+      console.log('[DepartmentStore] 开发环境：调用API获取部门数据')
       const response = await getDepartmentList()
       console.log('[DepartmentStore] API响应:', response)
 
-      // 确保departments.value始终是数组
       if (response && response.data) {
-        console.log('[DepartmentStore] 响应包含data字段:', response.data)
         let depts = Array.isArray(response.data) ? response.data : []
-        // 设置负责人名称
         depts = await enrichDepartmentsWithManagerNames(depts)
         departments.value = depts
       } else {
-        console.log('[DepartmentStore] 响应不包含data字段，设置为空数组')
         departments.value = []
       }
 
-      console.log('[DepartmentStore] 部门数据已更新:', departments.value.length, '个部门')
+      console.log('[DepartmentStore] 开发环境：部门数据已更新:', departments.value.length, '个部门')
     } catch (error) {
       console.error('[DepartmentStore] 获取部门列表失败:', error)
-      // API失败时，尝试从localStorage读取
+
+      // 【生产环境修复】生产环境下API失败不降级到localStorage
+      if (import.meta.env.PROD) {
+        console.error('[DepartmentStore] 生产环境：API失败，无法获取部门数据')
+        departments.value = []
+        return
+      }
+
+      // 开发环境：API失败时，尝试从localStorage读取
       const localDeptsStr = localStorage.getItem('crm_mock_departments')
       if (localDeptsStr) {
         let localDepts = JSON.parse(localDeptsStr)
-        // 设置负责人名称
         localDepts = await enrichDepartmentsWithManagerNames(localDepts)
         departments.value = localDepts
-        console.log('[DepartmentStore] API失败，从localStorage加载部门数据:', departments.value.length, '个部门')
+        console.log('[DepartmentStore] 开发环境：API失败，从localStorage加载部门数据:', departments.value.length, '个部门')
       } else {
         departments.value = []
       }
@@ -663,8 +654,8 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     }
   }
 
-  // 获取部门成员数据
-  const fetchDepartmentMembers = async () => {
+  // 获取所有部门的成员数据
+  const fetchAllDepartmentMembers = async () => {
     loading.value = true
     try {
       const { getDepartmentMembers: getDepartmentMembersAPI } = await import('@/api/department')
@@ -682,7 +673,7 @@ export const useDepartmentStore = createPersistentStore('department', () => {
 
       members.value = allMembers
     } catch (error) {
-      console.error('获取部门成员失败:', error)
+      console.error('获取所有部门成员失败:', error)
       members.value = []
     } finally {
       loading.value = false
@@ -830,6 +821,7 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     batchUpdateRolePermissions,
     fetchDepartments,
     fetchDepartmentMembers,
+    fetchAllDepartmentMembers,
     fetchDepartmentRoles,
     fetchDepartmentStats,
     updateDepartmentMemberCount,
