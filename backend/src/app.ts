@@ -15,9 +15,9 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 // 路由导入
 import authRoutes from './routes/auth';
-import mockAuthRoutes from './routes/mockAuth';
+// import mockAuthRoutes from './routes/mockAuth'; // 文件已删除
 import userRoutes from './routes/users';
-import profileRoutes from './routes/profile';
+// import profileRoutes from './routes/profile'; // 文件不存在，已注释
 import customerRoutes from './routes/customers';
 import productRoutes from './routes/products';
 import orderRoutes from './routes/orders';
@@ -185,13 +185,13 @@ app.get('/', (req, res) => {
 // 开发环境下不应用登录限流器
 if (process.env.NODE_ENV === 'development') {
   app.use(`${API_PREFIX}/auth`, authRoutes);
-  app.use(`${API_PREFIX}/mock-auth`, mockAuthRoutes);
+  // app.use(`${API_PREFIX}/mock-auth`, mockAuthRoutes); // Mock路由已删除
 } else {
   app.use(`${API_PREFIX}/auth`, loginLimiter, authRoutes);
-  app.use(`${API_PREFIX}/mock-auth`, loginLimiter, mockAuthRoutes);
+  // app.use(`${API_PREFIX}/mock-auth`, loginLimiter, mockAuthRoutes); // Mock路由已删除
 }
 app.use(`${API_PREFIX}/users`, userRoutes);
-app.use(`${API_PREFIX}/profile`, profileRoutes);
+// app.use(`${API_PREFIX}/profile`, profileRoutes); // 路由文件不存在，已注释
 app.use(`${API_PREFIX}/customers`, customerRoutes);
 app.use(`${API_PREFIX}/products`, productRoutes);
 app.use(`${API_PREFIX}/orders`, orderRoutes);
