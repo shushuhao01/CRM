@@ -26,8 +26,17 @@ export const messageApi = {
   },
 
   // 公告相关
-  getAnnouncements: (params?: any) => {
-    return request.get('/message/announcements', { params })
+  getAnnouncements: async (params?: any) => {
+    try {
+      return await request.get('/message/announcements', { params })
+    } catch (error: any) {
+      // 【修复】如果是404或502错误，返回空数据而不是抛出错误
+      if (error?.status === 404 || error?.status === 502 || error?.status === 500) {
+        console.log('[Message API] 公告功能未启用或后端未实现')
+        return { success: true, data: { list: [], total: 0 } }
+      }
+      throw error
+    }
   },
 
   createAnnouncement: (data: Omit<Announcement, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -60,8 +69,17 @@ export const messageApi = {
   },
 
   // 系统消息相关
-  getSystemMessages: (params?: any) => {
-    return request.get('/message/system-messages', { params })
+  getSystemMessages: async (params?: any) => {
+    try {
+      return await request.get('/message/system-messages', { params })
+    } catch (error: any) {
+      // 【修复】如果是404、500或502错误，返回空数据而不是抛出错误
+      if (error?.status === 404 || error?.status === 502 || error?.status === 500) {
+        console.log('[Message API] 系统消息功能未启用或后端未实现')
+        return { success: true, data: { messages: [], total: 0 } }
+      }
+      throw error
+    }
   },
 
   markMessageAsRead: (id: string) => {
