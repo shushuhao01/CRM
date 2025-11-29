@@ -12,33 +12,33 @@ export class MockAuthController {
     // 模拟用户数据
     const mockUsers = [
       {
-        id: 0,
+        id: '0',
         username: 'superadmin',
         password: 'super123456',
-        realName: '超级管理员',
+        realName: '超级管理�?,
         email: 'superadmin@company.com',
         role: 'super_admin',
         status: 'active',
         department: {
-          id: 1,
-          name: '管理部'
+          id: '1',
+          name: '管理�?
         }
       },
       {
-        id: 1,
+        id: '1',
         username: 'admin',
         password: 'admin123',
-        realName: '系统管理员',
+        realName: '系统管理�?,
         email: 'admin@company.com',
         role: 'admin',
         status: 'active',
         department: {
-          id: 1,
-          name: '管理部'
+          id: '1',
+          name: '管理�?
         }
       },
       {
-        id: 2,
+        id: '2',
         username: 'manager',
         password: 'manager123',
         realName: '部门经理',
@@ -46,25 +46,25 @@ export class MockAuthController {
         role: 'department_manager',
         status: 'active',
         department: {
-          id: 2,
+          id: '2',
           name: '销售部'
         }
       },
       {
-        id: 3,
+        id: '3',
         username: 'sales001',
         password: 'sales123',
-        realName: '销售员工',
+        realName: '销售员�?,
         email: 'sales001@company.com',
         role: 'sales_staff',
         status: 'active',
         department: {
-          id: 2,
+          id: '2',
           name: '销售部'
         }
       },
       {
-        id: 4,
+        id: '4',
         username: 'service001',
         password: 'service123',
         realName: '客服员工',
@@ -72,8 +72,8 @@ export class MockAuthController {
         role: 'customer_service',
         status: 'active',
         department: {
-          id: 3,
-          name: '客服部'
+          id: '3',
+          name: '客服�?
         }
       }
     ];
@@ -113,9 +113,7 @@ export class MockAuthController {
           username: user.username,
           realName: user.realName,
           email: user.email,
-          phone: '', // 添加缺失的字段
-          avatar: '', // 添加缺失的字段
-          role: user.role,
+          phone: '', // 添加缺失的字�?          avatar: '', // 添加缺失的字�?          role: user.role,
           status: user.status,
           departmentId: user.department?.id,
           department: user.department,
@@ -126,8 +124,7 @@ export class MockAuthController {
         },
         accessToken,
         refreshToken,
-        expiresIn: 7 * 24 * 60 * 60 // 7天，以秒为单位
-      }
+        expiresIn: 7 * 24 * 60 * 60 // 7天，以秒为单�?      }
     });
   });
 
@@ -135,56 +132,54 @@ export class MockAuthController {
    * 模拟获取当前用户信息
    */
   getCurrentUser = catchAsync(async (req: Request, res: Response): Promise<void> => {
-    // 从JWT中获取用户信息
-    const userInfo = (req as any).user;
+    // 从JWT中获取用户信�?    const userInfo = (req as any).user;
 
     if (!userInfo) {
       res.status(401).json({
         success: false,
-        message: '未授权访问',
+        message: '未授权访�?,
         code: 'UNAUTHORIZED'
       });
       return;
     }
 
-    // 根据用户名获取详细信息
-    const getUserDetails = (username: string, role: string) => {
+    // 根据用户名获取详细信�?    const getUserDetails = (username: string, role: string) => {
       switch (username) {
         case 'superadmin':
           return {
-            realName: '超级管理员',
+            realName: '超级管理�?,
             email: 'superadmin@company.com',
-            department: { id: 1, name: '管理部' }
+            department: { id: '1', name: '管理�? }
           };
         case 'admin':
           return {
-            realName: '系统管理员',
+            realName: '系统管理�?,
             email: 'admin@company.com',
-            department: { id: 1, name: '管理部' }
+            department: { id: '1', name: '管理�? }
           };
         case 'manager':
           return {
             realName: '部门经理',
             email: 'manager@company.com',
-            department: { id: 2, name: '销售部' }
+            department: { id: '2', name: '销售部' }
           };
         case 'sales001':
           return {
-            realName: '销售员工',
+            realName: '销售员�?,
             email: 'sales001@company.com',
-            department: { id: 2, name: '销售部' }
+            department: { id: '2', name: '销售部' }
           };
         case 'service001':
           return {
             realName: '客服员工',
             email: 'service001@company.com',
-            department: { id: 3, name: '客服部' }
+            department: { id: '3', name: '客服�? }
           };
         default:
           return {
             realName: '未知用户',
             email: 'unknown@company.com',
-            department: { id: 1, name: '未知部门' }
+            department: { id: '1', name: '未知部门' }
           };
       }
     };
@@ -236,7 +231,7 @@ export class MockAuthController {
     try {
       // 验证刷新token
       const payload = JwtConfig.verifyRefreshToken(refreshToken);
-      
+
       // 生成新的访问token
       const newAccessToken = JwtConfig.generateAccessToken({
         userId: payload.userId,
@@ -255,39 +250,39 @@ export class MockAuthController {
         switch (username) {
           case 'superadmin':
             return {
-              realName: '超级管理员',
+              realName: '超级管理�?,
               email: 'superadmin@company.com',
-              department: { id: 1, name: '管理部' }
+              department: { id: '1', name: '管理�? }
             };
           case 'admin':
             return {
-              realName: '系统管理员',
+              realName: '系统管理�?,
               email: 'admin@company.com',
-              department: { id: 1, name: '管理部' }
+              department: { id: '1', name: '管理�? }
             };
           case 'manager':
             return {
               realName: '部门经理',
               email: 'manager@company.com',
-              department: { id: 2, name: '销售部' }
+              department: { id: '2', name: '销售部' }
             };
           case 'sales001':
             return {
-              realName: '销售员工',
+              realName: '销售员�?,
               email: 'sales001@company.com',
-              department: { id: 2, name: '销售部' }
+              department: { id: '2', name: '销售部' }
             };
           case 'service001':
             return {
               realName: '客服员工',
               email: 'service001@company.com',
-              department: { id: 3, name: '客服部' }
+              department: { id: '3', name: '客服�? }
             };
           default:
             return {
               realName: '未知用户',
               email: 'unknown@company.com',
-              department: { id: 1, name: '未知部门' }
+              department: { id: '1', name: '未知部门' }
             };
         }
       };
@@ -343,8 +338,7 @@ export class MockAuthController {
       return;
     }
 
-    // 模拟密码验证（在实际应用中应该验证旧密码）
-    res.json({
+    // 模拟密码验证（在实际应用中应该验证旧密码�?    res.json({
       success: true,
       message: '密码修改成功'
     });
@@ -360,7 +354,7 @@ export class MockAuthController {
     if (!userInfo) {
       res.status(401).json({
         success: false,
-        message: '未授权访问',
+        message: '未授权访�?,
         code: 'UNAUTHORIZED'
       });
       return;
@@ -371,39 +365,39 @@ export class MockAuthController {
       switch (username) {
         case 'superadmin':
           return {
-            realName: '超级管理员',
+            realName: '超级管理�?,
             email: 'superadmin@company.com',
-            department: { id: 1, name: '管理部' }
+            department: { id: '1', name: '管理�? }
           };
         case 'admin':
           return {
-            realName: '系统管理员',
+            realName: '系统管理�?,
             email: 'admin@company.com',
-            department: { id: 1, name: '管理部' }
+            department: { id: '1', name: '管理�? }
           };
         case 'manager':
           return {
             realName: '部门经理',
             email: 'manager@company.com',
-            department: { id: 2, name: '销售部' }
+            department: { id: '2', name: '销售部' }
           };
         case 'sales001':
           return {
-            realName: '销售员工',
+            realName: '销售员�?,
             email: 'sales001@company.com',
-            department: { id: 2, name: '销售部' }
+            department: { id: '2', name: '销售部' }
           };
         case 'service001':
           return {
             realName: '客服员工',
             email: 'service001@company.com',
-            department: { id: 3, name: '客服部' }
+            department: { id: '3', name: '客服�? }
           };
         default:
           return {
             realName: '未知用户',
             email: 'unknown@company.com',
-            department: { id: 1, name: '未知部门' }
+            department: { id: '1', name: '未知部门' }
           };
       }
     };
@@ -435,3 +429,4 @@ export class MockAuthController {
     });
   });
 }
+

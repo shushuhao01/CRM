@@ -1,10 +1,10 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
 
 export interface JwtPayload {
-  userId: number;
+  userId: string;  // 修改为string以匹配User.id类型
   username: string;
   role: string;
-  departmentId?: number;
+  departmentId?: string | null;  // 修改为string以匹配Department.id类型
 }
 
 export interface TokenPair {
