@@ -17,6 +17,14 @@ export class UserController {
     return dataSource.getRepository(User);
   }
 
+  private get departmentRepository() {
+    const dataSource = getDataSource();
+    if (!dataSource) {
+      throw new BusinessError('数据库连接未初始化');
+    }
+    return dataSource.getRepository(Department);
+  }
+
   /**
    * 用户登录
    */

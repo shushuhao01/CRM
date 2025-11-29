@@ -172,9 +172,9 @@ export class MessageController {
       }
 
       const { isGlobalEnabled, globalNotificationMethods, subscriptions } = req.body;
-      
+
       const subscriptionRepo = dataSource.getRepository(MessageSubscription);
-      
+
       // 更新或创建订阅配置
       for (const sub of subscriptions) {
         await subscriptionRepo.save({
@@ -186,7 +186,7 @@ export class MessageController {
           globalNotificationMethods: sub.notificationMethods
         });
       }
-      
+
       res.json({
         success: true,
         message: '消息订阅配置更新成功'
@@ -237,7 +237,7 @@ export class MessageController {
       const departmentConfigRepo = dataSource.getRepository(DepartmentSubscriptionConfig);
 
       const configs = await departmentConfigRepo.find({
-        where: { department: { id: parseInt(departmentId) } },
+        where: { department: { id: departmentId } },
         relations: ['department']
       });
 
@@ -265,7 +265,7 @@ export class MessageController {
 
       // 检查部门是否存在
       const department = await departmentRepo.findOne({
-        where: { id: parseInt(departmentId) }
+        where: { id: departmentId }
       });
 
       if (!department) {
@@ -275,7 +275,7 @@ export class MessageController {
 
       // 查找现有配置
       let config = await departmentConfigRepo.findOne({
-        where: { messageType: messageType as MessageType, department: { id: parseInt(departmentId) } },
+        where: { messageType: messageType as MessageType, department: { id: departmentId } },
         relations: ['department']
       });
 
@@ -411,7 +411,7 @@ export class MessageController {
 
       await subscriptionRepo.save(defaultSubscriptions);
 
-      res.json({ 
+      res.json({
         message: '默认订阅配置初始化成功',
         count: defaultSubscriptions.length
       });
@@ -475,7 +475,7 @@ export class MessageController {
         // 根据筛选条件过滤
         let filteredAnnouncements = mockAnnouncements;
         const { status, type } = req.query;
-        
+
         if (status) {
           filteredAnnouncements = filteredAnnouncements.filter(ann => ann.status === status);
         }
@@ -483,18 +483,18 @@ export class MessageController {
           filteredAnnouncements = filteredAnnouncements.filter(ann => ann.type === type);
         }
 
-        res.json({ 
+        res.json({
           success: true,
-          data: filteredAnnouncements 
+          data: filteredAnnouncements
         });
         return;
       }
 
       // 实际数据库查询逻辑
       // TODO: 实现真实的数据库查询
-      res.json({ 
+      res.json({
         success: true,
-        data: [] 
+        data: []
       });
     } catch (error) {
       console.error('获取公告列表失败:', error);
@@ -516,26 +516,26 @@ export class MessageController {
           updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19)
         };
 
-        res.json({ 
+        res.json({
           success: true,
           message: '公告创建成功',
-          data: newAnnouncement 
+          data: newAnnouncement
         });
         return;
       }
 
       // 实际数据库创建逻辑
       // TODO: 实现真实的数据库创建
-      res.json({ 
+      res.json({
         success: true,
         message: '公告创建成功',
-        data: req.body 
+        data: req.body
       });
     } catch (error) {
       console.error('创建公告失败:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
-        error: '创建公告失败' 
+        error: '创建公告失败'
       });
     }
   }
@@ -544,10 +544,10 @@ export class MessageController {
     try {
       const { id } = req.params;
       const dataSource = getDataSource();
-      
+
       if (!dataSource) {
         // 测试模式：模拟更新公告
-        res.json({ 
+        res.json({
           success: true,
           message: '公告更新成功',
           data: { id, ...req.body }
@@ -557,16 +557,16 @@ export class MessageController {
 
       // 实际数据库更新逻辑
       // TODO: 实现真实的数据库更新
-      res.json({ 
+      res.json({
         success: true,
         message: '公告更新成功',
         data: { id, ...req.body }
       });
     } catch (error) {
       console.error('更新公告失败:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
-        error: '更新公告失败' 
+        error: '更新公告失败'
       });
     }
   }
@@ -575,10 +575,10 @@ export class MessageController {
     try {
       const { id } = req.params;
       const dataSource = getDataSource();
-      
+
       if (!dataSource) {
         // 测试模式：模拟删除公告
-        res.json({ 
+        res.json({
           success: true,
           message: '公告删除成功'
         });
@@ -587,15 +587,15 @@ export class MessageController {
 
       // 实际数据库删除逻辑
       // TODO: 实现真实的数据库删除
-      res.json({ 
+      res.json({
         success: true,
         message: '公告删除成功'
       });
     } catch (error) {
       console.error('删除公告失败:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
-        error: '删除公告失败' 
+        error: '删除公告失败'
       });
     }
   }
@@ -604,10 +604,10 @@ export class MessageController {
     try {
       const { id } = req.params;
       const dataSource = getDataSource();
-      
+
       if (!dataSource) {
         // 测试模式：模拟发布公告
-        res.json({ 
+        res.json({
           success: true,
           message: '公告发布成功'
         });
@@ -616,15 +616,15 @@ export class MessageController {
 
       // 实际数据库发布逻辑
       // TODO: 实现真实的数据库发布
-      res.json({ 
+      res.json({
         success: true,
         message: '公告发布成功'
       });
     } catch (error) {
       console.error('发布公告失败:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
-        error: '发布公告失败' 
+        error: '发布公告失败'
       });
     }
   }
@@ -647,7 +647,7 @@ export class MessageController {
       }
 
       if (messageType) {
-        filteredRules = filteredRules.filter(rule => 
+        filteredRules = filteredRules.filter(rule =>
           rule.messageTypes.includes(messageType)
         );
       }
@@ -708,7 +708,7 @@ export class MessageController {
 
       // 生成新的ID
       const newId = Math.max(...subscriptionRulesStorage.map(rule => rule.id), 0) + 1;
-      
+
       // 获取部门名称
       const departmentName = departmentNames[departmentId] || `部门${departmentId}`;
 
@@ -1081,14 +1081,14 @@ export class MessageController {
             { value: 'order_modify_approved', label: '订单修改申请通过', category: '订单管理' },
             { value: 'order_refunded', label: '订单退款通知', category: '订单管理' },
             { value: 'payment_reminder', label: '付款提醒', category: '订单管理' },
-            
+
             // 售后服务
             { value: 'after_sales_created', label: '新售后申请', category: '售后服务' },
             { value: 'after_sales_processing', label: '售后处理中', category: '售后服务' },
             { value: 'after_sales_urgent', label: '紧急售后', category: '售后服务' },
             { value: 'after_sales_completed', label: '售后完成', category: '售后服务' },
             { value: 'return_notification', label: '退货通知', category: '售后服务' },
-            
+
             // 客户管理
             { value: 'customer_created', label: '新建客户通知', category: '客户管理' },
             { value: 'customer_updated', label: '客户信息更新', category: '客户管理' },
@@ -1097,13 +1097,13 @@ export class MessageController {
             { value: 'customer_rejected', label: '客户拒收', category: '客户管理' },
             { value: 'customer_sharing', label: '客户分享通知', category: '客户管理' },
             { value: 'customer_feedback', label: '客户反馈', category: '客户管理' },
-            
+
             // 商品管理
             { value: 'product_created', label: '商品添加成功', category: '商品管理' },
             { value: 'product_updated', label: '商品信息更新', category: '商品管理' },
             { value: 'product_out_of_stock', label: '商品缺货', category: '商品管理' },
             { value: 'product_price_changed', label: '商品价格变更', category: '商品管理' },
-            
+
             // 物流管理
             { value: 'shipping_notification', label: '发货通知', category: '物流管理' },
             { value: 'delivery_confirmation', label: '签收通知', category: '物流管理' },
@@ -1111,26 +1111,26 @@ export class MessageController {
             { value: 'logistics_in_transit', label: '物流运输中', category: '物流管理' },
             { value: 'logistics_delivered', label: '物流已送达', category: '物流管理' },
             { value: 'package_anomaly', label: '包裹异常', category: '物流管理' },
-            
+
             // 财务管理
             { value: 'payment_notification', label: '付款通知', category: '财务管理' },
             { value: 'payment_received', label: '收款确认', category: '财务管理' },
             { value: 'invoice_generated', label: '发票生成', category: '财务管理' },
             { value: 'refund_processed', label: '退款处理', category: '财务管理' },
-            
+
             // 审批流程
             { value: 'audit_notification', label: '审核通知', category: '审批流程' },
             { value: 'audit_pending', label: '待审核', category: '审批流程' },
             { value: 'audit_approved', label: '审核通过', category: '审批流程' },
             { value: 'audit_rejected', label: '审核拒绝', category: '审批流程' },
-            
+
             // 业绩分享
             { value: 'performance_share_created', label: '业绩分享创建', category: '业绩分享' },
             { value: 'performance_share_received', label: '收到业绩分享', category: '业绩分享' },
             { value: 'performance_share_confirmed', label: '业绩分享确认', category: '业绩分享' },
             { value: 'performance_share_rejected', label: '业绩分享拒绝', category: '业绩分享' },
             { value: 'performance_share_cancelled', label: '业绩分享取消', category: '业绩分享' },
-            
+
             // 短信管理
             { value: 'sms_template_applied', label: '短信模板申请', category: '短信管理' },
             { value: 'sms_template_approved', label: '短信模板审核通过', category: '短信管理' },
@@ -1140,7 +1140,7 @@ export class MessageController {
             { value: 'sms_send_rejected', label: '短信发送审核拒绝', category: '短信管理' },
             { value: 'sms_send_success', label: '短信发送成功', category: '短信管理' },
             { value: 'sms_send_failed', label: '短信发送失败', category: '短信管理' },
-            
+
             // 系统管理
             { value: 'system_maintenance', label: '系统维护通知', category: '系统管理' },
             { value: 'system_update', label: '系统更新', category: '系统管理' },
@@ -1192,7 +1192,7 @@ export class MessageController {
 
       // 实际数据库查询逻辑
       const subscriptionRepo = dataSource.getRepository(MessageSubscription);
-      
+
       const totalSubscriptions = await subscriptionRepo.count();
       const activeSubscriptions = await subscriptionRepo.count({
         where: { isGlobalEnabled: true }
@@ -1239,10 +1239,10 @@ export class MessageController {
   async markMessageAsRead(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
-      
+
       // 这里应该实现标记消息为已读的逻辑
       // 由于目前没有真实的消息数据，直接返回成功
-      
+
       res.json({
         success: true,
         message: '消息已标记为已读'
@@ -1257,7 +1257,7 @@ export class MessageController {
     try {
       // 这里应该实现标记所有消息为已读的逻辑
       // 由于目前没有真实的消息数据，直接返回成功
-      
+
       res.json({
         success: true,
         message: '所有消息已标记为已读'
