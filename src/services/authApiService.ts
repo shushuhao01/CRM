@@ -183,12 +183,18 @@ export class AuthApiService {
                 console.log('  - 用户:', completeUserInfo.username)
                 console.log('  - 角色:', completeUserInfo.role)
                 console.log('  - 权限数量:', userPermissions.length)
+                console.log('  - Token:', loginResponse.tokens.accessToken.substring(0, 30) + '...')
 
                 const expiryTime = Date.now() + (30 * 24 * 60 * 60 * 1000)
                 localStorage.setItem('token_expiry', expiryTime.toString())
 
                 console.log('[Auth] localStorage用户登录成功:', user.realName)
-                return loginResponse
+
+                // 【关键修复】确保返回格式与user.ts期望的一致
+                return {
+                  ...loginResponse,
+                  data: loginResponse  // 同时提供data字段
+                } as unknown
               } else {
                 console.log('[Auth] 密码验证失败')
               }
@@ -238,7 +244,13 @@ export class AuthApiService {
           localStorage.setItem('token_expiry', expiryTime.toString())
 
           console.log('[Auth] 源代码预设账号登录成功:', presetAccount.name)
-          return loginResponse
+          console.log('  - Token:', loginResponse.tokens.accessToken.substring(0, 30) + '...')
+
+          // 【关键修复】确保返回格式与user.ts期望的一致
+          return {
+            ...loginResponse,
+            data: loginResponse  // 同时提供data字段
+          } as unknown
         }
 
         // 【批次193注释】注释掉测试账号，只使用真实预设账号
@@ -421,7 +433,13 @@ export class AuthApiService {
           localStorage.setItem('token_expiry', expiryTime.toString())
 
           console.log('[Auth] Mock API模式 - 登录成功:', mockResponse.user.username)
-          return mockResponse
+          console.log('  - Token:', mockResponse.tokens.accessToken.substring(0, 30) + '...')
+
+          // 【关键修复】确保返回格式与user.ts期望的一致
+          return {
+            ...mockResponse,
+            data: mockResponse  // 同时提供data字段
+          } as unknown
         } else {
           throw new Error('用户名或密码错误。请使用用户管理中的真实账号登录。')
         }
