@@ -18,9 +18,10 @@ declare global {
  * JWT认证中间件
  */
 export const authenticateToken = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
   try {
-    const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
     if (!token) {
       return res.status(401).json({
