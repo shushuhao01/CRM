@@ -271,7 +271,7 @@ export class DepartmentController {
         data: result,
         message: '部门创建成功'
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[创建部门] 失败:', error);
       console.error('[创建部门] 错误堆栈:', error.stack);
       res.status(500).json({
