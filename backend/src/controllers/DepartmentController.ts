@@ -524,8 +524,7 @@ export class DepartmentController {
       const { id } = req.params;
 
       const users = await this.userRepository.find({
-        where: { departmentId: id },
-        relations: ['department']
+        where: { departmentId: id }
       });
 
       const members = users.map((user: User) => ({
