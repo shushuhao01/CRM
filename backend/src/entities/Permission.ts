@@ -1,8 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToMany, Tree, TreeParent, TreeChildren } from 'typeorm'
-import { Role } from './Role'
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm'
 
 @Entity('permissions')
-@Tree('closure-table')
 export class Permission {
   @PrimaryGeneratedColumn()
   id: number
@@ -16,11 +14,11 @@ export class Permission {
   @Column({ type: 'text', nullable: true })
   description: string
 
-  @Column({ length: 50 })
+  @Column({ length: 50, default: 'system' })
   module: string
 
-  @Column({ default: 'menu' })
-  type: 'menu' | 'button' | 'api'
+  @Column({ length: 20, default: 'menu' })
+  type: string
 
   @Column({ nullable: true, length: 200 })
   path: string
@@ -31,23 +29,15 @@ export class Permission {
   @Column({ default: 0 })
   sort: number
 
-  @Column({ default: 'active' })
-  status: 'active' | 'inactive'
+  @Column({ length: 20, default: 'active' })
+  status: string
+
+  @Column({ nullable: true })
+  parentId: number
 
   @CreateDateColumn()
   createdAt: Date
 
   @UpdateDateColumn()
   updatedAt: Date
-
-  // 树形结构
-  @TreeParent()
-  parent: Permission
-
-  @TreeChildren()
-  children: Permission[]
-
-  // 拥有此权限的角色
-  @ManyToMany(() => Role, role => role.permissions)
-  roles: Role[]
 }

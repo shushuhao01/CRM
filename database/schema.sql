@@ -862,7 +862,7 @@ CREATE TABLE `permissions` (
 -- 32. 角色权限关联表
 DROP TABLE IF EXISTS `role_permissions`;
 CREATE TABLE `role_permissions` (
-  `roleId` INT NOT NULL COMMENT '角色ID',
+  `roleId` VARCHAR(50) NOT NULL COMMENT '角色ID',
   `permissionId` INT NOT NULL COMMENT '权限ID',
   PRIMARY KEY (`roleId`, `permissionId`),
   INDEX `idx_role` (`roleId`),
