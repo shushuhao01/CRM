@@ -17,7 +17,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import authRoutes from './routes/auth';
 // import mockAuthRoutes from './routes/mockAuth'; // 文件已删除
 import userRoutes from './routes/users';
-// import profileRoutes from './routes/profile'; // 文件不存在，已注释
+import profileRoutes from './routes/profile';
 import customerRoutes from './routes/customers';
 import productRoutes from './routes/products';
 import orderRoutes from './routes/orders';
@@ -191,7 +191,7 @@ if (process.env.NODE_ENV === 'development') {
   // app.use(`${API_PREFIX}/mock-auth`, loginLimiter, mockAuthRoutes); // Mock路由已删除
 }
 app.use(`${API_PREFIX}/users`, userRoutes);
-// app.use(`${API_PREFIX}/profile`, profileRoutes); // 路由文件不存在，已注释
+app.use(`${API_PREFIX}/profile`, profileRoutes);
 app.use(`${API_PREFIX}/customers`, customerRoutes);
 app.use(`${API_PREFIX}/products`, productRoutes);
 app.use(`${API_PREFIX}/orders`, orderRoutes);
