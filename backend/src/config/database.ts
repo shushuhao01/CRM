@@ -145,13 +145,18 @@ export const initializeDatabase = async (): Promise<void> => {
       console.log('🔄 开发环境：同步数据库结构...');
     }
 
-    // 初始化角色和权限数据
-    try {
-      const { initRolesAndPermissions } = await import('../scripts/initRolesAndPermissions');
-      await initRolesAndPermissions();
-    } catch (initError) {
-      console.warn('⚠️ 角色权限初始化失败:', initError);
-      // 不抛出错误，允许应用继续启动
+    // 初始化角色和权限数据（生产环境跳过，避免表结构不匹配导致错误）
+    if (process.env.NODE_ENV !== 'production' && process.env.SKIP_PERMISSION_INIT !== 'true') {
+      try {
+        const { initRolesAndPermissions } = await import('../scripts/initRolesAndPermissions');
+        await initRolesAndPermissions();
+      } catch (initError) {
+        console.warn('⚠️ 角色权限初始化失败:', initError);
+        console.warn('⚠️ 如果是生产环境，请手动执行数据库迁移脚本');
+        // 不抛出错误，允许应用继续启动
+      }
+    } else {
+      console.log('ℹ️ 跳过角色权限初始化（生产环境或已设置SKIP_PERMISSION_INIT=true）');
     }
   } catch (error) {
     console.error('❌ 数据库连接失败:', error);
