@@ -113,7 +113,19 @@ export const useDepartmentStore = createPersistentStore('department', () => {
 
     const buildTree = (parentId: string | null): Department[] => {
       return departments.value
-        .filter(dept => dept.parentId === parentId)
+        .filter(dept => {
+          // 处理各种空值情况：null, undefined, '', '0', 'null'
+          const deptParentId = dept.parentId
+          const isRootLevel = !deptParentId || deptParentId === 'null' || deptParentId === '0'
+
+          if (parentId === null) {
+            // 查找根级部门
+            return isRootLevel
+          } else {
+            // 查找指定父级的子部门
+            return deptParentId === parentId
+          }
+        })
         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
         .map(dept => ({
           ...dept,
