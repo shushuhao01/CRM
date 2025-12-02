@@ -73,7 +73,7 @@ export class DepartmentController {
 
       // 构建树形结构
       const departmentMap = new Map();
-      const rootDepartments: any[] = [];
+      const rootDepartments: unknown[] = [];
 
       // 先创建所有部门节点（包含成员数量查询）
       for (const dept of departments) {
