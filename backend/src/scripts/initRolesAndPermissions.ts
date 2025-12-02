@@ -512,6 +512,12 @@ async function createPermissions(permissions: any[], parent: Permission | null =
 
 async function initRolesAndPermissions() {
   try {
+    // 生产环境跳过初始化
+    if (process.env.NODE_ENV === 'production') {
+      logger.info('生产环境跳过角色权限初始化');
+      return;
+    }
+
     logger.info('开始初始化角色和权限...');
 
     if (!AppDataSource) {
@@ -526,13 +532,12 @@ async function initRolesAndPermissions() {
     // 创建角色
     logger.info('创建默认角色...');
     const roleRepository = AppDataSource.getRepository(Role);
-    const permissionRepository = AppDataSource.getTreeRepository(Permission);
+    const permissionRepository = AppDataSource.getRepository(Permission);
 
     for (const roleData of defaultRoles) {
       // 检查角色是否已存在
       let role = await roleRepository.findOne({
-        where: { code: roleData.code },
-        relations: ['permissions']
+        where: { code: roleData.code }
       });
 
       if (!role) {
