@@ -19,6 +19,7 @@ DROP TABLE IF EXISTS `departments`;
 CREATE TABLE `departments` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '部门ID',
   `name` VARCHAR(100) NOT NULL COMMENT '部门名称',
+  `code` VARCHAR(50) NULL COMMENT '部门编码',
   `description` TEXT COMMENT '部门描述',
   `parent_id` VARCHAR(50) NULL COMMENT '上级部门ID',
   `manager_id` VARCHAR(50) NULL COMMENT '部门经理ID',
@@ -28,6 +29,7 @@ CREATE TABLE `departments` (
   `member_count` INT DEFAULT 0 COMMENT '成员数量',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_code` (`code`),
   INDEX `idx_parent` (`parent_id`),
   INDEX `idx_manager` (`manager_id`),
   INDEX `idx_status` (`status`)
@@ -831,7 +833,48 @@ CREATE TABLE `system_settings` (
   INDEX `idx_sort_order` (`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统设置表';
 
--- 31. 用户个人权限表
+-- 31. 权限表（系统权限定义）
+DROP TABLE IF EXISTS `permissions`;
+CREATE TABLE `permissions` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '权限ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '权限名称',
+  `code` VARCHAR(100) UNIQUE NOT NULL COMMENT '权限代码',
+  `description` TEXT COMMENT '权限描述',
+  `module` VARCHAR(50) NOT NULL DEFAULT 'system' COMMENT '所属模块',
+  `type` VARCHAR(20) DEFAULT 'menu' COMMENT '权限类型: menu/button/api',
+  `path` VARCHAR(200) COMMENT '路由路径',
+  `icon` VARCHAR(50) COMMENT '图标',
+  `sort` INT DEFAULT 0 COMMENT '排序',
+  `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态: active/inactive',
+  `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_code` (`code`),
+  INDEX `idx_module` (`module`),
+  INDEX `idx_type` (`type`),
+  INDEX `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='权限表';
+
+-- 32. 角色权限关联表
+DROP TABLE IF EXISTS `role_permissions`;
+CREATE TABLE `role_permissions` (
+  `roleId` INT NOT NULL COMMENT '角色ID',
+  `permissionId` INT NOT NULL COMMENT '权限ID',
+  PRIMARY KEY (`roleId`, `permissionId`),
+  INDEX `idx_role` (`roleId`),
+  INDEX `idx_permission` (`permissionId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色权限关联表';
+
+-- 33. 权限树形结构闭包表（TypeORM closure-table需要）
+DROP TABLE IF EXISTS `permissions_closure`;
+CREATE TABLE `permissions_closure` (
+  `id_ancestor` INT NOT NULL COMMENT '祖先权限ID',
+  `id_descendant` INT NOT NULL COMMENT '后代权限ID',
+  PRIMARY KEY (`id_ancestor`, `id_descendant`),
+  INDEX `idx_ancestor` (`id_ancestor`),
+  INDEX `idx_descendant` (`id_descendant`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='权限树形结构闭包表';
+
+-- 34. 用户个人权限表
 DROP TABLE IF EXISTS `user_permissions`;
 CREATE TABLE `user_permissions` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '权限ID',
@@ -845,7 +888,7 @@ CREATE TABLE `user_permissions` (
   INDEX `idx_granted_by` (`grantedBy`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户个人权限表';
 
--- 32. 物流状态配置表
+-- 35. 物流状态配置表
 DROP TABLE IF EXISTS `logistics_status`;
 CREATE TABLE `logistics_status` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '状态ID',
@@ -859,7 +902,7 @@ CREATE TABLE `logistics_status` (
   INDEX `idx_is_active` (`isActive`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流状态配置表';
 
--- 33. 物流跟踪表
+-- 36. 物流跟踪表
 DROP TABLE IF EXISTS `logistics_tracking`;
 CREATE TABLE `logistics_tracking` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '跟踪ID',
@@ -888,7 +931,7 @@ CREATE TABLE `logistics_tracking` (
   INDEX `idx_next_sync_time` (`nextSyncTime`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流跟踪表';
 
--- 34. 物流轨迹表
+-- 37. 物流轨迹表
 DROP TABLE IF EXISTS `logistics_traces`;
 CREATE TABLE `logistics_traces` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '轨迹ID',
@@ -906,7 +949,7 @@ CREATE TABLE `logistics_traces` (
   INDEX `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流轨迹表';
 
--- 35. 订单明细表
+-- 38. 订单明细表
 DROP TABLE IF EXISTS `order_items`;
 CREATE TABLE `order_items` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '明细ID',
