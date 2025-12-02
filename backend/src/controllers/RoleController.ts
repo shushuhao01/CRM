@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getDataSource, AppDataSource } from '../config/database';
+import { getDataSource } from '../config/database';
 import { Role } from '../entities/Role';
 import { Permission } from '../entities/Permission';
 import { User } from '../entities/User';
@@ -35,9 +35,7 @@ export class RoleController {
     try {
       const { page = 1, limit = 20, search, status } = req.query;
 
-      const queryBuilder = this.roleRepository.createQueryBuilder('role')
-        .leftJoinAndSelect('role.permissions', 'permission')
-        .groupBy('role.id');
+      const queryBuilder = this.roleRepository.createQueryBuilder('role');
 
       if (search) {
         queryBuilder.andWhere('(role.name LIKE :search OR role.code LIKE :search)', {
@@ -57,16 +55,18 @@ export class RoleController {
       // 计算每个角色的用户数量和权限数量
       const rolesWithCounts = await Promise.all(
         roles.map(async (role) => {
-          const userCount = await this.userRepository
-            .createQueryBuilder('user')
-            .leftJoin('user.roles', 'role')
-            .where('role.id = :roleId', { roleId: role.id })
-            .getCount();
+          // 通过 roleId 字段查询用户数量
+          const userCount = await this.userRepository.count({
+            where: { roleId: role.id }
+          });
+
+          // permissions 是 JSON 字段，直接获取长度
+          const permissionCount = Array.isArray(role.permissions) ? role.permissions.length : 0;
 
           return {
             ...role,
             userCount,
-            permissionCount: role.permissions?.length || 0
+            permissionCount
           };
         })
       );
@@ -93,25 +93,34 @@ export class RoleController {
   }
 
   // 获取角色详情
-  async getRoleById(req: Request, res: Response): Promise<any> {
+  async getRoleById(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
 
       const role = await this.roleRepository.findOne({
-        where: { id: Number(id) },
-        relations: ['permissions', 'users']
+        where: { id: String(id) }
       });
 
       if (!role) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           message: '角色不存在'
         });
+        return;
       }
+
+      // 获取该角色的用户数量
+      const userCount = await this.userRepository.count({
+        where: { roleId: role.id }
+      });
 
       res.json({
         success: true,
-        data: role
+        data: {
+          ...role,
+          userCount,
+          permissionCount: Array.isArray(role.permissions) ? role.permissions.length : 0
+        }
       });
     } catch (error) {
       console.error('获取角色详情失败:', error);
@@ -123,9 +132,9 @@ export class RoleController {
   }
 
   // 创建角色
-  async createRole(req: Request, res: Response): Promise<any> {
+  async createRole(req: Request, res: Response): Promise<void> {
     try {
-      const { name, code, description, status = 'active', level = 0, color, permissionIds = [] } = req.body;
+      const { name, code, description, status = 'active', level = 0, color, permissions = [] } = req.body;
 
       // 检查角色名称和编码是否已存在
       const existingRole = await this.roleRepository.findOne({
@@ -136,24 +145,26 @@ export class RoleController {
       });
 
       if (existingRole) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           message: existingRole.name === name ? '角色名称已存在' : '角色编码已存在'
         });
+        return;
       }
 
-      // 获取权限
-      const permissions = await this.permissionRepository.findByIds(permissionIds);
+      // 生成角色ID
+      const roleId = `role_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      // 创建角色
+      // 创建角色 - permissions 是 JSON 字段
       const role = this.roleRepository.create({
+        id: roleId,
         name,
         code,
         description,
         status: status as 'active' | 'inactive',
         level,
         color,
-        permissions
+        permissions: Array.isArray(permissions) ? permissions : []
       });
 
       const savedRole = await this.roleRepository.save(role);
@@ -173,41 +184,43 @@ export class RoleController {
   }
 
   // 更新角色
-  async updateRole(req: Request, res: Response): Promise<any> {
+  async updateRole(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { name, code, description, status, level, color, permissionIds } = req.body;
+      const { name, code, description, status, level, color, permissions } = req.body;
 
       const role = await this.roleRepository.findOne({
-        where: { id: Number(id) },
-        relations: ['permissions']
+        where: { id: String(id) }
       });
 
       if (!role) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           message: '角色不存在'
         });
+        return;
       }
 
       // 检查名称和编码是否与其他角色冲突
       if (name && name !== role.name) {
         const existingRole = await this.roleRepository.findOne({ where: { name } });
         if (existingRole) {
-          return res.status(400).json({
+          res.status(400).json({
             success: false,
             message: '角色名称已存在'
           });
+          return;
         }
       }
 
       if (code && code !== role.code) {
         const existingRole = await this.roleRepository.findOne({ where: { code } });
         if (existingRole) {
-          return res.status(400).json({
+          res.status(400).json({
             success: false,
             message: '角色编码已存在'
           });
+          return;
         }
       }
 
@@ -219,10 +232,9 @@ export class RoleController {
       if (level !== undefined) role.level = level;
       if (color !== undefined) role.color = color;
 
-      // 更新权限
-      if (permissionIds) {
-        const permissions = await this.permissionRepository.findByIds(permissionIds);
-        role.permissions = permissions;
+      // 更新权限 - permissions 是 JSON 字段
+      if (permissions !== undefined) {
+        role.permissions = Array.isArray(permissions) ? permissions : [];
       }
 
       const savedRole = await this.roleRepository.save(role);
@@ -242,33 +254,33 @@ export class RoleController {
   }
 
   // 删除角色
-  async deleteRole(req: Request, res: Response): Promise<any> {
+  async deleteRole(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
 
       const role = await this.roleRepository.findOne({
-        where: { id: Number(id) },
-        relations: ['users']
+        where: { id: String(id) }
       });
 
       if (!role) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           message: '角色不存在'
         });
+        return;
       }
 
-      // 检查是否有用户使用此角色（通过查询User表）
-      const userRepository = AppDataSource.getRepository(User);
-      const usersWithRole = await userRepository.count({
-        where: { roleId: id }
+      // 检查是否有用户使用此角色
+      const usersWithRole = await this.userRepository.count({
+        where: { roleId: String(id) }
       });
 
       if (usersWithRole > 0) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           message: `该角色下还有${usersWithRole}个用户，无法删除`
         });
+        return;
       }
 
       await this.roleRepository.remove(role);
