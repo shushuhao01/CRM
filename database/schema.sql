@@ -43,6 +43,7 @@ CREATE TABLE `roles` (
   `code` VARCHAR(50) UNIQUE NOT NULL COMMENT '角色代码',
   `description` TEXT COMMENT '角色描述',
   `level` INT DEFAULT 0 COMMENT '角色级别',
+  `color` VARCHAR(20) NULL COMMENT '角色颜色',
   `parent_id` VARCHAR(50) COMMENT '上级角色ID',
   `is_system` BOOLEAN DEFAULT FALSE COMMENT '是否系统角色',
   `data_scope` ENUM('all', 'department', 'self', 'custom') DEFAULT 'self' COMMENT '数据权限范围',
@@ -57,6 +58,8 @@ CREATE TABLE `roles` (
   `updated_by_name` VARCHAR(50) COMMENT '更新人姓名',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间(TypeORM)',
+  `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间(TypeORM)',
   INDEX `idx_code` (`code`),
   INDEX `idx_level` (`level`),
   INDEX `idx_parent` (`parent_id`),
@@ -846,12 +849,14 @@ CREATE TABLE `permissions` (
   `icon` VARCHAR(50) COMMENT '图标',
   `sort` INT DEFAULT 0 COMMENT '排序',
   `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态: active/inactive',
+  `parentId` INT NULL COMMENT '父级权限ID（树形结构）',
   `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_code` (`code`),
   INDEX `idx_module` (`module`),
   INDEX `idx_type` (`type`),
-  INDEX `idx_status` (`status`)
+  INDEX `idx_status` (`status`),
+  INDEX `idx_parent` (`parentId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='权限表';
 
 -- 32. 角色权限关联表
