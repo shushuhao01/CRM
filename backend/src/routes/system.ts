@@ -60,7 +60,7 @@ router.get('/global-config', (req, res) => {
  */
 router.put('/global-config', (req, res) => {
   const { storageConfig } = req.body;
-  
+
   // 这里应该保存到数据库，目前返回模拟数据
   res.json({
     success: true,
@@ -138,6 +138,27 @@ router.delete('/departments/:id', departmentController.deleteDepartment.bind(dep
  * @access Private (Admin)
  */
 router.get('/departments/:id/members', departmentController.getDepartmentMembers.bind(departmentController));
+
+/**
+ * @route GET /api/v1/system/departments/:id/roles
+ * @desc 获取部门角色列表
+ * @access Private (Admin)
+ */
+router.get('/departments/:id/roles', departmentController.getDepartmentRoles.bind(departmentController));
+
+/**
+ * @route PATCH /api/v1/system/departments/:id/permissions
+ * @desc 更新部门权限
+ * @access Private (Admin)
+ */
+router.patch('/departments/:id/permissions', departmentController.updateDepartmentPermissions.bind(departmentController));
+
+/**
+ * @route PATCH /api/v1/system/departments/:id/move
+ * @desc 移动部门
+ * @access Private (Admin)
+ */
+router.patch('/departments/:id/move', departmentController.moveDepartment.bind(departmentController));
 
 /**
  * @route POST /api/v1/system/departments/:departmentId/members
