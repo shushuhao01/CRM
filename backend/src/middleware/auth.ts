@@ -46,8 +46,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     }
     const userRepository = dataSource.getRepository(User);
     const user = await userRepository.findOne({
-      where: { id: payload.userId },
-      relations: ['department']
+      where: { id: payload.userId }
     });
 
     if (!user) {
@@ -167,8 +166,7 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
       }
       const userRepository = dataSource.getRepository(User);
       const user = await userRepository.findOne({
-        where: { id: payload.userId },
-        relations: ['department']
+        where: { id: payload.userId }
       });
 
       if (user && user.status === 'active') {
