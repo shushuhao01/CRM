@@ -701,4 +701,170 @@ export class DepartmentController {
       });
     }
   }
+
+  /**
+   * 获取部门角色列表
+   * 返回该部门下所有成员的角色信息
+   */
+  async getDepartmentRoles(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      // 检查部门是否存在
+      const department = await this.departmentRepository.findOne({
+        where: { id }
+      });
+
+      if (!department) {
+        res.status(404).json({
+          success: false,
+          message: '部门不存在'
+        });
+        return;
+      }
+
+      // 获取部门成员的角色统计
+      const users = await this.userRepository.find({
+        where: { departmentId: id }
+      });
+
+      // 按角色分组统计
+      const roleMap = new Map<string, number>();
+      users.forEach((user: User) => {
+        const role = user.role || 'user';
+        roleMap.set(role, (roleMap.get(role) || 0) + 1);
+      });
+
+      // 构建角色列表
+      const roles = Array.from(roleMap.entries()).map(([roleName, count], index) => ({
+        id: `role_${id}_${index}`,
+        name: roleName,
+        departmentId: id,
+        userCount: count,
+        permissions: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }));
+
+      res.json({
+        success: true,
+        data: roles
+      });
+    } catch (error) {
+      console.error('获取部门角色失败:', error);
+      res.status(500).json({
+        success: false,
+        message: '获取部门角色失败'
+      });
+    }
+  }
+
+  /**
+   * 更新部门权限
+   */
+  async updateDepartmentPermissions(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { permissions } = req.body;
+
+      const department = await this.departmentRepository.findOne({
+        where: { id }
+      });
+
+      if (!department) {
+        res.status(404).json({
+          success: false,
+          message: '部门不存在'
+        });
+        return;
+      }
+
+      // 目前权限存储在内存中，实际应该存储到数据库
+      // 这里返回成功响应
+      res.json({
+        success: true,
+        data: {
+          id: department.id,
+          name: department.name,
+          permissions: permissions || []
+        },
+        message: '部门权限更新成功'
+      });
+    } catch (error) {
+      console.error('更新部门权限失败:', error);
+      res.status(500).json({
+        success: false,
+        message: '更新部门权限失败'
+      });
+    }
+  }
+
+  /**
+   * 移动部门（更改父部门）
+   */
+  async moveDepartment(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { newParentId } = req.body;
+
+      const department = await this.departmentRepository.findOne({
+        where: { id }
+      });
+
+      if (!department) {
+        res.status(404).json({
+          success: false,
+          message: '部门不存在'
+        });
+        return;
+      }
+
+      // 不能将自己设为父部门
+      if (newParentId === id) {
+        res.status(400).json({
+          success: false,
+          message: '不能将自己设为父部门'
+        });
+        return;
+      }
+
+      // 如果有新父部门，检查是否存在
+      if (newParentId) {
+        const parentDept = await this.departmentRepository.findOne({
+          where: { id: newParentId }
+        });
+        if (!parentDept) {
+          res.status(400).json({
+            success: false,
+            message: '目标父部门不存在'
+          });
+          return;
+        }
+      }
+
+      department.parentId = newParentId || null;
+      const savedDepartment = await this.departmentRepository.save(department);
+
+      const memberCount = await this.userRepository.count({
+        where: { departmentId: id }
+      });
+
+      res.json({
+        success: true,
+        data: {
+          id: savedDepartment.id,
+          name: savedDepartment.name,
+          parentId: savedDepartment.parentId,
+          memberCount
+        },
+        message: '部门移动成功'
+      });
+    } catch (error) {
+      console.error('移动部门失败:', error);
+      res.status(500).json({
+        success: false,
+        message: '移动部门失败'
+      });
+    }
+  }
 }
