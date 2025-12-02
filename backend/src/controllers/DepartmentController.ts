@@ -25,22 +25,28 @@ export class DepartmentController {
   async getDepartments(req: Request, res: Response): Promise<void> {
     try {
       const departments = await this.departmentRepository.find({
-        relations: ['users'],
         order: { sortOrder: 'ASC', createdAt: 'ASC' }
       });
 
       // 计算每个部门的成员数量
-      const departmentsWithCount = departments.map((dept: Department) => ({
-        id: dept.id.toString(),
-        name: dept.name,
-        code: dept.code,
-        description: dept.description,
-        parentId: dept.parentId?.toString(),
-        sortOrder: dept.sortOrder,
-        status: dept.status,
-        memberCount: dept.users?.length || 0,
-        createdAt: dept.createdAt.toISOString(),
-        updatedAt: dept.updatedAt.toISOString()
+      const departmentsWithCount = await Promise.all(departments.map(async (dept: Department) => {
+        // 单独查询该部门的用户数量
+        const memberCount = await this.userRepository.count({
+          where: { departmentId: dept.id }
+        });
+
+        return {
+          id: dept.id.toString(),
+          name: dept.name,
+          code: dept.code,
+          description: dept.description,
+          parentId: dept.parentId?.toString(),
+          sortOrder: dept.sortOrder,
+          status: dept.status,
+          memberCount: memberCount,
+          createdAt: dept.createdAt.toISOString(),
+          updatedAt: dept.updatedAt.toISOString()
+        };
       }));
 
       res.json({
@@ -62,7 +68,6 @@ export class DepartmentController {
   async getDepartmentTree(req: Request, res: Response): Promise<void> {
     try {
       const departments = await this.departmentRepository.find({
-        relations: ['users'],
         order: { sortOrder: 'ASC', createdAt: 'ASC' }
       });
 
@@ -70,8 +75,12 @@ export class DepartmentController {
       const departmentMap = new Map();
       const rootDepartments: any[] = [];
 
-      // 先创建所有部门节点
-      departments.forEach((dept: Department) => {
+      // 先创建所有部门节点（包含成员数量查询）
+      for (const dept of departments) {
+        const memberCount = await this.userRepository.count({
+          where: { departmentId: dept.id }
+        });
+
         const deptNode = {
           id: dept.id.toString(),
           name: dept.name,
@@ -80,13 +89,13 @@ export class DepartmentController {
           parentId: dept.parentId?.toString(),
           sortOrder: dept.sortOrder,
           status: dept.status,
-          memberCount: dept.users?.length || 0,
+          memberCount: memberCount,
           createdAt: dept.createdAt.toISOString(),
           updatedAt: dept.updatedAt.toISOString(),
           children: []
         };
         departmentMap.set(dept.id.toString(), deptNode);
-      });
+      }
 
       // 构建父子关系
       departmentMap.forEach(dept => {
@@ -122,8 +131,7 @@ export class DepartmentController {
     try {
       const { id } = req.params;
       const department = await this.departmentRepository.findOne({
-        where: { id },
-        relations: ['users']
+        where: { id }
       });
 
       if (!department) {
@@ -134,6 +142,11 @@ export class DepartmentController {
         return;
       }
 
+      // 单独查询成员数量
+      const memberCount = await this.userRepository.count({
+        where: { departmentId: id }
+      });
+
       const result = {
         id: department.id.toString(),
         name: department.name,
@@ -142,7 +155,7 @@ export class DepartmentController {
         parentId: department.parentId?.toString(),
         sortOrder: department.sortOrder,
         status: department.status,
-        memberCount: department.users?.length || 0,
+        memberCount: memberCount,
         createdAt: department.createdAt.toISOString(),
         updatedAt: department.updatedAt.toISOString()
       };
@@ -277,8 +290,7 @@ export class DepartmentController {
       const { name, code, description, parentId, sortOrder, status } = req.body;
 
       const department = await this.departmentRepository.findOne({
-        where: { id },
-        relations: ['users']
+        where: { id }
       });
 
       if (!department) {
@@ -349,6 +361,11 @@ export class DepartmentController {
 
       const savedDepartment = await this.departmentRepository.save(department);
 
+      // 单独查询成员数量
+      const memberCount = await this.userRepository.count({
+        where: { departmentId: id }
+      });
+
       const result = {
         id: savedDepartment.id.toString(),
         name: savedDepartment.name,
@@ -357,7 +374,7 @@ export class DepartmentController {
         parentId: savedDepartment.parentId?.toString(),
         sortOrder: savedDepartment.sortOrder,
         status: savedDepartment.status,
-        memberCount: savedDepartment.users?.length || 0,
+        memberCount: memberCount,
         createdAt: savedDepartment.createdAt.toISOString(),
         updatedAt: savedDepartment.updatedAt.toISOString()
       };
@@ -384,8 +401,7 @@ export class DepartmentController {
       const { id } = req.params;
 
       const department = await this.departmentRepository.findOne({
-        where: { id },
-        relations: ['users']
+        where: { id }
       });
 
       if (!department) {
@@ -410,7 +426,11 @@ export class DepartmentController {
       }
 
       // 检查是否有成员
-      if (department.users && department.users.length > 0) {
+      const memberCount = await this.userRepository.count({
+        where: { departmentId: id }
+      });
+
+      if (memberCount > 0) {
         res.status(400).json({
           success: false,
           message: '该部门下还有成员，无法删除'
@@ -450,8 +470,7 @@ export class DepartmentController {
       }
 
       const department = await this.departmentRepository.findOne({
-        where: { id },
-        relations: ['users']
+        where: { id }
       });
 
       if (!department) {
@@ -465,6 +484,11 @@ export class DepartmentController {
       department.status = status;
       const savedDepartment = await this.departmentRepository.save(department);
 
+      // 单独查询成员数量
+      const memberCount = await this.userRepository.count({
+        where: { departmentId: id }
+      });
+
       const result = {
         id: savedDepartment.id.toString(),
         name: savedDepartment.name,
@@ -473,7 +497,7 @@ export class DepartmentController {
         parentId: savedDepartment.parentId?.toString(),
         sortOrder: savedDepartment.sortOrder,
         status: savedDepartment.status,
-        memberCount: savedDepartment.users?.length || 0,
+        memberCount: memberCount,
         createdAt: savedDepartment.createdAt.toISOString(),
         updatedAt: savedDepartment.updatedAt.toISOString()
       };
