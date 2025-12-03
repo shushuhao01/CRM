@@ -249,6 +249,11 @@ const formRules = {
 const loadData = async () => {
   loading.value = true
   try {
+    // 确保客户数据已加载，用于计算标签关联的客户数量
+    if (customerStore.customers.length === 0) {
+      await customerStore.loadCustomers()
+    }
+
     const params: TagSearchParams = {
       name: searchForm.name,
       status: searchForm.status,

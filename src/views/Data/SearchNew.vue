@@ -184,6 +184,11 @@ const handleSearch = async () => {
   const keyword = searchForm.keyword.trim()
 
   try {
+    // 确保客户数据已加载
+    if (customerStore.customers.length === 0) {
+      await customerStore.loadCustomers()
+    }
+
     // 直接从store获取数据
     const orders = orderStore.getOrders()  // 获取所有订单
     const customers = customerStore.customers  // 获取所有客户

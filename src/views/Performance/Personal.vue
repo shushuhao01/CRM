@@ -2149,6 +2149,11 @@ const loadTableData = async () => {
   tableLoading.value = true
 
   try {
+    // 🔥 修复：确保客户数据已加载
+    if (customerStore.customers.length === 0) {
+      await customerStore.loadCustomers()
+    }
+
     if (activeTab.value === 'orders') {
       // 从orderStore获取当前用户的订单数据
       const currentUserId = userStore.currentUser?.id

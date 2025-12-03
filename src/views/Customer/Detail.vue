@@ -2194,8 +2194,32 @@ const loadCustomerDetail = async () => {
       return
     }
 
-    // 从store中获取客户信息
-    const customer = customerStore.customers.find(c => c.id === customerId)
+    // 【关键修复】智能获取客户信息：生产环境从API获取，开发环境从store获取
+    const { isProduction } = await import('@/utils/env')
+    const { shouldUseMockApi } = await import('@/api/mock')
+
+    let customer = null
+
+    // 生产环境或配置了API地址时，从API获取客户详情
+    if (isProduction() || !shouldUseMockApi()) {
+      console.log('[CustomerDetail] 🌐 生产环境：从API获取客户详情')
+      try {
+        const { customerApi } = await import('@/api/customer')
+        const response = await customerApi.getDetail(customerId as string)
+        if (response.data) {
+          customer = response.data
+          console.log('[CustomerDetail] ✅ API获取成功')
+        }
+      } catch (apiError) {
+        console.error('[CustomerDetail] ❌ API获取失败，尝试从本地缓存获取:', apiError)
+        // 如果API失败，尝试从本地缓存获取
+        customer = customerStore.customers.find(c => c.id === customerId)
+      }
+    } else {
+      // 开发环境：从store中获取客户信息
+      console.log('[CustomerDetail] 💻 开发环境：从store获取客户信息')
+      customer = customerStore.customers.find(c => c.id === customerId)
+    }
 
     if (!customer) {
       ElMessage.error('未找到客户信息')
