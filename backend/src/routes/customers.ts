@@ -1,12 +1,10 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
+import { AppDataSource } from '../config/database';
+import { Customer } from '../entities/Customer';
+import { Like, Between } from 'typeorm';
 
 const router = Router();
-
-/**
- * 客户管理路由
- * TODO: 实现客户相关的CRUD操作
- */
 
 // 所有客户路由都需要认证
 router.use(authenticateToken);
@@ -16,12 +14,459 @@ router.use(authenticateToken);
  * @desc 获取客户列表
  * @access Private
  */
-router.get('/', (req, res) => {
-  res.json({
-    success: true,
-    message: '客户管理功能开发中',
-    data: []
-  });
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+
+    const {
+      page = 1,
+      pageSize = 10,
+      name,
+      phone,
+      level,
+      status,
+      startDate,
+      endDate
+    } = req.query;
+
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = parseInt(pageSize as string) || 10;
+    const skip = (pageNum - 1) * pageSizeNum;
+
+    // 构建查询条件
+    const where: any = {};
+
+    if (name) {
+      where.name = Like(`%${name}%`);
+    }
+
+    if (phone) {
+      where.phone = Like(`%${phone}%`);
+    }
+
+    if (level) {
+      where.level = level;
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    // 日期范围筛选
+    if (startDate && endDate) {
+      where.createdAt = Between(new Date(startDate as string), new Date(endDate as string));
+    }
+
+    const [customers, total] = await customerRepository.findAndCount({
+      where,
+      skip,
+      take: pageSizeNum,
+      order: { createdAt: 'DESC' }
+    });
+
+    // 转换数据格式以匹配前端期望
+    const list = customers.map(customer => ({
+      id: customer.id.toString(),
+      code: customer.customerNo || `C${customer.id.toString().padStart(6, '0')}`,
+      name: customer.name,
+      phone: customer.phone || '',
+      age: 0,
+      address: customer.address || '',
+      level: customer.level === 'A' ? 'gold' : customer.level === 'B' ? 'silver' : 'normal',
+      status: customer.status === 'deal' ? 'active' : customer.status === 'lost' ? 'lost' : 'potential',
+      salesPersonId: customer.salesUserId?.toString() || '',
+      orderCount: 0,
+      createTime: customer.createdAt.toISOString(),
+      createdBy: customer.salesUserId?.toString() || 'admin',
+      wechatId: '',
+      email: customer.email || '',
+      company: customer.company || '',
+      position: customer.position || '',
+      source: customer.source || '',
+      tags: customer.tags || [],
+      remarks: customer.notes || ''
+    }));
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '获取客户列表成功',
+      data: {
+        list,
+        total,
+        page: pageNum,
+        pageSize: pageSizeNum
+      }
+    });
+  } catch (error) {
+    console.error('获取客户列表失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取客户列表失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/customers/:id
+ * @desc 获取客户详情
+ * @access Private
+ */
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customer = await customerRepository.findOne({
+      where: { id: parseInt(req.params.id) }
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '客户不存在'
+      });
+    }
+
+    // 转换数据格式
+    const data = {
+      id: customer.id.toString(),
+      code: customer.customerNo || `C${customer.id.toString().padStart(6, '0')}`,
+      name: customer.name,
+      phone: customer.phone || '',
+      age: 0,
+      address: customer.address || '',
+      level: customer.level === 'A' ? 'gold' : customer.level === 'B' ? 'silver' : 'normal',
+      status: customer.status === 'deal' ? 'active' : customer.status === 'lost' ? 'lost' : 'potential',
+      salesPersonId: customer.salesUserId?.toString() || '',
+      orderCount: 0,
+      createTime: customer.createdAt.toISOString(),
+      createdBy: customer.salesUserId?.toString() || 'admin',
+      email: customer.email || '',
+      company: customer.company || '',
+      position: customer.position || '',
+      source: customer.source || '',
+      tags: customer.tags || [],
+      remarks: customer.notes || ''
+    };
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '获取客户详情成功',
+      data
+    });
+  } catch (error) {
+    console.error('获取客户详情失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取客户详情失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/customers
+ * @desc 创建客户
+ * @access Private
+ */
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const { name, phone, email, address, level, source, tags, remarks, company, position } = req.body;
+
+    // 验证必填字段
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '客户姓名不能为空'
+      });
+    }
+
+    // 检查手机号是否已存在
+    if (phone) {
+      const existingCustomer = await customerRepository.findOne({ where: { phone } });
+      if (existingCustomer) {
+        return res.status(400).json({
+          success: false,
+          code: 400,
+          message: '该手机号已存在客户记录'
+        });
+      }
+    }
+
+    // 映射前端等级到后端等级
+    const levelMap: Record<string, 'A' | 'B' | 'C' | 'D'> = {
+      'gold': 'A',
+      'silver': 'B',
+      'normal': 'C'
+    };
+
+    // 创建客户
+    const customer = customerRepository.create({
+      name,
+      phone,
+      email,
+      address,
+      level: levelMap[level] || 'C',
+      source: source || 'other',
+      tags: tags || [],
+      notes: remarks,
+      company,
+      position,
+      status: 'potential',
+      salesUserId: (req as any).user?.id
+    });
+
+    const savedCustomer = await customerRepository.save(customer);
+
+    // 生成客户编号
+    savedCustomer.customerNo = `C${savedCustomer.id.toString().padStart(6, '0')}`;
+    await customerRepository.save(savedCustomer);
+
+    // 转换数据格式返回
+    const data = {
+      id: savedCustomer.id.toString(),
+      code: savedCustomer.customerNo,
+      name: savedCustomer.name,
+      phone: savedCustomer.phone || '',
+      age: 0,
+      address: savedCustomer.address || '',
+      level: level || 'normal',
+      status: 'active',
+      salesPersonId: savedCustomer.salesUserId?.toString() || '',
+      orderCount: 0,
+      createTime: savedCustomer.createdAt.toISOString(),
+      createdBy: savedCustomer.salesUserId?.toString() || 'admin',
+      email: savedCustomer.email || '',
+      company: savedCustomer.company || '',
+      position: savedCustomer.position || '',
+      source: savedCustomer.source || '',
+      tags: savedCustomer.tags || [],
+      remarks: savedCustomer.notes || ''
+    };
+
+    res.status(201).json({
+      success: true,
+      code: 200,
+      message: '创建客户成功',
+      data
+    });
+  } catch (error) {
+    console.error('创建客户失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '创建客户失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route PUT /api/v1/customers/:id
+ * @desc 更新客户
+ * @access Private
+ */
+router.put('/:id', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerId = parseInt(req.params.id);
+
+    const customer = await customerRepository.findOne({ where: { id: customerId } });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '客户不存在'
+      });
+    }
+
+    const { name, phone, email, address, level, source, tags, remarks, company, position, status } = req.body;
+
+    // 映射前端等级到后端等级
+    const levelMap: Record<string, 'A' | 'B' | 'C' | 'D'> = {
+      'gold': 'A',
+      'silver': 'B',
+      'normal': 'C'
+    };
+
+    // 映射前端状态到后端状态
+    const statusMap: Record<string, 'potential' | 'contacted' | 'negotiating' | 'deal' | 'lost'> = {
+      'active': 'deal',
+      'potential': 'potential',
+      'lost': 'lost',
+      'inactive': 'lost'
+    };
+
+    // 更新字段
+    if (name) customer.name = name;
+    if (phone) customer.phone = phone;
+    if (email) customer.email = email;
+    if (address) customer.address = address;
+    if (level) customer.level = levelMap[level] || customer.level;
+    if (source) customer.source = source as any;
+    if (tags) customer.tags = tags;
+    if (remarks) customer.notes = remarks;
+    if (company) customer.company = company;
+    if (position) customer.position = position;
+    if (status) customer.status = statusMap[status] || customer.status;
+
+    const updatedCustomer = await customerRepository.save(customer);
+
+    // 转换数据格式返回
+    const data = {
+      id: updatedCustomer.id.toString(),
+      code: updatedCustomer.customerNo || `C${updatedCustomer.id.toString().padStart(6, '0')}`,
+      name: updatedCustomer.name,
+      phone: updatedCustomer.phone || '',
+      age: 0,
+      address: updatedCustomer.address || '',
+      level: level || 'normal',
+      status: status || 'active',
+      salesPersonId: updatedCustomer.salesUserId?.toString() || '',
+      orderCount: 0,
+      createTime: updatedCustomer.createdAt.toISOString(),
+      createdBy: updatedCustomer.salesUserId?.toString() || 'admin',
+      email: updatedCustomer.email || '',
+      company: updatedCustomer.company || '',
+      position: updatedCustomer.position || '',
+      source: updatedCustomer.source || '',
+      tags: updatedCustomer.tags || [],
+      remarks: updatedCustomer.notes || ''
+    };
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '更新客户成功',
+      data
+    });
+  } catch (error) {
+    console.error('更新客户失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '更新客户失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route DELETE /api/v1/customers/:id
+ * @desc 删除客户
+ * @access Private
+ */
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerId = parseInt(req.params.id);
+
+    const customer = await customerRepository.findOne({ where: { id: customerId } });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '客户不存在'
+      });
+    }
+
+    await customerRepository.remove(customer);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '删除客户成功'
+    });
+  } catch (error) {
+    console.error('删除客户失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '删除客户失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/customers/search
+ * @desc 搜索客户
+ * @access Private
+ */
+router.get('/search', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const { keyword, page = 1, pageSize = 10 } = req.query;
+
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = parseInt(pageSize as string) || 10;
+    const skip = (pageNum - 1) * pageSizeNum;
+
+    let queryBuilder = customerRepository.createQueryBuilder('customer');
+
+    if (keyword) {
+      queryBuilder = queryBuilder.where(
+        'customer.name LIKE :keyword OR customer.phone LIKE :keyword OR customer.email LIKE :keyword',
+        { keyword: `%${keyword}%` }
+      );
+    }
+
+    const [customers, total] = await queryBuilder
+      .skip(skip)
+      .take(pageSizeNum)
+      .orderBy('customer.createdAt', 'DESC')
+      .getManyAndCount();
+
+    // 转换数据格式
+    const list = customers.map(customer => ({
+      id: customer.id.toString(),
+      code: customer.customerNo || `C${customer.id.toString().padStart(6, '0')}`,
+      name: customer.name,
+      phone: customer.phone || '',
+      age: 0,
+      address: customer.address || '',
+      level: customer.level === 'A' ? 'gold' : customer.level === 'B' ? 'silver' : 'normal',
+      status: customer.status === 'deal' ? 'active' : customer.status === 'lost' ? 'lost' : 'potential',
+      salesPersonId: customer.salesUserId?.toString() || '',
+      orderCount: 0,
+      createTime: customer.createdAt.toISOString(),
+      createdBy: customer.salesUserId?.toString() || 'admin',
+      email: customer.email || '',
+      company: customer.company || '',
+      position: customer.position || '',
+      source: customer.source || '',
+      tags: customer.tags || [],
+      remarks: customer.notes || ''
+    }));
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '搜索客户成功',
+      data: {
+        list,
+        total,
+        page: pageNum,
+        pageSize: pageSizeNum
+      }
+    });
+  } catch (error) {
+    console.error('搜索客户失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '搜索客户失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
 });
 
 export default router;

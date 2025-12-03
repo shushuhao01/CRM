@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { ref, computed, nextTick, watch } from 'vue'
 import { customerApi } from '@/api/customer'
 import type { CustomerSearchParams } from '@/api/customer'
@@ -68,93 +68,11 @@ export const useCustomerStore = createPersistentStore('customer', () => {
   console.log('实例ID:', instanceId)
   console.log('初始客户数量:', customers.value.length)
 
-  // 初始化模拟数据（保持为空）
+  // 初始化数据（生产环境不再初始化模拟数据）
   const initMockData = () => {
-    try {
-      console.log('initMockData 被调用 - 检查是否需要初始化模拟客户数据')
-      // 如果已经有数据，则不重复初始化
-      if (customers.value && customers.value.length > 0) {
-        console.log('当前已有客户数据，数量:', customers.value.length, '跳过初始化')
-        return
-      }
-
-      // 构建4条模拟客户数据
-      const now = new Date()
-      const toISO = (date: Date) => date.toISOString()
-
-      const mockList: Customer[] = [
-        {
-          id: `mock_customer_${Date.now()}_a`,
-          code: generateCustomerCode(),
-          name: '陈皮',
-          phone: '13811110001',
-          age: 30,
-          address: '广东省广州市天河区体育西路1号',
-          level: 'gold',
-          status: 'active',
-          salesPersonId: 'sales1',
-          orderCount: 2,
-          createTime: toISO(new Date(now.getTime() - 86400000 * 5)), // 5天前
-          createdBy: 'admin',
-          tags: ['VIP', '重点跟进'],
-          remarks: '对高端产品兴趣浓厚'
-        },
-        {
-          id: `mock_customer_${Date.now()}_b`,
-          code: generateCustomerCode(),
-          name: '赵六',
-          phone: '13811110002',
-          age: 26,
-          address: '北京市海淀区中关村大街100号',
-          level: 'silver',
-          status: 'active',
-          salesPersonId: 'sales2',
-          orderCount: 1,
-          createTime: toISO(new Date(now.getTime() - 86400000 * 2)), // 2天前
-          createdBy: 'admin',
-          source: '线上咨询',
-          tags: ['稳定']
-        },
-        {
-          id: `mock_customer_${Date.now()}_c`,
-          code: generateCustomerCode(),
-          name: '孙七',
-          phone: '13811110003',
-          age: 33,
-          address: '上海市浦东新区世纪大道88号',
-          level: 'normal',
-          status: 'active',
-          salesPersonId: 'sales3',
-          orderCount: 0,
-          createTime: toISO(new Date(now.getTime() - 86400000)), // 昨天
-          createdBy: 'admin',
-          remarks: '首次接触，待跟进'
-        },
-        {
-          id: `mock_customer_${Date.now()}_d`,
-          code: generateCustomerCode(),
-          name: '周八',
-          phone: '13811110004',
-          age: 29,
-          address: '深圳市南山区科技园科苑路9号',
-          level: 'silver',
-          status: 'active',
-          salesPersonId: 'sales1',
-          orderCount: 0,
-          createTime: toISO(now), // 今天，便于在“新增客户”卡片统计显示
-          createdBy: 'admin',
-          source: '朋友介绍'
-        }
-      ]
-
-      // 设置到store并保存
-      customers.value = mockList
-      // 🔥 批次262修复：createPersistentStore会自动保存，无需手动调用
-
-      console.log('已初始化4条模拟客户数据')
-    } catch (e) {
-      console.error('初始化模拟客户数据失败:', e)
-    }
+    console.log('initMockData 被调用 - 生产环境不初始化模拟数据')
+    console.log('当前客户数量:', customers.value.length)
+    // 生产环境：不初始化任何模拟数据，客户数据从数据库获取
   }
 
   // 加载状态
