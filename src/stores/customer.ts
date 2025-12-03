@@ -1,5 +1,4 @@
-﻿import { defineStore } from 'pinia'
-import { ref, computed, nextTick, watch } from 'vue'
+﻿import { ref, computed } from 'vue'
 import { customerApi } from '@/api/customer'
 import type { CustomerSearchParams } from '@/api/customer'
 import { useUserStore } from './user'
@@ -195,21 +194,75 @@ export const useCustomerStore = createPersistentStore('customer', () => {
     return newCustomer
   }
 
-  const updateCustomer = (id: string, updates: Partial<Customer>) => {
+  // 更新客户（智能处理：生产环境调用API，开发环境使用本地存储）
+  const updateCustomer = async (id: string, updates: Partial<Customer>) => {
+    // 检查是否应该使用真实API（生产环境）
+    const { isProduction } = await import('@/utils/env')
+    const { shouldUseMockApi } = await import('@/api/mock')
+
+    // 生产环境或配置了API地址时，调用真实API
+    if (isProduction() || !shouldUseMockApi()) {
+      console.log('[CustomerStore] 🌐 生产环境：调用真实API更新客户')
+      try {
+        const { customerApi } = await import('@/api/customer')
+        const response = await customerApi.update(id, updates)
+
+        if (response.data) {
+          // 同时更新本地缓存
+          const index = customers.value.findIndex(c => c.id === id)
+          if (index !== -1) {
+            customers.value[index] = response.data
+          }
+          console.log('[CustomerStore] ✅ API更新成功')
+          return response.data
+        } else {
+          throw new Error(response.message || '更新客户失败')
+        }
+      } catch (apiError) {
+        console.error('[CustomerStore] ❌ API更新失败:', apiError)
+        throw apiError
+      }
+    }
+
+    // 开发环境：使用本地存储
     const index = customers.value.findIndex(c => c.id === id)
     if (index !== -1) {
       customers.value[index] = { ...customers.value[index], ...updates }
-      // 🔥 批次262修复：createPersistentStore会自动保存
       return customers.value[index]
     }
     return null
   }
 
-  const deleteCustomer = (id: string) => {
+  // 删除客户（智能处理：生产环境调用API，开发环境使用本地存储）
+  const deleteCustomer = async (id: string) => {
+    // 检查是否应该使用真实API（生产环境）
+    const { isProduction } = await import('@/utils/env')
+    const { shouldUseMockApi } = await import('@/api/mock')
+
+    // 生产环境或配置了API地址时，调用真实API
+    if (isProduction() || !shouldUseMockApi()) {
+      console.log('[CustomerStore] 🌐 生产环境：调用真实API删除客户')
+      try {
+        const { customerApi } = await import('@/api/customer')
+        await customerApi.delete(id)
+
+        // 同时更新本地缓存
+        const index = customers.value.findIndex(c => c.id === id)
+        if (index !== -1) {
+          customers.value.splice(index, 1)
+        }
+        console.log('[CustomerStore] ✅ API删除成功')
+        return true
+      } catch (apiError) {
+        console.error('[CustomerStore] ❌ API删除失败:', apiError)
+        throw apiError
+      }
+    }
+
+    // 开发环境：使用本地存储
     const index = customers.value.findIndex(c => c.id === id)
     if (index !== -1) {
       customers.value.splice(index, 1)
-      // 🔥 批次262修复：createPersistentStore会自动保存
       return true
     }
     return false
@@ -272,10 +325,47 @@ export const useCustomerStore = createPersistentStore('customer', () => {
     })
   }
 
-  // 添加客户（与商品模块完全相同的模式）
+  // 添加客户（智能处理：生产环境调用API，开发环境使用本地存储）
   const createCustomer = async (customerData: Omit<Customer, 'id' | 'code' | 'createTime' | 'orderCount'>) => {
     console.log('🔥 createCustomer方法被调用！实例ID:', instanceId)
     console.log('🔥 传入的客户数据:', customerData)
+
+    // 检查是否应该使用真实API（生产环境）
+    const { isProduction } = await import('@/utils/env')
+    const { shouldUseMockApi } = await import('@/api/mock')
+
+    // 生产环境或配置了API地址时，调用真实API
+    if (isProduction() || !shouldUseMockApi()) {
+      console.log('[CustomerStore] 🌐 生产环境：调用真实API保存客户到数据库')
+      try {
+        const { customerApi } = await import('@/api/customer')
+        // 生成客户编码，API可能需要这个字段
+        const dataWithCode = {
+          ...customerData,
+          code: generateCustomerCode()
+        }
+        const response = await customerApi.create(dataWithCode)
+
+        if (response.data) {
+          const newCustomer = response.data
+          console.log('[CustomerStore] ✅ API保存成功，客户ID:', newCustomer.id)
+
+          // 同时更新本地缓存
+          customers.value.unshift(newCustomer)
+          console.log('[CustomerStore] 本地缓存已更新，客户总数:', customers.value.length)
+
+          return newCustomer
+        } else {
+          throw new Error((response as { message?: string }).message || '创建客户失败')
+        }
+      } catch (apiError) {
+        console.error('[CustomerStore] ❌ API保存失败:', apiError)
+        throw apiError
+      }
+    }
+
+    // 开发环境：使用本地存储
+    console.log('[CustomerStore] 💻 开发环境：使用本地存储')
 
     // 使用ISO格式的时间，与其他地方保持一致
     const now = new Date()
@@ -296,11 +386,11 @@ export const useCustomerStore = createPersistentStore('customer', () => {
     console.log('[CustomerStore] 添加后客户总数:', customers.value.length)
     console.log('[CustomerStore] 客户创建时间:', newCustomer.createTime)
 
-    // 🔥 批次262终极修复：立即保存，确保新客户不丢失（参考订单store的做法）
+    // 立即保存到localStorage
     setTimeout(() => {
-      const storeInstance = useCustomerStore()
-      if (storeInstance && typeof (storeInstance as unknown).saveImmediately === 'function') {
-        (storeInstance as unknown).saveImmediately()
+      const storeInstance = useCustomerStore() as { saveImmediately?: () => void }
+      if (storeInstance && typeof storeInstance.saveImmediately === 'function') {
+        storeInstance.saveImmediately()
         console.log('[CustomerStore] ✅ 创建客户后立即保存完成')
       }
     }, 10)
@@ -308,13 +398,6 @@ export const useCustomerStore = createPersistentStore('customer', () => {
     return newCustomer
   }
 
-  // 强制刷新客户数据（暂时禁用，防止清空数据）
-  const forceRefreshCustomers = async (params?: CustomerSearchParams) => {
-    console.log('=== forceRefreshCustomers 被调用（已禁用） ===')
-    console.log('当前客户数量:', customers.value.length)
-    console.log('刷新参数:', params)
-    console.log('⚠️ forceRefreshCustomers 已被禁用，直接返回')
-  }
 
   // 加载客户列表（智能处理开发环境和生产环境）
   const loadCustomers = async (params?: CustomerSearchParams) => {
@@ -406,6 +489,16 @@ export const useCustomerStore = createPersistentStore('customer', () => {
     } finally {
       loading.value = false
     }
+  }
+
+  // 强制刷新客户数据（从API重新加载）
+  const forceRefreshCustomers = async (params?: CustomerSearchParams) => {
+    console.log('=== forceRefreshCustomers 被调用 ===')
+    console.log('当前客户数量:', customers.value.length)
+    console.log('刷新参数:', params)
+
+    // 调用loadCustomers重新加载数据
+    return await loadCustomers(params)
   }
 
   // 强制数据同步：智能同步数据

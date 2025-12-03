@@ -1601,8 +1601,17 @@ const loadCustomerList = async (forceReload = false) => {
   try {
     loading.value = true
 
-    // 简化逻辑：直接使用本地数据，与商品模块保持一致
-    // 不调用API，避免覆盖本地新增的客户数据
+    // 【关键修复】智能加载：生产环境从API加载，开发环境使用本地数据
+    const { isProduction } = await import('@/utils/env')
+    const { shouldUseMockApi } = await import('@/api/mock')
+
+    // 生产环境或配置了API地址时，从API加载数据
+    if (isProduction() || !shouldUseMockApi()) {
+      console.log('[CustomerList] 🌐 生产环境：从API加载客户数据')
+      await customerStore.loadCustomers()
+    } else {
+      console.log('[CustomerList] 💻 开发环境：使用本地客户数据')
+    }
 
     // 确保搜索结果已更新
     await nextTick()
@@ -1612,6 +1621,8 @@ const loadCustomerList = async (forceReload = false) => {
 
     // 加载统计数据
     await loadSummaryData()
+
+    console.log('[CustomerList] 加载完成，客户数量:', customerStore.customers.length)
 
   } catch (error) {
     console.error('loadCustomerList 错误:', error)
