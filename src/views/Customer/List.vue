@@ -161,7 +161,7 @@
         <el-button
           type="primary"
           @click="handleAdd"
-          v-if="userStore.isAdmin || userStore.currentUser?.role === 'manager'"
+          v-if="canAddCustomer"
         >
           <el-icon><Plus /></el-icon>
           新建客户
@@ -636,6 +636,26 @@ const canManageExport = computed(() => {
   const currentUser = userStore.currentUser
   if (!currentUser) return false
   return currentUser.role === 'super_admin'
+})
+
+// 【修复】检查是否有新增客户权限 - 销售员、部门经理、管理员都可以新增客户
+const canAddCustomer = computed(() => {
+  const currentUser = userStore.currentUser
+  if (!currentUser) return false
+
+  // 超级管理员和管理员有权限
+  if (userStore.isAdmin || userStore.isSuperAdmin) return true
+
+  // 部门经理有权限
+  if (currentUser.role === 'department_manager') return true
+
+  // 销售员有权限
+  if (currentUser.role === 'sales_staff') return true
+
+  // 检查是否有customer:add权限
+  if (userStore.permissions.includes('customer:add')) return true
+
+  return false
 })
 
 // 检查是否有导出权限

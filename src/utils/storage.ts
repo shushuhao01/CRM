@@ -306,12 +306,13 @@ export function createPersistentStore<T extends Record<string, any>>(
   storeDefinition: () => T,
   options: PersistentStoreOptions = {}
 ) {
-  // 暂时禁用实例缓存，每次都创建新的store来测试数据恢复
-  // if (storeInstances.has(storeId)) {
-  //   console.log(`[Storage] 返回已存在的store实例: ${storeId}`)
-  //   return storeInstances.get(storeId)
-  // }
-  console.log(`[Storage] 强制创建新的store实例: ${storeId}`)
+  // 【关键修复】启用实例缓存，确保所有组件使用同一个store实例
+  // 这样Add.vue保存的数据才能在List.vue中正确显示
+  if (storeInstances.has(storeId)) {
+    console.log(`[Storage] 返回已存在的store实例: ${storeId}`)
+    return storeInstances.get(storeId)
+  }
+  console.log(`[Storage] 创建新的store实例: ${storeId}`)
 
   const store = defineStore(storeId, () => {
     const config: StorageConfig = {
