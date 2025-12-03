@@ -65,8 +65,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:view:department',
       'aftersale:add', 'aftersale:edit', 'aftersale:analysis',
 
-      // 资料管理
-      'data', 'data:customer', 'data:customer:search', 'data:list'
+      // 资料管理（移除资料列表权限）
+      'data', 'data:customer', 'data:customer:search'
     ],
     description: '管理本部门业务和团队，查看部门数据'
   },
@@ -79,30 +79,28 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       // 数据看板
       'dashboard', 'dashboard:personal',
 
-      // 客户管理
+      // 客户管理（移除客户分组、客户标签）
       'customer', 'customer:list', 'customer:view:personal', 'customer:add',
-      'customer:groups', 'customer:tags',
 
       // 订单管理
       'order', 'order:list', 'order:view:personal', 'order:add',
 
-      // 服务管理
+      // 服务管理（移除短信管理）
       'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
-      'service:sms',
 
       // 业绩统计
       'performance', 'performance:personal', 'performance:personal:view',
       'performance:team', 'performance:team:view',
 
-      // 物流管理
+      // 物流管理（移除发货列表、状态更新）
       'logistics', 'logistics:list', 'logistics:view',
-      'logistics:tracking', 'logistics:tracking:view', 'logistics:shipping', 'logistics:status',
+      'logistics:tracking', 'logistics:tracking:view',
 
-      // 售后管理
-      'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:add', 'aftersale:analysis',
+      // 售后管理（移除售后数据分析）
+      'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:add',
 
-      // 资料管理
-      'data', 'data:customer', 'data:customer:search', 'data:recycle'
+      // 资料管理（移除回收站）
+      'data', 'data:customer', 'data:customer:search'
     ],
     description: '专注于客户开发和订单管理，查看个人数据'
   },
@@ -112,6 +110,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
     roleId: 'customer_service',
     roleName: '客服',
     permissions: [
+      // 数据看板（新增）
+      'dashboard', 'dashboard:personal',
+
       // 订单审核权限
       'order', 'order:audit', 'order:audit:view',
 

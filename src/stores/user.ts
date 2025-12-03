@@ -557,13 +557,31 @@ export const useUserStore = defineStore('user', () => {
       }
 
       // 设置用户权限 - 使用新的权限系统，优先从localStorage读取角色权限配置
-      // 【关键修复】始终从默认配置获取权限，确保权限格式与菜单配置一致
-      // 不再从rolePermissionService获取，避免格式不匹配问题
+      // 【关键修复】优先从crm_roles读取动态配置的权限，没有则使用默认配置
       let userPermissions: string[] = []
 
       // 优先使用 roleId（如 sales_staff），其次使用 role
       const roleKey = userData.roleId || userData.role
-      userPermissions = getDefaultRolePermissions(roleKey)
+
+      // 尝试从crm_roles读取动态配置的权限
+      try {
+        const savedRoles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
+        const matchedRole = savedRoles.find((r: { code: string; permissions?: string[] }) =>
+          r.code === roleKey || r.code === userData.role
+        )
+        if (matchedRole && matchedRole.permissions && matchedRole.permissions.length > 0) {
+          userPermissions = matchedRole.permissions
+          console.log(`[Auth] ✅ 从动态配置加载权限: ${roleKey}`, userPermissions.length, '个权限')
+        }
+      } catch (e) {
+        console.warn('[Auth] 读取动态权限配置失败:', e)
+      }
+
+      // 如果没有动态配置，使用默认权限
+      if (userPermissions.length === 0) {
+        userPermissions = getDefaultRolePermissions(roleKey)
+        console.log(`[Auth] ✅ 使用默认权限配置: ${roleKey}`, userPermissions.length, '个权限')
+      }
 
       // 如果还是没有权限，尝试常见的角色映射
       if (userPermissions.length === 0) {
@@ -587,8 +605,6 @@ export const useUserStore = defineStore('user', () => {
         userPermissions = getDefaultRolePermissions(mappedRole)
         console.log(`[Auth] 使用映射后的角色获取权限: ${mappedRole}`, userPermissions)
       }
-
-      console.log(`[Auth] ✅ 角色权限已设置: ${roleKey}`, userPermissions.length, '个权限')
 
       // 设置权限到新的权限系统
       if (userData.role === 'admin' || userData.role === 'super_admin') {
@@ -658,15 +674,6 @@ export const useUserStore = defineStore('user', () => {
       console.log('  - 用户:', completeUserInfo.name)
       console.log('  - 角色:', completeUserInfo.role)
       console.log('  - 权限数量:', userPermissions.length)
-      console.log('  - Token过期时间:', new Date(expiryTime).toLocaleString())
-
-      // 启动自动同步服务
-      const config = autoStatusSyncService.getConfig()
-      if (config.enabled) {
-        autoStatusSyncService.start()
-      }
-
-      return true
     } catch (error) {
       console.error('API登录失败:', error)
       throw error
@@ -872,15 +879,35 @@ export const useUserStore = defineStore('user', () => {
       console.log('[Auth] ✅ Token:', savedToken.substring(0, 30) + '...')
       console.log('[Auth] ✅ isLoggedIn:', isLoggedIn.value)
 
-      // 【关键修复】始终从默认配置获取最新权限，确保权限格式与菜单配置一致
-      // 不再使用localStorage中保存的旧权限，避免格式不匹配问题
-      const defaultPerms = getDefaultRolePermissions(userData.role)
-      if (defaultPerms.length > 0) {
-        permissions.value = defaultPerms
-        setUserPermissions(defaultPerms)
-        console.log('[Auth] ✅ 使用默认角色权限:', userData.role, defaultPerms.length, '个权限')
+      // 【关键修复】优先从crm_roles读取动态配置的权限，没有则使用默认配置
+      let userPerms: string[] = []
+
+      // 尝试从crm_roles读取动态配置的权限
+      try {
+        const savedRoles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
+        const matchedRole = savedRoles.find((r: { code: string; permissions?: string[] }) =>
+          r.code === userData.role
+        )
+        if (matchedRole && matchedRole.permissions && matchedRole.permissions.length > 0) {
+          userPerms = matchedRole.permissions
+          console.log('[Auth] ✅ 从动态配置恢复权限:', userData.role, userPerms.length, '个权限')
+        }
+      } catch (e) {
+        console.warn('[Auth] 读取动态权限配置失败:', e)
+      }
+
+      // 如果没有动态配置，使用默认权限
+      if (userPerms.length === 0) {
+        userPerms = getDefaultRolePermissions(userData.role)
+        console.log('[Auth] ✅ 使用默认角色权限:', userData.role, userPerms.length, '个权限')
+      }
+
+      // 设置权限
+      if (userPerms.length > 0) {
+        permissions.value = userPerms
+        setUserPermissions(userPerms)
       } else if (userData.permissions && Array.isArray(userData.permissions)) {
-        // 如果默认配置中没有该角色，才使用保存的权限
+        // 如果都没有，才使用保存的权限
         permissions.value = userData.permissions
         setUserPermissions(userData.permissions)
         console.log('[Auth] ⚠️ 使用保存的权限:', userData.permissions.length, '个权限')
