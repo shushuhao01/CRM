@@ -70,21 +70,37 @@ router.get('/', async (req: Request, res: Response) => {
       code: customer.customerNo || `C${customer.id.toString().padStart(6, '0')}`,
       name: customer.name,
       phone: customer.phone || '',
-      age: 0,
+      age: customer.age || 0,
+      gender: customer.gender || 'unknown',
+      height: customer.height || null,
+      weight: customer.weight || null,
       address: customer.address || '',
+      province: customer.province || '',
+      city: customer.city || '',
+      district: customer.district || '',
+      street: customer.street || '',
+      detailAddress: customer.detailAddress || '',
+      overseasAddress: customer.overseasAddress || '',
       level: customer.level === 'A' ? 'gold' : customer.level === 'B' ? 'silver' : 'normal',
       status: customer.status === 'deal' ? 'active' : customer.status === 'lost' ? 'lost' : 'potential',
       salesPersonId: customer.salesUserId?.toString() || '',
-      orderCount: 0,
+      orderCount: customer.orderCount || 0,
+      returnCount: customer.returnCount || 0,
+      totalAmount: customer.totalAmount || 0,
       createTime: customer.createdAt.toISOString(),
       createdBy: customer.salesUserId?.toString() || 'admin',
-      wechatId: '',
+      wechat: customer.wechat || '',
+      wechatId: customer.wechat || '',
       email: customer.email || '',
       company: customer.company || '',
       position: customer.position || '',
       source: customer.source || '',
       tags: customer.tags || [],
-      remarks: customer.notes || ''
+      remarks: customer.notes || '',
+      medicalHistory: customer.medicalHistory || '',
+      improvementGoals: customer.improvementGoals || [],
+      otherGoals: customer.otherGoals || '',
+      fanAcquisitionTime: customer.fanAcquisitionTime?.toISOString() || ''
     }));
 
     res.json({
@@ -135,20 +151,37 @@ router.get('/:id', async (req: Request, res: Response) => {
       code: customer.customerNo || `C${customer.id.toString().padStart(6, '0')}`,
       name: customer.name,
       phone: customer.phone || '',
-      age: 0,
+      age: customer.age || 0,
+      gender: customer.gender || 'unknown',
+      height: customer.height || null,
+      weight: customer.weight || null,
       address: customer.address || '',
+      province: customer.province || '',
+      city: customer.city || '',
+      district: customer.district || '',
+      street: customer.street || '',
+      detailAddress: customer.detailAddress || '',
+      overseasAddress: customer.overseasAddress || '',
       level: customer.level === 'A' ? 'gold' : customer.level === 'B' ? 'silver' : 'normal',
       status: customer.status === 'deal' ? 'active' : customer.status === 'lost' ? 'lost' : 'potential',
       salesPersonId: customer.salesUserId?.toString() || '',
-      orderCount: 0,
+      orderCount: customer.orderCount || 0,
+      returnCount: customer.returnCount || 0,
+      totalAmount: customer.totalAmount || 0,
       createTime: customer.createdAt.toISOString(),
       createdBy: customer.salesUserId?.toString() || 'admin',
+      wechat: customer.wechat || '',
+      wechatId: customer.wechat || '',
       email: customer.email || '',
       company: customer.company || '',
       position: customer.position || '',
       source: customer.source || '',
       tags: customer.tags || [],
-      remarks: customer.notes || ''
+      remarks: customer.notes || '',
+      medicalHistory: customer.medicalHistory || '',
+      improvementGoals: customer.improvementGoals || [],
+      otherGoals: customer.otherGoals || '',
+      fanAcquisitionTime: customer.fanAcquisitionTime?.toISOString() || ''
     };
 
     res.json({
@@ -176,7 +209,16 @@ router.get('/:id', async (req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
   try {
     const customerRepository = AppDataSource.getRepository(Customer);
-    const { name, phone, email, address, level, source, tags, remarks, company, position } = req.body;
+    const {
+      name, phone, email, address, level, source, tags, remarks, company, position,
+      // 新增字段
+      age, gender, height, weight, wechat, wechatId,
+      province, city, district, street, detailAddress, overseasAddress,
+      medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime,
+      status, salesPersonId, createdBy
+    } = req.body;
+
+    console.log('[创建客户] 收到请求数据:', req.body);
 
     // 验证必填字段
     if (!name) {
@@ -202,9 +244,30 @@ router.post('/', async (req: Request, res: Response) => {
     // 映射前端等级到后端等级
     const levelMap: Record<string, 'A' | 'B' | 'C' | 'D'> = {
       'gold': 'A',
+      'diamond': 'A',
       'silver': 'B',
+      'bronze': 'C',
       'normal': 'C'
     };
+
+    // 映射前端状态到后端状态
+    const statusMap: Record<string, 'potential' | 'contacted' | 'negotiating' | 'deal' | 'lost'> = {
+      'active': 'deal',
+      'potential': 'potential',
+      'lost': 'lost',
+      'inactive': 'lost',
+      'blacklist': 'lost'
+    };
+
+    // 解析销售员ID
+    let parsedSalesUserId: number | undefined;
+    const salesId = salesPersonId || createdBy || (req as any).user?.id;
+    if (salesId) {
+      const parsed = parseInt(salesId);
+      if (!isNaN(parsed)) {
+        parsedSalesUserId = parsed;
+      }
+    }
 
     // 创建客户
     const customer = customerRepository.create({
@@ -212,15 +275,36 @@ router.post('/', async (req: Request, res: Response) => {
       phone,
       email,
       address,
+      province,
+      city,
+      district,
+      street,
+      detailAddress,
+      overseasAddress,
       level: levelMap[level] || 'C',
       source: source || 'other',
       tags: tags || [],
       notes: remarks,
       company,
       position,
-      status: 'potential',
-      salesUserId: (req as any).user?.id
+      status: statusMap[status] || 'potential',
+      salesUserId: parsedSalesUserId,
+      // 新增字段
+      age: age || null,
+      gender: gender || 'unknown',
+      height: height || null,
+      weight: weight || null,
+      wechat: wechat || wechatId || null,
+      medicalHistory: medicalHistory || null,
+      improvementGoals: improvementGoals || [],
+      otherGoals: otherGoals || null,
+      fanAcquisitionTime: fanAcquisitionTime ? new Date(fanAcquisitionTime) : null,
+      orderCount: 0,
+      returnCount: 0,
+      totalAmount: 0
     });
+
+    console.log('[创建客户] 准备保存的客户对象:', customer);
 
     const savedCustomer = await customerRepository.save(customer);
 
@@ -228,26 +312,40 @@ router.post('/', async (req: Request, res: Response) => {
     savedCustomer.customerNo = `C${savedCustomer.id.toString().padStart(6, '0')}`;
     await customerRepository.save(savedCustomer);
 
+    console.log('[创建客户] 保存成功，客户ID:', savedCustomer.id);
+
     // 转换数据格式返回
     const data = {
       id: savedCustomer.id.toString(),
       code: savedCustomer.customerNo,
       name: savedCustomer.name,
       phone: savedCustomer.phone || '',
-      age: 0,
+      age: savedCustomer.age || 0,
+      gender: savedCustomer.gender || 'unknown',
+      height: savedCustomer.height || null,
+      weight: savedCustomer.weight || null,
       address: savedCustomer.address || '',
+      province: savedCustomer.province || '',
+      city: savedCustomer.city || '',
+      district: savedCustomer.district || '',
+      street: savedCustomer.street || '',
+      detailAddress: savedCustomer.detailAddress || '',
       level: level || 'normal',
-      status: 'active',
+      status: status || 'active',
       salesPersonId: savedCustomer.salesUserId?.toString() || '',
       orderCount: 0,
       createTime: savedCustomer.createdAt.toISOString(),
       createdBy: savedCustomer.salesUserId?.toString() || 'admin',
+      wechat: savedCustomer.wechat || '',
       email: savedCustomer.email || '',
       company: savedCustomer.company || '',
       position: savedCustomer.position || '',
       source: savedCustomer.source || '',
       tags: savedCustomer.tags || [],
-      remarks: savedCustomer.notes || ''
+      remarks: savedCustomer.notes || '',
+      medicalHistory: savedCustomer.medicalHistory || '',
+      improvementGoals: savedCustomer.improvementGoals || [],
+      otherGoals: savedCustomer.otherGoals || ''
     };
 
     res.status(201).json({
@@ -287,12 +385,19 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    const { name, phone, email, address, level, source, tags, remarks, company, position, status } = req.body;
+    const {
+      name, phone, email, address, level, source, tags, remarks, company, position, status,
+      age, gender, height, weight, wechat, wechatId,
+      province, city, district, street, detailAddress, overseasAddress,
+      medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime
+    } = req.body;
 
     // 映射前端等级到后端等级
     const levelMap: Record<string, 'A' | 'B' | 'C' | 'D'> = {
       'gold': 'A',
+      'diamond': 'A',
       'silver': 'B',
+      'bronze': 'C',
       'normal': 'C'
     };
 
@@ -305,17 +410,32 @@ router.put('/:id', async (req: Request, res: Response) => {
     };
 
     // 更新字段
-    if (name) customer.name = name;
-    if (phone) customer.phone = phone;
-    if (email) customer.email = email;
-    if (address) customer.address = address;
-    if (level) customer.level = levelMap[level] || customer.level;
-    if (source) customer.source = source as any;
-    if (tags) customer.tags = tags;
-    if (remarks) customer.notes = remarks;
-    if (company) customer.company = company;
-    if (position) customer.position = position;
-    if (status) customer.status = statusMap[status] || customer.status;
+    if (name !== undefined) customer.name = name;
+    if (phone !== undefined) customer.phone = phone;
+    if (email !== undefined) customer.email = email;
+    if (address !== undefined) customer.address = address;
+    if (province !== undefined) customer.province = province;
+    if (city !== undefined) customer.city = city;
+    if (district !== undefined) customer.district = district;
+    if (street !== undefined) customer.street = street;
+    if (detailAddress !== undefined) customer.detailAddress = detailAddress;
+    if (overseasAddress !== undefined) customer.overseasAddress = overseasAddress;
+    if (level !== undefined) customer.level = levelMap[level] || customer.level;
+    if (source !== undefined) customer.source = source as any;
+    if (tags !== undefined) customer.tags = tags;
+    if (remarks !== undefined) customer.notes = remarks;
+    if (company !== undefined) customer.company = company;
+    if (position !== undefined) customer.position = position;
+    if (status !== undefined) customer.status = statusMap[status] || customer.status;
+    if (age !== undefined) customer.age = age;
+    if (gender !== undefined) customer.gender = gender;
+    if (height !== undefined) customer.height = height;
+    if (weight !== undefined) customer.weight = weight;
+    if (wechat !== undefined || wechatId !== undefined) customer.wechat = wechat || wechatId;
+    if (medicalHistory !== undefined) customer.medicalHistory = medicalHistory;
+    if (improvementGoals !== undefined) customer.improvementGoals = improvementGoals;
+    if (otherGoals !== undefined) customer.otherGoals = otherGoals;
+    if (fanAcquisitionTime !== undefined) customer.fanAcquisitionTime = fanAcquisitionTime ? new Date(fanAcquisitionTime) : undefined;
 
     const updatedCustomer = await customerRepository.save(customer);
 
@@ -325,12 +445,15 @@ router.put('/:id', async (req: Request, res: Response) => {
       code: updatedCustomer.customerNo || `C${updatedCustomer.id.toString().padStart(6, '0')}`,
       name: updatedCustomer.name,
       phone: updatedCustomer.phone || '',
-      age: 0,
+      age: updatedCustomer.age || 0,
+      gender: updatedCustomer.gender || 'unknown',
+      height: updatedCustomer.height || null,
+      weight: updatedCustomer.weight || null,
       address: updatedCustomer.address || '',
       level: level || 'normal',
       status: status || 'active',
       salesPersonId: updatedCustomer.salesUserId?.toString() || '',
-      orderCount: 0,
+      orderCount: updatedCustomer.orderCount || 0,
       createTime: updatedCustomer.createdAt.toISOString(),
       createdBy: updatedCustomer.salesUserId?.toString() || 'admin',
       email: updatedCustomer.email || '',
@@ -431,12 +554,12 @@ router.get('/search', async (req: Request, res: Response) => {
       code: customer.customerNo || `C${customer.id.toString().padStart(6, '0')}`,
       name: customer.name,
       phone: customer.phone || '',
-      age: 0,
+      age: customer.age || 0,
       address: customer.address || '',
       level: customer.level === 'A' ? 'gold' : customer.level === 'B' ? 'silver' : 'normal',
       status: customer.status === 'deal' ? 'active' : customer.status === 'lost' ? 'lost' : 'potential',
       salesPersonId: customer.salesUserId?.toString() || '',
-      orderCount: 0,
+      orderCount: customer.orderCount || 0,
       createTime: customer.createdAt.toISOString(),
       createdBy: customer.salesUserId?.toString() || 'admin',
       email: customer.email || '',
