@@ -693,36 +693,38 @@ export const useUserStore = defineStore('user', () => {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        console.log(`[Auth] 登录尝试 ${attempt}/${maxRetries}`)
         const result = await loginWithApi(username, password, rememberMe)
 
-        // 【修复】检查登录是否成功：优先检查状态，其次检查返回值
-        if (token.value && isLoggedIn.value) {
-          console.log('[Auth] ✅ 登录成功，状态已同步')
-          return true
-        }
-
-        // 如果返回值为true但状态未同步，也认为成功
+        // 【关键修复】只要loginWithApi返回true或没有抛出错误，就认为登录成功
+        // 不再检查响应式状态，因为状态已经在loginWithApi中设置
         if (result === true) {
-          console.log('[Auth] ✅ 登录成功（通过返回值确认）')
+          console.log('[Auth] ✅ 登录成功')
           return true
         }
 
-        // 如果没有抛出错误但状态也没设置，记录警告并继续重试
-        console.warn(`[Auth] 登录尝试 ${attempt}/${maxRetries} 未能确认成功状态`)
+        // 如果返回值不是true但也没抛出错误，检查状态
+        if (token.value && isLoggedIn.value) {
+          console.log('[Auth] ✅ 登录成功（通过状态确认）')
+          return true
+        }
+
+        console.warn(`[Auth] 登录尝试 ${attempt}/${maxRetries} 返回值异常:`, result)
 
       } catch (error: unknown) {
         lastError = error
         const errorMessage = error instanceof Error ? error.message : String(error)
+        console.error(`[Auth] 登录尝试 ${attempt}/${maxRetries} 失败:`, errorMessage)
 
         // 如果是频率限制错误且不是最后一次尝试，进行重试
         if ((errorMessage.includes('频繁') || errorMessage.includes('429') || errorMessage === 'RATE_LIMITED') && attempt < maxRetries) {
-          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000) // 指数退避，最大延迟10秒
-          console.log(`[Auth] 登录重试 ${attempt}/${maxRetries}，${delay}ms后重试...`)
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000)
+          console.log(`[Auth] ${delay}ms后重试...`)
           await new Promise(resolve => setTimeout(resolve, delay))
           continue
         }
 
-        // 其他错误或最后一次尝试，直接抛出错误
+        // 最后一次尝试失败，抛出错误
         if (attempt === maxRetries) {
           throw lastError
         }
