@@ -11,6 +11,9 @@ router.get('/', optionalAuth, (req, res) => roleController.getRoles(req, res));
 // 获取角色统计 - 使用可选认证
 router.get('/stats', optionalAuth, (req, res) => roleController.getRoleStats(req, res));
 
+// 获取角色权限 - 使用可选认证
+router.get('/:id/permissions', optionalAuth, (req, res) => roleController.getRolePermissions(req, res));
+
 // 获取单个角色 - 使用可选认证
 router.get('/:id', optionalAuth, (req, res) => roleController.getRoleById(req, res));
 

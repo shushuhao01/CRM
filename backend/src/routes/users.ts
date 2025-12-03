@@ -34,12 +34,20 @@ const createUserSchema = {
     }),
     email: commonValidations.optionalEmail,
     phone: commonValidations.phone.optional(),
-    role: Joi.string().valid('admin', 'manager', 'sales', 'service').required().messages({
+    role: Joi.string().max(50).required().messages({
       'string.base': '角色必须是字符串',
-      'any.only': '角色必须是以下值之一: admin, manager, sales, service',
+      'string.max': '角色最多50个字符',
       'any.required': '角色是必需的'
     }),
-    departmentId: commonValidations.optionalId
+    departmentId: Joi.alternatives().try(
+      Joi.string().max(100),
+      Joi.number()
+    ).optional().messages({
+      'string.max': '部门ID最多100个字符'
+    }),
+    position: Joi.string().max(50).optional(),
+    employeeNumber: Joi.string().max(50).optional(),
+    remark: Joi.string().max(500).optional()
   })
 };
 

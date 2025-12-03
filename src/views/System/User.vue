@@ -2628,20 +2628,33 @@ const loadUserList = async () => {
   try {
     tableLoading.value = true
 
-    // 【生产环境修复】仅在开发环境从localStorage读取用户数据
     let users: unknown[] = []
-    if (!import.meta.env.PROD) {
+
+    // 【生产环境修复】生产环境调用API获取用户数据
+    if (import.meta.env.PROD) {
+      console.log('[User] 生产环境：调用API获取用户数据')
+      try {
+        const apiResponse = await userApiService.getUsers({
+          page: pagination.page,
+          limit: pagination.size
+        })
+        users = apiResponse.data || []
+        pagination.total = apiResponse.total || users.length
+        console.log('[User] 生产环境：API返回用户数量:', users.length)
+      } catch (apiError) {
+        console.error('[User] 生产环境：API获取用户失败:', apiError)
+        users = []
+      }
+    } else {
+      // 开发环境从localStorage读取用户数据
       users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
       console.log('[User] 开发环境：从localStorage加载用户:', users.length)
-    } else {
-      console.log('[User] 生产环境：应通过API获取用户数据')
-      // TODO: 生产环境应该调用API获取用户数据
     }
 
     // 模拟API响应格式
     const response = {
       data: users,
-      total: users.length
+      total: pagination.total || users.length
     }
 
     // 映射用户数据

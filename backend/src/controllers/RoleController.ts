@@ -321,4 +321,41 @@ export class RoleController {
       });
     }
   }
+
+  // 获取角色权限
+  async getRolePermissions(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      const role = await this.roleRepository.findOne({
+        where: { id: String(id) }
+      });
+
+      if (!role) {
+        res.status(404).json({
+          success: false,
+          message: '角色不存在'
+        });
+        return;
+      }
+
+      // permissions 是 JSON 字段，直接返回
+      const permissions = Array.isArray(role.permissions) ? role.permissions : [];
+
+      res.json({
+        success: true,
+        data: {
+          roleId: role.id,
+          roleName: role.name,
+          permissions: permissions
+        }
+      });
+    } catch (error) {
+      console.error('获取角色权限失败:', error);
+      res.status(500).json({
+        success: false,
+        message: '获取角色权限失败'
+      });
+    }
+  }
 }
