@@ -557,62 +557,38 @@ export const useUserStore = defineStore('user', () => {
       }
 
       // 设置用户权限 - 使用新的权限系统，优先从localStorage读取角色权限配置
+      // 【关键修复】始终从默认配置获取权限，确保权限格式与菜单配置一致
+      // 不再从rolePermissionService获取，避免格式不匹配问题
       let userPermissions: string[] = []
 
-      // 获取角色ID映射 - 与rolePermissionService中的角色定义保持一致
-      const roleIdMap: Record<string, string> = {
-        'admin': '1',
-        'manager': '3',
-        'department_manager': '3',
-        'sales': '4',
-        'sales_staff': '4',
-        'employee': '4',
-        'service': '5',
-        'customer_service': '5'
+      // 优先使用 roleId（如 sales_staff），其次使用 role
+      const roleKey = userData.roleId || userData.role
+      userPermissions = getDefaultRolePermissions(roleKey)
+
+      // 如果还是没有权限，尝试常见的角色映射
+      if (userPermissions.length === 0) {
+        const roleMapping: Record<string, string> = {
+          // 中文名称映射
+          '销售员': 'sales_staff',
+          '销售': 'sales_staff',
+          '客服': 'customer_service',
+          '客服人员': 'customer_service',
+          '部门经理': 'department_manager',
+          '经理': 'department_manager',
+          '管理员': 'admin',
+          '系统管理员': 'admin',
+          '超级管理员': 'super_admin',
+          // 英文别名映射
+          'sales': 'sales_staff',
+          'service': 'customer_service',
+          'manager': 'department_manager'
+        }
+        const mappedRole = roleMapping[roleKey] || roleKey
+        userPermissions = getDefaultRolePermissions(mappedRole)
+        console.log(`[Auth] 使用映射后的角色获取权限: ${mappedRole}`, userPermissions)
       }
 
-      const roleId = roleIdMap[userData.role] || '4'
-
-      try {
-        // 尝试从localStorage获取角色权限配置
-        const rolePermissions = await rolePermissionService.getRolePermissions(roleId)
-        if (rolePermissions && rolePermissions.permissions.length > 0) {
-          userPermissions = rolePermissions.permissions.map(p => p.code || p.id)
-          console.log(`[Auth] 从配置加载角色权限: ${response.user.role}`, userPermissions)
-        } else {
-          throw new Error('No configured permissions found')
-        }
-      } catch (error) {
-        console.warn(`[Auth] 无法获取角色权限配置，使用默认权限: ${userData.role}`, error)
-
-        // 如果无法获取配置的权限，使用默认权限配置文件
-        // 优先使用 roleId（如 sales_staff），其次使用 role
-        const roleKey = userData.roleId || userData.role
-        userPermissions = getDefaultRolePermissions(roleKey)
-
-        // 如果还是没有权限，尝试常见的角色映射
-        if (userPermissions.length === 0) {
-          const roleMapping: Record<string, string> = {
-            // 中文名称映射
-            '销售员': 'sales_staff',
-            '销售': 'sales_staff',
-            '客服': 'customer_service',
-            '客服人员': 'customer_service',
-            '部门经理': 'department_manager',
-            '经理': 'department_manager',
-            '管理员': 'admin',
-            '系统管理员': 'admin',
-            '超级管理员': 'super_admin',
-            // 英文别名映射
-            'sales': 'sales_staff',
-            'service': 'customer_service',
-            'manager': 'department_manager'
-          }
-          const mappedRole = roleMapping[roleKey] || roleKey
-          userPermissions = getDefaultRolePermissions(mappedRole)
-          console.log(`[Auth] 使用映射后的角色获取权限: ${mappedRole}`, userPermissions)
-        }
-      }
+      console.log(`[Auth] ✅ 角色权限已设置: ${roleKey}`, userPermissions.length, '个权限')
 
       // 设置权限到新的权限系统
       if (userData.role === 'admin' || userData.role === 'super_admin') {
@@ -896,15 +872,20 @@ export const useUserStore = defineStore('user', () => {
       console.log('[Auth] ✅ Token:', savedToken.substring(0, 30) + '...')
       console.log('[Auth] ✅ isLoggedIn:', isLoggedIn.value)
 
-      // 恢复权限
-      if (userData.permissions && Array.isArray(userData.permissions)) {
-        permissions.value = userData.permissions
-        setUserPermissions(userData.permissions)
-      } else {
-        // 根据角色设置默认权限
-        const defaultPerms = getDefaultRolePermissions(userData.role)
+      // 【关键修复】始终从默认配置获取最新权限，确保权限格式与菜单配置一致
+      // 不再使用localStorage中保存的旧权限，避免格式不匹配问题
+      const defaultPerms = getDefaultRolePermissions(userData.role)
+      if (defaultPerms.length > 0) {
         permissions.value = defaultPerms
         setUserPermissions(defaultPerms)
+        console.log('[Auth] ✅ 使用默认角色权限:', userData.role, defaultPerms.length, '个权限')
+      } else if (userData.permissions && Array.isArray(userData.permissions)) {
+        // 如果默认配置中没有该角色，才使用保存的权限
+        permissions.value = userData.permissions
+        setUserPermissions(userData.permissions)
+        console.log('[Auth] ⚠️ 使用保存的权限:', userData.permissions.length, '个权限')
+      } else {
+        console.warn('[Auth] ⚠️ 无法获取权限配置，角色:', userData.role)
       }
 
       // 恢复权限服务配置
