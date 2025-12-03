@@ -2276,6 +2276,10 @@ const loadOrderList = async () => {
   console.log('[订单列表] 开始刷新订单列表')
   try {
     const response = await appStore.withLoading(async () => {
+      // 确保客户数据已加载
+      if (customerStore.customers.length === 0) {
+        await customerStore.loadCustomers()
+      }
       // 强制从 localStorage 重新加载订单数据
       await orderStore.loadOrders()
       console.log('[订单列表] 订单数据已重新加载，数量:', orderStore.orders.length)

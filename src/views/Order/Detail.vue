@@ -1722,6 +1722,11 @@ const loadOrderDetail = async () => {
   try {
     loading.value = true
 
+    // 确保客户数据已加载
+    if (customerStore.customers.length === 0) {
+      await customerStore.loadCustomers()
+    }
+
     // 从store获取订单数据
     const order = orderStore.getOrderById(orderId)
     if (!order) {

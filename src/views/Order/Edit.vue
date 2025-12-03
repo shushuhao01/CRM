@@ -751,6 +751,9 @@ const customerOptions = computed(() => {
 
 // 页面初始化
 onMounted(async () => {
+  // 🔥 修复：先加载客户数据，确保客户选择下拉框有数据
+  await customerStore.loadCustomers()
+
   await loadOrderData()
 
   // 监听订单更新事件，确保数据同步

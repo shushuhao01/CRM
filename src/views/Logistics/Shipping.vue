@@ -1022,6 +1022,11 @@ const loadOrderList = async () => {
     loading.value = true
     console.log('[发货列表] 开始加载订单列表，当前标签页:', activeTab.value)
 
+    // 🔥 修复：确保客户数据已加载，用于获取客户详细信息
+    if (customerStore.customers.length === 0) {
+      await customerStore.loadCustomers()
+    }
+
     // 根据当前选中的标签页获取对应状态的订单
     const orders = await orderStore.getOrdersByShippingStatus(activeTab.value)
 

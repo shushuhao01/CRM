@@ -568,8 +568,33 @@ const loadCustomerDetail = async () => {
   try {
     loading.value = true
 
-    // 从客户store中获取客户数据
-    const customer = customerStore.getCustomerById(customerId)
+    // 🔥 修复：生产环境从API获取客户详情，确保数据最新
+    const { isProduction } = await import('@/utils/env')
+    const { shouldUseMockApi } = await import('@/api/mock')
+
+    let customer = null
+
+    if (isProduction() || !shouldUseMockApi()) {
+      // 生产环境：从API获取客户详情
+      console.log('[Edit.vue] 🌐 生产环境：从API获取客户详情')
+      try {
+        const { customerApi } = await import('@/api/customer')
+        const response = await customerApi.getDetail(customerId)
+        if (response.data) {
+          customer = response.data
+          console.log('[Edit.vue] ✅ API获取客户详情成功:', customer.name)
+        }
+      } catch (apiError) {
+        console.error('[Edit.vue] ❌ API获取客户详情失败:', apiError)
+        // API失败时尝试从本地store获取
+        customer = customerStore.getCustomerById(customerId)
+      }
+    } else {
+      // 开发环境：从本地store获取
+      console.log('[Edit.vue] 💻 开发环境：从本地store获取客户详情')
+      customer = customerStore.getCustomerById(customerId)
+    }
+
     if (!customer) {
       ElMessage.error('客户不存在')
       safeNavigator.push('/customer/list')

@@ -847,6 +847,11 @@ const toggleAutoRefresh = () => {
 const loadData = async (showMessage = false) => {
   loading.value = true
   try {
+    // 确保客户数据已加载
+    if (customerStore.customers.length === 0) {
+      await customerStore.loadCustomers()
+    }
+
     // 模拟API调用延迟
     await new Promise(resolve => setTimeout(resolve, 300))
 
