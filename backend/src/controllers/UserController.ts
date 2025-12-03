@@ -361,17 +361,24 @@ export class UserController {
     // 加密密码
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // 创建用户
+    // 生成用户ID
+    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // 创建用户 - 确保所有必需字段都有值
     const user = this.userRepository.create({
+      id: userId,
       username,
       password: hashedPassword,
+      name: realName,  // name 是必需字段
       realName,
-      email,
-      phone,
+      email: email || null,
+      phone: phone || null,
       role,
-      departmentId,
+      roleId: role,  // roleId 是必需字段，使用 role 值
+      departmentId: departmentId || null,
       status: 'active',
-      loginFailCount: 0
+      loginFailCount: 0,
+      loginCount: 0
     });
 
     const savedUser = await this.userRepository.save(user);
