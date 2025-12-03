@@ -692,27 +692,27 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     }
   }
 
-  // 获取部门角色数据
-  const fetchDepartmentRoles = async () => {
+  // 获取部门角色数据（按需加载单个部门的角色）
+  const fetchDepartmentRoles = async (departmentId?: string) => {
+    // 如果没有指定部门ID，不做任何操作（避免循环请求导致429）
+    if (!departmentId) {
+      console.log('[部门Store] fetchDepartmentRoles: 跳过批量加载，改为按需加载')
+      return
+    }
+
     loading.value = true
     try {
       const { getDepartmentRoles: getDepartmentRolesAPI } = await import('@/api/department')
-      const allRoles: DepartmentRole[] = []
+      const response = await getDepartmentRolesAPI(departmentId)
+      const deptRoles = response.data || []
 
-      // 为每个部门获取角色数据
-      for (const dept of departments.value) {
-        try {
-          const response = await getDepartmentRolesAPI(dept.id)
-          allRoles.push(...(response.data || []))
-        } catch (error) {
-          console.warn(`获取部门 ${dept.name} 角色失败:`, error)
-        }
-      }
-
-      roles.value = allRoles
+      // 更新指定部门的角色数据
+      roles.value = [
+        ...roles.value.filter(r => r.departmentId !== departmentId),
+        ...deptRoles
+      ]
     } catch (error) {
-      console.error('获取部门角色失败:', error)
-      roles.value = []
+      console.warn(`获取部门 ${departmentId} 角色失败:`, error)
     } finally {
       loading.value = false
     }
@@ -799,10 +799,11 @@ export const useDepartmentStore = createPersistentStore('department', () => {
   // 初始化所有数据
   const initData = async () => {
     await fetchDepartments()
-    await fetchDepartmentMembers()
-    await fetchDepartmentRoles()
+    // 不再批量获取所有部门的成员和角色，改为按需加载
+    // await fetchDepartmentMembers()  // 按需加载
+    // await fetchDepartmentRoles()    // 按需加载
     await fetchDepartmentStats()
-    // 同步部门成员数量
+    // 同步部门成员数量（生产环境跳过）
     syncAllDepartmentMemberCounts()
   }
 
