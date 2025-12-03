@@ -40,60 +40,33 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
     roleName: '部门经理',
     permissions: [
       // 数据看板
-      'dashboard',
-      'dashboard.view',
-      'dashboard.export',
+      'dashboard', 'dashboard:personal', 'dashboard:department',
 
       // 客户管理
-      'customer',
-      'customer.list',
-      'customer.list.view',
-      'customer.list.export',
-      'customer.list.import',
-      'customer.list.edit',
-      'customer.add',
-      'customer.add.create',
+      'customer', 'customer:list', 'customer:view:personal', 'customer:view:department',
+      'customer:add', 'customer:edit', 'customer:import', 'customer:export',
 
       // 订单管理
-      'order',
-      'order.list',
-      'order.list.view',
-      'order.add',
-      'order.add.create',
+      'order', 'order:list', 'order:view:personal', 'order:view:department',
+      'order:add', 'order:edit',
 
       // 服务管理
-      'service',
-      'service.call',
-      'service.call.view',
-      'service.call.make',
+      'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
 
       // 业绩统计
-      'performance',
-      'performance.personal',
-      'performance.personal.view',
-      'performance.team',
-      'performance.team.view',
+      'performance', 'performance:personal', 'performance:personal:view',
+      'performance:team', 'performance:team:view', 'performance:analysis', 'performance:share',
 
       // 物流管理
-      'logistics',
-      'logistics.list',
-      'logistics.list.view',
-      'logistics.track',
-      'logistics.track.view',
+      'logistics', 'logistics:list', 'logistics:view', 'logistics:add', 'logistics:edit',
+      'logistics:tracking', 'logistics:tracking:view',
 
       // 售后管理
-      'aftersale',
-      'aftersale.list',
-      'aftersale.list.view',
-      'aftersale.add',
-      'aftersale.add.create',
+      'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:view:department',
+      'aftersale:add', 'aftersale:edit', 'aftersale:analysis',
 
       // 资料管理
-      'data',
-      'data.list',
-      'data.list.view',
-      'data.search',
-      'data.search.basic'
+      'data', 'data:customer', 'data:customer:search', 'data:list'
     ],
     description: '管理本部门业务和团队，查看部门数据'
   },
@@ -104,56 +77,32 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
     roleName: '销售员',
     permissions: [
       // 数据看板
-      'dashboard',
-      'dashboard.view',
+      'dashboard', 'dashboard:personal',
 
       // 客户管理
-      'customer',
-      'customer.list',
-      'customer.list.view',
-      'customer.add',
-      'customer.add.create',
+      'customer', 'customer:list', 'customer:view:personal', 'customer:add',
+      'customer:groups', 'customer:tags',
 
       // 订单管理
-      'order',
-      'order.list',
-      'order.list.view',
-      'order.add',
-      'order.add.create',
+      'order', 'order:list', 'order:view:personal', 'order:add',
 
       // 服务管理
-      'service',
-      'service.call',
-      'service.call.view',
-      'service.call.make',
+      'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
+      'service:sms',
 
       // 业绩统计
-      'performance',
-      'performance.personal',
-      'performance.personal.view',
-      'performance.team',
-      'performance.team.view',
+      'performance', 'performance:personal', 'performance:personal:view',
+      'performance:team', 'performance:team:view',
 
       // 物流管理
-      'logistics',
-      'logistics.list',
-      'logistics.list.view',
-      'logistics.track',
-      'logistics.track.view',
+      'logistics', 'logistics:list', 'logistics:view',
+      'logistics:tracking', 'logistics:tracking:view', 'logistics:shipping', 'logistics:status',
 
       // 售后管理
-      'aftersale',
-      'aftersale.list',
-      'aftersale.list.view',
-      'aftersale.add',
-      'aftersale.add.create',
+      'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:add', 'aftersale:analysis',
 
       // 资料管理
-      'data',
-      'data.list',
-      'data.list.view',
-      'data.search',
-      'data.search.basic'
+      'data', 'data:customer', 'data:customer:search', 'data:recycle'
     ],
     description: '专注于客户开发和订单管理，查看个人数据'
   },
@@ -163,43 +112,18 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
     roleId: 'customer_service',
     roleName: '客服',
     permissions: [
-      // 数据看板
-      'dashboard',
-      'dashboard.view',
+      // 订单审核权限
+      'order', 'order:audit', 'order:audit:view',
 
-      // 订单管理
-      'order',
-      'order.list',
-      'order.list.view',
-      'order.audit',
-      'order.audit.view',
+      // 物流管理权限
+      'logistics', 'logistics:list', 'logistics:list:view', 'logistics:shipping', 'logistics:shipping:view',
+      'logistics:tracking', 'logistics:tracking:view', 'logistics:status', 'logistics:status_update',
 
-      // 物流管理 ⭐ 客服特有权限
-      'logistics',
-      'logistics.list',
-      'logistics.list.view',
-      'logistics.track',
-      'logistics.track.view',
-      'logistics.shipping',        // ⭐ 发货列表
-      'logistics.shipping.view',
-      'logistics.status',          // ⭐⭐⭐ 状态更新（关键权限）
-      'logistics.status.update',
+      // 售后管理权限
+      'aftersale', 'aftersale:order', 'aftersale:order:view', 'aftersale:add', 'aftersale:analysis',
 
-      // 售后管理 ⭐ 完整权限
-      'aftersale',
-      'aftersale.list',
-      'aftersale.list.view',
-      'aftersale.add',             // ⭐⭐⭐ 新建售后（关键权限）
-      'aftersale.add.create',
-      'aftersale.data',            // ⭐⭐⭐ 售后数据菜单（关键权限）
-      'aftersale.data.view',       // ⭐⭐⭐ 售后数据查看（关键权限）
-
-      // 资料管理 ⭐ 完整权限
-      'data',
-      'data.list',
-      'data.list.view',
-      'data.search',
-      'data.search.basic'
+      // 资料管理权限
+      'data', 'data:customer', 'data:customer:search', 'data:list'
     ],
     description: '处理订单、物流和售后服务，查看全公司数据'
   }
