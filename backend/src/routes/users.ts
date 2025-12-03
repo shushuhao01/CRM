@@ -32,22 +32,35 @@ const createUserSchema = {
       'string.max': '真实姓名最多50个字符',
       'any.required': '真实姓名是必需的'
     }),
-    email: commonValidations.optionalEmail,
-    phone: commonValidations.phone.optional(),
+    email: Joi.string().max(100).optional().allow('', null).messages({
+      'string.base': '邮箱必须是字符串',
+      'string.max': '邮箱最多100个字符'
+    }),
+    phone: Joi.string().max(20).optional().allow('', null).messages({
+      'string.base': '手机号必须是字符串',
+      'string.max': '手机号最多20个字符'
+    }),
     role: Joi.string().max(50).required().messages({
       'string.base': '角色必须是字符串',
       'string.max': '角色最多50个字符',
       'any.required': '角色是必需的'
     }),
+    roleId: Joi.string().max(50).optional(),
     departmentId: Joi.alternatives().try(
-      Joi.string().max(100),
+      Joi.string().max(100).allow('', null),
       Joi.number()
-    ).optional().messages({
-      'string.max': '部门ID最多100个字符'
-    }),
-    position: Joi.string().max(50).optional(),
-    employeeNumber: Joi.string().max(50).optional(),
-    remark: Joi.string().max(500).optional()
+    ).optional(),
+    department: Joi.string().max(100).optional().allow('', null),
+    position: Joi.string().max(50).optional().allow('', null),
+    employeeNumber: Joi.string().max(50).optional().allow('', null),
+    status: Joi.string().max(20).optional(),
+    employmentStatus: Joi.string().max(20).optional(),
+    remark: Joi.string().max(500).optional().allow('', null),
+    name: Joi.string().max(50).optional(),
+    createTime: Joi.any().optional(),
+    isOnline: Joi.boolean().optional(),
+    lastLoginTime: Joi.any().optional().allow(null),
+    loginCount: Joi.number().optional()
   })
 };
 

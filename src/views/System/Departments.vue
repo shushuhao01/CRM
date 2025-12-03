@@ -795,6 +795,12 @@ const handleStatusToggle = async (department: Department) => {
     return
   }
 
+  // 检查部门ID是否有效
+  if (!department || !department.id) {
+    console.log('[Departments] 部门ID无效，忽略状态切换事件')
+    return
+  }
+
   const newStatus = department.status
   const statusText = newStatus === 'active' ? '启用' : '禁用'
 
