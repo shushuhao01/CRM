@@ -34,7 +34,7 @@ router.get('/', async (req: Request, res: Response) => {
     const skip = (pageNum - 1) * pageSizeNum;
 
     // 构建查询条件
-    const where: any = {};
+    const where: Record<string, unknown> = {};
 
     if (name) {
       where.name = Like(`%${name}%`);
@@ -66,8 +66,8 @@ router.get('/', async (req: Request, res: Response) => {
 
     // 转换数据格式以匹配前端期望
     const list = customers.map(customer => ({
-      id: customer.id.toString(),
-      code: customer.customerNo || `C${customer.id.toString().padStart(6, '0')}`,
+      id: customer.id,
+      code: customer.customerNo || '',
       name: customer.name,
       phone: customer.phone || '',
       age: customer.age || 0,
@@ -81,22 +81,22 @@ router.get('/', async (req: Request, res: Response) => {
       street: customer.street || '',
       detailAddress: customer.detailAddress || '',
       overseasAddress: customer.overseasAddress || '',
-      level: customer.level === 'A' ? 'gold' : customer.level === 'B' ? 'silver' : 'normal',
-      status: customer.status === 'deal' ? 'active' : customer.status === 'lost' ? 'lost' : 'potential',
-      salesPersonId: customer.salesUserId?.toString() || '',
+      level: customer.level || 'normal',
+      status: customer.status || 'active',
+      salesPersonId: customer.salesPersonId || '',
       orderCount: customer.orderCount || 0,
       returnCount: customer.returnCount || 0,
       totalAmount: customer.totalAmount || 0,
-      createTime: customer.createdAt.toISOString(),
-      createdBy: customer.salesUserId?.toString() || 'admin',
+      createTime: customer.createdAt?.toISOString() || '',
+      createdBy: customer.createdBy || '',
       wechat: customer.wechat || '',
       wechatId: customer.wechat || '',
       email: customer.email || '',
       company: customer.company || '',
-      position: customer.position || '',
       source: customer.source || '',
       tags: customer.tags || [],
-      remarks: customer.notes || '',
+      remarks: customer.remark || '',
+      remark: customer.remark || '',
       medicalHistory: customer.medicalHistory || '',
       improvementGoals: customer.improvementGoals || [],
       otherGoals: customer.otherGoals || '',
@@ -134,7 +134,7 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const customerRepository = AppDataSource.getRepository(Customer);
     const customer = await customerRepository.findOne({
-      where: { id: parseInt(req.params.id) }
+      where: { id: req.params.id }
     });
 
     if (!customer) {
@@ -147,8 +147,8 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     // 转换数据格式
     const data = {
-      id: customer.id.toString(),
-      code: customer.customerNo || `C${customer.id.toString().padStart(6, '0')}`,
+      id: customer.id,
+      code: customer.customerNo || '',
       name: customer.name,
       phone: customer.phone || '',
       age: customer.age || 0,
@@ -162,22 +162,22 @@ router.get('/:id', async (req: Request, res: Response) => {
       street: customer.street || '',
       detailAddress: customer.detailAddress || '',
       overseasAddress: customer.overseasAddress || '',
-      level: customer.level === 'A' ? 'gold' : customer.level === 'B' ? 'silver' : 'normal',
-      status: customer.status === 'deal' ? 'active' : customer.status === 'lost' ? 'lost' : 'potential',
-      salesPersonId: customer.salesUserId?.toString() || '',
+      level: customer.level || 'normal',
+      status: customer.status || 'active',
+      salesPersonId: customer.salesPersonId || '',
       orderCount: customer.orderCount || 0,
       returnCount: customer.returnCount || 0,
       totalAmount: customer.totalAmount || 0,
-      createTime: customer.createdAt.toISOString(),
-      createdBy: customer.salesUserId?.toString() || 'admin',
+      createTime: customer.createdAt?.toISOString() || '',
+      createdBy: customer.createdBy || '',
       wechat: customer.wechat || '',
       wechatId: customer.wechat || '',
       email: customer.email || '',
       company: customer.company || '',
-      position: customer.position || '',
       source: customer.source || '',
       tags: customer.tags || [],
-      remarks: customer.notes || '',
+      remarks: customer.remark || '',
+      remark: customer.remark || '',
       medicalHistory: customer.medicalHistory || '',
       improvementGoals: customer.improvementGoals || [],
       otherGoals: customer.otherGoals || '',
@@ -210,8 +210,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const customerRepository = AppDataSource.getRepository(Customer);
     const {
-      name, phone, email, address, level, source, tags, remarks, company, position,
-      // 新增字段
+      name, phone, email, address, level, source, tags, remarks, remark, company,
       age, gender, height, weight, wechat, wechatId,
       province, city, district, street, detailAddress, overseasAddress,
       medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime,
@@ -241,33 +240,9 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    // 映射前端等级到后端等级
-    const levelMap: Record<string, 'A' | 'B' | 'C' | 'D'> = {
-      'gold': 'A',
-      'diamond': 'A',
-      'silver': 'B',
-      'bronze': 'C',
-      'normal': 'C'
-    };
-
-    // 映射前端状态到后端状态
-    const statusMap: Record<string, 'potential' | 'contacted' | 'negotiating' | 'deal' | 'lost'> = {
-      'active': 'deal',
-      'potential': 'potential',
-      'lost': 'lost',
-      'inactive': 'lost',
-      'blacklist': 'lost'
-    };
-
-    // 解析销售员ID
-    let parsedSalesUserId: number | undefined;
-    const salesId = salesPersonId || createdBy || (req as any).user?.id;
-    if (salesId) {
-      const parsed = parseInt(salesId);
-      if (!isNaN(parsed)) {
-        parsedSalesUserId = parsed;
-      }
-    }
+    // 获取当前用户信息
+    const currentUser = (req as any).user;
+    const finalCreatedBy = createdBy || salesPersonId || currentUser?.id || 'admin';
 
     // 创建客户
     const customer = customerRepository.create({
@@ -281,14 +256,14 @@ router.post('/', async (req: Request, res: Response) => {
       street,
       detailAddress,
       overseasAddress,
-      level: levelMap[level] || 'C',
+      level: level || 'normal',
       source: source || 'other',
       tags: tags || [],
-      notes: remarks,
+      remark: remarks || remark || null,
       company,
-      position,
-      status: statusMap[status] || 'potential',
-      salesUserId: parsedSalesUserId,
+      status: status || 'active',
+      salesPersonId: salesPersonId || currentUser?.id || null,
+      createdBy: finalCreatedBy,
       // 新增字段
       age: age || null,
       gender: gender || 'unknown',
@@ -309,14 +284,14 @@ router.post('/', async (req: Request, res: Response) => {
     const savedCustomer = await customerRepository.save(customer);
 
     // 生成客户编号
-    savedCustomer.customerNo = `C${savedCustomer.id.toString().padStart(6, '0')}`;
+    savedCustomer.customerNo = `C${savedCustomer.id.substring(0, 8).toUpperCase()}`;
     await customerRepository.save(savedCustomer);
 
     console.log('[创建客户] 保存成功，客户ID:', savedCustomer.id);
 
     // 转换数据格式返回
     const data = {
-      id: savedCustomer.id.toString(),
+      id: savedCustomer.id,
       code: savedCustomer.customerNo,
       name: savedCustomer.name,
       phone: savedCustomer.phone || '',
@@ -332,17 +307,16 @@ router.post('/', async (req: Request, res: Response) => {
       detailAddress: savedCustomer.detailAddress || '',
       level: level || 'normal',
       status: status || 'active',
-      salesPersonId: savedCustomer.salesUserId?.toString() || '',
+      salesPersonId: savedCustomer.salesPersonId || '',
       orderCount: 0,
-      createTime: savedCustomer.createdAt.toISOString(),
-      createdBy: savedCustomer.salesUserId?.toString() || 'admin',
+      createTime: savedCustomer.createdAt?.toISOString() || '',
+      createdBy: savedCustomer.createdBy || '',
       wechat: savedCustomer.wechat || '',
       email: savedCustomer.email || '',
       company: savedCustomer.company || '',
-      position: savedCustomer.position || '',
       source: savedCustomer.source || '',
       tags: savedCustomer.tags || [],
-      remarks: savedCustomer.notes || '',
+      remarks: savedCustomer.remark || '',
       medicalHistory: savedCustomer.medicalHistory || '',
       improvementGoals: savedCustomer.improvementGoals || [],
       otherGoals: savedCustomer.otherGoals || ''
@@ -373,7 +347,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const customerRepository = AppDataSource.getRepository(Customer);
-    const customerId = parseInt(req.params.id);
+    const customerId = req.params.id;
 
     const customer = await customerRepository.findOne({ where: { id: customerId } });
 
@@ -386,28 +360,11 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     const {
-      name, phone, email, address, level, source, tags, remarks, company, position, status,
+      name, phone, email, address, level, source, tags, remarks, remark, company, status,
       age, gender, height, weight, wechat, wechatId,
       province, city, district, street, detailAddress, overseasAddress,
       medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime
     } = req.body;
-
-    // 映射前端等级到后端等级
-    const levelMap: Record<string, 'A' | 'B' | 'C' | 'D'> = {
-      'gold': 'A',
-      'diamond': 'A',
-      'silver': 'B',
-      'bronze': 'C',
-      'normal': 'C'
-    };
-
-    // 映射前端状态到后端状态
-    const statusMap: Record<string, 'potential' | 'contacted' | 'negotiating' | 'deal' | 'lost'> = {
-      'active': 'deal',
-      'potential': 'potential',
-      'lost': 'lost',
-      'inactive': 'lost'
-    };
 
     // 更新字段
     if (name !== undefined) customer.name = name;
@@ -420,13 +377,12 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (street !== undefined) customer.street = street;
     if (detailAddress !== undefined) customer.detailAddress = detailAddress;
     if (overseasAddress !== undefined) customer.overseasAddress = overseasAddress;
-    if (level !== undefined) customer.level = levelMap[level] || customer.level;
-    if (source !== undefined) customer.source = source as any;
+    if (level !== undefined) customer.level = level;
+    if (source !== undefined) customer.source = source;
     if (tags !== undefined) customer.tags = tags;
-    if (remarks !== undefined) customer.notes = remarks;
+    if (remarks !== undefined || remark !== undefined) customer.remark = remarks || remark;
     if (company !== undefined) customer.company = company;
-    if (position !== undefined) customer.position = position;
-    if (status !== undefined) customer.status = statusMap[status] || customer.status;
+    if (status !== undefined) customer.status = status;
     if (age !== undefined) customer.age = age;
     if (gender !== undefined) customer.gender = gender;
     if (height !== undefined) customer.height = height;
@@ -441,8 +397,8 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     // 转换数据格式返回
     const data = {
-      id: updatedCustomer.id.toString(),
-      code: updatedCustomer.customerNo || `C${updatedCustomer.id.toString().padStart(6, '0')}`,
+      id: updatedCustomer.id,
+      code: updatedCustomer.customerNo || '',
       name: updatedCustomer.name,
       phone: updatedCustomer.phone || '',
       age: updatedCustomer.age || 0,
@@ -450,18 +406,17 @@ router.put('/:id', async (req: Request, res: Response) => {
       height: updatedCustomer.height || null,
       weight: updatedCustomer.weight || null,
       address: updatedCustomer.address || '',
-      level: level || 'normal',
-      status: status || 'active',
-      salesPersonId: updatedCustomer.salesUserId?.toString() || '',
+      level: updatedCustomer.level || 'normal',
+      status: updatedCustomer.status || 'active',
+      salesPersonId: updatedCustomer.salesPersonId || '',
       orderCount: updatedCustomer.orderCount || 0,
-      createTime: updatedCustomer.createdAt.toISOString(),
-      createdBy: updatedCustomer.salesUserId?.toString() || 'admin',
+      createTime: updatedCustomer.createdAt?.toISOString() || '',
+      createdBy: updatedCustomer.createdBy || '',
       email: updatedCustomer.email || '',
       company: updatedCustomer.company || '',
-      position: updatedCustomer.position || '',
       source: updatedCustomer.source || '',
       tags: updatedCustomer.tags || [],
-      remarks: updatedCustomer.notes || ''
+      remarks: updatedCustomer.remark || ''
     };
 
     res.json({
@@ -489,7 +444,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const customerRepository = AppDataSource.getRepository(Customer);
-    const customerId = parseInt(req.params.id);
+    const customerId = req.params.id;
 
     const customer = await customerRepository.findOne({ where: { id: customerId } });
 
@@ -550,24 +505,23 @@ router.get('/search', async (req: Request, res: Response) => {
 
     // 转换数据格式
     const list = customers.map(customer => ({
-      id: customer.id.toString(),
-      code: customer.customerNo || `C${customer.id.toString().padStart(6, '0')}`,
+      id: customer.id,
+      code: customer.customerNo || '',
       name: customer.name,
       phone: customer.phone || '',
       age: customer.age || 0,
       address: customer.address || '',
-      level: customer.level === 'A' ? 'gold' : customer.level === 'B' ? 'silver' : 'normal',
-      status: customer.status === 'deal' ? 'active' : customer.status === 'lost' ? 'lost' : 'potential',
-      salesPersonId: customer.salesUserId?.toString() || '',
+      level: customer.level || 'normal',
+      status: customer.status || 'active',
+      salesPersonId: customer.salesPersonId || '',
       orderCount: customer.orderCount || 0,
-      createTime: customer.createdAt.toISOString(),
-      createdBy: customer.salesUserId?.toString() || 'admin',
+      createTime: customer.createdAt?.toISOString() || '',
+      createdBy: customer.createdBy || '',
       email: customer.email || '',
       company: customer.company || '',
-      position: customer.position || '',
       source: customer.source || '',
       tags: customer.tags || [],
-      remarks: customer.notes || ''
+      remarks: customer.remark || ''
     }));
 
     res.json({

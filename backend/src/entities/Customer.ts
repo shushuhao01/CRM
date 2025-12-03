@@ -3,39 +3,53 @@ import { Order } from './Order';
 
 @Entity('customers')
 export class Customer {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ name: 'customer_code', length: 50, nullable: true, comment: '客户编号' })
+  customerNo?: string;
 
   @Column({ length: 100, comment: '客户姓名' })
   name: string;
 
-  @Column({ length: 20, nullable: true, comment: '客户编号' })
-  customerNo?: string;
-
-  @Column({
-    type: 'varchar',
-    length: 50,
-    default: 'individual',
-    comment: '客户类型：individual-个人，enterprise-企业'
-  })
-  type: 'individual' | 'enterprise';
-
   @Column({ length: 20, nullable: true, comment: '手机号' })
   phone?: string;
+
+  @Column({ length: 100, nullable: true, comment: '微信号' })
+  wechat?: string;
+
+  @Column({ length: 50, nullable: true, comment: 'QQ号' })
+  qq?: string;
 
   @Column({ length: 100, nullable: true, comment: '邮箱' })
   email?: string;
 
-  @Column({ length: 100, nullable: true, comment: '公司名称' })
-  company?: string;
+  @Column({
+    type: 'enum',
+    enum: ['male', 'female', 'unknown'],
+    default: 'unknown',
+    comment: '性别'
+  })
+  gender: 'male' | 'female' | 'unknown';
 
-  @Column({ length: 50, nullable: true, comment: '职位' })
-  position?: string;
+  @Column({ type: 'int', nullable: true, comment: '年龄' })
+  age?: number;
 
-  @Column({ length: 500, nullable: true, comment: '完整地址' })
+  @Column({ type: 'date', nullable: true, comment: '生日' })
+  birthday?: Date;
+
+  @Column({ name: 'id_card', length: 255, nullable: true, comment: '身份证号' })
+  idCard?: string;
+
+  @Column({ type: 'decimal', precision: 5, scale: 1, nullable: true, comment: '身高(cm)' })
+  height?: number;
+
+  @Column({ type: 'decimal', precision: 5, scale: 1, nullable: true, comment: '体重(kg)' })
+  weight?: number;
+
+  @Column({ type: 'text', nullable: true, comment: '完整地址' })
   address?: string;
 
-  // 详细地址字段
   @Column({ length: 50, nullable: true, comment: '省份' })
   province?: string;
 
@@ -48,95 +62,82 @@ export class Customer {
   @Column({ length: 100, nullable: true, comment: '街道' })
   street?: string;
 
-  @Column({ length: 200, nullable: true, comment: '详细地址' })
+  @Column({ name: 'detail_address', length: 200, nullable: true, comment: '详细地址' })
   detailAddress?: string;
 
-  @Column({ length: 500, nullable: true, comment: '境外地址' })
+  @Column({ name: 'overseas_address', length: 500, nullable: true, comment: '境外地址' })
   overseasAddress?: string;
 
-  @Column({
-    type: 'varchar',
-    length: 50,
-    default: 'potential',
-    comment: '客户状态：potential-潜在客户，contacted-已联系，negotiating-洽谈中，deal-成交，lost-流失'
-  })
-  status: 'potential' | 'contacted' | 'negotiating' | 'deal' | 'lost';
+  @Column({ length: 200, nullable: true, comment: '公司名称' })
+  company?: string;
 
-  @Column({
-    type: 'varchar',
-    length: 50,
-    default: 'C',
-    comment: '客户等级：A-重要客户，B-一般客户，C-普通客户，D-低价值客户'
-  })
-  level: 'A' | 'B' | 'C' | 'D';
+  @Column({ length: 100, nullable: true, comment: '行业' })
+  industry?: string;
 
-  @Column({
-    type: 'varchar',
-    length: 50,
-    default: 'other',
-    comment: '客户来源'
-  })
-  source: 'phone' | 'email' | 'wechat' | 'qq' | 'visit' | 'exhibition' | 'referral' | 'website' | 'other';
+  @Column({ length: 50, nullable: true, comment: '客户来源' })
+  source?: string;
 
-  @Column({ type: 'int', nullable: true, comment: '负责销售员ID' })
-  salesUserId?: number;
+  @Column({ length: 20, default: 'normal', comment: '客户等级' })
+  level: string;
 
-  @Column({ type: 'text', nullable: true, comment: '备注信息' })
-  notes?: string;
+  @Column({ length: 20, default: 'active', comment: '状态' })
+  status: string;
 
-  @Column({ type: 'json', nullable: true, comment: '标签（JSON数组）' })
+  @Column({ name: 'follow_status', length: 20, nullable: true, comment: '跟进状态' })
+  followStatus?: string;
+
+  @Column({ type: 'json', nullable: true, comment: '标签' })
   tags?: string[];
 
-  // 新增字段 - 个人信息
-  @Column({ type: 'int', nullable: true, comment: '年龄' })
-  age?: number;
+  @Column({ type: 'text', nullable: true, comment: '备注' })
+  remark?: string;
 
-  @Column({ type: 'varchar', length: 20, nullable: true, comment: '性别：male-男，female-女，unknown-未知' })
-  gender?: string;
-
-  @Column({ type: 'decimal', precision: 5, scale: 1, nullable: true, comment: '身高(cm)' })
-  height?: number;
-
-  @Column({ type: 'decimal', precision: 5, scale: 1, nullable: true, comment: '体重(kg)' })
-  weight?: number;
-
-  @Column({ length: 50, nullable: true, comment: '微信号' })
-  wechat?: string;
-
-  // 新增字段 - 健康信息
-  @Column({ type: 'text', nullable: true, comment: '疾病史' })
+  @Column({ name: 'medical_history', type: 'text', nullable: true, comment: '疾病史' })
   medicalHistory?: string;
 
-  @Column({ type: 'json', nullable: true, comment: '改善目标（JSON数组）' })
+  @Column({ name: 'improvement_goals', type: 'json', nullable: true, comment: '改善目标' })
   improvementGoals?: string[];
 
-  @Column({ length: 200, nullable: true, comment: '其他改善目标' })
+  @Column({ name: 'other_goals', length: 200, nullable: true, comment: '其他改善目标' })
   otherGoals?: string;
 
-  // 新增字段 - 时间相关
-  @Column({ type: 'datetime', nullable: true, comment: '进粉时间' })
-  fanAcquisitionTime?: Date;
-
-  @Column({ type: 'datetime', nullable: true, comment: '最后联系时间' })
-  lastContactAt?: Date;
-
-  @Column({ type: 'datetime', nullable: true, comment: '下次跟进时间' })
-  nextFollowUpAt?: Date;
-
-  // 统计字段
-  @Column({ type: 'int', default: 0, comment: '订单数量' })
+  @Column({ name: 'order_count', type: 'int', default: 0, comment: '订单数量' })
   orderCount: number;
 
-  @Column({ type: 'int', default: 0, comment: '退货次数' })
+  @Column({ name: 'return_count', type: 'int', default: 0, comment: '退货次数' })
   returnCount: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, comment: '总消费金额' })
+  @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '总消费金额' })
   totalAmount: number;
 
-  @CreateDateColumn({ comment: '创建时间' })
+  @Column({ name: 'fan_acquisition_time', type: 'datetime', nullable: true, comment: '进粉时间' })
+  fanAcquisitionTime?: Date;
+
+  @Column({ name: 'last_order_time', type: 'timestamp', nullable: true, comment: '最后下单时间' })
+  lastOrderTime?: Date;
+
+  @Column({ name: 'last_contact_time', type: 'timestamp', nullable: true, comment: '最后联系时间' })
+  lastContactTime?: Date;
+
+  @Column({ name: 'next_follow_time', type: 'timestamp', nullable: true, comment: '下次跟进时间' })
+  nextFollowTime?: Date;
+
+  @Column({ name: 'sales_person_id', length: 50, nullable: true, comment: '销售员ID' })
+  salesPersonId?: string;
+
+  @Column({ name: 'sales_person_name', length: 50, nullable: true, comment: '销售员姓名' })
+  salesPersonName?: string;
+
+  @Column({ name: 'created_by', length: 50, comment: '创建人ID' })
+  createdBy: string;
+
+  @Column({ name: 'created_by_name', length: 50, nullable: true, comment: '创建人姓名' })
+  createdByName?: string;
+
+  @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
   createdAt: Date;
 
-  @UpdateDateColumn({ comment: '更新时间' })
+  @UpdateDateColumn({ name: 'updated_at', comment: '更新时间' })
   updatedAt: Date;
 
   // 关联关系
