@@ -583,10 +583,26 @@ export const useUserStore = defineStore('user', () => {
           throw new Error('No configured permissions found')
         }
       } catch (error) {
-        console.warn(`[Auth] 无法获取角色权限配置，使用默认权限: ${response.user.role}`, error)
+        console.warn(`[Auth] 无法获取角色权限配置，使用默认权限: ${userData.role}`, error)
 
         // 如果无法获取配置的权限，使用默认权限配置文件
-        userPermissions = getDefaultRolePermissions(response.user.role)
+        // 优先使用 roleId（如 sales_staff），其次使用 role
+        const roleKey = userData.roleId || userData.role
+        userPermissions = getDefaultRolePermissions(roleKey)
+
+        // 如果还是没有权限，尝试常见的角色映射
+        if (userPermissions.length === 0) {
+          const roleMapping: Record<string, string> = {
+            '销售员': 'sales_staff',
+            '客服': 'customer_service',
+            '部门经理': 'department_manager',
+            '管理员': 'admin',
+            '超级管理员': 'super_admin'
+          }
+          const mappedRole = roleMapping[roleKey] || roleKey
+          userPermissions = getDefaultRolePermissions(mappedRole)
+          console.log(`[Auth] 使用映射后的角色获取权限: ${mappedRole}`, userPermissions)
+        }
       }
 
       // 设置权限到新的权限系统
