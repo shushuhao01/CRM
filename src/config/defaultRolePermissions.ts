@@ -82,8 +82,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       // 客户管理（移除客户分组、客户标签）
       'customer', 'customer:list', 'customer:view:personal', 'customer:add',
 
-      // 订单管理
-      'order', 'order:list', 'order:view:personal', 'order:add',
+      // 订单管理（添加编辑订单权限）
+      'order', 'order:list', 'order:view:personal', 'order:add', 'order:edit',
 
       // 服务管理（移除短信管理）
       'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
