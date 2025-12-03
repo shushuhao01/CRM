@@ -533,18 +533,43 @@ const handleLogin = async () => {
           // 等待状态同步完成
           await nextTick()
 
+          // 【关键修复】确认token已设置
+          console.log('[Login] 登录成功，检查状态:')
+          console.log('  - token:', userStore.token ? '已设置' : '未设置')
+          console.log('  - isLoggedIn:', userStore.isLoggedIn)
+          console.log('  - currentUser:', userStore.currentUser?.name)
+
           // 检查是否需要强制修改密码
           if (userStore.currentUser?.forcePasswordChange) {
             safeNavigator.push('/change-password')
           } else {
             // 登录成功后直接跳转，不刷新页面
-            await safeNavigator.push('/')
+            // 【关键修复】使用try-catch包裹导航，避免导航错误影响登录状态
+            try {
+              await safeNavigator.push('/')
+            } catch (navError) {
+              console.warn('[Login] 导航错误（已忽略）:', navError)
+              // 如果导航失败，尝试使用window.location
+              window.location.href = '/'
+            }
           }
         } else {
           ElMessage.error('登录失败')
         }
       } catch (error: unknown) {
         console.error('登录错误:', error)
+        // 【关键修复】检查是否实际上已经登录成功（token已设置）
+        if (userStore.token && userStore.isLoggedIn) {
+          console.log('[Login] 虽然有错误，但登录状态已设置，尝试跳转')
+          ElMessage.success('登录成功')
+          try {
+            await safeNavigator.push('/')
+          } catch (navError) {
+            console.warn('[Login] 导航错误（已忽略）:', navError)
+            window.location.href = '/'
+          }
+          return
+        }
         const errorMessage = error instanceof Error ? error.message : '登录失败，请检查用户名和密码'
         ElMessage.error(errorMessage)
 

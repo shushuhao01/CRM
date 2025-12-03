@@ -535,6 +535,14 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
 
+  // 【调试日志】检查登录状态
+  console.log('[Router] 路由守卫检查:')
+  console.log('  - 目标路径:', to.path)
+  console.log('  - 来源路径:', from.path)
+  console.log('  - token:', userStore.token ? '已设置' : '未设置')
+  console.log('  - isLoggedIn:', userStore.isLoggedIn)
+  console.log('  - localStorage token:', localStorage.getItem('auth_token') ? '已设置' : '未设置')
+
   // 设置页面标题
   if (to.meta.title) {
     document.title = `${to.meta.title} - CRM系统`
@@ -548,6 +556,21 @@ router.beforeEach(async (to, from, next) => {
 
   // 检查是否需要登录
   if (to.meta.requiresAuth && !userStore.token) {
+    // 【关键修复】如果localStorage中有token但store中没有，尝试恢复
+    const savedToken = localStorage.getItem('auth_token')
+    if (savedToken) {
+      console.log('[Router] ⚠️ Store中token为空但localStorage有token，尝试恢复...')
+      try {
+        await userStore.initUser()
+        if (userStore.token) {
+          console.log('[Router] ✅ Token恢复成功，继续导航')
+          next()
+          return
+        }
+      } catch (error) {
+        console.error('[Router] Token恢复失败:', error)
+      }
+    }
     ElMessage.error('请先登录')
     next('/login')
     return
