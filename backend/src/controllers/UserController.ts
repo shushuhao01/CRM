@@ -407,24 +407,26 @@ export class UserController {
   getUsers = catchAsync(async (req: Request, res: Response) => {
     const { page = 1, limit = 20, search, departmentId, role, status } = req.query as any;
 
+    // User实体没有department关联，直接查询用户表
     const queryBuilder = this.userRepository.createQueryBuilder('user')
-      .leftJoinAndSelect('user.department', 'department')
       .select([
         'user.id',
         'user.username',
         'user.realName',
+        'user.name',
         'user.email',
         'user.phone',
         'user.avatar',
         'user.role',
+        'user.roleId',
         'user.status',
         'user.departmentId',
+        'user.departmentName',
+        'user.position',
         'user.lastLoginAt',
         'user.lastLoginIp',
         'user.createdAt',
-        'user.updatedAt',
-        'department.id',
-        'department.name'
+        'user.updatedAt'
       ]);
 
     // 搜索条件
@@ -459,13 +461,12 @@ export class UserController {
     res.json({
       success: true,
       data: {
-        users,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          pages: Math.ceil(total / limit)
-        }
+        items: users,  // 前端期望 items 字段
+        users,         // 保持兼容
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / parseInt(limit))
       }
     });
   });
