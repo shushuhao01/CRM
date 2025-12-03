@@ -253,7 +253,7 @@
         <!-- 头像插槽 -->
         <template #column-avatar="{ row }">
           <el-avatar
-            :src="row.avatar || '/src/assets/images/default-avatar.svg'"
+            :src="row.avatar"
             :size="40"
             :style="{ backgroundColor: row.avatar ? 'transparent' : '#409eff' }"
           >
