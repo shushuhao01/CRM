@@ -593,11 +593,20 @@ export const useUserStore = defineStore('user', () => {
         // 如果还是没有权限，尝试常见的角色映射
         if (userPermissions.length === 0) {
           const roleMapping: Record<string, string> = {
+            // 中文名称映射
             '销售员': 'sales_staff',
+            '销售': 'sales_staff',
             '客服': 'customer_service',
+            '客服人员': 'customer_service',
             '部门经理': 'department_manager',
+            '经理': 'department_manager',
             '管理员': 'admin',
-            '超级管理员': 'super_admin'
+            '系统管理员': 'admin',
+            '超级管理员': 'super_admin',
+            // 英文别名映射
+            'sales': 'sales_staff',
+            'service': 'customer_service',
+            'manager': 'department_manager'
           }
           const mappedRole = roleMapping[roleKey] || roleKey
           userPermissions = getDefaultRolePermissions(mappedRole)
