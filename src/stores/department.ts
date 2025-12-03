@@ -108,31 +108,48 @@ export const useDepartmentStore = createPersistentStore('department', () => {
   const departmentTree = computed(() => {
     // 确保departments.value是数组
     if (!Array.isArray(departments.value)) {
+      console.log('[DepartmentStore] departmentTree: departments不是数组')
       return []
     }
 
-    const buildTree = (parentId: string | null): Department[] => {
-      return departments.value
-        .filter(dept => {
-          // 处理各种空值情况：null, undefined, '', '0', 'null'
-          const deptParentId = dept.parentId
-          const isRootLevel = !deptParentId || deptParentId === 'null' || deptParentId === '0'
+    console.log('[DepartmentStore] departmentTree: 开始构建树，部门数量:', departments.value.length)
 
-          if (parentId === null) {
-            // 查找根级部门
-            return isRootLevel
-          } else {
-            // 查找指定父级的子部门
-            return deptParentId === parentId
-          }
-        })
+    // 调试：打印所有部门的parentId
+    if (departments.value.length > 0) {
+      console.log('[DepartmentStore] 部门parentId列表:', departments.value.map(d => ({
+        id: d.id,
+        name: d.name,
+        parentId: d.parentId,
+        parentIdType: typeof d.parentId
+      })))
+    }
+
+    const buildTree = (parentId: string | null): Department[] => {
+      const filtered = departments.value.filter(dept => {
+        // 处理各种空值情况：null, undefined, '', '0', 'null'
+        const deptParentId = dept.parentId
+        const isRootLevel = !deptParentId || deptParentId === 'null' || deptParentId === '0'
+
+        if (parentId === null) {
+          // 查找根级部门
+          return isRootLevel
+        } else {
+          // 查找指定父级的子部门
+          return deptParentId === parentId
+        }
+      })
+
+      return filtered
         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
         .map(dept => ({
           ...dept,
           children: buildTree(dept.id)
         }))
     }
-    return buildTree(null)
+
+    const tree = buildTree(null)
+    console.log('[DepartmentStore] departmentTree: 构建完成，根节点数量:', tree.length)
+    return tree
   })
 
   // 获取部门列表（扁平化）
