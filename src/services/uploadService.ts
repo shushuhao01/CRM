@@ -48,7 +48,7 @@ export const getUploadConfig = async (): Promise<UploadConfig> => {
   try {
     const token = localStorage.getItem('token')
     const response = await axios.get(
-      `${import.meta.env.VITE_API_BASE_URL || ''}/api/v1/system/upload-config`,
+      '/api/v1/system/upload-config',
       {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -97,7 +97,7 @@ export const uploadImage = async (file: File, type: UploadType): Promise<UploadR
     }
   }
 
-  // 构建上传URL
+  // 构建上传URL - 不使用VITE_API_BASE_URL，直接使用相对路径
   const uploadUrls: Record<UploadType, string> = {
     system: '/api/v1/system/upload-image',
     product: '/api/v1/system/upload-product-image',
@@ -106,7 +106,8 @@ export const uploadImage = async (file: File, type: UploadType): Promise<UploadR
     service: '/api/v1/system/upload-service-image'
   }
 
-  const uploadUrl = `${import.meta.env.VITE_API_BASE_URL || ''}${uploadUrls[type]}`
+  // 直接使用相对路径，让浏览器自动处理域名
+  const uploadUrl = uploadUrls[type]
 
   try {
     const formData = new FormData()
