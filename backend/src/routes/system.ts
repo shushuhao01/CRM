@@ -3,9 +3,73 @@ import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { DepartmentController } from '../controllers/DepartmentController';
 import { AppDataSource } from '../config/database';
 import { SystemConfig } from '../entities/SystemConfig';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 const router = Router();
 const departmentController = new DepartmentController();
+
+// ========== 文件上传配置 ==========
+
+// 获取上传配置（从数据库读取maxFileSize）
+const getUploadConfig = async (): Promise<{ maxFileSize: number; allowedTypes: string }> => {
+  try {
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const maxFileSizeConfig = await configRepository.findOne({
+      where: { configKey: 'maxFileSize', configGroup: 'storage_settings', isEnabled: true }
+    });
+    const allowedTypesConfig = await configRepository.findOne({
+      where: { configKey: 'allowedTypes', configGroup: 'storage_settings', isEnabled: true }
+    });
+
+    return {
+      maxFileSize: maxFileSizeConfig ? Number(maxFileSizeConfig.configValue) : 10, // 默认10MB
+      allowedTypes: allowedTypesConfig ? allowedTypesConfig.configValue : 'jpg,png,gif,webp,jpeg'
+    };
+  } catch {
+    return { maxFileSize: 10, allowedTypes: 'jpg,png,gif,webp,jpeg' };
+  }
+};
+
+// 创建通用图片上传存储配置
+const createImageStorage = (subDir: string) => multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const uploadDir = path.join(process.cwd(), 'uploads', subDir);
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, `${subDir}-${uniqueSuffix}${ext}`);
+  }
+});
+
+// 创建multer实例（默认配置，实际限制在路由中动态检查）
+const createImageUpload = (subDir: string) => multer({
+  storage: createImageStorage(subDir),
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 设置一个较大的默认值，实际限制在路由中检查
+  },
+  fileFilter: (_req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('只允许上传图片文件（jpg, png, gif, webp）'));
+    }
+  }
+});
+
+// 各模块的上传实例
+const systemImageUpload = createImageUpload('system');
+const productImageUpload = createImageUpload('products');
+const avatarImageUpload = createImageUpload('avatars');
+const orderImageUpload = createImageUpload('orders');
+const serviceImageUpload = createImageUpload('services');
 
 // ========== 通用配置辅助函数 ==========
 
@@ -84,6 +148,193 @@ router.get('/global-config', authenticateToken, (_req, res) => {
       }
     }
   });
+});
+
+// ========== 文件上传路由 ==========
+
+/**
+ * 获取存储配置（从数据库读取localDomain等）
+ */
+const getStorageConfig = async (): Promise<{ localDomain: string; storageType: string }> => {
+  try {
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const localDomainConfig = await configRepository.findOne({
+      where: { configKey: 'localDomain', configGroup: 'storage_settings', isEnabled: true }
+    });
+    const storageTypeConfig = await configRepository.findOne({
+      where: { configKey: 'storageType', configGroup: 'storage_settings', isEnabled: true }
+    });
+
+    return {
+      localDomain: localDomainConfig?.configValue || '',
+      storageType: storageTypeConfig?.configValue || 'local'
+    };
+  } catch {
+    return { localDomain: '', storageType: 'local' };
+  }
+};
+
+/**
+ * 通用图片上传处理函数
+ */
+const handleImageUpload = async (req: Request, res: Response, subDir: string) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: '请选择要上传的图片文件'
+      });
+    }
+
+    // 获取上传配置，检查文件大小
+    const uploadConfig = await getUploadConfig();
+    const maxSizeBytes = uploadConfig.maxFileSize * 1024 * 1024;
+
+    if (req.file.size > maxSizeBytes) {
+      // 删除已上传的文件
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        success: false,
+        message: `文件大小超过限制，最大允许 ${uploadConfig.maxFileSize}MB`
+      });
+    }
+
+    // 获取存储配置中的访问域名
+    const storageConfig = await getStorageConfig();
+
+    // 优先使用数据库配置的域名，其次使用环境变量，最后使用请求的host
+    let baseUrl = storageConfig.localDomain;
+    if (!baseUrl) {
+      const protocol = req.protocol;
+      const host = req.get('host');
+      baseUrl = process.env.API_BASE_URL || `${protocol}://${host}`;
+    }
+
+    // 移除末尾的斜杠
+    baseUrl = baseUrl.replace(/\/$/, '');
+
+    // 生成图片URL
+    const imageUrl = `${baseUrl}/uploads/${subDir}/${req.file.filename}`;
+
+    res.json({
+      success: true,
+      message: '图片上传成功',
+      data: {
+        url: imageUrl,
+        filename: req.file.filename,
+        size: req.file.size,
+        mimetype: req.file.mimetype
+      }
+    });
+  } catch (error) {
+    console.error('图片上传失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '图片上传失败'
+    });
+  }
+};
+
+/**
+ * @route GET /api/v1/system/upload-config
+ * @desc 获取上传配置（文件大小限制等）
+ * @access Private
+ */
+router.get('/upload-config', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const config = await getUploadConfig();
+    res.json({
+      success: true,
+      data: config
+    });
+  } catch (error) {
+    console.error('获取上传配置失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取上传配置失败'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/system/upload-image
+ * @desc 上传系统图片（Logo、二维码等）
+ * @access Private (Admin)
+ */
+router.post('/upload-image', authenticateToken, requireAdmin, systemImageUpload.single('image'), (req: Request, res: Response) => {
+  handleImageUpload(req, res, 'system');
+});
+
+/**
+ * @route POST /api/v1/system/upload-product-image
+ * @desc 上传商品图片
+ * @access Private (Admin)
+ */
+router.post('/upload-product-image', authenticateToken, requireAdmin, productImageUpload.single('image'), (req: Request, res: Response) => {
+  handleImageUpload(req, res, 'products');
+});
+
+/**
+ * @route POST /api/v1/system/upload-avatar
+ * @desc 上传用户头像
+ * @access Private
+ */
+router.post('/upload-avatar', authenticateToken, avatarImageUpload.single('image'), (req: Request, res: Response) => {
+  handleImageUpload(req, res, 'avatars');
+});
+
+/**
+ * @route POST /api/v1/system/upload-order-image
+ * @desc 上传订单相关图片（定金凭证等）
+ * @access Private
+ */
+router.post('/upload-order-image', authenticateToken, orderImageUpload.single('image'), (req: Request, res: Response) => {
+  handleImageUpload(req, res, 'orders');
+});
+
+/**
+ * @route POST /api/v1/system/upload-service-image
+ * @desc 上传售后服务图片
+ * @access Private
+ */
+router.post('/upload-service-image', authenticateToken, serviceImageUpload.single('image'), (req: Request, res: Response) => {
+  handleImageUpload(req, res, 'services');
+});
+
+/**
+ * @route DELETE /api/v1/system/delete-image
+ * @desc 删除系统图片
+ * @access Private (Admin)
+ */
+router.delete('/delete-image', authenticateToken, requireAdmin, (req: Request, res: Response) => {
+  try {
+    const { filename } = req.body;
+
+    if (!filename) {
+      return res.status(400).json({
+        success: false,
+        message: '请提供要删除的文件名'
+      });
+    }
+
+    // 安全检查：只允许删除system目录下的文件
+    const filePath = path.join(process.cwd(), 'uploads', 'system', path.basename(filename));
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    res.json({
+      success: true,
+      message: '图片删除成功'
+    });
+  } catch (error) {
+    console.error('图片删除失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '图片删除失败'
+    });
+  }
 });
 
 // ========== 基本设置路由 ==========
