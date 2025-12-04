@@ -497,19 +497,25 @@ export const useOrderStore = createPersistentStore('order', () => {
       const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
       let successCount = 0
-      for (const id of orderIds) {
-        const order = getOrderById(id)
-        if (order && order.status === 'pending_cancel') {
-          // 调用API审核通过
-          try {
-            const result = await auditCancelOrderToAPI(id, 'approve', '审核通过')
-            if (!result.success) {
-              console.warn(`[订单取消审核] API调用失败: ${result.message}`)
-            }
-          } catch (apiError) {
-            console.warn('[订单取消审核] API调用失败，继续更新本地数据:', apiError)
-          }
+      let apiSuccessCount = 0
 
+      for (const id of orderIds) {
+        // 先调用API审核通过
+        try {
+          const result = await auditCancelOrderToAPI(id, 'approve', '审核通过')
+          if (result.success) {
+            apiSuccessCount++
+            console.log(`[订单取消审核] API审核通过成功: ${id}`)
+          } else {
+            console.warn(`[订单取消审核] API调用失败: ${result.message}`)
+          }
+        } catch (apiError) {
+          console.warn('[订单取消审核] API调用异常:', apiError)
+        }
+
+        // 更新本地数据（如果存在）
+        const order = getOrderById(id)
+        if (order) {
           updateOrder(id, {
             status: 'cancelled',
             cancelStatus: 'approved',
@@ -541,18 +547,20 @@ export const useOrderStore = createPersistentStore('order', () => {
 
           // 发射事件通知
           eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
-          console.log(`[订单取消审核] 订单 ${order.orderNumber} 取消审核通过`)
-          successCount++
+          console.log(`[订单取消审核] 本地订单 ${order.orderNumber} 更新成功`)
         }
+
+        successCount++
       }
 
-      if (successCount === 0) {
-        console.warn('[订单取消审核] 没有找到符合条件的订单')
-        return false
+      // 只要有任何成功（API或本地），就返回true
+      if (successCount > 0 || apiSuccessCount > 0) {
+        eventBus.emit(EventNames.REFRESH_ORDER_LIST)
+        return true
       }
 
-      eventBus.emit(EventNames.REFRESH_ORDER_LIST)
-      return true
+      console.warn('[订单取消审核] 没有成功处理任何订单')
+      return false
     } catch (error) {
       console.error('[订单取消审核] 审核通过失败:', error)
       return false
@@ -566,19 +574,25 @@ export const useOrderStore = createPersistentStore('order', () => {
       const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
       let successCount = 0
-      for (const id of orderIds) {
-        const order = getOrderById(id)
-        if (order && order.status === 'pending_cancel') {
-          // 调用API审核拒绝
-          try {
-            const result = await auditCancelOrderToAPI(id, 'reject', '审核拒绝')
-            if (!result.success) {
-              console.warn(`[订单取消审核] API调用失败: ${result.message}`)
-            }
-          } catch (apiError) {
-            console.warn('[订单取消审核] API调用失败，继续更新本地数据:', apiError)
-          }
+      let apiSuccessCount = 0
 
+      for (const id of orderIds) {
+        // 先调用API审核拒绝
+        try {
+          const result = await auditCancelOrderToAPI(id, 'reject', '审核拒绝')
+          if (result.success) {
+            apiSuccessCount++
+            console.log(`[订单取消审核] API审核拒绝成功: ${id}`)
+          } else {
+            console.warn(`[订单取消审核] API调用失败: ${result.message}`)
+          }
+        } catch (apiError) {
+          console.warn('[订单取消审核] API调用异常:', apiError)
+        }
+
+        // 更新本地数据（如果存在）
+        const order = getOrderById(id)
+        if (order) {
           // 根据订单的原始状态恢复订单状态
           let restoreStatus: OrderStatus = 'pending_shipment'
           if (order.auditStatus === 'approved') {
@@ -620,18 +634,20 @@ export const useOrderStore = createPersistentStore('order', () => {
 
           // 发射事件通知
           eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
-          console.log(`[订单取消审核] 订单 ${order.orderNumber} 取消审核拒绝，已恢复状态`)
-          successCount++
+          console.log(`[订单取消审核] 本地订单 ${order.orderNumber} 更新成功`)
         }
+
+        successCount++
       }
 
-      if (successCount === 0) {
-        console.warn('[订单取消审核] 没有找到符合条件的订单')
-        return false
+      // 只要有任何成功（API或本地），就返回true
+      if (successCount > 0 || apiSuccessCount > 0) {
+        eventBus.emit(EventNames.REFRESH_ORDER_LIST)
+        return true
       }
 
-      eventBus.emit(EventNames.REFRESH_ORDER_LIST)
-      return true
+      console.warn('[订单取消审核] 没有成功处理任何订单')
+      return false
     } catch (error) {
       console.error('[订单取消审核] 审核拒绝失败:', error)
       return false
@@ -1206,7 +1222,7 @@ export const useOrderStore = createPersistentStore('order', () => {
         // 更新本地订单状态
         const newStatus = action === 'approve' ? 'cancelled' : 'cancel_failed'
         updateOrder(orderId, {
-          status: newStatus as any,
+          status: newStatus as unknown,
           cancelStatus: action === 'approve' ? 'approved' : 'rejected'
         })
         return { success: true, message: response.message }

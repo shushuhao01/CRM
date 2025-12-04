@@ -1916,7 +1916,7 @@ const handleRefreshOrderList = () => {
   loadOrderList()
 }
 
-const handleOrderStatusChanged = (order: any) => {
+const handleOrderStatusChanged = (order: unknown) => {
   console.log('[订单列表] 订单状态变更:', order)
   loadOrderList()
 }
