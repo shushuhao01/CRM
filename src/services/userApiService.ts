@@ -280,7 +280,7 @@ export class UserApiService {
         // 同步到userDatabase
         try {
           const userDatabase = JSON.parse(localStorage.getItem('userDatabase') || '[]')
-          const dbIndex = userDatabase.findIndex((u: any) => String(u.id) === String(id))
+          const dbIndex = userDatabase.findIndex((u: unknown) => String(u.id) === String(id))
           if (dbIndex !== -1) {
             userDatabase[dbIndex] = updatedUser
             localStorage.setItem('userDatabase', JSON.stringify(userDatabase))

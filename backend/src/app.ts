@@ -36,6 +36,7 @@ import roleRoutes from './routes/roles';
 import permissionRoutes from './routes/permissions';
 import sfExpressRoutes from './routes/sfExpress';
 import ytoExpressRoutes from './routes/ytoExpress';
+import serviceRoutes from './routes/services';
 
 // 加载环境变量
 dotenv.config();
@@ -210,6 +211,7 @@ app.use(`${API_PREFIX}/roles`, roleRoutes);
 app.use(`${API_PREFIX}/permissions`, permissionRoutes);
 app.use(`${API_PREFIX}/sf-express`, sfExpressRoutes);
 app.use(`${API_PREFIX}/yto-express`, ytoExpressRoutes);
+app.use(`${API_PREFIX}/services`, serviceRoutes);
 
 // 404处理
 app.use(notFoundHandler);

@@ -414,7 +414,7 @@
                   v-for="role in roleOptions"
                   :key="role.id"
                   :label="role.name"
-                  :value="role.id"
+                  :value="role.code"
                 />
               </el-select>
             </el-form-item>
@@ -1378,11 +1378,11 @@ const getRoleName = (roleId: string) => {
 /**
  * 处理角色变化 - 自动配置预设权限
  */
-const handleRoleChange = (roleId: string) => {
-  if (!roleId) return
+const handleRoleChange = (roleCode: string) => {
+  if (!roleCode) return
 
-  // 获取选中的角色信息
-  const selectedRole = roleOptions.value.find(r => r.id === roleId)
+  // 获取选中的角色信息（现在传入的是code）
+  const selectedRole = roleOptions.value.find(r => r.code === roleCode)
   if (!selectedRole) return
 
   console.log(`角色变更为: ${selectedRole.name} (${selectedRole.code})`)
@@ -1391,11 +1391,11 @@ const handleRoleChange = (roleId: string) => {
   if (permissionDialogVisible.value && currentUser.value) {
     // 更新当前用户的角色信息
     currentUser.value.role = selectedRole.code
-    currentUser.value.roleId = roleId
+    currentUser.value.roleId = roleCode
 
     // 重新加载权限数据
     Promise.all([
-      loadRolePermissions(roleId),
+      loadRolePermissions(roleCode),
       loadPersonalPermissions(),
       loadUserPersonalPermissions(currentUser.value.id)
     ]).then(() => {
@@ -2407,9 +2407,8 @@ const confirmUser = async () => {
 
     if (isEdit.value) {
       // 更新现有用户
-      // 【修复】根据roleId获取角色的code，确保role和roleId字段使用正确的角色code
-      const selectedRole = roleOptions.value.find(r => r.id === userForm.roleId)
-      const roleCode = selectedRole?.code || userForm.roleId
+      // 【修复】userForm.roleId现在存储的是角色code，直接使用即可
+      const roleCode = userForm.roleId
 
       const updateData = {
         realName: userForm.realName,
@@ -2444,9 +2443,8 @@ const confirmUser = async () => {
       // 创建新用户
       const department = departmentStore.departmentList.find(d => d.id === userForm.departmentId)
 
-      // 【修复】根据roleId获取角色的code，确保role和roleId字段使用正确的角色code
-      const selectedRole = roleOptions.value.find(r => r.id === userForm.roleId)
-      const roleCode = selectedRole?.code || userForm.roleId
+      // 【修复】userForm.roleId现在存储的是角色code，直接使用即可
+      const roleCode = userForm.roleId
 
       const createData = {
         username: userForm.username,
