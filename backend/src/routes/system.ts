@@ -7,6 +7,57 @@ import { SystemConfig } from '../entities/SystemConfig';
 const router = Router();
 const departmentController = new DepartmentController();
 
+// ========== 通用配置辅助函数 ==========
+
+/**
+ * 根据配置组获取配置
+ */
+const getConfigsByGroup = async (group: string): Promise<Record<string, unknown>> => {
+  const configRepository = AppDataSource.getRepository(SystemConfig);
+  const configs = await configRepository.find({
+    where: { configGroup: group, isEnabled: true },
+    order: { sortOrder: 'ASC' }
+  });
+  const settings: Record<string, unknown> = {};
+  configs.forEach(config => {
+    settings[config.configKey] = config.getParsedValue();
+  });
+  return settings;
+};
+
+/**
+ * 保存配置到指定组
+ */
+const saveConfigsByGroup = async (
+  group: string,
+  settings: Record<string, unknown>,
+  configItems: Array<{key: string, type: 'string' | 'number' | 'boolean' | 'json' | 'text', desc: string}>
+): Promise<void> => {
+  const configRepository = AppDataSource.getRepository(SystemConfig);
+  for (const item of configItems) {
+    if (settings[item.key] !== undefined) {
+      let config = await configRepository.findOne({
+        where: { configKey: item.key, configGroup: group }
+      });
+      if (config) {
+        config.configValue = String(settings[item.key]);
+        config.valueType = item.type;
+      } else {
+        config = configRepository.create({
+          configKey: item.key,
+          configValue: String(settings[item.key]),
+          valueType: item.type,
+          configGroup: group,
+          description: item.desc,
+          isEnabled: true,
+          isSystem: true
+        });
+      }
+      await configRepository.save(config);
+    }
+  }
+};
+
 /**
  * 系统管理路由
  */
@@ -18,7 +69,7 @@ const departmentController = new DepartmentController();
  * @desc 获取全局配置（所有登录用户可访问）
  * @access Private (All authenticated users)
  */
-router.get('/global-config', authenticateToken, (req, res) => {
+router.get('/global-config', authenticateToken, (_req, res) => {
   res.json({
     success: true,
     data: {
@@ -53,7 +104,7 @@ router.get('/basic-settings', authenticateToken, async (req: Request, res: Respo
     });
 
     // 转换为键值对格式
-    const settings: Record<string, any> = {};
+    const settings: Record<string, unknown> = {};
     configs.forEach(config => {
       settings[config.configKey] = config.getParsedValue();
     });
@@ -153,6 +204,474 @@ router.put('/basic-settings', authenticateToken, requireAdmin, async (req: Reque
   }
 });
 
+// ========== 安全设置路由 ==========
+
+/**
+ * @route GET /api/v1/system/security-settings
+ * @desc 获取安全设置
+ * @access Private (Admin)
+ */
+router.get('/security-settings', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const settings = await getConfigsByGroup('security_settings');
+    const defaultSettings = {
+      passwordMinLength: 6,
+      passwordComplexity: [],
+      passwordExpireDays: 0,
+      loginFailLock: false,
+      maxLoginFails: 5,
+      lockDuration: 30,
+      sessionTimeout: 120,
+      forceHttps: false,
+      ipWhitelist: ''
+    };
+    res.json({ success: true, data: { ...defaultSettings, ...settings } });
+  } catch (error) {
+    console.error('获取安全设置失败:', error);
+    res.status(500).json({ success: false, message: '获取安全设置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/security-settings
+ * @desc 更新安全设置
+ * @access Private (Admin)
+ */
+router.put('/security-settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const settings = req.body;
+    const configItems = [
+      { key: 'passwordMinLength', type: 'number' as const, desc: '密码最小长度' },
+      { key: 'passwordComplexity', type: 'json' as const, desc: '密码复杂度要求' },
+      { key: 'passwordExpireDays', type: 'number' as const, desc: '密码有效期(天)' },
+      { key: 'loginFailLock', type: 'boolean' as const, desc: '登录失败锁定' },
+      { key: 'maxLoginFails', type: 'number' as const, desc: '最大失败次数' },
+      { key: 'lockDuration', type: 'number' as const, desc: '锁定时间(分钟)' },
+      { key: 'sessionTimeout', type: 'number' as const, desc: '会话超时时间(分钟)' },
+      { key: 'forceHttps', type: 'boolean' as const, desc: '强制HTTPS' },
+      { key: 'ipWhitelist', type: 'text' as const, desc: 'IP白名单' }
+    ];
+    await saveConfigsByGroup('security_settings', settings, configItems);
+    res.json({ success: true, message: '安全设置保存成功', data: settings });
+  } catch (error) {
+    console.error('保存安全设置失败:', error);
+    res.status(500).json({ success: false, message: '保存安全设置失败' });
+  }
+});
+
+// ========== 通话设置路由 ==========
+
+/**
+ * @route GET /api/v1/system/call-settings
+ * @desc 获取通话设置
+ * @access Private (Admin)
+ */
+router.get('/call-settings', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const settings = await getConfigsByGroup('call_settings');
+    const defaultSettings = {
+      sipServer: '',
+      sipPort: 5060,
+      sipUsername: '',
+      sipPassword: '',
+      sipTransport: 'UDP',
+      autoAnswer: false,
+      autoRecord: false,
+      qualityMonitoring: false,
+      incomingCallPopup: true,
+      maxCallDuration: 3600,
+      recordFormat: 'mp3',
+      recordQuality: 'standard',
+      recordPath: './recordings',
+      recordRetentionDays: 90,
+      outboundPermission: ['admin', 'manager', 'sales'],
+      recordAccessPermission: ['admin', 'manager'],
+      statisticsPermission: ['admin', 'manager'],
+      numberRestriction: false,
+      allowedPrefixes: ''
+    };
+    res.json({ success: true, data: { ...defaultSettings, ...settings } });
+  } catch (error) {
+    console.error('获取通话设置失败:', error);
+    res.status(500).json({ success: false, message: '获取通话设置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/call-settings
+ * @desc 更新通话设置
+ * @access Private (Admin)
+ */
+router.put('/call-settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const settings = req.body;
+    const configItems = [
+      { key: 'sipServer', type: 'string' as const, desc: 'SIP服务器地址' },
+      { key: 'sipPort', type: 'number' as const, desc: 'SIP端口' },
+      { key: 'sipUsername', type: 'string' as const, desc: 'SIP用户名' },
+      { key: 'sipPassword', type: 'string' as const, desc: 'SIP密码' },
+      { key: 'sipTransport', type: 'string' as const, desc: '传输协议' },
+      { key: 'autoAnswer', type: 'boolean' as const, desc: '自动接听' },
+      { key: 'autoRecord', type: 'boolean' as const, desc: '自动录音' },
+      { key: 'qualityMonitoring', type: 'boolean' as const, desc: '通话质量监控' },
+      { key: 'incomingCallPopup', type: 'boolean' as const, desc: '呼入弹窗' },
+      { key: 'maxCallDuration', type: 'number' as const, desc: '最大通话时长(秒)' },
+      { key: 'recordFormat', type: 'string' as const, desc: '录音格式' },
+      { key: 'recordQuality', type: 'string' as const, desc: '录音质量' },
+      { key: 'recordPath', type: 'string' as const, desc: '录音保存路径' },
+      { key: 'recordRetentionDays', type: 'number' as const, desc: '录音保留时间(天)' },
+      { key: 'outboundPermission', type: 'json' as const, desc: '外呼权限' },
+      { key: 'recordAccessPermission', type: 'json' as const, desc: '录音访问权限' },
+      { key: 'statisticsPermission', type: 'json' as const, desc: '通话统计权限' },
+      { key: 'numberRestriction', type: 'boolean' as const, desc: '号码限制' },
+      { key: 'allowedPrefixes', type: 'text' as const, desc: '允许的号码前缀' }
+    ];
+    await saveConfigsByGroup('call_settings', settings, configItems);
+    res.json({ success: true, message: '通话设置保存成功', data: settings });
+  } catch (error) {
+    console.error('保存通话设置失败:', error);
+    res.status(500).json({ success: false, message: '保存通话设置失败' });
+  }
+});
+
+// ========== 邮件设置路由 ==========
+
+/**
+ * @route GET /api/v1/system/email-settings
+ * @desc 获取邮件设置
+ * @access Private (Admin)
+ */
+router.get('/email-settings', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const settings = await getConfigsByGroup('email_settings');
+    const defaultSettings = {
+      smtpHost: '',
+      smtpPort: 587,
+      senderEmail: '',
+      senderName: '',
+      emailPassword: '',
+      enableSsl: true,
+      enableTls: false,
+      testEmail: ''
+    };
+    res.json({ success: true, data: { ...defaultSettings, ...settings } });
+  } catch (error) {
+    console.error('获取邮件设置失败:', error);
+    res.status(500).json({ success: false, message: '获取邮件设置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/email-settings
+ * @desc 更新邮件设置
+ * @access Private (Admin)
+ */
+router.put('/email-settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const settings = req.body;
+    const configItems = [
+      { key: 'smtpHost', type: 'string' as const, desc: 'SMTP服务器地址' },
+      { key: 'smtpPort', type: 'number' as const, desc: 'SMTP端口' },
+      { key: 'senderEmail', type: 'string' as const, desc: '发件人邮箱' },
+      { key: 'senderName', type: 'string' as const, desc: '发件人名称' },
+      { key: 'emailPassword', type: 'string' as const, desc: '邮箱密码' },
+      { key: 'enableSsl', type: 'boolean' as const, desc: '启用SSL' },
+      { key: 'enableTls', type: 'boolean' as const, desc: '启用TLS' },
+      { key: 'testEmail', type: 'string' as const, desc: '测试邮箱' }
+    ];
+    await saveConfigsByGroup('email_settings', settings, configItems);
+    res.json({ success: true, message: '邮件设置保存成功', data: settings });
+  } catch (error) {
+    console.error('保存邮件设置失败:', error);
+    res.status(500).json({ success: false, message: '保存邮件设置失败' });
+  }
+});
+
+// ========== 短信设置路由 ==========
+
+/**
+ * @route GET /api/v1/system/sms-settings
+ * @desc 获取短信设置
+ * @access Private (Admin)
+ */
+router.get('/sms-settings', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const settings = await getConfigsByGroup('sms_settings');
+    const defaultSettings = {
+      provider: 'aliyun',
+      accessKey: '',
+      secretKey: '',
+      signName: '',
+      dailyLimit: 100,
+      monthlyLimit: 3000,
+      enabled: false,
+      requireApproval: false,
+      testPhone: ''
+    };
+    res.json({ success: true, data: { ...defaultSettings, ...settings } });
+  } catch (error) {
+    console.error('获取短信设置失败:', error);
+    res.status(500).json({ success: false, message: '获取短信设置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/sms-settings
+ * @desc 更新短信设置
+ * @access Private (Admin)
+ */
+router.put('/sms-settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const settings = req.body;
+    const configItems = [
+      { key: 'provider', type: 'string' as const, desc: '短信服务商' },
+      { key: 'accessKey', type: 'string' as const, desc: 'AccessKey' },
+      { key: 'secretKey', type: 'string' as const, desc: 'SecretKey' },
+      { key: 'signName', type: 'string' as const, desc: '短信签名' },
+      { key: 'dailyLimit', type: 'number' as const, desc: '每日发送限制' },
+      { key: 'monthlyLimit', type: 'number' as const, desc: '每月发送限制' },
+      { key: 'enabled', type: 'boolean' as const, desc: '启用短信功能' },
+      { key: 'requireApproval', type: 'boolean' as const, desc: '需要审核' },
+      { key: 'testPhone', type: 'string' as const, desc: '测试手机号' }
+    ];
+    await saveConfigsByGroup('sms_settings', settings, configItems);
+    res.json({ success: true, message: '短信设置保存成功', data: settings });
+  } catch (error) {
+    console.error('保存短信设置失败:', error);
+    res.status(500).json({ success: false, message: '保存短信设置失败' });
+  }
+});
+
+// ========== 存储设置路由 ==========
+
+/**
+ * @route GET /api/v1/system/storage-settings
+ * @desc 获取存储设置
+ * @access Private (Admin)
+ */
+router.get('/storage-settings', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const settings = await getConfigsByGroup('storage_settings');
+    const defaultSettings = {
+      storageType: 'local',
+      localPath: './uploads',
+      localDomain: '',
+      accessKey: '',
+      secretKey: '',
+      bucketName: '',
+      region: 'oss-cn-hangzhou',
+      customDomain: '',
+      maxFileSize: 10,
+      allowedTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx'
+    };
+    res.json({ success: true, data: { ...defaultSettings, ...settings } });
+  } catch (error) {
+    console.error('获取存储设置失败:', error);
+    res.status(500).json({ success: false, message: '获取存储设置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/storage-settings
+ * @desc 更新存储设置
+ * @access Private (Admin)
+ */
+router.put('/storage-settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const settings = req.body;
+    const configItems = [
+      { key: 'storageType', type: 'string' as const, desc: '存储类型' },
+      { key: 'localPath', type: 'string' as const, desc: '本地存储路径' },
+      { key: 'localDomain', type: 'string' as const, desc: '访问域名' },
+      { key: 'accessKey', type: 'string' as const, desc: 'Access Key' },
+      { key: 'secretKey', type: 'string' as const, desc: 'Secret Key' },
+      { key: 'bucketName', type: 'string' as const, desc: '存储桶名称' },
+      { key: 'region', type: 'string' as const, desc: '存储区域' },
+      { key: 'customDomain', type: 'string' as const, desc: '自定义域名' },
+      { key: 'maxFileSize', type: 'number' as const, desc: '最大文件大小(MB)' },
+      { key: 'allowedTypes', type: 'string' as const, desc: '允许的文件类型' }
+    ];
+    await saveConfigsByGroup('storage_settings', settings, configItems);
+    res.json({ success: true, message: '存储设置保存成功', data: settings });
+  } catch (error) {
+    console.error('保存存储设置失败:', error);
+    res.status(500).json({ success: false, message: '保存存储设置失败' });
+  }
+});
+
+// ========== 商品设置路由 ==========
+
+/**
+ * @route GET /api/v1/system/product-settings
+ * @desc 获取商品设置
+ * @access Private (Admin)
+ */
+router.get('/product-settings', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const settings = await getConfigsByGroup('product_settings');
+    const defaultSettings = {
+      maxDiscountPercent: 50,
+      adminMaxDiscount: 50,
+      managerMaxDiscount: 30,
+      salesMaxDiscount: 15,
+      discountApprovalThreshold: 20,
+      allowPriceModification: true,
+      priceModificationRoles: ['admin', 'manager'],
+      enablePriceHistory: true,
+      pricePrecision: '2',
+      enableInventory: false,
+      lowStockThreshold: 10,
+      allowNegativeStock: false,
+      defaultCategory: '',
+      maxCategoryLevel: 3,
+      enableCategoryCode: false,
+      costPriceViewRoles: ['super_admin', 'admin'],
+      salesDataViewRoles: ['super_admin', 'admin', 'manager'],
+      stockInfoViewRoles: ['super_admin', 'admin', 'manager'],
+      operationLogsViewRoles: ['super_admin', 'admin'],
+      sensitiveInfoHideMethod: 'asterisk',
+      enablePermissionControl: true
+    };
+    res.json({ success: true, data: { ...defaultSettings, ...settings } });
+  } catch (error) {
+    console.error('获取商品设置失败:', error);
+    res.status(500).json({ success: false, message: '获取商品设置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/product-settings
+ * @desc 更新商品设置
+ * @access Private (Admin)
+ */
+router.put('/product-settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const settings = req.body;
+    const configItems = [
+      { key: 'maxDiscountPercent', type: 'number' as const, desc: '全局最大优惠比例' },
+      { key: 'adminMaxDiscount', type: 'number' as const, desc: '管理员最大优惠' },
+      { key: 'managerMaxDiscount', type: 'number' as const, desc: '经理最大优惠' },
+      { key: 'salesMaxDiscount', type: 'number' as const, desc: '销售员最大优惠' },
+      { key: 'discountApprovalThreshold', type: 'number' as const, desc: '优惠审批阈值' },
+      { key: 'allowPriceModification', type: 'boolean' as const, desc: '允许价格修改' },
+      { key: 'priceModificationRoles', type: 'json' as const, desc: '价格修改权限' },
+      { key: 'enablePriceHistory', type: 'boolean' as const, desc: '价格变动记录' },
+      { key: 'pricePrecision', type: 'string' as const, desc: '价格显示精度' },
+      { key: 'enableInventory', type: 'boolean' as const, desc: '启用库存管理' },
+      { key: 'lowStockThreshold', type: 'number' as const, desc: '低库存预警阈值' },
+      { key: 'allowNegativeStock', type: 'boolean' as const, desc: '允许负库存销售' },
+      { key: 'defaultCategory', type: 'string' as const, desc: '默认分类' },
+      { key: 'maxCategoryLevel', type: 'number' as const, desc: '分类层级限制' },
+      { key: 'enableCategoryCode', type: 'boolean' as const, desc: '启用分类编码' },
+      { key: 'costPriceViewRoles', type: 'json' as const, desc: '成本价格查看权限' },
+      { key: 'salesDataViewRoles', type: 'json' as const, desc: '销售数据查看权限' },
+      { key: 'stockInfoViewRoles', type: 'json' as const, desc: '库存信息查看权限' },
+      { key: 'operationLogsViewRoles', type: 'json' as const, desc: '操作日志查看权限' },
+      { key: 'sensitiveInfoHideMethod', type: 'string' as const, desc: '敏感信息隐藏方式' },
+      { key: 'enablePermissionControl', type: 'boolean' as const, desc: '启用权限控制' }
+    ];
+    await saveConfigsByGroup('product_settings', settings, configItems);
+    res.json({ success: true, message: '商品设置保存成功', data: settings });
+  } catch (error) {
+    console.error('保存商品设置失败:', error);
+    res.status(500).json({ success: false, message: '保存商品设置失败' });
+  }
+});
+
+// ========== 数据备份设置路由 ==========
+
+/**
+ * @route GET /api/v1/system/backup-settings
+ * @desc 获取数据备份设置
+ * @access Private (Admin)
+ */
+router.get('/backup-settings', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const settings = await getConfigsByGroup('backup_settings');
+    const defaultSettings = {
+      autoBackupEnabled: false,
+      backupFrequency: 'daily',
+      retentionDays: 30,
+      compression: true
+    };
+    res.json({ success: true, data: { ...defaultSettings, ...settings } });
+  } catch (error) {
+    console.error('获取数据备份设置失败:', error);
+    res.status(500).json({ success: false, message: '获取数据备份设置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/backup-settings
+ * @desc 更新数据备份设置
+ * @access Private (Admin)
+ */
+router.put('/backup-settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const settings = req.body;
+    const configItems = [
+      { key: 'autoBackupEnabled', type: 'boolean' as const, desc: '自动备份' },
+      { key: 'backupFrequency', type: 'string' as const, desc: '备份频率' },
+      { key: 'retentionDays', type: 'number' as const, desc: '保留天数' },
+      { key: 'compression', type: 'boolean' as const, desc: '压缩备份' }
+    ];
+    await saveConfigsByGroup('backup_settings', settings, configItems);
+    res.json({ success: true, message: '数据备份设置保存成功', data: settings });
+  } catch (error) {
+    console.error('保存数据备份设置失败:', error);
+    res.status(500).json({ success: false, message: '保存数据备份设置失败' });
+  }
+});
+
+// ========== 用户协议设置路由 ==========
+
+/**
+ * @route GET /api/v1/system/agreement-settings
+ * @desc 获取用户协议设置
+ * @access Private (Admin)
+ */
+router.get('/agreement-settings', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const settings = await getConfigsByGroup('agreement_settings');
+    const defaultSettings = {
+      userAgreementEnabled: true,
+      userAgreementTitle: '用户服务协议',
+      userAgreementContent: '',
+      privacyAgreementEnabled: true,
+      privacyAgreementTitle: '隐私政策',
+      privacyAgreementContent: ''
+    };
+    res.json({ success: true, data: { ...defaultSettings, ...settings } });
+  } catch (error) {
+    console.error('获取用户协议设置失败:', error);
+    res.status(500).json({ success: false, message: '获取用户协议设置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/agreement-settings
+ * @desc 更新用户协议设置
+ * @access Private (Admin)
+ */
+router.put('/agreement-settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const settings = req.body;
+    const configItems = [
+      { key: 'userAgreementEnabled', type: 'boolean' as const, desc: '用户协议启用' },
+      { key: 'userAgreementTitle', type: 'string' as const, desc: '用户协议标题' },
+      { key: 'userAgreementContent', type: 'text' as const, desc: '用户协议内容' },
+      { key: 'privacyAgreementEnabled', type: 'boolean' as const, desc: '隐私协议启用' },
+      { key: 'privacyAgreementTitle', type: 'string' as const, desc: '隐私协议标题' },
+      { key: 'privacyAgreementContent', type: 'text' as const, desc: '隐私协议内容' }
+    ];
+    await saveConfigsByGroup('agreement_settings', settings, configItems);
+    res.json({ success: true, message: '用户协议设置保存成功', data: settings });
+  } catch (error) {
+    console.error('保存用户协议设置失败:', error);
+    res.status(500).json({ success: false, message: '保存用户协议设置失败' });
+  }
+});
+
 // ========== 管理员路由（需要管理员权限）==========
 
 /**
@@ -182,7 +701,7 @@ router.put('/global-config', authenticateToken, requireAdmin, (req, res) => {
  * @desc 获取系统信息
  * @access Private (Admin)
  */
-router.get('/info', authenticateToken, requireAdmin, (req, res) => {
+router.get('/info', authenticateToken, requireAdmin, (_req, res) => {
   res.json({
     success: true,
     message: '系统管理功能开发中',

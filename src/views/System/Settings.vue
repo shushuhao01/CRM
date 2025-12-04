@@ -3868,7 +3868,7 @@ const saveAgreementList = () => {
 }
 
 // 编辑协议
-const handleEditAgreement = (agreement: any) => {
+const handleEditAgreement = (agreement: unknown) => {
   currentEditingAgreement.value = { ...agreement }
   agreementDialogVisible.value = true
 }
@@ -4039,6 +4039,7 @@ const handleSaveSecurity = async () => {
 
 /**
  * 保存邮件设置
+ * 🔥 批次288修复：添加真实API调用
  */
 const handleSaveEmail = async () => {
   try {
@@ -4046,12 +4047,28 @@ const handleSaveEmail = async () => {
 
     emailLoading.value = true
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // 1. 先保存到localStorage（本地缓存，立即生效）
+    configStore.updateEmailConfig(emailForm)
 
-    ElMessage.success('邮件设置保存成功')
+    console.log('[邮件设置] 已保存到localStorage:', emailForm)
+
+    // 2. 尝试保存到后端API（生产环境持久化）
+    try {
+      const { apiService } = await import('@/services/apiService')
+      await apiService.put('/system/email-settings', emailForm)
+      console.log('[邮件设置] 已同步到后端API')
+      ElMessage.success('邮件设置保存成功')
+    } catch (apiError: unknown) {
+      console.warn('[邮件设置] API调用失败，已保存到本地:', apiError)
+      if ((apiError as { code?: string }).code === 'ECONNREFUSED' || (apiError as { response?: { status?: number } }).response?.status === 404) {
+        ElMessage.success('邮件设置保存成功（本地模式）')
+      } else {
+        ElMessage.warning('邮件设置已保存到本地，但未能同步到服务器')
+      }
+    }
   } catch (error) {
-    console.error('表单验证失败:', error)
+    console.error('[邮件设置] 表单验证失败:', error)
+    ElMessage.error('保存邮件设置失败，请重试')
   } finally {
     emailLoading.value = false
   }
@@ -4059,6 +4076,7 @@ const handleSaveEmail = async () => {
 
 /**
  * 保存通话设置
+ * 🔥 批次288修复：添加真实API调用
  */
 const handleSaveCall = async () => {
   try {
@@ -4066,12 +4084,28 @@ const handleSaveCall = async () => {
 
     callLoading.value = true
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // 1. 先保存到localStorage（本地缓存，立即生效）
+    configStore.updateCallConfig(callForm)
 
-    ElMessage.success('通话设置保存成功')
+    console.log('[通话设置] 已保存到localStorage:', callForm)
+
+    // 2. 尝试保存到后端API（生产环境持久化）
+    try {
+      const { apiService } = await import('@/services/apiService')
+      await apiService.put('/system/call-settings', callForm)
+      console.log('[通话设置] 已同步到后端API')
+      ElMessage.success('通话设置保存成功')
+    } catch (apiError: unknown) {
+      console.warn('[通话设置] API调用失败，已保存到本地:', apiError)
+      if ((apiError as { code?: string }).code === 'ECONNREFUSED' || (apiError as { response?: { status?: number } }).response?.status === 404) {
+        ElMessage.success('通话设置保存成功（本地模式）')
+      } else {
+        ElMessage.warning('通话设置已保存到本地，但未能同步到服务器')
+      }
+    }
   } catch (error) {
-    console.error('表单验证失败:', error)
+    console.error('[通话设置] 表单验证失败:', error)
+    ElMessage.error('保存通话设置失败，请重试')
   } finally {
     callLoading.value = false
   }
@@ -4120,6 +4154,7 @@ const handleTestEmail = async () => {
 
 /**
  * 保存短信设置
+ * 🔥 批次288修复：添加真实API调用
  */
 const handleSaveSms = async () => {
   try {
@@ -4127,15 +4162,28 @@ const handleSaveSms = async () => {
 
     smsLoading.value = true
 
-    // 更新配置存储
+    // 1. 先保存到localStorage（本地缓存，立即生效）
     configStore.updateSmsConfig(smsForm.value)
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    console.log('[短信设置] 已保存到localStorage:', smsForm.value)
 
-    ElMessage.success('短信设置保存成功')
+    // 2. 尝试保存到后端API（生产环境持久化）
+    try {
+      const { apiService } = await import('@/services/apiService')
+      await apiService.put('/system/sms-settings', smsForm.value)
+      console.log('[短信设置] 已同步到后端API')
+      ElMessage.success('短信设置保存成功')
+    } catch (apiError: unknown) {
+      console.warn('[短信设置] API调用失败，已保存到本地:', apiError)
+      if ((apiError as { code?: string }).code === 'ECONNREFUSED' || (apiError as { response?: { status?: number } }).response?.status === 404) {
+        ElMessage.success('短信设置保存成功（本地模式）')
+      } else {
+        ElMessage.warning('短信设置已保存到本地，但未能同步到服务器')
+      }
+    }
   } catch (error) {
-    console.error('表单验证失败:', error)
+    console.error('[短信设置] 表单验证失败:', error)
+    ElMessage.error('保存短信设置失败，请重试')
   } finally {
     smsLoading.value = false
   }
@@ -4432,6 +4480,7 @@ const updateConnectionStats = async () => {
 
 /**
  * 保存存储设置
+ * 🔥 批次288修复：添加真实API调用
  */
 const handleSaveStorage = async () => {
   try {
@@ -4439,8 +4488,10 @@ const handleSaveStorage = async () => {
 
     storageLoading.value = true
 
-    // 使用配置store保存数据
+    // 1. 先保存到localStorage（本地缓存，立即生效）
     configStore.updateStorageConfig(storageForm.value)
+
+    console.log('[存储设置] 已保存到localStorage:', storageForm.value)
 
     // 如果是OSS存储类型，重新初始化OSS客户端
     if (storageForm.value.storageType === 'oss') {
@@ -4448,9 +4499,23 @@ const handleSaveStorage = async () => {
       await ossService.reinitialize()
     }
 
-    ElMessage.success('存储设置保存成功')
+    // 2. 尝试保存到后端API（生产环境持久化）
+    try {
+      const { apiService } = await import('@/services/apiService')
+      await apiService.put('/system/storage-settings', storageForm.value)
+      console.log('[存储设置] 已同步到后端API')
+      ElMessage.success('存储设置保存成功')
+    } catch (apiError: unknown) {
+      console.warn('[存储设置] API调用失败，已保存到本地:', apiError)
+      if ((apiError as { code?: string }).code === 'ECONNREFUSED' || (apiError as { response?: { status?: number } }).response?.status === 404) {
+        ElMessage.success('存储设置保存成功（本地模式）')
+      } else {
+        ElMessage.warning('存储设置已保存到本地，但未能同步到服务器')
+      }
+    }
   } catch (error) {
-    console.error('表单验证失败:', error)
+    console.error('[存储设置] 表单验证失败:', error)
+    ElMessage.error('保存存储设置失败，请重试')
   } finally {
     storageLoading.value = false
   }
@@ -4794,16 +4859,33 @@ const handleManualBackup = async () => {
 
 /**
  * 保存备份设置
+ * 🔥 批次288修复：添加真实API调用
  */
 const handleSaveBackup = async () => {
   try {
     await backupFormRef.value?.validate()
     backupSaveLoading.value = true
 
+    // 1. 先保存到本地服务
     await dataBackupService.setBackupConfig(backupForm)
-    ElMessage.success('备份设置保存成功')
+    console.log('[备份设置] 已保存到本地:', backupForm)
+
+    // 2. 尝试保存到后端API（生产环境持久化）
+    try {
+      const { apiService } = await import('@/services/apiService')
+      await apiService.put('/system/backup-settings', backupForm)
+      console.log('[备份设置] 已同步到后端API')
+      ElMessage.success('备份设置保存成功')
+    } catch (apiError: unknown) {
+      console.warn('[备份设置] API调用失败，已保存到本地:', apiError)
+      if ((apiError as { code?: string }).code === 'ECONNREFUSED' || (apiError as { response?: { status?: number } }).response?.status === 404) {
+        ElMessage.success('备份设置保存成功（本地模式）')
+      } else {
+        ElMessage.warning('备份设置已保存到本地，但未能同步到服务器')
+      }
+    }
   } catch (error) {
-    console.error('保存备份设置失败:', error)
+    console.error('[备份设置] 保存失败:', error)
     ElMessage.error('保存失败: ' + (error as Error).message)
   } finally {
     backupSaveLoading.value = false

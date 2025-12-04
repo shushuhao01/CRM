@@ -90,6 +90,41 @@ export interface SmsConfig {
   testPhone: string
 }
 
+// 邮件配置接口
+export interface EmailConfig {
+  smtpHost: string
+  smtpPort: number
+  senderEmail: string
+  senderName: string
+  emailPassword: string
+  enableSsl: boolean
+  enableTls: boolean
+  testEmail: string
+}
+
+// 通话配置接口
+export interface CallConfig {
+  sipServer: string
+  sipPort: number
+  sipUsername: string
+  sipPassword: string
+  sipTransport: string
+  autoAnswer: boolean
+  autoRecord: boolean
+  qualityMonitoring: boolean
+  incomingCallPopup: boolean
+  maxCallDuration: number
+  recordFormat: string
+  recordQuality: string
+  recordPath: string
+  recordRetentionDays: number
+  outboundPermission: string[]
+  recordAccessPermission: string[]
+  statisticsPermission: string[]
+  numberRestriction: boolean
+  allowedPrefixes: string
+}
+
 // 存储配置接口
 export interface StorageConfig {
   storageType: 'local' | 'oss'
@@ -190,6 +225,41 @@ export const useConfigStore = defineStore('config', () => {
     customDomain: '',
     maxFileSize: 10,
     allowedTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx'
+  })
+
+  // 邮件配置
+  const emailConfig = ref<EmailConfig>({
+    smtpHost: '',
+    smtpPort: 587,
+    senderEmail: '',
+    senderName: '',
+    emailPassword: '',
+    enableSsl: true,
+    enableTls: false,
+    testEmail: ''
+  })
+
+  // 通话配置
+  const callConfig = ref<CallConfig>({
+    sipServer: '',
+    sipPort: 5060,
+    sipUsername: '',
+    sipPassword: '',
+    sipTransport: 'UDP',
+    autoAnswer: false,
+    autoRecord: false,
+    qualityMonitoring: false,
+    incomingCallPopup: true,
+    maxCallDuration: 3600,
+    recordFormat: 'mp3',
+    recordQuality: 'standard',
+    recordPath: './recordings',
+    recordRetentionDays: 90,
+    outboundPermission: ['admin', 'manager', 'sales'],
+    recordAccessPermission: ['admin', 'manager'],
+    statisticsPermission: ['admin', 'manager'],
+    numberRestriction: false,
+    allowedPrefixes: ''
   })
 
   // 业绩分享配置
@@ -318,6 +388,22 @@ export const useConfigStore = defineStore('config', () => {
   const updateStorageConfig = (config: Partial<StorageConfig>) => {
     Object.assign(storageConfig.value, config)
     saveConfigToStorage('storage', storageConfig.value)
+  }
+
+  /**
+   * 更新邮件配置
+   */
+  const updateEmailConfig = (config: Partial<EmailConfig>) => {
+    Object.assign(emailConfig.value, config)
+    saveConfigToStorage('email', emailConfig.value)
+  }
+
+  /**
+   * 更新通话配置
+   */
+  const updateCallConfig = (config: Partial<CallConfig>) => {
+    Object.assign(callConfig.value, config)
+    saveConfigToStorage('call', callConfig.value)
   }
 
   /**
@@ -544,6 +630,8 @@ export const useConfigStore = defineStore('config', () => {
     themeConfig,
     smsConfig,
     storageConfig,
+    emailConfig,
+    callConfig,
     performanceShareConfig,
 
     // 计算属性
@@ -559,6 +647,8 @@ export const useConfigStore = defineStore('config', () => {
     initTheme,
     updateSmsConfig,
     updateStorageConfig,
+    updateEmailConfig,
+    updateCallConfig,
     updatePerformanceShareConfig,
     resetConfig,
     resetSystemConfig,
