@@ -670,7 +670,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
         const responseData = response.data as { messages?: any[]; total?: number }
         const apiMessages = responseData.messages || []
-        apiMessages.forEach((msg: any) => {
+        apiMessages.forEach((msg: unknown) => {
           // 跳过已存在的消息
           if (existingIds.has(msg.id)) {
             return
