@@ -698,9 +698,9 @@ router.put('/sms-settings', authenticateToken, requireAdmin, async (req: Request
 /**
  * @route GET /api/v1/system/storage-settings
  * @desc 获取存储设置
- * @access Private (Admin)
+ * @access Private (All authenticated users - 上传图片需要获取配置)
  */
-router.get('/storage-settings', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+router.get('/storage-settings', authenticateToken, async (_req: Request, res: Response) => {
   try {
     const settings = await getConfigsByGroup('storage_settings');
     const defaultSettings = {

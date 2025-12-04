@@ -622,24 +622,36 @@ export const useConfigStore = defineStore('config', () => {
     try {
       const { apiService } = await import('@/services/apiService')
       console.log('[ConfigStore] 开始从API加载系统配置...')
-      // apiService.get 直接返回 response.data.data，即配置数据本身
       const apiData = await apiService.get('/system/basic-settings')
       console.log('[ConfigStore] API返回的配置数据:', apiData)
 
       if (apiData && typeof apiData === 'object') {
-        // 更新系统配置
         Object.assign(systemConfig.value, apiData)
-
-        // 保存到localStorage
         saveConfigToStorage('system', systemConfig.value)
-
-        console.log('[ConfigStore] 系统配置已从API更新:', systemConfig.value)
-        console.log('[ConfigStore] 公司名称:', systemConfig.value.companyName)
-      } else {
-        console.warn('[ConfigStore] API响应格式不正确:', apiData)
+        console.log('[ConfigStore] 系统配置已从API更新')
       }
     } catch (error) {
       console.warn('[ConfigStore] 从API加载系统配置失败，使用本地配置:', error)
+    }
+  }
+
+  /**
+   * 从API加载存储配置（确保所有用户看到最新的存储配置）
+   */
+  const loadStorageConfigFromAPI = async () => {
+    try {
+      const { apiService } = await import('@/services/apiService')
+      console.log('[ConfigStore] 开始从API加载存储配置...')
+      const apiData = await apiService.get('/system/storage-settings')
+      console.log('[ConfigStore] 存储配置API返回:', apiData)
+
+      if (apiData && typeof apiData === 'object') {
+        Object.assign(storageConfig.value, apiData)
+        saveConfigToStorage('storage', storageConfig.value)
+        console.log('[ConfigStore] 存储配置已从API更新:', storageConfig.value)
+      }
+    } catch (error) {
+      console.warn('[ConfigStore] 从API加载存储配置失败，使用本地配置:', error)
     }
   }
 
@@ -650,7 +662,10 @@ export const useConfigStore = defineStore('config', () => {
     // 先从localStorage加载（快速显示）
     loadConfigFromStorage()
     // 然后从API获取最新配置（确保同步）
-    await loadSystemConfigFromAPI()
+    await Promise.all([
+      loadSystemConfigFromAPI(),
+      loadStorageConfigFromAPI()
+    ])
   }
 
   return {
@@ -688,6 +703,7 @@ export const useConfigStore = defineStore('config', () => {
     resetThemeConfig,
     resetSmsConfig,
     loadSystemConfigFromAPI,
+    loadStorageConfigFromAPI,
     initConfig
   }
 })
