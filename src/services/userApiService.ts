@@ -358,6 +358,38 @@ export class UserApiService {
   }
 
   /**
+   * 批量删除用户（别名方法）
+   */
+  async batchDeleteUsers(ids: (number | string)[]): Promise<void> {
+    try {
+      // 逐个删除用户
+      for (const id of ids) {
+        await this.deleteUser(id)
+      }
+      console.log(`[UserAPI] 批量删除用户成功，共 ${ids.length} 个`)
+    } catch (error) {
+      console.error('[UserAPI] 批量删除用户失败:', error)
+      throw error
+    }
+  }
+
+  /**
+   * 批量更新用户状态
+   */
+  async batchUpdateUserStatus(ids: (number | string)[], status: 'active' | 'inactive' | 'locked'): Promise<void> {
+    try {
+      // 逐个更新用户状态
+      for (const id of ids) {
+        await this.updateUserStatus(id, status)
+      }
+      console.log(`[UserAPI] 批量更新用户状态成功，共 ${ids.length} 个`)
+    } catch (error) {
+      console.error('[UserAPI] 批量更新用户状态失败:', error)
+      throw error
+    }
+  }
+
+  /**
    * 重置用户密码
    */
   async resetPassword(data: ResetPasswordRequest): Promise<void> {
