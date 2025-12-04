@@ -733,11 +733,11 @@ watch(() => userStore.isLoggedIn, (isLoggedIn) => {
 }, { immediate: true })
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
   checkMobile()
 
-  // 初始化配置
-  configStore.initConfig()
+  // 初始化配置（异步从API加载最新系统配置）
+  await configStore.initConfig()
 
   // 初始化密码提醒服务
   passwordReminderService.init()
