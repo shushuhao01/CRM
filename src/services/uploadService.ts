@@ -46,7 +46,7 @@ export const getUploadConfig = async (): Promise<UploadConfig> => {
   }
 
   try {
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem('auth_token')
     const response = await axios.get(
       '/api/v1/system/upload-config',
       {
@@ -113,7 +113,7 @@ export const uploadImage = async (file: File, type: UploadType): Promise<UploadR
     const formData = new FormData()
     formData.append('image', file)
 
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem('auth_token')
     const response = await axios.post(uploadUrl, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
