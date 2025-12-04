@@ -748,8 +748,8 @@ onMounted(() => {
   // 初始化网络监听器
   appStore.initNetworkListener()
 
-  // 初始化示例消息
-  initSampleMessages()
+  // 从API加载真实消息（不再使用模拟数据）
+  notificationStore.loadMessagesFromAPI()
 
   // 启动订单流转检查定时器（每30秒检查一次）
   startOrderTransferTimer()
@@ -808,50 +808,7 @@ onUnmounted(() => {
   }
 })
 
-// 初始化示例消息
-const initSampleMessages = () => {
-  // 导入消息类型
-  const { MessageType } = notificationStore
 
-  // 发送一些示例消息
-  notificationStore.sendMessage(
-    MessageType.ORDER_SIGNED,
-    '客户张三的订单 #20240120001 已成功签收，请及时跟进后续服务。',
-    { relatedId: '20240120001', relatedType: 'order' }
-  )
-
-  notificationStore.sendMessage(
-    MessageType.AUDIT_REJECTED,
-    '订单 #20240120002 审核被拒绝，原因：商品信息不完整，请重新提交。',
-    { relatedId: '20240120002', relatedType: 'order' }
-  )
-
-  notificationStore.sendMessage(
-    MessageType.ORDER_SHIPPED,
-    '订单 #20240120003 已从仓库发出，物流单号：SF1234567890，预计2-3天到达。',
-    { relatedId: '20240120003', relatedType: 'order' }
-  )
-
-  notificationStore.sendMessage(
-    MessageType.PACKAGE_ANOMALY,
-    '订单 #20240120004 的包裹在运输过程中出现异常，请联系物流公司处理。',
-    { relatedId: '20240120004', relatedType: 'order' }
-  )
-
-  notificationStore.sendMessage(
-    MessageType.CUSTOMER_CALL,
-    '客户李四（手机：138****5678）来电咨询订单进度，请及时回复。',
-    { relatedId: 'customer_001', relatedType: 'customer' }
-  )
-
-  // 标记第三条消息为已读
-  setTimeout(() => {
-    const messages = notificationStore.messages
-    if (messages.length >= 3) {
-      notificationStore.markAsRead(messages[2].id)
-    }
-  }, 100)
-}
 
 // 监听移动端状态变化
 watch(isMobile, (newValue) => {
