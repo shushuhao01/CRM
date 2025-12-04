@@ -484,7 +484,7 @@ CREATE TABLE `operation_logs` (
 DROP TABLE IF EXISTS `system_configs`;
 CREATE TABLE `system_configs` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '配置ID',
-  `configKey` VARCHAR(100) UNIQUE NOT NULL COMMENT '配置键名',
+  `configKey` VARCHAR(100) NOT NULL COMMENT '配置键名',
   `configValue` TEXT COMMENT '配置值',
   `valueType` VARCHAR(50) DEFAULT 'string' COMMENT '值类型: string, number, boolean, json, text',
   `configGroup` VARCHAR(100) NOT NULL DEFAULT 'general' COMMENT '配置分组',
@@ -494,7 +494,7 @@ CREATE TABLE `system_configs` (
   `sortOrder` INT DEFAULT 0 COMMENT '排序权重',
   `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  INDEX `idx_config_key` (`configKey`),
+  UNIQUE INDEX `idx_config_key_group` (`configKey`, `configGroup`),
   INDEX `idx_config_group` (`configGroup`),
   INDEX `idx_enabled` (`isEnabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置表';

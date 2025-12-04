@@ -5,13 +5,13 @@ export class SystemConfig {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 100, unique: true, comment: '配置键名' })
+  @Column({ length: 100, comment: '配置键名' })
   configKey: string;
 
   @Column({ type: 'text', comment: '配置值' })
   configValue: string;
 
-  @Column({ 
+  @Column({
     type: 'varchar',
     length: 50,
     default: 'string',
