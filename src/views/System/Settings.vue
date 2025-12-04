@@ -3443,7 +3443,9 @@ const handleQRImageFile = async (file: File) => {
     const { uploadImageWithMessage } = await import('@/services/uploadService')
     const url = await uploadImageWithMessage(file, 'system')
     if (url) {
-      basicForm.value.contactQRCode = url
+      // 使用configStore更新，确保响应式生效
+      configStore.updateSystemConfig({ contactQRCode: url })
+      console.log('[Settings] 二维码URL已更新:', url)
     }
   } catch (error) {
     console.error('二维码上传失败:', error)
@@ -3491,8 +3493,8 @@ const removeQRCode = async () => {
       }
     }
 
-    basicForm.value.contactQRCode = ''
-    basicForm.value.contactQRCodeLabel = ''
+    // 使用configStore更新，确保响应式生效
+    configStore.updateSystemConfig({ contactQRCode: '', contactQRCodeLabel: '' })
     ElMessage.success('删除成功')
   } catch {
     // 取消删除
