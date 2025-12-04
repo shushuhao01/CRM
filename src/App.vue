@@ -434,10 +434,9 @@ const handleMenuSelect = debounce((index: string) => {
       }
     }
 
-    // 使用安全导航器进行导航
-    safeNavigator.push(index).catch(err => {
-      console.error('菜单导航失败:', err)
-      ElMessage.error(`页面导航失败: ${err.message || '未知错误'}`)
+    // 使用安全导航器进行导航（静默处理导航错误，避免重复导航提示）
+    safeNavigator.push(index).catch(() => {
+      // 静默处理导航错误，safeNavigator已经处理了大部分情况
     })
   }
 }, 300)
