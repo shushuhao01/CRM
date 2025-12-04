@@ -622,13 +622,11 @@ export const useConfigStore = defineStore('config', () => {
     try {
       const { apiService } = await import('@/services/apiService')
       console.log('[ConfigStore] 开始从API加载系统配置...')
-      const response = await apiService.get('/system/basic-settings')
-      console.log('[ConfigStore] API响应:', response.data)
+      // apiService.get 直接返回 response.data.data，即配置数据本身
+      const apiData = await apiService.get('/system/basic-settings')
+      console.log('[ConfigStore] API返回的配置数据:', apiData)
 
-      if (response.data?.success && response.data?.data) {
-        const apiData = response.data.data
-        console.log('[ConfigStore] API返回的配置数据:', apiData)
-
+      if (apiData && typeof apiData === 'object') {
         // 更新系统配置
         Object.assign(systemConfig.value, apiData)
 
@@ -638,7 +636,7 @@ export const useConfigStore = defineStore('config', () => {
         console.log('[ConfigStore] 系统配置已从API更新:', systemConfig.value)
         console.log('[ConfigStore] 公司名称:', systemConfig.value.companyName)
       } else {
-        console.warn('[ConfigStore] API响应格式不正确:', response.data)
+        console.warn('[ConfigStore] API响应格式不正确:', apiData)
       }
     } catch (error) {
       console.warn('[ConfigStore] 从API加载系统配置失败，使用本地配置:', error)

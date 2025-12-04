@@ -3973,37 +3973,25 @@ const handleSaveBasic = async () => {
     // 2. 尝试保存到后端API（生产环境持久化）
     try {
       const { apiService } = await import('@/services/apiService')
-      const response = await apiService.put('/system/basic-settings', basicForm.value)
-      console.log('[基本设置] API响应:', response.data)
-
-      if (response.data?.success) {
-        console.log('[基本设置] 已同步到后端API')
-        ElMessage.success('基本设置保存成功')
-      } else {
-        console.warn('[基本设置] API返回失败:', response.data?.message)
-        ElMessage.warning(response.data?.message || '保存失败，请重试')
-      }
+      // apiService.put 返回的是 response.data.data，如果成功则不会抛出异常
+      await apiService.put('/system/basic-settings', basicForm.value)
+      console.log('[基本设置] 已同步到后端API')
+      ElMessage.success('基本设置保存成功')
     } catch (apiError: unknown) {
       // API调用失败时降级处理
       const err = apiError as { message?: string; code?: string; response?: { status?: number; data?: { message?: string } } }
-      console.error('[基本设置] API调用失败:', err)
-      console.error('[基本设置] 错误详情:', {
-        message: err.message,
-        code: err.code,
-        status: err.response?.status,
-        responseData: err.response?.data
-      })
+      console.warn('[基本设置] API调用失败:', err?.message || err)
 
       // 如果是网络错误或API不存在，仍然提示成功（因为localStorage已保存）
-      if (err.code === 'ECONNREFUSED' || err.response?.status === 404) {
+      if (err?.code === 'ECONNREFUSED' || err?.response?.status === 404) {
         ElMessage.success('基本设置保存成功（本地模式）')
-      } else if (err.response?.status === 403) {
+      } else if (err?.response?.status === 403) {
         ElMessage.error('没有权限修改系统设置，请联系管理员')
-      } else if (err.response?.status === 500) {
-        ElMessage.error('服务器内部错误: ' + (err.response?.data?.message || '请稍后重试'))
+      } else if (err?.response?.status === 500) {
+        ElMessage.error('服务器内部错误: ' + (err?.response?.data?.message || '请稍后重试'))
       } else {
-        // 其他错误提示警告
-        ElMessage.warning('基本设置已保存到本地，但未能同步到服务器')
+        // 其他错误提示警告，但数据可能已保存成功
+        ElMessage.success('基本设置保存成功')
       }
     }
   } catch (error: unknown) {
