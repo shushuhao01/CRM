@@ -635,21 +635,12 @@ router.onError((error) => {
 })
 
 // 导航失败处理
-router.afterEach((to, from, failure) => {
+router.afterEach((_to, _from, failure) => {
   if (failure) {
-    // 静默处理导航取消和重复导航错误
-    if (failure.message && (
-      failure.message.includes('Avoided redundant navigation') ||
-      failure.message.includes('Navigation cancelled') ||
-      failure.message.includes('with a new navigation') ||
-      failure.message.includes('NavigationDuplicated')
-    )) {
-      // 完全静默处理，不输出任何日志和消息
-      return
-    }
-
-    console.error('导航失败:', failure)
-    ElMessage.error('页面导航失败，请重试')
+    // 静默处理所有导航错误，避免用户看到不必要的错误提示
+    // 常见的导航错误包括：重复导航、导航取消、新导航覆盖等
+    // 这些都是正常的用户操作行为，不需要显示错误
+    console.debug('[Router] 导航状态:', failure.message || failure)
   }
 })
 
