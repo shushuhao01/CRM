@@ -71,7 +71,6 @@ export interface Order {
   createTime: string
   createdBy: string
   salesPersonId: string
-  operatorId?: string  // ✅ 添加operatorId字段定义
   auditTime?: string
   auditBy?: string
   auditRemark?: string
@@ -126,11 +125,6 @@ export interface Order {
     description: string
     remark?: string
   }>
-  // 客服和订单来源
-  serviceWechat?: string  // 客服微信号
-  orderSource?: string    // 订单来源
-  expectedShipDate?: string  // 预计发货日期
-  expectedDeliveryDate?: string  // 预计送达日期
 }
 
 export const useOrderStore = createPersistentStore('order', () => {
@@ -149,9 +143,9 @@ export const useOrderStore = createPersistentStore('order', () => {
       role: currentUser.role
     })
 
-    // 超管、管理员和经理可以查看所有订单
-    if (currentUser.role === 'super_admin' || currentUser.role === 'admin' || currentUser.role === 'manager' || currentUser.role === 'department_manager') {
-      console.log('[数据权限] 超管/管理员/经理角色，可查看全部订单:', orderList.length)
+    // 管理员和经理可以查看所有订单
+    if (currentUser.role === 'admin' || currentUser.role === 'manager' || currentUser.role === 'department_manager') {
+      console.log('[数据权限] 管理员/经理角色，可查看全部订单:', orderList.length)
       return orderList
     }
 
@@ -215,138 +209,19 @@ export const useOrderStore = createPersistentStore('order', () => {
   }
 
   // 更新订单
-  const updateOrder = async (id: string, updates: Partial<Order>) => {
+  const updateOrder = (id: string, updates: Partial<Order>) => {
     const index = orders.value.findIndex(order => order.id === id)
     if (index !== -1) {
-      const oldOrder = orders.value[index]
-      // 使用splice确保触发响应式更新
-      const updatedOrder = { ...oldOrder, ...updates }
-      orders.value.splice(index, 1, updatedOrder)
-      console.log(`[订单Store] 更新订单 ${id}，新数据:`, {
+      // 使用响应式更新，确保触发watch
+      const updatedOrder = { ...orders.value[index], ...updates }
+      orders.value[index] = updatedOrder
+      console.log(`[订单Store] 更新订单 ${id}，新状态:`, {
         status: updatedOrder.status,
-        logisticsStatus: updatedOrder.logisticsStatus,
-        isTodo: updatedOrder.isTodo,
-        auditStatus: updatedOrder.auditStatus
+        auditStatus: updatedOrder.auditStatus,
+        hasBeenAudited: updatedOrder.hasBeenAudited
       })
-
-      // 【关键修复】如果订单状态或物流状态更新为已签收，创建资料记录
-      const oldStatus = oldOrder.status || oldOrder.logisticsStatus
-      const newStatus = updatedOrder.status || updatedOrder.logisticsStatus
-
-      if (newStatus === 'delivered' && oldStatus !== 'delivered') {
-        console.log(`[订单Store] 订单已签收，创建资料记录: ${updatedOrder.orderNo}`)
-        await createDataRecordFromOrder(updatedOrder)
-      }
     } else {
       console.warn(`[订单Store] 未找到订单 ${id}`)
-    }
-  }
-
-  // 创建资料记录（从订单）
-  const createDataRecordFromOrder = async (order: Order) => {
-    try {
-      console.log('[订单Store] 开始创建资料记录，订单信息:', {
-        orderNumber: order.orderNumber,
-        customerName: order.customerName,
-        customerId: order.customerId
-      })
-
-      // 【生产环境修复】只在开发环境从localStorage读取
-      let dataList = []
-      if (!import.meta.env.PROD) {
-        const dataListStr = localStorage.getItem('dataList')
-        if (dataListStr) {
-          dataList = JSON.parse(dataListStr)
-        }
-      }
-
-      if (dataListStr) {
-        try {
-          dataList = JSON.parse(dataListStr)
-        } catch (error) {
-          console.error('[订单Store] 解析dataList失败:', error)
-          dataList = []
-        }
-      }
-
-      // 从customers获取客户编码
-      let customerCode = ''
-      try {
-        const customersStr = localStorage.getItem('customers')
-        if (customersStr) {
-          const customers = JSON.parse(customersStr)
-          const customer = customers.find((c: any) =>
-            c.id === order.customerId || c.name === order.customerName
-          )
-          if (customer) {
-            customerCode = customer.code
-            console.log('[订单Store] 找到客户编码:', customerCode)
-          }
-        }
-      } catch (error) {
-        console.error('[订单Store] 获取客户编码失败:', error)
-      }
-
-      // 如果没有找到客户编码，生成一个
-      if (!customerCode) {
-        customerCode = `C${Date.now()}`
-        console.log('[订单Store] 生成新客户编码:', customerCode)
-      }
-
-      // 【关键修复】检查该客户是否已存在资料记录
-      // 优先按客户编码匹配，其次按客户姓名匹配
-      const customerExists = dataList.some((item: any) => {
-        // 如果有客户编码，优先用客户编码匹配
-        if (customerCode && item.customerCode === customerCode) {
-          console.log('[订单Store] 客户编码匹配，已存在:', customerCode)
-          return true
-        }
-        // 如果没有客户编码或编码不匹配，用客户姓名匹配
-        if (item.customerName === order.customerName) {
-          console.log('[订单Store] 客户姓名匹配，已存在:', order.customerName)
-          return true
-        }
-        return false
-      })
-
-      if (customerExists) {
-        console.log(`[订单Store] ✓ 客户已存在资料记录，跳过创建: ${order.customerName} (${customerCode})`)
-        return
-      }
-
-      console.log(`[订单Store] ✓ 首次签收客户，创建资料记录: ${order.customerName} (${customerCode})`)
-
-      // 创建新的资料记录
-      const dataRecord = {
-        id: `data_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        customerCode: customerCode,
-        customerName: order.customerName,
-        phone: order.customerPhone || '',
-        orderNo: order.orderNumber,
-        orderStatus: 'delivered', // 订单状态固定为已签收
-        orderAmount: order.totalAmount || 0,
-        orderDate: order.createTime || new Date().toISOString(),
-        signDate: new Date().toISOString(),
-        status: 'pending', // 初始状态为待分配
-        source: '订单签收',
-        createdBy: 'system',
-        createdByName: '系统',
-        createTime: new Date().toISOString(),
-        updateTime: new Date().toISOString()
-      }
-
-      // 添加到dataList
-      dataList.unshift(dataRecord)
-
-      // 【生产环境修复】只在开发环境保存到localStorage
-      if (!import.meta.env.PROD) {
-        localStorage.setItem('dataList', JSON.stringify(dataList))
-        console.log('[订单Store] 开发环境：已保存到localStorage')
-      }
-
-      console.log('[订单Store] ✓ 成功创建资料记录:', dataRecord)
-    } catch (error) {
-      console.error('[订单Store] ✗ 创建资料记录失败:', error)
     }
   }
 
@@ -399,11 +274,7 @@ export const useOrderStore = createPersistentStore('order', () => {
       createTime: formatTime(now),
       createdBy: payload.createdBy || (userStore.currentUser?.name || 'system'),
       salesPersonId: payload.salesPersonId || (userStore.currentUser?.id || '1'),
-      operatorId: payload.operatorId || (userStore.currentUser?.id || '1'), // ✅ 添加operatorId字段
-      expressCompany: payload.expressCompany,
-      // 新增字段：客服微信号和订单来源
-      serviceWechat: payload.serviceWechat || '',
-      orderSource: payload.orderSource || ''
+      expressCompany: payload.expressCompany
     }
 
     // 设置3分钟后自动流转到审核
@@ -443,15 +314,6 @@ export const useOrderStore = createPersistentStore('order', () => {
 
     // 入库并由持久化工具自动保存
     addOrder(newOrder)
-
-    // 立即保存，确保新订单不丢失（通过 store 实例调用）
-    setTimeout(() => {
-      const storeInstance = useOrderStore()
-      if (storeInstance && typeof (storeInstance as any).saveImmediately === 'function') {
-        (storeInstance as any).saveImmediately()
-        console.log('[订单Store] 创建订单后立即保存完成')
-      }
-    }, 10)
 
     return newOrder
   }
@@ -522,15 +384,6 @@ export const useOrderStore = createPersistentStore('order', () => {
 
       // 刷新审核列表
       eventBus.emit(EventNames.REFRESH_AUDIT_LIST)
-
-      // 立即保存，确保审核结果不丢失
-      setTimeout(() => {
-        const storeInstance = useOrderStore()
-        if (storeInstance && typeof (storeInstance as unknown).saveImmediately === 'function') {
-          (storeInstance as unknown).saveImmediately()
-          console.log('[订单Store] 审核后立即保存完成')
-        }
-      }, 10)
     }
   }
 
@@ -579,15 +432,6 @@ export const useOrderStore = createPersistentStore('order', () => {
       eventBus.emit(EventNames.REFRESH_SHIPPING_LIST) // 刷新发货列表
       eventBus.emit(EventNames.REFRESH_LOGISTICS_LIST) // 刷新物流列表
       console.log(`[订单流转] 订单 ${order.orderNumber} 已流转到物流列表`)
-
-      // 立即保存，确保发货信息不丢失
-      setTimeout(() => {
-        const storeInstance = useOrderStore()
-        if (storeInstance && typeof (storeInstance as unknown).saveImmediately === 'function') {
-          (storeInstance as unknown).saveImmediately()
-          console.log('[订单Store] 发货后立即保存完成')
-        }
-      }, 10)
     }
   }
 
@@ -698,16 +542,6 @@ export const useOrderStore = createPersistentStore('order', () => {
       }
 
       eventBus.emit(EventNames.REFRESH_ORDER_LIST)
-
-      // 立即保存，确保审核结果不丢失
-      setTimeout(() => {
-        const storeInstance = useOrderStore()
-        if (storeInstance && typeof (storeInstance as unknown).saveImmediately === 'function') {
-          (storeInstance as unknown).saveImmediately()
-          console.log('[订单Store] 取消审核通过后立即保存完成')
-        }
-      }, 10)
-
       return true
     } catch (error) {
       console.error('[订单取消审核] 审核通过失败:', error)
@@ -764,10 +598,10 @@ export const useOrderStore = createPersistentStore('order', () => {
             })
           }
 
-      // 发射事件通知
-      eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
-      console.log(`[订单取消审核] 订单 ${order.orderNumber} 取消审核拒绝，已恢复状态`)
-      successCount++
+          // 发射事件通知
+          eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
+          console.log(`[订单取消审核] 订单 ${order.orderNumber} 取消审核拒绝，已恢复状态`)
+          successCount++
         }
       }
 
@@ -777,16 +611,6 @@ export const useOrderStore = createPersistentStore('order', () => {
       }
 
       eventBus.emit(EventNames.REFRESH_ORDER_LIST)
-
-      // 立即保存，确保审核结果不丢失
-      setTimeout(() => {
-        const storeInstance = useOrderStore()
-        if (storeInstance && typeof (storeInstance as unknown).saveImmediately === 'function') {
-          (storeInstance as unknown).saveImmediately()
-          console.log('[订单Store] 取消审核拒绝后立即保存完成')
-        }
-      }, 10)
-
       return true
     } catch (error) {
       console.error('[订单取消审核] 审核拒绝失败:', error)
@@ -1268,147 +1092,35 @@ export const useOrderStore = createPersistentStore('order', () => {
     }
   }
 
-  // 初始化模拟数据（安全版）：优先使用持久化数据，必要时一次性迁移旧键
-  // 重要：此函数只在 store 初始化时调用一次，不应该在页面组件中调用
+  // 初始化模拟数据
   const initializeWithMockData = () => {
-    // 【生产环境修复】生产环境不从localStorage读取Mock数据
-    if (import.meta.env.PROD) {
-      console.log('[Order Store] 生产环境：跳过localStorage初始化，等待API数据加载')
-      return
-    }
-
-    // 1) 若内存已有数据，绝不覆盖（这是最重要的保护）
+    // 如果已有数据，不重复初始化
     if (orders.value.length > 0) {
-      console.log('[Order Store] 订单数据已存在，跳过初始化（保护已有数据）')
+      console.log('Order Store: 订单数据已存在，跳过初始化')
       return
     }
 
-    // 2) 开发环境：优先尝试从统一持久化键恢复
     try {
-      const persistedRaw = localStorage.getItem('crm_store_order')
-      if (persistedRaw) {
-        const persisted = JSON.parse(persistedRaw)
-        const recovered = Array.isArray(persisted?.data?.orders)
-          ? persisted.data.orders
-          : Array.isArray(persisted?.orders)
-            ? persisted.orders
-            : Array.isArray(persisted)
-              ? persisted
-              : null
-        if (recovered && Array.isArray(recovered) && recovered.length > 0) {
-          // 重要：只要从 crm_store_order 恢复到了数据，就使用它，不要判断是否包含今天的数据
-          // 因为 createPersistentStore 已经恢复了数据，这里只是兜底检查
-          // 如果这里再判断，可能会导致数据被覆盖
-          orders.value = recovered
-          console.log(`[Order Store] ✅ 从 crm_store_order 兜底恢复 ${orders.value.length} 个订单`)
-          return
-        }
-      }
-    } catch (error) {
-      console.warn('[Order Store] 从 crm_store_order 恢复失败:', error)
-    }
-
-    // 3) 兼容并迁移旧的复数键（crm_store_orders）到统一键（crm_store_order）
-    try {
-      const pluralRaw = localStorage.getItem('crm_store_orders')
-      if (pluralRaw) {
-        const plural = JSON.parse(pluralRaw)
-        if (Array.isArray(plural)) {
-          orders.value = plural
-          try {
-            const wrapped = JSON.stringify({ data: { orders: plural }, timestamp: Date.now(), version: '1.0.0' })
-            localStorage.setItem('crm_store_order', wrapped)
-            localStorage.removeItem('crm_store_orders')
-            console.log(`[Order Store] 已从 crm_store_orders 迁移 ${plural.length} 条订单到 crm_store_order，并清理旧键`)
-          } catch (saveErr) {
-            console.warn('[Order Store] 迁移保存失败:', saveErr)
-          }
-          return
-        }
-      }
-    } catch (error) {
-      console.warn('[Order Store] 从 crm_store_orders 加载失败:', error)
-    }
-
-    // 4) 若统一持久化无数据，则尝试一次性迁移旧的 mock 键（仅限开发演示）
-    // 重要：只有在确认没有真实数据时才迁移 mock 数据
-    try {
+      // 从localStorage获取订单数据
       const stored = localStorage.getItem('crm_mock_orders')
       if (stored) {
         const mockOrders = JSON.parse(stored)
-        if (!Array.isArray(mockOrders) || mockOrders.length === 0) {
+        // 检查数据结构是否完整，如果缺少必要字段则重新初始化
+        const firstOrder = mockOrders[0]
+        if (firstOrder && (!firstOrder.receiverName || !firstOrder.subtotal)) {
+          console.log('Order Store: 检测到旧版本数据结构，重新初始化')
           localStorage.removeItem('crm_mock_orders')
-          console.log('[Order Store] crm_mock_orders 数据无效，已清理')
         } else {
-          const firstOrder = mockOrders[0]
-          if (firstOrder && (!firstOrder.receiverName || !firstOrder.subtotal)) {
-            console.log('[Order Store] 检测到旧版本 mock 数据结构，清理后走默认演示数据')
-            localStorage.removeItem('crm_mock_orders')
-          } else {
-            // 重要：只有在确认 crm_store_order 没有数据时，才迁移 crm_mock_orders
-            // 检查 crm_store_order 是否已经有数据
-            const existingData = localStorage.getItem('crm_store_order')
-            if (existingData) {
-              try {
-                const existing = JSON.parse(existingData)
-                const existingOrders = Array.isArray(existing?.data?.orders)
-                  ? existing.data.orders
-                  : Array.isArray(existing?.orders)
-                    ? existing.orders
-                    : []
-                if (existingOrders.length > 0) {
-                  console.log(`[Order Store] ⚠️ crm_store_order 已有 ${existingOrders.length} 个订单，跳过 crm_mock_orders 迁移（保护已有数据）`)
-                  // 使用已有的数据，不覆盖
-                  orders.value = existingOrders
-                  return
-                }
-              } catch (e) {
-                console.warn('[Order Store] 检查 crm_store_order 失败:', e)
-              }
-            }
-
-            // 只有在 crm_store_order 确实没有数据时，才迁移 crm_mock_orders
-            orders.value = mockOrders
-            try {
-              const wrapped = JSON.stringify({ data: { orders: mockOrders }, timestamp: Date.now(), version: '1.0.0' })
-              localStorage.setItem('crm_store_order', wrapped)
-              localStorage.removeItem('crm_mock_orders')
-              console.log(`[Order Store] 已将 ${mockOrders.length} 条 mock 订单迁移到 crm_store_order，并清理 crm_mock_orders`)
-            } catch (saveErr) {
-              console.warn('[Order Store] 迁移保存失败:', saveErr)
-            }
-            return
-          }
+          orders.value = mockOrders
+          console.log(`Order Store: 从localStorage加载了 ${mockOrders.length} 个订单`)
+          return
         }
       }
     } catch (error) {
-      console.warn('[Order Store] 从 crm_mock_orders 加载失败:', error)
+      console.warn('Order Store: 从localStorage加载订单数据失败:', error)
     }
 
-    // 5) 以上都没有时，才使用默认演示数据（开发场景），并存入统一持久化键
-    // 重要：在使用默认演示数据之前，再次检查 crm_store_order 是否有数据
-    // 防止在检查过程中数据被恢复或保存
-    const finalCheckData = localStorage.getItem('crm_store_order')
-    if (finalCheckData) {
-      try {
-        const finalCheck = JSON.parse(finalCheckData)
-        const finalOrders = Array.isArray(finalCheck?.data?.orders)
-          ? finalCheck.data.orders
-          : Array.isArray(finalCheck?.orders)
-            ? finalCheck.orders
-            : []
-        if (finalOrders.length > 0) {
-          console.log(`[Order Store] ⚠️ 最终检查发现 crm_store_order 已有 ${finalOrders.length} 个订单，使用已有数据（保护真实数据）`)
-          orders.value = finalOrders
-          return
-        }
-      } catch (e) {
-        console.warn('[Order Store] 最终检查失败:', e)
-      }
-    }
-
-    // 只有在确实没有任何数据时，才使用默认演示数据
-    console.log('[Order Store] 确认没有任何数据，使用默认演示数据')
+    // 如果localStorage中没有数据，使用默认的模拟数据
     const initialMockOrders: Order[] = [
       {
         id: '1',
@@ -1643,57 +1355,13 @@ export const useOrderStore = createPersistentStore('order', () => {
 
     orders.value = initialMockOrders
 
-    // 保存到统一持久化键
+    // 保存到localStorage
     try {
-      const wrapped = JSON.stringify({ data: { orders: initialMockOrders }, timestamp: Date.now(), version: '1.0.0' })
-      localStorage.setItem('crm_store_order', wrapped)
-      // 移除旧 mock 键，避免后续误覆盖
-      localStorage.removeItem('crm_mock_orders')
-      console.log(`[Order Store] 初始化演示订单 ${initialMockOrders.length} 条，并写入 crm_store_order`)
+      localStorage.setItem('crm_mock_orders', JSON.stringify(initialMockOrders))
+      console.log(`Order Store: 初始化了 ${initialMockOrders.length} 个模拟订单`)
     } catch (error) {
-      console.warn('[Order Store] 保存演示订单到 crm_store_order 失败:', error)
+      console.warn('Order Store: 保存订单数据到localStorage失败:', error)
     }
-  }
-
-  // 重要：不要在 store 初始化时自动调用 initializeWithMockData
-  // createPersistentStore 已经自动恢复了数据，如果数据为空，说明确实没有数据
-  // initializeWithMockData 应该只在明确需要初始化演示数据时才调用（比如首次安装）
-  // 这里只记录日志，不执行初始化，确保不会覆盖真实数据
-  if (typeof window !== 'undefined') {
-    // 延迟检查，确保 createPersistentStore 的数据恢复已完成
-    setTimeout(() => {
-      if (orders.value.length === 0) {
-        console.log('[Order Store] ⚠️ 数据恢复后仍为空，但不自动初始化（保护真实数据）')
-        console.log('[Order Store] 如果需要初始化演示数据，请手动调用 initializeWithMockData()')
-      } else {
-        console.log(`[Order Store] ✅ 数据已从持久化存储恢复，共 ${orders.value.length} 个订单`)
-        // 验证数据完整性
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const todayOrders = orders.value.filter(order => {
-          const orderDate = new Date(order.createTime || 0)
-          orderDate.setHours(0, 0, 0, 0)
-          return orderDate.getTime() >= today.getTime()
-        })
-        if (todayOrders.length > 0) {
-          console.log(`[Order Store] ✅ 包含 ${todayOrders.length} 个今天的订单，数据完整`)
-        }
-        // 验证 localStorage 中的数据
-        const stored = localStorage.getItem('crm_store_order')
-        if (stored) {
-          try {
-            const storedData = JSON.parse(stored)
-            const storedOrders = Array.isArray(storedData?.data?.orders) ? storedData.data.orders : []
-            console.log(`[Order Store] ✅ localStorage 中存储了 ${storedOrders.length} 个订单`)
-            if (storedOrders.length !== orders.value.length) {
-              console.warn(`[Order Store] ⚠️ 数据不一致：内存 ${orders.value.length} 个，localStorage ${storedOrders.length} 个`)
-            }
-          } catch (e) {
-            console.warn('[Order Store] 验证 localStorage 数据失败:', e)
-          }
-        }
-      }
-    }, 200)
   }
 
     return {
