@@ -223,9 +223,12 @@ export class UserApiService {
   /**
    * 更新用户信息
    */
-  async updateUser(id: number, userData: UpdateUserRequest): Promise<User> {
+  async updateUser(id: number | string, userData: UpdateUserRequest): Promise<User> {
     try {
-      const response = await this.api.put<User>(`/users/${id}`, userData)
+      // 确保ID是字符串格式
+      const userId = String(id)
+      console.log(`[UserAPI] 调用更新用户API，ID: ${userId}`)
+      const response = await this.api.put<User>(`/users/${userId}`, userData)
       console.log(`[UserAPI] 更新用户成功: ${response.username}`)
       return response
     } catch (error) {
@@ -386,10 +389,11 @@ export class UserApiService {
   /**
    * 更新用户状态
    */
-  async updateUserStatus(id: number, status: 'active' | 'inactive' | 'locked'): Promise<User> {
+  async updateUserStatus(id: number | string, status: 'active' | 'inactive' | 'locked'): Promise<User> {
     try {
-      const response = await api.patch<User>(`/users/${id}/status`, { status })
-      console.log(`[UserAPI] 用户状态更新成功 (ID: ${id}, Status: ${status})`)
+      const userId = String(id)
+      const response = await api.patch<User>(`/users/${userId}/status`, { status })
+      console.log(`[UserAPI] 用户状态更新成功 (ID: ${userId}, Status: ${status})`)
       return response
     } catch (error) {
       console.error(`[UserAPI] 用户状态更新失败 (ID: ${id}):`, error)

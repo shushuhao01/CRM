@@ -2428,40 +2428,11 @@ const confirmUser = async () => {
       console.log('[User] 更新用户数据:', updateData)
 
       try {
-        // 【生产环境修复】仅在开发环境操作localStorage
-        if (!import.meta.env.PROD) {
-          // 直接操作localStorage更新用户
-          const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
-          const userIndex = users.findIndex((u: unknown) => String(u.id) === String(userForm.id))
-
-          if (userIndex !== -1) {
-            users[userIndex] = {
-              ...users[userIndex],
-              ...updateData,
-              updateTime: new Date().toLocaleString()
-            }
-            localStorage.setItem('crm_mock_users', JSON.stringify(users))
-            console.log('[User] 已更新 crm_mock_users')
-          }
-
-          // 同步更新 userDatabase
-          const userDatabase = JSON.parse(localStorage.getItem('userDatabase') || '[]')
-          const dbIndex = userDatabase.findIndex((u: unknown) => String(u.id) === String(userForm.id))
-
-          if (dbIndex !== -1) {
-            userDatabase[dbIndex] = {
-              ...userDatabase[dbIndex],
-              ...updateData
-            }
-            localStorage.setItem('userDatabase', JSON.stringify(userDatabase))
-            console.log('[User] 已更新 userDatabase')
-          }
-
-          console.log('[User] 用户更新成功')
-        } else {
-          console.log('[User] 生产环境：应通过API更新用户')
-          // TODO: 生产环境应该调用API更新用户
-        }
+        // 🔥 修复：调用API更新用户（生产环境和开发环境都调用）
+        // 注意：用户ID是字符串格式，不要使用parseInt
+        console.log('[User] 调用API更新用户，ID:', userForm.id)
+        await userApiService.updateUser(userForm.id, updateData)
+        console.log('[User] 用户更新API调用成功')
         ElMessage.success('用户更新成功')
       } catch (error) {
         console.error('[User] 更新用户失败:', error)
