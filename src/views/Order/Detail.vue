@@ -1543,7 +1543,7 @@ const getLogisticsIcon = (status: string) => {
 
 // 辅助方法
 const getStatusType = (status: string) => {
-  const types = {
+  const types: Record<string, string> = {
     // 新的状态枚举
     'pending_transfer': 'info',      // 待流转 - 灰色
     'pending_audit': 'warning',      // 待审核 - 橙色
@@ -1562,7 +1562,6 @@ const getStatusType = (status: string) => {
     'pending': 'warning',
     'pending_approval': 'warning',
     'approved': 'success',
-    'rejected': 'danger',
     'paid': 'success',
     'completed': 'success',
     'confirmed': 'success'

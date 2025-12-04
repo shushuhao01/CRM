@@ -1,22 +1,34 @@
-import request from './request'
-import { shouldUseMockApi } from './mock'
+import { request } from './request'
+
+// 检查是否使用Mock API - 本地定义避免循环依赖
+const shouldUseMockApi = (): boolean => {
+  const mockEnabled = localStorage.getItem('erp_mock_enabled')
+  if (mockEnabled === 'true') return true
+  if (mockEnabled === 'false') return false
+  return import.meta.env.DEV
+}
 
 // 短信模板接口
 export interface SmsTemplate {
-  id: string
+  id: string | number
   name: string
-  category: string
+  category?: string
   content: string
-  variables: string[]
+  type?: string
+  variables?: string[]
   description?: string
-  applicant: string
-  applicantName: string
-  applicantDept: string
-  createdAt: string
-  status: 'pending' | 'approved' | 'rejected'
+  applicant?: string
+  applicantName?: string
+  applicantDept?: string
+  createdAt?: string
+  createTime?: string
+  updateTime?: string
+  creator?: string
+  status: 'pending' | 'approved' | 'rejected' | 'active' | 'inactive'
   approvedBy?: string
   approvedAt?: string
   isSystem?: boolean
+  usage?: number
 }
 
 // 短信申请接口
@@ -35,6 +47,39 @@ export interface SmsRequest {
   remark?: string
   approvedBy?: string
   approvedAt?: string
+}
+
+// 短信审核记录接口 - mock.ts需要
+export interface SmsApprovalRecord {
+  id: number
+  applicant: string
+  department: string
+  templateId: number
+  templateName: string
+  recipientCount: number
+  content: string
+  reason: string
+  status: 'pending' | 'approved' | 'rejected'
+  applyTime: string
+  approveTime?: string
+  approver?: string
+  approveRemark?: string
+  recipients?: string[]
+}
+
+// 短信发送记录接口 - mock.ts需要
+export interface SmsSendRecord {
+  id: number
+  templateId: number
+  templateName: string
+  content: string
+  recipients: string[]
+  successCount: number
+  failCount: number
+  status: 'success' | 'failed' | 'partial'
+  sendTime: string
+  operator: string
+  cost: number
 }
 
 // 发送记录接口
@@ -63,6 +108,54 @@ export interface SmsStatistics {
   pendingSms: number
   todaySent: number
   totalSent: number
+}
+
+// 搜索参数接口 - mock.ts需要
+export interface SmsTemplateSearchParams {
+  keyword?: string
+  type?: string
+  status?: string
+  page?: number
+  pageSize?: number
+}
+
+export interface SmsApprovalSearchParams {
+  keyword?: string
+  status?: string
+  startDate?: string
+  endDate?: string
+  page?: number
+  pageSize?: number
+}
+
+export interface SmsSendSearchParams {
+  keyword?: string
+  startDate?: string
+  endDate?: string
+  page?: number
+  pageSize?: number
+}
+
+// 列表响应接口 - mock.ts需要
+export interface SmsTemplateListResponse {
+  list: SmsTemplate[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export interface SmsApprovalListResponse {
+  list: SmsApprovalRecord[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export interface SmsSendListResponse {
+  list: SmsSendRecord[]
+  total: number
+  page: number
+  pageSize: number
 }
 
 // 预设模板数据(系统模板)
