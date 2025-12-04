@@ -516,9 +516,25 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
 
 // Pinia Store
 export const useNotificationStore = defineStore('notification', () => {
+  // 检查是否需要清理旧的模拟数据
+  const checkAndCleanOldMockData = () => {
+    const cleanedKey = 'notification-mock-cleaned-v2'
+    if (localStorage.getItem(cleanedKey)) {
+      return // 已经清理过
+    }
+
+    // 清理旧的模拟消息数据
+    localStorage.removeItem('notification-messages')
+    localStorage.setItem(cleanedKey, 'true')
+    console.log('[Notification] 已清理旧的模拟消息数据')
+  }
+
   // 从localStorage加载消息
   const loadMessagesFromStorage = (): NotificationMessage[] => {
     try {
+      // 首先检查并清理旧数据
+      checkAndCleanOldMockData()
+
       const stored = localStorage.getItem('notification-messages')
       if (stored) {
         return JSON.parse(stored)
@@ -638,7 +654,7 @@ export const useNotificationStore = defineStore('notification', () => {
   }
 
   // 从API加载消息
-  const loadMessagesFromAPI = async (permissionParams: unknown = {}) => {
+  const loadMessagesFromAPI = async (permissionParams: Record<string, unknown> = {}) => {
     try {
       // 动态导入messageApi以避免循环依赖
       const { messageApi } = await import('@/api/message')
@@ -652,8 +668,9 @@ export const useNotificationStore = defineStore('notification', () => {
         // 不清空现有消息，而是合并
         const existingIds = new Set(messages.value.map(m => m.id))
 
-        const apiMessages = response.data.messages || []
-        apiMessages.forEach(msg => {
+        const responseData = response.data as { messages?: any[]; total?: number }
+        const apiMessages = responseData.messages || []
+        apiMessages.forEach((msg: any) => {
           // 跳过已存在的消息
           if (existingIds.has(msg.id)) {
             return
