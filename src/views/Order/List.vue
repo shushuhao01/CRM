@@ -1767,7 +1767,7 @@ const handleAuditApprove = async () => {
 
     // 调用审核通过接口（确保不会抛出异常）
     const result = await orderStore.approveCancelOrders(orderIds)
-    
+
     // 检查结果
     if (result === false || result === undefined) {
       ElMessage.error('审核通过失败，请重试')
@@ -1779,7 +1779,7 @@ const handleAuditApprove = async () => {
     selectedAuditOrders.value = []
 
     // 刷新订单列表
-    await loadOrders()
+    await loadOrderList()
 
     // 关闭审核弹窗
     handleCloseCancelAudit()
@@ -1808,7 +1808,7 @@ const handleAuditReject = async () => {
 
     // 调用审核拒绝接口（确保不会抛出异常）
     const result = await orderStore.rejectCancelOrders(orderIds)
-    
+
     // 检查结果
     if (result === false || result === undefined) {
       ElMessage.error('审核拒绝失败，请重试')
@@ -1820,7 +1820,7 @@ const handleAuditReject = async () => {
     selectedAuditOrders.value = []
 
     // 刷新订单列表
-    await loadOrders()
+    await loadOrderList()
 
     // 关闭审核弹窗
     handleCloseCancelAudit()
@@ -1875,24 +1875,32 @@ const updatePagination = () => {
 
 const loadOrderList = async () => {
   try {
-    const response = await appStore.withLoading(async () => {
-      // 模拟API调用
-      await new Promise(resolve => setTimeout(resolve, 800))
-      return {
-        data: orderStore.orders,
-        total: 150
-      }
-    }, '正在加载订单列表...')
+    loading.value = true
 
-    // 确保orderStore有数据，如果没有则初始化
-    if (orderStore.orders.length === 0) {
-      orderStore.initializeWithMockData()
+    // 尝试从API加载订单数据
+    const apiOrders = await orderStore.loadOrdersFromAPI()
+
+    // 如果API返回空数据且本地也没有数据，则初始化模拟数据（仅开发环境）
+    if (apiOrders.length === 0 && orderStore.orders.length === 0) {
+      console.log('[订单列表] API无数据，检查是否需要初始化本地数据')
+      // 在生产环境不初始化模拟数据
+      if (import.meta.env.DEV) {
+        orderStore.initializeWithMockData()
+      }
     }
 
     updatePagination()
     updateQuickFilterCounts()
   } catch (error) {
-    appStore.showError('加载订单列表失败', error as Error)
+    console.error('加载订单列表失败:', error)
+    // 如果API失败，尝试使用本地数据
+    if (orderStore.orders.length === 0 && import.meta.env.DEV) {
+      orderStore.initializeWithMockData()
+    }
+    updatePagination()
+    updateQuickFilterCounts()
+  } finally {
+    loading.value = false
   }
 }
 

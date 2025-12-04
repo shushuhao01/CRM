@@ -500,6 +500,16 @@ export const useOrderStore = createPersistentStore('order', () => {
       for (const id of orderIds) {
         const order = getOrderById(id)
         if (order && order.status === 'pending_cancel') {
+          // 调用API审核通过
+          try {
+            const result = await auditCancelOrderToAPI(id, 'approve', '审核通过')
+            if (!result.success) {
+              console.warn(`[订单取消审核] API调用失败: ${result.message}`)
+            }
+          } catch (apiError) {
+            console.warn('[订单取消审核] API调用失败，继续更新本地数据:', apiError)
+          }
+
           updateOrder(id, {
             status: 'cancelled',
             cancelStatus: 'approved',
@@ -559,6 +569,16 @@ export const useOrderStore = createPersistentStore('order', () => {
       for (const id of orderIds) {
         const order = getOrderById(id)
         if (order && order.status === 'pending_cancel') {
+          // 调用API审核拒绝
+          try {
+            const result = await auditCancelOrderToAPI(id, 'reject', '审核拒绝')
+            if (!result.success) {
+              console.warn(`[订单取消审核] API调用失败: ${result.message}`)
+            }
+          } catch (apiError) {
+            console.warn('[订单取消审核] API调用失败，继续更新本地数据:', apiError)
+          }
+
           // 根据订单的原始状态恢复订单状态
           let restoreStatus: OrderStatus = 'pending_shipment'
           if (order.auditStatus === 'approved') {
@@ -1092,7 +1112,113 @@ export const useOrderStore = createPersistentStore('order', () => {
     }
   }
 
-  // 初始化模拟数据
+  // 从API加载订单数据
+  const loadOrdersFromAPI = async () => {
+    try {
+      const { orderApi } = await import('@/api/order')
+      const response = await orderApi.getList({ page: 1, pageSize: 100 })
+
+      if (response && response.data && response.data.list) {
+        orders.value = response.data.list
+        console.log(`Order Store: 从API加载了 ${response.data.list.length} 个订单`)
+        return response.data.list
+      }
+      return []
+    } catch (error) {
+      console.warn('Order Store: 从API加载订单失败，使用本地数据:', error)
+      return []
+    }
+  }
+
+  // 从API加载待审核取消订单
+  const loadPendingCancelOrdersFromAPI = async () => {
+    try {
+      const { orderApi } = await import('@/api/order')
+      const response = await orderApi.getPendingCancelOrders()
+
+      if (response && response.data) {
+        return response.data
+      }
+      return []
+    } catch (error) {
+      console.warn('Order Store: 从API加载待审核取消订单失败:', error)
+      return []
+    }
+  }
+
+  // 从API加载已审核取消订单
+  const loadAuditedCancelOrdersFromAPI = async () => {
+    try {
+      const { orderApi } = await import('@/api/order')
+      const response = await orderApi.getAuditedCancelOrders()
+
+      if (response && response.data) {
+        return response.data
+      }
+      return []
+    } catch (error) {
+      console.warn('Order Store: 从API加载已审核取消订单失败:', error)
+      return []
+    }
+  }
+
+  // 提交取消订单申请到API
+  const submitCancelRequestToAPI = async (orderId: string, reason: string, description: string) => {
+    try {
+      const { orderApi } = await import('@/api/order')
+      const userStore = useUserStore()
+      const response = await orderApi.cancelRequest({
+        orderId,
+        reason,
+        description,
+        operatorId: userStore.currentUser?.id || ''
+      })
+
+      if (response && response.success) {
+        // 更新本地订单状态
+        updateOrder(orderId, {
+          status: 'pending_cancel' as any,
+          cancelReason: reason,
+          cancelDescription: description,
+          cancelRequestTime: new Date().toISOString()
+        })
+        return { success: true, message: response.message }
+      }
+      return { success: false, message: '提交失败' }
+    } catch (error) {
+      console.error('Order Store: 提交取消申请失败:', error)
+      return { success: false, message: '提交失败' }
+    }
+  }
+
+  // 审核取消订单到API
+  const auditCancelOrderToAPI = async (orderId: string, action: 'approve' | 'reject', remark: string) => {
+    try {
+      const { orderApi } = await import('@/api/order')
+      const userStore = useUserStore()
+      const response = await orderApi.cancelAudit(orderId, {
+        action,
+        remark,
+        auditorId: userStore.currentUser?.id || ''
+      })
+
+      if (response && response.success) {
+        // 更新本地订单状态
+        const newStatus = action === 'approve' ? 'cancelled' : 'cancel_failed'
+        updateOrder(orderId, {
+          status: newStatus as any,
+          cancelStatus: action === 'approve' ? 'approved' : 'rejected'
+        })
+        return { success: true, message: response.message }
+      }
+      return { success: false, message: '审核失败' }
+    } catch (error) {
+      console.error('Order Store: 审核取消订单失败:', error)
+      return { success: false, message: '审核失败' }
+    }
+  }
+
+  // 初始化模拟数据（保留用于开发环境）
   const initializeWithMockData = () => {
     // 如果已有数据，不重复初始化
     if (orders.value.length > 0) {
@@ -1400,6 +1526,12 @@ export const useOrderStore = createPersistentStore('order', () => {
     syncOrderStatus,
     queryLogisticsTrack,
     initializeWithMockData,
-    getStatusText
+    getStatusText,
+    // 新增API方法
+    loadOrdersFromAPI,
+    loadPendingCancelOrdersFromAPI,
+    loadAuditedCancelOrdersFromAPI,
+    submitCancelRequestToAPI,
+    auditCancelOrderToAPI
   }
 })
