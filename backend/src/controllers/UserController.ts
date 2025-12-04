@@ -535,6 +535,265 @@ export class UserController {
   });
 
   /**
+   * 获取用户详情
+   */
+  getUserById = catchAsync(async (req: Request, res: Response) => {
+    const userId = req.params.id;
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new NotFoundError('用户不存在');
+    }
+
+    const { password: _, ...userInfo } = user;
+
+    res.json({
+      success: true,
+      data: userInfo
+    });
+  });
+
+  /**
+   * 更新用户信息
+   */
+  updateUser = catchAsync(async (req: Request, res: Response) => {
+    const userId = req.params.id;
+    const { realName, name, email, phone, role, roleId, departmentId, position, employeeNumber, status, remark } = req.body;
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new NotFoundError('用户不存在');
+    }
+
+    // 更新字段
+    if (realName !== undefined) user.realName = realName;
+    if (name !== undefined) user.name = name || realName;
+    if (email !== undefined) user.email = email;
+    if (phone !== undefined) user.phone = phone;
+    if (role !== undefined) user.role = role;
+    if (roleId !== undefined) user.role = roleId; // roleId 也映射到 role 字段
+    if (departmentId !== undefined) user.departmentId = departmentId ? String(departmentId) : null;
+    if (position !== undefined) user.position = position;
+    if (employeeNumber !== undefined) user.employeeNumber = employeeNumber;
+    if (status !== undefined) user.status = status;
+    if (remark !== undefined) user.remark = remark;
+
+    const updatedUser = await this.userRepository.save(user);
+
+    // 记录操作日志
+    await this.logOperation({
+      userId: req.user?.userId,
+      username: req.user?.username,
+      action: 'update_user',
+      module: 'user',
+      description: `更新用户信息: ${user.username}`,
+      result: 'success',
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+
+    const { password: _, ...userInfo } = updatedUser;
+
+    res.json({
+      success: true,
+      message: '用户更新成功',
+      data: userInfo
+    });
+  });
+
+  /**
+   * 删除用户
+   */
+  deleteUser = catchAsync(async (req: Request, res: Response) => {
+    const userId = req.params.id;
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new NotFoundError('用户不存在');
+    }
+
+    // 不允许删除超级管理员
+    if (user.role === 'super_admin' || user.username === 'superadmin') {
+      throw new BusinessError('不能删除超级管理员账户');
+    }
+
+    await this.userRepository.remove(user);
+
+    // 记录操作日志
+    await this.logOperation({
+      userId: req.user?.userId,
+      username: req.user?.username,
+      action: 'delete_user',
+      module: 'user',
+      description: `删除用户: ${user.username}`,
+      result: 'success',
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+
+    res.json({
+      success: true,
+      message: '用户删除成功'
+    });
+  });
+
+  /**
+   * 更新用户状态（启用/禁用/锁定）
+   */
+  updateUserStatus = catchAsync(async (req: Request, res: Response) => {
+    const userId = req.params.id;
+    const { status } = req.body;
+
+    if (!['active', 'inactive', 'locked'].includes(status)) {
+      throw new ValidationError('无效的状态值');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new NotFoundError('用户不存在');
+    }
+
+    user.status = status;
+    if (status === 'locked') {
+      user.lockedAt = new Date();
+    } else if (status === 'active') {
+      user.lockedAt = null;
+      user.loginFailCount = 0;
+    }
+
+    const updatedUser = await this.userRepository.save(user);
+
+    // 记录操作日志
+    await this.logOperation({
+      userId: req.user?.userId,
+      username: req.user?.username,
+      action: 'update_user_status',
+      module: 'user',
+      description: `更新用户状态: ${user.username} -> ${status}`,
+      result: 'success',
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+
+    const { password: _, ...userInfo } = updatedUser;
+
+    res.json({
+      success: true,
+      message: '用户状态更新成功',
+      data: userInfo
+    });
+  });
+
+  /**
+   * 更新用户在职状态
+   */
+  updateEmploymentStatus = catchAsync(async (req: Request, res: Response) => {
+    const userId = req.params.id;
+    const { employmentStatus } = req.body;
+
+    if (!['active', 'resigned'].includes(employmentStatus)) {
+      throw new ValidationError('无效的在职状态值');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new NotFoundError('用户不存在');
+    }
+
+    user.employmentStatus = employmentStatus;
+    if (employmentStatus === 'resigned') {
+      user.resignedAt = new Date();
+    }
+
+    const updatedUser = await this.userRepository.save(user);
+
+    // 记录操作日志
+    await this.logOperation({
+      userId: req.user?.userId,
+      username: req.user?.username,
+      action: 'update_employment_status',
+      module: 'user',
+      description: `更新用户在职状态: ${user.username} -> ${employmentStatus}`,
+      result: 'success',
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+
+    const { password: _, ...userInfo } = updatedUser;
+
+    res.json({
+      success: true,
+      message: '在职状态更新成功',
+      data: userInfo
+    });
+  });
+
+  /**
+   * 重置用户密码
+   */
+  resetUserPassword = catchAsync(async (req: Request, res: Response) => {
+    const userId = req.params.id;
+    const { newPassword } = req.body;
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new NotFoundError('用户不存在');
+    }
+
+    // 生成临时密码或使用提供的密码
+    const tempPassword = newPassword || Math.random().toString(36).slice(-8) + 'A1!';
+    const hashedPassword = await bcrypt.hash(tempPassword, 12);
+
+    user.password = hashedPassword;
+    user.mustChangePassword = true;
+    user.loginFailCount = 0;
+    if (user.status === 'locked') {
+      user.status = 'active';
+      user.lockedAt = null;
+    }
+
+    await this.userRepository.save(user);
+
+    // 记录操作日志
+    await this.logOperation({
+      userId: req.user?.userId,
+      username: req.user?.username,
+      action: 'reset_password',
+      module: 'user',
+      description: `重置用户密码: ${user.username}`,
+      result: 'success',
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+
+    res.json({
+      success: true,
+      message: '密码重置成功',
+      data: {
+        tempPassword: newPassword ? undefined : tempPassword
+      }
+    });
+  });
+
+  /**
    * 记录操作日志
    */
   private async logOperation(data: {

@@ -85,4 +85,46 @@ router.post('/', authenticateToken, requireManagerOrAdmin, validate(createUserSc
  */
 router.get('/statistics', authenticateToken, requireManagerOrAdmin, userController.getUserStatistics);
 
+/**
+ * @route GET /api/v1/users/:id
+ * @desc 获取用户详情
+ * @access Private (Manager/Admin)
+ */
+router.get('/:id', authenticateToken, requireManagerOrAdmin, userController.getUserById);
+
+/**
+ * @route PUT /api/v1/users/:id
+ * @desc 更新用户信息
+ * @access Private (Manager/Admin)
+ */
+router.put('/:id', authenticateToken, requireManagerOrAdmin, userController.updateUser);
+
+/**
+ * @route DELETE /api/v1/users/:id
+ * @desc 删除用户
+ * @access Private (Manager/Admin)
+ */
+router.delete('/:id', authenticateToken, requireManagerOrAdmin, userController.deleteUser);
+
+/**
+ * @route PATCH /api/v1/users/:id/status
+ * @desc 更新用户状态（启用/禁用/锁定）
+ * @access Private (Manager/Admin)
+ */
+router.patch('/:id/status', authenticateToken, requireManagerOrAdmin, userController.updateUserStatus);
+
+/**
+ * @route PATCH /api/v1/users/:id/employment-status
+ * @desc 更新用户在职状态
+ * @access Private (Manager/Admin)
+ */
+router.patch('/:id/employment-status', authenticateToken, requireManagerOrAdmin, userController.updateEmploymentStatus);
+
+/**
+ * @route POST /api/v1/users/:id/reset-password
+ * @desc 重置用户密码
+ * @access Private (Manager/Admin)
+ */
+router.post('/:id/reset-password', authenticateToken, requireManagerOrAdmin, userController.resetUserPassword);
+
 export default router;
