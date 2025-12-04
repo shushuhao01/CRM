@@ -116,13 +116,16 @@
 
           <!-- 页面内容 -->
           <div class="page-content">
-            <router-view v-slot="{ Component }">
-              <keep-alive :include="cachedViews">
-                <component :is="Component" />
-              </keep-alive>
-            </router-view>
+            <!-- 页面视图容器 -->
+            <div class="page-view-wrapper">
+              <router-view v-slot="{ Component }">
+                <keep-alive :include="cachedViews">
+                  <component :is="Component" />
+                </keep-alive>
+              </router-view>
+            </div>
 
-            <!-- 🔥 批次274新增：页面底部版权信息 - 在滚动区域内，滚动到底部才显示 -->
+            <!-- 🔥 版权信息 - 在滚动区域底部，滚动到底才显示 -->
             <footer class="app-footer">
               <div class="footer-content">
                 <span>版权归 {{ configStore.systemConfig.companyName || 'CRM系统' }} 所有</span>
@@ -873,6 +876,13 @@ watch(isMobile, (newValue) => {
   flex-direction: column;
 }
 
+/* 内部容器（侧边栏+主内容）填满剩余高度 */
+.layout-container > .el-container {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .header {
   background: #fff;
   border-bottom: 1px solid #e4e7ed;
@@ -941,8 +951,7 @@ watch(isMobile, (newValue) => {
   border-right: 1px solid #e4e7ed;
   transition: width 0.3s;
   overflow: hidden;
-  height: calc(100vh - 108px);
-  max-height: calc(100vh - 108px);
+  height: 100%;
   position: relative;
 
   /* 确保在高缩放比例下正确显示 */
@@ -1155,11 +1164,13 @@ watch(isMobile, (newValue) => {
   padding: 0;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 60px);
+  height: 100%;
   width: 100%;
   min-width: 0;
+  min-height: 0;
   flex: 1;
   transition: margin-left 0.3s;
+  overflow: hidden;
 }
 
 .tabs-container {
@@ -1244,14 +1255,11 @@ watch(isMobile, (newValue) => {
   overflow: auto;
   width: 100%;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
 }
 
-/* 页面内容区域的直接子元素（路由视图）占据剩余空间 */
-.page-content > :first-child {
-  flex: 1;
-  min-height: 0;
+/* 页面视图容器 - 包含实际页面内容 */
+.page-view-wrapper {
+  min-height: calc(100% - 50px); /* 减去footer高度，确保内容区域足够高 */
 }
 
 .mobile-overlay {
@@ -1278,11 +1286,6 @@ watch(isMobile, (newValue) => {
     width: 100%;
   }
 
-  .main-content {
-    height: calc(100vh - 112px);
-    width: 100%;
-  }
-
   .page-content {
     padding: 24px 32px;
     width: 100%;
@@ -1295,11 +1298,6 @@ watch(isMobile, (newValue) => {
 
   .sidebar:not(.sidebar-collapsed) {
     width: 260px !important;
-  }
-
-  .sidebar {
-    height: calc(100vh - 112px) !important;
-    max-height: calc(100vh - 112px) !important;
   }
 }
 
@@ -1333,10 +1331,6 @@ watch(isMobile, (newValue) => {
     display: none;
   }
 
-  .main-content {
-    height: calc(100vh - 104px);
-  }
-
   .page-content {
     padding: 16px 12px;
   }
@@ -1350,8 +1344,8 @@ watch(isMobile, (newValue) => {
   }
 
   .sidebar-mobile {
+    position: fixed;
     height: calc(100vh - 104px) !important;
-    max-height: calc(100vh - 104px) !important;
   }
 
   .tabs-container {
@@ -1384,14 +1378,11 @@ watch(isMobile, (newValue) => {
   }
 }
 
-/* 🔥 批次274新增：页面底部版权信息样式 - 灰色低调，滚动到底部才看到 */
-/* 版权信息在滚动区域内，作为内容流的一部分，只有滚动到底部才能看到 */
+/* 🔥 版权信息样式 - 在灰色背景底部，滚动到底才显示 */
 .app-footer {
   background: transparent;
-  padding: 16px 20px;
+  padding: 20px;
   text-align: center;
-  margin-top: auto; /* 当内容不足时，推到滚动区域底部 */
-  flex-shrink: 0;
 }
 
 .footer-content {
