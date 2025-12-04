@@ -110,6 +110,7 @@
 
       <!-- 操作按钮 -->
       <div class="action-buttons">
+        <!-- 新建售后：所有角色都可以创建 -->
         <el-button type="primary" :icon="Plus" @click="handleAdd">
           新建售后
         </el-button>
@@ -192,10 +193,19 @@
         <el-button size="small" type="primary" @click="handleView(row)">
           查看
         </el-button>
-        <el-button size="small" @click="handleEdit(row)" v-if="row.status !== 'completed'">
+        <!-- 编辑按钮：只有超管/管理员/客服可见 -->
+        <el-button
+          size="small"
+          @click="handleEdit(row)"
+          v-if="canOperateService && row.status !== 'completed'"
+        >
           编辑
         </el-button>
-        <el-dropdown @command="(command) => handleMoreAction(command, row)">
+        <!-- 更多操作下拉菜单：只有超管/管理员/客服可见 -->
+        <el-dropdown
+          v-if="canOperateService"
+          @command="(command) => handleMoreAction(command, row)"
+        >
           <el-button size="small" :icon="MoreFilled" />
           <template #dropdown>
             <el-dropdown-menu>
@@ -357,6 +367,19 @@ const serviceStore = useServiceStore()
 const notificationStore = useNotificationStore()
 const userStore = useUserStore()
 const departmentStore = useDepartmentStore()
+
+// 权限控制：判断当前用户是否有售后操作权限
+// 只有超管、管理员、客服可以编辑/分配/删除/关闭售后订单
+// 经理和销售员只能查看
+const canOperateService = computed(() => {
+  const currentUser = userStore.currentUser
+  if (!currentUser) return false
+
+  const role = currentUser.role || currentUser.roleId || ''
+  // 允许操作的角色：超级管理员、管理员、客服
+  const allowedRoles = ['super_admin', 'superadmin', 'admin', 'service', 'customer_service']
+  return allowedRoles.includes(role)
+})
 
 // 响应式数据
 const tableLoading = ref(false)
@@ -750,16 +773,13 @@ const handleAssignConfirm = async () => {
 
   assignLoading.value = true
   try {
-    // 更新售后记录
-    const result = serviceStore.updateService(currentRow.value.id, {
-      assignedTo: assignedToName,
-      status: 'processing', // 分配后自动变为处理中
-      remark: assignForm.remark
-    })
-
-    if (!result) {
-      throw new Error('更新售后记录失败')
-    }
+    // 调用API分配处理人
+    await serviceStore.assignService(
+      currentRow.value.id,
+      assignedToName,
+      assignForm.userId || undefined,
+      assignForm.remark || undefined
+    )
 
     // 发送分配处理人成功的消息提醒
     notificationStore.sendMessage(
@@ -805,12 +825,12 @@ const handlePriorityConfirm = async () => {
 
   priorityLoading.value = true
   try {
-    // 更新售后记录
-    serviceStore.updateService(currentRow.value.id, {
-      priority: priorityForm.priority as 'low' | 'normal' | 'high' | 'urgent',
-      remark: priorityForm.remark,
-      updateTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
-    })
+    // 调用API设置优先级
+    await serviceStore.setServicePriority(
+      currentRow.value.id,
+      priorityForm.priority as 'low' | 'normal' | 'high' | 'urgent',
+      priorityForm.remark || undefined
+    )
 
     // 发送优先级设置成功的消息提醒
     const priorityText = getPriorityText(priorityForm.priority)
@@ -886,33 +906,29 @@ const handleDelete = async (row: AfterSalesService) => {
     }
   ).then(async () => {
     try {
-      // 使用serviceStore删除售后单
-      const success = serviceStore.deleteService(row.id)
+      // 调用API删除售后单
+      await serviceStore.deleteService(row.id)
 
-      if (success) {
-        // 更新分页总数
-        pagination.total = serviceStore.afterSalesServices.length
+      // 更新分页总数
+      pagination.total = serviceStore.afterSalesServices.length
 
-        // 发送售后申请删除的消息提醒
-        notificationStore.sendMessage(
-          notificationStore.MessageType.AFTER_SALES_DELETED,
-          `售后申请 ${row.serviceNumber} 已删除，客户：${row.customerName}`,
-          {
-            relatedId: row.serviceNumber,
-            relatedType: 'service',
-            actionUrl: '/service/list',
-            metadata: {
-              customerName: row.customerName,
-              serviceType: row.serviceType,
-              deletedAt: new Date().toISOString()
-            }
+      // 发送售后申请删除的消息提醒
+      notificationStore.sendMessage(
+        notificationStore.MessageType.AFTER_SALES_DELETED,
+        `售后申请 ${row.serviceNumber} 已删除，客户：${row.customerName}`,
+        {
+          relatedId: row.serviceNumber,
+          relatedType: 'service',
+          actionUrl: '/service/list',
+          metadata: {
+            customerName: row.customerName,
+            serviceType: row.serviceType,
+            deletedAt: new Date().toISOString()
           }
-        )
+        }
+      )
 
-        ElMessage.success('删除成功')
-      } else {
-        ElMessage.error('删除失败')
-      }
+      ElMessage.success('删除成功')
     } catch (error) {
       ElMessage.error('删除售后单失败')
       console.error('删除售后单失败:', error)

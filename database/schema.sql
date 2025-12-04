@@ -1,8 +1,13 @@
 -- =============================================
 -- CRM系统数据库初始化脚本（最新版）
--- 版本：1.8.0
--- 更新时间：2024-11-23
+-- 版本：1.8.1
+-- 更新时间：2024-12-04
 -- 适用于：MySQL 8.0+ / 宝塔面板 7.x+
+-- 
+-- 更新内容：
+-- 1. 添加完整的售后服务表(after_sales_services)
+-- 2. 用户表添加在职状态、备注等字段
+-- 3. 整合所有分散的SQL脚本
 -- =============================================
 
 -- 设置字符集和时区
@@ -97,10 +102,15 @@ CREATE TABLE `users` (
   `education` VARCHAR(20) COMMENT '学历',
   `major` VARCHAR(100) COMMENT '专业',
   `status` ENUM('active', 'inactive', 'resigned', 'locked') DEFAULT 'active' COMMENT '状态',
+  `employment_status` ENUM('active', 'resigned') DEFAULT 'active' COMMENT '在职状态',
+  `resigned_at` DATETIME NULL COMMENT '离职时间',
   `last_login_at` TIMESTAMP NULL COMMENT '最后登录时间',
+  `last_login_ip` VARCHAR(45) NULL COMMENT '最后登录IP',
   `login_count` INT DEFAULT 0 COMMENT '登录次数',
-  `loginFailCount` INT DEFAULT 0 COMMENT '登录失败次数',
-  `lockedAt` DATETIME NULL COMMENT '账户锁定时间',
+  `login_fail_count` INT DEFAULT 0 COMMENT '登录失败次数',
+  `locked_at` DATETIME NULL COMMENT '账户锁定时间',
+  `must_change_password` BOOLEAN DEFAULT FALSE COMMENT '是否必须修改密码',
+  `remark` TEXT NULL COMMENT '备注',
   `settings` JSON COMMENT '用户设置',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -321,7 +331,49 @@ CREATE TABLE `logistics` (
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流表';
 
--- 11. 售后服务表
+-- 11. 售后服务表（完整版）
+DROP TABLE IF EXISTS `after_sales_services`;
+CREATE TABLE `after_sales_services` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '售后ID',
+  `service_number` VARCHAR(50) UNIQUE NOT NULL COMMENT '售后单号',
+  `order_id` VARCHAR(50) NULL COMMENT '关联订单ID',
+  `order_number` VARCHAR(50) NULL COMMENT '关联订单号',
+  `customer_id` VARCHAR(50) NULL COMMENT '客户ID',
+  `customer_name` VARCHAR(100) NULL COMMENT '客户姓名',
+  `customer_phone` VARCHAR(20) NULL COMMENT '客户电话',
+  `service_type` VARCHAR(20) DEFAULT 'return' COMMENT '服务类型: return退货, exchange换货, repair维修, refund退款, complaint投诉, inquiry咨询',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '状态: pending待处理, processing处理中, resolved已解决, closed已关闭',
+  `priority` VARCHAR(20) DEFAULT 'normal' COMMENT '优先级: low低, normal普通, high高, urgent紧急',
+  `reason` VARCHAR(100) NULL COMMENT '申请原因',
+  `description` TEXT NULL COMMENT '详细描述',
+  `product_name` VARCHAR(200) NULL COMMENT '商品名称',
+  `product_spec` VARCHAR(100) NULL COMMENT '商品规格',
+  `quantity` INT DEFAULT 1 COMMENT '数量',
+  `price` DECIMAL(10,2) DEFAULT 0 COMMENT '金额',
+  `contact_name` VARCHAR(50) NULL COMMENT '联系人姓名',
+  `contact_phone` VARCHAR(20) NULL COMMENT '联系人电话',
+  `contact_address` VARCHAR(500) NULL COMMENT '联系地址',
+  `assigned_to` VARCHAR(50) NULL COMMENT '处理人姓名',
+  `assigned_to_id` VARCHAR(50) NULL COMMENT '处理人ID',
+  `remark` TEXT NULL COMMENT '备注',
+  `attachments` JSON NULL COMMENT '附件列表',
+  `created_by` VARCHAR(50) NULL COMMENT '创建人姓名',
+  `created_by_id` VARCHAR(50) NULL COMMENT '创建人ID',
+  `department_id` VARCHAR(50) NULL COMMENT '所属部门ID',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `expected_time` DATETIME NULL COMMENT '预计完成时间',
+  `resolved_time` DATETIME NULL COMMENT '解决时间',
+  INDEX `idx_service_number` (`service_number`),
+  INDEX `idx_order_number` (`order_number`),
+  INDEX `idx_customer_id` (`customer_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_created_by_id` (`created_by_id`),
+  INDEX `idx_department_id` (`department_id`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='售后服务表';
+
+-- 11.1 旧版售后服务表（兼容）
 DROP TABLE IF EXISTS `service_records`;
 CREATE TABLE `service_records` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '售后ID',
@@ -349,7 +401,7 @@ CREATE TABLE `service_records` (
   INDEX `idx_status` (`status`),
   INDEX `idx_assigned_to` (`assigned_to`),
   INDEX `idx_created_at` (`created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='售后服务表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='售后服务表(旧版兼容)';
 
 -- 12. 资料表
 DROP TABLE IF EXISTS `data_records`;
