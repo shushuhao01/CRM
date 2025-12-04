@@ -1193,7 +1193,7 @@ export const useOrderStore = createPersistentStore('order', () => {
       if (response && response.success) {
         // 更新本地订单状态
         updateOrder(orderId, {
-          status: 'pending_cancel' as any,
+          status: 'pending_cancel' as unknown,
           cancelReason: reason,
           cancelDescription: description,
           cancelRequestTime: new Date().toISOString()

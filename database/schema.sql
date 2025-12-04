@@ -483,16 +483,20 @@ CREATE TABLE `operation_logs` (
 -- 15. 系统配置表
 DROP TABLE IF EXISTS `system_configs`;
 CREATE TABLE `system_configs` (
-  `id` VARCHAR(50) PRIMARY KEY COMMENT '配置ID',
-  `key` VARCHAR(100) UNIQUE NOT NULL COMMENT '配置键',
-  `value` TEXT COMMENT '配置值',
-  `type` VARCHAR(20) DEFAULT 'string' COMMENT '配置类型',
-  `description` TEXT COMMENT '配置描述',
-  `is_public` BOOLEAN DEFAULT FALSE COMMENT '是否公开',
-  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  INDEX `idx_key` (`key`),
-  INDEX `idx_public` (`is_public`)
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '配置ID',
+  `configKey` VARCHAR(100) UNIQUE NOT NULL COMMENT '配置键名',
+  `configValue` TEXT COMMENT '配置值',
+  `valueType` VARCHAR(50) DEFAULT 'string' COMMENT '值类型: string, number, boolean, json, text',
+  `configGroup` VARCHAR(100) NOT NULL DEFAULT 'general' COMMENT '配置分组',
+  `description` VARCHAR(200) COMMENT '配置描述',
+  `isEnabled` BOOLEAN DEFAULT TRUE COMMENT '是否启用',
+  `isSystem` BOOLEAN DEFAULT FALSE COMMENT '是否为系统配置（不可删除）',
+  `sortOrder` INT DEFAULT 0 COMMENT '排序权重',
+  `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_config_key` (`configKey`),
+  INDEX `idx_config_group` (`configGroup`),
+  INDEX `idx_enabled` (`isEnabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置表';
 
 -- 16. 通话记录表
@@ -1093,15 +1097,27 @@ INSERT INTO `product_categories` (`id`, `name`, `description`, `sort_order`) VAL
 ('cat_003', '办公用品', '办公室日常用品', 3),
 ('cat_004', '服装鞋帽', '各类服装和鞋帽产品', 4);
 
--- 插入系统配置
-INSERT INTO `system_configs` (`id`, `key`, `value`, `type`, `description`, `is_public`) VALUES 
-('config_001', 'system_name', 'CRM客户管理系统', 'string', '系统名称', TRUE),
-('config_002', 'company_name', '您的公司名称', 'string', '公司名称', TRUE),
-('config_003', 'max_upload_size', '10485760', 'number', '最大上传文件大小(字节)', FALSE),
-('config_004', 'session_timeout', '7200', 'number', '会话超时时间(秒)', FALSE),
-('config_005', 'password_min_length', '6', 'number', '密码最小长度', FALSE),
-('config_006', 'enable_email_notification', 'true', 'boolean', '启用邮件通知', FALSE),
-('config_007', 'enable_sms_notification', 'false', 'boolean', '启用短信通知', FALSE);
+-- 插入系统配置（基本设置）
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+('systemName', 'CRM客户管理系统', 'string', 'basic_settings', '系统名称', TRUE, TRUE, 1),
+('systemVersion', '1.0.0', 'string', 'basic_settings', '系统版本', TRUE, TRUE, 2),
+('companyName', '', 'string', 'basic_settings', '公司名称', TRUE, TRUE, 3),
+('contactPhone', '', 'string', 'basic_settings', '联系电话', TRUE, TRUE, 4),
+('contactEmail', '', 'string', 'basic_settings', '联系邮箱', TRUE, TRUE, 5),
+('websiteUrl', '', 'string', 'basic_settings', '网站地址', TRUE, TRUE, 6),
+('companyAddress', '', 'string', 'basic_settings', '公司地址', TRUE, TRUE, 7),
+('systemDescription', '', 'text', 'basic_settings', '系统描述', TRUE, TRUE, 8),
+('systemLogo', '', 'text', 'basic_settings', '系统Logo', TRUE, TRUE, 9),
+('contactQRCode', '', 'text', 'basic_settings', '联系二维码', TRUE, TRUE, 10),
+('contactQRCodeLabel', '扫码联系', 'string', 'basic_settings', '二维码标签', TRUE, TRUE, 11);
+
+-- 插入系统配置（通用设置）
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+('maxUploadSize', '10485760', 'number', 'general', '最大上传文件大小(字节)', TRUE, TRUE, 1),
+('sessionTimeout', '7200', 'number', 'general', '会话超时时间(秒)', TRUE, TRUE, 2),
+('passwordMinLength', '6', 'number', 'general', '密码最小长度', TRUE, TRUE, 3),
+('enableEmailNotification', 'true', 'boolean', 'general', '启用邮件通知', TRUE, TRUE, 4),
+('enableSmsNotification', 'false', 'boolean', 'general', '启用短信通知', TRUE, TRUE, 5);
 
 SET FOREIGN_KEY_CHECKS = 1;
 

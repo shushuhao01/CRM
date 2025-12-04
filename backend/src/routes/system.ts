@@ -1,6 +1,8 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { DepartmentController } from '../controllers/DepartmentController';
+import { AppDataSource } from '../config/database';
+import { SystemConfig } from '../entities/SystemConfig';
 
 const router = Router();
 const departmentController = new DepartmentController();
@@ -31,6 +33,124 @@ router.get('/global-config', authenticateToken, (req, res) => {
       }
     }
   });
+});
+
+// ========== 基本设置路由 ==========
+
+/**
+ * @route GET /api/v1/system/basic-settings
+ * @desc 获取系统基本设置
+ * @access Private (All authenticated users)
+ */
+router.get('/basic-settings', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+
+    // 获取所有基本设置配置
+    const configs = await configRepository.find({
+      where: { configGroup: 'basic_settings', isEnabled: true },
+      order: { sortOrder: 'ASC' }
+    });
+
+    // 转换为键值对格式
+    const settings: Record<string, any> = {};
+    configs.forEach(config => {
+      settings[config.configKey] = config.getParsedValue();
+    });
+
+    // 设置默认值
+    const defaultSettings = {
+      systemName: settings.systemName || 'CRM客户管理系统',
+      systemVersion: settings.systemVersion || '1.0.0',
+      companyName: settings.companyName || '',
+      contactPhone: settings.contactPhone || '',
+      contactEmail: settings.contactEmail || '',
+      websiteUrl: settings.websiteUrl || '',
+      companyAddress: settings.companyAddress || '',
+      systemDescription: settings.systemDescription || '',
+      systemLogo: settings.systemLogo || '',
+      contactQRCode: settings.contactQRCode || '',
+      contactQRCodeLabel: settings.contactQRCodeLabel || '扫码联系'
+    };
+
+    res.json({
+      success: true,
+      data: { ...defaultSettings, ...settings }
+    });
+  } catch (error) {
+    console.error('获取基本设置失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取基本设置失败'
+    });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/basic-settings
+ * @desc 更新系统基本设置
+ * @access Private (Admin)
+ */
+router.put('/basic-settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const settings = req.body;
+
+    // 定义需要保存的配置项
+    const configItems = [
+      { key: 'systemName', type: 'string' as const, desc: '系统名称' },
+      { key: 'systemVersion', type: 'string' as const, desc: '系统版本' },
+      { key: 'companyName', type: 'string' as const, desc: '公司名称' },
+      { key: 'contactPhone', type: 'string' as const, desc: '联系电话' },
+      { key: 'contactEmail', type: 'string' as const, desc: '联系邮箱' },
+      { key: 'websiteUrl', type: 'string' as const, desc: '网站地址' },
+      { key: 'companyAddress', type: 'string' as const, desc: '公司地址' },
+      { key: 'systemDescription', type: 'text' as const, desc: '系统描述' },
+      { key: 'systemLogo', type: 'text' as const, desc: '系统Logo' },
+      { key: 'contactQRCode', type: 'text' as const, desc: '联系二维码' },
+      { key: 'contactQRCodeLabel', type: 'string' as const, desc: '二维码标签' }
+    ];
+
+    // 保存或更新每个配置项
+    for (const item of configItems) {
+      if (settings[item.key] !== undefined) {
+        let config = await configRepository.findOne({
+          where: { configKey: item.key, configGroup: 'basic_settings' }
+        });
+
+        if (config) {
+          // 更新现有配置
+          config.configValue = String(settings[item.key]);
+          config.valueType = item.type;
+        } else {
+          // 创建新配置
+          config = configRepository.create({
+            configKey: item.key,
+            configValue: String(settings[item.key]),
+            valueType: item.type,
+            configGroup: 'basic_settings',
+            description: item.desc,
+            isEnabled: true,
+            isSystem: true
+          });
+        }
+
+        await configRepository.save(config);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: '基本设置保存成功',
+      data: settings
+    });
+  } catch (error) {
+    console.error('保存基本设置失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '保存基本设置失败'
+    });
+  }
 });
 
 // ========== 管理员路由（需要管理员权限）==========
