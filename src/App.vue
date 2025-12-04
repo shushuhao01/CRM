@@ -121,29 +121,29 @@
                 <component :is="Component" />
               </keep-alive>
             </router-view>
-          </div>
 
-          <!-- 🔥 批次274新增：页面底部版权信息 - 滚动到底部才显示 -->
-          <footer class="app-footer">
-            <div class="footer-content">
-              <span>版权归 {{ configStore.systemConfig.companyName || 'CRM系统' }} 所有</span>
-              <span class="separator">|</span>
-              <span>v{{ configStore.systemConfig.systemVersion || '1.0.0' }}</span>
-              <span class="separator" v-if="configStore.systemConfig.websiteUrl">|</span>
-              <a
-                v-if="configStore.systemConfig.websiteUrl"
-                :href="configStore.systemConfig.websiteUrl"
-                target="_blank"
-                class="footer-link"
-              >
-                官网
-              </a>
-              <span class="separator">|</span>
-              <a href="javascript:void(0)" class="footer-link" @click="showContactDialog">
-                联系我们
-              </a>
-            </div>
-          </footer>
+            <!-- 🔥 批次274新增：页面底部版权信息 - 在滚动区域内，滚动到底部才显示 -->
+            <footer class="app-footer">
+              <div class="footer-content">
+                <span>版权归 {{ configStore.systemConfig.companyName || 'CRM系统' }} 所有</span>
+                <span class="separator">|</span>
+                <span>v{{ configStore.systemConfig.systemVersion || '1.0.0' }}</span>
+                <span class="separator" v-if="configStore.systemConfig.websiteUrl">|</span>
+                <a
+                  v-if="configStore.systemConfig.websiteUrl"
+                  :href="configStore.systemConfig.websiteUrl"
+                  target="_blank"
+                  class="footer-link"
+                >
+                  官网
+                </a>
+                <span class="separator">|</span>
+                <a href="javascript:void(0)" class="footer-link" @click="showContactDialog">
+                  联系我们
+                </a>
+              </div>
+            </footer>
+          </div>
         </el-main>
       </el-container>
     </el-container>
@@ -1240,8 +1240,17 @@ watch(isMobile, (newValue) => {
 .page-content {
   flex: 1;
   padding: 16px;
+  padding-bottom: 0; /* footer自带padding */
   overflow: auto;
   width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 页面内容区域的直接子元素（路由视图）占据剩余空间 */
+.page-content > :first-child {
+  flex: 1;
   min-height: 0;
 }
 
@@ -1376,12 +1385,13 @@ watch(isMobile, (newValue) => {
 }
 
 /* 🔥 批次274新增：页面底部版权信息样式 - 灰色低调，滚动到底部才看到 */
+/* 版权信息在滚动区域内，作为内容流的一部分，只有滚动到底部才能看到 */
 .app-footer {
   background: transparent;
-  padding: 8px 20px;
+  padding: 16px 20px;
   text-align: center;
+  margin-top: auto; /* 当内容不足时，推到滚动区域底部 */
   flex-shrink: 0;
-  min-height: auto;
 }
 
 .footer-content {
