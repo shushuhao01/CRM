@@ -3437,29 +3437,18 @@ const pasteQRImage = async () => {
   }
 }
 
-// 处理图片文件
-const handleQRImageFile = (file: File) => {
-  // 验证文件类型
-  const isImage = file.type.startsWith('image/')
-  const isLt2M = file.size / 1024 / 1024 < 2
-
-  if (!isImage) {
-    ElMessage.error('只能上传图片文件!')
-    return
+// 处理图片文件 - 上传到服务器
+const handleQRImageFile = async (file: File) => {
+  try {
+    const { uploadImageWithMessage } = await import('@/services/uploadService')
+    const url = await uploadImageWithMessage(file, 'system')
+    if (url) {
+      basicForm.value.contactQRCode = url
+    }
+  } catch (error) {
+    console.error('二维码上传失败:', error)
+    ElMessage.error('上传失败，请重试')
   }
-  if (!isLt2M) {
-    ElMessage.error('图片大小不能超过 2MB!')
-    return
-  }
-
-  // 转换为Base64并保存
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    const base64 = e.target?.result as string
-    basicForm.value.contactQRCode = base64
-    ElMessage.success('二维码上传成功')
-  }
-  reader.readAsDataURL(file)
 }
 
 // 预览二维码
@@ -3481,18 +3470,33 @@ const previewQRCode = () => {
 /**
  * 🔥 批次274新增：删除二维码
  */
-const removeQRCode = () => {
-  ElMessageBox.confirm('确定要删除该二维码吗？', '提示', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning'
-  }).then(() => {
+const removeQRCode = async () => {
+  try {
+    await ElMessageBox.confirm('确定要删除该二维码吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+
+    // 如果是服务器上的文件，尝试删除
+    const currentUrl = basicForm.value.contactQRCode
+    if (currentUrl && currentUrl.includes('/uploads/system/')) {
+      try {
+        const filename = currentUrl.split('/').pop()
+        const { apiService } = await import('@/services/apiService')
+        await apiService.delete('/system/delete-image', { data: { filename } })
+      } catch (e) {
+        // 删除文件失败不影响清空表单
+        console.warn('删除服务器文件失败:', e)
+      }
+    }
+
     basicForm.value.contactQRCode = ''
     basicForm.value.contactQRCodeLabel = ''
     ElMessage.success('删除成功')
-  }).catch(() => {
+  } catch {
     // 取消删除
-  })
+  }
 }
 
 /**
