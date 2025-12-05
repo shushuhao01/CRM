@@ -3211,7 +3211,7 @@ const smsFormRules = {
 }
 
 const storageFormRules = computed(() => {
-  const rules: any = {}
+  const rules: unknown = {}
 
   if (storageForm.value.storageType === 'local') {
     rules.localPath = [

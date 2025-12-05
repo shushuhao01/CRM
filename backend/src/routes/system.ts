@@ -213,8 +213,9 @@ const handleImageUpload = async (req: Request, res: Response, subDir: string) =>
     // 移除末尾的斜杠
     baseUrl = baseUrl.replace(/\/$/, '');
 
-    // 生成图片URL
-    const imageUrl = `${baseUrl}/uploads/${subDir}/${req.file.filename}`;
+    // 生成图片URL - 使用相对路径，让前端通过 Nginx 代理访问
+    // 注意：这里使用 /uploads 而不是 /api/v1/uploads，因为后端静态文件服务配置的是 /uploads
+    const imageUrl = `/uploads/${subDir}/${req.file.filename}`;
 
     res.json({
       success: true,
