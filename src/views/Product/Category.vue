@@ -27,8 +27,8 @@
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="searchForm.status" placeholder="请选择状态" clearable>
-            <el-option label="启用" value="1" />
-            <el-option label="禁用" value="0" />
+            <el-option label="启用" value="active" />
+            <el-option label="禁用" value="inactive" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -71,8 +71,8 @@
           <template #default="{ row }">
             <el-switch
               v-model="row.status"
-              :active-value="1"
-              :inactive-value="0"
+              active-value="active"
+              inactive-value="inactive"
               @change="handleStatusChange(row)"
             />
           </template>
@@ -161,8 +161,8 @@
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="categoryForm.status">
-            <el-radio :label="1">启用</el-radio>
-            <el-radio :label="0">禁用</el-radio>
+            <el-radio label="active">启用</el-radio>
+            <el-radio label="inactive">禁用</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="描述" prop="description">
@@ -206,9 +206,12 @@ interface Category {
   parentId: string | number
   productCount: number
   sort: number
-  status: number
+  status: 'active' | 'inactive' | number // 兼容字符串和数字
   createTime: string
   children?: Category[]
+  _updating?: boolean
+  _initializing?: boolean
+  _lastStatus?: 'active' | 'inactive' | number
 }
 
 // 响应式数据
@@ -226,12 +229,12 @@ const searchForm = reactive({
 
 // 分类表单
 const categoryForm = reactive({
-  id: null,
-  parentId: '0',
+  id: null as string | number | null,
+  parentId: '0' as string | number,
   name: '',
   code: '',
   sort: 0,
-  status: 1,
+  status: 'active' as 'active' | 'inactive', // 默认启用
   description: ''
 })
 
@@ -254,7 +257,7 @@ const formRules = {
 const categoryList = computed(() => Array.isArray(productStore.categories) ? productStore.categories : [])
 
 // 上级分类选项（一级分类）- 从 productStore 获取
-const parentCategoryOptions = computed(() => 
+const parentCategoryOptions = computed(() =>
   (Array.isArray(productStore.categories) ? productStore.categories : []).filter(cat => cat.level === 1)
 )
 
@@ -264,7 +267,7 @@ const loadData = async () => {
   try {
     // 从API加载分类数据
     await productStore.loadCategories()
-    
+
     // 初始化状态标记，防止初始化时触发状态变化事件
     const categories = Array.isArray(productStore.categories) ? productStore.categories : []
     categories.forEach(category => {
@@ -275,7 +278,7 @@ const loadData = async () => {
         category._initializing = false
       }, 100)
     })
-    
+
     console.log('分类数据加载完成')
   } catch (error) {
     console.error('加载数据失败:', error)
@@ -328,7 +331,7 @@ const handleDelete = async (row: Category) => {
     ElMessage.warning('该分类下有商品，无法删除')
     return
   }
-  
+
   try {
     await ElMessageBox.confirm(
       `确定要删除分类"${row.name}"吗？`,
@@ -339,7 +342,7 @@ const handleDelete = async (row: Category) => {
         type: 'warning'
       }
     )
-    
+
     // 调用真实API删除分类
     await productStore.deleteCategory(row.id.toString())
     ElMessage.success('删除成功')
@@ -353,26 +356,26 @@ const handleDelete = async (row: Category) => {
 
 const handleStatusChange = async (row: Category) => {
   const originalStatus = row.status
-  
+
   // 防止重复调用和初始化时的意外触发
   if (row._updating || row._initializing || !row.id) {
     return
   }
-  
+
   // 检查状态是否真的发生了变化
   if (row._lastStatus !== undefined && row._lastStatus === row.status) {
     return
   }
-  
+
   try {
     row._updating = true
     // 调用真实API更新状态
     await productStore.updateCategory(row.id.toString(), { status: row.status })
-    
+
     // 更新最后状态记录
     row._lastStatus = row.status
-    
-    ElMessage.success(`${row.status ? '启用' : '禁用'}成功`)
+
+    ElMessage.success(`${row.status === 'active' ? '启用' : '禁用'}成功`)
   } catch (error) {
     // 恢复原状态
     row.status = originalStatus
@@ -386,11 +389,11 @@ const handleStatusChange = async (row: Category) => {
 
 const handleSubmit = async () => {
   if (!formRef.value) return
-  
+
   try {
     await formRef.value.validate()
     submitLoading.value = true
-    
+
     if (categoryForm.id) {
       // 编辑分类 - 调用真实API
       await productStore.updateCategory(categoryForm.id.toString(), {
@@ -411,11 +414,11 @@ const handleSubmit = async () => {
         sort: categoryForm.sort,
         status: categoryForm.status
       }
-      
+
       await productStore.addCategory(newCategoryData)
       ElMessage.success('新增成功')
     }
-    
+
     dialogVisible.value = false
   } catch (error) {
     console.error('操作失败:', error)
@@ -437,7 +440,7 @@ const resetForm = () => {
     name: '',
     code: '',
     sort: 0,
-    status: 1,
+    status: 'active', // 默认启用
     description: ''
   })
 }
