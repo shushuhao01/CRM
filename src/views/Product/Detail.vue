@@ -292,9 +292,14 @@
           </el-card>
 
           <!-- 相关统计 -->
-          <el-card class="stats-card">
+          <el-card v-if="canViewSalesData" class="stats-card">
             <template #header>
-              <span>相关统计</span>
+              <div class="stats-header">
+                <span>相关统计</span>
+                <el-tag v-if="relatedStats.dataScope && relatedStats.dataScope !== 'all'" size="small" type="info">
+                  {{ relatedStats.dataScope === 'department' ? '部门数据' : '个人数据' }}
+                </el-tag>
+              </div>
             </template>
 
             <div v-if="relatedStats" class="related-stats">
@@ -316,7 +321,7 @@
               </div>
               <div class="stat-row">
                 <span class="stat-label">退货率：</span>
-                <span class="stat-value">{{ relatedStats.returnRate || '0%' }}</span>
+                <span class="stat-value">{{ relatedStats.returnRate || 0 }}%</span>
               </div>
             </div>
             <div v-else class="empty-data">
@@ -518,6 +523,7 @@ import { useProductStore } from '@/stores/product'
 import { useUserStore } from '@/stores/user'
 import { useConfigStore } from '@/stores/config'
 import { createSafeNavigator } from '@/utils/navigation'
+import { productApi } from '@/api/product'
 
 // 路由
 const router = useRouter()
@@ -526,6 +532,9 @@ const safeNavigator = createSafeNavigator(router)
 
 // 消息提醒store
 const notificationStore = useNotificationStore()
+
+// 订单store
+const orderStore = useOrderStore()
 
 // 商品store
 const productStore = useProductStore()
@@ -593,12 +602,20 @@ const priceForm = reactive({
 const stockRecords = ref([])
 
 // 相关统计
-const relatedStats = ref({
+const relatedStats = ref<{
+  pendingOrders: number
+  monthlySales: number
+  turnoverRate: number
+  avgRating: number
+  returnRate: number
+  dataScope?: 'all' | 'department' | 'personal'
+}>({
   pendingOrders: 0,
   monthlySales: 0,
   turnoverRate: 0,
   avgRating: 0,
-  returnRate: 0
+  returnRate: 0,
+  dataScope: 'personal'
 })
 
 // 操作日志
@@ -1173,9 +1190,35 @@ const applyDataScopeControl = (orders: any[]) => {
 }
 
 /**
- * 加载相关统计
+ * 加载相关统计（从后端API获取，根据用户角色权限过滤数据）
  */
 const loadRelatedStats = async () => {
+  try {
+    const productId = route.params.id as string
+
+    // 调用后端API获取统计数据（后端会根据用户角色过滤数据）
+    const stats = await productApi.getProductStats(productId)
+
+    relatedStats.value = {
+      pendingOrders: stats.pendingOrders || 0,
+      monthlySales: stats.monthlySales || 0,
+      turnoverRate: stats.turnoverRate || 0,
+      avgRating: stats.avgRating || 0,
+      returnRate: stats.returnRate || 0,
+      dataScope: stats.dataScope || 'personal'
+    }
+
+  } catch (error) {
+    console.error('加载统计数据失败:', error)
+    // 如果API调用失败，尝试使用本地数据计算（作为降级方案）
+    await loadRelatedStatsFromLocal()
+  }
+}
+
+/**
+ * 从本地数据加载统计（降级方案）
+ */
+const loadRelatedStatsFromLocal = async () => {
   try {
     const productId = route.params.id as string
 
@@ -1220,23 +1263,34 @@ const loadRelatedStats = async () => {
     const returnRate = productOrders.length > 0 ?
       (returnedOrders / productOrders.length * 100) : 0
 
+    // 根据用户角色确定数据范围
+    const currentUser = userStore.user
+    let dataScope: 'all' | 'department' | 'personal' = 'personal'
+    if (currentUser?.role === 'super_admin' || currentUser?.role === 'admin') {
+      dataScope = 'all'
+    } else if (currentUser?.role === 'department_head' || currentUser?.role === 'manager') {
+      dataScope = 'department'
+    }
+
     relatedStats.value = {
       pendingOrders,
       monthlySales,
       turnoverRate: Number(turnoverRate.toFixed(1)),
       avgRating: Number(avgRating.toFixed(1)),
-      returnRate: Number(returnRate.toFixed(1))
+      returnRate: Number(returnRate.toFixed(1)),
+      dataScope
     }
 
   } catch (error) {
-    console.error('加载统计数据失败:', error)
-    // 设置默认值而不是显示错误
+    console.error('从本地加载统计数据失败:', error)
+    // 设置默认值
     relatedStats.value = {
       pendingOrders: 0,
       monthlySales: 0,
       turnoverRate: 0,
       avgRating: 0,
-      returnRate: 0
+      returnRate: 0,
+      dataScope: 'personal'
     }
   }
 }
@@ -1638,6 +1692,12 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.stats-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .related-stats {
