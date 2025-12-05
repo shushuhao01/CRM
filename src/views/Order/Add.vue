@@ -1426,9 +1426,16 @@ onMounted(async () => {
   // 首先加载客户数据
   await customerStore.loadCustomers()
 
-  // 初始化商品数据
-  if (productStore.products.length === 0) {
-    productStore.initData()
+  // 【修复】始终从API获取最新商品数据，确保所有用户看到相同的商品列表
+  // 不再依赖本地缓存，避免不同用户看到不同商品的问题
+  try {
+    await productStore.refreshProducts()
+  } catch (error) {
+    console.error('加载商品数据失败:', error)
+    // 如果API失败，回退到本地数据
+    if (productStore.products.length === 0) {
+      productStore.initData()
+    }
   }
 
   // 检查是否有传递的客户信息和商品信息
