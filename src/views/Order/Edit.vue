@@ -1148,8 +1148,8 @@ const pasteImage = async () => {
   }
 }
 
-// 处理图片文件
-const handleImageFile = (file) => {
+// 处理图片文件 - 上传到服务器
+const handleImageFile = async (file) => {
   if (!beforeUpload(file)) {
     return
   }
@@ -1159,16 +1159,24 @@ const handleImageFile = (file) => {
     return
   }
 
-  // 创建预览URL
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    const imageUrl = e.target?.result
-    depositScreenshots.value.push(imageUrl)
-    // 同时更新orderForm中的字段（保持兼容性）
-    orderForm.depositScreenshot = depositScreenshots.value[0] || ''
-    ElMessage.success('图片已添加')
+  try {
+    // 上传到服务器
+    const { uploadImage } = await import('@/services/uploadService')
+    const result = await uploadImage(file, 'order')
+
+    if (result.success && result.url) {
+      // 上传成功，使用服务器返回的URL
+      depositScreenshots.value.push(result.url)
+      // 同时更新orderForm中的字段（保持兼容性）
+      orderForm.depositScreenshot = depositScreenshots.value[0] || ''
+      ElMessage.success('图片上传成功')
+    } else {
+      ElMessage.error(result.message || '图片上传失败')
+    }
+  } catch (error) {
+    console.error('图片上传失败:', error)
+    ElMessage.error('图片上传失败，请重试')
   }
-  reader.readAsDataURL(file)
 }
 
 // 文件上传前验证
