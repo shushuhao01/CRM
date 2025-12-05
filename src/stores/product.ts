@@ -25,6 +25,8 @@ export interface Product {
   status: 'active' | 'inactive' | 'out_of_stock'
   image: string
   images?: string[]
+  specifications?: Record<string, any> // 规格参数
+  createdBy?: string // 创建人
   createTime: string
   updateTime?: string
   deleted?: boolean
