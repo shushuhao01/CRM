@@ -21,6 +21,27 @@ router.use(authenticateToken);
 router.get('/', ProductController.getProducts);
 
 /**
+ * @route POST /api/v1/products
+ * @desc 创建产品
+ * @access Private
+ */
+router.post('/', ProductController.createProduct);
+
+/**
+ * @route PUT /api/v1/products/:id
+ * @desc 更新产品
+ * @access Private
+ */
+router.put('/:id', ProductController.updateProduct);
+
+/**
+ * @route DELETE /api/v1/products/:id
+ * @desc 删除产品
+ * @access Private
+ */
+router.delete('/:id', ProductController.deleteProduct);
+
+/**
  * @route GET /api/v1/products/:id
  * @desc 获取产品详情
  * @access Private

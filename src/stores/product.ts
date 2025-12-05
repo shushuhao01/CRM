@@ -60,21 +60,21 @@ export const useProductStore = createPersistentStore('product', () => {
   const products = ref<Product[]>([])
   const categories = ref<ProductCategory[]>([])
   const loading = ref(false)
-  
+
   // 确保categories始终是数组的辅助函数
   const ensureArrayCategories = () => {
     if (!Array.isArray(categories.value)) {
       categories.value = []
     }
   }
-  
+
   // 分页信息
   const pagination = ref({
     currentPage: 1,
     pageSize: 20,
     total: 0
   })
-  
+
   // 搜索条件
   const searchForm = ref<ProductSearchForm>({
     name: '',
@@ -87,20 +87,20 @@ export const useProductStore = createPersistentStore('product', () => {
     showDeleted: false,
     onlyDeleted: false
   })
-  
+
   // 统计数据
   const stats = computed(() => {
     const totalProducts = (products.value || []).length
     const lowStockCount = (products.value || []).filter(p => p.stock <= p.minStock && p.stock > 0).length
     const outOfStockCount = (products.value || []).filter(p => p.stock === 0).length
-    
+
     return {
       totalProducts,
       lowStockCount,
       outOfStockCount
     }
   })
-  
+
   // API调用方法
   const loadCategories = async () => {
     try {
@@ -140,77 +140,73 @@ export const useProductStore = createPersistentStore('product', () => {
     if (force || categories.value.length === 0) {
       await loadCategories()
     }
-    
+
     if (force || products.value.length === 0) {
       await loadProducts()
     }
   }
-  
+
   // 生成唯一ID
   const generateUniqueId = () => {
     const timestamp = Date.now()
     const random = Math.floor(Math.random() * 1000)
     let newId = timestamp + random
-    
+
     // 确保ID不重复
     while (products.value.some(p => p.id === newId)) {
       newId = Date.now() + Math.floor(Math.random() * 1000)
     }
-    
+
     return newId
   }
 
   // 添加商品
   const addProduct = async (product: Omit<Product, 'id' | 'createTime'>) => {
+    // 优先使用服务器API
+    try {
+      const serverProduct = await productApi.create(product)
+      if (serverProduct && serverProduct.id) {
+        products.value.unshift(serverProduct)
+        console.log('[ProductStore] 服务器创建商品成功:', serverProduct.name, 'ID:', serverProduct.id)
+        return serverProduct
+      }
+    } catch (error) {
+      console.error('[ProductStore] 服务器创建商品失败，回退到本地存储:', error)
+    }
+
+    // 服务器失败时回退到本地存储
     const newProduct: Product = {
       ...product,
       id: generateUniqueId(),
       createTime: new Date().toLocaleString('zh-CN')
     }
-    
-    // TODO: 当服务器部署后，取消注释以下代码以使用服务器API
-    /*
-    try {
-      const serverProduct = await productApi.create(product)
-      products.value.unshift(serverProduct)
-      console.log('[ProductStore] 服务器创建商品成功:', serverProduct.name, 'ID:', serverProduct.id)
-      return serverProduct
-    } catch (error) {
-      console.error('[ProductStore] 服务器创建商品失败，使用本地存储:', error)
-      // 服务器失败时回退到本地存储
-    }
-    */
-    
-    // 本地存储（当前使用）
     products.value.unshift(newProduct)
     console.log('[ProductStore] 本地添加新商品:', newProduct.name, 'ID:', newProduct.id)
     return newProduct
   }
-  
+
   // 更新商品
   const updateProduct = async (id: string | number, updates: Partial<Product>) => {
     const index = (products.value || []).findIndex(p => p.id === id)
     if (index !== -1) {
+      // 优先使用服务器API
+      try {
+        const serverProduct = await productApi.update(String(id), updates)
+        if (serverProduct) {
+          products.value[index] = serverProduct
+          console.log('[ProductStore] 服务器更新商品成功:', serverProduct.name, 'ID:', id)
+          return serverProduct
+        }
+      } catch (error) {
+        console.error('[ProductStore] 服务器更新商品失败，回退到本地存储:', error)
+      }
+
+      // 服务器失败时回退到本地存储
       const updatedProduct = {
         ...products.value[index],
         ...updates,
         updateTime: new Date().toLocaleString('zh-CN')
       }
-      
-      // TODO: 当服务器部署后，取消注释以下代码以使用服务器API
-      /*
-      try {
-        const serverProduct = await productApi.update(String(id), updates)
-        products.value[index] = serverProduct
-        console.log('[ProductStore] 服务器更新商品成功:', serverProduct.name, 'ID:', id)
-        return serverProduct
-      } catch (error) {
-        console.error('[ProductStore] 服务器更新商品失败，使用本地存储:', error)
-        // 服务器失败时回退到本地存储
-      }
-      */
-      
-      // 本地存储（当前使用）
       products.value[index] = updatedProduct
       console.log('[ProductStore] 本地更新商品:', updatedProduct.name, 'ID:', id)
       return updatedProduct
@@ -218,27 +214,24 @@ export const useProductStore = createPersistentStore('product', () => {
     console.warn('[ProductStore] 未找到要更新的商品 ID:', id)
     return null
   }
-  
+
   // 删除商品（软删除）
   const deleteProduct = async (id: string | number) => {
     const product = (products.value || []).find(p => p.id === id)
     if (product) {
-      // TODO: 当服务器部署后，取消注释以下代码以使用服务器API
-      /*
+      // 优先使用服务器API
       try {
         await productApi.delete(String(id))
         console.log('[ProductStore] 服务器删除商品成功:', product.name, 'ID:', id)
       } catch (error) {
-        console.error('[ProductStore] 服务器删除商品失败，使用本地存储:', error)
-        // 服务器失败时回退到本地存储
+        console.error('[ProductStore] 服务器删除商品失败，回退到本地存储:', error)
       }
-      */
-      
-      // 本地存储（当前使用）
+
+      // 同时更新本地状态
       product.deleted = true
-      product.status = 'inactive' // 删除的商品默认设置为下架状态
+      product.status = 'inactive'
       product.updateTime = new Date().toISOString()
-      console.log('[ProductStore] 本地软删除商品:', product.name, 'ID:', id)
+      console.log('[ProductStore] 商品已删除:', product.name, 'ID:', id)
       return true
     }
     console.warn('[ProductStore] 未找到要删除的商品 ID:', id)
@@ -266,16 +259,16 @@ export const useProductStore = createPersistentStore('product', () => {
     }
     return false
   }
-  
+
   // 根据ID获取商品
   const getProductById = (id: string | number) => {
     return (products.value || []).find(p => p.id == id || p.id === Number(id) || String(p.id) === String(id))
   }
-  
+
   // 获取过滤后的商品列表
   const getFilteredProducts = computed(() => {
     let filtered = [...(products.value || [])]
-    
+
     // 按删除状态过滤
     if (searchForm.value.onlyDeleted) {
       // 只显示已删除的商品
@@ -285,26 +278,26 @@ export const useProductStore = createPersistentStore('product', () => {
       filtered = filtered.filter(p => !p.deleted)
     }
     // 如果showDeleted为true且onlyDeleted为false，则显示所有商品（包括已删除的）
-    
+
     // 按名称过滤
     if (searchForm.value.name) {
-      filtered = filtered.filter(p => 
+      filtered = filtered.filter(p =>
         p.name.toLowerCase().includes(searchForm.value.name.toLowerCase())
       )
     }
-    
+
     // 按编码过滤
     if (searchForm.value.code) {
-      filtered = filtered.filter(p => 
+      filtered = filtered.filter(p =>
         p.code.toLowerCase().includes(searchForm.value.code.toLowerCase())
       )
     }
-    
+
     // 按分类过滤
     if (searchForm.value.categoryId) {
       filtered = filtered.filter(p => p.categoryId === searchForm.value.categoryId)
     }
-    
+
     // 按状态过滤
     if (searchForm.value.status) {
       if (searchForm.value.status === 'active') {
@@ -314,7 +307,7 @@ export const useProductStore = createPersistentStore('product', () => {
         filtered = filtered.filter(p => p.status === searchForm.value.status)
       }
     }
-    
+
     // 按库存状态过滤
     if (searchForm.value.stockStatus) {
       switch (searchForm.value.stockStatus) {
@@ -329,7 +322,7 @@ export const useProductStore = createPersistentStore('product', () => {
           break
       }
     }
-    
+
     // 按价格范围过滤
     if (searchForm.value.minPrice !== null) {
       filtered = filtered.filter(p => p.price >= searchForm.value.minPrice!)
@@ -337,15 +330,15 @@ export const useProductStore = createPersistentStore('product', () => {
     if (searchForm.value.maxPrice !== null) {
       filtered = filtered.filter(p => p.price <= searchForm.value.maxPrice!)
     }
-    
+
     return filtered
   })
-  
+
   // 设置搜索条件
   const setSearchForm = (form: Partial<ProductSearchForm>) => {
     Object.assign(searchForm.value, form)
   }
-  
+
   // 重置搜索条件
   const resetSearchForm = () => {
     searchForm.value = {
@@ -360,12 +353,12 @@ export const useProductStore = createPersistentStore('product', () => {
       onlyDeleted: false
     }
   }
-  
+
   // 设置分页
   const setPagination = (page: Partial<typeof pagination.value>) => {
     Object.assign(pagination.value, page)
   }
-  
+
   // 更新商品库存
   const updateProductStock = (productId: string | number, stockChange: number) => {
     const product = products.value.find(p => p.id === productId)
@@ -373,7 +366,7 @@ export const useProductStore = createPersistentStore('product', () => {
       const newStock = product.stock + stockChange
       product.stock = Math.max(0, newStock) // 确保库存不会小于0
       product.updateTime = new Date().toLocaleString()
-      
+
       // 如果库存为0，更新状态为缺货
       if (product.stock === 0) {
         product.status = 'out_of_stock'
@@ -382,16 +375,16 @@ export const useProductStore = createPersistentStore('product', () => {
       }
     }
   }
-  
+
   // 从API获取产品数据
   const fetchProducts = async (params: ProductListParams = {}) => {
     try {
       loading.value = true
       const response = await productApi.getActiveList(params)
-      
+
       // 更新产品列表
       products.value = response?.list || []
-      
+
       // 更新分页信息
       pagination.value = {
         ...pagination.value,
@@ -399,7 +392,7 @@ export const useProductStore = createPersistentStore('product', () => {
         current: response?.page || 1,
         pageSize: response?.pageSize || 10
       }
-      
+
       return response
     } catch (error) {
       console.error('获取产品列表失败:', error)
@@ -419,7 +412,7 @@ export const useProductStore = createPersistentStore('product', () => {
         pageSize: pagination.value.pageSize,
         status: 'active' // 只获取在售产品
       }
-      
+
       // 添加搜索条件
       if (searchForm.value.name) {
         params.name = searchForm.value.name
@@ -430,12 +423,12 @@ export const useProductStore = createPersistentStore('product', () => {
       if (searchForm.value.stockStatus) {
         params.stockStatus = searchForm.value.stockStatus as any
       }
-      
+
       const response = await productApi.getActiveList(params)
-      
+
       // 更新产品列表
       products.value = response?.list || []
-      
+
       // 更新分页信息
       pagination.value = {
         ...pagination.value,
@@ -443,7 +436,7 @@ export const useProductStore = createPersistentStore('product', () => {
         current: response?.page || 1,
         pageSize: response?.pageSize || 10
       }
-      
+
       return response
     } catch (error) {
       console.error('刷新产品列表失败:', error)
@@ -454,7 +447,7 @@ export const useProductStore = createPersistentStore('product', () => {
   }
 
 
-  
+
   const findCategoryById = (id: string): ProductCategory | null => {
     const findInArray = (arr: ProductCategory[]): ProductCategory | null => {
       for (const cat of arr) {
@@ -466,13 +459,13 @@ export const useProductStore = createPersistentStore('product', () => {
       }
       return null
     }
-    
+
     return findInArray(categories.value)
   }
-  
+
   const getCategoryPath = (id: string): ProductCategory[] => {
     const path: ProductCategory[] = []
-    
+
     const findPath = (arr: ProductCategory[], targetId: string, currentPath: ProductCategory[]): boolean => {
       for (const cat of arr) {
         const newPath = [...currentPath, cat]
@@ -486,14 +479,14 @@ export const useProductStore = createPersistentStore('product', () => {
       }
       return false
     }
-    
+
     findPath(categories.value, id, [])
     return path
   }
-  
+
   const getFlatCategories = (): ProductCategory[] => {
     const flat: ProductCategory[] = []
-    
+
     const flatten = (arr: ProductCategory[]) => {
       for (const cat of arr) {
         flat.push(cat)
@@ -502,7 +495,7 @@ export const useProductStore = createPersistentStore('product', () => {
         }
       }
     }
-    
+
     flatten(categories.value)
     return flat
   }
@@ -512,14 +505,14 @@ export const useProductStore = createPersistentStore('product', () => {
     if (!keyword.trim()) {
       return []
     }
-    
+
     const searchTerm = keyword.toLowerCase().trim()
-    
+
     // 从当前产品列表中搜索
     const results = (products.value || []).filter(product => {
       // 排除已删除的产品
       if (product.deleted) return false
-      
+
       // 搜索产品名称、编码、品牌、规格
       return (
         product.name.toLowerCase().includes(searchTerm) ||
@@ -529,22 +522,22 @@ export const useProductStore = createPersistentStore('product', () => {
         product.description.toLowerCase().includes(searchTerm)
       )
     })
-    
+
     // 按相关性排序：名称匹配优先，然后是编码匹配
     results.sort((a, b) => {
       const aNameMatch = a.name.toLowerCase().includes(searchTerm)
       const bNameMatch = b.name.toLowerCase().includes(searchTerm)
       const aCodeMatch = a.code.toLowerCase().includes(searchTerm)
       const bCodeMatch = b.code.toLowerCase().includes(searchTerm)
-      
+
       if (aNameMatch && !bNameMatch) return -1
       if (!aNameMatch && bNameMatch) return 1
       if (aCodeMatch && !bCodeMatch) return -1
       if (!aCodeMatch && bCodeMatch) return 1
-      
+
       return 0
     })
-    
+
     // 限制返回结果数量
     return results.slice(0, 50)
   }
@@ -595,7 +588,7 @@ export const useProductStore = createPersistentStore('product', () => {
   setTimeout(() => {
     initData()
   }, 0)
-  
+
   return {
     // 状态
     products,
@@ -603,11 +596,11 @@ export const useProductStore = createPersistentStore('product', () => {
     loading,
     pagination,
     searchForm,
-    
+
     // 计算属性
     stats,
     getFilteredProducts,
-    
+
     // 商品管理方法
     addProduct,
     updateProduct,
@@ -622,12 +615,12 @@ export const useProductStore = createPersistentStore('product', () => {
     fetchProducts,
     refreshProducts,
     searchProducts,
-    
+
     // 数据加载方法
     initData,
     loadCategories,
     loadProducts,
-    
+
     // 分类管理方法
     addCategory,
     updateCategory,
