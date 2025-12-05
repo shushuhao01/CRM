@@ -144,8 +144,15 @@ export const requireAdmin = requireRole(['admin', 'superadmin', 'super_admin']);
 
 /**
  * 管理员或经理权限检查中间件
+ * 支持的角色: admin, super_admin, manager, department_manager
  */
-export const requireManagerOrAdmin = requireRole(['admin', 'manager']);
+export const requireManagerOrAdmin = requireRole([
+  'admin',
+  'super_admin',
+  'superadmin',
+  'manager',
+  'department_manager'
+]);
 
 /**
  * 可选认证中间件（不强制要求认证）
