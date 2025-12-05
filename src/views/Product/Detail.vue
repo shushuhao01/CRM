@@ -1155,7 +1155,7 @@ const loadStockRecords = async () => {
 /**
  * 应用数据范围控制
  */
-const applyDataScopeControl = (orders: any[]) => {
+const applyDataScopeControl = (orders: unknown[]) => {
   const currentUser = userStore.user
   if (!currentUser) return []
 
