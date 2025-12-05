@@ -49,6 +49,13 @@ router.delete('/:id', ProductController.deleteProduct);
 router.get('/:id', ProductController.getProductDetail);
 
 /**
+ * @route GET /api/v1/products/:id/stats
+ * @desc 获取商品相关统计数据（根据用户角色权限过滤）
+ * @access Private
+ */
+router.get('/:id/stats', ProductController.getProductStats);
+
+/**
  * @route POST /api/v1/products/batch-import
  * @desc 批量导入产品
  * @access Private

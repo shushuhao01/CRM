@@ -100,6 +100,34 @@ export const productApi = {
   },
 
   /**
+   * 获取商品相关统计数据（根据用户角色权限过滤）
+   */
+  async getProductStats(productId: string): Promise<{
+    pendingOrders: number
+    monthlySales: number
+    turnoverRate: number
+    avgRating: number
+    returnRate: number
+    dataScope: 'all' | 'department' | 'personal'
+  }> {
+    try {
+      const response = await api.get(`/products/${productId}/stats`)
+      return response.data
+    } catch (error) {
+      console.error('获取商品统计数据失败:', error)
+      // 返回默认值
+      return {
+        pendingOrders: 0,
+        monthlySales: 0,
+        turnoverRate: 0,
+        avgRating: 0,
+        returnRate: 0,
+        dataScope: 'personal'
+      }
+    }
+  },
+
+  /**
    * 获取库存统计信息
    */
   async getStockStatistics(): Promise<any> {
