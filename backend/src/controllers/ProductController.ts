@@ -350,7 +350,10 @@ export class ProductController {
         status: p.status,
         image: p.images?.[0] || '',
         images: p.images || [],
-        createTime: p.createdAt?.toISOString() || ''
+        specifications: p.specifications || {},
+        createdBy: p.createdBy || '',
+        createTime: p.createdAt?.toISOString() || '',
+        updateTime: p.updatedAt?.toISOString() || ''
       }))
 
       res.json({
@@ -410,7 +413,10 @@ export class ProductController {
           status: product.status,
           image: product.images?.[0] || '',
           images: product.images || [],
-          createTime: product.createdAt?.toISOString() || ''
+          specifications: product.specifications || {},
+          createdBy: product.createdBy || '',
+          createTime: product.createdAt?.toISOString() || '',
+          updateTime: product.updatedAt?.toISOString() || ''
         }
       })
     } catch (error) {
@@ -496,10 +502,19 @@ export class ProductController {
           name: newProduct.name,
           categoryId: newProduct.categoryId,
           categoryName: newProduct.categoryName,
+          description: newProduct.description || '',
           price: Number(newProduct.price),
+          costPrice: Number(newProduct.costPrice) || 0,
           stock: newProduct.stock,
+          minStock: newProduct.minStock || 0,
+          unit: newProduct.unit || '件',
           status: newProduct.status,
-          createTime: newProduct.createdAt?.toISOString() || ''
+          image: newProduct.images?.[0] || '',
+          images: newProduct.images || [],
+          specifications: {},
+          createdBy: newProduct.createdBy || '',
+          createTime: newProduct.createdAt?.toISOString() || '',
+          updateTime: newProduct.updatedAt?.toISOString() || ''
         },
         message: '创建产品成功'
       })
@@ -558,9 +573,20 @@ export class ProductController {
           code: product.code,
           name: product.name,
           categoryId: product.categoryId,
+          categoryName: product.categoryName || '',
+          description: product.description || '',
           price: Number(product.price),
+          costPrice: Number(product.costPrice) || 0,
           stock: product.stock,
-          status: product.status
+          minStock: product.minStock || 0,
+          unit: product.unit || '件',
+          status: product.status,
+          image: product.images?.[0] || '',
+          images: product.images || [],
+          specifications: product.specifications || {},
+          createdBy: product.createdBy || '',
+          createTime: product.createdAt?.toISOString() || '',
+          updateTime: product.updatedAt?.toISOString() || ''
         },
         message: '更新产品成功'
       })
