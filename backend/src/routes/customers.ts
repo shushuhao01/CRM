@@ -126,6 +126,67 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 /**
+ * @route GET /api/v1/customers/check-exists
+ * @desc 检查客户是否存在（通过手机号）
+ * @access Private
+ * @note 此路由必须在 /:id 路由之前定义，否则会被 /:id 匹配
+ */
+router.get('/check-exists', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const { phone } = req.query;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '手机号不能为空',
+        data: null
+      });
+    }
+
+    console.log('[检查客户存在] 查询手机号:', phone);
+
+    const existingCustomer = await customerRepository.findOne({
+      where: { phone: phone as string }
+    });
+
+    if (existingCustomer) {
+      console.log('[检查客户存在] 找到客户:', existingCustomer.name);
+      return res.json({
+        success: true,
+        code: 200,
+        message: '该手机号已存在客户记录',
+        data: {
+          id: existingCustomer.id,
+          name: existingCustomer.name,
+          phone: existingCustomer.phone,
+          creatorName: existingCustomer.createdBy || '',
+          createTime: existingCustomer.createdAt?.toISOString() || ''
+        }
+      });
+    }
+
+    console.log('[检查客户存在] 客户不存在，可以创建');
+    return res.json({
+      success: true,
+      code: 200,
+      message: '该手机号不存在，可以创建',
+      data: null
+    });
+  } catch (error) {
+    console.error('检查客户存在失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '检查客户存在失败',
+      error: error instanceof Error ? error.message : '未知错误',
+      data: null
+    });
+  }
+});
+
+/**
  * @route GET /api/v1/customers/:id
  * @desc 获取客户详情
  * @access Private
@@ -470,66 +531,6 @@ router.delete('/:id', async (req: Request, res: Response) => {
       code: 500,
       message: '删除客户失败',
       error: error instanceof Error ? error.message : '未知错误'
-    });
-  }
-});
-
-/**
- * @route GET /api/v1/customers/check-exists
- * @desc 检查客户是否存在（通过手机号）
- * @access Private
- */
-router.get('/check-exists', async (req: Request, res: Response) => {
-  try {
-    const customerRepository = AppDataSource.getRepository(Customer);
-    const { phone } = req.query;
-
-    if (!phone) {
-      return res.status(400).json({
-        success: false,
-        code: 400,
-        message: '手机号不能为空',
-        data: null
-      });
-    }
-
-    console.log('[检查客户存在] 查询手机号:', phone);
-
-    const existingCustomer = await customerRepository.findOne({
-      where: { phone: phone as string }
-    });
-
-    if (existingCustomer) {
-      console.log('[检查客户存在] 找到客户:', existingCustomer.name);
-      return res.json({
-        success: true,
-        code: 200,
-        message: '该手机号已存在客户记录',
-        data: {
-          id: existingCustomer.id,
-          name: existingCustomer.name,
-          phone: existingCustomer.phone,
-          creatorName: existingCustomer.createdBy || '',
-          createTime: existingCustomer.createdAt?.toISOString() || ''
-        }
-      });
-    }
-
-    console.log('[检查客户存在] 客户不存在，可以创建');
-    return res.json({
-      success: true,
-      code: 200,
-      message: '该手机号不存在，可以创建',
-      data: null
-    });
-  } catch (error) {
-    console.error('检查客户存在失败:', error);
-    res.status(500).json({
-      success: false,
-      code: 500,
-      message: '检查客户存在失败',
-      error: error instanceof Error ? error.message : '未知错误',
-      data: null
     });
   }
 });
