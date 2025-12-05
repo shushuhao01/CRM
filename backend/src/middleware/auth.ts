@@ -138,8 +138,9 @@ export const requireRole = (roles: string | string[]) => {
 
 /**
  * 管理员权限检查中间件
+ * 支持的角色: admin, superadmin, super_admin
  */
-export const requireAdmin = requireRole(['admin', 'superadmin']);
+export const requireAdmin = requireRole(['admin', 'superadmin', 'super_admin']);
 
 /**
  * 管理员或经理权限检查中间件
