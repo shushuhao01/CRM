@@ -152,7 +152,8 @@ class UserDataService {
    */
   private async getUsersFromAPI(): Promise<User[]> {
     try {
-      const response = await fetch(`${this.config.apiBaseURL}/api/users`, {
+      // 修复：apiBaseURL已经包含/api/v1，不需要再加/api
+      const response = await fetch(`${this.config.apiBaseURL}/users`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
