@@ -15,23 +15,24 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button @click="handleStockAdjust" :icon="Edit">
+        <!-- 仅管理员可见的操作按钮 -->
+        <el-button v-if="canAdjustStock" @click="handleStockAdjust" :icon="Edit">
           调库存
         </el-button>
-        <el-button @click="handleEdit" type="primary" :icon="Edit">
+        <el-button v-if="canEditProduct" @click="handleEdit" type="primary" :icon="Edit">
           编辑商品
         </el-button>
-        <el-dropdown @command="handleDropdownCommand">
+        <el-dropdown v-if="canEditProduct" @command="handleDropdownCommand">
           <el-button :icon="MoreFilled">
             更多<el-icon class="el-icon--right"><arrow-down /></el-icon>
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="copy">复制商品</el-dropdown-item>
-              <el-dropdown-item command="toggle" :divided="true">
+              <el-dropdown-item v-if="canToggleStatus" command="toggle" :divided="true">
                 {{ productInfo.status === 'active' ? '下架' : '上架' }}
               </el-dropdown-item>
-              <el-dropdown-item command="delete" class="danger-item">
+              <el-dropdown-item v-if="canEditProduct" command="delete" class="danger-item">
                 删除商品
               </el-dropdown-item>
             </el-dropdown-menu>
@@ -49,7 +50,7 @@
             <template #header>
               <span>基本信息</span>
             </template>
-            
+
             <div class="product-basic">
               <div class="product-images">
                 <el-image
@@ -70,7 +71,7 @@
                   />
                 </div>
               </div>
-              
+
               <div class="product-info">
                 <div class="info-row">
                   <label>商品名称：</label>
@@ -117,7 +118,7 @@
             <template #header>
               <span>价格库存</span>
             </template>
-            
+
             <el-row :gutter="20">
               <el-col :span="12">
                 <div class="price-info">
@@ -177,7 +178,7 @@
             <template #header>
               <span>销售数据</span>
             </template>
-            
+
             <el-row :gutter="20">
               <el-col :span="12">
                 <div class="stat-item">
@@ -204,7 +205,7 @@
                 </el-button>
               </div>
             </template>
-            
+
             <div v-if="stockRecords.length === 0" class="empty-data">
               <el-empty description="暂无库存记录" />
             </div>
@@ -239,7 +240,7 @@
             <template #header>
               <span>商品状态</span>
             </template>
-            
+
             <div class="status-info">
               <div class="status-item">
                 <label>当前状态：</label>
@@ -271,18 +272,20 @@
             <template #header>
               <span>快速操作</span>
             </template>
-            
+
             <div class="quick-actions">
+              <!-- 创建订单：所有角色可见 -->
               <el-button @click="handleCreateOrder" type="primary" :icon="Plus" block>
                 创建订单
               </el-button>
-              <el-button @click="handleStockAdjust" :icon="Edit" block>
+              <!-- 以下操作仅管理员可见 -->
+              <el-button v-if="canAdjustStock" @click="handleStockAdjust" :icon="Edit" block>
                 调整库存
               </el-button>
-              <el-button @click="handlePriceAdjust" :icon="Money" block>
+              <el-button v-if="canAdjustPrice" @click="handlePriceAdjust" :icon="Money" block>
                 调整价格
               </el-button>
-              <el-button @click="handleToggleStatus" :icon="Switch" block>
+              <el-button v-if="canToggleStatus" @click="handleToggleStatus" :icon="Switch" block>
                 {{ productInfo.status === 'active' ? '下架商品' : '上架商品' }}
               </el-button>
             </div>
@@ -293,7 +296,7 @@
             <template #header>
               <span>相关统计</span>
             </template>
-            
+
             <div v-if="relatedStats" class="related-stats">
               <div class="stat-row">
                 <span class="stat-label">待处理订单：</span>
@@ -326,7 +329,7 @@
             <template #header>
               <span>操作日志</span>
             </template>
-            
+
             <div v-if="operationLogs.length > 0" class="operation-logs">
               <div
                 v-for="log in operationLogs"
@@ -405,7 +408,7 @@
           />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="handleStockDialogClose">取消</el-button>
@@ -449,7 +452,7 @@
         </el-form-item>
         <el-form-item label="价格变化">
           <span v-if="priceForm.newPrice && priceForm.originalPrice">
-            <el-tag 
+            <el-tag
               :type="priceForm.newPrice > priceForm.originalPrice ? 'success' : 'danger'"
               size="small"
             >
@@ -482,7 +485,7 @@
           />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="handlePriceDialogClose">取消</el-button>
@@ -632,26 +635,46 @@ const priceFormRef = ref()
 // 权限控制计算属性
 const canViewCostPrice = computed(() => {
   if (!configStore.productConfig.enablePermissionControl) return true
-  return userStore.isSuperAdmin || 
+  return userStore.isSuperAdmin ||
          configStore.productConfig.costPriceViewRoles.includes(userStore.userInfo?.role || '')
 })
 
 const canViewSalesData = computed(() => {
   if (!configStore.productConfig.enablePermissionControl) return true
-  return userStore.isSuperAdmin || 
+  return userStore.isSuperAdmin ||
          configStore.productConfig.salesDataViewRoles.includes(userStore.userInfo?.role || '')
 })
 
 const canViewStockInfo = computed(() => {
   if (!configStore.productConfig.enablePermissionControl) return true
-  return userStore.isSuperAdmin || 
+  return userStore.isSuperAdmin ||
          configStore.productConfig.stockInfoViewRoles.includes(userStore.userInfo?.role || '')
 })
 
 const canViewOperationLogs = computed(() => {
   if (!configStore.productConfig.enablePermissionControl) return true
-  return userStore.isSuperAdmin || 
+  return userStore.isSuperAdmin ||
          configStore.productConfig.operationLogsViewRoles.includes(userStore.userInfo?.role || '')
+})
+
+// 是否可以编辑商品（仅管理员可见）
+const canEditProduct = computed(() => {
+  return userStore.isAdmin || userStore.isSuperAdmin
+})
+
+// 是否可以调整库存（仅管理员可见）
+const canAdjustStock = computed(() => {
+  return userStore.isAdmin || userStore.isSuperAdmin
+})
+
+// 是否可以调整价格（仅管理员可见）
+const canAdjustPrice = computed(() => {
+  return userStore.isAdmin || userStore.isSuperAdmin
+})
+
+// 是否可以上下架商品（仅管理员可见）
+const canToggleStatus = computed(() => {
+  return userStore.isAdmin || userStore.isSuperAdmin
 })
 
 // 方法定义
@@ -737,7 +760,7 @@ const handleStockAdjust = () => {
     reason: '',
     remark: ''
   })
-  
+
   stockDialogVisible.value = true
 }
 
@@ -752,7 +775,7 @@ const handlePriceAdjust = () => {
     reason: '',
     remark: ''
   })
-  
+
   priceDialogVisible.value = true
 }
 
@@ -760,20 +783,7 @@ const handlePriceAdjust = () => {
  * 创建订单
  */
 const handleCreateOrder = () => {
-  // 发送消息提醒
-  notificationStore.addNotification({
-    type: 'ORDER_CREATE_INITIATED',
-    title: '创建订单',
-    content: `正在为商品"${productInfo.value.name}"创建订单`,
-    data: {
-      productId: productInfo.value.id,
-      productName: productInfo.value.name,
-      productCode: productInfo.value.code,
-      timestamp: new Date().toISOString()
-    },
-    link: `/order/add?productId=${productInfo.value.id}`
-  })
-  
+  // 直接跳转到新增订单页面，带上商品ID参数
   safeNavigator.push(`/order/add?productId=${productInfo.value.id}`)
 }
 
@@ -782,7 +792,7 @@ const handleCreateOrder = () => {
  */
 const handleToggleStatus = async () => {
   const action = productInfo.value.status === 'active' ? '下架' : '上架'
-  
+
   try {
     await ElMessageBox.confirm(
       `确定要${action}商品"${productInfo.value.name}"吗？`,
@@ -793,13 +803,13 @@ const handleToggleStatus = async () => {
         type: 'warning'
       }
     )
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     productInfo.value.status = productInfo.value.status === 'active' ? 'inactive' : 'active'
     ElMessage.success(`${action}成功`)
-    
+
     // 发送消息提醒
     notificationStore.addNotification({
       type: 'PRODUCT_STATUS_CHANGED',
@@ -815,7 +825,7 @@ const handleToggleStatus = async () => {
       },
       link: `/product/detail/${productInfo.value.id}`
     })
-    
+
     // 重新加载数据
     loadProductInfo()
   } catch (error) {
@@ -861,12 +871,12 @@ const handleDelete = async () => {
         type: 'warning'
       }
     )
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     ElMessage.success('删除成功')
-    
+
     // 发送消息提醒
     notificationStore.addNotification({
       type: 'PRODUCT_DELETED',
@@ -880,7 +890,7 @@ const handleDelete = async () => {
       },
       link: '/product/list'
     })
-    
+
     safeNavigator.push('/product/list')
   } catch (error) {
     // 用户取消操作
@@ -893,14 +903,14 @@ const handleDelete = async () => {
 const confirmStockAdjust = async () => {
   try {
     await stockFormRef.value?.validate()
-    
+
     stockLoading.value = true
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     ElMessage.success('库存调整成功')
-    
+
     // 发送消息提醒
     notificationStore.addNotification({
       type: 'PRODUCT_STOCK_ADJUSTED',
@@ -917,9 +927,9 @@ const confirmStockAdjust = async () => {
       },
       link: `/product/detail/${productInfo.value.id}`
     })
-    
+
     handleStockDialogClose()
-    
+
     // 重新加载数据
     loadProductInfo()
     loadStockRecords()
@@ -944,27 +954,27 @@ const handleStockDialogClose = () => {
 const confirmPriceAdjust = async () => {
   try {
     await priceFormRef.value?.validate()
-    
+
     priceLoading.value = true
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     // 更新商品价格
     const oldPrice = productInfo.value.price
     productInfo.value.price = priceForm.newPrice
-    
+
     // 更新store中的商品价格
     productStore.updateProduct(productInfo.value.id, {
       price: priceForm.newPrice
     })
-    
+
     ElMessage.success('价格调整成功')
-    
+
     // 发送消息提醒
     const priceChange = priceForm.newPrice - oldPrice
     const changePercent = ((priceChange / oldPrice) * 100).toFixed(1)
-    
+
     notificationStore.addNotification({
       type: 'PRODUCT_PRICE_CHANGED',
       title: '价格调整',
@@ -983,9 +993,9 @@ const confirmPriceAdjust = async () => {
       },
       link: `/product/detail/${productInfo.value.id}`
     })
-    
+
     handlePriceDialogClose()
-    
+
     // 重新加载数据
     loadProductInfo()
   } catch (error) {
@@ -1009,22 +1019,22 @@ const handlePriceDialogClose = () => {
 const loadProductInfo = async () => {
   try {
     const productId = route.params.id
-    
+
     if (!productId) {
       ElMessage.error('商品ID不存在')
       safeNavigator.push('/product/list')
       return
     }
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 800))
-    
+
     // 从store中获取真实的商品数据，尝试字符串和数字两种类型
     let product = productStore.getProductById(productId)
     if (!product && !isNaN(Number(productId))) {
       product = productStore.getProductById(Number(productId))
     }
-    
+
     if (product) {
       // 使用真实的商品数据，并补充详情页需要的额外字段
       productInfo.value = {
@@ -1053,22 +1063,22 @@ const loadProductInfo = async () => {
 const loadStockRecords = async () => {
   try {
     const productId = route.params.id as string
-    
+
     // 获取当前商品信息
     const currentProduct = productStore.products.find(p => p.id === productId || p.id === Number(productId))
     if (!currentProduct) {
       stockRecords.value = []
       return
     }
-    
+
     // 从订单数据中获取真实的库存变动记录
-    const productOrders = orderStore.orders.filter(order => 
-      order.products.some(p => p.id === productId || p.id === Number(productId)) && 
+    const productOrders = orderStore.orders.filter(order =>
+      order.products.some(p => p.id === productId || p.id === Number(productId)) &&
       ['shipped', 'delivered'].includes(order.status)
     )
-    
+
     const records = []
-    
+
     // 添加商品创建时的初始库存记录
     records.push({
       id: `initial_${productId}`,
@@ -1080,7 +1090,7 @@ const loadStockRecords = async () => {
       remark: '商品创建时的初始库存',
       createTime: currentProduct.createTime
     })
-    
+
     // 添加销售出库记录
     productOrders.forEach(order => {
       const product = order.products.find(p => p.id === productId || p.id === Number(productId))
@@ -1097,7 +1107,7 @@ const loadStockRecords = async () => {
         })
       }
     })
-    
+
     // 如果当前库存低于最低库存，添加补货记录
     if (currentProduct.stock < currentProduct.minStock) {
       const restockQuantity = currentProduct.maxStock - currentProduct.stock
@@ -1112,12 +1122,12 @@ const loadStockRecords = async () => {
         createTime: new Date().toLocaleString('zh-CN')
       })
     }
-    
+
     // 按时间倒序排列
-    stockRecords.value = records.sort((a, b) => 
+    stockRecords.value = records.sort((a, b) =>
       new Date(b.createTime).getTime() - new Date(a.createTime).getTime()
     )
-    
+
   } catch (error) {
     console.error('加载库存记录失败:', error)
     // 不显示错误消息，而是显示空数据
@@ -1139,7 +1149,7 @@ const applyDataScopeControl = (orders: any[]) => {
 
   // 部门负责人可以查看本部门所有订单
   if (currentUser.role === 'department_head') {
-    return orders.filter(order => 
+    return orders.filter(order =>
       order.salesPerson?.departmentId === currentUser.departmentId ||
       order.customerService?.departmentId === currentUser.departmentId
     )
@@ -1156,8 +1166,8 @@ const applyDataScopeControl = (orders: any[]) => {
   }
 
   // 其他角色默认只能查看自己相关的订单
-  return orders.filter(order => 
-    order.salesPersonId === currentUser.id || 
+  return orders.filter(order =>
+    order.salesPersonId === currentUser.id ||
     order.customerServiceId === currentUser.id
   )
 }
@@ -1168,48 +1178,48 @@ const applyDataScopeControl = (orders: any[]) => {
 const loadRelatedStats = async () => {
   try {
     const productId = route.params.id as string
-    
+
     // 获取包含该商品的所有订单，应用数据范围控制
     const allOrders = applyDataScopeControl(orderStore.orders)
-    const productOrders = allOrders.filter(order => 
+    const productOrders = allOrders.filter(order =>
       order.products.some(p => p.id === productId || p.id === Number(productId))
     )
-    
+
     // 计算待处理订单（待审核、待发货状态）
-    const pendingOrders = productOrders.filter(order => 
+    const pendingOrders = productOrders.filter(order =>
       ['pending_audit', 'pending_shipment'].includes(order.status)
     ).length
-    
+
     // 计算本月销量
     const currentMonth = new Date().getMonth()
     const currentYear = new Date().getFullYear()
     const monthlySales = productOrders.filter(order => {
       const orderDate = new Date(order.createTime)
-      return orderDate.getMonth() === currentMonth && 
+      return orderDate.getMonth() === currentMonth &&
              orderDate.getFullYear() === currentYear &&
              ['shipped', 'delivered'].includes(order.status)
     }).reduce((sum, order) => {
       const product = order.products.find(p => p.id === productId || p.id === Number(productId))
       return sum + (product?.quantity || 0)
     }, 0)
-    
+
     // 计算库存周转率（简化计算：月销量 / 平均库存 * 100）
     const currentProduct = (productStore.products || []).find(p => p.id === productId || p.id === Number(productId))
     const avgStock = currentProduct ? (currentProduct.stock + currentProduct.maxStock) / 2 : 1
     const turnoverRate = avgStock > 0 ? (monthlySales / avgStock * 100) : 0
-    
+
     // 计算平均评分（基于订单完成情况模拟）
     const completedOrders = productOrders.filter(order => order.status === 'delivered')
-    const avgRating = completedOrders.length > 0 ? 
+    const avgRating = completedOrders.length > 0 ?
       (4.2 + Math.random() * 0.6) : 0 // 模拟4.2-4.8的评分
-    
+
     // 计算退货率
-    const returnedOrders = productOrders.filter(order => 
+    const returnedOrders = productOrders.filter(order =>
       ['rejected', 'rejected_returned', 'logistics_returned'].includes(order.status)
     ).length
-    const returnRate = productOrders.length > 0 ? 
+    const returnRate = productOrders.length > 0 ?
       (returnedOrders / productOrders.length * 100) : 0
-    
+
     relatedStats.value = {
       pendingOrders,
       monthlySales,
@@ -1217,7 +1227,7 @@ const loadRelatedStats = async () => {
       avgRating: Number(avgRating.toFixed(1)),
       returnRate: Number(returnRate.toFixed(1))
     }
-    
+
   } catch (error) {
     console.error('加载统计数据失败:', error)
     // 设置默认值而不是显示错误
@@ -1238,14 +1248,14 @@ const loadOperationLogs = async () => {
   try {
     const productId = route.params.id as string
     const logs = []
-    
+
     // 获取当前商品信息
     const currentProduct = productStore.products.find(p => p.id === productId || p.id === Number(productId))
     if (!currentProduct) {
       operationLogs.value = []
       return
     }
-    
+
     // 添加商品创建记录（默认必有的记录）
     logs.push({
       id: `product_create_${productId}`,
@@ -1254,12 +1264,12 @@ const loadOperationLogs = async () => {
       detail: `商品"${currentProduct.name}"创建成功`,
       createTime: currentProduct.createTime
     })
-    
+
     // 获取商品相关的订单操作记录
-    const productOrders = orderStore.orders.filter(order => 
+    const productOrders = orderStore.orders.filter(order =>
       order.products.some(p => p.id === productId || p.id === Number(productId))
     )
-    
+
     // 添加订单相关的操作记录
     productOrders.forEach(order => {
       // 添加订单创建记录
@@ -1270,7 +1280,7 @@ const loadOperationLogs = async () => {
         detail: `创建了包含商品"${currentProduct.name}"的订单 (订单号：${order.orderNumber})`,
         createTime: order.createTime
       })
-      
+
       // 添加订单状态变更记录
       if (order.statusHistory && order.statusHistory.length > 0) {
         order.statusHistory.forEach(status => {
@@ -1283,7 +1293,7 @@ const loadOperationLogs = async () => {
           })
         })
       }
-      
+
       // 添加订单操作记录
       if (order.operationLogs && order.operationLogs.length > 0) {
         order.operationLogs.forEach(log => {
@@ -1297,7 +1307,7 @@ const loadOperationLogs = async () => {
         })
       }
     })
-    
+
     // 如果有更新时间，添加更新记录
     if (currentProduct.updateTime && currentProduct.updateTime !== currentProduct.createTime) {
       logs.push({
@@ -1308,7 +1318,7 @@ const loadOperationLogs = async () => {
         createTime: currentProduct.updateTime
       })
     }
-    
+
     // 库存调整记录
     if (currentProduct.stock !== currentProduct.minStock) {
       logs.push({
@@ -1319,7 +1329,7 @@ const loadOperationLogs = async () => {
         createTime: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toLocaleString('zh-CN')
       })
     }
-    
+
     // 价格调整记录
     if (currentProduct.price !== currentProduct.marketPrice) {
       logs.push({
@@ -1330,18 +1340,18 @@ const loadOperationLogs = async () => {
         createTime: new Date(Date.now() - Math.random() * 14 * 24 * 60 * 60 * 1000).toLocaleString('zh-CN')
       })
     }
-    
+
     // 按时间倒序排列，只保留最近的20条记录
     operationLogs.value = logs
       .sort((a, b) => new Date(b.createTime).getTime() - new Date(a.createTime).getTime())
       .slice(0, 20)
-    
+
   } catch (error) {
     console.error('加载操作日志失败:', error)
     // 设置默认的创建记录而不是显示错误
     const productId = route.params.id as string
     const currentProduct = productStore.products.find(p => p.id === productId || p.id === Number(productId))
-    
+
     if (currentProduct) {
       operationLogs.value = [{
         id: `product_create_${productId}`,
@@ -1571,7 +1581,7 @@ onMounted(() => {
   .product-basic {
     flex-direction: column;
   }
-  
+
   .main-image {
     width: 100%;
     max-width: 400px;
@@ -1584,12 +1594,12 @@ onMounted(() => {
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .header-actions {
     justify-content: center;
     flex-wrap: wrap;
   }
-  
+
   .detail-content .el-col {
     margin-bottom: 20px;
   }
@@ -1716,7 +1726,7 @@ onMounted(() => {
   .product-basic {
     flex-direction: column;
   }
-  
+
   .main-image {
     width: 100%;
     max-width: 400px;
@@ -1729,12 +1739,12 @@ onMounted(() => {
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .header-actions {
     justify-content: center;
     flex-wrap: wrap;
   }
-  
+
   .detail-content .el-col {
     margin-bottom: 20px;
   }
