@@ -1239,3 +1239,60 @@ SELECT 'admin / admin123 (管理员)' AS account_2;
 SELECT 'manager / manager123 (部门经理)' AS account_3;
 SELECT 'sales / sales123 (销售员)' AS account_4;
 SELECT 'service / service123 (客服)' AS account_5;
+
+SELECT 'service / service123 (客服)' AS account_5;
+
+-- =============================================
+-- 数据修复脚本（部署后执行）
+-- =============================================
+
+-- 修复图片路径：将 /api/v1/uploads/ 修改为 /uploads/
+-- 说明：后端静态文件服务配置的是 /uploads 路径，需要确保数据库中存储的图片路径一致
+UPDATE system_configs 
+SET configValue = REPLACE(configValue, '/api/v1/uploads/', '/uploads/'),
+    updatedAt = NOW()
+WHERE configValue LIKE '%/api/v1/uploads/%';
+
+-- 修复用户头像路径
+UPDATE users 
+SET avatar = REPLACE(avatar, '/api/v1/uploads/', '/uploads/'),
+    updated_at = NOW()
+WHERE avatar LIKE '%/api/v1/uploads/%';
+
+-- 修复产品图片路径
+UPDATE products 
+SET images = REPLACE(images, '/api/v1/uploads/', '/uploads/'),
+    updated_at = NOW()
+WHERE images LIKE '%/api/v1/uploads/%';
+
+-- 修复订单定金截图路径
+UPDATE orders 
+SET deposit_screenshots = REPLACE(deposit_screenshots, '/api/v1/uploads/', '/uploads/'),
+    updated_at = NOW()
+WHERE deposit_screenshots LIKE '%/api/v1/uploads/%';
+
+-- 修复售后服务附件路径
+UPDATE after_sales_services 
+SET attachments = REPLACE(attachments, '/api/v1/uploads/', '/uploads/'),
+    updated_at = NOW()
+WHERE attachments LIKE '%/api/v1/uploads/%';
+
+-- =============================================
+-- Nginx 配置说明（宝塔面板）
+-- =============================================
+-- 需要在 Nginx 配置中添加以下规则，让静态文件可以正常访问：
+-- 
+-- location /uploads {
+--     alias /www/wwwroot/你的项目目录/backend/uploads;
+--     expires 30d;
+--     add_header Cache-Control "public, immutable";
+--     add_header Access-Control-Allow-Origin *;
+-- }
+-- 
+-- location /api/v1/uploads {
+--     alias /www/wwwroot/你的项目目录/backend/uploads;
+--     expires 30d;
+--     add_header Cache-Control "public, immutable";
+--     add_header Access-Control-Allow-Origin *;
+-- }
+-- =============================================
