@@ -2362,10 +2362,17 @@ watch(() => route.query, (newQuery, oldQuery) => {
 }, { immediate: false })
 
 // 生命周期钩子
-onMounted(() => {
-  // 只在首次加载时初始化模拟数据
-  if (!productStore.products || productStore.products.length === 0) {
-    productStore.initData()
+onMounted(async () => {
+  // 【修复】始终从API获取最新商品数据，确保数据一致性
+  try {
+    await productStore.loadProducts()
+    await productStore.loadCategories()
+  } catch (error) {
+    console.error('从API加载商品数据失败:', error)
+    // 如果API失败，回退到本地数据
+    if (!productStore.products || productStore.products.length === 0) {
+      productStore.initData()
+    }
   }
   loadData()
 })
