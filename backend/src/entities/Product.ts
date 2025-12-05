@@ -1,76 +1,66 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
-import { ProductCategory } from './ProductCategory';
-import { OrderItem } from './OrderItem';
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm'
+import { ProductCategory } from './ProductCategory'
 
 @Entity('products')
 export class Product {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryColumn({ type: 'varchar', length: 50, comment: '产品ID' })
+  id: string
 
-  @Column({ length: 100, comment: '产品名称' })
-  name: string;
+  @Column({ type: 'varchar', length: 50, unique: true, comment: '产品编码' })
+  code: string
 
-  @Column({ length: 50, unique: true, comment: '产品编号/SKU' })
-  sku: string;
+  @Column({ type: 'varchar', length: 200, comment: '产品名称' })
+  name: string
+
+  @Column({ name: 'category_id', type: 'varchar', length: 50, nullable: true, comment: '分类ID' })
+  categoryId?: string
+
+  @Column({ name: 'category_name', type: 'varchar', length: 100, nullable: true, comment: '分类名称' })
+  categoryName?: string
 
   @Column({ type: 'text', nullable: true, comment: '产品描述' })
-  description?: string;
-
-  @Column({ type: 'int', comment: '产品分类ID' })
-  categoryId: number;
+  description?: string
 
   @Column({ type: 'decimal', precision: 10, scale: 2, comment: '销售价格' })
-  price: number;
+  price: number
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, comment: '成本价格' })
-  costPrice?: number;
+  @Column({ name: 'cost_price', type: 'decimal', precision: 10, scale: 2, nullable: true, comment: '成本价格' })
+  costPrice?: number
 
   @Column({ type: 'int', default: 0, comment: '库存数量' })
-  stock: number;
+  stock: number
 
-  @Column({ type: 'int', nullable: true, comment: '库存预警阈值' })
-  stockAlert?: number;
+  @Column({ name: 'min_stock', type: 'int', default: 0, comment: '最小库存' })
+  minStock: number
 
-  @Column({ length: 20, nullable: true, comment: '计量单位' })
-  unit?: string;
+  @Column({ type: 'varchar', length: 20, default: '件', comment: '单位' })
+  unit: string
 
-  @Column({ type: 'decimal', precision: 8, scale: 3, nullable: true, comment: '重量(kg)' })
-  weight?: number;
+  @Column({ type: 'json', nullable: true, comment: '规格参数' })
+  specifications?: Record<string, any>
 
-  @Column({ length: 100, nullable: true, comment: '规格尺寸' })
-  dimensions?: string;
+  @Column({ type: 'json', nullable: true, comment: '产品图片' })
+  images?: string[]
 
-  @Column({ type: 'json', nullable: true, comment: '产品图片URLs（JSON数组）' })
-  images?: string[];
-
-  @Column({ 
-    type: 'varchar',
-    length: 50, 
+  @Column({
+    type: 'enum',
+    enum: ['active', 'inactive'],
     default: 'active',
-    comment: '状态：active-在售，inactive-下架，discontinued-停产'
+    comment: '状态'
   })
-  status: 'active' | 'inactive' | 'discontinued';
+  status: 'active' | 'inactive'
 
-  @Column({ type: 'int', default: 0, comment: '排序权重' })
-  sortOrder: number;
+  @Column({ name: 'created_by', type: 'varchar', length: 50, comment: '创建人' })
+  createdBy: string
 
-  @Column({ type: 'json', nullable: true, comment: '产品属性（JSON对象）' })
-  attributes?: Record<string, any>;
+  @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
+  createdAt: Date
 
-  @Column({ type: 'json', nullable: true, comment: '标签（JSON数组）' })
-  tags?: string[];
-
-  @CreateDateColumn({ comment: '创建时间' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ comment: '更新时间' })
-  updatedAt: Date;
+  @UpdateDateColumn({ name: 'updated_at', comment: '更新时间' })
+  updatedAt: Date
 
   // 关联关系
   @ManyToOne(() => ProductCategory, category => category.products)
-  @JoinColumn({ name: 'categoryId' })
-  category: ProductCategory;
-
-  @OneToMany(() => OrderItem, orderItem => orderItem.product)
-  orderItems: OrderItem[];
+  @JoinColumn({ name: 'category_id' })
+  category?: ProductCategory
 }

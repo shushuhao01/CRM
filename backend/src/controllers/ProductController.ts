@@ -7,9 +7,14 @@ import { ProductCategory } from '../entities/ProductCategory'
 const getProductRepository = () => AppDataSource.getRepository(Product)
 const getCategoryRepository = () => AppDataSource.getRepository(ProductCategory)
 
+// 生成唯一ID
+function generateId(prefix: string = ''): string {
+  return `${prefix}${Date.now().toString()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
 // 辅助函数：构建分类树
 function buildCategoryTree(categories: ProductCategory[]): any[] {
-  const categoryMap = new Map<number, any>()
+  const categoryMap = new Map<string, any>()
   const rootCategories: any[] = []
 
   // 创建分类映射
@@ -29,6 +34,9 @@ function buildCategoryTree(categories: ProductCategory[]): any[] {
       if (parent) {
         parent.children = parent.children || []
         parent.children.push(categoryNode)
+      } else {
+        // 父分类不存在，作为根分类
+        rootCategories.push(categoryNode)
       }
     } else {
       rootCategories.push(categoryNode)
@@ -98,7 +106,7 @@ export class ProductController {
     try {
       const { id } = req.params
       const categoryRepo = getCategoryRepository()
-      const category = await categoryRepo.findOne({ where: { id: Number(id) } })
+      const category = await categoryRepo.findOne({ where: { id } })
 
       if (!category) {
         res.status(404).json({
@@ -128,7 +136,7 @@ export class ProductController {
    */
   static async createCategory(req: Request, res: Response): Promise<void> {
     try {
-      const { name, code, parentId, sortOrder, status, description, icon } = req.body
+      const { name, parentId, sortOrder, status, description } = req.body
       const categoryRepo = getCategoryRepository()
 
       // 验证必填字段
@@ -140,31 +148,21 @@ export class ProductController {
         return
       }
 
-      // 生成分类编码（如果没有提供）
-      const categoryCode = code || `cat_${Date.now().toString().slice(-6)}`
-
-      // 检查编码是否已存在
-      const existingCategory = await categoryRepo.findOne({ where: { code: categoryCode } })
-      if (existingCategory) {
-        res.status(400).json({
-          success: false,
-          message: '分类编码已存在'
-        })
-        return
-      }
+      // 生成分类ID
+      const categoryId = generateId('cat_')
 
       // 创建新分类
       const newCategory = categoryRepo.create({
+        id: categoryId,
         name,
-        code: categoryCode,
-        parentId: parentId ? Number(parentId) : undefined,
+        parentId: parentId || undefined,
         sortOrder: sortOrder || 0,
         status: status || 'active',
-        description,
-        icon
+        description
       })
 
       await categoryRepo.save(newCategory)
+      console.log('[ProductController] 创建分类成功:', newCategory.name, 'ID:', newCategory.id)
 
       res.status(201).json({
         success: true,
@@ -181,17 +179,16 @@ export class ProductController {
     }
   }
 
-
   /**
    * 更新产品分类
    */
   static async updateCategory(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
-      const { name, code, parentId, sortOrder, status, description, icon } = req.body
+      const { name, parentId, sortOrder, status, description } = req.body
       const categoryRepo = getCategoryRepository()
 
-      const category = await categoryRepo.findOne({ where: { id: Number(id) } })
+      const category = await categoryRepo.findOne({ where: { id } })
       if (!category) {
         res.status(404).json({
           success: false,
@@ -202,12 +199,10 @@ export class ProductController {
 
       // 更新分类信息
       if (name !== undefined) category.name = name
-      if (code !== undefined) category.code = code
-      if (parentId !== undefined) category.parentId = parentId ? Number(parentId) : undefined
+      if (parentId !== undefined) category.parentId = parentId || undefined
       if (sortOrder !== undefined) category.sortOrder = sortOrder
       if (status !== undefined) category.status = status
       if (description !== undefined) category.description = description
-      if (icon !== undefined) category.icon = icon
 
       await categoryRepo.save(category)
 
@@ -235,7 +230,7 @@ export class ProductController {
       const categoryRepo = getCategoryRepository()
       const productRepo = getProductRepository()
 
-      const category = await categoryRepo.findOne({ where: { id: Number(id) } })
+      const category = await categoryRepo.findOne({ where: { id } })
       if (!category) {
         res.status(404).json({
           success: false,
@@ -245,7 +240,7 @@ export class ProductController {
       }
 
       // 检查是否有子分类
-      const childCategories = await categoryRepo.find({ where: { parentId: Number(id) } })
+      const childCategories = await categoryRepo.find({ where: { parentId: id } })
       if (childCategories.length > 0) {
         res.status(400).json({
           success: false,
@@ -255,7 +250,7 @@ export class ProductController {
       }
 
       // 检查是否有关联产品
-      const products = await productRepo.find({ where: { categoryId: Number(id) } })
+      const products = await productRepo.find({ where: { categoryId: id } })
       if (products.length > 0) {
         res.status(400).json({
           success: false,
@@ -280,6 +275,7 @@ export class ProductController {
     }
   }
 
+
   /**
    * 获取产品列表
    */
@@ -301,14 +297,14 @@ export class ProductController {
       // 关键词搜索
       if (keyword) {
         queryBuilder.andWhere(
-          '(product.name LIKE :keyword OR product.sku LIKE :keyword)',
+          '(product.name LIKE :keyword OR product.code LIKE :keyword)',
           { keyword: `%${keyword}%` }
         )
       }
 
       // 分类筛选
       if (categoryId) {
-        queryBuilder.andWhere('product.categoryId = :categoryId', { categoryId: Number(categoryId) })
+        queryBuilder.andWhere('product.categoryId = :categoryId', { categoryId })
       }
 
       // 状态筛选
@@ -318,7 +314,7 @@ export class ProductController {
 
       // 低库存筛选
       if (lowStock === 'true') {
-        queryBuilder.andWhere('product.stock <= product.stockAlert')
+        queryBuilder.andWhere('product.stock <= product.minStock')
       }
 
       // 获取总数
@@ -334,21 +330,21 @@ export class ProductController {
       // 转换数据格式以匹配前端期望
       const list = products.map(p => ({
         id: p.id,
-        code: p.sku,
+        code: p.code,
         name: p.name,
         categoryId: p.categoryId,
-        categoryName: p.category?.name || '',
+        categoryName: p.categoryName || p.category?.name || '',
         brand: '',
-        specification: p.dimensions || '',
+        specification: '',
         unit: p.unit || '件',
-        weight: p.weight || 0,
-        dimensions: p.dimensions || '',
+        weight: 0,
+        dimensions: '',
         description: p.description || '',
         price: Number(p.price),
         costPrice: Number(p.costPrice) || 0,
         marketPrice: Number(p.price),
         stock: p.stock,
-        minStock: p.stockAlert || 0,
+        minStock: p.minStock || 0,
         maxStock: 0,
         salesCount: 0,
         status: p.status,
@@ -385,7 +381,7 @@ export class ProductController {
       const { id } = req.params
       const productRepo = getProductRepository()
       const product = await productRepo.findOne({
-        where: { id: Number(id) },
+        where: { id },
         relations: ['category']
       })
 
@@ -401,18 +397,16 @@ export class ProductController {
         success: true,
         data: {
           id: product.id,
-          code: product.sku,
+          code: product.code,
           name: product.name,
           categoryId: product.categoryId,
-          categoryName: product.category?.name || '',
+          categoryName: product.categoryName || product.category?.name || '',
           description: product.description || '',
           price: Number(product.price),
           costPrice: Number(product.costPrice) || 0,
           stock: product.stock,
-          minStock: product.stockAlert || 0,
+          minStock: product.minStock || 0,
           unit: product.unit || '件',
-          weight: product.weight || 0,
-          dimensions: product.dimensions || '',
           status: product.status,
           image: product.images?.[0] || '',
           images: product.images || [],
@@ -436,6 +430,7 @@ export class ProductController {
     try {
       const productData = req.body
       const productRepo = getProductRepository()
+      const categoryRepo = getCategoryRepository()
 
       // 验证必填字段
       if (!productData.name) {
@@ -446,11 +441,12 @@ export class ProductController {
         return
       }
 
-      // 生成产品编码（如果没有提供）
-      const sku = productData.code || `P${Date.now().toString().slice(-8)}`
+      // 生成产品ID和编码
+      const productId = generateId('prod_')
+      const productCode = productData.code || `P${Date.now().toString().slice(-8)}`
 
       // 检查编码是否已存在
-      const existingProduct = await productRepo.findOne({ where: { sku } })
+      const existingProduct = await productRepo.findOne({ where: { code: productCode } })
       if (existingProduct) {
         res.status(400).json({
           success: false,
@@ -459,22 +455,34 @@ export class ProductController {
         return
       }
 
+      // 获取分类名称
+      let categoryName = productData.categoryName || ''
+      if (productData.categoryId && !categoryName) {
+        const category = await categoryRepo.findOne({ where: { id: productData.categoryId } })
+        if (category) {
+          categoryName = category.name
+        }
+      }
+
+      // 获取当前用户ID（从请求中获取）
+      const createdBy = (req as any).user?.id || 'system'
+
       // 创建新产品
       const newProduct = productRepo.create({
-        sku,
+        id: productId,
+        code: productCode,
         name: productData.name,
-        categoryId: productData.categoryId ? Number(productData.categoryId) : 1,
+        categoryId: productData.categoryId || undefined,
+        categoryName,
         description: productData.description || '',
         price: Number(productData.price) || 0,
         costPrice: Number(productData.costPrice) || 0,
         stock: Number(productData.stock) || 0,
-        stockAlert: Number(productData.minStock) || 0,
+        minStock: Number(productData.minStock) || 0,
         unit: productData.unit || '件',
-        weight: Number(productData.weight) || 0,
-        dimensions: productData.dimensions || '',
         images: productData.images || (productData.image ? [productData.image] : []),
         status: productData.status || 'active',
-        sortOrder: 0
+        createdBy
       })
 
       await productRepo.save(newProduct)
@@ -484,9 +492,10 @@ export class ProductController {
         success: true,
         data: {
           id: newProduct.id,
-          code: newProduct.sku,
+          code: newProduct.code,
           name: newProduct.name,
           categoryId: newProduct.categoryId,
+          categoryName: newProduct.categoryName,
           price: Number(newProduct.price),
           stock: newProduct.stock,
           status: newProduct.status,
@@ -504,7 +513,6 @@ export class ProductController {
     }
   }
 
-
   /**
    * 更新产品
    */
@@ -514,7 +522,7 @@ export class ProductController {
       const updates = req.body
       const productRepo = getProductRepository()
 
-      const product = await productRepo.findOne({ where: { id: Number(id) } })
+      const product = await productRepo.findOne({ where: { id } })
       if (!product) {
         res.status(404).json({
           success: false,
@@ -525,16 +533,15 @@ export class ProductController {
 
       // 更新产品信息
       if (updates.name !== undefined) product.name = updates.name
-      if (updates.code !== undefined) product.sku = updates.code
-      if (updates.categoryId !== undefined) product.categoryId = Number(updates.categoryId)
+      if (updates.code !== undefined) product.code = updates.code
+      if (updates.categoryId !== undefined) product.categoryId = updates.categoryId
+      if (updates.categoryName !== undefined) product.categoryName = updates.categoryName
       if (updates.description !== undefined) product.description = updates.description
       if (updates.price !== undefined) product.price = Number(updates.price)
       if (updates.costPrice !== undefined) product.costPrice = Number(updates.costPrice)
       if (updates.stock !== undefined) product.stock = Number(updates.stock)
-      if (updates.minStock !== undefined) product.stockAlert = Number(updates.minStock)
+      if (updates.minStock !== undefined) product.minStock = Number(updates.minStock)
       if (updates.unit !== undefined) product.unit = updates.unit
-      if (updates.weight !== undefined) product.weight = Number(updates.weight)
-      if (updates.dimensions !== undefined) product.dimensions = updates.dimensions
       if (updates.status !== undefined) product.status = updates.status
       if (updates.images !== undefined) product.images = updates.images
       if (updates.image !== undefined && !updates.images) {
@@ -548,7 +555,7 @@ export class ProductController {
         success: true,
         data: {
           id: product.id,
-          code: product.sku,
+          code: product.code,
           name: product.name,
           categoryId: product.categoryId,
           price: Number(product.price),
@@ -575,7 +582,7 @@ export class ProductController {
       const { id } = req.params
       const productRepo = getProductRepository()
 
-      const product = await productRepo.findOne({ where: { id: Number(id) } })
+      const product = await productRepo.findOne({ where: { id } })
       if (!product) {
         res.status(404).json({
           success: false,
@@ -606,10 +613,9 @@ export class ProductController {
    */
   static async adjustStock(req: Request, res: Response): Promise<void> {
     try {
-      const { productId, type, quantity, reason, remark } = req.body
+      const { productId, type, quantity, reason } = req.body
       const productRepo = getProductRepository()
 
-      // 验证必填字段
       if (!productId || !type || quantity === undefined || !reason) {
         res.status(400).json({
           success: false,
@@ -618,8 +624,7 @@ export class ProductController {
         return
       }
 
-      // 查找产品
-      const product = await productRepo.findOne({ where: { id: Number(productId) } })
+      const product = await productRepo.findOne({ where: { id: productId } })
       if (!product) {
         res.status(404).json({
           success: false,
@@ -631,7 +636,6 @@ export class ProductController {
       const beforeStock = product.stock
       let afterStock = beforeStock
 
-      // 根据调整类型计算新库存
       switch (type) {
         case 'increase':
           afterStock = beforeStock + Number(quantity)
@@ -641,7 +645,7 @@ export class ProductController {
           if (afterStock < 0) {
             res.status(400).json({
               success: false,
-              message: '库存不足，无法减少指定数量'
+              message: '库存不足'
             })
             return
           }
@@ -657,35 +661,14 @@ export class ProductController {
           return
       }
 
-      // 更新产品库存
       product.stock = afterStock
-
-      // 更新产品状态
-      if (afterStock === 0) {
-        product.status = 'inactive'
-      } else if (product.status === 'inactive' && afterStock > 0) {
-        product.status = 'active'
-      }
-
       await productRepo.save(product)
 
       res.json({
         success: true,
         data: {
-          product: {
-            id: product.id,
-            name: product.name,
-            stock: product.stock,
-            status: product.status
-          },
-          adjustment: {
-            type,
-            quantity: Number(quantity),
-            beforeStock,
-            afterStock,
-            reason,
-            remark
-          }
+          product: { id: product.id, name: product.name, stock: product.stock },
+          adjustment: { type, quantity: Number(quantity), beforeStock, afterStock, reason }
         },
         message: '库存调整成功'
       })
@@ -693,33 +676,16 @@ export class ProductController {
       console.error('库存调整失败:', error)
       res.status(500).json({
         success: false,
-        message: '库存调整失败',
-        error: error instanceof Error ? error.message : '未知错误'
+        message: '库存调整失败'
       })
     }
   }
 
   /**
-   * 获取库存调整记录（暂时返回空数据，后续可添加库存调整记录表）
+   * 获取库存调整记录
    */
   static async getStockAdjustments(req: Request, res: Response): Promise<void> {
-    try {
-      res.json({
-        success: true,
-        data: {
-          list: [],
-          total: 0,
-          page: 1,
-          pageSize: 10
-        }
-      })
-    } catch (error) {
-      console.error('获取库存调整记录失败:', error)
-      res.status(500).json({
-        success: false,
-        message: '获取库存调整记录失败'
-      })
-    }
+    res.json({ success: true, data: { list: [], total: 0, page: 1, pageSize: 10 } })
   }
 
   /**
@@ -731,18 +697,12 @@ export class ProductController {
       const productRepo = getProductRepository()
 
       if (!Array.isArray(importProducts) || importProducts.length === 0) {
-        res.status(400).json({
-          success: false,
-          message: '导入数据不能为空'
-        })
+        res.status(400).json({ success: false, message: '导入数据不能为空' })
         return
       }
 
-      const results = {
-        success: 0,
-        failed: 0,
-        errors: [] as string[]
-      }
+      const results = { success: 0, failed: 0, errors: [] as string[] }
+      const createdBy = (req as any).user?.id || 'system'
 
       for (const productData of importProducts) {
         try {
@@ -752,23 +712,18 @@ export class ProductController {
             continue
           }
 
-          const sku = productData.code || `P${Date.now().toString().slice(-8)}${Math.random().toString(36).slice(-4)}`
-
-          const existingProduct = await productRepo.findOne({ where: { sku } })
-          if (existingProduct) {
-            results.failed++
-            results.errors.push(`产品 ${sku}: 编码已存在`)
-            continue
-          }
+          const productId = generateId('prod_')
+          const productCode = productData.code || `P${Date.now().toString().slice(-8)}${Math.random().toString(36).slice(-4)}`
 
           const newProduct = productRepo.create({
-            sku,
+            id: productId,
+            code: productCode,
             name: productData.name,
-            categoryId: productData.categoryId ? Number(productData.categoryId) : 1,
+            categoryId: productData.categoryId,
             price: Number(productData.price) || 0,
-            costPrice: Number(productData.costPrice) || 0,
             stock: Number(productData.stock) || 0,
-            status: productData.status || 'active'
+            status: productData.status || 'active',
+            createdBy
           })
 
           await productRepo.save(newProduct)
@@ -786,10 +741,7 @@ export class ProductController {
       })
     } catch (error) {
       console.error('批量导入产品失败:', error)
-      res.status(500).json({
-        success: false,
-        message: '批量导入产品失败'
-      })
+      res.status(500).json({ success: false, message: '批量导入产品失败' })
     }
   }
 
@@ -802,15 +754,8 @@ export class ProductController {
       const productRepo = getProductRepository()
 
       const queryBuilder = productRepo.createQueryBuilder('product')
-        .leftJoinAndSelect('product.category', 'category')
-
-      if (categoryId) {
-        queryBuilder.andWhere('product.categoryId = :categoryId', { categoryId: Number(categoryId) })
-      }
-
-      if (status) {
-        queryBuilder.andWhere('product.status = :status', { status })
-      }
+      if (categoryId) queryBuilder.andWhere('product.categoryId = :categoryId', { categoryId })
+      if (status) queryBuilder.andWhere('product.status = :status', { status })
 
       const products = await queryBuilder.getMany()
 
@@ -818,9 +763,9 @@ export class ProductController {
         success: true,
         data: products.map(p => ({
           id: p.id,
-          code: p.sku,
+          code: p.code,
           name: p.name,
-          categoryName: p.category?.name || '',
+          categoryName: p.categoryName || '',
           price: Number(p.price),
           costPrice: Number(p.costPrice) || 0,
           stock: p.stock,
@@ -831,10 +776,7 @@ export class ProductController {
       })
     } catch (error) {
       console.error('导出产品数据失败:', error)
-      res.status(500).json({
-        success: false,
-        message: '导出产品数据失败'
-      })
+      res.status(500).json({ success: false, message: '导出产品数据失败' })
     }
   }
 
@@ -844,31 +786,21 @@ export class ProductController {
   static async getStockStatistics(req: Request, res: Response): Promise<void> {
     try {
       const productRepo = getProductRepository()
-
-      const totalProducts = await productRepo.count()
       const products = await productRepo.find()
 
+      const totalProducts = products.length
       const totalStock = products.reduce((sum, p) => sum + p.stock, 0)
       const totalValue = products.reduce((sum, p) => sum + (p.stock * Number(p.price)), 0)
-      const lowStockProducts = products.filter(p => p.stockAlert && p.stock <= p.stockAlert)
-      const outOfStockProducts = products.filter(p => p.stock === 0)
+      const lowStockCount = products.filter(p => p.minStock && p.stock <= p.minStock).length
+      const outOfStockCount = products.filter(p => p.stock === 0).length
 
       res.json({
         success: true,
-        data: {
-          totalProducts,
-          totalStock,
-          totalValue,
-          lowStockCount: lowStockProducts.length,
-          outOfStockCount: outOfStockProducts.length
-        }
+        data: { totalProducts, totalStock, totalValue, lowStockCount, outOfStockCount }
       })
     } catch (error) {
       console.error('获取库存统计信息失败:', error)
-      res.status(500).json({
-        success: false,
-        message: '获取库存统计信息失败'
-      })
+      res.status(500).json({ success: false, message: '获取库存统计信息失败' })
     }
   }
 }
