@@ -107,7 +107,11 @@ export const useUserStore = defineStore('user', () => {
   initPermissionListener()
 
   // 计算属性 - 根据新的角色体系重新定义
-  const isAdmin = computed(() => currentUser.value?.role === 'super_admin') // 超级管理员
+  // 管理员权限：super_admin 或 admin 角色都视为管理员
+  const isAdmin = computed(() =>
+    currentUser.value?.role === 'super_admin' ||
+    currentUser.value?.role === 'admin'
+  )
   const isDepartmentManager = computed(() => currentUser.value?.role === 'department_manager') // 部门管理员（部门负责人）
   const isSalesStaff = computed(() => currentUser.value?.role === 'sales_staff') // 销售员
   const isCustomerService = computed(() => currentUser.value?.role === 'customer_service') // 客服
@@ -125,7 +129,10 @@ export const useUserStore = defineStore('user', () => {
   const isSuperAdmin = computed(() => {
     if (!currentUser.value) return false
     // 直接检查用户角色，而不依赖权限服务
-    return currentUser.value.role === 'super_admin' || currentUser.value.userRole === UserRole.SUPER_ADMIN
+    // super_admin 和 admin 都视为超级管理员
+    return currentUser.value.role === 'super_admin' ||
+           currentUser.value.role === 'admin' ||
+           currentUser.value.userRole === UserRole.SUPER_ADMIN
   })
 
   const isWhitelistMember = computed(() => {
