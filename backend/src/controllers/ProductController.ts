@@ -1,84 +1,24 @@
 import { Request, Response } from 'express'
+import { AppDataSource } from '../config/database'
+import { Product } from '../entities/Product'
+import { ProductCategory } from '../entities/ProductCategory'
 
-// 产品分类接口定义
-interface ProductCategory {
-  id: string
-  name: string
-  code: string
-  parentId?: string
-  level: number
-  sort: number
-  status: 'active' | 'inactive'
-  description?: string
-  createTime: string
-  updateTime?: string
-  children?: ProductCategory[]
-}
-
-// 产品接口定义
-interface Product {
-  id: string
-  code: string
-  name: string
-  categoryId: string
-  categoryName: string
-  brand: string
-  specification: string
-  unit: string
-  weight: number
-  dimensions: string
-  description: string
-  price: number
-  costPrice: number
-  marketPrice: number
-  stock: number
-  minStock: number
-  maxStock: number
-  salesCount: number
-  status: 'active' | 'inactive' | 'out_of_stock'
-  image: string
-  createTime: string
-  updateTime?: string
-}
-
-// 库存调整记录接口
-interface StockAdjustment {
-  id: string
-  productId: string
-  productCode: string
-  productName: string
-  type: 'increase' | 'decrease' | 'set'
-  quantity: number
-  beforeStock: number
-  afterStock: number
-  reason: string
-  remark?: string
-  operator: string
-  createTime: string
-}
-
-// 模拟数据存储 - 清空初始分类数据，支持动态创建
-const categories: ProductCategory[] = []
-
-// 产品模拟数据 - 清空初始产品数据，支持动态创建
-const products: Product[] = []
-
-// 库存调整记录模拟数据 - 清空初始数据，支持动态创建
-const stockAdjustments: StockAdjustment[] = []
-
-// 辅助函数：生成新ID
-function generateId(): string {
-  return Date.now().toString() + Math.random().toString(36).substr(2, 9)
-}
+// 获取Repository
+const getProductRepository = () => AppDataSource.getRepository(Product)
+const getCategoryRepository = () => AppDataSource.getRepository(ProductCategory)
 
 // 辅助函数：构建分类树
-function buildCategoryTree(categories: ProductCategory[]): ProductCategory[] {
-  const categoryMap = new Map<string, ProductCategory>()
-  const rootCategories: ProductCategory[] = []
+function buildCategoryTree(categories: ProductCategory[]): any[] {
+  const categoryMap = new Map<number, any>()
+  const rootCategories: any[] = []
 
   // 创建分类映射
   categories.forEach(category => {
-    categoryMap.set(category.id, { ...category, children: [] })
+    categoryMap.set(category.id, {
+      ...category,
+      children: [],
+      productCount: 0
+    })
   })
 
   // 构建树形结构
@@ -98,34 +38,20 @@ function buildCategoryTree(categories: ProductCategory[]): ProductCategory[] {
   return rootCategories
 }
 
-// 辅助函数：扁平化分类树
-function flattenCategories(categories: ProductCategory[]): ProductCategory[] {
-  const result: ProductCategory[] = []
-
-  function traverse(cats: ProductCategory[]) {
-    cats.forEach(cat => {
-      const { children, ...categoryData } = cat
-      result.push(categoryData)
-      if (children && children.length > 0) {
-        traverse(children)
-      }
-    })
-  }
-
-  traverse(categories)
-  return result
-}
-
 export class ProductController {
   /**
    * 获取产品分类列表（扁平结构）
    */
   static async getCategories(req: Request, res: Response) {
     try {
-      const flatCategories = flattenCategories(categories)
+      const categoryRepo = getCategoryRepository()
+      const categories = await categoryRepo.find({
+        order: { sortOrder: 'ASC', createdAt: 'ASC' }
+      })
+
       res.json({
         success: true,
-        data: flatCategories,
+        data: categories,
         message: '获取分类列表成功'
       })
     } catch (error) {
@@ -143,8 +69,13 @@ export class ProductController {
    */
   static async getCategoryTree(req: Request, res: Response) {
     try {
-      const flatCategories = flattenCategories(categories)
-      const tree = buildCategoryTree(flatCategories)
+      const categoryRepo = getCategoryRepository()
+      const categories = await categoryRepo.find({
+        order: { sortOrder: 'ASC', createdAt: 'ASC' }
+      })
+
+      const tree = buildCategoryTree(categories)
+
       res.json({
         success: true,
         data: tree,
@@ -166,8 +97,8 @@ export class ProductController {
   static async getCategoryDetail(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
-      const flatCategories = flattenCategories(categories)
-      const category = flatCategories.find(cat => cat.id === id)
+      const categoryRepo = getCategoryRepository()
+      const category = await categoryRepo.findOne({ where: { id: Number(id) } })
 
       if (!category) {
         res.status(404).json({
@@ -197,20 +128,23 @@ export class ProductController {
    */
   static async createCategory(req: Request, res: Response): Promise<void> {
     try {
-      const { name, code, parentId, level, sort, status, description } = req.body
+      const { name, code, parentId, sortOrder, status, description, icon } = req.body
+      const categoryRepo = getCategoryRepository()
 
       // 验证必填字段
-      if (!name || !code) {
+      if (!name) {
         res.status(400).json({
           success: false,
-          message: '分类名称和编码不能为空'
+          message: '分类名称不能为空'
         })
         return
       }
 
+      // 生成分类编码（如果没有提供）
+      const categoryCode = code || `cat_${Date.now().toString().slice(-6)}`
+
       // 检查编码是否已存在
-      const flatCategories = flattenCategories(categories)
-      const existingCategory = flatCategories.find(cat => cat.code === code)
+      const existingCategory = await categoryRepo.findOne({ where: { code: categoryCode } })
       if (existingCategory) {
         res.status(400).json({
           success: false,
@@ -220,46 +154,17 @@ export class ProductController {
       }
 
       // 创建新分类
-      const newCategory: ProductCategory = {
-        id: generateId(),
+      const newCategory = categoryRepo.create({
         name,
-        code,
-        parentId,
-        level: level || 1,
-        sort: sort || 1,
+        code: categoryCode,
+        parentId: parentId ? Number(parentId) : undefined,
+        sortOrder: sortOrder || 0,
         status: status || 'active',
         description,
-        createTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
-      }
+        icon
+      })
 
-      // 添加到对应的位置
-      if (parentId) {
-        // 查找父分类并添加到其children中
-        function addToParent(cats: ProductCategory[]): boolean {
-          for (const cat of cats) {
-            if (cat.id === parentId) {
-              cat.children = cat.children || []
-              cat.children.push(newCategory)
-              return true
-            }
-            if (cat.children && addToParent(cat.children)) {
-              return true
-            }
-          }
-          return false
-        }
-
-        if (!addToParent(categories)) {
-          res.status(400).json({
-            success: false,
-            message: '父分类不存在'
-          })
-          return
-        }
-      } else {
-        // 添加为根分类
-        categories.push(newCategory)
-      }
+      await categoryRepo.save(newCategory)
 
       res.status(201).json({
         success: true,
@@ -276,40 +181,18 @@ export class ProductController {
     }
   }
 
+
   /**
    * 更新产品分类
    */
   static async updateCategory(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
-      const { name, code, parentId, level, sort, status, description } = req.body
+      const { name, code, parentId, sortOrder, status, description, icon } = req.body
+      const categoryRepo = getCategoryRepository()
 
-      // 查找并更新分类
-      function updateInTree(cats: ProductCategory[]): ProductCategory | null {
-        for (const cat of cats) {
-          if (cat.id === id) {
-            // 更新分类信息
-            if (name !== undefined) cat.name = name
-            if (code !== undefined) cat.code = code
-            if (parentId !== undefined) cat.parentId = parentId
-            if (level !== undefined) cat.level = level
-            if (sort !== undefined) cat.sort = sort
-            if (status !== undefined) cat.status = status
-            if (description !== undefined) cat.description = description
-            cat.updateTime = new Date().toISOString().replace('T', ' ').substring(0, 19)
-            return cat
-          }
-          if (cat.children) {
-            const updated = updateInTree(cat.children)
-            if (updated) return updated
-          }
-        }
-        return null
-      }
-
-      const updatedCategory = updateInTree(categories)
-
-      if (!updatedCategory) {
+      const category = await categoryRepo.findOne({ where: { id: Number(id) } })
+      if (!category) {
         res.status(404).json({
           success: false,
           message: '分类不存在'
@@ -317,9 +200,20 @@ export class ProductController {
         return
       }
 
+      // 更新分类信息
+      if (name !== undefined) category.name = name
+      if (code !== undefined) category.code = code
+      if (parentId !== undefined) category.parentId = parentId ? Number(parentId) : undefined
+      if (sortOrder !== undefined) category.sortOrder = sortOrder
+      if (status !== undefined) category.status = status
+      if (description !== undefined) category.description = description
+      if (icon !== undefined) category.icon = icon
+
+      await categoryRepo.save(category)
+
       res.json({
         success: true,
-        data: updatedCategory,
+        data: category,
         message: '更新分类成功'
       })
     } catch (error) {
@@ -338,47 +232,39 @@ export class ProductController {
   static async deleteCategory(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
+      const categoryRepo = getCategoryRepository()
+      const productRepo = getProductRepository()
 
-      // 查找并删除分类
-      function deleteFromTree(cats: ProductCategory[], _parentArray: ProductCategory[]): boolean {
-        for (let i = 0; i < cats.length; i++) {
-          const cat = cats[i]
-          if (cat.id === id) {
-            // 检查是否有子分类
-            if (cat.children && cat.children.length > 0) {
-              return false // 有子分类，不能删除
-            }
-            // 删除分类
-            cats.splice(i, 1)
-            return true
-          }
-          if (cat.children && deleteFromTree(cat.children, cats)) {
-            return true
-          }
-        }
-        return false
+      const category = await categoryRepo.findOne({ where: { id: Number(id) } })
+      if (!category) {
+        res.status(404).json({
+          success: false,
+          message: '分类不存在'
+        })
+        return
       }
 
-      const deleted = deleteFromTree(categories, [])
-
-      if (!deleted) {
-        // 检查是否是因为有子分类而无法删除
-        const flatCategories = flattenCategories(categories)
-        const category = flatCategories.find(cat => cat.id === id)
-        if (category) {
-          res.status(400).json({
-            success: false,
-            message: '该分类下还有子分类，无法删除'
-          })
-          return
-        } else {
-          res.status(404).json({
-            success: false,
-            message: '分类不存在'
-          })
-          return
-        }
+      // 检查是否有子分类
+      const childCategories = await categoryRepo.find({ where: { parentId: Number(id) } })
+      if (childCategories.length > 0) {
+        res.status(400).json({
+          success: false,
+          message: '该分类下还有子分类，无法删除'
+        })
+        return
       }
+
+      // 检查是否有关联产品
+      const products = await productRepo.find({ where: { categoryId: Number(id) } })
+      if (products.length > 0) {
+        res.status(400).json({
+          success: false,
+          message: '该分类下还有产品，无法删除'
+        })
+        return
+      }
+
+      await categoryRepo.remove(category)
 
       res.json({
         success: true,
@@ -405,60 +291,76 @@ export class ProductController {
         keyword,
         categoryId,
         status,
-        brand,
         lowStock
       } = req.query
 
-      let filteredProducts = [...products]
+      const productRepo = getProductRepository()
+      const queryBuilder = productRepo.createQueryBuilder('product')
+        .leftJoinAndSelect('product.category', 'category')
 
       // 关键词搜索
       if (keyword) {
-        const searchTerm = String(keyword).toLowerCase()
-        filteredProducts = filteredProducts.filter(product =>
-          product.name.toLowerCase().includes(searchTerm) ||
-          product.code.toLowerCase().includes(searchTerm) ||
-          product.brand.toLowerCase().includes(searchTerm)
+        queryBuilder.andWhere(
+          '(product.name LIKE :keyword OR product.sku LIKE :keyword)',
+          { keyword: `%${keyword}%` }
         )
       }
 
       // 分类筛选
       if (categoryId) {
-        filteredProducts = filteredProducts.filter(product =>
-          product.categoryId === categoryId
-        )
+        queryBuilder.andWhere('product.categoryId = :categoryId', { categoryId: Number(categoryId) })
       }
 
       // 状态筛选
       if (status) {
-        filteredProducts = filteredProducts.filter(product =>
-          product.status === status
-        )
-      }
-
-      // 品牌筛选
-      if (brand) {
-        filteredProducts = filteredProducts.filter(product =>
-          product.brand === brand
-        )
+        queryBuilder.andWhere('product.status = :status', { status })
       }
 
       // 低库存筛选
       if (lowStock === 'true') {
-        filteredProducts = filteredProducts.filter(product =>
-          product.stock <= product.minStock
-        )
+        queryBuilder.andWhere('product.stock <= product.stockAlert')
       }
 
+      // 获取总数
+      const total = await queryBuilder.getCount()
+
       // 分页
-      const total = filteredProducts.length
-      const startIndex = (Number(page) - 1) * Number(pageSize)
-      const endIndex = startIndex + Number(pageSize)
-      const paginatedProducts = filteredProducts.slice(startIndex, endIndex)
+      const skip = (Number(page) - 1) * Number(pageSize)
+      queryBuilder.skip(skip).take(Number(pageSize))
+      queryBuilder.orderBy('product.createdAt', 'DESC')
+
+      const products = await queryBuilder.getMany()
+
+      // 转换数据格式以匹配前端期望
+      const list = products.map(p => ({
+        id: p.id,
+        code: p.sku,
+        name: p.name,
+        categoryId: p.categoryId,
+        categoryName: p.category?.name || '',
+        brand: '',
+        specification: p.dimensions || '',
+        unit: p.unit || '件',
+        weight: p.weight || 0,
+        dimensions: p.dimensions || '',
+        description: p.description || '',
+        price: Number(p.price),
+        costPrice: Number(p.costPrice) || 0,
+        marketPrice: Number(p.price),
+        stock: p.stock,
+        minStock: p.stockAlert || 0,
+        maxStock: 0,
+        salesCount: 0,
+        status: p.status,
+        image: p.images?.[0] || '',
+        images: p.images || [],
+        createTime: p.createdAt?.toISOString() || ''
+      }))
 
       res.json({
         success: true,
         data: {
-          list: paginatedProducts,
+          list,
           total,
           page: Number(page),
           pageSize: Number(pageSize),
@@ -481,7 +383,11 @@ export class ProductController {
   static async getProductDetail(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
-      const product = products.find(p => p.id === id)
+      const productRepo = getProductRepository()
+      const product = await productRepo.findOne({
+        where: { id: Number(id) },
+        relations: ['category']
+      })
 
       if (!product) {
         res.status(404).json({
@@ -493,7 +399,25 @@ export class ProductController {
 
       res.json({
         success: true,
-        data: product
+        data: {
+          id: product.id,
+          code: product.sku,
+          name: product.name,
+          categoryId: product.categoryId,
+          categoryName: product.category?.name || '',
+          description: product.description || '',
+          price: Number(product.price),
+          costPrice: Number(product.costPrice) || 0,
+          stock: product.stock,
+          minStock: product.stockAlert || 0,
+          unit: product.unit || '件',
+          weight: product.weight || 0,
+          dimensions: product.dimensions || '',
+          status: product.status,
+          image: product.images?.[0] || '',
+          images: product.images || [],
+          createTime: product.createdAt?.toISOString() || ''
+        }
       })
     } catch (error) {
       console.error('获取产品详情失败:', error)
@@ -511,6 +435,7 @@ export class ProductController {
   static async createProduct(req: Request, res: Response): Promise<void> {
     try {
       const productData = req.body
+      const productRepo = getProductRepository()
 
       // 验证必填字段
       if (!productData.name) {
@@ -522,10 +447,10 @@ export class ProductController {
       }
 
       // 生成产品编码（如果没有提供）
-      const code = productData.code || `P${Date.now().toString().slice(-8)}`
+      const sku = productData.code || `P${Date.now().toString().slice(-8)}`
 
       // 检查编码是否已存在
-      const existingProduct = products.find(p => p.code === code)
+      const existingProduct = await productRepo.findOne({ where: { sku } })
       if (existingProduct) {
         res.status(400).json({
           success: false,
@@ -535,36 +460,38 @@ export class ProductController {
       }
 
       // 创建新产品
-      const newProduct: Product = {
-        id: generateId(),
-        code,
+      const newProduct = productRepo.create({
+        sku,
         name: productData.name,
-        categoryId: productData.categoryId || '',
-        categoryName: productData.categoryName || '',
-        brand: productData.brand || '',
-        specification: productData.specification || '',
-        unit: productData.unit || '件',
-        weight: Number(productData.weight) || 0,
-        dimensions: productData.dimensions || '',
+        categoryId: productData.categoryId ? Number(productData.categoryId) : 1,
         description: productData.description || '',
         price: Number(productData.price) || 0,
         costPrice: Number(productData.costPrice) || 0,
-        marketPrice: Number(productData.marketPrice) || 0,
         stock: Number(productData.stock) || 0,
-        minStock: Number(productData.minStock) || 0,
-        maxStock: Number(productData.maxStock) || 0,
-        salesCount: 0,
+        stockAlert: Number(productData.minStock) || 0,
+        unit: productData.unit || '件',
+        weight: Number(productData.weight) || 0,
+        dimensions: productData.dimensions || '',
+        images: productData.images || (productData.image ? [productData.image] : []),
         status: productData.status || 'active',
-        image: productData.image || '',
-        createTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
-      }
+        sortOrder: 0
+      })
 
-      products.push(newProduct)
+      await productRepo.save(newProduct)
       console.log('[ProductController] 创建产品成功:', newProduct.name, 'ID:', newProduct.id)
 
       res.status(201).json({
         success: true,
-        data: newProduct,
+        data: {
+          id: newProduct.id,
+          code: newProduct.sku,
+          name: newProduct.name,
+          categoryId: newProduct.categoryId,
+          price: Number(newProduct.price),
+          stock: newProduct.stock,
+          status: newProduct.status,
+          createTime: newProduct.createdAt?.toISOString() || ''
+        },
         message: '创建产品成功'
       })
     } catch (error) {
@@ -577,6 +504,7 @@ export class ProductController {
     }
   }
 
+
   /**
    * 更新产品
    */
@@ -584,9 +512,10 @@ export class ProductController {
     try {
       const { id } = req.params
       const updates = req.body
+      const productRepo = getProductRepository()
 
-      const productIndex = products.findIndex(p => p.id === id)
-      if (productIndex === -1) {
+      const product = await productRepo.findOne({ where: { id: Number(id) } })
+      if (!product) {
         res.status(404).json({
           success: false,
           message: '产品不存在'
@@ -595,18 +524,37 @@ export class ProductController {
       }
 
       // 更新产品信息
-      const updatedProduct = {
-        ...products[productIndex],
-        ...updates,
-        updateTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
+      if (updates.name !== undefined) product.name = updates.name
+      if (updates.code !== undefined) product.sku = updates.code
+      if (updates.categoryId !== undefined) product.categoryId = Number(updates.categoryId)
+      if (updates.description !== undefined) product.description = updates.description
+      if (updates.price !== undefined) product.price = Number(updates.price)
+      if (updates.costPrice !== undefined) product.costPrice = Number(updates.costPrice)
+      if (updates.stock !== undefined) product.stock = Number(updates.stock)
+      if (updates.minStock !== undefined) product.stockAlert = Number(updates.minStock)
+      if (updates.unit !== undefined) product.unit = updates.unit
+      if (updates.weight !== undefined) product.weight = Number(updates.weight)
+      if (updates.dimensions !== undefined) product.dimensions = updates.dimensions
+      if (updates.status !== undefined) product.status = updates.status
+      if (updates.images !== undefined) product.images = updates.images
+      if (updates.image !== undefined && !updates.images) {
+        product.images = [updates.image]
       }
 
-      products[productIndex] = updatedProduct
-      console.log('[ProductController] 更新产品成功:', updatedProduct.name, 'ID:', id)
+      await productRepo.save(product)
+      console.log('[ProductController] 更新产品成功:', product.name, 'ID:', id)
 
       res.json({
         success: true,
-        data: updatedProduct,
+        data: {
+          id: product.id,
+          code: product.sku,
+          name: product.name,
+          categoryId: product.categoryId,
+          price: Number(product.price),
+          stock: product.stock,
+          status: product.status
+        },
         message: '更新产品成功'
       })
     } catch (error) {
@@ -625,9 +573,10 @@ export class ProductController {
   static async deleteProduct(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
+      const productRepo = getProductRepository()
 
-      const productIndex = products.findIndex(p => p.id === id)
-      if (productIndex === -1) {
+      const product = await productRepo.findOne({ where: { id: Number(id) } })
+      if (!product) {
         res.status(404).json({
           success: false,
           message: '产品不存在'
@@ -635,9 +584,8 @@ export class ProductController {
         return
       }
 
-      const deletedProduct = products[productIndex]
-      products.splice(productIndex, 1)
-      console.log('[ProductController] 删除产品成功:', deletedProduct.name, 'ID:', id)
+      await productRepo.remove(product)
+      console.log('[ProductController] 删除产品成功:', product.name, 'ID:', id)
 
       res.json({
         success: true,
@@ -659,6 +607,7 @@ export class ProductController {
   static async adjustStock(req: Request, res: Response): Promise<void> {
     try {
       const { productId, type, quantity, reason, remark } = req.body
+      const productRepo = getProductRepository()
 
       // 验证必填字段
       if (!productId || !type || quantity === undefined || !reason) {
@@ -670,7 +619,7 @@ export class ProductController {
       }
 
       // 查找产品
-      const product = products.find(p => p.id === productId)
+      const product = await productRepo.findOne({ where: { id: Number(productId) } })
       if (!product) {
         res.status(404).json({
           success: false,
@@ -710,38 +659,33 @@ export class ProductController {
 
       // 更新产品库存
       product.stock = afterStock
-      product.updateTime = new Date().toISOString().replace('T', ' ').substring(0, 19)
 
       // 更新产品状态
       if (afterStock === 0) {
-        product.status = 'out_of_stock'
-      } else if (product.status === 'out_of_stock' && afterStock > 0) {
+        product.status = 'inactive'
+      } else if (product.status === 'inactive' && afterStock > 0) {
         product.status = 'active'
       }
 
-      // 创建库存调整记录
-      const adjustment: StockAdjustment = {
-        id: generateId(),
-        productId,
-        productCode: product.code,
-        productName: product.name,
-        type,
-        quantity: Number(quantity),
-        beforeStock,
-        afterStock,
-        reason,
-        remark,
-        operator: '系统管理员', // 实际应用中应该从用户信息中获取
-        createTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
-      }
-
-      stockAdjustments.unshift(adjustment)
+      await productRepo.save(product)
 
       res.json({
         success: true,
         data: {
-          product,
-          adjustment
+          product: {
+            id: product.id,
+            name: product.name,
+            stock: product.stock,
+            status: product.status
+          },
+          adjustment: {
+            type,
+            quantity: Number(quantity),
+            beforeStock,
+            afterStock,
+            reason,
+            remark
+          }
         },
         message: '库存调整成功'
       })
@@ -756,70 +700,24 @@ export class ProductController {
   }
 
   /**
-   * 获取库存调整记录
+   * 获取库存调整记录（暂时返回空数据，后续可添加库存调整记录表）
    */
   static async getStockAdjustments(req: Request, res: Response): Promise<void> {
     try {
-      const {
-        page = 1,
-        pageSize = 10,
-        productId,
-        type,
-        startDate,
-        endDate
-      } = req.query
-
-      let filteredAdjustments = [...stockAdjustments]
-
-      // 产品筛选
-      if (productId) {
-        filteredAdjustments = filteredAdjustments.filter(adj =>
-          adj.productId === productId
-        )
-      }
-
-      // 类型筛选
-      if (type) {
-        filteredAdjustments = filteredAdjustments.filter(adj =>
-          adj.type === type
-        )
-      }
-
-      // 日期范围筛选
-      if (startDate) {
-        filteredAdjustments = filteredAdjustments.filter(adj =>
-          adj.createTime >= String(startDate)
-        )
-      }
-
-      if (endDate) {
-        filteredAdjustments = filteredAdjustments.filter(adj =>
-          adj.createTime <= String(endDate)
-        )
-      }
-
-      // 分页
-      const total = filteredAdjustments.length
-      const startIndex = (Number(page) - 1) * Number(pageSize)
-      const endIndex = startIndex + Number(pageSize)
-      const paginatedAdjustments = filteredAdjustments.slice(startIndex, endIndex)
-
       res.json({
         success: true,
         data: {
-          list: paginatedAdjustments,
-          total,
-          page: Number(page),
-          pageSize: Number(pageSize),
-          totalPages: Math.ceil(total / Number(pageSize))
+          list: [],
+          total: 0,
+          page: 1,
+          pageSize: 10
         }
       })
     } catch (error) {
       console.error('获取库存调整记录失败:', error)
       res.status(500).json({
         success: false,
-        message: '获取库存调整记录失败',
-        error: error instanceof Error ? error.message : '未知错误'
+        message: '获取库存调整记录失败'
       })
     }
   }
@@ -830,6 +728,7 @@ export class ProductController {
   static async batchImportProducts(req: Request, res: Response): Promise<void> {
     try {
       const { products: importProducts } = req.body
+      const productRepo = getProductRepository()
 
       if (!Array.isArray(importProducts) || importProducts.length === 0) {
         res.status(400).json({
@@ -847,47 +746,32 @@ export class ProductController {
 
       for (const productData of importProducts) {
         try {
-          // 验证必填字段
-          if (!productData.code || !productData.name || !productData.categoryId) {
+          if (!productData.name) {
             results.failed++
-            results.errors.push(`产品 ${productData.code || '未知'}: 编码、名称和分类不能为空`)
+            results.errors.push(`产品 ${productData.code || '未知'}: 名称不能为空`)
             continue
           }
 
-          // 检查编码是否已存在
-          const existingProduct = products.find(p => p.code === productData.code)
+          const sku = productData.code || `P${Date.now().toString().slice(-8)}${Math.random().toString(36).slice(-4)}`
+
+          const existingProduct = await productRepo.findOne({ where: { sku } })
           if (existingProduct) {
             results.failed++
-            results.errors.push(`产品 ${productData.code}: 编码已存在`)
+            results.errors.push(`产品 ${sku}: 编码已存在`)
             continue
           }
 
-          // 创建新产品
-          const newProduct: Product = {
-            id: generateId(),
-            code: productData.code,
+          const newProduct = productRepo.create({
+            sku,
             name: productData.name,
-            categoryId: productData.categoryId,
-            categoryName: productData.categoryName || '',
-            brand: productData.brand || '',
-            specification: productData.specification || '',
-            unit: productData.unit || '个',
-            weight: Number(productData.weight) || 0,
-            dimensions: productData.dimensions || '',
-            description: productData.description || '',
+            categoryId: productData.categoryId ? Number(productData.categoryId) : 1,
             price: Number(productData.price) || 0,
             costPrice: Number(productData.costPrice) || 0,
-            marketPrice: Number(productData.marketPrice) || 0,
             stock: Number(productData.stock) || 0,
-            minStock: Number(productData.minStock) || 0,
-            maxStock: Number(productData.maxStock) || 0,
-            salesCount: 0,
-            status: productData.status || 'active',
-            image: productData.image || '',
-            createTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
-          }
+            status: productData.status || 'active'
+          })
 
-          products.push(newProduct)
+          await productRepo.save(newProduct)
           results.success++
         } catch (error) {
           results.failed++
@@ -904,8 +788,7 @@ export class ProductController {
       console.error('批量导入产品失败:', error)
       res.status(500).json({
         success: false,
-        message: '批量导入产品失败',
-        error: error instanceof Error ? error.message : '未知错误'
+        message: '批量导入产品失败'
       })
     }
   }
@@ -915,49 +798,42 @@ export class ProductController {
    */
   static async exportProducts(req: Request, res: Response): Promise<void> {
     try {
-      const { categoryId, status, format = 'json' } = req.query
+      const { categoryId, status } = req.query
+      const productRepo = getProductRepository()
 
-      let exportProducts = [...products]
+      const queryBuilder = productRepo.createQueryBuilder('product')
+        .leftJoinAndSelect('product.category', 'category')
 
-      // 分类筛选
       if (categoryId) {
-        exportProducts = exportProducts.filter(product =>
-          product.categoryId === categoryId
-        )
+        queryBuilder.andWhere('product.categoryId = :categoryId', { categoryId: Number(categoryId) })
       }
 
-      // 状态筛选
       if (status) {
-        exportProducts = exportProducts.filter(product =>
-          product.status === status
-        )
+        queryBuilder.andWhere('product.status = :status', { status })
       }
 
-      if (format === 'csv') {
-        // CSV格式导出
-        const csvHeader = 'ID,编码,名称,分类ID,分类名称,品牌,规格,单位,重量,尺寸,描述,价格,成本价,市场价,库存,最小库存,最大库存,销量,状态,图片,创建时间\n'
-        const csvData = exportProducts.map(product =>
-          `${product.id},${product.code},${product.name},${product.categoryId},${product.categoryName},${product.brand},${product.specification},${product.unit},${product.weight},${product.dimensions},${product.description},${product.price},${product.costPrice},${product.marketPrice},${product.stock},${product.minStock},${product.maxStock},${product.salesCount},${product.status},${product.image},${product.createTime}`
-        ).join('\n')
+      const products = await queryBuilder.getMany()
 
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8')
-        res.setHeader('Content-Disposition', 'attachment; filename=products.csv')
-        res.send(csvHeader + csvData)
-      } else {
-        // JSON格式导出
-        res.json({
-          success: true,
-          data: exportProducts,
-          total: exportProducts.length,
-          exportTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
-        })
-      }
+      res.json({
+        success: true,
+        data: products.map(p => ({
+          id: p.id,
+          code: p.sku,
+          name: p.name,
+          categoryName: p.category?.name || '',
+          price: Number(p.price),
+          costPrice: Number(p.costPrice) || 0,
+          stock: p.stock,
+          status: p.status
+        })),
+        total: products.length,
+        exportTime: new Date().toISOString()
+      })
     } catch (error) {
       console.error('导出产品数据失败:', error)
       res.status(500).json({
         success: false,
-        message: '导出产品数据失败',
-        error: error instanceof Error ? error.message : '未知错误'
+        message: '导出产品数据失败'
       })
     }
   }
@@ -967,32 +843,31 @@ export class ProductController {
    */
   static async getStockStatistics(req: Request, res: Response): Promise<void> {
     try {
-      const totalProducts = products.length
-      const totalStock = products.reduce((sum, product) => sum + product.stock, 0)
-      const totalValue = products.reduce((sum, product) => sum + (product.stock * product.price), 0)
-      const lowStockProducts = products.filter(product => product.stock <= product.minStock)
-      const outOfStockProducts = products.filter(product => product.stock === 0)
+      const productRepo = getProductRepository()
 
-      const statistics = {
-        totalProducts,
-        totalStock,
-        totalValue,
-        lowStockCount: lowStockProducts.length,
-        outOfStockCount: outOfStockProducts.length,
-        lowStockProducts: lowStockProducts.slice(0, 10), // 只返回前10个低库存产品
-        outOfStockProducts: outOfStockProducts.slice(0, 10) // 只返回前10个缺货产品
-      }
+      const totalProducts = await productRepo.count()
+      const products = await productRepo.find()
+
+      const totalStock = products.reduce((sum, p) => sum + p.stock, 0)
+      const totalValue = products.reduce((sum, p) => sum + (p.stock * Number(p.price)), 0)
+      const lowStockProducts = products.filter(p => p.stockAlert && p.stock <= p.stockAlert)
+      const outOfStockProducts = products.filter(p => p.stock === 0)
 
       res.json({
         success: true,
-        data: statistics
+        data: {
+          totalProducts,
+          totalStock,
+          totalValue,
+          lowStockCount: lowStockProducts.length,
+          outOfStockCount: outOfStockProducts.length
+        }
       })
     } catch (error) {
       console.error('获取库存统计信息失败:', error)
       res.status(500).json({
         success: false,
-        message: '获取库存统计信息失败',
-        error: error instanceof Error ? error.message : '未知错误'
+        message: '获取库存统计信息失败'
       })
     }
   }
