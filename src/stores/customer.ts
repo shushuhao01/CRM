@@ -356,8 +356,12 @@ export const useCustomerStore = createPersistentStore('customer', () => {
 
         const response = await customerApi.create(dataWithCode)
         console.log('[CustomerStore] API响应:', response)
+        console.log('[CustomerStore] API响应类型:', typeof response)
+        console.log('[CustomerStore] API响应.data:', response.data)
+        console.log('[CustomerStore] API响应.success:', response.success)
 
-        if (response.data) {
+        // 检查API是否成功
+        if (response.success && response.data) {
           const newCustomer = response.data
           console.log('[CustomerStore] ✅ API保存成功，客户ID:', newCustomer.id)
 
@@ -366,8 +370,18 @@ export const useCustomerStore = createPersistentStore('customer', () => {
           console.log('[CustomerStore] 本地缓存已更新，客户总数:', customers.value.length)
 
           return newCustomer
+        } else if (response.success && !response.data) {
+          // API成功但没有返回data，可能是后端返回格式问题
+          console.warn('[CustomerStore] API成功但没有返回客户数据，尝试从响应中提取')
+          // 尝试直接使用response作为客户数据（如果后端直接返回客户对象）
+          const possibleCustomer = response as unknown as Customer
+          if (possibleCustomer.id || possibleCustomer.name) {
+            customers.value.unshift(possibleCustomer)
+            return possibleCustomer
+          }
+          throw new Error('API返回成功但没有客户数据')
         } else {
-          console.error('[CustomerStore] API响应中没有data字段:', response)
+          console.error('[CustomerStore] API响应失败:', response)
           throw new Error((response as { message?: string }).message || '创建客户失败')
         }
       } catch (apiError) {
