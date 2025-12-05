@@ -251,7 +251,8 @@ class UserDataService {
    * 获取认证token
    */
   private getToken(): string {
-    return localStorage.getItem('token') || ''
+    // 修复：token存储在auth_token中，不是token
+    return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || ''
   }
 
   /**

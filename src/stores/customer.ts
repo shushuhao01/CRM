@@ -330,18 +330,20 @@ export const useCustomerStore = createPersistentStore('customer', () => {
     console.log('🔥 createCustomer方法被调用！实例ID:', instanceId)
     console.log('🔥 传入的客户数据:', customerData)
 
-    // 检查是否应该使用真实API（生产环境）
-    const { isProduction } = await import('@/utils/env')
-    const { shouldUseMockApi } = await import('@/api/mock')
+    // 检查是否为生产环境（直接检查hostname，不依赖其他函数）
+    const hostname = window.location.hostname
+    const isProdEnv = !(
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.includes('192.168') ||
+      hostname.includes('dev.') ||
+      hostname.includes('test.')
+    )
 
-    // 添加调试日志
-    const isProd = isProduction()
-    const useMock = shouldUseMockApi()
-    console.log('[CustomerStore] 环境检测: isProduction=', isProd, ', shouldUseMockApi=', useMock)
-    console.log('[CustomerStore] 当前hostname:', window.location.hostname)
+    console.log('[CustomerStore] 环境检测: hostname=', hostname, ', isProdEnv=', isProdEnv)
 
-    // 生产环境或配置了API地址时，调用真实API
-    if (isProd || !useMock) {
+    // 生产环境强制使用API，不管其他设置
+    if (isProdEnv) {
       console.log('[CustomerStore] 🌐 生产环境：调用真实API保存客户到数据库')
       try {
         const { customerApi } = await import('@/api/customer')
