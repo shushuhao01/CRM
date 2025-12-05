@@ -963,13 +963,22 @@ const removeQuickProduct = (index: number) => {
   quickAddProducts.value.splice(index, 1)
 }
 
-// 处理图片上传
-const handleImageUpload = (file: File, index: number) => {
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    quickAddProducts.value[index].image = e.target?.result as string
+// 处理图片上传 - 上传到服务器
+const handleImageUpload = async (file: File, index: number) => {
+  try {
+    const { uploadImage } = await import('@/services/uploadService')
+    const result = await uploadImage(file, 'product')
+
+    if (result.success && result.url) {
+      quickAddProducts.value[index].image = result.url
+      ElMessage.success('图片上传成功')
+    } else {
+      ElMessage.error(result.message || '图片上传失败')
+    }
+  } catch (error) {
+    console.error('图片上传失败:', error)
+    ElMessage.error('图片上传失败，请重试')
   }
-  reader.readAsDataURL(file)
   return false // 阻止自动上传
 }
 

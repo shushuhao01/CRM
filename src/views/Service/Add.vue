@@ -230,6 +230,7 @@
                   accept="image/*"
                   @preview="handlePreview"
                   @remove="handleRemove"
+                  @change="handleFileChange"
                 >
                   <el-icon><Plus /></el-icon>
                 </el-upload>
@@ -840,6 +841,50 @@ const handlePreview = (file: UploadUserFile) => {
 
 const handleRemove = (file: UploadUserFile) => {
   console.log('移除文件:', file)
+}
+
+/**
+ * 文件变化处理 - 上传到服务器
+ */
+const handleFileChange = async (file: UploadUserFile) => {
+  if (file.raw) {
+    // 验证文件
+    const isImage = file.raw.type.startsWith('image/')
+    const isLt2M = file.raw.size / 1024 / 1024 < 2
+
+    if (!isImage) {
+      ElMessage.error('只能上传图片文件!')
+      const index = fileList.value.indexOf(file)
+      if (index > -1) fileList.value.splice(index, 1)
+      return
+    }
+    if (!isLt2M) {
+      ElMessage.error('图片大小不能超过 2MB!')
+      const index = fileList.value.indexOf(file)
+      if (index > -1) fileList.value.splice(index, 1)
+      return
+    }
+
+    try {
+      const { uploadImage } = await import('@/services/uploadService')
+      const result = await uploadImage(file.raw, 'service')
+
+      if (result.success && result.url) {
+        file.url = result.url
+        file.status = 'success'
+        ElMessage.success('图片上传成功')
+      } else {
+        const index = fileList.value.indexOf(file)
+        if (index > -1) fileList.value.splice(index, 1)
+        ElMessage.error(result.message || '图片上传失败')
+      }
+    } catch (error) {
+      console.error('图片上传失败:', error)
+      const index = fileList.value.indexOf(file)
+      if (index > -1) fileList.value.splice(index, 1)
+      ElMessage.error('图片上传失败，请重试')
+    }
+  }
 }
 
 /**

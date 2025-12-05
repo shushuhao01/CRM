@@ -30,7 +30,7 @@
               <template #header>
                 <span>基本信息</span>
               </template>
-              
+
               <el-row :gutter="20">
                 <el-col :span="12">
                   <el-form-item label="商品名称" prop="name">
@@ -151,7 +151,7 @@
               <template #header>
                 <span>价格库存</span>
               </template>
-              
+
               <el-row :gutter="20">
                 <el-col :span="12">
                   <el-form-item label="销售价格" prop="price">
@@ -178,7 +178,7 @@
                   </el-form-item>
                 </el-col>
               </el-row>
-              
+
               <el-row :gutter="20">
                 <el-col :span="12">
                   <el-form-item label="市场价格" prop="marketPrice">
@@ -240,7 +240,7 @@
               <template #header>
                 <span>商品图片</span>
               </template>
-              
+
               <div class="image-upload-section">
                 <div class="upload-tip">
                   <el-alert
@@ -249,7 +249,7 @@
                     :closable="false"
                   />
                 </div>
-                
+
                 <el-upload
                   v-model:file-list="fileList"
                   action="#"
@@ -279,7 +279,7 @@
               <template #header>
                 <span>商品状态</span>
               </template>
-              
+
               <el-form-item label="商品状态" prop="status">
                 <el-radio-group v-model="productForm.status">
                   <el-radio label="active">上架</el-radio>
@@ -317,7 +317,7 @@
               <template #header>
                 <span>SEO设置</span>
               </template>
-              
+
               <el-form-item label="SEO标题" prop="seoTitle">
                 <el-input
                   v-model="productForm.seoTitle"
@@ -351,7 +351,7 @@
               <template #header>
                 <span>操作提示</span>
               </template>
-              
+
               <div class="tips-content">
                 <el-alert
                   title="保存提示"
@@ -476,7 +476,7 @@ const categoryProps = {
 // 获取分类名称
 const getCategoryName = (categoryId: string | number) => {
   if (!categoryId) return '未分类'
-  
+
   // 在一级分类中查找
   for (const category of productStore.categories || []) {
     if (category.id === categoryId) {
@@ -582,39 +582,50 @@ const beforeImageUpload = (file: File) => {
 }
 
 /**
- * 图片变化处理
+ * 图片变化处理 - 上传到服务器
  */
-const handleImageChange = (file: UploadFile, uploadFileList: UploadFile[]) => {
-  // 处理图片文件，生成预览URL
+const handleImageChange = async (file: UploadFile, uploadFileList: UploadFile[]) => {
+  // 如果有原始文件，上传到服务器
   if (file.raw) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      file.url = e.target?.result as string
-      
-      // 更新图片列表
-      const imageUrls = uploadFileList
-        .filter(f => f.url)
-        .map(f => f.url!)
-      
-      productForm.images = imageUrls
-      
-      // 设置第一张图片为主图
-      if (imageUrls.length > 0) {
-        productForm.mainImage = imageUrls[0]
+    try {
+      const { uploadImage } = await import('@/services/uploadService')
+      const result = await uploadImage(file.raw, 'product')
+
+      if (result.success && result.url) {
+        // 上传成功，使用服务器返回的URL
+        file.url = result.url
+        ElMessage.success('图片上传成功')
+      } else {
+        // 上传失败，从列表中移除
+        const index = uploadFileList.indexOf(file)
+        if (index > -1) {
+          uploadFileList.splice(index, 1)
+        }
+        ElMessage.error(result.message || '图片上传失败')
+        return
       }
+    } catch (error) {
+      console.error('图片上传失败:', error)
+      // 上传失败，从列表中移除
+      const index = uploadFileList.indexOf(file)
+      if (index > -1) {
+        uploadFileList.splice(index, 1)
+      }
+      ElMessage.error('图片上传失败，请重试')
+      return
     }
-    reader.readAsDataURL(file.raw)
-  } else if (file.url) {
-    // 如果已经有URL（比如编辑时加载的图片），直接更新
-    const imageUrls = uploadFileList
-      .filter(f => f.url)
-      .map(f => f.url!)
-    
-    productForm.images = imageUrls
-    
-    if (imageUrls.length > 0) {
-      productForm.mainImage = imageUrls[0]
-    }
+  }
+
+  // 更新图片列表（只包含有URL的图片）
+  const imageUrls = uploadFileList
+    .filter(f => f.url && !f.url.startsWith('data:')) // 排除base64预览图
+    .map(f => f.url!)
+
+  productForm.images = imageUrls
+
+  // 设置第一张图片为主图
+  if (imageUrls.length > 0) {
+    productForm.mainImage = imageUrls[0]
   }
 }
 
@@ -626,9 +637,9 @@ const handleImageRemove = (file: UploadFile, uploadFileList: UploadFile[]) => {
   const imageUrls = uploadFileList
     .filter(f => f.url)
     .map(f => f.url!)
-  
+
   productForm.images = imageUrls
-  
+
   // 更新主图
   if (imageUrls.length > 0) {
     productForm.mainImage = imageUrls[0]
@@ -651,7 +662,7 @@ const handleCancel = async () => {
         type: 'warning'
       }
     )
-    
+
     goBack()
   } catch (error) {
     // 用户取消操作
@@ -669,13 +680,13 @@ const handleSave = async () => {
       ElMessage.error('请完善商品信息')
       return
     }
-    
+
     // 验证库存设置
     if (productForm.minStock > productForm.maxStock) {
       ElMessage.error('最低库存不能大于最高库存')
       return
     }
-    
+
     if (productForm.costPrice > productForm.price) {
       try {
         await ElMessageBox.confirm(
@@ -692,14 +703,14 @@ const handleSave = async () => {
         return
       }
     }
-    
+
     saveLoading.value = true
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1500))
-    
+
     const isAddMode = !isEdit.value
-    
+
     // 更新store中的商品数据
     if (isAddMode) {
       // 新增商品
@@ -752,9 +763,9 @@ const handleSave = async () => {
         images: Array.isArray(productForm.images) ? productForm.images : []
       })
     }
-    
+
     ElMessage.success(isEdit.value ? '商品更新成功' : '商品创建成功')
-    
+
     // 延迟跳转，让用户能看到成功提示
     setTimeout(() => {
       if (isAddMode) {
@@ -780,25 +791,25 @@ const handleSave = async () => {
  */
 const loadProductInfo = async () => {
   if (!isEdit.value) return
-  
+
   try {
     const productId = route.params.id
-    
+
     if (!productId) {
       ElMessage.error('商品ID不存在')
       safeNavigator.push('/product/list')
       return
     }
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 800))
-    
+
     // 从store中获取真实的商品数据，尝试字符串和数字两种类型
     let product = productStore.getProductById(productId)
     if (!product && !isNaN(Number(productId))) {
       product = productStore.getProductById(Number(productId))
     }
-    
+
     if (product) {
       // 使用真实的商品数据填充表单
       Object.assign(productForm, {
@@ -829,7 +840,7 @@ const loadProductInfo = async () => {
         mainImage: product.image,
         images: product.images || []
       })
-      
+
       // 初始化文件列表
       fileList.value = (product.images || []).map((url: string, index: number) => ({
         uid: Date.now() + index,
@@ -852,11 +863,11 @@ const loadProductInfo = async () => {
 const handleCopyProduct = async () => {
   const copyId = route.query.copy
   if (!copyId) return
-  
+
   try {
     // 模拟API调用获取要复制的商品信息
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     // 复制商品数据（排除ID和编码）
     Object.assign(productForm, {
       name: 'iPhone 15 Pro (复制)',
@@ -882,10 +893,10 @@ const handleCopyProduct = async () => {
       seoDescription: '',
       images: []
     })
-    
+
     // 生成新的商品编码
     generateCode()
-    
+
     ElMessage.success('商品信息已复制，请修改后保存')
   } catch (error) {
     ElMessage.error('复制商品信息失败')
@@ -1037,11 +1048,11 @@ onMounted(() => {
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .header-actions {
     justify-content: center;
   }
-  
+
   .form-content .el-row .el-col {
     margin-bottom: 20px;
   }

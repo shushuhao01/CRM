@@ -370,7 +370,7 @@
                   :auto-upload="false"
                   :on-preview="handlePreview"
                   :on-remove="handleRemove"
-                  :before-upload="beforeUpload"
+                  :on-change="handleFileChange"
                   multiple
                   accept="image/*"
                 >
@@ -990,21 +990,50 @@ const handleRemove = (file: UploadUserFile) => {
 }
 
 /**
- * 上传前检查
+ * 文件变化处理 - 上传到服务器
  */
-const beforeUpload = (file: File) => {
-  const isImage = file.type.startsWith('image/')
-  const isLt5M = file.size / 1024 / 1024 < 5
+const handleFileChange = async (file: UploadUserFile) => {
+  if (file.raw) {
+    // 验证文件
+    const isImage = file.raw.type.startsWith('image/')
+    const isLt5M = file.raw.size / 1024 / 1024 < 5
 
-  if (!isImage) {
-    ElMessage.error('只能上传图片文件!')
-    return false
+    if (!isImage) {
+      ElMessage.error('只能上传图片文件!')
+      // 从列表中移除
+      const index = fileList.value.indexOf(file)
+      if (index > -1) fileList.value.splice(index, 1)
+      return
+    }
+    if (!isLt5M) {
+      ElMessage.error('图片大小不能超过 5MB!')
+      const index = fileList.value.indexOf(file)
+      if (index > -1) fileList.value.splice(index, 1)
+      return
+    }
+
+    try {
+      const { uploadImage } = await import('@/services/uploadService')
+      const result = await uploadImage(file.raw, 'service')
+
+      if (result.success && result.url) {
+        // 上传成功，更新文件URL
+        file.url = result.url
+        file.status = 'success'
+        ElMessage.success('图片上传成功')
+      } else {
+        // 上传失败，从列表中移除
+        const index = fileList.value.indexOf(file)
+        if (index > -1) fileList.value.splice(index, 1)
+        ElMessage.error(result.message || '图片上传失败')
+      }
+    } catch (error) {
+      console.error('图片上传失败:', error)
+      const index = fileList.value.indexOf(file)
+      if (index > -1) fileList.value.splice(index, 1)
+      ElMessage.error('图片上传失败，请重试')
+    }
   }
-  if (!isLt5M) {
-    ElMessage.error('图片大小不能超过 5MB!')
-    return false
-  }
-  return true
 }
 
 /**
