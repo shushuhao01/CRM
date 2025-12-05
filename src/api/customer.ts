@@ -41,37 +41,96 @@ export const customerApi = {
     return api.get<CustomerListResponse>(API_ENDPOINTS.CUSTOMERS.LIST, params)
   },
 
-  // 检查客户是否存在
+  // 检查客户是否存在（调用后端API验证数据库）
   checkExists: async (phone: string) => {
     try {
-      console.log('=== 验证客户是否存在 ===')
+      console.log('=== 验证客户是否存在（调用后端API） ===')
       console.log('验证手机号:', phone)
 
-      // 使用静态导入的CustomerStore，确保使用同一个实例
+      // 生产环境：调用后端API验证数据库
+      if (isProduction()) {
+        console.log('生产环境：调用后端API验证')
+        const response = await api.get<{
+          id: string
+          name: string
+          phone: string
+          creatorName: string
+          createTime: string
+        } | null>('/customers/check-exists', { phone })
+
+        console.log('后端API响应:', response)
+
+        if (response.data) {
+          console.log('后端返回：客户已存在:', response.data.name)
+          return {
+            data: response.data,
+            code: 200,
+            message: '该手机号已存在客户记录',
+            success: true
+          }
+        } else {
+          console.log('后端返回：客户不存在，可以创建')
+          return {
+            data: null,
+            code: 200,
+            message: '该手机号不存在，可以创建',
+            success: true
+          }
+        }
+      }
+
+      // 开发环境：同时检查本地store和后端API
+      console.log('开发环境：检查本地store')
       const customerStore = useCustomerStore()
 
-      console.log('验证时CustomerStore实例ID:', (customerStore as any).instanceId)
+      console.log('验证时CustomerStore实例ID:', (customerStore as unknown as { instanceId: string }).instanceId)
       console.log('验证时CustomerStore客户数量:', customerStore.customers.length)
-      console.log('验证时所有客户手机号:', customerStore.customers.map(c => c.phone))
 
+      // 先检查本地store
       const existingCustomer = customerStore.customers.find(c => c.phone === phone)
 
       if (existingCustomer) {
-        console.log('找到重复客户:', existingCustomer.name)
+        console.log('本地store找到重复客户:', existingCustomer.name)
         return {
           data: existingCustomer,
           code: 200,
           message: '该手机号已存在客户记录',
           success: true
         }
-      } else {
-        console.log('客户不存在，可以创建')
-        return {
-          data: null,
-          code: 200,
-          message: '该手机号不存在，可以创建',
-          success: true
+      }
+
+      // 如果本地没有，尝试调用后端API（开发环境可能也连接了数据库）
+      if (!shouldUseMockApi()) {
+        try {
+          console.log('开发环境：尝试调用后端API验证')
+          const response = await api.get<{
+            id: string
+            name: string
+            phone: string
+            creatorName: string
+            createTime: string
+          } | null>('/customers/check-exists', { phone })
+
+          if (response.data) {
+            console.log('后端API返回：客户已存在:', response.data.name)
+            return {
+              data: response.data,
+              code: 200,
+              message: '该手机号已存在客户记录',
+              success: true
+            }
+          }
+        } catch (apiError) {
+          console.log('后端API调用失败，使用本地验证结果:', apiError)
         }
+      }
+
+      console.log('客户不存在，可以创建')
+      return {
+        data: null,
+        code: 200,
+        message: '该手机号不存在，可以创建',
+        success: true
       }
     } catch (error) {
       console.error('Customer API: checkExists 执行失败:', error)
