@@ -897,7 +897,7 @@ export class ProductController {
                orderDate.getFullYear() === currentYear &&
                ['shipped', 'delivered', 'completed'].includes(order.status)
       }).reduce((sum, order) => {
-        const item = order.items?.find((i: any) => i.productId === id)
+        const item = order.items?.find((i: unknown) => i.productId === id)
         return sum + (item?.quantity || 1)
       }, 0)
 

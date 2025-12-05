@@ -112,7 +112,8 @@ export const productApi = {
   }> {
     try {
       const response = await api.get(`/products/${productId}/stats`)
-      return response.data
+      // 后端返回格式是 { success: true, data: stats }
+      return response.data?.data || response.data
     } catch (error) {
       console.error('获取商品统计数据失败:', error)
       // 返回默认值
