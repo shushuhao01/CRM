@@ -334,8 +334,14 @@ export const useCustomerStore = createPersistentStore('customer', () => {
     const { isProduction } = await import('@/utils/env')
     const { shouldUseMockApi } = await import('@/api/mock')
 
+    // 添加调试日志
+    const isProd = isProduction()
+    const useMock = shouldUseMockApi()
+    console.log('[CustomerStore] 环境检测: isProduction=', isProd, ', shouldUseMockApi=', useMock)
+    console.log('[CustomerStore] 当前hostname:', window.location.hostname)
+
     // 生产环境或配置了API地址时，调用真实API
-    if (isProduction() || !shouldUseMockApi()) {
+    if (isProd || !useMock) {
       console.log('[CustomerStore] 🌐 生产环境：调用真实API保存客户到数据库')
       try {
         const { customerApi } = await import('@/api/customer')
@@ -344,7 +350,10 @@ export const useCustomerStore = createPersistentStore('customer', () => {
           ...customerData,
           code: generateCustomerCode()
         }
+        console.log('[CustomerStore] 准备发送到API的数据:', dataWithCode)
+
         const response = await customerApi.create(dataWithCode)
+        console.log('[CustomerStore] API响应:', response)
 
         if (response.data) {
           const newCustomer = response.data
@@ -356,6 +365,7 @@ export const useCustomerStore = createPersistentStore('customer', () => {
 
           return newCustomer
         } else {
+          console.error('[CustomerStore] API响应中没有data字段:', response)
           throw new Error((response as { message?: string }).message || '创建客户失败')
         }
       } catch (apiError) {
