@@ -4505,13 +4505,18 @@ const handleSaveStorage = async () => {
 
     console.log('[存储设置] 已保存到localStorage:', storageForm.value)
 
-    // 如果是OSS存储类型，重新初始化OSS客户端
+    // 2. 清除uploadService的存储配置缓存，确保下次上传使用新配置
+    const { clearStorageConfigCache } = await import('@/services/uploadService')
+    clearStorageConfigCache()
+    console.log('[存储设置] 已清除上传服务缓存')
+
+    // 3. 如果是OSS存储类型，重新初始化OSS客户端
     if (storageForm.value.storageType === 'oss') {
       const { ossService } = await import('@/services/ossService')
       await ossService.reinitialize()
     }
 
-    // 2. 尝试保存到后端API（生产环境持久化）
+    // 4. 尝试保存到后端API（生产环境持久化）
     try {
       const { apiService } = await import('@/services/apiService')
       await apiService.put('/system/storage-settings', storageForm.value)
