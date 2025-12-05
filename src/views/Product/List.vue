@@ -1078,6 +1078,14 @@ const tableColumns = computed(() => [
     visible: true,
     sortable: true,
     showOverflowTooltip: true
+  },
+  {
+    prop: 'updateTime',
+    label: '更新时间',
+    width: 180,
+    visible: false, // 默认隐藏，用户可通过列设置显示
+    sortable: true,
+    showOverflowTooltip: true
   }
 ])
 
