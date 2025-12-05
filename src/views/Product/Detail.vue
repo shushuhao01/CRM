@@ -296,8 +296,8 @@
             <template #header>
               <div class="stats-header">
                 <span>相关统计</span>
-                <el-tag v-if="relatedStats.dataScope && relatedStats.dataScope !== 'all'" size="small" type="info">
-                  {{ relatedStats.dataScope === 'department' ? '部门数据' : '个人数据' }}
+                <el-tag v-if="relatedStats.dataScope" size="small" :type="getDataScopeTagType(relatedStats.dataScope)">
+                  {{ getDataScopeLabel(relatedStats.dataScope) }}
                 </el-tag>
               </div>
             </template>
@@ -1199,13 +1199,16 @@ const loadRelatedStats = async () => {
     // 调用后端API获取统计数据（后端会根据用户角色过滤数据）
     const stats = await productApi.getProductStats(productId)
 
+    // 根据当前用户角色确定默认的数据范围
+    const defaultDataScope = getDefaultDataScope()
+
     relatedStats.value = {
       pendingOrders: stats.pendingOrders || 0,
       monthlySales: stats.monthlySales || 0,
       turnoverRate: stats.turnoverRate || 0,
       avgRating: stats.avgRating || 0,
       returnRate: stats.returnRate || 0,
-      dataScope: stats.dataScope || 'personal'
+      dataScope: stats.dataScope || defaultDataScope
     }
 
   } catch (error) {
@@ -1213,6 +1216,49 @@ const loadRelatedStats = async () => {
     // 如果API调用失败，尝试使用本地数据计算（作为降级方案）
     await loadRelatedStatsFromLocal()
   }
+}
+
+/**
+ * 根据当前用户角色获取默认的数据范围
+ */
+const getDefaultDataScope = (): 'all' | 'department' | 'personal' => {
+  const currentUser = userStore.user
+  if (!currentUser) return 'personal'
+
+  // 超级管理员和管理员：全部数据
+  if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
+    return 'all'
+  }
+  // 部门经理：部门数据
+  if (currentUser.role === 'department_manager' || currentUser.role === 'department_head') {
+    return 'department'
+  }
+  // 其他角色：个人数据
+  return 'personal'
+}
+
+/**
+ * 获取数据范围标签文本
+ */
+const getDataScopeLabel = (scope: string): string => {
+  const labels: Record<string, string> = {
+    all: '全部数据',
+    department: '部门数据',
+    personal: '个人数据'
+  }
+  return labels[scope] || '个人数据'
+}
+
+/**
+ * 获取数据范围标签类型
+ */
+const getDataScopeTagType = (scope: string): string => {
+  const types: Record<string, string> = {
+    all: 'success',      // 绿色 - 全部数据
+    department: 'warning', // 橙色 - 部门数据
+    personal: 'info'     // 灰色 - 个人数据
+  }
+  return types[scope] || 'info'
 }
 
 /**
