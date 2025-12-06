@@ -93,9 +93,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useDepartmentStore, type DepartmentMember } from '@/stores/department'
+import { useUserStore } from '@/stores/user'
 
 interface Props {
   modelValue: boolean
@@ -117,8 +118,16 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 const departmentStore = useDepartmentStore()
+const userStore = useUserStore()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+
+// 确保用户列表已加载
+onMounted(async () => {
+  if (userStore.users.length === 0) {
+    await userStore.loadUsers()
+  }
+})
 
 // 表单数据
 const formData = reactive({
@@ -161,17 +170,16 @@ const formRules: FormRules = {
   ]
 }
 
-// 可选用户列表（从localStorage读取真实用户，排除已在部门中的用户）
+// 可选用户列表（从userStore获取真实用户，排除已在部门中的用户）
 const availableUsers = computed(() => {
   try {
-    // 从localStorage获取crm_mock_users数据
-    const usersStr = localStorage.getItem('crm_mock_users')
-    if (!usersStr) {
-      console.log('[成员对话框] 未找到crm_mock_users数据')
+    // 从userStore获取用户数据
+    const users = userStore.users
+    if (!users || users.length === 0) {
+      console.log('[成员对话框] userStore中没有用户数据')
       return []
     }
 
-    const users = JSON.parse(usersStr)
     console.log('[成员对话框] 原始用户数据:', users.length)
 
     // 只显示活跃用户
@@ -179,15 +187,15 @@ const availableUsers = computed(() => {
       .filter((user: any) => {
         const isActive = user.status === 'active'
         if (!isActive) {
-          console.log('[成员对话框] 过滤非活跃用户:', user.username)
+          console.log('[成员对话框] 过滤非活跃用户:', user.username || user.name)
         }
         return isActive
       })
-      .map((user: unknown) => ({
+      .map((user: any) => ({
         id: user.id,
-        name: user.realName || user.username,
-        account: user.username,
-        department: user.departmentName || '',
+        name: user.realName || user.name || user.username,
+        account: user.username || user.id,
+        department: user.departmentName || user.department || '',
         departmentId: user.departmentId,
         phone: user.phone || ''
       }))
