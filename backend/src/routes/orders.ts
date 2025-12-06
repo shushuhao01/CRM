@@ -358,17 +358,18 @@ router.post('/', async (req: Request, res: Response) => {
       message: '订单创建成功',
       data: responseData
     });
-  } catch (error: unknown) {
+  } catch (error) {
+    const err = error as any;
     console.error('❌ [订单创建] 失败:', {
-      message: error?.message,
-      stack: error?.stack,
-      code: error?.code,
-      sqlMessage: error?.sqlMessage
+      message: err?.message,
+      stack: err?.stack,
+      code: err?.code,
+      sqlMessage: err?.sqlMessage
     });
     res.status(500).json({
       success: false,
-      message: error?.sqlMessage || error?.message || '创建订单失败',
-      error: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+      message: err?.sqlMessage || err?.message || '创建订单失败',
+      error: process.env.NODE_ENV === 'development' ? err?.stack : undefined
     });
   }
 });
