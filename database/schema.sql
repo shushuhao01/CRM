@@ -1110,6 +1110,130 @@ CREATE TABLE `order_status_history` (
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单状态历史表';
 
+-- 39. 拒绝原因表
+DROP TABLE IF EXISTS `rejection_reasons`;
+CREATE TABLE `rejection_reasons` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '原因ID',
+  `reason` VARCHAR(100) NOT NULL COMMENT '拒绝原因',
+  `description` TEXT NULL COMMENT '描述',
+  `isActive` BOOLEAN DEFAULT TRUE COMMENT '是否启用',
+  `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_active` (`isActive`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='拒绝原因表';
+
+-- 40. 业绩指标表
+DROP TABLE IF EXISTS `performance_metrics`;
+CREATE TABLE `performance_metrics` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '指标ID',
+  `userId` VARCHAR(100) NOT NULL COMMENT '用户ID',
+  `metricType` VARCHAR(50) NOT NULL COMMENT '指标类型',
+  `value` DECIMAL(10,2) NOT NULL COMMENT '指标值',
+  `date` DATE NOT NULL COMMENT '日期',
+  `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_user` (`userId`),
+  INDEX `idx_type` (`metricType`),
+  INDEX `idx_date` (`date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='业绩指标表';
+
+-- 41. 消息表
+DROP TABLE IF EXISTS `messages`;
+CREATE TABLE `messages` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '消息ID',
+  `senderId` VARCHAR(100) NOT NULL COMMENT '发送者ID',
+  `receiverId` VARCHAR(100) NOT NULL COMMENT '接收者ID',
+  `content` TEXT NOT NULL COMMENT '消息内容',
+  `type` VARCHAR(20) DEFAULT 'text' COMMENT '消息类型',
+  `isRead` BOOLEAN DEFAULT FALSE COMMENT '是否已读',
+  `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_sender` (`senderId`),
+  INDEX `idx_receiver` (`receiverId`),
+  INDEX `idx_read` (`isRead`),
+  INDEX `idx_created_at` (`createdAt`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息表';
+
+-- 42. 消息订阅表
+DROP TABLE IF EXISTS `message_subscriptions`;
+CREATE TABLE `message_subscriptions` (
+  `id` CHAR(36) PRIMARY KEY COMMENT '订阅ID(UUID)',
+  `messageType` VARCHAR(50) NOT NULL COMMENT '消息类型',
+  `name` VARCHAR(100) NOT NULL COMMENT '消息名称',
+  `description` TEXT NULL COMMENT '消息描述',
+  `category` VARCHAR(50) NOT NULL COMMENT '消息分类',
+  `isGlobalEnabled` BOOLEAN DEFAULT FALSE COMMENT '是否全局启用',
+  `globalNotificationMethods` JSON NULL COMMENT '全局通知方式',
+  `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_type` (`messageType`),
+  INDEX `idx_category` (`category`),
+  INDEX `idx_enabled` (`isGlobalEnabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息订阅表';
+
+-- 43. 部门订阅配置表
+DROP TABLE IF EXISTS `department_subscription_configs`;
+CREATE TABLE `department_subscription_configs` (
+  `id` CHAR(36) PRIMARY KEY COMMENT '配置ID(UUID)',
+  `messageType` VARCHAR(50) NOT NULL COMMENT '消息类型',
+  `departmentId` VARCHAR(50) NOT NULL COMMENT '部门ID',
+  `isEnabled` BOOLEAN DEFAULT FALSE COMMENT '是否启用',
+  `notificationMethods` JSON NULL COMMENT '通知方式',
+  `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_type` (`messageType`),
+  INDEX `idx_department` (`departmentId`),
+  INDEX `idx_enabled` (`isEnabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='部门订阅配置表';
+
+-- 44. 系统日志表
+DROP TABLE IF EXISTS `logs`;
+CREATE TABLE `logs` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '日志ID',
+  `level` VARCHAR(50) NOT NULL COMMENT '日志级别',
+  `message` TEXT NOT NULL COMMENT '日志消息',
+  `meta` TEXT NULL COMMENT '元数据',
+  `userId` VARCHAR(100) NULL COMMENT '用户ID',
+  `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `idx_level` (`level`),
+  INDEX `idx_user` (`userId`),
+  INDEX `idx_created_at` (`createdAt`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统日志表';
+
+-- 45. 改善目标表
+DROP TABLE IF EXISTS `improvement_goals`;
+CREATE TABLE `improvement_goals` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '目标ID',
+  `userId` VARCHAR(100) NOT NULL COMMENT '用户ID',
+  `title` VARCHAR(200) NOT NULL COMMENT '目标标题',
+  `description` TEXT NOT NULL COMMENT '目标描述',
+  `targetDate` DATE NOT NULL COMMENT '目标日期',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '状态',
+  `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_user` (`userId`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_target_date` (`targetDate`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='改善目标表';
+
+-- 46. 通话表（与call_records不同，这是实体对应的表）
+DROP TABLE IF EXISTS `calls`;
+CREATE TABLE `calls` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '通话ID',
+  `customerId` VARCHAR(100) NOT NULL COMMENT '客户ID',
+  `userId` VARCHAR(100) NOT NULL COMMENT '用户ID',
+  `phoneNumber` VARCHAR(20) NOT NULL COMMENT '电话号码',
+  `duration` INT DEFAULT 0 COMMENT '通话时长(秒)',
+  `status` VARCHAR(20) DEFAULT 'completed' COMMENT '状态',
+  `notes` TEXT NULL COMMENT '备注',
+  `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_customer` (`customerId`),
+  INDEX `idx_user` (`userId`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_created_at` (`createdAt`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通话表';
+
 -- =============================================
 -- 初始化数据
 -- =============================================
