@@ -1053,12 +1053,20 @@ const handleSubmit = async () => {
       }
     }, isEdit.value ? '正在更新客户信息...' : '正在添加客户...')
 
-    ElMessage.success(isEdit.value ? '客户信息更新成功' : '客户添加成功')
+    // 🔥 确保API成功后才显示成功消息和跳转
+    console.log('✅ 客户保存流程全部完成，准备跳转')
 
-    // 短暂延迟确保UI更新
-    await new Promise(resolve => setTimeout(resolve, 100))
+    // 显示成功消息，让用户确认保存成功
+    ElMessage.success({
+      message: isEdit.value ? '客户信息更新成功，正在跳转...' : '客户添加成功，正在跳转到列表...',
+      duration: 2000
+    })
+
+    // 延迟500ms确保用户看到成功提示，然后跳转
+    await new Promise(resolve => setTimeout(resolve, 500))
 
     // 跳转到客户列表，带上refresh参数强制刷新
+    console.log('🚀 跳转到客户列表页面')
     safeNavigator.push('/customer/list?refresh=true')
   } catch (error) {
     console.error('保存客户失败:', error)
