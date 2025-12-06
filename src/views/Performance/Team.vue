@@ -169,6 +169,8 @@
         class="data-table"
         :row-class-name="getRowClassName"
         border
+        show-summary
+        :summary-method="getSummaries"
       >
         <el-table-column type="index" label="序号" width="60" align="center" fixed="left" />
         <el-table-column prop="name" label="成员" width="100" align="center" fixed="left" />
@@ -389,6 +391,8 @@
             border
             height="calc(100vh - 300px)"
             style="width: 100%;"
+            show-summary
+            :summary-method="getFullscreenSummaries"
           >
             <el-table-column type="index" label="序号" width="60" align="center" fixed="left" />
             <el-table-column prop="name" label="成员" width="100" align="center" fixed="left" />
@@ -1631,6 +1635,126 @@ const getRowClassName = ({ row }: { row: TeamMember }) => {
   return row.isCurrentUser ? 'current-user-row' : ''
 }
 
+// 表格合计行计算方法
+const getSummaries = (param: { columns: any[]; data: TeamMember[] }) => {
+  const { columns, data } = param
+  const sums: string[] = []
+
+  columns.forEach((column, index) => {
+    // 第一列显示"合计"
+    if (index === 0) {
+      sums[index] = '合计'
+      return
+    }
+    // 第二列（成员名称）显示总人数
+    if (index === 1) {
+      sums[index] = `${data.length}人`
+      return
+    }
+
+    const prop = column.property
+    if (!prop) {
+      sums[index] = ''
+      return
+    }
+
+    // 金额类字段 - 求和
+    if (prop.includes('Amount')) {
+      const total = data.reduce((sum, row) => sum + (Number(row[prop]) || 0), 0)
+      sums[index] = `¥${formatNumber(total)}`
+      return
+    }
+
+    // 数量类字段 - 求和
+    if (prop.includes('Count')) {
+      const total = data.reduce((sum, row) => sum + (Number(row[prop]) || 0), 0)
+      // 整数不显示小数点
+      sums[index] = total % 1 === 0 ? String(total) : total.toFixed(1)
+      return
+    }
+
+    // 比率类字段 - 计算平均值
+    if (prop.includes('Rate')) {
+      const validData = data.filter(row => row[prop] !== undefined && row[prop] !== null)
+      if (validData.length > 0) {
+        const avg = validData.reduce((sum, row) => sum + (Number(row[prop]) || 0), 0) / validData.length
+        sums[index] = `${avg.toFixed(1)}%`
+      } else {
+        sums[index] = '0%'
+      }
+      return
+    }
+
+    // 其他字段不显示
+    sums[index] = ''
+  })
+
+  return sums
+}
+
+// 全屏表格合计行计算方法
+const getFullscreenSummaries = (param: { columns: any[]; data: TeamMember[] }) => {
+  const { columns, data } = param
+  const sums: string[] = []
+
+  // 全屏表格的列顺序：序号、成员、部门、用户名、工号、创建时间、下单数、下单业绩、发货数、发货业绩、发货率...
+  columns.forEach((column, index) => {
+    // 第一列显示"合计"
+    if (index === 0) {
+      sums[index] = '合计'
+      return
+    }
+    // 第二列（成员名称）显示总人数
+    if (index === 1) {
+      sums[index] = `${data.length}人`
+      return
+    }
+
+    const prop = column.property
+    if (!prop) {
+      sums[index] = ''
+      return
+    }
+
+    // 金额类字段 - 求和
+    if (prop.includes('Amount')) {
+      const total = data.reduce((sum, row) => sum + (Number(row[prop]) || 0), 0)
+      sums[index] = `¥${formatNumber(total)}`
+      return
+    }
+
+    // 数量类字段 - 求和
+    if (prop.includes('Count')) {
+      const total = data.reduce((sum, row) => sum + (Number(row[prop]) || 0), 0)
+      sums[index] = total % 1 === 0 ? String(total) : total.toFixed(1)
+      return
+    }
+
+    // 比率类字段 - 计算平均值
+    if (prop.includes('Rate')) {
+      const validData = data.filter(row => row[prop] !== undefined && row[prop] !== null)
+      if (validData.length > 0) {
+        const avg = validData.reduce((sum, row) => sum + (Number(row[prop]) || 0), 0) / validData.length
+        sums[index] = `${avg.toFixed(1)}%`
+      } else {
+        sums[index] = '0%'
+      }
+      return
+    }
+
+    // 部门、用户名、工号、创建时间等字段不显示合计
+    if (['department', 'username', 'employeeNumber', 'createTime'].includes(prop)) {
+      sums[index] = '-'
+      return
+    }
+
+    // 操作列不显示
+    sums[index] = ''
+  })
+
+  return sums
+}
+
 const getRateType = (rate: number) => {
   if (rate >= 90) return 'success'
   if (rate >= 80) return 'warning'
@@ -2333,6 +2457,26 @@ onUnmounted(() => {
 .operation-buttons .el-button {
   padding: 5px 10px;
   font-size: 12px;
+}
+
+/* 合计行样式 */
+:deep(.el-table__footer-wrapper) {
+  background: #f0f9eb;
+}
+
+:deep(.el-table__footer) {
+  font-weight: 600;
+}
+
+:deep(.el-table__footer td) {
+  background: #f0f9eb !important;
+  color: #409eff;
+  font-size: 14px;
+}
+
+:deep(.el-table__footer td:first-child) {
+  color: #303133;
+  font-weight: 700;
 }
 </style>
 

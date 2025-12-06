@@ -600,7 +600,7 @@ router.post('/cancel-request', async (req: Request, res: Response) => {
     }
 
     // 更新订单状态为待取消
-    order.status = 'pending' as any; // 临时使用pending表示待取消
+    order.status = 'pending' as unknown; // 临时使用pending表示待取消
     order.notes = `取消原因: ${reason}${description ? ` - ${description}` : ''}`;
 
     await orderRepository.save(order);
