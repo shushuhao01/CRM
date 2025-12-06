@@ -9,7 +9,7 @@
         </h1>
         <p class="page-description">查看和管理所有通话记录，包括呼入和呼出通话详情</p>
       </div>
-      
+
       <div class="header-actions">
         <el-button @click="exportRecords" :loading="exportLoading">
           <el-icon><Download /></el-icon>
@@ -42,7 +42,7 @@
             </div>
           </el-card>
         </el-col>
-        
+
         <el-col :span="6">
           <el-card class="overview-card">
             <div class="overview-content">
@@ -60,7 +60,7 @@
             </div>
           </el-card>
         </el-col>
-        
+
         <el-col :span="6">
           <el-card class="overview-card">
             <div class="overview-content">
@@ -78,7 +78,7 @@
             </div>
           </el-card>
         </el-col>
-        
+
         <el-col :span="6">
           <el-card class="overview-card">
             <div class="overview-content">
@@ -115,7 +115,7 @@
               <el-option label="呼出" value="outgoing" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="通话状态">
             <el-select
               v-model="searchForm.status"
@@ -130,7 +130,7 @@
               <el-option label="失败" value="failed" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="客户信息">
             <el-input
               v-model="searchForm.customerInfo"
@@ -139,7 +139,7 @@
               style="width: 200px;"
             />
           </el-form-item>
-          
+
           <el-form-item label="通话时间">
             <el-date-picker
               v-model="searchForm.dateRange"
@@ -152,7 +152,7 @@
               style="width: 320px;"
             />
           </el-form-item>
-          
+
           <el-form-item label="通话人员">
             <el-select
               v-model="searchForm.userId"
@@ -161,12 +161,15 @@
               style="width: 150px;"
             >
               <el-option label="全部" value="" />
-              <el-option label="张三" value="1" />
-              <el-option label="李四" value="2" />
-              <el-option label="王五" value="3" />
+              <el-option
+                v-for="user in salesPersonList"
+                :key="user.id"
+                :label="user.name"
+                :value="user.id"
+              />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="时长筛选">
             <el-select
               v-model="searchForm.durationRange"
@@ -181,7 +184,7 @@
               <el-option label="5分钟以上" value="300+" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item>
             <el-button type="primary" @click="handleSearch">
               <el-icon><Search /></el-icon>
@@ -217,7 +220,7 @@
             </div>
           </div>
         </template>
-        
+
         <el-table
           :data="callRecords"
           v-loading="loading"
@@ -226,7 +229,7 @@
           row-key="id"
         >
           <el-table-column type="selection" width="55" />
-          
+
           <el-table-column prop="direction" label="类型" width="80">
             <template #default="{ row }">
               <el-tag :type="row.direction === 'incoming' ? 'success' : 'primary'" size="small">
@@ -238,7 +241,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="customerName" label="客户姓名" width="120">
             <template #default="{ row }">
               <el-button text @click="viewCustomerDetail(row.customerId)">
@@ -246,7 +249,7 @@
               </el-button>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="customerPhone" label="客户电话" width="140">
             <template #default="{ row }">
               <div class="phone-info">
@@ -263,21 +266,21 @@
               </div>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="userName" label="通话人员" width="100" />
-          
+
           <el-table-column prop="startTime" label="开始时间" width="160">
             <template #default="{ row }">
               {{ formatDateTime(row.startTime) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="endTime" label="结束时间" width="160">
             <template #default="{ row }">
               {{ row.endTime ? formatDateTime(row.endTime) : '-' }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="duration" label="通话时长" width="100" sortable>
             <template #default="{ row }">
               <span :class="getDurationClass(row.duration)">
@@ -285,7 +288,7 @@
               </span>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="status" label="通话状态" width="100">
             <template #default="{ row }">
               <el-tag :type="getStatusType(row.status)" size="small">
@@ -293,7 +296,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="hasRecording" label="录音" width="80">
             <template #default="{ row }">
               <el-button
@@ -307,7 +310,7 @@
               <span v-else style="color: #C0C4CC;">无</span>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="quality" label="通话质量" width="100">
             <template #default="{ row }">
               <div v-if="row.quality" class="quality-info">
@@ -323,16 +326,16 @@
               <span v-else style="color: #C0C4CC;">未评分</span>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="notes" label="备注" min-width="150" show-overflow-tooltip />
-          
+
           <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
               <el-button text size="small" @click="viewDetail(row)">
                 <el-icon><View /></el-icon>
                 详情
               </el-button>
-              
+
               <el-button
                 text
                 size="small"
@@ -342,12 +345,12 @@
                 <el-icon><VideoPlay /></el-icon>
                 录音
               </el-button>
-              
+
               <el-button text size="small" @click="addFollowUp(row)">
                 <el-icon><EditPen /></el-icon>
                 跟进
               </el-button>
-              
+
               <el-dropdown>
                 <el-button text size="small">
                   更多<el-icon><ArrowDown /></el-icon>
@@ -376,7 +379,7 @@
             </template>
           </el-table-column>
         </el-table>
-        
+
         <!-- 分页 -->
         <div class="pagination-wrapper">
           <el-pagination
@@ -437,7 +440,7 @@
               </el-descriptions>
             </el-card>
           </el-col>
-          
+
           <el-col :span="12">
             <el-card>
               <template #header>
@@ -475,7 +478,7 @@
             </el-card>
           </el-col>
         </el-row>
-        
+
         <el-card style="margin-top: 20px;" v-if="currentRecord.notes">
           <template #header>
             <span>通话备注</span>
@@ -484,7 +487,7 @@
             {{ currentRecord.notes }}
           </div>
         </el-card>
-        
+
         <el-card style="margin-top: 20px;" v-if="currentRecord.hasRecording">
           <template #header>
             <span>录音播放</span>
@@ -524,7 +527,7 @@
         <el-form-item label="客户姓名" prop="customerName">
           <el-input v-model="editForm.customerName" placeholder="请输入客户姓名" />
         </el-form-item>
-        
+
         <el-form-item label="通话备注" prop="notes">
           <el-input
             v-model="editForm.notes"
@@ -533,12 +536,12 @@
             placeholder="请输入通话备注"
           />
         </el-form-item>
-        
+
         <el-form-item label="通话质量">
           <el-rate v-model="editForm.qualityScore" show-text />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <el-button @click="showEditDialog = false">取消</el-button>
         <el-button type="primary" @click="saveEdit" :loading="saving">
@@ -550,8 +553,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, computed } from 'vue'
 import { useCallStore } from '@/stores/call'
+import { useUserStore } from '@/stores/user'
 import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import type { CallRecord } from '@/api/call'
@@ -577,8 +581,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const callStore = useCallStore()
+const userStore = useUserStore()
 const router = useRouter()
 const safeNavigator = createSafeNavigator(router)
+
+// 负责人列表 - 从userStore获取真实用户
+const salesPersonList = computed(() => {
+  return userStore.users
+    .filter((u: any) => ['sales_staff', 'department_manager', 'admin', 'super_admin', 'customer_service'].includes(u.role))
+    .map((u: any) => ({
+      id: u.id,
+      name: u.realName || u.name || u.username
+    }))
+})
 
 // 响应式数据
 const loading = ref(false)
@@ -641,7 +656,7 @@ const formatDuration = (seconds: number) => {
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const remainingSeconds = seconds % 60
-  
+
   if (hours > 0) {
     return `${hours}小时${minutes}分${remainingSeconds}秒`
   }
@@ -690,7 +705,7 @@ const loadCallRecords = async () => {
       startTime: searchForm.dateRange[0],
       endTime: searchForm.dateRange[1]
     }
-    
+
     const response = await callStore.fetchCallRecords(params)
     callRecords.value = response.records
     total.value = response.total
@@ -708,7 +723,7 @@ const loadOverview = async () => {
       startDate: new Date().toISOString().split('T')[0],
       endDate: new Date().toISOString().split('T')[0]
     })
-    
+
     overview.value = {
       totalCalls: data.totalCalls,
       incomingCalls: data.incomingCalls || 0,
@@ -775,11 +790,11 @@ const editRecord = (record: CallRecord) => {
 
 const saveEdit = async () => {
   if (!editFormRef.value || !currentRecord.value) return
-  
+
   try {
     await editFormRef.value.validate()
     saving.value = true
-    
+
     await callStore.updateCallRecord(currentRecord.value.id, {
       customerName: editForm.customerName,
       notes: editForm.notes,
@@ -788,7 +803,7 @@ const saveEdit = async () => {
         score: editForm.qualityScore
       }
     })
-    
+
     ElMessage.success('记录已更新')
     showEditDialog.value = false
     loadCallRecords()
@@ -805,7 +820,7 @@ const playRecording = (record: CallRecord) => {
     ElMessage.warning('该通话没有录音')
     return
   }
-  
+
   // 跳转到录音管理页面
   safeNavigator.push(`/service-management/call/recordings?recordId=${record.id}`)
 }
@@ -815,7 +830,7 @@ const downloadRecording = async (record: CallRecord) => {
     ElMessage.warning('该通话没有录音')
     return
   }
-  
+
   try {
     await callStore.downloadRecording(record.id)
     ElMessage.success('录音下载成功')
@@ -859,7 +874,7 @@ const deleteRecord = async (record: CallRecord) => {
     await ElMessageBox.confirm('确定要删除这条通话记录吗？', '确认删除', {
       type: 'warning'
     })
-    
+
     await callStore.deleteCallRecord(record.id)
     ElMessage.success('删除成功')
     loadCallRecords()
@@ -876,7 +891,7 @@ const batchExport = async () => {
     ElMessage.warning('请先选择要导出的记录')
     return
   }
-  
+
   try {
     const ids = selectedRecords.value.map(record => record.id)
     await callStore.exportCallRecords({ recordIds: ids })
@@ -892,17 +907,17 @@ const batchDelete = async () => {
     ElMessage.warning('请先选择要删除的记录')
     return
   }
-  
+
   try {
     await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedRecords.value.length} 条记录吗？`,
       '批量删除',
       { type: 'warning' }
     )
-    
+
     const ids = selectedRecords.value.map(record => record.id)
     await callStore.batchDeleteCallRecords(ids)
-    
+
     ElMessage.success('批量删除成功')
     loadCallRecords()
   } catch (error) {
@@ -921,7 +936,7 @@ const exportRecords = async () => {
       startTime: searchForm.dateRange[0],
       endTime: searchForm.dateRange[1]
     }
-    
+
     await callStore.exportCallRecords(params)
     ElMessage.success('导出成功')
   } catch (error) {
@@ -937,7 +952,8 @@ const viewCustomerDetail = (customerId: string) => {
 }
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
+  await userStore.loadUsers()
   loadCallRecords()
   loadOverview()
 })

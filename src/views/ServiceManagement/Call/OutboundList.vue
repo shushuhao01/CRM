@@ -9,7 +9,7 @@
         </h1>
         <p class="page-description">管理所有外呼记录，支持批量操作和数据导出</p>
       </div>
-      
+
       <div class="header-actions">
         <el-button type="primary" @click="showOutboundDialog = true">
           <el-icon><Phone /></el-icon>
@@ -34,7 +34,7 @@
               style="width: 200px;"
             />
           </el-form-item>
-          
+
           <el-form-item label="客户电话">
             <el-input
               v-model="searchForm.customerPhone"
@@ -43,7 +43,7 @@
               style="width: 200px;"
             />
           </el-form-item>
-          
+
           <el-form-item label="通话状态">
             <el-select
               v-model="searchForm.status"
@@ -58,7 +58,7 @@
               <el-option label="失败" value="failed" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="呼叫时间">
             <el-date-picker
               v-model="searchForm.dateRange"
@@ -71,7 +71,7 @@
               style="width: 240px;"
             />
           </el-form-item>
-          
+
           <el-form-item label="呼叫人员">
             <el-select
               v-model="searchForm.callerId"
@@ -80,12 +80,15 @@
               style="width: 150px;"
             >
               <el-option label="全部" value="" />
-              <el-option label="张三" value="1" />
-              <el-option label="李四" value="2" />
-              <el-option label="王五" value="3" />
+              <el-option
+                v-for="user in salesPersonList"
+                :key="user.id"
+                :label="user.name"
+                :value="user.id"
+              />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item>
             <el-button type="primary" @click="handleSearch">
               <el-icon><Search /></el-icon>
@@ -121,7 +124,7 @@
             </div>
           </div>
         </template>
-        
+
         <el-table
           :data="callRecords"
           v-loading="loading"
@@ -129,7 +132,7 @@
           style="width: 100%"
         >
           <el-table-column type="selection" width="55" />
-          
+
           <el-table-column prop="customerName" label="客户姓名" width="120">
             <template #default="{ row }">
               <el-button text @click="viewCustomerDetail(row.customerId)">
@@ -137,27 +140,27 @@
               </el-button>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="customerPhone" label="客户电话" width="140">
             <template #default="{ row }">
               {{ displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="callerName" label="呼叫人员" width="100" />
-          
+
           <el-table-column prop="startTime" label="呼叫时间" width="160">
             <template #default="{ row }">
               {{ formatDateTime(row.startTime) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="duration" label="通话时长" width="100">
             <template #default="{ row }">
               {{ formatDuration(row.duration) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="status" label="通话状态" width="100">
             <template #default="{ row }">
               <el-tag :type="getStatusType(row.status)">
@@ -165,7 +168,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="hasRecording" label="录音" width="80">
             <template #default="{ row }">
               <el-icon v-if="row.hasRecording" color="#67C23A">
@@ -174,7 +177,7 @@
               <span v-else style="color: #C0C4CC;">无</span>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="followUpStatus" label="跟进状态" width="100">
             <template #default="{ row }">
               <el-tag
@@ -187,16 +190,16 @@
               <span v-else style="color: #C0C4CC;">无需跟进</span>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="notes" label="备注" min-width="150" show-overflow-tooltip />
-          
+
           <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
               <el-button text size="small" @click="callAgain(row)">
                 <el-icon><Phone /></el-icon>
                 再次呼叫
               </el-button>
-              
+
               <el-button
                 text
                 size="small"
@@ -206,12 +209,12 @@
                 <el-icon><VideoPlay /></el-icon>
                 播放录音
               </el-button>
-              
+
               <el-button text size="small" @click="addFollowUp(row)">
                 <el-icon><EditPen /></el-icon>
                 添加跟进
               </el-button>
-              
+
               <el-dropdown>
                 <el-button text size="small">
                   更多<el-icon><ArrowDown /></el-icon>
@@ -236,7 +239,7 @@
             </template>
           </el-table-column>
         </el-table>
-        
+
         <!-- 分页 -->
         <div class="pagination-wrapper">
           <el-pagination
@@ -267,14 +270,14 @@
             maxlength="11"
           />
         </el-form-item>
-        
+
         <el-form-item label="客户姓名" prop="customerName">
           <el-input
             v-model="outboundForm.customerName"
             placeholder="请输入客户姓名"
           />
         </el-form-item>
-        
+
         <el-form-item label="呼叫备注">
           <el-input
             v-model="outboundForm.notes"
@@ -284,7 +287,7 @@
           />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <el-button @click="showOutboundDialog = false">取消</el-button>
         <el-button type="primary" @click="startOutboundCall" :loading="calling">
@@ -309,7 +312,7 @@
             <el-option label="上门拜访" value="visit" />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item label="跟进内容" prop="content">
           <el-input
             v-model="followUpForm.content"
@@ -318,7 +321,7 @@
             placeholder="请输入跟进内容"
           />
         </el-form-item>
-        
+
         <el-form-item label="下次跟进">
           <el-date-picker
             v-model="followUpForm.nextFollowUpTime"
@@ -329,7 +332,7 @@
           />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <el-button @click="showFollowUpDialog = false">取消</el-button>
         <el-button type="primary" @click="saveFollowUp" :loading="savingFollowUp">
@@ -341,8 +344,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, computed } from 'vue'
 import { useCallStore } from '@/stores/call'
+import { useUserStore } from '@/stores/user'
 import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import type { CallRecord } from '@/api/call'
@@ -364,8 +368,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const callStore = useCallStore()
+const userStore = useUserStore()
 const router = useRouter()
 const safeNavigator = createSafeNavigator(router)
+
+// 负责人列表 - 从userStore获取真实用户
+const salesPersonList = computed(() => {
+  return userStore.users
+    .filter((u: any) => ['sales_staff', 'department_manager', 'admin', 'super_admin', 'customer_service'].includes(u.role))
+    .map((u: any) => ({
+      id: u.id,
+      name: u.realName || u.name || u.username
+    }))
+})
 
 // 响应式数据
 const loading = ref(false)
@@ -471,7 +486,7 @@ const loadCallRecords = async () => {
       startDate: searchForm.dateRange[0],
       endDate: searchForm.dateRange[1]
     }
-    
+
     const response = await callStore.fetchCallRecords(params)
     callRecords.value = response.records
     total.value = response.total
@@ -515,20 +530,20 @@ const handleCurrentChange = (page: number) => {
 
 const startOutboundCall = async () => {
   if (!outboundFormRef.value) return
-  
+
   try {
     await outboundFormRef.value.validate()
     calling.value = true
-    
+
     await callStore.makeOutboundCall({
       customerPhone: outboundForm.customerPhone,
       customerName: outboundForm.customerName,
       notes: outboundForm.notes
     })
-    
+
     ElMessage.success('外呼已发起')
     showOutboundDialog.value = false
-    
+
     // 重置表单
     outboundFormRef.value.resetFields()
     Object.assign(outboundForm, {
@@ -536,7 +551,7 @@ const startOutboundCall = async () => {
       customerName: '',
       notes: ''
     })
-    
+
     // 刷新列表
     loadCallRecords()
   } catch (error) {
@@ -554,7 +569,7 @@ const callAgain = async (record: CallRecord) => {
       customerName: record.customerName,
       notes: `再次呼叫 - 原记录ID: ${record.id}`
     })
-    
+
     ElMessage.success('外呼已发起')
     loadCallRecords()
   } catch (error) {
@@ -568,7 +583,7 @@ const playRecording = (record: CallRecord) => {
     ElMessage.warning('该通话没有录音')
     return
   }
-  
+
   // 跳转到录音播放页面或打开录音播放器
   safeNavigator.push(`/service-management/call/recordings?recordId=${record.id}`)
 }
@@ -580,11 +595,11 @@ const addFollowUp = (record: CallRecord) => {
 
 const saveFollowUp = async () => {
   if (!followUpFormRef.value || !currentRecord.value) return
-  
+
   try {
     await followUpFormRef.value.validate()
     savingFollowUp.value = true
-    
+
     await callStore.createFollowUpRecord({
       callRecordId: currentRecord.value.id,
       customerId: currentRecord.value.customerId,
@@ -592,10 +607,10 @@ const saveFollowUp = async () => {
       content: followUpForm.content,
       nextFollowUpTime: followUpForm.nextFollowUpTime || undefined
     })
-    
+
     ElMessage.success('跟进记录已保存')
     showFollowUpDialog.value = false
-    
+
     // 重置表单
     followUpFormRef.value.resetFields()
     Object.assign(followUpForm, {
@@ -603,7 +618,7 @@ const saveFollowUp = async () => {
       content: '',
       nextFollowUpTime: ''
     })
-    
+
     // 刷新列表
     loadCallRecords()
   } catch (error) {
@@ -632,7 +647,7 @@ const deleteRecord = async (record: CallRecord) => {
     await ElMessageBox.confirm('确定要删除这条通话记录吗？', '确认删除', {
       type: 'warning'
     })
-    
+
     await callStore.deleteCallRecord(record.id)
     ElMessage.success('删除成功')
     loadCallRecords()
@@ -649,17 +664,17 @@ const batchDelete = async () => {
     ElMessage.warning('请先选择要删除的记录')
     return
   }
-  
+
   try {
     await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedRecords.value.length} 条记录吗？`,
       '批量删除',
       { type: 'warning' }
     )
-    
+
     const ids = selectedRecords.value.map(record => record.id)
     await callStore.batchDeleteCallRecords(ids)
-    
+
     ElMessage.success('批量删除成功')
     loadCallRecords()
   } catch (error) {
@@ -675,7 +690,7 @@ const batchExport = async () => {
     ElMessage.warning('请先选择要导出的记录')
     return
   }
-  
+
   try {
     const ids = selectedRecords.value.map(record => record.id)
     await callStore.exportCallRecords({ recordIds: ids })
@@ -694,7 +709,7 @@ const exportRecords = async () => {
       startDate: searchForm.dateRange[0],
       endDate: searchForm.dateRange[1]
     }
-    
+
     await callStore.exportCallRecords(params)
     ElMessage.success('导出成功')
   } catch (error) {
@@ -706,7 +721,8 @@ const exportRecords = async () => {
 }
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
+  await userStore.loadUsers()
   loadCallRecords()
 })
 </script>

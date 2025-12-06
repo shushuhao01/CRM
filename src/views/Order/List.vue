@@ -140,10 +140,13 @@
               </el-col>
               <el-col :span="8">
                 <el-form-item label="操作人">
-                  <el-select v-model="searchForm.operator" placeholder="请选择操作人" clearable>
-                    <el-option label="李销售" value="李销售" />
-                    <el-option label="王销售" value="王销售" />
-                    <el-option label="赵销售" value="赵销售" />
+                  <el-select v-model="searchForm.operator" placeholder="请选择操作人" clearable filterable>
+                    <el-option
+                      v-for="user in operatorUserList"
+                      :key="user.id"
+                      :label="user.name"
+                      :value="user.name"
+                    />
                   </el-select>
                 </el-form-item>
               </el-col>
@@ -770,16 +773,24 @@ const tableColumns = ref([
   { prop: 'createTime', label: '创建时间', visible: true }
 ])
 
-// 销售人员数据
-const salesUsers = ref([
-  { id: 'sales1', name: '张销售', department: '销售一部' },
-  { id: 'sales2', name: '李销售', department: '销售二部' },
-  { id: 'sales3', name: '王销售', department: '销售一部' },
-  { id: 'admin', name: '管理员', department: '管理部' },
-  { id: 'sales001', name: '销售员工', department: '销售部' },
-  { id: 'service001', name: '客服员工', department: '客服部' },
-  { id: 'manager', name: '部门经理', department: '管理部' }
-])
+// 销售人员数据 - 从userStore获取真实用户
+const salesUsers = computed(() => {
+  return userStore.users
+    .filter((u: any) => ['sales_staff', 'department_manager', 'admin', 'super_admin', 'customer_service'].includes(u.role))
+    .map((u: any) => ({
+      id: u.id,
+      name: u.realName || u.name || u.username,
+      department: u.departmentName || u.department || '未分配'
+    }))
+})
+
+// 操作人列表 - 用于筛选
+const operatorUserList = computed(() => {
+  return userStore.users.map((u: any) => ({
+    id: u.id,
+    name: u.realName || u.name || u.username
+  }))
+})
 
 // 获取销售人员姓名
 const getSalesPersonName = (salesPersonId: string) => {
@@ -1926,7 +1937,9 @@ const handleResize = () => {
   // 触发tableHeight重新计算
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 加载用户列表（用于操作人筛选）
+  await userStore.loadUsers()
   loadColumnSettings()
   loadOrderList()
   // 注意：不在页面加载时立即检查流转，由后台定时任务统一处理
