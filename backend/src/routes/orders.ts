@@ -308,6 +308,7 @@ router.post('/', async (req: Request, res: Response) => {
       customerPhone: customerPhone || '',
       serviceWechat: serviceWechat || '',
       orderSource: orderSource || '',
+      products: products || [],
       status: 'pending',
       totalAmount: finalTotalAmount,
       discountAmount: Number(discount) || 0,
@@ -319,6 +320,9 @@ router.post('/', async (req: Request, res: Response) => {
       shippingName: receiverName || customerName || '',
       shippingPhone: receiverPhone || customerPhone || '',
       shippingAddress: receiverAddress || '',
+      expressCompany: req.body.expressCompany || '',
+      markType: req.body.markType || 'normal',
+      customFields: req.body.customFields || null,
       remark: remark || '',
       createdBy: salesPersonId || '',
       createdByName: salesPersonName || ''
