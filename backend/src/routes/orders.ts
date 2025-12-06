@@ -191,19 +191,23 @@ router.post('/', async (req: Request, res: Response) => {
       customerPhone,
       products,
       totalAmount,
-      subtotal,
+      // subtotal, // 暂未使用
       discount,
       collectAmount,
       depositAmount,
+      depositScreenshots,
+      depositScreenshot,
       receiverName,
       receiverPhone,
       receiverAddress,
       remark,
       paymentMethod,
       salesPersonId,
+      salesPersonName,
       orderNumber,
       serviceWechat,
       orderSource
+      // customFields // 暂未使用
     } = req.body;
 
     // 数据验证
@@ -288,22 +292,36 @@ router.post('/', async (req: Request, res: Response) => {
       depositAmount: finalDepositAmount
     });
 
+    // 处理定金截图 - 支持单张和多张
+    let finalDepositScreenshots: string[] = [];
+    if (depositScreenshots && Array.isArray(depositScreenshots)) {
+      finalDepositScreenshots = depositScreenshots;
+    } else if (depositScreenshot) {
+      finalDepositScreenshots = [depositScreenshot];
+    }
+
     // 创建订单 - 使用与数据库表匹配的字段名
     const order = orderRepository.create({
       orderNumber: generatedOrderNumber,
       customerId: parsedCustomerId,
+      customerName: customerName || '',
+      customerPhone: customerPhone || '',
+      serviceWechat: serviceWechat || '',
+      orderSource: orderSource || '',
       status: 'pending',
       totalAmount: finalTotalAmount,
       discountAmount: Number(discount) || 0,
       finalAmount: finalAmount,
       depositAmount: finalDepositAmount,
+      depositScreenshots: finalDepositScreenshots.length > 0 ? finalDepositScreenshots : null,
       paymentStatus: finalDepositAmount > 0 ? 'partial' : 'unpaid',
       paymentMethod: paymentMethod || null,
       shippingName: receiverName || customerName || '',
       shippingPhone: receiverPhone || customerPhone || '',
       shippingAddress: receiverAddress || '',
       remark: remark || '',
-      createdBy: salesPersonId || ''
+      createdBy: salesPersonId || '',
+      createdByName: salesPersonName || ''
     });
 
     const savedOrderResult = await orderRepository.save(order);
