@@ -1693,7 +1693,7 @@ const getSummaries = (param: { columns: any[]; data: TeamMember[] }) => {
 }
 
 // 全屏表格合计行计算方法
-const getFullscreenSummaries = (param: { columns: any[]; data: TeamMember[] }) => {
+const getFullscreenSummaries = (param: { columns: unknown[]; data: TeamMember[] }) => {
   const { columns, data } = param
   const sums: string[] = []
 

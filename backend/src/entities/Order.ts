@@ -9,84 +9,89 @@ export class Order {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 50, unique: true, comment: '订单号' })
-  orderNo: string;
+  @Column({ name: 'order_number', length: 50, unique: true, comment: '订单号' })
+  orderNumber: string;
 
-  @Column({ type: 'int', comment: '客户ID' })
+  @Column({ name: 'customer_id', type: 'int', comment: '客户ID' })
   customerId: number;
 
-  @Column({ 
+  @Column({
     type: 'varchar',
-    length: 50, 
+    length: 50,
     default: 'pending',
     comment: '订单状态'
   })
   status: 'pending' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded';
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, comment: '订单总金额' })
+  @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2, comment: '订单总金额' })
   totalAmount: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, comment: '优惠金额' })
+  @Column({ name: 'discount_amount', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '优惠金额' })
   discountAmount: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, comment: '运费' })
-  shippingFee: number;
+  @Column({ name: 'final_amount', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '实付金额' })
+  finalAmount: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, comment: '实付金额' })
-  paidAmount: number;
+  @Column({ name: 'deposit_amount', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '定金金额' })
+  depositAmount: number;
 
-  @Column({ 
+  @Column({
+    name: 'payment_status',
     type: 'varchar',
-    length: 50, 
+    length: 50,
     default: 'unpaid',
     comment: '支付状态'
   })
   paymentStatus: 'unpaid' | 'partial' | 'paid' | 'refunded';
 
-  @Column({ 
+  @Column({
+    name: 'payment_method',
     type: 'varchar',
-    length: 50, 
+    length: 50,
     nullable: true,
     comment: '支付方式'
   })
   paymentMethod?: 'cash' | 'alipay' | 'wechat' | 'bank_transfer' | 'credit_card' | 'other';
 
-  @Column({ type: 'datetime', nullable: true, comment: '支付时间' })
-  paidAt?: Date;
+  @Column({ name: 'payment_time', type: 'datetime', nullable: true, comment: '支付时间' })
+  paymentTime?: Date;
 
-  @Column({ length: 100, nullable: true, comment: '收货人姓名' })
-  receiverName?: string;
+  @Column({ name: 'shipping_name', length: 100, nullable: true, comment: '收货人姓名' })
+  shippingName?: string;
 
-  @Column({ length: 20, nullable: true, comment: '收货人电话' })
-  receiverPhone?: string;
+  @Column({ name: 'shipping_phone', length: 20, nullable: true, comment: '收货人电话' })
+  shippingPhone?: string;
 
-  @Column({ length: 200, nullable: true, comment: '收货地址' })
-  receiverAddress?: string;
+  @Column({ name: 'shipping_address', type: 'text', nullable: true, comment: '收货地址' })
+  shippingAddress?: string;
 
-  @Column({ type: 'datetime', nullable: true, comment: '期望交货时间' })
-  expectedDeliveryAt?: Date;
+  @Column({ name: 'express_company', length: 50, nullable: true, comment: '快递公司' })
+  expressCompany?: string;
 
-  @Column({ type: 'datetime', nullable: true, comment: '实际交货时间' })
-  actualDeliveryAt?: Date;
+  @Column({ name: 'tracking_number', length: 100, nullable: true, comment: '快递单号' })
+  trackingNumber?: string;
+
+  @Column({ name: 'shipped_at', type: 'datetime', nullable: true, comment: '发货时间' })
+  shippedAt?: Date;
+
+  @Column({ name: 'delivered_at', type: 'datetime', nullable: true, comment: '签收时间' })
+  deliveredAt?: Date;
 
   @Column({ type: 'text', nullable: true, comment: '订单备注' })
-  notes?: string;
+  remark?: string;
 
-  @Column({ type: 'int', nullable: true, comment: '销售员ID' })
-  salesUserId?: number;
+  @Column({ name: 'created_by', type: 'varchar', length: 50, nullable: true, comment: '创建人ID' })
+  createdBy?: string;
 
-  @Column({ type: 'json', nullable: true, comment: '订单标签（JSON数组）' })
-  tags?: string[];
-
-  @CreateDateColumn({ comment: '创建时间' })
+  @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
   createdAt: Date;
 
-  @UpdateDateColumn({ comment: '更新时间' })
+  @UpdateDateColumn({ name: 'updated_at', comment: '更新时间' })
   updatedAt: Date;
 
   // 关联关系
   @ManyToOne(() => Customer, customer => customer.orders)
-  @JoinColumn({ name: 'customerId' })
+  @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
   @OneToMany(() => OrderItem, orderItem => orderItem.order)

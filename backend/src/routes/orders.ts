@@ -39,7 +39,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     // 订单号筛选
     if (orderNumber) {
-      queryBuilder.andWhere('order.orderNo LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
     }
 
     // 客户名称筛选
@@ -67,7 +67,7 @@ router.get('/', async (req: Request, res: Response) => {
     // 转换为前端需要的格式
     const formattedOrders = orders.map(order => ({
       id: order.id.toString(),
-      orderNumber: order.orderNo,
+      orderNumber: order.orderNumber,
       customerId: order.customerId?.toString() || '',
       customerName: order.customer?.name || '',
       customerPhone: order.customer?.phone || '',
@@ -79,18 +79,18 @@ router.get('/', async (req: Request, res: Response) => {
         total: Number(item.subtotal)
       })) || [],
       totalAmount: Number(order.totalAmount),
-      depositAmount: 0,
-      collectAmount: Number(order.paidAmount),
-      receiverName: order.receiverName || '',
-      receiverPhone: order.receiverPhone || '',
-      receiverAddress: order.receiverAddress || '',
-      remark: order.notes || '',
+      depositAmount: Number(order.depositAmount) || 0,
+      collectAmount: Number(order.finalAmount) || 0,
+      receiverName: order.shippingName || '',
+      receiverPhone: order.shippingPhone || '',
+      receiverAddress: order.shippingAddress || '',
+      remark: order.remark || '',
       status: order.status,
       paymentStatus: order.paymentStatus,
       paymentMethod: order.paymentMethod || '',
       createTime: order.createdAt?.toISOString() || '',
-      createdBy: order.salesUserId?.toString() || '',
-      salesPersonId: order.salesUserId?.toString() || ''
+      createdBy: order.createdBy || '',
+      salesPersonId: order.createdBy || ''
     }));
 
     res.json({
@@ -134,7 +134,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     const formattedOrder = {
       id: order.id.toString(),
-      orderNumber: order.orderNo,
+      orderNumber: order.orderNumber,
       customerId: order.customerId?.toString() || '',
       customerName: order.customer?.name || '',
       customerPhone: order.customer?.phone || '',
@@ -146,18 +146,18 @@ router.get('/:id', async (req: Request, res: Response) => {
         total: Number(item.subtotal)
       })) || [],
       totalAmount: Number(order.totalAmount),
-      depositAmount: 0,
-      collectAmount: Number(order.paidAmount),
-      receiverName: order.receiverName || '',
-      receiverPhone: order.receiverPhone || '',
-      receiverAddress: order.receiverAddress || '',
-      remark: order.notes || '',
+      depositAmount: Number(order.depositAmount) || 0,
+      collectAmount: Number(order.finalAmount) || 0,
+      receiverName: order.shippingName || '',
+      receiverPhone: order.shippingPhone || '',
+      receiverAddress: order.shippingAddress || '',
+      remark: order.remark || '',
       status: order.status,
       paymentStatus: order.paymentStatus,
       paymentMethod: order.paymentMethod || '',
       createTime: order.createdAt?.toISOString() || '',
-      createdBy: order.salesUserId?.toString() || '',
-      salesPersonId: order.salesUserId?.toString() || ''
+      createdBy: order.createdBy || '',
+      salesPersonId: order.createdBy || ''
     };
 
     res.json({
@@ -272,42 +272,37 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // 生成订单号（使用前端传的或自动生成）
-    const orderNo = orderNumber || `ORD${Date.now()}`;
+    const generatedOrderNumber = orderNumber || `ORD${Date.now()}`;
 
     // 计算金额
     const finalTotalAmount = Number(totalAmount) || 0;
-    const finalPaidAmount = Number(depositAmount) || Number(collectAmount) || 0;
+    const finalDepositAmount = Number(depositAmount) || 0;
+    const finalAmount = finalTotalAmount - (Number(discount) || 0);
 
     console.log('📝 [订单创建] 准备创建订单:', {
-      orderNo,
+      orderNumber: generatedOrderNumber,
       customerId: parsedCustomerId,
       totalAmount: finalTotalAmount,
-      paidAmount: finalPaidAmount
+      depositAmount: finalDepositAmount
     });
 
-    // 创建订单
+    // 创建订单 - 使用与数据库表匹配的字段名
     const order = orderRepository.create({
-      orderNo,
+      orderNumber: generatedOrderNumber,
       customerId: parsedCustomerId,
       status: 'pending',
       totalAmount: finalTotalAmount,
       discountAmount: Number(discount) || 0,
-      paidAmount: finalPaidAmount,
-      paymentStatus: finalPaidAmount > 0 ? 'partial' : 'unpaid',
+      finalAmount: finalAmount,
+      depositAmount: finalDepositAmount,
+      paymentStatus: finalDepositAmount > 0 ? 'partial' : 'unpaid',
       paymentMethod: paymentMethod || null,
-      receiverName: receiverName || customerName || '',
-      receiverPhone: receiverPhone || customerPhone || '',
-      receiverAddress: receiverAddress || '',
-      notes: remark || ''
+      shippingName: receiverName || customerName || '',
+      shippingPhone: receiverPhone || customerPhone || '',
+      shippingAddress: receiverAddress || '',
+      remark: remark || '',
+      createdBy: salesPersonId || ''
     });
-
-    // 设置销售员ID
-    if (salesPersonId) {
-      const parsedSalesId = typeof salesPersonId === 'string' ? parseInt(salesPersonId) : salesPersonId;
-      if (!isNaN(parsedSalesId) && parsedSalesId > 0) {
-        order.salesUserId = parsedSalesId;
-      }
-    }
 
     const savedOrder = await orderRepository.save(order);
     console.log('✅ [订单创建] 订单保存成功:', savedOrder.id);
@@ -333,18 +328,18 @@ router.post('/', async (req: Request, res: Response) => {
     // 返回完整的订单数据
     const responseData = {
       id: savedOrder.id.toString(),
-      orderNumber: savedOrder.orderNo,
+      orderNumber: savedOrder.orderNumber,
       customerId: savedOrder.customerId.toString(),
       customerName: customerName || '',
       customerPhone: customerPhone || '',
       products: products,
       totalAmount: finalTotalAmount,
-      depositAmount: Number(depositAmount) || 0,
-      collectAmount: Number(collectAmount) || finalTotalAmount - (Number(depositAmount) || 0),
-      receiverName: savedOrder.receiverName || '',
-      receiverPhone: savedOrder.receiverPhone || '',
-      receiverAddress: savedOrder.receiverAddress || '',
-      remark: savedOrder.notes || '',
+      depositAmount: finalDepositAmount,
+      collectAmount: Number(collectAmount) || finalTotalAmount - finalDepositAmount,
+      receiverName: savedOrder.shippingName || '',
+      receiverPhone: savedOrder.shippingPhone || '',
+      receiverAddress: savedOrder.shippingAddress || '',
+      remark: savedOrder.remark || '',
       status: 'pending_transfer',
       auditStatus: 'pending',
       createTime: savedOrder.createdAt?.toISOString() || new Date().toISOString(),
@@ -397,10 +392,10 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     // 更新订单字段
     if (updateData.status) order.status = updateData.status;
-    if (updateData.receiverName) order.receiverName = updateData.receiverName;
-    if (updateData.receiverPhone) order.receiverPhone = updateData.receiverPhone;
-    if (updateData.receiverAddress) order.receiverAddress = updateData.receiverAddress;
-    if (updateData.notes !== undefined) order.notes = updateData.notes;
+    if (updateData.receiverName || updateData.shippingName) order.shippingName = updateData.receiverName || updateData.shippingName;
+    if (updateData.receiverPhone || updateData.shippingPhone) order.shippingPhone = updateData.receiverPhone || updateData.shippingPhone;
+    if (updateData.receiverAddress || updateData.shippingAddress) order.shippingAddress = updateData.receiverAddress || updateData.shippingAddress;
+    if (updateData.notes !== undefined || updateData.remark !== undefined) order.remark = updateData.notes || updateData.remark;
     if (updateData.paymentStatus) order.paymentStatus = updateData.paymentStatus;
     if (updateData.paymentMethod) order.paymentMethod = updateData.paymentMethod;
 
@@ -477,7 +472,7 @@ router.post('/:id/submit-audit', async (req: Request, res: Response) => {
     // 如果数字 id 没找到，尝试用订单号查找
     if (!order) {
       order = await orderRepository.findOne({
-        where: { orderNo: idParam }
+        where: { orderNumber: idParam }
       });
     }
 
@@ -491,7 +486,7 @@ router.post('/:id/submit-audit', async (req: Request, res: Response) => {
     // 更新订单状态为待审核
     order.status = 'confirmed'; // 使用 confirmed 表示已提审
     if (remark) {
-      order.notes = `${order.notes || ''} | 提审备注: ${remark}`;
+      order.remark = `${order.remark || ''} | 提审备注: ${remark}`;
     }
 
     await orderRepository.save(order);
@@ -501,7 +496,7 @@ router.post('/:id/submit-audit', async (req: Request, res: Response) => {
       message: '订单已提交审核',
       data: {
         id: order.id.toString(),
-        orderNumber: order.orderNo,
+        orderNumber: order.orderNumber,
         status: order.status
       }
     });
@@ -538,7 +533,7 @@ router.post('/:id/audit', async (req: Request, res: Response) => {
     // 如果数字 id 没找到，尝试用订单号查找
     if (!order) {
       order = await orderRepository.findOne({
-        where: { orderNo: idParam }
+        where: { orderNumber: idParam }
       });
     }
 
@@ -551,10 +546,10 @@ router.post('/:id/audit', async (req: Request, res: Response) => {
 
     if (action === 'approve') {
       order.status = 'paid'; // 审核通过，进入已支付状态
-      order.notes = `${order.notes || ''} | 审核通过: ${remark || ''}`;
+      order.remark = `${order.remark || ''} | 审核通过: ${remark || ''}`;
     } else {
       order.status = 'pending'; // 审核拒绝，退回待处理
-      order.notes = `${order.notes || ''} | 审核拒绝: ${remark || ''}`;
+      order.remark = `${order.remark || ''} | 审核拒绝: ${remark || ''}`;
     }
 
     await orderRepository.save(order);
@@ -564,7 +559,7 @@ router.post('/:id/audit', async (req: Request, res: Response) => {
       message: action === 'approve' ? '订单审核通过' : '订单审核拒绝',
       data: {
         id: order.id.toString(),
-        orderNumber: order.orderNo,
+        orderNumber: order.orderNumber,
         status: order.status
       }
     });
@@ -600,8 +595,8 @@ router.post('/cancel-request', async (req: Request, res: Response) => {
     }
 
     // 更新订单状态为待取消
-    order.status = 'pending' as unknown; // 临时使用pending表示待取消
-    order.notes = `取消原因: ${reason}${description ? ` - ${description}` : ''}`;
+    order.status = 'pending'; // 临时使用pending表示待取消
+    order.remark = `取消原因: ${reason}${description ? ` - ${description}` : ''}`;
 
     await orderRepository.save(order);
 
@@ -627,23 +622,23 @@ router.get('/pending-cancel', async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
 
-    // 查询状态为pending且notes包含"取消原因"的订单
+    // 查询状态为pending且remark包含"取消原因"的订单
     const orders = await orderRepository.createQueryBuilder('order')
       .leftJoinAndSelect('order.customer', 'customer')
       .where('order.status = :status', { status: 'pending' })
-      .andWhere('order.notes LIKE :cancelNote', { cancelNote: '%取消原因%' })
+      .andWhere('order.remark LIKE :cancelNote', { cancelNote: '%取消原因%' })
       .orderBy('order.updatedAt', 'DESC')
       .getMany();
 
     const formattedOrders = orders.map(order => ({
       id: order.id.toString(),
-      orderNumber: order.orderNo,
+      orderNumber: order.orderNumber,
       customerName: order.customer?.name || '',
       totalAmount: Number(order.totalAmount),
-      cancelReason: order.notes || '',
+      cancelReason: order.remark || '',
       cancelRequestTime: order.updatedAt?.toISOString() || '',
       status: 'pending_cancel',
-      createdBy: order.salesUserId?.toString() || ''
+      createdBy: order.createdBy || ''
     }));
 
     res.json({
@@ -682,10 +677,10 @@ router.post('/:id/cancel-audit', async (req: Request, res: Response) => {
 
     if (action === 'approve') {
       order.status = 'cancelled';
-      order.notes = `${order.notes || ''} | 审核通过: ${remark || ''}`;
+      order.remark = `${order.remark || ''} | 审核通过: ${remark || ''}`;
     } else {
       order.status = 'confirmed'; // 恢复到确认状态
-      order.notes = `${order.notes || ''} | 审核拒绝: ${remark || ''}`;
+      order.remark = `${order.remark || ''} | 审核拒绝: ${remark || ''}`;
     }
 
     await orderRepository.save(order);
@@ -720,13 +715,13 @@ router.get('/audited-cancel', async (req: Request, res: Response) => {
 
     const formattedOrders = orders.map(order => ({
       id: order.id.toString(),
-      orderNumber: order.orderNo,
+      orderNumber: order.orderNumber,
       customerName: order.customer?.name || '',
       totalAmount: Number(order.totalAmount),
-      cancelReason: order.notes || '',
+      cancelReason: order.remark || '',
       cancelRequestTime: order.updatedAt?.toISOString() || '',
       status: 'cancelled',
-      createdBy: order.salesUserId?.toString() || ''
+      createdBy: order.createdBy || ''
     }));
 
     res.json({
