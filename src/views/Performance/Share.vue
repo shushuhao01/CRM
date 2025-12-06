@@ -825,29 +825,22 @@ const loadAvailableUsers = async () => {
   try {
     console.log('[业绩分享] 开始加载用户列表')
 
-    // 从localStorage直接获取用户数据库
-    const userDatabaseStr = localStorage.getItem('userDatabase')
-    if (!userDatabaseStr) {
-      console.warn('[业绩分享] 未找到用户数据库')
-      availableUsers.value = []
-      return
-    }
-
-    const userDatabase = JSON.parse(userDatabaseStr)
-    console.log('[业绩分享] 用户数据库总数:', userDatabase.length)
+    // 从userStore获取真实用户数据
+    await userStore.loadUsers()
 
     // 过滤出可以参与业绩分享的用户（销售人员、经理等）
-    const eligibleRoles = ['sales_staff', 'sales_manager', 'department_manager', 'admin']
-    availableUsers.value = userDatabase
+    const eligibleRoles = ['sales_staff', 'sales_manager', 'department_manager', 'admin', 'super_admin']
+    availableUsers.value = userStore.users
       .filter(user => {
-        const isEligible = eligibleRoles.includes(user.roleId || user.role) && user.status === 'active'
+        const userRole = user.role || ''
+        const isEligible = eligibleRoles.includes(userRole) && user.status === 'active'
         return isEligible
       })
       .map(user => ({
         id: user.id,
-        name: user.realName || user.name,
-        department: user.department || '未分配',
-        role: user.roleId || user.role
+        name: user.realName || user.name || user.username,
+        department: user.departmentName || user.department || '未分配',
+        role: user.role
       }))
 
     console.log('[业绩分享] 可用用户数:', availableUsers.value.length)
