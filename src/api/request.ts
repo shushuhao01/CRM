@@ -226,8 +226,13 @@ export const request = async <T = unknown>(
     timeout = API_CONFIG.TIMEOUT
   } = config
 
-  // 检查是否使用Mock API
-  if (shouldUseMockApi()) {
+  // 🔥 生产环境直接调用真实API，完全跳过Mock逻辑
+  const isProduction = import.meta.env.PROD
+  if (isProduction) {
+    // 生产环境：直接走真实API，不检查Mock
+    console.log('[生产环境] 直接调用真实API:', method, endpoint)
+  } else if (shouldUseMockApi()) {
+    // 开发环境：检查是否使用Mock API
     const routeKey = `${method}:${endpoint}`
     console.log('Mock API: 尝试匹配路由', routeKey)
     console.log('Mock API: 请求参数', params)
@@ -317,7 +322,7 @@ export const request = async <T = unknown>(
     // 🔥 如果没有匹配的Mock路由，继续调用真实API（不再返回错误）
     console.log(`Mock API: 未找到匹配的路由 ${method}:${endpoint}，将调用真实API`)
     // 不返回错误，继续执行下面的真实API调用逻辑
-  }
+  } // 结束 else if (shouldUseMockApi()) 块
 
   // 构建请求头
   const requestHeaders: Record<string, string> = {
