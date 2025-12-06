@@ -136,4 +136,153 @@ router.put('/categories/:id', ProductController.updateCategory);
  */
 router.delete('/categories/:id', ProductController.deleteCategory);
 
+// ==================== 销售统计相关路由 ====================
+
+/**
+ * @route GET /api/v1/products/sales/statistics
+ * @desc 获取销售统计数据
+ * @access Private
+ */
+router.get('/sales/statistics', async (req, res) => {
+  try {
+    const { startDate, endDate, productId, categoryId } = req.query;
+
+    // 返回模拟数据，实际应从数据库查询
+    res.json({
+      success: true,
+      data: {
+        totalSales: 125000,
+        totalOrders: 450,
+        totalQuantity: 1200,
+        averageOrderValue: 277.78,
+        growthRate: 15.5
+      }
+    });
+  } catch (error) {
+    console.error('获取销售统计失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取销售统计失败'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/products/sales/trend
+ * @desc 获取销售趋势数据
+ * @access Private
+ */
+router.get('/sales/trend', async (req, res) => {
+  try {
+    const { startDate, endDate, productId, groupBy = 'day' } = req.query;
+
+    // 生成模拟趋势数据
+    const trendData = Array.from({ length: 7 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - i));
+      return {
+        date: date.toISOString().split('T')[0],
+        sales: Math.floor(Math.random() * 10000) + 5000,
+        orders: Math.floor(Math.random() * 50) + 20,
+        quantity: Math.floor(Math.random() * 100) + 50
+      };
+    });
+
+    res.json({
+      success: true,
+      data: trendData
+    });
+  } catch (error) {
+    console.error('获取销售趋势失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取销售趋势失败'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/products/sales/category
+ * @desc 获取分类销售数据
+ * @access Private
+ */
+router.get('/sales/category', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    res.json({
+      success: true,
+      data: [
+        { categoryId: '1', categoryName: '电子产品', sales: 50000, percentage: 40 },
+        { categoryId: '2', categoryName: '服装', sales: 30000, percentage: 24 },
+        { categoryId: '3', categoryName: '食品', sales: 25000, percentage: 20 },
+        { categoryId: '4', categoryName: '其他', sales: 20000, percentage: 16 }
+      ]
+    });
+  } catch (error) {
+    console.error('获取分类销售数据失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取分类销售数据失败'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/products/sales/top
+ * @desc 获取热销产品排行
+ * @access Private
+ */
+router.get('/sales/top', async (req, res) => {
+  try {
+    const { startDate, endDate, limit = 10 } = req.query;
+
+    res.json({
+      success: true,
+      data: Array.from({ length: Number(limit) }, (_, i) => ({
+        productId: `${i + 1}`,
+        productName: `热销产品${i + 1}`,
+        sales: Math.floor(Math.random() * 10000) + 5000,
+        quantity: Math.floor(Math.random() * 100) + 50,
+        rank: i + 1
+      }))
+    });
+  } catch (error) {
+    console.error('获取热销产品排行失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取热销产品排行失败'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/products/inventory/warning
+ * @desc 获取库存预警数据
+ * @access Private
+ */
+router.get('/inventory/warning', async (req, res) => {
+  try {
+    const { threshold = 10 } = req.query;
+
+    res.json({
+      success: true,
+      data: {
+        warningCount: 5,
+        products: [
+          { productId: '1', productName: '产品A', currentStock: 5, minStock: 10 },
+          { productId: '2', productName: '产品B', currentStock: 3, minStock: 10 },
+          { productId: '3', productName: '产品C', currentStock: 8, minStock: 15 }
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('获取库存预警数据失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取库存预警数据失败'
+    });
+  }
+});
+
 export default router;

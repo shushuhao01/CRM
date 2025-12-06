@@ -110,6 +110,7 @@ import { useUserStore } from '@/stores/user'
 import { useConfigStore } from '@/stores/config'
 import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
+import { preloadAppData } from '@/services/appInitService'
 
 const router = useRouter()
 const safeNavigator = createSafeNavigator(router)
@@ -532,6 +533,9 @@ const handleLogin = async () => {
 
           // 等待状态同步完成
           await nextTick()
+
+          // 🔥 登录成功后立即开始预加载应用数据（不阻塞跳转）
+          preloadAppData().catch(err => console.warn('[Login] 预加载数据失败:', err))
 
           // 【关键修复】确认token已设置
           console.log('[Login] 登录成功，检查状态:')

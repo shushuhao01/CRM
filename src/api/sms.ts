@@ -1,7 +1,10 @@
 import { request } from './request'
+import { isProduction } from '@/utils/env'
 
-// 检查是否使用Mock API - 本地定义避免循环依赖
+// 检查是否使用Mock API - 生产环境强制使用真实API
 const shouldUseMockApi = (): boolean => {
+  // 生产环境强制使用真实API
+  if (isProduction()) return false
   const mockEnabled = localStorage.getItem('erp_mock_enabled')
   if (mockEnabled === 'true') return true
   if (mockEnabled === 'false') return false

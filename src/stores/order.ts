@@ -125,6 +125,10 @@ export interface Order {
     description: string
     remark?: string
   }>
+  // 服务微信号
+  serviceWechat?: string
+  // 订单来源
+  orderSource?: string
 }
 
 export const useOrderStore = createPersistentStore('order', () => {
@@ -234,7 +238,7 @@ export const useOrderStore = createPersistentStore('order', () => {
   }
 
   // 创建订单（用于新增订单页面的提交）
-  const createOrder = async (payload: any): Promise<Order> => {
+  const createOrder = async (payload: unknown): Promise<Order> => {
     const now = new Date()
     // 使用本地时间格式化函数，避免UTC时区问题
     const formatTime = (d: Date) => {
@@ -247,11 +251,10 @@ export const useOrderStore = createPersistentStore('order', () => {
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
     }
 
-    const id = `order_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
     const orderNumber = generateOrderNumber()
 
-    const newOrder: Order = {
-      id,
+    // 构建订单数据
+    const orderData = {
       orderNumber,
       customerId: payload.customerId,
       customerName: payload.customerName || '',
@@ -268,13 +271,68 @@ export const useOrderStore = createPersistentStore('order', () => {
       receiverPhone: payload.receiverPhone || '',
       receiverAddress: payload.receiverAddress || '',
       remark: payload.remark || '',
-      status: 'pending_transfer',
-      auditStatus: 'pending',
+      status: 'pending_transfer' as const,
+      auditStatus: 'pending' as const,
       markType: payload.markType || 'normal',
-      createTime: formatTime(now),
       createdBy: payload.createdBy || (userStore.currentUser?.name || 'system'),
       salesPersonId: payload.salesPersonId || (userStore.currentUser?.id || '1'),
-      expressCompany: payload.expressCompany
+      expressCompany: payload.expressCompany,
+      // 服务微信号
+      serviceWechat: payload.serviceWechat || '',
+      // 订单来源
+      orderSource: payload.orderSource || ''
+    }
+
+    // 🔥 检测环境，生产环境调用真实API
+    const hostname = window.location.hostname
+    const isProdEnv = (
+      hostname.includes('abc789.cn') ||
+      hostname.includes('vercel.app') ||
+      hostname.includes('netlify.app') ||
+      hostname.includes('railway.app') ||
+      !hostname.includes('localhost') && !hostname.includes('127.0.0.1')
+    )
+
+    console.log('[OrderStore] 环境检测: hostname=', hostname, ', isProdEnv=', isProdEnv)
+
+    // 生产环境强制使用API
+    if (isProdEnv) {
+      console.log('[OrderStore] 🌐 生产环境：调用真实API保存订单到数据库')
+      try {
+        const { orderApi } = await import('@/api/order')
+        console.log('[OrderStore] 准备发送到API的数据:', orderData)
+
+        const response = await orderApi.create(orderData)
+        console.log('[OrderStore] API响应:', response)
+
+        if (response.success && response.data) {
+          const newOrder = response.data
+          console.log('[OrderStore] ✅ API保存成功，订单ID:', newOrder.id)
+
+          // 同时更新本地缓存
+          orders.value.unshift(newOrder)
+          console.log('[OrderStore] 本地缓存已更新，订单总数:', orders.value.length)
+
+          return newOrder
+        } else {
+          console.error('[OrderStore] API响应失败:', response)
+          throw new Error((response as { message?: string }).message || '创建订单失败')
+        }
+      } catch (apiError) {
+        console.error('[OrderStore] ❌ API保存失败:', apiError)
+        throw apiError
+      }
+    }
+
+    // 开发环境：使用本地存储
+    console.log('[OrderStore] 💻 开发环境：使用本地存储')
+
+    const id = `order_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+
+    const newOrder: Order = {
+      ...orderData,
+      id,
+      createTime: formatTime(now)
     }
 
     // 设置3分钟后自动流转到审核
@@ -329,12 +387,38 @@ export const useOrderStore = createPersistentStore('order', () => {
   }
 
   // 审核订单
-  const auditOrder = (id: string, approved: boolean, remark: string) => {
+  const auditOrder = async (id: string, approved: boolean, remark: string) => {
     const order = getOrderById(id)
     if (order) {
       const currentUser = userStore.currentUser
       const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
+      // 检测是否为生产环境
+      const hostname = window.location.hostname
+      const isProdEnv = (
+        hostname.includes('abc789.cn') ||
+        hostname.includes('vercel.app') ||
+        hostname.includes('netlify.app') ||
+        hostname.includes('railway.app') ||
+        (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
+      )
+
+      // 生产环境调用API
+      if (isProdEnv) {
+        try {
+          console.log('[OrderStore] 生产环境：调用API审核订单')
+          const { orderApi } = await import('@/api/order')
+          await orderApi.audit(id, {
+            auditStatus: approved ? 'approved' : 'rejected',
+            auditRemark: remark
+          })
+          console.log('[OrderStore] API审核成功')
+        } catch (apiError) {
+          console.error('[OrderStore] API审核失败:', apiError)
+        }
+      }
+
+      // 更新本地数据
       updateOrder(id, {
         auditStatus: approved ? 'approved' : 'rejected',
         auditTime: now,
@@ -388,12 +472,41 @@ export const useOrderStore = createPersistentStore('order', () => {
   }
 
   // 发货
-  const shipOrder = (id: string, expressCompany: string, trackingNumber: string) => {
+  const shipOrder = async (id: string, expressCompany: string, trackingNumber: string) => {
     const order = getOrderById(id)
     if (order) {
       const currentUser = userStore.currentUser
       const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
+      // 检测是否为生产环境
+      const hostname = window.location.hostname
+      const isProdEnv = (
+        hostname.includes('abc789.cn') ||
+        hostname.includes('vercel.app') ||
+        hostname.includes('netlify.app') ||
+        hostname.includes('railway.app') ||
+        (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
+      )
+
+      // 生产环境调用API
+      if (isProdEnv) {
+        try {
+          console.log('[OrderStore] 生产环境：调用API更新发货信息')
+          const { orderApi } = await import('@/api/order')
+          await orderApi.update(id, {
+            status: 'shipped',
+            shippingTime: now,
+            expressCompany,
+            trackingNumber,
+            logisticsStatus: 'picked_up'
+          })
+          console.log('[OrderStore] API发货更新成功')
+        } catch (apiError) {
+          console.error('[OrderStore] API发货更新失败:', apiError)
+        }
+      }
+
+      // 更新本地数据
       updateOrder(id, {
         status: 'shipped',
         shippingTime: now,

@@ -1,75 +1,41 @@
 /**
- * 环境检测和配置工具
- * 自动识别开发/生产环境，提供对应的配置
+ * 环境检测工具
+ * 用于判断当前运行环境，决定使用真实API还是本地存储
  */
 
-export interface EnvConfig {
-  isDevelopment: boolean
-  isProduction: boolean
-  apiBaseUrl: string
-  storageType: 'localStorage' | 'database'
+/**
+ * 检测是否为生产环境
+ * 生产环境会调用真实API，开发环境使用localStorage
+ */
+export const isProduction = (): boolean => {
+  const hostname = window.location.hostname
+  return (
+    hostname.includes('abc789.cn') ||
+    hostname.includes('vercel.app') ||
+    hostname.includes('netlify.app') ||
+    hostname.includes('railway.app') ||
+    (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
+  )
 }
 
 /**
  * 检测是否为开发环境
  */
 export const isDevelopment = (): boolean => {
-  const hostname = window.location.hostname
-  return (
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname.includes('192.168') ||
-    hostname.includes('dev.') ||
-    hostname.includes('test.')
-  )
+  return !isProduction()
 }
 
 /**
- * 检测是否为生产环境
+ * 获取当前环境名称
  */
-export const isProduction = (): boolean => {
-  return !isDevelopment()
+export const getEnvironment = (): 'production' | 'development' => {
+  return isProduction() ? 'production' : 'development'
 }
 
 /**
- * 获取API基础URL
+ * 日志输出（带环境标识）
  */
-export const getApiBaseUrl = (): string => {
-  if (isDevelopment()) {
-    return '/mock-api'
-  }
-  // 生产环境从环境变量读取，或使用默认值
-  return import.meta.env.VITE_API_BASE_URL || 'https://your-domain.com/api'
-}
-
-/**
- * 获取存储类型
- */
-export const getStorageType = (): 'localStorage' | 'database' => {
-  return isDevelopment() ? 'localStorage' : 'database'
-}
-
-/**
- * 获取完整环境配置
- */
-export const getEnvConfig = (): EnvConfig => {
-  const dev = isDevelopment()
-  return {
-    isDevelopment: dev,
-    isProduction: !dev,
-    apiBaseUrl: getApiBaseUrl(),
-    storageType: getStorageType()
-  }
-}
-
-/**
- * 打印环境信息（调试用）
- */
-export const logEnvInfo = (): void => {
-  const config = getEnvConfig()
-  console.log('=== 环境配置 ===')
-  console.log('环境:', config.isDevelopment ? '开发环境' : '生产环境')
-  console.log('API地址:', config.apiBaseUrl)
-  console.log('存储方式:', config.storageType)
-  console.log('主机名:', window.location.hostname)
+export const envLog = (module: string, message: string, ...args: unknown[]) => {
+  const env = isProduction() ? '🌐 生产' : '💻 开发'
+  console.log(`[${module}] ${env}: ${message}`, ...args)
 }

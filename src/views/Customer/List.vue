@@ -726,15 +726,85 @@ const tableColumns = computed(() => [
   { prop: 'createTime', label: '添加时间', width: 160, visible: true }
 ])
 
-// 计算搜索结果 - 直接使用所有客户数据，与订单和商品模块保持一致
+// 获取分享给当前用户的客户ID列表
+const sharedToMeCustomerIds = ref<string[]>([])
+
+// 加载分享给我的客户
+const loadSharedToMeCustomers = async () => {
+  try {
+    const sharedCustomers = await customerShareApi.getSharedToMeCustomers()
+    sharedToMeCustomerIds.value = sharedCustomers.map(s => s.customerId)
+    console.log('[CustomerList] 分享给我的客户数量:', sharedToMeCustomerIds.value.length)
+  } catch (error) {
+    console.error('[CustomerList] 加载分享客户失败:', error)
+  }
+}
+
+// 计算搜索结果 - 根据用户角色过滤客户数据
 const searchResults = computed(() => {
   console.log('=== searchResults computed ===')
-  console.log('customerStore实例ID:', customerStore.instanceId)
   console.log('customerStore.customers.length:', customerStore.customers.length)
 
-  // 直接使用所有客户数据，不进行权限过滤（与订单和商品模块保持一致）
-  // 注意：这里直接使用customerStore.customers，它会自动响应数据变化
-  let results = [...customerStore.customers] // 使用展开运算符创建新数组，确保响应式更新
+  const currentUser = userStore.currentUser
+  if (!currentUser) {
+    console.log('用户未登录，返回空列表')
+    return []
+  }
+
+  console.log('当前用户:', currentUser.name, '角色:', currentUser.role)
+
+  // 🔥 根据角色过滤客户数据
+  let results = [...customerStore.customers]
+
+  // 超级管理员和管理员：可以看到所有客户
+  if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
+    console.log('[权限过滤] 超级管理员/管理员：显示所有客户')
+    // 不做过滤，显示全部
+  }
+  // 部门经理：可以看到所属部门成员创建的客户 + 分享给自己的客户 + 自己创建的客户
+  else if (currentUser.role === 'department_manager') {
+    console.log('[权限过滤] 部门经理：显示部门客户')
+
+    // 获取部门成员ID列表
+    const departmentMemberIds = getDepartmentMemberIds(currentUser.departmentId || currentUser.department)
+
+    results = results.filter(customer => {
+      // 自己创建的客户
+      if (customer.createdBy === currentUser.id || customer.salesPersonId === currentUser.id) {
+        return true
+      }
+      // 部门成员创建的客户
+      if (departmentMemberIds.includes(customer.createdBy || '') ||
+          departmentMemberIds.includes(customer.salesPersonId || '')) {
+        return true
+      }
+      // 分享给自己的客户
+      if (sharedToMeCustomerIds.value.includes(customer.id)) {
+        return true
+      }
+      return false
+    })
+
+    console.log('[权限过滤] 部门经理过滤后客户数量:', results.length)
+  }
+  // 销售员/客服：只能看到自己创建的客户 + 分享给自己的客户
+  else {
+    console.log('[权限过滤] 销售员/客服：显示自己的客户')
+
+    results = results.filter(customer => {
+      // 自己创建的客户
+      if (customer.createdBy === currentUser.id || customer.salesPersonId === currentUser.id) {
+        return true
+      }
+      // 分享给自己的客户
+      if (sharedToMeCustomerIds.value.includes(customer.id)) {
+        return true
+      }
+      return false
+    })
+
+    console.log('[权限过滤] 销售员过滤后客户数量:', results.length)
+  }
 
   // 应用搜索过滤
   if (searchForm.keyword) {
@@ -757,9 +827,6 @@ const searchResults = computed(() => {
 
       // 搜索公司名称
       if (customer.company && customer.company.toLowerCase().includes(keyword)) return true
-
-      // TODO: 后续可以添加订单号和物流单号的搜索
-      // 这需要查询订单数据来匹配客户
 
       return false
     })
@@ -810,10 +877,21 @@ const searchResults = computed(() => {
     return timeB - timeA // 倒序：最新的在前面
   })
 
-
-
   return results
 })
+
+// 获取部门成员ID列表
+const getDepartmentMemberIds = (departmentId: string): string[] => {
+  if (!departmentId) return []
+
+  // 从用户列表中筛选同部门的成员
+  const members = userStore.users.filter(user =>
+    user.department === departmentId ||
+    user.departmentId === departmentId
+  )
+
+  return members.map(m => m.id)
+}
 
 // 计算分页总数
 const totalCount = computed(() => searchResults.value.length)
@@ -1813,8 +1891,11 @@ onMounted(async () => {
     await nextTick()
   }
 
-  // 加载客户数据
-  await loadCustomerList(needsForceRefresh)
+  // 并行加载客户数据和分享数据
+  await Promise.all([
+    loadCustomerList(needsForceRefresh),
+    loadSharedToMeCustomers()
+  ])
 
   console.log('[客户列表] onMounted - 初始化完成，当前显示客户数量:', customerList.value.length)
 

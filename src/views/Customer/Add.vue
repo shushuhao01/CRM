@@ -681,6 +681,31 @@ const handleOverseasChange = (value: boolean) => {
   }
 }
 
+// 根据value获取中文label的辅助函数
+const getAddressLabel = (list: any[], value: string): string => {
+  if (!value || !list || list.length === 0) return ''
+  const item = list.find((item: unknown) => item.value === value)
+  return item?.label || value
+}
+
+// 构建完整的中文地址
+const buildFullChineseAddress = (): string => {
+  if (customerForm.isOverseas) {
+    return customerForm.overseasAddress || ''
+  }
+
+  const provinceLabel = getAddressLabel(provinces.value, customerForm.province)
+  const cityLabel = getAddressLabel(cities.value, customerForm.city)
+  const districtLabel = getAddressLabel(districts.value, customerForm.district)
+  const streetLabel = getAddressLabel(streets.value, customerForm.street)
+
+  // 拼接地址，去除空格，确保没有多余空格
+  return [provinceLabel, cityLabel, districtLabel, streetLabel, customerForm.detailAddress]
+    .filter(Boolean)
+    .map(s => s.trim())
+    .join('')
+}
+
 // 销售人员数据
 const salesUsers = ref([
   { label: '张三', value: 'zhangsan' },
@@ -982,16 +1007,8 @@ const handleSubmit = async () => {
 
       console.log('✅ 检查通过，客户不存在，继续保存')
 
-      // 构建完整地址
-      const fullAddress = customerForm.isOverseas
-        ? customerForm.overseasAddress
-        : [
-            customerForm.province,
-            customerForm.city,
-            customerForm.district,
-            customerForm.street,
-            customerForm.detailAddress
-          ].filter(Boolean).join(' ')
+      // 构建完整中文地址
+      const fullAddress = buildFullChineseAddress()
 
       const customerData = {
         name: customerForm.name,
@@ -1144,13 +1161,7 @@ const handleSaveAndOrder = async () => {
         // 如果客户已存在，直接跳转到下单页面
         ElMessage.success('客户已存在，正在跳转到下单页面...')
 
-        const fullAddress = [
-          customerForm.province,
-          customerForm.city,
-          customerForm.district,
-          customerForm.street,
-          customerForm.detailAddress
-        ].filter(Boolean).join(' ')
+        const fullAddress = buildFullChineseAddress()
 
         console.log('准备跳转到订单页面，参数:', {
           customerId: existingCustomer.id,
@@ -1173,14 +1184,8 @@ const handleSaveAndOrder = async () => {
 
       console.log('客户不存在，开始创建新客户')
 
-      // 构建完整地址
-      const fullAddress = [
-        customerForm.province,
-        customerForm.city,
-        customerForm.district,
-        customerForm.street,
-        customerForm.detailAddress
-      ].filter(Boolean).join(' ')
+      // 构建完整中文地址
+      const fullAddress = buildFullChineseAddress()
 
       // 确保用户信息正确设置
       const currentUserId = userStore.currentUser?.id

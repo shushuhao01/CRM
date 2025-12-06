@@ -2316,9 +2316,13 @@ const loadOrderHistory = async () => {
       status: getOrderStatusText(order.status),
       orderDate: order.createTime || order.orderDate
     }))
-  } catch (error) {
+  } catch (error: any) {
     console.error('加载订单历史失败:', error)
-    ElMessage.error('加载订单历史失败')
+    // 只有在非404错误时才显示错误提示，404表示没有数据是正常的
+    if (!error?.message?.includes('404') && !error?.message?.includes('API端点不存在')) {
+      ElMessage.error('加载订单历史失败')
+    }
+    orderHistory.value = []
   } finally {
     loadingOrders.value = false
   }
@@ -2377,9 +2381,13 @@ const loadServiceRecords = async () => {
       status: getServiceStatusText(service.status),
       createTime: service.createTime
     }))
-  } catch (error) {
+  } catch (error: any) {
     console.error('加载售后记录失败:', error)
-    ElMessage.error('加载售后记录失败')
+    // 只有在非404错误时才显示错误提示，404表示没有数据是正常的
+    if (!error?.message?.includes('404') && !error?.message?.includes('API端点不存在')) {
+      ElMessage.error('加载售后记录失败')
+    }
+    serviceRecords.value = []
   } finally {
     loadingService.value = false
   }
@@ -2405,9 +2413,13 @@ const loadCallRecords = async () => {
       summary: call.summary || call.remark || '-',
       callTime: call.startTime || call.callTime
     }))
-  } catch (error) {
+  } catch (error: any) {
     console.error('加载通话记录失败:', error)
-    ElMessage.error('加载通话记录失败')
+    // 只有在非404错误时才显示错误提示，404表示没有数据是正常的
+    if (!error?.message?.includes('404') && !error?.message?.includes('API端点不存在')) {
+      ElMessage.error('加载通话记录失败')
+    }
+    callRecords.value = []
   } finally {
     loadingCalls.value = false
   }
@@ -2435,9 +2447,13 @@ const loadFollowUpRecords = async () => {
         canEdit: hoursDiff <= 24 // 24小时内可编辑
       }
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('加载跟进记录失败:', error)
-    ElMessage.error('加载跟进记录失败')
+    // 只有在非404错误时才显示错误提示，404表示没有数据是正常的
+    if (!error?.message?.includes('404') && !error?.message?.includes('API端点不存在')) {
+      ElMessage.error('加载跟进记录失败')
+    }
+    followUpRecords.value = []
   }
 }
 

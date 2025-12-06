@@ -2,10 +2,10 @@
 export const API_CONFIG = {
   // 基础URL - 根据环境变量或默认值设置
   BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1',
-  
+
   // 请求超时时间
   TIMEOUT: 10000,
-  
+
   // 请求头配置
   HEADERS: {
     'Content-Type': 'application/json',
@@ -38,7 +38,7 @@ export const API_ENDPOINTS = {
       DETAIL: (id: string) => `/customers/tags/${id}`
     }
   },
-  
+
   // 订单相关
   ORDERS: {
     LIST: '/orders',
@@ -54,7 +54,7 @@ export const API_ENDPOINTS = {
     AUDITED_CANCEL: '/orders/audited-cancel',
     STATISTICS: '/orders/statistics',
   },
-  
+
   // 产品相关
   PRODUCTS: {
     LIST: '/products',
@@ -71,7 +71,7 @@ export const API_ENDPOINTS = {
       TREE: '/products/categories/tree'
     }
   },
-  
+
   // 用户相关
   USERS: {
     LOGIN: '/auth/login',
@@ -82,14 +82,14 @@ export const API_ENDPOINTS = {
     UPDATE: (id: string) => `/users/${id}`,
     DELETE: (id: string) => `/users/${id}`
   },
-  
+
   // 系统相关
   SYSTEM: {
     SETTINGS: '/system/settings',
     ROLES: '/system/roles',
     PERMISSIONS: '/system/permissions'
   },
-  
+
   // SMS相关
   SMS: {
     TEMPLATES: '/sms/templates',
@@ -107,5 +107,24 @@ export const API_ENDPOINTS = {
     TRACE: '/logistics/trace',
     BATCH_SYNC: '/logistics/batch-sync',
     UPDATE: (id: string) => `/logistics/tracking/${id}`
+  },
+
+  // 客户分享相关
+  CUSTOMER_SHARE: {
+    HISTORY: '/customer-share/history',
+    SHARE: '/customer-share/share',
+    RECALL: '/customer-share/recall',
+    MY_SHARED: '/customer-share/my-shared',
+    SHARED_TO_ME: '/customer-share/shared-to-me',
+    SHAREABLE_USERS: '/customer-share/shareable-users'
+  },
+
+  // 短信相关
+  SMS: {
+    TEMPLATES: '/sms/templates',
+    APPROVALS: '/sms/approvals',
+    SENDS: '/sms/sends',
+    STATISTICS: '/sms/statistics',
+    CONFIG: '/sms/config'
   }
 }

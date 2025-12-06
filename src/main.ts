@@ -4,6 +4,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
+import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -19,7 +20,7 @@ import { setupDirectives } from './directives'
 // 全局错误处理器
 const globalErrorHandler = (error: Error, instance?: any, info?: string) => {
   console.error('全局错误:', error, info)
-  
+
   // 避免在错误处理中再次触发错误
   try {
     // 只在开发环境显示详细错误信息
@@ -94,23 +95,23 @@ const checkLocalStorage = () => {
 // 异步初始化用户状态，确保token验证完成后再挂载应用
 const initializeApp = async () => {
   console.log('[App] 开始初始化应用...')
-  
+
   // 等待DOM完全加载
   if (document.readyState !== 'complete') {
     await new Promise(resolve => {
       window.addEventListener('load', resolve)
     })
   }
-  
+
   // 检查localStorage可用性
   if (!checkLocalStorage()) {
     console.warn('[App] localStorage不可用，使用默认配置')
   }
-  
+
   try {
     // 先初始化配置存储
     const configStore = useConfigStore()
-    
+
     // 安全地初始化主题配置
     try {
       configStore.initTheme()
@@ -118,7 +119,7 @@ const initializeApp = async () => {
     } catch (error) {
       console.error('[App] 主题配置初始化失败:', error)
     }
-    
+
     // 安全地初始化用户状态
     try {
       await userStore.initUser()
@@ -126,26 +127,26 @@ const initializeApp = async () => {
     } catch (error) {
       console.error('[App] 用户状态初始化失败:', error)
     }
-    
+
     // 注册插件和组件
     app.use(router)
-    app.use(ElementPlus)
+    app.use(ElementPlus, { locale: zhCn })
     app.use(permissionPlugin)
-    
+
     // 注册全局指令
     setupDirectives(app)
-    
+
     // 挂载应用
     app.mount('#app')
     console.log('[App] 应用挂载成功')
-    
+
     // 运行部署检查
     try {
       autoCheck()
     } catch (error) {
       console.error('[App] 部署检查失败:', error)
     }
-    
+
   } catch (error) {
     console.error('[App] 应用初始化失败:', error)
     // 即使初始化失败，也要尝试挂载应用

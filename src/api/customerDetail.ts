@@ -1,6 +1,23 @@
 import { request } from './request'
 import { isDevelopment } from '@/utils/env'
 
+// 安全请求包装器：处理404等错误，返回空数组而不是抛出错误
+const safeRequest = async (url: string, options: any, defaultValue: any = []) => {
+  try {
+    return await request(url, options)
+  } catch (error: any) {
+    // 如果是404错误（API端点不存在或数据不存在），返回默认值而不是抛出错误
+    if (error?.message?.includes('404') ||
+        error?.message?.includes('API端点不存在') ||
+        error?.message?.includes('Not Found')) {
+      console.log(`[API] ${url} 返回空数据（404）`)
+      return defaultValue
+    }
+    // 其他错误继续抛出
+    throw error
+  }
+}
+
 // 客户详情相关API
 export const customerDetailApi = {
   // 获取客户订单历史
@@ -10,10 +27,10 @@ export const customerDetailApi = {
       const orders = JSON.parse(localStorage.getItem('crm_orders') || '[]')
       return orders.filter((order: any) => order.customerId === customerId)
     } else {
-      // 生产模式：调用后端API
-      return request(`/api/customers/${customerId}/orders`, {
+      // 生产模式：调用后端API，404时返回空数组
+      return safeRequest(`/api/customers/${customerId}/orders`, {
         method: 'GET'
-      })
+      }, [])
     }
   },
 
@@ -24,10 +41,10 @@ export const customerDetailApi = {
       const services = JSON.parse(localStorage.getItem('crm_services') || '[]')
       return services.filter((service: any) => service.customerId === customerId)
     } else {
-      // 生产模式：调用后端API
-      return request(`/api/customers/${customerId}/services`, {
+      // 生产模式：调用后端API，404时返回空数组
+      return safeRequest(`/api/customers/${customerId}/services`, {
         method: 'GET'
-      })
+      }, [])
     }
   },
 
@@ -38,10 +55,10 @@ export const customerDetailApi = {
       const calls = JSON.parse(localStorage.getItem('crm_calls') || '[]')
       return calls.filter((call: any) => call.customerId === customerId)
     } else {
-      // 生产模式：调用后端API
-      return request(`/api/customers/${customerId}/calls`, {
+      // 生产模式：调用后端API，404时返回空数组
+      return safeRequest(`/api/customers/${customerId}/calls`, {
         method: 'GET'
-      })
+      }, [])
     }
   },
 
@@ -52,10 +69,10 @@ export const customerDetailApi = {
       const followUps = JSON.parse(localStorage.getItem('crm_followups') || '[]')
       return followUps.filter((followUp: any) => followUp.customerId === customerId)
     } else {
-      // 生产模式：调用后端API
-      return request(`/api/customers/${customerId}/followups`, {
+      // 生产模式：调用后端API，404时返回空数组
+      return safeRequest(`/api/customers/${customerId}/followups`, {
         method: 'GET'
-      })
+      }, [])
     }
   },
 
@@ -67,10 +84,10 @@ export const customerDetailApi = {
       const customer = customers.find((c: any) => c.id === customerId)
       return customer?.tags || []
     } else {
-      // 生产模式：调用后端API
-      return request(`/api/customers/${customerId}/tags`, {
+      // 生产模式：调用后端API，404时返回空数组
+      return safeRequest(`/api/customers/${customerId}/tags`, {
         method: 'GET'
-      })
+      }, [])
     }
   },
 
