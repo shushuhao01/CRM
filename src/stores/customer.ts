@@ -433,10 +433,19 @@ export const useCustomerStore = createPersistentStore('customer', () => {
 
       console.log('loadCustomers 被调用，参数:', params)
 
-      // 检查是否应该使用Mock API（开发环境）
-      const { shouldUseMockApi } = await import('@/api/mock')
+      // 🔥 直接检查hostname判断环境，不依赖任何其他函数
+      const hostname = window.location.hostname
+      const isProdEnv = !(
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.includes('192.168') ||
+        hostname.includes('dev.') ||
+        hostname.includes('test.')
+      )
 
-      if (shouldUseMockApi()) {
+      console.log('[loadCustomers] hostname:', hostname, ', isProdEnv:', isProdEnv)
+
+      if (!isProdEnv) {
         // 开发环境：直接使用本地数据，不调用API
         console.log('开发环境：使用本地客户数据，不调用API')
         console.log('当前本地客户数量:', customers.value.length)
@@ -452,8 +461,8 @@ export const useCustomerStore = createPersistentStore('customer', () => {
         return customers.value
       }
 
-      // 生产环境：调用真实API
-      console.log('生产环境：调用真实API获取客户数据')
+      // 🔥 生产环境：强制调用真实API获取客户数据
+      console.log('🌐 生产环境：强制调用真实API获取客户数据')
       const response = await customerApi.getList(params)
 
       // 安全检查API响应结构
