@@ -138,48 +138,17 @@ export const customerApi = {
     }
   },
 
-  // 创建客户 - 🔥 强制调用真实API，绕过Mock判断，直接使用fetch
+  // 创建客户 - 🔥 直接调用真实API（Mock路由已在request.ts中注释）
   create: async (data: Omit<Customer, 'id' | 'createTime' | 'orderCount'>) => {
-    console.log('=== customerApi.create 强制调用真实API（绕过Mock） ===')
+    console.log('=== customerApi.create 调用真实API ===')
     console.log('请求数据:', data)
+    console.log('API端点:', API_ENDPOINTS.CUSTOMERS.CREATE)
 
-    // 🔥 直接使用fetch，绕过request.ts中的shouldUseMockApi判断
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1'
-    const url = `${baseUrl.replace(/\/+$/, '')}${API_ENDPOINTS.CUSTOMERS.CREATE}`
+    // 直接调用api.post，和商品创建逻辑一致
+    const result = await api.post<Customer>(API_ENDPOINTS.CUSTOMERS.CREATE, data)
 
-    console.log('API完整URL:', url)
-
-    // 获取认证token
-    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify(data)
-    })
-
-    console.log('HTTP响应状态:', response.status)
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('❌ API请求失败:', response.status, errorText)
-      throw new Error(`API请求失败: ${response.status} - ${errorText}`)
-    }
-
-    const result = await response.json()
     console.log('API响应结果:', result)
-
-    // 标准化返回格式
-    return {
-      code: result.code || 200,
-      message: result.message || 'success',
-      data: result.data || result,
-      success: result.success !== false
-    }
+    return result
   },
 
   // 更新客户

@@ -113,7 +113,8 @@ const mockApiRoutes: Record<string, MockApiHandler> = {
     console.log('Mock API Route: 手机号参数:', params?.phone)
     return mockApi.checkCustomerExists(params?.phone as string)
   },
-  'POST:/customers': (params, data) => mockApi.createCustomer(data),
+  // 🔥 注释掉客户创建的Mock路由，强制使用真实API写入数据库
+  // 'POST:/customers': (params, data) => mockApi.createCustomer(data),
   'PUT:/customers/([^/]+)': (params, data, customerId) => mockApi.updateCustomer(customerId, data),
   'DELETE:/customers/([^/]+)': (params, data, customerId) => mockApi.deleteCustomer(customerId),
   'GET:/customers/([^/]+)': (params, data, customerId) => mockApi.getCustomerDetail(customerId),
