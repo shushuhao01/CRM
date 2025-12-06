@@ -108,7 +108,7 @@ router.get('/rankings', async (_req: Request, res: Response) => {
       where: {
         createdAt: Between(monthStart, now)
       },
-      select: ['salesUserId', 'totalAmount', 'status'],
+      select: ['createdBy', 'totalAmount', 'status'],
       relations: ['orderItems']
     });
 
@@ -118,15 +118,15 @@ router.get('/rankings', async (_req: Request, res: Response) => {
     // 统计销售人员业绩
     const salesStats: Record<string, { sales: number; orders: number }> = {};
     validOrders.forEach(order => {
-      const salesUserId = order.salesUserId;
-      if (!salesUserId) return;
+      const createdBy = order.createdBy;
+      if (!createdBy) return;
 
-      const salesUserIdStr = String(salesUserId);
-      if (!salesStats[salesUserIdStr]) {
-        salesStats[salesUserIdStr] = { sales: 0, orders: 0 };
+      const createdByStr = String(createdBy);
+      if (!salesStats[createdByStr]) {
+        salesStats[createdByStr] = { sales: 0, orders: 0 };
       }
-      salesStats[salesUserIdStr].sales += Number(order.totalAmount) || 0;
-      salesStats[salesUserIdStr].orders += 1;
+      salesStats[createdByStr].sales += Number(order.totalAmount) || 0;
+      salesStats[createdByStr].orders += 1;
     });
 
     // 获取用户信息
@@ -356,7 +356,7 @@ router.get('/todos', async (_req: Request, res: Response) => {
       priority: 'high',
       status: 'pending',
       deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      description: `订单号: ${order.orderNo}`
+      description: `订单号: ${order.orderNumber}`
     }));
 
     res.json({
