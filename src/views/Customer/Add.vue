@@ -1012,26 +1012,14 @@ const handleSubmit = async () => {
 
         console.log('准备保存的客户数据:', customerData)
 
-        // 🔥 最简单直接的方法：直接调用API，绕过所有中间层
-        console.log('=== 直接调用API保存客户 ===')
-        const token = localStorage.getItem('auth_token')
-        console.log('使用的token:', token ? token.substring(0, 20) + '...' : 'null')
+        // 🔥 使用 customerApi.create() 方法保存客户
+        console.log('=== 调用 customerApi.create() 保存客户 ===')
 
-        const apiResponse = await fetch('/api/v1/customers', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(customerData)
-        })
+        const apiResult = await customerApi.create(customerData as any)
+        console.log('API响应:', apiResult)
 
-        console.log('API响应状态:', apiResponse.status)
-        const apiResult = await apiResponse.json()
-        console.log('API响应内容:', apiResult)
-
-        if (!apiResponse.ok || !apiResult.success) {
-          throw new Error(apiResult.message || `API请求失败: ${apiResponse.status}`)
+        if (!apiResult.success) {
+          throw new Error(apiResult.message || 'API请求失败')
         }
 
         // 如果API返回了客户数据，更新本地store
