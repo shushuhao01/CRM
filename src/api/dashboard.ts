@@ -167,6 +167,19 @@ export const getMetrics = async (params?: {
 
 // 获取排行榜数据
 export const getRankings = async (): Promise<DashboardRankings> => {
+  // 生产环境调用后端 API
+  if (useBackendAPI()) {
+    try {
+      const response = await request.get('/api/dashboard/rankings')
+      if (response.data) {
+        return response.data
+      }
+    } catch (error) {
+      console.error('后端API调用失败，降级到localStorage:', error)
+    }
+  }
+
+  // 开发环境或后端API不可用时，从localStorage获取数据
   try {
     // 从localStorage获取真实数据
     const ordersData = localStorage.getItem('order-store')
@@ -291,6 +304,30 @@ export const getChartData = async (params?: {
   departmentId?: string,
   period?: 'day' | 'week' | 'month'
 }): Promise<DashboardChartData> => {
+  // 生产环境调用后端 API
+  if (useBackendAPI()) {
+    try {
+      const response = await request.get('/api/dashboard/charts', { params })
+      if (response.data) {
+        return {
+          revenue: response.data.performance?.series?.[1]?.data?.map((amount: number, index: number) => ({
+            date: response.data.performance?.categories?.[index] || `${index + 1}月`,
+            amount,
+            orders: response.data.performance?.series?.[0]?.data?.[index] || 0
+          })) || [],
+          orderStatus: response.data.orderStatus?.map((item: any) => ({
+            status: item.name,
+            count: item.value,
+            percentage: 0
+          })) || []
+        }
+      }
+    } catch (error) {
+      console.error('后端API调用失败，降级到localStorage:', error)
+    }
+  }
+
+  // 开发环境或后端API不可用时，从localStorage获取数据
   try {
     // 从localStorage获取真实数据
     const ordersData = localStorage.getItem('order-store')

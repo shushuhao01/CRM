@@ -1067,4 +1067,79 @@ router.post('/departments/:departmentId/members', authenticateToken, requireAdmi
  */
 router.delete('/departments/:departmentId/members/:userId', authenticateToken, requireAdmin, departmentController.removeDepartmentMember.bind(departmentController));
 
+// ========== 订单字段配置路由 ==========
+
+/**
+ * @route GET /api/v1/system/order-field-config
+ * @desc 获取订单字段配置
+ * @access Private
+ */
+router.get('/order-field-config', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const config = await configRepository.findOne({
+      where: { configKey: 'orderFieldConfig', configGroup: 'order_settings' }
+    });
+
+    if (config) {
+      res.json({ success: true, code: 200, data: JSON.parse(config.configValue) });
+    } else {
+      // 返回默认配置
+      res.json({
+        success: true,
+        code: 200,
+        data: {
+          orderSource: {
+            fieldName: '订单来源',
+            options: [
+              { label: '线上商城', value: 'online_store' },
+              { label: '微信小程序', value: 'wechat_mini' },
+              { label: '电话咨询', value: 'phone_call' },
+              { label: '其他渠道', value: 'other' }
+            ]
+          },
+          customFields: []
+        }
+      });
+    }
+  } catch (error) {
+    console.error('获取订单字段配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取订单字段配置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/order-field-config
+ * @desc 更新订单字段配置
+ * @access Private (Admin)
+ */
+router.put('/order-field-config', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+    let config = await configRepository.findOne({
+      where: { configKey: 'orderFieldConfig', configGroup: 'order_settings' }
+    });
+
+    if (config) {
+      config.configValue = JSON.stringify(req.body);
+    } else {
+      config = configRepository.create({
+        configKey: 'orderFieldConfig',
+        configValue: JSON.stringify(req.body),
+        valueType: 'json',
+        configGroup: 'order_settings',
+        description: '订单字段配置',
+        isEnabled: true,
+        isSystem: true
+      });
+    }
+
+    await configRepository.save(config);
+    res.json({ success: true, code: 200, message: '订单字段配置保存成功' });
+  } catch (error) {
+    console.error('保存订单字段配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '保存订单字段配置失败' });
+  }
+});
+
 export default router;

@@ -70,7 +70,7 @@ export const useOrderFieldConfigStore = defineStore('orderFieldConfig', () => {
   )
 
   // 加载配置
-  const loadConfig = () => {
+  const loadConfig = async () => {
     try {
       if (isDevelopment()) {
         // 开发环境从localStorage加载
@@ -83,8 +83,15 @@ export const useOrderFieldConfigStore = defineStore('orderFieldConfig', () => {
         }
       } else {
         // 生产环境从API加载
-        // TODO: 实现API调用
-        console.log('生产环境: 从API加载订单字段配置')
+        try {
+          const { api } = await import('@/api/request')
+          const response = await api.get('/system/order-field-config')
+          if (response.data) {
+            config.value = response.data
+          }
+        } catch (error) {
+          console.warn('从API加载订单字段配置失败，使用默认配置:', error)
+        }
       }
     } catch (error) {
       console.error('加载订单字段配置失败:', error)
@@ -92,15 +99,20 @@ export const useOrderFieldConfigStore = defineStore('orderFieldConfig', () => {
   }
 
   // 保存配置
-  const saveConfig = () => {
+  const saveConfig = async () => {
     try {
       if (isDevelopment()) {
         // 开发环境保存到localStorage
         localStorage.setItem('crm_order_field_config', JSON.stringify(config.value))
       } else {
         // 生产环境保存到API
-        // TODO: 实现API调用
-        console.log('生产环境: 保存订单字段配置到API')
+        try {
+          const { api } = await import('@/api/request')
+          await api.put('/system/order-field-config', config.value)
+        } catch (error) {
+          console.error('保存订单字段配置到API失败:', error)
+          throw error
+        }
       }
     } catch (error) {
       console.error('保存订单字段配置失败:', error)

@@ -7,7 +7,7 @@ const router = Router();
 router.get('/statistics', async (req: Request, res: Response) => {
   try {
     const { startDate, endDate, groupBy = 'day' } = req.query;
-    
+
     logger.info('获取通话统计数据', {
       service: 'crm-api',
       startDate,
@@ -48,7 +48,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
       service: 'crm-api',
       error: error instanceof Error ? error.message : String(error)
     });
-    
+
     res.status(500).json({
       success: false,
       message: '获取通话统计数据失败',
@@ -61,7 +61,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { page = 1, limit = 10, status, startDate, endDate } = req.query;
-    
+
     logger.info('获取通话记录列表', {
       service: 'crm-api',
       page,
@@ -113,10 +113,44 @@ router.get('/', async (req: Request, res: Response) => {
       service: 'crm-api',
       error: error instanceof Error ? error.message : String(error)
     });
-    
+
     res.status(500).json({
       success: false,
       message: '获取通话记录列表失败',
+      code: 'INTERNAL_ERROR'
+    });
+  }
+});
+
+// 导出通话记录
+router.get('/export', async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate, status, format = 'excel' } = req.query;
+
+    logger.info('导出通话记录', {
+      service: 'crm-api',
+      startDate,
+      endDate,
+      status,
+      format
+    });
+
+    res.json({
+      success: true,
+      data: {
+        url: '',
+        filename: `calls_export_${Date.now()}.${format === 'csv' ? 'csv' : 'xlsx'}`
+      }
+    });
+  } catch (error) {
+    logger.error('导出通话记录失败', {
+      service: 'crm-api',
+      error: error instanceof Error ? error.message : String(error)
+    });
+
+    res.status(500).json({
+      success: false,
+      message: '导出通话记录失败',
       code: 'INTERNAL_ERROR'
     });
   }

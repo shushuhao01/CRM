@@ -362,8 +362,12 @@ export const useCustomerStore = createPersistentStore('customer', () => {
 
         // 检查API是否成功
         if (response.success && response.data) {
-          const newCustomer = response.data
-          console.log('[CustomerStore] ✅ API保存成功，客户ID:', newCustomer.id)
+          const newCustomer = {
+            ...response.data,
+            // 确保使用前端生成的客户编码，不使用后端返回的短编码
+            code: dataWithCode.code
+          }
+          console.log('[CustomerStore] ✅ API保存成功，客户ID:', newCustomer.id, '客户编码:', newCustomer.code)
 
           // 同时更新本地缓存
           customers.value.unshift(newCustomer)

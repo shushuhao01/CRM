@@ -415,11 +415,35 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   /**
-   * 保存配置到本地存储
+   * 保存配置到存储（生产环境调用API，开发环境使用localStorage）
    */
-  const saveConfigToStorage = (type: string, config: unknown) => {
+  const saveConfigToStorage = async (type: string, config: unknown) => {
     try {
-      localStorage.setItem(`crm_config_${type}`, JSON.stringify(config))
+      // 检测是否为生产环境
+      const hostname = window.location.hostname
+      const isProdEnv = (
+        hostname.includes('abc789.cn') ||
+        hostname.includes('vercel.app') ||
+        hostname.includes('netlify.app') ||
+        hostname.includes('railway.app') ||
+        (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
+      )
+
+      if (isProdEnv) {
+        // 生产环境：调用API保存配置
+        console.log(`[ConfigStore] 生产环境：保存${type}配置到数据库`)
+        try {
+          const { api } = await import('@/api/request')
+          await api.post('/system/settings', { type, config })
+          console.log(`[ConfigStore] ${type}配置保存到数据库成功`)
+        } catch (apiError) {
+          console.error(`[ConfigStore] API保存失败，降级到localStorage:`, apiError)
+          localStorage.setItem(`crm_config_${type}`, JSON.stringify(config))
+        }
+      } else {
+        // 开发环境：使用localStorage
+        localStorage.setItem(`crm_config_${type}`, JSON.stringify(config))
+      }
     } catch (error) {
       console.error('保存配置失败:', error)
     }

@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
 import { Customer } from '../entities/Customer';
+import { CustomerGroup } from '../entities/CustomerGroup';
+import { CustomerTag } from '../entities/CustomerTag';
 import { Like, Between } from 'typeorm';
 
 const router = Router();
@@ -120,6 +122,488 @@ router.get('/', async (req: Request, res: Response) => {
       success: false,
       code: 500,
       message: '获取客户列表失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+// ========== 客户分组路由（必须在 /:id 之前定义）==========
+
+/**
+ * @route GET /api/v1/customers/groups
+ * @desc 获取客户分组列表
+ * @access Private
+ */
+router.get('/groups', async (req: Request, res: Response) => {
+  try {
+    const groupRepository = AppDataSource.getRepository(CustomerGroup);
+    const { page = 1, pageSize = 20, name, status: _status } = req.query;
+
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = parseInt(pageSize as string) || 20;
+    const skip = (pageNum - 1) * pageSizeNum;
+
+    const where: Record<string, unknown> = {};
+    if (name) {
+      where.name = Like(`%${name}%`);
+    }
+
+    const [groups, total] = await groupRepository.findAndCount({
+      where,
+      skip,
+      take: pageSizeNum,
+      order: { createdAt: 'DESC' }
+    });
+
+    const list = groups.map(group => ({
+      id: group.id,
+      name: group.name,
+      description: group.description || '',
+      status: 'active',
+      customerCount: group.customerCount || 0,
+      createTime: group.createdAt?.toISOString() || '',
+      conditions: []
+    }));
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '获取分组列表成功',
+      data: { list, total, page: pageNum, pageSize: pageSizeNum }
+    });
+  } catch (error) {
+    console.error('获取分组列表失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取分组列表失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/customers/groups
+ * @desc 创建客户分组
+ * @access Private
+ */
+router.post('/groups', async (req: Request, res: Response) => {
+  try {
+    const groupRepository = AppDataSource.getRepository(CustomerGroup);
+    const { name, description } = req.body;
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '分组名称不能为空'
+      });
+    }
+
+    const group = groupRepository.create({
+      name,
+      description: description || '',
+      customerCount: 0
+    });
+
+    const savedGroup = await groupRepository.save(group);
+
+    res.status(201).json({
+      success: true,
+      code: 200,
+      message: '创建分组成功',
+      data: {
+        id: savedGroup.id,
+        name: savedGroup.name,
+        description: savedGroup.description || '',
+        status: 'active',
+        customerCount: 0,
+        createTime: savedGroup.createdAt?.toISOString() || '',
+        conditions: []
+      }
+    });
+  } catch (error) {
+    console.error('创建分组失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '创建分组失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/customers/groups/:id
+ * @desc 获取客户分组详情
+ * @access Private
+ */
+router.get('/groups/:id', async (req: Request, res: Response) => {
+  try {
+    const groupRepository = AppDataSource.getRepository(CustomerGroup);
+    const group = await groupRepository.findOne({
+      where: { id: req.params.id }
+    });
+
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '分组不存在'
+      });
+    }
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '获取分组详情成功',
+      data: {
+        id: group.id,
+        name: group.name,
+        description: group.description || '',
+        status: 'active',
+        customerCount: group.customerCount || 0,
+        createTime: group.createdAt?.toISOString() || '',
+        conditions: []
+      }
+    });
+  } catch (error) {
+    console.error('获取分组详情失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取分组详情失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route PUT /api/v1/customers/groups/:id
+ * @desc 更新客户分组
+ * @access Private
+ */
+router.put('/groups/:id', async (req: Request, res: Response) => {
+  try {
+    const groupRepository = AppDataSource.getRepository(CustomerGroup);
+    const group = await groupRepository.findOne({
+      where: { id: req.params.id }
+    });
+
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '分组不存在'
+      });
+    }
+
+    const { name, description } = req.body;
+    if (name !== undefined) group.name = name;
+    if (description !== undefined) group.description = description;
+
+    const updatedGroup = await groupRepository.save(group);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '更新分组成功',
+      data: {
+        id: updatedGroup.id,
+        name: updatedGroup.name,
+        description: updatedGroup.description || '',
+        status: 'active',
+        customerCount: updatedGroup.customerCount || 0,
+        createTime: updatedGroup.createdAt?.toISOString() || '',
+        conditions: []
+      }
+    });
+  } catch (error) {
+    console.error('更新分组失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '更新分组失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route DELETE /api/v1/customers/groups/:id
+ * @desc 删除客户分组
+ * @access Private
+ */
+router.delete('/groups/:id', async (req: Request, res: Response) => {
+  try {
+    const groupRepository = AppDataSource.getRepository(CustomerGroup);
+    const group = await groupRepository.findOne({
+      where: { id: req.params.id }
+    });
+
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '分组不存在'
+      });
+    }
+
+    await groupRepository.remove(group);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '删除分组成功'
+    });
+  } catch (error) {
+    console.error('删除分组失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '删除分组失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+// ========== 客户标签路由（必须在 /:id 之前定义）==========
+
+/**
+ * @route GET /api/v1/customers/tags
+ * @desc 获取客户标签列表
+ * @access Private
+ */
+router.get('/tags', async (req: Request, res: Response) => {
+  try {
+    const tagRepository = AppDataSource.getRepository(CustomerTag);
+    const { page = 1, pageSize = 20, name, status: _status } = req.query;
+
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = parseInt(pageSize as string) || 20;
+    const skip = (pageNum - 1) * pageSizeNum;
+
+    const where: Record<string, unknown> = {};
+    if (name) {
+      where.name = Like(`%${name}%`);
+    }
+
+    const [tags, total] = await tagRepository.findAndCount({
+      where,
+      skip,
+      take: pageSizeNum,
+      order: { createdAt: 'DESC' }
+    });
+
+    const list = tags.map(tag => ({
+      id: tag.id,
+      name: tag.name,
+      color: tag.color || '#007bff',
+      description: tag.description || '',
+      status: 'active' as const,
+      customerCount: tag.customerCount || 0,
+      createTime: tag.createdAt?.toISOString() || ''
+    }));
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '获取标签列表成功',
+      data: { list, total, page: pageNum, pageSize: pageSizeNum }
+    });
+  } catch (error) {
+    console.error('获取标签列表失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取标签列表失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/customers/tags
+ * @desc 创建客户标签
+ * @access Private
+ */
+router.post('/tags', async (req: Request, res: Response) => {
+  try {
+    const tagRepository = AppDataSource.getRepository(CustomerTag);
+    const { name, color, description } = req.body;
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '标签名称不能为空'
+      });
+    }
+
+    const tag = tagRepository.create({
+      name,
+      color: color || '#007bff',
+      description: description || '',
+      customerCount: 0
+    });
+
+    const savedTag = await tagRepository.save(tag);
+
+    res.status(201).json({
+      success: true,
+      code: 200,
+      message: '创建标签成功',
+      data: {
+        id: savedTag.id,
+        name: savedTag.name,
+        color: savedTag.color || '#007bff',
+        description: savedTag.description || '',
+        status: 'active',
+        customerCount: 0,
+        createTime: savedTag.createdAt?.toISOString() || ''
+      }
+    });
+  } catch (error) {
+    console.error('创建标签失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '创建标签失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/customers/tags/:id
+ * @desc 获取客户标签详情
+ * @access Private
+ */
+router.get('/tags/:id', async (req: Request, res: Response) => {
+  try {
+    const tagRepository = AppDataSource.getRepository(CustomerTag);
+    const tag = await tagRepository.findOne({
+      where: { id: req.params.id }
+    });
+
+    if (!tag) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '标签不存在'
+      });
+    }
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '获取标签详情成功',
+      data: {
+        id: tag.id,
+        name: tag.name,
+        color: tag.color || '#007bff',
+        description: tag.description || '',
+        status: 'active',
+        customerCount: tag.customerCount || 0,
+        createTime: tag.createdAt?.toISOString() || ''
+      }
+    });
+  } catch (error) {
+    console.error('获取标签详情失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取标签详情失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route PUT /api/v1/customers/tags/:id
+ * @desc 更新客户标签
+ * @access Private
+ */
+router.put('/tags/:id', async (req: Request, res: Response) => {
+  try {
+    const tagRepository = AppDataSource.getRepository(CustomerTag);
+    const tag = await tagRepository.findOne({
+      where: { id: req.params.id }
+    });
+
+    if (!tag) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '标签不存在'
+      });
+    }
+
+    const { name, color, description } = req.body;
+    if (name !== undefined) tag.name = name;
+    if (color !== undefined) tag.color = color;
+    if (description !== undefined) tag.description = description;
+
+    const updatedTag = await tagRepository.save(tag);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '更新标签成功',
+      data: {
+        id: updatedTag.id,
+        name: updatedTag.name,
+        color: updatedTag.color || '#007bff',
+        description: updatedTag.description || '',
+        status: 'active',
+        customerCount: updatedTag.customerCount || 0,
+        createTime: updatedTag.createdAt?.toISOString() || ''
+      }
+    });
+  } catch (error) {
+    console.error('更新标签失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '更新标签失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route DELETE /api/v1/customers/tags/:id
+ * @desc 删除客户标签
+ * @access Private
+ */
+router.delete('/tags/:id', async (req: Request, res: Response) => {
+  try {
+    const tagRepository = AppDataSource.getRepository(CustomerTag);
+    const tag = await tagRepository.findOne({
+      where: { id: req.params.id }
+    });
+
+    if (!tag) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '标签不存在'
+      });
+    }
+
+    await tagRepository.remove(tag);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '删除标签成功'
+    });
+  } catch (error) {
+    console.error('删除标签失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '删除标签失败',
       error: error instanceof Error ? error.message : '未知错误'
     });
   }
@@ -302,7 +786,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // 获取当前用户信息
-    const currentUser = (req as any).user;
+    const currentUser = (req as unknown).user;
     const finalCreatedBy = createdBy || salesPersonId || currentUser?.id || 'admin';
 
     // 创建客户
@@ -616,6 +1100,185 @@ router.get('/search', async (req: Request, res: Response) => {
       message: '搜索客户失败',
       error: error instanceof Error ? error.message : '未知错误'
     });
+  }
+});
+
+// ========== 客户详情子路由 ==========
+
+/**
+ * @route GET /api/v1/customers/:id/orders
+ * @desc 获取客户订单历史
+ * @access Private
+ */
+router.get('/:id/orders', async (req: Request, res: Response) => {
+  try {
+    const customerId = req.params.id;
+    // 返回空数组，实际应从订单表查询
+    res.json({
+      success: true,
+      code: 200,
+      data: []
+    });
+  } catch (error) {
+    console.error('获取客户订单失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取客户订单失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/customers/:id/services
+ * @desc 获取客户售后记录
+ * @access Private
+ */
+router.get('/:id/services', async (req: Request, res: Response) => {
+  try {
+    const customerId = req.params.id;
+    res.json({ success: true, code: 200, data: [] });
+  } catch (error) {
+    console.error('获取客户售后记录失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取客户售后记录失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/customers/:id/calls
+ * @desc 获取客户通话记录
+ * @access Private
+ */
+router.get('/:id/calls', async (req: Request, res: Response) => {
+  try {
+    const customerId = req.params.id;
+    res.json({ success: true, code: 200, data: [] });
+  } catch (error) {
+    console.error('获取客户通话记录失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取客户通话记录失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/customers/:id/followups
+ * @desc 获取客户跟进记录
+ * @access Private
+ */
+router.get('/:id/followups', async (req: Request, res: Response) => {
+  try {
+    const customerId = req.params.id;
+    res.json({ success: true, code: 200, data: [] });
+  } catch (error) {
+    console.error('获取客户跟进记录失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取客户跟进记录失败' });
+  }
+});
+
+/**
+ * @route POST /api/v1/customers/:id/followups
+ * @desc 添加客户跟进记录
+ * @access Private
+ */
+router.post('/:id/followups', async (req: Request, res: Response) => {
+  try {
+    const customerId = req.params.id;
+    const followUpData = req.body;
+    const newFollowUp = {
+      id: `followup_${Date.now()}`,
+      customerId,
+      ...followUpData,
+      createTime: new Date().toISOString()
+    };
+    res.status(201).json({ success: true, code: 200, data: newFollowUp });
+  } catch (error) {
+    console.error('添加跟进记录失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '添加跟进记录失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/customers/:id/followups/:followUpId
+ * @desc 更新客户跟进记录
+ * @access Private
+ */
+router.put('/:id/followups/:followUpId', async (req: Request, res: Response) => {
+  try {
+    const { id: customerId, followUpId } = req.params;
+    const followUpData = req.body;
+    res.json({ success: true, code: 200, data: { id: followUpId, ...followUpData } });
+  } catch (error) {
+    console.error('更新跟进记录失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '更新跟进记录失败' });
+  }
+});
+
+/**
+ * @route DELETE /api/v1/customers/:id/followups/:followUpId
+ * @desc 删除客户跟进记录
+ * @access Private
+ */
+router.delete('/:id/followups/:followUpId', async (req: Request, res: Response) => {
+  try {
+    res.json({ success: true, code: 200, message: '删除成功' });
+  } catch (error) {
+    console.error('删除跟进记录失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '删除跟进记录失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/customers/:id/tags
+ * @desc 获取客户标签
+ * @access Private
+ */
+router.get('/:id/tags', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+    res.json({ success: true, code: 200, data: customer?.tags || [] });
+  } catch (error) {
+    console.error('获取客户标签失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取客户标签失败' });
+  }
+});
+
+/**
+ * @route POST /api/v1/customers/:id/tags
+ * @desc 添加客户标签
+ * @access Private
+ */
+router.post('/:id/tags', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+    const tagData = req.body;
+    const newTag = { id: `tag_${Date.now()}`, ...tagData };
+    customer.tags = [...(customer.tags || []), newTag];
+    await customerRepository.save(customer);
+    res.status(201).json({ success: true, code: 200, data: newTag });
+  } catch (error) {
+    console.error('添加客户标签失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '添加客户标签失败' });
+  }
+});
+
+/**
+ * @route DELETE /api/v1/customers/:id/tags/:tagId
+ * @desc 删除客户标签
+ * @access Private
+ */
+router.delete('/:id/tags/:tagId', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+    customer.tags = (customer.tags || []).filter((tag: any) => tag.id !== req.params.tagId);
+    await customerRepository.save(customer);
+    res.json({ success: true, code: 200, message: '删除成功' });
+  } catch (error) {
+    console.error('删除客户标签失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '删除客户标签失败' });
   }
 });
 

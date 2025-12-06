@@ -37,6 +37,10 @@ import permissionRoutes from './routes/permissions';
 import sfExpressRoutes from './routes/sfExpress';
 import ytoExpressRoutes from './routes/ytoExpress';
 import serviceRoutes from './routes/services';
+import dataRoutes from './routes/data';
+import assignmentRoutes from './routes/assignment';
+import smsRoutes from './routes/sms';
+import customerShareRoutes from './routes/customerShare';
 
 // 加载环境变量
 dotenv.config();
@@ -212,6 +216,10 @@ app.use(`${API_PREFIX}/permissions`, permissionRoutes);
 app.use(`${API_PREFIX}/sf-express`, sfExpressRoutes);
 app.use(`${API_PREFIX}/yto-express`, ytoExpressRoutes);
 app.use(`${API_PREFIX}/services`, serviceRoutes);
+app.use(`${API_PREFIX}/data`, dataRoutes);
+app.use(`${API_PREFIX}/assignment`, assignmentRoutes);
+app.use(`${API_PREFIX}/sms`, smsRoutes);
+app.use(`${API_PREFIX}/customer-share`, customerShareRoutes);
 
 // 404处理
 app.use(notFoundHandler);

@@ -3,33 +3,55 @@
  */
 
 /**
- * 生成客户编码
- * 格式：2个随机字母 + 年月日时分 + 4位随机字符
- * 例如：XH202509281102
+ * 获取已存在的所有客户编码
+ */
+function getExistingCodes(): Set<string> {
+  try {
+    const customers = JSON.parse(localStorage.getItem('crm_store_customer') || '[]')
+    return new Set(customers.map((c: { code?: string }) => c.code).filter(Boolean))
+  } catch {
+    return new Set()
+  }
+}
+
+/**
+ * 生成客户编码（保证唯一性）
+ * 格式：2个随机字母 + 当天日期(YYYYMMDD) + 4位随机数字
+ * 例如：XH202512064521
  */
 export function generateCustomerCode(): string {
-  const now = new Date()
-  const year = now.getFullYear().toString()
-  const month = (now.getMonth() + 1).toString().padStart(2, '0')
-  const day = now.getDate().toString().padStart(2, '0')
-  const hour = now.getHours().toString().padStart(2, '0')
-  const minute = now.getMinutes().toString().padStart(2, '0')
-  
-  // 生成2个随机字母前缀
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-  let letterPrefix = ''
-  for (let i = 0; i < 2; i++) {
-    letterPrefix += letters.charAt(Math.floor(Math.random() * letters.length))
+  const existingCodes = getExistingCodes()
+  let code = ''
+  let attempts = 0
+  const maxAttempts = 100 // 防止无限循环
+
+  do {
+    const now = new Date()
+    const year = now.getFullYear().toString()
+    const month = (now.getMonth() + 1).toString().padStart(2, '0')
+    const day = now.getDate().toString().padStart(2, '0')
+
+    // 生成2个随机字母前缀
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    let letterPrefix = ''
+    for (let i = 0; i < 2; i++) {
+      letterPrefix += letters.charAt(Math.floor(Math.random() * letters.length))
+    }
+
+    // 生成4位随机数字
+    const randomDigits = Math.floor(1000 + Math.random() * 9000).toString()
+
+    code = `${letterPrefix}${year}${month}${day}${randomDigits}`
+    attempts++
+  } while (existingCodes.has(code) && attempts < maxAttempts)
+
+  // 如果尝试多次仍重复，添加时间戳毫秒确保唯一
+  if (existingCodes.has(code)) {
+    const ms = Date.now().toString().slice(-3)
+    code = code.slice(0, -3) + ms
   }
-  
-  // 生成4位随机字符（字母+数字）
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-  let randomSuffix = ''
-  for (let i = 0; i < 4; i++) {
-    randomSuffix += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  
-  return `${letterPrefix}${year}${month}${day}${hour}${minute}`
+
+  return code
 }
 
 /**
@@ -38,7 +60,7 @@ export function generateCustomerCode(): string {
  * @returns 是否为有效格式
  */
 export function validateCustomerCode(code: string): boolean {
-  // 格式：2个字母 + 年月日时分（12位数字）
+  // 格式：2个字母 + 日期(8位数字YYYYMMDD) + 4位随机数字 = 共14位
   const pattern = /^[A-Z]{2}\d{12}$/
   return pattern.test(code)
 }
@@ -64,7 +86,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       document.body.appendChild(textArea)
       textArea.focus()
       textArea.select()
-      
+
       const result = document.execCommand('copy')
       document.body.removeChild(textArea)
       return result

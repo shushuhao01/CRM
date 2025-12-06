@@ -330,6 +330,130 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 /**
+ * @route POST /api/v1/orders/:id/submit-audit
+ * @desc 提交订单审核
+ * @access Private
+ */
+router.post('/:id/submit-audit', async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const { remark } = req.body;
+    const idParam = req.params.id;
+
+    // 支持数字 id 或订单号查找
+    let order;
+    const numericId = parseInt(idParam);
+    if (!isNaN(numericId)) {
+      order = await orderRepository.findOne({
+        where: { id: numericId }
+      });
+    }
+
+    // 如果数字 id 没找到，尝试用订单号查找
+    if (!order) {
+      order = await orderRepository.findOne({
+        where: { orderNo: idParam }
+      });
+    }
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: '订单不存在'
+      });
+    }
+
+    // 更新订单状态为待审核
+    order.status = 'confirmed'; // 使用 confirmed 表示已提审
+    if (remark) {
+      order.notes = `${order.notes || ''} | 提审备注: ${remark}`;
+    }
+
+    await orderRepository.save(order);
+
+    res.json({
+      success: true,
+      message: '订单已提交审核',
+      data: {
+        id: order.id.toString(),
+        orderNumber: order.orderNo,
+        status: order.status
+      }
+    });
+  } catch (error) {
+    console.error('提交订单审核失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '提交订单审核失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/orders/:id/audit
+ * @desc 审核订单
+ * @access Private
+ */
+router.post('/:id/audit', async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const { action, remark } = req.body;
+    const idParam = req.params.id;
+
+    // 支持数字 id 或订单号查找
+    let order;
+    const numericId = parseInt(idParam);
+    if (!isNaN(numericId)) {
+      order = await orderRepository.findOne({
+        where: { id: numericId }
+      });
+    }
+
+    // 如果数字 id 没找到，尝试用订单号查找
+    if (!order) {
+      order = await orderRepository.findOne({
+        where: { orderNo: idParam }
+      });
+    }
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: '订单不存在'
+      });
+    }
+
+    if (action === 'approve') {
+      order.status = 'paid'; // 审核通过，进入已支付状态
+      order.notes = `${order.notes || ''} | 审核通过: ${remark || ''}`;
+    } else {
+      order.status = 'pending'; // 审核拒绝，退回待处理
+      order.notes = `${order.notes || ''} | 审核拒绝: ${remark || ''}`;
+    }
+
+    await orderRepository.save(order);
+
+    res.json({
+      success: true,
+      message: action === 'approve' ? '订单审核通过' : '订单审核拒绝',
+      data: {
+        id: order.id.toString(),
+        orderNumber: order.orderNo,
+        status: order.status
+      }
+    });
+  } catch (error) {
+    console.error('审核订单失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '审核订单失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
  * @route POST /api/v1/orders/cancel-request
  * @desc 提交取消订单申请
  * @access Private
