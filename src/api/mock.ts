@@ -3294,23 +3294,22 @@ export const mockApi = {
 
 // 检查是否使用Mock API
 export const shouldUseMockApi = (): boolean => {
-  // 优先检查localStorage设置
+  // 🔥 生产环境优先判断，不受localStorage影响
+  const isProduction = import.meta.env.PROD
+  if (isProduction) {
+    console.log('[Mock API] 生产环境，强制使用真实API')
+    return false
+  }
+
+  // 开发环境：检查localStorage设置
   const mockEnabled = localStorage.getItem('erp_mock_enabled')
   if (mockEnabled === 'true') {
     console.log('[Mock API] localStorage强制启用Mock API')
     return true
   }
 
-  // 在开发环境中使用Mock API，除非明确配置了外部API
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
-  const isProduction = import.meta.env.PROD
-
-  // 如果是生产环境，不使用Mock API
-  if (isProduction) {
-    return false
-  }
-
   // 如果配置了API地址，使用真实API
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
   if (apiBaseUrl) {
     console.log('开发环境连接到后端API服务器:', apiBaseUrl)
     return false
