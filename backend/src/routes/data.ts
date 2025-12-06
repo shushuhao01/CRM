@@ -218,6 +218,76 @@ router.get('/assignee-options', async (req: Request, res: Response) => {
 });
 
 /**
+ * @route GET /api/v1/data/search
+ * @desc 搜索客户（资料管理-客户查询）
+ */
+router.get('/search', async (req: Request, res: Response) => {
+  try {
+    const { keyword } = req.query;
+    const customerRepository = AppDataSource.getRepository(Customer);
+
+    if (!keyword) {
+      return res.json({ success: true, data: null });
+    }
+
+    // 搜索客户 - 支持客户编码、姓名、手机号、订单号等
+    const customer = await customerRepository
+      .createQueryBuilder('customer')
+      .where('customer.customerCode = :keyword', { keyword })
+      .orWhere('customer.phone = :keyword', { keyword })
+      .orWhere('customer.name = :keyword', { keyword })
+      .getOne();
+
+    if (!customer) {
+      return res.json({ success: true, data: null, message: '未找到匹配的客户' });
+    }
+
+    res.json({
+      success: true,
+      data: customer
+    });
+  } catch (error) {
+    console.error('搜索客户失败:', error);
+    res.status(500).json({ success: false, message: '搜索客户失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/data/search-customer
+ * @desc 搜索客户（模糊搜索，返回列表）
+ */
+router.get('/search-customer', async (req: Request, res: Response) => {
+  try {
+    const { keyword, page = 1, pageSize = 20 } = req.query;
+    const customerRepository = AppDataSource.getRepository(Customer);
+
+    if (!keyword) {
+      return res.json({ success: true, data: { list: [], total: 0 } });
+    }
+
+    const queryBuilder = customerRepository.createQueryBuilder('customer');
+    queryBuilder.where(
+      '(customer.customerCode LIKE :keyword OR customer.name LIKE :keyword OR customer.phone LIKE :keyword)',
+      { keyword: `%${keyword}%` }
+    );
+
+    queryBuilder.orderBy('customer.createdAt', 'DESC');
+    queryBuilder.skip((Number(page) - 1) * Number(pageSize));
+    queryBuilder.take(Number(pageSize));
+
+    const [list, total] = await queryBuilder.getManyAndCount();
+
+    res.json({
+      success: true,
+      data: { list, total, page: Number(page), pageSize: Number(pageSize) }
+    });
+  } catch (error) {
+    console.error('搜索客户失败:', error);
+    res.status(500).json({ success: false, message: '搜索客户失败' });
+  }
+});
+
+/**
  * @route GET /api/v1/data/statistics
  * @desc 获取数据统计
  */
@@ -227,7 +297,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
 
     const totalCount = await customerRepository.count();
     const assignedCount = await customerRepository.count({
-      where: { salesPersonId: Not(IsNull()) } as any
+      where: { salesPersonId: Not(IsNull()) } as unknown
     });
     const archivedCount = await customerRepository.count({
       where: { status: 'archived' }

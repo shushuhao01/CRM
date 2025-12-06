@@ -564,7 +564,7 @@ router.get('/analysis/metrics', async (req: Request, res: Response) => {
     const currentUser = (req as any).user;
 
     let whereClause = '';
-    const params: any[] = [];
+    const params: unknown[] = [];
 
     if (type === 'personal') {
       whereClause = 'WHERE o.created_by = ?';
