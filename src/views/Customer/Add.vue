@@ -1012,31 +1012,28 @@ const handleSubmit = async () => {
 
         console.log('准备保存的客户数据:', customerData)
 
-        // 🔥 使用 customerApi.create() 方法保存客户
-        console.log('=== 调用 customerApi.create() 保存客户 ===')
+        // 🔥 强制调用API保存客户到数据库，不写入localStorage
+        console.log('=== 强制调用 customerApi.create() 保存客户到数据库 ===')
 
         const apiResult = await customerApi.create(customerData as any)
         console.log('API响应:', apiResult)
 
         if (!apiResult.success) {
-          throw new Error(apiResult.message || 'API请求失败')
+          console.error('❌ API保存失败:', apiResult.message)
+          throw new Error(apiResult.message || 'API请求失败，客户未写入数据库')
         }
 
-        // 如果API返回了客户数据，更新本地store
+        // 🔥 不再写入localStorage，只记录日志
         if (apiResult.data) {
-          console.log('✅ API保存成功，客户数据:', apiResult.data)
-          // 更新本地store（用于前端缓存）
-          customerStore.customers.unshift(apiResult.data)
-          console.log('✅ 客户已添加到本地store，当前客户数量:', customerStore.customers.length)
+          console.log('✅ 客户已成功写入数据库!')
+          console.log('✅ 客户ID:', apiResult.data.id)
+          console.log('✅ 客户姓名:', apiResult.data.name)
+          console.log('✅ 客户手机:', apiResult.data.phone)
         } else {
-          console.warn('⚠️ API返回成功但没有客户数据')
+          console.warn('⚠️ API返回成功但没有返回客户数据，请检查数据库')
         }
 
         const savedCustomer = apiResult.data
-        console.log('✅ 客户保存成功:', savedCustomer?.name || '未知')
-        console.log('✅ 客户ID:', savedCustomer?.id || '未知')
-
-        // 注意：生产环境数据保存在服务器数据库，不需要验证localStorage
         console.log('=== 客户保存到数据库完成 ===')
 
         // 发送客户添加成功的消息提醒
