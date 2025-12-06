@@ -121,7 +121,7 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
     const order = await orderRepository.findOne({
-      where: { id: parseInt(req.params.id) },
+      where: { id: req.params.id },
       relations: ['customer', 'orderItems', 'statusHistory']
     });
 
@@ -224,7 +224,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // 解析客户ID（支持字符串和数字）
-    let parsedCustomerId: number;
+    let parsedCustomerId: string = '';
     if (typeof customerId === 'string') {
       // 如果是类似 "customer_xxx" 的格式，需要查找或创建客户
       if (customerId.startsWith('customer_') || customerId.startsWith('temp_')) {
@@ -239,14 +239,16 @@ router.post('/', async (req: Request, res: Response) => {
             parsedCustomerId = existingCustomer[0].id;
             console.log('✅ [订单创建] 通过手机号找到客户:', parsedCustomerId);
           } else {
-            // 创建新客户
+            // 创建新客户 - 使用UUID
+            const { v4: uuidv4 } = await import('uuid');
+            const newCustomerId = uuidv4();
             const customerCode = `C${Date.now()}`;
-            const result = await AppDataSource.query(
-              `INSERT INTO customers (customer_code, name, phone, sales_person_id, created_at, updated_at)
-               VALUES (?, ?, ?, ?, NOW(), NOW())`,
-              [customerCode, customerName || '未知客户', customerPhone, salesPersonId || null]
+            await AppDataSource.query(
+              `INSERT INTO customers (id, customer_code, name, phone, sales_person_id, created_by, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+              [newCustomerId, customerCode, customerName || '未知客户', customerPhone, salesPersonId || null, salesPersonId || 'system']
             );
-            parsedCustomerId = result.insertId;
+            parsedCustomerId = newCustomerId;
             console.log('✅ [订单创建] 创建新客户:', parsedCustomerId);
           }
         } else {
@@ -257,13 +259,13 @@ router.post('/', async (req: Request, res: Response) => {
           });
         }
       } else {
-        parsedCustomerId = parseInt(customerId);
+        parsedCustomerId = customerId;
       }
     } else {
-      parsedCustomerId = customerId;
+      parsedCustomerId = String(customerId);
     }
 
-    if (isNaN(parsedCustomerId) || parsedCustomerId <= 0) {
+    if (!parsedCustomerId) {
       console.error('❌ [订单创建] 无效的客户ID:', customerId);
       return res.status(400).json({
         success: false,
@@ -304,16 +306,18 @@ router.post('/', async (req: Request, res: Response) => {
       createdBy: salesPersonId || ''
     });
 
-    const savedOrder = await orderRepository.save(order);
+    const savedOrderResult = await orderRepository.save(order);
+    // save 可能返回数组或单个对象
+    const savedOrder = Array.isArray(savedOrderResult) ? savedOrderResult[0] : savedOrderResult;
     console.log('✅ [订单创建] 订单保存成功:', savedOrder.id);
 
     // 创建订单项
     if (products && products.length > 0) {
       for (const product of products) {
-        const productId = typeof product.id === 'string' ? parseInt(product.id) : (product.id || 0);
+        const productId = String(product.id || '0');
         const orderItem = orderItemRepository.create({
           orderId: savedOrder.id,
-          productId: isNaN(productId) ? 0 : productId,
+          productId: productId,
           productName: product.name || '未知商品',
           productSku: product.sku || '',
           unitPrice: Number(product.price) || 0,
@@ -378,7 +382,7 @@ router.put('/:id', async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
     const order = await orderRepository.findOne({
-      where: { id: parseInt(req.params.id) }
+      where: { id: req.params.id }
     });
 
     if (!order) {
@@ -424,7 +428,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
     const order = await orderRepository.findOne({
-      where: { id: parseInt(req.params.id) }
+      where: { id: req.params.id }
     });
 
     if (!order) {
@@ -460,16 +464,12 @@ router.post('/:id/submit-audit', async (req: Request, res: Response) => {
     const { remark } = req.body;
     const idParam = req.params.id;
 
-    // 支持数字 id 或订单号查找
-    let order;
-    const numericId = parseInt(idParam);
-    if (!isNaN(numericId)) {
-      order = await orderRepository.findOne({
-        where: { id: numericId }
-      });
-    }
+    // 支持 id 或订单号查找
+    let order = await orderRepository.findOne({
+      where: { id: idParam }
+    });
 
-    // 如果数字 id 没找到，尝试用订单号查找
+    // 如果 id 没找到，尝试用订单号查找
     if (!order) {
       order = await orderRepository.findOne({
         where: { orderNumber: idParam }
@@ -521,16 +521,12 @@ router.post('/:id/audit', async (req: Request, res: Response) => {
     const { action, remark } = req.body;
     const idParam = req.params.id;
 
-    // 支持数字 id 或订单号查找
-    let order;
-    const numericId = parseInt(idParam);
-    if (!isNaN(numericId)) {
-      order = await orderRepository.findOne({
-        where: { id: numericId }
-      });
-    }
+    // 支持 id 或订单号查找
+    let order = await orderRepository.findOne({
+      where: { id: idParam }
+    });
 
-    // 如果数字 id 没找到，尝试用订单号查找
+    // 如果 id 没找到，尝试用订单号查找
     if (!order) {
       order = await orderRepository.findOne({
         where: { orderNumber: idParam }
@@ -584,7 +580,7 @@ router.post('/cancel-request', async (req: Request, res: Response) => {
     const { orderId, reason, description } = req.body;
 
     const order = await orderRepository.findOne({
-      where: { id: parseInt(orderId) }
+      where: { id: orderId }
     });
 
     if (!order) {
@@ -665,7 +661,7 @@ router.post('/:id/cancel-audit', async (req: Request, res: Response) => {
     const { action, remark } = req.body;
 
     const order = await orderRepository.findOne({
-      where: { id: parseInt(req.params.id) }
+      where: { id: req.params.id }
     });
 
     if (!order) {

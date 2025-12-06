@@ -18,8 +18,8 @@ export class LogisticsTracking {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'int', comment: '订单ID' })
-  orderId: number;
+  @Column({ type: 'varchar', length: 50, comment: '订单ID' })
+  orderId: string;
 
   @Column({ length: 100, comment: '物流单号' })
   trackingNo: string;
@@ -30,7 +30,7 @@ export class LogisticsTracking {
   @Column({ length: 100, comment: '物流公司名称' })
   companyName: string;
 
-  @Column({ 
+  @Column({
     type: 'varchar',
     length: 50,
     default: LogisticsStatus.PENDING,
