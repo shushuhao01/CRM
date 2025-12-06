@@ -20,22 +20,22 @@
         <el-form-item label="通知方式">
           <el-select v-model="filters.notificationMethod" placeholder="选择通知方式" clearable style="width: 200px;">
             <el-option label="全部" value="" />
-            <el-option 
-              v-for="method in notificationMethods" 
-              :key="method.value" 
-              :label="method.label" 
-              :value="method.value" 
+            <el-option
+              v-for="method in notificationMethods"
+              :key="method.value"
+              :label="method.label"
+              :value="method.value"
             />
           </el-select>
         </el-form-item>
         <el-form-item label="部门">
           <el-select v-model="filters.departmentId" placeholder="选择部门" clearable style="width: 200px;">
             <el-option label="全部" value="" />
-            <el-option 
-              v-for="dept in departments" 
-              :key="dept.id" 
-              :label="dept.name" 
-              :value="dept.id" 
+            <el-option
+              v-for="dept in departments"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
             />
           </el-select>
         </el-form-item>
@@ -55,8 +55,8 @@
 
     <!-- 配置卡片列表 -->
     <div class="config-cards" v-loading="loading">
-      <div 
-        v-for="config in filteredConfigurations" 
+      <div
+        v-for="config in filteredConfigurations"
         :key="config.id"
         class="config-card"
       >
@@ -159,8 +159,8 @@
             </div>
           </div>
           <div class="header-right">
-            <el-switch 
-              v-model="config.enabled" 
+            <el-switch
+              v-model="config.enabled"
               @change="toggleConfigStatus(config)"
               :loading="config.statusLoading"
               size="large"
@@ -174,30 +174,30 @@
           <div class="content-section">
             <div class="section-label">支持部门</div>
             <div class="department-selection">
-              <el-select 
-                :model-value="config.departments.map(d => d.id)" 
-                multiple 
+              <el-select
+                :model-value="config.departments.map(d => d.id)"
+                multiple
                 placeholder="选择支持的部门"
                 @change="updateDepartments(config, $event)"
                 class="department-select"
               >
-                <el-option 
-                  v-for="dept in departments" 
-                  :key="dept.id" 
-                  :label="dept.name" 
-                  :value="dept.id" 
+                <el-option
+                  v-for="dept in departments"
+                  :key="dept.id"
+                  :label="dept.name"
+                  :value="dept.id"
                 />
               </el-select>
               <div class="selected-departments">
-                <el-tag 
-                  v-for="dept in config.departments.slice(0, 3)" 
+                <el-tag
+                  v-for="dept in config.departments.slice(0, 3)"
                   :key="dept.id"
                   size="small"
                   class="dept-tag"
                 >
                   {{ dept.name }}
                 </el-tag>
-                <el-tag 
+                <el-tag
                   v-if="config.departments.length > 3"
                   size="small"
                   type="info"
@@ -218,24 +218,24 @@
                 <span>全员通知</span>
               </div>
               <div v-else class="member-config">
-                <el-button 
-                  type="primary" 
-                  size="small" 
+                <el-button
+                  type="primary"
+                  size="small"
                   @click="showMemberSelector(config)"
                   class="select-member-btn"
                 >
                   选择成员 ({{ config.members.length }}人)
                 </el-button>
                 <div v-if="config.members.length > 0" class="selected-members">
-                  <el-tag 
-                    v-for="member in config.members.slice(0, 2)" 
+                  <el-tag
+                    v-for="member in config.members.slice(0, 2)"
                     :key="member.id"
                     size="small"
                     class="member-tag"
                   >
                     {{ member.name }}
                   </el-tag>
-                  <el-tag 
+                  <el-tag
                     v-if="config.members.length > 2"
                     size="small"
                     type="info"
@@ -252,8 +252,8 @@
           <div class="content-section">
             <div class="section-label">配置参数</div>
             <div class="config-params">
-              <el-button 
-                type="text" 
+              <el-button
+                type="text"
                 @click="showConfigDialog(config)"
                 class="config-btn"
               >
@@ -261,7 +261,7 @@
                 配置参数
               </el-button>
               <div class="config-status">
-                <el-tag 
+                <el-tag
                   :type="isConfigComplete(config) ? 'success' : 'warning'"
                   size="small"
                 >
@@ -316,52 +316,52 @@
     </div>
 
     <!-- 新建/编辑配置弹窗 -->
-    <el-dialog 
-      v-model="configDialogVisible" 
+    <el-dialog
+      v-model="configDialogVisible"
       :title="isEdit ? '编辑通知配置' : '新建通知配置'"
       width="800px"
       :close-on-click-modal="false"
     >
-      <el-form 
+      <el-form
         ref="configFormRef"
-        :model="configForm" 
+        :model="configForm"
         :rules="configRules"
         label-width="120px"
       >
         <el-form-item label="配置名称" prop="name">
           <el-input v-model="configForm.name" placeholder="请输入配置名称" />
         </el-form-item>
-        
+
         <el-form-item label="通知方式" prop="notificationMethod">
           <el-select v-model="configForm.notificationMethod" placeholder="选择通知方式" style="width: 100%">
-            <el-option 
-              v-for="method in notificationMethods" 
-              :key="method.value" 
-              :label="method.label" 
-              :value="method.value" 
+            <el-option
+              v-for="method in notificationMethods"
+              :key="method.value"
+              :label="method.label"
+              :value="method.value"
             />
           </el-select>
         </el-form-item>
 
         <el-form-item label="支持部门" prop="departmentIds">
-          <el-select 
-            v-model="configForm.departmentIds" 
-            multiple 
+          <el-select
+            v-model="configForm.departmentIds"
+            multiple
             placeholder="选择支持的部门"
             style="width: 100%"
           >
-            <el-option 
-              v-for="dept in departments" 
-              :key="dept.id" 
-              :label="dept.name" 
-              :value="dept.id" 
+            <el-option
+              v-for="dept in departments"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
             />
           </el-select>
         </el-form-item>
 
-        <el-form-item 
-          v-if="configForm.notificationMethod !== 'system_message'" 
-          label="通知成员" 
+        <el-form-item
+          v-if="configForm.notificationMethod !== 'system_message'"
+          label="通知成员"
           prop="memberIds"
         >
           <div class="member-selection">
@@ -369,8 +369,8 @@
               选择成员 (已选 {{ configForm.memberIds.length }} 人)
             </el-button>
             <div v-if="selectedMembers.length > 0" class="selected-members">
-              <el-tag 
-                v-for="member in selectedMembers.slice(0, 5)" 
+              <el-tag
+                v-for="member in selectedMembers.slice(0, 5)"
                 :key="member.id"
                 closable
                 @close="removeMember(member.id)"
@@ -378,7 +378,7 @@
               >
                 {{ member.name }} ({{ member.departmentName }})
               </el-tag>
-              <el-tag 
+              <el-tag
                 v-if="selectedMembers.length > 5"
                 type="info"
                 style="margin-top: 8px;"
@@ -389,8 +389,8 @@
           </div>
         </el-form-item>
 
-        <el-form-item 
-          v-if="configForm.notificationMethod === 'system_message'" 
+        <el-form-item
+          v-if="configForm.notificationMethod === 'system_message'"
           label="通知范围"
         >
           <el-alert
@@ -419,8 +419,8 @@
             <!-- 企业微信配置 -->
             <template v-if="configForm.notificationMethod === 'wechat_work'">
               <el-form-item label="Webhook地址" required>
-                <el-input 
-                  v-model="configForm.params.webhook" 
+                <el-input
+                  v-model="configForm.params.webhook"
                   placeholder="请输入企业微信群机器人Webhook地址"
                   style="width: 100%"
                 />
@@ -429,8 +429,8 @@
                 </div>
               </el-form-item>
               <el-form-item label="群名称">
-                <el-input 
-                  v-model="configForm.params.groupName" 
+                <el-input
+                  v-model="configForm.params.groupName"
                   placeholder="请输入群名称（可选）"
                   style="width: 100%"
                 />
@@ -441,8 +441,8 @@
                 <div class="form-tip">开启后，消息将@所有人</div>
               </el-form-item>
               <el-form-item label="@指定成员">
-                <el-input 
-                  v-model="configForm.params.mentionedList" 
+                <el-input
+                  v-model="configForm.params.mentionedList"
                   placeholder="请输入要@的成员手机号，多个用逗号分隔"
                   style="width: 100%"
                 />
@@ -496,8 +496,8 @@
     </el-dialog>
 
     <!-- 成员选择弹窗 -->
-    <el-dialog 
-      v-model="memberSelectorVisible" 
+    <el-dialog
+      v-model="memberSelectorVisible"
       title="选择通知成员"
       width="800px"
       :close-on-click-modal="false"
@@ -509,11 +509,11 @@
             <el-form-item label="部门">
               <el-select v-model="memberFilter.departmentId" placeholder="选择部门" clearable>
                 <el-option label="全部部门" value="" />
-                <el-option 
-                  v-for="dept in availableDepartments" 
-                  :key="dept.id" 
-                  :label="dept.name" 
-                  :value="dept.id" 
+                <el-option
+                  v-for="dept in availableDepartments"
+                  :key="dept.id"
+                  :label="dept.name"
+                  :value="dept.id"
                 />
               </el-select>
             </el-form-item>
@@ -525,10 +525,10 @@
             </el-form-item>
           </el-form>
         </div>
-        
-        <el-table 
+
+        <el-table
           ref="memberTableRef"
-          :data="filteredMembers" 
+          :data="filteredMembers"
           style="width: 100%"
           @selection-change="handleMemberSelection"
           max-height="400"
@@ -551,8 +551,8 @@
     </el-dialog>
 
     <!-- 查看配置弹窗 -->
-    <el-dialog 
-      v-model="viewDialogVisible" 
+    <el-dialog
+      v-model="viewDialogVisible"
       title="查看通知配置"
       width="600px"
     >
@@ -573,8 +573,8 @@
           </el-descriptions-item>
           <el-descriptions-item label="支持部门">
             <div class="department-list">
-              <el-tag 
-                v-for="dept in currentConfig.departments" 
+              <el-tag
+                v-for="dept in currentConfig.departments"
                 :key="dept.id"
                 size="small"
                 style="margin-right: 4px; margin-bottom: 4px;"
@@ -588,8 +588,8 @@
               全员通知
             </div>
             <div v-else class="member-list">
-              <el-tag 
-                v-for="member in currentConfig.members" 
+              <el-tag
+                v-for="member in currentConfig.members"
                 :key="member.id"
                 size="small"
                 style="margin-right: 4px; margin-bottom: 4px;"
@@ -623,6 +623,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, User, Setting, Connection, Edit, Delete } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { notificationService, type NotificationConfig } from '@/services/notificationService'
+import { useUserStore } from '@/stores/user'
+
+const userStore = useUserStore()
 
 // 通知方式定义
 const notificationMethods = ref([
@@ -642,16 +645,18 @@ const departments = ref([
   { id: '5', name: '人事部', memberCount: 3 }
 ])
 
-// 成员数据
-const members = ref([
-  { id: '1', name: '张三', departmentId: '1', departmentName: '销售部', position: '销售经理', email: 'zhangsan@example.com', phone: '13800138001' },
-  { id: '2', name: '李四', departmentId: '1', departmentName: '销售部', position: '销售专员', email: 'lisi@example.com', phone: '13800138002' },
-  { id: '3', name: '王五', departmentId: '2', departmentName: '客服部', position: '客服主管', email: 'wangwu@example.com', phone: '13800138003' },
-  { id: '4', name: '赵六', departmentId: '2', departmentName: '客服部', position: '客服专员', email: 'zhaoliu@example.com', phone: '13800138004' },
-  { id: '5', name: '钱七', departmentId: '3', departmentName: '技术部', position: '技术经理', email: 'qianqi@example.com', phone: '13800138005' },
-  { id: '6', name: '孙八', departmentId: '4', departmentName: '财务部', position: '财务专员', email: 'sunba@example.com', phone: '13800138006' },
-  { id: '7', name: '周九', departmentId: '5', departmentName: '人事部', position: 'HR专员', email: 'zhoujiu@example.com', phone: '13800138007' }
-])
+// 成员数据 - 从userStore获取真实用户
+const members = computed(() => {
+  return userStore.users.map((u: any) => ({
+    id: u.id,
+    name: u.realName || u.name || u.username,
+    departmentId: u.departmentId || '',
+    departmentName: u.departmentName || u.department || '未分配',
+    position: u.position || '员工',
+    email: u.email || '',
+    phone: u.phone || ''
+  }))
+})
 
 // 配置数据
 const configurations = ref([
@@ -755,26 +760,26 @@ const tempSelectedMembers = ref([])
 // 计算属性
 const filteredConfigurations = computed(() => {
   let result = [...configurations.value]
-  
+
   if (filters.notificationMethod) {
     result = result.filter(config => config.notificationMethod === filters.notificationMethod)
   }
-  
+
   if (filters.departmentId) {
-    result = result.filter(config => 
+    result = result.filter(config =>
       config.departments.some(dept => dept.id === filters.departmentId)
     )
   }
-  
+
   if (filters.status) {
     const enabled = filters.status === 'enabled'
     result = result.filter(config => config.enabled === enabled)
   }
-  
+
   pagination.total = result.length
   const start = (pagination.currentPage - 1) * pagination.pageSize
   const end = start + pagination.pageSize
-  
+
   return result.slice(start, end)
 })
 
@@ -837,7 +842,7 @@ const showCreateDialog = () => {
 const editConfig = (config: any) => {
   isEdit.value = true
   currentConfig.value = config
-  
+
   // 填充表单
   configForm.id = config.id
   configForm.name = config.name
@@ -846,7 +851,7 @@ const editConfig = (config: any) => {
   configForm.memberIds = config.members.map(member => member.id)
   configForm.description = config.description
   configForm.params = { ...config.params }
-  
+
   configDialogVisible.value = true
 }
 
@@ -866,15 +871,15 @@ const deleteConfig = async (config: any) => {
         type: 'warning'
       }
     )
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     const index = configurations.value.findIndex(c => c.id === config.id)
     if (index > -1) {
       configurations.value.splice(index, 1)
     }
-    
+
     ElMessage.success('删除成功')
   } catch (error) {
     // 用户取消删除
@@ -886,7 +891,7 @@ const toggleConfigStatus = async (config: any) => {
   try {
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     ElMessage.success(`配置已${config.enabled ? '启用' : '禁用'}`)
   } catch (error) {
     // 恢复状态
@@ -902,7 +907,7 @@ const testConfig = async (config: any) => {
   try {
     // 使用通知服务进行实际测试
     const success = await notificationService.testConfiguration(config as NotificationConfig)
-    
+
     if (success) {
       ElMessage.success(`${getMethodLabel(config.notificationMethod)}测试通知发送成功`)
     } else {
@@ -927,12 +932,12 @@ const resetConfigForm = () => {
 
 const saveConfig = async () => {
   if (!configFormRef.value) return
-  
+
   try {
     await configFormRef.value.validate()
-    
+
     saving.value = true
-    
+
     const configData: NotificationConfig = {
       id: isEdit.value ? configForm.id : Date.now().toString(),
       name: configForm.name,
@@ -943,10 +948,10 @@ const saveConfig = async () => {
       enabled: true,
       params: configForm.params
     }
-    
+
     // 使用通知服务保存配置
     await notificationService.saveConfiguration(configData)
-    
+
     // 更新本地数据
     const displayData = {
       ...configData,
@@ -957,7 +962,7 @@ const saveConfig = async () => {
       statusLoading: false,
       testLoading: false
     }
-    
+
     if (isEdit.value) {
       // 更新配置
       const index = configurations.value.findIndex(c => c.id === configData.id)
@@ -970,7 +975,7 @@ const saveConfig = async () => {
       configurations.value.unshift(displayData)
       ElMessage.success('配置创建成功')
     }
-    
+
     configDialogVisible.value = false
   } catch (error) {
     console.error('保存失败:', error)
@@ -981,24 +986,24 @@ const saveConfig = async () => {
 
 const filterMembers = () => {
   let filtered = members.value
-  
+
   // 如果表单中已选择了支持的部门，则只显示这些部门下的成员
   if (configForm.departmentIds.length > 0) {
-    filtered = filtered.filter(member => 
+    filtered = filtered.filter(member =>
       configForm.departmentIds.includes(member.departmentId)
     )
   }
-  
+
   // 如果在成员选择器中选择了特定部门，进一步过滤
   if (memberFilter.departmentId) {
     filtered = filtered.filter(member => member.departmentId === memberFilter.departmentId)
   }
-  
+
   // 如果输入了姓名，按姓名过滤
   if (memberFilter.name) {
     filtered = filtered.filter(member => member.name.includes(memberFilter.name))
   }
-  
+
   filteredMembers.value = filtered
 }
 
@@ -1051,10 +1056,10 @@ const showMemberSelector = (config?: any) => {
     // 表单模式
     tempSelectedMembers.value = [...selectedMembers.value]
   }
-  
+
   filterMembers()
   memberSelectorVisible.value = true
-  
+
   // 设置已选中的成员
   nextTick(() => {
     if (memberTableRef.value) {
@@ -1068,25 +1073,25 @@ const showMemberSelector = (config?: any) => {
 const showConfigDialog = (config: any) => {
   currentConfig.value = config
   isEdit.value = true
-  
+
   // 填充表单数据
   configForm.id = config.id
   configForm.name = config.name
   configForm.notificationMethod = config.notificationMethod
   configForm.departmentIds = (config.departments || []).map(d => d.id)
   configForm.memberIds = (config.members || []).map(m => m.id)
-  
+
   // 填充配置参数
   if (config.config) {
     Object.assign(configForm, config.config)
   }
-  
+
   configDialogVisible.value = true
 }
 
 const isConfigComplete = (config: any) => {
   if (!config.config) return false
-  
+
   switch (config.notificationMethod) {
     case 'dingtalk':
       return !!(config.config.webhook && config.config.secret)
@@ -1107,6 +1112,8 @@ const isConfigComplete = (config: any) => {
 
 // 生命周期
 onMounted(async () => {
+  // 加载用户列表
+  await userStore.loadUsers()
   // 初始化通知服务
   await notificationService.loadConfigurations()
   loadConfigurations()
@@ -1385,11 +1392,11 @@ onMounted(async () => {
   .card-content {
     grid-template-columns: 1fr;
   }
-  
+
   .config-card {
     padding: 16px;
   }
-  
+
   .card-header {
     flex-direction: column;
     align-items: flex-start;
