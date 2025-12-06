@@ -6,14 +6,29 @@ import { LogisticsTracking } from './LogisticsTracking';
 
 @Entity('orders')
 export class Order {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ name: 'order_number', length: 50, unique: true, comment: '订单号' })
   orderNumber: string;
 
-  @Column({ name: 'customer_id', type: 'int', comment: '客户ID' })
-  customerId: number;
+  @Column({ name: 'customer_id', type: 'varchar', length: 50, comment: '客户ID' })
+  customerId: string;
+
+  @Column({ name: 'customer_name', length: 100, nullable: true, comment: '客户姓名' })
+  customerName?: string;
+
+  @Column({ name: 'customer_phone', length: 20, nullable: true, comment: '客户电话' })
+  customerPhone?: string;
+
+  @Column({ name: 'service_wechat', length: 100, nullable: true, comment: '客服微信号' })
+  serviceWechat?: string;
+
+  @Column({ name: 'order_source', length: 50, nullable: true, comment: '订单来源' })
+  orderSource?: string;
+
+  @Column({ type: 'json', nullable: true, comment: '商品列表' })
+  products?: any[];
 
   @Column({
     type: 'varchar',
@@ -77,11 +92,23 @@ export class Order {
   @Column({ name: 'delivered_at', type: 'datetime', nullable: true, comment: '签收时间' })
   deliveredAt?: Date;
 
+  @Column({ name: 'cancelled_at', type: 'datetime', nullable: true, comment: '取消时间' })
+  cancelledAt?: Date;
+
+  @Column({ name: 'cancel_reason', type: 'text', nullable: true, comment: '取消原因' })
+  cancelReason?: string;
+
+  @Column({ name: 'mark_type', length: 20, default: 'normal', comment: '订单标记类型' })
+  markType?: string;
+
   @Column({ type: 'text', nullable: true, comment: '订单备注' })
   remark?: string;
 
   @Column({ name: 'created_by', type: 'varchar', length: 50, nullable: true, comment: '创建人ID' })
   createdBy?: string;
+
+  @Column({ name: 'created_by_name', length: 50, nullable: true, comment: '创建人姓名' })
+  createdByName?: string;
 
   @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
   createdAt: Date;

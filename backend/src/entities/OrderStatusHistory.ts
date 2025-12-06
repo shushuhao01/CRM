@@ -6,10 +6,10 @@ export class OrderStatusHistory {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'int', comment: '订单ID' })
-  orderId: number;
+  @Column({ type: 'varchar', length: 50, comment: '订单ID' })
+  orderId: string;
 
-  @Column({ 
+  @Column({
     type: 'varchar',
     length: 50,
     comment: '状态'

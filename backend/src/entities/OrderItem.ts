@@ -7,11 +7,11 @@ export class OrderItem {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'int', comment: '订单ID' })
-  orderId: number;
+  @Column({ type: 'varchar', length: 50, comment: '订单ID' })
+  orderId: string;
 
-  @Column({ type: 'int', comment: '产品ID' })
-  productId: number;
+  @Column({ type: 'varchar', length: 50, comment: '产品ID' })
+  productId: string;
 
   @Column({ length: 100, comment: '产品名称（快照）' })
   productName: string;
