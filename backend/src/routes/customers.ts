@@ -786,7 +786,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // 获取当前用户信息
-    const currentUser = (req as unknown).user;
+    const currentUser = (req as any).user;
     const finalCreatedBy = createdBy || salesPersonId || currentUser?.id || 'admin';
 
     // 创建客户

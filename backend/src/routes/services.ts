@@ -525,7 +525,7 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
 router.get('/stats/summary', authenticateToken, async (req: Request, res: Response) => {
   try {
     const serviceRepository = getServiceRepository();
-    const currentUser = (req as unknown).user;
+    const currentUser = (req as any).user;
 
     const queryBuilder = serviceRepository.createQueryBuilder('service');
 

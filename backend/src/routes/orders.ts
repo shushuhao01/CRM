@@ -631,7 +631,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
 
     // 待处理订单数
     const pendingCount = await orderRepository.count({
-      where: { status: 'pending' as unknown }
+      where: { status: 'pending' }
     });
 
     // 今日订单数
