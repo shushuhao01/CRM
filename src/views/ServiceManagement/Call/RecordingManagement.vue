@@ -9,7 +9,7 @@
         </h1>
         <p class="page-description">管理和播放通话录音，支持在线播放、下载和分享</p>
       </div>
-      
+
       <div class="header-actions">
         <el-button @click="batchDownload" :disabled="!selectedRecordings.length">
           <el-icon><Download /></el-icon>
@@ -46,7 +46,7 @@
             </div>
           </el-card>
         </el-col>
-        
+
         <el-col :span="6">
           <el-card class="overview-card">
             <div class="overview-content">
@@ -64,7 +64,7 @@
             </div>
           </el-card>
         </el-col>
-        
+
         <el-col :span="6">
           <el-card class="overview-card">
             <div class="overview-content">
@@ -82,7 +82,7 @@
             </div>
           </el-card>
         </el-col>
-        
+
         <el-col :span="6">
           <el-card class="overview-card">
             <div class="overview-content">
@@ -121,7 +121,7 @@
               <el-option label="已删除" value="deleted" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="录音质量">
             <el-select
               v-model="searchForm.quality"
@@ -135,7 +135,7 @@
               <el-option label="低质量" value="low" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="客户信息">
             <el-input
               v-model="searchForm.customerInfo"
@@ -144,7 +144,7 @@
               style="width: 200px;"
             />
           </el-form-item>
-          
+
           <el-form-item label="录音时间">
             <el-date-picker
               v-model="searchForm.dateRange"
@@ -157,7 +157,7 @@
               style="width: 320px;"
             />
           </el-form-item>
-          
+
           <el-form-item label="录音人员">
             <el-select
               v-model="searchForm.userId"
@@ -166,12 +166,15 @@
               style="width: 150px;"
             >
               <el-option label="全部" value="" />
-              <el-option label="张三" value="1" />
-              <el-option label="李四" value="2" />
-              <el-option label="王五" value="3" />
+              <el-option
+                v-for="user in salesPersonList"
+                :key="user.id"
+                :label="user.name"
+                :value="user.id"
+              />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="时长筛选">
             <el-select
               v-model="searchForm.durationRange"
@@ -186,7 +189,7 @@
               <el-option label="5分钟以上" value="300+" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item>
             <el-button type="primary" @click="handleSearch">
               <el-icon><Search /></el-icon>
@@ -209,7 +212,7 @@
             </el-button>
           </div>
         </template>
-        
+
         <div class="audio-player">
           <audio
             ref="audioPlayer"
@@ -223,7 +226,7 @@
           >
             您的浏览器不支持音频播放
           </audio>
-          
+
           <div class="player-info">
             <div class="player-details">
               <div class="detail-item">
@@ -247,7 +250,7 @@
                 />
               </div>
             </div>
-            
+
             <div class="player-actions">
               <el-button size="small" @click="downloadRecording(currentPlaying)">
                 <el-icon><Download /></el-icon>
@@ -291,7 +294,7 @@
             </div>
           </div>
         </template>
-        
+
         <el-table
           :data="recordings"
           v-loading="loading"
@@ -300,7 +303,7 @@
           row-key="id"
         >
           <el-table-column type="selection" width="55" />
-          
+
           <el-table-column prop="customerName" label="客户姓名" width="120">
             <template #default="{ row }">
               <el-button text @click="viewCustomerDetail(row.customerId)">
@@ -308,21 +311,21 @@
               </el-button>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="customerPhone" label="客户电话" width="140">
             <template #default="{ row }">
               {{ displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="userName" label="录音人员" width="100" />
-          
+
           <el-table-column prop="startTime" label="录音时间" width="160">
             <template #default="{ row }">
               {{ formatDateTime(row.startTime) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="duration" label="录音时长" width="100" sortable>
             <template #default="{ row }">
               <span :class="getDurationClass(row.duration)">
@@ -330,13 +333,13 @@
               </span>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="fileSize" label="文件大小" width="100" sortable>
             <template #default="{ row }">
               {{ formatFileSize(row.fileSize) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="quality" label="录音质量" width="120">
             <template #default="{ row }">
               <div v-if="row.quality" class="quality-info">
@@ -350,7 +353,7 @@
               <span v-else style="color: #C0C4CC;">未评分</span>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="status" label="状态" width="100">
             <template #default="{ row }">
               <el-tag :type="getStatusType(row.status)" size="small">
@@ -358,7 +361,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="format" label="格式" width="80">
             <template #default="{ row }">
               <el-tag size="small" effect="plain">
@@ -366,9 +369,9 @@
               </el-tag>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="downloadCount" label="下载次数" width="100" sortable />
-          
+
           <el-table-column label="操作" width="250" fixed="right">
             <template #default="{ row }">
               <el-button
@@ -380,17 +383,17 @@
                 <el-icon><VideoPlay /></el-icon>
                 播放
               </el-button>
-              
+
               <el-button text size="small" @click="downloadRecording(row)">
                 <el-icon><Download /></el-icon>
                 下载
               </el-button>
-              
+
               <el-button text size="small" @click="viewWaveform(row)">
                 <el-icon><TrendCharts /></el-icon>
                 波形
               </el-button>
-              
+
               <el-dropdown>
                 <el-button text size="small">
                   更多<el-icon><ArrowDown /></el-icon>
@@ -423,7 +426,7 @@
             </template>
           </el-table-column>
         </el-table>
-        
+
         <!-- 分页 -->
         <div class="pagination-wrapper">
           <el-pagination
@@ -463,7 +466,7 @@
             </el-button>
           </div>
         </div>
-        
+
         <div class="waveform-display" ref="waveformContainer">
           <!-- 这里会渲染波形图 -->
           <div class="waveform-placeholder">
@@ -471,7 +474,7 @@
             <p>波形图加载中...</p>
           </div>
         </div>
-        
+
         <div class="waveform-info">
           <el-row :gutter="20">
             <el-col :span="8">
@@ -508,7 +511,7 @@
         <el-form-item label="录音标题" prop="title">
           <el-input v-model="editForm.title" placeholder="请输入录音标题" />
         </el-form-item>
-        
+
         <el-form-item label="录音描述" prop="description">
           <el-input
             v-model="editForm.description"
@@ -517,7 +520,7 @@
             placeholder="请输入录音描述"
           />
         </el-form-item>
-        
+
         <el-form-item label="录音标签">
           <el-select
             v-model="editForm.tags"
@@ -534,11 +537,11 @@
             <el-option label="售后" value="support" />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item label="录音质量">
           <el-rate v-model="editForm.qualityScore" show-text />
         </el-form-item>
-        
+
         <el-form-item label="是否公开">
           <el-switch v-model="editForm.isPublic" />
           <span style="margin-left: 8px; color: #909399; font-size: 12px;">
@@ -546,7 +549,7 @@
           </span>
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <el-button @click="showEditDialog = false">取消</el-button>
         <el-button type="primary" @click="saveEdit" :loading="saving">
@@ -558,8 +561,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, computed } from 'vue'
 import { useCallStore } from '@/stores/call'
+import { useUserStore } from '@/stores/user'
 import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import type { CallRecord } from '@/api/call'
@@ -593,8 +597,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const callStore = useCallStore()
+const userStore = useUserStore()
 const router = useRouter()
 const safeNavigator = createSafeNavigator(router)
+
+// 负责人列表 - 从userStore获取真实用户
+const salesPersonList = computed(() => {
+  return userStore.users
+    .filter((u: any) => ['sales_staff', 'department_manager', 'admin', 'super_admin', 'customer_service'].includes(u.role))
+    .map((u: any) => ({
+      id: u.id,
+      name: u.realName || u.name || u.username
+    }))
+})
 
 // 响应式数据
 const loading = ref(false)
@@ -666,7 +681,7 @@ const formatDuration = (seconds: number) => {
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const remainingSeconds = seconds % 60
-  
+
   if (hours > 0) {
     return `${hours}小时${minutes}分${remainingSeconds}秒`
   }
@@ -723,7 +738,7 @@ const loadRecordings = async () => {
       startTime: searchForm.dateRange[0],
       endTime: searchForm.dateRange[1]
     }
-    
+
     const response = await callStore.fetchRecordings(params)
     recordings.value = response.recordings
     total.value = response.total
@@ -833,7 +848,7 @@ const addToPlaylist = (recording: CallRecord) => {
 const viewWaveform = (recording: CallRecord) => {
   currentRecording.value = recording
   showWaveformDialog.value = true
-  
+
   // 模拟加载波形图
   setTimeout(() => {
     if (waveformContainer.value) {
@@ -869,11 +884,11 @@ const editRecording = (recording: CallRecord) => {
 
 const saveEdit = async () => {
   if (!editFormRef.value || !currentRecording.value) return
-  
+
   try {
     await editFormRef.value.validate()
     saving.value = true
-    
+
     await callStore.updateRecording(currentRecording.value.id, {
       title: editForm.title,
       description: editForm.description,
@@ -884,7 +899,7 @@ const saveEdit = async () => {
       },
       isPublic: editForm.isPublic
     })
-    
+
     ElMessage.success('录音信息已更新')
     showEditDialog.value = false
     loadRecordings()
@@ -909,7 +924,7 @@ const deleteRecording = async (recording: CallRecord) => {
     await ElMessageBox.confirm('确定要删除这个录音吗？删除后无法恢复！', '确认删除', {
       type: 'warning'
     })
-    
+
     await callStore.deleteRecording(recording.id)
     ElMessage.success('删除成功')
     loadRecordings()
@@ -926,7 +941,7 @@ const batchDownload = async () => {
     ElMessage.warning('请先选择要下载的录音')
     return
   }
-  
+
   try {
     const ids = selectedRecordings.value.map(recording => recording.id)
     await callStore.batchDownloadRecordings(ids)
@@ -942,17 +957,17 @@ const batchDelete = async () => {
     ElMessage.warning('请先选择要删除的录音')
     return
   }
-  
+
   try {
     await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedRecordings.value.length} 个录音吗？删除后无法恢复！`,
       '批量删除',
       { type: 'warning' }
     )
-    
+
     const ids = selectedRecordings.value.map(recording => recording.id)
     await callStore.batchDeleteRecordings(ids)
-    
+
     ElMessage.success('批量删除成功')
     loadRecordings()
   } catch (error) {
@@ -971,7 +986,7 @@ const exportList = async () => {
       startTime: searchForm.dateRange[0],
       endTime: searchForm.dateRange[1]
     }
-    
+
     await callStore.exportRecordingList(params)
     ElMessage.success('导出成功')
   } catch (error) {
@@ -987,7 +1002,8 @@ const viewCustomerDetail = (customerId: string) => {
 }
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
+  await userStore.loadUsers()
   loadRecordings()
   loadOverview()
 })

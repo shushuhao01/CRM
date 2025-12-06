@@ -1016,7 +1016,7 @@ const loadRealRankings = () => {
           let userDepartment = ''
 
           // 从userStore获取真实用户数据
-          const user = userStore.users.find((u: any) => String(u.id) === String(member.userId)) as any
+          const user = userStore.users.find((u: any) => String(u.id) === String(member.userId)) as unknown
           if (user) {
             userName = user.realName || user.name || user.username || userName
             userAvatar = user.avatar || ''

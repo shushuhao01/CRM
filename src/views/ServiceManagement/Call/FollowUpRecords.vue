@@ -9,7 +9,7 @@
         </h1>
         <p class="page-description">管理客户跟进记录，跟踪客户沟通进度和待办事项</p>
       </div>
-      
+
       <div class="header-actions">
         <el-button type="primary" @click="showAddDialog = true">
           <el-icon><Plus /></el-icon>
@@ -38,7 +38,7 @@
             </div>
           </el-card>
         </el-col>
-        
+
         <el-col :span="6">
           <el-card class="stat-card">
             <div class="stat-content">
@@ -52,7 +52,7 @@
             </div>
           </el-card>
         </el-col>
-        
+
         <el-col :span="6">
           <el-card class="stat-card">
             <div class="stat-content">
@@ -66,7 +66,7 @@
             </div>
           </el-card>
         </el-col>
-        
+
         <el-col :span="6">
           <el-card class="stat-card">
             <div class="stat-content">
@@ -95,7 +95,7 @@
               style="width: 200px;"
             />
           </el-form-item>
-          
+
           <el-form-item label="跟进状态">
             <el-select
               v-model="searchForm.status"
@@ -109,7 +109,7 @@
               <el-option label="已逾期" value="overdue" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="跟进类型">
             <el-select
               v-model="searchForm.type"
@@ -124,7 +124,7 @@
               <el-option label="上门拜访" value="visit" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="跟进时间">
             <el-date-picker
               v-model="searchForm.dateRange"
@@ -137,7 +137,7 @@
               style="width: 240px;"
             />
           </el-form-item>
-          
+
           <el-form-item label="跟进人员">
             <el-select
               v-model="searchForm.followerId"
@@ -146,12 +146,15 @@
               style="width: 150px;"
             >
               <el-option label="全部" value="" />
-              <el-option label="张三" value="1" />
-              <el-option label="李四" value="2" />
-              <el-option label="王五" value="3" />
+              <el-option
+                v-for="user in salesPersonList"
+                :key="user.id"
+                :label="user.name"
+                :value="user.id"
+              />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item>
             <el-button type="primary" @click="handleSearch">
               <el-icon><Search /></el-icon>
@@ -187,7 +190,7 @@
             </div>
           </div>
         </template>
-        
+
         <el-table
           :data="followUpRecords"
           v-loading="loading"
@@ -195,7 +198,7 @@
           style="width: 100%"
         >
           <el-table-column type="selection" width="55" />
-          
+
           <el-table-column prop="customerName" label="客户姓名" width="120">
             <template #default="{ row }">
               <el-button text @click="viewCustomerDetail(row.customerId)">
@@ -203,13 +206,13 @@
               </el-button>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="customerPhone" label="客户电话" width="140">
             <template #default="{ row }">
               {{ displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="type" label="跟进类型" width="100">
             <template #default="{ row }">
               <el-tag :type="getTypeTagType(row.type)" size="small">
@@ -217,17 +220,17 @@
               </el-tag>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="content" label="跟进内容" min-width="200" show-overflow-tooltip />
-          
+
           <el-table-column prop="followerName" label="跟进人员" width="100" />
-          
+
           <el-table-column prop="followUpTime" label="跟进时间" width="160">
             <template #default="{ row }">
               {{ formatDateTime(row.followUpTime) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="nextFollowUpTime" label="下次跟进" width="160">
             <template #default="{ row }">
               <span v-if="row.nextFollowUpTime" :class="getNextFollowUpClass(row.nextFollowUpTime)">
@@ -236,7 +239,7 @@
               <span v-else style="color: #C0C4CC;">无</span>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="status" label="状态" width="100">
             <template #default="{ row }">
               <el-tag :type="getStatusType(row.status)" size="small">
@@ -244,7 +247,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="priority" label="优先级" width="100">
             <template #default="{ row }">
               <el-tag :type="getPriorityType(row.priority)" size="small">
@@ -252,7 +255,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          
+
           <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
               <el-button
@@ -264,17 +267,17 @@
                 <el-icon><Check /></el-icon>
                 完成
               </el-button>
-              
+
               <el-button text size="small" @click="editRecord(row)">
                 <el-icon><Edit /></el-icon>
                 编辑
               </el-button>
-              
+
               <el-button text size="small" @click="addNextFollowUp(row)">
                 <el-icon><Plus /></el-icon>
                 下次跟进
               </el-button>
-              
+
               <el-dropdown>
                 <el-button text size="small">
                   更多<el-icon><ArrowDown /></el-icon>
@@ -299,7 +302,7 @@
             </template>
           </el-table-column>
         </el-table>
-        
+
         <!-- 分页 -->
         <div class="pagination-wrapper">
           <el-pagination
@@ -341,7 +344,7 @@
             />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item label="跟进类型" prop="type">
           <el-select v-model="followUpForm.type" placeholder="请选择跟进类型">
             <el-option label="电话跟进" value="phone" />
@@ -350,7 +353,7 @@
             <el-option label="上门拜访" value="visit" />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item label="优先级" prop="priority">
           <el-select v-model="followUpForm.priority" placeholder="请选择优先级">
             <el-option label="低" value="low" />
@@ -359,7 +362,7 @@
             <el-option label="紧急" value="urgent" />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item label="跟进内容" prop="content">
           <el-input
             v-model="followUpForm.content"
@@ -368,7 +371,7 @@
             placeholder="请输入跟进内容"
           />
         </el-form-item>
-        
+
         <el-form-item label="跟进结果">
           <el-input
             v-model="followUpForm.result"
@@ -377,7 +380,7 @@
             placeholder="请输入跟进结果"
           />
         </el-form-item>
-        
+
         <el-form-item label="下次跟进">
           <el-date-picker
             v-model="followUpForm.nextFollowUpTime"
@@ -388,7 +391,7 @@
             style="width: 100%;"
           />
         </el-form-item>
-        
+
         <el-form-item label="提醒设置">
           <el-checkbox v-model="followUpForm.enableReminder">启用提醒</el-checkbox>
           <el-select
@@ -404,7 +407,7 @@
           </el-select>
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <el-button @click="showAddDialog = false">取消</el-button>
         <el-button type="primary" @click="saveFollowUp" :loading="saving">
@@ -458,7 +461,7 @@
             <div class="content-text">{{ currentRecord.result }}</div>
           </el-descriptions-item>
         </el-descriptions>
-        
+
         <!-- 相关通话记录 -->
         <div v-if="currentRecord.callRecordId" class="related-call">
           <h4>相关通话记录</h4>
@@ -472,8 +475,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, computed } from 'vue'
 import { useCallStore } from '@/stores/call'
+import { useUserStore } from '@/stores/user'
 import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import type { FollowUpRecord } from '@/api/call'
@@ -500,8 +504,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const callStore = useCallStore()
+const userStore = useUserStore()
 const router = useRouter()
 const safeNavigator = createSafeNavigator(router)
+
+// 负责人列表 - 从userStore获取真实用户
+const salesPersonList = computed(() => {
+  return userStore.users
+    .filter((u: any) => ['sales_staff', 'department_manager', 'admin', 'super_admin', 'customer_service'].includes(u.role))
+    .map((u: any) => ({
+      id: u.id,
+      name: u.realName || u.name || u.username
+    }))
+})
 
 // 响应式数据
 const loading = ref(false)
@@ -634,7 +649,7 @@ const getPriorityText = (priority: string) => {
 const getNextFollowUpClass = (nextTime: string) => {
   const now = new Date()
   const followUpTime = new Date(nextTime)
-  
+
   if (followUpTime < now) {
     return 'overdue-time'
   } else if (followUpTime.getTime() - now.getTime() < 24 * 60 * 60 * 1000) {
@@ -653,7 +668,7 @@ const loadFollowUpRecords = async () => {
       startDate: searchForm.dateRange[0],
       endDate: searchForm.dateRange[1]
     }
-    
+
     const response = await callStore.fetchFollowUpRecords(params)
     followUpRecords.value = response.records
     total.value = response.total
@@ -676,19 +691,19 @@ const loadStats = async () => {
 
 const searchCustomers = async (query: string) => {
   if (!query) return
-  
+
   try {
     customerLoading.value = true
     // 这里应该调用客户搜索API
     // const response = await customerApi.searchCustomers({ keyword: query })
     // customers.value = response.data
-    
+
     // 模拟数据
     customers.value = [
       { id: '1', name: '张三', phone: '13800138001' },
       { id: '2', name: '李四', phone: '13800138002' },
       { id: '3', name: '王五', phone: '13800138003' }
-    ].filter(customer => 
+    ].filter(customer =>
       customer.name.includes(query) || customer.phone.includes(query)
     )
   } catch (error) {
@@ -730,11 +745,11 @@ const handleCurrentChange = (page: number) => {
 
 const saveFollowUp = async () => {
   if (!followUpFormRef.value) return
-  
+
   try {
     await followUpFormRef.value.validate()
     saving.value = true
-    
+
     if (editingRecord.value) {
       await callStore.updateFollowUpRecord(editingRecord.value.id, followUpForm)
       ElMessage.success('跟进记录已更新')
@@ -742,7 +757,7 @@ const saveFollowUp = async () => {
       await callStore.createFollowUpRecord(followUpForm)
       ElMessage.success('跟进记录已创建')
     }
-    
+
     showAddDialog.value = false
     resetForm()
     loadFollowUpRecords()
@@ -835,7 +850,7 @@ const deleteRecord = async (record: FollowUpRecord) => {
     await ElMessageBox.confirm('确定要删除这条跟进记录吗？', '确认删除', {
       type: 'warning'
     })
-    
+
     await callStore.deleteFollowUpRecord(record.id)
     ElMessage.success('删除成功')
     loadFollowUpRecords()
@@ -853,7 +868,7 @@ const batchComplete = async () => {
     ElMessage.warning('请先选择要完成的记录')
     return
   }
-  
+
   try {
     const ids = selectedRecords.value.map(record => record.id)
     await callStore.batchUpdateFollowUpRecords(ids, { status: 'completed' })
@@ -871,17 +886,17 @@ const batchDelete = async () => {
     ElMessage.warning('请先选择要删除的记录')
     return
   }
-  
+
   try {
     await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedRecords.value.length} 条记录吗？`,
       '批量删除',
       { type: 'warning' }
     )
-    
+
     const ids = selectedRecords.value.map(record => record.id)
     await callStore.batchDeleteFollowUpRecords(ids)
-    
+
     ElMessage.success('批量删除成功')
     loadFollowUpRecords()
     loadStats()
@@ -901,7 +916,7 @@ const exportRecords = async () => {
       startDate: searchForm.dateRange[0],
       endDate: searchForm.dateRange[1]
     }
-    
+
     await callStore.exportFollowUpRecords(params)
     ElMessage.success('导出成功')
   } catch (error) {
@@ -921,7 +936,8 @@ const viewCallRecord = (callRecordId: string) => {
 }
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
+  await userStore.loadUsers()
   loadFollowUpRecords()
   loadStats()
 })

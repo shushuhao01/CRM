@@ -4,8 +4,8 @@
     <div class="page-header">
       <h2>通话管理</h2>
       <div class="header-actions">
-        <el-button 
-          :type="callStatus === 'ready' ? 'success' : 'warning'" 
+        <el-button
+          :type="callStatus === 'ready' ? 'success' : 'warning'"
           :icon="callStatus === 'ready' ? 'Check' : 'Close'"
           @click="toggleCallStatus"
           class="status-button"
@@ -22,8 +22,8 @@
           刷新数据
         </el-button>
         <el-tooltip :content="autoRefresh ? '关闭自动刷新' : '开启自动刷新'">
-          <el-button 
-            :type="autoRefresh ? 'success' : 'info'" 
+          <el-button
+            :type="autoRefresh ? 'success' : 'info'"
             :icon="autoRefresh ? 'VideoPause' : 'VideoPlay'"
             @click="toggleAutoRefresh"
             circle
@@ -130,11 +130,14 @@
           </div>
           <div class="filter-item">
             <label>负责人：</label>
-            <el-select v-model="filterForm.salesPerson" placeholder="请选择负责人" clearable>
+            <el-select v-model="filterForm.salesPerson" placeholder="请选择负责人" clearable filterable>
               <el-option label="全部" value="" />
-              <el-option label="张三" value="zhangsan" />
-              <el-option label="李四" value="lisi" />
-              <el-option label="王五" value="wangwu" />
+              <el-option
+                v-for="user in salesPersonList"
+                :key="user.id"
+                :label="user.name"
+                :value="user.id"
+              />
             </el-select>
           </div>
         </div>
@@ -167,10 +170,10 @@
           </div>
         </div>
       </template>
-      
-      <el-table 
-        :data="outboundList" 
-        style="width: 100%" 
+
+      <el-table
+        :data="outboundList"
+        style="width: 100%"
         v-loading="loading"
         @selection-change="handleSelectionChange"
       >
@@ -232,8 +235,8 @@
     <el-dialog v-model="showOutboundDialog" title="发起外呼" width="600px">
       <el-form :model="outboundForm" :rules="outboundRules" ref="outboundFormRef" label-width="100px">
         <el-form-item label="外呼方式" prop="callMethod">
-          <el-select 
-            v-model="outboundForm.callMethod" 
+          <el-select
+            v-model="outboundForm.callMethod"
             placeholder="请选择外呼方式"
             style="width: 100%"
             @change="onCallMethodChange"
@@ -269,15 +272,15 @@
             </span>
           </div>
         </el-form-item>
-        
+
         <!-- 网络电话配置 -->
-        <el-form-item 
-          v-if="outboundForm.callMethod === 'network_phone'" 
-          label="选择线路" 
+        <el-form-item
+          v-if="outboundForm.callMethod === 'network_phone'"
+          label="选择线路"
           prop="selectedLine"
         >
-          <el-select 
-            v-model="outboundForm.selectedLine" 
+          <el-select
+            v-model="outboundForm.selectedLine"
             placeholder="请选择外呼线路"
             style="width: 100%"
           >
@@ -292,8 +295,8 @@
                   <div style="font-weight: 500;">{{ line.name }}</div>
                   <div style="color: #8492a6; font-size: 12px;">{{ line.provider }} - {{ line.status }}</div>
                 </div>
-                <el-tag 
-                  size="small" 
+                <el-tag
+                  size="small"
                   :type="line.status === '正常' ? 'success' : 'warning'"
                 >
                   {{ line.status }}
@@ -308,15 +311,15 @@
             </el-button>
           </div>
         </el-form-item>
-        
+
         <!-- 工作手机配置 -->
-        <el-form-item 
-          v-if="outboundForm.callMethod === 'work_phone'" 
-          label="工作手机" 
+        <el-form-item
+          v-if="outboundForm.callMethod === 'work_phone'"
+          label="工作手机"
           prop="workPhone"
         >
-          <el-select 
-            v-model="outboundForm.workPhone" 
+          <el-select
+            v-model="outboundForm.workPhone"
             placeholder="请选择工作手机"
             style="width: 100%"
           >
@@ -331,8 +334,8 @@
                   <div style="font-weight: 500;">{{ phone.number }}</div>
                   <div style="color: #8492a6; font-size: 12px;">{{ phone.brand }} {{ phone.model }}</div>
                 </div>
-                <el-tag 
-                  size="small" 
+                <el-tag
+                  size="small"
                   :type="phone.status === '已绑定' ? 'success' : 'warning'"
                 >
                   {{ phone.status }}
@@ -347,10 +350,10 @@
             </el-button>
           </div>
         </el-form-item>
-        
+
         <el-form-item label="选择客户" prop="selectedCustomer">
-          <el-select 
-            v-model="outboundForm.selectedCustomer" 
+          <el-select
+            v-model="outboundForm.selectedCustomer"
             placeholder="请输入客户姓名、编号、电话或公司名称进行搜索"
             filterable
             remote
@@ -374,7 +377,7 @@
                 <div style="flex: 1;">
                   <div style="font-weight: 500;">{{ customer.name }}</div>
                   <div style="color: #8492a6; font-size: 12px; margin-top: 2px;">
-                    {{ customer.company || '未填写公司' }} 
+                    {{ customer.company || '未填写公司' }}
                     <span v-if="customer.phone" style="margin-left: 8px;">{{ displaySensitiveInfoNew(customer.phone, SensitiveInfoType.PHONE) }}</span>
                   </div>
                 </div>
@@ -388,10 +391,10 @@
             支持按客户姓名、编号、电话号码或公司名称搜索
           </div>
         </el-form-item>
-        
+
         <el-form-item label="选择号码" prop="customerPhone">
-          <el-select 
-            v-model="outboundForm.customerPhone" 
+          <el-select
+            v-model="outboundForm.customerPhone"
             placeholder="请选择号码"
             style="width: 100%"
             :disabled="!outboundForm.selectedCustomer"
@@ -404,10 +407,10 @@
             />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item label="手动输入号码">
-          <el-input 
-            v-model="outboundForm.manualPhone" 
+          <el-input
+            v-model="outboundForm.manualPhone"
             placeholder="或手动输入电话号码"
             @input="onManualPhoneInput"
           />
@@ -415,12 +418,12 @@
             手动输入号码将优先使用，不会同步客户信息
           </div>
         </el-form-item>
-        
+
         <el-form-item label="备注">
           <el-input v-model="outboundForm.notes" type="textarea" :rows="3" placeholder="请输入通话备注" />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <el-button @click="closeOutboundDialog">取消</el-button>
         <el-button type="primary" @click="startOutboundCall" :loading="outboundLoading">
@@ -747,7 +750,7 @@
           <p><strong>电话：</strong>{{ displaySensitiveInfoNew(currentCustomer?.phone, SensitiveInfoType.PHONE) }}</p>
           <p><strong>收货地址：</strong>{{ getCustomerShippingAddress(currentCustomer) }}</p>
         </div>
-        
+
         <el-form :model="quickFollowUpForm" :rules="quickFollowUpRules" ref="quickFollowUpFormRef" label-width="100px">
           <el-form-item label="跟进类型" prop="type">
             <el-select v-model="quickFollowUpForm.type" placeholder="请选择跟进类型" style="width: 100%">
@@ -757,7 +760,7 @@
               <el-option label="短信跟进" value="message" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="跟进内容" prop="content">
             <el-input
               v-model="quickFollowUpForm.content"
@@ -768,7 +771,7 @@
               show-word-limit
             />
           </el-form-item>
-          
+
           <el-form-item label="下次跟进" prop="nextFollowTime">
             <el-date-picker
               v-model="quickFollowUpForm.nextFollowTime"
@@ -779,7 +782,7 @@
               value-format="YYYY-MM-DD HH:mm:ss"
             />
           </el-form-item>
-          
+
           <el-form-item label="客户意向" prop="intention">
             <el-select v-model="quickFollowUpForm.intention" placeholder="请选择客户意向" style="width: 100%">
               <el-option label="很有意向" value="high" />
@@ -788,7 +791,7 @@
               <el-option label="暂无意向" value="none" />
             </el-select>
           </el-form-item>
-          
+
           <el-form-item label="备注" prop="remark">
             <el-input
               v-model="quickFollowUpForm.remark"
@@ -801,7 +804,7 @@
           </el-form-item>
         </el-form>
       </div>
-      
+
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="quickFollowUpVisible = false">取消</el-button>
@@ -840,28 +843,28 @@
             </p>
           </div>
         </div>
-        
+
         <div class="call-actions">
-          <el-button 
-            type="success" 
-            size="large" 
-            :icon="Phone" 
+          <el-button
+            type="success"
+            size="large"
+            :icon="Phone"
             @click="answerCall"
             class="answer-btn"
           >
             接听
           </el-button>
-          <el-button 
-            type="danger" 
-            size="large" 
-            :icon="TurnOff" 
+          <el-button
+            type="danger"
+            size="large"
+            :icon="TurnOff"
             @click="rejectCall"
             class="reject-btn"
           >
             挂断
           </el-button>
         </div>
-        
+
         <div class="quick-actions">
           <el-button size="small" @click="viewCustomerDetail">查看详情</el-button>
           <el-button size="small" @click="quickFollowUp">快速跟进</el-button>
@@ -884,24 +887,24 @@
           <div class="timer-display">{{ formatCallDuration(callDuration) }}</div>
           <div class="call-status">通话中...</div>
         </div>
-        
+
         <div class="caller-info-mini">
           <p class="caller-name">{{ currentCallData.customerName || '未知客户' }}</p>
           <p class="caller-phone">{{ displaySensitiveInfoNew(currentCallData.phone, SensitiveInfoType.PHONE) }}</p>
         </div>
-        
+
         <div class="call-controls">
-          <el-button 
-            type="danger" 
-            size="large" 
-            :icon="TurnOff" 
+          <el-button
+            type="danger"
+            size="large"
+            :icon="TurnOff"
             @click="endCall"
             class="end-call-btn"
           >
             结束通话
           </el-button>
         </div>
-        
+
         <div class="call-notes">
           <el-input
             v-model="callNotes"
@@ -933,7 +936,7 @@
                 <el-radio label="voip">网络电话</el-radio>
               </el-radio-group>
             </el-form-item>
-            
+
             <!-- 系统外呼路线配置 -->
             <div v-if="callConfigForm.callMethod === 'system'">
               <el-form-item label="外呼线路">
@@ -946,36 +949,36 @@
                   />
                 </el-select>
               </el-form-item>
-              
+
               <el-form-item label="线路状态">
                 <el-tag :type="getLineStatusType(callConfigForm.lineId)">
                   {{ getLineStatusText(callConfigForm.lineId) }}
                 </el-tag>
               </el-form-item>
             </div>
-            
+
             <!-- 工作手机外呼配置 -->
             <div v-if="callConfigForm.callMethod === 'mobile'">
               <el-form-item label="工作手机号">
-                <el-input 
-                  v-model="callConfigForm.workPhone" 
+                <el-input
+                  v-model="callConfigForm.workPhone"
                   placeholder="请输入工作手机号码"
                   maxlength="11"
                   style="width: 300px"
                 />
               </el-form-item>
-              
+
               <el-form-item label="拨号方式">
                 <el-radio-group v-model="callConfigForm.dialMethod">
                   <el-radio label="direct">直接拨号</el-radio>
                   <el-radio label="callback">回拨模式</el-radio>
                 </el-radio-group>
               </el-form-item>
-              
+
               <!-- 系统级呼出配置 -->
               <template v-if="callConfigForm.dialMethod === 'direct'">
                 <el-divider content-position="left">手机SDK配置</el-divider>
-                
+
                 <el-form-item label="手机平台">
                   <el-radio-group v-model="callConfigForm.mobileConfig.platform">
                     <el-radio label="android">
@@ -988,11 +991,11 @@
                     </el-radio>
                   </el-radio-group>
                 </el-form-item>
-                
+
                 <el-form-item label="SDK状态">
                   <div style="display: flex; align-items: center; gap: 12px;">
-                    <el-tag 
-                      :type="callConfigForm.mobileConfig.sdkInstalled ? 'success' : 'warning'" 
+                    <el-tag
+                      :type="callConfigForm.mobileConfig.sdkInstalled ? 'success' : 'warning'"
                       size="default"
                     >
                       <el-icon>
@@ -1000,8 +1003,8 @@
                       </el-icon>
                       {{ callConfigForm.mobileConfig.sdkInstalled ? 'SDK已安装' : 'SDK未安装' }}
                     </el-tag>
-                    <el-button 
-                      type="primary" 
+                    <el-button
+                      type="primary"
                       :icon="Download"
                       @click="downloadMobileSDK"
                       size="default"
@@ -1009,7 +1012,7 @@
                       下载SDK应用
                     </el-button>
                   </div>
-                  
+
                   <!-- SDK版本信息 -->
                   <div style="margin-top: 8px; padding: 8px; background: #f5f7fa; border-radius: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -1035,14 +1038,14 @@
                       </div>
                     </div>
                   </div>
-                  
+
                   <div style="color: #909399; font-size: 12px; margin-top: 4px;">
-                    {{ callConfigForm.mobileConfig.platform === 'android' 
-                       ? '请下载APK文件并在Android设备上安装' 
+                    {{ callConfigForm.mobileConfig.platform === 'android'
+                       ? '请下载APK文件并在Android设备上安装'
                        : '请在iOS设备的Safari浏览器中访问PWA应用' }}
                   </div>
                 </el-form-item>
-                
+
                 <el-form-item label="系统权限">
                   <div style="display: flex; gap: 16px; align-items: center;">
                     <div style="display: flex; align-items: center; gap: 6px;">
@@ -1071,7 +1074,7 @@
                     </el-button>
                   </div>
                 </el-form-item>
-                
+
                 <el-form-item label="连接状态">
                   <div style="display: flex; align-items: center; gap: 12px;">
                     <el-tag :type="getMobileConnectionStatus().type" size="default">
@@ -1080,8 +1083,8 @@
                       </el-icon>
                       {{ getMobileConnectionStatus().text }}
                     </el-tag>
-                    <el-button 
-                      type="success" 
+                    <el-button
+                      type="success"
                       :icon="Connection"
                       @click="testMobileConnection"
                       :loading="testingConnection"
@@ -1106,20 +1109,20 @@
                         <el-icon size="24"><Connection /></el-icon>
                       </div>
                       <div style="margin-top: 8px; font-size: 12px; color: #606266;">
-                        {{ qrConnection.status === 'pending' ? '等待扫码连接' : 
-                           qrConnection.status === 'connected' ? '连接成功' : 
+                        {{ qrConnection.status === 'pending' ? '等待扫码连接' :
+                           qrConnection.status === 'connected' ? '连接成功' :
                            qrConnection.status === 'expired' ? '二维码已过期' : '点击生成二维码' }}
                       </div>
                       <div v-if="qrConnection.expiresAt" style="font-size: 11px; color: #909399; margin-top: 4px;">
                         {{ getQRExpiryText() }}
                       </div>
                     </div>
-                    
+
                     <!-- 操作按钮区域 -->
                     <div style="flex: 1;">
                       <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <el-button 
-                          type="primary" 
+                        <el-button
+                          type="primary"
                           :icon="Connection"
                           @click="generateQRCode"
                           :loading="qrConnection.generating"
@@ -1127,10 +1130,10 @@
                         >
                           {{ qrConnection.qrCodeUrl ? '重新生成' : '生成二维码' }}
                         </el-button>
-                        
-                        <el-button 
+
+                        <el-button
                           v-if="qrConnection.qrCodeUrl"
-                          type="info" 
+                          type="info"
                           :icon="Refresh"
                           @click="checkConnectionStatus"
                           :loading="qrConnection.checking"
@@ -1138,10 +1141,10 @@
                         >
                           检查连接状态
                         </el-button>
-                        
-                        <el-button 
+
+                        <el-button
                           v-if="qrConnection.status === 'connected'"
-                          type="warning" 
+                          type="warning"
                           :icon="Close"
                           @click="disconnectQRConnection"
                           size="small"
@@ -1149,7 +1152,7 @@
                           断开连接
                         </el-button>
                       </div>
-                      
+
                       <!-- 连接说明 -->
                       <div style="margin-top: 12px; padding: 8px; background: #f0f9ff; border: 1px solid #b3d8ff; border-radius: 4px; font-size: 12px; color: #409eff;">
                         <div style="font-weight: 500; margin-bottom: 4px;">
@@ -1176,12 +1179,12 @@
                         </el-icon>
                         <div style="font-weight: 500; margin-bottom: 8px;">蓝牙连接</div>
                         <el-tag :type="alternativeConnections.bluetooth.status === 'connected' ? 'success' : 'info'" size="small" style="margin-bottom: 8px;">
-                          {{ alternativeConnections.bluetooth.status === 'connected' ? '已连接' : 
+                          {{ alternativeConnections.bluetooth.status === 'connected' ? '已连接' :
                              alternativeConnections.bluetooth.status === 'connecting' ? '连接中' : '未连接' }}
                         </el-tag>
                         <div>
-                          <el-button 
-                            type="primary" 
+                          <el-button
+                            type="primary"
                             size="small"
                             :loading="alternativeConnections.bluetooth.status === 'connecting'"
                             @click="connectBluetooth"
@@ -1190,7 +1193,7 @@
                           </el-button>
                         </div>
                       </div>
-                      
+
                       <!-- 同网络连接 -->
                       <div style="text-align: center; padding: 12px; border: 1px solid #e4e7ed; border-radius: 6px;">
                         <el-icon size="24" style="color: #67c23a; margin-bottom: 8px;">
@@ -1198,12 +1201,12 @@
                         </el-icon>
                         <div style="font-weight: 500; margin-bottom: 8px;">同网络连接</div>
                         <el-tag :type="alternativeConnections.network.status === 'connected' ? 'success' : 'info'" size="small" style="margin-bottom: 8px;">
-                          {{ alternativeConnections.network.status === 'connected' ? '已连接' : 
+                          {{ alternativeConnections.network.status === 'connected' ? '已连接' :
                              alternativeConnections.network.status === 'discovering' ? '搜索中' : '未连接' }}
                         </el-tag>
                         <div>
-                          <el-button 
-                            type="success" 
+                          <el-button
+                            type="success"
                             size="small"
                             :loading="alternativeConnections.network.status === 'discovering'"
                             @click="discoverNetwork"
@@ -1212,7 +1215,7 @@
                           </el-button>
                         </div>
                       </div>
-                      
+
                       <!-- 数字配对 -->
                       <div style="text-align: center; padding: 12px; border: 1px solid #e4e7ed; border-radius: 6px;">
                         <el-icon size="24" style="color: #e6a23c; margin-bottom: 8px;">
@@ -1220,15 +1223,15 @@
                         </el-icon>
                         <div style="font-weight: 500; margin-bottom: 8px;">数字配对</div>
                         <el-tag :type="alternativeConnections.digital.status === 'connected' ? 'success' : 'info'" size="small" style="margin-bottom: 8px;">
-                          {{ alternativeConnections.digital.status === 'connected' ? '已连接' : 
+                          {{ alternativeConnections.digital.status === 'connected' ? '已连接' :
                              alternativeConnections.digital.status === 'generating' ? '生成中' : '未连接' }}
                         </el-tag>
                         <div v-if="alternativeConnections.digital.code" style="font-size: 18px; font-weight: bold; color: #409eff; margin-bottom: 8px;">
                           {{ alternativeConnections.digital.code }}
                         </div>
                         <div>
-                          <el-button 
-                            type="warning" 
+                          <el-button
+                            type="warning"
                             size="small"
                             :loading="alternativeConnections.digital.status === 'generating'"
                             @click="generateDigitalCode"
@@ -1238,7 +1241,7 @@
                         </div>
                       </div>
                     </div>
-                    
+
                     <!-- 连接说明 -->
                     <div style="margin-top: 12px; padding: 8px; background: #f0f9ff; border: 1px solid #b3d8ff; border-radius: 4px; font-size: 12px; color: #409eff;">
                       <div style="font-weight: 500; margin-bottom: 4px;">
@@ -1255,7 +1258,7 @@
                 <!-- 已连接设备列表 -->
                 <el-form-item label="已连接设备" v-if="connectedDevices.length > 0">
                   <div style="border: 1px solid #ebeef5; border-radius: 6px; overflow: hidden;">
-                    <div v-for="device in connectedDevices" :key="device.id" 
+                    <div v-for="device in connectedDevices" :key="device.id"
                          style="padding: 12px; border-bottom: 1px solid #f5f7fa; display: flex; align-items: center; justify-content: space-between;">
                       <div style="display: flex; align-items: center; gap: 12px;">
                         <el-icon :style="{ color: device.status === 'online' ? '#67c23a' : '#909399' }">
@@ -1272,8 +1275,8 @@
                         <el-tag :type="device.status === 'online' ? 'success' : 'info'" size="small">
                           {{ device.status === 'online' ? '在线' : '离线' }}
                         </el-tag>
-                        <el-button 
-                          type="text" 
+                        <el-button
+                          type="text"
                           :icon="Close"
                           @click="removeConnectedDevice(device.id)"
                           size="small"
@@ -1286,11 +1289,11 @@
                   </div>
                 </el-form-item>
               </template>
-              
+
               <!-- 回拨模式配置 -->
               <template v-if="callConfigForm.dialMethod === 'callback'">
                 <el-divider content-position="left">回拨模式配置</el-divider>
-                
+
                 <el-form-item label="回拨服务商">
                   <el-select v-model="callConfigForm.callbackConfig.provider" style="width: 100%">
                     <el-option label="阿里云回拨" value="aliyun" />
@@ -1298,7 +1301,7 @@
                     <el-option label="自建回拨服务" value="custom" />
                   </el-select>
                 </el-form-item>
-                
+
                 <el-form-item label="回拨延迟">
                   <el-input-number
                     v-model="callConfigForm.callbackConfig.delay"
@@ -1309,7 +1312,7 @@
                   />
                   <span style="margin-left: 10px;">秒</span>
                 </el-form-item>
-                
+
                 <el-form-item label="最大重试">
                   <el-input-number
                     v-model="callConfigForm.callbackConfig.maxRetries"
@@ -1321,7 +1324,7 @@
                   <span style="margin-left: 10px;">次</span>
                 </el-form-item>
               </template>
-              
+
               <el-alert
                 title="工作手机外呼说明"
                 type="info"
@@ -1334,7 +1337,7 @@
                 </template>
               </el-alert>
             </div>
-            
+
             <!-- 网络电话配置 -->
             <div v-if="callConfigForm.callMethod === 'voip'">
               <el-form-item label="VoIP服务商">
@@ -1345,24 +1348,24 @@
                   <el-option label="自定义SIP" value="custom" />
                 </el-select>
               </el-form-item>
-              
+
               <!-- 阿里云通信配置 -->
               <template v-if="callConfigForm.voipProvider === 'aliyun'">
                 <el-divider content-position="left">阿里云通信配置</el-divider>
-                
+
                 <el-form-item label="AccessKey ID" required>
-                  <el-input 
-                    v-model="callConfigForm.aliyunConfig.accessKeyId" 
+                  <el-input
+                    v-model="callConfigForm.aliyunConfig.accessKeyId"
                     placeholder="请输入阿里云AccessKey ID"
                     show-password
                     style="width: 100%"
                   />
                   <div class="form-tip">从阿里云控制台获取AccessKey ID</div>
                 </el-form-item>
-                
+
                 <el-form-item label="AccessKey Secret" required>
-                  <el-input 
-                    v-model="callConfigForm.aliyunConfig.accessKeySecret" 
+                  <el-input
+                    v-model="callConfigForm.aliyunConfig.accessKeySecret"
                     placeholder="请输入阿里云AccessKey Secret"
                     show-password
                     type="password"
@@ -1370,25 +1373,25 @@
                   />
                   <div class="form-tip">从阿里云控制台获取AccessKey Secret</div>
                 </el-form-item>
-                
+
                 <el-form-item label="应用ID" required>
-                  <el-input 
-                    v-model="callConfigForm.aliyunConfig.appId" 
+                  <el-input
+                    v-model="callConfigForm.aliyunConfig.appId"
                     placeholder="请输入语音通话应用ID"
                     style="width: 100%"
                   />
                   <div class="form-tip">在阿里云语音服务控制台创建应用后获取</div>
                 </el-form-item>
-                
+
                 <el-form-item label="主叫号码">
-                  <el-input 
-                    v-model="callConfigForm.aliyunConfig.callerNumber" 
+                  <el-input
+                    v-model="callConfigForm.aliyunConfig.callerNumber"
                     placeholder="请输入主叫显示号码"
                     style="width: 100%"
                   />
                   <div class="form-tip">客户接听时显示的号码，需在阿里云申请</div>
                 </el-form-item>
-                
+
                 <el-form-item label="服务区域">
                   <el-select v-model="callConfigForm.aliyunConfig.region" placeholder="请选择服务区域" style="width: 100%">
                     <el-option label="华东1（杭州）" value="cn-hangzhou" />
@@ -1398,21 +1401,21 @@
                     <el-option label="华南1（深圳）" value="cn-shenzhen" />
                   </el-select>
                 </el-form-item>
-                
+
                 <el-form-item label="录音配置">
                   <el-switch v-model="callConfigForm.aliyunConfig.enableRecording" />
                   <span style="margin-left: 10px;">启用通话录音</span>
                 </el-form-item>
-                
+
                 <el-form-item label="录音存储" v-if="callConfigForm.aliyunConfig.enableRecording">
-                  <el-input 
-                    v-model="callConfigForm.aliyunConfig.recordingBucket" 
+                  <el-input
+                    v-model="callConfigForm.aliyunConfig.recordingBucket"
                     placeholder="请输入OSS存储桶名称"
                     style="width: 100%"
                   />
                   <div class="form-tip">录音文件将存储到指定的OSS存储桶</div>
                 </el-form-item>
-                
+
                 <el-alert
                   title="阿里云通信配置说明"
                   type="warning"
@@ -1427,55 +1430,55 @@
                   </template>
                 </el-alert>
               </template>
-              
+
               <!-- 腾讯云通信配置 -->
               <template v-if="callConfigForm.voipProvider === 'tencent'">
                 <el-divider content-position="left">腾讯云通信配置</el-divider>
-                
+
                 <el-form-item label="SecretId" required>
-                  <el-input 
-                    v-model="callConfigForm.tencentConfig.secretId" 
+                  <el-input
+                    v-model="callConfigForm.tencentConfig.secretId"
                     placeholder="请输入腾讯云SecretId"
                     show-password
                     style="width: 100%"
                   />
                 </el-form-item>
-                
+
                 <el-form-item label="SecretKey" required>
-                  <el-input 
-                    v-model="callConfigForm.tencentConfig.secretKey" 
+                  <el-input
+                    v-model="callConfigForm.tencentConfig.secretKey"
                     placeholder="请输入腾讯云SecretKey"
                     show-password
                     type="password"
                     style="width: 100%"
                   />
                 </el-form-item>
-                
+
                 <el-form-item label="应用ID" required>
-                  <el-input 
-                    v-model="callConfigForm.tencentConfig.appId" 
+                  <el-input
+                    v-model="callConfigForm.tencentConfig.appId"
                     placeholder="请输入语音通话应用ID"
                     style="width: 100%"
                   />
                 </el-form-item>
               </template>
-              
+
               <!-- 华为云通信配置 -->
               <template v-if="callConfigForm.voipProvider === 'huawei'">
                 <el-divider content-position="left">华为云通信配置</el-divider>
-                
+
                 <el-form-item label="Access Key" required>
-                  <el-input 
-                    v-model="callConfigForm.huaweiConfig.accessKey" 
+                  <el-input
+                    v-model="callConfigForm.huaweiConfig.accessKey"
                     placeholder="请输入华为云Access Key"
                     show-password
                     style="width: 100%"
                   />
                 </el-form-item>
-                
+
                 <el-form-item label="Secret Key" required>
-                  <el-input 
-                    v-model="callConfigForm.huaweiConfig.secretKey" 
+                  <el-input
+                    v-model="callConfigForm.huaweiConfig.secretKey"
                     placeholder="请输入华为云Secret Key"
                     show-password
                     type="password"
@@ -1483,7 +1486,7 @@
                   />
                 </el-form-item>
               </template>
-              
+
               <el-form-item label="音频设备">
                 <el-select v-model="callConfigForm.audioDevice" placeholder="请选择音频设备" style="width: 100%">
                   <el-option label="默认设备" value="default" />
@@ -1491,14 +1494,14 @@
                   <el-option label="扬声器" value="speaker" />
                 </el-select>
               </el-form-item>
-              
+
               <el-form-item label="音质设置">
                 <el-radio-group v-model="callConfigForm.audioQuality">
                   <el-radio label="standard">标准音质</el-radio>
                   <el-radio label="high">高清音质</el-radio>
                 </el-radio-group>
               </el-form-item>
-              
+
               <el-alert
                 title="网络电话说明"
                 type="info"
@@ -1514,7 +1517,7 @@
             </div>
           </el-form>
         </el-tab-pane>
-        
+
         <!-- 呼叫参数配置 -->
         <el-tab-pane label="呼叫参数" name="callParams">
           <el-form :model="callConfigForm" label-width="120px">
@@ -1524,7 +1527,7 @@
                 <el-radio label="manual">手动外呼</el-radio>
               </el-radio-group>
             </el-form-item>
-            
+
             <el-form-item label="呼叫间隔">
               <el-input-number
                 v-model="callConfigForm.callInterval"
@@ -1536,7 +1539,7 @@
               />
               <span style="margin-left: 8px; color: #909399;">秒</span>
             </el-form-item>
-            
+
             <el-form-item label="最大重试次数">
               <el-input-number
                 v-model="callConfigForm.maxRetries"
@@ -1546,7 +1549,7 @@
                 style="width: 200px"
               />
             </el-form-item>
-            
+
             <el-form-item label="呼叫超时">
               <el-input-number
                 v-model="callConfigForm.callTimeout"
@@ -1558,17 +1561,17 @@
               />
               <span style="margin-left: 8px; color: #909399;">秒</span>
             </el-form-item>
-            
+
             <el-form-item label="启用录音">
               <el-switch v-model="callConfigForm.enableRecording" />
             </el-form-item>
-            
+
             <el-form-item label="自动跟进">
               <el-switch v-model="callConfigForm.autoFollowUp" />
             </el-form-item>
           </el-form>
         </el-tab-pane>
-        
+
         <!-- 高级设置 -->
         <el-tab-pane label="高级设置" name="advanced" v-if="userStore.isSuperAdmin">
           <el-form :model="callConfigForm" label-width="120px">
@@ -1581,7 +1584,7 @@
                 style="width: 200px"
               />
             </el-form-item>
-            
+
             <el-form-item label="呼叫优先级">
               <el-select v-model="callConfigForm.priority" style="width: 200px">
                 <el-option label="低" value="low" />
@@ -1589,18 +1592,18 @@
                 <el-option label="高" value="high" />
               </el-select>
             </el-form-item>
-            
+
             <el-form-item label="黑名单检查">
               <el-switch v-model="callConfigForm.blacklistCheck" />
             </el-form-item>
-            
+
             <el-form-item label="号码归属地显示">
               <el-switch v-model="callConfigForm.showLocation" />
             </el-form-item>
           </el-form>
         </el-tab-pane>
       </el-tabs>
-      
+
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="callConfigDialogVisible = false">取消</el-button>
@@ -1624,15 +1627,15 @@ import type { CallRecord, FollowUpRecord } from '@/api/call'
 import * as callApi from '@/api/call'
 import { downloadSDK, testSDKConnection, checkSDKInstallStatus, updateSDKInstallStatus } from '@/api/sdk'
 import { generateQRCode as generateQRCodeAPI, getConnectionStatus, disconnectDevice, getConnectedDevices } from '@/api/qr-connection'
-import { 
-  startBluetoothService, 
-  stopBluetoothService, 
+import {
+  startBluetoothService,
+  stopBluetoothService,
   getBluetoothStatus,
-  startNetworkDiscovery, 
-  stopNetworkDiscovery, 
+  startNetworkDiscovery,
+  stopNetworkDiscovery,
   getNetworkStatus,
-  startDigitalPairing, 
-  stopDigitalPairing, 
+  startDigitalPairing,
+  stopDigitalPairing,
   getDigitalPairingStatus,
   getAllConnectedDevices,
   disconnectDevice as disconnectAlternativeDevice
@@ -1737,14 +1740,14 @@ const connectedDevices = ref([])
 const callConfigForm = reactive({
   // 外呼方式
   callMethod: 'system', // system: 系统外呼路线, mobile: 工作手机外呼, voip: 网络电话
-  
+
   // 系统外呼路线配置
   lineId: '',
-  
+
   // 工作手机外呼
   workPhone: '',
   dialMethod: 'direct', // direct: 直接拨号, callback: 回拨模式
-  
+
   // 工作手机系统级配置
   mobileConfig: {
     platform: 'android', // android, ios
@@ -1760,19 +1763,19 @@ const callConfigForm = reactive({
       packageType: 'APK'
     }
   },
-  
+
   // 回拨模式配置
   callbackConfig: {
     provider: 'aliyun', // aliyun, tencent, custom
     delay: 3, // 回拨延迟秒数
     maxRetries: 3 // 最大重试次数
   },
-  
+
   // 网络电话配置
   voipProvider: 'aliyun', // aliyun, tencent, huawei, custom
   audioDevice: 'default', // default, headset, speaker
   audioQuality: 'standard', // standard, high
-  
+
   // 阿里云通信配置
   aliyunConfig: {
     accessKeyId: '',
@@ -1783,7 +1786,7 @@ const callConfigForm = reactive({
     enableRecording: false,
     recordingBucket: ''
   },
-  
+
   // 腾讯云通信配置
   tencentConfig: {
     secretId: '',
@@ -1792,7 +1795,7 @@ const callConfigForm = reactive({
     callerNumber: '',
     region: 'ap-beijing'
   },
-  
+
   // 华为云通信配置
   huaweiConfig: {
     accessKey: '',
@@ -1801,7 +1804,7 @@ const callConfigForm = reactive({
     callerNumber: '',
     region: 'cn-north-1'
   },
-  
+
   // 呼叫参数
   callMode: 'manual',
   callInterval: 30,
@@ -1809,7 +1812,7 @@ const callConfigForm = reactive({
   callTimeout: 60,
   enableRecording: true,
   autoFollowUp: false,
-  
+
   // 高级设置
   concurrentCalls: 1,
   priority: 'medium',
@@ -2067,7 +2070,7 @@ const formatDateTime = (dateTime: string) => {
 // 获取客户收货地址
 const getCustomerShippingAddress = (customer: any) => {
   if (!customer) return '暂无地址'
-  
+
   // 如果客户有完整的地址信息，组合成收货地址
   if (customer.province || customer.city || customer.district || customer.street || customer.detailAddress) {
     const addressParts = [
@@ -2077,22 +2080,22 @@ const getCustomerShippingAddress = (customer: any) => {
       customer.street,
       customer.detailAddress
     ].filter(Boolean)
-    
+
     if (addressParts.length > 0) {
       return addressParts.join(' ')
     }
   }
-  
+
   // 如果没有详细地址信息，使用原有的address字段
   if (customer.address) {
     return customer.address
   }
-  
+
   // 如果都没有，使用公司地址作为备选
   if (customer.company) {
     return customer.company
   }
-  
+
   return '暂无地址'
 }
 
@@ -2109,18 +2112,18 @@ const toggleCallStatus = () => {
 const generateQRCode = async () => {
   try {
     qrConnection.generating = true
-    
+
     // 准备请求参数
     const requestData = {
       userId: userStore.userInfo?.id || 'default-user',
       permissions: ['call', 'sms', 'contacts'] // 默认权限
     }
-    
+
     const response = await generateQRCodeAPI(requestData)
-    
+
     if (response.success) {
       qrConnection.connectionId = response.data.connectionId
-      
+
       // 如果API返回的是qrData而不是qrCodeUrl，需要生成二维码图片
       if (response.data.qrCodeUrl) {
         qrConnection.qrCodeUrl = response.data.qrCodeUrl
@@ -2128,12 +2131,12 @@ const generateQRCode = async () => {
         // 使用qrcode库生成二维码图片URL
         qrConnection.qrCodeUrl = await generateQRCodeImage(response.data.qrData)
       }
-      
+
       qrConnection.status = 'pending'
       qrConnection.expiresAt = new Date(response.data.expiresAt)
-      
+
       ElMessage.success('二维码生成成功，请使用手机扫码连接')
-      
+
       // 开始检查连接状态
       checkConnectionStatus()
     } else {
@@ -2152,7 +2155,7 @@ const generateQRCodeImage = async (qrData: string): Promise<string> => {
   try {
     // 动态导入qrcode库
     const QRCode = await import('qrcode')
-    
+
     // 生成二维码数据URL
     const qrCodeDataUrl = await QRCode.toDataURL(qrData, {
       width: 200,
@@ -2162,7 +2165,7 @@ const generateQRCodeImage = async (qrData: string): Promise<string> => {
         light: '#FFFFFF'
       }
     })
-    
+
     return qrCodeDataUrl
   } catch (error) {
     console.error('生成二维码图片失败:', error)
@@ -2173,20 +2176,20 @@ const generateQRCodeImage = async (qrData: string): Promise<string> => {
 
 const checkConnectionStatus = async () => {
   if (!qrConnection.connectionId || qrConnection.checking) return
-  
+
   try {
     qrConnection.checking = true
     const response = await getConnectionStatus(qrConnection.connectionId)
-    
+
     if (response.success) {
       qrConnection.status = response.data.status
-      
+
       if (response.data.status === 'connected') {
         ElMessage.success('设备连接成功！')
         // 更新移动配置状态
         callConfigForm.mobileConfig.connectionStatus = 'connected'
         callConfigForm.mobileConfig.deviceAuthorized = true
-        
+
         // 刷新已连接设备列表
         await loadConnectedDevices()
       } else if (response.data.status === 'expired') {
@@ -2209,22 +2212,22 @@ const refreshQRCode = async () => {
 
 const disconnectQRDevice = async () => {
   if (!qrConnection.connectionId) return
-  
+
   try {
     const response = await disconnectDevice(qrConnection.connectionId)
-    
+
     if (response.success) {
       qrConnection.connectionId = ''
       qrConnection.qrCodeUrl = ''
       qrConnection.status = ''
       qrConnection.expiresAt = null
-      
+
       // 更新移动配置状态
       callConfigForm.mobileConfig.connectionStatus = 'disconnected'
       callConfigForm.mobileConfig.deviceAuthorized = false
-      
+
       ElMessage.success('设备已断开连接')
-      
+
       // 刷新已连接设备列表
       await loadConnectedDevices()
     } else {
@@ -2239,7 +2242,7 @@ const disconnectQRDevice = async () => {
 const loadConnectedDevices = async () => {
   try {
     const response = await getConnectedDevices()
-    
+
     if (response.success) {
       connectedDevices.value = response.data
     }
@@ -2277,12 +2280,12 @@ const getMobileConnectionStatus = () => {
 // 下载手机SDK
 const downloadMobileSDK = async () => {
   const platform = callConfigForm.mobileConfig.platform as 'android' | 'ios'
-  
+
   try {
     ElMessage.info('正在准备下载SDK...')
-    
+
     const result = await downloadSDK(platform)
-    
+
     if (result.success) {
       ElMessage.success(result.message || 'SDK下载已开始')
     } else {
@@ -2297,19 +2300,19 @@ const downloadMobileSDK = async () => {
 // 测试手机连接
 const testMobileConnection = async () => {
   const platform = callConfigForm.mobileConfig.platform as 'android' | 'ios'
-  
+
   testingConnection.value = true
   callConfigForm.mobileConfig.connectionStatus = 'connecting'
-  
+
   try {
     const result = await testSDKConnection(platform)
-    
+
     if (result.success && result.connected) {
       callConfigForm.mobileConfig.connectionStatus = 'connected'
       callConfigForm.mobileConfig.deviceAuthorized = true
       callConfigForm.mobileConfig.callPermission = true
       ElMessage.success(result.message)
-      
+
       // 如果连接成功，更新SDK安装状态
       updateSDKInstallStatus(platform, true, '1.0.0')
       callConfigForm.mobileConfig.sdkInstalled = true
@@ -2330,7 +2333,7 @@ const checkSDKStatus = async () => {
   try {
     const platform = callConfigForm.mobileConfig.platform as 'android' | 'ios'
     const status = await checkSDKInstallStatus(platform)
-    
+
     if (status.installed) {
       callConfigForm.mobileConfig.sdkInstalled = true
       callConfigForm.mobileConfig.connectionStatus = 'connected'
@@ -2370,13 +2373,13 @@ const connectBluetooth = async () => {
     }
     return
   }
-  
+
   alternativeConnections.bluetooth.status = 'connecting'
-  
+
   try {
     // 启动蓝牙服务
     const result = await startBluetoothService({ deviceName: 'CRM-Server' })
-    
+
     if (result.success) {
       alternativeConnections.bluetooth.status = 'connected'
       alternativeConnections.bluetooth.deviceName = result.data.deviceName
@@ -2413,16 +2416,16 @@ const discoverNetwork = async () => {
     }
     return
   }
-  
+
   alternativeConnections.network.status = 'discovering'
-  
+
   try {
     // 启动网络发现服务
     const result = await startNetworkDiscovery({ port: 8080, broadcastInterval: 10 })
-    
+
     if (result.success) {
       alternativeConnections.network.status = 'connected'
-      
+
       // 获取连接设备
       const devicesResult = await getAllConnectedDevices()
       if (devicesResult.success) {
@@ -2468,23 +2471,23 @@ const generateDigitalCode = async () => {
     }
     return
   }
-  
+
   alternativeConnections.digital.status = 'generating'
-  
+
   try {
     // 启动数字配对服务
     const result = await startDigitalPairing({ expireTime: 10 })
-    
+
     if (result.success) {
       alternativeConnections.digital.code = result.data.currentCode
       alternativeConnections.digital.status = 'connected'
-      
+
       // 计算过期时间
       const expiresAt = new Date(Date.now() + result.data.expireTime * 60 * 1000)
       alternativeConnections.digital.expiresAt = expiresAt
-      
+
       ElMessage.success(`数字配对码：${result.data.currentCode}，有效期${result.data.expireTime}分钟`)
-      
+
       // 设置过期定时器
       setTimeout(() => {
         if (alternativeConnections.digital.code === result.data.currentCode) {
@@ -2519,7 +2522,7 @@ const loadSDKInfo = async () => {
   try {
     const platform = callConfigForm.mobileConfig.platform as 'android' | 'ios'
     const response = await getSDKInfo(platform)
-    
+
     if (response.success && response.data) {
       const sdkInfo = response.data
       // 更新SDK信息到表单中（这些信息将在模板中显示）
@@ -2548,7 +2551,7 @@ const loadSDKInfo = async () => {
 const refreshData = async () => {
   try {
     refreshLoading.value = true
-    
+
     // 并行刷新多个数据源
     await Promise.all([
       loadOutboundList(),
@@ -2556,7 +2559,7 @@ const refreshData = async () => {
       loadStatistics(),
       refreshCallRecords()
     ])
-    
+
     ElMessage.success('数据已刷新')
   } catch (error) {
     console.error('刷新数据失败:', error)
@@ -2598,13 +2601,13 @@ const loadCallConfig = () => {
 const saveCallConfig = async () => {
   try {
     callConfigSaving.value = true
-    
+
     // 保存到本地存储
     localStorage.setItem('callConfig', JSON.stringify(callConfigForm))
-    
+
     // 这里可以添加API调用来保存到服务器
     // await callApi.saveCallConfig(callConfigForm)
-    
+
     ElMessage.success('呼出配置已保存')
     callConfigDialogVisible.value = false
   } catch (error) {
@@ -2649,7 +2652,7 @@ const getLineStatusText = (lineId: string) => {
 // 切换自动刷新
 const toggleAutoRefresh = () => {
   autoRefresh.value = !autoRefresh.value
-  
+
   if (autoRefresh.value) {
     startAutoRefresh()
     ElMessage.success('已开启自动刷新，每30秒更新一次数据')
@@ -2664,7 +2667,7 @@ const startAutoRefresh = () => {
   if (autoRefreshTimer.value) {
     clearInterval(autoRefreshTimer.value)
   }
-  
+
   autoRefreshTimer.value = setInterval(async () => {
     if (!refreshLoading.value) {
       await refreshData()
@@ -2683,17 +2686,17 @@ const stopAutoRefresh = () => {
 const loadOutboundList = async () => {
   try {
     loading.value = true
-    
+
     // 从客户store获取归属于当前用户的客户数据
     await customerStore.loadCustomers()
     const allCustomers = customerStore.customers
     const currentUserId = userStore.currentUser?.id
-    
+
     // 筛选归属于当前用户的客户
-    const userCustomers = allCustomers.filter(customer => 
+    const userCustomers = allCustomers.filter(customer =>
       customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
     )
-    
+
     // 转换为呼出列表格式
     const convertedList = userCustomers.map(customer => ({
       id: customer.id,
@@ -2715,11 +2718,11 @@ const loadOutboundList = async () => {
       street: customer.street || '',
       detailAddress: customer.detailAddress || ''
     }))
-    
+
     // 更新呼出列表数据
     outboundList.value = convertedList
     pagination.total = convertedList.length
-    
+
   } catch (error) {
     console.error('加载呼出列表失败:', error)
     ElMessage.error('加载呼出列表失败')
@@ -2731,37 +2734,37 @@ const loadOutboundList = async () => {
 const handleSearch = async () => {
   try {
     loading.value = true
-    
+
     // 从客户store获取归属于当前用户的客户数据
     await customerStore.loadCustomers()
     const allCustomers = customerStore.customers
     const currentUserId = userStore.currentUser?.id
-    
+
     // 筛选归属于当前用户的客户
-    let userCustomers = allCustomers.filter(customer => 
+    let userCustomers = allCustomers.filter(customer =>
       customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
     )
-    
+
     // 应用搜索关键词筛选
     if (searchKeyword.value) {
       const keyword = searchKeyword.value.toLowerCase()
-      userCustomers = userCustomers.filter(customer => 
+      userCustomers = userCustomers.filter(customer =>
         customer.name.toLowerCase().includes(keyword) ||
         customer.phone.includes(keyword) ||
         (customer.company && customer.company.toLowerCase().includes(keyword))
       )
     }
-    
+
     // 应用其他筛选条件
     if (filterForm.customerLevel) {
       userCustomers = userCustomers.filter(customer => customer.level === filterForm.customerLevel)
     }
-    
+
     if (filterForm.status) {
       // 根据客户状态筛选
       userCustomers = userCustomers.filter(customer => customer.status === filterForm.status)
     }
-    
+
     // 转换为呼出列表格式
     const convertedList = userCustomers.map(customer => ({
       id: customer.id,
@@ -2783,11 +2786,11 @@ const handleSearch = async () => {
       street: customer.street || '',
       detailAddress: customer.detailAddress || ''
     }))
-    
+
     // 更新呼出列表数据
     outboundList.value = convertedList
     pagination.total = convertedList.length
-    
+
   } catch (error) {
     console.error('搜索失败:', error)
     ElMessage.error('搜索失败')
@@ -2829,7 +2832,7 @@ const loadCallRecords = async () => {
   try {
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     // 模拟通话记录数据
     const mockData = [
       {
@@ -2869,17 +2872,17 @@ const loadCallRecords = async () => {
         recordingUrl: null
       }
     ]
-    
+
     // 应用筛选
     let filteredData = mockData
     if (callRecordsFilter.customerKeyword) {
       const keyword = callRecordsFilter.customerKeyword.toLowerCase()
-      filteredData = filteredData.filter(item => 
+      filteredData = filteredData.filter(item =>
         item.customerName.toLowerCase().includes(keyword) ||
         item.customerPhone.includes(keyword)
       )
     }
-    
+
     callRecordsList.value = filteredData
     callRecordsPagination.total = filteredData.length
   } catch (error) {
@@ -2920,7 +2923,7 @@ const downloadRecording = (record: any) => {
     ElMessage.warning('该通话没有录音文件')
     return
   }
-  
+
   // 创建下载链接
   const link = document.createElement('a')
   link.href = record.recordingUrl
@@ -2928,7 +2931,7 @@ const downloadRecording = (record: any) => {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-  
+
   ElMessage.success('录音下载已开始')
 }
 
@@ -2970,11 +2973,11 @@ const resetQuickFollowUpForm = () => {
 
 const submitQuickFollowUp = async () => {
   if (!quickFollowUpFormRef.value) return
-  
+
   try {
     await quickFollowUpFormRef.value.validate()
     quickFollowUpSubmitting.value = true
-    
+
     // 准备跟进记录数据
     const followUpData: Omit<FollowUpRecord, 'id' | 'createdAt' | 'updatedAt'> = {
       callId: '', // 如果有关联的通话记录ID，可以在这里设置
@@ -2988,17 +2991,17 @@ const submitQuickFollowUp = async () => {
       userId: userStore.currentUser?.id || '1',
       userName: userStore.currentUser?.name || '当前用户'
     }
-    
+
     // 调用API创建跟进记录
     await callStore.createFollowUp(followUpData)
-    
+
     ElMessage.success('跟进记录保存成功')
     quickFollowUpVisible.value = false
     resetQuickFollowUpForm()
-    
+
     // 刷新相关页面数据
     loadOutboundList()
-    
+
   } catch (error) {
     console.error('保存跟进记录失败:', error)
     ElMessage.error('保存跟进记录失败，请重试')
@@ -3033,7 +3036,7 @@ const handleViewDetail = (row: any) => {
 const handleAddFollowUp = async (row: any) => {
   // 从客户store中获取完整的客户信息
   const fullCustomer = customerStore.getCustomerById(row.id)
-  
+
   if (fullCustomer) {
     currentCustomer.value = fullCustomer
   } else {
@@ -3051,7 +3054,7 @@ const handleAddFollowUp = async (row: any) => {
       detailAddress: row.detailAddress || ''
     }
   }
-  
+
   quickFollowUpVisible.value = true
 }
 
@@ -3135,7 +3138,7 @@ const debouncedSearchCustomers = (query: string = '') => {
   if (searchTimer) {
     clearTimeout(searchTimer)
   }
-  
+
   searchTimer = setTimeout(() => {
     searchCustomers(query)
   }, 300) // 300ms防抖延迟
@@ -3148,36 +3151,36 @@ const searchCustomers = async (query: string = '') => {
     await customerStore.loadCustomers()
     const allCustomers = customerStore.customers
     const currentUserId = userStore.currentUser?.id
-    
+
     // 筛选归属于当前用户的客户
     let filteredCustomers = allCustomers.filter(customer => {
       return customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
     })
-    
+
     // 如果有查询条件，进行智能匹配
     if (query && query.trim()) {
       const queryLower = query.toLowerCase().trim()
       const queryOriginal = query.trim()
-      
+
       filteredCustomers = filteredCustomers.filter(customer => {
         // 支持按客户姓名、编号或电话号码搜索
         const matchesName = customer.name && customer.name.toLowerCase().includes(queryLower)
         const matchesCode = customer.code && customer.code.toLowerCase().includes(queryLower)
         const matchesPhone = customer.phone && customer.phone.includes(queryOriginal)
         const matchesCompany = customer.company && customer.company.toLowerCase().includes(queryLower)
-        
+
         // 支持部分匹配电话号码（去除分隔符）
         const phoneMatch = customer.phone && customer.phone.replace(/[-\s]/g, '').includes(queryOriginal.replace(/[-\s]/g, ''))
-        
+
         // 支持客户编号的部分匹配
         const codeMatch = customer.code && (
           customer.code.toLowerCase().includes(queryLower) ||
           customer.code.toLowerCase().startsWith(queryLower)
         )
-        
+
         return matchesName || matchesCode || matchesPhone || matchesCompany || phoneMatch || codeMatch
       })
-      
+
       // 按匹配度排序：完全匹配 > 开头匹配 > 包含匹配
       filteredCustomers.sort((a, b) => {
         const getMatchScore = (customer: any) => {
@@ -3185,25 +3188,25 @@ const searchCustomers = async (query: string = '') => {
           const name = customer.name?.toLowerCase() || ''
           const code = customer.code?.toLowerCase() || ''
           const phone = customer.phone || ''
-          
+
           // 完全匹配得分最高
           if (name === queryLower || code === queryLower || phone === queryOriginal) score += 100
           // 开头匹配得分较高
           else if (name.startsWith(queryLower) || code.startsWith(queryLower) || phone.startsWith(queryOriginal)) score += 50
           // 包含匹配得分一般
           else if (name.includes(queryLower) || code.includes(queryLower) || phone.includes(queryOriginal)) score += 10
-          
+
           return score
         }
-        
+
         return getMatchScore(b) - getMatchScore(a)
       })
     }
-    
+
     // 按客户名称排序，限制显示数量
     filteredCustomers.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     customerOptions.value = filteredCustomers.slice(0, 50) // 增加显示数量到50
-    
+
     // 如果没有找到匹配的客户且有查询条件，显示提示
     if (filteredCustomers.length === 0 && query && query.trim()) {
       console.log(`未找到匹配"${query}"的客户`)
@@ -3225,12 +3228,12 @@ const onCustomerChange = (customer: any) => {
     outboundForm.value.customerId = ''
     return
   }
-  
+
   outboundForm.value.customerId = customer.id
-  
+
   // 构建号码选项
   const phones = []
-  
+
   // 主号码
   if (customer.phone) {
     phones.push({
@@ -3238,7 +3241,7 @@ const onCustomerChange = (customer: any) => {
       type: '主号码'
     })
   }
-  
+
   // 其他号码（如果有phones数组）
   if (customer.phones && Array.isArray(customer.phones)) {
     customer.phones.forEach((phoneObj: any) => {
@@ -3250,9 +3253,9 @@ const onCustomerChange = (customer: any) => {
       }
     })
   }
-  
+
   phoneOptions.value = phones
-  
+
   // 自动选择第一个号码
   if (phones.length > 0) {
     outboundForm.value.customerPhone = phones[0].phone
@@ -3324,40 +3327,40 @@ const openFollowupDialog = () => {
 // 开始外呼
 const startOutboundCall = async () => {
   if (!outboundFormRef.value) return
-  
+
   try {
     await outboundFormRef.value.validate()
-    
+
     // 确定要拨打的号码：优先使用手动输入的号码
     const phoneToCall = outboundForm.value.manualPhone || outboundForm.value.customerPhone
-    
+
     if (!phoneToCall) {
       ElMessage.warning('请选择客户号码或手动输入号码')
       return
     }
-    
+
     outboundLoading.value = true
-    
+
     // 根据是否有客户选择来决定传递的参数
     const callParams = {
       customerPhone: phoneToCall,
       notes: outboundForm.value.notes,
       callMethod: outboundForm.value.callMethod,
-      callConfig: outboundForm.value.callMethod === 'network' 
-        ? outboundForm.value.networkConfig 
+      callConfig: outboundForm.value.callMethod === 'network'
+        ? outboundForm.value.networkConfig
         : outboundForm.value.mobileConfig
     }
-    
+
     // 只有在选择了客户且没有手动输入号码时，才传递客户ID
     if (outboundForm.value.selectedCustomer && !outboundForm.value.manualPhone) {
       callParams.customerId = outboundForm.value.customerId || ''
     }
-    
+
     await callStore.makeOutboundCall(callParams)
-    
+
     closeOutboundDialog()
     ElMessage.success('外呼已发起')
-    
+
     // 刷新通话记录
     await callStore.fetchCallRecords()
   } catch (error) {
@@ -3370,20 +3373,20 @@ const startOutboundCall = async () => {
 
 const handleOutboundCall = async () => {
   if (!outboundFormRef.value) return
-  
+
   try {
     await outboundFormRef.value.validate()
     outboundLoading.value = true
-    
+
     await callStore.makeOutboundCall({
       customerId: outboundForm.value.customerId || '',
       customerPhone: outboundForm.value.customerPhone,
       notes: outboundForm.value.notes
     })
-    
+
     showOutboundDialog.value = false
     outboundForm.value = { customerPhone: '', customerId: '', notes: '' }
-    
+
     // 刷新通话记录
     await callStore.fetchCallRecords()
   } catch (error) {
@@ -3399,28 +3402,28 @@ const simulateIncomingCall = (customerData: any) => {
     ElMessage.warning('当前状态为忙碌，无法接收来电')
     return
   }
-  
+
   incomingCallData.value = customerData
   incomingCallVisible.value = true
 }
 
 const answerCall = () => {
   if (!incomingCallData.value) return
-  
+
   // 关闭呼入弹窗
   incomingCallVisible.value = false
-  
+
   // 设置当前通话数据
   currentCallData.value = incomingCallData.value
   callDuration.value = 0
   callNotes.value = ''
-  
+
   // 显示通话中弹窗
   callInProgressVisible.value = true
-  
+
   // 开始计时
   startCallTimer()
-  
+
   ElMessage.success('通话已接通')
 }
 
@@ -3433,7 +3436,7 @@ const rejectCall = () => {
 const endCall = async () => {
   // 停止计时
   stopCallTimer()
-  
+
   // 保存通话记录
   try {
     await saveCallRecord()
@@ -3442,7 +3445,7 @@ const endCall = async () => {
     console.error('保存通话记录失败:', error)
     ElMessage.error('保存通话记录失败')
   }
-  
+
   // 关闭通话中弹窗
   callInProgressVisible.value = false
   currentCallData.value = null
@@ -3467,7 +3470,7 @@ const formatCallDuration = (seconds: number) => {
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const secs = seconds % 60
-  
+
   if (hours > 0) {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
@@ -3476,7 +3479,7 @@ const formatCallDuration = (seconds: number) => {
 
 const saveCallRecord = async () => {
   if (!currentCallData.value) return
-  
+
   const callRecord = {
     customerId: currentCallData.value.id || '',
     customerName: currentCallData.value.customerName || '未知客户',
@@ -3488,17 +3491,17 @@ const saveCallRecord = async () => {
     startTime: new Date(Date.now() - callDuration.value * 1000).toISOString(),
     endTime: new Date().toISOString()
   }
-  
+
   // 这里应该调用API保存通话记录
   await callStore.saveCallRecord(callRecord)
-  
+
   // 刷新数据
   await refreshData()
 }
 
 const viewCustomerDetail = () => {
   if (!incomingCallData.value) return
-  
+
   currentCustomer.value = incomingCallData.value
   showDetailDialog.value = true
   incomingCallVisible.value = false
@@ -3506,7 +3509,7 @@ const viewCustomerDetail = () => {
 
 const quickFollowUp = () => {
   if (!incomingCallData.value) return
-  
+
   currentCustomer.value = incomingCallData.value
   quickFollowUpVisible.value = true
   incomingCallVisible.value = false
@@ -3529,7 +3532,7 @@ const viewCallDetail = (record: any) => {
   // 处理不同的数据结构
   const callId = record.id || record.callId
   const customerId = record.customerId || record.customer_id
-  
+
   if (callId) {
     // 跳转到通话详情页面或显示详情对话框
     safeNavigator.push(`/service-management/call/records?callId=${callId}`)
@@ -3602,18 +3605,18 @@ const loadStatistics = async () => {
     const today = new Date()
     const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString()
     const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString()
-    
+
     const response = await callApi.getCallStatistics({
       startDate,
       endDate,
       groupBy: 'day'
     })
-    
+
     const data = response.data
     statistics.todayCalls = data.totalCalls || 0
     statistics.totalDuration = data.totalDuration || 0
     statistics.connectionRate = Math.round(data.connectionRate || 0)
-    
+
     // 计算活跃用户数（今日有通话记录的用户数）
     statistics.activeUsers = data.userStats?.length || 0
   } catch (error) {
@@ -3626,9 +3629,21 @@ const loadStatistics = async () => {
   }
 }
 
+// 负责人列表 - 从userStore获取真实用户
+const salesPersonList = computed(() => {
+  return userStore.users
+    .filter((u: any) => ['sales_staff', 'department_manager', 'admin', 'super_admin', 'customer_service'].includes(u.role))
+    .map((u: any) => ({
+      id: u.id,
+      name: u.realName || u.name || u.username
+    }))
+})
+
 // 生命周期
 onMounted(async () => {
   try {
+    // 加载用户列表（用于负责人筛选）
+    await userStore.loadUsers()
     // 加载统计数据
     await loadStatistics()
     // 加载呼出列表
@@ -3654,7 +3669,7 @@ onUnmounted(() => {
     clearInterval(autoRefreshTimer.value)
     autoRefreshTimer.value = null
   }
-  
+
   // 清理搜索防抖定时器
   if (searchTimer) {
     clearTimeout(searchTimer)
@@ -3672,7 +3687,7 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
     supportedSystems: newPlatform === 'android' ? 'Android 5.0+' : 'iOS 12.0+',
     packageType: newPlatform === 'android' ? 'APK' : 'IPA'
   }
-  
+
   // 重新加载SDK信息
   await loadSDKInfo()
   // 重新检查SDK状态
@@ -3879,11 +3894,11 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
     flex-direction: column;
     gap: 16px;
   }
-  
+
   .filter-item {
     width: 100%;
   }
-  
+
   .search-row {
     flex-direction: column;
     align-items: stretch;
@@ -3895,46 +3910,46 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
   .call-management {
     padding: 12px;
   }
-  
+
   .page-header {
     flex-direction: column;
     gap: 16px;
     text-align: center;
   }
-  
+
   .header-actions {
     width: 100%;
     justify-content: center;
   }
-  
+
   .stat-item {
     padding: 16px;
   }
-  
+
   .stat-icon {
     width: 40px;
     height: 40px;
     font-size: 18px;
   }
-  
+
   .stat-value {
     font-size: 20px;
   }
-  
+
   .table-header {
     flex-direction: column;
     gap: 12px;
     align-items: stretch;
   }
-  
+
   .table-actions {
     justify-content: center;
   }
-  
+
   .customer-detail {
     padding: 12px;
   }
-  
+
   .tab-content {
     padding: 12px;
   }
@@ -4376,17 +4391,17 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
     flex-direction: column;
     text-align: center;
   }
-  
+
   .step-number {
     align-self: center;
   }
-  
+
   .sdk-download-area,
   .connection-test-area {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .permission-grid {
     grid-template-columns: 1fr;
   }

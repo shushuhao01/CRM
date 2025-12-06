@@ -93,45 +93,41 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
   // 日期范围
   const dateRange = ref<[string, string] | null>(null)
 
-  // 团队成员数据
-  const teamMembers = ref<TeamMember[]>([
-    {
-      id: 'sales1',
-      name: '小明',
-      position: '高级销售',
-      avatar: '',
-      salesAmount: 108500,
-      orderCount: 35,
-      customerCount: 28,
-      targetCompletion: 125,
-      performance: 'excellent',
-      commission: 10850
-    },
-    {
-      id: 'sales2',
-      name: '张三',
-      position: '销售经理',
-      avatar: '',
-      salesAmount: 92300,
-      orderCount: 32,
-      customerCount: 25,
-      targetCompletion: 118,
-      performance: 'excellent',
-      commission: 9230
-    },
-    {
-      id: 'sales3',
-      name: '李四',
-      position: '销售专员',
-      avatar: '',
-      salesAmount: 85600,
-      orderCount: 30,
-      customerCount: 22,
-      targetCompletion: 95,
-      performance: 'good',
-      commission: 8560
+  // 团队成员数据 - 初始为空，从userStore动态加载
+  const teamMembers = ref<TeamMember[]>([])
+
+  // 从userStore加载团队成员
+  const loadTeamMembersFromUserStore = async () => {
+    try {
+      const { useUserStore } = await import('@/stores/user')
+      const userStore = useUserStore()
+
+      // 确保用户列表已加载
+      if (userStore.users.length === 0) {
+        await userStore.loadUsers()
+      }
+
+      // 将用户转换为团队成员格式
+      teamMembers.value = userStore.users
+        .filter((u: any) => ['sales_staff', 'department_manager', 'admin', 'super_admin'].includes(u.role))
+        .map((u: any) => ({
+          id: u.id,
+          name: u.realName || u.name || u.username,
+          position: u.position || '销售专员',
+          avatar: u.avatar || '',
+          salesAmount: 0,
+          orderCount: 0,
+          customerCount: 0,
+          targetCompletion: 0,
+          performance: 'good' as const,
+          commission: 0
+        }))
+
+      console.log('[Performance Store] 从userStore加载团队成员:', teamMembers.value.length)
+    } catch (error) {
+      console.error('[Performance Store] 加载团队成员失败:', error)
     }
-  ])
+  }
 
   // 产品业绩数据
   const productPerformance = ref<ProductPerformance[]>([
@@ -929,6 +925,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     getProductRanking,
     refreshPerformanceData,
     syncPerformanceData,
+    loadTeamMembersFromUserStore,
 
     // 分享相关方法
     createPerformanceShare,
