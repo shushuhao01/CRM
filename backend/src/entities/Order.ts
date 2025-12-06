@@ -104,6 +104,9 @@ export class Order {
   @Column({ name: 'mark_type', length: 20, default: 'normal', comment: '订单标记类型' })
   markType?: string;
 
+  @Column({ name: 'custom_fields', type: 'json', nullable: true, comment: '自定义字段' })
+  customFields?: Record<string, unknown>;
+
   @Column({ type: 'text', nullable: true, comment: '订单备注' })
   remark?: string;
 
