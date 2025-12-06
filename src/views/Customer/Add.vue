@@ -1031,7 +1031,7 @@ const handleSubmit = async () => {
       // 🔥 调用API保存客户到数据库
       console.log('=== 调用 customerApi.create() 保存客户到数据库 ===')
 
-      const apiResult = await customerApi.create(customerData as any)
+      const apiResult = await customerApi.create(customerData as unknown)
       console.log('API响应:', apiResult)
 
       if (!apiResult.success) {
