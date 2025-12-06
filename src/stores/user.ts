@@ -779,110 +779,44 @@ export const useUserStore = defineStore('user', () => {
   }
 
   const loadUsers = async () => {
+    console.log('[UserStore] 开始加载用户列表...')
     try {
       // 使用统一的用户数据服务,自动适配localStorage和API
       const { default: userDataService } = await import('@/services/userDataService')
       const loadedUsers = await userDataService.getUsers()
 
       if (loadedUsers.length > 0) {
-        users.value = loadedUsers.map((user: unknown) => ({
+        users.value = loadedUsers.map((user: any) => ({
           id: user.id,
-          name: user.name,
+          name: user.realName || user.name || user.username,
           username: user.username,
+          realName: user.realName || user.name,
           employeeNumber: user.employeeNumber,
           email: user.email,
           role: user.role,
-          department: user.department,
+          department: user.departmentName || user.department || '未分配',
           departmentId: user.departmentId,
-          position: user.position,
+          departmentName: user.departmentName || user.department || '未分配',
+          position: user.position || '员工',
           avatar: user.avatar,
           status: user.status || 'active',
-          createTime: user.createTime,
+          createTime: user.createTime || user.createdAt,
           createdAt: user.createdAt,
           employmentStatus: user.employmentStatus || 'active'
         }))
 
-        console.log('[UserStore] 用户列表已加载:', users.value.length, '个用户')
+        console.log('[UserStore] ✅ 用户列表已加载:', users.value.length, '个用户')
         console.log('[UserStore] 数据来源:', userDataService.getCurrentMode())
+        console.log('[UserStore] 用户列表:', users.value.map(u => ({ id: u.id, name: u.name, department: u.department })))
       } else {
-        // 如果没有保存的数据，创建默认用户列表
-        users.value = [
-          {
-            id: 'admin',
-            name: '超级管理员',
-            email: 'admin@company.com',
-            role: 'admin',
-            department: '管理部',
-            status: 'active'
-          },
-          {
-            id: 'sales1',
-            name: '小明',
-            email: 'xiaoming@company.com',
-            role: 'sales_staff',
-            department: '销售部',
-            status: 'active'
-          },
-          {
-            id: 'sales2',
-            name: '张三',
-            email: 'zhangsan@company.com',
-            role: 'sales_staff',
-            department: '销售部',
-            status: 'active'
-          },
-          {
-            id: 'sales3',
-            name: '李四',
-            email: 'lisi@company.com',
-            role: 'sales_staff',
-            department: '销售部',
-            status: 'active'
-          },
-
-          {
-            id: 'dept_manager1',
-            name: '部门经理',
-            email: 'deptmanager@company.com',
-            role: 'department_manager',
-            department: '销售部',
-            status: 'active'
-          }
-        ]
-
-        // 保存默认用户列表到本地存储
-        localStorage.setItem('userDatabase', JSON.stringify(users.value))
+        // 如果没有获取到用户数据，保持空列表，不使用模拟数据
+        console.warn('[UserStore] ⚠️ 未获取到用户数据，用户列表为空')
+        users.value = []
       }
     } catch (error) {
-      console.error('加载用户列表失败:', error)
-      // 使用默认用户列表作为后备
-      users.value = [
-        {
-          id: 'sales1',
-          name: '小明',
-          email: 'xiaoming@company.com',
-          role: 'sales_staff',
-          department: '销售部',
-          status: 'active'
-        },
-        {
-          id: 'sales2',
-          name: '张三',
-          email: 'zhangsan@company.com',
-          role: 'sales_staff',
-          department: '销售部',
-          status: 'active'
-        },
-        {
-          id: 'sales3',
-          name: '李四',
-          email: 'lisi@company.com',
-          role: 'sales_staff',
-          department: '销售部',
-          status: 'active'
-        },
-
-      ]
+      console.error('[UserStore] ❌ 加载用户列表失败:', error)
+      // 加载失败时保持空列表，不使用模拟数据
+      users.value = []
     }
   }
 

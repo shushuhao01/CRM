@@ -122,7 +122,7 @@ router.get('/records', async (req: Request, res: Response) => {
 router.post('/send', async (req: Request, res: Response) => {
   try {
     const recordRepository = AppDataSource.getRepository(SmsRecord);
-    const currentUser = (req as any).user;
+    const currentUser = (req as unknown).user;
     const { templateId, templateName, recipients, content } = req.body;
 
     if (!recipients || recipients.length === 0) {

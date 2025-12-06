@@ -28,7 +28,7 @@ export class Order {
   orderSource?: string;
 
   @Column({ type: 'json', nullable: true, comment: '商品列表' })
-  products?: any[];
+  products?: unknown[];
 
   @Column({
     type: 'varchar',
