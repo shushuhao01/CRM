@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { LogisticsController } from '../controllers/LogisticsController';
 import { authenticateToken } from '../middleware/auth';
 
@@ -27,7 +27,7 @@ router.post('/batch-sync', (req, res) => logisticsController.batchSyncLogistics(
 router.put('/tracking/:id', (req, res) => logisticsController.updateLogisticsStatus(req, res));
 
 // 获取用户物流权限
-router.get('/permission', (req, res) => {
+router.get('/permission', (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
 

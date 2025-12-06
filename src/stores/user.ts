@@ -686,6 +686,18 @@ export const useUserStore = defineStore('user', () => {
       isLoggedIn.value = true
       console.log('[Auth] ✅ 登录状态已设置')
 
+      // 🔄 登录成功后无痕刷新数据（异步执行，不阻塞登录流程）
+      setTimeout(async () => {
+        try {
+          console.log('[Auth] 🔄 开始无痕刷新数据...')
+          const { preloadAppData } = await import('@/services/appInitService')
+          await preloadAppData()
+          console.log('[Auth] ✅ 无痕刷新完成')
+        } catch (e) {
+          console.warn('[Auth] ⚠️ 无痕刷新失败（不影响使用）:', e)
+        }
+      }, 300) // 延迟300ms，让页面先渲染
+
       // 返回成功标识
       return true
     } catch (error) {
