@@ -275,7 +275,7 @@ class SFExpressService {
         data: result
       }
 
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error('测试连接错误:', error)
 
       // 超时错误

@@ -12,7 +12,7 @@ export class PermissionController {
   async getPermissionTree(req: Request, res: Response) {
     try {
       const permissions = await this.permissionRepository.findTrees();
-      
+
       res.json({
         success: true,
         data: permissions
@@ -30,7 +30,7 @@ export class PermissionController {
   async getPermissions(req: Request, res: Response) {
     try {
       const { type, module, status } = req.query;
-      
+
       const queryBuilder = this.permissionRepository.createQueryBuilder('permission');
 
       if (type) {
@@ -65,17 +65,17 @@ export class PermissionController {
   // 创建权限
   async createPermission(req: Request, res: Response): Promise<any> {
     try {
-      const { 
-        name, 
-        code, 
-        description, 
-        module, 
-        type = 'menu', 
-        path, 
-        icon, 
-        sort = 0, 
+      const {
+        name,
+        code,
+        description,
+        module,
+        type = 'menu',
+        path,
+        icon,
+        sort = 0,
         status = 'active',
-        parentId 
+        parentId
       } = req.body;
 
       // 检查权限编码是否已存在
@@ -191,9 +191,9 @@ export class PermissionController {
               message: '父权限不存在'
             });
           }
-          permission.parent = parent;
+          (permission as any).parent = parent;
         } else {
-          permission.parent = undefined as any;
+          (permission as any).parent = undefined;
         }
       }
 

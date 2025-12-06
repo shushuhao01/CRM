@@ -595,7 +595,7 @@ router.get('/analysis/personal', (req, res) => {
  */
 router.get('/analysis/department', (req, res) => {
   const { departmentId, startDate, endDate } = req.query;
-  const userDepartmentId = (req as unknown).user.departmentId;
+  const userDepartmentId = (req as any).user?.departmentId;
   const targetDepartmentId = departmentId || userDepartmentId;
 
   // 模拟部门业绩分析数据

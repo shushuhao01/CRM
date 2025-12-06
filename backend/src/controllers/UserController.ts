@@ -582,7 +582,7 @@ export class UserController {
     if (position !== undefined) user.position = position;
     if (employeeNumber !== undefined) user.employeeNumber = employeeNumber;
     if (status !== undefined) user.status = status;
-    if (remark !== undefined) user.remark = remark;
+    if (remark !== undefined) (user as any).remark = remark;
 
     const updatedUser = await this.userRepository.save(user);
 
@@ -715,9 +715,9 @@ export class UserController {
       throw new NotFoundError('用户不存在');
     }
 
-    user.employmentStatus = employmentStatus;
+    (user as any).employmentStatus = employmentStatus;
     if (employmentStatus === 'resigned') {
-      user.resignedAt = new Date();
+      (user as any).resignedAt = new Date();
     }
 
     const updatedUser = await this.userRepository.save(user);
@@ -763,7 +763,7 @@ export class UserController {
     const hashedPassword = await bcrypt.hash(tempPassword, 12);
 
     user.password = hashedPassword;
-    user.mustChangePassword = true;
+    (user as any).mustChangePassword = true;
     user.loginFailCount = 0;
     if (user.status === 'locked') {
       user.status = 'active';

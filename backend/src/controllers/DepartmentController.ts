@@ -272,12 +272,12 @@ export class DepartmentController {
         data: result,
         message: '部门创建成功'
       });
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error('[创建部门] 失败:', error);
-      console.error('[创建部门] 错误堆栈:', error.stack);
+      console.error('[创建部门] 错误堆栈:', error?.stack);
       res.status(500).json({
         success: false,
-        message: `创建部门失败: ${error.message || '未知错误'}`
+        message: `创建部门失败: ${error?.message || '未知错误'}`
       });
     }
   }
