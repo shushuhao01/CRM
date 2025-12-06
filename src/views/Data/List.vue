@@ -1501,25 +1501,26 @@ const handleArchiveConfirm = async (archiveData: {
   }
 }
 
-// 所有系统成员数据 - 从localStorage获取真实用户数据
+// 所有系统成员数据 - 从userStore获取真实用户数据
 const allSystemMembers = computed(() => {
-  const users = getStorageData<unknown[]>('users', [])
+  const users = userStore.users
 
-  if (!Array.isArray(users)) {
-    console.error('users不是数组:', users)
+  if (!Array.isArray(users) || users.length === 0) {
+    console.warn('[资料列表] 用户列表为空，请确保已加载用户数据')
     return []
   }
 
   return users
-    .filter((user: unknown) => user.status === 'active') // 只显示活跃用户
-    .map((user: unknown) => ({
+    .filter((user: any) => user.status === 'active') // 只显示活跃用户
+    .map((user: any) => ({
       id: user.id,
-      name: user.name || user.username,
-      account: user.account || user.username,
+      name: user.realName || user.name || user.username,
+      account: user.username || user.id,
       department: user.departmentName || user.department || '未分配部门',
-      phone: user.phone || user.mobile || '',
+      phone: user.phone || '',
       status: user.status,
-      role: user.role || user.roleName || ''
+      role: user.role || '',
+      isLeader: user.role === 'department_manager' || user.role === 'admin'
     }))
 })
 
@@ -1908,6 +1909,8 @@ onMounted(async () => {
     // 初始化可见列
     visibleColumns.value = allTableColumns.filter(col => col.visible).map(col => col.prop)
 
+    // 加载用户列表（用于资料分配）
+    await userStore.loadUsers()
     // 设置默认日期筛选为今日
     dataStore.setFilters({ dateFilter: 'today' })
     // 获取可分配成员列表

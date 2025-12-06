@@ -107,12 +107,16 @@
             v-model="searchForm.salesPerson"
             placeholder="请选择销售人员"
             clearable
+            filterable
             style="width: 200px;"
           >
             <el-option label="全部" value="" />
-            <el-option label="张销售" value="张销售" />
-            <el-option label="李销售" value="李销售" />
-            <el-option label="王销售" value="王销售" />
+            <el-option
+              v-for="user in salesUserList"
+              :key="user.id"
+              :label="user.name"
+              :value="user.name"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="订单金额">
@@ -990,6 +994,17 @@ const quickAuditFormRef = ref<FormInstance>()
 // 选择相关
 const selectedOrders = ref<AuditOrder[]>([])
 const selectAll = ref(false)
+
+// 销售人员列表 - 从userStore获取真实用户数据
+const salesUserList = computed(() => {
+  return userStore.users
+    .filter(u => ['sales_staff', 'department_manager', 'admin', 'super_admin'].includes(u.role))
+    .map(u => ({
+      id: u.id,
+      name: u.realName || u.name || u.username,
+      department: u.department || '未分配'
+    }))
+})
 
 // 计算属性
 const isIndeterminate = computed(() => {
@@ -2595,6 +2610,8 @@ const handleOrderStatusChangedAudit = (order: any) => {
 
 // 生命周期
 onMounted(async () => {
+  // 加载用户列表（用于销售人员筛选）
+  await userStore.loadUsers()
   // 设置默认显示全部订单
   handleQuickFilter('all')
   // 加载汇总数据

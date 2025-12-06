@@ -173,7 +173,7 @@ class UserDataService {
       if (result.success && result.data) {
         const users = result.data.users || result.data.items || []
         console.log('[UserDataService] 解析到用户数量:', users.length)
-        return users.map((user: any) => ({
+        return users.map((user: unknown) => ({
           id: user.id,
           name: user.realName || user.name || user.username,
           username: user.username,
