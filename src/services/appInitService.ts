@@ -90,7 +90,10 @@ const loadCustomerData = async (): Promise<void> => {
 const loadOrderData = async (): Promise<void> => {
   try {
     const orderStore = useOrderStore()
-    await orderStore.loadOrders()
+    // 使用正确的方法名
+    if (typeof orderStore.loadOrdersFromAPI === 'function') {
+      await orderStore.loadOrdersFromAPI()
+    }
   } catch (error) {
     console.warn('[AppInit] 加载订单数据失败:', error)
   }

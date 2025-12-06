@@ -180,71 +180,196 @@ router.get('/:id', async (req: Request, res: Response) => {
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
+    console.log('📝 [订单创建] 收到请求数据:', JSON.stringify(req.body, null, 2));
+
     const orderRepository = AppDataSource.getRepository(Order);
     const orderItemRepository = AppDataSource.getRepository(OrderItem);
 
     const {
       customerId,
+      customerName,
+      customerPhone,
       products,
       totalAmount,
+      subtotal,
+      discount,
+      collectAmount,
+      depositAmount,
       receiverName,
       receiverPhone,
       receiverAddress,
       remark,
       paymentMethod,
-      salesPersonId
+      salesPersonId,
+      orderNumber,
+      serviceWechat,
+      orderSource
     } = req.body;
 
-    // 生成订单号
-    const orderNo = `ORD${Date.now()}`;
+    // 数据验证
+    if (!customerId) {
+      console.error('❌ [订单创建] 缺少客户ID');
+      return res.status(400).json({
+        success: false,
+        message: '缺少客户ID'
+      });
+    }
+
+    if (!products || !Array.isArray(products) || products.length === 0) {
+      console.error('❌ [订单创建] 缺少商品信息');
+      return res.status(400).json({
+        success: false,
+        message: '缺少商品信息'
+      });
+    }
+
+    // 解析客户ID（支持字符串和数字）
+    let parsedCustomerId: number;
+    if (typeof customerId === 'string') {
+      // 如果是类似 "customer_xxx" 的格式，需要查找或创建客户
+      if (customerId.startsWith('customer_') || customerId.startsWith('temp_')) {
+        console.log('📝 [订单创建] 检测到临时客户ID，尝试查找或创建客户');
+        // 尝试通过手机号查找客户
+        if (customerPhone) {
+          const existingCustomer = await AppDataSource.query(
+            'SELECT id FROM customers WHERE phone = ? LIMIT 1',
+            [customerPhone]
+          );
+          if (existingCustomer.length > 0) {
+            parsedCustomerId = existingCustomer[0].id;
+            console.log('✅ [订单创建] 通过手机号找到客户:', parsedCustomerId);
+          } else {
+            // 创建新客户
+            const customerCode = `C${Date.now()}`;
+            const result = await AppDataSource.query(
+              `INSERT INTO customers (customer_code, name, phone, sales_person_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, NOW(), NOW())`,
+              [customerCode, customerName || '未知客户', customerPhone, salesPersonId || null]
+            );
+            parsedCustomerId = result.insertId;
+            console.log('✅ [订单创建] 创建新客户:', parsedCustomerId);
+          }
+        } else {
+          console.error('❌ [订单创建] 临时客户ID但缺少手机号');
+          return res.status(400).json({
+            success: false,
+            message: '缺少客户手机号'
+          });
+        }
+      } else {
+        parsedCustomerId = parseInt(customerId);
+      }
+    } else {
+      parsedCustomerId = customerId;
+    }
+
+    if (isNaN(parsedCustomerId) || parsedCustomerId <= 0) {
+      console.error('❌ [订单创建] 无效的客户ID:', customerId);
+      return res.status(400).json({
+        success: false,
+        message: '无效的客户ID'
+      });
+    }
+
+    // 生成订单号（使用前端传的或自动生成）
+    const orderNo = orderNumber || `ORD${Date.now()}`;
+
+    // 计算金额
+    const finalTotalAmount = Number(totalAmount) || 0;
+    const finalPaidAmount = Number(depositAmount) || Number(collectAmount) || 0;
+
+    console.log('📝 [订单创建] 准备创建订单:', {
+      orderNo,
+      customerId: parsedCustomerId,
+      totalAmount: finalTotalAmount,
+      paidAmount: finalPaidAmount
+    });
 
     // 创建订单
     const order = orderRepository.create({
       orderNo,
-      customerId: parseInt(customerId),
+      customerId: parsedCustomerId,
       status: 'pending',
-      totalAmount,
-      paidAmount: 0,
-      paymentStatus: 'unpaid',
-      paymentMethod,
-      receiverName,
-      receiverPhone,
-      receiverAddress,
-      notes: remark,
-      salesUserId: salesPersonId ? parseInt(salesPersonId) : undefined
+      totalAmount: finalTotalAmount,
+      discountAmount: Number(discount) || 0,
+      paidAmount: finalPaidAmount,
+      paymentStatus: finalPaidAmount > 0 ? 'partial' : 'unpaid',
+      paymentMethod: paymentMethod || null,
+      receiverName: receiverName || customerName || '',
+      receiverPhone: receiverPhone || customerPhone || '',
+      receiverAddress: receiverAddress || '',
+      notes: remark || ''
     });
 
+    // 设置销售员ID
+    if (salesPersonId) {
+      const parsedSalesId = typeof salesPersonId === 'string' ? parseInt(salesPersonId) : salesPersonId;
+      if (!isNaN(parsedSalesId) && parsedSalesId > 0) {
+        order.salesUserId = parsedSalesId;
+      }
+    }
+
     const savedOrder = await orderRepository.save(order);
+    console.log('✅ [订单创建] 订单保存成功:', savedOrder.id);
 
     // 创建订单项
     if (products && products.length > 0) {
       for (const product of products) {
+        const productId = typeof product.id === 'string' ? parseInt(product.id) : (product.id || 0);
         const orderItem = orderItemRepository.create({
           orderId: savedOrder.id,
-          productId: parseInt(product.id) || 0,
-          productName: product.name,
+          productId: isNaN(productId) ? 0 : productId,
+          productName: product.name || '未知商品',
           productSku: product.sku || '',
-          unitPrice: product.price,
-          quantity: product.quantity,
-          subtotal: product.price * product.quantity
+          unitPrice: Number(product.price) || 0,
+          quantity: Number(product.quantity) || 1,
+          subtotal: (Number(product.price) || 0) * (Number(product.quantity) || 1)
         });
         await orderItemRepository.save(orderItem);
+        console.log('✅ [订单创建] 订单项保存成功:', product.name);
       }
     }
+
+    // 返回完整的订单数据
+    const responseData = {
+      id: savedOrder.id.toString(),
+      orderNumber: savedOrder.orderNo,
+      customerId: savedOrder.customerId.toString(),
+      customerName: customerName || '',
+      customerPhone: customerPhone || '',
+      products: products,
+      totalAmount: finalTotalAmount,
+      depositAmount: Number(depositAmount) || 0,
+      collectAmount: Number(collectAmount) || finalTotalAmount - (Number(depositAmount) || 0),
+      receiverName: savedOrder.receiverName || '',
+      receiverPhone: savedOrder.receiverPhone || '',
+      receiverAddress: savedOrder.receiverAddress || '',
+      remark: savedOrder.notes || '',
+      status: 'pending_transfer',
+      auditStatus: 'pending',
+      createTime: savedOrder.createdAt?.toISOString() || new Date().toISOString(),
+      createdBy: salesPersonId || '',
+      salesPersonId: salesPersonId || ''
+    };
+
+    console.log('✅ [订单创建] 返回数据:', responseData);
 
     res.status(201).json({
       success: true,
       message: '订单创建成功',
-      data: {
-        id: savedOrder.id.toString(),
-        orderNumber: savedOrder.orderNo
-      }
+      data: responseData
     });
-  } catch (error) {
-    console.error('创建订单失败:', error);
+  } catch (error: any) {
+    console.error('❌ [订单创建] 失败:', {
+      message: error?.message,
+      stack: error?.stack,
+      code: error?.code,
+      sqlMessage: error?.sqlMessage
+    });
     res.status(500).json({
       success: false,
-      message: '创建订单失败'
+      message: error?.sqlMessage || error?.message || '创建订单失败',
+      error: process.env.NODE_ENV === 'development' ? error?.stack : undefined
     });
   }
 });

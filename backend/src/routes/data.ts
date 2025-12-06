@@ -3,7 +3,7 @@ import { authenticateToken } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
 import { Customer } from '../entities/Customer';
 import { User } from '../entities/User';
-import { Like, Not, IsNull } from 'typeorm';
+import { Not, IsNull } from 'typeorm';
 
 const router = Router();
 
@@ -220,6 +220,7 @@ router.get('/assignee-options', async (req: Request, res: Response) => {
 /**
  * @route GET /api/v1/data/search
  * @desc 搜索客户（资料管理-客户查询）
+ * 支持：客户姓名、手机号、客户编码、订单号、物流单号
  */
 router.get('/search', async (req: Request, res: Response) => {
   try {
@@ -230,16 +231,80 @@ router.get('/search', async (req: Request, res: Response) => {
       return res.json({ success: true, data: null });
     }
 
-    // 搜索客户 - 支持客户编码、姓名、手机号、订单号等
-    const customer = await customerRepository
+    console.log('🔍 [客户搜索] 关键词:', keyword);
+
+    // 1. 直接搜索客户信息（客户编码、手机号、姓名）
+    let customer = await customerRepository
       .createQueryBuilder('customer')
       .where('customer.customerCode = :keyword', { keyword })
       .orWhere('customer.phone = :keyword', { keyword })
       .orWhere('customer.name = :keyword', { keyword })
       .getOne();
 
+    // 2. 如果没找到，通过订单号搜索
     if (!customer) {
+      console.log('🔍 [客户搜索] 尝试通过订单号查找');
+      const orderResult = await AppDataSource.query(
+        `SELECT c.* FROM customers c
+         JOIN orders o ON c.id = o.customer_id
+         WHERE o.order_no = ?
+         LIMIT 1`,
+        [keyword]
+      );
+      if (orderResult && orderResult.length > 0) {
+        // 通过ID重新查询获取完整的Customer实体
+        customer = await customerRepository.findOne({
+          where: { id: orderResult[0].id }
+        }) || null;
+        if (customer) {
+          console.log('✅ [客户搜索] 通过订单号找到客户:', customer.name);
+        }
+      }
+    }
+
+    // 3. 如果还没找到，通过物流单号搜索
+    if (!customer) {
+      console.log('🔍 [客户搜索] 尝试通过物流单号查找');
+      const logisticsResult = await AppDataSource.query(
+        `SELECT c.* FROM customers c
+         JOIN orders o ON c.id = o.customer_id
+         JOIN logistics_tracking l ON o.id = l.order_id
+         WHERE l.tracking_number = ?
+         LIMIT 1`,
+        [keyword]
+      );
+      if (logisticsResult && logisticsResult.length > 0) {
+        // 通过ID重新查询获取完整的Customer实体
+        customer = await customerRepository.findOne({
+          where: { id: logisticsResult[0].id }
+        }) || null;
+        if (customer) {
+          console.log('✅ [客户搜索] 通过物流单号找到客户:', customer.name);
+        }
+      }
+    }
+
+    if (!customer) {
+      console.log('❌ [客户搜索] 未找到匹配的客户');
       return res.json({ success: true, data: null, message: '未找到匹配的客户' });
+    }
+
+    // 获取客户的销售员归属信息
+    if (customer.salesPersonId) {
+      const salesPersonResult = await AppDataSource.query(
+        `SELECT id, username, real_name, department_name, position FROM users WHERE id = ?`,
+        [customer.salesPersonId]
+      );
+      if (salesPersonResult && salesPersonResult.length > 0) {
+        const salesPerson = salesPersonResult[0];
+        (customer as any).salesPersonInfo = {
+          id: salesPerson.id,
+          name: salesPerson.real_name || salesPerson.username,
+          department: salesPerson.department_name,
+          position: salesPerson.position
+        };
+        console.log('✅ [客户搜索] 获取到销售员信息:', salesPerson.real_name || salesPerson.username);
+      }
     }
 
     res.json({
@@ -247,7 +312,7 @@ router.get('/search', async (req: Request, res: Response) => {
       data: customer
     });
   } catch (error) {
-    console.error('搜索客户失败:', error);
+    console.error('❌ [客户搜索] 失败:', error);
     res.status(500).json({ success: false, message: '搜索客户失败' });
   }
 });
