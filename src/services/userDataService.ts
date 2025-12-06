@@ -1,7 +1,8 @@
 // 用户数据服务 - 统一数据访问层
 // 自动检测并切换localStorage和API模式,无需手动修改
 
-import { ref, computed } from 'vue'
+// Vue响应式导入（保留以备将来使用）
+// import { ref, computed } from 'vue'
 import type { User } from '@/stores/user'
 
 /**
@@ -153,7 +154,7 @@ class UserDataService {
   private async getUsersFromAPI(): Promise<User[]> {
     try {
       // 修复：apiBaseURL已经包含/api/v1，不需要再加/api
-      const response = await fetch(`${this.config.apiBaseURL}/users`, {
+      const response = await fetch(`${this.config.apiBaseURL}/users?limit=100`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -166,7 +167,33 @@ class UserDataService {
       }
 
       const result = await response.json()
-      return result.data || result || []
+      console.log('[UserDataService] API返回数据:', result)
+
+      // 正确解析后端返回的数据格式: { success: true, data: { users: [...], items: [...] } }
+      if (result.success && result.data) {
+        const users = result.data.users || result.data.items || []
+        console.log('[UserDataService] 解析到用户数量:', users.length)
+        return users.map((user: any) => ({
+          id: user.id,
+          name: user.realName || user.name || user.username,
+          username: user.username,
+          realName: user.realName || user.name,
+          email: user.email || '',
+          phone: user.phone || '',
+          role: user.role || 'user',
+          department: user.departmentName || '未分配',
+          departmentId: user.departmentId,
+          departmentName: user.departmentName || '未分配',
+          position: user.position || '员工',
+          avatar: user.avatar || '',
+          status: user.status || 'active',
+          createTime: user.createdAt || new Date().toISOString(),
+          createdAt: user.createdAt,
+          employmentStatus: user.status === 'active' ? 'active' : 'resigned'
+        }))
+      }
+
+      return []
     } catch (error) {
       console.error('[UserDataService] 从API获取用户失败:', error)
       throw error

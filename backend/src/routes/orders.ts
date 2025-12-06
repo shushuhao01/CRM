@@ -358,7 +358,7 @@ router.post('/', async (req: Request, res: Response) => {
       message: '订单创建成功',
       data: responseData
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('❌ [订单创建] 失败:', {
       message: error?.message,
       stack: error?.stack,
