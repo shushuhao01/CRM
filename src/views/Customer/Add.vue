@@ -946,134 +946,149 @@ const handlePhoneBlur = async () => {
 const handleSubmit = async () => {
   if (!customerFormRef.value) return
 
+  console.log('🔥 handleSubmit 被调用')
+
   try {
     // 表单验证
+    console.log('开始表单验证...')
     const valid = await customerFormRef.value.validate()
-    if (!valid) return
+    if (!valid) {
+      console.log('表单验证失败')
+      return
+    }
+    console.log('表单验证通过')
 
-    await appStore.withLoading(async () => {
-      if (isEdit.value) {
-        // 编辑客户逻辑
-        console.log('更新客户信息:', customerForm)
+    // 设置loading状态
+    loading.value = true
 
-        // 实际API调用示例：
-        // await request.put(`/api/customers/${route.params.id}`, customerForm)
-      } else {
-        console.log('=== 开始保存客户 ===')
-        console.log('表单数据:', customerForm)
+    if (isEdit.value) {
+      // 编辑客户逻辑
+      console.log('更新客户信息:', customerForm)
+      // TODO: 实现编辑逻辑
+    } else {
+      console.log('=== 开始保存客户 ===')
+      console.log('表单数据:', customerForm)
 
-        // 新增客户逻辑 - 先检查是否已存在
-        console.log('=== 提交前最终检查 ===')
-        const existsResponse = await customerApi.checkExists(customerForm.phone)
-        console.log('最终检查客户是否存在响应:', existsResponse)
+      // 新增客户逻辑 - 先检查是否已存在
+      console.log('=== 提交前最终检查 ===')
+      const existsResponse = await customerApi.checkExists(customerForm.phone)
+      console.log('最终检查客户是否存在响应:', existsResponse)
 
-        if (existsResponse.data) {
-          const existingCustomer = existsResponse.data
-          console.log('客户已存在，抛出错误:', existingCustomer)
-          console.log('阻止保存，抛出异常')
-          throw new Error(`手机号 ${customerForm.phone} 已存在，客户姓名：${existingCustomer.name}`)
-        }
-
-        console.log('检查通过，继续保存客户')
-
-        // 构建完整地址
-        const fullAddress = [
-          customerForm.province,
-          customerForm.city,
-          customerForm.district,
-          customerForm.street,
-          customerForm.detailAddress
-        ].filter(Boolean).join(' ')
-
-        const customerData = {
-          name: customerForm.name,
-          phone: customerForm.phone,
-          age: customerForm.age || 0,
-          address: fullAddress,
-          level: customerForm.level as 'normal' | 'silver' | 'gold',
-          status: customerForm.status as 'active' | 'inactive' | 'potential' | 'lost' | 'blacklist',
-          salesPersonId: userStore.currentUser?.id || 'admin',
-          createdBy: userStore.currentUser?.id || 'admin',
-          wechatId: customerForm.wechat,
-          email: customerForm.email,
-          fanAcquisitionTime: customerForm.fanAcquisitionTime,
-          company: '',
-          position: '',
-          source: customerForm.source,
-          tags: customerForm.tags,
-          remarks: customerForm.remark,
-          height: customerForm.height,
-          weight: customerForm.weight,
-          gender: customerForm.gender,
-          medicalHistory: customerForm.medicalHistory,
-          improvementGoals: customerForm.improvementGoals,
-          otherGoals: customerForm.otherGoals
-        }
-
-        console.log('准备保存的客户数据:', customerData)
-
-        // 🔥 强制调用API保存客户到数据库，不写入localStorage
-        console.log('=== 强制调用 customerApi.create() 保存客户到数据库 ===')
-
-        const apiResult = await customerApi.create(customerData as any)
-        console.log('API响应:', apiResult)
-
-        if (!apiResult.success) {
-          console.error('❌ API保存失败:', apiResult.message)
-          throw new Error(apiResult.message || 'API请求失败，客户未写入数据库')
-        }
-
-        // 🔥 不再写入localStorage，只记录日志
-        if (apiResult.data) {
-          console.log('✅ 客户已成功写入数据库!')
-          console.log('✅ 客户ID:', apiResult.data.id)
-          console.log('✅ 客户姓名:', apiResult.data.name)
-          console.log('✅ 客户手机:', apiResult.data.phone)
-        } else {
-          console.warn('⚠️ API返回成功但没有返回客户数据，请检查数据库')
-        }
-
-        const savedCustomer = apiResult.data
-        console.log('=== 客户保存到数据库完成 ===')
-
-        // 发送客户添加成功的消息提醒
-        if (!isEdit.value) {
-          notificationStore.sendMessage(
-            notificationStore.MessageType.CUSTOMER_CREATED,
-            `客户 ${customerForm.name}（${customerForm.phone}）添加成功`,
-            {
-              relatedId: customerData.phone,
-              relatedType: 'customer',
-              actionUrl: '/customer/list'
-            }
-          )
-        }
-
-        console.log('=== 保存客户完成 ===')
+      if (existsResponse.data) {
+        const existingCustomer = existsResponse.data
+        console.log('客户已存在，抛出错误:', existingCustomer)
+        throw new Error(`手机号 ${customerForm.phone} 已存在，客户姓名：${existingCustomer.name}`)
       }
-    }, isEdit.value ? '正在更新客户信息...' : '正在添加客户...')
+
+      console.log('✅ 检查通过，客户不存在，继续保存')
+
+      // 构建完整地址
+      const fullAddress = customerForm.isOverseas
+        ? customerForm.overseasAddress
+        : [
+            customerForm.province,
+            customerForm.city,
+            customerForm.district,
+            customerForm.street,
+            customerForm.detailAddress
+          ].filter(Boolean).join(' ')
+
+      const customerData = {
+        name: customerForm.name,
+        phone: customerForm.phone,
+        age: customerForm.age || 0,
+        address: fullAddress,
+        province: customerForm.province,
+        city: customerForm.city,
+        district: customerForm.district,
+        street: customerForm.street,
+        detailAddress: customerForm.detailAddress,
+        overseasAddress: customerForm.overseasAddress,
+        level: customerForm.level as 'normal' | 'silver' | 'gold',
+        status: customerForm.status as 'active' | 'inactive' | 'potential' | 'lost' | 'blacklist',
+        salesPersonId: userStore.currentUser?.id || 'admin',
+        createdBy: userStore.currentUser?.id || 'admin',
+        wechat: customerForm.wechat,
+        wechatId: customerForm.wechat,
+        email: customerForm.email,
+        fanAcquisitionTime: customerForm.fanAcquisitionTime,
+        company: '',
+        position: '',
+        source: customerForm.source,
+        tags: customerForm.tags,
+        remarks: customerForm.remark,
+        remark: customerForm.remark,
+        height: customerForm.height,
+        weight: customerForm.weight,
+        gender: customerForm.gender,
+        medicalHistory: customerForm.medicalHistory,
+        improvementGoals: customerForm.improvementGoals,
+        otherGoals: customerForm.otherGoals
+      }
+
+      console.log('准备保存的客户数据:', customerData)
+
+      // 🔥 调用API保存客户到数据库
+      console.log('=== 调用 customerApi.create() 保存客户到数据库 ===')
+
+      const apiResult = await customerApi.create(customerData as any)
+      console.log('API响应:', apiResult)
+
+      if (!apiResult.success) {
+        console.error('❌ API保存失败:', apiResult.message)
+        throw new Error(apiResult.message || 'API请求失败，客户未写入数据库')
+      }
+
+      // 验证返回的数据
+      if (apiResult.data && apiResult.data.id) {
+        console.log('✅ 客户已成功写入数据库!')
+        console.log('✅ 客户ID:', apiResult.data.id)
+        console.log('✅ 客户姓名:', apiResult.data.name)
+        console.log('✅ 客户手机:', apiResult.data.phone)
+      } else {
+        console.warn('⚠️ API返回成功但没有返回客户ID，可能保存失败')
+        throw new Error('保存失败：服务器未返回客户ID')
+      }
+
+      console.log('=== 客户保存到数据库完成 ===')
+
+      // 发送客户添加成功的消息提醒
+      notificationStore.sendMessage(
+        notificationStore.MessageType.CUSTOMER_CREATED,
+        `客户 ${customerForm.name}（${customerForm.phone}）添加成功`,
+        {
+          relatedId: apiResult.data.id,
+          relatedType: 'customer',
+          actionUrl: '/customer/list'
+        }
+      )
+    }
 
     // 🔥 确保API成功后才显示成功消息和跳转
     console.log('✅ 客户保存流程全部完成，准备跳转')
 
-    // 显示成功消息，让用户确认保存成功
+    // 显示成功消息
     ElMessage.success({
-      message: isEdit.value ? '客户信息更新成功，正在跳转...' : '客户添加成功，正在跳转到列表...',
+      message: isEdit.value ? '客户信息更新成功' : '客户添加成功，即将跳转到列表...',
       duration: 2000
     })
 
-    // 延迟500ms确保用户看到成功提示，然后跳转
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // 延迟1秒确保用户看到成功提示，然后跳转（参考商品新增的1秒延迟）
+    console.log('等待1秒后跳转...')
+    await new Promise(resolve => setTimeout(resolve, 1000))
 
     // 跳转到客户列表，带上refresh参数强制刷新
     console.log('🚀 跳转到客户列表页面')
     safeNavigator.push('/customer/list?refresh=true')
+
   } catch (error) {
-    console.error('保存客户失败:', error)
-    appStore.showError({
-      title: isEdit.value ? '更新客户信息失败' : '添加客户失败',
-      message: error instanceof Error ? error.message : String(error)
+    console.error('❌ 保存客户失败:', error)
+    ElMessage.error({
+      message: error instanceof Error ? error.message : '添加客户失败',
+      duration: 3000
     })
+  } finally {
+    loading.value = false
   }
 }
 
