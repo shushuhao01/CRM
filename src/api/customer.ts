@@ -140,16 +140,32 @@ export const customerApi = {
 
   // 创建客户
   create: async (data: Omit<Customer, 'id' | 'createTime' | 'orderCount'>) => {
+    // 🔥 直接检查hostname判断环境，不依赖其他函数
+    const hostname = window.location.hostname
+    const isProdEnv = !(
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.includes('192.168') ||
+      hostname.includes('dev.') ||
+      hostname.includes('test.')
+    )
+
+    console.log('[customerApi.create] hostname:', hostname, ', isProdEnv:', isProdEnv)
+
     // 生产环境：强制使用真实API
-    if (isProduction()) {
+    if (isProdEnv) {
+      console.log('[customerApi.create] 🌐 生产环境：调用真实API创建客户')
       return api.post<Customer>(API_ENDPOINTS.CUSTOMERS.CREATE, data)
     }
 
     // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
+      console.log('[customerApi.create] 💻 开发环境：使用Mock API')
       const customer = await mockApi.createCustomer(data)
       return { data: customer, code: 200, message: 'success', success: true }
     }
+
+    console.log('[customerApi.create] 💻 开发环境：调用真实API')
     return api.post<Customer>(API_ENDPOINTS.CUSTOMERS.CREATE, data)
   },
 
