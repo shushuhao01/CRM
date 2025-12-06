@@ -237,6 +237,30 @@ CREATE TABLE `customer_shares` (
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户分享表';
 
+-- 6.2 客户分配历史表
+DROP TABLE IF EXISTS `customer_assignments`;
+CREATE TABLE `customer_assignments` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '分配ID',
+  `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
+  `customer_name` VARCHAR(100) NULL COMMENT '客户姓名',
+  `from_user_id` VARCHAR(50) NULL COMMENT '原归属人ID',
+  `from_user_name` VARCHAR(50) NULL COMMENT '原归属人姓名',
+  `to_user_id` VARCHAR(50) NOT NULL COMMENT '新归属人ID',
+  `to_user_name` VARCHAR(50) NULL COMMENT '新归属人姓名',
+  `assignment_type` VARCHAR(20) DEFAULT 'manual' COMMENT '分配类型: manual手动, auto自动, transfer转移',
+  `reason` VARCHAR(500) NULL COMMENT '分配原因',
+  `remark` TEXT NULL COMMENT '备注',
+  `operator_id` VARCHAR(50) NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(50) NULL COMMENT '操作人姓名',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `idx_customer` (`customer_id`),
+  INDEX `idx_from_user` (`from_user_id`),
+  INDEX `idx_to_user` (`to_user_id`),
+  INDEX `idx_operator` (`operator_id`),
+  INDEX `idx_type` (`assignment_type`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户分配历史表';
+
 -- 7. 产品分类表
 DROP TABLE IF EXISTS `product_categories`;
 CREATE TABLE `product_categories` (
