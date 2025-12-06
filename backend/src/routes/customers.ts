@@ -1273,7 +1273,7 @@ router.delete('/:id/tags/:tagId', async (req: Request, res: Response) => {
     if (!customer) {
       return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
     }
-    customer.tags = (customer.tags || []).filter((tag: unknown) => tag.id !== req.params.tagId);
+    customer.tags = (customer.tags || []).filter((tag: any) => tag.id !== req.params.tagId);
     await customerRepository.save(customer);
     res.json({ success: true, code: 200, message: '删除成功' });
   } catch (error) {

@@ -210,6 +210,33 @@ CREATE TABLE `customer_groups` (
   INDEX `idx_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户分组表';
 
+-- 6.1 客户分享表
+DROP TABLE IF EXISTS `customer_shares`;
+CREATE TABLE `customer_shares` (
+  `id` CHAR(36) PRIMARY KEY COMMENT '分享ID(UUID)',
+  `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
+  `customer_name` VARCHAR(100) NOT NULL COMMENT '客户姓名',
+  `shared_by` VARCHAR(50) NOT NULL COMMENT '分享人ID',
+  `shared_by_name` VARCHAR(50) NOT NULL COMMENT '分享人姓名',
+  `shared_to` VARCHAR(50) NOT NULL COMMENT '接收人ID',
+  `shared_to_name` VARCHAR(50) NOT NULL COMMENT '接收人姓名',
+  `time_limit` INT DEFAULT 0 COMMENT '时间限制(天,0表示永久)',
+  `expire_time` TIMESTAMP NULL COMMENT '过期时间',
+  `remark` VARCHAR(500) NULL COMMENT '备注',
+  `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态: active活跃, expired已过期, recalled已回收',
+  `recall_time` TIMESTAMP NULL COMMENT '回收时间',
+  `recall_reason` VARCHAR(500) NULL COMMENT '回收原因',
+  `original_owner` VARCHAR(50) NULL COMMENT '原归属人ID',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_customer` (`customer_id`),
+  INDEX `idx_shared_by` (`shared_by`),
+  INDEX `idx_shared_to` (`shared_to`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_expire_time` (`expire_time`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户分享表';
+
 -- 7. 产品分类表
 DROP TABLE IF EXISTS `product_categories`;
 CREATE TABLE `product_categories` (
