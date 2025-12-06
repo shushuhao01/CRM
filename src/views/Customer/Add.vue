@@ -1012,47 +1012,44 @@ const handleSubmit = async () => {
 
         console.log('准备保存的客户数据:', customerData)
 
-        // 使用customer store保存数据，确保数据正确写入
-        console.log('=== 开始保存客户到CustomerStore ===')
-        console.log('保存前CustomerStore中的客户数量:', customerStore.customers.length)
-        console.log('准备保存的客户数据:', customerData)
+        // 🔥 最简单直接的方法：直接调用API，绕过所有中间层
+        console.log('=== 直接调用API保存客户 ===')
+        const token = localStorage.getItem('auth_token')
+        console.log('使用的token:', token ? token.substring(0, 20) + '...' : 'null')
 
-        const result = await customerStore.createCustomer(customerData)
-        console.log('createCustomer返回结果:', result)
-        console.log('保存后CustomerStore中的客户数量:', customerStore.customers.length)
+        const apiResponse = await fetch('/api/v1/customers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(customerData)
+        })
 
-        // 验证数据是否真正保存成功
-        const savedCustomer = customerStore.customers.find(c => c.phone === customerData.phone)
-        if (!savedCustomer) {
-          console.error('❌ 严重错误：客户数据保存失败！')
-          console.error('CustomerStore.customers:', customerStore.customers)
-          throw new Error('客户数据保存失败，请重试')
+        console.log('API响应状态:', apiResponse.status)
+        const apiResult = await apiResponse.json()
+        console.log('API响应内容:', apiResult)
+
+        if (!apiResponse.ok || !apiResult.success) {
+          throw new Error(apiResult.message || `API请求失败: ${apiResponse.status}`)
         }
-        console.log('✅ 验证保存成功，找到客户:', savedCustomer.name)
 
-        // 再次验证localStorage中的数据
-        const storedData = localStorage.getItem('crm_store_customer')
-        if (storedData) {
-          const data = JSON.parse(storedData)
-          // 🔥 批次262修复：createPersistentStore保存的数据格式是 { data: {...}, version, timestamp }
-          // 所以需要访问 data.data.customers 而不是 data.customers
-          const customers = data.data?.customers || data.customers || []
-          console.log('localStorage中客户数量:', customers.length)
-
-          const storedCustomer = customers.find((c: any) => c.phone === customerData.phone)
-          if (storedCustomer) {
-            console.log('✅ localStorage验证成功，客户已保存:', storedCustomer.name)
-          } else {
-            console.error('❌ localStorage验证失败，客户未找到')
-            console.error('localStorage中的客户:', customers.map((c: unknown) => ({ 姓名: c.name, 电话: c.phone })))
-            throw new Error('客户数据未成功保存到localStorage')
-          }
+        // 如果API返回了客户数据，更新本地store
+        if (apiResult.data) {
+          console.log('✅ API保存成功，客户数据:', apiResult.data)
+          // 更新本地store（用于前端缓存）
+          customerStore.customers.unshift(apiResult.data)
+          console.log('✅ 客户已添加到本地store，当前客户数量:', customerStore.customers.length)
         } else {
-          console.error('❌ localStorage中没有数据')
-          throw new Error('localStorage保存失败')
+          console.warn('⚠️ API返回成功但没有客户数据')
         }
 
-        console.log('=== 客户保存到CustomerStore完成 ===')
+        const savedCustomer = apiResult.data
+        console.log('✅ 客户保存成功:', savedCustomer?.name || '未知')
+        console.log('✅ 客户ID:', savedCustomer?.id || '未知')
+
+        // 注意：生产环境数据保存在服务器数据库，不需要验证localStorage
+        console.log('=== 客户保存到数据库完成 ===')
 
         // 发送客户添加成功的消息提醒
         if (!isEdit.value) {
@@ -1073,19 +1070,8 @@ const handleSubmit = async () => {
 
     ElMessage.success(isEdit.value ? '客户信息更新成功' : '客户添加成功')
 
-    // 🔥 批次262修复：createPersistentStore会自动保存，无需手动调用
-    // 等待一下确保数据保存完成
-    await new Promise(resolve => setTimeout(resolve, 300))
-    console.log('✅ 数据保存完成')
-
-    // 最终验证localStorage中的数据
-    const finalCheck = localStorage.getItem('crm_store_customer')
-    if (finalCheck) {
-      const data = JSON.parse(finalCheck)
-      // 🔥 批次262修复：正确访问customers数组
-      const customers = data.data?.customers || data.customers || []
-      console.log('✅ 最终验证：localStorage中有', customers.length, '个客户')
-    }
+    // 短暂延迟确保UI更新
+    await new Promise(resolve => setTimeout(resolve, 100))
 
     // 跳转到客户列表，带上refresh参数强制刷新
     safeNavigator.push('/customer/list?refresh=true')
