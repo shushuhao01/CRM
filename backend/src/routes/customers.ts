@@ -343,10 +343,15 @@ router.post('/', async (req: Request, res: Response) => {
     console.log('[创建客户] 准备保存的客户对象:', customer);
 
     const savedCustomer = await customerRepository.save(customer);
+    console.log('[创建客户] 第一次保存完成，savedCustomer:', savedCustomer);
+    console.log('[创建客户] savedCustomer.id:', savedCustomer.id);
 
     // 生成客户编号
     savedCustomer.customerNo = `C${savedCustomer.id.substring(0, 8).toUpperCase()}`;
+    console.log('[创建客户] 生成的客户编号:', savedCustomer.customerNo);
+
     await customerRepository.save(savedCustomer);
+    console.log('[创建客户] 第二次保存完成');
 
     console.log('[创建客户] 保存成功，客户ID:', savedCustomer.id);
 
@@ -383,14 +388,21 @@ router.post('/', async (req: Request, res: Response) => {
       otherGoals: savedCustomer.otherGoals || ''
     };
 
+    console.log('[创建客户] 准备返回的data对象:', data);
+    console.log('[创建客户] data.id:', data.id);
+    console.log('[创建客户] data.name:', data.name);
+
     res.status(201).json({
       success: true,
       code: 200,
       message: '创建客户成功',
       data
     });
+
+    console.log('[创建客户] 响应已发送');
   } catch (error) {
-    console.error('创建客户失败:', error);
+    console.error('[创建客户] 创建客户失败:', error);
+    console.error('[创建客户] 错误详情:', error instanceof Error ? error.stack : error);
     res.status(500).json({
       success: false,
       code: 500,
