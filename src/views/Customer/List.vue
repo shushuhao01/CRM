@@ -1601,13 +1601,21 @@ const loadCustomerList = async (forceReload = false) => {
   try {
     loading.value = true
 
-    // 【关键修复】智能加载：生产环境从API加载，开发环境使用本地数据
-    const { isProduction } = await import('@/utils/env')
-    const { shouldUseMockApi } = await import('@/api/mock')
+    // 🔥 直接检查hostname判断环境，不依赖任何其他函数
+    const hostname = window.location.hostname
+    const isProdEnv = !(
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.includes('192.168') ||
+      hostname.includes('dev.') ||
+      hostname.includes('test.')
+    )
 
-    // 生产环境或配置了API地址时，从API加载数据
-    if (isProduction() || !shouldUseMockApi()) {
-      console.log('[CustomerList] 🌐 生产环境：从API加载客户数据')
+    console.log('[CustomerList] hostname:', hostname, ', isProdEnv:', isProdEnv)
+
+    // 🔥 生产环境强制从API加载数据
+    if (isProdEnv) {
+      console.log('[CustomerList] 🌐 生产环境：强制从API加载客户数据')
       await customerStore.loadCustomers()
     } else {
       console.log('[CustomerList] 💻 开发环境：使用本地客户数据')
