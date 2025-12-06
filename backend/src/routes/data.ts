@@ -1,234 +1,250 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
+import { AppDataSource } from '../config/database';
+import { Customer } from '../entities/Customer';
+import { User } from '../entities/User';
+import { Like, Not, IsNull } from 'typeorm';
 
 const router = Router();
 
-// 所有数据路由都需要认证
 router.use(authenticateToken);
 
 /**
  * @route GET /api/v1/data/list
- * @desc 获取数据列表
- * @access Private
+ * @desc 获取数据列表（客户数据）
  */
 router.get('/list', async (req: Request, res: Response) => {
   try {
-    const { page = 1, pageSize = 20, status, keyword, assigneeId, dateRange } = req.query;
+    const { page = 1, pageSize = 20, status, keyword, assigneeId } = req.query;
+    const currentUser = (req as any).user;
+    const customerRepository = AppDataSource.getRepository(Customer);
+
+    const queryBuilder = customerRepository.createQueryBuilder('customer');
+
+    // 数据权限过滤
+    const role = currentUser?.role || '';
+    const allowAllRoles = ['super_admin', 'superadmin', 'admin'];
+    if (!allowAllRoles.includes(role)) {
+      if (role === 'manager' || role === 'department_manager') {
+        // 经理看本部门的
+      } else {
+        // 销售员只看自己的
+        queryBuilder.andWhere('customer.salesPersonId = :userId', {
+          userId: currentUser?.userId
+        });
+      }
+    }
+
+    if (status) {
+      queryBuilder.andWhere('customer.status = :status', { status });
+    }
+
+    if (keyword) {
+      queryBuilder.andWhere(
+        '(customer.name LIKE :keyword OR customer.phone LIKE :keyword OR customer.customerCode LIKE :keyword)',
+        { keyword: `%${keyword}%` }
+      );
+    }
+
+    if (assigneeId) {
+      queryBuilder.andWhere('customer.salesPersonId = :assigneeId', { assigneeId });
+    }
+
+    queryBuilder.orderBy('customer.createdAt', 'DESC');
+    queryBuilder.skip((Number(page) - 1) * Number(pageSize));
+    queryBuilder.take(Number(pageSize));
+
+    const [list, total] = await queryBuilder.getManyAndCount();
 
     res.json({
       success: true,
-      data: {
-        list: [],
-        total: 0,
-        page: Number(page),
-        pageSize: Number(pageSize)
-      }
+      data: { list, total, page: Number(page), pageSize: Number(pageSize) }
     });
   } catch (error) {
     console.error('获取数据列表失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取数据列表失败'
-    });
+    res.status(500).json({ success: false, message: '获取数据列表失败' });
   }
 });
+
 
 /**
  * @route POST /api/v1/data/batch-assign
  * @desc 批量分配数据
- * @access Private
  */
 router.post('/batch-assign', async (req: Request, res: Response) => {
   try {
-    const { dataIds, assigneeId, remark } = req.body;
+    const { dataIds, assigneeId } = req.body;
+
+    if (!dataIds || dataIds.length === 0 || !assigneeId) {
+      return res.status(400).json({ success: false, message: '参数不完整' });
+    }
+
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const userRepository = AppDataSource.getRepository(User);
+
+    const assignee = await userRepository.findOne({ where: { id: assigneeId } });
+    if (!assignee) {
+      return res.status(404).json({ success: false, message: '分配人不存在' });
+    }
+
+    let successCount = 0;
+    for (const id of dataIds) {
+      try {
+        const customer = await customerRepository.findOne({ where: { id } });
+        if (customer) {
+          customer.salesPersonId = assigneeId;
+          customer.salesPersonName = assignee.realName || assignee.username;
+          await customerRepository.save(customer);
+          successCount++;
+        }
+      } catch (e) {
+        console.error('分配单条数据失败:', e);
+      }
+    }
 
     res.json({
       success: true,
       message: '分配成功',
-      data: {
-        successCount: dataIds?.length || 0,
-        failCount: 0
-      }
+      data: { successCount, failCount: dataIds.length - successCount }
     });
   } catch (error) {
     console.error('批量分配失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '批量分配失败'
-    });
+    res.status(500).json({ success: false, message: '批量分配失败' });
   }
 });
 
 /**
  * @route POST /api/v1/data/batch-archive
  * @desc 批量归档数据
- * @access Private
  */
 router.post('/batch-archive', async (req: Request, res: Response) => {
   try {
-    const { dataIds, reason } = req.body;
+    const { dataIds } = req.body;
+
+    if (!dataIds || dataIds.length === 0) {
+      return res.status(400).json({ success: false, message: '参数不完整' });
+    }
+
+    const customerRepository = AppDataSource.getRepository(Customer);
+    let successCount = 0;
+
+    for (const id of dataIds) {
+      try {
+        const customer = await customerRepository.findOne({ where: { id } });
+        if (customer) {
+          customer.status = 'archived';
+          await customerRepository.save(customer);
+          successCount++;
+        }
+      } catch (e) {
+        console.error('归档单条数据失败:', e);
+      }
+    }
 
     res.json({
       success: true,
       message: '归档成功',
-      data: {
-        successCount: dataIds?.length || 0,
-        failCount: 0
-      }
+      data: { successCount, failCount: dataIds.length - successCount }
     });
   } catch (error) {
     console.error('批量归档失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '批量归档失败'
-    });
+    res.status(500).json({ success: false, message: '批量归档失败' });
   }
 });
 
 /**
  * @route POST /api/v1/data/recover
  * @desc 恢复数据
- * @access Private
  */
 router.post('/recover', async (req: Request, res: Response) => {
   try {
     const { dataIds } = req.body;
 
+    if (!dataIds || dataIds.length === 0) {
+      return res.status(400).json({ success: false, message: '参数不完整' });
+    }
+
+    const customerRepository = AppDataSource.getRepository(Customer);
+    let successCount = 0;
+
+    for (const id of dataIds) {
+      try {
+        const customer = await customerRepository.findOne({ where: { id } });
+        if (customer) {
+          customer.status = 'active';
+          await customerRepository.save(customer);
+          successCount++;
+        }
+      } catch (e) {
+        console.error('恢复单条数据失败:', e);
+      }
+    }
+
     res.json({
       success: true,
       message: '恢复成功',
-      data: {
-        successCount: dataIds?.length || 0,
-        failCount: 0
-      }
+      data: { successCount, failCount: dataIds.length - successCount }
     });
   } catch (error) {
     console.error('恢复数据失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '恢复数据失败'
-    });
-  }
-});
-
-/**
- * @route POST /api/v1/data/delete
- * @desc 删除数据
- * @access Private
- */
-router.post('/delete', async (req: Request, res: Response) => {
-  try {
-    const { dataIds } = req.body;
-
-    res.json({
-      success: true,
-      message: '删除成功',
-      data: {
-        successCount: dataIds?.length || 0,
-        failCount: 0
-      }
-    });
-  } catch (error) {
-    console.error('删除数据失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '删除数据失败'
-    });
+    res.status(500).json({ success: false, message: '恢复数据失败' });
   }
 });
 
 /**
  * @route GET /api/v1/data/assignee-options
  * @desc 获取分配人选项
- * @access Private
  */
-router.get('/assignee-options', async (_req: Request, res: Response) => {
+router.get('/assignee-options', async (req: Request, res: Response) => {
   try {
-    res.json({
-      success: true,
-      data: []
+    const userRepository = AppDataSource.getRepository(User);
+    const users = await userRepository.find({
+      where: { status: 'active' },
+      select: ['id', 'username', 'realName', 'departmentName', 'position']
     });
+
+    const options = users.map(u => ({
+      id: u.id,
+      name: u.realName || u.username,
+      department: u.departmentName,
+      position: u.position
+    }));
+
+    res.json({ success: true, data: options });
   } catch (error) {
     console.error('获取分配人选项失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取分配人选项失败'
-    });
-  }
-});
-
-/**
- * @route GET /api/v1/data/search-customer
- * @desc 搜索客户
- * @access Private
- */
-router.get('/search-customer', async (req: Request, res: Response) => {
-  try {
-    const { keyword, page = 1, pageSize = 20 } = req.query;
-
-    res.json({
-      success: true,
-      data: {
-        list: [],
-        total: 0,
-        page: Number(page),
-        pageSize: Number(pageSize)
-      }
-    });
-  } catch (error) {
-    console.error('搜索客户失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '搜索客户失败'
-    });
+    res.status(500).json({ success: false, message: '获取分配人选项失败' });
   }
 });
 
 /**
  * @route GET /api/v1/data/statistics
  * @desc 获取数据统计
- * @access Private
  */
-router.get('/statistics', async (_req: Request, res: Response) => {
+router.get('/statistics', async (req: Request, res: Response) => {
   try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+
+    const totalCount = await customerRepository.count();
+    const assignedCount = await customerRepository.count({
+      where: { salesPersonId: Not(IsNull()) } as any
+    });
+    const archivedCount = await customerRepository.count({
+      where: { status: 'archived' }
+    });
+
     res.json({
       success: true,
       data: {
-        totalCount: 0,
-        assignedCount: 0,
-        unassignedCount: 0,
-        archivedCount: 0
+        totalCount,
+        assignedCount,
+        unassignedCount: totalCount - assignedCount,
+        archivedCount
       }
     });
   } catch (error) {
     console.error('获取数据统计失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取数据统计失败'
-    });
-  }
-});
-
-/**
- * @route GET /api/v1/data/export
- * @desc 导出数据
- * @access Private
- */
-router.get('/export', async (_req: Request, res: Response) => {
-  try {
-    res.json({
-      success: true,
-      data: {
-        url: '',
-        filename: 'data_export.xlsx'
-      }
-    });
-  } catch (error) {
-    console.error('导出数据失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '导出数据失败'
-    });
+    res.status(500).json({ success: false, message: '获取数据统计失败' });
   }
 });
 
