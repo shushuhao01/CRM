@@ -314,14 +314,9 @@ export const request = async <T = unknown>(
       }
     }
 
-    // 如果没有匹配的Mock路由，返回错误
-    console.warn(`Mock API: 未找到匹配的路由 ${method}:${endpoint}`)
-    return {
-      code: 404,
-      message: `Mock API: 未找到匹配的路由 ${method}:${endpoint}`,
-      data: null,
-      success: false
-    }
+    // 🔥 如果没有匹配的Mock路由，继续调用真实API（不再返回错误）
+    console.log(`Mock API: 未找到匹配的路由 ${method}:${endpoint}，将调用真实API`)
+    // 不返回错误，继续执行下面的真实API调用逻辑
   }
 
   // 构建请求头
