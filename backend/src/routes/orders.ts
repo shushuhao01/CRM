@@ -49,18 +49,18 @@ router.get('/', async (req: Request, res: Response) => {
 
     // 日期范围筛选
     if (startDate) {
-      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate });
+      queryBuilder.andWhere('order.created_at >= :startDate', { startDate });
     }
     if (endDate) {
-      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate });
+      queryBuilder.andWhere('order.created_at <= :endDate', { endDate });
     }
 
     // 分页
     const skip = (Number(page) - 1) * Number(pageSize);
     queryBuilder.skip(skip).take(Number(pageSize));
 
-    // 排序
-    queryBuilder.orderBy('order.createdAt', 'DESC');
+    // 排序 - 使用数据库字段名
+    queryBuilder.orderBy('order.created_at', 'DESC');
 
     const [orders, total] = await queryBuilder.getManyAndCount();
 
@@ -775,7 +775,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
 
     // 今日订单数
     const todayCount = await orderRepository.createQueryBuilder('order')
-      .where('order.createdAt >= :today', { today })
+      .where('order.created_at >= :today', { today })
       .getCount();
 
     // 待处理订单金额
