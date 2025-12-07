@@ -17,6 +17,7 @@ router.use(authenticateToken);
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
+    console.log('📋 [订单列表] 收到请求');
     const {
       page = 1,
       pageSize = 20,
@@ -74,6 +75,7 @@ router.get('/', async (req: Request, res: Response) => {
     params.push(Number(pageSize), skip);
 
     const orders = await AppDataSource.query(sql, params);
+    console.log(`📋 [订单列表] 查询到 ${orders.length} 条订单, 总数: ${total}`);
 
     // 转换为前端需要的格式（原生SQL返回的是下划线字段名）
     const formattedOrders = orders.map((order: Record<string, unknown>) => {
@@ -110,6 +112,7 @@ router.get('/', async (req: Request, res: Response) => {
       };
     });
 
+    console.log(`📋 [订单列表] 返回 ${formattedOrders.length} 条格式化订单`);
     res.json({
       success: true,
       data: {
@@ -120,7 +123,7 @@ router.get('/', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取订单列表失败:', error);
+    console.error('❌ [订单列表] 获取失败:', error);
     res.status(500).json({
       success: false,
       message: '获取订单列表失败',
