@@ -101,6 +101,24 @@ export class Order {
   @Column({ name: 'cancel_reason', type: 'text', nullable: true, comment: '取消原因' })
   cancelReason?: string;
 
+  @Column({ name: 'refund_amount', type: 'decimal', precision: 10, scale: 2, nullable: true, comment: '退款金额' })
+  refundAmount?: number;
+
+  @Column({ name: 'refund_reason', type: 'text', nullable: true, comment: '退款原因' })
+  refundReason?: string;
+
+  @Column({ name: 'refund_time', type: 'datetime', nullable: true, comment: '退款时间' })
+  refundTime?: Date;
+
+  @Column({ name: 'invoice_type', length: 50, nullable: true, comment: '发票类型' })
+  invoiceType?: string;
+
+  @Column({ name: 'invoice_title', length: 200, nullable: true, comment: '发票抬头' })
+  invoiceTitle?: string;
+
+  @Column({ name: 'invoice_number', length: 100, nullable: true, comment: '发票号码' })
+  invoiceNumber?: string;
+
   @Column({ name: 'mark_type', length: 20, default: 'normal', comment: '订单标记类型' })
   markType?: string;
 
@@ -109,6 +127,12 @@ export class Order {
 
   @Column({ type: 'text', nullable: true, comment: '订单备注' })
   remark?: string;
+
+  @Column({ name: 'operator_id', type: 'varchar', length: 50, nullable: true, comment: '操作员ID' })
+  operatorId?: string;
+
+  @Column({ name: 'operator_name', length: 50, nullable: true, comment: '操作员姓名' })
+  operatorName?: string;
 
   @Column({ name: 'created_by', type: 'varchar', length: 50, nullable: true, comment: '创建人ID' })
   createdBy?: string;
