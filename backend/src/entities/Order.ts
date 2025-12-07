@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, BeforeInsert, BeforeUpdate } from 'typeorm';
 import { Customer } from './Customer';
 import { OrderItem } from './OrderItem';
 import { OrderStatusHistory } from './OrderStatusHistory';
@@ -116,11 +116,22 @@ export class Order {
   @Column({ name: 'created_by_name', length: 50, nullable: true, comment: '创建人姓名' })
   createdByName?: string;
 
-  @CreateDateColumn({ name: 'created_at', type: 'datetime', comment: '创建时间' })
+  @Column({ name: 'created_at', type: 'datetime', nullable: true, comment: '创建时间' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'datetime', comment: '更新时间' })
+  @Column({ name: 'updated_at', type: 'datetime', nullable: true, comment: '更新时间' })
   updatedAt: Date;
+
+  @BeforeInsert()
+  setCreatedAt() {
+    this.createdAt = new Date();
+    this.updatedAt = new Date();
+  }
+
+  @BeforeUpdate()
+  setUpdatedAt() {
+    this.updatedAt = new Date();
+  }
 
   // 关联关系
   @ManyToOne(() => Customer, customer => customer.orders)
