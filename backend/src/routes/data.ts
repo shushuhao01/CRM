@@ -4,7 +4,6 @@ import { AppDataSource } from '../config/database';
 import { Customer } from '../entities/Customer';
 import { User } from '../entities/User';
 import { Not, IsNull } from 'typeorm';
-import '../types/express';
 
 const router = Router();
 
