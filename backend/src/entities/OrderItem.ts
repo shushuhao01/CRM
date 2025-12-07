@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, BeforeInsert, BeforeUpdate } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { Order } from './Order';
 import { Product } from './Product';
 
@@ -7,19 +7,19 @@ export class OrderItem {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'order_id', type: 'varchar', length: 50, comment: '订单ID' })
+  @Column({ type: 'varchar', length: 50, comment: '订单ID' })
   orderId: string;
 
-  @Column({ name: 'product_id', type: 'varchar', length: 50, comment: '产品ID' })
+  @Column({ type: 'varchar', length: 50, comment: '产品ID' })
   productId: string;
 
-  @Column({ name: 'product_name', length: 100, comment: '产品名称（快照）' })
+  @Column({ length: 100, comment: '产品名称（快照）' })
   productName: string;
 
-  @Column({ name: 'product_sku', length: 50, nullable: true, comment: '产品SKU（快照）' })
+  @Column({ length: 50, nullable: true, comment: '产品SKU（快照）' })
   productSku: string;
 
-  @Column({ name: 'unit_price', type: 'decimal', precision: 10, scale: 2, comment: '单价（快照）' })
+  @Column({ type: 'decimal', precision: 10, scale: 2, comment: '单价（快照）' })
   unitPrice: number;
 
   @Column({ type: 'int', comment: '数量' })
@@ -28,28 +28,11 @@ export class OrderItem {
   @Column({ type: 'decimal', precision: 10, scale: 2, comment: '小计金额' })
   subtotal: number;
 
-  @Column({ name: 'discount_amount', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '优惠金额' })
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, comment: '优惠金额' })
   discountAmount: number;
 
   @Column({ type: 'text', nullable: true, comment: '备注' })
   notes?: string;
-
-  @Column({ name: 'created_at', type: 'datetime', nullable: true, comment: '创建时间' })
-  createdAt: Date;
-
-  @Column({ name: 'updated_at', type: 'datetime', nullable: true, comment: '更新时间' })
-  updatedAt: Date;
-
-  @BeforeInsert()
-  setCreatedAt() {
-    this.createdAt = new Date();
-    this.updatedAt = new Date();
-  }
-
-  @BeforeUpdate()
-  setUpdatedAt() {
-    this.updatedAt = new Date();
-  }
 
   // 关联关系
   @ManyToOne(() => Order, order => order.orderItems)
