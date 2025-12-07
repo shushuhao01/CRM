@@ -297,6 +297,7 @@ router.get('/search', async (req: Request, res: Response) => {
       );
       if (salesPersonResult && salesPersonResult.length > 0) {
         const salesPerson = salesPersonResult[0];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (customer as any).salesPersonInfo = {
           id: salesPerson.id,
           name: salesPerson.real_name || salesPerson.username,
