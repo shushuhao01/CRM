@@ -29,7 +29,7 @@ router.put('/tracking/:id', (req, res) => logisticsController.updateLogisticsSta
 // 获取用户物流权限
 router.get('/permission', (req: Request, res: Response) => {
   try {
-    const user = (req as unknown).user;
+    const user = (req as any).user;
 
     // 根据用户角色返回权限信息
     const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
