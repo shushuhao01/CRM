@@ -16,8 +16,6 @@ router.use(authenticateToken);
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
-
     const {
       page = 1,
       pageSize = 20,
@@ -28,70 +26,88 @@ router.get('/', async (req: Request, res: Response) => {
       endDate
     } = req.query;
 
-    const queryBuilder = orderRepository.createQueryBuilder('order')
-      .leftJoinAndSelect('order.customer', 'customer')
-      .leftJoinAndSelect('order.orderItems', 'orderItems');
+    // 使用原生SQL查询，避免TypeORM字段映射问题
+    let sql = `SELECT o.*, c.name as customer_name_joined, c.phone as customer_phone_joined
+               FROM orders o
+               LEFT JOIN customers c ON o.customer_id = c.id
+               WHERE 1=1`;
+    const params: (string | number)[] = [];
 
     // 状态筛选
     if (status) {
-      queryBuilder.andWhere('order.status = :status', { status });
+      sql += ` AND o.status = ?`;
+      params.push(String(status));
     }
 
     // 订单号筛选
     if (orderNumber) {
-      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+      sql += ` AND o.order_number LIKE ?`;
+      params.push(`%${orderNumber}%`);
     }
 
     // 客户名称筛选
     if (customerName) {
-      queryBuilder.andWhere('customer.name LIKE :customerName', { customerName: `%${customerName}%` });
+      sql += ` AND (o.customer_name LIKE ? OR c.name LIKE ?)`;
+      params.push(`%${customerName}%`, `%${customerName}%`);
     }
 
     // 日期范围筛选
     if (startDate) {
-      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate });
+      sql += ` AND o.created_at >= ?`;
+      params.push(String(startDate));
     }
     if (endDate) {
-      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate });
+      sql += ` AND o.created_at <= ?`;
+      params.push(String(endDate));
     }
 
-    // 分页
+    // 获取总数
+    const countSql = sql.replace(/SELECT o\.\*, c\.name as customer_name_joined, c\.phone as customer_phone_joined/, 'SELECT COUNT(*) as total');
+    const countResult = await AppDataSource.query(countSql, params);
+    const total = countResult[0]?.total || 0;
+
+    // 排序和分页
+    sql += ` ORDER BY o.created_at DESC`;
     const skip = (Number(page) - 1) * Number(pageSize);
-    queryBuilder.skip(skip).take(Number(pageSize));
+    sql += ` LIMIT ? OFFSET ?`;
+    params.push(Number(pageSize), skip);
 
-    // 排序 - 使用实体属性名
-    queryBuilder.orderBy('order.createdAt', 'DESC');
+    const orders = await AppDataSource.query(sql, params);
 
-    const [orders, total] = await queryBuilder.getManyAndCount();
+    // 转换为前端需要的格式（原生SQL返回的是下划线字段名）
+    const formattedOrders = orders.map((order: Record<string, unknown>) => {
+      // 解析products JSON字段
+      let products: unknown[] = [];
+      if (order.products) {
+        try {
+          products = typeof order.products === 'string' ? JSON.parse(order.products) : order.products;
+        } catch {
+          products = [];
+        }
+      }
 
-    // 转换为前端需要的格式
-    const formattedOrders = orders.map(order => ({
-      id: order.id.toString(),
-      orderNumber: order.orderNumber,
-      customerId: order.customerId?.toString() || '',
-      customerName: order.customer?.name || '',
-      customerPhone: order.customer?.phone || '',
-      products: order.orderItems?.map(item => ({
-        id: item.id.toString(),
-        name: item.productName,
-        price: Number(item.unitPrice),
-        quantity: item.quantity,
-        total: Number(item.subtotal)
-      })) || [],
-      totalAmount: Number(order.totalAmount),
-      depositAmount: Number(order.depositAmount) || 0,
-      collectAmount: Number(order.finalAmount) || 0,
-      receiverName: order.shippingName || '',
-      receiverPhone: order.shippingPhone || '',
-      receiverAddress: order.shippingAddress || '',
-      remark: order.remark || '',
-      status: order.status,
-      paymentStatus: order.paymentStatus,
-      paymentMethod: order.paymentMethod || '',
-      createTime: order.createdAt?.toISOString() || '',
-      createdBy: order.createdBy || '',
-      salesPersonId: order.createdBy || ''
-    }));
+      return {
+        id: String(order.id || ''),
+        orderNumber: order.order_number || '',
+        customerId: String(order.customer_id || ''),
+        customerName: order.customer_name || order.customer_name_joined || '',
+        customerPhone: order.customer_phone || order.customer_phone_joined || '',
+        products: products,
+        totalAmount: Number(order.total_amount) || 0,
+        depositAmount: Number(order.deposit_amount) || 0,
+        collectAmount: Number(order.final_amount) || 0,
+        receiverName: order.shipping_name || '',
+        receiverPhone: order.shipping_phone || '',
+        receiverAddress: order.shipping_address || '',
+        remark: order.remark || '',
+        status: order.status || 'pending',
+        paymentStatus: order.payment_status || 'unpaid',
+        paymentMethod: order.payment_method || '',
+        createTime: order.created_at ? new Date(order.created_at as string).toISOString() : '',
+        createdBy: order.created_by || '',
+        salesPersonId: order.created_by || ''
+      };
+    });
 
     res.json({
       success: true,
