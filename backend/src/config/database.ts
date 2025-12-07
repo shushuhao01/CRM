@@ -50,7 +50,7 @@ const AppDataSource = new DataSource(
         password: process.env.DB_PASSWORD || '',
         database: process.env.DB_DATABASE || process.env.DB_NAME || 'crm',
         synchronize: false, // 生产环境不自动同步
-        logging: false,
+        logging: process.env.NODE_ENV === 'development',
         entities: [
           User,
           Customer,
