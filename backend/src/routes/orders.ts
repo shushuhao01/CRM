@@ -3,6 +3,7 @@ import { authenticateToken } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 import { OrderItem } from '../entities/OrderItem';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
@@ -198,7 +199,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     console.log('📝 [订单创建] 收到请求数据:', JSON.stringify(req.body, null, 2));
 
-    const orderRepository = AppDataSource.getRepository(Order);
+    const _orderRepository = AppDataSource.getRepository(Order);
     const orderItemRepository = AppDataSource.getRepository(OrderItem);
 
     const {
@@ -316,38 +317,53 @@ router.post('/', async (req: Request, res: Response) => {
       finalDepositScreenshots = [depositScreenshot];
     }
 
-    // 创建订单 - 使用与数据库表匹配的字段名
-    const order = orderRepository.create({
-      orderNumber: generatedOrderNumber,
-      customerId: parsedCustomerId,
-      customerName: customerName || '',
-      customerPhone: customerPhone || '',
-      serviceWechat: serviceWechat || '',
-      orderSource: orderSource || '',
-      products: products || [],
-      status: 'pending',
-      totalAmount: finalTotalAmount,
-      discountAmount: Number(discount) || 0,
-      finalAmount: finalAmount,
-      depositAmount: finalDepositAmount,
-      depositScreenshots: finalDepositScreenshots.length > 0 ? finalDepositScreenshots : null,
-      paymentStatus: finalDepositAmount > 0 ? 'partial' : 'unpaid',
-      paymentMethod: paymentMethod || null,
-      shippingName: receiverName || customerName || '',
-      shippingPhone: receiverPhone || customerPhone || '',
-      shippingAddress: receiverAddress || '',
-      expressCompany: req.body.expressCompany || '',
-      markType: req.body.markType || 'normal',
-      customFields: req.body.customFields || null,
-      remark: remark || '',
-      createdBy: salesPersonId || '',
-      createdByName: salesPersonName || ''
-    });
+    // 创建订单 - 使用原生SQL避免TypeORM字段映射问题
+    const orderId = uuidv4();
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-    const savedOrderResult = await orderRepository.save(order);
-    // save 可能返回数组或单个对象
-    const savedOrder = Array.isArray(savedOrderResult) ? savedOrderResult[0] : savedOrderResult;
-    console.log('✅ [订单创建] 订单保存成功:', savedOrder.id);
+    const insertSql = `INSERT INTO orders (
+      id, order_number, customer_id, customer_name, customer_phone,
+      service_wechat, order_source, products, status, total_amount,
+      discount_amount, final_amount, deposit_amount, deposit_screenshots,
+      payment_status, payment_method, shipping_name, shipping_phone,
+      shipping_address, express_company, mark_type, custom_fields,
+      remark, created_by, created_by_name, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+    const insertParams = [
+      orderId,
+      generatedOrderNumber,
+      parsedCustomerId,
+      customerName || '',
+      customerPhone || '',
+      serviceWechat || '',
+      orderSource || '',
+      JSON.stringify(products || []),
+      'pending',
+      finalTotalAmount,
+      Number(discount) || 0,
+      finalAmount,
+      finalDepositAmount,
+      finalDepositScreenshots.length > 0 ? JSON.stringify(finalDepositScreenshots) : null,
+      finalDepositAmount > 0 ? 'partial' : 'unpaid',
+      paymentMethod || null,
+      receiverName || customerName || '',
+      receiverPhone || customerPhone || '',
+      receiverAddress || '',
+      req.body.expressCompany || '',
+      req.body.markType || 'normal',
+      req.body.customFields ? JSON.stringify(req.body.customFields) : null,
+      remark || '',
+      salesPersonId || '',
+      salesPersonName || '',
+      now,
+      now
+    ];
+
+    await AppDataSource.query(insertSql, insertParams);
+    console.log('✅ [订单创建] 订单保存成功:', orderId);
+
+    const savedOrder = { id: orderId, orderNumber: generatedOrderNumber, customerId: parsedCustomerId };
 
     // 创建订单项
     if (products && products.length > 0) {
@@ -378,13 +394,13 @@ router.post('/', async (req: Request, res: Response) => {
       totalAmount: finalTotalAmount,
       depositAmount: finalDepositAmount,
       collectAmount: Number(collectAmount) || finalTotalAmount - finalDepositAmount,
-      receiverName: savedOrder.shippingName || '',
-      receiverPhone: savedOrder.shippingPhone || '',
-      receiverAddress: savedOrder.shippingAddress || '',
-      remark: savedOrder.remark || '',
+      receiverName: receiverName || customerName || '',
+      receiverPhone: receiverPhone || customerPhone || '',
+      receiverAddress: receiverAddress || '',
+      remark: remark || '',
       status: 'pending_transfer',
       auditStatus: 'pending',
-      createTime: savedOrder.createdAt?.toISOString() || new Date().toISOString(),
+      createTime: now,
       createdBy: salesPersonId || '',
       salesPersonId: salesPersonId || ''
     };
