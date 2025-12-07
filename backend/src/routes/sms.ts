@@ -69,7 +69,7 @@ router.post('/templates/:id/approve', requireAdmin, async (req: Request, res: Re
     const templateRepository = AppDataSource.getRepository(SmsTemplate);
     const { id } = req.params;
     const { approved } = req.body;
-    const currentUser = (req as any).user;
+    const currentUser = (req as unknown).user;
 
     const template = await templateRepository.findOne({ where: { id: Number(id) } });
     if (!template) {

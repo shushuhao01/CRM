@@ -16,7 +16,7 @@ router.use(authenticateToken);
 router.get('/list', async (req: Request, res: Response) => {
   try {
     const { page = 1, pageSize = 20, status, keyword, assigneeId } = req.query;
-    const currentUser = (req as any).user;
+    const currentUser = (req as unknown).user;
     const customerRepository = AppDataSource.getRepository(Customer);
 
     const queryBuilder = customerRepository.createQueryBuilder('customer');
