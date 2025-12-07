@@ -16,7 +16,7 @@ router.use(authenticateToken);
 router.get('/list', async (req: Request, res: Response) => {
   try {
     const { page = 1, pageSize = 20, status, keyword, assigneeId } = req.query;
-    const currentUser = (req as unknown).user;
+    const currentUser = (req as any).user;
     const customerRepository = AppDataSource.getRepository(Customer);
 
     const queryBuilder = customerRepository.createQueryBuilder('customer');
@@ -363,7 +363,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
 
     const totalCount = await customerRepository.count();
     const assignedCount = await customerRepository.count({
-      where: { salesPersonId: Not(IsNull()) } as unknown
+      where: { salesPersonId: Not(IsNull()) } as any
     });
     const archivedCount = await customerRepository.count({
       where: { status: 'archived' }
