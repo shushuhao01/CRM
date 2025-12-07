@@ -1142,4 +1142,86 @@ router.put('/order-field-config', authenticateToken, requireAdmin, async (req: R
   }
 });
 
+// ========== 通用设置路由 ==========
+
+/**
+ * @route GET /api/v1/system/settings
+ * @desc 获取系统设置（通用）
+ * @access Private
+ */
+router.get('/settings', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configs = await configRepository.find({
+      where: { isEnabled: true },
+      order: { configGroup: 'ASC', sortOrder: 'ASC' }
+    });
+
+    const settings: Record<string, Record<string, unknown>> = {};
+    configs.forEach(config => {
+      if (!settings[config.configGroup]) {
+        settings[config.configGroup] = {};
+      }
+      settings[config.configGroup][config.configKey] = config.getParsedValue();
+    });
+
+    res.json({
+      success: true,
+      data: settings
+    });
+  } catch (error) {
+    console.error('获取系统设置失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取系统设置失败'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/system/settings
+ * @desc 保存系统设置（通用）
+ * @access Private (Admin)
+ */
+router.post('/settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { type, config } = req.body;
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+
+    if (type && config) {
+      // 保存特定类型的配置
+      for (const [key, value] of Object.entries(config)) {
+        let existingConfig = await configRepository.findOne({
+          where: { configKey: key, configGroup: type }
+        });
+
+        if (existingConfig) {
+          existingConfig.configValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        } else {
+          existingConfig = configRepository.create({
+            configKey: key,
+            configValue: typeof value === 'object' ? JSON.stringify(value) : String(value),
+            valueType: typeof value === 'object' ? 'json' : typeof value as 'string' | 'number' | 'boolean',
+            configGroup: type,
+            isEnabled: true,
+            isSystem: false
+          });
+        }
+        await configRepository.save(existingConfig);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: '设置保存成功'
+    });
+  } catch (error) {
+    console.error('保存系统设置失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '保存系统设置失败'
+    });
+  }
+});
+
 export default router;
