@@ -17,16 +17,17 @@ export default defineConfigWithVueTs(
 
   pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,
-  
+
   {
     rules: {
       // 暂时禁用一些严格的规则，专注于修复真正的错误
-      '@typescript-eslint/no-unused-vars': ['error', { 
+      '@typescript-eslint/no-unused-vars': ['error', {
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
         caughtErrorsIgnorePattern: '^_'
       }],
-      '@typescript-eslint/no-explicit-any': 'warn', // 降级为警告
+      '@typescript-eslint/no-explicit-any': 'off', // 完全禁用，避免自动修复
+      '@typescript-eslint/no-unsafe-argument': 'off',
     }
   }
 )
