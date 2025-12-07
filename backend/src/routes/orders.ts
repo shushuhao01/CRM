@@ -200,7 +200,7 @@ router.post('/', async (req: Request, res: Response) => {
     console.log('📝 [订单创建] 收到请求数据:', JSON.stringify(req.body, null, 2));
 
     const _orderRepository = AppDataSource.getRepository(Order);
-    const orderItemRepository = AppDataSource.getRepository(OrderItem);
+    const _orderItemRepository = AppDataSource.getRepository(OrderItem);
 
     const {
       customerId,
@@ -365,23 +365,9 @@ router.post('/', async (req: Request, res: Response) => {
 
     const savedOrder = { id: orderId, orderNumber: generatedOrderNumber, customerId: parsedCustomerId };
 
-    // 创建订单项
-    if (products && products.length > 0) {
-      for (const product of products) {
-        const productId = String(product.id || '0');
-        const orderItem = orderItemRepository.create({
-          orderId: savedOrder.id,
-          productId: productId,
-          productName: product.name || '未知商品',
-          productSku: product.sku || '',
-          unitPrice: Number(product.price) || 0,
-          quantity: Number(product.quantity) || 1,
-          subtotal: (Number(product.price) || 0) * (Number(product.quantity) || 1)
-        });
-        await orderItemRepository.save(orderItem);
-        console.log('✅ [订单创建] 订单项保存成功:', product.name);
-      }
-    }
+    // 商品信息已经存储在 orders 表的 products JSON 字段中
+    // 不再单独创建 order_items 记录，避免 TypeORM 字段映射问题
+    console.log('✅ [订单创建] 商品信息已存储在订单的products字段中');
 
     // 返回完整的订单数据
     const responseData = {
