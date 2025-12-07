@@ -1255,6 +1255,18 @@ const handleOrderStatusChanged = () => {
 onMounted(async () => {
   // 先加载用户列表（用于业绩排名显示用户信息）
   await userStore.loadUsers()
+
+  // 🔥 登录后无痕刷新：从 API 加载最新数据
+  try {
+    // 并行加载订单和客户数据，确保数据是最新的
+    await Promise.all([
+      orderStore.loadOrdersFromAPI?.() || Promise.resolve(),
+    ])
+    console.log('[Dashboard] 数据刷新完成')
+  } catch (err) {
+    console.warn('[Dashboard] 数据刷新失败:', err)
+  }
+
   // 加载仪表板数据
   loadDashboardData()
 
