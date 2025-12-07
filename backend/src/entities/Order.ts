@@ -116,10 +116,10 @@ export class Order {
   @Column({ name: 'created_by_name', length: 50, nullable: true, comment: '创建人姓名' })
   createdByName?: string;
 
-  @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', comment: '创建时间' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', comment: '更新时间' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'datetime', comment: '更新时间' })
   updatedAt: Date;
 
   // 关联关系

@@ -429,19 +429,22 @@ export const useConfigStore = defineStore('config', () => {
         (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
       )
 
-      if (isProdEnv) {
-        // 生产环境：调用API保存配置
+      // 检查是否已登录（有token）
+      const token = localStorage.getItem('token')
+
+      if (isProdEnv && token) {
+        // 生产环境且已登录：调用API保存配置
         console.log(`[ConfigStore] 生产环境：保存${type}配置到数据库`)
         try {
           const { api } = await import('@/api/request')
           await api.post('/system/settings', { type, config })
           console.log(`[ConfigStore] ${type}配置保存到数据库成功`)
         } catch (apiError) {
-          console.error(`[ConfigStore] API保存失败，降级到localStorage:`, apiError)
+          // 静默降级到localStorage，不打印错误
           localStorage.setItem(`crm_config_${type}`, JSON.stringify(config))
         }
       } else {
-        // 开发环境：使用localStorage
+        // 开发环境或未登录：使用localStorage
         localStorage.setItem(`crm_config_${type}`, JSON.stringify(config))
       }
     } catch (error) {
