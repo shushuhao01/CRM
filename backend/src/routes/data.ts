@@ -297,7 +297,7 @@ router.get('/search', async (req: Request, res: Response) => {
       );
       if (salesPersonResult && salesPersonResult.length > 0) {
         const salesPerson = salesPersonResult[0];
-        (customer as any).salesPersonInfo = {
+        (customer as unknown).salesPersonInfo = {
           id: salesPerson.id,
           name: salesPerson.real_name || salesPerson.username,
           department: salesPerson.department_name,
