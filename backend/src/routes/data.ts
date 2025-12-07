@@ -363,6 +363,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
 
     const totalCount = await customerRepository.count();
     const assignedCount = await customerRepository.count({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       where: { salesPersonId: Not(IsNull()) } as any
     });
     const archivedCount = await customerRepository.count({
