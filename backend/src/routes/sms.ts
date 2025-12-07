@@ -122,6 +122,7 @@ router.get('/records', async (req: Request, res: Response) => {
 router.post('/send', async (req: Request, res: Response) => {
   try {
     const recordRepository = AppDataSource.getRepository(SmsRecord);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const currentUser = (req as any).user;
     const { templateId, templateName, recipients, content } = req.body;
 
