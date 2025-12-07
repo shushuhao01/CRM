@@ -4,6 +4,7 @@ import { AppDataSource } from '../config/database';
 import { Customer } from '../entities/Customer';
 import { User } from '../entities/User';
 import { Not, IsNull } from 'typeorm';
+import '../types/express';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.use(authenticateToken);
 router.get('/list', async (req: Request, res: Response) => {
   try {
     const { page = 1, pageSize = 20, status, keyword, assigneeId } = req.query;
-    const currentUser = (req as any).user;
+    const currentUser = req.user;
     const customerRepository = AppDataSource.getRepository(Customer);
 
     const queryBuilder = customerRepository.createQueryBuilder('customer');
@@ -297,7 +298,7 @@ router.get('/search', async (req: Request, res: Response) => {
       );
       if (salesPersonResult && salesPersonResult.length > 0) {
         const salesPerson = salesPersonResult[0];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         (customer as any).salesPersonInfo = {
           id: salesPerson.id,
           name: salesPerson.real_name || salesPerson.username,
@@ -363,7 +364,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
 
     const totalCount = await customerRepository.count();
     const assignedCount = await customerRepository.count({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       where: { salesPersonId: Not(IsNull()) } as any
     });
     const archivedCount = await customerRepository.count({
