@@ -94,6 +94,15 @@ const loadOrderData = async (): Promise<void> => {
     if (typeof orderStore.loadOrdersFromAPI === 'function') {
       await orderStore.loadOrdersFromAPI()
     }
+    // 启动订单自动流转定时任务
+    if (typeof orderStore.startAutoTransferTask === 'function') {
+      orderStore.startAutoTransferTask()
+      console.log('[AppInit] 订单自动流转定时任务已启动')
+    }
+    // 立即执行一次流转检查
+    if (typeof orderStore.checkAndTransferOrders === 'function') {
+      orderStore.checkAndTransferOrders()
+    }
   } catch (error) {
     console.warn('[AppInit] 加载订单数据失败:', error)
   }
