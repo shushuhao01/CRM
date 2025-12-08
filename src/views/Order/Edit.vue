@@ -126,15 +126,14 @@
                     v-model="orderForm.expressCompany"
                     placeholder="请选择快递公司"
                     style="width: 100%"
+                    :loading="expressCompanyLoading"
                   >
-                    <el-option label="🚚 顺丰速运" value="sf" />
-                    <el-option label="📦 中通快递" value="zt" />
-                    <el-option label="🚛 圆通速递" value="yt" />
-                    <el-option label="📮 申通快递" value="st" />
-                    <el-option label="🚐 韵达速递" value="yd" />
-                    <el-option label="🚚 德邦快递" value="db" />
-                    <el-option label="📦 京东物流" value="jd" />
-                    <el-option label="🚛 邮政EMS" value="ems" />
+                    <el-option
+                      v-for="company in expressCompanyList"
+                      :key="company.code"
+                      :label="company.name"
+                      :value="company.code"
+                    />
                   </el-select>
                 </el-form-item>
               </el-col>
@@ -663,6 +662,10 @@ const showZoomIcon = ref(-1)
 const selectedCustomer = ref(null)
 const deliveryCollapsed = ref(false) // 配送信息默认展开
 
+// 物流公司列表
+const expressCompanyList = ref<{ code: string; name: string; logo?: string }[]>([])
+const expressCompanyLoading = ref(false)
+
 // 表单数据
 const orderForm = reactive({
   id: null,
@@ -750,9 +753,40 @@ const customerOptions = computed(() => {
 })
 
 // 页面初始化
+// 加载启用的物流公司列表
+const loadExpressCompanies = async () => {
+  expressCompanyLoading.value = true
+  try {
+    const { apiService } = await import('@/services/apiService')
+    const response = await apiService.get('/logistics/companies/active')
+    if (response && Array.isArray(response)) {
+      expressCompanyList.value = response.map((item: { code: string; name: string; shortName?: string; logo?: string }) => ({
+        code: item.code,
+        name: item.shortName || item.name,
+        logo: item.logo
+      }))
+    }
+  } catch (error) {
+    console.warn('加载物流公司列表失败，使用默认列表:', error)
+    // 如果API失败，使用默认列表
+    expressCompanyList.value = [
+      { code: 'SF', name: '顺丰速运' },
+      { code: 'YTO', name: '圆通速递' },
+      { code: 'ZTO', name: '中通快递' },
+      { code: 'STO', name: '申通快递' },
+      { code: 'YD', name: '韵达速递' }
+    ]
+  } finally {
+    expressCompanyLoading.value = false
+  }
+}
+
 onMounted(async () => {
   // 🔥 修复：先加载客户数据，确保客户选择下拉框有数据
   await customerStore.loadCustomers()
+
+  // 加载启用的物流公司列表
+  loadExpressCompanies()
 
   await loadOrderData()
 
