@@ -1078,11 +1078,15 @@ const verifyCustomer = async () => {
 }
 
 /**
- * 查看已存在的客户详情
+ * 查看已存在的客户详情 - 跳转到客户查询页面并显示搜索结果
  */
 const viewExistingCustomer = () => {
-  if (customerVerifyResult.value?.customerId) {
-    safeNavigator.push(`/customer/detail/${customerVerifyResult.value.customerId}`)
+  if (customerForm.phone) {
+    // 跳转到客户查询页面，并传递手机号作为搜索关键词
+    safeNavigator.push({
+      path: '/data/search',
+      query: { keyword: customerForm.phone }
+    })
   }
 }
 
