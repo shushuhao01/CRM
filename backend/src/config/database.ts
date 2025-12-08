@@ -26,6 +26,7 @@ import { Log } from '../entities/Log';
 import { OperationLog } from '../entities/OperationLog';
 import { LogisticsTrace } from '../entities/LogisticsTrace';
 import { LogisticsTracking } from '../entities/LogisticsTracking';
+import { LogisticsCompany } from '../entities/LogisticsCompany';
 import { MessageSubscription } from '../entities/MessageSubscription';
 import { OrderItem } from '../entities/OrderItem';
 import { OrderStatusHistory } from '../entities/OrderStatusHistory';
@@ -75,6 +76,7 @@ const AppDataSource = new DataSource(
           OperationLog,
           LogisticsTrace,
           LogisticsTracking,
+          LogisticsCompany,
           MessageSubscription,
           OrderItem,
           OrderStatusHistory,
@@ -116,6 +118,7 @@ const AppDataSource = new DataSource(
           OperationLog,
           LogisticsTrace,
           LogisticsTracking,
+          LogisticsCompany,
           MessageSubscription,
           OrderItem,
           OrderStatusHistory,

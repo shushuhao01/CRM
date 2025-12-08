@@ -118,15 +118,14 @@
                   v-model="orderForm.expressCompany"
                   placeholder="请选择快递公司"
                   style="width: 100%"
+                  :loading="expressCompanyLoading"
                 >
-                  <el-option label="顺丰速运" value="sf" />
-                  <el-option label="圆通速递" value="yt" />
-                  <el-option label="中通快递" value="zt" />
-                  <el-option label="申通快递" value="st" />
-                  <el-option label="韵达速递" value="yd" />
-                  <el-option label="百世快递" value="bs" />
-                  <el-option label="德邦快递" value="db" />
-                  <el-option label="京东物流" value="jd" />
+                  <el-option
+                    v-for="company in expressCompanyList"
+                    :key="company.code"
+                    :label="company.name"
+                    :value="company.code"
+                  />
                 </el-select>
               </el-form-item>
             </el-col>
@@ -726,6 +725,10 @@ const productSearchKeyword = ref('')
 // 图片查看器
 const showImageViewer = ref(false)
 const currentImageList = ref<string[]>([])
+
+// 物流公司列表
+const expressCompanyList = ref<{ code: string; name: string; logo?: string }[]>([])
+const expressCompanyLoading = ref(false)
 
 // 客户选项
 const customerOptions = computed(() => customerStore.customers)
@@ -1409,22 +1412,64 @@ const getLevelText = (level: string) => {
 }
 
 const getExpressCompanyText = (code: string) => {
-  const companies = {
+  // 优先从已加载的物流公司列表中查找
+  const company = expressCompanyList.value.find(c => c.code === code)
+  if (company) {
+    return company.name
+  }
+  // 兼容旧的硬编码值
+  const defaultCompanies: Record<string, string> = {
     'sf': '顺丰速运',
+    'SF': '顺丰速运',
     'yt': '圆通速递',
+    'YTO': '圆通速递',
     'zt': '中通快递',
+    'ZTO': '中通快递',
     'st': '申通快递',
+    'STO': '申通快递',
     'yd': '韵达速递',
+    'YD': '韵达速递',
     'bs': '百世快递',
     'db': '德邦快递',
     'jd': '京东物流'
   }
-  return companies[code] || code
+  return defaultCompanies[code] || code
+}
+
+// 加载启用的物流公司列表
+const loadExpressCompanies = async () => {
+  expressCompanyLoading.value = true
+  try {
+    const { apiService } = await import('@/services/apiService')
+    const response = await apiService.get('/logistics/companies/active')
+    if (response && Array.isArray(response)) {
+      expressCompanyList.value = response.map((item: { code: string; name: string; shortName?: string; logo?: string }) => ({
+        code: item.code,
+        name: item.shortName || item.name,
+        logo: item.logo
+      }))
+    }
+  } catch (error) {
+    console.warn('加载物流公司列表失败，使用默认列表:', error)
+    // 如果API失败，使用默认列表
+    expressCompanyList.value = [
+      { code: 'SF', name: '顺丰速运' },
+      { code: 'YTO', name: '圆通速递' },
+      { code: 'ZTO', name: '中通快递' },
+      { code: 'STO', name: '申通快递' },
+      { code: 'YD', name: '韵达速递' }
+    ]
+  } finally {
+    expressCompanyLoading.value = false
+  }
 }
 
 onMounted(async () => {
   // 首先加载客户数据
   await customerStore.loadCustomers()
+
+  // 加载启用的物流公司列表
+  loadExpressCompanies()
 
   // 【修复】始终从API获取最新商品数据，确保所有用户看到相同的商品列表
   // 不再依赖本地缓存，避免不同用户看到不同商品的问题

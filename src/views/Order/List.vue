@@ -2159,6 +2159,7 @@ onUnmounted(() => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  padding-right: 8px; /* 让按钮与容器边缘保持等距 */
 }
 
 /* 分页容器样式 */

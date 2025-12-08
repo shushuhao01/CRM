@@ -683,6 +683,32 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   /**
+   * 从API加载商品配置（确保所有用户看到管理员设置的优惠折扣配置）
+   */
+  const loadProductConfigFromAPI = async () => {
+    try {
+      const { apiService } = await import('@/services/apiService')
+      console.log('[ConfigStore] 开始从API加载商品配置（优惠折扣设置）...')
+      const apiData = await apiService.get('/system/product-settings')
+      console.log('[ConfigStore] 商品配置API返回:', apiData)
+
+      if (apiData && typeof apiData === 'object') {
+        Object.assign(productConfig.value, apiData)
+        // 同步保存到localStorage作为缓存
+        localStorage.setItem('crm_config_product', JSON.stringify(productConfig.value))
+        console.log('[ConfigStore] 商品配置已从API更新:', {
+          maxDiscountPercent: productConfig.value.maxDiscountPercent,
+          adminMaxDiscount: productConfig.value.adminMaxDiscount,
+          managerMaxDiscount: productConfig.value.managerMaxDiscount,
+          salesMaxDiscount: productConfig.value.salesMaxDiscount
+        })
+      }
+    } catch (error) {
+      console.warn('[ConfigStore] 从API加载商品配置失败，使用本地配置:', error)
+    }
+  }
+
+  /**
    * 初始化配置
    */
   const initConfig = async () => {
@@ -691,7 +717,8 @@ export const useConfigStore = defineStore('config', () => {
     // 然后从API获取最新配置（确保同步）
     await Promise.all([
       loadSystemConfigFromAPI(),
-      loadStorageConfigFromAPI()
+      loadStorageConfigFromAPI(),
+      loadProductConfigFromAPI() // 加载商品配置（优惠折扣设置），确保全局生效
     ])
   }
 
@@ -731,6 +758,7 @@ export const useConfigStore = defineStore('config', () => {
     resetSmsConfig,
     loadSystemConfigFromAPI,
     loadStorageConfigFromAPI,
+    loadProductConfigFromAPI,
     initConfig
   }
 })

@@ -60,7 +60,17 @@
     <!-- 数据表格 -->
     <el-card class="table-card">
       <el-table :data="tableData" style="width: 100%" v-loading="loading">
-        <el-table-column type="selection" width="55" />
+        <el-table-column label="启用" width="80" fixed="left">
+          <template #default="{ row }">
+            <el-switch
+              v-model="row.status"
+              active-value="active"
+              inactive-value="inactive"
+              @change="handleStatusChange(row)"
+              :loading="row.statusLoading"
+            />
+          </template>
+        </el-table-column>
         <el-table-column prop="logo" label="Logo" width="80">
           <template #default="{ row }">
             <el-avatar :src="row.logo" :size="40" shape="square">
@@ -78,22 +88,15 @@
           </template>
         </el-table-column>
         <el-table-column prop="trackingUrl" label="跟踪地址" show-overflow-tooltip min-width="200" />
-        <el-table-column prop="apiUrl" label="API地址" show-overflow-tooltip min-width="200" />
         <el-table-column prop="contactPhone" label="联系电话" width="120" />
-        <el-table-column prop="status" label="状态" width="80">
+        <el-table-column prop="createdAt" label="创建时间" width="170">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
-              {{ row.status === 'active' ? '启用' : '禁用' }}
-            </el-tag>
+            {{ formatDate(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="150" />
-        <el-table-column label="操作" width="260" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button @click="handleView(row)" type="primary" link size="small">
-              查看
-            </el-button>
-            <el-button @click="handleEdit(row)" type="success" link size="small">
+            <el-button @click="handleEdit(row)" type="primary" link size="small">
               编辑
             </el-button>
             <el-button
@@ -115,14 +118,6 @@
             >
               <el-icon><Setting /></el-icon>
               配置
-            </el-button>
-            <el-button
-              @click="handleToggleStatus(row)"
-              :type="row.status === 'active' ? 'warning' : 'success'"
-              link
-              size="small"
-            >
-              {{ row.status === 'active' ? '禁用' : '启用' }}
             </el-button>
             <el-button @click="handleDelete(row)" type="danger" link size="small">
               删除
@@ -254,6 +249,7 @@ interface LogisticsCompany {
   id: string
   name: string
   code: string
+  shortName?: string
   logo?: string
   website?: string
   trackingUrl?: string
@@ -261,8 +257,10 @@ interface LogisticsCompany {
   contactPhone?: string
   servicePhone?: string
   status: 'active' | 'inactive'
-  createTime: string
+  sortOrder?: number
+  createdAt?: string
   remark?: string
+  statusLoading?: boolean
 }
 
 // 路由
@@ -448,37 +446,45 @@ const handleEdit = (row: LogisticsCompany) => {
 }
 
 /**
- * 切换状态
+ * 状态开关变化处理
  */
-const handleToggleStatus = async (row: LogisticsCompany) => {
+const handleStatusChange = async (row: LogisticsCompany) => {
   if (isUnmounted.value) return
 
-  const action = row.status === 'active' ? '禁用' : '启用'
+  row.statusLoading = true
   try {
-    await ElMessageBox.confirm(`确定要${action}该物流公司吗？`, '提示', {
-      confirmButtonText: `确定${action}`,
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-
-    if (isUnmounted.value) return
-
-    // 模拟API调用
-    await new Promise(resolve => {
-      const timeoutId = setTimeout(() => {
-        timeoutIds.delete(timeoutId)
-        resolve(undefined)
-      }, 500)
-      timeoutIds.add(timeoutId)
+    const { apiService } = await import('@/services/apiService')
+    await apiService.patch(`/logistics/companies/${row.id}/status`, {
+      status: row.status
     })
 
     if (!isUnmounted.value) {
-      row.status = row.status === 'active' ? 'inactive' : 'active'
-      ElMessage.success(`${action}成功`)
+      ElMessage.success(row.status === 'active' ? '已启用' : '已禁用')
     }
   } catch (error) {
-    // 用户取消操作
+    // 恢复原状态
+    row.status = row.status === 'active' ? 'inactive' : 'active'
+    if (!isUnmounted.value) {
+      ElMessage.error('操作失败')
+    }
+  } finally {
+    row.statusLoading = false
   }
+}
+
+/**
+ * 格式化日期
+ */
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 /**
@@ -496,21 +502,18 @@ const handleDelete = async (row: LogisticsCompany) => {
 
     if (isUnmounted.value) return
 
-    // 模拟API调用
-    await new Promise(resolve => {
-      const timeoutId = setTimeout(() => {
-        timeoutIds.delete(timeoutId)
-        resolve(undefined)
-      }, 500)
-      timeoutIds.add(timeoutId)
-    })
+    const { apiService } = await import('@/services/apiService')
+    await apiService.delete(`/logistics/companies/${row.id}`)
 
     if (!isUnmounted.value) {
       ElMessage.success('删除成功')
       loadData()
     }
   } catch (error) {
-    // 用户取消操作
+    // 用户取消操作或API错误
+    if ((error as string) !== 'cancel') {
+      ElMessage.error('删除失败')
+    }
   }
 }
 
@@ -551,23 +554,25 @@ const handleSubmit = async () => {
     if (valid && !isUnmounted.value) {
       submitLoading.value = true
       try {
-        // 模拟API调用
-        await new Promise(resolve => {
-          const timeoutId = setTimeout(() => {
-            timeoutIds.delete(timeoutId)
-            resolve(undefined)
-          }, 1000)
-          timeoutIds.add(timeoutId)
-        })
+        const { apiService } = await import('@/services/apiService')
+
+        if (isEdit.value) {
+          // 编辑
+          await apiService.put(`/logistics/companies/${formData.id}`, formData)
+        } else {
+          // 新增
+          await apiService.post('/logistics/companies', formData)
+        }
 
         if (!isUnmounted.value) {
           ElMessage.success(isEdit.value ? '编辑成功' : '新增成功')
           dialogVisible.value = false
           loadData()
         }
-      } catch (error) {
+      } catch (error: unknown) {
         if (!isUnmounted.value) {
-          ElMessage.error(isEdit.value ? '编辑失败' : '新增失败')
+          const errMsg = (error as { message?: string })?.message || (isEdit.value ? '编辑失败' : '新增失败')
+          ElMessage.error(errMsg)
         }
       } finally {
         if (!isUnmounted.value) {
@@ -615,99 +620,36 @@ const loadData = async () => {
   loading.value = true
 
   try {
-    // 模拟API调用
-    await new Promise(resolve => {
-      const timeoutId = setTimeout(() => {
-        timeoutIds.delete(timeoutId)
-        resolve(undefined)
-      }, 500)
-      timeoutIds.add(timeoutId)
+    const { apiService } = await import('@/services/apiService')
+    const response = await apiService.get('/logistics/companies/list', {
+      params: {
+        name: searchForm.name || undefined,
+        code: searchForm.code || undefined,
+        status: searchForm.status || undefined,
+        page: pagination.page,
+        pageSize: pagination.size
+      }
     })
 
     // 检查组件是否已卸载
     if (isUnmounted.value) return
 
-    // 模拟数据
-    const mockData = [
-      {
-        id: '1',
-        name: '顺丰速运',
-        code: 'SF',
-        logo: 'https://www.sf-express.com/favicon.ico',
-        website: 'https://www.sf-express.com',
-        trackingUrl: 'https://www.sf-express.com/cn/sc/dynamic_function/waybill/#search/bill-number/{trackingNo}',
-        apiUrl: 'https://api.sf-express.com/tracking',
-        contactPhone: '95338',
-        servicePhone: '95338',
-        status: 'active',
-        createTime: '2024-01-01 10:00:00',
-        remark: '顺丰速运官方合作'
-      },
-      {
-        id: '2',
-        name: '中通快递',
-        code: 'ZTO',
-        logo: '/src/assets/images/zto-logo.svg',
-        website: 'https://www.zto.com',
-        trackingUrl: 'https://www.zto.com/service/bill-query?billNo={trackingNo}',
-        apiUrl: 'https://api.zto.com/tracking',
-        contactPhone: '95311',
-        servicePhone: '95311',
-        status: 'active',
-        createTime: '2024-01-01 10:00:00',
-        remark: '中通快递官方合作'
-      },
-      {
-        id: '3',
-        name: '圆通速递',
-        code: 'YTO',
-        logo: 'https://www.yto.net.cn/favicon.ico',
-        website: 'https://www.yto.net.cn',
-        trackingUrl: 'https://www.yto.net.cn/query/{trackingNo}',
-        apiUrl: 'https://api.yto.net.cn/tracking',
-        contactPhone: '95554',
-        servicePhone: '95554',
-        status: 'active',
-        createTime: '2024-01-01 10:00:00',
-        remark: '圆通速递官方合作'
-      },
-      {
-        id: '4',
-        name: '申通快递',
-        code: 'STO',
-        logo: 'https://www.sto.cn/favicon.ico',
-        website: 'https://www.sto.cn',
-        trackingUrl: 'https://www.sto.cn/query/{trackingNo}',
-        apiUrl: 'https://api.sto.cn/tracking',
-        contactPhone: '95543',
-        servicePhone: '95543',
-        status: 'active',
-        createTime: '2024-01-01 10:00:00',
-        remark: '申通快递官方合作'
-      },
-      {
-        id: '5',
-        name: '韵达速递',
-        code: 'YD',
-        logo: '/src/assets/images/yunda-logo.svg',
-        website: 'https://www.yunda.com',
-        trackingUrl: 'https://www.yunda.com/query/{trackingNo}',
-        apiUrl: 'https://api.yunda.com/tracking',
-        contactPhone: '95546',
-        servicePhone: '95546',
-        status: 'inactive',
-        createTime: '2024-01-01 10:00:00',
-        remark: '韵达速递暂停合作'
-      }
-    ]
-
-    if (!isUnmounted.value) {
-      tableData.value = mockData
-      pagination.total = 5
+    if (response && response.list) {
+      tableData.value = response.list.map((item: LogisticsCompany) => ({
+        ...item,
+        statusLoading: false
+      }))
+      pagination.total = response.total || 0
+    } else {
+      tableData.value = []
+      pagination.total = 0
     }
   } catch (error) {
     if (!isUnmounted.value) {
-      ElMessage.error('加载数据失败')
+      console.error('加载物流公司数据失败:', error)
+      // 如果API失败，使用默认数据
+      tableData.value = []
+      pagination.total = 0
     }
   } finally {
     if (!isUnmounted.value) {
