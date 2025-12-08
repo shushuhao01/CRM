@@ -2126,10 +2126,12 @@ const loadOrderList = async () => {
         return false
       }
 
-      // 关键条件：status 必须是 'pending_audit'（待审核状态）
+      // 关键条件：status 必须是 'pending_audit'（待审核状态）或 'confirmed'（已确认/待审核）
+      // 兼容后端可能使用的不同状态值
       // 重要：已发货或已签收的订单不应该出现在待审核列表中
-      if (order.status !== 'pending_audit') {
-        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} 状态不是pending_audit，跳过`, {
+      const validAuditStatuses = ['pending_audit', 'confirmed']
+      if (!validAuditStatuses.includes(order.status)) {
+        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} 状态不是待审核状态，跳过`, {
           status: order.status
         })
         return false
@@ -2612,6 +2614,16 @@ const handleOrderStatusChangedAudit = (order: any) => {
 onMounted(async () => {
   // 加载用户列表（用于销售人员筛选）
   await userStore.loadUsers()
+
+  // 🔥 先从API加载订单数据，确保数据是最新的
+  try {
+    console.log('[订单审核] 正在从API加载订单数据...')
+    await orderStore.loadOrdersFromAPI()
+    console.log('[订单审核] API数据加载完成，订单总数:', orderStore.orders.length)
+  } catch (error) {
+    console.error('[订单审核] 从API加载订单失败:', error)
+  }
+
   // 设置默认显示全部订单
   handleQuickFilter('all')
   // 加载汇总数据

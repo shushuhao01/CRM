@@ -1719,8 +1719,24 @@ const loadOrderDetail = async () => {
       await customerStore.loadCustomers()
     }
 
-    // 从store获取订单数据
-    const order = orderStore.getOrderById(orderId)
+    // 🔥 先尝试从API获取订单详情
+    let order = null
+    try {
+      console.log('[订单详情] 正在从API加载订单:', orderId)
+      const response = await orderApi.getDetail(orderId)
+      if (response.success && response.data) {
+        order = response.data
+        console.log('[订单详情] API加载成功:', order.orderNumber)
+      }
+    } catch (apiError) {
+      console.warn('[订单详情] API加载失败，尝试从本地store获取:', apiError)
+    }
+
+    // 如果API没有返回数据，从本地store获取
+    if (!order) {
+      order = orderStore.getOrderById(orderId)
+    }
+
     if (!order) {
       ElMessage.error('订单不存在')
       safeNavigator.push('/order/list')

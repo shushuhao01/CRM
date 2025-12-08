@@ -164,30 +164,30 @@
           <h3 class="section-title">收货地址</h3>
 
           <!-- 智能地址识别 -->
-          <el-row :gutter="20" style="margin-bottom: 16px;">
-            <el-col :span="24">
-              <el-form-item label="智能识别">
-                <div class="address-recognition">
-                  <el-input
-                    v-model="addressRecognitionInput"
-                    type="textarea"
-                    :rows="2"
-                    placeholder="粘贴完整地址，如：广东省广州市天河区天河路123号XXX大厦1001室 张三 13800138000"
-                    style="flex: 1;"
-                  />
-                  <el-button
-                    type="primary"
-                    @click="recognizeAddress"
-                    :loading="recognizingAddress"
-                    style="margin-left: 10px; height: 60px;"
-                  >
-                    识别填充
-                  </el-button>
-                </div>
-                <div class="form-tip">支持识别省市区街道和详细地址，自动填充到下方表单</div>
-              </el-form-item>
-            </el-col>
-          </el-row>
+          <div class="address-recognition-wrapper">
+            <div class="recognition-label">
+              <span class="label-icon">📍</span>
+              <span>智能识别</span>
+            </div>
+            <div class="recognition-content">
+              <el-input
+                v-model="addressRecognitionInput"
+                placeholder="粘贴完整地址，如：广东省广州市天河区天河路123号XXX大厦1001室"
+                clearable
+                class="recognition-input"
+              />
+              <el-button
+                type="primary"
+                @click="recognizeAddress"
+                :loading="recognizingAddress"
+                class="recognition-btn"
+              >
+                <el-icon v-if="!recognizingAddress"><Location /></el-icon>
+                识别填充
+              </el-button>
+            </div>
+            <div class="recognition-tip">支持识别省市区和详细地址，自动填充到下方表单</div>
+          </div>
 
           <el-row :gutter="20">
             <el-col :span="6">
@@ -515,7 +515,7 @@
 import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Warning, InfoFilled, Setting } from '@element-plus/icons-vue'
+import { Warning, InfoFilled, Setting, Location } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
