@@ -17,8 +17,8 @@
         <!-- 基本信息 -->
         <div class="form-section">
           <h3 class="section-title">基本信息</h3>
-          <!-- 第一排：手机号、姓名、性别 - 间距一致 -->
-          <el-row :gutter="24">
+          <!-- 第一排：手机号、姓名、性别 - 统一列宽对齐 -->
+          <el-row :gutter="20">
             <el-col :span="8">
               <el-form-item label="手机号" prop="phone">
                 <div class="phone-input-group">
@@ -27,7 +27,7 @@
                     placeholder="请输入手机号"
                     clearable
                     @blur="handlePhoneBlur"
-                    style="width: 140px;"
+                    style="width: 200px;"
                   />
                   <el-button
                     type="primary"
@@ -81,12 +81,12 @@
                   v-model="customerForm.name"
                   placeholder="请输入客户姓名"
                   clearable
-                  style="width: 160px;"
+                  style="width: 200px;"
                 />
               </el-form-item>
             </el-col>
             <el-col :span="8">
-              <el-form-item label="性别" prop="gender" class="gender-form-item">
+              <el-form-item label="性别" prop="gender">
                 <el-radio-group v-model="customerForm.gender">
                   <el-radio label="male">男</el-radio>
                   <el-radio label="female">女</el-radio>
@@ -95,55 +95,55 @@
             </el-col>
           </el-row>
 
-          <!-- 第二排：年龄、身高、体重 - 输入框等宽协调 -->
-          <el-row :gutter="24">
-            <el-col :span="6">
+          <!-- 第二排：年龄、身高、体重 - 统一列宽对齐 -->
+          <el-row :gutter="20">
+            <el-col :span="8">
               <el-form-item label="年龄" prop="age">
                 <el-input-number
                   v-model="customerForm.age"
                   :min="1"
                   :max="120"
                   placeholder="请输入年龄"
-                  style="width: 120px;"
+                  style="width: 200px;"
                   controls-position="right"
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="8">
               <el-form-item label="身高(cm)" prop="height">
                 <el-input-number
                   v-model="customerForm.height"
                   :min="50"
                   :max="250"
                   placeholder="请输入身高"
-                  style="width: 120px;"
+                  style="width: 200px;"
                   controls-position="right"
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="8">
               <el-form-item label="体重(kg)" prop="weight">
                 <el-input-number
                   v-model="customerForm.weight"
                   :min="20"
                   :max="300"
                   placeholder="请输入体重"
-                  style="width: 120px;"
+                  style="width: 200px;"
                   controls-position="right"
                 />
               </el-form-item>
             </el-col>
           </el-row>
 
-          <!-- 第三排：进粉时间、客户微信号、邮箱 - 输入框等宽协调 -->
-          <el-row :gutter="24">
-            <el-col :span="6">
+          <!-- 第三排：进粉时间、客户微信号、邮箱 - 统一列宽对齐 -->
+          <el-row :gutter="20">
+            <el-col :span="8">
               <el-form-item label="进粉时间" prop="fanAcquisitionTime">
                 <el-date-picker
                   v-model="customerForm.fanAcquisitionTime"
                   type="date"
                   placeholder="请选择进粉时间"
-                  style="width: 160px;"
+                  style="width: 200px;"
                   format="YYYY-MM-DD"
                   value-format="YYYY-MM-DD"
                 />
@@ -155,17 +155,17 @@
                   v-model="customerForm.wechat"
                   placeholder="请输入微信号"
                   clearable
-                  style="width: 180px;"
+                  style="width: 200px;"
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="8">
               <el-form-item label="邮箱" prop="email">
                 <el-input
                   v-model="customerForm.email"
                   placeholder="请输入邮箱地址"
                   clearable
-                  style="width: 180px;"
+                  style="width: 200px;"
                 />
               </el-form-item>
             </el-col>
@@ -1669,10 +1669,7 @@ onMounted(() => {
   font-size: 13px;
 }
 
-/* 性别表单项左对齐 */
-.gender-form-item {
-  margin-left: -20px;
-}
+
 
 /* 必填标记样式 */
 .required-mark {
