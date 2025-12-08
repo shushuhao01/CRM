@@ -1267,23 +1267,31 @@ const handleCancel = async () => {
  */
 const handleSaveAndOrder = async () => {
   console.log('=== handleSaveAndOrder 开始 ===')
+  console.log('shouldDisableSave:', shouldDisableSave.value)
+  console.log('customerVerifyResult:', customerVerifyResult.value)
 
   if (!customerFormRef.value) {
     console.error('customerFormRef 不存在')
+    ElMessage.error('表单引用不存在，请刷新页面重试')
     return
   }
 
   try {
     console.log('开始表单验证...')
     // 表单验证
-    const valid = await customerFormRef.value.validate()
+    const valid = await customerFormRef.value.validate().catch((err: any) => {
+      console.log('表单验证错误:', err)
+      return false
+    })
     if (!valid) {
       console.log('表单验证失败')
+      ElMessage.warning('请填写完整的必填信息')
       return
     }
     console.log('表单验证通过')
 
-    await appStore.withLoading(async () => {
+    loading.value = true
+    try {
       console.log('检查客户是否已存在，手机号:', customerForm.phone)
 
       // 先检查客户是否已存在
@@ -1442,13 +1450,17 @@ const handleSaveAndOrder = async () => {
         }
         // 如果是关闭对话框，则不做任何操作，留在当前页面
       })
-    }, '正在保存客户信息...')
+
+    } finally {
+      loading.value = false
+    }
 
     console.log('=== handleSaveAndOrder 完成 ===')
 
   } catch (error) {
     console.error('handleSaveAndOrder 失败:', error)
-    appStore.showError('保存客户信息失败', error as Error)
+    loading.value = false
+    ElMessage.error('保存客户信息失败')
   }
 }
 
@@ -1642,12 +1654,16 @@ onMounted(() => {
   height: 32px;
 }
 
-/* 验证成功提示 - 放在按钮后面 */
+/* 验证成功提示 - 放在按钮后面，带淡绿色背景 */
 .verify-success-inline {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   margin-left: 8px;
+  padding: 4px 10px;
+  background-color: #f0f9eb;
+  border: 1px solid #e1f3d8;
+  border-radius: 4px;
   color: #67c23a;
   font-size: 13px;
   white-space: nowrap;
