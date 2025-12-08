@@ -90,6 +90,10 @@ const loadCustomerData = async (): Promise<void> => {
 const loadOrderData = async (): Promise<void> => {
   try {
     const orderStore = useOrderStore()
+    // 先加载流转延迟配置
+    if (typeof orderStore.loadTransferDelayConfig === 'function') {
+      await orderStore.loadTransferDelayConfig()
+    }
     // 使用正确的方法名
     if (typeof orderStore.loadOrdersFromAPI === 'function') {
       await orderStore.loadOrdersFromAPI()
