@@ -15,7 +15,7 @@
     <div class="search-section">
       <div class="search-header">
         <h3>查询条件</h3>
-        <p class="search-tip">输入客户姓名、手机号、客户编码等信息进行搜索</p>
+        <p class="search-tip">支持：客户姓名、手机号、客户编码、订单号、物流单号、售后单号</p>
       </div>
 
       <div class="search-form">
@@ -23,7 +23,7 @@
           <div class="input-item">
             <el-input
               v-model="searchForm.keyword"
-              placeholder="请输入客户姓名、手机号或客户编码"
+              placeholder="请输入客户姓名、手机号、客户编码、订单号、物流单号或售后单号"
               clearable
               @keyup.enter="handleSearch"
               class="search-input"
@@ -92,10 +92,22 @@
                 </div>
                 <div class="customer-basic">
                   <h4 class="customer-name">{{ result.customerName || '未知客户' }}</h4>
-                  <div class="customer-code" v-if="result.customerCode">
-                    <el-tag size="small" type="info">{{ result.customerCode }}</el-tag>
+                  <div class="customer-tags">
+                    <el-tag v-if="result.customerCode" size="small" type="info">{{ result.customerCode }}</el-tag>
+                    <el-tag v-if="result.matchType" size="small" type="success">匹配：{{ result.matchType }}</el-tag>
                   </div>
                 </div>
+              </div>
+              <!-- 如果是通过订单匹配的，显示订单信息 -->
+              <div v-if="result.matchedOrderNo || result.matchedTrackingNo" class="matched-order-info">
+                <span v-if="result.matchedOrderNo" class="order-tag">
+                  <el-icon><Tickets /></el-icon>
+                  订单号：{{ result.matchedOrderNo }}
+                </span>
+                <span v-if="result.matchedTrackingNo" class="tracking-tag">
+                  <el-icon><Van /></el-icon>
+                  物流单号：{{ result.matchedTrackingNo }}
+                </span>
               </div>
               <div class="customer-details-grid">
                 <div class="detail-item">
@@ -170,18 +182,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Search, User, RefreshLeft, UserFilled, DocumentRemove
+  Search, User, RefreshLeft, UserFilled, DocumentRemove, Tickets, Van
 } from '@element-plus/icons-vue'
 import { useCustomerStore } from '@/stores/customer'
 import { useUserStore } from '@/stores/user'
+import { useOrderStore } from '@/stores/order'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
+
+// 路由
+const route = useRoute()
 
 // 使用store
 const customerStore = useCustomerStore()
 const userStore = useUserStore()
+const orderStore = useOrderStore()
 
 // 响应式数据
 const searching = ref(false)
@@ -193,7 +211,28 @@ const searchForm = reactive({
   keyword: ''
 })
 
-// 搜索方法 - 直接从客户表搜索
+// 监听路由参数变化，自动执行搜索
+watch(
+  () => route.query.keyword,
+  (newKeyword) => {
+    if (newKeyword && typeof newKeyword === 'string') {
+      searchForm.keyword = newKeyword
+      handleSearch()
+    }
+  },
+  { immediate: true }
+)
+
+// 页面挂载时检查URL参数
+onMounted(() => {
+  const keyword = route.query.keyword
+  if (keyword && typeof keyword === 'string') {
+    searchForm.keyword = keyword
+    handleSearch()
+  }
+})
+
+// 搜索方法 - 支持多种搜索条件
 const handleSearch = async () => {
   console.log('[客户查询] ========== 开始搜索 ==========')
   console.log('[客户查询] 搜索关键词:', searchForm.keyword)
@@ -208,38 +247,42 @@ const handleSearch = async () => {
   const keyword = searchForm.keyword.trim().toLowerCase()
 
   try {
-    // 确保客户数据已加载
+    // 确保数据已加载
     if (customerStore.customers.length === 0) {
       await customerStore.loadCustomers()
     }
 
-    // 直接从客户store获取数据
+    // 获取所有数据
     const customers = customerStore.customers
     const users = userStore.users
+    const orders = orderStore.getOrders()
 
     console.log('[客户查询] 从store获取数据:')
     console.log('  - 客户数:', customers.length)
     console.log('  - 用户数:', users.length)
-
-    if (customers.length === 0) {
-      ElMessage.warning('系统暂无客户数据')
-      searching.value = false
-      return
-    }
+    console.log('  - 订单数:', orders.length)
 
     const results: any[] = []
+    const matchedCustomerIds = new Set<string>()
 
-    // 直接遍历客户进行搜索
+    // 1. 先从客户表搜索：姓名、手机号、客户编码
     for (const customer of customers) {
       let matched = false
+      let matchType = ''
 
-      // 匹配逻辑：姓名、手机号、客户编码
-      if (customer.name?.toLowerCase().includes(keyword)) matched = true
-      if (customer.phone?.includes(keyword)) matched = true
-      if (customer.code?.toLowerCase().includes(keyword)) matched = true
+      if (customer.name?.toLowerCase().includes(keyword)) {
+        matched = true
+        matchType = '客户姓名'
+      } else if (customer.phone?.includes(keyword)) {
+        matched = true
+        matchType = '手机号'
+      } else if (customer.code?.toLowerCase().includes(keyword)) {
+        matched = true
+        matchType = '客户编码'
+      }
 
-      if (matched) {
-        // 查找归属人信息
+      if (matched && !matchedCustomerIds.has(customer.id)) {
+        matchedCustomerIds.add(customer.id)
         const owner = users.find((u: any) => u.id === customer.salesPersonId)
 
         results.push({
@@ -254,8 +297,59 @@ const handleSearch = async () => {
           orderCount: customer.orderCount || 0,
           ownerName: owner?.name || '未分配',
           ownerPhone: '',
-          ownerDepartment: owner?.department || '未知部门'
+          ownerDepartment: owner?.department || '未知部门',
+          matchType
         })
+      }
+    }
+
+    // 2. 从订单表搜索：订单号、物流单号、售后单号
+    for (const order of orders) {
+      let matched = false
+      let matchType = ''
+
+      // 订单号匹配
+      if (order.orderNumber?.toLowerCase().includes(keyword)) {
+        matched = true
+        matchType = '订单号'
+      }
+      // 物流单号匹配
+      else if (order.trackingNumber?.toLowerCase().includes(keyword)) {
+        matched = true
+        matchType = '物流单号'
+      }
+      // 售后单号匹配（如果有的话）
+      else if ((order as any).afterSaleNumber?.toLowerCase().includes(keyword)) {
+        matched = true
+        matchType = '售后单号'
+      }
+
+      if (matched) {
+        // 查找对应的客户
+        const customer = customers.find((c: any) => c.id === order.customerId)
+        if (customer && !matchedCustomerIds.has(customer.id)) {
+          matchedCustomerIds.add(customer.id)
+          const owner = users.find((u: any) => u.id === customer.salesPersonId)
+
+          results.push({
+            customerName: customer.name || '未知',
+            phone: customer.phone || '',
+            customerCode: customer.code || '',
+            gender: customer.gender || '',
+            age: customer.age || 0,
+            level: customer.level || '',
+            address: customer.address || '',
+            createTime: customer.createTime || '',
+            orderCount: customer.orderCount || 0,
+            ownerName: owner?.name || '未分配',
+            ownerPhone: '',
+            ownerDepartment: owner?.department || '未知部门',
+            matchType,
+            // 额外显示匹配的订单信息
+            matchedOrderNo: order.orderNumber,
+            matchedTrackingNo: order.trackingNumber
+          })
+        }
       }
     }
 
@@ -519,8 +613,34 @@ const getLevelText = (level: string) => {
   flex: 1;
 }
 
-.customer-code {
+.customer-tags {
   margin-top: 4px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.matched-order-info {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #f0f9ff;
+  border-radius: 6px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #0369a1;
+}
+
+.matched-order-info .order-tag,
+.matched-order-info .tracking-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.matched-order-info .el-icon {
+  font-size: 14px;
 }
 
 .customer-details-grid {
