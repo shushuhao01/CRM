@@ -2197,9 +2197,21 @@ const loadOrderList = async () => {
       auditStatus: order.auditStatus,
       hasBeenAudited: order.hasBeenAudited || false,
       deliveryAddress: order.receiverAddress,
-      paymentScreenshots: order.depositScreenshot ? [
-        { id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }
-      ] : [],
+      paymentScreenshots: (() => {
+        // 优先使用多张截图数组
+        if (order.depositScreenshots && order.depositScreenshots.length > 0) {
+          return order.depositScreenshots.map((url: string, index: number) => ({
+            id: index + 1,
+            url: url,
+            name: `定金截图${index + 1}.jpg`
+          }))
+        }
+        // 兼容单张截图
+        if (order.depositScreenshot) {
+          return [{ id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }]
+        }
+        return []
+      })(),
       auditHistory: [
         {
           id: 1,
@@ -2536,9 +2548,14 @@ const loadOrderList = async () => {
         auditor: order.auditor || '系统',
         auditRemark: order.auditRemark || '',
         deliveryAddress: order.receiverAddress,
-        paymentScreenshots: order.depositScreenshot ? [
-          { id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }
-        ] : []
+        paymentScreenshots: (() => {
+          if (order.depositScreenshots && order.depositScreenshots.length > 0) {
+            return order.depositScreenshots.map((url: string, index: number) => ({
+              id: index + 1, url, name: `定金截图${index + 1}.jpg`
+            }))
+          }
+          return order.depositScreenshot ? [{ id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }] : []
+        })()
       }))
 
     rejectedOrders.value = allOrdersWithAudit
@@ -2566,9 +2583,14 @@ const loadOrderList = async () => {
         auditor: order.auditor || '系统',
         auditRemark: order.auditRemark || order.rejectReason || '',
         deliveryAddress: order.receiverAddress,
-        paymentScreenshots: order.depositScreenshot ? [
-          { id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }
-        ] : []
+        paymentScreenshots: (() => {
+          if (order.depositScreenshots && order.depositScreenshots.length > 0) {
+            return order.depositScreenshots.map((url: string, index: number) => ({
+              id: index + 1, url, name: `定金截图${index + 1}.jpg`
+            }))
+          }
+          return order.depositScreenshot ? [{ id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }] : []
+        })()
       }))
 
     console.log(`[订单审核] 最终数据统计：待审核=${pendingOrders.value.length}, 已通过=${approvedOrders.value.length}, 已拒绝=${rejectedOrders.value.length}`)

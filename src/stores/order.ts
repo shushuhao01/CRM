@@ -182,11 +182,34 @@ export const useOrderStore = createPersistentStore('order', () => {
   // 订单数据
   const orders = ref<Order[]>([])
 
+  // 流转延迟时间（分钟），默认3分钟
+  const transferDelayMinutes = ref(3)
+
   // 物流自动同步定时器
   let logisticsAutoSyncTimer: NodeJS.Timeout | null = null
 
   // 订单自动流转定时器
   let orderAutoTransferTimer: NodeJS.Timeout | null = null
+
+  // 获取流转延迟时间配置
+  const loadTransferDelayConfig = async () => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('/api/v1/system/order-settings', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      const data = await response.json()
+      if (data.success && data.data?.delayMinutes) {
+        transferDelayMinutes.value = data.data.delayMinutes
+        console.log('[订单Store] 流转延迟时间配置:', transferDelayMinutes.value, '分钟')
+      }
+    } catch (_error) {
+      console.warn('[订单Store] 获取流转延迟配置失败，使用默认值:', transferDelayMinutes.value, '分钟')
+    }
+  }
 
   // 计算属性
   const totalOrders = computed(() => orders.value.length)
@@ -335,16 +358,17 @@ export const useOrderStore = createPersistentStore('order', () => {
       createTime: formatTime(now)
     }
 
-    // 设置3分钟后自动流转到审核
-    const transferTime = new Date(now.getTime() + 3 * 60 * 1000)
+    // 使用配置的延迟时间设置自动流转到审核
+    const delayMs = transferDelayMinutes.value * 60 * 1000
+    const transferTime = new Date(now.getTime() + delayMs)
     newOrder.auditTransferTime = formatTime(transferTime)
     newOrder.isAuditTransferred = false
 
     console.log('[订单创建] 流转时间设置:', {
       当前时间: formatTime(now),
       流转时间: newOrder.auditTransferTime,
-      剩余毫秒: transferTime.getTime() - now.getTime(),
-      剩余分钟: Math.ceil((transferTime.getTime() - now.getTime()) / 60000)
+      延迟分钟: transferDelayMinutes.value,
+      剩余毫秒: transferTime.getTime() - now.getTime()
     })
 
     // 初始化状态历史
@@ -1706,6 +1730,7 @@ export const useOrderStore = createPersistentStore('order', () => {
     orders,
     totalOrders,
     pendingOrders,
+    transferDelayMinutes,
     getOrders,
     getOrderById,
     getOrderByNumber,
@@ -1730,6 +1755,7 @@ export const useOrderStore = createPersistentStore('order', () => {
     checkAndTransferOrders,
     startAutoTransferTask,
     stopAutoTransferTask,
+    loadTransferDelayConfig,
     setupLogisticsEventListener,
     startLogisticsAutoSync,
     stopLogisticsAutoSync,

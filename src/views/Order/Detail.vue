@@ -1217,13 +1217,15 @@ const handleMarkCommand = (command: string) => {
         // 更新orderStore中的数据
         orderStore.updateOrder(orderId, { markType: command })
 
-        ElMessage.success(`订单已标记为${markTypes[command]}`)
-
-        // 根据不同标记类型给出不同提示
+        // 根据不同标记类型给出不同提示（只显示一个）
         if (command === 'return') {
-          ElMessage.info('退单已处理完成，订单信息已保留在系统中')
+          ElMessage.success('订单已标记为退单，信息已保留在系统中')
         } else if (command === 'normal') {
-          ElMessage.info('订单已变更为正常发货单')
+          ElMessage.success('订单已标记为正常发货单')
+        } else if (command === 'reserved') {
+          ElMessage.success('订单已标记为预留单')
+        } else {
+          ElMessage.success(`订单已标记为${markTypes[command]}`)
         }
 
         // 发送通知
@@ -1795,6 +1797,7 @@ const loadOrderDetail = async () => {
       totalAmount: order.totalAmount,
       depositAmount: order.depositAmount,
       depositScreenshot: order.depositScreenshot || '',
+      depositScreenshots: order.depositScreenshots || [],
       remark: order.remark
     })
 

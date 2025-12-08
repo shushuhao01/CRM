@@ -260,12 +260,82 @@ const uploadToOSS = async (file: File, type: UploadType, storageConfig: StorageC
 }
 
 /**
+ * 压缩图片
+ * @param file 原始文件
+ * @param maxWidth 最大宽度
+ * @param quality 压缩质量 0-1
+ * @returns 压缩后的文件
+ */
+const compressImage = async (file: File, maxWidth = 1920, quality = 0.8): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    // 如果是GIF图片，不压缩（保持动画）
+    if (file.type === 'image/gif') {
+      resolve(file)
+      return
+    }
+
+    const img = new Image()
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+
+    img.onload = () => {
+      let { width, height } = img
+
+      // 如果图片宽度超过最大宽度，按比例缩小
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width
+        width = maxWidth
+      }
+
+      canvas.width = width
+      canvas.height = height
+
+      // 绘制图片
+      ctx?.drawImage(img, 0, 0, width, height)
+
+      // 转换为Blob
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            // 创建新的File对象
+            const compressedFile = new File([blob], file.name, {
+              type: file.type === 'image/png' ? 'image/png' : 'image/jpeg',
+              lastModified: Date.now()
+            })
+            console.log(`[UploadService] 图片压缩: ${(file.size / 1024).toFixed(1)}KB -> ${(compressedFile.size / 1024).toFixed(1)}KB`)
+            resolve(compressedFile)
+          } else {
+            resolve(file) // 压缩失败，返回原文件
+          }
+        },
+        file.type === 'image/png' ? 'image/png' : 'image/jpeg',
+        quality
+      )
+    }
+
+    img.onerror = () => {
+      console.warn('[UploadService] 图片加载失败，使用原文件')
+      resolve(file)
+    }
+
+    // 读取文件
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      img.src = e.target?.result as string
+    }
+    reader.onerror = () => reject(new Error('读取文件失败'))
+    reader.readAsDataURL(file)
+  })
+}
+
+/**
  * 上传图片（根据系统配置自动选择本地或OSS）
  * @param file 文件对象
  * @param type 上传类型
+ * @param compress 是否压缩图片，默认true
  * @returns 上传结果
  */
-export const uploadImage = async (file: File, type: UploadType): Promise<UploadResult> => {
+export const uploadImage = async (file: File, type: UploadType, compress = true): Promise<UploadResult> => {
   // 获取上传配置和存储配置
   const [uploadConfig, storageConfig] = await Promise.all([
     getUploadConfig(),
@@ -281,9 +351,19 @@ export const uploadImage = async (file: File, type: UploadType): Promise<UploadR
     }
   }
 
-  // 验证文件大小
+  // 压缩图片（如果启用）
+  let fileToUpload = file
+  if (compress && file.size > 100 * 1024) { // 大于100KB才压缩
+    try {
+      fileToUpload = await compressImage(file)
+    } catch (error) {
+      console.warn('[UploadService] 图片压缩失败，使用原文件:', error)
+    }
+  }
+
+  // 验证文件大小（压缩后）
   const maxFileSize = storageConfig.maxFileSize || uploadConfig.maxFileSize
-  const fileSizeMB = file.size / 1024 / 1024
+  const fileSizeMB = fileToUpload.size / 1024 / 1024
   if (fileSizeMB > maxFileSize) {
     return {
       success: false,
@@ -298,11 +378,11 @@ export const uploadImage = async (file: File, type: UploadType): Promise<UploadR
     // 检查OSS配置是否完整
     if (!storageConfig.accessKey || !storageConfig.secretKey || !storageConfig.bucketName || !storageConfig.region) {
       console.warn('[UploadService] OSS配置不完整，回退到本地上传')
-      return uploadToLocal(file, type)
+      return uploadToLocal(fileToUpload, type)
     }
-    return uploadToOSS(file, type, storageConfig)
+    return uploadToOSS(fileToUpload, type, storageConfig)
   } else {
-    return uploadToLocal(file, type)
+    return uploadToLocal(fileToUpload, type)
   }
 }
 

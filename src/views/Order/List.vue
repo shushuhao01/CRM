@@ -1314,15 +1314,19 @@ const handleSubmitAudit = async (row: OrderItem) => {
       storeOrder.auditStatus = 'pending'
       storeOrder.status = 'pending_audit' // 同时更新订单主状态
 
-      // 正常发货单直接流转审核，无需等待
-      if (order.markType === 'normal') {
-        order.isAuditTransferred = true
-        order.auditTransferTime = new Date().toLocaleString('zh-CN')
-
-        // 同步更新store中的流转状态
-        storeOrder.isAuditTransferred = true
-        storeOrder.auditTransferTime = new Date().toLocaleString('zh-CN')
+      // 提审时，如果是预留单，自动改为正常发货单
+      if (order.markType === 'reserved') {
+        order.markType = 'normal'
+        storeOrder.markType = 'normal'
       }
+
+      // 正常发货单直接流转审核，无需等待
+      order.isAuditTransferred = true
+      order.auditTransferTime = new Date().toLocaleString('zh-CN')
+
+      // 同步更新store中的流转状态
+      storeOrder.isAuditTransferred = true
+      storeOrder.auditTransferTime = new Date().toLocaleString('zh-CN')
 
       // 添加状态历史记录
       if (!storeOrder.statusHistory) {
