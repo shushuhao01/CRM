@@ -510,7 +510,7 @@
             <el-table-column prop="customerName" label="客户姓名" width="120" />
             <el-table-column label="负责销售" width="100">
               <template #default="{ row }">
-                {{ row.createdBy || '系统用户' }}
+                {{ row.createdByName || row.createdBy || '系统用户' }}
               </template>
             </el-table-column>
             <el-table-column prop="totalAmount" label="金额" width="120">
@@ -558,7 +558,7 @@
             <el-table-column prop="customerName" label="客户姓名" width="120" />
             <el-table-column label="负责销售" width="100">
               <template #default="{ row }">
-                {{ row.createdBy || '系统用户' }}
+                {{ row.createdByName || row.createdBy || '系统用户' }}
               </template>
             </el-table-column>
             <el-table-column prop="totalAmount" label="金额" width="120">
@@ -1164,7 +1164,7 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
     case 'customerName':
       return row.customerName
     case 'salesPersonName':
-          return row.createdBy || '系统用户'
+          return row.createdByName || row.createdBy || '系统用户'
     case 'status':
       return getStatusText(row.status)
     case 'markType':
