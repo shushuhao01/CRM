@@ -122,6 +122,15 @@ export class Order {
   @Column({ name: 'mark_type', length: 20, default: 'normal', comment: '订单标记类型' })
   markType?: string;
 
+  @Column({ name: 'audit_status', length: 20, default: 'pending', comment: '审核状态' })
+  auditStatus?: string;
+
+  @Column({ name: 'audit_transfer_time', type: 'datetime', nullable: true, comment: '流转审核时间' })
+  auditTransferTime?: Date;
+
+  @Column({ name: 'is_audit_transferred', type: 'boolean', default: false, comment: '是否已流转到审核' })
+  isAuditTransferred?: boolean;
+
   @Column({ name: 'custom_fields', type: 'json', nullable: true, comment: '自定义字段' })
   customFields?: Record<string, unknown>;
 

@@ -53,6 +53,8 @@ export const API_ENDPOINTS = {
     CANCEL_AUDIT: (id: string) => `/orders/${id}/cancel-audit`,
     AUDITED_CANCEL: '/orders/audited-cancel',
     STATISTICS: '/orders/statistics',
+    CHECK_TRANSFER: '/orders/check-transfer',
+    UPDATE_MARK_TYPE: (id: string) => `/orders/${id}/mark-type`,
   },
 
   // 产品相关

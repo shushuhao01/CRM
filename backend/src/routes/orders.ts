@@ -104,6 +104,10 @@ router.get('/', async (req: Request, res: Response) => {
         receiverAddress: order.shipping_address || '',
         remark: order.remark || '',
         status: order.status || 'pending',
+        auditStatus: order.audit_status || 'pending',
+        markType: order.mark_type || 'normal',
+        auditTransferTime: order.audit_transfer_time ? new Date(order.audit_transfer_time as string).toISOString() : '',
+        isAuditTransferred: Boolean(order.is_audit_transferred),
         paymentStatus: order.payment_status || 'unpaid',
         paymentMethod: order.payment_method || '',
         createTime: order.created_at ? new Date(order.created_at as string).toISOString() : '',
@@ -152,19 +156,33 @@ router.get('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    const formattedOrder = {
-      id: order.id.toString(),
-      orderNumber: order.orderNumber,
-      customerId: order.customerId?.toString() || '',
-      customerName: order.customer?.name || '',
-      customerPhone: order.customer?.phone || '',
-      products: order.orderItems?.map(item => ({
+    // 解析products JSON字段
+    let products: unknown[] = [];
+    if (order.products) {
+      try {
+        products = typeof order.products === 'string' ? JSON.parse(order.products as string) : order.products;
+      } catch {
+        products = [];
+      }
+    }
+    // 如果products为空，尝试从orderItems获取
+    if (products.length === 0 && order.orderItems?.length > 0) {
+      products = order.orderItems.map(item => ({
         id: item.id.toString(),
         name: item.productName,
         price: Number(item.unitPrice),
         quantity: item.quantity,
         total: Number(item.subtotal)
-      })) || [],
+      }));
+    }
+
+    const formattedOrder = {
+      id: order.id.toString(),
+      orderNumber: order.orderNumber,
+      customerId: order.customerId?.toString() || '',
+      customerName: order.customerName || order.customer?.name || '',
+      customerPhone: order.customerPhone || order.customer?.phone || '',
+      products: products,
       totalAmount: Number(order.totalAmount),
       depositAmount: Number(order.depositAmount) || 0,
       collectAmount: Number(order.finalAmount) || 0,
@@ -173,6 +191,10 @@ router.get('/:id', async (req: Request, res: Response) => {
       receiverAddress: order.shippingAddress || '',
       remark: order.remark || '',
       status: order.status,
+      auditStatus: order.auditStatus || 'pending',
+      markType: order.markType || 'normal',
+      auditTransferTime: order.auditTransferTime?.toISOString() || '',
+      isAuditTransferred: Boolean(order.isAuditTransferred),
       paymentStatus: order.paymentStatus,
       paymentMethod: order.paymentMethod || '',
       createTime: order.createdAt?.toISOString() || '',
@@ -324,14 +346,21 @@ router.post('/', async (req: Request, res: Response) => {
     const orderId = uuidv4();
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
+    // 计算流转时间（正常发货单3分钟后流转）
+    const markType = req.body.markType || 'normal';
+    const auditTransferTime = markType === 'normal'
+      ? new Date(Date.now() + 3 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ')
+      : null;
+
     const insertSql = `INSERT INTO orders (
       id, order_number, customer_id, customer_name, customer_phone,
       service_wechat, order_source, products, status, total_amount,
       discount_amount, final_amount, deposit_amount, deposit_screenshots,
       payment_status, payment_method, shipping_name, shipping_phone,
-      shipping_address, express_company, mark_type, custom_fields,
+      shipping_address, express_company, mark_type, audit_status,
+      audit_transfer_time, is_audit_transferred, custom_fields,
       remark, created_by, created_by_name, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
     const insertParams = [
       orderId,
@@ -342,7 +371,7 @@ router.post('/', async (req: Request, res: Response) => {
       serviceWechat || '',
       orderSource || '',
       JSON.stringify(products || []),
-      'pending',
+      'pending_transfer', // 初始状态为待流转
       finalTotalAmount,
       Number(discount) || 0,
       finalAmount,
@@ -354,7 +383,10 @@ router.post('/', async (req: Request, res: Response) => {
       receiverPhone || customerPhone || '',
       receiverAddress || '',
       req.body.expressCompany || '',
-      req.body.markType || 'normal',
+      markType,
+      'pending', // audit_status
+      auditTransferTime, // audit_transfer_time
+      markType === 'normal' ? 0 : 1, // is_audit_transferred (预留单不需要流转)
       req.body.customFields ? JSON.stringify(req.body.customFields) : null,
       remark || '',
       salesPersonId || '',
@@ -389,6 +421,9 @@ router.post('/', async (req: Request, res: Response) => {
       remark: remark || '',
       status: 'pending_transfer',
       auditStatus: 'pending',
+      markType: markType,
+      auditTransferTime: auditTransferTime,
+      isAuditTransferred: markType !== 'normal',
       createTime: now,
       createdBy: salesPersonId || '',
       salesPersonId: salesPersonId || ''
@@ -819,6 +854,133 @@ router.get('/statistics', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: '获取订单统计失败'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/orders/check-transfer
+ * @desc 检查并执行订单流转（将到期的待流转订单转为待审核）
+ * @access Private
+ */
+router.post('/check-transfer', async (req: Request, res: Response) => {
+  try {
+    console.log('🔄 [订单流转] 开始检查待流转订单...');
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    // 查找需要流转的订单：
+    // 1. 状态为 pending_transfer
+    // 2. 标记类型为 normal（正常发货单）
+    // 3. 未流转 (is_audit_transferred = 0)
+    // 4. 流转时间已到 (audit_transfer_time <= now)
+    const selectSql = `
+      SELECT id, order_number, audit_transfer_time
+      FROM orders
+      WHERE status = 'pending_transfer'
+        AND mark_type = 'normal'
+        AND (is_audit_transferred = 0 OR is_audit_transferred IS NULL)
+        AND audit_transfer_time IS NOT NULL
+        AND audit_transfer_time <= ?
+    `;
+
+    const ordersToTransfer = await AppDataSource.query(selectSql, [now]);
+    console.log(`🔄 [订单流转] 找到 ${ordersToTransfer.length} 个待流转订单`);
+
+    if (ordersToTransfer.length === 0) {
+      return res.json({
+        success: true,
+        message: '没有需要流转的订单',
+        data: { transferredCount: 0 }
+      });
+    }
+
+    // 批量更新订单状态
+    const orderIds = ordersToTransfer.map((o: { id: string }) => o.id);
+    const updateSql = `
+      UPDATE orders
+      SET status = 'pending_audit',
+          is_audit_transferred = 1,
+          updated_at = ?
+      WHERE id IN (${orderIds.map(() => '?').join(',')})
+    `;
+
+    await AppDataSource.query(updateSql, [now, ...orderIds]);
+
+    console.log(`✅ [订单流转] 成功流转 ${ordersToTransfer.length} 个订单`);
+
+    res.json({
+      success: true,
+      message: `成功流转 ${ordersToTransfer.length} 个订单`,
+      data: {
+        transferredCount: ordersToTransfer.length,
+        orders: ordersToTransfer.map((o: { id: string; order_number: string }) => ({
+          id: o.id,
+          orderNumber: o.order_number
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('❌ [订单流转] 检查流转失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '检查订单流转失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route PUT /api/v1/orders/:id/mark-type
+ * @desc 更新订单标记类型
+ * @access Private
+ */
+router.put('/:id/mark-type', async (req: Request, res: Response) => {
+  try {
+    const { markType, isAuditTransferred, auditTransferTime, status } = req.body;
+    const orderId = req.params.id;
+
+    console.log(`📝 [订单标记] 更新订单 ${orderId} 标记类型为 ${markType}`);
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    // 构建更新SQL
+    const updateFields = ['mark_type = ?', 'updated_at = ?'];
+    const updateParams: (string | number | null)[] = [markType, now];
+
+    if (isAuditTransferred !== undefined) {
+      updateFields.push('is_audit_transferred = ?');
+      updateParams.push(isAuditTransferred ? 1 : 0);
+    }
+
+    if (auditTransferTime !== undefined) {
+      updateFields.push('audit_transfer_time = ?');
+      updateParams.push(auditTransferTime || null);
+    }
+
+    if (status !== undefined) {
+      updateFields.push('status = ?');
+      updateParams.push(status);
+    }
+
+    updateParams.push(orderId);
+
+    const updateSql = `UPDATE orders SET ${updateFields.join(', ')} WHERE id = ?`;
+    await AppDataSource.query(updateSql, updateParams);
+
+    console.log(`✅ [订单标记] 订单 ${orderId} 标记更新成功`);
+
+    res.json({
+      success: true,
+      message: '订单标记更新成功',
+      data: { id: orderId, markType }
+    });
+  } catch (error) {
+    console.error('❌ [订单标记] 更新失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '更新订单标记失败',
+      error: error instanceof Error ? error.message : '未知错误'
     });
   }
 });
