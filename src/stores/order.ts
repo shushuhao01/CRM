@@ -984,10 +984,44 @@ export const useOrderStore = createPersistentStore('order', () => {
   }
 
   // 检查并流转订单（用于定时任务）
-  const checkAndTransferOrders = () => {
+  const checkAndTransferOrders = async () => {
     const now = new Date()
-    const currentUser = userStore.currentUser
 
+    // 🔥 检测环境，生产环境调用后端API
+    const hostname = window.location.hostname
+    const isProdEnv = (
+      hostname.includes('abc789.cn') ||
+      hostname.includes('vercel.app') ||
+      hostname.includes('netlify.app') ||
+      hostname.includes('railway.app') ||
+      !hostname.includes('localhost') && !hostname.includes('127.0.0.1')
+    )
+
+    // 生产环境：调用后端API执行流转
+    if (isProdEnv) {
+      try {
+        console.log('[订单流转] 🌐 生产环境：调用后端API检查流转')
+        const { orderApi } = await import('@/api/order')
+        const response = await orderApi.checkTransfer()
+
+        if (response.success && response.data?.transferredCount > 0) {
+          console.log(`[订单流转] ✅ 后端流转成功: ${response.data.transferredCount} 个订单`)
+          // 重新加载订单列表以获取最新状态
+          await loadOrdersFromAPI()
+          eventBus.emit(EventNames.ORDER_TRANSFERRED, response.data.orders || [])
+          eventBus.emit(EventNames.REFRESH_ORDER_LIST)
+          eventBus.emit(EventNames.REFRESH_AUDIT_LIST)
+        } else {
+          console.log('[订单流转] 没有需要流转的订单')
+        }
+      } catch (error) {
+        console.error('[订单流转] ❌ 后端API调用失败:', error)
+      }
+      return
+    }
+
+    // 开发环境：本地执行流转逻辑
+    console.log('[订单流转] 💻 开发环境：本地执行流转检查')
     let hasTransferred = false
     const transferredOrders: Order[] = []
 
