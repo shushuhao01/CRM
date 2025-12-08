@@ -4,6 +4,7 @@ import { AppDataSource } from '../config/database';
 import { Customer } from '../entities/Customer';
 import { CustomerGroup } from '../entities/CustomerGroup';
 import { CustomerTag } from '../entities/CustomerTag';
+import { User } from '../entities/User';
 import { Like, Between } from 'typeorm';
 
 const router = Router();
@@ -637,6 +638,24 @@ router.get('/check-exists', async (req: Request, res: Response) => {
 
     if (existingCustomer) {
       console.log('[检查客户存在] 找到客户:', existingCustomer.name);
+
+      // 查找归属人的真实姓名
+      let ownerName = '';
+      const ownerId = existingCustomer.salesPersonId || existingCustomer.createdBy;
+
+      if (ownerId) {
+        try {
+          const userRepository = AppDataSource.getRepository(User);
+          const owner = await userRepository.findOne({
+            where: { id: ownerId }
+          });
+          ownerName = owner?.name || ownerId;
+        } catch (e) {
+          console.log('[检查客户存在] 查找归属人失败:', e);
+          ownerName = ownerId;
+        }
+      }
+
       return res.json({
         success: true,
         code: 200,
@@ -645,7 +664,7 @@ router.get('/check-exists', async (req: Request, res: Response) => {
           id: existingCustomer.id,
           name: existingCustomer.name,
           phone: existingCustomer.phone,
-          creatorName: existingCustomer.createdBy || '',
+          creatorName: ownerName,
           createTime: existingCustomer.createdAt?.toISOString() || ''
         }
       });
