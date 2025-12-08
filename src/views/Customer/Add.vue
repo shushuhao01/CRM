@@ -162,6 +162,33 @@
         <!-- 收货地址信息 -->
         <div class="form-section">
           <h3 class="section-title">收货地址</h3>
+
+          <!-- 智能地址识别 -->
+          <el-row :gutter="20" style="margin-bottom: 16px;">
+            <el-col :span="24">
+              <el-form-item label="智能识别">
+                <div class="address-recognition">
+                  <el-input
+                    v-model="addressRecognitionInput"
+                    type="textarea"
+                    :rows="2"
+                    placeholder="粘贴完整地址，如：广东省广州市天河区天河路123号XXX大厦1001室 张三 13800138000"
+                    style="flex: 1;"
+                  />
+                  <el-button
+                    type="primary"
+                    @click="recognizeAddress"
+                    :loading="recognizingAddress"
+                    style="margin-left: 10px; height: 60px;"
+                  >
+                    识别填充
+                  </el-button>
+                </div>
+                <div class="form-tip">支持识别省市区街道和详细地址，自动填充到下方表单</div>
+              </el-form-item>
+            </el-col>
+          </el-row>
+
           <el-row :gutter="20">
             <el-col :span="6">
               <el-form-item
@@ -640,6 +667,102 @@ const provinces = ref([])
 const cities = ref([])
 const districts = ref([])
 const streets = ref([])
+
+// 地址智能识别
+const addressRecognitionInput = ref('')
+const recognizingAddress = ref(false)
+
+// 智能识别地址
+const recognizeAddress = () => {
+  const input = addressRecognitionInput.value.trim()
+  if (!input) {
+    ElMessage.warning('请输入需要识别的地址')
+    return
+  }
+
+  recognizingAddress.value = true
+
+  try {
+    // 省份列表
+    const provinceList = getProvinces()
+    let matchedProvince = ''
+    let matchedCity = ''
+    let matchedDistrict = ''
+    let remainingAddress = input
+
+    // 1. 识别省份
+    for (const province of provinceList) {
+      const provinceName = province.label.replace(/省|市|自治区|特别行政区/g, '')
+      if (input.includes(province.label) || input.includes(provinceName)) {
+        matchedProvince = province.value
+        remainingAddress = input.replace(province.label, '').replace(provinceName, '')
+        break
+      }
+    }
+
+    // 2. 识别城市
+    if (matchedProvince) {
+      const cityList = getCitiesByProvince(matchedProvince)
+      for (const city of cityList) {
+        const cityName = city.label.replace(/市|地区|自治州|盟/g, '')
+        if (remainingAddress.includes(city.label) || remainingAddress.includes(cityName)) {
+          matchedCity = city.value
+          remainingAddress = remainingAddress.replace(city.label, '').replace(cityName, '')
+          break
+        }
+      }
+    }
+
+    // 3. 识别区县
+    if (matchedProvince && matchedCity) {
+      const districtList = getDistrictsByCity(matchedProvince, matchedCity)
+      for (const district of districtList) {
+        const districtName = district.label.replace(/区|县|市/g, '')
+        if (remainingAddress.includes(district.label) || remainingAddress.includes(districtName)) {
+          matchedDistrict = district.value
+          remainingAddress = remainingAddress.replace(district.label, '').replace(districtName, '')
+          break
+        }
+      }
+    }
+
+    // 4. 清理剩余地址（去除可能的姓名和电话）
+    // 移除电话号码
+    remainingAddress = remainingAddress.replace(/1[3-9]\d{9}/g, '')
+    // 移除常见分隔符
+    remainingAddress = remainingAddress.replace(/^[\s,，、\-]+/, '').trim()
+
+    // 5. 填充表单
+    if (matchedProvince) {
+      customerForm.province = matchedProvince
+      cities.value = getCitiesByProvince(matchedProvince)
+
+      if (matchedCity) {
+        customerForm.city = matchedCity
+        districts.value = getDistrictsByCity(matchedProvince, matchedCity)
+
+        if (matchedDistrict) {
+          customerForm.district = matchedDistrict
+          streets.value = getStreetsByDistrict(matchedProvince, matchedCity, matchedDistrict)
+        }
+      }
+
+      // 填充详细地址
+      if (remainingAddress) {
+        customerForm.detailAddress = remainingAddress
+      }
+
+      ElMessage.success('地址识别成功，已自动填充')
+    } else {
+      ElMessage.warning('未能识别省份信息，请检查地址格式')
+    }
+  } catch (error) {
+    console.error('地址识别失败:', error)
+    ElMessage.error('地址识别失败，请手动填写')
+  } finally {
+    recognizingAddress.value = false
+  }
+}
 
 // 地址处理方法
 const handleProvinceChange = (value: string) => {
@@ -1397,6 +1520,21 @@ onMounted(() => {
 <style scoped>
 .customer-form {
   padding: 0;
+}
+
+.address-recognition {
+  display: flex;
+  align-items: flex-start;
+}
+
+.address-recognition .el-textarea {
+  flex: 1;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
 }
 
 .page-header {
