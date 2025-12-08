@@ -754,8 +754,32 @@ router.put('/storage-settings', authenticateToken, requireAdmin, async (req: Req
 // ========== 商品设置路由 ==========
 
 /**
+ * @route GET /api/v1/system/product-settings/public
+ * @desc 获取商品优惠折扣设置（公开给所有已登录用户）
+ * @access Private (All authenticated users)
+ */
+router.get('/product-settings/public', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const settings = await getConfigsByGroup('product_settings');
+    // 只返回优惠折扣相关的配置，不返回敏感配置
+    const discountSettings = {
+      maxDiscountPercent: settings.maxDiscountPercent ?? 50,
+      adminMaxDiscount: settings.adminMaxDiscount ?? 50,
+      managerMaxDiscount: settings.managerMaxDiscount ?? 30,
+      salesMaxDiscount: settings.salesMaxDiscount ?? 15,
+      discountApprovalThreshold: settings.discountApprovalThreshold ?? 20,
+      allowPriceModification: settings.allowPriceModification ?? true
+    };
+    res.json({ success: true, data: discountSettings });
+  } catch (error) {
+    console.error('获取商品优惠设置失败:', error);
+    res.status(500).json({ success: false, message: '获取商品优惠设置失败' });
+  }
+});
+
+/**
  * @route GET /api/v1/system/product-settings
- * @desc 获取商品设置
+ * @desc 获取商品设置（完整配置，仅管理员）
  * @access Private (Admin)
  */
 router.get('/product-settings', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {

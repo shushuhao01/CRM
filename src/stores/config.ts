@@ -684,27 +684,48 @@ export const useConfigStore = defineStore('config', () => {
 
   /**
    * 从API加载商品配置（确保所有用户看到管理员设置的优惠折扣配置）
+   * 使用公开API，所有已登录用户都可以访问
    */
   const loadProductConfigFromAPI = async () => {
     try {
       const { apiService } = await import('@/services/apiService')
-      console.log('[ConfigStore] 开始从API加载商品配置（优惠折扣设置）...')
-      const apiData = await apiService.get('/system/product-settings')
-      console.log('[ConfigStore] 商品配置API返回:', apiData)
+      console.log('[ConfigStore] 开始从API加载商品优惠折扣配置...')
+      // 使用公开API，所有已登录用户都可以访问
+      const apiData = await apiService.get('/system/product-settings/public')
+      console.log('[ConfigStore] 商品优惠配置API返回:', apiData)
 
       if (apiData && typeof apiData === 'object') {
-        Object.assign(productConfig.value, apiData)
+        // 只更新优惠折扣相关的配置
+        if (apiData.maxDiscountPercent !== undefined) {
+          productConfig.value.maxDiscountPercent = apiData.maxDiscountPercent
+        }
+        if (apiData.adminMaxDiscount !== undefined) {
+          productConfig.value.adminMaxDiscount = apiData.adminMaxDiscount
+        }
+        if (apiData.managerMaxDiscount !== undefined) {
+          productConfig.value.managerMaxDiscount = apiData.managerMaxDiscount
+        }
+        if (apiData.salesMaxDiscount !== undefined) {
+          productConfig.value.salesMaxDiscount = apiData.salesMaxDiscount
+        }
+        if (apiData.discountApprovalThreshold !== undefined) {
+          productConfig.value.discountApprovalThreshold = apiData.discountApprovalThreshold
+        }
+        if (apiData.allowPriceModification !== undefined) {
+          productConfig.value.allowPriceModification = apiData.allowPriceModification
+        }
         // 同步保存到localStorage作为缓存
         localStorage.setItem('crm_config_product', JSON.stringify(productConfig.value))
-        console.log('[ConfigStore] 商品配置已从API更新:', {
+        console.log('[ConfigStore] 商品优惠配置已从API更新:', {
           maxDiscountPercent: productConfig.value.maxDiscountPercent,
           adminMaxDiscount: productConfig.value.adminMaxDiscount,
           managerMaxDiscount: productConfig.value.managerMaxDiscount,
           salesMaxDiscount: productConfig.value.salesMaxDiscount
         })
       }
-    } catch (error) {
-      console.warn('[ConfigStore] 从API加载商品配置失败，使用本地配置:', error)
+    } catch (error: unknown) {
+      // 静默处理错误，不显示错误提示，避免成员登录时看到权限错误
+      console.log('[ConfigStore] 从API加载商品配置失败，使用本地配置')
     }
   }
 
