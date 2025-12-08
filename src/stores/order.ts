@@ -1243,18 +1243,51 @@ export const useOrderStore = createPersistentStore('order', () => {
 
   // 从API加载订单数据
   const loadOrdersFromAPI = async () => {
+    // 检测是否为生产环境
+    const hostname = window.location.hostname
+    const isProdEnv = (
+      hostname.includes('abc789.cn') ||
+      hostname.includes('vercel.app') ||
+      hostname.includes('netlify.app') ||
+      hostname.includes('railway.app') ||
+      (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
+    )
+
     try {
       const { orderApi } = await import('@/api/order')
+      console.log('[OrderStore] 正在从API加载订单列表...')
       const response = await orderApi.getList({ page: 1, pageSize: 100 })
+      console.log('[OrderStore] API响应:', response)
 
       if (response && response.data && response.data.list) {
         orders.value = response.data.list
-        console.log(`Order Store: 从API加载了 ${response.data.list.length} 个订单`)
+        console.log(`[OrderStore] ✅ 从API加载了 ${response.data.list.length} 个订单`)
         return response.data.list
+      } else if (response && response.success === false) {
+        console.error('[OrderStore] API返回失败:', response)
+        throw new Error('API返回失败')
       }
+
+      // 生产环境下，如果API返回空数据，不使用本地数据
+      if (isProdEnv) {
+        console.log('[OrderStore] 生产环境：API返回空数据，订单列表为空')
+        orders.value = []
+        return []
+      }
+
       return []
     } catch (error) {
-      console.warn('Order Store: 从API加载订单失败，使用本地数据:', error)
+      console.error('[OrderStore] ❌ 从API加载订单失败:', error)
+
+      // 生产环境下，API失败时不使用本地数据，直接返回空数组
+      if (isProdEnv) {
+        console.warn('[OrderStore] 生产环境：API失败，不使用本地数据')
+        orders.value = []
+        return []
+      }
+
+      // 开发环境可以使用本地数据
+      console.warn('[OrderStore] 开发环境：使用本地数据')
       return []
     }
   }
@@ -1347,8 +1380,24 @@ export const useOrderStore = createPersistentStore('order', () => {
     }
   }
 
-  // 初始化模拟数据（保留用于开发环境）
+  // 初始化模拟数据（仅用于开发环境）
   const initializeWithMockData = () => {
+    // 检测是否为生产环境
+    const hostname = window.location.hostname
+    const isProdEnv = (
+      hostname.includes('abc789.cn') ||
+      hostname.includes('vercel.app') ||
+      hostname.includes('netlify.app') ||
+      hostname.includes('railway.app') ||
+      (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
+    )
+
+    // 🔥 生产环境不使用模拟数据和localStorage
+    if (isProdEnv) {
+      console.log('[OrderStore] 生产环境：不使用模拟数据，订单数据从API获取')
+      return
+    }
+
     // 如果已有数据，不重复初始化
     if (orders.value.length > 0) {
       console.log('Order Store: 订单数据已存在，跳过初始化')
@@ -1356,7 +1405,7 @@ export const useOrderStore = createPersistentStore('order', () => {
     }
 
     try {
-      // 从localStorage获取订单数据
+      // 从localStorage获取订单数据（仅开发环境）
       const stored = localStorage.getItem('crm_mock_orders')
       if (stored) {
         const mockOrders = JSON.parse(stored)
