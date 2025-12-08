@@ -1285,7 +1285,13 @@ const saveOrder = () => {
 const confirmSaveOrder = async () => {
   saving.value = true
   try {
-    await orderStore.updateOrder(orderId, orderForm)
+    // 将截图数组添加到订单数据中
+    const orderData = {
+      ...orderForm,
+      depositScreenshots: depositScreenshots.value,
+      depositScreenshot: depositScreenshots.value[0] || ''
+    }
+    await orderStore.updateOrder(orderId, orderData)
     ElMessage.success('订单更新成功')
     showConfirmDialog.value = false
 

@@ -1660,13 +1660,16 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   margin-left: 8px;
-  padding: 4px 10px;
+  padding: 0 10px;
+  height: 32px;
+  line-height: 32px;
   background-color: #f0f9eb;
   border: 1px solid #e1f3d8;
   border-radius: 4px;
   color: #67c23a;
   font-size: 13px;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .verify-success-inline .success-text {
