@@ -2,8 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
-import { OrderItem } from '../entities/OrderItem';
-import { v4 as uuidv4 } from 'uuid';
+import { Like, Between } from 'typeorm';
 
 const router = Router();
 
@@ -17,7 +16,8 @@ router.use(authenticateToken);
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    console.log('📋 [订单列表] 收到请求');
+    const orderRepository = AppDataSource.getRepository(Order);
+
     const {
       page = 1,
       pageSize = 20,
@@ -28,108 +28,96 @@ router.get('/', async (req: Request, res: Response) => {
       endDate
     } = req.query;
 
-    // 使用原生SQL查询，避免TypeORM字段映射问题
-    let sql = `SELECT o.*, c.name as customer_name_joined, c.phone as customer_phone_joined
-               FROM orders o
-               LEFT JOIN customers c ON o.customer_id = c.id
-               WHERE 1=1`;
-    const params: (string | number)[] = [];
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = parseInt(pageSize as string) || 20;
+    const skip = (pageNum - 1) * pageSizeNum;
 
-    // 状态筛选
+    // 构建查询条件
+    const where: Record<string, unknown> = {};
+
     if (status) {
-      sql += ` AND o.status = ?`;
-      params.push(String(status));
+      where.status = status;
     }
 
-    // 订单号筛选
     if (orderNumber) {
-      sql += ` AND o.order_number LIKE ?`;
-      params.push(`%${orderNumber}%`);
+      where.orderNumber = Like(`%${orderNumber}%`);
     }
 
-    // 客户名称筛选
     if (customerName) {
-      sql += ` AND (o.customer_name LIKE ? OR c.name LIKE ?)`;
-      params.push(`%${customerName}%`, `%${customerName}%`);
+      where.customerName = Like(`%${customerName}%`);
     }
 
     // 日期范围筛选
-    if (startDate) {
-      sql += ` AND o.created_at >= ?`;
-      params.push(String(startDate));
-    }
-    if (endDate) {
-      sql += ` AND o.created_at <= ?`;
-      params.push(String(endDate));
+    if (startDate && endDate) {
+      where.createdAt = Between(new Date(startDate as string), new Date(endDate as string));
     }
 
-    // 获取总数
-    const countSql = sql.replace(/SELECT o\.\*, c\.name as customer_name_joined, c\.phone as customer_phone_joined/, 'SELECT COUNT(*) as total');
-    const countResult = await AppDataSource.query(countSql, params);
-    const total = countResult[0]?.total || 0;
+    const [orders, total] = await orderRepository.findAndCount({
+      where,
+      skip,
+      take: pageSizeNum,
+      order: { createdAt: 'DESC' }
+    });
 
-    // 排序和分页
-    sql += ` ORDER BY o.created_at DESC`;
-    const skip = (Number(page) - 1) * Number(pageSize);
-    sql += ` LIMIT ? OFFSET ?`;
-    params.push(Number(pageSize), skip);
-
-    const orders = await AppDataSource.query(sql, params);
     console.log(`📋 [订单列表] 查询到 ${orders.length} 条订单, 总数: ${total}`);
 
-    // 转换为前端需要的格式（原生SQL返回的是下划线字段名）
-    const formattedOrders = orders.map((order: Record<string, unknown>) => {
+    // 转换数据格式以匹配前端期望
+    const list = orders.map(order => {
       // 解析products JSON字段
       let products: unknown[] = [];
       if (order.products) {
         try {
-          products = typeof order.products === 'string' ? JSON.parse(order.products) : order.products;
+          products = typeof order.products === 'string' ? JSON.parse(order.products as string) : order.products;
         } catch {
           products = [];
         }
       }
 
       return {
-        id: String(order.id || ''),
-        orderNumber: order.order_number || '',
-        customerId: String(order.customer_id || ''),
-        customerName: order.customer_name || order.customer_name_joined || '',
-        customerPhone: order.customer_phone || order.customer_phone_joined || '',
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerId: order.customerId || '',
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
         products: products,
-        totalAmount: Number(order.total_amount) || 0,
-        depositAmount: Number(order.deposit_amount) || 0,
-        collectAmount: Number(order.final_amount) || 0,
-        receiverName: order.shipping_name || '',
-        receiverPhone: order.shipping_phone || '',
-        receiverAddress: order.shipping_address || '',
+        totalAmount: Number(order.totalAmount) || 0,
+        depositAmount: Number(order.depositAmount) || 0,
+        collectAmount: Number(order.finalAmount) || 0,
+        receiverName: order.shippingName || '',
+        receiverPhone: order.shippingPhone || '',
+        receiverAddress: order.shippingAddress || '',
         remark: order.remark || '',
         status: order.status || 'pending',
-        auditStatus: order.audit_status || 'pending',
-        markType: order.mark_type || 'normal',
-        auditTransferTime: order.audit_transfer_time ? new Date(order.audit_transfer_time as string).toISOString() : '',
-        isAuditTransferred: Boolean(order.is_audit_transferred),
-        paymentStatus: order.payment_status || 'unpaid',
-        paymentMethod: order.payment_method || '',
-        createTime: order.created_at ? new Date(order.created_at as string).toISOString() : '',
-        createdBy: order.created_by || '',
-        salesPersonId: order.created_by || ''
+        markType: order.markType || 'normal',
+        paymentStatus: order.paymentStatus || 'unpaid',
+        paymentMethod: order.paymentMethod || '',
+        expressCompany: order.expressCompany || '',
+        trackingNumber: order.trackingNumber || '',
+        serviceWechat: order.serviceWechat || '',
+        orderSource: order.orderSource || '',
+        createTime: order.createdAt?.toISOString() || '',
+        createdBy: order.createdBy || '',
+        createdByName: order.createdByName || '',
+        salesPersonId: order.createdBy || ''
       };
     });
 
-    console.log(`📋 [订单列表] 返回 ${formattedOrders.length} 条格式化订单`);
     res.json({
       success: true,
+      code: 200,
+      message: '获取订单列表成功',
       data: {
-        list: formattedOrders,
+        list,
         total,
-        page: Number(page),
-        pageSize: Number(pageSize)
+        page: pageNum,
+        pageSize: pageSizeNum
       }
     });
   } catch (error) {
     console.error('❌ [订单列表] 获取失败:', error);
     res.status(500).json({
       success: false,
+      code: 500,
       message: '获取订单列表失败',
       error: error instanceof Error ? error.message : '未知错误'
     });
@@ -145,13 +133,13 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
     const order = await orderRepository.findOne({
-      where: { id: req.params.id },
-      relations: ['customer', 'orderItems', 'statusHistory']
+      where: { id: req.params.id }
     });
 
     if (!order) {
       return res.status(404).json({
         success: false,
+        code: 404,
         message: '订单不存在'
       });
     }
@@ -165,52 +153,48 @@ router.get('/:id', async (req: Request, res: Response) => {
         products = [];
       }
     }
-    // 如果products为空，尝试从orderItems获取
-    if (products.length === 0 && order.orderItems?.length > 0) {
-      products = order.orderItems.map(item => ({
-        id: item.id.toString(),
-        name: item.productName,
-        price: Number(item.unitPrice),
-        quantity: item.quantity,
-        total: Number(item.subtotal)
-      }));
-    }
 
-    const formattedOrder = {
-      id: order.id.toString(),
+    const data = {
+      id: order.id,
       orderNumber: order.orderNumber,
-      customerId: order.customerId?.toString() || '',
-      customerName: order.customerName || order.customer?.name || '',
-      customerPhone: order.customerPhone || order.customer?.phone || '',
+      customerId: order.customerId || '',
+      customerName: order.customerName || '',
+      customerPhone: order.customerPhone || '',
       products: products,
-      totalAmount: Number(order.totalAmount),
+      totalAmount: Number(order.totalAmount) || 0,
       depositAmount: Number(order.depositAmount) || 0,
       collectAmount: Number(order.finalAmount) || 0,
       receiverName: order.shippingName || '',
       receiverPhone: order.shippingPhone || '',
       receiverAddress: order.shippingAddress || '',
       remark: order.remark || '',
-      status: order.status,
-      auditStatus: order.auditStatus || 'pending',
+      status: order.status || 'pending',
       markType: order.markType || 'normal',
-      auditTransferTime: order.auditTransferTime?.toISOString() || '',
-      isAuditTransferred: Boolean(order.isAuditTransferred),
-      paymentStatus: order.paymentStatus,
+      paymentStatus: order.paymentStatus || 'unpaid',
       paymentMethod: order.paymentMethod || '',
+      expressCompany: order.expressCompany || '',
+      trackingNumber: order.trackingNumber || '',
+      serviceWechat: order.serviceWechat || '',
+      orderSource: order.orderSource || '',
       createTime: order.createdAt?.toISOString() || '',
       createdBy: order.createdBy || '',
+      createdByName: order.createdByName || '',
       salesPersonId: order.createdBy || ''
     };
 
     res.json({
       success: true,
-      data: formattedOrder
+      code: 200,
+      message: '获取订单详情成功',
+      data
     });
   } catch (error) {
     console.error('获取订单详情失败:', error);
     res.status(500).json({
       success: false,
-      message: '获取订单详情失败'
+      code: 500,
+      message: '获取订单详情失败',
+      error: error instanceof Error ? error.message : '未知错误'
     });
   }
 });
@@ -224,8 +208,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     console.log('📝 [订单创建] 收到请求数据:', JSON.stringify(req.body, null, 2));
 
-    const _orderRepository = AppDataSource.getRepository(Order);
-    const _orderItemRepository = AppDataSource.getRepository(OrderItem);
+    const orderRepository = AppDataSource.getRepository(Order);
 
     const {
       customerId,
@@ -233,7 +216,6 @@ router.post('/', async (req: Request, res: Response) => {
       customerPhone,
       products,
       totalAmount,
-      // subtotal, // 暂未使用
       discount,
       collectAmount,
       depositAmount,
@@ -248,8 +230,9 @@ router.post('/', async (req: Request, res: Response) => {
       salesPersonName,
       orderNumber,
       serviceWechat,
-      orderSource
-      // customFields // 暂未使用
+      orderSource,
+      markType,
+      expressCompany
     } = req.body;
 
     // 数据验证
@@ -257,6 +240,7 @@ router.post('/', async (req: Request, res: Response) => {
       console.error('❌ [订单创建] 缺少客户ID');
       return res.status(400).json({
         success: false,
+        code: 400,
         message: '缺少客户ID'
       });
     }
@@ -265,61 +249,12 @@ router.post('/', async (req: Request, res: Response) => {
       console.error('❌ [订单创建] 缺少商品信息');
       return res.status(400).json({
         success: false,
+        code: 400,
         message: '缺少商品信息'
       });
     }
 
-    // 解析客户ID（支持字符串和数字）
-    let parsedCustomerId: string = '';
-    if (typeof customerId === 'string') {
-      // 如果是类似 "customer_xxx" 的格式，需要查找或创建客户
-      if (customerId.startsWith('customer_') || customerId.startsWith('temp_')) {
-        console.log('📝 [订单创建] 检测到临时客户ID，尝试查找或创建客户');
-        // 尝试通过手机号查找客户
-        if (customerPhone) {
-          const existingCustomer = await AppDataSource.query(
-            'SELECT id FROM customers WHERE phone = ? LIMIT 1',
-            [customerPhone]
-          );
-          if (existingCustomer.length > 0) {
-            parsedCustomerId = existingCustomer[0].id;
-            console.log('✅ [订单创建] 通过手机号找到客户:', parsedCustomerId);
-          } else {
-            // 创建新客户 - 使用UUID
-            const { v4: uuidv4 } = await import('uuid');
-            const newCustomerId = uuidv4();
-            const customerCode = `C${Date.now()}`;
-            await AppDataSource.query(
-              `INSERT INTO customers (id, customer_code, name, phone, sales_person_id, created_by, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-              [newCustomerId, customerCode, customerName || '未知客户', customerPhone, salesPersonId || null, salesPersonId || 'system']
-            );
-            parsedCustomerId = newCustomerId;
-            console.log('✅ [订单创建] 创建新客户:', parsedCustomerId);
-          }
-        } else {
-          console.error('❌ [订单创建] 临时客户ID但缺少手机号');
-          return res.status(400).json({
-            success: false,
-            message: '缺少客户手机号'
-          });
-        }
-      } else {
-        parsedCustomerId = customerId;
-      }
-    } else {
-      parsedCustomerId = String(customerId);
-    }
-
-    if (!parsedCustomerId) {
-      console.error('❌ [订单创建] 无效的客户ID:', customerId);
-      return res.status(400).json({
-        success: false,
-        message: '无效的客户ID'
-      });
-    }
-
-    // 生成订单号（使用前端传的或自动生成）
+    // 生成订单号
     const generatedOrderNumber = orderNumber || `ORD${Date.now()}`;
 
     // 计算金额
@@ -327,14 +262,7 @@ router.post('/', async (req: Request, res: Response) => {
     const finalDepositAmount = Number(depositAmount) || 0;
     const finalAmount = finalTotalAmount - (Number(discount) || 0);
 
-    console.log('📝 [订单创建] 准备创建订单:', {
-      orderNumber: generatedOrderNumber,
-      customerId: parsedCustomerId,
-      totalAmount: finalTotalAmount,
-      depositAmount: finalDepositAmount
-    });
-
-    // 处理定金截图 - 支持单张和多张
+    // 处理定金截图
     let finalDepositScreenshots: string[] = [];
     if (depositScreenshots && Array.isArray(depositScreenshots)) {
       finalDepositScreenshots = depositScreenshots;
@@ -342,73 +270,53 @@ router.post('/', async (req: Request, res: Response) => {
       finalDepositScreenshots = [depositScreenshot];
     }
 
-    // 创建订单 - 使用原生SQL避免TypeORM字段映射问题
-    const orderId = uuidv4();
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    // 获取当前用户信息
+    const currentUser = (req as any).user;
+    const finalCreatedBy = salesPersonId || currentUser?.id || 'admin';
+    const finalCreatedByName = salesPersonName || currentUser?.name || '';
 
-    // 计算流转时间（正常发货单3分钟后流转）
-    const markType = req.body.markType || 'normal';
-    const auditTransferTime = markType === 'normal'
-      ? new Date(Date.now() + 3 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ')
-      : null;
+    console.log('📝 [订单创建] 准备创建订单:', {
+      orderNumber: generatedOrderNumber,
+      customerId,
+      totalAmount: finalTotalAmount,
+      depositAmount: finalDepositAmount
+    });
 
-    const insertSql = `INSERT INTO orders (
-      id, order_number, customer_id, customer_name, customer_phone,
-      service_wechat, order_source, products, status, total_amount,
-      discount_amount, final_amount, deposit_amount, deposit_screenshots,
-      payment_status, payment_method, shipping_name, shipping_phone,
-      shipping_address, express_company, mark_type, audit_status,
-      audit_transfer_time, is_audit_transferred, custom_fields,
-      remark, created_by, created_by_name, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    // 创建订单
+    const order = orderRepository.create({
+      orderNumber: generatedOrderNumber,
+      customerId: String(customerId),
+      customerName: customerName || '',
+      customerPhone: customerPhone || '',
+      serviceWechat: serviceWechat || '',
+      orderSource: orderSource || '',
+      products: products,
+      status: 'pending',
+      totalAmount: finalTotalAmount,
+      discountAmount: Number(discount) || 0,
+      finalAmount: finalAmount,
+      depositAmount: finalDepositAmount,
+      depositScreenshots: finalDepositScreenshots.length > 0 ? finalDepositScreenshots : undefined,
+      paymentStatus: finalDepositAmount > 0 ? 'partial' : 'unpaid',
+      paymentMethod: paymentMethod || undefined,
+      shippingName: receiverName || customerName || '',
+      shippingPhone: receiverPhone || customerPhone || '',
+      shippingAddress: receiverAddress || '',
+      expressCompany: expressCompany || '',
+      markType: markType || 'normal',
+      remark: remark || '',
+      createdBy: finalCreatedBy,
+      createdByName: finalCreatedByName
+    });
 
-    const insertParams = [
-      orderId,
-      generatedOrderNumber,
-      parsedCustomerId,
-      customerName || '',
-      customerPhone || '',
-      serviceWechat || '',
-      orderSource || '',
-      JSON.stringify(products || []),
-      'pending_transfer', // 初始状态为待流转
-      finalTotalAmount,
-      Number(discount) || 0,
-      finalAmount,
-      finalDepositAmount,
-      finalDepositScreenshots.length > 0 ? JSON.stringify(finalDepositScreenshots) : null,
-      finalDepositAmount > 0 ? 'partial' : 'unpaid',
-      paymentMethod || null,
-      receiverName || customerName || '',
-      receiverPhone || customerPhone || '',
-      receiverAddress || '',
-      req.body.expressCompany || '',
-      markType,
-      'pending', // audit_status
-      auditTransferTime, // audit_transfer_time
-      markType === 'normal' ? 0 : 1, // is_audit_transferred (预留单不需要流转)
-      req.body.customFields ? JSON.stringify(req.body.customFields) : null,
-      remark || '',
-      salesPersonId || '',
-      salesPersonName || '',
-      now,
-      now
-    ];
-
-    await AppDataSource.query(insertSql, insertParams);
-    console.log('✅ [订单创建] 订单保存成功:', orderId);
-
-    const savedOrder = { id: orderId, orderNumber: generatedOrderNumber, customerId: parsedCustomerId };
-
-    // 商品信息已经存储在 orders 表的 products JSON 字段中
-    // 不再单独创建 order_items 记录，避免 TypeORM 字段映射问题
-    console.log('✅ [订单创建] 商品信息已存储在订单的products字段中');
+    const savedOrder = await orderRepository.save(order);
+    console.log('✅ [订单创建] 订单保存成功:', savedOrder.id);
 
     // 返回完整的订单数据
     const responseData = {
-      id: savedOrder.id.toString(),
+      id: savedOrder.id,
       orderNumber: savedOrder.orderNumber,
-      customerId: savedOrder.customerId.toString(),
+      customerId: savedOrder.customerId,
       customerName: customerName || '',
       customerPhone: customerPhone || '',
       products: products,
@@ -419,20 +327,18 @@ router.post('/', async (req: Request, res: Response) => {
       receiverPhone: receiverPhone || customerPhone || '',
       receiverAddress: receiverAddress || '',
       remark: remark || '',
-      status: 'pending_transfer',
-      auditStatus: 'pending',
-      markType: markType,
-      auditTransferTime: auditTransferTime,
-      isAuditTransferred: markType !== 'normal',
-      createTime: now,
-      createdBy: salesPersonId || '',
-      salesPersonId: salesPersonId || ''
+      status: 'pending',
+      markType: markType || 'normal',
+      createTime: savedOrder.createdAt?.toISOString() || new Date().toISOString(),
+      createdBy: finalCreatedBy,
+      salesPersonId: finalCreatedBy
     };
 
     console.log('✅ [订单创建] 返回数据:', responseData);
 
     res.status(201).json({
       success: true,
+      code: 200,
       message: '订单创建成功',
       data: responseData
     });
@@ -446,11 +352,13 @@ router.post('/', async (req: Request, res: Response) => {
     });
     res.status(500).json({
       success: false,
+      code: 500,
       message: err?.sqlMessage || err?.message || '创建订单失败',
       error: process.env.NODE_ENV === 'development' ? err?.stack : undefined
     });
   }
 });
+
 
 /**
  * @route PUT /api/v1/orders/:id
@@ -467,6 +375,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (!order) {
       return res.status(404).json({
         success: false,
+        code: 404,
         message: '订单不存在'
       });
     }
@@ -474,26 +383,36 @@ router.put('/:id', async (req: Request, res: Response) => {
     const updateData = req.body;
 
     // 更新订单字段
-    if (updateData.status) order.status = updateData.status;
+    if (updateData.status !== undefined) order.status = updateData.status;
     if (updateData.receiverName || updateData.shippingName) order.shippingName = updateData.receiverName || updateData.shippingName;
     if (updateData.receiverPhone || updateData.shippingPhone) order.shippingPhone = updateData.receiverPhone || updateData.shippingPhone;
     if (updateData.receiverAddress || updateData.shippingAddress) order.shippingAddress = updateData.receiverAddress || updateData.shippingAddress;
-    if (updateData.notes !== undefined || updateData.remark !== undefined) order.remark = updateData.notes || updateData.remark;
-    if (updateData.paymentStatus) order.paymentStatus = updateData.paymentStatus;
-    if (updateData.paymentMethod) order.paymentMethod = updateData.paymentMethod;
+    if (updateData.remark !== undefined) order.remark = updateData.remark;
+    if (updateData.paymentStatus !== undefined) order.paymentStatus = updateData.paymentStatus;
+    if (updateData.paymentMethod !== undefined) order.paymentMethod = updateData.paymentMethod;
+    if (updateData.expressCompany !== undefined) order.expressCompany = updateData.expressCompany;
+    if (updateData.trackingNumber !== undefined) order.trackingNumber = updateData.trackingNumber;
+    if (updateData.markType !== undefined) order.markType = updateData.markType;
 
-    await orderRepository.save(order);
+    const updatedOrder = await orderRepository.save(order);
 
     res.json({
       success: true,
+      code: 200,
       message: '订单更新成功',
-      data: order
+      data: {
+        id: updatedOrder.id,
+        orderNumber: updatedOrder.orderNumber,
+        status: updatedOrder.status
+      }
     });
   } catch (error) {
     console.error('更新订单失败:', error);
     res.status(500).json({
       success: false,
-      message: '更新订单失败'
+      code: 500,
+      message: '更新订单失败',
+      error: error instanceof Error ? error.message : '未知错误'
     });
   }
 });
@@ -513,6 +432,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     if (!order) {
       return res.status(404).json({
         success: false,
+        code: 404,
         message: '订单不存在'
       });
     }
@@ -521,293 +441,16 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
+      code: 200,
       message: '订单删除成功'
     });
   } catch (error) {
     console.error('删除订单失败:', error);
     res.status(500).json({
       success: false,
-      message: '删除订单失败'
-    });
-  }
-});
-
-/**
- * @route POST /api/v1/orders/:id/submit-audit
- * @desc 提交订单审核
- * @access Private
- */
-router.post('/:id/submit-audit', async (req: Request, res: Response) => {
-  try {
-    const orderRepository = AppDataSource.getRepository(Order);
-    const { remark } = req.body;
-    const idParam = req.params.id;
-
-    // 支持 id 或订单号查找
-    let order = await orderRepository.findOne({
-      where: { id: idParam }
-    });
-
-    // 如果 id 没找到，尝试用订单号查找
-    if (!order) {
-      order = await orderRepository.findOne({
-        where: { orderNumber: idParam }
-      });
-    }
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: '订单不存在'
-      });
-    }
-
-    // 更新订单状态为待审核
-    order.status = 'confirmed'; // 使用 confirmed 表示已提审
-    if (remark) {
-      order.remark = `${order.remark || ''} | 提审备注: ${remark}`;
-    }
-
-    await orderRepository.save(order);
-
-    res.json({
-      success: true,
-      message: '订单已提交审核',
-      data: {
-        id: order.id.toString(),
-        orderNumber: order.orderNumber,
-        status: order.status
-      }
-    });
-  } catch (error) {
-    console.error('提交订单审核失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '提交订单审核失败',
+      code: 500,
+      message: '删除订单失败',
       error: error instanceof Error ? error.message : '未知错误'
-    });
-  }
-});
-
-/**
- * @route POST /api/v1/orders/:id/audit
- * @desc 审核订单
- * @access Private
- */
-router.post('/:id/audit', async (req: Request, res: Response) => {
-  try {
-    const orderRepository = AppDataSource.getRepository(Order);
-    const { action, remark } = req.body;
-    const idParam = req.params.id;
-
-    // 支持 id 或订单号查找
-    let order = await orderRepository.findOne({
-      where: { id: idParam }
-    });
-
-    // 如果 id 没找到，尝试用订单号查找
-    if (!order) {
-      order = await orderRepository.findOne({
-        where: { orderNumber: idParam }
-      });
-    }
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: '订单不存在'
-      });
-    }
-
-    if (action === 'approve') {
-      order.status = 'paid'; // 审核通过，进入已支付状态
-      order.remark = `${order.remark || ''} | 审核通过: ${remark || ''}`;
-    } else {
-      order.status = 'pending'; // 审核拒绝，退回待处理
-      order.remark = `${order.remark || ''} | 审核拒绝: ${remark || ''}`;
-    }
-
-    await orderRepository.save(order);
-
-    res.json({
-      success: true,
-      message: action === 'approve' ? '订单审核通过' : '订单审核拒绝',
-      data: {
-        id: order.id.toString(),
-        orderNumber: order.orderNumber,
-        status: order.status
-      }
-    });
-  } catch (error) {
-    console.error('审核订单失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '审核订单失败',
-      error: error instanceof Error ? error.message : '未知错误'
-    });
-  }
-});
-
-/**
- * @route POST /api/v1/orders/cancel-request
- * @desc 提交取消订单申请
- * @access Private
- */
-router.post('/cancel-request', async (req: Request, res: Response) => {
-  try {
-    const orderRepository = AppDataSource.getRepository(Order);
-    const { orderId, reason, description } = req.body;
-
-    const order = await orderRepository.findOne({
-      where: { id: orderId }
-    });
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: '订单不存在'
-      });
-    }
-
-    // 更新订单状态为待取消
-    order.status = 'pending'; // 临时使用pending表示待取消
-    order.remark = `取消原因: ${reason}${description ? ` - ${description}` : ''}`;
-
-    await orderRepository.save(order);
-
-    res.json({
-      success: true,
-      message: '取消申请已提交'
-    });
-  } catch (error) {
-    console.error('提交取消申请失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '提交取消申请失败'
-    });
-  }
-});
-
-/**
- * @route GET /api/v1/orders/pending-cancel
- * @desc 获取待审核的取消订单列表
- * @access Private
- */
-router.get('/pending-cancel', async (req: Request, res: Response) => {
-  try {
-    const orderRepository = AppDataSource.getRepository(Order);
-
-    // 查询状态为pending且remark包含"取消原因"的订单
-    const orders = await orderRepository.createQueryBuilder('order')
-      .leftJoinAndSelect('order.customer', 'customer')
-      .where('order.status = :status', { status: 'pending' })
-      .andWhere('order.remark LIKE :cancelNote', { cancelNote: '%取消原因%' })
-      .orderBy('order.updatedAt', 'DESC')
-      .getMany();
-
-    const formattedOrders = orders.map(order => ({
-      id: order.id.toString(),
-      orderNumber: order.orderNumber,
-      customerName: order.customer?.name || '',
-      totalAmount: Number(order.totalAmount),
-      cancelReason: order.remark || '',
-      cancelRequestTime: order.updatedAt?.toISOString() || '',
-      status: 'pending_cancel',
-      createdBy: order.createdBy || ''
-    }));
-
-    res.json({
-      success: true,
-      data: formattedOrders
-    });
-  } catch (error) {
-    console.error('获取待审核取消订单失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取待审核取消订单失败'
-    });
-  }
-});
-
-/**
- * @route POST /api/v1/orders/:id/cancel-audit
- * @desc 审核取消订单申请
- * @access Private
- */
-router.post('/:id/cancel-audit', async (req: Request, res: Response) => {
-  try {
-    const orderRepository = AppDataSource.getRepository(Order);
-    const { action, remark } = req.body;
-
-    const order = await orderRepository.findOne({
-      where: { id: req.params.id }
-    });
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: '订单不存在'
-      });
-    }
-
-    if (action === 'approve') {
-      order.status = 'cancelled';
-      order.remark = `${order.remark || ''} | 审核通过: ${remark || ''}`;
-    } else {
-      order.status = 'confirmed'; // 恢复到确认状态
-      order.remark = `${order.remark || ''} | 审核拒绝: ${remark || ''}`;
-    }
-
-    await orderRepository.save(order);
-
-    res.json({
-      success: true,
-      message: action === 'approve' ? '取消申请已通过' : '取消申请已拒绝'
-    });
-  } catch (error) {
-    console.error('审核取消申请失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '审核取消申请失败'
-    });
-  }
-});
-
-/**
- * @route GET /api/v1/orders/audited-cancel
- * @desc 获取已审核的取消订单列表
- * @access Private
- */
-router.get('/audited-cancel', async (req: Request, res: Response) => {
-  try {
-    const orderRepository = AppDataSource.getRepository(Order);
-
-    const orders = await orderRepository.createQueryBuilder('order')
-      .leftJoinAndSelect('order.customer', 'customer')
-      .where('order.status = :status', { status: 'cancelled' })
-      .orderBy('order.updatedAt', 'DESC')
-      .getMany();
-
-    const formattedOrders = orders.map(order => ({
-      id: order.id.toString(),
-      orderNumber: order.orderNumber,
-      customerName: order.customer?.name || '',
-      totalAmount: Number(order.totalAmount),
-      cancelReason: order.remark || '',
-      cancelRequestTime: order.updatedAt?.toISOString() || '',
-      status: 'cancelled',
-      createdBy: order.createdBy || ''
-    }));
-
-    res.json({
-      success: true,
-      data: formattedOrders
-    });
-  } catch (error) {
-    console.error('获取已审核取消订单失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取已审核取消订单失败'
     });
   }
 });
@@ -817,7 +460,7 @@ router.get('/audited-cancel', async (req: Request, res: Response) => {
  * @desc 获取订单统计数据
  * @access Private
  */
-router.get('/statistics', async (req: Request, res: Response) => {
+router.get('/statistics', async (_req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
 
@@ -842,6 +485,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
+      code: 200,
       data: {
         pendingCount,
         todayCount,
@@ -853,133 +497,285 @@ router.get('/statistics', async (req: Request, res: Response) => {
     console.error('获取订单统计失败:', error);
     res.status(500).json({
       success: false,
-      message: '获取订单统计失败'
-    });
-  }
-});
-
-/**
- * @route POST /api/v1/orders/check-transfer
- * @desc 检查并执行订单流转（将到期的待流转订单转为待审核）
- * @access Private
- */
-router.post('/check-transfer', async (req: Request, res: Response) => {
-  try {
-    console.log('🔄 [订单流转] 开始检查待流转订单...');
-
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-
-    // 查找需要流转的订单：
-    // 1. 状态为 pending_transfer
-    // 2. 标记类型为 normal（正常发货单）
-    // 3. 未流转 (is_audit_transferred = 0)
-    // 4. 流转时间已到 (audit_transfer_time <= now)
-    const selectSql = `
-      SELECT id, order_number, audit_transfer_time
-      FROM orders
-      WHERE status = 'pending_transfer'
-        AND mark_type = 'normal'
-        AND (is_audit_transferred = 0 OR is_audit_transferred IS NULL)
-        AND audit_transfer_time IS NOT NULL
-        AND audit_transfer_time <= ?
-    `;
-
-    const ordersToTransfer = await AppDataSource.query(selectSql, [now]);
-    console.log(`🔄 [订单流转] 找到 ${ordersToTransfer.length} 个待流转订单`);
-
-    if (ordersToTransfer.length === 0) {
-      return res.json({
-        success: true,
-        message: '没有需要流转的订单',
-        data: { transferredCount: 0 }
-      });
-    }
-
-    // 批量更新订单状态
-    const orderIds = ordersToTransfer.map((o: { id: string }) => o.id);
-    const updateSql = `
-      UPDATE orders
-      SET status = 'pending_audit',
-          is_audit_transferred = 1,
-          updated_at = ?
-      WHERE id IN (${orderIds.map(() => '?').join(',')})
-    `;
-
-    await AppDataSource.query(updateSql, [now, ...orderIds]);
-
-    console.log(`✅ [订单流转] 成功流转 ${ordersToTransfer.length} 个订单`);
-
-    res.json({
-      success: true,
-      message: `成功流转 ${ordersToTransfer.length} 个订单`,
-      data: {
-        transferredCount: ordersToTransfer.length,
-        orders: ordersToTransfer.map((o: { id: string; order_number: string }) => ({
-          id: o.id,
-          orderNumber: o.order_number
-        }))
-      }
-    });
-  } catch (error) {
-    console.error('❌ [订单流转] 检查流转失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '检查订单流转失败',
+      code: 500,
+      message: '获取订单统计失败',
       error: error instanceof Error ? error.message : '未知错误'
     });
   }
 });
 
 /**
- * @route PUT /api/v1/orders/:id/mark-type
- * @desc 更新订单标记类型
+ * @route POST /api/v1/orders/:id/submit-audit
+ * @desc 提交订单审核
  * @access Private
  */
-router.put('/:id/mark-type', async (req: Request, res: Response) => {
+router.post('/:id/submit-audit', async (req: Request, res: Response) => {
   try {
-    const { markType, isAuditTransferred, auditTransferTime, status } = req.body;
-    const orderId = req.params.id;
+    const orderRepository = AppDataSource.getRepository(Order);
+    const { remark } = req.body;
+    const idParam = req.params.id;
 
-    console.log(`📝 [订单标记] 更新订单 ${orderId} 标记类型为 ${markType}`);
-
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-
-    // 构建更新SQL
-    const updateFields = ['mark_type = ?', 'updated_at = ?'];
-    const updateParams: (string | number | null)[] = [markType, now];
-
-    if (isAuditTransferred !== undefined) {
-      updateFields.push('is_audit_transferred = ?');
-      updateParams.push(isAuditTransferred ? 1 : 0);
+    let order = await orderRepository.findOne({ where: { id: idParam } });
+    if (!order) {
+      order = await orderRepository.findOne({ where: { orderNumber: idParam } });
     }
 
-    if (auditTransferTime !== undefined) {
-      updateFields.push('audit_transfer_time = ?');
-      updateParams.push(auditTransferTime || null);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '订单不存在'
+      });
     }
 
-    if (status !== undefined) {
-      updateFields.push('status = ?');
-      updateParams.push(status);
+    order.status = 'confirmed';
+    if (remark) {
+      order.remark = `${order.remark || ''} | 提审备注: ${remark}`;
     }
 
-    updateParams.push(orderId);
-
-    const updateSql = `UPDATE orders SET ${updateFields.join(', ')} WHERE id = ?`;
-    await AppDataSource.query(updateSql, updateParams);
-
-    console.log(`✅ [订单标记] 订单 ${orderId} 标记更新成功`);
+    await orderRepository.save(order);
 
     res.json({
       success: true,
-      message: '订单标记更新成功',
-      data: { id: orderId, markType }
+      code: 200,
+      message: '订单已提交审核',
+      data: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status
+      }
     });
   } catch (error) {
-    console.error('❌ [订单标记] 更新失败:', error);
+    console.error('提交订单审核失败:', error);
     res.status(500).json({
       success: false,
-      message: '更新订单标记失败',
+      code: 500,
+      message: '提交订单审核失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/orders/:id/audit
+ * @desc 审核订单
+ * @access Private
+ */
+router.post('/:id/audit', async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const { action, remark } = req.body;
+    const idParam = req.params.id;
+
+    let order = await orderRepository.findOne({ where: { id: idParam } });
+    if (!order) {
+      order = await orderRepository.findOne({ where: { orderNumber: idParam } });
+    }
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '订单不存在'
+      });
+    }
+
+    if (action === 'approve') {
+      order.status = 'paid';
+      order.remark = `${order.remark || ''} | 审核通过: ${remark || ''}`;
+    } else {
+      order.status = 'pending';
+      order.remark = `${order.remark || ''} | 审核拒绝: ${remark || ''}`;
+    }
+
+    await orderRepository.save(order);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: action === 'approve' ? '订单审核通过' : '订单审核拒绝',
+      data: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status
+      }
+    });
+  } catch (error) {
+    console.error('审核订单失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '审核订单失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/orders/cancel-request
+ * @desc 提交取消订单申请
+ * @access Private
+ */
+router.post('/cancel-request', async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const { orderId, reason, description } = req.body;
+
+    const order = await orderRepository.findOne({ where: { id: orderId } });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '订单不存在'
+      });
+    }
+
+    order.status = 'pending';
+    order.remark = `取消原因: ${reason}${description ? ` - ${description}` : ''}`;
+
+    await orderRepository.save(order);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '取消申请已提交'
+    });
+  } catch (error) {
+    console.error('提交取消申请失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '提交取消申请失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/orders/pending-cancel
+ * @desc 获取待审核的取消订单列表
+ * @access Private
+ */
+router.get('/pending-cancel', async (_req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+
+    const orders = await orderRepository.createQueryBuilder('order')
+      .where('order.status = :status', { status: 'pending' })
+      .andWhere('order.remark LIKE :cancelNote', { cancelNote: '%取消原因%' })
+      .orderBy('order.updatedAt', 'DESC')
+      .getMany();
+
+    const formattedOrders = orders.map(order => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName || '',
+      totalAmount: Number(order.totalAmount),
+      cancelReason: order.remark || '',
+      cancelRequestTime: order.updatedAt?.toISOString() || '',
+      status: 'pending_cancel',
+      createdBy: order.createdBy || ''
+    }));
+
+    res.json({
+      success: true,
+      code: 200,
+      data: formattedOrders
+    });
+  } catch (error) {
+    console.error('获取待审核取消订单失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取待审核取消订单失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/orders/:id/cancel-audit
+ * @desc 审核取消订单申请
+ * @access Private
+ */
+router.post('/:id/cancel-audit', async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const { action, remark } = req.body;
+
+    const order = await orderRepository.findOne({ where: { id: req.params.id } });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '订单不存在'
+      });
+    }
+
+    if (action === 'approve') {
+      order.status = 'cancelled';
+      order.remark = `${order.remark || ''} | 审核通过: ${remark || ''}`;
+    } else {
+      order.status = 'confirmed';
+      order.remark = `${order.remark || ''} | 审核拒绝: ${remark || ''}`;
+    }
+
+    await orderRepository.save(order);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: action === 'approve' ? '取消申请已通过' : '取消申请已拒绝'
+    });
+  } catch (error) {
+    console.error('审核取消申请失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '审核取消申请失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/orders/audited-cancel
+ * @desc 获取已审核的取消订单列表
+ * @access Private
+ */
+router.get('/audited-cancel', async (_req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+
+    const orders = await orderRepository.find({
+      where: { status: 'cancelled' },
+      order: { updatedAt: 'DESC' }
+    });
+
+    const formattedOrders = orders.map(order => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName || '',
+      totalAmount: Number(order.totalAmount),
+      cancelReason: order.remark || '',
+      cancelRequestTime: order.updatedAt?.toISOString() || '',
+      status: 'cancelled',
+      createdBy: order.createdBy || ''
+    }));
+
+    res.json({
+      success: true,
+      code: 200,
+      data: formattedOrders
+    });
+  } catch (error) {
+    console.error('获取已审核取消订单失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取已审核取消订单失败',
       error: error instanceof Error ? error.message : '未知错误'
     });
   }
