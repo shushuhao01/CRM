@@ -17,9 +17,9 @@
         <!-- 基本信息 -->
         <div class="form-section">
           <h3 class="section-title">基本信息</h3>
-          <!-- 第一排：手机号、姓名 -->
-          <el-row :gutter="20">
-            <el-col :span="10">
+          <!-- 第一排：手机号、姓名、性别 - 间距一致 -->
+          <el-row :gutter="24">
+            <el-col :span="8">
               <el-form-item label="手机号" prop="phone">
                 <div class="phone-input-group">
                   <el-input
@@ -27,6 +27,7 @@
                     placeholder="请输入手机号"
                     clearable
                     @blur="handlePhoneBlur"
+                    style="width: 140px;"
                   />
                   <el-button
                     type="primary"
@@ -38,8 +39,14 @@
                     验证客户
                   </el-button>
                 </div>
-                <!-- 客户验证结果提示 -->
-                <div v-if="customerVerifyResult" class="verify-result">
+                <!-- 客户验证结果提示 - 高度与按钮一致 -->
+                <div v-if="customerVerifyResult && customerVerifyResult.type === 'success'" class="verify-result-inline">
+                  <el-tag type="success" effect="light" size="default">
+                    <el-icon><Check /></el-icon>
+                    {{ customerVerifyResult.message }}
+                  </el-tag>
+                </div>
+                <div v-if="customerVerifyResult && customerVerifyResult.type !== 'success'" class="verify-result">
                   <el-alert
                     :title="customerVerifyResult.message"
                     :type="customerVerifyResult.type"
@@ -74,12 +81,12 @@
                   v-model="customerForm.name"
                   placeholder="请输入客户姓名"
                   clearable
-                  style="max-width: 200px;"
+                  style="width: 160px;"
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="6">
-              <el-form-item label="性别" prop="gender">
+            <el-col :span="8">
+              <el-form-item label="性别" prop="gender" class="gender-form-item">
                 <el-radio-group v-model="customerForm.gender">
                   <el-radio label="male">男</el-radio>
                   <el-radio label="female">女</el-radio>
@@ -88,16 +95,16 @@
             </el-col>
           </el-row>
 
-          <!-- 第二排：年龄、身高、体重、性别 -->
-          <el-row :gutter="20">
-            <el-col :span="5">
+          <!-- 第二排：年龄、身高、体重 - 输入框等宽协调 -->
+          <el-row :gutter="24">
+            <el-col :span="6">
               <el-form-item label="年龄" prop="age">
                 <el-input-number
                   v-model="customerForm.age"
                   :min="1"
                   :max="120"
                   placeholder="请输入年龄"
-                  style="width: 100%"
+                  style="width: 120px;"
                   controls-position="right"
                 />
               </el-form-item>
@@ -109,7 +116,7 @@
                   :min="50"
                   :max="250"
                   placeholder="请输入身高"
-                  style="width: 100%"
+                  style="width: 120px;"
                   controls-position="right"
                 />
               </el-form-item>
@@ -121,42 +128,44 @@
                   :min="20"
                   :max="300"
                   placeholder="请输入体重"
-                  style="width: 100%"
+                  style="width: 120px;"
                   controls-position="right"
                 />
               </el-form-item>
             </el-col>
           </el-row>
 
-          <!-- 第三排：进粉时间、微信号、邮箱 -->
-          <el-row :gutter="20">
-            <el-col :span="8">
+          <!-- 第三排：进粉时间、客户微信号、邮箱 - 输入框等宽协调 -->
+          <el-row :gutter="24">
+            <el-col :span="6">
               <el-form-item label="进粉时间" prop="fanAcquisitionTime">
                 <el-date-picker
                   v-model="customerForm.fanAcquisitionTime"
                   type="date"
                   placeholder="请选择进粉时间"
-                  style="width: 100%"
+                  style="width: 160px;"
                   format="YYYY-MM-DD"
                   value-format="YYYY-MM-DD"
                 />
               </el-form-item>
             </el-col>
             <el-col :span="8">
-              <el-form-item label="微信号" prop="wechat">
+              <el-form-item label="客户微信号" prop="wechat">
                 <el-input
                   v-model="customerForm.wechat"
                   placeholder="请输入微信号"
                   clearable
+                  style="width: 180px;"
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item label="邮箱" prop="email">
                 <el-input
                   v-model="customerForm.email"
                   placeholder="请输入邮箱地址"
                   clearable
+                  style="width: 180px;"
                 />
               </el-form-item>
             </el-col>
@@ -178,7 +187,7 @@
               placeholder="粘贴完整地址，自动识别省市区"
               clearable
               class="recognition-input-inline"
-              style="width: 460px;"
+              style="width: 55%;"
             />
             <el-button
               type="primary"
@@ -372,13 +381,13 @@
         <!-- 客户分类 -->
         <div class="form-section">
           <h3 class="section-title">客户分类</h3>
-          <el-row :gutter="20">
-            <el-col :span="12">
+          <el-row :gutter="24">
+            <el-col :span="6">
               <el-form-item label="客户等级" prop="level">
                 <el-select
                   v-model="customerForm.level"
                   placeholder="请选择客户等级"
-                  style="width: 100%"
+                  style="width: 160px;"
                 >
                   <el-option label="铜牌客户" value="bronze" />
                   <el-option label="银牌客户" value="silver" />
@@ -387,12 +396,12 @@
                 </el-select>
               </el-form-item>
             </el-col>
-            <el-col :span="12">
+            <el-col :span="8">
               <el-form-item label="客户来源" prop="source">
                 <el-select
                   v-model="customerForm.source"
                   placeholder="请选择客户来源"
-                  style="width: 100%"
+                  style="width: 180px;"
                 >
                   <el-option label="线上推广" value="online" />
                   <el-option label="朋友介绍" value="referral" />
@@ -404,13 +413,13 @@
             </el-col>
           </el-row>
 
-          <el-row :gutter="20">
-            <el-col :span="8">
+          <el-row :gutter="24">
+            <el-col :span="6">
               <el-form-item label="客户状态" prop="status">
                 <el-select
                   v-model="customerForm.status"
                   placeholder="请选择客户状态"
-                  style="width: 100%"
+                  style="width: 160px;"
                 >
                   <el-option label="活跃" value="active" />
                   <el-option label="非活跃" value="inactive" />
@@ -426,7 +435,7 @@
                   v-model="customerForm.tags"
                   multiple
                   placeholder="请选择客户标签"
-                  style="width: 100%"
+                  style="width: 180px;"
                   :loading="loadingTags"
                 >
                   <el-option
@@ -438,12 +447,12 @@
                 </el-select>
               </el-form-item>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item label="负责销售" prop="salesPerson">
                 <el-input
                   v-model="customerForm.salesPerson"
                   placeholder="负责销售"
-                  style="width: 100%"
+                  style="width: 140px;"
                   readonly
                 >
                   <template #suffix>
@@ -517,7 +526,7 @@
 import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Warning, InfoFilled, Setting, Location } from '@element-plus/icons-vue'
+import { Warning, InfoFilled, Setting, Location, Check } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
@@ -1636,6 +1645,21 @@ onMounted(() => {
   margin-top: 8px;
 }
 
+.verify-result-inline {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  height: 32px;
+}
+
+.verify-result-inline .el-tag {
+  height: 32px;
+  line-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .verify-result .el-alert {
   border-radius: 4px;
 }
@@ -1643,6 +1667,11 @@ onMounted(() => {
 .verify-result .el-alert p {
   margin: 4px 0;
   font-size: 13px;
+}
+
+/* 性别表单项左对齐 */
+.gender-form-item {
+  margin-left: -20px;
 }
 
 /* 必填标记样式 */
