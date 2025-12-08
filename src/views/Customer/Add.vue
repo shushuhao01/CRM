@@ -731,7 +731,7 @@ const initForm = () => {
 const formRules: FormRules = {
   name: [
     validationRules.required('请输入客户姓名'),
-    validationRules.chineseName('请输入正确的中文姓名')
+    validationRules.chineseName('请输入正确的姓名（支持中英文等多语言，2-50个字符）')
   ],
   phone: [
     validationRules.required('请输入手机号'),
