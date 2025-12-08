@@ -321,6 +321,14 @@ router.get('/', async (req: Request, res: Response) => {
         }
       }
 
+      // 根据订单状态推断auditStatus
+      let auditStatus = 'pending';
+      if (order.status === 'pending_shipment' || order.status === 'shipped' || order.status === 'delivered' || order.status === 'paid') {
+        auditStatus = 'approved';
+      } else if (order.status === 'audit_rejected') {
+        auditStatus = 'rejected';
+      }
+
       return {
         id: order.id,
         orderNumber: order.orderNumber,
@@ -335,7 +343,8 @@ router.get('/', async (req: Request, res: Response) => {
         receiverPhone: order.shippingPhone || '',
         receiverAddress: order.shippingAddress || '',
         remark: order.remark || '',
-        status: order.status || 'pending',
+        status: order.status || 'pending_transfer',
+        auditStatus: auditStatus,
         markType: order.markType || 'normal',
         paymentStatus: order.paymentStatus || 'unpaid',
         paymentMethod: order.paymentMethod || '',
@@ -402,6 +411,14 @@ router.get('/:id', async (req: Request, res: Response) => {
       }
     }
 
+    // 根据订单状态推断auditStatus
+    let auditStatus = 'pending';
+    if (order.status === 'pending_shipment' || order.status === 'shipped' || order.status === 'delivered' || order.status === 'paid') {
+      auditStatus = 'approved';
+    } else if (order.status === 'audit_rejected') {
+      auditStatus = 'rejected';
+    }
+
     const data = {
       id: order.id,
       orderNumber: order.orderNumber,
@@ -416,7 +433,8 @@ router.get('/:id', async (req: Request, res: Response) => {
       receiverPhone: order.shippingPhone || '',
       receiverAddress: order.shippingAddress || '',
       remark: order.remark || '',
-      status: order.status || 'pending',
+      status: order.status || 'pending_transfer',
+      auditStatus: auditStatus,
       markType: order.markType || 'normal',
       paymentStatus: order.paymentStatus || 'unpaid',
       paymentMethod: order.paymentMethod || '',
@@ -598,9 +616,11 @@ router.post('/', async (req: Request, res: Response) => {
       receiverAddress: receiverAddress || '',
       remark: remark || '',
       status: 'pending_transfer',
+      auditStatus: 'pending',
       markType: markType || 'normal',
       createTime: savedOrder.createdAt?.toISOString() || new Date().toISOString(),
       createdBy: finalCreatedBy,
+      createdByName: finalCreatedByName,
       salesPersonId: finalCreatedBy
     };
 
@@ -804,11 +824,13 @@ router.post('/:id/audit', async (req: Request, res: Response) => {
     }
 
     if (action === 'approve') {
-      order.status = 'paid';
+      order.status = 'pending_shipment';
       order.remark = `${order.remark || ''} | 审核通过: ${remark || ''}`;
+      console.log(`✅ [订单审核] 订单 ${order.orderNumber} 审核通过，状态变更为 pending_shipment`);
     } else {
-      order.status = 'pending';
+      order.status = 'audit_rejected';
       order.remark = `${order.remark || ''} | 审核拒绝: ${remark || ''}`;
+      console.log(`❌ [订单审核] 订单 ${order.orderNumber} 审核拒绝，状态变更为 audit_rejected`);
     }
 
     await orderRepository.save(order);
@@ -820,7 +842,8 @@ router.post('/:id/audit', async (req: Request, res: Response) => {
       data: {
         id: order.id,
         orderNumber: order.orderNumber,
-        status: order.status
+        status: order.status,
+        auditStatus: action === 'approve' ? 'approved' : 'rejected'
       }
     });
   } catch (error) {
