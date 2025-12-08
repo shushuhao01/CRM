@@ -1407,6 +1407,25 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('enableEmailNotification', 'true', 'boolean', 'general', '启用邮件通知', TRUE, TRUE, 2),
 ('enableSmsNotification', 'false', 'boolean', 'general', '启用短信通知', TRUE, TRUE, 3);
 
+-- 插入物流公司初始数据
+INSERT INTO `logistics_companies` (`id`, `code`, `name`, `short_name`, `logo`, `website`, `tracking_url`, `contact_phone`, `status`, `sort_order`, `remark`) VALUES
+('lc-001', 'SF', '顺丰速运', '顺丰', 'https://www.sf-express.com/favicon.ico', 'https://www.sf-express.com', 'https://www.sf-express.com/cn/sc/dynamic_function/waybill/#search/bill-number/{trackingNo}', '95338', 'active', 1, '顺丰速运官方合作'),
+('lc-002', 'ZTO', '中通快递', '中通', NULL, 'https://www.zto.com', 'https://www.zto.com/service/bill-query?billNo={trackingNo}', '95311', 'active', 2, '中通快递官方合作'),
+('lc-003', 'YTO', '圆通速递', '圆通', 'https://www.yto.net.cn/favicon.ico', 'https://www.yto.net.cn', 'https://www.yto.net.cn/query/{trackingNo}', '95554', 'active', 3, '圆通速递官方合作'),
+('lc-004', 'STO', '申通快递', '申通', 'https://www.sto.cn/favicon.ico', 'https://www.sto.cn', 'https://www.sto.cn/query/{trackingNo}', '95543', 'active', 4, '申通快递官方合作'),
+('lc-005', 'YD', '韵达速递', '韵达', NULL, 'https://www.yunda.com', 'https://www.yunda.com/query/{trackingNo}', '95546', 'active', 5, '韵达速递官方合作'),
+('lc-006', 'JTSD', '极兔速递', '极兔', NULL, 'https://www.jtexpress.cn', 'https://www.jtexpress.cn/track/{trackingNo}', '95353', 'active', 6, '极兔速递官方合作'),
+('lc-007', 'EMS', '邮政EMS', 'EMS', NULL, 'https://www.ems.com.cn', 'https://www.ems.com.cn/queryList?mailNo={trackingNo}', '11183', 'active', 7, '中国邮政EMS'),
+('lc-008', 'JD', '京东物流', '京东', NULL, 'https://www.jdl.com', 'https://www.jd.com/orderDetail?orderId={trackingNo}', '950616', 'inactive', 8, '京东物流（需开通合作）'),
+('lc-009', 'DB', '德邦快递', '德邦', NULL, 'https://www.deppon.com', 'https://www.deppon.com/tracking/{trackingNo}', '95353', 'inactive', 9, '德邦快递（需开通合作）')
+ON DUPLICATE KEY UPDATE
+  `name` = VALUES(`name`),
+  `short_name` = VALUES(`short_name`),
+  `website` = VALUES(`website`),
+  `tracking_url` = VALUES(`tracking_url`),
+  `contact_phone` = VALUES(`contact_phone`),
+  `updated_at` = CURRENT_TIMESTAMP;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =============================================
