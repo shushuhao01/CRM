@@ -1224,4 +1224,101 @@ router.post('/settings', authenticateToken, requireAdmin, async (req: Request, r
   }
 });
 
+// ========== 订单流转配置 ==========
+
+/**
+ * @route GET /api/v1/system/order-transfer-config
+ * @desc 获取订单流转时间配置
+ * @access Private
+ */
+router.get('/order-transfer-config', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+
+    const modeConfig = await configRepository.findOne({
+      where: { configKey: 'orderTransferMode', configGroup: 'order_settings', isEnabled: true }
+    });
+    const delayConfig = await configRepository.findOne({
+      where: { configKey: 'orderTransferDelayMinutes', configGroup: 'order_settings', isEnabled: true }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        mode: modeConfig?.configValue || 'delayed',
+        delayMinutes: delayConfig ? Number(delayConfig.configValue) : 3
+      }
+    });
+  } catch (error) {
+    console.error('获取订单流转配置失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取订单流转配置失败'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/system/order-transfer-config
+ * @desc 保存订单流转时间配置（仅管理员）
+ * @access Private (Admin only)
+ */
+router.post('/order-transfer-config', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { mode, delayMinutes } = req.body;
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+
+    // 保存流转模式
+    let modeConfig = await configRepository.findOne({
+      where: { configKey: 'orderTransferMode', configGroup: 'order_settings' }
+    });
+    if (modeConfig) {
+      modeConfig.configValue = mode;
+    } else {
+      modeConfig = configRepository.create({
+        configKey: 'orderTransferMode',
+        configValue: mode,
+        valueType: 'string',
+        configGroup: 'order_settings',
+        description: '订单流转模式：immediate-立即流转，delayed-延迟流转',
+        isEnabled: true,
+        isSystem: true
+      });
+    }
+    await configRepository.save(modeConfig);
+
+    // 保存延迟时间
+    let delayConfig = await configRepository.findOne({
+      where: { configKey: 'orderTransferDelayMinutes', configGroup: 'order_settings' }
+    });
+    if (delayConfig) {
+      delayConfig.configValue = String(delayMinutes);
+    } else {
+      delayConfig = configRepository.create({
+        configKey: 'orderTransferDelayMinutes',
+        configValue: String(delayMinutes),
+        valueType: 'number',
+        configGroup: 'order_settings',
+        description: '订单流转延迟时间（分钟）',
+        isEnabled: true,
+        isSystem: true
+      });
+    }
+    await configRepository.save(delayConfig);
+
+    console.log(`✅ [订单流转配置] 已保存: mode=${mode}, delayMinutes=${delayMinutes}`);
+
+    res.json({
+      success: true,
+      message: '订单流转配置保存成功'
+    });
+  } catch (error) {
+    console.error('保存订单流转配置失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '保存订单流转配置失败'
+    });
+  }
+});
+
 export default router;

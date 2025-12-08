@@ -3,7 +3,27 @@ import { authenticateToken } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 import { Product } from '../entities/Product';
+import { SystemConfig } from '../entities/SystemConfig';
 import { Like, Between } from 'typeorm';
+
+// 获取订单流转配置
+const getOrderTransferConfig = async (): Promise<{ mode: string; delayMinutes: number }> => {
+  try {
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const modeConfig = await configRepository.findOne({
+      where: { configKey: 'orderTransferMode', configGroup: 'order_settings', isEnabled: true }
+    });
+    const delayConfig = await configRepository.findOne({
+      where: { configKey: 'orderTransferDelayMinutes', configGroup: 'order_settings', isEnabled: true }
+    });
+    return {
+      mode: modeConfig?.configValue || 'delayed',
+      delayMinutes: delayConfig ? Number(delayConfig.configValue) : 3
+    };
+  } catch {
+    return { mode: 'delayed', delayMinutes: 3 };
+  }
+};
 
 const router = Router();
 
@@ -11,6 +31,29 @@ const router = Router();
 router.use(authenticateToken);
 
 // ========== 特殊路由（必须在 /:id 之前定义）==========
+
+/**
+ * @route GET /api/v1/orders/transfer-config
+ * @desc 获取订单流转配置
+ * @access Private
+ */
+router.get('/transfer-config', async (_req: Request, res: Response) => {
+  try {
+    const config = await getOrderTransferConfig();
+    res.json({
+      success: true,
+      code: 200,
+      data: config
+    });
+  } catch (error) {
+    console.error('获取流转配置失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取流转配置失败'
+    });
+  }
+});
 
 /**
  * @route POST /api/v1/orders/check-transfer

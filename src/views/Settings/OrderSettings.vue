@@ -95,6 +95,51 @@
       <el-empty v-else description="暂无自定义字段，点击上方【添加字段】按钮开始配置" />
     </el-card>
 
+    <!-- 订单流转时间配置 -->
+    <el-card class="config-card">
+      <template #header>
+        <div class="card-header">
+          <span>订单流转时间配置</span>
+          <el-tag type="warning" size="small">全局生效</el-tag>
+        </div>
+      </template>
+
+      <el-form label-width="140px">
+        <el-form-item label="流转模式">
+          <el-radio-group v-model="transferConfig.mode" @change="handleTransferModeChange">
+            <el-radio label="immediate">无等待（立即流转）</el-radio>
+            <el-radio label="delayed">延迟流转</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item label="流转等待时间" v-if="transferConfig.mode === 'delayed'">
+          <el-input-number
+            v-model="transferConfig.delayMinutes"
+            :min="1"
+            :max="1440"
+            :step="1"
+            style="width: 200px"
+          />
+          <span style="margin-left: 10px; color: #666;">分钟</span>
+          <div class="form-tip">
+            订单创建后，将在设定时间后自动流转到审核。范围：1-1440分钟（最长24小时）
+          </div>
+        </el-form-item>
+
+        <el-form-item label="当前配置预览">
+          <el-tag :type="transferConfig.mode === 'immediate' ? 'success' : 'warning'" size="large">
+            {{ transferConfig.mode === 'immediate' ? '订单创建后立即流转到审核' : `订单创建后 ${transferConfig.delayMinutes} 分钟后流转到审核` }}
+          </el-tag>
+        </el-form-item>
+
+        <el-form-item>
+          <el-button type="primary" @click="saveTransferConfig" :loading="savingTransfer">
+            保存流转配置
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
     <!-- 保存按钮 -->
     <div class="save-actions">
       <el-button size="large" @click="resetConfig">重置配置</el-button>
@@ -262,6 +307,69 @@ const localConfig = reactive({
   orderSourceOptions: [] as Array<{ label: string; value: string }>,
   customFields: [] as Array<any>
 })
+
+// 流转时间配置
+const transferConfig = reactive({
+  mode: 'delayed' as 'immediate' | 'delayed',
+  delayMinutes: 3
+})
+const savingTransfer = ref(false)
+
+// 处理流转模式变化
+const handleTransferModeChange = (mode: string) => {
+  if (mode === 'immediate') {
+    transferConfig.delayMinutes = 0
+  } else {
+    transferConfig.delayMinutes = 3
+  }
+}
+
+// 加载流转配置
+const loadTransferConfig = async () => {
+  try {
+    const response = await fetch('/api/v1/system/order-transfer-config', {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    const result = await response.json()
+    if (result.success && result.data) {
+      transferConfig.mode = result.data.mode || 'delayed'
+      transferConfig.delayMinutes = result.data.delayMinutes ?? 3
+    }
+  } catch (error) {
+    console.error('加载流转配置失败:', error)
+  }
+}
+
+// 保存流转配置
+const saveTransferConfig = async () => {
+  try {
+    savingTransfer.value = true
+    const response = await fetch('/api/v1/system/order-transfer-config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({
+        mode: transferConfig.mode,
+        delayMinutes: transferConfig.mode === 'immediate' ? 0 : transferConfig.delayMinutes
+      })
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('流转配置保存成功，已全局生效')
+    } else {
+      ElMessage.error(result.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('保存流转配置失败:', error)
+    ElMessage.error('保存流转配置失败')
+  } finally {
+    savingTransfer.value = false
+  }
+}
 
 // 对话框状态
 const orderSourceDialogVisible = ref(false)
@@ -614,6 +722,7 @@ const resetConfig = async () => {
 // 初始化
 onMounted(() => {
   initLocalConfig()
+  loadTransferConfig()
 })
 </script>
 
