@@ -17,7 +17,7 @@
         <!-- 基本信息 -->
         <div class="form-section">
           <h3 class="section-title">基本信息</h3>
-          <!-- 第一排：手机号、姓名、性别 -->
+          <!-- 第一排：手机号、姓名 -->
           <el-row :gutter="20">
             <el-col :span="10">
               <el-form-item label="手机号" prop="phone">
@@ -74,6 +74,7 @@
                   v-model="customerForm.name"
                   placeholder="请输入客户姓名"
                   clearable
+                  style="max-width: 200px;"
                 />
               </el-form-item>
             </el-col>
@@ -87,9 +88,9 @@
             </el-col>
           </el-row>
 
-          <!-- 第二排：年龄、身高、体重 -->
+          <!-- 第二排：年龄、身高、体重、性别 -->
           <el-row :gutter="20">
-            <el-col :span="8">
+            <el-col :span="5">
               <el-form-item label="年龄" prop="age">
                 <el-input-number
                   v-model="customerForm.age"
@@ -97,10 +98,11 @@
                   :max="120"
                   placeholder="请输入年龄"
                   style="width: 100%"
+                  controls-position="right"
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item label="身高(cm)" prop="height">
                 <el-input-number
                   v-model="customerForm.height"
@@ -108,10 +110,11 @@
                   :max="250"
                   placeholder="请输入身高"
                   style="width: 100%"
+                  controls-position="right"
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item label="体重(kg)" prop="weight">
                 <el-input-number
                   v-model="customerForm.weight"
@@ -119,6 +122,7 @@
                   :max="300"
                   placeholder="请输入体重"
                   style="width: 100%"
+                  controls-position="right"
                 />
               </el-form-item>
             </el-col>
@@ -174,7 +178,7 @@
               placeholder="粘贴完整地址，自动识别省市区"
               clearable
               class="recognition-input-inline"
-              style="width: 400px;"
+              style="width: 460px;"
             />
             <el-button
               type="primary"
@@ -656,7 +660,7 @@ const customerForm = reactive({
   status: 'active',   // 客户状态（默认为活跃）
   source: '',         // 客户来源
   tags: [],           // 客户标签
-  salesPerson: userStore.currentUser?.name || '',    // 负责销售（默认为当前用户）
+  salesPerson: userStore.currentUser?.name || '',    // 负责销售（默认为当前用户姓名）
   remark: ''          // 备注
 })
 
@@ -842,9 +846,9 @@ const loadingTags = ref(false)
 
 // 初始化表单数据
 const initForm = () => {
-  // 设置默认负责销售为当前用户
+  // 设置默认负责销售为当前用户姓名
   if (!isEdit.value) {
-    customerForm.salesPerson = userStore.currentUser?.realName || userStore.currentUser?.username || '当前用户'
+    customerForm.salesPerson = userStore.currentUser?.name || '当前用户'
   }
 }
 
