@@ -1380,6 +1380,11 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('sensitiveInfoHideMethod', 'asterisk', 'string', 'product_settings', '敏感信息隐藏方式', TRUE, TRUE, 20),
 ('enablePermissionControl', 'true', 'boolean', 'product_settings', '启用权限控制', TRUE, TRUE, 21);
 
+-- 插入系统配置（订单设置）
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+('orderTransferMode', 'delayed', 'string', 'order_settings', '订单流转模式：immediate-立即流转，delayed-延迟流转', TRUE, TRUE, 1),
+('orderTransferDelayMinutes', '3', 'number', 'order_settings', '订单流转延迟时间（分钟）', TRUE, TRUE, 2);
+
 -- 插入系统配置（数据备份设置）
 INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
 ('autoBackupEnabled', 'false', 'boolean', 'backup_settings', '自动备份', TRUE, TRUE, 1),
