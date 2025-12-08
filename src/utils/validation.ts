@@ -13,8 +13,8 @@ export const REGEX = {
   ID_CARD: /^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\d{3}[0-9Xx]$/,
   // 密码（8-20位，包含字母和数字）
   PASSWORD: /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*#?&]{8,20}$/,
-  // 中文姓名
-  CHINESE_NAME: /^[\u4e00-\u9fa5]{2,10}$/,
+  // 姓名（支持中文、英文、日文、韩文等多语言，2-50个字符）
+  CHINESE_NAME: /^[\u4e00-\u9fa5a-zA-Z\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\s·.'-]{2,50}$/,
   // 数字
   NUMBER: /^\d+$/,
   // 小数
@@ -99,21 +99,21 @@ export const validateIdCard = (idCard: string): ValidationResult => {
   if (!REGEX.ID_CARD.test(idCard)) {
     return { valid: false, message: '请输入正确的身份证号' }
   }
-  
+
   // 验证校验位
   const weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]
   const checkCodes = ['1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2']
-  
+
   let sum = 0
   for (let i = 0; i < 17; i++) {
     sum += parseInt(idCard[i]) * weights[i]
   }
-  
+
   const checkCode = checkCodes[sum % 11]
   if (checkCode !== idCard[17].toUpperCase()) {
     return { valid: false, message: '身份证号校验位错误' }
   }
-  
+
   return { valid: true }
 }
 
@@ -122,19 +122,19 @@ export const validateIdCard = (idCard: string): ValidationResult => {
  */
 export const validateNumber = (value: string | number, min?: number, max?: number): ValidationResult => {
   const num = typeof value === 'string' ? parseFloat(value) : value
-  
+
   if (isNaN(num)) {
     return { valid: false, message: '请输入有效的数字' }
   }
-  
+
   if (min !== undefined && num < min) {
     return { valid: false, message: `数值不能小于${min}` }
   }
-  
+
   if (max !== undefined && num > max) {
     return { valid: false, message: `数值不能大于${max}` }
   }
-  
+
   return { valid: true }
 }
 
@@ -145,15 +145,15 @@ export const validateLength = (value: string, min?: number, max?: number): Valid
   if (!value) {
     return { valid: false, message: '内容不能为空' }
   }
-  
+
   if (min !== undefined && value.length < min) {
     return { valid: false, message: `长度不能少于${min}个字符` }
   }
-  
+
   if (max !== undefined && value.length > max) {
     return { valid: false, message: `长度不能超过${max}个字符` }
   }
-  
+
   return { valid: true }
 }
 
@@ -205,9 +205,9 @@ export const escapeSql = (str: string): string => {
  */
 export const validateFileType = (file: File, allowedTypes: string[]): ValidationResult => {
   if (!allowedTypes.includes(file.type)) {
-    return { 
-      valid: false, 
-      message: `不支持的文件类型，仅支持：${allowedTypes.join(', ')}` 
+    return {
+      valid: false,
+      message: `不支持的文件类型，仅支持：${allowedTypes.join(', ')}`
     }
   }
   return { valid: true }
@@ -219,9 +219,9 @@ export const validateFileType = (file: File, allowedTypes: string[]): Validation
 export const validateFileSize = (file: File, maxSize: number): ValidationResult => {
   if (file.size > maxSize) {
     const maxSizeMB = (maxSize / 1024 / 1024).toFixed(1)
-    return { 
-      valid: false, 
-      message: `文件大小不能超过${maxSizeMB}MB` 
+    return {
+      valid: false,
+      message: `文件大小不能超过${maxSizeMB}MB`
     }
   }
   return { valid: true }
@@ -250,38 +250,38 @@ export const createFormRules = () => {
       message,
       trigger: 'blur'
     }),
-    
+
     phone: (message = '请输入正确的手机号') => ({
       pattern: REGEX.PHONE,
       message,
       trigger: 'blur'
     }),
-    
+
     email: (message = '请输入正确的邮箱地址') => ({
       pattern: REGEX.EMAIL,
       message,
       trigger: 'blur'
     }),
-    
+
     password: (message = '密码必须包含字母和数字，长度8-20位') => ({
       pattern: REGEX.PASSWORD,
       message,
       trigger: 'blur'
     }),
-    
-    chineseName: (message = '请输入正确的中文姓名') => ({
+
+    chineseName: (message = '请输入正确的姓名（2-50个字符）') => ({
       pattern: REGEX.CHINESE_NAME,
       message,
       trigger: 'blur'
     }),
-    
+
     length: (min: number, max: number, message?: string) => ({
       min,
       max,
       message: message || `长度应在${min}-${max}个字符之间`,
       trigger: 'blur'
     }),
-    
+
     number: (min?: number, max?: number) => ({
       type: 'number',
       min,
