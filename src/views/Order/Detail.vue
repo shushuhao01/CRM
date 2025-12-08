@@ -28,9 +28,9 @@
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="reserved">预留单</el-dropdown-item>
-              <el-dropdown-item command="normal">正常发货单</el-dropdown-item>
-              <el-dropdown-item command="return">退单</el-dropdown-item>
+              <el-dropdown-item command="reserved" :disabled="orderDetail.markType === 'reserved'">预留单</el-dropdown-item>
+              <el-dropdown-item command="normal" :disabled="orderDetail.markType === 'normal'">正常发货单</el-dropdown-item>
+              <el-dropdown-item command="return" :disabled="orderDetail.markType === 'return'">退单</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -1122,6 +1122,12 @@ const createAfterSales = async () => {
 }
 
 const handleMarkCommand = (command: string) => {
+  // 检查是否选择了相同的标记
+  if (command === orderDetail.markType) {
+    ElMessage.warning('订单已经是该标记状态')
+    return
+  }
+
   // 特殊处理：正常发货单在流转前可以改为预留单
   if (command === 'reserved' && canChangeToReserved.value) {
     const markTypes = {

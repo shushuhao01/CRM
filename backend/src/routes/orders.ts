@@ -419,6 +419,20 @@ router.get('/:id', async (req: Request, res: Response) => {
       auditStatus = 'rejected';
     }
 
+    // 计算流转时间（创建时间 + 配置的延迟分钟数）
+    let auditTransferTime = '';
+    let isAuditTransferred = false;
+    if (order.createdAt && order.status === 'pending_transfer') {
+      // 获取流转配置
+      const transferConfig = await getOrderTransferConfig();
+      const delayMs = transferConfig.delayMinutes * 60 * 1000;
+      const transferDate = new Date(order.createdAt.getTime() + delayMs);
+      auditTransferTime = transferDate.toISOString();
+      isAuditTransferred = false;
+    } else if (order.status === 'pending_audit' || order.status === 'pending_shipment' || order.status === 'shipped') {
+      isAuditTransferred = true;
+    }
+
     const data = {
       id: order.id,
       orderNumber: order.orderNumber,
@@ -436,6 +450,8 @@ router.get('/:id', async (req: Request, res: Response) => {
       status: order.status || 'pending_transfer',
       auditStatus: auditStatus,
       markType: order.markType || 'normal',
+      isAuditTransferred: isAuditTransferred,
+      auditTransferTime: auditTransferTime,
       paymentStatus: order.paymentStatus || 'unpaid',
       paymentMethod: order.paymentMethod || '',
       expressCompany: order.expressCompany || '',
@@ -537,9 +553,10 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // 获取当前用户信息
-    const currentUser = (req as any).user;
+    const currentUser = (req as any).currentUser;
     const finalCreatedBy = salesPersonId || currentUser?.id || 'admin';
-    const finalCreatedByName = salesPersonName || currentUser?.name || '';
+    // 优先使用传入的销售人员姓名，其次使用当前用户的真实姓名，最后使用用户名
+    const finalCreatedByName = salesPersonName || currentUser?.realName || currentUser?.username || '';
 
     console.log('📝 [订单创建] 准备创建订单:', {
       orderNumber: generatedOrderNumber,

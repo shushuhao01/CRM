@@ -163,30 +163,28 @@
         <div class="form-section">
           <h3 class="section-title">收货地址</h3>
 
-          <!-- 智能地址识别 -->
-          <div class="address-recognition-wrapper">
-            <div class="recognition-label">
+          <!-- 智能地址识别 - 单行布局 -->
+          <div class="address-recognition-inline">
+            <div class="recognition-label-inline">
               <span class="label-icon">📍</span>
               <span>智能识别</span>
             </div>
-            <div class="recognition-content">
-              <el-input
-                v-model="addressRecognitionInput"
-                placeholder="粘贴完整地址，如：广东省广州市天河区天河路123号XXX大厦1001室"
-                clearable
-                class="recognition-input"
-              />
-              <el-button
-                type="primary"
-                @click="recognizeAddress"
-                :loading="recognizingAddress"
-                class="recognition-btn"
-              >
-                <el-icon v-if="!recognizingAddress"><Location /></el-icon>
-                识别填充
-              </el-button>
-            </div>
-            <div class="recognition-tip">支持识别省市区和详细地址，自动填充到下方表单</div>
+            <el-input
+              v-model="addressRecognitionInput"
+              placeholder="粘贴完整地址，自动识别省市区"
+              clearable
+              class="recognition-input-inline"
+              style="width: 400px;"
+            />
+            <el-button
+              type="primary"
+              @click="recognizeAddress"
+              :loading="recognizingAddress"
+              class="recognition-btn-inline"
+            >
+              <el-icon v-if="!recognizingAddress"><Location /></el-icon>
+              识别填充
+            </el-button>
           </div>
 
           <el-row :gutter="20">
@@ -1522,99 +1520,50 @@ onMounted(() => {
   padding: 0;
 }
 
-/* 智能地址识别样式 */
-.address-recognition-wrapper {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  transition: all 0.3s ease;
-}
-
-.address-recognition-wrapper:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
-}
-
-.recognition-label {
-  display: flex;
-  align-items: center;
-  margin-bottom: 12px;
-  font-weight: 600;
-  color: #374151;
-  font-size: 14px;
-}
-
-.label-icon {
-  margin-right: 8px;
-  font-size: 16px;
-}
-
-.recognition-content {
+/* 智能地址识别样式 - 单行布局 */
+.address-recognition-inline {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.recognition-input {
-  flex: 1;
-}
-
-.recognition-input :deep(.el-input__wrapper) {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
-  border: 1px solid #d1d5db;
-  transition: all 0.3s ease;
-  min-height: 40px;
 }
 
-.recognition-input :deep(.el-input__wrapper:hover) {
-  border-color: #3b82f6;
-}
-
-.recognition-input :deep(.el-input__wrapper.is-focus) {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.recognition-btn {
-  height: 40px;
-  padding: 0 20px;
-  border-radius: 8px;
-  font-weight: 500;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  border: none;
-  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
-  transition: all 0.3s ease;
+.recognition-label-inline {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: #374151;
+  font-size: 14px;
   white-space: nowrap;
 }
 
-.recognition-btn:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
-}
-
-.recognition-btn:active {
-  transform: translateY(0);
-}
-
-.recognition-btn .el-icon {
+.label-icon {
   margin-right: 6px;
+  font-size: 16px;
 }
 
-.recognition-tip {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
+.recognition-input-inline {
+  flex: 0 0 400px;
 }
 
-.recognition-tip::before {
-  content: '💡';
-  margin-right: 6px;
+.recognition-input-inline :deep(.el-input__wrapper) {
+  border-radius: 6px;
+}
+
+.recognition-btn-inline {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.recognition-btn-inline .el-icon {
+  margin-right: 4px;
 }
 
 .form-tip {
