@@ -671,6 +671,74 @@ router.get('/check-exists', async (req: Request, res: Response) => {
 });
 
 /**
+ * @route GET /api/v1/customers/search
+ * @desc 搜索客户（支持姓名、手机号、客户编码）
+ * @access Private
+ * @note 此路由必须在 /:id 路由之前定义
+ */
+router.get('/search', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const { keyword } = req.query;
+
+    if (!keyword) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '搜索关键词不能为空'
+      });
+    }
+
+    console.log('[客户搜索] 搜索关键词:', keyword);
+
+    // 搜索条件：姓名、手机号、客户编码
+    const customers = await customerRepository
+      .createQueryBuilder('customer')
+      .where(
+        'customer.name LIKE :keyword OR customer.phone LIKE :keyword OR customer.customerNo LIKE :keyword',
+        { keyword: `%${keyword}%` }
+      )
+      .orderBy('customer.createdAt', 'DESC')
+      .getMany();
+
+    // 转换数据格式
+    const list = customers.map(customer => ({
+      id: customer.id,
+      code: customer.customerNo || '',
+      name: customer.name,
+      phone: customer.phone || '',
+      gender: customer.gender || 'unknown',
+      age: customer.age || 0,
+      level: customer.level || 'normal',
+      address: customer.address || '',
+      createTime: customer.createdAt?.toISOString() || '',
+      orderCount: customer.orderCount || 0,
+      salesPersonId: customer.salesPersonId || ''
+    }));
+
+    console.log('[客户搜索] 找到客户数:', list.length);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '搜索客户成功',
+      data: {
+        customers: list,
+        total: list.length
+      }
+    });
+  } catch (error) {
+    console.error('搜索客户失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '搜索客户失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
  * @route GET /api/v1/customers/:id
  * @desc 获取客户详情
  * @access Private
@@ -1026,78 +1094,6 @@ router.delete('/:id', async (req: Request, res: Response) => {
       success: false,
       code: 500,
       message: '删除客户失败',
-      error: error instanceof Error ? error.message : '未知错误'
-    });
-  }
-});
-
-/**
- * @route GET /api/v1/customers/search
- * @desc 搜索客户
- * @access Private
- */
-router.get('/search', async (req: Request, res: Response) => {
-  try {
-    const customerRepository = AppDataSource.getRepository(Customer);
-    const { keyword, page = 1, pageSize = 10 } = req.query;
-
-    const pageNum = parseInt(page as string) || 1;
-    const pageSizeNum = parseInt(pageSize as string) || 10;
-    const skip = (pageNum - 1) * pageSizeNum;
-
-    let queryBuilder = customerRepository.createQueryBuilder('customer');
-
-    if (keyword) {
-      queryBuilder = queryBuilder.where(
-        'customer.name LIKE :keyword OR customer.phone LIKE :keyword OR customer.email LIKE :keyword',
-        { keyword: `%${keyword}%` }
-      );
-    }
-
-    const [customers, total] = await queryBuilder
-      .skip(skip)
-      .take(pageSizeNum)
-      .orderBy('customer.createdAt', 'DESC')
-      .getManyAndCount();
-
-    // 转换数据格式
-    const list = customers.map(customer => ({
-      id: customer.id,
-      code: customer.customerNo || '',
-      name: customer.name,
-      phone: customer.phone || '',
-      age: customer.age || 0,
-      address: customer.address || '',
-      level: customer.level || 'normal',
-      status: customer.status || 'active',
-      salesPersonId: customer.salesPersonId || '',
-      orderCount: customer.orderCount || 0,
-      createTime: customer.createdAt?.toISOString() || '',
-      createdBy: customer.createdBy || '',
-      email: customer.email || '',
-      company: customer.company || '',
-      source: customer.source || '',
-      tags: customer.tags || [],
-      remarks: customer.remark || ''
-    }));
-
-    res.json({
-      success: true,
-      code: 200,
-      message: '搜索客户成功',
-      data: {
-        list,
-        total,
-        page: pageNum,
-        pageSize: pageSizeNum
-      }
-    });
-  } catch (error) {
-    console.error('搜索客户失败:', error);
-    res.status(500).json({
-      success: false,
-      code: 500,
-      message: '搜索客户失败',
       error: error instanceof Error ? error.message : '未知错误'
     });
   }

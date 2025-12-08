@@ -7,7 +7,7 @@
           <el-icon class="title-icon"><Search /></el-icon>
           客户查询
         </h1>
-        <p class="page-description">通过客户姓名、手机号、客户编码、订单号、物流单号等信息快速查询客户归属人</p>
+        <p class="page-description">支持精确匹配和模糊搜索，输入关键信息即可快速定位客户</p>
       </div>
     </div>
 
@@ -15,7 +15,7 @@
     <div class="search-section">
       <div class="search-header">
         <h3>查询条件</h3>
-        <p class="search-tip">支持精确匹配和模糊搜索，输入关键信息即可快速定位客户</p>
+        <p class="search-tip">输入客户姓名、手机号、客户编码等信息进行搜索</p>
       </div>
 
       <div class="search-form">
@@ -23,7 +23,7 @@
           <div class="input-item">
             <el-input
               v-model="searchForm.keyword"
-              placeholder="请输入客户姓名、电话、编码、订单号或物流单号"
+              placeholder="请输入客户姓名、手机号或客户编码"
               clearable
               @keyup.enter="handleSearch"
               class="search-input"
@@ -72,57 +72,83 @@
         </div>
       </div>
 
-      <!-- 结果列表 -->
+      <!-- 结果列表 - 新设计 -->
       <div v-if="searchResults.length > 0" class="result-list">
         <div
           v-for="(result, index) in searchResults"
           :key="index"
           class="result-item"
         >
-          <div class="result-card">
-            <div class="customer-info">
-              <div class="customer-avatar">
-                <el-icon><User /></el-icon>
+          <div class="result-card-new">
+            <!-- 左侧：客户基本信息 -->
+            <div class="customer-section">
+              <div class="section-header">
+                <el-icon class="section-icon"><User /></el-icon>
+                <span>客户信息</span>
               </div>
-              <div class="customer-details">
-                <h4 class="customer-name">{{ result.customerName }}</h4>
-                <p class="customer-phone">{{ displaySensitiveInfoNew(result.phone, SensitiveInfoType.PHONE) }}</p>
+              <div class="customer-main">
+                <div class="customer-avatar">
+                  {{ result.customerName?.charAt(0) || '客' }}
+                </div>
+                <div class="customer-basic">
+                  <h4 class="customer-name">{{ result.customerName || '未知客户' }}</h4>
+                  <div class="customer-code" v-if="result.customerCode">
+                    <el-tag size="small" type="info">{{ result.customerCode }}</el-tag>
+                  </div>
+                </div>
+              </div>
+              <div class="customer-details-grid">
+                <div class="detail-item">
+                  <span class="detail-label">手机号</span>
+                  <span class="detail-value">{{ displaySensitiveInfoNew(result.phone, SensitiveInfoType.PHONE) }}</span>
+                </div>
+                <div class="detail-item" v-if="result.gender">
+                  <span class="detail-label">性别</span>
+                  <span class="detail-value">{{ result.gender === 'male' ? '男' : '女' }}</span>
+                </div>
+                <div class="detail-item" v-if="result.age">
+                  <span class="detail-label">年龄</span>
+                  <span class="detail-value">{{ result.age }}岁</span>
+                </div>
+                <div class="detail-item" v-if="result.level">
+                  <span class="detail-label">等级</span>
+                  <el-tag size="small" :type="getLevelType(result.level)">{{ getLevelText(result.level) }}</el-tag>
+                </div>
+                <div class="detail-item full-width" v-if="result.address">
+                  <span class="detail-label">地址</span>
+                  <span class="detail-value address">{{ result.address }}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">创建时间</span>
+                  <span class="detail-value">{{ result.createTime }}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">订单数</span>
+                  <span class="detail-value">{{ result.orderCount || 0 }}单</span>
+                </div>
               </div>
             </div>
 
-            <div class="order-info">
-              <div class="info-item">
-                <span class="info-label">订单号</span>
-                <span class="info-value">{{ result.orderNo }}</span>
+            <!-- 右侧：归属人信息 -->
+            <div class="owner-section">
+              <div class="section-header">
+                <el-icon class="section-icon owner"><UserFilled /></el-icon>
+                <span>当前归属人</span>
               </div>
-              <div class="info-item">
-                <span class="info-label">订单金额</span>
-                <span class="info-value amount">¥{{ result.orderAmount.toLocaleString() }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">下单时间</span>
-                <span class="info-value">{{ result.orderDate }}</span>
-              </div>
-              <div v-if="result.trackingNo" class="info-item">
-                <span class="info-label">物流单号</span>
-                <span class="info-value">{{ result.trackingNo }}</span>
-              </div>
-            </div>
-
-            <div class="owner-info">
-              <div class="owner-card">
-                <div class="owner-header">
-                  <el-icon class="owner-icon"><UserFilled /></el-icon>
-                  <span class="owner-title">当前归属人</span>
+              <div class="owner-card-new">
+                <div class="owner-avatar">
+                  {{ result.ownerName?.charAt(0) || '未' }}
                 </div>
-                <div class="owner-details">
-                  <div class="owner-name">{{ result.ownerName }}</div>
-                  <div class="owner-department">{{ result.ownerDepartment }}</div>
-                  <div class="owner-contact">{{ displaySensitiveInfoNew(result.ownerPhone, SensitiveInfoType.PHONE) }}</div>
+                <div class="owner-info-new">
+                  <div class="owner-name">{{ result.ownerName || '未分配' }}</div>
+                  <div class="owner-department">{{ result.ownerDepartment || '未知部门' }}</div>
+                  <div class="owner-phone" v-if="result.ownerPhone">
+                    {{ displaySensitiveInfoNew(result.ownerPhone, SensitiveInfoType.PHONE) }}
+                  </div>
                 </div>
-                <div class="owner-status">
-                  <el-tag :type="getOwnerStatusType(result.ownerStatus)">
-                    {{ getOwnerStatusText(result.ownerStatus) }}
+                <div class="owner-status-badge">
+                  <el-tag :type="result.ownerName ? 'success' : 'info'" size="small">
+                    {{ result.ownerName ? '已分配' : '待分配' }}
                   </el-tag>
                 </div>
               </div>
@@ -144,18 +170,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Search, User, RefreshLeft, UserFilled, DocumentRemove
 } from '@element-plus/icons-vue'
-import { useOrderStore } from '@/stores/order'
 import { useCustomerStore } from '@/stores/customer'
 import { useUserStore } from '@/stores/user'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 
 // 使用store
-const orderStore = useOrderStore()
 const customerStore = useCustomerStore()
 const userStore = useUserStore()
 
@@ -169,7 +193,7 @@ const searchForm = reactive({
   keyword: ''
 })
 
-// 搜索方法 - 直接使用store数据
+// 搜索方法 - 直接从客户表搜索
 const handleSearch = async () => {
   console.log('[客户查询] ========== 开始搜索 ==========')
   console.log('[客户查询] 搜索关键词:', searchForm.keyword)
@@ -181,7 +205,7 @@ const handleSearch = async () => {
 
   hasSearched.value = true
   searching.value = true
-  const keyword = searchForm.keyword.trim()
+  const keyword = searchForm.keyword.trim().toLowerCase()
 
   try {
     // 确保客户数据已加载
@@ -189,75 +213,58 @@ const handleSearch = async () => {
       await customerStore.loadCustomers()
     }
 
-    // 直接从store获取数据
-    const orders = orderStore.getOrders()  // 获取所有订单
-    const customers = customerStore.customers  // 获取所有客户
-    const users = userStore.users  // 获取所有用户
+    // 直接从客户store获取数据
+    const customers = customerStore.customers
+    const users = userStore.users
 
     console.log('[客户查询] 从store获取数据:')
-    console.log('  - 订单数:', orders.length)
     console.log('  - 客户数:', customers.length)
     console.log('  - 用户数:', users.length)
 
-    if (orders.length === 0) {
-      ElMessage.warning('系统暂无订单数据')
+    if (customers.length === 0) {
+      ElMessage.warning('系统暂无客户数据')
       searching.value = false
       return
     }
 
     const results: any[] = []
 
-    // 遍历订单进行搜索
-    for (const order of orders) {
-      // 查找对应的客户
-      const customer = customers.find(c => c.id === order.customerId)
-      if (!customer) continue
-
-      // 查找销售人员
-      const owner = users.find(u => u.id === order.salesPersonId)
-
+    // 直接遍历客户进行搜索
+    for (const customer of customers) {
       let matched = false
 
-      // 匹配逻辑
-      if (customer.name?.includes(keyword)) matched = true
-      if (customer.phone === keyword) matched = true
-      if (customer.code === keyword) matched = true
-      if (order.orderNumber === keyword || order.orderNumber?.includes(keyword)) matched = true
-      if (order.trackingNumber === keyword || order.trackingNumber?.includes(keyword)) matched = true
+      // 匹配逻辑：姓名、手机号、客户编码
+      if (customer.name?.toLowerCase().includes(keyword)) matched = true
+      if (customer.phone?.includes(keyword)) matched = true
+      if (customer.code?.toLowerCase().includes(keyword)) matched = true
 
       if (matched) {
+        // 查找归属人信息
+        const owner = users.find((u: any) => u.id === customer.salesPersonId)
+
         results.push({
           customerName: customer.name || '未知',
           phone: customer.phone || '',
           customerCode: customer.code || '',
-          orderNo: order.orderNumber || '',
-          orderAmount: order.totalAmount || 0,
-          orderDate: order.createTime ? order.createTime.split(' ')[0] : '',
-          trackingNo: order.trackingNumber || '',
-          ownerName: owner ? (owner.name || '未知') : '未知',
-          ownerPhone: owner ? (owner.phone || '') : '',
-          ownerDepartment: owner ? (owner.department || '未知部门') : '未知部门',
-          ownerStatus: 'active'
+          gender: customer.gender || '',
+          age: customer.age || 0,
+          level: customer.level || '',
+          address: customer.address || '',
+          createTime: customer.createTime || '',
+          orderCount: customer.orderCount || 0,
+          ownerName: owner?.name || '未分配',
+          ownerPhone: '',
+          ownerDepartment: owner?.department || '未知部门'
         })
       }
     }
 
-    // 去重
-    const uniqueResults = results.reduce((acc: any[], current) => {
-      const exists = acc.find(item =>
-        item.customerName === current.customerName &&
-        item.orderNo === current.orderNo
-      )
-      if (!exists) acc.push(current)
-      return acc
-    }, [])
+    searchResults.value = results
 
-    searchResults.value = uniqueResults
+    console.log('[客户查询] 搜索完成，结果数:', results.length)
 
-    console.log('[客户查询] 搜索完成，结果数:', uniqueResults.length)
-
-    if (uniqueResults.length > 0) {
-      ElMessage.success(`找到 ${uniqueResults.length} 条匹配记录`)
+    if (results.length > 0) {
+      ElMessage.success(`找到 ${results.length} 条匹配记录`)
     } else {
       ElMessage.info('未找到匹配的客户信息')
     }
@@ -276,22 +283,28 @@ const handleReset = () => {
   searchResults.value = []
 }
 
-const getOwnerStatusType = (status: string) => {
-  const types: Record<string, string> = {
-    active: 'success',
-    inactive: 'warning',
-    offline: 'info'
+// 获取客户等级类型
+const getLevelType = (level: string) => {
+  const levelMap: Record<string, string> = {
+    'diamond': 'danger',
+    'gold': 'warning',
+    'silver': 'success',
+    'bronze': 'info',
+    'normal': ''
   }
-  return types[status] || ''
+  return levelMap[level] || 'info'
 }
 
-const getOwnerStatusText = (status: string) => {
-  const texts: Record<string, string> = {
-    active: '在线',
-    inactive: '忙碌',
-    offline: '离线'
+// 获取客户等级文本
+const getLevelText = (level: string) => {
+  const levelMap: Record<string, string> = {
+    'diamond': '钻石客户',
+    'gold': '金牌客户',
+    'silver': '银牌客户',
+    'bronze': '铜牌客户',
+    'normal': '普通客户'
   }
-  return texts[status] || status
+  return levelMap[level] || level || '普通客户'
 }
 </script>
 
@@ -450,26 +463,130 @@ const getOwnerStatusText = (status: string) => {
   margin-bottom: 0;
 }
 
-.result-card {
+.result-card-new {
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 24px;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 24px;
-  align-items: start;
+  display: flex;
+  overflow: hidden;
   transition: all 0.2s ease;
 }
 
-.result-card:hover {
+.result-card-new:hover {
   border-color: #3b82f6;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
 }
 
-.customer-info {
+.customer-section {
+  flex: 2;
+  padding: 24px;
+  border-right: 1px solid #e5e7eb;
+}
+
+.owner-section {
+  flex: 1;
+  padding: 24px;
+  background: #f9fafb;
+  display: flex;
+  flex-direction: column;
+}
+
+.section-header {
   display: flex;
   align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.section-icon {
+  color: #3b82f6;
+}
+
+.section-icon.owner {
+  color: #10b981;
+}
+
+.customer-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.customer-basic {
+  flex: 1;
+}
+
+.customer-code {
+  margin-top: 4px;
+}
+
+.customer-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
+}
+
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.detail-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.detail-label {
+  font-size: 13px;
+  color: #6b7280;
+  min-width: 60px;
+}
+
+.detail-value {
+  font-size: 14px;
+  color: #1f2937;
+  font-weight: 500;
+}
+
+.detail-value.address {
+  text-align: right;
+  word-break: break-all;
+}
+
+.owner-card-new {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  flex: 1;
+  justify-content: center;
+}
+
+.owner-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.owner-info-new {
+  text-align: center;
+}
+
+.owner-status-badge {
+  margin-top: 8px;
 }
 
 .customer-avatar {
@@ -482,10 +599,7 @@ const getOwnerStatusText = (status: string) => {
   justify-content: center;
   color: white;
   font-size: 20px;
-}
-
-.customer-details {
-  flex: 1;
+  flex-shrink: 0;
 }
 
 .customer-name {
@@ -493,74 +607,6 @@ const getOwnerStatusText = (status: string) => {
   font-size: 16px;
   font-weight: 600;
   color: #1f2937;
-}
-
-.customer-phone {
-  margin: 0;
-  color: #6b7280;
-  font-size: 14px;
-}
-
-.order-info {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.info-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.info-label {
-  font-size: 12px;
-  color: #6b7280;
-  min-width: 60px;
-}
-
-.info-value {
-  font-size: 14px;
-  color: #1f2937;
-  font-weight: 500;
-}
-
-.amount {
-  color: #059669;
-  font-weight: 600;
-}
-
-.owner-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.owner-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 16px;
-  background: #f9fafb;
-}
-
-.owner-header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.owner-icon {
-  color: #3b82f6;
-  margin-right: 6px;
-}
-
-.owner-title {
-  font-size: 12px;
-  color: #6b7280;
-  font-weight: 500;
-}
-
-.owner-details {
-  margin-bottom: 12px;
 }
 
 .owner-name {
@@ -571,19 +617,14 @@ const getOwnerStatusText = (status: string) => {
 }
 
 .owner-department {
-  font-size: 12px;
+  font-size: 13px;
   color: #6b7280;
   margin-bottom: 2px;
 }
 
-.owner-contact {
-  font-size: 12px;
+.owner-phone {
+  font-size: 13px;
   color: #6b7280;
-}
-
-.owner-status {
-  display: flex;
-  justify-content: flex-start;
 }
 
 .no-result-state {
@@ -609,13 +650,8 @@ const getOwnerStatusText = (status: string) => {
 }
 
 @media (max-width: 1200px) {
-  .result-card {
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-  }
-
-  .owner-info {
-    grid-column: 1 / -1;
+  .customer-details-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -624,13 +660,13 @@ const getOwnerStatusText = (status: string) => {
     padding: 16px;
   }
 
-  .search-input-group {
-    grid-template-columns: 1fr;
+  .result-card-new {
+    flex-direction: column;
   }
 
-  .result-card {
-    grid-template-columns: 1fr;
-    gap: 16px;
+  .customer-section {
+    border-right: none;
+    border-bottom: 1px solid #e5e7eb;
   }
 
   .search-actions {
