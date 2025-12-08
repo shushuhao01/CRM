@@ -38,13 +38,11 @@
                   >
                     验证客户
                   </el-button>
-                </div>
-                <!-- 客户验证结果提示 - 高度与按钮一致 -->
-                <div v-if="customerVerifyResult && customerVerifyResult.type === 'success'" class="verify-result-inline">
-                  <el-tag type="success" effect="light" size="default">
-                    <el-icon><Check /></el-icon>
-                    {{ customerVerifyResult.message }}
-                  </el-tag>
+                  <!-- 验证成功提示 - 放在按钮后面 -->
+                  <span v-if="customerVerifyResult && customerVerifyResult.type === 'success'" class="verify-success-inline">
+                    <el-icon color="#67c23a"><Check /></el-icon>
+                    <span class="success-text">可创建</span>
+                  </span>
                 </div>
                 <div v-if="customerVerifyResult && customerVerifyResult.type !== 'success'" class="verify-result">
                   <el-alert
@@ -1632,36 +1630,35 @@ onMounted(() => {
 .phone-input-group {
   display: flex;
   gap: 8px;
-  align-items: stretch;
+  align-items: center;
 }
 
 .phone-input-group .el-input {
-  flex: 1;
+  flex: 0 0 200px;
 }
 
 .phone-input-group .el-button {
   flex-shrink: 0;
-  height: 32px; /* 与默认输入框高度一致 */
-  align-self: stretch;
+  height: 32px;
+}
+
+/* 验证成功提示 - 放在按钮后面 */
+.verify-success-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  color: #67c23a;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.verify-success-inline .success-text {
+  font-weight: 500;
 }
 
 .verify-result {
   margin-top: 8px;
-}
-
-.verify-result-inline {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 8px;
-  height: 32px;
-}
-
-.verify-result-inline .el-tag {
-  height: 32px;
-  line-height: 30px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
 }
 
 .verify-result .el-alert {
