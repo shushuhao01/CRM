@@ -430,7 +430,7 @@ export const useConfigStore = defineStore('config', () => {
       )
 
       // 检查是否已登录（有token）
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('auth_token')
 
       if (isProdEnv && token) {
         // 生产环境且已登录：调用API保存配置

@@ -327,9 +327,10 @@ const handleTransferModeChange = (mode: string) => {
 // 加载流转配置
 const loadTransferConfig = async () => {
   try {
+    const token = localStorage.getItem('auth_token')
     const response = await fetch('/api/v1/system/order-transfer-config', {
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${token}`
       }
     })
     const result = await response.json()
@@ -346,11 +347,12 @@ const loadTransferConfig = async () => {
 const saveTransferConfig = async () => {
   try {
     savingTransfer.value = true
+    const token = localStorage.getItem('auth_token')
     const response = await fetch('/api/v1/system/order-transfer-config', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({
         mode: transferConfig.mode,

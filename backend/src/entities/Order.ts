@@ -33,10 +33,10 @@ export class Order {
   @Column({
     type: 'varchar',
     length: 50,
-    default: 'pending',
+    default: 'pending_transfer',
     comment: '订单状态'
   })
-  status: 'pending' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded';
+  status: 'pending' | 'pending_transfer' | 'pending_audit' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded' | 'audit_rejected' | 'pending_shipment' | 'logistics_returned' | 'logistics_cancelled';
 
   @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2, comment: '订单总金额' })
   totalAmount: number;

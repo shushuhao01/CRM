@@ -539,7 +539,7 @@ router.post('/', async (req: Request, res: Response) => {
       serviceWechat: serviceWechat || '',
       orderSource: orderSource || '',
       products: products,
-      status: 'pending',
+      status: 'pending_transfer',
       totalAmount: finalTotalAmount,
       discountAmount: Number(discount) || 0,
       finalAmount: finalAmount,
@@ -597,7 +597,7 @@ router.post('/', async (req: Request, res: Response) => {
       receiverPhone: receiverPhone || customerPhone || '',
       receiverAddress: receiverAddress || '',
       remark: remark || '',
-      status: 'pending',
+      status: 'pending_transfer',
       markType: markType || 'normal',
       createTime: savedOrder.createdAt?.toISOString() || new Date().toISOString(),
       createdBy: finalCreatedBy,
@@ -749,12 +749,14 @@ router.post('/:id/submit-audit', async (req: Request, res: Response) => {
       });
     }
 
-    order.status = 'confirmed';
+    order.status = 'pending_audit';
     if (remark) {
       order.remark = `${order.remark || ''} | 提审备注: ${remark}`;
     }
 
     await orderRepository.save(order);
+
+    console.log(`✅ [订单提审] 订单 ${order.orderNumber} 已提交审核，状态变更为 pending_audit`);
 
     res.json({
       success: true,
