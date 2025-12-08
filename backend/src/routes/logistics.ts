@@ -298,7 +298,7 @@ router.put('/tracking/:id', (req, res) => logisticsController.updateLogisticsSta
 // 获取用户物流权限
 router.get('/permission', (req: Request, res: Response) => {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const user = (req as any).user;
 
     // 根据用户角色返回权限信息
