@@ -939,12 +939,13 @@ const departmentLimitForm = reactive<DepartmentLimit>({
 const loadDepartmentList = async () => {
   try {
     const token = localStorage.getItem('auth_token')
-    const response = await fetch('/api/v1/departments', {
+    const response = await fetch('/api/v1/system/departments', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     const result = await response.json()
     if (result.success && result.data) {
       departmentList.value = result.data
+      console.log('[订单设置] 加载部门列表成功:', departmentList.value.length, '个部门')
     }
   } catch (error) {
     console.error('加载部门列表失败:', error)
