@@ -1371,7 +1371,8 @@ const handleSubmitOrder = async () => {
 
     // 根据订单类型显示不同的提示信息
     if (orderData.markType === 'normal') {
-      ElMessage.success('订单已提交，该订单3分钟后将流转至审核')
+      const delayMinutes = orderStore.transferDelayMinutes || 3
+      ElMessage.success(`订单已提交，该订单${delayMinutes}分钟后将流转至审核`)
     } else if (orderData.markType === 'reserved') {
       ElMessage.success('预留单已保存，信息将保留在系统中')
     } else {

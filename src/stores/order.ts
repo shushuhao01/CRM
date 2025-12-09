@@ -1068,7 +1068,7 @@ export const useOrderStore = createPersistentStore('order', () => {
               time: now.toISOString().slice(0, 19).replace('T', ' '),
               operator: 'system',
               description: '订单自动流转到审核状态',
-              remark: '3分钟后自动流转'
+              remark: `${transferDelayMinutes.value}分钟后自动流转`
             })
           }
 

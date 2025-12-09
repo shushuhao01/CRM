@@ -266,7 +266,7 @@ const uploadToOSS = async (file: File, type: UploadType, storageConfig: StorageC
  * @param quality 压缩质量 0-1
  * @returns 压缩后的文件
  */
-const compressImage = async (file: File, maxWidth = 1920, quality = 0.8): Promise<File> => {
+const compressImage = async (file: File, maxWidth = 800, quality = 0.6): Promise<File> => {
   return new Promise((resolve, reject) => {
     // 如果是GIF图片，不压缩（保持动画）
     if (file.type === 'image/gif') {
@@ -280,11 +280,20 @@ const compressImage = async (file: File, maxWidth = 1920, quality = 0.8): Promis
 
     img.onload = () => {
       let { width, height } = img
+      const originalWidth = width
+      const originalHeight = height
 
       // 如果图片宽度超过最大宽度，按比例缩小
       if (width > maxWidth) {
-        height = (height * maxWidth) / width
+        height = Math.round((height * maxWidth) / width)
         width = maxWidth
+      }
+
+      // 如果高度也超过最大值，再次缩小
+      const maxHeight = 800
+      if (height > maxHeight) {
+        width = Math.round((width * maxHeight) / height)
+        height = maxHeight
       }
 
       canvas.width = width
@@ -293,22 +302,44 @@ const compressImage = async (file: File, maxWidth = 1920, quality = 0.8): Promis
       // 绘制图片
       ctx?.drawImage(img, 0, 0, width, height)
 
-      // 转换为Blob
+      // 始终转换为JPEG格式以获得更好的压缩效果
       canvas.toBlob(
         (blob) => {
           if (blob) {
-            // 创建新的File对象
-            const compressedFile = new File([blob], file.name, {
-              type: file.type === 'image/png' ? 'image/png' : 'image/jpeg',
-              lastModified: Date.now()
-            })
-            console.log(`[UploadService] 图片压缩: ${(file.size / 1024).toFixed(1)}KB -> ${(compressedFile.size / 1024).toFixed(1)}KB`)
-            resolve(compressedFile)
+            // 检查压缩后是否真的变小了
+            if (blob.size < file.size) {
+              // 创建新的File对象
+              const compressedFile = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+                type: 'image/jpeg',
+                lastModified: Date.now()
+              })
+              console.log(`[UploadService] 图片压缩成功: ${(file.size / 1024).toFixed(1)}KB -> ${(compressedFile.size / 1024).toFixed(1)}KB (${originalWidth}x${originalHeight} -> ${width}x${height})`)
+              resolve(compressedFile)
+            } else {
+              // 压缩后反而更大，使用更低质量再试一次
+              canvas.toBlob(
+                (blob2) => {
+                  if (blob2 && blob2.size < file.size) {
+                    const compressedFile = new File([blob2], file.name.replace(/\.[^.]+$/, '.jpg'), {
+                      type: 'image/jpeg',
+                      lastModified: Date.now()
+                    })
+                    console.log(`[UploadService] 图片二次压缩: ${(file.size / 1024).toFixed(1)}KB -> ${(compressedFile.size / 1024).toFixed(1)}KB`)
+                    resolve(compressedFile)
+                  } else {
+                    console.log(`[UploadService] 压缩后更大，使用原文件: ${(file.size / 1024).toFixed(1)}KB`)
+                    resolve(file)
+                  }
+                },
+                'image/jpeg',
+                0.4 // 更低质量
+              )
+            }
           } else {
             resolve(file) // 压缩失败，返回原文件
           }
         },
-        file.type === 'image/png' ? 'image/png' : 'image/jpeg',
+        'image/jpeg',
         quality
       )
     }

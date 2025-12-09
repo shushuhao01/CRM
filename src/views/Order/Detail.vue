@@ -1271,11 +1271,11 @@ const approveOrder = async () => {
     notificationStore.sendMessage({
       type: 'ORDER_APPROVED',
       title: '订单审核通过',
-      content: `订单 ${orderDetail.orderNo} (客户: ${orderDetail.customer.name}, 金额: ¥${orderDetail.totalAmount?.toLocaleString()}) 已审核通过`,
+      content: `订单 ${orderDetail.orderNumber} (客户: ${orderDetail.customer.name}, 金额: ¥${orderDetail.totalAmount?.toLocaleString()}) 已审核通过`,
       link: `/order/detail/${orderId}`,
       metadata: {
         orderId: orderId,
-        orderNo: orderDetail.orderNo,
+        orderNo: orderDetail.orderNumber,
         customerName: orderDetail.customer.name,
         totalAmount: orderDetail.totalAmount,
         auditResult: 'approved'
@@ -1308,11 +1308,11 @@ const rejectOrder = async () => {
     notificationStore.sendMessage({
       type: 'ORDER_REJECTED',
       title: '订单审核拒绝',
-      content: `订单 ${orderDetail.orderNo} (客户: ${orderDetail.customer.name}, 金额: ¥${orderDetail.totalAmount?.toLocaleString()}) 已审核拒绝，原因: ${reason}`,
+      content: `订单 ${orderDetail.orderNumber} (客户: ${orderDetail.customer.name}, 金额: ¥${orderDetail.totalAmount?.toLocaleString()}) 已审核拒绝，原因: ${reason}`,
       link: `/order/detail/${orderId}`,
       metadata: {
         orderId: orderId,
-        orderNo: orderDetail.orderNo,
+        orderNo: orderDetail.orderNumber,
         customerName: orderDetail.customer.name,
         totalAmount: orderDetail.totalAmount,
         auditResult: 'rejected',
@@ -1884,14 +1884,16 @@ const updateCountdown = () => {
   })
 
   if (remaining <= 0) {
-    // 时间到了，显示已流转，但不在详情页面执行流转操作
-    // 流转由后台定时任务统一处理
+    // 时间到了，调用后端API执行流转
     countdownSeconds.value = 0
-    countdownText.value = '已到流转时间'
+    countdownText.value = '正在流转...'
     if (countdownTimer.value) {
       clearInterval(countdownTimer.value)
       countdownTimer.value = null
     }
+
+    // 调用后端流转API
+    transferToAudit()
     return
   }
 
