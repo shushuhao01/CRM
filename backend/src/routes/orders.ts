@@ -64,14 +64,56 @@ router.post('/check-transfer', async (_req: Request, res: Response) => {
   try {
     console.log('🔄 [订单流转] 检查待流转订单...');
 
-    // 目前简单返回成功，实际流转逻辑可以后续扩展
+    const orderRepository = AppDataSource.getRepository(Order);
+    const transferConfig = await getOrderTransferConfig();
+    const now = new Date();
+    const delayMs = transferConfig.delayMinutes * 60 * 1000;
+
+    // 查找所有待流转的订单（状态为pending_transfer且markType为normal）
+    const pendingOrders = await orderRepository.find({
+      where: {
+        status: 'pending_transfer',
+        markType: 'normal'
+      }
+    });
+
+    console.log(`🔍 [订单流转] 找到 ${pendingOrders.length} 个待流转订单`);
+
+    const transferredOrders: Order[] = [];
+
+    for (const order of pendingOrders) {
+      if (!order.createdAt) continue;
+
+      const transferTime = new Date(order.createdAt.getTime() + delayMs);
+
+      // 检查是否已到流转时间
+      if (now >= transferTime) {
+        console.log(`⏰ [订单流转] 订单 ${order.orderNumber} 已到流转时间，执行流转`);
+
+        // 更新订单状态
+        order.status = 'pending_audit';
+        order.updatedAt = now;
+
+        await orderRepository.save(order);
+        transferredOrders.push(order);
+
+        console.log(`✅ [订单流转] 订单 ${order.orderNumber} 已流转到待审核状态`);
+      }
+    }
+
+    console.log(`📊 [订单流转] 本次流转 ${transferredOrders.length} 个订单`);
+
     res.json({
       success: true,
       code: 200,
       message: '订单流转检查完成',
       data: {
-        transferredCount: 0,
-        orders: []
+        transferredCount: transferredOrders.length,
+        orders: transferredOrders.map(o => ({
+          id: o.id,
+          orderNumber: o.orderNumber,
+          status: o.status
+        }))
       }
     });
   } catch (error) {
@@ -458,6 +500,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       trackingNumber: order.trackingNumber || '',
       serviceWechat: order.serviceWechat || '',
       orderSource: order.orderSource || '',
+      depositScreenshots: order.depositScreenshots || [],
       createTime: order.createdAt?.toISOString() || '',
       createdBy: order.createdBy || '',
       createdByName: order.createdByName || '',
