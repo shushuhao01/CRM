@@ -4,7 +4,92 @@ import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 import { Product } from '../entities/Product';
 import { SystemConfig } from '../entities/SystemConfig';
+import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
 import { Like, Between } from 'typeorm';
+
+// 验证部门下单限制
+interface OrderLimitCheckResult {
+  allowed: boolean;
+  message?: string;
+  limitType?: 'order_count' | 'single_amount' | 'total_amount';
+}
+
+const checkDepartmentOrderLimit = async (
+  departmentId: string,
+  customerId: string,
+  orderAmount: number
+): Promise<OrderLimitCheckResult> => {
+  try {
+    // 获取部门下单限制配置
+    const limitRepository = AppDataSource.getRepository(DepartmentOrderLimit);
+    const limit = await limitRepository.findOne({
+      where: { departmentId, isEnabled: true }
+    });
+
+    // 如果没有配置或配置未启用，允许下单
+    if (!limit) {
+      return { allowed: true };
+    }
+
+    const orderRepository = AppDataSource.getRepository(Order);
+
+    // 检查下单次数限制
+    if (limit.orderCountEnabled && limit.maxOrderCount > 0) {
+      const orderCount = await orderRepository.count({
+        where: {
+          customerId,
+          createdByDepartmentId: departmentId
+        }
+      });
+
+      if (orderCount >= limit.maxOrderCount) {
+        return {
+          allowed: false,
+          message: `该客户在本部门已下单${orderCount}次，已达到最大下单次数限制(${limit.maxOrderCount}次)，请联系管理员`,
+          limitType: 'order_count'
+        };
+      }
+    }
+
+    // 检查单笔金额限制
+    if (limit.singleAmountEnabled && limit.maxSingleAmount > 0) {
+      if (orderAmount > Number(limit.maxSingleAmount)) {
+        return {
+          allowed: false,
+          message: `订单金额¥${orderAmount.toFixed(2)}超出单笔金额限制(¥${Number(limit.maxSingleAmount).toFixed(2)})，请联系管理员`,
+          limitType: 'single_amount'
+        };
+      }
+    }
+
+    // 检查累计金额限制
+    if (limit.totalAmountEnabled && limit.maxTotalAmount > 0) {
+      const result = await orderRepository
+        .createQueryBuilder('order')
+        .select('SUM(order.totalAmount)', 'total')
+        .where('order.customerId = :customerId', { customerId })
+        .andWhere('order.createdByDepartmentId = :departmentId', { departmentId })
+        .getRawOne();
+
+      const currentTotal = Number(result?.total || 0);
+      const newTotal = currentTotal + orderAmount;
+
+      if (newTotal > Number(limit.maxTotalAmount)) {
+        return {
+          allowed: false,
+          message: `该客户在本部门累计金额将达到¥${newTotal.toFixed(2)}，超出累计金额限制(¥${Number(limit.maxTotalAmount).toFixed(2)})，请联系管理员`,
+          limitType: 'total_amount'
+        };
+      }
+    }
+
+    return { allowed: true };
+  } catch (error) {
+    console.error('检查部门下单限制失败:', error);
+    // 出错时默认允许下单，避免影响正常业务
+    return { allowed: true };
+  }
+};
 
 // 获取订单流转配置
 const getOrderTransferConfig = async (): Promise<{ mode: string; delayMinutes: number }> => {
@@ -600,6 +685,28 @@ router.post('/', async (req: Request, res: Response) => {
     const finalCreatedBy = salesPersonId || currentUser?.id || 'admin';
     // 优先使用传入的销售人员姓名，其次使用当前用户的真实姓名，最后使用用户名
     const finalCreatedByName = salesPersonName || currentUser?.realName || currentUser?.username || '';
+    // 获取创建人部门信息
+    const createdByDepartmentId = currentUser?.departmentId || '';
+    const createdByDepartmentName = currentUser?.departmentName || '';
+
+    // 验证部门下单限制（仅对正常发货单进行验证）
+    if (markType !== 'reserved' && markType !== 'return' && createdByDepartmentId) {
+      const limitCheck = await checkDepartmentOrderLimit(
+        createdByDepartmentId,
+        String(customerId),
+        finalTotalAmount
+      );
+
+      if (!limitCheck.allowed) {
+        console.warn(`⚠️ [订单创建] 部门下单限制: ${limitCheck.message}`);
+        return res.status(400).json({
+          success: false,
+          code: 400,
+          message: limitCheck.message,
+          limitType: limitCheck.limitType
+        });
+      }
+    }
 
     console.log('📝 [订单创建] 准备创建订单:', {
       orderNumber: generatedOrderNumber,
@@ -632,7 +739,9 @@ router.post('/', async (req: Request, res: Response) => {
       markType: markType || 'normal',
       remark: remark || '',
       createdBy: finalCreatedBy,
-      createdByName: finalCreatedByName
+      createdByName: finalCreatedByName,
+      createdByDepartmentId: createdByDepartmentId || undefined,
+      createdByDepartmentName: createdByDepartmentName || undefined
     });
 
     const savedOrder = await orderRepository.save(order);
