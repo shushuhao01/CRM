@@ -260,8 +260,8 @@
 
           <!-- 订单状态列 -->
           <template #column-orderStatus="{ row }">
-            <el-tag :type="getOrderStatusType(row.orderStatus || row.status)">
-              {{ getOrderStatusText(row.orderStatus || row.status) }}
+            <el-tag :style="getOrderStatusStyle(row.orderStatus || row.status)" size="small" effect="plain">
+              {{ getUnifiedStatusText(row.orderStatus || row.status) }}
             </el-tag>
           </template>
 
@@ -745,6 +745,7 @@ import LeaderAssignDialog from './LeaderAssignDialog.vue'
 import DynamicTable from '@/components/DynamicTable.vue'
 import TableColumnSettings from '@/components/TableColumnSettings.vue'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
+import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 
 // 使用状态管理
 const dataStore = useDataStore()

@@ -284,10 +284,11 @@
 
       <template #auditStatus="{ row }">
         <el-tag
-          :type="getStatusTagType(row.auditStatus)"
+          :style="getOrderStatusStyle(row.auditStatus)"
           size="small"
+          effect="plain"
         >
-          {{ getStatusText(row.auditStatus) }}
+          {{ getUnifiedStatusText(row.auditStatus) }}
         </el-tag>
       </template>
 
@@ -877,6 +878,7 @@ import { SensitiveInfoType } from '@/services/permission'
 import DynamicTable from '@/components/DynamicTable.vue'
 import RejectionReasonManagement from '@/components/RejectionReasonManagement.vue'
 import { eventBus, EventNames } from '@/utils/eventBus'
+import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 
 // 接口定义
 interface PaymentScreenshot {

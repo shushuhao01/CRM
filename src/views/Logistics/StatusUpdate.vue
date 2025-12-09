@@ -197,8 +197,8 @@
         <el-table-column prop="customerName" label="客户名称" width="120" />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">
-              {{ getStatusText(row.status) }}
+            <el-tag :style="getOrderStatusStyle(row.status)" size="small" effect="plain">
+              {{ getUnifiedStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -319,6 +319,7 @@ import { useLogisticsStatusStore } from '@/stores/logisticsStatus'
 import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 import {
   Clock,
   Check,

@@ -121,8 +121,8 @@
             <span class="title-text">订单状态</span>
           </div>
           <div class="status-right-section">
-            <el-tag :type="getStatusType(orderDetail.status)" class="status-tag-modern" effect="light">
-              {{ getStatusText(orderDetail.status) }}
+            <el-tag :style="getOrderStatusStyle(orderDetail.status)" class="status-tag-modern" effect="plain">
+              {{ getUnifiedStatusText(orderDetail.status) }}
             </el-tag>
             <!-- 3分钟倒计时和提示词 -->
             <div v-if="showCountdown" class="countdown-section">
@@ -279,12 +279,12 @@
               </el-tag>
               <el-tag
                 v-else
-                type="info"
+                :style="getOrderStatusStyle(orderDetail.status)"
                 size="small"
-                effect="light"
+                effect="plain"
                 class="status-indicator"
               >
-                {{ getStatusText(orderDetail.status) }}
+                {{ getUnifiedStatusText(orderDetail.status) }}
               </el-tag>
             </div>
 
@@ -734,6 +734,7 @@ import { SensitiveInfoType } from '@/services/permission'
 import { useUserStore } from '@/stores/user'
 import { createSafeNavigator } from '@/utils/navigation'
 import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
+import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 
 const router = useRouter()
 const route = useRoute()

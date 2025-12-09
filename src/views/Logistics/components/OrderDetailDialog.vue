@@ -21,8 +21,8 @@
           </div>
           <div class="info-item">
             <label>订单状态：</label>
-            <el-tag :type="getStatusType(order.status)" size="small">
-              {{ getStatusText(order.status) }}
+            <el-tag :style="getOrderStatusStyle(order.status)" size="small" effect="plain">
+              {{ getUnifiedStatusText(order.status) }}
             </el-tag>
           </div>
           <div class="info-item">
@@ -201,6 +201,7 @@ import {
   Document, Box, Money, Printer, Timer, Edit, Van
 } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 
 // 使用any类型避免类型错误，因为这个对话框接收的是物流订单格式
 interface Props {
