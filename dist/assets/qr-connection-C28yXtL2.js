@@ -1,1 +1,0 @@
-import{r as e}from"./index-C4IdUW1A.js";import"./vendor-BtukhyiH.js";import"./elementPlus-DxaqjplL.js";import"./utils-DfI7e5Rl.js";const t=t=>e.post("/qr-connection/generate",t),o=t=>e.get(`/qr-connection/status/${t}`),n=t=>e.get("/qr-connection/devices",{params:{userId:t}});export{t as generateQRCode,n as getConnectedDevices,o as getConnectionStatus};
