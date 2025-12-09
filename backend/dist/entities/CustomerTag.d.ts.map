@@ -1,0 +1,1 @@
+{"version":3,"file":"CustomerTag.d.ts","sourceRoot":"","sources":["../../src/entities/CustomerTag.ts"],"names":[],"mappings":"AAGA,qBACa,WAAW;IAEtB,EAAE,EAAE,MAAM,CAAC;IAGX,IAAI,EAAE,MAAM,CAAC;IAGb,KAAK,EAAE,MAAM,CAAC;IAGd,WAAW,EAAE,MAAM,CAAC;IAGpB,aAAa,EAAE,MAAM,CAAC;IAGtB,SAAS,EAAE,IAAI,CAAC;IAGhB,SAAS,EAAE,IAAI,CAAC;IAGhB,UAAU;CAKX"}

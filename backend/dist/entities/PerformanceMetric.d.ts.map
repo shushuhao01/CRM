@@ -1,0 +1,1 @@
+{"version":3,"file":"PerformanceMetric.d.ts","sourceRoot":"","sources":["../../src/entities/PerformanceMetric.ts"],"names":[],"mappings":"AAEA,qBACa,iBAAiB;IAE5B,EAAE,EAAE,MAAM,CAAC;IAGX,MAAM,EAAE,MAAM,CAAC;IAGf,UAAU,EAAE,MAAM,CAAC;IAGnB,KAAK,EAAE,MAAM,CAAC;IAGd,IAAI,EAAE,IAAI,CAAC;IAGX,SAAS,EAAE,IAAI,CAAC;IAGhB,SAAS,EAAE,IAAI,CAAC;CACjB"}

@@ -1,0 +1,1 @@
+{"version":3,"file":"ImprovementGoal.d.ts","sourceRoot":"","sources":["../../src/entities/ImprovementGoal.ts"],"names":[],"mappings":"AAEA,qBACa,eAAe;IAE1B,EAAE,EAAE,MAAM,CAAC;IAGX,MAAM,EAAE,MAAM,CAAC;IAGf,KAAK,EAAE,MAAM,CAAC;IAGd,WAAW,EAAE,MAAM,CAAC;IAGpB,UAAU,EAAE,IAAI,CAAC;IAGjB,MAAM,EAAE,MAAM,CAAC;IAGf,SAAS,EAAE,IAAI,CAAC;IAGhB,SAAS,EAAE,IAAI,CAAC;CACjB"}

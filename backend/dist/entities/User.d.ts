@@ -1,0 +1,39 @@
+export declare class User {
+    id: string;
+    username: string;
+    password: string;
+    name: string;
+    realName: string | null;
+    email: string | null;
+    phone: string | null;
+    avatar: string | null;
+    gender: 'male' | 'female' | 'unknown' | null;
+    birthday: Date | null;
+    idCard: string | null;
+    role: string;
+    roleId: string;
+    departmentId: string | null;
+    departmentName: string | null;
+    position: string | null;
+    employeeNumber: string | null;
+    entryDate: Date | null;
+    leaveDate: Date | null;
+    salary: string | null;
+    bankAccount: string | null;
+    emergencyContact: string | null;
+    emergencyPhone: string | null;
+    address: string | null;
+    education: string | null;
+    major: string | null;
+    status: 'active' | 'inactive' | 'resigned' | 'locked';
+    lastLoginAt: Date | null;
+    loginCount: number;
+    loginFailCount: number;
+    lockedAt: Date | null;
+    lastLoginIp: string | null;
+    settings: any;
+    createdAt: Date;
+    updatedAt: Date;
+    toJSON(): Omit<this, "password" | "toJSON">;
+}
+//# sourceMappingURL=User.d.ts.map
