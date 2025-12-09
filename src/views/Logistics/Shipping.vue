@@ -1296,8 +1296,14 @@ const loadOrderList = async () => {
         orderNo: order.orderNumber || '-',
         phone: order.customerPhone || order.receiverPhone || '-',
         address: order.receiverAddress || '-',
-        // 🔥 销售人员字段映射（创建订单的用户姓名）
-        salesPersonName: order.createdByName || order.salesPersonName || order.createdBy || '-',
+        // 🔥 销售人员字段映射（创建订单的用户姓名）- 从用户列表查找真实姓名
+        salesPersonName: (() => {
+          if (order.createdByName) return order.createdByName
+          if (order.salesPersonName) return order.salesPersonName
+          // 从用户列表查找真实姓名
+          const user = userStore.users.find(u => u.id === order.createdBy || u.username === order.createdBy)
+          return user?.realName || user?.name || order.createdBy || '-'
+        })(),
         // 同步的客户信息
         ...customerInfo,
         // 计算的订单字段
@@ -1313,6 +1319,8 @@ const loadOrderList = async () => {
         estimatedDeliveryTime: order.estimatedDeliveryTime || order.expectedDeliveryDate || null,
         // 订单来源
         orderSource: order.orderSource || null,
+        // 🔥 自定义字段 - 确保正确传递
+        customFields: order.customFields || {},
         // 操作记录
         lastOperation,
         operationLogs
