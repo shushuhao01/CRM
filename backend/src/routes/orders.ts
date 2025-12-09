@@ -1023,11 +1023,17 @@ router.post('/:id/submit-audit', async (req: Request, res: Response) => {
  * @desc 审核订单
  * @access Private
  */
-router.post('/:id/audit', async (req: Request, res: Response) => {
+router.post('/:id/audit', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
-    const { action, remark } = req.body;
+    const { action, auditStatus, remark, auditRemark } = req.body;
     const idParam = req.params.id;
+
+    // 兼容两种参数格式：action='approve'/'reject' 或 auditStatus='approved'/'rejected'
+    const isApproved = action === 'approve' || auditStatus === 'approved';
+    const finalRemark = remark || auditRemark || '';
+
+    console.log(`📝 [订单审核] 收到审核请求: orderId=${idParam}, action=${action}, auditStatus=${auditStatus}, isApproved=${isApproved}`);
 
     let order = await orderRepository.findOne({ where: { id: idParam } });
     if (!order) {
@@ -1042,13 +1048,13 @@ router.post('/:id/audit', async (req: Request, res: Response) => {
       });
     }
 
-    if (action === 'approve') {
+    if (isApproved) {
       order.status = 'pending_shipment';
-      order.remark = `${order.remark || ''} | 审核通过: ${remark || ''}`;
+      order.remark = `${order.remark || ''} | 审核通过: ${finalRemark}`;
       console.log(`✅ [订单审核] 订单 ${order.orderNumber} 审核通过，状态变更为 pending_shipment`);
     } else {
       order.status = 'audit_rejected';
-      order.remark = `${order.remark || ''} | 审核拒绝: ${remark || ''}`;
+      order.remark = `${order.remark || ''} | 审核拒绝: ${finalRemark}`;
       console.log(`❌ [订单审核] 订单 ${order.orderNumber} 审核拒绝，状态变更为 audit_rejected`);
     }
 
@@ -1057,12 +1063,12 @@ router.post('/:id/audit', async (req: Request, res: Response) => {
     res.json({
       success: true,
       code: 200,
-      message: action === 'approve' ? '订单审核通过' : '订单审核拒绝',
+      message: isApproved ? '订单审核通过' : '订单审核拒绝',
       data: {
         id: order.id,
         orderNumber: order.orderNumber,
         status: order.status,
-        auditStatus: action === 'approve' ? 'approved' : 'rejected'
+        auditStatus: isApproved ? 'approved' : 'rejected'
       }
     });
   } catch (error) {
