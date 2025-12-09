@@ -17,7 +17,7 @@
         <div class="info-grid compact">
           <div class="info-item">
             <label>订单号：</label>
-            <span class="value">{{ order.orderNo }}</span>
+            <span class="value">{{ order.orderNo || order.orderNumber || '-' }}</span>
           </div>
           <div class="info-item">
             <label>订单状态：</label>
@@ -27,19 +27,19 @@
           </div>
           <div class="info-item">
             <label>客户姓名：</label>
-            <span class="value">{{ order.customerName }}</span>
+            <span class="value">{{ order.customerName || '-' }}</span>
           </div>
           <div class="info-item">
             <label>联系电话：</label>
-            <span class="value">{{ displaySensitiveInfoNew(order.customerPhone, 'phone') }}</span>
+            <span class="value">{{ displaySensitiveInfoNew(order.phone || order.customerPhone || order.receiverPhone, 'phone') }}</span>
           </div>
           <div class="info-item">
             <label>下单日期：</label>
-            <span class="value">{{ order.orderDate || order.shippingTime || '-' }}</span>
+            <span class="value">{{ order.createTime || order.orderDate || order.shippingTime || '-' }}</span>
           </div>
           <div class="info-item">
             <label>归属人：</label>
-            <span class="value">{{ order.assignedTo || '-' }}</span>
+            <span class="value">{{ order.createdByName || order.assignedTo || order.createdBy || '-' }}</span>
           </div>
           <div class="info-item">
             <label>客服微信号：</label>
@@ -48,6 +48,10 @@
           <div class="info-item">
             <label>订单来源：</label>
             <span class="value">{{ getOrderSourceText(order.orderSource) }}</span>
+          </div>
+          <div class="info-item full-width">
+            <label>收货地址：</label>
+            <span class="value">{{ order.address || order.receiverAddress || '-' }}</span>
           </div>
           <div class="info-item full-width">
             <label>备注：</label>
@@ -65,15 +69,15 @@
         <div class="info-grid compact">
           <div class="info-item">
             <label>快递单号：</label>
-            <span class="value">{{ order.trackingNo || '-' }}</span>
+            <span class="value">{{ order.expressNo || order.trackingNumber || order.trackingNo || '-' }}</span>
           </div>
           <div class="info-item">
             <label>快递公司：</label>
-            <span class="value">{{ order.logisticsCompany || '-' }}</span>
+            <span class="value">{{ getExpressCompanyName(order.expressCompany) || order.logisticsCompany || '-' }}</span>
           </div>
           <div class="info-item full-width">
             <label>最新动态：</label>
-            <span class="value">{{ order.latestUpdate || '-' }}</span>
+            <span class="value">{{ order.latestUpdate || order.logisticsStatus || '-' }}</span>
           </div>
         </div>
       </div>
@@ -87,11 +91,11 @@
         <div class="info-grid compact">
           <div class="info-item">
             <label>商品名称：</label>
-            <span class="value">{{ order.productName || '-' }}</span>
+            <span class="value">{{ order.productsText || order.productName || getProductsText(order.products) || '-' }}</span>
           </div>
           <div class="info-item">
             <label>数量：</label>
-            <span class="value">{{ order.quantity || 0 }}</span>
+            <span class="value">{{ order.totalQuantity || order.quantity || getProductsQuantity(order.products) || 0 }}</span>
           </div>
         </div>
       </div>
@@ -106,7 +110,19 @@
           <div class="amount-row">
             <div class="amount-item">
               <label>订单金额：</label>
-              <span class="value total">¥{{ formatNumber(order.amount) }}</span>
+              <span class="value total">¥{{ formatNumber(order.totalAmount || order.amount) }}</span>
+            </div>
+            <div class="amount-item" v-if="order.deposit || order.depositAmount">
+              <label>定金：</label>
+              <span class="value">¥{{ formatNumber(order.deposit || order.depositAmount) }}</span>
+            </div>
+            <div class="amount-item" v-if="order.codAmount || order.collectAmount">
+              <label>代收金额：</label>
+              <span class="value highlight">¥{{ formatNumber(order.codAmount || order.collectAmount) }}</span>
+            </div>
+            <div class="amount-item" v-if="order.paymentMethod">
+              <label>支付方式：</label>
+              <span class="value">{{ getPaymentMethodText(order.paymentMethod) }}</span>
             </div>
           </div>
         </div>
@@ -287,6 +303,52 @@ const getOrderSourceText = (source: string | null | undefined) => {
     other: '🎯 其他渠道'
   }
   return sourceMap[source] || source
+}
+
+// 获取支付方式文本
+const getPaymentMethodText = (method: string | null | undefined) => {
+  if (!method) return '-'
+  const methodMap: Record<string, string> = {
+    wechat: '微信支付',
+    alipay: '支付宝',
+    bank_transfer: '银行转账',
+    unionpay: '云闪付',
+    cod: '货到付款',
+    cash: '现金',
+    card: '刷卡',
+    other: '其他'
+  }
+  return methodMap[method] || method
+}
+
+// 获取快递公司名称
+const getExpressCompanyName = (code: string | null | undefined) => {
+  if (!code) return null
+  const companyMap: Record<string, string> = {
+    SF: '顺丰速运',
+    YTO: '圆通速递',
+    ZTO: '中通快递',
+    STO: '申通快递',
+    YD: '韵达快递',
+    HTKY: '百世快递',
+    JD: '京东物流',
+    EMS: 'EMS',
+    DBKD: '德邦快递',
+    UC: '优速快递'
+  }
+  return companyMap[code] || code
+}
+
+// 获取商品文本
+const getProductsText = (products: any[] | null | undefined) => {
+  if (!products || !Array.isArray(products) || products.length === 0) return null
+  return products.map(p => `${p.name} × ${p.quantity}`).join('，')
+}
+
+// 获取商品总数量
+const getProductsQuantity = (products: any[] | null | undefined) => {
+  if (!products || !Array.isArray(products)) return 0
+  return products.reduce((sum, p) => sum + (p.quantity || 0), 0)
 }
 
 // 高亮关键词

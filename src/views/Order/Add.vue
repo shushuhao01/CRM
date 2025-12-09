@@ -318,9 +318,25 @@
                 @change="calculateCollectAmount"
               />
             </div>
+            <div class="amount-field">
+              <span class="field-label">支付方式</span>
+              <el-select
+                v-model="orderForm.paymentMethod"
+                placeholder="请选择支付方式"
+                class="field-input"
+                clearable
+              >
+                <el-option
+                  v-for="method in paymentMethods"
+                  :key="method.value"
+                  :label="method.label"
+                  :value="method.value"
+                />
+              </el-select>
+            </div>
           </div>
 
-          <!-- 第二行：代收金额、优惠金额、定金截图 -->
+          <!-- 第二行：代收金额、优惠金额、支付方式备注、定金截图 -->
           <div class="amount-row">
             <div class="amount-field">
               <span class="field-label">代收金额</span>
@@ -681,6 +697,7 @@ interface OrderForm {
   totalAmount: number
   depositAmount: number
   depositScreenshot: string
+  paymentMethod: string
   markType: string
   remark: string
   customFields: Record<string, unknown>
@@ -805,10 +822,40 @@ const orderForm = reactive<OrderForm>({
   totalAmount: 0,
   depositAmount: 0,
   depositScreenshot: '',
+  paymentMethod: '',
   markType: 'normal',
   remark: '',
   customFields: {}
 })
+
+// 支付方式选项
+const paymentMethods = ref([
+  { label: '微信支付', value: 'wechat' },
+  { label: '支付宝支付', value: 'alipay' },
+  { label: '银行转账', value: 'bank_transfer' },
+  { label: '云闪付', value: 'unionpay' },
+  { label: '货到付款', value: 'cod' },
+  { label: '其他', value: 'other' }
+])
+
+// 加载支付方式
+const loadPaymentMethods = async () => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/payment-methods', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await response.json()
+    if (result.success && result.data && result.data.length > 0) {
+      paymentMethods.value = result.data.map((m: any) => ({
+        label: m.label,
+        value: m.value
+      }))
+    }
+  } catch (error) {
+    console.warn('加载支付方式失败，使用默认配置:', error)
+  }
+}
 
 // 表单验证规则
 const formRules = {
@@ -1484,6 +1531,9 @@ onMounted(async () => {
 
   // 加载启用的物流公司列表
   loadExpressCompanies()
+
+  // 加载支付方式配置
+  loadPaymentMethods()
 
   // 【修复】始终从API获取最新商品数据，确保所有用户看到相同的商品列表
   // 不再依赖本地缓存，避免不同用户看到不同商品的问题

@@ -407,6 +407,15 @@
                   <div class="amount-value-modern">¥{{ ((orderDetail.totalAmount || 0) - (orderDetail.depositAmount || 0)).toFixed(2) }}</div>
                 </div>
               </div>
+              <div class="amount-card-modern payment-modern" v-if="orderDetail.paymentMethod">
+                <div class="amount-icon-modern">
+                  <el-icon><CreditCard /></el-icon>
+                </div>
+                <div class="amount-content-modern">
+                  <div class="amount-label-modern">支付方式</div>
+                  <div class="amount-value-modern payment-text">{{ getPaymentMethodText(orderDetail.paymentMethod) }}</div>
+                </div>
+              </div>
             </div>
 
             <!-- 第二行：商品总额和优惠 -->
@@ -423,6 +432,11 @@
               <div class="amount-detail-item discount-item" v-if="calculatedSubtotal > (orderDetail.totalAmount || 0)">
                 <span class="detail-label">已优惠：</span>
                 <span class="detail-value discount">-¥{{ (calculatedSubtotal - (orderDetail.totalAmount || 0)).toFixed(2) }}</span>
+              </div>
+              <!-- 支付方式 -->
+              <div class="amount-detail-item payment-item" v-if="orderDetail.paymentMethod">
+                <span class="detail-label">支付方式：</span>
+                <span class="detail-value payment">{{ getPaymentMethodText(orderDetail.paymentMethod) }}</span>
               </div>
             </div>
 
@@ -763,6 +777,7 @@ const orderDetail = reactive({
   depositAmount: 0,
   depositScreenshot: '',
   depositScreenshots: [],
+  paymentMethod: '',
   remark: ''
 })
 
@@ -1597,6 +1612,22 @@ const getStatusText = (status: string) => {
   return texts[status] || status
 }
 
+// 获取支付方式文本
+const getPaymentMethodText = (method: string | null | undefined) => {
+  if (!method) return '-'
+  const methodMap: Record<string, string> = {
+    wechat: '微信支付',
+    alipay: '支付宝',
+    bank_transfer: '银行转账',
+    unionpay: '云闪付',
+    cod: '货到付款',
+    cash: '现金',
+    card: '刷卡',
+    other: '其他'
+  }
+  return methodMap[method] || method
+}
+
 const getLevelType = (level: string) => {
   const types = {
     'vip': 'warning',
@@ -1798,6 +1829,7 @@ const loadOrderDetail = async () => {
       depositAmount: order.depositAmount,
       depositScreenshot: order.depositScreenshot || '',
       depositScreenshots: order.depositScreenshots || [],
+      paymentMethod: order.paymentMethod || '',
       remark: order.remark
     })
 
@@ -2908,6 +2940,15 @@ onUnmounted(() => {
 
 .discount-item {
   border-left: 3px solid #dc2626;
+}
+
+.payment-item {
+  border-left: 3px solid #8b5cf6;
+}
+
+.payment-item .detail-value.payment {
+  color: #8b5cf6;
+  font-weight: 600;
 }
 
 /* 现代化金额卡片样式 */

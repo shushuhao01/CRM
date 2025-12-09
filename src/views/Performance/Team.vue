@@ -734,8 +734,8 @@ const columnSettingsRef = ref()
 const tableColumns = ref<TableColumn[]>([
   { prop: 'department', label: '部门', width: 100, align: 'center', visible: true },
   { prop: 'username', label: '用户名', width: 100, align: 'center', visible: true },
-  { prop: 'employeeNumber', label: '工号', width: 100, align: 'center', visible: true },
-  { prop: 'createTime', label: '创建时间', width: 110, align: 'center', visible: true },
+  { prop: 'employeeNumber', label: '工号', width: 100, align: 'center', visible: false },
+  { prop: 'createTime', label: '创建时间', width: 110, align: 'center', visible: false },
   { prop: 'orderCount', label: '下单单数', width: 90, align: 'center', visible: true },
   { prop: 'orderAmount', label: '下单业绩', width: 120, align: 'center', visible: true },
   { prop: 'shipCount', label: '发货单数', width: 90, align: 'center', visible: true },

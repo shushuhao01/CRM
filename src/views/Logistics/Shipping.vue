@@ -245,9 +245,9 @@
       </template>
 
       <!-- 状态列 -->
-      <template #status="{ row }">
+      <template #column-status="{ row }">
         <el-tag :type="getOrderStatusType(row.status)" size="small">
-          {{ orderStore.getStatusText(row.status) }}
+          {{ getOrderStatusText(row.status) }}
         </el-tag>
       </template>
 
@@ -280,8 +280,18 @@
         <span class="amount highlight">¥{{ formatNumber(row.codAmount) }}</span>
       </template>
 
+      <!-- 订单来源列 -->
+      <template #column-orderSource="{ row }">
+        <span>{{ getOrderSourceText(row.orderSource) }}</span>
+      </template>
+
+      <!-- 支付方式列 -->
+      <template #column-paymentMethod="{ row }">
+        <span>{{ getPaymentMethodText(row.paymentMethod) }}</span>
+      </template>
+
       <!-- 订单备注列 -->
-      <template #remark="{ row }">
+      <template #column-remark="{ row }">
         <span v-if="row.remark" class="remark-text" v-html="highlightKeywords(row.remark)"></span>
         <span v-else class="no-remark">无备注</span>
       </template>
@@ -642,6 +652,7 @@ import { useOrderStore } from '@/stores/order'
 import { useNotificationStore } from '@/stores/notification'
 import { useDepartmentStore } from '@/stores/department'
 import { useCustomerStore } from '@/stores/customer'
+import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 import { exportBatchOrders, exportSingleOrder, type ExportOrder } from '@/utils/export'
 import { useUserStore } from '@/stores/user'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
@@ -724,6 +735,7 @@ const notificationStore = useNotificationStore()
 const userStore = useUserStore()
 const departmentStore = useDepartmentStore()
 const customerStore = useCustomerStore()
+const fieldConfigStore = useOrderFieldConfigStore()
 
 // 表格标题
 const tableTitle = computed(() => {
@@ -737,8 +749,8 @@ const tableTitle = computed(() => {
   return `${tabNames[activeTab.value] || '发货'}列表`
 })
 
-// 表格列配置
-const tableColumns = computed(() => [
+// 基础表格列配置
+const baseTableColumns = [
   {
     prop: 'orderNo',
     label: '订单号',
@@ -858,8 +870,14 @@ const tableColumns = computed(() => [
     label: '订单来源',
     width: 110,
     align: 'center',
-    visible: true,
-    formatter: (row: any) => row ? getOrderSourceText(row.orderSource) : '-'
+    visible: true
+  },
+  {
+    prop: 'paymentMethod',
+    label: '支付方式',
+    width: 100,
+    align: 'center',
+    visible: true
   },
   {
     prop: 'remark',
@@ -896,7 +914,35 @@ const tableColumns = computed(() => [
     showOverflowTooltip: true,
     visible: false
   }
-])
+]
+
+// 表格列配置（包含动态自定义字段）
+const tableColumns = computed(() => {
+  // 获取需要在列表中显示的自定义字段
+  const customFieldColumns = fieldConfigStore.visibleCustomFields.map(field => ({
+    prop: `customFields.${field.fieldKey}`,
+    label: field.fieldName,
+    width: field.fieldType === 'text' ? 150 : 100,
+    align: 'center' as const,
+    showOverflowTooltip: true,
+    visible: true,
+    isCustomField: true,
+    fieldConfig: field
+  }))
+
+  // 在订单备注列之前插入自定义字段
+  const remarkIndex = baseTableColumns.findIndex(col => col.prop === 'remark')
+  const columns = [...baseTableColumns]
+
+  if (remarkIndex > -1 && customFieldColumns.length > 0) {
+    columns.splice(remarkIndex, 0, ...customFieldColumns)
+  } else if (customFieldColumns.length > 0) {
+    // 如果找不到备注列，就添加到末尾
+    columns.push(...customFieldColumns)
+  }
+
+  return columns
+})
 
 // 格式化数字
 const formatNumber = (num: number | null | undefined) => {
@@ -935,9 +981,25 @@ const getOrderSourceText = (source: string | null) => {
   return sourceMap[source] || source
 }
 
+// 获取支付方式文本
+const getPaymentMethodText = (method: string | null) => {
+  if (!method) return '-'
+  const methodMap: Record<string, string> = {
+    wechat: '微信支付',
+    alipay: '支付宝',
+    bank_transfer: '银行转账',
+    unionpay: '云闪付',
+    cod: '货到付款',
+    cash: '现金',
+    card: '刷卡',
+    other: '其他'
+  }
+  return methodMap[method] || method
+}
+
 // 获取订单状态类型
 const getOrderStatusType = (status: string) => {
-  const statusMap = {
+  const statusMap: Record<string, string> = {
     'pending_transfer': 'info',
     'pending_audit': 'warning',
     'audit_rejected': 'danger',
@@ -947,11 +1009,38 @@ const getOrderStatusType = (status: string) => {
     'package_exception': 'danger',
     'rejected': 'danger',
     'rejected_returned': 'warning',
+    'logistics_returned': 'warning',
+    'logistics_cancelled': 'info',
     'after_sales_created': 'info',
     'cancelled': 'info',
     'draft': 'info'
   }
   return statusMap[status] || 'info'
+}
+
+// 获取订单状态文本
+const getOrderStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    'pending_transfer': '待流转',
+    'pending_audit': '待审核',
+    'audit_rejected': '审核拒绝',
+    'pending_shipment': '待发货',
+    'shipped': '已发货',
+    'delivered': '已签收',
+    'package_exception': '包裹异常',
+    'rejected': '拒收',
+    'rejected_returned': '物流部退回',
+    'logistics_returned': '物流部退回',
+    'logistics_cancelled': '物流部取消',
+    'after_sales_created': '已建售后',
+    'pending_cancel': '待取消',
+    'cancel_failed': '取消失败',
+    'cancelled': '已取消',
+    'draft': '草稿',
+    'approved': '已审核',
+    'confirmed': '已确认'
+  }
+  return statusMap[status] || status || '-'
 }
 
 

@@ -768,7 +768,10 @@ const tableColumns = ref([
   { prop: 'products', label: '商品', visible: true },
   { prop: 'depositAmount', label: '定金', visible: true },
   { prop: 'collectAmount', label: '代收金额', visible: true },
-  { prop: 'receiverPhone', label: '收货电话', visible: true },
+  { prop: 'serviceWechat', label: '客服微信号', visible: true },
+  { prop: 'orderSource', label: '订单来源', visible: true },
+  { prop: 'remark', label: '订单备注', visible: true },
+  { prop: 'receiverPhone', label: '收货电话', visible: false },
   { prop: 'paymentMethod', label: '支付方式', visible: false },
   { prop: 'createTime', label: '创建时间', visible: true }
 ])
@@ -1193,14 +1196,18 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
 }
 
 const getPaymentMethodText = (method: string) => {
+  if (!method) return '-'
   const texts: Record<string, string> = {
-    cash: '现金',
-    bank_transfer: '银行转账',
-    alipay: '支付宝',
     wechat: '微信支付',
-    card: '刷卡'
+    alipay: '支付宝',
+    bank_transfer: '银行转账',
+    unionpay: '云闪付',
+    cod: '货到付款',
+    cash: '现金',
+    card: '刷卡',
+    other: '其他'
   }
-  return texts[method] || '-'
+  return texts[method] || method
 }
 
 const canEdit = (status: string, operatorId?: string, markType?: string, auditStatus?: string, isAuditTransferred?: boolean) => {

@@ -305,6 +305,22 @@
                 @change="calculateCollectAmount"
               />
             </div>
+            <div class="amount-field">
+              <span class="field-label">支付方式</span>
+              <el-select
+                v-model="orderForm.paymentMethod"
+                placeholder="请选择支付方式"
+                class="field-input"
+                clearable
+              >
+                <el-option
+                  v-for="method in paymentMethods"
+                  :key="method.value"
+                  :label="method.label"
+                  :value="method.value"
+                />
+              </el-select>
+            </div>
           </div>
 
           <!-- 第二行：代收金额、优惠金额、定金截图 -->
@@ -686,9 +702,39 @@ const orderForm = reactive({
   collectedAmount: 0,
   discountAmount: 0,
   depositScreenshot: '',
+  paymentMethod: '',
   orderType: 'normal',
   remarks: ''
 })
+
+// 支付方式选项
+const paymentMethods = ref([
+  { label: '微信支付', value: 'wechat' },
+  { label: '支付宝支付', value: 'alipay' },
+  { label: '银行转账', value: 'bank_transfer' },
+  { label: '云闪付', value: 'unionpay' },
+  { label: '货到付款', value: 'cod' },
+  { label: '其他', value: 'other' }
+])
+
+// 加载支付方式
+const loadPaymentMethods = async () => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/payment-methods', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await response.json()
+    if (result.success && result.data && result.data.length > 0) {
+      paymentMethods.value = result.data.map((m: any) => ({
+        label: m.label,
+        value: m.value
+      }))
+    }
+  } catch (error) {
+    console.warn('加载支付方式失败，使用默认配置:', error)
+  }
+}
 
 // 电话表单
 const phoneForm = reactive({
@@ -788,6 +834,9 @@ onMounted(async () => {
   // 加载启用的物流公司列表
   loadExpressCompanies()
 
+  // 加载支付方式配置
+  loadPaymentMethods()
+
   await loadOrderData()
 
   // 监听订单更新事件，确保数据同步
@@ -849,6 +898,7 @@ const loadOrderData = async () => {
         collectedAmount: order.collectedAmount || 0,
         discountAmount: order.discountAmount || 0,
         depositScreenshot: order.depositScreenshot || '',
+        paymentMethod: order.paymentMethod || '',
         orderType: order.orderType || 'normal',
         remarks: order.remarks || ''
       })

@@ -28,10 +28,10 @@
       border
     >
       <!-- 选择列 -->
-      <el-table-column 
-        v-if="showSelection" 
-        type="selection" 
-        width="55" 
+      <el-table-column
+        v-if="showSelection"
+        type="selection"
+        width="55"
       />
 
       <!-- 动态渲染列 -->
@@ -48,24 +48,24 @@
         :show-overflow-tooltip="column.showOverflowTooltip"
       >
         <template #default="{ row, column: tableColumn, $index }">
-          <slot 
-            :name="`column-${column.prop}`" 
-            :row="row" 
-            :column="column" 
-            :value="row[column.prop]"
+          <slot
+            :name="`column-${column.prop}`"
+            :row="row"
+            :column="column"
+            :value="column.prop.includes('.') ? getNestedValue(row, column.prop) : row[column.prop]"
             :index="$index"
           >
             <!-- 默认渲染 -->
-            <span>{{ formatCellValue(row[column.prop], column) }}</span>
+            <span>{{ formatCellValue(column.prop.includes('.') ? getNestedValue(row, column.prop) : row[column.prop], column, row) }}</span>
           </slot>
         </template>
       </el-table-column>
 
       <!-- 操作列 -->
-      <el-table-column 
+      <el-table-column
         v-if="showActions"
-        label="操作" 
-        :width="actionsWidth" 
+        label="操作"
+        :width="actionsWidth"
         :min-width="actionsMinWidth"
         fixed="right"
       >
@@ -180,16 +180,34 @@ const allColumns = computed(() => {
 // 可见列
 const visibleColumns = ref<TableColumn[]>([])
 
-// 格式化单元格值
-const formatCellValue = (value: unknown, column: TableColumn) => {
-  if (column.formatter) {
-    return column.formatter(value, {})
+// 获取嵌套属性值
+const getNestedValue = (obj: Record<string, unknown>, path: string): unknown => {
+  if (!path.includes('.')) {
+    return obj[path]
   }
-  
+  return path.split('.').reduce((acc: unknown, key: string) => {
+    if (acc && typeof acc === 'object') {
+      return (acc as Record<string, unknown>)[key]
+    }
+    return undefined
+  }, obj)
+}
+
+// 格式化单元格值
+const formatCellValue = (value: unknown, column: TableColumn, row?: Record<string, unknown>) => {
+  // 如果是嵌套属性，从row中获取值
+  if (row && column.prop.includes('.')) {
+    value = getNestedValue(row, column.prop)
+  }
+
+  if (column.formatter) {
+    return column.formatter(value, row || {})
+  }
+
   if (value === null || value === undefined) {
     return '-'
   }
-  
+
   return value
 }
 
