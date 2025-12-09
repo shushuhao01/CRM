@@ -1831,7 +1831,7 @@ const handleBatchImportSubmit = async () => {
 }
 
 /**
- * 导出数据
+ * 导出数据 - 使用xlsx格式
  */
 const handleExport = async () => {
   try {
@@ -1843,7 +1843,10 @@ const handleExport = async () => {
       return
     }
 
-    // 构建CSV数据
+    // 动态导入xlsx库
+    const XLSX = await import('xlsx')
+
+    // 构建表头和数据
     const headers = ['商品编码', '商品名称', '分类', '规格', '单位', '销售价', '成本价', '库存', '销量', '状态', '创建时间']
     const data = exportData.map((item: unknown) => [
       item.code,
@@ -1851,31 +1854,45 @@ const handleExport = async () => {
       item.categoryName,
       item.specification || '',
       item.unit || '件',
-      item.price.toFixed(2),
-      (item.costPrice || item.price * 0.7).toFixed(2),
-      item.stock,
+      item.price?.toFixed(2) || '0.00',
+      (item.costPrice || item.price * 0.7)?.toFixed(2) || '0.00',
+      item.stock || 0,
       item.salesCount || 0,
       item.status === 'active' ? '上架' : '下架',
-      item.createTime
+      item.createTime || ''
     ])
 
-    // 创建CSV内容
-    const csvContent = [
-      headers.join(','),
-      ...data.map(row => row.join(','))
-    ].join('\n')
+    // 创建工作表数据（标题行 + 数据行）
+    const wsData = [headers, ...data]
 
-    // 添加BOM以支持中文
-    const BOM = '\uFEFF'
-    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+    // 创建工作表
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
 
-    // 创建下载链接
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `商品数据_${new Date().toISOString().slice(0, 10)}.csv`
-    link.click()
-    window.URL.revokeObjectURL(url)
+    // 设置列宽
+    ws['!cols'] = [
+      { wch: 15 }, // 商品编码
+      { wch: 25 }, // 商品名称
+      { wch: 12 }, // 分类
+      { wch: 15 }, // 规格
+      { wch: 8 },  // 单位
+      { wch: 12 }, // 销售价
+      { wch: 12 }, // 成本价
+      { wch: 10 }, // 库存
+      { wch: 10 }, // 销量
+      { wch: 8 },  // 状态
+      { wch: 18 }  // 创建时间
+    ]
+
+    // 创建工作簿
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '商品列表')
+
+    // 生成文件名
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
+    const filename = `商品数据_${timestamp}.xlsx`
+
+    // 导出文件
+    XLSX.writeFile(wb, filename)
 
     ElMessage.success(`导出成功，共导出${exportData.length}条数据`)
   } catch (error) {

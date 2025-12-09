@@ -240,19 +240,56 @@ const rules = {
   ]
 }
 
-// 物流公司列表
-const logisticsCompanies = ref([
-  { code: 'SF', name: '顺丰速运', prefix: 'SF' },
-  { code: 'YTO', name: '圆通速递', prefix: 'YT' },
-  { code: 'ZTO', name: '中通快递', prefix: 'ZTO' },
-  { code: 'STO', name: '申通快递', prefix: 'STO' },
-  { code: 'YD', name: '韵达速递', prefix: 'YD' },
-  { code: 'HTKY', name: '百世快递', prefix: 'HT' },
-  { code: 'JD', name: '京东物流', prefix: 'JD' },
-  { code: 'EMS', name: '中国邮政', prefix: 'EMS' },
-  { code: 'DBKD', name: '德邦快递', prefix: 'DB' },
-  { code: 'UC', name: '优速快递', prefix: 'UC' }
-])
+// 物流公司列表 - 从API获取
+const logisticsCompanies = ref<Array<{ code: string; name: string; prefix: string }>>([])
+const loadingCompanies = ref(false)
+
+// 从API加载物流公司列表
+const loadLogisticsCompanies = async () => {
+  loadingCompanies.value = true
+  try {
+    const { apiService } = await import('@/services/apiService')
+    const response = await apiService.get('/logistics/companies/active')
+
+    if (response && Array.isArray(response)) {
+      logisticsCompanies.value = response.map((item: { code: string; name: string; shortName?: string }) => ({
+        code: item.code,
+        name: item.name,
+        prefix: item.code.toUpperCase().substring(0, 2)
+      }))
+      console.log('[发货弹窗] 从API加载物流公司列表成功:', logisticsCompanies.value.length, '个')
+    } else if (response && response.data && Array.isArray(response.data)) {
+      logisticsCompanies.value = response.data.map((item: { code: string; name: string; shortName?: string }) => ({
+        code: item.code,
+        name: item.name,
+        prefix: item.code.toUpperCase().substring(0, 2)
+      }))
+      console.log('[发货弹窗] 从API加载物流公司列表成功:', logisticsCompanies.value.length, '个')
+    } else {
+      console.warn('[发货弹窗] API返回数据格式异常，使用默认列表')
+      useDefaultCompanies()
+    }
+  } catch (error) {
+    console.error('[发货弹窗] 加载物流公司列表失败:', error)
+    useDefaultCompanies()
+  } finally {
+    loadingCompanies.value = false
+  }
+}
+
+// 使用默认物流公司列表（API失败时的备用）
+const useDefaultCompanies = () => {
+  logisticsCompanies.value = [
+    { code: 'SF', name: '顺丰速运', prefix: 'SF' },
+    { code: 'YTO', name: '圆通速递', prefix: 'YT' },
+    { code: 'ZTO', name: '中通快递', prefix: 'ZTO' },
+    { code: 'STO', name: '申通快递', prefix: 'STO' },
+    { code: 'YD', name: '韵达速递', prefix: 'YD' },
+    { code: 'HTKY', name: '百世快递', prefix: 'HT' },
+    { code: 'JD', name: '京东物流', prefix: 'JD' },
+    { code: 'EMS', name: '中国邮政', prefix: 'EMS' }
+  ]
+}
 
 // 格式化数字
 const formatNumber = (num: number | null | undefined) => {
@@ -419,8 +456,12 @@ const initEstimatedDelivery = () => {
 }
 
 // 监听弹窗打开，初始化默认值
-watch(() => props.visible, (newVal) => {
+watch(() => props.visible, async (newVal) => {
   if (newVal) {
+    // 加载物流公司列表
+    if (logisticsCompanies.value.length === 0) {
+      await loadLogisticsCompanies()
+    }
     // 设置默认保价金额为订单总金额的80%
     if (props.order?.totalAmount) {
       shippingForm.insuranceAmount = Math.round(props.order.totalAmount * 0.8)
@@ -430,7 +471,9 @@ watch(() => props.visible, (newVal) => {
   }
 }, { immediate: true })
 
-onMounted(() => {
+onMounted(async () => {
+  // 加载物流公司列表
+  await loadLogisticsCompanies()
   // 设置默认保价金额为订单总金额的80%
   if (props.order?.totalAmount) {
     shippingForm.insuranceAmount = Math.round(props.order.totalAmount * 0.8)
