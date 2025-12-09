@@ -1,0 +1,1 @@
+{"version":3,"file":"ServiceRecord.d.ts","sourceRoot":"","sources":["../../src/entities/ServiceRecord.ts"],"names":[],"mappings":"AAEA,qBACa,aAAa;IAExB,EAAE,EAAE,MAAM,CAAC;IAGX,UAAU,EAAE,MAAM,CAAC;IAGnB,WAAW,EAAE,MAAM,CAAC;IAGpB,WAAW,EAAE,MAAM,CAAC;IAGpB,MAAM,EAAE,MAAM,CAAC;IAGf,UAAU,EAAE,MAAM,CAAC;IAGnB,SAAS,EAAE,IAAI,CAAC;IAGhB,SAAS,EAAE,IAAI,CAAC;CACjB"}

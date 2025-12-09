@@ -1,0 +1,33 @@
+export declare class AfterSalesService {
+    id: string;
+    serviceNumber: string;
+    orderId: string;
+    orderNumber: string;
+    customerId: string;
+    customerName: string;
+    customerPhone: string;
+    serviceType: string;
+    status: string;
+    priority: string;
+    reason: string;
+    description: string;
+    productName: string;
+    productSpec: string;
+    quantity: number;
+    price: number;
+    contactName: string;
+    contactPhone: string;
+    contactAddress: string;
+    assignedTo: string;
+    assignedToId: string;
+    remark: string;
+    attachments: string[];
+    createdBy: string;
+    createdById: string;
+    departmentId: string;
+    createdAt: Date;
+    updatedAt: Date;
+    expectedTime: Date;
+    resolvedTime: Date;
+}
+//# sourceMappingURL=AfterSalesService.d.ts.map
