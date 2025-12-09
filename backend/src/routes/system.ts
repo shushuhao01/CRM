@@ -1735,4 +1735,104 @@ router.delete('/payment-methods/:id', authenticateToken, async (req: Request, re
   }
 });
 
+// ========== 用户个人设置（列设置等）==========
+
+/**
+ * @route GET /api/v1/system/user-settings/:settingKey
+ * @desc 获取用户个人设置
+ * @access Private
+ */
+router.get('/user-settings/:settingKey', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { settingKey } = req.params;
+    const currentUser = (req as any).currentUser;
+
+    if (!currentUser?.id) {
+      return res.status(401).json({
+        success: false,
+        code: 401,
+        message: '用户未登录'
+      });
+    }
+
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configKey = `user_${currentUser.id}_${settingKey}`;
+
+    const config = await configRepository.findOne({
+      where: { configKey, configGroup: 'user_settings', isEnabled: true }
+    });
+
+    res.json({
+      success: true,
+      code: 200,
+      data: config ? JSON.parse(config.configValue) : null
+    });
+  } catch (error) {
+    console.error('获取用户设置失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取用户设置失败'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/system/user-settings/:settingKey
+ * @desc 保存用户个人设置
+ * @access Private
+ */
+router.post('/user-settings/:settingKey', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { settingKey } = req.params;
+    const currentUser = (req as any).currentUser;
+
+    if (!currentUser?.id) {
+      return res.status(401).json({
+        success: false,
+        code: 401,
+        message: '用户未登录'
+      });
+    }
+
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configKey = `user_${currentUser.id}_${settingKey}`;
+
+    let config = await configRepository.findOne({
+      where: { configKey, configGroup: 'user_settings' }
+    });
+
+    if (config) {
+      config.configValue = JSON.stringify(req.body);
+    } else {
+      config = configRepository.create({
+        configKey,
+        configValue: JSON.stringify(req.body),
+        valueType: 'json',
+        configGroup: 'user_settings',
+        description: `用户 ${currentUser.id} 的 ${settingKey} 设置`,
+        isEnabled: true,
+        isSystem: false
+      });
+    }
+
+    await configRepository.save(config);
+
+    console.log(`✅ [用户设置] 用户 ${currentUser.id} 的 ${settingKey} 设置已保存`);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '设置保存成功'
+    });
+  } catch (error) {
+    console.error('保存用户设置失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '保存用户设置失败'
+    });
+  }
+});
+
 export default router;
