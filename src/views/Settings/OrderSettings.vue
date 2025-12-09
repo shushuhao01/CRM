@@ -140,6 +140,67 @@
       </el-form>
     </el-card>
 
+    <!-- 支付方式配置 -->
+    <el-card class="config-card">
+      <template #header>
+        <div class="card-header">
+          <span>支付方式配置</span>
+          <el-button type="primary" size="small" :icon="Plus" @click="openAddPaymentMethodDialog">
+            添加支付方式
+          </el-button>
+        </div>
+      </template>
+
+      <el-table :data="paymentMethods" style="width: 100%" v-loading="loadingPaymentMethods">
+        <el-table-column prop="label" label="支付方式名称" width="200" />
+        <el-table-column prop="value" label="选项值" width="150" />
+        <el-table-column prop="sortOrder" label="排序" width="100" />
+        <el-table-column prop="isEnabled" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.isEnabled ? 'success' : 'info'" size="small">
+              {{ row.isEnabled ? '启用' : '禁用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" link @click="editPaymentMethod(row)">
+              编辑
+            </el-button>
+            <el-button size="small" :type="row.isEnabled ? 'warning' : 'success'" link @click="togglePaymentMethod(row)">
+              {{ row.isEnabled ? '禁用' : '启用' }}
+            </el-button>
+            <el-button size="small" type="danger" link @click="deletePaymentMethod(row)">
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 支付方式编辑对话框 -->
+    <el-dialog
+      v-model="paymentMethodDialogVisible"
+      :title="isEditingPaymentMethod ? '编辑支付方式' : '添加支付方式'"
+      width="500px"
+    >
+      <el-form :model="paymentMethodForm" label-width="100px">
+        <el-form-item label="名称" required>
+          <el-input v-model="paymentMethodForm.label" placeholder="请输入支付方式名称" />
+        </el-form-item>
+        <el-form-item label="选项值" required>
+          <el-input v-model="paymentMethodForm.value" placeholder="请输入选项值（英文）" :disabled="isEditingPaymentMethod" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="paymentMethodForm.sortOrder" :min="0" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="paymentMethodDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="savePaymentMethod" :loading="savingPaymentMethod">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 部门下单限制配置 -->
     <el-card class="config-card">
       <template #header>
@@ -488,6 +549,139 @@ const transferConfig = reactive({
   delayMinutes: 3
 })
 const savingTransfer = ref(false)
+
+// 支付方式配置
+const paymentMethods = ref<any[]>([])
+const loadingPaymentMethods = ref(false)
+const paymentMethodDialogVisible = ref(false)
+const isEditingPaymentMethod = ref(false)
+const savingPaymentMethod = ref(false)
+const editingPaymentMethodId = ref('')
+const paymentMethodForm = reactive({
+  label: '',
+  value: '',
+  sortOrder: 0
+})
+
+// 加载支付方式列表
+const loadPaymentMethods = async () => {
+  try {
+    loadingPaymentMethods.value = true
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/payment-methods/all', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await response.json()
+    if (result.success && result.data) {
+      paymentMethods.value = result.data
+    }
+  } catch (error) {
+    console.error('加载支付方式失败:', error)
+  } finally {
+    loadingPaymentMethods.value = false
+  }
+}
+
+// 打开添加支付方式对话框
+const openAddPaymentMethodDialog = () => {
+  isEditingPaymentMethod.value = false
+  editingPaymentMethodId.value = ''
+  paymentMethodForm.label = ''
+  paymentMethodForm.value = ''
+  paymentMethodForm.sortOrder = paymentMethods.value.length + 1
+  paymentMethodDialogVisible.value = true
+}
+
+// 编辑支付方式
+const editPaymentMethod = (row: any) => {
+  isEditingPaymentMethod.value = true
+  editingPaymentMethodId.value = row.id
+  paymentMethodForm.label = row.label
+  paymentMethodForm.value = row.value
+  paymentMethodForm.sortOrder = row.sortOrder
+  paymentMethodDialogVisible.value = true
+}
+
+// 保存支付方式
+const savePaymentMethod = async () => {
+  if (!paymentMethodForm.label || !paymentMethodForm.value) {
+    ElMessage.warning('请填写完整信息')
+    return
+  }
+  try {
+    savingPaymentMethod.value = true
+    const token = localStorage.getItem('auth_token')
+    const url = isEditingPaymentMethod.value
+      ? `/api/v1/system/payment-methods/${editingPaymentMethodId.value}`
+      : '/api/v1/system/payment-methods'
+    const method = isEditingPaymentMethod.value ? 'PUT' : 'POST'
+
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(paymentMethodForm)
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success(isEditingPaymentMethod.value ? '支付方式更新成功' : '支付方式添加成功')
+      paymentMethodDialogVisible.value = false
+      loadPaymentMethods()
+    } else {
+      ElMessage.error(result.message || '操作失败')
+    }
+  } catch (error) {
+    console.error('保存支付方式失败:', error)
+    ElMessage.error('保存失败')
+  } finally {
+    savingPaymentMethod.value = false
+  }
+}
+
+// 切换支付方式状态
+const togglePaymentMethod = async (row: any) => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch(`/api/v1/system/payment-methods/${row.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ isEnabled: !row.isEnabled })
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success(row.isEnabled ? '已禁用' : '已启用')
+      loadPaymentMethods()
+    }
+  } catch (error) {
+    console.error('切换状态失败:', error)
+  }
+}
+
+// 删除支付方式
+const deletePaymentMethod = async (row: any) => {
+  try {
+    await ElMessageBox.confirm('确定要删除该支付方式吗？', '确认删除', { type: 'warning' })
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch(`/api/v1/system/payment-methods/${row.id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('删除成功')
+      loadPaymentMethods()
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除失败:', error)
+    }
+  }
+}
 
 // 处理流转模式变化
 const handleTransferModeChange = (mode: string) => {

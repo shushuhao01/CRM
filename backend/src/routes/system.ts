@@ -1536,4 +1536,203 @@ router.delete('/department-order-limits/:departmentId', authenticateToken, requi
   }
 });
 
+// ========== 支付方式配置 ==========
+
+/**
+ * @route GET /api/v1/system/payment-methods
+ * @desc 获取支付方式列表
+ */
+router.get('/payment-methods', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const { PaymentMethodOption } = await import('../entities/PaymentMethodOption');
+    const repository = AppDataSource.getRepository(PaymentMethodOption);
+    const methods = await repository.find({
+      where: { isEnabled: true },
+      order: { sortOrder: 'ASC' }
+    });
+
+    res.json({
+      success: true,
+      code: 200,
+      data: methods
+    });
+  } catch (error) {
+    console.error('获取支付方式列表失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取支付方式列表失败'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/system/payment-methods/all
+ * @desc 获取所有支付方式（包括禁用的）
+ */
+router.get('/payment-methods/all', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const { PaymentMethodOption } = await import('../entities/PaymentMethodOption');
+    const repository = AppDataSource.getRepository(PaymentMethodOption);
+    const methods = await repository.find({
+      order: { sortOrder: 'ASC' }
+    });
+
+    res.json({
+      success: true,
+      code: 200,
+      data: methods
+    });
+  } catch (error) {
+    console.error('获取所有支付方式失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取所有支付方式失败'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/system/payment-methods
+ * @desc 添加支付方式
+ */
+router.post('/payment-methods', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { label, value } = req.body;
+
+    if (!label || !value) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '支付方式名称和值不能为空'
+      });
+    }
+
+    const { PaymentMethodOption } = await import('../entities/PaymentMethodOption');
+    const repository = AppDataSource.getRepository(PaymentMethodOption);
+
+    // 检查是否已存在
+    const existing = await repository.findOne({ where: { value } });
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '该支付方式值已存在'
+      });
+    }
+
+    // 获取最大排序号
+    const maxOrder = await repository
+      .createQueryBuilder('pm')
+      .select('MAX(pm.sortOrder)', 'max')
+      .getRawOne();
+
+    const newMethod = repository.create({
+      id: `pm_${Date.now()}`,
+      label,
+      value,
+      sortOrder: (maxOrder?.max || 0) + 1,
+      isEnabled: true
+    });
+
+    await repository.save(newMethod);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '支付方式添加成功',
+      data: newMethod
+    });
+  } catch (error) {
+    console.error('添加支付方式失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '添加支付方式失败'
+    });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/payment-methods/:id
+ * @desc 更新支付方式
+ */
+router.put('/payment-methods/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { label, value, isEnabled, sortOrder } = req.body;
+
+    const { PaymentMethodOption } = await import('../entities/PaymentMethodOption');
+    const repository = AppDataSource.getRepository(PaymentMethodOption);
+
+    const method = await repository.findOne({ where: { id } });
+    if (!method) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '支付方式不存在'
+      });
+    }
+
+    if (label !== undefined) method.label = label;
+    if (value !== undefined) method.value = value;
+    if (isEnabled !== undefined) method.isEnabled = isEnabled;
+    if (sortOrder !== undefined) method.sortOrder = sortOrder;
+
+    await repository.save(method);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '支付方式更新成功',
+      data: method
+    });
+  } catch (error) {
+    console.error('更新支付方式失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '更新支付方式失败'
+    });
+  }
+});
+
+/**
+ * @route DELETE /api/v1/system/payment-methods/:id
+ * @desc 删除支付方式
+ */
+router.delete('/payment-methods/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const { PaymentMethodOption } = await import('../entities/PaymentMethodOption');
+    const repository = AppDataSource.getRepository(PaymentMethodOption);
+
+    const method = await repository.findOne({ where: { id } });
+    if (!method) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '支付方式不存在'
+      });
+    }
+
+    await repository.remove(method);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '支付方式删除成功'
+    });
+  } catch (error) {
+    console.error('删除支付方式失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '删除支付方式失败'
+    });
+  }
+});
+
 export default router;

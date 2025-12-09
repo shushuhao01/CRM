@@ -426,6 +426,12 @@
             </el-col>
             <el-col :span="12">
               <div class="info-item">
+                <span class="label">支付方式：</span>
+                <span class="value">{{ getPaymentMethodText(currentOrder.paymentMethod) }}</span>
+              </div>
+            </el-col>
+            <el-col :span="12">
+              <div class="info-item">
                 <span class="label">客户姓名：</span>
                 <span class="value">{{ currentOrder.customerName }}</span>
               </div>
@@ -506,36 +512,41 @@
                 </div>
               </div>
             </el-col>
-            <!-- 定金截图 -->
-            <el-col :span="24" v-if="currentOrder.depositScreenshots && currentOrder.depositScreenshots.length > 0">
+            <!-- 定金截图 - 始终显示字段 -->
+            <el-col :span="24">
               <div class="info-item deposit-screenshots-section">
                 <span class="label">定金截图：</span>
-                <div class="screenshot-gallery deposit-gallery">
-                  <div
-                    v-for="(screenshot, index) in currentOrder.depositScreenshots"
-                    :key="index"
-                    class="screenshot-item deposit-screenshot"
-                    @click="handleViewDepositScreenshot(currentOrder.depositScreenshots, index)"
-                  >
-                    <el-image
-                      :src="screenshot"
-                      fit="cover"
-                      class="screenshot-thumbnail"
-                      :preview-disabled="true"
+                <template v-if="currentOrder.depositScreenshots && currentOrder.depositScreenshots.length > 0">
+                  <div class="screenshot-gallery deposit-gallery">
+                    <div
+                      v-for="(screenshot, index) in currentOrder.depositScreenshots"
+                      :key="index"
+                      class="screenshot-item deposit-screenshot"
+                      @click="handleViewDepositScreenshot(currentOrder.depositScreenshots, index)"
                     >
-                      <template #error>
-                        <div class="image-error">
-                          <el-icon><Picture /></el-icon>
-                          <span>加载失败</span>
-                        </div>
-                      </template>
-                    </el-image>
-                    <div class="screenshot-name">定金截图{{ index + 1 }}</div>
-                    <div class="screenshot-overlay">
-                      <el-icon class="view-icon"><ZoomIn /></el-icon>
+                      <el-image
+                        :src="screenshot"
+                        fit="cover"
+                        class="screenshot-thumbnail"
+                        :preview-disabled="true"
+                      >
+                        <template #error>
+                          <div class="image-error">
+                            <el-icon><Picture /></el-icon>
+                            <span>加载失败</span>
+                          </div>
+                        </template>
+                      </el-image>
+                      <div class="screenshot-name">定金截图{{ index + 1 }}</div>
+                      <div class="screenshot-overlay">
+                        <el-icon class="view-icon"><ZoomIn /></el-icon>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </template>
+                <template v-else>
+                  <span class="value no-data">暂无定金截图</span>
+                </template>
               </div>
             </el-col>
           </el-row>
@@ -943,6 +954,7 @@ interface AuditOrder {
   auditor?: string
   auditRemark?: string
   deliveryAddress: string
+  paymentMethod?: string  // 支付方式
   paymentScreenshots: PaymentScreenshot[]
   depositScreenshots?: string[]  // 定金截图
   auditHistory: AuditHistory[]
@@ -1283,6 +1295,24 @@ const getStatusText = (status: string) => {
     default:
       return '未知'
   }
+}
+
+/**
+ * 获取支付方式文本
+ */
+const getPaymentMethodText = (method: string | null | undefined) => {
+  if (!method) return '-'
+  const methodMap: Record<string, string> = {
+    wechat: '微信支付',
+    alipay: '支付宝',
+    bank_transfer: '银行转账',
+    unionpay: '云闪付',
+    cod: '货到付款',
+    cash: '现金',
+    card: '刷卡',
+    other: '其他'
+  }
+  return methodMap[method] || method
 }
 
 /**

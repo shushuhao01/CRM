@@ -479,6 +479,8 @@ router.get('/', async (req: Request, res: Response) => {
         trackingNumber: order.trackingNumber || '',
         serviceWechat: order.serviceWechat || '',
         orderSource: order.orderSource || '',
+        depositScreenshots: order.depositScreenshots || [],
+        customFields: order.customFields || {},
         createTime: order.createdAt?.toISOString() || '',
         createdBy: order.createdBy || '',
         createdByName: order.createdByName || '',
@@ -586,6 +588,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       serviceWechat: order.serviceWechat || '',
       orderSource: order.orderSource || '',
       depositScreenshots: order.depositScreenshots || [],
+      customFields: order.customFields || {},
       createTime: order.createdAt?.toISOString() || '',
       createdBy: order.createdBy || '',
       createdByName: order.createdByName || '',
@@ -642,7 +645,8 @@ router.post('/', async (req: Request, res: Response) => {
       serviceWechat,
       orderSource,
       markType,
-      expressCompany
+      expressCompany,
+      customFields
     } = req.body;
 
     // 数据验证
@@ -738,6 +742,7 @@ router.post('/', async (req: Request, res: Response) => {
       expressCompany: expressCompany || '',
       markType: markType || 'normal',
       remark: remark || '',
+      customFields: customFields || undefined,
       createdBy: finalCreatedBy,
       createdByName: finalCreatedByName,
       createdByDepartmentId: createdByDepartmentId || undefined,
@@ -825,7 +830,7 @@ router.post('/', async (req: Request, res: Response) => {
  * @access Private
  * 注意：此路由必须在 /:id 之前定义，否则会被 /:id 拦截
  */
-router.put('/:id/mark-type', authenticateToken, async (req: Request, res: Response) => {
+router.put('/:id/mark-type', async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
     const { markType } = req.body;
@@ -902,6 +907,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (updateData.expressCompany !== undefined) order.expressCompany = updateData.expressCompany;
     if (updateData.trackingNumber !== undefined) order.trackingNumber = updateData.trackingNumber;
     if (updateData.markType !== undefined) order.markType = updateData.markType;
+    if (updateData.customFields !== undefined) order.customFields = updateData.customFields;
 
     const updatedOrder = await orderRepository.save(order);
 

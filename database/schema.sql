@@ -1532,3 +1532,29 @@ WHERE attachments LIKE '%/api/v1/uploads/%';
 --     add_header Access-Control-Allow-Origin *;
 -- }
 -- =============================================
+
+
+-- =============================================
+-- 支付方式配置表
+-- =============================================
+DROP TABLE IF EXISTS `payment_method_options`;
+CREATE TABLE `payment_method_options` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '支付方式ID',
+  `label` VARCHAR(100) NOT NULL COMMENT '显示名称',
+  `value` VARCHAR(50) NOT NULL COMMENT '选项值',
+  `sort_order` INT DEFAULT 0 COMMENT '排序顺序',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE INDEX `idx_value` (`value`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='支付方式配置表';
+
+-- 插入预设支付方式
+INSERT INTO `payment_method_options` (`id`, `label`, `value`, `sort_order`, `is_enabled`) VALUES
+('pm_wechat', '微信支付', 'wechat', 1, 1),
+('pm_alipay', '支付宝支付', 'alipay', 2, 1),
+('pm_bank', '银行转账', 'bank_transfer', 3, 1),
+('pm_unionpay', '云闪付', 'unionpay', 4, 1),
+('pm_cod', '货到付款', 'cod', 5, 1),
+('pm_other', '其他', 'other', 6, 1)
+ON DUPLICATE KEY UPDATE `label` = VALUES(`label`), `sort_order` = VALUES(`sort_order`);
