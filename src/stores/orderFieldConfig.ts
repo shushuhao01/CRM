@@ -68,7 +68,7 @@ export const useOrderFieldConfigStore = defineStore('orderFieldConfig', () => {
     config.value.customFields.filter(f => f.showInList).sort((a, b) => a.sortOrder - b.sortOrder)
   )
 
-  // 加载配置
+  // 加载配置 - 从数据库API加载，确保全局一致
   const loadConfig = async () => {
     try {
       loading.value = true
@@ -76,21 +76,33 @@ export const useOrderFieldConfigStore = defineStore('orderFieldConfig', () => {
       const { api } = await import('@/api/request')
       const response = await api.get('/system/order-field-config')
       if (response.data) {
-        config.value = response.data
+        // 合并默认配置和API返回的配置
+        config.value = {
+          orderSource: response.data.orderSource || defaultConfig.orderSource,
+          customFields: response.data.customFields || []
+        }
+        console.log('[订单字段配置] 从数据库加载成功:', config.value)
       }
     } catch (error) {
       console.warn('从API加载订单字段配置失败，使用默认配置:', error)
+      config.value = JSON.parse(JSON.stringify(defaultConfig))
     } finally {
       loading.value = false
     }
   }
 
-  // 保存配置
+  // 保存配置 - 保存到数据库API，确保全局持久化
   const saveConfig = async () => {
     try {
       // 始终保存到API
       const { api } = await import('@/api/request')
-      await api.put('/system/order-field-config', config.value)
+      const response = await api.put('/system/order-field-config', config.value)
+      if (response.success) {
+        console.log('[订单字段配置] 保存到数据库成功')
+      } else {
+        console.error('[订单字段配置] 保存失败:', response.message)
+        throw new Error(response.message || '保存失败')
+      }
     } catch (error) {
       console.error('保存订单字段配置到API失败:', error)
       throw error

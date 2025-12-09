@@ -585,7 +585,12 @@ const loadPaymentMethods = async () => {
     })
     const result = await response.json()
     if (result.success && result.data) {
-      paymentMethods.value = result.data
+      // 🔥 关键修复：将isEnabled转换为布尔值（数据库返回的可能是0/1）
+      paymentMethods.value = result.data.map((item: any) => ({
+        ...item,
+        isEnabled: Boolean(item.isEnabled) || item.isEnabled === 1 || item.isEnabled === '1'
+      }))
+      console.log('[支付方式] 加载成功，共', paymentMethods.value.length, '个')
     }
   } catch (error) {
     console.error('加载支付方式失败:', error)
@@ -1049,7 +1054,7 @@ const removeFieldOption = (index: number) => {
   customFieldForm.options.splice(index, 1)
 }
 
-// 保存配置
+// 保存配置 - 直接调用API保存到数据库，确保全局生效
 const saveConfig = async () => {
   try {
     saving.value = true
@@ -1064,35 +1069,45 @@ const saveConfig = async () => {
       return
     }
 
-    // 保存到store
-    fieldConfigStore.updateOrderSourceConfig(
-      localConfig.orderSourceFieldName,
-      localConfig.orderSourceOptions
-    )
-
-    // 清空现有字段
-    const existingFields = [...fieldConfigStore.customFields]
-    for (const field of existingFields) {
-      fieldConfigStore.deleteCustomField(field.id)
+    // 🔥 直接调用API保存到数据库，确保持久化
+    const token = localStorage.getItem('auth_token')
+    const configData = {
+      orderSource: {
+        fieldName: localConfig.orderSourceFieldName,
+        options: localConfig.orderSourceOptions
+      },
+      customFields: localConfig.customFields.map((field, index) => ({
+        ...field,
+        id: field.id || `field_${Date.now()}_${index}`,
+        sortOrder: index
+      }))
     }
 
-    // 添加新字段
-    for (const field of localConfig.customFields) {
-      fieldConfigStore.addCustomField({
-        fieldName: field.fieldName,
-        fieldKey: field.fieldKey,
-        fieldType: field.fieldType,
-        required: field.required,
-        placeholder: field.placeholder,
-        showInList: field.showInList,
-        options: field.options
-      })
-    }
+    console.log('[订单设置] 保存配置到数据库:', configData)
 
-    ElMessage.success('配置保存成功，已全局生效')
+    const response = await fetch('/api/v1/system/order-field-config', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(configData)
+    })
+
+    const result = await response.json()
+    if (result.success) {
+      // 同步更新store
+      fieldConfigStore.config.orderSource.fieldName = localConfig.orderSourceFieldName
+      fieldConfigStore.config.orderSource.options = [...localConfig.orderSourceOptions]
+      fieldConfigStore.config.customFields = [...localConfig.customFields]
+
+      ElMessage.success('配置保存成功，已全局生效（所有用户可见）')
+    } else {
+      ElMessage.error(result.message || '保存配置失败')
+    }
   } catch (error) {
     console.error('保存配置失败:', error)
-    ElMessage.error('保存配置失败')
+    ElMessage.error('保存配置失败，请检查网络连接')
   } finally {
     saving.value = false
   }
@@ -1345,12 +1360,20 @@ const savePaymentMethodsOrder = async () => {
 
 // 初始化
 onMounted(async () => {
+  // 🔥 先等待store从数据库加载配置
+  await fieldConfigStore.loadConfig()
+
+  // 然后初始化本地配置
   initLocalConfig()
+
+  // 加载其他配置
   loadTransferConfig()
   loadDepartmentList()
   loadDepartmentLimits()
   await loadPaymentMethods()
   initPaymentMethodSortable()
+
+  console.log('[订单设置] 页面初始化完成，自定义字段数量:', localConfig.customFields.length)
 })
 </script>
 

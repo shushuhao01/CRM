@@ -125,22 +125,26 @@
                 </el-form-item>
               </el-col>
               <el-col :span="8">
-                <el-form-item label="金额范围">
-                  <el-input-number
-                    v-model="searchForm.minAmount"
-                    placeholder="最小金额"
-                    :min="0"
-                    :precision="2"
-                    style="width: 48%"
-                  />
-                  <span style="margin: 0 2%">-</span>
-                  <el-input-number
-                    v-model="searchForm.maxAmount"
-                    placeholder="最大金额"
-                    :min="0"
-                    :precision="2"
-                    style="width: 48%"
-                  />
+                <el-form-item label="金额范围" class="amount-range-item">
+                  <div class="amount-range-wrapper">
+                    <el-input-number
+                      v-model="searchForm.minAmount"
+                      placeholder="最小"
+                      :min="0"
+                      :precision="2"
+                      :controls="false"
+                      class="amount-input"
+                    />
+                    <span class="range-separator">-</span>
+                    <el-input-number
+                      v-model="searchForm.maxAmount"
+                      placeholder="最大"
+                      :min="0"
+                      :precision="2"
+                      :controls="false"
+                      class="amount-input"
+                    />
+                  </div>
                 </el-form-item>
               </el-col>
               <el-col :span="8">
@@ -177,12 +181,13 @@
               </el-col>
               <el-col :span="8">
                 <el-form-item label="支付方式">
-                  <el-select v-model="searchForm.paymentMethod" placeholder="请选择支付方式" clearable>
-                    <el-option label="现金" value="cash" />
-                    <el-option label="银行转账" value="bank_transfer" />
-                    <el-option label="支付宝" value="alipay" />
-                    <el-option label="微信支付" value="wechat" />
-                    <el-option label="刷卡" value="card" />
+                  <el-select v-model="searchForm.paymentMethod" placeholder="请选择支付方式" clearable style="width: 100%">
+                    <el-option
+                      v-for="method in paymentMethodOptions"
+                      :key="method.value"
+                      :label="method.label"
+                      :value="method.value"
+                    />
                   </el-select>
                 </el-form-item>
               </el-col>
@@ -317,6 +322,15 @@
               type="primary"
             >
               {{ row.orderNumber }}
+            </el-link>
+
+            <!-- 客户姓名特殊处理 - 点击跳转客户详情 -->
+            <el-link
+              v-else-if="column.prop === 'customerName'"
+              @click="handleViewCustomer(row)"
+              type="primary"
+            >
+              {{ row.customerName || '-' }}
             </el-link>
 
             <!-- 状态特殊处理 -->
@@ -825,6 +839,34 @@ const tableColumns = ref([
   { prop: 'paymentMethod', label: '支付方式', visible: false },
   { prop: 'createTime', label: '创建时间', visible: true }
 ])
+
+// 支付方式选项 - 从系统设置API获取
+const paymentMethodOptions = ref<Array<{ value: string; label: string }>>([
+  { value: 'wechat', label: '微信支付' },
+  { value: 'alipay', label: '支付宝' },
+  { value: 'bank_transfer', label: '银行转账' },
+  { value: 'unionpay', label: '云闪付' },
+  { value: 'cod', label: '货到付款' },
+  { value: 'cash', label: '现金' },
+  { value: 'card', label: '刷卡' },
+  { value: 'other', label: '其他' }
+])
+
+// 从API加载支付方式选项
+const loadPaymentMethods = async () => {
+  try {
+    const response = await request.get('/system/payment-methods')
+    if (response && response.data && Array.isArray(response.data)) {
+      paymentMethodOptions.value = response.data.map((method: any) => ({
+        value: method.value,
+        label: method.label
+      }))
+      console.log('[订单列表] 支付方式加载成功:', paymentMethodOptions.value.length, '个')
+    }
+  } catch (error) {
+    console.warn('加载支付方式失败，使用默认值:', error)
+  }
+}
 
 // 销售人员数据 - 从userStore获取真实用户
 const salesUsers = computed(() => {
@@ -1506,18 +1548,49 @@ const handleDropdownVisible = (visible: boolean) => {
   }
 }
 
-// 保存列设置到本地存储
-const saveColumnSettings = () => {
+// 保存列设置到数据库（同步到云端）
+const saveColumnSettings = async () => {
   const settings = tableColumns.value.map(col => ({
     prop: col.prop,
     label: col.label,
     visible: col.visible
   }))
+
+  // 先保存到localStorage作为缓存
   localStorage.setItem('orderListColumnSettings', JSON.stringify(settings))
+
+  // 同步到数据库
+  try {
+    await request.post('/system/user-settings/orderListColumns', { columns: settings })
+    console.log('[订单列表] 列设置已同步到数据库')
+  } catch (error) {
+    console.warn('列设置同步到数据库失败，已保存到本地:', error)
+  }
 }
 
-// 从本地存储加载列设置
-const loadColumnSettings = () => {
+// 从数据库加载列设置（优先数据库，降级到localStorage）
+const loadColumnSettings = async () => {
+  try {
+    // 先尝试从数据库加载
+    const response = await request.get('/system/user-settings/orderListColumns')
+    if (response && response.data && response.data.columns) {
+      const settings: ColumnSetting[] = response.data.columns
+      settings.forEach((setting: ColumnSetting) => {
+        const column = tableColumns.value.find(col => col.prop === setting.prop)
+        if (column) {
+          column.visible = setting.visible
+        }
+      })
+      console.log('[订单列表] 从数据库加载列设置成功')
+      // 同步到localStorage
+      localStorage.setItem('orderListColumnSettings', JSON.stringify(settings))
+      return
+    }
+  } catch (error) {
+    console.warn('从数据库加载列设置失败，尝试本地缓存:', error)
+  }
+
+  // 降级到localStorage
   const saved = localStorage.getItem('orderListColumnSettings')
   if (saved) {
     try {
@@ -1528,8 +1601,9 @@ const loadColumnSettings = () => {
           column.visible = setting.visible
         }
       })
+      console.log('[订单列表] 从本地缓存加载列设置')
     } catch (e) {
-      console.warn('Failed to load column settings:', e)
+      console.warn('Failed to load column settings from localStorage:', e)
     }
   }
 }
@@ -2079,8 +2153,11 @@ const handleResize = () => {
 }
 
 onMounted(async () => {
-  // 加载列设置（不需要等待）
+  // 加载列设置（从数据库同步）
   loadColumnSettings()
+
+  // 加载支付方式选项（从系统设置API）
+  loadPaymentMethods()
 
   // 并行加载用户列表和订单列表，提高加载速度
   const loadPromises = [
