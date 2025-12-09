@@ -33,8 +33,8 @@
           <div class="info-item">
             <span class="label">当前状态：</span>
             <span class="value">
-              <el-tag :type="getStatusType(order.status)">
-                {{ getStatusText(order.status) }}
+              <el-tag :style="getOrderStatusStyle(order.status)" size="small" effect="plain">
+                {{ getUnifiedStatusText(order.status) }}
               </el-tag>
             </span>
           </div>
@@ -190,11 +190,12 @@
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
-import { 
+import {
   Box, Warning, Clock, Document, RefreshLeft, WarningFilled
 } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import type { Order } from '@/stores/order'
+import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 
 interface ReturnData {
   returnReason: string
@@ -339,10 +340,10 @@ const saveAsDraft = async () => {
 // 确认退回
 const confirmReturn = async () => {
   if (!formRef.value) return
-  
+
   try {
     await formRef.value.validate()
-    
+
     await ElMessageBox.confirm(
       `确认退回订单 ${props.order.orderNo} 吗？退回后订单将重新分配给销售人员处理。`,
       '确认退回订单',
@@ -354,10 +355,10 @@ const confirmReturn = async () => {
     )
 
     loading.value = true
-    
+
     // 模拟退回处理
     await new Promise(resolve => setTimeout(resolve, 2000))
-    
+
     const returnData = {
       orderId: props.order.id,
       orderNo: props.order.orderNo,
@@ -366,11 +367,11 @@ const confirmReturn = async () => {
       operator: '当前用户', // 应该从用户信息中获取
       status: 'returned'
     }
-    
+
     emit('returned', returnData)
     ElMessage.success('订单退回成功！已通知相关人员')
     handleClose()
-    
+
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('订单退回失败，请重试')
@@ -393,7 +394,7 @@ const handleClose = () => {
     suggestion: '',
     notificationMethod: ['system']
   })
-  
+
   dialogVisible.value = false
 }
 </script>
@@ -549,13 +550,13 @@ const handleClose = () => {
   .order-info-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .info-item {
     flex-direction: column;
     align-items: flex-start;
     gap: 5px;
   }
-  
+
   .info-item .label {
     min-width: auto;
   }

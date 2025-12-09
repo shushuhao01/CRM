@@ -133,8 +133,8 @@
 
       <!-- 状态列 -->
       <template #column-status="{ row }">
-        <el-tag :type="getStatusType(row.status)">
-          {{ getStatusText(row.status) }}
+        <el-tag :style="getOrderStatusStyle(row.status)" size="small" effect="plain">
+          {{ getOrderStatusText(row.status) }}
         </el-tag>
       </template>
 
@@ -176,6 +176,7 @@ import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
 import { createSafeNavigator } from '@/utils/navigation'
 import { eventBus, EventNames } from '@/utils/eventBus'
+import { getOrderStatusStyle, getOrderStatusText } from '@/utils/orderStatusConfig'
 
 interface LogisticsItem {
   id: number

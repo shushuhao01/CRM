@@ -246,8 +246,8 @@
 
       <!-- 状态列 -->
       <template #column-status="{ row }">
-        <el-tag :type="getOrderStatusType(row.status)" size="small">
-          {{ getOrderStatusText(row.status) }}
+        <el-tag :style="getOrderStatusStyle(row.status)" size="small" effect="plain">
+          {{ getUnifiedStatusText(row.status) }}
         </el-tag>
       </template>
 
@@ -657,6 +657,7 @@ import { exportBatchOrders, exportSingleOrder, type ExportOrder } from '@/utils/
 import { useUserStore } from '@/stores/user'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { createSafeNavigator } from '@/utils/navigation'
+import { getOrderStatusColor, getOrderStatusText as getUnifiedStatusText, getOrderStatusStyle } from '@/utils/orderStatusConfig'
 import { eventBus, EventNames } from '@/utils/eventBus'
 import OrderDetailDialog from './components/OrderDetailDialog.vue'
 import PrintLabelDialog from './components/PrintLabelDialog.vue'

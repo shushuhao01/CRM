@@ -41,8 +41,8 @@
           <div class="info-item">
             <span class="label">当前状态：</span>
             <span class="value">
-              <el-tag :type="getStatusType(order.status)">
-                {{ getStatusText(order.status) }}
+              <el-tag :style="getOrderStatusStyle(order.status)" size="small" effect="plain">
+                {{ getUnifiedStatusText(order.status) }}
               </el-tag>
             </span>
           </div>
@@ -109,9 +109,9 @@
             </el-radio-group>
           </el-form-item>
 
-          <el-form-item 
-            v-if="cancelForm.refundType === 'partial_refund'" 
-            label="退款金额" 
+          <el-form-item
+            v-if="cancelForm.refundType === 'partial_refund'"
+            label="退款金额"
             prop="refundAmount"
           >
             <el-input-number
@@ -248,11 +248,12 @@
 <script setup lang="ts">
 import { ref, computed, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
-import { 
+import {
   Box, Warning, Clock, Document, CircleClose, WarningFilled
 } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import type { Order } from '@/stores/order'
+import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 
 interface CancelData {
   cancelType: string
@@ -407,16 +408,16 @@ const saveAsDraft = async () => {
 // 确认取消
 const confirmCancel = async () => {
   if (!formRef.value) return
-  
+
   try {
     await formRef.value.validate()
-    
-    const confirmText = cancelForm.refundType === 'full_refund' 
+
+    const confirmText = cancelForm.refundType === 'full_refund'
       ? `确认取消订单 ${props.order.orderNo} 并全额退款 ¥${formatNumber(props.order.deposit)} 吗？`
       : cancelForm.refundType === 'partial_refund'
       ? `确认取消订单 ${props.order.orderNo} 并退款 ¥${formatNumber(cancelForm.refundAmount)} 吗？`
       : `确认取消订单 ${props.order.orderNo} 且不退款吗？`
-    
+
     await ElMessageBox.confirm(
       confirmText + ' 此操作无法撤销！',
       '确认取消订单',
@@ -428,10 +429,10 @@ const confirmCancel = async () => {
     )
 
     loading.value = true
-    
+
     // 模拟取消处理
     await new Promise(resolve => setTimeout(resolve, 2000))
-    
+
     const cancelData = {
       orderId: props.order.id,
       orderNo: props.order.orderNo,
@@ -440,11 +441,11 @@ const confirmCancel = async () => {
       operator: '当前用户', // 应该从用户信息中获取
       status: 'cancelled'
     }
-    
+
     emit('cancelled', cancelData)
     ElMessage.success('订单取消成功！')
     handleClose()
-    
+
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('订单取消失败，请重试')
@@ -470,7 +471,7 @@ const handleClose = () => {
     notificationMethod: ['sms'],
     remarks: ''
   })
-  
+
   dialogVisible.value = false
 }
 </script>
@@ -646,13 +647,13 @@ const handleClose = () => {
   .order-info-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .info-item {
     flex-direction: column;
     align-items: flex-start;
     gap: 5px;
   }
-  
+
   .info-item .label {
     min-width: auto;
   }

@@ -54,8 +54,8 @@
         <div class="card-header">
           <div class="header-info">
             <h3>{{ trackingResult.trackingNo }}</h3>
-            <el-tag :type="getStatusColor(trackingResult.status)" size="large">
-              {{ getStatusText(trackingResult.status) }}
+            <el-tag :style="getOrderStatusStyle(trackingResult.status)" size="large" effect="plain">
+              {{ getUnifiedStatusText(trackingResult.status) }}
             </el-tag>
           </div>
           <div class="header-actions">
@@ -184,6 +184,7 @@ import { ElMessage } from 'element-plus'
 import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
 import { createSafeNavigator } from '@/utils/navigation'
+import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 import {
   Search,
   Refresh,
