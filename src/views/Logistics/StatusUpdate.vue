@@ -643,8 +643,8 @@ const toggleAutoRefresh = () => {
 const loadData = async (showMessage = false) => {
   loading.value = true
   try {
-    // 模拟API调用延迟
-    await new Promise(resolve => setTimeout(resolve, 300))
+    // 🔥 先从API重新加载订单数据，确保数据是最新的
+    await orderStore.loadOrders()
 
     // 从订单store获取已发货且有快递单号的订单，应用数据范围控制
     // 使用getOrders()获取经过权限过滤的订单

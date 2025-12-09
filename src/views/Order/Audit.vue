@@ -2227,7 +2227,8 @@ const loadOrderList = async () => {
       customerId: order.customerId,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
-      salesPerson: order.createdBy,
+      // 🔥 使用真实姓名而不是用户名ID
+      salesPerson: order.createdByName || order.createdBy,
       totalAmount: order.totalAmount,
       depositAmount: order.depositAmount,
       codAmount: order.totalAmount - order.depositAmount,
@@ -2579,7 +2580,8 @@ const loadOrderList = async () => {
         customerId: order.customerId,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
-        salesPerson: order.createdBy,
+        // 🔥 使用真实姓名
+        salesPerson: order.createdByName || order.createdBy,
         totalAmount: order.totalAmount,
         depositAmount: order.depositAmount,
         codAmount: order.totalAmount - order.depositAmount,
@@ -2615,7 +2617,8 @@ const loadOrderList = async () => {
         customerId: order.customerId,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
-        salesPerson: order.createdBy,
+        // 🔥 使用真实姓名
+        salesPerson: order.createdByName || order.createdBy,
         totalAmount: order.totalAmount,
         depositAmount: order.depositAmount,
         codAmount: order.totalAmount - order.depositAmount,

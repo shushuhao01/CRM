@@ -432,7 +432,8 @@ const loadData = async () => {
       status: 'shipped' as const,
       destination: order.receiverAddress || '',
       shipDate: order.shippingTime || new Date().toISOString(),
-      estimatedDate: ''
+      // 🔥 修复：从订单数据获取预计送达时间
+      estimatedDate: order.estimatedDeliveryTime || order.expectedDeliveryDate || ''
     }))
 
     // 应用搜索过滤

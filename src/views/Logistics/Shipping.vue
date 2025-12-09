@@ -788,6 +788,13 @@ const baseTableColumns = [
     visible: true
   },
   {
+    prop: 'salesPersonName',
+    label: '销售人员',
+    width: 100,
+    align: 'center',
+    visible: true
+  },
+  {
     prop: 'createTime',
     label: '下单时间',
     width: 150,
