@@ -475,6 +475,7 @@ router.get('/', async (req: Request, res: Response) => {
         markType: order.markType || 'normal',
         paymentStatus: order.paymentStatus || 'unpaid',
         paymentMethod: order.paymentMethod || '',
+        paymentMethodOther: order.paymentMethodOther || '',
         expressCompany: order.expressCompany || '',
         trackingNumber: order.trackingNumber || '',
         serviceWechat: order.serviceWechat || '',
@@ -583,6 +584,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       auditTransferTime: auditTransferTime,
       paymentStatus: order.paymentStatus || 'unpaid',
       paymentMethod: order.paymentMethod || '',
+      paymentMethodOther: order.paymentMethodOther || '',
       expressCompany: order.expressCompany || '',
       trackingNumber: order.trackingNumber || '',
       serviceWechat: order.serviceWechat || '',
@@ -639,6 +641,7 @@ router.post('/', async (req: Request, res: Response) => {
       receiverAddress,
       remark,
       paymentMethod,
+      paymentMethodOther,
       salesPersonId,
       salesPersonName,
       orderNumber,
@@ -736,6 +739,7 @@ router.post('/', async (req: Request, res: Response) => {
       depositScreenshots: finalDepositScreenshots.length > 0 ? finalDepositScreenshots : undefined,
       paymentStatus: finalDepositAmount > 0 ? 'partial' : 'unpaid',
       paymentMethod: paymentMethod || undefined,
+      paymentMethodOther: paymentMethodOther || undefined,
       shippingName: receiverName || customerName || '',
       shippingPhone: receiverPhone || customerPhone || '',
       shippingAddress: receiverAddress || '',
@@ -904,6 +908,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (updateData.remark !== undefined) order.remark = updateData.remark;
     if (updateData.paymentStatus !== undefined) order.paymentStatus = updateData.paymentStatus;
     if (updateData.paymentMethod !== undefined) order.paymentMethod = updateData.paymentMethod;
+    if (updateData.paymentMethodOther !== undefined) order.paymentMethodOther = updateData.paymentMethodOther;
     if (updateData.expressCompany !== undefined) order.expressCompany = updateData.expressCompany;
     if (updateData.trackingNumber !== undefined) order.trackingNumber = updateData.trackingNumber;
     if (updateData.markType !== undefined) order.markType = updateData.markType;

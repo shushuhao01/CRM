@@ -34,6 +34,8 @@ import { ProductCategory } from '../entities/ProductCategory';
 import { SystemConfig } from '../entities/SystemConfig';
 import { UserPermission } from '../entities/UserPermission';
 import { CustomerShare } from '../entities/CustomerShare';
+import { PaymentMethodOption } from '../entities/PaymentMethodOption';
+import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
 import path from 'path';
 
 // 根据环境变量选择数据库配置
@@ -83,7 +85,9 @@ const AppDataSource = new DataSource(
           ProductCategory,
           SystemConfig,
           UserPermission,
-          CustomerShare
+          CustomerShare,
+          PaymentMethodOption,
+          DepartmentOrderLimit
         ],
         migrations: [],
         subscribers: [],
@@ -125,7 +129,9 @@ const AppDataSource = new DataSource(
           ProductCategory,
           SystemConfig,
           UserPermission,
-          CustomerShare
+          CustomerShare,
+          PaymentMethodOption,
+          DepartmentOrderLimit
         ],
         migrations: [],
         subscribers: [],

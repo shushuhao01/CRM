@@ -365,7 +365,12 @@
 
             <!-- 支付方式特殊处理 -->
             <span v-else-if="column.prop === 'paymentMethod'">
-              {{ getPaymentMethodText(row.paymentMethod) }}
+              {{ getPaymentMethodText(row.paymentMethod, row.paymentMethodOther) }}
+            </span>
+
+            <!-- 订单来源特殊处理 -->
+            <span v-else-if="column.prop === 'orderSource'">
+              {{ getOrderSourceText(row.orderSource) }}
             </span>
 
             <!-- 默认处理 -->
@@ -628,6 +633,8 @@ interface OrderItem {
   totalAmount: number
   depositAmount: number
   paymentMethod: string
+  paymentMethodOther?: string
+  orderSource?: string
   status: string
   markType: string
   createTime: string
@@ -638,6 +645,13 @@ interface OrderItem {
   auditStatus?: string
   isAuditTransferred?: boolean
   auditTransferTime?: string
+  createdByName?: string
+  createdBy?: string
+  receiverPhone?: string
+  collectAmount?: number
+  customerId?: string
+  remark?: string
+  [key: string]: unknown
 }
 
 interface TableColumn {
@@ -770,7 +784,7 @@ const tableColumns = ref([
   { prop: 'collectAmount', label: '代收金额', visible: true },
   { prop: 'serviceWechat', label: '客服微信号', visible: true },
   { prop: 'orderSource', label: '订单来源', visible: true },
-  { prop: 'remark', label: '订单备注', visible: true },
+  { prop: 'remark', label: '订单备注', visible: false },
   { prop: 'receiverPhone', label: '收货电话', visible: false },
   { prop: 'paymentMethod', label: '支付方式', visible: false },
   { prop: 'createTime', label: '创建时间', visible: true }
@@ -1185,7 +1199,9 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
     case 'collectAmount':
       return row.collectAmount ? `¥${row.collectAmount.toLocaleString()}` : '-'
     case 'paymentMethod':
-      return getPaymentMethodText(row.paymentMethod)
+      return getPaymentMethodText(row.paymentMethod, row.paymentMethodOther)
+    case 'orderSource':
+      return getOrderSourceText(row.orderSource)
     case 'createTime':
       return row.createTime
     case 'operator':
@@ -1195,8 +1211,12 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
   }
 }
 
-const getPaymentMethodText = (method: string) => {
+const getPaymentMethodText = (method: string, otherText?: string) => {
   if (!method) return '-'
+  // 如果是"其他"且有自定义文本，显示自定义文本
+  if (method === 'other' && otherText) {
+    return otherText
+  }
   const texts: Record<string, string> = {
     wechat: '微信支付',
     alipay: '支付宝',
@@ -1208,6 +1228,22 @@ const getPaymentMethodText = (method: string) => {
     other: '其他'
   }
   return texts[method] || method
+}
+
+// 获取订单来源文本
+const getOrderSourceText = (source: string | null | undefined) => {
+  if (!source) return '-'
+  const sourceMap: Record<string, string> = {
+    'online_store': '线上商城',
+    'wechat_mini': '微信小程序',
+    'wechat_service': '微信客服',
+    'phone_call': '电话咨询',
+    'offline_store': '线下门店',
+    'referral': '客户推荐',
+    'advertisement': '广告投放',
+    'other': '其他渠道'
+  }
+  return sourceMap[source] || source
 }
 
 const canEdit = (status: string, operatorId?: string, markType?: string, auditStatus?: string, isAuditTransferred?: boolean) => {
@@ -1895,9 +1931,23 @@ const updatePagination = () => {
   pagination.total = filteredOrderList.value.length
 }
 
-const loadOrderList = async () => {
+// 防止重复加载的标志
+let isLoadingOrders = false
+let lastLoadTime = 0
+const MIN_LOAD_INTERVAL = 500 // 最小加载间隔500ms
+
+const loadOrderList = async (force = false) => {
+  // 防止重复加载
+  const now = Date.now()
+  if (!force && (isLoadingOrders || (now - lastLoadTime < MIN_LOAD_INTERVAL))) {
+    console.log('[订单列表] 跳过重复加载')
+    return
+  }
+
   try {
+    isLoadingOrders = true
     loading.value = true
+    lastLoadTime = now
 
     // 尝试从API加载订单数据
     const apiOrders = await orderStore.loadOrdersFromAPI()
@@ -1923,6 +1973,7 @@ const loadOrderList = async () => {
     updateQuickFilterCounts()
   } finally {
     loading.value = false
+    isLoadingOrders = false
   }
 }
 
@@ -1949,16 +2000,26 @@ const handleResize = () => {
 }
 
 onMounted(async () => {
-  // 加载用户列表（用于操作人筛选）
-  await userStore.loadUsers()
+  // 加载列设置（不需要等待）
   loadColumnSettings()
-  loadOrderList()
+
+  // 并行加载用户列表和订单列表，提高加载速度
+  const loadPromises = [
+    userStore.loadUsers(),
+    loadOrderList(true) // 强制加载，忽略防抖
+  ]
+
+  // 等待所有数据加载完成
+  await Promise.all(loadPromises)
+
   // 注意：不在页面加载时立即检查流转，由后台定时任务统一处理
   // 避免在创建订单后立即进入列表页时误触发流转
 
-  // 初始化物流状态同步
-  orderStore.setupLogisticsEventListener()
-  orderStore.startLogisticsAutoSync()
+  // 初始化物流状态同步（延迟执行，不阻塞页面渲染）
+  setTimeout(() => {
+    orderStore.setupLogisticsEventListener()
+    orderStore.startLogisticsAutoSync()
+  }, 100)
 
   // 添加窗口大小变化监听器
   window.addEventListener('resize', handleResize)
@@ -1974,38 +2035,33 @@ onMounted(async () => {
   eventBus.on(EventNames.ORDER_STATUS_CHANGED, handleOrderStatusChanged)
 })
 
-// 处理订单状态更新事件
+// 处理订单状态更新事件（静默刷新，不显示提示）
 const handleOrderStatusUpdate = (event: CustomEvent) => {
   console.log('订单状态已更新，刷新订单列表', event.detail)
   loadOrderList()
-  ElMessage.success('订单状态已同步更新')
 }
 
-// 处理订单更新事件
+// 处理订单更新事件（静默刷新，不显示提示）
 const handleOrderUpdate = (event: CustomEvent) => {
   console.log('订单数据已更新，刷新订单列表', event.detail)
   loadOrderList()
-  ElMessage.success('订单数据已同步更新')
 }
 
-// 处理待办状态更新事件
+// 处理待办状态更新事件（静默刷新，不显示提示）
 const handleTodoStatusUpdate = (event: CustomEvent) => {
   console.log('待办状态已更新，刷新订单列表', event.detail)
   loadOrderList()
-  ElMessage.success('待办状态已同步更新')
 }
 
 // 监听路由查询参数变化，当从新建订单页面跳转过来时自动刷新
-watch(() => route.query, (newQuery) => {
-  if (newQuery.refresh === 'true') {
-    // 刷新订单列表数据
-    loadOrderList()
-
-    // 显示刷新成功提示
-    ElMessage.success('订单列表已刷新')
-
-    // 清除查询参数，避免重复刷新
-    safeNavigator.replace({ path: '/order/list' })
+watch(() => route.query, (newQuery, oldQuery) => {
+  // 只有当refresh参数从无到有变化时才刷新，避免重复刷新
+  if (newQuery.refresh === 'true' && oldQuery?.refresh !== 'true') {
+    // 延迟一点执行，确保onMounted的加载已完成
+    setTimeout(() => {
+      // 清除查询参数，避免重复刷新
+      safeNavigator.replace({ path: '/order/list' })
+    }, 100)
   }
 }, { immediate: false })
 

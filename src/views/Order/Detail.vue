@@ -778,6 +778,7 @@ const orderDetail = reactive({
   depositScreenshot: '',
   depositScreenshots: [],
   paymentMethod: '',
+  paymentMethodOther: '',
   remark: ''
 })
 
@@ -1615,6 +1616,10 @@ const getStatusText = (status: string) => {
 // 获取支付方式文本
 const getPaymentMethodText = (method: string | null | undefined) => {
   if (!method) return '-'
+  // 如果是"其他"且有自定义文本，显示自定义文本
+  if (method === 'other' && orderDetail.paymentMethodOther) {
+    return orderDetail.paymentMethodOther
+  }
   const methodMap: Record<string, string> = {
     wechat: '微信支付',
     alipay: '支付宝',
@@ -1830,6 +1835,7 @@ const loadOrderDetail = async () => {
       depositScreenshot: order.depositScreenshot || '',
       depositScreenshots: order.depositScreenshots || [],
       paymentMethod: order.paymentMethod || '',
+      paymentMethodOther: order.paymentMethodOther || '',
       remark: order.remark
     })
 
