@@ -480,52 +480,21 @@
                 <span class="value">{{ currentOrder.remark }}</span>
               </div>
             </el-col>
-            <el-col :span="24" v-if="currentOrder.paymentScreenshots && currentOrder.paymentScreenshots.length > 0">
-              <div class="info-item">
-                <span class="label">支付截图：</span>
-                <div class="screenshot-gallery">
-                  <div
-                    v-for="(screenshot, index) in currentOrder.paymentScreenshots"
-                    :key="screenshot.id"
-                    class="screenshot-item"
-                    @click="handleViewScreenshot(currentOrder.paymentScreenshots, index)"
-                  >
-                    <el-image
-                      :src="screenshot.url"
-                      :alt="screenshot.name"
-                      fit="cover"
-                      class="screenshot-thumbnail"
-                      :preview-disabled="true"
-                    >
-                      <template #error>
-                        <div class="image-error">
-                          <el-icon><Picture /></el-icon>
-                          <span>加载失败</span>
-                        </div>
-                      </template>
-                    </el-image>
-                    <div class="screenshot-name">{{ screenshot.name }}</div>
-                    <div class="screenshot-overlay">
-                      <el-icon class="view-icon"><ZoomIn /></el-icon>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </el-col>
-            <!-- 定金截图 - 始终显示字段 -->
+            <!-- 支付截图 - 只保留这一个截图显示区域 -->
             <el-col :span="24">
               <div class="info-item deposit-screenshots-section">
-                <span class="label">定金截图：</span>
-                <template v-if="currentOrder.depositScreenshots && currentOrder.depositScreenshots.length > 0">
-                  <div class="screenshot-gallery deposit-gallery">
+                <span class="label">支付截图：</span>
+                <template v-if="currentOrder.paymentScreenshots && currentOrder.paymentScreenshots.length > 0">
+                  <div class="screenshot-gallery">
                     <div
-                      v-for="(screenshot, index) in currentOrder.depositScreenshots"
-                      :key="index"
-                      class="screenshot-item deposit-screenshot"
-                      @click="handleViewDepositScreenshot(currentOrder.depositScreenshots, index)"
+                      v-for="(screenshot, index) in currentOrder.paymentScreenshots"
+                      :key="screenshot.id"
+                      class="screenshot-item"
+                      @click="handleViewScreenshot(currentOrder.paymentScreenshots, index)"
                     >
                       <el-image
-                        :src="screenshot"
+                        :src="screenshot.url"
+                        :alt="screenshot.name"
                         fit="cover"
                         class="screenshot-thumbnail"
                         :preview-disabled="true"
@@ -537,7 +506,7 @@
                           </div>
                         </template>
                       </el-image>
-                      <div class="screenshot-name">定金截图{{ index + 1 }}</div>
+                      <div class="screenshot-name">{{ screenshot.name }}</div>
                       <div class="screenshot-overlay">
                         <el-icon class="view-icon"><ZoomIn /></el-icon>
                       </div>
@@ -545,7 +514,7 @@
                   </div>
                 </template>
                 <template v-else>
-                  <span class="value no-data">暂无定金截图</span>
+                  <span class="value no-data">暂无支付截图</span>
                 </template>
               </div>
             </el-col>

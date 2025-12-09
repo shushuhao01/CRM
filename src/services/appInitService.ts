@@ -14,6 +14,47 @@ let isPreloading = false
 let preloadPromise: Promise<void> | null = null
 
 /**
+ * 清理过大的localStorage数据
+ * 订单数据不需要本地缓存，从后端API加载
+ */
+const cleanupLargeStorageData = (): void => {
+  try {
+    // 检查并清理过大的订单数据
+    const orderKey = 'crm_store_order'
+    const orderData = localStorage.getItem(orderKey)
+    if (orderData) {
+      const size = orderData.length
+      // 如果订单数据超过1MB，清理掉
+      if (size > 1024 * 1024) {
+        console.log(`[AppInit] 清理过大的订单缓存数据 (${(size / 1024 / 1024).toFixed(2)}MB)`)
+        localStorage.removeItem(orderKey)
+      }
+    }
+
+    // 检查总存储空间使用情况
+    let totalSize = 0
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key) {
+        const value = localStorage.getItem(key)
+        if (value) {
+          totalSize += value.length
+        }
+      }
+    }
+
+    // 如果总存储超过4MB，清理订单相关数据
+    if (totalSize > 4 * 1024 * 1024) {
+      console.log(`[AppInit] localStorage使用过高 (${(totalSize / 1024 / 1024).toFixed(2)}MB)，清理订单缓存`)
+      localStorage.removeItem('crm_store_order')
+      localStorage.removeItem('crm_store_orders')
+    }
+  } catch (error) {
+    console.warn('[AppInit] 清理存储数据失败:', error)
+  }
+}
+
+/**
  * 预加载应用关键数据
  * 在登录成功后调用，无缝加载数据
  */
@@ -35,6 +76,9 @@ export const preloadAppData = async (): Promise<void> => {
         console.log('[AppInit] 用户未登录，跳过预加载')
         return
       }
+
+      // 清理过大的localStorage数据，避免存储空间不足
+      cleanupLargeStorageData()
 
       // 并行加载关键数据，使用 Promise.allSettled 确保部分失败不影响整体
       const loadTasks = [

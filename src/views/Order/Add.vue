@@ -319,20 +319,29 @@
               />
             </div>
             <div class="amount-field">
-              <span class="field-label">支付方式</span>
-              <el-select
-                v-model="orderForm.paymentMethod"
-                placeholder="请选择支付方式"
-                class="field-input"
-                clearable
-              >
-                <el-option
-                  v-for="method in paymentMethods"
-                  :key="method.value"
-                  :label="method.label"
-                  :value="method.value"
+              <span class="field-label">支付方式 <span class="required-star">*</span></span>
+              <div class="payment-method-wrapper">
+                <el-select
+                  v-model="orderForm.paymentMethod"
+                  placeholder="请选择支付方式"
+                  class="field-input"
+                  style="width: 140px;"
+                  @change="handlePaymentMethodChange"
+                >
+                  <el-option
+                    v-for="method in paymentMethods"
+                    :key="method.value"
+                    :label="method.label"
+                    :value="method.value"
+                  />
+                </el-select>
+                <el-input
+                  v-if="orderForm.paymentMethod === 'other'"
+                  v-model="orderForm.paymentMethodOther"
+                  placeholder="请输入支付方式"
+                  style="width: 140px; margin-left: 8px;"
                 />
-              </el-select>
+              </div>
             </div>
           </div>
 
@@ -698,6 +707,7 @@ interface OrderForm {
   depositAmount: number
   depositScreenshot: string
   paymentMethod: string
+  paymentMethodOther: string
   markType: string
   remark: string
   customFields: Record<string, unknown>
@@ -823,6 +833,7 @@ const orderForm = reactive<OrderForm>({
   depositAmount: 0,
   depositScreenshot: '',
   paymentMethod: '',
+  paymentMethodOther: '',
   markType: 'normal',
   remark: '',
   customFields: {}
@@ -854,6 +865,13 @@ const loadPaymentMethods = async () => {
     }
   } catch (error) {
     console.warn('加载支付方式失败，使用默认配置:', error)
+  }
+}
+
+// 处理支付方式变化
+const handlePaymentMethodChange = (value: string) => {
+  if (value !== 'other') {
+    orderForm.paymentMethodOther = ''
   }
 }
 
@@ -1389,7 +1407,10 @@ const handleSubmitOrder = async () => {
       // 新增字段：客服微信和订单来源
       serviceWechat: orderForm.serviceWechat,
       orderSource: orderForm.orderSource,
-      expressCompany: orderForm.expressCompany
+      expressCompany: orderForm.expressCompany,
+      // 支付方式
+      paymentMethod: orderForm.paymentMethod,
+      paymentMethodOther: orderForm.paymentMethod === 'other' ? orderForm.paymentMethodOther : ''
     }
 
     // 使用订单store创建订单
@@ -2834,5 +2855,17 @@ onMounted(async () => {
   .amount-column.important-amounts .amount-item.total-amount .value {
     font-size: 16px;
   }
+}
+
+/* 支付方式样式 */
+.payment-method-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.required-star {
+  color: #f56c6c;
+  margin-left: 2px;
 }
 </style>

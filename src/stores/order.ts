@@ -131,6 +131,8 @@ export interface Order {
   orderSource?: string
 }
 
+// 订单数据不需要本地持久化，因为数据存储在后端数据库
+// 使用exclude排除orders字段，避免localStorage空间不足
 export const useOrderStore = createPersistentStore('order', () => {
   // 懒加载CustomerStore，避免在初始化时重新创建CustomerStore实例
   const getCustomerStore = () => useCustomerStore()
@@ -1300,7 +1302,11 @@ export const useOrderStore = createPersistentStore('order', () => {
   }
 
   // 从API加载订单数据
-  const loadOrdersFromAPI = async () => {
+  // 缓存上次加载时间，避免频繁请求
+  let lastAPILoadTime = 0
+  const API_CACHE_DURATION = 2000 // 2秒内不重复请求
+
+  const loadOrdersFromAPI = async (forceRefresh = false) => {
     // 检测是否为生产环境
     const hostname = window.location.hostname
     const isProdEnv = (
@@ -1311,14 +1317,21 @@ export const useOrderStore = createPersistentStore('order', () => {
       (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
     )
 
+    // 如果不是强制刷新，且缓存未过期，直接返回现有数据
+    const now = Date.now()
+    if (!forceRefresh && orders.value.length > 0 && (now - lastAPILoadTime < API_CACHE_DURATION)) {
+      console.log('[OrderStore] 使用缓存数据，跳过API请求')
+      return orders.value
+    }
+
     try {
       const { orderApi } = await import('@/api/order')
       console.log('[OrderStore] 正在从API加载订单列表...')
       const response = await orderApi.getList({ page: 1, pageSize: 100 })
-      console.log('[OrderStore] API响应:', response)
 
       if (response && response.data && response.data.list) {
         orders.value = response.data.list
+        lastAPILoadTime = now
         console.log(`[OrderStore] ✅ 从API加载了 ${response.data.list.length} 个订单`)
         return response.data.list
       } else if (response && response.success === false) {
@@ -1772,4 +1785,8 @@ export const useOrderStore = createPersistentStore('order', () => {
     submitCancelRequestToAPI,
     auditCancelOrderToAPI
   }
+}, {
+  // 排除orders字段不保存到localStorage，避免存储空间不足
+  // 订单数据从后端API加载，不需要本地持久化
+  exclude: ['orders']
 })

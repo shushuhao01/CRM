@@ -71,6 +71,9 @@ export class Order {
   })
   paymentMethod?: 'cash' | 'alipay' | 'wechat' | 'bank_transfer' | 'credit_card' | 'other';
 
+  @Column({ name: 'payment_method_other', type: 'varchar', length: 100, nullable: true, comment: '其他支付方式说明' })
+  paymentMethodOther?: string;
+
   @Column({ name: 'payment_time', type: 'datetime', nullable: true, comment: '支付时间' })
   paymentTime?: Date;
 

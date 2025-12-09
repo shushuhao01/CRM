@@ -151,24 +151,23 @@
         </div>
       </template>
 
-      <el-table :data="paymentMethods" style="width: 100%" v-loading="loadingPaymentMethods">
+      <el-table :data="paymentMethods" style="width: 100%" v-loading="loadingPaymentMethods" v-if="paymentMethods.length > 0">
         <el-table-column prop="label" label="支付方式名称" width="200" />
         <el-table-column prop="value" label="选项值" width="150" />
         <el-table-column prop="sortOrder" label="排序" width="100" />
-        <el-table-column prop="isEnabled" label="状态" width="100">
+        <el-table-column label="启用" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.isEnabled ? 'success' : 'info'" size="small">
-              {{ row.isEnabled ? '启用' : '禁用' }}
-            </el-tag>
+            <el-switch
+              v-model="row.isEnabled"
+              @change="togglePaymentMethod(row)"
+              :loading="row.toggling"
+            />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" link @click="editPaymentMethod(row)">
               编辑
-            </el-button>
-            <el-button size="small" :type="row.isEnabled ? 'warning' : 'success'" link @click="togglePaymentMethod(row)">
-              {{ row.isEnabled ? '禁用' : '启用' }}
             </el-button>
             <el-button size="small" type="danger" link @click="deletePaymentMethod(row)">
               删除
@@ -176,6 +175,7 @@
           </template>
         </el-table-column>
       </el-table>
+      <el-empty v-else description="暂无支付方式配置，点击上方【添加支付方式】按钮开始配置" />
     </el-card>
 
     <!-- 支付方式编辑对话框 -->
@@ -643,6 +643,7 @@ const savePaymentMethod = async () => {
 // 切换支付方式状态
 const togglePaymentMethod = async (row: any) => {
   try {
+    row.toggling = true
     const token = localStorage.getItem('auth_token')
     const response = await fetch(`/api/v1/system/payment-methods/${row.id}`, {
       method: 'PUT',
@@ -650,15 +651,23 @@ const togglePaymentMethod = async (row: any) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({ isEnabled: !row.isEnabled })
+      body: JSON.stringify({ isEnabled: row.isEnabled })
     })
     const result = await response.json()
     if (result.success) {
-      ElMessage.success(row.isEnabled ? '已禁用' : '已启用')
-      loadPaymentMethods()
+      ElMessage.success(row.isEnabled ? '已启用' : '已禁用')
+    } else {
+      // 恢复原状态
+      row.isEnabled = !row.isEnabled
+      ElMessage.error(result.message || '操作失败')
     }
   } catch (error) {
     console.error('切换状态失败:', error)
+    // 恢复原状态
+    row.isEnabled = !row.isEnabled
+    ElMessage.error('切换状态失败')
+  } finally {
+    row.toggling = false
   }
 }
 
