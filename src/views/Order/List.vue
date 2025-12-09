@@ -5,17 +5,33 @@
     </div>
 
     <!-- 快速筛选标签 -->
-    <div class="quick-filters">
-      <el-tag
-        v-for="filter in quickFilters"
-        :key="filter.key"
-        :type="activeQuickFilter === filter.key ? 'primary' : ''"
-        :effect="activeQuickFilter === filter.key ? 'dark' : 'plain'"
-        @click="handleQuickFilter(filter.key)"
-        class="filter-tag"
-      >
-        {{ filter.label }}
-      </el-tag>
+    <div class="quick-filters-row">
+      <!-- 状态筛选组 -->
+      <div class="quick-filters status-filters">
+        <el-tag
+          v-for="filter in quickFilters"
+          :key="filter.key"
+          :type="activeQuickFilter === filter.key ? 'primary' : ''"
+          :effect="activeQuickFilter === filter.key ? 'dark' : 'plain'"
+          @click="handleQuickFilter(filter.key)"
+          class="filter-tag"
+        >
+          {{ filter.label }}
+        </el-tag>
+      </div>
+      <!-- 日期筛选组 -->
+      <div class="quick-filters date-filters">
+        <el-tag
+          v-for="filter in dateQuickFilters"
+          :key="filter.key"
+          :type="dateQuickFilter === filter.key ? 'success' : ''"
+          :effect="dateQuickFilter === filter.key ? 'dark' : 'plain'"
+          @click="handleDateQuickFilter(filter.key)"
+          class="filter-tag date-tag"
+        >
+          {{ filter.label }}
+        </el-tag>
+      </div>
     </div>
 
     <!-- 搜索筛选 -->
@@ -62,23 +78,12 @@
         </el-form-item>
         <el-form-item label="订单状态">
           <el-select v-model="searchForm.status" placeholder="请选择状态" clearable multiple collapse-tags style="min-width: 200px; width: auto;">
-            <el-option label="待流转" value="pending_transfer" />
-            <el-option label="待审核" value="pending_audit" />
-            <el-option label="审核拒绝" value="audit_rejected" />
-            <el-option label="待发货" value="pending_shipment" />
-            <el-option label="已发货" value="shipped" />
-            <el-option label="已签收" value="delivered" />
-            <el-option label="物流部退回" value="logistics_returned" />
-            <el-option label="物流部取消" value="logistics_cancelled" />
-            <el-option label="待取消" value="pending_cancel" />
-            <el-option label="取消失败" value="cancel_failed" />
-            <el-option label="已取消" value="cancelled" />
-            <el-option label="草稿" value="draft" />
-            <!-- 兼容旧状态 -->
-            <el-option label="已审核" value="approved" />
-            <el-option label="审核退回" value="rejected" />
-            <el-option label="待付定金" value="pending_deposit" />
-            <el-option label="待付尾款" value="pending_payment" />
+            <el-option
+              v-for="status in allOrderStatuses"
+              :key="status.value"
+              :label="status.label"
+              :value="status.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="标记">
@@ -90,10 +95,10 @@
         </el-form-item>
         <el-form-item>
           <el-checkbox v-model="searchForm.onlyAuditPendingSubmitted">
-            仅显示已提审的待审核
+            已提审待审
           </el-checkbox>
           <el-checkbox v-model="searchForm.onlyResubmittable" style="margin-left: 16px;">
-            仅显示可再次提审
+            可再次提审
           </el-checkbox>
         </el-form-item>
         <el-form-item>
@@ -760,15 +765,46 @@ const pagination = reactive({
 
 
 
-// 快速筛选配置
+// 快速筛选配置 - 状态筛选组
 const quickFilters = ref([
   { key: 'all', label: '全部', count: 0 },
-  { key: 'pending', label: '待审核', count: 0 },
-  { key: 'approved', label: '已审核', count: 0 },
+  { key: 'pending_audit', label: '待审核', count: 0 },
+  { key: 'pending_shipment', label: '已审核', count: 0 },
   { key: 'shipped', label: '已发货', count: 0 },
   { key: 'delivered', label: '已签收', count: 0 },
-  { key: 'pending_deposit', label: '待付定金', count: 0 },
-  { key: 'pending_payment', label: '待付尾款', count: 0 }
+  { key: 'rejected_returned', label: '拒收已退回', count: 0 },
+  { key: 'after_sales_created', label: '已建售后', count: 0 }
+])
+
+// 日期快捷筛选组
+const dateQuickFilter = ref('all')
+const dateQuickFilters = [
+  { key: 'today', label: '今日' },
+  { key: 'yesterday', label: '昨日' },
+  { key: 'thisWeek', label: '本周' },
+  { key: 'thisMonth', label: '本月' },
+  { key: 'thisYear', label: '今年' },
+  { key: 'all', label: '全部' }
+]
+
+// 所有订单状态 - 从订单store获取真实状态
+const allOrderStatuses = computed(() => [
+  { value: 'pending_transfer', label: '待流转' },
+  { value: 'pending_audit', label: '待审核' },
+  { value: 'audit_rejected', label: '审核拒绝' },
+  { value: 'pending_shipment', label: '待发货' },
+  { value: 'shipped', label: '已发货' },
+  { value: 'delivered', label: '已签收' },
+  { value: 'package_exception', label: '包裹异常' },
+  { value: 'rejected', label: '拒收' },
+  { value: 'rejected_returned', label: '拒收已退回' },
+  { value: 'logistics_returned', label: '物流退回' },
+  { value: 'logistics_cancelled', label: '物流取消' },
+  { value: 'after_sales_created', label: '已建售后' },
+  { value: 'pending_cancel', label: '待取消' },
+  { value: 'cancel_failed', label: '取消失败' },
+  { value: 'cancelled', label: '已取消' },
+  { value: 'draft', label: '草稿' }
 ])
 
 // 表格列配置
@@ -968,17 +1004,10 @@ const filteredOrderList = computed(() => {
   // 首先应用数据范围控制
   let filtered = applyDataScopeControl(orderList.value)
 
-  // 快速筛选
+  // 快速筛选 - 状态筛选
   if (activeQuickFilter.value !== 'all') {
     filtered = filtered.filter(order => {
-      switch (activeQuickFilter.value) {
-        case 'pending_deposit':
-          return order.status === 'pending' && order.depositAmount > 0
-        case 'pending_payment':
-          return order.status === 'approved' && order.depositAmount > 0
-        default:
-          return order.status === activeQuickFilter.value
-      }
+      return order.status === activeQuickFilter.value
     })
   }
 
@@ -1197,7 +1226,9 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
     case 'depositAmount':
       return row.depositAmount ? `¥${row.depositAmount.toLocaleString()}` : '-'
     case 'collectAmount':
-      return row.collectAmount ? `¥${row.collectAmount.toLocaleString()}` : '-'
+      // 代收金额 = 订单总额 - 定金
+      const collectAmt = row.collectAmount ?? ((row.totalAmount || 0) - (row.depositAmount || 0))
+      return collectAmt > 0 ? `¥${collectAmt.toLocaleString()}` : '-'
     case 'paymentMethod':
       return getPaymentMethodText(row.paymentMethod, row.paymentMethodOther)
     case 'orderSource':
@@ -1413,6 +1444,43 @@ const handleQuickFilter = (filterKey: string) => {
   activeQuickFilter.value = filterKey
   pagination.page = 1
   updateQuickFilterCounts()
+}
+
+// 日期快捷筛选处理
+const handleDateQuickFilter = (filterKey: string) => {
+  dateQuickFilter.value = filterKey
+  pagination.page = 1
+
+  // 根据日期筛选设置日期范围
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+  switch (filterKey) {
+    case 'today':
+      searchForm.dateRange = [today, new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1)]
+      break
+    case 'yesterday':
+      const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000)
+      searchForm.dateRange = [yesterday, new Date(today.getTime() - 1)]
+      break
+    case 'thisWeek':
+      const dayOfWeek = now.getDay() || 7
+      const startOfWeek = new Date(today.getTime() - (dayOfWeek - 1) * 24 * 60 * 60 * 1000)
+      searchForm.dateRange = [startOfWeek, now]
+      break
+    case 'thisMonth':
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      searchForm.dateRange = [startOfMonth, now]
+      break
+    case 'thisYear':
+      const startOfYear = new Date(now.getFullYear(), 0, 1)
+      searchForm.dateRange = [startOfYear, now]
+      break
+    case 'all':
+    default:
+      searchForm.dateRange = []
+      break
+  }
 }
 
 // 高级搜索切换
@@ -1661,19 +1729,14 @@ const handleExport = async () => {
 
 // 更新快速筛选计数
 const updateQuickFilterCounts = () => {
+  // 应用数据范围控制后的订单列表
+  const accessibleOrders = applyDataScopeControl(orderList.value)
+
   quickFilters.value.forEach(filter => {
     if (filter.key === 'all') {
-      filter.count = orderList.value.length
-    } else if (filter.key === 'pending_deposit') {
-      filter.count = orderList.value.filter(order =>
-        order.status === 'pending' && order.depositAmount > 0
-      ).length
-    } else if (filter.key === 'pending_payment') {
-      filter.count = orderList.value.filter(order =>
-        order.status === 'approved' && order.depositAmount > 0
-      ).length
+      filter.count = accessibleOrders.length
     } else {
-      filter.count = orderList.value.filter(order => order.status === filter.key).length
+      filter.count = accessibleOrders.filter(order => order.status === filter.key).length
     }
   })
 }
@@ -2130,8 +2193,26 @@ onUnmounted(() => {
 }
 
 /* 快速筛选样式 */
-.quick-filters {
+.quick-filters-row {
+  display: flex;
+  align-items: center;
+  gap: 30px;
   margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.quick-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.quick-filters.status-filters {
+  flex: 1;
+}
+
+.quick-filters.date-filters {
+  flex-shrink: 0;
 }
 
 .filter-tag {
@@ -2147,9 +2228,17 @@ onUnmounted(() => {
   gap: 6px;
 }
 
+.filter-tag.date-tag {
+  margin-right: 8px;
+}
+
 .filter-tag:hover {
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
+}
+
+.date-filters .filter-tag:hover {
+  box-shadow: 0 2px 8px rgba(103, 194, 58, 0.3);
 }
 
 
