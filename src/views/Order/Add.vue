@@ -1477,6 +1477,11 @@ onMounted(async () => {
   // 首先加载客户数据
   await customerStore.loadCustomers()
 
+  // 加载流转延迟配置
+  if (typeof orderStore.loadTransferDelayConfig === 'function') {
+    await orderStore.loadTransferDelayConfig()
+  }
+
   // 加载启用的物流公司列表
   loadExpressCompanies()
 

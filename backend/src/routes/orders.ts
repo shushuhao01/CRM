@@ -711,6 +711,56 @@ router.post('/', async (req: Request, res: Response) => {
 
 
 /**
+ * @route PUT /api/v1/orders/:id/mark-type
+ * @desc 更新订单标记类型
+ * @access Private
+ * 注意：此路由必须在 /:id 之前定义，否则会被 /:id 拦截
+ */
+router.put('/:id/mark-type', async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const { markType } = req.body;
+    const orderId = req.params.id;
+
+    console.log(`📝 [订单标记] 更新订单 ${orderId} 标记类型为 ${markType}`);
+
+    const order = await orderRepository.findOne({ where: { id: orderId } });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '订单不存在'
+      });
+    }
+
+    order.markType = markType;
+    await orderRepository.save(order);
+
+    console.log(`✅ [订单标记] 订单 ${orderId} 标记更新成功`);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '订单标记更新成功',
+      data: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        markType: order.markType
+      }
+    });
+  } catch (error) {
+    console.error('❌ [订单标记] 更新失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '更新订单标记失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
  * @route PUT /api/v1/orders/:id
  * @desc 更新订单
  * @access Private
@@ -958,55 +1008,6 @@ router.post('/:id/cancel-audit', async (req: Request, res: Response) => {
       success: false,
       code: 500,
       message: '审核取消申请失败',
-      error: error instanceof Error ? error.message : '未知错误'
-    });
-  }
-});
-
-/**
- * @route PUT /api/v1/orders/:id/mark-type
- * @desc 更新订单标记类型
- * @access Private
- */
-router.put('/:id/mark-type', async (req: Request, res: Response) => {
-  try {
-    const orderRepository = AppDataSource.getRepository(Order);
-    const { markType } = req.body;
-    const orderId = req.params.id;
-
-    console.log(`📝 [订单标记] 更新订单 ${orderId} 标记类型为 ${markType}`);
-
-    const order = await orderRepository.findOne({ where: { id: orderId } });
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        code: 404,
-        message: '订单不存在'
-      });
-    }
-
-    order.markType = markType;
-    await orderRepository.save(order);
-
-    console.log(`✅ [订单标记] 订单 ${orderId} 标记更新成功`);
-
-    res.json({
-      success: true,
-      code: 200,
-      message: '订单标记更新成功',
-      data: {
-        id: order.id,
-        orderNumber: order.orderNumber,
-        markType: order.markType
-      }
-    });
-  } catch (error) {
-    console.error('❌ [订单标记] 更新失败:', error);
-    res.status(500).json({
-      success: false,
-      code: 500,
-      message: '更新订单标记失败',
       error: error instanceof Error ? error.message : '未知错误'
     });
   }

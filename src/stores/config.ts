@@ -137,6 +137,11 @@ export interface StorageConfig {
   customDomain: string
   maxFileSize: number
   allowedTypes: string
+  // 图片压缩配置
+  imageCompressEnabled: boolean
+  imageCompressQuality: 'high' | 'medium' | 'low' | 'custom'
+  imageCompressMaxWidth: number
+  imageCompressCustomQuality: number
 }
 
 export const useConfigStore = defineStore('config', () => {
@@ -224,7 +229,12 @@ export const useConfigStore = defineStore('config', () => {
     region: '',
     customDomain: '',
     maxFileSize: 10,
-    allowedTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx'
+    allowedTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx',
+    // 图片压缩配置
+    imageCompressEnabled: true,
+    imageCompressQuality: 'medium',
+    imageCompressMaxWidth: 1200,
+    imageCompressCustomQuality: 60
   })
 
   // 邮件配置

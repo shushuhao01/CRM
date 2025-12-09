@@ -714,7 +714,12 @@ router.get('/storage-settings', authenticateToken, async (_req: Request, res: Re
       region: 'oss-cn-hangzhou',
       customDomain: '',
       maxFileSize: 10,
-      allowedTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx'
+      allowedTypes: 'jpg,png,gif,pdf,doc,docx,xls,xlsx',
+      // 图片压缩配置
+      imageCompressEnabled: true,
+      imageCompressQuality: 'medium',
+      imageCompressMaxWidth: 1200,
+      imageCompressCustomQuality: 60
     };
     res.json({ success: true, data: { ...defaultSettings, ...settings } });
   } catch (error) {
@@ -741,7 +746,12 @@ router.put('/storage-settings', authenticateToken, requireAdmin, async (req: Req
       { key: 'region', type: 'string' as const, desc: '存储区域' },
       { key: 'customDomain', type: 'string' as const, desc: '自定义域名' },
       { key: 'maxFileSize', type: 'number' as const, desc: '最大文件大小(MB)' },
-      { key: 'allowedTypes', type: 'string' as const, desc: '允许的文件类型' }
+      { key: 'allowedTypes', type: 'string' as const, desc: '允许的文件类型' },
+      // 图片压缩配置
+      { key: 'imageCompressEnabled', type: 'boolean' as const, desc: '启用图片压缩' },
+      { key: 'imageCompressQuality', type: 'string' as const, desc: '压缩质量' },
+      { key: 'imageCompressMaxWidth', type: 'number' as const, desc: '最大宽度' },
+      { key: 'imageCompressCustomQuality', type: 'number' as const, desc: '自定义压缩比例' }
     ];
     await saveConfigsByGroup('storage_settings', settings, configItems);
     res.json({ success: true, message: '存储设置保存成功', data: settings });

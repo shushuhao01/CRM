@@ -917,6 +917,82 @@
               <div class="form-tip">例如：jpg,png,gif,pdf,doc,docx</div>
             </el-form-item>
 
+            <!-- 图片压缩配置 -->
+            <el-divider content-position="left">
+              <el-icon><Picture /></el-icon>
+              图片上传压缩配置
+            </el-divider>
+
+            <el-form-item label="启用压缩">
+              <el-switch
+                v-model="storageForm.imageCompressEnabled"
+              />
+              <div class="form-tip">启用后上传的图片将自动压缩，减少存储空间和加载时间</div>
+            </el-form-item>
+
+            <template v-if="storageForm.imageCompressEnabled">
+              <el-form-item label="压缩质量">
+                <el-radio-group v-model="storageForm.imageCompressQuality">
+                  <el-radio label="high">
+                    <span class="quality-option">
+                      <span class="quality-name">高清</span>
+                      <span class="quality-desc">（质量80%，最大宽度1920px）</span>
+                    </span>
+                  </el-radio>
+                  <el-radio label="medium">
+                    <span class="quality-option">
+                      <span class="quality-name">标准</span>
+                      <span class="quality-desc">（质量60%，最大宽度1200px）</span>
+                    </span>
+                  </el-radio>
+                  <el-radio label="low">
+                    <span class="quality-option">
+                      <span class="quality-name">省流</span>
+                      <span class="quality-desc">（质量40%，最大宽度800px）</span>
+                    </span>
+                  </el-radio>
+                  <el-radio label="custom">
+                    <span class="quality-option">
+                      <span class="quality-name">自定义</span>
+                    </span>
+                  </el-radio>
+                </el-radio-group>
+              </el-form-item>
+
+              <template v-if="storageForm.imageCompressQuality === 'custom'">
+                <el-form-item label="最大宽度">
+                  <el-input-number
+                    v-model="storageForm.imageCompressMaxWidth"
+                    :min="400"
+                    :max="4096"
+                    :step="100"
+                  />
+                  <span class="form-tip">px（超过此宽度的图片将被等比缩放）</span>
+                </el-form-item>
+
+                <el-form-item label="压缩比例">
+                  <el-slider
+                    v-model="storageForm.imageCompressCustomQuality"
+                    :min="10"
+                    :max="100"
+                    :step="5"
+                    show-input
+                    style="max-width: 400px;"
+                  />
+                  <div class="form-tip">数值越低压缩越强，文件越小，但图片质量会下降</div>
+                </el-form-item>
+              </template>
+
+              <el-form-item>
+                <el-alert
+                  :title="compressionPreviewText"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                />
+              </el-form-item>
+            </template>
+
             <!-- 数据同步设置 -->
             <template v-if="storageForm.storageType !== 'local'">
               <el-divider content-position="left">
@@ -3113,6 +3189,43 @@ const isOssConfigured = computed(() => {
          storage.secretKey &&
          storage.bucketName &&
          storage.region
+})
+
+// 图片压缩预览文本
+const compressionPreviewText = computed(() => {
+  const storage = storageForm.value
+  if (!storage.imageCompressEnabled) {
+    return '图片压缩已关闭，上传的图片将保持原始大小'
+  }
+
+  let quality = 60
+  let maxWidth = 1200
+  let qualityName = '标准'
+
+  switch (storage.imageCompressQuality) {
+    case 'high':
+      quality = 80
+      maxWidth = 1920
+      qualityName = '高清'
+      break
+    case 'medium':
+      quality = 60
+      maxWidth = 1200
+      qualityName = '标准'
+      break
+    case 'low':
+      quality = 40
+      maxWidth = 800
+      qualityName = '省流'
+      break
+    case 'custom':
+      quality = storage.imageCompressCustomQuality || 60
+      maxWidth = storage.imageCompressMaxWidth || 1200
+      qualityName = '自定义'
+      break
+  }
+
+  return `当前配置：${qualityName}模式，压缩质量${quality}%，最大宽度${maxWidth}px。预计可减少50%-80%的文件大小。`
 })
 
 const canEditBackupSettings = computed(() => {

@@ -26,6 +26,11 @@ interface StorageConfig {
   customDomain: string
   maxFileSize: number
   allowedTypes: string
+  // 图片压缩配置
+  imageCompressEnabled?: boolean
+  imageCompressQuality?: 'high' | 'medium' | 'low' | 'custom'
+  imageCompressMaxWidth?: number
+  imageCompressCustomQuality?: number
 }
 
 // 上传结果
@@ -54,7 +59,12 @@ const defaultStorageConfig: StorageConfig = {
   region: 'oss-cn-hangzhou',
   customDomain: '',
   maxFileSize: 10,
-  allowedTypes: 'jpg,png,gif,webp,jpeg'
+  allowedTypes: 'jpg,png,gif,webp,jpeg',
+  // 图片压缩默认配置
+  imageCompressEnabled: true,
+  imageCompressQuality: 'medium',
+  imageCompressMaxWidth: 1200,
+  imageCompressCustomQuality: 60
 }
 
 // 缓存上传配置
@@ -382,11 +392,36 @@ export const uploadImage = async (file: File, type: UploadType, compress = true)
     }
   }
 
-  // 压缩图片（如果启用）
+  // 压缩图片（如果启用且配置允许）
   let fileToUpload = file
-  if (compress && file.size > 100 * 1024) { // 大于100KB才压缩
+  const compressEnabled = storageConfig.imageCompressEnabled !== false // 默认启用
+  if (compress && compressEnabled && file.size > 50 * 1024) { // 大于50KB才压缩
     try {
-      fileToUpload = await compressImage(file)
+      // 根据配置获取压缩参数
+      let maxWidth = 1200
+      let quality = 0.6
+
+      switch (storageConfig.imageCompressQuality) {
+        case 'high':
+          maxWidth = 1920
+          quality = 0.8
+          break
+        case 'medium':
+          maxWidth = 1200
+          quality = 0.6
+          break
+        case 'low':
+          maxWidth = 800
+          quality = 0.4
+          break
+        case 'custom':
+          maxWidth = storageConfig.imageCompressMaxWidth || 1200
+          quality = (storageConfig.imageCompressCustomQuality || 60) / 100
+          break
+      }
+
+      fileToUpload = await compressImage(file, maxWidth, quality)
+      console.log(`[UploadService] 图片压缩: ${(file.size / 1024).toFixed(1)}KB -> ${(fileToUpload.size / 1024).toFixed(1)}KB`)
     } catch (error) {
       console.warn('[UploadService] 图片压缩失败，使用原文件:', error)
     }
