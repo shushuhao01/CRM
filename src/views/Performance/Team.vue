@@ -1844,7 +1844,23 @@ const handleOrderStatusChanged = () => {
 }
 
 onMounted(async () => {
-  // 列设置由TableColumnSettings组件自动加载
+  // 清除旧的列设置缓存，确保使用默认配置（工号和创建时间默认不显示）
+  const savedColumns = localStorage.getItem(STORAGE_KEY)
+  if (savedColumns) {
+    try {
+      const parsed = JSON.parse(savedColumns)
+      // 检查是否是旧版本的配置（工号和创建时间为true）
+      const hasOldConfig = parsed.some((col: any) =>
+        (col.prop === 'employeeNumber' || col.prop === 'createTime') && col.visible === true
+      )
+      if (hasOldConfig) {
+        localStorage.removeItem(STORAGE_KEY)
+        console.log('[团队业绩] 清除旧的列设置缓存')
+      }
+    } catch (e) {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+  }
 
   // 初始化部门数据
   if (departmentStore.departments.length === 0) {
