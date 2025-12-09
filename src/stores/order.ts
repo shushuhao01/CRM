@@ -300,12 +300,18 @@ export const useOrderStore = createPersistentStore('order', () => {
       auditStatus: 'pending' as const,
       markType: payload.markType || 'normal',
       createdBy: payload.createdBy || (userStore.currentUser?.name || 'system'),
+      // 🔥 创建人姓名（用于销售人员显示）
+      createdByName: payload.createdByName || userStore.currentUser?.realName || userStore.currentUser?.name || 'system',
       salesPersonId: payload.salesPersonId || (userStore.currentUser?.id || '1'),
       expressCompany: payload.expressCompany,
-      // 服务微信号
+      // 🔥 服务微信号
       serviceWechat: payload.serviceWechat || '',
-      // 订单来源
-      orderSource: payload.orderSource || ''
+      // 🔥 订单来源
+      orderSource: payload.orderSource || '',
+      // 🔥 支付方式
+      paymentMethod: payload.paymentMethod || '',
+      // 🔥 自定义字段
+      customFields: payload.customFields || {}
     }
 
     // 🔥 检测环境，生产环境调用真实API

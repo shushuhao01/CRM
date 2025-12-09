@@ -1295,6 +1295,8 @@ const loadOrderList = async () => {
         orderNo: order.orderNumber || '-',
         phone: order.customerPhone || order.receiverPhone || '-',
         address: order.receiverAddress || '-',
+        // 🔥 销售人员字段映射（创建订单的用户姓名）
+        salesPersonName: order.createdByName || order.salesPersonName || order.createdBy || '-',
         // 同步的客户信息
         ...customerInfo,
         // 计算的订单字段
@@ -1306,6 +1308,8 @@ const loadOrderList = async () => {
         expressCompany: order.expressCompany || null,
         expressNo: order.trackingNumber || null,
         logisticsStatus: order.logisticsStatus || null,
+        // 🔥 预计送达时间
+        estimatedDeliveryTime: order.estimatedDeliveryTime || order.expectedDeliveryDate || null,
         // 订单来源
         orderSource: order.orderSource || null,
         // 操作记录
@@ -1684,6 +1688,14 @@ const handleOrderShipped = (shippingData: any) => {
   // 更新订单状态为已发货
   if (shippingData.orderId && shippingData.logisticsCompany && shippingData.trackingNumber) {
     orderStore.shipOrder(shippingData.orderId, shippingData.logisticsCompany, shippingData.trackingNumber)
+
+    // 🔥 保存预计送达时间
+    if (shippingData.estimatedDelivery) {
+      orderStore.updateOrder(shippingData.orderId, {
+        estimatedDeliveryTime: shippingData.estimatedDelivery,
+        expectedDeliveryDate: shippingData.estimatedDelivery
+      })
+    }
   }
   ElMessage.success('发货成功')
   loadOrderList()

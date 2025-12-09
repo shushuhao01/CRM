@@ -275,10 +275,10 @@
 
       <template #waitingTime="{ row }">
         <el-tag
-          :type="getWaitingTimeType(row.waitingHours)"
+          :type="getWaitingTimeType(row.waitingMinutes)"
           size="small"
         >
-          {{ row.waitingHours }}小时
+          {{ formatWaitingTime(row.waitingMinutes) }}
         </el-tag>
       </template>
 
@@ -1217,12 +1217,28 @@ const quickAuditRules = computed<FormRules>(() => ({
 
 // 方法定义
 /**
- * 获取等待时间类型
+ * 获取等待时间类型（基于分钟）
  */
-const getWaitingTimeType = (hours: number) => {
+const getWaitingTimeType = (minutes: number) => {
+  const hours = minutes / 60
   if (hours >= 48) return 'danger'
   if (hours >= 24) return 'warning'
   return 'success'
+}
+
+/**
+ * 格式化等待时间显示
+ */
+const formatWaitingTime = (minutes: number) => {
+  if (minutes < 60) {
+    return `${minutes}分钟`
+  }
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  if (mins === 0) {
+    return `${hours}小时`
+  }
+  return `${hours}小时${mins}分钟`
 }
 
 /**
@@ -2255,8 +2271,8 @@ const loadOrderList = async () => {
       codAmount: order.totalAmount - order.depositAmount,
       productCount: order.products.length,
       createTime: order.createTime,
-      // 🔥 等待时间从订单流转到待审核时开始计时（使用auditTransferTime，如果没有则使用createTime）
-      waitingHours: Math.floor((new Date().getTime() - new Date(order.auditTransferTime || order.createTime).getTime()) / (1000 * 60 * 60)),
+      // 🔥 等待时间从订单流转到待审核时开始计时（使用auditTransferTime，如果没有则使用createTime），单位：分钟
+      waitingMinutes: Math.floor((new Date().getTime() - new Date(order.auditTransferTime || order.createTime).getTime()) / (1000 * 60)),
       remark: order.remark || '',
       auditStatus: order.auditStatus,
       // 🔥 审核标识：使用auditStatus映射
