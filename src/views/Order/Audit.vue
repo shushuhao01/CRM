@@ -291,22 +291,13 @@
         </el-tag>
       </template>
 
-      <template #hasBeenAudited="{ row }">
+      <template #column-auditFlag="{ row }">
         <el-tag
-          v-if="row.hasBeenAudited"
-          type="success"
+          :type="getAuditFlagType(row.auditFlag)"
           size="small"
           effect="plain"
         >
-          已审核
-        </el-tag>
-        <el-tag
-          v-else
-          type="info"
-          size="small"
-          effect="plain"
-        >
-          待审核
+          {{ getAuditFlagText(row.auditFlag) }}
         </el-tag>
       </template>
 
@@ -1145,7 +1136,7 @@ const tableColumns = computed(() => [
     visible: activeTab.value !== 'pending'
   },
   {
-    prop: 'hasBeenAudited',
+    prop: 'auditFlag',
     label: '审核标识',
     width: 100,
     align: 'center',
@@ -1263,6 +1254,36 @@ const getStatusText = (status: string) => {
       return '待审核'
     default:
       return '未知'
+  }
+}
+
+/**
+ * 获取审核标识文本
+ */
+const getAuditFlagText = (flag: string) => {
+  switch (flag) {
+    case 'approved':
+      return '审核通过'
+    case 'rejected':
+      return '审核拒绝'
+    case 'pending':
+    default:
+      return '待审核'
+  }
+}
+
+/**
+ * 获取审核标识类型
+ */
+const getAuditFlagType = (flag: string) => {
+  switch (flag) {
+    case 'approved':
+      return 'success'
+    case 'rejected':
+      return 'danger'
+    case 'pending':
+    default:
+      return 'warning'
   }
 }
 
@@ -2234,9 +2255,12 @@ const loadOrderList = async () => {
       codAmount: order.totalAmount - order.depositAmount,
       productCount: order.products.length,
       createTime: order.createTime,
-      waitingHours: Math.floor((new Date().getTime() - new Date(order.createTime).getTime()) / (1000 * 60 * 60)),
+      // 🔥 等待时间从订单流转到待审核时开始计时（使用auditTransferTime，如果没有则使用createTime）
+      waitingHours: Math.floor((new Date().getTime() - new Date(order.auditTransferTime || order.createTime).getTime()) / (1000 * 60 * 60)),
       remark: order.remark || '',
       auditStatus: order.auditStatus,
+      // 🔥 审核标识：使用auditStatus映射
+      auditFlag: order.auditStatus || 'pending',
       hasBeenAudited: order.hasBeenAudited || false,
       deliveryAddress: order.receiverAddress,
       paymentScreenshots: (() => {

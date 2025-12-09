@@ -331,7 +331,7 @@ router.get('/permission', (req: Request, res: Response) => {
 // 获取物流状态更新页面的订单列表
 router.get('/status-update/orders', async (req, res) => {
   try {
-    const { tab = 'pending', page = 1, pageSize = 20, keyword, status, dateRange } = req.query;
+    const { _tab = 'pending', page = 1, pageSize = 20, _keyword, _status, _dateRange } = req.query;
 
     // 这里应该从数据库获取订单数据
     // 目前返回模拟数据结构
@@ -400,17 +400,79 @@ router.get('/summary', async (_req, res) => {
 router.post('/order/status', async (req, res) => {
   try {
     const { orderNo, newStatus, remark } = req.body;
+    const user = (req as any).user;
 
-    // 这里应该更新数据库中的订单物流状态
-    console.log('更新订单物流状态:', { orderNo, newStatus, remark });
+    if (!orderNo || !newStatus) {
+      return res.status(400).json({
+        success: false,
+        message: '订单号和新状态不能为空'
+      });
+    }
 
-    res.json({
+    // 🔥 从数据库获取订单并更新物流状态
+    const { Order } = await import('../entities/Order');
+    const { OrderStatusHistory } = await import('../entities/OrderStatusHistory');
+    const orderRepository = AppDataSource!.getRepository(Order);
+    const statusHistoryRepository = AppDataSource!.getRepository(OrderStatusHistory);
+
+    const order = await orderRepository.findOne({ where: { orderNumber: orderNo } });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: '订单不存在'
+      });
+    }
+
+    // 根据物流状态同步更新订单状态（只使用Order实体中定义的有效状态）
+    type ValidOrderStatus = 'delivered' | 'refunded' | 'cancelled' | 'shipped';
+    const statusMapping: Record<string, ValidOrderStatus> = {
+      'delivered': 'delivered',              // 已签收
+      'refunded': 'refunded',                // 退货退款
+      'rejected': 'cancelled',               // 拒收 -> 取消
+      'rejected_returned': 'cancelled',      // 拒收已退回 -> 取消
+    };
+
+    if (statusMapping[newStatus]) {
+      order.status = statusMapping[newStatus];
+    }
+
+    // 更新订单的更新时间
+    order.updatedAt = new Date();
+
+    await orderRepository.save(order);
+
+    // 添加状态更新记录到历史表
+    type ValidHistoryStatus = 'pending' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded';
+    const historyStatusMapping: Record<string, ValidHistoryStatus> = {
+      'delivered': 'delivered',
+      'refunded': 'refunded',
+      'rejected': 'cancelled',
+      'rejected_returned': 'cancelled',
+    };
+
+    const historyRecord = statusHistoryRepository.create({
+      orderId: order.id,
+      status: historyStatusMapping[newStatus] || 'shipped',
+      notes: remark || `物流状态更新为: ${newStatus}`,
+      operatorName: user?.username || '系统'
+    });
+    await statusHistoryRepository.save(historyRecord);
+
+    console.log('✅ 订单物流状态已持久化到数据库:', { orderNo, newStatus, remark });
+
+    return res.json({
       success: true,
-      message: '物流状态更新成功'
+      message: '物流状态更新成功',
+      data: {
+        orderNo,
+        newStatus,
+        orderStatus: order.status
+      }
     });
   } catch (error) {
     console.error('更新订单物流状态失败:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: '更新物流状态失败'
     });
@@ -421,20 +483,101 @@ router.post('/order/status', async (req, res) => {
 router.post('/order/batch-status', async (req, res) => {
   try {
     const { orderNos, newStatus, remark } = req.body;
+    const user = (req as any).user;
 
-    console.log('批量更新订单物流状态:', { orderNos, newStatus, remark });
+    if (!orderNos || !Array.isArray(orderNos) || orderNos.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '订单号列表不能为空'
+      });
+    }
 
-    res.json({
+    if (!newStatus) {
+      return res.status(400).json({
+        success: false,
+        message: '新状态不能为空'
+      });
+    }
+
+    // 🔥 从数据库批量更新订单物流状态
+    const { Order } = await import('../entities/Order');
+    const { OrderStatusHistory } = await import('../entities/OrderStatusHistory');
+    const orderRepository = AppDataSource!.getRepository(Order);
+    const statusHistoryRepository = AppDataSource!.getRepository(OrderStatusHistory);
+
+    let successCount = 0;
+    let failCount = 0;
+    const failedOrders: string[] = [];
+
+    // 根据物流状态同步更新订单状态（只使用Order实体中定义的有效状态）
+    type ValidOrderStatus = 'delivered' | 'refunded' | 'cancelled' | 'shipped';
+    const statusMapping: Record<string, ValidOrderStatus> = {
+      'delivered': 'delivered',
+      'refunded': 'refunded',
+      'rejected': 'cancelled',
+      'rejected_returned': 'cancelled',
+    };
+
+    // 历史记录状态映射
+    type ValidHistoryStatus = 'pending' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded';
+    const historyStatusMapping: Record<string, ValidHistoryStatus> = {
+      'delivered': 'delivered',
+      'refunded': 'refunded',
+      'rejected': 'cancelled',
+      'rejected_returned': 'cancelled',
+    };
+
+    for (const orderNo of orderNos) {
+      try {
+        const order = await orderRepository.findOne({ where: { orderNumber: orderNo } });
+
+        if (!order) {
+          failCount++;
+          failedOrders.push(orderNo);
+          continue;
+        }
+
+        // 同步更新订单状态
+        if (statusMapping[newStatus]) {
+          order.status = statusMapping[newStatus];
+        }
+
+        // 更新订单的更新时间
+        order.updatedAt = new Date();
+
+        await orderRepository.save(order);
+
+        // 添加状态更新记录到历史表
+        const historyRecord = statusHistoryRepository.create({
+          orderId: order.id,
+          status: historyStatusMapping[newStatus] || 'shipped',
+          notes: remark || `批量更新物流状态为: ${newStatus}`,
+          operatorName: user?.username || '系统'
+        });
+        await statusHistoryRepository.save(historyRecord);
+
+        successCount++;
+      } catch (err) {
+        console.error(`更新订单 ${orderNo} 失败:`, err);
+        failCount++;
+        failedOrders.push(orderNo);
+      }
+    }
+
+    console.log('✅ 批量更新订单物流状态完成:', { successCount, failCount, failedOrders });
+
+    return res.json({
       success: true,
-      message: '批量更新成功',
+      message: `批量更新完成，成功 ${successCount} 个，失败 ${failCount} 个`,
       data: {
-        successCount: orderNos?.length || 0,
-        failCount: 0
+        successCount,
+        failCount,
+        failedOrders
       }
     });
   } catch (error) {
     console.error('批量更新订单物流状态失败:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: '批量更新失败'
     });
@@ -464,7 +607,7 @@ router.post('/order/todo', async (req, res) => {
 // 获取物流状态日志
 router.get('/log', async (req, res) => {
   try {
-    const { orderNo, page = 1, pageSize = 20 } = req.query;
+    const { _orderNo, page = 1, pageSize = 20 } = req.query;
 
     res.json({
       success: true,
