@@ -465,7 +465,8 @@ router.get('/', async (req: Request, res: Response) => {
         products: products,
         totalAmount: Number(order.totalAmount) || 0,
         depositAmount: Number(order.depositAmount) || 0,
-        collectAmount: Number(order.finalAmount) || 0,
+        // 🔥 代收金额 = 订单总额 - 定金
+        collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
         receiverName: order.shippingName || '',
         receiverPhone: order.shippingPhone || '',
         receiverAddress: order.shippingAddress || '',
@@ -572,7 +573,8 @@ router.get('/:id', async (req: Request, res: Response) => {
       products: products,
       totalAmount: Number(order.totalAmount) || 0,
       depositAmount: Number(order.depositAmount) || 0,
-      collectAmount: Number(order.finalAmount) || 0,
+      // 🔥 代收金额 = 订单总额 - 定金
+      collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
       receiverName: order.shippingName || '',
       receiverPhone: order.shippingPhone || '',
       receiverAddress: order.shippingAddress || '',
