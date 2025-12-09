@@ -151,7 +151,12 @@
         </div>
       </template>
 
-      <el-table :data="paymentMethods" style="width: 100%" v-loading="loadingPaymentMethods" v-if="paymentMethods.length > 0">
+      <el-table :data="paymentMethods" style="width: 100%" v-loading="loadingPaymentMethods" v-if="paymentMethods.length > 0" row-key="id">
+        <el-table-column width="50" align="center">
+          <template #default>
+            <el-icon class="drag-handle" style="cursor: move; color: #999;"><Rank /></el-icon>
+          </template>
+        </el-table-column>
         <el-table-column prop="label" label="支付方式名称" width="200" />
         <el-table-column prop="value" label="选项值" width="150" />
         <el-table-column prop="sortOrder" label="排序" width="100" />
@@ -175,6 +180,10 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="drag-tip" v-if="paymentMethods.length > 0">
+        <el-icon><InfoFilled /></el-icon>
+        <span>拖拽左侧图标可调整排序，排序变更后自动保存</span>
+      </div>
       <el-empty v-else description="暂无支付方式配置，点击上方【添加支付方式】按钮开始配置" />
     </el-card>
 
@@ -531,7 +540,8 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete } from '@element-plus/icons-vue'
+import { Plus, Delete, Rank, InfoFilled } from '@element-plus/icons-vue'
+import Sortable from 'sortablejs'
 import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 
 const fieldConfigStore = useOrderFieldConfigStore()
@@ -1276,13 +1286,61 @@ const deleteDepartmentLimit = async (row: DepartmentLimit) => {
   }
 }
 
+// 初始化支付方式表格拖拽排序
+const initPaymentMethodSortable = () => {
+  setTimeout(() => {
+    const tableEl = document.querySelector('.config-card .el-table__body-wrapper tbody')
+    if (tableEl) {
+      Sortable.create(tableEl as HTMLElement, {
+        handle: '.drag-handle',
+        animation: 150,
+        onEnd: async (evt: any) => {
+          const { oldIndex, newIndex } = evt
+          if (oldIndex !== newIndex) {
+            const movedItem = paymentMethods.value.splice(oldIndex, 1)[0]
+            paymentMethods.value.splice(newIndex, 0, movedItem)
+            // 更新排序值
+            paymentMethods.value.forEach((item, index) => {
+              item.sortOrder = index + 1
+            })
+            // 保存排序到后端
+            await savePaymentMethodsOrder()
+          }
+        }
+      })
+    }
+  }, 500)
+}
+
+// 保存支付方式排序
+const savePaymentMethodsOrder = async () => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    for (const item of paymentMethods.value) {
+      await fetch(`/api/v1/system/payment-methods/${item.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ sortOrder: item.sortOrder })
+      })
+    }
+    ElMessage.success('排序已保存')
+  } catch (error) {
+    console.error('保存排序失败:', error)
+    ElMessage.error('保存排序失败')
+  }
+}
+
 // 初始化
-onMounted(() => {
+onMounted(async () => {
   initLocalConfig()
   loadTransferConfig()
   loadDepartmentList()
   loadDepartmentLimits()
-  loadPaymentMethods()
+  await loadPaymentMethods()
+  initPaymentMethodSortable()
 })
 </script>
 
@@ -1350,5 +1408,26 @@ onMounted(() => {
   justify-content: flex-end;
   gap: 10px;
   padding: 20px 0;
+}
+
+.drag-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f0f9ff;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #409eff;
+}
+
+.drag-handle {
+  cursor: move;
+  color: #999;
+}
+
+.drag-handle:hover {
+  color: #409eff;
 }
 </style>

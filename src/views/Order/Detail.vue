@@ -240,6 +240,17 @@
                 <div class="info-label">订单来源</div>
                 <div class="info-value">{{ getOrderSourceText(orderDetail.orderSource) }}</div>
               </div>
+              <div class="info-item" v-if="orderDetail.paymentMethod">
+                <div class="info-label">支付方式</div>
+                <div class="info-value">{{ getPaymentMethodText(orderDetail.paymentMethod) }}{{ orderDetail.paymentMethodOther ? ` (${orderDetail.paymentMethodOther})` : '' }}</div>
+              </div>
+              <!-- 自定义字段显示 -->
+              <template v-for="field in orderFieldConfigStore.customFields" :key="field.fieldKey">
+                <div class="info-item" v-if="orderDetail.customFields && orderDetail.customFields[field.fieldKey]">
+                  <div class="info-label">{{ field.fieldName }}</div>
+                  <div class="info-value">{{ formatCustomFieldValue(field, orderDetail.customFields[field.fieldKey]) }}</div>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -722,6 +733,7 @@ import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensiti
 import { SensitiveInfoType } from '@/services/permission'
 import { useUserStore } from '@/stores/user'
 import { createSafeNavigator } from '@/utils/navigation'
+import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 
 const router = useRouter()
 const route = useRoute()
@@ -731,6 +743,7 @@ const customerStore = useCustomerStore()
 const notificationStore = useNotificationStore()
 const serviceStore = useServiceStore()
 const userStore = useUserStore()
+const orderFieldConfigStore = useOrderFieldConfigStore()
 
 // 响应式数据
 const loading = ref(false)
@@ -779,7 +792,8 @@ const orderDetail = reactive({
   depositScreenshots: [],
   paymentMethod: '',
   paymentMethodOther: '',
-  remark: ''
+  remark: '',
+  customFields: {} as Record<string, any>
 })
 
 // 订单时间轴
@@ -1663,6 +1677,25 @@ const getExpressCompanyText = (code: string) => {
     'jd': '京东物流'
   }
   return companies[code] || code
+}
+
+// 格式化自定义字段值
+const formatCustomFieldValue = (field: any, value: any) => {
+  if (value === null || value === undefined) return '-'
+  if (field.fieldType === 'select' || field.fieldType === 'radio') {
+    const option = field.options?.find((opt: any) => opt.value === value)
+    return option?.label || value
+  }
+  if (field.fieldType === 'checkbox' && Array.isArray(value)) {
+    return value.map((v: string) => {
+      const option = field.options?.find((opt: any) => opt.value === v)
+      return option?.label || v
+    }).join(', ')
+  }
+  if (field.fieldType === 'date' || field.fieldType === 'datetime') {
+    return formatDateTime(value)
+  }
+  return String(value)
 }
 
 const getOrderSourceText = (source: string) => {
