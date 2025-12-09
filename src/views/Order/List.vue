@@ -382,6 +382,16 @@
               <span v-else class="no-deposit">-</span>
             </span>
 
+            <!-- 代收金额特殊处理 = 订单总额 - 定金 -->
+            <span v-else-if="column.prop === 'collectAmount'" class="amount-text">
+              ¥{{ ((row.totalAmount || 0) - (row.depositAmount || 0)).toLocaleString() }}
+            </span>
+
+            <!-- 客服微信号特殊处理 -->
+            <span v-else-if="column.prop === 'serviceWechat'">
+              {{ row.serviceWechat || '-' }}
+            </span>
+
             <!-- 支付方式特殊处理 -->
             <span v-else-if="column.prop === 'paymentMethod'">
               {{ getPaymentMethodText(row.paymentMethod, row.paymentMethodOther) }}
@@ -390,6 +400,11 @@
             <!-- 订单来源特殊处理 -->
             <span v-else-if="column.prop === 'orderSource'">
               {{ getOrderSourceText(row.orderSource) }}
+            </span>
+
+            <!-- 自定义字段特殊处理 -->
+            <span v-else-if="column.prop.startsWith('customFields.')">
+              {{ getCustomFieldValue(row, column.prop) }}
             </span>
 
             <!-- 默认处理 -->
@@ -821,8 +836,8 @@ const allOrderStatuses = computed(() => [
   { value: 'draft', label: '草稿' }
 ])
 
-// 表格列配置
-const tableColumns = ref([
+// 基础表格列配置
+const baseTableColumns = [
   { prop: 'orderNumber', label: '订单号', visible: true },
   { prop: 'customerName', label: '客户姓名', visible: true },
   { prop: 'status', label: '状态', visible: true },
@@ -838,7 +853,42 @@ const tableColumns = ref([
   { prop: 'receiverPhone', label: '收货电话', visible: false },
   { prop: 'paymentMethod', label: '支付方式', visible: false },
   { prop: 'createTime', label: '创建时间', visible: true }
-])
+]
+
+// 表格列配置（包含动态自定义字段）
+const tableColumns = ref([...baseTableColumns])
+
+// 加载自定义字段到列配置
+const loadCustomFieldColumns = async () => {
+  try {
+    const response = await request.get('/system/order-field-config')
+    if (response && response.data && response.data.customFields) {
+      const customFields = response.data.customFields
+
+      // 找到支付方式列的位置，在其后面插入自定义字段
+      const paymentMethodIndex = baseTableColumns.findIndex(col => col.prop === 'paymentMethod')
+      const insertIndex = paymentMethodIndex !== -1 ? paymentMethodIndex + 1 : baseTableColumns.length - 1
+
+      // 构建自定义字段列
+      const customFieldColumns = customFields.map((field: any) => ({
+        prop: `customFields.${field.fieldKey}`,
+        label: field.fieldName,
+        visible: false, // 默认不勾选
+        isCustomField: true,
+        fieldKey: field.fieldKey
+      }))
+
+      // 合并基础列和自定义字段列
+      const newColumns = [...baseTableColumns]
+      newColumns.splice(insertIndex, 0, ...customFieldColumns)
+      tableColumns.value = newColumns
+
+      console.log('[订单列表] 自定义字段列加载成功:', customFieldColumns.length, '个')
+    }
+  } catch (error) {
+    console.warn('加载自定义字段列失败:', error)
+  }
+}
 
 // 支付方式选项 - 从系统设置API获取
 const paymentMethodOptions = ref<Array<{ value: string; label: string }>>([
@@ -1317,6 +1367,21 @@ const getOrderSourceText = (source: string | null | undefined) => {
     'other': '其他渠道'
   }
   return sourceMap[source] || source
+}
+
+// 获取自定义字段值
+const getCustomFieldValue = (row: any, columnProp: string) => {
+  // columnProp格式: customFields.fieldKey
+  const fieldKey = columnProp.replace('customFields.', '')
+  const customFields = row.customFields || {}
+  return customFields[fieldKey] || '-'
+}
+
+// 查看客户详情
+const handleViewCustomer = (row: any) => {
+  if (row.customerId) {
+    router.push(`/customer/detail/${row.customerId}`)
+  }
 }
 
 const canEdit = (status: string, operatorId?: string, markType?: string, auditStatus?: string, isAuditTransferred?: boolean) => {
@@ -2153,6 +2218,9 @@ const handleResize = () => {
 }
 
 onMounted(async () => {
+  // 🔥 先加载自定义字段列配置（从系统设置）
+  await loadCustomFieldColumns()
+
   // 加载列设置（从数据库同步）
   loadColumnSettings()
 

@@ -2010,7 +2010,10 @@ const transferToAudit = () => {
   })
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 🔥 加载自定义字段配置（从数据库）
+  await orderFieldConfigStore.loadConfig()
+
   // 注意：不要在这里调用 initializeWithMockData
   // createPersistentStore 会自动从 localStorage 恢复数据
   // 如果数据为空，说明确实没有数据，不应该强制初始化
