@@ -567,6 +567,7 @@ const paymentMethodDialogVisible = ref(false)
 const isEditingPaymentMethod = ref(false)
 const savingPaymentMethod = ref(false)
 const editingPaymentMethodId = ref('')
+const isPaymentMethodsLoaded = ref(false) // 标志位：防止加载时触发change事件
 const paymentMethodForm = reactive({
   label: '',
   value: '',
@@ -576,6 +577,7 @@ const paymentMethodForm = reactive({
 // 加载支付方式列表
 const loadPaymentMethods = async () => {
   try {
+    isPaymentMethodsLoaded.value = false // 开始加载，禁用change事件
     loadingPaymentMethods.value = true
     const token = localStorage.getItem('auth_token')
     const response = await fetch('/api/v1/system/payment-methods/all', {
@@ -589,6 +591,10 @@ const loadPaymentMethods = async () => {
     console.error('加载支付方式失败:', error)
   } finally {
     loadingPaymentMethods.value = false
+    // 延迟设置标志位，确保数据渲染完成后再启用change事件
+    setTimeout(() => {
+      isPaymentMethodsLoaded.value = true
+    }, 100)
   }
 }
 
@@ -652,6 +658,10 @@ const savePaymentMethod = async () => {
 
 // 切换支付方式状态
 const togglePaymentMethod = async (row: any) => {
+  // 如果数据还没加载完成，不触发API调用
+  if (!isPaymentMethodsLoaded.value) {
+    return
+  }
   try {
     row.toggling = true
     const token = localStorage.getItem('auth_token')

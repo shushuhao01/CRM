@@ -1869,7 +1869,8 @@ const loadOrderDetail = async () => {
       depositScreenshots: order.depositScreenshots || [],
       paymentMethod: order.paymentMethod || '',
       paymentMethodOther: order.paymentMethodOther || '',
-      remark: order.remark
+      remark: order.remark,
+      customFields: order.customFields || {}
     })
 
     // 加载订单状态轨迹
