@@ -1306,7 +1306,7 @@ export const useOrderStore = createPersistentStore('order', () => {
   let lastAPILoadTime = 0
   const API_CACHE_DURATION = 2000 // 2秒内不重复请求
 
-  const loadOrdersFromAPI = async (forceRefresh = false) => {
+  const loadOrdersFromAPI = async (forceRefresh = false, params?: { page?: number; pageSize?: number; status?: string }) => {
     // 检测是否为生产环境
     const hostname = window.location.hostname
     const isProdEnv = (
@@ -1327,7 +1327,12 @@ export const useOrderStore = createPersistentStore('order', () => {
     try {
       const { orderApi } = await import('@/api/order')
       console.log('[OrderStore] 正在从API加载订单列表...')
-      const response = await orderApi.getList({ page: 1, pageSize: 100 })
+      // 使用传入的分页参数，默认20条
+      const response = await orderApi.getList({
+        page: params?.page || 1,
+        pageSize: params?.pageSize || 20,
+        status: params?.status
+      })
 
       if (response && response.data && response.data.list) {
         orders.value = response.data.list

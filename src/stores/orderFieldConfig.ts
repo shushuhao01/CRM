@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { isDevelopment } from '@/utils/env'
 
 // 字段类型定义
 export type FieldType = 'text' | 'number' | 'date' | 'datetime' | 'select' | 'radio' | 'checkbox'
@@ -72,50 +71,28 @@ export const useOrderFieldConfigStore = defineStore('orderFieldConfig', () => {
   // 加载配置
   const loadConfig = async () => {
     try {
-      if (isDevelopment()) {
-        // 开发环境从localStorage加载
-        const saved = localStorage.getItem('crm_order_field_config')
-        if (saved) {
-          config.value = JSON.parse(saved)
-        } else {
-          // 首次使用,保存默认配置
-          saveConfig()
-        }
-      } else {
-        // 生产环境从API加载
-        try {
-          const { api } = await import('@/api/request')
-          const response = await api.get('/system/order-field-config')
-          if (response.data) {
-            config.value = response.data
-          }
-        } catch (error) {
-          console.warn('从API加载订单字段配置失败，使用默认配置:', error)
-        }
+      loading.value = true
+      // 始终从API加载配置
+      const { api } = await import('@/api/request')
+      const response = await api.get('/system/order-field-config')
+      if (response.data) {
+        config.value = response.data
       }
     } catch (error) {
-      console.error('加载订单字段配置失败:', error)
+      console.warn('从API加载订单字段配置失败，使用默认配置:', error)
+    } finally {
+      loading.value = false
     }
   }
 
   // 保存配置
   const saveConfig = async () => {
     try {
-      if (isDevelopment()) {
-        // 开发环境保存到localStorage
-        localStorage.setItem('crm_order_field_config', JSON.stringify(config.value))
-      } else {
-        // 生产环境保存到API
-        try {
-          const { api } = await import('@/api/request')
-          await api.put('/system/order-field-config', config.value)
-        } catch (error) {
-          console.error('保存订单字段配置到API失败:', error)
-          throw error
-        }
-      }
+      // 始终保存到API
+      const { api } = await import('@/api/request')
+      await api.put('/system/order-field-config', config.value)
     } catch (error) {
-      console.error('保存订单字段配置失败:', error)
+      console.error('保存订单字段配置到API失败:', error)
       throw error
     }
   }
