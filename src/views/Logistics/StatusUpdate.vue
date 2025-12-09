@@ -7,7 +7,7 @@
         <h3>数据汇总</h3>
         <div class="auto-refresh-controls">
           <el-tooltip content="切换自动刷新">
-            <el-button 
+            <el-button
               :type="isAutoRefreshEnabled ? 'success' : 'info'"
               :icon="isAutoRefreshEnabled ? 'Refresh' : 'VideoPause'"
               circle
@@ -16,7 +16,7 @@
             />
           </el-tooltip>
           <el-tooltip content="手动刷新">
-            <el-button 
+            <el-button
               type="primary"
               icon="Refresh"
               circle
@@ -88,8 +88,8 @@
 
     <!-- 快捷筛选 -->
     <div class="quick-filters">
-      <el-button 
-        v-for="filter in quickFilters" 
+      <el-button
+        v-for="filter in quickFilters"
         :key="filter.value"
         :type="activeQuickFilter === filter.value ? 'primary' : ''"
         @click="handleQuickFilter(filter.value)"
@@ -185,8 +185,8 @@
       >
         <template #empty>
           <div class="empty-data">
-            <el-empty 
-              :description="getEmptyDescription()" 
+            <el-empty
+              :description="getEmptyDescription()"
               :image-size="120"
             />
           </div>
@@ -209,8 +209,8 @@
         </el-table-column>
         <el-table-column prop="trackingNo" label="快递单号" width="150">
           <template #default="{ row }">
-            <el-button 
-              type="text" 
+            <el-button
+              type="text"
               @click="handleViewTracking(row)"
               v-if="row.trackingNo"
             >
@@ -221,8 +221,8 @@
         </el-table-column>
         <el-table-column prop="latestUpdate" label="物流最新动态" width="200">
           <template #default="{ row }">
-            <el-tooltip 
-              :content="row.latestUpdate" 
+            <el-tooltip
+              :content="row.latestUpdate"
               placement="top"
               v-if="row.latestUpdate"
             >
@@ -238,17 +238,17 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="viewOrder(row)">查看</el-button>
-            <el-button 
-              size="small" 
-              type="primary" 
+            <el-button
+              size="small"
+              type="primary"
               @click="updateStatus(row)"
               v-if="activeTab === 'pending'"
             >
               更新状态
             </el-button>
-            <el-button 
-              size="small" 
-              type="warning" 
+            <el-button
+              size="small"
+              type="warning"
               @click="setTodo(row)"
               v-if="activeTab === 'pending'"
             >
@@ -393,7 +393,7 @@ const handleQuickFilter = (value: string) => {
   // 根据快捷筛选设置日期范围
   const today = new Date()
   const formatDate = (date: Date) => date.toISOString().split('T')[0]
-  
+
   switch (value) {
     case 'today':
       dateRange.value = [formatDate(today), formatDate(today)]
@@ -497,12 +497,12 @@ const setTodo = (row: any) => {
 
 const handleUpdateSuccess = (updatedInfo?: { orders: any[], newStatus: string }) => {
   ElMessage.success('状态更新成功')
-  
+
   // 重新加载当前标签页的数据
   loadData()
   loadSummaryData(true) // 重新加载汇总数据并显示动画
   selectedOrders.value = []
-  
+
   // 如果有更新的订单信息，并且当前在待更新标签页，显示提示
   if (updatedInfo && activeTab.value === 'pending') {
     const statusText = getStatusText(updatedInfo.newStatus)
@@ -513,10 +513,10 @@ const handleUpdateSuccess = (updatedInfo?: { orders: any[], newStatus: string })
       ElMessage.info(`${orderCount}个订单已更新为"${statusText}"状态，可在"已更新"标签页查看`)
     }
   }
-  
+
   // 通知其他页面数据已更新
   window.dispatchEvent(new CustomEvent('orderStatusUpdated', {
-    detail: { 
+    detail: {
       timestamp: Date.now(),
       updatedOrders: updatedInfo?.orders || [],
       newStatus: updatedInfo?.newStatus
@@ -528,7 +528,7 @@ const handleTodoSuccess = () => {
   ElMessage.success('待办设置成功')
   loadData() // 重新加载订单列表
   loadSummaryData(true) // 重新加载汇总数据并显示动画
-  
+
   // 通知其他页面数据已更新
   window.dispatchEvent(new CustomEvent('todoStatusUpdated', {
     detail: { timestamp: Date.now() }
@@ -553,11 +553,11 @@ const handleDetailSetTodo = (order: any) => {
 // 处理订单发货事件
 const handleOrderShipped = (event: CustomEvent) => {
   console.log('检测到订单发货事件:', event.detail)
-  
+
   // 刷新数据以显示新发货的订单
   loadData()
   loadSummaryData(true)
-  
+
   // 如果当前在待更新标签页，显示提示
   if (activeTab.value === 'pending') {
     ElMessage.info('检测到新的发货订单，已自动刷新列表')
@@ -568,12 +568,12 @@ const handleOrderShipped = (event: CustomEvent) => {
 const handleOrderStatusUpdate = (event: CustomEvent) => {
   const { orderId, oldStatus, newStatus, operator } = event.detail
   console.log('检测到订单状态更新:', { orderId, oldStatus, newStatus, operator })
-  
+
   // 如果订单状态变更为已发货，则刷新物流状态页面
   if (newStatus === 'shipped') {
     loadData()
     loadSummaryData(true)
-    
+
     // 显示提示信息
     ElMessage.success(`订单 ${orderId} 已发货，已同步到物流状态列表`)
   }
@@ -587,7 +587,7 @@ const handleOrderStatusUpdate = (event: CustomEvent) => {
 // 处理其他页面的订单状态更新事件
 const handleExternalOrderStatusUpdate = (event: CustomEvent) => {
   console.log('检测到外部订单状态更新:', event.detail)
-  
+
   // 刷新数据
   loadData()
   loadSummaryData(true)
@@ -614,7 +614,7 @@ const startAutoRefresh = () => {
   if (autoRefreshTimer.value) {
     clearInterval(autoRefreshTimer.value)
   }
-  
+
   if (isAutoRefreshEnabled.value) {
     autoRefreshTimer.value = setInterval(() => {
       loadSummaryData(true) // 自动刷新时显示动画
@@ -645,11 +645,11 @@ const loadData = async (showMessage = false) => {
   try {
     // 模拟API调用延迟
     await new Promise(resolve => setTimeout(resolve, 300))
-    
+
     // 从订单store获取已发货且有快递单号的订单，应用数据范围控制
     // 使用getOrders()获取经过权限过滤的订单
     const allOrders = orderStore.getOrders()
-    
+
     // 筛选已发货的订单（包括shipped和delivered状态），且有物流信息
     // 注意：trackingNumber 和 expressNo 都可能存在，expressCompany 也可能为空字符串，需要检查
     let shippedOrders = allOrders.filter(order => {
@@ -658,7 +658,7 @@ const loadData = async (showMessage = false) => {
       if (!isShipped) {
         return false
       }
-      
+
       // 检查是否有物流单号（trackingNumber 或 expressNo）
       const trackingNo = order.trackingNumber || order.expressNo
       const hasTrackingNumber = !!(trackingNo && trackingNo.trim() !== '')
@@ -666,14 +666,14 @@ const loadData = async (showMessage = false) => {
         console.log(`[状态更新] 订单 ${order.orderNumber} 没有物流单号，跳过`)
         return false
       }
-      
+
       // 检查是否有快递公司（expressCompany 不能为空字符串）
       const hasExpressCompany = order.expressCompany && order.expressCompany.trim() !== ''
       if (!hasExpressCompany) {
         console.log(`[状态更新] 订单 ${order.orderNumber} 没有快递公司，跳过`)
         return false
       }
-      
+
       console.log(`[状态更新] ✅ 订单 ${order.orderNumber} 通过筛选`, {
         status: order.status,
         trackingNumber: trackingNo,
@@ -681,9 +681,9 @@ const loadData = async (showMessage = false) => {
       })
       return true
     })
-    
+
     console.log(`[状态更新] 筛选出 ${shippedOrders.length} 个已发货订单（总订单数：${allOrders.length}）`)
-    
+
     // 根据tab筛选
     if (activeTab.value === 'pending') {
       // 待更新：已发货但物流状态还是shipped或pending或未设置的订单
@@ -694,7 +694,7 @@ const loadData = async (showMessage = false) => {
       })
     } else if (activeTab.value === 'updated') {
       // 已更新：物流状态已更新的订单（delivered, rejected等）
-      shippedOrders = shippedOrders.filter(order => 
+      shippedOrders = shippedOrders.filter(order =>
         order.logisticsStatus && ['delivered', 'rejected', 'returned', 'abnormal'].includes(order.logisticsStatus)
       )
     } else if (activeTab.value === 'todo') {
@@ -702,7 +702,7 @@ const loadData = async (showMessage = false) => {
       // 暂时使用物流状态为todo的订单
       shippedOrders = shippedOrders.filter(order => order.logisticsStatus === 'todo')
     }
-    
+
     // 按发货时间筛选（如果有日期范围参数）
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
       const [startDate, endDate] = dateRange.value
@@ -720,32 +720,32 @@ const loadData = async (showMessage = false) => {
         return shippingDate <= endDate
       })
     }
-    
+
     // 关键词搜索
     if (searchKeyword.value) {
       const keyword = searchKeyword.value.toLowerCase()
-      shippedOrders = shippedOrders.filter(order => 
+      shippedOrders = shippedOrders.filter(order =>
         order.orderNumber.toLowerCase().includes(keyword) ||
         order.customerName.toLowerCase().includes(keyword) ||
         (order.trackingNumber && order.trackingNumber.toLowerCase().includes(keyword)) ||
         (order.expressNo && order.expressNo.toLowerCase().includes(keyword))
       )
     }
-    
+
     // 状态筛选
     if (statusFilter.value) {
-      shippedOrders = shippedOrders.filter(order => 
+      shippedOrders = shippedOrders.filter(order =>
         order.logisticsStatus === statusFilter.value
       )
     }
-    
+
     // 按发货时间倒序排序（最新的在上面）
     shippedOrders.sort((a, b) => {
       const timeA = new Date(a.shippingTime || a.shipTime || a.createTime || 0).getTime()
       const timeB = new Date(b.shippingTime || b.shipTime || b.createTime || 0).getTime()
       return timeB - timeA // 倒序：最新的在上面
     })
-    
+
     // 转换为物流状态格式
     const logisticsData = shippedOrders.map((order, index) => ({
       id: order.id,
@@ -756,10 +756,10 @@ const loadData = async (showMessage = false) => {
       amount: order.totalAmount,
       trackingNo: order.trackingNumber || order.expressNo || '',
       logisticsCompany: order.expressCompany || '',
-      latestUpdate: order.logisticsHistory && order.logisticsHistory.length > 0 
-        ? order.logisticsHistory[order.logisticsHistory.length - 1].description 
-        : (order.statusHistory && order.statusHistory.length > 0 
-          ? order.statusHistory[order.statusHistory.length - 1].description 
+      latestUpdate: order.logisticsHistory && order.logisticsHistory.length > 0
+        ? order.logisticsHistory[order.logisticsHistory.length - 1].description
+        : (order.statusHistory && order.statusHistory.length > 0
+          ? order.statusHistory[order.statusHistory.length - 1].description
           : ''),
       assignedTo: order.salesPersonId || order.createdBy || '',
       orderDate: order.createTime.split(' ')[0],
@@ -769,13 +769,13 @@ const loadData = async (showMessage = false) => {
       quantity: order.products?.reduce((sum: number, p: any) => sum + p.quantity, 0) || 1,
       remark: order.remark || ''
     }))
-    
+
     // 分页处理
     const startIndex = (pagination.currentPage - 1) * pagination.pageSize
     const endIndex = startIndex + pagination.pageSize
     orderList.value = logisticsData.slice(startIndex, endIndex)
     pagination.total = logisticsData.length
-    
+
     if (showMessage) {
       ElMessage.success('数据刷新成功')
     }
@@ -783,7 +783,7 @@ const loadData = async (showMessage = false) => {
     console.error('订单列表加载失败:', error)
     orderList.value = []
     pagination.total = 0
-    
+
     if (showMessage) {
       ElMessage.error('数据加载失败，请检查网络连接或联系管理员')
     }
@@ -798,7 +798,7 @@ const loadSummaryData = async (showAnimation = false) => {
   try {
     // 从订单store获取已发货且有快递单号的订单
     const allOrders = orderStore.getOrders()
-    
+
     // 筛选已发货的订单（包括shipped和delivered状态），且有物流信息
     let shippedOrders = allOrders.filter(order => {
       // 检查订单状态是否为已发货
@@ -806,19 +806,19 @@ const loadSummaryData = async (showAnimation = false) => {
       if (!isShipped) {
         return false
       }
-      
+
       // 检查是否有物流单号
       const hasTrackingNumber = !!(order.trackingNumber || order.expressNo)
       if (!hasTrackingNumber) {
         return false
       }
-      
+
       // 检查是否有快递公司（不能为空字符串）
       const hasExpressCompany = order.expressCompany && order.expressCompany.trim() !== ''
-      
+
       return hasExpressCompany
     })
-    
+
     // 按发货时间筛选（如果有日期范围参数）
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
       const [startDate, endDate] = dateRange.value
@@ -835,26 +835,26 @@ const loadSummaryData = async (showAnimation = false) => {
         return shippingDate <= endDate
       })
     }
-    
+
     // 计算各状态的数量
     const pending = shippedOrders.filter(order => {
       const logisticsStatus = order.logisticsStatus
       // 如果物流状态未设置，或者物流状态是shipped/pending，则计入待更新
       return !logisticsStatus || logisticsStatus === 'shipped' || logisticsStatus === 'pending' || logisticsStatus === ''
     }).length
-    const updated = shippedOrders.filter(order => 
+    const updated = shippedOrders.filter(order =>
       order.logisticsStatus && ['delivered', 'rejected', 'returned', 'abnormal'].includes(order.logisticsStatus)
     ).length
     const todo = shippedOrders.filter(order => order.logisticsStatus === 'todo').length
     const total = shippedOrders.length
-    
+
     const newSummaryData = {
       pending,
       updated,
       todo,
       total
     }
-    
+
     // 如果需要动画效果，先清零再更新
     if (showAnimation) {
       const oldData = { ...summaryData }
@@ -862,7 +862,7 @@ const loadSummaryData = async (showAnimation = false) => {
       summaryData.updated = 0
       summaryData.todo = 0
       summaryData.total = 0
-      
+
       // 延迟更新以显示动画
       setTimeout(() => {
         animateNumber('pending', oldData.pending, newSummaryData.pending)
@@ -891,7 +891,7 @@ const animateNumber = (key: keyof typeof summaryData, from: number, to: number) 
   const steps = 30
   const stepValue = (to - from) / steps
   let currentStep = 0
-  
+
   const timer = setInterval(() => {
     currentStep++
     if (currentStep >= steps) {
@@ -948,11 +948,20 @@ const getStatusType = (status: string) => {
 }
 
 // 初始化
-onMounted(() => {
+onMounted(async () => {
+  // 🔥 确保从API加载最新订单数据
+  console.log('[状态更新] 页面初始化，从API加载订单数据...')
+  try {
+    await orderStore.loadOrdersFromAPI(true) // 强制刷新
+    console.log('[状态更新] API数据加载完成，订单总数:', orderStore.orders.length)
+  } catch (error) {
+    console.error('[状态更新] API数据加载失败:', error)
+  }
+
   handleQuickFilter('today') // 默认显示今日数据
   loadSummaryData()
   startAutoRefresh() // 启动自动刷新
-  
+
   // 监听订单发货事件
   window.addEventListener('orderStatusUpdated', handleExternalOrderStatusUpdate)
   window.addEventListener('order-status-update', handleOrderStatusUpdate)
@@ -963,7 +972,7 @@ onMounted(() => {
 // 组件卸载时清理定时器和事件监听器
 onUnmounted(() => {
   stopAutoRefresh()
-  
+
   // 清理事件监听器
   window.removeEventListener('orderStatusUpdated', handleExternalOrderStatusUpdate)
   window.removeEventListener('order-status-update', handleOrderStatusUpdate)

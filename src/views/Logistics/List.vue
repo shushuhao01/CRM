@@ -53,12 +53,14 @@
             placeholder="请选择物流公司"
             clearable
             style="width: 150px"
+            :loading="loadingCompanies"
           >
-            <el-option label="顺丰速运" value="sf" />
-            <el-option label="圆通速递" value="yt" />
-            <el-option label="中通快递" value="zt" />
-            <el-option label="申通快递" value="st" />
-            <el-option label="韵达速递" value="yd" />
+            <el-option
+              v-for="company in logisticsCompanies"
+              :key="company.code"
+              :label="company.name"
+              :value="company.code"
+            />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -198,6 +200,55 @@ const userStore = useUserStore()
 const loading = ref(false)
 const total = ref(0)
 const selectedRows = ref<LogisticsItem[]>([])
+
+// 物流公司列表 - 从API获取
+const logisticsCompanies = ref<Array<{ code: string; name: string }>>([])
+const loadingCompanies = ref(false)
+
+// 从API加载物流公司列表
+const loadLogisticsCompanies = async () => {
+  loadingCompanies.value = true
+  try {
+    const { apiService } = await import('@/services/apiService')
+    const response = await apiService.get('/logistics/companies/active')
+
+    if (response && Array.isArray(response)) {
+      logisticsCompanies.value = response.map((item: { code: string; name: string }) => ({
+        code: item.code,
+        name: item.name
+      }))
+      console.log('[物流列表] 从API加载物流公司列表成功:', logisticsCompanies.value.length, '个')
+    } else if (response && response.data && Array.isArray(response.data)) {
+      logisticsCompanies.value = response.data.map((item: { code: string; name: string }) => ({
+        code: item.code,
+        name: item.name
+      }))
+      console.log('[物流列表] 从API加载物流公司列表成功:', logisticsCompanies.value.length, '个')
+    } else {
+      console.warn('[物流列表] API返回数据格式异常，使用默认列表')
+      useDefaultCompanies()
+    }
+  } catch (error) {
+    console.error('[物流列表] 加载物流公司列表失败:', error)
+    useDefaultCompanies()
+  } finally {
+    loadingCompanies.value = false
+  }
+}
+
+// 使用默认物流公司列表（API失败时的备用）
+const useDefaultCompanies = () => {
+  logisticsCompanies.value = [
+    { code: 'SF', name: '顺丰速运' },
+    { code: 'YTO', name: '圆通速递' },
+    { code: 'ZTO', name: '中通快递' },
+    { code: 'STO', name: '申通快递' },
+    { code: 'YD', name: '韵达速递' },
+    { code: 'HTKY', name: '百世快递' },
+    { code: 'JD', name: '京东物流' },
+    { code: 'EMS', name: '中国邮政' }
+  ]
+}
 
 // 搜索表单
 const searchForm = reactive({
@@ -586,7 +637,19 @@ const handleRefreshLogisticsList = () => {
   loadData()
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 🔥 加载物流公司列表
+  await loadLogisticsCompanies()
+
+  // 🔥 确保从API加载最新订单数据
+  console.log('[物流列表] 页面初始化，从API加载订单数据...')
+  try {
+    await orderStore.loadOrdersFromAPI(true) // 强制刷新
+    console.log('[物流列表] API数据加载完成，订单总数:', orderStore.orders.length)
+  } catch (error) {
+    console.error('[物流列表] API数据加载失败:', error)
+  }
+
   loadData()
 
   // 监听订单状态变化，当有新的发货订单时自动刷新列表

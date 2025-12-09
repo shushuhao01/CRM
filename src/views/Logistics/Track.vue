@@ -243,17 +243,54 @@ const trackingResult = reactive({
 // 物流轨迹
 const trackingHistory = ref([])
 
-// 物流公司列表
-const logisticsCompanies = ref([
-  { code: 'SF', name: '顺丰速运' },
-  { code: 'YTO', name: '圆通速递' },
-  { code: 'ZTO', name: '中通快递' },
-  { code: 'STO', name: '申通快递' },
-  { code: 'YD', name: '韵达速递' },
-  { code: 'HTKY', name: '百世快递' },
-  { code: 'JD', name: '京东物流' },
-  { code: 'EMS', name: '中国邮政' }
-])
+// 物流公司列表 - 从API获取
+const logisticsCompanies = ref<Array<{ code: string; name: string }>>([])
+const loadingCompanies = ref(false)
+
+// 从API加载物流公司列表
+const loadLogisticsCompanies = async () => {
+  loadingCompanies.value = true
+  try {
+    const { apiService } = await import('@/services/apiService')
+    const response = await apiService.get('/logistics/companies/active')
+
+    if (response && Array.isArray(response)) {
+      logisticsCompanies.value = response.map((item: { code: string; name: string }) => ({
+        code: item.code,
+        name: item.name
+      }))
+      console.log('[物流跟踪] 从API加载物流公司列表成功:', logisticsCompanies.value.length, '个')
+    } else if (response && response.data && Array.isArray(response.data)) {
+      logisticsCompanies.value = response.data.map((item: { code: string; name: string }) => ({
+        code: item.code,
+        name: item.name
+      }))
+      console.log('[物流跟踪] 从API加载物流公司列表成功:', logisticsCompanies.value.length, '个')
+    } else {
+      console.warn('[物流跟踪] API返回数据格式异常，使用默认列表')
+      useDefaultCompanies()
+    }
+  } catch (error) {
+    console.error('[物流跟踪] 加载物流公司列表失败:', error)
+    useDefaultCompanies()
+  } finally {
+    loadingCompanies.value = false
+  }
+}
+
+// 使用默认物流公司列表（API失败时的备用）
+const useDefaultCompanies = () => {
+  logisticsCompanies.value = [
+    { code: 'SF', name: '顺丰速运' },
+    { code: 'YTO', name: '圆通速递' },
+    { code: 'ZTO', name: '中通快递' },
+    { code: 'STO', name: '申通快递' },
+    { code: 'YD', name: '韵达速递' },
+    { code: 'HTKY', name: '百世快递' },
+    { code: 'JD', name: '京东物流' },
+    { code: 'EMS', name: '中国邮政' }
+  ]
+}
 
 /**
  * 获取状态颜色
@@ -346,8 +383,55 @@ const handleSearch = async () => {
 
   try {
     const trackingNum = searchForm.trackingNo.trim()
+    const companyCode = searchForm.company || 'auto'
 
-    // 从订单store中查找对应的订单，应用数据范围控制
+    // 🔥 首先尝试调用后端API查询物流轨迹
+    try {
+      const { apiService } = await import('@/services/apiService')
+      const response = await apiService.get('/logistics/trace', {
+        params: {
+          trackingNo: trackingNum,
+          companyCode: companyCode
+        }
+      })
+
+      if (response && response.data) {
+        const data = response.data
+
+        // 使用API返回的数据
+        Object.assign(trackingResult, {
+          trackingNo: data.trackingNo || trackingNum,
+          companyName: data.companyName || getCompanyName(data.companyCode) || companyCode,
+          status: data.status || 'shipped',
+          receiverName: data.order?.customer?.name || data.receiverName || '',
+          receiverPhone: data.order?.customer?.phone || data.receiverPhone || '',
+          receiverAddress: data.order?.receiverAddress || data.receiverAddress || '',
+          shipTime: data.createdAt || data.shipTime || '',
+          estimatedTime: data.estimatedTime || ''
+        })
+
+        // 使用API返回的轨迹数据
+        if (data.traces && Array.isArray(data.traces)) {
+          trackingHistory.value = data.traces.map((trace: any) => ({
+            time: trace.time || trace.createdAt,
+            status: trace.status,
+            description: trace.description || trace.content,
+            location: trace.location || '',
+            operator: trace.operator || '',
+            type: getTraceType(trace.status)
+          }))
+        }
+
+        if (!isUnmounted.value) {
+          ElMessage.success('查询成功')
+        }
+        return
+      }
+    } catch (apiError) {
+      console.log('[物流跟踪] API查询失败，尝试从本地订单数据查询:', apiError)
+    }
+
+    // 🔥 如果API查询失败，从本地订单数据查询
     const accessibleOrders = applyDataScopeControl(orderStore.orders)
 
     // 支持多种物流单号字段查询
@@ -357,28 +441,8 @@ const handleSearch = async () => {
       o.expressNumber === trackingNum
     )
 
-    // 如果在订单中没找到,尝试从localStorage的其他数据源查找
     if (!order) {
-      const logistics = JSON.parse(localStorage.getItem('crm_logistics') || '[]')
-      const shipments = JSON.parse(localStorage.getItem('crm_shipments') || '[]')
-
-      // 在物流记录中查找
-      const logisticsRecord = logistics.find(l => l.trackingNumber === trackingNum)
-      if (logisticsRecord) {
-        order = accessibleOrders.find(o => o.orderNumber === logisticsRecord.orderNumber)
-      }
-
-      // 在发货记录中查找
-      if (!order) {
-        const shipmentRecord = shipments.find(s => s.trackingNumber === trackingNum)
-        if (shipmentRecord) {
-          order = accessibleOrders.find(o => o.orderNumber === shipmentRecord.orderNumber)
-        }
-      }
-    }
-
-    if (!order) {
-      ElMessage.warning('未找到该快递单号对应的订单')
+      ElMessage.warning('未找到该快递单号对应的订单，请确认单号是否正确')
       loading.value = false
       return
     }
@@ -393,15 +457,6 @@ const handleSearch = async () => {
       return
     }
 
-    // 模拟API调用延迟
-    await new Promise(resolve => {
-      const timeoutId = setTimeout(() => {
-        timeoutIds.delete(timeoutId)
-        resolve(undefined)
-      }, 1000)
-      timeoutIds.add(timeoutId)
-    })
-
     // 检查组件是否已卸载
     if (isUnmounted.value) return
 
@@ -411,15 +466,14 @@ const handleSearch = async () => {
       companyName: getCompanyName(actualCompany) || actualCompany,
       status: order.status,
       receiverName: order.customerName,
-      receiverPhone: order.phone || order.customerPhone || '138****1234',
-      receiverAddress: order.address || order.shippingAddress || order.deliveryAddress || '地址未填写',
+      receiverPhone: order.phone || order.customerPhone || '',
+      receiverAddress: order.address || order.shippingAddress || order.deliveryAddress || '',
       shipTime: order.shipTime || order.shippedAt || order.deliveryTime || order.createTime,
       estimatedTime: order.estimatedDeliveryTime || ''
     })
 
     // 生成基于订单状态的物流轨迹
-    const history = []
-    const currentTime = new Date()
+    const history: any[] = []
 
     // 根据订单状态生成相应的物流轨迹
     if (order.status === 'shipped' || order.status === 'delivered') {
@@ -427,7 +481,7 @@ const handleSearch = async () => {
       history.push({
         time: order.shipTime || order.shippedAt || order.deliveryTime || order.createTime,
         status: '已发货',
-        description: `快件已从${actualCompany}发出，快递单号：${actualTrackingNo}`,
+        description: `快件已从${getCompanyName(actualCompany) || actualCompany}发出，快递单号：${actualTrackingNo}`,
         location: '发货地',
         operator: '物流员',
         type: 'warning'
@@ -462,7 +516,7 @@ const handleSearch = async () => {
         history.unshift({
           time: deliveryTime.toISOString().replace('T', ' ').substring(0, 19),
           status: '已签收',
-          description: `您的快件已由${order.customerName}签收，感谢使用${actualCompany}`,
+          description: `您的快件已由${order.customerName}签收，感谢使用${getCompanyName(actualCompany) || actualCompany}`,
           location: receiverAddr,
           operator: order.customerName,
           type: 'success'
@@ -484,6 +538,25 @@ const handleSearch = async () => {
       loading.value = false
     }
   }
+}
+
+/**
+ * 获取轨迹类型
+ */
+const getTraceType = (status: string) => {
+  const typeMap: Record<string, string> = {
+    '已签收': 'success',
+    '派送中': 'primary',
+    '运输中': 'info',
+    '已发货': 'warning',
+    '异常': 'danger',
+    'delivered': 'success',
+    'delivering': 'primary',
+    'in_transit': 'info',
+    'shipped': 'warning',
+    'exception': 'danger'
+  }
+  return typeMap[status] || 'info'
 }
 
 /**
@@ -608,7 +681,19 @@ const getCompanyName = (code: string) => {
 }
 
 // 生命周期钩子
-onMounted(() => {
+onMounted(async () => {
+  // 🔥 从API加载物流公司列表
+  await loadLogisticsCompanies()
+
+  // 🔥 确保从API加载最新订单数据
+  console.log('[物流跟踪] 页面初始化，从API加载订单数据...')
+  try {
+    await orderStore.loadOrdersFromAPI(true) // 强制刷新
+    console.log('[物流跟踪] API数据加载完成，订单总数:', orderStore.orders.length)
+  } catch (error) {
+    console.error('[物流跟踪] API数据加载失败:', error)
+  }
+
   // 启动物流同步服务
   orderStore.setupLogisticsEventListener()
   orderStore.startLogisticsAutoSync()
