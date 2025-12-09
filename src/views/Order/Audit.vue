@@ -506,6 +506,38 @@
                 </div>
               </div>
             </el-col>
+            <!-- 定金截图 -->
+            <el-col :span="24" v-if="currentOrder.depositScreenshots && currentOrder.depositScreenshots.length > 0">
+              <div class="info-item deposit-screenshots-section">
+                <span class="label">定金截图：</span>
+                <div class="screenshot-gallery deposit-gallery">
+                  <div
+                    v-for="(screenshot, index) in currentOrder.depositScreenshots"
+                    :key="index"
+                    class="screenshot-item deposit-screenshot"
+                    @click="handleViewDepositScreenshot(currentOrder.depositScreenshots, index)"
+                  >
+                    <el-image
+                      :src="screenshot"
+                      fit="cover"
+                      class="screenshot-thumbnail"
+                      :preview-disabled="true"
+                    >
+                      <template #error>
+                        <div class="image-error">
+                          <el-icon><Picture /></el-icon>
+                          <span>加载失败</span>
+                        </div>
+                      </template>
+                    </el-image>
+                    <div class="screenshot-name">定金截图{{ index + 1 }}</div>
+                    <div class="screenshot-overlay">
+                      <el-icon class="view-icon"><ZoomIn /></el-icon>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </el-col>
           </el-row>
         </el-card>
 
@@ -912,6 +944,7 @@ interface AuditOrder {
   auditRemark?: string
   deliveryAddress: string
   paymentScreenshots: PaymentScreenshot[]
+  depositScreenshots?: string[]  // 定金截图
   auditHistory: AuditHistory[]
 }
 
@@ -1640,6 +1673,15 @@ const handleViewScreenshot = (screenshots: PaymentScreenshot[], index: number) =
 }
 
 /**
+ * 查看定金截图
+ */
+const handleViewDepositScreenshot = (screenshots: string[], index: number) => {
+  currentImageList.value = screenshots
+  currentImageIndex.value = index
+  imageViewerVisible.value = true
+}
+
+/**
  * 关闭图片查看器
  */
 const handleImageViewerClose = () => {
@@ -2212,6 +2254,7 @@ const loadOrderList = async () => {
         }
         return []
       })(),
+      depositScreenshots: order.depositScreenshots || (order.depositScreenshot ? [order.depositScreenshot] : []),
       auditHistory: [
         {
           id: 1,
@@ -2555,7 +2598,8 @@ const loadOrderList = async () => {
             }))
           }
           return order.depositScreenshot ? [{ id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }] : []
-        })()
+        })(),
+        depositScreenshots: order.depositScreenshots || (order.depositScreenshot ? [order.depositScreenshot] : [])
       }))
 
     rejectedOrders.value = allOrdersWithAudit
@@ -2590,7 +2634,8 @@ const loadOrderList = async () => {
             }))
           }
           return order.depositScreenshot ? [{ id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }] : []
-        })()
+        })(),
+        depositScreenshots: order.depositScreenshots || (order.depositScreenshot ? [order.depositScreenshot] : [])
       }))
 
     console.log(`[订单审核] 最终数据统计：待审核=${pendingOrders.value.length}, 已通过=${approvedOrders.value.length}, 已拒绝=${rejectedOrders.value.length}`)
