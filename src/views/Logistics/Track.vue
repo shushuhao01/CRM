@@ -435,7 +435,7 @@ const handleSearch = async () => {
     const accessibleOrders = applyDataScopeControl(orderStore.orders)
 
     // 支持多种物流单号字段查询
-    let order = accessibleOrders.find(o =>
+    const order = accessibleOrders.find(o =>
       o.expressNo === trackingNum ||
       o.trackingNumber === trackingNum ||
       o.expressNumber === trackingNum
