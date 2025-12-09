@@ -322,6 +322,7 @@ CREATE TABLE `orders` (
   `status` VARCHAR(20) DEFAULT 'pending' COMMENT '订单状态',
   `payment_status` VARCHAR(20) DEFAULT 'unpaid' COMMENT '支付状态',
   `payment_method` VARCHAR(50) COMMENT '支付方式',
+  `payment_method_other` VARCHAR(100) NULL COMMENT '其他支付方式说明',
   `payment_time` TIMESTAMP NULL COMMENT '支付时间',
   `shipping_address` TEXT COMMENT '收货地址',
   `shipping_phone` VARCHAR(20) COMMENT '收货电话',

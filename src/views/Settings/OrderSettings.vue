@@ -1282,6 +1282,7 @@ onMounted(() => {
   loadTransferConfig()
   loadDepartmentList()
   loadDepartmentLimits()
+  loadPaymentMethods()
 })
 </script>
 
