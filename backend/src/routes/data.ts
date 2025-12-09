@@ -11,15 +11,22 @@ router.use(authenticateToken);
 
 /**
  * @route GET /api/v1/data/list
- * @desc 获取数据列表（客户数据）
+ * @desc 获取资料列表（从已签收订单中获取客户资料）
  */
 router.get('/list', async (req: Request, res: Response) => {
   try {
-    const { page = 1, pageSize = 20, status, keyword, assigneeId } = req.query;
+    const { page = 1, pageSize = 30, _status, keyword, assigneeId, dateFilter } = req.query;
     const currentUser = req.user;
-    const customerRepository = AppDataSource.getRepository(Customer);
 
-    const queryBuilder = customerRepository.createQueryBuilder('customer');
+    // 🔥 从订单表获取已签收的订单数据
+    const { Order } = await import('../entities/Order');
+    const orderRepository = AppDataSource.getRepository(Order);
+
+    const queryBuilder = orderRepository.createQueryBuilder('order')
+      .leftJoinAndSelect('order.customer', 'customer');
+
+    // 只获取已签收的订单（delivered状态）
+    queryBuilder.andWhere('order.status = :deliveredStatus', { deliveredStatus: 'delivered' });
 
     // 数据权限过滤
     const role = currentUser?.role || '';
@@ -27,42 +34,127 @@ router.get('/list', async (req: Request, res: Response) => {
     if (!allowAllRoles.includes(role)) {
       if (role === 'manager' || role === 'department_manager') {
         // 经理看本部门的
+        if (currentUser?.departmentId) {
+          queryBuilder.andWhere('order.createdByDepartmentId = :deptId', {
+            deptId: currentUser.departmentId
+          });
+        }
       } else {
         // 销售员只看自己的
-        queryBuilder.andWhere('customer.salesPersonId = :userId', {
+        queryBuilder.andWhere('order.createdBy = :userId', {
           userId: currentUser?.userId
         });
       }
     }
 
-    if (status) {
-      queryBuilder.andWhere('customer.status = :status', { status });
-    }
-
+    // 关键词搜索
     if (keyword) {
       queryBuilder.andWhere(
-        '(customer.name LIKE :keyword OR customer.phone LIKE :keyword OR customer.customerCode LIKE :keyword)',
+        '(order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.orderNumber LIKE :keyword)',
         { keyword: `%${keyword}%` }
       );
     }
 
+    // 分配人筛选
     if (assigneeId) {
-      queryBuilder.andWhere('customer.salesPersonId = :assigneeId', { assigneeId });
+      queryBuilder.andWhere('order.createdBy = :assigneeId', { assigneeId });
     }
 
-    queryBuilder.orderBy('customer.createdAt', 'DESC');
+    // 日期筛选
+    if (dateFilter && dateFilter !== 'all') {
+      const now = new Date();
+      let startDate: Date;
+
+      switch (dateFilter) {
+        case 'today':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          queryBuilder.andWhere('order.deliveredAt >= :startDate', { startDate });
+          break;
+        case 'yesterday':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+          const endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          queryBuilder.andWhere('order.deliveredAt >= :startDate AND order.deliveredAt < :endDate', { startDate, endDate });
+          break;
+        case 'thisWeek':
+          const weekStart = new Date(now);
+          weekStart.setDate(now.getDate() - now.getDay());
+          weekStart.setHours(0, 0, 0, 0);
+          queryBuilder.andWhere('order.deliveredAt >= :weekStart', { weekStart });
+          break;
+        case 'last30Days':
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          queryBuilder.andWhere('order.deliveredAt >= :startDate', { startDate });
+          break;
+        case 'thisMonth':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          queryBuilder.andWhere('order.deliveredAt >= :startDate', { startDate });
+          break;
+        case 'thisYear':
+          startDate = new Date(now.getFullYear(), 0, 1);
+          queryBuilder.andWhere('order.deliveredAt >= :startDate', { startDate });
+          break;
+      }
+    }
+
+    queryBuilder.orderBy('order.deliveredAt', 'DESC');
     queryBuilder.skip((Number(page) - 1) * Number(pageSize));
     queryBuilder.take(Number(pageSize));
 
-    const [list, total] = await queryBuilder.getManyAndCount();
+    const [orders, total] = await queryBuilder.getManyAndCount();
+
+    // 转换为资料列表格式
+    const list = orders.map(order => ({
+      id: order.id,
+      customerName: order.customerName || '',
+      customerCode: order.customer?.customerNo || '',
+      phone: order.customerPhone || '',
+      orderNo: order.orderNumber,
+      orderAmount: Number(order.totalAmount) || 0,
+      orderDate: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '',
+      signDate: order.deliveredAt ? new Date(order.deliveredAt).toISOString().split('T')[0] : '',
+      status: 'pending' as const, // 默认待分配状态
+      assigneeId: order.createdBy,
+      assigneeName: order.createdByName,
+      assigneeDepartment: order.createdByDepartmentName,
+      createTime: order.createdAt ? new Date(order.createdAt).toISOString() : '',
+      updateTime: order.updatedAt ? new Date(order.updatedAt).toISOString() : '',
+      trackingNo: order.trackingNumber || '',
+      address: order.shippingAddress || '',
+      remark: order.remark || ''
+    }));
+
+    // 计算汇总数据
+    const allOrders = await orderRepository.find({ where: { status: 'delivered' } });
+    const summary = {
+      totalCount: allOrders.length,
+      pendingCount: allOrders.length, // 暂时都算待分配
+      assignedCount: 0,
+      archivedCount: 0,
+      totalAmount: allOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0),
+      todayCount: allOrders.filter(o => {
+        const today = new Date().toDateString();
+        return o.deliveredAt && new Date(o.deliveredAt).toDateString() === today;
+      }).length,
+      weekCount: allOrders.filter(o => {
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        return o.deliveredAt && new Date(o.deliveredAt) >= weekAgo;
+      }).length,
+      monthCount: allOrders.filter(o => {
+        const monthAgo = new Date();
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        return o.deliveredAt && new Date(o.deliveredAt) >= monthAgo;
+      }).length
+    };
 
     res.json({
       success: true,
-      data: { list, total, page: Number(page), pageSize: Number(pageSize) }
+      data: { list, total, page: Number(page), pageSize: Number(pageSize) },
+      summary
     });
   } catch (error) {
-    console.error('获取数据列表失败:', error);
-    res.status(500).json({ success: false, message: '获取数据列表失败' });
+    console.error('获取资料列表失败:', error);
+    res.status(500).json({ success: false, message: '获取资料列表失败' });
   }
 });
 

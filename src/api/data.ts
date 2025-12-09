@@ -136,17 +136,43 @@ export interface DataListResponse {
 }
 
 // 获取资料列表
-export const getDataList = (params: DataListParams): Promise<DataListResponse> => {
-  if (shouldUseMockApi()) {
-    // 从localStorage读取真实数据，而不是生成模拟数据
+export const getDataList = async (params: DataListParams): Promise<DataListResponse> => {
+  // 🔥 始终尝试从后端API获取数据
+  try {
+    console.log('[Data API] 从后端API获取资料列表...')
+    const response = await api.get('/data/list', params)
+
+    // 处理API响应格式
+    if (response && response.data) {
+      return {
+        list: response.data.list || [],
+        total: response.data.total || 0,
+        summary: response.summary || {
+          totalCount: response.data.total || 0,
+          pendingCount: 0,
+          assignedCount: 0,
+          archivedCount: 0,
+          totalAmount: 0,
+          todayCount: 0,
+          weekCount: 0,
+          monthCount: 0
+        }
+      }
+    }
+
+    return response
+  } catch (error) {
+    console.error('[Data API] 从后端获取资料列表失败，尝试使用本地数据:', error)
+
+    // 降级：从localStorage读取数据
     const dataListStr = localStorage.getItem('dataList')
     let dataList: DataListItem[] = []
 
     if (dataListStr) {
       try {
         dataList = JSON.parse(dataListStr)
-      } catch (error) {
-        console.error('解析dataList失败:', error)
+      } catch (parseError) {
+        console.error('解析dataList失败:', parseError)
         dataList = []
       }
     }
@@ -154,7 +180,7 @@ export const getDataList = (params: DataListParams): Promise<DataListResponse> =
     // 如果localStorage中没有数据，返回空列表
     if (!dataList || dataList.length === 0) {
       console.log('localStorage中没有dataList数据，返回空列表')
-      return Promise.resolve({
+      return {
         list: [],
         total: 0,
         summary: {
@@ -167,14 +193,14 @@ export const getDataList = (params: DataListParams): Promise<DataListResponse> =
           weekCount: 0,
           monthCount: 0
         }
-      })
+      }
     }
 
     const { page = 1, pageSize = 30 } = params
     const startIndex = (page - 1) * pageSize
     const endIndex = startIndex + pageSize
 
-    return Promise.resolve({
+    return {
       list: dataList.slice(startIndex, endIndex),
       total: dataList.length,
       summary: {
@@ -198,10 +224,8 @@ export const getDataList = (params: DataListParams): Promise<DataListResponse> =
           return new Date(item.orderDate) >= monthAgo
         }).length
       }
-    })
+    }
   }
-
-  return api.get('/api/data/list', params)
 }
 
 // 批量分配资料
@@ -277,20 +301,51 @@ export interface AssigneeOption {
   status: 'active' | 'busy' | 'offline'
 }
 
-export const getAssigneeOptions = (): Promise<AssigneeOption[]> => {
-  if (shouldUseMockApi()) {
-    // 使用mock数据
-    const mockAssigneeOptions: AssigneeOption[] = [
-      { id: '1', name: '李销售', department: '销售一部', status: 'active' },
-      { id: '2', name: '王经理', department: '销售二部', status: 'active' },
-      { id: '3', name: '张主管', department: '销售三部', status: 'busy' },
-      { id: '4', name: '赵专员', department: '销售一部', status: 'active' },
-      { id: '5', name: '刘顾问', department: '销售二部', status: 'offline' }
-    ]
-    return Promise.resolve(mockAssigneeOptions)
-  }
+export const getAssigneeOptions = async (): Promise<AssigneeOption[]> => {
+  // 🔥 始终尝试从后端API获取真实用户数据
+  try {
+    console.log('[Data API] 从后端API获取分配成员列表...')
+    const response = await api.get('/data/assignee-options')
 
-  return api.get('/api/data/assignee-options')
+    if (response && response.data) {
+      return response.data.map((u: any) => ({
+        id: u.id,
+        name: u.name || u.realName || u.username,
+        department: u.department || u.departmentName || '未知部门',
+        phone: u.phone || '',
+        workload: u.workload || 0,
+        maxWorkload: u.maxWorkload || 100,
+        status: u.status || 'active'
+      }))
+    }
+
+    return response || []
+  } catch (error) {
+    console.error('[Data API] 从后端获取分配成员失败，尝试使用本地数据:', error)
+
+    // 降级：从localStorage获取用户数据
+    try {
+      const userDatabaseStr = localStorage.getItem('userDatabase')
+      if (userDatabaseStr) {
+        const users = JSON.parse(userDatabaseStr)
+        return users
+          .filter((u: any) => u.status === 'active' || !u.status)
+          .map((u: any) => ({
+            id: u.id,
+            name: u.realName || u.name || u.username,
+            department: u.department || u.departmentName || '未知部门',
+            phone: u.phone || '',
+            workload: 0,
+            maxWorkload: 100,
+            status: 'active' as const
+          }))
+      }
+    } catch (parseError) {
+      console.error('解析用户数据失败:', parseError)
+    }
+
+    return []
+  }
 }
 
 // 客户查询相关接口
