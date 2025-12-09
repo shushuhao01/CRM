@@ -504,32 +504,21 @@ export const useOrderStore = createPersistentStore('order', () => {
       const currentUser = userStore.currentUser
       const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
-      // 检测是否为生产环境
-      const hostname = window.location.hostname
-      const isProdEnv = (
-        hostname.includes('abc789.cn') ||
-        hostname.includes('vercel.app') ||
-        hostname.includes('netlify.app') ||
-        hostname.includes('railway.app') ||
-        (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
-      )
-
-      // 生产环境调用API
-      if (isProdEnv) {
-        try {
-          console.log('[OrderStore] 生产环境：调用API更新发货信息')
-          const { orderApi } = await import('@/api/order')
-          await orderApi.update(id, {
-            status: 'shipped',
-            shippingTime: now,
-            expressCompany,
-            trackingNumber,
-            logisticsStatus: 'picked_up'
-          })
-          console.log('[OrderStore] API发货更新成功')
-        } catch (apiError) {
-          console.error('[OrderStore] API发货更新失败:', apiError)
-        }
+      // 🔥 始终调用API更新数据库，确保数据持久化
+      try {
+        console.log('[OrderStore] 调用API更新发货信息')
+        const { orderApi } = await import('@/api/order')
+        await orderApi.update(id, {
+          status: 'shipped',
+          shippingTime: now,
+          expressCompany,
+          trackingNumber,
+          logisticsStatus: 'picked_up'
+        })
+        console.log('[OrderStore] API发货更新成功')
+      } catch (apiError) {
+        console.error('[OrderStore] API发货更新失败:', apiError)
+        // 即使API失败，也继续更新本地数据，保证用户体验
       }
 
       // 更新本地数据
