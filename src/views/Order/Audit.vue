@@ -1575,7 +1575,7 @@ const handleAuditSubmit = async () => {
               : (auditForm.remark || '')
 
             notificationStore.sendMessage(
-              notificationStore.MessageType.ORDER_CANCELLED,
+              notificationStore.MessageType.AUDIT_REJECTED,
               `订单 ${order.orderNo} 审核被拒绝，已退回修改。拒绝原因：${rejectionReason}`,
               {
                 relatedId: order.id,
@@ -1854,7 +1854,7 @@ const handleQuickAuditSubmit = async () => {
 
           // 发送退回通知给销售员
           notificationStore.sendMessage(
-            notificationStore.MessageType.ORDER_CANCELLED,
+            notificationStore.MessageType.AUDIT_REJECTED,
             `订单 ${order.orderNo} 审核被拒绝，已退回修改。拒绝原因：${rejectionReason}`,
             {
               relatedId: order.id,
