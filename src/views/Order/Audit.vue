@@ -2266,13 +2266,21 @@ const loadOrderList = async () => {
       customerId: order.customerId,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
-      // 🔥 使用真实姓名而不是用户名ID
-      salesPerson: order.createdByName || order.createdBy,
+      // 🔥 使用真实姓名而不是用户名ID - 从用户列表查找真实姓名
+      salesPerson: (() => {
+        // 优先使用createdByName
+        if (order.createdByName) return order.createdByName
+        // 从用户列表查找
+        const user = userStore.users.find(u => u.id === order.createdBy || u.username === order.createdBy)
+        return user?.realName || user?.name || order.createdBy || '-'
+      })(),
       totalAmount: order.totalAmount,
       depositAmount: order.depositAmount,
       codAmount: order.totalAmount - order.depositAmount,
       productCount: order.products.length,
       createTime: order.createTime,
+      // 🔥 添加支付方式字段
+      paymentMethod: order.paymentMethod || '',
       // 🔥 等待时间从订单流转到待审核时开始计时（使用auditTransferTime，如果没有则使用createTime），单位：分钟
       waitingMinutes: Math.floor((new Date().getTime() - new Date(order.auditTransferTime || order.createTime).getTime()) / (1000 * 60)),
       remark: order.remark || '',
@@ -2622,13 +2630,19 @@ const loadOrderList = async () => {
         customerId: order.customerId,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
-        // 🔥 使用真实姓名
-        salesPerson: order.createdByName || order.createdBy,
+        // 🔥 使用真实姓名 - 从用户列表查找
+        salesPerson: (() => {
+          if (order.createdByName) return order.createdByName
+          const user = userStore.users.find(u => u.id === order.createdBy || u.username === order.createdBy)
+          return user?.realName || user?.name || order.createdBy || '-'
+        })(),
         totalAmount: order.totalAmount,
         depositAmount: order.depositAmount,
         codAmount: order.totalAmount - order.depositAmount,
         productCount: order.products.length,
         createTime: order.createTime,
+        // 🔥 添加支付方式字段
+        paymentMethod: order.paymentMethod || '',
         auditStatus: order.auditStatus,
         auditTime: order.auditTime || order.updateTime,
         auditor: order.auditor || '系统',
@@ -2659,13 +2673,19 @@ const loadOrderList = async () => {
         customerId: order.customerId,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
-        // 🔥 使用真实姓名
-        salesPerson: order.createdByName || order.createdBy,
+        // 🔥 使用真实姓名 - 从用户列表查找
+        salesPerson: (() => {
+          if (order.createdByName) return order.createdByName
+          const user = userStore.users.find(u => u.id === order.createdBy || u.username === order.createdBy)
+          return user?.realName || user?.name || order.createdBy || '-'
+        })(),
         totalAmount: order.totalAmount,
         depositAmount: order.depositAmount,
         codAmount: order.totalAmount - order.depositAmount,
         productCount: order.products.length,
         createTime: order.createTime,
+        // 🔥 添加支付方式字段
+        paymentMethod: order.paymentMethod || '',
         auditStatus: order.auditStatus,
         auditTime: order.auditTime || order.updateTime,
         auditor: order.auditor || '系统',

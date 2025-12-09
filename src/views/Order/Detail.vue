@@ -418,15 +418,6 @@
                   <div class="amount-value-modern">¥{{ ((orderDetail.totalAmount || 0) - (orderDetail.depositAmount || 0)).toFixed(2) }}</div>
                 </div>
               </div>
-              <div class="amount-card-modern payment-modern" v-if="orderDetail.paymentMethod">
-                <div class="amount-icon-modern">
-                  <el-icon><CreditCard /></el-icon>
-                </div>
-                <div class="amount-content-modern">
-                  <div class="amount-label-modern">支付方式</div>
-                  <div class="amount-value-modern payment-text">{{ getPaymentMethodText(orderDetail.paymentMethod) }}</div>
-                </div>
-              </div>
             </div>
 
             <!-- 第二行：商品总额和优惠 -->

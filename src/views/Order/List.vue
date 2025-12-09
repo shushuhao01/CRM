@@ -2281,11 +2281,17 @@ const handleTodoStatusUpdate = (event: CustomEvent) => {
 }
 
 // 监听路由查询参数变化，当从新建订单页面跳转过来时自动刷新
-watch(() => route.query, (newQuery, oldQuery) => {
+watch(() => route.query, async (newQuery, oldQuery) => {
   // 只有当refresh参数从无到有变化时才刷新，避免重复刷新
   if (newQuery.refresh === 'true' && oldQuery?.refresh !== 'true') {
+    console.log('[订单列表] 检测到refresh参数，刷新订单数据...')
     // 延迟一点执行，确保onMounted的加载已完成
-    setTimeout(() => {
+    setTimeout(async () => {
+      // 🔥 从API重新加载最新订单数据
+      await orderStore.loadOrdersFromAPI(true)
+      // 重新加载订单列表
+      loadOrderList()
+      ElMessage.success('订单已成功创建，列表已刷新')
       // 清除查询参数，避免重复刷新
       safeNavigator.replace({ path: '/order/list' })
     }, 100)

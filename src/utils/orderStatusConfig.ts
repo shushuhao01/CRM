@@ -57,7 +57,6 @@ export const ORDER_STATUS_TEXT: Record<string, string> = {
   'pending_transfer': '待流转',
   'pending_audit': '待审核',
   'audit_rejected': '审核拒绝',
-  'approved': '已审核',
 
   // 发货相关状态
   'pending_shipment': '待发货',
@@ -84,8 +83,11 @@ export const ORDER_STATUS_TEXT: Record<string, string> = {
   // 草稿状态
   'draft': '草稿',
 
+  // 审核相关状态（用于订单审核列表）
+  'pending': '待审核',
+  'approved': '审核通过',
+
   // 其他状态
-  'pending': '待处理',
   'confirmed': '已确认',
   'paid': '已支付',
   'completed': '已完成',
