@@ -195,15 +195,15 @@ export const useOrderStore = createPersistentStore('order', () => {
   const loadTransferDelayConfig = async () => {
     try {
       const token = localStorage.getItem('auth_token')
-      const response = await fetch('/api/v1/system/order-settings', {
+      const response = await fetch('/api/v1/system/order-transfer-config', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       })
       const data = await response.json()
-      if (data.success && data.data?.delayMinutes) {
-        transferDelayMinutes.value = data.data.delayMinutes
+      if (data.success && data.data) {
+        transferDelayMinutes.value = data.data.delayMinutes ?? 3
         console.log('[订单Store] 流转延迟时间配置:', transferDelayMinutes.value, '分钟')
       }
     } catch (_error) {

@@ -825,7 +825,7 @@ router.post('/', async (req: Request, res: Response) => {
  * @access Private
  * 注意：此路由必须在 /:id 之前定义，否则会被 /:id 拦截
  */
-router.put('/:id/mark-type', async (req: Request, res: Response) => {
+router.put('/:id/mark-type', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
     const { markType } = req.body;
