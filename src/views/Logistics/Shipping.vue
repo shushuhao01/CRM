@@ -1565,28 +1565,34 @@ const exportSelected = async () => {
   }
 
   try {
-    // 转换订单数据格式
+    // 转换订单数据格式（包含完整字段）
     const exportData: ExportOrder[] = selectedOrders.value.map(order => ({
-      orderNumber: order.orderNumber || '',
+      orderNumber: order.orderNumber || order.orderNo || '',
       customerName: order.customerName || '',
-      customerPhone: order.customerPhone || '',
-      receiverName: order.receiverName || '',
-      receiverPhone: order.receiverPhone || '',
-      receiverAddress: order.receiverAddress || '',
+      customerPhone: order.customerPhone || order.phone || '',
+      receiverName: order.receiverName || order.customerName || '',
+      receiverPhone: order.receiverPhone || order.phone || '',
+      receiverAddress: order.receiverAddress || order.address || '',
       products: order.productsText || (Array.isArray(order.products)
         ? order.products.map(p => `${p.name} x${p.quantity}`).join(', ')
         : order.products || ''),
-      totalQuantity: Array.isArray(order.products)
+      totalQuantity: order.totalQuantity || (Array.isArray(order.products)
         ? order.products.reduce((sum, p) => sum + (p.quantity || 0), 0)
-        : 0,
+        : 0),
       totalAmount: order.totalAmount || 0,
-      depositAmount: order.depositAmount || 0,
-      codAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
+      depositAmount: order.depositAmount || order.deposit || 0,
+      codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
       customerAge: order.customerAge || '',
       customerHeight: order.customerHeight || '',
       customerWeight: order.customerWeight || '',
       medicalHistory: order.medicalHistory || '',
       serviceWechat: order.serviceWechat || '',
+      // 🔥 新增字段
+      markType: order.markType || '',
+      salesPersonName: order.salesPersonName || order.createdBy || '',
+      paymentMethod: order.paymentMethod || '',
+      orderSource: order.orderSource || '',
+      customFields: order.customFields || {},
       remark: order.remark || '',
       createTime: order.createTime || '',
       status: order.status || '',
@@ -1615,29 +1621,35 @@ const handleCommand = async ({ action, row }: { action: string, row: any }) => {
   selectedOrder.value = row
   switch (action) {
     case 'export':
-      // 单个导出
+      // 单个导出（包含完整字段）
       try {
         const exportData: ExportOrder = {
-          orderNumber: row.orderNumber || '',
+          orderNumber: row.orderNumber || row.orderNo || '',
           customerName: row.customerName || '',
-          customerPhone: row.customerPhone || '',
-          receiverName: row.receiverName || '',
-          receiverPhone: row.receiverPhone || '',
-          receiverAddress: row.receiverAddress || '',
+          customerPhone: row.customerPhone || row.phone || '',
+          receiverName: row.receiverName || row.customerName || '',
+          receiverPhone: row.receiverPhone || row.phone || '',
+          receiverAddress: row.receiverAddress || row.address || '',
           products: row.productsText || (Array.isArray(row.products)
             ? row.products.map(p => `${p.name} x${p.quantity}`).join(', ')
             : row.products || ''),
-          totalQuantity: Array.isArray(row.products)
+          totalQuantity: row.totalQuantity || (Array.isArray(row.products)
             ? row.products.reduce((sum, p) => sum + (p.quantity || 0), 0)
-            : 0,
+            : 0),
           totalAmount: row.totalAmount || 0,
-          depositAmount: row.depositAmount || 0,
-          codAmount: (row.totalAmount || 0) - (row.depositAmount || 0),
+          depositAmount: row.depositAmount || row.deposit || 0,
+          codAmount: row.codAmount || (row.totalAmount || 0) - (row.depositAmount || 0),
           customerAge: row.customerAge || '',
           customerHeight: row.customerHeight || '',
           customerWeight: row.customerWeight || '',
           medicalHistory: row.medicalHistory || '',
           serviceWechat: row.serviceWechat || '',
+          // 🔥 新增字段
+          markType: row.markType || '',
+          salesPersonName: row.salesPersonName || row.createdBy || '',
+          paymentMethod: row.paymentMethod || '',
+          orderSource: row.orderSource || '',
+          customFields: row.customFields || {},
           remark: row.remark || '',
           createTime: row.createTime || '',
           status: row.status || '',
@@ -2045,7 +2057,16 @@ const handleRefreshShippingList = () => {
   updateTabCounts()
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 🔥 确保从API加载最新订单数据
+  console.log('[发货列表] 页面初始化，从API加载订单数据...')
+  try {
+    await orderStore.loadOrdersFromAPI(true) // 强制刷新
+    console.log('[发货列表] API数据加载完成，订单总数:', orderStore.orders.length)
+  } catch (error) {
+    console.error('[发货列表] API数据加载失败:', error)
+  }
+
   loadOrderList()
   updateTabCounts()
   startAutoSync() // 启动自动同步

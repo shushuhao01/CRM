@@ -1569,7 +1569,7 @@ const handleBatchExport = async () => {
   try {
     loading.value = true
 
-    // 将选中的订单数据转换为导出格式
+    // 将选中的订单数据转换为导出格式（包含完整字段）
     const exportData: ExportOrder[] = selectedOrders.value.map(order => ({
       orderNumber: order.orderNumber || '',
       customerName: order.customerName || '',
@@ -1577,16 +1577,24 @@ const handleBatchExport = async () => {
       receiverName: order.receiverName || '',
       receiverPhone: order.receiverPhone || '',
       receiverAddress: order.receiverAddress || '',
-      products: order.products || [],
+      products: Array.isArray(order.products)
+        ? order.products.map((p: any) => `${p.name} x${p.quantity}`).join(', ')
+        : order.products || '',
       totalQuantity: order.totalQuantity || 0,
       totalAmount: order.totalAmount || 0,
       depositAmount: order.depositAmount || 0,
-      codAmount: order.codAmount || 0,
-      customerAge: order.customerAge || 0,
-      customerHeight: order.customerHeight || 0,
-      customerWeight: order.customerWeight || 0,
+      codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
+      customerAge: order.customerAge || '',
+      customerHeight: order.customerHeight || '',
+      customerWeight: order.customerWeight || '',
       medicalHistory: order.medicalHistory || '',
       serviceWechat: order.serviceWechat || '',
+      // 🔥 新增字段
+      markType: order.markType || '',
+      salesPersonName: order.salesPersonName || order.createdBy || '',
+      paymentMethod: order.paymentMethod || '',
+      orderSource: order.orderSource || '',
+      customFields: order.customFields || {},
       remark: order.remark || '',
       createTime: order.createTime || '',
       status: order.status || '',
@@ -1616,16 +1624,24 @@ const handleExport = async () => {
       receiverName: order.receiverName || '',
       receiverPhone: order.receiverPhone || '',
       receiverAddress: order.receiverAddress || '',
-      products: order.products || [],
+      products: Array.isArray(order.products)
+        ? order.products.map((p: any) => `${p.name} x${p.quantity}`).join(', ')
+        : order.products || '',
       totalQuantity: order.totalQuantity || 0,
       totalAmount: order.totalAmount || 0,
       depositAmount: order.depositAmount || 0,
-      codAmount: order.codAmount || 0,
-      customerAge: order.customerAge || 0,
-      customerHeight: order.customerHeight || 0,
-      customerWeight: order.customerWeight || 0,
+      codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
+      customerAge: order.customerAge || '',
+      customerHeight: order.customerHeight || '',
+      customerWeight: order.customerWeight || '',
       medicalHistory: order.medicalHistory || '',
       serviceWechat: order.serviceWechat || '',
+      // 🔥 新增字段
+      markType: order.markType || '',
+      salesPersonName: order.salesPersonName || order.createdBy || '',
+      paymentMethod: order.paymentMethod || '',
+      orderSource: order.orderSource || '',
+      customFields: order.customFields || {},
       remark: order.remark || '',
       createTime: order.createTime || '',
       status: order.status || '',
