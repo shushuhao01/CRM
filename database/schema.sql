@@ -1426,6 +1426,43 @@ ON DUPLICATE KEY UPDATE
   `contact_phone` = VALUES(`contact_phone`),
   `updated_at` = CURRENT_TIMESTAMP;
 
+-- 30. 部门下单限制配置表
+DROP TABLE IF EXISTS `department_order_limits`;
+CREATE TABLE `department_order_limits` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '配置ID',
+  `department_id` VARCHAR(50) NOT NULL COMMENT '部门ID',
+  `department_name` VARCHAR(100) COMMENT '部门名称（冗余字段）',
+  
+  -- 下单次数限制
+  `order_count_enabled` BOOLEAN DEFAULT FALSE COMMENT '是否启用下单次数限制',
+  `max_order_count` INT DEFAULT 0 COMMENT '同一客户最大下单次数（0表示无限制）',
+  
+  -- 单笔金额限制
+  `single_amount_enabled` BOOLEAN DEFAULT FALSE COMMENT '是否启用单笔金额限制',
+  `max_single_amount` DECIMAL(12,2) DEFAULT 0 COMMENT '单笔订单最大金额（0表示无限制）',
+  
+  -- 累计金额限制
+  `total_amount_enabled` BOOLEAN DEFAULT FALSE COMMENT '是否启用累计金额限制',
+  `max_total_amount` DECIMAL(12,2) DEFAULT 0 COMMENT '同一客户累计最大金额（0表示无限制）',
+  
+  -- 配置状态
+  `is_enabled` BOOLEAN DEFAULT TRUE COMMENT '配置是否启用',
+  `remark` TEXT COMMENT '备注说明',
+  
+  -- 审计字段
+  `created_by` VARCHAR(50) COMMENT '创建人ID',
+  `created_by_name` VARCHAR(50) COMMENT '创建人姓名',
+  `updated_by` VARCHAR(50) COMMENT '更新人ID',
+  `updated_by_name` VARCHAR(50) COMMENT '更新人姓名',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  
+  -- 索引
+  UNIQUE INDEX `idx_department_id` (`department_id`),
+  INDEX `idx_is_enabled` (`is_enabled`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='部门下单限制配置表';
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =============================================

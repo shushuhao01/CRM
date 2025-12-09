@@ -3,6 +3,7 @@ import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { DepartmentController } from '../controllers/DepartmentController';
 import { AppDataSource } from '../config/database';
 import { SystemConfig } from '../entities/SystemConfig';
+import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -1351,6 +1352,186 @@ router.post('/order-transfer-config', authenticateToken, requireAdmin, async (re
     res.status(500).json({
       success: false,
       message: '保存订单流转配置失败'
+    });
+  }
+});
+
+// ========== 部门下单限制配置 ==========
+
+/**
+ * @route GET /api/v1/system/department-order-limits
+ * @desc 获取所有部门下单限制配置
+ * @access Private (Admin)
+ */
+router.get('/department-order-limits', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const repository = AppDataSource.getRepository(DepartmentOrderLimit);
+    const limits = await repository.find({
+      order: { createdAt: 'DESC' }
+    });
+
+    res.json({
+      success: true,
+      code: 200,
+      data: limits
+    });
+  } catch (error) {
+    console.error('获取部门下单限制配置失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取部门下单限制配置失败'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/system/department-order-limits/:departmentId
+ * @desc 获取指定部门的下单限制配置
+ * @access Private
+ */
+router.get('/department-order-limits/:departmentId', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { departmentId } = req.params;
+    const repository = AppDataSource.getRepository(DepartmentOrderLimit);
+    const limit = await repository.findOne({
+      where: { departmentId, isEnabled: true }
+    });
+
+    res.json({
+      success: true,
+      code: 200,
+      data: limit || null
+    });
+  } catch (error) {
+    console.error('获取部门下单限制配置失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取部门下单限制配置失败'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/system/department-order-limits
+ * @desc 创建或更新部门下单限制配置
+ * @access Private (Admin)
+ */
+router.post('/department-order-limits', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const {
+      departmentId,
+      departmentName,
+      orderCountEnabled,
+      maxOrderCount,
+      singleAmountEnabled,
+      maxSingleAmount,
+      totalAmountEnabled,
+      maxTotalAmount,
+      isEnabled,
+      remark
+    } = req.body;
+
+    if (!departmentId) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '部门ID不能为空'
+      });
+    }
+
+    const repository = AppDataSource.getRepository(DepartmentOrderLimit);
+    const currentUser = (req as any).currentUser;
+
+    // 查找是否已存在配置
+    let limit = await repository.findOne({ where: { departmentId } });
+
+    if (limit) {
+      // 更新现有配置
+      limit.departmentName = departmentName;
+      limit.orderCountEnabled = orderCountEnabled ?? false;
+      limit.maxOrderCount = maxOrderCount ?? 0;
+      limit.singleAmountEnabled = singleAmountEnabled ?? false;
+      limit.maxSingleAmount = maxSingleAmount ?? 0;
+      limit.totalAmountEnabled = totalAmountEnabled ?? false;
+      limit.maxTotalAmount = maxTotalAmount ?? 0;
+      limit.isEnabled = isEnabled ?? true;
+      limit.remark = remark;
+      limit.updatedBy = currentUser?.id;
+      limit.updatedByName = currentUser?.name || currentUser?.username;
+    } else {
+      // 创建新配置
+      limit = repository.create({
+        id: `dol_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        departmentId,
+        departmentName,
+        orderCountEnabled: orderCountEnabled ?? false,
+        maxOrderCount: maxOrderCount ?? 0,
+        singleAmountEnabled: singleAmountEnabled ?? false,
+        maxSingleAmount: maxSingleAmount ?? 0,
+        totalAmountEnabled: totalAmountEnabled ?? false,
+        maxTotalAmount: maxTotalAmount ?? 0,
+        isEnabled: isEnabled ?? true,
+        remark,
+        createdBy: currentUser?.id,
+        createdByName: currentUser?.name || currentUser?.username
+      });
+    }
+
+    await repository.save(limit);
+
+    console.log(`✅ [部门下单限制] 部门 ${departmentName}(${departmentId}) 配置已保存`);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '部门下单限制配置保存成功',
+      data: limit
+    });
+  } catch (error) {
+    console.error('保存部门下单限制配置失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '保存部门下单限制配置失败'
+    });
+  }
+});
+
+/**
+ * @route DELETE /api/v1/system/department-order-limits/:departmentId
+ * @desc 删除部门下单限制配置
+ * @access Private (Admin)
+ */
+router.delete('/department-order-limits/:departmentId', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { departmentId } = req.params;
+    const repository = AppDataSource.getRepository(DepartmentOrderLimit);
+
+    const result = await repository.delete({ departmentId });
+
+    if (result.affected === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '配置不存在'
+      });
+    }
+
+    console.log(`✅ [部门下单限制] 部门 ${departmentId} 配置已删除`);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '部门下单限制配置删除成功'
+    });
+  } catch (error) {
+    console.error('删除部门下单限制配置失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '删除部门下单限制配置失败'
     });
   }
 });

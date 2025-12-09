@@ -140,6 +140,180 @@
       </el-form>
     </el-card>
 
+    <!-- 部门下单限制配置 -->
+    <el-card class="config-card">
+      <template #header>
+        <div class="card-header">
+          <span>部门下单限制配置</span>
+          <el-tag type="danger" size="small">全局生效</el-tag>
+        </div>
+      </template>
+
+      <el-alert
+        type="info"
+        :closable="false"
+        style="margin-bottom: 20px;"
+      >
+        <template #title>
+          配置说明：可针对不同部门设置同一客户的下单次数、单笔金额、累计金额限制。配置后，该部门成员创建订单时将自动验证限制条件。
+        </template>
+      </el-alert>
+
+      <!-- 部门选择 -->
+      <el-form label-width="140px">
+        <el-form-item label="选择部门">
+          <el-select
+            v-model="selectedDepartmentId"
+            placeholder="请选择要配置的部门"
+            style="width: 300px"
+            @change="loadDepartmentLimit"
+            clearable
+          >
+            <el-option
+              v-for="dept in departmentList"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
+            />
+          </el-select>
+          <el-button
+            type="primary"
+            :icon="Plus"
+            style="margin-left: 10px;"
+            @click="addDepartmentLimit"
+            :disabled="!selectedDepartmentId"
+          >
+            添加/编辑配置
+          </el-button>
+        </el-form-item>
+      </el-form>
+
+      <!-- 已配置的部门列表 -->
+      <el-table :data="departmentLimits" style="width: 100%" v-if="departmentLimits.length > 0">
+        <el-table-column prop="departmentName" label="部门名称" width="150" />
+        <el-table-column label="下单次数限制" width="180">
+          <template #default="{ row }">
+            <el-tag v-if="row.orderCountEnabled" type="warning" size="small">
+              最多{{ row.maxOrderCount }}次
+            </el-tag>
+            <el-tag v-else type="info" size="small">无限制</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="单笔金额限制" width="180">
+          <template #default="{ row }">
+            <el-tag v-if="row.singleAmountEnabled" type="warning" size="small">
+              最高¥{{ row.maxSingleAmount }}
+            </el-tag>
+            <el-tag v-else type="info" size="small">无限制</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="累计金额限制" width="180">
+          <template #default="{ row }">
+            <el-tag v-if="row.totalAmountEnabled" type="warning" size="small">
+              最高¥{{ row.maxTotalAmount }}
+            </el-tag>
+            <el-tag v-else type="info" size="small">无限制</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="isEnabled" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.isEnabled ? 'success' : 'danger'" size="small">
+              {{ row.isEnabled ? '启用' : '禁用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" link @click="editDepartmentLimit(row)">
+              编辑
+            </el-button>
+            <el-button size="small" type="danger" link @click="deleteDepartmentLimit(row)">
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-empty v-else description="暂无部门下单限制配置" />
+    </el-card>
+
+    <!-- 部门下单限制编辑对话框 -->
+    <el-dialog
+      v-model="departmentLimitDialogVisible"
+      title="部门下单限制配置"
+      width="600px"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="departmentLimitForm" label-width="140px">
+        <el-form-item label="部门">
+          <el-tag size="large">{{ departmentLimitForm.departmentName }}</el-tag>
+        </el-form-item>
+
+        <el-divider content-position="left">下单次数限制</el-divider>
+        <el-form-item label="启用限制">
+          <el-switch v-model="departmentLimitForm.orderCountEnabled" />
+        </el-form-item>
+        <el-form-item label="最大下单次数" v-if="departmentLimitForm.orderCountEnabled">
+          <el-input-number
+            v-model="departmentLimitForm.maxOrderCount"
+            :min="1"
+            :max="100"
+          />
+          <span style="margin-left: 10px; color: #666;">次（同一客户在该部门最多下单次数）</span>
+        </el-form-item>
+
+        <el-divider content-position="left">单笔金额限制</el-divider>
+        <el-form-item label="启用限制">
+          <el-switch v-model="departmentLimitForm.singleAmountEnabled" />
+        </el-form-item>
+        <el-form-item label="单笔最大金额" v-if="departmentLimitForm.singleAmountEnabled">
+          <el-input-number
+            v-model="departmentLimitForm.maxSingleAmount"
+            :min="1"
+            :max="9999999"
+            :precision="2"
+          />
+          <span style="margin-left: 10px; color: #666;">元</span>
+        </el-form-item>
+
+        <el-divider content-position="left">累计金额限制</el-divider>
+        <el-form-item label="启用限制">
+          <el-switch v-model="departmentLimitForm.totalAmountEnabled" />
+        </el-form-item>
+        <el-form-item label="累计最大金额" v-if="departmentLimitForm.totalAmountEnabled">
+          <el-input-number
+            v-model="departmentLimitForm.maxTotalAmount"
+            :min="1"
+            :max="99999999"
+            :precision="2"
+          />
+          <span style="margin-left: 10px; color: #666;">元（同一客户在该部门累计订单金额）</span>
+        </el-form-item>
+
+        <el-divider />
+        <el-form-item label="启用配置">
+          <el-switch v-model="departmentLimitForm.isEnabled" />
+          <span style="margin-left: 10px; color: #999;">关闭后该部门不受限制</span>
+        </el-form-item>
+
+        <el-form-item label="备注">
+          <el-input
+            v-model="departmentLimitForm.remark"
+            type="textarea"
+            :rows="2"
+            placeholder="可选，填写配置说明"
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="departmentLimitDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveDepartmentLimit" :loading="savingDepartmentLimit">
+          保存配置
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 保存按钮 -->
     <div class="save-actions">
       <el-button size="large" @click="resetConfig">重置配置</el-button>
@@ -721,10 +895,189 @@ const resetConfig = async () => {
   }
 }
 
+// ========== 部门下单限制配置 ==========
+
+interface DepartmentLimit {
+  id?: string
+  departmentId: string
+  departmentName: string
+  orderCountEnabled: boolean
+  maxOrderCount: number
+  singleAmountEnabled: boolean
+  maxSingleAmount: number
+  totalAmountEnabled: boolean
+  maxTotalAmount: number
+  isEnabled: boolean
+  remark?: string
+}
+
+interface Department {
+  id: string
+  name: string
+}
+
+const departmentList = ref<Department[]>([])
+const departmentLimits = ref<DepartmentLimit[]>([])
+const selectedDepartmentId = ref('')
+const departmentLimitDialogVisible = ref(false)
+const savingDepartmentLimit = ref(false)
+
+const departmentLimitForm = reactive<DepartmentLimit>({
+  departmentId: '',
+  departmentName: '',
+  orderCountEnabled: false,
+  maxOrderCount: 1,
+  singleAmountEnabled: false,
+  maxSingleAmount: 10000,
+  totalAmountEnabled: false,
+  maxTotalAmount: 50000,
+  isEnabled: true,
+  remark: ''
+})
+
+// 加载部门列表
+const loadDepartmentList = async () => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/departments', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await response.json()
+    if (result.success && result.data) {
+      departmentList.value = result.data
+    }
+  } catch (error) {
+    console.error('加载部门列表失败:', error)
+  }
+}
+
+// 加载所有部门下单限制配置
+const loadDepartmentLimits = async () => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/department-order-limits', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await response.json()
+    if (result.success && result.data) {
+      departmentLimits.value = result.data
+    }
+  } catch (error) {
+    console.error('加载部门下单限制配置失败:', error)
+  }
+}
+
+// 加载指定部门的限制配置
+const loadDepartmentLimit = async (departmentId: string) => {
+  if (!departmentId) return
+
+  const existing = departmentLimits.value.find(l => l.departmentId === departmentId)
+  if (existing) {
+    Object.assign(departmentLimitForm, existing)
+  }
+}
+
+// 添加部门限制配置
+const addDepartmentLimit = () => {
+  if (!selectedDepartmentId.value) {
+    ElMessage.warning('请先选择部门')
+    return
+  }
+
+  const dept = departmentList.value.find(d => d.id === selectedDepartmentId.value)
+  if (!dept) return
+
+  // 检查是否已存在配置
+  const existing = departmentLimits.value.find(l => l.departmentId === selectedDepartmentId.value)
+  if (existing) {
+    Object.assign(departmentLimitForm, existing)
+  } else {
+    // 重置表单
+    departmentLimitForm.departmentId = dept.id
+    departmentLimitForm.departmentName = dept.name
+    departmentLimitForm.orderCountEnabled = false
+    departmentLimitForm.maxOrderCount = 1
+    departmentLimitForm.singleAmountEnabled = false
+    departmentLimitForm.maxSingleAmount = 10000
+    departmentLimitForm.totalAmountEnabled = false
+    departmentLimitForm.maxTotalAmount = 50000
+    departmentLimitForm.isEnabled = true
+    departmentLimitForm.remark = ''
+  }
+
+  departmentLimitDialogVisible.value = true
+}
+
+// 编辑部门限制配置
+const editDepartmentLimit = (row: DepartmentLimit) => {
+  Object.assign(departmentLimitForm, row)
+  departmentLimitDialogVisible.value = true
+}
+
+// 保存部门限制配置
+const saveDepartmentLimit = async () => {
+  try {
+    savingDepartmentLimit.value = true
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/department-order-limits', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(departmentLimitForm)
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('部门下单限制配置保存成功')
+      departmentLimitDialogVisible.value = false
+      await loadDepartmentLimits()
+    } else {
+      ElMessage.error(result.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('保存部门下单限制配置失败:', error)
+    ElMessage.error('保存失败')
+  } finally {
+    savingDepartmentLimit.value = false
+  }
+}
+
+// 删除部门限制配置
+const deleteDepartmentLimit = async (row: DepartmentLimit) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除部门"${row.departmentName}"的下单限制配置吗？`,
+      '确认删除',
+      { type: 'warning' }
+    )
+
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch(`/api/v1/system/department-order-limits/${row.departmentId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('删除成功')
+      await loadDepartmentLimits()
+    } else {
+      ElMessage.error(result.message || '删除失败')
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除部门下单限制配置失败:', error)
+      ElMessage.error('删除失败')
+    }
+  }
+}
+
 // 初始化
 onMounted(() => {
   initLocalConfig()
   loadTransferConfig()
+  loadDepartmentList()
+  loadDepartmentLimits()
 })
 </script>
 

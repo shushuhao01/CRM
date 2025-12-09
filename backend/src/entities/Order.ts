@@ -140,6 +140,12 @@ export class Order {
   @Column({ name: 'created_by_name', length: 50, nullable: true, comment: '创建人姓名' })
   createdByName?: string;
 
+  @Column({ name: 'created_by_department_id', type: 'varchar', length: 50, nullable: true, comment: '创建人部门ID' })
+  createdByDepartmentId?: string;
+
+  @Column({ name: 'created_by_department_name', length: 100, nullable: true, comment: '创建人部门名称' })
+  createdByDepartmentName?: string;
+
   @Column({ name: 'created_at', type: 'datetime', nullable: true, comment: '创建时间' })
   createdAt: Date;
 
