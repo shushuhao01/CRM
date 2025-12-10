@@ -208,14 +208,29 @@
       </div>
       <el-table :data="tableData" stripe class="data-table" border>
         <el-table-column type="index" label="序号" width="60" align="center" />
-        <el-table-column prop="name" label="部门（或成员）" width="120" align="center" />
-        <el-table-column prop="orderCount" label="下单单数" width="100" align="center" />
+        <el-table-column prop="department" label="部门" width="100" align="center" />
+        <el-table-column prop="name" label="下单员" width="100" align="center" />
+        <el-table-column prop="orderCount" label="下单单数" width="100" align="center">
+          <template #default="{ row }">
+            <el-link v-if="row.orderCount > 0" type="primary" @click="viewOrdersByType(row, 'orderCount')">
+              {{ row.orderCount }}
+            </el-link>
+            <span v-else>{{ row.orderCount }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="orderAmount" label="下单业绩" width="120" align="center">
           <template #default="{ row }">
             <span class="amount">¥{{ formatNumber(row.orderAmount) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="shipCount" label="发货单数" width="100" align="center" />
+        <el-table-column prop="shipCount" label="发货单数" width="100" align="center">
+          <template #default="{ row }">
+            <el-link v-if="row.shipCount > 0" type="primary" @click="viewOrdersByType(row, 'shipCount')">
+              {{ row.shipCount }}
+            </el-link>
+            <span v-else>{{ row.shipCount }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="shipAmount" label="发货业绩" width="120" align="center">
           <template #default="{ row }">
             <span class="amount">¥{{ formatNumber(row.shipAmount) }}</span>
@@ -228,7 +243,14 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="signCount" label="签收单数" width="100" align="center" />
+        <el-table-column prop="signCount" label="签收单数" width="100" align="center">
+          <template #default="{ row }">
+            <el-link v-if="row.signCount > 0" type="primary" @click="viewOrdersByType(row, 'signCount')">
+              {{ row.signCount }}
+            </el-link>
+            <span v-else>{{ row.signCount }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="signAmount" label="签收业绩" width="120" align="center">
           <template #default="{ row }">
             <span class="amount">¥{{ formatNumber(row.signAmount) }}</span>
@@ -241,7 +263,14 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="transitCount" label="在途单数" width="100" align="center" />
+        <el-table-column prop="transitCount" label="在途单数" width="100" align="center">
+          <template #default="{ row }">
+            <el-link v-if="row.transitCount > 0" type="primary" @click="viewOrdersByType(row, 'transitCount')">
+              {{ row.transitCount }}
+            </el-link>
+            <span v-else>{{ row.transitCount }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="transitAmount" label="在途业绩" width="120" align="center">
           <template #default="{ row }">
             <span class="amount">¥{{ formatNumber(row.transitAmount) }}</span>
@@ -254,7 +283,14 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="rejectCount" label="拒收单数" width="100" align="center" />
+        <el-table-column prop="rejectCount" label="拒收单数" width="100" align="center">
+          <template #default="{ row }">
+            <el-link v-if="row.rejectCount > 0" type="primary" @click="viewOrdersByType(row, 'rejectCount')">
+              {{ row.rejectCount }}
+            </el-link>
+            <span v-else>{{ row.rejectCount }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="rejectAmount" label="拒收业绩" width="120" align="center">
           <template #default="{ row }">
             <span class="amount">¥{{ formatNumber(row.rejectAmount) }}</span>
@@ -267,7 +303,14 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="returnCount" label="退货单数" width="100" align="center" />
+        <el-table-column prop="returnCount" label="退货单数" width="100" align="center">
+          <template #default="{ row }">
+            <el-link v-if="row.returnCount > 0" type="primary" @click="viewOrdersByType(row, 'returnCount')">
+              {{ row.returnCount }}
+            </el-link>
+            <span v-else>{{ row.returnCount }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="returnAmount" label="退货业绩" width="120" align="center">
           <template #default="{ row }">
             <span class="amount">¥{{ formatNumber(row.returnAmount) }}</span>
@@ -448,6 +491,89 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 订单类型详情弹窗 -->
+    <el-dialog
+      v-model="orderTypeDetailVisible"
+      :title="orderTypeDetailTitle"
+      width="90%"
+      top="5vh"
+      class="order-type-dialog"
+    >
+      <div class="order-type-content">
+        <!-- 成员基本信息 -->
+        <div class="member-info" v-if="orderTypeMember">
+          <div class="info-item">
+            <span class="label">部门：</span>
+            <span class="value">{{ orderTypeMember.department }}</span>
+          </div>
+          <div class="info-item">
+            <span class="label">下单员：</span>
+            <span class="value">{{ orderTypeMember.name }}</span>
+          </div>
+          <div class="info-item">
+            <span class="label">订单类型：</span>
+            <span class="value">{{ orderTypeLabel }}</span>
+          </div>
+          <div class="info-item">
+            <span class="label">订单数量：</span>
+            <span class="value">{{ orderTypeOrders.length }}</span>
+          </div>
+        </div>
+
+        <!-- 订单列表 -->
+        <el-table :data="paginatedOrderTypeList" stripe border class="order-table">
+          <el-table-column type="index" label="序号" width="60" align="center" />
+          <el-table-column prop="orderNo" label="订单号" width="140" show-overflow-tooltip />
+          <el-table-column prop="orderDate" label="下单日期" width="110" show-overflow-tooltip />
+          <el-table-column prop="department" label="部门" width="100" show-overflow-tooltip />
+          <el-table-column prop="salesPerson" label="下单员" width="100" show-overflow-tooltip />
+          <el-table-column prop="customerName" label="客户姓名" width="110" show-overflow-tooltip />
+          <el-table-column prop="amount" label="金额" width="110" align="right">
+            <template #default="{ row }">
+              <span class="amount">¥{{ formatNumber(row.amount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="depositAmount" label="定金" width="100" align="right">
+            <template #default="{ row }">
+              <span class="deposit">¥{{ formatNumber(row.depositAmount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="collectionAmount" label="代收" width="100" align="right">
+            <template #default="{ row }">
+              <span class="collection">¥{{ formatNumber(row.collectionAmount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="订单状态" width="120" align="center">
+            <template #default="{ row }">
+              <el-tag :type="getOrderStatusTagType(row.status)" size="small">
+                {{ getOrderStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="trackingNumber" label="快递单号" width="160" show-overflow-tooltip />
+          <el-table-column prop="productDetails" label="产品详情" min-width="200" show-overflow-tooltip />
+          <el-table-column label="操作" width="100" align="center" fixed="right">
+            <template #default="{ row }">
+              <el-button type="primary" size="small" @click="viewOrderDetail(row)">
+                查看
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <!-- 分页 -->
+        <div class="order-pagination">
+          <el-pagination
+            v-model:current-page="orderTypeCurrentPage"
+            v-model:page-size="orderTypePageSize"
+            :page-sizes="[30, 50, 100]"
+            :total="orderTypeOrders.length"
+            layout="total, sizes, prev, pager, next, jumper"
+          />
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -473,11 +599,13 @@ import {
   SuccessFilled,
   Trophy
 } from '@element-plus/icons-vue'
+import { getOrderStatusText, getOrderStatusTagType } from '@/utils/orderStatusConfig'
 
 // 接口定义
 interface PerformanceData {
   id?: string
   name: string
+  department?: string  // 部门名称
   orderCount: number
   orderAmount: number
   shipCount: number
@@ -567,6 +695,22 @@ const exportStats = ref({
 
 // 全屏查看对话框
 const tableFullscreenVisible = ref(false)
+
+// 订单类型详情弹窗相关
+const orderTypeDetailVisible = ref(false)
+const orderTypeMember = ref<any>(null)
+const orderTypeOrders = ref<any[]>([])
+const orderTypeLabel = ref('')
+const orderTypeDetailTitle = ref('')
+const orderTypeCurrentPage = ref(1)
+const orderTypePageSize = ref(30)
+
+// 订单类型分页列表
+const paginatedOrderTypeList = computed(() => {
+  const start = (orderTypeCurrentPage.value - 1) * orderTypePageSize.value
+  const end = start + orderTypePageSize.value
+  return orderTypeOrders.value.slice(start, end)
+})
 
 const showMemberInfo = computed(() => {
   return !userStore.isAdmin && !userStore.isManager
@@ -696,6 +840,99 @@ const resetExportSettings = () => {
  */
 const showTableFullscreen = () => {
   tableFullscreenVisible.value = true
+}
+
+/**
+ * 根据订单类型查看订单详情
+ */
+const viewOrdersByType = (row: any, columnProp: string) => {
+  orderTypeMember.value = row
+  orderTypeCurrentPage.value = 1
+
+  // 获取订单数据
+  let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+
+  // 应用部门筛选
+  if (selectedDepartment.value) {
+    const departmentUsers = userStore.users?.filter(u => u.departmentId === selectedDepartment.value).map(u => u.id) || []
+    orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
+  }
+
+  // 应用日期筛选
+  if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+    const startDate = new Date(dateRange.value[0]).getTime()
+    const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
+    orders = orders.filter(order => {
+      const orderTime = new Date(order.createTime).getTime()
+      return orderTime >= startDate && orderTime <= endDate
+    })
+  }
+
+  // 根据列类型筛选订单
+  const typeMap: Record<string, { label: string; filter: (order: any) => boolean }> = {
+    orderCount: {
+      label: '下单订单',
+      filter: () => true
+    },
+    shipCount: {
+      label: '已发货订单',
+      filter: (order) => order.status === 'shipped' || order.status === 'delivered'
+    },
+    signCount: {
+      label: '已签收订单',
+      filter: (order) => order.status === 'delivered'
+    },
+    transitCount: {
+      label: '在途订单',
+      filter: (order) => order.status === 'shipped' && order.logisticsStatus !== 'delivered'
+    },
+    rejectCount: {
+      label: '拒收订单',
+      filter: (order) => order.status === 'rejected' || order.status === 'rejected_returned'
+    },
+    returnCount: {
+      label: '退货订单',
+      filter: (order) => order.status === 'logistics_returned' || order.status === 'after_sales_created'
+    }
+  }
+
+  const typeConfig = typeMap[columnProp]
+  if (typeConfig) {
+    orderTypeLabel.value = typeConfig.label
+    orderTypeDetailTitle.value = `${row.name} - ${typeConfig.label}详情`
+    const filteredOrders = orders.filter(typeConfig.filter)
+
+    // 转换为弹窗显示格式，添加部门和下单员字段
+    orderTypeOrders.value = filteredOrders.map(order => {
+      // 获取下单员信息
+      const salesPerson = userStore.users?.find(u => String(u.id) === String(order.salesPersonId))
+      const dept = departmentStore.departments?.find(d => String(d.id) === String(salesPerson?.departmentId))
+
+      return {
+        id: order.id,
+        orderNo: order.orderNumber,
+        orderDate: (order.orderDate || order.createTime)?.split(' ')[0] || '',
+        department: dept?.name || salesPerson?.departmentName || order.createdByDepartmentName || '未知部门',
+        salesPerson: salesPerson?.realName || salesPerson?.name || order.createdByName || order.createdBy || '未知',
+        customerName: order.customerName,
+        amount: order.totalAmount || 0,
+        depositAmount: order.depositAmount || 0,
+        collectionAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
+        status: order.status,
+        trackingNumber: order.trackingNumber || order.expressNo || '',
+        productDetails: order.products?.map((item: any) => `${item.name} x${item.quantity}`).join(', ') || '暂无详情'
+      }
+    })
+
+    orderTypeDetailVisible.value = true
+  }
+}
+
+/**
+ * 查看订单详情
+ */
+const viewOrderDetail = (order: any) => {
+  safeNavigator.push(`/order/detail/${order.id}`)
 }
 
 
@@ -1094,9 +1331,14 @@ const loadDepartmentData = () => {
     const returnAmount = returnedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
     const returnRate = orderCount > 0 ? parseFloat((returnCount / orderCount * 100).toFixed(1)) : 0
 
+    // 获取部门名称
+    const dept = departmentStore.departments?.find(d => String(d.id) === String(departmentId))
+    const deptName = dept?.name || '未知部门'
+
     tableData.value = [{
       id: '部门数据',
-      name: '部门数据',
+      name: deptName,
+      department: deptName,
       orderCount,
       orderAmount,
       shipCount,
@@ -1175,6 +1417,7 @@ const loadCompanyData = () => {
     tableData.value = [{
       id: '公司总体',
       name: '公司总体',
+      department: '全公司',
       orderCount,
       orderAmount,
       shipCount,
@@ -1663,4 +1906,53 @@ onUnmounted(() => {
 .fullscreen-table .amount {
   color: #409eff;
   font-weight: 600;
+}
+
+/* 订单类型详情弹窗样式 */
+.order-type-dialog .member-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.order-type-dialog .info-item {
+  display: flex;
+  align-items: center;
+}
+
+.order-type-dialog .info-item .label {
+  color: #909399;
+  margin-right: 8px;
+}
+
+.order-type-dialog .info-item .value {
+  color: #303133;
+  font-weight: 500;
+}
+
+.order-type-dialog .order-table {
+  margin-bottom: 16px;
+}
+
+.order-type-dialog .order-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 16px;
+}
+
+.order-type-dialog .amount {
+  color: #409eff;
+  font-weight: 600;
+}
+
+.order-type-dialog .deposit {
+  color: #67c23a;
+}
+
+.order-type-dialog .collection {
+  color: #e6a23c;
 }

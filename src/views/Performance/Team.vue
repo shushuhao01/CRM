@@ -197,9 +197,9 @@
             >
               {{ row[column.prop] }}%
             </el-tag>
-            <!-- 订单数量字段 - 可点击查看对应订单详情 -->
+            <!-- 订单数量字段 - 可点击查看对应订单详情（带权限控制） -->
             <el-link
-              v-else-if="column.prop.includes('Count') && row[column.prop] > 0"
+              v-else-if="column.prop.includes('Count') && row[column.prop] > 0 && canViewMemberOrders(row)"
               type="primary"
               @click="viewOrdersByType(row, column.prop)"
               class="count-link"
@@ -767,11 +767,13 @@ const accessibleDepartments = computed(() => {
   }
 
   // 部门经理和销售员只能看到自己所在的部门
-  if (currentUser.role === 'department_manager' || currentUser.role === 'sales_staff') {
-    return departmentStore.departmentList.filter(dept =>
-      dept.id === currentUser.departmentId ||
-      dept.id === currentUser.department
+  if (currentUser.role === 'department_manager' || currentUser.role === 'sales_staff' || currentUser.role === 'sales') {
+    const userDeptId = currentUser.departmentId || currentUser.department
+    const filtered = departmentStore.departmentList.filter(dept =>
+      String(dept.id) === String(userDeptId)
     )
+    console.log('[团队业绩] 用户部门ID:', userDeptId, '可访问部门:', filtered.map(d => d.name))
+    return filtered
   }
 
   return []
@@ -820,6 +822,38 @@ const tableColumns = ref<TableColumn[]>([
 const dynamicColumns = computed(() => {
   return tableColumns.value.filter(col => col.visible)
 })
+
+// 检查是否有权限查看成员订单详情
+// 权限规则：
+// - 超级管理员和管理员：可以查看所有人的订单
+// - 部门经理：可以查看本部门成员的订单
+// - 销售员：只能查看自己的订单
+const canViewMemberOrders = (member: TeamMember) => {
+  const currentUser = userStore.currentUser
+  if (!currentUser) return false
+
+  const role = currentUser.role
+
+  // 超级管理员和管理员可以查看所有
+  if (role === 'super_admin' || role === 'admin') {
+    return true
+  }
+
+  // 部门经理可以查看本部门成员
+  if (role === 'department_manager') {
+    const userDeptId = currentUser.departmentId || currentUser.department
+    // 可以查看自己的订单，或者同部门成员的订单
+    return String(member.id) === String(currentUser.id) ||
+           member.department === userDeptId
+  }
+
+  // 销售员只能查看自己的订单
+  if (role === 'sales_staff') {
+    return String(member.id) === String(currentUser.id)
+  }
+
+  return false
+}
 
 // 导出统计数据
 const exportStats = reactive({
@@ -914,8 +948,13 @@ const overviewData = computed(() => {
     const [startDate, endDate] = dateRange.value
     accessibleOrders = accessibleOrders.filter(order => {
       // 优先使用orderDate(下单日期),如果没有则使用createTime
-      const orderDate = (order.orderDate || order.createTime)?.split(' ')[0] || ''
-      return orderDate >= startDate && orderDate <= endDate
+      let orderDateStr = order.orderDate || order.createTime || ''
+      // 处理各种日期格式：YYYY/MM/DD HH:mm:ss 或 YYYY-MM-DD HH:mm:ss
+      orderDateStr = orderDateStr.split(' ')[0].replace(/\//g, '-')
+      // 确保比较格式一致 (YYYY-MM-DD)
+      const start = startDate.replace(/\//g, '-')
+      const end = endDate.replace(/\//g, '-')
+      return orderDateStr >= start && orderDateStr <= end
     })
   }
 
@@ -978,11 +1017,12 @@ const memberList = computed(() => {
     return []
   }
 
-  console.log('[团队业绩] 当前用户:', currentUser.name, '角色:', currentUser.role)
+  console.log('[团队业绩] 当前用户:', currentUser.name, '角色:', currentUser.role, '部门ID:', currentUser.departmentId)
   console.log('[团队业绩] 系统总用户数:', userStore.users?.length || 0)
 
   // 获取可访问的用户列表（先声明）
   let accessibleUsers: unknown[] = []
+  const userDeptId = currentUser.departmentId || currentUser.department
 
   // 层级权限控制
   if (userStore.isSuperAdmin || currentUser.role === 'admin' || currentUser.role === 'super_admin') {
@@ -993,17 +1033,16 @@ const memberList = computed(() => {
   } else if (userStore.isManager || currentUser.role === 'department_manager') {
     // 部门经理：查看本部门成员
     accessibleUsers = userStore.users?.filter((user: unknown) =>
-      user.departmentId === currentUser.departmentId
+      String(user.departmentId) === String(userDeptId) || String(user.department) === String(userDeptId)
     ) || []
-    console.log('[团队业绩] 部门经理，可访问本部门用户:', accessibleUsers.length)
+    console.log('[团队业绩] 部门经理，可访问本部门用户:', accessibleUsers.length, '部门ID:', userDeptId)
 
   } else {
-    // 普通成员：查看同部门成员
+    // 普通成员（销售员等）：查看同部门成员
     accessibleUsers = userStore.users?.filter((user: unknown) =>
-      user.departmentId === currentUser.departmentId
+      String(user.departmentId) === String(userDeptId) || String(user.department) === String(userDeptId)
     ) || []
-    console.log('[团队业绩] 普通成员，可访问同部门用户:', accessibleUsers.length)
-
+    console.log('[团队业绩] 普通成员，可访问同部门用户:', accessibleUsers.length, '部门ID:', userDeptId)
   }
 
   // 应用部门筛选
@@ -1011,7 +1050,8 @@ const memberList = computed(() => {
     console.log('[团队业绩] 应用部门筛选:', selectedDepartment.value)
     const beforeFilter = accessibleUsers.length
     accessibleUsers = accessibleUsers.filter((user: unknown) =>
-      String(user.departmentId) === String(selectedDepartment.value)
+      String(user.departmentId) === String(selectedDepartment.value) ||
+      String(user.department) === String(selectedDepartment.value)
     )
     console.log('[团队业绩] 筛选后用户数:', accessibleUsers.length, '(筛选前:', beforeFilter, ')')
   }
@@ -1043,8 +1083,13 @@ const memberList = computed(() => {
       const [startDate, endDate] = dateRange.value
       userOrders = userOrders.filter(order => {
         // 优先使用orderDate(下单日期),如果没有则使用createTime
-        const orderDate = (order.orderDate || order.createTime)?.split(' ')[0] || ''
-        return orderDate >= startDate && orderDate <= endDate
+        let orderDateStr = order.orderDate || order.createTime || ''
+        // 处理各种日期格式：YYYY/MM/DD HH:mm:ss 或 YYYY-MM-DD HH:mm:ss
+        orderDateStr = orderDateStr.split(' ')[0].replace(/\//g, '-')
+        // 确保比较格式一致 (YYYY-MM-DD)
+        const start = startDate.replace(/\//g, '-')
+        const end = endDate.replace(/\//g, '-')
+        return orderDateStr >= start && orderDateStr <= end
       })
     }
 
@@ -1066,8 +1111,12 @@ const memberList = computed(() => {
         if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
           const [startDate, endDate] = dateRange.value
           // 使用shareDate(分享日期)进行筛选,如果没有则使用createdAt
-          const shareDate = (share.shareDate || share.createdAt)?.split(' ')[0] || ''
-          if (shareDate < startDate || shareDate > endDate) {
+          let shareDateStr = (share.shareDate || share.createdAt)?.split(' ')[0] || ''
+          // 处理各种日期格式
+          shareDateStr = shareDateStr.replace(/\//g, '-')
+          const start = startDate.replace(/\//g, '-')
+          const end = endDate.replace(/\//g, '-')
+          if (shareDateStr < start || shareDateStr > end) {
             return // 不在日期范围内,跳过此分享记录
           }
         }
@@ -1232,9 +1281,11 @@ const memberOrderList = computed(() => {
     // 日期筛选 - 使用orderDate(下单日期)而不是createTime(创建时间)
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
       // 优先使用orderDate(下单日期),如果没有则使用createTime
-      const orderDateStr = (order.orderDate || order.createTime || '').split(' ')[0]
-      const startDate = dateRange.value[0]
-      const endDate = dateRange.value[1]
+      let orderDateStr = (order.orderDate || order.createTime || '').split(' ')[0]
+      // 处理各种日期格式：YYYY/MM/DD 或 YYYY-MM-DD
+      orderDateStr = orderDateStr.replace(/\//g, '-')
+      const startDate = dateRange.value[0].replace(/\//g, '-')
+      const endDate = dateRange.value[1].replace(/\//g, '-')
       if (orderDateStr < startDate || orderDateStr > endDate) {
         return false
       }
@@ -1267,6 +1318,7 @@ const memberOrderList = computed(() => {
       amount: order.totalAmount,
       depositAmount: order.depositAmount || 0,
       collectionAmount: order.totalAmount - (order.depositAmount || 0),
+      status: order.status || 'pending',  // 添加订单状态字段
       logisticsCompany: (order as unknown).logisticsCompany || '待发货',
       trackingNumber: order.trackingNumber || '暂无',
       productDetails: order.products?.map((item: unknown) => `${item.name} x${item.quantity}`).join(', ') || '暂无详情'
@@ -1876,8 +1928,12 @@ const viewOrdersByType = (member: TeamMember, columnProp: string) => {
   if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
     const [startDate, endDate] = dateRange.value
     userOrders = userOrders.filter(order => {
-      const orderDate = (order.orderDate || order.createTime)?.split(' ')[0] || ''
-      return orderDate >= startDate && orderDate <= endDate
+      let orderDateStr = (order.orderDate || order.createTime)?.split(' ')[0] || ''
+      // 处理各种日期格式
+      orderDateStr = orderDateStr.replace(/\//g, '-')
+      const start = startDate.replace(/\//g, '-')
+      const end = endDate.replace(/\//g, '-')
+      return orderDateStr >= start && orderDateStr <= end
     })
   }
 
@@ -2029,12 +2085,16 @@ onMounted(async () => {
   // 设置默认部门：部门经理和销售员默认选择自己所在的部门
   const currentUser = userStore.currentUser
   if (currentUser) {
-    if (currentUser.role === 'department_manager' || currentUser.role === 'sales_staff') {
+    const userRole = currentUser.role
+    if (userRole === 'department_manager' || userRole === 'sales_staff' || userRole === 'sales') {
       // 非管理员角色，默认选择自己所在的部门
-      selectedDepartment.value = currentUser.departmentId || currentUser.department || ''
-      console.log('[团队业绩] 默认选择部门:', selectedDepartment.value)
+      const userDeptId = currentUser.departmentId || currentUser.department || ''
+      selectedDepartment.value = userDeptId
+      console.log('[团队业绩] 非管理员角色，默认选择部门:', selectedDepartment.value, '用户角色:', userRole)
+    } else {
+      // 管理员角色默认为空（显示所有部门）
+      console.log('[团队业绩] 管理员角色，显示所有部门')
     }
-    // 管理员角色默认为空（显示所有部门）
   }
 
   // 自动修复订单的salesPersonId

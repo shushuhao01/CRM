@@ -1473,6 +1473,45 @@ CREATE TABLE `department_order_limits` (
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='部门下单限制配置表';
 
+-- 47. 售后服务跟进记录表
+DROP TABLE IF EXISTS `service_follow_up_records`;
+CREATE TABLE `service_follow_up_records` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '跟进记录ID',
+  `service_id` VARCHAR(50) NOT NULL COMMENT '售后服务ID',
+  `service_number` VARCHAR(50) COMMENT '售后单号',
+  `follow_up_time` TIMESTAMP NOT NULL COMMENT '跟进时间',
+  `content` TEXT NOT NULL COMMENT '跟进内容',
+  `created_by` VARCHAR(100) COMMENT '创建人姓名',
+  `created_by_id` VARCHAR(50) COMMENT '创建人ID',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_service_id` (`service_id`),
+  INDEX `idx_service_number` (`service_number`),
+  INDEX `idx_follow_up_time` (`follow_up_time`),
+  INDEX `idx_created_by_id` (`created_by_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='售后服务跟进记录表';
+
+-- 48. 售后服务操作记录表
+DROP TABLE IF EXISTS `service_operation_logs`;
+CREATE TABLE `service_operation_logs` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '操作记录ID',
+  `service_id` VARCHAR(50) NOT NULL COMMENT '售后服务ID',
+  `service_number` VARCHAR(50) COMMENT '售后单号',
+  `operation_type` VARCHAR(50) NOT NULL COMMENT '操作类型: create/assign/status_change/priority_change/close/follow_up',
+  `operation_content` TEXT COMMENT '操作内容描述',
+  `old_value` VARCHAR(255) COMMENT '旧值',
+  `new_value` VARCHAR(255) COMMENT '新值',
+  `operator_id` VARCHAR(50) COMMENT '操作人ID',
+  `operator_name` VARCHAR(100) COMMENT '操作人姓名',
+  `remark` TEXT COMMENT '备注',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `idx_service_id` (`service_id`),
+  INDEX `idx_service_number` (`service_number`),
+  INDEX `idx_operation_type` (`operation_type`),
+  INDEX `idx_operator_id` (`operator_id`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='售后服务操作记录表';
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =============================================

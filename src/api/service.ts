@@ -140,5 +140,56 @@ export const serviceApi = {
       closed: number
     }>('/services/stats/summary')
     return response.data || response
+  },
+
+  /**
+   * 获取跟进记录
+   */
+  async getFollowUps(id: string): Promise<ServiceFollowUpRecord[]> {
+    const response = await api.get<ServiceFollowUpRecord[]>(`/services/${id}/follow-ups`)
+    return response.data || response || []
+  },
+
+  /**
+   * 添加跟进记录
+   */
+  async addFollowUp(id: string, data: { followUpTime: string; content: string }): Promise<ServiceFollowUpRecord> {
+    const response = await api.post<ServiceFollowUpRecord>(`/services/${id}/follow-ups`, data)
+    return response.data || response
+  },
+
+  /**
+   * 获取操作记录
+   */
+  async getOperationLogs(id: string): Promise<ServiceOperationLog[]> {
+    const response = await api.get<ServiceOperationLog[]>(`/services/${id}/operation-logs`)
+    return response.data || response || []
   }
+}
+
+// 跟进记录类型
+export interface ServiceFollowUpRecord {
+  id: string
+  serviceId: string
+  serviceNumber?: string
+  followUpTime: string
+  content: string
+  createdBy: string
+  createdById?: string
+  createTime: string
+}
+
+// 操作记录类型
+export interface ServiceOperationLog {
+  id: string
+  serviceId: string
+  serviceNumber?: string
+  operationType: string
+  operationContent: string
+  oldValue?: string
+  newValue?: string
+  operatorId?: string
+  operatorName?: string
+  remark?: string
+  createTime: string
 }

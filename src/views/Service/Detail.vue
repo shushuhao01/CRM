@@ -605,7 +605,7 @@ import { useDepartmentStore } from '@/stores/department'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { formatPhone } from '@/utils/phone'
 import { createSafeNavigator } from '@/utils/navigation'
-import { isProduction } from '@/utils/env'
+import { serviceApi } from '@/api/service'
 
 // 路由相关
 const router = useRouter()
@@ -1000,6 +1000,10 @@ const confirmAssign = async () => {
 
   assignLoading.value = true
   try {
+    // 调用API分配处理人
+    const assignedToId = assignForm.assignType === 'user' ? assignForm.userId : undefined
+    await serviceApi.assign(serviceInfo.id, assignedToName, assignedToId, assignForm.remark)
+
     serviceInfo.assignedTo = assignedToName
 
     // 发送分配处理人成功的消息提醒
@@ -1043,59 +1047,61 @@ const updateStatus = () => {
 /**
  * 确认状态更新
  */
-const confirmStatusUpdate = () => {
+const confirmStatusUpdate = async () => {
   if (!statusForm.status) {
     ElMessage.warning('请选择状态')
     return
   }
 
-  // 如果有处理结果选项但未选择(可选)
-  // if (currentHandleResults.value.length > 0 && !statusForm.handleResult) {
-  //   ElMessage.warning('请选择处理结果')
-  //   return
-  // }
+  try {
+    // 调用API更新状态
+    await serviceApi.updateStatus(serviceInfo.id, statusForm.status, statusForm.remark)
 
-  serviceInfo.status = statusForm.status
-  if (statusForm.handleResult) {
-    serviceInfo.handleResult = statusForm.handleResult
-  }
-  statusDialogVisible.value = false
-
-  // 发送状态更新的消息提醒
-  notificationStore.sendMessage(
-    notificationStore.MessageType.AFTER_SALES_CREATED,
-    `售后申请 ${serviceInfo.serviceNumber} 状态已更新为${getStatusText(statusForm.status)}，客户：${serviceInfo.customerName}`,
-    {
-      relatedId: serviceInfo.serviceNumber,
-      relatedType: 'service',
-      actionUrl: `/service/detail/${serviceInfo.serviceNumber}`
+    serviceInfo.status = statusForm.status
+    if (statusForm.handleResult) {
+      serviceInfo.handleResult = statusForm.handleResult
     }
-  )
+    statusDialogVisible.value = false
 
-  ElMessage.success('状态更新成功')
+    // 发送状态更新的消息提醒
+    notificationStore.sendMessage(
+      notificationStore.MessageType.AFTER_SALES_CREATED,
+      `售后申请 ${serviceInfo.serviceNumber} 状态已更新为${getStatusText(statusForm.status)}，客户：${serviceInfo.customerName}`,
+      {
+        relatedId: serviceInfo.serviceNumber,
+        relatedType: 'service',
+        actionUrl: `/service/detail/${serviceInfo.serviceNumber}`
+      }
+    )
 
-  // 获取处理结果文本
-  let resultText = ''
-  if (statusForm.handleResult && currentHandleResults.value.length > 0) {
-    const result = currentHandleResults.value.find((r: unknown) => r.value === statusForm.handleResult)
-    resultText = result?.title || result?.label || ''
+    ElMessage.success('状态更新成功')
+
+    // 获取处理结果文本
+    let resultText = ''
+    if (statusForm.handleResult && currentHandleResults.value.length > 0) {
+      const result = currentHandleResults.value.find((r: unknown) => r.value === statusForm.handleResult)
+      resultText = result?.title || result?.label || ''
+    }
+
+    // 添加处理步骤
+    const description = [
+      statusForm.remark,
+      resultText ? `处理结果: ${resultText}` : '',
+      !statusForm.remark && !resultText ? `状态更新为${getStatusText(statusForm.status)}` : ''
+    ].filter(Boolean).join(' - ')
+
+    processSteps.value.push({
+      title: '状态更新',
+      description: description,
+      time: new Date().toLocaleString(),
+      type: 'primary',
+      icon: Clock,
+      operator: userStore.currentUser?.name || '系统'
+    })
+  } catch (error) {
+    console.error('状态更新失败:', error)
+    ElMessage.error('状态更新失败')
   }
-
-  // 添加处理步骤
-  const description = [
-    statusForm.remark,
-    resultText ? `处理结果: ${resultText}` : '',
-    !statusForm.remark && !resultText ? `状态更新为${getStatusText(statusForm.status)}` : ''
-  ].filter(Boolean).join(' - ')
-
-  processSteps.value.push({
-    title: '状态更新',
-    description: description,
-    time: new Date().toLocaleString(),
-    type: 'primary',
-    icon: Clock,
-    operator: userStore.currentUser?.name || '系统'
-  })
 }
 
 /**
@@ -1280,33 +1286,25 @@ const loadServiceDetail = async () => {
 
     console.log('[售后详情] 加载售后记录:', serviceId)
 
-    if (isProduction()) {
-      // 生产环境:调用API
-      console.log('[售后详情] 生产环境,调用API')
-      const response = await fetch(`/api/service/${serviceId}`)
-      if (!response.ok) {
-        throw new Error('API调用失败')
-      }
-      const data = await response.json()
+    // 始终从API获取数据
+    try {
+      const data = await serviceApi.getDetail(serviceId)
       Object.assign(serviceInfo, data)
-    } else {
-      // 开发环境:从store获取
-      console.log('[售后详情] 开发环境,从store获取')
+      console.log('[售后详情] API获取成功:', serviceInfo)
+    } catch (apiError) {
+      console.warn('[售后详情] API获取失败,尝试从store获取:', apiError)
+      // API失败时回退到store
       const service = serviceStore.getServiceById(serviceId)
-
       if (!service) {
         ElMessage.error('售后记录不存在')
         router.back()
         return
       }
-
-      // 使用真实数据填充
       Object.assign(serviceInfo, service)
-      console.log('[售后详情] 售后信息:', serviceInfo)
-
-      // 生成处理步骤
-      generateProcessSteps()
     }
+
+    // 生成处理步骤
+    generateProcessSteps()
   } catch (error) {
     console.error('[售后详情] 加载失败:', error)
     ElMessage.error('加载售后详情失败')
@@ -1409,9 +1407,9 @@ const handleAddFollowUp = () => {
 }
 
 /**
- * 保存跟进记录
+ * 保存跟进记录 - 调用API保存到数据库
  */
-const handleSaveFollowUp = () => {
+const handleSaveFollowUp = async () => {
   if (!followUpForm.followUpTime) {
     ElMessage.warning('请选择跟进时间')
     return
@@ -1422,50 +1420,39 @@ const handleSaveFollowUp = () => {
     return
   }
 
-  // 创建新记录
-  const newRecord = {
-    id: Date.now().toString(),
-    followUpTime: followUpForm.followUpTime,
-    content: followUpForm.content.trim(),
-    createdBy: userStore.currentUser?.name || '当前用户',
-    createTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
+  try {
+    const serviceId = route.params.id as string
+    const savedRecord = await serviceApi.addFollowUp(serviceId, {
+      followUpTime: followUpForm.followUpTime,
+      content: followUpForm.content.trim()
+    })
+
+    // 添加到列表开头(最新的在前面)
+    followUpRecords.value.unshift(savedRecord)
+
+    // 关闭对话框
+    followUpDialogVisible.value = false
+
+    ElMessage.success('跟进记录已保存')
+  } catch (error) {
+    console.error('[售后详情] 保存跟进记录失败:', error)
+    ElMessage.error('保存跟进记录失败')
   }
-
-  // 添加到列表开头(最新的在前面)
-  followUpRecords.value.unshift(newRecord)
-
-  // 保存到localStorage
-  saveFollowUpRecords()
-
-  // 关闭对话框
-  followUpDialogVisible.value = false
-
-  ElMessage.success('跟进记录已保存')
 }
 
 /**
- * 保存跟进记录到localStorage
+ * 加载跟进记录 - 从API获取
  */
-const saveFollowUpRecords = () => {
-  const storageKey = `service_follow_up_${serviceInfo.id}`
-  localStorage.setItem(storageKey, JSON.stringify(followUpRecords.value))
-}
+const loadFollowUpRecords = async () => {
+  try {
+    const serviceId = route.params.id as string
+    if (!serviceId) return
 
-/**
- * 加载跟进记录
- */
-const loadFollowUpRecords = () => {
-  const storageKey = `service_follow_up_${serviceInfo.id}`
-  const saved = localStorage.getItem(storageKey)
-
-  if (saved) {
-    try {
-      followUpRecords.value = JSON.parse(saved)
-    } catch (e) {
-      console.error('加载跟进记录失败:', e)
-      followUpRecords.value = []
-    }
-  } else {
+    const records = await serviceApi.getFollowUps(serviceId)
+    followUpRecords.value = records || []
+    console.log('[售后详情] 跟进记录加载成功:', followUpRecords.value.length, '条')
+  } catch (error) {
+    console.error('[售后详情] 加载跟进记录失败:', error)
     followUpRecords.value = []
   }
 }
@@ -1475,9 +1462,9 @@ onMounted(async () => {
   // 加载用户和部门数据
   await userStore.loadUsers()
   // 加载售后详情
-  loadServiceDetail()
-  // 加载跟进记录
-  loadFollowUpRecords()
+  await loadServiceDetail()
+  // 加载跟进记录(从API获取)
+  await loadFollowUpRecords()
 })
 </script>
 

@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getDataSource } from '../config/database';
 import { AfterSalesService } from '../entities/AfterSalesService';
+import { ServiceFollowUp } from '../entities/ServiceFollowUp';
+import { ServiceOperationLog } from '../entities/ServiceOperationLog';
 import { authenticateToken } from '../middleware/auth';
 // import { Like, In } from 'typeorm'; // 暂时未使用
 
@@ -13,6 +15,61 @@ const getServiceRepository = () => {
     throw new Error('数据库连接未初始化');
   }
   return dataSource.getRepository(AfterSalesService);
+};
+
+// 获取跟进记录仓库
+const getFollowUpRepository = () => {
+  const dataSource = getDataSource();
+  if (!dataSource) {
+    throw new Error('数据库连接未初始化');
+  }
+  return dataSource.getRepository(ServiceFollowUp);
+};
+
+// 获取操作记录仓库
+const getOperationLogRepository = () => {
+  const dataSource = getDataSource();
+  if (!dataSource) {
+    throw new Error('数据库连接未初始化');
+  }
+  return dataSource.getRepository(ServiceOperationLog);
+};
+
+// 生成唯一ID
+const generateId = (prefix: string = '') => {
+  return `${prefix}${Date.now()}${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+};
+
+// 记录操作日志
+const logOperation = async (
+  serviceId: string,
+  serviceNumber: string,
+  operationType: string,
+  operationContent: string,
+  operatorId: string,
+  operatorName: string,
+  oldValue?: string,
+  newValue?: string,
+  remark?: string
+) => {
+  try {
+    const logRepository = getOperationLogRepository();
+    const log = logRepository.create({
+      id: generateId('SOL'),
+      serviceId,
+      serviceNumber,
+      operationType,
+      operationContent,
+      oldValue,
+      newValue,
+      operatorId,
+      operatorName,
+      remark
+    });
+    await logRepository.save(log);
+  } catch (error) {
+    console.error('[Services] 记录操作日志失败:', error);
+  }
 };
 
 /**
@@ -580,6 +637,151 @@ router.get('/stats/summary', authenticateToken, async (req: Request, res: Respon
     res.status(500).json({
       success: false,
       message: '获取统计失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * 获取售后服务跟进记录
+ * GET /api/v1/services/:id/follow-ups
+ */
+router.get('/:id/follow-ups', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const followUpRepository = getFollowUpRepository();
+    const { id } = req.params;
+
+    const followUps = await followUpRepository.find({
+      where: { serviceId: id },
+      order: { followUpTime: 'DESC' }
+    });
+
+    const formattedFollowUps = followUps.map(record => ({
+      id: record.id,
+      serviceId: record.serviceId,
+      serviceNumber: record.serviceNumber,
+      followUpTime: record.followUpTime?.toISOString().replace('T', ' ').substring(0, 19),
+      content: record.content,
+      createdBy: record.createdBy,
+      createdById: record.createdById,
+      createTime: record.createdAt?.toISOString().replace('T', ' ').substring(0, 19)
+    }));
+
+    res.json({
+      success: true,
+      data: formattedFollowUps
+    });
+  } catch (error) {
+    console.error('[Services] 获取跟进记录失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取跟进记录失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * 添加售后服务跟进记录
+ * POST /api/v1/services/:id/follow-ups
+ */
+router.post('/:id/follow-ups', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const followUpRepository = getFollowUpRepository();
+    const serviceRepository = getServiceRepository();
+    const currentUser = (req as any).user;
+    const { id } = req.params;
+    const { followUpTime, content } = req.body;
+
+    // 验证售后服务存在
+    const service = await serviceRepository.findOne({ where: { id } });
+    if (!service) {
+      return res.status(404).json({
+        success: false,
+        message: '售后服务不存在'
+      });
+    }
+
+    const followUp = followUpRepository.create({
+      id: generateId('SFU'),
+      serviceId: id,
+      serviceNumber: service.serviceNumber,
+      followUpTime: new Date(followUpTime),
+      content,
+      createdBy: currentUser?.username || '系统',
+      createdById: currentUser?.userId || null
+    });
+
+    const savedFollowUp = await followUpRepository.save(followUp);
+
+    // 记录操作日志
+    await logOperation(
+      id,
+      service.serviceNumber,
+      'follow_up',
+      `添加跟进记录: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`,
+      currentUser?.userId,
+      currentUser?.username
+    );
+
+    res.status(201).json({
+      success: true,
+      message: '添加跟进记录成功',
+      data: {
+        id: savedFollowUp.id,
+        followUpTime: savedFollowUp.followUpTime?.toISOString().replace('T', ' ').substring(0, 19),
+        content: savedFollowUp.content,
+        createdBy: savedFollowUp.createdBy,
+        createTime: savedFollowUp.createdAt?.toISOString().replace('T', ' ').substring(0, 19)
+      }
+    });
+  } catch (error) {
+    console.error('[Services] 添加跟进记录失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '添加跟进记录失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * 获取售后服务操作记录
+ * GET /api/v1/services/:id/operation-logs
+ */
+router.get('/:id/operation-logs', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const logRepository = getOperationLogRepository();
+    const { id } = req.params;
+
+    const logs = await logRepository.find({
+      where: { serviceId: id },
+      order: { createdAt: 'DESC' }
+    });
+
+    const formattedLogs = logs.map(log => ({
+      id: log.id,
+      serviceId: log.serviceId,
+      serviceNumber: log.serviceNumber,
+      operationType: log.operationType,
+      operationContent: log.operationContent,
+      oldValue: log.oldValue,
+      newValue: log.newValue,
+      operatorId: log.operatorId,
+      operatorName: log.operatorName,
+      remark: log.remark,
+      createTime: log.createdAt?.toISOString().replace('T', ' ').substring(0, 19)
+    }));
+
+    res.json({
+      success: true,
+      data: formattedLogs
+    });
+  } catch (error) {
+    console.error('[Services] 获取操作记录失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取操作记录失败',
       error: error instanceof Error ? error.message : '未知错误'
     });
   }

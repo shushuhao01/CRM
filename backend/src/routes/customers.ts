@@ -1128,11 +1128,36 @@ router.delete('/:id', async (req: Request, res: Response) => {
 router.get('/:id/orders', async (req: Request, res: Response) => {
   try {
     const customerId = req.params.id;
-    // 返回空数组，实际应从订单表查询
+    const { Order } = await import('../entities/Order');
+    const orderRepository = AppDataSource.getRepository(Order);
+
+    const orders = await orderRepository.find({
+      where: { customerId },
+      order: { createdAt: 'DESC' }
+    });
+
+    const list = orders.map(order => ({
+      id: order.id,
+      orderNo: order.orderNumber,
+      orderNumber: order.orderNumber,
+      products: order.products || [],
+      productNames: Array.isArray(order.products)
+        ? order.products.map((p: any) => p.name || p.productName).join(', ')
+        : '',
+      totalAmount: Number(order.totalAmount) || 0,
+      status: order.status,
+      orderDate: order.createdAt?.toISOString() || '',
+      createTime: order.createdAt?.toISOString() || '',
+      paymentStatus: order.paymentStatus,
+      shippingAddress: order.shippingAddress
+    }));
+
+    console.log(`[客户订单] 客户 ${customerId} 有 ${list.length} 条订单记录`);
+
     res.json({
       success: true,
       code: 200,
-      data: []
+      data: list
     });
   } catch (error) {
     console.error('获取客户订单失败:', error);
@@ -1148,7 +1173,34 @@ router.get('/:id/orders', async (req: Request, res: Response) => {
 router.get('/:id/services', async (req: Request, res: Response) => {
   try {
     const customerId = req.params.id;
-    res.json({ success: true, code: 200, data: [] });
+    const { AfterSalesService } = await import('../entities/AfterSalesService');
+    const serviceRepository = AppDataSource.getRepository(AfterSalesService);
+
+    const services = await serviceRepository.find({
+      where: { customerId },
+      order: { createdAt: 'DESC' }
+    });
+
+    const list = services.map(service => ({
+      id: service.id,
+      serviceNo: service.serviceNumber,
+      serviceNumber: service.serviceNumber,
+      orderNo: service.orderNumber,
+      orderNumber: service.orderNumber,
+      serviceType: service.serviceType,
+      type: service.serviceType,
+      status: service.status,
+      reason: service.reason || service.description || '',
+      description: service.description,
+      price: Number(service.price) || 0,
+      amount: Number(service.price) || 0,
+      createTime: service.createdAt?.toISOString() || '',
+      resolvedTime: service.resolvedTime?.toISOString() || ''
+    }));
+
+    console.log(`[客户售后] 客户 ${customerId} 有 ${list.length} 条售后记录`);
+
+    res.json({ success: true, code: 200, data: list });
   } catch (error) {
     console.error('获取客户售后记录失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取客户售后记录失败' });
@@ -1163,7 +1215,32 @@ router.get('/:id/services', async (req: Request, res: Response) => {
 router.get('/:id/calls', async (req: Request, res: Response) => {
   try {
     const customerId = req.params.id;
-    res.json({ success: true, code: 200, data: [] });
+    const { Call } = await import('../entities/Call');
+    const callRepository = AppDataSource.getRepository(Call);
+
+    const calls = await callRepository.find({
+      where: { customerId },
+      order: { createdAt: 'DESC' }
+    });
+
+    const list = calls.map(call => ({
+      id: call.id,
+      customerId: call.customerId,
+      customerPhone: call.phoneNumber,
+      phone: call.phoneNumber,
+      direction: 'outbound',
+      type: '呼出',
+      duration: call.duration || 0,
+      status: call.status || 'completed',
+      summary: call.notes || '',
+      remark: call.notes || '',
+      startTime: call.createdAt?.toISOString() || '',
+      callTime: call.createdAt?.toISOString() || ''
+    }));
+
+    console.log(`[客户通话] 客户 ${customerId} 有 ${list.length} 条通话记录`);
+
+    res.json({ success: true, code: 200, data: list });
   } catch (error) {
     console.error('获取客户通话记录失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取客户通话记录失败' });
@@ -1178,7 +1255,36 @@ router.get('/:id/calls', async (req: Request, res: Response) => {
 router.get('/:id/followups', async (req: Request, res: Response) => {
   try {
     const customerId = req.params.id;
-    res.json({ success: true, code: 200, data: [] });
+    const { FollowUp } = await import('../entities/FollowUp');
+    const followUpRepository = AppDataSource.getRepository(FollowUp);
+
+    const followUps = await followUpRepository.find({
+      where: { customerId },
+      order: { createdAt: 'DESC' }
+    });
+
+    const list = followUps.map(followUp => ({
+      id: followUp.id,
+      customerId: followUp.customerId,
+      type: followUp.type,
+      title: followUp.type === 'call' ? '电话跟进' :
+             followUp.type === 'visit' ? '上门拜访' :
+             followUp.type === 'email' ? '邮件跟进' :
+             followUp.type === 'message' ? '消息跟进' : '跟进记录',
+      content: followUp.content || '',
+      status: followUp.status,
+      priority: followUp.priority,
+      nextFollowUp: followUp.nextFollowUp?.toISOString() || '',
+      nextTime: followUp.nextFollowUp?.toISOString() || '',
+      createdBy: followUp.createdBy,
+      author: followUp.createdByName || followUp.createdBy || '系统',
+      createTime: followUp.createdAt?.toISOString() || '',
+      createdAt: followUp.createdAt?.toISOString() || ''
+    }));
+
+    console.log(`[客户跟进] 客户 ${customerId} 有 ${list.length} 条跟进记录`);
+
+    res.json({ success: true, code: 200, data: list });
   } catch (error) {
     console.error('获取客户跟进记录失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取客户跟进记录失败' });
@@ -1193,14 +1299,57 @@ router.get('/:id/followups', async (req: Request, res: Response) => {
 router.post('/:id/followups', async (req: Request, res: Response) => {
   try {
     const customerId = req.params.id;
-    const followUpData = req.body;
-    const newFollowUp = {
-      id: `followup_${Date.now()}`,
+    const { type, content, status, priority, nextFollowUp } = req.body;
+    const currentUser = (req as any).user;
+
+    const { FollowUp } = await import('../entities/FollowUp');
+    const followUpRepository = AppDataSource.getRepository(FollowUp);
+
+    // 获取客户信息
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customer = await customerRepository.findOne({ where: { id: customerId } });
+
+    // 生成唯一ID
+    const { v4: uuidv4 } = await import('uuid');
+
+    const followUp = followUpRepository.create({
+      id: uuidv4(),
       customerId,
-      ...followUpData,
-      createTime: new Date().toISOString()
-    };
-    res.status(201).json({ success: true, code: 200, data: newFollowUp });
+      customerName: customer?.name || '',
+      type: type || 'call',
+      content: content || '',
+      status: status || 'completed',
+      priority: priority || 'medium',
+      nextFollowUp: nextFollowUp ? new Date(nextFollowUp) : undefined,
+      createdBy: currentUser?.id || 'system',
+      createdByName: currentUser?.name || '系统'
+    });
+
+    const savedFollowUp = await followUpRepository.save(followUp);
+
+    console.log(`[添加跟进] 客户 ${customerId} 添加跟进记录成功`);
+
+    const title = savedFollowUp.type === 'call' ? '电话跟进' :
+                  savedFollowUp.type === 'visit' ? '上门拜访' :
+                  savedFollowUp.type === 'email' ? '邮件跟进' :
+                  savedFollowUp.type === 'message' ? '消息跟进' : '跟进记录';
+
+    res.status(201).json({
+      success: true,
+      code: 200,
+      data: {
+        id: savedFollowUp.id,
+        customerId: savedFollowUp.customerId,
+        type: savedFollowUp.type,
+        title: title,
+        content: savedFollowUp.content,
+        status: savedFollowUp.status,
+        priority: savedFollowUp.priority,
+        nextFollowUp: savedFollowUp.nextFollowUp?.toISOString() || '',
+        author: savedFollowUp.createdByName || savedFollowUp.createdBy || '系统',
+        createTime: savedFollowUp.createdAt?.toISOString() || ''
+      }
+    });
   } catch (error) {
     console.error('添加跟进记录失败:', error);
     res.status(500).json({ success: false, code: 500, message: '添加跟进记录失败' });
@@ -1214,9 +1363,45 @@ router.post('/:id/followups', async (req: Request, res: Response) => {
  */
 router.put('/:id/followups/:followUpId', async (req: Request, res: Response) => {
   try {
-    const { id: customerId, followUpId } = req.params;
-    const followUpData = req.body;
-    res.json({ success: true, code: 200, data: { id: followUpId, ...followUpData } });
+    const { followUpId } = req.params;
+    const { type, content, status, priority, nextFollowUp } = req.body;
+
+    const { FollowUp } = await import('../entities/FollowUp');
+    const followUpRepository = AppDataSource.getRepository(FollowUp);
+
+    const followUp = await followUpRepository.findOne({ where: { id: followUpId } });
+    if (!followUp) {
+      return res.status(404).json({ success: false, code: 404, message: '跟进记录不存在' });
+    }
+
+    if (type !== undefined) followUp.type = type;
+    if (content !== undefined) followUp.content = content;
+    if (status !== undefined) followUp.status = status;
+    if (priority !== undefined) followUp.priority = priority;
+    if (nextFollowUp !== undefined) followUp.nextFollowUp = nextFollowUp ? new Date(nextFollowUp) : undefined;
+
+    const updatedFollowUp = await followUpRepository.save(followUp);
+
+    const title = updatedFollowUp.type === 'call' ? '电话跟进' :
+                  updatedFollowUp.type === 'visit' ? '上门拜访' :
+                  updatedFollowUp.type === 'email' ? '邮件跟进' :
+                  updatedFollowUp.type === 'message' ? '消息跟进' : '跟进记录';
+
+    res.json({
+      success: true,
+      code: 200,
+      data: {
+        id: updatedFollowUp.id,
+        type: updatedFollowUp.type,
+        title: title,
+        content: updatedFollowUp.content,
+        status: updatedFollowUp.status,
+        priority: updatedFollowUp.priority,
+        nextFollowUp: updatedFollowUp.nextFollowUp?.toISOString() || '',
+        author: updatedFollowUp.createdByName || updatedFollowUp.createdBy || '系统',
+        createTime: updatedFollowUp.createdAt?.toISOString() || ''
+      }
+    });
   } catch (error) {
     console.error('更新跟进记录失败:', error);
     res.status(500).json({ success: false, code: 500, message: '更新跟进记录失败' });
@@ -1230,6 +1415,18 @@ router.put('/:id/followups/:followUpId', async (req: Request, res: Response) => 
  */
 router.delete('/:id/followups/:followUpId', async (req: Request, res: Response) => {
   try {
+    const { followUpId } = req.params;
+
+    const { FollowUp } = await import('../entities/FollowUp');
+    const followUpRepository = AppDataSource.getRepository(FollowUp);
+
+    const followUp = await followUpRepository.findOne({ where: { id: followUpId } });
+    if (!followUp) {
+      return res.status(404).json({ success: false, code: 404, message: '跟进记录不存在' });
+    }
+
+    await followUpRepository.remove(followUp);
+
     res.json({ success: true, code: 200, message: '删除成功' });
   } catch (error) {
     console.error('删除跟进记录失败:', error);
@@ -1295,6 +1492,122 @@ router.delete('/:id/tags/:tagId', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('删除客户标签失败:', error);
     res.status(500).json({ success: false, code: 500, message: '删除客户标签失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/customers/:id/medical-history
+ * @desc 获取客户疾病史
+ * @access Private
+ */
+router.get('/:id/medical-history', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+
+    // 疾病史存储在 medicalHistory 字段中，可能是字符串或JSON数组
+    let medicalRecords: any[] = [];
+
+    if (customer.medicalHistory) {
+      // 尝试解析为JSON数组
+      try {
+        const parsed = JSON.parse(customer.medicalHistory);
+        if (Array.isArray(parsed)) {
+          medicalRecords = parsed;
+        } else {
+          // 如果是字符串，转换为单条记录
+          medicalRecords = [{
+            id: 1,
+            content: customer.medicalHistory,
+            createTime: customer.createdAt?.toISOString() || '',
+            operator: '系统'
+          }];
+        }
+      } catch {
+        // 解析失败，作为纯文本处理
+        medicalRecords = [{
+          id: 1,
+          content: customer.medicalHistory,
+          createTime: customer.createdAt?.toISOString() || '',
+          operator: '系统'
+        }];
+      }
+    }
+
+    console.log(`[客户疾病史] 客户 ${req.params.id} 有 ${medicalRecords.length} 条疾病史记录`);
+    res.json({ success: true, code: 200, data: medicalRecords });
+  } catch (error) {
+    console.error('获取客户疾病史失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取客户疾病史失败' });
+  }
+});
+
+/**
+ * @route POST /api/v1/customers/:id/medical-history
+ * @desc 添加客户疾病史记录
+ * @access Private
+ */
+router.post('/:id/medical-history', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+
+    const { content } = req.body;
+    const currentUser = (req as any).user;
+
+    // 解析现有疾病史
+    let medicalRecords: any[] = [];
+    if (customer.medicalHistory) {
+      try {
+        const parsed = JSON.parse(customer.medicalHistory);
+        if (Array.isArray(parsed)) {
+          medicalRecords = parsed;
+        } else {
+          medicalRecords = [{
+            id: 1,
+            content: customer.medicalHistory,
+            createTime: customer.createdAt?.toISOString() || '',
+            operator: '系统'
+          }];
+        }
+      } catch {
+        medicalRecords = [{
+          id: 1,
+          content: customer.medicalHistory,
+          createTime: customer.createdAt?.toISOString() || '',
+          operator: '系统'
+        }];
+      }
+    }
+
+    // 添加新记录
+    const newRecord = {
+      id: Date.now(),
+      content: content,
+      createTime: new Date().toISOString(),
+      operator: currentUser?.name || '系统',
+      operationType: 'add'
+    };
+
+    medicalRecords.unshift(newRecord);
+
+    // 保存到数据库
+    customer.medicalHistory = JSON.stringify(medicalRecords);
+    await customerRepository.save(customer);
+
+    console.log(`[添加疾病史] 客户 ${req.params.id} 添加疾病史成功`);
+    res.status(201).json({ success: true, code: 200, data: newRecord });
+  } catch (error) {
+    console.error('添加客户疾病史失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '添加客户疾病史失败' });
   }
 });
 
