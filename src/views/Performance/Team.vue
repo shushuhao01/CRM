@@ -197,7 +197,15 @@
             >
               {{ row[column.prop] }}%
             </el-tag>
-            <!-- 【批次208修复】订单数量字段智能显示:整数不显示小数点,有小数才显示 -->
+            <!-- 订单数量字段 - 可点击查看对应订单详情 -->
+            <el-link
+              v-else-if="column.prop.includes('Count') && row[column.prop] > 0"
+              type="primary"
+              @click="viewOrdersByType(row, column.prop)"
+              class="count-link"
+            >
+              {{ typeof row[column.prop] === 'number' ? (row[column.prop] % 1 === 0 ? row[column.prop] : row[column.prop].toFixed(1)) : row[column.prop] }}
+            </el-link>
             <span v-else-if="column.prop.includes('Count')" class="count">
               {{ typeof row[column.prop] === 'number' ? (row[column.prop] % 1 === 0 ? row[column.prop] : row[column.prop].toFixed(1)) : row[column.prop] }}
             </span>
@@ -281,7 +289,13 @@
                 <span class="collection">¥{{ formatNumber(row.collectionAmount) }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="logisticsCompany" label="物流公司" width="120" show-overflow-tooltip />
+            <el-table-column prop="status" label="订单状态" width="120" align="center">
+              <template #default="{ row }">
+                <el-tag :type="getOrderStatusTagType(row.status)" size="small">
+                  {{ getOrderStatusText(row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column prop="trackingNumber" label="快递单号" width="160" show-overflow-tooltip />
             <el-table-column prop="productDetails" label="产品详情" min-width="200" show-overflow-tooltip>
               <template #default="{ row }">
@@ -311,6 +325,87 @@
               @current-change="handleMemberOrderPageChange"
             />
           </div>
+        </div>
+      </div>
+    </el-dialog>
+
+    <!-- 订单类型详情弹窗 -->
+    <el-dialog
+      v-model="orderTypeDetailVisible"
+      :title="orderTypeDetailTitle"
+      width="90%"
+      top="5vh"
+      class="order-type-dialog"
+    >
+      <div class="order-type-content">
+        <!-- 成员基本信息 -->
+        <div class="member-info" v-if="orderTypeMember">
+          <div class="info-item">
+            <span class="label">姓名：</span>
+            <span class="value">{{ orderTypeMember.name }}</span>
+          </div>
+          <div class="info-item">
+            <span class="label">部门：</span>
+            <span class="value">{{ orderTypeMember.department }}</span>
+          </div>
+          <div class="info-item">
+            <span class="label">订单类型：</span>
+            <span class="value">{{ orderTypeLabel }}</span>
+          </div>
+          <div class="info-item">
+            <span class="label">订单数量：</span>
+            <span class="value">{{ orderTypeOrders.length }}</span>
+          </div>
+        </div>
+
+        <!-- 订单列表 -->
+        <el-table :data="paginatedOrderTypeList" stripe border class="order-table">
+          <el-table-column type="index" label="序号" width="60" align="center" />
+          <el-table-column prop="orderNo" label="订单号" width="140" show-overflow-tooltip />
+          <el-table-column prop="orderDate" label="下单日期" width="110" show-overflow-tooltip />
+          <el-table-column prop="customerName" label="客户姓名" width="110" show-overflow-tooltip />
+          <el-table-column prop="amount" label="金额" width="110" align="right">
+            <template #default="{ row }">
+              <span class="amount">¥{{ formatNumber(row.amount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="depositAmount" label="定金" width="100" align="right">
+            <template #default="{ row }">
+              <span class="deposit">¥{{ formatNumber(row.depositAmount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="collectionAmount" label="代收" width="100" align="right">
+            <template #default="{ row }">
+              <span class="collection">¥{{ formatNumber(row.collectionAmount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="订单状态" width="120" align="center">
+            <template #default="{ row }">
+              <el-tag :type="getOrderStatusTagType(row.status)" size="small">
+                {{ getOrderStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="trackingNumber" label="快递单号" width="160" show-overflow-tooltip />
+          <el-table-column prop="productDetails" label="产品详情" min-width="200" show-overflow-tooltip />
+          <el-table-column label="操作" width="100" align="center" fixed="right">
+            <template #default="{ row }">
+              <el-button type="primary" size="small" @click="viewOrderDetail(row)">
+                查看
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <!-- 分页 -->
+        <div class="order-pagination">
+          <el-pagination
+            v-model:current-page="orderTypeCurrentPage"
+            v-model:page-size="orderTypePageSize"
+            :page-sizes="[30, 50, 100]"
+            :total="orderTypeOrders.length"
+            layout="total, sizes, prev, pager, next, jumper"
+          />
         </div>
       </div>
     </el-dialog>
@@ -381,7 +476,7 @@
           </div>
         </div>
 
-        <!-- 完整的业绩列表 -->
+        <!-- 完整的业绩列表 - 使用动态列与主视图保持一致 -->
         <div class="fullscreen-table">
           <el-table
             :data="memberList"
@@ -396,85 +491,42 @@
           >
             <el-table-column type="index" label="序号" width="60" align="center" fixed="left" />
             <el-table-column prop="name" label="成员" width="100" align="center" fixed="left" />
-            <el-table-column prop="department" label="部门" width="100" align="center" />
-            <el-table-column prop="username" label="用户名" width="110" align="center" />
-            <el-table-column prop="employeeNumber" label="工号" width="110" align="center" />
-            <el-table-column prop="createTime" label="创建时间" width="160" align="center">
+
+            <!-- 动态渲染列 - 与主视图保持一致 -->
+            <el-table-column
+              v-for="column in dynamicColumns"
+              :key="column.prop"
+              :prop="column.prop"
+              :label="column.label"
+              :width="column.width"
+              :align="column.align"
+            >
               <template #default="{ row }">
-                {{ formatDateTime(row.createTime) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="orderCount" label="下单数" width="70" align="center" />
-            <el-table-column prop="orderAmount" label="下单业绩" width="100" align="center">
-              <template #default="{ row }">
-                <span class="amount">¥{{ formatNumber(row.orderAmount) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="shipCount" label="发货数" width="70" align="center" />
-            <el-table-column prop="shipAmount" label="发货业绩" width="100" align="center">
-              <template #default="{ row }">
-                <span class="amount">¥{{ formatNumber(row.shipAmount) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="shipRate" label="发货率" width="70" align="center">
-              <template #default="{ row }">
-                <el-tag :type="getRateType(row.shipRate)" size="small">
-                  {{ row.shipRate }}%
+                <!-- 金额类字段 -->
+                <span v-if="column.prop.includes('Amount')" class="amount">
+                  ¥{{ formatNumber(row[column.prop]) }}
+                </span>
+                <!-- 百分比类字段 -->
+                <el-tag
+                  v-else-if="column.prop.includes('Rate')"
+                  :type="getRateType(column.prop.includes('reject') || column.prop.includes('return') ? 100 - row[column.prop] : row[column.prop])"
+                  size="small"
+                >
+                  {{ row[column.prop] }}%
                 </el-tag>
+                <!-- 创建时间字段 -->
+                <span v-else-if="column.prop === 'createTime'">
+                  {{ formatDateTime(row[column.prop]) }}
+                </span>
+                <!-- 订单数量字段 -->
+                <span v-else-if="column.prop.includes('Count')" class="count">
+                  {{ typeof row[column.prop] === 'number' ? (row[column.prop] % 1 === 0 ? row[column.prop] : row[column.prop].toFixed(1)) : row[column.prop] }}
+                </span>
+                <!-- 普通字段 -->
+                <span v-else>{{ row[column.prop] }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="signCount" label="签收数" width="70" align="center" />
-            <el-table-column prop="signAmount" label="签收业绩" width="100" align="center">
-              <template #default="{ row }">
-                <span class="amount">¥{{ formatNumber(row.signAmount) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="signRate" label="签收率" width="70" align="center">
-              <template #default="{ row }">
-                <el-tag :type="getRateType(row.signRate)" size="small">
-                  {{ row.signRate }}%
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="transitCount" label="在途数" width="70" align="center" />
-            <el-table-column prop="transitAmount" label="在途业绩" width="100" align="center">
-              <template #default="{ row }">
-                <span class="amount">¥{{ formatNumber(row.transitAmount) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="transitRate" label="在途率" width="70" align="center">
-              <template #default="{ row }">
-                <el-tag type="info" size="small">
-                  {{ row.transitRate }}%
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="rejectCount" label="拒收数" width="70" align="center" />
-            <el-table-column prop="rejectAmount" label="拒收业绩" width="100" align="center">
-              <template #default="{ row }">
-                <span class="amount">¥{{ formatNumber(row.rejectAmount) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="rejectRate" label="拒收率" width="70" align="center">
-              <template #default="{ row }">
-                <el-tag :type="getRateType(100 - row.rejectRate)" size="small">
-                  {{ row.rejectRate }}%
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="returnCount" label="退货数" width="70" align="center" />
-            <el-table-column prop="returnAmount" label="退货业绩" width="100" align="center">
-              <template #default="{ row }">
-                <span class="amount">¥{{ formatNumber(row.returnAmount) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="returnRate" label="退货率" width="70" align="center">
-              <template #default="{ row }">
-                <el-tag :type="getRateType(100 - row.returnRate)" size="small">
-                  {{ row.returnRate }}%
-                </el-tag>
-              </template>
-            </el-table-column>
+
             <el-table-column label="操作" width="120" align="center" fixed="right">
               <template #default="{ row }">
                 <div class="operation-buttons">
@@ -621,6 +673,7 @@ import { ElMessage } from 'element-plus'
 import { eventBus, EventNames } from '@/utils/eventBus'
 import TableColumnSettings from '@/components/TableColumnSettings.vue'
 import { formatDateTime } from '@/utils/dateFormat'
+import { getOrderStatusText, getOrderStatusTagType } from '@/utils/orderStatusConfig'
 import {
   Search,
   Download,
@@ -696,7 +749,10 @@ const performanceStore = usePerformanceStore()
 // 响应式数据
 const loading = ref(false)
 const selectedQuickFilter = ref('today')
-const dateRange = ref<[string, string]>(['2025-01-01', '2025-01-31'])
+// 初始化为今日日期
+const today = new Date()
+const formatDateInit = (date: Date) => date.toISOString().split('T')[0]
+const dateRange = ref<[string, string]>([formatDateInit(today), formatDateInit(today)])
 const selectedDepartment = ref('')
 const sortBy = ref('orderAmount')
 
@@ -819,6 +875,22 @@ const memberOrderPage = ref(1)
 
 // 全屏查看相关
 const fullscreenVisible = ref(false)
+
+// 订单类型详情弹窗相关
+const orderTypeDetailVisible = ref(false)
+const orderTypeMember = ref<TeamMember | null>(null)
+const orderTypeOrders = ref<any[]>([])
+const orderTypeLabel = ref('')
+const orderTypeDetailTitle = ref('')
+const orderTypeCurrentPage = ref(1)
+const orderTypePageSize = ref(30)
+
+// 订单类型分页列表
+const paginatedOrderTypeList = computed(() => {
+  const start = (orderTypeCurrentPage.value - 1) * orderTypePageSize.value
+  const end = start + orderTypePageSize.value
+  return orderTypeOrders.value.slice(start, end)
+})
 
 // 数据概览 - 基于权限和真实数据计算
 const overviewData = computed(() => {
@@ -1778,6 +1850,84 @@ const viewOrderDetail = (order: Order) => {
   safeNavigator.push(`/order/detail/${order.id}`)
 }
 
+// 根据订单类型查看订单详情
+const viewOrdersByType = (member: TeamMember, columnProp: string) => {
+  orderTypeMember.value = member
+  orderTypeCurrentPage.value = 1
+
+  // 获取该成员的所有订单
+  let userOrders = orderStore.orders.filter(order => {
+    if (order.auditStatus !== 'approved') return false
+    if (order.salesPersonId && member.id) {
+      if (String(order.salesPersonId) === String(member.id)) return true
+    }
+    if (order.createdBy && member.name) {
+      if (order.createdBy === member.name) return true
+    }
+    return false
+  })
+
+  // 日期范围过滤
+  if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+    const [startDate, endDate] = dateRange.value
+    userOrders = userOrders.filter(order => {
+      const orderDate = (order.orderDate || order.createTime)?.split(' ')[0] || ''
+      return orderDate >= startDate && orderDate <= endDate
+    })
+  }
+
+  // 根据列类型筛选订单
+  const typeMap: Record<string, { label: string; filter: (order: any) => boolean }> = {
+    orderCount: {
+      label: '下单订单',
+      filter: () => true
+    },
+    shipCount: {
+      label: '已发货订单',
+      filter: (order) => order.status === 'shipped' || order.status === 'delivered'
+    },
+    signCount: {
+      label: '已签收订单',
+      filter: (order) => order.status === 'delivered'
+    },
+    transitCount: {
+      label: '在途订单',
+      filter: (order) => order.status === 'shipped' && order.logisticsStatus !== 'delivered'
+    },
+    rejectCount: {
+      label: '拒收订单',
+      filter: (order) => order.status === 'rejected' || order.status === 'rejected_returned'
+    },
+    returnCount: {
+      label: '退货订单',
+      filter: (order) => order.status === 'logistics_returned'
+    }
+  }
+
+  const typeConfig = typeMap[columnProp]
+  if (typeConfig) {
+    orderTypeLabel.value = typeConfig.label
+    orderTypeDetailTitle.value = `${member.name} - ${typeConfig.label}详情`
+    const filteredOrders = userOrders.filter(typeConfig.filter)
+
+    // 转换为弹窗显示格式
+    orderTypeOrders.value = filteredOrders.map(order => ({
+      id: order.id,
+      orderNo: order.orderNumber,
+      orderDate: (order.orderDate || order.createTime)?.split(' ')[0] || '',
+      customerName: order.customerName,
+      amount: order.totalAmount || 0,
+      depositAmount: order.depositAmount || 0,
+      collectionAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
+      status: order.status,
+      trackingNumber: order.trackingNumber || order.expressNo || '',
+      productDetails: order.products?.map((item: any) => `${item.name} x${item.quantity}`).join(', ') || '暂无详情'
+    }))
+
+    orderTypeDetailVisible.value = true
+  }
+}
+
 const loadMemberOrders = (memberId: number) => {
   selectedMemberId.value = memberId
   memberOrderPage.value = 1
@@ -1806,9 +1956,8 @@ const handleCurrentChange = (page: number) => {
 }
 
 const handleMemberOrderPageChange = () => {
-  if (selectedMember.value?.id) {
-    loadMemberOrders(Number(selectedMember.value.id))
-  }
+  // 分页变化时不需要重新加载，paginatedOrderList会自动计算
+  console.log('订单分页变化', { page: orderCurrentPage.value, size: orderPageSize.value, total: orderTotal.value })
 }
 
 // 数据实时更新机制
@@ -2256,6 +2405,25 @@ onUnmounted(() => {
 
 .member-dialog {
   border-radius: 12px;
+}
+
+/* 订单类型详情弹窗 */
+.order-type-dialog {
+  border-radius: 12px;
+}
+
+.order-type-content {
+  padding: 20px;
+}
+
+/* 单数量链接样式 */
+.count-link {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.count-link:hover {
+  text-decoration: underline;
 }
 
 .member-detail-content {
