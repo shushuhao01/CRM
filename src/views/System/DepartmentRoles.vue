@@ -146,7 +146,7 @@
               </template>
             </el-dropdown>
           </div>
-          
+
           <div class="role-meta">
             <div class="meta-item">
               <span class="meta-label">所属部门：</span>
@@ -214,13 +214,13 @@
               </div>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="departmentId" label="所属部门" width="150">
             <template #default="{ row }">
               {{ getDepartmentName(row.departmentId) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="type" label="角色类型" width="120">
             <template #default="{ row }">
               <el-tag :type="getRoleTypeTag(row.type)" size="small">
@@ -228,25 +228,25 @@
               </el-tag>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="permissions" label="权限数量" width="100">
             <template #default="{ row }">
               {{ row.permissions.length }} 项
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="userCount" label="分配用户" width="100">
             <template #default="{ row }">
               {{ row.userCount }} 人
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="updatedAt" label="更新时间" width="180">
             <template #default="{ row }">
               {{ formatDate(row.updatedAt) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
               <div class="table-actions">
@@ -322,6 +322,7 @@ import RoleDialog from '@/components/Department/RoleDialog.vue'
 import UserAssignDialog from '@/components/Department/UserAssignDialog.vue'
 import PermissionDetailDialog from '@/components/Department/PermissionDetailDialog.vue'
 import BatchConfigDialog from '@/components/Department/BatchConfigDialog.vue'
+import { formatDateTime } from '@/utils/dateFormat'
 
 // 角色接口定义
 interface DepartmentRole {
@@ -413,7 +414,7 @@ const roleStats = computed<RoleStats>(() => {
   const departmentIds = new Set(roles.value.map(r => r.departmentId))
   const totalPermissions = new Set(roles.value.flatMap(r => r.permissions)).size
   const totalUsers = roles.value.reduce((sum, r) => sum + r.userCount, 0)
-  
+
   return {
     totalRoles: roles.value.length,
     departmentsWithRoles: departmentIds.size,
@@ -425,23 +426,23 @@ const roleStats = computed<RoleStats>(() => {
 // 过滤后的角色
 const filteredRoles = computed(() => {
   let filtered = roles.value
-  
+
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase()
-    filtered = filtered.filter(role => 
+    filtered = filtered.filter(role =>
       role.name.toLowerCase().includes(keyword) ||
       role.description.toLowerCase().includes(keyword)
     )
   }
-  
+
   if (departmentFilter.value) {
     filtered = filtered.filter(role => role.departmentId === departmentFilter.value)
   }
-  
+
   if (roleTypeFilter.value) {
     filtered = filtered.filter(role => role.type === roleTypeFilter.value)
   }
-  
+
   return filtered
 })
 
@@ -507,9 +508,8 @@ const getPermissionName = (permission: string) => {
   return names[permission] || permission
 }
 
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleString('zh-CN')
-}
+// 格式化日期 - 使用统一的formatDateTime
+const formatDate = formatDateTime
 
 // 事件处理
 const handleRefresh = () => {

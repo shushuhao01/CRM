@@ -58,7 +58,7 @@
             </template>
           </el-input>
         </div>
-        
+
         <div class="filter-group">
           <el-select v-model="deleteTimeFilter" placeholder="删除时间" clearable class="filter-select">
             <el-option label="全部时间" value="" />
@@ -66,14 +66,14 @@
             <el-option label="近7天" value="week" />
             <el-option label="近30天" value="month" />
           </el-select>
-          
+
           <el-select v-model="deletedByFilter" placeholder="删除人" clearable class="filter-select">
             <el-option label="全部删除人" value="" />
-            <el-option 
-              v-for="user in deletedByUsers" 
-              :key="user.id" 
-              :label="user.name" 
-              :value="user.id" 
+            <el-option
+              v-for="user in deletedByUsers"
+              :key="user.id"
+              :label="user.name"
+              :value="user.id"
             />
           </el-select>
         </div>
@@ -86,26 +86,26 @@
         <div class="list-info">
           <span class="total-count">共 {{ filteredData.length }} 条记录</span>
         </div>
-        
+
         <div class="list-actions">
-          <el-button 
-            type="success" 
+          <el-button
+            type="success"
             :disabled="selectedItems.length === 0"
             @click="handleBatchRestore"
           >
             <el-icon><RefreshRight /></el-icon>
             批量恢复 ({{ selectedItems.length }})
           </el-button>
-          <el-button 
-            type="danger" 
+          <el-button
+            type="danger"
             :disabled="selectedItems.length === 0"
             @click="handleBatchPermanentDelete"
           >
             <el-icon><Delete /></el-icon>
             永久删除
           </el-button>
-          <el-button 
-            type="warning" 
+          <el-button
+            type="warning"
             @click="handleClearExpired"
           >
             <el-icon><Timer /></el-icon>
@@ -124,45 +124,45 @@
           class="data-table"
         >
           <el-table-column type="selection" width="55" />
-          
+
           <el-table-column prop="customerName" label="客户姓名" width="120" />
-          
+
           <el-table-column prop="phone" label="联系电话" width="130">
             <template #default="{ row }">
               {{ displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="orderAmount" label="订单金额" width="120">
             <template #default="{ row }">
               <span class="amount">¥{{ row.orderAmount?.toLocaleString() || 0 }}</span>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="orderDate" label="下单日期" width="120">
             <template #default="{ row }">
               {{ formatDate(row.orderDate) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="deletedAt" label="删除时间" width="150">
             <template #default="{ row }">
               {{ formatDateTime(row.deletedAt) }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="deletedBy" label="删除人" width="100">
             <template #default="{ row }">
               {{ row.deletedByName }}
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="deleteReason" label="删除原因" min-width="150">
             <template #default="{ row }">
               <span class="delete-reason">{{ row.deleteReason || '无' }}</span>
             </template>
           </el-table-column>
-          
+
           <el-table-column prop="expiresAt" label="过期时间" width="150">
             <template #default="{ row }">
               <span :class="getExpirationClass(row.expiresAt)">
@@ -170,20 +170,20 @@
               </span>
             </template>
           </el-table-column>
-          
+
           <el-table-column label="操作" width="180" fixed="right">
             <template #default="{ row }">
-              <el-button 
-                type="success" 
-                size="small" 
+              <el-button
+                type="success"
+                size="small"
                 @click="handleRestore(row)"
               >
                 <el-icon><RefreshRight /></el-icon>
                 恢复
               </el-button>
-              <el-button 
-                type="danger" 
-                size="small" 
+              <el-button
+                type="danger"
+                size="small"
                 @click="handlePermanentDelete(row)"
               >
                 <el-icon><Delete /></el-icon>
@@ -258,6 +258,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useDataStore } from '@/stores/data'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
+import { formatDateTime } from '@/utils/dateFormat'
 
 // 接口定义
 interface RecycleItem {
@@ -338,13 +339,13 @@ const summaryData = computed(() => {
   const now = new Date()
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
   const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000)
-  
+
   return {
     totalCount: recycleData.value.length,
-    recentCount: recycleData.value.filter(item => 
+    recentCount: recycleData.value.filter(item =>
       new Date(item.deletedAt) >= sevenDaysAgo
     ).length,
-    expiringSoonCount: recycleData.value.filter(item => 
+    expiringSoonCount: recycleData.value.filter(item =>
       new Date(item.expiresAt) <= threeDaysLater
     ).length
   }
@@ -366,7 +367,7 @@ const filteredData = computed(() => {
   if (deleteTimeFilter.value) {
     const now = new Date()
     let startDate: Date
-    
+
     switch (deleteTimeFilter.value) {
       case 'today':
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -380,7 +381,7 @@ const filteredData = computed(() => {
       default:
         startDate = new Date(0)
     }
-    
+
     data = data.filter(item => new Date(item.deletedAt) >= startDate)
   }
 
@@ -421,16 +422,13 @@ const formatDate = (dateStr: string) => {
   return new Date(dateStr).toLocaleDateString('zh-CN')
 }
 
-const formatDateTime = (dateStr: string) => {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString('zh-CN')
-}
+// formatDateTime 已从 @/utils/dateFormat 导入
 
 const getExpirationClass = (expiresAt: string) => {
   const now = new Date()
   const expireDate = new Date(expiresAt)
   const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000)
-  
+
   if (expireDate <= now) {
     return 'expired'
   } else if (expireDate <= threeDaysLater) {
@@ -455,16 +453,16 @@ const handleBatchRestore = () => {
 const confirmRestore = async () => {
   try {
     loading.value = true
-    
+
     // 逐个恢复数据到已回收状态
     for (const item of selectedItems.value) {
       await dataStore.recoverData(item.id, '从回收站恢复')
     }
-    
+
     // 从回收站数据中移除
     const idsToRestore = selectedItems.value.map(item => item.id)
     recycleData.value = recycleData.value.filter(item => !idsToRestore.includes(item.id))
-    
+
     ElMessage.success(`成功恢复 ${selectedItems.value.length} 条记录到已回收列表`)
     restoreDialogVisible.value = false
     selectedItems.value = []
@@ -491,14 +489,14 @@ const handleBatchPermanentDelete = () => {
 const confirmPermanentDelete = async () => {
   try {
     loading.value = true
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     // 从回收站数据中移除
     const idsToDelete = selectedItems.value.map(item => item.id)
     recycleData.value = recycleData.value.filter(item => !idsToDelete.includes(item.id))
-    
+
     ElMessage.success(`成功删除 ${selectedItems.value.length} 条记录`)
     deleteDialogVisible.value = false
     selectedItems.value = []
@@ -512,12 +510,12 @@ const confirmPermanentDelete = async () => {
 const handleClearExpired = async () => {
   const now = new Date()
   const expiredItems = recycleData.value.filter(item => new Date(item.expiresAt) <= now)
-  
+
   if (expiredItems.length === 0) {
     ElMessage.info('没有过期的记录')
     return
   }
-  
+
   try {
     await ElMessageBox.confirm(
       `发现 ${expiredItems.length} 条过期记录，确定要清理吗？`,
@@ -528,15 +526,15 @@ const handleClearExpired = async () => {
         type: 'warning'
       }
     )
-    
+
     loading.value = true
-    
+
     // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     // 移除过期记录
     recycleData.value = recycleData.value.filter(item => new Date(item.expiresAt) > now)
-    
+
     ElMessage.success(`成功清理 ${expiredItems.length} 条过期记录`)
   } catch {
     // 用户取消操作
@@ -768,30 +766,30 @@ onMounted(() => {
   .recycle-container {
     padding: 12px;
   }
-  
+
   .summary-cards {
     grid-template-columns: 1fr;
   }
-  
+
   .filter-row {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .filter-group {
     flex-direction: column;
   }
-  
+
   .filter-select {
     width: 100%;
   }
-  
+
   .list-header {
     flex-direction: column;
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .list-actions {
     flex-direction: column;
   }

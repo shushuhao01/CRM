@@ -20,22 +20,22 @@
         <el-form-item label="部门">
           <el-select v-model="filterForm.departmentId" placeholder="选择部门" clearable style="width: 200px">
             <el-option label="全部部门" value="" />
-            <el-option 
-              v-for="dept in departments" 
-              :key="dept.id" 
-              :label="dept.name" 
-              :value="dept.id" 
+            <el-option
+              v-for="dept in departments"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
             />
           </el-select>
         </el-form-item>
         <el-form-item label="消息类型">
           <el-select v-model="filterForm.messageType" placeholder="选择消息类型" clearable style="width: 200px">
             <el-option label="全部类型" value="" />
-            <el-option 
-              v-for="type in messageTypes" 
-              :key="type.value" 
-              :label="type.label" 
-              :value="type.value" 
+            <el-option
+              v-for="type in messageTypes"
+              :key="type.value"
+              :label="type.label"
+              :value="type.value"
             />
           </el-select>
         </el-form-item>
@@ -55,8 +55,8 @@
 
     <!-- 订阅规则列表 -->
     <div class="table-section">
-      <el-table 
-        :data="subscriptions" 
+      <el-table
+        :data="subscriptions"
         v-loading="loading"
         stripe
         border
@@ -67,8 +67,8 @@
         <el-table-column label="消息类型" width="250">
           <template #default="{ row }">
             <div class="message-types">
-              <el-tag 
-                v-for="messageType in row.messageTypes" 
+              <el-tag
+                v-for="messageType in row.messageTypes"
                 :key="messageType"
                 :type="getMessageTypeTagType(messageType)"
                 size="small"
@@ -82,8 +82,8 @@
         <el-table-column label="通知方式" width="200">
           <template #default="{ row }">
             <div class="notification-methods">
-              <el-tag 
-                v-for="method in row.notificationMethods" 
+              <el-tag
+                v-for="method in row.notificationMethods"
                 :key="method"
                 :type="getNotificationMethodTagType(method)"
                 size="small"
@@ -102,8 +102,8 @@
         </el-table-column>
         <el-table-column label="状态" width="80">
           <template #default="{ row }">
-            <el-switch 
-              v-model="row.isEnabled" 
+            <el-switch
+              v-model="row.isEnabled"
               @change="toggleSubscriptionStatus(row)"
               :loading="row.statusLoading"
             />
@@ -139,32 +139,32 @@
     </div>
 
     <!-- 新建/编辑订阅规则弹窗 -->
-    <el-dialog 
-      v-model="dialogVisible" 
+    <el-dialog
+      v-model="dialogVisible"
       :title="dialogTitle"
       width="700px"
       :close-on-click-modal="false"
       class="subscription-dialog"
     >
-      <el-form 
+      <el-form
         ref="subscriptionFormRef"
-        :model="subscriptionForm" 
+        :model="subscriptionForm"
         :rules="subscriptionRules"
         label-width="90px"
         class="subscription-form"
       >
         <el-form-item label="订阅部门" prop="departmentId">
-          <el-select 
-            v-model="subscriptionForm.departmentId" 
+          <el-select
+            v-model="subscriptionForm.departmentId"
             placeholder="请选择部门"
             style="width: 100%"
             :disabled="isEdit"
           >
-            <el-option 
-              v-for="dept in departments" 
-              :key="dept.id" 
-              :label="dept.name" 
-              :value="dept.id" 
+            <el-option
+              v-for="dept in departments"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
             />
           </el-select>
         </el-form-item>
@@ -173,8 +173,8 @@
           <div class="message-type-selection">
             <div class="selection-tip">选择要订阅的消息类型（支持多选）</div>
             <div class="type-categories-compact">
-              <div 
-                v-for="category in messageTypeCategories" 
+              <div
+                v-for="category in messageTypeCategories"
                 :key="category.name"
                 class="type-category-compact"
               >
@@ -210,7 +210,7 @@
 
         <el-form-item label="通知方式" prop="notificationMethods">
           <div class="notification-methods-selection">
-            <el-alert 
+            <el-alert
               v-if="!subscriptionForm.departmentId"
               title="请先选择订阅部门"
               description="系统将根据部门的通知配置显示可用的通知方式"
@@ -221,8 +221,8 @@
             />
             <div v-else class="methods-grid">
               <el-checkbox-group v-model="subscriptionForm.notificationMethods" class="methods-group">
-                <div 
-                  v-for="method in availableNotificationMethods" 
+                <div
+                  v-for="method in availableNotificationMethods"
                   :key="method.value"
                   class="method-card"
                 >
@@ -231,7 +231,7 @@
                       <div class="method-name">{{ method.label }}</div>
                       <div class="method-meta">
                         <span v-if="method.memberCount" class="member-count">{{ method.memberCount }}人</span>
-                        <el-tag 
+                        <el-tag
                           v-if="method.configStatus"
                           :type="method.configStatus === '已配置' ? 'success' : 'warning'"
                           size="small"
@@ -281,9 +281,9 @@
         </el-form-item>
 
         <el-form-item label="备注">
-          <el-input 
-            v-model="subscriptionForm.remark" 
-            type="textarea" 
+          <el-input
+            v-model="subscriptionForm.remark"
+            type="textarea"
             :rows="2"
             placeholder="可选：输入备注信息"
             class="remark-input"
@@ -302,8 +302,8 @@
     </el-dialog>
 
     <!-- 查看订阅规则详情弹窗 -->
-    <el-dialog 
-      v-model="viewDialogVisible" 
+    <el-dialog
+      v-model="viewDialogVisible"
       title="订阅规则详情"
       width="500px"
     >
@@ -318,8 +318,8 @@
           </el-descriptions-item>
           <el-descriptions-item label="通知方式">
             <div class="notification-methods">
-              <el-tag 
-                v-for="method in currentSubscription.notificationMethods" 
+              <el-tag
+                v-for="method in currentSubscription.notificationMethods"
                 :key="method"
                 :type="getNotificationMethodTagType(method)"
                 size="small"
@@ -355,6 +355,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import request from '@/utils/request'
+import { formatDateTime } from '@/utils/dateFormat'
 
 // 消息类型分类定义
 const messageTypeCategories = [
@@ -586,9 +587,9 @@ const availableNotificationMethods = computed(() => {
   if (!subscriptionForm.departmentId || notificationConfigs.value.length === 0) {
     return notificationMethods
   }
-  
+
   const availableMethods = []
-  
+
   notificationConfigs.value.forEach(config => {
     if (config.enabled && config.supportedDepartments.includes(subscriptionForm.departmentId)) {
       const method = notificationMethods.find(m => m.value === config.method)
@@ -601,7 +602,7 @@ const availableNotificationMethods = computed(() => {
       }
     }
   })
-  
+
   return availableMethods.length > 0 ? availableMethods : notificationMethods
 })
 
@@ -619,18 +620,18 @@ const loadSubscriptions = async () => {
         status: filterForm.status
       }
     })
-    
+
     if (response.success && response.data) {
       // 处理返回的数据，确保每个订阅规则都有statusLoading属性
       const processedData = response.data.map(item => ({
         ...item,
         statusLoading: false,
         // 处理消息类型名称显示
-        messageTypeNames: item.messageTypes ? 
-          item.messageTypes.map(type => getMessageTypeName(type)).join(', ') : 
+        messageTypeNames: item.messageTypes ?
+          item.messageTypes.map(type => getMessageTypeName(type)).join(', ') :
           getMessageTypeName(item.messageType)
       }))
-      
+
       subscriptions.value = processedData
       pagination.total = response.total || processedData.length
     } else {
@@ -689,11 +690,11 @@ const resetForm = () => {
 
 const saveSubscription = async () => {
   if (!subscriptionFormRef.value) return
-  
+
   try {
     await subscriptionFormRef.value.validate()
     saving.value = true
-    
+
     // 准备提交数据
     const submitData = {
       departmentId: subscriptionForm.departmentId,
@@ -706,14 +707,14 @@ const saveSubscription = async () => {
       excludeWeekends: subscriptionForm.excludeWeekends,
       remark: subscriptionForm.remark
     }
-    
+
     // 调用后端API
     if (isEdit.value) {
       await request.put(`/message/subscription-rules/${subscriptionForm.id}`, submitData)
     } else {
       await request.post('/message/subscription-rules', submitData)
     }
-    
+
     ElMessage.success(isEdit.value ? '订阅规则更新成功' : '订阅规则创建成功')
     dialogVisible.value = false
     loadSubscriptions()
@@ -747,10 +748,10 @@ const deleteSubscription = async (row: any) => {
         type: 'warning'
       }
     )
-    
+
     // 调用后端API删除订阅规则
     await request.delete(`/message/subscription-rules/${row.id}`)
-    
+
     ElMessage.success('删除成功')
     loadSubscriptions()
   } catch (error) {
@@ -768,7 +769,7 @@ const toggleSubscriptionStatus = async (row: any) => {
     await request.put(`/message/subscription-rules/${row.id}/toggle`, {
       isEnabled: row.isEnabled
     })
-    
+
     ElMessage.success(`订阅规则已${row.isEnabled ? '启用' : '禁用'}`)
   } catch (error) {
     // 恢复状态
@@ -845,9 +846,7 @@ const getPriorityName = (priority: string) => {
   return priorityMap[priority] || priority
 }
 
-const formatDateTime = (dateTime: string) => {
-  return dateTime || '-'
-}
+// formatDateTime 已从 @/utils/dateFormat 导入
 
 // 消息类型选择辅助方法
 const isMessageTypeChecked = (categoryTypes: any[], messageType: string) => {
@@ -898,7 +897,7 @@ watch(() => subscriptionForm.departmentId, (newDepartmentId, oldDepartmentId) =>
   if (newDepartmentId !== oldDepartmentId && subscriptionForm.notificationMethods.length > 0) {
     // 检查当前选择的通知方式是否在新部门的可用方式中
     const availableMethodValues = availableNotificationMethods.value.map(m => m.value)
-    subscriptionForm.notificationMethods = subscriptionForm.notificationMethods.filter(method => 
+    subscriptionForm.notificationMethods = subscriptionForm.notificationMethods.filter(method =>
       availableMethodValues.includes(method)
     )
   }
@@ -1002,7 +1001,7 @@ onMounted(() => {
   :deep(.el-form-item) {
     margin-bottom: 24px;
   }
-  
+
   :deep(.el-form-item__label) {
     font-weight: 500;
     color: #303133;
@@ -1072,14 +1071,14 @@ onMounted(() => {
   flex: 0 0 auto;
   margin-right: 0;
   margin-bottom: 0;
-  
+
   :deep(.el-checkbox__label) {
     font-size: 11px;
     color: #606266;
     line-height: 1.2;
     padding-left: 6px;
   }
-  
+
   :deep(.el-checkbox__input) {
     .el-checkbox__inner {
       width: 12px;
@@ -1162,7 +1161,7 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
-  
+
   :deep(.el-checkbox-group) {
     display: contents;
   }
@@ -1185,13 +1184,13 @@ onMounted(() => {
 .method-checkbox {
   width: 100%;
   margin: 0;
-  
+
   :deep(.el-checkbox__input) {
     position: absolute;
     top: 8px;
     right: 8px;
   }
-  
+
   :deep(.el-checkbox__label) {
     width: 100%;
     padding-left: 0;
@@ -1277,12 +1276,12 @@ onMounted(() => {
     background-color: #fafbfc;
     border-color: #e4e7ed;
   }
-  
+
   :deep(.el-textarea__inner::placeholder) {
     color: #c0c4cc;
     font-size: 12px;
   }
-  
+
   :deep(.el-textarea__inner:focus) {
     color: #606266;
     background-color: white;

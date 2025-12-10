@@ -9,7 +9,7 @@
         </h1>
         <p class="page-description">配置通话系统参数，包括SIP设置、录音配置、质量控制等</p>
       </div>
-      
+
       <div class="header-actions">
         <el-button @click="testConnection" :loading="testing">
           <el-icon><Connection /></el-icon>
@@ -33,7 +33,7 @@
                 <h3>SIP服务器配置</h3>
                 <p>配置SIP服务器连接参数</p>
               </div>
-              
+
               <el-form :model="sipConfig" :rules="sipRules" ref="sipFormRef" label-width="120px">
                 <el-row :gutter="20">
                   <el-col :span="12">
@@ -44,7 +44,7 @@
                       />
                     </el-form-item>
                   </el-col>
-                  
+
                   <el-col :span="12">
                     <el-form-item label="端口" prop="port">
                       <el-input-number
@@ -56,7 +56,7 @@
                     </el-form-item>
                   </el-col>
                 </el-row>
-                
+
                 <el-row :gutter="20">
                   <el-col :span="12">
                     <el-form-item label="用户名" prop="username">
@@ -66,7 +66,7 @@
                       />
                     </el-form-item>
                   </el-col>
-                  
+
                   <el-col :span="12">
                     <el-form-item label="密码" prop="password">
                       <el-input
@@ -78,7 +78,7 @@
                     </el-form-item>
                   </el-col>
                 </el-row>
-                
+
                 <el-row :gutter="20">
                   <el-col :span="12">
                     <el-form-item label="域名" prop="domain">
@@ -88,7 +88,7 @@
                       />
                     </el-form-item>
                   </el-col>
-                  
+
                   <el-col :span="12">
                     <el-form-item label="传输协议" prop="transport">
                       <el-select v-model="sipConfig.transport" style="width: 100%;">
@@ -99,14 +99,14 @@
                     </el-form-item>
                   </el-col>
                 </el-row>
-                
+
                 <el-form-item label="启用注册">
                   <el-switch v-model="sipConfig.enableRegister" />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">
                     启用后将自动向SIP服务器注册
                   </span>
                 </el-form-item>
-                
+
                 <el-form-item label="注册间隔">
                   <el-input-number
                     v-model="sipConfig.registerInterval"
@@ -127,7 +127,7 @@
                 <h3>录音设置</h3>
                 <p>配置通话录音相关参数</p>
               </div>
-              
+
               <el-form :model="recordingConfig" :rules="recordingRules" ref="recordingFormRef" label-width="120px">
                 <el-form-item label="启用录音">
                   <el-switch v-model="recordingConfig.enabled" />
@@ -135,7 +135,7 @@
                     启用后所有通话将自动录音
                   </span>
                 </el-form-item>
-                
+
                 <el-form-item label="录音格式" prop="format">
                   <el-select v-model="recordingConfig.format" style="width: 200px;">
                     <el-option label="MP3" value="mp3" />
@@ -144,7 +144,7 @@
                     <el-option label="OGG" value="ogg" />
                   </el-select>
                 </el-form-item>
-                
+
                 <el-form-item label="音频质量" prop="quality">
                   <el-select v-model="recordingConfig.quality" style="width: 200px;">
                     <el-option label="低质量 (64kbps)" value="low" />
@@ -153,7 +153,7 @@
                     <el-option label="无损质量 (320kbps)" value="lossless" />
                   </el-select>
                 </el-form-item>
-                
+
                 <el-form-item label="采样率" prop="sampleRate">
                   <el-select v-model="recordingConfig.sampleRate" style="width: 200px;">
                     <el-option label="8kHz" value="8000" />
@@ -163,7 +163,7 @@
                     <el-option label="48kHz" value="48000" />
                   </el-select>
                 </el-form-item>
-                
+
                 <el-form-item label="存储路径" prop="storagePath">
                   <el-input
                     v-model="recordingConfig.storagePath"
@@ -177,14 +177,14 @@
                     </template>
                   </el-input>
                 </el-form-item>
-                
+
                 <el-form-item label="自动删除">
                   <el-switch v-model="recordingConfig.autoDelete" />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">
                     启用后将自动删除过期录音
                   </span>
                 </el-form-item>
-                
+
                 <el-form-item label="保留天数" v-if="recordingConfig.autoDelete">
                   <el-input-number
                     v-model="recordingConfig.retentionDays"
@@ -193,7 +193,7 @@
                   />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">天</span>
                 </el-form-item>
-                
+
                 <el-form-item label="压缩录音">
                   <el-switch v-model="recordingConfig.compress" />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">
@@ -211,7 +211,7 @@
                 <h3>通话质量控制</h3>
                 <p>配置通话质量监控和优化参数</p>
               </div>
-              
+
               <el-form :model="qualityConfig" ref="qualityFormRef" label-width="120px">
                 <el-form-item label="质量监控">
                   <el-switch v-model="qualityConfig.enabled" />
@@ -219,7 +219,7 @@
                     启用后将实时监控通话质量
                   </span>
                 </el-form-item>
-                
+
                 <el-form-item label="延迟阈值">
                   <el-input-number
                     v-model="qualityConfig.latencyThreshold"
@@ -228,7 +228,7 @@
                   />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">毫秒</span>
                 </el-form-item>
-                
+
                 <el-form-item label="丢包率阈值">
                   <el-input-number
                     v-model="qualityConfig.packetLossThreshold"
@@ -239,7 +239,7 @@
                   />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">%</span>
                 </el-form-item>
-                
+
                 <el-form-item label="抖动阈值">
                   <el-input-number
                     v-model="qualityConfig.jitterThreshold"
@@ -248,22 +248,22 @@
                   />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">毫秒</span>
                 </el-form-item>
-                
+
                 <el-form-item label="自动优化">
                   <el-switch v-model="qualityConfig.autoOptimize" />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">
                     启用后将自动调整参数以优化通话质量
                   </span>
                 </el-form-item>
-                
+
                 <el-form-item label="回声消除">
                   <el-switch v-model="qualityConfig.echoCancellation" />
                 </el-form-item>
-                
+
                 <el-form-item label="噪音抑制">
                   <el-switch v-model="qualityConfig.noiseSuppression" />
                 </el-form-item>
-                
+
                 <el-form-item label="自动增益">
                   <el-switch v-model="qualityConfig.autoGainControl" />
                 </el-form-item>
@@ -278,7 +278,7 @@
                 <h3>呼叫行为配置</h3>
                 <p>配置呼叫相关的行为和限制</p>
               </div>
-              
+
               <el-form :model="callingConfig" ref="callingFormRef" label-width="120px">
                 <el-form-item label="最大通话时长">
                   <el-input-number
@@ -288,7 +288,7 @@
                   />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">秒</span>
                 </el-form-item>
-                
+
                 <el-form-item label="呼叫超时">
                   <el-input-number
                     v-model="callingConfig.callTimeout"
@@ -297,7 +297,7 @@
                   />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">秒</span>
                 </el-form-item>
-                
+
                 <el-form-item label="重拨次数">
                   <el-input-number
                     v-model="callingConfig.maxRetries"
@@ -305,7 +305,7 @@
                     :max="5"
                   />
                 </el-form-item>
-                
+
                 <el-form-item label="重拨间隔">
                   <el-input-number
                     v-model="callingConfig.retryInterval"
@@ -314,14 +314,14 @@
                   />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">秒</span>
                 </el-form-item>
-                
+
                 <el-form-item label="自动应答">
                   <el-switch v-model="callingConfig.autoAnswer" />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">
                     启用后将自动接听来电
                   </span>
                 </el-form-item>
-                
+
                 <el-form-item label="应答延迟" v-if="callingConfig.autoAnswer">
                   <el-input-number
                     v-model="callingConfig.autoAnswerDelay"
@@ -330,18 +330,18 @@
                   />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">秒</span>
                 </el-form-item>
-                
+
                 <el-form-item label="呼叫转移">
                   <el-switch v-model="callingConfig.callForwarding" />
                 </el-form-item>
-                
+
                 <el-form-item label="转移号码" v-if="callingConfig.callForwarding">
                   <el-input
                     v-model="callingConfig.forwardingNumber"
                     placeholder="请输入转移号码"
                   />
                 </el-form-item>
-                
+
                 <el-form-item label="黑名单过滤">
                   <el-switch v-model="callingConfig.blacklistFilter" />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">
@@ -359,7 +359,7 @@
                 <h3>系统配置</h3>
                 <p>配置系统级别的参数和行为</p>
               </div>
-              
+
               <el-form :model="systemConfig" ref="systemFormRef" label-width="120px">
                 <el-form-item label="日志级别">
                   <el-select v-model="systemConfig.logLevel" style="width: 200px;">
@@ -369,7 +369,7 @@
                     <el-option label="错误 (Error)" value="error" />
                   </el-select>
                 </el-form-item>
-                
+
                 <el-form-item label="日志保留">
                   <el-input-number
                     v-model="systemConfig.logRetentionDays"
@@ -378,18 +378,18 @@
                   />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">天</span>
                 </el-form-item>
-                
+
                 <el-form-item label="性能监控">
                   <el-switch v-model="systemConfig.performanceMonitoring" />
                 </el-form-item>
-                
+
                 <el-form-item label="统计报告">
                   <el-switch v-model="systemConfig.statisticsReporting" />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">
                     启用后将定期生成统计报告
                   </span>
                 </el-form-item>
-                
+
                 <el-form-item label="报告频率" v-if="systemConfig.statisticsReporting">
                   <el-select v-model="systemConfig.reportFrequency" style="width: 200px;">
                     <el-option label="每日" value="daily" />
@@ -397,14 +397,14 @@
                     <el-option label="每月" value="monthly" />
                   </el-select>
                 </el-form-item>
-                
+
                 <el-form-item label="备份配置">
                   <el-switch v-model="systemConfig.autoBackup" />
                   <span style="margin-left: 8px; color: #909399; font-size: 12px;">
                     启用后将自动备份配置文件
                   </span>
                 </el-form-item>
-                
+
                 <el-form-item label="备份间隔" v-if="systemConfig.autoBackup">
                   <el-select v-model="systemConfig.backupInterval" style="width: 200px;">
                     <el-option label="每小时" value="hourly" />
@@ -412,11 +412,11 @@
                     <el-option label="每周" value="weekly" />
                   </el-select>
                 </el-form-item>
-                
+
                 <el-form-item label="API限流">
                   <el-switch v-model="systemConfig.apiRateLimit" />
                 </el-form-item>
-                
+
                 <el-form-item label="限流阈值" v-if="systemConfig.apiRateLimit">
                   <el-input-number
                     v-model="systemConfig.rateLimitThreshold"
@@ -438,7 +438,7 @@
         <template #header>
           <span>连接状态</span>
         </template>
-        
+
         <el-row :gutter="20">
           <el-col :span="8">
             <div class="status-item">
@@ -452,7 +452,7 @@
               </div>
             </div>
           </el-col>
-          
+
           <el-col :span="8">
             <div class="status-item">
               <div class="status-icon" :class="connectionStatus.recording ? 'connected' : 'disconnected'">
@@ -465,7 +465,7 @@
               </div>
             </div>
           </el-col>
-          
+
           <el-col :span="8">
             <div class="status-item">
               <div class="status-icon" :class="connectionStatus.quality ? 'connected' : 'disconnected'">
@@ -491,7 +491,7 @@
             <el-button size="small" @click="clearLogs">清空日志</el-button>
           </div>
         </template>
-        
+
         <div class="log-content">
           <div
             v-for="(log, index) in operationLogs"
@@ -503,7 +503,7 @@
             <div class="log-level">{{ log.level.toUpperCase() }}</div>
             <div class="log-message">{{ log.message }}</div>
           </div>
-          
+
           <div v-if="!operationLogs.length" class="no-logs">
             <el-empty description="暂无日志记录" :image-size="80" />
           </div>
@@ -526,6 +526,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { formatDateTime } from '@/utils/dateFormat'
 
 const callStore = useCallStore()
 
@@ -658,14 +659,12 @@ const recordingRules: FormRules = {
 }
 
 // 方法
-const formatDateTime = (dateTime: string) => {
-  return new Date(dateTime).toLocaleString('zh-CN')
-}
+// formatDateTime 已从 @/utils/dateFormat 导入
 
 const testConnection = async () => {
   try {
     testing.value = true
-    
+
     // 测试SIP连接
     const sipResult = await callStore.testPhoneConnection({
       server: sipConfig.server,
@@ -673,11 +672,11 @@ const testConnection = async () => {
       username: sipConfig.username,
       password: sipConfig.password
     })
-    
+
     connectionStatus.sip = sipResult.success
     connectionStatus.recording = true // 模拟录音服务正常
     connectionStatus.quality = true // 模拟质量监控正常
-    
+
     if (sipResult.success) {
       ElMessage.success('连接测试成功')
       addLog('info', 'SIP服务器连接测试成功')
@@ -699,11 +698,11 @@ const saveAllConfig = async () => {
     // 验证所有表单
     const forms = [sipFormRef.value, recordingFormRef.value]
     const validationPromises = forms.map(form => form?.validate())
-    
+
     await Promise.all(validationPromises)
-    
+
     saving.value = true
-    
+
     // 保存配置
     const config = {
       sip: sipConfig,
@@ -712,9 +711,9 @@ const saveAllConfig = async () => {
       calling: callingConfig,
       system: systemConfig
     }
-    
+
     await callStore.updatePhoneConfig(config)
-    
+
     ElMessage.success('配置保存成功')
     addLog('info', '电话配置已更新')
   } catch (error) {
@@ -746,7 +745,7 @@ const addLog = (level: string, message: string) => {
     level,
     message
   })
-  
+
   // 限制日志数量
   if (operationLogs.value.length > 50) {
     operationLogs.value = operationLogs.value.slice(0, 50)
@@ -761,7 +760,7 @@ const clearLogs = () => {
 const loadConfig = async () => {
   try {
     const config = await callStore.fetchPhoneConfig()
-    
+
     if (config.sip) {
       Object.assign(sipConfig, config.sip)
     }
@@ -777,7 +776,7 @@ const loadConfig = async () => {
     if (config.system) {
       Object.assign(systemConfig, config.system)
     }
-    
+
     addLog('info', '配置加载完成')
   } catch (error) {
     console.error('加载配置失败:', error)

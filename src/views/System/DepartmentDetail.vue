@@ -317,6 +317,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useDepartmentStore, type Department } from '@/stores/department'
 import DepartmentDialog from '@/components/Department/DepartmentDialog.vue'
+import { formatDateTime } from '@/utils/dateFormat'
 
 const route = useRoute()
 const router = useRouter()
@@ -440,10 +441,7 @@ const handleRemoveMember = async (member: unknown) => {
   }
 }
 
-const formatDateTime = (dateString?: string) => {
-  if (!dateString) return '-'
-  return new Date(dateString).toLocaleString('zh-CN')
-}
+// formatDateTime 已从 @/utils/dateFormat 导入
 
 const getCategoryName = (category: string) => {
   const categoryNames: Record<string, string> = {

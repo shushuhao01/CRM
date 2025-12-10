@@ -666,6 +666,7 @@ import BatchShippingDialog from './components/BatchShippingDialog.vue'
 import ReturnOrderDialog from './components/ReturnOrderDialog.vue'
 import CancelOrderDialog from './components/CancelOrderDialog.vue'
 import DynamicTable from '@/components/DynamicTable.vue'
+import { formatDateTime } from '@/utils/dateFormat'
 
 // 初始化
 const router = useRouter()
@@ -960,18 +961,7 @@ const formatNumber = (num: number | null | undefined) => {
   return num.toLocaleString()
 }
 
-// 格式化日期时间
-const formatDateTime = (dateTime: string) => {
-  if (!dateTime) return '-'
-  const date = new Date(dateTime)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
+// formatDateTime 已从 @/utils/dateFormat 导入
 
 // 获取订单来源文本
 const getOrderSourceText = (source: string | null) => {
