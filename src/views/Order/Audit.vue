@@ -905,6 +905,9 @@ interface AuditOrder {
   customerName: string
   customerPhone: string
   salesPerson: string
+  salesPersonId?: string  // 下单员ID
+  createdBy?: string      // 创建人
+  createdById?: string    // 创建人ID
   totalAmount: number
   depositAmount: number
   codAmount: number
@@ -1582,19 +1585,23 @@ const handleAuditSubmit = async () => {
 
         ElMessage.success(`成功${action}${ordersToUpdate.length}个订单`)
 
-        // 发送通知消息
+        // 发送通知消息给下单员
         ordersToUpdate.forEach(order => {
           const messageType = auditForm.result === 'approved' ? notificationStore.MessageType.AUDIT_APPROVED : notificationStore.MessageType.AUDIT_REJECTED
           const actionText = auditForm.result === 'approved' ? '审核通过' : '审核拒绝'
+          // 获取下单员ID（优先使用salesPersonId，其次使用createdBy）
+          const orderCreatorId = order.salesPersonId || order.createdBy || order.createdById
 
-          // 发送审核结果通知
+          // 发送审核结果通知给下单员
           notificationStore.sendMessage(
             messageType,
             `订单 ${order.orderNo} (客户: ${order.customerName}, 金额: ¥${order.totalAmount?.toLocaleString()}) 已${actionText}`,
             {
               relatedId: order.id,
               relatedType: 'order',
-              actionUrl: `/order/detail/${order.id}`
+              actionUrl: `/order/detail/${order.id}`,
+              targetUserId: orderCreatorId,  // 发送给下单员
+              createdBy: userStore.user?.id  // 审核人
             }
           )
 
@@ -1606,7 +1613,8 @@ const handleAuditSubmit = async () => {
               {
                 relatedId: order.id,
                 relatedType: 'order',
-                actionUrl: `/logistics/shipping`
+                actionUrl: `/logistics/shipping`,
+                targetUserId: orderCreatorId  // 发送给下单员
               }
             )
           } else {
@@ -1621,7 +1629,8 @@ const handleAuditSubmit = async () => {
               {
                 relatedId: order.id,
                 relatedType: 'order',
-                actionUrl: `/order/edit/${order.id}`
+                actionUrl: `/order/edit/${order.id}`,
+                targetUserId: orderCreatorId  // 发送给下单员
               }
             )
           }
@@ -1858,18 +1867,22 @@ const handleQuickAuditSubmit = async () => {
         // 更新标签计数
         updateTabCounts()
 
-        // 发送通知消息
+        // 发送通知消息给下单员
         const messageType = result === 'approved' ? notificationStore.MessageType.AUDIT_APPROVED : notificationStore.MessageType.AUDIT_REJECTED
         const actionText = result === 'approved' ? '审核通过' : '审核拒绝'
+        // 获取下单员ID
+        const orderCreatorId = order.salesPersonId || order.createdBy || order.createdById
 
-        // 发送审核结果通知
+        // 发送审核结果通知给下单员
         notificationStore.sendMessage(
           messageType,
           `订单 ${order.orderNo} (客户: ${order.customerName}, 金额: ¥${order.totalAmount?.toLocaleString()}) 已${actionText}`,
           {
             relatedId: order.id,
             relatedType: 'order',
-            actionUrl: `/order/detail/${order.id}`
+            actionUrl: `/order/detail/${order.id}`,
+            targetUserId: orderCreatorId,  // 发送给下单员
+            createdBy: userStore.userInfo?.id  // 审核人
           }
         )
 
@@ -1878,14 +1891,15 @@ const handleQuickAuditSubmit = async () => {
           // 更新订单存储中的订单状态 - 第二个参数必须是boolean类型
           orderStore.auditOrder(order.id, true, quickAuditForm.remark || '')
 
-          // 【批次201修复】发送待发货通知
+          // 【批次201修复】发送待发货通知给下单员
           notificationStore.sendMessage(
             notificationStore.MessageType.ORDER_PENDING_SHIPMENT,
             `订单 ${order.orderNo} 审核通过，已流转到物流发货列表，等待发货`,
             {
               relatedId: order.id,
               relatedType: 'order',
-              actionUrl: `/logistics/shipping`
+              actionUrl: `/logistics/shipping`,
+              targetUserId: orderCreatorId  // 发送给下单员
             }
           )
         } else {
@@ -1893,14 +1907,15 @@ const handleQuickAuditSubmit = async () => {
           const rejectionReason = quickAuditForm.rejectionReason || quickAuditForm.remark
           orderStore.auditOrder(order.id, false, rejectionReason)
 
-          // 发送退回通知给销售员
+          // 发送退回通知给下单员
           notificationStore.sendMessage(
             notificationStore.MessageType.AUDIT_REJECTED,
             `订单 ${order.orderNo} 审核被拒绝，已退回修改。拒绝原因：${rejectionReason}`,
             {
               relatedId: order.id,
               relatedType: 'order',
-              actionUrl: `/order/edit/${order.id}`
+              actionUrl: `/order/edit/${order.id}`,
+              targetUserId: orderCreatorId  // 发送给下单员
             }
           )
         }

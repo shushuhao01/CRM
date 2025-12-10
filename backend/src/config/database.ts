@@ -36,6 +36,10 @@ import { UserPermission } from '../entities/UserPermission';
 import { CustomerShare } from '../entities/CustomerShare';
 import { PaymentMethodOption } from '../entities/PaymentMethodOption';
 import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
+import { FollowUp } from '../entities/FollowUp';
+import { AfterSalesService } from '../entities/AfterSalesService';
+import { ServiceFollowUp } from '../entities/ServiceFollowUp';
+import { ServiceOperationLog } from '../entities/ServiceOperationLog';
 import path from 'path';
 
 // 根据环境变量选择数据库配置
@@ -87,7 +91,11 @@ const AppDataSource = new DataSource(
           UserPermission,
           CustomerShare,
           PaymentMethodOption,
-          DepartmentOrderLimit
+          DepartmentOrderLimit,
+          FollowUp,
+          AfterSalesService,
+          ServiceFollowUp,
+          ServiceOperationLog
         ],
         migrations: [],
         subscribers: [],
@@ -131,7 +139,11 @@ const AppDataSource = new DataSource(
           UserPermission,
           CustomerShare,
           PaymentMethodOption,
-          DepartmentOrderLimit
+          DepartmentOrderLimit,
+          FollowUp,
+          AfterSalesService,
+          ServiceFollowUp,
+          ServiceOperationLog
         ],
         migrations: [],
         subscribers: [],

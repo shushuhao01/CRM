@@ -1162,4 +1162,147 @@ router.post('/:id/cancel-audit', async (req: Request, res: Response) => {
   }
 });
 
+// ========== 订单详情子路由 ==========
+
+/**
+ * @route GET /api/v1/orders/:id/status-history
+ * @desc 获取订单状态历史
+ * @access Private
+ */
+router.get('/:id/status-history', async (req: Request, res: Response) => {
+  try {
+    const orderId = req.params.id;
+    const { OrderStatusHistory } = await import('../entities/OrderStatusHistory');
+    const statusHistoryRepository = AppDataSource.getRepository(OrderStatusHistory);
+
+    const history = await statusHistoryRepository.find({
+      where: { orderId },
+      order: { createdAt: 'DESC' }
+    });
+
+    const list = history.map(item => ({
+      id: item.id,
+      orderId: item.orderId,
+      status: item.status,
+      title: getStatusTitle(item.status),
+      description: item.notes || `订单状态变更为：${getStatusTitle(item.status)}`,
+      operator: item.operatorName || '系统',
+      operatorId: item.operatorId,
+      timestamp: item.createdAt?.toISOString() || ''
+    }));
+
+    console.log(`[订单状态历史] 订单 ${orderId} 有 ${list.length} 条状态记录`);
+    res.json({ success: true, code: 200, data: list });
+  } catch (error) {
+    console.error('获取订单状态历史失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取订单状态历史失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/orders/:id/operation-logs
+ * @desc 获取订单操作记录
+ * @access Private
+ */
+router.get('/:id/operation-logs', async (req: Request, res: Response) => {
+  try {
+    const orderId = req.params.id;
+    const { OperationLog } = await import('../entities/OperationLog');
+    const logRepository = AppDataSource.getRepository(OperationLog);
+
+    // 查询该订单相关的操作记录
+    const logs = await logRepository.find({
+      where: { resourceId: orderId, resourceType: 'order' },
+      order: { createdAt: 'DESC' }
+    });
+
+    const list = logs.map(log => ({
+      id: log.id,
+      time: log.createdAt?.toISOString() || '',
+      operator: log.username || log.userId || '系统',
+      action: log.action || '',
+      description: log.description || '',
+      remark: ''
+    }));
+
+    console.log(`[订单操作记录] 订单 ${orderId} 有 ${list.length} 条操作记录`);
+    res.json({ success: true, code: 200, data: list });
+  } catch (error) {
+    console.error('获取订单操作记录失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取订单操作记录失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/orders/:id/after-sales
+ * @desc 获取订单售后历史
+ * @access Private
+ */
+router.get('/:id/after-sales', async (req: Request, res: Response) => {
+  try {
+    const orderId = req.params.id;
+    const { AfterSalesService } = await import('../entities/AfterSalesService');
+    const serviceRepository = AppDataSource.getRepository(AfterSalesService);
+
+    const services = await serviceRepository.find({
+      where: { orderId },
+      order: { createdAt: 'DESC' }
+    });
+
+    const list = services.map(service => ({
+      id: service.id,
+      serviceNumber: service.serviceNumber,
+      type: service.serviceType,
+      title: getAfterSalesTitle(service.serviceType, service.status),
+      description: service.description || service.reason || '',
+      status: service.status,
+      operator: service.createdBy || '系统',
+      amount: Number(service.price) || 0,
+      timestamp: service.createdAt?.toISOString() || ''
+    }));
+
+    console.log(`[订单售后历史] 订单 ${orderId} 有 ${list.length} 条售后记录`);
+    res.json({ success: true, code: 200, data: list });
+  } catch (error) {
+    console.error('获取订单售后历史失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取订单售后历史失败' });
+  }
+});
+
+// 辅助函数：获取状态标题
+function getStatusTitle(status: string): string {
+  const statusMap: Record<string, string> = {
+    'pending': '待确认',
+    'pending_transfer': '待流转',
+    'pending_audit': '待审核',
+    'confirmed': '已确认',
+    'paid': '已支付',
+    'pending_shipment': '待发货',
+    'shipped': '已发货',
+    'delivered': '已签收',
+    'completed': '已完成',
+    'cancelled': '已取消',
+    'refunded': '已退款',
+    'audit_rejected': '审核拒绝'
+  };
+  return statusMap[status] || status;
+}
+
+// 辅助函数：获取售后标题
+function getAfterSalesTitle(type: string, status: string): string {
+  const typeTexts: Record<string, string> = {
+    'return': '退货申请',
+    'exchange': '换货申请',
+    'repair': '维修申请',
+    'refund': '退款申请'
+  };
+  const statusTexts: Record<string, string> = {
+    'pending': '已提交',
+    'processing': '处理中',
+    'resolved': '已解决',
+    'closed': '已关闭'
+  };
+  return `${typeTexts[type] || '售后申请'} - ${statusTexts[status] || status}`;
+}
+
 export default router;

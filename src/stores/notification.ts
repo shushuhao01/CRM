@@ -100,6 +100,8 @@ export interface NotificationMessage {
   relatedId?: string | number
   relatedType?: string
   actionUrl?: string
+  targetUserId?: string | number  // 目标用户ID，用于定向发送通知
+  createdBy?: string | number     // 创建者ID
 }
 
 // 消息模板配置
@@ -587,6 +589,8 @@ export const useNotificationStore = defineStore('notification', () => {
       relatedId?: string | number
       relatedType?: string
       actionUrl?: string
+      targetUserId?: string | number  // 目标用户ID，用于定向发送通知
+      createdBy?: string | number     // 创建者ID
     }
   ) => {
     const template = MESSAGE_TEMPLATES[type]
@@ -603,7 +607,9 @@ export const useNotificationStore = defineStore('notification', () => {
       category: template.category,
       relatedId: options?.relatedId,
       relatedType: options?.relatedType,
-      actionUrl: options?.actionUrl
+      actionUrl: options?.actionUrl,
+      targetUserId: options?.targetUserId,
+      createdBy: options?.createdBy
     }
 
     messages.value.unshift(message)

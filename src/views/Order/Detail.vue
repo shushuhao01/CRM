@@ -718,6 +718,7 @@ import { useOrderStore } from '@/stores/order'
 import { useCustomerStore } from '@/stores/customer'
 import { useNotificationStore } from '@/stores/notification'
 import { orderApi } from '@/api/order'
+import { orderDetailApi } from '@/api/orderDetail'
 import { useServiceStore } from '@/stores/service'
 import { maskPhone } from '@/utils/phone'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
@@ -860,33 +861,63 @@ const setupEventListeners = () => {
   window.addEventListener('service-status-update', serviceStatusUpdateListener)
 }
 
-// 加载操作记录
-const loadOperationLogs = () => {
-  operationLogs.value = orderStore.getOperationLogs(orderId)
+// 加载操作记录 - 从后端API获取
+const loadOperationLogs = async () => {
+  try {
+    const logs = await orderDetailApi.getOperationLogs(orderId)
+    operationLogs.value = logs.map((log: any) => ({
+      time: log.time,
+      operator: log.operator,
+      action: log.action,
+      description: log.description,
+      remark: log.remark || ''
+    }))
+    console.log(`[订单详情] 加载到 ${operationLogs.value.length} 条操作记录`)
+  } catch (error) {
+    console.error('加载操作记录失败:', error)
+    // 如果API失败，尝试从本地store获取
+    operationLogs.value = orderStore.getOperationLogs(orderId)
+  }
 }
 
-// 加载售后历史数据
+// 加载售后历史数据 - 从后端API获取
 const loadAfterSalesHistory = async () => {
   try {
-    // 从serviceStore获取该订单的售后记录
-    const afterSalesServices = serviceStore.getServicesByOrderId(orderDetail.id)
+    const services = await orderDetailApi.getAfterSalesHistory(orderId)
 
     // 将售后服务数据转换为历史轨迹格式
-    afterSalesHistory.value = afterSalesServices.map(service => ({
-      timestamp: service.createTime,
-      type: service.serviceType,
-      title: getAfterSalesTitle(service.serviceType, service.status),
-      description: service.description || service.reason,
-      operator: service.createdBy,
-      amount: service.price || 0,
+    afterSalesHistory.value = services.map((service: any) => ({
+      timestamp: service.timestamp,
+      type: service.type,
+      title: service.title || getAfterSalesTitle(service.type, service.status),
+      description: service.description,
+      operator: service.operator,
+      amount: service.amount || 0,
       status: service.status,
       serviceNumber: service.serviceNumber
     }))
 
     // 按时间倒序排列
-    afterSalesHistory.value.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    afterSalesHistory.value.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    console.log(`[订单详情] 加载到 ${afterSalesHistory.value.length} 条售后记录`)
   } catch (error) {
-    console.error('加载售后历史失败:', error)
+    console.error('加载售后历史失败，尝试从本地store获取:', error)
+    // 如果API失败，尝试从本地store获取
+    try {
+      const afterSalesServices = serviceStore.getServicesByOrderId(orderDetail.id)
+      afterSalesHistory.value = afterSalesServices.map((service: any) => ({
+        timestamp: service.createTime,
+        type: service.serviceType,
+        title: getAfterSalesTitle(service.serviceType, service.status),
+        description: service.description || service.reason,
+        operator: service.createdBy,
+        amount: service.price || 0,
+        status: service.status,
+        serviceNumber: service.serviceNumber
+      }))
+    } catch (e) {
+      afterSalesHistory.value = []
+    }
   }
 }
 
@@ -909,39 +940,68 @@ const getAfterSalesTitle = (type: string, status: string) => {
   return `${typeTexts[type] || '售后申请'} - ${statusTexts[status] || status}`
 }
 
-// 加载订单状态轨迹
-const loadOrderTimeline = () => {
-  // 从订单Store获取真实的状态历史
-  const statusHistory = orderStore.getOrderStatusHistory(orderId)
+// 加载订单状态轨迹 - 从后端API获取
+const loadOrderTimeline = async () => {
+  try {
+    const statusHistory = await orderDetailApi.getStatusHistory(orderId)
 
-  if (statusHistory && statusHistory.length > 0) {
-    // 使用真实的状态历史数据
-    orderTimeline.value = statusHistory.map(history => ({
-      timestamp: history.timestamp,
-      type: getTimelineType(history.status),
-      icon: getTimelineIcon(history.status),
-      color: getTimelineColor(history.status),
-      title: history.title || getStatusText(history.status),
-      description: history.description || `订单状态变更为：${getStatusText(history.status)}`,
-      operator: history.operator || '系统'
-    }))
-  } else {
-    // 如果没有状态历史，使用当前订单状态生成基础轨迹
-    orderTimeline.value = [
-      {
-        timestamp: orderDetail.createTime,
-        type: 'info',
-        icon: Plus,
-        color: '#909399',
-        title: '订单创建',
-        description: `订单创建成功，订单号：${orderDetail.orderNumber}`,
-        operator: '系统'
-      }
-    ]
+    if (statusHistory && statusHistory.length > 0) {
+      // 使用真实的状态历史数据
+      orderTimeline.value = statusHistory.map((history: any) => ({
+        timestamp: history.timestamp,
+        type: getTimelineType(history.status),
+        icon: getTimelineIcon(history.status),
+        color: getTimelineColor(history.status),
+        title: history.title || getStatusText(history.status),
+        description: history.description || `订单状态变更为：${getStatusText(history.status)}`,
+        operator: history.operator || '系统'
+      }))
+      console.log(`[订单详情] 加载到 ${orderTimeline.value.length} 条状态历史`)
+    } else {
+      // 如果没有状态历史，使用当前订单状态生成基础轨迹
+      orderTimeline.value = [
+        {
+          timestamp: orderDetail.createTime,
+          type: 'info',
+          icon: Plus,
+          color: '#909399',
+          title: '订单创建',
+          description: `订单创建成功，订单号：${orderDetail.orderNumber}`,
+          operator: '系统'
+        }
+      ]
+    }
+
+    // 按时间倒序排列
+    orderTimeline.value.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  } catch (error) {
+    console.error('加载订单状态轨迹失败，尝试从本地store获取:', error)
+    // 如果API失败，尝试从本地store获取
+    const localHistory = orderStore.getOrderStatusHistory(orderId)
+    if (localHistory && localHistory.length > 0) {
+      orderTimeline.value = localHistory.map((history: any) => ({
+        timestamp: history.timestamp,
+        type: getTimelineType(history.status),
+        icon: getTimelineIcon(history.status),
+        color: getTimelineColor(history.status),
+        title: history.title || getStatusText(history.status),
+        description: history.description || `订单状态变更为：${getStatusText(history.status)}`,
+        operator: history.operator || '系统'
+      }))
+    } else {
+      orderTimeline.value = [
+        {
+          timestamp: orderDetail.createTime,
+          type: 'info',
+          icon: Plus,
+          color: '#909399',
+          title: '订单创建',
+          description: `订单创建成功，订单号：${orderDetail.orderNumber}`,
+          operator: '系统'
+        }
+      ]
+    }
   }
-
-  // 按时间倒序排列
-  orderTimeline.value.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 }
 
 // 获取时间轴类型

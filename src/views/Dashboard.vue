@@ -286,6 +286,7 @@ import { useUserStore } from '@/stores/user'
 import { useNotificationStore } from '@/stores/notification'
 import { useOrderStore } from '@/stores/order'
 import { usePerformanceStore } from '@/stores/performance'
+import { useDepartmentStore } from '@/stores/department'
 import { dashboardApi, type DashboardTodo, type DashboardQuickAction } from '@/api/dashboard'
 import { messageApi } from '@/api/message'
 
@@ -328,6 +329,7 @@ const safeNavigator = createSafeNavigator(router)
 const userStore = useUserStore()
 const notificationStore = useNotificationStore()
 const orderStore = useOrderStore()
+const departmentStore = useDepartmentStore()
 
 // 响应式数据
 const performancePeriod = ref('day')
@@ -337,15 +339,27 @@ const showMessageDialog = ref(false)
 const showMessageDetailDialog = ref(false)
 const selectedMessage = ref<Message | null>(null)
 
-// 系统消息数据 - 使用新的消息服务
-const messages = computed(() => notificationStore.messages || [])
+// 系统消息数据 - 使用新的消息服务，过滤出当前用户可见的消息
+const messages = computed(() => {
+  const currentUserId = userStore.currentUser?.id
+  const allMessages = notificationStore.messages || []
+  if (!currentUserId) return allMessages
+
+  // 过滤消息：显示发给当前用户的消息或没有指定目标用户的全局消息
+  return allMessages.filter(msg => {
+    if (!msg.targetUserId) return true
+    return String(msg.targetUserId) === String(currentUserId)
+  })
+})
 
 // 计算属性 - 使用新的消息服务
-const unreadCount = computed(() => notificationStore.unreadCount)
+const unreadCount = computed(() => {
+  return messages.value.filter(msg => !msg.read).length
+})
 
 const recentMessages = computed(() => {
   // 确保消息按时间倒序排列（最新的在前）
-  const sortedMessages = [...(notificationStore.messages || [])]
+  const sortedMessages = [...messages.value]
     .sort((a, b) => {
       const timeA = new Date(a.time).getTime()
       const timeB = new Date(b.time).getTime()
@@ -923,10 +937,16 @@ const loadRealMetrics = () => {
 // 加载真实的排名数据
 const loadRealRankings = () => {
   let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+  const currentUser = userStore.currentUser
+  const currentDeptId = currentUser?.departmentId || currentUser?.department
 
-  // 根据用户角色筛选
-  if (userStore.isManager && !userStore.isAdmin) {
-    const departmentUsers = userStore.users?.filter(u => u.departmentId === userStore.currentUser?.departmentId).map(u => u.id) || []
+  // 根据用户角色筛选 - 普通成员也能看到本部门的排名
+  if (!userStore.isAdmin) {
+    // 非管理员只能看到本部门的数据
+    const departmentUsers = userStore.users?.filter(u =>
+      String(u.departmentId) === String(currentDeptId) ||
+      String(u.department) === String(currentDeptId)
+    ).map(u => u.id) || []
     orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
   }
 
@@ -955,21 +975,27 @@ const loadRealRankings = () => {
       // 从userStore获取用户信息
       let userName = '未知'
       let userAvatar = ''
-      let userDepartment = ''
+      let userDepartment = '未分配部门'
 
-      // 从userStore获取真实用户数据
-      const user = userStore.users.find((u: any) =>
+      // 从userStore获取真实用户数据 - 增强匹配逻辑
+      const user = userStore.users?.find((u: any) =>
         String(u.id) === String(salesPersonId) ||
-        u.username === salesPersonId
+        u.username === salesPersonId ||
+        u.name === salesPersonId
       ) as any
 
       if (user) {
         userName = user.realName || user.name || user.username || '未知'
         userAvatar = user.avatar || ''
-        userDepartment = user.departmentName || user.department || ''
+        // 优先从departmentStore获取部门名称
+        const dept = departmentStore.departments?.find(d => String(d.id) === String(user.departmentId))
+        userDepartment = dept?.name || user.departmentName || user.department || '未分配部门'
         console.log(`[业绩排名] 找到用户: ${userName}, 部门: ${userDepartment}`)
       } else {
-        console.warn(`[业绩排名] 未找到用户: ${salesPersonId}`)
+        // 如果找不到用户，尝试从订单中获取信息
+        userName = order.createdByName || order.createdBy || '未知'
+        userDepartment = order.createdByDepartmentName || '未分配部门'
+        console.warn(`[业绩排名] 未找到用户: ${salesPersonId}, 使用订单信息: ${userName}`)
       }
 
       salesMap.set(salesPersonId, {

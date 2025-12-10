@@ -53,14 +53,14 @@
             <div class="tab-label">
               <el-icon><Message /></el-icon>
               <span>系统消息</span>
-              <el-badge 
-                v-if="unreadMessageCount > 0" 
-                :value="unreadMessageCount > 99 ? '99+' : unreadMessageCount" 
+              <el-badge
+                v-if="unreadMessageCount > 0"
+                :value="unreadMessageCount > 99 ? '99+' : unreadMessageCount"
                 class="tab-badge"
               />
             </div>
           </template>
-          
+
           <div class="message-list">
             <div
               v-for="message in systemMessages"
@@ -116,14 +116,14 @@
             <div class="tab-label">
               <el-icon><ChatDotRound /></el-icon>
               <span>系统公告</span>
-              <el-badge 
-                v-if="unreadAnnouncementCount > 0" 
-                :value="unreadAnnouncementCount > 99 ? '99+' : unreadAnnouncementCount" 
+              <el-badge
+                v-if="unreadAnnouncementCount > 0"
+                :value="unreadAnnouncementCount > 99 ? '99+' : unreadAnnouncementCount"
                 class="tab-badge"
               />
             </div>
           </template>
-          
+
           <div class="announcement-list">
             <div
               v-for="announcement in announcements"
@@ -141,8 +141,8 @@
                 <div class="announcement-title">
                   {{ announcement.title }}
                   <el-tag v-if="!announcement.read" type="danger" size="small">未读</el-tag>
-                  <el-tag 
-                    :type="announcement.type === 'company' ? 'primary' : 'success'" 
+                  <el-tag
+                    :type="announcement.type === 'company' ? 'primary' : 'success'"
                     size="small"
                   >
                     {{ announcement.type === 'company' ? '全公司' : '部门' }}
@@ -182,10 +182,10 @@ import { useNotificationStore } from '@/stores/notification'
 import { useMessageStore } from '@/stores/message'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  Bell, 
-  Message, 
-  ChatDotRound 
+import {
+  Bell,
+  Message,
+  ChatDotRound
 } from '@element-plus/icons-vue'
 
 // 使用Store
@@ -197,8 +197,19 @@ const userStore = useUserStore()
 const showDialog = ref(false)
 const activeTab = ref('messages')
 
-// 计算属性
-const systemMessages = computed(() => notificationStore.messages)
+// 计算属性 - 过滤出当前用户可见的消息
+const systemMessages = computed(() => {
+  const currentUserId = userStore.currentUser?.id
+  if (!currentUserId) return notificationStore.messages
+
+  // 过滤消息：显示发给当前用户的消息或没有指定目标用户的全局消息
+  return notificationStore.messages.filter(msg => {
+    // 没有指定目标用户的消息（全局消息）
+    if (!msg.targetUserId) return true
+    // 发给当前用户的消息
+    return String(msg.targetUserId) === String(currentUserId)
+  })
+})
 const announcements = computed(() => {
   if (!messageStore.announcements || !Array.isArray(messageStore.announcements)) {
     return []
@@ -207,15 +218,15 @@ const announcements = computed(() => {
 })
 
 const unreadMessageCount = computed(() => notificationStore.unreadCount)
-const unreadAnnouncementCount = computed(() => 
+const unreadAnnouncementCount = computed(() =>
   announcements.value.filter(a => !a.read).length
 )
 
-const totalUnreadCount = computed(() => 
+const totalUnreadCount = computed(() =>
   unreadMessageCount.value + unreadAnnouncementCount.value
 )
 
-const totalMessageCount = computed(() => 
+const totalMessageCount = computed(() =>
   systemMessages.value.length + announcements.value.length
 )
 
@@ -228,14 +239,14 @@ const markAllAsRead = async () => {
   try {
     // 标记所有系统消息为已读
     notificationStore.markAllAsRead()
-    
+
     // 标记所有公告为已读
     for (const announcement of announcements.value) {
       if (!announcement.read) {
         await markAnnouncementAsRead(announcement.id)
       }
     }
-    
+
     ElMessage.success('所有消息已标记为已读')
   } catch (error) {
     console.error('标记已读失败:', error)
@@ -248,7 +259,7 @@ const clearAllMessages = async () => {
     await ElMessageBox.confirm('确认清空所有消息吗？此操作不可恢复。', '确认清空', {
       type: 'warning'
     })
-    
+
     notificationStore.clearAllMessages()
     ElMessage.success('消息已清空')
   } catch (error) {
@@ -267,7 +278,7 @@ const deleteMessage = async (messageId: string) => {
     await ElMessageBox.confirm('确认删除此消息吗？', '确认删除', {
       type: 'warning'
     })
-    
+
     notificationStore.deleteMessage(messageId)
     ElMessage.success('消息已删除')
   } catch (error) {
@@ -295,7 +306,7 @@ const handleMessageClick = (message: any) => {
   if (!message.read) {
     markMessageAsRead(message.id)
   }
-  
+
   // 如果有关联URL，跳转到相关页面
   if (message.actionUrl) {
     // 这里可以实现页面跳转逻辑
@@ -308,7 +319,7 @@ const handleAnnouncementClick = (announcement: any) => {
   if (!announcement.read) {
     markAnnouncementAsRead(announcement.id)
   }
-  
+
   // 显示公告详情
   ElMessageBox.alert(announcement.content, announcement.title, {
     confirmButtonText: '确定',

@@ -1019,7 +1019,13 @@ const savingTag = ref(false)
 const sendingSMS = ref(false)
 
 // 短信相关数据
-const smsTemplates = ref([])
+const smsTemplates = ref<{
+  id: string
+  name: string
+  content: string
+  variables: { key: string; label: string; placeholder: string; defaultValue?: string }[]
+  status: string
+}[]>([])
 const userSmsStats = ref({
   todayCount: 0,
   monthCount: 0
@@ -1043,7 +1049,34 @@ const smsRules = {
 }
 
 // 客户信息
-const customerInfo = ref({
+const customerInfo = ref<{
+  id: string
+  code: string
+  name: string
+  phone: string
+  email: string
+  address: string
+  level: string
+  gender: string
+  birthday: string
+  age: number | null
+  height: number | null
+  weight: number | null
+  wechatId: string
+  salesPerson: string
+  salesperson: string
+  salesPersonId: string
+  createdBy: string
+  createTime: string
+  createdAt: string
+  joinTime: string
+  source: string
+  medicalHistory: string
+  tags: any[]
+  improvementGoals: any[]
+  otherPhones: string[]
+  notes: string
+}>({
   id: '',
   code: '',
   name: '',
@@ -1053,9 +1086,23 @@ const customerInfo = ref({
   level: '',
   gender: '',
   birthday: '',
+  age: null,
+  height: null,
+  weight: null,
+  wechatId: '',
   salesPerson: '',
+  salesperson: '',
+  salesPersonId: '',
+  createdBy: '',
+  createTime: '',
   createdAt: '',
-  improvementGoals: []
+  joinTime: '',
+  source: '',
+  medicalHistory: '',
+  tags: [],
+  improvementGoals: [],
+  otherPhones: [],
+  notes: ''
 })
 
 // 客户统计
@@ -1085,12 +1132,18 @@ const editForm = reactive({
 })
 
 // 手机号管理
-const phoneNumbers = ref([])
+const phoneNumbers = ref<string[]>([])
 const newPhoneNumber = ref('')
 const showAddPhone = ref(false)
 
 // 疾病史管理
-const medicalHistory = ref([])
+const medicalHistory = ref<{
+  id: number | string
+  content: string
+  createTime: string
+  operator: string
+  operationType: string
+}[]>([])
 const showMedicalHistory = ref(false)
 const showAddMedical = ref(false)
 const newMedicalRecord = ref('')
@@ -1136,19 +1189,55 @@ const followUpRules = {
 }
 
 // 订单历史
-const orderHistory = ref([])
+const orderHistory = ref<{
+  id: string
+  orderNo: string
+  products: string
+  totalAmount: number
+  status: string
+  orderDate: string
+}[]>([])
 
 // 售后记录
-const serviceRecords = ref([])
+const serviceRecords = ref<{
+  id: string
+  serviceNo: string
+  orderNo: string
+  type: string
+  reason: string
+  amount: number
+  status: string
+  createTime: string
+}[]>([])
 
 // 通话记录
-const callRecords = ref([])
+const callRecords = ref<{
+  id: string
+  callType: string
+  phone: string
+  duration: string
+  status: string
+  summary: string
+  callTime: string
+}[]>([])
 
 // 跟进记录
-const followUpRecords = ref([])
+const followUpRecords = ref<{
+  id: string
+  type: string
+  title: string
+  content: string
+  createTime: string
+  author: string
+  canEdit: boolean
+}[]>([])
 
 // 客户标签
-const customerTags = ref([])
+const customerTags = ref<{
+  id: string
+  name: string
+  type: string
+}[]>([])
 
 // 表单引用
 const smsFormRef = ref()
@@ -2194,30 +2283,20 @@ const loadCustomerDetail = async () => {
       return
     }
 
-    // 【关键修复】智能获取客户信息：生产环境从API获取，开发环境从store获取
-    const { isProduction } = await import('@/utils/env')
-    const { shouldUseMockApi } = await import('@/api/mock')
-
+    // 始终从后端API获取客户详情（真实数据库数据）
     let customer = null
 
-    // 生产环境或配置了API地址时，从API获取客户详情
-    if (isProduction() || !shouldUseMockApi()) {
-      console.log('[CustomerDetail] 🌐 生产环境：从API获取客户详情')
-      try {
-        const { customerApi } = await import('@/api/customer')
-        const response = await customerApi.getDetail(customerId as string)
-        if (response.data) {
-          customer = response.data
-          console.log('[CustomerDetail] ✅ API获取成功')
-        }
-      } catch (apiError) {
-        console.error('[CustomerDetail] ❌ API获取失败，尝试从本地缓存获取:', apiError)
-        // 如果API失败，尝试从本地缓存获取
-        customer = customerStore.customers.find(c => c.id === customerId)
+    console.log('[CustomerDetail] 🌐 从API获取客户详情')
+    try {
+      const { customerApi } = await import('@/api/customer')
+      const response = await customerApi.getDetail(customerId as string)
+      if (response.data) {
+        customer = response.data
+        console.log('[CustomerDetail] ✅ API获取成功:', customer.name)
       }
-    } else {
-      // 开发环境：从store中获取客户信息
-      console.log('[CustomerDetail] 💻 开发环境：从store获取客户信息')
+    } catch (apiError) {
+      console.error('[CustomerDetail] ❌ API获取失败，尝试从本地缓存获取:', apiError)
+      // 如果API失败，尝试从本地缓存获取（作为备用）
       customer = customerStore.customers.find(c => c.id === customerId)
     }
 
@@ -2229,29 +2308,46 @@ const loadCustomerDetail = async () => {
 
     console.log('找到客户信息:', customer)
 
+    // 获取负责销售人员信息
+    let salespersonName = ''
+    if (customer.salesPersonId) {
+      const salesPerson = userStore.users?.find(u => u.id === customer.salesPersonId)
+      salespersonName = salesPerson?.realName || salesPerson?.name || customer.salesPersonName || ''
+    } else if (customer.salesperson) {
+      salespersonName = customer.salesperson
+    } else if (customer.createdBy) {
+      // 如果没有负责销售，使用创建人
+      const creator = userStore.users?.find(u => u.id === customer.createdBy)
+      salespersonName = creator?.realName || creator?.name || customer.createdByName || ''
+    }
+
     customerInfo.value = {
       id: customer.id,
-      code: customer.code || 'ZS202401201420',
+      code: customer.code || customer.customerCode || '',
       name: customer.name,
       phone: customer.phone,
       email: customer.email || '',
       address: customer.address || '',
-      level: customer.level || 'VIP客户',
-      gender: customer.gender || '男',
-      birthday: customer.birthday || '1990-01-01',
-      age: customer.age || 34,
-      height: customer.height || 175,
-      weight: customer.weight || 70,
+      level: customer.level || '',
+      gender: customer.gender || '',
+      birthday: customer.birthday || '',
+      age: customer.age || null,
+      height: customer.height || null,
+      weight: customer.weight || null,
       wechatId: customer.wechatId || '',
-      salesperson: customer.salesperson || '李销售',
-      createTime: customer.createTime || '2023-01-15',
-      joinTime: customer.joinTime || '2023-01-10',
-      source: customer.source || '朋友推荐',
+      salesPerson: salespersonName,
+      salesperson: salespersonName,
+      salesPersonId: customer.salesPersonId || '',
+      createdBy: customer.createdBy || '',
+      createTime: customer.createTime || customer.createdAt || '',
+      createdAt: customer.createdAt || customer.createTime || '',
+      joinTime: customer.joinTime || customer.joinDate || '',
+      source: customer.source || '',
       medicalHistory: customer.medicalHistory || '',
-      tags: customer.tags || ['优质客户', '重点关注', '高消费'],
-      improvementGoals: customer.improvementGoals || ['减肥', '降血压', '改善睡眠'],
+      tags: customer.tags || [],
+      improvementGoals: customer.improvementGoals || [],
       otherPhones: customer.otherPhones || [],
-      notes: customer.notes || '客户对产品很满意，建议定期回访。'
+      notes: customer.notes || customer.remark || ''
     }
 
     // 客户统计数据将通过 calculateCustomerStats() 方法实时计算
@@ -2269,30 +2365,31 @@ const loadCustomerDetail = async () => {
       customerTags.value = []
     }
 
-    // 初始化疾病史数据
-    medicalHistory.value = [
-      {
-        id: 1,
-        content: '高血压，需要定期监测血压，控制饮食',
-        createTime: '2024-01-15T10:30:00.000Z',
-        operator: '李医生',
-        operationType: 'add'
-      },
-      {
-        id: 2,
-        content: '糖尿病，需要控制血糖，定期检查',
-        createTime: '2023-12-20T14:20:00.000Z',
-        operator: '王医生',
-        operationType: 'add'
-      },
-      {
-        id: 3,
-        content: '轻微脂肪肝，建议减少油腻食物摄入',
-        createTime: '2023-11-10T09:15:00.000Z',
-        operator: '张医生',
-        operationType: 'add'
+    // 加载疾病史数据
+    try {
+      const medicalRecords = await customerDetailApi.getCustomerMedicalHistory(customerId as string)
+      medicalHistory.value = medicalRecords.map((record: any) => ({
+        id: record.id,
+        content: record.content || record.description || '',
+        createTime: record.createTime || record.createdAt || '',
+        operator: record.operator || record.createdByName || '系统',
+        operationType: record.operationType || 'add'
+      }))
+    } catch (error) {
+      console.error('加载疾病史失败:', error)
+      // 如果客户有medicalHistory字段，使用它
+      if (customer.medicalHistory) {
+        medicalHistory.value = [{
+          id: 1,
+          content: customer.medicalHistory,
+          createTime: customer.createTime || '',
+          operator: '系统',
+          operationType: 'add'
+        }]
+      } else {
+        medicalHistory.value = []
       }
-    ]
+    }
 
   } catch (error) {
     console.error('加载客户详情失败:', error)
@@ -2303,25 +2400,36 @@ const loadCustomerDetail = async () => {
 const loadOrderHistory = async () => {
   loadingOrders.value = true
   try {
-    // 使用统一的API获取客户订单
     const customerId = route.params.id as string
-    const customerOrders = await customerDetailApi.getCustomerOrders(customerId)
+
+    // 优先从后端API获取订单数据
+    let customerOrders: any[] = []
+    try {
+      customerOrders = await customerDetailApi.getCustomerOrders(customerId)
+      console.log(`[客户详情] 从API获取到 ${customerOrders.length} 条订单记录`)
+    } catch (apiError) {
+      console.log('API获取订单失败，尝试从本地store获取')
+      // 如果API失败，尝试从本地store获取
+      customerOrders = orderStore.orders.filter((order: any) => order.customerId === customerId)
+    }
 
     // 转换为页面显示格式
     orderHistory.value = customerOrders.map((order: any) => ({
       id: order.id,
       orderNo: order.orderNumber || order.orderNo,
-      products: order.products ? order.products.map((p: any) => p.name).join(', ') : order.productNames || '暂无商品信息',
-      totalAmount: order.totalAmount || order.amount || 0,
+      products: order.products
+        ? (Array.isArray(order.products)
+            ? order.products.map((p: any) => p.name || p.productName).join(', ')
+            : order.productNames || '暂无商品信息')
+        : order.productNames || '暂无商品信息',
+      totalAmount: Number(order.totalAmount) || Number(order.amount) || 0,
       status: getOrderStatusText(order.status),
       orderDate: order.createTime || order.orderDate
     }))
+
+    console.log(`[客户详情] 加载到 ${orderHistory.value.length} 条订单记录`)
   } catch (error: any) {
     console.error('加载订单历史失败:', error)
-    // 只有在非404错误时才显示错误提示，404表示没有数据是正常的
-    if (!error?.message?.includes('404') && !error?.message?.includes('API端点不存在')) {
-      ElMessage.error('加载订单历史失败')
-    }
     orderHistory.value = []
   } finally {
     loadingOrders.value = false
@@ -2432,7 +2540,7 @@ const loadFollowUpRecords = async () => {
     const customerFollowUps = await customerDetailApi.getCustomerFollowUps(customerId)
 
     // 转换为页面显示格式并检查编辑权限
-    followUpRecords.value = customerFollowUps.map((followUp: unknown) => {
+    followUpRecords.value = customerFollowUps.map((followUp: any) => {
       const createTime = new Date(followUp.createTime)
       const now = new Date()
       const hoursDiff = (now.getTime() - createTime.getTime()) / (1000 * 60 * 60)
@@ -2549,6 +2657,8 @@ onMounted(() => {
   loadCustomerDetail()
   loadOrderHistory()
   loadServiceRecords()
+  loadCallRecords()
+  loadFollowUpRecords()
 
   // 初始化时计算客户统计数据
   calculateCustomerStats()
