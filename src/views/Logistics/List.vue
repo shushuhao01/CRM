@@ -177,6 +177,7 @@ import { useUserStore } from '@/stores/user'
 import { createSafeNavigator } from '@/utils/navigation'
 import { eventBus, EventNames } from '@/utils/eventBus'
 import { getOrderStatusStyle, getOrderStatusText } from '@/utils/orderStatusConfig'
+import { formatDateTime } from '@/utils/dateFormat'
 
 interface LogisticsItem {
   id: number
@@ -313,13 +314,15 @@ const tableColumns = computed(() => [
     prop: 'shipDate',
     label: '发货时间',
     minWidth: 150,
-    visible: true
+    visible: true,
+    formatter: (value: unknown) => formatDateTime(value as string)
   },
   {
     prop: 'estimatedDate',
     label: '预计送达',
     minWidth: 150,
-    visible: true
+    visible: true,
+    formatter: (value: unknown) => formatDateTime(value as string)
   }
 ])
 
