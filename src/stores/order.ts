@@ -129,6 +129,13 @@ export interface Order {
   serviceWechat?: string
   // 订单来源
   orderSource?: string
+  // 待办相关
+  isTodo?: boolean
+  todoDate?: string
+  todoRemark?: string
+  // 创建人姓名
+  createdByName?: string
+  salesPersonName?: string
 }
 
 // 订单数据不需要本地持久化，因为数据存储在后端数据库

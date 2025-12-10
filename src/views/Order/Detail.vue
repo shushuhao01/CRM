@@ -1230,10 +1230,13 @@ const handleMarkCommand = (command: string) => {
     type: 'warning'
   }).then(async () => {
     try {
+      console.log('[订单详情] 开始更新标记，订单ID:', orderId, '新标记:', command)
+
       // 调用后端API更新标记
       const response = await orderApi.updateMarkType(orderId, { markType: command })
+      console.log('[订单详情] API响应:', response)
 
-      if (response.success) {
+      if (response.success || response.data) {
         // 更新本地订单标记状态
         orderDetail.markType = command
 
@@ -1264,11 +1267,13 @@ const handleMarkCommand = (command: string) => {
           }
         })
       } else {
-        ElMessage.error('更新订单标记失败')
+        console.error('[订单详情] 更新标记失败，响应:', response)
+        ElMessage.error(response.message || '更新订单标记失败')
       }
-    } catch (error) {
-      console.error('更新订单标记失败:', error)
-      ElMessage.error('更新订单标记失败，请重试')
+    } catch (error: any) {
+      console.error('[订单详情] 更新订单标记异常:', error)
+      const errorMsg = error?.response?.data?.message || error?.message || '更新订单标记失败，请重试'
+      ElMessage.error(errorMsg)
     }
   }).catch(() => {
     // 用户取消操作

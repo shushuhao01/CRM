@@ -197,289 +197,188 @@
       </el-collapse-transition>
     </el-card>
 
-    <!-- 订单列表 - 表格式卡片 -->
-    <div class="table-card-container">
-      <div class="table-header">
-        <div class="table-title">
-          <span>订单列表</span>
-          <span class="selected-info" v-if="selectedOrders.length > 0">
-            （已选择 {{ selectedOrders.length }} 项）
-          </span>
-        </div>
-        <div class="table-actions">
-          <!-- 1. 新建订单按钮 -->
-          <el-button type="primary" @click="handleAdd" size="small">
-            <el-icon><Plus /></el-icon>
-            新建订单
-          </el-button>
+    <!-- 订单列表 - 使用DynamicTable组件 -->
+    <DynamicTable
+      :data="filteredOrderList"
+      :columns="tableColumns"
+      storage-key="order-list-columns"
+      title="订单列表"
+      :loading="loading"
+      :show-selection="true"
+      :show-pagination="true"
+      :total="pagination.total"
+      :page-sizes="[10, 20, 50, 100]"
+      @selection-change="handleSelectionChange"
+      @sort-change="handleSortChange"
+      @size-change="handleSizeChange"
+      @current-change="handleCurrentChange"
+    >
+      <!-- 头部操作按钮 -->
+      <template #header-actions>
+        <!-- 1. 新建订单按钮 -->
+        <el-button type="primary" @click="handleAdd" size="small">
+          <el-icon><Plus /></el-icon>
+          新建订单
+        </el-button>
 
-          <!-- 2. 批量导出 -->
-          <el-button
-            v-if="selectedOrders.length > 0"
-            type="primary"
-            size="small"
-            @click="handleBatchExport"
-            :icon="Download"
-          >
-            批量导出
-          </el-button>
-          <!-- 3. 批量取消 -->
-          <el-button
-            v-if="selectedOrders.length > 0"
-            type="danger"
-            size="small"
-            @click="handleBatchCancel"
-            :icon="Close"
-          >
-            批量取消
-          </el-button>
-
-          <!-- 4. 取消订单审核 -->
-          <el-button
-            v-if="canViewCancelAudit"
-            @click="handleOpenCancelAudit"
-            size="small"
-            :icon="DocumentChecked"
-            type="warning"
-          >
-            取消订单审核
-          </el-button>
-
-          <!-- 5. 刷新 -->
-          <el-button
-            @click="loadOrderList"
-            size="small"
-            :icon="Refresh"
-          >
-            刷新
-          </el-button>
-          <!-- 6. 列设置 -->
-          <el-dropdown trigger="click" @visible-change="handleDropdownVisible">
-            <el-button size="small">
-              列设置 <el-icon><ArrowDown /></el-icon>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <div class="column-settings-container">
-                  <div class="column-settings-header">
-                    <span>列显示设置</span>
-                    <el-button size="small" text @click="resetColumns">重置</el-button>
-                  </div>
-                  <div
-                    class="column-item"
-                    v-for="(col, index) in tableColumns"
-                    :key="col.prop"
-                    draggable="true"
-                    @dragstart="handleDragStart($event, index)"
-                    @dragover="handleDragOver"
-                    @drop="handleDrop($event, index)"
-                  >
-                    <el-icon class="drag-handle"><Rank /></el-icon>
-                    <el-checkbox
-                      v-model="col.visible"
-                      @click.stop
-                      @change="saveColumnSettings"
-                    >
-                      {{ col.label }}
-                    </el-checkbox>
-                  </div>
-                </div>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </div>
-
-      <el-table
-        :data="filteredOrderList"
-        v-loading="loading"
-        @selection-change="handleSelectionChange"
-        @sort-change="handleSortChange"
-        :default-sort="{ prop: 'createTime', order: 'descending' }"
-        stripe
-        border
-        :height="tableHeight"
-        style="width: 100%"
-      >
-        <el-table-column type="selection" width="55" />
-
-        <!-- 动态渲染列 -->
-        <el-table-column
-          v-for="column in dynamicColumns"
-          :key="column.prop"
-          :prop="column.prop"
-          :label="column.label"
-          :width="column.width"
-          :min-width="column.minWidth"
-          :sortable="column.sortable"
-          :align="column.align"
+        <!-- 2. 批量导出 -->
+        <el-button
+          v-if="selectedOrders.length > 0"
+          type="primary"
+          size="small"
+          @click="handleBatchExport"
+          :icon="Download"
         >
-          <template #default="{ row }">
-            <!-- 订单号特殊处理 -->
-            <el-link
-              v-if="column.prop === 'orderNumber'"
-              @click="handleView(row)"
-              type="primary"
-            >
-              {{ row.orderNumber }}
-            </el-link>
+          批量导出
+        </el-button>
+        <!-- 3. 批量取消 -->
+        <el-button
+          v-if="selectedOrders.length > 0"
+          type="danger"
+          size="small"
+          @click="handleBatchCancel"
+          :icon="Close"
+        >
+          批量取消
+        </el-button>
 
-            <!-- 客户姓名特殊处理 - 点击跳转客户详情 -->
-            <el-link
-              v-else-if="column.prop === 'customerName'"
-              @click="handleViewCustomer(row)"
-              type="primary"
-            >
-              {{ row.customerName || '-' }}
-            </el-link>
+        <!-- 4. 取消订单审核 -->
+        <el-button
+          v-if="canViewCancelAudit"
+          @click="handleOpenCancelAudit"
+          size="small"
+          :icon="DocumentChecked"
+          type="warning"
+        >
+          取消订单审核
+        </el-button>
 
-            <!-- 状态特殊处理 -->
-            <el-tag
-              v-else-if="column.prop === 'status'"
-              :style="getOrderStatusStyle(row.status)"
-              size="small"
-              effect="plain"
-            >
-              {{ getUnifiedStatusText(row.status) }}
-            </el-tag>
+        <!-- 5. 刷新 -->
+        <el-button
+          @click="loadOrderList"
+          size="small"
+          :icon="Refresh"
+        >
+          刷新
+        </el-button>
+      </template>
 
-            <!-- 标记特殊处理 -->
-            <el-tag
-              v-else-if="column.prop === 'markType'"
-              :type="getMarkTagType(row.markType || 'normal')"
-              size="small"
-              effect="dark"
-            >
-              {{ getMarkText(row.markType || 'normal') }}
-            </el-tag>
+      <!-- 订单号列 -->
+      <template #column-orderNumber="{ row }">
+        <el-link @click="handleView(row)" type="primary">
+          {{ row.orderNumber }}
+        </el-link>
+      </template>
 
-            <!-- 订单金额特殊处理 -->
-            <span
-              v-else-if="column.prop === 'totalAmount'"
-              class="amount-text"
-            >
-              ¥{{ (row.totalAmount || 0).toLocaleString() }}
-            </span>
+      <!-- 客户姓名列 -->
+      <template #column-customerName="{ row }">
+        <el-link @click="handleViewCustomer(row)" type="primary">
+          {{ row.customerName || '-' }}
+        </el-link>
+      </template>
 
-            <!-- 客户电话特殊处理 -->
-            <span v-else-if="column.prop === 'customerPhone'">
-              {{ row.customerPhone ? displaySensitiveInfoNew(row.customerPhone, 'phone') : '-' }}
-            </span>
+      <!-- 状态列 -->
+      <template #column-status="{ row }">
+        <el-tag :style="getOrderStatusStyle(row.status)" size="small" effect="plain">
+          {{ getUnifiedStatusText(row.status) }}
+        </el-tag>
+      </template>
 
-            <!-- 商品特殊处理 -->
-            <div
-              v-else-if="column.prop === 'products'"
-              class="product-list"
-            >
-              <div v-for="product in row.products" :key="product.id" class="product-item">
-                {{ product.name }} × {{ product.quantity }}
-              </div>
-            </div>
+      <!-- 标记列 -->
+      <template #column-markType="{ row }">
+        <el-tag :type="getMarkTagType(row.markType || 'normal')" size="small" effect="dark">
+          {{ getMarkText(row.markType || 'normal') }}
+        </el-tag>
+      </template>
 
-            <!-- 定金金额特殊处理 -->
-            <span v-else-if="column.prop === 'depositAmount'">
-              <span v-if="row.depositAmount" class="deposit-text">
-                ¥{{ row.depositAmount.toLocaleString() }}
-              </span>
-              <span v-else class="no-deposit">-</span>
-            </span>
+      <!-- 订单金额列 -->
+      <template #column-totalAmount="{ row }">
+        <span class="amount-text">¥{{ (row.totalAmount || 0).toLocaleString() }}</span>
+      </template>
 
-            <!-- 代收金额特殊处理 = 订单总额 - 定金 -->
-            <span v-else-if="column.prop === 'collectAmount'" class="amount-text">
-              ¥{{ ((row.totalAmount || 0) - (row.depositAmount || 0)).toLocaleString() }}
-            </span>
+      <!-- 客户电话列 -->
+      <template #column-customerPhone="{ row }">
+        {{ row.customerPhone ? displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE) : '-' }}
+      </template>
 
-            <!-- 客服微信号特殊处理 -->
-            <span v-else-if="column.prop === 'serviceWechat'">
-              {{ row.serviceWechat || '-' }}
-            </span>
-
-            <!-- 支付方式特殊处理 -->
-            <span v-else-if="column.prop === 'paymentMethod'">
-              {{ getPaymentMethodText(row.paymentMethod, row.paymentMethodOther) }}
-            </span>
-
-            <!-- 订单来源特殊处理 -->
-            <span v-else-if="column.prop === 'orderSource'">
-              {{ getOrderSourceText(row.orderSource) }}
-            </span>
-
-            <!-- 自定义字段特殊处理 -->
-            <span v-else-if="column.prop.startsWith('customFields.')">
-              {{ getCustomFieldValue(row, column.prop) }}
-            </span>
-
-            <!-- 默认处理 -->
-            <span v-else>
-              {{ renderColumnContent(row, column) }}
-            </span>
-          </template>
-        </el-table-column>
-
-        <!-- 操作列固定 -->
-        <el-table-column label="操作" min-width="200" fixed="right">
-          <template #default="{ row }">
-            <div class="operation-buttons">
-              <el-button type="text" size="small" @click="handleView(row)">详情</el-button>
-              <!-- 已取消订单只显示详情按钮 -->
-              <template v-if="row.status !== 'cancelled' && row.status !== 'after_sales_created'">
-                <el-button
-                  type="text"
-                  size="small"
-                  @click="handleEdit(row)"
-                  v-if="canEdit(row.status, row.operatorId, row.markType, row.auditStatus, row.isAuditTransferred)"
-                >
-                  编辑
-                </el-button>
-                <el-button
-                  type="text"
-                  size="small"
-                  @click="handleSubmitAudit(row)"
-                  v-if="canSubmitAudit(row.status, row.auditStatus, row.isAuditTransferred, row.operatorId)"
-                  :loading="submitAuditLoading[row.id]"
-                >
-                  提审
-                </el-button>
-                <el-button
-                  type="text"
-                  size="small"
-                  @click="handleCancel(row)"
-                  v-if="canCancel(row.status, row.operatorId)"
-                >
-                  取消
-                </el-button>
-                <el-button
-                  type="text"
-                  size="small"
-                  @click="handleAfterSales(row)"
-                  v-if="canCreateAfterSales(row.status)"
-                >
-                  售后
-                </el-button>
-              </template>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <!-- 分页 -->
-      <div class="pagination-container">
-        <div class="pagination-info">
-          <span>共 {{ pagination.total }} 条记录</span>
+      <!-- 商品列 -->
+      <template #column-products="{ row }">
+        <div class="product-list">
+          <div v-for="product in row.products" :key="product.id" class="product-item">
+            {{ product.name }} × {{ product.quantity }}
+          </div>
         </div>
-        <div class="pagination">
-          <el-pagination
-            v-model:current-page="pagination.page"
-            v-model:page-size="pagination.size"
-            :page-sizes="[10, 20, 50, 100]"
-            :total="pagination.total"
-            layout="sizes, prev, pager, next, jumper"
-            @size-change="handleSizeChange"
-            @current-change="handleCurrentChange"
-          />
+      </template>
+
+      <!-- 定金列 -->
+      <template #column-depositAmount="{ row }">
+        <span v-if="row.depositAmount" class="deposit-text">¥{{ row.depositAmount.toLocaleString() }}</span>
+        <span v-else class="no-deposit">-</span>
+      </template>
+
+      <!-- 代收金额列 -->
+      <template #column-collectAmount="{ row }">
+        <span class="amount-text">¥{{ ((row.totalAmount || 0) - (row.depositAmount || 0)).toLocaleString() }}</span>
+      </template>
+
+      <!-- 客服微信号列 -->
+      <template #column-serviceWechat="{ row }">
+        {{ row.serviceWechat || '-' }}
+      </template>
+
+      <!-- 支付方式列 -->
+      <template #column-paymentMethod="{ row }">
+        {{ getPaymentMethodText(row.paymentMethod, row.paymentMethodOther) }}
+      </template>
+
+      <!-- 订单来源列 -->
+      <template #column-orderSource="{ row }">
+        {{ getOrderSourceText(row.orderSource) }}
+      </template>
+
+      <!-- 操作列 -->
+      <template #table-actions="{ row }">
+        <div class="operation-buttons">
+          <el-button type="text" size="small" @click="handleView(row)">详情</el-button>
+          <!-- 已取消订单只显示详情按钮 -->
+          <template v-if="row.status !== 'cancelled' && row.status !== 'after_sales_created'">
+            <el-button
+              type="text"
+              size="small"
+              @click="handleEdit(row)"
+              v-if="canEdit(row.status, row.operatorId, row.markType, row.auditStatus, row.isAuditTransferred)"
+            >
+              编辑
+            </el-button>
+            <el-button
+              type="text"
+              size="small"
+              @click="handleSubmitAudit(row)"
+              v-if="canSubmitAudit(row.status, row.auditStatus, row.isAuditTransferred, row.operatorId)"
+              :loading="submitAuditLoading[row.id]"
+            >
+              提审
+            </el-button>
+            <el-button
+              type="text"
+              size="small"
+              @click="handleCancel(row)"
+              v-if="canCancel(row.status, row.operatorId)"
+            >
+              取消
+            </el-button>
+            <el-button
+              type="text"
+              size="small"
+              @click="handleAfterSales(row)"
+              v-if="canCreateAfterSales(row.status)"
+            >
+              售后
+            </el-button>
+          </template>
         </div>
-      </div>
-    </div>
+      </template>
+    </DynamicTable>
 
     <!-- 取消订单原因弹窗 -->
     <el-dialog
@@ -655,6 +554,7 @@ import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensiti
 import { SensitiveInfoType } from '@/services/permission'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 import { formatDateTime } from '@/utils/dateFormat'
+import DynamicTable from '@/components/DynamicTable.vue'
 
 // 类型定义
 interface ProductItem {

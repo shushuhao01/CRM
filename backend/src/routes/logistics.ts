@@ -424,6 +424,9 @@ router.post('/order/status', async (req, res) => {
       });
     }
 
+    // 更新物流状态字段
+    order.logisticsStatus = newStatus;
+
     // 根据物流状态同步更新订单状态（只使用Order实体中定义的有效状态）
     type ValidOrderStatus = 'delivered' | 'refunded' | 'cancelled' | 'shipped';
     const statusMapping: Record<string, ValidOrderStatus> = {
@@ -589,15 +592,56 @@ router.post('/order/todo', async (req, res) => {
   try {
     const { orderNo, days, remark } = req.body;
 
+    if (!orderNo || !days) {
+      return res.status(400).json({
+        success: false,
+        message: '订单号和待办天数不能为空'
+      });
+    }
+
     console.log('设置订单待办:', { orderNo, days, remark });
 
-    res.json({
+    // 从数据库获取订单并更新待办状态
+    const { Order } = await import('../entities/Order');
+    const orderRepository = AppDataSource!.getRepository(Order);
+
+    const order = await orderRepository.findOne({ where: { orderNumber: orderNo } });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: '订单不存在'
+      });
+    }
+
+    // 计算待办日期
+    const todoDate = new Date();
+    todoDate.setDate(todoDate.getDate() + days);
+    const todoDateStr = todoDate.toISOString().split('T')[0];
+
+    // 更新订单待办状态
+    order.isTodo = true;
+    order.todoDate = todoDateStr;
+    order.todoRemark = remark || '';
+    order.logisticsStatus = 'todo';
+    order.updatedAt = new Date();
+
+    await orderRepository.save(order);
+
+    console.log('✅ 订单待办设置成功:', { orderNo, todoDate: todoDateStr, remark });
+
+    return res.json({
       success: true,
-      message: '待办设置成功'
+      message: '待办设置成功',
+      data: {
+        orderNo,
+        todoDate: todoDateStr,
+        days
+      }
     });
   } catch (error) {
     console.error('设置订单待办失败:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: '设置待办失败'
     });

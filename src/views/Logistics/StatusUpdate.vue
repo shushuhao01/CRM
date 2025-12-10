@@ -191,23 +191,23 @@
             />
           </div>
         </template>
-        <el-table-column type="selection" width="55" />
-        <el-table-column prop="index" label="序号" width="80" />
-        <el-table-column prop="orderNo" label="订单号" width="150" />
-        <el-table-column prop="customerName" label="客户名称" width="120" />
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column type="selection" width="50" />
+        <el-table-column prop="index" label="序号" width="60" />
+        <el-table-column prop="orderNo" label="订单号" min-width="140" show-overflow-tooltip />
+        <el-table-column prop="customerName" label="客户名称" min-width="100" show-overflow-tooltip />
+        <el-table-column prop="status" label="状态" min-width="90">
           <template #default="{ row }">
             <el-tag :style="getOrderStatusStyle(row.status)" size="small" effect="plain">
               {{ getUnifiedStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="amount" label="金额" width="100">
+        <el-table-column prop="amount" label="金额" min-width="90">
           <template #default="{ row }">
             ¥{{ row.amount }}
           </template>
         </el-table-column>
-        <el-table-column prop="trackingNo" label="快递单号" width="150">
+        <el-table-column prop="trackingNo" label="快递单号" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">
             <el-button
               type="text"
@@ -219,7 +219,7 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="latestUpdate" label="物流最新动态" width="200">
+        <el-table-column prop="latestUpdate" label="物流最新动态" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
             <el-tooltip
               :content="row.latestUpdate"
@@ -233,8 +233,8 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="assignedTo" label="归属人" width="100" />
-        <el-table-column prop="orderDate" label="下单日期" width="120" />
+        <el-table-column prop="assignedToName" label="归属人" min-width="90" show-overflow-tooltip />
+        <el-table-column prop="orderDate" label="下单日期" min-width="110" show-overflow-tooltip />
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="viewOrder(row)">查看</el-button>
@@ -387,6 +387,18 @@ const quickFilters = [
   { label: '今年', value: 'year' },
   { label: '全部', value: 'all' }
 ]
+
+// 获取用户显示名称（真实姓名）
+const getUserDisplayName = (userId: string | undefined): string => {
+  if (!userId) return ''
+  // 从userStore获取用户信息
+  const users = userStore.users || []
+  const user = users.find((u: any) => u.id === userId || u.username === userId)
+  if (user) {
+    return user.realName || user.name || user.username || ''
+  }
+  return ''
+}
 
 // 方法
 const handleQuickFilter = (value: string) => {
@@ -699,9 +711,11 @@ const loadData = async (showMessage = false) => {
         order.logisticsStatus && ['delivered', 'rejected', 'returned', 'abnormal'].includes(order.logisticsStatus)
       )
     } else if (activeTab.value === 'todo') {
-      // 待办：标记为待办的订单（这里需要根据实际业务逻辑判断）
-      // 暂时使用物流状态为todo的订单
-      shippedOrders = shippedOrders.filter(order => order.logisticsStatus === 'todo')
+      // 待办：标记为待办的订单
+      // 检查 isTodo 字段或 logisticsStatus === 'todo'
+      shippedOrders = shippedOrders.filter(order =>
+        order.isTodo === true || order.logisticsStatus === 'todo'
+      )
     }
 
     // 按发货时间筛选（如果有日期范围参数）
@@ -775,6 +789,7 @@ const loadData = async (showMessage = false) => {
           ? order.statusHistory[order.statusHistory.length - 1].description
           : ''),
       assignedTo: order.salesPersonId || order.createdBy || '',
+      assignedToName: order.createdByName || order.salesPersonName || getUserDisplayName(order.salesPersonId || order.createdBy) || order.createdBy || '-',
       orderDate: formatOrderDate(order.createTime),
       shippingTime: order.shippingTime || order.shipTime || order.createTime,
       customerPhone: order.receiverPhone || order.customerPhone,
@@ -870,7 +885,7 @@ const loadSummaryData = async (showAnimation = false) => {
     const updated = shippedOrders.filter(order =>
       order.logisticsStatus && ['delivered', 'rejected', 'returned', 'abnormal'].includes(order.logisticsStatus)
     ).length
-    const todo = shippedOrders.filter(order => order.logisticsStatus === 'todo').length
+    const todo = shippedOrders.filter(order => order.isTodo === true || order.logisticsStatus === 'todo').length
     const total = shippedOrders.length
 
     const newSummaryData = {

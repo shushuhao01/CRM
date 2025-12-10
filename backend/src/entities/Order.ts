@@ -125,6 +125,18 @@ export class Order {
   @Column({ name: 'mark_type', length: 20, default: 'normal', comment: '订单标记类型' })
   markType?: string;
 
+  @Column({ name: 'logistics_status', length: 50, nullable: true, comment: '物流状态' })
+  logisticsStatus?: string;
+
+  @Column({ name: 'is_todo', type: 'boolean', default: false, comment: '是否待办' })
+  isTodo?: boolean;
+
+  @Column({ name: 'todo_date', type: 'date', nullable: true, comment: '待办日期' })
+  todoDate?: string;
+
+  @Column({ name: 'todo_remark', type: 'text', nullable: true, comment: '待办备注' })
+  todoRemark?: string;
+
   @Column({ name: 'custom_fields', type: 'json', nullable: true, comment: '自定义字段' })
   customFields?: Record<string, unknown>;
 
