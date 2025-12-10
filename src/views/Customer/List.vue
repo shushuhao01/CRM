@@ -492,6 +492,7 @@ import { exportBatchCustomers, exportSingleCustomer, type ExportCustomer } from 
 import DynamicTable from '@/components/DynamicTable.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import customerShareApi, { type ShareRequest } from '@/api/customerShare'
+import { formatDateTime } from '@/utils/dateFormat'
 
 // 接口定义
 interface Customer {
@@ -723,7 +724,7 @@ const tableColumns = computed(() => [
     visible: userStore.isAdmin
   },
   { prop: 'orderCount', label: '订单数', width: 70, visible: true },
-  { prop: 'createTime', label: '添加时间', width: 160, visible: true }
+  { prop: 'createTime', label: '添加时间', width: 160, visible: true, formatter: (value: unknown) => formatDateTime(value as string) }
 ])
 
 // 获取分享给当前用户的客户ID列表

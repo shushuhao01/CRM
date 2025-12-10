@@ -665,9 +665,9 @@
                     </el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column prop="createTime" label="创建时间" width="100" show-overflow-tooltip>
+                <el-table-column prop="createTime" label="创建时间" width="160" show-overflow-tooltip>
                   <template #default="scope">
-                    {{ formatDate(scope.row.createTime) }}
+                    {{ formatDateTime(scope.row.createTime) }}
                   </template>
                 </el-table-column>
               </el-table>
@@ -746,6 +746,7 @@ import DynamicTable from '@/components/DynamicTable.vue'
 import TableColumnSettings from '@/components/TableColumnSettings.vue'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
+import { formatDateTime } from '@/utils/dateFormat'
 
 // 使用状态管理
 const dataStore = useDataStore()
@@ -991,7 +992,8 @@ const allTableColumns = [
     width: 120,
     visible: true,
     sortable: true,
-    showOverflowTooltip: true
+    showOverflowTooltip: true,
+    formatter: (value: unknown) => formatDateTime(value as string)
   }
 ]
 
