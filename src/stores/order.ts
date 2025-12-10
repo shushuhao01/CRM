@@ -959,10 +959,10 @@ export const useOrderStore = createPersistentStore('order', () => {
     // 其他角色（销售员、客服）只能看到自己相关的订单
     let visibleOrders: Order[] = []
 
-    if (currentUser.role === 'admin' || currentUser.role === 'manager' || currentUser.role === 'department_manager') {
-      // 管理员和经理可以看到所有订单
+    if (currentUser.role === 'super_admin' || currentUser.role === 'admin' || currentUser.role === 'manager' || currentUser.role === 'department_manager') {
+      // 超级管理员、管理员和经理可以看到所有订单
       visibleOrders = orders.value
-      console.log('[发货列表] 管理员/经理角色，可查看全部订单')
+      console.log('[发货列表] 超级管理员/管理员/经理角色，可查看全部订单，总数:', orders.value.length)
     } else {
       // 其他角色使用getVisibleOrders进行权限过滤
       visibleOrders = getVisibleOrders(orders.value)
@@ -1329,10 +1329,10 @@ export const useOrderStore = createPersistentStore('order', () => {
     try {
       const { orderApi } = await import('@/api/order')
       console.log('[OrderStore] 正在从API加载订单列表...')
-      // 使用传入的分页参数，默认20条
+      // 使用传入的分页参数，默认500条以确保加载足够多的订单
       const response = await orderApi.getList({
         page: params?.page || 1,
-        pageSize: params?.pageSize || 20,
+        pageSize: params?.pageSize || 500,
         status: params?.status
       })
 

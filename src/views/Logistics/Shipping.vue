@@ -1133,10 +1133,28 @@ const loadOrderList = async () => {
       await customerStore.loadCustomers()
     }
 
-    // 根据当前选中的标签页获取对应状态的订单
-    const orders = await orderStore.getOrdersByShippingStatus(activeTab.value)
+    // 🔥 优先从API直接获取对应状态的订单
+    let orders: any[] = []
+    try {
+      const { orderApi } = await import('@/api/order')
+      if (activeTab.value === 'pending') {
+        const response = await orderApi.getShippingPending()
+        orders = response?.data?.list || []
+        console.log('[发货列表] 从API获取待发货订单:', orders.length, '条')
+      } else if (activeTab.value === 'shipped') {
+        const response = await orderApi.getShippingShipped()
+        orders = response?.data?.list || []
+        console.log('[发货列表] 从API获取已发货订单:', orders.length, '条')
+      } else {
+        // 其他状态从store获取
+        orders = await orderStore.getOrdersByShippingStatus(activeTab.value)
+      }
+    } catch (apiError) {
+      console.warn('[发货列表] API获取失败，回退到store:', apiError)
+      orders = await orderStore.getOrdersByShippingStatus(activeTab.value)
+    }
 
-    console.log('[发货列表] getOrdersByShippingStatus 返回的订单数量:', orders?.length || 0)
+    console.log('[发货列表] 获取到的订单数量:', orders?.length || 0)
 
     // 确保返回的是数组
     if (!Array.isArray(orders)) {

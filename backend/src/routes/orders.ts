@@ -406,6 +406,175 @@ router.get('/audited-cancel', async (_req: Request, res: Response) => {
 // ========== 通用路由 ==========
 
 /**
+ * @route GET /api/v1/orders/shipping/pending
+ * @desc 获取待发货订单列表
+ * @access Private
+ */
+router.get('/shipping/pending', async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+
+    const { page = 1, pageSize = 500 } = req.query;
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = parseInt(pageSize as string) || 500;
+    const skip = (pageNum - 1) * pageSizeNum;
+
+    // 查询待发货订单 (status = 'pending_shipment')
+    const [orders, total] = await orderRepository.findAndCount({
+      where: { status: 'pending_shipment' },
+      skip,
+      take: pageSizeNum,
+      order: { createdAt: 'DESC' }
+    });
+
+    console.log(`📦 [待发货订单] 查询到 ${orders.length} 条待发货订单, 总数: ${total}`);
+
+    // 转换数据格式
+    const list = orders.map(order => {
+      let products: unknown[] = [];
+      if (order.products) {
+        try {
+          products = typeof order.products === 'string' ? JSON.parse(order.products as string) : order.products;
+        } catch {
+          products = [];
+        }
+      }
+
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerId: order.customerId || '',
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
+        products: products,
+        totalAmount: Number(order.totalAmount) || 0,
+        depositAmount: Number(order.depositAmount) || 0,
+        collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+        receiverName: order.shippingName || '',
+        receiverPhone: order.shippingPhone || '',
+        receiverAddress: order.shippingAddress || '',
+        remark: order.remark || '',
+        status: order.status,
+        auditStatus: 'approved',
+        markType: order.markType || 'normal',
+        paymentStatus: order.paymentStatus || 'unpaid',
+        paymentMethod: order.paymentMethod || '',
+        createTime: formatToBeijingTime(order.createdAt),
+        createdBy: order.createdBy || '',
+        createdByName: order.createdByName || '',
+        salesPersonId: order.createdBy || ''
+      };
+    });
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '获取待发货订单成功',
+      data: {
+        list,
+        total,
+        page: pageNum,
+        pageSize: pageSizeNum
+      }
+    });
+  } catch (error) {
+    console.error('❌ [待发货订单] 获取失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取待发货订单失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/orders/shipping/shipped
+ * @desc 获取已发货订单列表
+ * @access Private
+ */
+router.get('/shipping/shipped', async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+
+    const { page = 1, pageSize = 500 } = req.query;
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = parseInt(pageSize as string) || 500;
+    const skip = (pageNum - 1) * pageSizeNum;
+
+    // 查询已发货订单 (status = 'shipped' 或 'delivered')
+    const [orders, total] = await orderRepository
+      .createQueryBuilder('order')
+      .where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered'] })
+      .skip(skip)
+      .take(pageSizeNum)
+      .orderBy('order.createdAt', 'DESC')
+      .getManyAndCount();
+
+    console.log(`🚚 [已发货订单] 查询到 ${orders.length} 条已发货订单, 总数: ${total}`);
+
+    // 转换数据格式
+    const list = orders.map(order => {
+      let products: unknown[] = [];
+      if (order.products) {
+        try {
+          products = typeof order.products === 'string' ? JSON.parse(order.products as string) : order.products;
+        } catch {
+          products = [];
+        }
+      }
+
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerId: order.customerId || '',
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
+        products: products,
+        totalAmount: Number(order.totalAmount) || 0,
+        depositAmount: Number(order.depositAmount) || 0,
+        collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+        receiverName: order.shippingName || '',
+        receiverPhone: order.shippingPhone || '',
+        receiverAddress: order.shippingAddress || '',
+        remark: order.remark || '',
+        status: order.status,
+        auditStatus: 'approved',
+        markType: order.markType || 'normal',
+        paymentStatus: order.paymentStatus || 'unpaid',
+        paymentMethod: order.paymentMethod || '',
+        trackingNumber: order.trackingNumber || '',
+        expressCompany: order.expressCompany || '',
+        createTime: formatToBeijingTime(order.createdAt),
+        createdBy: order.createdBy || '',
+        createdByName: order.createdByName || '',
+        salesPersonId: order.createdBy || ''
+      };
+    });
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '获取已发货订单成功',
+      data: {
+        list,
+        total,
+        page: pageNum,
+        pageSize: pageSizeNum
+      }
+    });
+  } catch (error) {
+    console.error('❌ [已发货订单] 获取失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取已发货订单失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
  * @route GET /api/v1/orders
  * @desc 获取订单列表
  * @access Private

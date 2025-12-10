@@ -118,4 +118,12 @@ export const orderApi = {
   // 更新订单标记类型
   updateMarkType: (id: string, data: { markType: string; isAuditTransferred?: boolean; auditTransferTime?: string; status?: string }) =>
     api.put<{ id: string; markType: string }>(API_ENDPOINTS.ORDERS.UPDATE_MARK_TYPE(id), data),
+
+  // 获取待发货订单列表
+  getShippingPending: (params?: { page?: number; pageSize?: number }) =>
+    api.get<OrderListResponse>('/orders/shipping/pending', params),
+
+  // 获取已发货订单列表
+  getShippingShipped: (params?: { page?: number; pageSize?: number }) =>
+    api.get<OrderListResponse>('/orders/shipping/shipped', params),
 }
