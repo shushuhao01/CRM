@@ -747,7 +747,7 @@ const baseTableColumns = [
   { prop: 'status', label: '状态', visible: true },
   { prop: 'markType', label: '标记', visible: true },
   { prop: 'totalAmount', label: '订单金额', visible: true },
-  { prop: 'salesPersonName', label: '负责销售', visible: true },
+  { prop: 'salesPersonName', label: '下单员', visible: true },
   { prop: 'products', label: '商品', visible: true },
   { prop: 'depositAmount', label: '定金', visible: true },
   { prop: 'collectAmount', label: '代收金额', visible: true },

@@ -8,6 +8,7 @@ import { useCustomerStore } from '@/stores/customer'
 import { useOrderStore } from '@/stores/order'
 import { useProductStore } from '@/stores/product'
 import { useNotificationStore } from '@/stores/notification'
+import { useConfigStore } from '@/stores/config'
 
 // 预加载状态
 let isPreloading = false
@@ -82,6 +83,8 @@ export const preloadAppData = async (): Promise<void> => {
 
       // 并行加载关键数据，使用 Promise.allSettled 确保部分失败不影响整体
       const loadTasks = [
+        // 加载系统配置（包括优惠折扣设置）- 优先加载确保全局生效
+        loadSystemConfig(),
         // 加载客户数据
         loadCustomerData(),
         // 加载订单数据
@@ -96,7 +99,7 @@ export const preloadAppData = async (): Promise<void> => {
 
       // 记录加载结果
       results.forEach((result, index) => {
-        const taskNames = ['客户数据', '订单数据', '产品数据', '通知数据']
+        const taskNames = ['系统配置', '客户数据', '订单数据', '产品数据', '通知数据']
         if (result.status === 'fulfilled') {
           console.log(`[AppInit] ✅ ${taskNames[index]} 加载成功`)
         } else {
@@ -114,6 +117,20 @@ export const preloadAppData = async (): Promise<void> => {
   })()
 
   return preloadPromise
+}
+
+/**
+ * 加载系统配置（包括优惠折扣设置）
+ */
+const loadSystemConfig = async (): Promise<void> => {
+  try {
+    const configStore = useConfigStore()
+    // 从API加载配置，确保优惠折扣等设置全局生效
+    await configStore.initConfig()
+    console.log('[AppInit] 系统配置加载成功，优惠折扣设置已同步')
+  } catch (error) {
+    console.warn('[AppInit] 加载系统配置失败:', error)
+  }
 }
 
 /**
