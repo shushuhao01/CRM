@@ -796,6 +796,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useProductStore } from '@/stores/product'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { createSafeNavigator } from '@/utils/navigation'
+import { formatDateTime } from '@/utils/dateFormat'
 
 // 接口定义
 interface Product {
@@ -1077,7 +1078,8 @@ const tableColumns = computed(() => [
     width: 180,
     visible: true,
     sortable: true,
-    showOverflowTooltip: true
+    showOverflowTooltip: true,
+    formatter: (value: unknown) => formatDateTime(value as string)
   },
   {
     prop: 'updateTime',
@@ -1085,7 +1087,8 @@ const tableColumns = computed(() => [
     width: 180,
     visible: false, // 默认隐藏，用户可通过列设置显示
     sortable: true,
-    showOverflowTooltip: true
+    showOverflowTooltip: true,
+    formatter: (value: unknown) => formatDateTime(value as string)
   }
 ])
 

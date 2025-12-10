@@ -250,7 +250,7 @@
           </div>
           <div class="info-item">
             <span class="label">创建时间：</span>
-            <span class="value">{{ selectedMember.createTime }}</span>
+            <span class="value">{{ formatDateTime(selectedMember.createTime) }}</span>
           </div>
           <div class="info-item">
             <span class="label">签收率：</span>
@@ -399,7 +399,11 @@
             <el-table-column prop="department" label="部门" width="100" align="center" />
             <el-table-column prop="username" label="用户名" width="110" align="center" />
             <el-table-column prop="employeeNumber" label="工号" width="110" align="center" />
-            <el-table-column prop="createTime" label="创建时间" width="160" align="center" />
+            <el-table-column prop="createTime" label="创建时间" width="160" align="center">
+              <template #default="{ row }">
+                {{ formatDateTime(row.createTime) }}
+              </template>
+            </el-table-column>
             <el-table-column prop="orderCount" label="下单数" width="70" align="center" />
             <el-table-column prop="orderAmount" label="下单业绩" width="100" align="center">
               <template #default="{ row }">
@@ -616,6 +620,7 @@ import { createSafeNavigator } from '@/utils/navigation'
 import { ElMessage } from 'element-plus'
 import { eventBus, EventNames } from '@/utils/eventBus'
 import TableColumnSettings from '@/components/TableColumnSettings.vue'
+import { formatDateTime } from '@/utils/dateFormat'
 import {
   Search,
   Download,

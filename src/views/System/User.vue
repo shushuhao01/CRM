@@ -1347,7 +1347,8 @@ const tableColumns = computed(() => [
     label: '最后登录',
     width: 160,
     visible: true,
-    sortable: true
+    sortable: true,
+    formatter: (value: unknown) => formatDateTime(value as string)
   },
   {
     prop: 'createTime',
