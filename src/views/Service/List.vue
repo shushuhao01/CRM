@@ -357,6 +357,7 @@ import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInf
 import DynamicTable from '@/components/DynamicTable.vue'
 import type { AfterSalesService } from '@/stores/service'
 import { createSafeNavigator } from '@/utils/navigation'
+import { formatDateTime } from '@/utils/dateFormat'
 
 // 路由
 const router = useRouter()
@@ -586,14 +587,16 @@ const tableColumns = computed(() => [
     label: '创建时间',
     width: 160,
     visible: true,
-    sortable: true
+    sortable: true,
+    formatter: (value: unknown) => formatDateTime(value as string)
   },
   {
     prop: 'updateTime',
     label: '更新时间',
     width: 160,
     visible: true,
-    sortable: true
+    sortable: true,
+    formatter: (value: unknown) => formatDateTime(value as string)
   }
 ])
 

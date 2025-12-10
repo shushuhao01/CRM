@@ -555,10 +555,10 @@
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="创建时间">
-            {{ currentUser.createTime }}
+            {{ formatDateTime(currentUser.createTime) }}
           </el-descriptions-item>
           <el-descriptions-item label="最后登录">
-            {{ currentUser.lastLoginTime }}
+            {{ formatDateTime(currentUser.lastLoginTime) }}
           </el-descriptions-item>
           <el-descriptions-item label="登录次数">
             {{ currentUser.loginCount }}
@@ -962,6 +962,7 @@ import permissionService from '@/services/permissionService'
 import { UserDataSyncService } from '@/services/userDataSync'
 import * as XLSX from 'xlsx'
 import DynamicTable from '@/components/DynamicTable.vue'
+import { formatDateTime } from '@/utils/dateFormat'
 import {
   Plus,
   Download,
@@ -1353,7 +1354,8 @@ const tableColumns = computed(() => [
     label: '创建时间',
     width: 160,
     visible: true,
-    sortable: true
+    sortable: true,
+    formatter: (value: unknown) => formatDateTime(value as string)
   }
 ])
 
