@@ -654,6 +654,7 @@ import { maskPhone } from '@/utils/phone'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
+import { formatDateTime } from '@/utils/dateFormat'
 
 // 类型定义
 interface ProductItem {
@@ -1329,7 +1330,7 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
     case 'orderSource':
       return getOrderSourceText(row.orderSource)
     case 'createTime':
-      return row.createTime
+      return formatDateTime(row.createTime)
     case 'operator':
       return row.operator
     default:

@@ -455,7 +455,7 @@
             <el-col :span="12">
               <div class="info-item">
                 <span class="label">创建时间：</span>
-                <span class="value">{{ currentOrder.createTime }}</span>
+                <span class="value">{{ formatDateTime(currentOrder.createTime) }}</span>
               </div>
             </el-col>
             <el-col :span="12" v-if="currentOrder.waitingHours">
@@ -878,6 +878,7 @@ import { SensitiveInfoType } from '@/services/permission'
 import DynamicTable from '@/components/DynamicTable.vue'
 import RejectionReasonManagement from '@/components/RejectionReasonManagement.vue'
 import { eventBus, EventNames } from '@/utils/eventBus'
+import { formatDateTime } from '@/utils/dateFormat'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 
 // 接口定义
@@ -1121,7 +1122,8 @@ const tableColumns = computed(() => [
     prop: 'createTime',
     label: '创建时间',
     width: 160,
-    visible: true
+    visible: true,
+    formatter: (value: unknown) => formatDateTime(value as string)
   },
   {
     prop: 'waitingTime',
@@ -1148,7 +1150,8 @@ const tableColumns = computed(() => [
     prop: 'auditTime',
     label: '审核时间',
     width: 160,
-    visible: activeTab.value !== 'pending'
+    visible: activeTab.value !== 'pending',
+    formatter: (value: unknown) => formatDateTime(value as string)
   },
   {
     prop: 'auditor',

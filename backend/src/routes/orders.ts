@@ -7,6 +7,27 @@ import { SystemConfig } from '../entities/SystemConfig';
 import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
 import { Like, Between } from 'typeorm';
 
+// 格式化时间为北京时间友好格式 (YYYY/MM/DD HH:mm:ss)
+const formatToBeijingTime = (date: Date | string | null | undefined): string => {
+  if (!date) return '';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return '';
+
+  // 转换为北京时间 (UTC+8)
+  const beijingOffset = 8 * 60; // 北京时间偏移分钟数
+  const localOffset = d.getTimezoneOffset(); // 本地时区偏移分钟数
+  const beijingTime = new Date(d.getTime() + (beijingOffset + localOffset) * 60 * 1000);
+
+  const year = beijingTime.getFullYear();
+  const month = String(beijingTime.getMonth() + 1).padStart(2, '0');
+  const day = String(beijingTime.getDate()).padStart(2, '0');
+  const hours = String(beijingTime.getHours()).padStart(2, '0');
+  const minutes = String(beijingTime.getMinutes()).padStart(2, '0');
+  const seconds = String(beijingTime.getSeconds()).padStart(2, '0');
+
+  return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+};
+
 // 验证部门下单限制
 interface OrderLimitCheckResult {
   allowed: boolean;
@@ -483,7 +504,7 @@ router.get('/', async (req: Request, res: Response) => {
         orderSource: order.orderSource || '',
         depositScreenshots: order.depositScreenshots || [],
         customFields: order.customFields || {},
-        createTime: order.createdAt?.toISOString() || '',
+        createTime: formatToBeijingTime(order.createdAt),
         createdBy: order.createdBy || '',
         createdByName: order.createdByName || '',
         salesPersonId: order.createdBy || ''
@@ -593,7 +614,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       orderSource: order.orderSource || '',
       depositScreenshots: order.depositScreenshots || [],
       customFields: order.customFields || {},
-      createTime: order.createdAt?.toISOString() || '',
+      createTime: formatToBeijingTime(order.createdAt),
       createdBy: order.createdBy || '',
       createdByName: order.createdByName || '',
       salesPersonId: order.createdBy || ''
@@ -798,7 +819,7 @@ router.post('/', async (req: Request, res: Response) => {
       status: 'pending_transfer',
       auditStatus: 'pending',
       markType: markType || 'normal',
-      createTime: savedOrder.createdAt?.toISOString() || new Date().toISOString(),
+      createTime: formatToBeijingTime(savedOrder.createdAt) || formatToBeijingTime(new Date()),
       createdBy: finalCreatedBy,
       createdByName: finalCreatedByName,
       salesPersonId: finalCreatedBy
