@@ -1206,7 +1206,7 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
     case 'customerName':
       return row.customerName
     case 'salesPersonName':
-          return row.createdByName || row.createdBy || '系统用户'
+          return row.salesPersonName || row.createdByName || row.createdBy || '系统用户'
     case 'status':
       return getStatusText(row.status)
     case 'markType':
@@ -1702,7 +1702,7 @@ const handleBatchExport = async () => {
       serviceWechat: order.serviceWechat || '',
       // 🔥 新增字段
       markType: order.markType || '',
-      salesPersonName: order.salesPersonName || order.createdBy || '',
+      salesPersonName: order.salesPersonName || order.createdByName || order.createdBy || '',
       paymentMethod: order.paymentMethod || '',
       orderSource: order.orderSource || '',
       customFields: order.customFields || {},
@@ -1749,7 +1749,7 @@ const handleExport = async () => {
       serviceWechat: order.serviceWechat || '',
       // 🔥 新增字段
       markType: order.markType || '',
-      salesPersonName: order.salesPersonName || order.createdBy || '',
+      salesPersonName: order.salesPersonName || order.createdByName || order.createdBy || '',
       paymentMethod: order.paymentMethod || '',
       orderSource: order.orderSource || '',
       customFields: order.customFields || {},

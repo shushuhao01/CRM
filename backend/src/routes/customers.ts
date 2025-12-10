@@ -5,6 +5,7 @@ import { Customer } from '../entities/Customer';
 import { CustomerGroup } from '../entities/CustomerGroup';
 import { CustomerTag } from '../entities/CustomerTag';
 import { User } from '../entities/User';
+import { Order } from '../entities/Order';
 import { Like, Between } from 'typeorm';
 
 const router = Router();
@@ -67,43 +68,58 @@ router.get('/', async (req: Request, res: Response) => {
       order: { createdAt: 'DESC' }
     });
 
-    // 转换数据格式以匹配前端期望
-    const list = customers.map(customer => ({
-      id: customer.id,
-      code: customer.customerNo || '',
-      name: customer.name,
-      phone: customer.phone || '',
-      age: customer.age || 0,
-      gender: customer.gender || 'unknown',
-      height: customer.height || null,
-      weight: customer.weight || null,
-      address: customer.address || '',
-      province: customer.province || '',
-      city: customer.city || '',
-      district: customer.district || '',
-      street: customer.street || '',
-      detailAddress: customer.detailAddress || '',
-      overseasAddress: customer.overseasAddress || '',
-      level: customer.level || 'normal',
-      status: customer.status || 'active',
-      salesPersonId: customer.salesPersonId || '',
-      orderCount: customer.orderCount || 0,
-      returnCount: customer.returnCount || 0,
-      totalAmount: customer.totalAmount || 0,
-      createTime: customer.createdAt?.toISOString() || '',
-      createdBy: customer.createdBy || '',
-      wechat: customer.wechat || '',
-      wechatId: customer.wechat || '',
-      email: customer.email || '',
-      company: customer.company || '',
-      source: customer.source || '',
-      tags: customer.tags || [],
-      remarks: customer.remark || '',
-      remark: customer.remark || '',
-      medicalHistory: customer.medicalHistory || '',
-      improvementGoals: customer.improvementGoals || [],
-      otherGoals: customer.otherGoals || '',
-      fanAcquisitionTime: customer.fanAcquisitionTime?.toISOString() || ''
+    // 获取订单仓库，用于统计每个客户的订单数
+    const orderRepository = AppDataSource.getRepository(Order);
+
+    // 转换数据格式以匹配前端期望，并动态计算订单数
+    const list = await Promise.all(customers.map(async customer => {
+      // 从订单表统计该客户的订单数量
+      let realOrderCount = customer.orderCount || 0;
+      try {
+        realOrderCount = await orderRepository.count({
+          where: { customerId: customer.id }
+        });
+      } catch (e) {
+        console.warn(`统计客户${customer.id}订单数失败:`, e);
+      }
+
+      return {
+        id: customer.id,
+        code: customer.customerNo || '',
+        name: customer.name,
+        phone: customer.phone || '',
+        age: customer.age || 0,
+        gender: customer.gender || 'unknown',
+        height: customer.height || null,
+        weight: customer.weight || null,
+        address: customer.address || '',
+        province: customer.province || '',
+        city: customer.city || '',
+        district: customer.district || '',
+        street: customer.street || '',
+        detailAddress: customer.detailAddress || '',
+        overseasAddress: customer.overseasAddress || '',
+        level: customer.level || 'normal',
+        status: customer.status || 'active',
+        salesPersonId: customer.salesPersonId || '',
+        orderCount: realOrderCount,
+        returnCount: customer.returnCount || 0,
+        totalAmount: customer.totalAmount || 0,
+        createTime: customer.createdAt?.toISOString() || '',
+        createdBy: customer.createdBy || '',
+        wechat: customer.wechat || '',
+        wechatId: customer.wechat || '',
+        email: customer.email || '',
+        company: customer.company || '',
+        source: customer.source || '',
+        tags: customer.tags || [],
+        remarks: customer.remark || '',
+        remark: customer.remark || '',
+        medicalHistory: customer.medicalHistory || '',
+        improvementGoals: customer.improvementGoals || [],
+        otherGoals: customer.otherGoals || '',
+        fanAcquisitionTime: customer.fanAcquisitionTime?.toISOString() || ''
+      };
     }));
 
     res.json({

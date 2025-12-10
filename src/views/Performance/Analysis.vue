@@ -1911,9 +1911,10 @@ onUnmounted(() => {
 /* 订单类型详情弹窗样式 */
 .order-type-dialog .member-info {
   display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  padding: 16px;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 32px;
+  padding: 16px 24px;
   background: #f5f7fa;
   border-radius: 8px;
   margin-bottom: 16px;
@@ -1922,6 +1923,8 @@ onUnmounted(() => {
 .order-type-dialog .info-item {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .order-type-dialog .info-item .label {

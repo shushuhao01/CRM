@@ -761,17 +761,24 @@ const accessibleDepartments = computed(() => {
   const currentUser = userStore.currentUser
   if (!currentUser) return []
 
+  // 获取部门列表，确保有数据
+  const deptList = departmentStore.departmentList || []
+  console.log('[团队业绩] 部门列表:', deptList.map(d => ({ id: d.id, name: d.name })))
+
   // 超级管理员和管理员可以看到所有部门
   if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
-    return departmentStore.departmentList
+    return deptList
   }
 
   // 部门经理和销售员只能看到自己所在的部门
   if (currentUser.role === 'department_manager' || currentUser.role === 'sales_staff' || currentUser.role === 'sales') {
     const userDeptId = currentUser.departmentId || currentUser.department
-    const filtered = departmentStore.departmentList.filter(dept =>
-      String(dept.id) === String(userDeptId)
-    )
+    // 先尝试通过ID匹配
+    let filtered = deptList.filter(dept => String(dept.id) === String(userDeptId))
+    // 如果没找到，尝试通过名称匹配
+    if (filtered.length === 0) {
+      filtered = deptList.filter(dept => dept.name === userDeptId)
+    }
     console.log('[团队业绩] 用户部门ID:', userDeptId, '可访问部门:', filtered.map(d => d.name))
     return filtered
   }
@@ -2089,8 +2096,16 @@ onMounted(async () => {
     if (userRole === 'department_manager' || userRole === 'sales_staff' || userRole === 'sales') {
       // 非管理员角色，默认选择自己所在的部门
       const userDeptId = currentUser.departmentId || currentUser.department || ''
-      selectedDepartment.value = userDeptId
-      console.log('[团队业绩] 非管理员角色，默认选择部门:', selectedDepartment.value, '用户角色:', userRole)
+      // 确保部门ID在可访问部门列表中
+      const deptList = departmentStore.departmentList || []
+      const matchedDept = deptList.find(d => String(d.id) === String(userDeptId) || d.name === userDeptId)
+      if (matchedDept) {
+        selectedDepartment.value = matchedDept.id
+        console.log('[团队业绩] 非管理员角色，默认选择部门:', matchedDept.name, '(ID:', matchedDept.id, ')')
+      } else {
+        selectedDepartment.value = userDeptId
+        console.log('[团队业绩] 非管理员角色，部门未找到，使用原始ID:', userDeptId)
+      }
     } else {
       // 管理员角色默认为空（显示所有部门）
       console.log('[团队业绩] 管理员角色，显示所有部门')
