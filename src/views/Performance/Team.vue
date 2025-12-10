@@ -1157,7 +1157,7 @@ const memberList = computed(() => {
     }
 
     // 格式化创建时间为 YYYY/MM/DD
-    let formattedCreateTime = '2023/01/01'
+    let formattedCreateTime = '-'
     const rawCreateTime = user.createTime || user.createdAt
     if (rawCreateTime) {
       // 移除时间部分，只保留日期
@@ -1285,6 +1285,11 @@ const paginatedOrderList = computed(() => {
 watch(memberOrderList, (newList) => {
   orderTotal.value = newList.length
   orderCurrentPage.value = 1 // 重置到第一页
+}, { immediate: true })
+
+// 监听成员列表变化，更新总数
+watch(memberList, (newList) => {
+  total.value = newList.length
 }, { immediate: true })
 
 // 方法
