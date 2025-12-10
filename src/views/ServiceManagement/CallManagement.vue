@@ -2829,67 +2829,44 @@ const handleCloseCallRecordsDialog = () => {
 const loadCallRecords = async () => {
   callRecordsLoading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // 使用callStore的API获取通话记录
+    await callStore.fetchCallRecords({
+      page: callRecordsPagination.currentPage,
+      pageSize: callRecordsPagination.pageSize,
+      keyword: callRecordsFilter.customerKeyword || undefined,
+      startDate: callRecordsFilter.dateRange?.[0] || undefined,
+      endDate: callRecordsFilter.dateRange?.[1] || undefined
+    })
 
-    // 模拟通话记录数据
-    const mockData = [
-      {
-        id: 1,
-        customerName: '张三',
-        customerPhone: '13800138001',
-        callType: 'outbound',
-        duration: '00:03:25',
-        status: 'connected',
-        startTime: '2024-01-15 14:30:00',
-        operator: '李销售',
-        remark: '客户对产品A很感兴趣',
-        recordingUrl: 'https://example.com/recording1.mp3'
-      },
-      {
-        id: 2,
-        customerName: '李四',
-        customerPhone: '13800138002',
-        callType: 'inbound',
-        duration: '00:02:15',
-        status: 'connected',
-        startTime: '2024-01-15 10:20:00',
-        operator: '王销售',
-        remark: '咨询产品价格',
-        recordingUrl: 'https://example.com/recording2.mp3'
-      },
-      {
-        id: 3,
-        customerName: '王五',
-        customerPhone: '13800138003',
-        callType: 'outbound',
-        duration: '00:00:00',
-        status: 'no_answer',
-        startTime: '2024-01-14 16:45:00',
-        operator: '张销售',
-        remark: '未接听',
-        recordingUrl: null
-      }
-    ]
-
-    // 应用筛选
-    let filteredData = mockData
-    if (callRecordsFilter.customerKeyword) {
-      const keyword = callRecordsFilter.customerKeyword.toLowerCase()
-      filteredData = filteredData.filter(item =>
-        item.customerName.toLowerCase().includes(keyword) ||
-        item.customerPhone.includes(keyword)
-      )
-    }
-
-    callRecordsList.value = filteredData
-    callRecordsPagination.total = filteredData.length
+    // 从store获取数据并转换格式
+    callRecordsList.value = callStore.callRecords.map(record => ({
+      id: record.id,
+      customerName: record.customerName,
+      customerPhone: record.customerPhone,
+      callType: record.callType,
+      duration: formatCallDuration(record.duration),
+      status: record.callStatus,
+      startTime: record.createdAt,
+      operator: record.operatorName || '系统',
+      remark: record.notes || '',
+      recordingUrl: record.recordingUrl || null
+    }))
+    callRecordsPagination.total = callStore.pagination.total
   } catch (error) {
     console.error('加载通话记录失败:', error)
     ElMessage.error('加载通话记录失败')
   } finally {
     callRecordsLoading.value = false
   }
+}
+
+// 格式化通话时长
+const formatCallDuration = (seconds: number): string => {
+  if (!seconds || seconds <= 0) return '00:00:00'
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = seconds % 60
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 
 // 重置通话记录筛选器

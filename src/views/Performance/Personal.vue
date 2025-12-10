@@ -1320,9 +1320,11 @@ const getOrderStatusText = (status: string) => {
  */
 const getCustomerLevelType = (level: string) => {
   const typeMap: Record<string, string> = {
+    bronze: '',
     normal: '',
     silver: 'info',
     gold: 'warning',
+    platinum: 'primary',
     diamond: 'success'
   }
   return typeMap[level] || ''
@@ -1333,9 +1335,11 @@ const getCustomerLevelType = (level: string) => {
  */
 const getCustomerLevelText = (level: string) => {
   const textMap: Record<string, string> = {
+    bronze: '青铜客户',
     normal: '普通客户',
     silver: '白银客户',
     gold: '黄金客户',
+    platinum: '铂金客户',
     diamond: '钻石客户'
   }
   return textMap[level] || level

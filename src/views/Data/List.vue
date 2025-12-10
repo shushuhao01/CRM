@@ -2161,7 +2161,7 @@ onMounted(async () => {
 }
 
 .search-filters .date-picker {
-  width: 35%;
+  width: 240px;
   flex-shrink: 0;
   min-width: 240px;
 }
@@ -2200,7 +2200,7 @@ onMounted(async () => {
 }
 
 .date-picker {
-  width: 40%;
+  width: 240px;
   flex-shrink: 0;
 }
 
