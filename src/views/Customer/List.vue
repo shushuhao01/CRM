@@ -246,9 +246,9 @@
         <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
       </template>
 
-      <!-- 负责销售列 -->
+      <!-- 创建人列 -->
       <template #column-salesPerson="{ row }">
-        {{ getSalesPersonName(row.salesPersonId) }}
+        {{ getCreatorName(row.createdBy) }}
       </template>
 
       <!-- 分享状态列 -->
@@ -716,7 +716,7 @@ const tableColumns = computed(() => [
     width: 90,
     visible: userStore.isManager || userStore.isSuperAdmin
   },
-  { prop: 'salesPerson', label: '负责销售', minWidth: 100, visible: true },
+  { prop: 'salesPerson', label: '创建人', minWidth: 100, visible: true },
   {
     prop: 'shareStatus',
     label: '分享状态',
@@ -1522,6 +1522,13 @@ const confirmShare = async () => {
 const getSalesPersonName = (salesPersonId: string) => {
   const salesPerson = salesUsers.value.find(user => user.id === salesPersonId)
   return salesPerson ? salesPerson.name : '未分配'
+}
+
+// 获取创建人姓名
+const getCreatorName = (createdBy: string) => {
+  if (!createdBy) return '未知'
+  const creator = salesUsers.value.find(user => user.id === createdBy)
+  return creator ? creator.name : createdBy
 }
 
 
