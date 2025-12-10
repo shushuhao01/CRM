@@ -726,6 +726,7 @@ import { useUserStore } from '@/stores/user'
 import { createSafeNavigator } from '@/utils/navigation'
 import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
+import { formatDateTime } from '@/utils/dateFormat'
 
 const router = useRouter()
 const route = useRoute()
@@ -1768,10 +1769,7 @@ const getMarkTagType = (markType: string) => {
   return types[markType] || 'info'
 }
 
-const formatDateTime = (dateTime: string) => {
-  if (!dateTime) return ''
-  return new Date(dateTime).toLocaleString('zh-CN')
-}
+// formatDateTime 已从 @/utils/dateFormat 导入
 
 const formatDate = (date: string) => {
   if (!date) return ''

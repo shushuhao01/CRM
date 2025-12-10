@@ -2782,6 +2782,7 @@ import AgreementEditorDialog from '@/components/System/AgreementEditorDialog.vue
 import * as logsApi from '@/api/logs'
 import type { SystemLog } from '@/api/logs'
 import * as alternativeConnectionApi from '@/api/alternative-connection'
+import { formatDateTime } from '@/utils/dateFormat'
 
 // 接口定义
 interface UploadFile {
@@ -5622,13 +5623,7 @@ const refreshConnectedDevices = async () => {
   }
 }
 
-/**
- * 格式化日期时间
- */
-const formatDateTime = (dateString: string) => {
-  if (!dateString) return ''
-  return new Date(dateString).toLocaleString('zh-CN')
-}
+// formatDateTime 已从 @/utils/dateFormat 导入
 
 // 生命周期钩子
 onMounted(() => {

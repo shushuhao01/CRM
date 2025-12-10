@@ -1670,6 +1670,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
+import { formatDateTime } from '@/utils/dateFormat'
 
 const router = useRouter()
 const safeNavigator = createSafeNavigator(router)
@@ -2063,9 +2064,7 @@ const formatDuration = (seconds: number) => {
   return `${minutes}分${remainingSeconds}秒`
 }
 
-const formatDateTime = (dateTime: string) => {
-  return new Date(dateTime).toLocaleString('zh-CN')
-}
+// formatDateTime 已从 @/utils/dateFormat 导入
 
 // 获取客户收货地址
 const getCustomerShippingAddress = (customer: any) => {

@@ -133,33 +133,33 @@
           快捷操作
         </h3>
         <div class="action-buttons">
-          <el-button 
+          <el-button
             v-if="customerData.status === 'pending'"
-            type="success" 
+            type="success"
             @click="handleQuickAssign"
             :icon="UserFilled"
           >
             分配
           </el-button>
-          <el-button 
+          <el-button
             v-if="customerData.status !== 'archived'"
-            type="danger" 
+            type="danger"
             @click="handleQuickArchive"
             :icon="FolderOpened"
           >
             封存
           </el-button>
-          <el-button 
+          <el-button
             v-if="customerData.status === 'archived'"
-            type="info" 
+            type="info"
             @click="handleQuickReassign"
             :icon="RefreshRight"
           >
             重新分配
           </el-button>
-          <el-button 
+          <el-button
             v-if="customerData.status !== 'pending'"
-            type="warning" 
+            type="warning"
             @click="handleQuickRecover"
             :icon="RefreshRight"
           >
@@ -183,13 +183,13 @@
             </div>
           </template>
           <div class="history-list">
-            <div 
-              v-for="record in customerData?.operationRecords || []" 
+            <div
+              v-for="record in customerData?.operationRecords || []"
               :key="record.id"
               class="history-item"
             >
               <div class="history-header">
-                <el-tag 
+                <el-tag
                   :type="getOperationTagType(record.type)"
                   size="small"
                 >
@@ -230,12 +230,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { 
-  User, ShoppingBag, Operation, UserFilled, 
-  FolderOpened, RefreshRight, Lock 
+import {
+  User, ShoppingBag, Operation, UserFilled,
+  FolderOpened, RefreshRight, Lock
 } from '@element-plus/icons-vue'
 import type { DataListItem } from '@/api/data'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
+import { formatDateTime } from '@/utils/dateFormat'
 
 // Props
 interface Props {
@@ -295,18 +296,7 @@ const getOperationTagType = (type: string) => {
   return typeMap[type] || 'info'
 }
 
-// 格式化日期时间
-const formatDateTime = (dateTime: string) => {
-  if (!dateTime) return '暂无'
-  const date = new Date(dateTime)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
+// formatDateTime 已从 @/utils/dateFormat 导入
 const handleClose = () => {
   emit('update:modelValue', false)
 }

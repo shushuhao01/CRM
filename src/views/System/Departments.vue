@@ -608,6 +608,7 @@ import {
 import { useDepartmentStore, type Department } from '@/stores/department'
 import DepartmentDialog from '@/components/Department/DepartmentDialog.vue'
 import MoveDepartmentDialog from '@/components/Department/MoveDepartmentDialog.vue'
+import { formatDateTime } from '@/utils/dateFormat'
 import PermissionDialog from '@/components/Department/PermissionDialog.vue'
 import DynamicTable from '@/components/DynamicTable.vue'
 
@@ -702,10 +703,8 @@ const getLevelTagType = (level: number) => {
   return types[level] || 'info'
 }
 
-// 格式化日期
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleString('zh-CN')
-}
+// 格式化日期 - 使用统一的formatDateTime
+const formatDate = formatDateTime
 
 // 事件处理
 const handleSearch = () => {

@@ -579,6 +579,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { formatDateTime } from '@/utils/dateFormat'
 
 const callStore = useCallStore()
 const userStore = useUserStore()
@@ -647,9 +648,7 @@ const editRules: FormRules = {
 }
 
 // 方法
-const formatDateTime = (dateTime: string) => {
-  return new Date(dateTime).toLocaleString('zh-CN')
-}
+// formatDateTime 已从 @/utils/dateFormat 导入
 
 const formatDuration = (seconds: number) => {
   if (seconds < 60) return `${seconds}秒`

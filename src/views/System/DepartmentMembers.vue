@@ -133,19 +133,19 @@
             </div>
           </template>
         </el-table-column>
-        
+
         <el-table-column prop="position" label="职位" width="150">
           <template #default="{ row }">
             <el-tag type="info" size="small">{{ row.position }}</el-tag>
           </template>
         </el-table-column>
-        
+
         <el-table-column prop="joinDate" label="加入时间" width="120">
           <template #default="{ row }">
             {{ formatDate(row.joinDate) }}
           </template>
         </el-table-column>
-        
+
         <el-table-column prop="status" label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
@@ -153,23 +153,23 @@
             </el-tag>
           </template>
         </el-table-column>
-        
+
         <el-table-column label="在职天数" width="100" align="center">
           <template #default="{ row }">
             {{ calculateWorkDays(row.joinDate) }}天
           </template>
         </el-table-column>
-        
+
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <div class="action-buttons">
               <el-button size="small" type="primary" link @click="handleEditMember(row)">
                 编辑
               </el-button>
-              <el-button 
-                size="small" 
-                :type="row.status === 'active' ? 'warning' : 'success'" 
-                link 
+              <el-button
+                size="small"
+                :type="row.status === 'active' ? 'warning' : 'success'"
+                link
                 @click="handleToggleStatus(row)"
               >
                 {{ row.status === 'active' ? '停用' : '启用' }}
@@ -227,6 +227,7 @@ import {
 import { useDepartmentStore, type DepartmentMember } from '@/stores/department'
 import MemberDialog from '@/components/Department/MemberDialog.vue'
 import BatchImportDialog from '@/components/Department/BatchImportDialog.vue'
+import { formatDateTime } from '@/utils/dateFormat'
 
 const route = useRoute()
 const router = useRouter()
@@ -264,7 +265,7 @@ const uniquePositions = computed(() => {
 const recentJoinedCount = computed(() => {
   const oneMonthAgo = new Date()
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1)
-  
+
   return departmentMembers.value.filter(member => {
     const joinDate = new Date(member.joinDate)
     return joinDate >= oneMonthAgo
@@ -273,26 +274,26 @@ const recentJoinedCount = computed(() => {
 
 const filteredMembers = computed(() => {
   let members = departmentMembers.value
-  
+
   // 搜索过滤
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase()
-    members = members.filter(member => 
+    members = members.filter(member =>
       member.userName.toLowerCase().includes(keyword) ||
       member.userId.toLowerCase().includes(keyword)
     )
   }
-  
+
   // 状态过滤
   if (statusFilter.value) {
     members = members.filter(member => member.status === statusFilter.value)
   }
-  
+
   // 职位过滤
   if (positionFilter.value) {
     members = members.filter(member => member.position === positionFilter.value)
   }
-  
+
   return members
 })
 
@@ -301,9 +302,8 @@ const goBack = () => {
   safeNavigator.push('/system/departments')
 }
 
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('zh-CN')
-}
+// 格式化日期 - 使用统一的formatDateTime
+const formatDate = formatDateTime
 
 const calculateWorkDays = (joinDate: string) => {
   const join = new Date(joinDate)
