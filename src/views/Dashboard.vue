@@ -415,7 +415,7 @@ const getRankingTitle = () => {
   const isDeptManager = user.role === 'department_manager' || user.role === 'manager'
 
   if (isAdmin) {
-    return '本月业绩排名（全部）'
+    return '本月业绩排名（部门）'
   } else if (isDeptManager) {
     return '本月业绩排名（部门）'
   } else {

@@ -1,1 +1,0 @@
-const n=()=>{const n=window.location.hostname;return n.includes("abc789.cn")||n.includes("vercel.app")||n.includes("netlify.app")||n.includes("railway.app")||!n.includes("localhost")&&!n.includes("127.0.0.1")},c=()=>!n();export{c as isDevelopment,n as isProduction};
