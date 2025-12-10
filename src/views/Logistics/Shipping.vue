@@ -191,6 +191,10 @@
         </el-tab-pane>
         </el-tabs>
         <div class="tabs-actions">
+          <el-button @click="refreshData" class="refresh-btn">
+            <el-icon><Refresh /></el-icon>
+            刷新
+          </el-button>
           <el-button type="primary" @click="showFullscreenView" class="fullscreen-btn">
             <el-icon><FullScreen /></el-icon>
             全屏查看
@@ -646,7 +650,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Box, Money, Van, Warning, CreditCard, Coin,
   Search, Phone, Download, View, Printer, ArrowDown, Back, Close, Document,
-  Edit, Check, Delete, FullScreen, CopyDocument
+  Edit, Check, Delete, FullScreen, CopyDocument, Refresh
 } from '@element-plus/icons-vue'
 import { useOrderStore } from '@/stores/order'
 import { useNotificationStore } from '@/stores/notification'
@@ -1101,6 +1105,21 @@ const handleTabChange = (tabName: string) => {
 const queryData = () => {
   // 模拟查询逻辑
   loadOrderList()
+}
+
+// 刷新数据
+const refreshData = async () => {
+  try {
+    // 先从API重新加载订单数据
+    await orderStore.loadOrdersFromAPI(true)
+    // 然后刷新列表
+    await loadOrderList()
+    updateTabCounts()
+    ElMessage.success('数据刷新成功')
+  } catch (error) {
+    console.error('刷新数据失败:', error)
+    ElMessage.error('刷新数据失败')
+  }
 }
 
 // 加载订单列表

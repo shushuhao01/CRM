@@ -39,7 +39,7 @@
           </div>
           <div class="info-item">
             <label>归属人：</label>
-            <span class="value">{{ order.createdByName || order.assignedTo || order.createdBy || '-' }}</span>
+            <span class="value">{{ order.assignedToName || order.createdByName || order.salesPersonName || order.assignedTo || order.createdBy || '-' }}</span>
           </div>
           <div class="info-item">
             <label>客服微信号：</label>
