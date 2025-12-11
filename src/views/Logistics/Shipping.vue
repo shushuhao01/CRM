@@ -1322,7 +1322,7 @@ const loadOrderList = async () => {
           }
 
       // 同步客户信息
-      let customerInfo = {}
+      let customerInfo: Record<string, unknown> = {}
       if (order.customerId) {
         const customer = customerStore.getCustomerById(order.customerId)
         if (customer) {
@@ -1330,11 +1330,14 @@ const loadOrderList = async () => {
             customerAge: customer.age || null,
             customerHeight: customer.height || null,
             customerWeight: customer.weight || null,
-            medicalHistory: customer.medicalHistory || customer.disease || null,
-            serviceWechat: order.serviceWechat || customer.serviceWechat || customer.wechat || customer.wechatId || null
+            medicalHistory: customer.medicalHistory || customer.disease || null
           }
         }
       }
+
+      // 🔥 客服微信号优先从订单获取，其次从客户信息获取
+      const serviceWechat = order.serviceWechat || customerInfo.serviceWechat || null
+      console.log(`📋 [订单${order.orderNumber}] serviceWechat:`, order.serviceWechat, 'orderSource:', order.orderSource, 'customFields:', order.customFields)
 
       // 计算订单相关字段
       const products = Array.isArray(order.products) ? order.products : []
@@ -1360,6 +1363,8 @@ const loadOrderList = async () => {
         })(),
         // 同步的客户信息
         ...customerInfo,
+        // 🔥 客服微信号 - 优先从订单获取
+        serviceWechat: serviceWechat,
         // 计算的订单字段
         productsText,
         totalQuantity,
@@ -1371,7 +1376,7 @@ const loadOrderList = async () => {
         logisticsStatus: order.logisticsStatus || null,
         // 🔥 预计送达时间
         estimatedDeliveryTime: order.estimatedDeliveryTime || order.expectedDeliveryDate || null,
-        // 订单来源
+        // 🔥 订单来源 - 从订单获取
         orderSource: order.orderSource || null,
         // 🔥 自定义字段 - 确保正确传递
         customFields: order.customFields || {},
