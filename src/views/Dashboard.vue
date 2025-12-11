@@ -287,6 +287,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useOrderStore } from '@/stores/order'
 import { usePerformanceStore } from '@/stores/performance'
 import { useDepartmentStore } from '@/stores/department'
+import { useCustomerStore } from '@/stores/customer'
 import { dashboardApi, type DashboardTodo, type DashboardQuickAction } from '@/api/dashboard'
 import { messageApi } from '@/api/message'
 
@@ -412,14 +413,12 @@ const getRankingTitle = () => {
   if (!user) return '本月业绩排名'
 
   const isAdmin = user.role === 'super_admin' || user.role === 'admin'
-  const isDeptManager = user.role === 'department_manager' || user.role === 'manager'
 
   if (isAdmin) {
-    return '本月业绩排名（部门）'
-  } else if (isDeptManager) {
-    return '本月业绩排名（部门）'
+    return '本月业绩排名（全部）'
   } else {
-    return '本月业绩排名（个人）'
+    // 🔥 部门经理和普通销售员都显示部门排名
+    return '本月业绩排名（部门）'
   }
 }
 
@@ -877,35 +876,74 @@ const loadDashboardData = async () => {
 }
 
 // 加载真实的核心指标数据
-const loadRealMetrics = () => {
+const loadRealMetrics = async () => {
   const currentUserId = userStore.currentUser?.id
-  let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+  const currentDeptId = userStore.currentUser?.departmentId || userStore.currentUser?.department
+
+  // 🔥 获取所有订单（不只是approved的），用于统计待审核和待发货
+  let allOrders = orderStore.orders
+  let approvedOrders = orderStore.orders.filter(order => order.auditStatus === 'approved')
 
   // 根据用户角色筛选订单
   if (!userStore.isAdmin && !userStore.isManager) {
-    orders = orders.filter(order => order.salesPersonId === currentUserId)
+    // 普通销售员只看自己的
+    allOrders = allOrders.filter(order => order.salesPersonId === currentUserId || order.createdBy === currentUserId)
+    approvedOrders = approvedOrders.filter(order => order.salesPersonId === currentUserId || order.createdBy === currentUserId)
   } else if (userStore.isManager && !userStore.isAdmin) {
-    const departmentUsers = userStore.users?.filter(u => u.departmentId === userStore.currentUser?.departmentId).map(u => u.id) || []
-    orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
+    // 部门经理看本部门的
+    const departmentUsers = userStore.users?.filter(u =>
+      String(u.departmentId) === String(currentDeptId) ||
+      String(u.department) === String(currentDeptId)
+    ).map(u => u.id) || []
+    allOrders = allOrders.filter(order => departmentUsers.includes(order.salesPersonId) || departmentUsers.includes(order.createdBy))
+    approvedOrders = approvedOrders.filter(order => departmentUsers.includes(order.salesPersonId) || departmentUsers.includes(order.createdBy))
   }
 
   const today = new Date()
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
   const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1
-
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
 
-  // 今日订单
-  const todayOrders = orders.filter(order => {
+  // 今日订单（已审核通过的）
+  const todayOrders = approvedOrders.filter(order => {
     const orderTime = new Date(order.createTime).getTime()
     return orderTime >= todayStart && orderTime <= todayEnd
   })
 
-  // 本月订单
-  const monthOrders = orders.filter(order => {
+  // 本月订单（已审核通过的）
+  const monthOrders = approvedOrders.filter(order => {
     const orderTime = new Date(order.createTime).getTime()
     return orderTime >= monthStart
   })
+
+  // 🔥 待审核订单
+  const pendingAuditOrders = allOrders.filter(order => order.status === 'pending_audit')
+
+  // 🔥 待发货订单
+  const pendingShipmentOrders = allOrders.filter(order => order.status === 'pending_shipment')
+
+  // 🔥 新增客户统计 - 从客户store获取
+  let newCustomersCount = 0
+  try {
+    const customerStore = useCustomerStore()
+    let customers = customerStore.customers || []
+    // 根据角色筛选
+    if (!userStore.isAdmin && !userStore.isManager) {
+      customers = customers.filter(c => c.salesPersonId === currentUserId || c.createdBy === currentUserId)
+    } else if (userStore.isManager && !userStore.isAdmin) {
+      const departmentUsers = userStore.users?.filter(u =>
+        String(u.departmentId) === String(currentDeptId)
+      ).map(u => u.id) || []
+      customers = customers.filter(c => departmentUsers.includes(c.salesPersonId) || departmentUsers.includes(c.createdBy))
+    }
+    // 统计今日新增
+    newCustomersCount = customers.filter(c => {
+      const createTime = new Date(c.createTime).getTime()
+      return createTime >= todayStart && createTime <= todayEnd
+    }).length
+  } catch (e) {
+    console.warn('获取客户数据失败:', e)
+  }
 
   // 更新指标
   const labels = getMetricLabels()
@@ -913,7 +951,7 @@ const loadRealMetrics = () => {
   metrics.value[0].value = todayOrders.length.toString()
   metrics.value[0].label = labels.orders || '今日订单'
 
-  metrics.value[1].value = '0' // 新增客户需要从客户数据中获取
+  metrics.value[1].value = newCustomersCount.toString()
   metrics.value[1].label = labels.customers || '新增客户'
 
   metrics.value[2].value = `¥${todayOrders.reduce((sum, order) => sum + order.totalAmount, 0).toLocaleString()}`
@@ -928,9 +966,21 @@ const loadRealMetrics = () => {
   }
 
   if (metrics.value[5]) {
-    const pendingService = orders.filter(order => order.status === 'after_sales_created').length
+    const pendingService = allOrders.filter(order => order.status === 'after_sales_created').length
     metrics.value[5].value = pendingService.toString()
     metrics.value[5].label = labels.service || '待处理售后'
+  }
+
+  // 🔥 待审核订单
+  if (metrics.value[6]) {
+    metrics.value[6].value = pendingAuditOrders.length.toString()
+    metrics.value[6].label = labels.audit || '待审核订单'
+  }
+
+  // 🔥 待发货订单
+  if (metrics.value[7]) {
+    metrics.value[7].value = pendingShipmentOrders.length.toString()
+    metrics.value[7].label = labels.logistics || '待发货订单'
   }
 }
 
@@ -940,6 +990,8 @@ const loadRealRankings = () => {
   const currentUser = userStore.currentUser
   const currentDeptId = currentUser?.departmentId || currentUser?.department
 
+  console.log('[业绩排名] 当前用户:', currentUser?.name, '部门ID:', currentDeptId, '角色:', currentUser?.role)
+
   // 根据用户角色筛选 - 普通成员也能看到本部门的排名
   if (!userStore.isAdmin) {
     // 非管理员只能看到本部门的数据
@@ -947,7 +999,15 @@ const loadRealRankings = () => {
       String(u.departmentId) === String(currentDeptId) ||
       String(u.department) === String(currentDeptId)
     ).map(u => u.id) || []
-    orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
+
+    console.log('[业绩排名] 部门成员IDs:', departmentUsers)
+
+    // 🔥 修复：同时匹配salesPersonId和createdBy
+    orders = orders.filter(order =>
+      departmentUsers.includes(order.salesPersonId) ||
+      departmentUsers.includes(order.createdBy)
+    )
+    console.log('[业绩排名] 筛选后订单数:', orders.length)
   }
 
   // 本月订单
