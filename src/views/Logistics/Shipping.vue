@@ -219,7 +219,6 @@
       @size-change="handlePageSizeChange"
       @current-change="handleCurrentChange"
       :row-class-name="getRowClassName"
-      height="calc(100vh - 420px)"
     >
       <!-- 头部操作按钮 -->
       <template #header-actions>
