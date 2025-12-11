@@ -326,10 +326,19 @@ defineExpose({
 /* 表格横向滚动支持 */
 :deep(.el-table) {
   width: 100%;
+  overflow-x: auto;
+}
+
+:deep(.el-table__inner-wrapper) {
+  min-width: max-content; /* 让表格内容撑开宽度 */
 }
 
 :deep(.el-table__body-wrapper) {
   overflow-x: auto;
+}
+
+:deep(.el-scrollbar__wrap) {
+  overflow-x: auto !important;
 }
 
 /* 固定列阴影效果 */
