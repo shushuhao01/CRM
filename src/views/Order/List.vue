@@ -336,6 +336,16 @@
         {{ getOrderSourceText(row.orderSource) }}
       </template>
 
+      <!-- 销售人员列 -->
+      <template #column-salesPersonName="{ row }">
+        {{ row.salesPersonName || row.createdByName || row.createdBy || '-' }}
+      </template>
+
+      <!-- 指定快递列 -->
+      <template #column-expressCompany="{ row }">
+        {{ getExpressCompanyText(row.expressCompany) }}
+      </template>
+
       <!-- 操作列 -->
       <template #table-actions="{ row }">
         <div class="operation-buttons">
