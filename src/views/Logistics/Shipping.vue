@@ -615,9 +615,9 @@
                 {{ formatDateTime(row.shipTime) }}
               </template>
             </el-table-column>
-            <el-table-column prop="expressCompany" label="指定快递" width="100" align="center">
+            <el-table-column prop="expressCompany" label="指定快递" width="110" align="center" class-name="express-column">
               <template #default="{ row }">
-                {{ getExpressCompanyText(row.expressCompany) }}
+                <span class="express-highlight-text">{{ getExpressCompanyText(row.expressCompany) }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="trackingNo" label="物流单号" width="130" align="center" show-overflow-tooltip />
@@ -2374,6 +2374,24 @@ onUnmounted(() => {
   background-color: #fef0f0;
   padding: 1px 3px;
   border-radius: 3px;
+}
+
+/* 指定快递红色高亮样式 */
+.express-highlight-text {
+  color: #f56c6c;
+  font-weight: 700;
+  background-color: #fef0f0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid #f56c6c;
+}
+
+:deep(.express-column) {
+  background-color: #fff5f5 !important;
+}
+
+:deep(.express-column .cell) {
+  font-weight: 600;
 }
 
 .no-remark {

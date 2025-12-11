@@ -49,6 +49,10 @@
             <label>订单来源：</label>
             <span class="value">{{ getOrderSourceText(order.orderSource) }}</span>
           </div>
+          <div class="info-item highlight-red">
+            <label>指定快递：</label>
+            <span class="value express-highlight">{{ getExpressCompanyName(order.expressCompany) || '-' }}</span>
+          </div>
           <div class="info-item full-width">
             <label>收货地址：</label>
             <span class="value">{{ order.address || order.receiverAddress || '-' }}</span>
@@ -535,6 +539,25 @@ const handleSetTodo = () => {
   background-color: #fef0f0;
   padding: 2px 4px;
   border-radius: 3px;
+}
+
+/* 指定快递红色高亮样式 */
+.info-item.highlight-red {
+  background-color: #fef0f0;
+  border-radius: 4px;
+  padding: 8px 12px;
+  border: 1px solid #f56c6c;
+}
+
+.info-item.highlight-red label {
+  color: #f56c6c;
+  font-weight: 700;
+}
+
+.express-highlight {
+  color: #f56c6c !important;
+  font-weight: 700 !important;
+  font-size: 14px;
 }
 
 .audit-timeline {
