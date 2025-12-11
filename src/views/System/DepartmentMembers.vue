@@ -384,10 +384,21 @@ watch(
   { immediate: true }
 )
 
-onMounted(() => {
+onMounted(async () => {
   if (!department.value) {
     ElMessage.error('部门不存在')
     safeNavigator.push('/system/departments')
+    return
+  }
+
+  // 🔥 从API获取部门成员数据
+  try {
+    console.log('[部门成员] 加载部门成员数据, 部门ID:', departmentId.value)
+    await departmentStore.fetchDepartmentMembers(departmentId.value)
+    console.log('[部门成员] 加载完成, 成员数:', departmentMembers.value.length)
+  } catch (error) {
+    console.error('[部门成员] 加载失败:', error)
+    ElMessage.error('加载部门成员失败')
   }
 })
 </script>
