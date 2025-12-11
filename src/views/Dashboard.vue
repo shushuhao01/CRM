@@ -31,7 +31,7 @@
       <el-card class="chart-card">
         <template #header>
           <div class="chart-header">
-            <span class="chart-title">业绩趋势</span>
+            <span class="chart-title">{{ chartTitles.performanceTrend }}</span>
             <div class="chart-controls">
               <el-radio-group v-model="performancePeriod" size="small">
                 <el-radio-button label="day">日</el-radio-button>
@@ -56,7 +56,7 @@
       <!-- 订单状态分布 -->
       <el-card class="chart-card">
         <template #header>
-          <span class="chart-title">订单状态分布</span>
+          <span class="chart-title">{{ chartTitles.orderStatus }}</span>
         </template>
         <div class="chart-container">
           <v-chart
@@ -74,7 +74,7 @@
       <el-card class="chart-card">
         <template #header>
           <div class="chart-header">
-            <span class="chart-title">本月签收统计</span>
+            <span class="chart-title">{{ chartTitles.monthlySign }}</span>
             <el-button type="text" size="small" @click="refreshMonthlySignChart">刷新</el-button>
           </div>
         </template>
@@ -94,7 +94,7 @@
       <el-card class="chart-card">
         <template #header>
           <div class="chart-header">
-            <span class="chart-title">本月业绩趋势</span>
+            <span class="chart-title">{{ chartTitles.monthlyPerformance }}</span>
             <el-button type="text" size="small" @click="refreshMonthlyPerformanceChart">刷新</el-button>
           </div>
         </template>
@@ -410,6 +410,45 @@ const recentMessages = computed(() => {
 })
 
 // 核心指标数据 - 根据用户权限动态生成标签
+// 图表标题（根据用户角色动态显示）
+const chartTitles = computed(() => {
+  const user = userStore.currentUser
+  if (!user) {
+    return {
+      performanceTrend: '业绩趋势',
+      orderStatus: '订单状态分布',
+      monthlySign: '本月签收统计',
+      monthlyPerformance: '本月业绩趋势'
+    }
+  }
+
+  const isAdmin = user.role === 'super_admin' || user.role === 'admin'
+  const isDeptManager = user.role === 'department_manager' || user.role === 'manager'
+
+  if (isAdmin) {
+    return {
+      performanceTrend: '业绩趋势（全部）',
+      orderStatus: '订单状态分布（全部）',
+      monthlySign: '本月签收统计（全部）',
+      monthlyPerformance: '本月业绩趋势（全部）'
+    }
+  } else if (isDeptManager) {
+    return {
+      performanceTrend: '业绩趋势（部门）',
+      orderStatus: '订单状态分布（部门）',
+      monthlySign: '本月签收统计（部门）',
+      monthlyPerformance: '本月业绩趋势（部门）'
+    }
+  } else {
+    return {
+      performanceTrend: '业绩趋势（个人）',
+      orderStatus: '订单状态分布（个人）',
+      monthlySign: '本月签收统计（个人）',
+      monthlyPerformance: '本月业绩趋势（个人）'
+    }
+  }
+})
+
 const getMetricLabels = () => {
   const user = userStore.currentUser
   if (!user) return {}
