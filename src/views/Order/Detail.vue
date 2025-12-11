@@ -1728,14 +1728,28 @@ const getLevelText = (level: string) => {
 }
 
 const getExpressCompanyText = (code: string) => {
-  const companies = {
+  if (!code) return '-'
+  const companies: Record<string, string> = {
+    'SF': '顺丰速运',
+    'YTO': '圆通速递',
+    'ZTO': '中通快递',
+    'STO': '申通快递',
+    'YD': '韵达快递',
+    'JTSD': '极兔速递',
+    'EMS': 'EMS',
+    'YZBK': '邮政包裹',
+    'DBL': '德邦快递',
+    'JD': '京东物流',
+    // 兼容小写键名
     'sf': '顺丰速运',
-    'yt': '圆通速递',
-    'zt': '中通快递',
-    'st': '申通快递',
-    'yd': '韵达速递',
-    'bs': '百世快递',
-    'db': '德邦快递',
+    'yto': '圆通速递',
+    'zto': '中通快递',
+    'sto': '申通快递',
+    'yd': '韵达快递',
+    'jtsd': '极兔速递',
+    'ems': 'EMS',
+    'yzbk': '邮政包裹',
+    'dbl': '德邦快递',
     'jd': '京东物流'
   }
   return companies[code] || code
