@@ -2125,11 +2125,22 @@ const loadOrderList = async (force = false) => {
 
   try {
     isLoadingOrders = true
-    loading.value = true
     lastLoadTime = now
 
+    // 🔥 优化：如果已有缓存数据，先快速显示，不显示loading
+    const hasCachedData = orderStore.orders.length > 0
+    if (!hasCachedData) {
+      loading.value = true
+    }
+
+    // 🔥 先用缓存数据更新UI
+    if (hasCachedData) {
+      updatePagination()
+      updateQuickFilterCounts()
+    }
+
     // 尝试从API加载订单数据
-    const apiOrders = await orderStore.loadOrdersFromAPI()
+    const apiOrders = await orderStore.loadOrdersFromAPI(force)
 
     // 如果API返回空数据且本地也没有数据，则初始化模拟数据（仅开发环境）
     if (apiOrders.length === 0 && orderStore.orders.length === 0) {
@@ -2179,20 +2190,22 @@ const handleResize = () => {
 }
 
 onMounted(async () => {
-  // 🔥 先加载自定义字段列配置（从系统设置）
-  await loadCustomFieldColumns()
+  // 🔥 优化：如果已有缓存数据，先快速显示
+  if (orderStore.orders.length > 0) {
+    updatePagination()
+    updateQuickFilterCounts()
+  }
 
-  // 加载列设置（从数据库同步）
-  loadColumnSettings()
-
-  // 加载支付方式选项（从系统设置API）
-  loadPaymentMethods()
-
-  // 并行加载用户列表和订单列表，提高加载速度
+  // 🔥 并行加载所有初始化数据，不阻塞UI
   const loadPromises = [
+    loadCustomFieldColumns(),
     userStore.loadUsers(),
-    loadOrderList(true) // 强制加载，忽略防抖
+    loadOrderList(false) // 不强制刷新，使用缓存
   ]
+
+  // 同步加载列设置和支付方式（不需要await）
+  loadColumnSettings()
+  loadPaymentMethods()
 
   // 等待所有数据加载完成
   await Promise.all(loadPromises)
