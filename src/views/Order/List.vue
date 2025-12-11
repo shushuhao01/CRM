@@ -212,6 +212,7 @@
       @sort-change="handleSortChange"
       @size-change="handleSizeChange"
       @current-change="handleCurrentChange"
+      height="calc(100vh - 350px)"
     >
       <!-- 头部操作按钮 -->
       <template #header-actions>
@@ -703,7 +704,7 @@ const searchForm = reactive({
 
 const pagination = reactive({
   page: 1,
-  size: 20,
+  size: 10, // 与page-sizes第一个值保持一致
   total: 0
 })
 
