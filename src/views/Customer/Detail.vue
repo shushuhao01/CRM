@@ -2595,7 +2595,33 @@ watch(() => route.params.id, (newId) => {
   }
 })
 
-// 计算客户统计数据
+// 从API加载客户统计数据
+const loadCustomerStats = async () => {
+  try {
+    const customerId = route.params.id as string
+    console.log(`[客户详情] 加载客户 ${customerId} 的统计数据`)
+
+    // 优先从API获取统计数据
+    const stats = await customerDetailApi.getCustomerStats(customerId)
+    if (stats && typeof stats === 'object') {
+      customerStats.value = {
+        totalConsumption: stats.totalConsumption || 0,
+        orderCount: stats.orderCount || 0,
+        returnCount: stats.returnCount || 0,
+        lastOrderDate: stats.lastOrderDate || ''
+      }
+      console.log(`[客户详情] 从API获取统计数据成功:`, customerStats.value)
+      return
+    }
+  } catch (error) {
+    console.log('[客户详情] API获取统计数据失败，使用本地计算:', error)
+  }
+
+  // 如果API失败，使用本地计算作为备选
+  calculateCustomerStats()
+}
+
+// 计算客户统计数据（本地备选方案）
 const calculateCustomerStats = () => {
   const customerId = route.params.id as string
   const allOrders = applyDataScopeControl(orderStore.orders)
@@ -2648,8 +2674,8 @@ watch(() => orderStore.orders, () => {
   // 更新订单历史
   orderHistory.value = newOrderHistory
 
-  // 重新计算客户统计数据
-  calculateCustomerStats()
+  // 重新加载客户统计数据
+  loadCustomerStats()
 }, { deep: true })
 
 // 监听售后store的变化，实现实时同步
@@ -2672,8 +2698,8 @@ watch(() => serviceStore.services, () => {
   // 更新售后记录
   serviceRecords.value = newServiceRecords
 
-  // 重新计算客户统计数据
-  calculateCustomerStats()
+  // 重新加载客户统计数据
+  loadCustomerStats()
 }, { deep: true })
 
 onMounted(() => {
@@ -2683,8 +2709,8 @@ onMounted(() => {
   loadCallRecords()
   loadFollowUpRecords()
 
-  // 初始化时计算客户统计数据
-  calculateCustomerStats()
+  // 从API加载客户统计数据
+  loadCustomerStats()
 
   // 监听手机号更新事件
   const handlePhoneUpdate = (event: CustomEvent) => {

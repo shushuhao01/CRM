@@ -1628,4 +1628,63 @@ router.post('/:id/medical-history', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @route GET /api/v1/customers/:id/stats
+ * @desc 获取客户统计数据（累计消费、订单数量、退货次数、最后下单时间）
+ * @access Private
+ */
+router.get('/:id/stats', async (req: Request, res: Response) => {
+  try {
+    const customerId = req.params.id;
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const orderRepository = AppDataSource.getRepository(Order);
+
+    // 获取客户基本信息
+    const customer = await customerRepository.findOne({ where: { id: customerId } });
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+
+    // 从订单表统计数据
+    const orders = await orderRepository.find({
+      where: { customerId },
+      order: { createdAt: 'DESC' }
+    });
+
+    // 计算累计消费（只统计已完成/已签收的订单）
+    const completedStatuses = ['completed', 'delivered', 'paid', 'shipped'];
+    const completedOrders = orders.filter(o => completedStatuses.includes(o.status));
+    const totalConsumption = completedOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
+
+    // 订单数量
+    const orderCount = orders.length;
+
+    // 退货次数（统计退款/取消的订单）
+    const returnStatuses = ['refunded', 'cancelled'];
+    const returnCount = orders.filter(o => returnStatuses.includes(o.status)).length;
+
+    // 最后下单时间
+    const lastOrder = orders[0];
+    const lastOrderDate = lastOrder?.createdAt
+      ? new Date(lastOrder.createdAt).toLocaleDateString('zh-CN')
+      : null;
+
+    console.log(`[客户统计] 客户 ${customerId}: 消费¥${totalConsumption}, 订单${orderCount}个, 退货${returnCount}次`);
+
+    res.json({
+      success: true,
+      code: 200,
+      data: {
+        totalConsumption,
+        orderCount,
+        returnCount,
+        lastOrderDate
+      }
+    });
+  } catch (error) {
+    console.error('获取客户统计数据失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取客户统计数据失败' });
+  }
+});
+
 export default router;

@@ -24,11 +24,12 @@ const safeRequest = async (url: string, options: any, defaultValue: any = []) =>
 }
 
 // 客户详情相关API - 始终从后端数据库获取数据
+// 注意：request函数的BASE_URL已包含/api/v1，所以这里的路径不需要再加/api/v1前缀
 export const customerDetailApi = {
   // 获取客户订单历史
   getCustomerOrders: async (customerId: string) => {
     console.log(`[API] 获取客户 ${customerId} 的订单历史`)
-    return safeRequest(`/api/v1/customers/${customerId}/orders`, {
+    return safeRequest(`/customers/${customerId}/orders`, {
       method: 'GET'
     }, [])
   },
@@ -36,7 +37,7 @@ export const customerDetailApi = {
   // 获取客户售后记录
   getCustomerServices: async (customerId: string) => {
     console.log(`[API] 获取客户 ${customerId} 的售后记录`)
-    return safeRequest(`/api/v1/customers/${customerId}/services`, {
+    return safeRequest(`/customers/${customerId}/services`, {
       method: 'GET'
     }, [])
   },
@@ -44,7 +45,7 @@ export const customerDetailApi = {
   // 获取客户通话记录
   getCustomerCalls: async (customerId: string) => {
     console.log(`[API] 获取客户 ${customerId} 的通话记录`)
-    return safeRequest(`/api/v1/customers/${customerId}/calls`, {
+    return safeRequest(`/customers/${customerId}/calls`, {
       method: 'GET'
     }, [])
   },
@@ -52,7 +53,7 @@ export const customerDetailApi = {
   // 获取客户跟进记录
   getCustomerFollowUps: async (customerId: string) => {
     console.log(`[API] 获取客户 ${customerId} 的跟进记录`)
-    return safeRequest(`/api/v1/customers/${customerId}/followups`, {
+    return safeRequest(`/customers/${customerId}/followups`, {
       method: 'GET'
     }, [])
   },
@@ -60,7 +61,7 @@ export const customerDetailApi = {
   // 获取客户标签
   getCustomerTags: async (customerId: string) => {
     console.log(`[API] 获取客户 ${customerId} 的标签`)
-    return safeRequest(`/api/v1/customers/${customerId}/tags`, {
+    return safeRequest(`/customers/${customerId}/tags`, {
       method: 'GET'
     }, [])
   },
@@ -68,7 +69,7 @@ export const customerDetailApi = {
   // 添加跟进记录
   addFollowUp: async (customerId: string, followUpData: any) => {
     console.log(`[API] 为客户 ${customerId} 添加跟进记录`)
-    const response = await request(`/api/v1/customers/${customerId}/followups`, {
+    const response = await request(`/customers/${customerId}/followups`, {
       method: 'POST',
       data: followUpData
     })
@@ -78,7 +79,7 @@ export const customerDetailApi = {
   // 更新跟进记录
   updateFollowUp: async (customerId: string, followUpId: string, followUpData: any) => {
     console.log(`[API] 更新客户 ${customerId} 的跟进记录 ${followUpId}`)
-    const response = await request(`/api/v1/customers/${customerId}/followups/${followUpId}`, {
+    const response = await request(`/customers/${customerId}/followups/${followUpId}`, {
       method: 'PUT',
       data: followUpData
     })
@@ -88,7 +89,7 @@ export const customerDetailApi = {
   // 删除跟进记录
   deleteFollowUp: async (customerId: string, followUpId: string) => {
     console.log(`[API] 删除客户 ${customerId} 的跟进记录 ${followUpId}`)
-    const response = await request(`/api/v1/customers/${customerId}/followups/${followUpId}`, {
+    const response = await request(`/customers/${customerId}/followups/${followUpId}`, {
       method: 'DELETE'
     })
     return response?.data || { success: true }
@@ -97,7 +98,7 @@ export const customerDetailApi = {
   // 添加客户标签
   addCustomerTag: async (customerId: string, tagData: any) => {
     console.log(`[API] 为客户 ${customerId} 添加标签`)
-    const response = await request(`/api/v1/customers/${customerId}/tags`, {
+    const response = await request(`/customers/${customerId}/tags`, {
       method: 'POST',
       data: tagData
     })
@@ -107,7 +108,7 @@ export const customerDetailApi = {
   // 删除客户标签
   removeCustomerTag: async (customerId: string, tagId: string) => {
     console.log(`[API] 删除客户 ${customerId} 的标签 ${tagId}`)
-    const response = await request(`/api/v1/customers/${customerId}/tags/${tagId}`, {
+    const response = await request(`/customers/${customerId}/tags/${tagId}`, {
       method: 'DELETE'
     })
     return response?.data || { success: true }
@@ -116,7 +117,7 @@ export const customerDetailApi = {
   // 获取客户疾病史
   getCustomerMedicalHistory: async (customerId: string) => {
     console.log(`[API] 获取客户 ${customerId} 的疾病史`)
-    return safeRequest(`/api/v1/customers/${customerId}/medical-history`, {
+    return safeRequest(`/customers/${customerId}/medical-history`, {
       method: 'GET'
     }, [])
   },
@@ -124,10 +125,23 @@ export const customerDetailApi = {
   // 添加疾病史记录
   addMedicalHistory: async (customerId: string, medicalData: any) => {
     console.log(`[API] 为客户 ${customerId} 添加疾病史`)
-    const response = await request(`/api/v1/customers/${customerId}/medical-history`, {
+    const response = await request(`/customers/${customerId}/medical-history`, {
       method: 'POST',
       data: medicalData
     })
     return response?.data || response
+  },
+
+  // 获取客户统计数据
+  getCustomerStats: async (customerId: string) => {
+    console.log(`[API] 获取客户 ${customerId} 的统计数据`)
+    return safeRequest(`/customers/${customerId}/stats`, {
+      method: 'GET'
+    }, {
+      totalConsumption: 0,
+      orderCount: 0,
+      returnCount: 0,
+      lastOrderDate: null
+    })
   }
 }
