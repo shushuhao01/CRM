@@ -142,6 +142,9 @@
         </el-collapse-transition>
       </div>
 
+      <!-- 自定义字段 -->
+      <CustomFieldsCard v-model="orderForm.customFields" :show="!!selectedCustomer" />
+
       <!-- 产品选择区域 -->
       <div class="form-section">
         <div class="section-header">
@@ -652,6 +655,7 @@ import { useProductStore } from '@/stores/product'
 import { useUserStore } from '@/stores/user'
 import { useConfigStore } from '@/stores/config'
 import { createSafeNavigator } from '@/utils/navigation'
+import CustomFieldsCard from '@/components/Order/CustomFieldsCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -714,7 +718,8 @@ const orderForm = reactive({
   paymentMethod: '',
   paymentMethodOther: '',
   orderType: 'normal',
-  remarks: ''
+  remarks: '',
+  customFields: {} as Record<string, unknown>
 })
 
 // 支付方式选项
@@ -923,7 +928,9 @@ const loadOrderData = async () => {
         paymentMethod: order.paymentMethod || '',
         paymentMethodOther: order.paymentMethodOther || '',
         orderType: order.orderType || 'normal',
-        remarks: order.remarks || ''
+        remarks: order.remarks || '',
+        // 🔥 自定义字段
+        customFields: order.customFields || {}
       })
 
       // 加载客户电话列表

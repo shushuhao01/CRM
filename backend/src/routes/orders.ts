@@ -463,7 +463,24 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
         orderSource: order.orderSource || '',
         expressCompany: order.expressCompany || '',
         logisticsStatus: order.logisticsStatus || '',
-        customFields: order.customFields || {},
+        // 🔥 新版自定义字段：从7个独立字段构建对象
+        customFields: {
+          custom_field1: order.customField1 || '',
+          custom_field2: order.customField2 || '',
+          custom_field3: order.customField3 || '',
+          custom_field4: order.customField4 || '',
+          custom_field5: order.customField5 || '',
+          custom_field6: order.customField6 || '',
+          custom_field7: order.customField7 || ''
+        },
+        // 同时返回独立字段便于直接访问
+        customField1: order.customField1 || '',
+        customField2: order.customField2 || '',
+        customField3: order.customField3 || '',
+        customField4: order.customField4 || '',
+        customField5: order.customField5 || '',
+        customField6: order.customField6 || '',
+        customField7: order.customField7 || '',
         createTime: formatToBeijingTime(order.createdAt),
         createdBy: order.createdBy || '',
         createdByName: order.createdByName || '',
@@ -553,7 +570,23 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
         trackingNumber: order.trackingNumber || '',
         expressCompany: order.expressCompany || '',
         logisticsStatus: order.logisticsStatus || '',
-        customFields: order.customFields || {},
+        // 🔥 新版自定义字段
+        customFields: {
+          custom_field1: order.customField1 || '',
+          custom_field2: order.customField2 || '',
+          custom_field3: order.customField3 || '',
+          custom_field4: order.customField4 || '',
+          custom_field5: order.customField5 || '',
+          custom_field6: order.customField6 || '',
+          custom_field7: order.customField7 || ''
+        },
+        customField1: order.customField1 || '',
+        customField2: order.customField2 || '',
+        customField3: order.customField3 || '',
+        customField4: order.customField4 || '',
+        customField5: order.customField5 || '',
+        customField6: order.customField6 || '',
+        customField7: order.customField7 || '',
         shippedAt: order.shippedAt ? formatToBeijingTime(order.shippedAt) : '',
         createTime: formatToBeijingTime(order.createdAt),
         createdBy: order.createdBy || '',
@@ -682,7 +715,23 @@ router.get('/', async (req: Request, res: Response) => {
         serviceWechat: order.serviceWechat || '',
         orderSource: order.orderSource || '',
         depositScreenshots: order.depositScreenshots || [],
-        customFields: order.customFields || {},
+        // 🔥 新版自定义字段
+        customFields: {
+          custom_field1: order.customField1 || '',
+          custom_field2: order.customField2 || '',
+          custom_field3: order.customField3 || '',
+          custom_field4: order.customField4 || '',
+          custom_field5: order.customField5 || '',
+          custom_field6: order.customField6 || '',
+          custom_field7: order.customField7 || ''
+        },
+        customField1: order.customField1 || '',
+        customField2: order.customField2 || '',
+        customField3: order.customField3 || '',
+        customField4: order.customField4 || '',
+        customField5: order.customField5 || '',
+        customField6: order.customField6 || '',
+        customField7: order.customField7 || '',
         createTime: formatToBeijingTime(order.createdAt),
         createdBy: order.createdBy || '',
         createdByName: order.createdByName || '',
@@ -792,7 +841,23 @@ router.get('/:id', async (req: Request, res: Response) => {
       serviceWechat: order.serviceWechat || '',
       orderSource: order.orderSource || '',
       depositScreenshots: order.depositScreenshots || [],
-      customFields: order.customFields || {},
+      // 🔥 新版自定义字段
+      customFields: {
+        custom_field1: order.customField1 || '',
+        custom_field2: order.customField2 || '',
+        custom_field3: order.customField3 || '',
+        custom_field4: order.customField4 || '',
+        custom_field5: order.customField5 || '',
+        custom_field6: order.customField6 || '',
+        custom_field7: order.customField7 || ''
+      },
+      customField1: order.customField1 || '',
+      customField2: order.customField2 || '',
+      customField3: order.customField3 || '',
+      customField4: order.customField4 || '',
+      customField5: order.customField5 || '',
+      customField6: order.customField6 || '',
+      customField7: order.customField7 || '',
       createTime: formatToBeijingTime(order.createdAt),
       createdBy: order.createdBy || '',
       createdByName: order.createdByName || '',
@@ -948,6 +1013,15 @@ router.post('/', async (req: Request, res: Response) => {
       expressCompany: expressCompany || '',
       markType: markType || 'normal',
       remark: remark || '',
+      // 🔥 新版自定义字段：7个独立字段
+      customField1: customFields?.custom_field1 || undefined,
+      customField2: customFields?.custom_field2 || undefined,
+      customField3: customFields?.custom_field3 || undefined,
+      customField4: customFields?.custom_field4 || undefined,
+      customField5: customFields?.custom_field5 || undefined,
+      customField6: customFields?.custom_field6 || undefined,
+      customField7: customFields?.custom_field7 || undefined,
+      // 保留旧版JSON字段用于兼容
       customFields: customFields || undefined,
       createdBy: finalCreatedBy,
       createdByName: finalCreatedByName,
@@ -1114,7 +1188,18 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (updateData.expressCompany !== undefined) order.expressCompany = updateData.expressCompany;
     if (updateData.trackingNumber !== undefined) order.trackingNumber = updateData.trackingNumber;
     if (updateData.markType !== undefined) order.markType = updateData.markType;
-    if (updateData.customFields !== undefined) order.customFields = updateData.customFields;
+    // 🔥 新版自定义字段：从customFields对象中提取到独立字段
+    if (updateData.customFields !== undefined) {
+      order.customFields = updateData.customFields;
+      // 同时更新7个独立字段
+      if (updateData.customFields.custom_field1 !== undefined) order.customField1 = updateData.customFields.custom_field1;
+      if (updateData.customFields.custom_field2 !== undefined) order.customField2 = updateData.customFields.custom_field2;
+      if (updateData.customFields.custom_field3 !== undefined) order.customField3 = updateData.customFields.custom_field3;
+      if (updateData.customFields.custom_field4 !== undefined) order.customField4 = updateData.customFields.custom_field4;
+      if (updateData.customFields.custom_field5 !== undefined) order.customField5 = updateData.customFields.custom_field5;
+      if (updateData.customFields.custom_field6 !== undefined) order.customField6 = updateData.customFields.custom_field6;
+      if (updateData.customFields.custom_field7 !== undefined) order.customField7 = updateData.customFields.custom_field7;
+    }
 
     const updatedOrder = await orderRepository.save(order);
 
