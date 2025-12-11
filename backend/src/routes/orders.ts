@@ -957,8 +957,8 @@ router.post('/', async (req: Request, res: Response) => {
     // 获取当前用户信息
     const currentUser = (req as any).currentUser;
     const finalCreatedBy = salesPersonId || currentUser?.id || 'admin';
-    // 优先使用传入的销售人员姓名，其次使用当前用户的真实姓名，最后使用用户名
-    const finalCreatedByName = salesPersonName || currentUser?.realName || currentUser?.username || '';
+    // 🔥 优先使用传入的销售人员姓名，其次使用当前用户的name字段，再次使用realName，最后使用用户名
+    const finalCreatedByName = salesPersonName || currentUser?.name || currentUser?.realName || currentUser?.username || '';
     // 获取创建人部门信息
     const createdByDepartmentId = currentUser?.departmentId || '';
     const createdByDepartmentName = currentUser?.departmentName || '';
