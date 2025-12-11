@@ -586,9 +586,11 @@
                 {{ getOrderSourceText(row.orderSource) }}
               </template>
             </el-table-column>
-            <el-table-column prop="customTags" label="自定义标签" width="120" align="center" show-overflow-tooltip>
+            <el-table-column prop="customTags" label="自定义标签" width="150" align="center" show-overflow-tooltip>
               <template #default="{ row }">
-                <span v-if="row.customFields && row.customFields.customTag">{{ row.customFields.customTag }}</span>
+                <span v-if="row.customFields && Object.keys(row.customFields).length > 0">
+                  {{ formatCustomFields(row.customFields) }}
+                </span>
                 <span v-else>-</span>
               </template>
             </el-table-column>
@@ -993,6 +995,28 @@ const formatNumber = (num: number | null | undefined) => {
 }
 
 // formatDateTime 已从 @/utils/dateFormat 导入
+
+// 获取自定义字段显示文本
+const formatCustomFields = (customFields: Record<string, unknown>) => {
+  if (!customFields || Object.keys(customFields).length === 0) return '-'
+
+  // 获取自定义字段配置
+  const orderFieldConfigStore = useOrderFieldConfigStore()
+  const fieldConfigs = orderFieldConfigStore.customFields || []
+
+  // 将自定义字段值转换为显示文本
+  const displayValues: string[] = []
+  for (const [key, value] of Object.entries(customFields)) {
+    if (value !== null && value !== undefined && value !== '') {
+      // 查找字段配置获取字段名称
+      const fieldConfig = fieldConfigs.find(f => f.fieldKey === key)
+      const fieldName = fieldConfig?.fieldName || key
+      displayValues.push(`${fieldName}: ${value}`)
+    }
+  }
+
+  return displayValues.length > 0 ? displayValues.join(', ') : '-'
+}
 
 // 获取订单来源文本
 const getOrderSourceText = (source: string | null) => {
