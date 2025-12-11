@@ -26,6 +26,8 @@
       @sort-change="handleSortChange"
       stripe
       border
+      table-layout="fixed"
+      :scrollbar-always-on="true"
     >
       <!-- 选择列 -->
       <el-table-column
@@ -319,5 +321,23 @@ defineExpose({
 .pagination-controls {
   display: flex;
   align-items: center;
+}
+
+/* 表格横向滚动支持 */
+:deep(.el-table) {
+  width: 100%;
+}
+
+:deep(.el-table__body-wrapper) {
+  overflow-x: auto;
+}
+
+/* 固定列阴影效果 */
+:deep(.el-table__fixed-right) {
+  box-shadow: -2px 0 6px rgba(0, 0, 0, 0.12);
+}
+
+:deep(.el-table__fixed) {
+  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.12);
 }
 </style>
