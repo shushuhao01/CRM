@@ -169,7 +169,7 @@ const emit = defineEmits<{
 
 const columnSettingsRef = ref()
 const currentPage = ref(1)
-const pageSize = ref(10)
+const pageSize = ref(props.pageSizes[0] || 10)
 
 // 所有列配置（包含默认visible状态）
 const allColumns = computed(() => {
