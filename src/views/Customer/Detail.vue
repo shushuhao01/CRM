@@ -2321,6 +2321,12 @@ const loadCustomerDetail = async () => {
       salespersonName = creator?.realName || creator?.name || customer.createdByName || ''
     }
 
+    // 调试日志：查看客户数据中的疾病史和备注字段
+    console.log('📋 [客户数据] medicalHistory:', customer.medicalHistory)
+    console.log('📋 [客户数据] remark:', customer.remark)
+    console.log('📋 [客户数据] remarks:', customer.remarks)
+    console.log('📋 [客户数据] notes:', customer.notes)
+
     customerInfo.value = {
       id: customer.id,
       code: customer.code || customer.customerCode || '',
@@ -2347,7 +2353,7 @@ const loadCustomerDetail = async () => {
       tags: customer.tags || [],
       improvementGoals: customer.improvementGoals || [],
       otherPhones: customer.otherPhones || [],
-      notes: customer.notes || customer.remark || ''
+      notes: customer.notes || customer.remark || customer.remarks || ''
     }
 
     // 客户统计数据将通过 calculateCustomerStats() 方法实时计算
@@ -2368,17 +2374,34 @@ const loadCustomerDetail = async () => {
     // 加载疾病史数据
     try {
       const medicalRecords = await customerDetailApi.getCustomerMedicalHistory(customerId as string)
-      medicalHistory.value = medicalRecords.map((record: any) => ({
-        id: record.id,
-        content: record.content || record.description || '',
-        createTime: record.createTime || record.createdAt || '',
-        operator: record.operator || record.createdByName || '系统',
-        operationType: record.operationType || 'add'
-      }))
+      console.log('📋 [疾病史API] 返回数据:', medicalRecords)
+
+      if (medicalRecords && medicalRecords.length > 0) {
+        medicalHistory.value = medicalRecords.map((record: any) => ({
+          id: record.id,
+          content: record.content || record.description || '',
+          createTime: record.createTime || record.createdAt || '',
+          operator: record.operator || record.createdByName || '系统',
+          operationType: record.operationType || 'add'
+        }))
+      } else if (customer.medicalHistory) {
+        // API返回空数组但客户有medicalHistory字段，使用它
+        console.log('📋 [疾病史] 使用客户字段:', customer.medicalHistory)
+        medicalHistory.value = [{
+          id: 1,
+          content: customer.medicalHistory,
+          createTime: customer.createTime || '',
+          operator: '系统',
+          operationType: 'add'
+        }]
+      } else {
+        medicalHistory.value = []
+      }
     } catch (error) {
       console.error('加载疾病史失败:', error)
       // 如果客户有medicalHistory字段，使用它
       if (customer.medicalHistory) {
+        console.log('📋 [疾病史] API失败，使用客户字段:', customer.medicalHistory)
         medicalHistory.value = [{
           id: 1,
           content: customer.medicalHistory,
