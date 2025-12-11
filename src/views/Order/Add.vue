@@ -757,8 +757,40 @@ const currentImageList = ref<string[]>([])
 const expressCompanyList = ref<{ code: string; name: string; logo?: string }[]>([])
 const expressCompanyLoading = ref(false)
 
-// 客户选项
-const customerOptions = computed(() => customerStore.customers)
+// 客户选项 - 🔥 添加权限过滤
+const customerOptions = computed(() => {
+  const currentUser = userStore.currentUser
+  if (!currentUser) return []
+
+  const allCustomers = customerStore.customers
+  const userRole = currentUser.role
+
+  // 超管和管理员不受限
+  if (userRole === 'super_admin' || userRole === 'admin') {
+    return allCustomers
+  }
+
+  // 部门经理看部门成员创建的客户
+  if (userRole === 'department_manager') {
+    const deptId = currentUser.departmentId
+    // 获取部门成员ID列表
+    const deptMemberIds = userStore.users
+      ?.filter(u => u.departmentId === deptId)
+      .map(u => u.id) || []
+    return allCustomers.filter(customer =>
+      deptMemberIds.includes(customer.createdBy) ||
+      customer.createdBy === currentUser.id ||
+      // 分享给部门成员的客户
+      customer.sharedWith?.some((share: any) => deptMemberIds.includes(share.userId))
+    )
+  }
+
+  // 普通成员只看自己创建的客户和分享给自己的客户
+  return allCustomers.filter(customer =>
+    customer.createdBy === currentUser.id ||
+    customer.sharedWith?.some((share: any) => share.userId === currentUser.id)
+  )
+})
 
 // 产品列表 - 从productStore获取，只显示有库存的上架在售产品
 const productList = computed(() => {
