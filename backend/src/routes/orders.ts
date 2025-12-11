@@ -769,6 +769,163 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 /**
+ * 🔥 以下路由必须在 /:id 之前定义，否则会被 /:id 拦截
+ */
+
+/**
+ * @route GET /api/v1/orders/:id/status-history
+ * @desc 获取订单状态历史
+ * @access Private
+ */
+router.get('/:id/status-history', async (req: Request, res: Response) => {
+  try {
+    const orderId = req.params.id;
+    const { OrderStatusHistory } = await import('../entities/OrderStatusHistory');
+    const statusHistoryRepository = AppDataSource.getRepository(OrderStatusHistory);
+
+    const history = await statusHistoryRepository.find({
+      where: { orderId },
+      order: { createdAt: 'DESC' }
+    });
+
+    const list = history.map(item => ({
+      id: item.id,
+      orderId: item.orderId,
+      status: item.status,
+      title: getStatusTitle(item.status),
+      description: item.notes || `订单状态变更为：${getStatusTitle(item.status)}`,
+      operator: item.operatorName || '系统',
+      operatorId: item.operatorId,
+      timestamp: item.createdAt?.toISOString() || ''
+    }));
+
+    console.log(`[订单状态历史] 订单 ${orderId} 有 ${list.length} 条状态记录`);
+    res.json({ success: true, code: 200, data: list });
+  } catch (error) {
+    console.error('获取订单状态历史失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取订单状态历史失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/orders/:id/operation-logs
+ * @desc 获取订单操作记录
+ * @access Private
+ */
+router.get('/:id/operation-logs', async (req: Request, res: Response) => {
+  try {
+    const orderId = req.params.id;
+    const { OperationLog } = await import('../entities/OperationLog');
+    const logRepository = AppDataSource.getRepository(OperationLog);
+
+    const logs = await logRepository.find({
+      where: { resourceId: orderId, resourceType: 'order' },
+      order: { createdAt: 'DESC' }
+    });
+
+    const list = logs.map(log => ({
+      id: log.id,
+      time: log.createdAt?.toISOString() || '',
+      operator: log.username || log.userId || '系统',
+      action: log.action || '',
+      description: log.description || '',
+      remark: ''
+    }));
+
+    console.log(`[订单操作记录] 订单 ${orderId} 有 ${list.length} 条操作记录`);
+    res.json({ success: true, code: 200, data: list });
+  } catch (error) {
+    console.error('获取订单操作记录失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取订单操作记录失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/orders/:id/after-sales
+ * @desc 获取订单售后历史
+ * @access Private
+ */
+router.get('/:id/after-sales', async (req: Request, res: Response) => {
+  try {
+    const orderId = req.params.id;
+    const { AfterSalesService } = await import('../entities/AfterSalesService');
+    const serviceRepository = AppDataSource.getRepository(AfterSalesService);
+
+    const services = await serviceRepository.find({
+      where: { orderId },
+      order: { createdAt: 'DESC' }
+    });
+
+    const list = services.map(service => ({
+      id: service.id,
+      serviceNumber: service.serviceNumber,
+      type: service.serviceType,
+      title: getAfterSalesTitle(service.serviceType, service.status),
+      description: service.description || service.reason || '',
+      status: service.status,
+      operator: service.createdBy || '系统',
+      amount: Number(service.price) || 0,
+      timestamp: service.createdAt?.toISOString() || ''
+    }));
+
+    console.log(`[订单售后历史] 订单 ${orderId} 有 ${list.length} 条售后记录`);
+    res.json({ success: true, code: 200, data: list });
+  } catch (error) {
+    console.error('获取订单售后历史失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取订单售后历史失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/orders/:id/mark-type
+ * @desc 更新订单标记类型
+ * @access Private
+ */
+router.put('/:id/mark-type', async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const { markType } = req.body;
+    const orderId = req.params.id;
+
+    console.log(`📝 [订单标记] 更新订单 ${orderId} 标记类型为 ${markType}`);
+
+    const order = await orderRepository.findOne({ where: { id: orderId } });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '订单不存在'
+      });
+    }
+
+    order.markType = markType;
+    await orderRepository.save(order);
+
+    console.log(`✅ [订单标记] 订单 ${orderId} 标记更新成功`);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '订单标记更新成功',
+      data: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        markType: order.markType
+      }
+    });
+  } catch (error) {
+    console.error('❌ [订单标记] 更新失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '更新订单标记失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
  * @route GET /api/v1/orders/:id
  * @desc 获取订单详情
  * @access Private
@@ -1120,56 +1277,6 @@ router.post('/', async (req: Request, res: Response) => {
 
 
 /**
- * @route PUT /api/v1/orders/:id/mark-type
- * @desc 更新订单标记类型
- * @access Private
- * 注意：此路由必须在 /:id 之前定义，否则会被 /:id 拦截
- */
-router.put('/:id/mark-type', async (req: Request, res: Response) => {
-  try {
-    const orderRepository = AppDataSource.getRepository(Order);
-    const { markType } = req.body;
-    const orderId = req.params.id;
-
-    console.log(`📝 [订单标记] 更新订单 ${orderId} 标记类型为 ${markType}`);
-
-    const order = await orderRepository.findOne({ where: { id: orderId } });
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        code: 404,
-        message: '订单不存在'
-      });
-    }
-
-    order.markType = markType;
-    await orderRepository.save(order);
-
-    console.log(`✅ [订单标记] 订单 ${orderId} 标记更新成功`);
-
-    res.json({
-      success: true,
-      code: 200,
-      message: '订单标记更新成功',
-      data: {
-        id: order.id,
-        orderNumber: order.orderNumber,
-        markType: order.markType
-      }
-    });
-  } catch (error) {
-    console.error('❌ [订单标记] 更新失败:', error);
-    res.status(500).json({
-      success: false,
-      code: 500,
-      message: '更新订单标记失败',
-      error: error instanceof Error ? error.message : '未知错误'
-    });
-  }
-});
-
-/**
  * @route PUT /api/v1/orders/:id
  * @desc 更新订单
  * @access Private
@@ -1442,111 +1549,6 @@ router.post('/:id/cancel-audit', async (req: Request, res: Response) => {
 });
 
 // ========== 订单详情子路由 ==========
-
-/**
- * @route GET /api/v1/orders/:id/status-history
- * @desc 获取订单状态历史
- * @access Private
- */
-router.get('/:id/status-history', async (req: Request, res: Response) => {
-  try {
-    const orderId = req.params.id;
-    const { OrderStatusHistory } = await import('../entities/OrderStatusHistory');
-    const statusHistoryRepository = AppDataSource.getRepository(OrderStatusHistory);
-
-    const history = await statusHistoryRepository.find({
-      where: { orderId },
-      order: { createdAt: 'DESC' }
-    });
-
-    const list = history.map(item => ({
-      id: item.id,
-      orderId: item.orderId,
-      status: item.status,
-      title: getStatusTitle(item.status),
-      description: item.notes || `订单状态变更为：${getStatusTitle(item.status)}`,
-      operator: item.operatorName || '系统',
-      operatorId: item.operatorId,
-      timestamp: item.createdAt?.toISOString() || ''
-    }));
-
-    console.log(`[订单状态历史] 订单 ${orderId} 有 ${list.length} 条状态记录`);
-    res.json({ success: true, code: 200, data: list });
-  } catch (error) {
-    console.error('获取订单状态历史失败:', error);
-    res.status(500).json({ success: false, code: 500, message: '获取订单状态历史失败' });
-  }
-});
-
-/**
- * @route GET /api/v1/orders/:id/operation-logs
- * @desc 获取订单操作记录
- * @access Private
- */
-router.get('/:id/operation-logs', async (req: Request, res: Response) => {
-  try {
-    const orderId = req.params.id;
-    const { OperationLog } = await import('../entities/OperationLog');
-    const logRepository = AppDataSource.getRepository(OperationLog);
-
-    // 查询该订单相关的操作记录
-    const logs = await logRepository.find({
-      where: { resourceId: orderId, resourceType: 'order' },
-      order: { createdAt: 'DESC' }
-    });
-
-    const list = logs.map(log => ({
-      id: log.id,
-      time: log.createdAt?.toISOString() || '',
-      operator: log.username || log.userId || '系统',
-      action: log.action || '',
-      description: log.description || '',
-      remark: ''
-    }));
-
-    console.log(`[订单操作记录] 订单 ${orderId} 有 ${list.length} 条操作记录`);
-    res.json({ success: true, code: 200, data: list });
-  } catch (error) {
-    console.error('获取订单操作记录失败:', error);
-    res.status(500).json({ success: false, code: 500, message: '获取订单操作记录失败' });
-  }
-});
-
-/**
- * @route GET /api/v1/orders/:id/after-sales
- * @desc 获取订单售后历史
- * @access Private
- */
-router.get('/:id/after-sales', async (req: Request, res: Response) => {
-  try {
-    const orderId = req.params.id;
-    const { AfterSalesService } = await import('../entities/AfterSalesService');
-    const serviceRepository = AppDataSource.getRepository(AfterSalesService);
-
-    const services = await serviceRepository.find({
-      where: { orderId },
-      order: { createdAt: 'DESC' }
-    });
-
-    const list = services.map(service => ({
-      id: service.id,
-      serviceNumber: service.serviceNumber,
-      type: service.serviceType,
-      title: getAfterSalesTitle(service.serviceType, service.status),
-      description: service.description || service.reason || '',
-      status: service.status,
-      operator: service.createdBy || '系统',
-      amount: Number(service.price) || 0,
-      timestamp: service.createdAt?.toISOString() || ''
-    }));
-
-    console.log(`[订单售后历史] 订单 ${orderId} 有 ${list.length} 条售后记录`);
-    res.json({ success: true, code: 200, data: list });
-  } catch (error) {
-    console.error('获取订单售后历史失败:', error);
-    res.status(500).json({ success: false, code: 500, message: '获取订单售后历史失败' });
-  }
-});
 
 // 辅助函数：获取状态标题
 function getStatusTitle(status: string): string {
