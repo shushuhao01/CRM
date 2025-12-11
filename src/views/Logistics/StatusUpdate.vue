@@ -656,12 +656,19 @@ const toggleAutoRefresh = () => {
 const loadData = async (showMessage = false) => {
   loading.value = true
   try {
-    // 🔥 先从API重新加载订单数据，确保数据是最新的
-    await orderStore.loadOrdersFromAPI(true)
-
-    // 从订单store获取已发货且有快递单号的订单，应用数据范围控制
-    // 使用getOrders()获取经过权限过滤的订单
-    const allOrders = orderStore.getOrders()
+    // 🔥 直接从API获取已发货订单，确保数据实时性
+    let allOrders: any[] = []
+    try {
+      const { orderApi } = await import('@/api/order')
+      const response = await orderApi.getShippingShipped()
+      allOrders = response?.data?.list || []
+      console.log('[状态更新] 从API获取已发货订单:', allOrders.length, '条')
+    } catch (apiError) {
+      console.warn('[状态更新] API获取失败，回退到store:', apiError)
+      // 回退到store获取
+      await orderStore.loadOrdersFromAPI(true)
+      allOrders = orderStore.getOrders()
+    }
 
     // 筛选已发货的订单（包括shipped和delivered状态），且有物流信息
     // 注意：trackingNumber 和 expressNo 都可能存在，expressCompany 也可能为空字符串，需要检查

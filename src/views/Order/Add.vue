@@ -1520,11 +1520,13 @@ const loadExpressCompanies = async () => {
     const { apiService } = await import('@/services/apiService')
     const response = await apiService.get('/logistics/companies/active')
     if (response && Array.isArray(response)) {
+      // 🔥 使用完整名称而不是简称
       expressCompanyList.value = response.map((item: { code: string; name: string; shortName?: string; logo?: string }) => ({
         code: item.code,
-        name: item.shortName || item.name,
+        name: item.name, // 使用完整名称
         logo: item.logo
       }))
+      console.log('[新增订单] 加载物流公司列表成功:', expressCompanyList.value.length, '个')
     }
   } catch (error) {
     console.warn('加载物流公司列表失败，使用默认列表:', error)
@@ -1534,7 +1536,10 @@ const loadExpressCompanies = async () => {
       { code: 'YTO', name: '圆通速递' },
       { code: 'ZTO', name: '中通快递' },
       { code: 'STO', name: '申通快递' },
-      { code: 'YD', name: '韵达速递' }
+      { code: 'YD', name: '韵达速递' },
+      { code: 'JTSD', name: '极兔速递' },
+      { code: 'EMS', name: 'EMS' },
+      { code: 'JD', name: '京东物流' }
     ]
   } finally {
     expressCompanyLoading.value = false

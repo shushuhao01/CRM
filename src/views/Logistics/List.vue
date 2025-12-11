@@ -328,12 +328,31 @@ const tableColumns = computed(() => [
 
 // 获取物流公司名称
 const getCompanyName = (code: string) => {
+  if (!code) return '-'
+
+  // 优先从已加载的物流公司列表中查找
+  const company = logisticsCompanies.value.find(c =>
+    c.code === code || c.code.toUpperCase() === code.toUpperCase()
+  )
+  if (company) return company.name
+
+  // 备用映射（支持大小写）
   const companies: Record<string, string> = {
-    sf: '顺丰速运',
-    yt: '圆通速递',
-    zt: '中通快递',
-    st: '申通快递',
-    yd: '韵达速递'
+    'SF': '顺丰速运',
+    'sf': '顺丰速运',
+    'YTO': '圆通速递',
+    'yt': '圆通速递',
+    'ZTO': '中通快递',
+    'zt': '中通快递',
+    'STO': '申通快递',
+    'st': '申通快递',
+    'YD': '韵达速递',
+    'yd': '韵达速递',
+    'JTSD': '极兔速递',
+    'EMS': 'EMS',
+    'YZBK': '邮政包裹',
+    'DBL': '德邦快递',
+    'JD': '京东物流'
   }
   return companies[code] || code
 }
@@ -413,16 +432,23 @@ const handleRefresh = () => {
 const loadData = async () => {
   loading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    // 【修复】统一使用 orderStore.getOrders() 获取经过权限过滤的订单
-    const allOrders = orderStore.getOrders()
-    const shippedOrders = allOrders.filter(order =>
-      (order.status === 'shipped' || order.status === 'delivered') &&
-      (order.trackingNumber || order.expressNo) &&
-      order.expressCompany
-    )
+    // 🔥 直接从API获取已发货订单，确保数据实时性
+    let shippedOrders: any[] = []
+    try {
+      const { orderApi } = await import('@/api/order')
+      const response = await orderApi.getShippingShipped()
+      shippedOrders = response?.data?.list || []
+      console.log('[物流列表] 从API获取已发货订单:', shippedOrders.length, '条')
+    } catch (apiError) {
+      console.warn('[物流列表] API获取失败，回退到store:', apiError)
+      // 回退到store获取
+      const allOrders = orderStore.getOrders()
+      shippedOrders = allOrders.filter(order =>
+        (order.status === 'shipped' || order.status === 'delivered') &&
+        (order.trackingNumber || order.expressNo) &&
+        order.expressCompany
+      )
+    }
 
     // 转换为物流列表格式
     let logisticsData = shippedOrders.map(order => ({
