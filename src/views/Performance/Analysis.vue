@@ -640,10 +640,13 @@ const orderStatusChartRef = ref()
 // 响应式数据
 const today = new Date()
 const formatDate = (date: Date) => date.toISOString().split('T')[0]
-const dateRange = ref<[string, string]>([formatDate(today), formatDate(today)])
+// 默认显示最近7天
+const sevenDaysAgo = new Date()
+sevenDaysAgo.setDate(today.getDate() - 6)
+const dateRange = ref<[string, string]>([formatDate(sevenDaysAgo), formatDate(today)])
 const selectedDepartment = ref(userStore.isAdmin ? '' : userStore.currentUser?.departmentId || '')
 const sortBy = ref('performance')
-const selectedQuickFilter = ref('today')
+const selectedQuickFilter = ref('thisWeek')
 
 // 成员信息
 const memberInfo = ref({
@@ -1170,34 +1173,53 @@ const initCharts = () => {
 
       if (hasPerformanceData) {
         performanceChart.setOption({
+          grid: {
+            left: '3%',
+            right: '4%',
+            bottom: '3%',
+            top: '10%',
+            containLabel: true
+          },
           tooltip: {
             trigger: 'axis',
             formatter: (params: unknown) => {
-              const value = params[0].value
-              return `${params[0].axisValue}<br/>业绩: ¥${value.toLocaleString()}`
+              const p = params as Array<{ axisValue: string; value: number }>
+              const value = p[0].value
+              return `${p[0].axisValue}<br/>¥${value.toLocaleString()}`
             }
           },
           xAxis: {
             type: 'category',
-            data: chartData.value.performanceTrend.xAxis
+            data: chartData.value.performanceTrend.xAxis,
+            axisLabel: {
+              fontSize: 11
+            }
           },
           yAxis: {
             type: 'value',
             axisLabel: {
-              formatter: (value: number) => `¥${value.toLocaleString()}`
+              formatter: (value: number) => value >= 1000 ? `¥${(value / 1000).toFixed(0)}k` : `¥${value}`
             }
           },
           series: [{
             data: chartData.value.performanceTrend.data,
             type: 'line',
             smooth: true,
+            symbol: 'circle',
+            symbolSize: 6,
             itemStyle: {
               color: '#409eff'
+            },
+            label: {
+              show: true,
+              position: 'top',
+              fontSize: 10,
+              formatter: (params: { value: number }) => params.value > 0 ? `¥${params.value >= 1000 ? (params.value / 1000).toFixed(1) + 'k' : params.value}` : ''
             },
             areaStyle: {
               color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                 { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
-                { offset: 1, color: 'rgba(64, 158, 255, 0.1)' }
+                { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
               ])
             }
           }]
