@@ -555,6 +555,7 @@ import { SensitiveInfoType } from '@/services/permission'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 import { formatDateTime } from '@/utils/dateFormat'
 import DynamicTable from '@/components/DynamicTable.vue'
+import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 
 // 类型定义
 interface ProductItem {
@@ -774,37 +775,46 @@ const baseTableColumns = [
   { prop: 'createTime', label: '创建时间', visible: true }
 ]
 
-// 表格列配置（包含动态自定义字段）
-const tableColumns = ref([...baseTableColumns])
+// 🔥 使用store获取自定义字段配置
+const fieldConfigStore = useOrderFieldConfigStore()
 
-// 加载自定义字段到列配置
+// 列可见性设置（用户可修改）
+const columnVisibility = ref<Record<string, boolean>>({})
+
+// 表格列配置（使用computed动态获取自定义字段的label）
+const tableColumns = computed(() => {
+  return baseTableColumns.map(col => {
+    // 应用用户的可见性设置
+    const userVisible = columnVisibility.value[col.prop]
+    const visible = userVisible !== undefined ? userVisible : col.visible
+
+    // 如果是自定义字段，从store获取最新的label
+    if (col.isCustomField && col.fieldKey) {
+      const fieldConfig = fieldConfigStore.customFields.find(f => f.fieldKey === col.fieldKey)
+      if (fieldConfig) {
+        return {
+          ...col,
+          label: fieldConfig.fieldName, // 始终从store获取最新的字段名称
+          visible
+        }
+      }
+    }
+    return { ...col, visible }
+  })
+})
+
+// 更新列可见性
+const updateColumnVisibility = (prop: string, visible: boolean) => {
+  columnVisibility.value[prop] = visible
+}
+
+// 加载自定义字段配置（确保store已加载）
 const loadCustomFieldColumns = async () => {
   try {
-    const response = await request.get('/system/order-field-config')
-    if (response && response.data && response.data.customFields) {
-      const customFields = response.data.customFields
-
-      // 🔥 更新预设的自定义字段列的标签和可见性
-      const newColumns = baseTableColumns.map(col => {
-        if (col.isCustomField && col.fieldKey) {
-          // 查找是否有对应的配置
-          const fieldConfig = customFields.find((f: any) => f.fieldKey === col.fieldKey)
-          if (fieldConfig) {
-            return {
-              ...col,
-              label: fieldConfig.fieldName, // 使用配置的字段名称
-              visible: fieldConfig.showInList === true // 根据配置决定是否显示
-            }
-          }
-        }
-        return { ...col }
-      })
-
-      tableColumns.value = newColumns
-      console.log('[订单列表] 自定义字段列加载成功，已配置:', customFields.length, '个')
-    }
+    await fieldConfigStore.loadConfig()
+    console.log('[订单列表] 自定义字段配置已加载，共', fieldConfigStore.customFields.length, '个')
   } catch (error) {
-    console.warn('加载自定义字段列失败:', error)
+    console.warn('加载自定义字段配置失败:', error)
   }
 }
 
@@ -1556,11 +1566,11 @@ const handleDropdownVisible = (visible: boolean) => {
   }
 }
 
-// 保存列设置到数据库（同步到云端）
+// 保存列设置到数据库（同步到云端）- 只保存visible状态
 const saveColumnSettings = async () => {
+  // 只保存prop和visible，不保存label（label从系统配置获取）
   const settings = tableColumns.value.map(col => ({
     prop: col.prop,
-    label: col.label,
     visible: col.visible
   }))
 
@@ -1584,10 +1594,8 @@ const loadColumnSettings = async () => {
     if (response && response.data && response.data.columns) {
       const settings: ColumnSetting[] = response.data.columns
       settings.forEach((setting: ColumnSetting) => {
-        const column = tableColumns.value.find(col => col.prop === setting.prop)
-        if (column) {
-          column.visible = setting.visible
-        }
+        // 更新columnVisibility而不是直接修改tableColumns
+        columnVisibility.value[setting.prop] = setting.visible
       })
       console.log('[订单列表] 从数据库加载列设置成功')
       // 同步到localStorage
@@ -1604,10 +1612,8 @@ const loadColumnSettings = async () => {
     try {
       const settings: ColumnSetting[] = JSON.parse(saved)
       settings.forEach((setting: ColumnSetting) => {
-        const column = tableColumns.value.find(col => col.prop === setting.prop)
-        if (column) {
-          column.visible = setting.visible
-        }
+        // 更新columnVisibility而不是直接修改tableColumns
+        columnVisibility.value[setting.prop] = setting.visible
       })
       console.log('[订单列表] 从本地缓存加载列设置')
     } catch (e) {
@@ -1618,8 +1624,10 @@ const loadColumnSettings = async () => {
 
 // 重置列设置
 const resetColumns = () => {
-  tableColumns.value.forEach(col => {
-    col.visible = ['orderNumber', 'customerName', 'status', 'markType', 'products', 'totalAmount', 'createTime', 'operator'].includes(col.prop)
+  // 重置columnVisibility
+  const defaultVisible = ['orderNumber', 'customerName', 'status', 'markType', 'products', 'totalAmount', 'createTime', 'operator']
+  baseTableColumns.forEach(col => {
+    columnVisibility.value[col.prop] = defaultVisible.includes(col.prop)
   })
   saveColumnSettings()
 }

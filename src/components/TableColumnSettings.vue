@@ -1,6 +1,6 @@
 <template>
-  <el-dropdown 
-    trigger="click" 
+  <el-dropdown
+    trigger="click"
     @visible-change="handleDropdownVisible"
     placement="bottom-end"
   >
@@ -12,9 +12,9 @@
       <el-dropdown-menu class="column-settings-dropdown">
         <div class="column-settings-header">
           <span>列设置</span>
-          <el-button 
-            type="text" 
-            size="small" 
+          <el-button
+            type="text"
+            size="small"
             @click="resetColumns"
             class="reset-btn"
           >
@@ -22,7 +22,7 @@
           </el-button>
         </div>
         <div class="column-settings-container">
-          <div 
+          <div
             v-for="(column, index) in tableColumns"
             :key="column.prop"
             class="column-item"
@@ -32,7 +32,7 @@
             @drop="handleDrop($event, index)"
           >
             <el-icon class="drag-handle"><Rank /></el-icon>
-            <el-checkbox 
+            <el-checkbox
               v-model="column.visible"
               @change="saveColumnSettings"
               class="column-checkbox"
@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { Setting, Rank } from '@element-plus/icons-vue'
 
 interface TableColumn {
@@ -114,7 +114,7 @@ const loadColumnSettings = () => {
     const saved = localStorage.getItem(props.storageKey)
     if (saved) {
       const settings = JSON.parse(saved)
-      
+
       // 恢复列的可见性
       if (settings.columns) {
         settings.columns.forEach((savedCol: SavedColumn) => {
@@ -124,11 +124,11 @@ const loadColumnSettings = () => {
           }
         })
       }
-      
+
       // 恢复列的顺序
       if (settings.order) {
         const orderedColumns: TableColumn[] = []
-        
+
         // 特殊处理：如果是客户列表，确保客户编码字段在第一位
         if (props.storageKey === 'customer-list-columns') {
           const codeColumn = tableColumns.value.find(col => col.prop === 'code')
@@ -138,24 +138,24 @@ const loadColumnSettings = () => {
             codeColumn.visible = true
           }
         }
-        
+
         settings.order.forEach((prop: string) => {
           const column = tableColumns.value.find(col => col.prop === prop)
           if (column && !orderedColumns.find(ordered => ordered.prop === prop)) {
             orderedColumns.push(column)
           }
         })
-        
+
         // 添加新增的列（如果有的话）
         tableColumns.value.forEach(col => {
           if (!orderedColumns.find(ordered => ordered.prop === col.prop)) {
             orderedColumns.push(col)
           }
         })
-        
+
         tableColumns.value = orderedColumns
       }
-      
+
       emit('update:columns', [...tableColumns.value])
       emit('columns-change', [...tableColumns.value])
     }
@@ -198,21 +198,21 @@ const handleDragOver = (event: DragEvent) => {
 // 拖拽放置
 const handleDrop = (event: DragEvent, dropIndex: number) => {
   event.preventDefault()
-  
+
   if (dragStartIndex.value !== -1 && dragStartIndex.value !== dropIndex) {
     const draggedItem = tableColumns.value[dragStartIndex.value]
     const newColumns = [...tableColumns.value]
-    
+
     // 移除拖拽的项目
     newColumns.splice(dragStartIndex.value, 1)
-    
+
     // 在新位置插入
     newColumns.splice(dropIndex, 0, draggedItem)
-    
+
     tableColumns.value = newColumns
     saveColumnSettings()
   }
-  
+
   dragStartIndex.value = -1
 }
 
@@ -221,6 +221,21 @@ const updateColumns = () => {
   initializeColumns()
   loadColumnSettings()
 }
+
+// 🔥 监听props.columns变化，更新label（但保持用户的visible设置）
+watch(() => props.columns, (newColumns) => {
+  if (newColumns && Array.isArray(newColumns)) {
+    // 只更新label，保持用户的visible设置
+    newColumns.forEach(newCol => {
+      const existingCol = tableColumns.value.find(col => col.prop === newCol.prop)
+      if (existingCol) {
+        existingCol.label = newCol.label // 更新label
+      }
+    })
+    emit('update:columns', [...tableColumns.value])
+    emit('columns-change', [...tableColumns.value])
+  }
+}, { deep: true })
 
 onMounted(() => {
   updateColumns()
