@@ -1419,6 +1419,7 @@ onMounted(async () => {
   margin: 0 0 8px 0;
   font-size: 24px;
   font-weight: 600;
+  color: #000;
 }
 
 .page-header p {
