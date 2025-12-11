@@ -703,7 +703,14 @@ const handleQuickFilter = (value: string) => {
 /**
  * 查询数据
  */
-const queryData = () => {
+const queryData = async () => {
+  // 🔥 强制从服务器重新加载订单数据，确保数据实时更新
+  try {
+    await orderStore.loadOrdersFromAPI(true)
+  } catch (error) {
+    console.error('[个人业绩] 加载订单数据失败:', error)
+  }
+
   nextTick(() => {
     loadTableData()
     initAllCharts()
@@ -1546,16 +1553,44 @@ const getSalesTrendData = () => {
   console.log('[个人业绩] getSalesTrendData - 图表类型:', salesChartType.value)
 
   if (salesChartType.value === 'daily' || salesChartType.value === 'day') {
-    // 最近7天
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(currentDate.getTime() - i * 24 * 60 * 60 * 1000)
-      const dateKey = date.toISOString().split('T')[0]
-      const dateLabel = `${date.getMonth() + 1}/${date.getDate()}`
+    // 🔥 根据dateRange动态生成日期范围，如果没有选择日期则显示最近7天
+    let startDate: Date
+    let endDate: Date
+
+    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+      startDate = new Date(dateRange.value[0])
+      endDate = new Date(dateRange.value[1])
+    } else {
+      // 默认最近7天
+      endDate = new Date(currentDate)
+      startDate = new Date(currentDate.getTime() - 6 * 24 * 60 * 60 * 1000)
+    }
+
+    // 计算日期范围内的天数
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) + 1
+    const daysToShow = Math.min(daysDiff, 30) // 最多显示30天
+
+    // 如果只选择了一天，显示那一天
+    if (daysDiff === 1) {
+      const dateKey = startDate.toISOString().split('T')[0]
+      const dateLabel = `${startDate.getMonth() + 1}/${startDate.getDate()}`
       timeData.set(dateKey, {
         label: dateLabel,
         salesAmount: 0,
         orderCount: 0
       })
+    } else {
+      // 显示日期范围内的每一天
+      for (let i = 0; i < daysToShow; i++) {
+        const date = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000)
+        const dateKey = date.toISOString().split('T')[0]
+        const dateLabel = `${date.getMonth() + 1}/${date.getDate()}`
+        timeData.set(dateKey, {
+          label: dateLabel,
+          salesAmount: 0,
+          orderCount: 0
+        })
+      }
     }
 
     // 统计每日数据
