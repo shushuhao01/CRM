@@ -498,26 +498,26 @@
       :title="orderTypeDetailTitle"
       width="90%"
       top="5vh"
-      class="order-type-dialog"
+      custom-class="order-type-dialog"
     >
       <div class="order-type-content">
         <!-- 成员基本信息 -->
-        <div class="member-info" v-if="orderTypeMember">
-          <div class="info-item">
-            <span class="label">部门：</span>
-            <span class="value">{{ orderTypeMember.department }}</span>
+        <div class="member-info" v-if="orderTypeMember" style="display: flex; flex-wrap: nowrap; align-items: center; gap: 32px; padding: 16px 24px; background: #f5f7fa; border-radius: 8px; margin-bottom: 16px;">
+          <div class="info-item" style="display: flex; align-items: center; flex-shrink: 0; white-space: nowrap;">
+            <span class="label" style="color: #909399; margin-right: 8px;">部门：</span>
+            <span class="value" style="color: #303133; font-weight: 500;">{{ orderTypeMember.department }}</span>
           </div>
-          <div class="info-item">
-            <span class="label">下单员：</span>
-            <span class="value">{{ orderTypeMember.name }}</span>
+          <div class="info-item" style="display: flex; align-items: center; flex-shrink: 0; white-space: nowrap;">
+            <span class="label" style="color: #909399; margin-right: 8px;">下单员：</span>
+            <span class="value" style="color: #303133; font-weight: 500;">{{ orderTypeMember.name }}</span>
           </div>
-          <div class="info-item">
-            <span class="label">订单类型：</span>
-            <span class="value">{{ orderTypeLabel }}</span>
+          <div class="info-item" style="display: flex; align-items: center; flex-shrink: 0; white-space: nowrap;">
+            <span class="label" style="color: #909399; margin-right: 8px;">订单类型：</span>
+            <span class="value" style="color: #303133; font-weight: 500;">{{ orderTypeLabel }}</span>
           </div>
-          <div class="info-item">
-            <span class="label">订单数量：</span>
-            <span class="value">{{ orderTypeOrders.length }}</span>
+          <div class="info-item" style="display: flex; align-items: center; flex-shrink: 0; white-space: nowrap;">
+            <span class="label" style="color: #909399; margin-right: 8px;">订单数量：</span>
+            <span class="value" style="color: #303133; font-weight: 500;">{{ orderTypeOrders.length }}</span>
           </div>
         </div>
 
