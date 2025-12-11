@@ -919,6 +919,9 @@ router.post('/', async (req: Request, res: Response) => {
       customFields
     } = req.body;
 
+    // 🔥 调试：打印接收到的customFields
+    console.log('📋 [订单创建] 接收到的customFields:', JSON.stringify(customFields, null, 2));
+
     // 数据验证
     if (!customerId) {
       console.error('❌ [订单创建] 缺少客户ID');

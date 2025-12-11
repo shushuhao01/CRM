@@ -16,7 +16,7 @@
         <el-form-item
           :label="field.fieldName"
           :prop="`customFields.${field.fieldKey}`"
-          :required="field.required"
+          :rules="field.required ? [{ required: true, message: `请输入${field.fieldName}`, trigger: 'blur' }] : []"
         >
           <!-- 文本输入 -->
           <el-input

@@ -1410,8 +1410,13 @@ const handleSubmitOrder = async () => {
       expressCompany: orderForm.expressCompany,
       // 支付方式
       paymentMethod: orderForm.paymentMethod,
-      paymentMethodOther: orderForm.paymentMethod === 'other' ? orderForm.paymentMethodOther : ''
+      paymentMethodOther: orderForm.paymentMethod === 'other' ? orderForm.paymentMethodOther : '',
+      // 🔥 自定义字段
+      customFields: orderForm.customFields
     }
+
+    // 🔥 调试：打印提交的customFields
+    console.log('📋 [新增订单] 提交的customFields:', JSON.stringify(orderForm.customFields, null, 2))
 
     // 使用订单store创建订单
     const newOrder = await orderStore.createOrder(orderData)
