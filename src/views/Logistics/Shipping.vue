@@ -205,18 +205,16 @@
 
     <!-- 订单列表 -->
     <DynamicTable
-      :data="orderList"
+      :data="paginatedOrderList"
       :columns="tableColumns"
       storage-key="shipping-list-columns"
       :title="tableTitle"
       :loading="loading"
       :show-selection="true"
       :show-index="true"
-      :pagination="{
-        currentPage: currentPage,
-        pageSize: pageSize,
-        total: total
-      }"
+      :show-pagination="true"
+      :total="total"
+      :page-sizes="[20, 50, 100, 200]"
       @selection-change="handleSelectionChange"
       @size-change="handlePageSizeChange"
       @current-change="handleCurrentChange"
@@ -770,8 +768,16 @@ const orderList = ref<any[]>([])
 const selectedOrders = ref<any[]>([])
 const total = ref(0)
 const currentPage = ref(1)
-const pageSize = ref(50)
+const pageSize = ref(20)
 const loading = ref(false)
+const allFilteredOrders = ref<any[]>([]) // 🔥 存储所有筛选后的订单
+
+// 🔥 分页后的订单列表
+const paginatedOrderList = computed(() => {
+  const startIndex = (currentPage.value - 1) * pageSize.value
+  const endIndex = startIndex + pageSize.value
+  return allFilteredOrders.value.slice(startIndex, endIndex)
+})
 
 // 弹窗状态
 const orderDetailVisible = ref(false)
@@ -1242,7 +1248,7 @@ const loadOrderList = async () => {
     // 确保返回的是数组
     if (!Array.isArray(orders)) {
       console.error('[发货列表] getOrdersByShippingStatus 返回的不是数组:', orders)
-      orderList.value = []
+      allFilteredOrders.value = []
       total.value = 0
       return
     }
@@ -1356,15 +1362,12 @@ const loadOrderList = async () => {
       return timeB - timeA // 倒序：最新的在上面
     })
 
-    // 分页处理
-    const startIndex = (currentPage.value - 1) * pageSize.value
-    const endIndex = startIndex + pageSize.value
-
-    orderList.value = filteredOrders.slice(startIndex, endIndex)
+    // 🔥 存储所有筛选后的订单，分页由computed属性处理
     total.value = filteredOrders.length
+    console.log('[发货列表] 筛选后订单总数:', total.value)
 
     // 为每个订单添加真实的操作记录并同步客户信息和订单信息
-    orderList.value = orderList.value.map(order => {
+    allFilteredOrders.value = filteredOrders.map(order => {
       // 获取真实的操作记录
       const operationLogs = orderStore.getOperationLogs(order.id) || []
 
@@ -1452,7 +1455,7 @@ const loadOrderList = async () => {
   } catch (_error) {
     console.error('加载订单列表失败:', _error)
     ElMessage.error('加载订单列表失败')
-    orderList.value = []
+    allFilteredOrders.value = []
     total.value = 0
   } finally {
     loading.value = false
@@ -1461,10 +1464,10 @@ const loadOrderList = async () => {
 
 // 更新概览数据
 const updateOverviewData = (allOrders = []) => {
-  // 确保 allOrders 和 orderList.value 都是数组
+  // 确保 allOrders 和 allFilteredOrders.value 都是数组
   const orders = Array.isArray(allOrders) && allOrders.length > 0
     ? allOrders
-    : Array.isArray(orderList.value) ? orderList.value : []
+    : Array.isArray(allFilteredOrders.value) ? allFilteredOrders.value : []
 
   overviewData.totalOrders = orders.length
   overviewData.totalAmount = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0)
@@ -1485,71 +1488,8 @@ const syncLogisticsData = async () => {
   try {
     // 批量同步物流状态
     await orderStore.batchSyncLogistics()
-
-    // 重新加载当前页面数据以反映最新状态
-    const currentOrders = await orderStore.getOrdersByShippingStatus(activeTab.value)
-    if (Array.isArray(currentOrders)) {
-      // 更新当前显示的订单列表
-      const startIndex = (currentPage.value - 1) * pageSize.value
-      const endIndex = startIndex + pageSize.value
-      const updatedList = currentOrders.slice(startIndex, endIndex)
-
-      // 更新操作记录并同步客户信息
-      orderList.value = updatedList.map((order: any) => {
-        const operationLogs = orderStore.getOperationLogs(order.id) || []
-        const lastOperation = operationLogs.length > 0
-          ? operationLogs[operationLogs.length - 1]
-          : {
-              action: '创建订单',
-              operator: order.createdBy || '系统',
-              time: order.createTime
-            }
-
-        // 同步客户信息
-        let customerInfo: any = {}
-        if (order.customerId) {
-          const customer = customerStore.getCustomerById(order.customerId)
-          if (customer) {
-            customerInfo = {
-              customerAge: customer.age || null,
-              customerHeight: customer.height || null,
-              customerWeight: customer.weight || null,
-              medicalHistory: customer.medicalHistory || null,
-              serviceWechat: customer.wechatId || null
-            }
-          }
-        }
-
-        // 计算订单相关字段
-        const products = Array.isArray(order.products) ? order.products : []
-        const productsText = products.map((p: any) => `${p.name} × ${p.quantity}`).join('，') || '-'
-        const totalQuantity = products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) || 0
-        const deposit = order.depositAmount || 0
-        const codAmount = order.collectAmount || (order.totalAmount || 0) - (order.depositAmount || 0)
-
-        return {
-          ...order,
-          // 字段映射
-          orderNo: order.orderNumber || '-',
-          phone: order.customerPhone || order.receiverPhone || '-',
-          address: order.receiverAddress || '-',
-          // 同步的客户信息
-          ...customerInfo,
-          // 计算的订单字段
-          productsText,
-          totalQuantity,
-          deposit,
-          codAmount,
-          // 物流字段映射
-          expressCompany: order.expressCompany || null,
-          expressNo: order.trackingNumber || null,
-          logisticsStatus: order.logisticsStatus || null,
-          // 操作记录
-          lastOperation,
-          operationLogs
-        }
-      })
-    }
+    // 🔥 简化：直接重新加载订单列表
+    // loadOrderList() 会在后台自动调用，这里不需要重复加载
   } catch (_error) {
     console.error('同步物流数据失败:', _error)
   }
