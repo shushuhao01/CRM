@@ -229,6 +229,10 @@
                 <div class="info-value order-number-value">{{ orderDetail.orderNumber }}</div>
               </div>
               <div class="info-item">
+                <div class="info-label">指定快递</div>
+                <div class="info-value">{{ getExpressCompanyText(orderDetail.expressCompany) }}</div>
+              </div>
+              <div class="info-item">
                 <div class="info-label">下单时间</div>
                 <div class="info-value">{{ formatDateTime(orderDetail.createTime) }}</div>
               </div>

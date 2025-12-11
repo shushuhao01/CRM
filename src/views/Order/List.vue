@@ -753,6 +753,7 @@ const baseTableColumns = [
   { prop: 'collectAmount', label: '代收金额', visible: true },
   { prop: 'serviceWechat', label: '客服微信号', visible: true },
   { prop: 'orderSource', label: '订单来源', visible: true },
+  { prop: 'expressCompany', label: '指定快递', visible: true },
   { prop: 'remark', label: '订单备注', visible: false },
   { prop: 'receiverPhone', label: '收货电话', visible: false },
   { prop: 'paymentMethod', label: '支付方式', visible: false },
@@ -1229,6 +1230,8 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
       return getPaymentMethodText(row.paymentMethod, row.paymentMethodOther)
     case 'orderSource':
       return getOrderSourceText(row.orderSource)
+    case 'expressCompany':
+      return getExpressCompanyText(row.expressCompany)
     case 'createTime':
       return formatDateTime(row.createTime)
     case 'operator':
@@ -1236,6 +1239,24 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
     default:
       return row[column.prop] || '-'
   }
+}
+
+// 获取快递公司文本
+const getExpressCompanyText = (code: string) => {
+  if (!code) return '-'
+  const companies: Record<string, string> = {
+    'SF': '顺丰速运',
+    'YTO': '圆通速递',
+    'ZTO': '中通快递',
+    'STO': '申通快递',
+    'YD': '韵达快递',
+    'JTSD': '极兔速递',
+    'EMS': 'EMS',
+    'YZBK': '邮政包裹',
+    'DBL': '德邦快递',
+    'JD': '京东物流'
+  }
+  return companies[code] || code
 }
 
 const getPaymentMethodText = (method: string, otherText?: string) => {
