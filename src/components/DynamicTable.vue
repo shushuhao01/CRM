@@ -26,7 +26,6 @@
       @sort-change="handleSortChange"
       stripe
       border
-      table-layout="fixed"
       :scrollbar-always-on="true"
     >
       <!-- 选择列 -->
@@ -263,6 +262,8 @@ watch(() => props.columns, () => {
 // 组件挂载后初始化
 onMounted(() => {
   initializeVisibleColumns()
+  // 🔥 初始化时触发size-change事件，确保外部组件知道初始的pageSize
+  emit('size-change', pageSize.value)
 })
 
 // 暴露方法
