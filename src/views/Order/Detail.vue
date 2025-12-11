@@ -250,9 +250,9 @@
               </div>
               <!-- 自定义字段显示 -->
               <template v-for="field in orderFieldConfigStore.customFields" :key="field.fieldKey">
-                <div class="info-item" v-if="orderDetail.customFields && orderDetail.customFields[field.fieldKey]">
+                <div class="info-item" v-if="getCustomFieldValue(field.fieldKey)">
                   <div class="info-label">{{ field.fieldName }}</div>
-                  <div class="info-value">{{ formatCustomFieldValue(field, orderDetail.customFields[field.fieldKey]) }}</div>
+                  <div class="info-value">{{ formatCustomFieldValue(field, getCustomFieldValue(field.fieldKey)) }}</div>
                 </div>
               </template>
             </div>
@@ -1755,9 +1755,23 @@ const getExpressCompanyText = (code: string) => {
   return companies[code] || code
 }
 
+// 🔥 获取自定义字段值（支持customFields对象和独立字段两种格式）
+const getCustomFieldValue = (fieldKey: string) => {
+  // 优先从customFields对象获取
+  if (orderDetail.customFields && orderDetail.customFields[fieldKey]) {
+    return orderDetail.customFields[fieldKey]
+  }
+  // 兼容独立字段格式（如customField1）
+  const independentKey = fieldKey.replace('custom_field', 'customField')
+  if (orderDetail[independentKey]) {
+    return orderDetail[independentKey]
+  }
+  return null
+}
+
 // 格式化自定义字段值
 const formatCustomFieldValue = (field: any, value: any) => {
-  if (value === null || value === undefined) return '-'
+  if (value === null || value === undefined || value === '') return '-'
   if (field.fieldType === 'select' || field.fieldType === 'radio') {
     const option = field.options?.find((opt: any) => opt.value === value)
     return option?.label || value
