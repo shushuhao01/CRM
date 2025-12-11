@@ -1306,7 +1306,7 @@ export const useOrderStore = createPersistentStore('order', () => {
   // 从API加载订单数据
   // 缓存上次加载时间，避免频繁请求
   let lastAPILoadTime = 0
-  const API_CACHE_DURATION = 2000 // 2秒内不重复请求
+  const API_CACHE_DURATION = 30000 // 🔥 30秒内不重复请求（从2秒改为30秒）
 
   const loadOrdersFromAPI = async (forceRefresh = false, params?: { page?: number; pageSize?: number; status?: string }) => {
     // 检测是否为生产环境
@@ -1319,7 +1319,7 @@ export const useOrderStore = createPersistentStore('order', () => {
       (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
     )
 
-    // 如果不是强制刷新，且缓存未过期，直接返回现有数据
+    // 🔥 优化：如果已有数据且不是强制刷新，直接返回缓存
     const now = Date.now()
     if (!forceRefresh && orders.value.length > 0 && (now - lastAPILoadTime < API_CACHE_DURATION)) {
       console.log('[OrderStore] 使用缓存数据，跳过API请求')
