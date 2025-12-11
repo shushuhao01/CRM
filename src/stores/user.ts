@@ -767,15 +767,23 @@ export const useUserStore = defineStore('user', () => {
     isLoggedIn.value = false
     users.value = []
 
-    // 清除所有localStorage中的认证数据
+    // 🔥 清除所有localStorage中的认证数据（更全面）
     localStorage.removeItem('auth_token')
     localStorage.removeItem('user')
     localStorage.removeItem('user_info')
     localStorage.removeItem('userPermissions')
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('token_expiry')
+    // 🔥 清除可能缓存用户信息的其他项
+    localStorage.removeItem('crm_current_user')
+    localStorage.removeItem('currentUser')
 
-    console.log('[Auth] 已清除所有认证数据')
+    // 🔥 清除sessionStorage中的用户数据
+    sessionStorage.removeItem('auth_token')
+    sessionStorage.removeItem('user')
+    sessionStorage.removeItem('currentUser')
+
+    console.log('[Auth] ✅ 已清除所有认证数据（localStorage和sessionStorage）')
   }
 
   const loadUsers = async () => {

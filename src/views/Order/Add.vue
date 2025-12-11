@@ -1416,6 +1416,14 @@ const handleSubmitOrder = async () => {
     const totalAmount = orderForm.totalAmount || (subtotal - (orderForm.discount || 0))
     const collectAmount = totalAmount - (orderForm.depositAmount || 0)
 
+    // 🔥 调试：打印当前用户信息，确保使用正确的销售人员
+    console.log('📋 [新增订单] 当前用户信息:', {
+      currentUser: userStore.currentUser,
+      user: userStore.user,
+      id: userStore.currentUser?.id || userStore.user?.id,
+      name: userStore.currentUser?.name || userStore.user?.name
+    })
+
     // 构建订单数据
     const orderData = {
       customerId: orderForm.customerId,
@@ -1434,8 +1442,11 @@ const handleSubmitOrder = async () => {
       receiverAddress: orderForm.receiverAddress,
       markType: orderForm.markType,
       remark: orderForm.remark,
-      salesPersonId: userStore.user?.id || '1',
-      createdBy: userStore.user?.name || '系统用户',
+      // 🔥 使用当前登录用户的信息作为销售人员
+      salesPersonId: userStore.currentUser?.id || userStore.user?.id || '1',
+      createdBy: userStore.currentUser?.name || userStore.user?.name || '系统用户',
+      // 🔥 添加销售人员姓名，确保后端能正确显示
+      salesPersonName: userStore.currentUser?.name || userStore.user?.name || '系统用户',
       // 新增字段：客服微信和订单来源
       serviceWechat: orderForm.serviceWechat,
       orderSource: orderForm.orderSource,
