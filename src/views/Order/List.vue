@@ -199,7 +199,7 @@
 
     <!-- 订单列表 - 使用DynamicTable组件 -->
     <DynamicTable
-      :data="filteredOrderList"
+      :data="paginatedOrderList"
       :columns="tableColumns"
       storage-key="order-list-columns"
       title="订单列表"
@@ -759,30 +759,30 @@ const PRESET_CUSTOM_FIELD_KEYS = [
 ]
 
 const baseTableColumns = [
-  { prop: 'orderNumber', label: '订单号', visible: true },
-  { prop: 'customerName', label: '客户姓名', visible: true },
-  { prop: 'status', label: '状态', visible: true },
-  { prop: 'markType', label: '标记', visible: true },
-  { prop: 'totalAmount', label: '订单金额', visible: true },
-  { prop: 'salesPersonName', label: '销售人员', visible: true },
-  { prop: 'products', label: '商品', visible: true },
-  { prop: 'depositAmount', label: '定金', visible: true },
-  { prop: 'collectAmount', label: '代收金额', visible: true },
-  { prop: 'serviceWechat', label: '客服微信号', visible: true },
-  { prop: 'orderSource', label: '订单来源', visible: true },
-  { prop: 'expressCompany', label: '指定快递', visible: true },
+  { prop: 'orderNumber', label: '订单号', visible: true, minWidth: 140 },
+  { prop: 'customerName', label: '客户姓名', visible: true, minWidth: 100 },
+  { prop: 'status', label: '状态', visible: true, minWidth: 90 },
+  { prop: 'markType', label: '标记', visible: true, minWidth: 90 },
+  { prop: 'totalAmount', label: '订单金额', visible: true, minWidth: 100 },
+  { prop: 'salesPersonName', label: '销售人员', visible: true, minWidth: 100 },
+  { prop: 'products', label: '商品', visible: true, minWidth: 150 },
+  { prop: 'depositAmount', label: '定金', visible: true, minWidth: 90 },
+  { prop: 'collectAmount', label: '代收金额', visible: true, minWidth: 100 },
+  { prop: 'serviceWechat', label: '客服微信号', visible: true, minWidth: 120 },
+  { prop: 'orderSource', label: '订单来源', visible: true, minWidth: 100 },
+  { prop: 'expressCompany', label: '指定快递', visible: true, minWidth: 100 },
   // 🔥 预设7个自定义字段位置（默认隐藏，配置后显示）
-  { prop: 'customFields.custom_field1', label: '自定义字段1', visible: false, isCustomField: true, fieldKey: 'custom_field1' },
-  { prop: 'customFields.custom_field2', label: '自定义字段2', visible: false, isCustomField: true, fieldKey: 'custom_field2' },
-  { prop: 'customFields.custom_field3', label: '自定义字段3', visible: false, isCustomField: true, fieldKey: 'custom_field3' },
-  { prop: 'customFields.custom_field4', label: '自定义字段4', visible: false, isCustomField: true, fieldKey: 'custom_field4' },
-  { prop: 'customFields.custom_field5', label: '自定义字段5', visible: false, isCustomField: true, fieldKey: 'custom_field5' },
-  { prop: 'customFields.custom_field6', label: '自定义字段6', visible: false, isCustomField: true, fieldKey: 'custom_field6' },
-  { prop: 'customFields.custom_field7', label: '自定义字段7', visible: false, isCustomField: true, fieldKey: 'custom_field7' },
-  { prop: 'remark', label: '订单备注', visible: false },
-  { prop: 'receiverPhone', label: '收货电话', visible: false },
-  { prop: 'paymentMethod', label: '支付方式', visible: false },
-  { prop: 'createTime', label: '创建时间', visible: true }
+  { prop: 'customFields.custom_field1', label: '自定义字段1', visible: false, isCustomField: true, fieldKey: 'custom_field1', minWidth: 120 },
+  { prop: 'customFields.custom_field2', label: '自定义字段2', visible: false, isCustomField: true, fieldKey: 'custom_field2', minWidth: 120 },
+  { prop: 'customFields.custom_field3', label: '自定义字段3', visible: false, isCustomField: true, fieldKey: 'custom_field3', minWidth: 120 },
+  { prop: 'customFields.custom_field4', label: '自定义字段4', visible: false, isCustomField: true, fieldKey: 'custom_field4', minWidth: 120 },
+  { prop: 'customFields.custom_field5', label: '自定义字段5', visible: false, isCustomField: true, fieldKey: 'custom_field5', minWidth: 120 },
+  { prop: 'customFields.custom_field6', label: '自定义字段6', visible: false, isCustomField: true, fieldKey: 'custom_field6', minWidth: 120 },
+  { prop: 'customFields.custom_field7', label: '自定义字段7', visible: false, isCustomField: true, fieldKey: 'custom_field7', minWidth: 120 },
+  { prop: 'remark', label: '订单备注', visible: false, minWidth: 150 },
+  { prop: 'receiverPhone', label: '收货电话', visible: false, minWidth: 120 },
+  { prop: 'paymentMethod', label: '支付方式', visible: false, minWidth: 100 },
+  { prop: 'createTime', label: '创建时间', visible: true, minWidth: 160 }
 ]
 
 // 🔥 使用store获取自定义字段配置
@@ -1141,6 +1141,14 @@ const filteredOrderList = computed(() => {
   }
 
   return filtered
+})
+
+// 🔥 分页后的订单列表
+const paginatedOrderList = computed(() => {
+  const allFiltered = filteredOrderList.value
+  const startIndex = (pagination.page - 1) * pagination.size
+  const endIndex = startIndex + pagination.size
+  return allFiltered.slice(startIndex, endIndex)
 })
 
 // 权限控制：取消订单审核按钮是否可见
