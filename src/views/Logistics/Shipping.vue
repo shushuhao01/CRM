@@ -289,9 +289,13 @@
         <span>{{ getOrderSourceText(row.orderSource) }}</span>
       </template>
 
-      <!-- 🔥 指定快递列 - 红色高亮 -->
+      <!-- 🔥 指定快递列 - 不同快递公司不同颜色 -->
       <template #column-designatedExpress="{ row }">
-        <span v-if="row.designatedExpress" class="express-highlight-text">
+        <span
+          v-if="row.designatedExpress"
+          class="express-tag"
+          :style="getExpressCompanyStyle(row.designatedExpress)"
+        >
           {{ getExpressCompanyName(row.designatedExpress) }}
         </span>
         <span v-else class="no-data">-</span>
@@ -625,7 +629,14 @@
             </el-table-column>
             <el-table-column prop="expressCompany" label="指定快递" width="110" align="center" class-name="express-column">
               <template #default="{ row }">
-                <span class="express-highlight-text">{{ getExpressCompanyText(row.expressCompany) }}</span>
+                <span
+                  v-if="row.expressCompany"
+                  class="express-tag"
+                  :style="getExpressCompanyStyle(row.expressCompany)"
+                >
+                  {{ getExpressCompanyText(row.expressCompany) }}
+                </span>
+                <span v-else class="no-data">-</span>
               </template>
             </el-table-column>
             <el-table-column prop="trackingNo" label="物流单号" width="130" align="center" show-overflow-tooltip />
@@ -2066,6 +2077,30 @@ const cancelReturnedOrder = async (row: any) => {
   }
 }
 
+// 🔥 获取快递公司颜色配置
+const getExpressCompanyStyle = (code: string) => {
+  const colorMap: Record<string, { color: string; bgColor: string; borderColor: string }> = {
+    'SF': { color: '#000000', bgColor: '#fff2e8', borderColor: '#ff6600' },      // 顺丰 - 橙色
+    'YTO': { color: '#1a5fb4', bgColor: '#e8f4fd', borderColor: '#1a5fb4' },     // 圆通 - 蓝色
+    'ZTO': { color: '#d4380d', bgColor: '#fff1f0', borderColor: '#ff4d4f' },     // 中通 - 红色
+    'STO': { color: '#faad14', bgColor: '#fffbe6', borderColor: '#faad14' },     // 申通 - 黄色
+    'YD': { color: '#722ed1', bgColor: '#f9f0ff', borderColor: '#722ed1' },      // 韵达 - 紫色
+    'HTKY': { color: '#13c2c2', bgColor: '#e6fffb', borderColor: '#13c2c2' },    // 百世 - 青色
+    'JD': { color: '#eb2f96', bgColor: '#fff0f6', borderColor: '#eb2f96' },      // 京东 - 粉色
+    'EMS': { color: '#52c41a', bgColor: '#f6ffed', borderColor: '#52c41a' },     // EMS - 绿色
+    'YZPY': { color: '#52c41a', bgColor: '#f6ffed', borderColor: '#52c41a' },    // 邮政 - 绿色
+    'DBL': { color: '#2f54eb', bgColor: '#f0f5ff', borderColor: '#2f54eb' },     // 德邦 - 深蓝
+    'JTSD': { color: '#fa541c', bgColor: '#fff2e8', borderColor: '#fa541c' },    // 极兔 - 橙红
+    'OTHER': { color: '#8c8c8c', bgColor: '#fafafa', borderColor: '#d9d9d9' }    // 其他 - 灰色
+  }
+  const style = colorMap[code] || colorMap['OTHER']
+  return {
+    color: style.color,
+    backgroundColor: style.bgColor,
+    borderColor: style.borderColor
+  }
+}
+
 // 获取物流公司名称
 const getExpressCompanyName = (code: string) => {
   const companies: Record<string, string> = {
@@ -2403,7 +2438,18 @@ onUnmounted(() => {
   border-radius: 3px;
 }
 
-/* 指定快递红色高亮样式 */
+/* 🔥 指定快递标签样式 - 不同快递公司不同颜色 */
+.express-tag {
+  display: inline-block;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* 保留旧样式作为备用 */
 .express-highlight-text {
   color: #f56c6c;
   font-weight: 700;
@@ -2414,7 +2460,7 @@ onUnmounted(() => {
 }
 
 :deep(.express-column) {
-  background-color: #fff5f5 !important;
+  background-color: #fafafa !important;
 }
 
 :deep(.express-column .cell) {
