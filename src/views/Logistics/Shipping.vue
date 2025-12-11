@@ -2441,7 +2441,7 @@ onUnmounted(() => {
 /* 🔥 指定快递标签样式 - 不同快递公司不同颜色 */
 .express-tag {
   display: inline-block;
-  font-weight: 600;
+  font-weight: normal;
   padding: 2px 8px;
   border-radius: 4px;
   border: 1px solid;
@@ -2464,7 +2464,7 @@ onUnmounted(() => {
 }
 
 :deep(.express-column .cell) {
-  font-weight: 600;
+  font-weight: normal;
 }
 
 .no-remark {
