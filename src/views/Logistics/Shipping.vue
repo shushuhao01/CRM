@@ -2178,6 +2178,10 @@ onMounted(async () => {
   // 🔥 确保从API加载最新订单数据
   console.log('[发货列表] 页面初始化，从API加载订单数据...')
   try {
+    // 🔥 先加载自定义字段配置，确保列配置正确
+    await fieldConfigStore.loadConfig()
+    console.log('[发货列表] 自定义字段配置加载完成:', fieldConfigStore.visibleCustomFields.length, '个可见字段')
+
     await orderStore.loadOrdersFromAPI(true) // 强制刷新
     console.log('[发货列表] API数据加载完成，订单总数:', orderStore.orders.length)
   } catch (error) {

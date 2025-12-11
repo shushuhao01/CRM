@@ -778,7 +778,7 @@ const loadCustomFieldColumns = async () => {
       const customFieldColumns = customFields.map((field: any) => ({
         prop: `customFields.${field.fieldKey}`,
         label: field.fieldName,
-        visible: false, // 默认不勾选
+        visible: field.showInList === true, // 🔥 根据系统设置决定是否默认显示
         isCustomField: true,
         fieldKey: field.fieldKey
       }))
@@ -1237,6 +1237,11 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
     case 'operator':
       return row.operator
     default:
+      // 处理自定义字段 (prop 格式为 customFields.fieldKey)
+      if (column.prop.startsWith('customFields.')) {
+        const fieldKey = column.prop.replace('customFields.', '')
+        return row.customFields?.[fieldKey] || '-'
+      }
       return row[column.prop] || '-'
   }
 }
