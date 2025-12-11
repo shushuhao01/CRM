@@ -2105,8 +2105,11 @@ const handleReset = () => {
 }
 
 const handleSizeChange = (size: number) => {
-  pagination.size = size
-  pagination.page = 1
+  // 只有当size真正改变时才重置页码
+  if (pagination.size !== size) {
+    pagination.size = size
+    pagination.page = 1
+  }
   updatePagination()
 }
 

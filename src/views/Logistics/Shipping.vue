@@ -1543,8 +1543,12 @@ const handleSelectionChange = (selection: any[]) => {
 
 // 分页处理
 const handlePageSizeChange = (size: number) => {
-  pageSize.value = size
-  loadOrderList()
+  // 只有当size真正改变时才重置页码并重新加载
+  if (pageSize.value !== size) {
+    pageSize.value = size
+    currentPage.value = 1
+    loadOrderList()
+  }
 }
 
 const handleCurrentChange = (page: number) => {
