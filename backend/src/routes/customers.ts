@@ -7,6 +7,7 @@ import { CustomerTag } from '../entities/CustomerTag';
 import { User } from '../entities/User';
 import { Order } from '../entities/Order';
 import { Like, Between } from 'typeorm';
+import { formatDateTime, formatDate } from '../utils/dateFormat';
 
 const router = Router();
 
@@ -105,7 +106,7 @@ router.get('/', async (req: Request, res: Response) => {
         orderCount: realOrderCount,
         returnCount: customer.returnCount || 0,
         totalAmount: customer.totalAmount || 0,
-        createTime: customer.createdAt?.toISOString() || '',
+        createTime: formatDateTime(customer.createdAt),
         createdBy: customer.createdBy || '',
         wechat: customer.wechat || '',
         wechatId: customer.wechat || '',
@@ -118,7 +119,7 @@ router.get('/', async (req: Request, res: Response) => {
         medicalHistory: customer.medicalHistory || '',
         improvementGoals: customer.improvementGoals || [],
         otherGoals: customer.otherGoals || '',
-        fanAcquisitionTime: customer.fanAcquisitionTime?.toISOString() || ''
+        fanAcquisitionTime: formatDate(customer.fanAcquisitionTime)
       };
     }));
 
@@ -816,7 +817,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       orderCount: customer.orderCount || 0,
       returnCount: customer.returnCount || 0,
       totalAmount: customer.totalAmount || 0,
-      createTime: customer.createdAt?.toISOString() || '',
+      createTime: formatDateTime(customer.createdAt),
       createdBy: customer.createdBy || '',
       wechat: customer.wechat || '',
       wechatId: customer.wechat || '',
@@ -829,7 +830,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       medicalHistory: customer.medicalHistory || '',
       improvementGoals: customer.improvementGoals || [],
       otherGoals: customer.otherGoals || '',
-      fanAcquisitionTime: customer.fanAcquisitionTime?.toISOString() || ''
+      fanAcquisitionTime: formatDate(customer.fanAcquisitionTime)
     };
 
     res.json({
@@ -962,7 +963,7 @@ router.post('/', async (req: Request, res: Response) => {
       status: status || 'active',
       salesPersonId: savedCustomer.salesPersonId || '',
       orderCount: 0,
-      createTime: savedCustomer.createdAt?.toISOString() || '',
+      createTime: formatDateTime(savedCustomer.createdAt),
       createdBy: savedCustomer.createdBy || '',
       wechat: savedCustomer.wechat || '',
       email: savedCustomer.email || '',
@@ -1070,7 +1071,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       status: updatedCustomer.status || 'active',
       salesPersonId: updatedCustomer.salesPersonId || '',
       orderCount: updatedCustomer.orderCount || 0,
-      createTime: updatedCustomer.createdAt?.toISOString() || '',
+      createTime: formatDateTime(updatedCustomer.createdAt),
       createdBy: updatedCustomer.createdBy || '',
       email: updatedCustomer.email || '',
       company: updatedCustomer.company || '',
