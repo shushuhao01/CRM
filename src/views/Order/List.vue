@@ -212,7 +212,6 @@
       @sort-change="handleSortChange"
       @size-change="handleSizeChange"
       @current-change="handleCurrentChange"
-      height="calc(100vh - 350px)"
     >
       <!-- 头部操作按钮 -->
       <template #header-actions>

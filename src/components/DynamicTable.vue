@@ -27,6 +27,7 @@
       stripe
       border
       :scrollbar-always-on="true"
+      :max-height="tableMaxHeight"
     >
       <!-- 选择列 -->
       <el-table-column
@@ -169,6 +170,20 @@ const emit = defineEmits<{
 const columnSettingsRef = ref()
 const currentPage = ref(1)
 const pageSize = ref(props.pageSizes[0] || 10)
+
+// 🔥 计算表格最大高度 - 根据数据条数动态计算，确保能显示所有数据
+// 每行大约50px高度，表头约50px，额外留100px余量
+const tableMaxHeight = computed(() => {
+  const rowHeight = 50 // 每行高度
+  const headerHeight = 50 // 表头高度
+  const extraPadding = 20 // 额外padding
+  const dataCount = props.data.length || pageSize.value
+  // 计算高度：表头 + 数据行 + 额外padding
+  const calculatedHeight = headerHeight + (dataCount * rowHeight) + extraPadding
+  // 最大不超过屏幕高度的80%
+  const maxScreenHeight = window.innerHeight * 0.8
+  return Math.min(calculatedHeight, maxScreenHeight)
+})
 
 // 所有列配置（包含默认visible状态）
 const allColumns = computed(() => {
@@ -327,13 +342,9 @@ defineExpose({
 /* 表格横向滚动支持 */
 :deep(.el-table) {
   width: 100%;
-  overflow-x: auto;
 }
 
-:deep(.el-table__inner-wrapper) {
-  min-width: max-content; /* 让表格内容撑开宽度 */
-}
-
+/* 🔥 表格容器横向滚动 */
 :deep(.el-table__body-wrapper) {
   overflow-x: auto;
 }
@@ -342,12 +353,30 @@ defineExpose({
   overflow-x: auto !important;
 }
 
-/* 固定列阴影效果 */
+/* 🔥 操作列固定在右侧 - 使用sticky定位 */
 :deep(.el-table__fixed-right) {
+  position: sticky !important;
+  right: 0;
+  z-index: 10;
   box-shadow: -2px 0 6px rgba(0, 0, 0, 0.12);
+  background: #fff;
 }
 
 :deep(.el-table__fixed) {
   box-shadow: 2px 0 6px rgba(0, 0, 0, 0.12);
+}
+
+/* 🔥 确保固定列的背景色正确 */
+:deep(.el-table__fixed-right .el-table__cell) {
+  background: #fff;
+}
+
+:deep(.el-table__fixed-right .el-table__row:hover .el-table__cell) {
+  background: #f5f7fa;
+}
+
+/* 🔥 斑马纹行的固定列背景 */
+:deep(.el-table--striped .el-table__fixed-right .el-table__row--striped .el-table__cell) {
+  background: #fafafa;
 }
 </style>
