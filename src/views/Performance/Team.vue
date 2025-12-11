@@ -965,22 +965,39 @@ const overviewData = computed(() => {
     })
   }
 
+  // 🔥 调试：打印当前用户信息
+  console.log('[团队业绩] 当前用户:', {
+    id: currentUser.id,
+    role: currentUser.role,
+    departmentId: currentUser.departmentId,
+    departmentName: currentUser.departmentName
+  })
+  console.log('[团队业绩] 审核通过订单数:', accessibleOrders.length)
+
   // 层级权限控制
   if (userStore.isSuperAdmin || currentUser.role === 'admin' || currentUser.role === 'super_admin') {
     // 超级管理员：查看所有数据
-    // accessibleOrders 保持不变，包含所有订单
+    console.log('[团队业绩] 管理员权限，显示所有数据')
   } else if (userStore.isManager || currentUser.role === 'department_manager') {
     // 部门经理：查看本部门数据
+    const beforeCount = accessibleOrders.length
     accessibleOrders = accessibleOrders.filter(order => {
-      const salesPerson = userStore.getUserById?.(order.salesPersonId)
-      return salesPerson?.departmentId === currentUser.departmentId
+      const salesPerson = userStore.getUserById?.(order.salesPersonId || order.createdBy)
+      // 🔥 修复：同时检查订单的createdByDepartmentId
+      return salesPerson?.departmentId === currentUser.departmentId ||
+             order.createdByDepartmentId === currentUser.departmentId
     })
+    console.log('[团队业绩] 部门经理权限，过滤前:', beforeCount, '过滤后:', accessibleOrders.length)
   } else {
     // 普通成员：查看自己所在部门的数据（团队业绩）
+    const beforeCount = accessibleOrders.length
     accessibleOrders = accessibleOrders.filter(order => {
-      const salesPerson = userStore.getUserById?.(order.salesPersonId)
-      return salesPerson?.departmentId === currentUser.departmentId
+      const salesPerson = userStore.getUserById?.(order.salesPersonId || order.createdBy)
+      // 🔥 修复：同时检查订单的createdByDepartmentId
+      return salesPerson?.departmentId === currentUser.departmentId ||
+             order.createdByDepartmentId === currentUser.departmentId
     })
+    console.log('[团队业绩] 成员权限，过滤前:', beforeCount, '过滤后:', accessibleOrders.length)
   }
 
   const totalPerformance = accessibleOrders.reduce((sum, order) => sum + order.totalAmount, 0)
