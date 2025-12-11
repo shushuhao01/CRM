@@ -2341,7 +2341,7 @@ const loadCustomerDetail = async () => {
       createdBy: customer.createdBy || '',
       createTime: customer.createTime || customer.createdAt || '',
       createdAt: customer.createdAt || customer.createTime || '',
-      joinTime: customer.joinTime || customer.joinDate || '',
+      joinTime: customer.fanAcquisitionTime || customer.joinTime || customer.joinDate || '',
       source: customer.source || '',
       medicalHistory: customer.medicalHistory || '',
       tags: customer.tags || [],
