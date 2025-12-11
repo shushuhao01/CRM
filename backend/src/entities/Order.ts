@@ -137,8 +137,29 @@ export class Order {
   @Column({ name: 'todo_remark', type: 'text', nullable: true, comment: '待办备注' })
   todoRemark?: string;
 
-  @Column({ name: 'custom_fields', type: 'json', nullable: true, comment: '自定义字段' })
+  @Column({ name: 'custom_fields', type: 'json', nullable: true, comment: '自定义字段(旧版，保留兼容)' })
   customFields?: Record<string, unknown>;
+
+  @Column({ name: 'custom_field1', type: 'varchar', length: 500, nullable: true, comment: '自定义字段1' })
+  customField1?: string;
+
+  @Column({ name: 'custom_field2', type: 'varchar', length: 500, nullable: true, comment: '自定义字段2' })
+  customField2?: string;
+
+  @Column({ name: 'custom_field3', type: 'varchar', length: 500, nullable: true, comment: '自定义字段3' })
+  customField3?: string;
+
+  @Column({ name: 'custom_field4', type: 'varchar', length: 500, nullable: true, comment: '自定义字段4' })
+  customField4?: string;
+
+  @Column({ name: 'custom_field5', type: 'varchar', length: 500, nullable: true, comment: '自定义字段5' })
+  customField5?: string;
+
+  @Column({ name: 'custom_field6', type: 'varchar', length: 500, nullable: true, comment: '自定义字段6' })
+  customField6?: string;
+
+  @Column({ name: 'custom_field7', type: 'varchar', length: 500, nullable: true, comment: '自定义字段7' })
+  customField7?: string;
 
   @Column({ type: 'text', nullable: true, comment: '订单备注' })
   remark?: string;

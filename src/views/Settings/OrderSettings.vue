@@ -459,12 +459,21 @@
           <el-input v-model="customFieldForm.fieldName" placeholder="请输入字段名称，如：客户等级" />
         </el-form-item>
         <el-form-item label="字段键名" prop="fieldKey">
-          <el-input
+          <el-select
             v-model="customFieldForm.fieldKey"
-            placeholder="请输入字段键名，如：customerLevel"
+            placeholder="请选择字段键名"
+            style="width: 100%"
             :disabled="isEditingField"
-          />
-          <div class="form-tip">字段键名用于数据存储，只能包含字母、数字和下划线，且以字母开头</div>
+          >
+            <el-option
+              v-for="key in availableFieldKeys"
+              :key="key.value"
+              :label="key.label"
+              :value="key.value"
+              :disabled="key.disabled"
+            />
+          </el-select>
+          <div class="form-tip">字段键名用于数据存储，每个键名只能使用一次</div>
         </el-form-item>
         <el-form-item label="字段类型" prop="fieldType">
           <el-select
@@ -538,13 +547,33 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Rank, InfoFilled } from '@element-plus/icons-vue'
 import Sortable from 'sortablejs'
 import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 
 const fieldConfigStore = useOrderFieldConfigStore()
+
+// 预设的7个自定义字段键名
+const PRESET_FIELD_KEYS = [
+  { value: 'custom_field1', label: 'custom_field1 (自定义字段1)' },
+  { value: 'custom_field2', label: 'custom_field2 (自定义字段2)' },
+  { value: 'custom_field3', label: 'custom_field3 (自定义字段3)' },
+  { value: 'custom_field4', label: 'custom_field4 (自定义字段4)' },
+  { value: 'custom_field5', label: 'custom_field5 (自定义字段5)' },
+  { value: 'custom_field6', label: 'custom_field6 (自定义字段6)' },
+  { value: 'custom_field7', label: 'custom_field7 (自定义字段7)' }
+]
+
+// 计算可用的字段键名（排除已使用的）
+const availableFieldKeys = computed(() => {
+  const usedKeys = localConfig.customFields.map(f => f.fieldKey)
+  return PRESET_FIELD_KEYS.map(key => ({
+    ...key,
+    disabled: usedKeys.includes(key.value) && key.value !== customFieldForm.fieldKey
+  }))
+})
 
 // 本地配置（用于编辑）
 const localConfig = reactive({
@@ -914,7 +943,7 @@ const openAddFieldDialog = () => {
 }
 
 // 打开编辑字段对话框
-const openEditFieldDialog = (field: unknown, index: number) => {
+const openEditFieldDialog = (field: any, index: number) => {
   isEditingField.value = true
   editingFieldIndex.value = index
   Object.assign(customFieldForm, {
