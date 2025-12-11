@@ -2049,8 +2049,9 @@ const handleMemberOrderPageChange = () => {
 const refreshData = async () => {
   try {
     loading.value = true
+    // 🔥 使用loadOrdersFromAPI(true)强制从服务器重新加载订单数据，确保数据实时更新
     await Promise.all([
-      orderStore.getOrders(),
+      orderStore.loadOrdersFromAPI(true),
       customerStore.loadCustomers(),
       userStore.loadUsers(),
       departmentStore.initData()
