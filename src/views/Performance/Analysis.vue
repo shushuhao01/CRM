@@ -739,12 +739,22 @@ const goBack = () => {
   safeNavigator.push('/performance/team')
 }
 
-const queryData = () => {
+const queryData = async () => {
   console.log('查询数据', {
     dateRange: dateRange.value,
     selectedDepartment: selectedDepartment.value,
     sortBy: sortBy.value
   })
+
+  // 重新加载订单数据以获取最新数据
+  try {
+    console.log('📊 [业绩分析] 查询时重新加载订单数据...')
+    await orderStore.loadOrdersFromAPI(true)
+    console.log('📊 [业绩分析] 订单数据加载完成，共', orderStore.orders.length, '条')
+  } catch (error) {
+    console.error('📊 [业绩分析] 加载订单数据失败:', error)
+  }
+
   loadData()
 }
 
@@ -1035,23 +1045,43 @@ const loadChartData = () => {
       })
     }
 
-    // 生成业绩趋势数据（最近7天）
+    // 生成业绩趋势数据（根据日期范围动态生成）
     const trendData = new Map<string, number>()
-    const today = new Date()
 
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today)
-      date.setDate(today.getDate() - i)
-      const dateKey = date.toISOString().split('T')[0]
-      trendData.set(dateKey, 0)
+    // 确定日期范围
+    let startDate: Date
+    let endDate: Date
+
+    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+      // 使用用户选择的日期范围
+      startDate = new Date(dateRange.value[0])
+      endDate = new Date(dateRange.value[1])
+    } else {
+      // 默认使用最近7天
+      endDate = new Date()
+      startDate = new Date()
+      startDate.setDate(endDate.getDate() - 6)
     }
 
+    // 生成日期范围内的所有日期
+    const currentDate = new Date(startDate)
+    while (currentDate <= endDate) {
+      const dateKey = currentDate.toISOString().split('T')[0]
+      trendData.set(dateKey, 0)
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+
+    // 统计每天的业绩
     orders.forEach(order => {
       const orderDate = order.createTime.split(' ')[0]
       if (trendData.has(orderDate)) {
         trendData.set(orderDate, trendData.get(orderDate)! + order.totalAmount)
       }
     })
+
+    console.log('📊 [业绩趋势] 日期范围:', startDate.toISOString().split('T')[0], '至', endDate.toISOString().split('T')[0])
+    console.log('📊 [业绩趋势] 订单数量:', orders.length)
+    console.log('📊 [业绩趋势] 趋势数据:', Array.from(trendData.entries()))
 
     chartData.value.performanceTrend = {
       xAxis: Array.from(trendData.keys()).map(date => {
@@ -1485,7 +1515,7 @@ const loadMetrics = () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   // 权限检查
   if (!checkPermission()) {
     return
@@ -1493,6 +1523,15 @@ onMounted(() => {
 
   // 初始化部门数据
   departmentStore.initData()
+
+  // 确保订单数据已加载
+  try {
+    console.log('📊 [业绩分析] 开始加载订单数据...')
+    await orderStore.loadOrdersFromAPI(true)
+    console.log('📊 [业绩分析] 订单数据加载完成，共', orderStore.orders.length, '条')
+  } catch (error) {
+    console.error('📊 [业绩分析] 加载订单数据失败:', error)
+  }
 
   // 加载数据（包含图表数据）
   loadData()
