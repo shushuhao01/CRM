@@ -741,6 +741,12 @@ const allOrderStatuses = computed(() => [
 ])
 
 // 基础表格列配置
+// 🔥 预设7个自定义字段的键名
+const PRESET_CUSTOM_FIELD_KEYS = [
+  'custom_field1', 'custom_field2', 'custom_field3', 'custom_field4',
+  'custom_field5', 'custom_field6', 'custom_field7'
+]
+
 const baseTableColumns = [
   { prop: 'orderNumber', label: '订单号', visible: true },
   { prop: 'customerName', label: '客户姓名', visible: true },
@@ -754,6 +760,14 @@ const baseTableColumns = [
   { prop: 'serviceWechat', label: '客服微信号', visible: true },
   { prop: 'orderSource', label: '订单来源', visible: true },
   { prop: 'expressCompany', label: '指定快递', visible: true },
+  // 🔥 预设7个自定义字段位置（默认隐藏，配置后显示）
+  { prop: 'customFields.custom_field1', label: '自定义字段1', visible: false, isCustomField: true, fieldKey: 'custom_field1' },
+  { prop: 'customFields.custom_field2', label: '自定义字段2', visible: false, isCustomField: true, fieldKey: 'custom_field2' },
+  { prop: 'customFields.custom_field3', label: '自定义字段3', visible: false, isCustomField: true, fieldKey: 'custom_field3' },
+  { prop: 'customFields.custom_field4', label: '自定义字段4', visible: false, isCustomField: true, fieldKey: 'custom_field4' },
+  { prop: 'customFields.custom_field5', label: '自定义字段5', visible: false, isCustomField: true, fieldKey: 'custom_field5' },
+  { prop: 'customFields.custom_field6', label: '自定义字段6', visible: false, isCustomField: true, fieldKey: 'custom_field6' },
+  { prop: 'customFields.custom_field7', label: '自定义字段7', visible: false, isCustomField: true, fieldKey: 'custom_field7' },
   { prop: 'remark', label: '订单备注', visible: false },
   { prop: 'receiverPhone', label: '收货电话', visible: false },
   { prop: 'paymentMethod', label: '支付方式', visible: false },
@@ -770,25 +784,24 @@ const loadCustomFieldColumns = async () => {
     if (response && response.data && response.data.customFields) {
       const customFields = response.data.customFields
 
-      // 找到支付方式列的位置，在其后面插入自定义字段
-      const paymentMethodIndex = baseTableColumns.findIndex(col => col.prop === 'paymentMethod')
-      const insertIndex = paymentMethodIndex !== -1 ? paymentMethodIndex + 1 : baseTableColumns.length - 1
+      // 🔥 更新预设的自定义字段列的标签和可见性
+      const newColumns = baseTableColumns.map(col => {
+        if (col.isCustomField && col.fieldKey) {
+          // 查找是否有对应的配置
+          const fieldConfig = customFields.find((f: any) => f.fieldKey === col.fieldKey)
+          if (fieldConfig) {
+            return {
+              ...col,
+              label: fieldConfig.fieldName, // 使用配置的字段名称
+              visible: fieldConfig.showInList === true // 根据配置决定是否显示
+            }
+          }
+        }
+        return { ...col }
+      })
 
-      // 构建自定义字段列
-      const customFieldColumns = customFields.map((field: any) => ({
-        prop: `customFields.${field.fieldKey}`,
-        label: field.fieldName,
-        visible: field.showInList === true, // 🔥 根据系统设置决定是否默认显示
-        isCustomField: true,
-        fieldKey: field.fieldKey
-      }))
-
-      // 合并基础列和自定义字段列
-      const newColumns = [...baseTableColumns]
-      newColumns.splice(insertIndex, 0, ...customFieldColumns)
       tableColumns.value = newColumns
-
-      console.log('[订单列表] 自定义字段列加载成功:', customFieldColumns.length, '个')
+      console.log('[订单列表] 自定义字段列加载成功，已配置:', customFields.length, '个')
     }
   } catch (error) {
     console.warn('加载自定义字段列失败:', error)

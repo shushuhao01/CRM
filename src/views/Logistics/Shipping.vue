@@ -289,6 +289,14 @@
         <span>{{ getOrderSourceText(row.orderSource) }}</span>
       </template>
 
+      <!-- 🔥 指定快递列 - 红色高亮 -->
+      <template #column-designatedExpress="{ row }">
+        <span v-if="row.designatedExpress" class="express-highlight-text">
+          {{ getExpressCompanyName(row.designatedExpress) }}
+        </span>
+        <span v-else class="no-data">-</span>
+      </template>
+
       <!-- 支付方式列 -->
       <template #column-paymentMethod="{ row }">
         <span>{{ getPaymentMethodText(row.paymentMethod) }}</span>
@@ -823,6 +831,14 @@ const baseTableColumns = [
     visible: true
   },
   {
+    prop: 'designatedExpress',
+    label: '指定快递',
+    width: 120,
+    align: 'center',
+    visible: true,
+    isHighlight: true // 🔥 标记为高亮字段
+  },
+  {
     prop: 'salesPersonName',
     label: '销售人员',
     width: 100,
@@ -955,36 +971,41 @@ const baseTableColumns = [
     width: 200,
     showOverflowTooltip: true,
     visible: false
-  }
+  },
+  // 🔥 预设7个自定义字段位置（默认隐藏，配置后显示）
+  { prop: 'customFields.custom_field1', label: '自定义字段1', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field1' },
+  { prop: 'customFields.custom_field2', label: '自定义字段2', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field2' },
+  { prop: 'customFields.custom_field3', label: '自定义字段3', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field3' },
+  { prop: 'customFields.custom_field4', label: '自定义字段4', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field4' },
+  { prop: 'customFields.custom_field5', label: '自定义字段5', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field5' },
+  { prop: 'customFields.custom_field6', label: '自定义字段6', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field6' },
+  { prop: 'customFields.custom_field7', label: '自定义字段7', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field7' }
 ]
 
 // 表格列配置（包含动态自定义字段）
 const tableColumns = computed(() => {
-  // 获取需要在列表中显示的自定义字段
-  const customFieldColumns = fieldConfigStore.visibleCustomFields.map(field => ({
-    prop: `customFields.${field.fieldKey}`,
-    label: field.fieldName,
-    width: field.fieldType === 'text' ? 150 : 100,
-    align: 'center' as const,
-    showOverflowTooltip: true,
-    visible: true,
-    isCustomField: true,
-    fieldConfig: field
-  }))
-
-  // 在订单备注列之前插入自定义字段
-  const remarkIndex = baseTableColumns.findIndex(col => col.prop === 'remark')
-  const columns = [...baseTableColumns]
-
-  if (remarkIndex > -1 && customFieldColumns.length > 0) {
-    columns.splice(remarkIndex, 0, ...customFieldColumns)
-  } else if (customFieldColumns.length > 0) {
-    // 如果找不到备注列，就添加到末尾
-    columns.push(...customFieldColumns)
-  }
-
-  return columns
+  // 🔥 更新预设的自定义字段列的标签和可见性
+  return baseTableColumns.map(col => {
+    if (col.isCustomField && col.fieldKey) {
+      // 查找是否有对应的配置
+      const fieldConfig = fieldConfigStore.customFields.find(f => f.fieldKey === col.fieldKey)
+      if (fieldConfig) {
+        return {
+          ...col,
+          label: fieldConfig.fieldName, // 使用配置的字段名称
+          visible: fieldConfig.showInList === true // 根据配置决定是否显示
+        }
+      }
+    }
+    return col
+  })
 })
+
+// 🔥 旧的tableColumns计算属性（已废弃，保留注释）
+/*
+const tableColumnsOld = computed(() => {
+  // 获取需要在列表中显示的自定义字段
+*/
 
 // 格式化数字
 const formatNumber = (num: number | null | undefined) => {
@@ -1377,6 +1398,8 @@ const loadOrderList = async () => {
         orderNo: order.orderNumber || '-',
         phone: order.customerPhone || order.receiverPhone || '-',
         address: order.receiverAddress || '-',
+        // 🔥 指定快递 - 用于主视图显示
+        designatedExpress: order.expressCompany || null,
         // 🔥 销售人员字段映射（创建订单的用户姓名）- 从用户列表查找真实姓名
         salesPersonName: (() => {
           if (order.createdByName) return order.createdByName
