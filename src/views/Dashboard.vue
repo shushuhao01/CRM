@@ -515,9 +515,9 @@ const metrics = ref([
     value: '0',
     change: '+0%',
     trend: 'up',
-    icon: 'CustomerService',
+    icon: 'Headset',
     color: '#F56C6C',
-    gradient: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%)'
+    gradient: 'linear-gradient(135deg, #F56C6C 0%, #E6A23C 100%)'
   },
   {
     key: 'audit',
