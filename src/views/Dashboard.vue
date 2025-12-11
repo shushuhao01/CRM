@@ -424,7 +424,11 @@ const getMetricLabels = () => {
       revenue: '今日业绩（全部）',
       monthlyOrders: '本月单数（全部）',
       monthlyRevenue: '本月业绩（全部）',
-      service: '待处理售后（全部）'
+      service: '待处理售后（全部）',
+      audit: '待审核订单（全部）',
+      logistics: '待发货订单（全部）',
+      monthlySignCount: '本月签收单数（全部）',
+      monthlySignRevenue: '本月签收业绩（全部）'
     }
   } else if (isDeptManager) {
     return {
@@ -433,7 +437,11 @@ const getMetricLabels = () => {
       revenue: '今日业绩（部门）',
       monthlyOrders: '本月单数（部门）',
       monthlyRevenue: '本月业绩（部门）',
-      service: '待处理售后（部门）'
+      service: '待处理售后（部门）',
+      audit: '待审核订单（部门）',
+      logistics: '待发货订单（部门）',
+      monthlySignCount: '本月签收单数（部门）',
+      monthlySignRevenue: '本月签收业绩（部门）'
     }
   } else {
     return {
@@ -442,7 +450,11 @@ const getMetricLabels = () => {
       revenue: '今日业绩（个人）',
       monthlyOrders: '本月单数（个人）',
       monthlyRevenue: '本月业绩（个人）',
-      service: '待处理售后（个人）'
+      service: '待处理售后（个人）',
+      audit: '待审核订单（个人）',
+      logistics: '待发货订单（个人）',
+      monthlySignCount: '本月签收单数（个人）',
+      monthlySignRevenue: '本月签收业绩（个人）'
     }
   }
 }
@@ -1190,6 +1202,39 @@ const loadRealMetrics = async () => {
   if (metrics.value[7]) {
     metrics.value[7].value = pendingShipmentOrders.length.toString()
     metrics.value[7].label = labels.logistics || '待发货订单'
+  }
+
+  // 🔥 本月签收单数
+  if (metrics.value[8]) {
+    const now = new Date()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+
+    const monthSignedOrders = allOrders.filter(order => {
+      if (order.shippingStatus !== 'delivered') return false
+      const signTime = new Date(order.logisticsUpdateTime || order.updateTime || order.createTime)
+      return signTime >= monthStart && signTime <= monthEnd
+    })
+
+    metrics.value[8].value = monthSignedOrders.length.toString()
+    metrics.value[8].label = labels.monthlySignCount || '本月签收单数'
+  }
+
+  // 🔥 本月签收业绩
+  if (metrics.value[9]) {
+    const now = new Date()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+
+    const monthSignedOrders = allOrders.filter(order => {
+      if (order.shippingStatus !== 'delivered') return false
+      const signTime = new Date(order.logisticsUpdateTime || order.updateTime || order.createTime)
+      return signTime >= monthStart && signTime <= monthEnd
+    })
+
+    const monthSignedRevenue = monthSignedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    metrics.value[9].value = `¥${monthSignedRevenue.toLocaleString()}`
+    metrics.value[9].label = labels.monthlySignRevenue || '本月签收业绩'
   }
 }
 
