@@ -566,17 +566,32 @@
             <el-table-column prop="status" label="状态" width="80" align="center">
               <template #default="{ row }">
                 <el-tag :type="getOrderStatusType(row.status)" size="small">
-              {{ orderStore.getStatusText(row.status) }}
-            </el-tag>
+                  {{ orderStore.getStatusText(row.status) }}
+                </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="customerName" label="客户姓名" width="100" align="center" show-overflow-tooltip />
             <el-table-column prop="phone" label="联系电话" width="120" align="center" show-overflow-tooltip>
               <template #default="{ row }">
-              {{ displaySensitiveInfoNew(row.phone, 'phone') }}
-            </template>
+                {{ displaySensitiveInfoNew(row.phone, 'phone') }}
+              </template>
             </el-table-column>
             <el-table-column prop="address" label="收货地址" width="180" align="left" show-overflow-tooltip />
+            <el-table-column prop="serviceWechat" label="客服微信号" width="120" align="center" show-overflow-tooltip>
+              <template #default="{ row }">
+                {{ row.serviceWechat || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="orderSource" label="订单来源" width="100" align="center">
+              <template #default="{ row }">
+                {{ getOrderSourceText(row.orderSource) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="customTags" label="自定义标签" width="120" align="center" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span v-if="row.customFields && row.customFields.customTag">{{ row.customFields.customTag }}</span>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="productsText" label="商品信息" width="160" align="left" show-overflow-tooltip />
             <el-table-column prop="totalAmount" label="订单金额" width="100" align="center">
               <template #default="{ row }">
@@ -598,8 +613,20 @@
                 {{ formatDateTime(row.shipTime) }}
               </template>
             </el-table-column>
+            <el-table-column prop="expressCompany" label="指定快递" width="100" align="center">
+              <template #default="{ row }">
+                {{ getExpressCompanyText(row.expressCompany) }}
+              </template>
+            </el-table-column>
             <el-table-column prop="trackingNo" label="物流单号" width="130" align="center" show-overflow-tooltip />
             <el-table-column prop="logisticsCompany" label="物流公司" width="100" align="center" show-overflow-tooltip />
+            <el-table-column prop="logisticsStatus" label="物流状态" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag :type="getLogisticsStatusType(row.logisticsStatus)" size="small">
+                  {{ getLogisticsStatusText(row.logisticsStatus) }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column prop="remark" label="备注" width="140" align="left" show-overflow-tooltip />
             <el-table-column label="操作" width="200" align="center" fixed="right">
               <template #default="{ row }">
@@ -1989,7 +2016,7 @@ const cancelReturnedOrder = async (row: any) => {
 
 // 获取物流公司名称
 const getExpressCompanyName = (code: string) => {
-  const companies = {
+  const companies: Record<string, string> = {
     'SF': '顺丰速运',
     'YTO': '圆通速递',
     'ZTO': '中通快递',
@@ -1999,10 +2026,16 @@ const getExpressCompanyName = (code: string) => {
     'JD': '京东物流',
     'EMS': '中国邮政',
     'DBKD': '德邦快递',
-    'UC': '优速快递'
+    'UC': '优速快递',
+    'JTSD': '极兔速递',
+    'YZBK': '邮政包裹',
+    'DBL': '德邦快递'
   }
   return companies[code] || code
 }
+
+// 获取指定快递文本（别名）
+const getExpressCompanyText = getExpressCompanyName
 
 // 获取物流状态类型
 const getLogisticsStatusType = (status: string) => {
