@@ -61,6 +61,13 @@
             <label>备注：</label>
             <span class="value">{{ order.remark || '-' }}</span>
           </div>
+          <!-- 自定义字段显示 -->
+          <template v-for="field in fieldConfigStore.customFields" :key="field.fieldKey">
+            <div class="info-item" v-if="order.customFields && order.customFields[field.fieldKey]">
+              <label>{{ field.fieldName }}：</label>
+              <span class="value">{{ order.customFields[field.fieldKey] }}</span>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -206,6 +213,10 @@ import {
 } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
+import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
+
+// 自定义字段配置store
+const fieldConfigStore = useOrderFieldConfigStore()
 
 // 使用any类型避免类型错误，因为这个对话框接收的是物流订单格式
 interface Props {
