@@ -640,13 +640,11 @@ const orderStatusChartRef = ref()
 // 响应式数据
 const today = new Date()
 const formatDate = (date: Date) => date.toISOString().split('T')[0]
-// 默认显示最近7天
-const sevenDaysAgo = new Date()
-sevenDaysAgo.setDate(today.getDate() - 6)
-const dateRange = ref<[string, string]>([formatDate(sevenDaysAgo), formatDate(today)])
+// 🔥 默认选中"今日"
+const dateRange = ref<[string, string]>([formatDate(today), formatDate(today)])
 const selectedDepartment = ref(userStore.isAdmin ? '' : userStore.currentUser?.departmentId || '')
 const sortBy = ref('performance')
-const selectedQuickFilter = ref('thisWeek')
+const selectedQuickFilter = ref('today')
 
 // 成员信息
 const memberInfo = ref({
@@ -1546,17 +1544,30 @@ onMounted(async () => {
   // 初始化部门数据
   departmentStore.initData()
 
-  // 确保订单数据已加载
-  try {
-    console.log('📊 [业绩分析] 开始加载订单数据...')
-    await orderStore.loadOrdersFromAPI(true)
-    console.log('📊 [业绩分析] 订单数据加载完成，共', orderStore.orders.length, '条')
-  } catch (error) {
-    console.error('📊 [业绩分析] 加载订单数据失败:', error)
-  }
+  // 🔥 优化加载策略：先用缓存数据快速显示，再后台刷新
+  if (orderStore.orders.length > 0) {
+    // 如果已有缓存数据，先快速显示
+    console.log('📊 [业绩分析] 使用缓存数据快速显示，共', orderStore.orders.length, '条')
+    loadData()
 
-  // 加载数据（包含图表数据）
-  loadData()
+    // 后台静默刷新数据（不阻塞UI）
+    orderStore.loadOrdersFromAPI(false).then(() => {
+      console.log('📊 [业绩分析] 后台数据刷新完成')
+      loadData() // 刷新完成后更新显示
+    }).catch(error => {
+      console.error('📊 [业绩分析] 后台刷新失败:', error)
+    })
+  } else {
+    // 没有缓存数据，需要等待加载
+    try {
+      console.log('📊 [业绩分析] 首次加载订单数据...')
+      await orderStore.loadOrdersFromAPI(true)
+      console.log('📊 [业绩分析] 订单数据加载完成，共', orderStore.orders.length, '条')
+    } catch (error) {
+      console.error('📊 [业绩分析] 加载订单数据失败:', error)
+    }
+    loadData()
+  }
 
   // 监听物流状态更新事件
   window.addEventListener('orderStatusUpdated', handleOrderStatusUpdate)
