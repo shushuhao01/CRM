@@ -751,7 +751,13 @@ const loading = ref(false)
 const selectedQuickFilter = ref('today')
 // 初始化为今日日期
 const today = new Date()
-const formatDateInit = (date: Date) => date.toISOString().split('T')[0]
+// 🔥 使用本地时间格式化日期，避免UTC时区问题
+const formatDateInit = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 const dateRange = ref<[string, string]>([formatDateInit(today), formatDateInit(today)])
 const selectedDepartment = ref('')
 const sortBy = ref('orderAmount')
@@ -1377,7 +1383,13 @@ const handleQuickFilter = (value: string) => {
   selectedQuickFilter.value = value
   // 根据快速筛选设置日期范围
   const today = new Date()
-  const formatDate = (date: Date) => date.toISOString().split('T')[0]
+  // 🔥 使用本地时间格式化日期，避免UTC时区问题
+  const formatDate = (date: Date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
 
   switch (value) {
     case 'all':

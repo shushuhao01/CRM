@@ -639,7 +639,13 @@ const orderStatusChartRef = ref()
 
 // 响应式数据
 const today = new Date()
-const formatDate = (date: Date) => date.toISOString().split('T')[0]
+// 🔥 使用本地时间格式化日期，避免UTC时区问题
+const formatDate = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 // 🔥 默认选中"今日"
 const dateRange = ref<[string, string]>([formatDate(today), formatDate(today)])
 const selectedDepartment = ref(userStore.isAdmin ? '' : userStore.currentUser?.departmentId || '')
@@ -973,7 +979,13 @@ const getReturnRateType = (rate: number) => {
 const handleQuickFilter = (filterKey: string) => {
   selectedQuickFilter.value = filterKey
   const today = new Date()
-  const formatDateLocal = (date: Date) => date.toISOString().split('T')[0]
+  // 🔥 使用本地时间格式化日期，避免UTC时区问题
+  const formatDateLocal = (date: Date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
 
   switch (filterKey) {
     case 'all':
