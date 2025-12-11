@@ -928,20 +928,20 @@ const showZoomIcon = ref(-1)
 // 根据用户角色获取最大优惠比例
 const maxDiscountRate = computed(() => {
   const userRole = userStore.currentUser?.role || 'employee'
-  // 将用户角色映射到配置store期望的角色
-  const mappedRole = userRole === 'employee' ? 'sales' : userRole
-  // 【批次202修复】直接从productConfig读取,确保实时同步
+  // 🔥 修复：正确映射所有角色
   let discountValue = 0
-  if (mappedRole === 'admin' || mappedRole === 'super_admin') {
+  if (userRole === 'admin' || userRole === 'super_admin') {
     discountValue = configStore.productConfig.adminMaxDiscount
-  } else if (mappedRole === 'department_manager' || mappedRole === 'manager') {
+  } else if (userRole === 'department_manager' || userRole === 'manager') {
     discountValue = configStore.productConfig.managerMaxDiscount
-  } else if (mappedRole === 'sales') {
+  } else if (userRole === 'sales_staff' || userRole === 'sales' || userRole === 'employee') {
+    // 🔥 修复：sales_staff角色也使用销售员优惠
     discountValue = configStore.productConfig.salesMaxDiscount
   } else {
-    discountValue = 0
+    // 其他角色默认使用销售员优惠
+    discountValue = configStore.productConfig.salesMaxDiscount
   }
-  console.log('[优惠折扣] 当前角色:', userRole, '映射角色:', mappedRole, '优惠比例:', discountValue, '%')
+  console.log('[优惠折扣] 当前角色:', userRole, '优惠比例:', discountValue, '%')
   console.log('[优惠折扣] 配置详情:', {
     admin: configStore.productConfig.adminMaxDiscount,
     manager: configStore.productConfig.managerMaxDiscount,
@@ -1595,7 +1595,19 @@ const loadExpressCompanies = async () => {
 }
 
 onMounted(async () => {
-  // 首先加载客户数据
+  // 🔥 首先加载系统配置（包括优惠折扣设置），确保全局生效
+  try {
+    await configStore.initConfig()
+    console.log('[新增订单] 系统配置已加载，优惠折扣:', {
+      admin: configStore.productConfig.adminMaxDiscount,
+      manager: configStore.productConfig.managerMaxDiscount,
+      sales: configStore.productConfig.salesMaxDiscount
+    })
+  } catch (error) {
+    console.warn('[新增订单] 加载系统配置失败:', error)
+  }
+
+  // 加载客户数据
   await customerStore.loadCustomers()
 
   // 加载流转延迟配置

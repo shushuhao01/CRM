@@ -484,7 +484,9 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
         createTime: formatToBeijingTime(order.createdAt),
         createdBy: order.createdBy || '',
         createdByName: order.createdByName || '',
-        salesPersonId: order.createdBy || ''
+        salesPersonId: order.createdBy || '',
+        operatorId: order.createdBy || '',
+        operator: order.createdByName || ''
       };
     });
 
@@ -591,7 +593,9 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
         createTime: formatToBeijingTime(order.createdAt),
         createdBy: order.createdBy || '',
         createdByName: order.createdByName || '',
-        salesPersonId: order.createdBy || ''
+        salesPersonId: order.createdBy || '',
+        operatorId: order.createdBy || '',
+        operator: order.createdByName || ''
       };
     });
 
@@ -735,7 +739,10 @@ router.get('/', async (req: Request, res: Response) => {
         createTime: formatToBeijingTime(order.createdAt),
         createdBy: order.createdBy || '',
         createdByName: order.createdByName || '',
-        salesPersonId: order.createdBy || ''
+        salesPersonId: order.createdBy || '',
+        // 🔥 添加operatorId和operator字段，用于前端权限判断
+        operatorId: order.createdBy || '',
+        operator: order.createdByName || ''
       };
     });
 
@@ -862,7 +869,9 @@ router.get('/:id', async (req: Request, res: Response) => {
       createTime: formatToBeijingTime(order.createdAt),
       createdBy: order.createdBy || '',
       createdByName: order.createdByName || '',
-      salesPersonId: order.createdBy || ''
+      salesPersonId: order.createdBy || '',
+      operatorId: order.createdBy || '',
+      operator: order.createdByName || ''
     };
 
     res.json({
@@ -1079,7 +1088,9 @@ router.post('/', async (req: Request, res: Response) => {
       createTime: formatToBeijingTime(savedOrder.createdAt) || formatToBeijingTime(new Date()),
       createdBy: finalCreatedBy,
       createdByName: finalCreatedByName,
-      salesPersonId: finalCreatedBy
+      salesPersonId: finalCreatedBy,
+      operatorId: finalCreatedBy,
+      operator: finalCreatedByName
     };
 
     console.log('✅ [订单创建] 返回数据:', responseData);
