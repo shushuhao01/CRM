@@ -450,6 +450,32 @@ const loadData = async () => {
       )
     }
 
+    // 🔥 权限过滤：成员只看自己的订单，部门经理看部门数据，超管和管理员不受限
+    const currentUser = userStore.currentUser
+    if (currentUser) {
+      const userRole = currentUser.role
+      if (userRole === 'super_admin' || userRole === 'admin') {
+        // 超管和管理员不受限
+        console.log('[物流列表] 管理员权限，显示所有数据')
+      } else if (userRole === 'department_manager') {
+        // 部门经理看部门数据
+        const deptId = currentUser.departmentId
+        shippedOrders = shippedOrders.filter(order => {
+          const salesPerson = userStore.getUserById?.(order.salesPersonId || order.createdBy)
+          return salesPerson?.departmentId === deptId || order.createdByDepartmentId === deptId
+        })
+        console.log('[物流列表] 部门经理权限，过滤后:', shippedOrders.length, '条')
+      } else {
+        // 普通成员只看自己的订单
+        shippedOrders = shippedOrders.filter(order =>
+          order.salesPersonId === currentUser.id ||
+          order.createdBy === currentUser.id ||
+          order.operatorId === currentUser.id
+        )
+        console.log('[物流列表] 成员权限，过滤后:', shippedOrders.length, '条')
+      }
+    }
+
     // 转换为物流列表格式
     let logisticsData = shippedOrders.map(order => ({
       id: parseInt(order.id),
