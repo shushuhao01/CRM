@@ -1164,7 +1164,11 @@ const initCharts = () => {
   nextTick(() => {
     // 业绩趋势图
     if (performanceChartRef.value) {
-      const performanceChart = echarts.init(performanceChartRef.value)
+      // 🔥 修复：获取已存在的实例或创建新实例
+      let performanceChart = echarts.getInstanceByDom(performanceChartRef.value)
+      if (!performanceChart) {
+        performanceChart = echarts.init(performanceChartRef.value)
+      }
 
       // 检查是否有数据
       const hasPerformanceData = chartData.value.performanceTrend.data.length > 0
@@ -1240,7 +1244,11 @@ const initCharts = () => {
 
     // 订单状态分布图
     if (orderStatusChartRef.value) {
-      const orderStatusChart = echarts.init(orderStatusChartRef.value)
+      // 🔥 修复：获取已存在的实例或创建新实例
+      let orderStatusChart = echarts.getInstanceByDom(orderStatusChartRef.value)
+      if (!orderStatusChart) {
+        orderStatusChart = echarts.init(orderStatusChartRef.value)
+      }
 
       // 检查是否有数据
       const hasOrderStatusData = chartData.value.orderStatus.length > 0
