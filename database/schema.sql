@@ -1115,7 +1115,7 @@ CREATE TABLE `order_items` (
 DROP TABLE IF EXISTS `order_status_history`;
 CREATE TABLE `order_status_history` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '历史ID',
-  `orderId` INT NOT NULL COMMENT '订单ID',
+  `orderId` VARCHAR(50) NOT NULL COMMENT '订单ID（UUID格式）',
   `status` VARCHAR(50) NOT NULL COMMENT '状态',
   `notes` TEXT NULL COMMENT '状态变更备注',
   `operatorId` INT NULL COMMENT '操作人ID',
