@@ -70,45 +70,6 @@
         </div>
       </el-card>
 
-      <!-- 本月签收统计 -->
-      <el-card class="chart-card">
-        <template #header>
-          <div class="chart-header">
-            <span class="chart-title">{{ chartTitles.monthlySign }}</span>
-            <el-button type="text" size="small" @click="refreshMonthlySignChart">刷新</el-button>
-          </div>
-        </template>
-        <div class="chart-container">
-          <v-chart
-            v-if="monthlySignChartData.dates && monthlySignChartData.dates.length > 0"
-            :option="monthlySignChartOption"
-            autoresize
-          />
-          <div v-else class="empty-chart">
-            <el-empty description="暂无签收数据" />
-          </div>
-        </div>
-      </el-card>
-
-      <!-- 本月业绩趋势 -->
-      <el-card class="chart-card">
-        <template #header>
-          <div class="chart-header">
-            <span class="chart-title">{{ chartTitles.monthlyPerformance }}</span>
-            <el-button type="text" size="small" @click="refreshMonthlyPerformanceChart">刷新</el-button>
-          </div>
-        </template>
-        <div class="chart-container">
-          <v-chart
-            v-if="monthlyPerformanceChartData.dates && monthlyPerformanceChartData.dates.length > 0"
-            :option="monthlyPerformanceChartOption"
-            autoresize
-          />
-          <div v-else class="empty-chart">
-            <el-empty description="暂无业绩数据" />
-          </div>
-        </div>
-      </el-card>
     </div>
 
     <!-- 排名和待办事项 -->
@@ -416,9 +377,7 @@ const chartTitles = computed(() => {
   if (!user) {
     return {
       performanceTrend: '业绩趋势',
-      orderStatus: '订单状态分布',
-      monthlySign: '本月签收统计',
-      monthlyPerformance: '本月业绩趋势'
+      orderStatus: '订单状态分布'
     }
   }
 
@@ -428,23 +387,17 @@ const chartTitles = computed(() => {
   if (isAdmin) {
     return {
       performanceTrend: '业绩趋势（全部）',
-      orderStatus: '订单状态分布（全部）',
-      monthlySign: '本月签收统计（全部）',
-      monthlyPerformance: '本月业绩趋势（全部）'
+      orderStatus: '订单状态分布（全部）'
     }
   } else if (isDeptManager) {
     return {
       performanceTrend: '业绩趋势（部门）',
-      orderStatus: '订单状态分布（部门）',
-      monthlySign: '本月签收统计（部门）',
-      monthlyPerformance: '本月业绩趋势（部门）'
+      orderStatus: '订单状态分布（部门）'
     }
   } else {
     return {
       performanceTrend: '业绩趋势（个人）',
-      orderStatus: '订单状态分布（个人）',
-      monthlySign: '本月签收统计（个人）',
-      monthlyPerformance: '本月业绩趋势（个人）'
+      orderStatus: '订单状态分布（个人）'
     }
   }
 })
@@ -794,157 +747,6 @@ const orderStatusChartOption = computed(() => ({
       data: orderStatusChartData.value
     }
   ]
-}))
-
-// 本月签收统计图数据
-const monthlySignChartData = ref({ dates: [] as string[], counts: [] as number[] })
-
-// 本月签收统计图配置
-const monthlySignChartOption = computed(() => ({
-  tooltip: {
-    trigger: 'axis',
-    axisPointer: {
-      type: 'shadow'
-    },
-    formatter: function(params: Array<{axisValue: string, value: number}>) {
-      const data = params[0]
-      return `${data.axisValue}<br/>签收单数: ${data.value}单`
-    }
-  },
-  grid: {
-    left: '3%',
-    right: '4%',
-    bottom: '3%',
-    containLabel: true
-  },
-  xAxis: {
-    type: 'category',
-    data: monthlySignChartData.value.dates,
-    axisLabel: {
-      rotate: 45,
-      fontSize: 12
-    }
-  },
-  yAxis: {
-    type: 'value',
-    name: '签收单数',
-    axisLabel: {
-      formatter: '{value}单'
-    }
-  },
-  series: [{
-    name: '签收单数',
-    type: 'bar',
-    data: monthlySignChartData.value.counts,
-    itemStyle: {
-      color: {
-        type: 'linear',
-        x: 0,
-        y: 0,
-        x2: 0,
-        y2: 1,
-        colorStops: [
-          { offset: 0, color: '#52C41A' },
-          { offset: 1, color: '#389E0D' }
-        ]
-      }
-    },
-    emphasis: {
-      itemStyle: {
-        color: {
-          type: 'linear',
-          x: 0,
-          y: 0,
-          x2: 0,
-          y2: 1,
-          colorStops: [
-            { offset: 0, color: '#73D13D' },
-            { offset: 1, color: '#52C41A' }
-          ]
-        }
-      }
-    }
-  }]
-}))
-
-// 本月业绩趋势图数据
-const monthlyPerformanceChartData = ref({ dates: [] as string[], amounts: [] as number[] })
-
-// 本月业绩趋势图配置
-const monthlyPerformanceChartOption = computed(() => ({
-  tooltip: {
-    trigger: 'axis',
-    axisPointer: {
-      type: 'cross',
-      label: {
-        backgroundColor: '#6a7985'
-      }
-    },
-    formatter: function(params: Array<{axisValue: string, value: number}>) {
-      const data = params[0]
-      return `${data.axisValue}<br/>业绩金额: ¥${data.value.toLocaleString()}`
-    }
-  },
-  grid: {
-    left: '3%',
-    right: '4%',
-    bottom: '3%',
-    containLabel: true
-  },
-  xAxis: {
-    type: 'category',
-    boundaryGap: false,
-    data: monthlyPerformanceChartData.value.dates,
-    axisLabel: {
-      rotate: 45,
-      fontSize: 12
-    }
-  },
-  yAxis: {
-    type: 'value',
-    name: '业绩金额',
-    axisLabel: {
-      formatter: function(value: number) {
-        if (value >= 10000) {
-          return (value / 10000).toFixed(1) + 'w'
-        }
-        return '¥' + value.toLocaleString()
-      }
-    }
-  },
-  series: [{
-    name: '业绩金额',
-    type: 'line',
-    smooth: true,
-    data: monthlyPerformanceChartData.value.amounts,
-    itemStyle: {
-      color: '#1890FF'
-    },
-    lineStyle: {
-      color: '#1890FF',
-      width: 3
-    },
-    areaStyle: {
-      color: {
-        type: 'linear',
-        x: 0,
-        y: 0,
-        x2: 0,
-        y2: 1,
-        colorStops: [
-          { offset: 0, color: 'rgba(24, 144, 255, 0.3)' },
-          { offset: 1, color: 'rgba(24, 144, 255, 0.1)' }
-        ]
-      }
-    },
-    emphasis: {
-      itemStyle: {
-        color: '#40A9FF',
-        borderColor: '#1890FF',
-        borderWidth: 2
-      }
-    }
-  }]
 }))
 
 // 获取订单状态对应的颜色
@@ -1595,121 +1397,6 @@ const loadRealChartData = () => {
   })
 
   orderStatusChartData.value = orderStatusData
-
-  // 加载本月签收统计数据
-  loadMonthlySignChartData()
-
-  // 加载本月业绩趋势数据
-  loadMonthlyPerformanceChartData()
-}
-
-// 加载本月签收统计数据
-const loadMonthlySignChartData = () => {
-  const currentUserId = userStore.currentUser?.id
-  const currentDeptId = userStore.currentUser?.departmentId || userStore.currentUser?.department
-
-  // 获取所有订单
-  let allOrders = orderStore.orders
-
-  // 根据用户角色筛选订单
-  if (!userStore.isAdmin && !userStore.isManager) {
-    allOrders = allOrders.filter(order => order.salesPersonId === currentUserId || order.createdBy === currentUserId)
-  } else if (userStore.isManager && !userStore.isAdmin) {
-    const departmentUsers = userStore.users?.filter(u =>
-      String(u.departmentId) === String(currentDeptId) ||
-      String(u.department) === String(currentDeptId)
-    ).map(u => u.id) || []
-    allOrders = allOrders.filter(order => departmentUsers.includes(order.salesPersonId) || departmentUsers.includes(order.createdBy))
-  }
-
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = now.getMonth()
-  const today = now.getDate()
-
-  // 生成本月1号到今天的日期数组
-  const dates: string[] = []
-  const counts: number[] = []
-
-  for (let day = 1; day <= today; day++) {
-    const dateStr = `${month + 1}/${day}`
-    dates.push(dateStr)
-
-    // 统计当天的签收订单数
-    const dayStart = new Date(year, month, day, 0, 0, 0)
-    const dayEnd = new Date(year, month, day, 23, 59, 59, 999)
-
-    const daySignCount = allOrders.filter(order => {
-      if (order.shippingStatus !== 'delivered') return false
-
-      const signTime = new Date(order.logisticsUpdateTime || order.updateTime || order.createTime)
-      return signTime >= dayStart && signTime <= dayEnd
-    }).length
-
-    counts.push(daySignCount)
-  }
-
-  monthlySignChartData.value = { dates, counts }
-}
-
-// 加载本月业绩趋势数据
-const loadMonthlyPerformanceChartData = () => {
-  const currentUserId = userStore.currentUser?.id
-  const currentDeptId = userStore.currentUser?.departmentId || userStore.currentUser?.department
-
-  // 获取已审核通过的订单
-  let approvedOrders = orderStore.orders.filter(order => order.auditStatus === 'approved')
-
-  // 根据用户角色筛选订单
-  if (!userStore.isAdmin && !userStore.isManager) {
-    approvedOrders = approvedOrders.filter(order => order.salesPersonId === currentUserId || order.createdBy === currentUserId)
-  } else if (userStore.isManager && !userStore.isAdmin) {
-    const departmentUsers = userStore.users?.filter(u =>
-      String(u.departmentId) === String(currentDeptId) ||
-      String(u.department) === String(currentDeptId)
-    ).map(u => u.id) || []
-    approvedOrders = approvedOrders.filter(order => departmentUsers.includes(order.salesPersonId) || departmentUsers.includes(order.createdBy))
-  }
-
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = now.getMonth()
-  const today = now.getDate()
-
-  // 生成本月1号到今天的日期数组
-  const dates: string[] = []
-  const amounts: number[] = []
-
-  for (let day = 1; day <= today; day++) {
-    const dateStr = `${month + 1}/${day}`
-    dates.push(dateStr)
-
-    // 统计当天的业绩金额
-    const dayStart = new Date(year, month, day, 0, 0, 0)
-    const dayEnd = new Date(year, month, day, 23, 59, 59, 999)
-
-    const dayPerformance = approvedOrders.filter(order => {
-      // 使用订单创建时间或审核通过时间
-      const orderTime = new Date(order.auditTime || order.createTime)
-      return orderTime >= dayStart && orderTime <= dayEnd
-    }).reduce((sum, order) => sum + order.totalAmount, 0)
-
-    amounts.push(dayPerformance)
-  }
-
-  monthlyPerformanceChartData.value = { dates, amounts }
-}
-
-// 刷新本月签收统计图表
-const refreshMonthlySignChart = () => {
-  loadMonthlySignChartData()
-  ElMessage.success('签收统计已刷新')
-}
-
-// 刷新本月业绩趋势图表
-const refreshMonthlyPerformanceChart = () => {
-  loadMonthlyPerformanceChartData()
-  ElMessage.success('业绩趋势已刷新')
 }
 
 // 获取业绩图表标题
