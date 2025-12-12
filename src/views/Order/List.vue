@@ -1793,12 +1793,19 @@ const handleExport = async () => {
   try {
     loading.value = true
 
-    // 🔥 调试：打印前几条订单的expressCompany字段
-    console.log('[订单导出] 检查expressCompany字段:', filteredOrderList.value.slice(0, 5).map(o => ({
+    // 🔥 调试：打印前几条订单的完整数据，检查所有可能的快递字段
+    const sampleOrders = filteredOrderList.value.slice(0, 3)
+    console.log('[订单导出] 检查订单数据:', sampleOrders.map(o => ({
       orderNumber: o.orderNumber,
       expressCompany: o.expressCompany,
-      hasExpressCompany: !!o.expressCompany
+      express_company: (o as any).express_company,
+      specifiedExpress: o.specifiedExpress,
+      allKeys: Object.keys(o).filter(k => k.toLowerCase().includes('express') || k.toLowerCase().includes('company'))
     })))
+    // 打印第一条订单的完整数据
+    if (sampleOrders.length > 0) {
+      console.log('[订单导出] 第一条订单完整数据:', JSON.stringify(sampleOrders[0], null, 2))
+    }
 
     const exportData: ExportOrder[] = filteredOrderList.value.map(order => ({
       orderNumber: order.orderNumber || '',
