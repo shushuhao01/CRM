@@ -308,7 +308,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, provide, onMounted, onUnmounted, watch } from 'vue'
 import LogisticsStatusPermission from '@/components/Permission/LogisticsStatusPermission.vue'
 import StatusUpdateDialog from '@/components/Logistics/StatusUpdateDialog.vue'
 import TodoDialog from '@/components/Logistics/TodoDialog.vue'
@@ -346,6 +346,9 @@ const statusFilter = ref('')
 const orderList = ref([])
 const selectedOrders = ref([])
 const currentOrder = ref(null)
+
+// 计算选中订单数量
+const selectedCount = computed(() => selectedOrders.value.length)
 
 // 分页数据
 const pagination = reactive({
@@ -502,6 +505,10 @@ const handleBatchUpdateStatus = () => {
   currentOrder.value = null
   statusDialogVisible.value = true
 }
+
+// 提供给子组件AutoSyncSettings使用
+provide('selectedCount', selectedCount)
+provide('handleBatchUpdate', handleBatchUpdateStatus)
 
 const setTodo = (row: any) => {
   currentOrder.value = row
