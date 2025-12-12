@@ -444,32 +444,58 @@ const loadTrackingData = async () => {
     const paramId = route.params.trackingNo || route.query.trackingNo
     const companyCode = route.query.company
 
-    // 从订单store中查找对应的订单
-    const allOrders = orderStore.getOrders()
+    console.log('[物流跟踪详情] 加载数据，参数ID:', paramId)
 
-    // 🔥 修复：支持通过订单ID、物流单号等多种方式查找
-    let order = allOrders.find(o =>
-      o.id === paramId ||
-      o.id === String(paramId) ||
-      String(o.id) === String(paramId)
-    )
+    // 🔥 首先尝试从API获取订单数据
+    let order = null
+    try {
+      const { apiService } = await import('@/services/apiService')
+      // 尝试通过订单ID获取
+      const response = await apiService.get(`/orders/${paramId}`)
+      if (response && response.data) {
+        order = response.data
+        console.log('[物流跟踪详情] 从API获取订单成功:', order.orderNumber)
+      }
+    } catch (apiError) {
+      console.log('[物流跟踪详情] API获取失败，尝试从store查找')
+    }
 
-    // 如果通过ID找不到，尝试通过物流单号查找
+    // 如果API获取失败，从订单store中查找
     if (!order) {
+      const allOrders = orderStore.getOrders()
+      console.log('[物流跟踪详情] store中订单总数:', allOrders.length)
+
+      // 🔥 修复：支持通过订单ID、物流单号、订单号等多种方式查找
       order = allOrders.find(o =>
-        o.trackingNumber === paramId ||
-        o.expressNo === paramId ||
-        o.orderNumber === paramId
+        o.id === paramId ||
+        o.id === String(paramId) ||
+        String(o.id) === String(paramId)
       )
+
+      // 如果通过ID找不到，尝试通过物流单号查找
+      if (!order) {
+        order = allOrders.find(o =>
+          o.trackingNumber === paramId ||
+          o.expressNo === paramId
+        )
+      }
+
+      // 如果还找不到，尝试通过订单号查找
+      if (!order) {
+        order = allOrders.find(o => o.orderNumber === paramId)
+      }
     }
 
     if (!order) {
+      console.error('[物流跟踪详情] 未找到订单，参数ID:', paramId)
       ElMessage.error('未找到对应的订单信息')
       if (!isUnmounted.value) {
         loading.value = false
       }
       return
     }
+
+    console.log('[物流跟踪详情] 找到订单:', order.orderNumber, order.id)
 
     // 检查组件是否已卸载
     if (isUnmounted.value) return
@@ -480,21 +506,23 @@ const loadTrackingData = async () => {
 
     // 使用真实订单数据
     Object.assign(trackingInfo, {
-      trackingNo: order.trackingNumber || order.expressNo || trackingNo || '',
+      trackingNo: order.trackingNumber || order.expressNo || paramId || '',
       companyName: getExpressCompanyName(expressCompany),
       companyCode: expressCompany,
       senderName: '发货方', // 可以从订单或配置中获取
       senderAddress: '', // 可以从订单或配置中获取
-      receiverName: order.receiverName || '',
-      receiverAddress: order.receiverAddress || '',
-      shipTime: order.shippingTime || order.shipTime || '',
-      estimatedTime: order.estimatedDeliveryTime || '',
+      receiverName: order.receiverName || order.customerName || '',
+      receiverAddress: order.receiverAddress || order.shippingAddress || '',
+      shipTime: order.shippingTime || order.shipTime || order.shippedAt || '',
+      estimatedTime: order.estimatedDeliveryTime || order.expectedDeliveryDate || '',
       status: order.logisticsStatus || mapOrderStatusToLogisticsStatus(order.status),
       serviceType: '标准快递', // 可以从订单或配置中获取
       servicePhone: companyContact.service,
       complaintPhone: companyContact.complaint,
       website: companyContact.website
     })
+
+    console.log('[物流跟踪详情] 物流信息已加载:', trackingInfo)
 
     // 使用真实物流轨迹数据
     if (order.logisticsHistory && Array.isArray(order.logisticsHistory) && order.logisticsHistory.length > 0) {

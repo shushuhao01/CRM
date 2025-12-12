@@ -91,6 +91,7 @@
                     v-model="form.status"
                     placeholder="请选择状态"
                     style="width: 100%"
+                    :disabled="!canEditLogisticsStatus"
                   >
                     <el-option label="待发货" value="pending" />
                     <el-option label="已发货" value="shipped" />
@@ -99,6 +100,12 @@
                     <el-option label="已签收" value="delivered" />
                     <el-option label="异常" value="exception" />
                   </el-select>
+                  <!-- 🔥 物流状态编辑权限提示 -->
+                  <div v-if="!canEditLogisticsStatus" class="status-tip">
+                    <el-text type="warning" size="small">
+                      {{ logisticsStatusDisabledReason }}
+                    </el-text>
+                  </div>
                 </el-form-item>
               </el-col>
             </el-row>
@@ -517,6 +524,64 @@ const orderOptions = ref([])
 
 // 选中的订单
 const selectedOrder = ref(null)
+
+// 🔥 当前订单状态（用于物流状态编辑权限控制）
+const currentOrderStatus = ref('')
+
+// 🔥 物流状态编辑权限控制
+const canEditLogisticsStatus = computed(() => {
+  // 如果不是编辑模式，允许编辑
+  if (!isEdit.value) return true
+
+  const orderStatus = currentOrderStatus.value
+
+  // 只有在已发货状态才能编辑物流状态
+  if (orderStatus !== 'shipped') {
+    return false
+  }
+
+  // 以下订单状态不允许编辑物流状态
+  const disallowedStatuses = ['delivered', 'package_exception', 'rejected', 'rejected_returned', 'after_sales_created']
+  if (disallowedStatuses.includes(orderStatus)) {
+    return false
+  }
+
+  return true
+})
+
+// 🔥 物流状态不可编辑的原因
+const logisticsStatusDisabledReason = computed(() => {
+  const orderStatus = currentOrderStatus.value
+
+  if (orderStatus !== 'shipped') {
+    return `订单状态为"${getOrderStatusTextByStatus(orderStatus)}"时，物流状态不可编辑（需要订单状态为"已发货"）`
+  }
+
+  const disallowedStatuses = ['delivered', 'package_exception', 'rejected', 'rejected_returned', 'after_sales_created']
+  if (disallowedStatuses.includes(orderStatus)) {
+    return `订单状态为"${getOrderStatusTextByStatus(orderStatus)}"时，物流状态不可编辑`
+  }
+
+  return ''
+})
+
+// 获取订单状态文本
+const getOrderStatusTextByStatus = (status: string) => {
+  const statusMap: Record<string, string> = {
+    'pending_transfer': '待流转',
+    'pending_audit': '待审核',
+    'audit_rejected': '审核拒绝',
+    'pending_shipment': '待发货',
+    'shipped': '已发货',
+    'delivered': '已签收',
+    'package_exception': '包裹异常',
+    'rejected': '拒收',
+    'rejected_returned': '拒收已退回',
+    'after_sales_created': '已建售后',
+    'cancelled': '已取消'
+  }
+  return statusMap[status] || status || '未知'
+}
 
 // 物流公司列表
 const logisticsCompanies = ref([
@@ -977,37 +1042,52 @@ const handleSave = async () => {
       totalFee: totalFee.value
     }
 
+    console.log('[物流编辑] 准备保存数据:', saveData)
+
     // 🔥 调用真实API保存物流状态
     const orderId = route.params.id
     if (orderId && isEdit.value) {
       try {
         const { apiService } = await import('@/services/apiService')
         // 更新订单的物流状态
-        await apiService.put(`/orders/${orderId}`, {
+        const updateData = {
           logisticsStatus: form.status,
           expressCompany: form.company,
           trackingNumber: form.trackingNo,
           expectedDeliveryDate: form.estimatedTime,
-          shippingName: receiverForm.receiverName,
-          shippingPhone: receiverForm.receiverPhone,
-          shippingAddress: receiverForm.receiverAddress
-        })
-        console.log('[物流编辑] 物流状态已保存到数据库')
+          receiverName: receiverForm.receiverName,
+          receiverPhone: receiverForm.receiverPhone,
+          receiverAddress: receiverForm.receiverAddress
+        }
+        await apiService.put(`/orders/${orderId}`, updateData)
+        console.log('[物流编辑] 物流状态已保存到数据库:', updateData)
       } catch (apiError) {
         console.error('[物流编辑] API保存失败:', apiError)
         // 即使API失败，也更新本地store
       }
 
-      // 同时更新本地store
+      // 🔥 同时更新本地store，确保物流列表能同步显示
       const order = orderStore.getOrderById(orderId.toString())
       if (order) {
         order.logisticsStatus = form.status
         order.expressCompany = form.company
         order.trackingNumber = form.trackingNo
+        order.expressNo = form.trackingNo // 同时更新expressNo字段
         order.expectedDeliveryDate = form.estimatedTime
         order.receiverName = receiverForm.receiverName
         order.receiverPhone = receiverForm.receiverPhone
         order.receiverAddress = receiverForm.receiverAddress
+        console.log('[物流编辑] 本地store已更新:', order.orderNumber, '物流状态:', form.status)
+      }
+
+      // 🔥 触发事件通知物流列表刷新
+      try {
+        const { eventBus, EventNames } = await import('@/utils/eventBus')
+        eventBus.emit(EventNames.REFRESH_LOGISTICS_LIST)
+        eventBus.emit(EventNames.ORDER_STATUS_CHANGED, { orderId, logisticsStatus: form.status })
+        console.log('[物流编辑] 已触发物流列表刷新事件')
+      } catch (eventError) {
+        console.warn('[物流编辑] 触发事件失败:', eventError)
       }
     }
 
@@ -1031,44 +1111,57 @@ const loadData = async () => {
   if (isUnmounted.value) return
 
   const id = route.params.id
+  console.log('[物流编辑] 加载数据，参数ID:', id)
 
   if (id && id !== 'add') {
     isEdit.value = true
 
     try {
-      // 模拟API调用延迟
-      await new Promise(resolve => {
-        const timeoutId = setTimeout(() => {
-          timeoutIds.delete(timeoutId)
-          resolve(undefined)
-        }, 500)
-        timeoutIds.add(timeoutId)
-      })
+      // 🔥 首先尝试从API获取订单数据
+      let order = null
+      try {
+        const { apiService } = await import('@/services/apiService')
+        const response = await apiService.get(`/orders/${id}`)
+        if (response && response.data) {
+          order = response.data
+          console.log('[物流编辑] 从API获取订单成功:', order.orderNumber)
+        }
+      } catch (apiError) {
+        console.log('[物流编辑] API获取失败，尝试从store查找')
+      }
 
       // 检查组件是否已卸载
       if (isUnmounted.value) return
 
-      // 从订单store获取真实订单数据
-      // 先尝试通过ID查找（支持字符串和数字匹配）
-      let order = orderStore.getOrderById(id.toString())
-
-      // 如果通过ID找不到，尝试通过所有订单查找（支持数字ID匹配）
+      // 如果API获取失败，从订单store获取
       if (!order) {
-        const allOrders = orderStore.getOrders()
-        order = allOrders.find(o =>
-          o.id === id ||
-          o.id === String(id) ||
-          String(o.id) === String(id) ||
-          parseInt(String(o.id)) === parseInt(String(id)) ||
-          o.trackingNumber === id ||
-          o.expressNo === id
-        )
+        order = orderStore.getOrderById(id.toString())
+
+        // 如果通过ID找不到，尝试通过所有订单查找
+        if (!order) {
+          const allOrders = orderStore.getOrders()
+          order = allOrders.find(o =>
+            o.id === id ||
+            o.id === String(id) ||
+            String(o.id) === String(id) ||
+            o.trackingNumber === id ||
+            o.expressNo === id ||
+            o.orderNumber === id
+          )
+        }
       }
 
       if (!order) {
+        console.error('[物流编辑] 未找到订单，参数ID:', id)
         ElMessage.error('订单不存在')
         return
       }
+
+      console.log('[物流编辑] 找到订单:', order.orderNumber, order.id, '订单状态:', order.status)
+
+      // 🔥 设置当前订单状态（用于物流状态编辑权限控制）
+      currentOrderStatus.value = order.status
+      console.log('[物流编辑] 当前订单状态:', currentOrderStatus.value, '可编辑物流状态:', canEditLogisticsStatus.value)
 
       // 加载真实订单数据
       Object.assign(form, {
@@ -1076,7 +1169,7 @@ const loadData = async () => {
         company: order.expressCompany || '',
         trackingNo: order.trackingNumber || order.expressNo || '',
         status: order.logisticsStatus || 'pending',
-        shipTime: order.shippingTime || order.shipTime || '',
+        shipTime: order.shippingTime || order.shipTime || order.shippedAt || '',
         estimatedTime: order.expectedDeliveryDate ? `${order.expectedDeliveryDate} 18:00:00` : '',
         freight: 0,
         insuranceFee: 0,
@@ -1302,6 +1395,15 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+/* 🔥 物流状态不可编辑提示样式 */
+.status-tip {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background-color: #fdf6ec;
+  border-radius: 4px;
+  border: 1px solid #faecd8;
 }
 
 /* 响应式设计 */

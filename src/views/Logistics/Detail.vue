@@ -824,33 +824,54 @@ const loadData = async () => {
 
   try {
     const id = route.params.id
+    console.log('[物流详情] 加载数据，参数ID:', id)
 
-    // 从订单store中查找对应的订单
-    // id可能是订单ID（字符串或数字）或物流单号，需要查找匹配的订单
-    const allOrders = orderStore.getOrders()
+    // 🔥 首先尝试从API获取订单数据
+    let order = null
+    try {
+      const { apiService } = await import('@/services/apiService')
+      const response = await apiService.get(`/orders/${id}`)
+      if (response && response.data) {
+        order = response.data
+        console.log('[物流详情] 从API获取订单成功:', order.orderNumber)
+      }
+    } catch (apiError) {
+      console.log('[物流详情] API获取失败，尝试从store查找')
+    }
 
-    // 先尝试通过ID查找（支持字符串和数字匹配）
-    let order = allOrders.find(o =>
-      o.id === id ||
-      o.id === String(id) ||
-      String(o.id) === String(id) ||
-      parseInt(String(o.id)) === parseInt(String(id))
-    )
-
-    // 如果通过ID找不到，尝试通过物流单号查找
+    // 如果API获取失败，从订单store中查找
     if (!order) {
+      const allOrders = orderStore.getOrders()
+      console.log('[物流详情] store中订单总数:', allOrders.length)
+
+      // 先尝试通过ID查找（支持字符串和数字匹配）
       order = allOrders.find(o =>
-        o.trackingNumber === id ||
-        o.expressNo === id ||
-        (o.trackingNumber && o.trackingNumber.toString() === id.toString()) ||
-        (o.expressNo && o.expressNo.toString() === id.toString())
+        o.id === id ||
+        o.id === String(id) ||
+        String(o.id) === String(id)
       )
+
+      // 如果通过ID找不到，尝试通过物流单号查找
+      if (!order) {
+        order = allOrders.find(o =>
+          o.trackingNumber === id ||
+          o.expressNo === id
+        )
+      }
+
+      // 如果还找不到，尝试通过订单号查找
+      if (!order) {
+        order = allOrders.find(o => o.orderNumber === id)
+      }
     }
 
     if (!order) {
+      console.error('[物流详情] 未找到订单，参数ID:', id)
       ElMessage.error('未找到对应的订单信息')
       return
     }
+
+    console.log('[物流详情] 找到订单:', order.orderNumber, order.id)
 
     // 检查组件是否已卸载
     if (isUnmounted.value) return
@@ -862,20 +883,22 @@ const loadData = async () => {
       orderNo: order.orderNumber,
       companyName: getExpressCompanyName(order.expressCompany || ''),
       status: mapOrderStatusToLogisticsStatus(order.status, order.logisticsStatus),
-      shipTime: order.shippingTime || order.shipTime || '',
-      estimatedTime: order.estimatedDeliveryTime || '',
+      shipTime: order.shippingTime || order.shipTime || order.shippedAt || '',
+      estimatedTime: order.estimatedDeliveryTime || order.expectedDeliveryDate || '',
       actualTime: order.logisticsStatus === 'delivered' ? (order.statusHistory?.find(h => h.status === 'delivered')?.time || '') : '',
       freight: 0, // 运费信息需要从订单或物流信息中获取
       insuranceFee: 0, // 保价费信息需要从订单或物流信息中获取
-      receiverName: order.receiverName || '',
-      receiverPhone: order.receiverPhone || '',
-      receiverAddress: order.receiverAddress || '',
+      receiverName: order.receiverName || order.customerName || '',
+      receiverPhone: order.receiverPhone || order.customerPhone || '',
+      receiverAddress: order.receiverAddress || order.shippingAddress || '',
       remark: order.remark || '',
       customerName: order.customerName || '',
       customerPhone: order.customerPhone || '',
       orderTime: order.createTime || '',
       customerId: order.customerId || ''
     })
+
+    console.log('[物流详情] 物流信息已加载:', logisticsInfo)
 
     // 使用真实订单商品数据
     if (order.products && Array.isArray(order.products)) {
