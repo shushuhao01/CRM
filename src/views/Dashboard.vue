@@ -1051,8 +1051,10 @@ const loadRealMetrics = async () => {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
 
+    // 使用logisticsStatus或status字段判断已签收状态
     const monthSignedOrders = allOrders.filter(order => {
-      if (order.shippingStatus !== 'delivered') return false
+      const isDelivered = order.logisticsStatus === 'delivered' || order.status === 'delivered'
+      if (!isDelivered) return false
       const signTime = new Date(order.logisticsUpdateTime || order.updateTime || order.createTime)
       return signTime >= monthStart && signTime <= monthEnd
     })
@@ -1067,8 +1069,10 @@ const loadRealMetrics = async () => {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
 
+    // 使用logisticsStatus或status字段判断已签收状态
     const monthSignedOrders = allOrders.filter(order => {
-      if (order.shippingStatus !== 'delivered') return false
+      const isDelivered = order.logisticsStatus === 'delivered' || order.status === 'delivered'
+      if (!isDelivered) return false
       const signTime = new Date(order.logisticsUpdateTime || order.updateTime || order.createTime)
       return signTime >= monthStart && signTime <= monthEnd
     })
