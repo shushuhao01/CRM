@@ -154,11 +154,21 @@
         <el-table-column type="selection" width="55" />
         <el-table-column prop="name" label="角色名称" width="150" />
         <el-table-column prop="code" label="角色编码" width="150" />
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
-              {{ row.status === 'active' ? '启用' : '禁用' }}
-            </el-tag>
+            <el-tooltip
+              :content="isNonDisableableRole(row) ? '系统预设角色不可禁用' : (row.status === 'active' ? '点击禁用' : '点击启用')"
+              placement="top"
+            >
+              <el-switch
+                v-model="row.status"
+                active-value="active"
+                inactive-value="inactive"
+                :disabled="isNonDisableableRole(row)"
+                @change="handleRoleStatusChange(row)"
+                :loading="row.statusLoading"
+              />
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column label="角色类型" width="140">
@@ -856,12 +866,15 @@ interface RoleData {
   id: string
   name: string
   code: string
-  status: string
+  status: 'active' | 'inactive'
   roleType?: 'system' | 'business' | 'temporary' | 'custom'
   description?: string
   createTime?: string
   userCount?: number
+  permissionCount?: number
   permissions?: string[]
+  isSystem?: boolean
+  statusLoading?: boolean
 }
 
 interface PermissionData {
@@ -1491,11 +1504,54 @@ const handleToggleStatus = async (row: RoleData) => {
 // 🔥 系统预设角色列表（不可删除）
 const SYSTEM_PRESET_ROLES = ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service']
 
+// 🔥 不可禁用的角色（超级管理员和管理员）
+const NON_DISABLEABLE_ROLES = ['super_admin', 'admin']
+
 /**
  * 判断角色是否为系统预设角色（不可删除）
  */
 const isSystemPresetRole = (role: RoleData) => {
   return SYSTEM_PRESET_ROLES.includes(role.code) || role.isSystem === true
+}
+
+/**
+ * 判断角色是否不可禁用（超级管理员和管理员）
+ */
+const isNonDisableableRole = (role: RoleData) => {
+  return NON_DISABLEABLE_ROLES.includes(role.code)
+}
+
+/**
+ * 处理角色状态变更
+ */
+const handleRoleStatusChange = async (role: RoleData) => {
+  // 防止系统预设角色被禁用
+  if (isNonDisableableRole(role)) {
+    ElMessage.warning('系统预设角色不可禁用')
+    // 恢复原状态
+    role.status = 'active'
+    return
+  }
+
+  try {
+    role.statusLoading = true
+
+    // 调用后端API更新角色状态
+    await roleApiService.updateRoleStatus(role.id, role.status)
+
+    ElMessage.success(`角色已${role.status === 'active' ? '启用' : '禁用'}`)
+
+    // 重新加载角色统计数据
+    loadRoleStats()
+  } catch (error) {
+    console.error('更新角色状态失败:', error)
+    ElMessage.error('状态更新失败')
+
+    // 恢复原状态
+    role.status = role.status === 'active' ? 'inactive' : 'active'
+  } finally {
+    role.statusLoading = false
+  }
 }
 
 /**

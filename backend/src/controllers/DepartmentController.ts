@@ -482,6 +482,16 @@ export class DepartmentController {
         return;
       }
 
+      // 🔥 防止禁用系统预设部门（系统管理部）
+      const nonDisableableDepartments = ['系统管理部'];
+      if (status === 'inactive' && nonDisableableDepartments.includes(department.name)) {
+        res.status(400).json({
+          success: false,
+          message: '系统预设部门不可禁用'
+        });
+        return;
+      }
+
       department.status = status;
       const savedDepartment = await this.departmentRepository.save(department);
 

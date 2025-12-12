@@ -322,6 +322,65 @@ export class RoleController {
     }
   }
 
+  // 更新角色状态
+  async updateRoleStatus(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      console.log('[RoleController] 更新角色状态:', { id, status });
+
+      // 验证状态值
+      if (!['active', 'inactive'].includes(status)) {
+        res.status(400).json({
+          success: false,
+          message: '无效的状态值'
+        });
+        return;
+      }
+
+      const role = await this.roleRepository.findOne({
+        where: { id: String(id) }
+      });
+
+      if (!role) {
+        res.status(404).json({
+          success: false,
+          message: '角色不存在'
+        });
+        return;
+      }
+
+      // 🔥 防止禁用系统预设角色（超级管理员和管理员）
+      const nonDisableableRoles = ['super_admin', 'admin'];
+      if (status === 'inactive' && nonDisableableRoles.includes(role.code)) {
+        res.status(400).json({
+          success: false,
+          message: '系统预设角色不可禁用'
+        });
+        return;
+      }
+
+      // 更新状态
+      role.status = status;
+      const savedRole = await this.roleRepository.save(role);
+
+      console.log('[RoleController] 角色状态更新成功:', { id, status });
+
+      res.json({
+        success: true,
+        data: savedRole,
+        message: `角色已${status === 'active' ? '启用' : '禁用'}`
+      });
+    } catch (error) {
+      console.error('更新角色状态失败:', error);
+      res.status(500).json({
+        success: false,
+        message: '更新角色状态失败'
+      });
+    }
+  }
+
   // 获取角色权限
   async getRolePermissions(req: Request, res: Response): Promise<void> {
     try {
