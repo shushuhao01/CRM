@@ -732,6 +732,7 @@ import { createSafeNavigator } from '@/utils/navigation'
 import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 import { formatDateTime } from '@/utils/dateFormat'
+import { getCompanyShortName, getTrackingUrl, KUAIDI100_URL } from '@/utils/logisticsCompanyConfig'
 
 const router = useRouter()
 const route = useRoute()
@@ -1469,23 +1470,29 @@ const trackExpress = async () => {
     return
   }
 
+  // 🔥 根据物流公司动态获取官网按钮名称和URL
+  const logisticsCompany = orderDetail.expressCompany || ''
+  const companyShortName = getCompanyShortName(logisticsCompany)
+  const companyUrl = getTrackingUrl(logisticsCompany, orderDetail.trackingNumber)
+  const kuaidi100Url = KUAIDI100_URL.replace('{trackingNo}', orderDetail.trackingNumber)
+
   // 提示选择跳转网站
   ElMessageBox.confirm(
     '请选择要跳转的查询网站',
     '选择查询网站',
     {
-      confirmButtonText: '顺丰官网',
+      confirmButtonText: `${companyShortName}官网`,
       cancelButtonText: '快递100',
       distinguishCancelAndClose: true,
       type: 'info'
     }
   ).then(() => {
-    // 点击确认，跳转顺丰官网
-    window.open('https://www.sf-express.com/chn/sc/waybill/list', '_blank')
+    // 点击确认，跳转对应物流公司官网
+    window.open(companyUrl, '_blank')
   }).catch((action) => {
     if (action === 'cancel') {
       // 点击取消，跳转快递100
-      window.open('https://www.kuaidi100.com/', '_blank')
+      window.open(kuaidi100Url, '_blank')
     }
   })
 }
