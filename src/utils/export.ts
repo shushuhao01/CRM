@@ -1,5 +1,84 @@
 import * as XLSX from 'xlsx'
 
+// 订单状态中文映射
+const orderStatusMap: Record<string, string> = {
+  'pending_transfer': '待流转',
+  'pending_audit': '待审核',
+  'audit_rejected': '审核拒绝',
+  'pending_shipment': '待发货',
+  'shipped': '已发货',
+  'delivered': '已签收',
+  'logistics_returned': '物流部退回',
+  'logistics_cancelled': '物流部取消',
+  'package_exception': '包裹异常',
+  'rejected': '拒收',
+  'rejected_returned': '拒收已退回',
+  'after_sales_created': '已建售后',
+  'pending_cancel': '待取消',
+  'cancel_failed': '取消失败',
+  'cancelled': '已取消',
+  'draft': '草稿',
+  'refunded': '已退款',
+  'pending': '待处理',
+  'approved': '已审核',
+  'completed': '已完成'
+}
+
+// 订单来源中文映射
+const orderSourceMap: Record<string, string> = {
+  'douyin': '抖音',
+  'kuaishou': '快手',
+  'wechat': '微信',
+  'taobao': '淘宝',
+  'jd': '京东',
+  'pdd': '拼多多',
+  'offline': '线下',
+  'phone': '电话',
+  'referral': '转介绍',
+  'other': '其他'
+}
+
+// 支付方式中文映射
+const paymentMethodMap: Record<string, string> = {
+  'cod': '货到付款',
+  'online': '在线支付',
+  'bank_transfer': '银行转账',
+  'wechat_pay': '微信支付',
+  'alipay': '支付宝',
+  'cash': '现金',
+  'other': '其他'
+}
+
+// 发货状态中文映射
+const shippingStatusMap: Record<string, string> = {
+  'pending': '待发货',
+  'shipped': '已发货',
+  'delivered': '已签收',
+  'rejected': '拒收',
+  'returned': '已退回',
+  'exception': '异常'
+}
+
+// 获取订单状态中文
+const getOrderStatusText = (status: string): string => {
+  return orderStatusMap[status] || status || ''
+}
+
+// 获取订单来源中文
+const getOrderSourceText = (source: string): string => {
+  return orderSourceMap[source] || source || ''
+}
+
+// 获取支付方式中文
+const getPaymentMethodText = (method: string): string => {
+  return paymentMethodMap[method] || method || ''
+}
+
+// 获取发货状态中文
+const getShippingStatusText = (status: string): string => {
+  return shippingStatusMap[status] || status || ''
+}
+
 // 客户导出接口
 export interface ExportCustomer {
   code: string
@@ -59,31 +138,35 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
     throw new Error('没有可导出的数据')
   }
 
-  // 🔥 批次270修复：收集所有自定义字段
+  // 🔥 收集所有自定义字段并获取正确的字段名称
   const customFieldKeys = new Set<string>()
   const customFieldLabels: Record<string, string> = {}
+
+  // 先从localStorage获取字段配置
+  let fieldConfigs: Array<{ fieldKey: string; fieldName: string }> = []
+  try {
+    const configStr = localStorage.getItem('crm_order_field_config')
+    if (configStr) {
+      const config = JSON.parse(configStr)
+      fieldConfigs = config.customFields || []
+    }
+  } catch {
+    // 忽略解析错误
+  }
 
   orders.forEach(order => {
     if (order.customFields) {
       Object.keys(order.customFields).forEach(key => {
         customFieldKeys.add(key)
-        // 尝试从localStorage获取字段标签
+        // 从配置中获取字段名称
         if (!customFieldLabels[key]) {
-          try {
-            const configStr = localStorage.getItem('crm_order_field_config')
-            if (configStr) {
-              const config = JSON.parse(configStr)
-              const field = config.customFields?.find((f: unknown) => f.fieldKey === key)
-              if (field) {
-                customFieldLabels[key] = field.fieldName
-              } else {
-                customFieldLabels[key] = key
-              }
-            } else {
-              customFieldLabels[key] = key
-            }
-          } catch {
-            customFieldLabels[key] = key
+          const field = fieldConfigs.find(f => f.fieldKey === key)
+          if (field && field.fieldName) {
+            customFieldLabels[key] = field.fieldName
+          } else {
+            // 如果没有配置，使用友好的默认名称
+            const fieldNumber = key.replace('custom_field', '')
+            customFieldLabels[key] = `自定义字段${fieldNumber}`
           }
         }
       })
@@ -164,15 +247,15 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
         order.customerWeight || '',
         order.medicalHistory || '',
         order.serviceWechat || '',
-        order.markType || '', // 🔥 批次270新增
-        order.salesPersonName || '', // 🔥 批次270新增
-        order.paymentMethod || '', // 🔥 批次270新增
-        order.orderSource || '', // 🔥 批次270新增
-        ...sortedCustomFieldKeys.map(key => order.customFields?.[key] || ''), // 🔥 批次270新增：动态自定义字段
+        order.markType || '',
+        order.salesPersonName || '',
+        getPaymentMethodText(order.paymentMethod || ''),
+        getOrderSourceText(order.orderSource || ''),
+        ...sortedCustomFieldKeys.map(key => order.customFields?.[key] || ''),
         order.remark || '',
         order.createTime,
-        order.status,
-        order.shippingStatus || ''
+        getOrderStatusText(order.status),
+        getShippingStatusText(order.shippingStatus || '')
       ]
     } else {
       return [
@@ -185,15 +268,15 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
         order.totalAmount,
         order.depositAmount,
         order.codAmount,
-        order.markType || '', // 🔥 批次270新增
-        order.salesPersonName || '', // 🔥 批次270新增
-        order.paymentMethod || '', // 🔥 批次270新增
-        order.orderSource || '', // 🔥 批次270新增
-        ...sortedCustomFieldKeys.map(key => order.customFields?.[key] || ''), // 🔥 批次270新增：动态自定义字段
+        order.markType || '',
+        order.salesPersonName || '',
+        getPaymentMethodText(order.paymentMethod || ''),
+        getOrderSourceText(order.orderSource || ''),
+        ...sortedCustomFieldKeys.map(key => order.customFields?.[key] || ''),
         order.remark || '',
         order.createTime,
-        order.status,
-        order.shippingStatus || ''
+        getOrderStatusText(order.status),
+        getShippingStatusText(order.shippingStatus || '')
       ]
     }
   })
