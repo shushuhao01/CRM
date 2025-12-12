@@ -61,7 +61,7 @@ const cleanupLargeStorageData = (): void => {
 /**
  * 预加载应用关键数据
  * 在登录成功后调用，无缝加载数据
- * 🔥 优化：分三阶段加载，首页数据最优先，非关键数据大幅延迟
+ * 🔥 优化：顺序加载，确保关键数据先加载完成，非关键数据排队等待
  */
 export const preloadAppData = async (): Promise<void> => {
   // 防止重复预加载
@@ -87,56 +87,36 @@ export const preloadAppData = async (): Promise<void> => {
       // 清理过大的localStorage数据（异步执行，不阻塞）
       setTimeout(() => cleanupLargeStorageData(), 0)
 
-      // 🔥 第一阶段（最高优先级）：只加载首页必需的数据
-      // 系统配置是必需的，订单数据用于首页统计
-      console.log('[AppInit] 📦 第一阶段：加载首页必需数据...')
+      // 🔥 第一阶段（最高优先级）：加载首页必需的数据
+      console.log('[AppInit] 📦 第一阶段：加载首页必需数据（系统配置+订单）...')
 
-      // 🔥 优化：系统配置和订单数据并行加载，但设置超时
-      const criticalPromise = Promise.race([
-        Promise.allSettled([
-          loadSystemConfig(),
-          loadOrderDataFast(), // 🔥 使用快速加载版本
-        ]),
-        new Promise(resolve => setTimeout(() => resolve('timeout'), 3000)) // 3秒超时
+      // 系统配置和订单数据并行加载（无超时限制，确保加载完成）
+      await Promise.allSettled([
+        loadSystemConfig(),
+        loadOrderDataFast(),
       ])
 
-      const criticalResult = await criticalPromise
       const criticalTime = Date.now() - startTime
-
-      if (criticalResult === 'timeout') {
-        console.warn(`[AppInit] ⚠️ 关键数据加载超时 (${criticalTime}ms)，继续执行`)
-      } else {
-        console.log(`[AppInit] ✅ 关键数据加载完成，耗时: ${criticalTime}ms`)
-      }
-
+      console.log(`[AppInit] ✅ 第一阶段完成，耗时: ${criticalTime}ms`)
       criticalDataLoaded = true
 
-      // 🔥 第二阶段（延迟500ms）：加载次要数据
-      setTimeout(async () => {
-        console.log('[AppInit] 📦 第二阶段：加载次要数据...')
-        const secondaryStart = Date.now()
+      // 🔥 第二阶段：加载次要数据（产品数据）
+      console.log('[AppInit] 📦 第二阶段：加载次要数据（产品）...')
+      await Promise.allSettled([
+        loadProductData(),
+      ])
+      const secondaryTime = Date.now() - startTime
+      console.log(`[AppInit] ✅ 第二阶段完成，耗时: ${secondaryTime}ms`)
 
-        await Promise.allSettled([
-          loadProductData(),
-        ])
+      // 🔥 第三阶段：加载非关键数据（客户+通知）
+      console.log('[AppInit] 📦 第三阶段：加载非关键数据（客户+通知）...')
+      await Promise.allSettled([
+        loadCustomerData(),
+        loadNotificationData(),
+      ])
 
-        console.log(`[AppInit] ✅ 次要数据加载完成，耗时: ${Date.now() - secondaryStart}ms`)
-      }, 500)
-
-      // 🔥 第三阶段（延迟2秒）：加载非关键数据
-      setTimeout(async () => {
-        console.log('[AppInit] 📦 第三阶段：加载非关键数据...')
-        const tertiaryStart = Date.now()
-
-        await Promise.allSettled([
-          loadCustomerData(),
-          loadNotificationData(),
-        ])
-
-        const totalTime = Date.now() - startTime
-        console.log(`[AppInit] ✅ 非关键数据加载完成，耗时: ${Date.now() - tertiaryStart}ms`)
-        console.log(`[AppInit] 🎉 全部数据加载完成，总耗时: ${totalTime}ms`)
-      }, 2000)
+      const totalTime = Date.now() - startTime
+      console.log(`[AppInit] 🎉 全部数据加载完成，总耗时: ${totalTime}ms`)
 
     } catch (error) {
       console.error('[AppInit] 预加载失败:', error)
