@@ -334,14 +334,21 @@
                 >
                   操作日志
                 </el-dropdown-item>
-                <el-dropdown-item
-                  v-if="canDeleteUser"
-                  command="delete"
-                  divided
-                  class="danger-item"
+                <el-tooltip
+                  :content="isSystemPresetUser(row) ? '系统预设用户不可删除' : ''"
+                  :disabled="!isSystemPresetUser(row)"
+                  placement="left"
                 >
-                  删除
-                </el-dropdown-item>
+                  <el-dropdown-item
+                    v-if="canDeleteUser"
+                    command="delete"
+                    divided
+                    class="danger-item"
+                    :disabled="isSystemPresetUser(row)"
+                  >
+                    删除
+                  </el-dropdown-item>
+                </el-tooltip>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -1994,10 +2001,26 @@ const handleLogsPageChange = (page: number) => {
   }
 }
 
+// 🔥 系统预设用户列表（不可删除）
+const SYSTEM_PRESET_USERS = ['superadmin', 'admin', 'manager', 'sales', 'service']
+
+/**
+ * 判断用户是否为系统预设用户（不可删除）
+ */
+const isSystemPresetUser = (user: UserData) => {
+  return SYSTEM_PRESET_USERS.includes(user.username?.toLowerCase() || '')
+}
+
 /**
  * 删除用户
  */
 const handleDelete = async (row: UserData) => {
+  // 🔥 检查是否为系统预设用户
+  if (isSystemPresetUser(row)) {
+    ElMessage.warning('系统预设用户不可删除')
+    return
+  }
+
   const userName = row.realName || row.name || row.username || '该用户'
 
   try {

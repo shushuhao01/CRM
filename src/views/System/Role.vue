@@ -233,14 +233,21 @@
                   >
                     {{ row.status === 'active' ? '禁用' : '启用' }}
                   </el-dropdown-item>
-                  <el-dropdown-item
-                    v-if="canDeleteRole"
-                    command="delete"
-                    divided
-                    class="danger-item"
+                  <el-tooltip
+                    :content="isSystemPresetRole(row) ? '系统预设角色不可删除' : ''"
+                    :disabled="!isSystemPresetRole(row)"
+                    placement="left"
                   >
-                    删除
-                  </el-dropdown-item>
+                    <el-dropdown-item
+                      v-if="canDeleteRole"
+                      command="delete"
+                      divided
+                      class="danger-item"
+                      :disabled="isSystemPresetRole(row)"
+                    >
+                      删除
+                    </el-dropdown-item>
+                  </el-tooltip>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -1481,10 +1488,26 @@ const handleToggleStatus = async (row: RoleData) => {
   }
 }
 
+// 🔥 系统预设角色列表（不可删除）
+const SYSTEM_PRESET_ROLES = ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service']
+
+/**
+ * 判断角色是否为系统预设角色（不可删除）
+ */
+const isSystemPresetRole = (role: RoleData) => {
+  return SYSTEM_PRESET_ROLES.includes(role.code) || role.isSystem === true
+}
+
 /**
  * 删除角色
  */
 const handleDelete = async (row: RoleData) => {
+  // 🔥 检查是否为系统预设角色
+  if (isSystemPresetRole(row)) {
+    ElMessage.warning('系统预设角色不可删除')
+    return
+  }
+
   try {
     await ElMessageBox.confirm(
       `确定要删除角色"${row.name}"吗？删除后不可恢复！`,
