@@ -2483,6 +2483,7 @@ const loadOrderList = async () => {
         createTime: '2024-01-14 11:45:00',
         remark: '',
         auditStatus: 'approved',
+        auditFlag: 'approved',
         auditTime: '2024-01-14 14:30:00',
         auditor: '审核员A',
         auditRemark: '订单信息完整，审核通过',
@@ -2533,6 +2534,7 @@ const loadOrderList = async () => {
         createTime: '2024-01-13 14:30:00',
         remark: 'VIP客户，需要特殊包装',
         auditStatus: 'approved',
+        auditFlag: 'approved',
         auditTime: '2024-01-13 16:45:00',
         auditor: '审核员B',
         auditRemark: 'VIP客户订单，优先处理',
@@ -2588,6 +2590,7 @@ const loadOrderList = async () => {
         createTime: '2024-01-12 15:20:00',
         remark: '',
         auditStatus: 'rejected',
+        auditFlag: 'rejected',
         auditTime: '2024-01-12 17:30:00',
         auditor: '审核员A',
         auditRemark: '客户信息不完整，需要补充联系地址',
@@ -2662,6 +2665,8 @@ const loadOrderList = async () => {
         // 🔥 添加支付方式字段
         paymentMethod: order.paymentMethod || '',
         auditStatus: order.auditStatus,
+        // 🔥 审核标识：已审核通过
+        auditFlag: 'approved',
         auditTime: order.auditTime || order.updateTime,
         auditor: order.auditor || '系统',
         auditRemark: order.auditRemark || '',
@@ -2705,6 +2710,8 @@ const loadOrderList = async () => {
         // 🔥 添加支付方式字段
         paymentMethod: order.paymentMethod || '',
         auditStatus: order.auditStatus,
+        // 🔥 审核标识：审核拒绝
+        auditFlag: 'rejected',
         auditTime: order.auditTime || order.updateTime,
         auditor: order.auditor || '系统',
         auditRemark: order.auditRemark || order.rejectReason || '',
