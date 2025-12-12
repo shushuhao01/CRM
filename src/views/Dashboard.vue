@@ -1438,21 +1438,22 @@ const handleOrderStatusChanged = () => {
 }
 
 onMounted(async () => {
-  // 先加载用户列表（用于业绩排名显示用户信息）
-  await userStore.loadUsers()
+  // 🔥 优化：并行加载用户列表和订单数据，减少等待时间
+  const startTime = Date.now()
 
-  // 🔥 登录后无痕刷新：从 API 加载最新数据
   try {
-    // 并行加载订单和客户数据，确保数据是最新的
+    // 并行加载所有必要数据
     await Promise.all([
-      orderStore.loadOrdersFromAPI?.() || Promise.resolve(),
+      userStore.loadUsers(),
+      // 只有当订单数据为空时才从API加载，避免重复请求
+      orderStore.orders.length === 0 ? (orderStore.loadOrdersFromAPI?.() || Promise.resolve()) : Promise.resolve()
     ])
-    console.log('[Dashboard] 数据刷新完成')
+    console.log(`[Dashboard] 数据加载完成，耗时: ${Date.now() - startTime}ms`)
   } catch (err) {
-    console.warn('[Dashboard] 数据刷新失败:', err)
+    console.warn('[Dashboard] 数据加载失败:', err)
   }
 
-  // 加载仪表板数据
+  // 加载仪表板数据（使用已加载的数据计算指标）
   loadDashboardData()
 
   // 监听订单状态变化事件
