@@ -98,7 +98,7 @@
       <!-- 物流单号列 -->
       <template #column-trackingNo="{ row }">
         <div v-if="row.trackingNo" class="tracking-no-wrapper">
-          <el-link type="primary" @click="handleTrackingNoClick(row.trackingNo)">
+          <el-link type="primary" @click="handleTrackingNoClick(row.trackingNo, row.logisticsCompany)">
             {{ row.trackingNo }}
           </el-link>
           <el-button
@@ -189,6 +189,7 @@ import { createSafeNavigator } from '@/utils/navigation'
 import { eventBus, EventNames } from '@/utils/eventBus'
 import { getOrderStatusStyle, getOrderStatusText } from '@/utils/orderStatusConfig'
 import { formatDateTime } from '@/utils/dateFormat'
+import { getCompanyShortName, getTrackingUrl, KUAIDI100_URL } from '@/utils/logisticsCompanyConfig'
 
 interface LogisticsItem {
   id: string | number // 🔥 修复：支持UUID字符串和数字ID
@@ -675,7 +676,7 @@ const handleViewDetail = (row: LogisticsItem) => {
 }
 
 // 点击物流单号：复制并提示选择跳转网站
-const handleTrackingNoClick = async (trackingNo: string) => {
+const handleTrackingNoClick = async (trackingNo: string, logisticsCompany?: string) => {
   // 复制物流单号
   try {
     if (navigator.clipboard && window.isSecureContext) {
@@ -708,23 +709,28 @@ const handleTrackingNoClick = async (trackingNo: string) => {
     return
   }
 
+  // 🔥 根据物流公司动态获取官网按钮名称和URL
+  const companyShortName = getCompanyShortName(logisticsCompany || '')
+  const companyUrl = getTrackingUrl(logisticsCompany || '', trackingNo)
+  const kuaidi100Url = KUAIDI100_URL.replace('{trackingNo}', trackingNo)
+
   // 提示选择跳转网站
   ElMessageBox.confirm(
     '请选择要跳转的查询网站',
     '选择查询网站',
     {
-      confirmButtonText: '顺丰官网',
+      confirmButtonText: `${companyShortName}官网`,
       cancelButtonText: '快递100',
       distinguishCancelAndClose: true,
       type: 'info'
     }
   ).then(() => {
-    // 点击确认，跳转顺丰官网
-    window.open('https://www.sf-express.com/chn/sc/waybill/list', '_blank')
+    // 点击确认，跳转对应物流公司官网
+    window.open(companyUrl, '_blank')
   }).catch((action) => {
     if (action === 'cancel') {
       // 点击取消，跳转快递100
-      window.open('https://www.kuaidi100.com/', '_blank')
+      window.open(kuaidi100Url, '_blank')
     }
   })
 }
