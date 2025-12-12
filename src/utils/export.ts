@@ -281,8 +281,9 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
 
   // 根据权限转换数据格式（匹配列标题顺序）
   const data = orders.map(order => {
-    // 指定快递：优先使用specifiedExpress，否则使用expressCompany
-    const specifiedExpressValue = order.specifiedExpress || order.expressCompany || ''
+    // 指定快递：优先使用有值的字段（排除空字符串）
+    const specifiedExpressValue = (order.specifiedExpress && order.specifiedExpress.trim()) ||
+                                   (order.expressCompany && order.expressCompany.trim()) || ''
 
     if (isAdmin) {
       return [
