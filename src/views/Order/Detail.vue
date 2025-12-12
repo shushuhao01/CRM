@@ -292,8 +292,8 @@
               </el-tag>
             </div>
 
-            <!-- 已发货状态的物流信息 -->
-            <div v-if="orderDetail.status === 'shipped' && orderDetail.trackingNumber" class="logistics-info-grid">
+            <!-- 已发货/已签收状态的物流信息（包含物流单号） -->
+            <div v-if="hasShippedWithTracking" class="logistics-info-grid">
               <div class="logistics-item highlight">
                 <div class="logistics-label">快递公司</div>
                 <div class="logistics-value">{{ getExpressCompanyText(orderDetail.expressCompany) }}</div>
@@ -315,7 +315,7 @@
               <div class="logistics-item">
                 <div class="logistics-label">预计到达</div>
                 <div class="logistics-value estimated-delivery">
-                  {{ formatDate(orderDetail.expectedDeliveryDate) || '计算中...' }}
+                  {{ orderDetail.status === 'delivered' ? '已签收' : (formatDate(orderDetail.expectedDeliveryDate) || '计算中...') }}
                 </div>
               </div>
             </div>
@@ -336,7 +336,7 @@
               </div>
               <div class="logistics-item">
                 <div class="logistics-label">物流单号</div>
-                <div class="logistics-value pending-text">待发货后生成</div>
+                <div class="logistics-value pending-text">{{ orderDetail.trackingNumber || '待发货后生成' }}</div>
               </div>
             </div>
           </div>
@@ -1125,6 +1125,13 @@ const showLogisticsTrack = computed(() => {
   // 只有已发货及之后的状态才显示物流轨迹
   const allowedStatuses = ['shipped', 'delivered', 'completed', 'package_exception', 'rejected', 'rejected_returned']
   return allowedStatuses.includes(orderDetail.status) && orderDetail.trackingNumber
+})
+
+// 🔥 判断是否已发货且有物流单号（用于显示物流信息）
+const hasShippedWithTracking = computed(() => {
+  // 已发货及之后的状态，且有物流单号
+  const shippedStatuses = ['shipped', 'delivered', 'completed', 'package_exception', 'rejected', 'rejected_returned']
+  return shippedStatuses.includes(orderDetail.status) && !!orderDetail.trackingNumber
 })
 
 // 动态计算商品总额
