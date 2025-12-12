@@ -156,7 +156,9 @@
         >
           跟踪
         </el-button>
+        <!-- 🔥 编辑按钮：只有超级管理员和管理员可见，销售员和经理角色隐藏 -->
         <el-button
+          v-if="canEditLogistics"
           type="success"
           size="small"
           @click="handleEdit(row)"
@@ -216,6 +218,15 @@ const userStore = useUserStore()
 const loading = ref(false)
 const total = ref(0)
 const selectedRows = ref<LogisticsItem[]>([])
+
+// 🔥 权限控制：只有超级管理员和管理员可以编辑物流信息
+const canEditLogistics = computed(() => {
+  const currentUser = userStore.currentUser
+  if (!currentUser) return false
+  const role = currentUser.role
+  // 只有超级管理员和管理员可以编辑，销售员和经理角色不可见
+  return role === 'super_admin' || role === 'admin'
+})
 
 // 物流公司列表 - 从API获取
 const logisticsCompanies = ref<Array<{ code: string; name: string }>>([])
