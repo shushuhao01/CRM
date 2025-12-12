@@ -532,13 +532,17 @@ export class DepartmentController {
         id: user.id.toString(),
         userId: user.id.toString(),
         departmentId: id,
-        name: user.realName || user.username,
+        userName: user.realName || user.username,
         username: user.username,
         email: user.email,
         phone: user.phone,
+        position: user.position || user.role || '成员',
         role: user.role,
-        status: user.status,
-        joinedAt: user.createdAt.toISOString()
+        status: user.status === 'active' ? 'active' : 'inactive',
+        joinDate: user.createdAt.toISOString().split('T')[0],
+        joinedAt: user.createdAt.toISOString(),
+        createdAt: user.createdAt.toISOString(),
+        departmentName: user.departmentName || ''
       }));
 
       res.json({

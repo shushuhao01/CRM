@@ -120,33 +120,54 @@
         v-loading="departmentStore.loading"
         class="members-table"
       >
-        <el-table-column prop="userName" label="成员姓名" min-width="120">
+        <el-table-column prop="userId" label="用户ID" width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="user-id-text">{{ row.userId }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="userName" label="用户姓名" min-width="120">
           <template #default="{ row }">
             <div class="member-info">
               <el-avatar :size="32" :src="row.userAvatar" class="member-avatar">
-                {{ row.userName.charAt(0) }}
+                {{ (row.userName || '').charAt(0) || '?' }}
               </el-avatar>
-              <div class="member-details">
-                <div class="member-name">{{ row.userName }}</div>
-                <div class="member-id">ID: {{ row.userId }}</div>
-              </div>
+              <span class="member-name">{{ row.userName || '-' }}</span>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column prop="position" label="职位" width="150">
+        <el-table-column prop="username" label="用户名" width="120">
           <template #default="{ row }">
-            <el-tag type="info" size="small">{{ row.position }}</el-tag>
+            {{ row.username || '-' }}
           </template>
         </el-table-column>
 
-        <el-table-column prop="joinDate" label="加入时间" width="120">
+        <el-table-column prop="position" label="职位" width="120">
           <template #default="{ row }">
-            {{ formatDate(row.joinDate) }}
+            <el-tag type="info" size="small">{{ row.position || '-' }}</el-tag>
           </template>
         </el-table-column>
 
-        <el-table-column prop="status" label="状态" width="100" align="center">
+        <el-table-column prop="departmentName" label="部门" width="120">
+          <template #default="{ row }">
+            {{ row.departmentName || department?.name || '-' }}
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="role" label="角色" width="120">
+          <template #default="{ row }">
+            <el-tag :type="getRoleTagType(row.role)" size="small">{{ getRoleText(row.role) }}</el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="joinDate" label="创建时间" width="120">
+          <template #default="{ row }">
+            {{ formatDate(row.joinDate || row.createdAt) }}
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="status" label="状态" width="80" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
               {{ row.status === 'active' ? '活跃' : '停用' }}
@@ -154,9 +175,9 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="在职天数" width="100" align="center">
+        <el-table-column label="在职天数" width="90" align="center">
           <template #default="{ row }">
-            {{ calculateWorkDays(row.joinDate) }}天
+            {{ calculateWorkDays(row.joinDate || row.createdAt) }}天
           </template>
         </el-table-column>
 
@@ -305,7 +326,32 @@ const goBack = () => {
 // 格式化日期 - 使用统一的formatDateTime
 const formatDate = formatDateTime
 
+// 获取角色标签类型
+const getRoleTagType = (role: string) => {
+  const typeMap: Record<string, string> = {
+    'super_admin': 'danger',
+    'admin': 'warning',
+    'department_manager': 'primary',
+    'sales_staff': 'success',
+    'customer_service': 'info'
+  }
+  return typeMap[role] || 'info'
+}
+
+// 获取角色文本
+const getRoleText = (role: string) => {
+  const textMap: Record<string, string> = {
+    'super_admin': '超级管理员',
+    'admin': '管理员',
+    'department_manager': '部门经理',
+    'sales_staff': '销售员',
+    'customer_service': '客服'
+  }
+  return textMap[role] || role || '-'
+}
+
 const calculateWorkDays = (joinDate: string) => {
+  if (!joinDate) return 0
   const join = new Date(joinDate)
   const now = new Date()
   const diffTime = Math.abs(now.getTime() - join.getTime())
