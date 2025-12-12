@@ -224,13 +224,19 @@
 
         <!-- 启用状态开关插槽 -->
         <template #column-enableStatus="{ row }">
-          <el-switch
-            v-model="row.status"
-            active-value="active"
-            inactive-value="inactive"
-            :loading="row.statusLoading"
-            :before-change="() => beforeStatusChange(row)"
-          />
+          <el-tooltip
+            :content="isNonDisableableUser(row) ? '系统预设用户不可禁用' : (row.status === 'active' ? '点击禁用' : '点击启用')"
+            placement="top"
+          >
+            <el-switch
+              v-model="row.status"
+              active-value="active"
+              inactive-value="inactive"
+              :loading="row.statusLoading"
+              :disabled="isNonDisableableUser(row)"
+              :before-change="() => beforeStatusChange(row)"
+            />
+          </el-tooltip>
         </template>
 
         <!-- 在职状态开关插槽 -->
@@ -2004,11 +2010,21 @@ const handleLogsPageChange = (page: number) => {
 // 🔥 系统预设用户列表（不可删除）
 const SYSTEM_PRESET_USERS = ['superadmin', 'admin', 'manager', 'sales', 'service']
 
+// 🔥 不可禁用的用户（超级管理员和管理员）
+const NON_DISABLEABLE_USERS = ['superadmin', 'admin']
+
 /**
  * 判断用户是否为系统预设用户（不可删除）
  */
 const isSystemPresetUser = (user: UserData) => {
   return SYSTEM_PRESET_USERS.includes(user.username?.toLowerCase() || '')
+}
+
+/**
+ * 判断用户是否不可禁用（超级管理员和管理员）
+ */
+const isNonDisableableUser = (user: UserData) => {
+  return NON_DISABLEABLE_USERS.includes(user.username?.toLowerCase() || '')
 }
 
 /**

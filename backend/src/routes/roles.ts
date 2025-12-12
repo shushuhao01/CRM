@@ -29,4 +29,7 @@ router.put('/:id', (req, res) => roleController.updateRole(req, res));
 // 删除角色
 router.delete('/:id', (req, res) => roleController.deleteRole(req, res));
 
+// 更新角色状态
+router.patch('/:id/status', (req, res) => roleController.updateRoleStatus(req, res));
+
 export default router;

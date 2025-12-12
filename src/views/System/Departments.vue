@@ -292,13 +292,19 @@
         >
           <!-- 启用状态开关插槽 -->
           <template #column-statusSwitch="{ row }">
-            <el-switch
-              v-model="row.status"
-              active-value="active"
-              inactive-value="inactive"
-              :loading="row.statusLoading"
-              @change="handleStatusToggle(row)"
-            />
+            <el-tooltip
+              :content="isNonDisableableDepartment(row) ? '系统预设部门不可禁用' : (row.status === 'active' ? '点击禁用' : '点击启用')"
+              placement="top"
+            >
+              <el-switch
+                v-model="row.status"
+                active-value="active"
+                inactive-value="inactive"
+                :loading="row.statusLoading"
+                :disabled="isNonDisableableDepartment(row)"
+                @change="handleStatusToggle(row)"
+              />
+            </el-tooltip>
           </template>
 
           <!-- 部门名称插槽 -->
@@ -789,11 +795,21 @@ const handleMoveDepartment = (department: Department) => {
 // 🔥 系统预设部门名称列表（不可删除）
 const SYSTEM_PRESET_DEPARTMENTS = ['系统管理部']
 
+// 🔥 不可禁用的部门（系统管理部）
+const NON_DISABLEABLE_DEPARTMENTS = ['系统管理部']
+
 /**
  * 判断部门是否为系统预设部门（不可删除）
  */
 const isSystemPresetDepartment = (department: Department) => {
   return SYSTEM_PRESET_DEPARTMENTS.includes(department.name)
+}
+
+/**
+ * 判断部门是否不可禁用（系统管理部）
+ */
+const isNonDisableableDepartment = (department: Department) => {
+  return NON_DISABLEABLE_DEPARTMENTS.includes(department.name)
 }
 
 const handleDeleteDepartment = async (department: Department) => {

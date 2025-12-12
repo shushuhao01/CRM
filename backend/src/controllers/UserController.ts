@@ -665,6 +665,12 @@ export class UserController {
       throw new NotFoundError('用户不存在');
     }
 
+    // 🔥 防止禁用系统预设用户（超级管理员和管理员）
+    const nonDisableableUsers = ['superadmin', 'admin'];
+    if (status !== 'active' && nonDisableableUsers.includes(user.username?.toLowerCase())) {
+      throw new ValidationError('系统预设用户不可禁用');
+    }
+
     user.status = status;
     if (status === 'locked') {
       user.lockedAt = new Date();

@@ -235,6 +235,20 @@ class RoleApiService {
   }
 
   /**
+   * 更新单个角色状态
+   */
+  async updateRoleStatus(id: string, status: 'active' | 'inactive'): Promise<Role> {
+    try {
+      const response = await apiService.patch<{ success: boolean; data: Role; message: string }>(`/roles/${id}/status`, { status })
+      console.log(`[RoleAPI] 更新角色状态成功: ${id} -> ${status}`)
+      return response.data
+    } catch (error) {
+      console.error(`[RoleAPI] 更新角色状态失败: ${id}`, error)
+      throw error
+    }
+  }
+
+  /**
    * 获取角色统计信息
    */
   async getRoleStats(): Promise<unknown> {
