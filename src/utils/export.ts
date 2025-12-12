@@ -26,6 +26,13 @@ const orderStatusMap: Record<string, string> = {
 
 // 订单来源中文映射
 const orderSourceMap: Record<string, string> = {
+  'online_store': '线上商城',
+  'wechat_mini': '微信小程序',
+  'wechat_service': '微信客服',
+  'phone_call': '电话咨询',
+  'offline_store': '线下门店',
+  'referral': '客户推荐',
+  'advertisement': '广告投放',
   'douyin': '抖音',
   'kuaishou': '快手',
   'wechat': '微信',
@@ -34,19 +41,36 @@ const orderSourceMap: Record<string, string> = {
   'pdd': '拼多多',
   'offline': '线下',
   'phone': '电话',
-  'referral': '转介绍',
   'other': '其他'
 }
 
 // 支付方式中文映射
 const paymentMethodMap: Record<string, string> = {
-  'cod': '货到付款',
-  'online': '在线支付',
-  'bank_transfer': '银行转账',
-  'wechat_pay': '微信支付',
+  'wechat': '微信支付',
   'alipay': '支付宝',
+  'bank_transfer': '银行转账',
+  'unionpay': '云闪付',
+  'cod': '货到付款',
   'cash': '现金',
+  'card': '刷卡',
+  'credit_card': '信用卡',
+  'online': '在线支付',
+  'wechat_pay': '微信支付',
   'other': '其他'
+}
+
+// 快递公司中文映射
+const expressCompanyMap: Record<string, string> = {
+  'SF': '顺丰速运',
+  'YTO': '圆通速递',
+  'ZTO': '中通快递',
+  'STO': '申通快递',
+  'YD': '韵达快递',
+  'JTSD': '极兔速递',
+  'EMS': 'EMS',
+  'YZBK': '邮政包裹',
+  'DBL': '德邦快递',
+  'JD': '京东物流'
 }
 
 // 发货状态中文映射
@@ -92,6 +116,11 @@ const getShippingStatusText = (status: string): string => {
 // 获取标记类型中文
 const getMarkTypeText = (markType: string): string => {
   return markTypeMap[markType] || markType || ''
+}
+
+// 获取快递公司中文
+const getExpressCompanyText = (code: string): string => {
+  return expressCompanyMap[code] || code || ''
 }
 
 // 客户导出接口
@@ -252,6 +281,9 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
 
   // 根据权限转换数据格式（匹配列标题顺序）
   const data = orders.map(order => {
+    // 指定快递：优先使用specifiedExpress，否则使用expressCompany
+    const specifiedExpressValue = order.specifiedExpress || order.expressCompany || ''
+
     if (isAdmin) {
       return [
         order.orderNumber,
@@ -259,7 +291,7 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
         order.customerName,
         order.customerPhone,
         order.receiverAddress,
-        order.specifiedExpress || '',
+        getExpressCompanyText(specifiedExpressValue),
         order.salesPersonName || '',
         order.createTime,
         order.products,
@@ -276,7 +308,7 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
         ...sortedCustomFieldKeys.map(key => order.customFields?.[key] || ''),
         getPaymentMethodText(order.paymentMethod || ''),
         order.remark || '',
-        order.expressCompany || '',
+        getExpressCompanyText(order.expressCompany || ''),
         order.expressNo || '',
         getShippingStatusText(order.logisticsStatus || order.shippingStatus || ''),
         getMarkTypeText(order.markType || '')
@@ -288,7 +320,7 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
         order.receiverName,
         order.receiverPhone,
         order.receiverAddress,
-        order.specifiedExpress || '',
+        getExpressCompanyText(specifiedExpressValue),
         order.salesPersonName || '',
         order.createTime,
         order.products,
@@ -300,7 +332,7 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
         ...sortedCustomFieldKeys.map(key => order.customFields?.[key] || ''),
         getPaymentMethodText(order.paymentMethod || ''),
         order.remark || '',
-        order.expressCompany || '',
+        getExpressCompanyText(order.expressCompany || ''),
         order.expressNo || '',
         getShippingStatusText(order.logisticsStatus || order.shippingStatus || ''),
         getMarkTypeText(order.markType || '')
