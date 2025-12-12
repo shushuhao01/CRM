@@ -6,12 +6,6 @@
         <h1>物流列表</h1>
         <p>管理和跟踪所有物流订单</p>
       </div>
-      <div class="header-actions">
-        <el-button type="primary" @click="handleRefresh">
-          <el-icon><Refresh /></el-icon>
-          刷新
-        </el-button>
-      </div>
     </div>
 
     <!-- 搜索区域 -->
@@ -94,6 +88,13 @@
       @size-change="handleSizeChange"
       @current-change="handleCurrentChange"
     >
+      <!-- 🔥 刷新按钮放在表格右上方（列设置前面） -->
+      <template #toolbar-right>
+        <el-button type="primary" size="small" @click="handleManualRefresh" :loading="loading">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </el-button>
+      </template>
       <!-- 物流单号列 -->
       <template #column-trackingNo="{ row }">
         <div v-if="row.trackingNo" class="tracking-no-wrapper">
@@ -187,7 +188,8 @@ interface LogisticsItem {
   orderNo: string
   customerName: string
   company: string
-  status: 'pending' | 'shipped' | 'in_transit' | 'delivered' | 'exception'
+  // 🔥 修复：支持所有订单状态
+  status: string
   destination: string
   shipDate: string
   estimatedDate: string
@@ -438,6 +440,24 @@ const handleRefresh = () => {
   loadData()
 }
 
+// 🔥 手动刷新按钮处理函数
+const handleManualRefresh = async () => {
+  console.log('[物流列表] 手动刷新数据...')
+  loading.value = true
+  try {
+    // 强制从API重新加载订单数据
+    await orderStore.loadOrdersFromAPI(true)
+    // 重新加载物流列表
+    await loadData()
+    ElMessage.success('物流列表已刷新')
+  } catch (error) {
+    console.error('[物流列表] 刷新失败:', error)
+    ElMessage.error('刷新失败，请稍后重试')
+  } finally {
+    loading.value = false
+  }
+}
+
 // 加载数据
 const loadData = async () => {
   loading.value = true
@@ -451,13 +471,17 @@ const loadData = async () => {
       console.log('[物流列表] 从API获取已发货订单:', shippedOrders.length, '条')
     } catch (apiError) {
       console.warn('[物流列表] API获取失败，回退到store:', apiError)
-      // 回退到store获取
+    }
+
+    // 🔥 如果API没有返回数据，从store获取
+    if (shippedOrders.length === 0) {
       const allOrders = orderStore.getOrders()
+      // 获取所有有物流信息的订单（已发货、运输中、已签收等）
       shippedOrders = allOrders.filter(order =>
-        (order.status === 'shipped' || order.status === 'delivered') &&
-        (order.trackingNumber || order.expressNo) &&
-        order.expressCompany
+        ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'rejected', 'rejected_returned'].includes(order.status) ||
+        ((order.trackingNumber || order.expressNo) && order.expressCompany)
       )
+      console.log('[物流列表] 从store获取物流订单:', shippedOrders.length, '条')
     }
 
     // 🔥 权限过滤：成员只看自己的订单，部门经理看部门数据，超管和管理员不受限
@@ -491,13 +515,14 @@ const loadData = async () => {
       id: order.id, // 🔥 修复：保持原始订单ID（UUID格式），不要转换为数字
       orderId: order.id,
       customerId: order.customerId,
-      trackingNo: order.trackingNumber || '',
+      trackingNo: order.trackingNumber || order.expressNo || '',
       orderNo: order.orderNumber,
       customerName: order.customerName,
       company: order.expressCompany || '',
-      status: 'shipped' as const,
+      // 🔥 修复：从订单数据获取实际状态，而不是固定为shipped
+      status: order.status || 'shipped',
       destination: order.receiverAddress || '',
-      shipDate: order.shippingTime || new Date().toISOString(),
+      shipDate: order.shippingTime || order.shipTime || new Date().toISOString(),
       // 🔥 修复：从订单数据获取预计送达时间
       estimatedDate: order.estimatedDeliveryTime || order.expectedDeliveryDate || ''
     }))
