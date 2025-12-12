@@ -1182,16 +1182,27 @@ const initCharts = () => {
         performanceChart = echarts.init(performanceChartRef.value)
       }
 
+      // 🔥 清除之前的配置，确保重新渲染
+      performanceChart.clear()
+
       // 检查是否有数据
       const hasPerformanceData = chartData.value.performanceTrend.data.length > 0
+      const hasNonZeroData = chartData.value.performanceTrend.data.some(v => v > 0)
 
-      if (hasPerformanceData) {
+      console.log('📊 [业绩趋势图] 数据检查:', {
+        hasData: hasPerformanceData,
+        hasNonZeroData,
+        xAxis: chartData.value.performanceTrend.xAxis,
+        data: chartData.value.performanceTrend.data
+      })
+
+      if (hasPerformanceData && hasNonZeroData) {
         performanceChart.setOption({
           grid: {
             left: '3%',
             right: '4%',
             bottom: '3%',
-            top: '10%',
+            top: '15%',
             containLabel: true
           },
           tooltip: {
@@ -1199,7 +1210,7 @@ const initCharts = () => {
             formatter: (params: unknown) => {
               const p = params as Array<{ axisValue: string; value: number }>
               const value = p[0].value
-              return `${p[0].axisValue}<br/>¥${value.toLocaleString()}`
+              return `${p[0].axisValue}<br/>业绩：¥${value.toLocaleString()}`
             }
           },
           xAxis: {
@@ -1207,7 +1218,8 @@ const initCharts = () => {
             data: chartData.value.performanceTrend.xAxis,
             axisLabel: {
               fontSize: 11
-            }
+            },
+            boundaryGap: false
           },
           yAxis: {
             type: 'value',
@@ -1216,23 +1228,36 @@ const initCharts = () => {
             }
           },
           series: [{
+            name: '业绩',
             data: chartData.value.performanceTrend.data,
             type: 'line',
             smooth: true,
             symbol: 'circle',
-            symbolSize: 6,
+            symbolSize: 8,
+            showSymbol: true,
             itemStyle: {
-              color: '#409eff'
+              color: '#409eff',
+              borderWidth: 2,
+              borderColor: '#fff'
+            },
+            lineStyle: {
+              width: 3,
+              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0, color: '#409eff' },
+                { offset: 1, color: '#67c23a' }
+              ])
             },
             label: {
               show: true,
               position: 'top',
               fontSize: 10,
+              color: '#409eff',
               formatter: (params: { value: number }) => params.value > 0 ? `¥${params.value >= 1000 ? (params.value / 1000).toFixed(1) + 'k' : params.value}` : ''
             },
             areaStyle: {
               color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
+                { offset: 0, color: 'rgba(64, 158, 255, 0.4)' },
+                { offset: 0.5, color: 'rgba(64, 158, 255, 0.2)' },
                 { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
               ])
             }
@@ -1242,12 +1267,17 @@ const initCharts = () => {
         // 没有数据时显示空状态
         performanceChart.setOption({
           title: {
-            text: '暂无数据',
+            text: '暂无业绩数据',
+            subtext: '请选择有数据的日期范围',
             left: 'center',
             top: 'middle',
             textStyle: {
               color: '#999',
               fontSize: 14
+            },
+            subtextStyle: {
+              color: '#bbb',
+              fontSize: 12
             }
           }
         })
@@ -1262,8 +1292,16 @@ const initCharts = () => {
         orderStatusChart = echarts.init(orderStatusChartRef.value)
       }
 
+      // 🔥 清除之前的配置，确保重新渲染
+      orderStatusChart.clear()
+
       // 检查是否有数据
       const hasOrderStatusData = chartData.value.orderStatus.length > 0
+
+      console.log('📊 [订单状态分布图] 数据检查:', {
+        hasData: hasOrderStatusData,
+        data: chartData.value.orderStatus
+      })
 
       if (hasOrderStatusData) {
         orderStatusChart.setOption({
@@ -1271,11 +1309,21 @@ const initCharts = () => {
             trigger: 'item',
             formatter: '{a} <br/>{b}: {c} ({d}%)'
           },
+          legend: {
+            orient: 'vertical',
+            left: 'left',
+            top: 'center'
+          },
           series: [{
             name: '订单状态',
             type: 'pie',
-            radius: '60%',
+            radius: ['40%', '70%'],
+            center: ['60%', '50%'],
             data: chartData.value.orderStatus,
+            label: {
+              show: true,
+              formatter: '{b}'
+            },
             emphasis: {
               itemStyle: {
                 shadowBlur: 10,
@@ -1286,12 +1334,16 @@ const initCharts = () => {
           }]
         })
       } else {
-        // 没有数据时显示空状态（不显示文字）
+        // 没有数据时显示空状态
         orderStatusChart.setOption({
           title: {
-            text: '',
+            text: '暂无订单数据',
             left: 'center',
-            top: 'middle'
+            top: 'middle',
+            textStyle: {
+              color: '#999',
+              fontSize: 14
+            }
           }
         })
       }
