@@ -276,53 +276,61 @@ const tableColumns = computed(() => [
     label: '物流单号',
     minWidth: 160,
     visible: true,
-    slot: true
+    slot: true,
+    showOverflowTooltip: true
   },
   {
     prop: 'orderNo',
     label: '订单号',
     minWidth: 140,
     visible: true,
-    slot: true
+    slot: true,
+    showOverflowTooltip: true
   },
   {
     prop: 'customerName',
     label: '客户姓名',
     minWidth: 100,
     visible: true,
-    slot: true
+    slot: true,
+    showOverflowTooltip: true
   },
   {
     prop: 'company',
     label: '物流公司',
     minWidth: 100,
-    visible: true
+    visible: true,
+    showOverflowTooltip: true
   },
   {
     prop: 'status',
     label: '状态',
     minWidth: 90,
-    visible: true
+    visible: true,
+    showOverflowTooltip: true
   },
   {
     prop: 'destination',
     label: '目的地',
-    minWidth: 120,
-    visible: true
+    minWidth: 150,
+    visible: true,
+    showOverflowTooltip: true
   },
   {
     prop: 'shipDate',
     label: '发货时间',
     minWidth: 150,
     visible: true,
-    formatter: (value: unknown) => formatDateTime(value as string)
+    formatter: (value: unknown) => formatDateTime(value as string),
+    showOverflowTooltip: true
   },
   {
     prop: 'estimatedDate',
     label: '预计送达',
     minWidth: 150,
     visible: true,
-    formatter: (value: unknown) => formatDateTime(value as string)
+    formatter: (value: unknown) => formatDateTime(value as string),
+    showOverflowTooltip: true
   }
 ])
 
