@@ -93,8 +93,8 @@
                     style="width: 100%"
                     :disabled="!canEditLogisticsStatus"
                   >
-                    <el-option label="待发货" value="pending" />
-                    <el-option label="已发货" value="shipped" />
+                    <!-- 🔥 去掉待发货选项，物流编辑页面只显示已发货之后的状态 -->
+                    <el-option label="已揽收" value="picked_up" />
                     <el-option label="运输中" value="in_transit" />
                     <el-option label="派送中" value="delivering" />
                     <el-option label="已签收" value="delivered" />

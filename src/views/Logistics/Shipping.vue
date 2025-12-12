@@ -1764,18 +1764,34 @@ const handleCommand = async ({ action, row }: { action: string, row: any }) => {
 }
 
 // 订单发货成功
-const handleOrderShipped = (shippingData: any) => {
+const handleOrderShipped = async (shippingData: any) => {
   // 更新订单状态为已发货
   if (shippingData.orderId && shippingData.logisticsCompany && shippingData.trackingNumber) {
-    orderStore.shipOrder(shippingData.orderId, shippingData.logisticsCompany, shippingData.trackingNumber)
+    // 🔥 计算预计送达时间（发货时间 + 3天）
+    const now = new Date()
+    const shippingTime = now.toISOString().slice(0, 19).replace('T', ' ')
+    const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000)
+    const expectedDeliveryDate = shippingData.estimatedDelivery || threeDaysLater.toISOString().split('T')[0]
 
-    // 🔥 保存预计送达时间
-    if (shippingData.estimatedDelivery) {
-      orderStore.updateOrder(shippingData.orderId, {
-        estimatedDeliveryTime: shippingData.estimatedDelivery,
-        expectedDeliveryDate: shippingData.estimatedDelivery
-      })
-    }
+    console.log('[发货列表] 发货数据:', {
+      orderId: shippingData.orderId,
+      shippingTime,
+      expectedDeliveryDate,
+      logisticsCompany: shippingData.logisticsCompany,
+      trackingNumber: shippingData.trackingNumber
+    })
+
+    // 调用发货方法
+    await orderStore.shipOrder(shippingData.orderId, shippingData.logisticsCompany, shippingData.trackingNumber)
+
+    // 🔥 保存预计送达时间（确保字段名称一致）
+    await orderStore.updateOrder(shippingData.orderId, {
+      estimatedDeliveryTime: expectedDeliveryDate,
+      expectedDeliveryDate: expectedDeliveryDate,
+      shippedAt: shippingTime // 同时保存shippedAt字段
+    })
+
+    console.log('[发货列表] 预计送达时间已保存:', expectedDeliveryDate)
   }
   ElMessage.success('发货成功')
   loadOrderList()
