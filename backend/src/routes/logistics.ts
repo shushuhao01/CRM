@@ -445,22 +445,28 @@ router.post('/order/status', async (req, res) => {
 
     await orderRepository.save(order);
 
-    // 添加状态更新记录到历史表
-    type ValidHistoryStatus = 'pending' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded';
-    const historyStatusMapping: Record<string, ValidHistoryStatus> = {
-      'delivered': 'delivered',
-      'refunded': 'refunded',
-      'rejected': 'cancelled',
-      'rejected_returned': 'cancelled',
-    };
+    // 添加状态更新记录到历史表（可选，如果失败不影响主流程）
+    try {
+      type ValidHistoryStatus = 'pending' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded';
+      const historyStatusMapping: Record<string, ValidHistoryStatus> = {
+        'delivered': 'delivered',
+        'refunded': 'refunded',
+        'rejected': 'cancelled',
+        'rejected_returned': 'cancelled',
+      };
 
-    const historyRecord = statusHistoryRepository.create({
-      orderId: order.id,
-      status: historyStatusMapping[newStatus] || 'shipped',
-      notes: remark || `物流状态更新为: ${newStatus}`,
-      operatorName: user?.username || '系统'
-    });
-    await statusHistoryRepository.save(historyRecord);
+      const historyRecord = statusHistoryRepository.create({
+        orderId: order.id,
+        status: historyStatusMapping[newStatus] || 'shipped',
+        notes: remark || `物流状态更新为: ${newStatus}`,
+        operatorName: user?.username || '系统'
+      });
+      await statusHistoryRepository.save(historyRecord);
+      console.log('✅ 状态历史记录已保存');
+    } catch (historyError) {
+      // 历史记录保存失败不影响主流程
+      console.warn('⚠️ 状态历史记录保存失败（不影响主流程）:', historyError);
+    }
 
     console.log('✅ 订单物流状态已持久化到数据库:', { orderNo, newStatus, remark });
 
@@ -540,6 +546,9 @@ router.post('/order/batch-status', async (req, res) => {
           continue;
         }
 
+        // 更新物流状态
+        order.logisticsStatus = newStatus;
+
         // 同步更新订单状态
         if (statusMapping[newStatus]) {
           order.status = statusMapping[newStatus];
@@ -550,14 +559,18 @@ router.post('/order/batch-status', async (req, res) => {
 
         await orderRepository.save(order);
 
-        // 添加状态更新记录到历史表
-        const historyRecord = statusHistoryRepository.create({
-          orderId: order.id,
-          status: historyStatusMapping[newStatus] || 'shipped',
-          notes: remark || `批量更新物流状态为: ${newStatus}`,
-          operatorName: user?.username || '系统'
-        });
-        await statusHistoryRepository.save(historyRecord);
+        // 添加状态更新记录到历史表（可选，如果失败不影响主流程）
+        try {
+          const historyRecord = statusHistoryRepository.create({
+            orderId: order.id,
+            status: historyStatusMapping[newStatus] || 'shipped',
+            notes: remark || `批量更新物流状态为: ${newStatus}`,
+            operatorName: user?.username || '系统'
+          });
+          await statusHistoryRepository.save(historyRecord);
+        } catch (historyError) {
+          console.warn(`⚠️ 订单 ${orderNo} 状态历史记录保存失败（不影响主流程）:`, historyError);
+        }
 
         successCount++;
       } catch (err) {
