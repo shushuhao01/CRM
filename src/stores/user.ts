@@ -28,8 +28,10 @@ export interface User {
   passwordLastChanged?: Date // 密码最后修改时间
   passwordExpiresAt?: Date // 密码过期时间
   forcePasswordChange?: boolean // 是否强制修改密码
+  // 账号状态
+  status?: 'active' | 'disabled' | 'inactive' // active=启用, disabled/inactive=禁用（禁用后数据隐藏不可见）
   // 在职状态
-  employmentStatus?: 'active' | 'resigned' // active=在职, resigned=离职
+  employmentStatus?: 'active' | 'resigned' // active=在职, resigned=离职（离职后账号无法登录但历史数据可见）
   resignedDate?: string // 离职日期
 }
 
@@ -817,7 +819,11 @@ export const useUserStore = defineStore('user', () => {
           status: user.status || 'active',
           createTime: user.createTime || user.createdAt,
           createdAt: user.createdAt,
-          employmentStatus: user.employmentStatus || 'active'
+          employmentStatus: user.employmentStatus || 'active',
+          // 🔥 新增：在线状态和登录次数字段
+          isOnline: user.isOnline || false,
+          loginCount: user.loginCount || 0,
+          lastLoginTime: user.lastLoginTime || user.lastLoginAt || ''
         }))
 
         console.log('[UserStore] ✅ 用户列表已加载:', users.value.length, '个用户')

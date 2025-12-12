@@ -265,3 +265,57 @@ export const getCompanyShortName = (companyNameOrCode: string): string => {
   const company = getLogisticsCompany(companyNameOrCode)
   return company ? company.shortName : '物流'
 }
+
+
+/**
+ * 根据物流公司名称获取物流公司配置（别名函数）
+ */
+export const getLogisticsCompanyByName = (companyName: string): LogisticsCompany | null => {
+  return getLogisticsCompany(companyName)
+}
+
+/**
+ * 复制快递单号到剪贴板
+ */
+export const copyTrackingNumber = async (trackingNo: string): Promise<boolean> => {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      // 使用现代 Clipboard API
+      await navigator.clipboard.writeText(trackingNo)
+      return true
+    } else {
+      // 降级方案：使用 document.execCommand
+      const textArea = document.createElement('textarea')
+      textArea.value = trackingNo
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      textArea.style.top = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+      const result = document.execCommand('copy')
+      document.body.removeChild(textArea)
+      return result
+    }
+  } catch (error) {
+    console.error('复制快递单号失败:', error)
+    return false
+  }
+}
+
+/**
+ * 打开物流公司官网查询页面
+ */
+export const openOfficialWebsite = (companyCode: string, trackingNo: string): void => {
+  const company = LOGISTICS_COMPANIES[companyCode.toUpperCase()] || getLogisticsCompany(companyCode)
+
+  if (company && company.trackingUrl) {
+    // 替换URL中的占位符
+    const url = company.trackingUrl.replace('{trackingNo}', encodeURIComponent(trackingNo))
+    window.open(url, '_blank')
+  } else {
+    // 如果没有找到对应的物流公司，使用快递100通用查询
+    const url = KUAIDI100_URL.replace('{trackingNo}', encodeURIComponent(trackingNo))
+    window.open(url, '_blank')
+  }
+}

@@ -429,4 +429,52 @@ export class RoleController {
       });
     }
   }
+
+  // 🔥 更新角色权限
+  async updateRolePermissions(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { permissions, permissionIds } = req.body;
+
+      console.log(`[RoleController] 更新角色权限: ${id}`, { permissions, permissionIds });
+
+      const role = await this.roleRepository.findOne({
+        where: { id: String(id) }
+      });
+
+      if (!role) {
+        res.status(404).json({
+          success: false,
+          message: '角色不存在'
+        });
+        return;
+      }
+
+      // 支持两种格式：permissions 或 permissionIds
+      const newPermissions = permissions || permissionIds || [];
+      role.permissions = Array.isArray(newPermissions) ? newPermissions : [];
+
+      const savedRole = await this.roleRepository.save(role);
+
+      console.log(`[RoleController] 角色权限更新成功: ${role.name}`, {
+        permissionCount: role.permissions.length
+      });
+
+      res.json({
+        success: true,
+        data: {
+          roleId: savedRole.id,
+          roleName: savedRole.name,
+          permissions: savedRole.permissions
+        },
+        message: '权限更新成功'
+      });
+    } catch (error) {
+      console.error('更新角色权限失败:', error);
+      res.status(500).json({
+        success: false,
+        message: '更新角色权限失败'
+      });
+    }
+  }
 }

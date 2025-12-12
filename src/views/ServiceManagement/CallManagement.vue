@@ -3595,9 +3595,15 @@ const loadStatistics = async () => {
 }
 
 // 负责人列表 - 从userStore获取真实用户
+// 🔥 【修复】过滤掉禁用用户，只显示启用的用户
 const salesPersonList = computed(() => {
   return userStore.users
-    .filter((u: any) => ['sales_staff', 'department_manager', 'admin', 'super_admin', 'customer_service'].includes(u.role))
+    .filter((u: any) => {
+      // 检查用户是否启用（禁用用户不显示）
+      const isEnabled = !u.status || u.status === 'active'
+      const hasValidRole = ['sales_staff', 'department_manager', 'admin', 'super_admin', 'customer_service'].includes(u.role)
+      return isEnabled && hasValidRole
+    })
     .map((u: any) => ({
       id: u.id,
       name: u.realName || u.name || u.username

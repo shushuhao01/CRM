@@ -407,8 +407,9 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
           description: shareData.description
         })
 
-        if (response.data.success) {
-          const newShare = response.data.data
+        // 🔥 修复：API直接返回 { success, data }
+        if (response.success) {
+          const newShare = response.data as unknown as PerformanceShare
           performanceShares.value.unshift(newShare)
           await updateMembersPerformance(newShare)
           await syncPerformanceData()
@@ -794,15 +795,18 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
   }) => {
     try {
       const response = await performanceApi.getPerformanceShares(params)
-      if (response.data.success) {
-        performanceShares.value = response.data.data.shares
-        return response.data.data
+      // 🔥 修复：API直接返回 { success, data }，不是 { data: { success, data } }
+      if (response.success) {
+        performanceShares.value = response.data.shares || []
+        return response.data
       } else {
-        throw new Error(response.data.message || '加载业绩分享数据失败')
+        throw new Error((response as any).message || '加载业绩分享数据失败')
       }
     } catch (error) {
       console.error('加载业绩分享数据失败:', error)
-      throw error
+      // 返回空数据而不是抛出错误，避免页面崩溃
+      performanceShares.value = []
+      return { shares: [], total: 0, page: 1, limit: 10 }
     }
   }
 
@@ -810,14 +814,22 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
   const loadShareStats = async () => {
     try {
       const response = await performanceApi.getPerformanceStats()
-      if (response.data.success) {
-        return response.data.data
+      // 🔥 修复：API直接返回 { success, data }
+      if (response.success) {
+        return response.data
       } else {
-        throw new Error(response.data.message || '加载统计数据失败')
+        throw new Error((response as any).message || '加载统计数据失败')
       }
     } catch (error) {
       console.error('加载统计数据失败:', error)
-      throw error
+      // 返回默认数据而不是抛出错误
+      return {
+        totalShares: 0,
+        totalAmount: 0,
+        pendingShares: 0,
+        completedShares: 0,
+        userStats: { totalShares: 0, totalAmount: 0 }
+      }
     }
   }
 

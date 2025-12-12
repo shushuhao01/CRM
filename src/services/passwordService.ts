@@ -227,15 +227,29 @@ class PasswordService {
   }
 
   // 重置密码（管理员功能）- 简化版本，自动生成临时密码
-  async resetPasswordByAdmin(userId: string, adminId: string): Promise<{ success: boolean; message: string; tempPassword?: string }> {
+  async resetPasswordByAdmin(userId: string, _adminId: string): Promise<{ success: boolean; message: string; tempPassword?: string }> {
     try {
       // 生成临时密码
       const tempPassword = this.generateTemporaryPassword()
 
-      // 模拟API调用
-      await this.simulateApiCall()
+      // 🔥 修复：调用真实的后端API重置密码
+      try {
+        const { apiService } = await import('./apiService')
+        await apiService.post(`/users/${userId}/reset-password`, {
+          newPassword: tempPassword
+        })
+        console.log(`[PasswordService] 用户 ${userId} 密码已重置到数据库`)
+      } catch (apiError: unknown) {
+        console.error('[PasswordService] API重置密码失败:', apiError)
+        // 如果API调用失败，返回错误
+        const errorMessage = (apiError as any).response?.data?.message || (apiError as any).message || '密码重置失败'
+        return {
+          success: false,
+          message: errorMessage
+        }
+      }
 
-      // 更新用户密码信息
+      // 更新本地用户密码信息（用于UI显示）
       this.updateUserPasswordInfo(userId, {
         isDefaultPassword: false,
         passwordLastChanged: new Date(),
