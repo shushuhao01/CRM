@@ -329,6 +329,8 @@ CREATE TABLE `orders` (
   `shipping_name` VARCHAR(50) COMMENT '收货人',
   `express_company` VARCHAR(50) COMMENT '快递公司',
   `tracking_number` VARCHAR(100) COMMENT '快递单号',
+  `shipping_time` VARCHAR(50) NULL COMMENT '发货时间字符串',
+  `expected_delivery_date` VARCHAR(20) NULL COMMENT '预计送达日期',
   `shipped_at` TIMESTAMP NULL COMMENT '发货时间',
   `delivered_at` TIMESTAMP NULL COMMENT '签收时间',
   `cancelled_at` TIMESTAMP NULL COMMENT '取消时间',
@@ -374,7 +376,9 @@ CREATE TABLE `orders` (
   INDEX `idx_created_by` (`created_by`),
   INDEX `idx_shipped_at` (`shipped_at`),
   INDEX `idx_delivered_at` (`delivered_at`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_shipping_time` (`shipping_time`),
+  INDEX `idx_expected_delivery_date` (`expected_delivery_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单表';
 
 -- 10. 物流表
