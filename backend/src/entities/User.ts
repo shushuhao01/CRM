@@ -95,13 +95,13 @@ export class User {
   @Column('int', { name: 'login_count', default: 0, nullable: true })
   loginCount: number;
 
-  @Column('int', { name: 'loginFailCount', default: 0, nullable: true })
+  @Column('int', { name: 'login_fail_count', default: 0, nullable: true })
   loginFailCount: number;
 
-  @Column('datetime', { name: 'lockedAt', nullable: true })
+  @Column('datetime', { name: 'locked_at', nullable: true })
   lockedAt: Date | null;
 
-  @Column('varchar', { name: 'lastLoginIp', length: 45, nullable: true })
+  @Column('varchar', { name: 'last_login_ip', length: 45, nullable: true })
   lastLoginIp: string | null;
 
   @Column('json', { nullable: true })
