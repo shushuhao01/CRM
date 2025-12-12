@@ -4,6 +4,7 @@ import { DepartmentController } from '../controllers/DepartmentController';
 import { AppDataSource } from '../config/database';
 import { SystemConfig } from '../entities/SystemConfig';
 import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
+import { Department } from '../entities/Department';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -999,6 +1000,101 @@ router.get('/info', authenticateToken, requireAdmin, (_req, res) => {
       memory: process.memoryUsage()
     }
   });
+});
+
+// ========== 公共部门查询路由（所有登录用户可访问）==========
+
+/**
+ * @route GET /api/v1/system/my-departments
+ * @desc 获取当前用户可访问的部门列表（用于团队业绩等页面）
+ * @access Private (All authenticated users)
+ *
+ * 权限说明：
+ * - 超级管理员/管理员：返回所有部门
+ * - 部门经理/销售员：只返回自己所属的部门
+ */
+router.get('/my-departments', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).currentUser;
+    const userRole = currentUser?.role;
+    const userDepartmentId = currentUser?.departmentId;
+
+    console.log('[公共部门API] 用户信息:', {
+      userId: currentUser?.id,
+      role: userRole,
+      departmentId: userDepartmentId
+    });
+
+    const departmentRepository = AppDataSource.getRepository(Department);
+
+    // 超级管理员和管理员可以看到所有部门
+    if (userRole === 'super_admin' || userRole === 'admin') {
+      const departments = await departmentRepository.find({
+        where: { status: 'active' },
+        order: { sortOrder: 'ASC', name: 'ASC' }
+      });
+
+      console.log('[公共部门API] 管理员：返回所有部门', departments.length, '个');
+
+      return res.json({
+        success: true,
+        data: departments.map(dept => ({
+          id: dept.id,
+          name: dept.name,
+          code: dept.code,
+          description: dept.description,
+          parentId: dept.parentId,
+          level: dept.level,
+          managerId: dept.managerId,
+          sortOrder: dept.sortOrder,
+          status: dept.status,
+          memberCount: dept.memberCount
+        }))
+      });
+    }
+
+    // 部门经理和销售员只能看到自己所属的部门
+    if (userDepartmentId) {
+      const department = await departmentRepository.findOne({
+        where: { id: userDepartmentId, status: 'active' }
+      });
+
+      if (department) {
+        console.log('[公共部门API] 普通用户：返回所属部门', department.name);
+
+        return res.json({
+          success: true,
+          data: [{
+            id: department.id,
+            name: department.name,
+            code: department.code,
+            description: department.description,
+            parentId: department.parentId,
+            level: department.level,
+            managerId: department.managerId,
+            sortOrder: department.sortOrder,
+            status: department.status,
+            memberCount: department.memberCount
+          }]
+        });
+      }
+    }
+
+    // 没有部门信息，返回空数组
+    console.log('[公共部门API] 用户无部门信息，返回空数组');
+    return res.json({
+      success: true,
+      data: []
+    });
+
+  } catch (error) {
+    console.error('[公共部门API] 获取部门失败:', error);
+    return res.status(500).json({
+      success: false,
+      message: '获取部门列表失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
 });
 
 // ========== 部门管理路由（需要管理员权限）==========
