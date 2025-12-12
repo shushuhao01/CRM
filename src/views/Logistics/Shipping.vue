@@ -947,6 +947,14 @@ const baseTableColumns = [
     align: 'center',
     visible: true
   },
+  // 🔥 自定义字段1-7（位于订单来源后面、支付方式前面）
+  { prop: 'customFields.custom_field1', label: '自定义字段1', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field1' },
+  { prop: 'customFields.custom_field2', label: '自定义字段2', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field2' },
+  { prop: 'customFields.custom_field3', label: '自定义字段3', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field3' },
+  { prop: 'customFields.custom_field4', label: '自定义字段4', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field4' },
+  { prop: 'customFields.custom_field5', label: '自定义字段5', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field5' },
+  { prop: 'customFields.custom_field6', label: '自定义字段6', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field6' },
+  { prop: 'customFields.custom_field7', label: '自定义字段7', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field7' },
   {
     prop: 'paymentMethod',
     label: '支付方式',
@@ -988,15 +996,7 @@ const baseTableColumns = [
     width: 200,
     showOverflowTooltip: true,
     visible: false
-  },
-  // 🔥 预设7个自定义字段位置（默认隐藏，配置后显示）
-  { prop: 'customFields.custom_field1', label: '自定义字段1', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field1' },
-  { prop: 'customFields.custom_field2', label: '自定义字段2', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field2' },
-  { prop: 'customFields.custom_field3', label: '自定义字段3', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field3' },
-  { prop: 'customFields.custom_field4', label: '自定义字段4', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field4' },
-  { prop: 'customFields.custom_field5', label: '自定义字段5', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field5' },
-  { prop: 'customFields.custom_field6', label: '自定义字段6', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field6' },
-  { prop: 'customFields.custom_field7', label: '自定义字段7', width: 120, align: 'center', showOverflowTooltip: true, visible: false, isCustomField: true, fieldKey: 'custom_field7' }
+  }
 ]
 
 // 表格列配置（包含动态自定义字段）
