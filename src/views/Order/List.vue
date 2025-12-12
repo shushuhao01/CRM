@@ -255,9 +255,10 @@
 
         <!-- 5. 刷新 -->
         <el-button
-          @click="loadOrderList"
+          @click="handleManualRefresh"
           size="small"
           :icon="Refresh"
+          :loading="loading"
         >
           刷新
         </el-button>
@@ -2207,6 +2208,22 @@ const handleOrderTransferred = (transferredOrders: any[]) => {
 const handleRefreshOrderList = () => {
   console.log('[订单列表] 收到刷新列表事件')
   loadOrderList()
+}
+
+// 🔥 手动刷新按钮处理函数
+const handleManualRefresh = async () => {
+  console.log('[订单列表] 手动刷新订单数据...')
+  loading.value = true
+  try {
+    // 强制从API重新加载数据
+    await loadOrderList(true)
+    ElMessage.success('订单列表已刷新')
+  } catch (error) {
+    console.error('[订单列表] 刷新失败:', error)
+    ElMessage.error('刷新失败，请稍后重试')
+  } finally {
+    loading.value = false
+  }
 }
 
 const handleOrderStatusChanged = (order: unknown) => {
