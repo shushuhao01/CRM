@@ -53,9 +53,12 @@ const upload = multer({
 const simpleAuth = (req: any, res: any, next: any) => {
   try {
     const authHeader = req.headers.authorization;
+    console.log('[Profile Auth] Authorization header:', authHeader ? '存在' : '不存在');
+
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
+      console.log('[Profile Auth] Token缺失');
       return res.status(401).json({
         success: false,
         message: '访问令牌缺失',
@@ -63,11 +66,16 @@ const simpleAuth = (req: any, res: any, next: any) => {
       });
     }
 
+    console.log('[Profile Auth] Token前30字符:', token.substring(0, 30));
+
     // 验证令牌
     const payload = JwtConfig.verifyAccessToken(token);
+    console.log('[Profile Auth] Token验证成功，用户ID:', payload?.userId);
+
     req.user = payload;
     next();
-  } catch (_error) {
+  } catch (error) {
+    console.error('[Profile Auth] JWT认证失败:', error);
     return res.status(401).json({
       success: false,
       message: 'JWT认证失败',
@@ -85,6 +93,13 @@ router.get('/', simpleAuth, async (req, res) => {
   try {
     // 从JWT token中获取用户ID
     const tokenUser = (req as any).user;
+    if (!tokenUser) {
+      return res.status(401).json({
+        success: false,
+        message: '用户认证信息无效',
+        code: 'AUTH_INVALID'
+      });
+    }
     const userId = tokenUser.userId || tokenUser.id;
 
     // 从数据库获取完整的用户信息
@@ -172,6 +187,13 @@ router.put('/', simpleAuth, async (req, res) => {
   try {
     // 从JWT token中获取用户ID
     const tokenUser = (req as any).user;
+    if (!tokenUser) {
+      return res.status(401).json({
+        success: false,
+        message: '用户认证信息无效',
+        code: 'AUTH_INVALID'
+      });
+    }
     const userId = tokenUser.userId || tokenUser.id;
     const updateData = req.body;
 
@@ -313,6 +335,13 @@ router.post('/avatar', simpleAuth, upload.single('avatar'), async (req, res) => 
 
     // 从JWT token中获取用户ID
     const tokenUser = (req as any).user;
+    if (!tokenUser) {
+      return res.status(401).json({
+        success: false,
+        message: '用户认证信息无效',
+        code: 'AUTH_INVALID'
+      });
+    }
     const userId = tokenUser.userId || tokenUser.id;
 
     // 生成头像URL
@@ -387,6 +416,13 @@ router.put('/password', simpleAuth, async (req, res) => {
 
     // 从JWT token中获取用户ID
     const tokenUser = (req as any).user;
+    if (!tokenUser) {
+      return res.status(401).json({
+        success: false,
+        message: '用户认证信息无效',
+        code: 'AUTH_INVALID'
+      });
+    }
     const userId = tokenUser.userId || tokenUser.id;
 
     // 从数据库获取用户信息（包含密码）
