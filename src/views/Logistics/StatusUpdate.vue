@@ -207,15 +207,27 @@
             ¥{{ row.amount }}
           </template>
         </el-table-column>
-        <el-table-column prop="trackingNo" label="快递单号" min-width="140" show-overflow-tooltip>
+        <el-table-column prop="trackingNo" label="快递单号" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
-            <el-button
-              type="text"
-              @click="handleViewTracking(row)"
-              v-if="row.trackingNo"
-            >
-              {{ row.trackingNo }}
-            </el-button>
+            <div v-if="row.trackingNo" class="tracking-no-cell">
+              <el-button
+                type="text"
+                @click="handleViewTracking(row)"
+              >
+                {{ row.trackingNo }}
+              </el-button>
+              <el-tooltip content="查询物流" placement="top">
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  @click.stop="handleTrackingNoClick(row.trackingNo, row.logisticsCompany)"
+                  class="search-tracking-btn"
+                >
+                  <el-icon><Search /></el-icon>
+                </el-button>
+              </el-tooltip>
+            </div>
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -320,6 +332,7 @@ import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
+import { getCompanyShortName, getTrackingUrl, KUAIDI100_URL } from '@/utils/logisticsCompanyConfig'
 import {
   Clock,
   Check,
@@ -620,8 +633,60 @@ const handleViewTracking = (order) => {
   trackingDialogVisible.value = true
 }
 
+// 🔥 点击查询图标：复制单号并弹窗选择查询网站
+const handleTrackingNoClick = async (trackingNo: string, logisticsCompany?: string) => {
+  // 复制物流单号
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(trackingNo)
+      ElMessage.success('快递单号已复制到剪贴板')
+    } else {
+      const textArea = document.createElement('textarea')
+      textArea.value = trackingNo
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      textArea.style.top = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+      const result = document.execCommand('copy')
+      document.body.removeChild(textArea)
+      if (result) {
+        ElMessage.success('快递单号已复制到剪贴板')
+      } else {
+        ElMessage.error('复制失败，请手动复制')
+        return
+      }
+    }
+  } catch (error) {
+    console.error('复制失败:', error)
+    ElMessage.error('复制失败，请手动复制')
+    return
+  }
 
+  // 根据物流公司动态获取官网按钮名称和URL
+  const companyShortName = getCompanyShortName(logisticsCompany || '')
+  const companyUrl = getTrackingUrl(logisticsCompany || '', trackingNo)
+  const kuaidi100Url = KUAIDI100_URL.replace('{trackingNo}', trackingNo)
 
+  // 提示选择跳转网站
+  ElMessageBox.confirm(
+    '请选择要跳转的查询网站',
+    '选择查询网站',
+    {
+      confirmButtonText: `${companyShortName}官网`,
+      cancelButtonText: '快递100',
+      distinguishCancelAndClose: true,
+      type: 'info'
+    }
+  ).then(() => {
+    window.open(companyUrl, '_blank')
+  }).catch((action) => {
+    if (action === 'cancel') {
+      window.open(kuaidi100Url, '_blank')
+    }
+  })
+}
 
 
 const refreshData = () => {
@@ -1060,6 +1125,18 @@ watch([dateRange, statusFilter, searchKeyword], () => {
 <style scoped>
 .logistics-status-update {
   padding: 20px;
+}
+
+/* 快递单号单元格样式 */
+.tracking-no-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.search-tracking-btn {
+  padding: 2px;
+  margin-left: 4px;
 }
 
 .summary-cards {
