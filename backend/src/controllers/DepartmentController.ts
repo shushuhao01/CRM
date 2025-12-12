@@ -523,10 +523,23 @@ export class DepartmentController {
   async getDepartmentMembers(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
+      console.log('[部门成员] 查询部门ID:', id);
 
-      const users = await this.userRepository.find({
-        where: { departmentId: id }
+      // 获取部门信息
+      const department = await this.departmentRepository.findOne({
+        where: { id: id }
       });
+      const departmentName = department?.name || '';
+      console.log('[部门成员] 部门名称:', departmentName);
+
+      // 查询该部门的所有用户（同时匹配departmentId和departmentName）
+      const users = await this.userRepository
+        .createQueryBuilder('user')
+        .where('user.departmentId = :id', { id })
+        .orWhere('user.departmentName = :name', { name: departmentName })
+        .getMany();
+
+      console.log('[部门成员] 查询到用户数:', users.length);
 
       const members = users.map((user: User) => ({
         id: user.id.toString(),
@@ -542,7 +555,7 @@ export class DepartmentController {
         joinDate: user.createdAt.toISOString().split('T')[0],
         joinedAt: user.createdAt.toISOString(),
         createdAt: user.createdAt.toISOString(),
-        departmentName: user.departmentName || ''
+        departmentName: user.departmentName || departmentName
       }));
 
       res.json({
