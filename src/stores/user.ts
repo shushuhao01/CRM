@@ -12,13 +12,14 @@ export interface User {
   name: string
   email: string
   role: 'super_admin' | 'admin' | 'department_manager' | 'sales_staff' | 'customer_service'
-  department: string
+  department: string // 部门名称（用于显示）
   avatar?: string
   // 新增权限相关字段
   userRole?: UserRole
   permissionLevel?: PermissionLevel
   dataScope?: DataScope
-  departmentId?: string
+  departmentId?: string // 部门ID（用于数据过滤）
+  departmentName?: string // 部门名称（冗余字段，与department相同）
   departmentIds?: string[]
   customerServiceType?: CustomerServiceType
   sensitiveInfoAccess?: SensitiveInfoType[]
@@ -536,6 +537,11 @@ export const useUserStore = defineStore('user', () => {
 
       // 设置当前用户信息，映射API响应到本地用户格式
       const userData = response.user
+      // 🔥 修复：确保departmentId和departmentName都正确设置
+      const userDeptId = userData.departmentId || userData.department_id || ''
+      const userDeptName = userData.departmentName || userData.department_name || userData.department?.name || '未分配'
+      console.log('[Auth] 用户部门信息:', { departmentId: userDeptId, departmentName: userDeptName })
+
       currentUser.value = {
         id: userData.id.toString(),
         name: userData.realName || userData.name,
@@ -545,7 +551,7 @@ export const useUserStore = defineStore('user', () => {
               userData.role === 'sales_staff' ? 'sales_staff' :
               userData.role === 'customer_service' ? 'customer_service' :
               userData.role || 'sales_staff',
-        department: userData.department?.name || userData.departmentName || '未分配',
+        department: userDeptName, // 🔥 部门名称用于显示
         avatar: userData.avatar,
         userRole: (userData.role === 'admin' || userData.role === 'super_admin') ? UserRole.SUPER_ADMIN :
                  userData.role === 'department_manager' ? UserRole.DEPARTMENT_MANAGER :
@@ -557,7 +563,8 @@ export const useUserStore = defineStore('user', () => {
                         PermissionLevel.RESTRICTED,
         dataScope: userData.dataScope || ((userData.role === 'admin' || userData.role === 'super_admin') ? DataScope.ALL :
                   userData.role === 'department_manager' ? DataScope.DEPARTMENT : DataScope.SELF),
-        departmentId: userData.departmentId,
+        departmentId: userDeptId, // 🔥 部门ID用于数据过滤
+        departmentName: userDeptName, // 🔥 新增：部门名称字段
         departmentIds: userData.departmentIds,
         customerServiceType: userData.customerServiceType,
         forcePasswordChange: false // API会在响应中提供这个信息

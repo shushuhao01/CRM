@@ -1087,17 +1087,26 @@ const loadRealMetrics = async () => {
 const loadRealRankings = () => {
   let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
   const currentUser = userStore.currentUser
-  const currentDeptId = currentUser?.departmentId || currentUser?.department
+  const currentDeptId = currentUser?.departmentId
+  const currentDeptName = currentUser?.departmentName || currentUser?.department
 
-  console.log('[业绩排名] 当前用户:', currentUser?.name, '部门ID:', currentDeptId, '角色:', currentUser?.role)
+  console.log('[业绩排名] 当前用户:', currentUser?.name, '部门ID:', currentDeptId, '部门名称:', currentDeptName, '角色:', currentUser?.role)
+  console.log('[业绩排名] 用户列表:', userStore.users?.map(u => ({ id: u.id, name: u.name, departmentId: u.departmentId, department: u.department })))
 
   // 根据用户角色筛选 - 普通成员也能看到本部门的排名
   if (!userStore.isAdmin) {
-    // 非管理员只能看到本部门的数据
-    const departmentUsers = userStore.users?.filter(u =>
-      String(u.departmentId) === String(currentDeptId) ||
-      String(u.department) === String(currentDeptId)
-    ).map(u => u.id) || []
+    // 🔥 修复：非管理员只能看到本部门的数据，同时支持ID和名称匹配
+    const departmentUsers = userStore.users?.filter(u => {
+      // 通过部门ID匹配
+      if (currentDeptId && (String(u.departmentId) === String(currentDeptId))) {
+        return true
+      }
+      // 通过部门名称匹配
+      if (currentDeptName && (u.department === currentDeptName || u.departmentName === currentDeptName)) {
+        return true
+      }
+      return false
+    }).map(u => u.id) || []
 
     console.log('[业绩排名] 部门成员IDs:', departmentUsers)
 

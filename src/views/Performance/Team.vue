@@ -770,6 +770,11 @@ const accessibleDepartments = computed(() => {
   // 获取部门列表，确保有数据
   const deptList = departmentStore.departmentList || []
   console.log('[团队业绩] 部门列表:', deptList.map(d => ({ id: d.id, name: d.name })))
+  console.log('[团队业绩] 当前用户部门信息:', {
+    departmentId: currentUser.departmentId,
+    department: currentUser.department,
+    departmentName: currentUser.departmentName
+  })
 
   // 超级管理员和管理员可以看到所有部门
   if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
@@ -778,14 +783,18 @@ const accessibleDepartments = computed(() => {
 
   // 部门经理和销售员只能看到自己所在的部门
   if (currentUser.role === 'department_manager' || currentUser.role === 'sales_staff' || currentUser.role === 'sales') {
-    const userDeptId = currentUser.departmentId || currentUser.department
-    // 先尝试通过ID匹配
+    const userDeptId = currentUser.departmentId
+    const userDeptName = currentUser.departmentName || currentUser.department
+
+    // 🔥 修复：优先通过部门ID匹配
     let filtered = deptList.filter(dept => String(dept.id) === String(userDeptId))
-    // 如果没找到，尝试通过名称匹配
-    if (filtered.length === 0) {
-      filtered = deptList.filter(dept => dept.name === userDeptId)
+
+    // 如果通过ID没找到，尝试通过名称匹配
+    if (filtered.length === 0 && userDeptName) {
+      filtered = deptList.filter(dept => dept.name === userDeptName)
     }
-    console.log('[团队业绩] 用户部门ID:', userDeptId, '可访问部门:', filtered.map(d => d.name))
+
+    console.log('[团队业绩] 用户部门ID:', userDeptId, '部门名称:', userDeptName, '可访问部门:', filtered.map(d => ({ id: d.id, name: d.name })))
     return filtered
   }
 
@@ -1047,12 +1056,28 @@ const memberList = computed(() => {
     return []
   }
 
-  console.log('[团队业绩] 当前用户:', currentUser.name, '角色:', currentUser.role, '部门ID:', currentUser.departmentId)
+  // 🔥 修复：分别获取部门ID和部门名称
+  const userDeptId = currentUser.departmentId
+  const userDeptName = currentUser.departmentName || currentUser.department
+
+  console.log('[团队业绩] 当前用户:', currentUser.name, '角色:', currentUser.role, '部门ID:', userDeptId, '部门名称:', userDeptName)
   console.log('[团队业绩] 系统总用户数:', userStore.users?.length || 0)
 
   // 获取可访问的用户列表（先声明）
   let accessibleUsers: unknown[] = []
-  const userDeptId = currentUser.departmentId || currentUser.department
+
+  // 🔥 修复：用户匹配函数，同时支持ID和名称匹配
+  const matchUserDepartment = (user: any) => {
+    // 通过部门ID匹配
+    if (userDeptId && String(user.departmentId) === String(userDeptId)) {
+      return true
+    }
+    // 通过部门名称匹配
+    if (userDeptName && (user.department === userDeptName || user.departmentName === userDeptName)) {
+      return true
+    }
+    return false
+  }
 
   // 层级权限控制
   if (userStore.isSuperAdmin || currentUser.role === 'admin' || currentUser.role === 'super_admin') {
@@ -1062,27 +1087,34 @@ const memberList = computed(() => {
 
   } else if (userStore.isManager || currentUser.role === 'department_manager') {
     // 部门经理：查看本部门成员
-    accessibleUsers = userStore.users?.filter((user: unknown) =>
-      String(user.departmentId) === String(userDeptId) || String(user.department) === String(userDeptId)
-    ) || []
-    console.log('[团队业绩] 部门经理，可访问本部门用户:', accessibleUsers.length, '部门ID:', userDeptId)
+    accessibleUsers = userStore.users?.filter(matchUserDepartment) || []
+    console.log('[团队业绩] 部门经理，可访问本部门用户:', accessibleUsers.length, '部门ID:', userDeptId, '部门名称:', userDeptName)
 
   } else {
     // 普通成员（销售员等）：查看同部门成员
-    accessibleUsers = userStore.users?.filter((user: unknown) =>
-      String(user.departmentId) === String(userDeptId) || String(user.department) === String(userDeptId)
-    ) || []
-    console.log('[团队业绩] 普通成员，可访问同部门用户:', accessibleUsers.length, '部门ID:', userDeptId)
+    accessibleUsers = userStore.users?.filter(matchUserDepartment) || []
+    console.log('[团队业绩] 普通成员，可访问同部门用户:', accessibleUsers.length, '部门ID:', userDeptId, '部门名称:', userDeptName)
   }
 
-  // 应用部门筛选
+  // 应用部门筛选（筛选器使用的是部门ID）
   if (selectedDepartment.value) {
     console.log('[团队业绩] 应用部门筛选:', selectedDepartment.value)
     const beforeFilter = accessibleUsers.length
-    accessibleUsers = accessibleUsers.filter((user: unknown) =>
-      String(user.departmentId) === String(selectedDepartment.value) ||
-      String(user.department) === String(selectedDepartment.value)
-    )
+    // 🔥 修复：从部门列表获取选中部门的名称，用于匹配
+    const selectedDept = departmentStore.departmentList?.find(d => d.id === selectedDepartment.value)
+    const selectedDeptName = selectedDept?.name
+
+    accessibleUsers = accessibleUsers.filter((user: unknown) => {
+      // 通过部门ID匹配
+      if (String(user.departmentId) === String(selectedDepartment.value)) {
+        return true
+      }
+      // 通过部门名称匹配
+      if (selectedDeptName && (user.department === selectedDeptName || user.departmentName === selectedDeptName)) {
+        return true
+      }
+      return false
+    })
     console.log('[团队业绩] 筛选后用户数:', accessibleUsers.length, '(筛选前:', beforeFilter, ')')
   }
 
@@ -2125,16 +2157,29 @@ onMounted(async () => {
     const userRole = currentUser.role
     if (userRole === 'department_manager' || userRole === 'sales_staff' || userRole === 'sales') {
       // 非管理员角色，默认选择自己所在的部门
-      const userDeptId = currentUser.departmentId || currentUser.department || ''
+      const userDeptId = currentUser.departmentId
+      const userDeptName = currentUser.departmentName || currentUser.department
+
+      console.log('[团队业绩] 用户部门信息:', { departmentId: userDeptId, departmentName: userDeptName })
+
       // 确保部门ID在可访问部门列表中
       const deptList = departmentStore.departmentList || []
-      const matchedDept = deptList.find(d => String(d.id) === String(userDeptId) || d.name === userDeptId)
+      console.log('[团队业绩] 可用部门列表:', deptList.map(d => ({ id: d.id, name: d.name })))
+
+      // 🔥 修复：优先通过部门ID匹配，其次通过名称匹配
+      let matchedDept = deptList.find(d => String(d.id) === String(userDeptId))
+      if (!matchedDept && userDeptName) {
+        matchedDept = deptList.find(d => d.name === userDeptName)
+      }
+
       if (matchedDept) {
         selectedDepartment.value = matchedDept.id
         console.log('[团队业绩] 非管理员角色，默认选择部门:', matchedDept.name, '(ID:', matchedDept.id, ')')
-      } else {
+      } else if (userDeptId) {
         selectedDepartment.value = userDeptId
-        console.log('[团队业绩] 非管理员角色，部门未找到，使用原始ID:', userDeptId)
+        console.log('[团队业绩] 非管理员角色，部门未在列表中找到，使用原始ID:', userDeptId)
+      } else {
+        console.warn('[团队业绩] 非管理员角色，但用户没有部门信息')
       }
     } else {
       // 管理员角色默认为空（显示所有部门）
