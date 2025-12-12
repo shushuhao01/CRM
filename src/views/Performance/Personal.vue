@@ -1039,9 +1039,9 @@ const exportData = async () => {
     }
 
     // 6. 订单状态分布
-    const statusData = getOrderStatusData()
+    const { chartData: statusData } = getOrderStatusData()
     if (statusData.length > 0) {
-      const orderStatusData = [
+      const orderStatusData: (string | number)[][] = [
         ['订单状态分布'],
         [],
         ['状态', '订单数', '金额(元)']
@@ -1049,8 +1049,8 @@ const exportData = async () => {
 
       statusData.forEach(item => {
         orderStatusData.push([
-          item.name,
-          item.value,
+          item.statusName,
+          item.count,
           item.amount
         ])
       })
@@ -1831,7 +1831,7 @@ const getOrderStatusData = () => {
   const currentUserId = userStore.currentUser?.id
 
   if (!currentUserId) {
-    return []
+    return { chartData: [], totalCount: 0, totalAmount: 0 }
   }
 
   // 获取当前用户的订单
@@ -1879,33 +1879,43 @@ const getOrderStatusData = () => {
     'signed': '已签收'
   }
 
+  // 计算总数和总金额
+  let totalCount = 0
+  let totalAmount = 0
+
   userOrders.forEach(order => {
     const statusName = statusNames[order.status] || order.status
+    const amount = order.totalAmount || 0
+    totalCount++
+    totalAmount += amount
+
     if (statusMap.has(statusName)) {
       const existing = statusMap.get(statusName)
       statusMap.set(statusName, {
         count: existing.count + 1,
-        amount: existing.amount + (order.totalAmount || 0)
+        amount: existing.amount + amount
       })
     } else {
       statusMap.set(statusName, {
         count: 1,
-        amount: order.totalAmount || 0
+        amount: amount
       })
     }
   })
 
-  // 转换为图表数据格式
-  const chartData: Array<{ value: number; name: string; amount: number }> = []
+  // 转换为图表数据格式（简化name，详细信息在tooltip中显示）
+  const chartData: Array<{ value: number; name: string; statusName: string; count: number; amount: number }> = []
   statusMap.forEach((value, name) => {
     chartData.push({
       value: value.count,
       name: `${name}(${value.count}单/¥${value.amount.toLocaleString()})`,
+      statusName: name,
+      count: value.count,
       amount: value.amount
     })
   })
 
-  return chartData
+  return { chartData, totalCount, totalAmount }
 }
 
 /**
@@ -1917,12 +1927,17 @@ const initOrderStatusChart = () => {
   orderStatusChart = echarts.init(orderStatusChartRef.value)
 
   // 获取真实的订单状态分布数据
-  const statusData = getOrderStatusData()
+  const { chartData, totalCount, totalAmount } = getOrderStatusData()
 
   const option = {
     tooltip: {
       trigger: 'item',
-      formatter: '{a} <br/>{b}: {c} ({d}%)'
+      formatter: (params: any) => {
+        const data = params.data
+        const countPercent = totalCount > 0 ? ((data.count / totalCount) * 100).toFixed(1) : '0'
+        const amountPercent = totalAmount > 0 ? ((data.amount / totalAmount) * 100).toFixed(1) : '0'
+        return `${data.statusName}：${data.count}单（${countPercent}%）<br/>状态业绩：¥${data.amount.toLocaleString()}（${amountPercent}%）`
+      }
     },
     legend: {
       orient: 'vertical',
@@ -1933,7 +1948,7 @@ const initOrderStatusChart = () => {
         name: '订单状态',
         type: 'pie',
         radius: '50%',
-        data: statusData,
+        data: chartData,
         emphasis: {
           itemStyle: {
             shadowBlur: 10,
