@@ -1677,7 +1677,12 @@ const exportSelected = async () => {
       remark: order.remark || '',
       createTime: order.createTime || '',
       status: order.status || '',
-      shippingStatus: order.shippingStatus || ''
+      shippingStatus: order.shippingStatus || '',
+      // 物流相关字段
+      specifiedExpress: order.specifiedExpress || '',
+      expressCompany: order.expressCompany || '',
+      expressNo: order.expressNo || '',
+      logisticsStatus: order.logisticsStatus || ''
     }))
 
     const filename = exportBatchOrders(exportData, userStore.isAdmin)
@@ -1734,7 +1739,12 @@ const handleCommand = async ({ action, row }: { action: string, row: any }) => {
           remark: row.remark || '',
           createTime: row.createTime || '',
           status: row.status || '',
-          shippingStatus: row.shippingStatus || ''
+          shippingStatus: row.shippingStatus || '',
+          // 物流相关字段
+          specifiedExpress: row.specifiedExpress || '',
+          expressCompany: row.expressCompany || '',
+          expressNo: row.expressNo || '',
+          logisticsStatus: row.logisticsStatus || ''
         }
 
         const filename = exportSingleOrder(exportData, userStore.isAdmin)
