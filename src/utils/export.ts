@@ -186,6 +186,13 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
     throw new Error('没有可导出的数据')
   }
 
+  // 🔥 调试：检查传入的订单数据中的expressCompany字段
+  console.log('[Export] 检查传入数据的expressCompany:', orders.slice(0, 3).map(o => ({
+    orderNumber: o.orderNumber,
+    expressCompany: o.expressCompany,
+    specifiedExpress: o.specifiedExpress
+  })))
+
   // 🔥 收集所有自定义字段并获取正确的字段名称
   const customFieldKeys = new Set<string>()
   const customFieldLabels: Record<string, string> = {}
