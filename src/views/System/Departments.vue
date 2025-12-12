@@ -242,10 +242,16 @@
                          <el-icon><Rank /></el-icon>
                          移动部门
                        </el-dropdown-item>
-                       <el-dropdown-item command="delete" :disabled="department.children && department.children.length > 0">
-                         <el-icon><Delete /></el-icon>
-                         删除部门
-                       </el-dropdown-item>
+                       <el-tooltip
+                         :content="isSystemPresetDepartment(department) ? '系统预设部门不可删除' : (department.children && department.children.length > 0 ? '有子部门，不可删除' : '')"
+                         :disabled="!isSystemPresetDepartment(department) && !(department.children && department.children.length > 0)"
+                         placement="left"
+                       >
+                         <el-dropdown-item command="delete" :disabled="isSystemPresetDepartment(department) || (department.children && department.children.length > 0)">
+                           <el-icon><Delete /></el-icon>
+                           删除部门
+                         </el-dropdown-item>
+                       </el-tooltip>
                      </el-dropdown-menu>
                    </template>
                  </el-dropdown>
@@ -363,16 +369,22 @@
               <el-icon><Rank /></el-icon>
               移动
             </el-button>
-            <el-button
-              type="danger"
-              link
-              size="small"
-              @click="handleDeleteDepartment(row)"
-              :disabled="row.children && row.children.length > 0"
+            <el-tooltip
+              :content="isSystemPresetDepartment(row) ? '系统预设部门不可删除' : (row.children && row.children.length > 0 ? '有子部门，不可删除' : '')"
+              :disabled="!isSystemPresetDepartment(row) && !(row.children && row.children.length > 0)"
+              placement="top"
             >
-              <el-icon><Delete /></el-icon>
-              删除
-            </el-button>
+              <el-button
+                type="danger"
+                link
+                size="small"
+                @click="handleDeleteDepartment(row)"
+                :disabled="isSystemPresetDepartment(row) || (row.children && row.children.length > 0)"
+              >
+                <el-icon><Delete /></el-icon>
+                删除
+              </el-button>
+            </el-tooltip>
           </template>
         </DynamicTable>
       </div>
@@ -774,7 +786,23 @@ const handleMoveDepartment = (department: Department) => {
   moveDialogVisible.value = true
 }
 
+// 🔥 系统预设部门名称列表（不可删除）
+const SYSTEM_PRESET_DEPARTMENTS = ['系统管理部']
+
+/**
+ * 判断部门是否为系统预设部门（不可删除）
+ */
+const isSystemPresetDepartment = (department: Department) => {
+  return SYSTEM_PRESET_DEPARTMENTS.includes(department.name)
+}
+
 const handleDeleteDepartment = async (department: Department) => {
+  // 🔥 检查是否为系统预设部门
+  if (isSystemPresetDepartment(department)) {
+    ElMessage.warning('系统预设部门不可删除')
+    return
+  }
+
   try {
     await departmentStore.deleteDepartment(department.id)
     ElMessage.success('部门删除成功')
