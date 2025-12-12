@@ -193,26 +193,22 @@ export const useLogisticsStatusStore = defineStore('logisticsStatus', () => {
   // 更新订单状态
   const updateOrderStatus = async (orderNo: string, newStatus: string, remark?: string) => {
     try {
-      // 尝试调用后端API
-      try {
-        await updateOrderLogisticsStatus({
-          orderNo,
-          newStatus,
-          remark
-        })
-        console.log(`[物流状态Store] 后端API更新成功: ${orderNo} -> ${newStatus}`)
-      } catch (apiError) {
-        // API调用失败时，继续使用本地存储更新
-        console.warn(`[物流状态Store] 后端API调用失败，使用本地存储更新:`, apiError)
-      }
+      // 调用后端API更新数据库
+      await updateOrderLogisticsStatus({
+        orderNo,
+        newStatus,
+        remark
+      })
+      console.log(`[物流状态Store] 后端API更新成功: ${orderNo} -> ${newStatus}`)
 
-      // 更新本地数据
+      // API成功后，同步更新前端状态
+      // 更新本地列表数据
       const order = orderList.value.find(item => item.orderNo === orderNo)
       if (order) {
         order.status = newStatus
       }
 
-      // 【关键修复】同步更新 orderStore 中的订单物流状态和订单状态
+      // 同步更新 orderStore 中的订单物流状态和订单状态
       const orderStore = useOrderStore()
       const storeOrder = orderStore.getOrderByNumber(orderNo)
       if (storeOrder) {
@@ -220,19 +216,17 @@ export const useLogisticsStatusStore = defineStore('logisticsStatus', () => {
 
         // 构建更新对象
         const updates: Record<string, string> = {
-          logisticsStatus: newStatus,
-          shippingStatus: newStatus  // 同时更新shippingStatus字段
+          logisticsStatus: newStatus
         }
 
-        // 【核心修复】根据物流状态同步更新订单状态
-        // 这些状态需要同步到订单状态
+        // 根据物流状态同步更新订单状态
         const statusMapping: Record<string, string> = {
-          'delivered': 'delivered',              // 已签收
-          'rejected': 'rejected',                // 拒收
-          'rejected_returned': 'rejected_returned', // 拒收已退回
-          'refunded': 'refunded',                // 退货退款
-          'after_sales_created': 'after_sales_created', // 已建售后
-          'abnormal': 'package_exception'        // 状态异常 → 包裹异常
+          'delivered': 'delivered',
+          'rejected': 'rejected',
+          'rejected_returned': 'rejected_returned',
+          'refunded': 'refunded',
+          'after_sales_created': 'after_sales_created',
+          'abnormal': 'package_exception'
         }
 
         if (statusMapping[newStatus]) {
@@ -240,23 +234,17 @@ export const useLogisticsStatusStore = defineStore('logisticsStatus', () => {
           console.log(`[物流状态Store] 同时更新订单状态为: ${statusMapping[newStatus]}`)
         }
 
-        // 更新物流更新时间
         updates.logisticsUpdateTime = new Date().toISOString()
-
         orderStore.updateOrder(storeOrder.id, updates)
 
-        // 如果状态更新为已签收，创建资料记录
         if (newStatus === 'delivered') {
           console.log(`[物流状态Store] 订单已签收，创建资料记录: ${orderNo}`)
           await createDataRecordFromOrder(storeOrder)
         }
-      } else {
-        console.warn(`[物流状态Store] 未找到订单: ${orderNo}`)
       }
 
       // 刷新汇总数据
       await fetchSummary()
-
       console.log(`[物流状态Store] 订单状态更新完成: ${orderNo} -> ${newStatus}`)
 
     } catch (error) {
