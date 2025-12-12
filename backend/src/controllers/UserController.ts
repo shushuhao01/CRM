@@ -119,10 +119,11 @@ export class UserController {
     }
 
     // 生成JWT令牌
+    // 🔥 修复：使用 roleId（角色代码如 department_manager）而不是 role（可能是中文角色名）
     const tokenPayload = {
       userId: user.id,
       username: user.username,
-      role: user.role,
+      role: user.roleId || user.role,  // 优先使用 roleId
       departmentId: user.departmentId
     };
 
@@ -180,10 +181,11 @@ export class UserController {
     }
 
     // 生成新的令牌对
+    // 🔥 修复：使用 roleId（角色代码如 department_manager）而不是 role（可能是中文角色名）
     const newTokenPayload = {
       userId: user.id,
       username: user.username,
-      role: user.role,
+      role: user.roleId || user.role,  // 优先使用 roleId
       departmentId: user.departmentId
     };
 
