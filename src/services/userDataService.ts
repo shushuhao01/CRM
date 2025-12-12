@@ -173,7 +173,16 @@ class UserDataService {
       if (result.success && result.data) {
         const users = result.data.users || result.data.items || []
         console.log('[UserDataService] 解析到用户数量:', users.length)
-        return users.map((user: unknown) => ({
+        // 🔥 打印第一个用户的部门信息用于调试
+        if (users.length > 0) {
+          console.log('[UserDataService] 示例用户部门信息:', {
+            id: users[0].id,
+            departmentId: users[0].departmentId,
+            departmentName: users[0].departmentName,
+            department_name: users[0].department_name
+          })
+        }
+        return users.map((user: any) => ({
           id: user.id,
           name: user.realName || user.name || user.username,
           username: user.username,
@@ -181,9 +190,10 @@ class UserDataService {
           email: user.email || '',
           phone: user.phone || '',
           role: user.role || 'user',
-          department: user.departmentName || '未分配',
-          departmentId: user.departmentId,
-          departmentName: user.departmentName || '未分配',
+          // 🔥 修复：同时检查 departmentName 和 department_name（驼峰和下划线格式）
+          department: user.departmentName || user.department_name || '',
+          departmentId: user.departmentId || user.department_id || '',
+          departmentName: user.departmentName || user.department_name || '',
           position: user.position || '员工',
           avatar: user.avatar || '',
           status: user.status || 'active',

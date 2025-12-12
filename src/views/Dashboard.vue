@@ -1155,10 +1155,19 @@ const loadRealRankings = () => {
       if (user) {
         userName = user.realName || user.name || user.username || '未知'
         userAvatar = user.avatar || ''
-        // 优先从departmentStore获取部门名称
-        const dept = departmentStore.departments?.find(d => String(d.id) === String(user.departmentId))
-        userDepartment = dept?.name || user.departmentName || user.department || '未分配部门'
-        console.log(`[业绩排名] 找到用户: ${userName}, 部门: ${userDepartment}`)
+        // 🔥 修复：优先从departmentStore获取部门名称，确保显示正确
+        const userDeptId = user.departmentId
+        const dept = departmentStore.departments?.find((d: any) => String(d.id) === String(userDeptId))
+        if (dept) {
+          userDepartment = dept.name
+        } else if (user.departmentName && user.departmentName !== '未分配') {
+          userDepartment = user.departmentName
+        } else if (user.department && user.department !== '未分配') {
+          userDepartment = user.department
+        } else {
+          userDepartment = '未分配部门'
+        }
+        console.log(`[业绩排名] 找到用户: ${userName}, 部门ID: ${userDeptId}, 部门名称: ${userDepartment}`)
       } else {
         // 如果找不到用户，尝试从订单中获取信息
         userName = order.createdByName || order.createdBy || '未知'
@@ -1447,23 +1456,36 @@ const handleOrderStatusChanged = () => {
 }
 
 onMounted(async () => {
-  // 🔥 优化：并行加载用户列表和订单数据，减少等待时间
+  // 🔥 优化：先显示页面，再加载数据，提升用户体验
   const startTime = Date.now()
 
+  // 🔥 第一步：立即显示页面框架（使用已有数据或空数据）
+  loadDashboardData()
+
   try {
-    // 并行加载所有必要数据
+    // 🔥 第二步：并行加载用户和部门数据（业绩排名需要）
+    console.log('[Dashboard] 开始加载用户和部门数据...')
     await Promise.all([
       userStore.loadUsers(),
-      // 只有当订单数据为空时才从API加载，避免重复请求
-      orderStore.orders.length === 0 ? (orderStore.loadOrdersFromAPI?.() || Promise.resolve()) : Promise.resolve()
+      departmentStore.fetchDepartments()
     ])
-    console.log(`[Dashboard] 数据加载完成，耗时: ${Date.now() - startTime}ms`)
+    console.log(`[Dashboard] 用户和部门数据加载完成，耗时: ${Date.now() - startTime}ms`)
+    console.log('[Dashboard] 用户列表:', userStore.users?.length, '个用户')
+    console.log('[Dashboard] 部门列表:', departmentStore.departments?.length, '个部门')
+
+    // 🔥 第三步：如果订单数据为空，加载订单数据
+    if (orderStore.orders.length === 0) {
+      console.log('[Dashboard] 开始加载订单数据...')
+      await orderStore.loadOrdersFromAPI?.()
+      console.log(`[Dashboard] 订单数据加载完成，共 ${orderStore.orders.length} 个订单`)
+    }
+
+    // 🔥 第四步：重新计算仪表板数据（使用完整数据）
+    loadDashboardData()
+    console.log(`[Dashboard] 数据刷新完成，总耗时: ${Date.now() - startTime}ms`)
   } catch (err) {
     console.warn('[Dashboard] 数据加载失败:', err)
   }
-
-  // 加载仪表板数据（使用已加载的数据计算指标）
-  loadDashboardData()
 
   // 监听订单状态变化事件
   eventBus.on(EventNames.ORDER_STATUS_CHANGED, handleOrderStatusChanged)
