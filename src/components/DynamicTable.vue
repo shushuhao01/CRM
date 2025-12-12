@@ -27,7 +27,7 @@
       stripe
       border
       :scrollbar-always-on="true"
-      :max-height="tableMaxHeight"
+      class="sticky-header-table"
     >
       <!-- 选择列 -->
       <el-table-column
@@ -102,7 +102,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import TableColumnSettings from './TableColumnSettings.vue'
 
 interface TableColumn {
@@ -170,19 +170,15 @@ const emit = defineEmits<{
 const columnSettingsRef = ref()
 const currentPage = ref(1)
 const pageSize = ref(props.pageSizes[0] || 10)
+const tableContainerRef = ref<HTMLElement | null>(null)
+const isScrolled = ref(false)
 
-// 🔥 计算表格最大高度 - 根据数据条数动态计算，确保能显示所有数据
-// 每行大约50px高度，表头约50px，额外留100px余量
+// 🔥 计算表格高度 - 根据数据条数自适应，不设置max-height限制
+// 让表格能完整显示所有数据，通过CSS sticky实现表头固定
 const tableMaxHeight = computed(() => {
-  const rowHeight = 50 // 每行高度
-  const headerHeight = 50 // 表头高度
-  const extraPadding = 20 // 额外padding
-  const dataCount = props.data.length || pageSize.value
-  // 计算高度：表头 + 数据行 + 额外padding
-  const calculatedHeight = headerHeight + (dataCount * rowHeight) + extraPadding
-  // 最大不超过屏幕高度的80%
-  const maxScreenHeight = window.innerHeight * 0.8
-  return Math.min(calculatedHeight, maxScreenHeight)
+  // 返回undefined让表格自适应高度，不限制最大高度
+  // 表头固定通过CSS sticky实现
+  return undefined
 })
 
 // 所有列配置（包含默认visible状态）
@@ -274,11 +270,38 @@ watch(() => props.columns, () => {
   }
 }, { immediate: true })
 
+// 🔥 滚动监听 - 检测表头是否需要固定
+const handleScroll = () => {
+  nextTick(() => {
+    const container = document.querySelector('.dynamic-table-container')
+    if (container) {
+      const rect = container.getBoundingClientRect()
+      const table = container.querySelector('.el-table')
+      // 当表格顶部滚动到视口顶部时，添加滚动状态类
+      if (rect.top <= 0 && table) {
+        table.classList.add('is-scrolled')
+        isScrolled.value = true
+      } else if (table) {
+        table.classList.remove('is-scrolled')
+        isScrolled.value = false
+      }
+    }
+  })
+}
+
 // 组件挂载后初始化
 onMounted(() => {
   initializeVisibleColumns()
   // 🔥 初始化时触发size-change事件，确保外部组件知道初始的pageSize
   emit('size-change', pageSize.value)
+
+  // 🔥 添加滚动监听
+  window.addEventListener('scroll', handleScroll, { passive: true })
+})
+
+// 组件卸载时清理
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScroll)
 })
 
 // 暴露方法
@@ -378,5 +401,47 @@ defineExpose({
 /* 🔥 斑马纹行的固定列背景 */
 :deep(.el-table--striped .el-table__fixed-right .el-table__row--striped .el-table__cell) {
   background: #fafafa;
+}
+
+/* ========================================
+   🔥 表头固定（Sticky Header）样式
+   当页面滚动时，表头固定在顶部
+   ======================================== */
+
+/* 表格容器不限制高度，让内容自适应 */
+.sticky-header-table {
+  width: 100%;
+}
+
+/* 表头固定在页面顶部 */
+:deep(.sticky-header-table .el-table__header-wrapper) {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #fff;
+}
+
+/* 表头单元格背景确保不透明 */
+:deep(.sticky-header-table .el-table__header th.el-table__cell) {
+  background: #f5f7fa !important;
+}
+
+/* 表头固定时的阴影效果 */
+:deep(.sticky-header-table .el-table__header-wrapper::after) {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+/* 滚动时显示阴影 - 通过JS添加scrolled类 */
+:deep(.sticky-header-table.is-scrolled .el-table__header-wrapper::after) {
+  opacity: 1;
 }
 </style>
