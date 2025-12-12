@@ -1,6 +1,7 @@
 /**
  * 应用初始化服务
  * 在登录成功后无缝预加载关键数据
+ * 🔥 优化：分阶段加载，首页数据优先，非关键数据延迟加载
  */
 
 import { useUserStore } from '@/stores/user'
@@ -13,6 +14,8 @@ import { useConfigStore } from '@/stores/config'
 // 预加载状态
 let isPreloading = false
 let preloadPromise: Promise<void> | null = null
+// 🔥 新增：标记关键数据是否已加载
+let criticalDataLoaded = false
 
 /**
  * 清理过大的localStorage数据
@@ -58,7 +61,7 @@ const cleanupLargeStorageData = (): void => {
 /**
  * 预加载应用关键数据
  * 在登录成功后调用，无缝加载数据
- * 🔥 优化：分优先级加载，关键数据优先，非关键数据延迟加载
+ * 🔥 优化：分三阶段加载，首页数据最优先，非关键数据大幅延迟
  */
 export const preloadAppData = async (): Promise<void> => {
   // 防止重复预加载
@@ -67,8 +70,9 @@ export const preloadAppData = async (): Promise<void> => {
   }
 
   isPreloading = true
+  criticalDataLoaded = false
   const startTime = Date.now()
-  console.log('[AppInit] 开始预加载应用数据...')
+  console.log('[AppInit] 🚀 开始预加载应用数据...')
 
   preloadPromise = (async () => {
     try {
@@ -80,51 +84,60 @@ export const preloadAppData = async (): Promise<void> => {
         return
       }
 
-      // 清理过大的localStorage数据，避免存储空间不足
-      cleanupLargeStorageData()
+      // 清理过大的localStorage数据（异步执行，不阻塞）
+      setTimeout(() => cleanupLargeStorageData(), 0)
 
-      // 🔥 第一阶段：加载关键数据（系统配置和订单数据）
-      const criticalTasks = [
-        loadSystemConfig(),
-        loadOrderData(),
-      ]
+      // 🔥 第一阶段（最高优先级）：只加载首页必需的数据
+      // 系统配置是必需的，订单数据用于首页统计
+      console.log('[AppInit] 📦 第一阶段：加载首页必需数据...')
 
-      const criticalResults = await Promise.allSettled(criticalTasks)
+      // 🔥 优化：系统配置和订单数据并行加载，但设置超时
+      const criticalPromise = Promise.race([
+        Promise.allSettled([
+          loadSystemConfig(),
+          loadOrderDataFast(), // 🔥 使用快速加载版本
+        ]),
+        new Promise(resolve => setTimeout(() => resolve('timeout'), 3000)) // 3秒超时
+      ])
+
+      const criticalResult = await criticalPromise
       const criticalTime = Date.now() - startTime
-      console.log(`[AppInit] 关键数据加载完成，耗时: ${criticalTime}ms`)
 
-      criticalResults.forEach((result, index) => {
-        const taskNames = ['系统配置', '订单数据']
-        if (result.status === 'fulfilled') {
-          console.log(`[AppInit] ✅ ${taskNames[index]} 加载成功`)
-        } else {
-          console.warn(`[AppInit] ⚠️ ${taskNames[index]} 加载失败:`, result.reason)
-        }
-      })
+      if (criticalResult === 'timeout') {
+        console.warn(`[AppInit] ⚠️ 关键数据加载超时 (${criticalTime}ms)，继续执行`)
+      } else {
+        console.log(`[AppInit] ✅ 关键数据加载完成，耗时: ${criticalTime}ms`)
+      }
 
-      // 🔥 第二阶段：延迟加载非关键数据（不阻塞页面渲染）
+      criticalDataLoaded = true
+
+      // 🔥 第二阶段（延迟500ms）：加载次要数据
       setTimeout(async () => {
-        const secondaryTasks = [
-          loadCustomerData(),
+        console.log('[AppInit] 📦 第二阶段：加载次要数据...')
+        const secondaryStart = Date.now()
+
+        await Promise.allSettled([
           loadProductData(),
+        ])
+
+        console.log(`[AppInit] ✅ 次要数据加载完成，耗时: ${Date.now() - secondaryStart}ms`)
+      }, 500)
+
+      // 🔥 第三阶段（延迟2秒）：加载非关键数据
+      setTimeout(async () => {
+        console.log('[AppInit] 📦 第三阶段：加载非关键数据...')
+        const tertiaryStart = Date.now()
+
+        await Promise.allSettled([
+          loadCustomerData(),
           loadNotificationData(),
-        ]
+        ])
 
-        const secondaryResults = await Promise.allSettled(secondaryTasks)
         const totalTime = Date.now() - startTime
-        console.log(`[AppInit] 全部数据加载完成，总耗时: ${totalTime}ms`)
+        console.log(`[AppInit] ✅ 非关键数据加载完成，耗时: ${Date.now() - tertiaryStart}ms`)
+        console.log(`[AppInit] 🎉 全部数据加载完成，总耗时: ${totalTime}ms`)
+      }, 2000)
 
-        secondaryResults.forEach((result, index) => {
-          const taskNames = ['客户数据', '产品数据', '通知数据']
-          if (result.status === 'fulfilled') {
-            console.log(`[AppInit] ✅ ${taskNames[index]} 加载成功`)
-          } else {
-            console.warn(`[AppInit] ⚠️ ${taskNames[index]} 加载失败:`, result.reason)
-          }
-        })
-      }, 100) // 延迟100ms加载非关键数据
-
-      console.log('[AppInit] 应用数据预加载完成')
     } catch (error) {
       console.error('[AppInit] 预加载失败:', error)
     } finally {
@@ -134,6 +147,32 @@ export const preloadAppData = async (): Promise<void> => {
   })()
 
   return preloadPromise
+}
+
+/**
+ * 🔥 快速加载订单数据（只加载必要字段，不执行额外操作）
+ */
+const loadOrderDataFast = async (): Promise<void> => {
+  try {
+    const orderStore = useOrderStore()
+
+    // 只有当订单数据为空时才从API加载
+    if (orderStore.orders.length === 0 && typeof orderStore.loadOrdersFromAPI === 'function') {
+      await orderStore.loadOrdersFromAPI()
+    }
+
+    // 🔥 流转配置和自动流转任务延迟执行，不阻塞首页加载
+    setTimeout(() => {
+      if (typeof orderStore.loadTransferDelayConfig === 'function') {
+        orderStore.loadTransferDelayConfig()
+      }
+      if (typeof orderStore.startAutoTransferTask === 'function') {
+        orderStore.startAutoTransferTask()
+      }
+    }, 1000)
+  } catch (error) {
+    console.warn('[AppInit] 快速加载订单数据失败:', error)
+  }
 }
 
 /**
@@ -163,43 +202,10 @@ const loadCustomerData = async (): Promise<void> => {
 }
 
 /**
- * 加载订单数据
- * 🔥 优化：检查缓存，避免重复请求
+ * 🔥 检查关键数据是否已加载
  */
-const loadOrderData = async (): Promise<void> => {
-  try {
-    const orderStore = useOrderStore()
-
-    // 🔥 并行加载流转配置和订单数据
-    const tasks: Promise<unknown>[] = []
-
-    // 加载流转延迟配置
-    if (typeof orderStore.loadTransferDelayConfig === 'function') {
-      tasks.push(orderStore.loadTransferDelayConfig())
-    }
-
-    // 只有当订单数据为空时才从API加载
-    if (orderStore.orders.length === 0 && typeof orderStore.loadOrdersFromAPI === 'function') {
-      tasks.push(orderStore.loadOrdersFromAPI())
-    }
-
-    await Promise.all(tasks)
-
-    // 启动订单自动流转定时任务（不阻塞）
-    if (typeof orderStore.startAutoTransferTask === 'function') {
-      orderStore.startAutoTransferTask()
-      console.log('[AppInit] 订单自动流转定时任务已启动')
-    }
-
-    // 延迟执行流转检查，不阻塞初始化
-    setTimeout(() => {
-      if (typeof orderStore.checkAndTransferOrders === 'function') {
-        orderStore.checkAndTransferOrders()
-      }
-    }, 500)
-  } catch (error) {
-    console.warn('[AppInit] 加载订单数据失败:', error)
-  }
+export const isCriticalDataLoaded = (): boolean => {
+  return criticalDataLoaded
 }
 
 /**
@@ -249,5 +255,6 @@ export const waitForPreload = async (): Promise<void> => {
 export default {
   preloadAppData,
   isAppDataPreloading,
-  waitForPreload
+  waitForPreload,
+  isCriticalDataLoaded
 }
