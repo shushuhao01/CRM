@@ -568,17 +568,23 @@ const handleCurrentChange = (page: number) => {
 
 // 跟踪物流
 const handleTrack = (row: LogisticsItem) => {
-  safeNavigator.push(`/logistics/track/detail/${row.trackingNo}`)
+  // 🔥 修复：使用订单ID而不是物流单号，确保能正确查找订单
+  const orderId = row.orderId || row.id
+  safeNavigator.push(`/logistics/track/detail/${orderId}`)
 }
 
 // 编辑
 const handleEdit = (row: LogisticsItem) => {
-  safeNavigator.push(`/logistics/edit/${row.id}`)
+  // 🔥 修复：使用订单ID
+  const orderId = row.orderId || row.id
+  safeNavigator.push(`/logistics/edit/${orderId}`)
 }
 
 // 查看详情
 const handleViewDetail = (row: LogisticsItem) => {
-  safeNavigator.push(`/logistics/detail/${row.id}`)
+  // 🔥 修复：使用订单ID
+  const orderId = row.orderId || row.id
+  safeNavigator.push(`/logistics/detail/${orderId}`)
 }
 
 // 点击物流单号：复制并提示选择跳转网站

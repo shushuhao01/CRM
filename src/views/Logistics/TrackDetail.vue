@@ -37,7 +37,7 @@
               <span>基本信息</span>
             </div>
           </template>
-          
+
           <div class="info-grid">
             <div class="info-item">
               <span class="label">物流单号：</span>
@@ -82,7 +82,7 @@
               <span class="track-count">共 {{ trackingHistory.length }} 条记录</span>
             </div>
           </template>
-          
+
           <div v-loading="loading" class="track-timeline">
             <el-timeline>
               <el-timeline-item
@@ -123,7 +123,7 @@
               <span>配送进度</span>
             </div>
           </template>
-          
+
           <div class="progress-info">
             <el-progress
               :percentage="getProgressPercentage()"
@@ -144,7 +144,7 @@
               <span>时效信息</span>
             </div>
           </template>
-          
+
           <div class="time-info">
             <div class="time-item">
               <span class="label">已用时长：</span>
@@ -168,7 +168,7 @@
               <span>联系信息</span>
             </div>
           </template>
-          
+
           <div class="contact-info">
             <div class="contact-item">
               <span class="label">客服电话：</span>
@@ -195,7 +195,7 @@
 import { ref, reactive, onMounted, computed, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { 
+import {
   ArrowLeft,
   Refresh,
   Share,
@@ -330,13 +330,13 @@ const getProgressText = () => {
  */
 const getUsedTime = () => {
   if (!trackingInfo.shipTime) return '-'
-  
+
   const shipTime = new Date(trackingInfo.shipTime)
   const now = new Date()
   const diff = now.getTime() - shipTime.getTime()
   const days = Math.floor(diff / (1000 * 60 * 60 * 24))
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-  
+
   if (days > 0) {
     return `${days}天${hours}小时`
   } else {
@@ -349,16 +349,16 @@ const getUsedTime = () => {
  */
 const getRemainingTime = () => {
   if (!trackingInfo.estimatedTime) return '-'
-  
+
   const estimatedTime = new Date(trackingInfo.estimatedTime)
   const now = new Date()
   const diff = estimatedTime.getTime() - now.getTime()
-  
+
   if (diff <= 0) return '已超时'
-  
+
   const days = Math.floor(diff / (1000 * 60 * 60 * 24))
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-  
+
   if (days > 0) {
     return `${days}天${hours}小时`
   } else {
@@ -437,20 +437,32 @@ const getCompanyContact = (code: string) => {
  */
 const loadTrackingData = async () => {
   if (isUnmounted.value) return
-  
+
   loading.value = true
-  
+
   try {
-    const trackingNo = route.params.trackingNo || route.query.trackingNo
+    const paramId = route.params.trackingNo || route.query.trackingNo
     const companyCode = route.query.company
-    
+
     // 从订单store中查找对应的订单
     const allOrders = orderStore.getOrders()
-    const order = allOrders.find(o => 
-      o.trackingNumber === trackingNo || 
-      o.expressNo === trackingNo
+
+    // 🔥 修复：支持通过订单ID、物流单号等多种方式查找
+    let order = allOrders.find(o =>
+      o.id === paramId ||
+      o.id === String(paramId) ||
+      String(o.id) === String(paramId)
     )
-    
+
+    // 如果通过ID找不到，尝试通过物流单号查找
+    if (!order) {
+      order = allOrders.find(o =>
+        o.trackingNumber === paramId ||
+        o.expressNo === paramId ||
+        o.orderNumber === paramId
+      )
+    }
+
     if (!order) {
       ElMessage.error('未找到对应的订单信息')
       if (!isUnmounted.value) {
@@ -458,14 +470,14 @@ const loadTrackingData = async () => {
       }
       return
     }
-    
+
     // 检查组件是否已卸载
     if (isUnmounted.value) return
-    
+
     // 获取物流公司信息
     const expressCompany = order.expressCompany || companyCode || 'SF'
     const companyContact = getCompanyContact(expressCompany)
-    
+
     // 使用真实订单数据
     Object.assign(trackingInfo, {
       trackingNo: order.trackingNumber || order.expressNo || trackingNo || '',
@@ -483,7 +495,7 @@ const loadTrackingData = async () => {
       complaintPhone: companyContact.complaint,
       website: companyContact.website
     })
-    
+
     // 使用真实物流轨迹数据
     if (order.logisticsHistory && Array.isArray(order.logisticsHistory) && order.logisticsHistory.length > 0) {
       trackingHistory.value = order.logisticsHistory.map((item: any) => ({
@@ -508,13 +520,13 @@ const loadTrackingData = async () => {
             operator: h.operator || '',
             type: getTimelineTypeByStatus(h.status)
           }))
-        
+
         trackingHistory.value = logisticsHistoryItems.reverse()
       } else {
         trackingHistory.value = []
       }
     }
-    
+
   } catch (error) {
     console.error('加载物流信息失败:', error)
     if (!isUnmounted.value) {
@@ -587,7 +599,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   // 设置组件卸载状态
   isUnmounted.value = true
-  
+
   // 清理所有未完成的 setTimeout
   timeoutIds.forEach(id => clearTimeout(id))
   timeoutIds.clear()
@@ -773,7 +785,7 @@ onBeforeUnmount(() => {
   .page-header .header-actions {
     display: none;
   }
-  
+
   .track-detail {
     padding: 0;
   }
