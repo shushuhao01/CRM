@@ -42,7 +42,11 @@ class RoleApiService {
       const response = await apiService.get<{ success: boolean; data: { roles: Role[] } }>('/roles')
       console.log('[RoleAPI] 获取角色列表成功:', response)
       // 后端返回的数据结构是 { success: true, data: { roles: [...] } }
-      return response.data.roles || []
+      // axios 响应结构: response.data 是后端返回的 JSON
+      if (response.data?.success && response.data?.data?.roles) {
+        return response.data.data.roles
+      }
+      return []
     } catch (error: any) {
       console.warn('[RoleAPI] API获取失败，尝试从localStorage获取')
       console.warn('[RoleAPI] 错误详情:', {
