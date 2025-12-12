@@ -180,7 +180,9 @@ import { getOrderStatusStyle, getOrderStatusText } from '@/utils/orderStatusConf
 import { formatDateTime } from '@/utils/dateFormat'
 
 interface LogisticsItem {
-  id: number
+  id: string | number // 🔥 修复：支持UUID字符串和数字ID
+  orderId?: string
+  customerId?: string
   trackingNo: string
   orderNo: string
   customerName: string
@@ -486,7 +488,7 @@ const loadData = async () => {
 
     // 转换为物流列表格式
     let logisticsData = shippedOrders.map(order => ({
-      id: parseInt(order.id),
+      id: order.id, // 🔥 修复：保持原始订单ID（UUID格式），不要转换为数字
       orderId: order.id,
       customerId: order.customerId,
       trackingNo: order.trackingNumber || '',
