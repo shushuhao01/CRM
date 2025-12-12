@@ -4,10 +4,19 @@ import type { Department, DepartmentMember, DepartmentStats, DepartmentRole } fr
 // 部门相关API接口
 
 /**
- * 获取部门列表
+ * 获取部门列表（需要管理员权限）
  */
 export const getDepartmentList = () => {
   return api.get<Department[]>('/system/departments')
+}
+
+/**
+ * 获取当前用户可访问的部门列表（所有登录用户可用）
+ * - 超级管理员/管理员：返回所有部门
+ * - 部门经理/销售员：只返回自己所属的部门
+ */
+export const getMyDepartments = () => {
+  return api.get<Department[]>('/system/my-departments')
 }
 
 /**
@@ -189,14 +198,14 @@ export const departmentToOptions = (departments: Department[]) => {
 export const getDepartmentPath = (departmentId: string, departments: Department[]): string[] => {
   const path: string[] = []
   let currentId = departmentId
-  
+
   while (currentId) {
     const dept = departments.find(d => d.id === currentId)
     if (!dept) break
-    
+
     path.unshift(dept.name)
     currentId = dept.parentId || ''
   }
-  
+
   return path
 }

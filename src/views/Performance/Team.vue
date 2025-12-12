@@ -847,8 +847,9 @@ const dynamicColumns = computed(() => {
 
 // 检查是否有权限查看成员订单详情
 // 权限规则：
+// 🔥 权限控制：判断当前用户是否可以点击查看某成员的订单
 // - 超级管理员和管理员：可以查看所有人的订单
-// - 部门经理：可以查看本部门成员的订单
+// - 部门经理：可以查看本部门所有成员的订单
 // - 销售员：只能查看自己的订单
 const canViewMemberOrders = (member: TeamMember) => {
   const currentUser = userStore.currentUser
@@ -861,17 +862,28 @@ const canViewMemberOrders = (member: TeamMember) => {
     return true
   }
 
-  // 部门经理可以查看本部门成员
+  // 部门经理可以查看本部门所有成员的订单
   if (role === 'department_manager') {
-    const userDeptId = currentUser.departmentId || currentUser.department
+    const userDeptId = currentUser.departmentId
+    const userDeptName = currentUser.departmentName || currentUser.department
+
+    // 🔥 修复：通过ID或名称匹配部门
+    const isSameDepartment = (
+      String(member.department) === String(userDeptId) ||
+      member.department === userDeptName
+    )
+
     // 可以查看自己的订单，或者同部门成员的订单
     return String(member.id) === String(currentUser.id) ||
-           member.department === userDeptId
+           String(member.username) === String(currentUser.username) ||
+           isSameDepartment
   }
 
   // 销售员只能查看自己的订单
-  if (role === 'sales_staff') {
-    return String(member.id) === String(currentUser.id)
+  if (role === 'sales_staff' || role === 'sales') {
+    // 🔥 修复：通过ID或用户名匹配
+    return String(member.id) === String(currentUser.id) ||
+           String(member.username) === String(currentUser.username)
   }
 
   return false

@@ -589,20 +589,41 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     try {
       console.log('[DepartmentStore] 开始获取部门数据...')
 
-      // 【生产环境修复】生产环境直接调用API，不使用localStorage
-      if (import.meta.env.PROD) {
-        const { getDepartmentList } = await import('@/api/department')
-        console.log('[DepartmentStore] 生产环境：调用API获取部门数据')
-        const response = await getDepartmentList()
-        console.log('[DepartmentStore] API响应:', response)
+      // 🔥 优先使用公共API（所有登录用户都可以访问）
+      // 这个API会根据用户角色返回相应的部门数据
+      try {
+        const { getMyDepartments } = await import('@/api/department')
+        console.log('[DepartmentStore] 调用公共API获取可访问的部门数据')
+        const response = await getMyDepartments()
+        console.log('[DepartmentStore] 公共API响应:', response)
 
         if (response && response.data) {
           const depts = Array.isArray(response.data) ? response.data : []
           departments.value = depts
-          console.log('[DepartmentStore] 生产环境：部门数据已更新:', departments.value.length, '个部门')
-        } else {
+          console.log('[DepartmentStore] 部门数据已更新:', departments.value.length, '个部门')
+          return
+        }
+      } catch (publicApiError) {
+        console.warn('[DepartmentStore] 公共API失败，尝试管理员API:', publicApiError)
+      }
+
+      // 如果公共API失败，尝试管理员API（仅管理员可用）
+      if (import.meta.env.PROD) {
+        try {
+          const { getDepartmentList } = await import('@/api/department')
+          console.log('[DepartmentStore] 生产环境：尝试管理员API获取部门数据')
+          const response = await getDepartmentList()
+
+          if (response && response.data) {
+            const depts = Array.isArray(response.data) ? response.data : []
+            departments.value = depts
+            console.log('[DepartmentStore] 生产环境：部门数据已更新:', departments.value.length, '个部门')
+          } else {
+            departments.value = []
+          }
+        } catch (adminApiError) {
+          console.error('[DepartmentStore] 生产环境：管理员API也失败:', adminApiError)
           departments.value = []
-          console.log('[DepartmentStore] 生产环境：API响应无数据')
         }
         return
       }
