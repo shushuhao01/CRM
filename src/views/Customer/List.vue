@@ -1524,11 +1524,27 @@ const getSalesPersonName = (salesPersonId: string) => {
   return salesPerson ? salesPerson.name : '未分配'
 }
 
-// 获取创建人姓名
+// 获取创建人姓名 - 🔥 从所有用户中查找，不仅限于销售人员
 const getCreatorName = (createdBy: string) => {
   if (!createdBy) return '未知'
-  const creator = salesUsers.value.find(user => user.id === createdBy)
-  return creator ? creator.name : createdBy
+
+  // 🔥 优先从所有用户列表中查找（确保所有角色都能正确显示姓名）
+  const allUsers = userStore.users
+  const creator = allUsers.find(user => user.id === createdBy)
+
+  if (creator) {
+    // 返回用户姓名（优先使用name字段）
+    return creator.name || (creator as any).realName || (creator as any).username || createdBy
+  }
+
+  // 如果在用户列表中找不到，尝试从salesUsers中查找（兼容旧逻辑）
+  const salesCreator = salesUsers.value.find(user => user.id === createdBy)
+  if (salesCreator) {
+    return salesCreator.name
+  }
+
+  // 都找不到则返回用户ID
+  return createdBy
 }
 
 
