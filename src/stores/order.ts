@@ -80,9 +80,13 @@ export interface Order {
   hasBeenAudited?: boolean // 是否曾经被审核过（用于标识重新提审的订单）
   // 发货相关
   shippingTime?: string
+  shippedAt?: string          // 🔥 发货时间（ISO格式）
+  expectedDeliveryDate?: string // 🔥 预计送达日期
+  estimatedDeliveryTime?: string // 🔥 预计送达时间（兼容字段）
   shippingData?: { [key: string]: unknown }
   expressCompany?: string     // 快递公司
   trackingNumber?: string     // 快递单号
+  expressNo?: string          // 🔥 快递单号（兼容字段）
   logisticsStatus?: LogisticsStatus // 物流状态
   // 退货相关
   returnReason?: string
@@ -517,6 +521,19 @@ export const useOrderStore = createPersistentStore('order', () => {
       const currentUser = userStore.currentUser
       const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
+      // 🔥 计算预计送达时间（发货时间 + 3天）
+      const threeDaysLater = new Date(new Date().getTime() + 3 * 24 * 60 * 60 * 1000)
+      const expectedDeliveryDate = threeDaysLater.toISOString().split('T')[0]
+
+      console.log('[OrderStore] 发货信息:', {
+        id,
+        shippingTime: now,
+        shippedAt: now,
+        expectedDeliveryDate,
+        expressCompany,
+        trackingNumber
+      })
+
       // 🔥 始终调用API更新数据库，确保数据持久化
       try {
         console.log('[OrderStore] 调用API更新发货信息')
@@ -524,6 +541,8 @@ export const useOrderStore = createPersistentStore('order', () => {
         await orderApi.update(id, {
           status: 'shipped',
           shippingTime: now,
+          shippedAt: now, // 🔥 同时保存shippedAt字段
+          expectedDeliveryDate, // 🔥 保存预计送达时间
           expressCompany,
           trackingNumber,
           logisticsStatus: 'picked_up'
@@ -538,6 +557,8 @@ export const useOrderStore = createPersistentStore('order', () => {
       updateOrder(id, {
         status: 'shipped',
         shippingTime: now,
+        shippedAt: now, // 🔥 同时保存shippedAt字段
+        expectedDeliveryDate, // 🔥 保存预计送达时间
         expressCompany,
         trackingNumber,
         logisticsStatus: 'picked_up'

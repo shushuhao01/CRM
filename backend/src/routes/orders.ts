@@ -1310,6 +1310,13 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (updateData.expressCompany !== undefined) order.expressCompany = updateData.expressCompany;
     if (updateData.trackingNumber !== undefined) order.trackingNumber = updateData.trackingNumber;
     if (updateData.markType !== undefined) order.markType = updateData.markType;
+    // 🔥 发货时间和预计送达时间
+    if (updateData.shippingTime !== undefined) order.shippingTime = updateData.shippingTime;
+    if (updateData.shippedAt !== undefined) order.shippedAt = new Date(updateData.shippedAt);
+    if (updateData.expectedDeliveryDate !== undefined) order.expectedDeliveryDate = updateData.expectedDeliveryDate;
+    if (updateData.estimatedDeliveryTime !== undefined) order.expectedDeliveryDate = updateData.estimatedDeliveryTime;
+    // 🔥 物流状态
+    if (updateData.logisticsStatus !== undefined) order.logisticsStatus = updateData.logisticsStatus;
     // 🔥 新版自定义字段：从customFields对象中提取到独立字段
     if (updateData.customFields !== undefined) {
       order.customFields = updateData.customFields;

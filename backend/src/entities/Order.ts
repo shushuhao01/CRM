@@ -95,6 +95,12 @@ export class Order {
   @Column({ name: 'shipped_at', type: 'datetime', nullable: true, comment: '发货时间' })
   shippedAt?: Date;
 
+  @Column({ name: 'shipping_time', type: 'varchar', length: 50, nullable: true, comment: '发货时间字符串' })
+  shippingTime?: string;
+
+  @Column({ name: 'expected_delivery_date', type: 'varchar', length: 20, nullable: true, comment: '预计送达日期' })
+  expectedDeliveryDate?: string;
+
   @Column({ name: 'delivered_at', type: 'datetime', nullable: true, comment: '签收时间' })
   deliveredAt?: Date;
 
