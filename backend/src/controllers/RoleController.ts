@@ -55,9 +55,9 @@ export class RoleController {
       // 计算每个角色的用户数量和权限数量
       const rolesWithCounts = await Promise.all(
         roles.map(async (role) => {
-          // 通过 roleId 字段查询用户数量
+          // 通过 roleId 字段查询用户数量（roleId 存储的是角色的 code，不是 id）
           const userCount = await this.userRepository.count({
-            where: { roleId: role.id }
+            where: { roleId: role.code }
           });
 
           // permissions 是 JSON 字段，直接获取长度
@@ -109,9 +109,9 @@ export class RoleController {
         return;
       }
 
-      // 获取该角色的用户数量
+      // 获取该角色的用户数量（roleId 存储的是角色的 code，不是 id）
       const userCount = await this.userRepository.count({
-        where: { roleId: role.id }
+        where: { roleId: role.code }
       });
 
       res.json({
@@ -270,9 +270,9 @@ export class RoleController {
         return;
       }
 
-      // 检查是否有用户使用此角色
+      // 检查是否有用户使用此角色（roleId 存储的是角色的 code，不是 id）
       const usersWithRole = await this.userRepository.count({
-        where: { roleId: String(id) }
+        where: { roleId: role.code }
       });
 
       if (usersWithRole > 0) {
