@@ -1793,6 +1793,13 @@ const handleExport = async () => {
   try {
     loading.value = true
 
+    // 🔥 调试：打印前几条订单的expressCompany字段
+    console.log('[订单导出] 检查expressCompany字段:', filteredOrderList.value.slice(0, 5).map(o => ({
+      orderNumber: o.orderNumber,
+      expressCompany: o.expressCompany,
+      hasExpressCompany: !!o.expressCompany
+    })))
+
     const exportData: ExportOrder[] = filteredOrderList.value.map(order => ({
       orderNumber: order.orderNumber || '',
       customerName: order.customerName || '',
