@@ -34,7 +34,7 @@
                 <el-option
                   v-for="customer in customerOptions"
                   :key="customer.id"
-                  :label="`${customer.name} (${maskPhone(customer.phone)})`"
+                  :label="`${customer.name} (${displaySensitiveInfoNew(customer.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '')})`"
                   :value="customer.id"
                 />
               </el-select>
@@ -96,7 +96,7 @@
                     <el-option
                       v-for="phone in customerPhones"
                       :key="phone.id"
-                      :label="maskPhone(phone.number)"
+                      :label="displaySensitiveInfoNew(phone.number, SensitiveInfoType.PHONE, userStore.currentUser?.id || '')"
                       :value="phone.number"
                     />
                   </el-select>
@@ -649,7 +649,6 @@ import { useNotificationStore } from '@/stores/notification'
 import { useConfigStore } from '@/stores/config'
 import { useProductStore } from '@/stores/product'
 import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
-import { maskPhone } from '@/utils/phone'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { createSafeNavigator } from '@/utils/navigation'
