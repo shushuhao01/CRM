@@ -83,6 +83,12 @@ export class User {
   @Column('enum', { enum: ['active', 'inactive', 'resigned', 'locked'], default: 'active' })
   status: 'active' | 'inactive' | 'resigned' | 'locked';
 
+  @Column('enum', { name: 'employment_status', enum: ['active', 'resigned'], default: 'active', nullable: true })
+  employmentStatus: 'active' | 'resigned' | null;
+
+  @Column('datetime', { name: 'resigned_at', nullable: true })
+  resignedAt: Date | null;
+
   @Column('timestamp', { name: 'last_login_at', nullable: true })
   lastLoginAt: Date | null;
 

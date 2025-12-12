@@ -216,9 +216,17 @@
 
         <el-table-column label="操作" width="120" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" size="small" @click="viewMemberDetail(row)">
+            <!-- 🔥 权限控制：只有有权限查看该成员订单的用户才能看到查看详情按钮 -->
+            <el-button
+              v-if="canViewMemberOrders(row)"
+              type="primary"
+              size="small"
+              @click="viewMemberDetail(row)"
+            >
               查看详情
             </el-button>
+            <!-- 无权限时显示占位符或不显示 -->
+            <span v-else class="no-permission-text">-</span>
           </template>
         </el-table-column>
       </el-table>
@@ -518,7 +526,15 @@
                 <span v-else-if="column.prop === 'createTime'">
                   {{ formatDateTime(row[column.prop]) }}
                 </span>
-                <!-- 订单数量字段 -->
+                <!-- 订单数量字段 - 可点击查看对应订单详情（带权限控制） -->
+                <el-link
+                  v-else-if="column.prop.includes('Count') && row[column.prop] > 0 && canViewMemberOrders(row)"
+                  type="primary"
+                  @click="viewOrdersByType(row, column.prop)"
+                  class="count-link"
+                >
+                  {{ typeof row[column.prop] === 'number' ? (row[column.prop] % 1 === 0 ? row[column.prop] : row[column.prop].toFixed(1)) : row[column.prop] }}
+                </el-link>
                 <span v-else-if="column.prop.includes('Count')" class="count">
                   {{ typeof row[column.prop] === 'number' ? (row[column.prop] % 1 === 0 ? row[column.prop] : row[column.prop].toFixed(1)) : row[column.prop] }}
                 </span>
@@ -529,7 +545,8 @@
 
             <el-table-column label="操作" width="120" align="center" fixed="right">
               <template #default="{ row }">
-                <div class="operation-buttons">
+                <!-- 🔥 权限控制：只有有权限查看该成员订单的用户才能看到操作按钮 -->
+                <div v-if="canViewMemberOrders(row)" class="operation-buttons">
                   <el-button type="primary" size="small" @click="viewMemberDetail(row)">
                     查看详情
                   </el-button>
@@ -537,6 +554,8 @@
                     分析业绩
                   </el-button>
                 </div>
+                <!-- 无权限时显示占位符 -->
+                <span v-else class="no-permission-text">-</span>
               </template>
             </el-table-column>
           </el-table>
@@ -897,12 +916,18 @@ const exportStats = reactive({
 })
 
 // 所有用户列表
+// 🔥 【修复】过滤掉禁用用户，只返回启用的用户
 const allUsers = computed(() => {
-  return userStore.users || []
+  return (userStore.users || []).filter(u => !u.status || u.status === 'active')
 })
 const currentPage = ref(1)
 const pageSize = ref(30)
 const total = ref(100)
+
+// 🔥 【修复】检查用户是否启用
+const isUserEnabledForCount = (user: any) => {
+  return !user.status || user.status === 'active'
+}
 
 // 计算团队成员数量的辅助函数
 const getTeamMemberCount = () => {
@@ -912,19 +937,22 @@ const getTeamMemberCount = () => {
   let count = 0
 
   if (userStore.isSuperAdmin || currentUser.role === 'admin') {
-    // 超级管理员：所有销售人员
+    // 超级管理员：所有启用的销售人员
     count = userStore.users?.filter(user =>
-      user.role === 'sales_staff' || user.role === 'department_manager'
+      isUserEnabledForCount(user) &&
+      (user.role === 'sales_staff' || user.role === 'department_manager')
     ).length || 0
   } else if (userStore.isManager || currentUser.role === 'department_manager') {
-    // 部门经理：本部门成员
+    // 部门经理：本部门启用的成员
     count = userStore.users?.filter(user =>
+      isUserEnabledForCount(user) &&
       user.departmentId === currentUser.departmentId &&
       (user.role === 'sales_staff' || user.role === 'department_manager')
     ).length || 0
   } else {
-    // 普通成员：同部门成员
+    // 普通成员：同部门启用的成员
     count = userStore.users?.filter(user =>
+      isUserEnabledForCount(user) &&
       user.departmentId === currentUser.departmentId &&
       (user.role === 'sales_staff' || user.role === 'department_manager')
     ).length || 0
@@ -1080,32 +1108,62 @@ const memberList = computed(() => {
 
   // 🔥 修复：用户匹配函数，同时支持ID和名称匹配
   const matchUserDepartment = (user: any) => {
-    // 通过部门ID匹配
-    if (userDeptId && String(user.departmentId) === String(userDeptId)) {
-      return true
+    // 通过部门ID匹配（支持多种格式）
+    if (userDeptId) {
+      const userDeptIdStr = String(user.departmentId || '').toLowerCase()
+      const currentDeptIdStr = String(userDeptId).toLowerCase()
+      if (userDeptIdStr === currentDeptIdStr) {
+        return true
+      }
     }
     // 通过部门名称匹配
-    if (userDeptName && (user.department === userDeptName || user.departmentName === userDeptName)) {
-      return true
+    if (userDeptName) {
+      const userDeptNameLower = (user.department || user.departmentName || '').toLowerCase()
+      const currentDeptNameLower = userDeptName.toLowerCase()
+      if (userDeptNameLower === currentDeptNameLower) {
+        return true
+      }
     }
     return false
   }
 
+  // 🔥 调试：打印所有用户的部门信息
+  console.log('[团队业绩] 所有用户部门信息:', userStore.users?.map(u => ({
+    id: u.id,
+    name: u.name,
+    departmentId: u.departmentId,
+    department: u.department,
+    departmentName: u.departmentName,
+    status: u.status,
+    employmentStatus: u.employmentStatus
+  })))
+
+  // 🔥 【关键修复】过滤掉禁用状态的用户
+  // 禁用用户(status !== 'active')：账号无法登录，数据完全隐藏不可见
+  // 离职用户(employmentStatus === 'resigned')：账号无法登录，但历史数据仍然可见
+  const isUserEnabled = (user: any) => {
+    // 如果status字段存在且不是active，则用户被禁用
+    if (user.status && user.status !== 'active') {
+      return false
+    }
+    return true
+  }
+
   // 层级权限控制
   if (userStore.isSuperAdmin || currentUser.role === 'admin' || currentUser.role === 'super_admin') {
-    // 超级管理员：查看所有用户
-    accessibleUsers = userStore.users || []
-    console.log('[团队业绩] 超级管理员，可访问所有用户:', accessibleUsers.length)
+    // 超级管理员：查看所有启用的用户
+    accessibleUsers = (userStore.users || []).filter(isUserEnabled)
+    console.log('[团队业绩] 超级管理员，可访问所有启用用户:', accessibleUsers.length)
 
   } else if (userStore.isManager || currentUser.role === 'department_manager') {
-    // 部门经理：查看本部门成员
-    accessibleUsers = userStore.users?.filter(matchUserDepartment) || []
-    console.log('[团队业绩] 部门经理，可访问本部门用户:', accessibleUsers.length, '部门ID:', userDeptId, '部门名称:', userDeptName)
+    // 部门经理：查看本部门启用的成员
+    accessibleUsers = (userStore.users || []).filter(u => isUserEnabled(u) && matchUserDepartment(u))
+    console.log('[团队业绩] 部门经理，可访问本部门启用用户:', accessibleUsers.length, '部门ID:', userDeptId, '部门名称:', userDeptName)
 
   } else {
-    // 普通成员（销售员等）：查看同部门成员
-    accessibleUsers = userStore.users?.filter(matchUserDepartment) || []
-    console.log('[团队业绩] 普通成员，可访问同部门用户:', accessibleUsers.length, '部门ID:', userDeptId, '部门名称:', userDeptName)
+    // 普通成员（销售员等）：查看同部门启用的成员
+    accessibleUsers = (userStore.users || []).filter(u => isUserEnabled(u) && matchUserDepartment(u))
+    console.log('[团队业绩] 普通成员，可访问同部门启用用户:', accessibleUsers.length, '部门ID:', userDeptId, '部门名称:', userDeptName)
   }
 
   // 应用部门筛选（筛选器使用的是部门ID）
@@ -1113,17 +1171,24 @@ const memberList = computed(() => {
     console.log('[团队业绩] 应用部门筛选:', selectedDepartment.value)
     const beforeFilter = accessibleUsers.length
     // 🔥 修复：从部门列表获取选中部门的名称，用于匹配
-    const selectedDept = departmentStore.departmentList?.find(d => d.id === selectedDepartment.value)
+    const selectedDept = departmentStore.departmentList?.find(d => String(d.id) === String(selectedDepartment.value))
     const selectedDeptName = selectedDept?.name
+    console.log('[团队业绩] 选中部门:', selectedDept?.name, '(ID:', selectedDepartment.value, ')')
 
     accessibleUsers = accessibleUsers.filter((user: unknown) => {
-      // 通过部门ID匹配
-      if (String(user.departmentId) === String(selectedDepartment.value)) {
+      // 通过部门ID匹配（忽略大小写）
+      const userDeptIdStr = String(user.departmentId || '').toLowerCase()
+      const selectedDeptIdStr = String(selectedDepartment.value).toLowerCase()
+      if (userDeptIdStr === selectedDeptIdStr) {
         return true
       }
-      // 通过部门名称匹配
-      if (selectedDeptName && (user.department === selectedDeptName || user.departmentName === selectedDeptName)) {
-        return true
+      // 通过部门名称匹配（忽略大小写）
+      if (selectedDeptName) {
+        const userDeptNameLower = (user.department || user.departmentName || '').toLowerCase()
+        const selectedDeptNameLower = selectedDeptName.toLowerCase()
+        if (userDeptNameLower === selectedDeptNameLower) {
+          return true
+        }
       }
       return false
     })
@@ -2833,6 +2898,17 @@ onUnmounted(() => {
 :deep(.el-table__footer td:first-child) {
   color: #303133;
   font-weight: 700;
+}
+
+/* 🔥 无权限时的占位符样式 */
+.no-permission-text {
+  color: #c0c4cc;
+  font-size: 14px;
+}
+
+/* 🔥 单数量超链接样式 */
+.count-link {
+  font-weight: 500;
 }
 </style>
 

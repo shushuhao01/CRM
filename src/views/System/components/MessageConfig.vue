@@ -646,16 +646,19 @@ const departments = ref([
 ])
 
 // 成员数据 - 从userStore获取真实用户
+// 🔥 【修复】过滤掉禁用用户，只显示启用的用户
 const members = computed(() => {
-  return userStore.users.map((u: any) => ({
-    id: u.id,
-    name: u.realName || u.name || u.username,
-    departmentId: u.departmentId || '',
-    departmentName: u.departmentName || u.department || '未分配',
-    position: u.position || '员工',
-    email: u.email || '',
-    phone: u.phone || ''
-  }))
+  return userStore.users
+    .filter((u: any) => !u.status || u.status === 'active')
+    .map((u: any) => ({
+      id: u.id,
+      name: u.realName || u.name || u.username,
+      departmentId: u.departmentId || '',
+      departmentName: u.departmentName || u.department || '未分配',
+      position: u.position || '员工',
+      email: u.email || '',
+      phone: u.phone || ''
+    }))
 })
 
 // 配置数据

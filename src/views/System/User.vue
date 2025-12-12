@@ -2688,19 +2688,22 @@ const loadUserList = async () => {
         roleId: user.role || user.roleId || '',  // ✅ 使用角色code
         role: user.role || user.roleId || '',    // ✅ 使用角色code
         departmentId: user.departmentId?.toString() || '',
-        departmentName: user.department?.name || department?.name || '',
-        position: user.position || user.roleName || '',
-        employeeNumber: user.employeeNumber || '',
+        // 🔥 修复：优先使用API返回的departmentName
+        departmentName: user.departmentName || user.department_name || user.department?.name || department?.name || '',
+        // 🔥 修复：position字段独立映射，不使用roleName作为默认值
+        position: user.position || '',
+        // 🔥 修复：employeeNumber字段映射，支持下划线格式
+        employeeNumber: user.employeeNumber || user.employee_number || '',
         status: user.status || 'active',
-        employmentStatus: user.employmentStatus || 'active', // 在职状态，默认在职
-        resignedDate: user.resignedDate || '',
-        createTime: user.createTime || user.createdAt || '',
-        lastLoginTime: user.lastLoginTime || user.lastLoginAt || '',
+        employmentStatus: user.employmentStatus || user.employment_status || 'active', // 在职状态，默认在职
+        resignedDate: user.resignedDate || user.resigned_at || '',
+        createTime: user.createTime || user.createdAt || user.created_at || '',
+        lastLoginTime: user.lastLoginTime || user.lastLoginAt || user.last_login_at || '',
         avatar: user.avatar || '',
         remark: user.remark || '',
         roleName: user.roleName || '',
         isOnline: user.isOnline || false,
-        loginCount: user.loginCount || 0,
+        loginCount: user.loginCount || user.login_count || 0,
         statusLoading: false,
         employmentStatusLoading: false
       }

@@ -710,18 +710,21 @@ const callForm = reactive({
 })
 
 // 用户选项 - 从userStore获取,修复字段映射
+// 🔥 【修复】过滤掉禁用用户，只显示启用的用户
 const userOptions = computed(() => {
   const users = userStore.users || []
-  return users.map((user: any) => {
-    const name = user.name || user.username || user.realName || `用户${user.id}`
-    const department = user.departmentName || user.department || user.deptName || '未分配部门'
+  return users
+    .filter((user: any) => !user.status || user.status === 'active')
+    .map((user: any) => {
+      const name = user.name || user.username || user.realName || `用户${user.id}`
+      const department = user.departmentName || user.department || user.deptName || '未分配部门'
 
-    return {
-      id: user.id,
-      name: name,
-      department: department
-    }
-  })
+      return {
+        id: user.id,
+        name: name,
+        department: department
+      }
+    })
 })
 
 // 部门选项 - 从departmentStore获取

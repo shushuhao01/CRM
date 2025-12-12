@@ -1007,9 +1007,15 @@ const selectedOrders = ref<AuditOrder[]>([])
 const selectAll = ref(false)
 
 // 销售人员列表 - 从userStore获取真实用户数据
+// 🔥 【修复】过滤掉禁用用户，只显示启用的用户
 const salesUserList = computed(() => {
   return userStore.users
-    .filter(u => ['sales_staff', 'department_manager', 'admin', 'super_admin'].includes(u.role))
+    .filter(u => {
+      // 检查用户是否启用（禁用用户不显示）
+      const isEnabled = !u.status || u.status === 'active'
+      const hasValidRole = ['sales_staff', 'department_manager', 'admin', 'super_admin'].includes(u.role)
+      return isEnabled && hasValidRole
+    })
     .map(u => ({
       id: u.id,
       name: u.realName || u.name || u.username,
@@ -2202,65 +2208,56 @@ const loadOrderList = async () => {
     // 从orderStore获取订单数据，应用数据范围控制，过滤掉预留单
     const allOrders = applyDataScopeControl(orderStore.orders)
 
+    // 🔥 调试：打印所有订单的状态
+    console.log(`[订单审核] 从Store获取到 ${allOrders.length} 个订单`)
+    if (allOrders.length > 0) {
+      console.log('[订单审核] 订单状态分布:', allOrders.reduce((acc, order) => {
+        acc[order.status] = (acc[order.status] || 0) + 1
+        return acc
+      }, {} as Record<string, number>))
+    }
+
     // 过滤出需要审核的订单（排除预留单和退单）
     const ordersForAudit = allOrders.filter(order => {
-      console.log(`[订单审核] 检查订单 ${order.orderNumber}`, {
-        status: order.status,
-        auditStatus: order.auditStatus,
-        markType: order.markType,
-        hasBeenAudited: order.hasBeenAudited,
-        isAuditTransferred: order.isAuditTransferred
-      })
-
       // 排除预留单
       if (order.markType === 'reserved') {
-        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} 是预留单，跳过`)
         return false
       }
 
       // 排除退单 - 退单应该保留在成员系统，不流转到审核
       if (order.markType === 'return') {
-        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} 是退单，跳过`)
         return false
       }
 
-      // 关键条件：status 必须是 'pending_audit'（待审核状态）或 'confirmed'（已确认/待审核）
-      // 兼容后端可能使用的不同状态值
-      // 重要：已发货或已签收的订单不应该出现在待审核列表中
-      const validAuditStatuses = ['pending_audit', 'confirmed']
-      if (!validAuditStatuses.includes(order.status)) {
-        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} 状态不是待审核状态，跳过`, {
-          status: order.status
-        })
+      // 🔥 修复：放宽状态过滤条件，支持更多待审核状态
+      // 待审核状态包括：pending_audit, confirmed, pending（兼容不同后端实现）
+      const validAuditStatuses = ['pending_audit', 'confirmed', 'pending']
+
+      // 已完成的状态不应该出现在待审核列表
+      const completedStatuses = ['shipped', 'delivered', 'cancelled', 'pending_shipment', 'paid', 'audit_rejected']
+
+      if (completedStatuses.includes(order.status)) {
         return false
       }
 
-      // auditStatus 必须是 'pending'（未审核）
-      if (order.auditStatus !== 'pending') {
-        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} auditStatus不是pending，跳过`, {
-          auditStatus: order.auditStatus
-        })
-        return false
-      }
+      // 🔥 修复：如果订单状态是待审核相关状态，或者auditStatus是pending，都应该显示
+      const isValidStatus = validAuditStatuses.includes(order.status)
+      const isPendingAudit = order.auditStatus === 'pending'
 
-      // 额外检查：如果订单已经发货或已签收，不应该出现在待审核列表
-      // 这可以防止数据异常导致的错误显示
-      if (order.status === 'shipped' || order.status === 'delivered' || order.status === 'cancelled') {
-        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} 状态为${order.status}，不应该出现在待审核列表，跳过`)
+      // 只要满足其中一个条件就显示
+      if (!isValidStatus && !isPendingAudit) {
         return false
       }
 
       // 检查订单是否已经有审核记录（已审核过的订单不应该再次出现在待审核列表）
       if (order.hasBeenAudited === true && order.auditStatus === 'approved') {
-        console.log(`[订单审核] ❌ 订单 ${order.orderNumber} 已经审核通过，不应该出现在待审核列表，跳过`)
         return false
       }
 
       // 通过筛选的订单
-      console.log(`[订单审核] ✅✅✅ 订单 ${order.orderNumber} 通过筛选`, {
+      console.log(`[订单审核] ✅ 订单 ${order.orderNumber} 通过筛选`, {
         status: order.status,
-        auditStatus: order.auditStatus,
-        markType: order.markType || 'normal'
+        auditStatus: order.auditStatus
       })
       return true
     })
@@ -2771,17 +2768,64 @@ onMounted(async () => {
   // 加载用户列表（用于销售人员筛选）
   await userStore.loadUsers()
 
-  // 🔥 先从API加载订单数据，确保数据是最新的
+  // 🔥 直接从专门的待审核订单API加载数据
   try {
-    console.log('[订单审核] 正在从API加载订单数据...')
-    await orderStore.loadOrdersFromAPI()
-    console.log('[订单审核] API数据加载完成，订单总数:', orderStore.orders.length)
+    console.log('[订单审核] 正在从待审核订单API加载数据...')
+    loading.value = true
+
+    const response = await orderApi.getPendingAuditOrders({ page: 1, pageSize: 500 })
+    console.log('[订单审核] API响应:', response)
+
+    if (response && response.data && response.data.list) {
+      const auditOrders = response.data.list
+      console.log(`[订单审核] ✅ 获取到 ${auditOrders.length} 条待审核订单`)
+
+      // 转换为审核页面格式并设置到pendingOrders
+      const convertedOrders = auditOrders.map((order: any) => ({
+        id: order.id,
+        orderNo: order.orderNumber,
+        customerId: order.customerId,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        salesPerson: order.createdByName || order.operator || '-',
+        totalAmount: order.totalAmount,
+        depositAmount: order.depositAmount || 0,
+        codAmount: order.collectAmount || (order.totalAmount - (order.depositAmount || 0)),
+        productCount: order.products?.length || 0,
+        createTime: order.createTime,
+        paymentMethod: order.paymentMethod || '',
+        waitingMinutes: Math.floor((new Date().getTime() - new Date(order.createTime).getTime()) / (1000 * 60)),
+        remark: order.remark || '',
+        auditStatus: 'pending' as const,
+        auditFlag: 'pending',
+        hasBeenAudited: false,
+        deliveryAddress: order.receiverAddress,
+        depositScreenshots: order.depositScreenshots || [],
+        paymentScreenshots: (order.depositScreenshots || []).map((url: string, index: number) => ({
+          id: index + 1,
+          url: url,
+          name: `定金截图${index + 1}.jpg`
+        })),
+        auditHistory: []
+      }))
+
+      pendingOrders.value = convertedOrders
+      console.log(`[订单审核] 待审核订单数量: ${pendingOrders.value.length}`)
+
+      // 更新标签计数
+      updateTabCounts()
+    } else {
+      console.warn('[订单审核] ⚠️ API返回数据格式异常或为空:', response)
+      pendingOrders.value = []
+    }
   } catch (error) {
-    console.error('[订单审核] 从API加载订单失败:', error)
+    console.error('[订单审核] 从API加载待审核订单失败:', error)
+    ElMessage.error('加载待审核订单失败')
+    pendingOrders.value = []
+  } finally {
+    loading.value = false
   }
 
-  // 设置默认显示全部订单
-  handleQuickFilter('all')
   // 加载汇总数据
   loadSummaryData()
 

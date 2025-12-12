@@ -32,4 +32,7 @@ router.delete('/:id', (req, res) => roleController.deleteRole(req, res));
 // 更新角色状态
 router.patch('/:id/status', (req, res) => roleController.updateRoleStatus(req, res));
 
+// 🔥 更新角色权限
+router.put('/:id/permissions', (req, res) => roleController.updateRolePermissions(req, res));
+
 export default router;

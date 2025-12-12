@@ -168,6 +168,7 @@
       :is-expired="isPasswordExpired"
       @close="showPasswordChangeModal = false"
       @success="handlePasswordChangeSuccess"
+      @dont-remind="handleDontRemind"
     />
 
     <!-- 密码过期提醒弹窗 -->
@@ -640,6 +641,13 @@ const checkPasswordStatus = () => {
 
   // 如果需要强制修改密码，显示强制修改弹窗（但允许关闭）
   if (isDefaultPassword.value || isPasswordExpired.value || isForcePasswordChange.value) {
+    // 🔥 检查是否在"不再提醒"期间内
+    const dontRemindExpire = localStorage.getItem('password_change_remind_expire')
+    if (dontRemindExpire && Date.now() < parseInt(dontRemindExpire)) {
+      console.log('[密码提醒] 在不再提醒期间内，跳过提醒')
+      return
+    }
+
     showPasswordChangeModal.value = true
     // 修改：不再强制，允许用户关闭
     isForcePasswordChange.value = false
@@ -685,6 +693,12 @@ const handlePasswordReminderLater = (dontRemindToday: boolean) => {
     localStorage.setItem(dontRemindTodayKey.value, 'true')
   }
   showPasswordReminderModal.value = false
+}
+
+// 处理"不再提醒"
+const handleDontRemind = (days: number) => {
+  console.log(`[密码提醒] 用户选择 ${days} 天内不再提醒`)
+  ElMessage.success(`已设置 ${days} 天内不再提醒修改密码`)
 }
 
 // 监听路由变化，添加标签页

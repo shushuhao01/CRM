@@ -195,12 +195,13 @@
 
           <div class="action-buttons">
             <el-button
-              @click="handleTrack"
+              @click="handleOpenOfficialTracking"
               type="primary"
-              :icon="Search"
+              :icon="Link"
               style="width: 100%; margin-bottom: 12px;"
+              :disabled="!logisticsInfo.trackingNo"
             >
-              实时跟踪
+              官网查物流
             </el-button>
             <el-button
               @click="handleContact"
@@ -210,15 +211,6 @@
             >
               联系收货人
             </el-button>
-            <el-button
-              @click="handleComplaint"
-              type="warning"
-              :icon="Warning"
-              style="width: 100%; margin-bottom: 12px;"
-            >
-              投诉建议
-            </el-button>
-
           </div>
         </el-card>
 
@@ -384,8 +376,7 @@ import {
   Box,
   Search,
   Phone,
-  Warning,
-  RefreshLeft,
+  Link,
   Refresh,
   Location,
   User,
@@ -647,24 +638,62 @@ const handleShipDialogClose = () => {
 }
 
 /**
- * 实时跟踪
- */
-const handleTrack = () => {
-  ElMessage.success('跳转到物流公司官网跟踪页面...')
-}
-
-/**
- * 联系收货人
+ * 联系收货人 - 不显示完整手机号
  */
 const handleContact = () => {
-  ElMessage.success(`拨打电话：${logisticsInfo.receiverPhone}`)
+  if (!logisticsInfo.receiverPhone) {
+    ElMessage.warning('收货人电话未设置')
+    return
+  }
+
+  ElMessageBox.confirm(
+    '确定要拨打收货人电话吗？',
+    '外呼确认',
+    {
+      confirmButtonText: '确定外呼',
+      cancelButtonText: '取消',
+      type: 'info'
+    }
+  ).then(() => {
+    // 模拟外呼功能
+    ElMessage.success('正在发起外呼...')
+    // 实际项目中这里可以调用外呼API
+    // window.location.href = `tel:${logisticsInfo.receiverPhone}`
+  }).catch(() => {
+    // 用户取消
+  })
 }
 
 /**
- * 投诉建议
+ * 官网查物流 - 复制快递单号并跳转对应物流公司官网
  */
-const handleComplaint = () => {
-  ElMessage.success('投诉建议功能开发中...')
+const handleOpenOfficialTracking = async () => {
+  if (!logisticsInfo.trackingNo) {
+    ElMessage.warning('暂无物流单号')
+    return
+  }
+
+  // 导入物流公司配置
+  const { getLogisticsCompanyByName, copyTrackingNumber, openOfficialWebsite } = await import('@/utils/logisticsCompanyConfig')
+
+  // 获取物流公司信息
+  const companyInfo = getLogisticsCompanyByName(logisticsInfo.companyName)
+
+  if (!companyInfo) {
+    // 如果找不到对应的物流公司，只复制单号
+    await copyTrackingNumber(logisticsInfo.trackingNo)
+    ElMessage.warning('未找到对应物流公司官网，已复制快递单号')
+    return
+  }
+
+  // 复制快递单号
+  const copied = await copyTrackingNumber(logisticsInfo.trackingNo)
+
+  if (copied) {
+    // 打开官网
+    openOfficialWebsite(companyInfo.code, logisticsInfo.trackingNo)
+    ElMessage.success(`快递单号已复制，正在跳转${companyInfo.name}官网...`)
+  }
 }
 
 

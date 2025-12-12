@@ -1093,27 +1093,72 @@ const loadRealRankings = () => {
   console.log('[业绩排名] 当前用户:', currentUser?.name, '部门ID:', currentDeptId, '部门名称:', currentDeptName, '角色:', currentUser?.role)
   console.log('[业绩排名] 用户列表:', userStore.users?.map(u => ({ id: u.id, name: u.name, departmentId: u.departmentId, department: u.department })))
 
-  // 根据用户角色筛选 - 普通成员也能看到本部门的排名
-  if (!userStore.isAdmin) {
-    // 🔥 修复：非管理员只能看到本部门的数据，同时支持ID和名称匹配
-    const departmentUsers = userStore.users?.filter(u => {
-      // 通过部门ID匹配
-      if (currentDeptId && (String(u.departmentId) === String(currentDeptId))) {
-        return true
+  // 🔥 【关键修复】先获取要显示的部门成员列表
+  let departmentMembers: any[] = []
+
+  // 🔥 【关键修复】过滤掉禁用状态的用户
+  // 禁用用户(status !== 'active')：账号无法登录，数据完全隐藏不可见
+  // 离职用户(employmentStatus === 'resigned')：账号无法登录，但历史数据仍然可见
+  const isUserEnabled = (user: any) => {
+    // 如果status字段存在且不是active，则用户被禁用
+    if (user.status && user.status !== 'active') {
+      return false
+    }
+    return true
+  }
+
+  // 根据用户角色确定要显示的成员
+  if (userStore.isAdmin) {
+    // 管理员：显示所有启用的用户
+    departmentMembers = (userStore.users || []).filter(isUserEnabled)
+    console.log('[业绩排名] 管理员，显示所有启用用户:', departmentMembers.length)
+  } else {
+    // 🔥 非管理员（经理/销售员）：只显示本部门启用的成员
+    // 🔥 调试：打印所有用户的部门信息
+    console.log('[业绩排名] 所有用户部门信息:', userStore.users?.map(u => ({
+      id: u.id,
+      name: u.name,
+      departmentId: u.departmentId,
+      department: u.department,
+      departmentName: u.departmentName,
+      status: u.status,
+      employmentStatus: u.employmentStatus
+    })))
+
+    departmentMembers = (userStore.users || []).filter(u => {
+      // 首先检查用户是否启用
+      if (!isUserEnabled(u)) {
+        return false
       }
-      // 通过部门名称匹配
-      if (currentDeptName && (u.department === currentDeptName || u.departmentName === currentDeptName)) {
-        return true
+      // 通过部门ID匹配（支持多种格式，忽略大小写）
+      if (currentDeptId) {
+        const userDeptIdStr = String(u.departmentId || '').toLowerCase()
+        const currentDeptIdStr = String(currentDeptId).toLowerCase()
+        if (userDeptIdStr === currentDeptIdStr) {
+          return true
+        }
+      }
+      // 通过部门名称匹配（忽略大小写）
+      if (currentDeptName) {
+        const userDeptNameLower = (u.department || u.departmentName || '').toLowerCase()
+        const currentDeptNameLower = currentDeptName.toLowerCase()
+        if (userDeptNameLower === currentDeptNameLower) {
+          return true
+        }
       }
       return false
-    }).map(u => u.id) || []
+    })
+    console.log('[业绩排名] 非管理员，显示本部门启用成员:', departmentMembers.length, '部门ID:', currentDeptId, '部门名称:', currentDeptName)
+  }
 
-    console.log('[业绩排名] 部门成员IDs:', departmentUsers)
+  // 获取部门成员ID列表
+  const departmentUserIds = departmentMembers.map(u => u.id)
 
-    // 🔥 修复：同时匹配salesPersonId和createdBy
+  // 筛选订单（只统计部门成员的订单）
+  if (!userStore.isAdmin) {
     orders = orders.filter(order =>
-      departmentUsers.includes(order.salesPersonId) ||
-      departmentUsers.includes(order.createdBy)
+      departmentUserIds.includes(order.salesPersonId) ||
+      departmentUserIds.includes(order.createdBy)
     )
     console.log('[业绩排名] 筛选后订单数:', orders.length)
   }
@@ -1126,26 +1171,48 @@ const loadRealRankings = () => {
     return orderTime >= monthStart
   })
 
-  // 统计每个销售人员的业绩
+  // 🔥 【关键修复】先为所有部门成员创建初始记录（业绩为0）
   const salesMap = new Map()
+  departmentMembers.forEach(user => {
+    // 获取部门名称
+    let userDepartment = '未分配部门'
+    const userDeptId = user.departmentId
+    const dept = departmentStore.departments?.find((d: any) => String(d.id) === String(userDeptId))
+    if (dept) {
+      userDepartment = dept.name
+    } else if (user.departmentName && user.departmentName !== '未分配') {
+      userDepartment = user.departmentName
+    } else if (user.department && user.department !== '未分配') {
+      userDepartment = user.department
+    }
+
+    salesMap.set(user.id, {
+      id: user.id,
+      name: user.realName || user.name || user.username || '未知',
+      avatar: user.avatar || '',
+      department: userDepartment,
+      orders: 0,
+      revenue: 0,
+      sharedAmount: 0,
+      receivedAmount: 0,
+      sharedOrderCount: 0,
+      receivedOrderCount: 0
+    })
+  })
+
+  // 统计每个销售人员的业绩
   monthOrders.forEach(order => {
     const salesPersonId = order.salesPersonId
     if (salesMap.has(salesPersonId)) {
       const existing = salesMap.get(salesPersonId)
-      salesMap.set(salesPersonId, {
-        ...existing,
-        orders: existing.orders + 1,
-        revenue: existing.revenue + order.totalAmount,
-        sharedAmount: existing.sharedAmount || 0,
-        receivedAmount: existing.receivedAmount || 0
-      })
+      existing.orders += 1
+      existing.revenue += order.totalAmount
     } else {
-      // 从userStore获取用户信息
+      // 如果用户不在部门成员列表中（可能是管理员视角下的其他部门用户）
       let userName = '未知'
       let userAvatar = ''
       let userDepartment = '未分配部门'
 
-      // 从userStore获取真实用户数据 - 增强匹配逻辑
       const user = userStore.users?.find((u: any) =>
         String(u.id) === String(salesPersonId) ||
         u.username === salesPersonId ||
@@ -1155,7 +1222,6 @@ const loadRealRankings = () => {
       if (user) {
         userName = user.realName || user.name || user.username || '未知'
         userAvatar = user.avatar || ''
-        // 🔥 修复：优先从departmentStore获取部门名称，确保显示正确
         const userDeptId = user.departmentId
         const dept = departmentStore.departments?.find((d: any) => String(d.id) === String(userDeptId))
         if (dept) {
@@ -1164,15 +1230,10 @@ const loadRealRankings = () => {
           userDepartment = user.departmentName
         } else if (user.department && user.department !== '未分配') {
           userDepartment = user.department
-        } else {
-          userDepartment = '未分配部门'
         }
-        console.log(`[业绩排名] 找到用户: ${userName}, 部门ID: ${userDeptId}, 部门名称: ${userDepartment}`)
       } else {
-        // 如果找不到用户，尝试从订单中获取信息
         userName = order.createdByName || order.createdBy || '未知'
         userDepartment = order.createdByDepartmentName || '未分配部门'
-        console.warn(`[业绩排名] 未找到用户: ${salesPersonId}, 使用订单信息: ${userName}`)
       }
 
       salesMap.set(salesPersonId, {
@@ -1183,7 +1244,9 @@ const loadRealRankings = () => {
         orders: 1,
         revenue: order.totalAmount,
         sharedAmount: 0,
-        receivedAmount: 0
+        receivedAmount: 0,
+        sharedOrderCount: 0,
+        receivedOrderCount: 0
       })
     }
   })
@@ -1202,23 +1265,19 @@ const loadRealRankings = () => {
       if (salesMap.has(share.createdById)) {
         const creator = salesMap.get(share.createdById)
         creator.sharedAmount = (creator.sharedAmount || 0) + share.orderAmount
-        // 初始化分享出去的订单数量字段
         if (!creator.sharedOrderCount) {
           creator.sharedOrderCount = 0
         }
-        // 分享出去1个完整订单
         creator.sharedOrderCount += 1
       }
 
       // 【批次207修复】增加被分享用户的业绩和订单数量
       share.shareMembers.forEach(member => {
         if (!salesMap.has(member.userId)) {
-          // 如果用户不在map中,创建新记录 - 从userStore获取用户信息
           let userName = member.userName || '未知'
           let userAvatar = ''
           let userDepartment = ''
 
-          // 从userStore获取真实用户数据
           const user = userStore.users.find((u: any) => String(u.id) === String(member.userId)) as unknown
           if (user) {
             userName = user.realName || user.name || user.username || userName
@@ -1243,7 +1302,6 @@ const loadRealRankings = () => {
         const memberData = salesMap.get(member.userId)
         const percentage = member.percentage / 100
         memberData.receivedAmount = (memberData.receivedAmount || 0) + (share.orderAmount * percentage)
-        // 【批次207新增】按比例接收订单数量
         if (!memberData.receivedOrderCount) {
           memberData.receivedOrderCount = 0
         }
@@ -1256,11 +1314,13 @@ const loadRealRankings = () => {
   const salesRankings = Array.from(salesMap.values())
     .map(item => ({
       ...item,
-      revenue: item.revenue - (item.sharedAmount || 0) + (item.receivedAmount || 0), // 计算净业绩
-      orders: Math.max(0, item.orders - (item.sharedOrderCount || 0) + (item.receivedOrderCount || 0)) // 【批次207新增】计算净订单数
+      revenue: item.revenue - (item.sharedAmount || 0) + (item.receivedAmount || 0),
+      orders: Math.max(0, item.orders - (item.sharedOrderCount || 0) + (item.receivedOrderCount || 0))
     }))
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10) // 只取前10名
+
+  console.log('[业绩排名] 最终排名列表:', salesRankings.map(s => ({ name: s.name, revenue: s.revenue, orders: s.orders })))
 
   rankings.value = {
     sales: salesRankings,

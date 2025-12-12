@@ -51,30 +51,58 @@ export class ProfileApiService {
   }
 
   /**
-   * 获取当前用户的个人信息
+   * 获取当前用户的个人信息（从真实API获取）
    */
   async getProfile(): Promise<ProfileInfo> {
-    // 在Mock API模式下，直接返回模拟数据，避免网络请求
-    if (shouldUseMockApi()) {
-      console.log('[ProfileAPI] Mock API模式 - 使用模拟数据')
-      return this.getMockProfile()
+    // 🔥 修复：生产环境必须从API获取真实数据
+    if (import.meta.env.PROD) {
+      try {
+        const response = await this.api.get<ProfileInfo>('/profile')
+        console.log('[ProfileAPI] 生产环境：从API获取个人信息成功')
+        return response
+      } catch (error) {
+        console.error('[ProfileAPI] 生产环境：获取个人信息失败', error)
+        throw error
+      }
     }
 
+    // 开发环境：优先尝试API，失败则使用Mock数据
     try {
       const response = await this.api.get<ProfileInfo>('/profile')
-      console.log('[ProfileAPI] 获取个人信息成功')
+      console.log('[ProfileAPI] 开发环境：从API获取个人信息成功')
       return response
     } catch (_error) {
       // 在开发环境中，API请求失败是正常的，直接返回模拟数据
-      console.log('[ProfileAPI] API请求失败，使用模拟数据')
+      console.log('[ProfileAPI] 开发环境：API请求失败，使用模拟数据')
       return this.getMockProfile()
     }
   }
 
   /**
-   * 更新个人信息
+   * 更新个人信息（更新到真实API）
    */
   async updateProfile(data: UpdateProfileRequest): Promise<ProfileInfo> {
+    // 🔥 修复：生产环境必须调用真实API
+    if (import.meta.env.PROD) {
+      try {
+        const response = await this.api.put<ProfileInfo>('/profile', data)
+        console.log('[ProfileAPI] 生产环境：更新个人信息成功')
+        return response
+      } catch (error) {
+        console.error('[ProfileAPI] 生产环境：更新个人信息失败', error)
+        throw error
+      }
+    }
+
+    // 开发环境：优先尝试API，失败则使用localStorage
+    try {
+      const response = await this.api.put<ProfileInfo>('/profile', data)
+      console.log('[ProfileAPI] 开发环境：通过API更新个人信息成功')
+      return response
+    } catch (_apiError) {
+      console.log('[ProfileAPI] 开发环境：API更新失败，使用localStorage')
+    }
+
     // 在Mock API模式下，更新localStorage中的用户信息
     if (shouldUseMockApi()) {
       console.log('[ProfileAPI] Mock API模式 - 更新个人信息到localStorage')

@@ -5,7 +5,7 @@
         <h3>{{ isForced ? '强制修改密码' : '修改密码' }}</h3>
         <button v-if="!isForced" @click="closeModal" class="close-btn">&times;</button>
       </div>
-      
+
       <div class="modal-body">
         <div v-if="isForced" class="warning-message">
           <div class="warning-icon">⚠️</div>
@@ -66,6 +66,23 @@
             <span v-if="errors.confirmPassword" class="error-text">{{ errors.confirmPassword }}</span>
           </div>
 
+          <!-- 不再提醒选项（仅非强制修改时显示） -->
+          <div v-if="!isForced" class="dont-remind-section">
+            <el-checkbox v-model="dontRemindEnabled" @change="handleDontRemindChange">
+              不再提醒
+            </el-checkbox>
+            <el-select
+              v-if="dontRemindEnabled"
+              v-model="dontRemindDays"
+              size="small"
+              class="dont-remind-select"
+            >
+              <el-option :value="7" label="7天" />
+              <el-option :value="15" label="15天" />
+              <el-option :value="30" label="30天" />
+            </el-select>
+          </div>
+
           <div class="form-actions">
             <button type="submit" :disabled="!isFormValid || loading" class="submit-btn">
               {{ loading ? '修改中...' : '确认修改' }}
@@ -95,6 +112,7 @@ interface Props {
 interface Emits {
   (e: 'close'): void
   (e: 'success'): void
+  (e: 'dontRemind', days: number): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -111,6 +129,16 @@ const form = ref({
   newPassword: '',
   confirmPassword: ''
 })
+
+// 不再提醒相关
+const dontRemindEnabled = ref(false)
+const dontRemindDays = ref(7)
+
+const handleDontRemindChange = (enabled: boolean) => {
+  if (!enabled) {
+    dontRemindDays.value = 7
+  }
+}
 
 const errors = ref({
   currentPassword: '',
@@ -201,8 +229,17 @@ const handleSubmit = async () => {
 
 const closeModal = () => {
   if (!props.isForced) {
+    // 如果选择了不再提醒，保存设置
+    if (dontRemindEnabled.value) {
+      const expireTime = Date.now() + dontRemindDays.value * 24 * 60 * 60 * 1000
+      localStorage.setItem('password_change_remind_expire', expireTime.toString())
+      emit('dontRemind', dontRemindDays.value)
+    }
+
     form.value = { currentPassword: '', newPassword: '', confirmPassword: '' }
     errors.value = { currentPassword: '', newPassword: '', confirmPassword: '' }
+    dontRemindEnabled.value = false
+    dontRemindDays.value = 7
     emit('close')
   }
 }
@@ -368,6 +405,20 @@ const closeModal = () => {
 .password-requirements li.valid::before {
   content: '✓';
   color: #28a745;
+}
+
+.dont-remind-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  margin-top: 10px;
+}
+
+.dont-remind-select {
+  width: 100px;
 }
 
 .form-actions {

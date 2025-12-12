@@ -187,6 +187,7 @@ class UserDataService {
           name: user.realName || user.name || user.username,
           username: user.username,
           realName: user.realName || user.name,
+          employeeNumber: user.employeeNumber || user.employee_number || '',
           email: user.email || '',
           phone: user.phone || '',
           role: user.role || 'user',
@@ -196,10 +197,18 @@ class UserDataService {
           departmentName: user.departmentName || user.department_name || '',
           position: user.position || '员工',
           avatar: user.avatar || '',
+          // 🔥 修复：status 和 employmentStatus 是两个独立的字段
+          // status: 账号启用状态 (active/disabled/inactive)
+          // employmentStatus: 在职状态 (active/resigned)
           status: user.status || 'active',
+          employmentStatus: user.employmentStatus || user.employment_status || 'active',
+          resignedDate: user.resignedAt || user.resigned_at || '',
           createTime: user.createdAt || new Date().toISOString(),
           createdAt: user.createdAt,
-          employmentStatus: user.status === 'active' ? 'active' : 'resigned'
+          // 🔥 新增：在线状态和登录次数字段
+          isOnline: user.isOnline || false,
+          loginCount: user.loginCount || user.login_count || 0,
+          lastLoginTime: user.lastLoginAt || user.last_login_at || ''
         }))
       }
 

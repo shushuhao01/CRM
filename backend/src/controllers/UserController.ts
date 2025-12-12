@@ -320,7 +320,19 @@ export class UserController {
    * 创建用户（管理员功能）
    */
   createUser = catchAsync(async (req: Request, res: Response) => {
-    const { username, password, realName, email, phone, role, departmentId } = req.body;
+    const {
+      username,
+      password,
+      realName,
+      email,
+      phone,
+      role,
+      departmentId,
+      department,
+      position,
+      employeeNumber,
+      remark
+    } = req.body;
 
     // 验证必填字段
     if (!username || !password || !realName || !role) {
@@ -376,7 +388,11 @@ export class UserController {
       role,
       roleId: role,  // roleId 是必需字段，使用 role 值
       departmentId: departmentId || null,
+      departmentName: department || null,
+      position: position || null,
+      employeeNumber: employeeNumber || null,
       status: 'active',
+      employmentStatus: 'active',
       loginFailCount: 0,
       loginCount: 0
     });
@@ -427,11 +443,15 @@ export class UserController {
         'user.role',
         'user.roleId',
         'user.status',
+        'user.employmentStatus',
+        'user.resignedAt',
         'user.departmentId',
         'user.departmentName',
         'user.position',
+        'user.employeeNumber',
         'user.lastLoginAt',
         'user.lastLoginIp',
+        'user.loginCount',
         'user.createdAt',
         'user.updatedAt'
       ]);
@@ -465,11 +485,28 @@ export class UserController {
 
     const [users, total] = await queryBuilder.getManyAndCount();
 
+    // 计算在线状态：最近15分钟内有登录活动的用户视为在线
+    const now = new Date();
+    const onlineThreshold = 15 * 60 * 1000; // 15分钟
+
+    const usersWithOnlineStatus = users.map(user => {
+      let isOnline = false;
+      if (user.lastLoginAt) {
+        const lastLoginTime = new Date(user.lastLoginAt).getTime();
+        isOnline = (now.getTime() - lastLoginTime) < onlineThreshold;
+      }
+      return {
+        ...user,
+        isOnline,
+        loginCount: user.loginCount || 0
+      };
+    });
+
     res.json({
       success: true,
       data: {
-        items: users,  // 前端期望 items 字段
-        users,         // 保持兼容
+        items: usersWithOnlineStatus,  // 前端期望 items 字段
+        users: usersWithOnlineStatus,  // 保持兼容
         total,
         page: parseInt(page),
         limit: parseInt(limit),
@@ -721,9 +758,9 @@ export class UserController {
       throw new NotFoundError('用户不存在');
     }
 
-    (user as any).employmentStatus = employmentStatus;
+    user.employmentStatus = employmentStatus;
     if (employmentStatus === 'resigned') {
-      (user as any).resignedAt = new Date();
+      user.resignedAt = new Date();
     }
 
     const updatedUser = await this.userRepository.save(user);
