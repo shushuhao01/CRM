@@ -59,6 +59,16 @@ const shippingStatusMap: Record<string, string> = {
   'exception': '异常'
 }
 
+// 标记类型中文映射
+const markTypeMap: Record<string, string> = {
+  'normal': '正常发货单',
+  'reserved': '预留单',
+  'return': '退单',
+  'urgent': '加急',
+  'vip': 'VIP',
+  'important': '重要'
+}
+
 // 获取订单状态中文
 const getOrderStatusText = (status: string): string => {
   return orderStatusMap[status] || status || ''
@@ -77,6 +87,11 @@ const getPaymentMethodText = (method: string): string => {
 // 获取发货状态中文
 const getShippingStatusText = (status: string): string => {
   return shippingStatusMap[status] || status || ''
+}
+
+// 获取标记类型中文
+const getMarkTypeText = (markType: string): string => {
+  return markTypeMap[markType] || markType || ''
 }
 
 // 客户导出接口
@@ -124,12 +139,16 @@ export interface ExportOrder {
   createTime: string
   status: string
   shippingStatus?: string
-  // 🔥 批次270新增：订单列表新增字段
   markType?: string // 标记类型
   salesPersonName?: string // 负责销售
   paymentMethod?: string // 支付方式
   orderSource?: string // 订单来源
-  customFields?: Record<string, any> // 自定义字段
+  customFields?: Record<string, unknown> // 自定义字段
+  // 物流相关字段
+  expressCompany?: string // 物流公司
+  expressNo?: string // 物流单号
+  specifiedExpress?: string // 指定快递
+  logisticsStatus?: string // 物流状态
 }
 
 // 导出订单到Excel
@@ -175,14 +194,16 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
 
   const sortedCustomFieldKeys = Array.from(customFieldKeys).sort()
 
-  // 根据权限定义列标题
+  // 根据权限定义列标题（完整字段）
   const adminHeaders = [
     '订单号',
+    '订单状态',
     '客户姓名',
     '客户电话',
-    '收货人',
-    '收货电话',
     '收货地址',
+    '指定快递',
+    '负责销售',
+    '下单时间',
     '商品信息',
     '总数量',
     '订单金额',
@@ -193,50 +214,54 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
     '体重',
     '病史',
     '服务微信',
-    '标记类型', // 🔥 批次270新增
-    '负责销售', // 🔥 批次270新增
-    '支付方式', // 🔥 批次270新增
-    '订单来源', // 🔥 批次270新增
-    ...sortedCustomFieldKeys.map(key => customFieldLabels[key]), // 🔥 批次270新增：动态自定义字段
+    '订单来源',
+    ...sortedCustomFieldKeys.map(key => customFieldLabels[key]),
+    '支付方式',
     '备注',
-    '下单时间',
-    '订单状态',
-    '发货状态'
+    '物流公司',
+    '物流单号',
+    '物流状态',
+    '标记类型'
   ]
 
   const normalHeaders = [
     '订单号',
+    '订单状态',
     '收货人',
     '收货电话',
     '收货地址',
+    '指定快递',
+    '负责销售',
+    '下单时间',
     '商品信息',
     '总数量',
     '订单金额',
     '定金',
     'COD金额',
-    '标记类型', // 🔥 批次270新增
-    '负责销售', // 🔥 批次270新增
-    '支付方式', // 🔥 批次270新增
-    '订单来源', // 🔥 批次270新增
-    ...sortedCustomFieldKeys.map(key => customFieldLabels[key]), // 🔥 批次270新增：动态自定义字段
+    '订单来源',
+    ...sortedCustomFieldKeys.map(key => customFieldLabels[key]),
+    '支付方式',
     '备注',
-    '下单时间',
-    '订单状态',
-    '发货状态'
+    '物流公司',
+    '物流单号',
+    '物流状态',
+    '标记类型'
   ]
 
   const headers = isAdmin ? adminHeaders : normalHeaders
 
-  // 根据权限转换数据格式
+  // 根据权限转换数据格式（匹配列标题顺序）
   const data = orders.map(order => {
     if (isAdmin) {
       return [
         order.orderNumber,
+        getOrderStatusText(order.status),
         order.customerName,
         order.customerPhone,
-        order.receiverName,
-        order.receiverPhone,
         order.receiverAddress,
+        order.specifiedExpress || '',
+        order.salesPersonName || '',
+        order.createTime,
         order.products,
         order.totalQuantity,
         order.totalAmount,
@@ -247,36 +272,38 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
         order.customerWeight || '',
         order.medicalHistory || '',
         order.serviceWechat || '',
-        order.markType || '',
-        order.salesPersonName || '',
-        getPaymentMethodText(order.paymentMethod || ''),
         getOrderSourceText(order.orderSource || ''),
         ...sortedCustomFieldKeys.map(key => order.customFields?.[key] || ''),
+        getPaymentMethodText(order.paymentMethod || ''),
         order.remark || '',
-        order.createTime,
-        getOrderStatusText(order.status),
-        getShippingStatusText(order.shippingStatus || '')
+        order.expressCompany || '',
+        order.expressNo || '',
+        getShippingStatusText(order.logisticsStatus || order.shippingStatus || ''),
+        getMarkTypeText(order.markType || '')
       ]
     } else {
       return [
         order.orderNumber,
+        getOrderStatusText(order.status),
         order.receiverName,
         order.receiverPhone,
         order.receiverAddress,
+        order.specifiedExpress || '',
+        order.salesPersonName || '',
+        order.createTime,
         order.products,
         order.totalQuantity,
         order.totalAmount,
         order.depositAmount,
         order.codAmount,
-        order.markType || '',
-        order.salesPersonName || '',
-        getPaymentMethodText(order.paymentMethod || ''),
         getOrderSourceText(order.orderSource || ''),
         ...sortedCustomFieldKeys.map(key => order.customFields?.[key] || ''),
+        getPaymentMethodText(order.paymentMethod || ''),
         order.remark || '',
-        order.createTime,
-        getOrderStatusText(order.status),
-        getShippingStatusText(order.shippingStatus || '')
+        order.expressCompany || '',
+        order.expressNo || '',
+        getShippingStatusText(order.logisticsStatus || order.shippingStatus || ''),
+        getMarkTypeText(order.markType || '')
       ]
     }
   })
@@ -290,15 +317,17 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
   // 创建工作表
   const ws = XLSX.utils.aoa_to_sheet(wsData)
 
-  // 根据权限设置列宽
+  // 根据权限设置列宽（与列标题顺序一致）
   const adminColWidths = [
-    { wch: 15 }, // 订单号
+    { wch: 18 }, // 订单号
+    { wch: 10 }, // 订单状态
     { wch: 12 }, // 客户姓名
     { wch: 15 }, // 客户电话
-    { wch: 12 }, // 收货人
-    { wch: 15 }, // 收货电话
-    { wch: 30 }, // 收货地址
-    { wch: 25 }, // 商品信息
+    { wch: 35 }, // 收货地址
+    { wch: 12 }, // 指定快递
+    { wch: 12 }, // 负责销售
+    { wch: 18 }, // 下单时间
+    { wch: 30 }, // 商品信息
     { wch: 8 },  // 总数量
     { wch: 12 }, // 订单金额
     { wch: 10 }, // 定金
@@ -308,36 +337,38 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
     { wch: 8 },  // 体重
     { wch: 15 }, // 病史
     { wch: 15 }, // 服务微信
-    { wch: 12 }, // 🔥 批次270新增：标记类型
-    { wch: 12 }, // 🔥 批次270新增：负责销售
-    { wch: 12 }, // 🔥 批次270新增：支付方式
-    { wch: 15 }, // 🔥 批次270新增：订单来源
-    ...sortedCustomFieldKeys.map(() => ({ wch: 15 })), // 🔥 批次270新增：动态自定义字段
-    { wch: 20 }, // 备注
-    { wch: 18 }, // 下单时间
-    { wch: 10 }, // 订单状态
-    { wch: 10 }  // 发货状态
+    { wch: 12 }, // 订单来源
+    ...sortedCustomFieldKeys.map(() => ({ wch: 15 })), // 自定义字段
+    { wch: 12 }, // 支付方式
+    { wch: 25 }, // 备注
+    { wch: 12 }, // 物流公司
+    { wch: 18 }, // 物流单号
+    { wch: 10 }, // 物流状态
+    { wch: 10 }  // 标记类型
   ]
 
   const normalColWidths = [
-    { wch: 15 }, // 订单号
+    { wch: 18 }, // 订单号
+    { wch: 10 }, // 订单状态
     { wch: 12 }, // 收货人
     { wch: 15 }, // 收货电话
-    { wch: 30 }, // 收货地址
-    { wch: 25 }, // 商品信息
+    { wch: 35 }, // 收货地址
+    { wch: 12 }, // 指定快递
+    { wch: 12 }, // 负责销售
+    { wch: 18 }, // 下单时间
+    { wch: 30 }, // 商品信息
     { wch: 8 },  // 总数量
     { wch: 12 }, // 订单金额
     { wch: 10 }, // 定金
     { wch: 10 }, // COD金额
-    { wch: 12 }, // 🔥 批次270新增：标记类型
-    { wch: 12 }, // 🔥 批次270新增：负责销售
-    { wch: 12 }, // 🔥 批次270新增：支付方式
-    { wch: 15 }, // 🔥 批次270新增：订单来源
-    ...sortedCustomFieldKeys.map(() => ({ wch: 15 })), // 🔥 批次270新增：动态自定义字段
-    { wch: 20 }, // 备注
-    { wch: 18 }, // 下单时间
-    { wch: 10 }, // 订单状态
-    { wch: 10 }  // 发货状态
+    { wch: 12 }, // 订单来源
+    ...sortedCustomFieldKeys.map(() => ({ wch: 15 })), // 自定义字段
+    { wch: 12 }, // 支付方式
+    { wch: 25 }, // 备注
+    { wch: 12 }, // 物流公司
+    { wch: 18 }, // 物流单号
+    { wch: 10 }, // 物流状态
+    { wch: 10 }  // 标记类型
   ]
 
   const colWidths = isAdmin ? adminColWidths : normalColWidths

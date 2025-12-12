@@ -1821,7 +1821,12 @@ const handleExport = async () => {
       remark: order.remark || '',
       createTime: order.createTime || '',
       status: order.status || '',
-      shippingStatus: order.shippingStatus || ''
+      shippingStatus: order.shippingStatus || '',
+      // 物流相关字段
+      specifiedExpress: order.specifiedExpress || '',
+      expressCompany: order.expressCompany || '',
+      expressNo: order.expressNo || '',
+      logisticsStatus: order.logisticsStatus || ''
     }))
 
     await exportBatchOrders(exportData, userStore.isAdmin)
