@@ -29,7 +29,7 @@
               <span>基本信息</span>
             </div>
           </template>
-          
+
           <el-form
             ref="basicFormRef"
             :model="form"
@@ -75,7 +75,7 @@
                 </el-form-item>
               </el-col>
             </el-row>
-            
+
             <el-row :gutter="20">
               <el-col :span="12">
                 <el-form-item label="物流单号" prop="trackingNo">
@@ -102,7 +102,7 @@
                 </el-form-item>
               </el-col>
             </el-row>
-            
+
             <el-row :gutter="20">
               <el-col :span="12">
                 <el-form-item label="发货时间" prop="shipTime">
@@ -125,7 +125,7 @@
                 </el-form-item>
               </el-col>
             </el-row>
-            
+
             <el-row :gutter="20">
               <el-col :span="12">
                 <el-form-item label="运费" prop="freight">
@@ -150,7 +150,7 @@
                 </el-form-item>
               </el-col>
             </el-row>
-            
+
             <el-form-item label="备注" prop="remark">
               <el-input
                 v-model="form.remark"
@@ -167,16 +167,16 @@
           <template #header>
             <div class="card-header">
               <span>收货信息</span>
-              <el-button 
-                @click="copyFromOrder" 
-                size="small" 
+              <el-button
+                @click="copyFromOrder"
+                size="small"
                 :disabled="!form.orderNo"
               >
                 从订单复制
               </el-button>
             </div>
           </template>
-          
+
           <el-form
             ref="receiverFormRef"
             :model="receiverForm"
@@ -201,7 +201,7 @@
                 </el-form-item>
               </el-col>
             </el-row>
-            
+
             <el-form-item label="收货地址" prop="receiverAddress">
               <el-input
                 v-model="receiverForm.receiverAddress"
@@ -218,9 +218,9 @@
           <template #header>
             <div class="card-header">
               <span>商品信息</span>
-              <el-button 
-                @click="loadOrderProducts" 
-                size="small" 
+              <el-button
+                @click="loadOrderProducts"
+                size="small"
                 :disabled="!form.orderNo"
                 :loading="productLoading"
               >
@@ -228,7 +228,7 @@
               </el-button>
             </div>
           </template>
-          
+
           <el-table :data="productList" style="width: 100%">
             <el-table-column prop="productName" label="商品名称" />
             <el-table-column prop="specification" label="规格" width="120" />
@@ -258,10 +258,10 @@
             </el-table-column>
             <el-table-column label="操作" width="80">
               <template #default="{ row, $index }">
-                <el-button 
-                  @click="removeProduct($index)" 
-                  type="danger" 
-                  link 
+                <el-button
+                  @click="removeProduct($index)"
+                  type="danger"
+                  link
                   size="small"
                 >
                   删除
@@ -269,13 +269,13 @@
               </template>
             </el-table-column>
           </el-table>
-          
+
           <div class="product-actions">
             <el-button @click="addProduct" :icon="Plus" size="small">
               添加商品
             </el-button>
           </div>
-          
+
           <div class="product-summary">
             <div class="summary-item">
               <span class="label">总数量：</span>
@@ -302,7 +302,7 @@
               <span>订单信息</span>
             </div>
           </template>
-          
+
           <div class="order-info">
             <div class="info-item">
               <span class="label">订单号：</span>
@@ -336,7 +336,7 @@
               <span>费用计算</span>
             </div>
           </template>
-          
+
           <div class="fee-calculation">
             <div class="fee-item">
               <span class="label">基础运费：</span>
@@ -360,7 +360,7 @@
               <span class="value">¥{{ totalFee }}</span>
             </div>
           </div>
-          
+
           <div class="fee-actions">
             <el-button @click="calculateFee" type="primary" size="small" style="width: 100%">
               重新计算费用
@@ -375,7 +375,7 @@
               <span>操作提示</span>
             </div>
           </template>
-          
+
           <div class="tips-content">
             <el-alert
               title="填写提示"
@@ -444,7 +444,7 @@
           />
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="handleProductDialogClose">取消</el-button>
@@ -463,7 +463,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { createSafeNavigator } from '@/utils/navigation'
 import { useOrderStore } from '@/stores/order'
-import { 
+import {
   ArrowLeft,
   Plus
 } from '@element-plus/icons-vue'
@@ -653,9 +653,9 @@ const goBack = () => {
  */
 const searchOrders = async (query: string) => {
   if (!query || isUnmounted.value) return
-  
+
   orderLoading.value = true
-  
+
   try {
     // 模拟API调用延迟
     await new Promise(resolve => {
@@ -665,21 +665,21 @@ const searchOrders = async (query: string) => {
       }, 300)
       timeoutIds.add(timeoutId)
     })
-    
+
     // 检查组件是否已卸载
     if (isUnmounted.value) return
-    
+
     // 从订单store获取真实订单数据
     const allOrders = orderStore.getOrders()
-    
+
     // 过滤订单：只显示已审核通过且未发货或已发货的订单
-    const filteredOrders = allOrders.filter(order => 
+    const filteredOrders = allOrders.filter(order =>
       (order.auditStatus === 'approved') &&
       (order.status === 'pending_shipment' || order.status === 'shipped' || order.status === 'delivered') &&
-      (order.orderNumber.includes(query) || 
+      (order.orderNumber.includes(query) ||
        order.customerName.includes(query))
     )
-    
+
     // 转换为选项格式
     orderOptions.value = filteredOrders.map(order => ({
       orderNo: order.orderNumber,
@@ -706,7 +706,7 @@ const handleOrderChange = (orderNo: string) => {
   const order = orderOptions.value.find(o => o.orderNo === orderNo)
   if (order) {
     selectedOrder.value = order
-    
+
     // 从订单store获取完整订单数据
     const fullOrder = orderStore.getOrderByNumber(orderNo)
     if (fullOrder) {
@@ -716,19 +716,19 @@ const handleOrderChange = (orderNo: string) => {
         receiverPhone: fullOrder.receiverPhone || fullOrder.customerPhone,
         receiverAddress: fullOrder.receiverAddress || ''
       })
-      
+
       // 自动填充物流公司（如果订单已有）
       if (fullOrder.expressCompany && !form.company) {
         form.company = fullOrder.expressCompany
       }
-      
+
       // 自动填充物流单号（如果订单已有）
       if (fullOrder.trackingNumber && !form.trackingNo) {
         form.trackingNo = fullOrder.trackingNumber
       } else if (fullOrder.expressNo && !form.trackingNo) {
         form.trackingNo = fullOrder.expressNo
       }
-      
+
       // 自动加载商品信息
       if (fullOrder.products && fullOrder.products.length > 0) {
         productList.value = fullOrder.products.map(product => ({
@@ -752,21 +752,21 @@ const copyFromOrder = () => {
     ElMessage.warning('请先选择订单')
     return
   }
-  
+
   // 从订单store获取真实订单数据
   const order = orderStore.getOrderByNumber(form.orderNo)
   if (!order) {
     ElMessage.error('订单不存在')
     return
   }
-  
+
   // 从真实订单复制收货信息
   Object.assign(receiverForm, {
     receiverName: order.receiverName || order.customerName,
     receiverPhone: order.receiverPhone || order.customerPhone,
     receiverAddress: order.receiverAddress || ''
   })
-  
+
   ElMessage.success('已从订单复制收货信息')
 }
 
@@ -780,9 +780,9 @@ const loadOrderProducts = async () => {
     }
     return
   }
-  
+
   productLoading.value = true
-  
+
   try {
     // 模拟API调用延迟
     await new Promise(resolve => {
@@ -792,10 +792,10 @@ const loadOrderProducts = async () => {
       }, 500)
       timeoutIds.add(timeoutId)
     })
-    
+
     // 检查组件是否已卸载
     if (isUnmounted.value) return
-    
+
     // 从订单store获取真实订单数据
     const order = orderStore.getOrderByNumber(form.orderNo)
     if (!order) {
@@ -804,7 +804,7 @@ const loadOrderProducts = async () => {
       }
       return
     }
-    
+
     // 从真实订单获取商品数据
     if (order.products && order.products.length > 0) {
       productList.value = order.products.map(product => ({
@@ -821,7 +821,7 @@ const loadOrderProducts = async () => {
         ElMessage.warning('该订单暂无商品信息')
       }
     }
-    
+
     calculateTotals()
     if (!isUnmounted.value) {
       ElMessage.success('已加载订单商品')
@@ -849,7 +849,7 @@ const addProduct = () => {
     weight: 0,
     volume: 0
   })
-  
+
   productDialogVisible.value = true
 }
 
@@ -859,10 +859,10 @@ const addProduct = () => {
 const confirmAddProduct = async () => {
   try {
     await productFormRef.value?.validate()
-    
+
     productList.value.push({ ...productForm })
     calculateTotals()
-    
+
     ElMessage.success('添加商品成功')
     handleProductDialogClose()
   } catch (error) {
@@ -900,7 +900,7 @@ const calculateTotals = () => {
 const calculateFee = () => {
   const weight = parseFloat(totalWeight.value)
   const volume = totalVolume.value
-  
+
   // 根据重量和体积计算基础运费
   let baseFee = 10 // 起步价
   if (weight > 1) {
@@ -909,7 +909,7 @@ const calculateFee = () => {
   if (volume > 1000) {
     baseFee += (volume - 1000) * 0.001
   }
-  
+
   form.freight = parseFloat(baseFee.toFixed(2))
   ElMessage.success('费用计算完成')
 }
@@ -947,25 +947,25 @@ const getOrderStatusText = (status: string) => {
  */
 const handleSave = async () => {
   if (isUnmounted.value) return
-  
+
   try {
     // 验证所有表单
     await Promise.all([
       basicFormRef.value?.validate(),
       receiverFormRef.value?.validate()
     ])
-    
+
     if (isUnmounted.value) return
-    
+
     if (productList.value.length === 0) {
       if (!isUnmounted.value) {
         ElMessage.warning('请至少添加一个商品')
       }
       return
     }
-    
+
     saveLoading.value = true
-    
+
     // 构建保存数据
     const saveData = {
       ...form,
@@ -976,19 +976,44 @@ const handleSave = async () => {
       totalVolume: totalVolume.value,
       totalFee: totalFee.value
     }
-    
-    // 模拟API调用
-    await new Promise(resolve => {
-      const timeoutId = setTimeout(() => {
-        timeoutIds.delete(timeoutId)
-        resolve(undefined)
-      }, 1500)
-      timeoutIds.add(timeoutId)
-    })
-    
+
+    // 🔥 调用真实API保存物流状态
+    const orderId = route.params.id
+    if (orderId && isEdit.value) {
+      try {
+        const { apiService } = await import('@/services/apiService')
+        // 更新订单的物流状态
+        await apiService.put(`/orders/${orderId}`, {
+          logisticsStatus: form.status,
+          expressCompany: form.company,
+          trackingNumber: form.trackingNo,
+          expectedDeliveryDate: form.estimatedTime,
+          shippingName: receiverForm.receiverName,
+          shippingPhone: receiverForm.receiverPhone,
+          shippingAddress: receiverForm.receiverAddress
+        })
+        console.log('[物流编辑] 物流状态已保存到数据库')
+      } catch (apiError) {
+        console.error('[物流编辑] API保存失败:', apiError)
+        // 即使API失败，也更新本地store
+      }
+
+      // 同时更新本地store
+      const order = orderStore.getOrderById(orderId.toString())
+      if (order) {
+        order.logisticsStatus = form.status
+        order.expressCompany = form.company
+        order.trackingNumber = form.trackingNo
+        order.expectedDeliveryDate = form.estimatedTime
+        order.receiverName = receiverForm.receiverName
+        order.receiverPhone = receiverForm.receiverPhone
+        order.receiverAddress = receiverForm.receiverAddress
+      }
+    }
+
     if (!isUnmounted.value) {
       ElMessage.success(isEdit.value ? '更新成功' : '创建成功')
-      safeNavigator.push('/logistics')
+      safeNavigator.push('/logistics/list')
     }
   } catch (error) {
     console.error('表单验证失败:', error)
@@ -1004,12 +1029,12 @@ const handleSave = async () => {
  */
 const loadData = async () => {
   if (isUnmounted.value) return
-  
+
   const id = route.params.id
-  
+
   if (id && id !== 'add') {
     isEdit.value = true
-    
+
     try {
       // 模拟API调用延迟
       await new Promise(resolve => {
@@ -1019,19 +1044,19 @@ const loadData = async () => {
         }, 500)
         timeoutIds.add(timeoutId)
       })
-      
+
       // 检查组件是否已卸载
       if (isUnmounted.value) return
-      
+
       // 从订单store获取真实订单数据
       // 先尝试通过ID查找（支持字符串和数字匹配）
       let order = orderStore.getOrderById(id.toString())
-      
+
       // 如果通过ID找不到，尝试通过所有订单查找（支持数字ID匹配）
       if (!order) {
         const allOrders = orderStore.getOrders()
-        order = allOrders.find(o => 
-          o.id === id || 
+        order = allOrders.find(o =>
+          o.id === id ||
           o.id === String(id) ||
           String(o.id) === String(id) ||
           parseInt(String(o.id)) === parseInt(String(id)) ||
@@ -1039,12 +1064,12 @@ const loadData = async () => {
           o.expressNo === id
         )
       }
-      
+
       if (!order) {
         ElMessage.error('订单不存在')
         return
       }
-      
+
       // 加载真实订单数据
       Object.assign(form, {
         orderNo: order.orderNumber,
@@ -1057,14 +1082,14 @@ const loadData = async () => {
         insuranceFee: 0,
         remark: order.remark || ''
       })
-      
+
       // 加载收货信息
       Object.assign(receiverForm, {
         receiverName: order.receiverName || order.customerName,
         receiverPhone: order.receiverPhone || order.customerPhone,
         receiverAddress: order.receiverAddress || ''
       })
-      
+
       // 加载商品信息
       if (order.products && order.products.length > 0) {
         productList.value = order.products.map(product => ({
@@ -1077,7 +1102,7 @@ const loadData = async () => {
       } else {
         productList.value = []
       }
-      
+
       // 加载订单信息
       selectedOrder.value = {
         orderNo: order.orderNumber,
@@ -1086,10 +1111,10 @@ const loadData = async () => {
         totalAmount: order.totalAmount.toFixed(2),
         status: order.status === 'pending_shipment' ? 'paid' : order.status === 'shipped' ? 'shipped' : 'completed'
       }
-      
+
       // 将订单添加到选项列表，确保下拉框可以正确显示
       orderOptions.value = [selectedOrder.value]
-      
+
       // 计算总计
       calculateTotals()
     } catch (error) {
@@ -1285,7 +1310,7 @@ onBeforeUnmount(() => {
     flex-direction: column;
     gap: 12px;
   }
-  
+
   .summary-item {
     flex-direction: row;
     justify-content: space-between;
@@ -1298,11 +1323,11 @@ onBeforeUnmount(() => {
     gap: 16px;
     align-items: stretch;
   }
-  
+
   .header-left {
     align-items: center;
   }
-  
+
   .header-actions {
     justify-content: center;
     flex-wrap: wrap;

@@ -132,11 +132,19 @@
         <el-tag>{{ getCompanyName(row.company) }}</el-tag>
       </template>
 
-      <!-- 状态列 -->
+      <!-- 订单状态列 -->
       <template #column-status="{ row }">
         <el-tag :style="getOrderStatusStyle(row.status)" size="small" effect="plain">
           {{ getOrderStatusText(row.status) }}
         </el-tag>
+      </template>
+
+      <!-- 物流状态列 -->
+      <template #column-logisticsStatus="{ row }">
+        <el-tag v-if="row.logisticsStatus" :style="getLogisticsStatusStyle(row.logisticsStatus)" size="small" effect="plain">
+          {{ getLogisticsStatusText(row.logisticsStatus) }}
+        </el-tag>
+        <span v-else class="no-data">-</span>
       </template>
 
       <!-- 操作列 -->
@@ -188,10 +196,12 @@ interface LogisticsItem {
   orderNo: string
   customerName: string
   company: string
-  // 🔥 修复：支持所有订单状态
+  // 🔥 订单状态
   status: string
   destination: string
   shipDate: string
+  // 🔥 新增：物流状态（独立于订单状态）
+  logisticsStatus: string
   estimatedDate: string
 }
 
@@ -311,6 +321,7 @@ const tableColumns = computed(() => [
     label: '状态',
     minWidth: 90,
     visible: true,
+    slot: true,
     showOverflowTooltip: true
   },
   {
@@ -326,6 +337,14 @@ const tableColumns = computed(() => [
     minWidth: 150,
     visible: true,
     formatter: (value: unknown) => formatDateTime(value as string),
+    showOverflowTooltip: true
+  },
+  {
+    prop: 'logisticsStatus',
+    label: '物流状态',
+    minWidth: 100,
+    visible: true,
+    slot: true,
     showOverflowTooltip: true
   },
   {
@@ -415,6 +434,36 @@ const getStatusType = (status: string) => {
     package_exception: 'danger'
   }
   return types[status] || 'info'
+}
+
+// 🔥 获取物流状态文本
+const getLogisticsStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    pending: '待发货',
+    shipped: '已发货',
+    in_transit: '运输中',
+    delivering: '派送中',
+    delivered: '已签收',
+    exception: '异常',
+    returned: '已退回',
+    picked_up: '已揽收'
+  }
+  return statusMap[status] || status || '-'
+}
+
+// 🔥 获取物流状态样式
+const getLogisticsStatusStyle = (status: string) => {
+  const styleMap: Record<string, { backgroundColor: string; color: string; borderColor: string }> = {
+    pending: { backgroundColor: '#f0f0f0', color: '#909399', borderColor: '#d9d9d9' },
+    shipped: { backgroundColor: '#e6f7ff', color: '#1890ff', borderColor: '#91d5ff' },
+    in_transit: { backgroundColor: '#fff7e6', color: '#fa8c16', borderColor: '#ffd591' },
+    delivering: { backgroundColor: '#fff1f0', color: '#f5222d', borderColor: '#ffa39e' },
+    delivered: { backgroundColor: '#f6ffed', color: '#52c41a', borderColor: '#b7eb8f' },
+    exception: { backgroundColor: '#fff1f0', color: '#f5222d', borderColor: '#ffa39e' },
+    returned: { backgroundColor: '#fff2e8', color: '#fa541c', borderColor: '#ffbb96' },
+    picked_up: { backgroundColor: '#e6fffb', color: '#13c2c2', borderColor: '#87e8de' }
+  }
+  return styleMap[status] || { backgroundColor: '#f0f0f0', color: '#909399', borderColor: '#d9d9d9' }
 }
 
 // 搜索
@@ -519,12 +568,14 @@ const loadData = async () => {
       orderNo: order.orderNumber,
       customerName: order.customerName,
       company: order.expressCompany || '',
-      // 🔥 修复：从订单数据获取实际状态，而不是固定为shipped
+      // 🔥 订单状态
       status: order.status || 'shipped',
-      destination: order.receiverAddress || '',
-      shipDate: order.shippingTime || order.shipTime || new Date().toISOString(),
-      // 🔥 修复：从订单数据获取预计送达时间
-      estimatedDate: order.estimatedDeliveryTime || order.expectedDeliveryDate || ''
+      destination: order.receiverAddress || order.shippingAddress || '',
+      shipDate: order.shippedAt || order.shippingTime || order.shipTime || '',
+      // 🔥 新增：物流状态（独立于订单状态）
+      logisticsStatus: order.logisticsStatus || '',
+      // 🔥 修复：预计送达时间，尝试多个字段
+      estimatedDate: order.expectedDeliveryDate || order.estimatedDeliveryTime || order.estimatedDate || ''
     }))
 
     // 应用搜索过滤
