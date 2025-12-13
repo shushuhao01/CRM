@@ -1125,28 +1125,44 @@ const loadRealRankings = () => {
       employmentStatus: u.employmentStatus
     })))
 
+    // 🔥 【修复】增强部门匹配函数，支持多种匹配方式
+    const matchUserDepartment = (user: any) => {
+      const targetDeptId = String(user.departmentId || '').toLowerCase().trim()
+      const targetDeptName = (user.department || user.departmentName || '').toLowerCase().trim()
+
+      const currentDeptIdStr = String(currentDeptId || '').toLowerCase().trim()
+      const currentDeptNameStr = (currentDeptName || '').toLowerCase().trim()
+
+      // 通过部门ID精确匹配
+      if (currentDeptIdStr && targetDeptId && currentDeptIdStr === targetDeptId) {
+        console.log(`[业绩排名] ✅ 用户 ${user.name} 通过部门ID匹配`)
+        return true
+      }
+
+      // 通过部门名称精确匹配
+      if (currentDeptNameStr && targetDeptName && currentDeptNameStr === targetDeptName) {
+        console.log(`[业绩排名] ✅ 用户 ${user.name} 通过部门名称匹配`)
+        return true
+      }
+
+      // 🔥 【关键修复】部门名称模糊匹配（当departmentId为空时）
+      if (!currentDeptIdStr && currentDeptNameStr) {
+        if (targetDeptName.includes(currentDeptNameStr) || currentDeptNameStr.includes(targetDeptName)) {
+          console.log(`[业绩排名] ✅ 用户 ${user.name} 通过部门名称模糊匹配`)
+          return true
+        }
+      }
+
+      console.log(`[业绩排名] ❌ 用户 ${user.name} 部门不匹配 (目标ID=${targetDeptId}, 目标名=${targetDeptName})`)
+      return false
+    }
+
     departmentMembers = (userStore.users || []).filter(u => {
       // 首先检查用户是否启用
       if (!isUserEnabled(u)) {
         return false
       }
-      // 通过部门ID匹配（支持多种格式，忽略大小写）
-      if (currentDeptId) {
-        const userDeptIdStr = String(u.departmentId || '').toLowerCase()
-        const currentDeptIdStr = String(currentDeptId).toLowerCase()
-        if (userDeptIdStr === currentDeptIdStr) {
-          return true
-        }
-      }
-      // 通过部门名称匹配（忽略大小写）
-      if (currentDeptName) {
-        const userDeptNameLower = (u.department || u.departmentName || '').toLowerCase()
-        const currentDeptNameLower = currentDeptName.toLowerCase()
-        if (userDeptNameLower === currentDeptNameLower) {
-          return true
-        }
-      }
-      return false
+      return matchUserDepartment(u)
     })
     console.log('[业绩排名] 非管理员，显示本部门启用成员:', departmentMembers.length, '部门ID:', currentDeptId, '部门名称:', currentDeptName)
   }
