@@ -976,6 +976,7 @@ import { UserDataSyncService } from '@/services/userDataSync'
 import * as XLSX from 'xlsx'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { formatDateTime } from '@/utils/dateFormat'
+import { getRoleTagType, getRoleDisplayName } from '@/utils/roleUtils'
 import {
   Plus,
   Download,
@@ -1428,7 +1429,7 @@ const handleRoleChange = (roleCode: string) => {
  * 【批次198修复】支持通过code或id查找角色
  */
 const getRoleColor = (roleId: string) => {
-  if (!roleId) return ''
+  if (!roleId) return 'info'
 
   // 尝试通过id、code或roleId匹配角色
   const role = roleOptions.value.find(r =>
@@ -1437,7 +1438,9 @@ const getRoleColor = (roleId: string) => {
     String(r.id) === String(roleId)
   )
 
-  return role?.color || ''
+  // 使用角色code获取对应的标签颜色
+  const roleCode = role?.code || roleId
+  return getRoleTagType(roleCode)
 }
 
 /**
