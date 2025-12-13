@@ -40,6 +40,12 @@ export class Announcement {
   @Column({ name: 'is_pinned', type: 'tinyint', default: 0, comment: '是否置顶' })
   isPinned!: number;
 
+  @Column({ name: 'is_popup', type: 'tinyint', default: 0, comment: '是否弹窗显示' })
+  isPopup!: number;
+
+  @Column({ name: 'is_marquee', type: 'tinyint', default: 1, comment: '是否横幅滚动' })
+  isMarquee!: number;
+
   @Column({ name: 'view_count', type: 'int', default: 0, comment: '查看次数' })
   viewCount!: number;
 

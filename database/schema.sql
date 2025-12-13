@@ -1560,6 +1560,8 @@ CREATE TABLE `announcements` (
   `start_time` TIMESTAMP NULL COMMENT '生效开始时间',
   `end_time` TIMESTAMP NULL COMMENT '生效结束时间',
   `is_pinned` TINYINT(1) DEFAULT 0 COMMENT '是否置顶',
+  `is_popup` TINYINT(1) DEFAULT 0 COMMENT '是否弹窗显示',
+  `is_marquee` TINYINT(1) DEFAULT 1 COMMENT '是否横幅滚动',
   `view_count` INT DEFAULT 0 COMMENT '查看次数',
   `created_by` VARCHAR(36) COMMENT '创建者ID',
   `created_by_name` VARCHAR(100) COMMENT '创建者姓名',

@@ -488,6 +488,8 @@ export class MessageController {
           startTime: ann.startTime,
           endTime: ann.endTime,
           isPinned: ann.isPinned === 1,
+          isPopup: ann.isPopup === 1,
+          isMarquee: ann.isMarquee === 1,
           viewCount: ann.viewCount,
           deliveredCount,
           readCount,
@@ -522,7 +524,7 @@ export class MessageController {
         return;
       }
 
-      const { title, content, type, priority, targetRoles, targetDepartments, startTime, endTime, isPinned } = req.body;
+      const { title, content, type, priority, targetRoles, targetDepartments, startTime, endTime, isPinned, isPopup, isMarquee } = req.body;
 
       if (!title || !content) {
         res.status(400).json({ success: false, message: '标题和内容不能为空' });
@@ -544,6 +546,8 @@ export class MessageController {
         startTime: startTime ? new Date(startTime) : null,
         endTime: endTime ? new Date(endTime) : null,
         isPinned: isPinned ? 1 : 0,
+        isPopup: isPopup ? 1 : 0,
+        isMarquee: isMarquee !== false ? 1 : 0,
         viewCount: 0,
         createdBy: currentUser?.id,
         createdByName: currentUser?.realName || currentUser?.username || '系统'
@@ -790,9 +794,12 @@ export class MessageController {
           content: ann.content,
           type: ann.type,
           priority: ann.priority,
+          status: ann.status,
           isPinned: ann.isPinned === 1,
+          isPopup: ann.isPopup === 1,
+          isMarquee: ann.isMarquee === 1,
           publishedAt: ann.publishedAt,
-          isRead: readIds.has(ann.id)
+          read: readIds.has(ann.id)
         }))
       });
     } catch (error) {

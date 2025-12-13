@@ -55,8 +55,11 @@
         </div>
       </el-header>
 
-      <!-- 公告轮播 -->
+      <!-- 公告轮播横幅 -->
       <AnnouncementCarousel />
+
+      <!-- 公告弹窗 -->
+      <AnnouncementPopup />
 
       <el-container>
         <!-- 左侧菜单 -->
@@ -247,6 +250,7 @@ import { useAppStore } from '@/stores/app'
 import { useConfigStore } from '@/stores/config'
 import { useNotificationStore } from '@/stores/notification'
 import { useOrderStore } from '@/stores/order'
+import { useMessageStore } from '@/stores/message'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import GlobalLoading from '@/components/GlobalLoading.vue'
 import ErrorBoundary from '@/components/ErrorBoundary.vue'
@@ -278,6 +282,7 @@ const appStore = useAppStore()
 const configStore = useConfigStore()
 const notificationStore = useNotificationStore()
 const orderStore = useOrderStore()
+const messageStore = useMessageStore()
 
 // 创建安全导航器
 const safeNavigator = createSafeNavigator(router)
@@ -763,6 +768,11 @@ onMounted(async () => {
 
   // 从API加载真实消息（不再使用模拟数据）
   notificationStore.loadMessagesFromAPI()
+
+  // 加载用户公告（用于弹窗和消息铃铛）
+  if (userStore.token) {
+    messageStore.loadUserAnnouncements()
+  }
 
   // 启动订单流转检查定时器（每30秒检查一次）
   startOrderTransferTimer()

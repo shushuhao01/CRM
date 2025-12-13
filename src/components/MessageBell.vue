@@ -290,12 +290,8 @@ const deleteMessage = async (messageId: string) => {
 
 const markAnnouncementAsRead = async (announcementId: string) => {
   try {
-    // 这里应该调用API标记公告为已读
-    // 暂时模拟实现
-    const announcement = announcements.value.find(a => a.id === announcementId)
-    if (announcement) {
-      announcement.read = true
-    }
+    // 调用store方法标记公告为已读
+    await messageStore.markAnnouncementAsRead(announcementId)
   } catch (error) {
     console.error('标记公告已读失败:', error)
   }
@@ -331,7 +327,7 @@ const handleAnnouncementClick = (announcement: any) => {
 onMounted(() => {
   // 只在用户已登录时才加载公告数据
   if (userStore.isLoggedIn) {
-    messageStore.loadAnnouncements()
+    messageStore.loadUserAnnouncements()
   }
 })
 </script>

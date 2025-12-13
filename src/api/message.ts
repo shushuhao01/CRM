@@ -54,6 +54,24 @@ export const messageApi = {
     return request.post(`/message/announcements/${id}/publish`)
   },
 
+  // 获取当前用户的已发布公告（用于弹窗和消息铃铛）
+  getPublishedAnnouncements: async () => {
+    try {
+      return await request.get('/message/announcements/published')
+    } catch (error: any) {
+      if (error?.status === 404 || error?.status === 502 || error?.status === 500) {
+        console.log('[Message API] 公告功能未启用或后端未实现')
+        return { success: true, data: [] }
+      }
+      throw error
+    }
+  },
+
+  // 标记公告为已读
+  markAnnouncementAsRead: (id: string) => {
+    return request.put(`/message/announcements/${id}/read`)
+  },
+
   // 配置相关
   getConfigs: () => {
     return request.get('/message/configs')
