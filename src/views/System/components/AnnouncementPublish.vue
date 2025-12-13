@@ -92,10 +92,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="发布时间" width="160" align="center">
+        <el-table-column label="发布时间" width="180" align="center">
           <template #default="{ row }">
             <div class="publish-time">
-              {{ row.publishedAt || row.scheduledAt || '-' }}
+              {{ formatTime(row.publishedAt || row.scheduledAt) }}
             </div>
           </template>
         </el-table-column>
@@ -117,8 +117,11 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="200" align="center" fixed="right">
+        <el-table-column label="操作" width="250" align="center" fixed="right">
           <template #default="{ row }">
+            <el-button type="info" size="small" @click="previewAnnouncement(row)">
+              查看
+            </el-button>
             <el-button type="primary" size="small" @click="editAnnouncement(row)">
               编辑
             </el-button>
@@ -137,6 +140,24 @@
         </el-table-column>
       </el-table>
     </div>
+
+    <!-- 预览公告对话框 -->
+    <el-dialog v-model="previewVisible" title="公告预览" width="600px">
+      <div v-if="previewData" class="preview-content">
+        <h3 class="preview-title">{{ previewData.title }}</h3>
+        <div class="preview-meta">
+          <el-tag :type="previewData.type === 'notice' ? 'primary' : 'success'" size="small">
+            {{ previewData.type === 'notice' ? '全公司' : '部门公告' }}
+          </el-tag>
+          <span class="preview-time">{{ formatTime(previewData.publishedAt || previewData.createdAt) }}</span>
+          <span class="preview-author">{{ previewData.createdByName }}</span>
+        </div>
+        <div class="preview-body" v-html="previewData.content"></div>
+      </div>
+      <template #footer>
+        <el-button @click="previewVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 创建/编辑公告对话框 -->
     <el-dialog
@@ -324,6 +345,8 @@ const editorConfig = {
 const loading = ref(false)
 const submitting = ref(false)
 const dialogVisible = ref(false)
+const previewVisible = ref(false)
+const previewData = ref<any>(null)
 const isEdit = ref(false)
 const publishType = ref('immediate')
 
@@ -453,6 +476,27 @@ const resetFilter = () => {
 const showCreateDialog = () => {
   isEdit.value = false
   dialogVisible.value = true
+}
+
+// 预览公告
+const previewAnnouncement = (row: any) => {
+  previewData.value = row
+  previewVisible.value = true
+}
+
+// 时间格式化（北京时间）
+const formatTime = (time: string | Date) => {
+  if (!time) return '-'
+  const date = new Date(time)
+  // 转换为北京时间格式
+  return date.toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 // 编辑公告
@@ -741,5 +785,47 @@ onBeforeUnmount(() => {
 
 .display-options .el-checkbox {
   margin-right: 0;
+}
+
+/* 预览样式 */
+.preview-content {
+  padding: 0;
+}
+
+.preview-title {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.preview-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.preview-time,
+.preview-author {
+  font-size: 13px;
+  color: #909399;
+}
+
+.preview-body {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #606266;
+}
+
+.preview-body :deep(p) {
+  margin: 0 0 12px 0;
+}
+
+.preview-body :deep(img) {
+  max-width: 100%;
+  border-radius: 4px;
 }
 </style>
