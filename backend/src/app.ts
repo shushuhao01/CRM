@@ -243,6 +243,45 @@ const startServer = async () => {
       logger.info(`📊 健康检查: http://localhost:${PORT}/health`);
     });
 
+    // 🔥 启动定时任务：每天凌晨3点清理过期消息（超过30天）
+    const scheduleMessageCleanup = () => {
+      const cleanupExpiredMessages = async () => {
+        try {
+          const { AppDataSource } = await import('./config/database');
+          const { SystemMessage } = await import('./entities/SystemMessage');
+
+          if (!AppDataSource?.isInitialized) {
+            return;
+          }
+
+          const messageRepo = AppDataSource.getRepository(SystemMessage);
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+          const result = await messageRepo
+            .createQueryBuilder()
+            .delete()
+            .where('created_at < :date', { date: thirtyDaysAgo })
+            .execute();
+
+          if (result.affected && result.affected > 0) {
+            logger.info(`🧹 [定时任务] 已清理 ${result.affected} 条过期消息（超过30天）`);
+          }
+        } catch (error) {
+          logger.error('[定时任务] 清理过期消息失败:', error);
+        }
+      };
+
+      // 立即执行一次清理
+      cleanupExpiredMessages();
+
+      // 每24小时执行一次（86400000毫秒）
+      setInterval(cleanupExpiredMessages, 24 * 60 * 60 * 1000);
+      logger.info('📅 [定时任务] 消息自动清理任务已启动（每24小时清理超过30天的消息）');
+    };
+
+    scheduleMessageCleanup();
+
     // 优雅关闭处理
     const gracefulShutdown = async (signal: string) => {
       logger.info(`收到 ${signal} 信号，开始优雅关闭...`);

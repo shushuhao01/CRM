@@ -1,5 +1,5 @@
 import { api as request } from './request'
-import type { MessageSubscription, Announcement, MessageConfig, SystemMessage, DepartmentSubscriptionConfig } from '@/stores/message'
+import type { MessageSubscription, Announcement, MessageConfig, DepartmentSubscriptionConfig } from '@/stores/message'
 
 export const messageApi = {
   // 消息订阅相关
@@ -13,8 +13,7 @@ export const messageApi = {
 
   // 部门级别订阅配置
   getDepartmentSubscriptions: (departmentId?: string) => {
-    const params = departmentId ? { departmentId } : {}
-    return request.get('/message/subscriptions/departments', { params })
+    return request.get('/message/subscriptions/departments', departmentId ? { departmentId } : undefined)
   },
 
   updateDepartmentSubscription: (subscriptionId: string, departmentId: string, config: Partial<DepartmentSubscriptionConfig>) => {
@@ -68,16 +67,64 @@ export const messageApi = {
     return request.post(`/message/configs/${id}/test`)
   },
 
-  // 系统消息相关
-  getSystemMessages: async (params?: any) => {
+  // =====================================================
+  // 系统消息相关 - 🔥 跨设备消息通知
+  // =====================================================
+
+  getSystemMessages: async (params?: { limit?: number; offset?: number; unreadOnly?: boolean }) => {
     try {
-      return await request.get('/message/system-messages', { params })
+      // 转换参数格式
+      const queryParams: Record<string, string | number> = {}
+      if (params?.limit) queryParams.limit = params.limit
+      if (params?.offset) queryParams.offset = params.offset
+      if (params?.unreadOnly !== undefined) queryParams.unreadOnly = params.unreadOnly ? 'true' : 'false'
+
+      return await request.get('/message/system-messages', queryParams)
     } catch (error: any) {
-      // 【修复】如果是404、500或502错误，返回空数据而不是抛出错误
       if (error?.status === 404 || error?.status === 502 || error?.status === 500) {
         console.log('[Message API] 系统消息功能未启用或后端未实现')
-        return { success: true, data: { messages: [], total: 0 } }
+        return { success: true, data: { messages: [], total: 0, unreadCount: 0 } }
       }
+      throw error
+    }
+  },
+
+  // 🔥 发送系统消息到数据库
+  sendSystemMessage: async (data: {
+    type: string
+    title: string
+    content: string
+    targetUserId: string
+    priority?: string
+    category?: string
+    relatedId?: string
+    relatedType?: string
+    actionUrl?: string
+  }) => {
+    try {
+      return await request.post('/message/system-messages/send', data)
+    } catch (error: any) {
+      console.error('[Message API] 发送系统消息失败:', error)
+      throw error
+    }
+  },
+
+  // 🔥 批量发送系统消息
+  sendBatchSystemMessages: async (messages: Array<{
+    type: string
+    title: string
+    content: string
+    targetUserId: string
+    priority?: string
+    category?: string
+    relatedId?: string
+    relatedType?: string
+    actionUrl?: string
+  }>) => {
+    try {
+      return await request.post('/message/system-messages/send-batch', { messages })
+    } catch (error: any) {
+      console.error('[Message API] 批量发送系统消息失败:', error)
       throw error
     }
   },
@@ -90,8 +137,67 @@ export const messageApi = {
     return request.put('/message/system-messages/read-all')
   },
 
+  // 🔥 删除单条消息
+  deleteMessage: (id: string) => {
+    return request.delete(`/message/system-messages/${id}`)
+  },
+
+  // 🔥 清空当前用户的所有消息
+  clearAllMessages: () => {
+    return request.delete('/message/system-messages/clear-all')
+  },
+
   // 统计相关
   getMessageStats: () => {
     return request.get('/message/stats')
+  },
+
+  // =====================================================
+  // 通知渠道配置管理 - 🔥 跨平台通知配置
+  // =====================================================
+
+  // 获取通知渠道配置列表
+  getNotificationChannels: () => {
+    return request.get('/message/notification-channels')
+  },
+
+  // 创建通知渠道配置
+  createNotificationChannel: (data: {
+    name: string
+    channelType: string
+    config?: Record<string, any>
+    messageTypes?: string[]
+    targetType?: string
+    targetDepartments?: string[]
+    targetUsers?: string[]
+    targetRoles?: string[]
+    priorityFilter?: string
+  }) => {
+    return request.post('/message/notification-channels', data)
+  },
+
+  // 更新通知渠道配置
+  updateNotificationChannel: (id: string, data: any) => {
+    return request.put(`/message/notification-channels/${id}`, data)
+  },
+
+  // 删除通知渠道配置
+  deleteNotificationChannel: (id: string) => {
+    return request.delete(`/message/notification-channels/${id}`)
+  },
+
+  // 测试通知渠道
+  testNotificationChannel: (id: string, testMessage?: string) => {
+    return request.post(`/message/notification-channels/${id}/test`, { testMessage })
+  },
+
+  // 获取通知发送记录
+  getNotificationLogs: (params?: { channelId?: string; status?: string; page?: number; pageSize?: number }) => {
+    return request.get('/message/notification-logs', params)
+  },
+
+  // 获取通知配置选项
+  getNotificationOptions: () => {
+    return request.get('/message/notification-options')
   }
 }

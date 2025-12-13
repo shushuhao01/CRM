@@ -1523,6 +1523,110 @@ CREATE TABLE `service_operation_logs` (
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='售后服务操作记录表';
 
+-- 25. 系统消息表（用于跨设备消息通知）
+DROP TABLE IF EXISTS `system_messages`;
+CREATE TABLE `system_messages` (
+  `id` VARCHAR(36) PRIMARY KEY COMMENT '消息ID',
+  `type` VARCHAR(50) NOT NULL COMMENT '消息类型',
+  `title` VARCHAR(200) NOT NULL COMMENT '消息标题',
+  `content` TEXT NOT NULL COMMENT '消息内容',
+  `priority` VARCHAR(20) DEFAULT 'normal' COMMENT '优先级: low/normal/high/urgent',
+  `category` VARCHAR(50) DEFAULT '系统通知' COMMENT '消息分类',
+  `target_user_id` VARCHAR(36) NOT NULL COMMENT '接收者用户ID',
+  `created_by` VARCHAR(36) COMMENT '发送者用户ID',
+  `related_id` VARCHAR(36) COMMENT '关联的业务ID（订单ID/客户ID等）',
+  `related_type` VARCHAR(50) COMMENT '关联类型: order/customer/afterSales等',
+  `action_url` VARCHAR(200) COMMENT '点击跳转的URL',
+  `is_read` TINYINT(1) DEFAULT 0 COMMENT '是否已读: 0未读 1已读',
+  `read_at` TIMESTAMP NULL COMMENT '阅读时间',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `idx_target_user` (`target_user_id`),
+  INDEX `idx_is_read` (`is_read`),
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_type` (`type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统消息表';
+
+-- 26. 系统公告表
+DROP TABLE IF EXISTS `announcements`;
+CREATE TABLE `announcements` (
+  `id` VARCHAR(36) PRIMARY KEY COMMENT '公告ID',
+  `title` VARCHAR(200) NOT NULL COMMENT '公告标题',
+  `content` TEXT NOT NULL COMMENT '公告内容',
+  `type` VARCHAR(50) DEFAULT 'notice' COMMENT '公告类型: notice/update/maintenance/promotion',
+  `priority` VARCHAR(20) DEFAULT 'normal' COMMENT '优先级: low/normal/high/urgent',
+  `status` VARCHAR(20) DEFAULT 'draft' COMMENT '状态: draft/published/archived',
+  `target_roles` JSON COMMENT '目标角色列表，为空表示所有人',
+  `target_departments` JSON COMMENT '目标部门列表，为空表示所有部门',
+  `start_time` TIMESTAMP NULL COMMENT '生效开始时间',
+  `end_time` TIMESTAMP NULL COMMENT '生效结束时间',
+  `is_pinned` TINYINT(1) DEFAULT 0 COMMENT '是否置顶',
+  `view_count` INT DEFAULT 0 COMMENT '查看次数',
+  `created_by` VARCHAR(36) COMMENT '创建者ID',
+  `created_by_name` VARCHAR(100) COMMENT '创建者姓名',
+  `published_at` TIMESTAMP NULL COMMENT '发布时间',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_status` (`status`),
+  INDEX `idx_type` (`type`),
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_published_at` (`published_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统公告表';
+
+-- 27. 公告阅读记录表
+DROP TABLE IF EXISTS `announcement_reads`;
+CREATE TABLE `announcement_reads` (
+  `id` VARCHAR(36) PRIMARY KEY COMMENT '记录ID',
+  `announcement_id` VARCHAR(36) NOT NULL COMMENT '公告ID',
+  `user_id` VARCHAR(36) NOT NULL COMMENT '用户ID',
+  `read_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '阅读时间',
+  UNIQUE KEY `uk_announcement_user` (`announcement_id`, `user_id`),
+  INDEX `idx_announcement_id` (`announcement_id`),
+  INDEX `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公告阅读记录表';
+
+-- 28. 通知渠道配置表
+DROP TABLE IF EXISTS `notification_channels`;
+CREATE TABLE `notification_channels` (
+  `id` VARCHAR(36) PRIMARY KEY COMMENT '配置ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '配置名称',
+  `channel_type` VARCHAR(50) NOT NULL COMMENT '通知渠道类型: dingtalk/wechat_work/wechat_mp/email/sms/system',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `config` JSON NOT NULL COMMENT '渠道配置参数',
+  `message_types` JSON COMMENT '支持的消息类型列表',
+  `target_type` VARCHAR(20) DEFAULT 'all' COMMENT '通知对象类型: all/departments/users/roles',
+  `target_departments` JSON COMMENT '目标部门列表',
+  `target_users` JSON COMMENT '目标用户列表',
+  `target_roles` JSON COMMENT '目标角色列表',
+  `priority_filter` VARCHAR(20) DEFAULT 'all' COMMENT '优先级过滤: all/high/urgent',
+  `created_by` VARCHAR(36) COMMENT '创建者ID',
+  `created_by_name` VARCHAR(100) COMMENT '创建者姓名',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_channel_type` (`channel_type`),
+  INDEX `idx_is_enabled` (`is_enabled`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知渠道配置表';
+
+-- 29. 通知发送记录表
+DROP TABLE IF EXISTS `notification_logs`;
+CREATE TABLE `notification_logs` (
+  `id` VARCHAR(36) PRIMARY KEY COMMENT '记录ID',
+  `channel_id` VARCHAR(36) NOT NULL COMMENT '通知渠道ID',
+  `channel_type` VARCHAR(50) NOT NULL COMMENT '通知渠道类型',
+  `message_type` VARCHAR(50) NOT NULL COMMENT '消息类型',
+  `title` VARCHAR(200) NOT NULL COMMENT '消息标题',
+  `content` TEXT NOT NULL COMMENT '消息内容',
+  `target_users` JSON COMMENT '目标用户列表',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '发送状态: pending/success/failed',
+  `response` TEXT COMMENT '第三方API响应',
+  `error_message` TEXT COMMENT '错误信息',
+  `sent_at` TIMESTAMP NULL COMMENT '发送时间',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `idx_channel_id` (`channel_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知发送记录表';
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =============================================

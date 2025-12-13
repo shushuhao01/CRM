@@ -754,6 +754,43 @@ export const useNotificationStore = defineStore('notification', () => {
     saveMessagesToStorage(messages.value)
   }
 
+  // 🔥 删除消息（同步到数据库）
+  const deleteMessageWithAPI = async (messageId: string) => {
+    try {
+      const { messageApi } = await import('@/api/message')
+      await messageApi.deleteMessage(messageId)
+
+      // 更新本地状态
+      const index = messages.value.findIndex(msg => msg.id === messageId)
+      if (index > -1) {
+        messages.value.splice(index, 1)
+        saveMessagesToStorage(messages.value)
+      }
+      console.log(`[Notification] ✅ 消息已删除: ${messageId}`)
+    } catch (error) {
+      console.error('[Notification] 删除消息失败:', error)
+      // 降级：只删除本地
+      deleteMessage(messageId)
+    }
+  }
+
+  // 🔥 清空所有消息（同步到数据库）
+  const clearAllMessagesWithAPI = async () => {
+    try {
+      const { messageApi } = await import('@/api/message')
+      await messageApi.clearAllMessages()
+
+      // 更新本地状态
+      messages.value = []
+      saveMessagesToStorage(messages.value)
+      console.log('[Notification] ✅ 所有消息已清空')
+    } catch (error) {
+      console.error('[Notification] 清空消息失败:', error)
+      // 降级：只清空本地
+      clearAllMessages()
+    }
+  }
+
   const batchSendMessages = (messageConfigs: Array<{
     type: MessageType
     content: string
@@ -768,61 +805,102 @@ export const useNotificationStore = defineStore('notification', () => {
     )
   }
 
-  // 从API加载消息
-  const loadMessagesFromAPI = async (permissionParams: Record<string, unknown> = {}) => {
+  // 🔥 从API加载消息（跨设备消息通知的核心）
+  const loadMessagesFromAPI = async (options?: { limit?: number; unreadOnly?: boolean }) => {
     try {
       // 动态导入messageApi以避免循环依赖
       const { messageApi } = await import('@/api/message')
 
       const response = await messageApi.getSystemMessages({
-        limit: 50,
-        ...permissionParams
+        limit: options?.limit || 50,
+        unreadOnly: options?.unreadOnly
       })
 
       if (response.success && response.data) {
-        // 不清空现有消息，而是合并
-        const existingIds = new Set(messages.value.map(m => m.id))
-
-        const responseData = response.data as { messages?: any[]; total?: number }
+        const responseData = response.data as { messages?: any[]; total?: number; unreadCount?: number }
         const apiMessages = responseData.messages || []
-        apiMessages.forEach((msg: unknown) => {
-          // 跳过已存在的消息
-          if (existingIds.has(msg.id)) {
-            return
+
+        // 🔥 清空本地消息，使用数据库消息作为唯一数据源
+        const newMessages: NotificationMessage[] = []
+
+        apiMessages.forEach((msg: any) => {
+          // 将API消息格式转换为notification store格式
+          const template = MESSAGE_TEMPLATES[msg.type as MessageType] || {
+            icon: 'Bell',
+            color: '#409EFF',
+            category: '系统通知'
           }
 
-          // 将API消息格式转换为notification store格式
           const notificationMessage: NotificationMessage = {
-            id: msg.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            id: msg.id,
             type: msg.type || MessageType.SYSTEM_UPDATE,
             title: msg.title || '系统通知',
             content: msg.content || '',
             priority: msg.priority || MessagePriority.NORMAL,
-            time: msg.createdAt || new Date().toLocaleString('zh-CN'),
-            read: msg.read || false,
-            icon: msg.icon || 'Bell',
-            color: msg.color || '#409EFF',
-            category: msg.category || '系统通知',
+            time: msg.createdAt ? new Date(msg.createdAt).toLocaleString('zh-CN') : new Date().toLocaleString('zh-CN'),
+            read: msg.isRead === true || msg.isRead === 1,
+            icon: template.icon,
+            color: template.color,
+            category: msg.category || template.category,
             relatedId: msg.relatedId,
             relatedType: msg.relatedType,
             actionUrl: msg.actionUrl
           }
 
-          // 直接添加到messages数组
-          messages.value.push(notificationMessage)
+          newMessages.push(notificationMessage)
         })
 
-        // 保存到localStorage
+        // 🔥 替换本地消息为数据库消息
+        messages.value = newMessages
         saveMessagesToStorage(messages.value)
+
+        console.log(`[Notification] ✅ 从数据库加载了 ${newMessages.length} 条消息，未读 ${responseData.unreadCount || 0} 条`)
 
         return apiMessages
       }
 
       return []
     } catch (error) {
-      // 静默处理API加载失败，不影响主流程
-      console.log('[Notification] 从API加载消息失败（非关键功能）:', error)
+      // 静默处理API加载失败，使用本地缓存
+      console.log('[Notification] 从API加载消息失败，使用本地缓存:', error)
       return []
+    }
+  }
+
+  // 🔥 标记消息已读（同步到数据库）
+  const markAsReadWithAPI = async (messageId: string) => {
+    try {
+      const { messageApi } = await import('@/api/message')
+      await messageApi.markMessageAsRead(messageId)
+
+      // 更新本地状态
+      const message = messages.value.find(msg => msg.id === messageId)
+      if (message) {
+        message.read = true
+        saveMessagesToStorage(messages.value)
+      }
+    } catch (error) {
+      console.error('[Notification] 标记已读失败:', error)
+      // 降级：只更新本地
+      markAsRead(messageId)
+    }
+  }
+
+  // 🔥 标记所有消息已读（同步到数据库）
+  const markAllAsReadWithAPI = async () => {
+    try {
+      const { messageApi } = await import('@/api/message')
+      await messageApi.markAllMessagesAsRead()
+
+      // 更新本地状态
+      messages.value.forEach(msg => {
+        msg.read = true
+      })
+      saveMessagesToStorage(messages.value)
+    } catch (error) {
+      console.error('[Notification] 标记全部已读失败:', error)
+      // 降级：只更新本地
+      markAllAsRead()
     }
   }
 
@@ -843,6 +921,11 @@ export const useNotificationStore = defineStore('notification', () => {
     clearAllMessages,
     batchSendMessages,
     loadMessagesFromAPI,
+    // 🔥 同步到数据库的方法
+    markAsReadWithAPI,
+    markAllAsReadWithAPI,
+    deleteMessageWithAPI,
+    clearAllMessagesWithAPI,
 
     // 导出枚举供外部使用
     MessageType,

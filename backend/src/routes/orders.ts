@@ -1322,6 +1322,57 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 
+// 🔥 订单状态流转规则：定义合法的状态变更路径
+const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
+  'pending_transfer': ['pending_audit'],                                    // 待流转 → 待审核
+  'pending_audit': ['pending_shipment', 'audit_rejected'],                  // 待审核 → 待发货/审核拒绝
+  'audit_rejected': ['pending_audit', 'cancelled'],                         // 审核拒绝 → 重新提审/取消
+  'pending_shipment': ['shipped', 'logistics_returned', 'logistics_cancelled', 'cancelled'], // 待发货 → 已发货/退回/取消
+  'shipped': ['delivered', 'rejected', 'package_exception', 'logistics_returned'], // 已发货 → 已签收/拒收/异常/退回
+  'delivered': ['after_sales_created'],                                     // 已签收 → 已建售后（终态，一般不变）
+  'rejected': ['rejected_returned'],                                        // 拒收 → 拒收已退回
+  'rejected_returned': [],                                                  // 拒收已退回（终态）
+  'logistics_returned': ['pending_shipment', 'cancelled'],                  // 物流退回 → 重新发货/取消
+  'logistics_cancelled': ['cancelled'],                                     // 物流取消 → 已取消
+  'package_exception': ['shipped', 'rejected', 'cancelled'],                // 包裹异常 → 重新发货/拒收/取消
+  'after_sales_created': [],                                                // 已建售后（终态）
+  'cancelled': []                                                           // 已取消（终态）
+};
+
+// 🔥 校验状态变更是否合法
+const isValidStatusTransition = (currentStatus: string, targetStatus: string): boolean => {
+  // 如果状态相同，允许（可能只是更新其他字段）
+  if (currentStatus === targetStatus) return true;
+
+  const allowedTargets = VALID_STATUS_TRANSITIONS[currentStatus];
+  if (!allowedTargets) {
+    console.warn(`[状态校验] 未知的当前状态: ${currentStatus}`);
+    return true; // 未知状态，允许更新（兼容旧数据）
+  }
+
+  return allowedTargets.includes(targetStatus);
+};
+
+// 🔥 获取状态中文名称
+const getStatusName = (status: string): string => {
+  const statusNames: Record<string, string> = {
+    'pending_transfer': '待流转',
+    'pending_audit': '待审核',
+    'audit_rejected': '审核拒绝',
+    'pending_shipment': '待发货',
+    'shipped': '已发货',
+    'delivered': '已签收',
+    'logistics_returned': '物流部退回',
+    'logistics_cancelled': '物流部取消',
+    'package_exception': '包裹异常',
+    'rejected': '拒收',
+    'rejected_returned': '拒收已退回',
+    'after_sales_created': '已建售后',
+    'cancelled': '已取消'
+  };
+  return statusNames[status] || status;
+};
+
 /**
  * @route PUT /api/v1/orders/:id
  * @desc 更新订单
@@ -1343,6 +1394,25 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     const updateData = req.body;
+
+    // 🔥 状态校验：检查状态变更是否合法
+    if (updateData.status !== undefined && updateData.status !== order.status) {
+      const currentStatus = order.status;
+      const targetStatus = updateData.status;
+
+      if (!isValidStatusTransition(currentStatus, targetStatus)) {
+        console.error(`[状态校验] ❌ 非法状态变更: ${currentStatus} → ${targetStatus}`);
+        return res.status(400).json({
+          success: false,
+          code: 400,
+          message: `订单状态变更不合法：不能从"${getStatusName(currentStatus)}"变更为"${getStatusName(targetStatus)}"`,
+          currentStatus,
+          targetStatus
+        });
+      }
+
+      console.log(`[状态校验] ✅ 合法状态变更: ${currentStatus} → ${targetStatus}`);
+    }
 
     // 更新订单字段
     if (updateData.status !== undefined) order.status = updateData.status;

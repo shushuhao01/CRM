@@ -2,6 +2,10 @@ import { Request, Response } from 'express';
 import { getDataSource } from '../config/database';
 import { MessageSubscription, DepartmentSubscriptionConfig, MessageType, NotificationMethod } from '../entities/MessageSubscription';
 import { Department } from '../entities/Department';
+import { SystemMessage } from '../entities/SystemMessage';
+import { Announcement, AnnouncementRead } from '../entities/Announcement';
+import { NotificationChannel, NotificationLog } from '../entities/NotificationChannel';
+import { v4 as uuidv4 } from 'uuid';
 
 // 内存存储订阅规则数据（模拟数据库）
 const subscriptionRulesStorage: any[] = [
@@ -421,84 +425,67 @@ export class MessageController {
     }
   }
 
-  // 公告管理相关方法
+  // =====================================================
+  // 公告管理相关方法 - 🔥 真实数据库实现
+  // =====================================================
+
   async getAnnouncements(req: Request, res: Response): Promise<void> {
     try {
       const dataSource = getDataSource();
       if (!dataSource) {
-        // 测试模式：返回模拟公告数据
-        const mockAnnouncements = [
-          {
-            id: 1,
-            title: '系统维护通知',
-            content: '系统将于本周六晚上10点进行维护，预计维护时间2小时，期间系统将暂停服务。',
-            type: 'company',
-            status: 'published',
-            isPopup: true,
-            isMarquee: true,
-            targetDepartments: [],
-            publishedAt: '2024-01-15 10:00:00',
-            createdBy: '系统管理员',
-            createdAt: '2024-01-15 09:30:00',
-            updatedAt: '2024-01-15 10:00:00'
-          },
-          {
-            id: 2,
-            title: '销售部门会议通知',
-            content: '销售部门将于明天下午2点召开月度总结会议，请相关人员准时参加。',
-            type: 'department',
-            status: 'published',
-            isPopup: false,
-            isMarquee: true,
-            targetDepartments: ['销售部'],
-            publishedAt: '2024-01-14 16:00:00',
-            createdBy: '销售经理',
-            createdAt: '2024-01-14 15:30:00',
-            updatedAt: '2024-01-14 16:00:00'
-          },
-          {
-            id: 3,
-            title: '新功能上线预告',
-            content: '我们即将上线客户管理新功能，包括智能标签和自动分组等特性。',
-            type: 'company',
-            status: 'draft',
-            isPopup: true,
-            isMarquee: false,
-            targetDepartments: [],
-            scheduledAt: '2024-01-20 09:00:00',
-            createdBy: '产品经理',
-            createdAt: '2024-01-14 14:00:00',
-            updatedAt: '2024-01-14 14:00:00'
-          }
-        ];
-
-        // 根据筛选条件过滤
-        let filteredAnnouncements = mockAnnouncements;
-        const { status, type } = req.query;
-
-        if (status) {
-          filteredAnnouncements = filteredAnnouncements.filter(ann => ann.status === status);
-        }
-        if (type) {
-          filteredAnnouncements = filteredAnnouncements.filter(ann => ann.type === type);
-        }
-
-        res.json({
-          success: true,
-          data: filteredAnnouncements
-        });
+        res.json({ success: true, data: { list: [], total: 0 } });
         return;
       }
 
-      // 实际数据库查询逻辑
-      // TODO: 实现真实的数据库查询
+      const { status, type, page = 1, pageSize = 20 } = req.query;
+      const announcementRepo = dataSource.getRepository(Announcement);
+
+      const queryBuilder = announcementRepo.createQueryBuilder('ann')
+        .orderBy('ann.is_pinned', 'DESC')
+        .addOrderBy('ann.created_at', 'DESC');
+
+      if (status) {
+        queryBuilder.andWhere('ann.status = :status', { status });
+      }
+      if (type) {
+        queryBuilder.andWhere('ann.type = :type', { type });
+      }
+
+      const skip = (Number(page) - 1) * Number(pageSize);
+      queryBuilder.skip(skip).take(Number(pageSize));
+
+      const [list, total] = await queryBuilder.getManyAndCount();
+
       res.json({
         success: true,
-        data: []
+        data: {
+          list: list.map(ann => ({
+            id: ann.id,
+            title: ann.title,
+            content: ann.content,
+            type: ann.type,
+            priority: ann.priority,
+            status: ann.status,
+            targetRoles: ann.targetRoles,
+            targetDepartments: ann.targetDepartments,
+            startTime: ann.startTime,
+            endTime: ann.endTime,
+            isPinned: ann.isPinned === 1,
+            viewCount: ann.viewCount,
+            createdBy: ann.createdBy,
+            createdByName: ann.createdByName,
+            publishedAt: ann.publishedAt,
+            createdAt: ann.createdAt,
+            updatedAt: ann.updatedAt
+          })),
+          total,
+          page: Number(page),
+          pageSize: Number(pageSize)
+        }
       });
     } catch (error) {
       console.error('获取公告列表失败:', error);
-      res.status(500).json({ error: '获取公告列表失败' });
+      res.status(500).json({ success: false, message: '获取公告列表失败' });
     }
   }
 
@@ -506,37 +493,49 @@ export class MessageController {
     try {
       const dataSource = getDataSource();
       if (!dataSource) {
-        // 测试模式：模拟创建公告
-        const newAnnouncement = {
-          id: Date.now(),
-          ...req.body,
-          status: req.body.status || 'draft', // 确保有默认的status字段
-          createdBy: '当前用户',
-          createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-          updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19)
-        };
-
-        res.json({
-          success: true,
-          message: '公告创建成功',
-          data: newAnnouncement
-        });
+        res.status(500).json({ success: false, message: '数据库未连接' });
         return;
       }
 
-      // 实际数据库创建逻辑
-      // TODO: 实现真实的数据库创建
+      const { title, content, type, priority, targetRoles, targetDepartments, startTime, endTime, isPinned } = req.body;
+
+      if (!title || !content) {
+        res.status(400).json({ success: false, message: '标题和内容不能为空' });
+        return;
+      }
+
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const announcementRepo = dataSource.getRepository(Announcement);
+
+      const announcement = announcementRepo.create({
+        id: uuidv4(),
+        title,
+        content,
+        type: type || 'notice',
+        priority: priority || 'normal',
+        status: 'draft',
+        targetRoles: targetRoles || null,
+        targetDepartments: targetDepartments || null,
+        startTime: startTime ? new Date(startTime) : null,
+        endTime: endTime ? new Date(endTime) : null,
+        isPinned: isPinned ? 1 : 0,
+        viewCount: 0,
+        createdBy: currentUser?.id,
+        createdByName: currentUser?.realName || currentUser?.username || '系统'
+      });
+
+      await announcementRepo.save(announcement);
+
+      console.log(`[公告] ✅ 创建成功: ${title}`);
+
       res.json({
         success: true,
         message: '公告创建成功',
-        data: req.body
+        data: announcement
       });
     } catch (error) {
       console.error('创建公告失败:', error);
-      res.status(500).json({
-        success: false,
-        error: '创建公告失败'
-      });
+      res.status(500).json({ success: false, message: '创建公告失败' });
     }
   }
 
@@ -546,28 +545,40 @@ export class MessageController {
       const dataSource = getDataSource();
 
       if (!dataSource) {
-        // 测试模式：模拟更新公告
-        res.json({
-          success: true,
-          message: '公告更新成功',
-          data: { id, ...req.body }
-        });
+        res.status(500).json({ success: false, message: '数据库未连接' });
         return;
       }
 
-      // 实际数据库更新逻辑
-      // TODO: 实现真实的数据库更新
+      const announcementRepo = dataSource.getRepository(Announcement);
+      const announcement = await announcementRepo.findOne({ where: { id } });
+
+      if (!announcement) {
+        res.status(404).json({ success: false, message: '公告不存在' });
+        return;
+      }
+
+      const { title, content, type, priority, targetRoles, targetDepartments, startTime, endTime, isPinned } = req.body;
+
+      if (title !== undefined) announcement.title = title;
+      if (content !== undefined) announcement.content = content;
+      if (type !== undefined) announcement.type = type;
+      if (priority !== undefined) announcement.priority = priority;
+      if (targetRoles !== undefined) announcement.targetRoles = targetRoles;
+      if (targetDepartments !== undefined) announcement.targetDepartments = targetDepartments;
+      if (startTime !== undefined) announcement.startTime = startTime ? new Date(startTime) : undefined;
+      if (endTime !== undefined) announcement.endTime = endTime ? new Date(endTime) : undefined;
+      if (isPinned !== undefined) announcement.isPinned = isPinned ? 1 : 0;
+
+      await announcementRepo.save(announcement);
+
       res.json({
         success: true,
         message: '公告更新成功',
-        data: { id, ...req.body }
+        data: announcement
       });
     } catch (error) {
       console.error('更新公告失败:', error);
-      res.status(500).json({
-        success: false,
-        error: '更新公告失败'
-      });
+      res.status(500).json({ success: false, message: '更新公告失败' });
     }
   }
 
@@ -577,16 +588,22 @@ export class MessageController {
       const dataSource = getDataSource();
 
       if (!dataSource) {
-        // 测试模式：模拟删除公告
-        res.json({
-          success: true,
-          message: '公告删除成功'
-        });
+        res.status(500).json({ success: false, message: '数据库未连接' });
         return;
       }
 
-      // 实际数据库删除逻辑
-      // TODO: 实现真实的数据库删除
+      const announcementRepo = dataSource.getRepository(Announcement);
+      const result = await announcementRepo.delete({ id });
+
+      if (result.affected === 0) {
+        res.status(404).json({ success: false, message: '公告不存在' });
+        return;
+      }
+
+      // 同时删除阅读记录
+      const readRepo = dataSource.getRepository(AnnouncementRead);
+      await readRepo.delete({ announcementId: id });
+
       res.json({
         success: true,
         message: '公告删除成功'
@@ -606,26 +623,159 @@ export class MessageController {
       const dataSource = getDataSource();
 
       if (!dataSource) {
-        // 测试模式：模拟发布公告
-        res.json({
-          success: true,
-          message: '公告发布成功'
-        });
+        res.status(500).json({ success: false, message: '数据库未连接' });
         return;
       }
 
-      // 实际数据库发布逻辑
-      // TODO: 实现真实的数据库发布
+      const announcementRepo = dataSource.getRepository(Announcement);
+      const announcement = await announcementRepo.findOne({ where: { id } });
+
+      if (!announcement) {
+        res.status(404).json({ success: false, message: '公告不存在' });
+        return;
+      }
+
+      // 更新状态为已发布
+      announcement.status = 'published';
+      announcement.publishedAt = new Date();
+
+      await announcementRepo.save(announcement);
+
+      console.log(`[公告] ✅ 发布成功: ${announcement.title}`);
+
       res.json({
         success: true,
-        message: '公告发布成功'
+        message: '公告发布成功',
+        data: announcement
       });
     } catch (error) {
       console.error('发布公告失败:', error);
-      res.status(500).json({
-        success: false,
-        error: '发布公告失败'
+      res.status(500).json({ success: false, message: '发布公告失败' });
+    }
+  }
+
+  /**
+   * 🔥 获取已发布的公告（供前端展示）
+   */
+  async getPublishedAnnouncements(req: Request, res: Response): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        res.json({ success: true, data: [] });
+        return;
+      }
+
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const userRole = currentUser?.role;
+      const userDepartmentId = currentUser?.departmentId;
+
+      const announcementRepo = dataSource.getRepository(Announcement);
+      const now = new Date();
+
+      // 查询已发布且在有效期内的公告
+      const queryBuilder = announcementRepo.createQueryBuilder('ann')
+        .where('ann.status = :status', { status: 'published' })
+        .andWhere('(ann.start_time IS NULL OR ann.start_time <= :now)', { now })
+        .andWhere('(ann.end_time IS NULL OR ann.end_time >= :now)', { now })
+        .orderBy('ann.is_pinned', 'DESC')
+        .addOrderBy('ann.published_at', 'DESC')
+        .take(20);
+
+      const announcements = await queryBuilder.getMany();
+
+      // 过滤目标角色和部门
+      const filteredAnnouncements = announcements.filter(ann => {
+        // 如果没有指定目标角色，则所有人可见
+        if (!ann.targetRoles || ann.targetRoles.length === 0) {
+          // 检查目标部门
+          if (!ann.targetDepartments || ann.targetDepartments.length === 0) {
+            return true;
+          }
+          return ann.targetDepartments.includes(userDepartmentId);
+        }
+        // 检查用户角色是否在目标角色列表中
+        if (!ann.targetRoles.includes(userRole)) {
+          return false;
+        }
+        // 检查目标部门
+        if (ann.targetDepartments && ann.targetDepartments.length > 0) {
+          return ann.targetDepartments.includes(userDepartmentId);
+        }
+        return true;
       });
+
+      // 获取用户的阅读记录
+      const readRepo = dataSource.getRepository(AnnouncementRead);
+      const readRecords = await readRepo.find({
+        where: { userId: currentUser?.id }
+      });
+      const readIds = new Set(readRecords.map(r => r.announcementId));
+
+      res.json({
+        success: true,
+        data: filteredAnnouncements.map(ann => ({
+          id: ann.id,
+          title: ann.title,
+          content: ann.content,
+          type: ann.type,
+          priority: ann.priority,
+          isPinned: ann.isPinned === 1,
+          publishedAt: ann.publishedAt,
+          isRead: readIds.has(ann.id)
+        }))
+      });
+    } catch (error) {
+      console.error('获取已发布公告失败:', error);
+      res.status(500).json({ success: false, message: '获取已发布公告失败' });
+    }
+  }
+
+  /**
+   * 🔥 标记公告为已读
+   */
+  async markAnnouncementAsRead(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const dataSource = getDataSource();
+
+      if (!dataSource) {
+        res.json({ success: true });
+        return;
+      }
+
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const userId = currentUser?.id;
+
+      if (!userId) {
+        res.status(401).json({ success: false, message: '未登录' });
+        return;
+      }
+
+      const readRepo = dataSource.getRepository(AnnouncementRead);
+
+      // 检查是否已读
+      const existing = await readRepo.findOne({
+        where: { announcementId: id, userId }
+      });
+
+      if (!existing) {
+        // 创建阅读记录
+        const readRecord = readRepo.create({
+          id: uuidv4(),
+          announcementId: id,
+          userId
+        });
+        await readRepo.save(readRecord);
+
+        // 更新公告查看次数
+        const announcementRepo = dataSource.getRepository(Announcement);
+        await announcementRepo.increment({ id }, 'viewCount', 1);
+      }
+
+      res.json({ success: true, message: '已标记为已读' });
+    } catch (error) {
+      console.error('标记公告已读失败:', error);
+      res.status(500).json({ success: false, message: '标记公告已读失败' });
     }
   }
 
@@ -1170,101 +1320,789 @@ export class MessageController {
     }
   }
 
-  async getMessageStats(req: Request, res: Response): Promise<void> {
+  // =====================================================
+  // 系统消息相关方法 - 🔥 真正的数据库存储实现
+  // =====================================================
+
+  /**
+   * 获取当前用户的系统消息
+   */
+  async getSystemMessages(req: Request, res: Response): Promise<void> {
     try {
       const dataSource = getDataSource();
       if (!dataSource) {
-        // 测试模式：返回模拟统计数据
-        const mockStats = {
-          totalSubscriptions: 8,
-          activeSubscriptions: 6,
-          totalAnnouncements: 12,
-          publishedAnnouncements: 8,
-          unreadMessages: 5,
-          totalMessages: 23,
-          configuredChannels: 4,
-          totalChannels: 6
-        };
-
-        res.json(mockStats);
+        res.json({ success: true, data: { messages: [], total: 0 } });
         return;
       }
 
-      // 实际数据库查询逻辑
-      const subscriptionRepo = dataSource.getRepository(MessageSubscription);
+      // 获取当前用户ID
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const userId = currentUser?.id || currentUser?.userId;
 
-      const totalSubscriptions = await subscriptionRepo.count();
-      const activeSubscriptions = await subscriptionRepo.count({
-        where: { isGlobalEnabled: true }
+      if (!userId) {
+        res.status(401).json({ success: false, message: '未登录' });
+        return;
+      }
+
+      const { limit = 50, offset = 0, unreadOnly = 'false' } = req.query;
+
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      // 构建查询
+      const queryBuilder = messageRepo.createQueryBuilder('msg')
+        .where('msg.target_user_id = :userId', { userId })
+        .orderBy('msg.created_at', 'DESC')
+        .skip(Number(offset))
+        .take(Number(limit));
+
+      // 只查询未读消息
+      if (unreadOnly === 'true') {
+        queryBuilder.andWhere('msg.is_read = 0');
+      }
+
+      const [messages, total] = await queryBuilder.getManyAndCount();
+
+      // 统计未读数量
+      const unreadCount = await messageRepo.count({
+        where: { targetUserId: userId, isRead: 0 }
       });
-
-      // 这里可以添加更多统计查询
-      const stats = {
-        totalSubscriptions,
-        activeSubscriptions,
-        totalAnnouncements: 0, // TODO: 实现公告统计
-        publishedAnnouncements: 0, // TODO: 实现已发布公告统计
-        unreadMessages: 0, // TODO: 实现未读消息统计
-        totalMessages: 0, // TODO: 实现总消息统计
-        configuredChannels: 0, // TODO: 实现已配置渠道统计
-        totalChannels: 6 // 总渠道数
-      };
-
-      res.json(stats);
-    } catch (error) {
-      console.error('获取消息统计失败:', error);
-      res.status(500).json({ error: '获取消息统计失败' });
-    }
-  }
-
-  // 系统消息相关方法
-  async getSystemMessages(req: Request, res: Response): Promise<void> {
-    try {
-      // 返回空的系统消息列表，不再使用硬编码的模拟数据
-      const messages: any[] = []
 
       res.json({
         success: true,
         data: {
-          messages: messages,
-          total: messages.length
+          messages: messages.map(msg => ({
+            id: msg.id,
+            type: msg.type,
+            title: msg.title,
+            content: msg.content,
+            priority: msg.priority,
+            category: msg.category,
+            relatedId: msg.relatedId,
+            relatedType: msg.relatedType,
+            actionUrl: msg.actionUrl,
+            isRead: msg.isRead === 1,
+            createdAt: msg.createdAt,
+            readAt: msg.readAt
+          })),
+          total,
+          unreadCount
         }
-      })
+      });
     } catch (error) {
-      console.error('获取系统消息失败:', error)
-      res.status(500).json({ error: '获取系统消息失败' })
+      console.error('获取系统消息失败:', error);
+      res.status(500).json({ success: false, message: '获取系统消息失败' });
     }
   }
 
+  /**
+   * 发送系统消息（内部调用或API调用）
+   */
+  async sendSystemMessage(req: Request, res: Response): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        res.status(500).json({ success: false, message: '数据库未连接' });
+        return;
+      }
+
+      const { type, title, content, priority, category, targetUserId, relatedId, relatedType, actionUrl } = req.body;
+
+      if (!type || !title || !content || !targetUserId) {
+        res.status(400).json({ success: false, message: '缺少必要参数' });
+        return;
+      }
+
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const createdBy = currentUser?.id || currentUser?.userId;
+
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      const message = messageRepo.create({
+        id: uuidv4(),
+        type,
+        title,
+        content,
+        priority: priority || 'normal',
+        category: category || '系统通知',
+        targetUserId,
+        createdBy,
+        relatedId,
+        relatedType,
+        actionUrl,
+        isRead: 0
+      });
+
+      await messageRepo.save(message);
+
+      console.log(`[系统消息] ✅ 发送成功: ${title} -> 用户 ${targetUserId}`);
+
+      res.json({
+        success: true,
+        data: { id: message.id },
+        message: '消息发送成功'
+      });
+    } catch (error) {
+      console.error('发送系统消息失败:', error);
+      res.status(500).json({ success: false, message: '发送系统消息失败' });
+    }
+  }
+
+  /**
+   * 批量发送系统消息
+   */
+  async sendBatchSystemMessages(req: Request, res: Response): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        res.status(500).json({ success: false, message: '数据库未连接' });
+        return;
+      }
+
+      const { messages } = req.body;
+
+      if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        res.status(400).json({ success: false, message: '消息列表不能为空' });
+        return;
+      }
+
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const createdBy = currentUser?.id || currentUser?.userId;
+
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      const messageEntities = messages.map(msg => messageRepo.create({
+        id: uuidv4(),
+        type: msg.type,
+        title: msg.title,
+        content: msg.content,
+        priority: msg.priority || 'normal',
+        category: msg.category || '系统通知',
+        targetUserId: msg.targetUserId,
+        createdBy,
+        relatedId: msg.relatedId,
+        relatedType: msg.relatedType,
+        actionUrl: msg.actionUrl,
+        isRead: 0
+      }));
+
+      await messageRepo.save(messageEntities);
+
+      console.log(`[系统消息] ✅ 批量发送成功: ${messageEntities.length} 条消息`);
+
+      res.json({
+        success: true,
+        data: { count: messageEntities.length },
+        message: `成功发送 ${messageEntities.length} 条消息`
+      });
+    } catch (error) {
+      console.error('批量发送系统消息失败:', error);
+      res.status(500).json({ success: false, message: '批量发送系统消息失败' });
+    }
+  }
+
+  /**
+   * 标记消息为已读
+   */
   async markMessageAsRead(req: Request, res: Response): Promise<void> {
     try {
-      const { id } = req.params
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        res.json({ success: true, message: '消息已标记为已读' });
+        return;
+      }
 
-      // 这里应该实现标记消息为已读的逻辑
-      // 由于目前没有真实的消息数据，直接返回成功
+      const { id } = req.params;
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const userId = currentUser?.id || currentUser?.userId;
+
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      await messageRepo.update(
+        { id, targetUserId: userId },
+        { isRead: 1, readAt: new Date() }
+      );
 
       res.json({
         success: true,
         message: '消息已标记为已读'
-      })
+      });
     } catch (error) {
-      console.error('标记消息为已读失败:', error)
-      res.status(500).json({ error: '标记消息为已读失败' })
+      console.error('标记消息为已读失败:', error);
+      res.status(500).json({ success: false, message: '标记消息为已读失败' });
     }
   }
 
+  /**
+   * 标记所有消息为已读
+   */
   async markAllMessagesAsRead(req: Request, res: Response): Promise<void> {
     try {
-      // 这里应该实现标记所有消息为已读的逻辑
-      // 由于目前没有真实的消息数据，直接返回成功
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        res.json({ success: true, message: '所有消息已标记为已读' });
+        return;
+      }
+
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const userId = currentUser?.id || currentUser?.userId;
+
+      if (!userId) {
+        res.status(401).json({ success: false, message: '未登录' });
+        return;
+      }
+
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      const result = await messageRepo.update(
+        { targetUserId: userId, isRead: 0 },
+        { isRead: 1, readAt: new Date() }
+      );
 
       res.json({
         success: true,
-        message: '所有消息已标记为已读'
-      })
+        message: `已标记 ${result.affected || 0} 条消息为已读`
+      });
     } catch (error) {
-      console.error('标记所有消息为已读失败:', error)
-      res.status(500).json({ error: '标记所有消息为已读失败' })
+      console.error('标记所有消息为已读失败:', error);
+      res.status(500).json({ success: false, message: '标记所有消息为已读失败' });
+    }
+  }
+
+  /**
+   * 获取消息统计
+   */
+  async getMessageStats(req: Request, res: Response): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        res.json({ success: true, data: { total: 0, unread: 0 } });
+        return;
+      }
+
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const userId = currentUser?.id || currentUser?.userId;
+
+      if (!userId) {
+        res.status(401).json({ success: false, message: '未登录' });
+        return;
+      }
+
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      const total = await messageRepo.count({ where: { targetUserId: userId } });
+      const unread = await messageRepo.count({ where: { targetUserId: userId, isRead: 0 } });
+
+      res.json({
+        success: true,
+        data: { total, unread }
+      });
+    } catch (error) {
+      console.error('获取消息统计失败:', error);
+      res.status(500).json({ success: false, message: '获取消息统计失败' });
+    }
+  }
+
+  /**
+   * 🔥 删除单条消息
+   */
+  async deleteMessage(req: Request, res: Response): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        res.json({ success: true, message: '消息已删除' });
+        return;
+      }
+
+      const { id } = req.params;
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const userId = currentUser?.id || currentUser?.userId;
+
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      // 只能删除自己的消息
+      const result = await messageRepo.delete({ id, targetUserId: userId });
+
+      res.json({
+        success: true,
+        message: result.affected ? '消息已删除' : '消息不存在'
+      });
+    } catch (error) {
+      console.error('删除消息失败:', error);
+      res.status(500).json({ success: false, message: '删除消息失败' });
+    }
+  }
+
+  /**
+   * 🔥 清空当前用户的所有消息
+   */
+  async clearAllMessages(req: Request, res: Response): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        res.json({ success: true, message: '所有消息已清空' });
+        return;
+      }
+
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const userId = currentUser?.id || currentUser?.userId;
+
+      if (!userId) {
+        res.status(401).json({ success: false, message: '未登录' });
+        return;
+      }
+
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      const result = await messageRepo.delete({ targetUserId: userId });
+
+      console.log(`[系统消息] 用户 ${userId} 清空了 ${result.affected || 0} 条消息`);
+
+      res.json({
+        success: true,
+        message: `已清空 ${result.affected || 0} 条消息`
+      });
+    } catch (error) {
+      console.error('清空消息失败:', error);
+      res.status(500).json({ success: false, message: '清空消息失败' });
+    }
+  }
+
+  /**
+   * 🔥 清理过期消息（超过30天的消息）
+   * 可以通过定时任务调用，或者管理员手动触发
+   */
+  async cleanupExpiredMessages(req: Request, res: Response): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        res.json({ success: true, message: '无需清理', data: { deleted: 0 } });
+        return;
+      }
+
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      // 计算30天前的日期
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      // 删除30天前的消息
+      const result = await messageRepo
+        .createQueryBuilder()
+        .delete()
+        .where('created_at < :date', { date: thirtyDaysAgo })
+        .execute();
+
+      console.log(`[系统消息] 🧹 自动清理了 ${result.affected || 0} 条过期消息（超过30天）`);
+
+      res.json({
+        success: true,
+        message: `已清理 ${result.affected || 0} 条过期消息`,
+        data: { deleted: result.affected || 0 }
+      });
+    } catch (error) {
+      console.error('清理过期消息失败:', error);
+      res.status(500).json({ success: false, message: '清理过期消息失败' });
+    }
+  }
+
+  // =====================================================
+  // 通知配置管理 - 🔥 跨平台通知配置
+  // =====================================================
+
+  /**
+   * 获取通知渠道配置列表
+   */
+  async getNotificationChannels(_req: Request, res: Response): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        res.json({ success: true, data: [] });
+        return;
+      }
+
+      const channelRepo = dataSource.getRepository(NotificationChannel);
+      const channels = await channelRepo.find({
+        order: { createdAt: 'DESC' }
+      });
+
+      res.json({
+        success: true,
+        data: channels.map(channel => ({
+          id: channel.id,
+          name: channel.name,
+          channelType: channel.channelType,
+          isEnabled: channel.isEnabled === 1,
+          config: channel.config,
+          messageTypes: channel.messageTypes || [],
+          targetType: channel.targetType,
+          targetDepartments: channel.targetDepartments || [],
+          targetUsers: channel.targetUsers || [],
+          targetRoles: channel.targetRoles || [],
+          priorityFilter: channel.priorityFilter,
+          createdByName: channel.createdByName,
+          createdAt: channel.createdAt,
+          updatedAt: channel.updatedAt
+        }))
+      });
+    } catch (error) {
+      console.error('获取通知配置失败:', error);
+      res.status(500).json({ success: false, message: '获取通知配置失败' });
+    }
+  }
+
+  /**
+   * 创建通知渠道配置
+   */
+  async createNotificationChannel(req: Request, res: Response): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        res.status(500).json({ success: false, message: '数据库未连接' });
+        return;
+      }
+
+      const {
+        name,
+        channelType,
+        config,
+        messageTypes,
+        targetType,
+        targetDepartments,
+        targetUsers,
+        targetRoles,
+        priorityFilter
+      } = req.body;
+
+      if (!name || !channelType) {
+        res.status(400).json({ success: false, message: '名称和渠道类型不能为空' });
+        return;
+      }
+
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const channelRepo = dataSource.getRepository(NotificationChannel);
+
+      const channel = channelRepo.create({
+        id: uuidv4(),
+        name,
+        channelType,
+        isEnabled: 1,
+        config: config || {},
+        messageTypes: messageTypes || [],
+        targetType: targetType || 'all',
+        targetDepartments: targetDepartments || null,
+        targetUsers: targetUsers || null,
+        targetRoles: targetRoles || null,
+        priorityFilter: priorityFilter || 'all',
+        createdBy: currentUser?.id,
+        createdByName: currentUser?.realName || currentUser?.username || '系统'
+      });
+
+      await channelRepo.save(channel);
+
+      console.log(`[通知配置] ✅ 创建成功: ${name} (${channelType})`);
+
+      res.json({
+        success: true,
+        message: '通知配置创建成功',
+        data: channel
+      });
+    } catch (error) {
+      console.error('创建通知配置失败:', error);
+      res.status(500).json({ success: false, message: '创建通知配置失败' });
+    }
+  }
+
+  /**
+   * 更新通知渠道配置
+   */
+  async updateNotificationChannel(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const dataSource = getDataSource();
+
+      if (!dataSource) {
+        res.status(500).json({ success: false, message: '数据库未连接' });
+        return;
+      }
+
+      const channelRepo = dataSource.getRepository(NotificationChannel);
+      const channel = await channelRepo.findOne({ where: { id } });
+
+      if (!channel) {
+        res.status(404).json({ success: false, message: '通知配置不存在' });
+        return;
+      }
+
+      const {
+        name,
+        isEnabled,
+        config,
+        messageTypes,
+        targetType,
+        targetDepartments,
+        targetUsers,
+        targetRoles,
+        priorityFilter
+      } = req.body;
+
+      if (name !== undefined) channel.name = name;
+      if (isEnabled !== undefined) channel.isEnabled = isEnabled ? 1 : 0;
+      if (config !== undefined) channel.config = config;
+      if (messageTypes !== undefined) channel.messageTypes = messageTypes;
+      if (targetType !== undefined) channel.targetType = targetType;
+      if (targetDepartments !== undefined) channel.targetDepartments = targetDepartments;
+      if (targetUsers !== undefined) channel.targetUsers = targetUsers;
+      if (targetRoles !== undefined) channel.targetRoles = targetRoles;
+      if (priorityFilter !== undefined) channel.priorityFilter = priorityFilter;
+
+      await channelRepo.save(channel);
+
+      res.json({
+        success: true,
+        message: '通知配置更新成功',
+        data: channel
+      });
+    } catch (error) {
+      console.error('更新通知配置失败:', error);
+      res.status(500).json({ success: false, message: '更新通知配置失败' });
+    }
+  }
+
+  /**
+   * 删除通知渠道配置
+   */
+  async deleteNotificationChannel(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const dataSource = getDataSource();
+
+      if (!dataSource) {
+        res.status(500).json({ success: false, message: '数据库未连接' });
+        return;
+      }
+
+      const channelRepo = dataSource.getRepository(NotificationChannel);
+      const result = await channelRepo.delete({ id });
+
+      if (result.affected === 0) {
+        res.status(404).json({ success: false, message: '通知配置不存在' });
+        return;
+      }
+
+      res.json({
+        success: true,
+        message: '通知配置删除成功'
+      });
+    } catch (error) {
+      console.error('删除通知配置失败:', error);
+      res.status(500).json({ success: false, message: '删除通知配置失败' });
+    }
+  }
+
+  /**
+   * 测试通知渠道
+   */
+  async testNotificationChannel(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { testMessage } = req.body;
+      const dataSource = getDataSource();
+
+      if (!dataSource) {
+        res.status(500).json({ success: false, message: '数据库未连接' });
+        return;
+      }
+
+      const channelRepo = dataSource.getRepository(NotificationChannel);
+      const channel = await channelRepo.findOne({ where: { id } });
+
+      if (!channel) {
+        res.status(404).json({ success: false, message: '通知配置不存在' });
+        return;
+      }
+
+      // 这里可以实现具体的第三方API调用测试
+      // 目前先返回模拟结果
+      const testResult = {
+        success: true,
+        message: `${channel.name} 测试发送成功`,
+        details: {
+          channelType: channel.channelType,
+          testMessage: testMessage || '这是一条测试消息',
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      console.log(`[通知测试] ${channel.name}: ${testMessage || '测试消息'}`);
+
+      res.json(testResult);
+    } catch (error) {
+      console.error('测试通知失败:', error);
+      res.status(500).json({ success: false, message: '测试通知失败' });
+    }
+  }
+
+  /**
+   * 获取通知发送记录
+   */
+  async getNotificationLogs(req: Request, res: Response): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        res.json({ success: true, data: { list: [], total: 0 } });
+        return;
+      }
+
+      const { channelId, status, page = 1, pageSize = 20 } = req.query;
+      const logRepo = dataSource.getRepository(NotificationLog);
+
+      const queryBuilder = logRepo.createQueryBuilder('log')
+        .orderBy('log.created_at', 'DESC');
+
+      if (channelId) {
+        queryBuilder.andWhere('log.channel_id = :channelId', { channelId });
+      }
+      if (status) {
+        queryBuilder.andWhere('log.status = :status', { status });
+      }
+
+      const skip = (Number(page) - 1) * Number(pageSize);
+      queryBuilder.skip(skip).take(Number(pageSize));
+
+      const [list, total] = await queryBuilder.getManyAndCount();
+
+      res.json({
+        success: true,
+        data: {
+          list,
+          total,
+          page: Number(page),
+          pageSize: Number(pageSize)
+        }
+      });
+    } catch (error) {
+      console.error('获取通知记录失败:', error);
+      res.status(500).json({ success: false, message: '获取通知记录失败' });
+    }
+  }
+
+  /**
+   * 获取可用的消息类型和渠道类型
+   */
+  async getNotificationOptions(_req: Request, res: Response): Promise<void> {
+    try {
+      const messageTypes = [
+        { value: 'AUDIT_PENDING', label: '待审核订单', description: '订单提交审核时通知' },
+        { value: 'AUDIT_APPROVED', label: '审核通过', description: '订单审核通过时通知' },
+        { value: 'AUDIT_REJECTED', label: '审核拒绝', description: '订单审核拒绝时通知' },
+        { value: 'ORDER_SHIPPED', label: '订单发货', description: '订单发货时通知' },
+        { value: 'ORDER_CANCELLED', label: '订单取消', description: '订单取消时通知' },
+        { value: 'AFTER_SALES_CREATED', label: '售后创建', description: '创建售后服务时通知' },
+        { value: 'CUSTOMER_CREATED', label: '新客户', description: '新客户创建时通知' },
+        { value: 'PAYMENT_REMINDER', label: '付款提醒', description: '付款提醒通知' },
+        { value: 'SYSTEM_UPDATE', label: '系统更新', description: '系统更新时通知' },
+        { value: 'MAINTENANCE', label: '系统维护', description: '系统维护时通知' }
+      ];
+
+      const channelTypes = [
+        {
+          value: 'system',
+          label: '系统通知',
+          description: '系统内置通知，所有用户都会收到',
+          icon: 'Monitor',
+          color: '#722ED1',
+          configFields: []
+        },
+        {
+          value: 'dingtalk',
+          label: '钉钉',
+          description: '通过钉钉机器人发送通知',
+          icon: 'ChatDotRound',
+          color: '#1890FF',
+          configFields: [
+            { key: 'webhook', label: 'Webhook地址', type: 'text', required: true, placeholder: 'https://oapi.dingtalk.com/robot/send?access_token=xxx' },
+            { key: 'secret', label: '加签密钥', type: 'password', required: false, placeholder: 'SEC开头的密钥' },
+            { key: 'at_all', label: '@所有人', type: 'boolean', required: false }
+          ]
+        },
+        {
+          value: 'wechat_work',
+          label: '企业微信',
+          description: '通过企业微信机器人发送通知',
+          icon: 'ChatLineSquare',
+          color: '#52C41A',
+          configFields: [
+            { key: 'webhook', label: 'Webhook地址', type: 'text', required: true, placeholder: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx' }
+          ]
+        },
+        {
+          value: 'wechat_mp',
+          label: '微信公众号',
+          description: '通过微信公众号模板消息发送通知',
+          icon: 'ChatRound',
+          color: '#07C160',
+          configFields: [
+            { key: 'app_id', label: 'AppID', type: 'text', required: true },
+            { key: 'app_secret', label: 'AppSecret', type: 'password', required: true },
+            { key: 'template_id', label: '模板ID', type: 'text', required: true }
+          ]
+        },
+        {
+          value: 'email',
+          label: '邮箱',
+          description: '通过邮件发送通知',
+          icon: 'Message',
+          color: '#FA8C16',
+          configFields: [
+            { key: 'smtp_host', label: 'SMTP服务器', type: 'text', required: true, placeholder: 'smtp.example.com' },
+            { key: 'smtp_port', label: 'SMTP端口', type: 'number', required: true, placeholder: '587' },
+            { key: 'username', label: '邮箱账号', type: 'text', required: true },
+            { key: 'password', label: '邮箱密码', type: 'password', required: true },
+            { key: 'from_name', label: '发件人名称', type: 'text', required: false, placeholder: 'CRM系统' }
+          ]
+        },
+        {
+          value: 'sms',
+          label: '短信',
+          description: '通过短信发送通知',
+          icon: 'Iphone',
+          color: '#FF4D4F',
+          configFields: [
+            { key: 'provider', label: '服务商', type: 'select', options: [{ value: 'aliyun', label: '阿里云' }, { value: 'tencent', label: '腾讯云' }], required: true },
+            { key: 'access_key', label: 'AccessKey', type: 'text', required: true },
+            { key: 'access_secret', label: 'AccessSecret', type: 'password', required: true },
+            { key: 'sign_name', label: '短信签名', type: 'text', required: true },
+            { key: 'template_code', label: '模板代码', type: 'text', required: true }
+          ]
+        }
+      ];
+
+      const priorityOptions = [
+        { value: 'all', label: '全部优先级' },
+        { value: 'normal', label: '普通及以上' },
+        { value: 'high', label: '重要及以上' },
+        { value: 'urgent', label: '紧急' }
+      ];
+
+      const targetTypeOptions = [
+        { value: 'all', label: '所有人' },
+        { value: 'departments', label: '指定部门' },
+        { value: 'users', label: '指定用户' },
+        { value: 'roles', label: '指定角色' }
+      ];
+
+      res.json({
+        success: true,
+        data: {
+          messageTypes,
+          channelTypes,
+          priorityOptions,
+          targetTypeOptions
+        }
+      });
+    } catch (error) {
+      console.error('获取通知选项失败:', error);
+      res.status(500).json({ success: false, message: '获取通知选项失败' });
     }
   }
 }

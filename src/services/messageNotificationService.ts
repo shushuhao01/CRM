@@ -2,12 +2,14 @@
  * 消息通知服务
  *
  * 负责处理消息的定向发送，确保消息发送到正确的接收者
+ * 🔥 2025-12-13 更新：改为调用后端API存储消息，实现跨设备通知
  *
  * 创建日期：2025-12-13
  */
 
-import { useNotificationStore, MessageType } from '@/stores/notification'
+import { useNotificationStore, MessageType, MESSAGE_TEMPLATES } from '@/stores/notification'
 import { useUserStore } from '@/stores/user'
+import { messageApi } from '@/api/message'
 
 // 消息接收者角色配置
 export const MESSAGE_RECEIVERS: Record<string, string[]> = {
@@ -45,7 +47,7 @@ export const MESSAGE_RECEIVERS: Record<string, string[]> = {
   [MessageType.ORDER_CANCELLED]: ['sales_staff', 'department_manager'],
 }
 
-// 消息发送服务类
+// 消息发送服务类 - 🔥 改为调用后端API存储消息
 class MessageNotificationService {
   private notificationStore: ReturnType<typeof useNotificationStore> | null = null
   private userStore: ReturnType<typeof useUserStore> | null = null
@@ -60,43 +62,114 @@ class MessageNotificationService {
     }
   }
 
+  // 获取消息模板信息
+  private getMessageTemplate(type: MessageType) {
+    return MESSAGE_TEMPLATES[type] || {
+      title: '系统通知',
+      priority: 'normal',
+      category: '系统通知'
+    }
+  }
+
+  /**
+   * 🔥 发送消息到后端数据库（核心方法）
+   */
+  private async sendToDatabase(
+    type: MessageType,
+    content: string,
+    targetUserId: string,
+    options?: {
+      relatedId?: string | number
+      relatedType?: string
+      actionUrl?: string
+    }
+  ): Promise<boolean> {
+    try {
+      const template = this.getMessageTemplate(type)
+
+      await messageApi.sendSystemMessage({
+        type,
+        title: template.title,
+        content,
+        targetUserId,
+        priority: template.priority,
+        category: template.category,
+        relatedId: options?.relatedId?.toString(),
+        relatedType: options?.relatedType,
+        actionUrl: options?.actionUrl
+      })
+
+      console.log(`[MessageService] ✅ 消息已保存到数据库: ${type} -> ${targetUserId}`)
+      return true
+    } catch (error) {
+      console.error(`[MessageService] ❌ 保存消息到数据库失败:`, error)
+      // 降级：保存到本地localStorage
+      this.initStores()
+      this.notificationStore?.sendMessage(type, content, {
+        ...options,
+        targetUserId,
+        createdBy: this.userStore?.currentUser?.id
+      })
+      return false
+    }
+  }
+
   /**
    * 发送消息给指定角色的所有用户
    */
-  sendToRoles(
+  async sendToRoles(
     type: MessageType,
     content: string,
     options?: {
       relatedId?: string | number
       relatedType?: string
       actionUrl?: string
-      excludeUserId?: string // 排除某个用户（如操作者本人）
+      excludeUserId?: string
     }
-  ) {
+  ): Promise<number> {
     this.initStores()
 
     const targetRoles = MESSAGE_RECEIVERS[type] || []
     const users = this.userStore?.users || []
-    const currentUserId = this.userStore?.currentUser?.id
 
     // 获取目标角色的所有用户
     const targetUsers = users.filter(user => {
-      // 排除指定用户
       if (options?.excludeUserId && user.id === options.excludeUserId) {
         return false
       }
-      // 检查用户角色是否在目标角色列表中
       return targetRoles.includes(user.role)
     })
 
-    // 为每个目标用户发送消息
-    targetUsers.forEach(user => {
-      this.notificationStore?.sendMessage(type, content, {
-        ...options,
-        targetUserId: user.id,
-        createdBy: currentUserId
-      })
-    })
+    // 🔥 批量发送到数据库
+    if (targetUsers.length > 0) {
+      try {
+        const template = this.getMessageTemplate(type)
+        const messages = targetUsers.map(user => ({
+          type,
+          title: template.title,
+          content,
+          targetUserId: user.id,
+          priority: template.priority,
+          category: template.category,
+          relatedId: options?.relatedId?.toString(),
+          relatedType: options?.relatedType,
+          actionUrl: options?.actionUrl
+        }))
+
+        await messageApi.sendBatchSystemMessages(messages)
+        console.log(`[MessageService] ✅ 批量发送 ${targetUsers.length} 条消息到数据库`)
+      } catch (error) {
+        console.error('[MessageService] ❌ 批量发送失败，降级到本地存储:', error)
+        // 降级处理
+        targetUsers.forEach(user => {
+          this.notificationStore?.sendMessage(type, content, {
+            ...options,
+            targetUserId: user.id,
+            createdBy: this.userStore?.currentUser?.id
+          })
+        })
+      }
+    }
 
     console.log(`[MessageService] 发送消息 ${type} 给 ${targetUsers.length} 个用户:`,
       targetUsers.map(u => u.name).join(', '))
@@ -107,7 +180,7 @@ class MessageNotificationService {
   /**
    * 发送消息给指定用户
    */
-  sendToUser(
+  async sendToUser(
     type: MessageType,
     content: string,
     targetUserId: string,
@@ -116,16 +189,9 @@ class MessageNotificationService {
       relatedType?: string
       actionUrl?: string
     }
-  ) {
-    this.initStores()
-
-    const currentUserId = this.userStore?.currentUser?.id
-
-    this.notificationStore?.sendMessage(type, content, {
-      ...options,
-      targetUserId,
-      createdBy: currentUserId
-    })
+  ): Promise<number> {
+    // 🔥 发送到数据库
+    await this.sendToDatabase(type, content, targetUserId, options)
 
     console.log(`[MessageService] 发送消息 ${type} 给用户 ${targetUserId}`)
 
@@ -135,7 +201,7 @@ class MessageNotificationService {
   /**
    * 发送消息给多个指定用户
    */
-  sendToUsers(
+  async sendToUsers(
     type: MessageType,
     content: string,
     targetUserIds: string[],
@@ -144,18 +210,38 @@ class MessageNotificationService {
       relatedType?: string
       actionUrl?: string
     }
-  ) {
-    this.initStores()
+  ): Promise<number> {
+    if (targetUserIds.length === 0) return 0
 
-    const currentUserId = this.userStore?.currentUser?.id
-
-    targetUserIds.forEach(userId => {
-      this.notificationStore?.sendMessage(type, content, {
-        ...options,
+    // 🔥 批量发送到数据库
+    try {
+      const template = this.getMessageTemplate(type)
+      const messages = targetUserIds.map(userId => ({
+        type,
+        title: template.title,
+        content,
         targetUserId: userId,
-        createdBy: currentUserId
+        priority: template.priority,
+        category: template.category,
+        relatedId: options?.relatedId?.toString(),
+        relatedType: options?.relatedType,
+        actionUrl: options?.actionUrl
+      }))
+
+      await messageApi.sendBatchSystemMessages(messages)
+      console.log(`[MessageService] ✅ 批量发送 ${targetUserIds.length} 条消息到数据库`)
+    } catch (error) {
+      console.error('[MessageService] ❌ 批量发送失败，降级到本地存储:', error)
+      // 降级处理
+      this.initStores()
+      targetUserIds.forEach(userId => {
+        this.notificationStore?.sendMessage(type, content, {
+          ...options,
+          targetUserId: userId,
+          createdBy: this.userStore?.currentUser?.id
+        })
       })
-    })
+    }
 
     console.log(`[MessageService] 发送消息 ${type} 给 ${targetUserIds.length} 个用户`)
 

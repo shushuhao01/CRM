@@ -67,7 +67,8 @@
     <!-- 功能选项卡 -->
     <div class="tabs-section">
       <el-tabs v-model="activeTab" class="message-tabs">
-        <el-tab-pane name="subscription">
+        <!-- 消息订阅暂时隐藏，功能已整合到通知配置中 -->
+        <!-- <el-tab-pane name="subscription">
           <template #label>
             <div class="tab-label">
               <el-icon class="tab-icon"><Bell /></el-icon>
@@ -75,8 +76,8 @@
             </div>
           </template>
           <MessageSubscription />
-        </el-tab-pane>
-        
+        </el-tab-pane> -->
+
         <el-tab-pane name="announcement">
           <template #label>
             <div class="tab-label">
@@ -86,7 +87,7 @@
           </template>
           <AnnouncementPublish />
         </el-tab-pane>
-        
+
         <el-tab-pane name="config">
           <template #label>
             <div class="tab-label">
@@ -104,18 +105,18 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useMessageStore } from '@/stores/message'
-import MessageSubscription from './components/MessageSubscription.vue'
+// import MessageSubscription from './components/MessageSubscription.vue' // 暂时隐藏
 import AnnouncementPublish from './components/AnnouncementPublish.vue'
 import MessageConfig from './components/MessageConfig.vue'
-import { 
-  Bell, 
-  ChatDotRound, 
-  Message, 
-  Setting 
+import {
+  Bell,
+  ChatDotRound,
+  Message,
+  Setting
 } from '@element-plus/icons-vue'
 
-// 当前激活的选项卡
-const activeTab = ref('subscription')
+// 当前激活的选项卡（默认显示公告发布）
+const activeTab = ref('announcement')
 
 // 使用消息Store
 const messageStore = useMessageStore()
