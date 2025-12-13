@@ -673,9 +673,15 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
           console.log(`📋 [订单列表] 部门经理无部门ID，只看自己的订单`);
         }
       } else {
-        // 普通员工（销售员、客服等）只能看自己的订单
-        queryBuilder.andWhere('order.createdBy = :userId', { userId });
-        console.log(`📋 [订单列表] 普通员工过滤: 创建人ID = ${userId}`);
+        // 🔥 【修复】普通员工（销售员、客服等）可以看到同部门成员的订单（用于团队业绩统计）
+        if (userDepartmentId) {
+          queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId: userDepartmentId });
+          console.log(`📋 [订单列表] 普通员工过滤: 部门ID = ${userDepartmentId}（可查看同部门订单）`);
+        } else {
+          // 如果没有部门ID，只能看自己的订单
+          queryBuilder.andWhere('order.createdBy = :userId', { userId });
+          console.log(`📋 [订单列表] 普通员工无部门ID，只看自己的订单`);
+        }
       }
     } else {
       console.log(`📋 [订单列表] 管理员角色，查看所有订单`);
