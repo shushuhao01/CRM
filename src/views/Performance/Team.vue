@@ -1108,22 +1108,39 @@ const memberList = computed(() => {
 
   // 🔥 修复：用户匹配函数，同时支持ID和名称匹配
   const matchUserDepartment = (user: any) => {
-    // 通过部门ID匹配（支持多种格式）
-    if (userDeptId) {
-      const userDeptIdStr = String(user.departmentId || '').toLowerCase()
-      const currentDeptIdStr = String(userDeptId).toLowerCase()
-      if (userDeptIdStr === currentDeptIdStr) {
+    // 获取用户的部门信息
+    const targetDeptId = String(user.departmentId || '').toLowerCase().trim()
+    const targetDeptName = (user.department || user.departmentName || '').toLowerCase().trim()
+
+    // 当前用户的部门信息
+    const currentDeptIdStr = String(userDeptId || '').toLowerCase().trim()
+    const currentDeptNameStr = (userDeptName || '').toLowerCase().trim()
+
+    // 🔥 调试日志
+    console.log(`[团队业绩] 匹配用户 ${user.name}: 目标部门ID=${targetDeptId}, 目标部门名=${targetDeptName}, 当前部门ID=${currentDeptIdStr}, 当前部门名=${currentDeptNameStr}`)
+
+    // 通过部门ID匹配（如果两边都有ID）
+    if (currentDeptIdStr && targetDeptId && currentDeptIdStr === targetDeptId) {
+      console.log(`[团队业绩] ✅ 用户 ${user.name} 通过部门ID匹配`)
+      return true
+    }
+
+    // 通过部门名称匹配（如果两边都有名称）
+    if (currentDeptNameStr && targetDeptName && currentDeptNameStr === targetDeptName) {
+      console.log(`[团队业绩] ✅ 用户 ${user.name} 通过部门名称匹配`)
+      return true
+    }
+
+    // 🔥 新增：如果当前用户没有部门ID，但有部门名称，尝试通过名称匹配目标用户的部门
+    if (!currentDeptIdStr && currentDeptNameStr) {
+      // 检查目标用户的部门名称是否包含当前用户的部门名称（或反过来）
+      if (targetDeptName.includes(currentDeptNameStr) || currentDeptNameStr.includes(targetDeptName)) {
+        console.log(`[团队业绩] ✅ 用户 ${user.name} 通过部门名称模糊匹配`)
         return true
       }
     }
-    // 通过部门名称匹配
-    if (userDeptName) {
-      const userDeptNameLower = (user.department || user.departmentName || '').toLowerCase()
-      const currentDeptNameLower = userDeptName.toLowerCase()
-      if (userDeptNameLower === currentDeptNameLower) {
-        return true
-      }
-    }
+
+    console.log(`[团队业绩] ❌ 用户 ${user.name} 部门不匹配`)
     return false
   }
 
