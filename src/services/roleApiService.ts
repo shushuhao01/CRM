@@ -39,14 +39,44 @@ class RoleApiService {
   async getRoles(): Promise<Role[]> {
     try {
       console.log('[RoleAPI] 开始获取角色列表...')
-      const response = await apiService.get<{ success: boolean; data: { roles: Role[] } }>('/roles')
-      console.log('[RoleAPI] 获取角色列表成功:', response)
+      const response: any = await apiService.get('/roles')
+      console.log('[RoleAPI] 获取角色列表响应:', response)
+
       // 后端返回的数据结构是 { success: true, data: { roles: [...] } }
       // axios 响应结构: response.data 是后端返回的 JSON
-      if (response.data?.success && response.data?.data?.roles) {
-        return response.data.data.roles
+      // 但apiService可能已经解包了一层，需要检查多种情况
+      let roles: Role[] = []
+
+      // 情况1: response.data.data.roles (完整axios响应)
+      if (response?.data?.data?.roles) {
+        roles = response.data.data.roles
+        console.log('[RoleAPI] 从 response.data.data.roles 获取角色')
       }
-      return []
+      // 情况2: response.data.roles (apiService已解包一层)
+      else if (response?.data?.roles) {
+        roles = response.data.roles
+        console.log('[RoleAPI] 从 response.data.roles 获取角色')
+      }
+      // 情况3: response.roles (apiService已解包两层)
+      else if (response?.roles) {
+        roles = response.roles
+        console.log('[RoleAPI] 从 response.roles 获取角色')
+      }
+      // 情况4: response 本身就是数组
+      else if (Array.isArray(response)) {
+        roles = response
+        console.log('[RoleAPI] response 本身就是角色数组')
+      }
+
+      console.log('[RoleAPI] 解析后的角色数量:', roles.length)
+
+      // 如果API返回空数组，使用默认角色
+      if (roles.length === 0) {
+        console.log('[RoleAPI] API返回空数组，使用默认角色')
+        return this.getDefaultRoles()
+      }
+
+      return roles
     } catch (error: any) {
       console.warn('[RoleAPI] API获取失败，尝试从localStorage获取')
       console.warn('[RoleAPI] 错误详情:', {
@@ -61,8 +91,10 @@ class RoleApiService {
         const savedRoles = localStorage.getItem('crm_roles')
         if (savedRoles) {
           const roles = JSON.parse(savedRoles)
-          console.log('[RoleAPI] 从localStorage获取角色成功:', roles.length)
-          return roles
+          if (roles.length > 0) {
+            console.log('[RoleAPI] 从localStorage获取角色成功:', roles.length)
+            return roles
+          }
         }
       } catch (localError) {
         console.warn('[RoleAPI] localStorage读取失败:', localError)
