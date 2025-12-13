@@ -331,18 +331,35 @@
 
         <!-- 消息类型选择 -->
         <el-form-item label="消息类型" prop="messageTypes">
-          <el-checkbox-group v-model="form.messageTypes">
-            <el-checkbox
-              v-for="type in messageTypes"
-              :key="type.value"
-              :label="type.value"
-            >
-              {{ type.label }}
-              <el-tooltip :content="type.description" placement="top">
-                <el-icon class="info-icon"><InfoFilled /></el-icon>
-              </el-tooltip>
-            </el-checkbox>
-          </el-checkbox-group>
+          <div class="message-types-section">
+            <!-- 主要消息类型（始终显示） -->
+            <div class="message-types-main">
+              <el-checkbox-group v-model="form.messageTypes">
+                <el-checkbox
+                  v-for="type in primaryMessageTypes"
+                  :key="type.value"
+                  :label="type.value"
+                >
+                  {{ type.label }}
+                </el-checkbox>
+              </el-checkbox-group>
+            </div>
+            <!-- 更多消息类型（折叠） -->
+            <el-collapse v-if="otherMessageTypes.length > 0" v-model="messageTypesExpanded" class="message-types-collapse">
+              <el-collapse-item title="更多消息类型" name="more">
+                <div class="message-types-grid">
+                  <div v-for="category in messageTypeCategories" :key="category.name" class="message-category">
+                    <div class="category-title">{{ category.name }}</div>
+                    <el-checkbox-group v-model="form.messageTypes">
+                      <el-checkbox v-for="type in category.types" :key="type.value" :label="type.value">
+                        {{ type.label }}
+                      </el-checkbox>
+                    </el-checkbox-group>
+                  </div>
+                </div>
+              </el-collapse-item>
+            </el-collapse>
+          </div>
         </el-form-item>
 
         <!-- 动态配置参数 -->
@@ -487,18 +504,33 @@
         <el-divider content-position="left">业绩类型</el-divider>
 
         <el-form-item label="报表数据" prop="reportTypes">
-          <div class="report-types-grid">
-            <div v-for="category in reportTypeCategories" :key="category.name" class="report-category">
-              <div class="category-title">{{ category.name }}</div>
+          <div class="report-types-section">
+            <!-- 主要指标（始终显示） -->
+            <div class="report-types-main">
               <el-checkbox-group v-model="performanceForm.reportTypes">
-                <el-checkbox v-for="type in category.types" :key="type.value" :label="type.value">
-                  {{ type.label }}
-                  <el-tooltip :content="type.description" placement="top">
-                    <el-icon class="info-icon"><InfoFilled /></el-icon>
-                  </el-tooltip>
-                </el-checkbox>
+                <template v-for="category in reportTypeCategories.slice(0, 2)" :key="category.name">
+                  <span class="category-label">{{ category.name }}:</span>
+                  <el-checkbox v-for="type in category.types" :key="type.value" :label="type.value">
+                    {{ type.label }}
+                  </el-checkbox>
+                </template>
               </el-checkbox-group>
             </div>
+            <!-- 更多指标（折叠） -->
+            <el-collapse v-if="reportTypeCategories.length > 2" v-model="reportTypesExpanded" class="report-types-collapse">
+              <el-collapse-item title="更多指标" name="more">
+                <div class="report-types-grid">
+                  <div v-for="category in reportTypeCategories.slice(2)" :key="category.name" class="report-category">
+                    <div class="category-title">{{ category.name }}</div>
+                    <el-checkbox-group v-model="performanceForm.reportTypes">
+                      <el-checkbox v-for="type in category.types" :key="type.value" :label="type.value">
+                        {{ type.label }}
+                      </el-checkbox>
+                    </el-checkbox-group>
+                  </div>
+                </div>
+              </el-collapse-item>
+            </el-collapse>
           </div>
         </el-form-item>
 
@@ -582,7 +614,7 @@
             <template v-if="performanceForm.includeRanking">
               <div class="preview-section-title">🏆 业绩排行榜</div>
               <div v-for="(item, index) in (previewData.topRanking || []).slice(0, 3)" :key="index" class="preview-item">
-                   {{ ['🥇', '🥈', '🥉'][index] }} {{ item.name }}: ¥{{ (item.amount || 0).toLocaleString() }}
+                   {{ ['🥇', '🥈', '🥉'][index] }} {{ item.name }}: ¥{{ (item.amount || 0).toLocaleString() }} ({{ item.orderCount || 0 }}单)
               </div>
               <div v-if="!previewData.topRanking || previewData.topRanking.length === 0" class="preview-item" style="color: #909399;">
                    暂无排名数据
@@ -639,6 +671,8 @@ const performanceConfigs = ref<any[]>([])
 const reportTypes = ref<any[]>([])
 const previewData = ref<any>({})
 const performanceFormRef = ref<FormInstance>()
+const reportTypesExpanded = ref<string[]>([]) // 报表类型折叠状态
+const messageTypesExpanded = ref<string[]>([]) // 消息类型折叠状态
 
 const performanceForm = reactive({
   id: '',
@@ -674,6 +708,29 @@ const reportTypeCategories = computed(() => {
       categories[type.category] = []
     }
     categories[type.category].push(type)
+  })
+  return Object.entries(categories).map(([name, types]) => ({ name, types }))
+})
+
+// 主要消息类型（始终显示）
+const primaryMessageTypes = computed(() => {
+  return messageTypes.value.filter((t: any) => t.primary === true)
+})
+
+// 其他消息类型（折叠显示）
+const otherMessageTypes = computed(() => {
+  return messageTypes.value.filter((t: any) => t.primary !== true)
+})
+
+// 消息类型分类（用于折叠区域）
+const messageTypeCategories = computed(() => {
+  const categories: Record<string, any[]> = {}
+  otherMessageTypes.value.forEach((type: any) => {
+    const cat = type.category || '其他'
+    if (!categories[cat]) {
+      categories[cat] = []
+    }
+    categories[cat].push(type)
   })
   return Object.entries(categories).map(([name, types]) => ({ name, types }))
 })
@@ -1479,14 +1536,65 @@ onMounted(async () => {
   background: linear-gradient(135deg, #E6A23C 0%, #F56C6C 100%);
 }
 
+/* 报表类型选择区域 */
+.report-types-section,
+.message-types-section {
+  width: 100%;
+}
+
+.report-types-main,
+.message-types-main {
+  margin-bottom: 8px;
+}
+
+.report-types-main :deep(.el-checkbox-group),
+.message-types-main :deep(.el-checkbox-group) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.report-types-main .category-label {
+  font-size: 12px;
+  color: #909399;
+  margin-right: 8px;
+}
+
+.report-types-collapse,
+.message-types-collapse {
+  border: none;
+}
+
+.report-types-collapse :deep(.el-collapse-item__header),
+.message-types-collapse :deep(.el-collapse-item__header) {
+  height: 32px;
+  line-height: 32px;
+  font-size: 13px;
+  color: #409EFF;
+  background: transparent;
+  border: none;
+}
+
+.report-types-collapse :deep(.el-collapse-item__wrap),
+.message-types-collapse :deep(.el-collapse-item__wrap) {
+  border: none;
+}
+
+.report-types-collapse :deep(.el-collapse-item__content),
+.message-types-collapse :deep(.el-collapse-item__content) {
+  padding: 12px 0 0 0;
+}
+
 /* 报表类型选择网格 */
-.report-types-grid {
+.report-types-grid,
+.message-types-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
 
-.report-category {
+.report-category,
+.message-category {
   padding: 12px;
   background: #f8f9fa;
   border-radius: 8px;
@@ -1501,7 +1609,8 @@ onMounted(async () => {
   border-bottom: 1px solid #e4e7ed;
 }
 
-.report-category :deep(.el-checkbox-group) {
+.report-category :deep(.el-checkbox-group),
+.message-category :deep(.el-checkbox-group) {
   flex-direction: column;
   gap: 8px;
 }

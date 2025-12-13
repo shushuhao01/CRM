@@ -479,7 +479,7 @@ export class PerformanceReportController {
       const medals = ['🥇', '🥈', '🥉'];
       data.topRanking.slice(0, 3).forEach((item: any, index: number) => {
         const medal = medals[index] || `${index + 1}.`;
-        lines.push(`   ${medal} ${item.name}: ¥${item.amount.toLocaleString()}`);
+        lines.push(`   ${medal} ${item.name}: ¥${item.amount.toLocaleString()} (${item.orderCount}单)`);
       });
     }
 
@@ -546,7 +546,7 @@ export class PerformanceReportController {
       const medals = ['🥇', '🥈', '🥉'];
       data.topRanking.slice(0, 3).forEach((item: any, index: number) => {
         const medal = medals[index] || `${index + 1}.`;
-        lines.push(`${medal} **${item.name}**: ¥${item.amount.toLocaleString()}`);
+        lines.push(`${medal} **${item.name}**: ¥${item.amount.toLocaleString()} (${item.orderCount}单)`);
       });
       lines.push('');
     }
