@@ -760,16 +760,21 @@ const transferMembers = computed(() => {
 const loadChannels = async () => {
   loading.value = true
   try {
+    console.log('[MessageConfig] 开始加载通知渠道配置...')
     const res = await messageApi.getNotificationChannels() as any
+    console.log('[MessageConfig] 通知渠道配置响应:', res)
     if (res.success) {
       channels.value = (res.data || []).map((c: any) => ({
         ...c,
         statusLoading: false,
         testLoading: false
       }))
+      console.log('[MessageConfig] 加载到', channels.value.length, '个通知渠道配置')
+    } else {
+      console.warn('[MessageConfig] 加载通知渠道配置失败:', res.message)
     }
   } catch (_error) {
-    console.error('加载通知配置失败:', _error)
+    console.error('[MessageConfig] 加载通知配置异常:', _error)
   } finally {
     loading.value = false
   }
@@ -1003,15 +1008,20 @@ watch(() => form.channelType, () => {
 
 const loadPerformanceConfigs = async () => {
   try {
+    console.log('[MessageConfig] 开始加载业绩消息配置...')
     const res = await performanceReportApi.getConfigs() as any
+    console.log('[MessageConfig] 业绩消息配置响应:', res)
     if (res.success) {
       performanceConfigs.value = (res.data || []).map((c: any) => ({
         ...c,
         testLoading: false
       }))
+      console.log('[MessageConfig] 加载到', performanceConfigs.value.length, '个业绩消息配置')
+    } else {
+      console.warn('[MessageConfig] 加载业绩消息配置失败:', res.message)
     }
   } catch (_e) {
-    console.error('加载业绩配置失败:', _e)
+    console.error('[MessageConfig] 加载业绩配置异常:', _e)
   }
 }
 
@@ -1188,14 +1198,19 @@ const getReportTypeLabel = (value: string) => {
 
 // 初始化
 onMounted(async () => {
+  console.log('[MessageConfig] 组件挂载，开始加载数据...')
   await Promise.all([
     loadOptions(),
     loadReportTypes(),
     userStore.loadUsers(),
     departmentStore.loadDepartments()
   ])
-  loadChannels()
-  loadPerformanceConfigs()
+  // 等待通知渠道和业绩配置加载完成
+  await Promise.all([
+    loadChannels(),
+    loadPerformanceConfigs()
+  ])
+  console.log('[MessageConfig] 所有数据加载完成')
 })
 </script>
 
