@@ -344,6 +344,10 @@ export class PerformanceReportController {
 
     const orderRepo = dataSource.getRepository(Order);
 
+    // 🔥 统一的业绩计算规则：
+    // 不计入下单业绩的状态: pending_cancel, cancelled, audit_rejected, logistics_returned, logistics_cancelled, refunded
+    // 待流转状态需要特殊处理：只有markType='normal'的才计入业绩
+
     // 查询昨日数据
     const dailyQuery = orderRepo.createQueryBuilder('o')
       .where('DATE(o.created_at) = :date', { date: yesterday.toISOString().split('T')[0] });
@@ -359,24 +363,50 @@ export class PerformanceReportController {
     }
 
     // 获取统计数据
-    // 注意：签收状态是 'delivered' 而不是 'signed'
+    // 🔥 使用新的业绩计算规则：
+    // - 下单业绩：排除取消、拒绝、退回等状态，待流转只算正常发货单
+    // - 发货业绩：shipped, delivered, rejected, rejected_returned
+    // - 签收业绩：delivered
     const dailyStats = await dailyQuery
       .select([
-        'COUNT(*) as orderCount',
-        'COALESCE(SUM(o.total_amount), 0) as orderAmount',
-        'SUM(CASE WHEN o.status = "delivered" THEN 1 ELSE 0 END) as signedCount',
-        'COALESCE(SUM(CASE WHEN o.status = "delivered" THEN o.total_amount ELSE 0 END), 0) as signedAmount',
-        'SUM(CASE WHEN o.status = "refunded" THEN 1 ELSE 0 END) as refundCount',
-        'COALESCE(SUM(CASE WHEN o.status = "refunded" THEN o.total_amount ELSE 0 END), 0) as refundAmount'
+        // 下单业绩（排除无效状态，待流转只算正常发货单）
+        `SUM(CASE
+          WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded')
+          AND (o.status != 'pending_transfer' OR o.mark_type = 'normal')
+          THEN 1 ELSE 0 END) as orderCount`,
+        `COALESCE(SUM(CASE
+          WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded')
+          AND (o.status != 'pending_transfer' OR o.mark_type = 'normal')
+          THEN o.total_amount ELSE 0 END), 0) as orderAmount`,
+        // 发货业绩
+        `SUM(CASE WHEN o.status IN ('shipped', 'delivered', 'rejected', 'rejected_returned') THEN 1 ELSE 0 END) as shippedCount`,
+        `COALESCE(SUM(CASE WHEN o.status IN ('shipped', 'delivered', 'rejected', 'rejected_returned') THEN o.total_amount ELSE 0 END), 0) as shippedAmount`,
+        // 签收业绩
+        `SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) as signedCount`,
+        `COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END), 0) as signedAmount`,
+        // 退款统计
+        `SUM(CASE WHEN o.status = 'refunded' THEN 1 ELSE 0 END) as refundCount`,
+        `COALESCE(SUM(CASE WHEN o.status = 'refunded' THEN o.total_amount ELSE 0 END), 0) as refundAmount`
       ])
       .getRawOne();
 
     const monthlyStats = await monthlyQuery
       .select([
-        'COUNT(*) as orderCount',
-        'COALESCE(SUM(o.total_amount), 0) as orderAmount',
-        'SUM(CASE WHEN o.status = "delivered" THEN 1 ELSE 0 END) as signedCount',
-        'COALESCE(SUM(CASE WHEN o.status = "delivered" THEN o.total_amount ELSE 0 END), 0) as signedAmount'
+        // 下单业绩
+        `SUM(CASE
+          WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded')
+          AND (o.status != 'pending_transfer' OR o.mark_type = 'normal')
+          THEN 1 ELSE 0 END) as orderCount`,
+        `COALESCE(SUM(CASE
+          WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded')
+          AND (o.status != 'pending_transfer' OR o.mark_type = 'normal')
+          THEN o.total_amount ELSE 0 END), 0) as orderAmount`,
+        // 发货业绩
+        `SUM(CASE WHEN o.status IN ('shipped', 'delivered', 'rejected', 'rejected_returned') THEN 1 ELSE 0 END) as shippedCount`,
+        `COALESCE(SUM(CASE WHEN o.status IN ('shipped', 'delivered', 'rejected', 'rejected_returned') THEN o.total_amount ELSE 0 END), 0) as shippedAmount`,
+        // 签收业绩
+        `SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) as signedCount`,
+        `COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END), 0) as signedAmount`
       ])
       .getRawOne();
 
@@ -388,13 +418,21 @@ export class PerformanceReportController {
       ? ((monthlyStats.signedCount / monthlyStats.orderCount) * 100).toFixed(1)
       : '0.0';
 
-    // 获取本月业绩排名（前三名）
+    // 🔥 获取本月业绩排名（前三名）- 使用新的业绩计算规则
     const userRepo = dataSource.getRepository(User);
     let rankingQuery = orderRepo.createQueryBuilder('o')
       .select([
         'o.created_by as userId',
-        'COALESCE(SUM(o.total_amount), 0) as totalAmount',
-        'COUNT(*) as orderCount'
+        // 只统计有效订单的金额
+        `COALESCE(SUM(CASE
+          WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded')
+          AND (o.status != 'pending_transfer' OR o.mark_type = 'normal')
+          THEN o.total_amount ELSE 0 END), 0) as totalAmount`,
+        // 只统计有效订单数
+        `SUM(CASE
+          WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded')
+          AND (o.status != 'pending_transfer' OR o.mark_type = 'normal')
+          THEN 1 ELSE 0 END) as orderCount`
       ])
       .where('o.created_at >= :start', { start: monthStart })
       .groupBy('o.created_by')

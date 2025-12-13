@@ -111,30 +111,46 @@ export const getMetrics = async (params?: {
     const today = now.toISOString().split('T')[0]
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
 
-    // 根据权限过滤订单
-    let filteredOrders = orders.filter((order: any) => order.auditStatus === 'approved')
-    if (params?.userId && params?.userRole !== 'super_admin') {
-      filteredOrders = filteredOrders.filter((order: any) => order.salesPersonId === params.userId)
+    // 🔥 统一的业绩计算规则
+    const isValidForOrderPerformance = (order: any): boolean => {
+      const excludedStatuses = [
+        'pending_cancel', 'cancelled', 'audit_rejected',
+        'logistics_returned', 'logistics_cancelled', 'refunded'
+      ]
+      // 待流转状态只有正常发货单才计入业绩
+      if (order.status === 'pending_transfer') {
+        return order.markType === 'normal'
+      }
+      return !excludedStatuses.includes(order.status)
     }
 
+    // 根据权限过滤订单
+    let allOrders = orders
+    if (params?.userId && params?.userRole !== 'super_admin') {
+      allOrders = allOrders.filter((order: any) => order.salesPersonId === params.userId)
+    }
+
+    // 🔥 使用新的业绩计算规则过滤有效订单
+    const validOrders = allOrders.filter(isValidForOrderPerformance)
+
     // 计算今日订单
-    const todayOrders = filteredOrders.filter((order: any) =>
+    const todayValidOrders = validOrders.filter((order: any) =>
       order.createTime?.startsWith(today)
-    ).length
+    )
+    const todayOrders = todayValidOrders.length
 
     // 计算今日业绩
-    const todayRevenue = filteredOrders
-      .filter((order: any) => order.createTime?.startsWith(today))
-      .reduce((sum: number, order: any) => sum + (order.totalAmount || 0), 0)
+    const todayRevenue = todayValidOrders.reduce((sum: number, order: any) =>
+      sum + (order.totalAmount || 0), 0)
 
     // 计算本月订单
-    const monthlyOrdersList = filteredOrders.filter((order: any) =>
+    const monthlyValidOrders = validOrders.filter((order: any) =>
       order.createTime >= monthStart
     )
-    const monthlyOrders = monthlyOrdersList.length
+    const monthlyOrders = monthlyValidOrders.length
 
     // 计算本月业绩
-    const monthlyRevenue = monthlyOrdersList.reduce((sum: number, order: any) =>
+    const monthlyRevenue = monthlyValidOrders.reduce((sum: number, order: any) =>
       sum + (order.totalAmount || 0), 0)
 
     // 计算新增客户（今日）
@@ -210,15 +226,28 @@ export const getRankings = async (): Promise<DashboardRankings> => {
 
     const orders = JSON.parse(ordersData).orders || []
 
-    // 只统计已审核的订单
-    const approvedOrders = orders.filter((order: any) => order.auditStatus === 'approved')
+    // 🔥 统一的业绩计算规则
+    const isValidForOrderPerformance = (order: any): boolean => {
+      const excludedStatuses = [
+        'pending_cancel', 'cancelled', 'audit_rejected',
+        'logistics_returned', 'logistics_cancelled', 'refunded'
+      ]
+      // 待流转状态只有正常发货单才计入业绩
+      if (order.status === 'pending_transfer') {
+        return order.markType === 'normal'
+      }
+      return !excludedStatuses.includes(order.status)
+    }
+
+    // 🔥 使用新的业绩计算规则过滤有效订单
+    const validOrders = orders.filter(isValidForOrderPerformance)
 
     // 计算本月数据
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
-    const monthOrders = approvedOrders.filter((order: any) => order.createTime >= monthStart)
+    const monthOrders = validOrders.filter((order: any) => order.createTime >= monthStart)
 
-    console.log(`[业绩排名] 本月已审核订单数: ${monthOrders.length}`)
+    console.log(`[业绩排名] 本月有效订单数: ${monthOrders.length}`)
 
     // 统计销售人员业绩
     const salesStats: Record<string, any> = {}
@@ -338,11 +367,27 @@ export const getChartData = async (params?: {
 
     const orders = JSON.parse(ordersData).orders || []
 
-    // 根据权限过滤订单
-    let filteredOrders = orders.filter((order: any) => order.auditStatus === 'approved')
-    if (params?.userId && params?.userRole !== 'super_admin') {
-      filteredOrders = filteredOrders.filter((order: any) => order.salesPersonId === params.userId)
+    // 🔥 统一的业绩计算规则
+    const isValidForOrderPerformance = (order: any): boolean => {
+      const excludedStatuses = [
+        'pending_cancel', 'cancelled', 'audit_rejected',
+        'logistics_returned', 'logistics_cancelled', 'refunded'
+      ]
+      // 待流转状态只有正常发货单才计入业绩
+      if (order.status === 'pending_transfer') {
+        return order.markType === 'normal'
+      }
+      return !excludedStatuses.includes(order.status)
     }
+
+    // 根据权限过滤订单
+    let allOrders = orders
+    if (params?.userId && params?.userRole !== 'super_admin') {
+      allOrders = allOrders.filter((order: any) => order.salesPersonId === params.userId)
+    }
+
+    // 🔥 使用新的业绩计算规则过滤有效订单
+    const filteredOrders = allOrders.filter(isValidForOrderPerformance)
 
     const now = new Date()
     const period = params?.period || 'month'
@@ -385,18 +430,18 @@ export const getChartData = async (params?: {
       for (let i = 5; i >= 0; i--) {
         const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-        const monthOrders = filteredOrders.filter((order: unknown) =>
+        const monthOrders = filteredOrders.filter((order: any) =>
           order.createTime?.startsWith(monthKey)
         )
         revenueData.push({
           date: `${date.getMonth() + 1}月`,
-          amount: monthOrders.reduce((sum: number, order: unknown) => sum + (order.totalAmount || 0), 0),
+          amount: monthOrders.reduce((sum: number, order: any) => sum + (order.totalAmount || 0), 0),
           orders: monthOrders.length
         })
       }
     }
 
-    // 统计订单状态分布
+    // 统计订单状态分布（这里统计所有订单，不过滤）
     const statusMap: Record<string, { name: string; count: number }> = {
       pending_transfer: { name: '待流转', count: 0 },
       pending_audit: { name: '待审核', count: 0 },
@@ -416,7 +461,7 @@ export const getChartData = async (params?: {
       draft: { name: '草稿', count: 0 }
     }
 
-    filteredOrders.forEach((order: unknown) => {
+    allOrders.forEach((order: any) => {
       const status = order.status
       if (statusMap[status]) {
         statusMap[status].count += 1

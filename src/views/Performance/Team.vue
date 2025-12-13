@@ -997,8 +997,12 @@ const overviewData = computed(() => {
     }
   }
 
-  // 根据用户权限获取可访问的订单数据
-  let accessibleOrders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+  // 🔥 根据用户权限获取可访问的订单数据 - 使用新的业绩计算规则
+  let accessibleOrders = orderStore.orders.filter(order => {
+    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+    if (order.status === 'pending_transfer') return order.markType === 'normal'
+    return !excludedStatuses.includes(order.status)
+  })
 
   // 日期范围过滤 - 使用orderDate(下单日期)而不是createTime(创建时间)
   if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
@@ -1255,10 +1259,12 @@ const memberList = computed(() => {
 
   // 直接返回成员列表，不在computed中修改数据
   return accessibleUsers.map((user: unknown) => {
-    // 计算该用户的业绩数据
-    // 使用createdBy字段匹配（因为salesPersonId可能是undefined）
+    // 🔥 计算该用户的业绩数据 - 使用新的业绩计算规则
     let userOrders = orderStore.orders.filter(order => {
-      if (order.auditStatus !== 'approved') return false
+      // 先检查业绩计算规则
+      const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+      if (order.status === 'pending_transfer' && order.markType !== 'normal') return false
+      if (excludedStatuses.includes(order.status)) return false
 
       // 优先使用salesPersonId匹配
       if (order.salesPersonId && user.id) {
@@ -1469,9 +1475,12 @@ const memberOrderList = computed(() => {
   console.log('[订单列表] 查询成员订单:', member.name, 'ID:', selectedMemberId.value)
   console.log('[订单列表] 筛选日期范围:', dateRange.value)
 
-  // 获取指定成员的订单 - 使用与memberList相同的匹配逻辑
+  // 🔥 获取指定成员的订单 - 使用新的业绩计算规则
   const memberOrders = orderStore.orders.filter(order => {
-    if (order.auditStatus !== 'approved') return false
+    // 先检查业绩计算规则
+    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+    if (order.status === 'pending_transfer' && order.markType !== 'normal') return false
+    if (excludedStatuses.includes(order.status)) return false
 
     // 日期筛选 - 使用orderDate(下单日期)而不是createTime(创建时间)
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
@@ -2151,9 +2160,13 @@ const viewOrdersByType = (member: TeamMember, columnProp: string) => {
   orderTypeMember.value = member
   orderTypeCurrentPage.value = 1
 
-  // 获取该成员的所有订单
+  // 🔥 获取该成员的所有订单 - 使用新的业绩计算规则
   let userOrders = orderStore.orders.filter(order => {
-    if (order.auditStatus !== 'approved') return false
+    // 先检查业绩计算规则
+    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+    if (order.status === 'pending_transfer' && order.markType !== 'normal') return false
+    if (excludedStatuses.includes(order.status)) return false
+
     if (order.salesPersonId && member.id) {
       if (String(order.salesPersonId) === String(member.id)) return true
     }
