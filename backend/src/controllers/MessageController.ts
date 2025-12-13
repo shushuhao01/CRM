@@ -6,6 +6,7 @@ import { SystemMessage } from '../entities/SystemMessage';
 import { Announcement, AnnouncementRead } from '../entities/Announcement';
 import { NotificationChannel, NotificationLog } from '../entities/NotificationChannel';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 
 // 内存存储订阅规则数据（模拟数据库）
 const subscriptionRulesStorage: any[] = [
@@ -1900,7 +1901,7 @@ export class MessageController {
   }
 
   /**
-   * 测试通知渠道
+   * 测试通知渠道 - 真实调用第三方API
    */
   async testNotificationChannel(req: Request, res: Response): Promise<void> {
     try {
@@ -1921,24 +1922,114 @@ export class MessageController {
         return;
       }
 
-      // 这里可以实现具体的第三方API调用测试
-      // 目前先返回模拟结果
-      const testResult = {
-        success: true,
-        message: `${channel.name} 测试发送成功`,
-        details: {
-          channelType: channel.channelType,
-          testMessage: testMessage || '这是一条测试消息',
-          timestamp: new Date().toISOString()
-        }
+      const message = testMessage || '这是一条来自CRM系统的测试消息';
+      let testResult: { success: boolean; message: string; details?: any } = {
+        success: false,
+        message: '未知渠道类型'
       };
 
-      console.log(`[通知测试] ${channel.name}: ${testMessage || '测试消息'}`);
+      // 根据渠道类型调用不同的API
+      switch (channel.channelType) {
+        case 'dingtalk':
+          testResult = await this.sendDingtalkMessage(channel.config, message);
+          break;
+        case 'wechat_work':
+          testResult = await this.sendWechatWorkMessage(channel.config, message);
+          break;
+        case 'email':
+          testResult = { success: true, message: '邮件测试功能开发中' };
+          break;
+        case 'sms':
+          testResult = { success: true, message: '短信测试功能开发中' };
+          break;
+        case 'system':
+          testResult = { success: true, message: '系统通知测试成功' };
+          break;
+        default:
+          testResult = { success: false, message: `不支持的渠道类型: ${channel.channelType}` };
+      }
+
+      console.log(`[通知测试] ${channel.name} (${channel.channelType}): ${testResult.success ? '成功' : '失败'} - ${testResult.message}`);
 
       res.json(testResult);
     } catch (error) {
       console.error('测试通知失败:', error);
       res.status(500).json({ success: false, message: '测试通知失败' });
+    }
+  }
+
+  /**
+   * 发送钉钉消息
+   */
+  private async sendDingtalkMessage(config: any, message: string): Promise<{ success: boolean; message: string; details?: any }> {
+    try {
+      const { webhook, secret } = config;
+      if (!webhook) {
+        return { success: false, message: '钉钉Webhook地址未配置' };
+      }
+
+      let url = webhook;
+
+      // 如果配置了加签密钥，需要计算签名
+      if (secret) {
+        const timestamp = Date.now();
+        const stringToSign = `${timestamp}\n${secret}`;
+        const hmac = crypto.createHmac('sha256', secret);
+        hmac.update(stringToSign);
+        const sign = encodeURIComponent(hmac.digest('base64'));
+        url = `${webhook}&timestamp=${timestamp}&sign=${sign}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          msgtype: 'text',
+          text: { content: message },
+          at: { isAtAll: config.at_all || false }
+        })
+      });
+
+      const result = await response.json() as { errcode: number; errmsg: string };
+
+      if (result.errcode === 0) {
+        return { success: true, message: '钉钉消息发送成功', details: result };
+      } else {
+        return { success: false, message: `钉钉发送失败: ${result.errmsg}`, details: result };
+      }
+    } catch (error: any) {
+      return { success: false, message: `钉钉发送异常: ${error.message}` };
+    }
+  }
+
+  /**
+   * 发送企业微信消息
+   */
+  private async sendWechatWorkMessage(config: any, message: string): Promise<{ success: boolean; message: string; details?: any }> {
+    try {
+      const { webhook } = config;
+      if (!webhook) {
+        return { success: false, message: '企业微信Webhook地址未配置' };
+      }
+
+      const response = await fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          msgtype: 'text',
+          text: { content: message }
+        })
+      });
+
+      const result = await response.json() as { errcode: number; errmsg: string };
+
+      if (result.errcode === 0) {
+        return { success: true, message: '企业微信消息发送成功', details: result };
+      } else {
+        return { success: false, message: `企业微信发送失败: ${result.errmsg}`, details: result };
+      }
+    } catch (error: any) {
+      return { success: false, message: `企业微信发送异常: ${error.message}` };
     }
   }
 
