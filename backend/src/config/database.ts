@@ -40,6 +40,9 @@ import { FollowUp } from '../entities/FollowUp';
 import { AfterSalesService } from '../entities/AfterSalesService';
 import { ServiceFollowUp } from '../entities/ServiceFollowUp';
 import { ServiceOperationLog } from '../entities/ServiceOperationLog';
+import { NotificationChannel, NotificationLog } from '../entities/NotificationChannel';
+import { Announcement, AnnouncementRead } from '../entities/Announcement';
+import { SystemMessage } from '../entities/SystemMessage';
 import path from 'path';
 
 // 根据环境变量选择数据库配置
@@ -95,7 +98,12 @@ const AppDataSource = new DataSource(
           FollowUp,
           AfterSalesService,
           ServiceFollowUp,
-          ServiceOperationLog
+          ServiceOperationLog,
+          NotificationChannel,
+          NotificationLog,
+          Announcement,
+          AnnouncementRead,
+          SystemMessage
         ],
         migrations: [],
         subscribers: [],
@@ -143,7 +151,12 @@ const AppDataSource = new DataSource(
           FollowUp,
           AfterSalesService,
           ServiceFollowUp,
-          ServiceOperationLog
+          ServiceOperationLog,
+          NotificationChannel,
+          NotificationLog,
+          Announcement,
+          AnnouncementRead,
+          SystemMessage
         ],
         migrations: [],
         subscribers: [],
