@@ -1123,7 +1123,7 @@ const memberList = computed(() => {
 
   // 🔥 修复：用户匹配函数，同时支持ID和名称匹配
   const matchUserDepartment = (user: any) => {
-    // 获取用户的部门信息
+    // 获取目标用户的部门信息
     const targetDeptId = String(user.departmentId || '').toLowerCase().trim()
     const targetDeptName = (user.department || user.departmentName || '').toLowerCase().trim()
 
@@ -1131,25 +1131,51 @@ const memberList = computed(() => {
     const currentDeptIdStr = String(userDeptId || '').toLowerCase().trim()
     const currentDeptNameStr = (userDeptName || '').toLowerCase().trim()
 
-    // 🔥 调试日志
-    console.log(`[团队业绩] 匹配用户 ${user.name}: 目标部门ID=${targetDeptId}, 目标部门名=${targetDeptName}, 当前部门ID=${currentDeptIdStr}, 当前部门名=${currentDeptNameStr}`)
+    // 🔥 【关键修复】如果当前用户没有部门名称，从departmentStore获取
+    let resolvedCurrentDeptName = currentDeptNameStr
+    if (!resolvedCurrentDeptName && currentDeptIdStr) {
+      const dept = departmentStore.departments?.find((d: any) => String(d.id).toLowerCase() === currentDeptIdStr)
+      if (dept) {
+        resolvedCurrentDeptName = (dept.name || '').toLowerCase().trim()
+      }
+    }
 
-    // 通过部门ID匹配（如果两边都有ID）
-    if (currentDeptIdStr && targetDeptId && currentDeptIdStr === targetDeptId) {
+    // 🔥 【关键修复】如果目标用户没有部门ID，从departmentStore通过名称查找ID
+    let resolvedTargetDeptId = targetDeptId
+    if (!resolvedTargetDeptId && targetDeptName) {
+      const dept = departmentStore.departments?.find((d: any) => (d.name || '').toLowerCase().trim() === targetDeptName)
+      if (dept) {
+        resolvedTargetDeptId = String(dept.id).toLowerCase().trim()
+      }
+    }
+
+    // 🔥 【关键修复】如果目标用户没有部门名称，从departmentStore通过ID查找名称
+    let resolvedTargetDeptName = targetDeptName
+    if (!resolvedTargetDeptName && targetDeptId) {
+      const dept = departmentStore.departments?.find((d: any) => String(d.id).toLowerCase() === targetDeptId)
+      if (dept) {
+        resolvedTargetDeptName = (dept.name || '').toLowerCase().trim()
+      }
+    }
+
+    // 🔥 调试日志
+    console.log(`[团队业绩] 匹配用户 ${user.name}: 目标ID=${targetDeptId}→${resolvedTargetDeptId}, 目标名=${targetDeptName}→${resolvedTargetDeptName}, 当前ID=${currentDeptIdStr}, 当前名=${currentDeptNameStr}→${resolvedCurrentDeptName}`)
+
+    // 通过部门ID匹配（使用解析后的ID）
+    if (currentDeptIdStr && resolvedTargetDeptId && currentDeptIdStr === resolvedTargetDeptId) {
       console.log(`[团队业绩] ✅ 用户 ${user.name} 通过部门ID匹配`)
       return true
     }
 
-    // 通过部门名称匹配（如果两边都有名称）
-    if (currentDeptNameStr && targetDeptName && currentDeptNameStr === targetDeptName) {
+    // 通过部门名称匹配（使用解析后的名称）
+    if (resolvedCurrentDeptName && resolvedTargetDeptName && resolvedCurrentDeptName === resolvedTargetDeptName) {
       console.log(`[团队业绩] ✅ 用户 ${user.name} 通过部门名称匹配`)
       return true
     }
 
-    // 🔥 新增：如果当前用户没有部门ID，但有部门名称，尝试通过名称匹配目标用户的部门
-    if (!currentDeptIdStr && currentDeptNameStr) {
-      // 检查目标用户的部门名称是否包含当前用户的部门名称（或反过来）
-      if (targetDeptName.includes(currentDeptNameStr) || currentDeptNameStr.includes(targetDeptName)) {
+    // 🔥 新增：模糊匹配（名称包含关系）
+    if (resolvedCurrentDeptName && resolvedTargetDeptName) {
+      if (resolvedTargetDeptName.includes(resolvedCurrentDeptName) || resolvedCurrentDeptName.includes(resolvedTargetDeptName)) {
         console.log(`[团队业绩] ✅ 用户 ${user.name} 通过部门名称模糊匹配`)
         return true
       }
