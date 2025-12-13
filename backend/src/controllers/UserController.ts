@@ -427,6 +427,81 @@ export class UserController {
   });
 
   /**
+   * 获取同部门成员列表（所有登录用户可访问）
+   * 销售员只能看到同部门成员，经理和管理员可以看到所有用户
+   */
+  getDepartmentMembers = catchAsync(async (req: Request, res: Response) => {
+    const currentUser = (req as any).user;
+
+    if (!currentUser) {
+      throw new BusinessError('用户未登录', 'UNAUTHORIZED');
+    }
+
+    console.log('[getDepartmentMembers] 当前用户:', currentUser.username, '角色:', currentUser.role, '部门ID:', currentUser.departmentId);
+
+    const queryBuilder = this.userRepository.createQueryBuilder('user')
+      .select([
+        'user.id',
+        'user.username',
+        'user.realName',
+        'user.name',
+        'user.email',
+        'user.phone',
+        'user.avatar',
+        'user.role',
+        'user.status',
+        'user.employmentStatus',
+        'user.departmentId',
+        'user.departmentName',
+        'user.position',
+        'user.employeeNumber',
+        'user.createdAt'
+      ]);
+
+    // 根据角色过滤数据
+    const isAdmin = currentUser.role === 'super_admin' || currentUser.role === 'admin';
+    const isManager = currentUser.role === 'department_manager';
+
+    if (isAdmin) {
+      // 管理员可以看到所有用户
+      console.log('[getDepartmentMembers] 管理员，返回所有用户');
+    } else if (isManager || currentUser.role === 'sales_staff') {
+      // 经理和销售员只能看到同部门成员
+      if (currentUser.departmentId) {
+        queryBuilder.andWhere('user.departmentId = :departmentId', { departmentId: currentUser.departmentId });
+        console.log('[getDepartmentMembers] 非管理员，过滤部门ID:', currentUser.departmentId);
+      } else {
+        // 如果没有部门ID，返回空列表
+        console.log('[getDepartmentMembers] 用户没有部门ID，返回空列表');
+        return res.json({
+          success: true,
+          data: {
+            items: [],
+            users: [],
+            total: 0
+          }
+        });
+      }
+    }
+
+    // 只返回启用的用户
+    queryBuilder.andWhere('user.status = :status', { status: 'active' });
+
+    const users = await queryBuilder.getMany();
+
+    console.log('[getDepartmentMembers] 返回用户数:', users.length);
+
+    res.json({
+      success: true,
+      data: {
+        items: users,
+        users: users,
+        total: users.length
+      }
+    });
+  });
+
+  /**
    * 获取用户列表（管理员功能）
    */
   getUsers = catchAsync(async (req: Request, res: Response) => {

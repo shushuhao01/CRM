@@ -153,14 +153,26 @@ class UserDataService {
    */
   private async getUsersFromAPI(): Promise<User[]> {
     try {
-      // 修复：apiBaseURL已经包含/api/v1，不需要再加/api
-      const response = await fetch(`${this.config.apiBaseURL}/users?limit=100`, {
+      // 首先尝试获取所有用户（管理员/经理权限）
+      let response = await fetch(`${this.config.apiBaseURL}/users?limit=100`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.getToken()}`
         }
       })
+
+      // 如果权限不足（403），尝试获取同部门成员
+      if (response.status === 403) {
+        console.log('[UserDataService] 权限不足，尝试获取同部门成员')
+        response = await fetch(`${this.config.apiBaseURL}/users/department-members`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.getToken()}`
+          }
+        })
+      }
 
       if (!response.ok) {
         throw new Error(`API请求失败: ${response.status}`)
