@@ -5,6 +5,7 @@ import { useUserStore } from './user'
 import { createPersistentStore } from '@/utils/storage'
 import { logisticsService, type LogisticsResult } from '@/services/logistics'
 import { eventBus, EventNames } from '@/utils/eventBus'
+import { messageNotificationService } from '@/services/messageNotificationService'
 
 export interface OrderProduct {
   id: string
@@ -1121,6 +1122,21 @@ export const useOrderStore = createPersistentStore('order', () => {
       eventBus.emit(EventNames.ORDER_TRANSFERRED, transferredOrders)
       eventBus.emit(EventNames.REFRESH_ORDER_LIST)
       eventBus.emit(EventNames.REFRESH_AUDIT_LIST)
+
+      // 【2025-12-13新增】发送待审核通知给审核员
+      transferredOrders.forEach(order => {
+        try {
+          messageNotificationService.sendOrderAuditPending(
+            order.orderNumber,
+            order.customerName,
+            order.totalAmount,
+            order.createdByName || order.createdBy || '销售员',
+            { orderId: order.id }
+          )
+        } catch (error) {
+          console.error('[订单流转] 发送审核通知失败:', error)
+        }
+      })
     }
   }
 

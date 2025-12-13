@@ -7,7 +7,7 @@ export enum MessageType {
   ORDER_CREATED = 'order_created',
   ORDER_SUBMITTED = 'order_submitted', // 订单提交成功
   ORDER_PAID = 'order_paid',
-  ORDER_PENDING_SHIPMENT = 'order_pending_shipment', // 【批次201新增】订单待发货
+  ORDER_PENDING_SHIPMENT = 'order_pending_shipment', // 订单待发货
   ORDER_SHIPPED = 'order_shipped',
   ORDER_DELIVERED = 'order_delivered',
   ORDER_SIGNED = 'order_signed',
@@ -16,6 +16,10 @@ export enum MessageType {
   ORDER_CANCEL_APPROVED = 'order_cancel_approved', // 订单取消通过
   ORDER_MODIFY_APPROVED = 'order_modify_approved', // 订单修改申请通过
   ORDER_REFUNDED = 'order_refunded',
+  // 【2025-12-13新增】订单超时提醒
+  ORDER_AUDIT_TIMEOUT = 'order_audit_timeout', // 订单审核超时
+  ORDER_SHIPMENT_TIMEOUT = 'order_shipment_timeout', // 发货超时提醒
+  ORDER_FOLLOWUP_REMINDER = 'order_followup_reminder', // 订单跟进提醒
 
   // 售后相关
   AFTER_SALES_CREATED = 'after_sales_created',
@@ -25,6 +29,9 @@ export enum MessageType {
   AFTER_SALES_COMPLETED = 'after_sales_completed', // 售后完成
   AFTER_SALES_CLOSED = 'after_sales_closed', // 售后关闭
   AFTER_SALES_DELETED = 'after_sales_deleted', // 售后删除
+  // 【2025-12-13新增】售后超时提醒
+  AFTER_SALES_TIMEOUT = 'after_sales_timeout', // 售后处理超时
+  AFTER_SALES_ESCALATED = 'after_sales_escalated', // 售后升级
 
   // 客户相关
   CUSTOMER_CREATED = 'customer_created', // 客户添加成功
@@ -33,6 +40,11 @@ export enum MessageType {
   CUSTOMER_SHARE = 'customer_share', // 客户分享
   CUSTOMER_COMPLAINT = 'customer_complaint',
   CUSTOMER_REJECTED = 'customer_rejected', // 客户拒收
+  // 【2025-12-13新增】客户跟进相关
+  CUSTOMER_FOLLOWUP_DUE = 'customer_followup_due', // 客户跟进到期
+  CUSTOMER_INACTIVE_WARNING = 'customer_inactive_warning', // 客户沉默预警
+  CUSTOMER_BIRTHDAY_REMINDER = 'customer_birthday_reminder', // 客户生日提醒
+  CUSTOMER_ASSIGNED = 'customer_assigned', // 客户分配通知
 
   // 商品相关
   PRODUCT_CREATED = 'product_created', // 商品添加成功
@@ -74,7 +86,12 @@ export enum MessageType {
   SMS_SEND_APPROVED = 'sms_send_approved', // 短信发送审核通过
   SMS_SEND_REJECTED = 'sms_send_rejected', // 短信发送审核拒绝
   SMS_SEND_SUCCESS = 'sms_send_success', // 短信发送成功
-  SMS_SEND_FAILED = 'sms_send_failed' // 短信发送失败
+  SMS_SEND_FAILED = 'sms_send_failed', // 短信发送失败
+
+  // 【2025-12-13新增】资料分配相关
+  DATA_ASSIGNED = 'data_assigned', // 资料分配通知
+  DATA_REASSIGNED = 'data_reassigned', // 资料重新分配
+  DATA_BATCH_ASSIGNED = 'data_batch_assigned' // 批量分配完成
 }
 
 // 消息优先级
@@ -513,6 +530,98 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
     color: '#F56C6C',
     category: '短信通知',
     priority: MessagePriority.HIGH
+  },
+
+  // 【2025-12-13新增】订单超时提醒模板
+  [MessageType.ORDER_AUDIT_TIMEOUT]: {
+    title: '订单审核超时',
+    icon: 'AlarmClock',
+    color: '#F56C6C',
+    category: '超时提醒',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.ORDER_SHIPMENT_TIMEOUT]: {
+    title: '发货超时提醒',
+    icon: 'Timer',
+    color: '#E6A23C',
+    category: '超时提醒',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.ORDER_FOLLOWUP_REMINDER]: {
+    title: '订单跟进提醒',
+    icon: 'Bell',
+    color: '#409EFF',
+    category: '跟进提醒',
+    priority: MessagePriority.NORMAL
+  },
+
+  // 【2025-12-13新增】售后超时提醒模板
+  [MessageType.AFTER_SALES_TIMEOUT]: {
+    title: '售后处理超时',
+    icon: 'AlarmClock',
+    color: '#F56C6C',
+    category: '超时提醒',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.AFTER_SALES_ESCALATED]: {
+    title: '售后升级',
+    icon: 'Top',
+    color: '#F56C6C',
+    category: '售后通知',
+    priority: MessagePriority.URGENT
+  },
+
+  // 【2025-12-13新增】客户跟进相关模板
+  [MessageType.CUSTOMER_FOLLOWUP_DUE]: {
+    title: '客户跟进到期',
+    icon: 'Bell',
+    color: '#E6A23C',
+    category: '跟进提醒',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.CUSTOMER_INACTIVE_WARNING]: {
+    title: '客户沉默预警',
+    icon: 'Warning',
+    color: '#E6A23C',
+    category: '客户预警',
+    priority: MessagePriority.NORMAL
+  },
+  [MessageType.CUSTOMER_BIRTHDAY_REMINDER]: {
+    title: '客户生日提醒',
+    icon: 'Present',
+    color: '#722ED1',
+    category: '客户关怀',
+    priority: MessagePriority.NORMAL
+  },
+  [MessageType.CUSTOMER_ASSIGNED]: {
+    title: '客户分配通知',
+    icon: 'UserFilled',
+    color: '#409EFF',
+    category: '客户通知',
+    priority: MessagePriority.HIGH
+  },
+
+  // 【2025-12-13新增】资料分配相关模板
+  [MessageType.DATA_ASSIGNED]: {
+    title: '资料分配通知',
+    icon: 'Document',
+    color: '#409EFF',
+    category: '资料通知',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.DATA_REASSIGNED]: {
+    title: '资料重新分配',
+    icon: 'Switch',
+    color: '#E6A23C',
+    category: '资料通知',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.DATA_BATCH_ASSIGNED]: {
+    title: '批量分配完成',
+    icon: 'Finished',
+    color: '#67C23A',
+    category: '资料通知',
+    priority: MessagePriority.NORMAL
   }
 }
 
