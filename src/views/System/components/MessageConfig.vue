@@ -1405,6 +1405,7 @@ onMounted(async () => {
   background: white;
   border-radius: 12px;
   border: 1px solid #e4e7ed;
+  border-left: 4px solid #409eff;
   overflow: hidden;
   transition: all 0.3s ease;
 }
