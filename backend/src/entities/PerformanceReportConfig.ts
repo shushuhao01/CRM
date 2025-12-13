@@ -31,6 +31,9 @@ export class PerformanceReportConfig {
   @Column({ name: 'report_types', type: 'json', comment: '报表类型列表' })
   reportTypes!: string[];
 
+  @Column({ name: 'message_format', type: 'varchar', length: 20, default: 'text', comment: '消息格式: text/image' })
+  messageFormat!: string;
+
   @Column({ name: 'channel_type', type: 'varchar', length: 20, comment: '通知渠道' })
   channelType!: string;
 

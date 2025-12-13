@@ -514,6 +514,23 @@
 
         <el-divider content-position="left">通知方式</el-divider>
 
+        <el-form-item label="消息格式">
+          <el-radio-group v-model="performanceForm.messageFormat">
+            <el-radio label="text">
+              纯文本消息
+              <el-tooltip content="简洁的文本格式，兼容性好" placement="top">
+                <el-icon class="info-icon"><InfoFilled /></el-icon>
+              </el-tooltip>
+            </el-radio>
+            <el-radio label="image">
+              精美卡片消息
+              <el-tooltip content="Markdown格式，支持标题、列表等富文本展示" placement="top">
+                <el-icon class="info-icon"><InfoFilled /></el-icon>
+              </el-tooltip>
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
+
         <el-form-item label="通知渠道" prop="channelType">
           <el-radio-group v-model="performanceForm.channelType">
             <el-radio label="dingtalk">钉钉群机器人</el-radio>
@@ -554,13 +571,22 @@
             <div class="preview-section-title">💰 当日业绩</div>
             <div v-if="performanceForm.reportTypes.includes('order_count')" class="preview-item">   订单数: {{ previewData.daily?.orderCount || 0 }} 单</div>
             <div v-if="performanceForm.reportTypes.includes('order_amount')" class="preview-item">   订单金额: ¥{{ (previewData.daily?.orderAmount || 0).toLocaleString() }}</div>
-            <div v-if="performanceForm.reportTypes.includes('signed_count')" class="preview-item">   签收单数: {{ previewData.daily?.signedCount || 0 }} 单</div>
-            <div v-if="performanceForm.reportTypes.includes('signed_amount')" class="preview-item">   签收金额: ¥{{ (previewData.daily?.signedAmount || 0).toLocaleString() }}</div>
-            <div v-if="performanceForm.reportTypes.includes('signed_rate')" class="preview-item">   签收率: {{ previewData.daily?.signedRate || 0 }}%</div>
             <template v-if="performanceForm.includeMonthly">
               <div class="preview-section-title">📈 本月累计</div>
               <div class="preview-item">   订单数: {{ previewData.monthly?.orderCount || 0 }} 单</div>
-              <div class="preview-item">   签收金额: ¥{{ (previewData.monthly?.signedAmount || 0).toLocaleString() }}</div>
+              <div class="preview-item">   订单金额: ¥{{ (previewData.monthly?.orderAmount || 0).toLocaleString() }}</div>
+              <div v-if="performanceForm.reportTypes.includes('monthly_signed_count')" class="preview-item">   签收单数: {{ previewData.monthly?.signedCount || 0 }} 单</div>
+              <div v-if="performanceForm.reportTypes.includes('monthly_signed_amount')" class="preview-item">   签收金额: ¥{{ (previewData.monthly?.signedAmount || 0).toLocaleString() }}</div>
+              <div v-if="performanceForm.reportTypes.includes('monthly_signed_rate')" class="preview-item">   签收率: {{ previewData.monthly?.signedRate || 0 }}%</div>
+            </template>
+            <template v-if="performanceForm.includeRanking">
+              <div class="preview-section-title">🏆 业绩排行榜</div>
+              <div v-for="(item, index) in (previewData.topRanking || []).slice(0, 3)" :key="index" class="preview-item">
+                   {{ ['🥇', '🥈', '🥉'][index] }} {{ item.name }}: ¥{{ (item.amount || 0).toLocaleString() }}
+              </div>
+              <div v-if="!previewData.topRanking || previewData.topRanking.length === 0" class="preview-item" style="color: #909399;">
+                   暂无排名数据
+              </div>
             </template>
             <div class="preview-line">━━━━━━━━━━━━━━━━</div>
             <div class="preview-footer">📱 智能销售CRM</div>
@@ -621,7 +647,8 @@ const performanceForm = reactive({
   sendTime: '09:00',
   sendDays: [] as number[],
   repeatType: 'workday',
-  reportTypes: ['order_count', 'order_amount', 'signed_count', 'signed_amount', 'signed_rate'],
+  reportTypes: ['order_count', 'order_amount', 'monthly_signed_count', 'monthly_signed_amount', 'monthly_signed_rate'],
+  messageFormat: 'image',
   channelType: 'wechat_work',
   webhook: '',
   secret: '',
@@ -1028,7 +1055,8 @@ const resetPerformanceForm = () => {
   performanceForm.sendTime = '09:00'
   performanceForm.sendDays = []
   performanceForm.repeatType = 'workday'
-  performanceForm.reportTypes = ['order_count', 'order_amount', 'signed_count', 'signed_amount', 'signed_rate']
+  performanceForm.reportTypes = ['order_count', 'order_amount', 'monthly_signed_count', 'monthly_signed_amount', 'monthly_signed_rate']
+  performanceForm.messageFormat = 'image'
   performanceForm.channelType = 'wechat_work'
   performanceForm.webhook = ''
   performanceForm.secret = ''
@@ -1048,6 +1076,7 @@ const editPerformanceConfig = (config: any) => {
   performanceForm.sendDays = config.sendDays || []
   performanceForm.repeatType = config.repeatType
   performanceForm.reportTypes = config.reportTypes || []
+  performanceForm.messageFormat = config.messageFormat || 'image'
   performanceForm.channelType = config.channelType
   performanceForm.webhook = config.webhook
   performanceForm.secret = config.secret || ''
@@ -1073,6 +1102,7 @@ const savePerformanceConfig = async () => {
       sendDays: performanceForm.sendDays,
       repeatType: performanceForm.repeatType,
       reportTypes: performanceForm.reportTypes,
+      messageFormat: performanceForm.messageFormat,
       channelType: performanceForm.channelType,
       webhook: performanceForm.webhook,
       secret: performanceForm.secret || undefined,
