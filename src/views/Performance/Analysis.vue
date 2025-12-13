@@ -866,8 +866,12 @@ const viewOrdersByType = (row: any, columnProp: string) => {
   orderTypeMember.value = row
   orderTypeCurrentPage.value = 1
 
-  // 获取订单数据
-  let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+  // 🔥 获取订单数据 - 使用新的业绩计算规则
+  let orders = orderStore.orders.filter(order => {
+    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+    if (order.status === 'pending_transfer') return order.markType === 'normal'
+    return !excludedStatuses.includes(order.status)
+  })
 
   // 应用部门筛选
   if (selectedDepartment.value) {
@@ -1039,7 +1043,12 @@ const chartData = ref({
 // 加载图表数据
 const loadChartData = () => {
   try {
-    let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+    // 🔥 使用新的业绩计算规则
+    let orders = orderStore.orders.filter(order => {
+      const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+      if (order.status === 'pending_transfer') return order.markType === 'normal'
+      return !excludedStatuses.includes(order.status)
+    })
 
     // 应用部门筛选（通过销售人员的部门ID）
     if (selectedDepartment.value) {
@@ -1427,7 +1436,12 @@ const loadDepartmentData = () => {
       return
     }
 
-    let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+    // 🔥 使用新的业绩计算规则
+    let orders = orderStore.orders.filter(order => {
+      const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+      if (order.status === 'pending_transfer') return order.markType === 'normal'
+      return !excludedStatuses.includes(order.status)
+    })
 
     // 应用部门筛选（通过销售人员的部门ID）
     if (departmentId) {
@@ -1516,7 +1530,12 @@ const loadCompanyData = () => {
       return
     }
 
-    let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+    // 🔥 使用新的业绩计算规则
+    let orders = orderStore.orders.filter(order => {
+      const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+      if (order.status === 'pending_transfer') return order.markType === 'normal'
+      return !excludedStatuses.includes(order.status)
+    })
 
     // 应用日期筛选（只有当日期范围有效时才筛选）
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
@@ -1588,8 +1607,12 @@ const loadCompanyData = () => {
 
 const loadMetrics = () => {
   try {
-    // 获取所有已审核的订单
-    let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+    // 🔥 使用新的业绩计算规则
+    let orders = orderStore.orders.filter(order => {
+      const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+      if (order.status === 'pending_transfer') return order.markType === 'normal'
+      return !excludedStatuses.includes(order.status)
+    })
 
     // 应用部门筛选（通过销售人员的部门ID）
     if (selectedDepartment.value) {

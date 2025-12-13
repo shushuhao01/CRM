@@ -538,10 +538,22 @@ const performanceData = computed(() => {
   const data = performanceStore.personalPerformance
   const currentUserId = userStore.currentUser?.id
 
-  // 获取用户订单
-  let userOrders = orderStore.orders.filter(order =>
-    order.salesPersonId === currentUserId && order.auditStatus === 'approved'
-  )
+  // 🔥 获取用户订单 - 使用新的业绩计算规则
+  // 不再只统计审核通过的订单，而是根据状态和标记类型判断
+  let userOrders = orderStore.orders.filter(order => {
+    if (order.salesPersonId !== currentUserId) return false
+
+    // 🔥 统一的业绩计算规则
+    const excludedStatuses = [
+      'pending_cancel', 'cancelled', 'audit_rejected',
+      'logistics_returned', 'logistics_cancelled', 'refunded'
+    ]
+    // 待流转状态只有正常发货单才计入业绩
+    if (order.status === 'pending_transfer') {
+      return order.markType === 'normal'
+    }
+    return !excludedStatuses.includes(order.status)
+  })
 
   // 应用日期筛选
   if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
@@ -1538,11 +1550,13 @@ const getSalesTrendData = () => {
     }
   }
 
-  // 获取当前用户的订单
-  let userOrders = orderStore.orders.filter(order =>
-    order.salesPersonId === currentUserId &&
-    order.auditStatus === 'approved'
-  )
+  // 🔥 获取当前用户的订单 - 使用新的业绩计算规则
+  let userOrders = orderStore.orders.filter(order => {
+    if (order.salesPersonId !== currentUserId) return false
+    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+    if (order.status === 'pending_transfer') return order.markType === 'normal'
+    return !excludedStatuses.includes(order.status)
+  })
 
   // 应用日期筛选
   if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
@@ -1840,11 +1854,13 @@ const getOrderStatusData = () => {
     return { chartData: [], totalCount: 0, totalAmount: 0 }
   }
 
-  // 获取当前用户的订单
-  let userOrders = orderStore.orders.filter(order =>
-    order.salesPersonId === currentUserId &&
-    order.auditStatus === 'approved'
-  )
+  // 🔥 获取当前用户的订单 - 使用新的业绩计算规则
+  let userOrders = orderStore.orders.filter(order => {
+    if (order.salesPersonId !== currentUserId) return false
+    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+    if (order.status === 'pending_transfer') return order.markType === 'normal'
+    return !excludedStatuses.includes(order.status)
+  })
 
   // 应用日期筛选
   if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
@@ -2099,11 +2115,13 @@ const getProductSalesData = () => {
     }
   }
 
-  // 获取当前用户的订单
-  let userOrders = orderStore.orders.filter(order =>
-    order.salesPersonId === currentUserId &&
-    order.auditStatus === 'approved'
-  )
+  // 🔥 获取当前用户的订单 - 使用新的业绩计算规则
+  let userOrders = orderStore.orders.filter(order => {
+    if (order.salesPersonId !== currentUserId) return false
+    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+    if (order.status === 'pending_transfer') return order.markType === 'normal'
+    return !excludedStatuses.includes(order.status)
+  })
 
   // 应用日期筛选
   if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
@@ -2225,11 +2243,13 @@ const loadTableData = async () => {
       const currentUserId = userStore.currentUser?.id
 
       if (currentUserId) {
-        // 获取用户订单
-        let userOrders = orderStore.orders.filter(order =>
-          order.salesPersonId === currentUserId &&
-          order.auditStatus === 'approved'
-        )
+        // 🔥 获取用户订单 - 使用新的业绩计算规则
+        let userOrders = orderStore.orders.filter(order => {
+          if (order.salesPersonId !== currentUserId) return false
+          const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+          if (order.status === 'pending_transfer') return order.markType === 'normal'
+          return !excludedStatuses.includes(order.status)
+        })
 
         // 应用日期筛选
         if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
@@ -2303,10 +2323,13 @@ const loadTableData = async () => {
 
         // 计算客户详情（包含日期筛选）
         const customerDetailsWithOrders = userCustomers.map(customer => {
-          // 获取客户的订单
-          let customerOrders = orderStore.orders.filter(order =>
-            order.customerId === customer.id && order.auditStatus === 'approved'
-          )
+          // 🔥 获取客户的订单 - 使用新的业绩计算规则
+          let customerOrders = orderStore.orders.filter(order => {
+            if (order.customerId !== customer.id) return false
+            const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+            if (order.status === 'pending_transfer') return order.markType === 'normal'
+            return !excludedStatuses.includes(order.status)
+          })
 
           // 应用日期筛选
           if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
@@ -2353,10 +2376,13 @@ const loadTableData = async () => {
       console.log('[个人业绩-商品明细] 订单总数:', orderStore.orders.length)
 
       if (currentUserId) {
-        let userOrders = orderStore.orders.filter(order =>
-          order.salesPersonId === currentUserId &&
-          order.auditStatus === 'approved'
-        )
+        // 🔥 获取用户订单 - 使用新的业绩计算规则
+        let userOrders = orderStore.orders.filter(order => {
+          if (order.salesPersonId !== currentUserId) return false
+          const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+          if (order.status === 'pending_transfer') return order.markType === 'normal'
+          return !excludedStatuses.includes(order.status)
+        })
 
         // 应用日期筛选
         if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
