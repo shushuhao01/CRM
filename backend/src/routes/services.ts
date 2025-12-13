@@ -4,6 +4,7 @@ import { AfterSalesService } from '../entities/AfterSalesService';
 import { ServiceFollowUp } from '../entities/ServiceFollowUp';
 import { ServiceOperationLog } from '../entities/ServiceOperationLog';
 import { authenticateToken } from '../middleware/auth';
+import { orderNotificationService } from '../services/OrderNotificationService';
 // import { Like, In } from 'typeorm'; // 暂时未使用
 
 const router = Router();
@@ -308,6 +309,18 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
 
     console.log('[Services] 创建售后服务成功:', savedService.serviceNumber);
 
+    // 🔥 发送售后创建通知给创建者和管理员
+    orderNotificationService.notifyAfterSalesCreated({
+      id: savedService.id,
+      serviceNumber: savedService.serviceNumber,
+      orderId: savedService.orderId || undefined,
+      orderNumber: savedService.orderNumber || undefined,
+      customerName: savedService.customerName || undefined,
+      serviceType: savedService.serviceType,
+      createdBy: savedService.createdById || undefined,
+      createdByName: savedService.createdBy || undefined
+    }).catch(err => console.error('[Services] 发送售后创建通知失败:', err));
+
     res.status(201).json({
       success: true,
       message: '创建售后服务成功',
@@ -337,6 +350,8 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
     const serviceRepository = getServiceRepository();
     const { id } = req.params;
     const data = req.body;
+    const currentUser = (req as any).user;
+    const operatorName = currentUser?.realName || currentUser?.name || currentUser?.username || '系统';
 
     const service = await serviceRepository.findOne({ where: { id } });
 
@@ -346,6 +361,8 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
         message: '售后服务不存在'
       });
     }
+
+    const previousStatus = service.status;
 
     // 更新字段
     if (data.serviceType !== undefined) service.serviceType = data.serviceType;
@@ -366,6 +383,40 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
     const updatedService = await serviceRepository.save(service);
 
     console.log('[Services] 更新售后服务成功:', updatedService.serviceNumber);
+
+    // 🔥 如果状态发生变更，发送通知
+    if (data.status !== undefined && data.status !== previousStatus) {
+      const afterSalesInfo = {
+        id: service.id,
+        serviceNumber: service.serviceNumber,
+        orderId: service.orderId || undefined,
+        orderNumber: service.orderNumber || undefined,
+        customerName: service.customerName || undefined,
+        serviceType: service.serviceType,
+        createdBy: service.createdById || undefined,
+        createdByName: service.createdBy || undefined
+      };
+
+      switch (data.status) {
+        case 'processing':
+          orderNotificationService.notifyAfterSalesProcessing(afterSalesInfo, operatorName)
+            .catch(err => console.error('[Services] 发送处理中通知失败:', err));
+          break;
+        case 'resolved':
+        case 'closed':
+          orderNotificationService.notifyAfterSalesCompleted(afterSalesInfo, operatorName)
+            .catch(err => console.error('[Services] 发送完成通知失败:', err));
+          break;
+        case 'rejected':
+          orderNotificationService.notifyAfterSalesRejected(afterSalesInfo, operatorName, data.remark)
+            .catch(err => console.error('[Services] 发送拒绝通知失败:', err));
+          break;
+        case 'cancelled':
+          orderNotificationService.notifyAfterSalesCancelled(afterSalesInfo, operatorName)
+            .catch(err => console.error('[Services] 发送取消通知失败:', err));
+          break;
+      }
+    }
 
     res.json({
       success: true,
@@ -396,8 +447,10 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
     const serviceRepository = getServiceRepository();
     const { id } = req.params;
     const { status, remark } = req.body;
+    const currentUser = (req as any).user;
+    const operatorName = currentUser?.realName || currentUser?.name || currentUser?.username || '系统';
 
-    if (!['pending', 'processing', 'resolved', 'closed'].includes(status)) {
+    if (!['pending', 'processing', 'resolved', 'closed', 'rejected', 'cancelled'].includes(status)) {
       return res.status(400).json({
         success: false,
         message: '无效的状态值'
@@ -413,6 +466,7 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       });
     }
 
+    const previousStatus = service.status;
     service.status = status;
     if (remark) service.remark = remark;
 
@@ -422,6 +476,40 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
     }
 
     const updatedService = await serviceRepository.save(service);
+
+    // 🔥 根据状态变更发送通知
+    if (status !== previousStatus) {
+      const afterSalesInfo = {
+        id: service.id,
+        serviceNumber: service.serviceNumber,
+        orderId: service.orderId || undefined,
+        orderNumber: service.orderNumber || undefined,
+        customerName: service.customerName || undefined,
+        serviceType: service.serviceType,
+        createdBy: service.createdById || undefined,
+        createdByName: service.createdBy || undefined
+      };
+
+      switch (status) {
+        case 'processing':
+          orderNotificationService.notifyAfterSalesProcessing(afterSalesInfo, operatorName)
+            .catch(err => console.error('[Services] 发送处理中通知失败:', err));
+          break;
+        case 'resolved':
+        case 'closed':
+          orderNotificationService.notifyAfterSalesCompleted(afterSalesInfo, operatorName)
+            .catch(err => console.error('[Services] 发送完成通知失败:', err));
+          break;
+        case 'rejected':
+          orderNotificationService.notifyAfterSalesRejected(afterSalesInfo, operatorName, remark)
+            .catch(err => console.error('[Services] 发送拒绝通知失败:', err));
+          break;
+        case 'cancelled':
+          orderNotificationService.notifyAfterSalesCancelled(afterSalesInfo, operatorName)
+            .catch(err => console.error('[Services] 发送取消通知失败:', err));
+          break;
+      }
+    }
 
     res.json({
       success: true,

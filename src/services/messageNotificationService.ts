@@ -18,13 +18,40 @@ export const MESSAGE_RECEIVERS: Record<string, string[]> = {
   [MessageType.AUDIT_APPROVED]: ['sales_staff', 'department_manager'], // 发送给订单创建者
   [MessageType.AUDIT_REJECTED]: ['sales_staff', 'department_manager'], // 发送给订单创建者
 
+  // 订单生命周期 - 🔥 2025-12-14 完善
+  [MessageType.ORDER_CREATED]: ['sales_staff'], // 发送给订单创建者
+  [MessageType.ORDER_PENDING_AUDIT]: ['super_admin', 'admin', 'customer_service', 'sales_staff'], // 待审核通知
+  [MessageType.ORDER_AUDIT_APPROVED]: ['sales_staff'], // 审核通过通知创建者
+  [MessageType.ORDER_AUDIT_REJECTED]: ['super_admin', 'admin', 'customer_service', 'sales_staff'], // 审核拒绝通知
+  [MessageType.ORDER_PENDING_SHIPMENT]: ['sales_staff'], // 待发货通知创建者
+  [MessageType.ORDER_SHIPPED]: ['sales_staff'], // 发货通知创建者
+  [MessageType.ORDER_DELIVERED]: ['sales_staff'], // 签收通知创建者
+  [MessageType.ORDER_REJECTED]: ['super_admin', 'admin', 'customer_service', 'sales_staff'], // 拒收通知
+  [MessageType.ORDER_CANCELLED]: ['super_admin', 'admin', 'customer_service', 'sales_staff'], // 取消通知
+
+  // 物流异常 - 🔥 2025-12-14 新增
+  [MessageType.ORDER_LOGISTICS_RETURNED]: ['super_admin', 'admin', 'customer_service', 'sales_staff'],
+  [MessageType.ORDER_LOGISTICS_CANCELLED]: ['super_admin', 'admin', 'customer_service', 'sales_staff'],
+  [MessageType.ORDER_PACKAGE_EXCEPTION]: ['super_admin', 'admin', 'customer_service', 'sales_staff'],
+
+  // 取消审核
+  [MessageType.ORDER_CANCEL_REQUEST]: ['super_admin', 'admin', 'customer_service'],
+  [MessageType.ORDER_CANCEL_APPROVED]: ['sales_staff'],
+  [MessageType.ORDER_CANCEL_REJECTED]: ['sales_staff'],
+
   // 订单超时提醒
   [MessageType.ORDER_AUDIT_TIMEOUT]: ['super_admin', 'admin', 'customer_service'],
   [MessageType.ORDER_SHIPMENT_TIMEOUT]: ['super_admin', 'admin', 'customer_service'],
   [MessageType.ORDER_FOLLOWUP_REMINDER]: ['sales_staff', 'department_manager'],
+  [MessageType.ORDER_SUBMITTED]: ['sales_staff'], // 发送给订单创建者
+  [MessageType.ORDER_SIGNED]: ['sales_staff'],
 
-  // 售后相关
-  [MessageType.AFTER_SALES_CREATED]: ['super_admin', 'admin', 'customer_service'],
+  // 售后相关 - 🔥 2025-12-14 完善
+  [MessageType.AFTER_SALES_CREATED]: ['super_admin', 'admin', 'customer_service', 'sales_staff'],
+  [MessageType.AFTER_SALES_PROCESSING]: ['sales_staff'], // 处理中通知创建者
+  [MessageType.AFTER_SALES_COMPLETED]: ['sales_staff'], // 完成通知创建者
+  [MessageType.AFTER_SALES_REJECTED]: ['sales_staff'], // 拒绝通知创建者
+  [MessageType.AFTER_SALES_CANCELLED]: ['super_admin', 'admin', 'customer_service', 'sales_staff'],
   [MessageType.AFTER_SALES_TIMEOUT]: ['super_admin', 'admin', 'customer_service'],
   [MessageType.AFTER_SALES_ESCALATED]: ['super_admin', 'admin', 'department_manager'],
 
@@ -38,13 +65,6 @@ export const MESSAGE_RECEIVERS: Record<string, string[]> = {
   [MessageType.DATA_ASSIGNED]: ['sales_staff', 'department_manager'], // 发送给被分配者
   [MessageType.DATA_REASSIGNED]: ['sales_staff', 'department_manager'],
   [MessageType.DATA_BATCH_ASSIGNED]: ['super_admin', 'admin', 'department_manager'],
-
-  // 订单状态变更
-  [MessageType.ORDER_SUBMITTED]: ['sales_staff'], // 发送给订单创建者
-  [MessageType.ORDER_PENDING_SHIPMENT]: ['super_admin', 'admin', 'customer_service'],
-  [MessageType.ORDER_SHIPPED]: ['sales_staff'], // 发送给订单创建者
-  [MessageType.ORDER_SIGNED]: ['sales_staff'],
-  [MessageType.ORDER_CANCELLED]: ['sales_staff', 'department_manager'],
 }
 
 // 消息发送服务类 - 🔥 改为调用后端API存储消息

@@ -4,6 +4,7 @@ import { authenticateToken } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
 import { LogisticsCompany } from '../entities/LogisticsCompany';
 import { v4 as uuidv4 } from 'uuid';
+import { orderNotificationService } from '../services/OrderNotificationService';
 
 const router = Router();
 const logisticsController = new LogisticsController();
@@ -470,6 +471,32 @@ router.post('/order/status', async (req, res) => {
 
     console.log('✅ 订单物流状态已持久化到数据库:', { orderNo, newStatus, remark });
 
+    // 🔥 根据物流状态发送通知
+    const orderInfo = {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      totalAmount: Number(order.totalAmount),
+      createdBy: order.createdBy,
+      createdByName: order.createdByName
+    };
+
+    switch (newStatus) {
+      case 'delivered':
+        orderNotificationService.notifyOrderDelivered(orderInfo)
+          .catch(err => console.error('[物流状态] 发送签收通知失败:', err));
+        break;
+      case 'rejected':
+      case 'rejected_returned':
+        orderNotificationService.notifyOrderRejected(orderInfo, remark)
+          .catch(err => console.error('[物流状态] 发送拒收通知失败:', err));
+        break;
+      case 'exception':
+        orderNotificationService.notifyPackageException(orderInfo, remark)
+          .catch(err => console.error('[物流状态] 发送异常通知失败:', err));
+        break;
+    }
+
     return res.json({
       success: true,
       message: '物流状态更新成功',
@@ -570,6 +597,32 @@ router.post('/order/batch-status', async (req, res) => {
           await statusHistoryRepository.save(historyRecord);
         } catch (historyError) {
           console.warn(`⚠️ 订单 ${orderNo} 状态历史记录保存失败（不影响主流程）:`, historyError);
+        }
+
+        // 🔥 根据物流状态发送通知
+        const orderInfo = {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          customerName: order.customerName,
+          totalAmount: Number(order.totalAmount),
+          createdBy: order.createdBy,
+          createdByName: order.createdByName
+        };
+
+        switch (newStatus) {
+          case 'delivered':
+            orderNotificationService.notifyOrderDelivered(orderInfo)
+              .catch(err => console.error(`[物流状态] 订单 ${orderNo} 发送签收通知失败:`, err));
+            break;
+          case 'rejected':
+          case 'rejected_returned':
+            orderNotificationService.notifyOrderRejected(orderInfo, remark)
+              .catch(err => console.error(`[物流状态] 订单 ${orderNo} 发送拒收通知失败:`, err));
+            break;
+          case 'exception':
+            orderNotificationService.notifyPackageException(orderInfo, remark)
+              .catch(err => console.error(`[物流状态] 订单 ${orderNo} 发送异常通知失败:`, err));
+            break;
         }
 
         successCount++;
