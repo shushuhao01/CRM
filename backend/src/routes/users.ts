@@ -65,6 +65,13 @@ const createUserSchema = {
 };
 
 /**
+ * @route GET /api/v1/users/department-members
+ * @desc 获取同部门成员列表（所有登录用户可访问）
+ * @access Private (All authenticated users)
+ */
+router.get('/department-members', authenticateToken, userController.getDepartmentMembers);
+
+/**
  * @route GET /api/v1/users
  * @desc 获取用户列表
  * @access Private (Manager/Admin)
