@@ -719,6 +719,7 @@ const confirmBatchShipping = async () => {
         trackingNumber = importedTrackingNumbers.value[index]
       }
 
+      const now = new Date().toISOString()
       return {
         orderId: order.id,
         orderNo: order.orderNo,
@@ -727,7 +728,8 @@ const confirmBatchShipping = async () => {
         estimatedDelivery: batchForm.estimatedDelivery,
         remarks: batchForm.remarks,
         shippingMethod: batchForm.shippingMethod,
-        shippingTime: new Date().toISOString(),
+        shippingTime: now,
+        shippedAt: now, // 同时设置shippedAt字段
         status: 'shipped'
       }
     })
@@ -747,7 +749,9 @@ const confirmBatchShipping = async () => {
         expressCompany: data.logisticsCompany, // 使用expressCompany字段
         logisticsCompany: data.logisticsCompany, // 同时保留logisticsCompany字段
         shippingTime: data.shippingTime,
+        shippedAt: data.shippedAt, // 同时更新shippedAt字段
         estimatedDelivery: data.estimatedDelivery,
+        expectedDeliveryDate: data.estimatedDelivery, // 同时更新expectedDeliveryDate字段
         remarks: data.remarks
       })
     })

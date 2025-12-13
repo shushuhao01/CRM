@@ -583,11 +583,12 @@ const loadData = async () => {
       // 🔥 订单状态
       status: order.status || 'shipped',
       destination: order.receiverAddress || order.shippingAddress || '',
-      shipDate: order.shippedAt || order.shippingTime || order.shipTime || '',
-      // 🔥 新增：物流状态（独立于订单状态）
+      // 发货时间：优先使用shippedAt，其次shippingTime
+      shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
+      // 物流状态（独立于订单状态）
       logisticsStatus: order.logisticsStatus || '',
-      // 🔥 修复：预计送达时间，尝试多个字段
-      estimatedDate: order.expectedDeliveryDate || order.estimatedDeliveryTime || order.estimatedDate || ''
+      // 预计送达时间：尝试多个字段
+      estimatedDate: order.expectedDeliveryDate || order.estimatedDeliveryTime || order.estimatedDelivery || order.estimatedDate || ''
     }))
 
     // 应用搜索过滤
