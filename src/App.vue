@@ -28,6 +28,12 @@
             <span class="logo-text">智能销售CRM</span>
           </div>
         </div>
+
+        <!-- 公告横幅滚动（放在中间空位） -->
+        <div class="header-center">
+          <AnnouncementCarousel />
+        </div>
+
         <div class="header-right">
           <!-- 存储模式切换（已禁用）
           <StorageModeSwitch />
@@ -55,9 +61,6 @@
           </el-dropdown>
         </div>
       </el-header>
-
-      <!-- 公告轮播横幅 -->
-      <AnnouncementCarousel />
 
       <!-- 公告弹窗 -->
       <AnnouncementPopup />
@@ -898,6 +901,14 @@ watch(isMobile, (newValue) => {
 
 .logo-text {
   color: #303133;
+}
+
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
 }
 
 .header-right {
