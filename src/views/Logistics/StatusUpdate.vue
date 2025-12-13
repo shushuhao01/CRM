@@ -254,7 +254,6 @@
               size="small"
               type="primary"
               @click="updateStatus(row)"
-              v-if="activeTab === 'pending'"
             >
               更新状态
             </el-button>
@@ -262,9 +261,9 @@
               size="small"
               type="warning"
               @click="setTodo(row)"
-              v-if="activeTab === 'pending'"
+              v-if="activeTab === 'pending' || activeTab === 'updated'"
             >
-              待办
+              {{ row.isTodo ? '取消待办' : '待办' }}
             </el-button>
           </template>
         </el-table-column>
@@ -777,20 +776,25 @@ const loadData = async (showMessage = false) => {
 
     // 根据tab筛选
     if (activeTab.value === 'pending') {
-      // 待更新：已发货但物流状态还是shipped或pending或未设置的订单
+      // 待更新：只显示订单状态为shipped（已发货）且物流状态未更新的订单
       shippedOrders = shippedOrders.filter(order => {
+        // 只有订单状态为shipped的才显示在待更新
+        if (order.status !== 'shipped') {
+          return false
+        }
+        // 物流状态未设置或为空，表示还未更新过
         const logisticsStatus = order.logisticsStatus
-        // 如果物流状态未设置，或者物流状态是shipped/pending，则显示在待更新
-        return !logisticsStatus || logisticsStatus === 'shipped' || logisticsStatus === 'pending' || logisticsStatus === ''
+        return !logisticsStatus || logisticsStatus === '' || logisticsStatus === 'shipped' || logisticsStatus === 'pending'
       })
     } else if (activeTab.value === 'updated') {
-      // 已更新：物流状态已更新的订单（delivered, rejected等）
-      shippedOrders = shippedOrders.filter(order =>
-        order.logisticsStatus && ['delivered', 'rejected', 'returned', 'abnormal'].includes(order.logisticsStatus)
-      )
+      // 已更新：物流状态已被更新过的订单（不管更新成什么状态，只要logisticsStatus有值且不是初始状态）
+      shippedOrders = shippedOrders.filter(order => {
+        const logisticsStatus = order.logisticsStatus
+        // 有物流状态且不是初始状态（shipped/pending/空）
+        return logisticsStatus && logisticsStatus !== '' && logisticsStatus !== 'shipped' && logisticsStatus !== 'pending'
+      })
     } else if (activeTab.value === 'todo') {
       // 待办：标记为待办的订单
-      // 检查 isTodo 字段或 logisticsStatus === 'todo'
       shippedOrders = shippedOrders.filter(order =>
         order.isTodo === true || order.logisticsStatus === 'todo'
       )
@@ -951,13 +955,16 @@ const loadSummaryData = async (showAnimation = false) => {
 
     // 计算各状态的数量
     const pending = shippedOrders.filter(order => {
+      // 只有订单状态为shipped且物流状态未更新的才计入待更新
+      if (order.status !== 'shipped') return false
       const logisticsStatus = order.logisticsStatus
-      // 如果物流状态未设置，或者物流状态是shipped/pending，则计入待更新
-      return !logisticsStatus || logisticsStatus === 'shipped' || logisticsStatus === 'pending' || logisticsStatus === ''
+      return !logisticsStatus || logisticsStatus === '' || logisticsStatus === 'shipped' || logisticsStatus === 'pending'
     }).length
-    const updated = shippedOrders.filter(order =>
-      order.logisticsStatus && ['delivered', 'rejected', 'returned', 'abnormal'].includes(order.logisticsStatus)
-    ).length
+    const updated = shippedOrders.filter(order => {
+      // 物流状态已被更新过的订单（不是初始状态）
+      const logisticsStatus = order.logisticsStatus
+      return logisticsStatus && logisticsStatus !== '' && logisticsStatus !== 'shipped' && logisticsStatus !== 'pending'
+    }).length
     const todo = shippedOrders.filter(order => order.isTodo === true || order.logisticsStatus === 'todo').length
     const total = shippedOrders.length
 
