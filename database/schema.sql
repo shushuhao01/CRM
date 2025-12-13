@@ -1661,6 +1661,7 @@ CREATE TABLE `performance_report_configs` (
   `send_days` JSON COMMENT '发送日期',
   `repeat_type` VARCHAR(20) DEFAULT 'workday' COMMENT '重复类型: everyday/workday/custom',
   `report_types` JSON NOT NULL COMMENT '报表类型列表',
+  `message_format` VARCHAR(20) DEFAULT 'text' COMMENT '消息格式: text/image',
   `channel_type` VARCHAR(20) NOT NULL COMMENT '通知渠道: dingtalk/wechat_work',
   `webhook` VARCHAR(500) NOT NULL COMMENT 'Webhook地址',
   `secret` VARCHAR(200) COMMENT '加签密钥(钉钉)',

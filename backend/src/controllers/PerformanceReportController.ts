@@ -1,9 +1,8 @@
 import { Request, Response } from 'express';
 import { getDataSource } from '../config/database';
-import { PerformanceReportConfig, PerformanceReportLog } from '../entities/PerformanceReportConfig';
+import { PerformanceReportConfig } from '../entities/PerformanceReportConfig';
 import { Order } from '../entities/Order';
 import { User } from '../entities/User';
-import { Department } from '../entities/Department';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 
@@ -11,9 +10,9 @@ import crypto from 'crypto';
 export const REPORT_TYPES = [
   { value: 'order_count', label: '订单数量', category: '订单指标', description: '当日/当月订单总数' },
   { value: 'order_amount', label: '订单金额', category: '订单指标', description: '当日/当月订单总金额' },
-  { value: 'signed_count', label: '签收单数', category: '签收指标', description: '当日/当月签收订单数' },
-  { value: 'signed_amount', label: '签收金额', category: '签收指标', description: '当日/当月签收金额' },
-  { value: 'signed_rate', label: '签收率', category: '签收指标', description: '签收订单占比' },
+  { value: 'monthly_signed_count', label: '本月签收单数', category: '签收指标', description: '当月签收订单数' },
+  { value: 'monthly_signed_amount', label: '本月签收金额', category: '签收指标', description: '当月签收金额' },
+  { value: 'monthly_signed_rate', label: '本月签收率', category: '签收指标', description: '本月签收订单占比' },
   { value: 'refund_count', label: '退款单数', category: '退款指标', description: '当日/当月退款订单数' },
   { value: 'refund_amount', label: '退款金额', category: '退款指标', description: '当日/当月退款金额' },
   { value: 'refund_rate', label: '退款率', category: '退款指标', description: '退款订单占比' },
@@ -54,6 +53,7 @@ export class PerformanceReportController {
           sendDays: config.sendDays || [],
           repeatType: config.repeatType,
           reportTypes: config.reportTypes || [],
+          messageFormat: config.messageFormat || 'text',
           channelType: config.channelType,
           webhook: config.webhook,
           secret: config.secret ? '******' : '',
@@ -88,7 +88,7 @@ export class PerformanceReportController {
 
       const {
         name, sendFrequency, sendTime, sendDays, repeatType,
-        reportTypes, channelType, webhook, secret,
+        reportTypes, messageFormat, channelType, webhook, secret,
         viewScope, targetDepartments, includeMonthly, includeRanking, rankingLimit
       } = req.body;
 
@@ -108,7 +108,8 @@ export class PerformanceReportController {
         sendTime: sendTime || '09:00',
         sendDays: sendDays || null,
         repeatType: repeatType || 'workday',
-        reportTypes: reportTypes || ['order_count', 'order_amount', 'signed_count', 'signed_amount'],
+        reportTypes: reportTypes || ['order_count', 'order_amount', 'monthly_signed_count', 'monthly_signed_amount'],
+        messageFormat: messageFormat || 'image',
         channelType,
         webhook,
         secret: secret || null,
@@ -159,7 +160,7 @@ export class PerformanceReportController {
 
       const {
         name, isEnabled, sendFrequency, sendTime, sendDays, repeatType,
-        reportTypes, channelType, webhook, secret,
+        reportTypes, messageFormat, channelType, webhook, secret,
         viewScope, targetDepartments, includeMonthly, includeRanking, rankingLimit
       } = req.body;
 
@@ -170,6 +171,7 @@ export class PerformanceReportController {
       if (sendDays !== undefined) config.sendDays = sendDays;
       if (repeatType !== undefined) config.repeatType = repeatType;
       if (reportTypes !== undefined) config.reportTypes = reportTypes;
+      if (messageFormat !== undefined) config.messageFormat = messageFormat;
       if (channelType !== undefined) config.channelType = channelType;
       if (webhook !== undefined) config.webhook = webhook;
       if (secret !== undefined && secret !== '******') config.secret = secret || undefined;
@@ -280,15 +282,18 @@ export class PerformanceReportController {
         config.targetDepartments || []
       );
 
-      // 生成消息内容
-      const messageContent = this.generateTextMessage(reportData, config);
+      // 根据消息格式生成内容
+      const useMarkdown = config.messageFormat === 'image'; // image格式使用Markdown展示
+      const messageContent = useMarkdown
+        ? this.generateMarkdownMessage(reportData, config)
+        : this.generateTextMessage(reportData, config);
 
       // 发送消息
       let result: { success: boolean; message: string; details?: any };
       if (config.channelType === 'dingtalk') {
-        result = await this.sendDingtalkMessage(config.webhook, config.secret, messageContent);
+        result = await this.sendDingtalkMessage(config.webhook, config.secret, messageContent, useMarkdown);
       } else if (config.channelType === 'wechat_work') {
-        result = await this.sendWechatWorkMessage(config.webhook, messageContent);
+        result = await this.sendWechatWorkMessage(config.webhook, messageContent, useMarkdown);
       } else {
         result = { success: false, message: '不支持的渠道类型' };
       }
@@ -367,6 +372,45 @@ export class PerformanceReportController {
       ? ((monthlyStats.signedCount / monthlyStats.orderCount) * 100).toFixed(1)
       : '0.0';
 
+    // 获取本月业绩排名（前三名）
+    const userRepo = dataSource.getRepository(User);
+    let rankingQuery = orderRepo.createQueryBuilder('o')
+      .select([
+        'o.created_by as userId',
+        'COALESCE(SUM(o.total_amount), 0) as totalAmount',
+        'COUNT(*) as orderCount'
+      ])
+      .where('o.created_at >= :start', { start: monthStart })
+      .groupBy('o.created_by')
+      .orderBy('totalAmount', 'DESC')
+      .limit(3);
+
+    // 如果是部门视角，添加部门过滤
+    if (viewScope === 'department' && targetDepartments.length > 0) {
+      rankingQuery = rankingQuery.andWhere('o.department_id IN (:...depts)', { depts: targetDepartments });
+    }
+
+    const rankingData = await rankingQuery.getRawMany();
+
+    // 获取用户名称
+    const topRanking = await Promise.all(
+      rankingData.map(async (item: any) => {
+        let userName = '未知用户';
+        if (item.userId) {
+          const user = await userRepo.findOne({ where: { id: item.userId } });
+          if (user) {
+            userName = user.realName || user.username || '未知用户';
+          }
+        }
+        return {
+          userId: item.userId,
+          name: userName,
+          amount: parseFloat(item.totalAmount || '0'),
+          orderCount: parseInt(item.orderCount || '0')
+        };
+      })
+    );
+
     return {
       reportDate: yesterday.toISOString().split('T')[0],
       reportDateText: this.formatDateText(yesterday),
@@ -385,7 +429,8 @@ export class PerformanceReportController {
         signedCount: parseInt(monthlyStats?.signedCount || '0'),
         signedAmount: parseFloat(monthlyStats?.signedAmount || '0'),
         signedRate: monthlySignedRate
-      }
+      },
+      topRanking
     };
   }
 
@@ -400,7 +445,7 @@ export class PerformanceReportController {
     lines.push(`📅 ${data.reportDateText}`);
     lines.push('');
 
-    // 当日数据
+    // 当日数据（只显示订单数和订单金额，不显示签收数据）
     lines.push('💰 当日业绩');
     if (config.reportTypes.includes('order_count')) {
       lines.push(`   订单数: ${data.daily.orderCount} 单`);
@@ -408,24 +453,33 @@ export class PerformanceReportController {
     if (config.reportTypes.includes('order_amount')) {
       lines.push(`   订单金额: ¥${data.daily.orderAmount.toLocaleString()}`);
     }
-    if (config.reportTypes.includes('signed_count')) {
-      lines.push(`   签收单数: ${data.daily.signedCount} 单`);
-    }
-    if (config.reportTypes.includes('signed_amount')) {
-      lines.push(`   签收金额: ¥${data.daily.signedAmount.toLocaleString()}`);
-    }
-    if (config.reportTypes.includes('signed_rate')) {
-      lines.push(`   签收率: ${data.daily.signedRate}%`);
-    }
 
-    // 月累计数据
+    // 月累计数据（包含签收数据）
     if (config.includeMonthly === 1) {
       lines.push('');
       lines.push('📈 本月累计');
       lines.push(`   订单数: ${data.monthly.orderCount} 单`);
       lines.push(`   订单金额: ¥${data.monthly.orderAmount.toLocaleString()}`);
-      lines.push(`   签收金额: ¥${data.monthly.signedAmount.toLocaleString()}`);
-      lines.push(`   签收率: ${data.monthly.signedRate}%`);
+      if (config.reportTypes.includes('monthly_signed_count')) {
+        lines.push(`   签收单数: ${data.monthly.signedCount} 单`);
+      }
+      if (config.reportTypes.includes('monthly_signed_amount')) {
+        lines.push(`   签收金额: ¥${data.monthly.signedAmount.toLocaleString()}`);
+      }
+      if (config.reportTypes.includes('monthly_signed_rate')) {
+        lines.push(`   签收率: ${data.monthly.signedRate}%`);
+      }
+    }
+
+    // 业绩排名（前三名）
+    if (config.includeRanking === 1 && data.topRanking && data.topRanking.length > 0) {
+      lines.push('');
+      lines.push('🏆 业绩排行榜');
+      const medals = ['🥇', '🥈', '🥉'];
+      data.topRanking.slice(0, 3).forEach((item: any, index: number) => {
+        const medal = medals[index] || `${index + 1}.`;
+        lines.push(`   ${medal} ${item.name}: ¥${item.amount.toLocaleString()}`);
+      });
     }
 
     lines.push('');
@@ -448,9 +502,64 @@ export class PerformanceReportController {
   }
 
   /**
+   * 生成Markdown格式消息（更精美的展示）
+   */
+  private generateMarkdownMessage(data: any, config: PerformanceReportConfig): string {
+    const lines: string[] = [];
+
+    lines.push(`## 📊 ${config.name}`);
+    lines.push('');
+    lines.push(`> 📅 ${data.reportDateText}`);
+    lines.push('');
+
+    // 当日数据
+    lines.push('### 💰 当日业绩');
+    if (config.reportTypes.includes('order_count')) {
+      lines.push(`- **订单数**: ${data.daily.orderCount} 单`);
+    }
+    if (config.reportTypes.includes('order_amount')) {
+      lines.push(`- **订单金额**: ¥${data.daily.orderAmount.toLocaleString()}`);
+    }
+    lines.push('');
+
+    // 月累计数据
+    if (config.includeMonthly === 1) {
+      lines.push('### 📈 本月累计');
+      lines.push(`- **订单数**: ${data.monthly.orderCount} 单`);
+      lines.push(`- **订单金额**: ¥${data.monthly.orderAmount.toLocaleString()}`);
+      if (config.reportTypes.includes('monthly_signed_count')) {
+        lines.push(`- **签收单数**: ${data.monthly.signedCount} 单`);
+      }
+      if (config.reportTypes.includes('monthly_signed_amount')) {
+        lines.push(`- **签收金额**: ¥${data.monthly.signedAmount.toLocaleString()}`);
+      }
+      if (config.reportTypes.includes('monthly_signed_rate')) {
+        lines.push(`- **签收率**: ${data.monthly.signedRate}%`);
+      }
+      lines.push('');
+    }
+
+    // 业绩排名（前三名）
+    if (config.includeRanking === 1 && data.topRanking && data.topRanking.length > 0) {
+      lines.push('### 🏆 业绩排行榜');
+      const medals = ['🥇', '🥈', '🥉'];
+      data.topRanking.slice(0, 3).forEach((item: any, index: number) => {
+        const medal = medals[index] || `${index + 1}.`;
+        lines.push(`${medal} **${item.name}**: ¥${item.amount.toLocaleString()}`);
+      });
+      lines.push('');
+    }
+
+    lines.push('---');
+    lines.push('*智能销售CRM*');
+
+    return lines.join('\n');
+  }
+
+  /**
    * 发送钉钉消息
    */
-  private async sendDingtalkMessage(webhook: string, secret: string | undefined, message: string): Promise<{ success: boolean; message: string; details?: any }> {
+  private async sendDingtalkMessage(webhook: string, secret: string | undefined, message: string, useMarkdown: boolean = false): Promise<{ success: boolean; message: string; details?: any }> {
     try {
       let url = webhook;
 
@@ -463,13 +572,22 @@ export class PerformanceReportController {
         url = `${webhook}&timestamp=${timestamp}&sign=${sign}`;
       }
 
+      // 根据消息格式选择不同的消息类型
+      const body = useMarkdown ? {
+        msgtype: 'markdown',
+        markdown: {
+          title: '业绩日报',
+          text: message
+        }
+      } : {
+        msgtype: 'text',
+        text: { content: message }
+      };
+
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          msgtype: 'text',
-          text: { content: message }
-        })
+        body: JSON.stringify(body)
       });
 
       const result = await response.json() as { errcode: number; errmsg: string };
@@ -487,17 +605,23 @@ export class PerformanceReportController {
   /**
    * 发送企业微信消息
    */
-  private async sendWechatWorkMessage(webhook: string, message: string): Promise<{ success: boolean; message: string; details?: any }> {
+  private async sendWechatWorkMessage(webhook: string, message: string, useMarkdown: boolean = false): Promise<{ success: boolean; message: string; details?: any }> {
     try {
       console.log(`[业绩报表] 发送企业微信消息...`);
+
+      // 根据消息格式选择不同的消息类型
+      const body = useMarkdown ? {
+        msgtype: 'markdown',
+        markdown: { content: message }
+      } : {
+        msgtype: 'text',
+        text: { content: message }
+      };
 
       const response = await fetch(webhook, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          msgtype: 'text',
-          text: { content: message }
-        })
+        body: JSON.stringify(body)
       });
 
       const result = await response.json() as { errcode: number; errmsg: string };
