@@ -1289,24 +1289,45 @@ const handleViewUsers = async (row: RoleData) => {
   userPagination.page = 1
 
   try {
-    // 【生产环境修复】仅在开发环境从localStorage获取用户数据
+    // 从API获取用户数据
     let allUsers: any[] = []
-    if (!import.meta.env.PROD) {
-      allUsers = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
-      console.log('[角色权限] 开发环境：所有用户数据:', allUsers.length)
-    } else {
-      console.log('[角色权限] 生产环境：应通过API获取用户数据')
-      // TODO: 生产环境应该调用API获取用户数据
+    try {
+      const { default: userDataService } = await import('@/services/userDataService')
+      allUsers = await userDataService.getUsers()
+      console.log('[角色权限] 从API获取用户成功:', allUsers.length)
+    } catch (apiError) {
+      console.error('[角色权限] API获取用户失败:', apiError)
+      allUsers = []
     }
     console.log('[角色权限] 查找角色:', row.code)
+
+    // 创建角色名称到code的映射（支持中文名称匹配）
+    const roleNameToCode: Record<string, string> = {
+      '超级管理员': 'super_admin',
+      '管理员': 'admin',
+      '系统管理员': 'admin',
+      '部门经理': 'department_manager',
+      '经理': 'department_manager',
+      '销售员': 'sales_staff',
+      '销售': 'sales_staff',
+      '客服': 'customer_service',
+      '客服人员': 'customer_service'
+    }
 
     // 筛选该角色的用户 - 使用 roleId 字段匹配
     const users = allUsers
       .filter((user: any) => {
         // 支持多种角色字段匹配
-        const userRole = user.roleId || user.role
-        console.log(`[角色权限] 用户 ${user.username} 的角色: ${userRole}`)
-        return userRole === row.code
+        let userRoleCode = user.roleId || user.role_id || user.role || ''
+        // 如果是中文名称，转换为code
+        if (roleNameToCode[userRoleCode]) {
+          userRoleCode = roleNameToCode[userRoleCode]
+        }
+        const matched = userRoleCode === row.code
+        if (matched) {
+          console.log(`[角色权限] 用户 ${user.username || user.realName} 匹配角色: ${userRoleCode}`)
+        }
+        return matched
       })
       .map((user: any) => ({
         id: user.id,
