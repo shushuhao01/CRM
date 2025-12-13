@@ -8,55 +8,63 @@
 
     <!-- 数据汇总 -->
     <div class="stats-section">
-      <el-row :gutter="20">
+      <el-row :gutter="16">
+        <!-- 公告数量 -->
         <el-col :span="6">
-          <el-card class="stats-card">
-            <div class="stats-content">
-              <div class="stats-icon subscription">
-                <el-icon><Bell /></el-icon>
-              </div>
-              <div class="stats-info">
-                <div class="stats-number">{{ stats.activeSubscriptions }}/{{ stats.totalSubscriptions }}</div>
-                <div class="stats-label">消息订阅</div>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card class="stats-card">
+          <el-card class="stats-card announcement-card">
             <div class="stats-content">
               <div class="stats-icon announcement">
                 <el-icon><ChatDotRound /></el-icon>
               </div>
               <div class="stats-info">
-                <div class="stats-number">{{ stats.publishedAnnouncements }}/{{ stats.totalAnnouncements }}</div>
-                <div class="stats-label">系统公告</div>
+                <div class="stats-number">{{ stats.publishedAnnouncements }}</div>
+                <div class="stats-label">已发布公告</div>
+                <div class="stats-sub">共 {{ stats.totalAnnouncements }} 条</div>
               </div>
             </div>
           </el-card>
         </el-col>
+        <!-- 普通通知配置 -->
         <el-col :span="6">
-          <el-card class="stats-card">
+          <el-card class="stats-card channel-card">
+            <div class="stats-content">
+              <div class="stats-icon channel">
+                <el-icon><Bell /></el-icon>
+              </div>
+              <div class="stats-info">
+                <div class="stats-number">{{ stats.notificationChannelCount }}</div>
+                <div class="stats-label">普通通知配置</div>
+                <div class="stats-sub">今日 {{ stats.todayNotificationSent }} / 累计 {{ stats.totalNotificationSent }}</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+        <!-- 业绩消息配置 -->
+        <el-col :span="6">
+          <el-card class="stats-card performance-card">
+            <div class="stats-content">
+              <div class="stats-icon performance">
+                <el-icon><DataAnalysis /></el-icon>
+              </div>
+              <div class="stats-info">
+                <div class="stats-number">{{ stats.performanceConfigCount }}</div>
+                <div class="stats-label">业绩消息配置</div>
+                <div class="stats-sub">今日 {{ stats.todayPerformanceSent }} / 累计 {{ stats.totalPerformanceSent }}</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+        <!-- 系统消息 -->
+        <el-col :span="6">
+          <el-card class="stats-card message-card">
             <div class="stats-content">
               <div class="stats-icon message">
                 <el-icon><Message /></el-icon>
               </div>
               <div class="stats-info">
-                <div class="stats-number">{{ stats.unreadMessages }}/{{ stats.totalMessages }}</div>
+                <div class="stats-number">{{ stats.unreadMessages }}</div>
                 <div class="stats-label">未读消息</div>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card class="stats-card">
-            <div class="stats-content">
-              <div class="stats-icon config">
-                <el-icon><Setting /></el-icon>
-              </div>
-              <div class="stats-info">
-                <div class="stats-number">{{ stats.configuredChannels }}/{{ stats.totalChannels }}</div>
-                <div class="stats-label">通知渠道</div>
+                <div class="stats-sub">共 {{ stats.totalMessages }} 条</div>
               </div>
             </div>
           </el-card>
@@ -112,7 +120,8 @@ import {
   Bell,
   ChatDotRound,
   Message,
-  Setting
+  Setting,
+  DataAnalysis
 } from '@element-plus/icons-vue'
 
 // 当前激活的选项卡（默认显示公告发布）
@@ -123,14 +132,20 @@ const messageStore = useMessageStore()
 
 // 统计数据
 const stats = ref({
-  totalSubscriptions: 0,
-  activeSubscriptions: 0,
+  // 公告
   totalAnnouncements: 0,
   publishedAnnouncements: 0,
+  // 普通通知配置
+  notificationChannelCount: 0,
+  todayNotificationSent: 0,
+  totalNotificationSent: 0,
+  // 业绩消息配置
+  performanceConfigCount: 0,
+  todayPerformanceSent: 0,
+  totalPerformanceSent: 0,
+  // 系统消息
   unreadMessages: 0,
-  totalMessages: 0,
-  configuredChannels: 0,
-  totalChannels: 0
+  totalMessages: 0
 })
 
 // 加载统计数据
@@ -138,7 +153,7 @@ const loadStats = async () => {
   try {
     const response = await messageStore.messageApi.getMessageStats()
     if (response.data) {
-      stats.value = response.data
+      stats.value = { ...stats.value, ...response.data }
     }
   } catch (error) {
     console.error('加载统计数据失败:', error)
@@ -208,20 +223,20 @@ onMounted(() => {
   color: white;
 }
 
-.stats-icon.subscription {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
 .stats-icon.announcement {
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
 }
 
-.stats-icon.message {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+.stats-icon.channel {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
-.stats-icon.config {
-  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+.stats-icon.performance {
+  background: linear-gradient(135deg, #E6A23C 0%, #F56C6C 100%);
+}
+
+.stats-icon.message {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
 }
 
 .stats-info {
@@ -238,6 +253,12 @@ onMounted(() => {
 
 .stats-label {
   font-size: 14px;
+  color: #606266;
+  margin-bottom: 2px;
+}
+
+.stats-sub {
+  font-size: 12px;
   color: #909399;
 }
 

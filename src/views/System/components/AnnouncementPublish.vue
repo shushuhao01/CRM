@@ -100,6 +100,17 @@
           </template>
         </el-table-column>
 
+        <el-table-column label="送达/已读" width="120" align="center">
+          <template #default="{ row }">
+            <div v-if="row.status === 'published'" class="read-stats">
+              <span class="delivered">{{ row.deliveredCount || 0 }}</span>
+              <span class="separator">/</span>
+              <span class="read">{{ row.readCount || 0 }}</span>
+            </div>
+            <span v-else style="color: #909399;">-</span>
+          </template>
+        </el-table-column>
+
         <el-table-column label="创建人" width="100" align="center">
           <template #default="{ row }">
             {{ row.createdBy }}
@@ -642,6 +653,28 @@ onBeforeUnmount(() => {
 .publish-time {
   font-size: 12px;
   color: #909399;
+}
+
+.read-stats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.read-stats .delivered {
+  color: #409EFF;
+  font-weight: 500;
+}
+
+.read-stats .separator {
+  color: #909399;
+}
+
+.read-stats .read {
+  color: #67C23A;
+  font-weight: 500;
 }
 
 .editor-container {
