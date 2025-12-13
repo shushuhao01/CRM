@@ -100,12 +100,12 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="送达/已读" width="120" align="center">
+        <el-table-column label="已读/送达" width="120" align="center">
           <template #default="{ row }">
             <div v-if="row.status === 'published'" class="read-stats">
-              <span class="delivered">{{ row.deliveredCount || 0 }}</span>
-              <span class="separator">/</span>
               <span class="read">{{ row.readCount || 0 }}</span>
+              <span class="separator">/</span>
+              <span class="delivered">{{ row.deliveredCount || 0 }}</span>
             </div>
             <span v-else style="color: #909399;">-</span>
           </template>
@@ -196,8 +196,10 @@
         </el-form-item>
 
         <el-form-item label="显示方式">
-          <el-checkbox v-model="announcementForm.isPopup">弹窗显示</el-checkbox>
-          <el-checkbox v-model="announcementForm.isMarquee">横幅滚动</el-checkbox>
+          <div class="display-options">
+            <el-checkbox v-model="announcementForm.isPopup">弹窗显示（登录时弹窗提醒）</el-checkbox>
+            <el-checkbox v-model="announcementForm.isMarquee">横幅滚动（页面顶部滚动显示）</el-checkbox>
+          </div>
         </el-form-item>
 
         <el-form-item label="发布方式">
@@ -514,7 +516,9 @@ const saveAnnouncement = async () => {
       type: announcementForm.type === 'company' ? 'notice' : 'department',
       priority: 'normal',
       targetDepartments: announcementForm.type === 'department' ? announcementForm.targetDepartments : null,
-      isPinned: false
+      isPinned: false,
+      isPopup: announcementForm.isPopup,
+      isMarquee: announcementForm.isMarquee
     }
 
     // 如果是定时发布
@@ -723,5 +727,15 @@ onBeforeUnmount(() => {
 
 :deep(.el-checkbox) {
   margin-right: 20px;
+}
+
+.display-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.display-options .el-checkbox {
+  margin-right: 0;
 }
 </style>

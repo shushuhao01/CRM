@@ -120,15 +120,15 @@ export const useMessageStore = defineStore('message', () => {
   })
 
   const activeAnnouncements = computed(() => {
-    return announcements.value.filter(ann => 
-      ann.status === 'published' && 
+    return announcements.value.filter(ann =>
+      ann.status === 'published' &&
       ann.isMarquee
     )
   })
 
   const popupAnnouncements = computed(() => {
-    return announcements.value.filter(ann => 
-      ann.status === 'published' && 
+    return announcements.value.filter(ann =>
+      ann.status === 'published' &&
       ann.isPopup
     )
   })
@@ -199,6 +199,21 @@ export const useMessageStore = defineStore('message', () => {
       announcements.value = []
     } finally {
       loading.value = false
+    }
+  }
+
+  // 加载当前用户的已发布公告（用于弹窗和消息铃铛）
+  const loadUserAnnouncements = async () => {
+    try {
+      const response = await messageApi.getPublishedAnnouncements()
+      if (response.success) {
+        announcements.value = response.data || []
+        console.log('[MessageStore] 加载用户公告:', announcements.value.length, '条')
+      }
+      return response
+    } catch (error) {
+      console.error('加载用户公告失败:', error)
+      announcements.value = []
     }
   }
 
@@ -335,16 +350,15 @@ export const useMessageStore = defineStore('message', () => {
 
   const markAnnouncementAsRead = async (id: string) => {
     try {
-      // 这里可以调用API标记公告为已读，目前先在本地标记
+      // 调用API标记公告为已读
+      await messageApi.markAnnouncementAsRead(id)
+      // 更新本地状态
       const announcement = announcements.value.find(ann => ann.id === id)
       if (announcement) {
-        // 在公告对象上添加已读标记
         (announcement as any).read = true
       }
-      ElMessage.success('已标记为已读')
     } catch (error) {
       console.error('标记公告已读失败:', error)
-      ElMessage.error('标记失败')
     }
   }
 
@@ -355,17 +369,18 @@ export const useMessageStore = defineStore('message', () => {
     configs,
     systemMessages,
     loading,
-    
+
     // 计算属性
     unreadMessageCount,
     activeAnnouncements,
     popupAnnouncements,
-    
+
     // 方法
     loadSubscriptions,
     updateSubscription,
     updateDepartmentSubscription,
     loadAnnouncements,
+    loadUserAnnouncements,
     createAnnouncement,
     updateAnnouncement,
     deleteAnnouncement,
@@ -376,7 +391,7 @@ export const useMessageStore = defineStore('message', () => {
     markMessageAsRead,
     markAllMessagesAsRead,
     markAnnouncementAsRead,
-    
+
     // API对象
     messageApi
   }
