@@ -13,7 +13,7 @@
         </el-button>
         <el-button type="primary" @click="showCreateDialog">
           <el-icon><Plus /></el-icon>
-          新建配置
+          新增普通配置
         </el-button>
       </div>
     </div>

@@ -157,8 +157,17 @@ export const messageApi = {
   // =====================================================
 
   // 获取通知渠道配置列表
-  getNotificationChannels: () => {
-    return request.get('/message/notification-channels')
+  getNotificationChannels: async () => {
+    try {
+      return await request.get('/message/notification-channels')
+    } catch (error: any) {
+      // 如果是404或500错误，返回空数据
+      if (error?.status === 404 || error?.status === 500) {
+        console.log('[Message API] 通知渠道功能未启用或后端未实现')
+        return { success: true, data: [] }
+      }
+      throw error
+    }
   },
 
   // 创建通知渠道配置

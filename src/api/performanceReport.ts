@@ -2,8 +2,17 @@ import { api as request } from './request'
 
 export const performanceReportApi = {
   // 获取业绩报表配置列表
-  getConfigs: () => {
-    return request.get('/performance-report/configs')
+  getConfigs: async () => {
+    try {
+      return await request.get('/performance-report/configs')
+    } catch (error: any) {
+      // 如果是404或500错误，返回空数据
+      if (error?.status === 404 || error?.status === 500) {
+        console.log('[PerformanceReport API] 业绩报表功能未启用或后端未实现')
+        return { success: true, data: [] }
+      }
+      throw error
+    }
   },
 
   // 创建业绩报表配置

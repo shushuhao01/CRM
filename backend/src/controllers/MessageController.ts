@@ -1717,34 +1717,48 @@ export class MessageController {
     try {
       const dataSource = getDataSource();
       if (!dataSource) {
+        console.log('[通知配置] 数据库未连接，返回空列表');
         res.json({ success: true, data: [] });
         return;
       }
 
-      const channelRepo = dataSource.getRepository(NotificationChannel);
-      const channels = await channelRepo.find({
-        order: { createdAt: 'DESC' }
-      });
+      // 检查表是否存在
+      try {
+        const channelRepo = dataSource.getRepository(NotificationChannel);
+        const channels = await channelRepo.find({
+          order: { createdAt: 'DESC' }
+        });
 
-      res.json({
-        success: true,
-        data: channels.map(channel => ({
-          id: channel.id,
-          name: channel.name,
-          channelType: channel.channelType,
-          isEnabled: channel.isEnabled === 1,
-          config: channel.config,
-          messageTypes: channel.messageTypes || [],
-          targetType: channel.targetType,
-          targetDepartments: channel.targetDepartments || [],
-          targetUsers: channel.targetUsers || [],
-          targetRoles: channel.targetRoles || [],
-          priorityFilter: channel.priorityFilter,
-          createdByName: channel.createdByName,
-          createdAt: channel.createdAt,
-          updatedAt: channel.updatedAt
-        }))
-      });
+        console.log(`[通知配置] 查询到 ${channels.length} 个配置`);
+
+        res.json({
+          success: true,
+          data: channels.map(channel => ({
+            id: channel.id,
+            name: channel.name,
+            channelType: channel.channelType,
+            isEnabled: channel.isEnabled === 1,
+            config: channel.config,
+            messageTypes: channel.messageTypes || [],
+            targetType: channel.targetType,
+            targetDepartments: channel.targetDepartments || [],
+            targetUsers: channel.targetUsers || [],
+            targetRoles: channel.targetRoles || [],
+            priorityFilter: channel.priorityFilter,
+            createdByName: channel.createdByName,
+            createdAt: channel.createdAt,
+            updatedAt: channel.updatedAt
+          }))
+        });
+      } catch (dbError: any) {
+        // 如果是表不存在的错误，返回空列表
+        if (dbError.code === 'ER_NO_SUCH_TABLE' || dbError.message?.includes('doesn\'t exist')) {
+          console.log('[通知配置] 表不存在，返回空列表');
+          res.json({ success: true, data: [] });
+          return;
+        }
+        throw dbError;
+      }
     } catch (error) {
       console.error('获取通知配置失败:', error);
       res.status(500).json({ success: false, message: '获取通知配置失败' });
