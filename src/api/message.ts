@@ -27,7 +27,8 @@ export const messageApi = {
   // 公告相关
   getAnnouncements: async (params?: any) => {
     try {
-      return await request.get('/message/announcements', { params })
+      // 直接传递params，不要嵌套
+      return await request.get('/message/announcements', params)
     } catch (error: any) {
       // 【修复】如果是404或502错误，返回空数据而不是抛出错误
       if (error?.status === 404 || error?.status === 502 || error?.status === 500) {

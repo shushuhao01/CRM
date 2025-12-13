@@ -823,19 +823,23 @@ const loadChannels = async () => {
   try {
     console.log('[MessageConfig] 开始加载通知渠道配置...')
     const res = await messageApi.getNotificationChannels() as any
-    console.log('[MessageConfig] 通知渠道配置响应:', res)
-    if (res.success) {
-      channels.value = (res.data || []).map((c: any) => ({
+    console.log('[MessageConfig] 通知渠道配置响应:', JSON.stringify(res))
+    if (res && res.success) {
+      const data = res.data || []
+      console.log('[MessageConfig] 响应数据:', JSON.stringify(data))
+      channels.value = data.map((c: any) => ({
         ...c,
         statusLoading: false,
         testLoading: false
       }))
       console.log('[MessageConfig] 加载到', channels.value.length, '个通知渠道配置')
     } else {
-      console.warn('[MessageConfig] 加载通知渠道配置失败:', res.message)
+      console.warn('[MessageConfig] 加载通知渠道配置失败:', res?.message || '响应无效')
+      channels.value = []
     }
   } catch (_error) {
     console.error('[MessageConfig] 加载通知配置异常:', _error)
+    channels.value = []
   } finally {
     loading.value = false
   }
