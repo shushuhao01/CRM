@@ -129,19 +129,37 @@ const handleReadLater = async () => {
 // 检查是否有需要弹窗显示的公告
 const checkPopupAnnouncements = () => {
   const announcements = messageStore.announcements || []
+  console.log('🔔 [公告弹窗] 检查公告列表:', announcements.length, '条')
+  console.log('🔔 [公告弹窗] 公告详情:', announcements.map((a: any) => ({
+    id: a.id,
+    title: a.title,
+    status: a.status,
+    isPopup: a.isPopup,
+    read: a.read
+  })))
 
   const popupAnnouncements = announcements.filter((a: any) => {
     // 必须是已发布、开启弹窗、未读、且未被用户关闭的公告
-    return a.status === 'published' &&
-           a.isPopup &&
+    const shouldShow = a.status === 'published' &&
+           a.isPopup === true &&
            !a.read &&
            !dismissedIds.value.has(a.id)
+    console.log(`🔔 [公告弹窗] 公告 "${a.title}" 是否显示:`, shouldShow, {
+      status: a.status,
+      isPopup: a.isPopup,
+      read: a.read,
+      dismissed: dismissedIds.value.has(a.id)
+    })
+    return shouldShow
   })
+
+  console.log('🔔 [公告弹窗] 需要弹窗的公告:', popupAnnouncements.length, '条')
 
   if (popupAnnouncements.length > 0) {
     pendingAnnouncements.value = popupAnnouncements
     currentIndex.value = 0
     visible.value = true
+    console.log('🔔 [公告弹窗] 显示弹窗')
   }
 }
 

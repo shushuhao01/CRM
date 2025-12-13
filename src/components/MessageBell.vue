@@ -285,12 +285,18 @@ const markAllAsRead = async () => {
 
 const clearAllMessages = async () => {
   try {
-    await ElMessageBox.confirm('确认清空所有消息吗？此操作不可恢复。', '确认清空', {
+    await ElMessageBox.confirm('确认清空所有消息吗？\n系统消息将被删除，系统公告将被隐藏。', '确认清空', {
       type: 'warning'
     })
 
-    // 🔥 调用API同步到数据库
+    // 🔥 清空系统消息（调用API同步到数据库）
     await notificationStore.clearAllMessagesWithAPI()
+
+    // 🔥 隐藏所有公告（不删除，只是本地隐藏）
+    const allAnnouncementIds = announcements.value.map(a => a.id)
+    hiddenAnnouncementIds.value = [...new Set([...hiddenAnnouncementIds.value, ...allAnnouncementIds])]
+    saveHiddenAnnouncements()
+
     ElMessage.success('消息已清空')
   } catch (error) {
     if (error !== 'cancel') {
