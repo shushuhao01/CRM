@@ -1584,7 +1584,30 @@ CREATE TABLE `announcement_reads` (
   INDEX `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公告阅读记录表';
 
--- 28. 通知渠道配置表
+-- 28. 系统消息表
+DROP TABLE IF EXISTS `system_messages`;
+CREATE TABLE `system_messages` (
+  `id` VARCHAR(36) PRIMARY KEY COMMENT '消息ID',
+  `type` VARCHAR(50) NOT NULL COMMENT '消息类型',
+  `title` VARCHAR(200) NOT NULL COMMENT '消息标题',
+  `content` TEXT NOT NULL COMMENT '消息内容',
+  `priority` VARCHAR(20) DEFAULT 'normal' COMMENT '优先级',
+  `category` VARCHAR(50) DEFAULT '系统通知' COMMENT '消息分类',
+  `target_user_id` VARCHAR(36) NOT NULL COMMENT '接收者用户ID',
+  `created_by` VARCHAR(36) COMMENT '发送者用户ID',
+  `related_id` VARCHAR(36) COMMENT '关联的业务ID',
+  `related_type` VARCHAR(50) COMMENT '关联类型',
+  `action_url` VARCHAR(200) COMMENT '跳转URL',
+  `is_read` TINYINT(1) DEFAULT 0 COMMENT '是否已读',
+  `read_at` TIMESTAMP NULL COMMENT '阅读时间',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `idx_type` (`type`),
+  INDEX `idx_target_user_id` (`target_user_id`),
+  INDEX `idx_is_read` (`is_read`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统消息表';
+
+-- 29. 通知渠道配置表
 DROP TABLE IF EXISTS `notification_channels`;
 CREATE TABLE `notification_channels` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '配置ID',
@@ -1607,7 +1630,7 @@ CREATE TABLE `notification_channels` (
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知渠道配置表';
 
--- 29. 通知发送记录表
+-- 30. 通知发送记录表
 DROP TABLE IF EXISTS `notification_logs`;
 CREATE TABLE `notification_logs` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '记录ID',
