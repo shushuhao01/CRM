@@ -414,22 +414,28 @@ const getStatusText = (status: string) => {
 const loadAnnouncements = async () => {
   loading.value = true
   try {
+    console.log('[AnnouncementPublish] 开始加载公告列表, 参数:', filterForm)
     const response = await messageApi.getAnnouncements(filterForm)
+    console.log('[AnnouncementPublish] API响应:', response)
     // 后端返回 { success: true, data: { list: [], total: 0 } } 格式
     if (response && response.success && response.data) {
       if (Array.isArray(response.data.list)) {
         announcements.value = response.data.list
+        console.log('[AnnouncementPublish] 使用data.list格式')
       } else if (Array.isArray(response.data)) {
         announcements.value = response.data
+        console.log('[AnnouncementPublish] 使用data数组格式')
       } else {
         announcements.value = []
+        console.log('[AnnouncementPublish] data格式不匹配，设为空数组')
       }
     } else {
       announcements.value = []
+      console.log('[AnnouncementPublish] 响应无效，设为空数组')
     }
-    console.log('[AnnouncementPublish] 加载公告列表:', announcements.value.length, '条')
+    console.log('[AnnouncementPublish] 最终加载公告列表:', announcements.value.length, '条')
   } catch (error) {
-    console.error('加载公告列表失败:', error)
+    console.error('[AnnouncementPublish] 加载公告列表失败:', error)
     announcements.value = []
   } finally {
     loading.value = false
