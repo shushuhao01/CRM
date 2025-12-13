@@ -53,14 +53,14 @@ export const menuConfig: MenuItem[] = [
         id: 'customer-groups',
         title: '客户分组',
         path: '/customer/groups',
-        roles: ['super_admin', 'admin', 'sales_staff'],
+        roles: ['super_admin', 'admin', 'department_manager'],
         permissions: ['customer:groups']
       },
       {
         id: 'customer-tags',
         title: '客户标签',
         path: '/customer/tags',
-        roles: ['super_admin', 'admin', 'sales_staff'],
+        roles: ['super_admin', 'admin', 'department_manager'],
         permissions: ['customer:tags']
       }
     ]
@@ -116,9 +116,9 @@ export const menuConfig: MenuItem[] = [
         id: 'service-sms',
         title: '短信管理',
         path: '/service-management/sms',
-        roles: ['super_admin', 'admin', 'sales_staff', 'customer_service'],
+        roles: ['super_admin', 'admin', 'department_manager', 'customer_service'],
         permissions: ['service:sms'],
-        dataScope: 'self' // 销售员看个人短信记录
+        dataScope: 'self' // 部门经理看本部门短信记录
       }
     ]
   },
@@ -173,7 +173,7 @@ export const menuConfig: MenuItem[] = [
         id: 'logistics-shipping',
         title: '发货列表',
         path: '/logistics/shipping',
-        roles: ['super_admin', 'admin', 'sales_staff', 'customer_service'],
+        roles: ['super_admin', 'admin', 'department_manager', 'customer_service'],
         permissions: ['logistics:shipping'],
         dataScope: 'all' // 客服处理全公司发货
       },
@@ -197,7 +197,7 @@ export const menuConfig: MenuItem[] = [
         id: 'logistics-status-update',
         title: '状态更新',
         path: '/logistics/status-update',
-        roles: ['super_admin', 'admin', 'sales_staff', 'customer_service'],
+        roles: ['super_admin', 'admin', 'department_manager', 'customer_service'],
         permissions: ['logistics:status'],
         dataScope: 'all' // 客服处理全公司状态更新
       },
@@ -269,7 +269,7 @@ export const menuConfig: MenuItem[] = [
         id: 'data-recycle',
         title: '回收站',
         path: '/data/recycle',
-        roles: ['super_admin', 'admin', 'sales_staff'],
+        roles: ['super_admin', 'admin', 'department_manager'],
         permissions: ['data:recycle']
       }
     ]
@@ -475,68 +475,66 @@ export const rolePermissions: Record<string, string[]> = {
   sales_staff: [
     // 数据看板
     'dashboard', 'dashboard:personal',
-    
-    // 客户管理
+
+    // 客户管理（移除客户分组、客户标签）
     'customer', 'customer:list', 'customer:view:personal', 'customer:add',
-    'customer:groups', 'customer:tags',
-    
+
     // 订单管理
     'order', 'order:list', 'order:view:personal', 'order:add',
-    
-    // 服务管理
+
+    // 服务管理（移除短信管理）
     'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
-    'service:sms',
-    
+
     // 业绩统计
     'performance', 'performance:personal', 'performance:personal:view',
     'performance:team', 'performance:team:view',
-    
-    // 物流管理
+
+    // 物流管理（移除发货列表、状态更新）
     'logistics', 'logistics:list', 'logistics:view',
-    'logistics:tracking', 'logistics:tracking:view', 'logistics:shipping', 'logistics:status',
-    
+    'logistics:tracking', 'logistics:tracking:view',
+
     // 售后管理
     'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:add', 'aftersale:analysis',
-    
-    // 资料管理
-    'data', 'data:customer', 'data:customer:search', 'data:recycle'
+
+    // 资料管理（移除回收站）
+    'data', 'data:customer', 'data:customer:search'
   ],
 
   // 客服默认权限：根据客服类型动态配置
   customer_service: [
     // 订单审核权限（保留）
     'order:audit', 'order:audit:view',
-    
+
     // 物流管理权限
     'logistics', 'logistics:list', 'logistics:list:view', 'logistics:shipping', 'logistics:shipping:view',
     'logistics:tracking', 'logistics:tracking:view', 'logistics:status_update',
-    
+
     // 售后管理权限
     'aftersale', 'aftersale:order', 'aftersale:order:view', 'aftersale:add', 'aftersale:data',
-    
+
     // 资料管理权限
     'data', 'data:customer', 'data:customer:search', 'data:list'
   ],
-  
+
   // 售后客服专用权限
   customer_service_after_sales: [
     'dashboard', 'dashboard:view',
     'order', 'order:list', 'order:list:view',
-    'aftersale', 'aftersale:order', 'aftersale:order:view', 'aftersale:order:edit', 
+    'aftersale', 'aftersale:order', 'aftersale:order:view', 'aftersale:order:edit',
     'aftersale:add', 'aftersale:data', 'aftersale:data:view',
     'service', 'service:afterSales:view', 'service:afterSales:edit',
     'data', 'data:customer', 'data:customer:search'
   ],
-  
+
   // 审核客服专用权限
   customer_service_audit: [
     'dashboard', 'dashboard:view',
-    'order', 'order:list', 'order:list:view', 'order:audit', 'order:audit:view', 
+    'order', 'order:list', 'order:list:view', 'order:audit', 'order:audit:view',
     'order:audit:approve', 'order:audit:reject',
     'customer', 'customer:list', 'customer:list:view',
     'data', 'data:customer', 'data:customer:search'
   ],
-  
+
   // 物流客服专用权限
   customer_service_logistics: [
     'dashboard', 'dashboard:view',
@@ -546,7 +544,7 @@ export const rolePermissions: Record<string, string[]> = {
     'logistics:status_update', 'logistics:status_update:edit',
     'data', 'data:customer', 'data:customer:search'
   ],
-  
+
   // 商品客服专用权限
   customer_service_product: [
     'dashboard', 'dashboard:view',
