@@ -345,24 +345,30 @@
               </el-checkbox-group>
             </div>
             <!-- 更多消息类型（折叠） -->
-            <el-collapse v-if="otherMessageTypes && otherMessageTypes.length > 0" v-model="messageTypesExpanded" class="message-types-collapse">
-              <el-collapse-item title="更多消息类型" name="more">
-                <div class="message-types-grid">
-                  <template v-for="category in messageTypeCategories" :key="category?.name || 'unknown'">
-                    <div v-if="category && category.types" class="message-category">
-                      <div class="category-title">{{ category.name }}</div>
-                      <el-checkbox-group v-model="form.messageTypes">
-                        <template v-for="type in category.types" :key="type?.value || Math.random()">
-                          <el-checkbox v-if="type && type.value" :label="type.value">
-                            {{ type.label }}
-                          </el-checkbox>
-                        </template>
-                      </el-checkbox-group>
-                    </div>
-                  </template>
-                </div>
-              </el-collapse-item>
-            </el-collapse>
+            <div v-if="otherMessageTypes && otherMessageTypes.length > 0" class="message-types-more">
+              <div class="more-divider" @click="toggleMessageTypesExpand">
+                <span class="divider-line"></span>
+                <span class="divider-text">
+                  <el-icon :class="{ 'is-expanded': messageTypesExpanded.includes('more') }"><ArrowDown /></el-icon>
+                  更多消息类型
+                </span>
+                <span class="divider-line"></span>
+              </div>
+              <div v-show="messageTypesExpanded.includes('more')" class="message-types-grid">
+                <template v-for="category in messageTypeCategories" :key="category?.name || 'unknown'">
+                  <div v-if="category && category.types" class="message-category">
+                    <div class="category-title">{{ category.name }}</div>
+                    <el-checkbox-group v-model="form.messageTypes">
+                      <template v-for="type in category.types" :key="type?.value || Math.random()">
+                        <el-checkbox v-if="type && type.value" :label="type.value">
+                          {{ type.label }}
+                        </el-checkbox>
+                      </template>
+                    </el-checkbox-group>
+                  </div>
+                </template>
+              </div>
+            </div>
           </div>
         </el-form-item>
 
@@ -521,24 +527,30 @@
               </el-checkbox-group>
             </div>
             <!-- 更多指标（折叠） -->
-            <el-collapse v-if="reportTypeCategories && reportTypeCategories.length > 2" v-model="reportTypesExpanded" class="report-types-collapse">
-              <el-collapse-item title="更多指标" name="more">
-                <div class="report-types-grid">
-                  <template v-for="category in reportTypeCategories.slice(2)" :key="category?.name || 'unknown'">
-                    <div v-if="category && category.types" class="report-category">
-                      <div class="category-title">{{ category.name }}</div>
-                      <el-checkbox-group v-model="performanceForm.reportTypes">
-                        <template v-for="type in category.types" :key="type?.value || Math.random()">
-                          <el-checkbox v-if="type && type.value" :label="type.value">
-                            {{ type.label }}
-                          </el-checkbox>
-                        </template>
-                      </el-checkbox-group>
-                    </div>
-                  </template>
-                </div>
-              </el-collapse-item>
-            </el-collapse>
+            <div v-if="reportTypeCategories && reportTypeCategories.length > 2" class="report-types-more">
+              <div class="more-divider" @click="toggleReportTypesExpand">
+                <span class="divider-line"></span>
+                <span class="divider-text">
+                  <el-icon :class="{ 'is-expanded': reportTypesExpanded.includes('more') }"><ArrowDown /></el-icon>
+                  更多指标
+                </span>
+                <span class="divider-line"></span>
+              </div>
+              <div v-show="reportTypesExpanded.includes('more')" class="report-types-grid">
+                <template v-for="category in reportTypeCategories.slice(2)" :key="category?.name || 'unknown'">
+                  <div v-if="category && category.types" class="report-category">
+                    <div class="category-title">{{ category.name }}</div>
+                    <el-checkbox-group v-model="performanceForm.reportTypes">
+                      <template v-for="type in category.types" :key="type?.value || Math.random()">
+                        <el-checkbox v-if="type && type.value" :label="type.value">
+                          {{ type.label }}
+                        </el-checkbox>
+                      </template>
+                    </el-checkbox-group>
+                  </div>
+                </template>
+              </div>
+            </div>
           </div>
         </el-form-item>
 
@@ -654,7 +666,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus, User, Setting, Connection, Edit, Delete, InfoFilled,
   ChatDotRound, ChatLineSquare, ChatRound, Message, Iphone, Monitor,
-  DataAnalysis, Refresh
+  DataAnalysis, Refresh, ArrowDown
 } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { messageApi } from '@/api/message'
@@ -748,6 +760,24 @@ const messageTypeCategories = computed(() => {
   })
   return Object.entries(categories).map(([name, types]) => ({ name, types }))
 })
+
+// 切换消息类型展开/折叠
+const toggleMessageTypesExpand = () => {
+  if (messageTypesExpanded.value.includes('more')) {
+    messageTypesExpanded.value = []
+  } else {
+    messageTypesExpanded.value = ['more']
+  }
+}
+
+// 切换报表类型展开/折叠
+const toggleReportTypesExpand = () => {
+  if (reportTypesExpanded.value.includes('more')) {
+    reportTypesExpanded.value = []
+  } else {
+    reportTypesExpanded.value = ['more']
+  }
+}
 
 // 预览日期
 const previewDate = computed(() => {
@@ -1581,6 +1611,48 @@ onMounted(async () => {
   font-size: 12px;
   color: #909399;
   margin-right: 8px;
+}
+
+/* 更多消息类型折叠区域 */
+.message-types-more,
+.report-types-more {
+  margin-top: 12px;
+}
+
+.more-divider {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 8px 0;
+  user-select: none;
+}
+
+.more-divider:hover .divider-text {
+  color: #409EFF;
+}
+
+.divider-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #dcdfe6, transparent);
+}
+
+.divider-text {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: #909399;
+  transition: color 0.2s;
+}
+
+.divider-text .el-icon {
+  transition: transform 0.3s;
+}
+
+.divider-text .el-icon.is-expanded {
+  transform: rotate(180deg);
 }
 
 .report-types-collapse,

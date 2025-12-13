@@ -1,0 +1,692 @@
+/**
+ * 订单消息通知服务
+ *
+ * 负责订单全生命周期的消息通知
+ * 所有消息都存储到数据库，支持跨设备通知
+ *
+ * 创建日期：2025-12-14
+ */
+
+import { getDataSource } from '../config/database';
+import { SystemMessage } from '../entities/SystemMessage';
+import { User } from '../entities/User';
+import { v4 as uuidv4 } from 'uuid';
+
+// 消息类型定义
+export const OrderMessageTypes = {
+  // 订单生命周期
+  ORDER_CREATED: 'order_created',           // 订单创建
+  ORDER_PENDING_AUDIT: 'order_pending_audit', // 待审核
+  ORDER_AUDIT_APPROVED: 'order_audit_approved', // 审核通过
+  ORDER_AUDIT_REJECTED: 'order_audit_rejected', // 审核拒绝
+  ORDER_PENDING_SHIPMENT: 'order_pending_shipment', // 待发货
+  ORDER_SHIPPED: 'order_shipped',           // 已发货
+  ORDER_DELIVERED: 'order_delivered',       // 已签收
+  ORDER_REJECTED: 'order_rejected',         // 拒收
+  ORDER_CANCELLED: 'order_cancelled',       // 已取消
+
+  // 物流异常
+  ORDER_LOGISTICS_RETURNED: 'order_logistics_returned', // 物流退回
+  ORDER_LOGISTICS_CANCELLED: 'order_logistics_cancelled', // 物流取消
+  ORDER_PACKAGE_EXCEPTION: 'order_package_exception', // 包裹异常
+
+  // 取消审核
+  ORDER_CANCEL_REQUEST: 'order_cancel_request', // 取消申请
+  ORDER_CANCEL_APPROVED: 'order_cancel_approved', // 取消审核通过
+  ORDER_CANCEL_REJECTED: 'order_cancel_rejected', // 取消审核拒绝
+};
+
+// 售后消息类型
+export const AfterSalesMessageTypes = {
+  AFTER_SALES_CREATED: 'after_sales_created',     // 售后创建
+  AFTER_SALES_PROCESSING: 'after_sales_processing', // 处理中
+  AFTER_SALES_COMPLETED: 'after_sales_completed',   // 已完成
+  AFTER_SALES_REJECTED: 'after_sales_rejected',     // 已拒绝
+  AFTER_SALES_CANCELLED: 'after_sales_cancelled',   // 已取消
+};
+
+// 管理员角色列表
+const ADMIN_ROLES = ['super_admin', 'admin', 'customer_service'];
+
+interface OrderInfo {
+  id: string;
+  orderNumber: string;
+  customerName?: string;
+  totalAmount?: number;
+  createdBy?: string;
+  createdByName?: string;
+}
+
+interface AfterSalesInfo {
+  id: string;
+  serviceNumber: string;
+  orderId?: string;
+  orderNumber?: string;
+  customerName?: string;
+  serviceType?: string;
+  createdBy?: string;
+  createdByName?: string;
+}
+
+class OrderNotificationService {
+
+  /**
+   * 发送消息到数据库
+   */
+  private async sendMessage(
+    type: string,
+    title: string,
+    content: string,
+    targetUserId: string,
+    options?: {
+      priority?: string;
+      category?: string;
+      relatedId?: string;
+      relatedType?: string;
+      actionUrl?: string;
+      createdBy?: string;
+    }
+  ): Promise<boolean> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        console.error('[OrderNotification] 数据库未连接');
+        return false;
+      }
+
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      const message = messageRepo.create({
+        id: uuidv4(),
+        type,
+        title,
+        content,
+        targetUserId,
+        priority: options?.priority || 'normal',
+        category: options?.category || '订单通知',
+        relatedId: options?.relatedId,
+        relatedType: options?.relatedType || 'order',
+        actionUrl: options?.actionUrl,
+        createdBy: options?.createdBy,
+        isRead: 0
+      });
+
+      await messageRepo.save(message);
+      console.log(`[OrderNotification] ✅ 消息已发送: ${type} -> ${targetUserId}`);
+      return true;
+    } catch (error) {
+      console.error('[OrderNotification] ❌ 发送消息失败:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 批量发送消息
+   */
+  private async sendBatchMessages(
+    type: string,
+    title: string,
+    content: string,
+    targetUserIds: string[],
+    options?: {
+      priority?: string;
+      category?: string;
+      relatedId?: string;
+      relatedType?: string;
+      actionUrl?: string;
+      createdBy?: string;
+    }
+  ): Promise<number> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        console.error('[OrderNotification] 数据库未连接');
+        return 0;
+      }
+
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      const messages = targetUserIds.map(userId => messageRepo.create({
+        id: uuidv4(),
+        type,
+        title,
+        content,
+        targetUserId: userId,
+        priority: options?.priority || 'normal',
+        category: options?.category || '订单通知',
+        relatedId: options?.relatedId,
+        relatedType: options?.relatedType || 'order',
+        actionUrl: options?.actionUrl,
+        createdBy: options?.createdBy,
+        isRead: 0
+      }));
+
+      await messageRepo.save(messages);
+      console.log(`[OrderNotification] ✅ 批量发送 ${messages.length} 条消息: ${type}`);
+      return messages.length;
+    } catch (error) {
+      console.error('[OrderNotification] ❌ 批量发送消息失败:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * 获取指定角色的所有用户ID
+   */
+  private async getUserIdsByRoles(roles: string[]): Promise<string[]> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) return [];
+
+      const userRepo = dataSource.getRepository(User);
+      const users = await userRepo.find({
+        where: { status: 'active' },
+        select: ['id', 'role']
+      });
+
+      return users
+        .filter(u => roles.includes(u.role))
+        .map(u => u.id);
+    } catch (error) {
+      console.error('[OrderNotification] 获取用户列表失败:', error);
+      return [];
+    }
+  }
+
+  // ==================== 订单生命周期通知 ====================
+
+  /**
+   * 订单创建通知 - 通知下单员
+   */
+  async notifyOrderCreated(order: OrderInfo, _operatorName?: string): Promise<void> {
+    if (!order.createdBy) return;
+
+    const content = `您的订单 #${order.orderNumber} 已创建成功，客户：${order.customerName || '未知'}，金额：¥${(order.totalAmount || 0).toFixed(2)}`;
+
+    await this.sendMessage(
+      OrderMessageTypes.ORDER_CREATED,
+      '📝 订单创建成功',
+      content,
+      order.createdBy,
+      {
+        relatedId: order.id,
+        actionUrl: '/order/list'
+      }
+    );
+  }
+
+  /**
+   * 订单待审核通知 - 通知下单员 + 管理员
+   */
+  async notifyOrderPendingAudit(order: OrderInfo, _operatorName?: string): Promise<void> {
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    const allTargets = new Set<string>(adminUserIds);
+
+    // 添加下单员
+    if (order.createdBy) {
+      allTargets.add(order.createdBy);
+    }
+
+    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}，金额：¥${(order.totalAmount || 0).toFixed(2)}）已提交审核，请及时处理`;
+
+    await this.sendBatchMessages(
+      OrderMessageTypes.ORDER_PENDING_AUDIT,
+      '📋 订单待审核',
+      content,
+      Array.from(allTargets),
+      {
+        priority: 'high',
+        relatedId: order.id,
+        actionUrl: '/order/audit'
+      }
+    );
+  }
+
+  /**
+   * 订单审核通过通知 - 通知下单员
+   */
+  async notifyOrderAuditApproved(order: OrderInfo, auditorName: string): Promise<void> {
+    if (!order.createdBy) return;
+
+    const content = `您的订单 #${order.orderNumber} 已被 ${auditorName} 审核通过，即将安排发货`;
+
+    await this.sendMessage(
+      OrderMessageTypes.ORDER_AUDIT_APPROVED,
+      '✅ 订单审核通过',
+      content,
+      order.createdBy,
+      {
+        relatedId: order.id,
+        actionUrl: '/order/list'
+      }
+    );
+  }
+
+  /**
+   * 订单审核拒绝通知 - 通知下单员 + 管理员
+   */
+  async notifyOrderAuditRejected(order: OrderInfo, auditorName: string, reason?: string): Promise<void> {
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    const allTargets = new Set<string>(adminUserIds);
+
+    if (order.createdBy) {
+      allTargets.add(order.createdBy);
+    }
+
+    const content = `订单 #${order.orderNumber} 被 ${auditorName} 审核拒绝${reason ? `，原因：${reason}` : ''}`;
+
+    await this.sendBatchMessages(
+      OrderMessageTypes.ORDER_AUDIT_REJECTED,
+      '❌ 订单审核拒绝',
+      content,
+      Array.from(allTargets),
+      {
+        priority: 'high',
+        relatedId: order.id,
+        actionUrl: '/order/list'
+      }
+    );
+  }
+
+  /**
+   * 订单待发货通知 - 通知下单员
+   */
+  async notifyOrderPendingShipment(order: OrderInfo): Promise<void> {
+    if (!order.createdBy) return;
+
+    const content = `您的订单 #${order.orderNumber} 已进入待发货状态，请耐心等待`;
+
+    await this.sendMessage(
+      OrderMessageTypes.ORDER_PENDING_SHIPMENT,
+      '📦 订单待发货',
+      content,
+      order.createdBy,
+      {
+        relatedId: order.id,
+        actionUrl: '/order/list'
+      }
+    );
+  }
+
+  /**
+   * 订单已发货通知 - 通知下单员
+   */
+  async notifyOrderShipped(order: OrderInfo, trackingNumber?: string, expressCompany?: string): Promise<void> {
+    if (!order.createdBy) return;
+
+    let content = `您的订单 #${order.orderNumber} 已发货`;
+    if (expressCompany) content += `，快递公司：${expressCompany}`;
+    if (trackingNumber) content += `，运单号：${trackingNumber}`;
+
+    await this.sendMessage(
+      OrderMessageTypes.ORDER_SHIPPED,
+      '🚚 订单已发货',
+      content,
+      order.createdBy,
+      {
+        relatedId: order.id,
+        actionUrl: '/order/list'
+      }
+    );
+  }
+
+  /**
+   * 订单已签收通知 - 通知下单员
+   */
+  async notifyOrderDelivered(order: OrderInfo): Promise<void> {
+    if (!order.createdBy) return;
+
+    const content = `您的订单 #${order.orderNumber} 已签收，感谢您的支持`;
+
+    await this.sendMessage(
+      OrderMessageTypes.ORDER_DELIVERED,
+      '✅ 订单已签收',
+      content,
+      order.createdBy,
+      {
+        relatedId: order.id,
+        actionUrl: '/order/list'
+      }
+    );
+  }
+
+  /**
+   * 订单拒收通知 - 通知下单员 + 管理员
+   */
+  async notifyOrderRejected(order: OrderInfo, reason?: string): Promise<void> {
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    const allTargets = new Set<string>(adminUserIds);
+
+    if (order.createdBy) {
+      allTargets.add(order.createdBy);
+    }
+
+    const content = `订单 #${order.orderNumber} 被客户拒收${reason ? `，原因：${reason}` : ''}`;
+
+    await this.sendBatchMessages(
+      OrderMessageTypes.ORDER_REJECTED,
+      '⚠️ 订单拒收',
+      content,
+      Array.from(allTargets),
+      {
+        priority: 'high',
+        relatedId: order.id,
+        actionUrl: '/order/list'
+      }
+    );
+  }
+
+  /**
+   * 订单取消通知 - 通知下单员 + 管理员
+   */
+  async notifyOrderCancelled(order: OrderInfo, reason?: string, operatorName?: string): Promise<void> {
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    const allTargets = new Set<string>(adminUserIds);
+
+    if (order.createdBy) {
+      allTargets.add(order.createdBy);
+    }
+
+    let content = `订单 #${order.orderNumber} 已取消`;
+    if (operatorName) content += `，操作人：${operatorName}`;
+    if (reason) content += `，原因：${reason}`;
+
+    await this.sendBatchMessages(
+      OrderMessageTypes.ORDER_CANCELLED,
+      '🚫 订单已取消',
+      content,
+      Array.from(allTargets),
+      {
+        relatedId: order.id,
+        actionUrl: '/order/list'
+      }
+    );
+  }
+
+  // ==================== 物流异常通知 ====================
+
+  /**
+   * 物流退回通知 - 通知下单员 + 管理员
+   */
+  async notifyLogisticsReturned(order: OrderInfo, reason?: string): Promise<void> {
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    const allTargets = new Set<string>(adminUserIds);
+
+    if (order.createdBy) {
+      allTargets.add(order.createdBy);
+    }
+
+    const content = `订单 #${order.orderNumber} 物流已退回${reason ? `，原因：${reason}` : ''}`;
+
+    await this.sendBatchMessages(
+      OrderMessageTypes.ORDER_LOGISTICS_RETURNED,
+      '📦 物流退回',
+      content,
+      Array.from(allTargets),
+      {
+        priority: 'high',
+        relatedId: order.id,
+        actionUrl: '/logistics/shipping'
+      }
+    );
+  }
+
+  /**
+   * 物流取消通知 - 通知下单员 + 管理员
+   */
+  async notifyLogisticsCancelled(order: OrderInfo, reason?: string): Promise<void> {
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    const allTargets = new Set<string>(adminUserIds);
+
+    if (order.createdBy) {
+      allTargets.add(order.createdBy);
+    }
+
+    const content = `订单 #${order.orderNumber} 物流已取消${reason ? `，原因：${reason}` : ''}`;
+
+    await this.sendBatchMessages(
+      OrderMessageTypes.ORDER_LOGISTICS_CANCELLED,
+      '🚫 物流取消',
+      content,
+      Array.from(allTargets),
+      {
+        priority: 'high',
+        relatedId: order.id,
+        actionUrl: '/logistics/shipping'
+      }
+    );
+  }
+
+  /**
+   * 包裹异常通知 - 通知下单员 + 管理员
+   */
+  async notifyPackageException(order: OrderInfo, reason?: string): Promise<void> {
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    const allTargets = new Set<string>(adminUserIds);
+
+    if (order.createdBy) {
+      allTargets.add(order.createdBy);
+    }
+
+    const content = `订单 #${order.orderNumber} 包裹异常${reason ? `，详情：${reason}` : '，请及时处理'}`;
+
+    await this.sendBatchMessages(
+      OrderMessageTypes.ORDER_PACKAGE_EXCEPTION,
+      '⚠️ 包裹异常',
+      content,
+      Array.from(allTargets),
+      {
+        priority: 'urgent',
+        relatedId: order.id,
+        actionUrl: '/logistics/shipping'
+      }
+    );
+  }
+
+  // ==================== 取消审核通知 ====================
+
+  /**
+   * 取消申请通知 - 通知管理员
+   */
+  async notifyOrderCancelRequest(order: OrderInfo, reason?: string): Promise<void> {
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+
+    const content = `订单 #${order.orderNumber} 申请取消${reason ? `，原因：${reason}` : ''}，请及时审核`;
+
+    await this.sendBatchMessages(
+      OrderMessageTypes.ORDER_CANCEL_REQUEST,
+      '📝 取消申请待审核',
+      content,
+      adminUserIds,
+      {
+        priority: 'high',
+        relatedId: order.id,
+        actionUrl: '/order/cancel-audit'
+      }
+    );
+  }
+
+  /**
+   * 取消审核通过通知 - 通知下单员
+   */
+  async notifyOrderCancelApproved(order: OrderInfo, auditorName: string): Promise<void> {
+    if (!order.createdBy) return;
+
+    const content = `您的订单 #${order.orderNumber} 取消申请已被 ${auditorName} 审核通过`;
+
+    await this.sendMessage(
+      OrderMessageTypes.ORDER_CANCEL_APPROVED,
+      '✅ 取消申请通过',
+      content,
+      order.createdBy,
+      {
+        relatedId: order.id,
+        actionUrl: '/order/list'
+      }
+    );
+  }
+
+  /**
+   * 取消审核拒绝通知 - 通知下单员
+   */
+  async notifyOrderCancelRejected(order: OrderInfo, auditorName: string, reason?: string): Promise<void> {
+    if (!order.createdBy) return;
+
+    const content = `您的订单 #${order.orderNumber} 取消申请被 ${auditorName} 拒绝${reason ? `，原因：${reason}` : ''}`;
+
+    await this.sendMessage(
+      OrderMessageTypes.ORDER_CANCEL_REJECTED,
+      '❌ 取消申请被拒绝',
+      content,
+      order.createdBy,
+      {
+        relatedId: order.id,
+        actionUrl: '/order/list'
+      }
+    );
+  }
+
+  // ==================== 售后生命周期通知 ====================
+
+  /**
+   * 售后创建通知 - 通知创建者 + 管理员
+   */
+  async notifyAfterSalesCreated(afterSales: AfterSalesInfo): Promise<void> {
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    const allTargets = new Set<string>(adminUserIds);
+
+    if (afterSales.createdBy) {
+      allTargets.add(afterSales.createdBy);
+    }
+
+    const typeText = this.getAfterSalesTypeText(afterSales.serviceType);
+    const content = `${typeText}申请 #${afterSales.serviceNumber} 已创建，关联订单：${afterSales.orderNumber || '无'}，客户：${afterSales.customerName || '未知'}`;
+
+    await this.sendBatchMessages(
+      AfterSalesMessageTypes.AFTER_SALES_CREATED,
+      `📝 ${typeText}申请已创建`,
+      content,
+      Array.from(allTargets),
+      {
+        category: '售后通知',
+        relatedId: afterSales.id,
+        relatedType: 'afterSales',
+        actionUrl: '/service/list'
+      }
+    );
+  }
+
+  /**
+   * 售后处理中通知 - 通知创建者
+   */
+  async notifyAfterSalesProcessing(afterSales: AfterSalesInfo, operatorName?: string): Promise<void> {
+    if (!afterSales.createdBy) return;
+
+    const typeText = this.getAfterSalesTypeText(afterSales.serviceType);
+    const content = `您的${typeText}申请 #${afterSales.serviceNumber} 正在处理中${operatorName ? `，处理人：${operatorName}` : ''}`;
+
+    await this.sendMessage(
+      AfterSalesMessageTypes.AFTER_SALES_PROCESSING,
+      `🔄 ${typeText}处理中`,
+      content,
+      afterSales.createdBy,
+      {
+        category: '售后通知',
+        relatedId: afterSales.id,
+        relatedType: 'afterSales',
+        actionUrl: '/service/list'
+      }
+    );
+  }
+
+  /**
+   * 售后完成通知 - 通知创建者
+   */
+  async notifyAfterSalesCompleted(afterSales: AfterSalesInfo, operatorName?: string): Promise<void> {
+    if (!afterSales.createdBy) return;
+
+    const typeText = this.getAfterSalesTypeText(afterSales.serviceType);
+    const content = `您的${typeText}申请 #${afterSales.serviceNumber} 已处理完成${operatorName ? `，处理人：${operatorName}` : ''}`;
+
+    await this.sendMessage(
+      AfterSalesMessageTypes.AFTER_SALES_COMPLETED,
+      `✅ ${typeText}已完成`,
+      content,
+      afterSales.createdBy,
+      {
+        category: '售后通知',
+        relatedId: afterSales.id,
+        relatedType: 'afterSales',
+        actionUrl: '/service/list'
+      }
+    );
+  }
+
+  /**
+   * 售后拒绝通知 - 通知创建者
+   */
+  async notifyAfterSalesRejected(afterSales: AfterSalesInfo, operatorName?: string, reason?: string): Promise<void> {
+    if (!afterSales.createdBy) return;
+
+    const typeText = this.getAfterSalesTypeText(afterSales.serviceType);
+    const content = `您的${typeText}申请 #${afterSales.serviceNumber} 已被拒绝${reason ? `，原因：${reason}` : ''}`;
+
+    await this.sendMessage(
+      AfterSalesMessageTypes.AFTER_SALES_REJECTED,
+      `❌ ${typeText}被拒绝`,
+      content,
+      afterSales.createdBy,
+      {
+        category: '售后通知',
+        relatedId: afterSales.id,
+        relatedType: 'afterSales',
+        actionUrl: '/service/list'
+      }
+    );
+  }
+
+  /**
+   * 售后取消通知 - 通知创建者 + 管理员
+   */
+  async notifyAfterSalesCancelled(afterSales: AfterSalesInfo, operatorName?: string): Promise<void> {
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    const allTargets = new Set<string>(adminUserIds);
+
+    if (afterSales.createdBy) {
+      allTargets.add(afterSales.createdBy);
+    }
+
+    const typeText = this.getAfterSalesTypeText(afterSales.serviceType);
+    const content = `${typeText}申请 #${afterSales.serviceNumber} 已取消${operatorName ? `，操作人：${operatorName}` : ''}`;
+
+    await this.sendBatchMessages(
+      AfterSalesMessageTypes.AFTER_SALES_CANCELLED,
+      `🚫 ${typeText}已取消`,
+      content,
+      Array.from(allTargets),
+      {
+        category: '售后通知',
+        relatedId: afterSales.id,
+        relatedType: 'afterSales',
+        actionUrl: '/service/list'
+      }
+    );
+  }
+
+  /**
+   * 获取售后类型文本
+   */
+  private getAfterSalesTypeText(type?: string): string {
+    const typeMap: Record<string, string> = {
+      'return': '退货',
+      'exchange': '换货',
+      'repair': '维修',
+      'refund': '退款',
+      'complaint': '投诉'
+    };
+    return typeMap[type || ''] || '售后';
+  }
+}
+
+// 导出单例
+export const orderNotificationService = new OrderNotificationService();

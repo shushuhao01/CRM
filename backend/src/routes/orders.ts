@@ -5,6 +5,7 @@ import { Order } from '../entities/Order';
 import { Product } from '../entities/Product';
 import { SystemConfig } from '../entities/SystemConfig';
 import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
+import { orderNotificationService } from '../services/OrderNotificationService';
 // Like 和 Between 现在通过 QueryBuilder 使用，不再直接导入
 // import { Like, Between } from 'typeorm';
 
@@ -204,6 +205,16 @@ router.post('/check-transfer', async (_req: Request, res: Response) => {
         await orderRepository.save(order);
         transferredOrders.push(order);
 
+        // 🔥 发送待审核通知给下单员和管理员
+        orderNotificationService.notifyOrderPendingAudit({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          customerName: order.customerName,
+          totalAmount: Number(order.totalAmount),
+          createdBy: order.createdBy,
+          createdByName: order.createdByName
+        }).catch(err => console.error('[订单流转] 发送通知失败:', err));
+
         console.log(`✅ [订单流转] 订单 ${order.orderNumber} 已流转到待审核状态`);
       }
     }
@@ -300,10 +311,21 @@ router.post('/cancel-request', async (req: Request, res: Response) => {
       });
     }
 
+    const cancelReason = `${reason}${description ? ` - ${description}` : ''}`;
     order.status = 'pending';
-    order.remark = `取消原因: ${reason}${description ? ` - ${description}` : ''}`;
+    order.remark = `取消原因: ${cancelReason}`;
 
     await orderRepository.save(order);
+
+    // 🔥 发送取消申请通知给管理员
+    orderNotificationService.notifyOrderCancelRequest({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      totalAmount: Number(order.totalAmount),
+      createdBy: order.createdBy,
+      createdByName: order.createdByName
+    }, cancelReason).catch(err => console.error('[取消申请] 发送通知失败:', err));
 
     res.json({
       success: true,
@@ -1298,6 +1320,16 @@ router.post('/', async (req: Request, res: Response) => {
 
     console.log('✅ [订单创建] 返回数据:', responseData);
 
+    // 🔥 发送订单创建成功通知给下单员
+    orderNotificationService.notifyOrderCreated({
+      id: savedOrder.id,
+      orderNumber: savedOrder.orderNumber,
+      customerName: customerName || '',
+      totalAmount: finalTotalAmount,
+      createdBy: finalCreatedBy,
+      createdByName: finalCreatedByName
+    }).catch(err => console.error('[订单创建] 发送通知失败:', err));
+
     res.status(201).json({
       success: true,
       code: 200,
@@ -1378,7 +1410,7 @@ const getStatusName = (status: string): string => {
  * @desc 更新订单
  * @access Private
  */
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
     const order = await orderRepository.findOne({
@@ -1394,6 +1426,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     const updateData = req.body;
+    const previousStatus = order.status;
 
     // 🔥 状态校验：检查状态变更是否合法
     if (updateData.status !== undefined && updateData.status !== order.status) {
@@ -1447,6 +1480,52 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     const updatedOrder = await orderRepository.save(order);
+
+    // 🔥 根据状态变更发送相应通知
+    if (updateData.status !== undefined && updateData.status !== previousStatus) {
+      const orderInfo = {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        totalAmount: Number(order.totalAmount),
+        createdBy: order.createdBy,
+        createdByName: order.createdByName
+      };
+
+      const newStatus = updateData.status;
+
+      // 根据新状态发送不同的通知
+      switch (newStatus) {
+        case 'shipped':
+          orderNotificationService.notifyOrderShipped(orderInfo, order.trackingNumber, order.expressCompany)
+            .catch(err => console.error('[订单更新] 发送发货通知失败:', err));
+          break;
+        case 'delivered':
+          orderNotificationService.notifyOrderDelivered(orderInfo)
+            .catch(err => console.error('[订单更新] 发送签收通知失败:', err));
+          break;
+        case 'rejected':
+          orderNotificationService.notifyOrderRejected(orderInfo, updateData.remark)
+            .catch(err => console.error('[订单更新] 发送拒收通知失败:', err));
+          break;
+        case 'cancelled':
+          orderNotificationService.notifyOrderCancelled(orderInfo, updateData.remark)
+            .catch(err => console.error('[订单更新] 发送取消通知失败:', err));
+          break;
+        case 'logistics_returned':
+          orderNotificationService.notifyLogisticsReturned(orderInfo, updateData.remark)
+            .catch(err => console.error('[订单更新] 发送物流退回通知失败:', err));
+          break;
+        case 'logistics_cancelled':
+          orderNotificationService.notifyLogisticsCancelled(orderInfo, updateData.remark)
+            .catch(err => console.error('[订单更新] 发送物流取消通知失败:', err));
+          break;
+        case 'package_exception':
+          orderNotificationService.notifyPackageException(orderInfo, updateData.remark)
+            .catch(err => console.error('[订单更新] 发送包裹异常通知失败:', err));
+          break;
+      }
+    }
 
     res.json({
       success: true,
@@ -1540,6 +1619,16 @@ router.post('/:id/submit-audit', async (req: Request, res: Response) => {
 
     console.log(`✅ [订单提审] 订单 ${order.orderNumber} 已提交审核，状态变更为 pending_audit`);
 
+    // 🔥 发送待审核通知给下单员和管理员
+    orderNotificationService.notifyOrderPendingAudit({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      totalAmount: Number(order.totalAmount),
+      createdBy: order.createdBy,
+      createdByName: order.createdByName
+    }).catch(err => console.error('[订单提审] 发送通知失败:', err));
+
     res.json({
       success: true,
       code: 200,
@@ -1572,6 +1661,10 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
     const { action, auditStatus, remark, auditRemark } = req.body;
     const idParam = req.params.id;
 
+    // 获取当前审核员信息
+    const currentUser = (req as any).currentUser || (req as any).user;
+    const auditorName = currentUser?.realName || currentUser?.name || currentUser?.username || '审核员';
+
     // 兼容两种参数格式：action='approve'/'reject' 或 auditStatus='approved'/'rejected'
     const isApproved = action === 'approve' || auditStatus === 'approved';
     const finalRemark = remark || auditRemark || '';
@@ -1591,14 +1684,35 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
       });
     }
 
+    const orderInfo = {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      totalAmount: Number(order.totalAmount),
+      createdBy: order.createdBy,
+      createdByName: order.createdByName
+    };
+
     if (isApproved) {
       order.status = 'pending_shipment';
       order.remark = `${order.remark || ''} | 审核通过: ${finalRemark}`;
       console.log(`✅ [订单审核] 订单 ${order.orderNumber} 审核通过，状态变更为 pending_shipment`);
+
+      // 🔥 发送审核通过通知给下单员
+      orderNotificationService.notifyOrderAuditApproved(orderInfo, auditorName)
+        .catch(err => console.error('[订单审核] 发送审核通过通知失败:', err));
+
+      // 🔥 发送待发货通知给下单员
+      orderNotificationService.notifyOrderPendingShipment(orderInfo)
+        .catch(err => console.error('[订单审核] 发送待发货通知失败:', err));
     } else {
       order.status = 'audit_rejected';
       order.remark = `${order.remark || ''} | 审核拒绝: ${finalRemark}`;
       console.log(`❌ [订单审核] 订单 ${order.orderNumber} 审核拒绝，状态变更为 audit_rejected`);
+
+      // 🔥 发送审核拒绝通知给下单员和管理员
+      orderNotificationService.notifyOrderAuditRejected(orderInfo, auditorName, finalRemark)
+        .catch(err => console.error('[订单审核] 发送审核拒绝通知失败:', err));
     }
 
     await orderRepository.save(order);
@@ -1630,10 +1744,14 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
  * @desc 审核取消订单申请
  * @access Private
  */
-router.post('/:id/cancel-audit', async (req: Request, res: Response) => {
+router.post('/:id/cancel-audit', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
     const { action, remark } = req.body;
+
+    // 获取当前审核员信息
+    const currentUser = (req as any).currentUser || (req as any).user;
+    const auditorName = currentUser?.realName || currentUser?.name || currentUser?.username || '审核员';
 
     const order = await orderRepository.findOne({ where: { id: req.params.id } });
 
@@ -1645,12 +1763,33 @@ router.post('/:id/cancel-audit', async (req: Request, res: Response) => {
       });
     }
 
+    const orderInfo = {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      totalAmount: Number(order.totalAmount),
+      createdBy: order.createdBy,
+      createdByName: order.createdByName
+    };
+
     if (action === 'approve') {
       order.status = 'cancelled';
       order.remark = `${order.remark || ''} | 审核通过: ${remark || ''}`;
+
+      // 🔥 发送取消审核通过通知
+      orderNotificationService.notifyOrderCancelApproved(orderInfo, auditorName)
+        .catch(err => console.error('[取消审核] 发送通过通知失败:', err));
+
+      // 🔥 发送订单已取消通知
+      orderNotificationService.notifyOrderCancelled(orderInfo, remark, auditorName)
+        .catch(err => console.error('[取消审核] 发送取消通知失败:', err));
     } else {
       order.status = 'confirmed';
       order.remark = `${order.remark || ''} | 审核拒绝: ${remark || ''}`;
+
+      // 🔥 发送取消审核拒绝通知
+      orderNotificationService.notifyOrderCancelRejected(orderInfo, auditorName, remark)
+        .catch(err => console.error('[取消审核] 发送拒绝通知失败:', err));
     }
 
     await orderRepository.save(order);

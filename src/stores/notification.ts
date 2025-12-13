@@ -7,15 +7,24 @@ export enum MessageType {
   ORDER_CREATED = 'order_created',
   ORDER_SUBMITTED = 'order_submitted', // 订单提交成功
   ORDER_PAID = 'order_paid',
+  ORDER_PENDING_AUDIT = 'order_pending_audit', // 订单待审核
+  ORDER_AUDIT_APPROVED = 'order_audit_approved', // 订单审核通过
+  ORDER_AUDIT_REJECTED = 'order_audit_rejected', // 订单审核拒绝
   ORDER_PENDING_SHIPMENT = 'order_pending_shipment', // 订单待发货
   ORDER_SHIPPED = 'order_shipped',
   ORDER_DELIVERED = 'order_delivered',
   ORDER_SIGNED = 'order_signed',
+  ORDER_REJECTED = 'order_rejected', // 订单拒收
   ORDER_CANCELLED = 'order_cancelled',
   ORDER_CANCEL_REQUEST = 'order_cancel_request', // 订单取消申请
   ORDER_CANCEL_APPROVED = 'order_cancel_approved', // 订单取消通过
+  ORDER_CANCEL_REJECTED = 'order_cancel_rejected', // 订单取消拒绝
   ORDER_MODIFY_APPROVED = 'order_modify_approved', // 订单修改申请通过
   ORDER_REFUNDED = 'order_refunded',
+  // 物流异常
+  ORDER_LOGISTICS_RETURNED = 'order_logistics_returned', // 物流退回
+  ORDER_LOGISTICS_CANCELLED = 'order_logistics_cancelled', // 物流取消
+  ORDER_PACKAGE_EXCEPTION = 'order_package_exception', // 包裹异常
   // 【2025-12-13新增】订单超时提醒
   ORDER_AUDIT_TIMEOUT = 'order_audit_timeout', // 订单审核超时
   ORDER_SHIPMENT_TIMEOUT = 'order_shipment_timeout', // 发货超时提醒
@@ -27,7 +36,9 @@ export enum MessageType {
   AFTER_SALES_PROCESSING = 'after_sales_processing', // 售后处理
   AFTER_SALES_URGENT = 'after_sales_urgent', // 紧急售后
   AFTER_SALES_COMPLETED = 'after_sales_completed', // 售后完成
+  AFTER_SALES_REJECTED = 'after_sales_rejected', // 售后拒绝
   AFTER_SALES_CLOSED = 'after_sales_closed', // 售后关闭
+  AFTER_SALES_CANCELLED = 'after_sales_cancelled', // 售后取消
   AFTER_SALES_DELETED = 'after_sales_deleted', // 售后删除
   // 【2025-12-13新增】售后超时提醒
   AFTER_SALES_TIMEOUT = 'after_sales_timeout', // 售后处理超时
@@ -214,6 +225,62 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
     category: '订单通知',
     priority: MessagePriority.HIGH
   },
+  [MessageType.ORDER_PENDING_AUDIT]: {
+    title: '订单待审核',
+    icon: 'Clock',
+    color: '#E6A23C',
+    category: '审核通知',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.ORDER_AUDIT_APPROVED]: {
+    title: '订单审核通过',
+    icon: 'CircleCheck',
+    color: '#67C23A',
+    category: '审核通知',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.ORDER_AUDIT_REJECTED]: {
+    title: '订单审核拒绝',
+    icon: 'CircleClose',
+    color: '#F56C6C',
+    category: '审核通知',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.ORDER_REJECTED]: {
+    title: '订单拒收',
+    icon: 'Close',
+    color: '#F56C6C',
+    category: '订单通知',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.ORDER_CANCEL_REJECTED]: {
+    title: '取消申请被拒绝',
+    icon: 'CircleClose',
+    color: '#F56C6C',
+    category: '审核通知',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.ORDER_LOGISTICS_RETURNED]: {
+    title: '物流退回',
+    icon: 'RefreshLeft',
+    color: '#E6A23C',
+    category: '物流通知',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.ORDER_LOGISTICS_CANCELLED]: {
+    title: '物流取消',
+    icon: 'CircleClose',
+    color: '#F56C6C',
+    category: '物流通知',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.ORDER_PACKAGE_EXCEPTION]: {
+    title: '包裹异常',
+    icon: 'Warning',
+    color: '#F56C6C',
+    category: '异常通知',
+    priority: MessagePriority.URGENT
+  },
 
   // 售后相关模板
   [MessageType.AFTER_SALES_CREATED]: {
@@ -264,6 +331,20 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
     color: '#F56C6C',
     category: '售后通知',
     priority: MessagePriority.LOW
+  },
+  [MessageType.AFTER_SALES_REJECTED]: {
+    title: '售后被拒绝',
+    icon: 'CircleClose',
+    color: '#F56C6C',
+    category: '售后通知',
+    priority: MessagePriority.HIGH
+  },
+  [MessageType.AFTER_SALES_CANCELLED]: {
+    title: '售后已取消',
+    icon: 'Close',
+    color: '#909399',
+    category: '售后通知',
+    priority: MessagePriority.NORMAL
   },
 
   // 客户相关模板
