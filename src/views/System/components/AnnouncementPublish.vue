@@ -45,8 +45,8 @@
 
     <!-- 公告列表 -->
     <div class="announcement-list">
-      <el-table 
-        :data="announcements" 
+      <el-table
+        :data="announcements"
         v-loading="loading"
         stripe
         style="width: 100%"
@@ -70,8 +70,8 @@
 
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
-            <el-tag 
-              :type="getStatusType(row.status)" 
+            <el-tag
+              :type="getStatusType(row.status)"
               size="small"
             >
               {{ getStatusText(row.status) }}
@@ -111,10 +111,10 @@
             <el-button type="primary" size="small" @click="editAnnouncement(row)">
               编辑
             </el-button>
-            <el-button 
-              v-if="row.status === 'draft'" 
-              type="success" 
-              size="small" 
+            <el-button
+              v-if="row.status === 'draft'"
+              type="success"
+              size="small"
               @click="publishAnnouncement(row)"
             >
               发布
@@ -128,8 +128,8 @@
     </div>
 
     <!-- 创建/编辑公告对话框 -->
-    <el-dialog 
-      v-model="dialogVisible" 
+    <el-dialog
+      v-model="dialogVisible"
       :title="isEdit ? '编辑公告' : '发布公告'"
       width="800px"
       @close="resetForm"
@@ -165,14 +165,14 @@
           </el-radio-group>
         </el-form-item>
 
-        <el-form-item 
-          v-if="announcementForm.type === 'department'" 
-          label="目标部门" 
+        <el-form-item
+          v-if="announcementForm.type === 'department'"
+          label="目标部门"
           prop="targetDepartments"
         >
-          <el-select 
-            v-model="announcementForm.targetDepartments" 
-            multiple 
+          <el-select
+            v-model="announcementForm.targetDepartments"
+            multiple
             placeholder="请选择目标部门"
             style="width: 100%"
           >
@@ -196,9 +196,9 @@
           </el-radio-group>
         </el-form-item>
 
-        <el-form-item 
-          v-if="publishType === 'scheduled'" 
-          label="发布时间" 
+        <el-form-item
+          v-if="publishType === 'scheduled'"
+          label="发布时间"
           prop="scheduledAt"
         >
           <el-date-picker
@@ -224,14 +224,15 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onBeforeUnmount, shallowRef } from 'vue'
 import { useMessageStore } from '@/stores/message'
+import { messageApi } from '@/api/message'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  Plus, 
-  Search, 
-  RefreshRight, 
-  ChatDotRound, 
-  Monitor, 
-  Promotion 
+import {
+  Plus,
+  Search,
+  RefreshRight,
+  ChatDotRound,
+  Monitor,
+  Promotion
 } from '@element-plus/icons-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
@@ -345,27 +346,27 @@ const formRules = {
     { required: true, message: '请选择公告类型', trigger: 'change' }
   ],
   targetDepartments: [
-    { 
+    {
       validator: (rule: any, value: any, callback: any) => {
         if (announcementForm.type === 'department' && (!value || value.length === 0)) {
           callback(new Error('请选择目标部门'))
         } else {
           callback()
         }
-      }, 
-      trigger: 'change' 
+      },
+      trigger: 'change'
     }
   ],
   scheduledAt: [
-    { 
+    {
       validator: (rule: any, value: any, callback: any) => {
         if (publishType.value === 'scheduled' && !value) {
           callback(new Error('请选择发布时间'))
         } else {
           callback()
         }
-      }, 
-      trigger: 'change' 
+      },
+      trigger: 'change'
     }
   ]
 }
@@ -402,10 +403,15 @@ const loadAnnouncements = async () => {
   try {
     const response = await messageStore.loadAnnouncements(filterForm)
     // 检查响应格式并正确处理数据
-    if (response && response.success && Array.isArray(response.data)) {
-      announcements.value = response.data
-    } else if (response && Array.isArray(response.data)) {
-      announcements.value = response.data
+    if (response && response.success && response.data) {
+      // 后端返回 { list: [], total: 0 } 格式
+      if (Array.isArray(response.data.list)) {
+        announcements.value = response.data.list
+      } else if (Array.isArray(response.data)) {
+        announcements.value = response.data
+      } else {
+        announcements.value = []
+      }
     } else if (response && Array.isArray(response)) {
       announcements.value = response
     } else {
@@ -455,7 +461,7 @@ const publishAnnouncement = async (row: any) => {
     await ElMessageBox.confirm('确认发布此公告吗？', '确认发布', {
       type: 'warning'
     })
-    
+
     await messageStore.updateAnnouncement(row.id, { status: 'published' })
     loadAnnouncements()
   } catch (error) {
@@ -471,7 +477,7 @@ const deleteAnnouncement = async (row: any) => {
     await ElMessageBox.confirm('确认删除此公告吗？删除后无法恢复。', '确认删除', {
       type: 'warning'
     })
-    
+
     await messageStore.deleteAnnouncement(row.id)
     loadAnnouncements()
   } catch (error) {
@@ -484,29 +490,41 @@ const deleteAnnouncement = async (row: any) => {
 // 保存公告
 const saveAnnouncement = async () => {
   if (!formRef.value) return
-  
+
   try {
     await formRef.value.validate()
-    
+
     submitting.value = true
-    
-    const data = {
-      ...announcementForm,
-      status: publishType.value === 'immediate' ? 'published' : 'scheduled',
-      publishedAt: publishType.value === 'immediate' ? new Date().toISOString().replace('T', ' ').substring(0, 19) : undefined
+
+    // 构建后端期望的数据格式
+    const data: any = {
+      title: announcementForm.title,
+      content: announcementForm.content,
+      type: announcementForm.type === 'company' ? 'notice' : 'department',
+      priority: 'normal',
+      targetDepartments: announcementForm.type === 'department' ? announcementForm.targetDepartments : null,
+      isPinned: false
     }
-    
-    if (publishType.value === 'immediate') {
-      delete data.scheduledAt
+
+    // 如果是定时发布
+    if (publishType.value === 'scheduled' && announcementForm.scheduledAt) {
+      data.startTime = announcementForm.scheduledAt
     }
-    
+
     if (isEdit.value) {
-      await messageStore.updateAnnouncement(data.id, data)
+      await messageStore.updateAnnouncement((announcementForm as any).id, data)
     } else {
-      await messageStore.createAnnouncement(data)
+      // 创建公告
+      const result = await messageStore.createAnnouncement(data)
+
+      // 如果是立即发布，还需要调用发布接口
+      if (publishType.value === 'immediate' && result && result.id) {
+        await messageApi.publishAnnouncement(result.id)
+      }
     }
-    
+
     dialogVisible.value = false
+    resetForm()
     loadAnnouncements()
   } catch (error) {
     console.error('保存公告失败:', error)
