@@ -17,6 +17,7 @@ import type {
 } from '@/api/data'
 import * as dataApi from '@/api/data'
 import { useUserStore } from './user'
+import { messageNotificationService } from '@/services/messageNotificationService'
 
 export const useDataStore = createPersistentStore('data', () => {
   // 状态
@@ -297,6 +298,20 @@ export const useDataStore = createPersistentStore('data', () => {
 
         // 刷新汇总数据
         await refreshData()
+
+        // 【2025-12-13新增】发送资料分配通知
+        const userStore = useUserStore()
+        const assignerName = userStore.currentUser?.name || '管理员'
+        try {
+          messageNotificationService.sendDataAssigned(
+            params.assigneeId,
+            params.assigneeName,
+            params.dataIds.length,
+            assignerName
+          )
+        } catch (error) {
+          console.error('发送资料分配通知失败:', error)
+        }
       }
 
       return result
