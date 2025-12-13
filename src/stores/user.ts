@@ -544,27 +544,30 @@ export const useUserStore = defineStore('user', () => {
       const userDeptName = userData.departmentName || userData.department_name || userData.department?.name || '未分配'
       console.log('[Auth] 用户部门信息:', { departmentId: userDeptId, departmentName: userDeptName })
 
+      // 🔥 修复：优先使用 roleId（角色代码如 department_manager），其次使用 role
+      const userRoleCode = userData.roleId || userData.role
+
       currentUser.value = {
         id: userData.id.toString(),
         name: userData.realName || userData.name,
         email: userData.email,
-        role: (userData.role === 'admin' || userData.role === 'super_admin') ? 'super_admin' :
-              userData.role === 'department_manager' ? 'department_manager' :
-              userData.role === 'sales_staff' ? 'sales_staff' :
-              userData.role === 'customer_service' ? 'customer_service' :
-              userData.role || 'sales_staff',
+        role: (userRoleCode === 'admin' || userRoleCode === 'super_admin') ? 'super_admin' :
+              userRoleCode === 'department_manager' ? 'department_manager' :
+              userRoleCode === 'sales_staff' ? 'sales_staff' :
+              userRoleCode === 'customer_service' ? 'customer_service' :
+              userRoleCode || 'sales_staff',
         department: userDeptName, // 🔥 部门名称用于显示
         avatar: userData.avatar,
-        userRole: (userData.role === 'admin' || userData.role === 'super_admin') ? UserRole.SUPER_ADMIN :
-                 userData.role === 'department_manager' ? UserRole.DEPARTMENT_MANAGER :
-                 userData.role === 'sales_staff' ? UserRole.SALES_STAFF :
-                 userData.role === 'customer_service' ? UserRole.CUSTOMER_SERVICE :
+        userRole: (userRoleCode === 'admin' || userRoleCode === 'super_admin') ? UserRole.SUPER_ADMIN :
+                 userRoleCode === 'department_manager' ? UserRole.DEPARTMENT_MANAGER :
+                 userRoleCode === 'sales_staff' ? UserRole.SALES_STAFF :
+                 userRoleCode === 'customer_service' ? UserRole.CUSTOMER_SERVICE :
                  UserRole.REGULAR_USER,
-        permissionLevel: (userData.role === 'admin' || userData.role === 'super_admin') ? PermissionLevel.FULL_ACCESS :
-                        userData.role === 'department_manager' ? PermissionLevel.PARTIAL_ACCESS :
+        permissionLevel: (userRoleCode === 'admin' || userRoleCode === 'super_admin') ? PermissionLevel.FULL_ACCESS :
+                        userRoleCode === 'department_manager' ? PermissionLevel.PARTIAL_ACCESS :
                         PermissionLevel.RESTRICTED,
-        dataScope: userData.dataScope || ((userData.role === 'admin' || userData.role === 'super_admin') ? DataScope.ALL :
-                  userData.role === 'department_manager' ? DataScope.DEPARTMENT : DataScope.SELF),
+        dataScope: userData.dataScope || ((userRoleCode === 'admin' || userRoleCode === 'super_admin') ? DataScope.ALL :
+                  userRoleCode === 'department_manager' ? DataScope.DEPARTMENT : DataScope.SELF),
         departmentId: userDeptId, // 🔥 部门ID用于数据过滤
         departmentName: userDeptName, // 🔥 新增：部门名称字段
         departmentIds: userData.departmentIds,
