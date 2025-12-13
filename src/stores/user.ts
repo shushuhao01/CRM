@@ -111,13 +111,24 @@ export const useUserStore = defineStore('user', () => {
 
   // 计算属性 - 根据新的角色体系重新定义
   // 管理员权限：super_admin 或 admin 角色都视为管理员
-  const isAdmin = computed(() =>
-    currentUser.value?.role === 'super_admin' ||
-    currentUser.value?.role === 'admin'
-  )
-  const isDepartmentManager = computed(() => currentUser.value?.role === 'department_manager') // 部门管理员（部门负责人）
-  const isSalesStaff = computed(() => currentUser.value?.role === 'sales_staff') // 销售员
-  const isCustomerService = computed(() => currentUser.value?.role === 'customer_service') // 客服
+  // 🔥 角色判断：同时支持英文代码和中文名称
+  const isAdmin = computed(() => {
+    const role = currentUser.value?.role
+    return role === 'super_admin' || role === 'admin' ||
+           role === '超级管理员' || role === '管理员' || role === '系统管理员'
+  })
+  const isDepartmentManager = computed(() => {
+    const role = currentUser.value?.role
+    return role === 'department_manager' || role === '部门经理' || role === '部门负责人'
+  })
+  const isSalesStaff = computed(() => {
+    const role = currentUser.value?.role
+    return role === 'sales_staff' || role === 'sales' || role === '销售员' || role === '销售'
+  })
+  const isCustomerService = computed(() => {
+    const role = currentUser.value?.role
+    return role === 'customer_service' || role === '客服' || role === '客服人员'
+  })
 
   // 兼容性计算属性（保留以避免破坏现有代码）
   const isManager = computed(() => isDepartmentManager.value || isAdmin.value) // 兼容：管理员权限
