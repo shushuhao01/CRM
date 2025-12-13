@@ -7,6 +7,10 @@
         <p>配置各种通知方式的部门和成员设置，管理通知渠道的可用性</p>
       </div>
       <div class="header-right">
+        <el-button type="warning" @click="showPerformanceDialog">
+          <el-icon><DataAnalysis /></el-icon>
+          业绩消息配置
+        </el-button>
         <el-button type="primary" @click="showCreateDialog">
           <el-icon><Plus /></el-icon>
           新建配置
@@ -48,6 +52,86 @@
           <el-button @click="resetFilters">重置</el-button>
         </el-form-item>
       </el-form>
+    </div>
+
+    <!-- 业绩消息配置卡片 -->
+    <div v-if="performanceConfigs.length > 0" class="channel-list performance-list">
+      <div
+        v-for="config in performanceConfigs"
+        :key="config.id"
+        class="channel-card performance-card"
+        :class="{ 'is-disabled': !config.isEnabled }"
+      >
+        <div class="card-header">
+          <div class="channel-info">
+            <div class="channel-icon icon-performance">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+              </svg>
+            </div>
+            <div class="channel-meta">
+              <h4>{{ config.name }}</h4>
+              <span class="channel-type">
+                {{ config.channelType === 'dingtalk' ? '钉钉' : '企业微信' }} ·
+                {{ config.sendFrequency === 'daily' ? '每天' : config.sendFrequency === 'weekly' ? '每周' : '每月' }}
+                {{ config.sendTime }} 发送
+              </span>
+            </div>
+          </div>
+          <el-switch
+            v-model="config.isEnabled"
+            @change="togglePerformanceStatus(config)"
+          />
+        </div>
+        <div class="card-body">
+          <div class="info-row">
+            <span class="info-label">报表类型</span>
+            <div class="info-value">
+              <el-tag v-for="type in (config.reportTypes || []).slice(0, 3)" :key="type" size="small" style="margin-right: 4px;">
+                {{ getReportTypeLabel(type) }}
+              </el-tag>
+              <el-tag v-if="(config.reportTypes || []).length > 3" size="small" type="info">
+                +{{ (config.reportTypes || []).length - 3 }}
+              </el-tag>
+            </div>
+          </div>
+          <div class="info-row">
+            <span class="info-label">上次发送</span>
+            <div class="info-value">
+              <span v-if="config.lastSentAt">{{ formatDate(config.lastSentAt) }}</span>
+              <span v-else style="color: #909399;">暂未发送</span>
+              <el-tag v-if="config.lastSentStatus" :type="config.lastSentStatus === 'success' ? 'success' : 'danger'" size="small" style="margin-left: 8px;">
+                {{ config.lastSentStatus === 'success' ? '成功' : '失败' }}
+              </el-tag>
+            </div>
+          </div>
+          <div class="info-row">
+            <span class="info-label">视角范围</span>
+            <div class="info-value">
+              <el-tag size="small" type="info">
+                {{ config.viewScope === 'company' ? '全公司' : '部门视角' }}
+              </el-tag>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <span class="create-info">{{ config.createdByName }} · {{ formatDate(config.createdAt) }}</span>
+          <div class="action-buttons">
+            <el-button type="primary" link size="small" @click="testPerformanceReport(config)" :loading="config.testLoading">
+              <el-icon><Connection /></el-icon>
+              测试发送
+            </el-button>
+            <el-button type="primary" link size="small" @click="editPerformanceConfig(config)">
+              <el-icon><Edit /></el-icon>
+              编辑
+            </el-button>
+            <el-button type="danger" link size="small" @click="deletePerformanceConfig(config)">
+              <el-icon><Delete /></el-icon>
+              删除
+            </el-button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 通知渠道卡片列表 -->
@@ -351,6 +435,150 @@
         <el-button type="primary" @click="confirmMemberSelection">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 业绩消息配置弹窗 -->
+    <el-dialog v-model="performanceDialogVisible" :title="isEditPerformance ? '编辑业绩消息配置' : '新建业绩消息配置'" width="800px" :close-on-click-modal="false">
+      <el-form ref="performanceFormRef" :model="performanceForm" :rules="performanceRules" label-width="100px">
+        <el-form-item label="配置名称" prop="name">
+          <el-input v-model="performanceForm.name" placeholder="如：每日业绩汇报" />
+        </el-form-item>
+
+        <el-divider content-position="left">发送时间</el-divider>
+
+        <el-form-item label="发送频率" prop="sendFrequency">
+          <el-radio-group v-model="performanceForm.sendFrequency">
+            <el-radio label="daily">每天</el-radio>
+            <el-radio label="weekly">每周</el-radio>
+            <el-radio label="monthly">每月</el-radio>
+            <el-radio label="custom">自定义</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item v-if="performanceForm.sendFrequency === 'weekly'" label="选择周几">
+          <el-checkbox-group v-model="performanceForm.sendDays">
+            <el-checkbox :label="1">周一</el-checkbox>
+            <el-checkbox :label="2">周二</el-checkbox>
+            <el-checkbox :label="3">周三</el-checkbox>
+            <el-checkbox :label="4">周四</el-checkbox>
+            <el-checkbox :label="5">周五</el-checkbox>
+            <el-checkbox :label="6">周六</el-checkbox>
+            <el-checkbox :label="7">周日</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+
+        <el-form-item v-if="performanceForm.sendFrequency === 'monthly'" label="选择日期">
+          <el-select v-model="performanceForm.sendDays" multiple placeholder="选择每月几号" style="width: 100%">
+            <el-option v-for="d in 31" :key="d" :label="`${d}号`" :value="d" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="发送时间" prop="sendTime">
+          <el-time-select v-model="performanceForm.sendTime" start="06:00" step="00:30" end="12:00" placeholder="选择时间" />
+          <span style="margin-left: 12px; color: #909399; font-size: 12px;">次日发送前一天数据</span>
+        </el-form-item>
+
+        <el-form-item label="重复类型">
+          <el-radio-group v-model="performanceForm.repeatType">
+            <el-radio label="everyday">每天</el-radio>
+            <el-radio label="workday">仅工作日</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-divider content-position="left">业绩类型</el-divider>
+
+        <el-form-item label="报表数据" prop="reportTypes">
+          <div class="report-types-grid">
+            <div v-for="category in reportTypeCategories" :key="category.name" class="report-category">
+              <div class="category-title">{{ category.name }}</div>
+              <el-checkbox-group v-model="performanceForm.reportTypes">
+                <el-checkbox v-for="type in category.types" :key="type.value" :label="type.value">
+                  {{ type.label }}
+                  <el-tooltip :content="type.description" placement="top">
+                    <el-icon class="info-icon"><InfoFilled /></el-icon>
+                  </el-tooltip>
+                </el-checkbox>
+              </el-checkbox-group>
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="包含月累计">
+          <el-switch v-model="performanceForm.includeMonthly" />
+        </el-form-item>
+
+        <el-form-item label="包含排名">
+          <el-switch v-model="performanceForm.includeRanking" />
+          <el-input-number v-if="performanceForm.includeRanking" v-model="performanceForm.rankingLimit" :min="3" :max="20" style="margin-left: 12px;" />
+          <span v-if="performanceForm.includeRanking" style="margin-left: 8px; color: #909399;">名</span>
+        </el-form-item>
+
+        <el-divider content-position="left">通知方式</el-divider>
+
+        <el-form-item label="通知渠道" prop="channelType">
+          <el-radio-group v-model="performanceForm.channelType">
+            <el-radio label="dingtalk">钉钉群机器人</el-radio>
+            <el-radio label="wechat_work">企业微信群机器人</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item label="Webhook" prop="webhook">
+          <el-input v-model="performanceForm.webhook" placeholder="请输入Webhook地址" />
+        </el-form-item>
+
+        <el-form-item v-if="performanceForm.channelType === 'dingtalk'" label="加签密钥">
+          <el-input v-model="performanceForm.secret" placeholder="可选，SEC开头的密钥" show-password />
+        </el-form-item>
+
+        <el-divider content-position="left">通知视角</el-divider>
+
+        <el-form-item label="数据范围">
+          <el-radio-group v-model="performanceForm.viewScope">
+            <el-radio label="company">全公司视角</el-radio>
+            <el-radio label="department">部门视角</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item v-if="performanceForm.viewScope === 'department'" label="选择部门">
+          <el-select v-model="performanceForm.targetDepartments" multiple placeholder="选择部门" style="width: 100%">
+            <el-option v-for="dept in departments" :key="dept.id" :label="dept.name" :value="dept.id" />
+          </el-select>
+        </el-form-item>
+
+        <!-- 预览区域 -->
+        <el-divider content-position="left">效果预览</el-divider>
+        <div class="preview-section">
+          <div class="preview-card">
+            <div class="preview-title">📊 {{ performanceForm.name || '业绩日报' }}</div>
+            <div class="preview-line">━━━━━━━━━━━━━━━━</div>
+            <div class="preview-date">📅 {{ previewDate }}</div>
+            <div class="preview-section-title">💰 当日业绩</div>
+            <div v-if="performanceForm.reportTypes.includes('order_count')" class="preview-item">   订单数: {{ previewData.daily?.orderCount || 0 }} 单</div>
+            <div v-if="performanceForm.reportTypes.includes('order_amount')" class="preview-item">   订单金额: ¥{{ (previewData.daily?.orderAmount || 0).toLocaleString() }}</div>
+            <div v-if="performanceForm.reportTypes.includes('signed_count')" class="preview-item">   签收单数: {{ previewData.daily?.signedCount || 0 }} 单</div>
+            <div v-if="performanceForm.reportTypes.includes('signed_amount')" class="preview-item">   签收金额: ¥{{ (previewData.daily?.signedAmount || 0).toLocaleString() }}</div>
+            <div v-if="performanceForm.reportTypes.includes('signed_rate')" class="preview-item">   签收率: {{ previewData.daily?.signedRate || 0 }}%</div>
+            <template v-if="performanceForm.includeMonthly">
+              <div class="preview-section-title">📈 本月累计</div>
+              <div class="preview-item">   订单数: {{ previewData.monthly?.orderCount || 0 }} 单</div>
+              <div class="preview-item">   签收金额: ¥{{ (previewData.monthly?.signedAmount || 0).toLocaleString() }}</div>
+            </template>
+            <div class="preview-line">━━━━━━━━━━━━━━━━</div>
+            <div class="preview-footer">📱 智能销售CRM</div>
+          </div>
+          <el-button type="primary" link @click="loadPreviewData">
+            <el-icon><Refresh /></el-icon>
+            刷新预览数据
+          </el-button>
+        </div>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="performanceDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="savePerformanceConfig" :loading="savingPerformance">
+          {{ isEditPerformance ? '更新' : '创建' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -359,10 +587,12 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus, User, Setting, Connection, Edit, Delete, InfoFilled,
-  ChatDotRound, ChatLineSquare, ChatRound, Message, Iphone, Monitor
+  ChatDotRound, ChatLineSquare, ChatRound, Message, Iphone, Monitor,
+  DataAnalysis, Refresh
 } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { messageApi } from '@/api/message'
+import { performanceReportApi } from '@/api/performanceReport'
 import { useUserStore } from '@/stores/user'
 import { useDepartmentStore } from '@/stores/department'
 import dayjs from 'dayjs'
@@ -374,6 +604,60 @@ const departmentStore = useDepartmentStore()
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
+
+// 业绩消息配置相关
+const performanceDialogVisible = ref(false)
+const isEditPerformance = ref(false)
+const savingPerformance = ref(false)
+const performanceConfigs = ref<any[]>([])
+const reportTypes = ref<any[]>([])
+const previewData = ref<any>({})
+const performanceFormRef = ref<FormInstance>()
+
+const performanceForm = reactive({
+  id: '',
+  name: '',
+  sendFrequency: 'daily',
+  sendTime: '09:00',
+  sendDays: [] as number[],
+  repeatType: 'workday',
+  reportTypes: ['order_count', 'order_amount', 'signed_count', 'signed_amount', 'signed_rate'],
+  channelType: 'wechat_work',
+  webhook: '',
+  secret: '',
+  viewScope: 'company',
+  targetDepartments: [] as string[],
+  includeMonthly: true,
+  includeRanking: true,
+  rankingLimit: 10
+})
+
+const performanceRules: FormRules = {
+  name: [{ required: true, message: '请输入配置名称', trigger: 'blur' }],
+  channelType: [{ required: true, message: '请选择通知渠道', trigger: 'change' }],
+  webhook: [{ required: true, message: '请输入Webhook地址', trigger: 'blur' }],
+  reportTypes: [{ required: true, message: '请选择至少一个报表类型', trigger: 'change', type: 'array', min: 1 }]
+}
+
+// 报表类型分类
+const reportTypeCategories = computed(() => {
+  const categories: Record<string, any[]> = {}
+  reportTypes.value.forEach((type: any) => {
+    if (!categories[type.category]) {
+      categories[type.category] = []
+    }
+    categories[type.category].push(type)
+  })
+  return Object.entries(categories).map(([name, types]) => ({ name, types }))
+})
+
+// 预览日期
+const previewDate = computed(() => {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  return `${yesterday.getFullYear()}年${yesterday.getMonth() + 1}月${yesterday.getDate()}日 (${weekDays[yesterday.getDay()]})`
+})
 const memberDialogVisible = ref(false)
 const isEdit = ref(false)
 const channels = ref<any[]>([])
@@ -686,14 +970,191 @@ watch(() => form.channelType, () => {
   }
 })
 
+// =====================================================
+// 业绩消息配置相关方法
+// =====================================================
+
+const loadPerformanceConfigs = async () => {
+  try {
+    const res = await performanceReportApi.getConfigs() as any
+    if (res.success) {
+      performanceConfigs.value = (res.data || []).map((c: any) => ({
+        ...c,
+        testLoading: false
+      }))
+    }
+  } catch (_e) {
+    console.error('加载业绩配置失败:', _e)
+  }
+}
+
+const loadReportTypes = async () => {
+  try {
+    const res = await performanceReportApi.getReportTypes() as any
+    if (res.success) {
+      reportTypes.value = res.data || []
+    }
+  } catch (_e) {
+    console.error('加载报表类型失败:', _e)
+  }
+}
+
+const loadPreviewData = async () => {
+  try {
+    const res = await performanceReportApi.previewReport({
+      reportTypes: performanceForm.reportTypes,
+      viewScope: performanceForm.viewScope,
+      targetDepartments: performanceForm.targetDepartments
+    }) as any
+    if (res.success) {
+      previewData.value = res.data || {}
+    }
+  } catch (_e) {
+    console.error('加载预览数据失败:', _e)
+  }
+}
+
+const showPerformanceDialog = () => {
+  isEditPerformance.value = false
+  resetPerformanceForm()
+  performanceDialogVisible.value = true
+  loadPreviewData()
+}
+
+const resetPerformanceForm = () => {
+  performanceForm.id = ''
+  performanceForm.name = ''
+  performanceForm.sendFrequency = 'daily'
+  performanceForm.sendTime = '09:00'
+  performanceForm.sendDays = []
+  performanceForm.repeatType = 'workday'
+  performanceForm.reportTypes = ['order_count', 'order_amount', 'signed_count', 'signed_amount', 'signed_rate']
+  performanceForm.channelType = 'wechat_work'
+  performanceForm.webhook = ''
+  performanceForm.secret = ''
+  performanceForm.viewScope = 'company'
+  performanceForm.targetDepartments = []
+  performanceForm.includeMonthly = true
+  performanceForm.includeRanking = true
+  performanceForm.rankingLimit = 10
+}
+
+const editPerformanceConfig = (config: any) => {
+  isEditPerformance.value = true
+  performanceForm.id = config.id
+  performanceForm.name = config.name
+  performanceForm.sendFrequency = config.sendFrequency
+  performanceForm.sendTime = config.sendTime
+  performanceForm.sendDays = config.sendDays || []
+  performanceForm.repeatType = config.repeatType
+  performanceForm.reportTypes = config.reportTypes || []
+  performanceForm.channelType = config.channelType
+  performanceForm.webhook = config.webhook
+  performanceForm.secret = config.secret || ''
+  performanceForm.viewScope = config.viewScope
+  performanceForm.targetDepartments = config.targetDepartments || []
+  performanceForm.includeMonthly = config.includeMonthly
+  performanceForm.includeRanking = config.includeRanking
+  performanceForm.rankingLimit = config.rankingLimit
+  performanceDialogVisible.value = true
+  loadPreviewData()
+}
+
+const savePerformanceConfig = async () => {
+  if (!performanceFormRef.value) return
+  try {
+    await performanceFormRef.value.validate()
+    savingPerformance.value = true
+
+    const data = {
+      name: performanceForm.name,
+      sendFrequency: performanceForm.sendFrequency,
+      sendTime: performanceForm.sendTime,
+      sendDays: performanceForm.sendDays,
+      repeatType: performanceForm.repeatType,
+      reportTypes: performanceForm.reportTypes,
+      channelType: performanceForm.channelType,
+      webhook: performanceForm.webhook,
+      secret: performanceForm.secret || undefined,
+      viewScope: performanceForm.viewScope,
+      targetDepartments: performanceForm.viewScope === 'department' ? performanceForm.targetDepartments : [],
+      includeMonthly: performanceForm.includeMonthly,
+      includeRanking: performanceForm.includeRanking,
+      rankingLimit: performanceForm.rankingLimit
+    }
+
+    if (isEditPerformance.value) {
+      await performanceReportApi.updateConfig(performanceForm.id, data)
+      ElMessage.success('更新成功')
+    } else {
+      await performanceReportApi.createConfig(data)
+      ElMessage.success('创建成功')
+    }
+
+    performanceDialogVisible.value = false
+    loadPerformanceConfigs()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.message || '保存失败')
+    }
+  } finally {
+    savingPerformance.value = false
+  }
+}
+
+const deletePerformanceConfig = async (config: any) => {
+  try {
+    await ElMessageBox.confirm(`确定要删除"${config.name}"吗？`, '确认删除', { type: 'warning' })
+    await performanceReportApi.deleteConfig(config.id)
+    ElMessage.success('删除成功')
+    loadPerformanceConfigs()
+  } catch (_e) {
+    // 用户取消
+  }
+}
+
+const togglePerformanceStatus = async (config: any) => {
+  try {
+    await performanceReportApi.updateConfig(config.id, { isEnabled: config.isEnabled })
+    ElMessage.success(config.isEnabled ? '已启用' : '已禁用')
+  } catch (_e) {
+    config.isEnabled = !config.isEnabled
+    ElMessage.error('状态更新失败')
+  }
+}
+
+const testPerformanceReport = async (config: any) => {
+  config.testLoading = true
+  try {
+    const res = await performanceReportApi.testSend(config.id) as any
+    if (res.success) {
+      ElMessage.success(res.message || '测试发送成功')
+      loadPerformanceConfigs() // 刷新状态
+    } else {
+      ElMessage.error(res.message || '测试发送失败')
+    }
+  } catch (_e) {
+    ElMessage.error('测试发送失败')
+  } finally {
+    config.testLoading = false
+  }
+}
+
+const getReportTypeLabel = (value: string) => {
+  const found = reportTypes.value.find((t: any) => t.value === value)
+  return found?.label || value
+}
+
 // 初始化
 onMounted(async () => {
   await Promise.all([
     loadOptions(),
+    loadReportTypes(),
     userStore.loadUsers(),
     departmentStore.loadDepartments()
   ])
   loadChannels()
+  loadPerformanceConfigs()
 })
 </script>
 
@@ -944,10 +1405,113 @@ onMounted(async () => {
   width: 220px;
 }
 
+/* 业绩卡片样式 */
+.performance-list {
+  margin-bottom: 24px;
+}
+
+.performance-card {
+  border-left: 4px solid #E6A23C;
+}
+
+.performance-card:hover {
+  border-color: #E6A23C;
+  box-shadow: 0 4px 12px rgba(230, 162, 60, 0.2);
+}
+
+.channel-icon.icon-performance {
+  background: linear-gradient(135deg, #E6A23C 0%, #F56C6C 100%);
+}
+
+/* 报表类型选择网格 */
+.report-types-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.report-category {
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.category-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.report-category :deep(.el-checkbox-group) {
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 预览区域样式 */
+.preview-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.preview-card {
+  width: 320px;
+  padding: 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  color: white;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.preview-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.preview-line {
+  opacity: 0.6;
+  margin: 8px 0;
+}
+
+.preview-date {
+  margin-bottom: 12px;
+}
+
+.preview-section-title {
+  font-weight: 600;
+  margin: 8px 0 4px 0;
+}
+
+.preview-item {
+  opacity: 0.9;
+}
+
+.preview-footer {
+  text-align: center;
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+.header-right {
+  display: flex;
+  gap: 12px;
+}
+
 /* 响应式 */
 @media (max-width: 1200px) {
   .card-body {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .report-types-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -960,6 +1524,11 @@ onMounted(async () => {
     flex-direction: column;
     align-items: flex-start;
     gap: 16px;
+  }
+
+  .header-right {
+    flex-direction: column;
+    width: 100%;
   }
 }
 </style>
