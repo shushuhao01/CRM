@@ -749,8 +749,7 @@ const loadData = async (showMessage = false) => {
       allOrders = orderStore.getOrders()
     }
 
-    // 筛选已发货的订单（包括shipped和delivered状态），且有物流信息
-    // 🔥 修复：放宽条件，只要有快递单号就显示（快递公司可选）
+    // 筛选已发货的订单（只要是已发货状态就显示，不再强制要求物流单号）
     let shippedOrders = allOrders.filter(order => {
       // 检查订单状态是否为已发货相关状态
       const validStatuses = ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'rejected', 'rejected_returned']
@@ -759,24 +758,17 @@ const loadData = async (showMessage = false) => {
         return false
       }
 
-      // 检查是否有物流单号（trackingNumber 或 expressNo）
+      // 记录物流信息（仅用于日志，不作为筛选条件）
       const trackingNo = order.trackingNumber || order.expressNo
       const hasTrackingNumber = !!(trackingNo && trackingNo.trim() !== '')
-      if (!hasTrackingNumber) {
-        console.log(`[状态更新] 订单 ${order.orderNumber} 没有物流单号，跳过`)
-        return false
-      }
-
-      // 🔥 快递公司不再是必须的，只记录日志
       const hasExpressCompany = order.expressCompany && order.expressCompany.trim() !== ''
-      if (!hasExpressCompany) {
-        console.log(`[状态更新] 订单 ${order.orderNumber} 没有快递公司，但仍然显示`)
-      }
 
       console.log(`[状态更新] ✅ 订单 ${order.orderNumber} 通过筛选`, {
         status: order.status,
-        trackingNumber: trackingNo,
-        expressCompany: order.expressCompany || '未设置'
+        trackingNumber: trackingNo || '未设置',
+        expressCompany: order.expressCompany || '未设置',
+        hasTrackingNumber,
+        hasExpressCompany
       })
       return true
     })
@@ -921,24 +913,11 @@ const loadSummaryData = async (showAnimation = false) => {
       allOrders = orderStore.getOrders()
     }
 
-    // 筛选已发货的订单（包括shipped和delivered状态），且有物流信息
-    // 🔥 修复：放宽条件，只要有快递单号就显示（快递公司可选）
+    // 筛选已发货的订单（只要是已发货状态就显示，不再强制要求物流单号）
     let shippedOrders = allOrders.filter(order => {
       // 检查订单状态是否为已发货相关状态
       const validStatuses = ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'rejected', 'rejected_returned']
-      const isShipped = validStatuses.includes(order.status)
-      if (!isShipped) {
-        return false
-      }
-
-      // 检查是否有物流单号
-      const hasTrackingNumber = !!(order.trackingNumber || order.expressNo)
-      if (!hasTrackingNumber) {
-        return false
-      }
-
-      // 🔥 快递公司不再是必须的
-      return true
+      return validStatuses.includes(order.status)
     })
 
     // 按发货时间筛选（如果有日期范围参数）
