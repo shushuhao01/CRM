@@ -148,10 +148,10 @@
                     {{ announcement.type === 'company' ? '全公司' : '部门' }}
                   </el-tag>
                 </div>
-                <div class="announcement-text">{{ announcement.content }}</div>
+                <div class="announcement-text">{{ stripHtml(announcement.content) }}</div>
                 <div class="announcement-meta">
-                  <span class="announcement-time">{{ announcement.publishedAt }}</span>
-                  <span class="announcement-author">{{ announcement.createdBy }}</span>
+                  <span class="announcement-time">{{ formatTime(announcement.publishedAt) }}</span>
+                  <span class="announcement-author">{{ announcement.createdByName || announcement.createdBy }}</span>
                 </div>
               </div>
               <div class="announcement-actions">
@@ -320,6 +320,25 @@ const handleAnnouncementClick = (announcement: any) => {
   ElMessageBox.alert(announcement.content, announcement.title, {
     confirmButtonText: '确定',
     type: 'info'
+  })
+}
+
+// 去除HTML标签
+const stripHtml = (html: string) => {
+  if (!html) return ''
+  return html.replace(/<[^>]+>/g, '').substring(0, 100)
+}
+
+// 时间格式化（北京时间）
+const formatTime = (time: string | Date) => {
+  if (!time) return ''
+  const date = new Date(time)
+  return date.toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
   })
 }
 
