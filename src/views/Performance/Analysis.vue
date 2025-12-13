@@ -1033,7 +1033,7 @@ const chartData = ref({
     xAxis: [] as string[],
     data: [] as number[]
   },
-  orderStatus: [] as Array<{ value: number; name: string }>
+  orderStatus: [] as Array<{ value: number; name: string; amount: number }>
 })
 
 // 加载图表数据
@@ -1148,12 +1148,13 @@ const loadChartData = () => {
       }
     })
 
-    // 转换为图表数据格式
-    const orderStatusData: Array<{ value: number; name: string }> = []
-    statusMap.forEach((value, name) => {
+    // 转换为图表数据格式 - 🔥 简化：name只存状态名，详细信息在tooltip显示
+    const orderStatusData: Array<{ value: number; name: string; amount: number }> = []
+    statusMap.forEach((data, name) => {
       orderStatusData.push({
-        value: value.count,
-        name: `${name}(${value.count}单/¥${value.amount.toLocaleString()})`
+        value: data.count,
+        name: name,
+        amount: data.amount
       })
     })
 
@@ -1307,22 +1308,30 @@ const initCharts = () => {
         orderStatusChart.setOption({
           tooltip: {
             trigger: 'item',
-            formatter: '{a} <br/>{b}: {c} ({d}%)'
+            // 🔥 优化：简洁的悬停提示
+            formatter: (params: { name: string; value: number; percent: number; data: { amount: number } }) => {
+              const amount = params.data?.amount || 0
+              return `${params.name}<br/>订单: ${params.value}单 (${params.percent.toFixed(1)}%)<br/>金额: ¥${amount.toLocaleString()}`
+            }
           },
           legend: {
             orient: 'vertical',
             left: 'left',
-            top: 'center'
+            top: 'center',
+            formatter: (name: string) => {
+              const item = chartData.value.orderStatus.find(d => d.name === name)
+              return item ? `${name}(${item.value}单/¥${(item as any).amount?.toLocaleString() || 0})` : name
+            }
           },
           series: [{
-            name: '订单状态',
+            name: '订单分布',
             type: 'pie',
             radius: ['40%', '70%'],
             center: ['60%', '50%'],
             data: chartData.value.orderStatus,
             label: {
               show: true,
-              formatter: '{b}'
+              formatter: '{b}({c}单)'
             },
             emphasis: {
               itemStyle: {
