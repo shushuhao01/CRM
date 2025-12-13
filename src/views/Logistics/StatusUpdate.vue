@@ -733,8 +733,15 @@ const loadData = async (showMessage = false) => {
     try {
       const { orderApi } = await import('@/api/order')
       const response = await orderApi.getShippingShipped()
-      allOrders = response?.data?.list || []
+      // 🔥 修复：正确解析API响应数据
+      allOrders = response?.data?.list || response?.list || response?.data || []
       console.log('[状态更新] 从API获取已发货订单:', allOrders.length, '条')
+      console.log('[状态更新] API响应结构:', {
+        hasData: !!response?.data,
+        hasList: !!response?.data?.list,
+        directList: !!response?.list,
+        responseKeys: Object.keys(response || {})
+      })
     } catch (apiError) {
       console.warn('[状态更新] API获取失败，回退到store:', apiError)
       // 回退到store获取
@@ -903,8 +910,16 @@ const loadData = async (showMessage = false) => {
 
 const loadSummaryData = async (showAnimation = false) => {
   try {
-    // 从订单store获取已发货且有快递单号的订单
-    const allOrders = orderStore.getOrders()
+    // 🔥 修复：从API获取已发货订单，与loadData保持一致
+    let allOrders: any[] = []
+    try {
+      const { orderApi } = await import('@/api/order')
+      const response = await orderApi.getShippingShipped()
+      allOrders = response?.data?.list || response?.list || response?.data || []
+    } catch {
+      // 回退到store
+      allOrders = orderStore.getOrders()
+    }
 
     // 筛选已发货的订单（包括shipped和delivered状态），且有物流信息
     let shippedOrders = allOrders.filter(order => {
