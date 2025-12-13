@@ -344,12 +344,13 @@ export class PerformanceReportController {
     }
 
     // 获取统计数据
+    // 注意：签收状态是 'delivered' 而不是 'signed'
     const dailyStats = await dailyQuery
       .select([
         'COUNT(*) as orderCount',
         'COALESCE(SUM(o.total_amount), 0) as orderAmount',
-        'SUM(CASE WHEN o.status = "signed" THEN 1 ELSE 0 END) as signedCount',
-        'COALESCE(SUM(CASE WHEN o.status = "signed" THEN o.total_amount ELSE 0 END), 0) as signedAmount',
+        'SUM(CASE WHEN o.status = "delivered" THEN 1 ELSE 0 END) as signedCount',
+        'COALESCE(SUM(CASE WHEN o.status = "delivered" THEN o.total_amount ELSE 0 END), 0) as signedAmount',
         'SUM(CASE WHEN o.status = "refunded" THEN 1 ELSE 0 END) as refundCount',
         'COALESCE(SUM(CASE WHEN o.status = "refunded" THEN o.total_amount ELSE 0 END), 0) as refundAmount'
       ])
@@ -359,8 +360,8 @@ export class PerformanceReportController {
       .select([
         'COUNT(*) as orderCount',
         'COALESCE(SUM(o.total_amount), 0) as orderAmount',
-        'SUM(CASE WHEN o.status = "signed" THEN 1 ELSE 0 END) as signedCount',
-        'COALESCE(SUM(CASE WHEN o.status = "signed" THEN o.total_amount ELSE 0 END), 0) as signedAmount'
+        'SUM(CASE WHEN o.status = "delivered" THEN 1 ELSE 0 END) as signedCount',
+        'COALESCE(SUM(CASE WHEN o.status = "delivered" THEN o.total_amount ELSE 0 END), 0) as signedAmount'
       ])
       .getRawOne();
 
