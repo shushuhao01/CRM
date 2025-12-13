@@ -17,8 +17,8 @@
                     {{ user.name.charAt(0) }}
                   </el-avatar>
                   <div class="user-status">
-                    <el-tag :type="user.status === '正常' ? 'success' : 'danger'">
-                      {{ user.status }}
+                    <el-tag :type="getAccountStatusTagType(user.status || 'active')">
+                      {{ getAccountStatusDisplayName(user.status || 'active') }}
                     </el-tag>
                   </div>
                 </div>
@@ -45,8 +45,8 @@
                   <el-descriptions-item label="最后登录">{{ user.lastLogin || '从未登录' }}</el-descriptions-item>
                   <el-descriptions-item label="登录次数">{{ user.loginCount || 0 }}</el-descriptions-item>
                   <el-descriptions-item label="账户状态">
-                    <el-tag :type="user.status === '正常' ? 'success' : 'danger'">
-                      {{ user.status }}
+                    <el-tag :type="getAccountStatusTagType(user.status || 'active')">
+                      {{ getAccountStatusDisplayName(user.status || 'active') }}
                     </el-tag>
                   </el-descriptions-item>
                 </el-descriptions>
@@ -243,6 +243,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Close } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { useUserStore } from '@/stores/user'
+import { getAccountStatusDisplayName, getAccountStatusTagType } from '@/utils/statusUtils'
 
 interface User {
   id: string
