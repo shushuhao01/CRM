@@ -1277,9 +1277,9 @@ const getOrderStatusType = (status: string) => {
     pending_transfer: 'info',
     pending_audit: 'warning',
     audit_rejected: 'danger',
-    pending_shipment: 'primary',
-    shipped: 'success',
-    delivered: 'success',
+    pending_shipment: 'warning',  // 待发货用橙色
+    shipped: 'primary',           // 已发货用蓝色
+    delivered: 'success',         // 已签收用绿色
     logistics_returned: 'warning',
     logistics_cancelled: 'info',
     package_exception: 'danger',

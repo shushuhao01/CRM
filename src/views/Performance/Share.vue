@@ -1267,8 +1267,8 @@ const getOrderStatusType = (status: string) => {
   const statusMap: Record<string, string> = {
     pending: 'warning',
     confirmed: 'primary',
-    shipped: 'info',
-    delivered: 'success',
+    shipped: 'primary',           // 已发货用蓝色
+    delivered: 'success',         // 已签收用绿色
     cancelled: 'danger'
   }
   return statusMap[status] || 'info'

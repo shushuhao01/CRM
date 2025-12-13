@@ -434,11 +434,11 @@ const getStatusText = (status: string) => {
 const getStatusType = (status: string) => {
   const types: Record<string, string> = {
     pending: 'info',
-    shipped: 'success',
+    shipped: 'primary',           // 已发货用蓝色
     picked_up: 'primary',
     in_transit: 'warning',
     out_for_delivery: 'warning',
-    delivered: 'success',
+    delivered: 'success',         // 已签收用绿色
     rejected: 'danger',
     rejected_returned: 'warning',
     exception: 'danger',

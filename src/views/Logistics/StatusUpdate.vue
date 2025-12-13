@@ -1087,8 +1087,8 @@ const getStatusText = (status: string) => {
 const getStatusType = (status: string) => {
   const typeMap: Record<string, string> = {
     pending: 'warning',
-    shipped: 'info',
-    delivered: 'success',
+    shipped: 'primary',           // 已发货用蓝色
+    delivered: 'success',         // 已签收用绿色
     rejected: 'warning',
     returned: 'danger',
     refunded: 'danger',
