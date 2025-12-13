@@ -1086,8 +1086,21 @@ const loadChartData = () => {
 
     // 统计每天的业绩
     orders.forEach(order => {
-      const orderDate = order.createTime.split(' ')[0]
-      if (trendData.has(orderDate)) {
+      // 支持多种日期格式：ISO格式(2025-12-13T03:39:35.000Z)和普通格式(2025-12-13 03:39:35)
+      let orderDate = ''
+      if (order.createTime) {
+        if (order.createTime.includes('T')) {
+          // ISO格式
+          orderDate = order.createTime.split('T')[0]
+        } else if (order.createTime.includes(' ')) {
+          // 普通格式
+          orderDate = order.createTime.split(' ')[0]
+        } else {
+          // 纯日期格式
+          orderDate = order.createTime.substring(0, 10)
+        }
+      }
+      if (orderDate && trendData.has(orderDate)) {
         trendData.set(orderDate, trendData.get(orderDate)! + order.totalAmount)
       }
     })
