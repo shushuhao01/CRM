@@ -552,6 +552,7 @@ import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
 import { useNotificationStore } from '@/stores/notification'
+import { messageNotificationService } from '@/services/messageNotificationService'
 import { usePerformanceStore } from '@/stores/performance'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { eventBus, EventNames } from '@/utils/eventBus'
@@ -1502,14 +1503,14 @@ const handleSubmitAudit = async (row: OrderItem) => {
         remark: '手动提审'
       })
 
-      // 发送通知消息
-      notificationStore.sendMessage(
+      // 发送通知消息给审核员（超管、管理员、客服）
+      messageNotificationService.sendToRoles(
         notificationStore.MessageType.AUDIT_PENDING,
-        `订单 ${order.orderNumber} (客户: ${order.customerName}, 金额: ¥${order.totalAmount?.toLocaleString()}) 已提交审核`,
+        `订单 ${order.orderNumber} (客户: ${order.customerName}, 金额: ¥${order.totalAmount?.toLocaleString()}) 已提交审核，请及时处理`,
         {
           relatedId: order.id,
           relatedType: 'order',
-          actionUrl: `/order/detail/${order.id}`
+          actionUrl: `/order/audit`
         }
       )
     }
