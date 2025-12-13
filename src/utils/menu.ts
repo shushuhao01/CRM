@@ -14,7 +14,7 @@ export function hasMenuPermission(
   userPermissions: string[]
 ): boolean {
   console.log(`[hasMenuPermission] 检查菜单权限: ${menuItem.title}`)
-  
+
   // 如果菜单项被隐藏，直接返回false
   if (menuItem.hidden) {
     console.log(`[hasMenuPermission] 菜单项被隐藏: ${menuItem.title}`)
@@ -40,14 +40,31 @@ export function hasMenuPermission(
   // 检查具体权限
   if (menuItem.permissions && menuItem.permissions.length > 0) {
     console.log(`[hasMenuPermission] 检查具体权限 - 要求权限:`, menuItem.permissions, '用户权限:', userPermissions)
+
+    // 🔥 修复：权限匹配函数，同时支持冒号格式(customer:list)和点号格式(customer.list)
+    const matchPermission = (requiredPerm: string, userPerms: string[]): boolean => {
+      // 直接匹配
+      if (userPerms.includes(requiredPerm)) return true
+      // 转换冒号为点号后匹配
+      const dotFormat = requiredPerm.replace(/:/g, '.')
+      if (userPerms.includes(dotFormat)) return true
+      // 转换点号为冒号后匹配
+      const colonFormat = requiredPerm.replace(/\./g, ':')
+      if (userPerms.includes(colonFormat)) return true
+      // 检查父级权限（如 customer 包含 customer:list）
+      const parentPerm = requiredPerm.split(/[:.]/)[0]
+      if (userPerms.includes(parentPerm)) return true
+      return false
+    }
+
     if (menuItem.requireAll) {
       // 需要所有权限
-      const hasAllPerms = menuItem.permissions.every(permission => userPermissions.includes(permission))
+      const hasAllPerms = menuItem.permissions.every(permission => matchPermission(permission, userPermissions))
       console.log(`[hasMenuPermission] 需要所有权限，检查结果: ${hasAllPerms}`)
       return hasAllPerms
     } else {
       // 只需要其中一个权限
-      const hasAnyPerm = menuItem.permissions.some(permission => userPermissions.includes(permission))
+      const hasAnyPerm = menuItem.permissions.some(permission => matchPermission(permission, userPermissions))
       console.log(`[hasMenuPermission] 需要任一权限，检查结果: ${hasAnyPerm}`)
       return hasAnyPerm
     }
@@ -73,18 +90,18 @@ export function filterMenuItems(
   console.log('[filterMenuItems] 输入菜单项数量:', menuItems.length)
   console.log('[filterMenuItems] 用户角色:', userRole)
   console.log('[filterMenuItems] 用户权限:', userPermissions)
-  
+
   const filteredItems: MenuItem[] = []
 
   for (const item of menuItems) {
     console.log(`[filterMenuItems] 检查菜单项: ${item.title} (${item.id})`)
     console.log(`[filterMenuItems] 菜单项角色要求:`, item.roles)
     console.log(`[filterMenuItems] 菜单项权限要求:`, item.permissions)
-    
+
     // 检查当前菜单项权限
     const hasPermission = hasMenuPermission(item, userRole, userPermissions)
     console.log(`[filterMenuItems] 权限检查结果: ${hasPermission}`)
-    
+
     if (hasPermission) {
       const filteredItem: MenuItem = { ...item }
 
@@ -148,7 +165,7 @@ export function getUserAccessibleMenus(menuItems: MenuItem[]): MenuItem[] {
   console.log('[getUserAccessibleMenus] 普通用户，开始过滤菜单')
   const filteredMenus = filterMenuItems(menuItems, userRole, userPermissions)
   console.log('[getUserAccessibleMenus] 过滤后的菜单:', filteredMenus)
-  
+
   return filteredMenus
 }
 
