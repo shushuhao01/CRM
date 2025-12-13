@@ -750,10 +750,11 @@ const loadData = async (showMessage = false) => {
     }
 
     // 筛选已发货的订单（包括shipped和delivered状态），且有物流信息
-    // 注意：trackingNumber 和 expressNo 都可能存在，expressCompany 也可能为空字符串，需要检查
+    // 🔥 修复：放宽条件，只要有快递单号就显示（快递公司可选）
     let shippedOrders = allOrders.filter(order => {
-      // 检查订单状态是否为已发货
-      const isShipped = order.status === 'shipped' || order.status === 'delivered'
+      // 检查订单状态是否为已发货相关状态
+      const validStatuses = ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'rejected', 'rejected_returned']
+      const isShipped = validStatuses.includes(order.status)
       if (!isShipped) {
         return false
       }
@@ -766,17 +767,16 @@ const loadData = async (showMessage = false) => {
         return false
       }
 
-      // 检查是否有快递公司（expressCompany 不能为空字符串）
+      // 🔥 快递公司不再是必须的，只记录日志
       const hasExpressCompany = order.expressCompany && order.expressCompany.trim() !== ''
       if (!hasExpressCompany) {
-        console.log(`[状态更新] 订单 ${order.orderNumber} 没有快递公司，跳过`)
-        return false
+        console.log(`[状态更新] 订单 ${order.orderNumber} 没有快递公司，但仍然显示`)
       }
 
       console.log(`[状态更新] ✅ 订单 ${order.orderNumber} 通过筛选`, {
         status: order.status,
         trackingNumber: trackingNo,
-        expressCompany: order.expressCompany
+        expressCompany: order.expressCompany || '未设置'
       })
       return true
     })
@@ -922,9 +922,11 @@ const loadSummaryData = async (showAnimation = false) => {
     }
 
     // 筛选已发货的订单（包括shipped和delivered状态），且有物流信息
+    // 🔥 修复：放宽条件，只要有快递单号就显示（快递公司可选）
     let shippedOrders = allOrders.filter(order => {
-      // 检查订单状态是否为已发货
-      const isShipped = order.status === 'shipped' || order.status === 'delivered'
+      // 检查订单状态是否为已发货相关状态
+      const validStatuses = ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'rejected', 'rejected_returned']
+      const isShipped = validStatuses.includes(order.status)
       if (!isShipped) {
         return false
       }
@@ -935,10 +937,8 @@ const loadSummaryData = async (showAnimation = false) => {
         return false
       }
 
-      // 检查是否有快递公司（不能为空字符串）
-      const hasExpressCompany = order.expressCompany && order.expressCompany.trim() !== ''
-
-      return hasExpressCompany
+      // 🔥 快递公司不再是必须的
+      return true
     })
 
     // 按发货时间筛选（如果有日期范围参数）
