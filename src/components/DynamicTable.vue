@@ -19,7 +19,7 @@
 
     <!-- 动态表格 -->
     <el-table
-      :data="data"
+      :data="paginatedData"
       v-loading="loading"
       v-bind="$attrs"
       @selection-change="handleSelectionChange"
@@ -81,7 +81,7 @@
     <div class="table-pagination" v-if="showPagination">
       <div class="pagination-stats">
         <slot name="pagination-stats">
-          <span class="stats-text">共 {{ total }} 条记录</span>
+          <span class="stats-text">共 {{ actualTotal }} 条记录</span>
         </slot>
       </div>
       <div class="pagination-controls">
@@ -90,7 +90,7 @@
             v-model:current-page="currentPage"
             v-model:page-size="pageSize"
             :page-sizes="pageSizes"
-            :total="total"
+            :total="actualTotal"
             layout="sizes, prev, pager, next, jumper"
             @size-change="handleSizeChange"
             @current-change="handleCurrentChange"
@@ -179,6 +179,23 @@ const tableMaxHeight = computed(() => {
   // 返回undefined让表格自适应高度，不限制最大高度
   // 表头固定通过CSS sticky实现
   return undefined
+})
+
+// 🔥 实际总数 - 优先使用外部传入的total，否则使用data长度
+const actualTotal = computed(() => {
+  return props.total > 0 ? props.total : props.data.length
+})
+
+// 🔥 分页后的数据 - 如果传入了total则使用外部分页，否则内部分页
+const paginatedData = computed(() => {
+  // 如果外部传入了total且与data长度不同，说明外部已经处理了分页
+  if (props.total > 0 && props.total !== props.data.length) {
+    return props.data
+  }
+  // 否则在组件内部进行分页
+  const startIndex = (currentPage.value - 1) * pageSize.value
+  const endIndex = startIndex + pageSize.value
+  return props.data.slice(startIndex, endIndex)
 })
 
 // 所有列配置（包含默认visible状态）

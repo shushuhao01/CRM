@@ -1,11 +1,11 @@
 <template>
   <div class="order-audit">
-    <!-- é¡µé¢å¤´éƒ¨ -->
+    <!-- Ò³ÃæÍ·²¿ -->
     <div class="page-header">
-      <h2>è®¢å•å®¡æ ¸</h2>
+      <h2>¶©µ¥ÉóºË</h2>
     </div>
 
-    <!-- æ±‡æ€»æ•°æ®å¡ç‰‡ -->
+    <!-- »ã×ÜÊı¾İ¿¨??-->
     <div class="summary-cards">
       <el-row :gutter="20">
         <el-col :span="6">
@@ -16,7 +16,7 @@
               </div>
               <div class="summary-info">
                 <div class="summary-value">{{ summaryData.pendingCount }}</div>
-                <div class="summary-label">å¾…å®¡æ ¸è®¢å•</div>
+                <div class="summary-label">´ıÉóºË¶©??/div>
               </div>
             </div>
           </el-card>
@@ -28,8 +28,8 @@
                 <el-icon><Money /></el-icon>
               </div>
               <div class="summary-info">
-                <div class="summary-value">Â¥{{ (summaryData.pendingAmount || 0).toLocaleString() }}</div>
-                <div class="summary-label">å¾…å®¡æ ¸é‡‘é¢</div>
+                <div class="summary-value">£¤{{ (summaryData.pendingAmount || 0).toLocaleString() }}</div>
+                <div class="summary-label">´ıÉóºË½ğ??/div>
               </div>
             </div>
           </el-card>
@@ -42,7 +42,7 @@
               </div>
               <div class="summary-info">
                 <div class="summary-value">{{ summaryData.todayCount }}</div>
-                <div class="summary-label">ä»Šæ—¥æ–°å¢</div>
+                <div class="summary-label">½ñÈÕĞÂÔö</div>
               </div>
             </div>
           </el-card>
@@ -55,7 +55,7 @@
               </div>
               <div class="summary-info">
                 <div class="summary-value">{{ summaryData.urgentCount }}</div>
-                <div class="summary-label">è¶…æ—¶è®¢å•</div>
+                <div class="summary-label">³¬Ê±¶©µ¥</div>
               </div>
             </div>
           </el-card>
@@ -63,10 +63,10 @@
       </el-row>
     </div>
 
-    <!-- å¿«æ·ç­›é€‰æŒ‰é’® -->
+    <!-- ¿ì½İÉ¸Ñ¡°´??-->
     <el-card class="quick-filter-card">
       <div class="quick-filter-content">
-        <span class="filter-label">å¿«æ·ç­›é€‰ï¼š</span>
+        <span class="filter-label">¿ì½İÉ¸Ñ¡£º</span>
         <div class="filter-buttons">
           <el-button
             v-for="filter in quickFilters"
@@ -83,34 +83,34 @@
       </div>
     </el-card>
 
-    <!-- æœç´¢ç­›é€‰ -->
+    <!-- ËÑË÷É¸??-->
     <el-card class="search-card">
       <el-form :model="searchForm" inline>
-        <el-form-item label="è®¢å•å·">
+        <el-form-item label="¶©µ¥??>
           <el-input
             v-model="searchForm.orderNo"
-            placeholder="è¯·è¾“å…¥è®¢å•å·"
+            placeholder="ÇëÊäÈë¶©µ¥ºÅ"
             clearable
             style="width: 200px;"
           />
         </el-form-item>
-        <el-form-item label="å®¢æˆ·å§“å">
+        <el-form-item label="¿Í»§ĞÕÃû">
           <el-input
             v-model="searchForm.customerName"
-            placeholder="è¯·è¾“å…¥å®¢æˆ·å§“å"
+            placeholder="ÇëÊäÈë¿Í»§ĞÕ??
             clearable
             style="width: 200px;"
           />
         </el-form-item>
-        <el-form-item label="é”€å”®äººå‘˜">
+        <el-form-item label="ÏúÊÛÈË??>
           <el-select
             v-model="searchForm.salesPerson"
-            placeholder="è¯·é€‰æ‹©é”€å”®äººå‘˜"
+            placeholder="ÇëÑ¡ÔñÏúÊÛÈË??
             clearable
             filterable
             style="width: 200px;"
           >
-            <el-option label="å…¨éƒ¨" value="" />
+            <el-option label="È«²¿" value="" />
             <el-option
               v-for="user in salesUserList"
               :key="user.id"
@@ -119,41 +119,41 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="è®¢å•é‡‘é¢">
+        <el-form-item label="¶©µ¥½ğ¶î">
           <el-input
             v-model="searchForm.minAmount"
-            placeholder="æœ€å°é‡‘é¢"
+            placeholder="×îĞ¡½ğ??
             type="number"
             style="width: 120px;"
           />
           <span style="margin: 0 8px;">-</span>
           <el-input
             v-model="searchForm.maxAmount"
-            placeholder="æœ€å¤§é‡‘é¢"
+            placeholder="×î´ó½ğ??
             type="number"
             style="width: 120px;"
           />
         </el-form-item>
-        <el-form-item label="åˆ›å»ºæ—¶é—´">
+        <el-form-item label="´´½¨Ê±¼ä">
           <el-date-picker
             v-model="searchForm.dateRange"
             type="daterange"
-            range-separator="è‡³"
-            start-placeholder="å¼€å§‹æ—¥æœŸ"
-            end-placeholder="ç»“æŸæ—¥æœŸ"
+            range-separator="??
+            start-placeholder="¿ªÊ¼ÈÕ??
+            end-placeholder="½áÊøÈÕÆÚ"
             format="YYYY-MM-DD"
             value-format="YYYY-MM-DD"
             style="width: 240px;"
           />
         </el-form-item>
         <el-form-item>
-          <el-button @click="handleSearch" type="primary" :icon="Search">æœç´¢</el-button>
-          <el-button @click="handleReset" :icon="Refresh">é‡ç½®</el-button>
+          <el-button @click="handleSearch" type="primary" :icon="Search">ËÑË÷</el-button>
+          <el-button @click="handleReset" :icon="Refresh">ÖØÖÃ</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
-    <!-- è®¢å•åˆ—è¡¨ -->
+    <!-- ¶©µ¥ÁĞ±í -->
     <el-card class="table-card-container">
       <DynamicTable
         :data="orderList"
@@ -171,15 +171,14 @@
         @current-change="handleCurrentChange"
       >
       <template #header-actions>
-        <!-- å·¦ä¾§çŠ¶æ€æ ‡ç­¾é¡µ -->
+        <!-- ×ó²à×´Ì¬±êÇ©Ò³ -->
         <div class="header-tabs">
           <el-tabs v-model="activeTab" @tab-change="handleTabChange" class="audit-tabs">
-            <el-tab-pane label="å¾…å®¡æ ¸" name="pending">
+            <el-tab-pane label="´ıÉó?? name="pending">
                <template #label>
                  <span class="tab-label" @click="handleBadgeClick('pending')">
                    <el-icon><Clock /></el-icon>
-                   å¾…å®¡æ ¸
-                   <el-badge
+                   ´ıÉó??                   <el-badge
                      v-if="!badgeClicked.pending && tabCounts.pending > 0"
                      :value="tabCounts.pending"
                      :max="99"
@@ -189,19 +188,19 @@
                  </span>
                </template>
              </el-tab-pane>
-             <el-tab-pane label="å·²å®¡æ ¸é€šè¿‡" name="approved">
+             <el-tab-pane label="ÒÑÉóºËÍ¨¹ı" name="approved">
                <template #label>
                  <span class="tab-label">
                    <el-icon><Check /></el-icon>
-                   å·²å®¡æ ¸é€šè¿‡
+                   ÒÑÉóºËÍ¨¹ı
                  </span>
                </template>
              </el-tab-pane>
-             <el-tab-pane label="å®¡æ ¸æ‹’ç»" name="rejected">
+             <el-tab-pane label="ÉóºË¾Ü¾ø" name="rejected">
                <template #label>
                  <span class="tab-label">
                    <el-icon><Close /></el-icon>
-                   å®¡æ ¸æ‹’ç»
+                   ÉóºË¾Ü¾ø
                  </span>
                </template>
              </el-tab-pane>
@@ -210,9 +209,9 @@
 
         <div class="header-spacer"></div>
 
-        <!-- å³ä¾§æ“ä½œåŒºåŸŸ -->
+        <!-- ÓÒ²à²Ù×÷ÇøÓò -->
         <div class="header-actions-right">
-          <!-- æ‰¹é‡æ“ä½œæŒ‰é’® -->
+          <!-- ÅúÁ¿²Ù×÷°´Å¥ -->
           <el-button
             @click="handleBatchAudit('approved')"
             type="success"
@@ -220,7 +219,7 @@
             :icon="Check"
             size="small"
           >
-            æ‰¹é‡é€šè¿‡ ({{ selectedOrders.length }})
+            ÅúÁ¿Í¨¹ı ({{ selectedOrders.length }})
           </el-button>
           <el-button
             @click="handleBatchAudit('rejected')"
@@ -229,36 +228,35 @@
             :icon="Close"
             size="small"
           >
-            æ‰¹é‡æ‹’ç» ({{ selectedOrders.length }})
+            ÅúÁ¿¾Ü¾ø ({{ selectedOrders.length }})
           </el-button>
-          <el-button @click="handleRefresh" :icon="Refresh" size="small">åˆ·æ–°</el-button>
+          <el-button @click="handleRefresh" :icon="Refresh" size="small">Ë¢ĞÂ</el-button>
 
           <el-divider direction="vertical" />
 
-          <!-- å…¨é€‰æ¡† -->
+          <!-- È«Ñ¡¿ò -->
           <el-checkbox
             v-model="selectAll"
             @change="handleSelectAll"
             :indeterminate="isIndeterminate"
           >
-            å…¨é€‰
-          </el-checkbox>
+            È«??          </el-checkbox>
 
           <el-divider direction="vertical" />
 
-          <!-- æ€»è®°å½•æ•° -->
-          <span class="total-info">å…± {{ pagination.total }} æ¡è®°å½•</span>
+          <!-- ×Ü¼ÇÂ¼Êı -->
+          <span class="total-info">??{{ pagination.total }} Ìõ¼Ç??/span>
         </div>
       </template>
 
-      <!-- è®¢å•å·åˆ— -->
+      <!-- ¶©µ¥ºÅÁĞ -->
       <template #column-orderNo="{ row }">
         <el-link type="primary" @click="goToOrderDetail(row)" :underline="false">
           {{ row.orderNo }}
         </el-link>
       </template>
 
-      <!-- å®¢æˆ·å§“ååˆ— -->
+      <!-- ¿Í»§ĞÕÃû??-->
       <template #column-customerName="{ row }">
         <el-link type="primary" @click="goToCustomerDetail(row)" :underline="false">
           {{ row.customerName }}
@@ -270,7 +268,7 @@
       </template>
 
       <template #totalAmount="{ row }">
-        <span class="amount">Â¥{{ (row.totalAmount || 0).toLocaleString() }}</span>
+        <span class="amount">£¤{{ (row.totalAmount || 0).toLocaleString() }}</span>
       </template>
 
       <template #waitingTime="{ row }">
@@ -310,10 +308,10 @@
           size="small"
           :icon="View"
         >
-          æŸ¥çœ‹
+          ²é¿´
         </el-button>
 
-        <!-- å¾…å®¡æ ¸çŠ¶æ€çš„æ“ä½œæŒ‰é’® -->
+        <!-- ´ıÉóºË×´Ì¬µÄ²Ù×÷°´Å¥ -->
         <template v-if="activeTab === 'pending'">
           <el-button
             @click="handleAudit(row, 'approved')"
@@ -322,7 +320,7 @@
             size="small"
             :icon="Check"
           >
-            é€šè¿‡
+            Í¨¹ı
           </el-button>
           <el-button
             @click="handleAudit(row, 'rejected')"
@@ -331,11 +329,11 @@
             size="small"
             :icon="Close"
           >
-            æ‹’ç»
+            ¾Ü¾ø
           </el-button>
         </template>
 
-        <!-- å·²å®¡æ ¸é€šè¿‡çŠ¶æ€çš„æ“ä½œæŒ‰é’® -->
+        <!-- ÒÑÉóºËÍ¨¹ı×´Ì¬µÄ²Ù×÷°´Å¥ -->
         <template v-else-if="activeTab === 'approved'">
           <el-button
             @click="handleReAudit(row, 'rejected')"
@@ -344,11 +342,11 @@
             size="small"
             :icon="Close"
           >
-            æ’¤é”€
+            ³·Ïú
           </el-button>
         </template>
 
-        <!-- å®¡æ ¸æ‹’ç»çŠ¶æ€çš„æ“ä½œæŒ‰é’® -->
+        <!-- ÉóºË¾Ü¾ø×´Ì¬µÄ²Ù×÷°´Å¥ -->
         <template v-else-if="activeTab === 'rejected'">
           <el-button
             @click="handleReAudit(row, 'approved')"
@@ -357,7 +355,7 @@
             size="small"
             :icon="Check"
           >
-            é‡æ–°é€šè¿‡
+            ÖØĞÂÍ¨¹ı
           </el-button>
         </template>
 
@@ -368,114 +366,114 @@
           size="small"
           :icon="Edit"
         >
-          å¤‡æ³¨
+          ±¸×¢
         </el-button>
       </template>
     </DynamicTable>
     </el-card>
 
-    <!-- è®¢å•è¯¦æƒ…å®¡æ ¸å¼¹çª— -->
+    <!-- ¶©µ¥ÏêÇéÉóºËµ¯´° -->
     <el-dialog
       v-model="orderDetailDialogVisible"
-      title="è®¢å•å®¡æ ¸"
+      title="¶©µ¥ÉóºË"
       width="800px"
       :before-close="handleOrderDetailDialogClose"
     >
       <div class="order-detail-content" v-if="currentOrder">
-        <!-- è®¢å•åŸºæœ¬ä¿¡æ¯ -->
+        <!-- ¶©µ¥»ù±¾ĞÅÏ¢ -->
         <el-card class="order-info-card" shadow="never">
           <template #header>
             <div class="card-header">
               <el-icon><Document /></el-icon>
-              <span>è®¢å•åŸºæœ¬ä¿¡æ¯</span>
+              <span>¶©µ¥»ù±¾ĞÅÏ¢</span>
             </div>
           </template>
 
           <el-row :gutter="20">
             <el-col :span="12">
               <div class="info-item">
-                <span class="label">è®¢å•å·ï¼š</span>
+                <span class="label">¶©µ¥ºÅ£º</span>
                 <span class="value">{{ currentOrder.orderNo }}</span>
               </div>
             </el-col>
             <el-col :span="12">
               <div class="info-item">
-                <span class="label">è®¢å•é‡‘é¢ï¼š</span>
-                <span class="value amount">Â¥{{ currentOrder.totalAmount?.toLocaleString() }}</span>
+                <span class="label">¶©µ¥½ğ¶î??/span>
+                <span class="value amount">£¤{{ currentOrder.totalAmount?.toLocaleString() }}</span>
               </div>
             </el-col>
             <el-col :span="12">
               <div class="info-item">
-                <span class="label">å®šé‡‘é‡‘é¢ï¼š</span>
-                <span class="value deposit-amount">Â¥{{ (currentOrder.depositAmount || 0).toLocaleString() }}</span>
+                <span class="label">¶¨½ğ½ğ¶î??/span>
+                <span class="value deposit-amount">£¤{{ (currentOrder.depositAmount || 0).toLocaleString() }}</span>
               </div>
             </el-col>
             <el-col :span="12">
               <div class="info-item">
-                <span class="label">åˆ°ä»˜é‡‘é¢ï¼š</span>
-                <span class="value cod-amount">Â¥{{ (currentOrder.codAmount || 0).toLocaleString() }}</span>
+                <span class="label">µ½¸¶½ğ¶î??/span>
+                <span class="value cod-amount">£¤{{ (currentOrder.codAmount || 0).toLocaleString() }}</span>
               </div>
             </el-col>
             <el-col :span="12">
               <div class="info-item">
-                <span class="label">æ”¯ä»˜æ–¹å¼ï¼š</span>
+                <span class="label">Ö§¸¶·½Ê½??/span>
                 <span class="value">{{ getPaymentMethodText(currentOrder.paymentMethod) }}</span>
               </div>
             </el-col>
             <el-col :span="12">
               <div class="info-item">
-                <span class="label">å®¢æˆ·å§“åï¼š</span>
+                <span class="label">¿Í»§ĞÕÃû??/span>
                 <span class="value">{{ currentOrder.customerName }}</span>
               </div>
             </el-col>
             <el-col :span="12">
               <div class="info-item">
-                <span class="label">è”ç³»ç”µè¯ï¼š</span>
+                <span class="label">ÁªÏµµç»°??/span>
                 <span class="value">{{ displaySensitiveInfoNew(currentOrder.customerPhone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') }}</span>
               </div>
             </el-col>
             <el-col :span="24">
               <div class="info-item">
-                <span class="label">æ”¶è´§åœ°å€ï¼š</span>
+                <span class="label">ÊÕ»õµØÖ·??/span>
                 <span class="value">{{ currentOrder.deliveryAddress }}</span>
               </div>
             </el-col>
             <el-col :span="12">
               <div class="info-item">
-                <span class="label">é”€å”®äººå‘˜ï¼š</span>
+                <span class="label">ÏúÊÛÈËÔ±£º</span>
                 <span class="value">{{ currentOrder.salesPerson }}</span>
               </div>
             </el-col>
             <el-col :span="12">
               <div class="info-item">
-                <span class="label">äº§å“æ•°é‡ï¼š</span>
-                <span class="value">{{ currentOrder.productCount }} ä»¶</span>
+                <span class="label">²úÆ·ÊıÁ¿??/span>
+                <span class="value">{{ currentOrder.productCount }} ??/span>
               </div>
             </el-col>
             <el-col :span="12">
               <div class="info-item">
-                <span class="label">åˆ›å»ºæ—¶é—´ï¼š</span>
+                <span class="label">´´½¨Ê±¼ä??/span>
                 <span class="value">{{ formatDateTime(currentOrder.createTime) }}</span>
               </div>
             </el-col>
             <el-col :span="12" v-if="currentOrder.waitingHours">
               <div class="info-item">
-                <span class="label">ç­‰å¾…æ—¶é—´ï¼š</span>
+                <span class="label">µÈ´ıÊ±¼ä??/span>
                 <span class="value" :class="getWaitingTimeType(currentOrder.waitingHours)">
-                  {{ currentOrder.waitingHours }} å°æ—¶
+                  {{ currentOrder.waitingHours }} Ğ¡Ê±
                 </span>
               </div>
             </el-col>
             <el-col :span="24" v-if="currentOrder.remark">
               <div class="info-item">
-                <span class="label">è®¢å•å¤‡æ³¨ï¼š</span>
+                <span class="label">¶©µ¥±¸×¢??/span>
                 <span class="value">{{ currentOrder.remark }}</span>
               </div>
             </el-col>
-            <!-- æ”¯ä»˜æˆªå›¾ - åªä¿ç•™è¿™ä¸€ä¸ªæˆªå›¾æ˜¾ç¤ºåŒºåŸŸ -->
+            <!-- Ö§¸¶½ØÍ¼ - Ö»±£ÁôÕâÒ»¸ö½ØÍ¼ÏÔÊ¾Çø??-->
             <el-col :span="24">
               <div class="info-item deposit-screenshots-section">
-                <span class="label">æ”¯ä»˜æˆªå›¾ï¼š</span>
+                <span class="label">Ö§¸¶½ØÍ¼??/span>
                 <template v-if="currentOrder.paymentScreenshots && currentOrder.paymentScreenshots.length > 0">
                   <div class="screenshot-gallery">
                     <div
@@ -494,7 +492,7 @@
                         <template #error>
                           <div class="image-error">
                             <el-icon><Picture /></el-icon>
-                            <span>åŠ è½½å¤±è´¥</span>
+                            <span>¼ÓÔØÊ§°Ü</span>
                           </div>
                         </template>
                       </el-image>
@@ -506,19 +504,19 @@
                   </div>
                 </template>
                 <template v-else>
-                  <span class="value no-data">æš‚æ— æ”¯ä»˜æˆªå›¾</span>
+                  <span class="value no-data">ÔİÎŞÖ§¸¶½ØÍ¼</span>
                 </template>
               </div>
             </el-col>
           </el-row>
         </el-card>
 
-        <!-- å®¡æ ¸æ“ä½œåŒºåŸŸ -->
+        <!-- ÉóºË²Ù×÷ÇøÓò -->
         <el-card class="audit-action-card" shadow="never">
           <template #header>
             <div class="card-header">
               <el-icon><Edit /></el-icon>
-              <span>å®¡æ ¸æ“ä½œ</span>
+              <span>ÉóºË²Ù×÷</span>
             </div>
           </template>
 
@@ -528,29 +526,29 @@
             :rules="quickAuditRules"
             label-width="100px"
           >
-            <el-form-item label="å®¡æ ¸ç»“æœ" prop="result" :required="false">
+            <el-form-item label="ÉóºË½á¹û" prop="result" :required="false">
               <el-radio-group v-model="quickAuditForm.result">
                 <el-radio label="approved">
                   <el-icon color="#67c23a"><Check /></el-icon>
-                  å®¡æ ¸é€šè¿‡
+                  ÉóºËÍ¨¹ı
                 </el-radio>
                 <el-radio label="rejected">
                   <el-icon color="#f56c6c"><Close /></el-icon>
-                  å®¡æ ¸æ‹’ç»
+                  ÉóºË¾Ü¾ø
                 </el-radio>
               </el-radio-group>
             </el-form-item>
 
-            <!-- æ‹’ç»åŸå› é€‰æ‹©æ¡† -->
+            <!-- ¾Ü¾øÔ­ÒòÑ¡Ôñ??-->
             <el-form-item
               v-if="quickAuditForm.result === 'rejected'"
-              label="æ‹’ç»åŸå› "
+              label="¾Ü¾øÔ­Òò"
               prop="rejectionReason"
               required
             >
               <el-select
                 v-model="quickAuditForm.rejectionReason"
-                placeholder="è¯·é€‰æ‹©æ‹’ç»åŸå› "
+                placeholder="ÇëÑ¡Ôñ¾Ü¾øÔ­Òò"
                 style="width: 100%"
               >
                 <el-option
@@ -562,12 +560,12 @@
               </el-select>
             </el-form-item>
 
-            <el-form-item label="å®¡æ ¸å¤‡æ³¨" prop="remark" :required="false">
+            <el-form-item label="ÉóºË±¸×¢" prop="remark" :required="false">
               <el-input
                 v-model="quickAuditForm.remark"
                 type="textarea"
                 :rows="3"
-                placeholder="è¯·è¾“å…¥å®¡æ ¸å¤‡æ³¨ï¼ˆé€‰å¡«ï¼‰"
+                placeholder="ÇëÊäÈëÉóºË±¸×¢£¨Ñ¡Ìî??
                 maxlength="200"
                 show-word-limit
               />
@@ -575,13 +573,13 @@
           </el-form>
         </el-card>
 
-        <!-- å¯æŠ˜å çš„å®¡æ ¸è½¨è¿¹ -->
+        <!-- ¿ÉÕÛµşµÄÉóºË¹ì¼£ -->
         <el-card class="audit-history-card" shadow="never">
           <template #header>
             <div class="card-header" @click="auditHistoryCollapsed = !auditHistoryCollapsed" style="cursor: pointer;">
               <div class="header-left">
                 <el-icon><Clock /></el-icon>
-                <span>å®¡æ ¸è½¨è¿¹</span>
+                <span>ÉóºË¹ì¼£</span>
                 <el-badge
                   :value="currentOrder?.auditHistory?.length || 0"
                   :max="99"
@@ -630,23 +628,23 @@
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="handleOrderDetailDialogClose">å–æ¶ˆ</el-button>
+          <el-button @click="handleOrderDetailDialogClose">È¡Ïû</el-button>
           <el-button
             @click="handleQuickAuditSubmit"
             type="primary"
             :loading="quickAuditLoading"
             :disabled="!quickAuditForm.result"
           >
-            ç¡®è®¤{{ quickAuditForm.result === 'approved' ? 'é€šè¿‡' : 'æ‹’ç»' }}
+            È·ÈÏ{{ quickAuditForm.result === 'approved' ? 'Í¨¹ı' : '¾Ü¾ø' }}
           </el-button>
         </div>
       </template>
     </el-dialog>
 
-    <!-- å›¾ç‰‡æŸ¥çœ‹å™¨ -->
+    <!-- Í¼Æ¬²é¿´??-->
     <el-dialog
       v-model="imageViewerVisible"
-      title="æ”¯ä»˜æˆªå›¾æŸ¥çœ‹"
+      title="Ö§¸¶½ØÍ¼²é¿´"
       width="80%"
       :before-close="handleImageViewerClose"
       class="image-viewer-dialog"
@@ -660,12 +658,12 @@
           <template #error>
             <div class="image-error-large">
               <el-icon size="48"><Picture /></el-icon>
-              <p>å›¾ç‰‡åŠ è½½å¤±è´¥</p>
+              <p>Í¼Æ¬¼ÓÔØÊ§°Ü</p>
             </div>
           </template>
         </el-image>
 
-        <!-- å›¾ç‰‡å¯¼èˆª -->
+        <!-- Í¼Æ¬µ¼º½ -->
         <div class="image-navigation" v-if="currentImageList.length > 1">
           <el-button
             @click="handlePrevImage"
@@ -690,7 +688,7 @@
       </div>
     </el-dialog>
 
-    <!-- å®¡æ ¸å¯¹è¯æ¡† -->
+    <!-- ÉóºË¶Ô»°??-->
     <el-dialog
       v-model="auditDialogVisible"
       :title="auditDialogTitle"
@@ -703,31 +701,31 @@
         :rules="auditRules"
         label-width="100px"
       >
-        <el-form-item label="å®¡æ ¸ç»“æœ" prop="result" :required="false">
+        <el-form-item label="ÉóºË½á¹û" prop="result" :required="false">
           <el-radio-group v-model="auditForm.result" @change="handleAuditResultChange">
             <el-radio label="approved">
               <el-icon color="#67c23a"><Check /></el-icon>
-              å®¡æ ¸é€šè¿‡
+              ÉóºËÍ¨¹ı
             </el-radio>
             <el-radio label="rejected">
               <el-icon color="#f56c6c"><Close /></el-icon>
-              å®¡æ ¸æ‹’ç»
+              ÉóºË¾Ü¾ø
             </el-radio>
           </el-radio-group>
         </el-form-item>
 
 
-        <!-- æ‹’ç»åŸå› é€‰æ‹© -->
+        <!-- ¾Ü¾øÔ­ÒòÑ¡Ôñ -->
         <el-form-item
           v-if="auditForm.result === 'rejected'"
-          label="æ‹’ç»åŸå› "
+          label="¾Ü¾øÔ­Òò"
           prop="rejectionReasonId"
           required
         >
           <div class="rejection-reason-section">
             <el-select
               v-model="auditForm.rejectionReasonId"
-              placeholder="è¯·é€‰æ‹©æ‹’ç»åŸå› "
+              placeholder="ÇëÑ¡Ôñ¾Ü¾øÔ­Òò"
               clearable
               filterable
               @change="handleRejectionReasonChange"
@@ -745,12 +743,12 @@
               @click="handleOpenRejectionReasonManagement"
               style="margin-left: 8px; flex-shrink: 0;"
             >
-              ç®¡ç†åŸå› 
+              ¹ÜÀíÔ­Òò
             </el-button>
           </div>
         </el-form-item>
 
-        <el-form-item label="å®¡æ ¸å¤‡æ³¨" prop="remark" :required="false">
+        <el-form-item label="ÉóºË±¸×¢" prop="remark" :required="false">
           <el-input
             v-model="auditForm.remark"
             type="textarea"
@@ -761,7 +759,7 @@
           />
         </el-form-item>
 
-        <el-form-item v-if="isBatchAudit" label="å½±å“è®¢å•">
+        <el-form-item v-if="isBatchAudit" label="Ó°Ïì¶©µ¥">
           <div class="batch-orders">
             <el-tag
               v-for="order in selectedOrders"
@@ -770,7 +768,7 @@
               closable
               @close="removeBatchOrder(order)"
             >
-              {{ order.orderNo }} - Â¥{{ (order.totalAmount || 0).toLocaleString() }}
+              {{ order.orderNo }} - £¤{{ (order.totalAmount || 0).toLocaleString() }}
             </el-tag>
           </div>
         </el-form-item>
@@ -778,22 +776,22 @@
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="handleAuditDialogClose">å–æ¶ˆ</el-button>
+          <el-button @click="handleAuditDialogClose">È¡Ïû</el-button>
           <el-button
             @click="handleAuditSubmit"
             type="primary"
             :loading="auditLoading"
           >
-            ç¡®è®¤{{ auditForm.result === 'approved' ? 'é€šè¿‡' : 'æ‹’ç»' }}
+            È·ÈÏ{{ auditForm.result === 'approved' ? 'Í¨¹ı' : '¾Ü¾ø' }}
           </el-button>
         </div>
       </template>
     </el-dialog>
 
-    <!-- å¿«é€Ÿå¤‡æ³¨å¯¹è¯æ¡† -->
+    <!-- ¿ìËÙ±¸×¢¶Ô»°¿ò -->
     <el-dialog
       v-model="remarkDialogVisible"
-      title="æ·»åŠ è®¢å•å¤‡æ³¨"
+      title="Ìí¼Ó¶©µ¥±¸×¢"
       width="500px"
     >
       <el-form
@@ -802,15 +800,15 @@
         :rules="remarkRules"
         label-width="80px"
       >
-        <el-form-item label="è®¢å•å·">
+        <el-form-item label="¶©µ¥??>
           <el-input v-model="currentOrder.orderNo" disabled />
         </el-form-item>
-        <el-form-item label="å¤‡æ³¨å†…å®¹" prop="content">
+        <el-form-item label="±¸×¢ÄÚÈİ" prop="content">
           <el-input
             v-model="remarkForm.content"
             type="textarea"
             :rows="4"
-            placeholder="è¯·è¾“å…¥å¤‡æ³¨å†…å®¹"
+            placeholder="ÇëÊäÈë±¸×¢ÄÚ??
             maxlength="200"
             show-word-limit
           />
@@ -819,22 +817,22 @@
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="remarkDialogVisible = false">å–æ¶ˆ</el-button>
+          <el-button @click="remarkDialogVisible = false">È¡Ïû</el-button>
           <el-button
             @click="handleRemarkSubmit"
             type="primary"
             :loading="remarkLoading"
           >
-            ä¿å­˜å¤‡æ³¨
+            ±£´æ±¸×¢
           </el-button>
         </div>
       </template>
     </el-dialog>
 
-    <!-- æ‹’ç»åŸå› ç®¡ç†å¯¹è¯æ¡† -->
+    <!-- ¾Ü¾øÔ­Òò¹ÜÀí¶Ô»°??-->
     <el-dialog
       v-model="rejectionReasonManagementVisible"
-      title="æ‹’ç»åŸå› ç®¡ç†"
+      title="¾Ü¾øÔ­Òò¹ÜÀí"
       width="800px"
       @close="handleCloseRejectionReasonManagement"
     >
@@ -881,7 +879,7 @@ import { eventBus, EventNames } from '@/utils/eventBus'
 import { formatDateTime } from '@/utils/dateFormat'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 
-// æ¥å£å®šä¹‰
+// ½Ó¿Ú¶¨Òå
 interface PaymentScreenshot {
   id: number
   url: string
@@ -905,9 +903,8 @@ interface AuditOrder {
   customerName: string
   customerPhone: string
   salesPerson: string
-  salesPersonId?: string  // ä¸‹å•å‘˜ID
-  createdBy?: string      // åˆ›å»ºäºº
-  createdById?: string    // åˆ›å»ºäººID
+  salesPersonId?: string  // ÏÂµ¥Ô±ID
+  createdBy?: string      // ´´½¨??  createdById?: string    // ´´½¨ÈËID
   totalAmount: number
   depositAmount: number
   codAmount: number
@@ -920,9 +917,9 @@ interface AuditOrder {
   auditor?: string
   auditRemark?: string
   deliveryAddress: string
-  paymentMethod?: string  // æ”¯ä»˜æ–¹å¼
+  paymentMethod?: string  // Ö§¸¶·½Ê½
   paymentScreenshots: PaymentScreenshot[]
-  depositScreenshots?: string[]  // å®šé‡‘æˆªå›¾
+  depositScreenshots?: string[]  // ¶¨½ğ½ØÍ¼
   auditHistory: AuditHistory[]
 }
 
@@ -959,8 +956,7 @@ const orderStore = useOrderStore()
 const notificationStore = useNotificationStore()
 const rejectionReasonStore = useRejectionReasonStore()
 
-// å“åº”å¼æ•°æ®
-const loading = ref(false)
+// ÏìÓ¦Ê½Êı??const loading = ref(false)
 const auditLoading = ref(false)
 const remarkLoading = ref(false)
 const quickAuditLoading = ref(false)
@@ -970,48 +966,42 @@ const orderDetailDialogVisible = ref(false)
 const rejectionReasonManagementVisible = ref(false)
 const isBatchAudit = ref(false)
 
-// å›¾ç‰‡æŸ¥çœ‹å™¨ç›¸å…³
-const imageViewerVisible = ref(false)
+// Í¼Æ¬²é¿´Æ÷Ïà??const imageViewerVisible = ref(false)
 const currentImageList = ref<string[]>([])
 const currentImageIndex = ref(0)
 
-// å®¡æ ¸è½¨è¿¹æŠ˜å çŠ¶æ€
-const auditHistoryCollapsed = ref(true)
+// ÉóºË¹ì¼£ÕÛµş×´??const auditHistoryCollapsed = ref(true)
 
-// æ ‡ç­¾çŠ¶æ€ç®¡ç†
-const activeTab = ref('pending')
+// ±êÇ©×´Ì¬¹Ü??const activeTab = ref('pending')
 const tabCounts = reactive({
   pending: 0,
   approved: 0,
   rejected: 0
 })
 
-// çº¢ç‚¹çŠ¶æ€ç®¡ç†ï¼ˆè®°å½•å¾…å®¡æ ¸æ ‡ç­¾çš„çº¢ç‚¹æ˜¯å¦å·²è¢«ç‚¹å‡»ï¼‰
-const badgeClicked = reactive({
+// ºìµã×´Ì¬¹ÜÀí£¨¼ÇÂ¼´ıÉóºË±êÇ©µÄºìµãÊÇ·ñÒÑ±»µã»÷??const badgeClicked = reactive({
   pending: false
 })
 
-// æ‰€æœ‰è®¢å•æ•°æ®
-const allOrders = ref<AuditOrder[]>([])
+// ËùÓĞ¶©µ¥Êı??const allOrders = ref<AuditOrder[]>([])
 const pendingOrders = ref<AuditOrder[]>([])
 const approvedOrders = ref<AuditOrder[]>([])
 const rejectedOrders = ref<AuditOrder[]>([])
 
-// è¡¨å•å¼•ç”¨
+// ±íµ¥ÒıÓÃ
 const auditFormRef = ref<FormInstance>()
 const remarkFormRef = ref<FormInstance>()
 const quickAuditFormRef = ref<FormInstance>()
 
-// é€‰æ‹©ç›¸å…³
+// Ñ¡ÔñÏà¹Ø
 const selectedOrders = ref<AuditOrder[]>([])
 const selectAll = ref(false)
 
-// é”€å”®äººå‘˜åˆ—è¡¨ - ä»userStoreè·å–çœŸå®ç”¨æˆ·æ•°æ®
-// ğŸ”¥ ã€ä¿®å¤ã€‘è¿‡æ»¤æ‰ç¦ç”¨ç”¨æˆ·ï¼Œåªæ˜¾ç¤ºå¯ç”¨çš„ç”¨æˆ·
-const salesUserList = computed(() => {
+// ÏúÊÛÈËÔ±ÁĞ??- ´ÓuserStore»ñÈ¡ÕæÊµÓÃ»§Êı¾İ
+// ?? ¡¾ĞŞ¸´¡¿¹ıÂËµô½ûÓÃÓÃ»§£¬Ö»ÏÔÊ¾ÆôÓÃµÄÓÃ??const salesUserList = computed(() => {
   return userStore.users
     .filter(u => {
-      // æ£€æŸ¥ç”¨æˆ·æ˜¯å¦å¯ç”¨ï¼ˆç¦ç”¨ç”¨æˆ·ä¸æ˜¾ç¤ºï¼‰
+      // ¼ì²éÓÃ»§ÊÇ·ñÆôÓÃ£¨½ûÓÃÓÃ»§²»ÏÔÊ¾£©
       const isEnabled = !u.status || u.status === 'active'
       const hasValidRole = ['sales_staff', 'department_manager', 'admin', 'super_admin'].includes(u.role)
       return isEnabled && hasValidRole
@@ -1019,12 +1009,11 @@ const salesUserList = computed(() => {
     .map(u => ({
       id: u.id,
       name: u.realName || u.name || u.username,
-      department: u.department || 'æœªåˆ†é…'
+      department: u.department || 'Î´·Ö??
     }))
 })
 
-// è®¡ç®—å±æ€§
-const isIndeterminate = computed(() => {
+// ¼ÆËãÊô??const isIndeterminate = computed(() => {
   const selectedCount = selectedOrders.value?.length || 0
   const totalCount = orderList.value?.length || 0
   return selectedCount > 0 && selectedCount < totalCount
@@ -1032,20 +1021,19 @@ const isIndeterminate = computed(() => {
 
 const auditDialogTitle = computed(() => {
   if (isBatchAudit.value) {
-    return `æ‰¹é‡å®¡æ ¸è®¢å• (${selectedOrders.value?.length || 0}ä¸ª)`
+    return `ÅúÁ¿ÉóºË¶©µ¥ (${selectedOrders.value?.length || 0}??`
   }
-  return 'è®¢å•å®¡æ ¸'
+  return '¶©µ¥ÉóºË'
 })
 
-// æ±‡æ€»æ•°æ®
-const summaryData = reactive({
+// »ã×ÜÊı??const summaryData = reactive({
   pendingCount: 0,
   pendingAmount: 0,
   todayCount: 0,
   urgentCount: 0
 })
 
-// æœç´¢è¡¨å•
+// ËÑË÷±íµ¥
 const searchForm = reactive({
   orderNo: '',
   customerName: '',
@@ -1055,25 +1043,24 @@ const searchForm = reactive({
   dateRange: []
 })
 
-// å¿«æ·ç­›é€‰
-const activeQuickFilter = ref('today')
+// ¿ì½İÉ¸??const activeQuickFilter = ref('today')
 const quickFilters = [
-  { label: 'ä»Šæ—¥', value: 'today' },
-  { label: 'æ˜¨æ—¥', value: 'yesterday' },
-  { label: 'æœ¬å‘¨', value: 'thisWeek' },
-  { label: 'æœ¬æœˆ', value: 'thisMonth' },
-  { label: 'ä»Šå¹´', value: 'thisYear' },
-  { label: 'å…¨éƒ¨', value: 'all' }
+  { label: '½ñÈÕ', value: 'today' },
+  { label: '×òÈÕ', value: 'yesterday' },
+  { label: '±¾ÖÜ', value: 'thisWeek' },
+  { label: '±¾ÔÂ', value: 'thisMonth' },
+  { label: '½ñÄê', value: 'thisYear' },
+  { label: 'È«²¿', value: 'all' }
 ]
 
-// åˆ†é¡µ
+// ·ÖÒ³
 const pagination = reactive({
   page: 1,
   size: 20,
   total: 0
 })
 
-// è®¢å•åˆ—è¡¨æ•°æ®
+// ¶©µ¥ÁĞ±íÊı¾İ
 const orderList = computed(() => {
   switch (activeTab.value) {
     case 'pending':
@@ -1085,153 +1072,153 @@ const orderList = computed(() => {
     default:
       return pendingOrders.value
   }
-})
 
-// è¡¨æ ¼åˆ—é…ç½®
-const tableColumns = computed(() => [
+// ·ÖÒ³ºóµÄ¶©µ¥ÁĞ±í
+const paginatedOrderList = computed(() => {
+  const allData = orderList.value
+  const startIndex = (pagination.page - 1) * pagination.size
+  const endIndex = startIndex + pagination.size
+  return allData.slice(startIndex, endIndex)
+})
+// ±í¸ñÁĞÅä??const tableColumns = computed(() => [
   {
     prop: 'orderNo',
-    label: 'è®¢å•å·',
+    label: '¶©µ¥??,
     width: 160,
     visible: true
   },
   {
     prop: 'customerName',
-    label: 'å®¢æˆ·å§“å',
+    label: '¿Í»§ĞÕÃû',
     width: 120,
     visible: true
   },
   {
     prop: 'customerPhone',
-    label: 'å®¢æˆ·ç”µè¯',
+    label: '¿Í»§µç»°',
     width: 140,
     visible: true
   },
   {
     prop: 'salesPerson',
-    label: 'é”€å”®äººå‘˜',
+    label: 'ÏúÊÛÈË??,
     width: 100,
     visible: true
   },
   {
     prop: 'totalAmount',
-    label: 'è®¢å•é‡‘é¢',
+    label: '¶©µ¥½ğ¶î',
     width: 120,
     align: 'right',
     visible: true
   },
   {
     prop: 'productCount',
-    label: 'å•†å“æ•°é‡',
+    label: 'ÉÌÆ·ÊıÁ¿',
     width: 100,
     align: 'center',
     visible: true
   },
   {
     prop: 'createTime',
-    label: 'åˆ›å»ºæ—¶é—´',
+    label: '´´½¨Ê±¼ä',
     width: 160,
     visible: true,
     formatter: (value: unknown) => formatDateTime(value as string)
   },
   {
     prop: 'waitingTime',
-    label: 'ç­‰å¾…æ—¶é—´',
+    label: 'µÈ´ıÊ±¼ä',
     width: 120,
     align: 'center',
     visible: activeTab.value === 'pending'
   },
   {
     prop: 'auditStatus',
-    label: 'å®¡æ ¸çŠ¶æ€',
+    label: 'ÉóºË×´??,
     width: 120,
     align: 'center',
     visible: activeTab.value !== 'pending'
   },
   {
     prop: 'auditFlag',
-    label: 'å®¡æ ¸æ ‡è¯†',
+    label: 'ÉóºË±êÊ¶',
     width: 100,
     align: 'center',
     visible: activeTab.value === 'pending'
   },
   {
     prop: 'auditTime',
-    label: 'å®¡æ ¸æ—¶é—´',
+    label: 'ÉóºËÊ±¼ä',
     width: 160,
     visible: activeTab.value !== 'pending',
     formatter: (value: unknown) => formatDateTime(value as string)
   },
   {
     prop: 'auditor',
-    label: 'å®¡æ ¸äºº',
+    label: 'ÉóºË??,
     width: 100,
     visible: activeTab.value !== 'pending'
   },
   {
     prop: 'remark',
-    label: 'è®¢å•å¤‡æ³¨',
+    label: '¶©µ¥±¸×¢',
     minWidth: 150,
     showOverflowTooltip: true,
     visible: true
   }
 ])
 
-// å½“å‰æ“ä½œçš„è®¢å•
-const currentOrder = ref<AuditOrder>({} as AuditOrder)
+// µ±Ç°²Ù×÷µÄ¶©??const currentOrder = ref<AuditOrder>({} as AuditOrder)
 
-// å®¡æ ¸è¡¨å•
+// ÉóºË±íµ¥
 const auditForm = reactive<AuditForm>({
-  result: null, // ä½¿ç”¨nullç¡®ä¿åˆå§‹çŠ¶æ€ä¸‹æ²¡æœ‰é€‰ä¸­ä»»ä½•é€‰é¡¹
+  result: null, // Ê¹ÓÃnullÈ·±£³õÊ¼×´Ì¬ÏÂÃ»ÓĞÑ¡ÖĞÈÎºÎÑ¡Ïî
   remark: '',
   rejectionReasonId: ''
 })
 
-// å¤‡æ³¨è¡¨å•
+// ±¸×¢±íµ¥
 const remarkForm = reactive<RemarkForm>({
   content: ''
 })
 
-// å¿«é€Ÿå®¡æ ¸è¡¨å•
-const quickAuditForm = reactive<QuickAuditForm>({
-  result: null, // ä½¿ç”¨nullç¡®ä¿åˆå§‹çŠ¶æ€ä¸‹æ²¡æœ‰é€‰ä¸­ä»»ä½•é€‰é¡¹
+// ¿ìËÙÉóºË±í??const quickAuditForm = reactive<QuickAuditForm>({
+  result: null, // Ê¹ÓÃnullÈ·±£³õÊ¼×´Ì¬ÏÂÃ»ÓĞÑ¡ÖĞÈÎºÎÑ¡Ïî
   rejectionReason: '',
   remark: ''
 })
 
-// å®¡æ ¸è¡¨å•éªŒè¯è§„åˆ™
+// ÉóºË±íµ¥ÑéÖ¤¹æÔò
 const auditRules = computed<FormRules>(() => ({
   result: [
-    { required: true, message: 'è¯·é€‰æ‹©å®¡æ ¸ç»“æœ', trigger: 'change' }
+    { required: true, message: 'ÇëÑ¡ÔñÉóºË½á¹û', trigger: 'change' }
   ],
   rejectionReasonId: auditForm.result === 'rejected' ? [
-    { required: true, message: 'è¯·é€‰æ‹©æ‹’ç»åŸå› ', trigger: 'change' }
+    { required: true, message: 'ÇëÑ¡Ôñ¾Ü¾øÔ­Òò', trigger: 'change' }
   ] : [],
-  remark: [] // å®¡æ ¸é€šè¿‡æ—¶éå¿…å¡«ï¼Œæ‹’ç»æ—¶é€‰æ‹©æ‹’ç»åŸå› åä¹Ÿéå¿…å¡«
-}))
+  remark: [] // ÉóºËÍ¨¹ıÊ±·Ç±ØÌî£¬¾Ü¾øÊ±Ñ¡Ôñ¾Ü¾øÔ­ÒòºóÒ²·Ç±Ø??}))
 
-// å¤‡æ³¨è¡¨å•éªŒè¯è§„åˆ™
+// ±¸×¢±íµ¥ÑéÖ¤¹æÔò
 const remarkRules: FormRules = {
   content: [
-    { required: true, message: 'è¯·è¾“å…¥å¤‡æ³¨å†…å®¹', trigger: 'blur' },
-    { min: 2, message: 'å¤‡æ³¨å†…å®¹è‡³å°‘2ä¸ªå­—ç¬¦', trigger: 'blur' }
+    { required: true, message: 'ÇëÊäÈë±¸×¢ÄÚ??, trigger: 'blur' },
+    { min: 2, message: '±¸×¢ÄÚÈİÖÁÉÙ2¸ö×Ö??, trigger: 'blur' }
   ]
 }
 
-// å¿«é€Ÿå®¡æ ¸è¡¨å•éªŒè¯è§„åˆ™
-const quickAuditRules = computed<FormRules>(() => ({
+// ¿ìËÙÉóºË±íµ¥ÑéÖ¤¹æ??const quickAuditRules = computed<FormRules>(() => ({
   result: [
-    { required: true, message: 'è¯·é€‰æ‹©å®¡æ ¸ç»“æœ', trigger: 'change' }
+    { required: true, message: 'ÇëÑ¡ÔñÉóºË½á¹û', trigger: 'change' }
   ],
   rejectionReason: quickAuditForm.result === 'rejected' ? [
-    { required: true, message: 'è¯·é€‰æ‹©æ‹’ç»åŸå› ', trigger: 'change' }
+    { required: true, message: 'ÇëÑ¡Ôñ¾Ü¾øÔ­Òò', trigger: 'change' }
   ] : [],
-  remark: [] // å®¡æ ¸å¤‡æ³¨æ”¹ä¸ºéå¿…å¡«
-}))
+  remark: [] // ÉóºË±¸×¢¸ÄÎª·Ç±Ø??}))
 
-// æ–¹æ³•å®šä¹‰
+// ·½·¨¶¨Òå
 /**
- * è·å–ç­‰å¾…æ—¶é—´ç±»å‹ï¼ˆåŸºäºåˆ†é’Ÿï¼‰
+ * »ñÈ¡µÈ´ıÊ±¼äÀàĞÍ£¨»ùÓÚ·ÖÖÓ£©
  */
 const getWaitingTimeType = (minutes: number) => {
   const hours = minutes / 60
@@ -1241,23 +1228,21 @@ const getWaitingTimeType = (minutes: number) => {
 }
 
 /**
- * æ ¼å¼åŒ–ç­‰å¾…æ—¶é—´æ˜¾ç¤º
- */
+ * ¸ñÊ½»¯µÈ´ıÊ±¼äÏÔ?? */
 const formatWaitingTime = (minutes: number) => {
   if (minutes < 60) {
-    return `${minutes}åˆ†é’Ÿ`
+    return `${minutes}·ÖÖÓ`
   }
   const hours = Math.floor(minutes / 60)
   const mins = minutes % 60
   if (mins === 0) {
-    return `${hours}å°æ—¶`
+    return `${hours}Ğ¡Ê±`
   }
-  return `${hours}å°æ—¶${mins}åˆ†é’Ÿ`
+  return `${hours}Ğ¡Ê±${mins}·ÖÖÓ`
 }
 
 /**
- * è·å–çŠ¶æ€æ ‡ç­¾ç±»å‹
- */
+ * »ñÈ¡×´Ì¬±êÇ©Àà?? */
 const getStatusTagType = (status: string) => {
   switch (status) {
     case 'approved':
@@ -1272,38 +1257,37 @@ const getStatusTagType = (status: string) => {
 }
 
 /**
- * è·å–çŠ¶æ€æ–‡æœ¬
- */
+ * »ñÈ¡×´Ì¬ÎÄ?? */
 const getStatusText = (status: string) => {
   switch (status) {
     case 'approved':
-      return 'å·²é€šè¿‡'
+      return 'ÒÑÍ¨¹ı'
     case 'rejected':
-      return 'å·²æ‹’ç»'
+      return 'ÒÑ¾Ü??
     case 'pending':
-      return 'å¾…å®¡æ ¸'
+      return '´ıÉó??
     default:
-      return 'æœªçŸ¥'
+      return 'Î´Öª'
   }
 }
 
 /**
- * è·å–å®¡æ ¸æ ‡è¯†æ–‡æœ¬
+ * »ñÈ¡ÉóºË±êÊ¶ÎÄ±¾
  */
 const getAuditFlagText = (flag: string) => {
   switch (flag) {
     case 'approved':
-      return 'å®¡æ ¸é€šè¿‡'
+      return 'ÉóºËÍ¨¹ı'
     case 'rejected':
-      return 'å®¡æ ¸æ‹’ç»'
+      return 'ÉóºË¾Ü¾ø'
     case 'pending':
     default:
-      return 'å¾…å®¡æ ¸'
+      return '´ıÉó??
   }
 }
 
 /**
- * è·å–å®¡æ ¸æ ‡è¯†ç±»å‹
+ * »ñÈ¡ÉóºË±êÊ¶ÀàĞÍ
  */
 const getAuditFlagType = (flag: string) => {
   switch (flag) {
@@ -1318,41 +1302,41 @@ const getAuditFlagType = (flag: string) => {
 }
 
 /**
- * è·å–æ”¯ä»˜æ–¹å¼æ–‡æœ¬
+ * »ñÈ¡Ö§¸¶·½Ê½ÎÄ±¾
  */
 const getPaymentMethodText = (method: string | null | undefined) => {
   if (!method) return '-'
   const methodMap: Record<string, string> = {
-    wechat: 'å¾®ä¿¡æ”¯ä»˜',
-    alipay: 'æ”¯ä»˜å®',
-    bank_transfer: 'é“¶è¡Œè½¬è´¦',
-    unionpay: 'äº‘é—ªä»˜',
-    cod: 'è´§åˆ°ä»˜æ¬¾',
-    cash: 'ç°é‡‘',
-    card: 'åˆ·å¡',
-    other: 'å…¶ä»–'
+    wechat: 'Î¢ĞÅÖ§¸¶',
+    alipay: 'Ö§¸¶??,
+    bank_transfer: 'ÒøĞĞ×ªÕË',
+    unionpay: 'ÔÆÉÁ??,
+    cod: '»õµ½¸¶¿î',
+    cash: 'ÏÖ½ğ',
+    card: 'Ë¢¿¨',
+    other: 'ÆäËû'
   }
   return methodMap[method] || method
 }
 
 /**
- * è·å–è¡¨æ ¼æ ‡é¢˜
+ * »ñÈ¡±í¸ñ±êÌâ
  */
 const getTableTitle = () => {
   switch (activeTab.value) {
     case 'pending':
-      return 'å¾…å®¡æ ¸è®¢å•åˆ—è¡¨'
+      return '´ıÉóºË¶©µ¥ÁĞ??
     case 'approved':
-      return 'å·²å®¡æ ¸é€šè¿‡è®¢å•åˆ—è¡¨'
+      return 'ÒÑÉóºËÍ¨¹ı¶©µ¥ÁĞ±í'
     case 'rejected':
-      return 'å®¡æ ¸æ‹’ç»è®¢å•åˆ—è¡¨'
+      return 'ÉóºË¾Ü¾ø¶©µ¥ÁĞ±í'
     default:
-      return 'è®¢å•åˆ—è¡¨'
+      return '¶©µ¥ÁĞ±í'
   }
 }
 
 /**
- * å¤„ç†æ ‡ç­¾åˆ‡æ¢
+ * ´¦Àí±êÇ©ÇĞ»»
  */
 const handleTabChange = (tabName: string) => {
   activeTab.value = tabName
@@ -1363,8 +1347,7 @@ const handleTabChange = (tabName: string) => {
 }
 
 /**
- * å¤„ç†å…¨é€‰
- */
+ * ´¦ÀíÈ«?? */
 const handleSelectAll = (checked: boolean) => {
   if (checked) {
     selectedOrders.value = [...orderList.value]
@@ -1374,7 +1357,7 @@ const handleSelectAll = (checked: boolean) => {
 }
 
 /**
- * å¤„ç†é€‰æ‹©å˜åŒ–
+ * ´¦ÀíÑ¡Ôñ±ä»¯
  */
 const handleSelectionChange = (selection: AuditOrder[]) => {
   selectedOrders.value = selection
@@ -1382,7 +1365,7 @@ const handleSelectionChange = (selection: AuditOrder[]) => {
 }
 
 /**
- * ç§»é™¤æ‰¹é‡å®¡æ ¸ä¸­çš„è®¢å•
+ * ÒÆ³ıÅúÁ¿ÉóºËÖĞµÄ¶©µ¥
  */
 const removeBatchOrder = (order: AuditOrder) => {
   const index = selectedOrders.value.findIndex(item => item.id === order.id)
@@ -1392,7 +1375,7 @@ const removeBatchOrder = (order: AuditOrder) => {
 }
 
 /**
- * è·³è½¬åˆ°è®¢å•è¯¦æƒ…é¡µ
+ * Ìø×ªµ½¶©µ¥ÏêÇéÒ³
  */
 const goToOrderDetail = (row: AuditOrder) => {
   if (row.id) {
@@ -1401,10 +1384,10 @@ const goToOrderDetail = (row: AuditOrder) => {
 }
 
 /**
- * è·³è½¬åˆ°å®¢æˆ·è¯¦æƒ…é¡µ
+ * Ìø×ªµ½¿Í»§ÏêÇéÒ³
  */
 const goToCustomerDetail = (row: AuditOrder) => {
-  // ä¼˜å…ˆä½¿ç”¨rowä¸­çš„customerIdï¼Œå¦‚æœæ²¡æœ‰åˆ™ä»è®¢å•storeè·å–
+  // ÓÅÏÈÊ¹ÓÃrowÖĞµÄcustomerId£¬Èç¹ûÃ»ÓĞÔò´Ó¶©µ¥store»ñÈ¡
   if (row.customerId) {
     safeNavigator.push(`/customer/detail/${row.customerId}`)
   } else {
@@ -1412,33 +1395,31 @@ const goToCustomerDetail = (row: AuditOrder) => {
     if (order && order.customerId) {
       safeNavigator.push(`/customer/detail/${order.customerId}`)
     } else {
-      ElMessage.warning('å®¢æˆ·IDä¸å­˜åœ¨')
+      ElMessage.warning('¿Í»§ID²»´æ??)
     }
   }
 }
 
 /**
- * æŸ¥çœ‹è®¢å•è¯¦æƒ…ï¼ˆæ‰“å¼€å®¡æ ¸å¼¹çª—ï¼‰- ä¸è®¾ç½®é»˜è®¤é€‰ä¸­çŠ¶æ€
- */
+ * ²é¿´¶©µ¥ÏêÇé£¨´ò¿ªÉóºËµ¯´°?? ²»ÉèÖÃÄ¬ÈÏÑ¡ÖĞ×´?? */
 const handleView = (row: AuditOrder) => {
   currentOrder.value = row
-  // é‡ç½®å¿«é€Ÿå®¡æ ¸è¡¨å•ï¼ŒæŸ¥çœ‹æ¨¡å¼ä¸‹ä¸è®¾ç½®é»˜è®¤é€‰ä¸­
+  // ÖØÖÃ¿ìËÙÉóºË±íµ¥£¬²é¿´Ä£Ê½ÏÂ²»ÉèÖÃÄ¬ÈÏÑ¡ÖĞ
   quickAuditForm.result = null
   quickAuditForm.rejectionReason = ''
   quickAuditForm.remark = ''
-  // æ‰“å¼€è®¢å•è¯¦æƒ…å®¡æ ¸å¼¹çª—
+  // ´ò¿ª¶©µ¥ÏêÇéÉóºËµ¯´°
   orderDetailDialogVisible.value = true
 }
 
 
 
 /**
- * å•ä¸ªè®¢å•å®¡æ ¸ - æ ¹æ®æŒ‰é’®ç±»å‹è®¾ç½®é»˜è®¤é€‰ä¸­çŠ¶æ€ï¼ˆç”¨äºç®€å•å®¡æ ¸å¼¹çª—ï¼‰
+ * µ¥¸ö¶©µ¥ÉóºË - ¸ù¾İ°´Å¥ÀàĞÍÉèÖÃÄ¬ÈÏÑ¡ÖĞ×´Ì¬£¨ÓÃÓÚ¼òµ¥ÉóºËµ¯´°£©
  */
 const handleAudit = (row: AuditOrder, result: 'approved' | 'rejected') => {
   currentOrder.value = row
-  // æ ¹æ®ç‚¹å‡»çš„æŒ‰é’®è®¾ç½®é»˜è®¤é€‰ä¸­çŠ¶æ€
-  auditForm.result = result
+  // ¸ù¾İµã»÷µÄ°´Å¥ÉèÖÃÄ¬ÈÏÑ¡ÖĞ×´??  auditForm.result = result
   auditForm.remark = ''
   auditForm.rejectionReasonId = ''
   isBatchAudit.value = false
@@ -1446,11 +1427,11 @@ const handleAudit = (row: AuditOrder, result: 'approved' | 'rejected') => {
 }
 
 /**
- * æ‰¹é‡å®¡æ ¸
+ * ÅúÁ¿ÉóºË
  */
 const handleBatchAudit = (result: string) => {
   if (!selectedOrders.value || selectedOrders.value.length === 0) {
-    ElMessage.warning('è¯·å…ˆé€‰æ‹©è¦å®¡æ ¸çš„è®¢å•')
+    ElMessage.warning('ÇëÏÈÑ¡ÔñÒªÉóºËµÄ¶©µ¥')
     return
   }
 
@@ -1462,8 +1443,7 @@ const handleBatchAudit = (result: string) => {
 }
 
 /**
- * å¿«é€Ÿå¤‡æ³¨
- */
+ * ¿ìËÙ±¸?? */
 const handleQuickRemark = (row: AuditOrder) => {
   currentOrder.value = row
   remarkForm.content = row.remark || ''
@@ -1471,69 +1451,66 @@ const handleQuickRemark = (row: AuditOrder) => {
 }
 
 /**
- * é‡æ–°å®¡æ ¸ï¼ˆæ’¤é”€æˆ–é‡æ–°é€šè¿‡ï¼‰
- */
+ * ÖØĞÂÉóºË£¨³·Ïú»òÖØĞÂÍ¨¹ı?? */
 const handleReAudit = (row: AuditOrder, result: 'approved' | 'rejected') => {
-  const actionText = result === 'approved' ? 'é‡æ–°é€šè¿‡' : 'æ’¤é”€'
+  const actionText = result === 'approved' ? 'ÖØĞÂÍ¨¹ı' : '³·Ïú'
   ElMessageBox.confirm(
-    `ç¡®è®¤${actionText}æ­¤è®¢å•å—ï¼Ÿ`,
-    'æ“ä½œç¡®è®¤',
+    `È·ÈÏ${actionText}´Ë¶©µ¥Âğ£¿`,
+    '²Ù×÷È·ÈÏ',
     {
-      confirmButtonText: 'ç¡®è®¤',
-      cancelButtonText: 'å–æ¶ˆ',
+      confirmButtonText: 'È·ÈÏ',
+      cancelButtonText: 'È¡Ïû',
       type: 'warning'
     }
   ).then(async () => {
     try {
-      // æ¨¡æ‹ŸAPIè°ƒç”¨
+      // Ä£ÄâAPIµ÷ÓÃ
       await new Promise(resolve => setTimeout(resolve, 1000))
 
-      // ä»å½“å‰åˆ—è¡¨ç§»é™¤
-      const currentList = orderList.value
+      // ´Óµ±Ç°ÁĞ±íÒÆ??      const currentList = orderList.value
       const index = currentList.findIndex(item => item.id === row.id)
       if (index > -1) {
         currentList.splice(index, 1)
       }
 
-      // æ›´æ–°è®¢å•çŠ¶æ€å’Œæ—¶é—´
+      // ¸üĞÂ¶©µ¥×´Ì¬ºÍÊ±¼ä
       row.auditStatus = result
       row.auditTime = new Date().toLocaleString()
       row.auditor = userStore.user.name
 
-      // æ·»åŠ åˆ°ç›®æ ‡åˆ—è¡¨
-      if (result === 'approved') {
+      // Ìí¼Óµ½Ä¿±êÁĞ??      if (result === 'approved') {
         approvedOrders.value.unshift(row)
       } else {
         rejectedOrders.value.unshift(row)
       }
 
-      // æ›´æ–°æ ‡ç­¾è®¡æ•°
+      // ¸üĞÂ±êÇ©¼ÆÊı
       updateTabCounts()
 
-      ElMessage.success(`è®¢å•${actionText}æˆåŠŸ`)
+      ElMessage.success(`¶©µ¥${actionText}³É¹¦`)
     } catch (error) {
-      ElMessage.error(`${actionText}å¤±è´¥`)
+      ElMessage.error(`${actionText}Ê§°Ü`)
     }
   }).catch(() => {
-    // ç”¨æˆ·å–æ¶ˆ
+    // ÓÃ»§È¡Ïû
   })
 }
 
 /**
- * æ›´æ–°æ ‡ç­¾è®¡æ•°
+ * ¸üĞÂ±êÇ©¼ÆÊı
  */
 const updateTabCounts = () => {
   tabCounts.pending = pendingOrders.value.length
   tabCounts.approved = approvedOrders.value.length
   tabCounts.rejected = rejectedOrders.value.length
 
-  // åŒæ—¶æ›´æ–°æ±‡æ€»æ•°æ®ä¸­çš„å¾…å®¡æ ¸è®¢å•æ•°é‡
+  // Í¬Ê±¸üĞÂ»ã×ÜÊı¾İÖĞµÄ´ıÉóºË¶©µ¥ÊıÁ¿
   summaryData.pendingCount = pendingOrders.value.length
   summaryData.pendingAmount = pendingOrders.value.reduce((sum, order) => sum + order.totalAmount, 0)
 }
 
 /**
- * æäº¤å®¡æ ¸
+ * Ìá½»ÉóºË
  */
 const handleAuditSubmit = async () => {
   if (!auditFormRef.value) return
@@ -1542,36 +1519,34 @@ const handleAuditSubmit = async () => {
     if (valid) {
       auditLoading.value = true
       try {
-        // æ¨¡æ‹ŸAPIè°ƒç”¨
+        // Ä£ÄâAPIµ÷ÓÃ
         await new Promise(resolve => setTimeout(resolve, 1500))
 
         const ordersToUpdate = isBatchAudit.value ? selectedOrders.value : [currentOrder.value]
-        const action = auditForm.result === 'approved' ? 'é€šè¿‡' : 'æ‹’ç»'
+        const action = auditForm.result === 'approved' ? 'Í¨¹ı' : '¾Ü¾ø'
 
-        // æ›´æ–°è®¢å•çŠ¶æ€
-        ordersToUpdate.forEach(order => {
-          // é‡è¦ï¼šå…ˆæ›´æ–°è®¢å•storeä¸­çš„æ•°æ®ï¼Œç¡®ä¿æ•°æ®æŒä¹…åŒ–
+        // ¸üĞÂ¶©µ¥×´??        ordersToUpdate.forEach(order => {
+          // ÖØÒª£ºÏÈ¸üĞÂ¶©µ¥storeÖĞµÄÊı¾İ£¬È·±£Êı¾İ³Ö¾Ã»¯
           const isApproved = auditForm.result === 'approved'
           const rejectionReason = auditForm.rejectionReasonId
             ? (rejectionReasonStore.getReasonById(auditForm.rejectionReasonId)?.name || auditForm.remark || '')
             : (auditForm.remark || '')
 
-          // æ›´æ–°è®¢å•å­˜å‚¨ä¸­çš„è®¢å•çŠ¶æ€ï¼Œç¡®ä¿æ•°æ®æŒä¹…åŒ–
-          orderStore.auditOrder(order.id, isApproved, isApproved ? (auditForm.remark || '') : rejectionReason)
+          // ¸üĞÂ¶©µ¥´æ´¢ÖĞµÄ¶©µ¥×´Ì¬£¬È·±£Êı¾İ³Ö¾Ã??          orderStore.auditOrder(order.id, isApproved, isApproved ? (auditForm.remark || '') : rejectionReason)
 
-          // ä»å¾…å®¡æ ¸åˆ—è¡¨ç§»é™¤
+          // ´Ó´ıÉóºËÁĞ±íÒÆ³ı
           const pendingIndex = pendingOrders.value.findIndex(item => item.id === order.id)
           if (pendingIndex > -1) {
             pendingOrders.value.splice(pendingIndex, 1)
           }
 
-          // æ›´æ–°è®¢å•çŠ¶æ€å’Œå®¡æ ¸ä¿¡æ¯ï¼ˆç”¨äºé¡µé¢æ˜¾ç¤ºï¼‰
+          // ¸üĞÂ¶©µ¥×´Ì¬ºÍÉóºËĞÅÏ¢£¨ÓÃÓÚÒ³ÃæÏÔÊ¾£©
           order.auditStatus = auditForm.result
           order.auditTime = new Date().toLocaleString()
           order.auditor = userStore.user.name
           order.auditRemark = auditForm.remark
 
-          // æ·»åŠ åˆ°å¯¹åº”çš„åˆ—è¡¨
+          // Ìí¼Óµ½¶ÔÓ¦µÄÁĞ±í
           if (auditForm.result === 'approved') {
             approvedOrders.value.unshift(order)
           } else {
@@ -1579,77 +1554,70 @@ const handleAuditSubmit = async () => {
           }
         })
 
-        // æ›´æ–°æ±‡æ€»æ•°æ®
-        calculateSummaryData()
+        // ¸üĞÂ»ã×ÜÊı??        calculateSummaryData()
 
-        // æ›´æ–°æ ‡ç­¾è®¡æ•°
+        // ¸üĞÂ±êÇ©¼ÆÊı
         updateTabCounts()
 
-        // æ¸…ç©ºé€‰æ‹©
+        // Çå¿ÕÑ¡Ôñ
         selectedOrders.value = []
         selectAll.value = false
 
-        ElMessage.success(`æˆåŠŸ${action}${ordersToUpdate.length}ä¸ªè®¢å•`)
+        ElMessage.success(`³É¹¦${action}${ordersToUpdate.length}¸ö¶©µ¥`)
 
-        // å‘é€é€šçŸ¥æ¶ˆæ¯ç»™ä¸‹å•å‘˜
+        // ·¢ËÍÍ¨ÖªÏûÏ¢¸øÏÂµ¥Ô±
         ordersToUpdate.forEach(order => {
           const messageType = auditForm.result === 'approved' ? notificationStore.MessageType.AUDIT_APPROVED : notificationStore.MessageType.AUDIT_REJECTED
-          const actionText = auditForm.result === 'approved' ? 'å®¡æ ¸é€šè¿‡' : 'å®¡æ ¸æ‹’ç»'
-          // è·å–ä¸‹å•å‘˜IDï¼ˆä¼˜å…ˆä½¿ç”¨salesPersonIdï¼Œå…¶æ¬¡ä½¿ç”¨createdByï¼‰
-          const orderCreatorId = order.salesPersonId || order.createdBy || order.createdById
+          const actionText = auditForm.result === 'approved' ? 'ÉóºËÍ¨¹ı' : 'ÉóºË¾Ü¾ø'
+          // »ñÈ¡ÏÂµ¥Ô±ID£¨ÓÅÏÈÊ¹ÓÃsalesPersonId£¬Æä´ÎÊ¹ÓÃcreatedBy??          const orderCreatorId = order.salesPersonId || order.createdBy || order.createdById
 
-          // å‘é€å®¡æ ¸ç»“æœé€šçŸ¥ç»™ä¸‹å•å‘˜
+          // ·¢ËÍÉóºË½á¹ûÍ¨Öª¸øÏÂµ¥Ô±
           notificationStore.sendMessage(
             messageType,
-            `è®¢å• ${order.orderNo} (å®¢æˆ·: ${order.customerName}, é‡‘é¢: Â¥${order.totalAmount?.toLocaleString()}) å·²${actionText}`,
+            `¶©µ¥ ${order.orderNo} (¿Í»§: ${order.customerName}, ½ğ¶î: £¤${order.totalAmount?.toLocaleString()}) ??{actionText}`,
             {
               relatedId: order.id,
               relatedType: 'order',
               actionUrl: `/order/detail/${order.id}`,
-              targetUserId: orderCreatorId,  // å‘é€ç»™ä¸‹å•å‘˜
-              createdBy: userStore.user?.id  // å®¡æ ¸äºº
-            }
+              targetUserId: orderCreatorId,  // ·¢ËÍ¸øÏÂµ¥??              createdBy: userStore.user?.id  // ÉóºË??            }
           )
 
-          // ã€æ‰¹æ¬¡201ä¿®å¤ã€‘å‘é€å¾…å‘è´§é€šçŸ¥ï¼ˆå®¡æ ¸é€šè¿‡æ—¶ï¼‰
+          // ¡¾Åú??01ĞŞ¸´¡¿·¢ËÍ´ı·¢»õÍ¨Öª£¨ÉóºËÍ¨¹ıÊ±£©
           if (auditForm.result === 'approved') {
             notificationStore.sendMessage(
               notificationStore.MessageType.ORDER_PENDING_SHIPMENT,
-              `è®¢å• ${order.orderNo} å®¡æ ¸é€šè¿‡ï¼Œå·²æµè½¬åˆ°ç‰©æµå‘è´§åˆ—è¡¨ï¼Œç­‰å¾…å‘è´§`,
+              `¶©µ¥ ${order.orderNo} ÉóºËÍ¨¹ı£¬ÒÑÁ÷×ªµ½ÎïÁ÷·¢»õÁĞ±í£¬µÈ´ı·¢»õ`,
               {
                 relatedId: order.id,
                 relatedType: 'order',
                 actionUrl: `/logistics/shipping`,
-                targetUserId: orderCreatorId  // å‘é€ç»™ä¸‹å•å‘˜
-              }
+                targetUserId: orderCreatorId  // ·¢ËÍ¸øÏÂµ¥??              }
             )
           } else {
-            // å‘é€é€€å›é€šçŸ¥ç»™é”€å”®å‘˜ï¼ˆå®¡æ ¸æ‹’ç»æ—¶ï¼‰
-            const rejectionReason = auditForm.rejectionReasonId
+            // ·¢ËÍÍË»ØÍ¨Öª¸øÏúÊÛÔ±£¨ÉóºË¾Ü¾øÊ±??            const rejectionReason = auditForm.rejectionReasonId
               ? (rejectionReasonStore.getReasonById(auditForm.rejectionReasonId)?.name || auditForm.remark || '')
               : (auditForm.remark || '')
 
             notificationStore.sendMessage(
               notificationStore.MessageType.AUDIT_REJECTED,
-              `è®¢å• ${order.orderNo} å®¡æ ¸è¢«æ‹’ç»ï¼Œå·²é€€å›ä¿®æ”¹ã€‚æ‹’ç»åŸå› ï¼š${rejectionReason}`,
+              `¶©µ¥ ${order.orderNo} ÉóºË±»¾Ü¾ø£¬ÒÑÍË»ØĞŞ¸Ä¡£¾Ü¾øÔ­Òò£º${rejectionReason}`,
               {
                 relatedId: order.id,
                 relatedType: 'order',
                 actionUrl: `/order/edit/${order.id}`,
-                targetUserId: orderCreatorId  // å‘é€ç»™ä¸‹å•å‘˜
-              }
+                targetUserId: orderCreatorId  // ·¢ËÍ¸øÏÂµ¥??              }
             )
           }
         })
 
         auditDialogVisible.value = false
 
-        // é‡ç½®è¡¨å•
+        // ÖØÖÃ±íµ¥
         auditForm.result = ''
         auditForm.remark = ''
         auditForm.rejectionReasonId = ''
       } catch (error) {
-        ElMessage.error('å®¡æ ¸å¤±è´¥')
+        ElMessage.error('ÉóºËÊ§°Ü')
       } finally {
         auditLoading.value = false
       }
@@ -1658,7 +1626,7 @@ const handleAuditSubmit = async () => {
 }
 
 /**
- * æäº¤å¤‡æ³¨
+ * Ìá½»±¸×¢
  */
 const handleRemarkSubmit = async () => {
   if (!remarkFormRef.value) return
@@ -1667,20 +1635,20 @@ const handleRemarkSubmit = async () => {
     if (valid) {
       remarkLoading.value = true
       try {
-        // æ¨¡æ‹ŸAPIè°ƒç”¨
+        // Ä£ÄâAPIµ÷ÓÃ
         await new Promise(resolve => setTimeout(resolve, 800))
 
-        // æ›´æ–°è®¢å•å¤‡æ³¨
+        // ¸üĞÂ¶©µ¥±¸×¢
         const order = orderList.value.find(item => item.id === currentOrder.value.id)
         if (order) {
           order.remark = remarkForm.content
         }
 
-        ElMessage.success('å¤‡æ³¨ä¿å­˜æˆåŠŸ')
+        ElMessage.success('±¸×¢±£´æ³É¹¦')
         remarkDialogVisible.value = false
         remarkForm.content = ''
       } catch (error) {
-        ElMessage.error('ä¿å­˜å¤‡æ³¨å¤±è´¥')
+        ElMessage.error('±£´æ±¸×¢Ê§°Ü')
       } finally {
         remarkLoading.value = false
       }
@@ -1689,8 +1657,7 @@ const handleRemarkSubmit = async () => {
 }
 
 /**
- * å…³é—­å®¡æ ¸å¯¹è¯æ¡†
- */
+ * ¹Ø±ÕÉóºË¶Ô»°?? */
 const handleAuditDialogClose = () => {
   auditDialogVisible.value = false
   auditForm.result = null
@@ -1701,7 +1668,7 @@ const handleAuditDialogClose = () => {
 }
 
 /**
- * å…³é—­è®¢å•è¯¦æƒ…å®¡æ ¸å¼¹çª—
+ * ¹Ø±Õ¶©µ¥ÏêÇéÉóºËµ¯´°
  */
 const handleOrderDetailDialogClose = () => {
   orderDetailDialogVisible.value = false
@@ -1713,14 +1680,14 @@ const handleOrderDetailDialogClose = () => {
 }
 
 /**
- * å¤„ç†çº¢ç‚¹ç‚¹å‡»äº‹ä»¶
+ * ´¦Àíºìµãµã»÷ÊÂ¼ş
  */
 const handleBadgeClick = (tabName: string) => {
   badgeClicked[tabName] = true
 }
 
 /**
- * æŸ¥çœ‹æ”¯ä»˜æˆªå›¾
+ * ²é¿´Ö§¸¶½ØÍ¼
  */
 const handleViewScreenshot = (screenshots: PaymentScreenshot[], index: number) => {
   currentImageList.value = screenshots.map(item => item.url)
@@ -1729,7 +1696,7 @@ const handleViewScreenshot = (screenshots: PaymentScreenshot[], index: number) =
 }
 
 /**
- * æŸ¥çœ‹å®šé‡‘æˆªå›¾
+ * ²é¿´¶¨½ğ½ØÍ¼
  */
 const handleViewDepositScreenshot = (screenshots: string[], index: number) => {
   currentImageList.value = screenshots
@@ -1738,8 +1705,7 @@ const handleViewDepositScreenshot = (screenshots: string[], index: number) => {
 }
 
 /**
- * å…³é—­å›¾ç‰‡æŸ¥çœ‹å™¨
- */
+ * ¹Ø±ÕÍ¼Æ¬²é¿´?? */
 const handleImageViewerClose = () => {
   imageViewerVisible.value = false
   currentImageList.value = []
@@ -1747,8 +1713,7 @@ const handleImageViewerClose = () => {
 }
 
 /**
- * ä¸Šä¸€å¼ å›¾ç‰‡
- */
+ * ÉÏÒ»ÕÅÍ¼?? */
 const handlePrevImage = () => {
   if (currentImageIndex.value > 0) {
     currentImageIndex.value--
@@ -1756,8 +1721,7 @@ const handlePrevImage = () => {
 }
 
 /**
- * ä¸‹ä¸€å¼ å›¾ç‰‡
- */
+ * ÏÂÒ»ÕÅÍ¼?? */
 const handleNextImage = () => {
   if (currentImageIndex.value < currentImageList.value.length - 1) {
     currentImageIndex.value++
@@ -1765,8 +1729,7 @@ const handleNextImage = () => {
 }
 
 /**
- * è·å–æ—¶é—´è½´ç±»å‹
- */
+ * »ñÈ¡Ê±¼äÖáÀà?? */
 const getTimelineType = (action: string) => {
   switch (action) {
     case 'created':
@@ -1783,8 +1746,7 @@ const getTimelineType = (action: string) => {
 }
 
 /**
- * è·å–æ—¶é—´è½´å›¾æ ‡
- */
+ * »ñÈ¡Ê±¼äÖáÍ¼?? */
 const getTimelineIcon = (action: string) => {
   switch (action) {
     case 'created':
@@ -1801,7 +1763,7 @@ const getTimelineIcon = (action: string) => {
 }
 
 /**
- * è·å–æ“ä½œæ ‡ç­¾ç±»å‹
+ * »ñÈ¡²Ù×÷±êÇ©ÀàĞÍ
  */
 const getActionTagType = (action: string) => {
   switch (action) {
@@ -1819,8 +1781,7 @@ const getActionTagType = (action: string) => {
 }
 
 /**
- * å¿«é€Ÿå®¡æ ¸æäº¤
- */
+ * ¿ìËÙÉóºËÌá?? */
 const handleQuickAuditSubmit = async () => {
   if (!quickAuditFormRef.value) return
 
@@ -1828,108 +1789,101 @@ const handleQuickAuditSubmit = async () => {
     if (valid) {
       quickAuditLoading.value = true
       try {
-        // æ¨¡æ‹ŸAPIè°ƒç”¨
+        // Ä£ÄâAPIµ÷ÓÃ
         await new Promise(resolve => setTimeout(resolve, 1000))
 
         const order = currentOrder.value
         const result = quickAuditForm.result
 
-        // æ›´æ–°è®¢å•çŠ¶æ€
-        order.auditStatus = result
+        // ¸üĞÂ¶©µ¥×´??        order.auditStatus = result
         order.auditTime = new Date().toLocaleString()
-        order.auditor = userStore.userInfo?.name || 'å½“å‰ç”¨æˆ·'
+        order.auditor = userStore.userInfo?.name || 'µ±Ç°ÓÃ»§'
         order.auditRemark = quickAuditForm.remark
 
-        // æ·»åŠ å®¡æ ¸å†å²è®°å½•
+        // Ìí¼ÓÉóºËÀúÊ·¼ÇÂ¼
         if (!order.auditHistory) {
           order.auditHistory = []
         }
         order.auditHistory.push({
           id: order.auditHistory.length + 1,
           action: result,
-          actionName: result === 'approved' ? 'å®¡æ ¸é€šè¿‡' : 'å®¡æ ¸æ‹’ç»',
-          operator: userStore.userInfo?.name || 'å½“å‰ç”¨æˆ·',
-          operatorRole: 'å®¡æ ¸å‘˜',
+          actionName: result === 'approved' ? 'ÉóºËÍ¨¹ı' : 'ÉóºË¾Ü¾ø',
+          operator: userStore.userInfo?.name || 'µ±Ç°ÓÃ»§',
+          operatorRole: 'ÉóºË??,
           time: new Date().toLocaleString(),
           remark: quickAuditForm.remark
         })
 
-        // ä»å¾…å®¡æ ¸åˆ—è¡¨ç§»é™¤
+        // ´Ó´ıÉóºËÁĞ±íÒÆ³ı
         const pendingIndex = pendingOrders.value.findIndex(item => item.id === order.id)
         if (pendingIndex > -1) {
           pendingOrders.value.splice(pendingIndex, 1)
         }
 
-        // æ·»åŠ åˆ°å¯¹åº”åˆ—è¡¨
-        if (result === 'approved') {
+        // Ìí¼Óµ½¶ÔÓ¦ÁĞ??        if (result === 'approved') {
           approvedOrders.value.unshift(order)
         } else {
           rejectedOrders.value.unshift(order)
         }
 
-        // æ›´æ–°æ±‡æ€»æ•°æ®
-        calculateSummaryData()
+        // ¸üĞÂ»ã×ÜÊı??        calculateSummaryData()
 
-        // æ›´æ–°æ ‡ç­¾è®¡æ•°
+        // ¸üĞÂ±êÇ©¼ÆÊı
         updateTabCounts()
 
-        // å‘é€é€šçŸ¥æ¶ˆæ¯ç»™ä¸‹å•å‘˜
+        // ·¢ËÍÍ¨ÖªÏûÏ¢¸øÏÂµ¥Ô±
         const messageType = result === 'approved' ? notificationStore.MessageType.AUDIT_APPROVED : notificationStore.MessageType.AUDIT_REJECTED
-        const actionText = result === 'approved' ? 'å®¡æ ¸é€šè¿‡' : 'å®¡æ ¸æ‹’ç»'
-        // è·å–ä¸‹å•å‘˜ID
+        const actionText = result === 'approved' ? 'ÉóºËÍ¨¹ı' : 'ÉóºË¾Ü¾ø'
+        // »ñÈ¡ÏÂµ¥Ô±ID
         const orderCreatorId = order.salesPersonId || order.createdBy || order.createdById
 
-        // å‘é€å®¡æ ¸ç»“æœé€šçŸ¥ç»™ä¸‹å•å‘˜
+        // ·¢ËÍÉóºË½á¹ûÍ¨Öª¸øÏÂµ¥Ô±
         notificationStore.sendMessage(
           messageType,
-          `è®¢å• ${order.orderNo} (å®¢æˆ·: ${order.customerName}, é‡‘é¢: Â¥${order.totalAmount?.toLocaleString()}) å·²${actionText}`,
+          `¶©µ¥ ${order.orderNo} (¿Í»§: ${order.customerName}, ½ğ¶î: £¤${order.totalAmount?.toLocaleString()}) ??{actionText}`,
           {
             relatedId: order.id,
             relatedType: 'order',
             actionUrl: `/order/detail/${order.id}`,
-            targetUserId: orderCreatorId,  // å‘é€ç»™ä¸‹å•å‘˜
-            createdBy: userStore.userInfo?.id  // å®¡æ ¸äºº
-          }
+            targetUserId: orderCreatorId,  // ·¢ËÍ¸øÏÂµ¥??            createdBy: userStore.userInfo?.id  // ÉóºË??          }
         )
 
-        // å¦‚æœå®¡æ ¸é€šè¿‡ï¼Œæ›´æ–°è®¢å•çŠ¶æ€å¹¶æµè½¬åˆ°ç‰©æµå’Œå‘è´§åˆ—è¡¨
+        // Èç¹ûÉóºËÍ¨¹ı£¬¸üĞÂ¶©µ¥×´Ì¬²¢Á÷×ªµ½ÎïÁ÷ºÍ·¢»õÁĞ±í
         if (result === 'approved') {
-          // æ›´æ–°è®¢å•å­˜å‚¨ä¸­çš„è®¢å•çŠ¶æ€ - ç¬¬äºŒä¸ªå‚æ•°å¿…é¡»æ˜¯booleanç±»å‹
+          // ¸üĞÂ¶©µ¥´æ´¢ÖĞµÄ¶©µ¥×´??- µÚ¶ş¸ö²ÎÊı±ØĞëÊÇbooleanÀàĞÍ
           orderStore.auditOrder(order.id, true, quickAuditForm.remark || '')
 
-          // ã€æ‰¹æ¬¡201ä¿®å¤ã€‘å‘é€å¾…å‘è´§é€šçŸ¥ç»™ä¸‹å•å‘˜
+          // ¡¾Åú??01ĞŞ¸´¡¿·¢ËÍ´ı·¢»õÍ¨Öª¸øÏÂµ¥Ô±
           notificationStore.sendMessage(
             notificationStore.MessageType.ORDER_PENDING_SHIPMENT,
-            `è®¢å• ${order.orderNo} å®¡æ ¸é€šè¿‡ï¼Œå·²æµè½¬åˆ°ç‰©æµå‘è´§åˆ—è¡¨ï¼Œç­‰å¾…å‘è´§`,
+            `¶©µ¥ ${order.orderNo} ÉóºËÍ¨¹ı£¬ÒÑÁ÷×ªµ½ÎïÁ÷·¢»õÁĞ±í£¬µÈ´ı·¢»õ`,
             {
               relatedId: order.id,
               relatedType: 'order',
               actionUrl: `/logistics/shipping`,
-              targetUserId: orderCreatorId  // å‘é€ç»™ä¸‹å•å‘˜
-            }
+              targetUserId: orderCreatorId  // ·¢ËÍ¸øÏÂµ¥??            }
           )
         } else {
-          // å¦‚æœå®¡æ ¸æ‹’ç»ï¼Œé€€å›ç»™é”€å”®å‘˜
+          // Èç¹ûÉóºË¾Ü¾ø£¬ÍË»Ø¸øÏúÊÛÔ±
           const rejectionReason = quickAuditForm.rejectionReason || quickAuditForm.remark
           orderStore.auditOrder(order.id, false, rejectionReason)
 
-          // å‘é€é€€å›é€šçŸ¥ç»™ä¸‹å•å‘˜
+          // ·¢ËÍÍË»ØÍ¨Öª¸øÏÂµ¥Ô±
           notificationStore.sendMessage(
             notificationStore.MessageType.AUDIT_REJECTED,
-            `è®¢å• ${order.orderNo} å®¡æ ¸è¢«æ‹’ç»ï¼Œå·²é€€å›ä¿®æ”¹ã€‚æ‹’ç»åŸå› ï¼š${rejectionReason}`,
+            `¶©µ¥ ${order.orderNo} ÉóºË±»¾Ü¾ø£¬ÒÑÍË»ØĞŞ¸Ä¡£¾Ü¾øÔ­Òò£º${rejectionReason}`,
             {
               relatedId: order.id,
               relatedType: 'order',
               actionUrl: `/order/edit/${order.id}`,
-              targetUserId: orderCreatorId  // å‘é€ç»™ä¸‹å•å‘˜
-            }
+              targetUserId: orderCreatorId  // ·¢ËÍ¸øÏÂµ¥??            }
           )
         }
 
-        ElMessage.success(`è®¢å•${result === 'approved' ? 'å®¡æ ¸é€šè¿‡' : 'å®¡æ ¸æ‹’ç»'}`)
+        ElMessage.success(`¶©µ¥${result === 'approved' ? 'ÉóºËÍ¨¹ı' : 'ÉóºË¾Ü¾ø'}`)
         handleOrderDetailDialogClose()
       } catch (error) {
-        ElMessage.error('å®¡æ ¸å¤±è´¥ï¼Œè¯·é‡è¯•')
+        ElMessage.error('ÉóºËÊ§°Ü£¬ÇëÖØÊÔ')
       } finally {
         quickAuditLoading.value = false
       }
@@ -1938,7 +1892,7 @@ const handleQuickAuditSubmit = async () => {
 }
 
 /**
- * æœç´¢
+ * ËÑË÷
  */
 const handleSearch = () => {
   pagination.page = 1
@@ -1946,7 +1900,7 @@ const handleSearch = () => {
 }
 
 /**
- * é‡ç½®æœç´¢
+ * ÖØÖÃËÑË÷
  */
 const handleReset = () => {
   Object.assign(searchForm, {
@@ -1961,13 +1915,11 @@ const handleReset = () => {
 }
 
 /**
- * å¿«æ·ç­›é€‰å¤„ç†
- */
+ * ¿ì½İÉ¸Ñ¡´¦?? */
 const handleQuickFilter = (filterValue: string) => {
   activeQuickFilter.value = filterValue
 
-  // æ ¹æ®ç­›é€‰å€¼è®¾ç½®æ—¥æœŸèŒƒå›´
-  const today = new Date()
+  // ¸ù¾İÉ¸Ñ¡ÖµÉèÖÃÈÕÆÚ·¶??  const today = new Date()
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
 
@@ -1998,12 +1950,12 @@ const handleQuickFilter = (filterValue: string) => {
       break
   }
 
-  // è§¦å‘æœç´¢
+  // ´¥·¢ËÑË÷
   handleSearch()
 }
 
 /**
- * åˆ·æ–°
+ * Ë¢ĞÂ
  */
 const handleRefresh = () => {
   selectedOrders.value = []
@@ -2013,60 +1965,57 @@ const handleRefresh = () => {
 }
 
 /**
- * æ‰“å¼€æ‹’ç»åŸå› ç®¡ç†å¯¹è¯æ¡†
- */
+ * ´ò¿ª¾Ü¾øÔ­Òò¹ÜÀí¶Ô»°?? */
 const handleOpenRejectionReasonManagement = () => {
   rejectionReasonManagementVisible.value = true
 }
 
 /**
- * å…³é—­æ‹’ç»åŸå› ç®¡ç†å¯¹è¯æ¡†
- */
+ * ¹Ø±Õ¾Ü¾øÔ­Òò¹ÜÀí¶Ô»°?? */
 const handleCloseRejectionReasonManagement = () => {
   rejectionReasonManagementVisible.value = false
 }
 
 /**
- * è·å–å¤‡æ³¨è¾“å…¥æ¡†çš„æç¤ºæ–‡æœ¬
+ * »ñÈ¡±¸×¢ÊäÈë¿òµÄÌáÊ¾ÎÄ±¾
  */
 const getRemarkPlaceholder = () => {
   if (auditForm.result === 'rejected') {
     if (auditForm.rejectionReasonId) {
-      return 'è¯·è¾“å…¥è¡¥å……è¯´æ˜ï¼ˆé€‰å¡«ï¼‰'
+      return 'ÇëÊäÈë²¹³äËµÃ÷£¨Ñ¡Ìî??
     } else {
-      return 'è¯·å…ˆé€‰æ‹©æ‹’ç»åŸå› '
+      return 'ÇëÏÈÑ¡Ôñ¾Ü¾øÔ­Òò'
     }
   }
-  return 'è¯·è¾“å…¥å®¡æ ¸å¤‡æ³¨ï¼ˆé€‰å¡«ï¼‰'
+  return 'ÇëÊäÈëÉóºË±¸×¢£¨Ñ¡Ìî??
 }
 
 /**
- * å¤„ç†æ‹’ç»åŸå› å˜åŒ–
+ * ´¦Àí¾Ü¾øÔ­Òò±ä»¯
  */
 const handleRejectionReasonChange = (reasonId: string) => {
-  // é€‰æ‹©æ‹’ç»åŸå› åï¼Œé‡æ–°éªŒè¯è¡¨å•
+  // Ñ¡Ôñ¾Ü¾øÔ­Òòºó£¬ÖØĞÂÑéÖ¤±íµ¥
   if (auditFormRef.value) {
     auditFormRef.value.clearValidate(['remark'])
   }
 }
 
 /**
- * å¤„ç†å®¡æ ¸ç»“æœå˜åŒ–
+ * ´¦ÀíÉóºË½á¹û±ä»¯
  */
 const handleAuditResultChange = (result: string) => {
-  // å½“å®¡æ ¸ç»“æœå˜åŒ–æ—¶ï¼Œæ¸…ç©ºæ‹’ç»åŸå› 
-  if (result !== 'rejected') {
+  // µ±ÉóºË½á¹û±ä»¯Ê±£¬Çå¿Õ¾Ü¾øÔ­??  if (result !== 'rejected') {
     auditForm.rejectionReasonId = ''
   }
 
-  // æ¸…é™¤è¡¨å•éªŒè¯
+  // Çå³ı±íµ¥ÑéÖ¤
   if (auditFormRef.value) {
     auditFormRef.value.clearValidate(['rejectionReasonId', 'remark'])
   }
 }
 
 /**
- * åˆ†é¡µå¤§å°å˜åŒ–
+ * ·ÖÒ³´óĞ¡±ä»¯
  */
 const handleSizeChange = (size: number) => {
   pagination.size = size
@@ -2074,29 +2023,27 @@ const handleSizeChange = (size: number) => {
 }
 
 /**
- * å½“å‰é¡µå˜åŒ–
- */
+ * µ±Ç°Ò³±ä?? */
 const handleCurrentChange = (page: number) => {
   pagination.page = page
   loadOrderList()
 }
 
 /**
- * è®¡ç®—æ±‡æ€»æ•°æ®
- */
+ * ¼ÆËã»ã×ÜÊı?? */
 const calculateSummaryData = () => {
-  // è®¡ç®—å¾…å®¡æ ¸è®¢å•æ•°é‡å’Œé‡‘é¢
+  // ¼ÆËã´ıÉóºË¶©µ¥ÊıÁ¿ºÍ½ğ¶î
   const pendingCount = pendingOrders.value.length
   const pendingAmount = pendingOrders.value.reduce((sum, order) => sum + order.totalAmount, 0)
 
-  // è®¡ç®—ä»Šæ—¥æ–°å¢è®¢å•
+  // ¼ÆËã½ñÈÕĞÂÔö¶©µ¥
   const today = new Date().toISOString().split('T')[0]
   const todayCount = pendingOrders.value.filter(order => {
     const orderDate = new Date(order.createTime).toISOString().split('T')[0]
     return orderDate === today
   }).length
 
-  // è®¡ç®—è¶…æ—¶è®¢å•ï¼ˆåˆ›å»ºæ—¶é—´è¶…è¿‡24å°æ—¶ä¸”ä»å¾…å®¡æ ¸ï¼‰
+  // ¼ÆËã³¬Ê±¶©µ¥£¨´´½¨Ê±¼ä³¬??4Ğ¡Ê±ÇÒÈÔ´ıÉóºË£©
   const now = new Date()
   const urgentCount = pendingOrders.value.filter(order => {
     const createTime = new Date(order.createTime)
@@ -2104,23 +2051,21 @@ const calculateSummaryData = () => {
     return hoursDiff > 24
   }).length
 
-  // æ›´æ–°æ±‡æ€»æ•°æ®
-  Object.assign(summaryData, {
+  // ¸üĞÂ»ã×ÜÊı??  Object.assign(summaryData, {
     pendingCount,
     pendingAmount,
     todayCount,
     urgentCount
   })
 
-  console.log('æ±‡æ€»æ•°æ®å·²æ›´æ–°', summaryData)
+  console.log('»ã×ÜÊı¾İÒÑ¸üĞÂ', summaryData)
 }
 
 /**
- * åŠ è½½æ±‡æ€»æ•°æ®
- */
+ * ¼ÓÔØ»ã×ÜÊı?? */
 const loadSummaryData = async () => {
   try {
-    // é¦–æ¬¡åŠ è½½æ—¶ï¼Œå…ˆä»APIè·å–æ•°æ®ä½œä¸ºå¤‡ç”¨
+    // Ê×´Î¼ÓÔØÊ±£¬ÏÈ´ÓAPI»ñÈ¡Êı¾İ×÷Îª±¸ÓÃ
     const response = await orderApi.getStatistics()
 
     Object.assign(summaryData, {
@@ -2130,163 +2075,149 @@ const loadSummaryData = async () => {
       urgentCount: response.urgentCount
     })
 
-    console.log('æ±‡æ€»æ•°æ®åŠ è½½æˆåŠŸ', summaryData)
+    console.log('»ã×ÜÊı¾İ¼ÓÔØ³É??, summaryData)
   } catch (error) {
-    console.error('åŠ è½½æ±‡æ€»æ•°æ®å¤±è´¥:', error)
-    // å¦‚æœAPIå¤±è´¥ï¼Œä½¿ç”¨æœ¬åœ°è®¡ç®—
-    calculateSummaryData()
+    console.error('¼ÓÔØ»ã×ÜÊı¾İÊ§??', error)
+    // Èç¹ûAPIÊ§°Ü£¬Ê¹ÓÃ±¾µØ¼Æ??    calculateSummaryData()
   }
 }
 
-// æ•°æ®èŒƒå›´æ§åˆ¶å‡½æ•°
+// Êı¾İ·¶Î§¿ØÖÆº¯Êı
 const applyDataScopeControl = (orderList: any[]) => {
   const currentUser = userStore.currentUser
   if (!currentUser) {
-    console.log('[æ•°æ®æƒé™] æ²¡æœ‰å½“å‰ç”¨æˆ·ï¼Œè¿”å›ç©ºåˆ—è¡¨')
+    console.log('[Êı¾İÈ¨ÏŞ] Ã»ÓĞµ±Ç°ÓÃ»§£¬·µ»Ø¿ÕÁĞ±í')
     return []
   }
 
-  console.log('[æ•°æ®æƒé™] å½“å‰ç”¨æˆ·:', {
+  console.log('[Êı¾İÈ¨ÏŞ] µ±Ç°ÓÃ»§:', {
     id: currentUser.id,
     name: currentUser.name,
     role: currentUser.role,
     department: currentUser.department
   })
 
-  // è¶…çº§ç®¡ç†å‘˜å’Œç®¡ç†å‘˜å¯ä»¥æŸ¥çœ‹æ‰€æœ‰è®¢å•
-  if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
-    console.log('[æ•°æ®æƒé™] è¶…ç®¡/ç®¡ç†å‘˜è§’è‰²ï¼Œå¯æŸ¥çœ‹å…¨éƒ¨è®¢å•:', orderList.length)
+  // ³¬¼¶¹ÜÀíÔ±ºÍ¹ÜÀíÔ±¿ÉÒÔ²é¿´ËùÓĞ¶©??  if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
+    console.log('[Êı¾İÈ¨ÏŞ] ³¬¹Ü/¹ÜÀíÔ±½ÇÉ«£¬¿É²é¿´È«²¿¶©??', orderList.length)
     return orderList
   }
 
-  // éƒ¨é—¨è´Ÿè´£äººå¯ä»¥æŸ¥çœ‹æœ¬éƒ¨é—¨æ‰€æœ‰è®¢å•
-  if (currentUser.role === 'department_manager') {
+  // ²¿ÃÅ¸ºÔğÈË¿ÉÒÔ²é¿´±¾²¿ÃÅËùÓĞ¶©??  if (currentUser.role === 'department_manager') {
     const filtered = orderList.filter(order => {
-      // ä½¿ç”¨ salesPersonId æ¥æŸ¥æ‰¾è®¢å•åˆ›å»ºè€…
-      const orderCreator = userStore.getUserById(order.salesPersonId || order.createdBy)
+      // Ê¹ÓÃ salesPersonId À´²éÕÒ¶©µ¥´´½¨??      const orderCreator = userStore.getUserById(order.salesPersonId || order.createdBy)
       const match = orderCreator?.department === currentUser.department
       if (match) {
-        console.log('[æ•°æ®æƒé™] éƒ¨é—¨åŒ¹é…:', order.orderNumber, orderCreator?.name)
+        console.log('[Êı¾İÈ¨ÏŞ] ²¿ÃÅÆ¥Åä:', order.orderNumber, orderCreator?.name)
       }
       return match
     })
-    console.log('[æ•°æ®æƒé™] éƒ¨é—¨ç»ç†ï¼Œå¯æŸ¥çœ‹éƒ¨é—¨è®¢å•:', filtered.length)
+    console.log('[Êı¾İÈ¨ÏŞ] ²¿ÃÅ¾­Àí£¬¿É²é¿´²¿ÃÅ¶©µ¥:', filtered.length)
     return filtered
   }
 
-  // é”€å”®å‘˜åªèƒ½æŸ¥çœ‹è‡ªå·±åˆ›å»ºçš„è®¢å•ï¼ˆä½¿ç”¨ salesPersonId è¿›è¡ŒåŒ¹é…ï¼‰
-  if (currentUser.role === 'sales_staff' || currentUser.role === 'employee') {
+  // ÏúÊÛÔ±Ö»ÄÜ²é¿´×Ô¼º´´½¨µÄ¶©µ¥£¨Ê¹ÓÃ salesPersonId ½øĞĞÆ¥Åä??  if (currentUser.role === 'sales_staff' || currentUser.role === 'employee') {
     const filtered = orderList.filter(order => {
       const match = order.salesPersonId === currentUser.id || order.createdBy === currentUser.name
       if (match) {
-        console.log('[æ•°æ®æƒé™] é”€å”®å‘˜è®¢å•åŒ¹é…:', order.orderNumber, order.salesPersonId, currentUser.id)
+        console.log('[Êı¾İÈ¨ÏŞ] ÏúÊÛÔ±¶©µ¥Æ¥Åä:', order.orderNumber, order.salesPersonId, currentUser.id)
       }
       return match
     })
-    console.log('[æ•°æ®æƒé™] é”€å”®å‘˜ï¼Œå¯æŸ¥çœ‹è‡ªå·±çš„è®¢å•:', filtered.length)
+    console.log('[Êı¾İÈ¨ÏŞ] ÏúÊÛÔ±£¬¿É²é¿´×Ô¼ºµÄ¶©??', filtered.length)
     return filtered
   }
 
-  // å®¢æœå¯ä»¥æŸ¥çœ‹æ‰€æœ‰å¾…å®¡æ ¸çš„è®¢å•ï¼ˆç”¨äºå®¡æ ¸ï¼‰
-  if (currentUser.role === 'customer_service') {
-    console.log('[æ•°æ®æƒé™] å®¢æœè§’è‰²ï¼Œå¯æŸ¥çœ‹å…¨éƒ¨å¾…å®¡æ ¸è®¢å•:', orderList.length)
-    return orderList  // å®¢æœéœ€è¦çœ‹åˆ°æ‰€æœ‰è®¢å•æ‰èƒ½è¿›è¡Œå®¡æ ¸
-  }
+  // ¿Í·ş¿ÉÒÔ²é¿´ËùÓĞ´ıÉóºËµÄ¶©µ¥£¨ÓÃÓÚÉóºË??  if (currentUser.role === 'customer_service') {
+    console.log('[Êı¾İÈ¨ÏŞ] ¿Í·ş½ÇÉ«£¬¿É²é¿´È«²¿´ıÉóºË¶©??', orderList.length)
+    return orderList  // ¿Í·şĞèÒª¿´µ½ËùÓĞ¶©µ¥²ÅÄÜ½øĞĞÉó??  }
 
-  // å…¶ä»–è§’è‰²é»˜è®¤åªèƒ½æŸ¥çœ‹è‡ªå·±åˆ›å»ºçš„è®¢å•ï¼ˆä½¿ç”¨ salesPersonIdï¼‰
-  const filtered = orderList.filter(order => order.salesPersonId === currentUser.id || order.createdBy === currentUser.name)
-  console.log('[æ•°æ®æƒé™] å…¶ä»–è§’è‰²ï¼Œå¯æŸ¥çœ‹è‡ªå·±çš„è®¢å•:', filtered.length)
+  // ÆäËû½ÇÉ«Ä¬ÈÏÖ»ÄÜ²é¿´×Ô¼º´´½¨µÄ¶©µ¥£¨Ê¹ÓÃ salesPersonId??  const filtered = orderList.filter(order => order.salesPersonId === currentUser.id || order.createdBy === currentUser.name)
+  console.log('[Êı¾İÈ¨ÏŞ] ÆäËû½ÇÉ«£¬¿É²é¿´×Ô¼ºµÄ¶©??', filtered.length)
   return filtered
 }
 
 /**
- * åŠ è½½è®¢å•åˆ—è¡¨
+ * ¼ÓÔØ¶©µ¥ÁĞ±í
  */
 const loadOrderList = async () => {
   loading.value = true
   try {
-    // ä»orderStoreè·å–è®¢å•æ•°æ®ï¼Œåº”ç”¨æ•°æ®èŒƒå›´æ§åˆ¶ï¼Œè¿‡æ»¤æ‰é¢„ç•™å•
+    // ´ÓorderStore»ñÈ¡¶©µ¥Êı¾İ£¬Ó¦ÓÃÊı¾İ·¶Î§¿ØÖÆ£¬¹ıÂËµôÔ¤Áôµ¥
     const allOrders = applyDataScopeControl(orderStore.orders)
 
-    // ğŸ”¥ è°ƒè¯•ï¼šæ‰“å°æ‰€æœ‰è®¢å•çš„çŠ¶æ€
-    console.log(`[è®¢å•å®¡æ ¸] ä»Storeè·å–åˆ° ${allOrders.length} ä¸ªè®¢å•`)
+    // ?? µ÷ÊÔ£º´òÓ¡ËùÓĞ¶©µ¥µÄ×´??    console.log(`[¶©µ¥ÉóºË] ´ÓStore»ñÈ¡??${allOrders.length} ¸ö¶©µ¥`)
     if (allOrders.length > 0) {
-      console.log('[è®¢å•å®¡æ ¸] è®¢å•çŠ¶æ€åˆ†å¸ƒ:', allOrders.reduce((acc, order) => {
+      console.log('[¶©µ¥ÉóºË] ¶©µ¥×´Ì¬·Ö??', allOrders.reduce((acc, order) => {
         acc[order.status] = (acc[order.status] || 0) + 1
         return acc
       }, {} as Record<string, number>))
     }
 
-    // è¿‡æ»¤å‡ºéœ€è¦å®¡æ ¸çš„è®¢å•ï¼ˆæ’é™¤é¢„ç•™å•å’Œé€€å•ï¼‰
+    // ¹ıÂË³öĞèÒªÉóºËµÄ¶©µ¥£¨ÅÅ³ıÔ¤Áôµ¥ºÍÍËµ¥£©
     const ordersForAudit = allOrders.filter(order => {
-      // æ’é™¤é¢„ç•™å•
-      if (order.markType === 'reserved') {
+      // ÅÅ³ıÔ¤Áô??      if (order.markType === 'reserved') {
         return false
       }
 
-      // æ’é™¤é€€å• - é€€å•åº”è¯¥ä¿ç•™åœ¨æˆå‘˜ç³»ç»Ÿï¼Œä¸æµè½¬åˆ°å®¡æ ¸
-      if (order.markType === 'return') {
+      // ÅÅ³ıÍË??- ÍËµ¥Ó¦¸Ã±£ÁôÔÚ³ÉÔ±ÏµÍ³£¬²»Á÷×ªµ½Éó??      if (order.markType === 'return') {
         return false
       }
 
-      // ğŸ”¥ ä¿®å¤ï¼šæ”¾å®½çŠ¶æ€è¿‡æ»¤æ¡ä»¶ï¼Œæ”¯æŒæ›´å¤šå¾…å®¡æ ¸çŠ¶æ€
-      // å¾…å®¡æ ¸çŠ¶æ€åŒ…æ‹¬ï¼špending_audit, confirmed, pendingï¼ˆå…¼å®¹ä¸åŒåç«¯å®ç°ï¼‰
+      // ?? ĞŞ¸´£º·Å¿í×´Ì¬¹ıÂËÌõ¼ş£¬Ö§³Ö¸ü¶à´ıÉóºË×´??      // ´ıÉóºË×´Ì¬°üÀ¨£ºpending_audit, confirmed, pending£¨¼æÈİ²»Í¬ºó¶ËÊµÏÖ£©
       const validAuditStatuses = ['pending_audit', 'confirmed', 'pending']
 
-      // å·²å®Œæˆçš„çŠ¶æ€ä¸åº”è¯¥å‡ºç°åœ¨å¾…å®¡æ ¸åˆ—è¡¨
+      // ÒÑÍê³ÉµÄ×´Ì¬²»Ó¦¸Ã³öÏÖÔÚ´ıÉóºËÁĞ±í
       const completedStatuses = ['shipped', 'delivered', 'cancelled', 'pending_shipment', 'paid', 'audit_rejected']
 
       if (completedStatuses.includes(order.status)) {
         return false
       }
 
-      // ğŸ”¥ ä¿®å¤ï¼šå¦‚æœè®¢å•çŠ¶æ€æ˜¯å¾…å®¡æ ¸ç›¸å…³çŠ¶æ€ï¼Œæˆ–è€…auditStatusæ˜¯pendingï¼Œéƒ½åº”è¯¥æ˜¾ç¤º
+      // ?? ĞŞ¸´£ºÈç¹û¶©µ¥×´Ì¬ÊÇ´ıÉóºËÏà¹Ø×´Ì¬£¬»òÕßauditStatusÊÇpending£¬¶¼Ó¦¸ÃÏÔÊ¾
       const isValidStatus = validAuditStatuses.includes(order.status)
       const isPendingAudit = order.auditStatus === 'pending'
 
-      // åªè¦æ»¡è¶³å…¶ä¸­ä¸€ä¸ªæ¡ä»¶å°±æ˜¾ç¤º
+      // Ö»ÒªÂú×ãÆäÖĞÒ»¸öÌõ¼ş¾ÍÏÔÊ¾
       if (!isValidStatus && !isPendingAudit) {
         return false
       }
 
-      // æ£€æŸ¥è®¢å•æ˜¯å¦å·²ç»æœ‰å®¡æ ¸è®°å½•ï¼ˆå·²å®¡æ ¸è¿‡çš„è®¢å•ä¸åº”è¯¥å†æ¬¡å‡ºç°åœ¨å¾…å®¡æ ¸åˆ—è¡¨ï¼‰
+      // ¼ì²é¶©µ¥ÊÇ·ñÒÑ¾­ÓĞÉóºË¼ÇÂ¼£¨ÒÑÉóºË¹ıµÄ¶©µ¥²»Ó¦¸ÃÔÙ´Î³öÏÖÔÚ´ıÉóºËÁĞ±í£©
       if (order.hasBeenAudited === true && order.auditStatus === 'approved') {
         return false
       }
 
-      // é€šè¿‡ç­›é€‰çš„è®¢å•
-      console.log(`[è®¢å•å®¡æ ¸] âœ… è®¢å• ${order.orderNumber} é€šè¿‡ç­›é€‰`, {
+      // Í¨¹ıÉ¸Ñ¡µÄ¶©µ¥
+      console.log(`[¶©µ¥ÉóºË] ??¶©µ¥ ${order.orderNumber} Í¨¹ıÉ¸Ñ¡`, {
         status: order.status,
         auditStatus: order.auditStatus
       })
       return true
     })
 
-    // æŒ‰åˆ›å»ºæ—¶é—´å€’åºæ’åºï¼ˆæœ€æ–°çš„åœ¨ä¸Šé¢ï¼‰
+    // °´´´½¨Ê±¼äµ¹ĞòÅÅĞò£¨×îĞÂµÄÔÚÉÏÃæ£©
     ordersForAudit.sort((a, b) => {
       const timeA = new Date(a.createTime).getTime()
       const timeB = new Date(b.createTime).getTime()
-      return timeB - timeA // å€’åºï¼štimeB - timeA
+      return timeB - timeA // µ¹Ğò£ºtimeB - timeA
     })
 
-    console.log(`[è®¢å•å®¡æ ¸] ç­›é€‰ç»“æœï¼šå…± ${ordersForAudit.length} ä¸ªå¾…å®¡æ ¸è®¢å•ï¼ˆå·²æŒ‰æ—¶é—´å€’åºï¼‰`)
+    console.log(`[¶©µ¥ÉóºË] É¸Ñ¡½á¹û£º??${ordersForAudit.length} ¸ö´ıÉóºË¶©µ¥£¨ÒÑ°´Ê±¼äµ¹Ğò£©`)
 
-    // æ¨¡æ‹ŸAPIè°ƒç”¨å»¶è¿Ÿ
+    // Ä£ÄâAPIµ÷ÓÃÑÓ³Ù
     await new Promise(resolve => setTimeout(resolve, 300))
 
-    // å°†çœŸå®è®¢å•æ•°æ®è½¬æ¢ä¸ºå®¡æ ¸é¡µé¢æ ¼å¼
+    // ½«ÕæÊµ¶©µ¥Êı¾İ×ª»»ÎªÉóºËÒ³Ãæ¸ñÊ½
     const convertedPendingOrders = ordersForAudit.map(order => ({
       id: order.id,
       orderNo: order.orderNumber,
       customerId: order.customerId,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
-      // ğŸ”¥ ä½¿ç”¨çœŸå®å§“åè€Œä¸æ˜¯ç”¨æˆ·åID - ä»ç”¨æˆ·åˆ—è¡¨æŸ¥æ‰¾çœŸå®å§“å
-      salesPerson: (() => {
-        // ä¼˜å…ˆä½¿ç”¨createdByName
+      // ?? Ê¹ÓÃÕæÊµĞÕÃû¶ø²»ÊÇÓÃ»§ÃûID - ´ÓÓÃ»§ÁĞ±í²éÕÒÕæÊµĞÕ??      salesPerson: (() => {
+        // ÓÅÏÈÊ¹ÓÃcreatedByName
         if (order.createdByName) return order.createdByName
-        // ä»ç”¨æˆ·åˆ—è¡¨æŸ¥æ‰¾
-        const user = userStore.users.find(u => u.id === order.createdBy || u.username === order.createdBy)
+        // ´ÓÓÃ»§ÁĞ±í²é??        const user = userStore.users.find(u => u.id === order.createdBy || u.username === order.createdBy)
         return user?.realName || user?.name || order.createdBy || '-'
       })(),
       totalAmount: order.totalAmount,
@@ -2294,28 +2225,27 @@ const loadOrderList = async () => {
       codAmount: order.totalAmount - order.depositAmount,
       productCount: order.products.length,
       createTime: order.createTime,
-      // ğŸ”¥ æ·»åŠ æ”¯ä»˜æ–¹å¼å­—æ®µ
+      // ?? Ìí¼ÓÖ§¸¶·½Ê½×Ö¶Î
       paymentMethod: order.paymentMethod || '',
-      // ğŸ”¥ ç­‰å¾…æ—¶é—´ä»è®¢å•æµè½¬åˆ°å¾…å®¡æ ¸æ—¶å¼€å§‹è®¡æ—¶ï¼ˆä½¿ç”¨auditTransferTimeï¼Œå¦‚æœæ²¡æœ‰åˆ™ä½¿ç”¨createTimeï¼‰ï¼Œå•ä½ï¼šåˆ†é’Ÿ
-      waitingMinutes: Math.floor((new Date().getTime() - new Date(order.auditTransferTime || order.createTime).getTime()) / (1000 * 60)),
+      // ?? µÈ´ıÊ±¼ä´Ó¶©µ¥Á÷×ªµ½´ıÉóºËÊ±¿ªÊ¼¼ÆÊ±£¨Ê¹ÓÃauditTransferTime£¬Èç¹ûÃ»ÓĞÔòÊ¹ÓÃcreateTime£©£¬µ¥Î»£º·Ö??      waitingMinutes: Math.floor((new Date().getTime() - new Date(order.auditTransferTime || order.createTime).getTime()) / (1000 * 60)),
       remark: order.remark || '',
       auditStatus: order.auditStatus,
-      // ğŸ”¥ å®¡æ ¸æ ‡è¯†ï¼šä½¿ç”¨auditStatusæ˜ å°„
+      // ?? ÉóºË±êÊ¶£ºÊ¹ÓÃauditStatusÓ³Éä
       auditFlag: order.auditStatus || 'pending',
       hasBeenAudited: order.hasBeenAudited || false,
       deliveryAddress: order.receiverAddress,
       paymentScreenshots: (() => {
-        // ä¼˜å…ˆä½¿ç”¨å¤šå¼ æˆªå›¾æ•°ç»„
+        // ÓÅÏÈÊ¹ÓÃ¶àÕÅ½ØÍ¼Êı×é
         if (order.depositScreenshots && order.depositScreenshots.length > 0) {
           return order.depositScreenshots.map((url: string, index: number) => ({
             id: index + 1,
             url: url,
-            name: `å®šé‡‘æˆªå›¾${index + 1}.jpg`
+            name: `¶¨½ğ½ØÍ¼${index + 1}.jpg`
           }))
         }
-        // å…¼å®¹å•å¼ æˆªå›¾
+        // ¼æÈİµ¥ÕÅ½ØÍ¼
         if (order.depositScreenshot) {
-          return [{ id: 1, url: order.depositScreenshot, name: 'å®šé‡‘æˆªå›¾.jpg' }]
+          return [{ id: 1, url: order.depositScreenshot, name: '¶¨½ğ½ØÍ¼.jpg' }]
         }
         return []
       })(),
@@ -2324,72 +2254,72 @@ const loadOrderList = async () => {
         {
           id: 1,
           action: 'created',
-          actionName: 'è®¢å•åˆ›å»º',
+          actionName: '¶©µ¥´´½¨',
           operator: order.customerName,
-          operatorRole: 'å®¢æˆ·',
+          operatorRole: '¿Í»§',
           time: order.createTime,
-          remark: 'å®¢æˆ·ä¸‹å•'
+          remark: '¿Í»§ÏÂµ¥'
         },
         {
           id: 2,
           action: 'submitted',
-          actionName: 'æäº¤å®¡æ ¸',
+          actionName: 'Ìá½»ÉóºË',
           operator: order.createdBy,
-          operatorRole: 'é”€å”®å‘˜',
+          operatorRole: 'ÏúÊÛÔ±',
           time: order.createTime,
-          remark: 'é”€å”®å‘˜æäº¤è®¢å•å®¡æ ¸'
+          remark: 'ÏúÊÛÔ±Ìá½»¶©µ¥ÉóºË'
         }
       ]
     }))
 
-    // æ¨¡æ‹Ÿå¾…å®¡æ ¸è®¢å•æ•°æ®ï¼ˆä¿ç•™ä¸€äº›ç¤ºä¾‹æ•°æ®ç”¨äºæ¼”ç¤ºï¼‰
+    // Ä£Äâ´ıÉóºË¶©µ¥Êı¾İ£¨±£ÁôÒ»Ğ©Ê¾ÀıÊı¾İÓÃÓÚÑİÊ¾£©
     const mockPendingOrders = [
       {
         id: '1',
         orderNo: 'ORD202401150001',
-        customerName: 'å¼ ä¸‰',
+        customerName: 'ÕÅÈı',
         customerPhone: '13812345678',
-        salesPerson: 'æé”€å”®',
+        salesPerson: 'ÀîÏú??,
         totalAmount: 2999,
         depositAmount: 500,
         codAmount: 2499,
         productCount: 2,
         createTime: '2024-01-15 09:30:00',
         waitingHours: 6,
-        remark: 'å®¢æˆ·è¦æ±‚å°½å¿«å‘è´§',
+        remark: '¿Í»§ÒªÇó¾¡¿ì·¢»õ',
         auditStatus: 'pending',
-        deliveryAddress: 'åŒ—äº¬å¸‚æœé˜³åŒºå»ºå›½è·¯88å·SOHOç°ä»£åŸAåº§1201å®¤',
+        deliveryAddress: '±±¾©ÊĞ³¯ÑôÇø½¨¹ú??8ºÅSOHOÏÖ´ú³ÇA??201??,
         paymentScreenshots: [
-          { id: 1, url: '/api/uploads/payment1.jpg', name: 'æ”¯ä»˜å®è½¬è´¦æˆªå›¾.jpg' },
-          { id: 2, url: '/api/uploads/payment2.jpg', name: 'å¾®ä¿¡æ”¯ä»˜æˆªå›¾.jpg' }
+          { id: 1, url: '/api/uploads/payment1.jpg', name: 'Ö§¸¶±¦×ªÕË½Ø??jpg' },
+          { id: 2, url: '/api/uploads/payment2.jpg', name: 'Î¢ĞÅÖ§¸¶½ØÍ¼.jpg' }
         ],
         auditHistory: [
           {
             id: 1,
             action: 'created',
-            actionName: 'è®¢å•åˆ›å»º',
-            operator: 'å¼ ä¸‰',
-            operatorRole: 'å®¢æˆ·',
+            actionName: '¶©µ¥´´½¨',
+            operator: 'ÕÅÈı',
+            operatorRole: '¿Í»§',
             time: '2024-01-15 14:30:00',
-            remark: 'å®¢æˆ·ä¸‹å•'
+            remark: '¿Í»§ÏÂµ¥'
           },
           {
             id: 2,
             action: 'submitted',
-            actionName: 'æäº¤å®¡æ ¸',
-            operator: 'ç‹é”€å”®',
-            operatorRole: 'é”€å”®å‘˜',
+            actionName: 'Ìá½»ÉóºË',
+            operator: 'ÍõÏú??,
+            operatorRole: 'ÏúÊÛÔ±',
             time: '2024-01-15 14:35:00',
-            remark: 'é”€å”®å‘˜æäº¤è®¢å•å®¡æ ¸'
+            remark: 'ÏúÊÛÔ±Ìá½»¶©µ¥ÉóºË'
           }
         ]
       },
       {
         id: '2',
         orderNo: 'ORD202401150002',
-        customerName: 'æå››',
+        customerName: 'ÀîËÄ',
         customerPhone: '13987654321',
-        salesPerson: 'ç‹é”€å”®',
+        salesPerson: 'ÍõÏú??,
         totalAmount: 1599,
         depositAmount: 300,
         codAmount: 1299,
@@ -2398,81 +2328,81 @@ const loadOrderList = async () => {
         waitingHours: 5,
         remark: '',
         auditStatus: 'pending',
-        deliveryAddress: 'ä¸Šæµ·å¸‚æµ¦ä¸œæ–°åŒºé™†å®¶å˜´ç¯è·¯1000å·æ’ç”Ÿé“¶è¡Œå¤§å¦50æ¥¼',
+        deliveryAddress: 'ÉÏº£ÊĞÆÖ¶«ĞÂÇøÂ½¼Ò×ì»·Â·1000ºÅºãÉúÒøĞĞ´ó??0??,
         paymentScreenshots: [
-          { id: 3, url: '/api/uploads/payment3.jpg', name: 'å¾®ä¿¡æ”¯ä»˜æˆªå›¾.jpg' }
+          { id: 3, url: '/api/uploads/payment3.jpg', name: 'Î¢ĞÅÖ§¸¶½ØÍ¼.jpg' }
         ],
         auditHistory: [
           {
             id: 1,
             action: 'created',
-            actionName: 'è®¢å•åˆ›å»º',
-            operator: 'æå››',
-            operatorRole: 'å®¢æˆ·',
+            actionName: '¶©µ¥´´½¨',
+            operator: 'ÀîËÄ',
+            operatorRole: '¿Í»§',
             time: '2024-01-15 10:15:00',
-            remark: 'å®¢æˆ·ä¸‹å•'
+            remark: '¿Í»§ÏÂµ¥'
           },
           {
             id: 2,
             action: 'submitted',
-            actionName: 'æäº¤å®¡æ ¸',
-            operator: 'ç‹é”€å”®',
-            operatorRole: 'é”€å”®å‘˜',
+            actionName: 'Ìá½»ÉóºË',
+            operator: 'ÍõÏú??,
+            operatorRole: 'ÏúÊÛÔ±',
             time: '2024-01-15 10:20:00',
-            remark: 'é”€å”®å‘˜æäº¤è®¢å•å®¡æ ¸'
+            remark: 'ÏúÊÛÔ±Ìá½»¶©µ¥ÉóºË'
           }
         ]
       },
       {
         id: '3',
         orderNo: 'ORD202401140015',
-        customerName: 'ç‹äº”',
+        customerName: 'ÍõÎå',
         customerPhone: '15555666777',
-        salesPerson: 'å¼ é”€å”®',
+        salesPerson: 'ÕÅÏú??,
         totalAmount: 4299,
         depositAmount: 1000,
         codAmount: 3299,
         productCount: 3,
         createTime: '2024-01-14 16:20:00',
         waitingHours: 25,
-        remark: 'å¤§å®¢æˆ·è®¢å•ï¼Œä¼˜å…ˆå¤„ç†',
+        remark: '´ó¿Í»§¶©µ¥£¬ÓÅÏÈ´¦Àí',
         auditStatus: 'pending',
-        deliveryAddress: 'å¹¿å·å¸‚å¤©æ²³åŒºç æ±Ÿæ–°åŸèŠ±åŸå¤§é“85å·é«˜å¾·ç½®åœ°å¹¿åœºAåº§2801å®¤',
+        deliveryAddress: '¹ãÖİÊĞÌìºÓÇøÖé½­ĞÂ³Ç»¨³Ç´óµÀ85ºÅ¸ßµÂÖÃµØ¹ã³¡A??801??,
         paymentScreenshots: [
-          { id: 4, url: '/api/uploads/payment4.jpg', name: 'é“¶è¡Œè½¬è´¦æˆªå›¾.jpg' },
-          { id: 5, url: '/api/uploads/payment5.jpg', name: 'æ”¯ä»˜å®æˆªå›¾.jpg' }
+          { id: 4, url: '/api/uploads/payment4.jpg', name: 'ÒøĞĞ×ªÕË½ØÍ¼.jpg' },
+          { id: 5, url: '/api/uploads/payment5.jpg', name: 'Ö§¸¶±¦½Ø??jpg' }
         ],
         auditHistory: [
           {
             id: 1,
             action: 'created',
-            actionName: 'è®¢å•åˆ›å»º',
-            operator: 'ç‹äº”',
-            operatorRole: 'å®¢æˆ·',
+            actionName: '¶©µ¥´´½¨',
+            operator: 'ÍõÎå',
+            operatorRole: '¿Í»§',
             time: '2024-01-14 16:20:00',
-            remark: 'å®¢æˆ·ä¸‹å•'
+            remark: '¿Í»§ÏÂµ¥'
           },
           {
             id: 2,
             action: 'submitted',
-            actionName: 'æäº¤å®¡æ ¸',
-            operator: 'å¼ é”€å”®',
-            operatorRole: 'é”€å”®å‘˜',
+            actionName: 'Ìá½»ÉóºË',
+            operator: 'ÕÅÏú??,
+            operatorRole: 'ÏúÊÛÔ±',
             time: '2024-01-14 16:25:00',
-            remark: 'å¤§å®¢æˆ·è®¢å•ï¼Œä¼˜å…ˆå¤„ç†'
+            remark: '´ó¿Í»§¶©µ¥£¬ÓÅÏÈ´¦Àí'
           }
         ]
       }
     ]
 
-    // æ¨¡æ‹Ÿå·²å®¡æ ¸é€šè¿‡è®¢å•æ•°æ®
+    // Ä£ÄâÒÑÉóºËÍ¨¹ı¶©µ¥Êı¾İ
     const mockApprovedOrders = [
       {
         id: '4',
         orderNo: 'ORD202401140008',
-        customerName: 'èµµå…­',
+        customerName: 'ÕÔÁù',
         customerPhone: '18888999000',
-        salesPerson: 'æé”€å”®',
+        salesPerson: 'ÀîÏú??,
         totalAmount: 899,
         depositAmount: 200,
         codAmount: 699,
@@ -2482,104 +2412,104 @@ const loadOrderList = async () => {
         auditStatus: 'approved',
         auditFlag: 'approved',
         auditTime: '2024-01-14 14:30:00',
-        auditor: 'å®¡æ ¸å‘˜A',
-        auditRemark: 'è®¢å•ä¿¡æ¯å®Œæ•´ï¼Œå®¡æ ¸é€šè¿‡',
-        deliveryAddress: 'æ·±åœ³å¸‚å—å±±åŒºç§‘æŠ€å›­å—åŒºæ·±å—å¤§é“9988å·',
+        auditor: 'ÉóºËÔ±A',
+        auditRemark: '¶©µ¥ĞÅÏ¢ÍêÕû£¬ÉóºËÍ¨¹ı',
+        deliveryAddress: 'ÉîÛÚÊĞÄÏÉ½Çø¿Æ¼¼Ô°ÄÏÇøÉîÄÏ´ó??988??,
         paymentScreenshots: [
-          { id: 6, url: '/api/uploads/payment6.jpg', name: 'å®šé‡‘æ”¯ä»˜æˆªå›¾.jpg' }
+          { id: 6, url: '/api/uploads/payment6.jpg', name: '¶¨½ğÖ§¸¶½ØÍ¼.jpg' }
         ],
         auditHistory: [
           {
             id: 1,
             action: 'created',
-            actionName: 'è®¢å•åˆ›å»º',
-            operator: 'èµµå…­',
-            operatorRole: 'å®¢æˆ·',
+            actionName: '¶©µ¥´´½¨',
+            operator: 'ÕÔÁù',
+            operatorRole: '¿Í»§',
             time: '2024-01-14 11:45:00',
-            remark: 'å®¢æˆ·ä¸‹å•'
+            remark: '¿Í»§ÏÂµ¥'
           },
           {
             id: 2,
             action: 'submitted',
-            actionName: 'æäº¤å®¡æ ¸',
-            operator: 'æé”€å”®',
-            operatorRole: 'é”€å”®å‘˜',
+            actionName: 'Ìá½»ÉóºË',
+            operator: 'ÀîÏú??,
+            operatorRole: 'ÏúÊÛÔ±',
             time: '2024-01-14 11:50:00',
-            remark: 'é”€å”®å‘˜æäº¤è®¢å•å®¡æ ¸'
+            remark: 'ÏúÊÛÔ±Ìá½»¶©µ¥ÉóºË'
           },
           {
             id: 3,
             action: 'approved',
-            actionName: 'å®¡æ ¸é€šè¿‡',
-            operator: 'å®¡æ ¸å‘˜A',
-            operatorRole: 'å®¡æ ¸å‘˜',
+            actionName: 'ÉóºËÍ¨¹ı',
+            operator: 'ÉóºËÔ±A',
+            operatorRole: 'ÉóºË??,
             time: '2024-01-14 14:30:00',
-            remark: 'è®¢å•ä¿¡æ¯å®Œæ•´ï¼Œå®¡æ ¸é€šè¿‡'
+            remark: '¶©µ¥ĞÅÏ¢ÍêÕû£¬ÉóºËÍ¨¹ı'
           }
         ]
       },
       {
         id: '5',
         orderNo: 'ORD202401130022',
-        customerName: 'é’±ä¸ƒ',
+        customerName: 'Ç®Æß',
         customerPhone: '17777888999',
-        salesPerson: 'ç‹é”€å”®',
+        salesPerson: 'ÍõÏú??,
         totalAmount: 6599,
         depositAmount: 1500,
         codAmount: 5099,
         productCount: 4,
         createTime: '2024-01-13 14:30:00',
-        remark: 'VIPå®¢æˆ·ï¼Œéœ€è¦ç‰¹æ®ŠåŒ…è£…',
+        remark: 'VIP¿Í»§£¬ĞèÒªÌØÊâ°ü??,
         auditStatus: 'approved',
         auditFlag: 'approved',
         auditTime: '2024-01-13 16:45:00',
-        auditor: 'å®¡æ ¸å‘˜B',
-        auditRemark: 'VIPå®¢æˆ·è®¢å•ï¼Œä¼˜å…ˆå¤„ç†',
-        deliveryAddress: 'æ­å·å¸‚è¥¿æ¹–åŒºæ–‡ä¸‰è·¯259å·æ˜Œåœ°ç«ç‚¬å¤§å¦1å·æ¥¼17å±‚',
+        auditor: 'ÉóºËÔ±B',
+        auditRemark: 'VIP¿Í»§¶©µ¥£¬ÓÅÏÈ´¦??,
+        deliveryAddress: 'º¼ÖİÊĞÎ÷ºşÇøÎÄÈı??59ºÅ²ıµØ»ğ¾æ´ó??ºÅÂ¥17??,
         paymentScreenshots: [
-          { id: 7, url: '/api/uploads/payment7.jpg', name: 'VIPå®¢æˆ·è½¬è´¦æˆªå›¾.jpg' },
-          { id: 8, url: '/api/uploads/payment8.jpg', name: 'é“¶è¡Œå›å•.jpg' }
+          { id: 7, url: '/api/uploads/payment7.jpg', name: 'VIP¿Í»§×ªÕË½ØÍ¼.jpg' },
+          { id: 8, url: '/api/uploads/payment8.jpg', name: 'ÒøĞĞ»Øµ¥.jpg' }
         ],
         auditHistory: [
           {
             id: 1,
             action: 'created',
-            actionName: 'è®¢å•åˆ›å»º',
-            operator: 'é’±ä¸ƒ',
-            operatorRole: 'å®¢æˆ·',
+            actionName: '¶©µ¥´´½¨',
+            operator: 'Ç®Æß',
+            operatorRole: '¿Í»§',
             time: '2024-01-13 14:30:00',
-            remark: 'VIPå®¢æˆ·ï¼Œéœ€è¦ç‰¹æ®ŠåŒ…è£…'
+            remark: 'VIP¿Í»§£¬ĞèÒªÌØÊâ°ü??
           },
           {
             id: 2,
             action: 'submitted',
-            actionName: 'æäº¤å®¡æ ¸',
-            operator: 'ç‹é”€å”®',
-            operatorRole: 'é”€å”®å‘˜',
+            actionName: 'Ìá½»ÉóºË',
+            operator: 'ÍõÏú??,
+            operatorRole: 'ÏúÊÛÔ±',
             time: '2024-01-13 14:35:00',
-            remark: 'VIPå®¢æˆ·è®¢å•ï¼Œä¼˜å…ˆå¤„ç†'
+            remark: 'VIP¿Í»§¶©µ¥£¬ÓÅÏÈ´¦??
           },
           {
             id: 3,
             action: 'approved',
-            actionName: 'å®¡æ ¸é€šè¿‡',
-            operator: 'å®¡æ ¸å‘˜B',
-            operatorRole: 'å®¡æ ¸å‘˜',
+            actionName: 'ÉóºËÍ¨¹ı',
+            operator: 'ÉóºËÔ±B',
+            operatorRole: 'ÉóºË??,
             time: '2024-01-13 16:45:00',
-            remark: 'VIPå®¢æˆ·è®¢å•ï¼Œä¼˜å…ˆå¤„ç†'
+            remark: 'VIP¿Í»§¶©µ¥£¬ÓÅÏÈ´¦??
           }
         ]
       }
     ]
 
-    // æ¨¡æ‹Ÿå®¡æ ¸æ‹’ç»è®¢å•æ•°æ®
+    // Ä£ÄâÉóºË¾Ü¾ø¶©µ¥Êı¾İ
     const mockRejectedOrders = [
       {
         id: '6',
         orderNo: 'ORD202401120005',
-        customerName: 'å­™å…«',
+        customerName: 'Ëï°Ë',
         customerPhone: '16666555444',
-        salesPerson: 'æé”€å”®',
+        salesPerson: 'ÀîÏú??,
         totalAmount: 1299,
         depositAmount: 0,
         codAmount: 1299,
@@ -2589,56 +2519,55 @@ const loadOrderList = async () => {
         auditStatus: 'rejected',
         auditFlag: 'rejected',
         auditTime: '2024-01-12 17:30:00',
-        auditor: 'å®¡æ ¸å‘˜A',
-        auditRemark: 'å®¢æˆ·ä¿¡æ¯ä¸å®Œæ•´ï¼Œéœ€è¦è¡¥å……è”ç³»åœ°å€',
-        deliveryAddress: 'æˆéƒ½å¸‚é«˜æ–°åŒºå¤©åºœå¤§é“ä¸­æ®µ1388å·ç¾å¹´å¹¿åœºCåº§',
+        auditor: 'ÉóºËÔ±A',
+        auditRemark: '¿Í»§ĞÅÏ¢²»ÍêÕû£¬ĞèÒª²¹³äÁªÏµµØÖ·',
+        deliveryAddress: '³É¶¼ÊĞ¸ßĞÂÇøÌì¸®´óµÀÖĞ¶Î1388ºÅÃÀÄê¹ã³¡C??,
         paymentScreenshots: [],
         auditHistory: [
           {
             id: 1,
             action: 'created',
-            actionName: 'è®¢å•åˆ›å»º',
-            operator: 'å­™å…«',
-            operatorRole: 'å®¢æˆ·',
+            actionName: '¶©µ¥´´½¨',
+            operator: 'Ëï°Ë',
+            operatorRole: '¿Í»§',
             time: '2024-01-12 15:20:00',
-            remark: 'å®¢æˆ·ä¸‹å•'
+            remark: '¿Í»§ÏÂµ¥'
           },
           {
             id: 2,
             action: 'submitted',
-            actionName: 'æäº¤å®¡æ ¸',
-            operator: 'æé”€å”®',
-            operatorRole: 'é”€å”®å‘˜',
+            actionName: 'Ìá½»ÉóºË',
+            operator: 'ÀîÏú??,
+            operatorRole: 'ÏúÊÛÔ±',
             time: '2024-01-12 15:25:00',
-            remark: 'é”€å”®å‘˜æäº¤è®¢å•å®¡æ ¸'
+            remark: 'ÏúÊÛÔ±Ìá½»¶©µ¥ÉóºË'
           },
           {
             id: 3,
             action: 'rejected',
-            actionName: 'å®¡æ ¸æ‹’ç»',
-            operator: 'å®¡æ ¸å‘˜A',
-            operatorRole: 'å®¡æ ¸å‘˜',
+            actionName: 'ÉóºË¾Ü¾ø',
+            operator: 'ÉóºËÔ±A',
+            operatorRole: 'ÉóºË??,
             time: '2024-01-12 17:30:00',
-            remark: 'å®¢æˆ·ä¿¡æ¯ä¸å®Œæ•´ï¼Œéœ€è¦è¡¥å……è”ç³»åœ°å€'
+            remark: '¿Í»§ĞÅÏ¢²»ÍêÕû£¬ĞèÒª²¹³äÁªÏµµØÖ·'
           }
         ]
       }
     ]
 
-    // è®¾ç½®è®¢å•æ•°æ® - åªä½¿ç”¨çœŸå®æ•°æ®ï¼Œä¸ä½¿ç”¨æ¨¡æ‹Ÿæ•°æ®
-    console.log(`[è®¢å•å®¡æ ¸] è½¬æ¢åçš„çœŸå®è®¢å•æ•°é‡: ${convertedPendingOrders.length}`)
+    // ÉèÖÃ¶©µ¥Êı¾İ - Ö»Ê¹ÓÃÕæÊµÊı¾İ£¬²»Ê¹ÓÃÄ£ÄâÊı??    console.log(`[¶©µ¥ÉóºË] ×ª»»ºóµÄÕæÊµ¶©µ¥ÊıÁ¿: ${convertedPendingOrders.length}`)
     pendingOrders.value = convertedPendingOrders
 
-    // ä»çœŸå®æ•°æ®ä¸­ç­›é€‰å·²å®¡æ ¸é€šè¿‡å’Œæ‹’ç»çš„è®¢å•
+    // ´ÓÕæÊµÊı¾İÖĞÉ¸Ñ¡ÒÑÉóºËÍ¨¹ıºÍ¾Ü¾øµÄ¶©µ¥
     const allOrdersWithAudit = applyDataScopeControl(orderStore.orders)
 
-    console.log('[è®¢å•å®¡æ ¸] å¼€å§‹ç­›é€‰å·²å®¡æ ¸è®¢å•ï¼Œæ€»è®¢å•æ•°:', allOrdersWithAudit.length)
+    console.log('[¶©µ¥ÉóºË] ¿ªÊ¼É¸Ñ¡ÒÑÉóºË¶©µ¥£¬×Ü¶©µ¥Êı:', allOrdersWithAudit.length)
 
     approvedOrders.value = allOrdersWithAudit
       .filter(order => {
         const match = order.auditStatus === 'approved' && order.markType !== 'reserved' && order.markType !== 'return'
         if (match) {
-          console.log('[è®¢å•å®¡æ ¸] âœ… å®¡æ ¸é€šè¿‡è®¢å•:', order.orderNumber, order.auditStatus)
+          console.log('[¶©µ¥ÉóºË] ??ÉóºËÍ¨¹ı¶©µ¥:', order.orderNumber, order.auditStatus)
         }
         return match
       })
@@ -2648,8 +2577,7 @@ const loadOrderList = async () => {
         customerId: order.customerId,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
-        // ğŸ”¥ ä½¿ç”¨çœŸå®å§“å - ä»ç”¨æˆ·åˆ—è¡¨æŸ¥æ‰¾
-        salesPerson: (() => {
+        // ?? Ê¹ÓÃÕæÊµĞÕÃû - ´ÓÓÃ»§ÁĞ±í²é??        salesPerson: (() => {
           if (order.createdByName) return order.createdByName
           const user = userStore.users.find(u => u.id === order.createdBy || u.username === order.createdBy)
           return user?.realName || user?.name || order.createdBy || '-'
@@ -2659,22 +2587,22 @@ const loadOrderList = async () => {
         codAmount: order.totalAmount - order.depositAmount,
         productCount: order.products.length,
         createTime: order.createTime,
-        // ğŸ”¥ æ·»åŠ æ”¯ä»˜æ–¹å¼å­—æ®µ
+        // ?? Ìí¼ÓÖ§¸¶·½Ê½×Ö¶Î
         paymentMethod: order.paymentMethod || '',
         auditStatus: order.auditStatus,
-        // ğŸ”¥ å®¡æ ¸æ ‡è¯†ï¼šå·²å®¡æ ¸é€šè¿‡
+        // ?? ÉóºË±êÊ¶£ºÒÑÉóºËÍ¨¹ı
         auditFlag: 'approved',
         auditTime: order.auditTime || order.updateTime,
-        auditor: order.auditor || 'ç³»ç»Ÿ',
+        auditor: order.auditor || 'ÏµÍ³',
         auditRemark: order.auditRemark || '',
         deliveryAddress: order.receiverAddress,
         paymentScreenshots: (() => {
           if (order.depositScreenshots && order.depositScreenshots.length > 0) {
             return order.depositScreenshots.map((url: string, index: number) => ({
-              id: index + 1, url, name: `å®šé‡‘æˆªå›¾${index + 1}.jpg`
+              id: index + 1, url, name: `¶¨½ğ½ØÍ¼${index + 1}.jpg`
             }))
           }
-          return order.depositScreenshot ? [{ id: 1, url: order.depositScreenshot, name: 'å®šé‡‘æˆªå›¾.jpg' }] : []
+          return order.depositScreenshot ? [{ id: 1, url: order.depositScreenshot, name: '¶¨½ğ½ØÍ¼.jpg' }] : []
         })(),
         depositScreenshots: order.depositScreenshots || (order.depositScreenshot ? [order.depositScreenshot] : [])
       }))
@@ -2683,7 +2611,7 @@ const loadOrderList = async () => {
       .filter(order => {
         const match = order.auditStatus === 'rejected' && order.markType !== 'reserved' && order.markType !== 'return'
         if (match) {
-          console.log('[è®¢å•å®¡æ ¸] âŒ å®¡æ ¸æ‹’ç»è®¢å•:', order.orderNumber, order.auditStatus, order.status)
+          console.log('[¶©µ¥ÉóºË] ??ÉóºË¾Ü¾ø¶©µ¥:', order.orderNumber, order.auditStatus, order.status)
         }
         return match
       })
@@ -2693,8 +2621,7 @@ const loadOrderList = async () => {
         customerId: order.customerId,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
-        // ğŸ”¥ ä½¿ç”¨çœŸå®å§“å - ä»ç”¨æˆ·åˆ—è¡¨æŸ¥æ‰¾
-        salesPerson: (() => {
+        // ?? Ê¹ÓÃÕæÊµĞÕÃû - ´ÓÓÃ»§ÁĞ±í²é??        salesPerson: (() => {
           if (order.createdByName) return order.createdByName
           const user = userStore.users.find(u => u.id === order.createdBy || u.username === order.createdBy)
           return user?.realName || user?.name || order.createdBy || '-'
@@ -2704,40 +2631,37 @@ const loadOrderList = async () => {
         codAmount: order.totalAmount - order.depositAmount,
         productCount: order.products.length,
         createTime: order.createTime,
-        // ğŸ”¥ æ·»åŠ æ”¯ä»˜æ–¹å¼å­—æ®µ
+        // ?? Ìí¼ÓÖ§¸¶·½Ê½×Ö¶Î
         paymentMethod: order.paymentMethod || '',
         auditStatus: order.auditStatus,
-        // ğŸ”¥ å®¡æ ¸æ ‡è¯†ï¼šå®¡æ ¸æ‹’ç»
-        auditFlag: 'rejected',
+        // ?? ÉóºË±êÊ¶£ºÉóºË¾Ü??        auditFlag: 'rejected',
         auditTime: order.auditTime || order.updateTime,
-        auditor: order.auditor || 'ç³»ç»Ÿ',
+        auditor: order.auditor || 'ÏµÍ³',
         auditRemark: order.auditRemark || order.rejectReason || '',
         deliveryAddress: order.receiverAddress,
         paymentScreenshots: (() => {
           if (order.depositScreenshots && order.depositScreenshots.length > 0) {
             return order.depositScreenshots.map((url: string, index: number) => ({
-              id: index + 1, url, name: `å®šé‡‘æˆªå›¾${index + 1}.jpg`
+              id: index + 1, url, name: `¶¨½ğ½ØÍ¼${index + 1}.jpg`
             }))
           }
-          return order.depositScreenshot ? [{ id: 1, url: order.depositScreenshot, name: 'å®šé‡‘æˆªå›¾.jpg' }] : []
+          return order.depositScreenshot ? [{ id: 1, url: order.depositScreenshot, name: '¶¨½ğ½ØÍ¼.jpg' }] : []
         })(),
         depositScreenshots: order.depositScreenshots || (order.depositScreenshot ? [order.depositScreenshot] : [])
       }))
 
-    console.log(`[è®¢å•å®¡æ ¸] æœ€ç»ˆæ•°æ®ç»Ÿè®¡ï¼šå¾…å®¡æ ¸=${pendingOrders.value.length}, å·²é€šè¿‡=${approvedOrders.value.length}, å·²æ‹’ç»=${rejectedOrders.value.length}`)
+    console.log(`[¶©µ¥ÉóºË] ×îÖÕÊı¾İÍ³¼Æ£º´ıÉó??${pendingOrders.value.length}, ÒÑÍ¨¹ı=${approvedOrders.value.length}, ÒÑ¾Ü??${rejectedOrders.value.length}`)
 
-    // æ›´æ–°æ ‡ç­¾è®¡æ•°
+    // ¸üĞÂ±êÇ©¼ÆÊı
     updateTabCounts()
 
-    // æ›´æ–°æ±‡æ€»æ•°æ®
-    calculateSummaryData()
+    // ¸üĞÂ»ã×ÜÊı??    calculateSummaryData()
 
     pagination.total = orderList.value?.length || 0
   } catch (error) {
-    console.error('åŠ è½½è®¢å•åˆ—è¡¨å¤±è´¥:', error)
-    ElMessage.error('åŠ è½½è®¢å•åˆ—è¡¨å¤±è´¥')
-    // ç¡®ä¿åœ¨é”™è¯¯æƒ…å†µä¸‹æ•°ç»„ä»ç„¶æ˜¯æœ‰æ•ˆçš„ç©ºæ•°ç»„
-    pendingOrders.value = []
+    console.error('¼ÓÔØ¶©µ¥ÁĞ±íÊ§°Ü:', error)
+    ElMessage.error('¼ÓÔØ¶©µ¥ÁĞ±íÊ§°Ü')
+    // È·±£ÔÚ´íÎóÇé¿öÏÂÊı×éÈÔÈ»ÊÇÓĞĞ§µÄ¿ÕÊı??    pendingOrders.value = []
     approvedOrders.value = []
     rejectedOrders.value = []
     pagination.total = 0
@@ -2746,41 +2670,41 @@ const loadOrderList = async () => {
   }
 }
 
-// è®¢å•äº‹ä»¶å¤„ç†å‡½æ•°
+// ¶©µ¥ÊÂ¼ş´¦Àíº¯Êı
 const handleOrderTransferredAudit = (transferredOrders: any[]) => {
-  console.log('[è®¢å•å®¡æ ¸] æ”¶åˆ°è®¢å•æµè½¬äº‹ä»¶:', transferredOrders)
+  console.log('[¶©µ¥ÉóºË] ÊÕµ½¶©µ¥Á÷×ªÊÂ¼ş:', transferredOrders)
   loadOrderList()
-  ElMessage.info(`${transferredOrders.length} ä¸ªè®¢å•å·²æµè½¬åˆ°å®¡æ ¸åˆ—è¡¨`)
+  ElMessage.info(`${transferredOrders.length} ¸ö¶©µ¥ÒÑÁ÷×ªµ½ÉóºËÁĞ±í`)
 }
 
 const handleRefreshAuditList = () => {
-  console.log('[è®¢å•å®¡æ ¸] æ”¶åˆ°åˆ·æ–°å®¡æ ¸åˆ—è¡¨äº‹ä»¶')
+  console.log('[¶©µ¥ÉóºË] ÊÕµ½Ë¢ĞÂÉóºËÁĞ±íÊÂ¼ş')
   loadOrderList()
 }
 
 const handleOrderStatusChangedAudit = (order: any) => {
-  console.log('[è®¢å•å®¡æ ¸] è®¢å•çŠ¶æ€å˜æ›´:', order)
+  console.log('[¶©µ¥ÉóºË] ¶©µ¥×´Ì¬±ä??', order)
   loadOrderList()
 }
 
-// ç”Ÿå‘½å‘¨æœŸ
+// ÉúÃüÖÜÆÚ
 onMounted(async () => {
-  // åŠ è½½ç”¨æˆ·åˆ—è¡¨ï¼ˆç”¨äºé”€å”®äººå‘˜ç­›é€‰ï¼‰
+  // ¼ÓÔØÓÃ»§ÁĞ±í£¨ÓÃÓÚÏúÊÛÈËÔ±É¸Ñ¡£©
   await userStore.loadUsers()
 
-  // ğŸ”¥ ç›´æ¥ä»ä¸“é—¨çš„å¾…å®¡æ ¸è®¢å•APIåŠ è½½æ•°æ®
+  // ?? Ö±½Ó´Ó×¨ÃÅµÄ´ıÉóºË¶©µ¥API¼ÓÔØÊı¾İ
   try {
-    console.log('[è®¢å•å®¡æ ¸] æ­£åœ¨ä»å¾…å®¡æ ¸è®¢å•APIåŠ è½½æ•°æ®...')
+    console.log('[¶©µ¥ÉóºË] ÕıÔÚ´Ó´ıÉóºË¶©µ¥API¼ÓÔØÊı¾İ...')
     loading.value = true
 
     const response = await orderApi.getPendingAuditOrders({ page: 1, pageSize: 500 })
-    console.log('[è®¢å•å®¡æ ¸] APIå“åº”:', response)
+    console.log('[¶©µ¥ÉóºË] APIÏìÓ¦:', response)
 
     if (response && response.data && response.data.list) {
       const auditOrders = response.data.list
-      console.log(`[è®¢å•å®¡æ ¸] âœ… è·å–åˆ° ${auditOrders.length} æ¡å¾…å®¡æ ¸è®¢å•`)
+      console.log(`[¶©µ¥ÉóºË] ??»ñÈ¡??${auditOrders.length} Ìõ´ıÉóºË¶©µ¥`)
 
-      // è½¬æ¢ä¸ºå®¡æ ¸é¡µé¢æ ¼å¼å¹¶è®¾ç½®åˆ°pendingOrders
+      // ×ª»»ÎªÉóºËÒ³Ãæ¸ñÊ½²¢ÉèÖÃµ½pendingOrders
       const convertedOrders = auditOrders.map((order: any) => ({
         id: order.id,
         orderNo: order.orderNumber,
@@ -2804,39 +2728,37 @@ onMounted(async () => {
         paymentScreenshots: (order.depositScreenshots || []).map((url: string, index: number) => ({
           id: index + 1,
           url: url,
-          name: `å®šé‡‘æˆªå›¾${index + 1}.jpg`
+          name: `¶¨½ğ½ØÍ¼${index + 1}.jpg`
         })),
         auditHistory: []
       }))
 
       pendingOrders.value = convertedOrders
-      console.log(`[è®¢å•å®¡æ ¸] å¾…å®¡æ ¸è®¢å•æ•°é‡: ${pendingOrders.value.length}`)
+      console.log(`[¶©µ¥ÉóºË] ´ıÉóºË¶©µ¥Êı?? ${pendingOrders.value.length}`)
 
-      // æ›´æ–°æ ‡ç­¾è®¡æ•°
+      // ¸üĞÂ±êÇ©¼ÆÊı
       updateTabCounts()
     } else {
-      console.warn('[è®¢å•å®¡æ ¸] âš ï¸ APIè¿”å›æ•°æ®æ ¼å¼å¼‚å¸¸æˆ–ä¸ºç©º:', response)
+      console.warn('[¶©µ¥ÉóºË] ?? API·µ»ØÊı¾İ¸ñÊ½Òì³£»òÎª??', response)
       pendingOrders.value = []
     }
   } catch (error) {
-    console.error('[è®¢å•å®¡æ ¸] ä»APIåŠ è½½å¾…å®¡æ ¸è®¢å•å¤±è´¥:', error)
-    ElMessage.error('åŠ è½½å¾…å®¡æ ¸è®¢å•å¤±è´¥')
+    console.error('[¶©µ¥ÉóºË] ´ÓAPI¼ÓÔØ´ıÉóºË¶©µ¥Ê§??', error)
+    ElMessage.error('¼ÓÔØ´ıÉóºË¶©µ¥Ê§??)
     pendingOrders.value = []
   } finally {
     loading.value = false
   }
 
-  // åŠ è½½æ±‡æ€»æ•°æ®
-  loadSummaryData()
+  // ¼ÓÔØ»ã×ÜÊı??  loadSummaryData()
 
-  // ç›‘å¬è®¢å•äº‹ä»¶æ€»çº¿ - å®ç°è®¢å•çŠ¶æ€åŒæ­¥
-  eventBus.on(EventNames.ORDER_TRANSFERRED, handleOrderTransferredAudit)
+  // ¼àÌı¶©µ¥ÊÂ¼ş×ÜÏß - ÊµÏÖ¶©µ¥×´Ì¬Í¬??  eventBus.on(EventNames.ORDER_TRANSFERRED, handleOrderTransferredAudit)
   eventBus.on(EventNames.REFRESH_AUDIT_LIST, handleRefreshAuditList)
   eventBus.on(EventNames.ORDER_STATUS_CHANGED, handleOrderStatusChangedAudit)
 })
 
 onUnmounted(() => {
-  // æ¸…ç†è®¢å•äº‹ä»¶æ€»çº¿ç›‘å¬
+  // ÇåÀí¶©µ¥ÊÂ¼ş×ÜÏß¼àÌı
   eventBus.off(EventNames.ORDER_TRANSFERRED, handleOrderTransferredAudit)
   eventBus.off(EventNames.REFRESH_AUDIT_LIST, handleRefreshAuditList)
   eventBus.off(EventNames.ORDER_STATUS_CHANGED, handleOrderStatusChangedAudit)
@@ -2969,7 +2891,7 @@ onUnmounted(() => {
   margin-bottom: 20px;
 }
 
-/* è¡¨æ ¼å¤´éƒ¨å¸ƒå±€æ ·å¼ */
+/* ±í¸ñÍ·²¿²¼¾ÖÑùÊ½ */
 :deep(.el-card__header) {
   padding: 16px 20px;
 }
@@ -3014,7 +2936,7 @@ onUnmounted(() => {
   line-height: 32px;
 }
 
-/* æ ‡ç­¾é¡µæ ·å¼ä¼˜åŒ– - ç§»é™¤ä¸‹è¾¹æ¡†å¹¶ç¡®ä¿ç­‰é«˜å¯¹é½ */
+/* ±êÇ©Ò³ÑùÊ½ÓÅ??- ÒÆ³ıÏÂ±ß¿ò²¢È·±£µÈ¸ß¶ÔÆë */
 :deep(.audit-tabs) {
   margin-bottom: 0;
   height: 32px;
@@ -3082,7 +3004,7 @@ onUnmounted(() => {
   font-size: 16px;
 }
 
-/* è¡¨æ ¼å¡ç‰‡å®¹å™¨æ ·å¼ */
+/* ±í¸ñ¿¨Æ¬ÈİÆ÷ÑùÊ½ */
 .table-card-container {
   margin-bottom: 20px;
   border-radius: 8px;
@@ -3176,7 +3098,7 @@ onUnmounted(() => {
   display: inline-block;
 }
 
-/* é‡‘é¢æ ·å¼ */
+/* ½ğ¶îÑùÊ½ */
 .deposit-amount {
   color: #67c23a;
   font-weight: bold;
@@ -3187,7 +3109,7 @@ onUnmounted(() => {
   font-weight: bold;
 }
 
-/* æ”¯ä»˜æˆªå›¾æ ·å¼ */
+/* Ö§¸¶½ØÍ¼ÑùÊ½ */
 .screenshot-gallery {
   display: flex;
   flex-wrap: wrap;
@@ -3264,7 +3186,7 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-/* å›¾ç‰‡æŸ¥çœ‹å™¨æ ·å¼ */
+/* Í¼Æ¬²é¿´Æ÷Ñù??*/
 .image-viewer-dialog .el-dialog__body {
   padding: 0;
 }
@@ -3332,7 +3254,7 @@ onUnmounted(() => {
   text-align: center;
 }
 
-/* å®¡æ ¸è½¨è¿¹æ ·å¼ */
+/* ÉóºË¹ì¼£ÑùÊ½ */
 .audit-history-card {
   margin-top: 16px;
 }
@@ -3358,7 +3280,7 @@ onUnmounted(() => {
   transform: rotate(90deg);
 }
 
-/* ç´§å‡‘ç‰ˆæ—¶é—´è½´æ ·å¼ */
+/* ½ô´Õ°æÊ±¼äÖáÑùÊ½ */
 .timeline-content-compact {
   padding: 8px 12px;
   background: #f8f9fa;
@@ -3397,7 +3319,7 @@ onUnmounted(() => {
   flex: 1;
 }
 
-/* æ ¹æ®æ“ä½œç±»å‹è°ƒæ•´è¾¹æ¡†é¢œè‰² */
+/* ¸ù¾İ²Ù×÷ÀàĞÍµ÷Õû±ß¿òÑÕÉ« */
 .timeline-content-compact[data-action="created"] {
   border-left-color: #409eff;
 }
@@ -3414,7 +3336,7 @@ onUnmounted(() => {
   border-left-color: #f56c6c;
 }
 
-/* è®¢å•è¯¦æƒ…å¼¹çª—æ ·å¼ä¼˜åŒ– */
+/* ¶©µ¥ÏêÇéµ¯´°ÑùÊ½ÓÅ»¯ */
 .order-detail-content {
   max-height: 70vh;
   overflow-y: auto;
@@ -3428,7 +3350,7 @@ onUnmounted(() => {
   padding: 24px;
 }
 
-/* info-item æ ·å¼ä¼˜åŒ– */
+/* info-item ÑùÊ½ÓÅ»¯ */
 .info-item {
   display: flex;
   align-items: flex-start;
@@ -3488,7 +3410,7 @@ onUnmounted(() => {
   color: #f56c6c;
 }
 
-/* å®¡æ ¸æ“ä½œå¡ç‰‡æ ·å¼ä¼˜åŒ– */
+/* ÉóºË²Ù×÷¿¨Æ¬ÑùÊ½ÓÅ»¯ */
 .audit-action-card {
   margin-bottom: 16px;
 }
@@ -3526,7 +3448,7 @@ onUnmounted(() => {
   margin-left: 8px;
 }
 
-/* æ”¯ä»˜æˆªå›¾æ ·å¼ä¼˜åŒ– */
+/* Ö§¸¶½ØÍ¼ÑùÊ½ÓÅ»¯ */
 .screenshot-gallery {
   display: flex;
   flex-wrap: wrap;
@@ -3551,7 +3473,7 @@ onUnmounted(() => {
   box-shadow: 0 4px 12px rgba(64, 158, 255, 0.2);
 }
 
-/* å®¡æ ¸è½¨è¿¹æ ·å¼ä¼˜åŒ– */
+/* ÉóºË¹ì¼£ÑùÊ½ÓÅ»¯ */
 .audit-history-card .el-card__body {
   padding: 16px 24px;
 }
@@ -3606,7 +3528,7 @@ onUnmounted(() => {
   margin-top: 4px;
 }
 
-/* æ‹’ç»åŸå› é€‰æ‹©åŒºåŸŸæ ·å¼ */
+/* ¾Ü¾øÔ­ÒòÑ¡ÔñÇøÓòÑùÊ½ */
 .rejection-reason-section {
   display: flex;
   align-items: center;
@@ -3637,7 +3559,7 @@ onUnmounted(() => {
   min-width: 300px;
 }
 
-/* å¼¹çª—åº•éƒ¨æŒ‰é’®æ ·å¼ */
+/* µ¯´°µ×²¿°´Å¥ÑùÊ½ */
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
@@ -3650,7 +3572,7 @@ onUnmounted(() => {
   padding: 10px 20px;
 }
 
-/* å“åº”å¼è®¾è®¡ */
+/* ÏìÓ¦Ê½Éè??*/
 @media (max-width: 768px) {
   .order-audit {
     padding: 12px;
@@ -3681,7 +3603,7 @@ onUnmounted(() => {
     margin-bottom: 12px;
   }
 
-  /* å¼¹çª—å“åº”å¼ */
+  /* µ¯´°ÏìÓ¦??*/
   .order-detail-content {
     max-height: 60vh;
   }
