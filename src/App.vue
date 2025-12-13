@@ -865,6 +865,14 @@ watch(isMobile, (newValue) => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  width: 100%;
+}
+
+/* 🔥 确保el-main在侧边栏收起时自动扩展 */
+.layout-container > .el-container > .el-main {
+  flex: 1;
+  min-width: 0;
+  transition: all 0.3s ease;
 }
 
 .header {
@@ -1161,8 +1169,9 @@ watch(isMobile, (newValue) => {
   min-width: 0;
   min-height: 0;
   flex: 1;
-  transition: margin-left 0.3s;
+  transition: all 0.3s ease;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .tabs-container {
@@ -1247,6 +1256,8 @@ watch(isMobile, (newValue) => {
   overflow: auto;
   width: 100%;
   min-height: 0;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
 }
 
 /* 页面视图容器 - 包含实际页面内容 */
