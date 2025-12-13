@@ -41,6 +41,7 @@ import dataRoutes from './routes/data';
 import assignmentRoutes from './routes/assignment';
 import smsRoutes from './routes/sms';
 import customerShareRoutes from './routes/customerShare';
+import performanceReportRoutes from './routes/performanceReport';
 
 // 加载环境变量
 dotenv.config();
@@ -209,6 +210,7 @@ app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);
 app.use(`${API_PREFIX}/calls`, callRoutes);
 app.use(`${API_PREFIX}/logs`, logsRoutes);
 app.use(`${API_PREFIX}/message`, messageRoutes);
+app.use(`${API_PREFIX}/performance-report`, performanceReportRoutes);
 app.use(`${API_PREFIX}/performance`, performanceRoutes);
 app.use(`${API_PREFIX}/logistics`, logisticsRoutes);
 app.use(`${API_PREFIX}/roles`, roleRoutes);
