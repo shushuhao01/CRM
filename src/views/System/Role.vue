@@ -2168,21 +2168,15 @@ const loadRoleList = async () => {
     const roles = await roleApiService.getRoles()
     console.log('[角色权限] API返回角色数据:', roles)
 
-    // 【修复】从API获取用户数据，用于统计每个角色的用户数量
+    // 从API获取用户数据，用于统计每个角色的用户数量
     let users: any[] = []
     try {
-      // 优先从API获取用户列表
       const { default: userDataService } = await import('@/services/userDataService')
       users = await userDataService.getUsers()
       console.log('[角色权限] 从API获取用户成功:', users.length)
     } catch (apiError) {
-      console.warn('[角色权限] API获取用户失败，尝试从localStorage获取:', apiError)
-      // 降级：从localStorage获取
-      const localUsers = localStorage.getItem('crm_mock_users') || localStorage.getItem('crm_users')
-      if (localUsers) {
-        users = JSON.parse(localUsers)
-        console.log('[角色权限] 从localStorage获取用户:', users.length)
-      }
+      console.error('[角色权限] API获取用户失败:', apiError)
+      users = []
     }
 
     console.log('[角色权限] ========== 开始统计用户数量 ==========')
@@ -2237,6 +2231,27 @@ const loadRoleList = async () => {
     })
     console.log('[角色权限] ========== 统计完成 ==========')
 
+    // 计算全部权限数量（用于超级管理员等拥有*通配符的角色）
+    let totalPermissionCount = 0
+    try {
+      const allPerms = permissionService.getAllPermissions()
+      const countAllPermissions = (perms: any[]): number => {
+        let count = 0
+        perms.forEach(p => {
+          count++
+          if (p.children && p.children.length > 0) {
+            count += countAllPermissions(p.children)
+          }
+        })
+        return count
+      }
+      totalPermissionCount = countAllPermissions(allPerms)
+      console.log('[角色权限] 系统全部权限数量:', totalPermissionCount)
+    } catch (e) {
+      console.error('[角色权限] 计算全部权限数量失败:', e)
+      totalPermissionCount = 100 // 默认值
+    }
+
     // 转换数据格式以适配前端显示,并从默认配置加载权限
     roleList.value = roles.map(role => {
       // 从默认配置获取权限
@@ -2254,9 +2269,13 @@ const loadRoleList = async () => {
         userCount = roleUserCount[role.name]
       }
 
+      // 计算权限数量：如果包含*通配符，显示全部权限数量
+      const permissionCount = permissions.includes('*') ? totalPermissionCount : permissions.length
+
       console.log(`[角色权限] 处理角色: ${role.name} (code: ${role.code})`)
       console.log(`  - 默认权限: ${defaultPermissions.length}个`)
       console.log(`  - 实际权限: ${permissions.length}个`)
+      console.log(`  - 显示权限数量: ${permissionCount}个 ${permissions.includes('*') ? '(全部权限)' : ''}`)
       console.log(`  - 用户数量: ${userCount}人 ${userCount === 0 ? '⚠️ 无用户' : '✓'}`)
 
       return {
@@ -2266,7 +2285,7 @@ const loadRoleList = async () => {
         status: role.status,
         roleType: role.roleType || 'custom',
         userCount: userCount, // 使用统计的用户数量
-        permissionCount: permissions.length, // 使用实际权限数量
+        permissionCount: permissionCount, // 使用计算后的权限数量
         description: role.description || '',
         createTime: role.createdAt ? new Date(role.createdAt).toLocaleString() : '',
         permissions: permissions
