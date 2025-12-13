@@ -767,62 +767,48 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     }
   }
 
-  // 同步所有部门的成员数量（从localStorage的crm_mock_users数据）
-  const syncAllDepartmentMemberCounts = () => {
-    // 【生产环境修复】生产环境不从localStorage同步
-    if (import.meta.env.PROD) {
-      console.log('[部门Store] 生产环境：跳过localStorage同步，使用API数据')
-      return
-    }
-
+  // 同步所有部门的成员数量（从API获取用户数据）
+  const syncAllDepartmentMemberCounts = async () => {
     try {
-      console.log('[部门Store] 开发环境：开始同步所有部门成员数量...')
-      const usersStr = localStorage.getItem('crm_mock_users')
-      if (!usersStr) {
-        console.log('[部门Store] 开发环境：未找到crm_mock_users数据')
-        return
-      }
+      console.log('[部门Store] 开始从API同步所有部门成员数量...')
 
-      const users = JSON.parse(usersStr)
-      console.log('[部门Store] 用户总数:', users.length)
+      // 从API获取用户数据
+      const { default: userDataService } = await import('@/services/userDataService')
+      const users = await userDataService.getUsers()
+      console.log('[部门Store] 从API获取用户总数:', users.length)
 
-      // 统计每个部门的活跃成员数
+      // 部门名称到ID的映射（支持按部门名称匹配）
+      const deptNameToId: Record<string, string> = {}
+      departments.value.forEach(dept => {
+        deptNameToId[dept.name] = dept.id
+      })
+
+      // 统计每个部门的成员数（包括活跃和非活跃用户）
       const departmentMemberCounts: Record<string, number> = {}
-      users.forEach((user: unknown) => {
-        if (user.departmentId && user.status === 'active') {
-          const deptId = String(user.departmentId)
-          departmentMemberCounts[deptId] = (departmentMemberCounts[deptId] || 0) + 1
+      users.forEach((user: any) => {
+        // 支持多种部门字段匹配
+        let deptId = user.departmentId || ''
+
+        // 如果departmentId为空，尝试用部门名称匹配
+        if (!deptId && user.department) {
+          deptId = deptNameToId[user.department] || ''
+        }
+        if (!deptId && user.departmentName) {
+          deptId = deptNameToId[user.departmentName] || ''
+        }
+
+        if (deptId) {
+          departmentMemberCounts[String(deptId)] = (departmentMemberCounts[String(deptId)] || 0) + 1
         }
       })
 
       console.log('[部门Store] 部门成员统计:', departmentMemberCounts)
 
-      // 更新crm_mock_departments中的成员数
-      const deptsStr = localStorage.getItem('crm_mock_departments')
-      if (deptsStr) {
-        const depts = JSON.parse(deptsStr)
-        let updated = false
-
-        depts.forEach((dept: unknown) => {
-          const newCount = departmentMemberCounts[String(dept.id)] || 0
-          if (dept.memberCount !== newCount) {
-            console.log(`[部门Store] 更新部门${dept.name}(${dept.id})成员数: ${dept.memberCount} -> ${newCount}`)
-            dept.memberCount = newCount
-            dept.updatedAt = new Date().toISOString()
-            updated = true
-          }
-        })
-
-        if (updated) {
-          localStorage.setItem('crm_mock_departments', JSON.stringify(depts))
-          console.log('[部门Store] 已保存更新到localStorage')
-        }
-      }
-
-      // 同时更新store中的departments
+      // 更新store中的departments
       departments.value.forEach(dept => {
         const newCount = departmentMemberCounts[String(dept.id)] || 0
         if (dept.memberCount !== newCount) {
+          console.log(`[部门Store] 更新部门${dept.name}(${dept.id})成员数: ${dept.memberCount} -> ${newCount}`)
           dept.memberCount = newCount
           dept.updatedAt = new Date().toISOString()
         }
