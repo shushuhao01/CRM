@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { createPersistentStore } from '@/utils/storage'
-import type { 
-  DataListItem, 
-  DataListParams, 
+import type {
+  DataListItem,
+  DataListParams,
   DataListResponse,
   AssigneeOption,
   CustomerSearchResult,
@@ -24,7 +24,7 @@ export const useDataStore = createPersistentStore('data', () => {
   const total = ref(0)
   const loading = ref(false)
   const searchLoading = ref(false)
-  
+
   // 汇总数据
   const summary = ref({
     totalCount: 0,
@@ -80,7 +80,7 @@ export const useDataStore = createPersistentStore('data', () => {
 
   // 分配模式：'direct' - 直接分配给成员，'leader' - 先分配给部门负责人
   const assignmentMode = ref<'direct' | 'leader'>('direct')
-  
+
   // 分配历史和统计相关状态
   const assignmentHistory = ref<AssignmentHistory[]>([])
   const assignmentHistoryTotal = ref(0)
@@ -91,7 +91,7 @@ export const useDataStore = createPersistentStore('data', () => {
 
   // 计算属性
   const hasSelectedData = computed(() => selectedDataIds.value.length > 0)
-  
+
   const selectedDataCount = computed(() => selectedDataIds.value.length)
 
   const filteredDataList = computed(() => {
@@ -101,24 +101,46 @@ export const useDataStore = createPersistentStore('data', () => {
     // 客户归属权限控制
     if (userStore.currentUser) {
       const currentUserId = userStore.currentUser.id
-      const isSuperAdmin = userStore.currentUser.role === 'super_admin' || userStore.currentUser.role === 'admin'
-      
-      // 超级管理员可以查看所有数据
+      const currentUserRole = userStore.currentUser.role
+      const currentDeptId = userStore.currentUser.departmentId
+      const isSuperAdmin = currentUserRole === 'super_admin' || currentUserRole === 'admin'
+      const isDepartmentManager = currentUserRole === 'department_manager'
+
+      // 超级管理员和管理员可以查看所有数据
       if (!isSuperAdmin) {
-        result = result.filter(item => {
-          // 创建者可以查看自己创建的数据
-          if (item.createdBy === currentUserId) {
-            return true
-          }
-          
-          // 被分配者可以查看分配给自己的数据
-          if (item.assigneeId === currentUserId) {
-            return true
-          }
-          
-          // 其他情况需要特殊授权（这里暂时返回false，后续可以扩展授权机制）
-          return false
-        })
+        if (isDepartmentManager) {
+          // 🔥 部门经理：只能查看分配给自己的资料（不是本部门所有资料）
+          result = result.filter(item => {
+            // 创建者可以查看自己创建的数据
+            if (item.createdBy === currentUserId) {
+              return true
+            }
+
+            // 被分配者可以查看分配给自己的数据
+            if (item.assigneeId === currentUserId) {
+              return true
+            }
+
+            return false
+          })
+          console.log(`[资料列表] 部门经理 ${userStore.currentUser.name} 过滤后数据: ${result.length} 条`)
+        } else {
+          // 🔥 销售员等普通角色：只能查看分配给自己的资料
+          result = result.filter(item => {
+            // 创建者可以查看自己创建的数据
+            if (item.createdBy === currentUserId) {
+              return true
+            }
+
+            // 被分配者可以查看分配给自己的数据
+            if (item.assigneeId === currentUserId) {
+              return true
+            }
+
+            return false
+          })
+          console.log(`[资料列表] 普通用户 ${userStore.currentUser.name} 过滤后数据: ${result.length} 条`)
+        }
       }
     }
 
@@ -130,7 +152,7 @@ export const useDataStore = createPersistentStore('data', () => {
     // 按关键词搜索
     if (filters.value.searchKeyword) {
       const keyword = filters.value.searchKeyword.toLowerCase()
-      result = result.filter(item => 
+      result = result.filter(item =>
         item.customerName.toLowerCase().includes(keyword) ||
         item.phone.includes(keyword) ||
         item.orderNo.toLowerCase().includes(keyword) ||
@@ -162,7 +184,7 @@ export const useDataStore = createPersistentStore('data', () => {
     if (filters.value.dateFilter && filters.value.dateFilter !== 'all') {
       const now = new Date()
       let startDate: Date
-      
+
       switch (filters.value.dateFilter) {
         case 'today':
           startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -211,12 +233,12 @@ export const useDataStore = createPersistentStore('data', () => {
         ...filters.value,
         ...params
       }
-      
+
       const response = await dataApi.getDataList(requestParams)
       dataList.value = response?.list || []
       total.value = response?.total || 0
       summary.value = response?.summary || {}
-      
+
       return response
     } catch (error) {
       console.error('获取资料列表失败:', error)
@@ -275,7 +297,7 @@ export const useDataStore = createPersistentStore('data', () => {
   const batchAssignData = async (params: BatchAssignParams) => {
     try {
       const result = await dataApi.batchAssignData(params)
-      
+
       if (result.success) {
         // 更新本地数据
         dataList.value = dataList.value.map(item => {
@@ -290,14 +312,14 @@ export const useDataStore = createPersistentStore('data', () => {
           }
           return item
         })
-        
+
         // 清空选中状态
         selectedDataIds.value = []
-        
+
         // 刷新汇总数据
         await refreshData()
       }
-      
+
       return result
     } catch (error) {
       console.error('批量分配资料失败:', error)
@@ -343,7 +365,7 @@ export const useDataStore = createPersistentStore('data', () => {
 
     const assignments: Array<{id: string, name: string}> = []
     const members = [...state.members]
-    
+
     // 按分配次数排序，优先分配给次数少的成员
     members.sort((a, b) => {
       if (a.assignmentCount !== b.assignmentCount) {
@@ -364,7 +386,7 @@ export const useDataStore = createPersistentStore('data', () => {
         id: member.id,
         name: member.name
       })
-      
+
       // 更新分配计数和时间
       const stateIndex = state.members.findIndex(m => m.id === member.id)
       if (stateIndex !== -1) {
@@ -390,7 +412,7 @@ export const useDataStore = createPersistentStore('data', () => {
     try {
       // 初始化部门状态
       initializeDepartmentState(params.departmentId, params.members)
-      
+
       let assignments: Array<{
         dataId: string
         assigneeId: string
@@ -416,7 +438,7 @@ export const useDataStore = createPersistentStore('data', () => {
 
       // 模拟API调用
       const result = { success: true, message: '轮流分配成功' }
-      
+
       if (result.success) {
         // 更新本地数据
         dataList.value = dataList.value.map(item => {
@@ -432,14 +454,14 @@ export const useDataStore = createPersistentStore('data', () => {
           }
           return item
         })
-        
+
         // 清空选中状态
         selectedDataIds.value = []
-        
+
         // 刷新汇总数据
         await refreshData()
       }
-      
+
       return result
     } catch (error) {
       console.error('轮流批量分配资料失败:', error)
@@ -453,7 +475,7 @@ export const useDataStore = createPersistentStore('data', () => {
   const batchArchiveData = async (params: BatchArchiveParams) => {
     try {
       const result = await dataApi.batchArchiveData(params)
-      
+
       if (result.success) {
         // 更新本地数据
         dataList.value = dataList.value.map(item => {
@@ -466,14 +488,14 @@ export const useDataStore = createPersistentStore('data', () => {
           }
           return item
         })
-        
+
         // 清空选中状态
         selectedDataIds.value = []
-        
+
         // 刷新汇总数据
         await refreshData()
       }
-      
+
       return result
     } catch (error) {
       console.error('批量封存资料失败:', error)
@@ -492,7 +514,7 @@ export const useDataStore = createPersistentStore('data', () => {
     try {
       // 模拟API调用
       const result = { success: true, message: '封存成功' }
-      
+
       if (result.success) {
         // 更新本地数据
         dataList.value = dataList.value.map(item => {
@@ -512,11 +534,11 @@ export const useDataStore = createPersistentStore('data', () => {
           }
           return item
         })
-        
+
         // 刷新汇总数据
         await refreshData()
       }
-      
+
       return result
     } catch (error) {
       console.error('封存资料失败:', error)
@@ -528,7 +550,7 @@ export const useDataStore = createPersistentStore('data', () => {
   const recoverData = async (dataId: string, reason?: string) => {
     try {
       const result = await dataApi.recoverData({ dataId, reason })
-      
+
       if (result.success) {
         // 更新本地数据
         const index = dataList.value.findIndex(item => item.id === dataId)
@@ -542,11 +564,11 @@ export const useDataStore = createPersistentStore('data', () => {
             updateTime: new Date().toISOString()
           }
         }
-        
+
         // 刷新汇总数据
         await refreshData()
       }
-      
+
       return result
     } catch (error) {
       console.error('回收资料失败:', error)
@@ -558,18 +580,18 @@ export const useDataStore = createPersistentStore('data', () => {
   const deleteData = async (dataId: string, reason?: string) => {
     try {
       const result = await dataApi.deleteData({ dataId, reason })
-      
+
       if (result.success) {
         // 从本地数据中移除
         const index = dataList.value.findIndex(item => item.id === dataId)
         if (index > -1) {
           dataList.value.splice(index, 1)
         }
-        
+
         // 刷新汇总数据
         await refreshData()
       }
-      
+
       return result
     } catch (error) {
       console.error('删除资料失败:', error)
@@ -582,10 +604,10 @@ export const useDataStore = createPersistentStore('data', () => {
     searchLoading.value = true
     try {
       searchResults.value = await dataApi.searchCustomer(params)
-      
+
       // 添加到搜索历史
       addToSearchHistory(params)
-      
+
       return searchResults.value
     } catch (error) {
       console.error('客户搜索失败:', error)
@@ -603,22 +625,22 @@ export const useDataStore = createPersistentStore('data', () => {
     if (params.orderNo) searchText.push(`订单号: ${params.orderNo}`)
     if (params.trackingNo) searchText.push(`物流单号: ${params.trackingNo}`)
     if (params.customerName) searchText.push(`客户: ${params.customerName}`)
-    
+
     if (searchText.length > 0) {
       const historyItem = {
         text: searchText.join(', '),
         time: new Date().toLocaleString(),
         params
       }
-      
+
       // 避免重复
       const existingIndex = searchHistory.value.findIndex(item => item.text === historyItem.text)
       if (existingIndex > -1) {
         searchHistory.value.splice(existingIndex, 1)
       }
-      
+
       searchHistory.value.unshift(historyItem)
-      
+
       // 限制历史记录数量
       if (searchHistory.value.length > 10) {
         searchHistory.value = searchHistory.value.slice(0, 10)
@@ -670,7 +692,7 @@ export const useDataStore = createPersistentStore('data', () => {
   const exportData = async (params: { format: string; [key: string]: unknown }) => {
     try {
       const blob = await dataApi.exportDataList(params)
-      
+
       // 创建下载链接
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -680,7 +702,7 @@ export const useDataStore = createPersistentStore('data', () => {
       link.click()
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
-      
+
       return true
     } catch (error) {
       console.error('导出数据失败:', error)
@@ -699,7 +721,7 @@ export const useDataStore = createPersistentStore('data', () => {
   }
 
   // 分配历史和统计相关方法
-  
+
   // 获取分配历史记录
   const fetchAssignmentHistory = async (params: {
     dataId?: string
@@ -790,11 +812,11 @@ export const useDataStore = createPersistentStore('data', () => {
     try {
       // 先执行原有的轮流分配逻辑
       await batchRoundRobinAssignData(params)
-      
+
       // 记录分配历史
       const currentTime = new Date().toISOString()
       const currentUser = { id: 'current_user', name: '当前用户' } // 实际应用中从用户状态获取
-      
+
       for (const dataId of params.dataIds) {
         await recordAssignmentHistory({
           dataId,
@@ -809,13 +831,13 @@ export const useDataStore = createPersistentStore('data', () => {
           remark: params.remark
         })
       }
-      
+
       // 更新部门轮流分配状态
       const currentState = departmentRoundRobinStates.value[params.departmentId]
       if (currentState) {
         await updateDepartmentRoundRobinState(params.departmentId, currentState)
       }
-      
+
     } catch (error) {
       console.error('轮流分配（含历史记录）失败:', error)
       throw error
@@ -836,10 +858,10 @@ export const useDataStore = createPersistentStore('data', () => {
   }) => {
     try {
       loading.value = true
-      
+
       // 模拟API调用
       await new Promise(resolve => setTimeout(resolve, 1000))
-      
+
       // 更新数据列表中的分配信息
       params.assignments.forEach(assignment => {
         const dataItem = dataList.value.find(item => item.id === assignment.dataId)
@@ -848,7 +870,7 @@ export const useDataStore = createPersistentStore('data', () => {
           dataItem.assigneeName = assignment.assigneeName
           dataItem.status = 'assigned'
           dataItem.assignTime = new Date().toISOString()
-          
+
           // 添加操作记录
           dataItem.operationRecords = dataItem.operationRecords || []
           dataItem.operationRecords.unshift({
@@ -860,7 +882,7 @@ export const useDataStore = createPersistentStore('data', () => {
             createTime: new Date().toISOString(),
             remark: params.remark
           })
-          
+
           // 更新分配历史
           if (!dataItem.assignmentHistory) {
             dataItem.assignmentHistory = []
@@ -879,7 +901,7 @@ export const useDataStore = createPersistentStore('data', () => {
             createTime: new Date().toISOString(),
             remark: params.remark
           })
-          
+
           // 更新当前分配信息
           dataItem.currentAssignment = {
             type: 'cross_department',
@@ -892,11 +914,11 @@ export const useDataStore = createPersistentStore('data', () => {
           }
         }
       })
-      
+
       // 记录分配历史到全局记录
       const currentTime = new Date().toISOString()
       const currentUser = { id: 'current_user', name: '当前用户' }
-      
+
       for (const assignment of params.assignments) {
         await recordAssignmentHistory({
           dataId: assignment.dataId,
@@ -911,9 +933,9 @@ export const useDataStore = createPersistentStore('data', () => {
           remark: params.remark
         })
       }
-      
+
       console.log(`跨部门智能分配完成: ${params.assignments.length} 条资料，策略: ${params.strategy}`)
-      
+
     } catch (error) {
       console.error('跨部门智能分配失败:', error)
       throw error
@@ -944,12 +966,12 @@ export const useDataStore = createPersistentStore('data', () => {
     departmentRoundRobinStates,
     assignmentStats,
     assignmentStatsLoading,
-    
+
     // 计算属性
     hasSelectedData,
     selectedDataCount,
     filteredDataList,
-    
+
     // 方法
     fetchDataList,
     refreshData,
