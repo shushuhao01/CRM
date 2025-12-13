@@ -93,12 +93,17 @@
                     style="width: 100%"
                     clearable
                   >
+                    <template #label="{ label }">
+                      {{ label ? displaySensitiveInfoNew(label, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') : '' }}
+                    </template>
                     <el-option
                       v-for="phone in customerPhones"
                       :key="phone.id"
-                      :label="displaySensitiveInfoNew(phone.number, SensitiveInfoType.PHONE, userStore.currentUser?.id || '')"
+                      :label="phone.number"
                       :value="phone.number"
-                    />
+                    >
+                      {{ displaySensitiveInfoNew(phone.number, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') }}
+                    </el-option>
                   </el-select>
                   <el-button
                     type="primary"
