@@ -53,14 +53,14 @@ export const menuConfig: MenuItem[] = [
         id: 'customer-groups',
         title: '客户分组',
         path: '/customer/groups',
-        roles: ['super_admin', 'admin', 'department_manager'],
+        roles: ['super_admin', 'admin'],
         permissions: ['customer:groups']
       },
       {
         id: 'customer-tags',
         title: '客户标签',
         path: '/customer/tags',
-        roles: ['super_admin', 'admin', 'department_manager'],
+        roles: ['super_admin', 'admin'],
         permissions: ['customer:tags']
       }
     ]
@@ -116,9 +116,9 @@ export const menuConfig: MenuItem[] = [
         id: 'service-sms',
         title: '短信管理',
         path: '/service-management/sms',
-        roles: ['super_admin', 'admin', 'department_manager', 'customer_service'],
+        roles: ['super_admin', 'admin', 'customer_service'],
         permissions: ['service:sms'],
-        dataScope: 'self' // 部门经理看本部门短信记录
+        dataScope: 'all' // 客服查看全公司短信记录
       }
     ]
   },
@@ -173,7 +173,7 @@ export const menuConfig: MenuItem[] = [
         id: 'logistics-shipping',
         title: '发货列表',
         path: '/logistics/shipping',
-        roles: ['super_admin', 'admin', 'department_manager', 'customer_service'],
+        roles: ['super_admin', 'admin', 'customer_service'],
         permissions: ['logistics:shipping'],
         dataScope: 'all' // 客服处理全公司发货
       },
@@ -197,7 +197,7 @@ export const menuConfig: MenuItem[] = [
         id: 'logistics-status-update',
         title: '状态更新',
         path: '/logistics/status-update',
-        roles: ['super_admin', 'admin', 'department_manager', 'customer_service'],
+        roles: ['super_admin', 'admin', 'customer_service'],
         permissions: ['logistics:status'],
         dataScope: 'all' // 客服处理全公司状态更新
       },
@@ -269,7 +269,7 @@ export const menuConfig: MenuItem[] = [
         id: 'data-recycle',
         title: '回收站',
         path: '/data/recycle',
-        roles: ['super_admin', 'admin', 'department_manager'],
+        roles: ['super_admin', 'admin'],
         permissions: ['data:recycle']
       }
     ]

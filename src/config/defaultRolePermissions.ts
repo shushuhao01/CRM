@@ -6,12 +6,13 @@
  * - 超级管理员可以在"系统管理 → 角色权限"中动态调整
  * - 所有用户、所有设备权限一致
  *
- * 【重要】销售员角色禁止的权限（请勿添加）：
+ * 【重要】部门经理和销售员角色禁止的权限（请勿添加）：
  * - customer.groups / customer.tags - 客户分组、客户标签
  * - service.sms - 短信管理
  * - logistics.shipping - 发货列表
  * - logistics.status - 状态更新
  * - data.recycle - 回收站
+ * 以上权限仅限超级管理员、管理员、客服角色使用
  */
 
 export interface RolePermissionConfig {
@@ -49,39 +50,33 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       // 数据看板
       'dashboard', 'dashboard.personal', 'dashboard.personal.view', 'dashboard.department', 'dashboard.department.view',
 
-      // 客户管理（包含客户分组、客户标签）
+      // 客户管理（禁止：客户分组、客户标签）
       'customer', 'customer.list', 'customer.list.view', 'customer.list.edit', 'customer.list.export', 'customer.list.import',
       'customer.add', 'customer.add.create',
-      'customer.groups', 'customer.groups.view', 'customer.groups.edit',
-      'customer.tags', 'customer.tags.view', 'customer.tags.edit',
 
       // 订单管理
       'order', 'order.list', 'order.list.view', 'order.list.edit',
       'order.add', 'order.add.create',
 
-      // 服务管理（包含短信管理）
+      // 服务管理（禁止：短信管理）
       'service', 'service.call', 'service.call.view', 'service.call.make',
-      'service.sms', 'service.sms.view', 'service.sms.send',
 
       // 业绩统计
       'performance', 'performance.personal', 'performance.personal.view',
       'performance.team', 'performance.team.view', 'performance.analysis', 'performance.analysis.view',
       'performance.share', 'performance.share.view',
 
-      // 物流管理（包含发货列表、状态更新）
+      // 物流管理（禁止：发货列表、状态更新）
       'logistics', 'logistics.list', 'logistics.list.view',
-      'logistics.shipping', 'logistics.shipping.view', 'logistics.shipping.create',
       'logistics.track', 'logistics.track.view',
-      'logistics.status', 'logistics.status.view', 'logistics.status.update',
 
       // 售后管理
       'afterSales', 'afterSales.list', 'afterSales.list.view',
       'afterSales.add', 'afterSales.add.create',
       'afterSales.data', 'afterSales.data.view', 'afterSales.data.analysis',
 
-      // 资料管理（包含回收站）
-      'data', 'data.search', 'data.search.basic', 'data.search.advanced',
-      'data.recycle', 'data.recycle.view', 'data.recycle.restore'
+      // 资料管理（禁止：回收站）
+      'data', 'data.search', 'data.search.basic', 'data.search.advanced'
     ],
     description: '管理本部门业务和团队，查看部门数据'
   },
