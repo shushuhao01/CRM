@@ -345,17 +345,21 @@
               </el-checkbox-group>
             </div>
             <!-- 更多消息类型（折叠） -->
-            <el-collapse v-if="otherMessageTypes.length > 0" v-model="messageTypesExpanded" class="message-types-collapse">
+            <el-collapse v-if="otherMessageTypes && otherMessageTypes.length > 0" v-model="messageTypesExpanded" class="message-types-collapse">
               <el-collapse-item title="更多消息类型" name="more">
                 <div class="message-types-grid">
-                  <div v-for="category in messageTypeCategories" :key="category.name" class="message-category">
-                    <div class="category-title">{{ category.name }}</div>
-                    <el-checkbox-group v-model="form.messageTypes">
-                      <el-checkbox v-for="type in category.types" :key="type.value" :label="type.value">
-                        {{ type.label }}
-                      </el-checkbox>
-                    </el-checkbox-group>
-                  </div>
+                  <template v-for="category in messageTypeCategories" :key="category?.name || 'unknown'">
+                    <div v-if="category && category.types" class="message-category">
+                      <div class="category-title">{{ category.name }}</div>
+                      <el-checkbox-group v-model="form.messageTypes">
+                        <template v-for="type in category.types" :key="type?.value || Math.random()">
+                          <el-checkbox v-if="type && type.value" :label="type.value">
+                            {{ type.label }}
+                          </el-checkbox>
+                        </template>
+                      </el-checkbox-group>
+                    </div>
+                  </template>
                 </div>
               </el-collapse-item>
             </el-collapse>
@@ -517,17 +521,21 @@
               </el-checkbox-group>
             </div>
             <!-- 更多指标（折叠） -->
-            <el-collapse v-if="reportTypeCategories.length > 2" v-model="reportTypesExpanded" class="report-types-collapse">
+            <el-collapse v-if="reportTypeCategories && reportTypeCategories.length > 2" v-model="reportTypesExpanded" class="report-types-collapse">
               <el-collapse-item title="更多指标" name="more">
                 <div class="report-types-grid">
-                  <div v-for="category in reportTypeCategories.slice(2)" :key="category.name" class="report-category">
-                    <div class="category-title">{{ category.name }}</div>
-                    <el-checkbox-group v-model="performanceForm.reportTypes">
-                      <el-checkbox v-for="type in category.types" :key="type.value" :label="type.value">
-                        {{ type.label }}
-                      </el-checkbox>
-                    </el-checkbox-group>
-                  </div>
+                  <template v-for="category in reportTypeCategories.slice(2)" :key="category?.name || 'unknown'">
+                    <div v-if="category && category.types" class="report-category">
+                      <div class="category-title">{{ category.name }}</div>
+                      <el-checkbox-group v-model="performanceForm.reportTypes">
+                        <template v-for="type in category.types" :key="type?.value || Math.random()">
+                          <el-checkbox v-if="type && type.value" :label="type.value">
+                            {{ type.label }}
+                          </el-checkbox>
+                        </template>
+                      </el-checkbox-group>
+                    </div>
+                  </template>
                 </div>
               </el-collapse-item>
             </el-collapse>
@@ -702,8 +710,10 @@ const performanceRules: FormRules = {
 
 // 报表类型分类
 const reportTypeCategories = computed(() => {
+  if (!Array.isArray(reportTypes.value)) return []
   const categories: Record<string, any[]> = {}
   reportTypes.value.forEach((type: any) => {
+    if (!type || !type.category) return
     if (!categories[type.category]) {
       categories[type.category] = []
     }
