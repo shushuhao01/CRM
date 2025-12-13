@@ -86,6 +86,20 @@ router.delete('/announcements/:id', messageController.deleteAnnouncement.bind(me
  */
 router.post('/announcements/:id/publish', messageController.publishAnnouncement.bind(messageController));
 
+/**
+ * @route GET /api/v1/message/announcements/published
+ * @desc 获取已发布的公告（供前端展示）
+ * @access Private
+ */
+router.get('/announcements/published', messageController.getPublishedAnnouncements.bind(messageController));
+
+/**
+ * @route PUT /api/v1/message/announcements/:id/read
+ * @desc 标记公告为已读
+ * @access Private
+ */
+router.put('/announcements/:id/read', messageController.markAnnouncementAsRead.bind(messageController));
+
 // 订阅规则管理相关路由
 /**
  * @route GET /api/v1/message/subscription-rules
@@ -152,33 +166,124 @@ router.post('/notification-configs/test', messageController.testNotification.bin
  */
 router.get('/departments-members', messageController.getDepartmentsAndMembers.bind(messageController));
 
-// 系统消息相关路由
+// =====================================================
+// 系统消息相关路由 - 🔥 跨设备消息通知
+// =====================================================
+
 /**
  * @route GET /api/v1/message/system-messages
- * @desc 获取系统消息列表
- * @access Private (Manager/Admin)
+ * @desc 获取当前用户的系统消息列表
+ * @access Private
  */
 router.get('/system-messages', messageController.getSystemMessages.bind(messageController));
 
 /**
+ * @route POST /api/v1/message/system-messages/send
+ * @desc 发送系统消息
+ * @access Private
+ */
+router.post('/system-messages/send', messageController.sendSystemMessage.bind(messageController));
+
+/**
+ * @route POST /api/v1/message/system-messages/send-batch
+ * @desc 批量发送系统消息
+ * @access Private
+ */
+router.post('/system-messages/send-batch', messageController.sendBatchSystemMessages.bind(messageController));
+
+/**
  * @route PUT /api/v1/message/system-messages/:id/read
  * @desc 标记消息为已读
- * @access Private (Manager/Admin)
+ * @access Private
  */
 router.put('/system-messages/:id/read', messageController.markMessageAsRead.bind(messageController));
 
 /**
  * @route PUT /api/v1/message/system-messages/read-all
  * @desc 标记所有消息为已读
- * @access Private (Manager/Admin)
+ * @access Private
  */
 router.put('/system-messages/read-all', messageController.markAllMessagesAsRead.bind(messageController));
 
 /**
  * @route GET /api/v1/message/stats
  * @desc 获取消息统计数据
- * @access Private (Manager/Admin)
+ * @access Private
  */
 router.get('/stats', messageController.getMessageStats.bind(messageController));
+
+/**
+ * @route DELETE /api/v1/message/system-messages/:id
+ * @desc 删除单条消息
+ * @access Private
+ */
+router.delete('/system-messages/:id', messageController.deleteMessage.bind(messageController));
+
+/**
+ * @route DELETE /api/v1/message/system-messages/clear-all
+ * @desc 清空当前用户的所有消息
+ * @access Private
+ */
+router.delete('/system-messages/clear-all', messageController.clearAllMessages.bind(messageController));
+
+/**
+ * @route POST /api/v1/message/system-messages/cleanup
+ * @desc 清理过期消息（超过30天）- 管理员或定时任务调用
+ * @access Private (Admin)
+ */
+router.post('/system-messages/cleanup', messageController.cleanupExpiredMessages.bind(messageController));
+
+// =====================================================
+// 通知渠道配置管理 - 🔥 跨平台通知配置
+// =====================================================
+
+/**
+ * @route GET /api/v1/message/notification-channels
+ * @desc 获取通知渠道配置列表
+ * @access Private (Admin)
+ */
+router.get('/notification-channels', messageController.getNotificationChannels.bind(messageController));
+
+/**
+ * @route POST /api/v1/message/notification-channels
+ * @desc 创建通知渠道配置
+ * @access Private (Admin)
+ */
+router.post('/notification-channels', messageController.createNotificationChannel.bind(messageController));
+
+/**
+ * @route PUT /api/v1/message/notification-channels/:id
+ * @desc 更新通知渠道配置
+ * @access Private (Admin)
+ */
+router.put('/notification-channels/:id', messageController.updateNotificationChannel.bind(messageController));
+
+/**
+ * @route DELETE /api/v1/message/notification-channels/:id
+ * @desc 删除通知渠道配置
+ * @access Private (Admin)
+ */
+router.delete('/notification-channels/:id', messageController.deleteNotificationChannel.bind(messageController));
+
+/**
+ * @route POST /api/v1/message/notification-channels/:id/test
+ * @desc 测试通知渠道
+ * @access Private (Admin)
+ */
+router.post('/notification-channels/:id/test', messageController.testNotificationChannel.bind(messageController));
+
+/**
+ * @route GET /api/v1/message/notification-logs
+ * @desc 获取通知发送记录
+ * @access Private (Admin)
+ */
+router.get('/notification-logs', messageController.getNotificationLogs.bind(messageController));
+
+/**
+ * @route GET /api/v1/message/notification-options
+ * @desc 获取通知配置选项（消息类型、渠道类型等）
+ * @access Private (Admin)
+ */
+router.get('/notification-options', messageController.getNotificationOptions.bind(messageController));
 
 export default router;

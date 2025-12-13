@@ -118,6 +118,12 @@ interface TableColumn {
   formatter?: (value: unknown, row: Record<string, unknown>) => string
 }
 
+interface PaginationConfig {
+  currentPage?: number
+  pageSize?: number
+  total?: number
+}
+
 interface Props {
   // 表格数据
   data: Record<string, unknown>[]
@@ -144,6 +150,8 @@ interface Props {
   showPagination?: boolean
   total?: number
   pageSizes?: number[]
+  // 🔥 新增：分页配置对象（支持外部控制分页）
+  pagination?: PaginationConfig
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -157,7 +165,8 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
   showPagination: true,
   total: 0,
-  pageSizes: () => [10, 20, 50, 100]
+  pageSizes: () => [10, 20, 50, 100],
+  pagination: undefined
 })
 
 const emit = defineEmits<{
@@ -168,10 +177,24 @@ const emit = defineEmits<{
 }>()
 
 const columnSettingsRef = ref()
+// 🔥 内部分页状态
 const currentPage = ref(1)
 const pageSize = ref(props.pageSizes[0] || 10)
 const tableContainerRef = ref<HTMLElement | null>(null)
 const isScrolled = ref(false)
+
+// 🔥 监听外部传入的分页配置，同步到内部状态
+watch(() => props.pagination?.currentPage, (newVal) => {
+  if (newVal !== undefined && newVal !== currentPage.value) {
+    currentPage.value = newVal
+  }
+}, { immediate: true })
+
+watch(() => props.pagination?.pageSize, (newVal) => {
+  if (newVal !== undefined && newVal !== pageSize.value) {
+    pageSize.value = newVal
+  }
+}, { immediate: true })
 
 // 🔥 计算表格高度 - 根据数据条数自适应，不设置max-height限制
 // 让表格能完整显示所有数据，通过CSS sticky实现表头固定
@@ -181,13 +204,20 @@ const tableMaxHeight = computed(() => {
   return undefined
 })
 
-// 🔥 实际总数 - 优先使用外部传入的total，否则使用data长度
+// 🔥 实际总数 - 优先使用pagination.total，其次props.total，最后使用data长度
 const actualTotal = computed(() => {
+  if (props.pagination?.total !== undefined && props.pagination.total > 0) {
+    return props.pagination.total
+  }
   return props.total > 0 ? props.total : props.data.length
 })
 
-// 🔥 分页后的数据 - 如果传入了total则使用外部分页，否则内部分页
+// 🔥 分页后的数据 - 如果传入了pagination或total则使用外部分页，否则内部分页
 const paginatedData = computed(() => {
+  // 如果外部传入了pagination配置，说明外部已经处理了分页，直接返回data
+  if (props.pagination) {
+    return props.data
+  }
   // 如果外部传入了total且与data长度不同，说明外部已经处理了分页
   if (props.total > 0 && props.total !== props.data.length) {
     return props.data

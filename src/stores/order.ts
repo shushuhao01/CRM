@@ -6,6 +6,7 @@ import { createPersistentStore } from '@/utils/storage'
 import { logisticsService, type LogisticsResult } from '@/services/logistics'
 import { eventBus, EventNames } from '@/utils/eventBus'
 import { messageNotificationService } from '@/services/messageNotificationService'
+import { MessageType } from '@/stores/notification'
 
 export interface OrderProduct {
   id: string
@@ -430,39 +431,36 @@ export const useOrderStore = createPersistentStore('order', () => {
     return `ORD${year}${month}${day}${timestamp}`
   }
 
-  // 审核订单
-  const auditOrder = async (id: string, approved: boolean, remark: string) => {
+  // 审核订单 - 🔥 API优先原则：必须API成功才更新本地
+  const auditOrder = async (id: string, approved: boolean, remark: string): Promise<boolean> => {
     const order = getOrderById(id)
-    if (order) {
-      const currentUser = userStore.currentUser
-      const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    if (!order) {
+      console.error('[OrderStore] 订单不存在:', id)
+      throw new Error('订单不存在')
+    }
 
-      // 检测是否为生产环境
-      const hostname = window.location.hostname
-      const isProdEnv = (
-        hostname.includes('abc789.cn') ||
-        hostname.includes('vercel.app') ||
-        hostname.includes('netlify.app') ||
-        hostname.includes('railway.app') ||
-        (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
-      )
+    const currentUser = userStore.currentUser
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
-      // 生产环境调用API
-      if (isProdEnv) {
-        try {
-          console.log('[OrderStore] 生产环境：调用API审核订单')
-          const { orderApi } = await import('@/api/order')
-          await orderApi.audit(id, {
-            auditStatus: approved ? 'approved' : 'rejected',
-            auditRemark: remark
-          })
-          console.log('[OrderStore] API审核成功')
-        } catch (apiError) {
-          console.error('[OrderStore] API审核失败:', apiError)
-        }
+    // 🔥 必须先调用API，成功后才更新本地
+    try {
+      console.log('[OrderStore] 调用API审核订单:', id)
+      const { orderApi } = await import('@/api/order')
+      const response = await orderApi.audit(id, {
+        auditStatus: approved ? 'approved' : 'rejected',
+        auditRemark: remark
+      })
+
+      // 🔥 检查API响应
+      if (!response || response.success === false) {
+        const errorMsg = (response as any)?.message || 'API返回失败'
+        console.error('[OrderStore] API审核失败:', errorMsg)
+        throw new Error(errorMsg)
       }
 
-      // 更新本地数据
+      console.log('[OrderStore] ✅ API审核成功，更新本地缓存')
+
+      // 🔥 API成功后才更新本地数据
       updateOrder(id, {
         auditStatus: approved ? 'approved' : 'rejected',
         auditTime: now,
@@ -483,44 +481,67 @@ export const useOrderStore = createPersistentStore('order', () => {
         })
       }
 
-      // 添加操作日志
-      if (order.operationLogs) {
-        order.operationLogs.push({
-          id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-          time: now,
-          operator: currentUser?.name || 'unknown',
-          action: approved ? '审核通过' : '审核拒绝',
-          description: approved ? '订单审核通过，等待发货' : '订单审核被拒绝',
-          remark
-        })
-      }
-
       // 发射事件通知
       console.log(`[订单审核] 订单 ${order.orderNumber} 审核${approved ? '通过' : '拒绝'}`)
       eventBus.emit(EventNames.ORDER_AUDITED, { order, approved, remark })
       eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
 
       if (approved) {
-        // 审核通过，流转到发货列表
         eventBus.emit(EventNames.REFRESH_SHIPPING_LIST)
-        console.log(`[订单流转] 订单 ${order.orderNumber} 已流转到发货列表`)
       } else {
-        // 审核拒绝，退回订单列表
         eventBus.emit(EventNames.REFRESH_ORDER_LIST)
-        console.log(`[订单退回] 订单 ${order.orderNumber} 已退回订单列表`)
+      }
+      eventBus.emit(EventNames.REFRESH_AUDIT_LIST)
+
+      // 🔥 发送消息通知给订单创建者
+      try {
+        const creatorId = order.salesPersonId || order.createdBy
+        const auditorName = currentUser?.name || '系统'
+        if (creatorId) {
+          if (approved) {
+            messageNotificationService.sendOrderAuditApproved(
+              order.orderNumber,
+              creatorId,
+              auditorName,
+              { orderId: order.id }
+            )
+            console.log(`[消息通知] 已通知订单创建者 ${creatorId} 审核通过`)
+          } else {
+            messageNotificationService.sendOrderAuditRejected(
+              order.orderNumber,
+              creatorId,
+              auditorName,
+              remark || '未填写原因',
+              { orderId: order.id }
+            )
+            console.log(`[消息通知] 已通知订单创建者 ${creatorId} 审核拒绝`)
+          }
+        }
+      } catch (notifyError) {
+        console.warn('[消息通知] 发送通知失败，但不影响审核结果:', notifyError)
       }
 
-      // 刷新审核列表
-      eventBus.emit(EventNames.REFRESH_AUDIT_LIST)
+      // 🔥 强制刷新订单列表，确保数据与数据库一致
+      await loadOrdersFromAPI(true)
+
+      return true
+    } catch (apiError) {
+      console.error('[OrderStore] ❌ API审核失败，不更新本地数据:', apiError)
+      // 🔥 API失败，抛出错误，不更新本地数据
+      throw apiError
     }
   }
 
-  // 发货
-  const shipOrder = async (id: string, expressCompany: string, trackingNumber: string) => {
+  // 发货 - 🔥 API优先原则：必须API成功才更新本地
+  const shipOrder = async (id: string, expressCompany: string, trackingNumber: string): Promise<boolean> => {
     const order = getOrderById(id)
-    if (order) {
-      const currentUser = userStore.currentUser
-      const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    if (!order) {
+      console.error('[OrderStore] 订单不存在:', id)
+      throw new Error('订单不存在')
+    }
+
+    const currentUser = userStore.currentUser
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
       // 🔥 计算预计送达时间（发货时间 + 3天）
       const threeDaysLater = new Date(new Date().getTime() + 3 * 24 * 60 * 60 * 1000)
@@ -535,82 +556,119 @@ export const useOrderStore = createPersistentStore('order', () => {
         trackingNumber
       })
 
-      // 🔥 始终调用API更新数据库，确保数据持久化
+      // 🔥 API优先原则：必须API成功才更新本地
       try {
         console.log('[OrderStore] 调用API更新发货信息')
         const { orderApi } = await import('@/api/order')
-        await orderApi.update(id, {
+        const response = await orderApi.update(id, {
           status: 'shipped',
           shippingTime: now,
-          shippedAt: now, // 🔥 同时保存shippedAt字段
-          expectedDeliveryDate, // 🔥 保存预计送达时间
+          shippedAt: now,
+          expectedDeliveryDate,
           expressCompany,
           trackingNumber,
           logisticsStatus: 'picked_up'
         })
-        console.log('[OrderStore] API发货更新成功')
-      } catch (apiError) {
-        console.error('[OrderStore] API发货更新失败:', apiError)
-        // 即使API失败，也继续更新本地数据，保证用户体验
-      }
 
-      // 更新本地数据
-      updateOrder(id, {
-        status: 'shipped',
-        shippingTime: now,
-        shippedAt: now, // 🔥 同时保存shippedAt字段
-        expectedDeliveryDate, // 🔥 保存预计送达时间
-        expressCompany,
-        trackingNumber,
-        logisticsStatus: 'picked_up'
-      })
+        // 🔥 检查API响应
+        if (!response || response.success === false) {
+          const errorMsg = (response as any)?.message || 'API返回失败'
+          console.error('[OrderStore] API发货更新失败:', errorMsg)
+          throw new Error(errorMsg)
+        }
 
-      // 添加状态历史
-      if (order.statusHistory) {
-        order.statusHistory.push({
+        console.log('[OrderStore] ✅ API发货更新成功，更新本地缓存')
+
+        // 🔥 API成功后才更新本地数据
+        updateOrder(id, {
           status: 'shipped',
-          time: now,
-          operator: currentUser?.name || 'unknown',
-          description: '订单已发货',
-          remark: `${expressCompany}，单号：${trackingNumber}`
+          shippingTime: now,
+          shippedAt: now,
+          expectedDeliveryDate,
+          expressCompany,
+          trackingNumber,
+          logisticsStatus: 'picked_up'
         })
-      }
 
-      // 添加操作日志
-      if (order.operationLogs) {
-        order.operationLogs.push({
-          id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-          time: now,
-          operator: currentUser?.name || 'unknown',
-          action: '订单发货',
-          description: `订单已通过${expressCompany}发货，快递单号：${trackingNumber}`,
-          remark: '正常发货'
-        })
-      }
+        // 添加状态历史
+        if (order.statusHistory) {
+          order.statusHistory.push({
+            status: 'shipped',
+            time: now,
+            operator: currentUser?.name || 'unknown',
+            description: '订单已发货',
+            remark: `${expressCompany}，单号：${trackingNumber}`
+          })
+        }
 
-      // 发射事件通知
-      console.log(`[订单发货] 订单 ${order.orderNumber} 已发货，快递单号：${trackingNumber}`)
-      eventBus.emit(EventNames.ORDER_SHIPPED, { order, expressCompany, trackingNumber })
-      eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
-      eventBus.emit(EventNames.REFRESH_SHIPPING_LIST) // 刷新发货列表
-      eventBus.emit(EventNames.REFRESH_LOGISTICS_LIST) // 刷新物流列表
-      console.log(`[订单流转] 订单 ${order.orderNumber} 已流转到物流列表`)
-    }
+        // 发射事件通知
+        console.log(`[订单发货] 订单 ${order.orderNumber} 已发货，快递单号：${trackingNumber}`)
+        eventBus.emit(EventNames.ORDER_SHIPPED, { order, expressCompany, trackingNumber })
+        eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
+        eventBus.emit(EventNames.REFRESH_SHIPPING_LIST)
+        eventBus.emit(EventNames.REFRESH_LOGISTICS_LIST)
+
+        // 🔥 发送消息通知给订单创建者
+        try {
+          const creatorId = order.salesPersonId || order.createdBy
+          if (creatorId) {
+            messageNotificationService.sendToUser(
+              MessageType.ORDER_SHIPPED,
+              `您的订单 #${order.orderNumber} 已发货，快递公司：${expressCompany}，单号：${trackingNumber}`,
+              creatorId,
+              { relatedId: order.id, relatedType: 'order', actionUrl: '/logistics/list' }
+            )
+            console.log(`[消息通知] 已通知订单创建者 ${creatorId} 订单已发货`)
+          }
+        } catch (notifyError) {
+          console.warn('[消息通知] 发送通知失败，但不影响发货结果:', notifyError)
+        }
+
+        // 🔥 强制刷新订单列表
+        await loadOrdersFromAPI(true)
+
+        return true
+      } catch (apiError) {
+        console.error('[OrderStore] ❌ API发货失败，不更新本地数据:', apiError)
+        throw apiError
+      }
   }
 
-  // 退回订单
-  const returnOrder = (id: string, reason: string) => {
+  // 退回订单 - 🔥 API优先原则
+  const returnOrder = async (id: string, reason: string): Promise<Order | null> => {
     const order = getOrderById(id)
-    if (order) {
-      const currentUser = userStore.currentUser
-      const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    if (!order) {
+      console.error('[OrderStore] 订单不存在:', id)
+      throw new Error('订单不存在')
+    }
 
-      // 根据当前订单状态确定退回后的状态
-      let newStatus: OrderStatus = 'rejected_returned'
-      if (order.status === 'shipped' || order.status === 'pending_shipment') {
-        newStatus = 'logistics_returned'
+    const currentUser = userStore.currentUser
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+
+    // 根据当前订单状态确定退回后的状态
+    let newStatus: OrderStatus = 'rejected_returned'
+    if (order.status === 'shipped' || order.status === 'pending_shipment') {
+      newStatus = 'logistics_returned'
+    }
+
+    // 🔥 API优先原则：必须API成功才更新本地
+    try {
+      console.log('[OrderStore] 调用API退回订单:', id)
+      const { orderApi } = await import('@/api/order')
+      const response = await orderApi.update(id, {
+        status: newStatus,
+        remark: `退回原因: ${reason}`
+      })
+
+      if (!response || response.success === false) {
+        const errorMsg = (response as any)?.message || 'API返回失败'
+        console.error('[OrderStore] API退回订单失败:', errorMsg)
+        throw new Error(errorMsg)
       }
 
+      console.log('[OrderStore] ✅ API退回订单成功，更新本地缓存')
+
+      // 🔥 API成功后才更新本地数据
       updateOrder(id, {
         status: newStatus,
         returnReason: reason,
@@ -628,18 +686,6 @@ export const useOrderStore = createPersistentStore('order', () => {
         })
       }
 
-      // 添加操作日志
-      if (order.operationLogs) {
-        order.operationLogs.push({
-          id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-          time: now,
-          operator: currentUser?.name || 'unknown',
-          action: '退回订单',
-          description: '订单已退回',
-          remark: reason
-        })
-      }
-
       // 发射事件通知
       console.log(`[订单退回] 订单 ${order.orderNumber} 已退回，原因：${reason}`)
       eventBus.emit(EventNames.ORDER_RETURNED, { order, reason })
@@ -648,35 +694,35 @@ export const useOrderStore = createPersistentStore('order', () => {
       eventBus.emit(EventNames.REFRESH_SHIPPING_LIST)
       eventBus.emit(EventNames.REFRESH_LOGISTICS_LIST)
 
+      // 🔥 强制刷新订单列表
+      await loadOrdersFromAPI(true)
+
       return order
+    } catch (apiError) {
+      console.error('[OrderStore] ❌ API退回订单失败，不更新本地数据:', apiError)
+      throw apiError
     }
-    return null
   }
 
-  // 审核通过取消订单
+  // 审核通过取消订单 - 🔥 API优先原则
   const approveCancelOrders = async (orderIds: string[]): Promise<boolean> => {
-    try {
-      const currentUser = userStore.currentUser
-      const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const currentUser = userStore.currentUser
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const failedIds: string[] = []
 
-      let successCount = 0
-      let apiSuccessCount = 0
-
-      for (const id of orderIds) {
-        // 先调用API审核通过
-        try {
-          const result = await auditCancelOrderToAPI(id, 'approve', '审核通过')
-          if (result.success) {
-            apiSuccessCount++
-            console.log(`[订单取消审核] API审核通过成功: ${id}`)
-          } else {
-            console.warn(`[订单取消审核] API调用失败: ${result.message}`)
-          }
-        } catch (apiError) {
-          console.warn('[订单取消审核] API调用异常:', apiError)
+    for (const id of orderIds) {
+      // 🔥 API优先：必须API成功才更新本地
+      try {
+        const result = await auditCancelOrderToAPI(id, 'approve', '审核通过')
+        if (!result.success) {
+          console.error(`[订单取消审核] API审核通过失败: ${id}, ${result.message}`)
+          failedIds.push(id)
+          continue
         }
 
-        // 更新本地数据（如果存在）
+        console.log(`[订单取消审核] ✅ API审核通过成功: ${id}`)
+
+        // 🔥 API成功后才更新本地数据
         const order = getOrderById(id)
         if (order) {
           updateOrder(id, {
@@ -685,7 +731,6 @@ export const useOrderStore = createPersistentStore('order', () => {
             cancelTime: now
           })
 
-          // 添加状态历史
           if (order.statusHistory) {
             order.statusHistory.push({
               status: 'cancelled',
@@ -696,65 +741,46 @@ export const useOrderStore = createPersistentStore('order', () => {
             })
           }
 
-          // 添加操作日志
-          if (order.operationLogs) {
-            order.operationLogs.push({
-              id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-              time: now,
-              operator: currentUser?.name || 'unknown',
-              action: '审核通过取消订单',
-              description: '取消订单审核通过',
-              remark: order.cancelReason || '审核通过'
-            })
-          }
-
-          // 发射事件通知
           eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
-          console.log(`[订单取消审核] 本地订单 ${order.orderNumber} 更新成功`)
         }
-
-        successCount++
+      } catch (apiError) {
+        console.error(`[订单取消审核] ❌ API异常: ${id}`, apiError)
+        failedIds.push(id)
       }
-
-      // 只要有任何成功（API或本地），就返回true
-      if (successCount > 0 || apiSuccessCount > 0) {
-        eventBus.emit(EventNames.REFRESH_ORDER_LIST)
-        return true
-      }
-
-      console.warn('[订单取消审核] 没有成功处理任何订单')
-      return false
-    } catch (error) {
-      console.error('[订单取消审核] 审核通过失败:', error)
-      return false
     }
+
+    // 🔥 强制刷新订单列表
+    await loadOrdersFromAPI(true)
+    eventBus.emit(EventNames.REFRESH_ORDER_LIST)
+
+    if (failedIds.length > 0) {
+      throw new Error(`以下订单审核失败: ${failedIds.join(', ')}`)
+    }
+
+    return true
   }
 
-  // 审核拒绝取消订单
+  // 审核拒绝取消订单 - 🔥 API优先原则
   const rejectCancelOrders = async (orderIds: string[]): Promise<boolean> => {
-    try {
-      const currentUser = userStore.currentUser
-      const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const currentUser = userStore.currentUser
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const failedIds: string[] = []
 
-      let successCount = 0
-      let apiSuccessCount = 0
+    for (const id of orderIds) {
+      const order = getOrderById(id)
 
-      for (const id of orderIds) {
-        // 先调用API审核拒绝
-        try {
-          const result = await auditCancelOrderToAPI(id, 'reject', '审核拒绝')
-          if (result.success) {
-            apiSuccessCount++
-            console.log(`[订单取消审核] API审核拒绝成功: ${id}`)
-          } else {
-            console.warn(`[订单取消审核] API调用失败: ${result.message}`)
-          }
-        } catch (apiError) {
-          console.warn('[订单取消审核] API调用异常:', apiError)
+      // 🔥 API优先：必须API成功才更新本地
+      try {
+        const result = await auditCancelOrderToAPI(id, 'reject', '审核拒绝')
+        if (!result.success) {
+          console.error(`[订单取消审核] API审核拒绝失败: ${id}, ${result.message}`)
+          failedIds.push(id)
+          continue
         }
 
-        // 更新本地数据（如果存在）
-        const order = getOrderById(id)
+        console.log(`[订单取消审核] ✅ API审核拒绝成功: ${id}`)
+
+        // 🔥 API成功后才更新本地数据
         if (order) {
           // 根据订单的原始状态恢复订单状态
           let restoreStatus: OrderStatus = 'pending_shipment'
@@ -772,7 +798,6 @@ export const useOrderStore = createPersistentStore('order', () => {
             cancelTime: now
           })
 
-          // 添加状态历史
           if (order.statusHistory) {
             order.statusHistory.push({
               status: restoreStatus,
@@ -783,47 +808,54 @@ export const useOrderStore = createPersistentStore('order', () => {
             })
           }
 
-          // 添加操作日志
-          if (order.operationLogs) {
-            order.operationLogs.push({
-              id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-              time: now,
-              operator: currentUser?.name || 'unknown',
-              action: '审核拒绝取消订单',
-              description: '取消订单审核拒绝，订单已恢复',
-              remark: order.cancelReason || '审核拒绝'
-            })
-          }
-
-          // 发射事件通知
           eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
-          console.log(`[订单取消审核] 本地订单 ${order.orderNumber} 更新成功`)
         }
-
-        successCount++
+      } catch (apiError) {
+        console.error(`[订单取消审核] ❌ API异常: ${id}`, apiError)
+        failedIds.push(id)
       }
-
-      // 只要有任何成功（API或本地），就返回true
-      if (successCount > 0 || apiSuccessCount > 0) {
-        eventBus.emit(EventNames.REFRESH_ORDER_LIST)
-        return true
-      }
-
-      console.warn('[订单取消审核] 没有成功处理任何订单')
-      return false
-    } catch (error) {
-      console.error('[订单取消审核] 审核拒绝失败:', error)
-      return false
     }
+
+    // 🔥 强制刷新订单列表
+    await loadOrdersFromAPI(true)
+    eventBus.emit(EventNames.REFRESH_ORDER_LIST)
+
+    if (failedIds.length > 0) {
+      throw new Error(`以下订单审核失败: ${failedIds.join(', ')}`)
+    }
+
+    return true
   }
 
-  // 取消订单
-  const cancelOrder = (id: string, reason: string) => {
+  // 取消订单 - 🔥 API优先原则
+  const cancelOrder = async (id: string, reason: string): Promise<void> => {
     const order = getOrderById(id)
-    if (order) {
-      const currentUser = userStore.currentUser
-      const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    if (!order) {
+      console.error('[OrderStore] 订单不存在:', id)
+      throw new Error('订单不存在')
+    }
 
+    const currentUser = userStore.currentUser
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+
+    // 🔥 API优先：必须API成功才更新本地
+    try {
+      console.log('[OrderStore] 调用API取消订单:', id)
+      const { orderApi } = await import('@/api/order')
+      const response = await orderApi.update(id, {
+        status: 'cancelled',
+        remark: `取消原因: ${reason}`
+      })
+
+      if (!response || response.success === false) {
+        const errorMsg = (response as any)?.message || 'API返回失败'
+        console.error('[OrderStore] API取消订单失败:', errorMsg)
+        throw new Error(errorMsg)
+      }
+
+      console.log('[OrderStore] ✅ API取消订单成功，更新本地缓存')
+
+      // 🔥 API成功后才更新本地数据
       updateOrder(id, {
         status: 'cancelled',
         cancelReason: reason,
@@ -841,18 +873,6 @@ export const useOrderStore = createPersistentStore('order', () => {
         })
       }
 
-      // 添加操作日志
-      if (order.operationLogs) {
-        order.operationLogs.push({
-          id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-          time: now,
-          operator: currentUser?.name || 'unknown',
-          action: '取消订单',
-          description: '订单已取消',
-          remark: reason
-        })
-      }
-
       // 发射事件通知
       console.log(`[订单取消] 订单 ${order.orderNumber} 已取消，原因：${reason}`)
       eventBus.emit(EventNames.ORDER_CANCELLED, { order, reason })
@@ -860,6 +880,28 @@ export const useOrderStore = createPersistentStore('order', () => {
       eventBus.emit(EventNames.REFRESH_ORDER_LIST)
       eventBus.emit(EventNames.REFRESH_SHIPPING_LIST)
       eventBus.emit(EventNames.REFRESH_LOGISTICS_LIST)
+
+      // 🔥 发送消息通知给订单创建者
+      try {
+        const creatorId = order.salesPersonId || order.createdBy
+        if (creatorId && creatorId !== currentUser?.id) {
+          messageNotificationService.sendToUser(
+            MessageType.ORDER_CANCELLED,
+            `订单 #${order.orderNumber} 已被取消，原因：${reason}`,
+            creatorId,
+            { relatedId: order.id, relatedType: 'order', actionUrl: '/order/list' }
+          )
+          console.log(`[消息通知] 已通知订单创建者 ${creatorId} 订单已取消`)
+        }
+      } catch (notifyError) {
+        console.warn('[消息通知] 发送通知失败，但不影响取消结果:', notifyError)
+      }
+
+      // 🔥 强制刷新订单列表
+      await loadOrdersFromAPI(true)
+    } catch (apiError) {
+      console.error('[OrderStore] ❌ API取消订单失败，不更新本地数据:', apiError)
+      throw apiError
     }
   }
 
