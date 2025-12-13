@@ -1,55 +1,43 @@
 <template>
-  <el-dialog
-    v-model="visible"
-    :show-close="false"
-    :close-on-click-modal="false"
-    :close-on-press-escape="false"
-    width="560px"
-    class="announcement-popup-dialog"
-    center
-  >
-    <template #header>
+  <!-- 右下角上滑弹窗 -->
+  <transition name="slide-up">
+    <div v-if="visible && currentAnnouncement" class="announcement-popup">
       <div class="popup-header">
-        <div class="header-icon">
-          <el-icon :size="32" color="#fff"><Bell /></el-icon>
+        <div class="header-left">
+          <el-icon :size="18" color="#409eff"><Bell /></el-icon>
+          <span class="header-title">系统公告</span>
         </div>
-        <div class="header-title">系统公告</div>
+        <el-icon class="close-btn" @click="handleClose"><Close /></el-icon>
       </div>
-    </template>
-
-    <div class="popup-content" v-if="currentAnnouncement">
-      <div class="announcement-title">{{ currentAnnouncement.title }}</div>
-      <div class="announcement-meta">
-        <el-tag :type="currentAnnouncement.type === 'company' ? 'primary' : 'success'" size="small">
-          {{ currentAnnouncement.type === 'company' ? '全公司' : '部门公告' }}
-        </el-tag>
-        <span class="publish-time">{{ formatTime(currentAnnouncement.publishedAt) }}</span>
+      <div class="popup-body">
+        <div class="announcement-title">{{ currentAnnouncement.title }}</div>
+        <div class="announcement-content" v-html="truncateContent(currentAnnouncement.content)"></div>
+        <div class="announcement-meta">
+          <el-tag :type="currentAnnouncement.type === 'notice' ? 'primary' : 'success'" size="small">
+            {{ currentAnnouncement.type === 'notice' ? '全公司' : '部门公告' }}
+          </el-tag>
+          <span class="publish-time">{{ formatTime(currentAnnouncement.publishedAt) }}</span>
+        </div>
       </div>
-      <div class="announcement-body" v-html="currentAnnouncement.content"></div>
-    </div>
-
-    <template #footer>
       <div class="popup-footer">
-        <div class="footer-info" v-if="pendingAnnouncements.length > 1">
-          <span>{{ currentIndex + 1 }} / {{ pendingAnnouncements.length }}</span>
-        </div>
+        <span v-if="pendingAnnouncements.length > 1" class="count-info">
+          {{ currentIndex + 1 }} / {{ pendingAnnouncements.length }}
+        </span>
         <div class="footer-actions">
-          <el-button @click="handleReadLater" v-if="pendingAnnouncements.length > 1">
-            稍后查看
-          </el-button>
-          <el-button type="primary" @click="handleConfirm">
-            {{ pendingAnnouncements.length > 1 && currentIndex < pendingAnnouncements.length - 1 ? '下一条' : '我知道了' }}
+          <el-button size="small" @click="handleReadLater">稍后查看</el-button>
+          <el-button size="small" type="primary" @click="handleConfirm">
+            {{ pendingAnnouncements.length > 1 && currentIndex < pendingAnnouncements.length - 1 ? '下一条' : '知道了' }}
           </el-button>
         </div>
       </div>
-    </template>
-  </el-dialog>
+    </div>
+  </transition>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useMessageStore } from '@/stores/message'
-import { Bell } from '@element-plus/icons-vue'
+import { Bell, Close } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 
 const messageStore = useMessageStore()
@@ -57,19 +45,65 @@ const messageStore = useMessageStore()
 const visible = ref(false)
 const currentIndex = ref(0)
 const pendingAnnouncements = ref<any[]>([])
+const dismissedIds = ref<Set<string>>(new Set())
+
+// 从localStorage读取已关闭的公告ID
+const loadDismissedIds = () => {
+  try {
+    const stored = localStorage.getItem('dismissed_announcements')
+    if (stored) {
+      const data = JSON.parse(stored)
+      // 只保留24小时内关闭的记录
+      const now = Date.now()
+      const validIds = Object.entries(data)
+        .filter(([_, timestamp]) => now - (timestamp as number) < 24 * 60 * 60 * 1000)
+        .map(([id]) => id)
+      dismissedIds.value = new Set(validIds)
+    }
+  } catch (e) {
+    console.error('读取已关闭公告失败:', e)
+  }
+}
+
+// 保存已关闭的公告ID
+const saveDismissedId = (id: string) => {
+  dismissedIds.value.add(id)
+  try {
+    const stored = localStorage.getItem('dismissed_announcements')
+    const data = stored ? JSON.parse(stored) : {}
+    data[id] = Date.now()
+    localStorage.setItem('dismissed_announcements', JSON.stringify(data))
+  } catch (e) {
+    console.error('保存已关闭公告失败:', e)
+  }
+}
 
 const currentAnnouncement = computed(() => {
   return pendingAnnouncements.value[currentIndex.value] || null
 })
 
 const formatTime = (time: string) => {
-  return time ? dayjs(time).format('YYYY-MM-DD HH:mm') : ''
+  return time ? dayjs(time).format('MM-DD HH:mm') : ''
+}
+
+const truncateContent = (content: string) => {
+  // 移除HTML标签后截取
+  const text = content.replace(/<[^>]+>/g, '')
+  return text.length > 100 ? text.substring(0, 100) + '...' : text
+}
+
+const handleClose = () => {
+  if (currentAnnouncement.value) {
+    saveDismissedId(currentAnnouncement.value.id)
+  }
+  visible.value = false
+  currentIndex.value = 0
 }
 
 const handleConfirm = async () => {
   if (currentAnnouncement.value) {
-    // 标记为已读
     await messageStore.markAnnouncementAsRead(currentAnnouncement.value.id)
+    saveDismissedId(currentAnnouncement.value.id)
   }
 
   if (currentIndex.value < pendingAnnouncements.value.length - 1) {
@@ -81,6 +115,9 @@ const handleConfirm = async () => {
 }
 
 const handleReadLater = () => {
+  if (currentAnnouncement.value) {
+    saveDismissedId(currentAnnouncement.value.id)
+  }
   visible.value = false
   currentIndex.value = 0
 }
@@ -88,9 +125,14 @@ const handleReadLater = () => {
 // 检查是否有需要弹窗显示的公告
 const checkPopupAnnouncements = () => {
   const announcements = messageStore.announcements || []
-  const popupAnnouncements = announcements.filter(
-    (a: any) => a.status === 'published' && a.isPopup && !a.read
-  )
+
+  const popupAnnouncements = announcements.filter((a: any) => {
+    // 必须是已发布、开启弹窗、未读、且未被用户关闭的公告
+    return a.status === 'published' &&
+           a.isPopup &&
+           !a.read &&
+           !dismissedIds.value.has(a.id)
+  })
 
   if (popupAnnouncements.length > 0) {
     pendingAnnouncements.value = popupAnnouncements
@@ -105,111 +147,121 @@ watch(() => messageStore.announcements, () => {
 }, { deep: true })
 
 onMounted(() => {
+  loadDismissedIds()
   // 延迟检查，等待数据加载
-  setTimeout(checkPopupAnnouncements, 1000)
+  setTimeout(checkPopupAnnouncements, 1500)
 })
 </script>
 
-
 <style scoped>
-.announcement-popup-dialog :deep(.el-dialog) {
-  border-radius: 16px;
+.announcement-popup {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 360px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+  z-index: 2000;
   overflow: hidden;
 }
 
-.announcement-popup-dialog :deep(.el-dialog__header) {
-  padding: 0;
-  margin: 0;
-}
-
-.announcement-popup-dialog :deep(.el-dialog__body) {
-  padding: 0;
-}
-
-.announcement-popup-dialog :deep(.el-dialog__footer) {
-  padding: 16px 24px;
-  border-top: 1px solid #f0f0f0;
-}
-
 .popup-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 24px;
-  text-align: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
+  color: #fff;
 }
 
-.header-icon {
-  width: 64px;
-  height: 64px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
+.header-left {
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin: 0 auto 12px;
+  gap: 8px;
+}
+
+.header-left .el-icon {
+  color: #fff;
 }
 
 .header-title {
-  color: #fff;
-  font-size: 20px;
+  font-size: 14px;
   font-weight: 600;
 }
 
-.popup-content {
-  padding: 24px;
+.close-btn {
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.8);
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: #fff;
+}
+
+.popup-body {
+  padding: 16px;
 }
 
 .announcement-title {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
   color: #303133;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   line-height: 1.4;
+}
+
+.announcement-content {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.6;
+  margin-bottom: 12px;
 }
 
 .announcement-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #f0f0f0;
+  gap: 8px;
 }
 
 .publish-time {
-  font-size: 13px;
+  font-size: 12px;
   color: #909399;
-}
-
-.announcement-body {
-  font-size: 14px;
-  color: #606266;
-  line-height: 1.8;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.announcement-body :deep(p) {
-  margin: 0 0 12px 0;
-}
-
-.announcement-body :deep(img) {
-  max-width: 100%;
-  border-radius: 8px;
 }
 
 .popup-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 12px 16px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
 }
 
-.footer-info {
-  font-size: 13px;
+.count-info {
+  font-size: 12px;
   color: #909399;
 }
 
 .footer-actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
+}
+
+/* 上滑动画 */
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-up-enter-from {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
+.slide-up-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
 }
 </style>

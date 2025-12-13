@@ -414,10 +414,9 @@ const getStatusText = (status: string) => {
 const loadAnnouncements = async () => {
   loading.value = true
   try {
-    const response = await messageStore.loadAnnouncements(filterForm)
-    // 检查响应格式并正确处理数据
+    const response = await messageApi.getAnnouncements(filterForm)
+    // 后端返回 { success: true, data: { list: [], total: 0 } } 格式
     if (response && response.success && response.data) {
-      // 后端返回 { list: [], total: 0 } 格式
       if (Array.isArray(response.data.list)) {
         announcements.value = response.data.list
       } else if (Array.isArray(response.data)) {
@@ -425,11 +424,10 @@ const loadAnnouncements = async () => {
       } else {
         announcements.value = []
       }
-    } else if (response && Array.isArray(response)) {
-      announcements.value = response
     } else {
       announcements.value = []
     }
+    console.log('[AnnouncementPublish] 加载公告列表:', announcements.value.length, '条')
   } catch (error) {
     console.error('加载公告列表失败:', error)
     announcements.value = []

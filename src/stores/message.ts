@@ -185,16 +185,17 @@ export const useMessageStore = defineStore('message', () => {
     }
   }
 
-  // 公告相关方法
+  // 公告相关方法（管理员用，返回所有公告）
   const loadAnnouncements = async (params?: any) => {
     try {
       loading.value = true
       const response = await messageApi.getAnnouncements(params)
-      announcements.value = response.data || []
+      // 后端返回格式是 { list: [], total: 0 }
+      const data = response.data
+      announcements.value = data?.list || data || []
       return response
     } catch (error) {
       console.error('加载公告失败:', error)
-      ElMessage.error('加载公告失败')
       // 确保在错误情况下也有一个空数组
       announcements.value = []
     } finally {

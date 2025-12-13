@@ -6,7 +6,7 @@
           <Bell />
         </el-icon>
       </div>
-      
+
       <div class="carousel-content">
         <el-carousel
           ref="carouselRef"
@@ -24,7 +24,7 @@
             :key="announcement.id"
             class="carousel-item"
           >
-            <div 
+            <div
               class="announcement-item"
               @click="handleAnnouncementClick(announcement)"
             >
@@ -34,7 +34,7 @@
           </el-carousel-item>
         </el-carousel>
       </div>
-      
+
       <div class="carousel-actions">
         <el-button
           v-if="visibleAnnouncements.length > 1"
@@ -47,7 +47,7 @@
             <component :is="isPaused ? 'VideoPlay' : 'VideoPause'" />
           </el-icon>
         </el-button>
-        
+
         <el-button
           type="text"
           size="small"
@@ -77,9 +77,9 @@
             发布时间：{{ formatFullTime(selectedAnnouncement.publishedAt || selectedAnnouncement.publishTime) }}
           </span>
         </div>
-        
+
         <div class="detail-content" v-html="selectedAnnouncement.content"></div>
-        
+
         <div v-if="selectedAnnouncement.targetDepartments?.length" class="target-departments">
           <span class="label">目标部门：</span>
           <el-tag
@@ -92,11 +92,11 @@
           </el-tag>
         </div>
       </div>
-      
+
       <template #footer>
         <el-button @click="showAnnouncementDetail = false">关闭</el-button>
-        <el-button 
-          type="primary" 
+        <el-button
+          type="primary"
           @click="markAnnouncementAsRead"
           v-if="selectedAnnouncement && !selectedAnnouncement.read"
         >
@@ -112,11 +112,11 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useMessageStore } from '@/stores/message'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
-import { 
-  Bell, 
-  Close, 
-  VideoPlay, 
-  VideoPause 
+import {
+  Bell,
+  Close,
+  VideoPlay,
+  VideoPause
 } from '@element-plus/icons-vue'
 
 // 使用Store
@@ -135,9 +135,9 @@ const visibleAnnouncements = computed(() => {
   if (!messageStore.announcements || !Array.isArray(messageStore.announcements)) {
     return []
   }
-  
+
   return messageStore.announcements
-    .filter(announcement => 
+    .filter(announcement =>
       announcement.status === 'published' &&
       announcement.isMarquee &&
       !closedAnnouncementIds.value.has(announcement.id) &&
@@ -151,7 +151,7 @@ const visibleAnnouncements = computed(() => {
 const isAnnouncementActive = (announcement: any) => {
   const now = new Date()
   const publishTime = new Date(announcement.publishedAt || announcement.publishTime)
-  
+
   // 检查是否在发布时间范围内
   if (announcement.status === 'scheduled' && announcement.scheduledAt) {
     const scheduledTime = new Date(announcement.scheduledAt)
@@ -159,7 +159,7 @@ const isAnnouncementActive = (announcement: any) => {
       return false
     }
   }
-  
+
   // 检查是否过期（假设公告有效期为30天）
   const expireTime = new Date(publishTime.getTime() + 30 * 24 * 60 * 60 * 1000)
   return now <= expireTime
@@ -182,13 +182,29 @@ const pauseCarousel = () => {
 }
 
 const closeCarousel = () => {
-  // 将当前显示的公告ID添加到已关闭列表
+  // 将当前显示的公告ID添加到已关闭列表（带时间戳）
+  const now = Date.now()
+  const stored = localStorage.getItem('closedAnnouncementIds')
+  let data: Record<string, number> = {}
+
+  try {
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+        data = parsed
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
   visibleAnnouncements.value.forEach(announcement => {
     closedAnnouncementIds.value.add(announcement.id)
+    data[announcement.id] = now
   })
-  
+
   // 保存到本地存储
-  localStorage.setItem('closedAnnouncementIds', JSON.stringify([...closedAnnouncementIds.value]))
+  localStorage.setItem('closedAnnouncementIds', JSON.stringify(data))
 }
 
 const markAnnouncementAsRead = async () => {
@@ -207,7 +223,7 @@ const formatTime = (time: string) => {
   const date = new Date(time)
   const now = new Date()
   const diff = now.getTime() - date.getTime()
-  
+
   if (diff < 60 * 1000) {
     return '刚刚'
   } else if (diff < 60 * 60 * 1000) {
@@ -243,20 +259,30 @@ const getAnnouncementTypeText = (type: string) => {
 
 // 生命周期
 onMounted(() => {
-  // 从本地存储恢复已关闭的公告ID
+  // 从本地存储恢复已关闭的公告ID（只保留24小时内的）
   const stored = localStorage.getItem('closedAnnouncementIds')
   if (stored) {
     try {
-      const ids = JSON.parse(stored)
-      closedAnnouncementIds.value = new Set(ids)
+      const data = JSON.parse(stored)
+      // 如果是新格式（带时间戳），过滤24小时内的
+      if (typeof data === 'object' && !Array.isArray(data)) {
+        const now = Date.now()
+        const validIds = Object.entries(data)
+          .filter(([_, timestamp]) => now - (timestamp as number) < 24 * 60 * 60 * 1000)
+          .map(([id]) => id)
+        closedAnnouncementIds.value = new Set(validIds)
+      } else if (Array.isArray(data)) {
+        // 兼容旧格式
+        closedAnnouncementIds.value = new Set(data)
+      }
     } catch (error) {
       console.warn('Failed to parse closed announcement IDs:', error)
     }
   }
-  
+
   // 只在用户已登录时加载公告数据
   if (userStore.isLoggedIn) {
-    messageStore.loadAnnouncements()
+    messageStore.loadUserAnnouncements()
   }
 })
 
@@ -435,15 +461,15 @@ onUnmounted(() => {
     padding: 6px 16px;
     gap: 8px;
   }
-  
+
   .announcement-title {
     font-size: 13px;
   }
-  
+
   .announcement-time {
     font-size: 11px;
   }
-  
+
   .announcement-icon {
     width: 20px;
     height: 20px;
@@ -454,7 +480,7 @@ onUnmounted(() => {
   .carousel-container {
     padding: 4px 12px;
   }
-  
+
   .announcement-time {
     display: none;
   }
