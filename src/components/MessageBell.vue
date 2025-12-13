@@ -237,14 +237,13 @@ const handleClose = () => {
 
 const markAllAsRead = async () => {
   try {
-    // 标记所有系统消息为已读
-    notificationStore.markAllAsRead()
+    // 🔥 标记所有系统消息为已读（调用API同步到数据库）
+    await notificationStore.markAllAsReadWithAPI()
 
-    // 标记所有公告为已读
-    for (const announcement of announcements.value) {
-      if (!announcement.read) {
-        await markAnnouncementAsRead(announcement.id)
-      }
+    // 🔥 标记所有公告为已读
+    const unreadAnnouncements = announcements.value.filter(a => !a.read)
+    for (const announcement of unreadAnnouncements) {
+      await markAnnouncementAsRead(announcement.id)
     }
 
     ElMessage.success('所有消息已标记为已读')
@@ -260,7 +259,8 @@ const clearAllMessages = async () => {
       type: 'warning'
     })
 
-    notificationStore.clearAllMessages()
+    // 🔥 调用API同步到数据库
+    await notificationStore.clearAllMessagesWithAPI()
     ElMessage.success('消息已清空')
   } catch (error) {
     if (error !== 'cancel') {
@@ -269,8 +269,9 @@ const clearAllMessages = async () => {
   }
 }
 
-const markMessageAsRead = (messageId: string) => {
-  notificationStore.markAsRead(messageId)
+const markMessageAsRead = async (messageId: string) => {
+  // 🔥 调用API同步到数据库
+  await notificationStore.markAsReadWithAPI(messageId)
 }
 
 const deleteMessage = async (messageId: string) => {
@@ -279,7 +280,8 @@ const deleteMessage = async (messageId: string) => {
       type: 'warning'
     })
 
-    notificationStore.deleteMessage(messageId)
+    // 🔥 调用API同步到数据库
+    await notificationStore.deleteMessageWithAPI(messageId)
     ElMessage.success('消息已删除')
   } catch (error) {
     if (error !== 'cancel') {
