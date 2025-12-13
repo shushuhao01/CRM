@@ -126,8 +126,4 @@ export const orderApi = {
   // 获取已发货订单列表
   getShippingShipped: (params?: { page?: number; pageSize?: number }) =>
     api.get<OrderListResponse>('/orders/shipping/shipped', params),
-
-  // 🔥 获取待审核订单列表（用于订单审核页面）
-  getPendingAuditOrders: (params?: { page?: number; pageSize?: number }) =>
-    api.get<OrderListResponse>('/orders/pending-audit', params),
 }

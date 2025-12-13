@@ -383,6 +383,9 @@
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="handlePermissionDialogClose">取消</el-button>
+          <el-button @click="resetToDefaultPermissions" type="warning">
+            恢复默认
+          </el-button>
           <el-button @click="confirmPermissions" type="primary" :loading="permissionLoading">
             保存权限
           </el-button>
@@ -1866,6 +1869,47 @@ const confirmRole = async () => {
 }
 
 /**
+ * 一键恢复默认权限
+ */
+const resetToDefaultPermissions = () => {
+  if (!currentRole.value) {
+    ElMessage.warning('未选择角色')
+    return
+  }
+
+  ElMessageBox.confirm(
+    `确定要将角色「${currentRole.value.name}」的权限恢复为系统默认配置吗？`,
+    '恢复默认权限',
+    {
+      confirmButtonText: '确定恢复',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(() => {
+    // 获取该角色的默认权限
+    const defaultPermissions = getDefaultRolePermissions(currentRole.value!.code)
+
+    if (defaultPermissions.length === 0 || defaultPermissions.includes('*')) {
+      ElMessage.info('该角色为管理员角色，拥有所有权限')
+      return
+    }
+
+    console.log('[角色权限] 恢复默认权限:', {
+      roleCode: currentRole.value!.code,
+      defaultPermissions: defaultPermissions
+    })
+
+    // 设置权限树的选中状态
+    if (permissionTreeRef.value) {
+      permissionTreeRef.value.setCheckedKeys(defaultPermissions)
+      ElMessage.success('已恢复为默认权限配置，请点击"保存权限"按钮保存')
+    }
+  }).catch(() => {
+    // 用户取消
+  })
+}
+
+/**
  * 确认权限设置
  */
 const confirmPermissions = async () => {
@@ -1873,7 +1917,7 @@ const confirmPermissions = async () => {
     permissionLoading.value = true
 
     // 获取选中的权限
-    const checkedKeys = permissionTreeRef.value?.getCheckedKeys()
+    const checkedKeys = permissionTreeRef.value?.getCheckedKeys() as string[]
 
     if (!currentRole.value) {
       ElMessage.error('未选择角色')
@@ -1886,30 +1930,31 @@ const confirmPermissions = async () => {
       permissionCount: checkedKeys?.length || 0
     })
 
-    // 直接保存到localStorage
+    // 🔥 调用后端API保存权限到数据库
     try {
-      // 获取角色列表
-      const roles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
+      await roleApiService.updateRole({
+        id: currentRole.value.id,
+        permissions: checkedKeys || []
+      })
 
-      // 查找目标角色
-      const roleIndex = roles.findIndex(r => r.id === currentRole.value.id)
-
-      if (roleIndex === -1) {
-        throw new Error(`未找到角色 ID: ${currentRole.value.id}`)
-      }
-
-      // 更新权限
-      roles[roleIndex].permissions = checkedKeys || []
-      roles[roleIndex].permissionCount = checkedKeys?.length || 0
-      roles[roleIndex].updatedAt = new Date().toISOString()
-
-      // 保存到localStorage
-      localStorage.setItem('crm_roles', JSON.stringify(roles))
-
-      console.log('[角色权限] 权限保存成功:', {
-        role: roles[roleIndex].name,
+      console.log('[角色权限] 权限已保存到数据库:', {
+        role: currentRole.value.name,
         permissions: checkedKeys?.length || 0
       })
+
+      // 同时更新localStorage作为缓存
+      try {
+        const roles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
+        const roleIndex = roles.findIndex((r: any) => r.id === currentRole.value?.id)
+        if (roleIndex !== -1) {
+          roles[roleIndex].permissions = checkedKeys || []
+          roles[roleIndex].permissionCount = checkedKeys?.length || 0
+          roles[roleIndex].updatedAt = new Date().toISOString()
+          localStorage.setItem('crm_roles', JSON.stringify(roles))
+        }
+      } catch (cacheError) {
+        console.warn('[角色权限] 更新本地缓存失败:', cacheError)
+      }
 
       // 同时更新当前用户的权限(如果当前用户是这个角色)
       const currentUser = userStore.user
@@ -1918,14 +1963,14 @@ const confirmPermissions = async () => {
         userStore.updatePermissions(checkedKeys || [])
       }
 
-      ElMessage.success('权限设置成功')
+      ElMessage.success('权限设置成功，已保存到数据库')
       handlePermissionDialogClose()
       loadRoleList()
-    } catch (saveError) {
-      console.error('[角色权限] 保存失败:', saveError)
-      throw saveError
+    } catch (saveError: any) {
+      console.error('[角色权限] 保存到数据库失败:', saveError)
+      throw new Error(saveError.message || '保存权限失败')
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('[角色权限] 权限设置失败:', error)
     ElMessage.error(`权限设置失败: ${error.message || '未知错误'}`)
   } finally {
@@ -2232,6 +2277,41 @@ const loadPermissionTree = async () => {
 
     // 降级到本地权限树
     permissionTree.value = [
+       {
+         id: 'dashboard',
+         name: '数据看板',
+         icon: 'DataBoard',
+         type: 'menu',
+         children: [
+           {
+             id: 'dashboard.personal',
+             name: '个人看板',
+             icon: 'User',
+             type: 'menu',
+             children: [
+               { id: 'dashboard.personal.view', name: '查看个人数据', type: 'action' }
+             ]
+           },
+           {
+             id: 'dashboard.department',
+             name: '部门看板',
+             icon: 'OfficeBuilding',
+             type: 'menu',
+             children: [
+               { id: 'dashboard.department.view', name: '查看部门数据', type: 'action' }
+             ]
+           },
+           {
+             id: 'dashboard.company',
+             name: '公司看板',
+             icon: 'TrendCharts',
+             type: 'menu',
+             children: [
+               { id: 'dashboard.company.view', name: '查看公司数据', type: 'action' }
+             ]
+           }
+         ]
+       },
        {
          id: 'system',
          name: '系统管理',

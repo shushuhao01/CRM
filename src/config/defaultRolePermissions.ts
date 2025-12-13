@@ -40,7 +40,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
     roleName: '部门经理',
     permissions: [
       // 数据看板
-      'dashboard', 'dashboard.view', 'dashboard.export',
+      'dashboard', 'dashboard.personal', 'dashboard.personal.view', 'dashboard.department', 'dashboard.department.view',
 
       // 客户管理
       'customer', 'customer.list', 'customer.list.view', 'customer.list.edit', 'customer.list.export', 'customer.list.import',
@@ -50,8 +50,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       'order', 'order.list', 'order.list.view', 'order.list.edit',
       'order.add', 'order.add.create',
 
-      // 服务管理（通讯管理）
-      'communication', 'communication.call', 'communication.call.view', 'communication.call.make',
+      // 服务管理
+      'service', 'service.call', 'service.call.view', 'service.call.make',
 
       // 业绩统计
       'performance', 'performance.personal', 'performance.personal.view',
@@ -63,9 +63,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       'logistics.track', 'logistics.track.view',
 
       // 售后管理
-      'aftersale', 'aftersale.list', 'aftersale.list.view',
-      'aftersale.add', 'aftersale.add.create',
-      'aftersale.data', 'aftersale.data.view',
+      'afterSales', 'afterSales.list', 'afterSales.list.view',
+      'afterSales.add', 'afterSales.add.create',
+      'afterSales.data', 'afterSales.data.view', 'afterSales.data.analysis',
 
       // 资料管理
       'data', 'data.search', 'data.search.basic', 'data.search.advanced'
@@ -79,7 +79,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
     roleName: '销售员',
     permissions: [
       // 数据看板
-      'dashboard', 'dashboard.view',
+      'dashboard', 'dashboard.personal', 'dashboard.personal.view',
 
       // 客户管理（移除客户分组、客户标签）
       'customer', 'customer.list', 'customer.list.view',
@@ -89,8 +89,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       'order', 'order.list', 'order.list.view', 'order.list.edit',
       'order.add', 'order.add.create',
 
-      // 服务管理（通讯管理，移除短信管理）
-      'communication', 'communication.call', 'communication.call.view', 'communication.call.make',
+      // 服务管理（移除短信管理）
+      'service', 'service.call', 'service.call.view', 'service.call.make',
 
       // 业绩统计
       'performance', 'performance.personal', 'performance.personal.view',
@@ -101,8 +101,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       'logistics.track', 'logistics.track.view',
 
       // 售后管理（移除售后数据分析）
-      'aftersale', 'aftersale.list', 'aftersale.list.view',
-      'aftersale.add', 'aftersale.add.create',
+      'afterSales', 'afterSales.list', 'afterSales.list.view',
+      'afterSales.add', 'afterSales.add.create',
 
       // 资料管理（移除回收站）
       'data', 'data.search', 'data.search.basic'
@@ -116,21 +116,21 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
     roleName: '客服',
     permissions: [
       // 数据看板
-      'dashboard', 'dashboard.view',
+      'dashboard', 'dashboard.personal', 'dashboard.personal.view',
 
       // 订单审核权限
-      'order', 'order.audit', 'order.audit.view', 'order.audit.approve', 'order.audit.reject', 'order.audit.batch',
+      'order', 'order.audit', 'order.audit.view', 'order.audit.approve', 'order.audit.reject',
 
       // 物流管理权限
       'logistics', 'logistics.list', 'logistics.list.view',
       'logistics.shipping', 'logistics.shipping.view', 'logistics.shipping.create',
       'logistics.track', 'logistics.track.view', 'logistics.track.update',
-      'logistics.status', 'logistics.status.view', 'logistics.status.update', 'logistics.status.batch',
+      'logistics.status', 'logistics.status.view', 'logistics.status.update',
 
       // 售后管理权限
-      'aftersale', 'aftersale.list', 'aftersale.list.view',
-      'aftersale.add', 'aftersale.add.create',
-      'aftersale.data', 'aftersale.data.view',
+      'afterSales', 'afterSales.list', 'afterSales.list.view',
+      'afterSales.add', 'afterSales.add.create',
+      'afterSales.data', 'afterSales.data.view', 'afterSales.data.analysis',
 
       // 资料管理权限
       'data', 'data.list', 'data.list.view', 'data.search', 'data.search.basic', 'data.search.advanced'
