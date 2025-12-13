@@ -173,7 +173,7 @@
         :summary-method="getSummaries"
       >
         <el-table-column type="index" label="序号" width="60" align="center" fixed="left" />
-        <el-table-column prop="name" label="成员" width="100" align="center" fixed="left" />
+        <el-table-column prop="name" label="成员" min-width="80" align="center" fixed="left" show-overflow-tooltip />
 
         <!-- 动态渲染列 -->
         <el-table-column
@@ -182,7 +182,9 @@
           :prop="column.prop"
           :label="column.label"
           :width="column.width"
+          :min-width="column.minWidth"
           :align="column.align"
+          :show-overflow-tooltip="column.prop === 'department' || column.prop === 'username'"
         >
           <template #default="{ row }">
             <!-- 金额类字段 -->
@@ -498,7 +500,7 @@
             :summary-method="getFullscreenSummaries"
           >
             <el-table-column type="index" label="序号" width="60" align="center" fixed="left" />
-            <el-table-column prop="name" label="成员" width="100" align="center" fixed="left" />
+            <el-table-column prop="name" label="成员" min-width="80" align="center" fixed="left" show-overflow-tooltip />
 
             <!-- 动态渲染列 - 与主视图保持一致 -->
             <el-table-column
@@ -507,7 +509,9 @@
               :prop="column.prop"
               :label="column.label"
               :width="column.width"
+              :min-width="column.minWidth"
               :align="column.align"
+              :show-overflow-tooltip="column.prop === 'department' || column.prop === 'username'"
             >
               <template #default="{ row }">
                 <!-- 金额类字段 -->
@@ -836,8 +840,8 @@ const columnSettingsRef = ref()
 
 // 定义所有可用的列
 const tableColumns = ref<TableColumn[]>([
-  { prop: 'department', label: '部门', width: 100, align: 'center', visible: true },
-  { prop: 'username', label: '用户名', width: 100, align: 'center', visible: true },
+  { prop: 'department', label: '部门', minWidth: 80, align: 'center', visible: true },
+  { prop: 'username', label: '用户名', minWidth: 80, align: 'center', visible: true },
   { prop: 'employeeNumber', label: '工号', width: 100, align: 'center', visible: false },
   { prop: 'createTime', label: '创建时间', width: 110, align: 'center', visible: false },
   { prop: 'orderCount', label: '下单单数', width: 90, align: 'center', visible: true },
