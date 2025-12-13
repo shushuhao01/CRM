@@ -2008,15 +2008,34 @@ const getSummaries = (param: { columns: any[]; data: TeamMember[] }) => {
       return
     }
 
-    // 比率类字段 - 计算平均值
+    // 比率类字段 - 根据对应单数计算比率
     if (prop.includes('Rate')) {
-      const validData = data.filter(row => row[prop] !== undefined && row[prop] !== null)
-      if (validData.length > 0) {
-        const avg = validData.reduce((sum, row) => sum + (Number(row[prop]) || 0), 0) / validData.length
-        sums[index] = `${avg.toFixed(1)}%`
-      } else {
-        sums[index] = '0%'
+      // 计算合计的单数
+      const totalOrderCount = data.reduce((sum, row) => sum + (Number(row.orderCount) || 0), 0)
+      const totalShipCount = data.reduce((sum, row) => sum + (Number(row.shipCount) || 0), 0)
+      const totalSignCount = data.reduce((sum, row) => sum + (Number(row.signCount) || 0), 0)
+      const totalTransitCount = data.reduce((sum, row) => sum + (Number(row.transitCount) || 0), 0)
+      const totalRejectCount = data.reduce((sum, row) => sum + (Number(row.rejectCount) || 0), 0)
+      const totalReturnCount = data.reduce((sum, row) => sum + (Number(row.returnCount) || 0), 0)
+
+      let rate = 0
+      if (prop === 'shipRate') {
+        // 发货率 = 发货单数 / 下单单数
+        rate = totalOrderCount > 0 ? (totalShipCount / totalOrderCount) * 100 : 0
+      } else if (prop === 'signRate') {
+        // 签收率 = 签收单数 / 发货单数
+        rate = totalShipCount > 0 ? (totalSignCount / totalShipCount) * 100 : 0
+      } else if (prop === 'transitRate') {
+        // 在途率 = 在途单数 / 发货单数
+        rate = totalShipCount > 0 ? (totalTransitCount / totalShipCount) * 100 : 0
+      } else if (prop === 'rejectRate') {
+        // 拒收率 = 拒收单数 / 发货单数
+        rate = totalShipCount > 0 ? (totalRejectCount / totalShipCount) * 100 : 0
+      } else if (prop === 'returnRate') {
+        // 退货率 = 退货单数 / 发货单数
+        rate = totalShipCount > 0 ? (totalReturnCount / totalShipCount) * 100 : 0
       }
+      sums[index] = `${rate.toFixed(1)}%`
       return
     }
 
@@ -2065,15 +2084,34 @@ const getFullscreenSummaries = (param: { columns: unknown[]; data: TeamMember[] 
       return
     }
 
-    // 比率类字段 - 计算平均值
+    // 比率类字段 - 根据对应单数计算比率
     if (prop.includes('Rate')) {
-      const validData = data.filter(row => row[prop] !== undefined && row[prop] !== null)
-      if (validData.length > 0) {
-        const avg = validData.reduce((sum, row) => sum + (Number(row[prop]) || 0), 0) / validData.length
-        sums[index] = `${avg.toFixed(1)}%`
-      } else {
-        sums[index] = '0%'
+      // 计算合计的单数
+      const totalOrderCount = data.reduce((sum, row) => sum + (Number(row.orderCount) || 0), 0)
+      const totalShipCount = data.reduce((sum, row) => sum + (Number(row.shipCount) || 0), 0)
+      const totalSignCount = data.reduce((sum, row) => sum + (Number(row.signCount) || 0), 0)
+      const totalTransitCount = data.reduce((sum, row) => sum + (Number(row.transitCount) || 0), 0)
+      const totalRejectCount = data.reduce((sum, row) => sum + (Number(row.rejectCount) || 0), 0)
+      const totalReturnCount = data.reduce((sum, row) => sum + (Number(row.returnCount) || 0), 0)
+
+      let rate = 0
+      if (prop === 'shipRate') {
+        // 发货率 = 发货单数 / 下单单数
+        rate = totalOrderCount > 0 ? (totalShipCount / totalOrderCount) * 100 : 0
+      } else if (prop === 'signRate') {
+        // 签收率 = 签收单数 / 发货单数
+        rate = totalShipCount > 0 ? (totalSignCount / totalShipCount) * 100 : 0
+      } else if (prop === 'rejectRate') {
+        // 拒收率 = 拒收单数 / 发货单数
+        rate = totalShipCount > 0 ? (totalRejectCount / totalShipCount) * 100 : 0
+      } else if (prop === 'transitRate') {
+        // 在途率 = 在途单数 / 发货单数
+        rate = totalShipCount > 0 ? (totalTransitCount / totalShipCount) * 100 : 0
+      } else if (prop === 'returnRate') {
+        // 退货率 = 退货单数 / 发货单数
+        rate = totalShipCount > 0 ? (totalReturnCount / totalShipCount) * 100 : 0
       }
+      sums[index] = `${rate.toFixed(1)}%`
       return
     }
 
