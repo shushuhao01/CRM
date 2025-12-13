@@ -1260,7 +1260,7 @@ onMounted(async () => {
     loadOptions(),
     loadReportTypes(),
     userStore.loadUsers(),
-    departmentStore.loadDepartments()
+    departmentStore.fetchDepartments()
   ])
   // 等待通知渠道和业绩配置加载完成
   await Promise.all([
