@@ -562,9 +562,13 @@ export class MessageController {
         message: '公告创建成功',
         data: announcement
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('创建公告失败:', error);
-      res.status(500).json({ success: false, message: '创建公告失败' });
+      console.error('错误详情:', error.message, error.stack);
+      res.status(500).json({
+        success: false,
+        message: '创建公告失败: ' + (error.message || '未知错误')
+      });
     }
   }
 

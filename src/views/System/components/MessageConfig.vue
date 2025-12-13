@@ -714,18 +714,22 @@ const reportTypeCategories = computed(() => {
 
 // 主要消息类型（始终显示）
 const primaryMessageTypes = computed(() => {
-  return messageTypes.value.filter((t: any) => t.primary === true)
+  if (!Array.isArray(messageTypes.value)) return []
+  return messageTypes.value.filter((t: any) => t?.primary === true)
 })
 
 // 其他消息类型（折叠显示）
 const otherMessageTypes = computed(() => {
-  return messageTypes.value.filter((t: any) => t.primary !== true)
+  if (!Array.isArray(messageTypes.value)) return []
+  return messageTypes.value.filter((t: any) => t?.primary !== true)
 })
 
 // 消息类型分类（用于折叠区域）
 const messageTypeCategories = computed(() => {
   const categories: Record<string, any[]> = {}
+  if (!Array.isArray(otherMessageTypes.value)) return []
   otherMessageTypes.value.forEach((type: any) => {
+    if (!type) return
     const cat = type.category || '其他'
     if (!categories[cat]) {
       categories[cat] = []
@@ -1256,18 +1260,23 @@ const getReportTypeLabel = (value: string) => {
 // 初始化
 onMounted(async () => {
   console.log('[MessageConfig] 组件挂载，开始加载数据...')
-  await Promise.all([
-    loadOptions(),
-    loadReportTypes(),
-    userStore.loadUsers(),
-    departmentStore.fetchDepartments()
-  ])
-  // 等待通知渠道和业绩配置加载完成
-  await Promise.all([
-    loadChannels(),
-    loadPerformanceConfigs()
-  ])
-  console.log('[MessageConfig] 所有数据加载完成')
+  try {
+    // 并行加载基础数据，每个都有独立的错误处理
+    await Promise.all([
+      loadOptions().catch((e: unknown) => console.error('[MessageConfig] loadOptions失败:', e)),
+      loadReportTypes().catch((e: unknown) => console.error('[MessageConfig] loadReportTypes失败:', e)),
+      userStore.loadUsers?.().catch((e: unknown) => console.error('[MessageConfig] loadUsers失败:', e)),
+      departmentStore.fetchDepartments?.().catch((e: unknown) => console.error('[MessageConfig] fetchDepartments失败:', e))
+    ])
+    // 等待通知渠道和业绩配置加载完成
+    await Promise.all([
+      loadChannels().catch((e: unknown) => console.error('[MessageConfig] loadChannels失败:', e)),
+      loadPerformanceConfigs().catch((e: unknown) => console.error('[MessageConfig] loadPerformanceConfigs失败:', e))
+    ])
+    console.log('[MessageConfig] 所有数据加载完成')
+  } catch (error) {
+    console.error('[MessageConfig] 初始化失败:', error)
+  }
 })
 </script>
 

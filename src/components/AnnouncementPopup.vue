@@ -92,8 +92,10 @@ const truncateContent = (content: string) => {
   return text.length > 100 ? text.substring(0, 100) + '...' : text
 }
 
-const handleClose = () => {
+const handleClose = async () => {
   if (currentAnnouncement.value) {
+    // 关闭也标记为已读
+    await messageStore.markAnnouncementAsRead(currentAnnouncement.value.id)
     saveDismissedId(currentAnnouncement.value.id)
   }
   visible.value = false
@@ -114,8 +116,10 @@ const handleConfirm = async () => {
   }
 }
 
-const handleReadLater = () => {
+const handleReadLater = async () => {
   if (currentAnnouncement.value) {
+    // 稍后查看也标记为已读
+    await messageStore.markAnnouncementAsRead(currentAnnouncement.value.id)
     saveDismissedId(currentAnnouncement.value.id)
   }
   visible.value = false

@@ -181,7 +181,7 @@ const pauseCarousel = () => {
   }
 }
 
-const closeCarousel = () => {
+const closeCarousel = async () => {
   // 将当前显示的公告ID添加到已关闭列表（带时间戳）
   const now = Date.now()
   const stored = localStorage.getItem('closedAnnouncementIds')
@@ -198,10 +198,17 @@ const closeCarousel = () => {
     // ignore
   }
 
-  visibleAnnouncements.value.forEach(announcement => {
+  // 关闭时标记所有显示的公告为已读
+  for (const announcement of visibleAnnouncements.value) {
     closedAnnouncementIds.value.add(announcement.id)
     data[announcement.id] = now
-  })
+    // 标记为已读
+    try {
+      await messageStore.markAnnouncementAsRead(announcement.id)
+    } catch (e) {
+      console.error('标记公告已读失败:', e)
+    }
+  }
 
   // 保存到本地存储
   localStorage.setItem('closedAnnouncementIds', JSON.stringify(data))
