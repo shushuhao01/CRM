@@ -457,28 +457,52 @@ export class MessageController {
 
       const [list, total] = await queryBuilder.getManyAndCount();
 
+      // 获取每个公告的送达人数和已读人数
+      const messageRepo = dataSource.getRepository(SystemMessage);
+      const readRepo = dataSource.getRepository(AnnouncementRead);
+
+      const listWithStats = await Promise.all(list.map(async (ann) => {
+        let deliveredCount = 0;
+        let readCount = 0;
+
+        if (ann.status === 'published') {
+          // 送达人数：发送的系统消息数量
+          deliveredCount = await messageRepo.count({
+            where: { relatedId: ann.id, type: 'announcement' }
+          });
+          // 已读人数：阅读记录数量
+          readCount = await readRepo.count({
+            where: { announcementId: ann.id }
+          });
+        }
+
+        return {
+          id: ann.id,
+          title: ann.title,
+          content: ann.content,
+          type: ann.type,
+          priority: ann.priority,
+          status: ann.status,
+          targetRoles: ann.targetRoles,
+          targetDepartments: ann.targetDepartments,
+          startTime: ann.startTime,
+          endTime: ann.endTime,
+          isPinned: ann.isPinned === 1,
+          viewCount: ann.viewCount,
+          deliveredCount,
+          readCount,
+          createdBy: ann.createdBy,
+          createdByName: ann.createdByName,
+          publishedAt: ann.publishedAt,
+          createdAt: ann.createdAt,
+          updatedAt: ann.updatedAt
+        };
+      }));
+
       res.json({
         success: true,
         data: {
-          list: list.map(ann => ({
-            id: ann.id,
-            title: ann.title,
-            content: ann.content,
-            type: ann.type,
-            priority: ann.priority,
-            status: ann.status,
-            targetRoles: ann.targetRoles,
-            targetDepartments: ann.targetDepartments,
-            startTime: ann.startTime,
-            endTime: ann.endTime,
-            isPinned: ann.isPinned === 1,
-            viewCount: ann.viewCount,
-            createdBy: ann.createdBy,
-            createdByName: ann.createdByName,
-            publishedAt: ann.publishedAt,
-            createdAt: ann.createdAt,
-            updatedAt: ann.updatedAt
-          })),
+          list: listWithStats,
           total,
           page: Number(page),
           pageSize: Number(pageSize)
@@ -642,12 +666,58 @@ export class MessageController {
 
       await announcementRepo.save(announcement);
 
-      console.log(`[公告] ✅ 发布成功: ${announcement.title}`);
+      // 🔥 发送系统消息给目标用户
+      const { User } = await import('../entities/User');
+      const userRepo = dataSource.getRepository(User);
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      // 获取目标用户列表
+      let targetUsers: any[] = [];
+      if (announcement.targetRoles && announcement.targetRoles.length > 0) {
+        // 按角色筛选
+        targetUsers = await userRepo.find({
+          where: { status: 'active' }
+        });
+        targetUsers = targetUsers.filter(u => announcement.targetRoles?.includes(u.role));
+      } else if (announcement.targetDepartments && announcement.targetDepartments.length > 0) {
+        // 按部门筛选
+        targetUsers = await userRepo.find({
+          where: { status: 'active' }
+        });
+        targetUsers = targetUsers.filter(u => announcement.targetDepartments?.includes(u.departmentId));
+      } else {
+        // 全部用户
+        targetUsers = await userRepo.find({
+          where: { status: 'active' }
+        });
+      }
+
+      // 批量创建系统消息
+      const messages = targetUsers.map(user => messageRepo.create({
+        id: uuidv4(),
+        type: 'announcement',
+        title: `📢 ${announcement.title}`,
+        content: announcement.content.substring(0, 200) + (announcement.content.length > 200 ? '...' : ''),
+        targetUserId: user.id,
+        priority: announcement.priority === 'urgent' ? 'high' : 'normal',
+        category: 'system',
+        relatedId: announcement.id,
+        actionUrl: `/system/message?tab=announcement&id=${announcement.id}`,
+        isRead: 0
+      }));
+
+      if (messages.length > 0) {
+        await messageRepo.save(messages);
+        console.log(`[公告] ✅ 发布成功: ${announcement.title}，已发送给 ${messages.length} 个用户`);
+      }
 
       res.json({
         success: true,
-        message: '公告发布成功',
-        data: announcement
+        message: `公告发布成功，已通知 ${messages.length} 个用户`,
+        data: {
+          ...announcement,
+          deliveredCount: messages.length
+        }
       });
     } catch (error) {
       console.error('发布公告失败:', error);
@@ -1576,31 +1646,114 @@ export class MessageController {
     try {
       const dataSource = getDataSource();
       if (!dataSource) {
-        res.json({ success: true, data: { total: 0, unread: 0 } });
+        res.json({ success: true, data: this.getEmptyStats() });
         return;
       }
 
       const currentUser = (req as any).currentUser || (req as any).user;
       const userId = currentUser?.id || currentUser?.userId;
 
-      if (!userId) {
-        res.status(401).json({ success: false, message: '未登录' });
-        return;
+      // 获取今日开始时间
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // 公告统计
+      let totalAnnouncements = 0;
+      let publishedAnnouncements = 0;
+      try {
+        const announcementRepo = dataSource.getRepository(Announcement);
+        totalAnnouncements = await announcementRepo.count();
+        publishedAnnouncements = await announcementRepo.count({ where: { status: 'published' } });
+      } catch (_e) {
+        console.log('[统计] 公告表可能不存在');
       }
 
-      const messageRepo = dataSource.getRepository(SystemMessage);
+      // 普通通知配置统计
+      let notificationChannelCount = 0;
+      let todayNotificationSent = 0;
+      let totalNotificationSent = 0;
+      try {
+        const channelRepo = dataSource.getRepository(NotificationChannel);
+        notificationChannelCount = await channelRepo.count();
 
-      const total = await messageRepo.count({ where: { targetUserId: userId } });
-      const unread = await messageRepo.count({ where: { targetUserId: userId, isRead: 0 } });
+        const logRepo = dataSource.getRepository(NotificationLog);
+        totalNotificationSent = await logRepo.count({ where: { status: 'success' } });
+        todayNotificationSent = await logRepo.createQueryBuilder('log')
+          .where('log.status = :status', { status: 'success' })
+          .andWhere('log.created_at >= :today', { today })
+          .getCount();
+      } catch (_e) {
+        console.log('[统计] 通知渠道表可能不存在');
+      }
+
+      // 业绩消息配置统计
+      let performanceConfigCount = 0;
+      let todayPerformanceSent = 0;
+      let totalPerformanceSent = 0;
+      try {
+        const { PerformanceReportConfig } = await import('../entities/PerformanceReportConfig');
+        const configRepo = dataSource.getRepository(PerformanceReportConfig);
+        performanceConfigCount = await configRepo.count();
+
+        // 统计发送成功的次数
+        const successConfigs = await configRepo.find({ where: { lastSentStatus: 'success' } });
+        totalPerformanceSent = successConfigs.length;
+
+        // 今日发送的
+        todayPerformanceSent = successConfigs.filter(c =>
+          c.lastSentAt && new Date(c.lastSentAt) >= today
+        ).length;
+      } catch (_e) {
+        console.log('[统计] 业绩报表配置表可能不存在');
+      }
+
+      // 系统消息统计
+      let totalMessages = 0;
+      let unreadMessages = 0;
+      if (userId) {
+        try {
+          const messageRepo = dataSource.getRepository(SystemMessage);
+          totalMessages = await messageRepo.count({ where: { targetUserId: userId } });
+          unreadMessages = await messageRepo.count({ where: { targetUserId: userId, isRead: 0 } });
+        } catch (_e) {
+          console.log('[统计] 系统消息表可能不存在');
+        }
+      }
 
       res.json({
         success: true,
-        data: { total, unread }
+        data: {
+          totalAnnouncements,
+          publishedAnnouncements,
+          notificationChannelCount,
+          todayNotificationSent,
+          totalNotificationSent,
+          performanceConfigCount,
+          todayPerformanceSent,
+          totalPerformanceSent,
+          totalMessages,
+          unreadMessages
+        }
       });
     } catch (error) {
       console.error('获取消息统计失败:', error);
-      res.status(500).json({ success: false, message: '获取消息统计失败' });
+      res.json({ success: true, data: this.getEmptyStats() });
     }
+  }
+
+  private getEmptyStats() {
+    return {
+      totalAnnouncements: 0,
+      publishedAnnouncements: 0,
+      notificationChannelCount: 0,
+      todayNotificationSent: 0,
+      totalNotificationSent: 0,
+      performanceConfigCount: 0,
+      todayPerformanceSent: 0,
+      totalPerformanceSent: 0,
+      totalMessages: 0,
+      unreadMessages: 0
+    };
   }
 
   /**
