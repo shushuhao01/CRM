@@ -1936,14 +1936,17 @@ export class MessageController {
         case 'wechat_work':
           testResult = await this.sendWechatWorkMessage(channel.config, message);
           break;
+        case 'wechat_mp':
+          testResult = { success: false, message: '微信公众号需要用户关注后才能发送模板消息，请在实际业务中测试' };
+          break;
         case 'email':
-          testResult = { success: true, message: '邮件测试功能开发中' };
+          testResult = await this.sendEmailMessage(channel.config, message, 'CRM系统测试邮件');
           break;
         case 'sms':
-          testResult = { success: true, message: '短信测试功能开发中' };
+          testResult = await this.sendSmsMessage(channel.config, message);
           break;
         case 'system':
-          testResult = { success: true, message: '系统通知测试成功' };
+          testResult = { success: true, message: '系统通知测试成功（系统内置通知无需外部配置）' };
           break;
         default:
           testResult = { success: false, message: `不支持的渠道类型: ${channel.channelType}` };
@@ -2012,6 +2015,8 @@ export class MessageController {
         return { success: false, message: '企业微信Webhook地址未配置' };
       }
 
+      console.log(`[企业微信] 正在发送消息到: ${webhook.substring(0, 60)}...`);
+
       const response = await fetch(webhook, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2023,13 +2028,88 @@ export class MessageController {
 
       const result = await response.json() as { errcode: number; errmsg: string };
 
+      console.log(`[企业微信] 响应结果:`, result);
+
       if (result.errcode === 0) {
         return { success: true, message: '企业微信消息发送成功', details: result };
       } else {
-        return { success: false, message: `企业微信发送失败: ${result.errmsg}`, details: result };
+        return { success: false, message: `企业微信发送失败: ${result.errmsg} (错误码: ${result.errcode})`, details: result };
       }
     } catch (error: any) {
+      console.error(`[企业微信] 发送异常:`, error);
       return { success: false, message: `企业微信发送异常: ${error.message}` };
+    }
+  }
+
+  /**
+   * 发送邮件 - 使用nodemailer
+   */
+  private async sendEmailMessage(config: any, message: string, subject?: string): Promise<{ success: boolean; message: string; details?: any }> {
+    try {
+      const { smtp_host, smtp_port, username, password, from_name } = config;
+
+      if (!smtp_host || !username || !password) {
+        return { success: false, message: '邮件配置不完整，请检查SMTP服务器、账号和密码' };
+      }
+
+      // 动态导入nodemailer（如果已安装）
+      try {
+        const nodemailer = require('nodemailer');
+
+        const transporter = nodemailer.createTransport({
+          host: smtp_host,
+          port: smtp_port || 587,
+          secure: smtp_port === 465,
+          auth: {
+            user: username,
+            pass: password
+          }
+        });
+
+        // 测试邮件发送给自己
+        const info = await transporter.sendMail({
+          from: `"${from_name || 'CRM系统'}" <${username}>`,
+          to: username, // 测试时发给自己
+          subject: subject || 'CRM系统测试邮件',
+          text: message,
+          html: `<div style="padding: 20px; background: #f5f5f5;"><h3>CRM系统通知</h3><p>${message}</p><p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复</p></div>`
+        });
+
+        return { success: true, message: '邮件发送成功', details: { messageId: info.messageId } };
+      } catch (e: any) {
+        if (e.code === 'MODULE_NOT_FOUND') {
+          return { success: false, message: '邮件功能需要安装nodemailer模块: npm install nodemailer' };
+        }
+        throw e;
+      }
+    } catch (error: any) {
+      return { success: false, message: `邮件发送失败: ${error.message}` };
+    }
+  }
+
+  /**
+   * 发送短信 - 阿里云短信服务
+   */
+  private async sendSmsMessage(config: any, _message: string): Promise<{ success: boolean; message: string; details?: any }> {
+    try {
+      const { provider, access_key, access_secret, sign_name, template_code } = config;
+
+      if (!access_key || !access_secret || !sign_name || !template_code) {
+        return { success: false, message: '短信配置不完整，请检查AccessKey、签名和模板' };
+      }
+
+      if (provider === 'aliyun') {
+        // 阿里云短信API调用
+        // 注意：实际使用需要安装 @alicloud/dysmsapi20170525
+        return { success: false, message: '阿里云短信功能需要安装SDK: npm install @alicloud/dysmsapi20170525' };
+      } else if (provider === 'tencent') {
+        // 腾讯云短信API调用
+        return { success: false, message: '腾讯云短信功能需要安装SDK: npm install tencentcloud-sdk-nodejs' };
+      }
+
+      return { success: false, message: `不支持的短信服务商: ${provider}` };
+    } catch (error: any) {
+      return { success: false, message: `短信发送失败: ${error.message}` };
     }
   }
 

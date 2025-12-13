@@ -61,8 +61,31 @@
         <!-- 卡片头部 -->
         <div class="card-header">
           <div class="channel-info">
-            <div class="channel-icon" :style="{ background: getChannelColor(channel.channelType) }">
-              <component :is="getChannelIcon(channel.channelType)" />
+            <div class="channel-icon" :class="`icon-${channel.channelType}`">
+              <!-- 钉钉图标 -->
+              <svg v-if="channel.channelType === 'dingtalk'" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.62 3.72-.53.36-1.01.54-1.44.53-.47-.01-1.38-.27-2.06-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.74 3.98-1.73 6.64-2.87 7.97-3.43 3.8-1.57 4.59-1.85 5.1-1.86.11 0 .37.03.53.17.14.12.18.28.2.45-.01.06.01.24 0 .38z"/>
+              </svg>
+              <!-- 企业微信图标 -->
+              <svg v-else-if="channel.channelType === 'wechat_work'" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 01.213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 00.167-.054l1.903-1.114a.864.864 0 01.717-.098 10.16 10.16 0 002.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 01-1.162 1.178A1.17 1.17 0 014.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 01-1.162 1.178 1.17 1.17 0 01-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 01.598.082l1.584.926a.272.272 0 00.14.045c.134 0 .24-.111.24-.247 0-.06-.023-.12-.038-.177l-.327-1.233a.582.582 0 01-.023-.156.49.49 0 01.201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-6.656-6.088V8.89c-.135-.01-.269-.03-.406-.03zm-2.53 3.274c.535 0 .969.44.969.982a.976.976 0 01-.969.983.976.976 0 01-.969-.983c0-.542.434-.982.97-.982zm4.844 0c.535 0 .969.44.969.982a.976.976 0 01-.969.983.976.976 0 01-.969-.983c0-.542.434-.982.969-.982z"/>
+              </svg>
+              <!-- 微信公众号图标 -->
+              <svg v-else-if="channel.channelType === 'wechat_mp'" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-2-9c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1zm4 0c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1zm-2 5.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+              </svg>
+              <!-- 邮件图标 -->
+              <svg v-else-if="channel.channelType === 'email'" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+              </svg>
+              <!-- 短信图标 -->
+              <svg v-else-if="channel.channelType === 'sms'" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14zm-4.2-5.78v1.75l3.2-2.99L12.8 9v1.7c-3.11.43-4.35 2.56-4.8 4.7 1.11-1.5 2.58-2.18 4.8-2.18z"/>
+              </svg>
+              <!-- 系统通知图标 -->
+              <svg v-else viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+              </svg>
             </div>
             <div class="channel-meta">
               <h4>{{ channel.name }}</h4>
@@ -464,7 +487,8 @@ const getChannelLabel = (type: string) => {
   return found?.label || type
 }
 
-const getChannelColor = (type: string) => {
+// 图标颜色和类型现在通过CSS类实现，保留这些方法用于其他地方
+const _getChannelColor = (type: string) => {
   const colors: Record<string, string> = {
     system: '#722ED1',
     dingtalk: '#1890FF',
@@ -476,7 +500,7 @@ const getChannelColor = (type: string) => {
   return colors[type] || '#909399'
 }
 
-const getChannelIcon = (type: string) => {
+const _getChannelIcon = (type: string) => {
   const icons: Record<string, any> = {
     system: Monitor,
     dingtalk: ChatDotRound,
@@ -763,6 +787,36 @@ onMounted(async () => {
   justify-content: center;
   color: white;
   font-size: 24px;
+}
+
+.channel-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+/* 各渠道图标颜色 */
+.channel-icon.icon-dingtalk {
+  background: linear-gradient(135deg, #1890FF 0%, #096DD9 100%);
+}
+
+.channel-icon.icon-wechat_work {
+  background: linear-gradient(135deg, #52C41A 0%, #389E0D 100%);
+}
+
+.channel-icon.icon-wechat_mp {
+  background: linear-gradient(135deg, #07C160 0%, #06AD56 100%);
+}
+
+.channel-icon.icon-email {
+  background: linear-gradient(135deg, #FA8C16 0%, #D46B08 100%);
+}
+
+.channel-icon.icon-sms {
+  background: linear-gradient(135deg, #FF4D4F 0%, #CF1322 100%);
+}
+
+.channel-icon.icon-system {
+  background: linear-gradient(135deg, #722ED1 0%, #531DAB 100%);
 }
 
 .channel-meta h4 {
