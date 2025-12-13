@@ -29,8 +29,9 @@
           </div>
         </div>
         <div class="header-right">
-          <!-- 存储模式切换 -->
+          <!-- 存储模式切换（已禁用）
           <StorageModeSwitch />
+          -->
 
           <!-- 帮助中心 -->
           <HelpCenter />
