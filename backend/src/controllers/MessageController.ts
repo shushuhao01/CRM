@@ -2163,16 +2163,26 @@ export class MessageController {
   async getNotificationOptions(_req: Request, res: Response): Promise<void> {
     try {
       const messageTypes = [
-        { value: 'AUDIT_PENDING', label: '待审核订单', description: '订单提交审核时通知' },
-        { value: 'AUDIT_APPROVED', label: '审核通过', description: '订单审核通过时通知' },
-        { value: 'AUDIT_REJECTED', label: '审核拒绝', description: '订单审核拒绝时通知' },
-        { value: 'ORDER_SHIPPED', label: '订单发货', description: '订单发货时通知' },
-        { value: 'ORDER_CANCELLED', label: '订单取消', description: '订单取消时通知' },
-        { value: 'AFTER_SALES_CREATED', label: '售后创建', description: '创建售后服务时通知' },
-        { value: 'CUSTOMER_CREATED', label: '新客户', description: '新客户创建时通知' },
-        { value: 'PAYMENT_REMINDER', label: '付款提醒', description: '付款提醒通知' },
-        { value: 'SYSTEM_UPDATE', label: '系统更新', description: '系统更新时通知' },
-        { value: 'MAINTENANCE', label: '系统维护', description: '系统维护时通知' }
+        // 订单相关（主要）
+        { value: 'AUDIT_PENDING', label: '待审核订单', description: '订单提交审核时通知', category: '订单通知', primary: true },
+        { value: 'AUDIT_APPROVED', label: '审核通过', description: '订单审核通过时通知', category: '订单通知', primary: true },
+        { value: 'AUDIT_REJECTED', label: '审核拒绝', description: '订单审核拒绝时通知', category: '订单通知', primary: true },
+        { value: 'ORDER_SHIPPED', label: '订单发货', description: '订单发货时通知', category: '订单通知', primary: true },
+        // 物流相关
+        { value: 'ORDER_DELIVERED', label: '已签收', description: '订单签收时通知', category: '物流通知', primary: false },
+        { value: 'PACKAGE_EXCEPTION', label: '包裹异常', description: '包裹出现异常时通知', category: '物流通知', primary: false },
+        { value: 'ORDER_REJECTED', label: '拒收', description: '订单被拒收时通知', category: '物流通知', primary: false },
+        // 售后相关
+        { value: 'AFTER_SALES_CREATED', label: '新建售后', description: '创建售后服务时通知', category: '售后通知', primary: false },
+        { value: 'REFUND_REQUESTED', label: '退款申请', description: '客户申请退款时通知', category: '售后通知', primary: false },
+        { value: 'REFUND_COMPLETED', label: '退款完成', description: '退款处理完成时通知', category: '售后通知', primary: false },
+        { value: 'RETURN_REQUESTED', label: '退货申请', description: '客户申请退货时通知', category: '售后通知', primary: false },
+        // 其他
+        { value: 'ORDER_CANCELLED', label: '订单取消', description: '订单取消时通知', category: '其他通知', primary: false },
+        { value: 'CUSTOMER_CREATED', label: '新客户', description: '新客户创建时通知', category: '其他通知', primary: false },
+        { value: 'PAYMENT_REMINDER', label: '付款提醒', description: '付款提醒通知', category: '其他通知', primary: false },
+        { value: 'SYSTEM_UPDATE', label: '系统更新', description: '系统更新时通知', category: '系统通知', primary: false },
+        { value: 'MAINTENANCE', label: '系统维护', description: '系统维护时通知', category: '系统通知', primary: false }
       ];
 
       const channelTypes = [
