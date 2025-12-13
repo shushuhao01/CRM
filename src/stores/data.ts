@@ -102,45 +102,24 @@ export const useDataStore = createPersistentStore('data', () => {
     if (userStore.currentUser) {
       const currentUserId = userStore.currentUser.id
       const currentUserRole = userStore.currentUser.role
-      const currentDeptId = userStore.currentUser.departmentId
       const isSuperAdmin = currentUserRole === 'super_admin' || currentUserRole === 'admin'
       const isDepartmentManager = currentUserRole === 'department_manager'
 
       // 超级管理员和管理员可以查看所有数据
-      if (!isSuperAdmin) {
-        if (isDepartmentManager) {
-          // 🔥 部门经理：只能查看分配给自己的资料（不是本部门所有资料）
-          result = result.filter(item => {
-            // 创建者可以查看自己创建的数据
-            if (item.createdBy === currentUserId) {
-              return true
-            }
-
-            // 被分配者可以查看分配给自己的数据
-            if (item.assigneeId === currentUserId) {
-              return true
-            }
-
-            return false
-          })
-          console.log(`[资料列表] 部门经理 ${userStore.currentUser.name} 过滤后数据: ${result.length} 条`)
-        } else {
-          // 🔥 销售员等普通角色：只能查看分配给自己的资料
-          result = result.filter(item => {
-            // 创建者可以查看自己创建的数据
-            if (item.createdBy === currentUserId) {
-              return true
-            }
-
-            // 被分配者可以查看分配给自己的数据
-            if (item.assigneeId === currentUserId) {
-              return true
-            }
-
-            return false
-          })
-          console.log(`[资料列表] 普通用户 ${userStore.currentUser.name} 过滤后数据: ${result.length} 条`)
-        }
+      if (isSuperAdmin) {
+        // 管理员可以查看所有资料
+        console.log(`[资料列表] 管理员 ${userStore.currentUser.name} 查看所有数据: ${result.length} 条`)
+      } else if (isDepartmentManager) {
+        // 🔥 部门经理：只能查看被分配给自己的资料（不包括自己创建的）
+        result = result.filter(item => {
+          // 只有被分配给自己的资料才显示
+          return item.assigneeId === currentUserId
+        })
+        console.log(`[资料列表] 部门经理 ${userStore.currentUser.name} 过滤后数据: ${result.length} 条（仅显示分配给自己的）`)
+      } else {
+        // 🔥 销售员等普通角色：不能查看资料列表，返回空数组
+        result = []
+        console.log(`[资料列表] 普通用户 ${userStore.currentUser.name} 无权查看资料列表`)
       }
     }
 
