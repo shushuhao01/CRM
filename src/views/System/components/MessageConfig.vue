@@ -1041,6 +1041,17 @@ const loadPreviewData = async () => {
   }
 }
 
+// 监听视角和部门变化，自动刷新预览数据
+watch(
+  () => [performanceForm.viewScope, performanceForm.targetDepartments],
+  () => {
+    if (performanceDialogVisible.value) {
+      loadPreviewData()
+    }
+  },
+  { deep: true }
+)
+
 const showPerformanceDialog = () => {
   isEditPerformance.value = false
   resetPerformanceForm()
