@@ -15,6 +15,8 @@ export const ORDER_STATUS_COLORS: Record<string, string> = {
   'pending_shipment': '#409EFF',      // 蓝色 - 待发货
   'shipped': '#67C23A',               // 绿色 - 已发货
   'delivered': '#13CE66',             // 亮绿色 - 已签收
+  'signed': '#13CE66',                // 🔥 新增：已签收的另一种表示
+  '已签收': '#13CE66',                // 🔥 新增：中文状态
 
   // 退回/取消相关状态
   'logistics_returned': '#FF9900',    // 橙黄色 - 物流部退回
@@ -62,6 +64,8 @@ export const ORDER_STATUS_TEXT: Record<string, string> = {
   'pending_shipment': '待发货',
   'shipped': '已发货',
   'delivered': '已签收',
+  'signed': '已签收',            // 🔥 新增：已签收的另一种表示
+  '已签收': '已签收',            // 🔥 新增：中文状态
 
   // 退回/取消相关状态
   'logistics_returned': '物流部退回',
@@ -113,6 +117,8 @@ export const ORDER_STATUS_TAG_TYPE: Record<string, 'success' | 'warning' | 'dang
   'pending_shipment': 'primary',
   'shipped': 'success',
   'delivered': 'success',
+  'signed': 'success',           // 🔥 新增：已签收的另一种表示
+  '已签收': 'success',           // 🔥 新增：中文状态
 
   // 退回/取消相关状态
   'logistics_returned': 'warning',
