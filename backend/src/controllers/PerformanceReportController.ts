@@ -33,42 +33,55 @@ export class PerformanceReportController {
     try {
       const dataSource = getDataSource();
       if (!dataSource) {
+        console.log('[业绩报表] 数据库未连接，返回空列表');
         res.json({ success: true, data: [] });
         return;
       }
 
-      const configRepo = dataSource.getRepository(PerformanceReportConfig);
-      const configs = await configRepo.find({
-        order: { createdAt: 'DESC' }
-      });
+      try {
+        const configRepo = dataSource.getRepository(PerformanceReportConfig);
+        const configs = await configRepo.find({
+          order: { createdAt: 'DESC' }
+        });
 
-      res.json({
-        success: true,
-        data: configs.map(config => ({
-          id: config.id,
-          name: config.name,
-          isEnabled: config.isEnabled === 1,
-          sendFrequency: config.sendFrequency,
-          sendTime: config.sendTime,
-          sendDays: config.sendDays || [],
-          repeatType: config.repeatType,
-          reportTypes: config.reportTypes || [],
-          messageFormat: config.messageFormat || 'text',
-          channelType: config.channelType,
-          webhook: config.webhook,
-          secret: config.secret ? '******' : '',
-          viewScope: config.viewScope,
-          targetDepartments: config.targetDepartments || [],
-          includeMonthly: config.includeMonthly === 1,
-          includeRanking: config.includeRanking === 1,
-          rankingLimit: config.rankingLimit,
-          lastSentAt: config.lastSentAt,
-          lastSentStatus: config.lastSentStatus,
-          createdByName: config.createdByName,
-          createdAt: config.createdAt,
-          updatedAt: config.updatedAt
-        }))
-      });
+        console.log(`[业绩报表] 查询到 ${configs.length} 个配置`);
+
+        res.json({
+          success: true,
+          data: configs.map(config => ({
+            id: config.id,
+            name: config.name,
+            isEnabled: config.isEnabled === 1,
+            sendFrequency: config.sendFrequency,
+            sendTime: config.sendTime,
+            sendDays: config.sendDays || [],
+            repeatType: config.repeatType,
+            reportTypes: config.reportTypes || [],
+            messageFormat: config.messageFormat || 'text',
+            channelType: config.channelType,
+            webhook: config.webhook,
+            secret: config.secret ? '******' : '',
+            viewScope: config.viewScope,
+            targetDepartments: config.targetDepartments || [],
+            includeMonthly: config.includeMonthly === 1,
+            includeRanking: config.includeRanking === 1,
+            rankingLimit: config.rankingLimit,
+            lastSentAt: config.lastSentAt,
+            lastSentStatus: config.lastSentStatus,
+            createdByName: config.createdByName,
+            createdAt: config.createdAt,
+            updatedAt: config.updatedAt
+          }))
+        });
+      } catch (dbError: any) {
+        // 如果是表不存在的错误，返回空列表
+        if (dbError.code === 'ER_NO_SUCH_TABLE' || dbError.message?.includes('doesn\'t exist')) {
+          console.log('[业绩报表] 表不存在，返回空列表');
+          res.json({ success: true, data: [] });
+          return;
+        }
+        throw dbError;
+      }
     } catch (error) {
       console.error('获取业绩报表配置失败:', error);
       res.status(500).json({ success: false, message: '获取业绩报表配置失败' });
