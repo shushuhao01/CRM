@@ -8,20 +8,22 @@ import crypto from 'crypto';
 
 // 业绩报表类型定义
 export const REPORT_TYPES = [
-  { value: 'order_count', label: '订单数量', category: '订单指标', description: '当日/当月订单总数' },
-  { value: 'order_amount', label: '订单金额', category: '订单指标', description: '当日/当月订单总金额' },
-  { value: 'monthly_signed_count', label: '本月签收单数', category: '签收指标', description: '当月签收订单数' },
-  { value: 'monthly_signed_amount', label: '本月签收金额', category: '签收指标', description: '当月签收金额' },
-  { value: 'monthly_signed_rate', label: '本月签收率', category: '签收指标', description: '本月签收订单占比' },
-  { value: 'refund_count', label: '退款单数', category: '退款指标', description: '当日/当月退款订单数' },
-  { value: 'refund_amount', label: '退款金额', category: '退款指标', description: '当日/当月退款金额' },
-  { value: 'refund_rate', label: '退款率', category: '退款指标', description: '退款订单占比' },
-  { value: 'new_customer', label: '新增客户', category: '客户指标', description: '当日/当月新增客户数' },
-  { value: 'active_customer', label: '活跃客户', category: '客户指标', description: '有订单的客户数' },
-  { value: 'avg_order_amount', label: '客单价', category: '效率指标', description: '平均每单金额' },
-  { value: 'conversion_rate', label: '转化率', category: '效率指标', description: '下单客户/总客户' },
-  { value: 'team_ranking', label: '团队排名', category: '排名数据', description: '部门业绩排名' },
-  { value: 'personal_ranking', label: '个人排名', category: '排名数据', description: '销售人员业绩排名' }
+  // 主要指标（始终显示）
+  { value: 'order_count', label: '订单数量', category: '订单指标', description: '当日/当月订单总数', primary: true },
+  { value: 'order_amount', label: '订单金额', category: '订单指标', description: '当日/当月订单总金额', primary: true },
+  { value: 'monthly_signed_count', label: '本月签收单数', category: '签收指标', description: '当月签收订单数', primary: true },
+  { value: 'monthly_signed_amount', label: '本月签收金额', category: '签收指标', description: '当月签收金额', primary: true },
+  { value: 'monthly_signed_rate', label: '本月签收率', category: '签收指标', description: '本月签收订单占比', primary: true },
+  // 更多指标（折叠显示）
+  { value: 'refund_count', label: '退款单数', category: '退款指标', description: '当日/当月退款订单数', primary: false },
+  { value: 'refund_amount', label: '退款金额', category: '退款指标', description: '当日/当月退款金额', primary: false },
+  { value: 'refund_rate', label: '退款率', category: '退款指标', description: '退款订单占比', primary: false },
+  { value: 'new_customer', label: '新增客户', category: '客户指标', description: '当日/当月新增客户数', primary: false },
+  { value: 'active_customer', label: '活跃客户', category: '客户指标', description: '有订单的客户数', primary: false },
+  { value: 'avg_order_amount', label: '客单价', category: '效率指标', description: '平均每单金额', primary: false },
+  { value: 'conversion_rate', label: '转化率', category: '效率指标', description: '下单客户/总客户', primary: false },
+  { value: 'team_ranking', label: '团队排名', category: '排名数据', description: '部门业绩排名', primary: false },
+  { value: 'personal_ranking', label: '个人排名', category: '排名数据', description: '销售人员业绩排名', primary: false }
 ];
 
 export class PerformanceReportController {

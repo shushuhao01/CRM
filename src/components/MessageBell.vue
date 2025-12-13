@@ -163,6 +163,13 @@
                 >
                   已读
                 </el-button>
+                <el-button
+                  type="info"
+                  size="small"
+                  @click.stop="hideAnnouncement(announcement.id)"
+                >
+                  不再显示
+                </el-button>
               </div>
             </div>
 
@@ -210,11 +217,34 @@ const systemMessages = computed(() => {
     return String(msg.targetUserId) === String(currentUserId)
   })
 })
+// 隐藏的公告ID列表（存储在localStorage）
+const hiddenAnnouncementIds = ref<string[]>([])
+
+// 加载隐藏的公告ID
+const loadHiddenAnnouncements = () => {
+  try {
+    const stored = localStorage.getItem('hidden-announcements')
+    if (stored) {
+      hiddenAnnouncementIds.value = JSON.parse(stored)
+    }
+  } catch (e) {
+    hiddenAnnouncementIds.value = []
+  }
+}
+
+// 保存隐藏的公告ID
+const saveHiddenAnnouncements = () => {
+  localStorage.setItem('hidden-announcements', JSON.stringify(hiddenAnnouncementIds.value))
+}
+
 const announcements = computed(() => {
   if (!messageStore.announcements || !Array.isArray(messageStore.announcements)) {
     return []
   }
-  return messageStore.announcements.filter(a => a.status === 'published')
+  // 过滤掉已隐藏的公告
+  return messageStore.announcements.filter(a =>
+    a.status === 'published' && !hiddenAnnouncementIds.value.includes(a.id)
+  )
 })
 
 const unreadMessageCount = computed(() => notificationStore.unreadCount)
@@ -299,6 +329,15 @@ const markAnnouncementAsRead = async (announcementId: string) => {
   }
 }
 
+// 隐藏公告（不再显示）
+const hideAnnouncement = (announcementId: string) => {
+  if (!hiddenAnnouncementIds.value.includes(announcementId)) {
+    hiddenAnnouncementIds.value.push(announcementId)
+    saveHiddenAnnouncements()
+    ElMessage.success('公告已隐藏')
+  }
+}
+
 const handleMessageClick = (message: any) => {
   // 标记为已读
   if (!message.read) {
@@ -346,6 +385,9 @@ const formatTime = (time: string | Date) => {
 
 // 页面初始化
 onMounted(() => {
+  // 加载隐藏的公告列表
+  loadHiddenAnnouncements()
+
   // 只在用户已登录时才加载公告数据
   if (userStore.isLoggedIn) {
     messageStore.loadUserAnnouncements()

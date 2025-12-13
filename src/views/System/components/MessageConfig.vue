@@ -518,16 +518,17 @@
             <!-- 主要指标（始终显示） -->
             <div class="report-types-main">
               <el-checkbox-group v-model="performanceForm.reportTypes">
-                <template v-for="category in reportTypeCategories.slice(0, 2)" :key="category.name">
-                  <span class="category-label">{{ category.name }}:</span>
-                  <el-checkbox v-for="type in category.types" :key="type.value" :label="type.value">
-                    {{ type.label }}
-                  </el-checkbox>
-                </template>
+                <el-checkbox
+                  v-for="type in primaryReportTypes"
+                  :key="type.value"
+                  :label="type.value"
+                >
+                  {{ type.label }}
+                </el-checkbox>
               </el-checkbox-group>
             </div>
             <!-- 更多指标（折叠） -->
-            <div v-if="reportTypeCategories && reportTypeCategories.length > 2" class="report-types-more">
+            <div v-if="otherReportTypes && otherReportTypes.length > 0" class="report-types-more">
               <div class="more-divider" @click="toggleReportTypesExpand">
                 <span class="divider-line"></span>
                 <span class="divider-text">
@@ -537,7 +538,7 @@
                 <span class="divider-line"></span>
               </div>
               <div v-show="reportTypesExpanded.includes('more')" class="report-types-grid">
-                <template v-for="category in reportTypeCategories.slice(2)" :key="category?.name || 'unknown'">
+                <template v-for="category in otherReportTypeCategories" :key="category?.name || 'unknown'">
                   <div v-if="category && category.types" class="report-category">
                     <div class="category-title">{{ category.name }}</div>
                     <el-checkbox-group v-model="performanceForm.reportTypes">
@@ -720,8 +721,8 @@ const performanceRules: FormRules = {
   reportTypes: [{ required: true, message: '请选择至少一个报表类型', trigger: 'change', type: 'array', min: 1 }]
 }
 
-// 报表类型分类
-const reportTypeCategories = computed(() => {
+// 报表类型分类（保留用于兼容）
+const _reportTypeCategories = computed(() => {
   if (!Array.isArray(reportTypes.value)) return []
   const categories: Record<string, any[]> = {}
   reportTypes.value.forEach((type: any) => {
@@ -730,6 +731,33 @@ const reportTypeCategories = computed(() => {
       categories[type.category] = []
     }
     categories[type.category].push(type)
+  })
+  return Object.entries(categories).map(([name, types]) => ({ name, types }))
+})
+
+// 主要报表类型（始终显示）
+const primaryReportTypes = computed(() => {
+  if (!Array.isArray(reportTypes.value)) return []
+  return reportTypes.value.filter((t: any) => t?.primary === true)
+})
+
+// 其他报表类型（折叠显示）
+const otherReportTypes = computed(() => {
+  if (!Array.isArray(reportTypes.value)) return []
+  return reportTypes.value.filter((t: any) => t?.primary !== true)
+})
+
+// 其他报表类型分类（用于折叠区域）
+const otherReportTypeCategories = computed(() => {
+  const categories: Record<string, any[]> = {}
+  if (!Array.isArray(otherReportTypes.value)) return []
+  otherReportTypes.value.forEach((type: any) => {
+    if (!type) return
+    const cat = type.category || '其他'
+    if (!categories[cat]) {
+      categories[cat] = []
+    }
+    categories[cat].push(type)
   })
   return Object.entries(categories).map(([name, types]) => ({ name, types }))
 })
