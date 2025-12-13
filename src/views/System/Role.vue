@@ -2168,37 +2168,63 @@ const loadRoleList = async () => {
     const roles = await roleApiService.getRoles()
     console.log('[角色权限] API返回角色数据:', roles)
 
-    // 【生产环境修复】仅在开发环境从localStorage获取用户数据
+    // 【修复】从API获取用户数据，用于统计每个角色的用户数量
     let users: any[] = []
-    if (!import.meta.env.PROD) {
-      users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
-      console.log('[角色权限] ========== 开始统计用户数量 ==========')
-      console.log('[角色权限] 用户总数:', users.length)
-      console.log('[角色权限] 数据来源: localStorage (crm_mock_users)')
-    } else {
-      console.log('[角色权限] 生产环境：应通过API获取用户数据')
-      // TODO: 生产环境应该调用API获取用户数据
+    try {
+      // 优先从API获取用户列表
+      const { default: userDataService } = await import('@/services/userDataService')
+      users = await userDataService.getUsers()
+      console.log('[角色权限] 从API获取用户成功:', users.length)
+    } catch (apiError) {
+      console.warn('[角色权限] API获取用户失败，尝试从localStorage获取:', apiError)
+      // 降级：从localStorage获取
+      const localUsers = localStorage.getItem('crm_mock_users') || localStorage.getItem('crm_users')
+      if (localUsers) {
+        users = JSON.parse(localUsers)
+        console.log('[角色权限] 从localStorage获取用户:', users.length)
+      }
+    }
+
+    console.log('[角色权限] ========== 开始统计用户数量 ==========')
+    console.log('[角色权限] 用户总数:', users.length)
+
+    // 创建角色名称到code的映射（支持中文名称匹配）
+    const roleNameToCode: Record<string, string> = {
+      '超级管理员': 'super_admin',
+      '管理员': 'admin',
+      '系统管理员': 'admin',
+      '部门经理': 'department_manager',
+      '经理': 'department_manager',
+      '销售员': 'sales_staff',
+      '销售': 'sales_staff',
+      '客服': 'customer_service',
+      '客服人员': 'customer_service'
     }
 
     // 显示每个用户的角色信息(用于调试)
     if (users.length > 0) {
       console.log('[角色权限] 用户角色详情:')
-      users.forEach((user: any, index: number) => {
-        const userRoleCode = user.roleId || user.role
-        console.log(`  ${index + 1}. ${user.realName || user.username}:`)
-        console.log(`     - roleId: "${user.roleId}" (主要字段,匹配角色code)`)
-        console.log(`     - role: "${user.role}" (兼容字段)`)
-        console.log(`     - position: "${user.position}" (职位标识,不用于角色匹配)`)
-        console.log(`     - 使用: "${userRoleCode}"`)
+      users.slice(0, 5).forEach((user: any, index: number) => {
+        console.log(`  ${index + 1}. ${user.realName || user.name || user.username}:`)
+        console.log(`     - roleId: "${user.roleId}"`)
+        console.log(`     - role: "${user.role}"`)
       })
+      if (users.length > 5) {
+        console.log(`  ... 还有 ${users.length - 5} 个用户`)
+      }
     }
 
     // 统计每个角色的用户数量
-    // 关键: 使用 user.roleId 字段匹配 role.code 字段
     const roleUserCount: Record<string, number> = {}
     users.forEach((user: any) => {
-      // 优先使用 roleId,如果没有则使用 role 字段(向后兼容)
-      const userRoleCode = user.roleId || user.role
+      // 获取用户的角色标识
+      let userRoleCode = user.roleId || user.role_id || user.role || ''
+
+      // 如果是中文名称，转换为code
+      if (roleNameToCode[userRoleCode]) {
+        userRoleCode = roleNameToCode[userRoleCode]
+      }
+
       if (userRoleCode) {
         roleUserCount[userRoleCode] = (roleUserCount[userRoleCode] || 0) + 1
       }
@@ -2221,14 +2247,17 @@ const loadRoleList = async () => {
         ? role.permissions
         : defaultPermissions
 
-      // 使用 role.code 匹配统计结果
-      const userCount = roleUserCount[role.code] || 0
+      // 使用 role.code 匹配统计结果，同时也匹配角色名称
+      let userCount = roleUserCount[role.code] || 0
+      // 如果code没匹配到，尝试用角色名称匹配
+      if (userCount === 0 && roleUserCount[role.name]) {
+        userCount = roleUserCount[role.name]
+      }
 
       console.log(`[角色权限] 处理角色: ${role.name} (code: ${role.code})`)
       console.log(`  - 默认权限: ${defaultPermissions.length}个`)
       console.log(`  - 实际权限: ${permissions.length}个`)
       console.log(`  - 用户数量: ${userCount}人 ${userCount === 0 ? '⚠️ 无用户' : '✓'}`)
-      console.log(`  - 角色状态: ${role.status}`)
 
       return {
         id: role.id,
