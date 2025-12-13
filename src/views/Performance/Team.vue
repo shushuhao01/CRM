@@ -886,11 +886,17 @@ const canViewMemberOrders = (member: TeamMember) => {
     const userDeptId = currentUser.departmentId
     const userDeptName = currentUser.departmentName || currentUser.department
 
-    // 🔥 修复：通过ID或名称匹配部门
+    // 🔥 【关键修复】member.department 存储的是部门名称，需要通过名称匹配
+    const memberDeptName = (member.department || '').toLowerCase().trim()
+    const currentDeptName = (userDeptName || '').toLowerCase().trim()
+
+    // 通过部门名称匹配（精确匹配或包含匹配）
     const isSameDepartment = (
-      String(member.department) === String(userDeptId) ||
-      member.department === userDeptName
+      memberDeptName === currentDeptName ||
+      (memberDeptName && currentDeptName && (memberDeptName.includes(currentDeptName) || currentDeptName.includes(memberDeptName)))
     )
+
+    console.log(`[权限检查] 经理查看成员 ${member.name}: 成员部门=${memberDeptName}, 当前部门=${currentDeptName}, 匹配=${isSameDepartment}`)
 
     // 可以查看自己的订单，或者同部门成员的订单
     return String(member.id) === String(currentUser.id) ||
