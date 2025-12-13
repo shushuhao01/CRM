@@ -1,0 +1,254 @@
+{
+  "备份信息": {
+    "备份时间": "2025-12-13",
+    "版本": "v2.0",
+    "说明": "CRM系统角色权限完整配置备份"
+  },
+  "配置文件路径": {
+    "defaultRolePermissions": "src/config/defaultRolePermissions.ts",
+    "menuConfig": "src/config/menu.ts",
+    "userStore": "src/stores/user.ts",
+    "dataStore": "src/stores/data.ts"
+  },
+  "角色列表": [
+    {
+      "roleId": "super_admin",
+      "roleName": "超级管理员",
+      "description": "拥有系统所有权限，可以管理所有功能和数据",
+      "dataScope": "all",
+      "permissions": ["*"],
+      "禁止权限": [],
+      "特殊说明": "可访问超管面板，拥有最高权限"
+    },
+    {
+      "roleId": "admin",
+      "roleName": "管理员",
+      "description": "拥有系统所有权限，可以管理所有功能和数据",
+      "dataScope": "all",
+      "permissions": ["*"],
+      "禁止权限": ["system:admin"],
+      "特殊说明": "除超管面板外的所有权限"
+    },
+    {
+      "roleId": "department_manager",
+      "roleName": "部门经理",
+      "description": "管理本部门业务和团队，查看部门数据",
+      "dataScope": "department",
+      "permissions": [
+        "dashboard", "dashboard.personal", "dashboard.personal.view",
+        "dashboard.department", "dashboard.department.view",
+        "customer", "customer.list", "customer.list.view", "customer.list.edit",
+        "customer.list.export", "customer.list.import",
+        "customer.add", "customer.add.create",
+        "order", "order.list", "order.list.view", "order.list.edit",
+        "order.add", "order.add.create",
+        "service", "service.call", "service.call.view", "service.call.make",
+        "performance", "performance.personal", "performance.personal.view",
+        "performance.team", "performance.team.view",
+        "performance.analysis", "performance.analysis.view",
+        "performance.share", "performance.share.view",
+        "logistics", "logistics.list", "logistics.list.view",
+        "logistics.track", "logistics.track.view",
+        "afterSales", "afterSales.list", "afterSales.list.view",
+        "afterSales.add", "afterSales.add.create",
+        "afterSales.data", "afterSales.data.view", "afterSales.data.analysis",
+        "data", "data.search", "data.search.basic", "data.search.advanced"
+      ],
+      "禁止权限": [
+        "customer.groups",
+        "customer.tags",
+        "service.sms",
+        "logistics.shipping",
+        "logistics.status",
+        "data.recycle",
+        "order.audit",
+        "system",
+        "sales:product"
+      ],
+      "特殊权限": {
+        "团队业绩": "可查看本部门所有成员，可点击所有成员的单量超链接和查看详情",
+        "资料列表": "仅显示被分配给自己的资料，可再分配给部门成员",
+        "订单数据": "可查看本部门所有成员的订单"
+      }
+    },
+    {
+      "roleId": "sales_staff",
+      "roleName": "销售员",
+      "description": "专注于客户开发和订单管理，查看个人数据",
+      "dataScope": "self",
+      "permissions": [
+        "dashboard", "dashboard.personal", "dashboard.personal.view",
+        "customer", "customer.list", "customer.list.view",
+        "customer.add", "customer.add.create",
+        "order", "order.list", "order.list.view", "order.list.edit",
+        "order.add", "order.add.create",
+        "service", "service.call", "service.call.view", "service.call.make",
+        "performance", "performance.personal", "performance.personal.view",
+        "performance.team", "performance.team.view",
+        "logistics", "logistics.list", "logistics.list.view",
+        "logistics.track", "logistics.track.view",
+        "afterSales", "afterSales.list", "afterSales.list.view",
+        "afterSales.add", "afterSales.add.create",
+        "data", "data.search", "data.search.basic"
+      ],
+      "禁止权限": [
+        "customer.groups",
+        "customer.tags",
+        "service.sms",
+        "logistics.shipping",
+        "logistics.status",
+        "data.recycle",
+        "data.list",
+        "order.audit",
+        "performance.analysis",
+        "performance.share",
+        "afterSales.data",
+        "system",
+        "sales:product"
+      ],
+      "特殊权限": {
+        "团队业绩": "可查看本部门所有成员数据，但只能点击自己行的单量超链接和查看详情",
+        "资料列表": "完全禁止访问",
+        "订单数据": "可查看本部门所有成员的订单（用于团队业绩统计）",
+        "客户列表": "仅查看个人客户"
+      }
+    },
+    {
+      "roleId": "customer_service",
+      "roleName": "客服",
+      "description": "处理订单审核、物流和售后服务",
+      "dataScope": "all",
+      "permissions": [
+        "dashboard", "dashboard.personal", "dashboard.personal.view",
+        "order", "order.audit", "order.audit.view", "order.audit.approve", "order.audit.reject",
+        "logistics", "logistics.list", "logistics.list.view",
+        "logistics.shipping", "logistics.shipping.view", "logistics.shipping.create",
+        "logistics.track", "logistics.track.view", "logistics.track.update",
+        "logistics.status", "logistics.status.view", "logistics.status.update",
+        "afterSales", "afterSales.list", "afterSales.list.view",
+        "afterSales.add", "afterSales.add.create",
+        "afterSales.data", "afterSales.data.view", "afterSales.data.analysis",
+        "data", "data.list", "data.list.view",
+        "data.search", "data.search.basic", "data.search.advanced"
+      ],
+      "禁止权限": [
+        "customer",
+        "order.list",
+        "order.add",
+        "performance",
+        "data.recycle",
+        "system",
+        "sales:product"
+      ],
+      "特殊权限": {
+        "订单审核": "可审核全公司订单",
+        "物流管理": "可处理全公司物流",
+        "售后管理": "可处理全公司售后",
+        "资料管理": "可查看和分配全公司资料"
+      }
+    }
+  ],
+  "客服子类型": {
+    "customer_service_after_sales": {
+      "名称": "售后客服",
+      "permissions": [
+        "dashboard", "dashboard:view",
+        "order", "order:list", "order:list:view",
+        "aftersale", "aftersale:order", "aftersale:order:view", "aftersale:order:edit",
+        "aftersale:add", "aftersale:data", "aftersale:data:view",
+        "service", "service:afterSales:view", "service:afterSales:edit",
+        "data", "data:customer", "data:customer:search"
+      ]
+    },
+    "customer_service_audit": {
+      "名称": "审核客服",
+      "permissions": [
+        "dashboard", "dashboard:view",
+        "order", "order:list", "order:list:view", "order:audit", "order:audit:view",
+        "order:audit:approve", "order:audit:reject",
+        "customer", "customer:list", "customer:list:view",
+        "data", "data:customer", "data:customer:search"
+      ]
+    },
+    "customer_service_logistics": {
+      "名称": "物流客服",
+      "permissions": [
+        "dashboard", "dashboard:view",
+        "order", "order:list", "order:list:view",
+        "logistics", "logistics:list", "logistics:list:view",
+        "logistics:shipping", "logistics:shipping:view", "logistics:shipping:edit",
+        "logistics:tracking", "logistics:tracking:view", "logistics:tracking:edit",
+        "logistics:status_update", "logistics:status_update:edit",
+        "data", "data:customer", "data:customer:search"
+      ]
+    },
+    "customer_service_product": {
+      "名称": "商品客服",
+      "permissions": [
+        "dashboard", "dashboard:view",
+        "customer", "customer:list", "customer:list:view",
+        "order", "order:list", "order:list:view",
+        "product", "product:list", "product:list:view",
+        "data", "data:customer", "data:customer:search"
+      ]
+    }
+  },
+  "菜单权限映射": {
+    "仅超级管理员": [
+      "超管面板"
+    ],
+    "仅管理员": [
+      "客户分组",
+      "客户标签",
+      "回收站",
+      "商品管理",
+      "系统管理",
+      "物流公司"
+    ],
+    "管理员+客服": [
+      "短信管理",
+      "发货列表",
+      "状态更新",
+      "订单审核",
+      "资料列表"
+    ],
+    "管理员+经理": [
+      "业绩分析",
+      "业绩分享",
+      "部门看板"
+    ],
+    "管理员+经理+销售员": [
+      "客户列表",
+      "新增客户",
+      "订单列表",
+      "新增订单",
+      "通话管理",
+      "个人业绩",
+      "团队业绩",
+      "物流列表",
+      "物流跟踪",
+      "售后订单",
+      "新建售后",
+      "客户查询",
+      "个人看板"
+    ],
+    "管理员+经理+客服": [
+      "售后数据"
+    ]
+  },
+  "数据范围说明": {
+    "all": "可查看系统所有数据",
+    "department": "仅可查看本部门相关数据",
+    "self": "仅可查看个人相关数据",
+    "assigned": "仅可查看被分配给自己的数据"
+  },
+  "重要提醒": [
+    "部门经理和销售员禁止访问：客户分组、客户标签、短信管理、发货列表、状态更新、回收站",
+    "销售员完全禁止访问资料列表",
+    "部门经理在资料列表中只能看到被分配给自己的资料",
+    "团队业绩页面：经理可点击所有成员详情，销售员只能点击自己行",
+    "订单数据：销售员可查看同部门订单用于团队业绩统计",
+    "客服不能访问客户管理、订单列表、业绩统计等销售相关功能",
+    "权限修改后需要用户重新登录才能生效"
+  ]
+}
