@@ -1043,6 +1043,10 @@ const chartData = ref({
 // 加载图表数据
 const loadChartData = () => {
   try {
+    console.log('📊 [业绩分析] 开始加载图表数据')
+    console.log('📊 [业绩分析] 原始订单数量:', orderStore.orders.length)
+    console.log('📊 [业绩分析] 订单状态分布:', orderStore.orders.map(o => ({ status: o.status, markType: o.markType, amount: o.totalAmount })))
+
     // 🔥 使用新的业绩计算规则
     let orders = orderStore.orders.filter(order => {
       const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
@@ -1050,10 +1054,13 @@ const loadChartData = () => {
       return !excludedStatuses.includes(order.status)
     })
 
+    console.log('📊 [业绩分析] 业绩规则过滤后订单数量:', orders.length)
+
     // 应用部门筛选（通过销售人员的部门ID）
     if (selectedDepartment.value) {
       const departmentUsers = userStore.users?.filter(u => u.departmentId === selectedDepartment.value).map(u => u.id) || []
       orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
+      console.log('📊 [业绩分析] 部门筛选后订单数量:', orders.length)
     }
 
     // 应用日期筛选（只有当日期范围有效时才筛选）
@@ -1061,10 +1068,15 @@ const loadChartData = () => {
       const startDate = new Date(dateRange.value[0]).getTime()
       const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
 
+      console.log('📊 [业绩分析] 日期筛选范围:', dateRange.value[0], '至', dateRange.value[1])
+      console.log('📊 [业绩分析] 日期筛选前订单数量:', orders.length)
+
       orders = orders.filter(order => {
         const orderTime = new Date(order.createTime).getTime()
         return orderTime >= startDate && orderTime <= endDate
       })
+
+      console.log('📊 [业绩分析] 日期筛选后订单数量:', orders.length)
     }
 
     // 生成业绩趋势数据（根据日期范围动态生成）
@@ -1085,13 +1097,19 @@ const loadChartData = () => {
       startDate.setDate(endDate.getDate() - 6)
     }
 
-    // 生成日期范围内的所有日期
+    // 生成日期范围内的所有日期（使用本地时间格式，避免时区问题）
     const currentDate = new Date(startDate)
     while (currentDate <= endDate) {
-      const dateKey = currentDate.toISOString().split('T')[0]
+      // 🔥 修复：使用本地时间格式生成日期键，避免时区问题
+      const year = currentDate.getFullYear()
+      const month = String(currentDate.getMonth() + 1).padStart(2, '0')
+      const day = String(currentDate.getDate()).padStart(2, '0')
+      const dateKey = `${year}-${month}-${day}`
       trendData.set(dateKey, 0)
       currentDate.setDate(currentDate.getDate() + 1)
     }
+
+    console.log('📊 [业绩趋势] 生成的日期键:', Array.from(trendData.keys()))
 
     // 统计每天的业绩
     orders.forEach(order => {
@@ -1114,7 +1132,9 @@ const loadChartData = () => {
       }
     })
 
-    console.log('📊 [业绩趋势] 日期范围:', startDate.toISOString().split('T')[0], '至', endDate.toISOString().split('T')[0])
+    // 🔥 修复：使用本地时间格式输出日志
+    const formatLocalDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    console.log('📊 [业绩趋势] 日期范围:', formatLocalDate(startDate), '至', formatLocalDate(endDate))
     console.log('📊 [业绩趋势] 订单数量:', orders.length)
     console.log('📊 [业绩趋势] 趋势数据:', Array.from(trendData.entries()))
 
