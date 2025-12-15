@@ -866,12 +866,21 @@ watch(isMobile, (newValue) => {
   min-height: 0;
   overflow: hidden;
   width: 100%;
+  display: flex; /* 🔥 确保使用flex布局 */
+  flex-direction: row; /* 🔥 水平排列 */
 }
 
-/* 🔥 确保el-main在侧边栏收起时自动扩展 */
+/* 🔥 确保el-aside（侧边栏）宽度变化时有过渡效果 */
+.layout-container > .el-container > .el-aside {
+  flex-shrink: 0;
+  transition: width 0.3s ease;
+}
+
+/* 🔥 确保el-main在侧边栏收起时自动扩展填充剩余空间 */
 .layout-container > .el-container > .el-main {
   flex: 1;
   min-width: 0;
+  width: 0; /* 🔥 关键：设置为0让flex:1生效 */
   transition: all 0.3s ease;
 }
 
@@ -949,10 +958,11 @@ watch(isMobile, (newValue) => {
 .sidebar {
   background: #fff;
   border-right: 1px solid #e4e7ed;
-  transition: width 0.3s;
+  transition: width 0.3s ease;
   overflow: hidden;
   height: 100%;
   position: relative;
+  flex-shrink: 0; /* 🔥 防止侧边栏被压缩 */
 
   /* 确保在高缩放比例下正确显示 */
   box-sizing: border-box;
