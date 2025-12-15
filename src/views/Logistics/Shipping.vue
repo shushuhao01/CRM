@@ -1226,12 +1226,14 @@ const loadOrderList = async () => {
     let orders: any[] = []
     try {
       const { orderApi } = await import('@/api/order')
+      // 🔥 添加时间戳参数避免浏览器缓存
+      const timestamp = Date.now()
       if (activeTab.value === 'pending') {
-        const response = await orderApi.getShippingPending()
+        const response = await orderApi.getShippingPending({ _t: timestamp } as any)
         orders = response?.data?.list || []
         console.log('[发货列表] 从API获取待发货订单:', orders.length, '条')
       } else if (activeTab.value === 'shipped') {
-        const response = await orderApi.getShippingShipped()
+        const response = await orderApi.getShippingShipped({ _t: timestamp } as any)
         orders = response?.data?.list || []
         console.log('[发货列表] 从API获取已发货订单:', orders.length, '条')
       } else {
