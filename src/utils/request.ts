@@ -139,9 +139,9 @@ service.interceptors.response.use(
       // 特殊错误码处理
       switch (code) {
         case 401:
-          // 【关键修复】禁用401错误处理，不退出登录
-          console.log('[Request] ⚠️ 收到401错误，已忽略（保持登录状态）')
-          // handleUnauthorized()
+          // 🔥 Token过期，显示友好提示并跳转登录页
+          console.log('[Request] ⚠️ 收到401错误，Token已过期')
+          handleUnauthorized()
           break
         case 403:
           ElMessage.error('没有权限访问此资源')
@@ -202,9 +202,9 @@ service.interceptors.response.use(
           errorMessage = data?.message || '请求参数错误'
           break
         case 401:
-          // 【关键修复】禁用401错误处理，不退出登录
-          console.log('[Request] ⚠️ 收到401错误，已忽略（保持登录状态）')
-          // handleUnauthorized()
+          // 🔥 Token过期，显示友好提示并跳转登录页
+          console.log('[Request] ⚠️ 收到401错误，Token已过期')
+          handleUnauthorized()
           return Promise.reject(error)
         case 403:
           errorMessage = '没有权限访问此资源'
@@ -268,11 +268,48 @@ service.interceptors.response.use(
   }
 )
 
-// 处理未授权 - 已完全禁用
-const handleUnauthorized = () => {
-  // 【关键修复】完全禁用此函数，不做任何处理
-  console.log('[Request] ⚠️ handleUnauthorized 被调用，但已禁用（保持登录状态）')
-  return
+// 🔥 处理未授权（Token过期）- 显示友好提示并跳转登录页
+let isShowingAuthDialog = false // 防止重复弹窗
+
+const handleUnauthorized = async () => {
+  // 防止多个请求同时触发多个弹窗
+  if (isShowingAuthDialog) {
+    return
+  }
+
+  isShowingAuthDialog = true
+
+  try {
+    const userStore = useUserStore()
+    const safeNavigator = createSafeNavigator(router)
+
+    // 显示友好提示
+    await ElMessageBox.alert(
+      '您的登录已过期，请重新登录以继续使用系统。',
+      '登录已过期',
+      {
+        confirmButtonText: '重新登录',
+        type: 'warning',
+        showClose: false,
+        closeOnClickModal: false,
+        closeOnPressEscape: false
+      }
+    )
+
+    // 清除用户信息和Token
+    userStore.logout()
+
+    // 跳转到登录页
+    safeNavigator.push('/login')
+  } catch {
+    // 用户关闭弹窗也执行登出
+    const userStore = useUserStore()
+    const safeNavigator = createSafeNavigator(router)
+    userStore.logout()
+    safeNavigator.push('/login')
+  } finally {
+    isShowingAuthDialog = false
+  }
 }
 
 // 请求方法封装
