@@ -814,8 +814,13 @@ const loadShareRecords = async () => {
       }
     }
   } catch (error) {
+    // 🔥 静默处理：如果是网络错误或API不存在，不显示错误提示
     console.error('加载分享记录失败:', error)
-    ElMessage.error('加载分享记录失败')
+    // 只有在非404错误时才显示错误提示
+    const errorMessage = (error as any)?.message || ''
+    if (!errorMessage.includes('404') && !errorMessage.includes('Not Found')) {
+      ElMessage.error('加载分享记录失败')
+    }
   } finally {
     loading.value = false
   }
