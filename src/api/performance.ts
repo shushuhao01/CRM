@@ -69,7 +69,7 @@ export const getPersonalPerformance = async (params: {
   // 生产环境：强制使用真实API，不降级
   if (isProduction()) {
     console.log('[Performance API] 生产环境：使用后端API获取个人业绩')
-    const response = await request.get('/api/performance/personal', { params })
+    const response = await request.get('/performance/personal', { params })
     return response.data || response
   }
 
@@ -143,7 +143,7 @@ export const getTeamPerformance = async (params: {
   // 生产环境：强制使用真实API，不降级
   if (isProduction()) {
     console.log('[Performance API] 生产环境：使用后端API获取团队业绩')
-    const response = await request.get('/api/performance/team', { params })
+    const response = await request.get('/performance/team', { params })
     return response.data || response
   }
 
@@ -228,7 +228,7 @@ export const getPerformanceAnalysis = async (params: {
   // 生产环境：强制使用真实API，不降级
   if (isProduction()) {
     console.log('[Performance API] 生产环境：使用后端API获取业绩分析')
-    const response = await request.get('/api/performance/analysis', { params })
+    const response = await request.get('/performance/analysis', { params })
     return response.data || response
   }
 
@@ -460,16 +460,10 @@ export interface PerformanceShareListResponse {
  */
 export const getPerformanceShares = async (params?: PerformanceShareListParams): Promise<PerformanceShareListResponse> => {
   // 生产环境：强制使用真实API
-  if (isProduction()) {
-    console.log('[Performance API] 生产环境：使用后端API获取业绩分享列表')
-    const response = await request.get('/api/performance/shares', { params })
-    return response
-  }
-
-  // 开发环境：也使用真实API
-  console.log('[Performance API] 开发环境：使用后端API获取业绩分享列表')
+  // 🔥 统一使用后端API获取业绩分享列表
+  console.log('[Performance API] 获取业绩分享列表')
   try {
-    const response = await request.get('/api/performance/shares', { params })
+    const response = await request.get('/performance/shares', { params })
     return response
   } catch (error) {
     console.error('[Performance API] 获取业绩分享列表失败:', error)
@@ -491,7 +485,7 @@ export const getPerformanceShares = async (params?: PerformanceShareListParams):
  */
 export const getPerformanceShareDetail = async (shareId: string): Promise<{ success: boolean; data: PerformanceShare }> => {
   console.log('[Performance API] 获取业绩分享详情:', shareId)
-  const response = await request.get(`/api/performance/shares/${shareId}`)
+  const response = await request.get(`/performance/shares/${shareId}`)
   return response
 }
 
@@ -500,7 +494,7 @@ export const getPerformanceShareDetail = async (shareId: string): Promise<{ succ
  */
 export const createPerformanceShare = async (data: PerformanceShareCreateParams): Promise<{ success: boolean; data: { id: string; shareNumber: string }; message?: string }> => {
   console.log('[Performance API] 创建业绩分享:', data)
-  const response = await request.post('/api/performance/shares', data)
+  const response = await request.post('/performance/shares', data)
   return response
 }
 
@@ -509,7 +503,7 @@ export const createPerformanceShare = async (data: PerformanceShareCreateParams)
  */
 export const cancelPerformanceShare = async (shareId: string): Promise<{ success: boolean; message?: string }> => {
   console.log('[Performance API] 取消业绩分享:', shareId)
-  const response = await request.delete(`/api/performance/shares/${shareId}`)
+  const response = await request.delete(`/performance/shares/${shareId}`)
   return response
 }
 
@@ -518,7 +512,7 @@ export const cancelPerformanceShare = async (shareId: string): Promise<{ success
  */
 export const confirmPerformanceShare = async (shareId: string): Promise<{ success: boolean; message?: string }> => {
   console.log('[Performance API] 确认业绩分享:', shareId)
-  const response = await request.post(`/api/performance/shares/${shareId}/confirm`)
+  const response = await request.post(`/performance/shares/${shareId}/confirm`)
   return response
 }
 
@@ -540,7 +534,7 @@ export const getPerformanceStats = async (): Promise<{
 }> => {
   console.log('[Performance API] 获取业绩分享统计')
   try {
-    const response = await request.get('/api/performance/stats')
+    const response = await request.get('/performance/stats')
     return response
   } catch (error) {
     console.error('[Performance API] 获取业绩分享统计失败:', error)
@@ -573,7 +567,7 @@ export const getPersonalAnalysis = async (params?: {
 }): Promise<{ success: boolean; data: any; message?: string }> => {
   console.log('[Performance API] 获取个人业绩分析')
   try {
-    const response = await request.get('/api/performance/analysis/personal', { params })
+    const response = await request.get('/performance/analysis/personal', { params })
     return { success: true, data: response.data || response }
   } catch (error) {
     console.error('[Performance API] 获取个人业绩分析失败:', error)
@@ -591,7 +585,7 @@ export const getDepartmentAnalysis = async (params?: {
 }): Promise<{ success: boolean; data: any; message?: string }> => {
   console.log('[Performance API] 获取部门业绩分析')
   try {
-    const response = await request.get('/api/performance/analysis/department', { params })
+    const response = await request.get('/performance/analysis/department', { params })
     return { success: true, data: response.data || response }
   } catch (error) {
     console.error('[Performance API] 获取部门业绩分析失败:', error)
@@ -608,7 +602,7 @@ export const getCompanyAnalysis = async (params?: {
 }): Promise<{ success: boolean; data: any; message?: string }> => {
   console.log('[Performance API] 获取公司业绩分析')
   try {
-    const response = await request.get('/api/performance/analysis/company', { params })
+    const response = await request.get('/performance/analysis/company', { params })
     return { success: true, data: response.data || response }
   } catch (error) {
     console.error('[Performance API] 获取公司业绩分析失败:', error)
@@ -626,7 +620,7 @@ export const getAnalysisMetrics = async (params?: {
 }): Promise<{ success: boolean; data: any; message?: string }> => {
   console.log('[Performance API] 获取业绩统计指标')
   try {
-    const response = await request.get('/api/performance/analysis/metrics', { params })
+    const response = await request.get('/performance/analysis/metrics', { params })
     return { success: true, data: response.data || response }
   } catch (error) {
     console.error('[Performance API] 获取业绩统计指标失败:', error)
@@ -642,7 +636,7 @@ export const getAnalysisTrend = async (params?: {
 }): Promise<{ success: boolean; data: any; message?: string }> => {
   console.log('[Performance API] 获取业绩趋势')
   try {
-    const response = await request.get('/api/performance/analysis/trend', { params })
+    const response = await request.get('/performance/analysis/trend', { params })
     return { success: true, data: response.data || response }
   } catch (error) {
     console.error('[Performance API] 获取业绩趋势失败:', error)
