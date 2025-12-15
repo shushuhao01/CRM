@@ -90,16 +90,24 @@ class OrderNotificationService {
     }
   ): Promise<boolean> {
     try {
+      console.log(`[OrderNotification] 📨 准备发送系统消息: type=${type}, targetUserId=${targetUserId}`);
+
+      if (!targetUserId) {
+        console.warn('[OrderNotification] ⚠️ 目标用户ID为空，跳过发送');
+        return false;
+      }
+
       const dataSource = getDataSource();
       if (!dataSource) {
-        console.error('[OrderNotification] 数据库未连接');
+        console.error('[OrderNotification] ❌ 数据库未连接');
         return false;
       }
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
+      const messageId = uuidv4();
       const message = messageRepo.create({
-        id: uuidv4(),
+        id: messageId,
         type,
         title,
         content,
@@ -114,7 +122,7 @@ class OrderNotificationService {
       });
 
       await messageRepo.save(message);
-      console.log(`[OrderNotification] ✅ 消息已发送: ${type} -> ${targetUserId}`);
+      console.log(`[OrderNotification] ✅ 系统消息已保存: id=${messageId}, type=${type} -> ${targetUserId}`);
 
       // 🔥 同时发送到企业微信机器人
       this.sendToWechatRobot(type, title, content).catch(err => {
@@ -129,87 +137,381 @@ class OrderNotificationService {
   }
 
   /**
-   * 🔥 发送消息到企业微信机器人
+   * 🔥 发送消息到所有配置的通知渠道（企业微信、钉钉、邮箱、短信等）
    */
-  private async sendToWechatRobot(type: string, title: string, content: string): Promise<void> {
+  private async sendToAllChannels(type: string, title: string, content: string): Promise<void> {
     try {
+      console.log(`[OrderNotification] 🔔 开始发送到外部渠道: type=${type}, title=${title}`);
+
       const dataSource = getDataSource();
-      if (!dataSource) return;
-
-      const channelRepo = dataSource.getRepository(NotificationChannel);
-      const logRepo = dataSource.getRepository(NotificationLog);
-
-      // 查找启用的企业微信渠道配置
-      const channels = await channelRepo.find({
-        where: {
-          channelType: 'wechat_work',
-          isEnabled: 1
-        }
-      });
-
-      if (channels.length === 0) {
-        console.log('[OrderNotification] 未配置企业微信渠道');
+      if (!dataSource) {
+        console.error('[OrderNotification] ❌ 数据库未连接，无法发送到外部渠道');
         return;
       }
 
-      for (const channel of channels) {
+      const channelRepo = dataSource.getRepository(NotificationChannel);
+
+      // 查找所有启用的通知渠道
+      const channels = await channelRepo.find({
+        where: { isEnabled: 1 }
+      });
+
+      console.log(`[OrderNotification] 📋 找到 ${channels.length} 个启用的通知渠道`);
+
+      if (channels.length === 0) {
+        console.log('[OrderNotification] ⚠️ 未配置任何通知渠道');
+        return;
+      }
+
+      // 并行发送到所有渠道
+      const sendPromises = channels.map(channel => {
+        console.log(`[OrderNotification] 📤 检查渠道: ${channel.name} (${channel.channelType}), messageTypes=${JSON.stringify(channel.messageTypes)}`);
+
         // 检查消息类型是否在配置的类型列表中
         if (channel.messageTypes && channel.messageTypes.length > 0) {
           if (!channel.messageTypes.includes(type) && !channel.messageTypes.includes('all')) {
-            continue;
+            console.log(`[OrderNotification] ⏭️ 跳过渠道 ${channel.name}: 消息类型 ${type} 不在配置列表中`);
+            return Promise.resolve();
           }
         }
 
-        const webhook = channel.config?.webhook;
-        if (!webhook) {
-          console.warn(`[OrderNotification] 渠道 ${channel.name} 未配置webhook`);
-          continue;
-        }
+        console.log(`[OrderNotification] ✅ 准备发送到渠道: ${channel.name} (${channel.channelType})`);
 
-        // 发送消息
+        switch (channel.channelType) {
+          case 'wechat_work':
+            return this.sendToWechatWork(channel, type, title, content);
+          case 'dingtalk':
+            return this.sendToDingtalk(channel, type, title, content);
+          case 'email':
+            return this.sendToEmail(channel, type, title, content);
+          case 'sms':
+            return this.sendToSms(channel, type, title, content);
+          case 'wechat_mp':
+            return this.sendToWechatMP(channel, type, title, content);
+          default:
+            console.warn(`[OrderNotification] ⚠️ 不支持的渠道类型: ${channel.channelType}`);
+            return Promise.resolve();
+        }
+      });
+
+      const results = await Promise.allSettled(sendPromises);
+      console.log(`[OrderNotification] 📊 外部渠道发送完成: ${results.filter(r => r.status === 'fulfilled').length}/${results.length} 成功`);
+    } catch (error) {
+      console.error('[OrderNotification] ❌ 发送到通知渠道失败:', error);
+    }
+  }
+
+  /**
+   * 🔥 发送到企业微信机器人
+   */
+  private async sendToWechatWork(channel: NotificationChannel, type: string, title: string, content: string): Promise<void> {
+    const logRepo = getDataSource()?.getRepository(NotificationLog);
+    const webhook = channel.config?.webhook;
+
+    if (!webhook) {
+      console.warn(`[OrderNotification] 企业微信渠道 ${channel.name} 未配置webhook`);
+      return;
+    }
+
+    const messageBody = {
+      msgtype: 'text',
+      text: { content: `${title}\n\n${content}` }
+    };
+
+    try {
+      const response = await fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(messageBody)
+      });
+
+      const result = await response.json() as { errcode: number; errmsg: string };
+
+      // 记录发送日志
+      if (logRepo) {
+        const log = logRepo.create({
+          id: uuidv4(),
+          channelId: channel.id,
+          channelType: 'wechat_work',
+          messageType: type,
+          title,
+          content,
+          status: result.errcode === 0 ? 'success' : 'failed',
+          response: JSON.stringify(result),
+          errorMessage: result.errcode !== 0 ? result.errmsg : undefined,
+          sentAt: new Date()
+        });
+        await logRepo.save(log);
+      }
+
+      if (result.errcode === 0) {
+        console.log(`[OrderNotification] ✅ 企业微信推送成功: ${channel.name}`);
+      } else {
+        console.warn(`[OrderNotification] ⚠️ 企业微信推送失败: ${result.errmsg}`);
+      }
+    } catch (error: any) {
+      console.error(`[OrderNotification] ❌ 企业微信请求失败:`, error.message);
+    }
+  }
+
+  /**
+   * 🔥 发送到钉钉机器人
+   */
+  private async sendToDingtalk(channel: NotificationChannel, type: string, title: string, content: string): Promise<void> {
+    const logRepo = getDataSource()?.getRepository(NotificationLog);
+    const webhook = channel.config?.webhook;
+    const secret = channel.config?.secret;
+
+    if (!webhook) {
+      console.warn(`[OrderNotification] 钉钉渠道 ${channel.name} 未配置webhook`);
+      return;
+    }
+
+    let url = webhook;
+
+    // 如果配置了加签密钥，需要计算签名
+    if (secret) {
+      const crypto = await import('crypto');
+      const timestamp = Date.now();
+      const stringToSign = `${timestamp}\n${secret}`;
+      const hmac = crypto.createHmac('sha256', secret);
+      hmac.update(stringToSign);
+      const sign = encodeURIComponent(hmac.digest('base64'));
+      url = `${webhook}&timestamp=${timestamp}&sign=${sign}`;
+    }
+
+    const messageBody = {
+      msgtype: 'text',
+      text: { content: `${title}\n\n${content}` }
+    };
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(messageBody)
+      });
+
+      const result = await response.json() as { errcode: number; errmsg: string };
+
+      if (logRepo) {
+        const log = logRepo.create({
+          id: uuidv4(),
+          channelId: channel.id,
+          channelType: 'dingtalk',
+          messageType: type,
+          title,
+          content,
+          status: result.errcode === 0 ? 'success' : 'failed',
+          response: JSON.stringify(result),
+          errorMessage: result.errcode !== 0 ? result.errmsg : undefined,
+          sentAt: new Date()
+        });
+        await logRepo.save(log);
+      }
+
+      if (result.errcode === 0) {
+        console.log(`[OrderNotification] ✅ 钉钉推送成功: ${channel.name}`);
+      } else {
+        console.warn(`[OrderNotification] ⚠️ 钉钉推送失败: ${result.errmsg}`);
+      }
+    } catch (error: any) {
+      console.error(`[OrderNotification] ❌ 钉钉请求失败:`, error.message);
+    }
+  }
+
+  /**
+   * 🔥 发送邮件通知
+   */
+  private async sendToEmail(channel: NotificationChannel, type: string, title: string, content: string): Promise<void> {
+    const logRepo = getDataSource()?.getRepository(NotificationLog);
+    const { host, port, user, pass, from, to } = channel.config || {};
+
+    if (!host || !user || !pass || !to) {
+      console.warn(`[OrderNotification] 邮件渠道 ${channel.name} 配置不完整`);
+      return;
+    }
+
+    try {
+      const nodemailer = await import('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host,
+        port: port || 465,
+        secure: true,
+        auth: { user, pass }
+      });
+
+      const mailOptions = {
+        from: from || user,
+        to,
+        subject: title,
+        text: content,
+        html: `<h3>${title}</h3><p>${content.replace(/\n/g, '<br>')}</p>`
+      };
+
+      const result = await transporter.sendMail(mailOptions);
+
+      if (logRepo) {
+        const log = logRepo.create({
+          id: uuidv4(),
+          channelId: channel.id,
+          channelType: 'email',
+          messageType: type,
+          title,
+          content,
+          status: 'success',
+          response: JSON.stringify(result),
+          sentAt: new Date()
+        });
+        await logRepo.save(log);
+      }
+
+      console.log(`[OrderNotification] ✅ 邮件发送成功: ${channel.name}`);
+    } catch (error: any) {
+      console.error(`[OrderNotification] ❌ 邮件发送失败:`, error.message);
+
+      if (logRepo) {
+        const log = logRepo.create({
+          id: uuidv4(),
+          channelId: channel.id,
+          channelType: 'email',
+          messageType: type,
+          title,
+          content,
+          status: 'failed',
+          errorMessage: error.message,
+          sentAt: new Date()
+        });
+        await logRepo.save(log);
+      }
+    }
+  }
+
+  /**
+   * 🔥 发送短信通知（需要配置短信服务商API）
+   */
+  private async sendToSms(channel: NotificationChannel, type: string, title: string, content: string): Promise<void> {
+    const logRepo = getDataSource()?.getRepository(NotificationLog);
+    const { apiUrl, apiKey, phones, templateId } = channel.config || {};
+
+    if (!apiUrl || !apiKey || !phones) {
+      console.warn(`[OrderNotification] 短信渠道 ${channel.name} 配置不完整`);
+      return;
+    }
+
+    try {
+      // 通用短信API调用（根据实际短信服务商调整）
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          phones: Array.isArray(phones) ? phones : [phones],
+          templateId,
+          params: { title, content: content.substring(0, 70) } // 短信内容限制
+        })
+      });
+
+      const result = await response.json();
+
+      if (logRepo) {
+        const log = logRepo.create({
+          id: uuidv4(),
+          channelId: channel.id,
+          channelType: 'sms',
+          messageType: type,
+          title,
+          content: content.substring(0, 70),
+          status: response.ok ? 'success' : 'failed',
+          response: JSON.stringify(result),
+          sentAt: new Date()
+        });
+        await logRepo.save(log);
+      }
+
+      console.log(`[OrderNotification] ✅ 短信发送成功: ${channel.name}`);
+    } catch (error: any) {
+      console.error(`[OrderNotification] ❌ 短信发送失败:`, error.message);
+    }
+  }
+
+  /**
+   * 🔥 发送微信公众号模板消息
+   */
+  private async sendToWechatMP(channel: NotificationChannel, type: string, title: string, content: string): Promise<void> {
+    const logRepo = getDataSource()?.getRepository(NotificationLog);
+    const { appId, appSecret, templateId, openIds } = channel.config || {};
+
+    if (!appId || !appSecret || !templateId || !openIds) {
+      console.warn(`[OrderNotification] 微信公众号渠道 ${channel.name} 配置不完整`);
+      return;
+    }
+
+    try {
+      // 获取access_token
+      const tokenUrl = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
+      const tokenRes = await fetch(tokenUrl);
+      const tokenData = await tokenRes.json() as { access_token?: string; errcode?: number };
+
+      if (!tokenData.access_token) {
+        throw new Error('获取access_token失败');
+      }
+
+      // 发送模板消息
+      const sendUrl = `https://api.weixin.qq.com/cgi-bin/message/template/send?access_token=${tokenData.access_token}`;
+      const openIdList = Array.isArray(openIds) ? openIds : [openIds];
+
+      for (const openId of openIdList) {
         const messageBody = {
-          msgtype: 'text',
-          text: {
-            content: `${title}\n\n${content}`
+          touser: openId,
+          template_id: templateId,
+          data: {
+            first: { value: title },
+            keyword1: { value: type },
+            keyword2: { value: content.substring(0, 100) },
+            remark: { value: '请登录系统查看详情' }
           }
         };
 
-        try {
-          const response = await fetch(webhook, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(messageBody)
-          });
+        const response = await fetch(sendUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(messageBody)
+        });
 
-          const result = await response.json() as { errcode: number; errmsg: string };
+        const result = await response.json() as { errcode: number; errmsg: string };
 
-          // 记录发送日志
+        if (logRepo) {
           const log = logRepo.create({
             id: uuidv4(),
             channelId: channel.id,
-            channelType: 'wechat_work',
+            channelType: 'wechat_mp',
             messageType: type,
             title,
             content,
+            targetUsers: [openId],
             status: result.errcode === 0 ? 'success' : 'failed',
             response: JSON.stringify(result),
             errorMessage: result.errcode !== 0 ? result.errmsg : undefined,
             sentAt: new Date()
           });
           await logRepo.save(log);
-
-          if (result.errcode === 0) {
-            console.log(`[OrderNotification] ✅ 企业微信推送成功: ${channel.name}`);
-          } else {
-            console.warn(`[OrderNotification] ⚠️ 企业微信推送失败: ${result.errmsg}`);
-          }
-        } catch (fetchError: any) {
-          console.error(`[OrderNotification] ❌ 企业微信请求失败:`, fetchError.message);
         }
       }
-    } catch (error) {
-      console.error('[OrderNotification] ❌ 企业微信推送异常:', error);
+
+      console.log(`[OrderNotification] ✅ 微信公众号推送成功: ${channel.name}`);
+    } catch (error: any) {
+      console.error(`[OrderNotification] ❌ 微信公众号推送失败:`, error.message);
     }
+  }
+
+  /**
+   * 🔥 兼容旧方法名
+   */
+  private async sendToWechatRobot(type: string, title: string, content: string): Promise<void> {
+    return this.sendToAllChannels(type, title, content);
   }
 
   /**
@@ -344,7 +646,12 @@ class OrderNotificationService {
    * 订单审核通过通知 - 通知下单员
    */
   async notifyOrderAuditApproved(order: OrderInfo, auditorName: string): Promise<void> {
-    if (!order.createdBy) return;
+    console.log(`[OrderNotification] 🔔 notifyOrderAuditApproved 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}, auditorName=${auditorName}`);
+
+    if (!order.createdBy) {
+      console.warn(`[OrderNotification] ⚠️ 订单 ${order.orderNumber} 没有 createdBy，跳过通知`);
+      return;
+    }
 
     const content = `您的订单 #${order.orderNumber} 已被 ${auditorName} 审核通过，即将安排发货`;
 

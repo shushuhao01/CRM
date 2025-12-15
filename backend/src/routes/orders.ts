@@ -1693,10 +1693,13 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
       createdByName: order.createdByName
     };
 
+    console.log(`📋 [订单审核] orderInfo: ${JSON.stringify(orderInfo)}`);
+
     if (isApproved) {
       order.status = 'pending_shipment';
       order.remark = `${order.remark || ''} | 审核通过: ${finalRemark}`;
       console.log(`✅ [订单审核] 订单 ${order.orderNumber} 审核通过，状态变更为 pending_shipment`);
+      console.log(`📨 [订单审核] 准备发送通知给 createdBy=${order.createdBy}, auditorName=${auditorName}`);
 
       // 🔥 发送审核通过通知给下单员
       orderNotificationService.notifyOrderAuditApproved(orderInfo, auditorName)
