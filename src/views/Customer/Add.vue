@@ -1232,7 +1232,10 @@ const handleSubmit = async () => {
 
     // 跳转到客户列表，带上refresh参数强制刷新
     console.log('🚀 跳转到客户列表页面')
-    safeNavigator.push('/customer/list?refresh=true')
+    safeNavigator.push({
+      path: '/customer/list',
+      query: { refresh: 'true', timestamp: Date.now().toString() }
+    })
 
   } catch (error) {
     console.error('❌ 保存客户失败:', error)
