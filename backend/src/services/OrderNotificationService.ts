@@ -3,6 +3,7 @@
  *
  * 负责订单全生命周期的消息通知
  * 所有消息都存储到数据库，支持跨设备通知
+ * 🔥 2025-12-15 更新：添加企业微信机器人推送功能
  *
  * 创建日期：2025-12-14
  */
@@ -10,6 +11,7 @@
 import { getDataSource } from '../config/database';
 import { SystemMessage } from '../entities/SystemMessage';
 import { User } from '../entities/User';
+import { NotificationChannel, NotificationLog } from '../entities/NotificationChannel';
 import { v4 as uuidv4 } from 'uuid';
 
 // 消息类型定义
@@ -113,10 +115,100 @@ class OrderNotificationService {
 
       await messageRepo.save(message);
       console.log(`[OrderNotification] ✅ 消息已发送: ${type} -> ${targetUserId}`);
+
+      // 🔥 同时发送到企业微信机器人
+      this.sendToWechatRobot(type, title, content).catch(err => {
+        console.warn('[OrderNotification] 企业微信推送失败:', err.message);
+      });
+
       return true;
     } catch (error) {
       console.error('[OrderNotification] ❌ 发送消息失败:', error);
       return false;
+    }
+  }
+
+  /**
+   * 🔥 发送消息到企业微信机器人
+   */
+  private async sendToWechatRobot(type: string, title: string, content: string): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) return;
+
+      const channelRepo = dataSource.getRepository(NotificationChannel);
+      const logRepo = dataSource.getRepository(NotificationLog);
+
+      // 查找启用的企业微信渠道配置
+      const channels = await channelRepo.find({
+        where: {
+          channelType: 'wechat_work',
+          isEnabled: 1
+        }
+      });
+
+      if (channels.length === 0) {
+        console.log('[OrderNotification] 未配置企业微信渠道');
+        return;
+      }
+
+      for (const channel of channels) {
+        // 检查消息类型是否在配置的类型列表中
+        if (channel.messageTypes && channel.messageTypes.length > 0) {
+          if (!channel.messageTypes.includes(type) && !channel.messageTypes.includes('all')) {
+            continue;
+          }
+        }
+
+        const webhook = channel.config?.webhook;
+        if (!webhook) {
+          console.warn(`[OrderNotification] 渠道 ${channel.name} 未配置webhook`);
+          continue;
+        }
+
+        // 发送消息
+        const messageBody = {
+          msgtype: 'text',
+          text: {
+            content: `${title}\n\n${content}`
+          }
+        };
+
+        try {
+          const response = await fetch(webhook, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(messageBody)
+          });
+
+          const result = await response.json() as { errcode: number; errmsg: string };
+
+          // 记录发送日志
+          const log = logRepo.create({
+            id: uuidv4(),
+            channelId: channel.id,
+            channelType: 'wechat_work',
+            messageType: type,
+            title,
+            content,
+            status: result.errcode === 0 ? 'success' : 'failed',
+            response: JSON.stringify(result),
+            errorMessage: result.errcode !== 0 ? result.errmsg : undefined,
+            sentAt: new Date()
+          });
+          await logRepo.save(log);
+
+          if (result.errcode === 0) {
+            console.log(`[OrderNotification] ✅ 企业微信推送成功: ${channel.name}`);
+          } else {
+            console.warn(`[OrderNotification] ⚠️ 企业微信推送失败: ${result.errmsg}`);
+          }
+        } catch (fetchError: any) {
+          console.error(`[OrderNotification] ❌ 企业微信请求失败:`, fetchError.message);
+        }
+      }
+    } catch (error) {
+      console.error('[OrderNotification] ❌ 企业微信推送异常:', error);
     }
   }
 
@@ -163,6 +255,12 @@ class OrderNotificationService {
 
       await messageRepo.save(messages);
       console.log(`[OrderNotification] ✅ 批量发送 ${messages.length} 条消息: ${type}`);
+
+      // 🔥 同时发送到企业微信机器人（只发送一次，不重复）
+      this.sendToWechatRobot(type, title, content).catch(err => {
+        console.warn('[OrderNotification] 企业微信推送失败:', err.message);
+      });
+
       return messages.length;
     } catch (error) {
       console.error('[OrderNotification] ❌ 批量发送消息失败:', error);
