@@ -87,23 +87,19 @@
             <el-col :span="12">
               <el-form-item label="收货电话" prop="receiverPhone">
                 <div class="phone-management">
+                  <!-- 🔥 修复：使用maskPhone强制加密显示，不受权限影响 -->
                   <el-select
                     v-model="orderForm.receiverPhone"
                     placeholder="请选择收货电话"
                     style="width: 100%"
                     clearable
                   >
-                    <template #label="{ label }">
-                      {{ label ? displaySensitiveInfoNew(label, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') : '' }}
-                    </template>
                     <el-option
                       v-for="phone in customerPhones"
                       :key="phone.id"
-                      :label="phone.number"
+                      :label="maskPhone(phone.number)"
                       :value="phone.number"
-                    >
-                      {{ displaySensitiveInfoNew(phone.number, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') }}
-                    </el-option>
+                    />
                   </el-select>
                   <el-button
                     type="primary"
@@ -657,6 +653,7 @@ import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { createSafeNavigator } from '@/utils/navigation'
+import { maskPhone } from '@/utils/dataMask'
 import CustomFieldsCard from '@/components/Order/CustomFieldsCard.vue'
 
 // 接口定义
