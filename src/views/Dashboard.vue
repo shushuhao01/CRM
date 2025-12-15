@@ -944,7 +944,13 @@ const loadRealMetrics = async () => {
 
   // 🔥 获取所有订单（不只是approved的），用于统计待审核和待发货
   let allOrders = orderStore.orders
-  let approvedOrders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+  // 🔥 使用新的业绩计算规则
+  let approvedOrders = orderStore.orders.filter(order => {
+    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+    // 待流转状态只有正常发货单才计入业绩
+    if (order.status === 'pending_transfer') return order.markType === 'normal'
+    return !excludedStatuses.includes(order.status)
+  })
 
   // 根据用户角色筛选订单
   if (!userStore.isAdmin && !userStore.isManager) {
@@ -1085,7 +1091,13 @@ const loadRealMetrics = async () => {
 
 // 加载真实的排名数据
 const loadRealRankings = () => {
-  let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+  // 🔥 使用新的业绩计算规则
+  let orders = orderStore.orders.filter(order => {
+    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+    // 待流转状态只有正常发货单才计入业绩
+    if (order.status === 'pending_transfer') return order.markType === 'normal'
+    return !excludedStatuses.includes(order.status)
+  })
   const currentUser = userStore.currentUser
   const currentDeptId = currentUser?.departmentId
   const currentDeptName = currentUser?.departmentName || currentUser?.department
@@ -1347,7 +1359,13 @@ const loadRealRankings = () => {
 // 加载真实的图表数据
 const loadRealChartData = () => {
   const currentUserId = userStore.currentUser?.id
-  let orders = orderStore.orders.filter(order => order.auditStatus === 'approved')
+  // 🔥 使用新的业绩计算规则
+  let orders = orderStore.orders.filter(order => {
+    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+    // 待流转状态只有正常发货单才计入业绩
+    if (order.status === 'pending_transfer') return order.markType === 'normal'
+    return !excludedStatuses.includes(order.status)
+  })
 
   // 根据用户角色筛选订单
   if (!userStore.isAdmin && !userStore.isManager) {
