@@ -2,172 +2,84 @@
   <el-dialog
     v-model="dialogVisible"
     title="发货处理"
-    width="50%"
+    width="600px"
     :before-close="handleClose"
     class="shipping-dialog"
+    top="8vh"
   >
-    <div v-if="order" class="shipping-content">
-      <!-- 订单信息 -->
-      <div class="order-summary">
-        <h3 class="section-title">
-          <el-icon><Box /></el-icon>
-          订单信息
-        </h3>
-        <div class="order-info-grid">
-          <div class="info-item">
-            <span class="label">订单号：</span>
-            <span class="value">{{ order.orderNo }}</span>
+    <div v-if="order" class="shipping-content-compact">
+      <!-- 订单信息（紧凑卡片） -->
+      <div class="order-card">
+        <div class="order-header">
+          <span class="order-no">{{ order.orderNo }}</span>
+          <span class="cod-badge">代收 ¥{{ formatNumber(order.codAmount) }}</span>
+        </div>
+        <div class="order-details">
+          <div class="detail-row">
+            <span class="label">客户：</span>
+            <span>{{ order.customerName }}</span>
+            <span class="separator">|</span>
+            <span>{{ displaySensitiveInfoNew(order.phone, 'phone') }}</span>
           </div>
-          <div class="info-item">
-            <span class="label">客户姓名：</span>
-            <span class="value">{{ order.customerName }}</span>
+          <div class="detail-row">
+            <span class="label">地址：</span>
+            <span class="address">{{ order.address }}</span>
           </div>
-          <div class="info-item">
-            <span class="label">联系电话：</span>
-            <span class="value">{{ displaySensitiveInfoNew(order.phone, 'phone') }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">收货地址：</span>
-            <span class="value">{{ order.address }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">商品信息：</span>
-            <span class="value">{{ getProductsText() }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">代收款金额：</span>
-            <span class="value cod-amount">¥{{ formatNumber(order.codAmount) }}</span>
+          <div class="detail-row">
+            <span class="label">商品：</span>
+            <span>{{ getProductsText() }}</span>
           </div>
         </div>
       </div>
 
-      <!-- 物流信息 -->
-      <div class="logistics-form">
-        <h3 class="section-title">
-          <el-icon><Van /></el-icon>
-          物流信息
-        </h3>
-        <el-form :model="shippingForm" :rules="rules" ref="formRef" label-width="120px">
-          <el-form-item label="物流公司" prop="logisticsCompany" required>
-            <el-select
-              v-model="shippingForm.logisticsCompany"
-              placeholder="请选择物流公司"
-              class="full-width"
-              filterable
-              @change="onLogisticsChange"
-            >
-              <el-option
-                v-for="company in logisticsCompanies"
-                :key="company.code"
-                :label="company.name"
-                :value="company.code"
-              >
-                <div class="company-option">
-                  <span class="company-name">{{ company.name }}</span>
-                  <span class="company-code">({{ company.code }})</span>
-                </div>
-              </el-option>
+      <!-- 物流信息表单（紧凑布局） -->
+      <el-form :model="shippingForm" :rules="rules" ref="formRef" label-width="80px" size="default" class="compact-form">
+        <div class="form-row">
+          <el-form-item label="物流公司" prop="logisticsCompany" class="form-item-half">
+            <el-select v-model="shippingForm.logisticsCompany" placeholder="选择物流公司" filterable @change="onLogisticsChange">
+              <el-option v-for="c in logisticsCompanies" :key="c.code" :label="c.name" :value="c.code" />
             </el-select>
           </el-form-item>
-
-          <el-form-item label="运单号" prop="trackingNumber" required>
-            <el-input
-              v-model="shippingForm.trackingNumber"
-              placeholder="请输入运单号"
-              class="full-width"
-              clearable
-            >
-              <template #append>
-                <el-button @click="generateTrackingNumber" type="primary">
-                  <el-icon><Refresh /></el-icon>
-                  生成
-                </el-button>
-              </template>
-            </el-input>
-            <div class="tracking-tip">
-              <el-icon><InfoFilled /></el-icon>
-              <span>运单号可以手动输入或点击生成按钮自动生成</span>
-            </div>
+          <el-form-item label="预计送达" prop="estimatedDelivery" class="form-item-half">
+            <el-date-picker v-model="shippingForm.estimatedDelivery" type="date" placeholder="选择日期" :disabled-date="disabledDate" style="width: 100%" />
           </el-form-item>
-
-          <el-form-item label="预计送达" prop="estimatedDelivery">
-            <el-date-picker
-              v-model="shippingForm.estimatedDelivery"
-              type="date"
-              placeholder="选择预计送达日期"
-              class="full-width"
-              :disabled-date="disabledDate"
-            />
-          </el-form-item>
-
-          <el-form-item label="发货备注" prop="remarks">
-            <el-input
-              v-model="shippingForm.remarks"
-              type="textarea"
-              :rows="3"
-              placeholder="请输入发货备注（选填）"
-              maxlength="200"
-              show-word-limit
-              class="full-width"
-            />
-          </el-form-item>
-
-          <el-form-item label="发货方式" prop="shippingMethod">
-            <el-radio-group v-model="shippingForm.shippingMethod">
-              <el-radio label="standard">标准快递</el-radio>
-              <el-radio label="express">加急快递</el-radio>
-              <el-radio label="economy">经济快递</el-radio>
+        </div>
+        <el-form-item label="运单号" prop="trackingNumber">
+          <el-input v-model="shippingForm.trackingNumber" placeholder="输入或自动生成运单号" clearable>
+            <template #append>
+              <el-button @click="generateTrackingNumber" type="primary" size="small">生成</el-button>
+            </template>
+          </el-input>
+        </el-form-item>
+        <div class="form-row">
+          <el-form-item label="发货方式" prop="shippingMethod" class="form-item-half">
+            <el-radio-group v-model="shippingForm.shippingMethod" size="small">
+              <el-radio-button label="standard">标准</el-radio-button>
+              <el-radio-button label="express">加急</el-radio-button>
+              <el-radio-button label="economy">经济</el-radio-button>
             </el-radio-group>
           </el-form-item>
-
-          <el-form-item label="保价金额" prop="insuranceAmount">
-            <el-input-number
-              v-model="shippingForm.insuranceAmount"
-              :min="0"
-              :max="order.totalAmount"
-              :precision="2"
-              placeholder="保价金额"
-              class="full-width"
-            />
-            <div class="insurance-tip">
-              <el-icon><InfoFilled /></el-icon>
-              <span>建议保价金额不超过订单总金额 ¥{{ formatNumber(order.totalAmount) }}</span>
-            </div>
+          <el-form-item label="保价金额" prop="insuranceAmount" class="form-item-half">
+            <el-input-number v-model="shippingForm.insuranceAmount" :min="0" :max="order.totalAmount" :precision="2" controls-position="right" style="width: 100%" />
           </el-form-item>
-        </el-form>
-      </div>
+        </div>
+        <el-form-item label="备注" prop="remarks">
+          <el-input v-model="shippingForm.remarks" type="textarea" :rows="2" placeholder="发货备注（选填）" maxlength="200" show-word-limit />
+        </el-form-item>
+      </el-form>
 
-      <!-- 发货确认 -->
-      <div class="shipping-confirm">
-        <el-alert
-          title="发货确认"
-          type="warning"
-          :closable="false"
-          show-icon
-        >
-          <template #default>
-            <p>确认发货后，系统将：</p>
-            <ul>
-              <li>更新订单状态为"已发货"</li>
-              <li>记录物流信息和运单号</li>
-              <li>发送发货通知给客户</li>
-              <li>开始物流跟踪</li>
-            </ul>
-          </template>
-        </el-alert>
+      <!-- 确认提示 -->
+      <div class="confirm-tips">
+        <el-icon class="tip-icon"><InfoFilled /></el-icon>
+        <span>确认后订单状态将更新为"已发货"，并发送通知给客户</span>
       </div>
     </div>
 
     <template #footer>
-      <div class="dialog-footer">
+      <div class="dialog-footer-compact">
         <el-button @click="handleClose">取消</el-button>
-        <el-button type="info" @click="saveAsDraft">
-          <el-icon><Document /></el-icon>
-          保存草稿
-        </el-button>
         <el-button type="primary" @click="confirmShipping" :loading="loading">
-          <el-icon><Van /></el-icon>
-          确认发货
+          <el-icon><Van /></el-icon>确认发货
         </el-button>
       </div>
     </template>
@@ -515,122 +427,117 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* 紧凑对话框样式 */
 .shipping-dialog {
+  :deep(.el-dialog__header) {
+    padding: 16px 20px;
+    border-bottom: 1px solid #f0f0f0;
+  }
   :deep(.el-dialog__body) {
-    padding: 20px;
+    padding: 16px 20px;
     max-height: 70vh;
     overflow-y: auto;
   }
+  :deep(.el-dialog__footer) {
+    padding: 12px 20px;
+    border-top: 1px solid #f0f0f0;
+  }
 }
 
-.shipping-content {
+.shipping-content-compact {
   font-size: 14px;
 }
 
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0 0 15px 0;
-  padding-bottom: 10px;
-  border-bottom: 2px solid #e4e7ed;
-}
-
-/* 订单信息样式 */
-.order-summary {
-  background: #f8f9fa;
+/* 订单卡片 */
+.order-card {
+  background: #f8fafc;
   border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border: 1px solid #e5e7eb;
 }
-
-.order-info-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 15px;
-}
-
-.info-item {
-  display: flex;
-  align-items: center;
-}
-
-.info-item .label {
-  font-weight: 600;
-  color: #606266;
-  min-width: 80px;
-}
-
-.info-item .value {
-  color: #303133;
-  flex: 1;
-}
-
-.cod-amount {
-  color: #f56c6c;
-  font-weight: bold;
-  font-size: 16px;
-}
-
-/* 物流表单样式 */
-.logistics-form {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
-}
-
-.full-width {
-  width: 100%;
-}
-
-.company-option {
+.order-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 10px;
 }
-
-.company-name {
+.order-no {
   font-weight: 600;
+  color: #333;
+  font-size: 15px;
 }
-
-.company-code {
-  color: #909399;
+.cod-badge {
+  background: #fef3cd;
+  color: #856404;
+  padding: 2px 8px;
+  border-radius: 4px;
   font-size: 12px;
+  font-weight: 500;
+}
+.order-details {
+  font-size: 13px;
+  color: #666;
+}
+.detail-row {
+  margin-bottom: 6px;
+  display: flex;
+  align-items: flex-start;
+}
+.detail-row .label {
+  color: #999;
+  min-width: 45px;
+}
+.detail-row .separator {
+  margin: 0 8px;
+  color: #ddd;
+}
+.detail-row .address {
+  flex: 1;
+  word-break: break-all;
 }
 
-.tracking-tip,
-.insurance-tip {
+/* 紧凑表单 */
+.compact-form {
+  background: #fff;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  margin-bottom: 16px;
+}
+.form-row {
+  display: flex;
+  gap: 16px;
+}
+.form-item-half {
+  flex: 1;
+}
+.form-item-half :deep(.el-select),
+.form-item-half :deep(.el-date-editor) {
+  width: 100%;
+}
+
+/* 确认提示 */
+.confirm-tips {
   display: flex;
   align-items: center;
-  gap: 5px;
-  margin-top: 5px;
-  font-size: 12px;
-  color: #909399;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #e6f7ff;
+  border-radius: 6px;
+  color: #0958d9;
+  font-size: 13px;
+}
+.tip-icon {
+  color: #1890ff;
+  font-size: 16px;
 }
 
-/* 发货确认样式 */
-.shipping-confirm {
-  margin-bottom: 20px;
-}
-
-.shipping-confirm ul {
-  margin: 10px 0 0 20px;
-  padding: 0;
-}
-
-.shipping-confirm li {
-  margin: 5px 0;
-  color: #606266;
-}
-
-.dialog-footer {
+/* 底部按钮 */
+.dialog-footer-compact {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 12px;
 }
 
 /* 响应式设计 */

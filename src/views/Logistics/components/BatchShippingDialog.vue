@@ -2,152 +2,93 @@
   <el-dialog
     v-model="dialogVisible"
     title="批量发货"
-    width="80%"
+    width="900px"
     :before-close="handleClose"
     class="batch-shipping-dialog"
+    top="5vh"
   >
-    <div class="batch-content">
-      <!-- 选中订单列表 -->
-      <div class="selected-orders">
-        <h3 class="section-title">
-          <el-icon><Box /></el-icon>
-          选中订单 ({{ selectedOrders.length }}个)
-        </h3>
-        <div class="orders-summary">
-          <div class="summary-cards">
-            <div class="summary-card">
-              <div class="card-title">订单总数</div>
-              <div class="card-value">{{ selectedOrders.length }}</div>
-            </div>
-            <div class="summary-card">
-              <div class="card-title">总金额</div>
-              <div class="card-value">¥{{ formatNumber(totalAmount) }}</div>
-            </div>
-            <div class="summary-card">
-              <div class="card-title">代收款总额</div>
-              <div class="card-value cod-amount">¥{{ formatNumber(totalCodAmount) }}</div>
-            </div>
-          </div>
+    <div class="batch-content-compact">
+      <!-- 顶部汇总信息 -->
+      <div class="top-summary">
+        <div class="summary-item">
+          <span class="label">选中订单</span>
+          <span class="value primary">{{ selectedOrders.length }}单</span>
         </div>
+        <div class="summary-item">
+          <span class="label">总金额</span>
+          <span class="value">¥{{ formatNumber(totalAmount) }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">代收款</span>
+          <span class="value warning">¥{{ formatNumber(totalCodAmount) }}</span>
+        </div>
+        <el-button type="primary" link size="small" @click="showOrderDetail = !showOrderDetail">
+          {{ showOrderDetail ? '收起详情' : '查看详情' }}
+          <el-icon><ArrowDown v-if="!showOrderDetail" /><ArrowUp v-else /></el-icon>
+        </el-button>
+      </div>
 
-        <div class="orders-table">
-          <el-table :data="selectedOrders" style="width: 100%" max-height="300">
-            <el-table-column prop="orderNo" label="订单号" width="120" />
-            <el-table-column prop="customerName" label="客户姓名" width="100" />
-            <el-table-column prop="phone" label="联系电话" width="120" />
-            <el-table-column prop="address" label="收货地址" min-width="200" show-overflow-tooltip />
-            <el-table-column prop="totalAmount" label="订单金额" width="100" align="right">
-              <template #default="{ row }">
-                ¥{{ formatNumber(row.totalAmount) }}
-              </template>
+      <!-- 订单详情表格（可折叠） -->
+      <el-collapse-transition>
+        <div v-show="showOrderDetail" class="orders-table-compact">
+          <el-table :data="selectedOrders" size="small" max-height="150" border>
+            <el-table-column prop="orderNo" label="订单号" width="130" />
+            <el-table-column prop="customerName" label="客户" width="80" />
+            <el-table-column prop="address" label="地址" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="totalAmount" label="金额" width="90" align="right">
+              <template #default="{ row }">¥{{ formatNumber(row.totalAmount) }}</template>
             </el-table-column>
-            <el-table-column prop="codAmount" label="代收款" width="100" align="right">
-              <template #default="{ row }">
-                <span class="cod-text">¥{{ formatNumber(row.codAmount) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="80" fixed="right">
-              <template #default="{ row, $index }">
-                <el-button
-                  type="danger"
-                  size="small"
-                  @click="removeOrder($index)"
-                  :icon="Delete"
-                  circle
-                />
+            <el-table-column label="" width="50" fixed="right">
+              <template #default="{ $index }">
+                <el-button type="danger" size="small" :icon="Delete" circle @click="removeOrder($index)" />
               </template>
             </el-table-column>
           </el-table>
         </div>
-      </div>
+      </el-collapse-transition>
 
-      <!-- 批量设置 -->
-      <div class="batch-settings">
-        <h3 class="section-title">
-          <el-icon><Setting /></el-icon>
-          批量设置
-        </h3>
-
-        <el-form :model="batchForm" :rules="rules" ref="formRef" label-width="120px">
-          <div class="form-grid">
-            <el-form-item label="物流公司" prop="logisticsCompany" required>
-              <el-select
-                v-model="batchForm.logisticsCompany"
-                placeholder="请选择物流公司"
-                class="full-width"
-                filterable
-                @change="onLogisticsChange"
-              >
-                <el-option
-                  v-for="company in logisticsCompanies"
-                  :key="company.code"
-                  :label="company.name"
-                  :value="company.code"
-                >
-                  <div class="company-option">
-                    <span class="company-name">{{ company.name }}</span>
-                    <span class="company-code">({{ company.code }})</span>
-                  </div>
-                </el-option>
-              </el-select>
-            </el-form-item>
-
-            <el-form-item label="发货方式" prop="shippingMethod">
-              <el-select v-model="batchForm.shippingMethod" class="full-width">
-                <el-option label="标准快递" value="standard" />
-                <el-option label="加急快递" value="express" />
-                <el-option label="经济快递" value="economy" />
-              </el-select>
-            </el-form-item>
-
-            <el-form-item label="运单号生成" prop="trackingMode">
-              <el-radio-group v-model="batchForm.trackingMode">
-                <el-radio label="auto">自动生成</el-radio>
-                <el-radio label="manual">手动输入</el-radio>
-                <el-radio label="import">批量导入</el-radio>
-              </el-radio-group>
-            </el-form-item>
-
-            <el-form-item label="预计送达" prop="estimatedDelivery">
-              <el-date-picker
-                v-model="batchForm.estimatedDelivery"
-                type="date"
-                placeholder="选择预计送达日期"
-                class="full-width"
-                :disabled-date="disabledDate"
-              />
-            </el-form-item>
-          </div>
-
-          <el-form-item label="批量备注" prop="remarks">
-            <el-input
-              v-model="batchForm.remarks"
-              type="textarea"
-              :rows="3"
-              placeholder="请输入批量发货备注（选填）"
-              maxlength="200"
-              show-word-limit
-              class="full-width"
-            />
+      <!-- 发货设置（紧凑布局） -->
+      <el-form :model="batchForm" :rules="rules" ref="formRef" label-width="80px" size="default" class="compact-form">
+        <div class="form-row">
+          <el-form-item label="物流公司" prop="logisticsCompany" class="form-item-half">
+            <el-select v-model="batchForm.logisticsCompany" placeholder="选择物流公司" filterable @change="onLogisticsChange">
+              <el-option v-for="c in logisticsCompanies" :key="c.code" :label="c.name" :value="c.code" />
+            </el-select>
           </el-form-item>
-        </el-form>
-      </div>
+          <el-form-item label="发货方式" prop="shippingMethod" class="form-item-half">
+            <el-select v-model="batchForm.shippingMethod">
+              <el-option label="标准快递" value="standard" />
+              <el-option label="加急快递" value="express" />
+              <el-option label="经济快递" value="economy" />
+            </el-select>
+          </el-form-item>
+        </div>
+        <div class="form-row">
+          <el-form-item label="运单号" prop="trackingMode" class="form-item-half">
+            <el-radio-group v-model="batchForm.trackingMode" size="small">
+              <el-radio-button label="auto">自动生成</el-radio-button>
+              <el-radio-button label="manual">手动输入</el-radio-button>
+              <el-radio-button label="import">批量导入</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="预计送达" prop="estimatedDelivery" class="form-item-half">
+            <el-date-picker v-model="batchForm.estimatedDelivery" type="date" placeholder="选择日期" :disabled-date="disabledDate" style="width: 100%" />
+          </el-form-item>
+        </div>
+        <el-form-item label="备注" prop="remarks">
+          <el-input v-model="batchForm.remarks" type="textarea" :rows="2" placeholder="批量发货备注（选填）" maxlength="200" show-word-limit />
+        </el-form-item>
+      </el-form>
 
-      <!-- 运单号设置 -->
-      <div v-if="batchForm.trackingMode === 'manual'" class="tracking-manual">
-        <h3 class="section-title">
-          <el-icon><Edit /></el-icon>
-          手动输入运单号
-        </h3>
-        <div class="tracking-inputs">
-          <div
-            v-for="(order, index) in selectedOrders"
-            :key="order.id"
-            class="tracking-input-item"
-          >
-            <span class="order-label">{{ order.orderNo }}：</span>
-            <el-input
-              v-model="trackingNumbers[index]"
+      <!-- 运单号输入区域（紧凑） -->
+      <div v-if="batchForm.trackingMode === 'manual'" class="tracking-section">
+        <div class="section-header">
+          <span>手动输入运单号</span>
+        </div>
+        <div class="tracking-grid">
+          <div v-for="(order, index) in selectedOrders" :key="order.id" class="tracking-item">
+            <span class="order-no">{{ order.orderNo }}</span>
+            <el-input v-model="trackingNumbers[index]"
               placeholder="请输入运单号"
               class="tracking-input"
               clearable
@@ -156,122 +97,58 @@
         </div>
       </div>
 
-      <div v-if="batchForm.trackingMode === 'import'" class="tracking-import">
-        <h3 class="section-title">
-          <el-icon><Upload /></el-icon>
-          批量导入运单号
-        </h3>
-        <div class="import-area">
-          <el-upload
-            class="upload-demo"
-            drag
-            :auto-upload="false"
-            :on-change="handleFileChange"
-            accept=".xlsx,.xls"
-            :limit="1"
-          >
-            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-            <div class="el-upload__text">
-              将文件拖到此处，或<em>点击上传</em>
-            </div>
-            <template #tip>
-              <div class="el-upload__tip">
-                支持 Excel 格式（.xlsx），包含：订单号、客户姓名、联系电话、收货地址、运单号、物流公司
-                <br />
-                <span style="color: #f56c6c;">注意：请先下载模板，填写完整后再导入</span>
-              </div>
-            </template>
-          </el-upload>
-
-          <div class="import-template">
-            <el-button type="text" @click="downloadTemplate">
-              <el-icon><Download /></el-icon>
-              下载模板
-            </el-button>
-          </div>
+      <div v-if="batchForm.trackingMode === 'import'" class="tracking-section">
+        <div class="section-header">
+          <span>批量导入运单号</span>
+          <el-button type="primary" link size="small" @click="downloadTemplate">
+            <el-icon><Download /></el-icon>下载模板
+          </el-button>
         </div>
+        <el-upload class="upload-compact" drag :auto-upload="false" :on-change="handleFileChange" accept=".xlsx,.xls" :limit="1">
+          <div class="upload-content">
+            <el-icon class="upload-icon"><UploadFilled /></el-icon>
+            <span>拖拽或点击上传Excel</span>
+          </div>
+        </el-upload>
       </div>
 
-      <!-- 发货预览 -->
-      <div class="shipping-preview">
-        <h3 class="section-title">
-          <el-icon><View /></el-icon>
-          发货预览
-        </h3>
-        <el-table :data="previewData" style="width: 100%" max-height="200">
-          <el-table-column prop="orderNo" label="订单号" width="120" />
-          <el-table-column prop="customerName" label="客户姓名" width="100" />
-          <el-table-column label="物流公司" width="120">
-            <template #default>
-              {{ getLogisticsName() }}
-            </template>
+      <!-- 发货预览（简化） -->
+      <div class="preview-section">
+        <div class="section-header">
+          <span>发货预览</span>
+        </div>
+        <el-table :data="previewData" size="small" max-height="120" border>
+          <el-table-column prop="orderNo" label="订单号" width="130" />
+          <el-table-column label="物流" width="100">
+            <template #default>{{ getLogisticsName() || '-' }}</template>
           </el-table-column>
-          <el-table-column label="运单号" width="150">
+          <el-table-column label="运单号" min-width="130">
             <template #default="{ $index }">
-              <span v-if="batchForm.trackingMode === 'auto'" class="auto-tracking">
-                自动生成
-              </span>
-              <span v-else-if="batchForm.trackingMode === 'manual'">
-                {{ trackingNumbers[$index] || '待输入' }}
-              </span>
-              <span v-else>
-                {{ importedTrackingNumbers[$index] || '待导入' }}
-              </span>
+              <span v-if="batchForm.trackingMode === 'auto'" style="color: #409eff">自动生成</span>
+              <span v-else-if="batchForm.trackingMode === 'manual'">{{ trackingNumbers[$index] || '-' }}</span>
+              <span v-else>{{ importedTrackingNumbers[$index] || '-' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="预计送达" width="120">
-            <template #default>
-              {{ batchForm.estimatedDelivery || '待设置' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="100">
+          <el-table-column label="状态" width="80">
             <template #default="{ $index }">
-              <el-tag
-                :type="getPreviewStatus($index).type"
-                size="small"
-              >
-                {{ getPreviewStatus($index).text }}
-              </el-tag>
+              <el-tag :type="getPreviewStatus($index).type" size="small">{{ getPreviewStatus($index).text }}</el-tag>
             </template>
           </el-table-column>
         </el-table>
       </div>
 
-      <!-- 发货确认 -->
-      <div class="shipping-confirm">
-        <el-alert
-          title="批量发货确认"
-          type="warning"
-          :closable="false"
-          show-icon
-        >
-          <template #default>
-            <p>确认批量发货后，系统将：</p>
-            <ul>
-              <li>批量更新 {{ selectedOrders.length }} 个订单状态为"已发货"</li>
-              <li>记录所有订单的物流信息和运单号</li>
-              <li>批量发送发货通知给客户</li>
-              <li>开始批量物流跟踪</li>
-            </ul>
-            <p class="warning-text">
-              <el-icon><WarningFilled /></el-icon>
-              批量发货操作无法撤销，请确认信息无误后再执行！
-            </p>
-          </template>
-        </el-alert>
+      <!-- 确认提示（简化） -->
+      <div class="confirm-tips">
+        <el-icon class="tip-icon"><WarningFilled /></el-icon>
+        <span>确认后将更新 <strong>{{ selectedOrders.length }}</strong> 个订单状态为"已发货"，此操作不可撤销</span>
       </div>
     </div>
 
     <template #footer>
-      <div class="dialog-footer">
+      <div class="dialog-footer-compact">
         <el-button @click="handleClose">取消</el-button>
-        <el-button type="info" @click="saveAsDraft">
-          <el-icon><Document /></el-icon>
-          保存草稿
-        </el-button>
         <el-button type="primary" @click="confirmBatchShipping" :loading="loading">
-          <el-icon><Van /></el-icon>
-          确认批量发货
+          <el-icon><Van /></el-icon>确认发货
         </el-button>
       </div>
     </template>
@@ -283,7 +160,7 @@ import { ref, computed, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import {
   Box, Setting, Edit, Upload, View, Delete, UploadFilled,
-  Download, Document, Van, WarningFilled
+  Download, Document, Van, WarningFilled, ArrowDown, ArrowUp
 } from '@element-plus/icons-vue'
 import type { Order } from '@/stores/order'
 import * as XLSX from 'xlsx'
@@ -316,6 +193,7 @@ const dialogVisible = computed({
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+const showOrderDetail = ref(false)
 
 // 批量表单
 const batchForm = reactive({
@@ -811,25 +689,19 @@ const handleClose = () => {
 </script>
 
 <style scoped>
-/* 对话框样式 */
+/* 紧凑对话框样式 */
 :deep(.batch-shipping-dialog) {
   .el-dialog {
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e5e7eb;
   }
-
   .el-dialog__header {
-    background: #ffffff;
-    color: #374151;
-    padding: 24px 24px 20px 24px;
-    margin: 0;
-    border-bottom: 1px solid #f3f4f6;
+    padding: 16px 20px;
+    border-bottom: 1px solid #f0f0f0;
   }
-
   .el-dialog__title {
-    font-size: 20px;
+    font-size: 16px;
     font-weight: 600;
     color: #1f2937;
   }
@@ -850,74 +722,155 @@ const handleClose = () => {
   }
 
   .el-dialog__body {
-    padding: 24px;
-    max-height: 70vh;
+    padding: 16px 20px;
+    max-height: 75vh;
     overflow-y: auto;
-    background: #fafafa;
+  }
+  .el-dialog__footer {
+    padding: 12px 20px;
+    border-top: 1px solid #f0f0f0;
   }
 }
 
-.batch-content {
+/* 紧凑内容区 */
+.batch-content-compact {
   font-size: 14px;
 }
 
-.section-title {
+/* 顶部汇总 */
+.top-summary {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
-  margin: 0 0 20px 0;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-/* 选中订单样式 */
-.selected-orders {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 24px;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.orders-summary {
-  margin-bottom: 20px;
-}
-
-.summary-cards {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 15px;
-}
-
-.summary-card {
+  gap: 24px;
+  padding: 12px 16px;
   background: #f8fafc;
-  border-radius: 10px;
-  padding: 20px;
-  text-align: center;
-  border: 1px solid #e2e8f0;
-  transition: all 0.2s ease;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.summary-item .label {
+  color: #666;
+  font-size: 13px;
+}
+.summary-item .value {
+  font-weight: 600;
+  font-size: 15px;
+}
+.summary-item .value.primary { color: #409eff; }
+.summary-item .value.warning { color: #e6a23c; }
 
-  &:hover {
-    border-color: #cbd5e1;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+/* 订单表格（可折叠） */
+.orders-table-compact {
+  margin-bottom: 16px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* 紧凑表单 */
+.compact-form {
+  background: #fff;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  margin-bottom: 16px;
+}
+.form-row {
+  display: flex;
+  gap: 16px;
+}
+.form-item-half {
+  flex: 1;
+}
+.form-item-half :deep(.el-select),
+.form-item-half :deep(.el-date-editor) {
+  width: 100%;
+}
+
+/* 运单号区域 */
+.tracking-section {
+  background: #fff;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  margin-bottom: 16px;
+}
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-weight: 500;
+  color: #333;
+}
+.tracking-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.tracking-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tracking-item .order-no {
+  font-size: 12px;
+  color: #666;
+  min-width: 110px;
+}
+
+/* 上传区域 */
+.upload-compact {
+  :deep(.el-upload-dragger) {
+    padding: 20px;
+    height: auto;
   }
 }
-
-.card-title {
-  font-size: 13px;
-  color: #64748b;
-  margin-bottom: 8px;
-  font-weight: 500;
+.upload-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #666;
+}
+.upload-icon {
+  font-size: 24px;
+  color: #409eff;
 }
 
-.card-value {
-  font-size: 20px;
-  font-weight: 600;
-  color: #1e293b;
+/* 预览区域 */
+.preview-section {
+  background: #fff;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  margin-bottom: 16px;
+}
+
+/* 确认提示 */
+.confirm-tips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #fef3cd;
+  border-radius: 6px;
+  color: #856404;
+  font-size: 13px;
+}
+.tip-icon {
+  color: #e6a23c;
+  font-size: 16px;
+}
+
+/* 底部按钮 */
+.dialog-footer-compact {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .cod-amount {
