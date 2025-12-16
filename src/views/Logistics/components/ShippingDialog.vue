@@ -385,8 +385,29 @@ const confirmShipping = async () => {
 
     loading.value = true
 
-    // 模拟发货处理
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    const companyName = logisticsCompanies.value.find(c => c.code === shippingForm.logisticsCompany)?.name || shippingForm.logisticsCompany
+
+    // 🔥 修复：调用后端API更新订单状态到数据库
+    const { orderApi } = await import('@/api/order')
+    const orderId = props.order.id
+
+    console.log('[发货] 调用后端API更新订单状态:', {
+      orderId,
+      status: 'shipped',
+      trackingNumber: shippingForm.trackingNumber,
+      expressCompany: companyName
+    })
+
+    // 调用后端API更新订单状态
+    await orderApi.updateOrder(orderId, {
+      status: 'shipped',
+      trackingNumber: shippingForm.trackingNumber,
+      expressCompany: companyName,
+      shippedAt: new Date().toISOString(),
+      remark: shippingForm.remarks || `已发货，快递公司：${companyName}，运单号：${shippingForm.trackingNumber}`
+    })
+
+    console.log('[发货] 后端API更新成功')
 
     const shippingData = {
       orderId: props.order.id,
@@ -396,9 +417,7 @@ const confirmShipping = async () => {
       status: 'shipped'
     }
 
-    // 添加操作记录
-    const orderId = props.order.orderNo.replace('ORD', '')
-    const companyName = logisticsCompanies.value.find(c => c.code === shippingForm.logisticsCompany)?.name || shippingForm.logisticsCompany
+    // 同步更新前端store
     orderStore.syncOrderStatus(
       orderId,
       'shipped',
@@ -406,7 +425,7 @@ const confirmShipping = async () => {
       `订单已发货，快递公司：${companyName}，快递单号：${shippingForm.trackingNumber}`
     )
 
-    // 【批次201新增】发送订单已发货消息通知，显示真实物流单号
+    // 发送订单已发货消息通知
     notificationStore.sendMessage(
       notificationStore.MessageType.ORDER_SHIPPED,
       `订单 ${props.order.orderNo} 已发货，快递公司：${companyName}，快递单号：${shippingForm.trackingNumber}`,
@@ -417,13 +436,25 @@ const confirmShipping = async () => {
       }
     )
 
+    // 🔥 触发订单发货事件，通知其他页面刷新
+    window.dispatchEvent(new CustomEvent('order-shipped', {
+      detail: {
+        orderId: props.order.id,
+        orderNo: props.order.orderNo,
+        status: 'shipped',
+        trackingNumber: shippingForm.trackingNumber,
+        expressCompany: companyName
+      }
+    }))
+
     emit('shipped', shippingData)
     ElMessage.success('发货成功！已通知客户')
     handleClose()
 
-  } catch (error) {
+  } catch (error: any) {
+    console.error('[发货] 发货失败:', error)
     if (error !== 'cancel') {
-      ElMessage.error('发货失败，请重试')
+      ElMessage.error(error?.message || '发货失败，请重试')
     }
   } finally {
     loading.value = false
