@@ -95,16 +95,20 @@
               <el-col :span="12">
                 <el-form-item label="收货电话" prop="receiverPhone">
                   <div class="phone-management">
+                    <!-- 🔥 修复：使用自定义显示格式，选中后也显示加密号码 -->
                     <el-select
                       v-model="orderForm.receiverPhone"
                       placeholder="请选择收货电话"
                       style="width: 100%"
                       clearable
                     >
+                      <template #label="{ value }">
+                        <span>{{ maskPhone(value) }}</span>
+                      </template>
                       <el-option
                         v-for="phone in customerPhones"
                         :key="phone.id"
-                        :label="phone.number"
+                        :label="maskPhone(phone.number)"
                         :value="phone.number"
                       />
                     </el-select>
