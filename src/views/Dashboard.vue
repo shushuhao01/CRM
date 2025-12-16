@@ -1401,24 +1401,41 @@ const loadRealChartData = () => {
   const today = new Date()
   const timeData = new Map()
 
+  // 🔥 筛选已签收订单用于计算签收业绩
+  const deliveredOrders = orders.filter(order => order.status === 'delivered')
+
   if (performancePeriod.value === 'day') {
     // 今日每小时数据
     for (let i = 0; i < 24; i++) {
-      timeData.set(i, { label: `${i}:00`, amount: 0, orders: 0 })
+      timeData.set(i, { label: `${i}:00`, amount: 0, signAmount: 0 })
     }
 
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+
+    // 下单业绩：按下单时间统计
     const todayOrders = orders.filter(order => {
       const orderTime = new Date(order.createTime).getTime()
       return orderTime >= todayStart
     })
-
     todayOrders.forEach(order => {
       const hour = new Date(order.createTime).getHours()
       const data = timeData.get(hour)
       if (data) {
         data.amount += order.totalAmount
-        data.orders += 1
+      }
+    })
+
+    // 🔥 签收业绩：按签收时间统计
+    const todayDelivered = deliveredOrders.filter(order => {
+      const deliveredTime = order.deliveredAt ? new Date(order.deliveredAt).getTime() : new Date(order.updateTime || order.createTime).getTime()
+      return deliveredTime >= todayStart
+    })
+    todayDelivered.forEach(order => {
+      const deliveredTime = order.deliveredAt ? new Date(order.deliveredAt) : new Date(order.updateTime || order.createTime)
+      const hour = deliveredTime.getHours()
+      const data = timeData.get(hour)
+      if (data) {
+        data.signAmount += order.totalAmount
       }
     })
   } else if (performancePeriod.value === 'week') {
@@ -1427,15 +1444,25 @@ const loadRealChartData = () => {
       const date = new Date(today.getTime() - i * 24 * 60 * 60 * 1000)
       const dateKey = date.toISOString().split('T')[0]
       const dateLabel = `${date.getMonth() + 1}/${date.getDate()}`
-      timeData.set(dateKey, { label: dateLabel, amount: 0, orders: 0 })
+      timeData.set(dateKey, { label: dateLabel, amount: 0, signAmount: 0 })
     }
 
+    // 下单业绩：按下单时间统计
     orders.forEach(order => {
       const orderDate = new Date(order.createTime).toISOString().split('T')[0]
       if (timeData.has(orderDate)) {
         const data = timeData.get(orderDate)
         data.amount += order.totalAmount
-        data.orders += 1
+      }
+    })
+
+    // 🔥 签收业绩：按签收时间统计
+    deliveredOrders.forEach(order => {
+      const deliveredTime = order.deliveredAt ? new Date(order.deliveredAt) : new Date(order.updateTime || order.createTime)
+      const deliveredDate = deliveredTime.toISOString().split('T')[0]
+      if (timeData.has(deliveredDate)) {
+        const data = timeData.get(deliveredDate)
+        data.signAmount += order.totalAmount
       }
     })
   } else {
@@ -1444,21 +1471,35 @@ const loadRealChartData = () => {
     for (let i = 1; i <= daysInMonth; i++) {
       const date = new Date(today.getFullYear(), today.getMonth(), i)
       const dateKey = date.toISOString().split('T')[0]
-      timeData.set(dateKey, { label: `${i}日`, amount: 0, orders: 0 })
+      timeData.set(dateKey, { label: `${i}日`, amount: 0, signAmount: 0 })
     }
 
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
+
+    // 下单业绩：按下单时间统计
     const monthOrders = orders.filter(order => {
       const orderTime = new Date(order.createTime).getTime()
       return orderTime >= monthStart
     })
-
     monthOrders.forEach(order => {
       const orderDate = new Date(order.createTime).toISOString().split('T')[0]
       if (timeData.has(orderDate)) {
         const data = timeData.get(orderDate)
         data.amount += order.totalAmount
-        data.orders += 1
+      }
+    })
+
+    // 🔥 签收业绩：按签收时间统计
+    const monthDelivered = deliveredOrders.filter(order => {
+      const deliveredTime = order.deliveredAt ? new Date(order.deliveredAt).getTime() : new Date(order.updateTime || order.createTime).getTime()
+      return deliveredTime >= monthStart
+    })
+    monthDelivered.forEach(order => {
+      const deliveredTime = order.deliveredAt ? new Date(order.deliveredAt) : new Date(order.updateTime || order.createTime)
+      const deliveredDate = deliveredTime.toISOString().split('T')[0]
+      if (timeData.has(deliveredDate)) {
+        const data = timeData.get(deliveredDate)
+        data.signAmount += order.totalAmount
       }
     })
   }
@@ -1470,7 +1511,7 @@ const loadRealChartData = () => {
   timeData.forEach(data => {
     xAxisData.push(data.label)
     orderData.push(data.amount)
-    signData.push(data.orders)
+    signData.push(data.signAmount) // 🔥 修复：使用签收金额而不是订单数量
   })
 
   performanceChartData.value = {
