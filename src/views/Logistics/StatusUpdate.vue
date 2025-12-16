@@ -351,7 +351,8 @@ const userStore = useUserStore()
 // 响应式数据
 const loading = ref(false)
 const activeTab = ref('pending')
-const activeQuickFilter = ref('today')
+// 🔥 修复：默认选择"全部"，不进行日期筛选
+const activeQuickFilter = ref('all')
 const dateRange = ref<[string, string]>(['', ''])
 const searchKeyword = ref('')
 const statusFilter = ref('')
@@ -774,7 +775,7 @@ const loadData = async (showMessage = false) => {
 
     console.log(`[状态更新] 筛选出 ${shippedOrders.length} 个已发货订单（总订单数：${allOrders.length}）`)
 
-    // 🔥 调试：输出订单状态分布
+    // 🔥 调试：输出订单状态分布（日期筛选前）
     const statusDistribution: Record<string, number> = {}
     const logisticsStatusDistribution: Record<string, number> = {}
     shippedOrders.forEach(order => {
@@ -784,37 +785,18 @@ const loadData = async (showMessage = false) => {
     })
     console.log('[状态更新] 订单状态分布:', statusDistribution)
     console.log('[状态更新] 物流状态分布:', logisticsStatusDistribution)
+    console.log('[状态更新] 当前标签页:', activeTab.value)
+    console.log('[状态更新] 日期范围:', dateRange.value)
 
-    // 根据tab筛选
-    if (activeTab.value === 'pending') {
-      // 🔥 修复：待更新 = 订单状态为shipped的订单（不管物流状态）
-      // 因为shipped状态表示已发货但还未签收，需要跟踪物流
-      const beforeFilter = shippedOrders.length
-      shippedOrders = shippedOrders.filter(order => {
-        // 订单状态为shipped的显示在待更新
-        return order.status === 'shipped'
-      })
-      console.log(`[状态更新] 待更新筛选: ${beforeFilter} -> ${shippedOrders.length}`)
-    } else if (activeTab.value === 'updated') {
-      // 🔥 修复：已更新 = 订单状态为delivered/rejected等终态的订单
-      const beforeFilter = shippedOrders.length
-      shippedOrders = shippedOrders.filter(order => {
-        // 订单状态不是shipped的（即已签收、拒收等）显示在已更新
-        return order.status !== 'shipped'
-      })
-      console.log(`[状态更新] 已更新筛选: ${beforeFilter} -> ${shippedOrders.length}`)
-    } else if (activeTab.value === 'todo') {
-      // 待办：标记为待办的订单
-      shippedOrders = shippedOrders.filter(order =>
-        order.isTodo === true || order.logisticsStatus === 'todo'
-      )
-    }
-
-    // 按发货时间筛选（如果有日期范围参数）
-    // 辅助函数：从日期字符串提取日期部分（支持ISO格式和普通格式）
+    // 🔥 辅助函数：从日期字符串提取日期部分（支持多种格式）
     const extractDatePart = (dateStr: string) => {
       if (!dateStr) return ''
       try {
+        // 处理 "2025/12/15 10:24:00" 格式
+        if (dateStr.includes('/')) {
+          return dateStr.split(' ')[0].replace(/\//g, '-')
+        }
+        // 处理 ISO 格式 "2025-12-15T10:24:00.000Z"
         const date = new Date(dateStr)
         if (isNaN(date.getTime())) return dateStr.split(' ')[0]
         return date.toISOString().split('T')[0]
@@ -823,21 +805,57 @@ const loadData = async (showMessage = false) => {
       }
     }
 
+    // 🔥 先进行日期筛选（在tab筛选之前）
+    const beforeDateFilter = shippedOrders.length
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
       const [startDate, endDate] = dateRange.value
+      console.log(`[状态更新] 日期筛选: ${startDate} ~ ${endDate}`)
       shippedOrders = shippedOrders.filter(order => {
-        const shippingTime = order.shippingTime || order.shipTime || order.createTime
+        const shippingTime = order.shippedAt || order.shippingTime || order.shipTime || order.createTime
         const shippingDate = extractDatePart(shippingTime)
-        return shippingDate >= startDate && shippingDate <= endDate
+        const pass = shippingDate >= startDate && shippingDate <= endDate
+        if (!pass && shippedOrders.length < 10) {
+          console.log(`[状态更新] 订单 ${order.orderNumber} 被日期筛选过滤: ${shippingDate} 不在 ${startDate}~${endDate} 范围内`)
+        }
+        return pass
       })
-    } else if (dateRange.value && dateRange.value.length === 2 && dateRange.value[1]) {
+      console.log(`[状态更新] 日期筛选后: ${beforeDateFilter} -> ${shippedOrders.length}`)
+    } else if (dateRange.value && dateRange.value.length === 2 && dateRange.value[1] && !dateRange.value[0]) {
       // 如果只有endDate（用于"X天前"筛选）
       const endDate = dateRange.value[1]
+      console.log(`[状态更新] 日期筛选(X天前): <= ${endDate}`)
       shippedOrders = shippedOrders.filter(order => {
-        const shippingTime = order.shippingTime || order.shipTime || order.createTime
+        const shippingTime = order.shippedAt || order.shippingTime || order.shipTime || order.createTime
         const shippingDate = extractDatePart(shippingTime)
         return shippingDate <= endDate
       })
+      console.log(`[状态更新] 日期筛选后: ${beforeDateFilter} -> ${shippedOrders.length}`)
+    } else {
+      console.log('[状态更新] 无日期筛选（全部）')
+    }
+
+    // 🔥 再进行tab筛选
+    if (activeTab.value === 'pending') {
+      // 待更新 = 订单状态为shipped的订单
+      const beforeFilter = shippedOrders.length
+      shippedOrders = shippedOrders.filter(order => order.status === 'shipped')
+      console.log(`[状态更新] 待更新筛选: ${beforeFilter} -> ${shippedOrders.length}`)
+    } else if (activeTab.value === 'updated') {
+      // 已更新 = 订单状态为delivered/rejected等终态的订单
+      const beforeFilter = shippedOrders.length
+      shippedOrders = shippedOrders.filter(order => order.status !== 'shipped')
+      console.log(`[状态更新] 已更新筛选: ${beforeFilter} -> ${shippedOrders.length}`)
+    } else if (activeTab.value === 'todo') {
+      // 待办：标记为待办的订单
+      shippedOrders = shippedOrders.filter(order =>
+        order.isTodo === true || order.logisticsStatus === 'todo'
+      )
+    }
+
+    // 🔥 输出最终筛选结果
+    console.log(`[状态更新] 最终筛选结果: ${shippedOrders.length} 条订单`)
+    if (shippedOrders.length > 0 && shippedOrders.length <= 5) {
+      shippedOrders.forEach(o => console.log(`  - ${o.orderNumber}: status=${o.status}`))
     }
 
     // 关键词搜索
@@ -871,7 +889,10 @@ const loadData = async (showMessage = false) => {
       index: (pagination.currentPage - 1) * pagination.pageSize + index + 1,
       orderNo: order.orderNumber,
       customerName: order.customerName,
-      status: order.logisticsStatus || 'shipped',
+      // 🔥 修复：status字段应该显示订单状态，而不是物流状态
+      status: order.status || 'shipped',
+      // 保留物流状态字段用于其他用途
+      logisticsStatus: order.logisticsStatus || '',
       amount: order.totalAmount,
       trackingNo: order.trackingNumber || order.expressNo || '',
       logisticsCompany: order.expressCompany || '',
@@ -887,7 +908,8 @@ const loadData = async (showMessage = false) => {
       customerPhone: order.receiverPhone || order.customerPhone,
       productName: order.products?.map((p: any) => p.name).join('、') || '商品',
       quantity: order.products?.reduce((sum: number, p: any) => sum + p.quantity, 0) || 1,
-      remark: order.remark || ''
+      remark: order.remark || '',
+      isTodo: order.isTodo || false
     }))
 
     // 分页处理
