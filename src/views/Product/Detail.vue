@@ -809,6 +809,7 @@ const handleCreateOrder = () => {
  */
 const handleToggleStatus = async () => {
   const action = productInfo.value.status === 'active' ? '下架' : '上架'
+  const newStatus = productInfo.value.status === 'active' ? 'inactive' : 'active'
 
   try {
     await ElMessageBox.confirm(
@@ -821,10 +822,10 @@ const handleToggleStatus = async () => {
       }
     )
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // 🔥 修复：调用后端API更新商品状态
+    await productApi.update(productInfo.value.id, { status: newStatus })
 
-    productInfo.value.status = productInfo.value.status === 'active' ? 'inactive' : 'active'
+    productInfo.value.status = newStatus
     ElMessage.success(`${action}成功`)
 
     // 发送消息提醒

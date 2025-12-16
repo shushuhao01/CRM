@@ -794,6 +794,7 @@ import {
 import { useConfigStore } from '@/stores/config'
 import { useNotificationStore } from '@/stores/notification'
 import { useProductStore } from '@/stores/product'
+import { productApi } from '@/api/product'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import { formatDateTime } from '@/utils/dateFormat'
@@ -1308,6 +1309,7 @@ const handleColumnSettings = () => {
  */
 const handleToggleStatus = async (row: Product) => {
   const action = row.status === 'active' ? '下架' : '上架'
+  const newStatus = row.status === 'active' ? 'inactive' : 'active'
 
   try {
     await ElMessageBox.confirm(
@@ -1320,10 +1322,10 @@ const handleToggleStatus = async (row: Product) => {
       }
     )
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // 🔥 修复：调用后端API更新商品状态
+    await productApi.update(row.id, { status: newStatus })
 
-    row.status = row.status === 'active' ? 'inactive' : 'active'
+    row.status = newStatus
     ElMessage.success(`${action}成功`)
 
     // 发送消息提醒
