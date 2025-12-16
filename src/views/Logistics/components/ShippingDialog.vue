@@ -399,7 +399,7 @@ const confirmShipping = async () => {
     })
 
     // 调用后端API更新订单状态
-    await orderApi.updateOrder(orderId, {
+    await orderApi.update(orderId, {
       status: 'shipped',
       trackingNumber: shippingForm.trackingNumber,
       expressCompany: companyName,
