@@ -85,7 +85,7 @@
         <div class="ranking-list">
           <div
             class="ranking-item"
-            v-for="(item, index) in (rankings.sales || [])"
+            v-for="(item, index) in topRankings"
             :key="item.id"
           >
             <div class="ranking-position">
@@ -568,6 +568,28 @@ const loading = ref(false)
 const rankings = ref({
   sales: [] as Array<{ id: string; name: string; avatar: string; department: string; orders: number; revenue: number; trend?: string; change?: string }>,
   products: [] as unknown[]
+})
+
+// 🔥 计算属性：只显示前5名（如果第5名有并列则显示满5人）
+const topRankings = computed(() => {
+  const sales = rankings.value.sales || []
+  if (sales.length <= 5) return sales
+
+  // 获取第5名的业绩金额
+  const fifthRevenue = sales[4]?.revenue
+
+  // 找出所有业绩 >= 第5名的人（处理并列情况）
+  let cutoffIndex = 5
+  for (let i = 5; i < sales.length; i++) {
+    if (sales[i].revenue === fifthRevenue) {
+      cutoffIndex = i + 1
+    } else {
+      break
+    }
+  }
+
+  // 最多显示5人，即使有并列也只显示5人
+  return sales.slice(0, 5)
 })
 
 // 待办事项数据 - 从API获取
