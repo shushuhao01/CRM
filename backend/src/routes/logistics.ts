@@ -428,17 +428,21 @@ router.post('/order/status', async (req, res) => {
     // 更新物流状态字段
     order.logisticsStatus = newStatus;
 
-    // 根据物流状态同步更新订单状态（只使用Order实体中定义的有效状态）
-    type ValidOrderStatus = 'delivered' | 'refunded' | 'cancelled' | 'shipped';
-    const statusMapping: Record<string, ValidOrderStatus> = {
-      'delivered': 'delivered',              // 已签收
-      'refunded': 'refunded',                // 退货退款
-      'rejected': 'cancelled',               // 拒收 -> 取消
-      'rejected_returned': 'cancelled',      // 拒收已退回 -> 取消
-    };
+    // 🔥 修复：物流状态直接作为订单状态保存，不再映射成cancelled
+    // 这些状态都是有效的订单状态，应该保持原样
+    const validOrderStatuses = [
+      'delivered',           // 已签收
+      'rejected',            // 拒收
+      'rejected_returned',   // 拒收已退回
+      'refunded',            // 退货退款
+      'after_sales_created', // 已建售后
+      'abnormal',            // 状态异常
+      'package_exception'    // 包裹异常
+    ];
 
-    if (statusMapping[newStatus]) {
-      order.status = statusMapping[newStatus];
+    if (validOrderStatuses.includes(newStatus)) {
+      order.status = newStatus as any;
+      console.log(`[物流状态] 订单状态同步更新为: ${newStatus}`);
     }
 
     // 更新订单的更新时间
@@ -448,22 +452,14 @@ router.post('/order/status', async (req, res) => {
 
     // 添加状态更新记录到历史表（可选，如果失败不影响主流程）
     try {
-      type ValidHistoryStatus = 'pending' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded';
-      const historyStatusMapping: Record<string, ValidHistoryStatus> = {
-        'delivered': 'delivered',
-        'refunded': 'refunded',
-        'rejected': 'cancelled',
-        'rejected_returned': 'cancelled',
-      };
-
       const historyRecord = statusHistoryRepository.create({
         orderId: order.id,
-        status: historyStatusMapping[newStatus] || 'shipped',
+        status: newStatus as any, // 直接使用新状态
         notes: remark || `物流状态更新为: ${newStatus}`,
         operatorName: user?.username || '系统'
       });
       await statusHistoryRepository.save(historyRecord);
-      console.log('✅ 状态历史记录已保存');
+      console.log('✅ 状态历史记录已保存:', newStatus);
     } catch (historyError) {
       // 历史记录保存失败不影响主流程
       console.warn('⚠️ 状态历史记录保存失败（不影响主流程）:', historyError);
@@ -545,23 +541,16 @@ router.post('/order/batch-status', async (req, res) => {
     let failCount = 0;
     const failedOrders: string[] = [];
 
-    // 根据物流状态同步更新订单状态（只使用Order实体中定义的有效状态）
-    type ValidOrderStatus = 'delivered' | 'refunded' | 'cancelled' | 'shipped';
-    const statusMapping: Record<string, ValidOrderStatus> = {
-      'delivered': 'delivered',
-      'refunded': 'refunded',
-      'rejected': 'cancelled',
-      'rejected_returned': 'cancelled',
-    };
-
-    // 历史记录状态映射
-    type ValidHistoryStatus = 'pending' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded';
-    const historyStatusMapping: Record<string, ValidHistoryStatus> = {
-      'delivered': 'delivered',
-      'refunded': 'refunded',
-      'rejected': 'cancelled',
-      'rejected_returned': 'cancelled',
-    };
+    // 🔥 修复：物流状态直接作为订单状态保存，不再映射成cancelled
+    const validOrderStatuses = [
+      'delivered',           // 已签收
+      'rejected',            // 拒收
+      'rejected_returned',   // 拒收已退回
+      'refunded',            // 退货退款
+      'after_sales_created', // 已建售后
+      'abnormal',            // 状态异常
+      'package_exception'    // 包裹异常
+    ];
 
     for (const orderNo of orderNos) {
       try {
@@ -576,9 +565,9 @@ router.post('/order/batch-status', async (req, res) => {
         // 更新物流状态
         order.logisticsStatus = newStatus;
 
-        // 同步更新订单状态
-        if (statusMapping[newStatus]) {
-          order.status = statusMapping[newStatus];
+        // 🔥 修复：直接使用新状态，不再映射成cancelled
+        if (validOrderStatuses.includes(newStatus)) {
+          order.status = newStatus as any;
         }
 
         // 更新订单的更新时间
@@ -586,11 +575,11 @@ router.post('/order/batch-status', async (req, res) => {
 
         await orderRepository.save(order);
 
-        // 添加状态更新记录到历史表（可选，如果失败不影响主流程）
+        // 添加状态更新记录到历史表
         try {
           const historyRecord = statusHistoryRepository.create({
             orderId: order.id,
-            status: historyStatusMapping[newStatus] || 'shipped',
+            status: newStatus as any,
             notes: remark || `批量更新物流状态为: ${newStatus}`,
             operatorName: user?.username || '系统'
           });
