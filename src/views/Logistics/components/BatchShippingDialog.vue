@@ -734,13 +734,33 @@ const confirmBatchShipping = async () => {
       }
     })
 
-    // 模拟批量发货处理
-    await new Promise(resolve => setTimeout(resolve, 3000))
-
-    // 更新订单store中的数据
+    // 🔥 修复：调用后端API批量更新订单状态
+    const { orderApi } = await import('@/api/order')
     const { useOrderStore } = await import('@/stores/order')
     const orderStore = useOrderStore()
 
+    console.log('[批量发货] 开始批量更新订单状态:', shippingData.length, '个订单')
+
+    // 批量调用后端API更新订单状态
+    for (const data of shippingData) {
+      try {
+        console.log(`[批量发货] 更新订单 ${data.orderNo} 状态为 shipped`)
+        await orderApi.update(data.orderId, {
+          status: 'shipped',
+          trackingNumber: data.trackingNumber,
+          expressCompany: data.logisticsCompany,
+          shippedAt: data.shippedAt,
+          remark: data.remarks || `批量发货，快递公司：${data.logisticsCompany}，运单号：${data.trackingNumber}`
+        })
+      } catch (error: any) {
+        console.error(`[批量发货] 订单 ${data.orderNo} 更新失败:`, error)
+        ElMessage.warning(`订单 ${data.orderNo} 发货失败: ${error?.message || '未知错误'}`)
+      }
+    }
+
+    console.log('[批量发货] 后端API更新完成')
+
+    // 同步更新前端store
     shippingData.forEach(data => {
       orderStore.updateOrder(data.orderId, {
         status: 'shipped',
