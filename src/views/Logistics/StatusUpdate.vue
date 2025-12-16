@@ -339,12 +339,11 @@ import {
   DataLine,
   Search,
   Refresh,
-  Loading,
-  VideoPause
+  Loading
 } from '@element-plus/icons-vue'
 
 // Store
-const logisticsStatusStore = useLogisticsStatusStore()
+const _logisticsStatusStore = useLogisticsStatusStore()
 const orderStore = useOrderStore()
 const userStore = useUserStore()
 
@@ -356,9 +355,9 @@ const activeQuickFilter = ref('all')
 const dateRange = ref<[string, string]>(['', ''])
 const searchKeyword = ref('')
 const statusFilter = ref('')
-const orderList = ref([])
-const selectedOrders = ref([])
-const currentOrder = ref(null)
+const orderList = ref<any[]>([])
+const selectedOrders = ref<any[]>([])
+const currentOrder = ref<any>(null)
 
 // 计算选中订单数量
 const selectedCount = computed(() => selectedOrders.value.length)
@@ -409,9 +408,9 @@ const getUserDisplayName = (userId: string | undefined): string => {
   if (!userId) return ''
   // 从userStore获取用户信息
   const users = userStore.users || []
-  const user = users.find((u: any) => u.id === userId || u.username === userId)
+  const user = users.find((u: any) => u.id === userId || (u as any).username === userId)
   if (user) {
-    return user.realName || user.name || user.username || ''
+    return (user as any).realName || user.name || (user as any).username || ''
   }
   return ''
 }
@@ -627,7 +626,7 @@ const handleExternalOrderStatusUpdate = (event: CustomEvent) => {
 }
 
 // 查看物流轨迹
-const handleViewTracking = (order) => {
+const handleViewTracking = (order: any) => {
   currentTrackingNo.value = order.trackingNo
   currentLogisticsCompany.value = order.logisticsCompany
   trackingDialogVisible.value = true
@@ -732,7 +731,7 @@ const loadData = async (showMessage = false) => {
     let allOrders: any[] = []
     try {
       const { orderApi } = await import('@/api/order')
-      const response = await orderApi.getShippingShipped()
+      const response = await orderApi.getShippingShipped() as any
       // 🔥 修复：正确解析API响应数据
       allOrders = response?.data?.list || response?.list || response?.data || []
       console.log('[状态更新] 从API获取已发货订单:', allOrders.length, '条')
@@ -942,7 +941,7 @@ const loadSummaryData = async (showAnimation = false) => {
     let allOrders: any[] = []
     try {
       const { orderApi } = await import('@/api/order')
-      const response = await orderApi.getShippingShipped()
+      const response = await orderApi.getShippingShipped() as any
       allOrders = response?.data?.list || response?.list || response?.data || []
     } catch {
       // 回退到store
@@ -950,7 +949,7 @@ const loadSummaryData = async (showAnimation = false) => {
     }
 
     // 筛选已发货的订单（只要是已发货状态就显示，不再强制要求物流单号）
-    let shippedOrders = allOrders.filter(order => {
+    let shippedOrders = allOrders.filter((order: any) => {
       // 检查订单状态是否为已发货相关状态
       const validStatuses = ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'rejected', 'rejected_returned']
       return validStatuses.includes(order.status)
@@ -1098,7 +1097,7 @@ const getStatusText = (status: string) => {
 }
 
 // 获取状态类型
-const getStatusType = (status: string) => {
+const _getStatusType = (status: string) => {
   const typeMap: Record<string, string> = {
     pending: 'warning',
     shipped: 'primary',           // 已发货用蓝色
@@ -1123,15 +1122,16 @@ onMounted(async () => {
     console.error('[状态更新] API数据加载失败:', error)
   }
 
-  handleQuickFilter('today') // 默认显示今日数据
+  // 🔥 修复：默认显示全部数据，不进行日期筛选
+  handleQuickFilter('all')
   loadSummaryData()
   startAutoRefresh() // 启动自动刷新
 
   // 监听订单发货事件
-  window.addEventListener('orderStatusUpdated', handleExternalOrderStatusUpdate)
-  window.addEventListener('order-status-update', handleOrderStatusUpdate)
-  window.addEventListener('order-shipped', handleOrderShipped)
-  window.addEventListener('logistics-status-update', handleOrderShipped)
+  window.addEventListener('orderStatusUpdated', handleExternalOrderStatusUpdate as EventListener)
+  window.addEventListener('order-status-update', handleOrderStatusUpdate as EventListener)
+  window.addEventListener('order-shipped', handleOrderShipped as EventListener)
+  window.addEventListener('logistics-status-update', handleOrderShipped as EventListener)
 })
 
 // 组件卸载时清理定时器和事件监听器
@@ -1139,10 +1139,10 @@ onUnmounted(() => {
   stopAutoRefresh()
 
   // 清理事件监听器
-  window.removeEventListener('orderStatusUpdated', handleExternalOrderStatusUpdate)
-  window.removeEventListener('order-status-update', handleOrderStatusUpdate)
-  window.removeEventListener('order-shipped', handleOrderShipped)
-  window.removeEventListener('logistics-status-update', handleOrderShipped)
+  window.removeEventListener('orderStatusUpdated', handleExternalOrderStatusUpdate as EventListener)
+  window.removeEventListener('order-status-update', handleOrderStatusUpdate as EventListener)
+  window.removeEventListener('order-shipped', handleOrderShipped as EventListener)
+  window.removeEventListener('logistics-status-update', handleOrderShipped as EventListener)
 })
 
 // 监听筛选条件变化，重新加载汇总数据
