@@ -774,25 +774,35 @@ const loadData = async (showMessage = false) => {
 
     console.log(`[状态更新] 筛选出 ${shippedOrders.length} 个已发货订单（总订单数：${allOrders.length}）`)
 
+    // 🔥 调试：输出订单状态分布
+    const statusDistribution: Record<string, number> = {}
+    const logisticsStatusDistribution: Record<string, number> = {}
+    shippedOrders.forEach(order => {
+      statusDistribution[order.status] = (statusDistribution[order.status] || 0) + 1
+      const ls = order.logisticsStatus || '(空)'
+      logisticsStatusDistribution[ls] = (logisticsStatusDistribution[ls] || 0) + 1
+    })
+    console.log('[状态更新] 订单状态分布:', statusDistribution)
+    console.log('[状态更新] 物流状态分布:', logisticsStatusDistribution)
+
     // 根据tab筛选
     if (activeTab.value === 'pending') {
-      // 待更新：只显示订单状态为shipped（已发货）且物流状态未更新的订单
+      // 🔥 修复：待更新 = 订单状态为shipped的订单（不管物流状态）
+      // 因为shipped状态表示已发货但还未签收，需要跟踪物流
+      const beforeFilter = shippedOrders.length
       shippedOrders = shippedOrders.filter(order => {
-        // 只有订单状态为shipped的才显示在待更新
-        if (order.status !== 'shipped') {
-          return false
-        }
-        // 物流状态未设置或为空，表示还未更新过
-        const logisticsStatus = order.logisticsStatus
-        return !logisticsStatus || logisticsStatus === '' || logisticsStatus === 'shipped' || logisticsStatus === 'pending'
+        // 订单状态为shipped的显示在待更新
+        return order.status === 'shipped'
       })
+      console.log(`[状态更新] 待更新筛选: ${beforeFilter} -> ${shippedOrders.length}`)
     } else if (activeTab.value === 'updated') {
-      // 已更新：物流状态已被更新过的订单（不管更新成什么状态，只要logisticsStatus有值且不是初始状态）
+      // 🔥 修复：已更新 = 订单状态为delivered/rejected等终态的订单
+      const beforeFilter = shippedOrders.length
       shippedOrders = shippedOrders.filter(order => {
-        const logisticsStatus = order.logisticsStatus
-        // 有物流状态且不是初始状态（shipped/pending/空）
-        return logisticsStatus && logisticsStatus !== '' && logisticsStatus !== 'shipped' && logisticsStatus !== 'pending'
+        // 订单状态不是shipped的（即已签收、拒收等）显示在已更新
+        return order.status !== 'shipped'
       })
+      console.log(`[状态更新] 已更新筛选: ${beforeFilter} -> ${shippedOrders.length}`)
     } else if (activeTab.value === 'todo') {
       // 待办：标记为待办的订单
       shippedOrders = shippedOrders.filter(order =>
@@ -953,20 +963,16 @@ const loadSummaryData = async (showAnimation = false) => {
       })
     }
 
-    // 计算各状态的数量
-    const pending = shippedOrders.filter(order => {
-      // 只有订单状态为shipped且物流状态未更新的才计入待更新
-      if (order.status !== 'shipped') return false
-      const logisticsStatus = order.logisticsStatus
-      return !logisticsStatus || logisticsStatus === '' || logisticsStatus === 'shipped' || logisticsStatus === 'pending'
-    }).length
-    const updated = shippedOrders.filter(order => {
-      // 物流状态已被更新过的订单（不是初始状态）
-      const logisticsStatus = order.logisticsStatus
-      return logisticsStatus && logisticsStatus !== '' && logisticsStatus !== 'shipped' && logisticsStatus !== 'pending'
-    }).length
+    // 🔥 修复：计算各状态的数量（与列表筛选逻辑保持一致）
+    // 待更新 = 订单状态为shipped的订单（已发货但未签收）
+    const pending = shippedOrders.filter(order => order.status === 'shipped').length
+    // 已更新 = 订单状态不是shipped的订单（已签收、拒收等终态）
+    const updated = shippedOrders.filter(order => order.status !== 'shipped').length
+    // 待办 = 标记为待办的订单
     const todo = shippedOrders.filter(order => order.isTodo === true || order.logisticsStatus === 'todo').length
     const total = shippedOrders.length
+
+    console.log('[状态更新] 汇总数据计算:', { pending, updated, todo, total })
 
     const newSummaryData = {
       pending,
