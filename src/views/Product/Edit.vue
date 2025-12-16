@@ -859,37 +859,61 @@ const handleCopyProduct = async () => {
   if (!copyId) return
 
   try {
-    // 复制商品数据（排除ID和编码）
+    // 🔥 修复：从store获取真实的商品数据进行复制
+    let product = productStore.getProductById(String(copyId))
+    if (!product && !isNaN(Number(copyId))) {
+      product = productStore.getProductById(Number(copyId))
+    }
+
+    if (!product) {
+      ElMessage.error('要复制的商品不存在')
+      return
+    }
+
+    // 复制商品数据（排除ID和编码，名称添加"(复制)"后缀）
     Object.assign(productForm, {
-      name: 'iPhone 15 Pro (复制)',
-      categoryId: '1-1', // 使用手机数码分类
-      brand: 'Apple',
-      specification: '256GB 深空黑色',
-      unit: '台',
-      weight: 0.187,
-      dimensions: '146.6×70.6×7.8',
-      description: 'iPhone 15 Pro 采用钛金属设计，搭载 A17 Pro 芯片，配备专业级摄像头系统，支持 5G 网络。',
-      price: 8999.00,
-      costPrice: 7200.00,
-      marketPrice: 9999.00,
-      stock: 0,
-      minStock: 10,
-      maxStock: 200,
-      status: 'inactive',
+      name: `${product.name} (复制)`,
+      categoryId: product.categoryId,
+      categoryName: product.categoryName,
+      brand: product.brand || '',
+      specification: product.specification || '',
+      unit: product.unit || '件',
+      weight: product.weight || 0,
+      dimensions: product.dimensions || '',
+      description: product.description || '',
+      price: product.price || 0,
+      costPrice: product.costPrice || 0,
+      marketPrice: product.marketPrice || 0,
+      stock: 0, // 库存默认为0
+      minStock: product.minStock || 10,
+      maxStock: product.maxStock || 1000,
+      status: 'inactive', // 复制的商品默认下架
       isRecommended: false,
       isNew: false,
       isHot: false,
       seoTitle: '',
       seoKeywords: '',
       seoDescription: '',
-      images: []
+      mainImage: product.image || '',
+      images: product.images || []
     })
+
+    // 初始化文件列表
+    if (product.images && product.images.length > 0) {
+      fileList.value = product.images.map((url: string, index: number) => ({
+        uid: Date.now() + index,
+        name: `image-${index + 1}`,
+        status: 'done',
+        url: url
+      }))
+    }
 
     // 生成新的商品编码
     generateCode()
 
     ElMessage.success('商品信息已复制，请修改后保存')
   } catch (error) {
+    console.error('复制商品信息失败:', error)
     ElMessage.error('复制商品信息失败')
   }
 }
