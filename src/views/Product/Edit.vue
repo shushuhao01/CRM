@@ -706,9 +706,6 @@ const handleSave = async () => {
 
     saveLoading.value = true
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1500))
-
     const isAddMode = !isEdit.value
 
     // 更新store中的商品数据
@@ -801,9 +798,6 @@ const loadProductInfo = async () => {
       return
     }
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 800))
-
     // 从store中获取真实的商品数据，尝试字符串和数字两种类型
     let product = productStore.getProductById(productId)
     if (!product && !isNaN(Number(productId))) {
@@ -865,9 +859,6 @@ const handleCopyProduct = async () => {
   if (!copyId) return
 
   try {
-    // 模拟API调用获取要复制的商品信息
-    await new Promise(resolve => setTimeout(resolve, 500))
-
     // 复制商品数据（排除ID和编码）
     Object.assign(productForm, {
       name: 'iPhone 15 Pro (复制)',

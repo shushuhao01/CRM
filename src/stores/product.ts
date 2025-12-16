@@ -253,9 +253,17 @@ export const useProductStore = createPersistentStore('product', () => {
   }
 
   // 彻底删除商品（硬删除）
-  const permanentDeleteProduct = (id: string | number) => {
+  const permanentDeleteProduct = async (id: string | number) => {
     const index = products.value.findIndex(p => p.id === id)
     if (index !== -1) {
+      // 🔥 修复：调用后端API彻底删除商品
+      try {
+        await productApi.delete(String(id))
+        console.log('[ProductStore] 服务器彻底删除商品成功, ID:', id)
+      } catch (error) {
+        console.error('[ProductStore] 服务器彻底删除商品失败:', error)
+      }
+      // 同时更新本地状态
       products.value.splice(index, 1)
       return true
     }

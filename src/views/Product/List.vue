@@ -1413,13 +1413,10 @@ const handleBatchDelete = async () => {
       }
     )
 
-    // 批量删除商品
-    selectedRows.value.forEach(product => {
-      productStore.deleteProduct(product.id)
-    })
-
-    // 模拟API调用延迟
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // 🔥 修复：批量删除商品（调用真实API）
+    for (const product of selectedRows.value) {
+      await productStore.deleteProduct(product.id)
+    }
 
     ElMessage.success('批量删除成功')
 
@@ -1578,13 +1575,10 @@ const handleBatchUpdateStatus = async () => {
       }
     })
 
-    // 批量更新商品状态
-    selectedRows.value.forEach(product => {
-      productStore.updateProduct(product.id, { status: status as 'active' | 'inactive' })
-    })
-
-    // 模拟API调用延迟
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // 🔥 修复：批量更新商品状态（调用真实API）
+    for (const product of selectedRows.value) {
+      await productStore.updateProduct(product.id, { status: status as 'active' | 'inactive' })
+    }
 
     ElMessage.success('批量状态更新成功')
 
@@ -1971,8 +1965,10 @@ const handleBatchRecommend = async () => {
       }
     )
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // 🔥 修复：批量推荐设置（调用真实API）
+    for (const product of selectedRows.value) {
+      await productStore.updateProduct(product.id, { isRecommended: true } as any)
+    }
 
     ElMessage.success('批量推荐设置成功')
 
@@ -2003,9 +1999,6 @@ const confirmStockAdjust = async () => {
     await stockFormRef.value?.validate()
 
     stockLoading.value = true
-
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
 
     // 更新商品库存
     const product = currentProduct.value
@@ -2077,9 +2070,6 @@ const confirmPriceAdjust = async () => {
     await priceFormRef.value?.validate()
 
     stockLoading.value = true
-
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
 
     // 更新商品价格
     const product = currentProduct.value
@@ -2302,9 +2292,6 @@ const loadData = async () => {
   tableLoading.value = true
 
   try {
-    // 模拟API调用延迟
-    await new Promise(resolve => setTimeout(resolve, 300))
-
     // 设置store的搜索条件
     productStore.setSearchForm(searchForm)
 
