@@ -219,19 +219,20 @@ export const useLogisticsStatusStore = defineStore('logisticsStatus', () => {
           logisticsStatus: newStatus
         }
 
-        // 根据物流状态同步更新订单状态
-        const statusMapping: Record<string, string> = {
-          'delivered': 'delivered',
-          'rejected': 'rejected',
-          'rejected_returned': 'rejected_returned',
-          'refunded': 'refunded',
-          'after_sales_created': 'after_sales_created',
-          'abnormal': 'package_exception'
-        }
+        // 🔥 修复：每个状态独立保存，不互相映射
+        const validStatuses = [
+          'delivered',           // 已签收
+          'rejected',            // 拒收
+          'rejected_returned',   // 拒收已退回
+          'refunded',            // 退货退款
+          'after_sales_created', // 已建售后
+          'abnormal',            // 状态异常
+          'package_exception'    // 包裹异常
+        ]
 
-        if (statusMapping[newStatus]) {
-          updates.status = statusMapping[newStatus]
-          console.log(`[物流状态Store] 同时更新订单状态为: ${statusMapping[newStatus]}`)
+        if (validStatuses.includes(newStatus)) {
+          updates.status = newStatus
+          console.log(`[物流状态Store] 同时更新订单状态为: ${newStatus}`)
         }
 
         updates.logisticsUpdateTime = new Date().toISOString()
@@ -282,19 +283,20 @@ export const useLogisticsStatusStore = defineStore('logisticsStatus', () => {
             logisticsStatus: newStatus
           }
 
-          // 【核心修复】根据物流状态同步更新订单状态
-          const statusMapping: Record<string, string> = {
-            'delivered': 'delivered',
-            'rejected': 'rejected',
-            'rejected_returned': 'rejected_returned',
-            'refunded': 'refunded',
-            'after_sales_created': 'after_sales_created',
-            'abnormal': 'package_exception'
-          }
+          // 🔥 修复：每个状态独立保存，不互相映射
+          const validStatuses = [
+            'delivered',           // 已签收
+            'rejected',            // 拒收
+            'rejected_returned',   // 拒收已退回
+            'refunded',            // 退货退款
+            'after_sales_created', // 已建售后
+            'abnormal',            // 状态异常
+            'package_exception'    // 包裹异常
+          ]
 
-          if (statusMapping[newStatus]) {
-            updates.status = statusMapping[newStatus]
-            console.log(`[物流状态Store] 同时更新订单状态为: ${statusMapping[newStatus]}`)
+          if (validStatuses.includes(newStatus)) {
+            (updates as any).status = newStatus
+            console.log(`[物流状态Store] 同时更新订单状态为: ${newStatus}`)
           }
 
           orderStore.updateOrder(storeOrder.id, updates)
