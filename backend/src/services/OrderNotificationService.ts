@@ -168,11 +168,14 @@ class OrderNotificationService {
         console.log(`[OrderNotification] 📤 检查渠道: ${channel.name} (${channel.channelType}), messageTypes=${JSON.stringify(channel.messageTypes)}`);
 
         // 检查消息类型是否在配置的类型列表中
-        if (channel.messageTypes && channel.messageTypes.length > 0) {
+        // 🔥 修复：如果 messageTypes 为空或未配置，默认发送所有类型
+        if (channel.messageTypes && Array.isArray(channel.messageTypes) && channel.messageTypes.length > 0) {
           if (!channel.messageTypes.includes(type) && !channel.messageTypes.includes('all')) {
-            console.log(`[OrderNotification] ⏭️ 跳过渠道 ${channel.name}: 消息类型 ${type} 不在配置列表中`);
+            console.log(`[OrderNotification] ⏭️ 跳过渠道 ${channel.name}: 消息类型 ${type} 不在配置列表中 (配置: ${channel.messageTypes.join(', ')})`);
             return Promise.resolve();
           }
+        } else {
+          console.log(`[OrderNotification] 📤 渠道 ${channel.name} 未配置消息类型过滤，发送所有类型`);
         }
 
         console.log(`[OrderNotification] ✅ 准备发送到渠道: ${channel.name} (${channel.channelType})`);
@@ -619,7 +622,11 @@ class OrderNotificationService {
    * 订单待审核通知 - 通知下单员 + 管理员
    */
   async notifyOrderPendingAudit(order: OrderInfo, _operatorName?: string): Promise<void> {
+    console.log(`[OrderNotification] 🔔 notifyOrderPendingAudit 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}`);
+
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    console.log(`[OrderNotification] 📋 获取到管理员用户: ${adminUserIds.length} 个, IDs: ${adminUserIds.join(', ')}`);
+
     const allTargets = new Set<string>(adminUserIds);
 
     // 添加下单员
@@ -627,9 +634,11 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
+    console.log(`[OrderNotification] 📤 待审核通知目标用户: ${Array.from(allTargets).join(', ')}`);
+
     const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}，金额：¥${(order.totalAmount || 0).toFixed(2)}）已提交审核，请及时处理`;
 
-    await this.sendBatchMessages(
+    const sentCount = await this.sendBatchMessages(
       OrderMessageTypes.ORDER_PENDING_AUDIT,
       '📋 订单待审核',
       content,
@@ -640,6 +649,8 @@ class OrderNotificationService {
         actionUrl: '/order/audit'
       }
     );
+
+    console.log(`[OrderNotification] ✅ 待审核通知发送完成: ${sentCount} 条消息`);
   }
 
   /**
