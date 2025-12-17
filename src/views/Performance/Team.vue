@@ -306,7 +306,18 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="trackingNumber" label="快递单号" width="160" show-overflow-tooltip />
+            <el-table-column prop="trackingNumber" label="快递单号" width="160" show-overflow-tooltip>
+              <template #default="{ row }">
+                <el-link
+                  v-if="row.trackingNumber"
+                  type="primary"
+                  @click="handleTrackingNoClick(row.trackingNumber, row.expressCompany)"
+                >
+                  {{ row.trackingNumber }}
+                </el-link>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="productDetails" label="产品详情" min-width="200" show-overflow-tooltip>
               <template #default="{ row }">
                 <div class="product-details-cell">
@@ -396,7 +407,18 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="trackingNumber" label="快递单号" width="160" show-overflow-tooltip />
+          <el-table-column prop="trackingNumber" label="快递单号" width="160" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-link
+                v-if="row.trackingNumber"
+                type="primary"
+                @click="handleTrackingNoClick(row.trackingNumber, row.expressCompany)"
+              >
+                {{ row.trackingNumber }}
+              </el-link>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="productDetails" label="产品详情" min-width="200" show-overflow-tooltip />
           <el-table-column label="操作" width="100" align="center" fixed="right">
             <template #default="{ row }">
@@ -2153,6 +2175,28 @@ const viewMemberDetail = (member: TeamMember) => {
 
 const viewOrderDetail = (order: Order) => {
   safeNavigator.push(`/order/detail/${order.id}`)
+}
+
+/**
+ * 点击物流单号：弹窗选择查询方式
+ */
+const handleTrackingNoClick = async (trackingNo: string, logisticsCompany?: string) => {
+  const { showLogisticsQueryDialog } = await import('@/utils/logisticsQuery')
+
+  showLogisticsQueryDialog({
+    trackingNo,
+    companyCode: logisticsCompany,
+    router,
+    onSystemQuery: () => {
+      safeNavigator.push({
+        path: '/logistics/track',
+        query: {
+          trackingNo: trackingNo,
+          company: logisticsCompany || ''
+        }
+      })
+    }
+  })
 }
 
 // 根据订单类型查看订单详情

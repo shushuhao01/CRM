@@ -319,6 +319,30 @@ export class UserController {
   });
 
   /**
+   * 检查用户名是否可用
+   */
+  checkUsername = catchAsync(async (req: Request, res: Response) => {
+    const { username } = req.query;
+
+    if (!username || typeof username !== 'string') {
+      throw new ValidationError('用户名参数不能为空');
+    }
+
+    // 检查用户名是否已存在
+    const existingUser = await this.userRepository.findOne({
+      where: { username }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        available: !existingUser,
+        username
+      }
+    });
+  });
+
+  /**
    * 创建用户（管理员功能）
    */
   createUser = catchAsync(async (req: Request, res: Response) => {

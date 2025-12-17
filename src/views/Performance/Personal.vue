@@ -1413,63 +1413,24 @@ const copyTrackingNo = async (trackingNo: string) => {
 }
 
 /**
- * 点击物流单号：复制并提示选择跳转网站
+ * 点击物流单号：弹窗选择查询方式（系统内查询/快递100/官网）
  */
 const handleTrackingNoClick = async (trackingNo: string, logisticsCompany?: string) => {
-  // 复制物流单号
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(trackingNo)
-      ElMessage.success('物流单号已复制到剪贴板')
-    } else {
-      // 降级方案：使用 document.execCommand
-      const textArea = document.createElement('textarea')
-      textArea.value = trackingNo
-      textArea.style.position = 'fixed'
-      textArea.style.left = '-999999px'
-      textArea.style.top = '-999999px'
-      document.body.appendChild(textArea)
-      textArea.focus()
-      textArea.select()
+  const { showLogisticsQueryDialog } = await import('@/utils/logisticsQuery')
 
-      const result = document.execCommand('copy')
-      document.body.removeChild(textArea)
-
-      if (result) {
-        ElMessage.success('物流单号已复制到剪贴板')
-      } else {
-        ElMessage.error('复制失败，请手动复制')
-        return
-      }
-    }
-  } catch (error) {
-    console.error('复制失败:', error)
-    ElMessage.error('复制失败，请手动复制')
-    return
-  }
-
-  // 🔥 根据物流公司动态获取官网按钮名称和URL
-  const companyShortName = getCompanyShortName(logisticsCompany || '')
-  const companyUrl = getTrackingUrl(logisticsCompany || '', trackingNo)
-  const kuaidi100Url = KUAIDI100_URL.replace('{trackingNo}', trackingNo)
-
-  // 提示选择跳转网站
-  ElMessageBox.confirm(
-    '请选择要跳转的查询网站',
-    '选择查询网站',
-    {
-      confirmButtonText: `${companyShortName}官网`,
-      cancelButtonText: '快递100',
-      distinguishCancelAndClose: true,
-      type: 'info'
-    }
-  ).then(() => {
-    // 点击确认，跳转对应物流公司官网
-    window.open(companyUrl, '_blank')
-  }).catch((action) => {
-    if (action === 'cancel') {
-      // 点击取消，跳转快递100
-      window.open(kuaidi100Url, '_blank')
+  showLogisticsQueryDialog({
+    trackingNo,
+    companyCode: logisticsCompany,
+    router,
+    onSystemQuery: () => {
+      // 跳转到系统内物流跟踪页面
+      safeNavigator.push({
+        path: '/logistics/track',
+        query: {
+          trackingNo: trackingNo,
+          company: logisticsCompany || ''
+        }
+      })
     }
   })
 }
