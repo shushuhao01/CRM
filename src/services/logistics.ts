@@ -1,12 +1,10 @@
 import { ElMessage } from 'element-plus'
-import { 
-  getLogisticsTrace, 
-  createLogisticsTracking, 
+import {
+  getLogisticsTrace,
+  createLogisticsTracking,
   getSupportedCompanies,
   batchSyncLogisticsStatus,
-  updateLogisticsStatus,
   type LogisticsTracking,
-  type LogisticsTrace,
   type ExpressCompany,
   LogisticsStatus
 } from '@/api/logisticsStatus'
@@ -77,10 +75,11 @@ class LogisticsService {
 
   /**
    * 查询物流轨迹
+   * 优先使用后端API（调用各快递公司官方API），失败后回退到快递100
    */
   async queryLogistics(trackingNumber: string, expressCompany: string): Promise<LogisticsResult> {
     const cacheKey = `${expressCompany}_${trackingNumber}`
-    
+
     // 检查缓存
     const cached = this.cache.get(cacheKey)
     if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
@@ -88,15 +87,27 @@ class LogisticsService {
     }
 
     try {
-      // 调用真实API
-      const response = await getLogisticsTrace({
-        trackingNo: trackingNumber,
-        companyCode: expressCompany
-      })
+      // 🔥 优先调用后端新API（调用各快递公司官方API）
+      const { logisticsApi } = await import('@/api/logistics')
+      const response = await logisticsApi.queryTrace(trackingNumber, expressCompany)
 
-      if (response.code === 200 && response.data) {
-        const result = this.transformApiResponse(response.data)
-        
+      if (response.success && response.data && response.data.success) {
+        const apiData = response.data
+        const result: LogisticsResult = {
+          trackingNumber: apiData.trackingNo,
+          expressCompany: apiData.companyName,
+          currentStatus: this.mapStatusToLogisticsStatus(apiData.status),
+          tracks: apiData.traces.map(trace => ({
+            time: trace.time,
+            location: trace.location || '',
+            description: trace.description,
+            status: this.mapStatusToLogisticsStatus(trace.status),
+            statusText: trace.status
+          })),
+          lastUpdateTime: new Date().toISOString(),
+          estimatedDeliveryTime: apiData.estimatedDeliveryTime
+        }
+
         // 缓存结果
         this.cache.set(cacheKey, {
           data: result,
@@ -104,19 +115,61 @@ class LogisticsService {
         })
 
         return result
-      } else {
-        throw new Error(response.message || '查询失败')
       }
-    } catch (error) {
-      console.error('物流查询失败:', error)
-      // 如果API调用失败，使用模拟数据作为兜底
+
+      // 如果新API返回失败，尝试旧API
+      throw new Error(response.message || '新API查询失败')
+    } catch (newApiError) {
+      console.warn('新物流API查询失败，尝试旧API:', newApiError)
+
       try {
-        const mockResult = await this.mockApiCall(trackingNumber, expressCompany)
-        return mockResult
-      } catch (mockError) {
-        throw new Error('物流信息查询失败，请稍后重试')
+        // 调用旧的API
+        const response = await getLogisticsTrace({
+          trackingNo: trackingNumber,
+          companyCode: expressCompany
+        })
+
+        if (response.code === 200 && response.data) {
+          const result = this.transformApiResponse(response.data)
+
+          // 缓存结果
+          this.cache.set(cacheKey, {
+            data: result,
+            timestamp: Date.now()
+          })
+
+          return result
+        } else {
+          throw new Error(response.message || '查询失败')
+        }
+      } catch (error) {
+        console.error('物流查询失败:', error)
+        // 如果API调用失败，使用模拟数据作为兜底
+        try {
+          const mockResult = await this.mockApiCall(trackingNumber, expressCompany)
+          return mockResult
+        } catch (_mockError) {
+          throw new Error('物流信息查询失败，请稍后重试')
+        }
       }
     }
+  }
+
+  /**
+   * 映射状态字符串到LogisticsStatus枚举
+   */
+  private mapStatusToLogisticsStatus(status: string): LogisticsStatus {
+    const statusMap: Record<string, LogisticsStatus> = {
+      'pending': LogisticsStatus.PENDING,
+      'picked_up': LogisticsStatus.PICKED_UP,
+      'in_transit': LogisticsStatus.IN_TRANSIT,
+      'out_for_delivery': LogisticsStatus.OUT_FOR_DELIVERY,
+      'delivered': LogisticsStatus.DELIVERED,
+      'exception': LogisticsStatus.EXCEPTION,
+      'rejected': LogisticsStatus.REJECTED,
+      'returned': LogisticsStatus.RETURNED
+    }
+    return statusMap[status] || LogisticsStatus.PENDING
   }
 
   /**
@@ -163,7 +216,7 @@ class LogisticsService {
    * 批量查询物流轨迹
    */
   async batchQueryLogistics(orders: Array<{ trackingNumber: string; expressCompany: string }>): Promise<LogisticsResult[]> {
-    const promises = orders.map(order => 
+    const promises = orders.map(order =>
       this.queryLogistics(order.trackingNumber, order.expressCompany)
         .catch(error => {
           console.error(`查询 ${order.trackingNumber} 失败:`, error)
@@ -189,7 +242,7 @@ class LogisticsService {
 
       if (response.code === 200 && response.data) {
         ElMessage.success('物流跟踪创建成功')
-        return response.data
+        return response.data as LogisticsTracking
       } else {
         throw new Error(response.message || '创建失败')
       }
@@ -206,9 +259,9 @@ class LogisticsService {
   async getSupportedCompanies(): Promise<ExpressCompany[]> {
     try {
       const response = await getSupportedCompanies()
-      
+
       if (response.code === 200 && response.data) {
-        return response.data.companies || []
+        return (response.data as any).companies || []
       } else {
         // 如果API调用失败，返回默认公司列表
         return Object.values(LOGISTICS_COMPANIES).map(company => ({
@@ -236,12 +289,12 @@ class LogisticsService {
       // 清除缓存，强制重新查询
       const cacheKey = `${expressCompany}_${trackingNumber}`
       this.cache.delete(cacheKey)
-      
+
       const result = await this.queryLogistics(trackingNumber, expressCompany)
-      
+
       // 触发状态更新事件
       this.emitStatusUpdate(result)
-      
+
       return result
     } catch (error) {
       console.error('物流状态同步失败:', error)
@@ -255,7 +308,7 @@ class LogisticsService {
   async batchSyncLogistics(trackingIds: number[]): Promise<boolean> {
     try {
       const response = await batchSyncLogisticsStatus({ trackingIds })
-      
+
       if (response.code === 200) {
         ElMessage.success('批量同步成功')
         // 清除相关缓存
@@ -283,7 +336,7 @@ class LogisticsService {
     try {
       // 调用快递100 API
       const result = await this.callKuaidi100API(trackingNumber, company.apiCode)
-      
+
       if (result && result.data && result.data.length > 0) {
         // 解析真实API返回的数据
         const tracks: LogisticsTrack[] = result.data.map((item: any) => ({
@@ -302,8 +355,8 @@ class LogisticsService {
           currentStatus,
           tracks,
           lastUpdateTime: new Date().toLocaleString('zh-CN'),
-          estimatedDeliveryTime: currentStatus === LogisticsStatus.DELIVERED 
-            ? undefined 
+          estimatedDeliveryTime: currentStatus === LogisticsStatus.DELIVERED
+            ? undefined
             : new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleString('zh-CN')
         }
       } else {
@@ -323,7 +376,7 @@ class LogisticsService {
   private async callKuaidi100API(trackingNumber: string, companyCode: string): Promise<any> {
     // 这里应该使用真实的API密钥和配置
     const apiUrl = 'https://poll.kuaidi100.com/poll/query.do'
-    
+
     const params = {
       customer: LOGISTICS_API_CONFIG.kuaidi100.customer,
       sign: this.generateSign(trackingNumber, companyCode),
@@ -350,7 +403,7 @@ class LogisticsService {
     }
 
     const result = await response.json()
-    
+
     if (result.returnCode !== '200') {
       throw new Error(result.message || '查询失败')
     }
@@ -368,7 +421,7 @@ class LogisticsService {
       com: companyCode,
       num: trackingNumber
     })
-    
+
     // 实际项目中应该使用真实的签名算法
     return btoa(param + LOGISTICS_API_CONFIG.kuaidi100.key + LOGISTICS_API_CONFIG.kuaidi100.customer)
   }
@@ -388,7 +441,7 @@ class LogisticsService {
       '6': LogisticsStatus.RETURNED,     // 退回
       '7': LogisticsStatus.EXCEPTION,    // 转投
     }
-    
+
     return statusMap[apiStatus] || LogisticsStatus.PENDING
   }
 
@@ -411,11 +464,11 @@ class LogisticsService {
     // 生成模拟轨迹
     const tracks: LogisticsTrack[] = []
     const baseTime = new Date()
-    
+
     for (let i = 0; i <= currentStatusIndex; i++) {
       const status = statusOptions[i]
       const time = new Date(baseTime.getTime() - (currentStatusIndex - i) * 24 * 60 * 60 * 1000)
-      
+
       tracks.push({
         time: time.toLocaleString('zh-CN'),
         location: this.getLocationByStatus(status),
@@ -431,8 +484,8 @@ class LogisticsService {
       currentStatus,
       tracks: tracks.reverse(), // 最新的在前面
       lastUpdateTime: new Date().toLocaleString('zh-CN'),
-      estimatedDeliveryTime: currentStatus === LogisticsStatus.DELIVERED 
-        ? undefined 
+      estimatedDeliveryTime: currentStatus === LogisticsStatus.DELIVERED
+        ? undefined
         : new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleString('zh-CN')
     }
   }
