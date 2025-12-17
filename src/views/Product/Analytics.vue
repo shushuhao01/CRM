@@ -852,25 +852,24 @@ const initInventoryChart = () => {
 const initTopProductsChart = () => {
   const chart = echarts.init(topProductsChart.value)
 
-  // 优先使用API数据，如果没有则基于商品数据生成
-  let productNames: string[] = []
-  let salesData: number[] = []
+  // 基于商品数据生成热销排行（使用真实商品数据）
+  const products = productStore.products || []
 
-  const topProducts = analyticsData.value?.topProducts
-  if (Array.isArray(topProducts) && topProducts.length > 0) {
-    productNames = topProducts.map(p => p.name)
-    salesData = topProducts.map(p => p.sales)
-  } else {
-    // 基于商品数据生成热销排行
-    const products = productStore.products || []
-    const sortedProducts = [...products]
-      .sort((a, b) => (b.salesCount || 0) - (a.salesCount || 0))
-      .slice(0, 5)
-      .reverse() // 反转以便在横向柱状图中从上到下显示
+  // 按销量排序，取前5名
+  const sortedProducts = [...products]
+    .filter(p => p.name) // 确保有名称
+    .sort((a, b) => (b.salesCount || 0) - (a.salesCount || 0))
+    .slice(0, 5)
+    .reverse() // 反转以便在横向柱状图中从下到上显示（销量最高的在最上面）
 
-    productNames = sortedProducts.map(p => p.name)
-    salesData = sortedProducts.map(p => p.salesCount || 0)
+  const productNames = sortedProducts.map(p => p.name || '未命名商品')
+  const salesData = sortedProducts.map(p => p.salesCount || 0)
+
+  // 截断长名称用于显示，保留完整名称用于tooltip
+  const truncateName = (name: string, maxLen: number = 10) => {
+    return name.length > maxLen ? name.substring(0, maxLen) + '...' : name
   }
+  const displayNames = productNames.map(name => truncateName(name))
 
   const option = {
     title: {
@@ -880,24 +879,39 @@ const initTopProductsChart = () => {
     },
     tooltip: {
       trigger: 'axis',
-      formatter: '{a} <br/>{b}: {c} 件'
+      axisPointer: {
+        type: 'shadow'
+      },
+      formatter: (params: any) => {
+        const dataIndex = params[0]?.dataIndex
+        const fullName = productNames[dataIndex] || ''
+        const value = params[0]?.value || 0
+        return `<div style="font-weight:bold;margin-bottom:4px;">商品名称</div>
+                <div style="margin-bottom:4px;">${fullName}</div>
+                <div>销量：<span style="font-weight:bold;color:#E6A23C;">${value}</span> 件</div>`
+      }
     },
     grid: {
       left: '3%',
-      right: '4%',
+      right: '15%',
       bottom: '3%',
       containLabel: true
     },
     xAxis: {
       type: 'value',
-      name: '销量'
+      name: '销量',
+      nameTextStyle: {
+        fontSize: 12
+      }
     },
     yAxis: {
       type: 'category',
-      data: productNames,
+      data: displayNames,
       axisLabel: {
-        width: 100,
-        overflow: 'truncate'
+        width: 80,
+        overflow: 'truncate',
+        ellipsis: '...',
+        fontSize: 11
       }
     },
     series: [{
@@ -916,7 +930,8 @@ const initTopProductsChart = () => {
       label: {
         show: true,
         position: 'right',
-        formatter: '{c}'
+        formatter: '{c}',
+        fontSize: 11
       }
     }]
   }
