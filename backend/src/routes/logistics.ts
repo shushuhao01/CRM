@@ -884,58 +884,92 @@ import { LogisticsApiConfig } from '../entities/LogisticsApiConfig';
 
 /**
  * 圆通开放平台API调试回调接口
- * 用于圆通开放平台的API在线调试功能
+ * 用于圆通开放平台的API在线调试功能（物流轨迹推送服务）
  * URL格式: /api/v1/logistics/yto-callback
  *
- * 圆通会向此接口发送测试请求，需要返回正确的响应格式
+ * 圆通会向此接口推送物流轨迹数据（XML格式）
+ * 需要返回正确的响应格式表示接收成功
  */
 router.post('/yto-callback', async (req: Request, res: Response) => {
   try {
-    console.log('[圆通回调] 收到请求:', JSON.stringify(req.body));
-    console.log('[圆通回调] 请求头:', JSON.stringify(req.headers));
+    // 获取原始请求体
+    const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    console.log('[圆通回调] 收到请求体:', rawBody);
+    console.log('[圆通回调] Content-Type:', req.headers['content-type']);
 
-    // 圆通API调试会发送测试数据，我们需要返回成功响应
-    const { waybillNo, data } = req.body;
+    // 圆通推送的数据可能是XML格式或JSON格式
+    let trackingNo = 'UNKNOWN';
+    let _logisticsInfo = null;
 
-    // 解析data字段（如果是字符串）
-    let requestData = data;
-    if (typeof data === 'string') {
-      try {
-        requestData = JSON.parse(data);
-      } catch (_e) {
-        requestData = { waybillNo: data };
+    // 尝试从请求体中提取运单号
+    if (typeof req.body === 'object') {
+      // JSON格式
+      trackingNo = req.body.waybillNo || req.body.mailNo || req.body.logisticsId || 'UNKNOWN';
+      _logisticsInfo = req.body;
+    } else if (typeof req.body === 'string') {
+      // 可能是XML格式，尝试提取运单号
+      const mailNoMatch = req.body.match(/<mailNo>([^<]+)<\/mailNo>/);
+      if (mailNoMatch) {
+        trackingNo = mailNoMatch[1];
+      }
+      const logisticsIdMatch = req.body.match(/<logisticsId>([^<]+)<\/logisticsId>/);
+      if (logisticsIdMatch) {
+        trackingNo = logisticsIdMatch[1];
       }
     }
 
-    const trackingNo = waybillNo || requestData?.waybillNo || 'TEST123456789';
+    console.log('[圆通回调] 解析到运单号:', trackingNo);
 
-    // 返回圆通期望的响应格式
-    const response = {
-      success: true,
-      code: '0',
-      message: '成功',
-      data: {
-        waybillNo: trackingNo,
-        traces: [
-          {
-            time: new Date().toISOString().replace('T', ' ').substring(0, 19),
-            processInfo: '【测试】API调试成功，系统已正确接收请求',
-            city: '测试城市'
-          }
-        ]
-      }
-    };
+    // TODO: 这里可以将物流轨迹数据保存到数据库
+    // await saveLogisticsTrace(trackingNo, logisticsInfo);
 
-    console.log('[圆通回调] 返回响应:', JSON.stringify(response));
-    res.json(response);
+    // 返回圆通期望的成功响应格式
+    // 圆通要求返回特定格式表示接收成功
+    const successResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <success>true</success>
+  <code>0</code>
+  <message>成功</message>
+</response>`;
+
+    console.log('[圆通回调] 返回成功响应');
+
+    // 根据请求的Content-Type返回对应格式
+    if (req.headers['content-type']?.includes('xml')) {
+      res.set('Content-Type', 'application/xml;charset=UTF-8');
+      res.send(successResponse);
+    } else {
+      res.json({
+        success: true,
+        code: '0',
+        message: '成功',
+        data: {
+          waybillNo: trackingNo,
+          received: true,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
   } catch (error) {
     console.error('[圆通回调] 处理失败:', error);
-    res.json({
-      success: false,
-      code: '-1',
-      message: '处理失败',
-      data: null
-    });
+
+    // 返回失败响应
+    if (req.headers['content-type']?.includes('xml')) {
+      res.set('Content-Type', 'application/xml;charset=UTF-8');
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <success>false</success>
+  <code>-1</code>
+  <message>处理失败</message>
+</response>`);
+    } else {
+      res.json({
+        success: false,
+        code: '-1',
+        message: '处理失败',
+        data: null
+      });
+    }
   }
 });
 
