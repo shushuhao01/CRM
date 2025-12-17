@@ -109,9 +109,22 @@
               <el-icon><Setting /></el-icon>
               API配置
             </el-button>
-            <el-button @click="handleDelete(row)" type="danger" link size="small">
-              删除
-            </el-button>
+            <el-tooltip
+              :content="isSystemCompany(row.code) ? '系统预设快递公司，不可删除' : '删除'"
+              placement="top"
+            >
+              <span>
+                <el-button
+                  @click="handleDelete(row)"
+                  type="danger"
+                  link
+                  size="small"
+                  :disabled="isSystemCompany(row.code)"
+                >
+                  删除
+                </el-button>
+              </span>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>
@@ -263,6 +276,16 @@ const currentApiConfig = ref(null)
 
 // 支持API配置的快递公司代码（所有主流快递公司）
 const supportedApiCompanies = ['SF', 'ZTO', 'YTO', 'STO', 'YD', 'JTSD', 'EMS', 'JD', 'DBL']
+
+// 系统预设的快递公司代码（不可删除）
+const systemCompanyCodes = ['SF', 'ZTO', 'YTO', 'STO', 'YD', 'JTSD', 'EMS', 'JD', 'DB', 'DBL']
+
+/**
+ * 判断是否为系统预设快递公司
+ */
+const isSystemCompany = (code: string): boolean => {
+  return systemCompanyCodes.includes(code)
+}
 
 // 超时ID跟踪，用于清理异步操作
 const timeoutIds = new Set<NodeJS.Timeout>()
