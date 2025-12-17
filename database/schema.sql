@@ -840,6 +840,32 @@ CREATE TABLE `logistics_companies` (
   INDEX `idx_sort_order` (`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流公司表';
 
+-- 25.1 物流API配置表
+DROP TABLE IF EXISTS `logistics_api_configs`;
+CREATE TABLE `logistics_api_configs` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '配置ID',
+  `company_code` VARCHAR(50) NOT NULL COMMENT '物流公司代码(SF/ZTO/YTO/STO/YD/JTSD/EMS/JD/DBL)',
+  `company_name` VARCHAR(100) NOT NULL COMMENT '物流公司名称',
+  `app_id` VARCHAR(200) NULL COMMENT '应用ID/AppKey/PartnerId',
+  `app_key` VARCHAR(200) NULL COMMENT '应用密钥/AppSecret',
+  `app_secret` VARCHAR(500) NULL COMMENT '校验码/CheckWord/SecretKey',
+  `customer_id` VARCHAR(200) NULL COMMENT '客户ID/月结账号',
+  `api_url` VARCHAR(500) NULL COMMENT 'API接口地址',
+  `api_environment` ENUM('sandbox', 'production') DEFAULT 'sandbox' COMMENT 'API环境(sandbox-测试/production-生产)',
+  `extra_config` JSON NULL COMMENT '扩展配置(JSON格式)',
+  `enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用(0-禁用/1-启用)',
+  `last_test_time` DATETIME NULL COMMENT '最后测试时间',
+  `last_test_result` TINYINT(1) NULL COMMENT '最后测试结果(0-失败/1-成功)',
+  `last_test_message` VARCHAR(500) NULL COMMENT '最后测试消息',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `created_by` VARCHAR(50) NULL COMMENT '创建人',
+  `updated_by` VARCHAR(50) NULL COMMENT '更新人',
+  UNIQUE KEY `uk_company_code` (`company_code`),
+  INDEX `idx_enabled` (`enabled`),
+  INDEX `idx_api_environment` (`api_environment`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流API配置表';
+
 -- 26. 物流状态历史表
 DROP TABLE IF EXISTS `logistics_status_history`;
 CREATE TABLE `logistics_status_history` (
@@ -1445,6 +1471,21 @@ ON DUPLICATE KEY UPDATE
   `website` = VALUES(`website`),
   `tracking_url` = VALUES(`tracking_url`),
   `contact_phone` = VALUES(`contact_phone`),
+  `updated_at` = CURRENT_TIMESTAMP;
+
+-- 插入物流API配置初始数据（默认未配置状态）
+INSERT INTO `logistics_api_configs` (`id`, `company_code`, `company_name`, `api_environment`, `enabled`) VALUES
+('lac-001', 'SF', '顺丰速运', 'sandbox', 0),
+('lac-002', 'ZTO', '中通快递', 'sandbox', 0),
+('lac-003', 'YTO', '圆通速递', 'sandbox', 0),
+('lac-004', 'STO', '申通快递', 'sandbox', 0),
+('lac-005', 'YD', '韵达速递', 'sandbox', 0),
+('lac-006', 'JTSD', '极兔速递', 'sandbox', 0),
+('lac-007', 'EMS', '邮政EMS', 'sandbox', 0),
+('lac-008', 'JD', '京东物流', 'sandbox', 0),
+('lac-009', 'DBL', '德邦快递', 'sandbox', 0)
+ON DUPLICATE KEY UPDATE
+  `company_name` = VALUES(`company_name`),
   `updated_at` = CURRENT_TIMESTAMP;
 
 -- 30. 部门下单限制配置表
