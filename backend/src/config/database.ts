@@ -44,6 +44,7 @@ import { NotificationChannel, NotificationLog } from '../entities/NotificationCh
 import { Announcement, AnnouncementRead } from '../entities/Announcement';
 import { SystemMessage } from '../entities/SystemMessage';
 import { PerformanceReportConfig, PerformanceReportLog } from '../entities/PerformanceReportConfig';
+import { LogisticsApiConfig } from '../entities/LogisticsApiConfig';
 import path from 'path';
 
 // 根据环境变量选择数据库配置
@@ -106,7 +107,8 @@ const AppDataSource = new DataSource(
           AnnouncementRead,
           SystemMessage,
           PerformanceReportConfig,
-          PerformanceReportLog
+          PerformanceReportLog,
+          LogisticsApiConfig
         ],
         migrations: [],
         subscribers: [],
@@ -161,7 +163,8 @@ const AppDataSource = new DataSource(
           AnnouncementRead,
           SystemMessage,
           PerformanceReportConfig,
-          PerformanceReportLog
+          PerformanceReportLog,
+          LogisticsApiConfig
         ],
         migrations: [],
         subscribers: [],
