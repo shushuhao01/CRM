@@ -1438,69 +1438,18 @@ const goToCustomerDetail = () => {
   safeNavigator.push(`/customer/detail/${orderDetail.customer.id}`)
 }
 
-// 复制物流单号并提示选择跳转网站
+// 复制物流单号并提示选择跳转网站（使用统一的物流查询弹窗）
 const trackExpress = async () => {
   if (!orderDetail.trackingNumber) {
     ElMessage.warning('物流单号不存在')
     return
   }
 
-  // 复制物流单号
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(orderDetail.trackingNumber)
-      ElMessage.success('物流单号已复制到剪贴板')
-    } else {
-      // 降级方案：使用 document.execCommand
-      const textArea = document.createElement('textarea')
-      textArea.value = orderDetail.trackingNumber
-      textArea.style.position = 'fixed'
-      textArea.style.left = '-999999px'
-      textArea.style.top = '-999999px'
-      document.body.appendChild(textArea)
-      textArea.focus()
-      textArea.select()
-
-      const result = document.execCommand('copy')
-      document.body.removeChild(textArea)
-
-      if (result) {
-        ElMessage.success('物流单号已复制到剪贴板')
-      } else {
-        ElMessage.error('复制失败，请手动复制')
-        return
-      }
-    }
-  } catch (error) {
-    console.error('复制失败:', error)
-    ElMessage.error('复制失败，请手动复制')
-    return
-  }
-
-  // 🔥 根据物流公司动态获取官网按钮名称和URL
-  const logisticsCompany = orderDetail.expressCompany || ''
-  const companyShortName = getCompanyShortName(logisticsCompany)
-  const companyUrl = getTrackingUrl(logisticsCompany, orderDetail.trackingNumber)
-  const kuaidi100Url = KUAIDI100_URL.replace('{trackingNo}', orderDetail.trackingNumber)
-
-  // 提示选择跳转网站
-  ElMessageBox.confirm(
-    '请选择要跳转的查询网站',
-    '选择查询网站',
-    {
-      confirmButtonText: `${companyShortName}官网`,
-      cancelButtonText: '快递100',
-      distinguishCancelAndClose: true,
-      type: 'info'
-    }
-  ).then(() => {
-    // 点击确认，跳转对应物流公司官网
-    window.open(companyUrl, '_blank')
-  }).catch((action) => {
-    if (action === 'cancel') {
-      // 点击取消，跳转快递100
-      window.open(kuaidi100Url, '_blank')
-    }
+  const { showLogisticsQueryDialog } = await import('@/utils/logisticsQuery')
+  showLogisticsQueryDialog({
+    trackingNo: orderDetail.trackingNumber,
+    companyCode: orderDetail.expressCompany,
+    router
   })
 }
 
