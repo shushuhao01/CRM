@@ -139,6 +139,11 @@ app.use(express.urlencoded({
   extended: true,
   limit: process.env.UPLOAD_MAX_SIZE || '10mb'
 }));
+// 支持XML格式的请求体（用于圆通等物流公司的回调）
+app.use(express.text({
+  limit: process.env.UPLOAD_MAX_SIZE || '10mb',
+  type: ['application/xml', 'text/xml']
+}));
 
 // 静态文件服务
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
