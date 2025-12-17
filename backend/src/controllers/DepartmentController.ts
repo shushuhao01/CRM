@@ -28,12 +28,21 @@ export class DepartmentController {
         order: { sortOrder: 'ASC', createdAt: 'ASC' }
       });
 
-      // 计算每个部门的成员数量
+      // 计算每个部门的成员数量和获取负责人信息
       const departmentsWithCount = await Promise.all(departments.map(async (dept: Department) => {
         // 单独查询该部门的用户数量
         const memberCount = await this.userRepository.count({
           where: { departmentId: dept.id }
         });
+
+        // 获取负责人姓名
+        let managerName = null;
+        if (dept.managerId) {
+          const manager = await this.userRepository.findOne({
+            where: { id: dept.managerId }
+          });
+          managerName = manager?.name || manager?.username || null;
+        }
 
         return {
           id: dept.id.toString(),
@@ -44,6 +53,8 @@ export class DepartmentController {
           level: dept.level || 1,
           sortOrder: dept.sortOrder,
           status: dept.status,
+          managerId: dept.managerId,
+          managerName: managerName,
           memberCount: memberCount,
           createdAt: dept.createdAt.toISOString(),
           updatedAt: dept.updatedAt.toISOString()
@@ -179,9 +190,9 @@ export class DepartmentController {
    */
   async createDepartment(req: Request, res: Response): Promise<void> {
     try {
-      const { name, code, description, parentId, sortOrder = 0, status = 'active', level = 1 } = req.body;
+      const { name, code, description, parentId, sortOrder = 0, status = 'active', level = 1, managerId } = req.body;
 
-      console.log('[创建部门] 接收到的数据:', { name, code, description, parentId, sortOrder, status, level });
+      console.log('[创建部门] 接收到的数据:', { name, code, description, parentId, sortOrder, status, level, managerId });
 
       // 验证必填字段
       if (!name || !code) {
@@ -244,6 +255,7 @@ export class DepartmentController {
         sortOrder: sortOrder || 0,
         status: status || 'active',
         level: level || 1,
+        managerId: managerId || null,
         memberCount: 0
       });
 
@@ -252,6 +264,15 @@ export class DepartmentController {
       const savedDepartment = await this.departmentRepository.save(department);
 
       console.log('[创建部门] 保存成功:', savedDepartment);
+
+      // 获取负责人姓名
+      let managerName = null;
+      if (savedDepartment.managerId) {
+        const manager = await this.userRepository.findOne({
+          where: { id: savedDepartment.managerId }
+        });
+        managerName = manager?.name || manager?.username || null;
+      }
 
       const result = {
         id: savedDepartment.id,
@@ -262,6 +283,8 @@ export class DepartmentController {
         sortOrder: savedDepartment.sortOrder,
         status: savedDepartment.status,
         level: savedDepartment.level,
+        managerId: savedDepartment.managerId,
+        managerName: managerName,
         memberCount: 0,
         createdAt: savedDepartment.createdAt.toISOString(),
         updatedAt: savedDepartment.updatedAt.toISOString()
@@ -288,7 +311,9 @@ export class DepartmentController {
   async updateDepartment(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { name, code, description, parentId, sortOrder, status } = req.body;
+      const { name, code, description, parentId, sortOrder, status, managerId } = req.body;
+
+      console.log('[更新部门] 接收到的数据:', { id, name, code, description, parentId, sortOrder, status, managerId });
 
       const department = await this.departmentRepository.findOne({
         where: { id }
@@ -359,13 +384,27 @@ export class DepartmentController {
       if (parentId !== undefined) department.parentId = parentId || null;
       if (sortOrder !== undefined) department.sortOrder = sortOrder;
       if (status !== undefined) department.status = status;
+      if (managerId !== undefined) department.managerId = managerId || null;
+
+      console.log('[更新部门] 准备保存的部门对象:', department);
 
       const savedDepartment = await this.departmentRepository.save(department);
+
+      console.log('[更新部门] 保存成功:', savedDepartment);
 
       // 单独查询成员数量
       const memberCount = await this.userRepository.count({
         where: { departmentId: id }
       });
+
+      // 获取负责人姓名
+      let managerName = null;
+      if (savedDepartment.managerId) {
+        const manager = await this.userRepository.findOne({
+          where: { id: savedDepartment.managerId }
+        });
+        managerName = manager?.name || manager?.username || null;
+      }
 
       const result = {
         id: savedDepartment.id.toString(),
@@ -375,6 +414,8 @@ export class DepartmentController {
         parentId: savedDepartment.parentId?.toString(),
         sortOrder: savedDepartment.sortOrder,
         status: savedDepartment.status,
+        managerId: savedDepartment.managerId,
+        managerName: managerName,
         memberCount: memberCount,
         createdAt: savedDepartment.createdAt.toISOString(),
         updatedAt: savedDepartment.updatedAt.toISOString()
