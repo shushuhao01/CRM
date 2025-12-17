@@ -1744,8 +1744,32 @@ const confirmBatchAssign = async () => {
         }
 
         // 获取部门负责人
-        const departmentLeader = departmentMembers.find(member => member.isLeader) || departmentMembers[0]
-        console.log('[资料列表] 部门负责人:', departmentLeader.name)
+        // 优先使用部门管理中配置的负责人（managerId），其次使用角色判断
+        let departmentLeader = null
+
+        // 1. 首先检查部门是否配置了负责人
+        if (department.managerId) {
+          departmentLeader = departmentMembers.find(member => member.id === department.managerId)
+          if (departmentLeader) {
+            console.log('[资料列表] 使用部门配置的负责人:', departmentLeader.name)
+          }
+        }
+
+        // 2. 如果没有配置负责人，则使用角色判断（department_manager或manager角色）
+        if (!departmentLeader) {
+          departmentLeader = departmentMembers.find(member => member.isLeader)
+          if (departmentLeader) {
+            console.log('[资料列表] 使用角色判断的负责人:', departmentLeader.name)
+          }
+        }
+
+        // 3. 如果都没有，使用第一个成员
+        if (!departmentLeader) {
+          departmentLeader = departmentMembers[0]
+          console.log('[资料列表] 使用默认成员作为负责人:', departmentLeader.name)
+        }
+
+        console.log('[资料列表] 最终部门负责人:', departmentLeader.name)
 
         // 轮流分配
         await dataStore.batchRoundRobinAssignData({
