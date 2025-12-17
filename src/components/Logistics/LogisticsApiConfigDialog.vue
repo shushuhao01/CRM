@@ -207,7 +207,7 @@ const companyConfigs: Record<string, {
   // 顺丰速运 - 丰桥开放平台 https://open.sf-express.com/
   SF: {
     name: '顺丰速运',
-    platformUrl: 'https://open.sf-express.com/',
+    platformUrl: 'https://qiao.sf-express.com/',
     showAppKey: false,
     showCustomerId: true,
     fieldLabels: {
@@ -217,7 +217,7 @@ const companyConfigs: Record<string, {
       customerId: '月结卡号'
     },
     fieldTips: {
-      appId: '丰桥开放平台分配的顾客编码(partnerID)',
+      appId: '丰桥开放平台分配的顾客编码(partnerID)，如：YK6MMZNA',
       appKey: '',
       appSecret: '丰桥开放平台分配的校验码(checkword)',
       customerId: '月结卡号（可选，用于下单）'
@@ -225,7 +225,15 @@ const companyConfigs: Record<string, {
     apiUrls: {
       sandbox: 'https://sfapi-sbox.sf-express.com/std/service',
       production: 'https://bspgw.sf-express.com/std/service'
-    }
+    },
+    setupSteps: [
+      '1. 登录顺丰丰桥开放平台 (qiao.sf-express.com)',
+      '2. 进入"业务对接" -> "开发者对接"，创建应用',
+      '3. 在API列表中关联"订单结果查询接口"(EXP_RECE_SEARCH_ORDER_RESP)',
+      '4. 进入"沙箱工具" -> "API测试工具"进行接口测试',
+      '5. 测试通过后，获取顾客编码和校验码',
+      '6. 将顾客编码和校验码填入下方配置'
+    ]
   },
   // 中通快递 - 中通开放平台 https://open.zto.com/
   ZTO: {
