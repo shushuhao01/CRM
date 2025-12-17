@@ -21,9 +21,16 @@
         <template #default>
           <div style="font-size: 13px; line-height: 1.8">
             <p style="margin: 0 0 8px 0"><strong>配置步骤:</strong></p>
-            <p style="margin: 0 0 4px 0">1. 登录 <a :href="platformUrl" target="_blank" style="color: #409eff">{{ companyName }}开放平台</a></p>
-            <p style="margin: 0 0 4px 0">2. 创建应用，获取API密钥信息</p>
-            <p style="margin: 0 0 4px 0">3. 填入下方配置信息并测试连接</p>
+            <template v-if="currentCompanyConfig?.setupSteps">
+              <p v-for="(step, index) in currentCompanyConfig.setupSteps" :key="index" style="margin: 0 0 4px 0">
+                {{ step }}
+              </p>
+            </template>
+            <template v-else>
+              <p style="margin: 0 0 4px 0">1. 登录 <a :href="platformUrl" target="_blank" style="color: #409eff">{{ companyName }}开放平台</a></p>
+              <p style="margin: 0 0 4px 0">2. 创建应用，获取API密钥信息</p>
+              <p style="margin: 0 0 4px 0">3. 填入下方配置信息并测试连接</p>
+            </template>
           </div>
         </template>
       </el-alert>
@@ -194,6 +201,8 @@ const companyConfigs: Record<string, {
   fieldLabels: Record<string, string>
   fieldTips: Record<string, string>
   apiUrls: { sandbox: string; production: string }
+  callbackUrl?: string
+  setupSteps?: string[]
 }> = {
   // 顺丰速运 - 丰桥开放平台 https://open.sf-express.com/
   SF: {
@@ -262,7 +271,17 @@ const companyConfigs: Record<string, {
     apiUrls: {
       sandbox: 'https://openuat.yto56test.com:5443/open/track_query_adapter/v1',
       production: 'https://openapi.yto.net.cn/open/track_query_adapter/v1'
-    }
+    },
+    // 圆通需要先进行API在线调试，回调URL填写: {您的域名}/api/v1/logistics/yto-callback
+    callbackUrl: '/api/v1/logistics/yto-callback',
+    setupSteps: [
+      '1. 登录圆通速递开放平台',
+      '2. 进入"接口管理"，申请"物流轨迹推送服务"接口',
+      '3. 进入"API在线调试"页面',
+      '4. URL地址填写: {您的服务器域名}/api/v1/logistics/yto-callback',
+      '5. 点击"提交测试"，调试成功后获取客户编码和请求地址',
+      '6. 将获取的参数填入下方配置'
+    ]
   },
   // 申通快递 - 申通开放平台 https://open.sto.cn/
   STO: {
@@ -406,6 +425,7 @@ const companyConfigs: Record<string, {
 
 // 计算属性
 const currentConfig = computed(() => companyConfigs[props.companyCode] || companyConfigs.ZTO)
+const currentCompanyConfig = computed(() => companyConfigs[props.companyCode] || null)
 const companyName = computed(() => currentConfig.value.name)
 const platformUrl = computed(() => currentConfig.value.platformUrl)
 const showAppKey = computed(() => currentConfig.value.showAppKey)

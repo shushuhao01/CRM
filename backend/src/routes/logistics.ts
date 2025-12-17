@@ -883,6 +883,78 @@ router.get('/export', async (_req, res) => {
 import { LogisticsApiConfig } from '../entities/LogisticsApiConfig';
 
 /**
+ * 圆通开放平台API调试回调接口
+ * 用于圆通开放平台的API在线调试功能
+ * URL格式: /api/v1/logistics/yto-callback
+ *
+ * 圆通会向此接口发送测试请求，需要返回正确的响应格式
+ */
+router.post('/yto-callback', async (req: Request, res: Response) => {
+  try {
+    console.log('[圆通回调] 收到请求:', JSON.stringify(req.body));
+    console.log('[圆通回调] 请求头:', JSON.stringify(req.headers));
+
+    // 圆通API调试会发送测试数据，我们需要返回成功响应
+    const { waybillNo, data } = req.body;
+
+    // 解析data字段（如果是字符串）
+    let requestData = data;
+    if (typeof data === 'string') {
+      try {
+        requestData = JSON.parse(data);
+      } catch (_e) {
+        requestData = { waybillNo: data };
+      }
+    }
+
+    const trackingNo = waybillNo || requestData?.waybillNo || 'TEST123456789';
+
+    // 返回圆通期望的响应格式
+    const response = {
+      success: true,
+      code: '0',
+      message: '成功',
+      data: {
+        waybillNo: trackingNo,
+        traces: [
+          {
+            time: new Date().toISOString().replace('T', ' ').substring(0, 19),
+            processInfo: '【测试】API调试成功，系统已正确接收请求',
+            city: '测试城市'
+          }
+        ]
+      }
+    };
+
+    console.log('[圆通回调] 返回响应:', JSON.stringify(response));
+    res.json(response);
+  } catch (error) {
+    console.error('[圆通回调] 处理失败:', error);
+    res.json({
+      success: false,
+      code: '-1',
+      message: '处理失败',
+      data: null
+    });
+  }
+});
+
+/**
+ * 圆通开放平台API调试回调接口 (GET方式，用于验证URL可访问性)
+ */
+router.get('/yto-callback', async (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    code: '0',
+    message: '圆通API回调接口正常',
+    data: {
+      status: 'ready',
+      timestamp: new Date().toISOString()
+    }
+  });
+});
+
+/**
  * 获取物流API配置列表
  */
 router.get('/api-configs', async (_req: Request, res: Response) => {
