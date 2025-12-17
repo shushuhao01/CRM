@@ -55,6 +55,7 @@ export const useServiceStore = defineStore('service', () => {
 
   /**
    * 加载售后服务列表
+   * 优先调用API，如果API失败则回退到本地存储
    */
   const loadAfterSalesServices = async (params: {
     page?: number
@@ -67,23 +68,28 @@ export const useServiceStore = defineStore('service', () => {
     try {
       console.log('[ServiceStore] 加载售后服务列表...')
 
-      if (isProduction()) {
-        // 生产环境：调用真实API
+      // 优先尝试调用API
+      try {
         const response = await serviceApi.getList(params)
         services.value = (response.items || []).map(mapApiToLocal)
         total.value = response.total || 0
         console.log('[ServiceStore] API加载成功，共', services.value.length, '条记录')
-      } else {
-        // 开发环境：使用本地存储
-        const localData = localStorage.getItem('crm_after_sales_services')
-        if (localData) {
-          services.value = JSON.parse(localData)
-        }
-        total.value = services.value.length
-        console.log('[ServiceStore] 本地加载成功，共', services.value.length, '条记录')
-      }
+        return services.value
+      } catch (apiError) {
+        console.warn('[ServiceStore] API调用失败，回退到本地存储:', apiError)
 
-      return services.value
+        // API失败时回退到本地存储（仅开发环境）
+        if (!isProduction()) {
+          const localData = localStorage.getItem('crm_after_sales_services')
+          if (localData) {
+            services.value = JSON.parse(localData)
+          }
+          total.value = services.value.length
+          console.log('[ServiceStore] 本地加载成功，共', services.value.length, '条记录')
+          return services.value
+        }
+        throw apiError
+      }
     } catch (error) {
       console.error('[ServiceStore] 加载售后服务列表失败:', error)
       throw error
@@ -101,14 +107,20 @@ export const useServiceStore = defineStore('service', () => {
 
   /**
    * 获取售后服务详情（异步，从API获取）
+   * 优先调用API，如果API失败则回退到本地存储
    */
   const fetchServiceById = async (id: string): Promise<AfterSalesService | null> => {
     try {
-      if (isProduction()) {
+      // 优先尝试调用API
+      try {
         const response = await serviceApi.getDetail(id)
         return mapApiToLocal(response)
-      } else {
-        return getServiceById(id) || null
+      } catch (apiError) {
+        console.warn('[ServiceStore] API调用失败，回退到本地存储:', apiError)
+        if (!isProduction()) {
+          return getServiceById(id) || null
+        }
+        throw apiError
       }
     } catch (error) {
       console.error('[ServiceStore] 获取售后服务详情失败:', error)
@@ -118,47 +130,53 @@ export const useServiceStore = defineStore('service', () => {
 
   /**
    * 创建售后服务
+   * 优先调用API，如果API失败则回退到本地存储
    */
   const createAfterSalesService = async (serviceData: Partial<AfterSalesService>): Promise<AfterSalesService> => {
     try {
       console.log('[ServiceStore] 创建售后服务...')
 
-      if (isProduction()) {
-        // 生产环境：调用真实API
+      // 优先尝试调用API
+      try {
         const response = await serviceApi.create(serviceData)
         const newService = mapApiToLocal(response)
         services.value.unshift(newService)
         console.log('[ServiceStore] API创建成功:', newService.serviceNumber)
         return newService
-      } else {
-        // 开发环境：本地存储
-        const newService: AfterSalesService = {
-          id: `SH${Date.now()}`,
-          serviceNumber: `SH${Date.now()}`,
-          orderId: serviceData.orderId || '',
-          orderNumber: serviceData.orderNumber || '',
-          customerId: serviceData.customerId || '',
-          customerName: serviceData.customerName || '',
-          customerPhone: serviceData.customerPhone || '',
-          serviceType: serviceData.serviceType || 'return',
-          status: 'pending',
-          priority: serviceData.priority || 'normal',
-          reason: serviceData.reason || '',
-          description: serviceData.description || '',
-          productName: serviceData.productName || '',
-          productSpec: serviceData.productSpec || '',
-          quantity: serviceData.quantity || 1,
-          price: serviceData.price || 0,
-          createTime: new Date().toISOString().slice(0, 19).replace('T', ' '),
-          createdBy: serviceData.createdBy || 'customer',
-          assignedTo: serviceData.assignedTo || '',
-          updateTime: new Date().toISOString().slice(0, 19).replace('T', ' '),
-          attachments: serviceData.attachments || []
+      } catch (apiError) {
+        console.warn('[ServiceStore] API调用失败，回退到本地存储:', apiError)
+
+        if (!isProduction()) {
+          // 开发环境：本地存储
+          const newService: AfterSalesService = {
+            id: `SH${Date.now()}`,
+            serviceNumber: `SH${Date.now()}`,
+            orderId: serviceData.orderId || '',
+            orderNumber: serviceData.orderNumber || '',
+            customerId: serviceData.customerId || '',
+            customerName: serviceData.customerName || '',
+            customerPhone: serviceData.customerPhone || '',
+            serviceType: serviceData.serviceType || 'return',
+            status: 'pending',
+            priority: serviceData.priority || 'normal',
+            reason: serviceData.reason || '',
+            description: serviceData.description || '',
+            productName: serviceData.productName || '',
+            productSpec: serviceData.productSpec || '',
+            quantity: serviceData.quantity || 1,
+            price: serviceData.price || 0,
+            createTime: new Date().toISOString().slice(0, 19).replace('T', ' '),
+            createdBy: serviceData.createdBy || 'customer',
+            assignedTo: serviceData.assignedTo || '',
+            updateTime: new Date().toISOString().slice(0, 19).replace('T', ' '),
+            attachments: serviceData.attachments || []
+          }
+          services.value.unshift(newService)
+          saveToLocalStorage()
+          console.log('[ServiceStore] 本地创建成功:', newService.serviceNumber)
+          return newService
         }
-        services.value.unshift(newService)
-        saveToLocalStorage()
-        console.log('[ServiceStore] 本地创建成功:', newService.serviceNumber)
-        return newService
+        throw apiError
       }
     } catch (error) {
       console.error('[ServiceStore] 创建售后服务失败:', error)
@@ -168,13 +186,14 @@ export const useServiceStore = defineStore('service', () => {
 
   /**
    * 更新售后服务
+   * 优先调用API，如果API失败则回退到本地存储
    */
   const updateService = async (id: string, updates: Partial<AfterSalesService>): Promise<AfterSalesService | null> => {
     try {
       console.log('[ServiceStore] 更新售后服务:', id)
 
-      if (isProduction()) {
-        // 生产环境：调用真实API
+      // 优先尝试调用API
+      try {
         const response = await serviceApi.update(id, updates)
         const index = services.value.findIndex(s => s.id === id)
         if (index !== -1) {
@@ -182,19 +201,24 @@ export const useServiceStore = defineStore('service', () => {
           return services.value[index]
         }
         return mapApiToLocal(response)
-      } else {
-        // 开发环境：本地存储
-        const index = services.value.findIndex(s => s.id === id)
-        if (index !== -1) {
-          services.value[index] = {
-            ...services.value[index],
-            ...updates,
-            updateTime: new Date().toISOString().slice(0, 19).replace('T', ' ')
+      } catch (apiError) {
+        console.warn('[ServiceStore] API调用失败，回退到本地存储:', apiError)
+
+        if (!isProduction()) {
+          // 开发环境：本地存储
+          const index = services.value.findIndex(s => s.id === id)
+          if (index !== -1) {
+            services.value[index] = {
+              ...services.value[index],
+              ...updates,
+              updateTime: new Date().toISOString().slice(0, 19).replace('T', ' ')
+            }
+            saveToLocalStorage()
+            return services.value[index]
           }
-          saveToLocalStorage()
-          return services.value[index]
+          return null
         }
-        return null
+        throw apiError
       }
     } catch (error) {
       console.error('[ServiceStore] 更新售后服务失败:', error)
@@ -204,13 +228,20 @@ export const useServiceStore = defineStore('service', () => {
 
   /**
    * 更新售后服务状态
+   * 优先调用API
    */
   const updateServiceStatus = async (id: string, status: AfterSalesService['status'], remark?: string): Promise<void> => {
     try {
       console.log('[ServiceStore] 更新售后服务状态:', id, status)
 
-      if (isProduction()) {
+      // 优先尝试调用API
+      let apiSuccess = false
+      try {
         await serviceApi.updateStatus(id, status, remark)
+        apiSuccess = true
+      } catch (apiError) {
+        console.warn('[ServiceStore] API调用失败:', apiError)
+        if (isProduction()) throw apiError
       }
 
       // 更新本地状态
@@ -220,7 +251,7 @@ export const useServiceStore = defineStore('service', () => {
         service.updateTime = new Date().toISOString().slice(0, 19).replace('T', ' ')
         if (remark) service.remark = remark
 
-        if (!isProduction()) {
+        if (!apiSuccess && !isProduction()) {
           saveToLocalStorage()
         }
       }
@@ -232,13 +263,20 @@ export const useServiceStore = defineStore('service', () => {
 
   /**
    * 分配处理人
+   * 优先调用API
    */
   const assignService = async (id: string, assignedTo: string, assignedToId?: string, remark?: string): Promise<void> => {
     try {
       console.log('[ServiceStore] 分配处理人:', id, assignedTo)
 
-      if (isProduction()) {
+      // 优先尝试调用API
+      let apiSuccess = false
+      try {
         await serviceApi.assign(id, assignedTo, assignedToId, remark)
+        apiSuccess = true
+      } catch (apiError) {
+        console.warn('[ServiceStore] API调用失败:', apiError)
+        if (isProduction()) throw apiError
       }
 
       // 更新本地状态
@@ -249,7 +287,7 @@ export const useServiceStore = defineStore('service', () => {
         service.updateTime = new Date().toISOString().slice(0, 19).replace('T', ' ')
         if (remark) service.remark = remark
 
-        if (!isProduction()) {
+        if (!apiSuccess && !isProduction()) {
           saveToLocalStorage()
         }
       }
@@ -261,13 +299,20 @@ export const useServiceStore = defineStore('service', () => {
 
   /**
    * 设置优先级
+   * 优先调用API
    */
   const setServicePriority = async (id: string, priority: AfterSalesService['priority'], remark?: string): Promise<void> => {
     try {
       console.log('[ServiceStore] 设置优先级:', id, priority)
 
-      if (isProduction()) {
+      // 优先尝试调用API
+      let apiSuccess = false
+      try {
         await serviceApi.setPriority(id, priority, remark)
+        apiSuccess = true
+      } catch (apiError) {
+        console.warn('[ServiceStore] API调用失败:', apiError)
+        if (isProduction()) throw apiError
       }
 
       // 更新本地状态
@@ -277,7 +322,7 @@ export const useServiceStore = defineStore('service', () => {
         service.updateTime = new Date().toISOString().slice(0, 19).replace('T', ' ')
         if (remark) service.remark = remark
 
-        if (!isProduction()) {
+        if (!apiSuccess && !isProduction()) {
           saveToLocalStorage()
         }
       }
@@ -289,13 +334,20 @@ export const useServiceStore = defineStore('service', () => {
 
   /**
    * 删除售后服务
+   * 优先调用API
    */
   const deleteService = async (id: string): Promise<boolean> => {
     try {
       console.log('[ServiceStore] 删除售后服务:', id)
 
-      if (isProduction()) {
+      // 优先尝试调用API
+      let apiSuccess = false
+      try {
         await serviceApi.delete(id)
+        apiSuccess = true
+      } catch (apiError) {
+        console.warn('[ServiceStore] API调用失败:', apiError)
+        if (isProduction()) throw apiError
       }
 
       // 更新本地状态
@@ -303,7 +355,7 @@ export const useServiceStore = defineStore('service', () => {
       if (index !== -1) {
         services.value.splice(index, 1)
 
-        if (!isProduction()) {
+        if (!apiSuccess && !isProduction()) {
           saveToLocalStorage()
         }
         return true

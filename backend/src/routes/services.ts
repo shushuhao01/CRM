@@ -538,6 +538,7 @@ router.patch('/:id/assign', authenticateToken, async (req: Request, res: Respons
     const serviceRepository = getServiceRepository();
     const { id } = req.params;
     const { assignedTo, assignedToId, remark } = req.body;
+    const currentUser = (req as any).user;
 
     const service = await serviceRepository.findOne({ where: { id } });
 
@@ -558,6 +559,28 @@ router.patch('/:id/assign', authenticateToken, async (req: Request, res: Respons
     }
 
     const updatedService = await serviceRepository.save(service);
+
+    // 发送消息提醒给处理人和创建者
+    try {
+      await orderNotificationService.notifyAfterSalesAssigned(
+        {
+          id: updatedService.id,
+          serviceNumber: updatedService.serviceNumber,
+          orderId: updatedService.orderId,
+          orderNumber: updatedService.orderNumber,
+          customerName: updatedService.customerName,
+          serviceType: updatedService.serviceType,
+          createdBy: updatedService.createdById,
+          assignedTo: updatedService.assignedTo,
+          assignedToId: updatedService.assignedToId
+        },
+        currentUser?.userId,
+        currentUser?.name || currentUser?.username
+      );
+    } catch (notifyError) {
+      console.error('[Services] 发送分配通知失败:', notifyError);
+      // 通知失败不影响主流程
+    }
 
     res.json({
       success: true,
