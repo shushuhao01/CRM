@@ -5,6 +5,7 @@ import { AppDataSource } from '../config/database';
 import { SystemConfig } from '../entities/SystemConfig';
 import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
 import { Department } from '../entities/Department';
+import { User } from '../entities/User';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -1036,6 +1037,14 @@ router.get('/my-departments', authenticateToken, async (req: Request, res: Respo
 
       console.log('[公共部门API] 管理员：返回所有部门', departments.length, '个');
 
+      // 获取所有负责人信息
+      const userRepository = AppDataSource.getRepository(User);
+      const managerIds = departments.map(d => d.managerId).filter(Boolean) as string[];
+      const managers = managerIds.length > 0
+        ? await userRepository.find({ where: managerIds.map(id => ({ id })) })
+        : [];
+      const managerMap = new Map(managers.map(m => [m.id, m.name || m.username]));
+
       return res.json({
         success: true,
         data: departments.map(dept => ({
@@ -1046,6 +1055,7 @@ router.get('/my-departments', authenticateToken, async (req: Request, res: Respo
           parentId: dept.parentId,
           level: dept.level,
           managerId: dept.managerId,
+          managerName: dept.managerId ? managerMap.get(dept.managerId) || null : null,
           sortOrder: dept.sortOrder,
           status: dept.status,
           memberCount: dept.memberCount
@@ -1062,6 +1072,16 @@ router.get('/my-departments', authenticateToken, async (req: Request, res: Respo
       if (department) {
         console.log('[公共部门API] 普通用户：返回所属部门', department.name);
 
+        // 获取负责人姓名
+        let managerName = null;
+        if (department.managerId) {
+          const userRepository = AppDataSource.getRepository(User);
+          const manager = await userRepository.findOne({
+            where: { id: department.managerId }
+          });
+          managerName = manager?.name || manager?.username || null;
+        }
+
         return res.json({
           success: true,
           data: [{
@@ -1072,6 +1092,7 @@ router.get('/my-departments', authenticateToken, async (req: Request, res: Respo
             parentId: department.parentId,
             level: department.level,
             managerId: department.managerId,
+            managerName: managerName,
             sortOrder: department.sortOrder,
             status: department.status,
             memberCount: department.memberCount
