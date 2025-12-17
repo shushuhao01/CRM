@@ -287,7 +287,140 @@ router.get('/companies', (req, res) => logisticsController.getSupportedCompanies
 // 创建物流跟踪
 router.post('/tracking', (req, res) => logisticsController.createLogisticsTracking(req, res));
 
-// 查询物流轨迹
+// ========== 物流轨迹查询 API（调用真实快递API） ==========
+import { logisticsTraceService } from '../services/LogisticsTraceService';
+
+/**
+ * 查询物流轨迹（调用真实快递公司API）
+ */
+router.get('/trace/query', async (req: Request, res: Response) => {
+  try {
+    const { trackingNo, companyCode } = req.query;
+
+    if (!trackingNo) {
+      return res.status(400).json({
+        success: false,
+        message: '请提供物流单号'
+      });
+    }
+
+    console.log(`[物流轨迹查询] 单号: ${trackingNo}, 快递公司: ${companyCode || '自动识别'}`);
+
+    const result = await logisticsTraceService.queryTrace(
+      trackingNo as string,
+      companyCode as string | undefined
+    );
+
+    return res.json({
+      success: result.success,
+      data: result,
+      message: result.success ? '查询成功' : result.statusText
+    });
+  } catch (error) {
+    console.error('[物流轨迹查询] 失败:', error);
+    return res.status(500).json({
+      success: false,
+      message: '查询失败: ' + (error instanceof Error ? error.message : '未知错误')
+    });
+  }
+});
+
+/**
+ * 批量查询物流轨迹
+ */
+router.post('/trace/batch-query', async (req: Request, res: Response) => {
+  try {
+    const { trackingNos, companyCode } = req.body;
+
+    if (!trackingNos || !Array.isArray(trackingNos) || trackingNos.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '请提供物流单号列表'
+      });
+    }
+
+    if (trackingNos.length > 50) {
+      return res.status(400).json({
+        success: false,
+        message: '单次最多查询50个单号'
+      });
+    }
+
+    console.log(`[批量物流轨迹查询] 单号数量: ${trackingNos.length}`);
+
+    const results = await logisticsTraceService.batchQueryTrace(trackingNos, companyCode);
+
+    return res.json({
+      success: true,
+      data: results,
+      message: `查询完成，成功 ${results.filter(r => r.success).length} 个`
+    });
+  } catch (error) {
+    console.error('[批量物流轨迹查询] 失败:', error);
+    return res.status(500).json({
+      success: false,
+      message: '查询失败: ' + (error instanceof Error ? error.message : '未知错误')
+    });
+  }
+});
+
+/**
+ * 刷新物流轨迹（强制从快递API获取最新数据）
+ */
+router.post('/trace/refresh', async (req: Request, res: Response) => {
+  try {
+    const { trackingNo, companyCode } = req.body;
+
+    if (!trackingNo) {
+      return res.status(400).json({
+        success: false,
+        message: '请提供物流单号'
+      });
+    }
+
+    console.log(`[刷新物流轨迹] 单号: ${trackingNo}`);
+
+    // 强制从API获取最新数据
+    const result = await logisticsTraceService.queryTrace(trackingNo, companyCode);
+
+    // 如果查询成功，可以更新数据库中的物流状态
+    if (result.success && result.traces.length > 0) {
+      try {
+        const { Order } = await import('../entities/Order');
+        const orderRepository = AppDataSource!.getRepository(Order);
+
+        // 查找对应的订单（通过trackingNumber字段）
+        const order = await orderRepository.findOne({
+          where: { trackingNumber: trackingNo }
+        });
+
+        if (order) {
+          // 更新订单的物流状态
+          order.logisticsStatus = result.status;
+          order.updatedAt = new Date();
+          await orderRepository.save(order);
+          console.log(`[刷新物流轨迹] 订单 ${order.orderNumber} 物流状态已更新为: ${result.status}`);
+        }
+      } catch (updateError) {
+        console.warn('[刷新物流轨迹] 更新订单状态失败:', updateError);
+      }
+    }
+
+    return res.json({
+      success: result.success,
+      data: result,
+      message: result.success ? '刷新成功' : result.statusText
+    });
+  } catch (error) {
+    console.error('[刷新物流轨迹] 失败:', error);
+    return res.status(500).json({
+      success: false,
+      message: '刷新失败: ' + (error instanceof Error ? error.message : '未知错误')
+    });
+  }
+});
+
+// 查询物流轨迹（旧版API，保持兼容）
 router.get('/trace', (req, res) => logisticsController.getLogisticsTrace(req, res));
 
 // 批量同步物流状态
@@ -1118,7 +1251,7 @@ async function testSTOExpressApi(appKey: string, secretKey: string, apiUrl: stri
       return { success: false, message: '请填写AppKey和SecretKey' };
     }
 
-    const timestamp = Date.now().toString();
+    const _timestamp = Date.now().toString();
     const data = JSON.stringify({
       waybillNoList: [trackingNo || '773012345678901']
     });

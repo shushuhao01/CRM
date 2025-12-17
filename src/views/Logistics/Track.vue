@@ -386,17 +386,12 @@ const handleSearch = async () => {
     const trackingNum = searchForm.trackingNo.trim()
     const companyCode = searchForm.company || 'auto'
 
-    // 🔥 首先尝试调用后端API查询物流轨迹
+    // 🔥 首先尝试调用新的物流轨迹查询API（调用真实快递API）
     try {
-      const { apiService } = await import('@/services/apiService')
-      const response = await apiService.get('/logistics/trace', {
-        params: {
-          trackingNo: trackingNum,
-          companyCode: companyCode
-        }
-      })
+      const { logisticsApi } = await import('@/api/logistics')
+      const response = await logisticsApi.queryTrace(trackingNum, companyCode !== 'auto' ? companyCode : undefined)
 
-      if (response && response.data) {
+      if (response && response.success && response.data) {
         const data = response.data
 
         // 使用API返回的数据
@@ -404,32 +399,47 @@ const handleSearch = async () => {
           trackingNo: data.trackingNo || trackingNum,
           companyName: data.companyName || getCompanyName(data.companyCode) || companyCode,
           status: data.status || 'shipped',
-          receiverName: data.order?.customer?.name || data.receiverName || '',
-          receiverPhone: data.order?.customer?.phone || data.receiverPhone || '',
-          receiverAddress: data.order?.receiverAddress || data.receiverAddress || '',
-          shipTime: data.createdAt || data.shipTime || '',
-          estimatedTime: data.estimatedTime || ''
+          receiverName: '',
+          receiverPhone: '',
+          receiverAddress: '',
+          shipTime: '',
+          estimatedTime: data.estimatedDeliveryTime || ''
         })
 
         // 使用API返回的轨迹数据
         if (data.traces && Array.isArray(data.traces)) {
           trackingHistory.value = data.traces.map((trace: any) => ({
-            time: trace.time || trace.createdAt,
+            time: trace.time,
             status: trace.status,
-            description: trace.description || trace.content,
+            description: trace.description,
             location: trace.location || '',
             operator: trace.operator || '',
             type: getTraceType(trace.status)
           }))
         }
 
+        // 尝试从订单数据补充收货人信息
+        const accessibleOrders = applyDataScopeControl(orderStore.orders)
+        const order = accessibleOrders.find(o =>
+          o.expressNo === trackingNum ||
+          o.trackingNumber === trackingNum ||
+          o.expressNumber === trackingNum
+        )
+        if (order) {
+          trackingResult.receiverName = order.customerName || ''
+          trackingResult.receiverPhone = order.phone || order.customerPhone || ''
+          trackingResult.receiverAddress = order.address || order.shippingAddress || order.deliveryAddress || ''
+          trackingResult.shipTime = order.shipTime || order.shippedAt || order.deliveryTime || ''
+        }
+
         if (!isUnmounted.value) {
           ElMessage.success('查询成功')
         }
+        loading.value = false
         return
       }
     } catch (apiError) {
-      console.log('[物流跟踪] API查询失败，尝试从本地订单数据查询:', apiError)
+      console.log('[物流跟踪] 新API查询失败，尝试从本地订单数据查询:', apiError)
     }
 
     // 🔥 如果API查询失败，从本地订单数据查询
@@ -580,7 +590,7 @@ const handleReset = () => {
 }
 
 /**
- * 刷新轨迹
+ * 刷新轨迹（调用真实快递API）
  */
 const refreshTracking = async () => {
   if (!trackingResult.trackingNo || isUnmounted.value) return
@@ -588,21 +598,39 @@ const refreshTracking = async () => {
   refreshLoading.value = true
 
   try {
-    // 模拟API调用
-    await new Promise(resolve => {
-      const timeoutId = setTimeout(() => {
-        timeoutIds.delete(timeoutId)
-        resolve(undefined)
-      }, 1000)
-      timeoutIds.add(timeoutId)
-    })
+    const { logisticsApi } = await import('@/api/logistics')
+    const response = await logisticsApi.refreshTrace(
+      trackingResult.trackingNo,
+      searchForm.company || undefined
+    )
 
-    if (!isUnmounted.value) {
+    if (isUnmounted.value) return
+
+    if (response.success && response.data) {
+      const data = response.data
+
+      // 更新状态
+      trackingResult.status = data.status
+
+      // 更新轨迹
+      if (data.traces && Array.isArray(data.traces)) {
+        trackingHistory.value = data.traces.map((trace: any) => ({
+          time: trace.time,
+          status: trace.status,
+          description: trace.description,
+          location: trace.location || '',
+          operator: trace.operator || '',
+          type: getTraceType(trace.status)
+        }))
+      }
+
       ElMessage.success('轨迹已刷新')
+    } else {
+      ElMessage.warning(response.message || '刷新失败')
     }
   } catch (error) {
     if (!isUnmounted.value) {
-      ElMessage.error('刷新失败')
+      ElMessage.error('刷新失败: ' + (error instanceof Error ? error.message : '未知错误'))
     }
   } finally {
     if (!isUnmounted.value) {
