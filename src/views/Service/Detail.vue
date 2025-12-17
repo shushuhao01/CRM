@@ -225,7 +225,7 @@
                     {{ followUpRecords[0].followUpTime }}
                   </div>
                   <div class="follow-up-user">
-                    {{ followUpRecords[0].createdBy }}
+                    {{ getOperatorName(followUpRecords[0].createdBy) }}
                   </div>
                 </div>
                 <div class="follow-up-body">
@@ -252,7 +252,7 @@
                         {{ record.followUpTime }}
                       </div>
                       <div class="follow-up-user">
-                        {{ record.createdBy }}
+                        {{ getOperatorName(record.createdBy) }}
                       </div>
                     </div>
                     <div class="follow-up-body">
@@ -278,18 +278,39 @@
               v-for="(file, index) in serviceInfo.attachments"
               :key="index"
               class="attachment-item"
-              @click="previewFile(file)"
             >
-              <div class="file-icon">
-                <el-icon size="24">
-                  <Picture v-if="isImage(file.name)" />
-                  <Document v-else />
-                </el-icon>
-              </div>
-              <div class="file-info">
-                <p class="file-name">{{ file.name }}</p>
-                <p class="file-size">{{ formatFileSize(file.size) }}</p>
-              </div>
+              <!-- 图片类型显示缩略图 -->
+              <template v-if="isImage(file.name || file.url || file)">
+                <el-image
+                  :src="getFileUrl(file)"
+                  :preview-src-list="imagePreviewList"
+                  :initial-index="getImageIndex(file)"
+                  fit="cover"
+                  class="attachment-thumbnail"
+                  :preview-teleported="true"
+                >
+                  <template #error>
+                    <div class="image-error">
+                      <el-icon size="24"><Picture /></el-icon>
+                      <span>加载失败</span>
+                    </div>
+                  </template>
+                </el-image>
+                <div class="file-info">
+                  <p class="file-name">{{ getFileName(file) }}</p>
+                  <p class="file-size">{{ formatFileSize(file.size) }}</p>
+                </div>
+              </template>
+              <!-- 非图片类型显示图标 -->
+              <template v-else>
+                <div class="file-icon" @click="previewFile(file)">
+                  <el-icon size="24"><Document /></el-icon>
+                </div>
+                <div class="file-info">
+                  <p class="file-name">{{ getFileName(file) }}</p>
+                  <p class="file-size">{{ formatFileSize(file.size) }}</p>
+                </div>
+              </template>
             </div>
           </div>
         </el-card>
@@ -647,11 +668,13 @@ const serviceInfo = reactive({
   remark: '',
   handleResult: '',  // 处理结果
   assignedTo: '',
+  assignedToId: '',  // 处理人ID
   createdBy: '',
+  createdById: '',   // 创建者ID
   createTime: '',
   updateTime: '',
   expectedTime: '',
-  attachments: [] as Array<{ name: string; size: number; url: string }>
+  attachments: [] as Array<{ name: string; size: number; url: string } | string>
 })
 
 // 处理步骤(从售后记录动态生成)
@@ -1009,16 +1032,36 @@ const confirmAssign = async () => {
 
     serviceInfo.assignedTo = assignedToName
 
-    // 发送分配处理人成功的消息提醒
-    notificationStore.sendMessage(
-      notificationStore.MessageType.AFTER_SALES_CREATED,
-      `售后申请 ${serviceInfo.serviceNumber} 已分配给 ${assignedToName}，客户：${serviceInfo.customerName}`,
-      {
-        relatedId: serviceInfo.serviceNumber,
-        relatedType: 'service',
-        actionUrl: `/service/detail/${serviceInfo.serviceNumber}`
-      }
-    )
+    // 发送消息提醒给处理人
+    if (assignedToId) {
+      notificationStore.sendMessage(
+        notificationStore.MessageType.AFTER_SALES_ASSIGNED,
+        `您有新的售后工单需要处理：${serviceInfo.serviceNumber}，客户：${serviceInfo.customerName}，类型：${getServiceTypeText(serviceInfo.serviceType)}`,
+        {
+          relatedId: serviceInfo.id,
+          relatedType: 'service',
+          actionUrl: `/service/detail/${serviceInfo.id}`,
+          targetUserId: assignedToId,
+          createdBy: userStore.currentUser?.id
+        }
+      )
+    }
+
+    // 发送消息提醒给创建者（如果创建者不是当前操作人）
+    const creatorId = serviceInfo.createdById || serviceInfo.createdBy
+    if (creatorId && creatorId !== userStore.currentUser?.id) {
+      notificationStore.sendMessage(
+        notificationStore.MessageType.AFTER_SALES_ASSIGNED,
+        `您提交的售后申请 ${serviceInfo.serviceNumber} 已分配给 ${assignedToName} 处理`,
+        {
+          relatedId: serviceInfo.id,
+          relatedType: 'service',
+          actionUrl: `/service/detail/${serviceInfo.id}`,
+          targetUserId: creatorId,
+          createdBy: userStore.currentUser?.id
+        }
+      )
+    }
 
     ElMessage.success('分配成功')
     assignDialogVisible.value = false
@@ -1148,8 +1191,19 @@ const previewFile = (file: { name: string; url: string; size: number }) => {
 /**
  * 判断是否为图片
  */
-const isImage = (filename: string) => {
+const isImage = (fileOrName: string | { name?: string; url?: string }) => {
   const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+  let filename = ''
+
+  if (typeof fileOrName === 'string') {
+    filename = fileOrName
+  } else if (fileOrName?.name) {
+    filename = fileOrName.name
+  } else if (fileOrName?.url) {
+    filename = fileOrName.url
+  }
+
+  if (!filename) return false
   const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'))
   return imageExts.includes(ext)
 }
@@ -1158,9 +1212,52 @@ const isImage = (filename: string) => {
  * 格式化文件大小
  */
 const formatFileSize = (size: number) => {
+  if (!size) return ''
   if (size < 1024) return size + ' B'
   if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KB'
   return (size / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+/**
+ * 获取文件URL
+ */
+const getFileUrl = (file: string | { name?: string; url?: string }) => {
+  if (typeof file === 'string') {
+    return file
+  }
+  return file?.url || ''
+}
+
+/**
+ * 获取文件名
+ */
+const getFileName = (file: string | { name?: string; url?: string }) => {
+  if (typeof file === 'string') {
+    // 从URL中提取文件名
+    const parts = file.split('/')
+    return parts[parts.length - 1] || '未知文件'
+  }
+  return file?.name || '未知文件'
+}
+
+/**
+ * 获取所有图片的URL列表（用于预览）
+ */
+const imagePreviewList = computed(() => {
+  if (!serviceInfo.attachments || !serviceInfo.attachments.length) {
+    return []
+  }
+  return serviceInfo.attachments
+    .filter((file: any) => isImage(file))
+    .map((file: any) => getFileUrl(file))
+})
+
+/**
+ * 获取图片在预览列表中的索引
+ */
+const getImageIndex = (file: any) => {
+  const url = getFileUrl(file)
+  return imagePreviewList.value.indexOf(url)
 }
 
 /**
@@ -1639,9 +1736,44 @@ onMounted(async () => {
   transform: translateY(-2px);
 }
 
+.attachment-thumbnail {
+  width: 100%;
+  height: 80px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.attachment-thumbnail :deep(.el-image__inner) {
+  object-fit: cover;
+}
+
+.image-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 80px;
+  background: #f5f7fa;
+  color: #909399;
+  font-size: 12px;
+}
+
+.image-error .el-icon {
+  margin-bottom: 4px;
+}
+
 .file-icon {
   margin-bottom: 8px;
   color: #409EFF;
+  width: 100%;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f7fa;
+  border-radius: 4px;
 }
 
 .file-info {

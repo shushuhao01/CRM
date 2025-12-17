@@ -41,6 +41,7 @@ export const OrderMessageTypes = {
 // 售后消息类型
 export const AfterSalesMessageTypes = {
   AFTER_SALES_CREATED: 'after_sales_created',     // 售后创建
+  AFTER_SALES_ASSIGNED: 'after_sales_assigned',   // 售后分配
   AFTER_SALES_PROCESSING: 'after_sales_processing', // 处理中
   AFTER_SALES_COMPLETED: 'after_sales_completed',   // 已完成
   AFTER_SALES_REJECTED: 'after_sales_rejected',     // 已拒绝
@@ -68,6 +69,8 @@ interface AfterSalesInfo {
   serviceType?: string;
   createdBy?: string;
   createdByName?: string;
+  assignedTo?: string;
+  assignedToId?: string;
 }
 
 class OrderNotificationService {
@@ -990,6 +993,47 @@ class OrderNotificationService {
         actionUrl: '/service/list'
       }
     );
+  }
+
+  /**
+   * 售后分配通知 - 通知处理人和创建者
+   */
+  async notifyAfterSalesAssigned(afterSales: AfterSalesInfo, operatorId?: string, _operatorName?: string): Promise<void> {
+    const typeText = this.getAfterSalesTypeText(afterSales.serviceType);
+
+    // 通知处理人
+    if (afterSales.assignedToId) {
+      const handlerContent = `您有新的${typeText}工单需要处理：#${afterSales.serviceNumber}，客户：${afterSales.customerName || '未知'}`;
+      await this.sendMessage(
+        AfterSalesMessageTypes.AFTER_SALES_ASSIGNED,
+        `📋 新${typeText}工单`,
+        handlerContent,
+        afterSales.assignedToId,
+        {
+          category: '售后通知',
+          relatedId: afterSales.id,
+          relatedType: 'afterSales',
+          actionUrl: `/service/detail/${afterSales.id}`
+        }
+      );
+    }
+
+    // 通知创建者（如果创建者不是操作人）
+    if (afterSales.createdBy && afterSales.createdBy !== operatorId) {
+      const creatorContent = `您提交的${typeText}申请 #${afterSales.serviceNumber} 已分配给 ${afterSales.assignedTo || '处理人员'} 处理`;
+      await this.sendMessage(
+        AfterSalesMessageTypes.AFTER_SALES_ASSIGNED,
+        `📋 ${typeText}已分配`,
+        creatorContent,
+        afterSales.createdBy,
+        {
+          category: '售后通知',
+          relatedId: afterSales.id,
+          relatedType: 'afterSales',
+          actionUrl: `/service/detail/${afterSales.id}`
+        }
+      );
+    }
   }
 
   /**
