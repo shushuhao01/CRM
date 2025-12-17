@@ -643,3 +643,26 @@ export const getAnalysisTrend = async (params?: {
     return { success: false, data: null, message: '获取业绩趋势失败' }
   }
 }
+
+/**
+ * 导出业绩分享数据
+ */
+export const exportPerformanceShares = async (params: {
+  startDate?: string
+  endDate?: string
+  status?: string
+  format?: 'csv' | 'excel'
+}): Promise<Blob | { success: boolean; data: any }> => {
+  console.log('[Performance API] 导出业绩分享数据:', params)
+  try {
+    const response = await request.get('/performance/shares/export', {
+      params,
+      responseType: params.format === 'csv' ? 'blob' : 'json'
+    })
+    return response.data || response
+  } catch (error) {
+    console.error('[Performance API] 导出业绩分享数据失败:', error)
+    // 返回模拟数据用于导出
+    return { success: false, data: [] }
+  }
+}

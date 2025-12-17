@@ -648,3 +648,163 @@ export function getPresetTemplates() {
     message: '获取成功'
   })
 }
+
+
+// 获取短信发送列表（兼容SmsSendRecords.vue）
+export function getSmsSendList(params?: SmsSendSearchParams): Promise<SmsSendListResponse> {
+  if (shouldUseMockApi()) {
+    const records = generateMockSendRecords()
+    let filteredRecords = records
+
+    if (params?.keyword) {
+      const keyword = params.keyword.toLowerCase()
+      filteredRecords = filteredRecords.filter(r =>
+        r.templateName.toLowerCase().includes(keyword) ||
+        r.content.toLowerCase().includes(keyword)
+      )
+    }
+
+    const page = params?.page || 1
+    const pageSize = params?.pageSize || 10
+    const start = (page - 1) * pageSize
+    const end = start + pageSize
+
+    return Promise.resolve({
+      list: filteredRecords.slice(start, end).map((r, index) => ({
+        id: index + 1,
+        templateId: parseInt(r.id.replace('record-', '')) || index + 1,
+        templateName: r.templateName,
+        content: r.content,
+        recipients: r.sendDetails?.map(d => d.phone) || [],
+        successCount: r.successCount,
+        failCount: r.failCount,
+        status: r.status === 'completed' ? 'success' : r.status === 'failed' ? 'failed' : 'partial',
+        sendTime: r.sentAt,
+        operator: '系统',
+        cost: r.successCount * 0.05
+      })) as SmsSendRecord[],
+      total: filteredRecords.length,
+      page,
+      pageSize
+    })
+  }
+
+  return request({
+    url: '/api/sms/sends',
+    method: 'get',
+    params
+  })
+}
+
+// 获取短信模板列表（兼容SmsSendRecords.vue）
+export function getSmsTemplateList(params?: SmsTemplateSearchParams): Promise<SmsTemplateListResponse> {
+  if (shouldUseMockApi()) {
+    const templates = generateMockTemplates()
+    let filteredTemplates = templates
+
+    if (params?.status) {
+      filteredTemplates = filteredTemplates.filter(t => t.status === params.status)
+    }
+    if (params?.type) {
+      filteredTemplates = filteredTemplates.filter(t => t.category === params.type)
+    }
+    if (params?.keyword) {
+      const keyword = params.keyword.toLowerCase()
+      filteredTemplates = filteredTemplates.filter(t =>
+        t.name.toLowerCase().includes(keyword) ||
+        t.content.toLowerCase().includes(keyword)
+      )
+    }
+
+    const page = params?.page || 1
+    const pageSize = params?.pageSize || 10
+    const start = (page - 1) * pageSize
+    const end = start + pageSize
+
+    return Promise.resolve({
+      list: filteredTemplates.slice(start, end),
+      total: filteredTemplates.length,
+      page,
+      pageSize
+    })
+  }
+
+  return request({
+    url: '/api/sms/templates',
+    method: 'get',
+    params
+  })
+}
+
+// 获取短信统计数据（兼容SmsStatistics.vue）
+export function getSmsStatistics(): Promise<{
+  totalSent: number
+  todaySent: number
+  successRate: number
+  totalCost: number
+  pendingApprovals: number
+  activeTemplates: number
+}> {
+  if (shouldUseMockApi()) {
+    const templates = generateMockTemplates()
+    const records = generateMockSendRecords()
+    const requests = generateMockSmsRequests()
+
+    const today = new Date().toDateString()
+    const todayRecords = records.filter(r =>
+      new Date(r.sentAt).toDateString() === today
+    )
+
+    const totalSent = records.reduce((sum, r) => sum + r.successCount + r.failCount, 0)
+    const successCount = records.reduce((sum, r) => sum + r.successCount, 0)
+
+    return Promise.resolve({
+      totalSent,
+      todaySent: todayRecords.reduce((sum, r) => sum + r.successCount, 0),
+      successRate: totalSent > 0 ? (successCount / totalSent) * 100 : 100,
+      totalCost: successCount * 0.05,
+      pendingApprovals: requests.filter(r => r.status === 'pending').length,
+      activeTemplates: templates.filter(t => t.status === 'approved' || t.status === 'active').length
+    })
+  }
+
+  return request({
+    url: '/api/sms/statistics/overview',
+    method: 'get'
+  })
+}
+
+// 获取短信趋势数据（兼容SmsStatistics.vue）
+export function getSmsTrend(params?: { days?: number }): Promise<{
+  dates: string[]
+  sent: number[]
+  success: number[]
+  failed: number[]
+}> {
+  if (shouldUseMockApi()) {
+    const days = params?.days || 7
+    const dates: string[] = []
+    const sent: number[] = []
+    const success: number[] = []
+    const failed: number[] = []
+
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date()
+      date.setDate(date.getDate() - i)
+      dates.push(`${date.getMonth() + 1}/${date.getDate()}`)
+      const dailySent = Math.floor(Math.random() * 100) + 20
+      const dailySuccess = Math.floor(dailySent * (0.9 + Math.random() * 0.1))
+      sent.push(dailySent)
+      success.push(dailySuccess)
+      failed.push(dailySent - dailySuccess)
+    }
+
+    return Promise.resolve({ dates, sent, success, failed })
+  }
+
+  return request({
+    url: '/api/sms/statistics/trend',
+    method: 'get',
+    params
+  })
+}

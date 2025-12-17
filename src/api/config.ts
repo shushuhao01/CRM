@@ -121,12 +121,4 @@ export const API_ENDPOINTS = {
     SHAREABLE_USERS: '/customer-share/shareable-users'
   },
 
-  // 短信相关
-  SMS: {
-    TEMPLATES: '/sms/templates',
-    APPROVALS: '/sms/approvals',
-    SENDS: '/sms/sends',
-    STATISTICS: '/sms/statistics',
-    CONFIG: '/sms/config'
-  }
 }
