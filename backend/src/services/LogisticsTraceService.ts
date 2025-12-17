@@ -191,17 +191,22 @@ class LogisticsTraceService {
   }
 
   // ========== 顺丰速运 ==========
+  // 顺丰丰桥开放平台API文档: https://qiao.sf-express.com/Api
   private async querySFTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    const requestId = `REQ${Date.now()}`;
+    const requestId = `REQ${Date.now()}${Math.random().toString(36).substr(2, 6)}`;
+
+    // 使用路由查询接口 EXP_RECE_SEARCH_ROUTES
     const serviceCode = 'EXP_RECE_SEARCH_ROUTES';
 
+    // 请求数据格式
     const msgData = JSON.stringify({
-      trackingType: '1',
-      trackingNumber: trackingNo,
-      methodType: '1'
+      trackingType: '1',           // 查询类型: 1-根据运单号查询
+      trackingNumber: trackingNo,  // 运单号
+      methodType: '1'              // 查询方法: 1-标准查询
     });
 
+    // 签名: Base64(MD5(msgData + timestamp + checkword))
     const signStr = msgData + timestamp + config.appSecret;
     const sign = crypto.createHash('md5').update(signStr, 'utf8').digest('base64');
 
@@ -209,19 +214,28 @@ class LogisticsTraceService {
       ? 'https://bspgw.sf-express.com/std/service'
       : 'https://sfapi-sbox.sf-express.com/std/service';
 
-    const response = await axios.post(apiUrl, null, {
-      params: {
-        partnerID: config.appId,
-        requestID: requestId,
-        serviceCode: serviceCode,
-        timestamp: timestamp,
-        msgDigest: sign,
-        msgData: msgData
-      },
-      timeout: 10000,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    console.log('[顺丰API] 请求URL:', apiUrl);
+    console.log('[顺丰API] partnerID:', config.appId);
+    console.log('[顺丰API] serviceCode:', serviceCode);
+    console.log('[顺丰API] msgData:', msgData);
+
+    // 使用 application/x-www-form-urlencoded 格式
+    const params = new URLSearchParams();
+    params.append('partnerID', config.appId);
+    params.append('requestID', requestId);
+    params.append('serviceCode', serviceCode);
+    params.append('timestamp', timestamp);
+    params.append('msgDigest', sign);
+    params.append('msgData', msgData);
+
+    const response = await axios.post(apiUrl, params.toString(), {
+      timeout: 15000,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+      }
     });
 
+    console.log('[顺丰API] 响应:', JSON.stringify(response.data));
     return this.parseSFResponse(trackingNo, response.data);
   }
 
