@@ -320,6 +320,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, provide, onMounted, onUnmounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { createSafeNavigator } from '@/utils/navigation'
 import LogisticsStatusPermission from '@/components/Permission/LogisticsStatusPermission.vue'
 import StatusUpdateDialog from '@/components/Logistics/StatusUpdateDialog.vue'
 import TodoDialog from '@/components/Logistics/TodoDialog.vue'
@@ -331,7 +333,7 @@ import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
-import { getCompanyShortName, getTrackingUrl, KUAIDI100_URL } from '@/utils/logisticsCompanyConfig'
+import { getCompanyShortName, getTrackingUrl } from '@/utils/logisticsCompanyConfig'
 import {
   Clock,
   Check,
@@ -341,6 +343,10 @@ import {
   Refresh,
   Loading
 } from '@element-plus/icons-vue'
+
+// Router
+const router = useRouter()
+const safeNavigator = createSafeNavigator(router)
 
 // Store
 const _logisticsStatusStore = useLogisticsStatusStore()
@@ -639,13 +645,12 @@ const handleViewTracking = (order: any) => {
   trackingDialogVisible.value = true
 }
 
-// 🔥 点击查询图标：复制单号并弹窗选择查询网站
+// 🔥 点击查询图标：弹窗选择查询方式
 const handleTrackingNoClick = async (trackingNo: string, logisticsCompany?: string) => {
   // 复制物流单号
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(trackingNo)
-      ElMessage.success('快递单号已复制到剪贴板')
     } else {
       const textArea = document.createElement('textarea')
       textArea.value = trackingNo
@@ -655,43 +660,42 @@ const handleTrackingNoClick = async (trackingNo: string, logisticsCompany?: stri
       document.body.appendChild(textArea)
       textArea.focus()
       textArea.select()
-      const result = document.execCommand('copy')
+      document.execCommand('copy')
       document.body.removeChild(textArea)
-      if (result) {
-        ElMessage.success('快递单号已复制到剪贴板')
-      } else {
-        ElMessage.error('复制失败，请手动复制')
-        return
-      }
     }
   } catch (error) {
     console.error('复制失败:', error)
-    ElMessage.error('复制失败，请手动复制')
-    return
   }
 
   // 根据物流公司动态获取官网按钮名称和URL
   const companyShortName = getCompanyShortName(logisticsCompany || '')
   const companyUrl = getTrackingUrl(logisticsCompany || '', trackingNo)
-  const kuaidi100Url = KUAIDI100_URL.replace('{trackingNo}', trackingNo)
 
-  // 提示选择跳转网站
-  ElMessageBox.confirm(
-    '请选择要跳转的查询网站',
-    '选择查询网站',
+  // 提示选择查询方式
+  const action = await ElMessageBox.confirm(
+    `快递单号 ${trackingNo} 已复制\n请选择查询方式`,
+    '物流查询',
     {
-      confirmButtonText: `${companyShortName}官网`,
-      cancelButtonText: '快递100',
+      confirmButtonText: '系统内查询',
+      cancelButtonText: `${companyShortName}官网`,
       distinguishCancelAndClose: true,
       type: 'info'
     }
-  ).then(() => {
+  ).catch((act) => act)
+
+  if (action === 'confirm') {
+    // 跳转到系统内物流跟踪页面
+    safeNavigator.push({
+      path: '/logistics/track',
+      query: {
+        trackingNo: trackingNo,
+        company: logisticsCompany || ''
+      }
+    })
+  } else if (action === 'cancel') {
+    // 跳转到快递公司官网
     window.open(companyUrl, '_blank')
-  }).catch((action) => {
-    if (action === 'cancel') {
-      window.open(kuaidi100Url, '_blank')
-    }
-  })
+  }
 }
 
 

@@ -18,7 +18,52 @@ export interface LogisticsApiConfig {
   lastTestMessage?: string
 }
 
+// 物流轨迹信息接口
+export interface LogisticsTrace {
+  time: string
+  status: string
+  description: string
+  location?: string
+  operator?: string
+  phone?: string
+}
+
+// 物流查询结果接口
+export interface LogisticsTrackResult {
+  success: boolean
+  trackingNo: string
+  companyCode: string
+  companyName: string
+  status: string
+  statusText: string
+  traces: LogisticsTrace[]
+  estimatedDeliveryTime?: string
+  signedTime?: string
+  signedBy?: string
+}
+
 export const logisticsApi = {
+  /**
+   * 查询物流轨迹（调用真实快递API）
+   */
+  async queryTrace(trackingNo: string, companyCode?: string): Promise<{ success: boolean; data: LogisticsTrackResult; message?: string }> {
+    return api.get('/logistics/trace/query', { trackingNo, companyCode })
+  },
+
+  /**
+   * 批量查询物流轨迹
+   */
+  async batchQueryTrace(trackingNos: string[], companyCode?: string): Promise<{ success: boolean; data: LogisticsTrackResult[]; message?: string }> {
+    return api.post('/logistics/trace/batch-query', { trackingNos, companyCode })
+  },
+
+  /**
+   * 刷新物流轨迹（强制从快递API获取最新数据）
+   */
+  async refreshTrace(trackingNo: string, companyCode?: string): Promise<{ success: boolean; data: LogisticsTrackResult; message?: string }> {
+    return api.post('/logistics/trace/refresh', { trackingNo, companyCode })
+  },
+
   /**
    * 获取所有物流API配置
    */
