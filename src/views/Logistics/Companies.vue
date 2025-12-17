@@ -100,26 +100,6 @@
               编辑
             </el-button>
             <el-button
-              v-if="row.code === 'SF'"
-              @click="handleSFConfig(row)"
-              type="warning"
-              link
-              size="small"
-            >
-              <el-icon><Setting /></el-icon>
-              配置
-            </el-button>
-            <el-button
-              v-if="row.code === 'YTO'"
-              @click="handleYTOConfig(row)"
-              type="warning"
-              link
-              size="small"
-            >
-              <el-icon><Setting /></el-icon>
-              配置
-            </el-button>
-            <el-button
               v-if="supportedApiCompanies.includes(row.code)"
               @click="handleApiConfig(row)"
               type="warning"
@@ -127,7 +107,7 @@
               size="small"
             >
               <el-icon><Setting /></el-icon>
-              配置
+              API配置
             </el-button>
             <el-button @click="handleDelete(row)" type="danger" link size="small">
               删除
@@ -150,21 +130,7 @@
       </div>
     </el-card>
 
-    <!-- 顺丰配置对话框 -->
-    <SFExpressConfigDialog
-      v-model:visible="sfConfigVisible"
-      :config="sfConfig"
-      @success="handleSFConfigSuccess"
-    />
-
-    <!-- 圆通配置对话框 -->
-    <YTOExpressConfigDialog
-      v-model:visible="ytoConfigVisible"
-      :config="ytoConfig"
-      @success="handleYTOConfigSuccess"
-    />
-
-    <!-- 通用物流API配置对话框 -->
+    <!-- 通用物流API配置对话框（支持所有快递公司） -->
     <LogisticsApiConfigDialog
       v-model:visible="apiConfigVisible"
       :company-code="currentApiCompanyCode"
@@ -260,8 +226,6 @@ import {
   Refresh,
   Setting
 } from '@element-plus/icons-vue'
-import SFExpressConfigDialog from '@/components/Logistics/SFExpressConfigDialog.vue'
-import YTOExpressConfigDialog from '@/components/Logistics/YTOExpressConfigDialog.vue'
 import LogisticsApiConfigDialog from '@/components/Logistics/LogisticsApiConfigDialog.vue'
 import { logisticsApi } from '@/api/logistics'
 
@@ -292,18 +256,13 @@ const loading = ref(false)
 const dialogVisible = ref(false)
 const submitLoading = ref(false)
 const isEdit = ref(false)
-const sfConfigVisible = ref(false)
-const sfConfig = ref(null)
-const ytoConfigVisible = ref(false)
-const ytoConfig = ref(null)
-
 // 通用API配置对话框
 const apiConfigVisible = ref(false)
 const currentApiCompanyCode = ref('')
 const currentApiConfig = ref(null)
 
-// 支持API配置的快递公司代码（排除SF和YTO，它们有专门的配置对话框）
-const supportedApiCompanies = ['ZTO', 'STO', 'YD', 'JTSD', 'EMS', 'JD', 'DBL']
+// 支持API配置的快递公司代码（所有主流快递公司）
+const supportedApiCompanies = ['SF', 'ZTO', 'YTO', 'STO', 'YD', 'JTSD', 'EMS', 'JD', 'DBL']
 
 // 超时ID跟踪，用于清理异步操作
 const timeoutIds = new Set<NodeJS.Timeout>()
@@ -402,63 +361,7 @@ const handleAdd = () => {
 }
 
 /**
- * 顺丰配置
- */
-const handleSFConfig = (row: LogisticsCompany) => {
-  // 从localStorage加载已保存的配置
-  const savedConfig = localStorage.getItem('sf_express_config')
-  if (savedConfig) {
-    try {
-      sfConfig.value = JSON.parse(savedConfig)
-    } catch (error) {
-      console.error('解析顺丰配置失败:', error)
-      sfConfig.value = null
-    }
-  } else {
-    sfConfig.value = null
-  }
-
-  sfConfigVisible.value = true
-}
-
-/**
- * 顺丰配置成功回调
- */
-const handleSFConfigSuccess = (config: unknown) => {
-  ElMessage.success('顺丰配置已保存,现在可以使用顺丰API功能了')
-  // 可以在这里更新顺丰公司的状态或其他操作
-}
-
-/**
- * 圆通配置
- */
-const handleYTOConfig = (row: LogisticsCompany) => {
-  // 从localStorage加载已保存的配置
-  const savedConfig = localStorage.getItem('yto_express_config')
-  if (savedConfig) {
-    try {
-      ytoConfig.value = JSON.parse(savedConfig)
-    } catch (error) {
-      console.error('解析圆通配置失败:', error)
-      ytoConfig.value = null
-    }
-  } else {
-    ytoConfig.value = null
-  }
-
-  ytoConfigVisible.value = true
-}
-
-/**
- * 圆通配置成功回调
- */
-const handleYTOConfigSuccess = (config: unknown) => {
-  ElMessage.success('圆通配置已保存,现在可以使用圆通API功能了')
-  // 可以在这里更新圆通公司的状态或其他操作
-}
-
-/**
- * 通用API配置
+ * 通用API配置（支持所有快递公司）
  */
 const handleApiConfig = async (row: LogisticsCompany) => {
   currentApiCompanyCode.value = row.code
@@ -489,9 +392,11 @@ const handleApiConfig = async (row: LogisticsCompany) => {
 /**
  * 通用API配置成功回调
  */
-const handleApiConfigSuccess = (config: unknown) => {
+const handleApiConfigSuccess = (_config: unknown) => {
   const companyNames: Record<string, string> = {
+    'SF': '顺丰速运',
     'ZTO': '中通快递',
+    'YTO': '圆通速递',
     'STO': '申通快递',
     'YD': '韵达速递',
     'JTSD': '极兔速递',
