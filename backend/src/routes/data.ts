@@ -112,7 +112,8 @@ router.get('/list', async (req: Request, res: Response) => {
       orderAmount: Number(order.totalAmount) || 0,
       orderDate: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '',
       signDate: order.deliveredAt ? new Date(order.deliveredAt).toISOString().split('T')[0] : '',
-      status: 'pending' as const, // 默认待分配状态
+      orderStatus: order.status, // 订单状态（delivered=已签收）
+      status: 'pending' as const, // 资料分配状态（待分配）
       assigneeId: order.createdBy,
       assigneeName: order.createdByName,
       assigneeDepartment: order.createdByDepartmentName,
