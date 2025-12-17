@@ -84,7 +84,7 @@
     <div class="list-section">
       <div class="list-header">
         <div class="list-info">
-          <span class="total-count">共 {{ filteredData.length }} 条记录</span>
+          <span class="total-count">共 {{ totalCount }} 条记录</span>
         </div>
 
         <div class="list-actions">
@@ -200,7 +200,7 @@
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
           :page-sizes="[10, 20, 50, 100]"
-          :total="filteredData.length"
+          :total="totalCount"
           layout="total, sizes, prev, pager, next, jumper"
           @size-change="handleSizeChange"
           @current-change="handleCurrentChange"
@@ -259,20 +259,8 @@ import {
 import { useDataStore } from '@/stores/data'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { formatDateTime } from '@/utils/dateFormat'
-
-// 接口定义
-interface RecycleItem {
-  id: string
-  customerName: string
-  phone: string
-  orderAmount: number
-  orderDate: string
-  deletedAt: string
-  deletedBy: string
-  deletedByName: string
-  deleteReason: string
-  expiresAt: string
-}
+import * as dataApi from '@/api/data'
+import type { RecycleItem } from '@/api/data'
 
 // 使用数据存储
 const dataStore = useDataStore()
@@ -288,45 +276,9 @@ const pageSize = ref(20)
 const restoreDialogVisible = ref(false)
 const deleteDialogVisible = ref(false)
 
-// 模拟数据
-const recycleData = ref([
-  {
-    id: '1',
-    customerName: '张三',
-    phone: '13800138001',
-    orderAmount: 5000,
-    orderDate: '2024-01-15',
-    deletedAt: '2024-01-20T10:30:00',
-    deletedBy: 'user1',
-    deletedByName: '李经理',
-    deleteReason: '重复资料',
-    expiresAt: '2024-02-20T10:30:00'
-  },
-  {
-    id: '2',
-    customerName: '李四',
-    phone: '13800138002',
-    orderAmount: 3000,
-    orderDate: '2024-01-10',
-    deletedAt: '2024-01-18T14:20:00',
-    deletedBy: 'user2',
-    deletedByName: '王主管',
-    deleteReason: '客户要求删除',
-    expiresAt: '2024-02-18T14:20:00'
-  },
-  {
-    id: '3',
-    customerName: '王五',
-    phone: '13800138003',
-    orderAmount: 8000,
-    orderDate: '2024-01-05',
-    deletedAt: '2024-01-25T09:15:00',
-    deletedBy: 'user1',
-    deletedByName: '李经理',
-    deleteReason: '无效订单',
-    expiresAt: '2024-02-25T09:15:00'
-  }
-])
+// 回收站数据
+const recycleData = ref<RecycleItem[]>([])
+const totalCount = ref(0)
 
 const deletedByUsers = ref([
   { id: 'user1', name: '李经理' },
@@ -334,21 +286,43 @@ const deletedByUsers = ref([
   { id: 'user3', name: '张组长' }
 ])
 
-// 计算属性
-const summaryData = computed(() => {
-  const now = new Date()
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-  const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000)
+// 加载回收站数据
+const loadRecycleData = async () => {
+  try {
+    loading.value = true
+    const response = await dataApi.getRecycleList({
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      keyword: searchKeyword.value || undefined,
+      deleteTimeFilter: deleteTimeFilter.value as any || undefined,
+      deletedBy: deletedByFilter.value || undefined
+    })
 
-  return {
-    totalCount: recycleData.value.length,
-    recentCount: recycleData.value.filter(item =>
-      new Date(item.deletedAt) >= sevenDaysAgo
-    ).length,
-    expiringSoonCount: recycleData.value.filter(item =>
-      new Date(item.expiresAt) <= threeDaysLater
-    ).length
+    recycleData.value = response.list || []
+    totalCount.value = response.total || 0
+
+    // 更新汇总数据
+    if (response.summary) {
+      summaryDataFromApi.value = response.summary
+    }
+  } catch (error) {
+    console.error('加载回收站数据失败:', error)
+    ElMessage.error('加载回收站数据失败')
+  } finally {
+    loading.value = false
   }
+}
+
+// API返回的汇总数据
+const summaryDataFromApi = ref({
+  totalCount: 0,
+  recentCount: 0,
+  expiringSoonCount: 0
+})
+
+// 计算属性 - 使用API返回的汇总数据
+const summaryData = computed(() => {
+  return summaryDataFromApi.value
 })
 
 const filteredData = computed(() => {
@@ -393,15 +367,15 @@ const filteredData = computed(() => {
   return data
 })
 
+// 分页数据直接使用API返回的数据（API已经分页）
 const paginatedData = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return filteredData.value.slice(start, end)
+  return recycleData.value
 })
 
 // 方法
 const handleSearch = () => {
   currentPage.value = 1
+  loadRecycleData()
 }
 
 const handleSelectionChange = (selection: RecycleItem[]) => {
@@ -411,10 +385,12 @@ const handleSelectionChange = (selection: RecycleItem[]) => {
 const handleSizeChange = (size: number) => {
   pageSize.value = size
   currentPage.value = 1
+  loadRecycleData()
 }
 
 const handleCurrentChange = (page: number) => {
   currentPage.value = page
+  loadRecycleData()
 }
 
 const formatDate = (dateStr: string) => {
@@ -454,19 +430,22 @@ const confirmRestore = async () => {
   try {
     loading.value = true
 
-    // 逐个恢复数据到已回收状态
-    for (const item of selectedItems.value) {
-      await dataStore.recoverData(item.id, '从回收站恢复')
+    // 调用真实API恢复数据
+    const dataIds = selectedItems.value.map(item => item.id)
+    const result = await dataApi.restoreData(dataIds)
+
+    if (result.success) {
+      ElMessage.success(`成功恢复 ${selectedItems.value.length} 条记录`)
+      // 重新加载数据
+      await loadRecycleData()
+    } else {
+      ElMessage.error(result.message || '恢复失败')
     }
 
-    // 从回收站数据中移除
-    const idsToRestore = selectedItems.value.map(item => item.id)
-    recycleData.value = recycleData.value.filter(item => !idsToRestore.includes(item.id))
-
-    ElMessage.success(`成功恢复 ${selectedItems.value.length} 条记录到已回收列表`)
     restoreDialogVisible.value = false
     selectedItems.value = []
   } catch (error) {
+    console.error('恢复失败:', error)
     ElMessage.error('恢复失败，请重试')
   } finally {
     loading.value = false
@@ -490,17 +469,22 @@ const confirmPermanentDelete = async () => {
   try {
     loading.value = true
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // 调用真实API永久删除数据
+    const dataIds = selectedItems.value.map(item => item.id)
+    const result = await dataApi.permanentDeleteData(dataIds)
 
-    // 从回收站数据中移除
-    const idsToDelete = selectedItems.value.map(item => item.id)
-    recycleData.value = recycleData.value.filter(item => !idsToDelete.includes(item.id))
+    if (result.success) {
+      ElMessage.success(`成功删除 ${selectedItems.value.length} 条记录`)
+      // 重新加载数据
+      await loadRecycleData()
+    } else {
+      ElMessage.error(result.message || '删除失败')
+    }
 
-    ElMessage.success(`成功删除 ${selectedItems.value.length} 条记录`)
     deleteDialogVisible.value = false
     selectedItems.value = []
   } catch (error) {
+    console.error('删除失败:', error)
     ElMessage.error('删除失败，请重试')
   } finally {
     loading.value = false
@@ -529,13 +513,17 @@ const handleClearExpired = async () => {
 
     loading.value = true
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // 调用真实API永久删除过期数据
+    const expiredIds = expiredItems.map(item => item.id)
+    const result = await dataApi.permanentDeleteData(expiredIds)
 
-    // 移除过期记录
-    recycleData.value = recycleData.value.filter(item => new Date(item.expiresAt) > now)
-
-    ElMessage.success(`成功清理 ${expiredItems.length} 条过期记录`)
+    if (result.success) {
+      ElMessage.success(`成功清理 ${expiredItems.length} 条过期记录`)
+      // 重新加载数据
+      await loadRecycleData()
+    } else {
+      ElMessage.error(result.message || '清理失败')
+    }
   } catch {
     // 用户取消操作
   } finally {
@@ -545,7 +533,8 @@ const handleClearExpired = async () => {
 
 // 生命周期
 onMounted(() => {
-  // 初始化数据
+  // 加载回收站数据
+  loadRecycleData()
 })
 </script>
 

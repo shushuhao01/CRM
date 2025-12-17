@@ -477,4 +477,159 @@ router.get('/statistics', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @route GET /api/v1/data/recycle
+ * @desc 获取回收站列表（已删除/归档的客户资料）
+ */
+router.get('/recycle', async (req: Request, res: Response) => {
+  try {
+    const { page = 1, pageSize = 20, keyword, deleteTimeFilter, deletedBy: _deletedBy } = req.query;
+    const customerRepository = AppDataSource.getRepository(Customer);
+
+    const queryBuilder = customerRepository.createQueryBuilder('customer')
+      .where('customer.status = :status', { status: 'deleted' });
+
+    // 关键词搜索
+    if (keyword) {
+      queryBuilder.andWhere(
+        '(customer.name LIKE :keyword OR customer.phone LIKE :keyword)',
+        { keyword: `%${keyword}%` }
+      );
+    }
+
+    // 删除时间筛选
+    if (deleteTimeFilter && deleteTimeFilter !== 'all') {
+      const now = new Date();
+      let startDate: Date;
+
+      switch (deleteTimeFilter) {
+        case 'today':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case 'week':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case 'month':
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          break;
+        default:
+          startDate = new Date(0);
+      }
+      queryBuilder.andWhere('customer.updatedAt >= :startDate', { startDate });
+    }
+
+    queryBuilder.orderBy('customer.updatedAt', 'DESC');
+    queryBuilder.skip((Number(page) - 1) * Number(pageSize));
+    queryBuilder.take(Number(pageSize));
+
+    const [customers, total] = await queryBuilder.getManyAndCount();
+
+    // 转换为回收站格式
+    const list = customers.map(customer => ({
+      id: customer.id,
+      customerName: customer.name || '',
+      phone: customer.phone || '',
+      orderAmount: 0, // 需要从订单表获取
+      orderDate: customer.createdAt ? new Date(customer.createdAt).toISOString().split('T')[0] : '',
+      deletedAt: customer.updatedAt ? new Date(customer.updatedAt).toISOString() : '',
+      deletedBy: '',
+      deletedByName: '系统',
+      deleteReason: '已删除',
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30天后过期
+    }));
+
+    // 计算汇总数据
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+    res.json({
+      success: true,
+      data: { list, total, page: Number(page), pageSize: Number(pageSize) },
+      summary: {
+        totalCount: total,
+        recentCount: list.filter(item => new Date(item.deletedAt) >= sevenDaysAgo).length,
+        expiringSoonCount: list.filter(item => new Date(item.expiresAt) <= threeDaysLater).length
+      }
+    });
+  } catch (error) {
+    console.error('获取回收站列表失败:', error);
+    res.status(500).json({ success: false, message: '获取回收站列表失败' });
+  }
+});
+
+/**
+ * @route POST /api/v1/data/restore
+ * @desc 从回收站恢复数据
+ */
+router.post('/restore', async (req: Request, res: Response) => {
+  try {
+    const { dataIds } = req.body;
+
+    if (!dataIds || dataIds.length === 0) {
+      return res.status(400).json({ success: false, message: '参数不完整' });
+    }
+
+    const customerRepository = AppDataSource.getRepository(Customer);
+    let successCount = 0;
+
+    for (const id of dataIds) {
+      try {
+        const customer = await customerRepository.findOne({ where: { id } });
+        if (customer) {
+          customer.status = 'active';
+          await customerRepository.save(customer);
+          successCount++;
+        }
+      } catch (e) {
+        console.error('恢复单条数据失败:', e);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: '恢复成功',
+      data: { successCount, failCount: dataIds.length - successCount }
+    });
+  } catch (error) {
+    console.error('恢复数据失败:', error);
+    res.status(500).json({ success: false, message: '恢复数据失败' });
+  }
+});
+
+/**
+ * @route POST /api/v1/data/permanent-delete
+ * @desc 永久删除数据
+ */
+router.post('/permanent-delete', async (req: Request, res: Response) => {
+  try {
+    const { dataIds } = req.body;
+
+    if (!dataIds || dataIds.length === 0) {
+      return res.status(400).json({ success: false, message: '参数不完整' });
+    }
+
+    const customerRepository = AppDataSource.getRepository(Customer);
+    let successCount = 0;
+
+    for (const id of dataIds) {
+      try {
+        await customerRepository.delete(id);
+        successCount++;
+      } catch (e) {
+        console.error('永久删除单条数据失败:', e);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: '永久删除成功',
+      data: { successCount, failCount: dataIds.length - successCount }
+    });
+  } catch (error) {
+    console.error('永久删除失败:', error);
+    res.status(500).json({ success: false, message: '永久删除失败' });
+  }
+});
+
 export default router;

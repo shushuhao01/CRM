@@ -242,7 +242,8 @@ export const batchAssignData = (params: BatchAssignParams): Promise<{ success: b
     return Promise.resolve({ success: true, message: '批量分配成功' })
   }
 
-  return api.post('/api/data/batch-assign', params)
+  // 注意：BASE_URL已包含/api/v1，所以这里只需要/data/batch-assign
+  return api.post('/data/batch-assign', params)
 }
 
 // 批量封存资料
@@ -257,7 +258,7 @@ export const batchArchiveData = (params: BatchArchiveParams): Promise<{ success:
     return Promise.resolve({ success: true, message: '批量封存成功' })
   }
 
-  return api.post('/api/data/batch-archive', params)
+  return api.post('/data/batch-archive', params)
 }
 
 // 回收资料
@@ -272,7 +273,7 @@ export const recoverData = (params: RecoverDataParams): Promise<{ success: boole
     return Promise.resolve({ success: true, message: '回收成功' })
   }
 
-  return api.post('/api/data/recover', params)
+  return api.post('/data/recover', params)
 }
 
 // 删除资料（移至回收站）
@@ -287,7 +288,7 @@ export const deleteData = (params: DeleteDataParams): Promise<{ success: boolean
     return Promise.resolve({ success: true, message: '删除成功' })
   }
 
-  return api.post('/api/data/delete', params)
+  return api.post('/data/delete', params)
 }
 
 // 获取可分配的成员列表
@@ -376,7 +377,7 @@ export const searchCustomer = async (params: CustomerSearchParams): Promise<Cust
   // 生产环境：强制使用真实API，不降级
   if (isProduction()) {
     console.log('[Data API] 生产环境：使用后端API搜索客户')
-    const response = await api.get('/api/data/search-customer', params)
+    const response = await api.get('/data/search-customer', params)
     return response.data || response
   }
 
@@ -501,7 +502,7 @@ export interface CustomerDetail extends CustomerSearchResult {
 }
 
 export const getCustomerDetail = (customerId: string): Promise<CustomerDetail> => {
-  return api.get(`/api/data/customer/${customerId}`)
+  return api.get(`/data/customer/${customerId}`)
 }
 
 // 资料操作日志
@@ -519,7 +520,7 @@ export interface DataOperationLog {
 }
 
 export const getDataOperationLogs = (dataId: string): Promise<DataOperationLog[]> => {
-  return api.get(`/api/data/operation-logs/${dataId}`)
+  return api.get(`/data/operation-logs/${dataId}`)
 }
 
 // 统计数据
@@ -544,7 +545,7 @@ export interface DataStatistics {
 }
 
 export const getDataStatistics = (dateRange?: string[]): Promise<DataStatistics> => {
-  return api.get('/api/data/statistics',
+  return api.get('/data/statistics',
     dateRange ? { startDate: dateRange[0], endDate: dateRange[1] } : {}
   )
 }
@@ -558,7 +559,76 @@ export interface ExportDataParams {
 }
 
 export const exportDataList = (params: ExportDataParams): Promise<unknown> => {
-  return api.get('/api/data/export', params)
+  return api.get('/data/export', params)
+}
+
+// 回收站相关接口
+export interface RecycleItem {
+  id: string
+  customerName: string
+  phone: string
+  orderAmount: number
+  orderDate: string
+  deletedAt: string
+  deletedBy: string
+  deletedByName: string
+  deleteReason: string
+  expiresAt: string
+}
+
+export interface RecycleListParams {
+  page?: number
+  pageSize?: number
+  keyword?: string
+  deleteTimeFilter?: 'today' | 'week' | 'month' | 'all'
+  deletedBy?: string
+}
+
+export interface RecycleListResponse {
+  list: RecycleItem[]
+  total: number
+  page: number
+  pageSize: number
+  summary: {
+    totalCount: number
+    recentCount: number
+    expiringSoonCount: number
+  }
+}
+
+// 获取回收站列表
+export const getRecycleList = async (params: RecycleListParams = {}): Promise<RecycleListResponse> => {
+  if (shouldUseMockApi()) {
+    // 返回模拟数据
+    return Promise.resolve({
+      list: [],
+      total: 0,
+      page: params.page || 1,
+      pageSize: params.pageSize || 20,
+      summary: { totalCount: 0, recentCount: 0, expiringSoonCount: 0 }
+    })
+  }
+
+  const response = await api.get('/data/recycle', params)
+  return response.data || response
+}
+
+// 从回收站恢复数据
+export const restoreData = async (dataIds: string[]): Promise<{ success: boolean; message: string }> => {
+  if (shouldUseMockApi()) {
+    return Promise.resolve({ success: true, message: '恢复成功' })
+  }
+
+  return api.post('/data/restore', { dataIds })
+}
+
+// 永久删除数据
+export const permanentDeleteData = async (dataIds: string[]): Promise<{ success: boolean; message: string }> => {
+  if (shouldUseMockApi()) {
+    return Promise.resolve({ success: true, message: '永久删除成功' })
+  }
+
+  return api.post('/data/permanent-delete', { dataIds })
 }
 
 // 模拟数据生成器（开发环境使用）
