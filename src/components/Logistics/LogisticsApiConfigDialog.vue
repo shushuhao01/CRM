@@ -185,7 +185,7 @@ const emit = defineEmits<{
   (e: 'success', config: LogisticsApiConfig): void
 }>()
 
-// 快递公司配置信息
+// 快递公司配置信息 - 基于各公司官方开放平台API文档
 const companyConfigs: Record<string, {
   name: string
   platformUrl: string
@@ -195,50 +195,99 @@ const companyConfigs: Record<string, {
   fieldTips: Record<string, string>
   apiUrls: { sandbox: string; production: string }
 }> = {
+  // 顺丰速运 - 丰桥开放平台 https://open.sf-express.com/
+  SF: {
+    name: '顺丰速运',
+    platformUrl: 'https://open.sf-express.com/',
+    showAppKey: false,
+    showCustomerId: true,
+    fieldLabels: {
+      appId: '顾客编码',
+      appKey: '',
+      appSecret: '校验码',
+      customerId: '月结卡号'
+    },
+    fieldTips: {
+      appId: '丰桥开放平台分配的顾客编码(partnerID)',
+      appKey: '',
+      appSecret: '丰桥开放平台分配的校验码(checkword)',
+      customerId: '月结卡号（可选，用于下单）'
+    },
+    apiUrls: {
+      sandbox: 'https://sfapi-sbox.sf-express.com/std/service',
+      production: 'https://bspgw.sf-express.com/std/service'
+    }
+  },
+  // 中通快递 - 中通开放平台 https://open.zto.com/
   ZTO: {
     name: '中通快递',
     platformUrl: 'https://open.zto.com/',
     showAppKey: true,
-    showCustomerId: false,
+    showCustomerId: true,
     fieldLabels: {
       appId: '公司ID',
       appKey: 'AppKey',
       appSecret: 'AppSecret',
-      customerId: '客户ID'
+      customerId: '合作商ID'
     },
     fieldTips: {
-      appId: '从中通开放平台获取的company_id',
-      appKey: '从中通开放平台获取的app_key',
-      appSecret: '从中通开放平台获取的app_secret',
-      customerId: ''
+      appId: '中通开放平台分配的company_id',
+      appKey: '中通开放平台分配的app_key',
+      appSecret: '中通开放平台分配的app_secret',
+      customerId: '合作商ID（可选）'
     },
     apiUrls: {
-      sandbox: 'https://api.zto.com/zto.merchant.waybill.track.query',
-      production: 'https://api.zto.com/zto.merchant.waybill.track.query'
+      sandbox: 'https://japi-test.zto.com/zto.open.getTraceInfo',
+      production: 'https://japi.zto.com/zto.open.getTraceInfo'
     }
   },
+  // 圆通速递 - 圆通开放平台 https://open.yto.net.cn/
+  YTO: {
+    name: '圆通速递',
+    platformUrl: 'https://open.yto.net.cn/',
+    showAppKey: true,
+    showCustomerId: true,
+    fieldLabels: {
+      appId: 'AppKey',
+      appKey: 'AppSecret',
+      appSecret: 'UserId',
+      customerId: '客户编码'
+    },
+    fieldTips: {
+      appId: '圆通开放平台分配的appkey',
+      appKey: '圆通开放平台分配的appsecret',
+      appSecret: '圆通开放平台分配的userId',
+      customerId: '客户编码（可选）'
+    },
+    apiUrls: {
+      sandbox: 'https://openapi-test.yto.net.cn/open/track_query/v1/query',
+      production: 'https://openapi.yto.net.cn/open/track_query/v1/query'
+    }
+  },
+  // 申通快递 - 申通开放平台 https://open.sto.cn/
   STO: {
     name: '申通快递',
     platformUrl: 'https://open.sto.cn/',
     showAppKey: false,
-    showCustomerId: false,
+    showCustomerId: true,
     fieldLabels: {
       appId: 'AppKey',
       appKey: '',
       appSecret: 'SecretKey',
-      customerId: ''
+      customerId: '客户编码'
     },
     fieldTips: {
-      appId: '从申通开放平台获取的appKey',
+      appId: '申通开放平台分配的appKey',
       appKey: '',
-      appSecret: '从申通开放平台获取的secretKey',
-      customerId: ''
+      appSecret: '申通开放平台分配的secretKey',
+      customerId: '客户编码（可选）'
     },
     apiUrls: {
       sandbox: 'http://cloudinter-linkgatewaytest.sto.cn/gateway/link.do',
       production: 'https://cloudinter-linkgateway.sto.cn/gateway/link.do'
     }
   },
+  // 韵达速递 - 韵达开放平台 https://open.yundaex.com/
   YD: {
     name: '韵达速递',
     platformUrl: 'https://open.yundaex.com/',
@@ -251,9 +300,9 @@ const companyConfigs: Record<string, {
       customerId: 'PartnerId'
     },
     fieldTips: {
-      appId: '从韵达开放平台获取的appKey',
+      appId: '韵达开放平台分配的appKey',
       appKey: '',
-      appSecret: '从韵达开放平台获取的appSecret',
+      appSecret: '韵达开放平台分配的appSecret',
       customerId: '合作伙伴ID（可选）'
     },
     apiUrls: {
@@ -261,6 +310,7 @@ const companyConfigs: Record<string, {
       production: 'https://openapi.yundaex.com/openapi/outer/logictis/query'
     }
   },
+  // 极兔速递 - 极兔开放平台 https://open.jtexpress.com.cn/
   JTSD: {
     name: '极兔速递',
     platformUrl: 'https://open.jtexpress.com.cn/',
@@ -273,41 +323,20 @@ const companyConfigs: Record<string, {
       customerId: '客户编码'
     },
     fieldTips: {
-      appId: '从极兔开放平台获取的apiAccount',
+      appId: '极兔开放平台分配的apiAccount',
       appKey: '',
-      appSecret: '从极兔开放平台获取的privateKey',
+      appSecret: '极兔开放平台分配的privateKey',
       customerId: '客户编码（可选）'
     },
     apiUrls: {
-      sandbox: 'https://openapi.jtexpress.com.cn/webopenplatformapi/api',
+      sandbox: 'https://openapi-test.jtexpress.com.cn/webopenplatformapi/api',
       production: 'https://openapi.jtexpress.com.cn/webopenplatformapi/api'
     }
   },
+  // 邮政EMS - 邮政开放平台
   EMS: {
     name: '邮政EMS',
-    platformUrl: 'https://api.ems.com.cn/',
-    showAppKey: false,
-    showCustomerId: false,
-    fieldLabels: {
-      appId: '应用ID',
-      appKey: '',
-      appSecret: '应用密钥',
-      customerId: ''
-    },
-    fieldTips: {
-      appId: '从邮政EMS开放平台获取的appId',
-      appKey: '',
-      appSecret: '从邮政EMS开放平台获取的appKey',
-      customerId: ''
-    },
-    apiUrls: {
-      sandbox: 'https://www.ems.com.cn/queryTrack',
-      production: 'https://www.ems.com.cn/queryTrack'
-    }
-  },
-  JD: {
-    name: '京东物流',
-    platformUrl: 'https://open.jdl.com/',
+    platformUrl: 'https://eis.11183.com.cn/',
     showAppKey: false,
     showCustomerId: true,
     fieldLabels: {
@@ -317,19 +346,43 @@ const companyConfigs: Record<string, {
       customerId: '客户编码'
     },
     fieldTips: {
-      appId: '从京东物流开放平台获取的appKey',
+      appId: '邮政EMS开放平台分配的appKey',
       appKey: '',
-      appSecret: '从京东物流开放平台获取的appSecret',
+      appSecret: '邮政EMS开放平台分配的appSecret',
       customerId: '客户编码（可选）'
     },
     apiUrls: {
-      sandbox: 'https://uat-api.jdl.com/ecap/v1/orders/trace/query',
-      production: 'https://api.jdl.com/ecap/v1/orders/trace/query'
+      sandbox: 'https://eis.11183.com.cn/openapi/test',
+      production: 'https://eis.11183.com.cn/openapi'
     }
   },
+  // 京东物流 - 京东物流开放平台 https://open.jdl.com/
+  JD: {
+    name: '京东物流',
+    platformUrl: 'https://open.jdl.com/',
+    showAppKey: false,
+    showCustomerId: true,
+    fieldLabels: {
+      appId: 'AppKey',
+      appKey: '',
+      appSecret: 'AppSecret',
+      customerId: '商家编码'
+    },
+    fieldTips: {
+      appId: '京东物流开放平台分配的appKey',
+      appKey: '',
+      appSecret: '京东物流开放平台分配的appSecret',
+      customerId: '商家编码（可选）'
+    },
+    apiUrls: {
+      sandbox: 'https://uat-api.jdl.com',
+      production: 'https://api.jdl.com'
+    }
+  },
+  // 德邦快递 - 德邦开放平台 https://open.deppon.com/
   DBL: {
     name: '德邦快递',
-    platformUrl: 'http://dop.deppon.com/',
+    platformUrl: 'https://open.deppon.com/',
     showAppKey: false,
     showCustomerId: true,
     fieldLabels: {
@@ -339,14 +392,14 @@ const companyConfigs: Record<string, {
       customerId: '公司编码'
     },
     fieldTips: {
-      appId: '从德邦开放平台获取的appKey',
+      appId: '德邦开放平台分配的appKey',
       appKey: '',
-      appSecret: '从德邦开放平台获取的appSecret',
+      appSecret: '德邦开放平台分配的appSecret',
       customerId: '公司编码（可选）'
     },
     apiUrls: {
-      sandbox: 'http://dpsanbox.deppon.com/sandbox-web/standard-order/newTraceQuery.action',
-      production: 'http://dop.deppon.com/standard-order/newTraceQuery.action'
+      sandbox: 'http://dpapi-test.deppon.com/dop-interface-sync/standard-order',
+      production: 'https://dpapi.deppon.com/dop-interface-sync/standard-order'
     }
   }
 }

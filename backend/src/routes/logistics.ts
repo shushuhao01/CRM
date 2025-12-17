@@ -856,46 +856,60 @@ router.post('/api-configs/:companyCode', async (req: Request, res: Response) => 
 
 /**
  * 测试物流API连接
+ * 根据不同快递公司调用对应的API进行真实连接测试
  */
 router.post('/api-configs/:companyCode/test', async (req: Request, res: Response) => {
   try {
     const { companyCode } = req.params;
     const { appId, appKey, appSecret, customerId, apiUrl, testTrackingNo } = req.body;
 
+    console.log(`[物流API测试] 公司: ${companyCode}, 参数:`, { appId, appKey: appKey ? '***' : '', appSecret: appSecret ? '***' : '', customerId, apiUrl });
+
     // 根据不同快递公司调用不同的测试逻辑
     let testResult = { success: false, message: '暂不支持该快递公司的API测试' };
 
     switch (companyCode.toUpperCase()) {
       case 'SF':
-        testResult = await testSFExpressApi(appId, appSecret, apiUrl);
+        // 顺丰: appId=顾客编码, appSecret=校验码, customerId=月结卡号
+        testResult = await testSFExpressApi(appId, appSecret, apiUrl, testTrackingNo);
         break;
       case 'ZTO':
+        // 中通: appId=公司ID, appKey=AppKey, appSecret=AppSecret
         testResult = await testZTOExpressApi(appId, appKey, appSecret, apiUrl, testTrackingNo);
         break;
       case 'YTO':
+        // 圆通: appId=AppKey, appKey=AppSecret, appSecret=UserId
         testResult = await testYTOExpressApi(appId, appKey, appSecret, apiUrl, testTrackingNo);
         break;
       case 'STO':
+        // 申通: appId=AppKey, appSecret=SecretKey
         testResult = await testSTOExpressApi(appId, appSecret, apiUrl, testTrackingNo);
         break;
       case 'YD':
+        // 韵达: appId=AppKey, appSecret=AppSecret, customerId=PartnerId
         testResult = await testYDExpressApi(appId, appSecret, customerId, apiUrl, testTrackingNo);
         break;
       case 'JTSD':
+        // 极兔: appId=API账号, appSecret=私钥, customerId=客户编码
         testResult = await testJTExpressApi(appId, appSecret, customerId, apiUrl, testTrackingNo);
         break;
       case 'EMS':
+        // 邮政EMS: appId=AppKey, appSecret=AppSecret
         testResult = await testEMSApi(appId, appSecret, apiUrl, testTrackingNo);
         break;
       case 'JD':
+        // 京东物流: appId=AppKey, appSecret=AppSecret, customerId=商家编码
         testResult = await testJDExpressApi(appId, appSecret, customerId, apiUrl, testTrackingNo);
         break;
       case 'DBL':
+        // 德邦快递: appId=AppKey, appSecret=AppSecret, customerId=公司编码
         testResult = await testDBLExpressApi(appId, appSecret, customerId, apiUrl, testTrackingNo);
         break;
       default:
         testResult = { success: false, message: `暂不支持 ${companyCode} 的API测试` };
     }
+
+    console.log(`[物流API测试] 结果:`, testResult);
 
     // 更新测试结果到数据库
     const repository = AppDataSource!.getRepository(LogisticsApiConfig);
@@ -941,115 +955,410 @@ function getCompanyName(code: string): string {
 }
 
 // ========== 各快递公司API测试函数 ==========
+import crypto from 'crypto';
+import axios from 'axios';
 
-// 顺丰API测试
-async function testSFExpressApi(appId: string, checkWord: string, apiUrl: string): Promise<{ success: boolean; message: string }> {
+/**
+ * 顺丰速运API测试 - 丰桥开放平台
+ * 文档: https://open.sf-express.com/
+ */
+async function testSFExpressApi(partnerId: string, checkWord: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
-    // 顺丰API测试逻辑（简化版，实际需要按照顺丰API文档实现签名）
-    if (!appId || !checkWord || !apiUrl) {
-      return { success: false, message: '请填写完整的配置信息' };
+    if (!partnerId || !checkWord) {
+      return { success: false, message: '请填写顾客编码和校验码' };
     }
-    // 这里应该调用顺丰API进行实际测试
-    // 暂时返回配置验证通过
-    return { success: true, message: '配置验证通过，请使用实际运单号测试' };
-  } catch (error) {
-    return { success: false, message: '测试失败: ' + (error instanceof Error ? error.message : '未知错误') };
+
+    // 构建请求参数
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const requestId = `REQ${Date.now()}`;
+
+    // 测试用的路由查询接口
+    const serviceCode = 'EXP_RECE_SEARCH_ROUTES';
+    const msgData = JSON.stringify({
+      trackingType: '1',
+      trackingNumber: trackingNo || 'SF1234567890', // 测试单号
+      methodType: '1'
+    });
+
+    // 生成签名: Base64(MD5(msgData + timestamp + checkWord))
+    const signStr = msgData + timestamp + checkWord;
+    const sign = crypto.createHash('md5').update(signStr, 'utf8').digest('base64');
+
+    const response = await axios.post(apiUrl || 'https://bspgw.sf-express.com/std/service', null, {
+      params: {
+        partnerID: partnerId,
+        requestID: requestId,
+        serviceCode: serviceCode,
+        timestamp: timestamp,
+        msgDigest: sign,
+        msgData: msgData
+      },
+      timeout: 10000,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+
+    const result = response.data;
+    if (result && (result.apiResultCode === 'A1000' || result.apiResultCode === 'A0000')) {
+      return { success: true, message: 'API连接成功' };
+    } else if (result && result.apiErrorMsg) {
+      // 如果是认证错误，说明API可达但密钥有问题
+      if (result.apiResultCode === 'A1001' || result.apiResultCode === 'A1002') {
+        return { success: false, message: `认证失败: ${result.apiErrorMsg}` };
+      }
+      return { success: false, message: result.apiErrorMsg };
+    }
+    return { success: true, message: 'API连接成功（请使用真实单号验证）' };
+  } catch (error: any) {
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      return { success: false, message: 'API服务器无法连接' };
+    }
+    if (error.response) {
+      return { success: false, message: `HTTP错误: ${error.response.status}` };
+    }
+    return { success: false, message: '测试失败: ' + (error.message || '未知错误') };
   }
 }
 
-// 中通API测试
-async function testZTOExpressApi(companyId: string, appKey: string, appSecret: string, _apiUrl: string, _trackingNo?: string): Promise<{ success: boolean; message: string }> {
+/**
+ * 中通快递API测试 - 中通开放平台
+ * 文档: https://open.zto.com/
+ */
+async function testZTOExpressApi(companyId: string, appKey: string, appSecret: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
     if (!companyId || !appKey || !appSecret) {
-      return { success: false, message: '请填写完整的配置信息' };
+      return { success: false, message: '请填写公司ID、AppKey和AppSecret' };
     }
-    return { success: true, message: '配置验证通过' };
-  } catch (error) {
-    return { success: false, message: '测试失败: ' + (error instanceof Error ? error.message : '未知错误') };
+
+    const timestamp = Date.now().toString();
+    const data = JSON.stringify({
+      billCode: trackingNo || '75331234567890'
+    });
+
+    // 生成签名: MD5(app_key + timestamp + data + app_secret)
+    const signStr = appKey + timestamp + data + appSecret;
+    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+
+    const response = await axios.post(apiUrl || 'https://japi.zto.com/zto.open.getTraceInfo', data, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-companyid': companyId,
+        'x-appkey': appKey,
+        'x-datadigest': sign,
+        'x-timestamp': timestamp
+      },
+      timeout: 10000
+    });
+
+    const result = response.data;
+    if (result && result.status === true) {
+      return { success: true, message: 'API连接成功' };
+    } else if (result && result.message) {
+      return { success: false, message: result.message };
+    }
+    return { success: true, message: 'API连接成功（请使用真实单号验证）' };
+  } catch (error: any) {
+    if (error.response && error.response.status === 401) {
+      return { success: false, message: '认证失败，请检查密钥配置' };
+    }
+    return { success: false, message: '测试失败: ' + (error.message || '未知错误') };
   }
 }
 
-// 圆通API测试
-async function testYTOExpressApi(userId: string, appKey: string, appSecret: string, _apiUrl: string, _trackingNo?: string): Promise<{ success: boolean; message: string }> {
+/**
+ * 圆通速递API测试 - 圆通开放平台
+ * 文档: https://open.yto.net.cn/
+ */
+async function testYTOExpressApi(appKey: string, appSecret: string, userId: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
-    if (!userId || !appKey || !appSecret) {
-      return { success: false, message: '请填写完整的配置信息' };
+    if (!appKey || !appSecret || !userId) {
+      return { success: false, message: '请填写AppKey、AppSecret和UserId' };
     }
-    return { success: true, message: '配置验证通过' };
-  } catch (error) {
-    return { success: false, message: '测试失败: ' + (error instanceof Error ? error.message : '未知错误') };
+
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const data = JSON.stringify({
+      waybillNo: trackingNo || 'YT1234567890123'
+    });
+
+    // 生成签名
+    const signStr = data + appSecret;
+    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+
+    const response = await axios.post(apiUrl || 'https://openapi.yto.net.cn/open/track_query/v1/query', {
+      data: data,
+      sign: sign,
+      timestamp: timestamp,
+      format: 'JSON',
+      appkey: appKey,
+      user_id: userId,
+      method: 'yto.Marketing.WaybillTrace'
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+
+    const result = response.data;
+    if (result && (result.success === true || result.code === '0' || result.code === 0)) {
+      return { success: true, message: 'API连接成功' };
+    } else if (result && (result.message || result.msg)) {
+      return { success: false, message: result.message || result.msg };
+    }
+    return { success: true, message: 'API连接成功（请使用真实单号验证）' };
+  } catch (error: any) {
+    return { success: false, message: '测试失败: ' + (error.message || '未知错误') };
   }
 }
 
-// 申通API测试
-async function testSTOExpressApi(appKey: string, secretKey: string, _apiUrl: string, _trackingNo?: string): Promise<{ success: boolean; message: string }> {
+/**
+ * 申通快递API测试 - 申通开放平台
+ * 文档: https://open.sto.cn/
+ */
+async function testSTOExpressApi(appKey: string, secretKey: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
     if (!appKey || !secretKey) {
-      return { success: false, message: '请填写完整的配置信息' };
+      return { success: false, message: '请填写AppKey和SecretKey' };
     }
-    return { success: true, message: '配置验证通过' };
-  } catch (error) {
-    return { success: false, message: '测试失败: ' + (error instanceof Error ? error.message : '未知错误') };
+
+    const timestamp = Date.now().toString();
+    const data = JSON.stringify({
+      waybillNoList: [trackingNo || '773012345678901']
+    });
+
+    // 生成签名: Base64(MD5(content + secretKey))
+    const signStr = data + secretKey;
+    const sign = crypto.createHash('md5').update(signStr).digest('base64');
+
+    const params = new URLSearchParams();
+    params.append('content', data);
+    params.append('data_digest', sign);
+    params.append('api_name', 'STO_TRACE_QUERY_COMMON');
+    params.append('from_appkey', appKey);
+    params.append('from_code', appKey);
+    params.append('to_appkey', 'sto_trace_query');
+    params.append('to_code', 'sto_trace_query');
+
+    const response = await axios.post(apiUrl || 'https://cloudinter-linkgateway.sto.cn/gateway/link.do', params, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeout: 10000
+    });
+
+    const result = response.data;
+    if (result && (result.success === true || result.success === 'true')) {
+      return { success: true, message: 'API连接成功' };
+    } else if (result && result.errorMsg) {
+      return { success: false, message: result.errorMsg };
+    }
+    return { success: true, message: 'API连接成功（请使用真实单号验证）' };
+  } catch (error: any) {
+    return { success: false, message: '测试失败: ' + (error.message || '未知错误') };
   }
 }
 
-// 韵达API测试
-async function testYDExpressApi(appKey: string, appSecret: string, _partnerId: string, _apiUrl: string, _trackingNo?: string): Promise<{ success: boolean; message: string }> {
+/**
+ * 韵达速递API测试 - 韵达开放平台
+ * 文档: https://open.yundaex.com/
+ */
+async function testYDExpressApi(appKey: string, appSecret: string, partnerId: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
     if (!appKey || !appSecret) {
-      return { success: false, message: '请填写完整的配置信息' };
+      return { success: false, message: '请填写AppKey和AppSecret' };
     }
-    return { success: true, message: '配置验证通过' };
-  } catch (error) {
-    return { success: false, message: '测试失败: ' + (error instanceof Error ? error.message : '未知错误') };
+
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const data = JSON.stringify({
+      mailno: trackingNo || '4312345678901'
+    });
+
+    // 生成签名
+    const signStr = data + appSecret + timestamp;
+    const sign = crypto.createHash('md5').update(signStr).digest('hex');
+
+    const response = await axios.post(apiUrl || 'https://openapi.yundaex.com/openapi/outer/logictis/query', {
+      appkey: appKey,
+      partner_id: partnerId || '',
+      timestamp: timestamp,
+      sign: sign,
+      request: data
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+
+    const result = response.data;
+    if (result && (result.code === '0' || result.code === 0 || result.success === true)) {
+      return { success: true, message: 'API连接成功' };
+    } else if (result && (result.message || result.msg)) {
+      return { success: false, message: result.message || result.msg };
+    }
+    return { success: true, message: 'API连接成功（请使用真实单号验证）' };
+  } catch (error: any) {
+    return { success: false, message: '测试失败: ' + (error.message || '未知错误') };
   }
 }
 
-// 极兔API测试
-async function testJTExpressApi(apiAccount: string, privateKey: string, _customerCode: string, _apiUrl: string, _trackingNo?: string): Promise<{ success: boolean; message: string }> {
+/**
+ * 极兔速递API测试 - 极兔开放平台
+ * 文档: https://open.jtexpress.com.cn/
+ */
+async function testJTExpressApi(apiAccount: string, privateKey: string, customerCode: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
     if (!apiAccount || !privateKey) {
-      return { success: false, message: '请填写完整的配置信息' };
+      return { success: false, message: '请填写API账号和私钥' };
     }
-    return { success: true, message: '配置验证通过' };
-  } catch (error) {
-    return { success: false, message: '测试失败: ' + (error instanceof Error ? error.message : '未知错误') };
+
+    const timestamp = Date.now().toString();
+    const data = JSON.stringify({
+      billCodes: trackingNo || 'JT1234567890123'
+    });
+
+    // 生成签名: MD5(data + privateKey)
+    const sign = crypto.createHash('md5').update(data + privateKey).digest('hex');
+
+    const response = await axios.post((apiUrl || 'https://openapi.jtexpress.com.cn/webopenplatformapi/api') + '/logistics/trace/queryTracesByBillCodes', {
+      logistics_interface: data,
+      data_digest: sign,
+      msg_type: 'TRACEQUERY',
+      eccompanyid: customerCode || apiAccount,
+      timestamp: timestamp
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+
+    const result = response.data;
+    if (result && (result.code === '1' || result.success === true)) {
+      return { success: true, message: 'API连接成功' };
+    } else if (result && (result.msg || result.message)) {
+      return { success: false, message: result.msg || result.message };
+    }
+    return { success: true, message: 'API连接成功（请使用真实单号验证）' };
+  } catch (error: any) {
+    return { success: false, message: '测试失败: ' + (error.message || '未知错误') };
   }
 }
 
-// 邮政EMS API测试
-async function testEMSApi(appId: string, appKey: string, _apiUrl: string, _trackingNo?: string): Promise<{ success: boolean; message: string }> {
-  try {
-    if (!appId || !appKey) {
-      return { success: false, message: '请填写完整的配置信息' };
-    }
-    return { success: true, message: '配置验证通过' };
-  } catch (error) {
-    return { success: false, message: '测试失败: ' + (error instanceof Error ? error.message : '未知错误') };
-  }
-}
-
-// 京东物流API测试
-async function testJDExpressApi(appKey: string, appSecret: string, _customerCode: string, _apiUrl: string, _trackingNo?: string): Promise<{ success: boolean; message: string }> {
+/**
+ * 邮政EMS API测试
+ * 文档: https://eis.11183.com.cn/
+ */
+async function testEMSApi(appKey: string, appSecret: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
     if (!appKey || !appSecret) {
-      return { success: false, message: '请填写完整的配置信息' };
+      return { success: false, message: '请填写AppKey和AppSecret' };
     }
-    return { success: true, message: '配置验证通过' };
-  } catch (error) {
-    return { success: false, message: '测试失败: ' + (error instanceof Error ? error.message : '未知错误') };
+
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const data = JSON.stringify({
+      mailNo: trackingNo || 'EMS1234567890CN'
+    });
+
+    // 生成签名
+    const signStr = data + appSecret + timestamp;
+    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+
+    const response = await axios.post(apiUrl || 'https://eis.11183.com.cn/openapi/mailTrack/query', {
+      appKey: appKey,
+      timestamp: timestamp,
+      sign: sign,
+      data: data
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+
+    const result = response.data;
+    if (result && (result.code === '0' || result.success === true)) {
+      return { success: true, message: 'API连接成功' };
+    } else if (result && (result.message || result.msg)) {
+      return { success: false, message: result.message || result.msg };
+    }
+    return { success: true, message: 'API连接成功（请使用真实单号验证）' };
+  } catch (error: any) {
+    return { success: false, message: '测试失败: ' + (error.message || '未知错误') };
   }
 }
 
-// 德邦快递API测试
-async function testDBLExpressApi(appKey: string, appSecret: string, _companyCode: string, _apiUrl: string, _trackingNo?: string): Promise<{ success: boolean; message: string }> {
+/**
+ * 京东物流API测试 - 京东物流开放平台
+ * 文档: https://open.jdl.com/
+ */
+async function testJDExpressApi(appKey: string, appSecret: string, customerCode: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
     if (!appKey || !appSecret) {
-      return { success: false, message: '请填写完整的配置信息' };
+      return { success: false, message: '请填写AppKey和AppSecret' };
     }
-    return { success: true, message: '配置验证通过' };
-  } catch (error) {
-    return { success: false, message: '测试失败: ' + (error instanceof Error ? error.message : '未知错误') };
+
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const data = JSON.stringify({
+      waybillCode: trackingNo || 'JD1234567890',
+      customerCode: customerCode || ''
+    });
+
+    // 生成签名
+    const signStr = appSecret + timestamp + data + appSecret;
+    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+
+    const response = await axios.post((apiUrl || 'https://api.jdl.com') + '/ecap/v1/orders/trace/query', {
+      app_key: appKey,
+      timestamp: timestamp,
+      sign: sign,
+      param_json: data
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+
+    const result = response.data;
+    if (result && (result.code === '0' || result.code === 0 || result.success === true)) {
+      return { success: true, message: 'API连接成功' };
+    } else if (result && (result.message || result.msg)) {
+      return { success: false, message: result.message || result.msg };
+    }
+    return { success: true, message: 'API连接成功（请使用真实单号验证）' };
+  } catch (error: any) {
+    return { success: false, message: '测试失败: ' + (error.message || '未知错误') };
+  }
+}
+
+/**
+ * 德邦快递API测试 - 德邦开放平台
+ * 文档: https://open.deppon.com/
+ */
+async function testDBLExpressApi(appKey: string, appSecret: string, companyCode: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
+  try {
+    if (!appKey || !appSecret) {
+      return { success: false, message: '请填写AppKey和AppSecret' };
+    }
+
+    const timestamp = Date.now().toString();
+    const data = JSON.stringify({
+      logisticCompanyID: 'DEPPON',
+      logisticID: trackingNo || 'DPK1234567890',
+      companyCode: companyCode || ''
+    });
+
+    // 生成签名: MD5(appKey + data + timestamp + appSecret)
+    const signStr = appKey + data + timestamp + appSecret;
+    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+
+    const response = await axios.post((apiUrl || 'https://dpapi.deppon.com/dop-interface-sync/standard-order') + '/newTraceQuery.action', {
+      companyCode: appKey,
+      timestamp: timestamp,
+      digest: sign,
+      params: data
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+
+    const result = response.data;
+    if (result && (result.result === 'true' || result.success === true)) {
+      return { success: true, message: 'API连接成功' };
+    } else if (result && (result.reason || result.message)) {
+      return { success: false, message: result.reason || result.message };
+    }
+    return { success: true, message: 'API连接成功（请使用真实单号验证）' };
+  } catch (error: any) {
+    return { success: false, message: '测试失败: ' + (error.message || '未知错误') };
   }
 }
 
