@@ -431,16 +431,23 @@ const handleQuickFilter = (value: string) => {
       dateRange.value = [formatDate(yesterday), formatDate(yesterday)]
       break
     case '3days':
+      // 3天前：筛选发货日期在3天前及更早的订单（需要关注的老订单）
       const threeDaysAgo = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000)
-      dateRange.value = ['', formatDate(threeDaysAgo)]
+      // 开始日期设为90天前，覆盖大部分需要关注的订单
+      const ninetyDaysAgo3 = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000)
+      dateRange.value = [formatDate(ninetyDaysAgo3), formatDate(threeDaysAgo)]
       break
     case '5days':
+      // 5天前：筛选发货日期在5天前及更早的订单
       const fiveDaysAgo = new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000)
-      dateRange.value = ['', formatDate(fiveDaysAgo)]
+      const ninetyDaysAgo5 = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000)
+      dateRange.value = [formatDate(ninetyDaysAgo5), formatDate(fiveDaysAgo)]
       break
     case '10days':
+      // 10天前：筛选发货日期在10天前及更早的订单
       const tenDaysAgo = new Date(today.getTime() - 10 * 24 * 60 * 60 * 1000)
-      dateRange.value = ['', formatDate(tenDaysAgo)]
+      const ninetyDaysAgo10 = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000)
+      dateRange.value = [formatDate(ninetyDaysAgo10), formatDate(tenDaysAgo)]
       break
     case 'week':
       const weekStart = new Date(today.getTime() - (today.getDay() - 1) * 24 * 60 * 60 * 1000)
