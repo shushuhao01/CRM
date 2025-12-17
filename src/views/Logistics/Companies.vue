@@ -119,6 +119,16 @@
               <el-icon><Setting /></el-icon>
               配置
             </el-button>
+            <el-button
+              v-if="supportedApiCompanies.includes(row.code)"
+              @click="handleApiConfig(row)"
+              type="warning"
+              link
+              size="small"
+            >
+              <el-icon><Setting /></el-icon>
+              配置
+            </el-button>
             <el-button @click="handleDelete(row)" type="danger" link size="small">
               删除
             </el-button>
@@ -152,6 +162,14 @@
       v-model:visible="ytoConfigVisible"
       :config="ytoConfig"
       @success="handleYTOConfigSuccess"
+    />
+
+    <!-- 通用物流API配置对话框 -->
+    <LogisticsApiConfigDialog
+      v-model:visible="apiConfigVisible"
+      :company-code="currentApiCompanyCode"
+      :config="currentApiConfig"
+      @success="handleApiConfigSuccess"
     />
 
     <!-- 新增/编辑对话框 -->
@@ -244,6 +262,8 @@ import {
 } from '@element-plus/icons-vue'
 import SFExpressConfigDialog from '@/components/Logistics/SFExpressConfigDialog.vue'
 import YTOExpressConfigDialog from '@/components/Logistics/YTOExpressConfigDialog.vue'
+import LogisticsApiConfigDialog from '@/components/Logistics/LogisticsApiConfigDialog.vue'
+import { logisticsApi } from '@/api/logistics'
 
 interface LogisticsCompany {
   id: string
@@ -276,6 +296,14 @@ const sfConfigVisible = ref(false)
 const sfConfig = ref(null)
 const ytoConfigVisible = ref(false)
 const ytoConfig = ref(null)
+
+// 通用API配置对话框
+const apiConfigVisible = ref(false)
+const currentApiCompanyCode = ref('')
+const currentApiConfig = ref(null)
+
+// 支持API配置的快递公司代码（排除SF和YTO，它们有专门的配置对话框）
+const supportedApiCompanies = ['ZTO', 'STO', 'YD', 'JTSD', 'EMS', 'JD', 'DBL']
 
 // 超时ID跟踪，用于清理异步操作
 const timeoutIds = new Set<NodeJS.Timeout>()
@@ -427,6 +455,52 @@ const handleYTOConfig = (row: LogisticsCompany) => {
 const handleYTOConfigSuccess = (config: unknown) => {
   ElMessage.success('圆通配置已保存,现在可以使用圆通API功能了')
   // 可以在这里更新圆通公司的状态或其他操作
+}
+
+/**
+ * 通用API配置
+ */
+const handleApiConfig = async (row: LogisticsCompany) => {
+  currentApiCompanyCode.value = row.code
+
+  // 尝试从API获取已保存的配置
+  try {
+    const response = await logisticsApi.getApiConfig(row.code)
+    if (response.success && response.data) {
+      currentApiConfig.value = {
+        appId: response.data.appId,
+        appKey: response.data.appKey,
+        appSecret: response.data.appSecret,
+        customerId: response.data.customerId,
+        apiEnvironment: response.data.apiEnvironment,
+        enabled: response.data.enabled === 1
+      }
+    } else {
+      currentApiConfig.value = null
+    }
+  } catch (error) {
+    console.error('获取API配置失败:', error)
+    currentApiConfig.value = null
+  }
+
+  apiConfigVisible.value = true
+}
+
+/**
+ * 通用API配置成功回调
+ */
+const handleApiConfigSuccess = (config: unknown) => {
+  const companyNames: Record<string, string> = {
+    'ZTO': '中通快递',
+    'STO': '申通快递',
+    'YD': '韵达速递',
+    'JTSD': '极兔速递',
+    'EMS': '邮政EMS',
+    'JD': '京东物流',
+    'DBL': '德邦快递'
+  }
+  const name = companyNames[currentApiCompanyCode.value] || currentApiCompanyCode.value
+  ElMessage.success(`${name}配置已保存,现在可以使用API功能了`)
 }
 
 /**
