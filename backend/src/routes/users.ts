@@ -65,6 +65,13 @@ const createUserSchema = {
 };
 
 /**
+ * @route GET /api/v1/users/check-username
+ * @desc 检查用户名是否可用
+ * @access Private (Manager/Admin)
+ */
+router.get('/check-username', authenticateToken, requireManagerOrAdmin, userController.checkUsername);
+
+/**
  * @route GET /api/v1/users/department-members
  * @desc 获取同部门成员列表（所有登录用户可访问）
  * @access Private (All authenticated users)

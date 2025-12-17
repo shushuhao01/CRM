@@ -1117,11 +1117,40 @@ const pagination = reactive({
   total: 0
 })
 
+// 用户名唯一性验证器
+const validateUsername = async (rule: any, value: string, callback: any) => {
+  if (!value) {
+    callback(new Error('请输入用户名'))
+    return
+  }
+  if (value.length < 3 || value.length > 20) {
+    callback(new Error('用户名长度在 3 到 20 个字符'))
+    return
+  }
+  // 编辑模式下不需要验证唯一性
+  if (isEdit.value) {
+    callback()
+    return
+  }
+  try {
+    const available = await userApiService.checkUsernameAvailability(value)
+    if (available) {
+      callback()
+    } else {
+      callback(new Error('该用户名已存在，请使用其他用户名'))
+    }
+  } catch (error) {
+    console.error('检查用户名失败:', error)
+    callback(new Error('验证用户名失败，请稍后重试'))
+  }
+}
+
 // 表单验证规则
 const userFormRules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 3, max: 20, message: '用户名长度在 3 到 20 个字符', trigger: 'blur' }
+    { min: 3, max: 20, message: '用户名长度在 3 到 20 个字符', trigger: 'blur' },
+    { validator: validateUsername, trigger: 'blur' }
   ],
   realName: [
     { required: true, message: '请输入姓名', trigger: 'blur' }

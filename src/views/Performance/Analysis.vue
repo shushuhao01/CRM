@@ -551,7 +551,16 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="trackingNumber" label="快递单号" width="160" show-overflow-tooltip />
+          <el-table-column prop="trackingNumber" label="快递单号" width="160" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span
+                v-if="row.trackingNumber"
+                class="tracking-number-link"
+                @click="handleTrackingNoClick(row)"
+              >{{ row.trackingNumber }}</span>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="productDetails" label="产品详情" min-width="200" show-overflow-tooltip />
           <el-table-column label="操作" width="100" align="center" fixed="right">
             <template #default="{ row }">
@@ -600,6 +609,7 @@ import {
   Trophy
 } from '@element-plus/icons-vue'
 import { getOrderStatusText, getOrderStatusTagType } from '@/utils/orderStatusConfig'
+import { showLogisticsQueryDialog } from '@/utils/logisticsQuery'
 
 // 接口定义
 interface PerformanceData {
@@ -954,6 +964,18 @@ const viewOrdersByType = (row: any, columnProp: string) => {
  */
 const viewOrderDetail = (order: any) => {
   safeNavigator.push(`/order/detail/${order.id}`)
+}
+
+/**
+ * 处理快递单号点击 - 显示物流查询选项
+ */
+const handleTrackingNoClick = (row: any) => {
+  if (!row.trackingNumber) return
+  showLogisticsQueryDialog({
+    trackingNo: row.trackingNumber,
+    companyCode: row.logisticsCompany || row.expressCompany,
+    router
+  })
 }
 
 
@@ -2059,6 +2081,19 @@ onUnmounted(() => {
   .filter-left {
     flex-wrap: wrap;
   }
+}
+
+/* 快递单号链接样式 */
+.tracking-number-link {
+  color: #409eff;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.tracking-number-link:hover {
+  color: #66b1ff;
+  text-decoration: underline;
 }
 </style>
 
