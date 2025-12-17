@@ -149,7 +149,9 @@
           <template #default="{ row }">
             <div class="product-info">
               <img :src="row.image" :alt="row.productName" class="product-image" />
-              <span>{{ row.productName }}</span>
+              <el-tooltip :content="row.productName" placement="top" :disabled="!row.productName || row.productName.length < 15">
+                <span class="product-name-text">{{ row.productName }}</span>
+              </el-tooltip>
             </div>
           </template>
         </el-table-column>
@@ -1571,6 +1573,15 @@ watch(() => searchForm.lowStock, () => {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+}
+
+.product-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+  display: inline-block;
 }
 
 .product-image {
