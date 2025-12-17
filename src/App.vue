@@ -274,7 +274,7 @@ import DynamicMenu from '@/components/DynamicMenu.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import {
   Menu, TrendCharts, User, ArrowDown, Odometer, ShoppingCart,
-  Box, Setting, Headset, CustomerService
+  Box, Setting, Headset, Service
 } from '@element-plus/icons-vue'
 
 
