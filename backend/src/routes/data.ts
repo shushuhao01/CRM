@@ -162,33 +162,51 @@ router.get('/list', async (req: Request, res: Response) => {
 
 /**
  * @route POST /api/v1/data/batch-assign
- * @desc 批量分配数据
+ * @desc 批量分配数据（更新订单的归属人）
  */
 router.post('/batch-assign', async (req: Request, res: Response) => {
   try {
-    const { dataIds, assigneeId } = req.body;
+    const { dataIds, assigneeId, assigneeName } = req.body;
 
     if (!dataIds || dataIds.length === 0 || !assigneeId) {
       return res.status(400).json({ success: false, message: '参数不完整' });
     }
 
-    const customerRepository = AppDataSource.getRepository(Customer);
     const userRepository = AppDataSource.getRepository(User);
+    const { Order } = await import('../entities/Order');
+    const orderRepository = AppDataSource.getRepository(Order);
 
+    // 获取分配人信息
     const assignee = await userRepository.findOne({ where: { id: assigneeId } });
     if (!assignee) {
       return res.status(404).json({ success: false, message: '分配人不存在' });
     }
 
+    const finalAssigneeName = assigneeName || assignee.realName || assignee.username;
+
     let successCount = 0;
     for (const id of dataIds) {
       try {
-        const customer = await customerRepository.findOne({ where: { id } });
-        if (customer) {
-          customer.salesPersonId = assigneeId;
-          customer.salesPersonName = assignee.realName || assignee.username;
-          await customerRepository.save(customer);
+        // 更新订单的归属人
+        const order = await orderRepository.findOne({ where: { id } });
+        if (order) {
+          order.createdBy = assigneeId;
+          order.createdByName = finalAssigneeName;
+          order.createdByDepartmentId = assignee.departmentId;
+          order.createdByDepartmentName = assignee.departmentName;
+          await orderRepository.save(order);
           successCount++;
+
+          // 同时更新关联客户的归属人
+          if (order.customerId) {
+            const customerRepository = AppDataSource.getRepository(Customer);
+            const customer = await customerRepository.findOne({ where: { id: order.customerId } });
+            if (customer) {
+              customer.salesPersonId = assigneeId;
+              customer.salesPersonName = finalAssigneeName;
+              await customerRepository.save(customer);
+            }
+          }
         }
       } catch (e) {
         console.error('分配单条数据失败:', e);

@@ -430,7 +430,17 @@ export const useDataStore = createPersistentStore('data', () => {
         }))
       }
 
-      // 模拟API调用
+      // 调用真实API进行批量分配
+      // 将轮流分配的结果逐个调用batchAssignData API
+      for (const assignment of assignments) {
+        await dataApi.batchAssignData({
+          dataIds: [assignment.dataId],
+          assigneeId: assignment.assigneeId,
+          assigneeName: assignment.assigneeName,
+          remark: params.remark
+        })
+      }
+
       const result = { success: true, message: '轮流分配成功' }
 
       if (result.success) {
@@ -853,8 +863,16 @@ export const useDataStore = createPersistentStore('data', () => {
     try {
       loading.value = true
 
-      // 模拟API调用
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // 调用真实API进行跨部门分配
+      // 将分配结果逐个调用batchAssignData API
+      for (const assignment of params.assignments) {
+        await dataApi.batchAssignData({
+          dataIds: [assignment.dataId],
+          assigneeId: assignment.assigneeId,
+          assigneeName: assignment.assigneeName,
+          remark: params.remark
+        })
+      }
 
       // 更新数据列表中的分配信息
       params.assignments.forEach(assignment => {
