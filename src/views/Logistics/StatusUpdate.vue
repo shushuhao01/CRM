@@ -331,9 +331,8 @@ import OrderDetailDialog from './components/OrderDetailDialog.vue'
 import { useLogisticsStatusStore } from '@/stores/logisticsStatus'
 import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
-import { getCompanyShortName, getTrackingUrl } from '@/utils/logisticsCompanyConfig'
 import {
   Clock,
   Check,
@@ -346,7 +345,7 @@ import {
 
 // Router
 const router = useRouter()
-const safeNavigator = createSafeNavigator(router)
+const _safeNavigator = createSafeNavigator(router)
 
 // Store
 const _logisticsStatusStore = useLogisticsStatusStore()
@@ -645,57 +644,14 @@ const handleViewTracking = (order: any) => {
   trackingDialogVisible.value = true
 }
 
-// 🔥 点击查询图标：弹窗选择查询方式
+// 🔥 点击查询图标：弹窗选择查询方式（使用统一的物流查询弹窗）
 const handleTrackingNoClick = async (trackingNo: string, logisticsCompany?: string) => {
-  // 复制物流单号
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(trackingNo)
-    } else {
-      const textArea = document.createElement('textarea')
-      textArea.value = trackingNo
-      textArea.style.position = 'fixed'
-      textArea.style.left = '-999999px'
-      textArea.style.top = '-999999px'
-      document.body.appendChild(textArea)
-      textArea.focus()
-      textArea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textArea)
-    }
-  } catch (error) {
-    console.error('复制失败:', error)
-  }
-
-  // 根据物流公司动态获取官网按钮名称和URL
-  const companyShortName = getCompanyShortName(logisticsCompany || '')
-  const companyUrl = getTrackingUrl(logisticsCompany || '', trackingNo)
-
-  // 提示选择查询方式
-  const action = await ElMessageBox.confirm(
-    `快递单号 ${trackingNo} 已复制\n请选择查询方式`,
-    '物流查询',
-    {
-      confirmButtonText: '系统内查询',
-      cancelButtonText: `${companyShortName}官网`,
-      distinguishCancelAndClose: true,
-      type: 'info'
-    }
-  ).catch((act) => act)
-
-  if (action === 'confirm') {
-    // 跳转到系统内物流跟踪页面
-    safeNavigator.push({
-      path: '/logistics/track',
-      query: {
-        trackingNo: trackingNo,
-        company: logisticsCompany || ''
-      }
-    })
-  } else if (action === 'cancel') {
-    // 跳转到快递公司官网
-    window.open(companyUrl, '_blank')
-  }
+  const { showLogisticsQueryDialog } = await import('@/utils/logisticsQuery')
+  showLogisticsQueryDialog({
+    trackingNo,
+    companyCode: logisticsCompany,
+    router
+  })
 }
 
 
