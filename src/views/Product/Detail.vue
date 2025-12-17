@@ -210,7 +210,11 @@
               <el-empty description="暂无库存记录" />
             </div>
             <el-table v-else :data="stockRecords" style="width: 100%">
-              <el-table-column prop="createTime" label="时间" width="180" />
+              <el-table-column label="时间" width="180">
+                <template #default="{ row }">
+                  {{ formatTime(row.createTime) }}
+                </template>
+              </el-table-column>
               <el-table-column label="操作类型" width="100">
                 <template #default="{ row }">
                   <el-tag :type="getStockTypeColor(row.type)" size="small">
@@ -250,11 +254,11 @@
               </div>
               <div class="status-item">
                 <label>创建时间：</label>
-                <span>{{ productInfo.createTime }}</span>
+                <span>{{ formatTime(productInfo.createTime) }}</span>
               </div>
               <div class="status-item">
                 <label>更新时间：</label>
-                <span>{{ productInfo.updateTime }}</span>
+                <span>{{ formatTime(productInfo.updateTime) }}</span>
               </div>
               <div class="status-item">
                 <label>创建人：</label>
@@ -341,7 +345,7 @@
                 :key="log.id"
                 class="log-item"
               >
-                <div class="log-time">{{ log.createTime }}</div>
+                <div class="log-time">{{ formatTime(log.createTime) }}</div>
                 <div class="log-content">
                   <span class="log-operator">{{ log.operator }}</span>
                   <span class="log-action">{{ log.action }}</span>
@@ -524,6 +528,7 @@ import { useUserStore } from '@/stores/user'
 import { useConfigStore } from '@/stores/config'
 import { createSafeNavigator } from '@/utils/navigation'
 import { productApi } from '@/api/product'
+import { formatTime } from '@/utils/date'
 
 // 路由
 const router = useRouter()
