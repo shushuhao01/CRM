@@ -254,14 +254,14 @@ const companyConfigs: Record<string, {
       customerId: '客户编码'
     },
     fieldTips: {
-      appId: '圆通开放平台分配的appkey',
-      appKey: '圆通开放平台分配的appsecret',
-      appSecret: '圆通开放平台分配的userId',
-      customerId: '客户编码（可选）'
+      appId: '圆通开放平台分配的AppKey（如：YTOxxxxxxxx）',
+      appKey: '圆通开放平台分配的AppSecret',
+      appSecret: '圆通开放平台分配的UserId',
+      customerId: '客户编码（如：open19341749）'
     },
     apiUrls: {
-      sandbox: 'https://openapi-test.yto.net.cn/open/track_query/v1/query',
-      production: 'https://openapi.yto.net.cn/open/track_query/v1/query'
+      sandbox: 'https://openuat.yto56test.com:5443/open/track_query_adapter/v1',
+      production: 'https://openapi.yto.net.cn/open/track_query_adapter/v1'
     }
   },
   // 申通快递 - 申通开放平台 https://open.sto.cn/

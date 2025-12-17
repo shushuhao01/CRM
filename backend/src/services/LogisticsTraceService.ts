@@ -346,30 +346,47 @@ class LogisticsTraceService {
   }
 
   // ========== 圆通速递 ==========
+  // 圆通开放平台API文档: https://open.yto.net.cn/interfaceDocument/menu251/submenu258
   private async queryYTOTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
-    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    const data = JSON.stringify({ waybillNo: trackingNo });
+    const timestamp = Date.now().toString();
 
-    const signStr = data + config.appKey;
+    // 请求体数据
+    const requestData = {
+      waybillNo: trackingNo
+    };
+    const dataStr = JSON.stringify(requestData);
+
+    // 签名: MD5(data + appSecret)
+    const signStr = dataStr + config.appKey; // appKey存储的是AppSecret
     const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
 
-    const apiUrl = config.apiEnvironment === 'production'
-      ? 'https://openapi.yto.net.cn/open/track_query/v1/query'
-      : 'https://openapi-test.yto.net.cn/open/track_query/v1/query';
+    // API地址根据环境选择
+    const baseUrl = config.apiEnvironment === 'production'
+      ? 'https://openapi.yto.net.cn/open/track_query_adapter/v1'
+      : 'https://openuat.yto56test.com:5443/open/track_query_adapter/v1';
+
+    // 完整URL: baseUrl/{appKey}/{环境标识}
+    const envFlag = config.apiEnvironment === 'production' ? 'PROD' : 'TEST';
+    const apiUrl = `${baseUrl}/${config.appId}/${envFlag}`;
+
+    console.log('[圆通API] 请求URL:', apiUrl);
+    console.log('[圆通API] 请求数据:', dataStr);
 
     const response = await axios.post(apiUrl, {
-      data: data,
+      data: dataStr,
       sign: sign,
       timestamp: timestamp,
       format: 'JSON',
-      appkey: config.appId,
-      user_id: config.appSecret,
-      method: 'yto.Marketing.WaybillTrace'
+      user_id: config.appSecret // appSecret存储的是UserId
     }, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       timeout: 10000
     });
 
+    console.log('[圆通API] 响应:', JSON.stringify(response.data));
     return this.parseYTOResponse(trackingNo, response.data);
   }
 
