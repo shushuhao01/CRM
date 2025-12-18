@@ -69,8 +69,8 @@ service.interceptors.request.use(
     config.signal = controller.signal
     pendingRequests.set(requestKey, controller)
 
-    // 显示加载状态
-    if (config.showLoading !== false) {
+    // 显示加载状态（默认不显示全局loading，需要显式设置 showLoading: true）
+    if (config.showLoading === true) {
       requestCount++
       if (requestCount === 1) {
         appStore.showLoading({
