@@ -152,7 +152,7 @@
           <span class="preview-time">{{ formatTime(previewData.publishedAt || previewData.createdAt) }}</span>
           <span class="preview-author">{{ previewData.createdByName }}</span>
         </div>
-        <div class="preview-body" v-html="previewData.content"></div>
+        <div class="preview-body" v-html="sanitizeHtml(previewData.content)"></div>
       </div>
       <template #footer>
         <el-button @click="previewVisible = false">关闭</el-button>
@@ -271,6 +271,7 @@ import {
 import '@wangeditor/editor/dist/css/style.css'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import { createEditor, createToolbar } from '@wangeditor/editor'
+import { sanitizeHtml } from '@/utils/sanitize'
 
 // 使用消息Store
 const messageStore = useMessageStore()

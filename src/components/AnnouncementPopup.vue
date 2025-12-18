@@ -87,9 +87,16 @@ const formatTime = (time: string) => {
 }
 
 const truncateContent = (content: string) => {
-  // 移除HTML标签后截取
+  // 移除HTML标签后截取，并转义防止XSS
   const text = content.replace(/<[^>]+>/g, '')
-  return text.length > 100 ? text.substring(0, 100) + '...' : text
+  const truncated = text.length > 100 ? text.substring(0, 100) + '...' : text
+  // 转义HTML特殊字符
+  return truncated
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
 }
 
 const handleClose = async () => {

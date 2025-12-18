@@ -1165,10 +1165,20 @@ const getRowClassName = ({ row }: { row: any }) => {
   return ''
 }
 
-// 高亮关键词
+// 高亮关键词（安全版本，防止XSS）
 const highlightKeywords = (text: string) => {
+  if (!text) return ''
+  // 先转义HTML特殊字符
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+
+  // 再添加高亮标签
   const keywords = ['紧急', '加急', '重要', '特殊', '注意']
-  let result = text
+  let result = escaped
   keywords.forEach(keyword => {
     const regex = new RegExp(keyword, 'gi')
     result = result.replace(regex, `<span class="highlight-keyword">${keyword}</span>`)

@@ -22,7 +22,7 @@
           <el-tag size="small" type="primary">{{ selectedAnnouncement.type === 'notice' ? '全公司' : '部门' }}</el-tag>
           <span class="time">{{ formatTime(selectedAnnouncement.publishedAt) }}</span>
         </div>
-        <div class="detail-content" v-html="selectedAnnouncement.content"></div>
+        <div class="detail-content" v-html="sanitizeHtml(selectedAnnouncement.content)"></div>
       </div>
       <template #footer>
         <el-button @click="showDetail = false">关闭</el-button>
@@ -39,6 +39,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useMessageStore } from '@/stores/message'
 import { Bell, Close } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
+import { sanitizeHtml } from '@/utils/sanitize'
 
 const messageStore = useMessageStore()
 
