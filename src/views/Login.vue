@@ -91,7 +91,7 @@
       :close-on-click-modal="false"
       class="agreement-dialog"
     >
-      <div class="agreement-content" v-html="agreementDialogContent"></div>
+      <div class="agreement-content" v-html="sanitizeHtml(agreementDialogContent)"></div>
       <template #footer>
         <el-button @click="agreementDialogVisible = false">关闭</el-button>
         <el-button type="primary" @click="agreeAndClose">
@@ -111,6 +111,7 @@ import { useConfigStore } from '@/stores/config'
 import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { preloadAppData } from '@/services/appInitService'
+import { sanitizeHtml } from '@/utils/sanitize'
 
 const router = useRouter()
 const safeNavigator = createSafeNavigator(router)

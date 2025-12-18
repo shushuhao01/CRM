@@ -40,7 +40,7 @@
             <el-menu-item index="project-features">核心特性</el-menu-item>
             <el-menu-item index="project-architecture">技术架构</el-menu-item>
           </el-sub-menu>
-          
+
           <el-sub-menu index="business">
             <template #title>
               <el-icon><Operation /></el-icon>
@@ -50,7 +50,7 @@
             <el-menu-item index="business-rules">业务规则</el-menu-item>
             <el-menu-item index="business-integration">系统集成</el-menu-item>
           </el-sub-menu>
-          
+
           <el-sub-menu index="deployment">
             <template #title>
               <el-icon><Setting /></el-icon>
@@ -60,7 +60,7 @@
             <el-menu-item index="deployment-config">配置说明</el-menu-item>
             <el-menu-item index="deployment-troubleshoot">故障排除</el-menu-item>
           </el-sub-menu>
-          
+
           <el-sub-menu index="modules">
             <template #title>
               <el-icon><Grid /></el-icon>
@@ -73,7 +73,7 @@
             <el-menu-item index="module-finance">财务管理</el-menu-item>
             <el-menu-item index="module-report">报表统计</el-menu-item>
           </el-sub-menu>
-          
+
           <el-sub-menu index="faq">
             <template #title>
               <el-icon><QuestionFilled /></el-icon>
@@ -162,25 +162,25 @@ const handleSearch = (value: string) => {
   if (value.trim()) {
     isSearching.value = true
     const query = value.toLowerCase()
-    
+
     // 智能搜索：支持标题、摘要、分类和内容搜索
     searchResults.value = mockSearchResults.filter(item => {
       const titleMatch = item.title.toLowerCase().includes(query)
       const excerptMatch = item.excerpt.toLowerCase().includes(query)
       const categoryMatch = item.category.toLowerCase().includes(query)
       const contentMatch = item.content.toLowerCase().includes(query)
-      
+
       return titleMatch || excerptMatch || categoryMatch || contentMatch
     }).map(item => {
       // 计算匹配度分数，用于排序
       let score = 0
       const query_lower = query.toLowerCase()
-      
+
       if (item.title.toLowerCase().includes(query_lower)) score += 10
       if (item.category.toLowerCase().includes(query_lower)) score += 5
       if (item.excerpt.toLowerCase().includes(query_lower)) score += 3
       if (item.content.toLowerCase().includes(query_lower)) score += 1
-      
+
       return { ...item, score }
     }).sort((a, b) => b.score - a.score) // 按匹配度排序
   } else {
@@ -199,12 +199,23 @@ const selectSearchResult = (result: any) => {
   clearSearch()
 }
 
-// 高亮搜索关键词
+// 高亮搜索关键词（安全版本，防止XSS）
 const highlightText = (text: string, query: string) => {
-  if (!query.trim()) return text
-  
-  const regex = new RegExp(`(${query})`, 'gi')
-  return text.replace(regex, '<mark>$1</mark>')
+  if (!text) return ''
+  // 先转义HTML特殊字符
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+
+  if (!query || !query.trim()) return escaped
+
+  // 转义查询字符串中的正则特殊字符
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(${escapedQuery})`, 'gi')
+  return escaped.replace(regex, '<mark>$1</mark>')
 }
 
 // 菜单选择
@@ -282,7 +293,7 @@ const handleKeydown = (event: KeyboardEvent) => {
       searchInput.focus()
     }
   }
-  
+
   // ESC 清除搜索
   if (event.key === 'Escape' && isSearching.value) {
     clearSearch()
@@ -502,14 +513,14 @@ onUnmounted(() => {
   .main-content {
     flex-direction: column;
   }
-  
+
   .sidebar {
     width: 100%;
     height: 200px;
     border-right: none;
     border-bottom: 1px solid #e4e7ed;
   }
-  
+
   .content-wrapper {
     padding: 20px;
   }
