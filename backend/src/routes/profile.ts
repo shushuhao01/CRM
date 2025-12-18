@@ -53,12 +53,9 @@ const upload = multer({
 const simpleAuth = (req: any, res: any, next: any) => {
   try {
     const authHeader = req.headers.authorization;
-    console.log('[Profile Auth] Authorization header:', authHeader ? '存在' : '不存在');
-
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
-      console.log('[Profile Auth] Token缺失');
       return res.status(401).json({
         success: false,
         message: '访问令牌缺失',
@@ -66,16 +63,16 @@ const simpleAuth = (req: any, res: any, next: any) => {
       });
     }
 
-    console.log('[Profile Auth] Token前30字符:', token.substring(0, 30));
-
     // 验证令牌
     const payload = JwtConfig.verifyAccessToken(token);
-    console.log('[Profile Auth] Token验证成功，用户ID:', payload?.userId);
 
     req.user = payload;
     next();
   } catch (error) {
-    console.error('[Profile Auth] JWT认证失败:', error);
+    // 仅开发环境输出错误详情
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[Profile Auth] JWT认证失败:', error);
+    }
     return res.status(401).json({
       success: false,
       message: 'JWT认证失败',

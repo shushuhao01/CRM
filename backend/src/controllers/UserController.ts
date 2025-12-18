@@ -36,9 +36,6 @@ export class UserController {
       where: { username }
     });
 
-    console.log('[Login Debug] 查询到的用户对象:', user);
-    console.log('[Login Debug] 用户对象的keys:', user ? Object.keys(user) : 'null');
-
     if (!user) {
       // 记录登录失败日志（失败不影响错误返回）
       try {
@@ -50,8 +47,8 @@ export class UserController {
           ipAddress: req.ip,
           userAgent: req.get('User-Agent')
         });
-      } catch (logError) {
-        console.error('[Login] 记录日志失败:', logError);
+      } catch (_logError) {
+        // 日志记录失败不影响主流程
       }
 
       throw new BusinessError('用户名或密码错误', 'INVALID_CREDENTIALS');
@@ -67,14 +64,7 @@ export class UserController {
     }
 
     // 验证密码
-    console.log('[Login Debug] 开始验证密码');
-    console.log('[Login Debug] 用户名:', username);
-    console.log('[Login Debug] 输入密码:', password);
-    console.log('[Login Debug] 数据库密码哈希:', user.password);
-    console.log('[Login Debug] 密码哈希长度:', user.password?.length);
-
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    console.log('[Login Debug] 密码验证结果:', isPasswordValid);
 
     if (!isPasswordValid) {
       // 增加登录失败次数
@@ -100,8 +90,8 @@ export class UserController {
           ipAddress: req.ip,
           userAgent: req.get('User-Agent')
         });
-      } catch (logError) {
-        console.error('[Login] 记录日志失败:', logError);
+      } catch (_logError) {
+        // 日志记录失败不影响主流程
       }
 
       throw new BusinessError('用户名或密码错误', 'INVALID_CREDENTIALS');
@@ -114,8 +104,8 @@ export class UserController {
       user.lastLoginAt = new Date();
       user.lastLoginIp = req.ip || '';
       await this.userRepository.save(user);
-    } catch (saveError) {
-      console.error('[Login] 保存用户信息失败，但继续登录流程:', saveError);
+    } catch (_saveError) {
+      // 保存失败不影响登录流程
     }
 
     // 生成JWT令牌
@@ -141,8 +131,8 @@ export class UserController {
         ipAddress: req.ip,
         userAgent: req.get('User-Agent')
       });
-    } catch (logError) {
-      console.error('[Login] 记录日志失败，但继续登录流程:', logError);
+    } catch (_logError) {
+      // 日志记录失败不影响登录流程
     }
 
     // 返回用户信息和令牌
