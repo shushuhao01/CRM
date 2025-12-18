@@ -630,22 +630,25 @@ export class UserController {
 
     // 获取各角色用户数
     const adminCount = await this.userRepository.count({ where: { role: 'admin' } });
+    const superAdminCount = await this.userRepository.count({ where: { role: 'super_admin' } });
     const managerCount = await this.userRepository.count({ where: { role: 'manager' } });
+    const departmentManagerCount = await this.userRepository.count({ where: { role: 'department_manager' } });
     const salesCount = await this.userRepository.count({ where: { role: 'sales' } });
+    const salesStaffCount = await this.userRepository.count({ where: { role: 'sales_staff' } });
     const serviceCount = await this.userRepository.count({ where: { role: 'service' } });
+    const customerServiceCount = await this.userRepository.count({ where: { role: 'customer_service' } });
 
-    // 获取各部门用户数
+    // 获取各部门用户数（使用departmentName字段，不需要关联）
     const departmentStats = await this.userRepository
       .createQueryBuilder('user')
-      .leftJoin('user.department', 'department')
       .select([
         'user.departmentId as departmentId',
-        'department.name as departmentName',
+        'user.departmentName as departmentName',
         'COUNT(user.id) as count'
       ])
       .where('user.departmentId IS NOT NULL')
       .groupBy('user.departmentId')
-      .addGroupBy('department.name')
+      .addGroupBy('user.departmentName')
       .getRawMany();
 
     const statistics = {
@@ -655,12 +658,16 @@ export class UserController {
       locked,
       byRole: {
         admin: adminCount,
+        super_admin: superAdminCount,
         manager: managerCount,
+        department_manager: departmentManagerCount,
         sales: salesCount,
-        service: serviceCount
+        sales_staff: salesStaffCount,
+        service: serviceCount,
+        customer_service: customerServiceCount
       },
       byDepartment: departmentStats.map(stat => ({
-        departmentId: parseInt(stat.departmentId),
+        departmentId: stat.departmentId,
         departmentName: stat.departmentName || '未知部门',
         count: parseInt(stat.count)
       }))
