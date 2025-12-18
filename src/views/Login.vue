@@ -1,233 +1,288 @@
 <template>
   <div class="login-page">
-    <!-- 背景装饰元素 -->
-    <div class="bg-decorations">
-      <div class="decoration-circle circle-1"></div>
-      <div class="decoration-circle circle-2"></div>
-      <div class="decoration-circle circle-3"></div>
-      <div class="decoration-circle circle-4"></div>
+    <!-- 3D透视网格背景 -->
+    <div class="perspective-bg">
+      <div class="grid-floor"></div>
     </div>
 
-    <!-- 主容器 -->
-    <div class="login-wrapper">
-      <!-- 左侧展示区 -->
-      <div class="showcase-section">
-        <div class="showcase-content">
-          <!-- 品牌Logo -->
-          <div class="brand-logo">
-            <span class="logo-text">Smart</span>
-            <span class="logo-highlight">CRM</span>
-          </div>
+    <!-- 背景点缀 -->
+    <div class="bg-decorations">
+      <div class="deco-circle deco-1"></div>
+      <div class="deco-circle deco-2"></div>
+      <div class="deco-circle deco-3"></div>
+      <div class="deco-dot dot-1"></div>
+      <div class="deco-dot dot-2"></div>
+      <div class="deco-dot dot-3"></div>
+      <div class="deco-dot dot-4"></div>
+      <div class="deco-square sq-1"></div>
+      <div class="deco-square sq-2"></div>
+    </div>
 
-          <!-- 3D插画区域 -->
-          <div class="illustration-container">
-            <div class="illustration-wrapper">
-              <!-- 主要插画 - 数据分析场景 -->
-              <svg class="main-illustration" viewBox="0 0 500 400" fill="none">
-                <!-- 背景圆弧 -->
-                <ellipse cx="250" cy="350" rx="180" ry="30" fill="rgba(255,255,255,0.1)"/>
+    <!-- 左侧内容区 -->
+    <div class="left-section">
+      <!-- Logo -->
+      <div class="logo">
+        <div class="logo-icon">
+          <svg width="42" height="42" viewBox="0 0 42 42" fill="none">
+            <defs>
+              <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#6366f1"/>
+                <stop offset="100%" stop-color="#8b5cf6"/>
+              </linearGradient>
+            </defs>
+            <rect width="42" height="42" rx="10" fill="url(#logoGrad)"/>
+            <path d="M12 21C12 16 16 12 21 12C26 12 30 16 30 21" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="21" cy="24" r="5" fill="white" fill-opacity="0.9"/>
+            <path d="M21 29V32" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span class="logo-text">云客</span>
+        <span class="logo-badge">CRM</span>
+      </div>
 
-                <!-- 曲面屏幕 -->
-                <path d="M80 100 Q250 60 420 100 L400 280 Q250 320 100 280 Z"
-                      fill="url(#screenGradient)" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>
+      <!-- 3D插画区域 - 商务科技风格 -->
+      <div class="illustration-area">
+        <div class="illustration-wrapper">
+          <svg class="main-illustration" viewBox="0 0 550 420" fill="none">
+            <!-- 背景柔和光晕 -->
+            <circle cx="275" cy="200" r="160" fill="url(#softGrad1)" opacity="0.12"/>
+            <circle cx="380" cy="300" r="100" fill="url(#softGrad2)" opacity="0.08"/>
+            <circle cx="150" cy="120" r="70" fill="url(#softGrad3)" opacity="0.06"/>
 
-                <!-- 屏幕内容 - 数据图表 -->
-                <rect x="120" y="130" width="80" height="60" rx="4" fill="rgba(255,255,255,0.15)"/>
-                <rect x="130" y="145" width="60" height="8" rx="2" fill="#4ade80"/>
-                <rect x="130" y="158" width="45" height="8" rx="2" fill="#60a5fa"/>
-                <rect x="130" y="171" width="55" height="8" rx="2" fill="#f472b6"/>
+            <!-- 中心3D立体方块组 - 浅色简约风 -->
+            <g transform="translate(180, 100)" class="main-cube-group">
+              <!-- 大方块 - 主体 -->
+              <g class="cube-main">
+                <path d="M0 50 L80 0 L160 50 L80 100 Z" fill="#eef2ff"/>
+                <path d="M0 50 L0 130 L80 180 L80 100 Z" fill="#e0e7ff"/>
+                <path d="M80 100 L80 180 L160 130 L160 50 Z" fill="#c7d2fe"/>
+                <!-- 方块顶部图标 -->
+                <g transform="translate(55, 25)">
+                  <circle cx="25" cy="25" r="22" fill="white" filter="url(#iconShadow)"/>
+                  <circle cx="25" cy="25" r="16" fill="url(#iconGrad)"/>
+                  <path d="M18 25 L23 30 L33 20" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </g>
+              </g>
 
-                <!-- 饼图 -->
-                <circle cx="280" cy="160" r="35" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)"/>
-                <path d="M280 125 A35 35 0 0 1 315 160 L280 160 Z" fill="#4ade80"/>
-                <path d="M315 160 A35 35 0 0 1 280 195 L280 160 Z" fill="#60a5fa"/>
-                <path d="M280 195 A35 35 0 0 1 245 160 L280 160 Z" fill="#f472b6"/>
+              <!-- 中方块 - 右上浮动 -->
+              <g transform="translate(140, -30)" class="float-cube-1">
+                <path d="M0 30 L45 0 L90 30 L45 60 Z" fill="#fce7f3"/>
+                <path d="M0 30 L0 75 L45 105 L45 60 Z" fill="#fbcfe8"/>
+                <path d="M45 60 L45 105 L90 75 L90 30 Z" fill="#f9a8d4"/>
+                <circle cx="45" cy="22" r="12" fill="white"/>
+                <rect x="40" y="17" width="10" height="10" rx="2" fill="#ec4899"/>
+              </g>
 
-                <!-- 折线图 -->
-                <rect x="330" y="130" width="60" height="60" rx="4" fill="rgba(255,255,255,0.15)"/>
-                <polyline points="340,175 355,160 365,168 380,145" stroke="#4ade80" stroke-width="2" fill="none"/>
+              <!-- 小方块 - 左下浮动 -->
+              <g transform="translate(-60, 120)" class="float-cube-2">
+                <path d="M0 20 L35 0 L70 20 L35 40 Z" fill="#d1fae5"/>
+                <path d="M0 20 L0 55 L35 75 L35 40 Z" fill="#a7f3d0"/>
+                <path d="M35 40 L35 75 L70 55 L70 20 Z" fill="#6ee7b7"/>
+                <circle cx="35" cy="14" r="10" fill="white"/>
+                <circle cx="35" cy="14" r="6" fill="#10b981"/>
+              </g>
+            </g>
 
-                <!-- 人物 - 坐在椅子上 -->
-                <ellipse cx="250" cy="340" rx="60" ry="15" fill="rgba(0,0,0,0.1)"/>
+            <!-- 浮动数据卡片1 - 业绩统计 -->
+            <g transform="translate(380, 80)" class="float-card-1">
+              <rect width="130" height="100" rx="16" fill="white" filter="url(#cardShadow)"/>
+              <rect x="15" y="15" width="50" height="8" rx="4" fill="#f3f4f6"/>
+              <text x="15" y="45" fill="#1f2937" font-size="22" font-weight="700">2,847</text>
+              <text x="15" y="60" fill="#6b7280" font-size="10">总客户数</text>
+              <!-- 迷你折线图 -->
+              <polyline points="15,85 35,78 55,82 75,70 95,75 115,65"
+                        stroke="#6366f1" stroke-width="2" fill="none" stroke-linecap="round"/>
+              <circle cx="115" cy="65" r="4" fill="#6366f1"/>
+              <!-- 增长标签 -->
+              <g transform="translate(85, 12)">
+                <rect width="35" height="18" rx="9" fill="#dcfce7"/>
+                <text x="17" y="13" text-anchor="middle" fill="#10b981" font-size="9" font-weight="600">+12%</text>
+              </g>
+            </g>
 
-                <!-- 椅子 -->
-                <rect x="200" y="280" width="100" height="50" rx="10" fill="#6366f1"/>
-                <rect x="190" y="260" width="120" height="30" rx="8" fill="#818cf8"/>
+            <!-- 浮动数据卡片2 - 图表卡片 -->
+            <g transform="translate(30, 260)" class="float-card-2">
+              <rect width="150" height="110" rx="16" fill="white" filter="url(#cardShadow)"/>
+              <text x="15" y="28" fill="#1f2937" font-size="11" font-weight="600">销售趋势</text>
+              <!-- 柱状图 -->
+              <g transform="translate(15, 40)">
+                <rect x="0" y="45" width="16" height="20" rx="3" fill="#e0e7ff"/>
+                <rect x="22" y="35" width="16" height="30" rx="3" fill="#c7d2fe"/>
+                <rect x="44" y="20" width="16" height="45" rx="3" fill="#a5b4fc"/>
+                <rect x="66" y="28" width="16" height="37" rx="3" fill="#818cf8"/>
+                <rect x="88" y="10" width="16" height="55" rx="3" fill="#6366f1"/>
+                <rect x="110" y="18" width="16" height="47" rx="3" fill="#818cf8"/>
+              </g>
+              <!-- 图例 -->
+              <circle cx="20" cy="100" r="4" fill="#6366f1"/>
+              <text x="30" y="103" fill="#6b7280" font-size="8">本月业绩</text>
+            </g>
 
-                <!-- 人物身体 -->
-                <ellipse cx="250" cy="240" rx="25" ry="30" fill="#fbbf24"/>
-                <circle cx="250" cy="200" r="20" fill="#fcd34d"/>
-                <ellipse cx="250" cy="205" rx="15" ry="12" fill="#fef3c7"/>
+            <!-- 浮动数据卡片3 - 环形进度 -->
+            <g transform="translate(420, 250)" class="float-card-3">
+              <rect width="110" height="110" rx="16" fill="white" filter="url(#cardShadow)"/>
+              <text x="55" y="25" text-anchor="middle" fill="#1f2937" font-size="10" font-weight="600">完成率</text>
+              <!-- 环形图 -->
+              <g transform="translate(55, 65)">
+                <circle cx="0" cy="0" r="30" fill="none" stroke="#f3f4f6" stroke-width="6"/>
+                <circle cx="0" cy="0" r="30" fill="none" stroke="url(#ringGrad)" stroke-width="6"
+                        stroke-dasharray="142 188" stroke-linecap="round" transform="rotate(-90)"/>
+                <text x="0" y="5" text-anchor="middle" fill="#1f2937" font-size="16" font-weight="700">76%</text>
+              </g>
+            </g>
 
-                <!-- 头发 -->
-                <path d="M230 195 Q250 175 270 195" stroke="#1e293b" stroke-width="8" fill="none" stroke-linecap="round"/>
+            <!-- 连接虚线 - 数据流动 -->
+            <g class="connection-lines">
+              <path d="M340 180 Q380 140 400 120" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.3">
+                <animate attributeName="stroke-dashoffset" from="0" to="10" dur="1.5s" repeatCount="indefinite"/>
+              </path>
+              <path d="M200 280 Q150 290 120 300" stroke="#10b981" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.3">
+                <animate attributeName="stroke-dashoffset" from="0" to="10" dur="1.8s" repeatCount="indefinite"/>
+              </path>
+              <path d="M340 220 Q400 250 430 270" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.25">
+                <animate attributeName="stroke-dashoffset" from="0" to="10" dur="1.2s" repeatCount="indefinite"/>
+              </path>
+            </g>
 
-                <!-- 手臂 -->
-                <path d="M225 240 L180 260 L170 250" stroke="#fcd34d" stroke-width="12" fill="none" stroke-linecap="round"/>
-                <path d="M275 240 L320 260 L340 250" stroke="#fcd34d" stroke-width="12" fill="none" stroke-linecap="round"/>
+            <!-- 装饰小元素 -->
+            <circle cx="480" cy="180" r="6" fill="#6366f1" opacity="0.4" class="pulse-dot"/>
+            <circle cx="80" cy="180" r="5" fill="#ec4899" opacity="0.35" class="pulse-dot"/>
+            <circle cx="520" cy="350" r="4" fill="#10b981" opacity="0.4" class="pulse-dot"/>
+            <rect x="50" y="350" width="10" height="10" rx="2" fill="#f59e0b" opacity="0.3" transform="rotate(45 55 355)"/>
+            <rect x="500" y="100" width="8" height="8" rx="2" fill="#8b5cf6" opacity="0.25" transform="rotate(45 504 104)"/>
+            <circle cx="150" cy="380" r="3" fill="#6366f1" opacity="0.3"/>
 
-                <!-- 键盘 -->
-                <rect x="160" y="245" width="40" height="20" rx="4" fill="#e2e8f0"/>
-                <rect x="300" y="245" width="50" height="15" rx="3" fill="#e2e8f0"/>
-
-                <!-- 装饰小元素 -->
-                <rect x="60" y="150" width="15" height="15" rx="2" fill="#f472b6" opacity="0.8"/>
-                <circle cx="430" cy="120" r="8" fill="#4ade80" opacity="0.8"/>
-                <rect x="100" y="80" width="10" height="10" fill="#60a5fa" opacity="0.6" transform="rotate(45 105 85)"/>
-                <circle cx="400" cy="200" r="5" fill="#fbbf24" opacity="0.8"/>
-
-                <!-- 渐变定义 -->
-                <defs>
-                  <linearGradient id="screenGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="rgba(56, 189, 248, 0.3)"/>
-                    <stop offset="50%" stop-color="rgba(99, 102, 241, 0.3)"/>
-                    <stop offset="100%" stop-color="rgba(168, 85, 247, 0.3)"/>
-                  </linearGradient>
-                </defs>
-              </svg>
-
-              <!-- 浮动装饰元素 -->
-              <div class="floating-element el-1">
-                <svg width="40" height="40" viewBox="0 0 40 40">
-                  <rect width="40" height="40" rx="8" fill="rgba(255,255,255,0.2)"/>
-                  <path d="M12 20 L18 26 L28 14" stroke="#4ade80" stroke-width="3" fill="none" stroke-linecap="round"/>
-                </svg>
-              </div>
-              <div class="floating-element el-2">
-                <svg width="35" height="35" viewBox="0 0 35 35">
-                  <circle cx="17.5" cy="17.5" r="17.5" fill="rgba(255,255,255,0.15)"/>
-                  <path d="M10 17.5 H25 M17.5 10 V25" stroke="#60a5fa" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-              </div>
-              <div class="floating-element el-3">
-                <svg width="30" height="30" viewBox="0 0 30 30">
-                  <rect width="30" height="30" rx="6" fill="rgba(244, 114, 182, 0.3)"/>
-                  <circle cx="15" cy="15" r="6" fill="#f472b6"/>
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <!-- 特性展示 -->
-          <div class="features-list">
-            <div class="feature-item">
-              <div class="feature-icon">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <path d="M10 2L12.5 7.5L18 8.5L14 12.5L15 18L10 15L5 18L6 12.5L2 8.5L7.5 7.5L10 2Z" fill="#fbbf24"/>
-                </svg>
-              </div>
-              <span>智能客户管理</span>
-            </div>
-            <div class="feature-item">
-              <div class="feature-icon">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <rect x="2" y="4" width="16" height="12" rx="2" stroke="#4ade80" stroke-width="2"/>
-                  <path d="M6 9L9 12L14 7" stroke="#4ade80" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-              </div>
-              <span>订单全流程追踪</span>
-            </div>
-            <div class="feature-item">
-              <div class="feature-icon">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <path d="M3 15L7 11L11 14L17 5" stroke="#60a5fa" stroke-width="2" stroke-linecap="round"/>
-                  <circle cx="17" cy="5" r="2" fill="#60a5fa"/>
-                </svg>
-              </div>
-              <span>数据分析洞察</span>
-            </div>
-          </div>
+            <!-- 渐变和滤镜定义 -->
+            <defs>
+              <linearGradient id="softGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#6366f1"/>
+                <stop offset="100%" stop-color="#a5b4fc"/>
+              </linearGradient>
+              <linearGradient id="softGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#10b981"/>
+                <stop offset="100%" stop-color="#6ee7b7"/>
+              </linearGradient>
+              <linearGradient id="softGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#ec4899"/>
+                <stop offset="100%" stop-color="#f9a8d4"/>
+              </linearGradient>
+              <linearGradient id="iconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#6366f1"/>
+                <stop offset="100%" stop-color="#8b5cf6"/>
+              </linearGradient>
+              <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#6366f1"/>
+                <stop offset="100%" stop-color="#10b981"/>
+              </linearGradient>
+              <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">
+                <feDropShadow dx="0" dy="10" stdDeviation="15" flood-color="#6366f1" flood-opacity="0.06"/>
+              </filter>
+              <filter id="iconShadow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#6366f1" flood-opacity="0.15"/>
+              </filter>
+            </defs>
+          </svg>
         </div>
       </div>
 
-
-      <!-- 右侧登录区 -->
-      <div class="login-section">
-        <div class="login-card">
-          <!-- Logo图标 -->
-          <div class="card-logo">
-            <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
-              <rect width="52" height="52" rx="12" fill="url(#cardLogoGradient)"/>
-              <path d="M15 26L22 33L37 17" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-              <defs>
-                <linearGradient id="cardLogoGradient" x1="0" y1="0" x2="52" y2="52">
-                  <stop offset="0%" stop-color="#6366f1"/>
-                  <stop offset="100%" stop-color="#8b5cf6"/>
-                </linearGradient>
-              </defs>
+      <!-- 底部特性 -->
+      <div class="features">
+        <div class="feature">
+          <div class="feature-icon purple">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
             </svg>
           </div>
-
-          <!-- 标题 -->
-          <h1 class="card-title">智能销售管理系统</h1>
-          <p class="card-subtitle">CRM CUSTOMER RELATIONSHIP MANAGEMENT</p>
-
-          <!-- 登录表单 -->
-          <el-form :model="loginForm" :rules="rules" ref="loginFormRef" class="login-form">
-            <el-form-item prop="username">
-              <el-input
-                v-model="loginForm.username"
-                placeholder="用户名"
-                size="large"
-                prefix-icon="User"
-                clearable
-              />
-            </el-form-item>
-
-            <el-form-item prop="password">
-              <el-input
-                v-model="loginForm.password"
-                type="password"
-                placeholder="密码"
-                size="large"
-                prefix-icon="Lock"
-                show-password
-                clearable
-              />
-            </el-form-item>
-
-            <!-- 协议勾选 -->
-            <el-form-item class="agreement-item">
-              <el-checkbox v-model="agreeToTerms">
-                <span class="agreement-text">
-                  我已阅读并同意
-                  <a href="javascript:void(0)" @click.stop="showAgreementDialog('user')">《用户协议》</a>
-                  和
-                  <a href="javascript:void(0)" @click.stop="showAgreementDialog('privacy')">《隐私政策》</a>
-                </span>
-              </el-checkbox>
-            </el-form-item>
-
-            <el-form-item>
-              <el-button
-                type="primary"
-                size="large"
-                class="login-button"
-                :loading="loading"
-                :disabled="!agreeToTerms"
-                @click="handleLogin"
-              >
-                {{ loading ? '登录中...' : '登 录' }}
-              </el-button>
-            </el-form-item>
-          </el-form>
-
-          <!-- 底部版权 -->
-          <div class="card-footer">
-            <p>© 2025 智能销售管理系统</p>
+          <div class="feature-text">
+            <span class="feature-title">智能管理</span>
+            <span class="feature-desc">AI驱动的客户洞察</span>
           </div>
+        </div>
+        <div class="feature">
+          <div class="feature-icon pink">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+            </svg>
+          </div>
+          <div class="feature-text">
+            <span class="feature-title">数据分析</span>
+            <span class="feature-desc">实时业绩追踪</span>
+          </div>
+        </div>
+        <div class="feature">
+          <div class="feature-icon green">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <div class="feature-text">
+            <span class="feature-title">团队协作</span>
+            <span class="feature-desc">高效协同办公</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- 右侧登录区 -->
+    <div class="right-section">
+      <div class="login-card">
+        <div class="card-header">
+          <h1>欢迎回来</h1>
+          <p>登录云客系统，开启智能销售之旅</p>
+        </div>
+
+        <el-form :model="loginForm" :rules="rules" ref="loginFormRef" class="login-form">
+          <el-form-item prop="username">
+            <div class="input-wrapper">
+              <label>用户名</label>
+              <el-input v-model="loginForm.username" placeholder="请输入用户名" size="large" clearable>
+                <template #prefix>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                  </svg>
+                </template>
+              </el-input>
+            </div>
+          </el-form-item>
+
+          <el-form-item prop="password">
+            <div class="input-wrapper">
+              <label>密码</label>
+              <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" size="large" show-password clearable>
+                <template #prefix>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </template>
+              </el-input>
+            </div>
+          </el-form-item>
+
+          <el-form-item class="agreement-item">
+            <el-checkbox v-model="agreeToTerms">
+              <span class="agreement-text">
+                我已阅读并同意 <a @click.stop="showAgreementDialog('user')">《用户协议》</a> 和 <a @click.stop="showAgreementDialog('privacy')">《隐私政策》</a>
+              </span>
+            </el-checkbox>
+          </el-form-item>
+
+          <el-form-item>
+            <el-button type="primary" size="large" class="login-btn" :loading="loading" :disabled="!agreeToTerms" @click="handleLogin">
+              {{ loading ? '登录中...' : '登 录' }}
+            </el-button>
+          </el-form-item>
+        </el-form>
+
+        <div class="card-footer">
+          <p>© 2025 云客 · 智能销售管理系统</p>
         </div>
       </div>
     </div>
 
     <!-- 协议弹窗 -->
-    <el-dialog
-      v-model="agreementDialogVisible"
-      :title="agreementDialogTitle"
-      width="800px"
-      :close-on-click-modal="false"
-      class="agreement-dialog"
-    >
+    <el-dialog v-model="agreementDialogVisible" :title="agreementDialogTitle" width="650px" class="agreement-dialog">
       <div class="agreement-content" v-html="sanitizeHtml(agreementDialogContent)"></div>
       <template #footer>
         <el-button @click="agreementDialogVisible = false">关闭</el-button>
@@ -254,155 +309,57 @@ const configStore = useConfigStore()
 
 const loading = ref(false)
 const loginFormRef = ref<FormInstance>()
-
-const loginForm = reactive({
-  username: '',
-  password: ''
-})
-
+const loginForm = reactive({ username: '', password: '' })
 const agreeToTerms = ref(false)
 const agreementDialogVisible = ref(false)
 const agreementDialogTitle = ref('')
 const agreementDialogContent = ref('')
-const currentAgreementType = ref<'user' | 'privacy'>('user')
 
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
-  ]
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }, { min: 6, message: '密码至少6位', trigger: 'blur' }]
 }
 
-const getDefaultUserAgreement = () => {
-  return `<div style="line-height: 2.2; padding: 30px; font-size: 15px;">
-<h2 style="color: #303133; border-bottom: 3px solid #6366f1; padding-bottom: 15px; margin-bottom: 30px; text-align: center; font-size: 26px; font-weight: 700;">用户使用协议</h2>
-<p style="color: #606266; margin: 25px 0; font-size: 16px; line-height: 2.5; background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #6366f1;">
-  <strong>欢迎使用本CRM客户管理系统</strong>（以下简称"本系统"）。在使用本系统之前，<strong style="color: #6366f1;">请您仔细阅读并充分理解本协议的全部内容</strong>。
-</p>
-<h3 style="color: #6366f1; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #6366f1;">一、协议的接受</h3>
-<p style="color: #606266; margin: 18px 0; padding-left: 15px;"><strong>1.1</strong> 本协议是您与本系统运营方之间关于使用本系统服务所订立的协议。</p>
-<p style="color: #606266; margin: 18px 0; padding-left: 15px;"><strong>1.2</strong> 您点击<strong style="color: #6366f1;">"同意"</strong>按钮即表示您完全接受本协议的全部条款。</p>
-<h3 style="color: #6366f1; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #6366f1;">二、服务内容</h3>
-<p style="color: #606266; margin: 18px 0; padding-left: 15px;"><strong>2.1</strong> 本系统为企业提供客户关系管理服务，包括但不限于：</p>
-<ul style="color: #606266; padding-left: 50px; margin: 20px 0; line-height: 2.5;">
-  <li style="margin: 12px 0;">✓ 客户信息管理</li>
-  <li style="margin: 12px 0;">✓ 订单管理</li>
-  <li style="margin: 12px 0;">✓ 业绩统计</li>
-  <li style="margin: 12px 0;">✓ 数据分析</li>
-  <li style="margin: 12px 0;">✓ 团队协作</li>
-</ul>
-<h3 style="color: #6366f1; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #6366f1;">三、用户权利和义务</h3>
-<p style="color: #606266; margin: 25px 0; padding-left: 15px;"><strong style="font-size: 17px; color: #333;">3.1 用户权利：</strong></p>
-<ul style="color: #606266; padding-left: 50px; margin: 20px 0; line-height: 2.5;">
-  <li style="margin: 12px 0;">✓ 使用本系统提供的各项功能</li>
-  <li style="margin: 12px 0;">✓ 管理自己的客户数据</li>
-  <li style="margin: 12px 0;">✓ 查看业绩统计报表</li>
-  <li style="margin: 12px 0;">✓ 获得技术支持服务</li>
-</ul>
-<p style="color: #606266; margin: 25px 0; padding-left: 15px;"><strong style="font-size: 17px; color: #333;">3.2 用户义务：</strong></p>
-<ul style="color: #606266; padding-left: 50px; margin: 20px 0; line-height: 2.5;">
-  <li style="margin: 15px 0; padding: 15px; background: #fff3f3; border-left: 4px solid #f56c6c; border-radius: 4px;">
-    <strong style="color: #f56c6c; font-size: 16px;">⚠️ 严禁将本系统用于任何违法犯罪活动</strong>
-  </li>
-  <li style="margin: 12px 0;">• 遵守国家法律法规和社会公德</li>
-  <li style="margin: 12px 0;">• 妥善保管账号密码，对账号下的所有行为负责</li>
-  <li style="margin: 12px 0;">• 不得恶意攻击、破坏系统</li>
-</ul>
-<h3 style="color: #6366f1; margin-top: 45px; margin-bottom: 20px; font-size: 20px; font-weight: 600; padding-left: 15px; border-left: 5px solid #6366f1;">四、免责声明</h3>
-<p style="color: #f56c6c; font-weight: bold; margin: 25px 0; padding: 20px; background: #fff3f3; border-left: 5px solid #f56c6c; border-radius: 8px; font-size: 16px;">
-  <strong>⚠️ 重要提示：</strong>本系统仅作为工具提供服务，<strong>不对用户使用本系统产生的内容、行为及后果承担任何责任</strong>。
-</p>
-<div style="margin-top: 50px; padding-top: 25px; border-top: 2px dashed #e0e0e0; text-align: center;">
-  <p style="color: #909399; font-size: 13px; margin: 0;">最后更新日期：${new Date().toLocaleDateString('zh-CN')}</p>
-</div>
+const getDefaultUserAgreement = () => `<div style="padding:24px;line-height:1.9;color:#374151;">
+<h2 style="text-align:center;color:#111827;margin-bottom:24px;font-size:20px;">用户使用协议</h2>
+<p>欢迎使用云客CRM系统。使用前请仔细阅读本协议。</p>
+<h3 style="color:#6366f1;margin:20px 0 12px;font-size:16px;">一、服务内容</h3>
+<p>本系统提供客户关系管理服务，包括客户管理、订单管理、业绩统计、数据分析等功能。</p>
+<h3 style="color:#6366f1;margin:20px 0 12px;font-size:16px;">二、用户义务</h3>
+<ul style="padding-left:20px;"><li>遵守法律法规</li><li>妥善保管账号密码</li><li>不得恶意攻击系统</li></ul>
+<h3 style="color:#6366f1;margin:20px 0 12px;font-size:16px;">三、免责声明</h3>
+<p style="color:#dc2626;">本系统仅作为工具提供服务，不对用户行为及后果承担责任。</p>
 </div>`
-}
 
-
-const getDefaultPrivacyPolicy = () => {
-  return `<div style="line-height: 2; padding: 20px;">
-<h2 style="color: #303133; border-bottom: 2px solid #6366f1; padding-bottom: 10px;">用户隐私协议</h2>
-<p style="color: #606266; margin: 20px 0;">本隐私协议适用于本CRM客户管理系统。我们非常重视用户的隐私保护，特制定本协议。</p>
-<h3 style="color: #6366f1; margin-top: 30px;">一、信息收集</h3>
-<p style="color: #606266;"><strong>1.1 我们收集的信息类型：</strong></p>
-<ul style="color: #606266; padding-left: 30px;">
-  <li><strong>账号信息：</strong>用户名、密码、邮箱、手机号</li>
-  <li><strong>个人信息：</strong>姓名、部门、职位、头像</li>
-  <li><strong>业务信息：</strong>客户数据、订单信息、业绩数据</li>
-  <li><strong>使用信息：</strong>登录日志、操作记录、访问时间</li>
-</ul>
-<h3 style="color: #6366f1; margin-top: 30px;">二、信息使用</h3>
-<p style="color: #606266;"><strong>2.1 我们使用收集的信息用于：</strong></p>
-<ul style="color: #606266; padding-left: 30px;">
-  <li>提供系统服务和功能</li>
-  <li>改进用户体验</li>
-  <li>数据统计和分析</li>
-  <li>安全监控和风险防范</li>
-</ul>
-<h3 style="color: #6366f1; margin-top: 30px;">三、信息保护</h3>
-<p style="color: #606266;"><strong>3.1 安全措施：</strong></p>
-<ul style="color: #606266; padding-left: 30px;">
-  <li>数据加密传输（HTTPS）</li>
-  <li>密码加密存储</li>
-  <li>访问权限控制</li>
-  <li>定期安全审计</li>
-</ul>
-<h3 style="color: #6366f1; margin-top: 30px;">四、用户权利</h3>
-<p style="color: #606266;"><strong>4.1 您享有以下权利：</strong></p>
-<ul style="color: #606266; padding-left: 30px;">
-  <li>访问您的个人信息</li>
-  <li>更正不准确的信息</li>
-  <li>删除您的个人信息</li>
-  <li>注销您的账号</li>
-</ul>
-<h3 style="color: #6366f1; margin-top: 30px;">五、联系我们</h3>
-<p style="color: #606266;">如您对本隐私协议有任何疑问，请通过系统客服联系我们。</p>
-<p style="color: #909399; margin-top: 30px; font-size: 12px;">最后更新日期：${new Date().toLocaleDateString('zh-CN')}</p>
+const getDefaultPrivacyPolicy = () => `<div style="padding:24px;line-height:1.9;color:#374151;">
+<h2 style="text-align:center;color:#111827;margin-bottom:24px;font-size:20px;">隐私政策</h2>
+<p>我们重视您的隐私保护。</p>
+<h3 style="color:#6366f1;margin:20px 0 12px;font-size:16px;">一、信息收集</h3>
+<p>我们收集账号信息、业务数据、使用日志等。</p>
+<h3 style="color:#6366f1;margin:20px 0 12px;font-size:16px;">二、信息保护</h3>
+<p>采用加密传输、权限控制等安全措施保护您的数据。</p>
+<h3 style="color:#6366f1;margin:20px 0 12px;font-size:16px;">三、用户权利</h3>
+<p>您有权访问、更正、删除您的个人信息。</p>
 </div>`
-}
 
 const showAgreementDialog = (type: 'user' | 'privacy') => {
-  currentAgreementType.value = type
-  const agreementList = JSON.parse(localStorage.getItem('crm_agreement_list') || '[]')
-
-  if (type === 'user') {
-    agreementDialogTitle.value = '用户使用协议'
-    const userAgreement = agreementList.find((item: any) => item.type === 'user')
-    agreementDialogContent.value = userAgreement?.content || configStore.systemConfig.userAgreement || getDefaultUserAgreement()
-  } else {
-    agreementDialogTitle.value = '用户隐私协议'
-    const privacyAgreement = agreementList.find((item: any) => item.type === 'privacy')
-    agreementDialogContent.value = privacyAgreement?.content || configStore.systemConfig.privacyPolicy || getDefaultPrivacyPolicy()
-  }
+  const list = JSON.parse(localStorage.getItem('crm_agreement_list') || '[]')
+  agreementDialogTitle.value = type === 'user' ? '用户协议' : '隐私政策'
+  const item = list.find((i: any) => i.type === type)
+  agreementDialogContent.value = item?.content || (type === 'user' ? getDefaultUserAgreement() : getDefaultPrivacyPolicy())
   agreementDialogVisible.value = true
 }
 
-const agreeAndClose = () => {
-  agreeToTerms.value = true
-  agreementDialogVisible.value = false
-  ElMessage.success('感谢您同意我们的协议')
-}
+const agreeAndClose = () => { agreeToTerms.value = true; agreementDialogVisible.value = false; ElMessage.success('感谢您同意协议') }
 
 configStore.initConfig()
-const agreedBefore = localStorage.getItem('user_agreed_terms')
-if (agreedBefore === 'true') {
-  agreeToTerms.value = true
-}
+if (localStorage.getItem('user_agreed_terms') === 'true') agreeToTerms.value = true
 
-let loginDebounceTimer: NodeJS.Timeout | null = null
-
+let debounce: NodeJS.Timeout | null = null
 const handleLogin = async () => {
-  if (!agreeToTerms.value) {
-    ElMessage.warning('请先阅读并同意《用户使用协议》和《用户隐私协议》')
-    return
-  }
-  if (!loginFormRef.value) return
-  if (loginDebounceTimer) clearTimeout(loginDebounceTimer)
-  if (loading.value) {
-    ElMessage.warning('正在登录中，请稍候...')
-    return
-  }
+  if (!agreeToTerms.value) { ElMessage.warning('请先同意用户协议和隐私政策'); return }
+  if (!loginFormRef.value || loading.value) return
+  if (debounce) clearTimeout(debounce)
 
   await loginFormRef.value.validate(async (valid) => {
     if (valid) {
@@ -413,34 +370,13 @@ const handleLogin = async () => {
           localStorage.setItem('user_agreed_terms', 'true')
           ElMessage.success('登录成功')
           await nextTick()
-          preloadAppData().catch(err => console.warn('[Login] 预加载数据失败:', err))
-
-          if (userStore.currentUser?.forcePasswordChange) {
-            window.location.href = '/change-password'
-          } else {
-            window.location.href = '/'
-          }
-        } else {
-          ElMessage.error('登录失败')
-        }
-      } catch (error: unknown) {
-        console.error('登录错误:', error)
-        if (userStore.token && userStore.isLoggedIn) {
-          ElMessage.success('登录成功')
-          window.location.href = '/'
-          return
-        }
-        const errorMessage = error instanceof Error ? error.message : '登录失败，请检查用户名和密码'
-        ElMessage.error(errorMessage)
-
-        if (error instanceof Error && (error.message.includes('频繁') || error.message.includes('429'))) {
-          setTimeout(() => { loading.value = false }, 30000)
-          ElMessage.warning('登录尝试过于频繁，按钮已禁用30秒')
-          return
-        }
-      } finally {
-        loginDebounceTimer = setTimeout(() => { loading.value = false }, 1000)
-      }
+          preloadAppData().catch(() => {})
+          window.location.href = userStore.currentUser?.forcePasswordChange ? '/change-password' : '/'
+        } else { ElMessage.error('登录失败') }
+      } catch (e: any) {
+        if (userStore.token && userStore.isLoggedIn) { window.location.href = '/'; return }
+        ElMessage.error(e?.message || '登录失败')
+      } finally { debounce = setTimeout(() => { loading.value = false }, 1000) }
     }
   })
 }
@@ -448,485 +384,498 @@ const handleLogin = async () => {
 
 
 <style scoped>
-/* 页面基础样式 */
 .login-page {
   min-height: 100vh;
-  width: 100%;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 50%, #f0f9ff 100%);
   position: relative;
   overflow: hidden;
 }
 
-/* 背景装饰圆 */
+/* 3D透视网格背景 */
+.perspective-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  perspective: 1000px;
+  overflow: hidden;
+}
+
+.grid-floor {
+  position: absolute;
+  bottom: -20%;
+  left: -10%;
+  right: -10%;
+  height: 60%;
+  background:
+    linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px),
+    linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  transform: rotateX(60deg);
+  transform-origin: center top;
+  mask-image: linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 80%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 80%);
+}
+
+/* 背景点缀装饰 */
 .bg-decorations {
   position: absolute;
-  width: 100%;
-  height: 100%;
-  top: 0;
-  left: 0;
+  inset: 0;
   pointer-events: none;
   overflow: hidden;
 }
 
-.decoration-circle {
+.deco-circle {
   position: absolute;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  opacity: 0.4;
 }
 
-.circle-1 {
-  width: 400px;
-  height: 400px;
-  top: -150px;
-  left: -100px;
-  animation: float1 25s ease-in-out infinite;
-}
-
-.circle-2 {
+.deco-1 {
   width: 300px;
   height: 300px;
-  bottom: -100px;
-  right: -80px;
-  animation: float2 20s ease-in-out infinite;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
+  top: -80px;
+  right: 10%;
+  animation: pulse-slow 8s ease-in-out infinite;
 }
 
-.circle-3 {
+.deco-2 {
   width: 200px;
   height: 200px;
-  top: 40%;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.12) 0%, transparent 70%);
+  bottom: 10%;
   left: 5%;
-  background: rgba(255, 255, 255, 0.05);
-  animation: float3 18s ease-in-out infinite;
+  animation: pulse-slow 10s ease-in-out infinite 2s;
 }
 
-.circle-4 {
+.deco-3 {
   width: 150px;
   height: 150px;
-  top: 20%;
-  right: 10%;
-  background: rgba(255, 255, 255, 0.06);
-  animation: float1 22s ease-in-out infinite reverse;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.1) 0%, transparent 70%);
+  top: 40%;
+  right: 25%;
+  animation: pulse-slow 12s ease-in-out infinite 4s;
 }
 
-@keyframes float1 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(30px, 30px) scale(1.05); }
+.deco-dot {
+  position: absolute;
+  border-radius: 50%;
+  animation: float-dot 6s ease-in-out infinite;
 }
 
-@keyframes float2 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(-25px, -25px) scale(1.08); }
+.dot-1 {
+  width: 8px;
+  height: 8px;
+  background: #6366f1;
+  top: 15%;
+  left: 20%;
+  animation-delay: 0s;
 }
 
-@keyframes float3 {
-  0%, 100% { transform: translate(0, 0); }
-  33% { transform: translate(20px, -15px); }
-  66% { transform: translate(-15px, 20px); }
+.dot-2 {
+  width: 6px;
+  height: 6px;
+  background: #ec4899;
+  top: 25%;
+  right: 35%;
+  animation-delay: 1s;
 }
 
-/* 主容器 */
-.login-wrapper {
-  display: flex;
-  width: 100%;
-  max-width: 1200px;
-  min-height: 600px;
-  margin: 20px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 24px;
-  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.25);
-  overflow: hidden;
-  position: relative;
-  z-index: 1;
+.dot-3 {
+  width: 10px;
+  height: 10px;
+  background: #10b981;
+  bottom: 20%;
+  left: 35%;
+  animation-delay: 2s;
 }
 
-/* 左侧展示区 */
-.showcase-section {
-  flex: 1.2;
-  background: linear-gradient(160deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.12) 100%);
-  padding: 50px;
+.dot-4 {
+  width: 5px;
+  height: 5px;
+  background: #f59e0b;
+  bottom: 35%;
+  right: 15%;
+  animation-delay: 3s;
+}
+
+.deco-square {
+  position: absolute;
+  border-radius: 4px;
+  animation: float-rotate 8s ease-in-out infinite;
+}
+
+.sq-1 {
+  width: 12px;
+  height: 12px;
+  background: rgba(99, 102, 241, 0.3);
+  top: 30%;
+  left: 8%;
+  animation-delay: 0s;
+}
+
+.sq-2 {
+  width: 8px;
+  height: 8px;
+  background: rgba(236, 72, 153, 0.25);
+  bottom: 25%;
+  right: 30%;
+  animation-delay: 2s;
+}
+
+@keyframes pulse-slow {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50% { transform: scale(1.1); opacity: 0.6; }
+}
+
+@keyframes float-dot {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.6; }
+  50% { transform: translateY(-15px) scale(1.2); opacity: 1; }
+}
+
+@keyframes float-rotate {
+  0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.5; }
+  50% { transform: translateY(-10px) rotate(45deg); opacity: 0.8; }
+}
+
+/* 左侧区域 - 占60% */
+.left-section {
+  width: 60%;
+  padding: 40px 60px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   position: relative;
-  overflow: hidden;
 }
 
-.showcase-content {
-  position: relative;
-  z-index: 2;
-}
-
-/* 品牌Logo */
-.brand-logo {
-  font-size: 28px;
-  font-weight: 800;
-  margin-bottom: 40px;
+/* Logo */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
 .logo-text {
-  color: #1e293b;
+  font-size: 26px;
+  font-weight: 700;
+  color: #1f2937;
+  letter-spacing: -0.5px;
 }
 
-.logo-highlight {
+.logo-badge {
+  font-size: 11px;
+  font-weight: 600;
   color: #6366f1;
-  margin-left: 4px;
+  background: #eef2ff;
+  padding: 4px 10px;
+  border-radius: 20px;
+  letter-spacing: 1px;
 }
 
-/* 插画容器 */
-.illustration-container {
-  position: relative;
-  width: 100%;
-  max-width: 450px;
-  margin: 0 auto 40px;
+/* 插画区域 */
+.illustration-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 0;
 }
 
 .illustration-wrapper {
-  position: relative;
+  width: 100%;
+  max-width: 500px;
 }
 
 .main-illustration {
   width: 100%;
   height: auto;
-  filter: drop-shadow(0 10px 30px rgba(99, 102, 241, 0.2));
 }
 
-/* 浮动元素 */
-.floating-element {
-  position: absolute;
-  animation: floatElement 4s ease-in-out infinite;
+/* 动画 */
+.main-cube {
+  animation: float-main 5s ease-in-out infinite;
 }
 
-.el-1 {
-  top: 10%;
-  right: 5%;
-  animation-delay: 0s;
+.float-animation {
+  animation: float 4s ease-in-out infinite;
 }
 
-.el-2 {
-  bottom: 25%;
-  left: 0;
-  animation-delay: 1s;
+.float-animation-delay {
+  animation: float 4s ease-in-out infinite 1.2s;
 }
 
-.el-3 {
-  top: 40%;
-  right: -5%;
-  animation-delay: 2s;
+.float-card {
+  animation: floatCard 5s ease-in-out infinite;
 }
 
-@keyframes floatElement {
+.float-card-delay {
+  animation: floatCard 5s ease-in-out infinite 1.8s;
+}
+
+@keyframes float-main {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-6px) rotate(0.5deg); }
+  50% { transform: translateY(-12px) rotate(0deg); }
+  75% { transform: translateY(-6px) rotate(-0.5deg); }
+}
+
+@keyframes float {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-15px); }
+  50% { transform: translateY(-12px); }
 }
 
-/* 特性列表 */
-.features-list {
+@keyframes floatCard {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-10px) rotate(2deg); }
+}
+
+.main-cube-group {
+  animation: float-main 6s ease-in-out infinite;
+}
+
+.float-cube-1 {
+  animation: float-cube 4s ease-in-out infinite 0.5s;
+}
+
+.float-cube-2 {
+  animation: float-cube 4.5s ease-in-out infinite 1s;
+}
+
+.float-card-1 {
+  animation: float-card-anim 5s ease-in-out infinite;
+}
+
+.float-card-2 {
+  animation: float-card-anim 5.5s ease-in-out infinite 1s;
+}
+
+.float-card-3 {
+  animation: float-card-anim 4.5s ease-in-out infinite 0.5s;
+}
+
+.pulse-dot {
+  animation: pulse-dot 2.5s ease-in-out infinite;
+}
+
+@keyframes float-cube {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes float-card-anim {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-8px) rotate(1deg); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.4); }
+}
+
+/* 底部特性 */
+.features {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  gap: 32px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(99, 102, 241, 0.1);
 }
 
-.feature-item {
+.feature {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.7);
-  border-radius: 12px;
-  transition: all 0.3s ease;
-}
-
-.feature-item:hover {
-  background: rgba(255, 255, 255, 0.9);
-  transform: translateX(8px);
-  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.15);
 }
 
 .feature-icon {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  border-radius: 10px;
 }
 
-.feature-item span {
+.feature-icon.purple { background: linear-gradient(135deg, #eef2ff, #e0e7ff); color: #6366f1; }
+.feature-icon.pink { background: linear-gradient(135deg, #fdf2f8, #fce7f3); color: #ec4899; }
+.feature-icon.green { background: linear-gradient(135deg, #f0fdf4, #dcfce7); color: #10b981; }
+
+.feature-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.feature-title {
   font-size: 14px;
-  font-weight: 500;
-  color: #374151;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.feature-desc {
+  font-size: 12px;
+  color: #6b7280;
 }
 
 
-/* 右侧登录区 */
-.login-section {
-  flex: 0.8;
+/* 右侧登录区 - 屏幕五分之二位置（居中偏右） */
+.right-section {
+  width: 40%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 50px;
-  background: #fff;
+  padding: 40px 60px;
 }
 
 .login-card {
   width: 100%;
   max-width: 380px;
+  background: white;
+  border-radius: 24px;
+  padding: 40px;
+  box-shadow: 0 20px 60px rgba(99, 102, 241, 0.08), 0 8px 24px rgba(0, 0, 0, 0.04);
+}
+
+.card-header {
   text-align: center;
+  margin-bottom: 32px;
 }
 
-/* Logo图标 */
-.card-logo {
-  margin-bottom: 28px;
-  display: inline-block;
-  animation: pulse 2.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-}
-
-/* 标题 */
-.card-title {
+.card-header h1 {
   font-size: 26px;
   font-weight: 700;
-  color: #1e293b;
-  margin: 0 0 10px 0;
-  letter-spacing: -0.5px;
+  color: #111827;
+  margin: 0 0 8px 0;
 }
 
-.card-subtitle {
-  font-size: 11px;
-  color: #94a3b8;
-  margin: 0 0 36px 0;
-  text-transform: uppercase;
-  letter-spacing: 2px;
+.card-header p {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* 表单 */
+.input-wrapper {
+  width: 100%;
+}
+
+.input-wrapper label {
+  display: block;
+  font-size: 13px;
   font-weight: 500;
-}
-
-/* 表单样式 */
-.login-form {
-  text-align: left;
+  color: #374151;
+  margin-bottom: 8px;
 }
 
 .login-form :deep(.el-form-item) {
-  margin-bottom: 22px;
+  margin-bottom: 20px;
 }
 
 .login-form :deep(.el-input__wrapper) {
   border-radius: 12px;
-  padding: 14px 18px;
+  padding: 12px 16px;
   box-shadow: none;
   border: 1.5px solid #e5e7eb;
   background: #f9fafb;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .login-form :deep(.el-input__wrapper:hover) {
-  border-color: #c7d2fe;
-  background: #fff;
+  border-color: #d1d5db;
+  background: white;
 }
 
 .login-form :deep(.el-input__wrapper.is-focus) {
   border-color: #6366f1;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  background: white;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
 }
 
 .login-form :deep(.el-input__inner) {
-  font-size: 15px;
-  color: #1e293b;
-}
-
-.login-form :deep(.el-input__inner::placeholder) {
-  color: #94a3b8;
+  font-size: 14px;
 }
 
 .login-form :deep(.el-input__prefix) {
-  color: #94a3b8;
+  margin-right: 8px;
 }
 
-/* 协议勾选 */
-.agreement-item {
-  margin-bottom: 26px !important;
-}
-
-.agreement-item :deep(.el-checkbox) {
-  height: auto;
-  align-items: flex-start;
-}
-
-.agreement-item :deep(.el-checkbox__label) {
-  white-space: normal;
-  line-height: 1.6;
-}
-
-.agreement-text {
-  font-size: 12px;
-  color: #64748b;
-}
-
-.agreement-text a {
-  color: #6366f1;
-  text-decoration: none;
-  font-weight: 500;
-  transition: color 0.2s;
-}
-
-.agreement-text a:hover {
-  color: #4f46e5;
-  text-decoration: underline;
-}
+/* 协议 */
+.agreement-item { margin-bottom: 24px !important; }
+.agreement-item :deep(.el-checkbox__label) { white-space: normal; line-height: 1.5; }
+.agreement-text { font-size: 12px; color: #6b7280; }
+.agreement-text a { color: #6366f1; cursor: pointer; }
+.agreement-text a:hover { text-decoration: underline; }
 
 /* 登录按钮 */
-.login-button {
+.login-btn {
   width: 100%;
-  height: 50px;
-  font-size: 16px;
+  height: 48px;
+  font-size: 15px;
   font-weight: 600;
   border-radius: 12px;
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   border: none;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.35);
-  letter-spacing: 2px;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+  transition: all 0.25s ease;
+  letter-spacing: 3px;
 }
 
-.login-button:hover:not(:disabled) {
+.login-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(99, 102, 241, 0.45);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
 }
 
-.login-button:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.login-button:disabled {
-  background: #e2e8f0;
+.login-btn:disabled {
+  background: #e5e7eb;
   box-shadow: none;
-  cursor: not-allowed;
 }
 
-/* 底部版权 */
+/* 底部 */
 .card-footer {
-  margin-top: 36px;
-  padding-top: 24px;
-  border-top: 1px solid #f1f5f9;
+  margin-top: 28px;
+  text-align: center;
+  padding-top: 20px;
+  border-top: 1px solid #f3f4f6;
 }
 
 .card-footer p {
   font-size: 12px;
-  color: #94a3b8;
+  color: #9ca3af;
   margin: 0;
 }
 
-/* 协议弹窗 */
-.agreement-dialog :deep(.el-dialog) {
-  border-radius: 16px;
-  overflow: hidden;
+/* 弹窗 */
+.agreement-dialog :deep(.el-dialog) { border-radius: 16px; }
+.agreement-dialog :deep(.el-dialog__header) { padding: 20px 24px; border-bottom: 1px solid #f3f4f6; }
+.agreement-dialog :deep(.el-dialog__body) { padding: 0; max-height: 55vh; overflow-y: auto; }
+.agreement-content { padding: 0; }
+
+/* 登录卡片悬浮效果 */
+.login-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-.agreement-dialog :deep(.el-dialog__header) {
-  padding: 24px 28px 20px;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+.login-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 25px 70px rgba(99, 102, 241, 0.12), 0 10px 30px rgba(0, 0, 0, 0.06);
 }
 
-.agreement-dialog :deep(.el-dialog__title) {
-  font-size: 18px;
-  font-weight: 600;
-  color: #fff;
+/* 响应式 */
+@media (max-width: 1200px) {
+  .left-section { width: 55%; padding: 30px 40px; }
+  .right-section { width: 45%; padding: 30px 40px; }
+  .features { gap: 20px; flex-wrap: wrap; }
 }
 
-.agreement-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
-  color: #fff;
+@media (max-width: 1000px) {
+  .left-section { width: 50%; }
+  .right-section { width: 50%; }
+  .bg-decorations { display: none; }
 }
 
-.agreement-dialog :deep(.el-dialog__body) {
-  padding: 28px;
-  max-height: 60vh;
-  overflow-y: auto;
-  background: #fafbfc;
-}
-
-.agreement-dialog :deep(.el-dialog__footer) {
-  padding: 16px 28px;
-  border-top: 1px solid #e5e7eb;
-}
-
-.agreement-content {
-  background: #fff;
-  padding: 24px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-
-/* 响应式设计 */
-@media (max-width: 1024px) {
-  .login-wrapper {
-    max-width: 900px;
-  }
-
-  .showcase-section {
-    padding: 40px;
-  }
-
-  .login-section {
-    padding: 40px;
-  }
-}
-
-@media (max-width: 768px) {
-  .login-wrapper {
-    flex-direction: column;
-    max-width: 450px;
-    margin: 16px;
-  }
-
-  .showcase-section {
-    display: none;
-  }
-
-  .login-section {
-    padding: 48px 32px;
-  }
-
-  .login-card {
-    max-width: 100%;
-  }
-}
-
-@media (max-width: 480px) {
-  .login-page {
-    padding: 0;
-  }
-
-  .login-wrapper {
-    margin: 0;
-    border-radius: 0;
-    min-height: 100vh;
-  }
-
-  .login-section {
-    padding: 40px 24px;
-  }
-
-  .card-title {
-    font-size: 22px;
-  }
-
-  .card-subtitle {
-    font-size: 10px;
-    letter-spacing: 1.5px;
-  }
-
-  .login-button {
-    height: 46px;
-    font-size: 15px;
-  }
+@media (max-width: 800px) {
+  .login-page { flex-direction: column; }
+  .left-section { display: none; }
+  .right-section { width: 100%; min-height: 100vh; justify-content: center; padding: 40px; }
 }
 </style>
