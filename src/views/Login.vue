@@ -20,20 +20,23 @@
 
     <!-- 左侧内容区 -->
     <div class="left-section">
-      <!-- Logo -->
+      <!-- Logo - Apple风格扁平化设计 -->
       <div class="logo">
         <div class="logo-icon">
-          <svg width="42" height="42" viewBox="0 0 42 42" fill="none">
+          <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
             <defs>
               <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#6366f1"/>
-                <stop offset="100%" stop-color="#8b5cf6"/>
+                <stop offset="0%" stop-color="#6ee7b7"/>
+                <stop offset="100%" stop-color="#34d399"/>
               </linearGradient>
             </defs>
-            <rect width="42" height="42" rx="10" fill="url(#logoGrad)"/>
-            <path d="M12 21C12 16 16 12 21 12C26 12 30 16 30 21" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
-            <circle cx="21" cy="24" r="5" fill="white" fill-opacity="0.9"/>
-            <path d="M21 29V32" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+            <!-- 圆角矩形背景 - 更鲜明的薄荷绿 -->
+            <rect width="44" height="44" rx="10" fill="url(#logoGrad)"/>
+            <!-- 多样化图形组合 -->
+            <rect x="10" y="10" width="10" height="10" rx="2" fill="white"/>
+            <circle cx="29" cy="15" r="5" fill="white" opacity="0.85"/>
+            <rect x="10" y="24" width="10" height="10" rx="5" fill="white" opacity="0.7"/>
+            <rect x="24" y="24" width="10" height="10" rx="2" fill="white"/>
           </svg>
         </div>
         <span class="logo-text">云客</span>
@@ -43,16 +46,17 @@
       <!-- 3D插画区域 - 商务科技风格 -->
       <div class="illustration-area">
         <div class="illustration-wrapper">
-          <svg class="main-illustration" viewBox="0 0 550 420" fill="none">
+          <svg class="main-illustration" viewBox="0 0 520 400" fill="none">
             <!-- 背景柔和光晕 -->
-            <circle cx="275" cy="200" r="160" fill="url(#softGrad1)" opacity="0.12"/>
-            <circle cx="380" cy="300" r="100" fill="url(#softGrad2)" opacity="0.08"/>
-            <circle cx="150" cy="120" r="70" fill="url(#softGrad3)" opacity="0.06"/>
+            <circle cx="260" cy="200" r="150" fill="url(#softGrad1)" opacity="0.15"/>
+            <circle cx="380" cy="280" r="100" fill="url(#softGrad2)" opacity="0.1"/>
+            <circle cx="140" cy="120" r="70" fill="url(#softGrad3)" opacity="0.08"/>
 
             <!-- 中心3D立体方块组 - 浅色简约风 -->
-            <g transform="translate(180, 100)" class="main-cube-group">
+            <g transform="translate(180, 100)">
+              <animateTransform attributeName="transform" type="translate" values="180,100;180,92;180,100" dur="6s" repeatCount="indefinite" additive="replace"/>
               <!-- 大方块 - 主体 -->
-              <g class="cube-main">
+              <g>
                 <path d="M0 50 L80 0 L160 50 L80 100 Z" fill="#eef2ff"/>
                 <path d="M0 50 L0 130 L80 180 L80 100 Z" fill="#e0e7ff"/>
                 <path d="M80 100 L80 180 L160 130 L160 50 Z" fill="#c7d2fe"/>
@@ -65,7 +69,8 @@
               </g>
 
               <!-- 中方块 - 右上浮动 -->
-              <g transform="translate(140, -30)" class="float-cube-1">
+              <g transform="translate(140, -30)">
+                <animateTransform attributeName="transform" type="translate" values="140,-30;140,-40;140,-30" dur="4s" repeatCount="indefinite" additive="replace"/>
                 <path d="M0 30 L45 0 L90 30 L45 60 Z" fill="#fce7f3"/>
                 <path d="M0 30 L0 75 L45 105 L45 60 Z" fill="#fbcfe8"/>
                 <path d="M45 60 L45 105 L90 75 L90 30 Z" fill="#f9a8d4"/>
@@ -74,7 +79,8 @@
               </g>
 
               <!-- 小方块 - 左下浮动 -->
-              <g transform="translate(-60, 120)" class="float-cube-2">
+              <g transform="translate(-60, 120)">
+                <animateTransform attributeName="transform" type="translate" values="-60,120;-60,112;-60,120" dur="4.5s" repeatCount="indefinite" additive="replace"/>
                 <path d="M0 20 L35 0 L70 20 L35 40 Z" fill="#d1fae5"/>
                 <path d="M0 20 L0 55 L35 75 L35 40 Z" fill="#a7f3d0"/>
                 <path d="M35 40 L35 75 L70 55 L70 20 Z" fill="#6ee7b7"/>
@@ -84,7 +90,8 @@
             </g>
 
             <!-- 浮动数据卡片1 - 业绩统计 -->
-            <g transform="translate(380, 80)" class="float-card-1">
+            <g transform="translate(340, 40)">
+              <animateTransform attributeName="transform" type="translate" values="340,40;340,32;340,40" dur="5s" repeatCount="indefinite" additive="replace"/>
               <rect width="130" height="100" rx="16" fill="white" filter="url(#cardShadow)"/>
               <rect x="15" y="15" width="50" height="8" rx="4" fill="#f3f4f6"/>
               <text x="15" y="45" fill="#1f2937" font-size="22" font-weight="700">2,847</text>
@@ -101,7 +108,8 @@
             </g>
 
             <!-- 浮动数据卡片2 - 图表卡片 -->
-            <g transform="translate(30, 260)" class="float-card-2">
+            <g transform="translate(30, 250)">
+              <animateTransform attributeName="transform" type="translate" values="30,250;30,242;30,250" dur="5.5s" repeatCount="indefinite" additive="replace"/>
               <rect width="150" height="110" rx="16" fill="white" filter="url(#cardShadow)"/>
               <text x="15" y="28" fill="#1f2937" font-size="11" font-weight="600">销售趋势</text>
               <!-- 柱状图 -->
@@ -119,7 +127,8 @@
             </g>
 
             <!-- 浮动数据卡片3 - 环形进度 -->
-            <g transform="translate(420, 250)" class="float-card-3">
+            <g transform="translate(350, 220)">
+              <animateTransform attributeName="transform" type="translate" values="350,220;350,212;350,220" dur="4.5s" repeatCount="indefinite" additive="replace"/>
               <rect width="110" height="110" rx="16" fill="white" filter="url(#cardShadow)"/>
               <text x="55" y="25" text-anchor="middle" fill="#1f2937" font-size="10" font-weight="600">完成率</text>
               <!-- 环形图 -->
@@ -133,24 +142,24 @@
 
             <!-- 连接虚线 - 数据流动 -->
             <g class="connection-lines">
-              <path d="M340 180 Q380 140 400 120" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.3">
+              <path d="M320 180 Q340 120 360 80" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.4">
                 <animate attributeName="stroke-dashoffset" from="0" to="10" dur="1.5s" repeatCount="indefinite"/>
               </path>
-              <path d="M200 280 Q150 290 120 300" stroke="#10b981" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.3">
+              <path d="M180 270 Q130 280 100 290" stroke="#10b981" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.4">
                 <animate attributeName="stroke-dashoffset" from="0" to="10" dur="1.8s" repeatCount="indefinite"/>
               </path>
-              <path d="M340 220 Q400 250 430 270" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.25">
+              <path d="M320 220 Q340 240 360 250" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.35">
                 <animate attributeName="stroke-dashoffset" from="0" to="10" dur="1.2s" repeatCount="indefinite"/>
               </path>
             </g>
 
             <!-- 装饰小元素 -->
-            <circle cx="480" cy="180" r="6" fill="#6366f1" opacity="0.4" class="pulse-dot"/>
-            <circle cx="80" cy="180" r="5" fill="#ec4899" opacity="0.35" class="pulse-dot"/>
-            <circle cx="520" cy="350" r="4" fill="#10b981" opacity="0.4" class="pulse-dot"/>
-            <rect x="50" y="350" width="10" height="10" rx="2" fill="#f59e0b" opacity="0.3" transform="rotate(45 55 355)"/>
-            <rect x="500" y="100" width="8" height="8" rx="2" fill="#8b5cf6" opacity="0.25" transform="rotate(45 504 104)"/>
-            <circle cx="150" cy="380" r="3" fill="#6366f1" opacity="0.3"/>
+            <circle cx="480" cy="160" r="6" fill="#6366f1" opacity="0.5" class="pulse-dot"/>
+            <circle cx="80" cy="160" r="5" fill="#ec4899" opacity="0.5" class="pulse-dot"/>
+            <circle cx="490" cy="340" r="4" fill="#10b981" opacity="0.5" class="pulse-dot"/>
+            <rect x="50" y="340" width="10" height="10" rx="2" fill="#f59e0b" opacity="0.5" transform="rotate(45 55 345)"/>
+            <rect x="480" y="90" width="8" height="8" rx="2" fill="#8b5cf6" opacity="0.4" transform="rotate(45 484 94)"/>
+            <circle cx="150" cy="360" r="3" fill="#6366f1" opacity="0.5"/>
 
             <!-- 渐变和滤镜定义 -->
             <defs>
@@ -185,12 +194,23 @@
         </div>
       </div>
 
-      <!-- 底部特性 -->
+      <!-- 底部特性 - Apple风格扁平化图标 -->
       <div class="features">
         <div class="feature">
-          <div class="feature-icon purple">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          <div class="feature-icon-apple blue">
+            <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+              <rect width="44" height="44" rx="10" fill="url(#blueGrad)"/>
+              <!-- 大脑/AI图标 - 智能管理 -->
+              <path d="M22 12c-4.4 0-8 3.6-8 8 0 2.2 0.9 4.2 2.3 5.7V30c0 0.6 0.4 1 1 1h9.4c0.6 0 1-0.4 1-1v-4.3c1.4-1.5 2.3-3.5 2.3-5.7 0-4.4-3.6-8-8-8z" fill="white" opacity="0.95"/>
+              <circle cx="19" cy="19" r="1.5" fill="#3b82f6"/>
+              <circle cx="25" cy="19" r="1.5" fill="#3b82f6"/>
+              <path d="M18 23c0 0 1.5 2 4 2s4-2 4-2" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+              <defs>
+                <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#60a5fa"/>
+                  <stop offset="100%" stop-color="#3b82f6"/>
+                </linearGradient>
+              </defs>
             </svg>
           </div>
           <div class="feature-text">
@@ -199,9 +219,23 @@
           </div>
         </div>
         <div class="feature">
-          <div class="feature-icon pink">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          <div class="feature-icon-apple orange">
+            <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+              <rect width="44" height="44" rx="10" fill="url(#orangeGrad)"/>
+              <!-- 柱状图图标 - 数据分析 -->
+              <rect x="10" y="24" width="5" height="10" rx="1.5" fill="white" opacity="0.95"/>
+              <rect x="17" y="18" width="5" height="16" rx="1.5" fill="white" opacity="0.95"/>
+              <rect x="24" y="14" width="5" height="20" rx="1.5" fill="white" opacity="0.95"/>
+              <rect x="31" y="20" width="5" height="14" rx="1.5" fill="white" opacity="0.95"/>
+              <!-- 上升箭头 -->
+              <path d="M12 12l6-2 6 4 6-4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              <circle cx="30" cy="10" r="2" fill="white"/>
+              <defs>
+                <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#fb923c"/>
+                  <stop offset="100%" stop-color="#f97316"/>
+                </linearGradient>
+              </defs>
             </svg>
           </div>
           <div class="feature-text">
@@ -210,10 +244,22 @@
           </div>
         </div>
         <div class="feature">
-          <div class="feature-icon green">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+          <div class="feature-icon-apple teal">
+            <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+              <rect width="44" height="44" rx="10" fill="url(#tealGrad)"/>
+              <!-- 三人团队图标 - 团队协作 -->
+              <circle cx="22" cy="14" r="4" fill="white" opacity="0.95"/>
+              <path d="M15 28c0-3.9 3.1-7 7-7s7 3.1 7 7" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
+              <circle cx="12" cy="18" r="3" fill="white" opacity="0.7"/>
+              <path d="M7 28c0-2.8 2.2-5 5-5" stroke="white" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/>
+              <circle cx="32" cy="18" r="3" fill="white" opacity="0.7"/>
+              <path d="M37 28c0-2.8-2.2-5-5-5" stroke="white" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/>
+              <defs>
+                <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#2dd4bf"/>
+                  <stop offset="100%" stop-color="#14b8a6"/>
+                </linearGradient>
+              </defs>
             </svg>
           </div>
           <div class="feature-text">
@@ -530,13 +576,13 @@ const handleLogin = async () => {
 }
 
 @keyframes float-dot {
-  0%, 100% { transform: translateY(0) scale(1); opacity: 0.6; }
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.8; }
   50% { transform: translateY(-15px) scale(1.2); opacity: 1; }
 }
 
 @keyframes float-rotate {
-  0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.5; }
-  50% { transform: translateY(-10px) rotate(45deg); opacity: 0.8; }
+  0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.7; }
+  50% { transform: translateY(-10px) rotate(45deg); opacity: 1; }
 }
 
 /* 左侧区域 - 占60% */
@@ -584,12 +630,13 @@ const handleLogin = async () => {
 
 .illustration-wrapper {
   width: 100%;
-  max-width: 500px;
+  max-width: 520px;
 }
 
 .main-illustration {
   width: 100%;
   height: auto;
+  overflow: visible;
 }
 
 /* 动画 */
@@ -630,29 +677,7 @@ const handleLogin = async () => {
   50% { transform: translateY(-10px) rotate(2deg); }
 }
 
-.main-cube-group {
-  animation: float-main 6s ease-in-out infinite;
-}
-
-.float-cube-1 {
-  animation: float-cube 4s ease-in-out infinite 0.5s;
-}
-
-.float-cube-2 {
-  animation: float-cube 4.5s ease-in-out infinite 1s;
-}
-
-.float-card-1 {
-  animation: float-card-anim 5s ease-in-out infinite;
-}
-
-.float-card-2 {
-  animation: float-card-anim 5.5s ease-in-out infinite 1s;
-}
-
-.float-card-3 {
-  animation: float-card-anim 4.5s ease-in-out infinite 0.5s;
-}
+/* SVG动画已改用内联animateTransform，移除CSS动画避免冲突 */
 
 .pulse-dot {
   animation: pulse-dot 2.5s ease-in-out infinite;
@@ -669,8 +694,8 @@ const handleLogin = async () => {
 }
 
 @keyframes pulse-dot {
-  0%, 100% { opacity: 0.3; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.4); }
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.3); }
 }
 
 /* 底部特性 */
@@ -687,18 +712,21 @@ const handleLogin = async () => {
   gap: 12px;
 }
 
-.feature-icon {
+.feature-icon-apple {
   width: 44px;
   height: 44px;
-  border-radius: 12px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.feature-icon.purple { background: linear-gradient(135deg, #eef2ff, #e0e7ff); color: #6366f1; }
-.feature-icon.pink { background: linear-gradient(135deg, #fdf2f8, #fce7f3); color: #ec4899; }
-.feature-icon.green { background: linear-gradient(135deg, #f0fdf4, #dcfce7); color: #10b981; }
+.feature-icon-apple:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
 
 .feature-text {
   display: flex;
