@@ -682,8 +682,9 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
     const queryBuilder = orderRepository.createQueryBuilder('order');
 
     // 🔥 数据权限过滤
-    // 超级管理员和管理员可以看所有订单
-    if (userRole !== 'super_admin' && userRole !== 'admin') {
+    // 超级管理员、管理员、客服可以看所有订单
+    const allowAllRoles = ['super_admin', 'admin', 'customer_service', 'service'];
+    if (!allowAllRoles.includes(userRole)) {
       if (userRole === 'department_manager') {
         // 部门经理可以看本部门所有成员的订单
         if (userDepartmentId) {
@@ -695,7 +696,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
           console.log(`📋 [订单列表] 部门经理无部门ID，只看自己的订单`);
         }
       } else {
-        // 🔥 【修复】普通员工（销售员、客服等）可以看到同部门成员的订单（用于团队业绩统计）
+        // 🔥 普通员工（销售员等）可以看到同部门成员的订单（用于团队业绩统计）
         if (userDepartmentId) {
           queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId: userDepartmentId });
           console.log(`📋 [订单列表] 普通员工过滤: 部门ID = ${userDepartmentId}（可查看同部门订单）`);
@@ -706,7 +707,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
         }
       }
     } else {
-      console.log(`📋 [订单列表] 管理员角色，查看所有订单`);
+      console.log(`📋 [订单列表] ${userRole}角色，查看所有订单`);
     }
 
     // 状态筛选

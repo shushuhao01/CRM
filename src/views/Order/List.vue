@@ -305,9 +305,11 @@
       <!-- 商品列 -->
       <template #column-products="{ row }">
         <div class="product-list">
-          <div v-for="product in row.products" :key="product.id" class="product-item">
-            {{ product.name }} × {{ product.quantity }}
-          </div>
+          <el-tooltip v-for="product in row.products" :key="product.id" :content="`${product.name} × ${product.quantity}`" placement="top" :show-after="300">
+            <div class="product-item">
+              {{ product.name }} × {{ product.quantity }}
+            </div>
+          </el-tooltip>
         </div>
       </template>
 
@@ -2541,6 +2543,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-width: 200px;
 }
 
 .product-item {
@@ -2548,6 +2551,10 @@ onUnmounted(() => {
   color: #606266;
   padding: 2px 0;
   border-bottom: 1px solid #f0f0f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .product-item:last-child {
