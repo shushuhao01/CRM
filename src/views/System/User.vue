@@ -282,6 +282,30 @@
           {{ displaySensitiveInfoNew(row.phone, 'phone') }}
         </template>
 
+        <!-- 授权IP插槽 -->
+        <template #column-authorizedIps="{ row }">
+          <div v-if="row.authorizedIps && row.authorizedIps.length > 0" class="ip-list">
+            <el-tag
+              v-for="(ip, index) in row.authorizedIps.slice(0, 2)"
+              :key="index"
+              size="small"
+              class="ip-tag-small"
+            >
+              {{ ip }}
+            </el-tag>
+            <el-tooltip
+              v-if="row.authorizedIps.length > 2"
+              :content="row.authorizedIps.join(', ')"
+              placement="top"
+            >
+              <el-tag size="small" type="info">
+                +{{ row.authorizedIps.length - 2 }}
+              </el-tag>
+            </el-tooltip>
+          </div>
+          <span v-else class="text-gray-400">无限制</span>
+        </template>
+
         <!-- 角色插槽 -->
         <template #column-role="{ row }">
           <el-tag :type="getRoleColor(row.roleId)" size="small">
@@ -499,6 +523,43 @@
             placeholder="请输入密码"
             show-password
           />
+        </el-form-item>
+
+        <el-form-item label="授权登录IP" prop="authorizedIps">
+          <div class="ip-input-container">
+            <el-tag
+              v-for="(ip, index) in userForm.authorizedIps"
+              :key="index"
+              closable
+              @close="removeIp(index)"
+              class="ip-tag"
+            >
+              {{ ip }}
+            </el-tag>
+            <el-input
+              v-if="showIpInput"
+              ref="ipInputRef"
+              v-model="newIpInput"
+              size="small"
+              class="ip-input"
+              placeholder="输入IP，回车确认"
+              @keyup.enter="addIp"
+              @blur="addIp"
+            />
+            <el-button
+              v-else
+              size="small"
+              @click="showIpInputField"
+              class="add-ip-btn"
+            >
+              + 添加IP
+            </el-button>
+          </div>
+          <div class="ip-help-text">
+            <el-text size="small" type="info">
+              不设置IP表示无限制；设置后只有指定IP才能登录
+            </el-text>
+          </div>
         </el-form-item>
 
         <el-form-item label="备注" prop="remark">
@@ -960,7 +1021,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useDepartmentStore } from '@/stores/department'
@@ -1101,8 +1162,14 @@ const userForm = reactive({
   employeeNumber: '',
   status: 'active',
   password: '',
-  remark: ''
+  remark: '',
+  authorizedIps: [] as string[]
 })
+
+// IP输入相关
+const showIpInput = ref(false)
+const newIpInput = ref('')
+const ipInputRef = ref()
 
 // 用户列表
 const userList = ref([])
@@ -1379,6 +1446,13 @@ const tableColumns = computed(() => [
     slot: true
   },
   {
+    prop: 'authorizedIps',
+    label: '授权IP',
+    width: 180,
+    visible: true,
+    slot: true
+  },
+  {
     prop: 'isOnline',
     label: '在线状态',
     width: 100,
@@ -1500,7 +1574,8 @@ const handleEdit = (row: UserData) => {
     position: row.position || '',
     employeeNumber: row.employeeNumber || '',
     status: row.status || 'active',
-    remark: row.remark || ''
+    remark: row.remark || '',
+    authorizedIps: row.authorizedIps || []
   })
 
   console.log('[User] 编辑表单数据:', userForm)
@@ -2599,8 +2674,46 @@ const resetUserForm = () => {
     employeeNumber: '',
     status: 'active',
     password: '123456',
-    remark: ''
+    remark: '',
+    authorizedIps: []
   })
+  showIpInput.value = false
+  newIpInput.value = ''
+}
+
+// IP管理方法
+const showIpInputField = () => {
+  showIpInput.value = true
+  nextTick(() => {
+    ipInputRef.value?.focus()
+  })
+}
+
+const addIp = () => {
+  const ip = newIpInput.value.trim()
+  if (ip && isValidIp(ip) && !userForm.authorizedIps.includes(ip)) {
+    userForm.authorizedIps.push(ip)
+    newIpInput.value = ''
+    showIpInput.value = false
+  } else if (ip && !isValidIp(ip)) {
+    ElMessage.error('请输入有效的IP地址')
+  } else if (ip && userForm.authorizedIps.includes(ip)) {
+    ElMessage.warning('IP地址已存在')
+    newIpInput.value = ''
+    showIpInput.value = false
+  } else {
+    showIpInput.value = false
+  }
+}
+
+const removeIp = (index: number) => {
+  userForm.authorizedIps.splice(index, 1)
+}
+
+// IP地址验证
+const isValidIp = (ip: string): boolean => {
+  const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
+  return ipRegex.test(ip)
 }
 
 /**
@@ -3682,5 +3795,59 @@ onMounted(async () => {
 
 .employment-status-switch :deep(.el-switch__action) {
   background-color: #fff;
+}
+</style>
+
+</script>
+
+<style scoped>
+/* IP输入相关样式 */
+.ip-input-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background-color: #fff;
+}
+
+.ip-tag {
+  margin: 0;
+}
+
+.ip-input {
+  width: 150px;
+  margin: 0;
+}
+
+.add-ip-btn {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.ip-help-text {
+  margin-top: 4px;
+}
+
+/* 用户列表中的IP显示 */
+.ip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ip-tag-small {
+  font-size: 11px;
+  padding: 0 4px;
+  height: 20px;
+  line-height: 18px;
+}
+
+.text-gray-400 {
+  color: #9ca3af;
 }
 </style>

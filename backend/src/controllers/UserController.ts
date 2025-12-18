@@ -63,6 +63,33 @@ export class UserController {
       throw new BusinessError('账户已被禁用，请联系管理员', 'ACCOUNT_DISABLED');
     }
 
+    // 验证授权IP
+    const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+    // 处理IPv6格式的本地地址
+    const normalizedIp = clientIp.replace(/^::ffff:/, '');
+
+    if (user.authorizedIps && Array.isArray(user.authorizedIps) && user.authorizedIps.length > 0) {
+      const isIpAuthorized = user.authorizedIps.some(ip =>
+        ip === clientIp || ip === normalizedIp || clientIp.includes(ip)
+      );
+      if (!isIpAuthorized) {
+        // 记录IP限制失败日志
+        try {
+          await this.logOperation({
+            action: 'login',
+            module: 'auth',
+            description: `用户登录失败: IP未授权 - ${username} (IP: ${normalizedIp})`,
+            result: 'failed',
+            ipAddress: normalizedIp,
+            userAgent: req.get('User-Agent')
+          });
+        } catch (_logError) {
+          // 日志记录失败不影响主流程
+        }
+        throw new BusinessError('当前IP地址未授权登录，请联系管理员', 'IP_NOT_AUTHORIZED');
+      }
+    }
+
     // 验证密码
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
