@@ -135,60 +135,6 @@
         </div>
       </el-tab-pane>
 
-      <!-- 角色权限模板 -->
-      <el-tab-pane label="角色权限模板" name="roles">
-        <div class="tab-content">
-          <div class="template-actions">
-            <el-button @click="createRoleTemplate" type="primary">
-              <el-icon><Plus /></el-icon>
-              创建角色模板
-            </el-button>
-            <el-button @click="importRoleTemplate" type="success">
-              <el-icon><Upload /></el-icon>
-              导入模板
-            </el-button>
-            <el-button @click="exportRoleTemplates" type="warning">
-              <el-icon><Download /></el-icon>
-              导出模板
-            </el-button>
-          </div>
-
-          <el-row :gutter="20">
-            <el-col :span="8" v-for="template in roleTemplates" :key="template.id">
-              <el-card class="role-template-card">
-                <template #header>
-                  <div class="card-header">
-                    <span>{{ template.name }}</span>
-                    <el-dropdown @command="handleTemplateCommand">
-                      <el-button type="text">
-                        <el-icon><MoreFilled /></el-icon>
-                      </el-button>
-                      <template #dropdown>
-                        <el-dropdown-menu>
-                          <el-dropdown-item :command="{action: 'edit', template}">编辑</el-dropdown-item>
-                          <el-dropdown-item :command="{action: 'copy', template}">复制</el-dropdown-item>
-                          <el-dropdown-item :command="{action: 'delete', template}" divided>删除</el-dropdown-item>
-                        </el-dropdown-menu>
-                      </template>
-                    </el-dropdown>
-                  </div>
-                </template>
-                <div class="template-info">
-                  <p><strong>描述：</strong>{{ template.description }}</p>
-                  <p><strong>权限数量：</strong>{{ template.permissions.length }}</p>
-                  <p><strong>使用人数：</strong>{{ template.userCount }}</p>
-                  <p><strong>创建时间：</strong>{{ formatDate(template.createdAt) }}</p>
-                </div>
-                <div class="template-actions-bottom">
-                  <el-button @click="applyTemplate(template)" type="primary" size="small">应用模板</el-button>
-                  <el-button @click="previewTemplate(template)" size="small">预览权限</el-button>
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
-        </div>
-      </el-tab-pane>
-
       <!-- 系统配置 -->
       <el-tab-pane label="系统配置" name="system">
         <div class="tab-content">
