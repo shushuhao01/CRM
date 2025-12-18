@@ -57,10 +57,12 @@ class RoleController {
             const rolesWithCounts = await Promise.all(roles.map(async (role) => {
                 let userCount = 0;
                 try {
-                    // 通过 roleId 字段查询用户数量（roleId 存储的是角色的 code，不是 id）
-                    userCount = await this.userRepository.count({
-                        where: { roleId: role.code }
-                    });
+                    // 使用原生SQL查询避免实体字段映射问题
+                    const dataSource = (0, database_1.getDataSource)();
+                    if (dataSource) {
+                        const result = await dataSource.query('SELECT COUNT(*) as count FROM users WHERE role_id = ?', [role.code]);
+                        userCount = parseInt(result[0]?.count || '0', 10);
+                    }
                 }
                 catch (err) {
                     console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
@@ -108,12 +110,14 @@ class RoleController {
                 });
                 return;
             }
-            // 获取该角色的用户数量（roleId 存储的是角色的 code，不是 id）
+            // 获取该角色的用户数量（使用原生SQL避免实体字段映射问题）
             let userCount = 0;
             try {
-                userCount = await this.userRepository.count({
-                    where: { roleId: role.code }
-                });
+                const dataSource = (0, database_1.getDataSource)();
+                if (dataSource) {
+                    const result = await dataSource.query('SELECT COUNT(*) as count FROM users WHERE role_id = ?', [role.code]);
+                    userCount = parseInt(result[0]?.count || '0', 10);
+                }
             }
             catch (err) {
                 console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
@@ -351,12 +355,14 @@ class RoleController {
                 });
                 return;
             }
-            // 检查是否有用户使用此角色（roleId 存储的是角色的 code，不是 id）
+            // 检查是否有用户使用此角色（使用原生SQL避免实体字段映射问题）
             let usersWithRole = 0;
             try {
-                usersWithRole = await this.userRepository.count({
-                    where: { roleId: role.code }
-                });
+                const dataSource = (0, database_1.getDataSource)();
+                if (dataSource) {
+                    const result = await dataSource.query('SELECT COUNT(*) as count FROM users WHERE role_id = ?', [role.code]);
+                    usersWithRole = parseInt(result[0]?.count || '0', 10);
+                }
             }
             catch (err) {
                 console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
