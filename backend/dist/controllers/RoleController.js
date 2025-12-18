@@ -31,46 +31,60 @@ class RoleController {
     async getRoles(req, res) {
         try {
             const { page = 1, limit = 20, search, status, isTemplate } = req.query;
-            const queryBuilder = this.roleRepository.createQueryBuilder('role');
+            // 使用原生SQL查询避免实体字段映射问题
+            const dataSource = (0, database_1.getDataSource)();
+            if (!dataSource) {
+                throw new Error('数据库连接未初始化');
+            }
+            // 构建WHERE条件
+            const conditions = [];
+            const params = [];
             // 默认只获取非模板角色，除非明确指定
             if (isTemplate === 'true') {
-                queryBuilder.andWhere('role.isTemplate = :isTemplate', { isTemplate: true });
+                conditions.push('is_template = 1');
             }
             else if (isTemplate === 'false' || isTemplate === undefined) {
-                queryBuilder.andWhere('(role.isTemplate = :isTemplate OR role.isTemplate IS NULL)', { isTemplate: false });
+                conditions.push('(is_template = 0 OR is_template IS NULL)');
             }
             if (search) {
-                queryBuilder.andWhere('(role.name LIKE :search OR role.code LIKE :search)', {
-                    search: `%${search}%`
-                });
+                conditions.push('(name LIKE ? OR code LIKE ?)');
+                params.push(`%${search}%`, `%${search}%`);
             }
             if (status) {
-                queryBuilder.andWhere('role.status = :status', { status });
+                conditions.push('status = ?');
+                params.push(status);
             }
-            const [roles, total] = await queryBuilder
-                .orderBy('role.level', 'ASC')
-                .addOrderBy('role.createdAt', 'DESC')
-                .skip((Number(page) - 1) * Number(limit))
-                .take(Number(limit))
-                .getManyAndCount();
+            const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+            const offset = (Number(page) - 1) * Number(limit);
+            // 查询角色列表
+            const roles = await dataSource.query(`SELECT id, name, code, description, status, level, color, role_type as roleType,
+                is_template as isTemplate, permissions, created_at as createdAt, updated_at as updatedAt
+         FROM roles ${whereClause} ORDER BY level ASC, created_at DESC LIMIT ? OFFSET ?`, [...params, Number(limit), offset]);
+            // 查询总数
+            const countResult = await dataSource.query(`SELECT COUNT(*) as total FROM roles ${whereClause}`, params);
+            const total = parseInt(countResult[0]?.total || '0', 10);
             // 计算每个角色的用户数量和权限数量
             const rolesWithCounts = await Promise.all(roles.map(async (role) => {
                 let userCount = 0;
                 try {
-                    // 使用原生SQL查询避免实体字段映射问题
-                    const dataSource = (0, database_1.getDataSource)();
-                    if (dataSource) {
-                        const result = await dataSource.query('SELECT COUNT(*) as count FROM users WHERE role_id = ?', [role.code]);
-                        userCount = parseInt(result[0]?.count || '0', 10);
-                    }
+                    const result = await dataSource.query('SELECT COUNT(*) as count FROM users WHERE role_id = ?', [role.code]);
+                    userCount = parseInt(result[0]?.count || '0', 10);
                 }
                 catch (err) {
                     console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
                 }
-                // permissions 是 JSON 字段，直接获取长度
-                const permissionCount = Array.isArray(role.permissions) ? role.permissions.length : 0;
+                // 解析permissions JSON字段
+                let permissions = [];
+                try {
+                    permissions = role.permissions ? JSON.parse(role.permissions) : [];
+                }
+                catch {
+                    permissions = [];
+                }
+                const permissionCount = Array.isArray(permissions) ? permissions.length : 0;
                 return {
                     ...role,
+                    permissions,
                     userCount,
                     permissionCount
                 };
@@ -191,16 +205,30 @@ class RoleController {
     // 获取角色模板列表
     async getRoleTemplates(req, res) {
         try {
-            const templates = await this.roleRepository.find({
-                where: { isTemplate: true },
-                order: { level: 'ASC', createdAt: 'DESC' }
+            // 使用原生SQL查询避免实体字段映射问题
+            const dataSource = (0, database_1.getDataSource)();
+            if (!dataSource) {
+                throw new Error('数据库连接未初始化');
+            }
+            const templates = await dataSource.query(`SELECT id, name, code, description, status, level, color, role_type as roleType,
+                is_template as isTemplate, permissions, created_at as createdAt, updated_at as updatedAt
+         FROM roles WHERE is_template = 1 ORDER BY level ASC, created_at DESC`);
+            // 计算每个模板被使用的次数
+            const templatesWithStats = templates.map((template) => {
+                let permissions = [];
+                try {
+                    permissions = template.permissions ? JSON.parse(template.permissions) : [];
+                }
+                catch {
+                    permissions = [];
+                }
+                return {
+                    ...template,
+                    permissions,
+                    permissionCount: Array.isArray(permissions) ? permissions.length : 0,
+                    userCount: 0
+                };
             });
-            // 计算每个模板被使用的次数（通过查找使用相同权限的角色数量）
-            const templatesWithStats = templates.map(template => ({
-                ...template,
-                permissionCount: Array.isArray(template.permissions) ? template.permissions.length : 0,
-                userCount: 0 // 模板本身没有用户
-            }));
             res.json({
                 success: true,
                 data: templatesWithStats
