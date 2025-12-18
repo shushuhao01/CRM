@@ -439,12 +439,13 @@ router.get('/permission', (req: Request, res: Response) => {
     const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
     const isManager = user?.role === 'manager' || user?.role === 'department_head';
     const isLogisticsStaff = user?.department === 'logistics';
+    const isCustomerService = user?.role === 'customer_service' || user?.role === 'service';
 
     const permission = {
       canView: true,
-      canUpdate: isAdmin || isManager || isLogisticsStaff,
-      canBatchUpdate: isAdmin || isManager,
-      canExport: isAdmin || isManager,
+      canUpdate: isAdmin || isManager || isLogisticsStaff || isCustomerService,
+      canBatchUpdate: isAdmin || isManager || isCustomerService,
+      canExport: isAdmin || isManager || isCustomerService,
       role: user?.role || 'user',
       department: user?.department || ''
     };

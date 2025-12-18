@@ -58,7 +58,7 @@ router.get('/list', async (req, res) => {
         queryBuilder.andWhere('order.status = :deliveredStatus', { deliveredStatus: 'delivered' });
         // 数据权限过滤
         const role = currentUser?.role || '';
-        const allowAllRoles = ['super_admin', 'superadmin', 'admin'];
+        const allowAllRoles = ['super_admin', 'superadmin', 'admin', 'customer_service', 'service'];
         if (!allowAllRoles.includes(role)) {
             if (role === 'manager' || role === 'department_manager') {
                 // 经理看本部门的
