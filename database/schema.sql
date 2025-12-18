@@ -51,6 +51,8 @@ CREATE TABLE `roles` (
   `color` VARCHAR(20) NULL COMMENT '角色颜色',
   `parent_id` VARCHAR(50) COMMENT '上级角色ID',
   `is_system` BOOLEAN DEFAULT FALSE COMMENT '是否系统角色',
+  `role_type` VARCHAR(20) DEFAULT 'custom' COMMENT '角色类型：system=系统预设, business=业务角色, custom=自定义角色',
+  `is_template` BOOLEAN DEFAULT FALSE COMMENT '是否为模板（模板可用于快速创建角色）',
   `data_scope` ENUM('all', 'department', 'self', 'custom') DEFAULT 'self' COMMENT '数据权限范围',
   `permissions` JSON COMMENT '功能权限列表',
   `menu_permissions` JSON COMMENT '菜单权限列表',
@@ -69,6 +71,8 @@ CREATE TABLE `roles` (
   INDEX `idx_level` (`level`),
   INDEX `idx_parent` (`parent_id`),
   INDEX `idx_is_system` (`is_system`),
+  INDEX `idx_is_template` (`is_template`),
+  INDEX `idx_role_type` (`role_type`),
   INDEX `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色表';
 
@@ -1292,12 +1296,18 @@ INSERT INTO `departments` (`id`, `name`, `description`, `parent_id`, `level`, `s
 ('dept_003', '客服部', '负责客户服务和售后支持', NULL, 1, 3, 1);
 
 -- 插入默认角色
-INSERT INTO `roles` (`id`, `name`, `code`, `description`, `permissions`, `user_count`) VALUES 
-('super_admin', '超级管理员', 'super_admin', '拥有系统所有权限', JSON_ARRAY('*'), 1),
-('admin', '管理员', 'admin', '拥有系统所有权限', JSON_ARRAY('*'), 1),
-('department_manager', '部门经理', 'department_manager', '管理本部门业务和团队', JSON_ARRAY('dashboard', 'customer', 'order', 'performance', 'logistics', 'aftersale', 'data'), 1),
-('sales_staff', '销售员', 'sales_staff', '专注于客户开发和订单管理', JSON_ARRAY('dashboard', 'customer', 'order', 'performance', 'logistics', 'aftersale', 'data'), 1),
-('customer_service', '客服', 'customer_service', '处理订单、物流和售后服务', JSON_ARRAY('dashboard', 'order', 'logistics', 'aftersale', 'data'), 1);
+INSERT INTO `roles` (`id`, `name`, `code`, `description`, `permissions`, `user_count`, `role_type`, `is_template`) VALUES 
+('super_admin', '超级管理员', 'super_admin', '拥有系统所有权限', JSON_ARRAY('*'), 1, 'system', FALSE),
+('admin', '管理员', 'admin', '拥有系统所有权限', JSON_ARRAY('*'), 1, 'system', FALSE),
+('department_manager', '部门经理', 'department_manager', '管理本部门业务和团队', JSON_ARRAY('dashboard', 'customer', 'order', 'performance', 'logistics', 'aftersale', 'data'), 1, 'business', FALSE),
+('sales_staff', '销售员', 'sales_staff', '专注于客户开发和订单管理', JSON_ARRAY('dashboard', 'customer', 'order', 'performance', 'logistics', 'aftersale', 'data'), 1, 'business', FALSE),
+('customer_service', '客服', 'customer_service', '处理订单、物流和售后服务', JSON_ARRAY('dashboard', 'order', 'logistics', 'aftersale', 'data'), 1, 'business', FALSE);
+
+-- 插入默认角色模板
+INSERT INTO `roles` (`id`, `name`, `code`, `description`, `permissions`, `user_count`, `role_type`, `is_template`, `level`, `color`) VALUES 
+('tpl_sales_basic', '销售基础模板', 'tpl_sales_basic', '适用于普通销售人员，包含客户管理、订单管理等基础权限', '["dashboard", "dashboard.personal", "customer", "customer.list", "customer.list.view", "customer.add", "order", "order.list", "order.list.view", "order.add"]', 0, 'custom', TRUE, 10, 'success'),
+('tpl_manager_full', '经理完整模板', 'tpl_manager_full', '适用于部门经理，包含团队管理、业绩统计等权限', '["dashboard", "dashboard.personal", "dashboard.department", "customer", "customer.list", "customer.list.view", "customer.list.edit", "customer.add", "order", "order.list", "order.list.view", "order.list.edit", "order.add", "performance", "performance.personal", "performance.team", "performance.analysis"]', 0, 'custom', TRUE, 5, 'warning'),
+('tpl_service_basic', '客服基础模板', 'tpl_service_basic', '适用于客服人员，包含订单审核、物流管理、售后处理等权限', '["dashboard", "dashboard.personal", "order", "order.audit", "order.audit.view", "order.audit.approve", "logistics", "logistics.list", "logistics.shipping", "logistics.track", "logistics.status", "afterSales", "afterSales.list", "afterSales.add"]', 0, 'custom', TRUE, 10, 'info');
 
 -- 插入预设用户（密码已加密，实际密码见文档）
 INSERT INTO `users` (`id`, `username`, `password`, `name`, `email`, `phone`, `role`, `role_id`, `department_id`, `department_name`, `position`, `status`) VALUES 
