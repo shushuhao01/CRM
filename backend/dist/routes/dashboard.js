@@ -11,6 +11,41 @@ const router = (0, express_1.Router)();
 // 所有仪表板路由都需要认证
 router.use(auth_1.authenticateToken);
 /**
+ * 🔥 统一的业绩计算规则
+ * 判断订单是否计入下单业绩
+ */
+const isValidForOrderPerformance = (order) => {
+    // 不计入业绩的状态
+    const excludedStatuses = [
+        'pending_cancel', // 取消申请
+        'cancelled', // 已取消
+        'audit_rejected', // 审核拒绝
+        'logistics_returned', // 物流部退回
+        'logistics_cancelled', // 物流部取消
+        'refunded' // 已退款
+    ];
+    // 如果是待流转状态，需要检查markType
+    if (order.status === 'pending_transfer') {
+        // 只有正常发货单才计入业绩，预留单和退单不计入
+        return order.markType === 'normal';
+    }
+    // 其他状态，只要不在排除列表中就计入
+    return !excludedStatuses.includes(order.status);
+};
+/**
+ * 判断订单是否计入发货业绩
+ */
+const isValidForShipmentPerformance = (order) => {
+    const shippedStatuses = ['shipped', 'delivered', 'rejected', 'rejected_returned'];
+    return shippedStatuses.includes(order.status);
+};
+/**
+ * 判断订单是否计入签收业绩
+ */
+const isValidForDeliveryPerformance = (order) => {
+    return order.status === 'delivered';
+};
+/**
  * @route GET /api/v1/dashboard/metrics
  * @desc 获取核心指标数据
  * @access Private
@@ -23,53 +58,59 @@ router.get('/metrics', async (_req, res) => {
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        // 今日订单数（排除已取消）
-        const todayOrders = await orderRepository.count({
-            where: {
-                createdAt: (0, typeorm_1.Between)(todayStart, todayEnd)
-            }
-        });
         // 今日新增客户
         const newCustomers = await customerRepository.count({
             where: {
                 createdAt: (0, typeorm_1.Between)(todayStart, todayEnd)
             }
         });
-        // 今日业绩
+        // 🔥 今日订单数据（使用新的业绩计算规则）
         const todayOrdersData = await orderRepository.find({
             where: {
                 createdAt: (0, typeorm_1.Between)(todayStart, todayEnd)
             },
-            select: ['totalAmount', 'status']
+            select: ['totalAmount', 'status', 'markType']
         });
-        const todayRevenue = todayOrdersData
-            .filter(o => o.status !== 'cancelled' && o.status !== 'refunded')
-            .reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
-        // 本月订单数
-        const monthlyOrders = await orderRepository.count({
-            where: {
-                createdAt: (0, typeorm_1.Between)(monthStart, todayEnd)
-            }
-        });
-        // 本月业绩
+        // 过滤有效订单（计入下单业绩）
+        const validTodayOrders = todayOrdersData.filter(o => isValidForOrderPerformance(o));
+        const todayOrders = validTodayOrders.length;
+        const todayRevenue = validTodayOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
+        // 🔥 本月订单数据（使用新的业绩计算规则）
         const monthlyOrdersData = await orderRepository.find({
             where: {
                 createdAt: (0, typeorm_1.Between)(monthStart, todayEnd)
             },
-            select: ['totalAmount', 'status']
+            select: ['totalAmount', 'status', 'markType']
         });
-        const monthlyRevenue = monthlyOrdersData
-            .filter(o => o.status !== 'cancelled' && o.status !== 'refunded')
-            .reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
+        // 过滤有效订单（计入下单业绩）
+        const validMonthlyOrders = monthlyOrdersData.filter(o => isValidForOrderPerformance(o));
+        const monthlyOrders = validMonthlyOrders.length;
+        const monthlyRevenue = validMonthlyOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
+        // 🔥 发货业绩和签收业绩（可选返回）
+        const todayShippedOrders = todayOrdersData.filter(o => isValidForShipmentPerformance(o));
+        const todayDeliveredOrders = todayOrdersData.filter(o => isValidForDeliveryPerformance(o));
+        const monthlyShippedOrders = monthlyOrdersData.filter(o => isValidForShipmentPerformance(o));
+        const monthlyDeliveredOrders = monthlyOrdersData.filter(o => isValidForDeliveryPerformance(o));
         res.json({
             success: true,
             data: {
+                // 下单业绩
                 todayOrders,
-                newCustomers,
                 todayRevenue,
                 monthlyOrders,
                 monthlyRevenue,
-                pendingService: 0
+                newCustomers,
+                pendingService: 0,
+                // 发货业绩
+                todayShippedCount: todayShippedOrders.length,
+                todayShippedAmount: todayShippedOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0),
+                monthlyShippedCount: monthlyShippedOrders.length,
+                monthlyShippedAmount: monthlyShippedOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0),
+                // 签收业绩
+                todayDeliveredCount: todayDeliveredOrders.length,
+                todayDeliveredAmount: todayDeliveredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0),
+                monthlyDeliveredCount: monthlyDeliveredOrders.length,
+                monthlyDeliveredAmount: monthlyDeliveredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0)
             }
         });
     }
@@ -93,16 +134,16 @@ router.get('/rankings', async (_req, res) => {
         const userRepository = database_1.AppDataSource.getRepository(User_1.User);
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        // 获取本月订单（排除已取消和已退款）
+        // 获取本月订单
         const monthOrders = await orderRepository.find({
             where: {
                 createdAt: (0, typeorm_1.Between)(monthStart, now)
             },
-            select: ['createdBy', 'totalAmount', 'status'],
+            select: ['createdBy', 'totalAmount', 'status', 'markType'],
             relations: ['orderItems']
         });
-        // 过滤有效订单
-        const validOrders = monthOrders.filter(o => o.status !== 'cancelled' && o.status !== 'refunded');
+        // 🔥 使用新的业绩计算规则过滤有效订单
+        const validOrders = monthOrders.filter(o => isValidForOrderPerformance(o));
         // 统计销售人员业绩
         const salesStats = {};
         validOrders.forEach(order => {
@@ -210,9 +251,10 @@ router.get('/charts', async (req, res) => {
                     where: {
                         createdAt: (0, typeorm_1.Between)(date, monthEnd)
                     },
-                    select: ['totalAmount', 'status']
+                    select: ['totalAmount', 'status', 'markType']
                 });
-                const validOrders = monthOrders.filter(o => o.status !== 'cancelled' && o.status !== 'refunded');
+                // 🔥 使用新的业绩计算规则
+                const validOrders = monthOrders.filter(o => isValidForOrderPerformance(o));
                 ordersData.push(validOrders.length);
                 revenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
             }
@@ -227,9 +269,10 @@ router.get('/charts', async (req, res) => {
                     where: {
                         createdAt: (0, typeorm_1.Between)(weekStart, weekEnd)
                     },
-                    select: ['totalAmount', 'status']
+                    select: ['totalAmount', 'status', 'markType']
                 });
-                const validOrders = weekOrders.filter(o => o.status !== 'cancelled' && o.status !== 'refunded');
+                // 🔥 使用新的业绩计算规则
+                const validOrders = weekOrders.filter(o => isValidForOrderPerformance(o));
                 ordersData.push(validOrders.length);
                 revenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
             }
@@ -245,9 +288,10 @@ router.get('/charts', async (req, res) => {
                     where: {
                         createdAt: (0, typeorm_1.Between)(dayStart, dayEnd)
                     },
-                    select: ['totalAmount', 'status']
+                    select: ['totalAmount', 'status', 'markType']
                 });
-                const validOrders = dayOrders.filter(o => o.status !== 'cancelled' && o.status !== 'refunded');
+                // 🔥 使用新的业绩计算规则
+                const validOrders = dayOrders.filter(o => isValidForOrderPerformance(o));
                 ordersData.push(validOrders.length);
                 revenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
             }
@@ -257,14 +301,14 @@ router.get('/charts', async (req, res) => {
             select: ['status']
         });
         const statusMap = {
-            pending: { name: '待处理', count: 0, color: '#909399' },
-            confirmed: { name: '已确认', count: 0, color: '#409EFF' },
-            paid: { name: '已支付', count: 0, color: '#67C23A' },
-            shipped: { name: '已发货', count: 0, color: '#E6A23C' },
-            delivered: { name: '已送达', count: 0, color: '#67C23A' },
-            completed: { name: '已完成', count: 0, color: '#67C23A' },
-            cancelled: { name: '已取消', count: 0, color: '#F56C6C' },
-            refunded: { name: '已退款', count: 0, color: '#F56C6C' }
+            pending_transfer: { name: '待流转', count: 0, color: '#909399' },
+            pending_audit: { name: '待审核', count: 0, color: '#E6A23C' },
+            audit_rejected: { name: '审核拒绝', count: 0, color: '#F56C6C' },
+            pending_shipment: { name: '待发货', count: 0, color: '#409EFF' },
+            shipped: { name: '已发货', count: 0, color: '#67C23A' },
+            delivered: { name: '已签收', count: 0, color: '#67C23A' },
+            logistics_returned: { name: '物流部退回', count: 0, color: '#F56C6C' },
+            cancelled: { name: '已取消', count: 0, color: '#909399' }
         };
         allOrders.forEach(order => {
             if (statusMap[order.status]) {

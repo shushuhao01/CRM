@@ -128,6 +128,14 @@ __decorate([
     __metadata("design:type", String)
 ], User.prototype, "status", void 0);
 __decorate([
+    (0, typeorm_1.Column)('enum', { name: 'employment_status', enum: ['active', 'resigned'], default: 'active', nullable: true }),
+    __metadata("design:type", String)
+], User.prototype, "employmentStatus", void 0);
+__decorate([
+    (0, typeorm_1.Column)('datetime', { name: 'resigned_at', nullable: true }),
+    __metadata("design:type", Date)
+], User.prototype, "resignedAt", void 0);
+__decorate([
     (0, typeorm_1.Column)('timestamp', { name: 'last_login_at', nullable: true }),
     __metadata("design:type", Date)
 ], User.prototype, "lastLoginAt", void 0);
@@ -136,21 +144,25 @@ __decorate([
     __metadata("design:type", Number)
 ], User.prototype, "loginCount", void 0);
 __decorate([
-    (0, typeorm_1.Column)('int', { name: 'loginFailCount', default: 0, nullable: true }),
+    (0, typeorm_1.Column)('int', { name: 'login_fail_count', default: 0, nullable: true }),
     __metadata("design:type", Number)
 ], User.prototype, "loginFailCount", void 0);
 __decorate([
-    (0, typeorm_1.Column)('datetime', { name: 'lockedAt', nullable: true }),
+    (0, typeorm_1.Column)('datetime', { name: 'locked_at', nullable: true }),
     __metadata("design:type", Date)
 ], User.prototype, "lockedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)('varchar', { name: 'lastLoginIp', length: 45, nullable: true }),
+    (0, typeorm_1.Column)('varchar', { name: 'last_login_ip', length: 45, nullable: true }),
     __metadata("design:type", String)
 ], User.prototype, "lastLoginIp", void 0);
 __decorate([
     (0, typeorm_1.Column)('json', { nullable: true }),
     __metadata("design:type", Object)
 ], User.prototype, "settings", void 0);
+__decorate([
+    (0, typeorm_1.Column)('json', { name: 'authorized_ips', nullable: true, select: true }),
+    __metadata("design:type", Array)
+], User.prototype, "authorizedIps", void 0);
 __decorate([
     (0, typeorm_1.CreateDateColumn)({ name: 'created_at' }),
     __metadata("design:type", Date)

@@ -42,6 +42,8 @@ const DepartmentController_1 = require("../controllers/DepartmentController");
 const database_1 = require("../config/database");
 const SystemConfig_1 = require("../entities/SystemConfig");
 const DepartmentOrderLimit_1 = require("../entities/DepartmentOrderLimit");
+const Department_1 = require("../entities/Department");
+const User_1 = require("../entities/User");
 const multer_1 = __importDefault(require("multer"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
@@ -471,7 +473,8 @@ router.get('/security-settings', auth_1.authenticateToken, auth_1.requireAdmin, 
             lockDuration: 30,
             sessionTimeout: 120,
             forceHttps: false,
-            ipWhitelist: ''
+            ipWhitelist: '',
+            secureConsoleEnabled: false // 控制台日志加密开关
         };
         res.json({ success: true, data: { ...defaultSettings, ...settings } });
     }
@@ -497,7 +500,8 @@ router.put('/security-settings', auth_1.authenticateToken, auth_1.requireAdmin, 
             { key: 'lockDuration', type: 'number', desc: '锁定时间(分钟)' },
             { key: 'sessionTimeout', type: 'number', desc: '会话超时时间(分钟)' },
             { key: 'forceHttps', type: 'boolean', desc: '强制HTTPS' },
-            { key: 'ipWhitelist', type: 'text', desc: 'IP白名单' }
+            { key: 'ipWhitelist', type: 'text', desc: 'IP白名单' },
+            { key: 'secureConsoleEnabled', type: 'boolean', desc: '控制台日志加密' }
         ];
         await saveConfigsByGroup('security_settings', settings, configItems);
         res.json({ success: true, message: '安全设置保存成功', data: settings });
@@ -505,6 +509,27 @@ router.put('/security-settings', auth_1.authenticateToken, auth_1.requireAdmin, 
     catch (error) {
         console.error('保存安全设置失败:', error);
         res.status(500).json({ success: false, message: '保存安全设置失败' });
+    }
+});
+/**
+ * @route GET /api/v1/system/console-security-config
+ * @desc 获取控制台安全配置（公开接口，所有登录用户可访问）
+ * @access Private (All authenticated users)
+ */
+router.get('/console-security-config', auth_1.authenticateToken, async (_req, res) => {
+    try {
+        const settings = await getConfigsByGroup('security_settings');
+        const secureConsoleEnabled = settings.secureConsoleEnabled === true || settings.secureConsoleEnabled === 'true';
+        res.json({
+            success: true,
+            data: {
+                secureConsoleEnabled
+            }
+        });
+    }
+    catch (error) {
+        console.error('获取控制台安全配置失败:', error);
+        res.status(500).json({ success: false, message: '获取配置失败' });
     }
 });
 // ========== 通话设置路由 ==========
@@ -984,6 +1009,108 @@ router.get('/info', auth_1.authenticateToken, auth_1.requireAdmin, (_req, res) =
             memory: process.memoryUsage()
         }
     });
+});
+// ========== 公共部门查询路由（所有登录用户可访问）==========
+/**
+ * @route GET /api/v1/system/my-departments
+ * @desc 获取当前用户可访问的部门列表（用于团队业绩等页面）
+ * @access Private (All authenticated users)
+ *
+ * 权限说明：
+ * - 超级管理员/管理员：返回所有部门
+ * - 部门经理/销售员：只返回自己所属的部门
+ */
+router.get('/my-departments', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const currentUser = req.currentUser;
+        const userRole = currentUser?.role;
+        const userDepartmentId = currentUser?.departmentId;
+        console.log('[公共部门API] 用户信息:', {
+            userId: currentUser?.id,
+            role: userRole,
+            departmentId: userDepartmentId
+        });
+        const departmentRepository = database_1.AppDataSource.getRepository(Department_1.Department);
+        // 超级管理员和管理员可以看到所有部门
+        if (userRole === 'super_admin' || userRole === 'admin') {
+            const departments = await departmentRepository.find({
+                where: { status: 'active' },
+                order: { sortOrder: 'ASC', name: 'ASC' }
+            });
+            console.log('[公共部门API] 管理员：返回所有部门', departments.length, '个');
+            // 获取所有负责人信息
+            const userRepository = database_1.AppDataSource.getRepository(User_1.User);
+            const managerIds = departments.map(d => d.managerId).filter(Boolean);
+            const managers = managerIds.length > 0
+                ? await userRepository.find({ where: managerIds.map(id => ({ id })) })
+                : [];
+            const managerMap = new Map(managers.map(m => [m.id, m.name || m.username]));
+            return res.json({
+                success: true,
+                data: departments.map(dept => ({
+                    id: dept.id,
+                    name: dept.name,
+                    code: dept.code,
+                    description: dept.description,
+                    parentId: dept.parentId,
+                    level: dept.level,
+                    managerId: dept.managerId,
+                    managerName: dept.managerId ? managerMap.get(dept.managerId) || null : null,
+                    sortOrder: dept.sortOrder,
+                    status: dept.status,
+                    memberCount: dept.memberCount
+                }))
+            });
+        }
+        // 部门经理和销售员只能看到自己所属的部门
+        if (userDepartmentId) {
+            const department = await departmentRepository.findOne({
+                where: { id: userDepartmentId, status: 'active' }
+            });
+            if (department) {
+                console.log('[公共部门API] 普通用户：返回所属部门', department.name);
+                // 获取负责人姓名
+                let managerName = null;
+                if (department.managerId) {
+                    const userRepository = database_1.AppDataSource.getRepository(User_1.User);
+                    const manager = await userRepository.findOne({
+                        where: { id: department.managerId }
+                    });
+                    managerName = manager?.name || manager?.username || null;
+                }
+                return res.json({
+                    success: true,
+                    data: [{
+                            id: department.id,
+                            name: department.name,
+                            code: department.code,
+                            description: department.description,
+                            parentId: department.parentId,
+                            level: department.level,
+                            managerId: department.managerId,
+                            managerName: managerName,
+                            sortOrder: department.sortOrder,
+                            status: department.status,
+                            memberCount: department.memberCount
+                        }]
+                });
+            }
+        }
+        // 没有部门信息，返回空数组
+        console.log('[公共部门API] 用户无部门信息，返回空数组');
+        return res.json({
+            success: true,
+            data: []
+        });
+    }
+    catch (error) {
+        console.error('[公共部门API] 获取部门失败:', error);
+        return res.status(500).json({
+            success: false,
+            message: '获取部门列表失败',
+            error: error instanceof Error ? error.message : '未知错误'
+        });
+    }
 });
 // ========== 部门管理路由（需要管理员权限）==========
 // 为部门路由添加认证和管理员权限中间件
@@ -1650,6 +1777,95 @@ router.delete('/payment-methods/:id', auth_1.authenticateToken, async (req, res)
             success: false,
             code: 500,
             message: '删除支付方式失败'
+        });
+    }
+});
+// ========== 用户个人设置（列设置等）==========
+/**
+ * @route GET /api/v1/system/user-settings/:settingKey
+ * @desc 获取用户个人设置
+ * @access Private
+ */
+router.get('/user-settings/:settingKey', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const { settingKey } = req.params;
+        const currentUser = req.currentUser;
+        if (!currentUser?.id) {
+            return res.status(401).json({
+                success: false,
+                code: 401,
+                message: '用户未登录'
+            });
+        }
+        const configRepository = database_1.AppDataSource.getRepository(SystemConfig_1.SystemConfig);
+        const configKey = `user_${currentUser.id}_${settingKey}`;
+        const config = await configRepository.findOne({
+            where: { configKey, configGroup: 'user_settings', isEnabled: true }
+        });
+        res.json({
+            success: true,
+            code: 200,
+            data: config ? JSON.parse(config.configValue) : null
+        });
+    }
+    catch (error) {
+        console.error('获取用户设置失败:', error);
+        res.status(500).json({
+            success: false,
+            code: 500,
+            message: '获取用户设置失败'
+        });
+    }
+});
+/**
+ * @route POST /api/v1/system/user-settings/:settingKey
+ * @desc 保存用户个人设置
+ * @access Private
+ */
+router.post('/user-settings/:settingKey', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const { settingKey } = req.params;
+        const currentUser = req.currentUser;
+        if (!currentUser?.id) {
+            return res.status(401).json({
+                success: false,
+                code: 401,
+                message: '用户未登录'
+            });
+        }
+        const configRepository = database_1.AppDataSource.getRepository(SystemConfig_1.SystemConfig);
+        const configKey = `user_${currentUser.id}_${settingKey}`;
+        let config = await configRepository.findOne({
+            where: { configKey, configGroup: 'user_settings' }
+        });
+        if (config) {
+            config.configValue = JSON.stringify(req.body);
+        }
+        else {
+            config = configRepository.create({
+                configKey,
+                configValue: JSON.stringify(req.body),
+                valueType: 'json',
+                configGroup: 'user_settings',
+                description: `用户 ${currentUser.id} 的 ${settingKey} 设置`,
+                isEnabled: true,
+                isSystem: false
+            });
+        }
+        await configRepository.save(config);
+        console.log(`✅ [用户设置] 用户 ${currentUser.id} 的 ${settingKey} 设置已保存`);
+        res.json({
+            success: true,
+            code: 200,
+            message: '设置保存成功'
+        });
+    }
+    catch (error) {
+        console.error('保存用户设置失败:', error);
+        res.status(500).json({
+            success: false,
+            code: 500,
+            message: '保存用户设置失败'
         });
     }
 });

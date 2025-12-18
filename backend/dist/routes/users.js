@@ -63,6 +63,18 @@ const createUserSchema = {
     })
 };
 /**
+ * @route GET /api/v1/users/check-username
+ * @desc 检查用户名是否可用
+ * @access Private (Manager/Admin)
+ */
+router.get('/check-username', auth_1.authenticateToken, auth_1.requireManagerOrAdmin, userController.checkUsername);
+/**
+ * @route GET /api/v1/users/department-members
+ * @desc 获取同部门成员列表（所有登录用户可访问）
+ * @access Private (All authenticated users)
+ */
+router.get('/department-members', auth_1.authenticateToken, userController.getDepartmentMembers);
+/**
  * @route GET /api/v1/users
  * @desc 获取用户列表
  * @access Private (Manager/Admin)
@@ -116,5 +128,29 @@ router.patch('/:id/employment-status', auth_1.authenticateToken, auth_1.requireM
  * @access Private (Manager/Admin)
  */
 router.post('/:id/reset-password', auth_1.authenticateToken, auth_1.requireManagerOrAdmin, userController.resetUserPassword);
+/**
+ * @route POST /api/v1/users/:id/force-logout
+ * @desc 强制用户下线
+ * @access Private (Manager/Admin)
+ */
+router.post('/:id/force-logout', auth_1.authenticateToken, auth_1.requireManagerOrAdmin, userController.forceUserLogout);
+/**
+ * @route POST /api/v1/users/:id/two-factor
+ * @desc 切换双因子认证
+ * @access Private (Manager/Admin)
+ */
+router.post('/:id/two-factor', auth_1.authenticateToken, auth_1.requireManagerOrAdmin, userController.toggleTwoFactor);
+/**
+ * @route POST /api/v1/users/:id/unlock
+ * @desc 解锁用户账户
+ * @access Private (Manager/Admin)
+ */
+router.post('/:id/unlock', auth_1.authenticateToken, auth_1.requireManagerOrAdmin, userController.unlockAccount);
+/**
+ * @route GET /api/v1/users/:id/permissions
+ * @desc 获取用户权限详情
+ * @access Private (Manager/Admin)
+ */
+router.get('/:id/permissions', auth_1.authenticateToken, auth_1.requireManagerOrAdmin, userController.getUserPermissions);
 exports.default = router;
 //# sourceMappingURL=users.js.map

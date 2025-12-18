@@ -64,10 +64,15 @@ export class RoleController {
       // 计算每个角色的用户数量和权限数量
       const rolesWithCounts = await Promise.all(
         roles.map(async (role) => {
-          // 通过 roleId 字段查询用户数量（roleId 存储的是角色的 code，不是 id）
-          const userCount = await this.userRepository.count({
-            where: { roleId: role.code }
-          });
+          let userCount = 0;
+          try {
+            // 通过 roleId 字段查询用户数量（roleId 存储的是角色的 code，不是 id）
+            userCount = await this.userRepository.count({
+              where: { roleId: role.code }
+            });
+          } catch (err) {
+            console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
+          }
 
           // permissions 是 JSON 字段，直接获取长度
           const permissionCount = Array.isArray(role.permissions) ? role.permissions.length : 0;
@@ -119,9 +124,14 @@ export class RoleController {
       }
 
       // 获取该角色的用户数量（roleId 存储的是角色的 code，不是 id）
-      const userCount = await this.userRepository.count({
-        where: { roleId: role.code }
-      });
+      let userCount = 0;
+      try {
+        userCount = await this.userRepository.count({
+          where: { roleId: role.code }
+        });
+      } catch (err) {
+        console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
+      }
 
       res.json({
         success: true,
@@ -378,9 +388,14 @@ export class RoleController {
       }
 
       // 检查是否有用户使用此角色（roleId 存储的是角色的 code，不是 id）
-      const usersWithRole = await this.userRepository.count({
-        where: { roleId: role.code }
-      });
+      let usersWithRole = 0;
+      try {
+        usersWithRole = await this.userRepository.count({
+          where: { roleId: role.code }
+        });
+      } catch (err) {
+        console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
+      }
 
       if (usersWithRole > 0) {
         res.status(400).json({

@@ -116,7 +116,7 @@ router.get('/system', async (req, res) => {
                                 }
                             }
                         }
-                        catch (parseError) {
+                        catch (_parseError) {
                             // 忽略解析错误的行
                         }
                     }
@@ -206,6 +206,91 @@ router.delete('/clear', async (req, res) => {
             success: false,
             message: '清空系统日志失败',
             error: error instanceof Error ? error.message : String(error)
+        });
+    }
+});
+/**
+ * @route GET /api/v1/logs/operation-logs
+ * @desc 获取操作日志（用于超管面板）
+ * @access Private (Admin)
+ */
+router.get('/operation-logs', async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const pageSize = parseInt(req.query.pageSize) || 20;
+        const startDate = req.query.startDate;
+        const endDate = req.query.endDate;
+        const action = req.query.action;
+        const userId = req.query.userId;
+        // 从操作日志文件读取数据
+        const logsDir = path_1.default.join(process.cwd(), 'logs');
+        const operationsLogFile = path_1.default.join(logsDir, 'operations.log');
+        let logs = [];
+        if (fs_1.default.existsSync(operationsLogFile)) {
+            const content = fs_1.default.readFileSync(operationsLogFile, 'utf8');
+            const lines = content.split('\n').filter(line => line.trim());
+            logs = lines.map((line, index) => {
+                try {
+                    const parsed = JSON.parse(line);
+                    return {
+                        id: index + 1,
+                        createdAt: parsed.timestamp || new Date().toISOString(),
+                        username: parsed.username || parsed.user || '系统',
+                        action: parsed.action || parsed.level || 'info',
+                        module: parsed.module || 'system',
+                        description: parsed.message || parsed.description || '',
+                        ip: parsed.ip || '-',
+                        targetUser: parsed.targetUser || '-'
+                    };
+                }
+                catch {
+                    return {
+                        id: index + 1,
+                        createdAt: new Date().toISOString(),
+                        username: '系统',
+                        action: 'info',
+                        module: 'system',
+                        description: line,
+                        ip: '-',
+                        targetUser: '-'
+                    };
+                }
+            }).reverse(); // 最新的在前面
+        }
+        // 应用过滤条件
+        if (startDate) {
+            logs = logs.filter(log => new Date(log.createdAt) >= new Date(startDate));
+        }
+        if (endDate) {
+            logs = logs.filter(log => new Date(log.createdAt) <= new Date(endDate));
+        }
+        if (action) {
+            logs = logs.filter(log => log.action.toLowerCase().includes(action.toLowerCase()));
+        }
+        if (userId) {
+            logs = logs.filter(log => log.username.includes(userId));
+        }
+        // 分页
+        const total = logs.length;
+        const start = (page - 1) * pageSize;
+        const paginatedLogs = logs.slice(start, start + pageSize);
+        res.json({
+            success: true,
+            data: paginatedLogs,
+            total,
+            page,
+            pageSize
+        });
+    }
+    catch (error) {
+        logger_1.logger.error('获取操作日志失败', {
+            error: error instanceof Error ? error.message : String(error)
+        });
+        res.status(500).json({
+            success: false,
+            message: '获取操作日志失败',
+            data: [],
+            total: 0
         });
     }
 });

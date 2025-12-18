@@ -22,8 +22,6 @@ class UserController {
             const user = await this.userRepository.findOne({
                 where: { username }
             });
-            console.log('[Login Debug] 查询到的用户对象:', user);
-            console.log('[Login Debug] 用户对象的keys:', user ? Object.keys(user) : 'null');
             if (!user) {
                 // 记录登录失败日志（失败不影响错误返回）
                 try {
@@ -36,8 +34,8 @@ class UserController {
                         userAgent: req.get('User-Agent')
                     });
                 }
-                catch (logError) {
-                    console.error('[Login] 记录日志失败:', logError);
+                catch (_logError) {
+                    // 日志记录失败不影响主流程
                 }
                 throw new errorHandler_1.BusinessError('用户名或密码错误', 'INVALID_CREDENTIALS');
             }
@@ -48,14 +46,32 @@ class UserController {
             if (user.status === 'inactive') {
                 throw new errorHandler_1.BusinessError('账户已被禁用，请联系管理员', 'ACCOUNT_DISABLED');
             }
+            // 验证授权IP
+            const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+            // 处理IPv6格式的本地地址
+            const normalizedIp = clientIp.replace(/^::ffff:/, '');
+            if (user.authorizedIps && Array.isArray(user.authorizedIps) && user.authorizedIps.length > 0) {
+                const isIpAuthorized = user.authorizedIps.some(ip => ip === clientIp || ip === normalizedIp || clientIp.includes(ip));
+                if (!isIpAuthorized) {
+                    // 记录IP限制失败日志
+                    try {
+                        await this.logOperation({
+                            action: 'login',
+                            module: 'auth',
+                            description: `用户登录失败: IP未授权 - ${username} (IP: ${normalizedIp})`,
+                            result: 'failed',
+                            ipAddress: normalizedIp,
+                            userAgent: req.get('User-Agent')
+                        });
+                    }
+                    catch (_logError) {
+                        // 日志记录失败不影响主流程
+                    }
+                    throw new errorHandler_1.BusinessError('当前IP地址未授权登录，请联系管理员', 'IP_NOT_AUTHORIZED');
+                }
+            }
             // 验证密码
-            console.log('[Login Debug] 开始验证密码');
-            console.log('[Login Debug] 用户名:', username);
-            console.log('[Login Debug] 输入密码:', password);
-            console.log('[Login Debug] 数据库密码哈希:', user.password);
-            console.log('[Login Debug] 密码哈希长度:', user.password?.length);
             const isPasswordValid = await bcryptjs_1.default.compare(password, user.password);
-            console.log('[Login Debug] 密码验证结果:', isPasswordValid);
             if (!isPasswordValid) {
                 // 增加登录失败次数
                 user.loginFailCount += 1;
@@ -78,8 +94,8 @@ class UserController {
                         userAgent: req.get('User-Agent')
                     });
                 }
-                catch (logError) {
-                    console.error('[Login] 记录日志失败:', logError);
+                catch (_logError) {
+                    // 日志记录失败不影响主流程
                 }
                 throw new errorHandler_1.BusinessError('用户名或密码错误', 'INVALID_CREDENTIALS');
             }
@@ -91,14 +107,15 @@ class UserController {
                 user.lastLoginIp = req.ip || '';
                 await this.userRepository.save(user);
             }
-            catch (saveError) {
-                console.error('[Login] 保存用户信息失败，但继续登录流程:', saveError);
+            catch (_saveError) {
+                // 保存失败不影响登录流程
             }
             // 生成JWT令牌
+            // 🔥 修复：使用 roleId（角色代码如 department_manager）而不是 role（可能是中文角色名）
             const tokenPayload = {
                 userId: user.id,
                 username: user.username,
-                role: user.role,
+                role: user.roleId || user.role, // 优先使用 roleId
                 departmentId: user.departmentId
             };
             const tokens = jwt_1.JwtConfig.generateTokenPair(tokenPayload);
@@ -115,8 +132,8 @@ class UserController {
                     userAgent: req.get('User-Agent')
                 });
             }
-            catch (logError) {
-                console.error('[Login] 记录日志失败，但继续登录流程:', logError);
+            catch (_logError) {
+                // 日志记录失败不影响登录流程
             }
             // 返回用户信息和令牌
             const { password: _, ...userInfo } = user;
@@ -147,10 +164,11 @@ class UserController {
                 throw new errorHandler_1.BusinessError('用户状态异常，请重新登录', 'USER_STATUS_INVALID');
             }
             // 生成新的令牌对
+            // 🔥 修复：使用 roleId（角色代码如 department_manager）而不是 role（可能是中文角色名）
             const newTokenPayload = {
                 userId: user.id,
                 username: user.username,
-                role: user.role,
+                role: user.roleId || user.role, // 优先使用 roleId
                 departmentId: user.departmentId
             };
             const tokens = jwt_1.JwtConfig.generateTokenPair(newTokenPayload);
@@ -261,10 +279,30 @@ class UserController {
             });
         });
         /**
+         * 检查用户名是否可用
+         */
+        this.checkUsername = (0, errorHandler_1.catchAsync)(async (req, res) => {
+            const { username } = req.query;
+            if (!username || typeof username !== 'string') {
+                throw new errorHandler_1.ValidationError('用户名参数不能为空');
+            }
+            // 检查用户名是否已存在
+            const existingUser = await this.userRepository.findOne({
+                where: { username }
+            });
+            res.json({
+                success: true,
+                data: {
+                    available: !existingUser,
+                    username
+                }
+            });
+        });
+        /**
          * 创建用户（管理员功能）
          */
         this.createUser = (0, errorHandler_1.catchAsync)(async (req, res) => {
-            const { username, password, realName, email, phone, role, departmentId } = req.body;
+            const { username, password, realName, email, phone, role, departmentId, department, position, employeeNumber, remark } = req.body;
             // 验证必填字段
             if (!username || !password || !realName || !role) {
                 throw new errorHandler_1.ValidationError('用户名、密码、真实姓名和角色为必填项');
@@ -310,7 +348,11 @@ class UserController {
                 role,
                 roleId: role, // roleId 是必需字段，使用 role 值
                 departmentId: departmentId || null,
+                departmentName: department || null,
+                position: position || null,
+                employeeNumber: employeeNumber || null,
                 status: 'active',
+                employmentStatus: 'active',
                 loginFailCount: 0,
                 loginCount: 0
             });
@@ -338,6 +380,73 @@ class UserController {
             });
         });
         /**
+         * 获取同部门成员列表（所有登录用户可访问）
+         * 销售员只能看到同部门成员，经理和管理员可以看到所有用户
+         */
+        this.getDepartmentMembers = (0, errorHandler_1.catchAsync)(async (req, res) => {
+            const currentUser = req.user;
+            if (!currentUser) {
+                throw new errorHandler_1.BusinessError('用户未登录', 'UNAUTHORIZED');
+            }
+            console.log('[getDepartmentMembers] 当前用户:', currentUser.username, '角色:', currentUser.role, '部门ID:', currentUser.departmentId);
+            const queryBuilder = this.userRepository.createQueryBuilder('user')
+                .select([
+                'user.id',
+                'user.username',
+                'user.realName',
+                'user.name',
+                'user.email',
+                'user.phone',
+                'user.avatar',
+                'user.role',
+                'user.status',
+                'user.employmentStatus',
+                'user.departmentId',
+                'user.departmentName',
+                'user.position',
+                'user.employeeNumber',
+                'user.createdAt'
+            ]);
+            // 根据角色过滤数据
+            const isAdmin = currentUser.role === 'super_admin' || currentUser.role === 'admin';
+            const isManager = currentUser.role === 'department_manager';
+            if (isAdmin) {
+                // 管理员可以看到所有用户
+                console.log('[getDepartmentMembers] 管理员，返回所有用户');
+            }
+            else if (isManager || currentUser.role === 'sales_staff') {
+                // 经理和销售员只能看到同部门成员
+                if (currentUser.departmentId) {
+                    queryBuilder.andWhere('user.departmentId = :departmentId', { departmentId: currentUser.departmentId });
+                    console.log('[getDepartmentMembers] 非管理员，过滤部门ID:', currentUser.departmentId);
+                }
+                else {
+                    // 如果没有部门ID，返回空列表
+                    console.log('[getDepartmentMembers] 用户没有部门ID，返回空列表');
+                    return res.json({
+                        success: true,
+                        data: {
+                            items: [],
+                            users: [],
+                            total: 0
+                        }
+                    });
+                }
+            }
+            // 只返回启用的用户
+            queryBuilder.andWhere('user.status = :status', { status: 'active' });
+            const users = await queryBuilder.getMany();
+            console.log('[getDepartmentMembers] 返回用户数:', users.length);
+            res.json({
+                success: true,
+                data: {
+                    items: users,
+                    users: users,
+                    total: users.length
+                }
+            });
+        });
+        /**
          * 获取用户列表（管理员功能）
          */
         this.getUsers = (0, errorHandler_1.catchAsync)(async (req, res) => {
@@ -355,11 +464,15 @@ class UserController {
                 'user.role',
                 'user.roleId',
                 'user.status',
+                'user.employmentStatus',
+                'user.resignedAt',
                 'user.departmentId',
                 'user.departmentName',
                 'user.position',
+                'user.employeeNumber',
                 'user.lastLoginAt',
                 'user.lastLoginIp',
+                'user.loginCount',
                 'user.createdAt',
                 'user.updatedAt'
             ]);
@@ -382,11 +495,26 @@ class UserController {
             // 排序
             queryBuilder.orderBy('user.createdAt', 'DESC');
             const [users, total] = await queryBuilder.getManyAndCount();
+            // 计算在线状态：最近15分钟内有登录活动的用户视为在线
+            const now = new Date();
+            const onlineThreshold = 15 * 60 * 1000; // 15分钟
+            const usersWithOnlineStatus = users.map(user => {
+                let isOnline = false;
+                if (user.lastLoginAt) {
+                    const lastLoginTime = new Date(user.lastLoginAt).getTime();
+                    isOnline = (now.getTime() - lastLoginTime) < onlineThreshold;
+                }
+                return {
+                    ...user,
+                    isOnline,
+                    loginCount: user.loginCount || 0
+                };
+            });
             res.json({
                 success: true,
                 data: {
-                    items: users, // 前端期望 items 字段
-                    users, // 保持兼容
+                    items: usersWithOnlineStatus, // 前端期望 items 字段
+                    users: usersWithOnlineStatus, // 保持兼容
                     total,
                     page: parseInt(page),
                     limit: parseInt(limit),
@@ -406,21 +534,24 @@ class UserController {
             const locked = await this.userRepository.count({ where: { status: 'locked' } });
             // 获取各角色用户数
             const adminCount = await this.userRepository.count({ where: { role: 'admin' } });
+            const superAdminCount = await this.userRepository.count({ where: { role: 'super_admin' } });
             const managerCount = await this.userRepository.count({ where: { role: 'manager' } });
+            const departmentManagerCount = await this.userRepository.count({ where: { role: 'department_manager' } });
             const salesCount = await this.userRepository.count({ where: { role: 'sales' } });
+            const salesStaffCount = await this.userRepository.count({ where: { role: 'sales_staff' } });
             const serviceCount = await this.userRepository.count({ where: { role: 'service' } });
-            // 获取各部门用户数
+            const customerServiceCount = await this.userRepository.count({ where: { role: 'customer_service' } });
+            // 获取各部门用户数（使用departmentName字段，不需要关联）
             const departmentStats = await this.userRepository
                 .createQueryBuilder('user')
-                .leftJoin('user.department', 'department')
                 .select([
                 'user.departmentId as departmentId',
-                'department.name as departmentName',
+                'user.departmentName as departmentName',
                 'COUNT(user.id) as count'
             ])
                 .where('user.departmentId IS NOT NULL')
                 .groupBy('user.departmentId')
-                .addGroupBy('department.name')
+                .addGroupBy('user.departmentName')
                 .getRawMany();
             const statistics = {
                 total,
@@ -429,12 +560,16 @@ class UserController {
                 locked,
                 byRole: {
                     admin: adminCount,
+                    super_admin: superAdminCount,
                     manager: managerCount,
+                    department_manager: departmentManagerCount,
                     sales: salesCount,
-                    service: serviceCount
+                    sales_staff: salesStaffCount,
+                    service: serviceCount,
+                    customer_service: customerServiceCount
                 },
                 byDepartment: departmentStats.map(stat => ({
-                    departmentId: parseInt(stat.departmentId),
+                    departmentId: stat.departmentId,
                     departmentName: stat.departmentName || '未知部门',
                     count: parseInt(stat.count)
                 }))
@@ -562,6 +697,11 @@ class UserController {
             if (!user) {
                 throw new errorHandler_1.NotFoundError('用户不存在');
             }
+            // 🔥 防止禁用系统预设用户（超级管理员和管理员）
+            const nonDisableableUsers = ['superadmin', 'admin'];
+            if (status !== 'active' && nonDisableableUsers.includes(user.username?.toLowerCase())) {
+                throw new errorHandler_1.ValidationError('系统预设用户不可禁用');
+            }
             user.status = status;
             if (status === 'locked') {
                 user.lockedAt = new Date();
@@ -667,6 +807,160 @@ class UserController {
                 data: {
                     tempPassword: newPassword ? undefined : tempPassword
                 }
+            });
+        });
+        /**
+         * 强制用户下线
+         */
+        this.forceUserLogout = (0, errorHandler_1.catchAsync)(async (req, res) => {
+            const userId = req.params.id;
+            const user = await this.userRepository.findOne({
+                where: { id: userId }
+            });
+            if (!user) {
+                throw new errorHandler_1.NotFoundError('用户不存在');
+            }
+            // TODO: 实现真正的强制下线逻辑
+            // 1. 清除用户的所有session
+            // 2. 将用户的JWT token加入黑名单
+            // 3. 通知客户端用户已被强制下线
+            // 记录操作日志
+            await this.logOperation({
+                userId: req.user?.userId,
+                username: req.user?.username,
+                action: 'force_logout',
+                module: 'user',
+                description: `强制用户下线: ${user.username}`,
+                result: 'success',
+                ipAddress: req.ip,
+                userAgent: req.get('User-Agent')
+            });
+            res.json({
+                success: true,
+                message: '用户已强制下线'
+            });
+        });
+        /**
+         * 切换双因子认证
+         */
+        this.toggleTwoFactor = (0, errorHandler_1.catchAsync)(async (req, res) => {
+            const userId = req.params.id;
+            const { enabled } = req.body;
+            const user = await this.userRepository.findOne({
+                where: { id: userId }
+            });
+            if (!user) {
+                throw new errorHandler_1.NotFoundError('用户不存在');
+            }
+            // TODO: 实现真正的双因子认证逻辑
+            // 这里只是模拟，实际需要集成TOTP或其他2FA方案
+            // 记录操作日志
+            await this.logOperation({
+                userId: req.user?.userId,
+                username: req.user?.username,
+                action: enabled ? 'enable_two_factor' : 'disable_two_factor',
+                module: 'user',
+                description: `${enabled ? '启用' : '禁用'}双因子认证: ${user.username}`,
+                result: 'success',
+                ipAddress: req.ip,
+                userAgent: req.get('User-Agent')
+            });
+            res.json({
+                success: true,
+                message: `双因子认证${enabled ? '启用' : '禁用'}成功`
+            });
+        });
+        /**
+         * 解锁用户账户
+         */
+        this.unlockAccount = (0, errorHandler_1.catchAsync)(async (req, res) => {
+            const userId = req.params.id;
+            const user = await this.userRepository.findOne({
+                where: { id: userId }
+            });
+            if (!user) {
+                throw new errorHandler_1.NotFoundError('用户不存在');
+            }
+            if (user.status !== 'locked') {
+                throw new errorHandler_1.BusinessError('用户账户未被锁定');
+            }
+            user.status = 'active';
+            user.lockedAt = null;
+            user.loginFailCount = 0;
+            await this.userRepository.save(user);
+            // 记录操作日志
+            await this.logOperation({
+                userId: req.user?.userId,
+                username: req.user?.username,
+                action: 'unlock_account',
+                module: 'user',
+                description: `解锁用户账户: ${user.username}`,
+                result: 'success',
+                ipAddress: req.ip,
+                userAgent: req.get('User-Agent')
+            });
+            res.json({
+                success: true,
+                message: '账户解锁成功'
+            });
+        });
+        /**
+         * 获取用户权限详情
+         */
+        this.getUserPermissions = (0, errorHandler_1.catchAsync)(async (req, res) => {
+            const userId = req.params.id;
+            const user = await this.userRepository.findOne({
+                where: { id: userId }
+            });
+            if (!user) {
+                throw new errorHandler_1.NotFoundError('用户不存在');
+            }
+            // 根据用户角色返回权限树
+            const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+            const isManager = user.role === 'manager' || isAdmin;
+            const permissions = [
+                {
+                    id: 'customer',
+                    name: '客户管理',
+                    type: 'menu',
+                    granted: true,
+                    children: [
+                        { id: 'customer.view', name: '查看客户', type: 'action', granted: true },
+                        { id: 'customer.create', name: '创建客户', type: 'action', granted: true },
+                        { id: 'customer.edit', name: '编辑客户', type: 'action', granted: isManager },
+                        { id: 'customer.delete', name: '删除客户', type: 'action', granted: isAdmin },
+                        { id: 'customer.export', name: '导出客户', type: 'action', granted: isManager }
+                    ]
+                },
+                {
+                    id: 'order',
+                    name: '订单管理',
+                    type: 'menu',
+                    granted: true,
+                    children: [
+                        { id: 'order.view', name: '查看订单', type: 'action', granted: true },
+                        { id: 'order.create', name: '创建订单', type: 'action', granted: true },
+                        { id: 'order.edit', name: '编辑订单', type: 'action', granted: isManager },
+                        { id: 'order.delete', name: '删除订单', type: 'action', granted: isAdmin },
+                        { id: 'order.audit', name: '审核订单', type: 'action', granted: isManager }
+                    ]
+                },
+                {
+                    id: 'system',
+                    name: '系统管理',
+                    type: 'menu',
+                    granted: isAdmin,
+                    children: [
+                        { id: 'system.user', name: '用户管理', type: 'action', granted: isAdmin },
+                        { id: 'system.role', name: '角色管理', type: 'action', granted: isAdmin },
+                        { id: 'system.permission', name: '权限管理', type: 'action', granted: user.role === 'super_admin' },
+                        { id: 'system.config', name: '系统配置', type: 'action', granted: user.role === 'super_admin' }
+                    ]
+                }
+            ];
+            res.json({
+                success: true,
+                data: permissions
             });
         });
     }

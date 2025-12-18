@@ -3,7 +3,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const database_1 = require("../config/database");
 const AfterSalesService_1 = require("../entities/AfterSalesService");
+const ServiceFollowUp_1 = require("../entities/ServiceFollowUp");
+const ServiceOperationLog_1 = require("../entities/ServiceOperationLog");
 const auth_1 = require("../middleware/auth");
+const OrderNotificationService_1 = require("../services/OrderNotificationService");
 // import { Like, In } from 'typeorm'; // 暂时未使用
 const router = (0, express_1.Router)();
 // 获取售后服务仓库
@@ -13,6 +16,48 @@ const getServiceRepository = () => {
         throw new Error('数据库连接未初始化');
     }
     return dataSource.getRepository(AfterSalesService_1.AfterSalesService);
+};
+// 获取跟进记录仓库
+const getFollowUpRepository = () => {
+    const dataSource = (0, database_1.getDataSource)();
+    if (!dataSource) {
+        throw new Error('数据库连接未初始化');
+    }
+    return dataSource.getRepository(ServiceFollowUp_1.ServiceFollowUp);
+};
+// 获取操作记录仓库
+const getOperationLogRepository = () => {
+    const dataSource = (0, database_1.getDataSource)();
+    if (!dataSource) {
+        throw new Error('数据库连接未初始化');
+    }
+    return dataSource.getRepository(ServiceOperationLog_1.ServiceOperationLog);
+};
+// 生成唯一ID
+const generateId = (prefix = '') => {
+    return `${prefix}${Date.now()}${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+};
+// 记录操作日志
+const logOperation = async (serviceId, serviceNumber, operationType, operationContent, operatorId, operatorName, oldValue, newValue, remark) => {
+    try {
+        const logRepository = getOperationLogRepository();
+        const log = logRepository.create({
+            id: generateId('SOL'),
+            serviceId,
+            serviceNumber,
+            operationType,
+            operationContent,
+            oldValue,
+            newValue,
+            operatorId,
+            operatorName,
+            remark
+        });
+        await logRepository.save(log);
+    }
+    catch (error) {
+        console.error('[Services] 记录操作日志失败:', error);
+    }
 };
 /**
  * 获取售后服务列表
@@ -228,6 +273,17 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
         });
         const savedService = await serviceRepository.save(service);
         console.log('[Services] 创建售后服务成功:', savedService.serviceNumber);
+        // 🔥 发送售后创建通知给创建者和管理员
+        OrderNotificationService_1.orderNotificationService.notifyAfterSalesCreated({
+            id: savedService.id,
+            serviceNumber: savedService.serviceNumber,
+            orderId: savedService.orderId || undefined,
+            orderNumber: savedService.orderNumber || undefined,
+            customerName: savedService.customerName || undefined,
+            serviceType: savedService.serviceType,
+            createdBy: savedService.createdById || undefined,
+            createdByName: savedService.createdBy || undefined
+        }).catch(err => console.error('[Services] 发送售后创建通知失败:', err));
         res.status(201).json({
             success: true,
             message: '创建售后服务成功',
@@ -257,6 +313,8 @@ router.put('/:id', auth_1.authenticateToken, async (req, res) => {
         const serviceRepository = getServiceRepository();
         const { id } = req.params;
         const data = req.body;
+        const currentUser = req.user;
+        const operatorName = currentUser?.realName || currentUser?.name || currentUser?.username || '系统';
         const service = await serviceRepository.findOne({ where: { id } });
         if (!service) {
             return res.status(404).json({
@@ -264,6 +322,7 @@ router.put('/:id', auth_1.authenticateToken, async (req, res) => {
                 message: '售后服务不存在'
             });
         }
+        const previousStatus = service.status;
         // 更新字段
         if (data.serviceType !== undefined)
             service.serviceType = data.serviceType;
@@ -289,6 +348,38 @@ router.put('/:id', auth_1.authenticateToken, async (req, res) => {
         }
         const updatedService = await serviceRepository.save(service);
         console.log('[Services] 更新售后服务成功:', updatedService.serviceNumber);
+        // 🔥 如果状态发生变更，发送通知
+        if (data.status !== undefined && data.status !== previousStatus) {
+            const afterSalesInfo = {
+                id: service.id,
+                serviceNumber: service.serviceNumber,
+                orderId: service.orderId || undefined,
+                orderNumber: service.orderNumber || undefined,
+                customerName: service.customerName || undefined,
+                serviceType: service.serviceType,
+                createdBy: service.createdById || undefined,
+                createdByName: service.createdBy || undefined
+            };
+            switch (data.status) {
+                case 'processing':
+                    OrderNotificationService_1.orderNotificationService.notifyAfterSalesProcessing(afterSalesInfo, operatorName)
+                        .catch(err => console.error('[Services] 发送处理中通知失败:', err));
+                    break;
+                case 'resolved':
+                case 'closed':
+                    OrderNotificationService_1.orderNotificationService.notifyAfterSalesCompleted(afterSalesInfo, operatorName)
+                        .catch(err => console.error('[Services] 发送完成通知失败:', err));
+                    break;
+                case 'rejected':
+                    OrderNotificationService_1.orderNotificationService.notifyAfterSalesRejected(afterSalesInfo, operatorName, data.remark)
+                        .catch(err => console.error('[Services] 发送拒绝通知失败:', err));
+                    break;
+                case 'cancelled':
+                    OrderNotificationService_1.orderNotificationService.notifyAfterSalesCancelled(afterSalesInfo, operatorName)
+                        .catch(err => console.error('[Services] 发送取消通知失败:', err));
+                    break;
+            }
+        }
         res.json({
             success: true,
             message: '更新售后服务成功',
@@ -318,7 +409,9 @@ router.patch('/:id/status', auth_1.authenticateToken, async (req, res) => {
         const serviceRepository = getServiceRepository();
         const { id } = req.params;
         const { status, remark } = req.body;
-        if (!['pending', 'processing', 'resolved', 'closed'].includes(status)) {
+        const currentUser = req.user;
+        const operatorName = currentUser?.realName || currentUser?.name || currentUser?.username || '系统';
+        if (!['pending', 'processing', 'resolved', 'closed', 'rejected', 'cancelled'].includes(status)) {
             return res.status(400).json({
                 success: false,
                 message: '无效的状态值'
@@ -331,6 +424,7 @@ router.patch('/:id/status', auth_1.authenticateToken, async (req, res) => {
                 message: '售后服务不存在'
             });
         }
+        const previousStatus = service.status;
         service.status = status;
         if (remark)
             service.remark = remark;
@@ -339,6 +433,38 @@ router.patch('/:id/status', auth_1.authenticateToken, async (req, res) => {
             service.resolvedTime = new Date();
         }
         const updatedService = await serviceRepository.save(service);
+        // 🔥 根据状态变更发送通知
+        if (status !== previousStatus) {
+            const afterSalesInfo = {
+                id: service.id,
+                serviceNumber: service.serviceNumber,
+                orderId: service.orderId || undefined,
+                orderNumber: service.orderNumber || undefined,
+                customerName: service.customerName || undefined,
+                serviceType: service.serviceType,
+                createdBy: service.createdById || undefined,
+                createdByName: service.createdBy || undefined
+            };
+            switch (status) {
+                case 'processing':
+                    OrderNotificationService_1.orderNotificationService.notifyAfterSalesProcessing(afterSalesInfo, operatorName)
+                        .catch(err => console.error('[Services] 发送处理中通知失败:', err));
+                    break;
+                case 'resolved':
+                case 'closed':
+                    OrderNotificationService_1.orderNotificationService.notifyAfterSalesCompleted(afterSalesInfo, operatorName)
+                        .catch(err => console.error('[Services] 发送完成通知失败:', err));
+                    break;
+                case 'rejected':
+                    OrderNotificationService_1.orderNotificationService.notifyAfterSalesRejected(afterSalesInfo, operatorName, remark)
+                        .catch(err => console.error('[Services] 发送拒绝通知失败:', err));
+                    break;
+                case 'cancelled':
+                    OrderNotificationService_1.orderNotificationService.notifyAfterSalesCancelled(afterSalesInfo, operatorName)
+                        .catch(err => console.error('[Services] 发送取消通知失败:', err));
+                    break;
+            }
+        }
         res.json({
             success: true,
             message: '状态更新成功',
@@ -366,6 +492,7 @@ router.patch('/:id/assign', auth_1.authenticateToken, async (req, res) => {
         const serviceRepository = getServiceRepository();
         const { id } = req.params;
         const { assignedTo, assignedToId, remark } = req.body;
+        const currentUser = req.user;
         const service = await serviceRepository.findOne({ where: { id } });
         if (!service) {
             return res.status(404).json({
@@ -382,6 +509,24 @@ router.patch('/:id/assign', auth_1.authenticateToken, async (req, res) => {
             service.status = 'processing';
         }
         const updatedService = await serviceRepository.save(service);
+        // 发送消息提醒给处理人和创建者
+        try {
+            await OrderNotificationService_1.orderNotificationService.notifyAfterSalesAssigned({
+                id: updatedService.id,
+                serviceNumber: updatedService.serviceNumber,
+                orderId: updatedService.orderId,
+                orderNumber: updatedService.orderNumber,
+                customerName: updatedService.customerName,
+                serviceType: updatedService.serviceType,
+                createdBy: updatedService.createdById,
+                assignedTo: updatedService.assignedTo,
+                assignedToId: updatedService.assignedToId
+            }, currentUser?.userId, currentUser?.name || currentUser?.username);
+        }
+        catch (notifyError) {
+            console.error('[Services] 发送分配通知失败:', notifyError);
+            // 通知失败不影响主流程
+        }
         res.json({
             success: true,
             message: '分配成功',
@@ -531,6 +676,133 @@ router.get('/stats/summary', auth_1.authenticateToken, async (req, res) => {
         res.status(500).json({
             success: false,
             message: '获取统计失败',
+            error: error instanceof Error ? error.message : '未知错误'
+        });
+    }
+});
+/**
+ * 获取售后服务跟进记录
+ * GET /api/v1/services/:id/follow-ups
+ */
+router.get('/:id/follow-ups', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const followUpRepository = getFollowUpRepository();
+        const { id } = req.params;
+        const followUps = await followUpRepository.find({
+            where: { serviceId: id },
+            order: { followUpTime: 'DESC' }
+        });
+        const formattedFollowUps = followUps.map(record => ({
+            id: record.id,
+            serviceId: record.serviceId,
+            serviceNumber: record.serviceNumber,
+            followUpTime: record.followUpTime?.toISOString().replace('T', ' ').substring(0, 19),
+            content: record.content,
+            createdBy: record.createdBy,
+            createdById: record.createdById,
+            createTime: record.createdAt?.toISOString().replace('T', ' ').substring(0, 19)
+        }));
+        res.json({
+            success: true,
+            data: formattedFollowUps
+        });
+    }
+    catch (error) {
+        console.error('[Services] 获取跟进记录失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取跟进记录失败',
+            error: error instanceof Error ? error.message : '未知错误'
+        });
+    }
+});
+/**
+ * 添加售后服务跟进记录
+ * POST /api/v1/services/:id/follow-ups
+ */
+router.post('/:id/follow-ups', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const followUpRepository = getFollowUpRepository();
+        const serviceRepository = getServiceRepository();
+        const currentUser = req.user;
+        const { id } = req.params;
+        const { followUpTime, content } = req.body;
+        // 验证售后服务存在
+        const service = await serviceRepository.findOne({ where: { id } });
+        if (!service) {
+            return res.status(404).json({
+                success: false,
+                message: '售后服务不存在'
+            });
+        }
+        const followUp = followUpRepository.create({
+            id: generateId('SFU'),
+            serviceId: id,
+            serviceNumber: service.serviceNumber,
+            followUpTime: new Date(followUpTime),
+            content,
+            createdBy: currentUser?.username || '系统',
+            createdById: currentUser?.userId || null
+        });
+        const savedFollowUp = await followUpRepository.save(followUp);
+        // 记录操作日志
+        await logOperation(id, service.serviceNumber, 'follow_up', `添加跟进记录: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`, currentUser?.userId, currentUser?.username);
+        res.status(201).json({
+            success: true,
+            message: '添加跟进记录成功',
+            data: {
+                id: savedFollowUp.id,
+                followUpTime: savedFollowUp.followUpTime?.toISOString().replace('T', ' ').substring(0, 19),
+                content: savedFollowUp.content,
+                createdBy: savedFollowUp.createdBy,
+                createTime: savedFollowUp.createdAt?.toISOString().replace('T', ' ').substring(0, 19)
+            }
+        });
+    }
+    catch (error) {
+        console.error('[Services] 添加跟进记录失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '添加跟进记录失败',
+            error: error instanceof Error ? error.message : '未知错误'
+        });
+    }
+});
+/**
+ * 获取售后服务操作记录
+ * GET /api/v1/services/:id/operation-logs
+ */
+router.get('/:id/operation-logs', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const logRepository = getOperationLogRepository();
+        const { id } = req.params;
+        const logs = await logRepository.find({
+            where: { serviceId: id },
+            order: { createdAt: 'DESC' }
+        });
+        const formattedLogs = logs.map(log => ({
+            id: log.id,
+            serviceId: log.serviceId,
+            serviceNumber: log.serviceNumber,
+            operationType: log.operationType,
+            operationContent: log.operationContent,
+            oldValue: log.oldValue,
+            newValue: log.newValue,
+            operatorId: log.operatorId,
+            operatorName: log.operatorName,
+            remark: log.remark,
+            createTime: log.createdAt?.toISOString().replace('T', ' ').substring(0, 19)
+        }));
+        res.json({
+            success: true,
+            data: formattedLogs
+        });
+    }
+    catch (error) {
+        console.error('[Services] 获取操作记录失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取操作记录失败',
             error: error instanceof Error ? error.message : '未知错误'
         });
     }

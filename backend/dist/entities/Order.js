@@ -139,6 +139,14 @@ __decorate([
     __metadata("design:type", Date)
 ], Order.prototype, "shippedAt", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ name: 'shipping_time', type: 'varchar', length: 50, nullable: true, comment: '发货时间字符串' }),
+    __metadata("design:type", String)
+], Order.prototype, "shippingTime", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'expected_delivery_date', type: 'varchar', length: 20, nullable: true, comment: '预计送达日期' }),
+    __metadata("design:type", String)
+], Order.prototype, "expectedDeliveryDate", void 0);
+__decorate([
     (0, typeorm_1.Column)({ name: 'delivered_at', type: 'datetime', nullable: true, comment: '签收时间' }),
     __metadata("design:type", Date)
 ], Order.prototype, "deliveredAt", void 0);
@@ -179,9 +187,53 @@ __decorate([
     __metadata("design:type", String)
 ], Order.prototype, "markType", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ name: 'custom_fields', type: 'json', nullable: true, comment: '自定义字段' }),
+    (0, typeorm_1.Column)({ name: 'logistics_status', length: 50, nullable: true, comment: '物流状态' }),
+    __metadata("design:type", String)
+], Order.prototype, "logisticsStatus", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'is_todo', type: 'boolean', default: false, comment: '是否待办' }),
+    __metadata("design:type", Boolean)
+], Order.prototype, "isTodo", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'todo_date', type: 'date', nullable: true, comment: '待办日期' }),
+    __metadata("design:type", String)
+], Order.prototype, "todoDate", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'todo_remark', type: 'text', nullable: true, comment: '待办备注' }),
+    __metadata("design:type", String)
+], Order.prototype, "todoRemark", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'custom_fields', type: 'json', nullable: true, comment: '自定义字段(旧版，保留兼容)' }),
     __metadata("design:type", Object)
 ], Order.prototype, "customFields", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'custom_field1', type: 'varchar', length: 500, nullable: true, comment: '自定义字段1' }),
+    __metadata("design:type", String)
+], Order.prototype, "customField1", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'custom_field2', type: 'varchar', length: 500, nullable: true, comment: '自定义字段2' }),
+    __metadata("design:type", String)
+], Order.prototype, "customField2", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'custom_field3', type: 'varchar', length: 500, nullable: true, comment: '自定义字段3' }),
+    __metadata("design:type", String)
+], Order.prototype, "customField3", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'custom_field4', type: 'varchar', length: 500, nullable: true, comment: '自定义字段4' }),
+    __metadata("design:type", String)
+], Order.prototype, "customField4", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'custom_field5', type: 'varchar', length: 500, nullable: true, comment: '自定义字段5' }),
+    __metadata("design:type", String)
+], Order.prototype, "customField5", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'custom_field6', type: 'varchar', length: 500, nullable: true, comment: '自定义字段6' }),
+    __metadata("design:type", String)
+], Order.prototype, "customField6", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'custom_field7', type: 'varchar', length: 500, nullable: true, comment: '自定义字段7' }),
+    __metadata("design:type", String)
+], Order.prototype, "customField7", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'text', nullable: true, comment: '订单备注' }),
     __metadata("design:type", String)
