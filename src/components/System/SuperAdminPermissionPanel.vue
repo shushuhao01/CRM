@@ -490,6 +490,7 @@ import { userApiService } from '@/services/userApiService'
 import { roleApiService } from '@/services/roleApiService'
 import departmentPermissionService from '@/services/departmentPermissionService'
 import { rolePermissionService } from '@/services/rolePermissionService'
+import { DEFAULT_ROLE_PERMISSIONS, getDefaultRolePermissions } from '@/config/defaultRolePermissions'
 
 interface User {
   id: string
@@ -691,34 +692,52 @@ const loadRoleTemplates = async () => {
     // 调用真实API获取角色数据
     const response = await roleApiService.getRoles()
 
-    // 转换API数据格式为组件需要的格式
-    roleTemplates.value = response.map(role => ({
-      id: role.id,
-      name: role.name,
-      description: role.description || '暂无描述',
-      permissions: role.permissions || [],
-      userCount: 0, // 需要额外API调用获取使用人数
-      createdAt: role.createdAt,
-      color: role.color || 'primary'
-    }))
+    // 转换API数据格式为组件需要的格式，并同步默认权限配置
+    roleTemplates.value = response.map(role => {
+      // 根据角色code从默认配置中获取权限
+      const roleCode = role.code || role.name.toLowerCase().replace(/\s+/g, '_')
+      const defaultPermissions = getDefaultRolePermissions(roleCode)
+      const defaultConfig = DEFAULT_ROLE_PERMISSIONS[roleCode]
 
-    // 获取每个角色的使用人数
-    for (const template of roleTemplates.value) {
-      try {
-        const userStats = await userApiService.getUserStatistics()
-        const roleStats = userStats.byRole as any
-        template.userCount = roleStats[template.name.toLowerCase()] || 0
-      } catch (error) {
-        console.warn(`获取角色 ${template.name} 使用人数失败:`, error)
-        template.userCount = 0
+      return {
+        id: role.id,
+        name: role.name,
+        description: defaultConfig?.description || role.description || '暂无描述',
+        // 优先使用API返回的权限，如果为空则使用默认配置
+        permissions: (role.permissions && role.permissions.length > 0) ? role.permissions : defaultPermissions,
+        userCount: 0,
+        createdAt: role.createdAt,
+        color: role.color || 'primary'
       }
+    })
+
+    // 获取用户统计数据来计算每个角色的使用人数
+    try {
+      const userStats = await userApiService.getUserStatistics()
+      const roleStats = userStats.byRole as Record<string, number>
+
+      for (const template of roleTemplates.value) {
+        // 尝试多种匹配方式
+        const roleCode = template.name.toLowerCase().replace(/\s+/g, '_')
+        template.userCount = roleStats[roleCode] || roleStats[template.name] || roleStats[template.id] || 0
+      }
+    } catch (error) {
+      console.warn('获取角色使用人数失败:', error)
     }
 
   } catch (error) {
     console.error('加载角色模板数据失败:', error)
     ElMessage.error('加载角色模板数据失败')
-    // 如果API失败，使用空数组
-    roleTemplates.value = []
+    // 如果API失败，使用默认角色配置
+    roleTemplates.value = Object.values(DEFAULT_ROLE_PERMISSIONS).map((config, index) => ({
+      id: String(index + 1),
+      name: config.roleName,
+      description: config.description || '暂无描述',
+      permissions: config.permissions,
+      userCount: 0,
+      createdAt: new Date().toISOString(),
+      color: 'primary'
+    }))
   } finally {
     loading.value.roles = false
   }
@@ -1169,11 +1188,27 @@ const importRoleTemplate = () => {
 
 const exportRoleTemplates = async () => {
   try {
-    // 获取最新的角色模板数据
-    const templates = await roleApiService.getAllRoles()
+    // 使用当前已加载的角色模板数据，或重新获取
+    let templates = roleTemplates.value
+    if (templates.length === 0) {
+      const roles = await roleApiService.getRoles()
+      templates = roles.map(role => {
+        const roleCode = role.code || role.name.toLowerCase().replace(/\s+/g, '_')
+        const defaultPermissions = getDefaultRolePermissions(roleCode)
+        return {
+          id: role.id,
+          name: role.name,
+          description: role.description || '暂无描述',
+          permissions: (role.permissions && role.permissions.length > 0) ? role.permissions : defaultPermissions,
+          userCount: 0,
+          createdAt: role.createdAt
+        }
+      })
+    }
 
     const exportData = {
       exportTime: new Date().toISOString(),
+      version: '1.0',
       roleTemplates: templates.map(template => ({
         name: template.name,
         description: template.description,
