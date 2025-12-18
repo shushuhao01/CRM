@@ -53,6 +53,35 @@ export interface LogisticsQueryOptions {
 }
 
 /**
+ * 根据运单号前缀自动识别快递公司
+ */
+const detectCompanyByTrackingNo = (trackingNo: string): string => {
+  if (!trackingNo) return ''
+  const upperNo = trackingNo.toUpperCase()
+
+  // 顺丰: SF开头
+  if (upperNo.startsWith('SF')) return 'SF'
+  // 中通: 75/76/78开头，或ZT开头
+  if (/^(75|76|78|ZT)/.test(upperNo)) return 'ZTO'
+  // 圆通: YT开头，或88/66开头
+  if (upperNo.startsWith('YT') || /^(88|66)/.test(upperNo)) return 'YTO'
+  // 申通: 77/88开头，或ST开头
+  if (upperNo.startsWith('ST') || /^(77|268|368|468)/.test(upperNo)) return 'STO'
+  // 韵达: 10/11/12/13/14/15/16/19开头
+  if (/^(10|11|12|13|14|15|16|19)/.test(upperNo)) return 'YD'
+  // 极兔: JT开头
+  if (upperNo.startsWith('JT')) return 'JTSD'
+  // EMS: E开头
+  if (upperNo.startsWith('E') && upperNo.length >= 13) return 'EMS'
+  // 京东: JD开头
+  if (upperNo.startsWith('JD')) return 'JD'
+  // 德邦: DPK开头
+  if (upperNo.startsWith('DPK') || upperNo.startsWith('DP')) return 'DBL'
+
+  return ''
+}
+
+/**
  * 显示物流查询选项弹窗（3个按钮：系统内查询、快递100、快递公司官网）
  * @param options 查询选项
  */
@@ -66,8 +95,18 @@ export const showLogisticsQueryDialog = async (options: LogisticsQueryOptions): 
   // 复制快递单号
   await copyToClipboard(trackingNo)
 
-  // 获取物流公司信息
-  const companyKey = companyCode || companyName || ''
+  // 获取物流公司信息 - 优先使用传入的参数，否则根据运单号自动识别
+  let companyKey = companyCode || companyName || ''
+
+  // 如果没有传入快递公司，尝试根据运单号自动识别
+  if (!companyKey || !getLogisticsCompany(companyKey)) {
+    const detectedCompany = detectCompanyByTrackingNo(trackingNo)
+    if (detectedCompany) {
+      companyKey = detectedCompany
+      console.log('[物流查询] 根据运单号自动识别快递公司:', companyKey)
+    }
+  }
+
   const companyShortName = getCompanyShortName(companyKey)
   const companyUrl = getTrackingUrl(companyKey, trackingNo)
   const kuaidi100Url = getKuaidi100Url(trackingNo)
