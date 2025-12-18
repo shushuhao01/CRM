@@ -226,22 +226,29 @@
               </el-card>
             </el-col>
             <el-col :span="12">
-              <el-card title="审计配置">
+              <el-card title="安全配置">
                 <template #header>
-                  <span>审计配置</span>
+                  <span>安全配置</span>
                 </template>
-                <el-form :model="systemConfig" label-width="120px">
-                  <el-form-item label="启用审计日志">
-                    <el-switch v-model="systemConfig.enableAuditLog" />
-                  </el-form-item>
-                  <el-form-item label="日志保留天数">
-                    <el-input-number v-model="systemConfig.auditLogRetentionDays" :min="30" :max="365" />
+                <el-form :model="systemConfig" label-width="140px">
+                  <el-form-item label="控制台日志加密">
+                    <el-switch
+                      v-model="systemConfig.secureConsoleEnabled"
+                      @change="handleSecureConsoleChange"
+                    />
+                    <el-tooltip content="启用后，浏览器控制台输出的敏感数据（如订单号、手机号、金额等）将被脱敏处理，防止信息泄露" placement="top">
+                      <el-icon style="margin-left: 8px; color: #909399; cursor: help;"><QuestionFilled /></el-icon>
+                    </el-tooltip>
                   </el-form-item>
                   <el-form-item label="敏感操作通知">
                     <el-switch v-model="systemConfig.notifySensitiveOperations" />
                   </el-form-item>
                   <el-form-item label="自动备份配置">
                     <el-switch v-model="systemConfig.autoBackupConfig" />
+                  </el-form-item>
+                  <el-form-item label="审计日志保留">
+                    <el-input-number v-model="systemConfig.auditLogRetentionDays" :min="30" :max="365" />
+                    <span style="margin-left: 8px; color: #909399;">天</span>
                   </el-form-item>
                 </el-form>
               </el-card>
@@ -319,7 +326,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Plus, Upload, Download, MoreFilled, Setting, Refresh } from '@element-plus/icons-vue'
+import { Search, Plus, Upload, Download, MoreFilled, Setting, Refresh, QuestionFilled } from '@element-plus/icons-vue'
 import UserPermissionDialog from './UserPermissionDialog.vue'
 import RoleTemplateDialog from './RoleTemplateDialog.vue'
 import UserDetailDialog from './UserDetailDialog.vue'
@@ -330,6 +337,7 @@ import { userApiService } from '@/services/userApiService'
 import { roleApiService } from '@/services/roleApiService'
 import { DEFAULT_ROLE_PERMISSIONS, getDefaultRolePermissions } from '@/config/defaultRolePermissions'
 import { useConfigStore } from '@/stores/config'
+import { isSecureConsoleEnabled, setSecureConsoleEnabled, enableGlobalSecureConsole } from '@/utils/secureLogger'
 
 interface User {
   id: string
@@ -358,7 +366,8 @@ interface RoleTemplate {
 const activeTab = ref('users')
 const loading = ref({
   users: false,
-  roles: false
+  roles: false,
+  system: false
 })
 
 const dialogs = ref({
@@ -397,7 +406,8 @@ const systemConfig = ref({
   enableAuditLog: true,                 // 启用审计日志
   auditLogRetentionDays: 90,            // 审计日志保留天数
   notifySensitiveOperations: true,      // 敏感操作通知
-  autoBackupConfig: true                // 自动备份配置
+  autoBackupConfig: true,               // 自动备份配置
+  secureConsoleEnabled: false           // 控制台日志加密
 })
 
 // 从configStore加载配置
@@ -406,6 +416,21 @@ const loadSystemConfigFromStore = () => {
   // 从安全配置中加载相关设置
   systemConfig.value.enforcePasswordPolicy = configStore.securityConfig.passwordMinLength > 6
   systemConfig.value.sessionTimeout = configStore.securityConfig.sessionTimeout
+  // 加载控制台加密配置
+  systemConfig.value.secureConsoleEnabled = isSecureConsoleEnabled()
+}
+
+// 处理控制台加密开关变化
+const handleSecureConsoleChange = (enabled: boolean) => {
+  setSecureConsoleEnabled(enabled)
+  if (enabled) {
+    enableGlobalSecureConsole()
+    ElMessage.success('控制台日志加密已启用，敏感数据将被脱敏处理')
+  } else {
+    ElMessage.info('控制台日志加密已禁用，请注意保护敏感信息')
+    // 提示需要刷新页面才能完全禁用
+    ElMessage.warning('完全禁用需要刷新页面')
+  }
 }
 
 // 统计数据
@@ -1080,8 +1105,12 @@ const resetSystemConfig = async () => {
       enableAuditLog: true,
       auditLogRetentionDays: 90,
       notifySensitiveOperations: true,
-      autoBackupConfig: true
+      autoBackupConfig: true,
+      secureConsoleEnabled: false
     }
+
+    // 重置控制台加密设置
+    setSecureConsoleEnabled(false)
 
     // 清除localStorage中的配置
     localStorage.removeItem('crm_admin_panel_config')
@@ -1090,7 +1119,7 @@ const resetSystemConfig = async () => {
     const configStore = useConfigStore()
     await configStore.resetSecurityConfig()
 
-    ElMessage.success('系统配置重置成功')
+    ElMessage.success('系统配置重置成功，刷新页面后完全生效')
   } catch (error) {
     console.error('重置系统配置失败:', error)
     ElMessage.error('重置系统配置失败')

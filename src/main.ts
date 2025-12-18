@@ -16,6 +16,7 @@ import { autoCheck } from './utils/deploymentCheck'
 import { autoStatusSyncService } from './services/autoStatusSync'
 import permissionPlugin from './plugins/permission'
 import { setupDirectives } from './directives'
+import { isSecureConsoleEnabled, enableGlobalSecureConsole } from './utils/secureLogger'
 
 // 全局错误处理器
 const globalErrorHandler = (error: Error, instance?: any, info?: string) => {
@@ -111,6 +112,16 @@ const initializeApp = async () => {
   try {
     // 先初始化配置存储
     const configStore = useConfigStore()
+
+    // 初始化安全控制台（如果已启用）
+    try {
+      if (isSecureConsoleEnabled()) {
+        enableGlobalSecureConsole()
+        console.log('[App] 安全控制台已启用')
+      }
+    } catch (error) {
+      console.error('[App] 安全控制台初始化失败:', error)
+    }
 
     // 安全地初始化主题配置
     try {
