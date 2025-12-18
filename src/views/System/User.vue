@@ -3796,11 +3796,7 @@ onMounted(async () => {
 .employment-status-switch :deep(.el-switch__action) {
   background-color: #fff;
 }
-</style>
 
-</script>
-
-<style scoped>
 /* IP输入相关样式 */
 .ip-input-container {
   display: flex;
