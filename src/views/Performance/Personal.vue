@@ -2647,31 +2647,55 @@ onUnmounted(() => {
 }
 
 .card-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-right: 16px;
   font-size: 24px;
   color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-icon::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.overview-card:hover .card-icon::before {
+  left: 100%;
+}
+
+.overview-card:hover .card-icon {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 
 .card-icon.sales {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #409EFF;
 }
 
 .card-icon.orders {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: #E6A23C;
 }
 
 .card-icon.customers {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: #67C23A;
 }
 
 .card-icon.conversion {
-  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+  background: #13C2C2;
 }
 
 .card-info {
