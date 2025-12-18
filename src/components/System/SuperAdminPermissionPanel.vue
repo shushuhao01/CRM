@@ -402,10 +402,7 @@ const filteredUsers = computed(() => {
 
 // 初始化数据
 const initializeData = async () => {
-  await Promise.all([
-    loadUsers(),
-    loadRoleTemplates()
-  ])
+  await loadUsers()
   updateUserStats()
 }
 
