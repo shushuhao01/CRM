@@ -116,6 +116,7 @@ CREATE TABLE `users` (
   `must_change_password` BOOLEAN DEFAULT FALSE COMMENT '是否必须修改密码',
   `remark` TEXT NULL COMMENT '备注',
   `settings` JSON COMMENT '用户设置',
+  `authorized_ips` JSON COMMENT '授权登录IP列表（JSON数组，空表示无限制）',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_username` (`username`),
@@ -126,7 +127,8 @@ CREATE TABLE `users` (
   INDEX `idx_role_id` (`role_id`),
   INDEX `idx_department` (`department_id`),
   INDEX `idx_status` (`status`),
-  INDEX `idx_entry_date` (`entry_date`)
+  INDEX `idx_entry_date` (`entry_date`),
+  INDEX `idx_authorized_ips` ((JSON_LENGTH(`authorized_ips`)))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
 
 -- 4. 客户表
