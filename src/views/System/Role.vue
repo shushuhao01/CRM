@@ -54,26 +54,6 @@
         >
           新增角色
         </el-button>
-        <el-dropdown v-if="canAddRole" @command="handleCreateFromTemplate" style="margin-left: 10px;">
-          <el-button type="success">
-            从模板创建<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item v-if="roleTemplates.length === 0" disabled>
-                暂无可用模板
-              </el-dropdown-item>
-              <el-dropdown-item
-                v-for="template in roleTemplates"
-                :key="template.id"
-                :command="template"
-              >
-                <el-icon><Document /></el-icon>
-                {{ template.name }}
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
         <el-button
           v-if="canManagePermissions"
           @click="handlePermissionManage"
