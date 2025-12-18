@@ -119,8 +119,8 @@ export class ApiService {
 
             switch (status) {
               case 401:
-                // 【关键修复】完全忽略401错误，不做任何处理
-                console.log('[API] ⚠️ 收到401错误，已忽略（保持登录状态）')
+                // Token过期或无效，友好提示并跳转登录页
+                this.handleTokenExpired(data)
                 break
               case 403:
                 ElMessage.error('没有权限访问该资源')
@@ -147,13 +147,68 @@ export class ApiService {
             ElMessage.error('请求配置错误')
           }
         } else if (isTokenValidation && error.response?.status === 401) {
-          // 【关键修复】Token验证失败也忽略
-          console.log('[API] ⚠️ Token验证失败，已忽略（保持登录状态）')
+          // Token验证失败，处理过期
+          this.handleTokenExpired(error.response?.data)
         }
 
         return Promise.reject(error)
       }
     )
+  }
+
+  /**
+   * 处理Token过期 - 友好提示并跳转登录页
+   */
+  private handleTokenExpired(data?: any): void {
+    // 防止重复处理
+    const lastExpiredTime = sessionStorage.getItem('token_expired_handled')
+    const now = Date.now()
+    if (lastExpiredTime && now - parseInt(lastExpiredTime) < 3000) {
+      // 3秒内已经处理过，不重复处理
+      return
+    }
+    sessionStorage.setItem('token_expired_handled', String(now))
+
+    // 清除认证信息
+    localStorage.removeItem('auth_token')
+    localStorage.removeItem('refresh_token')
+    localStorage.removeItem('user_info')
+    localStorage.removeItem('userPermissions')
+    localStorage.removeItem('token_expiry')
+
+    // 根据错误码显示不同提示
+    const code = data?.code
+    let message = '登录已过期，请重新登录'
+
+    if (code === 'TOKEN_EXPIRED') {
+      message = '登录已过期，请重新登录'
+    } else if (code === 'TOKEN_INVALID') {
+      message = '登录状态异常，请重新登录'
+    } else if (code === 'USER_DISABLED') {
+      message = '账户已被禁用，请联系管理员'
+    }
+
+    // 使用 ElMessageBox 显示友好提示
+    import('element-plus').then(({ ElMessageBox }) => {
+      ElMessageBox.confirm(
+        message,
+        '提示',
+        {
+          confirmButtonText: '重新登录',
+          cancelButtonText: '取消',
+          type: 'warning',
+          showCancelButton: false,
+          closeOnClickModal: false,
+          closeOnPressEscape: false
+        }
+      ).then(() => {
+        // 跳转到登录页
+        window.location.href = '/login'
+      }).catch(() => {
+        // 用户点击取消，也跳转登录页
+        window.location.href = '/login'
+      })
+    })
   }
 
   /**
@@ -164,50 +219,23 @@ export class ApiService {
   }
 
   /**
-   * 处理未授权错误
+   * 处理未授权错误（已废弃，使用handleTokenExpired代替）
    */
-  private async handleUnauthorized(showMessage: boolean = true): Promise<void> {
-    console.log('[API] 收到401错误，尝试刷新token')
-
+  private async handleUnauthorized(_showMessage: boolean = true): Promise<void> {
     // 尝试刷新token
     const refreshToken = localStorage.getItem('refresh_token')
     if (refreshToken) {
       try {
-        // 动态导入authApiService避免循环依赖
         const { authApiService } = await import('./authApiService')
         await authApiService.refreshToken()
-        console.log('[API] Token刷新成功，继续请求')
         return
-      } catch (error) {
-        console.error('[API] Token刷新失败:', error)
+      } catch (_error) {
+        // 刷新失败，继续处理过期
       }
     }
 
-    // 【修复】只在真正需要时才清除认证信息
-    // 检查是否在Mock API模式下
-    const { shouldUseMockApi } = await import('@/api/mock')
-    if (shouldUseMockApi()) {
-      console.log('[API] Mock API模式下，忽略401错误，保持登录状态')
-      return
-    }
-
-    // 刷新失败或没有refreshToken，清除认证信息
-    console.log('[API] 清除认证信息')
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('refresh_token')
-    localStorage.removeItem('user')
-    localStorage.removeItem('user_info')
-    localStorage.removeItem('userPermissions')
-    localStorage.removeItem('token_expiry')
-
-    // 根据参数决定是否显示错误消息
-    if (showMessage) {
-      ElMessage.error('登录已过期，请重新登录')
-    }
-
-    // 不在这里进行导航，让路由守卫来处理
-    // 这样可以避免导航冲突
-    console.log('[API] Token已清除，等待路由守卫处理导航')
+    // 调用统一的过期处理
+    this.handleTokenExpired({ code: 'TOKEN_EXPIRED' })
   }
 
   /**
