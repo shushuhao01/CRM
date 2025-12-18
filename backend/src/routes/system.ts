@@ -516,6 +516,28 @@ router.put('/security-settings', authenticateToken, requireAdmin, async (req: Re
   }
 });
 
+/**
+ * @route GET /api/v1/system/console-security-config
+ * @desc 获取控制台安全配置（公开接口，所有登录用户可访问）
+ * @access Private (All authenticated users)
+ */
+router.get('/console-security-config', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const settings = await getConfigsByGroup('security_settings');
+    const secureConsoleEnabled = settings.secureConsoleEnabled === true || settings.secureConsoleEnabled === 'true';
+
+    res.json({
+      success: true,
+      data: {
+        secureConsoleEnabled
+      }
+    });
+  } catch (error) {
+    console.error('获取控制台安全配置失败:', error);
+    res.status(500).json({ success: false, message: '获取配置失败' });
+  }
+});
+
 // ========== 通话设置路由 ==========
 
 /**

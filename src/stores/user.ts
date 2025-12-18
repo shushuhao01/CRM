@@ -719,6 +719,18 @@ export const useUserStore = defineStore('user', () => {
         } catch (e) {
           console.warn('[Auth] ⚠️ 无痕刷新失败（不影响使用）:', e)
         }
+
+        // 🔐 刷新安全控制台配置
+        try {
+          const { refreshSecureConsoleConfig, enableGlobalSecureConsole } = await import('@/utils/secureLogger')
+          const enabled = await refreshSecureConsoleConfig()
+          if (enabled) {
+            enableGlobalSecureConsole()
+            console.log('[Auth] 🔐 控制台加密已启用')
+          }
+        } catch (e) {
+          console.warn('[Auth] ⚠️ 刷新控制台配置失败:', e)
+        }
       }, 300) // 延迟300ms，让页面先渲染
 
       // 返回成功标识
