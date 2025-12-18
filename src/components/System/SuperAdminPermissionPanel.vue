@@ -491,6 +491,7 @@ import { roleApiService } from '@/services/roleApiService'
 import departmentPermissionService from '@/services/departmentPermissionService'
 import { rolePermissionService } from '@/services/rolePermissionService'
 import { DEFAULT_ROLE_PERMISSIONS, getDefaultRolePermissions } from '@/config/defaultRolePermissions'
+import { useConfigStore } from '@/stores/config'
 
 interface User {
   id: string
@@ -603,16 +604,25 @@ const auditPagination = ref({
 })
 
 // 系统配置
+// 超管面板的权限配置（这些是权限相关的配置，不是系统基本配置）
 const systemConfig = ref({
-  defaultPermissionLevel: 'read_only',
-  enforcePasswordPolicy: true,
-  requireTwoFactor: false,
-  sessionTimeout: 120,
-  enableAuditLog: true,
-  auditLogRetentionDays: 90,
-  notifySensitiveOperations: true,
-  autoBackupConfig: true
+  defaultPermissionLevel: 'read_only',  // 新用户默认权限级别
+  enforcePasswordPolicy: true,          // 强制密码策略
+  requireTwoFactor: false,              // 要求双因子认证
+  sessionTimeout: 120,                  // 会话超时时间（分钟）
+  enableAuditLog: true,                 // 启用审计日志
+  auditLogRetentionDays: 90,            // 审计日志保留天数
+  notifySensitiveOperations: true,      // 敏感操作通知
+  autoBackupConfig: true                // 自动备份配置
 })
+
+// 从configStore加载配置
+const loadSystemConfigFromStore = () => {
+  const configStore = useConfigStore()
+  // 从安全配置中加载相关设置
+  systemConfig.value.enforcePasswordPolicy = configStore.securityConfig.passwordMinLength > 6
+  systemConfig.value.sessionTimeout = configStore.securityConfig.sessionTimeout
+}
 
 // 统计数据
 const userStats = ref({
@@ -1656,11 +1666,25 @@ const saveSystemConfig = async () => {
     loading.value.system = true
     const configStore = useConfigStore()
 
-    // 更新各种配置
-    await configStore.updateSystemConfig(systemConfig.value)
-    await configStore.updateSecurityConfig(securityConfig.value)
-    await configStore.updateProductConfig(productConfig.value)
-    await configStore.updateThemeConfig(themeConfig.value)
+    // 将超管面板的配置映射到configStore的安全配置
+    const securityConfigUpdate = {
+      sessionTimeout: systemConfig.value.sessionTimeout,
+      passwordMinLength: systemConfig.value.enforcePasswordPolicy ? 8 : 6,
+      loginFailLock: true
+    }
+
+    // 更新安全配置
+    await configStore.updateSecurityConfig(securityConfigUpdate)
+
+    // 保存权限相关配置到localStorage（这些是超管面板特有的配置）
+    localStorage.setItem('crm_admin_panel_config', JSON.stringify({
+      defaultPermissionLevel: systemConfig.value.defaultPermissionLevel,
+      requireTwoFactor: systemConfig.value.requireTwoFactor,
+      enableAuditLog: systemConfig.value.enableAuditLog,
+      auditLogRetentionDays: systemConfig.value.auditLogRetentionDays,
+      notifySensitiveOperations: systemConfig.value.notifySensitiveOperations,
+      autoBackupConfig: systemConfig.value.autoBackupConfig
+    }))
 
     ElMessage.success('系统配置保存成功')
   } catch (error) {
@@ -1675,15 +1699,24 @@ const resetSystemConfig = async () => {
   try {
     loading.value.system = true
 
-    // 使用配置store重置系统配置
+    // 重置超管面板配置到默认值
+    systemConfig.value = {
+      defaultPermissionLevel: 'read_only',
+      enforcePasswordPolicy: true,
+      requireTwoFactor: false,
+      sessionTimeout: 120,
+      enableAuditLog: true,
+      auditLogRetentionDays: 90,
+      notifySensitiveOperations: true,
+      autoBackupConfig: true
+    }
+
+    // 清除localStorage中的配置
+    localStorage.removeItem('crm_admin_panel_config')
+
+    // 使用配置store重置安全配置
     const configStore = useConfigStore()
-
-    await configStore.resetSystemConfig()
     await configStore.resetSecurityConfig()
-    await configStore.resetProductConfig()
-
-    // 重新加载配置
-    configStore.loadConfigFromStorage()
 
     ElMessage.success('系统配置重置成功')
   } catch (error) {
@@ -1770,6 +1803,19 @@ const userSearchForm = ref({
 // 初始化
 onMounted(() => {
   initializeData()
+
+  // 加载保存的超管面板配置
+  try {
+    const savedConfig = localStorage.getItem('crm_admin_panel_config')
+    if (savedConfig) {
+      const config = JSON.parse(savedConfig)
+      Object.assign(systemConfig.value, config)
+    }
+    // 从configStore加载安全配置
+    loadSystemConfigFromStore()
+  } catch (error) {
+    console.warn('加载超管面板配置失败:', error)
+  }
 })
 </script>
 
