@@ -20,11 +20,27 @@
       <!-- 顶部导航栏 -->
       <el-header class="header">
         <div class="header-left">
-          <el-icon class="menu-toggle" @click="toggleSidebar">
-            <Menu />
-          </el-icon>
+          <div class="menu-toggle" @click="toggleSidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </div>
           <div class="logo">
-            <el-icon><TrendCharts /></el-icon>
+            <svg width="28" height="28" viewBox="0 0 44 44" fill="none" class="logo-icon-svg">
+              <defs>
+                <linearGradient id="appLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#6ee7b7"/>
+                  <stop offset="100%" stop-color="#34d399"/>
+                </linearGradient>
+              </defs>
+              <rect width="44" height="44" rx="10" fill="url(#appLogoGrad)"/>
+              <rect x="10" y="10" width="10" height="10" rx="2" fill="white"/>
+              <circle cx="29" cy="15" r="5" fill="white" opacity="0.85"/>
+              <rect x="10" y="24" width="10" height="10" rx="5" fill="white" opacity="0.7"/>
+              <rect x="24" y="24" width="10" height="10" rx="2" fill="white"/>
+            </svg>
             <span class="logo-text">云客CRM</span>
           </div>
         </div>
@@ -902,18 +918,33 @@ watch(isMobile, (newValue) => {
 }
 
 .menu-toggle {
-  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   cursor: pointer;
   color: #606266;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.menu-toggle:hover {
+  background: #f5f7fa;
+  color: #409eff;
 }
 
 .logo {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 18px;
   font-weight: bold;
   color: #409eff;
+}
+
+.logo-icon-svg {
+  flex-shrink: 0;
 }
 
 .logo-text {
