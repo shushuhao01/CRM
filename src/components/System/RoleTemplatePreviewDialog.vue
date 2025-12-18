@@ -20,7 +20,7 @@
       <!-- 权限详情 -->
       <div class="permissions-detail">
         <h3>权限配置详情</h3>
-        
+
         <el-tabs v-model="activeTab" type="border-card">
           <!-- 功能权限 -->
           <el-tab-pane label="功能权限" name="functional">
@@ -202,12 +202,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { 
-  Check, 
-  Close, 
-  User, 
+import {
+  Check,
+  Close,
+  User,
   ShoppingCart,
-  Document, 
+  Document,
   Setting,
   DataAnalysis,
   Service,
@@ -238,68 +238,117 @@ const visible = computed({
   set: (value) => emit('update:modelValue', value)
 })
 
-// 模拟数据
-const functionalPermissions = computed(() => ({
-  customer: [
-    { code: 'customer_view', name: '查看客户', level: 'basic' },
-    { code: 'customer_create', name: '创建客户', level: 'basic' },
-    { code: 'customer_edit', name: '编辑客户', level: 'intermediate' },
-    { code: 'customer_delete', name: '删除客户', level: 'advanced' },
-    { code: 'customer_export', name: '导出客户', level: 'intermediate' },
-    { code: 'customer_assign', name: '分配客户', level: 'advanced' },
-    { code: 'customer_transfer', name: '转移客户', level: 'advanced' },
-    { code: 'customer_merge', name: '合并客户', level: 'advanced' }
-  ],
-  order: [
-    { code: 'order_view', name: '查看订单', level: 'basic' },
-    { code: 'order_create', name: '创建订单', level: 'basic' },
-    { code: 'order_edit', name: '编辑订单', level: 'intermediate' },
-    { code: 'order_cancel', name: '取消订单', level: 'advanced' },
-    { code: 'order_audit', name: '审核订单', level: 'advanced' },
-    { code: 'order_export', name: '导出订单', level: 'intermediate' },
-    { code: 'order_refund', name: '退款处理', level: 'advanced' },
-    { code: 'order_price_adjust', name: '价格调整', level: 'advanced' }
-  ],
-  product: [
-    { code: 'product_view', name: '查看商品', level: 'basic' },
-    { code: 'product_create', name: '创建商品', level: 'intermediate' },
-    { code: 'product_edit', name: '编辑商品', level: 'intermediate' },
-    { code: 'product_delete', name: '删除商品', level: 'advanced' },
-    { code: 'product_publish', name: '上架商品', level: 'intermediate' },
-    { code: 'product_unpublish', name: '下架商品', level: 'intermediate' },
-    { code: 'product_category', name: '分类管理', level: 'advanced' },
-    { code: 'product_inventory', name: '库存管理', level: 'intermediate' }
-  ],
-  service: [
-    { code: 'service_view', name: '查看服务', level: 'basic' },
-    { code: 'service_create', name: '创建服务', level: 'basic' },
-    { code: 'service_edit', name: '编辑服务', level: 'intermediate' },
-    { code: 'service_close', name: '关闭服务', level: 'intermediate' },
-    { code: 'service_assign', name: '分配服务', level: 'advanced' },
-    { code: 'service_escalate', name: '升级服务', level: 'advanced' }
-  ],
-  logistics: [
-    { code: 'logistics_view', name: '查看物流', level: 'basic' },
-    { code: 'logistics_track', name: '跟踪物流', level: 'basic' },
-    { code: 'logistics_update', name: '更新物流', level: 'intermediate' },
-    { code: 'logistics_manage', name: '物流管理', level: 'advanced' }
-  ],
-  report: [
-    { code: 'report_view', name: '查看报表', level: 'basic' },
-    { code: 'report_export', name: '导出报表', level: 'intermediate' },
-    { code: 'report_custom', name: '自定义报表', level: 'advanced' },
-    { code: 'report_share', name: '分享报表', level: 'intermediate' },
-    { code: 'report_schedule', name: '定时报表', level: 'advanced' }
-  ],
-  system: [
-    { code: 'system_user_manage', name: '用户管理', level: 'advanced' },
-    { code: 'system_permission_manage', name: '权限管理', level: 'advanced' },
-    { code: 'system_config', name: '系统配置', level: 'advanced' },
-    { code: 'system_log_view', name: '日志查看', level: 'intermediate' },
-    { code: 'system_backup', name: '数据备份', level: 'advanced' },
-    { code: 'system_monitor', name: '系统监控', level: 'advanced' }
-  ]
-}))
+// 权限名称映射
+const permissionNameMap: Record<string, string> = {
+  'dashboard': '数据看板',
+  'dashboard.personal': '个人看板',
+  'dashboard.personal.view': '查看个人看板',
+  'dashboard.department': '部门看板',
+  'dashboard.department.view': '查看部门看板',
+  'customer': '客户管理',
+  'customer.list': '客户列表',
+  'customer.list.view': '查看客户',
+  'customer.list.edit': '编辑客户',
+  'customer.list.export': '导出客户',
+  'customer.list.import': '导入客户',
+  'customer.add': '新增客户',
+  'customer.add.create': '创建客户',
+  'customer.groups': '客户分组',
+  'customer.tags': '客户标签',
+  'order': '订单管理',
+  'order.list': '订单列表',
+  'order.list.view': '查看订单',
+  'order.list.edit': '编辑订单',
+  'order.add': '新增订单',
+  'order.add.create': '创建订单',
+  'order.audit': '订单审核',
+  'order.audit.view': '查看审核',
+  'order.audit.approve': '审核通过',
+  'order.audit.reject': '审核拒绝',
+  'service': '服务管理',
+  'service.call': '通话记录',
+  'service.call.view': '查看通话',
+  'service.call.make': '发起通话',
+  'service.sms': '短信管理',
+  'performance': '业绩统计',
+  'performance.personal': '个人业绩',
+  'performance.personal.view': '查看个人业绩',
+  'performance.team': '团队业绩',
+  'performance.team.view': '查看团队业绩',
+  'performance.analysis': '业绩分析',
+  'performance.analysis.view': '查看业绩分析',
+  'performance.share': '业绩分享',
+  'performance.share.view': '查看业绩分享',
+  'logistics': '物流管理',
+  'logistics.list': '物流列表',
+  'logistics.list.view': '查看物流',
+  'logistics.shipping': '发货管理',
+  'logistics.shipping.view': '查看发货',
+  'logistics.shipping.create': '创建发货',
+  'logistics.track': '物流跟踪',
+  'logistics.track.view': '查看跟踪',
+  'logistics.track.update': '更新跟踪',
+  'logistics.status': '状态更新',
+  'logistics.status.view': '查看状态',
+  'logistics.status.update': '更新状态',
+  'afterSales': '售后管理',
+  'afterSales.list': '售后列表',
+  'afterSales.list.view': '查看售后',
+  'afterSales.add': '新增售后',
+  'afterSales.add.create': '创建售后',
+  'afterSales.data': '售后数据',
+  'afterSales.data.view': '查看售后数据',
+  'afterSales.data.analysis': '售后分析',
+  'data': '资料管理',
+  'data.list': '资料列表',
+  'data.list.view': '查看资料',
+  'data.search': '资料搜索',
+  'data.search.basic': '基础搜索',
+  'data.search.advanced': '高级搜索',
+  'data.recycle': '回收站',
+  'system': '系统管理',
+  '*': '所有权限'
+}
+
+// 根据模板权限生成功能权限分组
+const functionalPermissions = computed(() => {
+  const permissions = props.template?.permissions || []
+
+  // 如果是所有权限
+  if (permissions.includes('*')) {
+    return {
+      all: [{ code: '*', name: '所有权限', level: 'advanced' }]
+    }
+  }
+
+  // 按模块分组
+  const grouped: Record<string, Array<{ code: string; name: string; level: string }>> = {}
+
+  for (const perm of permissions) {
+    const parts = perm.split('.')
+    const module = parts[0]
+
+    if (!grouped[module]) {
+      grouped[module] = []
+    }
+
+    // 确定权限级别
+    let level = 'basic'
+    if (perm.includes('delete') || perm.includes('admin') || perm.includes('audit')) {
+      level = 'advanced'
+    } else if (perm.includes('edit') || perm.includes('export') || perm.includes('create')) {
+      level = 'intermediate'
+    }
+
+    grouped[module].push({
+      code: perm,
+      name: permissionNameMap[perm] || perm,
+      level
+    })
+  }
+
+  return grouped
+})
 
 const dataPermissions = computed(() => ({
   customer: {

@@ -321,12 +321,45 @@ const conflictResolutionText = computed(() => {
 })
 
 // 方法
-const handleFileChange = (file: any) => {
+const handleFileChange = async (file: any) => {
   uploadedFile.value = file.raw
-  // 模拟解析文件
-  setTimeout(() => {
-    ElMessage.success('文件解析成功')
-  }, 1000)
+
+  // 解析JSON文件
+  if (file.raw.type === 'application/json' || file.raw.name.endsWith('.json')) {
+    try {
+      const text = await file.raw.text()
+      const data = JSON.parse(text)
+
+      // 解析导入的角色模板数据
+      if (data.roleTemplates && Array.isArray(data.roleTemplates)) {
+        previewData.value = data.roleTemplates.map((template: any, index: number) => ({
+          id: String(index + 1),
+          name: template.name,
+          description: template.description || '暂无描述',
+          permissionCount: Array.isArray(template.permissions) ? template.permissions.length : 0,
+          status: 'valid',
+          permissions: template.permissions || [],
+          dataPermissions: template.dataPermissions || {},
+          systemPermissions: template.systemPermissions || {}
+        }))
+
+        // 清空验证错误
+        validationErrors.value = []
+
+        ElMessage.success(`文件解析成功，共发现 ${previewData.value.length} 个角色模板`)
+      } else {
+        ElMessage.error('文件格式不正确，请确保包含 roleTemplates 数组')
+        uploadedFile.value = null
+      }
+    } catch (error) {
+      console.error('解析文件失败:', error)
+      ElMessage.error('文件解析失败，请检查文件格式')
+      uploadedFile.value = null
+    }
+  } else {
+    ElMessage.warning('目前仅支持JSON格式文件')
+    uploadedFile.value = null
+  }
 }
 
 const beforeUpload = (file: File) => {
@@ -383,7 +416,7 @@ const nextStep = () => {
     // 解析文件并生成预览数据
     selectedTemplates.value = previewData.value.filter(item => item.status === 'valid')
   }
-  
+
   if (currentStep.value < 2) {
     currentStep.value++
   }
@@ -408,11 +441,48 @@ const confirmImport = async () => {
     )
 
     importing.value = true
-    
-    // 模拟导入过程
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    ElMessage.success('角色模板导入成功')
+
+    // 导入角色模板到系统
+    const { roleApiService } = await import('@/services/roleApiService')
+    let successCount = 0
+    let failCount = 0
+
+    for (const template of selectedTemplates.value) {
+      try {
+        // 根据导入模式处理
+        if (importOptions.value.mode === 'replace') {
+          // 替换模式：先尝试删除同名角色，再创建
+          try {
+            const existingRoles = await roleApiService.getRoles()
+            const existing = existingRoles.find(r => r.name === template.name)
+            if (existing) {
+              await roleApiService.deleteRole(existing.id)
+            }
+          } catch (e) {
+            // 忽略删除错误
+          }
+        }
+
+        await roleApiService.createRole({
+          name: template.name,
+          code: template.name.toLowerCase().replace(/\s+/g, '_'),
+          description: template.description,
+          permissions: template.permissions || [],
+          roleType: 'custom'
+        })
+        successCount++
+      } catch (error) {
+        console.error(`导入角色 ${template.name} 失败:`, error)
+        failCount++
+      }
+    }
+
+    if (successCount > 0) {
+      ElMessage.success(`成功导入 ${successCount} 个角色模板${failCount > 0 ? `，${failCount} 个失败` : ''}`)
+    } else {
+      ElMessage.error('导入失败')
+    }
+
     emit('imported', selectedTemplates.value)
     handleClose()
   } catch (error) {
