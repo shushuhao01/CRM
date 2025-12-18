@@ -413,7 +413,7 @@
       :user="selectedUser"
       @confirm="handleUserPermissionUpdate"
     />
-    
+
     <RoleTemplateDialog
       v-model="dialogs.roleTemplate"
       :template="selectedTemplate"
@@ -623,8 +623,8 @@ const userStats = ref({
 // 计算属性
 const filteredUsers = computed(() => {
   return users.value.filter(user => {
-    const matchesKeyword = !userSearchKeyword.value || 
-      user.name.includes(userSearchKeyword.value) || 
+    const matchesKeyword = !userSearchKeyword.value ||
+      user.name.includes(userSearchKeyword.value) ||
       user.email.includes(userSearchKeyword.value)
     const matchesRole = !filterUserRole.value || user.role === filterUserRole.value
     const matchesDepartment = !filterDepartment.value || user.departmentId === filterDepartment.value
@@ -646,7 +646,7 @@ const initializeData = async () => {
 const loadUsers = async () => {
   try {
     loading.value.users = true
-    
+
     // 调用真实API获取用户数据
     const response = await userApiService.getUsers({
       page: userPagination.value.currentPage,
@@ -655,7 +655,7 @@ const loadUsers = async () => {
       role: userSearchForm.value.role || undefined,
       status: userSearchForm.value.status || undefined
     })
-    
+
     // 转换API数据格式为组件需要的格式
     users.value = response.data.map(user => ({
       id: user.id.toString(),
@@ -671,9 +671,9 @@ const loadUsers = async () => {
       createdAt: user.createdAt || new Date().toISOString(),
       permissions: user.permissions || []
     }))
-    
+
     userPagination.value.total = response.total
-    
+
   } catch (error) {
     console.error('加载用户数据失败:', error)
     ElMessage.error('加载用户数据失败')
@@ -687,10 +687,10 @@ const loadUsers = async () => {
 const loadRoleTemplates = async () => {
   try {
     loading.value.roles = true
-    
+
     // 调用真实API获取角色数据
     const response = await roleApiService.getRoles()
-    
+
     // 转换API数据格式为组件需要的格式
     roleTemplates.value = response.map(role => ({
       id: role.id,
@@ -701,7 +701,7 @@ const loadRoleTemplates = async () => {
       createdAt: role.createdAt,
       color: role.color || 'primary'
     }))
-    
+
     // 获取每个角色的使用人数
     for (const template of roleTemplates.value) {
       try {
@@ -713,7 +713,7 @@ const loadRoleTemplates = async () => {
         template.userCount = 0
       }
     }
-    
+
   } catch (error) {
     console.error('加载角色模板数据失败:', error)
     ElMessage.error('加载角色模板数据失败')
@@ -727,24 +727,38 @@ const loadRoleTemplates = async () => {
 const loadDepartments = async () => {
   try {
     loading.value.departments = true
-    
-    // 调用部门权限服务获取部门数据
-    const departmentStore = await import('@/stores/department')
-    const allDepartments = departmentStore.default.getAllDepartments()
-    
+
+    // 调用部门store获取部门数据
+    const { useDepartmentStore } = await import('@/stores/department')
+    const departmentStore = useDepartmentStore()
+
+    // 确保部门数据已加载
+    if (departmentStore.departments.length === 0) {
+      await departmentStore.fetchDepartments()
+    }
+
+    const allDepartments = departmentStore.departments
+
     departments.value = allDepartments.map(dept => {
-      const permissionConfig = departmentPermissionService.getDepartmentPermissions(dept.id)
+      // 尝试获取部门权限配置，如果服务不可用则使用默认值
+      let permissionConfig = { dataScope: 'department' }
+      try {
+        permissionConfig = departmentPermissionService.getDepartmentPermissions(dept.id) || { dataScope: 'department' }
+      } catch (e) {
+        console.warn('获取部门权限配置失败:', e)
+      }
+
       return {
         id: dept.id,
         name: dept.name,
-        manager: dept.managerName || `负责人${dept.managerId}`,
+        manager: dept.managerName || '未设置',
         memberCount: dept.memberCount || 0,
-        permissionLevel: getPermissionLevelDisplayName(permissionConfig.dataScope),
-        dataScope: getDataScopeDisplayName(permissionConfig.dataScope),
+        permissionLevel: getPermissionLevelDisplayName(permissionConfig.dataScope || 'department'),
+        dataScope: getDataScopeDisplayName(permissionConfig.dataScope || 'department'),
         description: `${dept.name}的权限配置`
       }
     })
-    
+
   } catch (error) {
     console.error('加载部门数据失败:', error)
     ElMessage.error('加载部门数据失败')
@@ -757,39 +771,44 @@ const loadDepartments = async () => {
 const loadAuditLogs = async () => {
   try {
     loading.value.audit = true
-    
-    // 调用真实API获取审计日志数据
-    const response = await rolePermissionService.getOperationLogs({
-      page: auditPagination.value.currentPage,
-      pageSize: auditPagination.value.pageSize,
-      startDate: auditSearchForm.value.startDate,
-      endDate: auditSearchForm.value.endDate,
-      userId: auditSearchForm.value.user,
-      action: auditSearchForm.value.action
-    })
-    
-    // 转换API数据格式为组件需要的格式
-    auditLogs.value = response.data.map(log => ({
-      id: log.id,
-      timestamp: log.createdAt,
-      user: log.username,
-      operator: log.username, // 添加operator字段
-      action: log.action,
-      target: log.targetUser || log.module, // 添加target字段
-      resource: log.module,
-      details: log.description,
-      description: log.description, // 添加description字段
-      ip: log.ip,
-      ipAddress: log.ip, // 添加ipAddress字段
-      result: 'success', // API中没有result字段，默认为成功
-      status: 'success' // 添加status字段
-    }))
-    
-    auditPagination.value.total = response.total
-    
+
+    // 尝试调用API获取审计日志数据
+    try {
+      const response = await rolePermissionService.getOperationLogs({
+        page: auditPagination.value.currentPage,
+        pageSize: auditPagination.value.pageSize,
+        startDate: auditSearchForm.value.startDate,
+        endDate: auditSearchForm.value.endDate,
+        userId: auditSearchForm.value.user ? parseInt(auditSearchForm.value.user) : undefined,
+        action: auditSearchForm.value.action
+      })
+
+      // 转换API数据格式为组件需要的格式
+      auditLogs.value = response.data.map((log: any) => ({
+        id: log.id?.toString() || String(Date.now()),
+        timestamp: log.createdAt || log.timestamp || new Date().toISOString(),
+        user: log.username || log.user || '系统',
+        operator: log.username || log.operator || '系统',
+        action: log.action || '操作',
+        target: log.targetUser || log.target || log.module || '-',
+        resource: log.module || log.resource || '-',
+        details: log.description || log.details || '-',
+        description: log.description || log.details || '-',
+        ip: log.ip || log.ipAddress || '-',
+        ipAddress: log.ip || log.ipAddress || '-',
+        result: log.result || 'success',
+        status: log.status || 'success'
+      }))
+
+      auditPagination.value.total = response.total || auditLogs.value.length
+    } catch (apiError) {
+      console.warn('API获取审计日志失败，使用空数据:', apiError)
+      auditLogs.value = []
+      auditPagination.value.total = 0
+    }
+
   } catch (error) {
     console.error('加载审计日志数据失败:', error)
-    ElMessage.error('加载审计日志数据失败')
     auditLogs.value = []
   } finally {
     loading.value.audit = false
@@ -971,7 +990,7 @@ const exportPermissions = () => {
     const blob = new Blob([JSON.stringify(permissionConfig, null, 2)], {
       type: 'application/json;charset=utf-8'
     })
-    
+
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -980,9 +999,9 @@ const exportPermissions = () => {
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-    
+
     ElMessage.success('权限配置导出成功')
-    
+
     // 记录导出操作到审计日志
     const newLog = {
       id: Date.now().toString(),
@@ -995,7 +1014,7 @@ const exportPermissions = () => {
       result: '成功'
     }
     auditLogs.value.unshift(newLog)
-    
+
   } catch (error) {
     console.error('导出权限配置失败:', error)
     ElMessage.error('导出权限配置失败，请重试')
@@ -1044,11 +1063,11 @@ const resetUserPassword = async (user: User) => {
         type: 'warning'
       }
     )
-    
+
     // 调用真实API重置密码
     await userApiService.resetPassword(parseInt(user.id))
     ElMessage.success('密码重置成功')
-    
+
   } catch (error) {
     if (error !== 'cancel') {
       console.error('重置密码失败:', error)
@@ -1062,7 +1081,7 @@ const toggleUserStatus = async (user: User) => {
   try {
     const newStatus = user.status === 'active' ? 'inactive' : 'active'
     const action = newStatus === 'active' ? '启用' : '禁用'
-    
+
     await ElMessageBox.confirm(
       `确定要${action}用户 ${user.name} 吗？`,
       `确认${action}`,
@@ -1072,16 +1091,16 @@ const toggleUserStatus = async (user: User) => {
         type: 'warning'
       }
     )
-    
+
     // 调用真实API更新用户状态
     await userApiService.updateUser(parseInt(user.id), {
       status: newStatus
     })
-    
+
     // 更新本地数据
     user.status = newStatus
     ElMessage.success(`用户${action}成功`)
-    
+
   } catch (error) {
     if (error !== 'cancel') {
       console.error('更新用户状态失败:', error)
@@ -1116,10 +1135,10 @@ const handleUserPermissionUpdate = async (userData: any) => {
       })
       ElMessage.success('用户创建成功')
     }
-    
+
     dialogs.value.userPermission = false
     await loadUsers()
-    
+
   } catch (error) {
     console.error('保存用户信息失败:', error)
     ElMessage.error('保存用户信息失败')
@@ -1152,7 +1171,7 @@ const exportRoleTemplates = async () => {
   try {
     // 获取最新的角色模板数据
     const templates = await roleApiService.getAllRoles()
-    
+
     const exportData = {
       exportTime: new Date().toISOString(),
       roleTemplates: templates.map(template => ({
@@ -1163,7 +1182,7 @@ const exportRoleTemplates = async () => {
         createdAt: template.createdAt
       }))
     }
-    
+
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -1171,7 +1190,7 @@ const exportRoleTemplates = async () => {
     a.download = `role_templates_${new Date().toISOString().split('T')[0]}.json`
     a.click()
     URL.revokeObjectURL(url)
-    
+
     ElMessage.success('角色模板导出成功')
   } catch (error) {
     console.error('导出角色模板失败:', error)
@@ -1213,7 +1232,7 @@ const handleTemplateCommand = async (command: any) => {
             type: 'warning',
           }
         )
-        
+
         await roleApiService.deleteRole(template.id)
         ElMessage.success('删除成功')
         await loadRoleTemplates()
@@ -1255,7 +1274,7 @@ const handleRoleTemplateUpdate = async (templateData: any) => {
       await roleApiService.createRole(templateData)
       ElMessage.success('角色模板创建成功')
     }
-    
+
     dialogs.value.roleTemplate = false
     await loadRoleTemplates()
   } catch (error) {
@@ -1279,11 +1298,11 @@ const batchAssignPermissions = () => {
 const syncDepartmentData = async () => {
   try {
     ElMessage.info('正在同步部门数据...')
-    
+
     // 调用真实的部门同步API
     const departmentStore = await import('@/stores/department')
     await departmentStore.default.syncDepartments()
-    
+
     ElMessage.success('部门数据同步成功')
     // 刷新部门列表
     await loadDepartments()
@@ -1311,7 +1330,7 @@ const viewDepartmentPermissions = (department: Department) => {
 // 部门相关事件处理
 const handleDepartmentSaved = async (department) => {
   dialogs.value.department = false
-  
+
   try {
     // 如果有权限配置，保存部门权限
     if (department.permissions) {
@@ -1321,7 +1340,7 @@ const handleDepartmentSaved = async (department) => {
         dataScope: department.dataScope || 'department'
       })
     }
-    
+
     await loadDepartments()
     ElMessage.success('部门信息保存成功')
   } catch (error) {
@@ -1332,7 +1351,7 @@ const handleDepartmentSaved = async (department) => {
 
 const handleDepartmentMembersUpdated = async () => {
   dialogs.value.departmentMembers = false
-  
+
   try {
     await loadDepartments()
     ElMessage.success('部门成员更新成功')
@@ -1351,7 +1370,7 @@ const handleDepartmentPermissionsUpdated = async (department) => {
       dataScope: department.dataScope,
       managerExtraPermissions: department.managerExtraPermissions
     })
-    
+
     // 更新本地部门数据
     const index = departments.value.findIndex(d => d.id === department.id)
     if (index > -1) {
@@ -1361,7 +1380,7 @@ const handleDepartmentPermissionsUpdated = async (department) => {
         dataScope: getDataScopeDisplayName(department.dataScope)
       }
     }
-    
+
     ElMessage.success('部门权限更新成功')
   } catch (error) {
     console.error('更新部门权限失败:', error)
@@ -1371,7 +1390,7 @@ const handleDepartmentPermissionsUpdated = async (department) => {
 
 const handleBatchPermissionsAssigned = async () => {
   dialogs.value.batchAssignPermissions = false
-  
+
   try {
     await loadDepartments()
     ElMessage.success('批量权限分配成功')
@@ -1407,11 +1426,11 @@ const handleRoleTemplateExported = (template: any) => {
     exportTime: new Date().toISOString(),
     version: '1.0'
   }
-  
+
   const blob = new Blob([JSON.stringify(exportData, null, 2)], {
     type: 'application/json'
   })
-  
+
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -1420,7 +1439,7 @@ const handleRoleTemplateExported = (template: any) => {
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
-  
+
   ElMessage.success(`角色模板 "${template.name}" 导出成功`)
 }
 
@@ -1429,7 +1448,7 @@ const handleRoleTemplateExported = (template: any) => {
 const exportAuditLogs = async () => {
   try {
     loading.value.audit = true
-    
+
     // 准备导出数据
     const exportData = {
       exportInfo: {
@@ -1499,7 +1518,7 @@ const exportAuditLogs = async () => {
     const jsonBlob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: 'application/json;charset=utf-8'
     })
-    
+
     const jsonUrl = URL.createObjectURL(jsonBlob)
     const jsonLink = document.createElement('a')
     jsonLink.href = jsonUrl
@@ -1513,7 +1532,7 @@ const exportAuditLogs = async () => {
     const csvHeaders = [
       '时间', '用户', '操作', '资源', '详情', 'IP地址', '结果', '持续时间(ms)', '错误信息'
     ]
-    
+
     const csvRows = auditLogs.value.map(log => [
       log.timestamp,
       log.user,
@@ -1534,7 +1553,7 @@ const exportAuditLogs = async () => {
     const csvBlob = new Blob(['\ufeff' + csvContent], {
       type: 'text/csv;charset=utf-8'
     })
-    
+
     const csvUrl = URL.createObjectURL(csvBlob)
     const csvLink = document.createElement('a')
     csvLink.href = csvUrl
@@ -1556,9 +1575,9 @@ const exportAuditLogs = async () => {
       result: 'success',
       duration: 1000
     }
-    
+
     auditLogs.value.unshift(exportLog)
-    
+
     ElMessage.success(`审计日志导出成功！已导出 ${auditLogs.value.length} 条记录`)
   } catch (error) {
     console.error('导出审计日志失败:', error)
@@ -1579,10 +1598,10 @@ const searchAuditLogs = () => {
     resource: '',
     result: ''
   }
-  
+
   // 重新加载审计日志
   loadAuditLogs()
-  
+
   ElMessage.success('搜索完成')
 }
 
@@ -1601,13 +1620,13 @@ const saveSystemConfig = async () => {
   try {
     loading.value.system = true
     const configStore = useConfigStore()
-    
+
     // 更新各种配置
     await configStore.updateSystemConfig(systemConfig.value)
     await configStore.updateSecurityConfig(securityConfig.value)
     await configStore.updateProductConfig(productConfig.value)
     await configStore.updateThemeConfig(themeConfig.value)
-    
+
     ElMessage.success('系统配置保存成功')
   } catch (error) {
     console.error('保存系统配置失败:', error)
@@ -1620,17 +1639,17 @@ const saveSystemConfig = async () => {
 const resetSystemConfig = async () => {
   try {
     loading.value.system = true
-    
+
     // 使用配置store重置系统配置
     const configStore = useConfigStore()
-    
+
     await configStore.resetSystemConfig()
     await configStore.resetSecurityConfig()
     await configStore.resetProductConfig()
-    
+
     // 重新加载配置
     configStore.loadConfigFromStorage()
-    
+
     ElMessage.success('系统配置重置成功')
   } catch (error) {
     console.error('重置系统配置失败:', error)
@@ -1643,9 +1662,9 @@ const resetSystemConfig = async () => {
 const exportSystemConfig = async () => {
   try {
     loading.value.system = true
-    
+
     const configStore = useConfigStore()
-    
+
     // 准备导出数据
     const exportData = {
       exportInfo: {
@@ -1661,12 +1680,12 @@ const exportSystemConfig = async () => {
       smsConfig: configStore.smsConfig,
       storageConfig: configStore.storageConfig
     }
-    
+
     // 创建并下载JSON文件
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: 'application/json;charset=utf-8'
     })
-    
+
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -1675,7 +1694,7 @@ const exportSystemConfig = async () => {
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-    
+
     ElMessage.success('系统配置导出成功')
   } catch (error) {
     console.error('导出系统配置失败:', error)
