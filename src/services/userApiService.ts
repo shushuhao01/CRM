@@ -572,6 +572,58 @@ export class UserApiService {
       throw error
     }
   }
+
+  /**
+   * 重置用户密码
+   */
+  async resetPassword(userId: number): Promise<void> {
+    try {
+      await this.api.post(`/users/${userId}/reset-password`)
+      console.log(`[UserAPI] 重置密码成功 (ID: ${userId})`)
+    } catch (error) {
+      console.error(`[UserAPI] 重置密码失败 (ID: ${userId}):`, error)
+      throw error
+    }
+  }
+
+  /**
+   * 强制用户下线
+   */
+  async forceLogout(userId: number): Promise<void> {
+    try {
+      await this.api.post(`/users/${userId}/force-logout`)
+      console.log(`[UserAPI] 强制下线成功 (ID: ${userId})`)
+    } catch (error) {
+      console.error(`[UserAPI] 强制下线失败 (ID: ${userId}):`, error)
+      throw error
+    }
+  }
+
+  /**
+   * 切换双因子认证
+   */
+  async toggleTwoFactor(userId: number, enabled: boolean): Promise<void> {
+    try {
+      await this.api.post(`/users/${userId}/two-factor`, { enabled })
+      console.log(`[UserAPI] 切换双因子认证成功 (ID: ${userId}, enabled: ${enabled})`)
+    } catch (error) {
+      console.error(`[UserAPI] 切换双因子认证失败 (ID: ${userId}):`, error)
+      throw error
+    }
+  }
+
+  /**
+   * 解锁用户账户
+   */
+  async unlockAccount(userId: number): Promise<void> {
+    try {
+      await this.api.post(`/users/${userId}/unlock`)
+      console.log(`[UserAPI] 解锁账户成功 (ID: ${userId})`)
+    } catch (error) {
+      console.error(`[UserAPI] 解锁账户失败 (ID: ${userId}):`, error)
+      throw error
+    }
+  }
 }
 
 // 导出单例实例

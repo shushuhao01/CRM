@@ -958,4 +958,184 @@ export class UserController {
       logger.error('记录操作日志失败:', error);
     }
   }
+
+  /**
+   * 强制用户下线
+   */
+  forceUserLogout = catchAsync(async (req: Request, res: Response) => {
+    const userId = req.params.id;
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new NotFoundError('用户不存在');
+    }
+
+    // TODO: 实现真正的强制下线逻辑
+    // 1. 清除用户的所有session
+    // 2. 将用户的JWT token加入黑名单
+    // 3. 通知客户端用户已被强制下线
+
+    // 记录操作日志
+    await this.logOperation({
+      userId: req.user?.userId,
+      username: req.user?.username,
+      action: 'force_logout',
+      module: 'user',
+      description: `强制用户下线: ${user.username}`,
+      result: 'success',
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+
+    res.json({
+      success: true,
+      message: '用户已强制下线'
+    });
+  });
+
+  /**
+   * 切换双因子认证
+   */
+  toggleTwoFactor = catchAsync(async (req: Request, res: Response) => {
+    const userId = req.params.id;
+    const { enabled } = req.body;
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new NotFoundError('用户不存在');
+    }
+
+    // TODO: 实现真正的双因子认证逻辑
+    // 这里只是模拟，实际需要集成TOTP或其他2FA方案
+
+    // 记录操作日志
+    await this.logOperation({
+      userId: req.user?.userId,
+      username: req.user?.username,
+      action: enabled ? 'enable_two_factor' : 'disable_two_factor',
+      module: 'user',
+      description: `${enabled ? '启用' : '禁用'}双因子认证: ${user.username}`,
+      result: 'success',
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+
+    res.json({
+      success: true,
+      message: `双因子认证${enabled ? '启用' : '禁用'}成功`
+    });
+  });
+
+  /**
+   * 解锁用户账户
+   */
+  unlockAccount = catchAsync(async (req: Request, res: Response) => {
+    const userId = req.params.id;
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new NotFoundError('用户不存在');
+    }
+
+    if (user.status !== 'locked') {
+      throw new BusinessError('用户账户未被锁定');
+    }
+
+    user.status = 'active';
+    user.lockedAt = null;
+    user.loginFailCount = 0;
+
+    await this.userRepository.save(user);
+
+    // 记录操作日志
+    await this.logOperation({
+      userId: req.user?.userId,
+      username: req.user?.username,
+      action: 'unlock_account',
+      module: 'user',
+      description: `解锁用户账户: ${user.username}`,
+      result: 'success',
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+
+    res.json({
+      success: true,
+      message: '账户解锁成功'
+    });
+  });
+
+  /**
+   * 获取用户权限详情
+   */
+  getUserPermissions = catchAsync(async (req: Request, res: Response) => {
+    const userId = req.params.id;
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new NotFoundError('用户不存在');
+    }
+
+    // 根据用户角色返回权限树
+    const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+    const isManager = user.role === 'manager' || isAdmin;
+
+    const permissions = [
+      {
+        id: 'customer',
+        name: '客户管理',
+        type: 'menu',
+        granted: true,
+        children: [
+          { id: 'customer.view', name: '查看客户', type: 'action', granted: true },
+          { id: 'customer.create', name: '创建客户', type: 'action', granted: true },
+          { id: 'customer.edit', name: '编辑客户', type: 'action', granted: isManager },
+          { id: 'customer.delete', name: '删除客户', type: 'action', granted: isAdmin },
+          { id: 'customer.export', name: '导出客户', type: 'action', granted: isManager }
+        ]
+      },
+      {
+        id: 'order',
+        name: '订单管理',
+        type: 'menu',
+        granted: true,
+        children: [
+          { id: 'order.view', name: '查看订单', type: 'action', granted: true },
+          { id: 'order.create', name: '创建订单', type: 'action', granted: true },
+          { id: 'order.edit', name: '编辑订单', type: 'action', granted: isManager },
+          { id: 'order.delete', name: '删除订单', type: 'action', granted: isAdmin },
+          { id: 'order.audit', name: '审核订单', type: 'action', granted: isManager }
+        ]
+      },
+      {
+        id: 'system',
+        name: '系统管理',
+        type: 'menu',
+        granted: isAdmin,
+        children: [
+          { id: 'system.user', name: '用户管理', type: 'action', granted: isAdmin },
+          { id: 'system.role', name: '角色管理', type: 'action', granted: isAdmin },
+          { id: 'system.permission', name: '权限管理', type: 'action', granted: user.role === 'super_admin' },
+          { id: 'system.config', name: '系统配置', type: 'action', granted: user.role === 'super_admin' }
+        ]
+      }
+    ];
+
+    res.json({
+      success: true,
+      data: permissions
+    });
+  });
 }

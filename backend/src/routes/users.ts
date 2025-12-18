@@ -141,4 +141,32 @@ router.patch('/:id/employment-status', authenticateToken, requireManagerOrAdmin,
  */
 router.post('/:id/reset-password', authenticateToken, requireManagerOrAdmin, userController.resetUserPassword);
 
+/**
+ * @route POST /api/v1/users/:id/force-logout
+ * @desc 强制用户下线
+ * @access Private (Manager/Admin)
+ */
+router.post('/:id/force-logout', authenticateToken, requireManagerOrAdmin, userController.forceUserLogout);
+
+/**
+ * @route POST /api/v1/users/:id/two-factor
+ * @desc 切换双因子认证
+ * @access Private (Manager/Admin)
+ */
+router.post('/:id/two-factor', authenticateToken, requireManagerOrAdmin, userController.toggleTwoFactor);
+
+/**
+ * @route POST /api/v1/users/:id/unlock
+ * @desc 解锁用户账户
+ * @access Private (Manager/Admin)
+ */
+router.post('/:id/unlock', authenticateToken, requireManagerOrAdmin, userController.unlockAccount);
+
+/**
+ * @route GET /api/v1/users/:id/permissions
+ * @desc 获取用户权限详情
+ * @access Private (Manager/Admin)
+ */
+router.get('/:id/permissions', authenticateToken, requireManagerOrAdmin, userController.getUserPermissions);
+
 export default router;

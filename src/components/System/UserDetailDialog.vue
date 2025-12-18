@@ -415,9 +415,16 @@ const resetPassword = async () => {
       cancelButtonText: '取消',
       type: 'warning'
     })
+
+    // 调用API重置密码
+    const { userApiService } = await import('@/services/userApiService')
+    await userApiService.resetPassword(parseInt(props.user?.id || '0'))
     ElMessage.success('密码重置成功，新密码已发送到用户邮箱')
-  } catch (error) {
-    // 用户取消
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('重置密码失败:', error)
+      ElMessage.error(error?.message || '重置密码失败')
+    }
   }
 }
 
@@ -429,9 +436,16 @@ const toggleTwoFactor = async () => {
       cancelButtonText: '取消',
       type: 'warning'
     })
+
+    // 调用API切换双因子认证
+    const { userApiService } = await import('@/services/userApiService')
+    await userApiService.toggleTwoFactor(parseInt(props.user?.id || '0'), !props.user?.twoFactorEnabled)
     ElMessage.success(`双因子认证${action}成功`)
-  } catch (error) {
-    // 用户取消
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('切换双因子认证失败:', error)
+      ElMessage.error(error?.message || `双因子认证${props.user?.twoFactorEnabled ? '禁用' : '启用'}失败`)
+    }
   }
 }
 
@@ -442,9 +456,16 @@ const unlockAccount = async () => {
       cancelButtonText: '取消',
       type: 'warning'
     })
+
+    // 调用API解锁账户
+    const { userApiService } = await import('@/services/userApiService')
+    await userApiService.unlockAccount(parseInt(props.user?.id || '0'))
     ElMessage.success('账户解锁成功')
-  } catch (error) {
-    // 用户取消
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('解锁账户失败:', error)
+      ElMessage.error(error?.message || '解锁账户失败')
+    }
   }
 }
 
@@ -455,9 +476,16 @@ const forceLogout = async () => {
       cancelButtonText: '取消',
       type: 'warning'
     })
+
+    // 调用API强制用户下线
+    const { userApiService } = await import('@/services/userApiService')
+    await userApiService.forceLogout(parseInt(props.user?.id || '0'))
     ElMessage.success('用户已强制下线')
-  } catch (error) {
-    // 用户取消
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('强制下线失败:', error)
+      ElMessage.error(error?.message || '强制下线失败')
+    }
   }
 }
 
@@ -477,13 +505,90 @@ const handleClose = () => {
   emit('update:modelValue', false)
 }
 
+// 加载用户权限数据
+const loadUserPermissions = async () => {
+  if (!props.user?.id) return
+
+  try {
+    const { rolePermissionService } = await import('@/services/rolePermissionService')
+    const permissions = await rolePermissionService.getUserPermissions(parseInt(props.user.id))
+
+    // 转换权限数据格式
+    if (permissions && permissions.length > 0) {
+      const customerPerms = permissions.find((p: any) => p.id === 'customer')?.children || []
+      const orderPerms = permissions.find((p: any) => p.id === 'order')?.children || []
+      const systemPerms = permissions.find((p: any) => p.id === 'system')?.children || []
+
+      if (customerPerms.length > 0) {
+        userPermissions.value.customer = customerPerms.map((p: any) => ({
+          key: p.id,
+          name: p.name,
+          granted: p.granted
+        }))
+      }
+      if (orderPerms.length > 0) {
+        userPermissions.value.order = orderPerms.map((p: any) => ({
+          key: p.id,
+          name: p.name,
+          granted: p.granted
+        }))
+      }
+      if (systemPerms.length > 0) {
+        userPermissions.value.system = systemPerms.map((p: any) => ({
+          key: p.id,
+          name: p.name,
+          granted: p.granted
+        }))
+      }
+    }
+  } catch (error) {
+    console.error('加载用户权限失败:', error)
+  }
+}
+
+// 加载操作记录
+const loadOperationLogs = async () => {
+  if (!props.user?.id) return
+
+  try {
+    const { rolePermissionService } = await import('@/services/rolePermissionService')
+    const response = await rolePermissionService.getOperationLogs({
+      page: logPagination.value.currentPage,
+      pageSize: logPagination.value.pageSize,
+      userId: parseInt(props.user.id)
+    })
+
+    operationLogs.value = response.data.map((log: any) => ({
+      time: log.createdAt || log.timestamp || new Date().toISOString(),
+      type: log.module || log.type || '操作',
+      action: log.action || '操作',
+      ip: log.ip || log.ipAddress || '-',
+      userAgent: log.userAgent || log.device || 'Unknown',
+      result: log.result || log.status || '成功'
+    }))
+    logPagination.value.total = response.total || 0
+  } catch (error) {
+    console.error('加载操作记录失败:', error)
+    operationLogs.value = []
+  }
+}
+
 // 监听用户变化，更新权限数据
 watch(() => props.user, (newUser) => {
   if (newUser) {
-    // 根据用户实际权限更新权限显示
-    // 这里可以根据用户的实际权限数据来更新 userPermissions
+    loadUserPermissions()
+    loadOperationLogs()
   }
 }, { immediate: true })
+
+// 监听标签页切换
+watch(() => activeTab.value, (tab) => {
+  if (tab === 'logs' && props.user) {
+    loadOperationLogs()
+  } else if (tab === 'permissions' && props.user) {
+    loadUserPermissions()
+  }
+})
 </script>
 
 <style scoped>
