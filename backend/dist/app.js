@@ -78,6 +78,7 @@ const assignment_1 = __importDefault(require("./routes/assignment"));
 const sms_1 = __importDefault(require("./routes/sms"));
 const customerShare_1 = __importDefault(require("./routes/customerShare"));
 const performanceReport_1 = __importDefault(require("./routes/performanceReport"));
+const customerServicePermissions_1 = __importDefault(require("./routes/customerServicePermissions"));
 // 加载环境变量
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -248,6 +249,7 @@ app.use(`${API_PREFIX}/data`, data_1.default);
 app.use(`${API_PREFIX}/assignment`, assignment_1.default);
 app.use(`${API_PREFIX}/sms`, sms_1.default);
 app.use(`${API_PREFIX}/customer-share`, customerShare_1.default);
+app.use(`${API_PREFIX}/customer-service-permissions`, customerServicePermissions_1.default);
 // 404处理
 app.use(errorHandler_1.notFoundHandler);
 // 全局错误处理

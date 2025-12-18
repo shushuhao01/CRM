@@ -1,6 +1,4 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToMany, JoinTable, OneToMany } from 'typeorm'
-import { User } from './User'
-import { Permission } from './Permission'
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm'
 
 @Entity('roles')
 export class Role {
@@ -24,14 +22,6 @@ export class Role {
 
   @Column({ nullable: true, length: 20 })
   color: string
-
-  // 角色类型：system=系统预设, business=业务角色, custom=自定义角色
-  @Column({ default: 'custom', length: 20 })
-  roleType: 'system' | 'business' | 'custom'
-
-  // 是否为模板（模板可以用于快速创建角色）
-  @Column({ default: false })
-  isTemplate: boolean
 
   @CreateDateColumn()
   createdAt: Date

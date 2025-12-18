@@ -6,8 +6,6 @@ export declare class Role {
     status: 'active' | 'inactive';
     level: number;
     color: string;
-    roleType: 'system' | 'business' | 'custom';
-    isTemplate: boolean;
     createdAt: Date;
     updatedAt: Date;
     permissions: string[] | null;
