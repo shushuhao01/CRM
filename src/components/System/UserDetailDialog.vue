@@ -49,6 +49,19 @@
                       {{ getAccountStatusDisplayName(user.status || 'active') }}
                     </el-tag>
                   </el-descriptions-item>
+                  <el-descriptions-item label="授权登录IP" :span="2">
+                    <div v-if="user.authorizedIps && user.authorizedIps.length > 0" class="ip-list">
+                      <el-tag
+                        v-for="(ip, index) in user.authorizedIps"
+                        :key="index"
+                        size="small"
+                        style="margin-right: 5px; margin-bottom: 5px;"
+                      >
+                        {{ ip }}
+                      </el-tag>
+                    </div>
+                    <span v-else class="text-gray-400">无限制（任意IP可登录）</span>
+                  </el-descriptions-item>
                 </el-descriptions>
               </el-col>
             </el-row>
@@ -265,6 +278,7 @@ interface User {
   failedLoginAttempts?: number
   isLocked?: boolean
   sessionTimeout?: string
+  authorizedIps?: string[]
 }
 
 interface Props {
