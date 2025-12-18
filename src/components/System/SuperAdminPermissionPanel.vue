@@ -196,135 +196,6 @@
         </div>
       </el-tab-pane>
 
-      <!-- 部门权限管理 -->
-      <el-tab-pane label="部门权限管理" name="departments">
-        <div class="tab-content">
-          <div class="department-actions">
-            <el-button @click="addDepartment" type="primary">
-              <el-icon><Plus /></el-icon>
-              新增部门
-            </el-button>
-            <el-button @click="batchAssignPermissions" type="success">
-              <el-icon><Setting /></el-icon>
-              批量分配权限
-            </el-button>
-            <el-button @click="syncDepartmentData" type="warning">
-              <el-icon><Refresh /></el-icon>
-              同步部门数据
-            </el-button>
-          </div>
-
-          <el-table :data="departments" style="width: 100%" v-loading="loading.departments">
-            <el-table-column prop="name" label="部门名称" width="200" />
-            <el-table-column prop="manager" label="部门负责人" width="150" />
-            <el-table-column prop="memberCount" label="成员数量" width="120" />
-            <el-table-column label="权限级别" width="150">
-              <template #default="{ row }">
-                <el-tag :type="getPermissionLevelTagType(row.permissionLevel)">
-                  {{ getPermissionLevelDisplayName(row.permissionLevel) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="数据范围" width="150">
-              <template #default="{ row }">
-                <el-tag :type="getDataScopeTagType(row.dataScope)" size="small">
-                  {{ getDataScopeDisplayName(row.dataScope) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="description" label="描述" />
-            <el-table-column label="操作" width="250">
-              <template #default="{ row }">
-                <el-button @click="editDepartment(row)" size="small" type="primary">编辑</el-button>
-                <el-button @click="manageDepartmentMembers(row)" size="small">成员管理</el-button>
-                <el-button @click="viewDepartmentPermissions(row)" size="small">权限详情</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-      </el-tab-pane>
-
-      <!-- 权限审计日志 -->
-      <el-tab-pane label="权限审计日志" name="audit">
-        <div class="tab-content">
-          <div class="audit-filters">
-            <el-date-picker
-              v-model="auditDateRange"
-              type="daterange"
-              range-separator="至"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              style="margin-right: 10px;"
-            />
-            <el-select
-              v-model="auditActionType"
-              placeholder="操作类型"
-              style="width: 150px; margin-right: 10px;"
-              clearable
-            >
-              <el-option label="全部" value="" />
-              <el-option label="权限分配" value="assign" />
-              <el-option label="权限撤销" value="revoke" />
-              <el-option label="角色变更" value="role_change" />
-              <el-option label="用户创建" value="user_create" />
-              <el-option label="用户删除" value="user_delete" />
-            </el-select>
-            <el-input
-              v-model="auditUserKeyword"
-              placeholder="操作人员"
-              style="width: 150px; margin-right: 10px;"
-              clearable
-            />
-            <el-button @click="searchAuditLogs" type="primary">
-              <el-icon><Search /></el-icon>
-              搜索
-            </el-button>
-            <el-button @click="exportAuditLogs" type="success">
-              <el-icon><Download /></el-icon>
-              导出日志
-            </el-button>
-          </div>
-
-          <el-table :data="auditLogs" style="width: 100%" v-loading="loading.audit">
-            <el-table-column prop="timestamp" label="时间" width="180">
-              <template #default="{ row }">
-                {{ formatDateTime(row.timestamp) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="operator" label="操作人员" width="120" />
-            <el-table-column label="操作类型" width="120">
-              <template #default="{ row }">
-                <el-tag :type="getAuditActionTagType(row.action)">
-                  {{ getAuditActionDisplayName(row.action) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="target" label="操作对象" width="150" />
-            <el-table-column prop="description" label="操作描述" />
-            <el-table-column prop="ipAddress" label="IP地址" width="130" />
-            <el-table-column label="状态" width="100">
-              <template #default="{ row }">
-                <el-tag :type="row.status === 'success' ? 'success' : 'danger'" size="small">
-                  {{ row.status === 'success' ? '成功' : '失败' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-
-          <div class="pagination">
-            <el-pagination
-              v-model:current-page="auditPagination.currentPage"
-              v-model:page-size="auditPagination.pageSize"
-              :page-sizes="[10, 20, 50, 100]"
-              :total="auditPagination.total"
-              layout="total, sizes, prev, pager, next, jumper"
-              @size-change="handleAuditPageSizeChange"
-              @current-change="handleAuditCurrentChange"
-            />
-          </div>
-        </div>
-      </el-tab-pane>
-
       <!-- 系统配置 -->
       <el-tab-pane label="系统配置" name="system">
         <div class="tab-content">
@@ -420,33 +291,6 @@
       @confirm="handleRoleTemplateUpdate"
     />
 
-    <!-- 部门管理对话框 -->
-    <DepartmentDialog
-      v-model="dialogs.department"
-      :department="selectedDepartment"
-      @saved="handleDepartmentSaved"
-    />
-
-    <!-- 部门成员管理对话框 -->
-    <DepartmentMembersDialog
-      v-model="dialogs.departmentMembers"
-      :department="selectedDepartment"
-      @updated="handleDepartmentMembersUpdated"
-    />
-
-    <!-- 部门权限详情对话框 -->
-    <DepartmentPermissionsDialog
-      v-model="dialogs.departmentPermissions"
-      :department="selectedDepartment"
-      @update="handleDepartmentPermissionsUpdated"
-    />
-
-    <!-- 批量分配权限对话框 -->
-    <BatchAssignPermissionsDialog
-      v-model="dialogs.batchAssignPermissions"
-      @assigned="handleBatchPermissionsAssigned"
-    />
-
     <!-- 用户详情对话框 -->
     <UserDetailDialog
       v-model="dialogs.userDetail"
@@ -478,18 +322,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Plus, Upload, Download, MoreFilled, Setting, Refresh } from '@element-plus/icons-vue'
 import UserPermissionDialog from './UserPermissionDialog.vue'
 import RoleTemplateDialog from './RoleTemplateDialog.vue'
-import DepartmentDialog from './DepartmentDialog.vue'
-import DepartmentMembersDialog from './DepartmentMembersDialog.vue'
-import DepartmentPermissionsDialog from './DepartmentPermissionsDialog.vue'
-import BatchAssignPermissionsDialog from './BatchAssignPermissionsDialog.vue'
 import UserDetailDialog from './UserDetailDialog.vue'
 import RoleTemplateImportDialog from './RoleTemplateImportDialog.vue'
 
 // 导入API服务
 import { userApiService } from '@/services/userApiService'
 import { roleApiService } from '@/services/roleApiService'
-import departmentPermissionService from '@/services/departmentPermissionService'
-import { rolePermissionService } from '@/services/rolePermissionService'
 import { DEFAULT_ROLE_PERMISSIONS, getDefaultRolePermissions } from '@/config/defaultRolePermissions'
 import { useConfigStore } from '@/stores/config'
 
@@ -516,47 +354,16 @@ interface RoleTemplate {
   createdAt: string
 }
 
-interface Department {
-  id: string
-  name: string
-  manager: string
-  memberCount: number
-  permissionLevel: string
-  dataScope: string
-  description: string
-}
-
-interface AuditLog {
-  id: string
-  timestamp: string
-  user: string
-  action: string
-  resource: string
-  details: string
-  ip: string
-  result: 'success' | 'failure'
-  duration?: number
-  userAgent?: string
-  errorMessage?: string
-  sessionId?: string
-  requestId?: string
-}
-
 // 数据状态
 const activeTab = ref('users')
 const loading = ref({
   users: false,
-  departments: false,
-  audit: false
+  roles: false
 })
 
 const dialogs = ref({
   userPermission: false,
   roleTemplate: false,
-  department: false,
-  departmentMembers: false,
-  departmentPermissions: false,
-  batchAssignPermissions: false,
   userDetail: false,
   roleTemplateImport: false,
   roleTemplatePreview: false
@@ -564,7 +371,6 @@ const dialogs = ref({
 
 const selectedUser = ref<User | null>(null)
 const selectedTemplate = ref<RoleTemplate | null>(null)
-const selectedDepartment = ref<Department | null>(null)
 
 // 用户管理数据
 const users = ref<User[]>([])
@@ -572,19 +378,6 @@ const userSearchKeyword = ref('')
 const filterUserRole = ref('')
 const filterDepartment = ref('')
 
-// 审计日志数据
-const auditLogs = ref<AuditLog[]>([])
-const auditDateRange = ref<[Date, Date] | null>(null)
-const auditActionType = ref('')
-const auditUserKeyword = ref('')
-const auditSearchForm = ref({
-  startDate: '',
-  endDate: '',
-  user: '',
-  action: '',
-  resource: '',
-  result: ''
-})
 const userPagination = ref({
   currentPage: 1,
   pageSize: 20,
@@ -593,15 +386,6 @@ const userPagination = ref({
 
 // 角色模板数据
 const roleTemplates = ref<RoleTemplate[]>([])
-
-// 部门数据
-const departments = ref<Department[]>([])
-
-const auditPagination = ref({
-  currentPage: 1,
-  pageSize: 20,
-  total: 0
-})
 
 // 系统配置
 // 超管面板的权限配置（这些是权限相关的配置，不是系统基本配置）
@@ -647,9 +431,7 @@ const filteredUsers = computed(() => {
 const initializeData = async () => {
   await Promise.all([
     loadUsers(),
-    loadRoleTemplates(),
-    loadDepartments(),
-    loadAuditLogs()
+    loadRoleTemplates()
   ])
   updateUserStats()
 }
@@ -750,97 +532,6 @@ const loadRoleTemplates = async () => {
     }))
   } finally {
     loading.value.roles = false
-  }
-}
-
-const loadDepartments = async () => {
-  try {
-    loading.value.departments = true
-
-    // 调用部门store获取部门数据
-    const { useDepartmentStore } = await import('@/stores/department')
-    const departmentStore = useDepartmentStore()
-
-    // 确保部门数据已加载
-    if (departmentStore.departments.length === 0) {
-      await departmentStore.fetchDepartments()
-    }
-
-    const allDepartments = departmentStore.departments
-
-    departments.value = allDepartments.map(dept => {
-      // 尝试获取部门权限配置，如果服务不可用则使用默认值
-      let permissionConfig = { dataScope: 'department' }
-      try {
-        permissionConfig = departmentPermissionService.getDepartmentPermissions(dept.id) || { dataScope: 'department' }
-      } catch (e) {
-        console.warn('获取部门权限配置失败:', e)
-      }
-
-      return {
-        id: dept.id,
-        name: dept.name,
-        manager: dept.managerName || '未设置',
-        memberCount: dept.memberCount || 0,
-        permissionLevel: getPermissionLevelDisplayName(permissionConfig.dataScope || 'department'),
-        dataScope: getDataScopeDisplayName(permissionConfig.dataScope || 'department'),
-        description: `${dept.name}的权限配置`
-      }
-    })
-
-  } catch (error) {
-    console.error('加载部门数据失败:', error)
-    ElMessage.error('加载部门数据失败')
-    departments.value = []
-  } finally {
-    loading.value.departments = false
-  }
-}
-
-const loadAuditLogs = async () => {
-  try {
-    loading.value.audit = true
-
-    // 尝试调用API获取审计日志数据
-    try {
-      const response = await rolePermissionService.getOperationLogs({
-        page: auditPagination.value.currentPage,
-        pageSize: auditPagination.value.pageSize,
-        startDate: auditSearchForm.value.startDate,
-        endDate: auditSearchForm.value.endDate,
-        userId: auditSearchForm.value.user ? parseInt(auditSearchForm.value.user) : undefined,
-        action: auditSearchForm.value.action
-      })
-
-      // 转换API数据格式为组件需要的格式
-      auditLogs.value = response.data.map((log: any) => ({
-        id: log.id?.toString() || String(Date.now()),
-        timestamp: log.createdAt || log.timestamp || new Date().toISOString(),
-        user: log.username || log.user || '系统',
-        operator: log.username || log.operator || '系统',
-        action: log.action || '操作',
-        target: log.targetUser || log.target || log.module || '-',
-        resource: log.module || log.resource || '-',
-        details: log.description || log.details || '-',
-        description: log.description || log.details || '-',
-        ip: log.ip || log.ipAddress || '-',
-        ipAddress: log.ip || log.ipAddress || '-',
-        result: log.result || 'success',
-        status: log.status || 'success'
-      }))
-
-      auditPagination.value.total = response.total || auditLogs.value.length
-    } catch (apiError) {
-      console.warn('API获取审计日志失败，使用空数据:', apiError)
-      auditLogs.value = []
-      auditPagination.value.total = 0
-    }
-
-  } catch (error) {
-    console.error('加载审计日志数据失败:', error)
-    auditLogs.value = []
-  } finally {
-    loading.value.audit = false
   }
 }
 
@@ -970,15 +661,6 @@ const exportPermissions = () => {
         createTime: user.createTime,
         lastLogin: user.lastLogin
       })),
-      departments: departments.value.map(dept => ({
-        id: dept.id,
-        name: dept.name,
-        description: dept.description,
-        parentId: dept.parentId,
-        permissions: dept.permissions || [],
-        members: dept.members || [],
-        createTime: dept.createTime
-      })),
       roleTemplates: roleTemplates.value.map(template => ({
         id: template.id,
         name: template.name,
@@ -1002,17 +684,7 @@ const exportPermissions = () => {
           { resource: 'product', scopes: ['全部', '分类'] },
           { resource: 'report', scopes: ['全部', '部门', '个人'] }
         ]
-      },
-      auditLogs: auditLogs.value.slice(0, 100).map(log => ({
-        id: log.id,
-        user: log.user,
-        action: log.action,
-        resource: log.resource,
-        details: log.details,
-        timestamp: log.timestamp,
-        ip: log.ip,
-        result: log.result
-      }))
+      }
     }
 
     // 创建并下载文件
@@ -1029,20 +701,7 @@ const exportPermissions = () => {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
 
-    ElMessage.success('权限配置导出成功')
-
-    // 记录导出操作到审计日志
-    const newLog = {
-      id: Date.now().toString(),
-      user: '超级管理员',
-      action: '导出权限配置',
-      resource: '系统配置',
-      details: `导出了包含 ${users.value.length} 个用户、${departments.value.length} 个部门、${roleTemplates.value.length} 个角色模板的完整权限配置`,
-      timestamp: new Date().toISOString(),
-      ip: '127.0.0.1',
-      result: '成功'
-    }
-    auditLogs.value.unshift(newLog)
+    ElMessage.success(`权限配置导出成功，包含 ${users.value.length} 个用户、${roleTemplates.value.length} 个角色模板`)
 
   } catch (error) {
     console.error('导出权限配置失败:', error)
@@ -1330,121 +989,6 @@ const handleRoleTemplateUpdate = async (templateData: any) => {
 
 
 
-// 部门管理方法
-const addDepartment = () => {
-  selectedDepartment.value = null
-  dialogs.value.department = true
-}
-
-const batchAssignPermissions = () => {
-  dialogs.value.batchAssignPermissions = true
-}
-
-const syncDepartmentData = async () => {
-  try {
-    ElMessage.info('正在同步部门数据...')
-
-    // 调用真实的部门同步API
-    const departmentStore = await import('@/stores/department')
-    await departmentStore.default.syncDepartments()
-
-    ElMessage.success('部门数据同步成功')
-    // 刷新部门列表
-    await loadDepartments()
-  } catch (error) {
-    console.error('部门数据同步失败:', error)
-    ElMessage.error('部门数据同步失败')
-  }
-}
-
-const editDepartment = (department: Department) => {
-  selectedDepartment.value = department
-  dialogs.value.department = true
-}
-
-const manageDepartmentMembers = (department: Department) => {
-  selectedDepartment.value = department
-  dialogs.value.departmentMembers = true
-}
-
-const viewDepartmentPermissions = (department: Department) => {
-  selectedDepartment.value = department
-  dialogs.value.departmentPermissions = true
-}
-
-// 部门相关事件处理
-const handleDepartmentSaved = async (department) => {
-  dialogs.value.department = false
-
-  try {
-    // 如果有权限配置，保存部门权限
-    if (department.permissions) {
-      await departmentPermissionService.setDepartmentPermissions(department.id, {
-        permissions: department.permissions,
-        inheritFromParent: department.inheritFromParent || false,
-        dataScope: department.dataScope || 'department'
-      })
-    }
-
-    await loadDepartments()
-    ElMessage.success('部门信息保存成功')
-  } catch (error) {
-    console.error('保存部门权限失败:', error)
-    ElMessage.error('保存部门权限失败')
-  }
-}
-
-const handleDepartmentMembersUpdated = async () => {
-  dialogs.value.departmentMembers = false
-
-  try {
-    await loadDepartments()
-    ElMessage.success('部门成员更新成功')
-  } catch (error) {
-    console.error('更新部门成员失败:', error)
-    ElMessage.error('更新部门成员失败')
-  }
-}
-
-const handleDepartmentPermissionsUpdated = async (department) => {
-  try {
-    // 更新部门权限配置
-    await departmentPermissionService.setDepartmentPermissions(department.id, {
-      permissions: department.permissions,
-      inheritFromParent: department.inheritFromParent,
-      dataScope: department.dataScope,
-      managerExtraPermissions: department.managerExtraPermissions
-    })
-
-    // 更新本地部门数据
-    const index = departments.value.findIndex(d => d.id === department.id)
-    if (index > -1) {
-      departments.value[index] = {
-        ...departments.value[index],
-        permissionLevel: getPermissionLevelDisplayName(department.dataScope),
-        dataScope: getDataScopeDisplayName(department.dataScope)
-      }
-    }
-
-    ElMessage.success('部门权限更新成功')
-  } catch (error) {
-    console.error('更新部门权限失败:', error)
-    ElMessage.error('更新部门权限失败')
-  }
-}
-
-const handleBatchPermissionsAssigned = async () => {
-  dialogs.value.batchAssignPermissions = false
-
-  try {
-    await loadDepartments()
-    ElMessage.success('批量权限分配成功')
-  } catch (error) {
-    console.error('批量权限分配失败:', error)
-    ElMessage.error('批量权限分配失败')
-  }
-}
-
 // 用户详情相关事件处理
 const handleUserDetailEdit = (user: User) => {
   dialogs.value.userDetail = false
@@ -1486,178 +1030,6 @@ const handleRoleTemplateExported = (template: any) => {
   URL.revokeObjectURL(url)
 
   ElMessage.success(`角色模板 "${template.name}" 导出成功`)
-}
-
-// 审计日志方法
-
-const exportAuditLogs = async () => {
-  try {
-    loading.value.audit = true
-
-    // 准备导出数据
-    const exportData = {
-      exportInfo: {
-        title: '权限审计日志导出',
-        exportTime: new Date().toISOString(),
-        exportUser: '当前用户',
-        totalRecords: auditLogs.value.length,
-        dateRange: {
-          start: auditSearchForm.value.startDate || '全部',
-          end: auditSearchForm.value.endDate || '全部'
-        },
-        filters: {
-          user: auditSearchForm.value.user || '全部用户',
-          action: auditSearchForm.value.action || '全部操作',
-          resource: auditSearchForm.value.resource || '全部资源',
-          result: auditSearchForm.value.result || '全部结果'
-        }
-      },
-      auditLogs: auditLogs.value.map(log => ({
-        id: log.id,
-        timestamp: log.timestamp,
-        user: log.user,
-        action: log.action,
-        resource: log.resource,
-        details: log.details,
-        ip: log.ip,
-        userAgent: log.userAgent || 'Unknown',
-        result: log.result,
-        duration: log.duration || 0,
-        errorMessage: log.errorMessage || '',
-        sessionId: log.sessionId || '',
-        requestId: log.requestId || ''
-      })),
-      summary: {
-        totalActions: auditLogs.value.length,
-        successfulActions: auditLogs.value.filter(log => log.result === 'success').length,
-        failedActions: auditLogs.value.filter(log => log.result === 'failure').length,
-        uniqueUsers: [...new Set(auditLogs.value.map(log => log.user))].length,
-        actionTypes: [...new Set(auditLogs.value.map(log => log.action))],
-        resourceTypes: [...new Set(auditLogs.value.map(log => log.resource))],
-        timeRange: {
-          earliest: auditLogs.value.length > 0 ? Math.min(...auditLogs.value.map(log => new Date(log.timestamp).getTime())) : null,
-          latest: auditLogs.value.length > 0 ? Math.max(...auditLogs.value.map(log => new Date(log.timestamp).getTime())) : null
-        }
-      },
-      statistics: {
-        actionsByType: auditLogs.value.reduce((acc, log) => {
-          acc[log.action] = (acc[log.action] || 0) + 1
-          return acc
-        }, {} as Record<string, number>),
-        actionsByUser: auditLogs.value.reduce((acc, log) => {
-          acc[log.user] = (acc[log.user] || 0) + 1
-          return acc
-        }, {} as Record<string, number>),
-        actionsByResource: auditLogs.value.reduce((acc, log) => {
-          acc[log.resource] = (acc[log.resource] || 0) + 1
-          return acc
-        }, {} as Record<string, number>),
-        actionsByResult: auditLogs.value.reduce((acc, log) => {
-          acc[log.result] = (acc[log.result] || 0) + 1
-          return acc
-        }, {} as Record<string, number>)
-      }
-    }
-
-    // 创建并下载JSON文件
-    const jsonBlob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: 'application/json;charset=utf-8'
-    })
-
-    const jsonUrl = URL.createObjectURL(jsonBlob)
-    const jsonLink = document.createElement('a')
-    jsonLink.href = jsonUrl
-    jsonLink.download = `audit-logs-${new Date().toISOString().split('T')[0]}.json`
-    document.body.appendChild(jsonLink)
-    jsonLink.click()
-    document.body.removeChild(jsonLink)
-    URL.revokeObjectURL(jsonUrl)
-
-    // 同时创建CSV格式的导出
-    const csvHeaders = [
-      '时间', '用户', '操作', '资源', '详情', 'IP地址', '结果', '持续时间(ms)', '错误信息'
-    ]
-
-    const csvRows = auditLogs.value.map(log => [
-      log.timestamp,
-      log.user,
-      log.action,
-      log.resource,
-      log.details.replace(/,/g, ';'), // 替换逗号避免CSV格式问题
-      log.ip,
-      log.result,
-      log.duration || 0,
-      (log.errorMessage || '').replace(/,/g, ';')
-    ])
-
-    const csvContent = [
-      csvHeaders.join(','),
-      ...csvRows.map(row => row.join(','))
-    ].join('\n')
-
-    const csvBlob = new Blob(['\ufeff' + csvContent], {
-      type: 'text/csv;charset=utf-8'
-    })
-
-    const csvUrl = URL.createObjectURL(csvBlob)
-    const csvLink = document.createElement('a')
-    csvLink.href = csvUrl
-    csvLink.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`
-    document.body.appendChild(csvLink)
-    csvLink.click()
-    document.body.removeChild(csvLink)
-    URL.revokeObjectURL(csvUrl)
-
-    // 记录导出操作到审计日志
-    const exportLog: AuditLog = {
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      user: '当前用户',
-      action: '导出审计日志',
-      resource: '审计日志',
-      details: `导出了 ${auditLogs.value.length} 条审计日志记录`,
-      ip: '127.0.0.1',
-      result: 'success',
-      duration: 1000
-    }
-
-    auditLogs.value.unshift(exportLog)
-
-    ElMessage.success(`审计日志导出成功！已导出 ${auditLogs.value.length} 条记录`)
-  } catch (error) {
-    console.error('导出审计日志失败:', error)
-    ElMessage.error('导出审计日志失败，请重试')
-  } finally {
-    loading.value.audit = false
-  }
-}
-
-// 搜索审计日志
-const searchAuditLogs = () => {
-  // 更新搜索表单数据
-  auditSearchForm.value = {
-    startDate: auditDateRange.value?.[0]?.toISOString().split('T')[0] || '',
-    endDate: auditDateRange.value?.[1]?.toISOString().split('T')[0] || '',
-    user: auditUserKeyword.value,
-    action: auditActionType.value,
-    resource: '',
-    result: ''
-  }
-
-  // 重新加载审计日志
-  loadAuditLogs()
-
-  ElMessage.success('搜索完成')
-}
-
-const handleAuditPageSizeChange = (size: number) => {
-  auditPagination.value.pageSize = size
-  loadAuditLogs()
-}
-
-const handleAuditCurrentChange = (page: number) => {
-  auditPagination.value.currentPage = page
-  loadAuditLogs()
 }
 
 // 系统配置方法
