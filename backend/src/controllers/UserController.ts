@@ -3,6 +3,7 @@ import { getDataSource } from '../config/database';
 import { User } from '../entities/User';
 import { Department } from '../entities/Department';
 import { OperationLog } from '../entities/OperationLog';
+import { CustomerServicePermission } from '../entities/CustomerServicePermission';
 import { JwtConfig } from '../config/jwt';
 import { catchAsync, BusinessError, NotFoundError, ValidationError } from '../middleware/errorHandler';
 import { logger, operationLogger } from '../config/logger';
@@ -23,6 +24,37 @@ export class UserController {
       throw new BusinessError('数据库连接未初始化');
     }
     return dataSource.getRepository(Department);
+  }
+
+  private get customerServicePermissionRepository() {
+    const dataSource = getDataSource();
+    if (!dataSource) {
+      throw new BusinessError('数据库连接未初始化');
+    }
+    return dataSource.getRepository(CustomerServicePermission);
+  }
+
+  /**
+   * 获取用户的客服权限配置
+   */
+  private async getCustomerServicePermissions(userId: string): Promise<any | null> {
+    try {
+      const permission = await this.customerServicePermissionRepository.findOne({
+        where: { userId, status: 'active' }
+      });
+      if (permission) {
+        return {
+          customerServiceType: permission.customerServiceType,
+          dataScope: permission.dataScope,
+          departmentIds: permission.departmentIds || [],
+          customPermissions: permission.customPermissions || []
+        };
+      }
+      return null;
+    } catch (error) {
+      logger.warn('获取客服权限失败:', error);
+      return null;
+    }
   }
 
   /**
@@ -162,6 +194,9 @@ export class UserController {
       // 日志记录失败不影响登录流程
     }
 
+    // 获取客服权限配置
+    const customerServicePermissions = await this.getCustomerServicePermissions(user.id);
+
     // 返回用户信息和令牌
     const { password: _, ...userInfo } = user;
 
@@ -169,7 +204,10 @@ export class UserController {
       success: true,
       message: '登录成功',
       data: {
-        user: userInfo,
+        user: {
+          ...userInfo,
+          customerServicePermissions
+        },
         tokens
       }
     });
@@ -221,9 +259,15 @@ export class UserController {
   getCurrentUser = catchAsync(async (req: Request, res: Response) => {
     const user = req.currentUser!;
 
+    // 获取客服权限配置
+    const customerServicePermissions = await this.getCustomerServicePermissions(user.id);
+
     res.json({
       success: true,
-      data: user
+      data: {
+        ...user,
+        customerServicePermissions
+      }
     });
   });
 

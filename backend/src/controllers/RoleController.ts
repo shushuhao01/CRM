@@ -2,8 +2,7 @@ import { Request, Response } from 'express';
 import { getDataSource } from '../config/database';
 import { Role } from '../entities/Role';
 import { Permission } from '../entities/Permission';
-import { User } from '../entities/User';
-import { Repository, TreeRepository, Not } from 'typeorm';
+import { Repository, TreeRepository } from 'typeorm';
 
 export class RoleController {
   private get roleRepository(): Repository<Role> {
@@ -22,20 +21,11 @@ export class RoleController {
     return dataSource.getTreeRepository(Permission);
   }
 
-  private get userRepository(): Repository<User> {
-    const dataSource = getDataSource();
-    if (!dataSource) {
-      throw new Error('数据库连接未初始化');
-    }
-    return dataSource.getRepository(User);
-  }
-
   // 获取角色列表
   async getRoles(req: Request, res: Response) {
     try {
-      const { page = 1, limit = 20, search, status, isTemplate } = req.query;
+      const { page = 1, limit = 20, search, status } = req.query;
 
-      // 使用原生SQL查询避免实体字段映射问题
       const dataSource = getDataSource();
       if (!dataSource) {
         throw new Error('数据库连接未初始化');
@@ -44,13 +34,6 @@ export class RoleController {
       // 构建WHERE条件
       const conditions: string[] = [];
       const params: any[] = [];
-
-      // 默认只获取非模板角色，除非明确指定
-      if (isTemplate === 'true') {
-        conditions.push('is_template = 1');
-      } else if (isTemplate === 'false' || isTemplate === undefined) {
-        conditions.push('(is_template = 0 OR is_template IS NULL)');
-      }
 
       if (search) {
         conditions.push('(name LIKE ? OR code LIKE ?)');
@@ -67,8 +50,7 @@ export class RoleController {
 
       // 查询角色列表
       const roles = await dataSource.query(
-        `SELECT id, name, code, description, status, level, color, role_type as roleType,
-                is_template as isTemplate, permissions, created_at as createdAt, updated_at as updatedAt
+        `SELECT id, name, code, description, status, level, color, permissions, created_at as createdAt, updated_at as updatedAt
          FROM roles ${whereClause} ORDER BY level ASC, created_at DESC LIMIT ? OFFSET ?`,
         [...params, Number(limit), offset]
       );
@@ -97,7 +79,9 @@ export class RoleController {
           // 解析permissions JSON字段
           let permissions: string[] = [];
           try {
-            permissions = role.permissions ? JSON.parse(role.permissions) : [];
+            if (role.permissions) {
+              permissions = typeof role.permissions === 'string' ? JSON.parse(role.permissions) : role.permissions;
+            }
           } catch {
             permissions = [];
           }
@@ -137,12 +121,17 @@ export class RoleController {
   async getRoleById(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        throw new Error('数据库连接未初始化');
+      }
 
-      const role = await this.roleRepository.findOne({
-        where: { id: String(id) }
-      });
+      const roles = await dataSource.query(
+        'SELECT id, name, code, description, status, level, color, permissions, created_at as createdAt, updated_at as updatedAt FROM roles WHERE id = ?',
+        [id]
+      );
 
-      if (!role) {
+      if (roles.length === 0) {
         res.status(404).json({
           success: false,
           message: '角色不存在'
@@ -150,27 +139,37 @@ export class RoleController {
         return;
       }
 
-      // 获取该角色的用户数量（使用原生SQL避免实体字段映射问题）
+      const role = roles[0];
+
+      // 获取该角色的用户数量
       let userCount = 0;
       try {
-        const dataSource = getDataSource();
-        if (dataSource) {
-          const result = await dataSource.query(
-            'SELECT COUNT(*) as count FROM users WHERE role_id = ?',
-            [role.code]
-          );
-          userCount = parseInt(result[0]?.count || '0', 10);
-        }
+        const result = await dataSource.query(
+          'SELECT COUNT(*) as count FROM users WHERE role_id = ?',
+          [role.code]
+        );
+        userCount = parseInt(result[0]?.count || '0', 10);
       } catch (err) {
         console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
+      }
+
+      // 解析permissions
+      let permissions: string[] = [];
+      try {
+        if (role.permissions) {
+          permissions = typeof role.permissions === 'string' ? JSON.parse(role.permissions) : role.permissions;
+        }
+      } catch {
+        permissions = [];
       }
 
       res.json({
         success: true,
         data: {
           ...role,
+          permissions,
           userCount,
-          permissionCount: Array.isArray(role.permissions) ? role.permissions.length : 0
+          permissionCount: permissions.length
         }
       });
     } catch (error) {
@@ -185,48 +184,40 @@ export class RoleController {
   // 创建角色
   async createRole(req: Request, res: Response): Promise<void> {
     try {
-      const { name, code, description, status = 'active', level = 0, color, permissions = [], roleType = 'custom', isTemplate = false } = req.body;
+      const { name, code, description, status = 'active', level = 0, color, permissions = [] } = req.body;
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        throw new Error('数据库连接未初始化');
+      }
 
       // 检查角色名称和编码是否已存在
-      const existingRole = await this.roleRepository.findOne({
-        where: [
-          { name },
-          { code }
-        ]
-      });
+      const existing = await dataSource.query(
+        'SELECT id FROM roles WHERE name = ? OR code = ?',
+        [name, code]
+      );
 
-      if (existingRole) {
+      if (existing.length > 0) {
         res.status(400).json({
           success: false,
-          message: existingRole.name === name ? '角色名称已存在' : '角色编码已存在'
+          message: '角色名称或编码已存在'
         });
         return;
       }
 
       // 生成角色ID
-      const prefix = isTemplate ? 'tpl' : 'role';
-      const roleId = `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const roleId = `role_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      // 创建角色 - permissions 是 JSON 字段
-      const role = this.roleRepository.create({
-        id: roleId,
-        name,
-        code,
-        description,
-        status: status as 'active' | 'inactive',
-        level,
-        color,
-        roleType: roleType as 'system' | 'business' | 'custom',
-        isTemplate: Boolean(isTemplate),
-        permissions: Array.isArray(permissions) ? permissions : []
-      });
-
-      const savedRole = await this.roleRepository.save(role);
+      // 插入角色
+      await dataSource.query(
+        `INSERT INTO roles (id, name, code, description, status, level, color, permissions, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [roleId, name, code, description || '', status, level, color || '', JSON.stringify(permissions)]
+      );
 
       res.status(201).json({
         success: true,
-        data: savedRole,
-        message: isTemplate ? '角色模板创建成功' : '角色创建成功'
+        data: { id: roleId, name, code, description, status, level, color, permissions },
+        message: '角色创建成功'
       });
     } catch (error) {
       console.error('创建角色失败:', error);
@@ -237,115 +228,20 @@ export class RoleController {
     }
   }
 
-  // 获取角色模板列表
-  async getRoleTemplates(req: Request, res: Response) {
-    try {
-      // 使用原生SQL查询避免实体字段映射问题
-      const dataSource = getDataSource();
-      if (!dataSource) {
-        throw new Error('数据库连接未初始化');
-      }
-
-      const templates = await dataSource.query(
-        `SELECT id, name, code, description, status, level, color, role_type as roleType,
-                is_template as isTemplate, permissions, created_at as createdAt, updated_at as updatedAt
-         FROM roles WHERE is_template = 1 ORDER BY level ASC, created_at DESC`
-      );
-
-      // 计算每个模板被使用的次数
-      const templatesWithStats = templates.map((template: any) => {
-        let permissions: string[] = [];
-        try {
-          permissions = template.permissions ? JSON.parse(template.permissions) : [];
-        } catch {
-          permissions = [];
-        }
-        return {
-          ...template,
-          permissions,
-          permissionCount: Array.isArray(permissions) ? permissions.length : 0,
-          userCount: 0
-        };
-      });
-
-      res.json({
-        success: true,
-        data: templatesWithStats
-      });
-    } catch (error) {
-      console.error('获取角色模板列表失败:', error);
-      res.status(500).json({
-        success: false,
-        message: '获取角色模板列表失败'
-      });
-    }
+  // 获取角色模板列表（返回空数组，模板功能已移除）
+  async getRoleTemplates(_req: Request, res: Response) {
+    res.json({
+      success: true,
+      data: []
+    });
   }
 
-  // 从模板创建角色
-  async createRoleFromTemplate(req: Request, res: Response): Promise<void> {
-    try {
-      const { templateId, name, code, description } = req.body;
-
-      // 获取模板
-      const template = await this.roleRepository.findOne({
-        where: { id: templateId, isTemplate: true }
-      });
-
-      if (!template) {
-        res.status(404).json({
-          success: false,
-          message: '模板不存在'
-        });
-        return;
-      }
-
-      // 检查角色名称和编码是否已存在
-      const existingRole = await this.roleRepository.findOne({
-        where: [
-          { name },
-          { code }
-        ]
-      });
-
-      if (existingRole) {
-        res.status(400).json({
-          success: false,
-          message: existingRole.name === name ? '角色名称已存在' : '角色编码已存在'
-        });
-        return;
-      }
-
-      // 生成角色ID
-      const roleId = `role_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      // 从模板创建角色
-      const role = this.roleRepository.create({
-        id: roleId,
-        name,
-        code,
-        description: description || template.description,
-        status: 'active',
-        level: template.level,
-        color: template.color,
-        roleType: 'custom',
-        isTemplate: false,
-        permissions: template.permissions || []
-      });
-
-      const savedRole = await this.roleRepository.save(role);
-
-      res.status(201).json({
-        success: true,
-        data: savedRole,
-        message: `角色创建成功（基于模板：${template.name}）`
-      });
-    } catch (error) {
-      console.error('从模板创建角色失败:', error);
-      res.status(500).json({
-        success: false,
-        message: '从模板创建角色失败'
-      });
-    }
+  // 从模板创建角色（模板功能已移除）
+  async createRoleFromTemplate(_req: Request, res: Response): Promise<void> {
+    res.status(400).json({
+      success: false,
+      message: '模板功能已移除'
+    });
   }
 
   // 更新角色
@@ -353,12 +249,14 @@ export class RoleController {
     try {
       const { id } = req.params;
       const { name, code, description, status, level, color, permissions } = req.body;
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        throw new Error('数据库连接未初始化');
+      }
 
-      const role = await this.roleRepository.findOne({
-        where: { id: String(id) }
-      });
-
-      if (!role) {
+      // 检查角色是否存在
+      const existing = await dataSource.query('SELECT id, code FROM roles WHERE id = ?', [id]);
+      if (existing.length === 0) {
         res.status(404).json({
           success: false,
           message: '角色不存在'
@@ -366,47 +264,26 @@ export class RoleController {
         return;
       }
 
-      // 检查名称和编码是否与其他角色冲突
-      if (name && name !== role.name) {
-        const existingRole = await this.roleRepository.findOne({ where: { name } });
-        if (existingRole) {
-          res.status(400).json({
-            success: false,
-            message: '角色名称已存在'
-          });
-          return;
-        }
+      // 构建更新语句
+      const updates: string[] = [];
+      const params: any[] = [];
+
+      if (name !== undefined) { updates.push('name = ?'); params.push(name); }
+      if (code !== undefined) { updates.push('code = ?'); params.push(code); }
+      if (description !== undefined) { updates.push('description = ?'); params.push(description); }
+      if (status !== undefined) { updates.push('status = ?'); params.push(status); }
+      if (level !== undefined) { updates.push('level = ?'); params.push(level); }
+      if (color !== undefined) { updates.push('color = ?'); params.push(color); }
+      if (permissions !== undefined) { updates.push('permissions = ?'); params.push(JSON.stringify(permissions)); }
+
+      if (updates.length > 0) {
+        updates.push('updated_at = NOW()');
+        params.push(id);
+        await dataSource.query(`UPDATE roles SET ${updates.join(', ')} WHERE id = ?`, params);
       }
-
-      if (code && code !== role.code) {
-        const existingRole = await this.roleRepository.findOne({ where: { code } });
-        if (existingRole) {
-          res.status(400).json({
-            success: false,
-            message: '角色编码已存在'
-          });
-          return;
-        }
-      }
-
-      // 更新基本信息
-      if (name) role.name = name;
-      if (code) role.code = code;
-      if (description !== undefined) role.description = description;
-      if (status) role.status = status;
-      if (level !== undefined) role.level = level;
-      if (color !== undefined) role.color = color;
-
-      // 更新权限 - permissions 是 JSON 字段
-      if (permissions !== undefined) {
-        role.permissions = Array.isArray(permissions) ? permissions : [];
-      }
-
-      const savedRole = await this.roleRepository.save(role);
 
       res.json({
         success: true,
-        data: savedRole,
         message: '角色更新成功'
       });
     } catch (error) {
@@ -422,12 +299,14 @@ export class RoleController {
   async deleteRole(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        throw new Error('数据库连接未初始化');
+      }
 
-      const role = await this.roleRepository.findOne({
-        where: { id: String(id) }
-      });
-
-      if (!role) {
+      // 检查角色是否存在
+      const roles = await dataSource.query('SELECT id, code FROM roles WHERE id = ?', [id]);
+      if (roles.length === 0) {
         res.status(404).json({
           success: false,
           message: '角色不存在'
@@ -435,20 +314,14 @@ export class RoleController {
         return;
       }
 
-      // 检查是否有用户使用此角色（使用原生SQL避免实体字段映射问题）
-      let usersWithRole = 0;
-      try {
-        const dataSource = getDataSource();
-        if (dataSource) {
-          const result = await dataSource.query(
-            'SELECT COUNT(*) as count FROM users WHERE role_id = ?',
-            [role.code]
-          );
-          usersWithRole = parseInt(result[0]?.count || '0', 10);
-        }
-      } catch (err) {
-        console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
-      }
+      const role = roles[0];
+
+      // 检查是否有用户使用此角色
+      const userResult = await dataSource.query(
+        'SELECT COUNT(*) as count FROM users WHERE role_id = ?',
+        [role.code]
+      );
+      const usersWithRole = parseInt(userResult[0]?.count || '0', 10);
 
       if (usersWithRole > 0) {
         res.status(400).json({
@@ -458,7 +331,7 @@ export class RoleController {
         return;
       }
 
-      await this.roleRepository.remove(role);
+      await dataSource.query('DELETE FROM roles WHERE id = ?', [id]);
 
       res.json({
         success: true,
@@ -474,18 +347,23 @@ export class RoleController {
   }
 
   // 获取角色统计
-  async getRoleStats(req: Request, res: Response) {
+  async getRoleStats(_req: Request, res: Response) {
     try {
-      const total = await this.roleRepository.count();
-      const active = await this.roleRepository.count({ where: { status: 'active' } });
-      const permissions = await this.permissionRepository.count();
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        throw new Error('数据库连接未初始化');
+      }
+
+      const totalResult = await dataSource.query('SELECT COUNT(*) as count FROM roles');
+      const activeResult = await dataSource.query("SELECT COUNT(*) as count FROM roles WHERE status = 'active'");
+      const permResult = await dataSource.query('SELECT COUNT(*) as count FROM permissions');
 
       res.json({
         success: true,
         data: {
-          total,
-          active,
-          permissions
+          total: parseInt(totalResult[0]?.count || '0', 10),
+          active: parseInt(activeResult[0]?.count || '0', 10),
+          permissions: parseInt(permResult[0]?.count || '0', 10)
         }
       });
     } catch (error) {
@@ -502,10 +380,11 @@ export class RoleController {
     try {
       const { id } = req.params;
       const { status } = req.body;
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        throw new Error('数据库连接未初始化');
+      }
 
-      console.log('[RoleController] 更新角色状态:', { id, status });
-
-      // 验证状态值
       if (!['active', 'inactive'].includes(status)) {
         res.status(400).json({
           success: false,
@@ -514,11 +393,8 @@ export class RoleController {
         return;
       }
 
-      const role = await this.roleRepository.findOne({
-        where: { id: String(id) }
-      });
-
-      if (!role) {
+      const roles = await dataSource.query('SELECT id, code FROM roles WHERE id = ?', [id]);
+      if (roles.length === 0) {
         res.status(404).json({
           success: false,
           message: '角色不存在'
@@ -526,7 +402,9 @@ export class RoleController {
         return;
       }
 
-      // 🔥 防止禁用系统预设角色（超级管理员和管理员）
+      const role = roles[0];
+
+      // 防止禁用系统预设角色
       const nonDisableableRoles = ['super_admin', 'admin'];
       if (status === 'inactive' && nonDisableableRoles.includes(role.code)) {
         res.status(400).json({
@@ -536,15 +414,10 @@ export class RoleController {
         return;
       }
 
-      // 更新状态
-      role.status = status;
-      const savedRole = await this.roleRepository.save(role);
-
-      console.log('[RoleController] 角色状态更新成功:', { id, status });
+      await dataSource.query('UPDATE roles SET status = ?, updated_at = NOW() WHERE id = ?', [status, id]);
 
       res.json({
         success: true,
-        data: savedRole,
         message: `角色已${status === 'active' ? '启用' : '禁用'}`
       });
     } catch (error) {
@@ -560,40 +433,48 @@ export class RoleController {
   async getRolePermissions(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        throw new Error('数据库连接未初始化');
+      }
 
-      // 尝试查找角色
-      const role = await this.roleRepository.findOne({
-        where: { id: String(id) }
-      });
+      const roles = await dataSource.query(
+        'SELECT id, name, permissions FROM roles WHERE id = ?',
+        [id]
+      );
 
-      // 如果找不到角色，返回默认权限（而不是404）
-      if (!role) {
-        console.log(`[RoleController] 角色 ${id} 不存在，返回默认权限`);
+      if (roles.length === 0) {
         res.json({
           success: true,
           data: {
-            roleId: String(id),
+            roleId: id,
             roleName: 'default',
-            permissions: []  // 返回空权限数组，前端会使用默认权限
+            permissions: []
           }
         });
         return;
       }
 
-      // permissions 是 JSON 字段，直接返回
-      const permissions = Array.isArray(role.permissions) ? role.permissions : [];
+      const role = roles[0];
+      let permissions: string[] = [];
+      try {
+        if (role.permissions) {
+          permissions = typeof role.permissions === 'string' ? JSON.parse(role.permissions) : role.permissions;
+        }
+      } catch {
+        permissions = [];
+      }
 
       res.json({
         success: true,
         data: {
           roleId: role.id,
           roleName: role.name,
-          permissions: permissions
+          permissions
         }
       });
     } catch (error) {
       console.error('获取角色权限失败:', error);
-      // 出错时也返回默认权限，避免前端报错
       res.json({
         success: true,
         data: {
@@ -605,19 +486,18 @@ export class RoleController {
     }
   }
 
-  // 🔥 更新角色权限
+  // 更新角色权限
   async updateRolePermissions(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const { permissions, permissionIds } = req.body;
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        throw new Error('数据库连接未初始化');
+      }
 
-      console.log(`[RoleController] 更新角色权限: ${id}`, { permissions, permissionIds });
-
-      const role = await this.roleRepository.findOne({
-        where: { id: String(id) }
-      });
-
-      if (!role) {
+      const roles = await dataSource.query('SELECT id, name FROM roles WHERE id = ?', [id]);
+      if (roles.length === 0) {
         res.status(404).json({
           success: false,
           message: '角色不存在'
@@ -625,22 +505,18 @@ export class RoleController {
         return;
       }
 
-      // 支持两种格式：permissions 或 permissionIds
       const newPermissions = permissions || permissionIds || [];
-      role.permissions = Array.isArray(newPermissions) ? newPermissions : [];
-
-      const savedRole = await this.roleRepository.save(role);
-
-      console.log(`[RoleController] 角色权限更新成功: ${role.name}`, {
-        permissionCount: role.permissions.length
-      });
+      await dataSource.query(
+        'UPDATE roles SET permissions = ?, updated_at = NOW() WHERE id = ?',
+        [JSON.stringify(newPermissions), id]
+      );
 
       res.json({
         success: true,
         data: {
-          roleId: savedRole.id,
-          roleName: savedRole.name,
-          permissions: savedRole.permissions
+          roleId: id,
+          roleName: roles[0].name,
+          permissions: newPermissions
         },
         message: '权限更新成功'
       });

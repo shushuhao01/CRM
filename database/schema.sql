@@ -1850,3 +1850,33 @@ INSERT INTO `payment_method_options` (`id`, `label`, `value`, `sort_order`, `is_
 ('pm_cod', '货到付款', 'cod', 5, 1),
 ('pm_other', '其他', 'other', 6, 1)
 ON DUPLICATE KEY UPDATE `label` = VALUES(`label`), `sort_order` = VALUES(`sort_order`);
+
+-- =============================================
+-- 客服权限配置表
+-- 版本：1.0
+-- 创建时间：2024-12-18
+-- 说明：用于存储客服人员的权限配置
+-- =============================================
+DROP TABLE IF EXISTS `customer_service_permissions`;
+CREATE TABLE `customer_service_permissions` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '记录ID',
+  `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
+  `customer_service_type` VARCHAR(30) NOT NULL DEFAULT 'general' COMMENT '客服类型: after_sales售后, audit审核, logistics物流, product商品, general通用',
+  `data_scope` VARCHAR(20) NOT NULL DEFAULT 'self' COMMENT '数据范围: all全部, department部门, self个人, custom自定义',
+  `department_ids` JSON NULL COMMENT '可访问的部门ID列表（data_scope为department或custom时使用）',
+  `custom_permissions` JSON NULL COMMENT '自定义权限列表',
+  `permission_template` VARCHAR(50) NULL COMMENT '使用的权限模板ID',
+  `status` ENUM('active', 'inactive') DEFAULT 'active' COMMENT '状态',
+  `remark` TEXT NULL COMMENT '备注',
+  `created_by` VARCHAR(50) NULL COMMENT '创建人ID',
+  `created_by_name` VARCHAR(50) NULL COMMENT '创建人姓名',
+  `updated_by` VARCHAR(50) NULL COMMENT '更新人ID',
+  `updated_by_name` VARCHAR(50) NULL COMMENT '更新人姓名',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_service_type` (`customer_service_type`),
+  INDEX `idx_data_scope` (`data_scope`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客服权限配置表';

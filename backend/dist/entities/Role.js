@@ -43,14 +43,6 @@ __decorate([
     __metadata("design:type", String)
 ], Role.prototype, "color", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: 'custom', length: 20 }),
-    __metadata("design:type", String)
-], Role.prototype, "roleType", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ default: false }),
-    __metadata("design:type", Boolean)
-], Role.prototype, "isTemplate", void 0);
-__decorate([
     (0, typeorm_1.CreateDateColumn)(),
     __metadata("design:type", Date)
 ], Role.prototype, "createdAt", void 0);

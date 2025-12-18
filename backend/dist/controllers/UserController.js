@@ -7,6 +7,7 @@ exports.UserController = void 0;
 const database_1 = require("../config/database");
 const User_1 = require("../entities/User");
 const Department_1 = require("../entities/Department");
+const CustomerServicePermission_1 = require("../entities/CustomerServicePermission");
 const jwt_1 = require("../config/jwt");
 const errorHandler_1 = require("../middleware/errorHandler");
 const logger_1 = require("../config/logger");
@@ -135,13 +136,18 @@ class UserController {
             catch (_logError) {
                 // 日志记录失败不影响登录流程
             }
+            // 获取客服权限配置
+            const customerServicePermissions = await this.getCustomerServicePermissions(user.id);
             // 返回用户信息和令牌
             const { password: _, ...userInfo } = user;
             res.json({
                 success: true,
                 message: '登录成功',
                 data: {
-                    user: userInfo,
+                    user: {
+                        ...userInfo,
+                        customerServicePermissions
+                    },
                     tokens
                 }
             });
@@ -183,9 +189,14 @@ class UserController {
          */
         this.getCurrentUser = (0, errorHandler_1.catchAsync)(async (req, res) => {
             const user = req.currentUser;
+            // 获取客服权限配置
+            const customerServicePermissions = await this.getCustomerServicePermissions(user.id);
             res.json({
                 success: true,
-                data: user
+                data: {
+                    ...user,
+                    customerServicePermissions
+                }
             });
         });
         /**
@@ -977,6 +988,36 @@ class UserController {
             throw new errorHandler_1.BusinessError('数据库连接未初始化');
         }
         return dataSource.getRepository(Department_1.Department);
+    }
+    get customerServicePermissionRepository() {
+        const dataSource = (0, database_1.getDataSource)();
+        if (!dataSource) {
+            throw new errorHandler_1.BusinessError('数据库连接未初始化');
+        }
+        return dataSource.getRepository(CustomerServicePermission_1.CustomerServicePermission);
+    }
+    /**
+     * 获取用户的客服权限配置
+     */
+    async getCustomerServicePermissions(userId) {
+        try {
+            const permission = await this.customerServicePermissionRepository.findOne({
+                where: { userId, status: 'active' }
+            });
+            if (permission) {
+                return {
+                    customerServiceType: permission.customerServiceType,
+                    dataScope: permission.dataScope,
+                    departmentIds: permission.departmentIds || [],
+                    customPermissions: permission.customPermissions || []
+                };
+            }
+            return null;
+        }
+        catch (error) {
+            logger_1.logger.warn('获取客服权限失败:', error);
+            return null;
+        }
     }
     /**
      * 记录操作日志

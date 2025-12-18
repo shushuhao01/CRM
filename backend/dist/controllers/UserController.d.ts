@@ -2,6 +2,11 @@ import { Request, Response } from 'express';
 export declare class UserController {
     private get userRepository();
     private get departmentRepository();
+    private get customerServicePermissionRepository();
+    /**
+     * 获取用户的客服权限配置
+     */
+    private getCustomerServicePermissions;
     /**
      * 用户登录
      */

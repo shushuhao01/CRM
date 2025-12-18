@@ -42,6 +42,7 @@ import assignmentRoutes from './routes/assignment';
 import smsRoutes from './routes/sms';
 import customerShareRoutes from './routes/customerShare';
 import performanceReportRoutes from './routes/performanceReport';
+import customerServicePermissionRoutes from './routes/customerServicePermissions';
 
 // 加载环境变量
 dotenv.config();
@@ -227,6 +228,7 @@ app.use(`${API_PREFIX}/data`, dataRoutes);
 app.use(`${API_PREFIX}/assignment`, assignmentRoutes);
 app.use(`${API_PREFIX}/sms`, smsRoutes);
 app.use(`${API_PREFIX}/customer-share`, customerShareRoutes);
+app.use(`${API_PREFIX}/customer-service-permissions`, customerServicePermissionRoutes);
 
 // 404处理
 app.use(notFoundHandler);
