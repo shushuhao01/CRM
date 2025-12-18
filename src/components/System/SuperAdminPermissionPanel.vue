@@ -102,15 +102,8 @@
                 {{ formatDate(row.lastLogin) }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="280">
+            <el-table-column label="操作" width="200">
               <template #default="{ row }">
-                <el-button
-                  @click="editUserPermission(row)"
-                  size="small"
-                  type="primary"
-                >
-                  编辑权限
-                </el-button>
                 <el-button
                   @click="viewUserDetail(row)"
                   size="small"
