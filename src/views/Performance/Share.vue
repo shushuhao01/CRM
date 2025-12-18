@@ -814,13 +814,10 @@ const loadShareRecords = async () => {
       }
     }
   } catch (error) {
-    // 🔥 静默处理：如果是网络错误或API不存在，不显示错误提示
-    console.error('加载分享记录失败:', error)
-    // 只有在非404错误时才显示错误提示
-    const errorMessage = (error as any)?.message || ''
-    if (!errorMessage.includes('404') && !errorMessage.includes('Not Found')) {
-      ElMessage.error('加载分享记录失败')
-    }
+    // 🔥 完全静默处理：不显示任何错误提示，只在控制台记录
+    console.warn('[业绩分享] 加载数据失败，可能是表不存在或无数据:', error)
+    // 设置空数据
+    totalRecords.value = 0
   } finally {
     loading.value = false
   }
@@ -1430,140 +1427,130 @@ watch([filterStatus, filterDateRange], () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
-  padding: 24px;
+  margin-bottom: 20px;
+  padding: 16px 20px;
   background: white;
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .page-header h2 {
   margin: 0;
-  color: #1a202c;
-  font-size: 32px;
-  font-weight: 800;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  color: #303133;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .header-actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
 }
 
 .action-btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #409EFF;
   border: none;
-  border-radius: 12px;
-  padding: 12px 24px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  transform: translateY(0);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-weight: 500;
+  transition: all 0.3s ease;
 }
 
 .action-btn-primary:hover {
-  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
-  transform: translateY(-2px);
+  background: #66b1ff;
 }
 
 .action-btn-secondary {
   background: white;
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 12px 24px;
-  font-weight: 600;
-  color: #4a5568;
-  letter-spacing: 0.5px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  transform: translateY(0);
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-weight: 500;
+  color: #606266;
+  transition: all 0.3s ease;
 }
 
 .action-btn-secondary:hover {
-  background: #f7fafc;
-  border-color: #cbd5e1;
-  color: #2d3748;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  transform: translateY(-2px);
+  background: #f5f7fa;
+  border-color: #c0c4cc;
+  color: #409EFF;
 }
 
 .share-overview {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .overview-card {
-  height: 140px;
   border: none;
-  border-radius: 20px;
+  border-radius: 12px;
   background: white;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
 }
 
-.overview-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-}
-
 .overview-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
 .card-content {
   display: flex;
   align-items: center;
-  height: 100%;
-  padding: 24px;
+  padding: 20px;
 }
 
 .card-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 20px;
-  font-size: 28px;
+  margin-right: 16px;
+  font-size: 24px;
   color: white;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
 }
 
-.card-icon:hover {
-  transform: scale(1.1) rotate(5deg);
+.card-icon::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.overview-card:hover .card-icon::before {
+  left: 100%;
+}
+
+.overview-card:hover .card-icon {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 
 .card-icon.total {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #409EFF;
 }
 
 .card-icon.amount {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: #E6A23C;
 }
 
 .card-icon.members {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: #67C23A;
 }
 
 .card-icon.orders {
-  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+  background: #13C2C2;
 }
 
 .card-info {
@@ -1571,30 +1558,23 @@ watch([filterStatus, filterDateRange], () => {
 }
 
 .card-value {
-  font-size: 36px;
-  font-weight: 800;
-  color: #1a202c;
-  line-height: 1;
-  margin-bottom: 12px;
-  background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 24px;
+  font-weight: bold;
+  color: #303133;
+  margin-bottom: 4px;
 }
 
 .card-label {
-  font-size: 16px;
-  color: #718096;
-  font-weight: 600;
-  letter-spacing: 0.5px;
+  font-size: 14px;
+  color: #909399;
 }
 
 .share-records {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   border: none;
-  border-radius: 20px;
+  border-radius: 12px;
   background: white;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   overflow: hidden;
 }
 
@@ -1602,9 +1582,8 @@ watch([filterStatus, filterDateRange], () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-  padding: 24px;
-  border-bottom: 2px solid #e2e8f0;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .header-filters {
@@ -2227,7 +2206,7 @@ watch([filterStatus, filterDateRange], () => {
   }
 
   .overview-card {
-    height: 120px;
+    margin-bottom: 12px;
   }
 
   .card-content {
