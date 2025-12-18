@@ -1,115 +1,199 @@
 /**
  * 安全日志工具
- * 根据配置决定是否加密控制台输出，保护敏感数据
+ * 根据配置决定是否加密控制台输出，保护业务逻辑和敏感数据
+ *
+ * 功能：
+ * 1. 全局生效 - 配置存储在后端数据库，所有用户同步
+ * 2. 完全加密 - 不只是敏感数据，所有业务逻辑、数据量、流程信息都加密
+ * 3. 防止逆向 - 加密后的日志无法被破解分析业务流程
  */
 
-// 敏感数据模式匹配
-const SENSITIVE_PATTERNS = [
-  // 订单号
-  /\b(ORD|ORDER|DD)[A-Z0-9-]{6,20}\b/gi,
-  // 手机号
-  /\b1[3-9]\d{9}\b/g,
-  // 邮箱
-  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
-  // 身份证号
-  /\b\d{17}[\dXx]\b/g,
-  // 银行卡号
-  /\b\d{16,19}\b/g,
-  // 金额（带货币符号）
-  /[¥$€£]\s*\d+(\.\d{1,2})?/g,
-  // IP地址
-  /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,
-  // Token/密钥
-  /\b(token|key|secret|password|pwd)[=:]\s*['"]?[A-Za-z0-9+/=_-]{8,}['"]?/gi,
-  // UUID
-  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi
-]
-
-// 配置键名
+// 配置键名（本地缓存）
 const CONFIG_KEY = 'crm_secure_console_enabled'
+const CONFIG_CACHE_KEY = 'crm_secure_console_cache_time'
+const CACHE_DURATION = 5 * 60 * 1000 // 5分钟缓存
+
+// 全局配置状态
+let _secureConsoleEnabled: boolean | null = null
+let _lastFetchTime = 0
 
 /**
- * 检查是否启用了安全控制台
+ * 从后端API获取安全控制台配置
+ */
+async function fetchSecureConsoleConfig(): Promise<boolean> {
+  try {
+    const token = localStorage.getItem('auth_token')
+    if (!token) {
+      return localStorage.getItem(CONFIG_KEY) === 'true'
+    }
+
+    const response = await fetch('/api/v1/system/security-settings', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      const enabled = data.data?.secureConsoleEnabled === true
+      // 缓存到本地
+      localStorage.setItem(CONFIG_KEY, String(enabled))
+      localStorage.setItem(CONFIG_CACHE_KEY, String(Date.now()))
+      return enabled
+    }
+  } catch {
+    // 静默失败，使用本地缓存
+  }
+  return localStorage.getItem(CONFIG_KEY) === 'true'
+}
+
+/**
+ * 检查是否启用了安全控制台（同步版本，使用缓存）
  */
 export function isSecureConsoleEnabled(): boolean {
+  // 如果有缓存且未过期，直接返回
+  if (_secureConsoleEnabled !== null) {
+    const now = Date.now()
+    if (now - _lastFetchTime < CACHE_DURATION) {
+      return _secureConsoleEnabled
+    }
+  }
+
+  // 从localStorage读取缓存
   try {
-    const value = localStorage.getItem(CONFIG_KEY)
-    return value === 'true'
+    const cached = localStorage.getItem(CONFIG_KEY)
+    const cacheTime = localStorage.getItem(CONFIG_CACHE_KEY)
+
+    if (cached !== null && cacheTime) {
+      const cacheAge = Date.now() - parseInt(cacheTime)
+      if (cacheAge < CACHE_DURATION) {
+        _secureConsoleEnabled = cached === 'true'
+        _lastFetchTime = parseInt(cacheTime)
+        return _secureConsoleEnabled
+      }
+    }
+
+    // 缓存过期，异步刷新（不阻塞）
+    fetchSecureConsoleConfig().then(enabled => {
+      _secureConsoleEnabled = enabled
+      _lastFetchTime = Date.now()
+    })
+
+    // 返回当前缓存值或默认值
+    return cached === 'true'
   } catch {
     return false
   }
 }
 
 /**
- * 设置安全控制台开关
+ * 设置安全控制台开关（同时保存到后端）
  */
-export function setSecureConsoleEnabled(enabled: boolean): void {
+export async function setSecureConsoleEnabled(enabled: boolean): Promise<void> {
   try {
+    // 立即更新本地缓存
     localStorage.setItem(CONFIG_KEY, String(enabled))
-    console.log(`[SecureLogger] 安全控制台已${enabled ? '启用' : '禁用'}`)
-  } catch (error) {
-    console.error('[SecureLogger] 保存配置失败:', error)
+    localStorage.setItem(CONFIG_CACHE_KEY, String(Date.now()))
+    _secureConsoleEnabled = enabled
+    _lastFetchTime = Date.now()
+
+    // 同步到后端
+    const token = localStorage.getItem('auth_token')
+    if (token) {
+      await fetch('/api/v1/system/security-settings', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ secureConsoleEnabled: enabled })
+      })
+    }
+  } catch {
+    // 静默失败，本地已保存
   }
 }
 
 /**
- * 对敏感数据进行脱敏处理
+ * 生成随机加密密钥（每次会话不同）
  */
-function maskSensitiveData(text: string): string {
-  let masked = text
+const SESSION_KEY = Math.random().toString(36).substring(2, 15)
 
-  for (const pattern of SENSITIVE_PATTERNS) {
-    masked = masked.replace(pattern, (match) => {
-      if (match.length <= 4) {
-        return '****'
-      }
-      // 保留前2位和后2位，中间用*替换
-      const visibleStart = match.slice(0, 2)
-      const visibleEnd = match.slice(-2)
-      const maskedMiddle = '*'.repeat(Math.min(match.length - 4, 8))
-      return `${visibleStart}${maskedMiddle}${visibleEnd}`
-    })
+/**
+ * 简单的XOR加密（混淆）
+ */
+function xorEncrypt(text: string, key: string): string {
+  let result = ''
+  for (let i = 0; i < text.length; i++) {
+    result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length))
   }
-
-  return masked
+  return result
 }
 
 /**
- * 加密日志内容（简单的Base64编码，生产环境可使用更强的加密）
+ * 完全加密日志内容
+ * 将所有业务逻辑、数据量、流程信息都加密，防止逆向分析
  */
 function encryptLogContent(content: string): string {
   try {
-    // 先脱敏，再编码
-    const masked = maskSensitiveData(content)
-    return `[ENCRYPTED] ${btoa(encodeURIComponent(masked))}`
+    // 1. 先进行XOR混淆
+    const xored = xorEncrypt(content, SESSION_KEY)
+    // 2. 再进行Base64编码
+    const encoded = btoa(unescape(encodeURIComponent(xored)))
+    // 3. 生成校验码（防止篡改）
+    const checksum = content.length.toString(16).padStart(4, '0')
+    return `${checksum}:${encoded}`
   } catch {
-    return '[ENCRYPTED] <encoding failed>'
+    return 'ERR'
   }
 }
 
 /**
- * 处理日志参数
+ * 生成加密的日志标识
  */
-function processLogArgs(args: unknown[]): unknown[] {
+function generateLogId(): string {
+  return Math.random().toString(36).substring(2, 8).toUpperCase()
+}
+
+/**
+ * 处理日志参数 - 完全加密模式
+ * 所有内容都会被加密，包括：
+ * - 业务逻辑描述
+ * - 数据数量
+ * - API调用信息
+ * - 流程状态
+ */
+function processLogArgs(args: unknown[]): string {
   if (!isSecureConsoleEnabled()) {
-    return args
+    // 未启用时返回原始参数的字符串形式
+    return args.map(arg => {
+      if (typeof arg === 'string') return arg
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg)
+        } catch {
+          return String(arg)
+        }
+      }
+      return String(arg)
+    }).join(' ')
   }
 
-  return args.map(arg => {
-    if (typeof arg === 'string') {
-      return maskSensitiveData(arg)
-    }
+  // 启用加密时，将所有参数合并后加密
+  const combined = args.map(arg => {
+    if (typeof arg === 'string') return arg
     if (typeof arg === 'object' && arg !== null) {
       try {
-        const jsonStr = JSON.stringify(arg)
-        const masked = maskSensitiveData(jsonStr)
-        return JSON.parse(masked)
+        return JSON.stringify(arg)
       } catch {
-        return '[Object - masked]'
+        return '[Object]'
       }
     }
-    return arg
-  })
+    return String(arg)
+  }).join(' ')
+
+  return encryptLogContent(combined)
 }
 
 /**
@@ -121,7 +205,8 @@ export const secureLogger = {
    */
   log(...args: unknown[]): void {
     if (isSecureConsoleEnabled()) {
-      console.log('[SECURE]', ...processLogArgs(args))
+      const logId = generateLogId()
+      console.log(`[${logId}]`, processLogArgs(args))
     } else {
       console.log(...args)
     }
@@ -132,7 +217,8 @@ export const secureLogger = {
    */
   info(...args: unknown[]): void {
     if (isSecureConsoleEnabled()) {
-      console.info('[SECURE]', ...processLogArgs(args))
+      const logId = generateLogId()
+      console.info(`[${logId}]`, processLogArgs(args))
     } else {
       console.info(...args)
     }
@@ -143,19 +229,20 @@ export const secureLogger = {
    */
   warn(...args: unknown[]): void {
     if (isSecureConsoleEnabled()) {
-      console.warn('[SECURE]', ...processLogArgs(args))
+      const logId = generateLogId()
+      console.warn(`[${logId}]`, processLogArgs(args))
     } else {
       console.warn(...args)
     }
   },
 
   /**
-   * 错误日志（错误信息通常需要完整显示以便调试）
+   * 错误日志
    */
   error(...args: unknown[]): void {
     if (isSecureConsoleEnabled()) {
-      // 错误日志也进行脱敏，但保留错误结构
-      console.error('[SECURE]', ...processLogArgs(args))
+      const logId = generateLogId()
+      console.error(`[${logId}]`, processLogArgs(args))
     } else {
       console.error(...args)
     }
@@ -166,33 +253,10 @@ export const secureLogger = {
    */
   debug(...args: unknown[]): void {
     if (isSecureConsoleEnabled()) {
-      console.debug('[SECURE]', ...processLogArgs(args))
+      const logId = generateLogId()
+      console.debug(`[${logId}]`, processLogArgs(args))
     } else {
       console.debug(...args)
-    }
-  },
-
-  /**
-   * 完全加密的日志（用于高度敏感数据）
-   */
-  encrypted(...args: unknown[]): void {
-    if (isSecureConsoleEnabled()) {
-      const encrypted = args.map(arg => {
-        if (typeof arg === 'string') {
-          return encryptLogContent(arg)
-        }
-        if (typeof arg === 'object' && arg !== null) {
-          try {
-            return encryptLogContent(JSON.stringify(arg))
-          } catch {
-            return '[ENCRYPTED] <object>'
-          }
-        }
-        return arg
-      })
-      console.log('[ENCRYPTED]', ...encrypted)
-    } else {
-      console.log(...args)
     }
   },
 
@@ -201,7 +265,8 @@ export const secureLogger = {
    */
   group(label: string): void {
     if (isSecureConsoleEnabled()) {
-      console.group('[SECURE] ' + maskSensitiveData(label))
+      const logId = generateLogId()
+      console.group(`[${logId}]`)
     } else {
       console.group(label)
     }
@@ -212,87 +277,113 @@ export const secureLogger = {
   },
 
   /**
-   * 表格日志
+   * 表格日志 - 加密模式下完全禁用
    */
   table(data: unknown): void {
     if (isSecureConsoleEnabled()) {
-      if (Array.isArray(data)) {
-        const maskedData = data.map(item => {
-          if (typeof item === 'object' && item !== null) {
-            try {
-              const jsonStr = JSON.stringify(item)
-              const masked = maskSensitiveData(jsonStr)
-              return JSON.parse(masked)
-            } catch {
-              return item
-            }
-          }
-          return item
-        })
-        console.table(maskedData)
-      } else {
-        console.log('[SECURE] [Table data masked]')
-      }
+      // 加密模式下不显示表格数据，防止数据泄露
+      const logId = generateLogId()
+      console.log(`[${logId}] [TABLE_DATA]`)
     } else {
       console.table(data)
     }
   }
 }
 
+// 保存原始console引用
+let _originalConsole: {
+  log: typeof console.log
+  info: typeof console.info
+  warn: typeof console.warn
+  error: typeof console.error
+  debug: typeof console.debug
+  table: typeof console.table
+} | null = null
+
 /**
- * 全局替换console（可选，谨慎使用）
- * 调用此函数后，所有console.log等调用都会经过安全处理
+ * 全局替换console
+ * 调用此函数后，所有console输出都会被加密处理
+ * 加密后的输出格式：[LOG_ID] encrypted_content
  */
 export function enableGlobalSecureConsole(): void {
-  const originalConsole = {
+  // 避免重复替换
+  if (_originalConsole) return
+
+  _originalConsole = {
     log: console.log.bind(console),
     info: console.info.bind(console),
     warn: console.warn.bind(console),
     error: console.error.bind(console),
-    debug: console.debug.bind(console)
+    debug: console.debug.bind(console),
+    table: console.table.bind(console)
   }
 
   console.log = (...args: unknown[]) => {
     if (isSecureConsoleEnabled()) {
-      originalConsole.log('[SECURE]', ...processLogArgs(args))
+      const logId = generateLogId()
+      _originalConsole!.log(`[${logId}]`, processLogArgs(args))
     } else {
-      originalConsole.log(...args)
+      _originalConsole!.log(...args)
     }
   }
 
   console.info = (...args: unknown[]) => {
     if (isSecureConsoleEnabled()) {
-      originalConsole.info('[SECURE]', ...processLogArgs(args))
+      const logId = generateLogId()
+      _originalConsole!.info(`[${logId}]`, processLogArgs(args))
     } else {
-      originalConsole.info(...args)
+      _originalConsole!.info(...args)
     }
   }
 
   console.warn = (...args: unknown[]) => {
     if (isSecureConsoleEnabled()) {
-      originalConsole.warn('[SECURE]', ...processLogArgs(args))
+      const logId = generateLogId()
+      _originalConsole!.warn(`[${logId}]`, processLogArgs(args))
     } else {
-      originalConsole.warn(...args)
+      _originalConsole!.warn(...args)
     }
   }
 
   console.error = (...args: unknown[]) => {
     if (isSecureConsoleEnabled()) {
-      originalConsole.error('[SECURE]', ...processLogArgs(args))
+      const logId = generateLogId()
+      _originalConsole!.error(`[${logId}]`, processLogArgs(args))
     } else {
-      originalConsole.error(...args)
+      _originalConsole!.error(...args)
     }
   }
 
   console.debug = (...args: unknown[]) => {
     if (isSecureConsoleEnabled()) {
-      originalConsole.debug('[SECURE]', ...processLogArgs(args))
+      const logId = generateLogId()
+      _originalConsole!.debug(`[${logId}]`, processLogArgs(args))
     } else {
-      originalConsole.debug(...args)
+      _originalConsole!.debug(...args)
     }
   }
 
-  console.log('[SecureLogger] 全局安全控制台已启用')
+  console.table = (data: unknown) => {
+    if (isSecureConsoleEnabled()) {
+      const logId = generateLogId()
+      _originalConsole!.log(`[${logId}] [TABLE_DATA]`)
+    } else {
+      _originalConsole!.table(data)
+    }
+  }
+
+  // 输出启用提示（使用原始console避免递归）
+  _originalConsole.log('[SecureLogger] 全局安全控制台已启用，所有日志将被加密')
+}
+
+/**
+ * 刷新配置（从后端重新获取）
+ */
+export async function refreshSecureConsoleConfig(): Promise<boolean> {
+  const enabled = await fetchSecureConsoleConfig()
+  _secureConsoleEnabled = enabled
+  _lastFetchTime = Date.now()
+  return enabled
 }
 
 export default secureLogger

@@ -236,7 +236,7 @@
                       v-model="systemConfig.secureConsoleEnabled"
                       @change="handleSecureConsoleChange"
                     />
-                    <el-tooltip content="启用后，浏览器控制台输出的敏感数据（如订单号、手机号、金额等）将被脱敏处理，防止信息泄露" placement="top">
+                    <el-tooltip content="启用后，所有用户的浏览器控制台输出将被完全加密，包括业务逻辑、数据量、API调用等信息，防止系统被逆向分析。此配置全局生效，同步到所有成员。" placement="top">
                       <el-icon style="margin-left: 8px; color: #909399; cursor: help;"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </el-form-item>
@@ -421,15 +421,24 @@ const loadSystemConfigFromStore = () => {
 }
 
 // 处理控制台加密开关变化
-const handleSecureConsoleChange = (enabled: boolean) => {
-  setSecureConsoleEnabled(enabled)
-  if (enabled) {
-    enableGlobalSecureConsole()
-    ElMessage.success('控制台日志加密已启用，敏感数据将被脱敏处理')
-  } else {
-    ElMessage.info('控制台日志加密已禁用，请注意保护敏感信息')
-    // 提示需要刷新页面才能完全禁用
-    ElMessage.warning('完全禁用需要刷新页面')
+const handleSecureConsoleChange = async (enabled: boolean) => {
+  try {
+    // 保存到后端（全局生效）
+    await setSecureConsoleEnabled(enabled)
+
+    if (enabled) {
+      enableGlobalSecureConsole()
+      ElMessage.success('控制台日志加密已启用，所有用户的控制台输出将被加密')
+    } else {
+      ElMessage.info('控制台日志加密已禁用')
+      // 提示需要刷新页面才能完全禁用
+      ElMessage.warning('所有用户刷新页面后生效')
+    }
+  } catch (error) {
+    console.error('保存控制台加密配置失败:', error)
+    ElMessage.error('保存配置失败')
+    // 回滚UI状态
+    systemConfig.value.secureConsoleEnabled = !enabled
   }
 }
 
