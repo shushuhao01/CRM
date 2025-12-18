@@ -38,6 +38,7 @@ const auth_1 = require("../middleware/auth");
 const database_1 = require("../config/database");
 const Customer_1 = require("../entities/Customer");
 const User_1 = require("../entities/User");
+const CustomerServicePermission_1 = require("../entities/CustomerServicePermission");
 const typeorm_1 = require("typeorm");
 const router = (0, express_1.Router)();
 router.use(auth_1.authenticateToken);
@@ -58,22 +59,63 @@ router.get('/list', async (req, res) => {
         queryBuilder.andWhere('order.status = :deliveredStatus', { deliveredStatus: 'delivered' });
         // 数据权限过滤
         const role = currentUser?.role || '';
-        const allowAllRoles = ['super_admin', 'superadmin', 'admin', 'customer_service', 'service'];
-        if (!allowAllRoles.includes(role)) {
-            if (role === 'manager' || role === 'department_manager') {
-                // 经理看本部门的
-                if (currentUser?.departmentId) {
-                    queryBuilder.andWhere('order.createdByDepartmentId = :deptId', {
-                        deptId: currentUser.departmentId
+        const adminRoles = ['super_admin', 'superadmin', 'admin'];
+        const customerServiceRoles = ['customer_service', 'service'];
+        if (adminRoles.includes(role)) {
+            // 管理员可以看到所有数据，不做过滤
+        }
+        else if (customerServiceRoles.includes(role)) {
+            // 客服角色需要根据客服权限配置的dataScope来过滤
+            const csPermissionRepo = database_1.AppDataSource.getRepository(CustomerServicePermission_1.CustomerServicePermission);
+            const csPermission = await csPermissionRepo.findOne({
+                where: { userId: currentUser?.userId, status: 'active' }
+            });
+            if (csPermission) {
+                const dataScope = csPermission.dataScope || 'self';
+                if (dataScope === 'all') {
+                    // 全部数据，不做过滤
+                }
+                else if (dataScope === 'department') {
+                    // 部门数据
+                    if (currentUser?.departmentId) {
+                        queryBuilder.andWhere('order.createdByDepartmentId = :deptId', {
+                            deptId: currentUser.departmentId
+                        });
+                    }
+                }
+                else if (dataScope === 'custom' && csPermission.departmentIds?.length) {
+                    // 自定义部门范围
+                    queryBuilder.andWhere('order.createdByDepartmentId IN (:...deptIds)', {
+                        deptIds: csPermission.departmentIds
+                    });
+                }
+                else {
+                    // 默认只看自己的数据
+                    queryBuilder.andWhere('order.createdBy = :userId', {
+                        userId: currentUser?.userId
                     });
                 }
             }
             else {
-                // 销售员只看自己的
+                // 没有客服权限配置，默认只看自己的数据
                 queryBuilder.andWhere('order.createdBy = :userId', {
                     userId: currentUser?.userId
                 });
             }
+        }
+        else if (role === 'manager' || role === 'department_manager') {
+            // 经理看本部门的
+            if (currentUser?.departmentId) {
+                queryBuilder.andWhere('order.createdByDepartmentId = :deptId', {
+                    deptId: currentUser.departmentId
+                });
+            }
+        }
+        else {
+            // 销售员只看自己的
+            queryBuilder.andWhere('order.createdBy = :userId', {
+                userId: currentUser?.userId
+            });
         }
         // 关键词搜索
         if (keyword) {
