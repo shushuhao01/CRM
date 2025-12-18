@@ -279,11 +279,11 @@
           <p>登录云客系统，开启智能销售之旅</p>
         </div>
 
-        <el-form :model="loginForm" :rules="rules" ref="loginFormRef" class="login-form">
+        <el-form :model="loginForm" :rules="rules" ref="loginFormRef" class="login-form" @keyup.enter="handleLogin">
           <el-form-item prop="username">
             <div class="input-wrapper">
               <label>用户名</label>
-              <el-input v-model="loginForm.username" placeholder="请输入用户名" size="large" clearable>
+              <el-input v-model="loginForm.username" placeholder="请输入用户名" size="large" clearable @keyup.enter="handleLogin">
                 <template #prefix>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
@@ -296,7 +296,7 @@
           <el-form-item prop="password">
             <div class="input-wrapper">
               <label>密码</label>
-              <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" size="large" show-password clearable>
+              <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" size="large" show-password clearable @keyup.enter="handleLogin">
                 <template #prefix>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2">
                     <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
