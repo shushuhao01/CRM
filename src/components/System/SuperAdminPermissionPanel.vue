@@ -515,40 +515,35 @@ const loadRoleTemplates = async () => {
   try {
     loading.value.roles = true
 
-    // 调用真实API获取角色数据
-    const response = await roleApiService.getRoles()
+    // 优先从API获取角色模板
+    const templates = await roleApiService.getRoleTemplates()
 
-    // 转换API数据格式为组件需要的格式，并同步默认权限配置
-    roleTemplates.value = response.map(role => {
-      // 根据角色code从默认配置中获取权限
-      const roleCode = role.code || role.name.toLowerCase().replace(/\s+/g, '_')
-      const defaultPermissions = getDefaultRolePermissions(roleCode)
-      const defaultConfig = DEFAULT_ROLE_PERMISSIONS[roleCode]
-
-      return {
-        id: role.id,
-        name: role.name,
-        description: defaultConfig?.description || role.description || '暂无描述',
-        // 优先使用API返回的权限，如果为空则使用默认配置
-        permissions: (role.permissions && role.permissions.length > 0) ? role.permissions : defaultPermissions,
+    if (templates && templates.length > 0) {
+      // 使用API返回的模板数据
+      roleTemplates.value = templates.map(template => ({
+        id: template.id,
+        name: template.name,
+        description: template.description || '暂无描述',
+        permissions: template.permissions || [],
         userCount: 0,
-        createdAt: role.createdAt,
-        color: role.color || 'primary'
-      }
-    })
-
-    // 获取用户统计数据来计算每个角色的使用人数
-    try {
-      const userStats = await userApiService.getUserStatistics()
-      const roleStats = userStats.byRole as Record<string, number>
-
-      for (const template of roleTemplates.value) {
-        // 尝试多种匹配方式
-        const roleCode = template.name.toLowerCase().replace(/\s+/g, '_')
-        template.userCount = roleStats[roleCode] || roleStats[template.name] || roleStats[template.id] || 0
-      }
-    } catch (error) {
-      console.warn('获取角色使用人数失败:', error)
+        createdAt: template.createdAt,
+        color: template.color || 'primary',
+        isTemplate: true
+      }))
+      console.log('[SuperAdminPanel] 从API加载了', templates.length, '个角色模板')
+    } else {
+      // 如果没有模板，使用默认角色配置作为模板展示
+      console.log('[SuperAdminPanel] API无模板数据，使用默认配置')
+      roleTemplates.value = Object.values(DEFAULT_ROLE_PERMISSIONS).map((config, index) => ({
+        id: String(index + 1),
+        name: config.roleName,
+        description: config.description || '暂无描述',
+        permissions: config.permissions,
+        userCount: 0,
+        createdAt: new Date().toISOString(),
+        color: 'primary',
+        isTemplate: false // 标记为非真正的模板
+      }))
     }
 
   } catch (error) {
@@ -562,7 +557,8 @@ const loadRoleTemplates = async () => {
       permissions: config.permissions,
       userCount: 0,
       createdAt: new Date().toISOString(),
-      color: 'primary'
+      color: 'primary',
+      isTemplate: false
     }))
   } finally {
     loading.value.roles = false

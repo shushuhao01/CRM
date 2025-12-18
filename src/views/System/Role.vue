@@ -54,6 +54,26 @@
         >
           新增角色
         </el-button>
+        <el-dropdown v-if="canAddRole" @command="handleCreateFromTemplate" style="margin-left: 10px;">
+          <el-button type="success">
+            从模板创建<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-if="roleTemplates.length === 0" disabled>
+                暂无可用模板
+              </el-dropdown-item>
+              <el-dropdown-item
+                v-for="template in roleTemplates"
+                :key="template.id"
+                :command="template"
+              >
+                <el-icon><Document /></el-icon>
+                {{ template.name }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button
           v-if="canManagePermissions"
           @click="handlePermissionManage"
@@ -861,7 +881,8 @@ import {
   Download,
   Menu,
   Operation,
-  Grid
+  Grid,
+  Document
 } from '@element-plus/icons-vue'
 
 // 接口定义
@@ -952,6 +973,12 @@ const roleStats = ref({
   active: 0,
   permissions: 0
 })
+
+// 角色模板列表
+const roleTemplates = ref<Array<{id: string, name: string, code: string, description: string, permissions: string[]}>>([])
+
+// 从模板创建相关
+const selectedTemplate = ref<{id: string, name: string, code: string, description: string, permissions: string[]} | null>(null)
 
 // 搜索表单
 const searchForm = reactive({
@@ -3931,11 +3958,96 @@ const handleClosePermissionDialog = () => {
   permissionPagination.page = 1
 }
 
+// 加载角色模板列表
+const loadRoleTemplates = async () => {
+  try {
+    const templates = await roleApiService.getRoleTemplates()
+    roleTemplates.value = templates.map(t => ({
+      id: t.id,
+      name: t.name,
+      code: t.code,
+      description: t.description || '',
+      permissions: t.permissions || []
+    }))
+    console.log('[Role] 加载了', roleTemplates.value.length, '个角色模板')
+  } catch (error) {
+    console.warn('[Role] 加载角色模板失败:', error)
+    roleTemplates.value = []
+  }
+}
+
+// 从模板创建角色
+const handleCreateFromTemplate = async (template: {id: string, name: string, code: string, description: string, permissions: string[]}) => {
+  selectedTemplate.value = template
+
+  // 弹出对话框让用户输入新角色的名称和编码
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `基于模板「${template.name}」创建新角色，请输入角色名称：`,
+      '从模板创建角色',
+      {
+        confirmButtonText: '下一步',
+        cancelButtonText: '取消',
+        inputPlaceholder: '请输入角色名称',
+        inputValidator: (value) => {
+          if (!value || !value.trim()) {
+            return '请输入角色名称'
+          }
+          return true
+        }
+      }
+    )
+
+    const roleName = value.trim()
+
+    // 第二步：输入角色编码
+    const { value: codeValue } = await ElMessageBox.prompt(
+      '请输入角色编码（英文小写和下划线）：',
+      '从模板创建角色',
+      {
+        confirmButtonText: '创建',
+        cancelButtonText: '取消',
+        inputPlaceholder: '例如：sales_manager',
+        inputValidator: (value) => {
+          if (!value || !value.trim()) {
+            return '请输入角色编码'
+          }
+          if (!/^[a-z_]+$/.test(value)) {
+            return '编码只能包含小写字母和下划线'
+          }
+          return true
+        }
+      }
+    )
+
+    const roleCode = codeValue.trim()
+
+    // 调用API从模板创建角色
+    await roleApiService.createRoleFromTemplate(template.id, {
+      name: roleName,
+      code: roleCode,
+      description: template.description
+    })
+
+    ElMessage.success(`角色「${roleName}」创建成功（基于模板：${template.name}）`)
+
+    // 刷新角色列表
+    await loadRoleList()
+
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('从模板创建角色失败:', error)
+      ElMessage.error(error?.message || '创建角色失败')
+    }
+  }
+}
+
 // 生命周期钩子
 onMounted(() => {
   loadRoleStats()
   loadRoleList()
   loadPermissionTree()
+  loadRoleTemplates()
 })
 </script>
 

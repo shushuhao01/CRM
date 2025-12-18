@@ -11,6 +11,9 @@ router.get('/', optionalAuth, (req, res) => roleController.getRoles(req, res));
 // 获取角色统计 - 使用可选认证
 router.get('/stats', optionalAuth, (req, res) => roleController.getRoleStats(req, res));
 
+// 获取角色模板列表 - 使用可选认证
+router.get('/templates', optionalAuth, (req, res) => roleController.getRoleTemplates(req, res));
+
 // 获取角色权限 - 使用可选认证
 router.get('/:id/permissions', optionalAuth, (req, res) => roleController.getRolePermissions(req, res));
 
@@ -22,6 +25,9 @@ router.use(authenticateToken);
 
 // 创建角色
 router.post('/', (req, res) => roleController.createRole(req, res));
+
+// 从模板创建角色
+router.post('/from-template', (req, res) => roleController.createRoleFromTemplate(req, res));
 
 // 更新角色
 router.put('/:id', (req, res) => roleController.updateRole(req, res));

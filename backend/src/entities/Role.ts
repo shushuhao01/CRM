@@ -25,26 +25,21 @@ export class Role {
   @Column({ nullable: true, length: 20 })
   color: string
 
+  // 角色类型：system=系统预设, business=业务角色, custom=自定义角色
+  @Column({ default: 'custom', length: 20 })
+  roleType: 'system' | 'business' | 'custom'
+
+  // 是否为模板（模板可以用于快速创建角色）
+  @Column({ default: false })
+  isTemplate: boolean
+
   @CreateDateColumn()
   createdAt: Date
 
   @UpdateDateColumn()
   updatedAt: Date
 
-  // 角色拥有的权限（暂时注释掉，避免复杂的关联查询导致错误）
-  // @ManyToMany(() => Permission, permission => permission.roles)
-  // @JoinTable({
-  //   name: 'role_permissions',
-  //   joinColumn: { name: 'roleId', referencedColumnName: 'id' },
-  //   inverseJoinColumn: { name: 'permissionId', referencedColumnName: 'id' }
-  // })
-  // permissions: Permission[]
-
   // 使用 JSON 字段存储权限（与数据库表结构一致）
   @Column('json', { nullable: true })
   permissions: string[] | null
-
-  // 拥有此角色的用户（注释掉，因为User实体使用字符串role而不是关联）
-  // @ManyToMany(() => User, user => user.roles)
-  // users: User[]
 }
