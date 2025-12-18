@@ -79,21 +79,21 @@ export class RolePermissionService {
       // 首先尝试从本地存储获取
       const rolePermissionsKey = 'crm_role_permissions'
       const localData = JSON.parse(localStorage.getItem(rolePermissionsKey) || '{}')
-      
+
       if (localData[roleId]) {
         console.log(`[RolePermissionAPI] 从本地存储获取角色权限: ${roleId}`)
         // 从本地存储构建返回数据
         const allPermissions = await this.getAllPermissions()
         const rolePermissionIds = localData[roleId].permissionIds
         const permissions = allPermissions.filter(p => rolePermissionIds.includes(p.id))
-        
+
         return {
           roleId,
           roleName: this.getRoleNameById(roleId),
           permissions
         }
       }
-      
+
       // 如果本地没有，尝试从API获取
       try {
         const response = await this.api.get<RolePermission>(`/roles/${roleId}/permissions`)
@@ -128,17 +128,17 @@ export class RolePermissionService {
         updatedAt: new Date().toISOString()
       }
       localStorage.setItem(rolePermissionsKey, JSON.stringify(existingData))
-      
+
       // 然后调用后端API（如果后端可用）
       try {
         await this.api.put(`/roles/${roleId}/permissions`, { permissionIds })
       } catch (apiError) {
         console.warn(`[RolePermissionAPI] 后端API调用失败，但本地存储已保存: ${roleId}`, apiError)
       }
-      
+
       // 通知权限更新
       permissionService.notifyPermissionUpdate(roleId)
-      
+
       console.log(`[RolePermissionAPI] 保存角色权限成功: ${roleId}`, permissionIds)
     } catch (error) {
       console.error(`[RolePermissionAPI] 保存角色权限失败 (Role: ${roleId}):`, error)
@@ -222,7 +222,8 @@ export class RolePermissionService {
     } = {}
   ): Promise<PaginatedResponse<OperationLog>> {
     try {
-      const response = await this.api.paginate<OperationLog>('/operation-logs', params)
+      // 使用logs路由下的operation-logs接口
+      const response = await this.api.paginate<OperationLog>('/logs/operation-logs', params)
       console.log('[RolePermissionAPI] 获取所有操作日志成功')
       return response
     } catch (error) {
