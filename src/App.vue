@@ -25,7 +25,7 @@
           </el-icon>
           <div class="logo">
             <el-icon><TrendCharts /></el-icon>
-            <span class="logo-text">智能销售CRM</span>
+            <span class="logo-text">云客CRM</span>
           </div>
         </div>
 
