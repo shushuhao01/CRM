@@ -404,6 +404,66 @@ class RoleApiService {
       ]
     }
   }
+
+  /**
+   * 获取角色模板列表
+   */
+  async getRoleTemplates(): Promise<Role[]> {
+    try {
+      console.log('[RoleAPI] 开始获取角色模板列表...')
+      const response: any = await apiService.get('/roles/templates')
+      console.log('[RoleAPI] 获取角色模板列表响应:', response)
+
+      let templates: Role[] = []
+      if (response?.data?.data) {
+        templates = response.data.data
+      } else if (response?.data) {
+        templates = Array.isArray(response.data) ? response.data : []
+      } else if (Array.isArray(response)) {
+        templates = response
+      }
+
+      console.log('[RoleAPI] 解析后的模板数量:', templates.length)
+      return templates
+    } catch (error: any) {
+      console.warn('[RoleAPI] 获取角色模板失败:', error?.message)
+      return []
+    }
+  }
+
+  /**
+   * 创建角色模板
+   */
+  async createRoleTemplate(data: CreateRoleData & { isTemplate: true }): Promise<Role> {
+    try {
+      const response = await apiService.post<{ success: boolean; data: Role; message: string }>('/roles', {
+        ...data,
+        isTemplate: true
+      })
+      console.log('[RoleAPI] 创建角色模板成功')
+      return response.data
+    } catch (error) {
+      console.error('[RoleAPI] 创建角色模板失败', error)
+      throw error
+    }
+  }
+
+  /**
+   * 从模板创建角色
+   */
+  async createRoleFromTemplate(templateId: string, data: { name: string; code: string; description?: string }): Promise<Role> {
+    try {
+      const response = await apiService.post<{ success: boolean; data: Role; message: string }>('/roles/from-template', {
+        templateId,
+        ...data
+      })
+      console.log('[RoleAPI] 从模板创建角色成功')
+      return response.data
+    } catch (error) {
+      console.error('[RoleAPI] 从模板创建角色失败', error)
+      throw error
+    }
+  }
 }
 
 export const roleApiService = new RoleApiService()

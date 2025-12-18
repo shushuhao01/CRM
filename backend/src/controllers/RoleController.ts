@@ -3,7 +3,7 @@ import { getDataSource } from '../config/database';
 import { Role } from '../entities/Role';
 import { Permission } from '../entities/Permission';
 import { User } from '../entities/User';
-import { Repository, TreeRepository } from 'typeorm';
+import { Repository, TreeRepository, Not } from 'typeorm';
 
 export class RoleController {
   private get roleRepository(): Repository<Role> {
@@ -33,9 +33,16 @@ export class RoleController {
   // 获取角色列表
   async getRoles(req: Request, res: Response) {
     try {
-      const { page = 1, limit = 20, search, status } = req.query;
+      const { page = 1, limit = 20, search, status, isTemplate } = req.query;
 
       const queryBuilder = this.roleRepository.createQueryBuilder('role');
+
+      // 默认只获取非模板角色，除非明确指定
+      if (isTemplate === 'true') {
+        queryBuilder.andWhere('role.isTemplate = :isTemplate', { isTemplate: true });
+      } else if (isTemplate === 'false' || isTemplate === undefined) {
+        queryBuilder.andWhere('(role.isTemplate = :isTemplate OR role.isTemplate IS NULL)', { isTemplate: false });
+      }
 
       if (search) {
         queryBuilder.andWhere('(role.name LIKE :search OR role.code LIKE :search)', {
@@ -48,6 +55,8 @@ export class RoleController {
       }
 
       const [roles, total] = await queryBuilder
+        .orderBy('role.level', 'ASC')
+        .addOrderBy('role.createdAt', 'DESC')
         .skip((Number(page) - 1) * Number(limit))
         .take(Number(limit))
         .getManyAndCount();
@@ -134,7 +143,103 @@ export class RoleController {
   // 创建角色
   async createRole(req: Request, res: Response): Promise<void> {
     try {
-      const { name, code, description, status = 'active', level = 0, color, permissions = [] } = req.body;
+      const { name, code, description, status = 'active', level = 0, color, permissions = [], roleType = 'custom', isTemplate = false } = req.body;
+
+      // 检查角色名称和编码是否已存在
+      const existingRole = await this.roleRepository.findOne({
+        where: [
+          { name },
+          { code }
+        ]
+      });
+
+      if (existingRole) {
+        res.status(400).json({
+          success: false,
+          message: existingRole.name === name ? '角色名称已存在' : '角色编码已存在'
+        });
+        return;
+      }
+
+      // 生成角色ID
+      const prefix = isTemplate ? 'tpl' : 'role';
+      const roleId = `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // 创建角色 - permissions 是 JSON 字段
+      const role = this.roleRepository.create({
+        id: roleId,
+        name,
+        code,
+        description,
+        status: status as 'active' | 'inactive',
+        level,
+        color,
+        roleType: roleType as 'system' | 'business' | 'custom',
+        isTemplate: Boolean(isTemplate),
+        permissions: Array.isArray(permissions) ? permissions : []
+      });
+
+      const savedRole = await this.roleRepository.save(role);
+
+      res.status(201).json({
+        success: true,
+        data: savedRole,
+        message: isTemplate ? '角色模板创建成功' : '角色创建成功'
+      });
+    } catch (error) {
+      console.error('创建角色失败:', error);
+      res.status(500).json({
+        success: false,
+        message: '创建角色失败'
+      });
+    }
+  }
+
+  // 获取角色模板列表
+  async getRoleTemplates(req: Request, res: Response) {
+    try {
+      const templates = await this.roleRepository.find({
+        where: { isTemplate: true },
+        order: { level: 'ASC', createdAt: 'DESC' }
+      });
+
+      // 计算每个模板被使用的次数（通过查找使用相同权限的角色数量）
+      const templatesWithStats = templates.map(template => ({
+        ...template,
+        permissionCount: Array.isArray(template.permissions) ? template.permissions.length : 0,
+        userCount: 0 // 模板本身没有用户
+      }));
+
+      res.json({
+        success: true,
+        data: templatesWithStats
+      });
+    } catch (error) {
+      console.error('获取角色模板列表失败:', error);
+      res.status(500).json({
+        success: false,
+        message: '获取角色模板列表失败'
+      });
+    }
+  }
+
+  // 从模板创建角色
+  async createRoleFromTemplate(req: Request, res: Response): Promise<void> {
+    try {
+      const { templateId, name, code, description } = req.body;
+
+      // 获取模板
+      const template = await this.roleRepository.findOne({
+        where: { id: templateId, isTemplate: true }
+      });
+
+      if (!template) {
+        res.status(404).json({
+          success: false,
+          message: '模板不存在'
+        });
+        return;
+      }
 
       // 检查角色名称和编码是否已存在
       const existingRole = await this.roleRepository.findOne({
@@ -155,16 +260,18 @@ export class RoleController {
       // 生成角色ID
       const roleId = `role_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      // 创建角色 - permissions 是 JSON 字段
+      // 从模板创建角色
       const role = this.roleRepository.create({
         id: roleId,
         name,
         code,
-        description,
-        status: status as 'active' | 'inactive',
-        level,
-        color,
-        permissions: Array.isArray(permissions) ? permissions : []
+        description: description || template.description,
+        status: 'active',
+        level: template.level,
+        color: template.color,
+        roleType: 'custom',
+        isTemplate: false,
+        permissions: template.permissions || []
       });
 
       const savedRole = await this.roleRepository.save(role);
@@ -172,13 +279,13 @@ export class RoleController {
       res.status(201).json({
         success: true,
         data: savedRole,
-        message: '角色创建成功'
+        message: `角色创建成功（基于模板：${template.name}）`
       });
     } catch (error) {
-      console.error('创建角色失败:', error);
+      console.error('从模板创建角色失败:', error);
       res.status(500).json({
         success: false,
-        message: '创建角色失败'
+        message: '从模板创建角色失败'
       });
     }
   }
