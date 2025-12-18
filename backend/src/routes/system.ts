@@ -478,7 +478,8 @@ router.get('/security-settings', authenticateToken, requireAdmin, async (_req: R
       lockDuration: 30,
       sessionTimeout: 120,
       forceHttps: false,
-      ipWhitelist: ''
+      ipWhitelist: '',
+      secureConsoleEnabled: false  // 控制台日志加密开关
     };
     res.json({ success: true, data: { ...defaultSettings, ...settings } });
   } catch (error) {
@@ -504,7 +505,8 @@ router.put('/security-settings', authenticateToken, requireAdmin, async (req: Re
       { key: 'lockDuration', type: 'number' as const, desc: '锁定时间(分钟)' },
       { key: 'sessionTimeout', type: 'number' as const, desc: '会话超时时间(分钟)' },
       { key: 'forceHttps', type: 'boolean' as const, desc: '强制HTTPS' },
-      { key: 'ipWhitelist', type: 'text' as const, desc: 'IP白名单' }
+      { key: 'ipWhitelist', type: 'text' as const, desc: 'IP白名单' },
+      { key: 'secureConsoleEnabled', type: 'boolean' as const, desc: '控制台日志加密' }
     ];
     await saveConfigsByGroup('security_settings', settings, configItems);
     res.json({ success: true, message: '安全设置保存成功', data: settings });
