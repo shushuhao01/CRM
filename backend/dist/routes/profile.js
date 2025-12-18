@@ -9,7 +9,13 @@ const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jwt_1 = require("../config/jwt");
+const database_1 = require("../config/database");
+const User_1 = require("../entities/User");
+const Department_1 = require("../entities/Department");
 const router = (0, express_1.Router)();
+// 获取用户仓库
+const getUserRepository = () => database_1.AppDataSource.getRepository(User_1.User);
+const getDepartmentRepository = () => database_1.AppDataSource.getRepository(Department_1.Department);
 // 配置multer用于头像上传
 const storage = multer_1.default.diskStorage({
     destination: (req, file, cb) => {
@@ -62,6 +68,10 @@ const simpleAuth = (req, res, next) => {
         next();
     }
     catch (error) {
+        // 仅开发环境输出错误详情
+        if (process.env.NODE_ENV === 'development') {
+            console.error('[Profile Auth] JWT认证失败:', error);
+        }
         return res.status(401).json({
             success: false,
             message: 'JWT认证失败',
@@ -71,69 +81,194 @@ const simpleAuth = (req, res, next) => {
 };
 /**
  * @route GET /api/v1/profile
- * @desc 获取当前用户资料
+ * @desc 获取当前用户资料（从数据库获取真实数据）
  * @access Private
  */
-router.get('/', simpleAuth, (req, res) => {
-    // 从JWT token中获取用户信息
-    const user = req.user;
-    res.json({
-        success: true,
-        data: {
-            id: user.id || '1',
-            username: user.username || 'admin',
-            name: user.name || '管理员',
-            email: user.email || 'admin@example.com',
-            phone: user.phone || '13800138000',
-            department: user.department || '技术部',
-            role: user.role || 'admin',
-            avatar: user.avatar || '',
-            preferences: {
-                language: 'zh-CN',
-                timezone: 'Asia/Shanghai',
-                emailNotifications: true,
-                browserNotifications: true,
-                smsNotifications: false,
-                pageSize: 20
-            },
-            lastLoginTime: new Date().toISOString(),
-            createTime: user.createTime || new Date().toISOString()
+router.get('/', simpleAuth, async (req, res) => {
+    try {
+        // 从JWT token中获取用户ID
+        const tokenUser = req.user;
+        if (!tokenUser) {
+            return res.status(401).json({
+                success: false,
+                message: '用户认证信息无效',
+                code: 'AUTH_INVALID'
+            });
         }
-    });
+        const userId = tokenUser.userId || tokenUser.id;
+        // 从数据库获取完整的用户信息
+        const userRepository = getUserRepository();
+        const user = await userRepository.findOne({
+            where: { id: userId }
+        });
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: '用户不存在',
+                code: 'USER_NOT_FOUND'
+            });
+        }
+        // 获取部门名称
+        let departmentName = user.departmentName || '';
+        if (!departmentName && user.departmentId) {
+            try {
+                const departmentRepository = getDepartmentRepository();
+                const department = await departmentRepository.findOne({
+                    where: { id: user.departmentId }
+                });
+                departmentName = department?.name || '';
+            }
+            catch (e) {
+                console.warn('获取部门信息失败:', e);
+            }
+        }
+        // 获取角色显示名称
+        const roleNameMap = {
+            'super_admin': '超级管理员',
+            'admin': '管理员',
+            'department_manager': '部门经理',
+            'sales_staff': '销售员',
+            'customer_service': '客服'
+        };
+        const roleName = roleNameMap[user.role] || user.role;
+        return res.json({
+            success: true,
+            data: {
+                id: user.id,
+                username: user.username,
+                name: user.realName || user.name || user.username,
+                email: user.email || '',
+                phone: user.phone || '',
+                department: departmentName,
+                departmentId: user.departmentId,
+                role: roleName,
+                roleCode: user.role,
+                avatar: user.avatar || '',
+                position: user.position || '',
+                employeeNumber: user.employeeNumber || '',
+                preferences: {
+                    language: 'zh-CN',
+                    timezone: 'Asia/Shanghai',
+                    emailNotifications: true,
+                    browserNotifications: true,
+                    smsNotifications: false,
+                    pageSize: 20
+                },
+                lastLoginTime: user.lastLoginAt ? user.lastLoginAt.toISOString() : '',
+                loginCount: user.loginCount || 0,
+                createTime: user.createdAt ? user.createdAt.toISOString() : ''
+            }
+        });
+    }
+    catch (error) {
+        console.error('获取用户资料失败:', error);
+        return res.status(500).json({
+            success: false,
+            message: '获取用户资料失败',
+            code: 'PROFILE_FETCH_ERROR'
+        });
+    }
 });
 /**
  * @route PUT /api/v1/profile
- * @desc 更新当前用户资料
+ * @desc 更新当前用户资料（更新到数据库）
  * @access Private
  */
-router.put('/', simpleAuth, (req, res) => {
-    const user = req.user;
-    const updateData = req.body;
-    // 这里应该更新数据库，目前返回模拟数据
-    res.json({
-        success: true,
-        message: '个人资料已更新',
-        data: {
-            id: user.id || '1',
-            username: user.username || 'admin',
-            name: updateData.name || user.name || '管理员',
-            email: updateData.email || user.email || 'admin@example.com',
-            phone: updateData.phone || user.phone || '13800138000',
-            department: user.department || '技术部',
-            role: user.role || 'admin',
-            avatar: updateData.avatar || user.avatar || '',
-            preferences: updateData.preferences || {
-                language: 'zh-CN',
-                timezone: 'Asia/Shanghai',
-                emailNotifications: true,
-                browserNotifications: true,
-                smsNotifications: false,
-                pageSize: 20
-            },
-            lastLoginTime: new Date().toISOString(),
-            createTime: user.createTime || new Date().toISOString()
+router.put('/', simpleAuth, async (req, res) => {
+    try {
+        // 从JWT token中获取用户ID
+        const tokenUser = req.user;
+        if (!tokenUser) {
+            return res.status(401).json({
+                success: false,
+                message: '用户认证信息无效',
+                code: 'AUTH_INVALID'
+            });
         }
-    });
+        const userId = tokenUser.userId || tokenUser.id;
+        const updateData = req.body;
+        // 从数据库获取用户
+        const userRepository = getUserRepository();
+        const user = await userRepository.findOne({
+            where: { id: userId }
+        });
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: '用户不存在',
+                code: 'USER_NOT_FOUND'
+            });
+        }
+        // 更新允许修改的字段
+        if (updateData.name !== undefined) {
+            user.realName = updateData.name;
+            user.name = updateData.name;
+        }
+        if (updateData.email !== undefined)
+            user.email = updateData.email;
+        if (updateData.phone !== undefined)
+            user.phone = updateData.phone;
+        if (updateData.avatar !== undefined)
+            user.avatar = updateData.avatar;
+        // 保存到数据库
+        const updatedUser = await userRepository.save(user);
+        // 获取部门名称
+        let departmentName = updatedUser.departmentName || '';
+        if (!departmentName && updatedUser.departmentId) {
+            try {
+                const departmentRepository = getDepartmentRepository();
+                const department = await departmentRepository.findOne({
+                    where: { id: updatedUser.departmentId }
+                });
+                departmentName = department?.name || '';
+            }
+            catch (e) {
+                console.warn('获取部门信息失败:', e);
+            }
+        }
+        // 获取角色显示名称
+        const roleNameMap = {
+            'super_admin': '超级管理员',
+            'admin': '管理员',
+            'department_manager': '部门经理',
+            'sales_staff': '销售员',
+            'customer_service': '客服'
+        };
+        const roleName = roleNameMap[updatedUser.role] || updatedUser.role;
+        console.log(`[Profile] 用户 ${updatedUser.username} 资料更新成功`);
+        return res.json({
+            success: true,
+            message: '个人资料已更新',
+            data: {
+                id: updatedUser.id,
+                username: updatedUser.username,
+                name: updatedUser.realName || updatedUser.name || updatedUser.username,
+                email: updatedUser.email || '',
+                phone: updatedUser.phone || '',
+                department: departmentName,
+                role: roleName,
+                avatar: updatedUser.avatar || '',
+                preferences: {
+                    language: 'zh-CN',
+                    timezone: 'Asia/Shanghai',
+                    emailNotifications: true,
+                    browserNotifications: true,
+                    smsNotifications: false,
+                    pageSize: 20
+                },
+                lastLoginTime: updatedUser.lastLoginAt ? updatedUser.lastLoginAt.toISOString() : '',
+                createTime: updatedUser.createdAt ? updatedUser.createdAt.toISOString() : ''
+            }
+        });
+    }
+    catch (error) {
+        console.error('更新用户资料失败:', error);
+        return res.status(500).json({
+            success: false,
+            message: '更新用户资料失败',
+            code: 'PROFILE_UPDATE_ERROR'
+        });
+    }
 });
 /**
  * @route GET /api/v1/profile/preferences
@@ -169,10 +304,10 @@ router.put('/preferences', simpleAuth, (req, res) => {
 });
 /**
  * @route POST /api/v1/profile/avatar
- * @desc 上传用户头像
+ * @desc 上传用户头像（保存文件并更新数据库）
  * @access Private
  */
-router.post('/avatar', simpleAuth, upload.single('avatar'), (req, res) => {
+router.post('/avatar', simpleAuth, upload.single('avatar'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({
@@ -181,10 +316,28 @@ router.post('/avatar', simpleAuth, upload.single('avatar'), (req, res) => {
                 code: 'NO_FILE_UPLOADED'
             });
         }
+        // 从JWT token中获取用户ID
+        const tokenUser = req.user;
+        if (!tokenUser) {
+            return res.status(401).json({
+                success: false,
+                message: '用户认证信息无效',
+                code: 'AUTH_INVALID'
+            });
+        }
+        const userId = tokenUser.userId || tokenUser.id;
         // 生成头像URL
         const avatarUrl = `/uploads/avatars/${req.file.filename}`;
-        // 这里应该更新数据库中的用户头像字段
-        // 目前返回模拟响应
+        // 更新数据库中的用户头像字段
+        const userRepository = getUserRepository();
+        const user = await userRepository.findOne({
+            where: { id: userId }
+        });
+        if (user) {
+            user.avatar = avatarUrl;
+            await userRepository.save(user);
+            console.log(`[Profile] 用户 ${user.username} 头像已更新: ${avatarUrl}`);
+        }
         return res.json({
             success: true,
             message: '头像上传成功',
@@ -206,7 +359,7 @@ router.post('/avatar', simpleAuth, upload.single('avatar'), (req, res) => {
 });
 /**
  * @route PUT /api/v1/profile/password
- * @desc 修改用户密码
+ * @desc 修改用户密码（从数据库验证和更新）
  * @access Private
  */
 router.put('/password', simpleAuth, async (req, res) => {
@@ -236,11 +389,31 @@ router.put('/password', simpleAuth, async (req, res) => {
                 code: 'PASSWORD_TOO_SHORT'
             });
         }
-        // 这里应该验证当前密码是否正确
-        // 目前模拟验证通过
-        const user = req.user;
-        // 模拟密码验证（在实际应用中应该从数据库获取用户信息并验证）
-        if (currentPassword !== 'admin123') { // 模拟当前密码
+        // 从JWT token中获取用户ID
+        const tokenUser = req.user;
+        if (!tokenUser) {
+            return res.status(401).json({
+                success: false,
+                message: '用户认证信息无效',
+                code: 'AUTH_INVALID'
+            });
+        }
+        const userId = tokenUser.userId || tokenUser.id;
+        // 从数据库获取用户信息（包含密码）
+        const userRepository = getUserRepository();
+        const user = await userRepository.findOne({
+            where: { id: userId }
+        });
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: '用户不存在',
+                code: 'USER_NOT_FOUND'
+            });
+        }
+        // 验证当前密码是否正确
+        const isPasswordValid = await bcryptjs_1.default.compare(currentPassword, user.password);
+        if (!isPasswordValid) {
             return res.status(400).json({
                 success: false,
                 message: '当前密码不正确',
@@ -248,15 +421,17 @@ router.put('/password', simpleAuth, async (req, res) => {
             });
         }
         // 加密新密码
-        const saltRounds = 10;
+        const saltRounds = 12;
         const hashedPassword = await bcryptjs_1.default.hash(newPassword, saltRounds);
-        // 这里应该更新数据库中的用户密码
-        // 目前返回模拟响应
+        // 更新数据库中的用户密码
+        user.password = hashedPassword;
+        await userRepository.save(user);
+        console.log(`[Profile] 用户 ${user.username} 密码修改成功`);
         return res.json({
             success: true,
             message: '密码修改成功',
             data: {
-                message: '密码已成功更新，请使用新密码登录'
+                message: '密码已成功更新，下次登录请使用新密码'
             }
         });
     }

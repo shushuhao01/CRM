@@ -43,20 +43,20 @@ __decorate([
     __metadata("design:type", String)
 ], Role.prototype, "color", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ default: 'custom', length: 20 }),
+    __metadata("design:type", String)
+], Role.prototype, "roleType", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], Role.prototype, "isTemplate", void 0);
+__decorate([
     (0, typeorm_1.CreateDateColumn)(),
     __metadata("design:type", Date)
 ], Role.prototype, "createdAt", void 0);
 __decorate([
     (0, typeorm_1.UpdateDateColumn)(),
     __metadata("design:type", Date
-    // 角色拥有的权限（暂时注释掉，避免复杂的关联查询导致错误）
-    // @ManyToMany(() => Permission, permission => permission.roles)
-    // @JoinTable({
-    //   name: 'role_permissions',
-    //   joinColumn: { name: 'roleId', referencedColumnName: 'id' },
-    //   inverseJoinColumn: { name: 'permissionId', referencedColumnName: 'id' }
-    // })
-    // permissions: Permission[]
     // 使用 JSON 字段存储权限（与数据库表结构一致）
     )
 ], Role.prototype, "updatedAt", void 0);

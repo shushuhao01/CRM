@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -44,6 +77,7 @@ const data_1 = __importDefault(require("./routes/data"));
 const assignment_1 = __importDefault(require("./routes/assignment"));
 const sms_1 = __importDefault(require("./routes/sms"));
 const customerShare_1 = __importDefault(require("./routes/customerShare"));
+const performanceReport_1 = __importDefault(require("./routes/performanceReport"));
 // 加载环境变量
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -130,6 +164,11 @@ app.use(express_1.default.urlencoded({
     extended: true,
     limit: process.env.UPLOAD_MAX_SIZE || '10mb'
 }));
+// 支持XML格式的请求体（用于圆通等物流公司的回调）
+app.use(express_1.default.text({
+    limit: process.env.UPLOAD_MAX_SIZE || '10mb',
+    type: ['application/xml', 'text/xml']
+}));
 // 静态文件服务
 app.use('/uploads', express_1.default.static(path_1.default.join(process.cwd(), 'uploads')));
 // 健康检查端点
@@ -197,6 +236,7 @@ app.use(`${API_PREFIX}/dashboard`, dashboard_1.default);
 app.use(`${API_PREFIX}/calls`, calls_1.default);
 app.use(`${API_PREFIX}/logs`, logs_1.default);
 app.use(`${API_PREFIX}/message`, message_1.default);
+app.use(`${API_PREFIX}/performance-report`, performanceReport_1.default);
 app.use(`${API_PREFIX}/performance`, performance_1.default);
 app.use(`${API_PREFIX}/logistics`, logistics_1.default);
 app.use(`${API_PREFIX}/roles`, roles_1.default);
@@ -226,6 +266,38 @@ const startServer = async () => {
             logger_1.logger.info(`🌍 运行环境: ${process.env.NODE_ENV || 'development'}`);
             logger_1.logger.info(`📊 健康检查: http://localhost:${PORT}/health`);
         });
+        // 🔥 启动定时任务：每天凌晨3点清理过期消息（超过30天）
+        const scheduleMessageCleanup = () => {
+            const cleanupExpiredMessages = async () => {
+                try {
+                    const { AppDataSource } = await Promise.resolve().then(() => __importStar(require('./config/database')));
+                    const { SystemMessage } = await Promise.resolve().then(() => __importStar(require('./entities/SystemMessage')));
+                    if (!AppDataSource?.isInitialized) {
+                        return;
+                    }
+                    const messageRepo = AppDataSource.getRepository(SystemMessage);
+                    const thirtyDaysAgo = new Date();
+                    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                    const result = await messageRepo
+                        .createQueryBuilder()
+                        .delete()
+                        .where('created_at < :date', { date: thirtyDaysAgo })
+                        .execute();
+                    if (result.affected && result.affected > 0) {
+                        logger_1.logger.info(`🧹 [定时任务] 已清理 ${result.affected} 条过期消息（超过30天）`);
+                    }
+                }
+                catch (error) {
+                    logger_1.logger.error('[定时任务] 清理过期消息失败:', error);
+                }
+            };
+            // 立即执行一次清理
+            cleanupExpiredMessages();
+            // 每24小时执行一次（86400000毫秒）
+            setInterval(cleanupExpiredMessages, 24 * 60 * 60 * 1000);
+            logger_1.logger.info('📅 [定时任务] 消息自动清理任务已启动（每24小时清理超过30天的消息）');
+        };
+        scheduleMessageCleanup();
         // 优雅关闭处理
         const gracefulShutdown = async (signal) => {
             logger_1.logger.info(`收到 ${signal} 信号，开始优雅关闭...`);

@@ -26,12 +26,15 @@ export declare class User {
     education: string | null;
     major: string | null;
     status: 'active' | 'inactive' | 'resigned' | 'locked';
+    employmentStatus: 'active' | 'resigned' | null;
+    resignedAt: Date | null;
     lastLoginAt: Date | null;
     loginCount: number;
     loginFailCount: number;
     lockedAt: Date | null;
     lastLoginIp: string | null;
     settings: any;
+    authorizedIps?: string[] | null;
     createdAt: Date;
     updatedAt: Date;
     toJSON(): Omit<this, "password" | "toJSON">;

@@ -26,12 +26,20 @@ class DepartmentController {
             const departments = await this.departmentRepository.find({
                 order: { sortOrder: 'ASC', createdAt: 'ASC' }
             });
-            // 计算每个部门的成员数量
+            // 计算每个部门的成员数量和获取负责人信息
             const departmentsWithCount = await Promise.all(departments.map(async (dept) => {
                 // 单独查询该部门的用户数量
                 const memberCount = await this.userRepository.count({
                     where: { departmentId: dept.id }
                 });
+                // 获取负责人姓名
+                let managerName = null;
+                if (dept.managerId) {
+                    const manager = await this.userRepository.findOne({
+                        where: { id: dept.managerId }
+                    });
+                    managerName = manager?.name || manager?.username || null;
+                }
                 return {
                     id: dept.id.toString(),
                     name: dept.name,
@@ -41,6 +49,8 @@ class DepartmentController {
                     level: dept.level || 1,
                     sortOrder: dept.sortOrder,
                     status: dept.status,
+                    managerId: dept.managerId,
+                    managerName: managerName,
                     memberCount: memberCount,
                     createdAt: dept.createdAt.toISOString(),
                     updatedAt: dept.updatedAt.toISOString()
@@ -168,8 +178,8 @@ class DepartmentController {
      */
     async createDepartment(req, res) {
         try {
-            const { name, code, description, parentId, sortOrder = 0, status = 'active', level = 1 } = req.body;
-            console.log('[创建部门] 接收到的数据:', { name, code, description, parentId, sortOrder, status, level });
+            const { name, code, description, parentId, sortOrder = 0, status = 'active', level = 1, managerId } = req.body;
+            console.log('[创建部门] 接收到的数据:', { name, code, description, parentId, sortOrder, status, level, managerId });
             // 验证必填字段
             if (!name || !code) {
                 res.status(400).json({
@@ -226,11 +236,20 @@ class DepartmentController {
                 sortOrder: sortOrder || 0,
                 status: status || 'active',
                 level: level || 1,
+                managerId: managerId || null,
                 memberCount: 0
             });
             console.log('[创建部门] 准备保存的部门对象:', department);
             const savedDepartment = await this.departmentRepository.save(department);
             console.log('[创建部门] 保存成功:', savedDepartment);
+            // 获取负责人姓名
+            let managerName = null;
+            if (savedDepartment.managerId) {
+                const manager = await this.userRepository.findOne({
+                    where: { id: savedDepartment.managerId }
+                });
+                managerName = manager?.name || manager?.username || null;
+            }
             const result = {
                 id: savedDepartment.id,
                 name: savedDepartment.name,
@@ -240,6 +259,8 @@ class DepartmentController {
                 sortOrder: savedDepartment.sortOrder,
                 status: savedDepartment.status,
                 level: savedDepartment.level,
+                managerId: savedDepartment.managerId,
+                managerName: managerName,
                 memberCount: 0,
                 createdAt: savedDepartment.createdAt.toISOString(),
                 updatedAt: savedDepartment.updatedAt.toISOString()
@@ -265,7 +286,8 @@ class DepartmentController {
     async updateDepartment(req, res) {
         try {
             const { id } = req.params;
-            const { name, code, description, parentId, sortOrder, status } = req.body;
+            const { name, code, description, parentId, sortOrder, status, managerId } = req.body;
+            console.log('[更新部门] 接收到的数据:', { id, name, code, description, parentId, sortOrder, status, managerId });
             const department = await this.departmentRepository.findOne({
                 where: { id }
             });
@@ -335,11 +357,23 @@ class DepartmentController {
                 department.sortOrder = sortOrder;
             if (status !== undefined)
                 department.status = status;
+            if (managerId !== undefined)
+                department.managerId = managerId || null;
+            console.log('[更新部门] 准备保存的部门对象:', department);
             const savedDepartment = await this.departmentRepository.save(department);
+            console.log('[更新部门] 保存成功:', savedDepartment);
             // 单独查询成员数量
             const memberCount = await this.userRepository.count({
                 where: { departmentId: id }
             });
+            // 获取负责人姓名
+            let managerName = null;
+            if (savedDepartment.managerId) {
+                const manager = await this.userRepository.findOne({
+                    where: { id: savedDepartment.managerId }
+                });
+                managerName = manager?.name || manager?.username || null;
+            }
             const result = {
                 id: savedDepartment.id.toString(),
                 name: savedDepartment.name,
@@ -348,6 +382,8 @@ class DepartmentController {
                 parentId: savedDepartment.parentId?.toString(),
                 sortOrder: savedDepartment.sortOrder,
                 status: savedDepartment.status,
+                managerId: savedDepartment.managerId,
+                managerName: managerName,
                 memberCount: memberCount,
                 createdAt: savedDepartment.createdAt.toISOString(),
                 updatedAt: savedDepartment.updatedAt.toISOString()
@@ -442,6 +478,15 @@ class DepartmentController {
                 });
                 return;
             }
+            // 🔥 防止禁用系统预设部门（系统管理部）
+            const nonDisableableDepartments = ['系统管理部'];
+            if (status === 'inactive' && nonDisableableDepartments.includes(department.name)) {
+                res.status(400).json({
+                    success: false,
+                    message: '系统预设部门不可禁用'
+                });
+                return;
+            }
             department.status = status;
             const savedDepartment = await this.departmentRepository.save(department);
             // 单独查询成员数量
@@ -480,20 +525,35 @@ class DepartmentController {
     async getDepartmentMembers(req, res) {
         try {
             const { id } = req.params;
-            const users = await this.userRepository.find({
-                where: { departmentId: id }
+            console.log('[部门成员] 查询部门ID:', id);
+            // 获取部门信息
+            const department = await this.departmentRepository.findOne({
+                where: { id: id }
             });
+            const departmentName = department?.name || '';
+            console.log('[部门成员] 部门名称:', departmentName);
+            // 查询该部门的所有用户（同时匹配departmentId和departmentName）
+            const users = await this.userRepository
+                .createQueryBuilder('user')
+                .where('user.departmentId = :id', { id })
+                .orWhere('user.departmentName = :name', { name: departmentName })
+                .getMany();
+            console.log('[部门成员] 查询到用户数:', users.length);
             const members = users.map((user) => ({
                 id: user.id.toString(),
                 userId: user.id.toString(),
                 departmentId: id,
-                name: user.realName || user.username,
+                userName: user.realName || user.username,
                 username: user.username,
                 email: user.email,
                 phone: user.phone,
+                position: user.position || user.role || '成员',
                 role: user.role,
-                status: user.status,
-                joinedAt: user.createdAt.toISOString()
+                status: user.status === 'active' ? 'active' : 'inactive',
+                joinDate: user.createdAt.toISOString().split('T')[0],
+                joinedAt: user.createdAt.toISOString(),
+                createdAt: user.createdAt.toISOString(),
+                departmentName: user.departmentName || departmentName
             }));
             res.json({
                 success: true,

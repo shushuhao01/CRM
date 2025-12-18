@@ -30,8 +30,15 @@ class RoleController {
     // 获取角色列表
     async getRoles(req, res) {
         try {
-            const { page = 1, limit = 20, search, status } = req.query;
+            const { page = 1, limit = 20, search, status, isTemplate } = req.query;
             const queryBuilder = this.roleRepository.createQueryBuilder('role');
+            // 默认只获取非模板角色，除非明确指定
+            if (isTemplate === 'true') {
+                queryBuilder.andWhere('role.isTemplate = :isTemplate', { isTemplate: true });
+            }
+            else if (isTemplate === 'false' || isTemplate === undefined) {
+                queryBuilder.andWhere('(role.isTemplate = :isTemplate OR role.isTemplate IS NULL)', { isTemplate: false });
+            }
             if (search) {
                 queryBuilder.andWhere('(role.name LIKE :search OR role.code LIKE :search)', {
                     search: `%${search}%`
@@ -41,15 +48,23 @@ class RoleController {
                 queryBuilder.andWhere('role.status = :status', { status });
             }
             const [roles, total] = await queryBuilder
+                .orderBy('role.level', 'ASC')
+                .addOrderBy('role.createdAt', 'DESC')
                 .skip((Number(page) - 1) * Number(limit))
                 .take(Number(limit))
                 .getManyAndCount();
             // 计算每个角色的用户数量和权限数量
             const rolesWithCounts = await Promise.all(roles.map(async (role) => {
-                // 通过 roleId 字段查询用户数量
-                const userCount = await this.userRepository.count({
-                    where: { roleId: role.id }
-                });
+                let userCount = 0;
+                try {
+                    // 通过 roleId 字段查询用户数量（roleId 存储的是角色的 code，不是 id）
+                    userCount = await this.userRepository.count({
+                        where: { roleId: role.code }
+                    });
+                }
+                catch (err) {
+                    console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
+                }
                 // permissions 是 JSON 字段，直接获取长度
                 const permissionCount = Array.isArray(role.permissions) ? role.permissions.length : 0;
                 return {
@@ -93,10 +108,16 @@ class RoleController {
                 });
                 return;
             }
-            // 获取该角色的用户数量
-            const userCount = await this.userRepository.count({
-                where: { roleId: role.id }
-            });
+            // 获取该角色的用户数量（roleId 存储的是角色的 code，不是 id）
+            let userCount = 0;
+            try {
+                userCount = await this.userRepository.count({
+                    where: { roleId: role.code }
+                });
+            }
+            catch (err) {
+                console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
+            }
             res.json({
                 success: true,
                 data: {
@@ -117,7 +138,93 @@ class RoleController {
     // 创建角色
     async createRole(req, res) {
         try {
-            const { name, code, description, status = 'active', level = 0, color, permissions = [] } = req.body;
+            const { name, code, description, status = 'active', level = 0, color, permissions = [], roleType = 'custom', isTemplate = false } = req.body;
+            // 检查角色名称和编码是否已存在
+            const existingRole = await this.roleRepository.findOne({
+                where: [
+                    { name },
+                    { code }
+                ]
+            });
+            if (existingRole) {
+                res.status(400).json({
+                    success: false,
+                    message: existingRole.name === name ? '角色名称已存在' : '角色编码已存在'
+                });
+                return;
+            }
+            // 生成角色ID
+            const prefix = isTemplate ? 'tpl' : 'role';
+            const roleId = `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            // 创建角色 - permissions 是 JSON 字段
+            const role = this.roleRepository.create({
+                id: roleId,
+                name,
+                code,
+                description,
+                status: status,
+                level,
+                color,
+                roleType: roleType,
+                isTemplate: Boolean(isTemplate),
+                permissions: Array.isArray(permissions) ? permissions : []
+            });
+            const savedRole = await this.roleRepository.save(role);
+            res.status(201).json({
+                success: true,
+                data: savedRole,
+                message: isTemplate ? '角色模板创建成功' : '角色创建成功'
+            });
+        }
+        catch (error) {
+            console.error('创建角色失败:', error);
+            res.status(500).json({
+                success: false,
+                message: '创建角色失败'
+            });
+        }
+    }
+    // 获取角色模板列表
+    async getRoleTemplates(req, res) {
+        try {
+            const templates = await this.roleRepository.find({
+                where: { isTemplate: true },
+                order: { level: 'ASC', createdAt: 'DESC' }
+            });
+            // 计算每个模板被使用的次数（通过查找使用相同权限的角色数量）
+            const templatesWithStats = templates.map(template => ({
+                ...template,
+                permissionCount: Array.isArray(template.permissions) ? template.permissions.length : 0,
+                userCount: 0 // 模板本身没有用户
+            }));
+            res.json({
+                success: true,
+                data: templatesWithStats
+            });
+        }
+        catch (error) {
+            console.error('获取角色模板列表失败:', error);
+            res.status(500).json({
+                success: false,
+                message: '获取角色模板列表失败'
+            });
+        }
+    }
+    // 从模板创建角色
+    async createRoleFromTemplate(req, res) {
+        try {
+            const { templateId, name, code, description } = req.body;
+            // 获取模板
+            const template = await this.roleRepository.findOne({
+                where: { id: templateId, isTemplate: true }
+            });
+            if (!template) {
+                res.status(404).json({
+                    success: false,
+                    message: '模板不存在'
+                });
+                return;
+            }
             // 检查角色名称和编码是否已存在
             const existingRole = await this.roleRepository.findOne({
                 where: [
@@ -134,29 +241,31 @@ class RoleController {
             }
             // 生成角色ID
             const roleId = `role_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            // 创建角色 - permissions 是 JSON 字段
+            // 从模板创建角色
             const role = this.roleRepository.create({
                 id: roleId,
                 name,
                 code,
-                description,
-                status: status,
-                level,
-                color,
-                permissions: Array.isArray(permissions) ? permissions : []
+                description: description || template.description,
+                status: 'active',
+                level: template.level,
+                color: template.color,
+                roleType: 'custom',
+                isTemplate: false,
+                permissions: template.permissions || []
             });
             const savedRole = await this.roleRepository.save(role);
             res.status(201).json({
                 success: true,
                 data: savedRole,
-                message: '角色创建成功'
+                message: `角色创建成功（基于模板：${template.name}）`
             });
         }
         catch (error) {
-            console.error('创建角色失败:', error);
+            console.error('从模板创建角色失败:', error);
             res.status(500).json({
                 success: false,
-                message: '创建角色失败'
+                message: '从模板创建角色失败'
             });
         }
     }
@@ -242,10 +351,16 @@ class RoleController {
                 });
                 return;
             }
-            // 检查是否有用户使用此角色
-            const usersWithRole = await this.userRepository.count({
-                where: { roleId: String(id) }
-            });
+            // 检查是否有用户使用此角色（roleId 存储的是角色的 code，不是 id）
+            let usersWithRole = 0;
+            try {
+                usersWithRole = await this.userRepository.count({
+                    where: { roleId: role.code }
+                });
+            }
+            catch (err) {
+                console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
+            }
             if (usersWithRole > 0) {
                 res.status(400).json({
                     success: false,
@@ -287,6 +402,57 @@ class RoleController {
             res.status(500).json({
                 success: false,
                 message: '获取角色统计失败'
+            });
+        }
+    }
+    // 更新角色状态
+    async updateRoleStatus(req, res) {
+        try {
+            const { id } = req.params;
+            const { status } = req.body;
+            console.log('[RoleController] 更新角色状态:', { id, status });
+            // 验证状态值
+            if (!['active', 'inactive'].includes(status)) {
+                res.status(400).json({
+                    success: false,
+                    message: '无效的状态值'
+                });
+                return;
+            }
+            const role = await this.roleRepository.findOne({
+                where: { id: String(id) }
+            });
+            if (!role) {
+                res.status(404).json({
+                    success: false,
+                    message: '角色不存在'
+                });
+                return;
+            }
+            // 🔥 防止禁用系统预设角色（超级管理员和管理员）
+            const nonDisableableRoles = ['super_admin', 'admin'];
+            if (status === 'inactive' && nonDisableableRoles.includes(role.code)) {
+                res.status(400).json({
+                    success: false,
+                    message: '系统预设角色不可禁用'
+                });
+                return;
+            }
+            // 更新状态
+            role.status = status;
+            const savedRole = await this.roleRepository.save(role);
+            console.log('[RoleController] 角色状态更新成功:', { id, status });
+            res.json({
+                success: true,
+                data: savedRole,
+                message: `角色已${status === 'active' ? '启用' : '禁用'}`
+            });
+        }
+        catch (error) {
+            console.error('更新角色状态失败:', error);
+            res.status(500).json({
+                success: false,
+                message: '更新角色状态失败'
             });
         }
     }
@@ -332,6 +498,47 @@ class RoleController {
                     roleName: 'default',
                     permissions: []
                 }
+            });
+        }
+    }
+    // 🔥 更新角色权限
+    async updateRolePermissions(req, res) {
+        try {
+            const { id } = req.params;
+            const { permissions, permissionIds } = req.body;
+            console.log(`[RoleController] 更新角色权限: ${id}`, { permissions, permissionIds });
+            const role = await this.roleRepository.findOne({
+                where: { id: String(id) }
+            });
+            if (!role) {
+                res.status(404).json({
+                    success: false,
+                    message: '角色不存在'
+                });
+                return;
+            }
+            // 支持两种格式：permissions 或 permissionIds
+            const newPermissions = permissions || permissionIds || [];
+            role.permissions = Array.isArray(newPermissions) ? newPermissions : [];
+            const savedRole = await this.roleRepository.save(role);
+            console.log(`[RoleController] 角色权限更新成功: ${role.name}`, {
+                permissionCount: role.permissions.length
+            });
+            res.json({
+                success: true,
+                data: {
+                    roleId: savedRole.id,
+                    roleName: savedRole.name,
+                    permissions: savedRole.permissions
+                },
+                message: '权限更新成功'
+            });
+        }
+        catch (error) {
+            console.error('更新角色权限失败:', error);
+            res.status(500).json({
+                success: false,
+                message: '更新角色权限失败'
             });
         }
     }

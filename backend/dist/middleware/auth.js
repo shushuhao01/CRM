@@ -53,36 +53,30 @@ const authenticateToken = async (req, res, next) => {
         next();
     }
     catch (error) {
-        logger_1.logger.error('JWT认证失败:', error);
-        logger_1.logger.error('Token内容:', token?.substring(0, 50) + '...');
+        // 仅开发环境输出详细错误信息
+        if (process.env.NODE_ENV === 'development') {
+            logger_1.logger.error('JWT认证失败:', error instanceof Error ? error.message : '未知错误');
+        }
         if (error instanceof Error) {
-            logger_1.logger.error('错误详情:', {
-                message: error.message,
-                name: error.name,
-                stack: error.stack
-            });
             if (error.message.includes('expired')) {
                 return res.status(401).json({
                     success: false,
                     message: '访问令牌已过期',
-                    code: 'TOKEN_EXPIRED',
-                    error: error.message
+                    code: 'TOKEN_EXPIRED'
                 });
             }
             if (error.message.includes('invalid')) {
                 return res.status(401).json({
                     success: false,
                     message: '访问令牌无效',
-                    code: 'TOKEN_INVALID',
-                    error: error.message
+                    code: 'TOKEN_INVALID'
                 });
             }
         }
         return res.status(401).json({
             success: false,
             message: '认证失败',
-            code: 'AUTH_FAILED',
-            error: error instanceof Error ? error.message : '未知错误'
+            code: 'AUTH_FAILED'
         });
     }
 };

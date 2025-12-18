@@ -27,6 +27,8 @@ export declare class Order {
     expressCompany?: string;
     trackingNumber?: string;
     shippedAt?: Date;
+    shippingTime?: string;
+    expectedDeliveryDate?: string;
     deliveredAt?: Date;
     cancelledAt?: Date;
     cancelReason?: string;
@@ -37,7 +39,18 @@ export declare class Order {
     invoiceTitle?: string;
     invoiceNumber?: string;
     markType?: string;
+    logisticsStatus?: string;
+    isTodo?: boolean;
+    todoDate?: string;
+    todoRemark?: string;
     customFields?: Record<string, unknown>;
+    customField1?: string;
+    customField2?: string;
+    customField3?: string;
+    customField4?: string;
+    customField5?: string;
+    customField6?: string;
+    customField7?: string;
     remark?: string;
     operatorId?: string;
     operatorName?: string;

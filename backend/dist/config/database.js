@@ -41,6 +41,15 @@ const UserPermission_1 = require("../entities/UserPermission");
 const CustomerShare_1 = require("../entities/CustomerShare");
 const PaymentMethodOption_1 = require("../entities/PaymentMethodOption");
 const DepartmentOrderLimit_1 = require("../entities/DepartmentOrderLimit");
+const FollowUp_1 = require("../entities/FollowUp");
+const AfterSalesService_1 = require("../entities/AfterSalesService");
+const ServiceFollowUp_1 = require("../entities/ServiceFollowUp");
+const ServiceOperationLog_1 = require("../entities/ServiceOperationLog");
+const NotificationChannel_1 = require("../entities/NotificationChannel");
+const Announcement_1 = require("../entities/Announcement");
+const SystemMessage_1 = require("../entities/SystemMessage");
+const PerformanceReportConfig_1 = require("../entities/PerformanceReportConfig");
+const LogisticsApiConfig_1 = require("../entities/LogisticsApiConfig");
 const path_1 = __importDefault(require("path"));
 // 根据环境变量选择数据库配置
 const dbType = process.env.DB_TYPE || (process.env.NODE_ENV === 'production' ? 'mysql' : 'sqlite');
@@ -89,7 +98,19 @@ const AppDataSource = new typeorm_1.DataSource(dbType === 'mysql'
             UserPermission_1.UserPermission,
             CustomerShare_1.CustomerShare,
             PaymentMethodOption_1.PaymentMethodOption,
-            DepartmentOrderLimit_1.DepartmentOrderLimit
+            DepartmentOrderLimit_1.DepartmentOrderLimit,
+            FollowUp_1.FollowUp,
+            AfterSalesService_1.AfterSalesService,
+            ServiceFollowUp_1.ServiceFollowUp,
+            ServiceOperationLog_1.ServiceOperationLog,
+            NotificationChannel_1.NotificationChannel,
+            NotificationChannel_1.NotificationLog,
+            Announcement_1.Announcement,
+            Announcement_1.AnnouncementRead,
+            SystemMessage_1.SystemMessage,
+            PerformanceReportConfig_1.PerformanceReportConfig,
+            PerformanceReportConfig_1.PerformanceReportLog,
+            LogisticsApiConfig_1.LogisticsApiConfig
         ],
         migrations: [],
         subscribers: [],
@@ -133,7 +154,19 @@ const AppDataSource = new typeorm_1.DataSource(dbType === 'mysql'
             UserPermission_1.UserPermission,
             CustomerShare_1.CustomerShare,
             PaymentMethodOption_1.PaymentMethodOption,
-            DepartmentOrderLimit_1.DepartmentOrderLimit
+            DepartmentOrderLimit_1.DepartmentOrderLimit,
+            FollowUp_1.FollowUp,
+            AfterSalesService_1.AfterSalesService,
+            ServiceFollowUp_1.ServiceFollowUp,
+            ServiceOperationLog_1.ServiceOperationLog,
+            NotificationChannel_1.NotificationChannel,
+            NotificationChannel_1.NotificationLog,
+            Announcement_1.Announcement,
+            Announcement_1.AnnouncementRead,
+            SystemMessage_1.SystemMessage,
+            PerformanceReportConfig_1.PerformanceReportConfig,
+            PerformanceReportConfig_1.PerformanceReportLog,
+            LogisticsApiConfig_1.LogisticsApiConfig
         ],
         migrations: [],
         subscribers: [],

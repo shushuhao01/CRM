@@ -23,9 +23,18 @@ export declare class UserController {
      */
     changePassword: (req: Request, res: Response, next: import("express").NextFunction) => void;
     /**
+     * 检查用户名是否可用
+     */
+    checkUsername: (req: Request, res: Response, next: import("express").NextFunction) => void;
+    /**
      * 创建用户（管理员功能）
      */
     createUser: (req: Request, res: Response, next: import("express").NextFunction) => void;
+    /**
+     * 获取同部门成员列表（所有登录用户可访问）
+     * 销售员只能看到同部门成员，经理和管理员可以看到所有用户
+     */
+    getDepartmentMembers: (req: Request, res: Response, next: import("express").NextFunction) => void;
     /**
      * 获取用户列表（管理员功能）
      */
@@ -62,5 +71,21 @@ export declare class UserController {
      * 记录操作日志
      */
     private logOperation;
+    /**
+     * 强制用户下线
+     */
+    forceUserLogout: (req: Request, res: Response, next: import("express").NextFunction) => void;
+    /**
+     * 切换双因子认证
+     */
+    toggleTwoFactor: (req: Request, res: Response, next: import("express").NextFunction) => void;
+    /**
+     * 解锁用户账户
+     */
+    unlockAccount: (req: Request, res: Response, next: import("express").NextFunction) => void;
+    /**
+     * 获取用户权限详情
+     */
+    getUserPermissions: (req: Request, res: Response, next: import("express").NextFunction) => void;
 }
 //# sourceMappingURL=UserController.d.ts.map

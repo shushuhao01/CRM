@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_1 = require("../middleware/auth");
@@ -10,76 +43,180 @@ const router = (0, express_1.Router)();
 router.use(auth_1.authenticateToken);
 /**
  * @route GET /api/v1/data/list
- * @desc 获取数据列表（客户数据）
+ * @desc 获取资料列表（从已签收订单中获取客户资料）
  */
 router.get('/list', async (req, res) => {
     try {
-        const { page = 1, pageSize = 20, status, keyword, assigneeId } = req.query;
+        const { page = 1, pageSize = 30, _status, keyword, assigneeId, dateFilter } = req.query;
         const currentUser = req.user;
-        const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
-        const queryBuilder = customerRepository.createQueryBuilder('customer');
+        // 🔥 从订单表获取已签收的订单数据
+        const { Order } = await Promise.resolve().then(() => __importStar(require('../entities/Order')));
+        const orderRepository = database_1.AppDataSource.getRepository(Order);
+        const queryBuilder = orderRepository.createQueryBuilder('order')
+            .leftJoinAndSelect('order.customer', 'customer');
+        // 只获取已签收的订单（delivered状态）
+        queryBuilder.andWhere('order.status = :deliveredStatus', { deliveredStatus: 'delivered' });
         // 数据权限过滤
         const role = currentUser?.role || '';
         const allowAllRoles = ['super_admin', 'superadmin', 'admin'];
         if (!allowAllRoles.includes(role)) {
             if (role === 'manager' || role === 'department_manager') {
                 // 经理看本部门的
+                if (currentUser?.departmentId) {
+                    queryBuilder.andWhere('order.createdByDepartmentId = :deptId', {
+                        deptId: currentUser.departmentId
+                    });
+                }
             }
             else {
                 // 销售员只看自己的
-                queryBuilder.andWhere('customer.salesPersonId = :userId', {
+                queryBuilder.andWhere('order.createdBy = :userId', {
                     userId: currentUser?.userId
                 });
             }
         }
-        if (status) {
-            queryBuilder.andWhere('customer.status = :status', { status });
-        }
+        // 关键词搜索
         if (keyword) {
-            queryBuilder.andWhere('(customer.name LIKE :keyword OR customer.phone LIKE :keyword OR customer.customerCode LIKE :keyword)', { keyword: `%${keyword}%` });
+            queryBuilder.andWhere('(order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.orderNumber LIKE :keyword)', { keyword: `%${keyword}%` });
         }
+        // 分配人筛选
         if (assigneeId) {
-            queryBuilder.andWhere('customer.salesPersonId = :assigneeId', { assigneeId });
+            queryBuilder.andWhere('order.createdBy = :assigneeId', { assigneeId });
         }
-        queryBuilder.orderBy('customer.createdAt', 'DESC');
+        // 日期筛选
+        if (dateFilter && dateFilter !== 'all') {
+            const now = new Date();
+            let startDate;
+            switch (dateFilter) {
+                case 'today':
+                    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    queryBuilder.andWhere('order.deliveredAt >= :startDate', { startDate });
+                    break;
+                case 'yesterday':
+                    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+                    const endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    queryBuilder.andWhere('order.deliveredAt >= :startDate AND order.deliveredAt < :endDate', { startDate, endDate });
+                    break;
+                case 'thisWeek':
+                    const weekStart = new Date(now);
+                    weekStart.setDate(now.getDate() - now.getDay());
+                    weekStart.setHours(0, 0, 0, 0);
+                    queryBuilder.andWhere('order.deliveredAt >= :weekStart', { weekStart });
+                    break;
+                case 'last30Days':
+                    startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                    queryBuilder.andWhere('order.deliveredAt >= :startDate', { startDate });
+                    break;
+                case 'thisMonth':
+                    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                    queryBuilder.andWhere('order.deliveredAt >= :startDate', { startDate });
+                    break;
+                case 'thisYear':
+                    startDate = new Date(now.getFullYear(), 0, 1);
+                    queryBuilder.andWhere('order.deliveredAt >= :startDate', { startDate });
+                    break;
+            }
+        }
+        queryBuilder.orderBy('order.deliveredAt', 'DESC');
         queryBuilder.skip((Number(page) - 1) * Number(pageSize));
         queryBuilder.take(Number(pageSize));
-        const [list, total] = await queryBuilder.getManyAndCount();
+        const [orders, total] = await queryBuilder.getManyAndCount();
+        // 转换为资料列表格式
+        const list = orders.map(order => ({
+            id: order.id,
+            customerName: order.customerName || '',
+            customerCode: order.customer?.customerNo || '',
+            phone: order.customerPhone || '',
+            orderNo: order.orderNumber,
+            orderAmount: Number(order.totalAmount) || 0,
+            orderDate: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '',
+            signDate: order.deliveredAt ? new Date(order.deliveredAt).toISOString().split('T')[0] : '',
+            orderStatus: order.status, // 订单状态（delivered=已签收）
+            status: 'pending', // 资料分配状态（待分配）
+            assigneeId: order.createdBy,
+            assigneeName: order.createdByName,
+            assigneeDepartment: order.createdByDepartmentName,
+            createTime: order.createdAt ? new Date(order.createdAt).toISOString() : '',
+            updateTime: order.updatedAt ? new Date(order.updatedAt).toISOString() : '',
+            trackingNo: order.trackingNumber || '',
+            address: order.shippingAddress || '',
+            remark: order.remark || ''
+        }));
+        // 计算汇总数据
+        const allOrders = await orderRepository.find({ where: { status: 'delivered' } });
+        const summary = {
+            totalCount: allOrders.length,
+            pendingCount: allOrders.length, // 暂时都算待分配
+            assignedCount: 0,
+            archivedCount: 0,
+            totalAmount: allOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0),
+            todayCount: allOrders.filter(o => {
+                const today = new Date().toDateString();
+                return o.deliveredAt && new Date(o.deliveredAt).toDateString() === today;
+            }).length,
+            weekCount: allOrders.filter(o => {
+                const weekAgo = new Date();
+                weekAgo.setDate(weekAgo.getDate() - 7);
+                return o.deliveredAt && new Date(o.deliveredAt) >= weekAgo;
+            }).length,
+            monthCount: allOrders.filter(o => {
+                const monthAgo = new Date();
+                monthAgo.setMonth(monthAgo.getMonth() - 1);
+                return o.deliveredAt && new Date(o.deliveredAt) >= monthAgo;
+            }).length
+        };
         res.json({
             success: true,
-            data: { list, total, page: Number(page), pageSize: Number(pageSize) }
+            data: { list, total, page: Number(page), pageSize: Number(pageSize) },
+            summary
         });
     }
     catch (error) {
-        console.error('获取数据列表失败:', error);
-        res.status(500).json({ success: false, message: '获取数据列表失败' });
+        console.error('获取资料列表失败:', error);
+        res.status(500).json({ success: false, message: '获取资料列表失败' });
     }
 });
 /**
  * @route POST /api/v1/data/batch-assign
- * @desc 批量分配数据
+ * @desc 批量分配数据（更新订单的归属人）
  */
 router.post('/batch-assign', async (req, res) => {
     try {
-        const { dataIds, assigneeId } = req.body;
+        const { dataIds, assigneeId, assigneeName } = req.body;
         if (!dataIds || dataIds.length === 0 || !assigneeId) {
             return res.status(400).json({ success: false, message: '参数不完整' });
         }
-        const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
         const userRepository = database_1.AppDataSource.getRepository(User_1.User);
+        const { Order } = await Promise.resolve().then(() => __importStar(require('../entities/Order')));
+        const orderRepository = database_1.AppDataSource.getRepository(Order);
+        // 获取分配人信息
         const assignee = await userRepository.findOne({ where: { id: assigneeId } });
         if (!assignee) {
             return res.status(404).json({ success: false, message: '分配人不存在' });
         }
+        const finalAssigneeName = assigneeName || assignee.realName || assignee.username;
         let successCount = 0;
         for (const id of dataIds) {
             try {
-                const customer = await customerRepository.findOne({ where: { id } });
-                if (customer) {
-                    customer.salesPersonId = assigneeId;
-                    customer.salesPersonName = assignee.realName || assignee.username;
-                    await customerRepository.save(customer);
+                // 更新订单的归属人
+                const order = await orderRepository.findOne({ where: { id } });
+                if (order) {
+                    order.createdBy = assigneeId;
+                    order.createdByName = finalAssigneeName;
+                    order.createdByDepartmentId = assignee.departmentId;
+                    order.createdByDepartmentName = assignee.departmentName;
+                    await orderRepository.save(order);
                     successCount++;
+                    // 同时更新关联客户的归属人
+                    if (order.customerId) {
+                        const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
+                        const customer = await customerRepository.findOne({ where: { id: order.customerId } });
+                        if (customer) {
+                            customer.salesPersonId = assigneeId;
+                            customer.salesPersonName = finalAssigneeName;
+                            await customerRepository.save(customer);
+                        }
+                    }
                 }
             }
             catch (e) {
@@ -330,6 +467,143 @@ router.get('/statistics', async (req, res) => {
     catch (error) {
         console.error('获取数据统计失败:', error);
         res.status(500).json({ success: false, message: '获取数据统计失败' });
+    }
+});
+/**
+ * @route GET /api/v1/data/recycle
+ * @desc 获取回收站列表（已删除/归档的客户资料）
+ */
+router.get('/recycle', async (req, res) => {
+    try {
+        const { page = 1, pageSize = 20, keyword, deleteTimeFilter, deletedBy: _deletedBy } = req.query;
+        const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
+        const queryBuilder = customerRepository.createQueryBuilder('customer')
+            .where('customer.status = :status', { status: 'deleted' });
+        // 关键词搜索
+        if (keyword) {
+            queryBuilder.andWhere('(customer.name LIKE :keyword OR customer.phone LIKE :keyword)', { keyword: `%${keyword}%` });
+        }
+        // 删除时间筛选
+        if (deleteTimeFilter && deleteTimeFilter !== 'all') {
+            const now = new Date();
+            let startDate;
+            switch (deleteTimeFilter) {
+                case 'today':
+                    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    break;
+                case 'week':
+                    startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                case 'month':
+                    startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                    break;
+                default:
+                    startDate = new Date(0);
+            }
+            queryBuilder.andWhere('customer.updatedAt >= :startDate', { startDate });
+        }
+        queryBuilder.orderBy('customer.updatedAt', 'DESC');
+        queryBuilder.skip((Number(page) - 1) * Number(pageSize));
+        queryBuilder.take(Number(pageSize));
+        const [customers, total] = await queryBuilder.getManyAndCount();
+        // 转换为回收站格式
+        const list = customers.map(customer => ({
+            id: customer.id,
+            customerName: customer.name || '',
+            phone: customer.phone || '',
+            orderAmount: 0, // 需要从订单表获取
+            orderDate: customer.createdAt ? new Date(customer.createdAt).toISOString().split('T')[0] : '',
+            deletedAt: customer.updatedAt ? new Date(customer.updatedAt).toISOString() : '',
+            deletedBy: '',
+            deletedByName: '系统',
+            deleteReason: '已删除',
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30天后过期
+        }));
+        // 计算汇总数据
+        const now = new Date();
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+        res.json({
+            success: true,
+            data: { list, total, page: Number(page), pageSize: Number(pageSize) },
+            summary: {
+                totalCount: total,
+                recentCount: list.filter(item => new Date(item.deletedAt) >= sevenDaysAgo).length,
+                expiringSoonCount: list.filter(item => new Date(item.expiresAt) <= threeDaysLater).length
+            }
+        });
+    }
+    catch (error) {
+        console.error('获取回收站列表失败:', error);
+        res.status(500).json({ success: false, message: '获取回收站列表失败' });
+    }
+});
+/**
+ * @route POST /api/v1/data/restore
+ * @desc 从回收站恢复数据
+ */
+router.post('/restore', async (req, res) => {
+    try {
+        const { dataIds } = req.body;
+        if (!dataIds || dataIds.length === 0) {
+            return res.status(400).json({ success: false, message: '参数不完整' });
+        }
+        const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
+        let successCount = 0;
+        for (const id of dataIds) {
+            try {
+                const customer = await customerRepository.findOne({ where: { id } });
+                if (customer) {
+                    customer.status = 'active';
+                    await customerRepository.save(customer);
+                    successCount++;
+                }
+            }
+            catch (e) {
+                console.error('恢复单条数据失败:', e);
+            }
+        }
+        res.json({
+            success: true,
+            message: '恢复成功',
+            data: { successCount, failCount: dataIds.length - successCount }
+        });
+    }
+    catch (error) {
+        console.error('恢复数据失败:', error);
+        res.status(500).json({ success: false, message: '恢复数据失败' });
+    }
+});
+/**
+ * @route POST /api/v1/data/permanent-delete
+ * @desc 永久删除数据
+ */
+router.post('/permanent-delete', async (req, res) => {
+    try {
+        const { dataIds } = req.body;
+        if (!dataIds || dataIds.length === 0) {
+            return res.status(400).json({ success: false, message: '参数不完整' });
+        }
+        const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
+        let successCount = 0;
+        for (const id of dataIds) {
+            try {
+                await customerRepository.delete(id);
+                successCount++;
+            }
+            catch (e) {
+                console.error('永久删除单条数据失败:', e);
+            }
+        }
+        res.json({
+            success: true,
+            message: '永久删除成功',
+            data: { successCount, failCount: dataIds.length - successCount }
+        });
+    }
+    catch (error) {
+        console.error('永久删除失败:', error);
+        res.status(500).json({ success: false, message: '永久删除失败' });
     }
 });
 exports.default = router;

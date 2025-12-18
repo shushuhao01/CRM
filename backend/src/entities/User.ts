@@ -108,8 +108,8 @@ export class User {
   settings: any;
 
   // 授权登录IP列表（JSON数组，null表示无限制）
-  @Column('json', { name: 'authorized_ips', nullable: true })
-  authorizedIps: string[] | null;
+  @Column('json', { name: 'authorized_ips', nullable: true, select: true })
+  authorizedIps?: string[] | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
