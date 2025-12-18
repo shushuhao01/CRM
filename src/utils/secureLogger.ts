@@ -6,30 +6,38 @@
  * 1. 全局生效 - 配置存储在后端数据库，所有用户同步
  * 2. 完全加密 - 不只是敏感数据，所有业务逻辑、数据量、流程信息都加密
  * 3. 防止逆向 - 加密后的日志无法被破解分析业务流程
+ * 4. 跨终端同步 - 所有用户登录时自动获取最新配置
  */
 
 // 配置键名（本地缓存）
 const CONFIG_KEY = 'crm_secure_console_enabled'
 const CONFIG_CACHE_KEY = 'crm_secure_console_cache_time'
-const CACHE_DURATION = 5 * 60 * 1000 // 5分钟缓存
+const CACHE_DURATION = 30 * 1000 // 30秒缓存（缩短以便更快同步）
 
 // 全局配置状态
 let _secureConsoleEnabled: boolean | null = null
 let _lastFetchTime = 0
+let _isFetching = false
 
 /**
- * 从后端API获取安全控制台配置
+ * 从后端API获取安全控制台配置（公开接口，所有登录用户可访问）
  */
 async function fetchSecureConsoleConfig(): Promise<boolean> {
+  if (_isFetching) {
+    return localStorage.getItem(CONFIG_KEY) === 'true'
+  }
+
+  _isFetching = true
   try {
     const token = localStorage.getItem('auth_token')
     if (!token) {
-      return localStorage.getItem(CONFIG_KEY) === 'true'
+      return false
     }
 
-    const response = await fetch('/api/v1/system/security-settings', {
+    // 使用公开的配置接口，所有登录用户都可以访问
+    const response = await fetch('/api/v1/system/console-security-config', {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
       }
     })
@@ -40,19 +48,49 @@ async function fetchSecureConsoleConfig(): Promise<boolean> {
       // 缓存到本地
       localStorage.setItem(CONFIG_KEY, String(enabled))
       localStorage.setItem(CONFIG_CACHE_KEY, String(Date.now()))
+      _secureConsoleEnabled = enabled
+      _lastFetchTime = Date.now()
       return enabled
     }
   } catch {
     // 静默失败，使用本地缓存
+  } finally {
+    _isFetching = false
   }
   return localStorage.getItem(CONFIG_KEY) === 'true'
+}
+
+/**
+ * 强制从服务器刷新配置（用于登录后调用）
+ */
+export async function refreshSecureConsoleConfig(): Promise<boolean> {
+  // 清除缓存
+  _secureConsoleEnabled = null
+  _lastFetchTime = 0
+  localStorage.removeItem(CONFIG_CACHE_KEY)
+
+  // 重新获取
+  return await fetchSecureConsoleConfig()
+}
+
+/**
+ * 初始化安全控制台配置（应用启动时调用）
+ */
+export async function initSecureConsoleConfig(): Promise<void> {
+  const token = localStorage.getItem('auth_token')
+  if (token) {
+    const enabled = await fetchSecureConsoleConfig()
+    if (enabled) {
+      enableGlobalSecureConsole()
+    }
+  }
 }
 
 /**
  * 检查是否启用了安全控制台（同步版本，使用缓存）
  */
 export function isSecureConsoleEnabled(): boolean {
-  // 如果有缓存且未过期，直接返回
+  // 如果有内存缓存且未过期，直接返回
   if (_secureConsoleEnabled !== null) {
     const now = Date.now()
     if (now - _lastFetchTime < CACHE_DURATION) {
@@ -67,6 +105,7 @@ export function isSecureConsoleEnabled(): boolean {
 
     if (cached !== null && cacheTime) {
       const cacheAge = Date.now() - parseInt(cacheTime)
+      // 使用较短的缓存时间以便更快同步
       if (cacheAge < CACHE_DURATION) {
         _secureConsoleEnabled = cached === 'true'
         _lastFetchTime = parseInt(cacheTime)
@@ -75,10 +114,7 @@ export function isSecureConsoleEnabled(): boolean {
     }
 
     // 缓存过期，异步刷新（不阻塞）
-    fetchSecureConsoleConfig().then(enabled => {
-      _secureConsoleEnabled = enabled
-      _lastFetchTime = Date.now()
-    })
+    fetchSecureConsoleConfig()
 
     // 返回当前缓存值或默认值
     return cached === 'true'
@@ -88,30 +124,35 @@ export function isSecureConsoleEnabled(): boolean {
 }
 
 /**
- * 设置安全控制台开关（同时保存到后端）
+ * 设置安全控制台开关（同时保存到后端，仅管理员可用）
  */
 export async function setSecureConsoleEnabled(enabled: boolean): Promise<void> {
   try {
-    // 立即更新本地缓存
-    localStorage.setItem(CONFIG_KEY, String(enabled))
-    localStorage.setItem(CONFIG_CACHE_KEY, String(Date.now()))
-    _secureConsoleEnabled = enabled
-    _lastFetchTime = Date.now()
-
     // 同步到后端
     const token = localStorage.getItem('auth_token')
     if (token) {
-      await fetch('/api/v1/system/security-settings', {
+      const response = await fetch('/api/v1/system/security-settings', {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ secureConsoleEnabled: enabled })
       })
+
+      if (!response.ok) {
+        throw new Error('保存失败')
+      }
     }
-  } catch {
-    // 静默失败，本地已保存
+
+    // 更新本地缓存
+    localStorage.setItem(CONFIG_KEY, String(enabled))
+    localStorage.setItem(CONFIG_CACHE_KEY, String(Date.now()))
+    _secureConsoleEnabled = enabled
+    _lastFetchTime = Date.now()
+  } catch (error) {
+    console.error('保存控制台加密配置失败:', error)
+    throw error
   }
 }
 
@@ -133,15 +174,11 @@ function xorEncrypt(text: string, key: string): string {
 
 /**
  * 完全加密日志内容
- * 将所有业务逻辑、数据量、流程信息都加密，防止逆向分析
  */
 function encryptLogContent(content: string): string {
   try {
-    // 1. 先进行XOR混淆
     const xored = xorEncrypt(content, SESSION_KEY)
-    // 2. 再进行Base64编码
-    const encoded = btoa(unescape(encodeURIComponent(xored)))
-    // 3. 生成校验码（防止篡改）
+    const encoded = btoa(encodeURIComponent(xored).replace(/%([0-9A-F]{2})/g, (_, p1) => String.fromCharCode(parseInt(p1, 16))))
     const checksum = content.length.toString(16).padStart(4, '0')
     return `${checksum}:${encoded}`
   } catch {
@@ -158,40 +195,37 @@ function generateLogId(): string {
 
 /**
  * 处理日志参数 - 完全加密模式
- * 所有内容都会被加密，包括：
- * - 业务逻辑描述
- * - 数据数量
- * - API调用信息
- * - 流程状态
  */
 function processLogArgs(args: unknown[]): string {
   if (!isSecureConsoleEnabled()) {
-    // 未启用时返回原始参数的字符串形式
-    return args.map(arg => {
+    return args
+      .map(arg => {
+        if (typeof arg === 'string') return arg
+        if (typeof arg === 'object') {
+          try {
+            return JSON.stringify(arg)
+          } catch {
+            return String(arg)
+          }
+        }
+        return String(arg)
+      })
+      .join(' ')
+  }
+
+  const combined = args
+    .map(arg => {
       if (typeof arg === 'string') return arg
-      if (typeof arg === 'object') {
+      if (typeof arg === 'object' && arg !== null) {
         try {
           return JSON.stringify(arg)
         } catch {
-          return String(arg)
+          return '[Object]'
         }
       }
       return String(arg)
-    }).join(' ')
-  }
-
-  // 启用加密时，将所有参数合并后加密
-  const combined = args.map(arg => {
-    if (typeof arg === 'string') return arg
-    if (typeof arg === 'object' && arg !== null) {
-      try {
-        return JSON.stringify(arg)
-      } catch {
-        return '[Object]'
-      }
-    }
-    return String(arg)
-  }).join(' ')
+    })
+    .join(' ')
 
   return encryptLogContent(combined)
 }
@@ -200,9 +234,6 @@ function processLogArgs(args: unknown[]): string {
  * 安全日志对象
  */
 export const secureLogger = {
-  /**
-   * 普通日志
-   */
   log(...args: unknown[]): void {
     if (isSecureConsoleEnabled()) {
       const logId = generateLogId()
@@ -212,9 +243,6 @@ export const secureLogger = {
     }
   },
 
-  /**
-   * 信息日志
-   */
   info(...args: unknown[]): void {
     if (isSecureConsoleEnabled()) {
       const logId = generateLogId()
@@ -224,9 +252,6 @@ export const secureLogger = {
     }
   },
 
-  /**
-   * 警告日志
-   */
   warn(...args: unknown[]): void {
     if (isSecureConsoleEnabled()) {
       const logId = generateLogId()
@@ -236,9 +261,6 @@ export const secureLogger = {
     }
   },
 
-  /**
-   * 错误日志
-   */
   error(...args: unknown[]): void {
     if (isSecureConsoleEnabled()) {
       const logId = generateLogId()
@@ -248,9 +270,6 @@ export const secureLogger = {
     }
   },
 
-  /**
-   * 调试日志
-   */
   debug(...args: unknown[]): void {
     if (isSecureConsoleEnabled()) {
       const logId = generateLogId()
@@ -260,9 +279,6 @@ export const secureLogger = {
     }
   },
 
-  /**
-   * 分组日志
-   */
   group(label: string): void {
     if (isSecureConsoleEnabled()) {
       const logId = generateLogId()
@@ -276,12 +292,8 @@ export const secureLogger = {
     console.groupEnd()
   },
 
-  /**
-   * 表格日志 - 加密模式下完全禁用
-   */
   table(data: unknown): void {
     if (isSecureConsoleEnabled()) {
-      // 加密模式下不显示表格数据，防止数据泄露
       const logId = generateLogId()
       console.log(`[${logId}] [TABLE_DATA]`)
     } else {
@@ -302,11 +314,8 @@ let _originalConsole: {
 
 /**
  * 全局替换console
- * 调用此函数后，所有console输出都会被加密处理
- * 加密后的输出格式：[LOG_ID] encrypted_content
  */
 export function enableGlobalSecureConsole(): void {
-  // 避免重复替换
   if (_originalConsole) return
 
   _originalConsole = {
@@ -372,18 +381,7 @@ export function enableGlobalSecureConsole(): void {
     }
   }
 
-  // 输出启用提示（使用原始console避免递归）
   _originalConsole.log('[SecureLogger] 全局安全控制台已启用，所有日志将被加密')
-}
-
-/**
- * 刷新配置（从后端重新获取）
- */
-export async function refreshSecureConsoleConfig(): Promise<boolean> {
-  const enabled = await fetchSecureConsoleConfig()
-  _secureConsoleEnabled = enabled
-  _lastFetchTime = Date.now()
-  return enabled
 }
 
 export default secureLogger
