@@ -2142,6 +2142,12 @@ watch([filterStatus, filterDateRange], () => {
   color: #374151;
 }
 
+/* 弹窗遮罩层 - 使用浅色半透明背景 */
+:deep(.el-overlay) {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(4px);
+}
+
 :deep(.el-dialog) {
   border-radius: 12px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
