@@ -42,3 +42,75 @@ export const clearSystemLogs = (): Promise<{
     method: 'delete'
   })
 }
+
+/**
+ * 日志清理配置接口
+ */
+export interface LogCleanupConfig {
+  autoCleanup: boolean
+  retentionDays: number
+  maxFileSizeMB: number
+  cleanupTime: string
+}
+
+/**
+ * 日志统计接口
+ */
+export interface LogStats {
+  fileCount: number
+  totalSize: string
+  oldestLog: string
+}
+
+/**
+ * 获取日志清理配置
+ */
+export const getLogConfig = (): Promise<{
+  success: boolean
+  data: LogCleanupConfig
+}> => {
+  return request({
+    url: '/logs/config',
+    method: 'get'
+  })
+}
+
+/**
+ * 保存日志清理配置
+ */
+export const saveLogConfig = (config: LogCleanupConfig): Promise<{
+  success: boolean
+  message: string
+}> => {
+  return request({
+    url: '/logs/config',
+    method: 'post',
+    data: config
+  })
+}
+
+/**
+ * 获取日志统计
+ */
+export const getLogStats = (): Promise<{
+  success: boolean
+  data: LogStats
+}> => {
+  return request({
+    url: '/logs/stats',
+    method: 'get'
+  })
+}
+
+/**
+ * 清理过期日志
+ */
+export const cleanupOldLogs = (retentionDays: number): Promise<{
+  success: boolean
+  message: string
+}> => {
+  return request({
+    url: `/logs/cleanup/${retentionDays}`,
+    method: 'delete'
+  })
+}
