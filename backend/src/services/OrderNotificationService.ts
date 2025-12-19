@@ -1167,6 +1167,48 @@ class OrderNotificationService {
     };
     return typeMap[type || ''] || '售后';
   }
+
+  // ==================== 业绩分享通知 ====================
+
+  /**
+   * 业绩分享通知 - 通知被分享的成员
+   */
+  async notifyPerformanceShare(shareInfo: {
+    shareId: string;
+    shareNumber: string;
+    orderNumber: string;
+    orderAmount: number;
+    memberId: string;
+    memberName: string;
+    percentage: number;
+    shareAmount: number;
+    createdBy?: string;
+    createdByName?: string;
+  }): Promise<void> {
+    console.log(`[OrderNotification] 🔔 notifyPerformanceShare 被调用: shareNumber=${shareInfo.shareNumber}, memberId=${shareInfo.memberId}`);
+
+    if (!shareInfo.memberId) {
+      console.warn(`[OrderNotification] ⚠️ 业绩分享 ${shareInfo.shareNumber} 没有 memberId，跳过通知`);
+      return;
+    }
+
+    const content = `您收到了来自 ${shareInfo.createdByName || '同事'} 的业绩分享！订单 #${shareInfo.orderNumber}，分享比例 ${shareInfo.percentage}%，分享金额 ¥${shareInfo.shareAmount.toFixed(2)}`;
+
+    await this.sendMessage(
+      'performance_share',
+      '💰 业绩分享通知',
+      content,
+      shareInfo.memberId,
+      {
+        priority: 'normal',
+        category: '业绩通知',
+        relatedId: shareInfo.shareId,
+        relatedType: 'performance_share',
+        actionUrl: '/performance/share',
+        createdBy: shareInfo.createdBy
+      }
+    );
+  }
 }
 
 // 导出单例
