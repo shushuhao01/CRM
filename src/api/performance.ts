@@ -59,160 +59,213 @@ export interface PerformanceAnalysis {
 }
 
 /**
- * 获取个人业绩数据
+ * 获取个人业绩统计数据（使用后端API）
+ */
+export const getPersonalStats = async (params?: {
+  userId?: string
+  startDate?: string
+  endDate?: string
+}): Promise<{
+  success: boolean
+  data: {
+    userId: string
+    orderCount: number
+    orderAmount: number
+    signCount: number
+    signAmount: number
+    signRate: number
+    shipCount: number
+    shipAmount: number
+    shipRate: number
+    rejectCount: number
+    rejectAmount: number
+    rejectRate: number
+    returnCount: number
+    returnAmount: number
+    returnRate: number
+    newCustomers: number
+  }
+}> => {
+  console.log('[Performance API] 获取个人业绩统计')
+  try {
+    const response = await request.get('/performance/personal', { params })
+    return response
+  } catch (error) {
+    console.error('[Performance API] 获取个人业绩统计失败:', error)
+    return {
+      success: false,
+      data: {
+        userId: params?.userId || '',
+        orderCount: 0,
+        orderAmount: 0,
+        signCount: 0,
+        signAmount: 0,
+        signRate: 0,
+        shipCount: 0,
+        shipAmount: 0,
+        shipRate: 0,
+        rejectCount: 0,
+        rejectAmount: 0,
+        rejectRate: 0,
+        returnCount: 0,
+        returnAmount: 0,
+        returnRate: 0,
+        newCustomers: 0
+      }
+    }
+  }
+}
+
+/**
+ * 获取团队业绩统计数据（使用后端API）
+ */
+export const getTeamStats = async (params?: {
+  departmentId?: string
+  startDate?: string
+  endDate?: string
+  sortBy?: string
+  page?: number
+  limit?: number
+}): Promise<{
+  success: boolean
+  data: {
+    members: Array<{
+      id: string
+      name: string
+      username: string
+      department: string
+      orderCount: number
+      orderAmount: number
+      signCount: number
+      signAmount: number
+      signRate: number
+      shipCount: number
+      shipAmount: number
+      shipRate: number
+      transitCount: number
+      transitAmount: number
+      transitRate: number
+      rejectCount: number
+      rejectAmount: number
+      rejectRate: number
+      returnCount: number
+      returnAmount: number
+      returnRate: number
+      isCurrentUser: boolean
+    }>
+    total: number
+    page: number
+    limit: number
+    summary: {
+      totalPerformance: number
+      totalOrders: number
+      avgPerformance: number
+      signOrders: number
+      signRate: number
+      signPerformance: number
+      memberCount: number
+    }
+  }
+}> => {
+  console.log('[Performance API] 获取团队业绩统计')
+  try {
+    const response = await request.get('/performance/team', { params })
+    return response
+  } catch (error) {
+    console.error('[Performance API] 获取团队业绩统计失败:', error)
+    return {
+      success: false,
+      data: {
+        members: [],
+        total: 0,
+        page: 1,
+        limit: 50,
+        summary: {
+          totalPerformance: 0,
+          totalOrders: 0,
+          avgPerformance: 0,
+          signOrders: 0,
+          signRate: 0,
+          signPerformance: 0,
+          memberCount: 0
+        }
+      }
+    }
+  }
+}
+
+/**
+ * 获取个人业绩数据（兼容旧接口）
  */
 export const getPersonalPerformance = async (params: {
   userId: string
   startDate?: string
   endDate?: string
 }): Promise<PersonalPerformance> => {
-  // 生产环境：强制使用真实API，不降级
-  if (isProduction()) {
-    console.log('[Performance API] 生产环境：使用后端API获取个人业绩')
-    const response = await request.get('/performance/personal', { params })
-    return response.data || response
-  }
-
-  // 开发环境：从localStorage获取数据
-  console.log('[Performance API] 开发环境：使用localStorage获取个人业绩')
+  // 🔥 优先使用后端API
+  console.log('[Performance API] 使用后端API获取个人业绩')
   try {
-    const ordersData = localStorage.getItem('crm_store_order')
-    const customersData = localStorage.getItem('customer-store')
-
-    if (!ordersData || !customersData) {
-      return getEmptyPersonalPerformance(params.userId)
-    }
-
-    const orders = JSON.parse(ordersData).orders || []
-    const customers = JSON.parse(customersData).customers || []
-
-    // 只统计已审核通过的订单
-    const approvedOrders = orders.filter((order: any) =>
-      order.auditStatus === 'approved' && order.salesPersonId === params.userId
-    )
-
-    const now = new Date()
-    const today = now.toISOString().split('T')[0]
-    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
-    const yearStart = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0]
-
-    // 计算各时间段数据
-    const todayOrders = approvedOrders.filter((o: any) => o.createTime?.startsWith(today))
-    const weekOrders = approvedOrders.filter((o: any) => o.createTime >= weekStart)
-    const monthOrders = approvedOrders.filter((o: any) => o.createTime >= monthStart)
-    const yearOrders = approvedOrders.filter((o: any) => o.createTime >= yearStart)
-
-    const todayRevenue = todayOrders.reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0)
-    const weekRevenue = weekOrders.reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0)
-    const monthRevenue = monthOrders.reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0)
-    const yearRevenue = yearOrders.reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0)
-
-    const userCustomers = customers.filter((c: any) => c.salesPersonId === params.userId)
-    const newCustomers = userCustomers.filter((c: any) => c.createTime >= monthStart)
-
-    return {
-      userId: params.userId,
-      userName: '当前用户',
-      todayOrders: todayOrders.length,
-      todayRevenue,
-      weekOrders: weekOrders.length,
-      weekRevenue,
-      monthOrders: monthOrders.length,
-      monthRevenue,
-      yearOrders: yearOrders.length,
-      yearRevenue,
-      avgOrderAmount: approvedOrders.length > 0 ? yearRevenue / approvedOrders.length : 0,
-      totalCustomers: userCustomers.length,
-      newCustomers: newCustomers.length
+    const response = await request.get('/performance/personal', { params })
+    if (response.success && response.data) {
+      const data = response.data
+      return {
+        userId: data.userId,
+        userName: '当前用户',
+        todayOrders: data.orderCount || 0,
+        todayRevenue: data.orderAmount || 0,
+        weekOrders: data.orderCount || 0,
+        weekRevenue: data.orderAmount || 0,
+        monthOrders: data.orderCount || 0,
+        monthRevenue: data.orderAmount || 0,
+        yearOrders: data.orderCount || 0,
+        yearRevenue: data.orderAmount || 0,
+        avgOrderAmount: data.orderCount > 0 ? data.orderAmount / data.orderCount : 0,
+        totalCustomers: data.newCustomers || 0,
+        newCustomers: data.newCustomers || 0
+      }
     }
   } catch (error) {
-    console.error('[Performance API] 获取个人业绩失败:', error)
-    return getEmptyPersonalPerformance(params.userId)
+    console.error('[Performance API] 后端API调用失败:', error)
   }
+
+  return getEmptyPersonalPerformance(params.userId)
 }
 
 /**
- * 获取团队业绩数据
+ * 获取团队业绩数据（兼容旧接口）
  */
 export const getTeamPerformance = async (params: {
   departmentId?: string
   startDate?: string
   endDate?: string
 }): Promise<TeamPerformance> => {
-  // 生产环境：强制使用真实API，不降级
-  if (isProduction()) {
-    console.log('[Performance API] 生产环境：使用后端API获取团队业绩')
-    const response = await request.get('/performance/team', { params })
-    return response.data || response
-  }
-
-  // 开发环境：从localStorage获取数据
-  console.log('[Performance API] 开发环境：使用localStorage获取团队业绩')
+  // 🔥 优先使用后端API
+  console.log('[Performance API] 使用后端API获取团队业绩')
   try {
-    const ordersData = localStorage.getItem('crm_store_order')
-    const usersData = localStorage.getItem('user-store')
-    const customersData = localStorage.getItem('customer-store')
-
-    if (!ordersData || !usersData || !customersData) {
-      return getEmptyTeamPerformance()
-    }
-
-    const orders = JSON.parse(ordersData).orders || []
-    const users = JSON.parse(usersData).users || []
-    const customers = JSON.parse(customersData).customers || []
-
-    // 只统计已审核通过的订单
-    const approvedOrders = orders.filter((order: any) => order.auditStatus === 'approved')
-
-    // 按销售人员统计
-    const memberStats: Record<string, any> = {}
-    approvedOrders.forEach((order: any) => {
-      const salesPersonId = order.salesPersonId
-      if (!salesPersonId) return
-
-      if (!memberStats[salesPersonId]) {
-        const user = users.find((u: any) => u.id === salesPersonId)
-        memberStats[salesPersonId] = {
-          userId: salesPersonId,
-          userName: user?.name || '未知用户',
-          orders: 0,
-          revenue: 0,
+    const response = await request.get('/performance/team', { params })
+    if (response.success && response.data) {
+      const data = response.data
+      return {
+        departmentId: params.departmentId || 'all',
+        departmentName: '全部部门',
+        members: data.members?.map((m: any) => ({
+          userId: m.id,
+          userName: m.name,
+          orders: m.orderCount,
+          revenue: m.orderAmount,
           customers: 0,
-          avgOrderAmount: 0
-        }
+          avgOrderAmount: m.orderCount > 0 ? m.orderAmount / m.orderCount : 0
+        })) || [],
+        totalOrders: data.summary?.totalOrders || 0,
+        totalRevenue: data.summary?.totalPerformance || 0,
+        totalCustomers: 0
       }
-
-      memberStats[salesPersonId].orders += 1
-      memberStats[salesPersonId].revenue += order.totalAmount || 0
-    })
-
-    // 统计客户数
-    Object.keys(memberStats).forEach(userId => {
-      const userCustomers = customers.filter((c: any) => c.salesPersonId === userId)
-      memberStats[userId].customers = userCustomers.length
-      memberStats[userId].avgOrderAmount = memberStats[userId].orders > 0
-        ? memberStats[userId].revenue / memberStats[userId].orders
-        : 0
-    })
-
-    const members = Object.values(memberStats)
-    const totalOrders = members.reduce((sum: number, m: any) => sum + m.orders, 0)
-    const totalRevenue = members.reduce((sum: number, m: any) => sum + m.revenue, 0)
-    const totalCustomers = members.reduce((sum: number, m: any) => sum + m.customers, 0)
-
-    return {
-      departmentId: params.departmentId || 'all',
-      departmentName: '全部部门',
-      members,
-      totalOrders,
-      totalRevenue,
-      totalCustomers
     }
   } catch (error) {
-    console.error('[Performance API] 获取团队业绩失败:', error)
-    return getEmptyTeamPerformance()
+    console.error('[Performance API] 后端API调用失败:', error)
   }
+
+  return getEmptyTeamPerformance()
 }
 
 /**

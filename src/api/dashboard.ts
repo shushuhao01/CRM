@@ -72,112 +72,50 @@ const useBackendAPI = () => {
   return isProduction()
 }
 
-// 获取核心指标
+// 获取核心指标（使用后端API）
 export const getMetrics = async (params?: {
   userRole?: string,
   userId?: string,
   departmentId?: string
-}): Promise<DashboardMetrics> => {
-  // 如果在生产环境且后端API可用，使用后端API
-  if (useBackendAPI()) {
-    try {
-      const response = await request.get('/api/dashboard/metrics', { params })
-      return response.data || response
-    } catch (error) {
-      console.error('后端API调用失败，降级到localStorage:', error)
-      // 降级到localStorage
-    }
-  }
-
-  // 开发环境或后端API不可用时，从localStorage获取数据
+}): Promise<DashboardMetrics & {
+  pendingAudit?: number
+  pendingShipment?: number
+  monthlyRevenue?: number
+  monthlyDeliveredCount?: number
+  monthlyDeliveredAmount?: number
+}> => {
+  // 🔥 优先使用后端API
+  console.log('[Dashboard API] 使用后端API获取核心指标')
   try {
-    // 从localStorage获取真实数据
-    const ordersData = localStorage.getItem('order-store')
-    const customersData = localStorage.getItem('customer-store')
-
-    if (!ordersData || !customersData) {
+    const response = await request.get('/dashboard/metrics', { params })
+    if (response.success && response.data) {
+      const data = response.data
+      console.log('[Dashboard API] 后端返回数据:', data)
       return {
-        todayOrders: 0,
-        newCustomers: 0,
-        todayRevenue: 0,
-        monthlyOrders: 0
+        todayOrders: data.todayOrders || 0,
+        newCustomers: data.newCustomers || 0,
+        todayRevenue: data.todayRevenue || 0,
+        monthlyOrders: data.monthlyOrders || 0,
+        monthlyRevenue: data.monthlyRevenue || 0,
+        pendingService: data.pendingService || 0,
+        pendingAudit: data.pendingAudit || 0,
+        pendingShipment: data.pendingShipment || 0,
+        monthlyDeliveredCount: data.monthlyDeliveredCount || 0,
+        monthlyDeliveredAmount: data.monthlyDeliveredAmount || 0
       }
-    }
-
-    const orders = JSON.parse(ordersData).orders || []
-    const customers = JSON.parse(customersData).customers || []
-
-    const now = new Date()
-    const today = now.toISOString().split('T')[0]
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
-
-    // 🔥 统一的业绩计算规则
-    const isValidForOrderPerformance = (order: any): boolean => {
-      const excludedStatuses = [
-        'pending_cancel', 'cancelled', 'audit_rejected',
-        'logistics_returned', 'logistics_cancelled', 'refunded'
-      ]
-      // 待流转状态只有正常发货单才计入业绩
-      if (order.status === 'pending_transfer') {
-        return order.markType === 'normal'
-      }
-      return !excludedStatuses.includes(order.status)
-    }
-
-    // 根据权限过滤订单
-    let allOrders = orders
-    if (params?.userId && params?.userRole !== 'super_admin') {
-      allOrders = allOrders.filter((order: any) => order.salesPersonId === params.userId)
-    }
-
-    // 🔥 使用新的业绩计算规则过滤有效订单
-    const validOrders = allOrders.filter(isValidForOrderPerformance)
-
-    // 计算今日订单
-    const todayValidOrders = validOrders.filter((order: any) =>
-      order.createTime?.startsWith(today)
-    )
-    const todayOrders = todayValidOrders.length
-
-    // 计算今日业绩
-    const todayRevenue = todayValidOrders.reduce((sum: number, order: any) =>
-      sum + (order.totalAmount || 0), 0)
-
-    // 计算本月订单
-    const monthlyValidOrders = validOrders.filter((order: any) =>
-      order.createTime >= monthStart
-    )
-    const monthlyOrders = monthlyValidOrders.length
-
-    // 计算本月业绩
-    const monthlyRevenue = monthlyValidOrders.reduce((sum: number, order: any) =>
-      sum + (order.totalAmount || 0), 0)
-
-    // 计算新增客户（今日）
-    const newCustomers = customers.filter((customer: any) =>
-      customer.createTime?.startsWith(today)
-    ).length
-
-    console.log('[数据看板API] 今日订单:', todayOrders, '今日业绩:', todayRevenue)
-    console.log('[数据看板API] 本月订单:', monthlyOrders, '本月业绩:', monthlyRevenue)
-    console.log('[数据看板API] 新增客户:', newCustomers)
-
-    return {
-      todayOrders,
-      newCustomers,
-      todayRevenue,
-      monthlyOrders,
-      monthlyRevenue,
-      pendingService: 0
     }
   } catch (error) {
-    console.error('获取核心指标失败:', error)
-    return {
-      todayOrders: 0,
-      newCustomers: 0,
-      todayRevenue: 0,
-      monthlyOrders: 0
-    }
+    console.error('[Dashboard API] 后端API调用失败:', error)
+  }
+
+  // 返回空数据
+  return {
+    todayOrders: 0,
+    newCustomers: 0,
+    todayRevenue: 0,
+    monthlyOrders: 0,
+    monthlyRevenue: 0,
+    pendingService: 0
   }
 }
 

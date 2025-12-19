@@ -955,28 +955,85 @@ const loadDashboardData = async () => {
   }
 }
 
-// 加载真实的核心指标数据
+// 🔥 加载真实的核心指标数据 - 使用后端API
 const loadRealMetrics = async () => {
+  try {
+    // 调用后端API获取统计数据
+    const metricsData = await dashboardApi.getMetrics()
+    console.log('[Dashboard] 后端返回指标数据:', metricsData)
+
+    // 更新指标
+    const labels = getMetricLabels()
+
+    metrics.value[0].value = (metricsData.todayOrders || 0).toString()
+    metrics.value[0].label = labels.orders || '今日订单'
+
+    metrics.value[1].value = (metricsData.newCustomers || 0).toString()
+    metrics.value[1].label = labels.customers || '新增客户'
+
+    metrics.value[2].value = `¥${(metricsData.todayRevenue || 0).toLocaleString()}`
+    metrics.value[2].label = labels.revenue || '今日业绩'
+
+    metrics.value[3].value = (metricsData.monthlyOrders || 0).toString()
+    metrics.value[3].label = labels.monthlyOrders || '本月单数'
+
+    if (metrics.value[4]) {
+      metrics.value[4].value = `¥${(metricsData.monthlyRevenue || 0).toLocaleString()}`
+      metrics.value[4].label = labels.monthlyRevenue || '本月业绩'
+    }
+
+    if (metrics.value[5]) {
+      metrics.value[5].value = (metricsData.pendingService || 0).toString()
+      metrics.value[5].label = labels.service || '待处理售后'
+    }
+
+    // 🔥 待审核订单
+    if (metrics.value[6]) {
+      metrics.value[6].value = (metricsData.pendingAudit || 0).toString()
+      metrics.value[6].label = labels.audit || '待审核订单'
+    }
+
+    // 🔥 待发货订单
+    if (metrics.value[7]) {
+      metrics.value[7].value = (metricsData.pendingShipment || 0).toString()
+      metrics.value[7].label = labels.logistics || '待发货订单'
+    }
+
+    // 🔥 本月签收单数
+    if (metrics.value[8]) {
+      metrics.value[8].value = (metricsData.monthlyDeliveredCount || 0).toString()
+      metrics.value[8].label = labels.monthlySignCount || '本月签收单数'
+    }
+
+    // 🔥 本月签收业绩
+    if (metrics.value[9]) {
+      metrics.value[9].value = `¥${(metricsData.monthlyDeliveredAmount || 0).toLocaleString()}`
+      metrics.value[9].label = labels.monthlySignRevenue || '本月签收业绩'
+    }
+
+  } catch (error) {
+    console.error('[Dashboard] 加载指标数据失败:', error)
+    // 如果后端API失败，使用前端计算作为降级方案
+    await loadRealMetricsFallback()
+  }
+}
+
+// 🔥 降级方案：前端计算指标数据
+const loadRealMetricsFallback = async () => {
   const currentUserId = userStore.currentUser?.id
   const currentDeptId = userStore.currentUser?.departmentId || userStore.currentUser?.department
 
-  // 🔥 获取所有订单（不只是approved的），用于统计待审核和待发货
   let allOrders = orderStore.orders
-  // 🔥 使用新的业绩计算规则
   let approvedOrders = orderStore.orders.filter(order => {
     const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
-    // 待流转状态只有正常发货单才计入业绩
     if (order.status === 'pending_transfer') return order.markType === 'normal'
     return !excludedStatuses.includes(order.status)
   })
 
-  // 根据用户角色筛选订单
   if (!userStore.isAdmin && !userStore.isManager) {
-    // 普通销售员只看自己的
     allOrders = allOrders.filter(order => order.salesPersonId === currentUserId || order.createdBy === currentUserId)
     approvedOrders = approvedOrders.filter(order => order.salesPersonId === currentUserId || order.createdBy === currentUserId)
   } else if (userStore.isManager && !userStore.isAdmin) {
-    // 部门经理看本部门的
     const departmentUsers = userStore.users?.filter(u =>
       String(u.departmentId) === String(currentDeptId) ||
       String(u.department) === String(currentDeptId)
@@ -990,74 +1047,20 @@ const loadRealMetrics = async () => {
   const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
 
-  // 今日订单（已审核通过的）
   const todayOrders = approvedOrders.filter(order => {
     const orderTime = new Date(order.createTime).getTime()
     return orderTime >= todayStart && orderTime <= todayEnd
   })
 
-  // 本月订单（已审核通过的）
   const monthOrders = approvedOrders.filter(order => {
     const orderTime = new Date(order.createTime).getTime()
     return orderTime >= monthStart
   })
 
-  // 🔥 待审核订单
-  const pendingAuditOrders = allOrders.filter(order => order.status === 'pending_audit')
-
-  // 🔥 待发货订单
-  const pendingShipmentOrders = allOrders.filter(order => order.status === 'pending_shipment')
-
-  // 🔥 新增客户统计 - 从客户store获取
-  let newCustomersCount = 0
-  try {
-    const customerStore = useCustomerStore()
-    // 🔥 确保客户数据已加载
-    if (customerStore.customers.length === 0) {
-      console.log('[Dashboard] 客户数据为空，尝试加载...')
-      await customerStore.loadCustomers()
-    }
-    let customers = customerStore.customers || []
-    console.log('[Dashboard] 客户总数:', customers.length)
-
-    // 根据角色筛选
-    if (!userStore.isAdmin && !userStore.isManager) {
-      customers = customers.filter(c => c.salesPersonId === currentUserId || c.createdBy === currentUserId)
-    } else if (userStore.isManager && !userStore.isAdmin) {
-      const departmentUsers = userStore.users?.filter(u =>
-        String(u.departmentId) === String(currentDeptId)
-      ).map(u => u.id) || []
-      customers = customers.filter(c => departmentUsers.includes(c.salesPersonId) || departmentUsers.includes(c.createdBy))
-    }
-
-    // 统计今日新增 - 使用更宽松的时间比较
-    newCustomersCount = customers.filter(c => {
-      if (!c.createTime) return false
-      const createTime = new Date(c.createTime).getTime()
-      // 检查时间是否有效
-      if (isNaN(createTime)) {
-        console.warn('[Dashboard] 无效的客户创建时间:', c.createTime, c.name)
-        return false
-      }
-      const isToday = createTime >= todayStart && createTime <= todayEnd
-      if (isToday) {
-        console.log('[Dashboard] 今日新增客户:', c.name, c.createTime)
-      }
-      return isToday
-    }).length
-    console.log('[Dashboard] 今日新增客户数:', newCustomersCount)
-  } catch (e) {
-    console.warn('获取客户数据失败:', e)
-  }
-
-  // 更新指标
   const labels = getMetricLabels()
 
   metrics.value[0].value = todayOrders.length.toString()
   metrics.value[0].label = labels.orders || '今日订单'
-
-  metrics.value[1].value = newCustomersCount.toString()
-  metrics.value[1].label = labels.customers || '新增客户'
 
   metrics.value[2].value = `¥${todayOrders.reduce((sum, order) => sum + order.totalAmount, 0).toLocaleString()}`
   metrics.value[2].label = labels.revenue || '今日业绩'
@@ -1070,59 +1073,28 @@ const loadRealMetrics = async () => {
     metrics.value[4].label = labels.monthlyRevenue || '本月业绩'
   }
 
-  if (metrics.value[5]) {
-    const pendingService = allOrders.filter(order => order.status === 'after_sales_created').length
-    metrics.value[5].value = pendingService.toString()
-    metrics.value[5].label = labels.service || '待处理售后'
-  }
-
-  // 🔥 待审核订单
-  if (metrics.value[6]) {
-    metrics.value[6].value = pendingAuditOrders.length.toString()
-    metrics.value[6].label = labels.audit || '待审核订单'
-  }
-
-  // 🔥 待发货订单
-  if (metrics.value[7]) {
-    metrics.value[7].value = pendingShipmentOrders.length.toString()
-    metrics.value[7].label = labels.logistics || '待发货订单'
-  }
-
-  // 🔥 本月签收单数
+  // 本月签收
   if (metrics.value[8]) {
     const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+    const monthStartDate = new Date(now.getFullYear(), now.getMonth(), 1)
+    const monthEndDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
 
-    // 使用logisticsStatus或status字段判断已签收状态
     const monthSignedOrders = allOrders.filter(order => {
       const isDelivered = order.logisticsStatus === 'delivered' || order.status === 'delivered'
       if (!isDelivered) return false
       const signTime = new Date(order.logisticsUpdateTime || order.updateTime || order.createTime)
-      return signTime >= monthStart && signTime <= monthEnd
+      return signTime >= monthStartDate && signTime <= monthEndDate
     })
 
     metrics.value[8].value = monthSignedOrders.length.toString()
     metrics.value[8].label = labels.monthlySignCount || '本月签收单数'
-  }
 
-  // 🔥 本月签收业绩
-  if (metrics.value[9]) {
-    const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
-
-    // 使用logisticsStatus或status字段判断已签收状态
-    const monthSignedOrders = allOrders.filter(order => {
-      const isDelivered = order.logisticsStatus === 'delivered' || order.status === 'delivered'
-      if (!isDelivered) return false
-      const signTime = new Date(order.logisticsUpdateTime || order.updateTime || order.createTime)
-      return signTime >= monthStart && signTime <= monthEnd
-    })
-
-    const monthSignedRevenue = monthSignedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
-    metrics.value[9].value = `¥${monthSignedRevenue.toLocaleString()}`
-    metrics.value[9].label = labels.monthlySignRevenue || '本月签收业绩'
+    // 🔥 本月签收业绩
+    if (metrics.value[9]) {
+      const monthSignedRevenue = monthSignedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+      metrics.value[9].value = `¥${monthSignedRevenue.toLocaleString()}`
+      metrics.value[9].label = labels.monthlySignRevenue || '本月签收业绩'
+    }
   }
 }
 

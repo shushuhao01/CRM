@@ -310,43 +310,133 @@ router.get('/stats', async (req: Request, res: Response) => {
 
 
 /**
+ * 🔥 统一的业绩计算规则 - 判断订单是否计入下单业绩
+ */
+const isValidForOrderPerformance = (status: string, markType?: string): boolean => {
+  const excludedStatuses = [
+    'pending_cancel', 'cancelled', 'audit_rejected',
+    'logistics_returned', 'logistics_cancelled', 'refunded'
+  ];
+  if (status === 'pending_transfer') {
+    return markType === 'normal';
+  }
+  return !excludedStatuses.includes(status);
+};
+
+/**
  * @route GET /api/v1/performance/personal
- * @desc 获取个人业绩数据
+ * @desc 获取个人业绩数据（支持日期筛选）
  */
 router.get('/personal', async (req: Request, res: Response) => {
   try {
     const currentUser = (req as any).user;
     const userId = (req.query.userId as string) || currentUser?.userId;
+    const startDate = req.query.startDate as string;
+    const endDate = req.query.endDate as string;
 
-    // 从订单表统计个人业绩
-    const [orderStats] = await AppDataSource.query(
-      `SELECT
-         COUNT(*) as totalOrders,
-         SUM(total_amount) as totalAmount,
-         SUM(CASE WHEN status IN ('completed', 'delivered') THEN 1 ELSE 0 END) as completedOrders,
-         SUM(CASE WHEN status IN ('completed', 'delivered') THEN total_amount ELSE 0 END) as completedAmount,
-         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pendingOrders,
-         SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelledOrders
-       FROM orders WHERE created_by = ?`,
-      [userId]
+    // 构建日期条件
+    let dateCondition = '';
+    const params: any[] = [userId];
+    if (startDate && endDate) {
+      dateCondition = ' AND created_at >= ? AND created_at <= ?';
+      params.push(startDate + ' 00:00:00', endDate + ' 23:59:59');
+    }
+
+    // 获取所有订单用于业绩计算
+    const orders = await AppDataSource.query(
+      `SELECT status, mark_type as markType, total_amount as totalAmount
+       FROM orders WHERE (created_by = ? OR sales_person_id = ?)${dateCondition}`,
+      [userId, ...params]
     );
 
+    // 🔥 使用统一的业绩计算规则
+    let orderCount = 0;
+    let orderAmount = 0;
+    let signCount = 0;
+    let signAmount = 0;
+    let shipCount = 0;
+    let shipAmount = 0;
+    let rejectCount = 0;
+    let rejectAmount = 0;
+    let returnCount = 0;
+    let returnAmount = 0;
+
+    orders.forEach((order: any) => {
+      const amount = Number(order.totalAmount) || 0;
+
+      // 下单业绩
+      if (isValidForOrderPerformance(order.status, order.markType)) {
+        orderCount++;
+        orderAmount += amount;
+      }
+
+      // 签收业绩
+      if (order.status === 'delivered') {
+        signCount++;
+        signAmount += amount;
+      }
+
+      // 发货业绩
+      if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(order.status)) {
+        shipCount++;
+        shipAmount += amount;
+      }
+
+      // 拒收
+      if (['rejected', 'rejected_returned'].includes(order.status)) {
+        rejectCount++;
+        rejectAmount += amount;
+      }
+
+      // 退货
+      if (order.status === 'refunded') {
+        returnCount++;
+        returnAmount += amount;
+      }
+    });
+
+    // 计算比率
+    const signRate = orderCount > 0 ? ((signCount / orderCount) * 100).toFixed(1) : '0.0';
+    const shipRate = orderCount > 0 ? ((shipCount / orderCount) * 100).toFixed(1) : '0.0';
+    const rejectRate = orderCount > 0 ? ((rejectCount / orderCount) * 100).toFixed(1) : '0.0';
+    const returnRate = orderCount > 0 ? ((returnCount / orderCount) * 100).toFixed(1) : '0.0';
+
     // 新增客户数
+    let customerDateCondition = '';
+    const customerParams: any[] = [userId];
+    if (startDate && endDate) {
+      customerDateCondition = ' AND created_at >= ? AND created_at <= ?';
+      customerParams.push(startDate + ' 00:00:00', endDate + ' 23:59:59');
+    }
     const [customerStats] = await AppDataSource.query(
-      `SELECT COUNT(*) as newCustomers FROM customers WHERE sales_person_id = ?`,
-      [userId]
+      `SELECT COUNT(*) as newCustomers FROM customers WHERE sales_person_id = ?${customerDateCondition}`,
+      customerParams
     );
 
     res.json({
       success: true,
       data: {
         userId,
-        totalOrders: orderStats?.totalOrders || 0,
-        totalAmount: orderStats?.totalAmount || 0,
-        completedOrders: orderStats?.completedOrders || 0,
-        completedAmount: orderStats?.completedAmount || 0,
-        pendingOrders: orderStats?.pendingOrders || 0,
-        cancelledOrders: orderStats?.cancelledOrders || 0,
+        // 下单业绩
+        orderCount,
+        orderAmount,
+        // 签收业绩
+        signCount,
+        signAmount,
+        signRate: parseFloat(signRate),
+        // 发货业绩
+        shipCount,
+        shipAmount,
+        shipRate: parseFloat(shipRate),
+        // 拒收
+        rejectCount,
+        rejectAmount,
+        rejectRate: parseFloat(rejectRate),
+        // 退货
+        returnCount,
+        returnAmount,
+        returnRate: parseFloat(returnRate),
+        // 客户
         newCustomers: customerStats?.newCustomers || 0
       }
     });
@@ -358,37 +448,168 @@ router.get('/personal', async (req: Request, res: Response) => {
 
 /**
  * @route GET /api/v1/performance/team
- * @desc 获取团队业绩数据
+ * @desc 获取团队业绩数据（支持日期筛选和排序）
  */
 router.get('/team', async (req: Request, res: Response) => {
   try {
     const currentUser = (req as any).user;
     const departmentId = (req.query.departmentId as string) || currentUser?.departmentId;
+    const startDate = req.query.startDate as string;
+    const endDate = req.query.endDate as string;
+    const sortBy = (req.query.sortBy as string) || 'orderAmount';
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
 
-    // 获取部门成员业绩
-    const members = await AppDataSource.query(
-      `SELECT u.id as userId, u.real_name as userName, u.department_name as department,
-              COUNT(o.id) as totalOrders,
-              COALESCE(SUM(o.total_amount), 0) as totalAmount,
-              SUM(CASE WHEN o.status IN ('completed', 'delivered') THEN 1 ELSE 0 END) as completedOrders,
-              COALESCE(SUM(CASE WHEN o.status IN ('completed', 'delivered') THEN o.total_amount ELSE 0 END), 0) as completedAmount
-       FROM users u
-       LEFT JOIN orders o ON o.created_by = u.id
-       WHERE u.department_id = ?
-       GROUP BY u.id, u.real_name, u.department_name`,
-      [departmentId]
+    // 构建日期条件
+    let dateCondition = '';
+    if (startDate && endDate) {
+      dateCondition = ` AND o.created_at >= '${startDate} 00:00:00' AND o.created_at <= '${endDate} 23:59:59'`;
+    }
+
+    // 获取部门成员列表
+    let userCondition = '';
+    if (departmentId && departmentId !== 'all') {
+      userCondition = ` WHERE u.department_id = '${departmentId}'`;
+    }
+
+    const users = await AppDataSource.query(
+      `SELECT u.id, u.real_name as realName, u.username, u.department_name as departmentName,
+              u.department_id as departmentId, u.created_at as createTime
+       FROM users u${userCondition}`
     );
 
-    const teamPerformance = {
-      totalOrders: members.reduce((sum: number, m: any) => sum + (m.totalOrders || 0), 0),
-      totalAmount: members.reduce((sum: number, m: any) => sum + parseFloat(m.totalAmount || 0), 0),
-      completedOrders: members.reduce((sum: number, m: any) => sum + (m.completedOrders || 0), 0),
-      completedAmount: members.reduce((sum: number, m: any) => sum + parseFloat(m.completedAmount || 0), 0),
-      memberCount: members.length,
-      members
-    };
+    // 获取每个成员的订单数据
+    const memberStats: any[] = [];
 
-    res.json({ success: true, data: teamPerformance });
+    for (const user of users) {
+      const orders = await AppDataSource.query(
+        `SELECT status, mark_type as markType, total_amount as totalAmount
+         FROM orders
+         WHERE (created_by = ? OR sales_person_id = ?)${dateCondition}`,
+        [user.id, user.id]
+      );
+
+      // 🔥 使用统一的业绩计算规则
+      let orderCount = 0, orderAmount = 0;
+      let signCount = 0, signAmount = 0;
+      let shipCount = 0, shipAmount = 0;
+      let transitCount = 0, transitAmount = 0;
+      let rejectCount = 0, rejectAmount = 0;
+      let returnCount = 0, returnAmount = 0;
+
+      orders.forEach((order: any) => {
+        const amount = Number(order.totalAmount) || 0;
+
+        // 下单业绩
+        if (isValidForOrderPerformance(order.status, order.markType)) {
+          orderCount++;
+          orderAmount += amount;
+        }
+
+        // 签收业绩
+        if (order.status === 'delivered') {
+          signCount++;
+          signAmount += amount;
+        }
+
+        // 发货业绩
+        if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(order.status)) {
+          shipCount++;
+          shipAmount += amount;
+        }
+
+        // 在途
+        if (order.status === 'shipped') {
+          transitCount++;
+          transitAmount += amount;
+        }
+
+        // 拒收
+        if (['rejected', 'rejected_returned'].includes(order.status)) {
+          rejectCount++;
+          rejectAmount += amount;
+        }
+
+        // 退货
+        if (order.status === 'refunded') {
+          returnCount++;
+          returnAmount += amount;
+        }
+      });
+
+      // 计算比率
+      const signRate = orderCount > 0 ? parseFloat(((signCount / orderCount) * 100).toFixed(1)) : 0;
+      const shipRate = orderCount > 0 ? parseFloat(((shipCount / orderCount) * 100).toFixed(1)) : 0;
+      const transitRate = orderCount > 0 ? parseFloat(((transitCount / orderCount) * 100).toFixed(1)) : 0;
+      const rejectRate = orderCount > 0 ? parseFloat(((rejectCount / orderCount) * 100).toFixed(1)) : 0;
+      const returnRate = orderCount > 0 ? parseFloat(((returnCount / orderCount) * 100).toFixed(1)) : 0;
+
+      memberStats.push({
+        id: user.id,
+        name: user.realName || user.username,
+        username: user.username,
+        department: user.departmentName,
+        departmentId: user.departmentId,
+        createTime: user.createTime,
+        orderCount,
+        orderAmount,
+        signCount,
+        signAmount,
+        signRate,
+        shipCount,
+        shipAmount,
+        shipRate,
+        transitCount,
+        transitAmount,
+        transitRate,
+        rejectCount,
+        rejectAmount,
+        rejectRate,
+        returnCount,
+        returnAmount,
+        returnRate,
+        isCurrentUser: user.id === currentUser?.userId
+      });
+    }
+
+    // 排序
+    const sortField = sortBy === 'signAmount' ? 'signAmount' :
+                      sortBy === 'signRate' ? 'signRate' :
+                      sortBy === 'orderCount' ? 'orderCount' : 'orderAmount';
+    memberStats.sort((a, b) => b[sortField] - a[sortField]);
+
+    // 计算团队汇总
+    const totalOrderCount = memberStats.reduce((sum, m) => sum + m.orderCount, 0);
+    const totalOrderAmount = memberStats.reduce((sum, m) => sum + m.orderAmount, 0);
+    const totalSignCount = memberStats.reduce((sum, m) => sum + m.signCount, 0);
+    const totalSignAmount = memberStats.reduce((sum, m) => sum + m.signAmount, 0);
+    const avgPerformance = memberStats.length > 0 ? totalOrderAmount / memberStats.length : 0;
+    const totalSignRate = totalOrderCount > 0 ? parseFloat(((totalSignCount / totalOrderCount) * 100).toFixed(1)) : 0;
+
+    // 分页
+    const total = memberStats.length;
+    const offset = (page - 1) * limit;
+    const paginatedMembers = memberStats.slice(offset, offset + limit);
+
+    res.json({
+      success: true,
+      data: {
+        members: paginatedMembers,
+        total,
+        page,
+        limit,
+        // 团队汇总数据
+        summary: {
+          totalPerformance: totalOrderAmount,
+          totalOrders: totalOrderCount,
+          avgPerformance: Math.round(avgPerformance),
+          signOrders: totalSignCount,
+          signRate: totalSignRate,
+          signPerformance: totalSignAmount,
+          memberCount: memberStats.length
+        }
+      }
+    });
   } catch (error) {
     console.error('获取团队业绩失败:', error);
     res.status(500).json({ success: false, message: '获取团队业绩失败' });
