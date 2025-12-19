@@ -71,10 +71,16 @@ router.get('/system', async (req, res) => {
 
     logger.info('读取日志目录:', { logsDir, exists: fs.existsSync(logsDir) });
 
+    // 🔥 读取所有常见的日志文件
     const logFiles = [
       path.join(logsDir, 'combined.log'),
       path.join(logsDir, 'error.log'),
-      path.join(logsDir, 'operations.log')
+      path.join(logsDir, 'operations.log'),
+      path.join(logsDir, 'exceptions.log'),
+      path.join(logsDir, 'out.log'),
+      path.join(logsDir, 'access.log'),
+      path.join(logsDir, 'performance.log'),
+      path.join(logsDir, 'rejections.log')
     ];
 
     let allLogs: any[] = [];
@@ -99,7 +105,7 @@ router.get('/system', async (req, res) => {
                 const message = messageStart > -1 ? line.substring(messageStart + 2).trim() : line;
 
                 allLogs.push({
-                  id: `${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+                  id: `${timestamp}_${Math.random().toString(36).substring(2, 11)}`,
                   timestamp,
                   level,
                   module: '系统',
@@ -115,7 +121,7 @@ router.get('/system', async (req, res) => {
                   // 检查是否有必要的字段
                   if (logData.timestamp && logData.level && logData.message) {
                     allLogs.push({
-                      id: `${logData.timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+                      id: `${logData.timestamp}_${Math.random().toString(36).substring(2, 11)}`,
                       timestamp: logData.timestamp,
                       level: logData.level.toUpperCase(),
                       module: logData.service || '系统',
@@ -126,7 +132,7 @@ router.get('/system', async (req, res) => {
                   // 如果是错误日志但没有标准字段，也尝试解析
                   else if (logData.service || logData.code || logData.error) {
                     allLogs.push({
-                      id: `json_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                      id: `json_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
                       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
                       level: logData.fatal ? 'ERROR' : 'INFO',
                       module: logData.service || '系统',
