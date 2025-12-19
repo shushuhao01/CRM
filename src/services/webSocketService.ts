@@ -84,7 +84,15 @@ class WebSocketService {
         }
       }
 
-      const serverUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
+      // WebSocket需要完整的服务器URL，不能使用相对路径
+      let serverUrl = import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_BASE_URL || ''
+
+      // 如果是相对路径或空，使用当前页面的origin
+      if (!serverUrl || serverUrl.startsWith('/')) {
+        serverUrl = window.location.origin
+      }
+
+      console.log('[WebSocket] 连接服务器:', serverUrl)
 
       this.socket = this.ioModule.io(serverUrl, {
         auth: { token },
@@ -171,6 +179,8 @@ class WebSocketService {
         return
       }
 
+      // WebSocket连接失败不影响主要功能，静默处理
+      console.warn('[WebSocket] 实时推送服务暂时不可用，将在后台重试')
       this.updateStatus('disconnected')
       this.scheduleReconnect()
     })
