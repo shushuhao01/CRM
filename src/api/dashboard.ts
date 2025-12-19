@@ -88,9 +88,9 @@ export const getMetrics = async (params?: {
   console.log('[Dashboard API] 使用后端API获取核心指标')
   try {
     // 🔥 静默处理错误，不显示错误提示
-    const response = await request.get('/dashboard/metrics', { params, showError: false } as any)
-    if (response.success && response.data) {
-      const data = response.data
+    // 注意：request.get 返回的是 response.data.data，即直接的数据对象
+    const data = await request.get('/dashboard/metrics', { params, showError: false } as any)
+    if (data) {
       console.log('[Dashboard API] 后端返回数据:', data)
       return {
         todayOrders: data.todayOrders || 0,
@@ -126,10 +126,10 @@ export const getRankings = async (): Promise<DashboardRankings> => {
   // 生产环境调用后端 API
   if (useBackendAPI()) {
     try {
-      // 🔥 静默处理错误
-      const response = await request.get('/api/dashboard/rankings', { showError: false } as any)
-      if (response.data) {
-        return response.data
+      // 🔥 静默处理错误，修复API路径
+      const data = await request.get('/dashboard/rankings', { showError: false } as any)
+      if (data) {
+        return data
       }
     } catch (error) {
       console.log('[Dashboard API] 排行榜API调用失败（静默处理）:', error)
@@ -277,16 +277,16 @@ export const getChartData = async (params?: {
   // 生产环境调用后端 API
   if (useBackendAPI()) {
     try {
-      // 🔥 静默处理错误
-      const response = await request.get('/api/dashboard/charts', { params, showError: false } as any)
-      if (response.data) {
+      // 🔥 静默处理错误，修复API路径
+      const data = await request.get('/dashboard/charts', { params, showError: false } as any)
+      if (data) {
         return {
-          revenue: response.data.performance?.series?.[1]?.data?.map((amount: number, index: number) => ({
-            date: response.data.performance?.categories?.[index] || `${index + 1}月`,
+          revenue: data.performance?.series?.[1]?.data?.map((amount: number, index: number) => ({
+            date: data.performance?.categories?.[index] || `${index + 1}月`,
             amount,
-            orders: response.data.performance?.series?.[0]?.data?.[index] || 0
+            orders: data.performance?.series?.[0]?.data?.[index] || 0
           })) || [],
-          orderStatus: response.data.orderStatus?.map((item: any) => ({
+          orderStatus: data.orderStatus?.map((item: any) => ({
             status: item.name,
             count: item.value,
             percentage: 0
@@ -434,8 +434,8 @@ export const getChartData = async (params?: {
 // 获取待办事项
 export const getTodos = async (): Promise<DashboardTodo[]> => {
   try {
-    // 🔥 静默处理错误
-    return await request.get('/api/dashboard/todos', { showError: false } as any)
+    // 🔥 静默处理错误，修复API路径
+    return await request.get('/dashboard/todos', { showError: false } as any)
   } catch (error) {
     console.log('[Dashboard API] 待办事项API调用失败（静默处理）:', error)
     return []
@@ -445,8 +445,8 @@ export const getTodos = async (): Promise<DashboardTodo[]> => {
 // 获取快捷操作
 export const getQuickActions = async (): Promise<DashboardQuickAction[]> => {
   try {
-    // 🔥 静默处理错误
-    return await request.get('/api/dashboard/quick-actions', { showError: false } as any)
+    // 🔥 静默处理错误，修复API路径
+    return await request.get('/dashboard/quick-actions', { showError: false } as any)
   } catch (error) {
     console.log('[Dashboard API] 快捷操作API调用失败（静默处理）:', error)
     return []
