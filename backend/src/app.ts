@@ -346,6 +346,19 @@ const startServer = async () => {
 
     startTimeoutReminderService();
 
+    // 🔥 启动业绩报表定时发送服务
+    const startPerformanceReportScheduler = async () => {
+      try {
+        const { performanceReportScheduler } = await import('./services/PerformanceReportScheduler');
+        performanceReportScheduler.start();
+        logger.info('📊 [定时任务] 业绩报表定时发送服务已启动');
+      } catch (error) {
+        logger.error('[定时任务] 启动业绩报表定时发送服务失败:', error);
+      }
+    };
+
+    startPerformanceReportScheduler();
+
     // 优雅关闭处理
     const gracefulShutdown = async (signal: string) => {
       logger.info(`收到 ${signal} 信号，开始优雅关闭...`);
