@@ -87,7 +87,8 @@ export const getMetrics = async (params?: {
   // 🔥 优先使用后端API
   console.log('[Dashboard API] 使用后端API获取核心指标')
   try {
-    const response = await request.get('/dashboard/metrics', { params })
+    // 🔥 静默处理错误，不显示错误提示
+    const response = await request.get('/dashboard/metrics', { params, showError: false } as any)
     if (response.success && response.data) {
       const data = response.data
       console.log('[Dashboard API] 后端返回数据:', data)
@@ -105,7 +106,8 @@ export const getMetrics = async (params?: {
       }
     }
   } catch (error) {
-    console.error('[Dashboard API] 后端API调用失败:', error)
+    // 🔥 静默处理，只在控制台记录
+    console.log('[Dashboard API] 后端API调用失败（静默处理）:', error)
   }
 
   // 返回空数据
@@ -124,12 +126,13 @@ export const getRankings = async (): Promise<DashboardRankings> => {
   // 生产环境调用后端 API
   if (useBackendAPI()) {
     try {
-      const response = await request.get('/api/dashboard/rankings')
+      // 🔥 静默处理错误
+      const response = await request.get('/api/dashboard/rankings', { showError: false } as any)
       if (response.data) {
         return response.data
       }
     } catch (error) {
-      console.error('后端API调用失败，降级到localStorage:', error)
+      console.log('[Dashboard API] 排行榜API调用失败（静默处理）:', error)
     }
   }
 
@@ -274,7 +277,8 @@ export const getChartData = async (params?: {
   // 生产环境调用后端 API
   if (useBackendAPI()) {
     try {
-      const response = await request.get('/api/dashboard/charts', { params })
+      // 🔥 静默处理错误
+      const response = await request.get('/api/dashboard/charts', { params, showError: false } as any)
       if (response.data) {
         return {
           revenue: response.data.performance?.series?.[1]?.data?.map((amount: number, index: number) => ({
@@ -290,7 +294,7 @@ export const getChartData = async (params?: {
         }
       }
     } catch (error) {
-      console.error('后端API调用失败，降级到localStorage:', error)
+      console.log('[Dashboard API] 图表API调用失败（静默处理）:', error)
     }
   }
 
@@ -430,9 +434,10 @@ export const getChartData = async (params?: {
 // 获取待办事项
 export const getTodos = async (): Promise<DashboardTodo[]> => {
   try {
-    return await request.get('/api/dashboard/todos')
+    // 🔥 静默处理错误
+    return await request.get('/api/dashboard/todos', { showError: false } as any)
   } catch (error) {
-    console.error('获取待办事项失败:', error)
+    console.log('[Dashboard API] 待办事项API调用失败（静默处理）:', error)
     return []
   }
 }
@@ -440,9 +445,10 @@ export const getTodos = async (): Promise<DashboardTodo[]> => {
 // 获取快捷操作
 export const getQuickActions = async (): Promise<DashboardQuickAction[]> => {
   try {
-    return await request.get('/api/dashboard/quick-actions')
+    // 🔥 静默处理错误
+    return await request.get('/api/dashboard/quick-actions', { showError: false } as any)
   } catch (error) {
-    console.error('获取快捷操作失败:', error)
+    console.log('[Dashboard API] 快捷操作API调用失败（静默处理）:', error)
     return []
   }
 }
