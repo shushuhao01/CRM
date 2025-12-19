@@ -88,41 +88,54 @@ router.get('/system', async (req, res) => {
 
           for (const line of lines) {
             try {
+              // 🔥 优先解析文本格式的日志（如：2025-12-19 09:41:55 [ERROR]: 消息内容）
+              const timestampMatch = line.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+              const levelMatch = line.match(/\[(ERROR|WARN|INFO|DEBUG)\]/i);
+
+              if (timestampMatch && levelMatch) {
+                const timestamp = timestampMatch[1];
+                const level = levelMatch[1].toUpperCase();
+                const messageStart = line.indexOf(']:');
+                const message = messageStart > -1 ? line.substring(messageStart + 2).trim() : line;
+
+                allLogs.push({
+                  id: `${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+                  timestamp,
+                  level,
+                  module: '系统',
+                  message: message || '(无消息内容)',
+                  details: line
+                });
+              }
               // 尝试解析JSON格式的日志
-              if (line.includes('{') && line.includes('}')) {
-                const jsonStart = line.indexOf('{');
-                const jsonPart = line.substring(jsonStart);
-                const logData = JSON.parse(jsonPart);
+              else if (line.startsWith('{') && line.endsWith('}')) {
+                try {
+                  const logData = JSON.parse(line);
 
-                if (logData.timestamp && logData.level && logData.message) {
-                  allLogs.push({
-                    id: `${logData.timestamp}_${Math.random().toString(36).substr(2, 9)}`,
-                    timestamp: logData.timestamp,
-                    level: logData.level.toUpperCase(),
-                    module: logData.service || '系统',
-                    message: logData.message,
-                    details: JSON.stringify(logData, null, 2)
-                  });
-                }
-              } else {
-                // 解析文本格式的日志
-                const timestampMatch = line.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
-                const levelMatch = line.match(/\[(ERROR|WARN|INFO|DEBUG)\]/);
-
-                if (timestampMatch && levelMatch) {
-                  const timestamp = timestampMatch[1];
-                  const level = levelMatch[1];
-                  const messageStart = line.indexOf(']:') + 2;
-                  const message = line.substring(messageStart).trim();
-
-                  allLogs.push({
-                    id: `${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
-                    timestamp,
-                    level,
-                    module: '系统',
-                    message,
-                    details: line
-                  });
+                  // 检查是否有必要的字段
+                  if (logData.timestamp && logData.level && logData.message) {
+                    allLogs.push({
+                      id: `${logData.timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+                      timestamp: logData.timestamp,
+                      level: logData.level.toUpperCase(),
+                      module: logData.service || '系统',
+                      message: logData.message,
+                      details: JSON.stringify(logData, null, 2)
+                    });
+                  }
+                  // 如果是错误日志但没有标准字段，也尝试解析
+                  else if (logData.service || logData.code || logData.error) {
+                    allLogs.push({
+                      id: `json_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                      level: logData.fatal ? 'ERROR' : 'INFO',
+                      module: logData.service || '系统',
+                      message: logData.error || logData.code || JSON.stringify(logData),
+                      details: JSON.stringify(logData, null, 2)
+                    });
+                  }
+                } catch (_jsonError) {
+                  // JSON解析失败，忽略
                 }
               }
             } catch (_parseError) {
