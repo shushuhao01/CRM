@@ -794,7 +794,8 @@ onMounted(async () => {
     messageStore.loadUserAnnouncements()
   }
 
-  // 🔥 启动消息轮询定时器（每15秒检查一次新消息）
+  // 🔥 初始化WebSocket实时推送（优先）+ 消息轮询（降级方案）
+  initWebSocketConnection()
   startMessagePollingTimer()
 
   // 启动订单流转检查定时器（每30秒检查一次）
@@ -824,7 +825,22 @@ onMounted(async () => {
   }, 2000)
 })
 
-// 🔥 消息轮询定时器 - 实现跨设备消息通知
+// 🔥 WebSocket实时推送连接
+const initWebSocketConnection = async () => {
+  if (!userStore.token) {
+    console.log('[App] 用户未登录，跳过WebSocket连接')
+    return
+  }
+
+  try {
+    await notificationStore.initWebSocket(userStore.token)
+    console.log('[App] 🔌 WebSocket实时推送已初始化')
+  } catch (error) {
+    console.error('[App] WebSocket初始化失败，将使用轮询降级方案:', error)
+  }
+}
+
+// 🔥 消息轮询定时器 - 作为WebSocket的降级方案
 let messagePollingTimer: number | null = null
 
 const startMessagePollingTimer = () => {
@@ -834,7 +850,7 @@ const startMessagePollingTimer = () => {
     return
   }
 
-  // 设置定时器，每15秒检查一次新消息
+  // 设置定时器，每30秒检查一次新消息（WebSocket连接时作为备份，断开时作为主要方案）
   messagePollingTimer = window.setInterval(async () => {
     if (!userStore.token) {
       // 用户已登出，停止轮询
@@ -845,16 +861,22 @@ const startMessagePollingTimer = () => {
       return
     }
 
+    // 如果WebSocket已连接，降低轮询频率（仅作为备份同步）
+    if (notificationStore.wsStatus === 'connected') {
+      // WebSocket已连接，跳过本次轮询
+      return
+    }
+
     try {
       await notificationStore.loadMessagesFromAPI()
-      console.log('[App] 消息轮询完成，未读消息数:', notificationStore.unreadCount)
+      console.log('[App] 消息轮询完成（WebSocket降级），未读消息数:', notificationStore.unreadCount)
     } catch (error) {
       // 静默处理错误，避免频繁报错
       console.log('[App] 消息轮询失败（非关键）')
     }
-  }, 15000) // 15秒
+  }, 30000) // 30秒（WebSocket断开时的降级方案）
 
-  console.log('[App] 🔔 消息轮询定时器已启动（每15秒）')
+  console.log('[App] 🔔 消息轮询定时器已启动（WebSocket降级方案，每30秒）')
 }
 
 // 订单流转检查定时器
@@ -880,6 +902,9 @@ onUnmounted(() => {
   if (sidebarMenu) {
     sidebarMenu.removeEventListener('wheel', handleSidebarWheel)
   }
+
+  // 🔥 断开WebSocket连接
+  notificationStore.disconnectWebSocket()
 
   // 🔥 清理消息轮询定时器
   if (messagePollingTimer) {

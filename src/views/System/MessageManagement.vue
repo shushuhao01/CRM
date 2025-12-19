@@ -105,6 +105,16 @@
           </template>
           <MessageConfig />
         </el-tab-pane>
+
+        <el-tab-pane name="timeout">
+          <template #label>
+            <div class="tab-label">
+              <el-icon class="tab-icon"><AlarmClock /></el-icon>
+              <span>超时提醒</span>
+            </div>
+          </template>
+          <TimeoutReminderConfig />
+        </el-tab-pane>
       </el-tabs>
     </div>
   </div>
@@ -116,12 +126,14 @@ import { useMessageStore } from '@/stores/message'
 // import MessageSubscription from './components/MessageSubscription.vue' // 暂时隐藏
 import AnnouncementPublish from './components/AnnouncementPublish.vue'
 import MessageConfig from './components/MessageConfig.vue'
+import TimeoutReminderConfig from './components/TimeoutReminderConfig.vue'
 import {
   Bell,
   ChatDotRound,
   Message,
   Setting,
-  DataAnalysis
+  DataAnalysis,
+  AlarmClock
 } from '@element-plus/icons-vue'
 
 // 当前激活的选项卡（默认显示公告发布）

@@ -708,6 +708,9 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
 
 // Pinia Store
 export const useNotificationStore = defineStore('notification', () => {
+  // 🔥 WebSocket服务引用
+  let wsUnsubscribers: (() => void)[] = []
+
   // 检查是否需要清理旧的模拟数据
   const checkAndCleanOldMockData = () => {
     const cleanedKey = 'notification-mock-cleaned-v2'
@@ -748,6 +751,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
   // 状态
   const messages = ref<NotificationMessage[]>(loadMessagesFromStorage())
+  const wsStatus = ref<'connected' | 'connecting' | 'disconnected' | 'error'>('disconnected')
 
   // 计算属性
   const unreadCount = computed(() => {
@@ -985,9 +989,146 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
 
+  // ==================== WebSocket集成 ====================
+
+  /**
+   * 🔥 初始化WebSocket连接
+   */
+  const initWebSocket = async (token: string) => {
+    try {
+      const { webSocketService } = await import('@/services/webSocketService')
+
+      // 清理旧的订阅
+      wsUnsubscribers.forEach(unsub => unsub())
+      wsUnsubscribers = []
+
+      // 订阅消息事件
+      wsUnsubscribers.push(
+        webSocketService.onMessage((wsMessage) => {
+          // 将WebSocket消息转换为本地消息格式
+          const template = MESSAGE_TEMPLATES[wsMessage.type as MessageType] || {
+            icon: 'Bell',
+            color: '#409EFF',
+            category: '系统通知'
+          }
+
+          const message: NotificationMessage = {
+            id: wsMessage.id,
+            type: wsMessage.type as MessageType,
+            title: wsMessage.title,
+            content: wsMessage.content,
+            priority: wsMessage.priority as MessagePriority,
+            time: new Date(wsMessage.createdAt).toLocaleString('zh-CN'),
+            read: false,
+            icon: template.icon,
+            color: template.color,
+            category: template.category,
+            relatedId: wsMessage.relatedId,
+            relatedType: wsMessage.relatedType,
+            actionUrl: wsMessage.actionUrl
+          }
+
+          // 添加到消息列表（避免重复）
+          const exists = messages.value.some(m => m.id === message.id)
+          if (!exists) {
+            messages.value.unshift(message)
+            // 限制本地消息数量
+            if (messages.value.length > 100) {
+              messages.value = messages.value.slice(0, 100)
+            }
+            saveMessagesToStorage(messages.value)
+          }
+        })
+      )
+
+      // 订阅状态变化
+      wsUnsubscribers.push(
+        webSocketService.onStatusChange((status) => {
+          wsStatus.value = status
+        })
+      )
+
+      // 订阅未读数量变化
+      wsUnsubscribers.push(
+        webSocketService.onUnreadCountChange((count) => {
+          // 可以用于同步服务器端的未读数量
+          console.log('[Notification] 服务器未读数量:', count)
+        })
+      )
+
+      // 连接WebSocket
+      await webSocketService.connect(token)
+
+      // 请求桌面通知权限
+      webSocketService.requestNotificationPermission()
+
+      console.log('[Notification] ✅ WebSocket已初始化')
+    } catch (error) {
+      console.error('[Notification] WebSocket初始化失败:', error)
+    }
+  }
+
+  /**
+   * 🔥 断开WebSocket连接
+   */
+  const disconnectWebSocket = async () => {
+    try {
+      const { webSocketService } = await import('@/services/webSocketService')
+      webSocketService.disconnect()
+
+      // 清理订阅
+      wsUnsubscribers.forEach(unsub => unsub())
+      wsUnsubscribers = []
+
+      wsStatus.value = 'disconnected'
+      console.log('[Notification] WebSocket已断开')
+    } catch (error) {
+      console.error('[Notification] 断开WebSocket失败:', error)
+    }
+  }
+
+  /**
+   * 🔥 通过WebSocket标记已读
+   */
+  const markAsReadWithWS = async (messageId: string) => {
+    try {
+      const { webSocketService } = await import('@/services/webSocketService')
+
+      if (webSocketService.isConnected()) {
+        webSocketService.markAsRead(messageId)
+      }
+
+      // 同时更新本地状态
+      markAsRead(messageId)
+    } catch (error) {
+      console.error('[Notification] WebSocket标记已读失败:', error)
+      markAsRead(messageId)
+    }
+  }
+
+  /**
+   * 🔥 通过WebSocket标记全部已读
+   */
+  const markAllAsReadWithWS = async () => {
+    try {
+      const { webSocketService } = await import('@/services/webSocketService')
+
+      if (webSocketService.isConnected()) {
+        webSocketService.markAllAsRead()
+      }
+
+      // 同时更新本地状态
+      markAllAsRead()
+    } catch (error) {
+      console.error('[Notification] WebSocket标记全部已读失败:', error)
+      markAllAsRead()
+    }
+  }
+
   return {
     // 状态
     messages,
+    wsStatus,
 
     // 计算属性
     unreadCount,
@@ -1007,6 +1148,11 @@ export const useNotificationStore = defineStore('notification', () => {
     markAllAsReadWithAPI,
     deleteMessageWithAPI,
     clearAllMessagesWithAPI,
+    // 🔥 WebSocket方法
+    initWebSocket,
+    disconnectWebSocket,
+    markAsReadWithWS,
+    markAllAsReadWithWS,
 
     // 导出枚举供外部使用
     MessageType,
