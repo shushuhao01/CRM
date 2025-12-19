@@ -200,11 +200,23 @@
           <div class="feature-icon-apple blue">
             <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
               <rect width="44" height="44" rx="10" fill="url(#blueGrad)"/>
-              <!-- 大脑/AI图标 - 智能管理 -->
-              <path d="M22 12c-4.4 0-8 3.6-8 8 0 2.2 0.9 4.2 2.3 5.7V30c0 0.6 0.4 1 1 1h9.4c0.6 0 1-0.4 1-1v-4.3c1.4-1.5 2.3-3.5 2.3-5.7 0-4.4-3.6-8-8-8z" fill="white" opacity="0.95"/>
-              <circle cx="19" cy="19" r="1.5" fill="#3b82f6"/>
-              <circle cx="25" cy="19" r="1.5" fill="#3b82f6"/>
-              <path d="M18 23c0 0 1.5 2 4 2s4-2 4-2" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+              <!-- AI芯片图标 - 智能管理 -->
+              <rect x="14" y="14" width="16" height="16" rx="3" fill="white"/>
+              <!-- 芯片内部电路 -->
+              <rect x="17" y="17" width="4" height="4" rx="1" fill="#3b82f6"/>
+              <rect x="23" y="17" width="4" height="4" rx="1" fill="#3b82f6"/>
+              <rect x="17" y="23" width="4" height="4" rx="1" fill="#3b82f6"/>
+              <rect x="23" y="23" width="4" height="4" rx="1" fill="#3b82f6"/>
+              <!-- 芯片引脚 -->
+              <line x1="22" y1="10" x2="22" y2="14" stroke="white" stroke-width="2" stroke-linecap="round"/>
+              <line x1="22" y1="30" x2="22" y2="34" stroke="white" stroke-width="2" stroke-linecap="round"/>
+              <line x1="10" y1="22" x2="14" y2="22" stroke="white" stroke-width="2" stroke-linecap="round"/>
+              <line x1="30" y1="22" x2="34" y2="22" stroke="white" stroke-width="2" stroke-linecap="round"/>
+              <!-- 对角引脚 -->
+              <line x1="11" y1="16" x2="14" y2="16" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="11" y1="28" x2="14" y2="28" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="30" y1="16" x2="33" y2="16" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="30" y1="28" x2="33" y2="28" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
               <defs>
                 <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stop-color="#60a5fa"/>
