@@ -126,4 +126,27 @@ export const orderApi = {
   // 获取已发货订单列表
   getShippingShipped: (params?: { page?: number; pageSize?: number }) =>
     api.get<OrderListResponse>('/orders/shipping/shipped', params),
+
+  // 🔥 新增：获取审核订单列表（优化版）
+  getAuditList: (params?: {
+    page?: number;
+    pageSize?: number;
+    status?: string;
+    orderNumber?: string;
+    customerName?: string;
+    startDate?: string;
+    endDate?: string;
+  }) =>
+    api.get<OrderListResponse>('/orders/audit-list', params),
+
+  // 🔥 新增：获取审核统计数据（优化版）
+  getAuditStatistics: () =>
+    api.get<{
+      pendingCount: number;
+      approvedCount: number;
+      rejectedCount: number;
+      pendingAmount: number;
+      todayCount: number;
+      urgentCount: number;
+    }>('/orders/audit-statistics'),
 }

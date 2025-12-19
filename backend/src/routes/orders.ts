@@ -292,6 +292,214 @@ router.get('/statistics', async (_req: Request, res: Response) => {
 });
 
 /**
+ * @route GET /api/v1/orders/audit-list
+ * @desc 获取审核订单列表（优化版，只返回需要审核的订单）
+ * @access Private
+ */
+router.get('/audit-list', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const startTime = Date.now();
+
+    const {
+      page = 1,
+      pageSize = 20,
+      status = 'pending_audit', // 默认只查待审核
+      orderNumber,
+      customerName,
+      startDate,
+      endDate
+    } = req.query;
+
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 100); // 限制最大100条
+    const skip = (pageNum - 1) * pageSizeNum;
+
+    console.log(`📋 [审核列表] 查询参数: status=${status}, page=${pageNum}, pageSize=${pageSizeNum}`);
+
+    // 🔥 优化：使用QueryBuilder只查询需要的字段
+    const queryBuilder = orderRepository.createQueryBuilder('order')
+      .select([
+        'order.id',
+        'order.orderNumber',
+        'order.customerId',
+        'order.customerName',
+        'order.customerPhone',
+        'order.totalAmount',
+        'order.depositAmount',
+        'order.status',
+        'order.markType',
+        'order.paymentStatus',
+        'order.paymentMethod',
+        'order.remark',
+        'order.createdBy',
+        'order.createdByName',
+        'order.createdAt',
+        'order.shippingName',
+        'order.shippingPhone',
+        'order.shippingAddress',
+        'order.products'
+      ]);
+
+    // 状态筛选
+    if (status === 'pending_audit') {
+      queryBuilder.where('order.status = :status', { status: 'pending_audit' });
+    } else if (status === 'approved') {
+      // 已审核通过：待发货、已发货、已签收等
+      queryBuilder.where('order.status IN (:...statuses)', {
+        statuses: ['pending_shipment', 'shipped', 'delivered', 'paid']
+      });
+    } else if (status === 'rejected') {
+      queryBuilder.where('order.status = :status', { status: 'audit_rejected' });
+    } else if (status) {
+      queryBuilder.where('order.status = :status', { status });
+    }
+
+    // 订单号筛选
+    if (orderNumber) {
+      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    }
+
+    // 客户名称筛选
+    if (customerName) {
+      queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+    }
+
+    // 日期范围筛选
+    if (startDate && endDate) {
+      queryBuilder.andWhere('order.createdAt BETWEEN :startDate AND :endDate', {
+        startDate: new Date(startDate as string),
+        endDate: new Date(endDate as string)
+      });
+    }
+
+    // 🔥 优化：先获取总数（使用count查询更快）
+    const total = await queryBuilder.getCount();
+
+    // 排序和分页
+    queryBuilder.orderBy('order.createdAt', 'DESC')
+      .skip(skip)
+      .take(pageSizeNum);
+
+    const orders = await queryBuilder.getMany();
+
+    const queryTime = Date.now() - startTime;
+    console.log(`📋 [审核列表] 查询完成: ${orders.length}条, 总数${total}, 耗时${queryTime}ms`);
+
+    // 🔥 优化：简化数据转换
+    const list = orders.map(order => {
+      let products: unknown[] = [];
+      if (order.products) {
+        try {
+          products = typeof order.products === 'string' ? JSON.parse(order.products as string) : order.products;
+        } catch {
+          products = [];
+        }
+      }
+
+      return {
+        id: order.id,
+        orderNo: order.orderNumber,
+        orderNumber: order.orderNumber,
+        customerId: order.customerId || '',
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
+        products,
+        totalAmount: Number(order.totalAmount) || 0,
+        depositAmount: Number(order.depositAmount) || 0,
+        collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+        status: order.status,
+        auditStatus: order.status === 'pending_audit' ? 'pending' :
+                     order.status === 'audit_rejected' ? 'rejected' : 'approved',
+        markType: order.markType || 'normal',
+        paymentStatus: order.paymentStatus || 'unpaid',
+        paymentMethod: order.paymentMethod || '',
+        remark: order.remark || '',
+        salesPerson: order.createdByName || '',
+        createdBy: order.createdBy || '',
+        createdByName: order.createdByName || '',
+        createTime: formatToBeijingTime(order.createdAt),
+        receiverName: order.shippingName || '',
+        receiverPhone: order.shippingPhone || '',
+        deliveryAddress: order.shippingAddress || ''
+      };
+    });
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '获取审核订单列表成功',
+      data: {
+        list,
+        total,
+        page: pageNum,
+        pageSize: pageSizeNum
+      }
+    });
+  } catch (error) {
+    console.error('❌ [审核列表] 获取失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取审核订单列表失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/orders/audit-statistics
+ * @desc 获取审核统计数据（优化版）
+ * @access Private
+ */
+router.get('/audit-statistics', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const startTime = Date.now();
+
+    // 🔥 优化：使用单个查询获取所有统计数据
+    const [pendingCount, approvedCount, rejectedCount, pendingAmountResult, todayCount] = await Promise.all([
+      orderRepository.count({ where: { status: 'pending_audit' } }),
+      orderRepository.createQueryBuilder('order')
+        .where('order.status IN (:...statuses)', { statuses: ['pending_shipment', 'shipped', 'delivered', 'paid'] })
+        .getCount(),
+      orderRepository.count({ where: { status: 'audit_rejected' } }),
+      orderRepository.createQueryBuilder('order')
+        .select('SUM(order.totalAmount)', 'total')
+        .where('order.status = :status', { status: 'pending_audit' })
+        .getRawOne(),
+      orderRepository.createQueryBuilder('order')
+        .where('order.createdAt >= :today', { today: new Date(new Date().setHours(0, 0, 0, 0)) })
+        .andWhere('order.status = :status', { status: 'pending_audit' })
+        .getCount()
+    ]);
+
+    const queryTime = Date.now() - startTime;
+    console.log(`📊 [审核统计] 查询完成: 待审核${pendingCount}, 已通过${approvedCount}, 已拒绝${rejectedCount}, 耗时${queryTime}ms`);
+
+    res.json({
+      success: true,
+      code: 200,
+      data: {
+        pendingCount,
+        approvedCount,
+        rejectedCount,
+        pendingAmount: Number(pendingAmountResult?.total || 0),
+        todayCount,
+        urgentCount: 0
+      }
+    });
+  } catch (error) {
+    console.error('获取审核统计失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取审核统计失败'
+    });
+  }
+});
+
+/**
  * @route POST /api/v1/orders/cancel-request
  * @desc 提交取消订单申请
  * @access Private
