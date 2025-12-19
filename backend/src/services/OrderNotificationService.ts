@@ -1066,7 +1066,7 @@ class OrderNotificationService {
     if (!afterSales.createdBy) return;
 
     const typeText = this.getAfterSalesTypeText(afterSales.serviceType);
-    const content = `您的${typeText}申请 #${afterSales.serviceNumber} 正在处理中${operatorName ? `，处理人：${operatorName}` : ''}`;
+    const content = `您的${typeText}申请 #${afterSales.serviceNumber}（客户：${afterSales.customerName || '未知'}）正在处理中${operatorName ? `，处理人：${operatorName}` : ''}`;
 
     await this.sendMessage(
       AfterSalesMessageTypes.AFTER_SALES_PROCESSING,
@@ -1089,7 +1089,7 @@ class OrderNotificationService {
     if (!afterSales.createdBy) return;
 
     const typeText = this.getAfterSalesTypeText(afterSales.serviceType);
-    const content = `您的${typeText}申请 #${afterSales.serviceNumber} 已处理完成${operatorName ? `，处理人：${operatorName}` : ''}`;
+    const content = `您的${typeText}申请 #${afterSales.serviceNumber}（客户：${afterSales.customerName || '未知'}）已处理完成${operatorName ? `，处理人：${operatorName}` : ''}`;
 
     await this.sendMessage(
       AfterSalesMessageTypes.AFTER_SALES_COMPLETED,
@@ -1112,7 +1112,7 @@ class OrderNotificationService {
     if (!afterSales.createdBy) return;
 
     const typeText = this.getAfterSalesTypeText(afterSales.serviceType);
-    const content = `您的${typeText}申请 #${afterSales.serviceNumber} 已被拒绝${reason ? `，原因：${reason}` : ''}`;
+    const content = `您的${typeText}申请 #${afterSales.serviceNumber}（客户：${afterSales.customerName || '未知'}）已被拒绝${reason ? `，原因：${reason}` : ''}`;
 
     await this.sendMessage(
       AfterSalesMessageTypes.AFTER_SALES_REJECTED,
@@ -1140,7 +1140,7 @@ class OrderNotificationService {
     }
 
     const typeText = this.getAfterSalesTypeText(afterSales.serviceType);
-    const content = `${typeText}申请 #${afterSales.serviceNumber} 已取消${operatorName ? `，操作人：${operatorName}` : ''}`;
+    const content = `${typeText}申请 #${afterSales.serviceNumber}（客户：${afterSales.customerName || '未知'}）已取消${operatorName ? `，操作人：${operatorName}` : ''}`;
 
     await this.sendBatchMessages(
       AfterSalesMessageTypes.AFTER_SALES_CANCELLED,
