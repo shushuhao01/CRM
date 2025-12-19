@@ -350,10 +350,11 @@ router.get('/personal', async (req: Request, res: Response) => {
     }
 
     // 获取所有订单用于业绩计算
+    // 🔥 修复：orders表没有sales_person_id字段，只使用created_by
     const orders = await AppDataSource.query(
       `SELECT status, mark_type as markType, total_amount as totalAmount
-       FROM orders WHERE (created_by = ? OR sales_person_id = ?)${dateCondition}`,
-      [userId, ...params]
+       FROM orders WHERE created_by = ?${dateCondition}`,
+      [userId, ...(startDate && endDate ? [startDate + ' 00:00:00', endDate + ' 23:59:59'] : [])]
     );
 
     // 🔥 使用统一的业绩计算规则
@@ -491,11 +492,12 @@ router.get('/team', async (req: Request, res: Response) => {
     const memberStats: any[] = [];
 
     for (const user of users) {
+      // 🔥 修复：orders表没有sales_person_id字段，只使用created_by
       const orders = await AppDataSource.query(
         `SELECT status, mark_type as markType, total_amount as totalAmount
          FROM orders
-         WHERE (created_by = ? OR sales_person_id = ?)${dateCondition}`,
-        [user.id, user.id]
+         WHERE created_by = ?${dateCondition}`,
+        [user.id]
       );
 
       // 🔥 使用统一的业绩计算规则
