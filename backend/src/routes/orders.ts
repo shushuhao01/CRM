@@ -684,26 +684,37 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
     // 🔥 数据权限过滤
     // 超级管理员、管理员、客服可以看所有订单
     const allowAllRoles = ['super_admin', 'admin', 'customer_service', 'service'];
+    // 🔥 经理角色（可以看本部门订单）
+    const managerRoles = ['department_manager', 'manager'];
+
     if (!allowAllRoles.includes(userRole)) {
-      if (userRole === 'department_manager') {
-        // 部门经理可以看本部门所有成员的订单
+      if (managerRoles.includes(userRole)) {
+        // 部门经理可以看本部门所有成员的订单，也包括自己的订单
         if (userDepartmentId) {
-          queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId: userDepartmentId });
-          console.log(`📋 [订单列表] 部门经理过滤: 部门ID = ${userDepartmentId}`);
+          // 🔥 修复：同时匹配部门ID或创建人ID（确保能看到自己的订单）
+          queryBuilder.andWhere('(order.createdByDepartmentId = :departmentId OR order.createdBy = :userId)', {
+            departmentId: userDepartmentId,
+            userId
+          });
+          console.log(`📋 [订单列表] 经理过滤: 部门ID = ${userDepartmentId} 或 创建人ID = ${userId}`);
         } else {
           // 如果没有部门ID，只能看自己的订单
           queryBuilder.andWhere('order.createdBy = :userId', { userId });
-          console.log(`📋 [订单列表] 部门经理无部门ID，只看自己的订单`);
+          console.log(`📋 [订单列表] 经理无部门ID，只看自己的订单: userId = ${userId}`);
         }
       } else {
         // 🔥 普通员工（销售员等）可以看到同部门成员的订单（用于团队业绩统计）
         if (userDepartmentId) {
-          queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId: userDepartmentId });
-          console.log(`📋 [订单列表] 普通员工过滤: 部门ID = ${userDepartmentId}（可查看同部门订单）`);
+          // 🔥 修复：同时匹配部门ID或创建人ID（确保能看到自己的订单）
+          queryBuilder.andWhere('(order.createdByDepartmentId = :departmentId OR order.createdBy = :userId)', {
+            departmentId: userDepartmentId,
+            userId
+          });
+          console.log(`📋 [订单列表] 普通员工过滤: 部门ID = ${userDepartmentId} 或 创建人ID = ${userId}`);
         } else {
           // 如果没有部门ID，只能看自己的订单
           queryBuilder.andWhere('order.createdBy = :userId', { userId });
-          console.log(`📋 [订单列表] 普通员工无部门ID，只看自己的订单`);
+          console.log(`📋 [订单列表] 普通员工无部门ID，只看自己的订单: userId = ${userId}`);
         }
       }
     } else {
