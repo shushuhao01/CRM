@@ -1907,13 +1907,13 @@ CREATE TABLE `sensitive_info_permissions` (
   INDEX `idx_role_code` (`role_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='敏感信息权限配置表';
 
--- 插入敏感信息权限默认配置
+-- 插入敏感信息权限默认配置（超级管理员和管理员有全部权限）
 INSERT INTO `sensitive_info_permissions` (`info_type`, `role_code`, `has_permission`) VALUES
 ('phone', 'super_admin', 1), ('phone', 'admin', 1), ('phone', 'department_manager', 0), ('phone', 'sales_staff', 0), ('phone', 'customer_service', 0),
-('id_card', 'super_admin', 1), ('id_card', 'admin', 0), ('id_card', 'department_manager', 0), ('id_card', 'sales_staff', 0), ('id_card', 'customer_service', 0),
+('id_card', 'super_admin', 1), ('id_card', 'admin', 1), ('id_card', 'department_manager', 0), ('id_card', 'sales_staff', 0), ('id_card', 'customer_service', 0),
 ('email', 'super_admin', 1), ('email', 'admin', 1), ('email', 'department_manager', 0), ('email', 'sales_staff', 0), ('email', 'customer_service', 0),
 ('wechat', 'super_admin', 1), ('wechat', 'admin', 1), ('wechat', 'department_manager', 0), ('wechat', 'sales_staff', 0), ('wechat', 'customer_service', 0),
 ('address', 'super_admin', 1), ('address', 'admin', 1), ('address', 'department_manager', 0), ('address', 'sales_staff', 0), ('address', 'customer_service', 0),
-('bank', 'super_admin', 1), ('bank', 'admin', 0), ('bank', 'department_manager', 0), ('bank', 'sales_staff', 0), ('bank', 'customer_service', 0),
-('financial', 'super_admin', 1), ('financial', 'admin', 0), ('financial', 'department_manager', 0), ('financial', 'sales_staff', 0), ('financial', 'customer_service', 0)
+('bank', 'super_admin', 1), ('bank', 'admin', 1), ('bank', 'department_manager', 0), ('bank', 'sales_staff', 0), ('bank', 'customer_service', 0),
+('financial', 'super_admin', 1), ('financial', 'admin', 1), ('financial', 'department_manager', 0), ('financial', 'sales_staff', 0), ('financial', 'customer_service', 0)
 ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
