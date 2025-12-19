@@ -205,9 +205,9 @@ export const getPersonalPerformance = async (params: {
   // 🔥 优先使用后端API
   console.log('[Performance API] 使用后端API获取个人业绩')
   try {
-    const response = await request.get('/performance/personal', { params })
-    if (response.success && response.data) {
-      const data = response.data
+    // 🔥 request.get 返回的是直接的数据对象，不是包含success的响应
+    const data = await request.get('/performance/personal', { params })
+    if (data) {
       return {
         userId: data.userId,
         userName: '当前用户',
@@ -242,9 +242,9 @@ export const getTeamPerformance = async (params: {
   // 🔥 优先使用后端API
   console.log('[Performance API] 使用后端API获取团队业绩')
   try {
-    const response = await request.get('/performance/team', { params })
-    if (response.success && response.data) {
-      const data = response.data
+    // 🔥 request.get 返回的是直接的数据对象，不是包含success的响应
+    const data = await request.get('/performance/team', { params })
+    if (data) {
       return {
         departmentId: params.departmentId || 'all',
         departmentName: '全部部门',
@@ -620,8 +620,9 @@ export const getPersonalAnalysis = async (params?: {
 }): Promise<{ success: boolean; data: any; message?: string }> => {
   console.log('[Performance API] 获取个人业绩分析')
   try {
-    const response = await request.get('/performance/analysis/personal', { params })
-    return { success: true, data: response.data || response }
+    // 🔥 request.get 返回的是直接的数据对象
+    const data = await request.get('/performance/analysis/personal', { params })
+    return { success: true, data }
   } catch (error) {
     console.error('[Performance API] 获取个人业绩分析失败:', error)
     return { success: false, data: null, message: '获取个人业绩分析失败' }
@@ -638,8 +639,9 @@ export const getDepartmentAnalysis = async (params?: {
 }): Promise<{ success: boolean; data: any; message?: string }> => {
   console.log('[Performance API] 获取部门业绩分析')
   try {
-    const response = await request.get('/performance/analysis/department', { params })
-    return { success: true, data: response.data || response }
+    // 🔥 request.get 返回的是直接的数据对象
+    const data = await request.get('/performance/analysis/department', { params })
+    return { success: true, data }
   } catch (error) {
     console.error('[Performance API] 获取部门业绩分析失败:', error)
     return { success: false, data: null, message: '获取部门业绩分析失败' }
@@ -655,8 +657,9 @@ export const getCompanyAnalysis = async (params?: {
 }): Promise<{ success: boolean; data: any; message?: string }> => {
   console.log('[Performance API] 获取公司业绩分析')
   try {
-    const response = await request.get('/performance/analysis/company', { params })
-    return { success: true, data: response.data || response }
+    // 🔥 request.get 返回的是直接的数据对象
+    const data = await request.get('/performance/analysis/company', { params })
+    return { success: true, data }
   } catch (error) {
     console.error('[Performance API] 获取公司业绩分析失败:', error)
     return { success: false, data: null, message: '获取公司业绩分析失败' }
@@ -673,8 +676,9 @@ export const getAnalysisMetrics = async (params?: {
 }): Promise<{ success: boolean; data: any; message?: string }> => {
   console.log('[Performance API] 获取业绩统计指标')
   try {
-    const response = await request.get('/performance/analysis/metrics', { params })
-    return { success: true, data: response.data || response }
+    // 🔥 request.get 返回的是直接的数据对象
+    const data = await request.get('/performance/analysis/metrics', { params })
+    return { success: true, data }
   } catch (error) {
     console.error('[Performance API] 获取业绩统计指标失败:', error)
     return { success: false, data: null, message: '获取业绩统计指标失败' }
@@ -689,8 +693,9 @@ export const getAnalysisTrend = async (params?: {
 }): Promise<{ success: boolean; data: any; message?: string }> => {
   console.log('[Performance API] 获取业绩趋势')
   try {
-    const response = await request.get('/performance/analysis/trend', { params })
-    return { success: true, data: response.data || response }
+    // 🔥 request.get 返回的是直接的数据对象
+    const data = await request.get('/performance/analysis/trend', { params })
+    return { success: true, data }
   } catch (error) {
     console.error('[Performance API] 获取业绩趋势失败:', error)
     return { success: false, data: null, message: '获取业绩趋势失败' }
@@ -708,11 +713,12 @@ export const exportPerformanceShares = async (params: {
 }): Promise<Blob | { success: boolean; data: any }> => {
   console.log('[Performance API] 导出业绩分享数据:', params)
   try {
-    const response = await request.get('/performance/shares/export', {
+    // 🔥 request.get 返回的是直接的数据对象
+    const data = await request.get('/performance/shares/export', {
       params,
       responseType: params.format === 'csv' ? 'blob' : 'json'
     })
-    return response.data || response
+    return data
   } catch (error) {
     console.error('[Performance API] 导出业绩分享数据失败:', error)
     // 返回模拟数据用于导出

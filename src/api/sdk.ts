@@ -37,14 +37,15 @@ export const getSDKList = (): Promise<SDKListResponse> => {
  * 获取指定平台SDK信息
  */
 export const getSDKInfo = (platform: 'android' | 'ios'): Promise<SDKInfoResponse> => {
-  return request.get(`/mobile-sdk/info`).then(response => {
-    if (response.success && response.data) {
+  // 🔥 request.get 返回的是直接的数据对象
+  return request.get(`/mobile-sdk/info`).then(data => {
+    if (data && data[platform]) {
       return {
         success: true,
-        data: response.data[platform]
+        data: data[platform]
       }
     }
-    return response
+    return { success: false, data: null as any }
   })
 }
 
@@ -60,7 +61,7 @@ export const downloadSDK = async (platform: 'android' | 'ios'): Promise<{
     // 使用真实的APK文件路径
     let downloadUrl: string
     let fileName: string
-    
+
     if (platform === 'android') {
       downloadUrl = '/mobile-sdk/download/android'
       fileName = 'CRM-Mobile-SDK-v2.1.3.apk'
@@ -69,7 +70,7 @@ export const downloadSDK = async (platform: 'android' | 'ios'): Promise<{
       downloadUrl = '/mobile-sdk/'
       fileName = 'CRM-Mobile-SDK-PWA'
     }
-    
+
     // 创建下载链接并触发下载
     const link = document.createElement('a')
     link.href = downloadUrl
@@ -82,11 +83,11 @@ export const downloadSDK = async (platform: 'android' | 'ios'): Promise<{
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-    
+
     return {
       success: true,
-      message: platform === 'android' 
-        ? 'Android APK 下载已开始，请在下载完成后安装' 
+      message: platform === 'android'
+        ? 'Android APK 下载已开始，请在下载完成后安装'
         : 'iOS PWA 应用已打开，请按照页面指引安装'
     }
   } catch (error: any) {
@@ -109,7 +110,7 @@ export const checkSDKInstallStatus = async (platform: 'android' | 'ios'): Promis
   // 可以通过localStorage存储用户的安装状态
   const storageKey = `sdk_install_status_${platform}`
   const stored = localStorage.getItem(storageKey)
-  
+
   if (stored) {
     try {
       return JSON.parse(stored)
@@ -117,7 +118,7 @@ export const checkSDKInstallStatus = async (platform: 'android' | 'ios'): Promis
       // 如果解析失败，返回默认状态
     }
   }
-  
+
   // 默认未安装状态
   return {
     installed: false,
@@ -129,8 +130,8 @@ export const checkSDKInstallStatus = async (platform: 'android' | 'ios'): Promis
  * 更新SDK安装状态
  */
 export const updateSDKInstallStatus = (
-  platform: 'android' | 'ios', 
-  installed: boolean, 
+  platform: 'android' | 'ios',
+  installed: boolean,
   version?: string
 ): void => {
   const storageKey = `sdk_install_status_${platform}`
@@ -139,7 +140,7 @@ export const updateSDKInstallStatus = (
     version,
     lastCheck: new Date().toISOString()
   }
-  
+
   localStorage.setItem(storageKey, JSON.stringify(status))
 }
 
@@ -158,7 +159,7 @@ export const testSDKConnection = async (platform: 'android' | 'ios'): Promise<{
 }> => {
   // 检查是否已安装
   const installStatus = await checkSDKInstallStatus(platform)
-  
+
   if (!installStatus.installed) {
     return {
       success: false,
@@ -166,12 +167,12 @@ export const testSDKConnection = async (platform: 'android' | 'ios'): Promise<{
       message: '请先安装SDK'
     }
   }
-  
+
   // 模拟连接测试（实际项目中需要真实的设备通信）
   return new Promise((resolve) => {
     setTimeout(() => {
       const isConnected = Math.random() > 0.3 // 70% 成功率
-      
+
       if (isConnected) {
         resolve({
           success: true,
