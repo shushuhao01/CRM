@@ -1478,6 +1478,7 @@ export class MessageController {
 
   /**
    * 发送系统消息（内部调用或API调用）
+   * 🔥 2025-12-19 新增：WebSocket实时推送
    */
   async sendSystemMessage(req: Request, res: Response): Promise<void> {
     try {
@@ -1515,6 +1516,21 @@ export class MessageController {
       });
 
       await messageRepo.save(message);
+
+      // 🔥 通过WebSocket实时推送消息
+      if (global.webSocketService) {
+        global.webSocketService.pushSystemMessage({
+          id: message.id,
+          type: message.type,
+          title: message.title,
+          content: message.content,
+          priority: message.priority as any,
+          relatedId: message.relatedId,
+          relatedType: message.relatedType,
+          actionUrl: message.actionUrl
+        }, { userId: targetUserId });
+        console.log(`[系统消息] 🔌 WebSocket推送: ${title} -> 用户 ${targetUserId}`);
+      }
 
       console.log(`[系统消息] ✅ 发送成功: ${title} -> 用户 ${targetUserId}`);
 

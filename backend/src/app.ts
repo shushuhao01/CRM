@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-// Trigger restart
+import { createServer } from 'http';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
@@ -12,6 +12,7 @@ import path from 'path';
 import { initializeDatabase, closeDatabase } from './config/database';
 import { logger } from './config/logger';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { webSocketService } from './services/WebSocketService';
 
 // 路由导入
 import authRoutes from './routes/auth';
@@ -43,11 +44,13 @@ import smsRoutes from './routes/sms';
 import customerShareRoutes from './routes/customerShare';
 import performanceReportRoutes from './routes/performanceReport';
 import customerServicePermissionRoutes from './routes/customerServicePermissions';
+import timeoutReminderRoutes from './routes/timeoutReminder';
 
 // 加载环境变量
 dotenv.config();
 
 const app = express();
+const httpServer = createServer(app);
 const PORT = process.env.PORT || 3000;
 const API_PREFIX = process.env.API_PREFIX || '/api/v1';
 
@@ -156,7 +159,8 @@ app.get('/health', (req, res) => {
     message: 'CRM API服务运行正常',
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version || '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    onlineUsers: webSocketService.getOnlineUsersCount()
   });
 });
 
@@ -229,6 +233,7 @@ app.use(`${API_PREFIX}/assignment`, assignmentRoutes);
 app.use(`${API_PREFIX}/sms`, smsRoutes);
 app.use(`${API_PREFIX}/customer-share`, customerShareRoutes);
 app.use(`${API_PREFIX}/customer-service-permissions`, customerServicePermissionRoutes);
+app.use(`${API_PREFIX}/timeout-reminder`, timeoutReminderRoutes);
 
 // 404处理
 app.use(notFoundHandler);
@@ -243,13 +248,23 @@ const startServer = async () => {
     await initializeDatabase();
     logger.info('✅ 数据库初始化完成');
 
-    // 启动HTTP服务器
-    const server = app.listen(PORT, () => {
+    // 启动HTTP服务器（使用httpServer以支持WebSocket）
+    const server = httpServer.listen(PORT, () => {
       logger.info(`🚀 CRM API服务已启动`);
       logger.info(`📍 服务地址: http://localhost:${PORT}`);
       logger.info(`🔗 API前缀: ${API_PREFIX}`);
       logger.info(`🌍 运行环境: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`📊 健康检查: http://localhost:${PORT}/health`);
+
+      // 初始化WebSocket服务（异步）
+      webSocketService.initialize(httpServer).then(() => {
+        global.webSocketService = webSocketService;
+        if (webSocketService.isInitialized()) {
+          logger.info(`🔌 WebSocket实时推送服务已启动`);
+        }
+      }).catch(err => {
+        logger.warn('WebSocket服务启动失败:', err.message);
+      });
     });
 
     // 🔥 启动定时任务：每天凌晨3点清理过期消息（超过30天）
@@ -290,6 +305,46 @@ const startServer = async () => {
     };
 
     scheduleMessageCleanup();
+
+    // 🔥 启动超时提醒服务
+    const startTimeoutReminderService = async () => {
+      try {
+        const { timeoutReminderService } = await import('./services/TimeoutReminderService');
+
+        // 从数据库读取配置，决定是否启用
+        const { SystemConfig } = await import('./entities/SystemConfig');
+        const { AppDataSource } = await import('./config/database');
+
+        if (AppDataSource?.isInitialized) {
+          const configRepo = AppDataSource.getRepository(SystemConfig);
+          const enabledConfig = await configRepo.findOne({
+            where: { configKey: 'timeout_reminder_enabled', configGroup: 'timeout_reminder' }
+          });
+
+          const intervalConfig = await configRepo.findOne({
+            where: { configKey: 'timeout_check_interval_minutes', configGroup: 'timeout_reminder' }
+          });
+
+          const isEnabled = enabledConfig?.configValue !== 'false';
+          const intervalMinutes = parseInt(intervalConfig?.configValue || '30', 10);
+
+          if (isEnabled) {
+            timeoutReminderService.start(intervalMinutes);
+            logger.info(`⏰ [定时任务] 超时提醒服务已启动（检测间隔：${intervalMinutes}分钟）`);
+          } else {
+            logger.info('⏰ [定时任务] 超时提醒服务已禁用');
+          }
+        } else {
+          // 数据库未初始化，使用默认配置启动
+          timeoutReminderService.start(30);
+          logger.info('⏰ [定时任务] 超时提醒服务已启动（默认配置）');
+        }
+      } catch (error) {
+        logger.error('[定时任务] 启动超时提醒服务失败:', error);
+      }
+    };
+
+    startTimeoutReminderService();
 
     // 优雅关闭处理
     const gracefulShutdown = async (signal: string) => {
