@@ -1555,42 +1555,43 @@ const handleAuditSubmit = async () => {
     if (valid) {
       auditLoading.value = true
       try {
-        // 模拟API调用
-        await new Promise(resolve => setTimeout(resolve, 1500))
-
         const ordersToUpdate = isBatchAudit.value ? selectedOrders.value : [currentOrder.value]
         const action = auditForm.result === 'approved' ? '通过' : '拒绝'
+        const isApproved = auditForm.result === 'approved'
+        const rejectionReason = auditForm.rejectionReasonId
+          ? (rejectionReasonStore.getReasonById(auditForm.rejectionReasonId)?.name || auditForm.remark || '')
+          : (auditForm.remark || '')
 
-        // 更新订单状态
-        ordersToUpdate.forEach(order => {
-          // 重要：先更新订单store中的数据，确保数据持久化
-          const isApproved = auditForm.result === 'approved'
-          const rejectionReason = auditForm.rejectionReasonId
-            ? (rejectionReasonStore.getReasonById(auditForm.rejectionReasonId)?.name || auditForm.remark || '')
-            : (auditForm.remark || '')
+        // 🔥 修复：使用 for...of 循环并 await 每个异步操作
+        for (const order of ordersToUpdate) {
+          try {
+            // 🔥 调用后端API审核订单（这会触发后端发送通知）
+            await orderStore.auditOrder(order.id, isApproved, isApproved ? (auditForm.remark || '') : rejectionReason)
+            console.log(`[订单审核] ✅ 订单 ${order.orderNo} 审核${action}成功`)
 
-          // 更新订单存储中的订单状态，确保数据持久化
-          orderStore.auditOrder(order.id, isApproved, isApproved ? (auditForm.remark || '') : rejectionReason)
+            // 从待审核列表移除
+            const pendingIndex = pendingOrders.value.findIndex(item => item.id === order.id)
+            if (pendingIndex > -1) {
+              pendingOrders.value.splice(pendingIndex, 1)
+            }
 
-          // 从待审核列表移除
-          const pendingIndex = pendingOrders.value.findIndex(item => item.id === order.id)
-          if (pendingIndex > -1) {
-            pendingOrders.value.splice(pendingIndex, 1)
+            // 更新订单状态和审核信息（用于页面显示）
+            order.auditStatus = auditForm.result
+            order.auditTime = new Date().toLocaleString()
+            order.auditor = userStore.user.name
+            order.auditRemark = auditForm.remark
+
+            // 添加到对应的列表
+            if (isApproved) {
+              approvedOrders.value.unshift(order)
+            } else {
+              rejectedOrders.value.unshift(order)
+            }
+          } catch (orderError) {
+            console.error(`[订单审核] ❌ 订单 ${order.orderNo} 审核失败:`, orderError)
+            ElMessage.error(`订单 ${order.orderNo} 审核失败`)
           }
-
-          // 更新订单状态和审核信息（用于页面显示）
-          order.auditStatus = auditForm.result
-          order.auditTime = new Date().toLocaleString()
-          order.auditor = userStore.user.name
-          order.auditRemark = auditForm.remark
-
-          // 添加到对应的列表
-          if (auditForm.result === 'approved') {
-            approvedOrders.value.unshift(order)
-          } else {
-            rejectedOrders.value.unshift(order)
-          }
-        })
+        }
 
         // 更新汇总数据
         calculateSummaryData()
@@ -1604,57 +1605,7 @@ const handleAuditSubmit = async () => {
 
         ElMessage.success(`成功${action}${ordersToUpdate.length}个订单`)
 
-        // 发送通知消息给下单员（订单创建者）
-        ordersToUpdate.forEach(async order => {
-          const messageType = auditForm.result === 'approved' ? notificationStore.MessageType.AUDIT_APPROVED : notificationStore.MessageType.AUDIT_REJECTED
-          const actionText = auditForm.result === 'approved' ? '审核通过' : '审核拒绝'
-          // 获取下单员ID（优先使用salesPersonId，其次使用createdBy）
-          const orderCreatorId = order.salesPersonId || order.createdBy || order.createdById
-
-          if (orderCreatorId) {
-            // 发送审核结果通知给下单员（存储到数据库）
-            await messageNotificationService.sendToUser(
-              messageType,
-              `订单 ${order.orderNo} (客户: ${order.customerName}, 金额: ¥${order.totalAmount?.toLocaleString()}) 已${actionText}`,
-              String(orderCreatorId),
-              {
-                relatedId: order.id,
-                relatedType: 'order',
-                actionUrl: `/order/detail/${order.id}`
-              }
-            )
-
-            // 【批次201修复】发送待发货通知（审核通过时）
-            if (auditForm.result === 'approved') {
-              await messageNotificationService.sendToUser(
-                notificationStore.MessageType.ORDER_PENDING_SHIPMENT,
-                `订单 ${order.orderNo} 审核通过，已流转到物流发货列表，等待发货`,
-                String(orderCreatorId),
-                {
-                  relatedId: order.id,
-                  relatedType: 'order',
-                  actionUrl: `/logistics/shipping`
-                }
-              )
-            } else {
-              // 发送退回通知给销售员（审核拒绝时）
-              const rejectionReason = auditForm.rejectionReasonId
-                ? (rejectionReasonStore.getReasonById(auditForm.rejectionReasonId)?.name || auditForm.remark || '')
-                : (auditForm.remark || '')
-
-              await messageNotificationService.sendToUser(
-                notificationStore.MessageType.AUDIT_REJECTED,
-                `订单 ${order.orderNo} 审核被拒绝，已退回修改。拒绝原因：${rejectionReason}`,
-                String(orderCreatorId),
-                {
-                  relatedId: order.id,
-                  relatedType: 'order',
-                  actionUrl: `/order/edit/${order.id}`
-                }
-              )
-            }
-          }
-        })
+        // 🔥 注意：通知已由后端API自动发送，无需前端重复发送
 
         auditDialogVisible.value = false
 
@@ -1842,13 +1793,16 @@ const handleQuickAuditSubmit = async () => {
     if (valid) {
       quickAuditLoading.value = true
       try {
-        // 模拟API调用
-        await new Promise(resolve => setTimeout(resolve, 1000))
-
         const order = currentOrder.value
         const result = quickAuditForm.result
+        const isApproved = result === 'approved'
+        const rejectionReason = quickAuditForm.rejectionReason || quickAuditForm.remark || ''
 
-        // 更新订单状态
+        // 🔥 调用后端API审核订单（这会触发后端发送通知）
+        await orderStore.auditOrder(order.id, isApproved, isApproved ? (quickAuditForm.remark || '') : rejectionReason)
+        console.log(`[快速审核] ✅ 订单 ${order.orderNo} 审核${isApproved ? '通过' : '拒绝'}成功`)
+
+        // 更新订单状态（用于页面显示）
         order.auditStatus = result
         order.auditTime = new Date().toLocaleString()
         order.auditor = userStore.userInfo?.name || '当前用户'
@@ -1861,7 +1815,7 @@ const handleQuickAuditSubmit = async () => {
         order.auditHistory.push({
           id: order.auditHistory.length + 1,
           action: result,
-          actionName: result === 'approved' ? '审核通过' : '审核拒绝',
+          actionName: isApproved ? '审核通过' : '审核拒绝',
           operator: userStore.userInfo?.name || '当前用户',
           operatorRole: '审核员',
           time: new Date().toLocaleString(),
@@ -1875,7 +1829,7 @@ const handleQuickAuditSubmit = async () => {
         }
 
         // 添加到对应列表
-        if (result === 'approved') {
+        if (isApproved) {
           approvedOrders.value.unshift(order)
         } else {
           rejectedOrders.value.unshift(order)
@@ -1887,60 +1841,9 @@ const handleQuickAuditSubmit = async () => {
         // 更新标签计数
         updateTabCounts()
 
-        // 发送通知消息给下单员
-        const messageType = result === 'approved' ? notificationStore.MessageType.AUDIT_APPROVED : notificationStore.MessageType.AUDIT_REJECTED
-        const actionText = result === 'approved' ? '审核通过' : '审核拒绝'
-        // 获取下单员ID
-        const orderCreatorId = order.salesPersonId || order.createdBy || order.createdById
+        // 🔥 注意：通知已由后端API自动发送，无需前端重复发送
 
-        // 发送审核结果通知给下单员
-        notificationStore.sendMessage(
-          messageType,
-          `订单 ${order.orderNo} (客户: ${order.customerName}, 金额: ¥${order.totalAmount?.toLocaleString()}) 已${actionText}`,
-          {
-            relatedId: order.id,
-            relatedType: 'order',
-            actionUrl: `/order/detail/${order.id}`,
-            targetUserId: orderCreatorId,  // 发送给下单员
-            createdBy: userStore.userInfo?.id  // 审核人
-          }
-        )
-
-        // 如果审核通过，更新订单状态并流转到物流和发货列表
-        if (result === 'approved') {
-          // 更新订单存储中的订单状态 - 第二个参数必须是boolean类型
-          orderStore.auditOrder(order.id, true, quickAuditForm.remark || '')
-
-          // 【批次201修复】发送待发货通知给下单员
-          notificationStore.sendMessage(
-            notificationStore.MessageType.ORDER_PENDING_SHIPMENT,
-            `订单 ${order.orderNo} 审核通过，已流转到物流发货列表，等待发货`,
-            {
-              relatedId: order.id,
-              relatedType: 'order',
-              actionUrl: `/logistics/shipping`,
-              targetUserId: orderCreatorId  // 发送给下单员
-            }
-          )
-        } else {
-          // 如果审核拒绝，退回给销售员
-          const rejectionReason = quickAuditForm.rejectionReason || quickAuditForm.remark
-          orderStore.auditOrder(order.id, false, rejectionReason)
-
-          // 发送退回通知给下单员
-          notificationStore.sendMessage(
-            notificationStore.MessageType.AUDIT_REJECTED,
-            `订单 ${order.orderNo} 审核被拒绝，已退回修改。拒绝原因：${rejectionReason}`,
-            {
-              relatedId: order.id,
-              relatedType: 'order',
-              actionUrl: `/order/edit/${order.id}`,
-              targetUserId: orderCreatorId  // 发送给下单员
-            }
-          )
-        }
-
-        ElMessage.success(`订单${result === 'approved' ? '审核通过' : '审核拒绝'}`)
+        ElMessage.success(`订单${isApproved ? '审核通过' : '审核拒绝'}`)
         handleOrderDetailDialogClose()
       } catch (error) {
         ElMessage.error('审核失败，请重试')

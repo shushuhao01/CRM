@@ -87,21 +87,19 @@
             <el-col :span="12">
               <el-form-item label="收货电话" prop="receiverPhone">
                 <div class="phone-management">
-                  <!-- 🔥 修复：使用自定义显示格式，选中后也显示加密号码 -->
+                  <!-- 🔥 修复：收货电话下拉框显示加密手机号 -->
                   <el-select
-                    v-model="orderForm.receiverPhone"
+                    v-model="selectedPhoneId"
                     placeholder="请选择收货电话"
                     style="width: 100%"
                     clearable
+                    @change="handlePhoneSelect"
                   >
-                    <template #label="{ value }">
-                      <span>{{ maskPhone(value) }}</span>
-                    </template>
                     <el-option
                       v-for="phone in customerPhones"
                       :key="phone.id"
-                      :label="maskPhone(phone.number)"
-                      :value="phone.number"
+                      :label="maskPhone(phone.number) + (phone.remark ? ` (${phone.remark})` : '')"
+                      :value="phone.id"
                     />
                   </el-select>
                   <el-button
@@ -835,6 +833,9 @@ const selectedCustomer = ref<Customer | null>(null)
 // 客户手机号列表
 const customerPhones = ref<CustomerPhone[]>([])
 
+// 🔥 选中的手机号ID（用于下拉框显示加密号码）
+const selectedPhoneId = ref<number | null>(null)
+
 // 新增手机号对话框
 const showAddPhoneDialog = ref(false)
 const addPhoneFormRef = ref()
@@ -1050,10 +1051,23 @@ const loadCustomerPhones = async (customerId: string) => {
 
     // 设置默认手机号
     if (phones.length > 0) {
+      selectedPhoneId.value = phones[0].id
       orderForm.receiverPhone = phones[0].number
     }
   } catch (error) {
     ElMessage.error('加载客户手机号失败')
+  }
+}
+
+// 🔥 处理手机号选择（用于显示加密号码）
+const handlePhoneSelect = (phoneId: number | null) => {
+  if (phoneId === null) {
+    orderForm.receiverPhone = ''
+    return
+  }
+  const phone = customerPhones.value.find(p => p.id === phoneId)
+  if (phone) {
+    orderForm.receiverPhone = phone.number
   }
 }
 
@@ -1653,6 +1667,12 @@ onMounted(async () => {
 
       selectedCustomer.value = customerInfo
 
+      // 🔥 初始化手机号列表并设置选中
+      customerPhones.value = [
+        { id: 1, number: customerInfo.phone, remark: '默认手机号', isDefault: true }
+      ]
+      selectedPhoneId.value = 1
+
       ElMessage.success(`已自动选择客户：${customerInfo.name}`)
     } else if (customerName && customerPhone) {
       // 如果store中找不到但有传递的客户信息，使用传递的信息
@@ -1676,6 +1696,12 @@ onMounted(async () => {
       }
 
       selectedCustomer.value = customerInfo
+
+      // 🔥 初始化手机号列表并设置选中
+      customerPhones.value = [
+        { id: 1, number: customerPhone as string, remark: '默认手机号', isDefault: true }
+      ]
+      selectedPhoneId.value = 1
 
       ElMessage.success(`已自动选择客户：${customerName}`)
     } else {
