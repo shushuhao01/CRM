@@ -648,8 +648,14 @@ const handleReset = () => {
   handleSearch()
 }
 
-const handleRefresh = () => {
-  loadData()
+const handleRefresh = async () => {
+  try {
+    await loadData()
+    ElMessage.success('售后订单已刷新')
+  } catch (error) {
+    console.error('[售后订单] 刷新失败:', error)
+    ElMessage.error('刷新失败，请稍后重试')
+  }
 }
 
 const handleAdd = () => {
