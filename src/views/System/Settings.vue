@@ -2682,16 +2682,135 @@
 
       <!-- 系统日志 -->
       <el-tab-pane label="系统日志" name="logs">
+        <!-- 日志清理配置 -->
+        <el-card class="setting-card" style="margin-bottom: 16px;">
+          <template #header>
+            <div class="card-header">
+              <span>日志清理配置</span>
+              <el-button
+                @click="handleSaveLogConfig"
+                type="primary"
+                :loading="logConfigLoading"
+              >
+                保存配置
+              </el-button>
+            </div>
+          </template>
+
+          <el-form :model="logCleanupConfig" label-width="140px" class="setting-form">
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item label="自动清理">
+                  <el-switch
+                    v-model="logCleanupConfig.autoCleanup"
+                    active-text="启用"
+                    inactive-text="禁用"
+                  />
+                  <span class="form-tip">启用后将自动清理过期日志</span>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="日志保留天数">
+                  <el-input-number
+                    v-model="logCleanupConfig.retentionDays"
+                    :min="1"
+                    :max="365"
+                    :disabled="!logCleanupConfig.autoCleanup"
+                  />
+                  <span class="form-tip">天（超过此天数的日志将被清理）</span>
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item label="单文件大小限制">
+                  <el-input-number
+                    v-model="logCleanupConfig.maxFileSizeMB"
+                    :min="1"
+                    :max="100"
+                  />
+                  <span class="form-tip">MB（超过此大小将自动轮转）</span>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="清理时间">
+                  <el-time-picker
+                    v-model="logCleanupConfig.cleanupTime"
+                    format="HH:mm"
+                    value-format="HH:mm"
+                    placeholder="选择清理时间"
+                    :disabled="!logCleanupConfig.autoCleanup"
+                  />
+                  <span class="form-tip">每天在此时间执行清理</span>
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <el-row :gutter="20">
+              <el-col :span="24">
+                <el-form-item label="日志存储统计">
+                  <div class="log-stats">
+                    <el-tag type="info" size="large">
+                      日志文件数: {{ logStats.fileCount }} 个
+                    </el-tag>
+                    <el-tag type="warning" size="large">
+                      总大小: {{ logStats.totalSize }}
+                    </el-tag>
+                    <el-tag type="success" size="large">
+                      最早日志: {{ logStats.oldestLog || '无' }}
+                    </el-tag>
+                    <el-button
+                      type="info"
+                      size="small"
+                      @click="refreshLogStats"
+                      :loading="logStatsLoading"
+                    >
+                      刷新统计
+                    </el-button>
+                  </div>
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <el-row :gutter="20">
+              <el-col :span="24">
+                <el-form-item label="手动清理">
+                  <el-button
+                    type="warning"
+                    @click="cleanupOldLogs"
+                    :loading="cleanupLoading"
+                  >
+                    清理过期日志
+                  </el-button>
+                  <el-button
+                    type="danger"
+                    @click="clearLogs"
+                  >
+                    清空所有日志
+                  </el-button>
+                  <span class="form-tip">清理过期日志将删除超过保留天数的日志文件</span>
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </el-form>
+        </el-card>
+
+        <!-- 日志列表 -->
         <el-card class="setting-card">
           <template #header>
             <div class="card-header">
               <span>系统日志</span>
               <div>
+                <el-select v-model="logLevelFilter" placeholder="日志级别" style="width: 120px; margin-right: 10px;" clearable>
+                  <el-option label="全部" value="" />
+                  <el-option label="ERROR" value="ERROR" />
+                  <el-option label="WARN" value="WARN" />
+                  <el-option label="INFO" value="INFO" />
+                  <el-option label="DEBUG" value="DEBUG" />
+                </el-select>
                 <el-button @click="refreshLogs" :loading="logsLoading" type="primary">
                   刷新日志
-                </el-button>
-                <el-button @click="clearLogs" type="danger" plain>
-                  清空日志
                 </el-button>
               </div>
             </div>
@@ -2699,10 +2818,10 @@
 
           <div class="logs-container">
             <el-table
-              :data="systemLogs"
+              :data="filteredLogs"
               v-loading="logsLoading"
               style="width: 100%"
-              height="500"
+              height="400"
               stripe
             >
               <el-table-column prop="timestamp" label="时间" width="180">
@@ -3078,6 +3197,31 @@ const migrationStep = ref(0)
 
 // 系统日志数据
 const systemLogs = ref<SystemLog[]>([])
+const logLevelFilter = ref('')
+const logConfigLoading = ref(false)
+const logStatsLoading = ref(false)
+const cleanupLoading = ref(false)
+
+// 日志清理配置
+const logCleanupConfig = ref({
+  autoCleanup: true,
+  retentionDays: 7,
+  maxFileSizeMB: 20,
+  cleanupTime: '03:00'
+})
+
+// 日志统计
+const logStats = ref({
+  fileCount: 0,
+  totalSize: '0 MB',
+  oldestLog: ''
+})
+
+// 过滤后的日志
+const filteredLogs = computed(() => {
+  if (!logLevelFilter.value) return systemLogs.value
+  return systemLogs.value.filter(log => log.level === logLevelFilter.value)
+})
 
 // 移动应用相关数据
 const mobileSDKLoading = ref(false)
@@ -5335,6 +5479,8 @@ const clearLogs = async () => {
     if (response.success) {
       systemLogs.value = []
       ElMessage.success(response.message)
+      // 刷新统计
+      refreshLogStats()
     } else {
       ElMessage.error('清空日志失败')
     }
@@ -5343,6 +5489,92 @@ const clearLogs = async () => {
       console.error('清空日志失败:', error)
       ElMessage.error('清空日志失败')
     }
+  }
+}
+
+/**
+ * 保存日志清理配置
+ */
+const handleSaveLogConfig = async () => {
+  try {
+    logConfigLoading.value = true
+    const response = await logsApi.saveLogConfig(logCleanupConfig.value)
+    if (response.success) {
+      ElMessage.success('日志清理配置保存成功')
+    } else {
+      ElMessage.error(response.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('保存日志配置失败:', error)
+    ElMessage.error('保存日志配置失败')
+  } finally {
+    logConfigLoading.value = false
+  }
+}
+
+/**
+ * 刷新日志统计
+ */
+const refreshLogStats = async () => {
+  try {
+    logStatsLoading.value = true
+    const response = await logsApi.getLogStats()
+    if (response.success && response.data) {
+      logStats.value = response.data
+    }
+  } catch (error) {
+    console.log('[日志统计] 获取失败')
+  } finally {
+    logStatsLoading.value = false
+  }
+}
+
+/**
+ * 清理过期日志
+ */
+const cleanupOldLogs = async () => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要清理超过 ${logCleanupConfig.value.retentionDays} 天的日志吗？`,
+      '确认清理',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    cleanupLoading.value = true
+    const response = await logsApi.cleanupOldLogs(logCleanupConfig.value.retentionDays)
+    if (response.success) {
+      ElMessage.success(response.message || '清理完成')
+      // 刷新日志和统计
+      refreshLogs()
+      refreshLogStats()
+    } else {
+      ElMessage.error(response.message || '清理失败')
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('清理日志失败:', error)
+      ElMessage.error('清理日志失败')
+    }
+  } finally {
+    cleanupLoading.value = false
+  }
+}
+
+/**
+ * 加载日志清理配置
+ */
+const loadLogConfig = async () => {
+  try {
+    const response = await logsApi.getLogConfig()
+    if (response.success && response.data) {
+      logCleanupConfig.value = { ...logCleanupConfig.value, ...response.data }
+    }
+  } catch (error) {
+    console.log('[日志配置] 加载失败，使用默认配置')
   }
 }
 
