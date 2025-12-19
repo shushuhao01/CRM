@@ -1311,6 +1311,16 @@ INSERT INTO `roles` (`id`, `name`, `code`, `description`, `permissions`, `user_c
 ('tpl_manager_full', '经理完整模板', 'tpl_manager_full', '适用于部门经理，包含团队管理、业绩统计等权限', '["dashboard", "dashboard.personal", "dashboard.department", "customer", "customer.list", "customer.list.view", "customer.list.edit", "customer.add", "order", "order.list", "order.list.view", "order.list.edit", "order.add", "performance", "performance.personal", "performance.team", "performance.analysis"]', 0, 'custom', TRUE, 5, 'warning'),
 ('tpl_service_basic', '客服基础模板', 'tpl_service_basic', '适用于客服人员，包含订单审核、物流管理、售后处理等权限', '["dashboard", "dashboard.personal", "order", "order.audit", "order.audit.view", "order.audit.approve", "logistics", "logistics.list", "logistics.shipping", "logistics.track", "logistics.status", "afterSales", "afterSales.list", "afterSales.add"]', 0, 'custom', TRUE, 10, 'info');
 
+-- 插入超时提醒配置
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
+('order_audit_timeout_hours', '24', 'number', 'timeout_reminder', '订单审核超时时间（小时）', TRUE, TRUE, 1),
+('order_shipment_timeout_hours', '48', 'number', 'timeout_reminder', '订单发货超时时间（小时）', TRUE, TRUE, 2),
+('after_sales_timeout_hours', '48', 'number', 'timeout_reminder', '售后处理超时时间（小时）', TRUE, TRUE, 3),
+('order_followup_days', '3', 'number', 'timeout_reminder', '订单签收后跟进提醒天数', TRUE, TRUE, 4),
+('timeout_reminder_enabled', 'true', 'boolean', 'timeout_reminder', '是否启用超时提醒', TRUE, TRUE, 0),
+('timeout_check_interval_minutes', '30', 'number', 'timeout_reminder', '超时检测间隔（分钟）', TRUE, TRUE, 5)
+ON DUPLICATE KEY UPDATE `updatedAt` = CURRENT_TIMESTAMP;
+
 -- 插入预设用户（密码已加密，实际密码见文档）
 INSERT INTO `users` (`id`, `username`, `password`, `name`, `email`, `phone`, `role`, `role_id`, `department_id`, `department_name`, `position`, `status`) VALUES 
 ('superadmin', 'superadmin', 'super123456', '超级管理员', 'superadmin@example.com', '13800138000', 'super_admin', 'super_admin', 'dept_001', '系统管理部', '超级管理员', 'active'),
