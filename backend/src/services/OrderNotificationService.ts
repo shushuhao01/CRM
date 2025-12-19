@@ -578,23 +578,44 @@ class OrderNotificationService {
 
   /**
    * 获取指定角色的所有用户ID
+   * 🔥 修复：同时查询 status='active' 和 status=1 的用户（兼容不同的状态值）
    */
   private async getUserIdsByRoles(roles: string[]): Promise<string[]> {
     try {
       const dataSource = getDataSource();
-      if (!dataSource) return [];
+      if (!dataSource) {
+        console.error('[OrderNotification] ❌ 数据库未连接');
+        return [];
+      }
 
       const userRepo = dataSource.getRepository(User);
-      const users = await userRepo.find({
-        where: { status: 'active' },
-        select: ['id', 'role']
+
+      // 🔥 查询所有用户，不限制status，然后在代码中过滤
+      const allUsers = await userRepo.find({
+        select: ['id', 'role', 'status', 'username', 'realName']
       });
 
-      return users
-        .filter(u => roles.includes(u.role))
-        .map(u => u.id);
+      console.log(`[OrderNotification] 📋 数据库中共有 ${allUsers.length} 个用户`);
+      console.log(`[OrderNotification] 📋 查找角色: ${roles.join(', ')}`);
+
+      // 🔥 过滤：角色匹配 且 状态为活跃（兼容 'active', 1, '1', true）
+      const matchedUsers = allUsers.filter(u => {
+        const roleMatch = roles.includes(u.role);
+        const statusActive = u.status === 'active' || u.status === 1 || u.status === '1' || u.status === true;
+
+        if (roleMatch) {
+          console.log(`[OrderNotification] 👤 用户 ${u.username || u.realName} (ID: ${u.id}): role=${u.role}, status=${u.status}, statusActive=${statusActive}`);
+        }
+
+        return roleMatch && statusActive;
+      });
+
+      const userIds = matchedUsers.map(u => u.id);
+      console.log(`[OrderNotification] ✅ 匹配到 ${userIds.length} 个用户: ${userIds.join(', ')}`);
+
+      return userIds;
     } catch (error) {
-      console.error('[OrderNotification] 获取用户列表失败:', error);
+      console.error('[OrderNotification] ❌ 获取用户列表失败:', error);
       return [];
     }
   }
