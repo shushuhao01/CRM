@@ -53,57 +53,99 @@ const isValidForDeliveryPerformance = (order: { status: string }): boolean => {
 
 /**
  * @route GET /api/v1/dashboard/metrics
- * @desc 获取核心指标数据
+ * @desc 获取核心指标数据（支持权限过滤）
  * @access Private
  */
-router.get('/metrics', async (_req: Request, res: Response) => {
+router.get('/metrics', async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const currentUser = (req as any).user;
+    const userRole = currentUser?.role;
+    const userId = currentUser?.userId;
+    const departmentId = currentUser?.departmentId;
 
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // 今日新增客户
-    const newCustomers = await customerRepository.count({
-      where: {
-        createdAt: Between(todayStart, todayEnd)
+    // 🔥 根据用户角色构建查询条件
+    let userCondition = '';
+    const params: any[] = [];
+
+    if (userRole === 'super_admin' || userRole === 'admin') {
+      // 管理员看所有数据
+      userCondition = '';
+    } else if (userRole === 'department_manager' || userRole === 'manager') {
+      // 部门经理看本部门数据
+      if (departmentId) {
+        userCondition = ` AND (o.created_by IN (SELECT id FROM users WHERE department_id = ?) OR o.sales_person_id IN (SELECT id FROM users WHERE department_id = ?))`;
+        params.push(departmentId, departmentId);
       }
-    });
+    } else {
+      // 普通员工看自己的数据
+      userCondition = ` AND (o.created_by = ? OR o.sales_person_id = ?)`;
+      params.push(userId, userId);
+    }
 
-    // 🔥 今日订单数据（使用新的业绩计算规则）
-    const todayOrdersData = await orderRepository.find({
-      where: {
-        createdAt: Between(todayStart, todayEnd)
-      },
-      select: ['totalAmount', 'status', 'markType']
-    });
+    // 今日订单数据
+    const todayOrdersData = await AppDataSource.query(
+      `SELECT total_amount as totalAmount, status, mark_type as markType
+       FROM orders o
+       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
+      [todayStart, todayEnd, ...params]
+    );
+
+    // 本月订单数据
+    const monthlyOrdersData = await AppDataSource.query(
+      `SELECT total_amount as totalAmount, status, mark_type as markType
+       FROM orders o
+       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
+      [monthStart, todayEnd, ...params]
+    );
 
     // 过滤有效订单（计入下单业绩）
-    const validTodayOrders = todayOrdersData.filter(o => isValidForOrderPerformance(o));
+    const validTodayOrders = todayOrdersData.filter((o: any) => isValidForOrderPerformance(o));
     const todayOrders = validTodayOrders.length;
-    const todayRevenue = validTodayOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
+    const todayRevenue = validTodayOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
 
-    // 🔥 本月订单数据（使用新的业绩计算规则）
-    const monthlyOrdersData = await orderRepository.find({
-      where: {
-        createdAt: Between(monthStart, todayEnd)
-      },
-      select: ['totalAmount', 'status', 'markType']
-    });
-
-    // 过滤有效订单（计入下单业绩）
-    const validMonthlyOrders = monthlyOrdersData.filter(o => isValidForOrderPerformance(o));
+    const validMonthlyOrders = monthlyOrdersData.filter((o: any) => isValidForOrderPerformance(o));
     const monthlyOrders = validMonthlyOrders.length;
-    const monthlyRevenue = validMonthlyOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
+    const monthlyRevenue = validMonthlyOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
 
-    // 🔥 发货业绩和签收业绩（可选返回）
-    const todayShippedOrders = todayOrdersData.filter(o => isValidForShipmentPerformance(o));
-    const todayDeliveredOrders = todayOrdersData.filter(o => isValidForDeliveryPerformance(o));
-    const monthlyShippedOrders = monthlyOrdersData.filter(o => isValidForShipmentPerformance(o));
-    const monthlyDeliveredOrders = monthlyOrdersData.filter(o => isValidForDeliveryPerformance(o));
+    // 发货业绩和签收业绩
+    const todayShippedOrders = todayOrdersData.filter((o: any) => isValidForShipmentPerformance(o));
+    const todayDeliveredOrders = todayOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
+    const monthlyShippedOrders = monthlyOrdersData.filter((o: any) => isValidForShipmentPerformance(o));
+    const monthlyDeliveredOrders = monthlyOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
+
+    // 待审核和待发货订单
+    const pendingAuditOrders = await AppDataSource.query(
+      `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_audit'${userCondition}`,
+      params
+    );
+    const pendingShipmentOrders = await AppDataSource.query(
+      `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_shipment'${userCondition}`,
+      params
+    );
+
+    // 新增客户
+    let customerCondition = '';
+    const customerParams: any[] = [todayStart, todayEnd];
+    if (userRole !== 'super_admin' && userRole !== 'admin') {
+      if (userRole === 'department_manager' || userRole === 'manager') {
+        if (departmentId) {
+          customerCondition = ` AND sales_person_id IN (SELECT id FROM users WHERE department_id = ?)`;
+          customerParams.push(departmentId);
+        }
+      } else {
+        customerCondition = ` AND sales_person_id = ?`;
+        customerParams.push(userId);
+      }
+    }
+    const [newCustomersResult] = await AppDataSource.query(
+      `SELECT COUNT(*) as count FROM customers WHERE created_at >= ? AND created_at <= ?${customerCondition}`,
+      customerParams
+    );
 
     res.json({
       success: true,
@@ -113,18 +155,21 @@ router.get('/metrics', async (_req: Request, res: Response) => {
         todayRevenue,
         monthlyOrders,
         monthlyRevenue,
-        newCustomers,
+        newCustomers: newCustomersResult?.count || 0,
         pendingService: 0,
+        // 待处理
+        pendingAudit: pendingAuditOrders[0]?.count || 0,
+        pendingShipment: pendingShipmentOrders[0]?.count || 0,
         // 发货业绩
         todayShippedCount: todayShippedOrders.length,
-        todayShippedAmount: todayShippedOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0),
+        todayShippedAmount: todayShippedOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0),
         monthlyShippedCount: monthlyShippedOrders.length,
-        monthlyShippedAmount: monthlyShippedOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0),
+        monthlyShippedAmount: monthlyShippedOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0),
         // 签收业绩
         todayDeliveredCount: todayDeliveredOrders.length,
-        todayDeliveredAmount: todayDeliveredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0),
+        todayDeliveredAmount: todayDeliveredOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0),
         monthlyDeliveredCount: monthlyDeliveredOrders.length,
-        monthlyDeliveredAmount: monthlyDeliveredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0)
+        monthlyDeliveredAmount: monthlyDeliveredOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0)
       }
     });
   } catch (error) {
