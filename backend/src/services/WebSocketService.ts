@@ -46,7 +46,9 @@ class WebSocketService {
       // 动态导入socket.io
       const { Server: SocketIOServer } = await import('socket.io');
 
-      const corsOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:5173'];
+      const corsOrigins = process.env.CORS_ORIGIN?.split(',').map(s => s.trim()) || ['http://localhost:5173'];
+
+      logger.info('🔌 WebSocket CORS配置:', corsOrigins);
 
       this.io = new SocketIOServer(server, {
         cors: {
@@ -56,7 +58,9 @@ class WebSocketService {
         },
         transports: ['websocket', 'polling'],
         pingTimeout: 60000,
-        pingInterval: 25000
+        pingInterval: 25000,
+        // 允许更长的连接超时
+        connectTimeout: 45000
       });
 
       this.setupMiddleware();
