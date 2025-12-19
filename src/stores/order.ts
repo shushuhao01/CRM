@@ -1408,10 +1408,10 @@ export const useOrderStore = createPersistentStore('order', () => {
     try {
       const { orderApi } = await import('@/api/order')
       console.log('[OrderStore] 正在从API加载订单列表...')
-      // 使用传入的分页参数，默认500条以确保加载足够多的订单
+      // 🔥 优化：默认加载100条，业绩统计等需要更多数据的场景应使用专门的统计API
       const response = await orderApi.getList({
         page: params?.page || 1,
-        pageSize: params?.pageSize || 500,
+        pageSize: params?.pageSize || 100,
         status: params?.status
       })
 
