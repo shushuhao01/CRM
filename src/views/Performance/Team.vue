@@ -719,6 +719,7 @@ import { eventBus, EventNames } from '@/utils/eventBus'
 import TableColumnSettings from '@/components/TableColumnSettings.vue'
 import { formatDateTime } from '@/utils/dateFormat'
 import { getOrderStatusText, getOrderStatusTagType } from '@/utils/orderStatusConfig'
+import { getTeamStats } from '@/api/performance'
 import {
   Search,
   Download,
@@ -806,6 +807,22 @@ const formatDateInit = (date: Date) => {
 const dateRange = ref<[string, string]>([formatDateInit(today), formatDateInit(today)])
 const selectedDepartment = ref('')
 const sortBy = ref('orderAmount')
+
+// 🔥 后端API数据缓存
+const apiTeamData = ref<{
+  members: any[]
+  summary: {
+    totalPerformance: number
+    totalOrders: number
+    avgPerformance: number
+    signOrders: number
+    signRate: number
+    signPerformance: number
+    memberCount: number
+  }
+  total: number
+} | null>(null)
+const useBackendAPI = ref(true) // 是否使用后端API
 
 // 计算可访问的部门列表（根据用户角色）
 const accessibleDepartments = computed(() => {
@@ -1005,8 +1022,15 @@ const paginatedOrderTypeList = computed(() => {
   return orderTypeOrders.value.slice(start, end)
 })
 
-// 数据概览 - 基于权限和真实数据计算
+// 数据概览 - 优先使用后端API数据
 const overviewData = computed(() => {
+  // 🔥 优先使用后端API数据
+  if (apiTeamData.value && apiTeamData.value.summary) {
+    console.log('[团队业绩] 使用后端API概览数据')
+    return apiTeamData.value.summary
+  }
+
+  // 降级方案：前端计算
   const currentUser = userStore.currentUser
   if (!currentUser) {
     return {
@@ -1127,8 +1151,15 @@ const quickFilters = [
   { label: '全部', value: 'all' }
 ]
 
-// 成员列表 - 基于真实数据和权限计算
+// 成员列表 - 优先使用后端API数据
 const memberList = computed(() => {
+  // 🔥 优先使用后端API数据
+  if (apiTeamData.value && apiTeamData.value.members && apiTeamData.value.members.length > 0) {
+    console.log('[团队业绩] 使用后端API成员列表数据')
+    return apiTeamData.value.members
+  }
+
+  // 降级方案：前端计算
   const currentUser = userStore.currentUser
   if (!currentUser) {
     console.log('[团队业绩] 当前用户不存在')
@@ -2317,11 +2348,60 @@ const handleMemberOrderPageChange = () => {
   console.log('订单分页变化', { page: orderCurrentPage.value, size: orderPageSize.value, total: orderTotal.value })
 }
 
+// 🔥 从后端API加载团队业绩数据
+const loadTeamDataFromAPI = async () => {
+  try {
+    console.log('[团队业绩] 从后端API加载数据...')
+    const response = await getTeamStats({
+      departmentId: selectedDepartment.value || undefined,
+      startDate: dateRange.value?.[0] || undefined,
+      endDate: dateRange.value?.[1] || undefined,
+      sortBy: sortBy.value,
+      page: currentPage.value,
+      limit: pageSize.value
+    })
+
+    if (response.success && response.data) {
+      apiTeamData.value = {
+        members: response.data.members || [],
+        summary: response.data.summary || {
+          totalPerformance: 0,
+          totalOrders: 0,
+          avgPerformance: 0,
+          signOrders: 0,
+          signRate: 0,
+          signPerformance: 0,
+          memberCount: 0
+        },
+        total: response.data.total || 0
+      }
+      total.value = response.data.total || 0
+      console.log('[团队业绩] ✅ 后端API数据加载成功:', apiTeamData.value.members.length, '个成员')
+      return true
+    }
+    return false
+  } catch (error) {
+    console.error('[团队业绩] ❌ 后端API加载失败:', error)
+    return false
+  }
+}
+
 // 数据实时更新机制
 const refreshData = async () => {
   try {
     loading.value = true
-    // 🔥 使用loadOrdersFromAPI(true)强制从服务器重新加载订单数据，确保数据实时更新
+
+    // 🔥 优先使用后端API
+    if (useBackendAPI.value) {
+      const success = await loadTeamDataFromAPI()
+      if (success) {
+        console.log('[团队业绩] 使用后端API数据')
+        return
+      }
+      console.log('[团队业绩] 后端API失败，降级到前端计算')
+    }
+
+    // 降级方案：从前端加载数据
     await Promise.all([
       orderStore.loadOrdersFromAPI(true),
       customerStore.loadCustomers(),
