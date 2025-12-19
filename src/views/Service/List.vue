@@ -787,21 +787,7 @@ const handleAssignConfirm = async () => {
       assignForm.remark || undefined
     )
 
-    // 发送分配处理人成功的消息提醒
-    notificationStore.sendMessage(
-      notificationStore.MessageType.AFTER_SALES_ASSIGNED,
-      `售后申请 ${currentRow.value.serviceNumber} 已分配给 ${assignedToName}，客户：${currentRow.value.customerName}`,
-      {
-        relatedId: currentRow.value.serviceNumber,
-        relatedType: 'service',
-        actionUrl: `/service/detail/${currentRow.value.serviceNumber}`,
-        metadata: {
-          customerName: currentRow.value.customerName,
-          serviceType: currentRow.value.serviceType,
-          assignedTo: assignedToName
-        }
-      }
-    )
+    // 🔥 注意：分配通知已由后端API自动发送，无需前端重复发送
 
     // 分配成功,显示提示并关闭对话框
     ElMessage.success('分配成功')
@@ -838,17 +824,7 @@ const handlePriorityConfirm = async () => {
       priorityForm.remark || undefined
     )
 
-    // 发送优先级设置成功的消息提醒
-    const priorityText = getPriorityText(priorityForm.priority)
-    notificationStore.sendMessage(
-      notificationStore.MessageType.AFTER_SALES_CREATED,
-      `售后申请 ${currentRow.value.serviceNumber} 优先级已设置为${priorityText}，客户：${currentRow.value.customerName}`,
-      {
-        relatedId: currentRow.value.serviceNumber,
-        relatedType: 'service',
-        actionUrl: `/service/detail/${currentRow.value.serviceNumber}`
-      }
-    )
+    // 🔥 注意：优先级设置通知由后端API处理
 
     ElMessage.success('优先级设置成功')
     priorityDialogVisible.value = false
@@ -874,24 +850,10 @@ const handleClose = async (row: AfterSalesService) => {
     }
   ).then(async () => {
     try {
-      // 使用serviceStore更新状态
+      // 使用serviceStore更新状态（后端会自动发送通知）
       await serviceStore.updateServiceStatus(row.id, 'closed', '手动关闭')
 
-      // 发送售后申请关闭的消息提醒
-      notificationStore.sendMessage(
-        notificationStore.MessageType.AFTER_SALES_CLOSED,
-        `售后申请 ${row.serviceNumber} 已关闭，客户：${row.customerName}`,
-        {
-          relatedId: row.serviceNumber,
-          relatedType: 'service',
-          actionUrl: `/service/detail/${row.serviceNumber}`,
-          metadata: {
-            customerName: row.customerName,
-            serviceType: row.serviceType,
-            closedAt: new Date().toISOString()
-          }
-        }
-      )
+      // 🔥 注意：通知已由后端API自动发送，无需前端重复发送
 
       ElMessage.success('售后单已关闭')
     } catch (error) {
