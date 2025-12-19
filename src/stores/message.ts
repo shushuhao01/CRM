@@ -351,15 +351,48 @@ export const useMessageStore = defineStore('message', () => {
 
   const markAnnouncementAsRead = async (id: string) => {
     try {
+      console.log('[MessageStore] 标记公告已读:', id)
       // 调用API标记公告为已读
-      await messageApi.markAnnouncementAsRead(id)
+      const response = await messageApi.markAnnouncementAsRead(id)
+      console.log('[MessageStore] API响应:', response)
+
       // 更新本地状态
       const announcement = announcements.value.find(ann => ann.id === id)
       if (announcement) {
         (announcement as any).read = true
+        console.log('[MessageStore] 本地状态已更新:', announcement.title)
       }
+      return response
     } catch (error) {
-      console.error('标记公告已读失败:', error)
+      console.error('[MessageStore] 标记公告已读失败:', error)
+      // 即使API失败，也更新本地状态（降级处理）
+      const announcement = announcements.value.find(ann => ann.id === id)
+      if (announcement) {
+        (announcement as any).read = true
+      }
+      throw error
+    }
+  }
+
+  // 🔥 标记所有公告为已读
+  const markAllAnnouncementsAsRead = async () => {
+    try {
+      const unreadAnnouncements = announcements.value.filter(ann => !(ann as any).read)
+      console.log('[MessageStore] 标记所有公告已读，共', unreadAnnouncements.length, '条')
+
+      for (const announcement of unreadAnnouncements) {
+        try {
+          await messageApi.markAnnouncementAsRead(announcement.id)
+          ;(announcement as any).read = true
+        } catch (error) {
+          console.error('[MessageStore] 标记公告已读失败:', announcement.id, error)
+          // 即使API失败，也更新本地状态
+          ;(announcement as any).read = true
+        }
+      }
+      console.log('[MessageStore] 所有公告已标记为已读')
+    } catch (error) {
+      console.error('[MessageStore] 批量标记公告已读失败:', error)
     }
   }
 
@@ -392,6 +425,7 @@ export const useMessageStore = defineStore('message', () => {
     markMessageAsRead,
     markAllMessagesAsRead,
     markAnnouncementAsRead,
+    markAllAnnouncementsAsRead,
 
     // API对象
     messageApi
