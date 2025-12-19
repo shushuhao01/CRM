@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
-import { Customer } from '../entities/Customer';
+// Customer entity not used directly, but kept for reference
+// import { Customer } from '../entities/Customer';
 import { User } from '../entities/User';
 import { Between, In } from 'typeorm';
 
@@ -149,6 +150,8 @@ router.get('/metrics', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取核心指标成功',
       data: {
         // 下单业绩
         todayOrders,
@@ -283,6 +286,8 @@ router.get('/rankings', async (_req: Request, res: Response) => {
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取排行榜数据成功',
       data: {
         sales: salesRankings,
         products: productRankings
@@ -292,6 +297,7 @@ router.get('/rankings', async (_req: Request, res: Response) => {
     console.error('获取排行榜数据失败:', error);
     res.status(500).json({
       success: false,
+      code: 500,
       message: '获取排行榜数据失败',
       error: error instanceof Error ? error.message : '未知错误'
     });
@@ -408,6 +414,8 @@ router.get('/charts', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取图表数据成功',
       data: {
         performance: {
           categories,
@@ -423,6 +431,7 @@ router.get('/charts', async (req: Request, res: Response) => {
     console.error('获取图表数据失败:', error);
     res.status(500).json({
       success: false,
+      code: 500,
       message: '获取图表数据失败',
       error: error instanceof Error ? error.message : '未知错误'
     });
@@ -458,12 +467,15 @@ router.get('/todos', async (_req: Request, res: Response) => {
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取待办事项成功',
       data: todos
     });
   } catch (error) {
     console.error('获取待办事项失败:', error);
     res.status(500).json({
       success: false,
+      code: 500,
       message: '获取待办事项失败',
       error: error instanceof Error ? error.message : '未知错误'
     });
@@ -517,6 +529,8 @@ router.get('/quick-actions', (_req: Request, res: Response) => {
 
   res.json({
     success: true,
+    code: 200,
+    message: '获取快捷操作成功',
     data: quickActions
   });
 });

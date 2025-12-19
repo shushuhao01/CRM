@@ -55,6 +55,8 @@ router.get('/shares', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取业绩分享列表成功',
       data: {
         shares: shares.map((s: any) => ({
           ...s,
@@ -67,7 +69,7 @@ router.get('/shares', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('获取业绩分享列表失败:', error);
-    res.status(500).json({ success: false, message: '获取业绩分享列表失败' });
+    res.status(500).json({ success: false, code: 500, message: '获取业绩分享列表失败' });
   }
 });
 
@@ -85,7 +87,7 @@ router.get('/shares/:id', async (req: Request, res: Response) => {
     );
 
     if (!share) {
-      return res.status(404).json({ success: false, message: '业绩分享记录不存在' });
+      return res.status(404).json({ success: false, code: 404, message: '业绩分享记录不存在' });
     }
 
     const members = await AppDataSource.query(
@@ -94,11 +96,13 @@ router.get('/shares/:id', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取业绩分享详情成功',
       data: { ...share, shareMembers: members }
     });
   } catch (error) {
     console.error('获取业绩分享详情失败:', error);
-    res.status(500).json({ success: false, message: '获取业绩分享详情失败' });
+    res.status(500).json({ success: false, code: 500, message: '获取业绩分享详情失败' });
   }
 });
 
@@ -178,12 +182,13 @@ router.post('/shares', async (req: Request, res: Response) => {
 
     res.status(201).json({
       success: true,
+      code: 200,
       message: '业绩分享创建成功',
       data: { id: shareId, shareNumber }
     });
   } catch (error) {
     console.error('创建业绩分享失败:', error);
-    res.status(500).json({ success: false, message: '创建业绩分享失败' });
+    res.status(500).json({ success: false, code: 500, message: '创建业绩分享失败' });
   }
 });
 
@@ -201,15 +206,15 @@ router.delete('/shares/:id', async (req: Request, res: Response) => {
     );
 
     if (!share) {
-      return res.status(404).json({ success: false, message: '业绩分享记录不存在' });
+      return res.status(404).json({ success: false, code: 404, message: '业绩分享记录不存在' });
     }
 
     if (share.created_by !== currentUser?.userId) {
-      return res.status(403).json({ success: false, message: '无权限取消此分享记录' });
+      return res.status(403).json({ success: false, code: 403, message: '无权限取消此分享记录' });
     }
 
     if (share.status !== 'active') {
-      return res.status(400).json({ success: false, message: '只能取消活跃状态的分享记录' });
+      return res.status(400).json({ success: false, code: 400, message: '只能取消活跃状态的分享记录' });
     }
 
     await AppDataSource.query(
@@ -217,10 +222,10 @@ router.delete('/shares/:id', async (req: Request, res: Response) => {
       [id]
     );
 
-    res.json({ success: true, message: '业绩分享已取消' });
+    res.json({ success: true, code: 200, message: '业绩分享已取消' });
   } catch (error) {
     console.error('取消业绩分享失败:', error);
-    res.status(500).json({ success: false, message: '取消业绩分享失败' });
+    res.status(500).json({ success: false, code: 500, message: '取消业绩分享失败' });
   }
 });
 
@@ -253,10 +258,10 @@ router.post('/shares/:id/confirm', async (req: Request, res: Response) => {
       );
     }
 
-    res.json({ success: true, message: '业绩分享确认成功' });
+    res.json({ success: true, code: 200, message: '业绩分享确认成功' });
   } catch (error) {
     console.error('确认业绩分享失败:', error);
-    res.status(500).json({ success: false, message: '确认业绩分享失败' });
+    res.status(500).json({ success: false, code: 500, message: '确认业绩分享失败' });
   }
 });
 
@@ -291,6 +296,8 @@ router.get('/stats', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取业绩分享统计成功',
       data: {
         totalShares: totalResult?.total || 0,
         totalAmount: totalResult?.totalAmount || 0,
@@ -304,7 +311,7 @@ router.get('/stats', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('获取业绩分享统计失败:', error);
-    res.status(500).json({ success: false, message: '获取业绩分享统计失败' });
+    res.status(500).json({ success: false, code: 500, message: '获取业绩分享统计失败' });
   }
 });
 
@@ -415,6 +422,8 @@ router.get('/personal', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取个人业绩成功',
       data: {
         userId,
         // 下单业绩
@@ -442,7 +451,7 @@ router.get('/personal', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('获取个人业绩失败:', error);
-    res.status(500).json({ success: false, message: '获取个人业绩失败' });
+    res.status(500).json({ success: false, code: 500, message: '获取个人业绩失败' });
   }
 });
 
@@ -593,6 +602,8 @@ router.get('/team', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取团队业绩成功',
       data: {
         members: paginatedMembers,
         total,
@@ -612,7 +623,7 @@ router.get('/team', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('获取团队业绩失败:', error);
-    res.status(500).json({ success: false, message: '获取团队业绩失败' });
+    res.status(500).json({ success: false, code: 500, message: '获取团队业绩失败' });
   }
 });
 
@@ -648,6 +659,8 @@ router.get('/analysis', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取业绩分析成功',
       data: {
         trend: trendData,
         statusDistribution,
@@ -660,7 +673,7 @@ router.get('/analysis', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('获取业绩分析失败:', error);
-    res.status(500).json({ success: false, message: '获取业绩分析失败' });
+    res.status(500).json({ success: false, code: 500, message: '获取业绩分析失败' });
   }
 });
 
@@ -712,7 +725,7 @@ router.get('/analysis/personal', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('获取个人业绩分析失败:', error);
-    res.status(500).json({ success: false, message: '获取个人业绩分析失败' });
+    res.status(500).json({ success: false, code: 500, message: '获取个人业绩分析失败' });
   }
 });
 
@@ -742,6 +755,8 @@ router.get('/analysis/department', async (req: Request, res: Response) => {
     const orderCount = stats?.orderCount || 1;
     res.json({
       success: true,
+      code: 200,
+      message: '获取部门业绩分析成功',
       data: {
         name: '部门',
         orderCount: stats?.orderCount || 0,
@@ -758,7 +773,7 @@ router.get('/analysis/department', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('获取部门业绩分析失败:', error);
-    res.status(500).json({ success: false, message: '获取部门业绩分析失败' });
+    res.status(500).json({ success: false, code: 500, message: '获取部门业绩分析失败' });
   }
 });
 
@@ -782,6 +797,8 @@ router.get('/analysis/company', async (_req: Request, res: Response) => {
     const orderCount = stats?.orderCount || 1;
     res.json({
       success: true,
+      code: 200,
+      message: '获取公司业绩分析成功',
       data: {
         name: '公司总体',
         orderCount: stats?.orderCount || 0,
@@ -798,7 +815,7 @@ router.get('/analysis/company', async (_req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('获取公司业绩分析失败:', error);
-    res.status(500).json({ success: false, message: '获取公司业绩分析失败' });
+    res.status(500).json({ success: false, code: 500, message: '获取公司业绩分析失败' });
   }
 });
 
@@ -836,6 +853,8 @@ router.get('/analysis/metrics', async (req: Request, res: Response) => {
     const totalOrders = stats?.totalOrders || 1;
     res.json({
       success: true,
+      code: 200,
+      message: '获取业绩统计指标成功',
       data: {
         totalPerformance: stats?.totalPerformance || 0,
         totalOrders: stats?.totalOrders || 0,
@@ -847,7 +866,7 @@ router.get('/analysis/metrics', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('获取业绩统计指标失败:', error);
-    res.status(500).json({ success: false, message: '获取业绩统计指标失败' });
+    res.status(500).json({ success: false, code: 500, message: '获取业绩统计指标失败' });
   }
 });
 
@@ -871,10 +890,10 @@ router.get('/analysis/trend', async (req: Request, res: Response) => {
       [days]
     );
 
-    res.json({ success: true, data: trendData });
+    res.json({ success: true, code: 200, message: '获取业绩趋势成功', data: trendData });
   } catch (error) {
     console.error('获取业绩趋势失败:', error);
-    res.status(500).json({ success: false, message: '获取业绩趋势失败' });
+    res.status(500).json({ success: false, code: 500, message: '获取业绩趋势失败' });
   }
 });
 
