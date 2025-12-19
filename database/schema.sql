@@ -1890,3 +1890,30 @@ CREATE TABLE `customer_service_permissions` (
   INDEX `idx_status` (`status`),
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客服权限配置表';
+
+-- =============================================
+-- 敏感信息权限配置表
+-- =============================================
+DROP TABLE IF EXISTS `sensitive_info_permissions`;
+CREATE TABLE `sensitive_info_permissions` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '配置ID',
+  `info_type` VARCHAR(50) NOT NULL COMMENT '敏感信息类型: phone, id_card, email, wechat, address, bank, financial',
+  `role_code` VARCHAR(50) NOT NULL COMMENT '角色代码: super_admin, admin, department_manager, sales_staff, customer_service',
+  `has_permission` TINYINT(1) DEFAULT 0 COMMENT '是否有权限: 0无权限, 1有权限',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE INDEX `idx_info_role` (`info_type`, `role_code`),
+  INDEX `idx_info_type` (`info_type`),
+  INDEX `idx_role_code` (`role_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='敏感信息权限配置表';
+
+-- 插入敏感信息权限默认配置
+INSERT INTO `sensitive_info_permissions` (`info_type`, `role_code`, `has_permission`) VALUES
+('phone', 'super_admin', 1), ('phone', 'admin', 1), ('phone', 'department_manager', 0), ('phone', 'sales_staff', 0), ('phone', 'customer_service', 0),
+('id_card', 'super_admin', 1), ('id_card', 'admin', 0), ('id_card', 'department_manager', 0), ('id_card', 'sales_staff', 0), ('id_card', 'customer_service', 0),
+('email', 'super_admin', 1), ('email', 'admin', 1), ('email', 'department_manager', 0), ('email', 'sales_staff', 0), ('email', 'customer_service', 0),
+('wechat', 'super_admin', 1), ('wechat', 'admin', 1), ('wechat', 'department_manager', 0), ('wechat', 'sales_staff', 0), ('wechat', 'customer_service', 0),
+('address', 'super_admin', 1), ('address', 'admin', 1), ('address', 'department_manager', 0), ('address', 'sales_staff', 0), ('address', 'customer_service', 0),
+('bank', 'super_admin', 1), ('bank', 'admin', 0), ('bank', 'department_manager', 0), ('bank', 'sales_staff', 0), ('bank', 'customer_service', 0),
+('financial', 'super_admin', 1), ('financial', 'admin', 0), ('financial', 'department_manager', 0), ('financial', 'sales_staff', 0), ('financial', 'customer_service', 0)
+ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
