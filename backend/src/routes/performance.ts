@@ -343,10 +343,10 @@ router.get('/personal', async (req: Request, res: Response) => {
 
     // 构建日期条件
     let dateCondition = '';
-    const params: any[] = [userId];
+    const orderParams: any[] = [userId];
     if (startDate && endDate) {
       dateCondition = ' AND created_at >= ? AND created_at <= ?';
-      params.push(startDate + ' 00:00:00', endDate + ' 23:59:59');
+      orderParams.push(startDate + ' 00:00:00', endDate + ' 23:59:59');
     }
 
     // 获取所有订单用于业绩计算
@@ -354,7 +354,7 @@ router.get('/personal', async (req: Request, res: Response) => {
     const orders = await AppDataSource.query(
       `SELECT status, mark_type as markType, total_amount as totalAmount
        FROM orders WHERE created_by = ?${dateCondition}`,
-      [userId, ...(startDate && endDate ? [startDate + ' 00:00:00', endDate + ' 23:59:59'] : [])]
+      orderParams
     );
 
     // 🔥 使用统一的业绩计算规则
@@ -470,10 +470,10 @@ router.get('/team', async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
 
-    // 构建日期条件
+    // 构建日期条件 - 🔥 修复：移除表别名o，因为订单查询中没有使用别名
     let dateCondition = '';
     if (startDate && endDate) {
-      dateCondition = ` AND o.created_at >= '${startDate} 00:00:00' AND o.created_at <= '${endDate} 23:59:59'`;
+      dateCondition = ` AND created_at >= '${startDate} 00:00:00' AND created_at <= '${endDate} 23:59:59'`;
     }
 
     // 获取部门成员列表
