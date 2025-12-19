@@ -149,6 +149,33 @@ router.post('/shares', async (req: Request, res: Response) => {
       );
     }
 
+    // 🔥 发送业绩分享通知给每个成员
+    const creatorName = currentUser?.realName || currentUser?.username || '系统';
+    for (const member of shareMembers) {
+      // 不给创建者自己发送通知
+      if (member.userId !== currentUser?.userId) {
+        const shareAmount = (orderAmount * member.percentage) / 100;
+        try {
+          const { orderNotificationService } = await import('../services/OrderNotificationService');
+          await orderNotificationService.notifyPerformanceShare({
+            shareId,
+            shareNumber,
+            orderNumber,
+            orderAmount,
+            memberId: member.userId,
+            memberName: member.userName,
+            percentage: member.percentage,
+            shareAmount,
+            createdBy: currentUser?.userId,
+            createdByName: creatorName
+          });
+          console.log(`[业绩分享] ✅ 已发送通知给 ${member.userName} (${member.userId})`);
+        } catch (notifyError) {
+          console.error(`[业绩分享] ❌ 发送通知失败:`, notifyError);
+        }
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: '业绩分享创建成功',
