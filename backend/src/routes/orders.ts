@@ -638,25 +638,52 @@ router.get('/audited-cancel', async (_req: Request, res: Response) => {
 
 /**
  * @route GET /api/v1/orders/shipping/pending
- * @desc 获取待发货订单列表
+ * @desc 获取待发货订单列表（优化版）
  * @access Private
  */
 router.get('/shipping/pending', async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
+    const startTime = Date.now();
 
-    const { page = 1, pageSize = 500 } = req.query;
+    // 🔥 优化：默认每页20条，最大100条
+    const { page = 1, pageSize = 20, orderNumber, customerName } = req.query;
     const pageNum = parseInt(page as string) || 1;
-    const pageSizeNum = parseInt(pageSize as string) || 500;
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 100);
     const skip = (pageNum - 1) * pageSizeNum;
 
-    // 查询待发货订单 (status = 'pending_shipment')
-    const [orders, total] = await orderRepository.findAndCount({
-      where: { status: 'pending_shipment' },
-      skip,
-      take: pageSizeNum,
-      order: { createdAt: 'DESC' }
-    });
+    // 🔥 优化：使用QueryBuilder只查询需要的字段
+    const queryBuilder = orderRepository.createQueryBuilder('order')
+      .select([
+        'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
+        'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
+        'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
+        'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt',
+        'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
+        'order.expressCompany', 'order.logisticsStatus', 'order.serviceWechat',
+        'order.orderSource', 'order.products',
+        'order.customField1', 'order.customField2', 'order.customField3',
+        'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
+      ])
+      .where('order.status = :status', { status: 'pending_shipment' });
+
+    // 支持筛选
+    if (orderNumber) {
+      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    }
+    if (customerName) {
+      queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+    }
+
+    // 先获取总数
+    const total = await queryBuilder.getCount();
+
+    // 分页和排序
+    queryBuilder.orderBy('order.createdAt', 'DESC').skip(skip).take(pageSizeNum);
+    const orders = await queryBuilder.getMany();
+
+    const queryTime = Date.now() - startTime;
+    console.log(`📦 [待发货订单] 查询完成: ${orders.length}条, 总数${total}, 耗时${queryTime}ms`);
 
     console.log(`📦 [待发货订单] 查询到 ${orders.length} 条待发货订单, 总数: ${total}`);
 
@@ -745,28 +772,61 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
 
 /**
  * @route GET /api/v1/orders/shipping/shipped
- * @desc 获取已发货订单列表
+ * @desc 获取已发货订单列表（优化版）
  * @access Private
  */
 router.get('/shipping/shipped', async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
+    const startTime = Date.now();
 
-    const { page = 1, pageSize = 500 } = req.query;
+    // 🔥 优化：默认每页20条，最大100条
+    const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status } = req.query;
     const pageNum = parseInt(page as string) || 1;
-    const pageSizeNum = parseInt(pageSize as string) || 500;
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 100);
     const skip = (pageNum - 1) * pageSizeNum;
 
-    // 查询已发货订单 (status = 'shipped' 或 'delivered')
-    const [orders, total] = await orderRepository
-      .createQueryBuilder('order')
-      .where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered'] })
-      .skip(skip)
-      .take(pageSizeNum)
-      .orderBy('order.createdAt', 'DESC')
-      .getManyAndCount();
+    // 🔥 优化：使用QueryBuilder只查询需要的字段
+    const queryBuilder = orderRepository.createQueryBuilder('order')
+      .select([
+        'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
+        'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
+        'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
+        'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt',
+        'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
+        'order.expressCompany', 'order.trackingNumber', 'order.logisticsStatus',
+        'order.shippedAt', 'order.serviceWechat', 'order.orderSource', 'order.products',
+        'order.customField1', 'order.customField2', 'order.customField3',
+        'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
+      ]);
 
-    console.log(`🚚 [已发货订单] 查询到 ${orders.length} 条已发货订单, 总数: ${total}`);
+    // 状态筛选
+    if (status && status !== 'all') {
+      queryBuilder.where('order.status = :status', { status });
+    } else {
+      queryBuilder.where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered'] });
+    }
+
+    // 支持筛选
+    if (orderNumber) {
+      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    }
+    if (customerName) {
+      queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+    }
+    if (trackingNumber) {
+      queryBuilder.andWhere('order.trackingNumber LIKE :trackingNumber', { trackingNumber: `%${trackingNumber}%` });
+    }
+
+    // 先获取总数
+    const total = await queryBuilder.getCount();
+
+    // 分页和排序
+    queryBuilder.orderBy('order.createdAt', 'DESC').skip(skip).take(pageSizeNum);
+    const orders = await queryBuilder.getMany();
+
+    const queryTime = Date.now() - startTime;
+    console.log(`🚚 [已发货订单] 查询完成: ${orders.length}条, 总数${total}, 耗时${queryTime}ms`);
 
     // 转换数据格式
     const list = orders.map(order => {
@@ -848,6 +908,52 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
       code: 500,
       message: '获取已发货订单失败',
       error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/orders/shipping/statistics
+ * @desc 获取物流统计数据（优化版）
+ * @access Private
+ */
+router.get('/shipping/statistics', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const startTime = Date.now();
+
+    // 🔥 优化：使用并行查询获取所有统计数据
+    const [pendingCount, shippedCount, deliveredCount, exceptionCount] = await Promise.all([
+      orderRepository.count({ where: { status: 'pending_shipment' } }),
+      orderRepository.count({ where: { status: 'shipped' } }),
+      orderRepository.count({ where: { status: 'delivered' } }),
+      orderRepository.createQueryBuilder('order')
+        .where('order.status IN (:...statuses)', {
+          statuses: ['rejected', 'package_exception', 'logistics_returned', 'logistics_cancelled']
+        })
+        .getCount()
+    ]);
+
+    const queryTime = Date.now() - startTime;
+    console.log(`📊 [物流统计] 查询完成: 待发货${pendingCount}, 已发货${shippedCount}, 已签收${deliveredCount}, 异常${exceptionCount}, 耗时${queryTime}ms`);
+
+    res.json({
+      success: true,
+      code: 200,
+      data: {
+        pendingCount,
+        shippedCount,
+        deliveredCount,
+        exceptionCount,
+        totalShipped: shippedCount + deliveredCount
+      }
+    });
+  } catch (error) {
+    console.error('获取物流统计失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取物流统计失败'
     });
   }
 });

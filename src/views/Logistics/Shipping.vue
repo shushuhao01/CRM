@@ -2203,21 +2203,25 @@ const handleRefreshShippingList = () => {
 }
 
 onMounted(async () => {
-  // 🔥 确保从API加载最新订单数据
-  console.log('[发货列表] 页面初始化，从API加载订单数据...')
+  // 🔥 优化：不再加载全量订单，直接使用专用API
+  console.log('[发货列表] 🚀 页面初始化（优化版）...')
+  const startTime = Date.now()
+
   try {
     // 🔥 先加载自定义字段配置，确保列配置正确
     await fieldConfigStore.loadConfig()
     console.log('[发货列表] 自定义字段配置加载完成:', fieldConfigStore.visibleCustomFields.length, '个可见字段')
-
-    await orderStore.loadOrdersFromAPI(true) // 强制刷新
-    console.log('[发货列表] API数据加载完成，订单总数:', orderStore.orders.length)
   } catch (error) {
-    console.error('[发货列表] API数据加载失败:', error)
+    console.error('[发货列表] 自定义字段配置加载失败:', error)
   }
 
-  loadOrderList()
+  // 🔥 优化：直接加载当前标签页的订单，不再加载全量数据
+  await loadOrderList()
   updateTabCounts()
+
+  const loadTime = Date.now() - startTime
+  console.log(`[发货列表] ✅ 页面初始化完成，耗时: ${loadTime}ms`)
+
   startAutoSync() // 启动自动同步
   // 初始化部门数据
   departmentStore.initData()

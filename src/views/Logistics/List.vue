@@ -755,19 +755,18 @@ const handleRefreshLogisticsList = () => {
 }
 
 onMounted(async () => {
+  // 🔥 优化：不再加载全量订单
+  console.log('[物流列表] 🚀 页面初始化（优化版）...')
+  const startTime = Date.now()
+
   // 🔥 加载物流公司列表
   await loadLogisticsCompanies()
 
-  // 🔥 确保从API加载最新订单数据
-  console.log('[物流列表] 页面初始化，从API加载订单数据...')
-  try {
-    await orderStore.loadOrdersFromAPI(true) // 强制刷新
-    console.log('[物流列表] API数据加载完成，订单总数:', orderStore.orders.length)
-  } catch (error) {
-    console.error('[物流列表] API数据加载失败:', error)
-  }
+  // 🔥 优化：直接加载物流数据，不再加载全量订单
+  await loadData()
 
-  loadData()
+  const loadTime = Date.now() - startTime
+  console.log(`[物流列表] ✅ 页面初始化完成，耗时: ${loadTime}ms`)
 
   // 监听订单状态变化，当有新的发货订单时自动刷新列表
   orderStore.setupLogisticsEventListener()

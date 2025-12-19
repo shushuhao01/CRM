@@ -711,17 +711,15 @@ const getCompanyName = (code: string) => {
 
 // 生命周期钩子
 onMounted(async () => {
+  // 🔥 优化：不再加载全量订单
+  console.log('[物流跟踪] 🚀 页面初始化（优化版）...')
+  const startTime = Date.now()
+
   // 🔥 从API加载物流公司列表
   await loadLogisticsCompanies()
 
-  // 🔥 确保从API加载最新订单数据
-  console.log('[物流跟踪] 页面初始化，从API加载订单数据...')
-  try {
-    await orderStore.loadOrdersFromAPI(true) // 强制刷新
-    console.log('[物流跟踪] API数据加载完成，订单总数:', orderStore.orders.length)
-  } catch (error) {
-    console.error('[物流跟踪] API数据加载失败:', error)
-  }
+  const loadTime = Date.now() - startTime
+  console.log(`[物流跟踪] ✅ 页面初始化完成，耗时: ${loadTime}ms`)
 
   // 启动物流同步服务
   orderStore.setupLogisticsEventListener()
