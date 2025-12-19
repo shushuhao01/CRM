@@ -66,7 +66,11 @@ router.get('/system', async (req, res) => {
       userAgent: req.get('User-Agent')
     });
 
-    const logsDir = path.join(process.cwd(), 'logs');
+    // 优先使用环境变量配置的日志路径，否则使用默认路径
+    const logsDir = process.env.LOG_FILE_PATH || path.join(process.cwd(), 'logs');
+
+    logger.info('读取日志目录:', { logsDir, exists: fs.existsSync(logsDir) });
+
     const logFiles = [
       path.join(logsDir, 'combined.log'),
       path.join(logsDir, 'error.log'),
@@ -180,7 +184,7 @@ router.delete('/clear', async (req, res) => {
       userAgent: req.get('User-Agent')
     });
 
-    const logsDir = path.join(process.cwd(), 'logs');
+    const logsDir = process.env.LOG_FILE_PATH || path.join(process.cwd(), 'logs');
     const logFiles = [
       path.join(logsDir, 'combined.log'),
       path.join(logsDir, 'error.log'),
@@ -239,7 +243,7 @@ router.get('/operation-logs', async (req, res) => {
     const userId = req.query.userId as string;
 
     // 从操作日志文件读取数据
-    const logsDir = path.join(process.cwd(), 'logs');
+    const logsDir = process.env.LOG_FILE_PATH || path.join(process.cwd(), 'logs');
     const operationsLogFile = path.join(logsDir, 'operations.log');
 
     let logs: any[] = [];
@@ -417,7 +421,7 @@ router.post('/config', async (req, res) => {
  */
 router.get('/stats', async (req, res) => {
   try {
-    const logsDir = path.join(process.cwd(), 'logs');
+    const logsDir = process.env.LOG_FILE_PATH || path.join(process.cwd(), 'logs');
 
     if (!fs.existsSync(logsDir)) {
       res.json({
@@ -479,7 +483,7 @@ router.delete('/cleanup/:days', async (req, res) => {
       return;
     }
 
-    const logsDir = path.join(process.cwd(), 'logs');
+    const logsDir = process.env.LOG_FILE_PATH || path.join(process.cwd(), 'logs');
 
     if (!fs.existsSync(logsDir)) {
       res.json({ success: true, message: '日志目录不存在，无需清理' });
