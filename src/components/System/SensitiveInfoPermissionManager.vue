@@ -189,8 +189,10 @@ const loadPermissions = async () => {
   loading.value = true
   try {
     const response = await getSensitiveInfoPermissions()
-    if (response.data.success) {
-      const data = response.data.data
+    const responseData = response.data
+
+    if (responseData && responseData.success && responseData.data) {
+      const data = responseData.data
 
       // 转换为表格数据格式
       const matrix: Array<{ infoType: string; permissions: Record<string, boolean> }> = []
@@ -201,18 +203,21 @@ const loadPermissions = async () => {
           if (data[infoType] && data[infoType][role.value] !== undefined) {
             permissions[role.value] = data[infoType][role.value]
           } else {
-            // 默认值：超级管理员有权限，其他无权限
-            permissions[role.value] = role.value === 'super_admin'
+            // 默认值：超级管理员和管理员有权限，其他无权限
+            permissions[role.value] = role.value === 'super_admin' || role.value === 'admin'
           }
         })
         matrix.push({ infoType, permissions })
       })
 
       permissionMatrix.value = matrix
+    } else {
+      console.warn('API返回数据格式不正确，使用默认配置')
+      initializeDefaultPermissions()
     }
   } catch (error) {
     console.error('加载权限配置失败:', error)
-    ElMessage.error('加载权限配置失败')
+    ElMessage.error('加载权限配置失败，使用默认配置')
     // 使用默认配置
     initializeDefaultPermissions()
   } finally {
@@ -227,7 +232,8 @@ const initializeDefaultPermissions = () => {
   INFO_TYPES.forEach(infoType => {
     const permissions: Record<string, boolean> = {}
     userRoles.value.forEach(role => {
-      permissions[role.value] = role.value === 'super_admin'
+      // 超级管理员和管理员默认有权限
+      permissions[role.value] = role.value === 'super_admin' || role.value === 'admin'
     })
     matrix.push({ infoType, permissions })
   })
