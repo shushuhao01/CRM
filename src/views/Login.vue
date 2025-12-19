@@ -199,30 +199,36 @@
         <div class="feature">
           <div class="feature-icon-apple blue">
             <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
-              <rect width="44" height="44" rx="10" fill="url(#blueGrad)"/>
-              <!-- AI芯片图标 - 智能管理 -->
-              <rect x="14" y="14" width="16" height="16" rx="3" fill="white"/>
-              <!-- 芯片内部电路 -->
-              <rect x="17" y="17" width="4" height="4" rx="1" fill="#3b82f6"/>
-              <rect x="23" y="17" width="4" height="4" rx="1" fill="#3b82f6"/>
-              <rect x="17" y="23" width="4" height="4" rx="1" fill="#3b82f6"/>
-              <rect x="23" y="23" width="4" height="4" rx="1" fill="#3b82f6"/>
-              <!-- 芯片引脚 -->
-              <line x1="22" y1="10" x2="22" y2="14" stroke="white" stroke-width="2" stroke-linecap="round"/>
-              <line x1="22" y1="30" x2="22" y2="34" stroke="white" stroke-width="2" stroke-linecap="round"/>
-              <line x1="10" y1="22" x2="14" y2="22" stroke="white" stroke-width="2" stroke-linecap="round"/>
-              <line x1="30" y1="22" x2="34" y2="22" stroke="white" stroke-width="2" stroke-linecap="round"/>
-              <!-- 对角引脚 -->
-              <line x1="11" y1="16" x2="14" y2="16" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-              <line x1="11" y1="28" x2="14" y2="28" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-              <line x1="30" y1="16" x2="33" y2="16" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-              <line x1="30" y1="28" x2="33" y2="28" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
               <defs>
                 <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stop-color="#60a5fa"/>
-                  <stop offset="100%" stop-color="#3b82f6"/>
+                  <stop offset="0%" stop-color="#818cf8"/>
+                  <stop offset="100%" stop-color="#4f46e5"/>
                 </linearGradient>
               </defs>
+              <rect width="44" height="44" rx="10" fill="url(#blueGrad)"/>
+              <!-- 可爱机器人图标 -->
+              <!-- 天线 -->
+              <line x1="22" y1="8" x2="22" y2="12" stroke="white" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="22" cy="7" r="2" fill="white"/>
+              <!-- 头部 -->
+              <rect x="12" y="12" width="20" height="16" rx="4" fill="white"/>
+              <!-- 眼睛 -->
+              <circle cx="17" cy="20" r="2.5" fill="#4f46e5"/>
+              <circle cx="27" cy="20" r="2.5" fill="#4f46e5"/>
+              <!-- 眼睛高光 -->
+              <circle cx="16" cy="19" r="1" fill="white"/>
+              <circle cx="26" cy="19" r="1" fill="white"/>
+              <!-- 嘴巴 -->
+              <rect x="18" y="24" width="8" height="2" rx="1" fill="#4f46e5" opacity="0.6"/>
+              <!-- 耳朵/侧边装饰 -->
+              <rect x="8" y="17" width="3" height="6" rx="1.5" fill="white" opacity="0.8"/>
+              <rect x="33" y="17" width="3" height="6" rx="1.5" fill="white" opacity="0.8"/>
+              <!-- 身体 -->
+              <rect x="15" y="29" width="14" height="8" rx="2" fill="white" opacity="0.9"/>
+              <!-- 身体装饰线 -->
+              <line x1="19" y1="31" x2="19" y2="35" stroke="#4f46e5" stroke-width="1.5" opacity="0.4"/>
+              <line x1="22" y1="31" x2="22" y2="35" stroke="#4f46e5" stroke-width="1.5" opacity="0.4"/>
+              <line x1="25" y1="31" x2="25" y2="35" stroke="#4f46e5" stroke-width="1.5" opacity="0.4"/>
             </svg>
           </div>
           <div class="feature-text">

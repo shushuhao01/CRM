@@ -222,7 +222,7 @@ export const useConfigStore = defineStore('config', () => {
   const storageConfig = ref<StorageConfig>({
     storageType: 'local',
     localPath: '/uploads',
-    localDomain: 'http://localhost:3001',
+    localDomain: 'http://localhost:3000',
     accessKey: '',
     secretKey: '',
     bucketName: '',
