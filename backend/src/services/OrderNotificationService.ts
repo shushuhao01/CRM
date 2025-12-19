@@ -690,7 +690,7 @@ class OrderNotificationService {
       return;
     }
 
-    const content = `您的订单 #${order.orderNumber} 已被 ${auditorName} 审核通过，即将安排发货`;
+    const content = `您的订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已被 ${auditorName} 审核通过，即将安排发货`;
 
     await this.sendMessage(
       OrderMessageTypes.ORDER_AUDIT_APPROVED,
@@ -715,7 +715,7 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    const content = `订单 #${order.orderNumber} 被 ${auditorName} 审核拒绝${reason ? `，原因：${reason}` : ''}`;
+    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）被 ${auditorName} 审核拒绝${reason ? `，原因：${reason}` : ''}`;
 
     await this.sendBatchMessages(
       OrderMessageTypes.ORDER_AUDIT_REJECTED,
@@ -736,7 +736,7 @@ class OrderNotificationService {
   async notifyOrderPendingShipment(order: OrderInfo): Promise<void> {
     if (!order.createdBy) return;
 
-    const content = `您的订单 #${order.orderNumber} 已进入待发货状态，请耐心等待`;
+    const content = `您的订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已进入待发货状态，请耐心等待`;
 
     await this.sendMessage(
       OrderMessageTypes.ORDER_PENDING_SHIPMENT,
@@ -756,7 +756,7 @@ class OrderNotificationService {
   async notifyOrderShipped(order: OrderInfo, trackingNumber?: string, expressCompany?: string): Promise<void> {
     if (!order.createdBy) return;
 
-    let content = `您的订单 #${order.orderNumber} 已发货`;
+    let content = `您的订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已发货`;
     if (expressCompany) content += `，快递公司：${expressCompany}`;
     if (trackingNumber) content += `，运单号：${trackingNumber}`;
 
@@ -778,7 +778,7 @@ class OrderNotificationService {
   async notifyOrderDelivered(order: OrderInfo): Promise<void> {
     if (!order.createdBy) return;
 
-    const content = `您的订单 #${order.orderNumber} 已签收，感谢您的支持`;
+    const content = `您的订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已签收，感谢您的支持`;
 
     await this.sendMessage(
       OrderMessageTypes.ORDER_DELIVERED,
@@ -803,7 +803,7 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    const content = `订单 #${order.orderNumber} 被客户拒收${reason ? `，原因：${reason}` : ''}`;
+    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）被客户拒收${reason ? `，原因：${reason}` : ''}`;
 
     await this.sendBatchMessages(
       OrderMessageTypes.ORDER_REJECTED,
@@ -829,7 +829,7 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    let content = `订单 #${order.orderNumber} 已取消`;
+    let content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已取消`;
     if (operatorName) content += `，操作人：${operatorName}`;
     if (reason) content += `，原因：${reason}`;
 
@@ -858,7 +858,7 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    const content = `订单 #${order.orderNumber} 物流已退回${reason ? `，原因：${reason}` : ''}`;
+    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）物流已退回${reason ? `，原因：${reason}` : ''}`;
 
     await this.sendBatchMessages(
       OrderMessageTypes.ORDER_LOGISTICS_RETURNED,
@@ -884,7 +884,7 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    const content = `订单 #${order.orderNumber} 物流已取消${reason ? `，原因：${reason}` : ''}`;
+    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）物流已取消${reason ? `，原因：${reason}` : ''}`;
 
     await this.sendBatchMessages(
       OrderMessageTypes.ORDER_LOGISTICS_CANCELLED,
@@ -910,7 +910,7 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    const content = `订单 #${order.orderNumber} 包裹异常${reason ? `，详情：${reason}` : '，请及时处理'}`;
+    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）包裹异常${reason ? `，详情：${reason}` : '，请及时处理'}`;
 
     await this.sendBatchMessages(
       OrderMessageTypes.ORDER_PACKAGE_EXCEPTION,
@@ -933,7 +933,7 @@ class OrderNotificationService {
   async notifyOrderCancelRequest(order: OrderInfo, reason?: string): Promise<void> {
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
 
-    const content = `订单 #${order.orderNumber} 申请取消${reason ? `，原因：${reason}` : ''}，请及时审核`;
+    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）申请取消${reason ? `，原因：${reason}` : ''}，请及时审核`;
 
     await this.sendBatchMessages(
       OrderMessageTypes.ORDER_CANCEL_REQUEST,
@@ -954,7 +954,7 @@ class OrderNotificationService {
   async notifyOrderCancelApproved(order: OrderInfo, auditorName: string): Promise<void> {
     if (!order.createdBy) return;
 
-    const content = `您的订单 #${order.orderNumber} 取消申请已被 ${auditorName} 审核通过`;
+    const content = `您的订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）取消申请已被 ${auditorName} 审核通过`;
 
     await this.sendMessage(
       OrderMessageTypes.ORDER_CANCEL_APPROVED,
@@ -974,7 +974,7 @@ class OrderNotificationService {
   async notifyOrderCancelRejected(order: OrderInfo, auditorName: string, reason?: string): Promise<void> {
     if (!order.createdBy) return;
 
-    const content = `您的订单 #${order.orderNumber} 取消申请被 ${auditorName} 拒绝${reason ? `，原因：${reason}` : ''}`;
+    const content = `您的订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）取消申请被 ${auditorName} 拒绝${reason ? `，原因：${reason}` : ''}`;
 
     await this.sendMessage(
       OrderMessageTypes.ORDER_CANCEL_REJECTED,
