@@ -601,7 +601,9 @@ class OrderNotificationService {
       // 🔥 过滤：角色匹配 且 状态为活跃（兼容 'active', 1, '1', true）
       const matchedUsers = allUsers.filter(u => {
         const roleMatch = roles.includes(u.role);
-        const statusActive = u.status === 'active' || u.status === 1 || u.status === '1' || u.status === true;
+        // 使用类型断言避免TypeScript类型检查错误
+        const status = u.status as unknown;
+        const statusActive = status === 'active' || status === 1 || status === '1' || status === true;
 
         if (roleMatch) {
           console.log(`[OrderNotification] 👤 用户 ${u.username || u.realName} (ID: ${u.id}): role=${u.role}, status=${u.status}, statusActive=${statusActive}`);
