@@ -1615,8 +1615,9 @@ export class MessageController {
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
+      // 🔥 修复：不限制targetUserId，因为全局消息的targetUserId为null
       await messageRepo.update(
-        { id, targetUserId: userId },
+        { id },
         { isRead: 1, readAt: new Date() }
       );
 
@@ -1651,10 +1652,14 @@ export class MessageController {
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
-      const result = await messageRepo.update(
-        { targetUserId: userId, isRead: 0 },
-        { isRead: 1, readAt: new Date() }
-      );
+      // 🔥 修复：标记该用户可见的所有消息为已读（包括全局消息）
+      const result = await messageRepo
+        .createQueryBuilder()
+        .update()
+        .set({ isRead: 1, readAt: new Date() })
+        .where('isRead = :isRead', { isRead: 0 })
+        .andWhere('(targetUserId = :userId OR targetUserId IS NULL)', { userId })
+        .execute();
 
       res.json({
         success: true,
