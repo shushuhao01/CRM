@@ -1,3 +1,4 @@
+<!-- eslint-disable vue/multi-word-component-names -->
 <template>
   <div class="order-audit">
     <!-- 页面头部 -->
@@ -266,7 +267,7 @@
       </template>
 
       <template #customerPhone="{ row }">
-        {{ displaySensitiveInfoNew(row.customerPhone, 'phone') }}
+        {{ displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') }}
       </template>
 
       <template #totalAmount="{ row }">
@@ -844,7 +845,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { createSafeNavigator } from '@/utils/navigation'
@@ -862,16 +863,10 @@ import {
   Picture,
   ZoomIn,
   ArrowLeft,
-  ArrowRight,
-  Plus,
-  Upload,
-  InfoFilled
+  ArrowRight
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { useAppStore } from '@/stores/app'
 import { useOrderStore } from '@/stores/order'
-import { useNotificationStore } from '@/stores/notification'
-import { messageNotificationService } from '@/services/messageNotificationService'
 import { useRejectionReasonStore } from '@/stores/rejectionReason'
 import { orderApi } from '@/api/order'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
@@ -927,15 +922,6 @@ interface AuditOrder {
   auditHistory: AuditHistory[]
 }
 
-interface SearchForm {
-  orderNo: string
-  customerName: string
-  salesPerson: string
-  minAmount: string
-  maxAmount: string
-  dateRange: string[]
-}
-
 interface AuditForm {
   result: 'approved' | 'rejected' | null
   remark: string
@@ -955,9 +941,7 @@ interface QuickAuditForm {
 const router = useRouter()
 const safeNavigator = createSafeNavigator(router)
 const userStore = useUserStore()
-const appStore = useAppStore()
 const orderStore = useOrderStore()
-const notificationStore = useNotificationStore()
 const rejectionReasonStore = useRejectionReasonStore()
 
 // 响应式数据
@@ -988,12 +972,11 @@ const tabCounts = reactive({
 })
 
 // 红点状态管理（记录待审核标签的红点是否已被点击）
-const badgeClicked = reactive({
+const badgeClicked = reactive<Record<string, boolean>>({
   pending: false
 })
 
-// 所有订单数据
-const allOrders = ref<AuditOrder[]>([])
+// 订单数据
 const pendingOrders = ref<AuditOrder[]>([])
 const approvedOrders = ref<AuditOrder[]>([])
 const rejectedOrders = ref<AuditOrder[]>([])
@@ -1019,7 +1002,7 @@ const salesUserList = computed(() => {
     })
     .map(u => ({
       id: u.id,
-      name: u.realName || u.name || u.username,
+      name: (u as any).realName || u.name || (u as any).username,
       department: u.department || '未分配'
     }))
 })
@@ -1053,7 +1036,7 @@ const searchForm = reactive({
   salesPerson: '',
   minAmount: '',
   maxAmount: '',
-  dateRange: []
+  dateRange: [] as (Date | string)[]
 })
 
 // 快捷筛选
@@ -1265,38 +1248,6 @@ const formatWaitingTime = (minutes: number) => {
 }
 
 /**
- * 获取状态标签类型
- */
-const getStatusTagType = (status: string) => {
-  switch (status) {
-    case 'approved':
-      return 'success'
-    case 'rejected':
-      return 'danger'
-    case 'pending':
-      return 'warning'
-    default:
-      return 'info'
-  }
-}
-
-/**
- * 获取状态文本
- */
-const getStatusText = (status: string) => {
-  switch (status) {
-    case 'approved':
-      return '已通过'
-    case 'rejected':
-      return '已拒绝'
-    case 'pending':
-      return '待审核'
-    default:
-      return '未知'
-  }
-}
-
-/**
  * 获取审核标识文本
  */
 const getAuditFlagText = (flag: string) => {
@@ -1345,22 +1296,6 @@ const getPaymentMethodText = (method: string | null | undefined) => {
 }
 
 /**
- * 获取表格标题
- */
-const getTableTitle = () => {
-  switch (activeTab.value) {
-    case 'pending':
-      return '待审核订单列表'
-    case 'approved':
-      return '已审核通过订单列表'
-    case 'rejected':
-      return '审核拒绝订单列表'
-    default:
-      return '订单列表'
-  }
-}
-
-/**
  * 处理标签切换
  */
 const handleTabChange = async (tabName: string) => {
@@ -1388,8 +1323,8 @@ const handleSelectAll = (checked: boolean) => {
 /**
  * 处理选择变化
  */
-const handleSelectionChange = (selection: AuditOrder[]) => {
-  selectedOrders.value = selection
+const handleSelectionChange = (selection: Record<string, unknown>[]) => {
+  selectedOrders.value = selection as unknown as AuditOrder[]
   selectAll.value = selection.length === orderList.value.length
 }
 
@@ -1460,7 +1395,7 @@ const handleAudit = (row: AuditOrder, result: 'approved' | 'rejected') => {
 /**
  * 批量审核
  */
-const handleBatchAudit = (result: string) => {
+const handleBatchAudit = (result: 'approved' | 'rejected') => {
   if (!selectedOrders.value || selectedOrders.value.length === 0) {
     ElMessage.warning('请先选择要审核的订单')
     return
@@ -1510,7 +1445,7 @@ const handleReAudit = (row: AuditOrder, result: 'approved' | 'rejected') => {
       // 更新订单状态和时间
       row.auditStatus = result
       row.auditTime = new Date().toLocaleString()
-      row.auditor = userStore.user.name
+      row.auditor = userStore.currentUser?.name || '当前用户'
 
       // 添加到目标列表
       if (result === 'approved') {
@@ -1523,7 +1458,7 @@ const handleReAudit = (row: AuditOrder, result: 'approved' | 'rejected') => {
       updateTabCounts()
 
       ElMessage.success(`订单${actionText}成功`)
-    } catch (error) {
+    } catch (_error) {
       ElMessage.error(`${actionText}失败`)
     }
   }).catch(() => {
@@ -1575,9 +1510,9 @@ const handleAuditSubmit = async () => {
             }
 
             // 更新订单状态和审核信息（用于页面显示）
-            order.auditStatus = auditForm.result
+            order.auditStatus = auditForm.result as 'pending' | 'approved' | 'rejected'
             order.auditTime = new Date().toLocaleString()
-            order.auditor = userStore.user.name
+            order.auditor = userStore.currentUser?.name || '当前用户'
             order.auditRemark = auditForm.remark
 
             // 添加到对应的列表
@@ -1609,10 +1544,10 @@ const handleAuditSubmit = async () => {
         auditDialogVisible.value = false
 
         // 重置表单
-        auditForm.result = ''
+        auditForm.result = null
         auditForm.remark = ''
         auditForm.rejectionReasonId = ''
-      } catch (error) {
+      } catch (_error) {
         ElMessage.error('审核失败')
       } finally {
         auditLoading.value = false
@@ -1643,7 +1578,7 @@ const handleRemarkSubmit = async () => {
         ElMessage.success('备注保存成功')
         remarkDialogVisible.value = false
         remarkForm.content = ''
-      } catch (error) {
+      } catch (_error) {
         ElMessage.error('保存备注失败')
       } finally {
         remarkLoading.value = false
@@ -1672,7 +1607,7 @@ const handleOrderDetailDialogClose = () => {
   quickAuditForm.result = null
   quickAuditForm.rejectionReason = ''
   quickAuditForm.remark = ''
-  currentOrder.value = {}
+  currentOrder.value = {} as AuditOrder
   quickAuditFormRef.value?.clearValidate()
 }
 
@@ -1688,15 +1623,6 @@ const handleBadgeClick = (tabName: string) => {
  */
 const handleViewScreenshot = (screenshots: PaymentScreenshot[], index: number) => {
   currentImageList.value = screenshots.map(item => item.url)
-  currentImageIndex.value = index
-  imageViewerVisible.value = true
-}
-
-/**
- * 查看定金截图
- */
-const handleViewDepositScreenshot = (screenshots: string[], index: number) => {
-  currentImageList.value = screenshots
   currentImageIndex.value = index
   imageViewerVisible.value = true
 }
@@ -1802,9 +1728,11 @@ const handleQuickAuditSubmit = async () => {
         console.log(`[快速审核] ✅ 订单 ${order.orderNo} 审核${isApproved ? '通过' : '拒绝'}成功`)
 
         // 更新订单状态（用于页面显示）
-        order.auditStatus = result
+        if (result) {
+          order.auditStatus = result
+        }
         order.auditTime = new Date().toLocaleString()
-        order.auditor = userStore.userInfo?.name || '当前用户'
+        order.auditor = userStore.currentUser?.name || '当前用户'
         order.auditRemark = quickAuditForm.remark
 
         // 添加审核历史记录
@@ -1813,9 +1741,9 @@ const handleQuickAuditSubmit = async () => {
         }
         order.auditHistory.push({
           id: order.auditHistory.length + 1,
-          action: result,
+          action: result || 'pending',
           actionName: isApproved ? '审核通过' : '审核拒绝',
-          operator: userStore.userInfo?.name || '当前用户',
+          operator: userStore.currentUser?.name || '当前用户',
           operatorRole: '审核员',
           time: new Date().toLocaleString(),
           remark: quickAuditForm.remark
@@ -1844,7 +1772,7 @@ const handleQuickAuditSubmit = async () => {
 
         ElMessage.success(`订单${isApproved ? '审核通过' : '审核拒绝'}`)
         handleOrderDetailDialogClose()
-      } catch (error) {
+      } catch (_error) {
         ElMessage.error('审核失败，请重试')
       } finally {
         quickAuditLoading.value = false
@@ -1921,11 +1849,16 @@ const handleQuickFilter = (filterValue: string) => {
 /**
  * 刷新
  */
-const handleRefresh = () => {
+const handleRefresh = async () => {
   selectedOrders.value = []
   selectAll.value = false
-  loadOrderList()
-  loadSummaryData()
+  try {
+    await Promise.all([loadOrderList(), loadSummaryData()])
+    ElMessage.success('数据已刷新')
+  } catch (error) {
+    console.error('[订单审核] 刷新失败:', error)
+    ElMessage.error('刷新失败，请稍后重试')
+  }
 }
 
 /**
@@ -1959,7 +1892,7 @@ const getRemarkPlaceholder = () => {
 /**
  * 处理拒绝原因变化
  */
-const handleRejectionReasonChange = (reasonId: string) => {
+const handleRejectionReasonChange = (_reasonId: string) => {
   // 选择拒绝原因后，重新验证表单
   if (auditFormRef.value) {
     auditFormRef.value.clearValidate(['remark'])
@@ -2061,67 +1994,6 @@ const loadSummaryData = async () => {
   }
 }
 
-// 数据范围控制函数
-const applyDataScopeControl = (orderList: any[]) => {
-  const currentUser = userStore.currentUser
-  if (!currentUser) {
-    console.log('[数据权限] 没有当前用户，返回空列表')
-    return []
-  }
-
-  console.log('[数据权限] 当前用户:', {
-    id: currentUser.id,
-    name: currentUser.name,
-    role: currentUser.role,
-    department: currentUser.department
-  })
-
-  // 超级管理员和管理员可以查看所有订单
-  if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
-    console.log('[数据权限] 超管/管理员角色，可查看全部订单:', orderList.length)
-    return orderList
-  }
-
-  // 部门负责人可以查看本部门所有订单
-  if (currentUser.role === 'department_manager') {
-    const filtered = orderList.filter(order => {
-      // 使用 salesPersonId 来查找订单创建者
-      const orderCreator = userStore.getUserById(order.salesPersonId || order.createdBy)
-      const match = orderCreator?.department === currentUser.department
-      if (match) {
-        console.log('[数据权限] 部门匹配:', order.orderNumber, orderCreator?.name)
-      }
-      return match
-    })
-    console.log('[数据权限] 部门经理，可查看部门订单:', filtered.length)
-    return filtered
-  }
-
-  // 销售员只能查看自己创建的订单（使用 salesPersonId 进行匹配）
-  if (currentUser.role === 'sales_staff' || currentUser.role === 'employee') {
-    const filtered = orderList.filter(order => {
-      const match = order.salesPersonId === currentUser.id || order.createdBy === currentUser.name
-      if (match) {
-        console.log('[数据权限] 销售员订单匹配:', order.orderNumber, order.salesPersonId, currentUser.id)
-      }
-      return match
-    })
-    console.log('[数据权限] 销售员，可查看自己的订单:', filtered.length)
-    return filtered
-  }
-
-  // 客服可以查看所有待审核的订单（用于审核）
-  if (currentUser.role === 'customer_service') {
-    console.log('[数据权限] 客服角色，可查看全部待审核订单:', orderList.length)
-    return orderList  // 客服需要看到所有订单才能进行审核
-  }
-
-  // 其他角色默认只能查看自己创建的订单（使用 salesPersonId）
-  const filtered = orderList.filter(order => order.salesPersonId === currentUser.id || order.createdBy === currentUser.name)
-  console.log('[数据权限] 其他角色，可查看自己的订单:', filtered.length)
-  return filtered
-}
-
 /**
  * 🔥 优化版：直接从API加载审核订单列表
  */
@@ -2142,14 +2014,21 @@ const loadOrderList = async () => {
     console.log(`[订单审核] 🚀 使用优化API加载订单, 状态: ${currentStatus}, 页码: ${pagination.page}`)
 
     // 🔥 直接调用优化的审核列表API
+    const startDateStr = searchForm.dateRange?.[0]
+      ? (searchForm.dateRange[0] instanceof Date ? searchForm.dateRange[0].toISOString().split('T')[0] : searchForm.dateRange[0])
+      : undefined
+    const endDateStr = searchForm.dateRange?.[1]
+      ? (searchForm.dateRange[1] instanceof Date ? searchForm.dateRange[1].toISOString().split('T')[0] : searchForm.dateRange[1])
+      : undefined
+
     const response = await orderApi.getAuditList({
       status: currentStatus,
       page: pagination.page,
       pageSize: pagination.size,
       orderNumber: searchForm.orderNo || undefined,
       customerName: searchForm.customerName || undefined,
-      startDate: searchForm.dateRange?.[0] || undefined,
-      endDate: searchForm.dateRange?.[1] || undefined
+      startDate: startDateStr,
+      endDate: endDateStr
     })
 
     const loadTime = Date.now() - startTime
@@ -2213,515 +2092,6 @@ const loadOrderList = async () => {
     } else if (activeTab.value === 'rejected') {
       rejectedOrders.value = []
     }
-  } finally {
-    loading.value = false
-  }
-}
-
-/**
- * 🔥 旧版加载逻辑（保留作为备用）
- */
-const loadOrderListLegacy = async () => {
-  loading.value = true
-  try {
-    // 从orderStore获取订单数据，应用数据范围控制，过滤掉预留单
-    const allOrders = applyDataScopeControl(orderStore.orders)
-
-    // 过滤出需要审核的订单（排除预留单和退单）
-    const ordersForAudit = allOrders.filter(order => {
-      // 排除预留单
-      if (order.markType === 'reserved') return false
-      // 排除退单
-      if (order.markType === 'return') return false
-      // 状态必须是待审核
-      const validAuditStatuses = ['pending_audit', 'confirmed']
-      if (!validAuditStatuses.includes(order.status)) return false
-      // auditStatus 必须是 'pending'
-      if (order.auditStatus !== 'pending') return false
-      // 排除已发货等状态
-      if (['shipped', 'delivered', 'cancelled'].includes(order.status)) return false
-      return true
-    })
-
-    // 按创建时间倒序排序
-    ordersForAudit.sort((a, b) => {
-      const timeA = new Date(a.createTime).getTime()
-      const timeB = new Date(b.createTime).getTime()
-      return timeB - timeA
-    })
-
-    console.log(`[订单审核-旧版] 筛选结果：共 ${ordersForAudit.length} 个待审核订单`)
-
-    // 模拟API调用延迟
-    await new Promise(resolve => setTimeout(resolve, 300))
-
-    // 将真实订单数据转换为审核页面格式
-    const convertedPendingOrders = ordersForAudit.map(order => ({
-      id: order.id,
-      orderNo: order.orderNumber,
-      customerId: order.customerId,
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
-      // 🔥 使用真实姓名而不是用户名ID - 从用户列表查找真实姓名
-      salesPerson: (() => {
-        // 优先使用createdByName
-        if (order.createdByName) return order.createdByName
-        // 从用户列表查找
-        const user = userStore.users.find(u => u.id === order.createdBy || u.username === order.createdBy)
-        return user?.realName || user?.name || order.createdBy || '-'
-      })(),
-      totalAmount: order.totalAmount,
-      depositAmount: order.depositAmount,
-      codAmount: order.totalAmount - order.depositAmount,
-      productCount: order.products.length,
-      createTime: order.createTime,
-      // 🔥 添加支付方式字段
-      paymentMethod: order.paymentMethod || '',
-      // 🔥 等待时间从订单流转到待审核时开始计时（使用auditTransferTime，如果没有则使用createTime），单位：分钟
-      waitingMinutes: Math.floor((new Date().getTime() - new Date(order.auditTransferTime || order.createTime).getTime()) / (1000 * 60)),
-      remark: order.remark || '',
-      auditStatus: order.auditStatus,
-      // 🔥 审核标识：使用auditStatus映射
-      auditFlag: order.auditStatus || 'pending',
-      hasBeenAudited: order.hasBeenAudited || false,
-      deliveryAddress: order.receiverAddress,
-      paymentScreenshots: (() => {
-        // 优先使用多张截图数组
-        if (order.depositScreenshots && order.depositScreenshots.length > 0) {
-          return order.depositScreenshots.map((url: string, index: number) => ({
-            id: index + 1,
-            url: url,
-            name: `定金截图${index + 1}.jpg`
-          }))
-        }
-        // 兼容单张截图
-        if (order.depositScreenshot) {
-          return [{ id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }]
-        }
-        return []
-      })(),
-      depositScreenshots: order.depositScreenshots || (order.depositScreenshot ? [order.depositScreenshot] : []),
-      auditHistory: [
-        {
-          id: 1,
-          action: 'created',
-          actionName: '订单创建',
-          operator: order.customerName,
-          operatorRole: '客户',
-          time: order.createTime,
-          remark: '客户下单'
-        },
-        {
-          id: 2,
-          action: 'submitted',
-          actionName: '提交审核',
-          operator: order.createdBy,
-          operatorRole: '销售员',
-          time: order.createTime,
-          remark: '销售员提交订单审核'
-        }
-      ]
-    }))
-
-    // 模拟待审核订单数据（保留一些示例数据用于演示）
-    const mockPendingOrders = [
-      {
-        id: '1',
-        orderNo: 'ORD202401150001',
-        customerName: '张三',
-        customerPhone: '13812345678',
-        salesPerson: '李销售',
-        totalAmount: 2999,
-        depositAmount: 500,
-        codAmount: 2499,
-        productCount: 2,
-        createTime: '2024-01-15 09:30:00',
-        waitingHours: 6,
-        remark: '客户要求尽快发货',
-        auditStatus: 'pending',
-        deliveryAddress: '北京市朝阳区建国路88号SOHO现代城A座1201室',
-        paymentScreenshots: [
-          { id: 1, url: '/api/uploads/payment1.jpg', name: '支付宝转账截图.jpg' },
-          { id: 2, url: '/api/uploads/payment2.jpg', name: '微信支付截图.jpg' }
-        ],
-        auditHistory: [
-          {
-            id: 1,
-            action: 'created',
-            actionName: '订单创建',
-            operator: '张三',
-            operatorRole: '客户',
-            time: '2024-01-15 14:30:00',
-            remark: '客户下单'
-          },
-          {
-            id: 2,
-            action: 'submitted',
-            actionName: '提交审核',
-            operator: '王销售',
-            operatorRole: '销售员',
-            time: '2024-01-15 14:35:00',
-            remark: '销售员提交订单审核'
-          }
-        ]
-      },
-      {
-        id: '2',
-        orderNo: 'ORD202401150002',
-        customerName: '李四',
-        customerPhone: '13987654321',
-        salesPerson: '王销售',
-        totalAmount: 1599,
-        depositAmount: 300,
-        codAmount: 1299,
-        productCount: 1,
-        createTime: '2024-01-15 10:15:00',
-        waitingHours: 5,
-        remark: '',
-        auditStatus: 'pending',
-        deliveryAddress: '上海市浦东新区陆家嘴环路1000号恒生银行大厦50楼',
-        paymentScreenshots: [
-          { id: 3, url: '/api/uploads/payment3.jpg', name: '微信支付截图.jpg' }
-        ],
-        auditHistory: [
-          {
-            id: 1,
-            action: 'created',
-            actionName: '订单创建',
-            operator: '李四',
-            operatorRole: '客户',
-            time: '2024-01-15 10:15:00',
-            remark: '客户下单'
-          },
-          {
-            id: 2,
-            action: 'submitted',
-            actionName: '提交审核',
-            operator: '王销售',
-            operatorRole: '销售员',
-            time: '2024-01-15 10:20:00',
-            remark: '销售员提交订单审核'
-          }
-        ]
-      },
-      {
-        id: '3',
-        orderNo: 'ORD202401140015',
-        customerName: '王五',
-        customerPhone: '15555666777',
-        salesPerson: '张销售',
-        totalAmount: 4299,
-        depositAmount: 1000,
-        codAmount: 3299,
-        productCount: 3,
-        createTime: '2024-01-14 16:20:00',
-        waitingHours: 25,
-        remark: '大客户订单，优先处理',
-        auditStatus: 'pending',
-        deliveryAddress: '广州市天河区珠江新城花城大道85号高德置地广场A座2801室',
-        paymentScreenshots: [
-          { id: 4, url: '/api/uploads/payment4.jpg', name: '银行转账截图.jpg' },
-          { id: 5, url: '/api/uploads/payment5.jpg', name: '支付宝截图.jpg' }
-        ],
-        auditHistory: [
-          {
-            id: 1,
-            action: 'created',
-            actionName: '订单创建',
-            operator: '王五',
-            operatorRole: '客户',
-            time: '2024-01-14 16:20:00',
-            remark: '客户下单'
-          },
-          {
-            id: 2,
-            action: 'submitted',
-            actionName: '提交审核',
-            operator: '张销售',
-            operatorRole: '销售员',
-            time: '2024-01-14 16:25:00',
-            remark: '大客户订单，优先处理'
-          }
-        ]
-      }
-    ]
-
-    // 模拟已审核通过订单数据
-    const mockApprovedOrders = [
-      {
-        id: '4',
-        orderNo: 'ORD202401140008',
-        customerName: '赵六',
-        customerPhone: '18888999000',
-        salesPerson: '李销售',
-        totalAmount: 899,
-        depositAmount: 200,
-        codAmount: 699,
-        productCount: 1,
-        createTime: '2024-01-14 11:45:00',
-        remark: '',
-        auditStatus: 'approved',
-        auditFlag: 'approved',
-        auditTime: '2024-01-14 14:30:00',
-        auditor: '审核员A',
-        auditRemark: '订单信息完整，审核通过',
-        deliveryAddress: '深圳市南山区科技园南区深南大道9988号',
-        paymentScreenshots: [
-          { id: 6, url: '/api/uploads/payment6.jpg', name: '定金支付截图.jpg' }
-        ],
-        auditHistory: [
-          {
-            id: 1,
-            action: 'created',
-            actionName: '订单创建',
-            operator: '赵六',
-            operatorRole: '客户',
-            time: '2024-01-14 11:45:00',
-            remark: '客户下单'
-          },
-          {
-            id: 2,
-            action: 'submitted',
-            actionName: '提交审核',
-            operator: '李销售',
-            operatorRole: '销售员',
-            time: '2024-01-14 11:50:00',
-            remark: '销售员提交订单审核'
-          },
-          {
-            id: 3,
-            action: 'approved',
-            actionName: '审核通过',
-            operator: '审核员A',
-            operatorRole: '审核员',
-            time: '2024-01-14 14:30:00',
-            remark: '订单信息完整，审核通过'
-          }
-        ]
-      },
-      {
-        id: '5',
-        orderNo: 'ORD202401130022',
-        customerName: '钱七',
-        customerPhone: '17777888999',
-        salesPerson: '王销售',
-        totalAmount: 6599,
-        depositAmount: 1500,
-        codAmount: 5099,
-        productCount: 4,
-        createTime: '2024-01-13 14:30:00',
-        remark: 'VIP客户，需要特殊包装',
-        auditStatus: 'approved',
-        auditFlag: 'approved',
-        auditTime: '2024-01-13 16:45:00',
-        auditor: '审核员B',
-        auditRemark: 'VIP客户订单，优先处理',
-        deliveryAddress: '杭州市西湖区文三路259号昌地火炬大厦1号楼17层',
-        paymentScreenshots: [
-          { id: 7, url: '/api/uploads/payment7.jpg', name: 'VIP客户转账截图.jpg' },
-          { id: 8, url: '/api/uploads/payment8.jpg', name: '银行回单.jpg' }
-        ],
-        auditHistory: [
-          {
-            id: 1,
-            action: 'created',
-            actionName: '订单创建',
-            operator: '钱七',
-            operatorRole: '客户',
-            time: '2024-01-13 14:30:00',
-            remark: 'VIP客户，需要特殊包装'
-          },
-          {
-            id: 2,
-            action: 'submitted',
-            actionName: '提交审核',
-            operator: '王销售',
-            operatorRole: '销售员',
-            time: '2024-01-13 14:35:00',
-            remark: 'VIP客户订单，优先处理'
-          },
-          {
-            id: 3,
-            action: 'approved',
-            actionName: '审核通过',
-            operator: '审核员B',
-            operatorRole: '审核员',
-            time: '2024-01-13 16:45:00',
-            remark: 'VIP客户订单，优先处理'
-          }
-        ]
-      }
-    ]
-
-    // 模拟审核拒绝订单数据
-    const mockRejectedOrders = [
-      {
-        id: '6',
-        orderNo: 'ORD202401120005',
-        customerName: '孙八',
-        customerPhone: '16666555444',
-        salesPerson: '李销售',
-        totalAmount: 1299,
-        depositAmount: 0,
-        codAmount: 1299,
-        productCount: 1,
-        createTime: '2024-01-12 15:20:00',
-        remark: '',
-        auditStatus: 'rejected',
-        auditFlag: 'rejected',
-        auditTime: '2024-01-12 17:30:00',
-        auditor: '审核员A',
-        auditRemark: '客户信息不完整，需要补充联系地址',
-        deliveryAddress: '成都市高新区天府大道中段1388号美年广场C座',
-        paymentScreenshots: [],
-        auditHistory: [
-          {
-            id: 1,
-            action: 'created',
-            actionName: '订单创建',
-            operator: '孙八',
-            operatorRole: '客户',
-            time: '2024-01-12 15:20:00',
-            remark: '客户下单'
-          },
-          {
-            id: 2,
-            action: 'submitted',
-            actionName: '提交审核',
-            operator: '李销售',
-            operatorRole: '销售员',
-            time: '2024-01-12 15:25:00',
-            remark: '销售员提交订单审核'
-          },
-          {
-            id: 3,
-            action: 'rejected',
-            actionName: '审核拒绝',
-            operator: '审核员A',
-            operatorRole: '审核员',
-            time: '2024-01-12 17:30:00',
-            remark: '客户信息不完整，需要补充联系地址'
-          }
-        ]
-      }
-    ]
-
-    // 设置订单数据 - 只使用真实数据，不使用模拟数据
-    console.log(`[订单审核] 转换后的真实订单数量: ${convertedPendingOrders.length}`)
-    pendingOrders.value = convertedPendingOrders
-
-    // 从真实数据中筛选已审核通过和拒绝的订单
-    const allOrdersWithAudit = applyDataScopeControl(orderStore.orders)
-
-    console.log('[订单审核] 开始筛选已审核订单，总订单数:', allOrdersWithAudit.length)
-
-    approvedOrders.value = allOrdersWithAudit
-      .filter(order => {
-        const match = order.auditStatus === 'approved' && order.markType !== 'reserved' && order.markType !== 'return'
-        if (match) {
-          console.log('[订单审核] ✅ 审核通过订单:', order.orderNumber, order.auditStatus)
-        }
-        return match
-      })
-      .map(order => ({
-        id: order.id,
-        orderNo: order.orderNumber,
-        customerId: order.customerId,
-        customerName: order.customerName,
-        customerPhone: order.customerPhone,
-        // 🔥 使用真实姓名 - 从用户列表查找
-        salesPerson: (() => {
-          if (order.createdByName) return order.createdByName
-          const user = userStore.users.find(u => u.id === order.createdBy || u.username === order.createdBy)
-          return user?.realName || user?.name || order.createdBy || '-'
-        })(),
-        totalAmount: order.totalAmount,
-        depositAmount: order.depositAmount,
-        codAmount: order.totalAmount - order.depositAmount,
-        productCount: order.products.length,
-        createTime: order.createTime,
-        // 🔥 添加支付方式字段
-        paymentMethod: order.paymentMethod || '',
-        auditStatus: order.auditStatus,
-        // 🔥 审核标识：已审核通过
-        auditFlag: 'approved',
-        auditTime: order.auditTime || order.updateTime,
-        auditor: order.auditor || '系统',
-        auditRemark: order.auditRemark || '',
-        deliveryAddress: order.receiverAddress,
-        paymentScreenshots: (() => {
-          if (order.depositScreenshots && order.depositScreenshots.length > 0) {
-            return order.depositScreenshots.map((url: string, index: number) => ({
-              id: index + 1, url, name: `定金截图${index + 1}.jpg`
-            }))
-          }
-          return order.depositScreenshot ? [{ id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }] : []
-        })(),
-        depositScreenshots: order.depositScreenshots || (order.depositScreenshot ? [order.depositScreenshot] : [])
-      }))
-
-    rejectedOrders.value = allOrdersWithAudit
-      .filter(order => {
-        const match = order.auditStatus === 'rejected' && order.markType !== 'reserved' && order.markType !== 'return'
-        if (match) {
-          console.log('[订单审核] ❌ 审核拒绝订单:', order.orderNumber, order.auditStatus, order.status)
-        }
-        return match
-      })
-      .map(order => ({
-        id: order.id,
-        orderNo: order.orderNumber,
-        customerId: order.customerId,
-        customerName: order.customerName,
-        customerPhone: order.customerPhone,
-        // 🔥 使用真实姓名 - 从用户列表查找
-        salesPerson: (() => {
-          if (order.createdByName) return order.createdByName
-          const user = userStore.users.find(u => u.id === order.createdBy || u.username === order.createdBy)
-          return user?.realName || user?.name || order.createdBy || '-'
-        })(),
-        totalAmount: order.totalAmount,
-        depositAmount: order.depositAmount,
-        codAmount: order.totalAmount - order.depositAmount,
-        productCount: order.products.length,
-        createTime: order.createTime,
-        // 🔥 添加支付方式字段
-        paymentMethod: order.paymentMethod || '',
-        auditStatus: order.auditStatus,
-        // 🔥 审核标识：审核拒绝
-        auditFlag: 'rejected',
-        auditTime: order.auditTime || order.updateTime,
-        auditor: order.auditor || '系统',
-        auditRemark: order.auditRemark || order.rejectReason || '',
-        deliveryAddress: order.receiverAddress,
-        paymentScreenshots: (() => {
-          if (order.depositScreenshots && order.depositScreenshots.length > 0) {
-            return order.depositScreenshots.map((url: string, index: number) => ({
-              id: index + 1, url, name: `定金截图${index + 1}.jpg`
-            }))
-          }
-          return order.depositScreenshot ? [{ id: 1, url: order.depositScreenshot, name: '定金截图.jpg' }] : []
-        })(),
-        depositScreenshots: order.depositScreenshots || (order.depositScreenshot ? [order.depositScreenshot] : [])
-      }))
-
-    console.log(`[订单审核] 最终数据统计：待审核=${pendingOrders.value.length}, 已通过=${approvedOrders.value.length}, 已拒绝=${rejectedOrders.value.length}`)
-
-    // 更新标签计数
-    updateTabCounts()
-
-    // 更新汇总数据
-    calculateSummaryData()
-
-    pagination.total = orderList.value?.length || 0
-  } catch (error) {
-    console.error('加载订单列表失败:', error)
-    ElMessage.error('加载订单列表失败')
-    // 确保在错误情况下数组仍然是有效的空数组
-    pendingOrders.value = []
-    approvedOrders.value = []
-    rejectedOrders.value = []
-    pagination.total = 0
   } finally {
     loading.value = false
   }

@@ -975,9 +975,15 @@ const isAllocatedCustomer = (customer: Customer) => {
   return customer.createdBy && customer.createdBy !== userStore.currentUser?.id
 }
 
-const handleRefresh = () => {
+const handleRefresh = async () => {
   console.log('手动刷新，强制重新加载数据')
-  loadCustomerList(true) // 强制重新加载
+  try {
+    await loadCustomerList(true) // 强制重新加载
+    ElMessage.success('客户列表已刷新')
+  } catch (error) {
+    console.error('[客户列表] 刷新失败:', error)
+    ElMessage.error('刷新失败，请稍后重试')
+  }
 }
 
 // 快捷筛选处理
