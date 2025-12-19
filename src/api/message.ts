@@ -100,11 +100,14 @@ export const messageApi = {
 
       return await request.get('/message/system-messages', queryParams)
     } catch (error: any) {
-      if (error?.status === 404 || error?.status === 502 || error?.status === 500) {
-        console.log('[Message API] 系统消息功能未启用或后端未实现')
+      // 🔥 静默处理所有错误，包括401未授权
+      if (error?.status === 401 || error?.status === 404 || error?.status === 502 || error?.status === 500) {
+        console.log('[Message API] 系统消息功能未启用或未授权（静默处理）')
         return { success: true, data: { messages: [], total: 0, unreadCount: 0 } }
       }
-      throw error
+      // 其他错误也静默处理
+      console.log('[Message API] 获取系统消息失败（静默处理）:', error?.message || error)
+      return { success: true, data: { messages: [], total: 0, unreadCount: 0 } }
     }
   },
 
