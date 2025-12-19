@@ -337,16 +337,7 @@ const confirmShipping = async () => {
       `订单已发货，快递公司：${companyName}，快递单号：${shippingForm.trackingNumber}`
     )
 
-    // 发送订单已发货消息通知
-    notificationStore.sendMessage(
-      notificationStore.MessageType.ORDER_SHIPPED,
-      `订单 ${props.order.orderNo} 已发货，快递公司：${companyName}，快递单号：${shippingForm.trackingNumber}`,
-      {
-        relatedId: props.order.id,
-        relatedType: 'order',
-        actionUrl: `/order/detail/${props.order.id}`
-      }
-    )
+    // 🔥 注意：发货通知已由后端API自动发送，无需前端重复发送
 
     // 🔥 触发订单发货事件，通知其他页面刷新
     window.dispatchEvent(new CustomEvent('order-shipped', {

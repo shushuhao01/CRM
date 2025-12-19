@@ -877,21 +877,19 @@ const handleClose = () => {
       cancelButtonText: '取消',
       type: 'warning'
     }
-  ).then(() => {
-    serviceInfo.status = 'closed'
+  ).then(async () => {
+    try {
+      // 调用API关闭售后（后端会自动发送通知）
+      await serviceApi.updateStatus(serviceInfo.id, 'closed', '手动关闭')
+      serviceInfo.status = 'closed'
 
-    // 发送售后申请关闭的消息提醒
-    notificationStore.sendMessage(
-      notificationStore.MessageType.AFTER_SALES_CREATED,
-      `售后申请 ${serviceInfo.serviceNumber} 已关闭，客户：${serviceInfo.customerName}`,
-      {
-        relatedId: serviceInfo.serviceNumber,
-        relatedType: 'service',
-        actionUrl: `/service/detail/${serviceInfo.serviceNumber}`
-      }
-    )
+      // 🔥 注意：关闭通知已由后端API自动发送，无需前端重复发送
 
-    ElMessage.success('售后申请已关闭')
+      ElMessage.success('售后申请已关闭')
+    } catch (error) {
+      console.error('关闭售后失败:', error)
+      ElMessage.error('关闭售后失败')
+    }
   })
 }
 
@@ -1032,36 +1030,7 @@ const confirmAssign = async () => {
 
     serviceInfo.assignedTo = assignedToName
 
-    // 发送消息提醒给处理人
-    if (assignedToId) {
-      notificationStore.sendMessage(
-        notificationStore.MessageType.AFTER_SALES_ASSIGNED,
-        `您有新的售后工单需要处理：${serviceInfo.serviceNumber}，客户：${serviceInfo.customerName}，类型：${getServiceTypeText(serviceInfo.serviceType)}`,
-        {
-          relatedId: serviceInfo.id,
-          relatedType: 'service',
-          actionUrl: `/service/detail/${serviceInfo.id}`,
-          targetUserId: assignedToId,
-          createdBy: userStore.currentUser?.id
-        }
-      )
-    }
-
-    // 发送消息提醒给创建者（如果创建者不是当前操作人）
-    const creatorId = serviceInfo.createdById || serviceInfo.createdBy
-    if (creatorId && creatorId !== userStore.currentUser?.id) {
-      notificationStore.sendMessage(
-        notificationStore.MessageType.AFTER_SALES_ASSIGNED,
-        `您提交的售后申请 ${serviceInfo.serviceNumber} 已分配给 ${assignedToName} 处理`,
-        {
-          relatedId: serviceInfo.id,
-          relatedType: 'service',
-          actionUrl: `/service/detail/${serviceInfo.id}`,
-          targetUserId: creatorId,
-          createdBy: userStore.currentUser?.id
-        }
-      )
-    }
+    // 🔥 注意：分配通知已由后端API自动发送，无需前端重复发送
 
     ElMessage.success('分配成功')
     assignDialogVisible.value = false
@@ -1100,7 +1069,7 @@ const confirmStatusUpdate = async () => {
   }
 
   try {
-    // 调用API更新状态
+    // 调用API更新状态（后端会自动发送通知）
     await serviceApi.updateStatus(serviceInfo.id, statusForm.status, statusForm.remark)
 
     serviceInfo.status = statusForm.status
@@ -1109,16 +1078,7 @@ const confirmStatusUpdate = async () => {
     }
     statusDialogVisible.value = false
 
-    // 发送状态更新的消息提醒
-    notificationStore.sendMessage(
-      notificationStore.MessageType.AFTER_SALES_CREATED,
-      `售后申请 ${serviceInfo.serviceNumber} 状态已更新为${getStatusText(statusForm.status)}，客户：${serviceInfo.customerName}`,
-      {
-        relatedId: serviceInfo.serviceNumber,
-        relatedType: 'service',
-        actionUrl: `/service/detail/${serviceInfo.serviceNumber}`
-      }
-    )
+    // 🔥 注意：通知已由后端API自动发送，无需前端重复发送
 
     ElMessage.success('状态更新成功')
 

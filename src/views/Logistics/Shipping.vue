@@ -1822,25 +1822,13 @@ const handleBatchShipped = (orders: any[]) => {
 }
 
 // 订单退回成功
-const handleOrderReturned = (returnData: any) => {
-  // 更新订单状态为退回
+const handleOrderReturned = async (returnData: any) => {
+  // 更新订单状态为退回（后端会自动发送通知）
   if (returnData.orderId && returnData.reason) {
     const returnReason = `${returnData.returnType ? getReturnTypeText(returnData.returnType) + '：' : ''}${returnData.reason}`
-    orderStore.returnOrder(returnData.orderId, returnReason)
+    await orderStore.returnOrder(returnData.orderId, returnReason)
 
-    // 发送通知给销售人员
-    const order = orderStore.getOrderById(returnData.orderId)
-    if (order && returnData.notificationMethod && returnData.notificationMethod.length > 0) {
-      notificationStore.sendMessage(
-        notificationStore.MessageType.ORDER_CANCELLED,
-        `订单 ${order.orderNumber} 已被退回，原因：${returnReason}`,
-        {
-          relatedId: order.id,
-          relatedType: 'order',
-          actionUrl: `/order/detail/${order.id}`
-        }
-      )
-    }
+    // 🔥 注意：退回通知已由后端API自动发送，无需前端重复发送
   }
   ElMessage.success('订单已退回')
   loadOrderList()

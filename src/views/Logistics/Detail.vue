@@ -586,18 +586,20 @@ const confirmShip = async () => {
 
     shipLoading.value = true
 
-    // 模拟API调用
-    await new Promise(resolve => {
-      const timeoutId = setTimeout(() => {
-        timeoutIds.delete(timeoutId)
-        resolve(undefined)
-      }, 1500)
-      timeoutIds.add(timeoutId)
+    // 🔥 调用后端API更新订单状态（后端会自动发送通知）
+    const { orderApi } = await import('@/api/order')
+    const orderId = logisticsInfo.orderNo.replace('ORD', '')
+
+    await orderApi.update(orderId, {
+      status: 'shipped',
+      trackingNumber: shipForm.trackingNo,
+      expressCompany: shipForm.company,
+      shippedAt: new Date().toISOString(),
+      remark: shipForm.remark || `已发货，快递公司：${shipForm.company}，运单号：${shipForm.trackingNo}`
     })
 
     if (!isUnmounted.value) {
-      // 添加操作记录
-      const orderId = logisticsInfo.orderNo.replace('ORD', '')
+      // 同步更新前端store
       orderStore.syncOrderStatus(
         orderId,
         'shipped',
@@ -605,23 +607,15 @@ const confirmShip = async () => {
         `订单已发货，快递公司：${shipForm.company}，快递单号：${shipForm.trackingNo}`
       )
 
-      // 【批次201新增】发送订单已发货消息通知，显示真实物流单号
-      notificationStore.sendMessage(
-        notificationStore.MessageType.ORDER_SHIPPED,
-        `订单 ${logisticsInfo.orderNo} 已发货，快递公司：${shipForm.company}，快递单号：${shipForm.trackingNo}`,
-        {
-          relatedId: orderId,
-          relatedType: 'order',
-          actionUrl: `/logistics/detail/${logisticsInfo.id}`
-        }
-      )
+      // 🔥 注意：发货通知已由后端API自动发送，无需前端重复发送
 
       ElMessage.success('发货成功')
       handleShipDialogClose()
       loadData()
     }
   } catch (error) {
-    console.error('表单验证失败:', error)
+    console.error('发货失败:', error)
+    ElMessage.error('发货失败，请重试')
   } finally {
     if (!isUnmounted.value) {
       shipLoading.value = false
