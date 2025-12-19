@@ -1080,18 +1080,17 @@ const _getStatusType = (status: string) => {
 
 // 初始化
 onMounted(async () => {
-  // 🔥 确保从API加载最新订单数据
-  console.log('[状态更新] 页面初始化，从API加载订单数据...')
-  try {
-    await orderStore.loadOrdersFromAPI(true) // 强制刷新
-    console.log('[状态更新] API数据加载完成，订单总数:', orderStore.orders.length)
-  } catch (error) {
-    console.error('[状态更新] API数据加载失败:', error)
-  }
+  // 🔥 优化：不再加载全量订单
+  console.log('[状态更新] 🚀 页面初始化（优化版）...')
+  const startTime = Date.now()
 
-  // 🔥 修复：默认显示全部数据，不进行日期筛选
+  // 🔥 优化：直接加载当前筛选条件的数据
   handleQuickFilter('all')
-  loadSummaryData()
+  await loadSummaryData()
+
+  const loadTime = Date.now() - startTime
+  console.log(`[状态更新] ✅ 页面初始化完成，耗时: ${loadTime}ms`)
+
   startAutoRefresh() // 启动自动刷新
 
   // 监听订单发货事件

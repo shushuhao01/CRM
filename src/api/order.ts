@@ -119,13 +119,35 @@ export const orderApi = {
   updateMarkType: (id: string, data: { markType: string; isAuditTransferred?: boolean; auditTransferTime?: string; status?: string }) =>
     api.put<{ id: string; markType: string }>(API_ENDPOINTS.ORDERS.UPDATE_MARK_TYPE(id), data),
 
-  // 获取待发货订单列表
-  getShippingPending: (params?: { page?: number; pageSize?: number }) =>
+  // 获取待发货订单列表（优化版）
+  getShippingPending: (params?: {
+    page?: number;
+    pageSize?: number;
+    orderNumber?: string;
+    customerName?: string;
+  }) =>
     api.get<OrderListResponse>('/orders/shipping/pending', params),
 
-  // 获取已发货订单列表
-  getShippingShipped: (params?: { page?: number; pageSize?: number }) =>
+  // 获取已发货订单列表（优化版）
+  getShippingShipped: (params?: {
+    page?: number;
+    pageSize?: number;
+    orderNumber?: string;
+    customerName?: string;
+    trackingNumber?: string;
+    status?: string;
+  }) =>
     api.get<OrderListResponse>('/orders/shipping/shipped', params),
+
+  // 获取物流统计数据
+  getShippingStatistics: () =>
+    api.get<{
+      pendingCount: number;
+      shippedCount: number;
+      deliveredCount: number;
+      exceptionCount: number;
+      totalShipped: number;
+    }>('/orders/shipping/statistics'),
 
   // 🔥 新增：获取审核订单列表（优化版）
   getAuditList: (params?: {
