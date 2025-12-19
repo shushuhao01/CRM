@@ -794,6 +794,9 @@ onMounted(async () => {
     messageStore.loadUserAnnouncements()
   }
 
+  // 🔥 启动消息轮询定时器（每15秒检查一次新消息）
+  startMessagePollingTimer()
+
   // 启动订单流转检查定时器（每30秒检查一次）
   startOrderTransferTimer()
 
@@ -821,6 +824,39 @@ onMounted(async () => {
   }, 2000)
 })
 
+// 🔥 消息轮询定时器 - 实现跨设备消息通知
+let messagePollingTimer: number | null = null
+
+const startMessagePollingTimer = () => {
+  // 如果用户未登录，不启动轮询
+  if (!userStore.token) {
+    console.log('[App] 用户未登录，跳过消息轮询')
+    return
+  }
+
+  // 设置定时器，每15秒检查一次新消息
+  messagePollingTimer = window.setInterval(async () => {
+    if (!userStore.token) {
+      // 用户已登出，停止轮询
+      if (messagePollingTimer) {
+        clearInterval(messagePollingTimer)
+        messagePollingTimer = null
+      }
+      return
+    }
+
+    try {
+      await notificationStore.loadMessagesFromAPI()
+      console.log('[App] 消息轮询完成，未读消息数:', notificationStore.unreadCount)
+    } catch (error) {
+      // 静默处理错误，避免频繁报错
+      console.log('[App] 消息轮询失败（非关键）')
+    }
+  }, 15000) // 15秒
+
+  console.log('[App] 🔔 消息轮询定时器已启动（每15秒）')
+}
+
 // 订单流转检查定时器
 let orderTransferTimer: number | null = null
 
@@ -843,6 +879,12 @@ onUnmounted(() => {
   const sidebarMenu = document.querySelector('.sidebar-menu') as HTMLElement
   if (sidebarMenu) {
     sidebarMenu.removeEventListener('wheel', handleSidebarWheel)
+  }
+
+  // 🔥 清理消息轮询定时器
+  if (messagePollingTimer) {
+    clearInterval(messagePollingTimer)
+    messagePollingTimer = null
   }
 
   if (orderTransferTimer) {

@@ -929,26 +929,22 @@ const loadDashboardData = async () => {
   try {
     loading.value = true
 
-    // 使用真实的localStorage数据
-    loadRealMetrics()
-    loadRealRankings()
-    loadRealChartData()
+    // 使用真实的localStorage数据 - 🔥 修复：添加await确保异步函数正确执行
+    await loadRealMetrics()
+    await loadRealRankings()
+    await loadRealChartData()
 
     // 待办事项已移除，不再加载
 
-    // 【修复】生产环境不加载系统消息，避免502错误
-    // 系统消息功能需要后端API支持，暂时禁用
-    if (!import.meta.env.PROD) {
-      try {
-        const permissionParams = getUserPermissionParams()
-        const messagesResponse = await notificationStore.loadMessagesFromAPI(permissionParams)
-        if (messagesResponse && messagesResponse.length > 0) {
-          console.log('[Dashboard] 系统消息加载成功:', messagesResponse.length, '条消息')
-        }
-      } catch (messageError) {
-        // 静默处理消息加载失败，不显示错误提示
-        console.log('[Dashboard] 系统消息加载失败（非关键功能）:', messageError)
+    // 🔥 加载系统消息（生产环境和开发环境都加载）
+    try {
+      const messagesResponse = await notificationStore.loadMessagesFromAPI()
+      if (messagesResponse && messagesResponse.length > 0) {
+        console.log('[Dashboard] 系统消息加载成功:', messagesResponse.length, '条消息')
       }
+    } catch (messageError) {
+      // 静默处理消息加载失败，不显示错误提示
+      console.log('[Dashboard] 系统消息加载失败（非关键功能）:', messageError)
     }
 
   } catch (error) {
@@ -1016,7 +1012,14 @@ const loadRealMetrics = async () => {
   let newCustomersCount = 0
   try {
     const customerStore = useCustomerStore()
+    // 🔥 确保客户数据已加载
+    if (customerStore.customers.length === 0) {
+      console.log('[Dashboard] 客户数据为空，尝试加载...')
+      await customerStore.loadCustomers()
+    }
     let customers = customerStore.customers || []
+    console.log('[Dashboard] 客户总数:', customers.length)
+
     // 根据角色筛选
     if (!userStore.isAdmin && !userStore.isManager) {
       customers = customers.filter(c => c.salesPersonId === currentUserId || c.createdBy === currentUserId)
@@ -1026,11 +1029,23 @@ const loadRealMetrics = async () => {
       ).map(u => u.id) || []
       customers = customers.filter(c => departmentUsers.includes(c.salesPersonId) || departmentUsers.includes(c.createdBy))
     }
-    // 统计今日新增
+
+    // 统计今日新增 - 使用更宽松的时间比较
     newCustomersCount = customers.filter(c => {
+      if (!c.createTime) return false
       const createTime = new Date(c.createTime).getTime()
-      return createTime >= todayStart && createTime <= todayEnd
+      // 检查时间是否有效
+      if (isNaN(createTime)) {
+        console.warn('[Dashboard] 无效的客户创建时间:', c.createTime, c.name)
+        return false
+      }
+      const isToday = createTime >= todayStart && createTime <= todayEnd
+      if (isToday) {
+        console.log('[Dashboard] 今日新增客户:', c.name, c.createTime)
+      }
+      return isToday
     }).length
+    console.log('[Dashboard] 今日新增客户数:', newCustomersCount)
   } catch (e) {
     console.warn('获取客户数据失败:', e)
   }
