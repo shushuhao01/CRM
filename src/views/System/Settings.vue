@@ -4379,6 +4379,7 @@ const handleGenerateQRCode = async () => {
 
 /**
  * 刷新已连接设备列表
+ * 🔥 修复：设备功能未开发时静默处理，不显示错误
  */
 const handleRefreshDevices = async () => {
   try {
@@ -4388,12 +4389,16 @@ const handleRefreshDevices = async () => {
     const { getConnectedDevices } = await import('@/api/qr-connection')
 
     const devices = await getConnectedDevices()
-    connectedDevices.value = devices
+    connectedDevices.value = devices || []
 
-    ElMessage.success('设备列表刷新成功')
+    // 只有在有设备时才显示成功消息
+    if (devices && devices.length > 0) {
+      ElMessage.success('设备列表刷新成功')
+    }
   } catch (error) {
-    console.error('刷新设备列表失败:', error)
-    ElMessage.error('刷新设备列表失败，请重试')
+    // 🔥 静默处理：设备功能未开发或API不存在时不显示错误
+    console.log('[设备列表] 功能未启用或暂无设备')
+    connectedDevices.value = []
   } finally {
     deviceListLoading.value = false
   }
@@ -5283,6 +5288,7 @@ const getLogLevelType = (level: string) => {
 
 /**
  * 刷新日志
+ * 🔥 修复：无日志时静默处理，不显示错误
  */
 const refreshLogs = async () => {
   try {
@@ -5292,13 +5298,18 @@ const refreshLogs = async () => {
     const response = await logsApi.getSystemLogs({ limit: 100 })
     if (response.success && response.data) {
       systemLogs.value = response.data
-      ElMessage.success(`已刷新 ${response.data.length} 条日志`)
+      // 只有在有日志时才显示成功消息
+      if (response.data.length > 0) {
+        ElMessage.success(`已刷新 ${response.data.length} 条日志`)
+      }
     } else {
-      ElMessage.error('获取日志失败')
+      // 无日志时静默处理
+      systemLogs.value = []
     }
   } catch (error) {
-    console.error('刷新日志失败:', error)
-    ElMessage.error('刷新日志失败')
+    // 🔥 静默处理：API失败时不显示错误，只在控制台记录
+    console.log('[系统日志] 暂无日志或获取失败')
+    systemLogs.value = []
   } finally {
     logsLoading.value = false
   }
@@ -5584,6 +5595,7 @@ const getQRStatusText = (status: string) => {
 
 /**
  * 刷新已连接设备列表
+ * 🔥 修复：设备功能未开发时静默处理
  */
 const refreshConnectedDevices = async () => {
   devicesLoading.value = true
@@ -5592,32 +5604,14 @@ const refreshConnectedDevices = async () => {
     const response = await alternativeConnectionApi.getAllConnectedDevices()
     connectedDevices.value = response.data || []
 
-    ElMessage.success('设备列表已刷新')
+    // 只有在有设备时才显示成功消息
+    if (response.data && response.data.length > 0) {
+      ElMessage.success('设备列表已刷新')
+    }
   } catch (error) {
-    console.error('刷新设备列表失败:', error)
-    ElMessage.error('刷新设备列表失败')
-
-    // 如果API调用失败，使用模拟数据作为备用
-    connectedDevices.value = [
-      {
-        id: 'device_001',
-        name: 'iPhone 13 Pro',
-        type: 'iOS',
-        connectionType: 'QR Code',
-        connectedAt: '2024-01-20 15:30:00',
-        lastActivity: '2024-01-20 16:45:00',
-        status: 'online'
-      },
-      {
-        id: 'device_002',
-        name: 'Samsung Galaxy S21',
-        type: 'Android',
-        connectionType: 'Bluetooth',
-        connectedAt: '2024-01-20 14:20:00',
-        lastActivity: '2024-01-20 16:40:00',
-        status: 'online'
-      }
-    ]
+    // 🔥 静默处理：设备功能未开发时不显示错误，也不使用模拟数据
+    console.log('[设备列表] 功能未启用或暂无设备')
+    connectedDevices.value = []
   } finally {
     devicesLoading.value = false
   }
