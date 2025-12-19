@@ -270,11 +270,8 @@ const markAllAsRead = async () => {
     // 🔥 标记所有系统消息为已读（调用API同步到数据库）
     await notificationStore.markAllAsReadWithAPI()
 
-    // 🔥 标记所有公告为已读
-    const unreadAnnouncements = announcements.value.filter(a => !a.read)
-    for (const announcement of unreadAnnouncements) {
-      await markAnnouncementAsRead(announcement.id)
-    }
+    // 🔥 标记所有公告为已读（使用批量方法）
+    await messageStore.markAllAnnouncementsAsRead()
 
     ElMessage.success('所有消息已标记为已读')
   } catch (error) {
@@ -328,10 +325,13 @@ const deleteMessage = async (messageId: string) => {
 
 const markAnnouncementAsRead = async (announcementId: string) => {
   try {
+    console.log('[MessageBell] 标记公告已读:', announcementId)
     // 调用store方法标记公告为已读
     await messageStore.markAnnouncementAsRead(announcementId)
+    console.log('[MessageBell] 公告已标记为已读')
   } catch (error) {
-    console.error('标记公告已读失败:', error)
+    console.error('[MessageBell] 标记公告已读失败:', error)
+    // 即使失败也不显示错误，因为本地状态已更新
   }
 }
 
