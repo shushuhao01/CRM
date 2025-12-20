@@ -433,11 +433,10 @@ export const useOrderStore = createPersistentStore('order', () => {
 
   // 审核订单 - 🔥 API优先原则：必须API成功才更新本地
   const auditOrder = async (id: string, approved: boolean, remark: string): Promise<boolean> => {
+    // 🔥 修复：不再依赖本地store中的订单，直接调用API
+    // 审核页面的订单数据来自专门的审核API，不一定在orderStore.orders中
     const order = getOrderById(id)
-    if (!order) {
-      console.error('[OrderStore] 订单不存在:', id)
-      throw new Error('订单不存在')
-    }
+    // 即使本地没有订单数据，也继续调用API（后端会验证订单是否存在）
 
     const currentUser = userStore.currentUser
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
@@ -458,34 +457,37 @@ export const useOrderStore = createPersistentStore('order', () => {
         throw new Error(errorMsg)
       }
 
-      console.log('[OrderStore] ✅ API审核成功，更新本地缓存')
+      console.log('[OrderStore] ✅ API审核成功')
 
-      // 🔥 API成功后才更新本地数据
-      updateOrder(id, {
-        auditStatus: approved ? 'approved' : 'rejected',
-        auditTime: now,
-        auditBy: currentUser?.name || 'unknown',
-        auditRemark: remark,
-        status: approved ? 'pending_shipment' : 'audit_rejected',
-        hasBeenAudited: true
-      })
-
-      // 添加状态历史
-      if (order.statusHistory) {
-        order.statusHistory.push({
+      // 🔥 如果本地有订单数据，更新本地缓存
+      if (order) {
+        updateOrder(id, {
+          auditStatus: approved ? 'approved' : 'rejected',
+          auditTime: now,
+          auditBy: currentUser?.name || 'unknown',
+          auditRemark: remark,
           status: approved ? 'pending_shipment' : 'audit_rejected',
-          time: now,
-          operator: currentUser?.name || 'unknown',
-          description: approved ? '订单审核通过，等待发货' : '订单审核被拒绝',
-          remark
+          hasBeenAudited: true
         })
+
+        // 添加状态历史
+        if (order.statusHistory) {
+          order.statusHistory.push({
+            status: approved ? 'pending_shipment' : 'audit_rejected',
+            time: now,
+            operator: currentUser?.name || 'unknown',
+            description: approved ? '订单审核通过，等待发货' : '订单审核被拒绝',
+            remark
+          })
+        }
+
+        // 发射事件通知
+        console.log(`[订单审核] 订单 ${order.orderNumber} 审核${approved ? '通过' : '拒绝'}`)
+        eventBus.emit(EventNames.ORDER_AUDITED, { order, approved, remark })
+        eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
       }
 
-      // 发射事件通知
-      console.log(`[订单审核] 订单 ${order.orderNumber} 审核${approved ? '通过' : '拒绝'}`)
-      eventBus.emit(EventNames.ORDER_AUDITED, { order, approved, remark })
-      eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
-
+      // 发射刷新事件
       if (approved) {
         eventBus.emit(EventNames.REFRESH_SHIPPING_LIST)
       } else {
@@ -493,42 +495,39 @@ export const useOrderStore = createPersistentStore('order', () => {
       }
       eventBus.emit(EventNames.REFRESH_AUDIT_LIST)
 
-      // 🔥 发送消息通知给订单创建者
-      try {
-        const creatorId = order.salesPersonId || order.createdBy
-        const auditorName = currentUser?.name || '系统'
-        if (creatorId) {
-          if (approved) {
-            messageNotificationService.sendOrderAuditApproved(
-              order.orderNumber,
-              creatorId,
-              auditorName,
-              { orderId: order.id }
-            )
-            console.log(`[消息通知] 已通知订单创建者 ${creatorId} 审核通过`)
-          } else {
-            messageNotificationService.sendOrderAuditRejected(
-              order.orderNumber,
-              creatorId,
-              auditorName,
-              remark || '未填写原因',
-              { orderId: order.id }
-            )
-            console.log(`[消息通知] 已通知订单创建者 ${creatorId} 审核拒绝`)
+      // 🔥 发送消息通知给订单创建者（如果有订单数据）
+      if (order) {
+        try {
+          const creatorId = order.salesPersonId || order.createdBy
+          const auditorName = currentUser?.name || '系统'
+          if (creatorId) {
+            if (approved) {
+              messageNotificationService.sendOrderAuditApproved(
+                order.orderNumber,
+                creatorId,
+                auditorName,
+                { orderId: order.id }
+              )
+              console.log(`[消息通知] 已通知订单创建者 ${creatorId} 审核通过`)
+            } else {
+              messageNotificationService.sendOrderAuditRejected(
+                order.orderNumber,
+                creatorId,
+                auditorName,
+                remark || '未填写原因',
+                { orderId: order.id }
+              )
+              console.log(`[消息通知] 已通知订单创建者 ${creatorId} 审核拒绝`)
+            }
           }
+        } catch (notifyError) {
+          console.warn('[消息通知] 发送通知失败，但不影响审核结果:', notifyError)
         }
-      } catch (notifyError) {
-        console.warn('[消息通知] 发送通知失败，但不影响审核结果:', notifyError)
       }
-
-      // 🔥 优化：不再强制刷新整个订单列表，由调用方决定是否刷新
-      // 审核页面会自己更新本地数据，无需重新加载全量数据
-      // await loadOrdersFromAPI(true)
 
       return true
     } catch (apiError) {
-      console.error('[OrderStore] ❌ API审核失败，不更新本地数据:', apiError)
-      // 🔥 API失败，抛出错误，不更新本地数据
+      console.error('[OrderStore] ❌ API审核失败:', apiError)
       throw apiError
     }
   }
