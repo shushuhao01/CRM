@@ -1095,17 +1095,8 @@ const canModifyMark = computed(() => {
     return false
   }
 
-  // 如果是正常发货单且正在审核中
-  if (orderDetail.auditStatus === 'pending' && orderDetail.markType === 'normal') {
-    // 如果已经流转到审核（超过3分钟），则不能修改
-    if (orderDetail.isAuditTransferred) {
-      return false
-    }
-    // 如果还在3分钟内（未流转），则可以修改
-    return true
-  }
-
-  // 其他情况可以修改（包括预留单、退回的订单等）
+  // 🔥 简化逻辑：只要不是已审核通过或取消状态，都可以修改标记
+  // 包括：待流转、待审核（未流转）、预留单、退单等
   return true
 })
 
@@ -1229,11 +1220,9 @@ const handleMarkCommand = async (command: string) => {
     'return': '退单'
   }
 
-  // 检查是否可以修改标记
-  if (!canModifyMark.value && !(command === 'reserved' && canChangeToReserved.value)) {
-    if (isInAuditProcess.value) {
-      ElMessage.warning('订单正在审核中，无法修改标记。如需修改，请等待审核完成或联系审核员退回订单。')
-    } else if (orderDetail.auditStatus === 'approved') {
+  // 🔥 简化权限检查：只要canModifyMark为true就可以修改
+  if (!canModifyMark.value) {
+    if (orderDetail.auditStatus === 'approved') {
       ElMessage.warning('订单已审核通过，无法修改标记')
     } else {
       ElMessage.warning('当前状态下无法修改订单标记')
@@ -1306,13 +1295,13 @@ const handleMarkCommand = async (command: string) => {
       console.error('[订单详情] 更新标记失败，响应:', response)
       ElMessage.error(response?.message || '更新订单标记失败')
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     // 用户取消操作
-    if (error === 'cancel' || error?.message === 'cancel') {
+    if (error === 'cancel' || (error as Error)?.message === 'cancel') {
       return
     }
     console.error('[订单详情] 更新订单标记异常:', error)
-    const errorMsg = error?.response?.data?.message || error?.message || '更新订单标记失败，请重试'
+    const errorMsg = (error as any)?.response?.data?.message || (error as Error)?.message || '更新订单标记失败，请重试'
     ElMessage.error(errorMsg)
   }
 }
