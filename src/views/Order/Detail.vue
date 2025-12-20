@@ -1088,6 +1088,12 @@ const canModifyMark = computed(() => {
     return false
   }
 
+  // 🔥 已流转到待审核状态（pending_audit）的订单不能修改标记
+  // 只有待流转（pending_transfer）状态才能修改
+  if (orderDetail.status === 'pending_audit') {
+    return false
+  }
+
   // 有取消申请的订单不能修改标记（待取消、已取消、取消失败）
   if (orderDetail.status === 'pending_cancel' ||
       orderDetail.status === 'cancelled' ||
@@ -1095,16 +1101,15 @@ const canModifyMark = computed(() => {
     return false
   }
 
-  // 🔥 简化逻辑：只要不是已审核通过或取消状态，都可以修改标记
-  // 包括：待流转、待审核（未流转）、预留单、退单等
+  // 🔥 待流转状态可以修改标记（在延迟提交审核的时间内）
+  // 预留单和退单也可以修改（改回正常发货单）
   return true
 })
 
 // 判断是否在审核流程中（已锁定状态）
 const isInAuditProcess = computed(() => {
-  return orderDetail.auditStatus === 'pending' &&
-         orderDetail.markType === 'normal' &&
-         orderDetail.isAuditTransferred // 只有已流转到审核才显示锁定状态
+  // 已流转到待审核状态
+  return orderDetail.status === 'pending_audit'
 })
 
 // 图片查看器
@@ -1220,10 +1225,12 @@ const handleMarkCommand = async (command: string) => {
     'return': '退单'
   }
 
-  // 🔥 简化权限检查：只要canModifyMark为true就可以修改
+  // 🔥 权限检查：只有待流转状态才能修改标记
   if (!canModifyMark.value) {
     if (orderDetail.auditStatus === 'approved') {
       ElMessage.warning('订单已审核通过，无法修改标记')
+    } else if (orderDetail.status === 'pending_audit') {
+      ElMessage.warning('订单已流转到审核，无法修改标记。如需修改，请等待审核完成或联系审核员退回订单。')
     } else {
       ElMessage.warning('当前状态下无法修改订单标记')
     }
