@@ -64,7 +64,8 @@ router.get('/metrics', async (req: Request, res: Response) => {
     const jwtUser = (req as any).user;
 
     const userRole = currentUser?.role || jwtUser?.role;
-    const userId = currentUser?.id || jwtUser?.userId;
+    // 🔥 确保userId是字符串类型，因为orders表的created_by是varchar
+    const userId = String(currentUser?.id || jwtUser?.userId || '');
     const departmentId = currentUser?.departmentId || jwtUser?.departmentId;
 
     console.log('[Dashboard Metrics] 用户信息:', {
@@ -107,21 +108,28 @@ router.get('/metrics', async (req: Request, res: Response) => {
       }
     }
 
+    console.log('[Dashboard Metrics] SQL条件:', userCondition);
+    console.log('[Dashboard Metrics] SQL参数:', params);
+
     // 今日订单数据
+    console.log('[Dashboard Metrics] 查询今日订单, 时间范围:', todayStart, '-', todayEnd);
     const todayOrdersData = await AppDataSource.query(
       `SELECT total_amount as totalAmount, status, mark_type as markType
        FROM orders o
        WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
       [todayStart, todayEnd, ...params]
     );
+    console.log('[Dashboard Metrics] 今日订单原始数据条数:', todayOrdersData.length);
 
     // 本月订单数据
+    console.log('[Dashboard Metrics] 查询本月订单, 时间范围:', monthStart, '-', todayEnd);
     const monthlyOrdersData = await AppDataSource.query(
       `SELECT total_amount as totalAmount, status, mark_type as markType
        FROM orders o
        WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
       [monthStart, todayEnd, ...params]
     );
+    console.log('[Dashboard Metrics] 本月订单原始数据条数:', monthlyOrdersData.length);
 
     // 过滤有效订单（计入下单业绩）
     const validTodayOrders = todayOrdersData.filter((o: any) => isValidForOrderPerformance(o));
@@ -344,7 +352,8 @@ router.get('/charts', async (req: Request, res: Response) => {
     const currentUser = (req as any).currentUser;
     const jwtUser = (req as any).user;
     const userRole = currentUser?.role || jwtUser?.role;
-    const userId = currentUser?.id || jwtUser?.userId;
+    // 🔥 确保userId是字符串类型
+    const userId = String(currentUser?.id || jwtUser?.userId || '');
     const departmentId = currentUser?.departmentId || jwtUser?.departmentId;
 
     const now = new Date();
