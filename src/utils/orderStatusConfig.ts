@@ -7,13 +7,13 @@
 export const ORDER_STATUS_COLORS: Record<string, string> = {
   // 流转相关状态
   'pending_transfer': '#A0A0A0',      // 中灰色 - 待流转
-  'pending_audit': '#E6A23C',         // 橙色 - 待审核
+  'pending_audit': '#FA8C16',         // 橙色 - 待审核
   'audit_rejected': '#F56C6C',        // 红色 - 审核拒绝
   'approved': '#52C41A',              // 草绿色 - 已审核通过
 
   // 发货相关状态
-  'pending_shipment': '#E6A23C',      // 橙色 - 待发货
-  'shipped': '#409EFF',               // 蓝色 - 已发货
+  'pending_shipment': '#1890FF',      // 蓝色 - 待发货（区别于待审核）
+  'shipped': '#36CFC9',               // 青色 - 已发货
   'delivered': '#67C23A',             // 绿色 - 已签收
   'signed': '#67C23A',                // 绿色 - 已签收的另一种表示
   '已签收': '#67C23A',                // 绿色 - 中文状态
@@ -40,17 +40,17 @@ export const ORDER_STATUS_COLORS: Record<string, string> = {
 
   // 其他状态
   'pending': '#FAAD14',               // 金色 - 待处理
-  'confirmed': '#1890FF',             // 天蓝色 - 已确认
+  'confirmed': '#2F54EB',             // 靛蓝色 - 已确认
   'paid': '#19BE6B',                  // 翠绿色 - 已支付
   'completed': '#389E0D',             // 深绿色 - 已完成
 
   // 物流状态
-  'picked_up': '#2F54EB',             // 靛蓝色 - 已揽收
-  'in_transit': '#36CFC9',            // 青色 - 运输中
-  'out_for_delivery': '#FA8C16',      // 橙色 - 派送中
+  'picked_up': '#722ED1',             // 紫罗兰 - 已揽收
+  'in_transit': '#13C2C2',            // 明青色 - 运输中
+  'out_for_delivery': '#EB2F96',      // 洋红色 - 派送中
   'exception': '#FF4D4F',             // 红色 - 异常
   'returned': '#FA541C',              // 橙红色 - 已退回
-  'todo': '#722ED1'                   // 紫罗兰 - 待办
+  'todo': '#597EF7'                   // 浅紫蓝 - 待办
 }
 
 // 订单状态文本映射
@@ -111,10 +111,10 @@ export const ORDER_STATUS_TAG_TYPE: Record<string, 'success' | 'warning' | 'dang
   'pending_transfer': 'info',
   'pending_audit': 'warning',
   'audit_rejected': 'danger',
-  'approved': 'primary',         // 审核通过用蓝色
+  'approved': 'success',         // 审核通过用绿色
 
   // 发货相关状态
-  'pending_shipment': 'warning', // 待发货用橙色
+  'pending_shipment': 'primary', // 待发货用蓝色（区别于待审核的橙色）
   'shipped': 'primary',          // 已发货用蓝色
   'delivered': 'success',        // 已签收用绿色
   'signed': 'success',           // 已签收的另一种表示
