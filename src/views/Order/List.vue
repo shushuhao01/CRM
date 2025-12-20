@@ -1442,14 +1442,24 @@ const canSubmitAudit = (status: string, auditStatus?: string, isAuditTransferred
   }
 
   // 销售人员只能提审自己创建的订单
-  return operatorId === userStore.user.id
+  return operatorId === userStore.user?.id
 }
 
 // 提审处理
 const handleSubmitAudit = async (row: OrderItem) => {
   try {
+    // 🔥 根据标记类型显示不同的确认信息
+    let confirmMsg = `确定要提审订单 ${row.orderNumber} 吗？`
+    if (row.markType === 'reserved') {
+      confirmMsg += '\n注意：预留单将自动改为正常发货单并流转到审核环节。'
+    } else if (row.markType === 'return') {
+      confirmMsg += '\n注意：退单将自动改为正常发货单并流转到审核环节。'
+    } else {
+      confirmMsg += '\n正常发货单将直接流转到审核环节。'
+    }
+
     await ElMessageBox.confirm(
-      `确定要提审订单 ${row.orderNumber} 吗？${row.markType === 'normal' ? '正常发货单将直接流转到审核环节。' : ''}`,
+      confirmMsg,
       '提审确认',
       {
         confirmButtonText: '确定提审',
@@ -1463,7 +1473,7 @@ const handleSubmitAudit = async (row: OrderItem) => {
 
     // 调用API提审订单
     await orderApi.submitAudit(row.id, {
-      operatorId: userStore.user.id,
+      operatorId: userStore.user?.id || '',
       markType: row.markType
     })
 
@@ -1471,23 +1481,31 @@ const handleSubmitAudit = async (row: OrderItem) => {
     const order = orderList.value.find(o => o.id === row.id)
     const storeOrder = orderStore.getOrderById(row.id)
 
-    if (order && storeOrder) {
+    if (order) {
       // 更新前端列表中的订单状态
       order.auditStatus = 'pending'
+      order.status = 'pending_audit'
 
-      // 更新store中的订单状态
-      storeOrder.auditStatus = 'pending'
-      storeOrder.status = 'pending_audit' // 同时更新订单主状态
-
-      // 提审时，如果是预留单，自动改为正常发货单
-      if (order.markType === 'reserved') {
+      // 🔥 提审时，如果是预留单或退单，自动改为正常发货单
+      if (order.markType === 'reserved' || order.markType === 'return') {
+        console.log(`[提审] 订单 ${order.orderNumber} 标记从 ${order.markType} 改为 normal`)
         order.markType = 'normal'
-        storeOrder.markType = 'normal'
       }
 
       // 正常发货单直接流转审核，无需等待
       order.isAuditTransferred = true
       order.auditTransferTime = new Date().toLocaleString('zh-CN')
+    }
+
+    if (storeOrder) {
+      // 更新store中的订单状态
+      storeOrder.auditStatus = 'pending'
+      storeOrder.status = 'pending_audit'
+
+      // 🔥 提审时，如果是预留单或退单，自动改为正常发货单
+      if (storeOrder.markType === 'reserved' || storeOrder.markType === 'return') {
+        storeOrder.markType = 'normal'
+      }
 
       // 同步更新store中的流转状态
       storeOrder.isAuditTransferred = true
@@ -1504,8 +1522,10 @@ const handleSubmitAudit = async (row: OrderItem) => {
         description: '订单已提交审核',
         remark: '手动提审'
       })
+    }
 
-      // 发送通知消息给审核员（超管、管理员、客服）
+    // 发送通知消息给审核员（超管、管理员、客服）
+    if (order) {
       messageNotificationService.sendToRoles(
         notificationStore.MessageType.AUDIT_PENDING,
         `订单 ${order.orderNumber} (客户: ${order.customerName}, 金额: ¥${order.totalAmount?.toLocaleString()}) 已提交审核，请及时处理`,

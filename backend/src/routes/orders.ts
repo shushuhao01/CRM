@@ -1944,6 +1944,13 @@ router.post('/:id/submit-audit', async (req: Request, res: Response) => {
       });
     }
 
+    // 🔥 提审时，如果是预留单或退单，自动改为正常发货单
+    const previousMarkType = order.markType;
+    if (order.markType === 'reserved' || order.markType === 'return') {
+      order.markType = 'normal';
+      console.log(`📝 [订单提审] 订单 ${order.orderNumber} 标记从 ${previousMarkType} 改为 normal`);
+    }
+
     order.status = 'pending_audit';
     if (remark) {
       order.remark = `${order.remark || ''} | 提审备注: ${remark}`;
@@ -1970,7 +1977,9 @@ router.post('/:id/submit-audit', async (req: Request, res: Response) => {
       data: {
         id: order.id,
         orderNumber: order.orderNumber,
-        status: order.status
+        status: order.status,
+        markType: order.markType,
+        previousMarkType: previousMarkType !== order.markType ? previousMarkType : undefined
       }
     });
   } catch (error) {
