@@ -89,56 +89,62 @@ router.get('/metrics', async (req: Request, res: Response) => {
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // 🔥 根据用户角色构建查询条件
-    let userCondition = '';
-    const params: any[] = [];
-
-    if (userRole === 'super_admin' || userRole === 'admin') {
-      // 管理员看所有数据
-      userCondition = '';
-      console.log('[Dashboard Metrics] 管理员角色，查看所有数据');
-    } else if (userRole === 'department_manager' || userRole === 'manager') {
-      // 部门经理看本部门数据
-      if (departmentId) {
-        userCondition = ` AND (o.created_by IN (SELECT id FROM users WHERE department_id = ?) OR o.sales_person_id IN (SELECT id FROM users WHERE department_id = ?))`;
-        params.push(departmentId, departmentId);
-        console.log('[Dashboard Metrics] 部门经理角色，查看部门数据，departmentId:', departmentId);
-      } else {
-        console.log('[Dashboard Metrics] 部门经理角色但无部门ID，查看所有数据');
-      }
-    } else {
-      // 普通员工看自己的数据
-      if (userId) {
-        userCondition = ` AND (o.created_by = ? OR o.sales_person_id = ?)`;
-        params.push(userId, userId);
-        console.log('[Dashboard Metrics] 普通员工角色，查看个人数据，userId:', userId);
-      } else {
-        console.log('[Dashboard Metrics] 普通员工角色但无用户ID');
-      }
-    }
-
-    console.log('[Dashboard Metrics] SQL条件:', userCondition);
-    console.log('[Dashboard Metrics] SQL参数:', params);
-
+    // 🔥 简化查询：先获取所有数据，然后在内存中过滤
     // 今日订单数据
     console.log('[Dashboard Metrics] 查询今日订单, 时间范围:', todayStart, '-', todayEnd);
-    const todayOrdersData = await dataSource.query(
-      `SELECT total_amount as totalAmount, status, mark_type as markType
-       FROM orders o
-       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-      [todayStart, todayEnd, ...params]
+    let todayOrdersData = await dataSource.query(
+      `SELECT total_amount as totalAmount, status, mark_type as markType, created_by as createdBy, sales_person_id as salesPersonId
+       FROM orders
+       WHERE created_at >= ? AND created_at <= ?`,
+      [todayStart, todayEnd]
     );
     console.log('[Dashboard Metrics] 今日订单原始数据条数:', todayOrdersData.length);
 
     // 本月订单数据
     console.log('[Dashboard Metrics] 查询本月订单, 时间范围:', monthStart, '-', todayEnd);
-    const monthlyOrdersData = await dataSource.query(
-      `SELECT total_amount as totalAmount, status, mark_type as markType
-       FROM orders o
-       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-      [monthStart, todayEnd, ...params]
+    let monthlyOrdersData = await dataSource.query(
+      `SELECT total_amount as totalAmount, status, mark_type as markType, created_by as createdBy, sales_person_id as salesPersonId
+       FROM orders
+       WHERE created_at >= ? AND created_at <= ?`,
+      [monthStart, todayEnd]
     );
     console.log('[Dashboard Metrics] 本月订单原始数据条数:', monthlyOrdersData.length);
+
+    // 🔥 根据用户角色在内存中过滤数据
+    if (userRole !== 'super_admin' && userRole !== 'admin') {
+      if (userRole === 'department_manager' || userRole === 'manager') {
+        // 部门经理：获取部门成员ID列表
+        if (departmentId) {
+          const deptUsers = await dataSource.query(
+            `SELECT id FROM users WHERE department_id = ?`,
+            [departmentId]
+          );
+          const deptUserIds = deptUsers.map((u: any) => String(u.id));
+          console.log('[Dashboard Metrics] 部门成员IDs:', deptUserIds);
+
+          todayOrdersData = todayOrdersData.filter((o: any) =>
+            deptUserIds.includes(String(o.createdBy)) || deptUserIds.includes(String(o.salesPersonId))
+          );
+          monthlyOrdersData = monthlyOrdersData.filter((o: any) =>
+            deptUserIds.includes(String(o.createdBy)) || deptUserIds.includes(String(o.salesPersonId))
+          );
+        }
+      } else {
+        // 普通员工：只看自己的数据
+        if (userId) {
+          console.log('[Dashboard Metrics] 过滤个人数据，userId:', userId);
+          todayOrdersData = todayOrdersData.filter((o: any) =>
+            String(o.createdBy) === userId || String(o.salesPersonId) === userId
+          );
+          monthlyOrdersData = monthlyOrdersData.filter((o: any) =>
+            String(o.createdBy) === userId || String(o.salesPersonId) === userId
+          );
+        }
+      }
+    }
+
+    console.log('[Dashboard Metrics] 过滤后今日订单条数:', todayOrdersData.length);
+    console.log('[Dashboard Metrics] 过滤后本月订单条数:', monthlyOrdersData.length);
 
     // 过滤有效订单（计入下单业绩）
     const validTodayOrders = todayOrdersData.filter((o: any) => isValidForOrderPerformance(o));
@@ -155,41 +161,73 @@ router.get('/metrics', async (req: Request, res: Response) => {
     const monthlyShippedOrders = monthlyOrdersData.filter((o: any) => isValidForShipmentPerformance(o));
     const monthlyDeliveredOrders = monthlyOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
 
-    // 待审核和待发货订单
-    const pendingAuditOrders = await dataSource.query(
-      `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_audit'${userCondition}`,
-      params
+    // 待审核和待发货订单 - 也需要过滤
+    let pendingAuditData = await dataSource.query(
+      `SELECT created_by as createdBy, sales_person_id as salesPersonId FROM orders WHERE status = 'pending_audit'`
     );
-    const pendingShipmentOrders = await dataSource.query(
-      `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_shipment'${userCondition}`,
-      params
+    let pendingShipmentData = await dataSource.query(
+      `SELECT created_by as createdBy, sales_person_id as salesPersonId FROM orders WHERE status = 'pending_shipment'`
     );
 
-    // 新增客户
-    let customerCondition = '';
-    const customerParams: any[] = [todayStart, todayEnd];
+    // 根据权限过滤
     if (userRole !== 'super_admin' && userRole !== 'admin') {
       if (userRole === 'department_manager' || userRole === 'manager') {
         if (departmentId) {
-          customerCondition = ` AND sales_person_id IN (SELECT id FROM users WHERE department_id = ?)`;
-          customerParams.push(departmentId);
+          const deptUsers = await dataSource.query(
+            `SELECT id FROM users WHERE department_id = ?`,
+            [departmentId]
+          );
+          const deptUserIds = deptUsers.map((u: any) => String(u.id));
+          pendingAuditData = pendingAuditData.filter((o: any) =>
+            deptUserIds.includes(String(o.createdBy)) || deptUserIds.includes(String(o.salesPersonId))
+          );
+          pendingShipmentData = pendingShipmentData.filter((o: any) =>
+            deptUserIds.includes(String(o.createdBy)) || deptUserIds.includes(String(o.salesPersonId))
+          );
         }
       } else if (userId) {
-        customerCondition = ` AND sales_person_id = ?`;
-        customerParams.push(userId);
+        pendingAuditData = pendingAuditData.filter((o: any) =>
+          String(o.createdBy) === userId || String(o.salesPersonId) === userId
+        );
+        pendingShipmentData = pendingShipmentData.filter((o: any) =>
+          String(o.createdBy) === userId || String(o.salesPersonId) === userId
+        );
       }
     }
-    const [newCustomersResult] = await dataSource.query(
-      `SELECT COUNT(*) as count FROM customers WHERE created_at >= ? AND created_at <= ?${customerCondition}`,
-      customerParams
+
+    // 新增客户
+    let newCustomersData = await dataSource.query(
+      `SELECT sales_person_id as salesPersonId FROM customers WHERE created_at >= ? AND created_at <= ?`,
+      [todayStart, todayEnd]
     );
+
+    if (userRole !== 'super_admin' && userRole !== 'admin') {
+      if (userRole === 'department_manager' || userRole === 'manager') {
+        if (departmentId) {
+          const deptUsers = await dataSource.query(
+            `SELECT id FROM users WHERE department_id = ?`,
+            [departmentId]
+          );
+          const deptUserIds = deptUsers.map((u: any) => String(u.id));
+          newCustomersData = newCustomersData.filter((c: any) =>
+            deptUserIds.includes(String(c.salesPersonId))
+          );
+        }
+      } else if (userId) {
+        newCustomersData = newCustomersData.filter((c: any) =>
+          String(c.salesPersonId) === userId
+        );
+      }
+    }
 
     console.log('[Dashboard Metrics] 查询结果:', {
       todayOrders,
       todayRevenue,
       monthlyOrders,
       monthlyRevenue,
-      newCustomers: newCustomersResult?.count || 0
+      newCustomers: newCustomersData.length,
+      pendingAudit: pendingAuditData.length,
+      pendingShipment: pendingShipmentData.length
     });
 
     res.json({
@@ -202,11 +240,11 @@ router.get('/metrics', async (req: Request, res: Response) => {
         todayRevenue,
         monthlyOrders,
         monthlyRevenue,
-        newCustomers: newCustomersResult?.count || 0,
+        newCustomers: newCustomersData.length,
         pendingService: 0,
         // 待处理
-        pendingAudit: pendingAuditOrders[0]?.count || 0,
-        pendingShipment: pendingShipmentOrders[0]?.count || 0,
+        pendingAudit: pendingAuditData.length,
+        pendingShipment: pendingShipmentData.length,
         // 发货业绩
         todayShippedCount: todayShippedOrders.length,
         todayShippedAmount: todayShippedOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0),
