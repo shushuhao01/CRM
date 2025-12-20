@@ -1,9 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
-import { getDataSource } from '../config/database';
+import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
-// Customer entity not used directly, but kept for reference
-// import { Customer } from '../entities/Customer';
 import { User } from '../entities/User';
 import { Between, In } from 'typeorm';
 
@@ -59,92 +57,50 @@ const isValidForDeliveryPerformance = (order: { status: string }): boolean => {
  */
 router.get('/metrics', async (req: Request, res: Response) => {
   try {
-    const dataSource = getDataSource();
-    if (!dataSource) {
-      console.error('[Dashboard Metrics] 数据库未连接');
-      return res.status(500).json({
-        success: false,
-        message: '数据库未连接'
-      });
-    }
-
-    // 🔥 使用 currentUser 获取完整的用户信息
-    const currentUser = (req as any).currentUser;
-    const jwtUser = (req as any).user;
-
-    const userRole = currentUser?.role || jwtUser?.role;
-    // 🔥 确保userId是字符串类型，因为orders表的created_by是varchar
-    const userId = String(currentUser?.id || jwtUser?.userId || '');
-    const departmentId = currentUser?.departmentId || jwtUser?.departmentId;
-
-    console.log('[Dashboard Metrics] 用户信息:', {
-      userId,
-      userRole,
-      departmentId,
-      username: currentUser?.username || jwtUser?.username
-    });
+    const currentUser = (req as any).user;
+    const userRole = currentUser?.role;
+    const userId = currentUser?.userId;
+    const departmentId = currentUser?.departmentId;
 
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // 🔥 简化查询：先获取所有数据，然后在内存中过滤
-    // 今日订单数据
-    console.log('[Dashboard Metrics] 查询今日订单, 时间范围:', todayStart, '-', todayEnd);
-    let todayOrdersData = await dataSource.query(
-      `SELECT total_amount as totalAmount, status, mark_type as markType, created_by as createdBy, sales_person_id as salesPersonId
-       FROM orders
-       WHERE created_at >= ? AND created_at <= ?`,
-      [todayStart, todayEnd]
-    );
-    console.log('[Dashboard Metrics] 今日订单原始数据条数:', todayOrdersData.length);
+    // 🔥 根据用户角色构建查询条件
+    let userCondition = '';
+    const params: any[] = [];
 
-    // 本月订单数据
-    console.log('[Dashboard Metrics] 查询本月订单, 时间范围:', monthStart, '-', todayEnd);
-    let monthlyOrdersData = await dataSource.query(
-      `SELECT total_amount as totalAmount, status, mark_type as markType, created_by as createdBy, sales_person_id as salesPersonId
-       FROM orders
-       WHERE created_at >= ? AND created_at <= ?`,
-      [monthStart, todayEnd]
-    );
-    console.log('[Dashboard Metrics] 本月订单原始数据条数:', monthlyOrdersData.length);
-
-    // 🔥 根据用户角色在内存中过滤数据
-    if (userRole !== 'super_admin' && userRole !== 'admin') {
-      if (userRole === 'department_manager' || userRole === 'manager') {
-        // 部门经理：获取部门成员ID列表
-        if (departmentId) {
-          const deptUsers = await dataSource.query(
-            `SELECT id FROM users WHERE department_id = ?`,
-            [departmentId]
-          );
-          const deptUserIds = deptUsers.map((u: any) => String(u.id));
-          console.log('[Dashboard Metrics] 部门成员IDs:', deptUserIds);
-
-          todayOrdersData = todayOrdersData.filter((o: any) =>
-            deptUserIds.includes(String(o.createdBy)) || deptUserIds.includes(String(o.salesPersonId))
-          );
-          monthlyOrdersData = monthlyOrdersData.filter((o: any) =>
-            deptUserIds.includes(String(o.createdBy)) || deptUserIds.includes(String(o.salesPersonId))
-          );
-        }
-      } else {
-        // 普通员工：只看自己的数据
-        if (userId) {
-          console.log('[Dashboard Metrics] 过滤个人数据，userId:', userId);
-          todayOrdersData = todayOrdersData.filter((o: any) =>
-            String(o.createdBy) === userId || String(o.salesPersonId) === userId
-          );
-          monthlyOrdersData = monthlyOrdersData.filter((o: any) =>
-            String(o.createdBy) === userId || String(o.salesPersonId) === userId
-          );
-        }
+    if (userRole === 'super_admin' || userRole === 'admin') {
+      // 管理员看所有数据
+      userCondition = '';
+    } else if (userRole === 'department_manager' || userRole === 'manager') {
+      // 部门经理看本部门数据
+      if (departmentId) {
+        userCondition = ` AND (o.created_by IN (SELECT id FROM users WHERE department_id = ?) OR o.sales_person_id IN (SELECT id FROM users WHERE department_id = ?))`;
+        params.push(departmentId, departmentId);
       }
+    } else {
+      // 普通员工看自己的数据
+      userCondition = ` AND (o.created_by = ? OR o.sales_person_id = ?)`;
+      params.push(userId, userId);
     }
 
-    console.log('[Dashboard Metrics] 过滤后今日订单条数:', todayOrdersData.length);
-    console.log('[Dashboard Metrics] 过滤后本月订单条数:', monthlyOrdersData.length);
+    // 今日订单数据
+    const todayOrdersData = await AppDataSource.query(
+      `SELECT total_amount as totalAmount, status, mark_type as markType
+       FROM orders o
+       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
+      [todayStart, todayEnd, ...params]
+    );
+
+    // 本月订单数据
+    const monthlyOrdersData = await AppDataSource.query(
+      `SELECT total_amount as totalAmount, status, mark_type as markType
+       FROM orders o
+       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
+      [monthStart, todayEnd, ...params]
+    );
 
     // 过滤有效订单（计入下单业绩）
     const validTodayOrders = todayOrdersData.filter((o: any) => isValidForOrderPerformance(o));
@@ -161,74 +117,34 @@ router.get('/metrics', async (req: Request, res: Response) => {
     const monthlyShippedOrders = monthlyOrdersData.filter((o: any) => isValidForShipmentPerformance(o));
     const monthlyDeliveredOrders = monthlyOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
 
-    // 待审核和待发货订单 - 也需要过滤
-    let pendingAuditData = await dataSource.query(
-      `SELECT created_by as createdBy, sales_person_id as salesPersonId FROM orders WHERE status = 'pending_audit'`
+    // 待审核和待发货订单
+    const pendingAuditOrders = await AppDataSource.query(
+      `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_audit'${userCondition}`,
+      params
     );
-    let pendingShipmentData = await dataSource.query(
-      `SELECT created_by as createdBy, sales_person_id as salesPersonId FROM orders WHERE status = 'pending_shipment'`
+    const pendingShipmentOrders = await AppDataSource.query(
+      `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_shipment'${userCondition}`,
+      params
     );
-
-    // 根据权限过滤
-    if (userRole !== 'super_admin' && userRole !== 'admin') {
-      if (userRole === 'department_manager' || userRole === 'manager') {
-        if (departmentId) {
-          const deptUsers = await dataSource.query(
-            `SELECT id FROM users WHERE department_id = ?`,
-            [departmentId]
-          );
-          const deptUserIds = deptUsers.map((u: any) => String(u.id));
-          pendingAuditData = pendingAuditData.filter((o: any) =>
-            deptUserIds.includes(String(o.createdBy)) || deptUserIds.includes(String(o.salesPersonId))
-          );
-          pendingShipmentData = pendingShipmentData.filter((o: any) =>
-            deptUserIds.includes(String(o.createdBy)) || deptUserIds.includes(String(o.salesPersonId))
-          );
-        }
-      } else if (userId) {
-        pendingAuditData = pendingAuditData.filter((o: any) =>
-          String(o.createdBy) === userId || String(o.salesPersonId) === userId
-        );
-        pendingShipmentData = pendingShipmentData.filter((o: any) =>
-          String(o.createdBy) === userId || String(o.salesPersonId) === userId
-        );
-      }
-    }
 
     // 新增客户
-    let newCustomersData = await dataSource.query(
-      `SELECT sales_person_id as salesPersonId FROM customers WHERE created_at >= ? AND created_at <= ?`,
-      [todayStart, todayEnd]
-    );
-
+    let customerCondition = '';
+    const customerParams: any[] = [todayStart, todayEnd];
     if (userRole !== 'super_admin' && userRole !== 'admin') {
       if (userRole === 'department_manager' || userRole === 'manager') {
         if (departmentId) {
-          const deptUsers = await dataSource.query(
-            `SELECT id FROM users WHERE department_id = ?`,
-            [departmentId]
-          );
-          const deptUserIds = deptUsers.map((u: any) => String(u.id));
-          newCustomersData = newCustomersData.filter((c: any) =>
-            deptUserIds.includes(String(c.salesPersonId))
-          );
+          customerCondition = ` AND sales_person_id IN (SELECT id FROM users WHERE department_id = ?)`;
+          customerParams.push(departmentId);
         }
-      } else if (userId) {
-        newCustomersData = newCustomersData.filter((c: any) =>
-          String(c.salesPersonId) === userId
-        );
+      } else {
+        customerCondition = ` AND sales_person_id = ?`;
+        customerParams.push(userId);
       }
     }
-
-    console.log('[Dashboard Metrics] 查询结果:', {
-      todayOrders,
-      todayRevenue,
-      monthlyOrders,
-      monthlyRevenue,
-      newCustomers: newCustomersData.length,
-      pendingAudit: pendingAuditData.length,
-      pendingShipment: pendingShipmentData.length
-    });
+    const [newCustomersResult] = await AppDataSource.query(
+      `SELECT COUNT(*) as count FROM customers WHERE created_at >= ? AND created_at <= ?${customerCondition}`,
+      customerParams
+    );
 
     res.json({
       success: true,
@@ -240,11 +156,11 @@ router.get('/metrics', async (req: Request, res: Response) => {
         todayRevenue,
         monthlyOrders,
         monthlyRevenue,
-        newCustomers: newCustomersData.length,
+        newCustomers: newCustomersResult?.count || 0,
         pendingService: 0,
         // 待处理
-        pendingAudit: pendingAuditData.length,
-        pendingShipment: pendingShipmentData.length,
+        pendingAudit: pendingAuditOrders[0]?.count || 0,
+        pendingShipment: pendingShipmentOrders[0]?.count || 0,
         // 发货业绩
         todayShippedCount: todayShippedOrders.length,
         todayShippedAmount: todayShippedOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0),
@@ -275,16 +191,8 @@ router.get('/metrics', async (req: Request, res: Response) => {
  */
 router.get('/rankings', async (_req: Request, res: Response) => {
   try {
-    const dataSource = getDataSource();
-    if (!dataSource) {
-      return res.status(500).json({
-        success: false,
-        message: '数据库未连接'
-      });
-    }
-
-    const orderRepository = dataSource.getRepository(Order);
-    const userRepository = dataSource.getRepository(User);
+    const orderRepository = AppDataSource.getRepository(Order);
+    const userRepository = AppDataSource.getRepository(User);
 
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -401,44 +309,13 @@ router.get('/rankings', async (_req: Request, res: Response) => {
  */
 router.get('/charts', async (req: Request, res: Response) => {
   try {
-    const dataSource = getDataSource();
-    if (!dataSource) {
-      return res.status(500).json({
-        success: false,
-        message: '数据库未连接'
-      });
-    }
-
+    const orderRepository = AppDataSource.getRepository(Order);
     const { period = 'month' } = req.query;
-
-    // 🔥 获取用户信息用于权限过滤
-    const currentUser = (req as any).currentUser;
-    const jwtUser = (req as any).user;
-    const userRole = currentUser?.role || jwtUser?.role;
-    // 🔥 确保userId是字符串类型
-    const userId = String(currentUser?.id || jwtUser?.userId || '');
-    const departmentId = currentUser?.departmentId || jwtUser?.departmentId;
 
     const now = new Date();
     const categories: string[] = [];
     const revenueData: number[] = [];
     const ordersData: number[] = [];
-
-    // 🔥 构建权限过滤条件
-    let userCondition = '';
-    const baseParams: any[] = [];
-
-    if (userRole === 'super_admin' || userRole === 'admin') {
-      userCondition = '';
-    } else if (userRole === 'department_manager' || userRole === 'manager') {
-      if (departmentId) {
-        userCondition = ` AND (o.created_by IN (SELECT id FROM users WHERE department_id = ?) OR o.sales_person_id IN (SELECT id FROM users WHERE department_id = ?))`;
-        baseParams.push(departmentId, departmentId);
-      }
-    } else if (userId) {
-      userCondition = ` AND (o.created_by = ? OR o.sales_person_id = ?)`;
-      baseParams.push(userId, userId);
-    }
 
     if (period === 'month') {
       // 最近6个月
@@ -448,17 +325,17 @@ router.get('/charts', async (req: Request, res: Response) => {
 
         categories.push(`${date.getMonth() + 1}月`);
 
-        const monthOrders = await dataSource.query(
-          `SELECT total_amount as totalAmount, status, mark_type as markType
-           FROM orders o
-           WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-          [date, monthEnd, ...baseParams]
-        );
+        const monthOrders = await orderRepository.find({
+          where: {
+            createdAt: Between(date, monthEnd)
+          },
+          select: ['totalAmount', 'status', 'markType']
+        });
 
         // 🔥 使用新的业绩计算规则
-        const validOrders = monthOrders.filter((o: any) => isValidForOrderPerformance(o));
+        const validOrders = monthOrders.filter(o => isValidForOrderPerformance(o));
         ordersData.push(validOrders.length);
-        revenueData.push(validOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+        revenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
       }
     } else if (period === 'week') {
       // 最近8周
@@ -468,17 +345,17 @@ router.get('/charts', async (req: Request, res: Response) => {
 
         categories.push(`第${8 - i}周`);
 
-        const weekOrders = await dataSource.query(
-          `SELECT total_amount as totalAmount, status, mark_type as markType
-           FROM orders o
-           WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-          [weekStart, weekEnd, ...baseParams]
-        );
+        const weekOrders = await orderRepository.find({
+          where: {
+            createdAt: Between(weekStart, weekEnd)
+          },
+          select: ['totalAmount', 'status', 'markType']
+        });
 
         // 🔥 使用新的业绩计算规则
-        const validOrders = weekOrders.filter((o: any) => isValidForOrderPerformance(o));
+        const validOrders = weekOrders.filter(o => isValidForOrderPerformance(o));
         ordersData.push(validOrders.length);
-        revenueData.push(validOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+        revenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
       }
     } else {
       // 最近7天
@@ -489,25 +366,24 @@ router.get('/charts', async (req: Request, res: Response) => {
 
         categories.push(`${date.getMonth() + 1}/${date.getDate()}`);
 
-        const dayOrders = await dataSource.query(
-          `SELECT total_amount as totalAmount, status, mark_type as markType
-           FROM orders o
-           WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-          [dayStart, dayEnd, ...baseParams]
-        );
+        const dayOrders = await orderRepository.find({
+          where: {
+            createdAt: Between(dayStart, dayEnd)
+          },
+          select: ['totalAmount', 'status', 'markType']
+        });
 
         // 🔥 使用新的业绩计算规则
-        const validOrders = dayOrders.filter((o: any) => isValidForOrderPerformance(o));
+        const validOrders = dayOrders.filter(o => isValidForOrderPerformance(o));
         ordersData.push(validOrders.length);
-        revenueData.push(validOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+        revenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
       }
     }
 
-    // 获取订单状态分布（也需要按权限过滤）
-    const allOrders = await dataSource.query(
-      `SELECT status FROM orders o WHERE 1=1${userCondition}`,
-      baseParams
-    );
+    // 获取订单状态分布
+    const allOrders = await orderRepository.find({
+      select: ['status']
+    });
 
     const statusMap: Record<string, { name: string; count: number; color: string }> = {
       pending_transfer: { name: '待流转', count: 0, color: '#909399' },
@@ -568,15 +444,7 @@ router.get('/charts', async (req: Request, res: Response) => {
  */
 router.get('/todos', async (_req: Request, res: Response) => {
   try {
-    const dataSource = getDataSource();
-    if (!dataSource) {
-      return res.status(500).json({
-        success: false,
-        message: '数据库未连接'
-      });
-    }
-
-    const orderRepository = dataSource.getRepository(Order);
+    const orderRepository = AppDataSource.getRepository(Order);
 
     // 获取待处理订单作为待办事项
     const pendingOrders = await orderRepository.find({
