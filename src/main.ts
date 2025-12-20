@@ -6,7 +6,7 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 import App from './App.vue'
 import router from './router'
@@ -18,9 +18,77 @@ import permissionPlugin from './plugins/permission'
 import { setupDirectives } from './directives'
 import { initSecureConsoleConfig } from './utils/secureLogger'
 
+// 🔥 防止重复弹窗的标志
+let isShowingGlobalErrorDialog = false
+
+// 🔥 检查是否是动态导入失败错误
+const isDynamicImportError = (error: Error | string): boolean => {
+  const errorMsg = typeof error === 'string' ? error : error.message
+  return errorMsg && (
+    errorMsg.includes('error loading dynamically imported module') ||
+    errorMsg.includes('Failed to fetch dynamically imported module') ||
+    errorMsg.includes('Loading chunk') ||
+    errorMsg.includes('ChunkLoadError') ||
+    errorMsg.includes('Importing a module script failed')
+  )
+}
+
+// 🔥 处理动态导入失败
+const handleDynamicImportError = () => {
+  if (isShowingGlobalErrorDialog) return
+  isShowingGlobalErrorDialog = true
+
+  // 检查 token 状态
+  const savedToken = localStorage.getItem('auth_token')
+
+  if (!savedToken) {
+    // Token 已被清除，说明是登录过期
+    ElMessageBox.alert(
+      '您的登录已过期，请重新登录。',
+      '登录已过期',
+      {
+        confirmButtonText: '重新登录',
+        type: 'warning',
+        showClose: false,
+        closeOnClickModal: false
+      }
+    ).then(() => {
+      window.location.href = '/login'
+    }).catch(() => {
+      window.location.href = '/login'
+    }).finally(() => {
+      isShowingGlobalErrorDialog = false
+    })
+  } else {
+    // 可能是版本更新导致的
+    ElMessageBox.alert(
+      '系统检测到版本更新或页面缓存过期，需要刷新页面以加载最新内容。',
+      '页面需要刷新',
+      {
+        confirmButtonText: '立即刷新',
+        type: 'info',
+        showClose: false,
+        closeOnClickModal: false
+      }
+    ).then(() => {
+      window.location.reload()
+    }).catch(() => {
+      window.location.reload()
+    }).finally(() => {
+      isShowingGlobalErrorDialog = false
+    })
+  }
+}
+
 // 全局错误处理器
 const globalErrorHandler = (error: Error, instance?: any, info?: string) => {
   console.error('全局错误:', error, info)
+
+  // 🔥 检查是否是动态导入失败
+  if (isDynamicImportError(error)) {
+    handleDynamicImportError()
+    return
+  }
 
   // 避免在错误处理中再次触发错误
   try {
@@ -46,6 +114,13 @@ const resizeObserverErrorHandler = (e: ErrorEvent) => {
 
 // 全局未捕获错误处理
 window.addEventListener('error', (e) => {
+  // 🔥 检查是否是动态导入失败
+  if (isDynamicImportError(e.message || e.error?.message || '')) {
+    e.preventDefault()
+    handleDynamicImportError()
+    return
+  }
+
   if (resizeObserverErrorHandler(e)) {
     globalErrorHandler(e.error || new Error(e.message))
   }
@@ -53,6 +128,15 @@ window.addEventListener('error', (e) => {
 
 // 全局未捕获Promise错误处理
 window.addEventListener('unhandledrejection', (e) => {
+  const errorMsg = e.reason?.message || String(e.reason)
+
+  // 🔥 检查是否是动态导入失败
+  if (isDynamicImportError(errorMsg)) {
+    e.preventDefault()
+    handleDynamicImportError()
+    return
+  }
+
   console.error('未处理的Promise拒绝:', e.reason)
   globalErrorHandler(e.reason instanceof Error ? e.reason : new Error(String(e.reason)))
   e.preventDefault() // 阻止默认的错误处理
