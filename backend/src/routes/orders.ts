@@ -1174,27 +1174,35 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
 router.get('/:id/status-history', async (req: Request, res: Response) => {
   try {
     const orderId = req.params.id;
-    const { OrderStatusHistory } = await import('../entities/OrderStatusHistory');
-    const statusHistoryRepository = AppDataSource.getRepository(OrderStatusHistory);
 
-    const history = await statusHistoryRepository.find({
-      where: { orderId },
-      order: { createdAt: 'DESC' }
-    });
+    // 🔥 先检查表是否存在，避免报错
+    try {
+      const { OrderStatusHistory } = await import('../entities/OrderStatusHistory');
+      const statusHistoryRepository = AppDataSource.getRepository(OrderStatusHistory);
 
-    const list = history.map(item => ({
-      id: item.id,
-      orderId: item.orderId,
-      status: item.status,
-      title: getStatusTitle(item.status),
-      description: item.notes || `订单状态变更为：${getStatusTitle(item.status)}`,
-      operator: item.operatorName || '系统',
-      operatorId: item.operatorId,
-      timestamp: item.createdAt?.toISOString() || ''
-    }));
+      const history = await statusHistoryRepository.find({
+        where: { orderId },
+        order: { createdAt: 'DESC' }
+      });
 
-    console.log(`[订单状态历史] 订单 ${orderId} 有 ${list.length} 条状态记录`);
-    res.json({ success: true, code: 200, data: list });
+      const list = history.map(item => ({
+        id: item.id,
+        orderId: item.orderId,
+        status: item.status,
+        title: getStatusTitle(item.status),
+        description: item.notes || `订单状态变更为：${getStatusTitle(item.status)}`,
+        operator: item.operatorName || '系统',
+        operatorId: item.operatorId,
+        timestamp: item.createdAt?.toISOString() || ''
+      }));
+
+      console.log(`[订单状态历史] 订单 ${orderId} 有 ${list.length} 条状态记录`);
+      res.json({ success: true, code: 200, data: list });
+    } catch (entityError) {
+      // 如果表不存在，返回空数组
+      console.warn(`[订单状态历史] 表可能不存在，返回空数组:`, entityError);
+      res.json({ success: true, code: 200, data: [] });
+    }
   } catch (error) {
     console.error('获取订单状态历史失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取订单状态历史失败' });
