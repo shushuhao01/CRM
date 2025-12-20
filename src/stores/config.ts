@@ -653,76 +653,74 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   /**
-   * 从API加载系统配置（确保所有用户看到最新的系统配置）
+   * 从API加载系统配置（所有用户可访问）
    */
   const loadSystemConfigFromAPI = async () => {
     try {
       const { apiService } = await import('@/services/apiService')
-      console.log('[ConfigStore] 开始从API加载系统配置...')
       const apiData = await apiService.get('/system/basic-settings')
-      console.log('[ConfigStore] API返回的配置数据:', apiData)
 
       if (apiData && typeof apiData === 'object') {
         Object.assign(systemConfig.value, apiData)
         saveConfigToStorage('system', systemConfig.value)
-        console.log('[ConfigStore] 系统配置已从API更新')
       }
-    } catch (error) {
-      console.warn('[ConfigStore] 从API加载系统配置失败，使用本地配置:', error)
+    } catch (_error) {
+      // 静默处理错误
     }
   }
 
   /**
-   * 从API加载安全配置（确保所有管理员看到最新的安全配置）
+   * 从API加载安全配置（仅管理员可访问）
    */
   const loadSecurityConfigFromAPI = async () => {
     try {
+      // 检查是否是管理员，非管理员静默跳过
+      const userStr = localStorage.getItem('user')
+      if (userStr) {
+        const user = JSON.parse(userStr)
+        if (user.role !== 'super_admin' && user.role !== 'admin') {
+          // 非管理员静默跳过，不加载安全配置
+          return
+        }
+      }
+
       const { apiService } = await import('@/services/apiService')
-      console.log('[ConfigStore] 开始从API加载安全配置...')
       const apiData = await apiService.get('/system/security-settings')
-      console.log('[ConfigStore] 安全配置API返回:', apiData)
 
       if (apiData && typeof apiData === 'object') {
         Object.assign(securityConfig.value, apiData)
         saveConfigToStorage('security', securityConfig.value)
-        console.log('[ConfigStore] 安全配置已从API更新')
       }
-    } catch (error) {
-      console.warn('[ConfigStore] 从API加载安全配置失败，使用本地配置:', error)
+    } catch (_error) {
+      // 静默处理错误，不显示任何提示
     }
   }
 
   /**
-   * 从API加载存储配置（确保所有用户看到最新的存储配置）
+   * 从API加载存储配置（所有用户可访问）
    */
   const loadStorageConfigFromAPI = async () => {
     try {
       const { apiService } = await import('@/services/apiService')
-      console.log('[ConfigStore] 开始从API加载存储配置...')
       const apiData = await apiService.get('/system/storage-settings')
-      console.log('[ConfigStore] 存储配置API返回:', apiData)
 
       if (apiData && typeof apiData === 'object') {
         Object.assign(storageConfig.value, apiData)
         saveConfigToStorage('storage', storageConfig.value)
-        console.log('[ConfigStore] 存储配置已从API更新:', storageConfig.value)
       }
-    } catch (error) {
-      console.warn('[ConfigStore] 从API加载存储配置失败，使用本地配置:', error)
+    } catch (_error) {
+      // 静默处理错误
     }
   }
 
   /**
-   * 从API加载商品配置（确保所有用户看到管理员设置的优惠折扣配置）
-   * 使用公开API，所有已登录用户都可以访问
+   * 从API加载商品配置（所有用户可访问）
    */
   const loadProductConfigFromAPI = async () => {
     try {
       const { apiService } = await import('@/services/apiService')
-      console.log('[ConfigStore] 开始从API加载商品优惠折扣配置...')
       // 使用公开API，所有已登录用户都可以访问
       const apiData = await apiService.get('/system/product-settings/public')
-      console.log('[ConfigStore] 商品优惠配置API返回:', apiData)
 
       if (apiData && typeof apiData === 'object') {
         // 只更新优惠折扣相关的配置
@@ -746,76 +744,87 @@ export const useConfigStore = defineStore('config', () => {
         }
         // 同步保存到localStorage作为缓存
         localStorage.setItem('crm_config_product', JSON.stringify(productConfig.value))
-        console.log('[ConfigStore] 商品优惠配置已从API更新:', {
-          maxDiscountPercent: productConfig.value.maxDiscountPercent,
-          adminMaxDiscount: productConfig.value.adminMaxDiscount,
-          managerMaxDiscount: productConfig.value.managerMaxDiscount,
-          salesMaxDiscount: productConfig.value.salesMaxDiscount
-        })
       }
     } catch (_error: unknown) {
-      // 静默处理错误，不显示错误提示，避免成员登录时看到权限错误
-      console.log('[ConfigStore] 从API加载商品配置失败，使用本地配置')
+      // 静默处理错误
     }
   }
 
   /**
-   * 从API加载邮件配置
+   * 从API加载邮件配置（仅管理员可访问）
    */
   const loadEmailConfigFromAPI = async () => {
     try {
+      // 检查是否是管理员，非管理员静默跳过
+      const userStr = localStorage.getItem('user')
+      if (userStr) {
+        const user = JSON.parse(userStr)
+        if (user.role !== 'super_admin' && user.role !== 'admin') {
+          return
+        }
+      }
+
       const { apiService } = await import('@/services/apiService')
-      console.log('[ConfigStore] 开始从API加载邮件配置...')
       const apiData = await apiService.get('/system/email-settings')
-      console.log('[ConfigStore] 邮件配置API返回:', apiData)
 
       if (apiData && typeof apiData === 'object') {
         Object.assign(emailConfig.value, apiData)
         saveConfigToStorage('email', emailConfig.value)
-        console.log('[ConfigStore] 邮件配置已从API更新')
       }
-    } catch (error) {
-      console.warn('[ConfigStore] 从API加载邮件配置失败，使用本地配置:', error)
+    } catch (_error) {
+      // 静默处理错误
     }
   }
 
   /**
-   * 从API加载短信配置
+   * 从API加载短信配置（仅管理员可访问）
    */
   const loadSmsConfigFromAPI = async () => {
     try {
+      // 检查是否是管理员，非管理员静默跳过
+      const userStr = localStorage.getItem('user')
+      if (userStr) {
+        const user = JSON.parse(userStr)
+        if (user.role !== 'super_admin' && user.role !== 'admin') {
+          return
+        }
+      }
+
       const { apiService } = await import('@/services/apiService')
-      console.log('[ConfigStore] 开始从API加载短信配置...')
       const apiData = await apiService.get('/system/sms-settings')
-      console.log('[ConfigStore] 短信配置API返回:', apiData)
 
       if (apiData && typeof apiData === 'object') {
         Object.assign(smsConfig.value, apiData)
         saveConfigToStorage('sms', smsConfig.value)
-        console.log('[ConfigStore] 短信配置已从API更新')
       }
-    } catch (error) {
-      console.warn('[ConfigStore] 从API加载短信配置失败，使用本地配置:', error)
+    } catch (_error) {
+      // 静默处理错误
     }
   }
 
   /**
-   * 从API加载通话配置
+   * 从API加载通话配置（仅管理员可访问）
    */
   const loadCallConfigFromAPI = async () => {
     try {
+      // 检查是否是管理员，非管理员静默跳过
+      const userStr = localStorage.getItem('user')
+      if (userStr) {
+        const user = JSON.parse(userStr)
+        if (user.role !== 'super_admin' && user.role !== 'admin') {
+          return
+        }
+      }
+
       const { apiService } = await import('@/services/apiService')
-      console.log('[ConfigStore] 开始从API加载通话配置...')
       const apiData = await apiService.get('/system/call-settings')
-      console.log('[ConfigStore] 通话配置API返回:', apiData)
 
       if (apiData && typeof apiData === 'object') {
         Object.assign(callConfig.value, apiData)
         saveConfigToStorage('call', callConfig.value)
-        console.log('[ConfigStore] 通话配置已从API更新')
       }
-    } catch (error) {
-      console.warn('[ConfigStore] 从API加载通话配置失败，使用本地配置:', error)
+    } catch (_error) {
+      // 静默处理错误
     }
   }
 
