@@ -720,6 +720,15 @@ export const useUserStore = defineStore('user', () => {
           console.warn('[Auth] ⚠️ 无痕刷新失败（不影响使用）:', e)
         }
 
+        // 🔐 加载敏感信息权限配置（从数据库API获取）
+        try {
+          const { loadSensitiveInfoPermissions } = await import('@/services/sensitiveInfoPermissionService')
+          await loadSensitiveInfoPermissions()
+          console.log('[Auth] 🔐 敏感信息权限配置已加载')
+        } catch (e) {
+          console.warn('[Auth] ⚠️ 加载敏感信息权限配置失败:', e)
+        }
+
         // 🔐 刷新安全控制台配置
         try {
           const { refreshSecureConsoleConfig, enableGlobalSecureConsole } = await import('@/utils/secureLogger')

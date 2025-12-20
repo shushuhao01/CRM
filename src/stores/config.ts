@@ -449,7 +449,7 @@ export const useConfigStore = defineStore('config', () => {
           const { api } = await import('@/api/request')
           await api.post('/system/settings', { type, config })
           console.log(`[ConfigStore] ${type}配置保存到数据库成功`)
-        } catch (apiError) {
+        } catch (_apiError) {
           // 静默降级到localStorage，不打印错误
           localStorage.setItem(`crm_config_${type}`, JSON.stringify(config))
         }
@@ -457,8 +457,8 @@ export const useConfigStore = defineStore('config', () => {
         // 开发环境或未登录：使用localStorage
         localStorage.setItem(`crm_config_${type}`, JSON.stringify(config))
       }
-    } catch (error) {
-      console.error('保存配置失败:', error)
+    } catch (_error) {
+      console.error('保存配置失败:', _error)
     }
   }
 
@@ -673,6 +673,26 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   /**
+   * 从API加载安全配置（确保所有管理员看到最新的安全配置）
+   */
+  const loadSecurityConfigFromAPI = async () => {
+    try {
+      const { apiService } = await import('@/services/apiService')
+      console.log('[ConfigStore] 开始从API加载安全配置...')
+      const apiData = await apiService.get('/system/security-settings')
+      console.log('[ConfigStore] 安全配置API返回:', apiData)
+
+      if (apiData && typeof apiData === 'object') {
+        Object.assign(securityConfig.value, apiData)
+        saveConfigToStorage('security', securityConfig.value)
+        console.log('[ConfigStore] 安全配置已从API更新')
+      }
+    } catch (error) {
+      console.warn('[ConfigStore] 从API加载安全配置失败，使用本地配置:', error)
+    }
+  }
+
+  /**
    * 从API加载存储配置（确保所有用户看到最新的存储配置）
    */
   const loadStorageConfigFromAPI = async () => {
@@ -733,9 +753,69 @@ export const useConfigStore = defineStore('config', () => {
           salesMaxDiscount: productConfig.value.salesMaxDiscount
         })
       }
-    } catch (error: unknown) {
+    } catch (_error: unknown) {
       // 静默处理错误，不显示错误提示，避免成员登录时看到权限错误
       console.log('[ConfigStore] 从API加载商品配置失败，使用本地配置')
+    }
+  }
+
+  /**
+   * 从API加载邮件配置
+   */
+  const loadEmailConfigFromAPI = async () => {
+    try {
+      const { apiService } = await import('@/services/apiService')
+      console.log('[ConfigStore] 开始从API加载邮件配置...')
+      const apiData = await apiService.get('/system/email-settings')
+      console.log('[ConfigStore] 邮件配置API返回:', apiData)
+
+      if (apiData && typeof apiData === 'object') {
+        Object.assign(emailConfig.value, apiData)
+        saveConfigToStorage('email', emailConfig.value)
+        console.log('[ConfigStore] 邮件配置已从API更新')
+      }
+    } catch (error) {
+      console.warn('[ConfigStore] 从API加载邮件配置失败，使用本地配置:', error)
+    }
+  }
+
+  /**
+   * 从API加载短信配置
+   */
+  const loadSmsConfigFromAPI = async () => {
+    try {
+      const { apiService } = await import('@/services/apiService')
+      console.log('[ConfigStore] 开始从API加载短信配置...')
+      const apiData = await apiService.get('/system/sms-settings')
+      console.log('[ConfigStore] 短信配置API返回:', apiData)
+
+      if (apiData && typeof apiData === 'object') {
+        Object.assign(smsConfig.value, apiData)
+        saveConfigToStorage('sms', smsConfig.value)
+        console.log('[ConfigStore] 短信配置已从API更新')
+      }
+    } catch (error) {
+      console.warn('[ConfigStore] 从API加载短信配置失败，使用本地配置:', error)
+    }
+  }
+
+  /**
+   * 从API加载通话配置
+   */
+  const loadCallConfigFromAPI = async () => {
+    try {
+      const { apiService } = await import('@/services/apiService')
+      console.log('[ConfigStore] 开始从API加载通话配置...')
+      const apiData = await apiService.get('/system/call-settings')
+      console.log('[ConfigStore] 通话配置API返回:', apiData)
+
+      if (apiData && typeof apiData === 'object') {
+        Object.assign(callConfig.value, apiData)
+        saveConfigToStorage('call', callConfig.value)
+        console.log('[ConfigStore] 通话配置已从API更新')
+      }
+    } catch (error) {
+      console.warn('[ConfigStore] 从API加载通话配置失败，使用本地配置:', error)
     }
   }
 
@@ -748,8 +828,12 @@ export const useConfigStore = defineStore('config', () => {
     // 然后从API获取最新配置（确保同步）
     await Promise.all([
       loadSystemConfigFromAPI(),
+      loadSecurityConfigFromAPI(),
       loadStorageConfigFromAPI(),
-      loadProductConfigFromAPI() // 加载商品配置（优惠折扣设置），确保全局生效
+      loadProductConfigFromAPI(),
+      loadEmailConfigFromAPI(),
+      loadSmsConfigFromAPI(),
+      loadCallConfigFromAPI()
     ])
   }
 
@@ -788,8 +872,12 @@ export const useConfigStore = defineStore('config', () => {
     resetThemeConfig,
     resetSmsConfig,
     loadSystemConfigFromAPI,
+    loadSecurityConfigFromAPI,
     loadStorageConfigFromAPI,
     loadProductConfigFromAPI,
+    loadEmailConfigFromAPI,
+    loadSmsConfigFromAPI,
+    loadCallConfigFromAPI,
     initConfig
   }
 })

@@ -5853,6 +5853,9 @@ const refreshConnectedDevices = async () => {
 
 // 生命周期钩子
 onMounted(() => {
+  // 🔥 从数据库加载系统配置
+  configStore.initConfig()
+
   // 初始化数据
   loadBackupStatus()
   loadBackupList()

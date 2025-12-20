@@ -96,27 +96,27 @@ export const getCallRecords = (params: {
     total: number
     page: number
     pageSize: number
-  }>('/api/calls/records', params)
+  }>('/calls/records', params)
 }
 
 // 获取单个通话记录详情
 export const getCallRecord = (id: string) => {
-  return api.get<CallRecord>(`/api/calls/records/${id}`)
+  return api.get<CallRecord>(`/calls/records/${id}`)
 }
 
 // 创建通话记录
 export const createCallRecord = (data: Omit<CallRecord, 'id' | 'createdAt' | 'updatedAt'>) => {
-  return api.post<CallRecord>('/api/calls/records', data)
+  return api.post<CallRecord>('/calls/records', data)
 }
 
 // 更新通话记录
 export const updateCallRecord = (id: string, data: Partial<CallRecord>) => {
-  return api.put<CallRecord>(`/api/calls/records/${id}`, data)
+  return api.put<CallRecord>(`/calls/records/${id}`, data)
 }
 
 // 删除通话记录
 export const deleteCallRecord = (id: string) => {
-  return api.delete(`/api/calls/records/${id}`)
+  return api.delete(`/calls/records/${id}`)
 }
 
 // 发起外呼
@@ -129,7 +129,7 @@ export const makeOutboundCall = (data: {
     callId: string
     status: string
     message: string
-  }>('/api/calls/outbound', data)
+  }>('/calls/outbound', data)
 }
 
 // 结束通话
@@ -139,7 +139,7 @@ export const endCall = (callId: string, data: {
   notes?: string
   followUpRequired?: boolean
 }) => {
-  return api.put<CallRecord>(`/api/calls/records/${callId}/end`, data)
+  return api.put<CallRecord>(`/calls/records/${callId}/end`, data)
 }
 
 // 获取跟进记录列表
@@ -159,22 +159,22 @@ export const getFollowUpRecords = (params: {
     total: number
     page: number
     pageSize: number
-  }>('/api/calls/followups', params)
+  }>('/calls/followups', params)
 }
 
 // 创建跟进记录
 export const createFollowUpRecord = (data: Omit<FollowUpRecord, 'id' | 'createdAt' | 'updatedAt'>) => {
-  return api.post<FollowUpRecord>('/api/calls/followups', data)
+  return api.post<FollowUpRecord>('/calls/followups', data)
 }
 
 // 更新跟进记录
 export const updateFollowUpRecord = (id: string, data: Partial<FollowUpRecord>) => {
-  return api.put<FollowUpRecord>(`/api/calls/followups/${id}`, data)
+  return api.put<FollowUpRecord>(`/calls/followups/${id}`, data)
 }
 
 // 删除跟进记录
 export const deleteFollowUpRecord = (id: string) => {
-  return api.delete(`/api/calls/followups/${id}`)
+  return api.delete(`/calls/followups/${id}`)
 }
 
 // 获取通话统计
@@ -185,7 +185,7 @@ export const getCallStatistics = (params: {
   department?: string
   groupBy?: 'day' | 'week' | 'month'
 }) => {
-  return api.get<CallStatistics>('/api/calls/statistics', params)
+  return api.get<CallStatistics>('/calls/statistics', params)
 }
 
 // 获取录音列表
@@ -210,27 +210,27 @@ export const getRecordings = (params: {
     total: number
     page: number
     pageSize: number
-  }>('/api/calls/recordings', params)
+  }>('/calls/recordings', params)
 }
 
 // 下载录音
 export const downloadRecording = (recordingId: string) => {
-  return api.get(`/api/calls/recordings/${recordingId}/download`)
+  return api.get(`/calls/recordings/${recordingId}/download`)
 }
 
 // 删除录音
 export const deleteRecording = (recordingId: string) => {
-  return api.delete(`/api/calls/recordings/${recordingId}`)
+  return api.delete(`/calls/recordings/${recordingId}`)
 }
 
 // 获取电话配置
 export const getPhoneConfig = (userId?: string) => {
-  return api.get<PhoneConfig>('/api/calls/config', userId ? { userId } : undefined)
+  return api.get<PhoneConfig>('/calls/config', userId ? { userId } : undefined)
 }
 
 // 更新电话配置
 export const updatePhoneConfig = (data: Partial<PhoneConfig>) => {
-  return api.put<PhoneConfig>('/api/calls/config', data)
+  return api.put<PhoneConfig>('/calls/config', data)
 }
 
 // 测试电话连接
@@ -239,7 +239,7 @@ export const testPhoneConnection = () => {
     success: boolean
     message: string
     latency?: number
-  }>('/api/calls/test-connection')
+  }>('/calls/test-connection')
 }
 
 // 获取客户通话历史
@@ -254,7 +254,7 @@ export const getCustomerCallHistory = (customerId: string, params?: {
     total: number
     page: number
     pageSize: number
-  }>(`/api/customers/${customerId}/calls`, params)
+  }>(`/customers/${customerId}/calls`, params)
 }
 
 // 导出通话记录
@@ -265,7 +265,7 @@ export const exportCallRecords = (params: {
   callType?: string
   format?: 'excel' | 'csv'
 }) => {
-  return api.get('/api/calls/export', params)
+  return api.get('/calls/export', params)
 }
 
 
