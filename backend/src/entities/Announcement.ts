@@ -79,9 +79,9 @@ export class AnnouncementRead {
   @Index()
   announcementId!: string;
 
-  @Column({ name: 'user_id', type: 'varchar', length: 36, comment: '用户ID' })
+  @Column({ name: 'user_id', type: 'int', comment: '用户ID' })
   @Index()
-  userId!: string;
+  userId!: number;
 
   @CreateDateColumn({ name: 'read_at', comment: '阅读时间' })
   readAt!: Date;
