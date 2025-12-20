@@ -413,12 +413,17 @@ const handleLogout = async () => {
       type: 'warning'
     })
 
-    userStore.logout()
+    // 🔥 等待logout完成
+    await userStore.logout()
     tabsStore.clearTabs()
     ElMessage.success('退出登录成功')
-    safeNavigator.push('/login')
-  } catch {
-    // 用户取消
+
+    // 🔥 确保跳转到登录页
+    console.log('[App] 正在跳转到登录页...')
+    await router.push('/login')
+    console.log('[App] 已跳转到登录页')
+  } catch (_error) {
+    // 用户取消（忽略）
   }
 }
 
