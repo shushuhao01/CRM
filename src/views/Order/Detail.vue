@@ -1216,72 +1216,21 @@ const createAfterSales = async () => {
   }
 }
 
-const handleMarkCommand = (command: string) => {
+const handleMarkCommand = async (command: string) => {
   // 检查是否选择了相同的标记
   if (command === orderDetail.markType) {
     ElMessage.warning('订单已经是该标记状态')
     return
   }
 
-  // 特殊处理：正常发货单在流转前可以改为预留单
-  if (command === 'reserved' && canChangeToReserved.value) {
-    const markTypes = {
-      'reserved': '预留单',
-      'normal': '正常发货单',
-      'return': '退单'
-    }
-
-    ElMessageBox.confirm(
-      `确认将此订单标记为"${markTypes[command]}"？\n注意：修改为预留单后，订单将不会流转到审核，信息将保留在系统中。`,
-      '确认标记',
-      {
-        type: 'warning'
-      }
-    ).then(() => {
-      // 停止倒计时
-      if (countdownTimer.value) {
-        clearInterval(countdownTimer.value)
-        countdownTimer.value = null
-      }
-
-      // 更新本地订单标记状态
-      orderDetail.markType = command
-      orderDetail.isAuditTransferred = true // 标记为已处理，防止自动流转
-
-      // 更新orderStore中的数据
-      const updatedOrder = orderStore.updateOrder(orderId, {
-        markType: command,
-        isAuditTransferred: true
-      })
-
-      if (updatedOrder) {
-        ElMessage.success(`订单已标记为${markTypes[command]}，信息已保留在系统中`)
-
-        // 发送通知
-        notificationStore.sendMessage({
-          type: 'ORDER_MARKED',
-          title: '订单标记更新',
-          content: `订单 ${orderDetail.orderNumber} 已标记为${markTypes[command]}`,
-          link: `/order/detail/${orderId}`,
-          metadata: {
-            orderId: orderDetail.id,
-            orderNumber: orderDetail.orderNumber,
-            markType: command,
-            previousMarkType: 'normal'
-          }
-        })
-      } else {
-        ElMessage.error('更新订单标记失败')
-        loadOrderDetail()
-      }
-    }).catch(() => {
-      // 用户取消操作
-    })
-    return
+  const markTypes: Record<string, string> = {
+    'reserved': '预留单',
+    'normal': '正常发货单',
+    'return': '退单'
   }
 
   // 检查是否可以修改标记
-  if (!canModifyMark.value) {
+  if (!canModifyMark.value && !(command === 'reserved' && canChangeToReserved.value)) {
     if (isInAuditProcess.value) {
       ElMessage.warning('订单正在审核中，无法修改标记。如需修改，请等待审核完成或联系审核员退回订单。')
     } else if (orderDetail.auditStatus === 'approved') {
@@ -1292,64 +1241,80 @@ const handleMarkCommand = (command: string) => {
     return
   }
 
-  const markTypes = {
-    'reserved': '预留单',
-    'normal': '正常发货单',
-    'return': '退单'
+  // 构建确认消息
+  let confirmMessage = `确认将此订单标记为"${markTypes[command]}"？`
+  if (command === 'reserved') {
+    confirmMessage += '\n注意：修改为预留单后，订单将不会流转到审核，信息将保留在系统中。'
+  } else if (command === 'return') {
+    confirmMessage += '\n注意：修改为退单后，订单将不会流转到审核，信息将保留在系统中。'
   }
 
-  ElMessageBox.confirm(`确认将此订单标记为"${markTypes[command]}"？`, '确认标记', {
-    type: 'warning'
-  }).then(async () => {
-    try {
-      console.log('[订单详情] 开始更新标记，订单ID:', orderId, '新标记:', command)
+  try {
+    await ElMessageBox.confirm(confirmMessage, '确认标记', { type: 'warning' })
 
-      // 调用后端API更新标记
-      const response = await orderApi.updateMarkType(orderId, { markType: command })
-      console.log('[订单详情] API响应:', response)
+    console.log('[订单详情] 开始更新标记，订单ID:', orderId, '新标记:', command)
 
-      if (response.success || response.data) {
-        // 更新本地订单标记状态
-        orderDetail.markType = command
+    // 调用后端API更新标记
+    const response = await orderApi.updateMarkType(orderId, { markType: command })
+    console.log('[订单详情] API响应:', response)
 
-        // 更新orderStore中的数据
-        orderStore.updateOrder(orderId, { markType: command })
-
-        // 根据不同标记类型给出不同提示（只显示一个）
-        if (command === 'return') {
-          ElMessage.success('订单已标记为退单，信息已保留在系统中')
-        } else if (command === 'normal') {
-          ElMessage.success('订单已标记为正常发货单')
-        } else if (command === 'reserved') {
-          ElMessage.success('订单已标记为预留单')
-        } else {
-          ElMessage.success(`订单已标记为${markTypes[command]}`)
-        }
-
-        // 发送通知
-        notificationStore.sendMessage({
-          type: 'ORDER_MARKED',
-          title: '订单标记更新',
-          content: `订单 ${orderDetail.orderNumber} 已标记为${markTypes[command]}`,
-          link: `/order/detail/${orderId}`,
-          metadata: {
-            orderId: orderDetail.id,
-            orderNumber: orderDetail.orderNumber,
-            markType: command
-          }
-        })
-      } else {
-        console.error('[订单详情] 更新标记失败，响应:', response)
-        ElMessage.error(response.message || '更新订单标记失败')
+    if (response && (response.success !== false)) {
+      // 停止倒计时（如果正在运行）
+      if (countdownTimer.value) {
+        clearInterval(countdownTimer.value)
+        countdownTimer.value = null
       }
-    } catch (error: any) {
-      console.error('[订单详情] 更新订单标记异常:', error)
-      const errorMsg = error?.response?.data?.message || error?.message || '更新订单标记失败，请重试'
-      ElMessage.error(errorMsg)
+
+      // 更新本地订单标记状态
+      orderDetail.markType = command
+
+      // 如果是预留单或退单，标记为已处理防止自动流转
+      if (command === 'reserved' || command === 'return') {
+        orderDetail.isAuditTransferred = true
+      }
+
+      // 更新orderStore中的数据
+      orderStore.updateOrder(orderId, {
+        markType: command,
+        isAuditTransferred: command === 'reserved' || command === 'return'
+      })
+
+      // 显示成功提示
+      if (command === 'return') {
+        ElMessage.success('订单已标记为退单，信息已保留在系统中')
+      } else if (command === 'reserved') {
+        ElMessage.success('订单已标记为预留单，信息已保留在系统中')
+      } else if (command === 'normal') {
+        ElMessage.success('订单已标记为正常发货单')
+      } else {
+        ElMessage.success(`订单已标记为${markTypes[command]}`)
+      }
+
+      // 发送通知
+      notificationStore.sendMessage({
+        type: 'ORDER_MARKED',
+        title: '订单标记更新',
+        content: `订单 ${orderDetail.orderNumber} 已标记为${markTypes[command]}`,
+        link: `/order/detail/${orderId}`,
+        metadata: {
+          orderId: orderDetail.id,
+          orderNumber: orderDetail.orderNumber,
+          markType: command
+        }
+      })
+    } else {
+      console.error('[订单详情] 更新标记失败，响应:', response)
+      ElMessage.error(response?.message || '更新订单标记失败')
     }
-  }).catch(() => {
+  } catch (error: any) {
     // 用户取消操作
-  })
+    if (error === 'cancel' || error?.message === 'cancel') {
+      return
+    }
+    console.error('[订单详情] 更新订单标记异常:', error)
+    const errorMsg = error?.response?.data?.message || error?.message || '更新订单标记失败，请重试'
+    ElMessage.error(errorMsg)
+  }
 }
 
 const approveOrder = async () => {
