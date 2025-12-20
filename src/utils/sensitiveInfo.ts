@@ -1,10 +1,11 @@
 /**
  * 敏感信息处理工具类（TypeScript版本）
- * 集成权限控制系统
+ * 集成权限控制系统 - 从数据库API获取权限配置
  */
 
-import { permissionService, SensitiveInfoType, PermissionLevel } from '@/services/permission'
+import { SensitiveInfoType, PermissionLevel } from '@/services/permission'
 import { useUserStore } from '@/stores/user'
+import { sensitiveInfoPermissionService } from '@/services/sensitiveInfoPermissionService'
 
 // 重新导出类型，供其他模块使用
 export { SensitiveInfoType, PermissionLevel } from '@/services/permission'
@@ -63,6 +64,17 @@ const DEFAULT_MASK_CONFIGS: Record<SensitiveInfoType, MaskConfig> = {
   }
 }
 
+// 敏感信息类型到数据库字段的映射
+const INFO_TYPE_TO_DB_KEY: Record<SensitiveInfoType, string> = {
+  [SensitiveInfoType.PHONE]: 'phone',
+  [SensitiveInfoType.ID_CARD]: 'id_card',
+  [SensitiveInfoType.EMAIL]: 'email',
+  [SensitiveInfoType.WECHAT]: 'wechat',
+  [SensitiveInfoType.ADDRESS]: 'address',
+  [SensitiveInfoType.BANK_ACCOUNT]: 'bank',
+  [SensitiveInfoType.FINANCIAL]: 'financial'
+}
+
 export class SensitiveInfoProcessor {
   /**
    * 通用掩码处理函数
@@ -74,7 +86,7 @@ export class SensitiveInfoProcessor {
 
     const { showStart, showEnd, maskChar } = config
     const totalShow = showStart + showEnd
-    
+
     if (value.length <= totalShow) {
       return value
     }
@@ -82,7 +94,7 @@ export class SensitiveInfoProcessor {
     const start = value.substring(0, showStart)
     const end = showEnd > 0 ? value.substring(value.length - showEnd) : ''
     const maskLength = value.length - totalShow
-    
+
     return start + maskChar.repeat(maskLength) + end
   }
 
@@ -96,7 +108,7 @@ export class SensitiveInfoProcessor {
 
     // 移除所有非数字字符
     const cleanPhone = phone.replace(/\D/g, '')
-    
+
     if (cleanPhone.length === 11) {
       // 中国大陆手机号：显示前3位和后4位
       return cleanPhone.substring(0, 3) + '****' + cleanPhone.substring(7)
@@ -104,7 +116,7 @@ export class SensitiveInfoProcessor {
       // 其他格式：使用默认配置
       return SensitiveInfoProcessor.applyMask(cleanPhone, DEFAULT_MASK_CONFIGS[SensitiveInfoType.PHONE])
     }
-    
+
     return phone
   }
 
@@ -126,15 +138,15 @@ export class SensitiveInfoProcessor {
     if (!email || typeof email !== 'string') {
       return email || ''
     }
-    
+
     const atIndex = email.indexOf('@')
     if (atIndex === -1) {
       return email
     }
-    
+
     const username = email.substring(0, atIndex)
     const domain = email.substring(atIndex)
-    
+
     if (username.length <= 2) {
       return email
     } else if (username.length <= 4) {
@@ -220,47 +232,58 @@ export class SensitiveInfoProcessor {
 
   /**
    * 根据用户权限显示敏感信息
+   * 从数据库API获取的权限配置决定是否显示完整信息
    */
   public static displaySensitiveInfo(
-    value: string, 
-    type: SensitiveInfoType, 
-    userId?: string
+    value: string,
+    type: SensitiveInfoType,
+    _userId?: string
   ): string {
     if (!value) return value
 
-    // 如果没有提供用户ID，尝试从用户store获取
-    if (!userId) {
-      try {
-        const userStore = useUserStore()
-        userId = userStore.currentUser?.id
-      } catch (_error) {
-        console.warn('无法获取当前用户信息，使用受限模式显示敏感信息')
-      }
+    // 获取当前用户角色
+    let userRole: string | null = null
+
+    try {
+      const userStore = useUserStore()
+      userRole = userStore.currentUser?.role || null
+    } catch (_error) {
+      console.warn('无法获取当前用户信息，使用受限模式显示敏感信息')
     }
 
-    // 如果仍然没有用户ID，使用掩码显示
-    if (!userId) {
+    // 如果没有用户角色，使用掩码显示
+    if (!userRole) {
       return SensitiveInfoProcessor.maskByType(value, type)
     }
 
-    // 检查用户权限
-    const permissionResult = permissionService.checkSensitiveInfoAccess(userId, type)
-    
-    // 记录访问日志
-    permissionService.logAccess(userId, type, 'view', permissionResult.hasAccess)
+    // 将敏感信息类型转换为数据库字段名
+    const dbKey = SensitiveInfoProcessor.typeToDbKey(type)
 
-    if (permissionResult.hasAccess) {
-      // 根据权限级别决定显示方式
-      if (permissionResult.level === PermissionLevel.FULL_ACCESS) {
-        return value // 完全显示
-      } else if (permissionResult.level === PermissionLevel.PARTIAL_ACCESS) {
-        // 部分显示（可以根据需要调整掩码程度）
-        return SensitiveInfoProcessor.maskByType(value, type)
-      }
+    // 使用新的权限服务检查权限（从数据库API获取）
+    const hasAccess = sensitiveInfoPermissionService.hasPermission(userRole, dbKey)
+
+    if (hasAccess) {
+      return value // 有权限，显示完整信息
     }
 
-    // 无权限或受限访问，显示掩码
+    // 无权限，显示掩码
     return SensitiveInfoProcessor.maskByType(value, type)
+  }
+
+  /**
+   * 将SensitiveInfoType转换为数据库字段名
+   */
+  private static typeToDbKey(type: SensitiveInfoType): string {
+    const mapping: Record<SensitiveInfoType, string> = {
+      [SensitiveInfoType.PHONE]: 'phone',
+      [SensitiveInfoType.ID_CARD]: 'id_card',
+      [SensitiveInfoType.EMAIL]: 'email',
+      [SensitiveInfoType.WECHAT]: 'wechat',
+      [SensitiveInfoType.ADDRESS]: 'address',
+      [SensitiveInfoType.BANK_ACCOUNT]: 'bank',
+      [SensitiveInfoType.FINANCIAL]: 'financial'
+    }
+    return mapping[type] || type.toString()
   }
 
   /**
@@ -285,39 +308,49 @@ export class SensitiveInfoProcessor {
   /**
    * 检查用户是否有查看特定敏感信息的权限
    */
-  public static canViewSensitiveInfo(type: SensitiveInfoType, userId?: string): boolean {
-    if (!userId) {
-      try {
-        const userStore = useUserStore()
-        userId = userStore.currentUser?.id
-      } catch (_error) {
-        return false
-      }
+  public static canViewSensitiveInfo(type: SensitiveInfoType, _userId?: string): boolean {
+    // 获取当前用户角色
+    let userRole: string | null = null
+
+    try {
+      const userStore = useUserStore()
+      userRole = userStore.currentUser?.role || null
+    } catch (_error) {
+      return false
     }
 
-    if (!userId) return false
+    if (!userRole) return false
 
-    const permissionResult = permissionService.checkSensitiveInfoAccess(userId, type)
-    return permissionResult.hasAccess
+    // 将敏感信息类型转换为数据库字段名
+    const dbKey = SensitiveInfoProcessor.typeToDbKey(type)
+
+    // 使用新的权限服务检查权限
+    return sensitiveInfoPermissionService.hasPermission(userRole, dbKey)
   }
 
   /**
    * 获取用户对敏感信息的访问级别
    */
-  public static getAccessLevel(type: SensitiveInfoType, userId?: string): PermissionLevel {
-    if (!userId) {
-      try {
-        const userStore = useUserStore()
-        userId = userStore.currentUser?.id
-      } catch (_error) {
-        return PermissionLevel.RESTRICTED
-      }
+  public static getAccessLevel(type: SensitiveInfoType, _userId?: string): PermissionLevel {
+    // 获取当前用户角色
+    let userRole: string | null = null
+
+    try {
+      const userStore = useUserStore()
+      userRole = userStore.currentUser?.role || null
+    } catch (_error) {
+      return PermissionLevel.RESTRICTED
     }
 
-    if (!userId) return PermissionLevel.RESTRICTED
+    if (!userRole) return PermissionLevel.RESTRICTED
 
-    const permissionResult = permissionService.checkSensitiveInfoAccess(userId, type)
-    return permissionResult.level
+    // 将敏感信息类型转换为数据库字段名
+    const dbKey = SensitiveInfoProcessor.typeToDbKey(type)
+
+    // 使用新的权限服务检查权限
+    const hasAccess = sensitiveInfoPermissionService.hasPermission(userRole, dbKey)
+
+    return hasAccess ? PermissionLevel.FULL_ACCESS : PermissionLevel.RESTRICTED
   }
 }
 

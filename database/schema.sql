@@ -577,32 +577,108 @@ CREATE TABLE `system_configs` (
   INDEX `idx_enabled` (`isEnabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置表';
 
+-- 系统配置默认数据
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
+-- 基本设置
+('systemName', 'CRM客户管理系统', 'string', 'basic_settings', '系统名称', 1, 1, 1),
+('systemVersion', '1.0.0', 'string', 'basic_settings', '系统版本', 1, 1, 2),
+('companyName', '示例科技有限公司', 'string', 'basic_settings', '公司名称', 1, 1, 3),
+('contactPhone', '400-123-4567', 'string', 'basic_settings', '联系电话', 1, 1, 4),
+('contactEmail', 'contact@example.com', 'string', 'basic_settings', '联系邮箱', 1, 1, 5),
+('websiteUrl', 'https://www.example.com', 'string', 'basic_settings', '网站地址', 1, 1, 6),
+('companyAddress', '北京市朝阳区示例大厦', 'string', 'basic_settings', '公司地址', 1, 1, 7),
+('systemDescription', '专业的客户关系管理系统', 'string', 'basic_settings', '系统描述', 1, 1, 8),
+('systemLogo', '', 'string', 'basic_settings', '系统Logo', 1, 1, 9),
+('contactQRCode', '', 'string', 'basic_settings', '联系二维码', 1, 1, 10),
+-- 安全设置
+('passwordMinLength', '8', 'number', 'security_settings', '密码最小长度', 1, 1, 1),
+('passwordExpireDays', '90', 'number', 'security_settings', '密码过期天数', 1, 1, 2),
+('loginFailLock', 'true', 'boolean', 'security_settings', '登录失败锁定', 1, 1, 3),
+('maxLoginFails', '5', 'number', 'security_settings', '最大登录失败次数', 1, 1, 4),
+('lockDuration', '30', 'number', 'security_settings', '锁定时长(分钟)', 1, 1, 5),
+('sessionTimeout', '120', 'number', 'security_settings', '会话超时(分钟)', 1, 1, 6),
+('forceHttps', 'false', 'boolean', 'security_settings', '强制HTTPS', 1, 1, 7),
+('ipWhitelist', '', 'string', 'security_settings', 'IP白名单', 1, 1, 8),
+('secureConsoleEnabled', 'false', 'boolean', 'security_settings', '控制台日志加密', 1, 1, 9),
+-- 存储设置
+('storageType', 'local', 'string', 'storage_settings', '存储类型', 1, 1, 1),
+('localPath', '/uploads', 'string', 'storage_settings', '本地存储路径', 1, 1, 2),
+('localDomain', 'http://localhost:3000', 'string', 'storage_settings', '本地域名', 1, 1, 3),
+('maxFileSize', '10', 'number', 'storage_settings', '最大文件大小(MB)', 1, 1, 4),
+('allowedTypes', 'jpg,png,gif,pdf,doc,docx,xls,xlsx', 'string', 'storage_settings', '允许的文件类型', 1, 1, 5),
+('imageCompressEnabled', 'true', 'boolean', 'storage_settings', '启用图片压缩', 1, 1, 6),
+('imageCompressQuality', 'medium', 'string', 'storage_settings', '图片压缩质量', 1, 1, 7),
+('imageCompressMaxWidth', '1200', 'number', 'storage_settings', '图片最大宽度', 1, 1, 8),
+-- 邮件设置
+('smtpHost', '', 'string', 'email_settings', 'SMTP服务器', 1, 1, 1),
+('smtpPort', '587', 'number', 'email_settings', 'SMTP端口', 1, 1, 2),
+('senderEmail', '', 'string', 'email_settings', '发件人邮箱', 1, 1, 3),
+('senderName', '', 'string', 'email_settings', '发件人名称', 1, 1, 4),
+('emailPassword', '', 'string', 'email_settings', '邮箱密码', 1, 1, 5),
+('enableSsl', 'true', 'boolean', 'email_settings', '启用SSL', 1, 1, 6),
+('enableTls', 'false', 'boolean', 'email_settings', '启用TLS', 1, 1, 7),
+-- 短信设置
+('provider', 'aliyun', 'string', 'sms_settings', '短信服务商', 1, 1, 1),
+('accessKey', '', 'string', 'sms_settings', 'AccessKey', 1, 1, 2),
+('secretKey', '', 'string', 'sms_settings', 'SecretKey', 1, 1, 3),
+('signName', '', 'string', 'sms_settings', '短信签名', 1, 1, 4),
+('dailyLimit', '100', 'number', 'sms_settings', '每日限额', 1, 1, 5),
+('monthlyLimit', '3000', 'number', 'sms_settings', '每月限额', 1, 1, 6),
+('enabled', 'false', 'boolean', 'sms_settings', '启用短信', 1, 1, 7),
+-- 通话设置
+('sipServer', '', 'string', 'call_settings', 'SIP服务器', 1, 1, 1),
+('sipPort', '5060', 'number', 'call_settings', 'SIP端口', 1, 1, 2),
+('sipUsername', '', 'string', 'call_settings', 'SIP用户名', 1, 1, 3),
+('sipPassword', '', 'string', 'call_settings', 'SIP密码', 1, 1, 4),
+('sipTransport', 'UDP', 'string', 'call_settings', 'SIP传输协议', 1, 1, 5),
+('autoAnswer', 'false', 'boolean', 'call_settings', '自动接听', 1, 1, 6),
+('autoRecord', 'false', 'boolean', 'call_settings', '自动录音', 1, 1, 7),
+('qualityMonitoring', 'false', 'boolean', 'call_settings', '质量监控', 1, 1, 8),
+('incomingCallPopup', 'true', 'boolean', 'call_settings', '来电弹窗', 1, 1, 9),
+('maxCallDuration', '3600', 'number', 'call_settings', '最大通话时长(秒)', 1, 1, 10),
+('recordFormat', 'mp3', 'string', 'call_settings', '录音格式', 1, 1, 11),
+('recordQuality', 'standard', 'string', 'call_settings', '录音质量', 1, 1, 12),
+('recordPath', './recordings', 'string', 'call_settings', '录音路径', 1, 1, 13),
+('recordRetentionDays', '90', 'number', 'call_settings', '录音保留天数', 1, 1, 14),
+-- 商品设置
+('maxDiscountPercent', '30', 'number', 'product_settings', '最大折扣百分比', 1, 1, 1),
+('adminMaxDiscount', '50', 'number', 'product_settings', '管理员最大折扣', 1, 1, 2),
+('managerMaxDiscount', '30', 'number', 'product_settings', '经理最大折扣', 1, 1, 3),
+('salesMaxDiscount', '15', 'number', 'product_settings', '销售最大折扣', 1, 1, 4),
+('discountApprovalThreshold', '20', 'number', 'product_settings', '折扣审批阈值', 1, 1, 5),
+('allowPriceModification', 'true', 'boolean', 'product_settings', '允许修改价格', 1, 1, 6),
+('enableInventory', 'true', 'boolean', 'product_settings', '启用库存管理', 1, 1, 7),
+('lowStockThreshold', '10', 'number', 'product_settings', '低库存阈值', 1, 1, 8)
+ON DUPLICATE KEY UPDATE `configValue` = VALUES(`configValue`), `updatedAt` = CURRENT_TIMESTAMP;
+
 -- 16. 通话记录表
 DROP TABLE IF EXISTS `call_records`;
 CREATE TABLE `call_records` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '通话ID',
-  `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
+  `customer_id` VARCHAR(100) COMMENT '客户ID',
   `customer_name` VARCHAR(100) COMMENT '客户姓名',
-  `customer_phone` VARCHAR(20) COMMENT '客户电话',
-  `call_type` ENUM('outbound', 'inbound') NOT NULL COMMENT '通话类型',
-  `call_status` ENUM('connected', 'missed', 'busy', 'failed', 'rejected') NOT NULL COMMENT '通话状态',
-  `start_time` TIMESTAMP NOT NULL COMMENT '开始时间',
-  `end_time` TIMESTAMP NULL COMMENT '结束时间',
+  `customer_phone` VARCHAR(20) NOT NULL COMMENT '客户电话',
+  `call_type` ENUM('outbound', 'inbound') DEFAULT 'outbound' COMMENT '通话类型：outbound-呼出，inbound-呼入',
+  `call_status` ENUM('connected', 'missed', 'busy', 'failed', 'rejected') DEFAULT 'connected' COMMENT '通话状态',
+  `start_time` DATETIME COMMENT '通话开始时间',
+  `end_time` DATETIME COMMENT '通话结束时间',
   `duration` INT DEFAULT 0 COMMENT '通话时长(秒)',
   `recording_url` VARCHAR(500) COMMENT '录音文件URL',
+  `has_recording` TINYINT(1) DEFAULT 0 COMMENT '是否有录音',
   `notes` TEXT COMMENT '通话备注',
-  `follow_up_required` BOOLEAN DEFAULT FALSE COMMENT '是否需要跟进',
-  `user_id` VARCHAR(50) NOT NULL COMMENT '操作员ID',
-  `user_name` VARCHAR(50) COMMENT '操作员姓名',
-  `department` VARCHAR(100) COMMENT '所属部门',
+  `follow_up_required` TINYINT(1) DEFAULT 0 COMMENT '是否需要跟进',
+  `user_id` VARCHAR(100) NOT NULL COMMENT '操作用户ID',
+  `user_name` VARCHAR(100) COMMENT '操作用户姓名',
+  `department` VARCHAR(100) COMMENT '部门',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  INDEX `idx_customer` (`customer_id`),
-  INDEX `idx_user` (`user_id`),
+  INDEX `idx_customer_id` (`customer_id`),
+  INDEX `idx_customer_phone` (`customer_phone`),
   INDEX `idx_call_type` (`call_type`),
   INDEX `idx_call_status` (`call_status`),
+  INDEX `idx_user_id` (`user_id`),
   INDEX `idx_start_time` (`start_time`),
-  INDEX `idx_follow_up` (`follow_up_required`)
+  INDEX `idx_has_recording` (`has_recording`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通话记录表';
 
 -- 17. 跟进记录表
@@ -1269,23 +1345,9 @@ CREATE TABLE `improvement_goals` (
   INDEX `idx_target_date` (`targetDate`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='改善目标表';
 
--- 46. 通话表（与call_records不同，这是实体对应的表）
-DROP TABLE IF EXISTS `calls`;
-CREATE TABLE `calls` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '通话ID',
-  `customerId` VARCHAR(100) NOT NULL COMMENT '客户ID',
-  `userId` VARCHAR(100) NOT NULL COMMENT '用户ID',
-  `phoneNumber` VARCHAR(20) NOT NULL COMMENT '电话号码',
-  `duration` INT DEFAULT 0 COMMENT '通话时长(秒)',
-  `status` VARCHAR(20) DEFAULT 'completed' COMMENT '状态',
-  `notes` TEXT NULL COMMENT '备注',
-  `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  INDEX `idx_customer` (`customerId`),
-  INDEX `idx_user` (`userId`),
-  INDEX `idx_status` (`status`),
-  INDEX `idx_created_at` (`createdAt`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通话表';
+-- 46. 通话表（已合并到call_records表，此处保留注释说明）
+-- 注意：通话功能统一使用 call_records 表（第16项），此表已废弃
+-- DROP TABLE IF EXISTS `calls`;
 
 -- =============================================
 -- 初始化数据
@@ -1916,4 +1978,20 @@ INSERT INTO `sensitive_info_permissions` (`info_type`, `role_code`, `has_permiss
 ('address', 'super_admin', 1), ('address', 'admin', 1), ('address', 'department_manager', 0), ('address', 'sales_staff', 0), ('address', 'customer_service', 0),
 ('bank', 'super_admin', 1), ('bank', 'admin', 1), ('bank', 'department_manager', 0), ('bank', 'sales_staff', 0), ('bank', 'customer_service', 0),
 ('financial', 'super_admin', 1), ('financial', 'admin', 1), ('financial', 'department_manager', 0), ('financial', 'sales_staff', 0), ('financial', 'customer_service', 0)
+ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
+
+-- =============================================
+-- 通话记录测试数据
+-- =============================================
+INSERT INTO `call_records` (`id`, `customer_id`, `customer_name`, `customer_phone`, `call_type`, `call_status`, `start_time`, `end_time`, `duration`, `has_recording`, `notes`, `follow_up_required`, `user_id`, `user_name`, `department`) VALUES
+('call_1734567890_001', 'cust_001', '王磊', '18231431086', 'outbound', 'connected', DATE_SUB(NOW(), INTERVAL 1 HOUR), DATE_SUB(NOW(), INTERVAL 55 MINUTE), 300, 1, '客户咨询产品价格', 0, 'admin', '管理员', '销售部'),
+('call_1734567890_002', 'cust_002', '王小雨', '15287985214', 'outbound', 'connected', DATE_SUB(NOW(), INTERVAL 2 HOUR), DATE_SUB(NOW(), INTERVAL 1 HOUR 50 MINUTE), 600, 1, '售后问题处理', 1, 'admin', '管理员', '客服部'),
+('call_1734567890_003', 'cust_003', '单芳波', '13736053045', 'inbound', 'missed', DATE_SUB(NOW(), INTERVAL 3 HOUR), NULL, 0, 0, '未接听', 1, 'admin', '管理员', '销售部'),
+('call_1734567890_004', 'cust_004', '贾将富', '13407722936', 'outbound', 'connected', DATE_SUB(NOW(), INTERVAL 4 HOUR), DATE_SUB(NOW(), INTERVAL 3 HOUR 45 MINUTE), 900, 1, '新客户开发', 0, 'admin', '管理员', '销售部')
+ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
+
+-- 跟进记录测试数据
+INSERT INTO `follow_up_records` (`id`, `call_id`, `customer_id`, `customer_name`, `follow_up_type`, `content`, `next_follow_up_date`, `priority`, `status`, `user_id`, `user_name`) VALUES
+('followup_001', 'call_1734567890_002', 'cust_002', '王小雨', 'call', '客户反馈产品使用问题，需要技术支持跟进', DATE_ADD(NOW(), INTERVAL 1 DAY), 'high', 'pending', 'admin', '管理员'),
+('followup_002', 'call_1734567890_003', 'cust_003', '单芳波', 'call', '未接听，需要回拨', DATE_ADD(NOW(), INTERVAL 2 HOUR), 'urgent', 'pending', 'admin', '管理员')
 ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
