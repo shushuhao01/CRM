@@ -785,10 +785,17 @@ export class MessageController {
 
       // 获取用户的阅读记录
       const readRepo = dataSource.getRepository(AnnouncementRead);
-      const readRecords = await readRepo.find({
-        where: { userId: currentUser?.id }
-      });
-      const readIds = new Set(readRecords.map(r => r.announcementId));
+      const userId = currentUser?.id?.toString(); // 确保是字符串
+      console.log('[获取公告] 用户ID:', userId, '公告数量:', filteredAnnouncements.length);
+
+      let readIds = new Set<string>();
+      if (userId) {
+        const readRecords = await readRepo.find({
+          where: { userId }
+        });
+        readIds = new Set(readRecords.map(r => r.announcementId));
+        console.log('[获取公告] 已读公告数量:', readIds.size);
+      }
 
       res.json({
         success: true,
@@ -821,12 +828,15 @@ export class MessageController {
       const dataSource = getDataSource();
 
       if (!dataSource) {
+        console.log('[公告已读] 数据库未连接，静默返回成功');
         res.json({ success: true });
         return;
       }
 
       const currentUser = (req as any).currentUser || (req as any).user;
-      const userId = currentUser?.id;
+      const userId = currentUser?.id?.toString(); // 确保是字符串
+
+      console.log('[公告已读] 用户ID:', userId, '公告ID:', id);
 
       if (!userId) {
         res.status(401).json({ success: false, message: '未登录' });
@@ -840,6 +850,8 @@ export class MessageController {
         where: { announcementId: id, userId }
       });
 
+      console.log('[公告已读] 已存在记录:', existing ? '是' : '否');
+
       if (!existing) {
         // 创建阅读记录
         const readRecord = readRepo.create({
@@ -848,6 +860,7 @@ export class MessageController {
           userId
         });
         await readRepo.save(readRecord);
+        console.log('[公告已读] 已创建阅读记录');
 
         // 更新公告查看次数
         const announcementRepo = dataSource.getRepository(Announcement);
