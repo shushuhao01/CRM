@@ -630,6 +630,56 @@ router.onError((error) => {
     return
   }
 
+  // 🔥 处理动态导入模块失败（通常是因为部署更新或长时间未操作导致的缓存问题）
+  if (error.message && (
+    error.message.includes('error loading dynamically imported module') ||
+    error.message.includes('Failed to fetch dynamically imported module') ||
+    error.message.includes('Loading chunk') ||
+    error.message.includes('ChunkLoadError')
+  )) {
+    console.warn('[Router] 动态模块加载失败，可能是版本更新或缓存问题:', error.message)
+
+    // 检查是否是 token 过期导致的
+    const userStore = useUserStore()
+    const savedToken = localStorage.getItem('auth_token')
+
+    if (!savedToken && !userStore.token) {
+      // Token 已被清除，说明是登录过期，跳转登录页
+      console.log('[Router] Token已过期，跳转登录页')
+      ElMessageBox.alert(
+        '您的登录已过期，请重新登录。',
+        '登录已过期',
+        {
+          confirmButtonText: '重新登录',
+          type: 'warning',
+          showClose: false,
+          closeOnClickModal: false
+        }
+      ).then(() => {
+        window.location.href = '/login'
+      }).catch(() => {
+        window.location.href = '/login'
+      })
+    } else {
+      // 可能是版本更新导致的，提示用户刷新页面
+      ElMessageBox.alert(
+        '系统检测到版本更新或页面缓存过期，需要刷新页面以加载最新内容。',
+        '页面需要刷新',
+        {
+          confirmButtonText: '立即刷新',
+          type: 'info',
+          showClose: false,
+          closeOnClickModal: false
+        }
+      ).then(() => {
+        window.location.reload()
+      }).catch(() => {
+        window.location.reload()
+      })
+    }
+    return
+  }
+
   console.error('路由错误:', error)
   ElMessage.error('页面加载失败，请刷新重试')
 })
