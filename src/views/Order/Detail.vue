@@ -1286,18 +1286,16 @@ const handleMarkCommand = async (command: string) => {
         ElMessage.success(`订单已标记为${markTypes[command]}`)
       }
 
-      // 发送通知
-      notificationStore.sendMessage({
-        type: 'ORDER_MARKED',
-        title: '订单标记更新',
-        content: `订单 ${orderDetail.orderNumber} 已标记为${markTypes[command]}`,
-        link: `/order/detail/${orderId}`,
-        metadata: {
-          orderId: orderDetail.id,
-          orderNumber: orderDetail.orderNumber,
-          markType: command
+      // 发送通知 - 使用正确的sendMessage签名: (type, content, options)
+      notificationStore.sendMessage(
+        notificationStore.MessageType.SYSTEM_UPDATE,
+        `订单 ${orderDetail.orderNumber} 已标记为${markTypes[command]}`,
+        {
+          relatedId: orderDetail.id,
+          relatedType: 'order',
+          actionUrl: `/order/detail/${orderId}`
         }
-      })
+      )
     } else {
       console.error('[订单详情] 更新标记失败，响应:', response)
       ElMessage.error(response?.message || '更新订单标记失败')
@@ -1328,20 +1326,16 @@ const approveOrder = async () => {
     orderStore.syncOrderStatus(orderId, 'pending_shipment', '审核员', '订单审核通过，等待发货')
     orderDetail.status = 'pending_shipment'
 
-    // 发送通知消息
-    notificationStore.sendMessage({
-      type: 'ORDER_APPROVED',
-      title: '订单审核通过',
-      content: `订单 ${orderDetail.orderNumber} (客户: ${orderDetail.customer.name}, 金额: ¥${orderDetail.totalAmount?.toLocaleString()}) 已审核通过`,
-      link: `/order/detail/${orderId}`,
-      metadata: {
-        orderId: orderId,
-        orderNo: orderDetail.orderNumber,
-        customerName: orderDetail.customer.name,
-        totalAmount: orderDetail.totalAmount,
-        auditResult: 'approved'
+    // 发送通知消息 - 使用正确的sendMessage签名
+    notificationStore.sendMessage(
+      notificationStore.MessageType.ORDER_AUDIT_APPROVED,
+      `订单 ${orderDetail.orderNumber} (客户: ${orderDetail.customer.name}, 金额: ¥${orderDetail.totalAmount?.toLocaleString()}) 已审核通过`,
+      {
+        relatedId: orderId,
+        relatedType: 'order',
+        actionUrl: `/order/detail/${orderId}`
       }
-    })
+    )
 
     ElMessage.success('订单审核通过')
   } catch (error) {
@@ -1365,21 +1359,16 @@ const rejectOrder = async () => {
     orderStore.syncOrderStatus(orderId, 'audit_rejected', '审核员', `订单审核拒绝：${reason}`)
     orderDetail.status = 'audit_rejected'
 
-    // 发送通知消息
-    notificationStore.sendMessage({
-      type: 'ORDER_REJECTED',
-      title: '订单审核拒绝',
-      content: `订单 ${orderDetail.orderNumber} (客户: ${orderDetail.customer.name}, 金额: ¥${orderDetail.totalAmount?.toLocaleString()}) 已审核拒绝，原因: ${reason}`,
-      link: `/order/detail/${orderId}`,
-      metadata: {
-        orderId: orderId,
-        orderNo: orderDetail.orderNumber,
-        customerName: orderDetail.customer.name,
-        totalAmount: orderDetail.totalAmount,
-        auditResult: 'rejected',
-        auditRemark: reason
+    // 发送通知消息 - 使用正确的sendMessage签名
+    notificationStore.sendMessage(
+      notificationStore.MessageType.ORDER_AUDIT_REJECTED,
+      `订单 ${orderDetail.orderNumber} (客户: ${orderDetail.customer.name}, 金额: ¥${orderDetail.totalAmount?.toLocaleString()}) 已审核拒绝，原因: ${reason}`,
+      {
+        relatedId: orderId,
+        relatedType: 'order',
+        actionUrl: `/order/detail/${orderId}`
       }
-    })
+    )
 
     ElMessage.success('订单已拒绝')
   } catch (error) {
@@ -2008,17 +1997,16 @@ const transferToAudit = () => {
 
   ElMessage.info('订单已自动流转到审核')
 
-  // 发送通知
-  notificationStore.sendMessage({
-    type: 'ORDER_TRANSFERRED',
-    title: '订单流转审核',
-    content: `订单 ${orderDetail.orderNumber} 已自动流转到审核`,
-    link: `/order/detail/${orderId}`,
-    metadata: {
-      orderId: orderDetail.id,
-      orderNumber: orderDetail.orderNumber
+  // 发送通知 - 使用正确的sendMessage签名
+  notificationStore.sendMessage(
+    notificationStore.MessageType.ORDER_PENDING_AUDIT,
+    `订单 ${orderDetail.orderNumber} 已自动流转到审核`,
+    {
+      relatedId: orderDetail.id,
+      relatedType: 'order',
+      actionUrl: `/order/detail/${orderId}`
     }
-  })
+  )
 }
 
 onMounted(async () => {
