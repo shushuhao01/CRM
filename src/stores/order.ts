@@ -443,21 +443,29 @@ export const useOrderStore = createPersistentStore('order', () => {
 
     // 🔥 必须先调用API，成功后才更新本地
     try {
-      console.log('[OrderStore] 调用API审核订单:', id)
+      console.log('[OrderStore] 调用API审核订单:', id, '审核结果:', approved ? '通过' : '拒绝')
       const { orderApi } = await import('@/api/order')
       const response = await orderApi.audit(id, {
         auditStatus: approved ? 'approved' : 'rejected',
         auditRemark: remark
       })
 
-      // 🔥 检查API响应
-      if (!response || response.success === false) {
-        const errorMsg = (response as any)?.message || 'API返回失败'
+      console.log('[OrderStore] API响应:', JSON.stringify(response))
+
+      // 🔥 检查API响应 - 兼容多种响应格式
+      if (!response) {
+        console.error('[OrderStore] API返回空响应')
+        throw new Error('API返回空响应')
+      }
+
+      // 检查是否有错误
+      if (response.success === false || response.code === 404 || response.code === 500) {
+        const errorMsg = response.message || 'API返回失败'
         console.error('[OrderStore] API审核失败:', errorMsg)
         throw new Error(errorMsg)
       }
 
-      console.log('[OrderStore] ✅ API审核成功')
+      console.log('[OrderStore] ✅ API审核成功, 订单状态:', response.data?.status)
 
       // 🔥 如果本地有订单数据，更新本地缓存
       if (order) {
