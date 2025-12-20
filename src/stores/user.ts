@@ -797,37 +797,58 @@ export const useUserStore = defineStore('user', () => {
     throw lastError || new Error('登录失败，请稍后重试')
   }
 
-  const logout = () => {
-    // 打印调用栈，找出是谁调用了 logout
-    console.trace('[Auth] ⚠️ logout 被调用！调用栈：')
+  // 🔥 清除用户数据（不调用API，用于401错误处理）
+  const clearUserData = () => {
+    console.log('[Auth] 清除用户数据（不调用API）')
 
-    // 调用API登出
-    authApiService.logout().catch(console.error)
-
-    // 【批次190修复】清除所有认证和权限相关数据
+    // 清除所有认证和权限相关数据
     currentUser.value = null
     token.value = ''
     permissions.value = []
     isLoggedIn.value = false
     users.value = []
 
-    // 🔥 清除所有localStorage中的认证数据（更全面）
+    // 清除所有localStorage中的认证数据
     localStorage.removeItem('auth_token')
     localStorage.removeItem('user')
     localStorage.removeItem('user_info')
     localStorage.removeItem('userPermissions')
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('token_expiry')
-    // 🔥 清除可能缓存用户信息的其他项
     localStorage.removeItem('crm_current_user')
     localStorage.removeItem('currentUser')
 
-    // 🔥 清除sessionStorage中的用户数据
+    // 清除sessionStorage中的用户数据
     sessionStorage.removeItem('auth_token')
     sessionStorage.removeItem('user')
     sessionStorage.removeItem('currentUser')
 
-    console.log('[Auth] ✅ 已清除所有认证数据（localStorage和sessionStorage）')
+    console.log('[Auth] ✅ 用户数据已清除')
+  }
+
+  const logout = async () => {
+    console.log('[Auth] 开始执行登出操作')
+
+    // 🔥 先设置登出状态，防止API调用触发401弹窗
+    const { setLoggingOutState } = await import('@/utils/request')
+    setLoggingOutState(true)
+
+    try {
+      // 调用API登出（忽略错误，因为token可能已失效）
+      await authApiService.logout().catch(err => {
+        console.log('[Auth] API登出调用失败（已忽略）:', err.message)
+      })
+    } finally {
+      // 🔥 清除用户数据
+      clearUserData()
+
+      // 🔥 重置登出状态
+      setTimeout(() => {
+        setLoggingOutState(false)
+      }, 500)
+
+      console.log('[Auth] ✅ 登出完成')
+    }
   }
 
   const loadUsers = async () => {
@@ -1305,6 +1326,7 @@ export const useUserStore = defineStore('user', () => {
     loginWithApi,
     loginWithRetry,
     logout,
+    clearUserData,
     loadUsers,
     getUserById,
     initUser,

@@ -270,18 +270,46 @@ service.interceptors.response.use(
 
 // 🔥 处理未授权（Token过期）- 显示友好提示并跳转登录页
 let isShowingAuthDialog = false // 防止重复弹窗
+let isLoggingOut = false // 🔥 标记是否正在执行登出操作
+
+// 🔥 导出设置登出状态的方法，供logout使用
+export const setLoggingOutState = (state: boolean) => {
+  isLoggingOut = state
+}
 
 const handleUnauthorized = async () => {
+  // 🔥 如果正在执行登出操作，不显示弹窗（避免循环）
+  if (isLoggingOut) {
+    console.log('[Request] 正在登出中，跳过401弹窗')
+    return
+  }
+
   // 防止多个请求同时触发多个弹窗
   if (isShowingAuthDialog) {
+    console.log('[Request] 弹窗已显示，跳过重复弹窗')
+    return
+  }
+
+  // 🔥 检查当前是否已经在登录页，如果是则不显示弹窗
+  if (router.currentRoute.value.path === '/login') {
+    console.log('[Request] 已在登录页，跳过401弹窗')
     return
   }
 
   isShowingAuthDialog = true
 
   try {
-    const userStore = useUserStore()
     const safeNavigator = createSafeNavigator(router)
+
+    // 🔥 先清除本地存储的认证数据，防止后续请求继续触发401
+    localStorage.removeItem('auth_token')
+    localStorage.removeItem('user')
+    localStorage.removeItem('user_info')
+    localStorage.removeItem('userPermissions')
+    localStorage.removeItem('refresh_token')
+    localStorage.removeItem('token_expiry')
+    sessionStorage.removeItem('auth_token')
+    sessionStorage.removeItem('user')
 
     // 显示友好提示
     await ElMessageBox.alert(
@@ -290,25 +318,23 @@ const handleUnauthorized = async () => {
       {
         confirmButtonText: '重新登录',
         type: 'warning',
-        showClose: false,
+        showClose: true,
         closeOnClickModal: false,
-        closeOnPressEscape: false
+        closeOnPressEscape: true
       }
     )
-
-    // 清除用户信息和Token
-    userStore.logout()
 
     // 跳转到登录页
     safeNavigator.push('/login')
   } catch {
-    // 用户关闭弹窗也执行登出
-    const userStore = useUserStore()
+    // 用户关闭弹窗也跳转登录页
     const safeNavigator = createSafeNavigator(router)
-    userStore.logout()
     safeNavigator.push('/login')
   } finally {
-    isShowingAuthDialog = false
+    // 🔥 延迟重置标志，确保短时间内不会再次弹窗
+    setTimeout(() => {
+      isShowingAuthDialog = false
+    }, 1000)
   }
 }
 
