@@ -496,7 +496,7 @@
                 <div class="tab-header">
                   <el-button type="primary" size="small" :icon="Plus">新建订单</el-button>
                 </div>
-                <el-table :data="mockOrderData" style="width: 100%">
+                <el-table :data="customerOrders" style="width: 100%" v-loading="detailLoading">
                   <el-table-column prop="orderNo" label="订单号" width="150" />
                   <el-table-column prop="productName" label="商品名称" width="200" />
                   <el-table-column prop="amount" label="订单金额" width="120">
@@ -518,6 +518,7 @@
                     </template>
                   </el-table-column>
                 </el-table>
+                <el-empty v-if="!detailLoading && customerOrders.length === 0" description="暂无订单记录" />
               </div>
             </el-tab-pane>
 
@@ -527,7 +528,7 @@
                 <div class="tab-header">
                   <el-button type="primary" size="small" :icon="Plus">新建售后</el-button>
                 </div>
-                <el-table :data="mockAftersalesData" style="width: 100%">
+                <el-table :data="customerAftersales" style="width: 100%" v-loading="detailLoading">
                   <el-table-column prop="ticketNo" label="工单号" width="150" />
                   <el-table-column prop="type" label="售后类型" width="100" />
                   <el-table-column prop="description" label="问题描述" min-width="200" show-overflow-tooltip />
@@ -545,6 +546,7 @@
                     </template>
                   </el-table-column>
                 </el-table>
+                <el-empty v-if="!detailLoading && customerAftersales.length === 0" description="暂无售后记录" />
               </div>
             </el-tab-pane>
 
@@ -554,7 +556,7 @@
                 <div class="tab-header">
                   <el-button type="primary" size="small" :icon="Phone">发起外呼</el-button>
                 </div>
-                <el-table :data="mockCallData" style="width: 100%">
+                <el-table :data="customerCalls" style="width: 100%" v-loading="detailLoading">
                   <el-table-column prop="callType" label="呼叫类型" width="100">
                     <template #default="{ row }">
                       <el-tag :type="row.callType === 'outbound' ? 'primary' : 'success'">
@@ -584,6 +586,7 @@
                     </template>
                   </el-table-column>
                 </el-table>
+                <el-empty v-if="!detailLoading && customerCalls.length === 0" description="暂无通话记录" />
               </div>
             </el-tab-pane>
 
@@ -593,7 +596,7 @@
                 <div class="tab-header">
                   <el-button type="primary" size="small" :icon="EditPen" @click="openFollowupDialog">新建跟进</el-button>
                 </div>
-                <el-table :data="mockFollowupData" style="width: 100%">
+                <el-table :data="customerFollowups" style="width: 100%" v-loading="detailLoading">
                   <el-table-column prop="type" label="跟进类型" width="100" />
                   <el-table-column prop="content" label="跟进内容" min-width="200" show-overflow-tooltip />
                   <el-table-column prop="nextPlan" label="下次计划" width="160" />
@@ -605,6 +608,7 @@
                     </template>
                   </el-table-column>
                 </el-table>
+                <el-empty v-if="!detailLoading && customerFollowups.length === 0" description="暂无跟进记录" />
               </div>
             </el-tab-pane>
           </el-tabs>
@@ -1671,6 +1675,7 @@ import {
 import { ElMessage } from 'element-plus'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { formatDateTime } from '@/utils/dateFormat'
+import { customerDetailApi } from '@/api/customerDetail'
 
 const router = useRouter()
 const safeNavigator = createSafeNavigator(router)
@@ -1983,73 +1988,92 @@ const quickFollowUpRules = {
   ]
 }
 
-// 模拟数据
-const mockOrderData = ref([
-  {
-    orderNo: 'ORD202401150001',
-    productName: '产品A',
-    amount: 2897,
-    status: 'pending',
-    createTime: '2024-01-15 14:30:00'
-  },
-  {
-    orderNo: 'ORD202401140002',
-    productName: '产品B',
-    amount: 1749,
-    status: 'completed',
-    createTime: '2024-01-14 16:20:00'
-  }
-])
+// 客户详情数据 - 从API加载
+const customerOrders = ref<any[]>([])
+const customerAftersales = ref<any[]>([])
+const customerCalls = ref<any[]>([])
+const customerFollowups = ref<any[]>([])
+const detailLoading = ref(false)
 
-const mockAftersalesData = ref([
-  {
-    ticketNo: 'AS202401150001',
-    type: '退货',
-    description: '产品质量问题，客户要求退货',
-    status: 'processing',
-    createTime: '2024-01-15 10:30:00'
-  }
-])
+// 加载客户详情数据
+const loadCustomerDetailData = async (customerId: string) => {
+  if (!customerId) return
 
-const mockCallData = ref([
-  {
-    callType: 'outbound',
-    duration: '5分30秒',
-    status: 'connected',
-    startTime: '2024-01-15 14:30:00',
-    operator: '李销售',
-    remark: '客户对产品A很感兴趣',
-    recordingUrl: '/recordings/call_20240115_143000.mp3'
-  },
-  {
-    callType: 'inbound',
-    duration: '3分15秒',
-    status: 'connected',
-    startTime: '2024-01-14 16:20:00',
-    operator: '王销售',
-    remark: '客户咨询发货时间',
-    recordingUrl: '/recordings/call_20240114_162000.mp3'
-  },
-  {
-    callType: 'outbound',
-    duration: '1分45秒',
-    status: 'no_answer',
-    startTime: '2024-01-13 10:15:00',
-    operator: '张销售',
-    remark: '客户未接听',
-    recordingUrl: null
-  }
-])
+  detailLoading.value = true
+  try {
+    // 并行加载所有数据
+    const [ordersRes, callsRes, followupsRes] = await Promise.all([
+      customerDetailApi.getCustomerOrders(customerId),
+      customerDetailApi.getCustomerCalls(customerId),
+      customerDetailApi.getCustomerFollowUps(customerId)
+    ])
 
-const mockFollowupData = ref([
-  {
-    type: '电话跟进',
-    content: '客户对产品A很感兴趣，需要进一步了解技术参数',
-    nextPlan: '2024-01-16 14:00:00',
-    operator: '李销售',
-    createTime: '2024-01-15 14:35:00'
+    // 处理订单数据
+    if (ordersRes.success && ordersRes.data) {
+      customerOrders.value = ordersRes.data.map((order: any) => ({
+        orderNo: order.orderNo || order.id,
+        productName: order.productName || order.items?.[0]?.productName || '未知商品',
+        amount: order.totalAmount || order.amount || 0,
+        status: order.status || 'pending',
+        createTime: order.createdAt || order.createTime
+      }))
+    } else {
+      customerOrders.value = []
+    }
+
+    // 处理通话记录数据
+    if (callsRes.success && callsRes.data) {
+      customerCalls.value = callsRes.data.map((call: any) => ({
+        callType: call.callType || call.type || 'outbound',
+        duration: formatCallDuration(call.duration),
+        status: call.status || 'connected',
+        startTime: call.startTime || call.createdAt,
+        operator: call.operatorName || call.operator || '未知',
+        remark: call.remark || call.notes || '',
+        recordingUrl: call.recordingUrl || null
+      }))
+    } else {
+      customerCalls.value = []
+    }
+
+    // 处理跟进记录数据
+    if (followupsRes.success && followupsRes.data) {
+      customerFollowups.value = followupsRes.data.map((followup: any) => ({
+        type: followup.type || '电话跟进',
+        content: followup.content || followup.description || '',
+        nextPlan: followup.nextPlanTime || followup.nextPlan || '',
+        operator: followup.operatorName || followup.operator || '未知',
+        createTime: followup.createdAt || followup.createTime
+      }))
+    } else {
+      customerFollowups.value = []
+    }
+
+    // 售后记录暂时为空（如果有售后API可以添加）
+    customerAftersales.value = []
+
+  } catch (error) {
+    console.error('加载客户详情数据失败:', error)
+    ElMessage.error('加载客户详情数据失败')
+    // 清空数据
+    customerOrders.value = []
+    customerAftersales.value = []
+    customerCalls.value = []
+    customerFollowups.value = []
+  } finally {
+    detailLoading.value = false
   }
-])
+}
+
+// 格式化通话时长
+const formatCallDuration = (seconds: number | string) => {
+  if (typeof seconds === 'string') return seconds
+  if (!seconds || seconds === 0) return '0秒'
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  if (mins === 0) return `${secs}秒`
+  return `${mins}分${secs}秒`
+}
 
 // 计算属性
 const recentCallRecords = computed(() => {
@@ -2860,15 +2884,6 @@ const loadCallRecords = async () => {
   }
 }
 
-// 格式化通话时长
-const formatCallDuration = (seconds: number): string => {
-  if (!seconds || seconds <= 0) return '00:00:00'
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = seconds % 60
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-}
-
 // 重置通话记录筛选器
 const resetCallRecordsFilter = () => {
   callRecordsFilter.dateRange = []
@@ -3001,12 +3016,27 @@ const handleExport = () => {
 }
 
 const handleCall = (row: any) => {
-  ElMessage.success(`正在外呼客户：${row.customerName}`)
+  // 打开外呼对话框并预填客户信息
+  outboundForm.value.selectedCustomer = {
+    id: row.id || row.customerId,
+    name: row.customerName,
+    phone: row.phone,
+    company: row.company || ''
+  } as any
+  outboundForm.value.customerPhone = row.phone
+  showOutboundDialog.value = true
 }
 
-const handleViewDetail = (row: any) => {
+const handleViewDetail = async (row: any) => {
   currentCustomer.value = row
   showDetailDialog.value = true
+  activeTab.value = 'orders' // 重置到第一个标签页
+
+  // 获取客户ID，可能是 id 或 customerId
+  const customerId = row.id || row.customerId
+  if (customerId) {
+    await loadCustomerDetailData(customerId)
+  }
 }
 
 const handleAddFollowUp = async (row: any) => {
