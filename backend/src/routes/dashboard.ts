@@ -77,13 +77,13 @@ router.get('/metrics', async (req: Request, res: Response) => {
     } else if (userRole === 'department_manager' || userRole === 'manager') {
       // 部门经理看本部门数据
       if (departmentId) {
-        userCondition = ` AND (o.created_by IN (SELECT id FROM users WHERE department_id = ?) OR o.sales_person_id IN (SELECT id FROM users WHERE department_id = ?))`;
+        userCondition = ` AND (o.created_by IN (SELECT id FROM users WHERE department_id = ?) OR o.created_by_department_id = ?)`;
         params.push(departmentId, departmentId);
       }
     } else {
       // 普通员工看自己的数据
-      userCondition = ` AND (o.created_by = ? OR o.sales_person_id = ?)`;
-      params.push(userId, userId);
+      userCondition = ` AND o.created_by = ?`;
+      params.push(userId);
     }
 
     // 今日订单数据
