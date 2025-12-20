@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
-import { AppDataSource } from '../config/database';
+import { getDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 // Customer entity not used directly, but kept for reference
 // import { Customer } from '../entities/Customer';
@@ -59,6 +59,15 @@ const isValidForDeliveryPerformance = (order: { status: string }): boolean => {
  */
 router.get('/metrics', async (req: Request, res: Response) => {
   try {
+    const dataSource = getDataSource();
+    if (!dataSource) {
+      console.error('[Dashboard Metrics] 数据库未连接');
+      return res.status(500).json({
+        success: false,
+        message: '数据库未连接'
+      });
+    }
+
     // 🔥 使用 currentUser 获取完整的用户信息
     const currentUser = (req as any).currentUser;
     const jwtUser = (req as any).user;
@@ -113,7 +122,7 @@ router.get('/metrics', async (req: Request, res: Response) => {
 
     // 今日订单数据
     console.log('[Dashboard Metrics] 查询今日订单, 时间范围:', todayStart, '-', todayEnd);
-    const todayOrdersData = await AppDataSource.query(
+    const todayOrdersData = await dataSource.query(
       `SELECT total_amount as totalAmount, status, mark_type as markType
        FROM orders o
        WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
@@ -123,7 +132,7 @@ router.get('/metrics', async (req: Request, res: Response) => {
 
     // 本月订单数据
     console.log('[Dashboard Metrics] 查询本月订单, 时间范围:', monthStart, '-', todayEnd);
-    const monthlyOrdersData = await AppDataSource.query(
+    const monthlyOrdersData = await dataSource.query(
       `SELECT total_amount as totalAmount, status, mark_type as markType
        FROM orders o
        WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
@@ -147,11 +156,11 @@ router.get('/metrics', async (req: Request, res: Response) => {
     const monthlyDeliveredOrders = monthlyOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
 
     // 待审核和待发货订单
-    const pendingAuditOrders = await AppDataSource.query(
+    const pendingAuditOrders = await dataSource.query(
       `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_audit'${userCondition}`,
       params
     );
-    const pendingShipmentOrders = await AppDataSource.query(
+    const pendingShipmentOrders = await dataSource.query(
       `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_shipment'${userCondition}`,
       params
     );
@@ -170,7 +179,7 @@ router.get('/metrics', async (req: Request, res: Response) => {
         customerParams.push(userId);
       }
     }
-    const [newCustomersResult] = await AppDataSource.query(
+    const [newCustomersResult] = await dataSource.query(
       `SELECT COUNT(*) as count FROM customers WHERE created_at >= ? AND created_at <= ?${customerCondition}`,
       customerParams
     );
@@ -228,8 +237,16 @@ router.get('/metrics', async (req: Request, res: Response) => {
  */
 router.get('/rankings', async (_req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
-    const userRepository = AppDataSource.getRepository(User);
+    const dataSource = getDataSource();
+    if (!dataSource) {
+      return res.status(500).json({
+        success: false,
+        message: '数据库未连接'
+      });
+    }
+
+    const orderRepository = dataSource.getRepository(Order);
+    const userRepository = dataSource.getRepository(User);
 
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -346,6 +363,14 @@ router.get('/rankings', async (_req: Request, res: Response) => {
  */
 router.get('/charts', async (req: Request, res: Response) => {
   try {
+    const dataSource = getDataSource();
+    if (!dataSource) {
+      return res.status(500).json({
+        success: false,
+        message: '数据库未连接'
+      });
+    }
+
     const { period = 'month' } = req.query;
 
     // 🔥 获取用户信息用于权限过滤
@@ -385,7 +410,7 @@ router.get('/charts', async (req: Request, res: Response) => {
 
         categories.push(`${date.getMonth() + 1}月`);
 
-        const monthOrders = await AppDataSource.query(
+        const monthOrders = await dataSource.query(
           `SELECT total_amount as totalAmount, status, mark_type as markType
            FROM orders o
            WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
@@ -405,7 +430,7 @@ router.get('/charts', async (req: Request, res: Response) => {
 
         categories.push(`第${8 - i}周`);
 
-        const weekOrders = await AppDataSource.query(
+        const weekOrders = await dataSource.query(
           `SELECT total_amount as totalAmount, status, mark_type as markType
            FROM orders o
            WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
@@ -426,7 +451,7 @@ router.get('/charts', async (req: Request, res: Response) => {
 
         categories.push(`${date.getMonth() + 1}/${date.getDate()}`);
 
-        const dayOrders = await AppDataSource.query(
+        const dayOrders = await dataSource.query(
           `SELECT total_amount as totalAmount, status, mark_type as markType
            FROM orders o
            WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
@@ -441,7 +466,7 @@ router.get('/charts', async (req: Request, res: Response) => {
     }
 
     // 获取订单状态分布（也需要按权限过滤）
-    const allOrders = await AppDataSource.query(
+    const allOrders = await dataSource.query(
       `SELECT status FROM orders o WHERE 1=1${userCondition}`,
       baseParams
     );
@@ -505,7 +530,15 @@ router.get('/charts', async (req: Request, res: Response) => {
  */
 router.get('/todos', async (_req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const dataSource = getDataSource();
+    if (!dataSource) {
+      return res.status(500).json({
+        success: false,
+        message: '数据库未连接'
+      });
+    }
+
+    const orderRepository = dataSource.getRepository(Order);
 
     // 获取待处理订单作为待办事项
     const pendingOrders = await orderRepository.find({
