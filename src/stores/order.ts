@@ -521,8 +521,9 @@ export const useOrderStore = createPersistentStore('order', () => {
         console.warn('[消息通知] 发送通知失败，但不影响审核结果:', notifyError)
       }
 
-      // 🔥 强制刷新订单列表，确保数据与数据库一致
-      await loadOrdersFromAPI(true)
+      // 🔥 优化：不再强制刷新整个订单列表，由调用方决定是否刷新
+      // 审核页面会自己更新本地数据，无需重新加载全量数据
+      // await loadOrdersFromAPI(true)
 
       return true
     } catch (apiError) {
