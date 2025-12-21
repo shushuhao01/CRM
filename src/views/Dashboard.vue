@@ -647,7 +647,8 @@ const performanceChartOption = computed(() => {
       formatter: function(params: Array<{axisValue: string, value: number, marker: string, seriesName: string}>) {
         let result = `${params[0].axisValue}<br/>`
         params.forEach((param) => {
-          const value = performancePeriod.value === 'day' ? `${param.value}单` : `¥${param.value.toLocaleString()}`
+          // 🔥 修复：业绩趋势图始终显示金额，单位为¥
+          const value = `¥${param.value.toLocaleString()}`
           result += `${param.marker}${param.seriesName}: ${value}<br/>`
         })
         return result
@@ -672,7 +673,8 @@ const performanceChartOption = computed(() => {
     yAxis: {
       type: 'value',
       axisLabel: {
-        formatter: performancePeriod.value === 'day' ? '{value}单' : '¥{value}'
+        // 🔥 修复：Y轴始终显示金额单位¥
+        formatter: '¥{value}'
       }
     },
     series: [
