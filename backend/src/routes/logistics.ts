@@ -1208,29 +1208,33 @@ async function testSFExpressApi(partnerId: string, checkWord: string, apiUrl: st
       return { success: false, message: '请填写顾客编码和校验码' };
     }
 
-    // 构建请求参数
-    const timestamp = Math.floor(Date.now() / 1000).toString();
+    // 构建请求参数 - 🔥 时间戳使用毫秒级（13位）
+    const timestamp = Date.now().toString();
     const requestId = `REQ${Date.now()}${Math.random().toString(36).substr(2, 6)}`;
 
     // 测试用的路由查询接口
     const serviceCode = 'EXP_RECE_SEARCH_ROUTES';
     const msgData = JSON.stringify({
-      language: '0',
       trackingType: '1',
       trackingNumber: [trackingNo || 'SF1234567890'], // 测试单号，数组格式
       methodType: '1'
     });
 
-    // 生成签名: Base64(MD5(msgData + timestamp + checkWord))
-    const signStr = msgData + timestamp + checkWord;
+    // 🔥 生成签名: Base64(MD5(URL编码后的msgData + timestamp + checkWord))
+    const encodedMsgData = encodeURIComponent(msgData);
+    const signStr = encodedMsgData + timestamp + checkWord;
     const msgDigest = crypto.createHash('md5').update(signStr, 'utf8').digest('base64');
 
+    console.log('[顺丰API测试] ========== 请求参数 ==========');
     console.log('[顺丰API测试] URL:', apiUrl);
     console.log('[顺丰API测试] partnerID:', partnerId);
     console.log('[顺丰API测试] msgData:', msgData);
+    console.log('[顺丰API测试] encodedMsgData:', encodedMsgData);
     console.log('[顺丰API测试] timestamp:', timestamp);
+    console.log('[顺丰API测试] signStr长度:', signStr.length);
+    console.log('[顺丰API测试] msgDigest:', msgDigest);
 
-    // 🔥 修复：使用POST body方式，而不是URL参数
+    // 使用POST body方式
     const params = new URLSearchParams();
     params.append('partnerID', partnerId);
     params.append('requestID', requestId);
@@ -1238,6 +1242,8 @@ async function testSFExpressApi(partnerId: string, checkWord: string, apiUrl: st
     params.append('timestamp', timestamp);
     params.append('msgDigest', msgDigest);
     params.append('msgData', msgData);
+
+    console.log('[顺丰API测试] 完整请求体:', params.toString());
 
     const response = await axios.post(
       apiUrl || 'https://sfapi-sbox.sf-express.com/std/service',
