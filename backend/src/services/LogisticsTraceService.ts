@@ -199,7 +199,8 @@ class LogisticsTraceService {
     // config.appSecret -> checkword (校验码)
     const partnerID = config.appId;
     const checkword = config.appSecret;
-    const timestamp = Math.floor(Date.now() / 1000).toString();
+    // 🔥 时间戳使用毫秒级（13位）
+    const timestamp = Date.now().toString();
     const requestID = `REQ${Date.now()}${Math.random().toString(36).substr(2, 6)}`;
 
     // 服务代码: EXP_RECE_SEARCH_ROUTES - 路由查询接口
@@ -207,14 +208,15 @@ class LogisticsTraceService {
 
     // 请求数据 (JSON格式)
     const msgData = JSON.stringify({
-      language: '0',           // 0-中文 1-英文
       trackingType: '1',       // 查询类型: 1-根据运单号查询
       trackingNumber: [trackingNo], // 运单号数组
       methodType: '1'          // 查询方法: 1-标准查询
     });
 
-    // 签名计算: Base64(MD5(msgData + timestamp + checkword))
-    const signStr = msgData + timestamp + checkword;
+    // 🔥 签名计算: Base64(MD5(msgData + timestamp + checkword))
+    // 根据顺丰官方文档，签名字符串 = URL编码后的msgData + timestamp + checkword
+    const encodedMsgData = encodeURIComponent(msgData);
+    const signStr = encodedMsgData + timestamp + checkword;
     const msgDigest = crypto.createHash('md5').update(signStr, 'utf8').digest('base64');
 
     // API地址
@@ -222,10 +224,15 @@ class LogisticsTraceService {
       ? 'https://sfapi.sf-express.com/std/service'
       : 'https://sfapi-sbox.sf-express.com/std/service';
 
+    console.log('[顺丰开放平台API] ========== 请求参数 ==========');
     console.log('[顺丰开放平台API] 请求URL:', apiUrl);
     console.log('[顺丰开放平台API] partnerID:', partnerID);
     console.log('[顺丰开放平台API] serviceCode:', serviceCode);
+    console.log('[顺丰开放平台API] timestamp:', timestamp);
     console.log('[顺丰开放平台API] msgData:', msgData);
+    console.log('[顺丰开放平台API] encodedMsgData:', encodedMsgData);
+    console.log('[顺丰开放平台API] signStr长度:', signStr.length);
+    console.log('[顺丰开放平台API] msgDigest:', msgDigest);
 
     // 使用 application/x-www-form-urlencoded 格式
     const params = new URLSearchParams();
@@ -235,6 +242,8 @@ class LogisticsTraceService {
     params.append('timestamp', timestamp);
     params.append('msgDigest', msgDigest);
     params.append('msgData', msgData);
+
+    console.log('[顺丰开放平台API] 完整请求体:', params.toString());
 
     const response = await axios.post(apiUrl, params.toString(), {
       timeout: 15000,
