@@ -5683,6 +5683,9 @@ onMounted(() => {
 
   // 初始化系统日志
   refreshLogs()
+  // 🔥 加载日志清理配置和统计
+  loadLogConfig()
+  refreshLogStats()
 
   // 🔥 批次287修复：注释掉旧的协议初始化，改用列表加载
   // initAgreementContent()
