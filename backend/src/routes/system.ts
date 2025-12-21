@@ -15,7 +15,13 @@ import { Role } from '../entities/Role';
 import { Permission } from '../entities/Permission';
 import { AfterSalesService } from '../entities/AfterSalesService';
 import { LogisticsCompany } from '../entities/LogisticsCompany';
+import { LogisticsTracking } from '../entities/LogisticsTracking';
 import { Announcement } from '../entities/Announcement';
+import { PerformanceMetric } from '../entities/PerformanceMetric';
+import { FollowUp } from '../entities/FollowUp';
+import { CustomerTag } from '../entities/CustomerTag';
+import { CustomerGroup } from '../entities/CustomerGroup';
+import { SmsTemplate } from '../entities/SmsTemplate';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -2168,7 +2174,7 @@ router.post('/backup/create', authenticateToken, requireAdmin, async (req: Reque
     // 导出数据库数据 - 备份所有重要的业务表
     const backupData: Record<string, unknown[]> = {};
 
-    // 定义需要备份的实体（按依赖顺序排列）
+    // 定义需要备份的实体（按依赖顺序排列，共20+个核心业务表）
     const entities = [
       // 基础配置表
       { name: 'system_configs', repo: AppDataSource.getRepository(SystemConfig) },
@@ -2183,6 +2189,9 @@ router.post('/backup/create', authenticateToken, requireAdmin, async (req: Reque
       { name: 'products', repo: AppDataSource.getRepository(Product) },
       // 客户相关
       { name: 'customers', repo: AppDataSource.getRepository(Customer) },
+      { name: 'customer_tags', repo: AppDataSource.getRepository(CustomerTag) },
+      { name: 'customer_groups', repo: AppDataSource.getRepository(CustomerGroup) },
+      { name: 'follow_ups', repo: AppDataSource.getRepository(FollowUp) },
       // 订单相关
       { name: 'orders', repo: AppDataSource.getRepository(Order) },
       { name: 'order_items', repo: AppDataSource.getRepository(OrderItem) },
@@ -2190,6 +2199,11 @@ router.post('/backup/create', authenticateToken, requireAdmin, async (req: Reque
       { name: 'after_sales_services', repo: AppDataSource.getRepository(AfterSalesService) },
       // 物流相关
       { name: 'logistics_companies', repo: AppDataSource.getRepository(LogisticsCompany) },
+      { name: 'logistics_trackings', repo: AppDataSource.getRepository(LogisticsTracking) },
+      // 业绩相关
+      { name: 'performance_metrics', repo: AppDataSource.getRepository(PerformanceMetric) },
+      // 短信模板
+      { name: 'sms_templates', repo: AppDataSource.getRepository(SmsTemplate) },
       // 公告
       { name: 'announcements', repo: AppDataSource.getRepository(Announcement) }
     ];
@@ -2377,6 +2391,196 @@ router.get('/backup/status', authenticateToken, requireAdmin, async (_req: Reque
     res.status(500).json({
       success: false,
       message: '获取备份状态失败'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/system/backup/restore/:filename
+ * @desc 从备份恢复数据（覆盖现有数据）
+ * @access Private (Admin)
+ */
+router.post('/backup/restore/:filename', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { filename } = req.params;
+    const backupDir = path.join(process.cwd(), 'backups');
+    const filePath = path.join(backupDir, path.basename(filename));
+
+    // 安全检查
+    if (!filePath.startsWith(backupDir)) {
+      return res.status(400).json({
+        success: false,
+        message: '无效的文件路径'
+      });
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: '备份文件不存在'
+      });
+    }
+
+    // 读取备份文件
+    const backupContent = fs.readFileSync(filePath, 'utf-8');
+    const backup = JSON.parse(backupContent);
+
+    if (!backup.data || !backup.version) {
+      return res.status(400).json({
+        success: false,
+        message: '备份文件格式无效'
+      });
+    }
+
+    console.log(`[恢复] 开始从备份恢复数据: ${filename}`);
+    console.log(`[恢复] 备份版本: ${backup.version}, 时间: ${backup.timestamp}`);
+
+    const restoreResults: Record<string, { success: boolean; count: number; error?: string }> = {};
+
+    // 定义恢复顺序（先删除依赖表，再恢复基础表）
+    // 注意：恢复是覆盖操作，会先清空表再插入数据
+    const restoreOrder = [
+      // 先恢复基础表
+      { name: 'system_configs', repo: AppDataSource.getRepository(SystemConfig) },
+      { name: 'roles', repo: AppDataSource.getRepository(Role) },
+      { name: 'permissions', repo: AppDataSource.getRepository(Permission) },
+      { name: 'departments', repo: AppDataSource.getRepository(Department) },
+      { name: 'users', repo: AppDataSource.getRepository(User) },
+      { name: 'product_categories', repo: AppDataSource.getRepository(ProductCategory) },
+      { name: 'products', repo: AppDataSource.getRepository(Product) },
+      { name: 'customers', repo: AppDataSource.getRepository(Customer) },
+      { name: 'customer_tags', repo: AppDataSource.getRepository(CustomerTag) },
+      { name: 'customer_groups', repo: AppDataSource.getRepository(CustomerGroup) },
+      { name: 'orders', repo: AppDataSource.getRepository(Order) },
+      { name: 'order_items', repo: AppDataSource.getRepository(OrderItem) },
+      { name: 'after_sales_services', repo: AppDataSource.getRepository(AfterSalesService) },
+      { name: 'logistics_companies', repo: AppDataSource.getRepository(LogisticsCompany) },
+      { name: 'logistics_trackings', repo: AppDataSource.getRepository(LogisticsTracking) },
+      { name: 'performance_metrics', repo: AppDataSource.getRepository(PerformanceMetric) },
+      { name: 'follow_ups', repo: AppDataSource.getRepository(FollowUp) },
+      { name: 'sms_templates', repo: AppDataSource.getRepository(SmsTemplate) },
+      { name: 'announcements', repo: AppDataSource.getRepository(Announcement) },
+      { name: 'department_order_limits', repo: AppDataSource.getRepository(DepartmentOrderLimit) }
+    ];
+
+    // 使用事务进行恢复
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      for (const entity of restoreOrder) {
+        const tableData = backup.data[entity.name];
+        if (!tableData || !Array.isArray(tableData)) {
+          restoreResults[entity.name] = { success: true, count: 0 };
+          continue;
+        }
+
+        try {
+          // 清空表（使用TRUNCATE会更快，但需要禁用外键检查）
+          await queryRunner.query(`SET FOREIGN_KEY_CHECKS = 0`);
+          await queryRunner.query(`TRUNCATE TABLE ${entity.name}`);
+          await queryRunner.query(`SET FOREIGN_KEY_CHECKS = 1`);
+
+          // 插入数据
+          if (tableData.length > 0) {
+            // 使用queryRunner直接插入以避免类型问题
+            const repo = entity.repo as any;
+            await repo.save(tableData);
+          }
+
+          restoreResults[entity.name] = { success: true, count: tableData.length };
+          console.log(`[恢复] ${entity.name}: 恢复 ${tableData.length} 条记录`);
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : '未知错误';
+          restoreResults[entity.name] = { success: false, count: 0, error: errorMsg };
+          console.error(`[恢复] ${entity.name} 失败:`, err);
+        }
+      }
+
+      await queryRunner.commitTransaction();
+      console.log(`[恢复] 数据恢复完成`);
+
+      res.json({
+        success: true,
+        message: '数据恢复成功',
+        data: {
+          filename,
+          backupTime: backup.timestamp,
+          results: restoreResults,
+          totalRestored: Object.values(restoreResults).reduce((sum, r) => sum + r.count, 0)
+        }
+      });
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  } catch (error) {
+    console.error('恢复备份失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '恢复备份失败: ' + (error instanceof Error ? error.message : '未知错误')
+    });
+  }
+});
+
+/**
+ * @route DELETE /api/v1/system/backup/cleanup
+ * @desc 清理过期备份文件
+ * @access Private (Admin)
+ */
+router.delete('/backup/cleanup', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { retentionDays = 30 } = req.body;
+    const backupDir = path.join(process.cwd(), 'backups');
+
+    if (!fs.existsSync(backupDir)) {
+      return res.json({
+        success: true,
+        message: '没有需要清理的备份',
+        data: { deletedCount: 0, freedSize: 0 }
+      });
+    }
+
+    const now = Date.now();
+    const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
+    let deletedCount = 0;
+    let freedSize = 0;
+
+    const files = fs.readdirSync(backupDir);
+    for (const filename of files) {
+      if (!filename.endsWith('.json') && !filename.endsWith('.sql') && !filename.endsWith('.gz')) {
+        continue;
+      }
+
+      const filePath = path.join(backupDir, filename);
+      const stats = fs.statSync(filePath);
+      const fileAge = now - stats.mtime.getTime();
+
+      if (fileAge > retentionMs) {
+        freedSize += stats.size;
+        fs.unlinkSync(filePath);
+        deletedCount++;
+        console.log(`[清理] 删除过期备份: ${filename}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `清理完成，删除了 ${deletedCount} 个过期备份`,
+      data: {
+        deletedCount,
+        freedSize,
+        freedSizeFormatted: `${(freedSize / 1024 / 1024).toFixed(2)} MB`
+      }
+    });
+  } catch (error) {
+    console.error('清理备份失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '清理备份失败'
     });
   }
 });
