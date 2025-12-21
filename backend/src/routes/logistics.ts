@@ -1199,7 +1199,7 @@ import crypto from 'crypto';
 import axios from 'axios';
 
 /**
- * 顺丰速运API测试 - 丰桥开放平台
+ * 顺丰速运API测试 - 顺丰开放平台
  * 文档: https://open.sf-express.com/
  */
 async function testSFExpressApi(partnerId: string, checkWord: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
@@ -1210,45 +1210,71 @@ async function testSFExpressApi(partnerId: string, checkWord: string, apiUrl: st
 
     // 构建请求参数
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    const requestId = `REQ${Date.now()}`;
+    const requestId = `REQ${Date.now()}${Math.random().toString(36).substr(2, 6)}`;
 
     // 测试用的路由查询接口
     const serviceCode = 'EXP_RECE_SEARCH_ROUTES';
     const msgData = JSON.stringify({
+      language: '0',
       trackingType: '1',
-      trackingNumber: trackingNo || 'SF1234567890', // 测试单号
+      trackingNumber: [trackingNo || 'SF1234567890'], // 测试单号，数组格式
       methodType: '1'
     });
 
     // 生成签名: Base64(MD5(msgData + timestamp + checkWord))
     const signStr = msgData + timestamp + checkWord;
-    const sign = crypto.createHash('md5').update(signStr, 'utf8').digest('base64');
+    const msgDigest = crypto.createHash('md5').update(signStr, 'utf8').digest('base64');
 
-    const response = await axios.post(apiUrl || 'https://bspgw.sf-express.com/std/service', null, {
-      params: {
-        partnerID: partnerId,
-        requestID: requestId,
-        serviceCode: serviceCode,
-        timestamp: timestamp,
-        msgDigest: sign,
-        msgData: msgData
-      },
-      timeout: 10000,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-    });
+    console.log('[顺丰API测试] URL:', apiUrl);
+    console.log('[顺丰API测试] partnerID:', partnerId);
+    console.log('[顺丰API测试] msgData:', msgData);
+    console.log('[顺丰API测试] timestamp:', timestamp);
+
+    // 🔥 修复：使用POST body方式，而不是URL参数
+    const params = new URLSearchParams();
+    params.append('partnerID', partnerId);
+    params.append('requestID', requestId);
+    params.append('serviceCode', serviceCode);
+    params.append('timestamp', timestamp);
+    params.append('msgDigest', msgDigest);
+    params.append('msgData', msgData);
+
+    const response = await axios.post(
+      apiUrl || 'https://sfapi-sbox.sf-express.com/std/service',
+      params.toString(),
+      {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+        }
+      }
+    );
+
+    console.log('[顺丰API测试] 响应:', JSON.stringify(response.data));
 
     const result = response.data;
-    if (result && (result.apiResultCode === 'A1000' || result.apiResultCode === 'A0000')) {
-      return { success: true, message: 'API连接成功' };
-    } else if (result && result.apiErrorMsg) {
-      // 如果是认证错误，说明API可达但密钥有问题
-      if (result.apiResultCode === 'A1001' || result.apiResultCode === 'A1002') {
-        return { success: false, message: `认证失败: ${result.apiErrorMsg}` };
+    if (result && result.apiResultCode === 'A1000') {
+      // 解析业务结果
+      try {
+        const resultData = typeof result.apiResultData === 'string'
+          ? JSON.parse(result.apiResultData)
+          : result.apiResultData;
+
+        if (resultData.success) {
+          return { success: true, message: 'API连接成功，路由查询正常' };
+        } else {
+          return { success: false, message: `业务错误: ${resultData.errorMsg || resultData.errorCode}` };
+        }
+      } catch {
+        return { success: true, message: 'API连接成功' };
       }
-      return { success: false, message: result.apiErrorMsg };
+    } else if (result && result.apiErrorMsg) {
+      // 认证错误
+      return { success: false, message: `API错误: ${result.apiErrorMsg} (${result.apiResultCode})` };
     }
-    return { success: true, message: 'API连接成功（请使用真实单号验证）' };
+    return { success: false, message: '未知响应格式' };
   } catch (error: any) {
+    console.error('[顺丰API测试] 错误:', error);
     if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
       return { success: false, message: 'API服务器无法连接' };
     }

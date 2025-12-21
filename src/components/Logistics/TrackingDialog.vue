@@ -30,11 +30,11 @@
       <div v-if="loading" class="loading-container">
         <el-skeleton :rows="5" animated />
       </div>
-      
+
       <div v-else-if="trackingList.length === 0" class="empty-container">
         <el-empty description="暂无物流轨迹信息" />
       </div>
-      
+
       <div v-else class="timeline-container">
         <el-timeline>
           <el-timeline-item
@@ -112,7 +112,7 @@ const visible = computed({
 const currentStatus = computed(() => {
   if (trackingList.value.length === 0) return ''
   const latest = trackingList.value[0]
-  
+
   // 根据描述判断状态
   const description = latest.description.toLowerCase()
   if (description.includes('签收') || description.includes('已收货')) {
@@ -179,7 +179,7 @@ const fetchTrackingInfo = async () => {
 
   loading.value = true
   try {
-    const data = await logisticsStatusStore.fetchTrackingInfo(props.trackingNo)
+    const data = await logisticsStatusStore.fetchTrackingInfo(props.trackingNo, props.logisticsCompany)
     trackingList.value = data
   } catch (error) {
     console.error('获取物流轨迹失败:', error)
