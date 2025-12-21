@@ -16,6 +16,13 @@
     </div>
 
     <el-tabs v-model="activeTab" type="card" class="admin-tabs">
+      <!-- 基本设置 -->
+      <el-tab-pane label="基本设置" name="basic">
+        <div class="tab-content">
+          <BasicSettingsPanel />
+        </div>
+      </el-tab-pane>
+
       <!-- 用户权限管理 -->
       <el-tab-pane label="用户权限管理" name="users">
         <div class="tab-content">
@@ -270,6 +277,7 @@ import UserPermissionDialog from './UserPermissionDialog.vue'
 import RoleTemplateDialog from './RoleTemplateDialog.vue'
 import UserDetailDialog from './UserDetailDialog.vue'
 import RoleTemplateImportDialog from './RoleTemplateImportDialog.vue'
+import BasicSettingsPanel from './BasicSettingsPanel.vue'
 
 // 导入API服务
 import { userApiService } from '@/services/userApiService'
@@ -302,7 +310,7 @@ interface RoleTemplate {
 }
 
 // 数据状态
-const activeTab = ref('users')
+const activeTab = ref('basic')
 const loading = ref({
   users: false,
   roles: false,
