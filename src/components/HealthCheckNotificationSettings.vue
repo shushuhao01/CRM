@@ -20,127 +20,122 @@
 
       <div v-else class="settings-content">
         <!-- 当前状态显示 -->
-        <div class="status-section">
-          <h4>当前状态</h4>
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="API状态">
-              <el-tag :type="apiStatus ? 'success' : 'danger'">
-                {{ apiStatus ? '正常' : '异常' }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="通知状态">
-              <el-tag :type="notificationEnabled ? 'success' : 'warning'">
-                {{ getNotificationStatusText() }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="上次检查时间">
-              {{ lastCheckTime || '暂无' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="错误次数">
-              {{ errorCount }}
-            </el-descriptions-item>
-          </el-descriptions>
-        </div>
+        <el-row :gutter="24">
+          <el-col :span="12">
+            <div class="section-card">
+              <h4>当前状态</h4>
+              <el-descriptions :column="1" border size="default">
+                <el-descriptions-item label="API状态">
+                  <el-tag :type="apiStatus ? 'success' : 'danger'" size="default">
+                    {{ apiStatus ? '正常' : '异常' }}
+                  </el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="通知状态">
+                  <el-tag :type="notificationEnabled ? 'success' : 'warning'" size="default">
+                    {{ getNotificationStatusText() }}
+                  </el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="上次检查时间">
+                  {{ lastCheckTime || '暂无' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="错误次数">
+                  {{ errorCount }}
+                </el-descriptions-item>
+              </el-descriptions>
+            </div>
+          </el-col>
 
-        <!-- 通知偏好设置 -->
-        <div class="preference-section">
-          <h4>通知偏好</h4>
-          <el-form :model="preferences" label-width="140px">
-            <el-form-item label="当前设置">
-              <div class="current-preference">
-                <el-tag v-if="preferences.suppressType === 'none'" type="success">
-                  正常接收通知
-                </el-tag>
-                <el-tag v-else-if="preferences.suppressType === 'today'" type="warning">
-                  今天不再提醒
-                  <span class="suppress-time">
-                    (至 {{ formatSuppressTime(preferences.suppressUntil) }})
-                  </span>
-                </el-tag>
-                <el-tag v-else-if="preferences.suppressType === 'month'" type="info">
-                  一个月不再提醒
-                  <span class="suppress-time">
-                    (至 {{ formatSuppressTime(preferences.suppressUntil) }})
-                  </span>
-                </el-tag>
+          <el-col :span="12">
+            <div class="section-card">
+              <h4>通知偏好</h4>
+              <div class="preference-content">
+                <div class="current-preference-row">
+                  <span class="label">当前设置：</span>
+                  <el-tag v-if="preferences.suppressType === 'none'" type="success">
+                    正常接收通知
+                  </el-tag>
+                  <el-tag v-else-if="preferences.suppressType === 'today'" type="warning">
+                    今天不再提醒
+                  </el-tag>
+                  <el-tag v-else-if="preferences.suppressType === 'month'" type="info">
+                    一个月不再提醒
+                  </el-tag>
+                </div>
+                <div v-if="preferences.suppressUntil" class="suppress-until">
+                  <span class="label">恢复时间：</span>
+                  <span>{{ formatSuppressTime(preferences.suppressUntil) }}</span>
+                </div>
+                <div class="quick-actions">
+                  <span class="label">快速设置：</span>
+                  <el-button-group>
+                    <el-button
+                      @click="setNotificationPreference('none')"
+                      :type="preferences.suppressType === 'none' ? 'primary' : 'default'"
+                      size="small"
+                    >
+                      恢复通知
+                    </el-button>
+                    <el-button
+                      @click="setNotificationPreference('today')"
+                      :type="preferences.suppressType === 'today' ? 'primary' : 'default'"
+                      size="small"
+                    >
+                      今天不再提醒
+                    </el-button>
+                    <el-button
+                      @click="setNotificationPreference('month')"
+                      :type="preferences.suppressType === 'month' ? 'primary' : 'default'"
+                      size="small"
+                    >
+                      一个月不再提醒
+                    </el-button>
+                  </el-button-group>
+                </div>
+                <div class="last-notification-row">
+                  <span class="label">上次通知：</span>
+                  <span>{{ preferences.lastNotificationTime ?
+                    new Date(preferences.lastNotificationTime).toLocaleString() :
+                    '暂无通知记录'
+                  }}</span>
+                </div>
               </div>
-            </el-form-item>
+            </div>
+          </el-col>
+        </el-row>
 
-            <el-form-item label="快速设置">
-              <el-button-group>
-                <el-button
-                  @click="setNotificationPreference('none')"
-                  :type="preferences.suppressType === 'none' ? 'primary' : 'default'"
-                >
-                  恢复通知
-                </el-button>
-                <el-button
-                  @click="setNotificationPreference('today')"
-                  :type="preferences.suppressType === 'today' ? 'primary' : 'default'"
-                >
-                  今天不再提醒
-                </el-button>
-                <el-button
-                  @click="setNotificationPreference('month')"
-                  :type="preferences.suppressType === 'month' ? 'primary' : 'default'"
-                >
-                  一个月不再提醒
-                </el-button>
-              </el-button-group>
-            </el-form-item>
+        <!-- 测试功能和说明 -->
+        <el-row :gutter="24" style="margin-top: 20px;">
+          <el-col :span="12">
+            <div class="section-card">
+              <h4>测试功能</h4>
+              <div class="test-content">
+                <div class="test-row">
+                  <el-button
+                    @click="testNotification"
+                    :loading="testLoading"
+                    type="warning"
+                  >
+                    模拟API失败通知
+                  </el-button>
+                  <span class="tip">测试API健康检查失败时的通知效果</span>
+                </div>
+                <div class="test-row">
+                  <el-button
+                    @click="clearAllPreferences"
+                    type="danger"
+                    plain
+                  >
+                    清除所有通知偏好
+                  </el-button>
+                  <span class="tip">清除所有用户的通知偏好设置</span>
+                </div>
+              </div>
+            </div>
+          </el-col>
 
-            <el-form-item label="上次通知时间">
-              <span class="last-notification">
-                {{ preferences.lastNotificationTime ?
-                  new Date(preferences.lastNotificationTime).toLocaleString() :
-                  '暂无通知记录'
-                }}
-              </span>
-            </el-form-item>
-          </el-form>
-        </div>
-
-        <!-- 测试功能 -->
-        <div class="test-section">
-          <h4>测试功能</h4>
-          <el-form label-width="140px">
-            <el-form-item label="手动测试">
-              <el-button
-                @click="testNotification"
-                :loading="testLoading"
-                type="warning"
-              >
-                模拟API失败通知
-              </el-button>
-              <span class="test-tip">
-                点击此按钮可以测试API健康检查失败时的通知效果
-              </span>
-            </el-form-item>
-
-            <el-form-item label="清除设置">
-              <el-button
-                @click="clearAllPreferences"
-                type="danger"
-                plain
-              >
-                清除所有通知偏好
-              </el-button>
-              <span class="clear-tip">
-                清除所有用户的通知偏好设置，恢复默认状态
-              </span>
-            </el-form-item>
-          </el-form>
-        </div>
-
-        <!-- 说明信息 -->
-        <div class="info-section">
-          <el-alert
-            title="功能说明"
-            type="info"
-            :closable="false"
-            show-icon
-          >
-            <template #default>
+          <el-col :span="12">
+            <div class="section-card">
+              <h4>功能说明</h4>
               <ul class="info-list">
                 <li>API健康检查每12小时自动执行一次（每天2次）</li>
                 <li>只有超级管理员才能看到API失败通知</li>
@@ -148,9 +143,9 @@
                 <li>系统会自动记住您的通知偏好设置</li>
                 <li>API恢复正常后，错误计数会自动重置</li>
               </ul>
-            </template>
-          </el-alert>
-        </div>
+            </div>
+          </el-col>
+        </el-row>
       </div>
     </el-card>
   </div>
@@ -322,7 +317,7 @@ onMounted(() => {
 
 <style scoped>
 .health-check-notification-settings {
-  max-width: 800px;
+  padding: 0;
 }
 
 .card-header {
@@ -336,64 +331,117 @@ onMounted(() => {
 }
 
 .settings-content {
-  padding: 20px 0;
+  padding: 0;
 }
 
-.status-section,
-.preference-section,
-.test-section,
-.info-section {
-  margin-bottom: 30px;
+.section-card {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 20px;
+  height: 100%;
+  min-height: 200px;
 }
 
-.status-section h4,
-.preference-section h4,
-.test-section h4 {
-  margin-bottom: 15px;
-  color: #303133;
+.section-card h4 {
+  margin: 0 0 16px 0;
+  color: #333;
+  font-size: 16px;
   font-weight: 600;
+  border-bottom: 2px solid #409eff;
+  padding-bottom: 8px;
 }
 
-.current-preference {
+.preference-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.current-preference-row,
+.suppress-until,
+.last-notification-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
-.suppress-time {
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quick-actions .label {
+  margin-bottom: 4px;
+}
+
+.label {
+  font-weight: 500;
+  color: #666;
+  min-width: 80px;
+}
+
+.test-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.test-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tip {
   font-size: 12px;
-  color: #909399;
-  margin-left: 5px;
-}
-
-.last-notification {
-  color: #606266;
-  font-size: 14px;
-}
-
-.test-tip,
-.clear-tip {
-  margin-left: 10px;
-  color: #909399;
-  font-size: 12px;
+  color: #999;
+  line-height: 1.4;
 }
 
 .info-list {
   margin: 0;
   padding-left: 20px;
+  color: #666;
 }
 
 .info-list li {
-  margin-bottom: 5px;
-  color: #606266;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.el-descriptions {
+  margin-bottom: 0;
 }
 
 .el-button-group {
   display: flex;
-  gap: 0;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
-.el-descriptions {
-  margin-bottom: 20px;
+.el-button-group .el-button {
+  margin: 0;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .section-card {
+    min-height: auto;
+    padding: 16px;
+  }
+
+  .quick-actions {
+    gap: 8px;
+  }
+
+  .el-button-group {
+    flex-direction: column;
+  }
+
+  .el-button-group .el-button {
+    width: 100%;
+  }
 }
 </style>
