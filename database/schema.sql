@@ -580,14 +580,14 @@ CREATE TABLE `system_configs` (
 -- 系统配置默认数据
 INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
 -- 基本设置
-('systemName', 'CRM客户管理系统', 'string', 'basic_settings', '系统名称', 1, 1, 1),
-('systemVersion', '1.0.0', 'string', 'basic_settings', '系统版本', 1, 1, 2),
-('companyName', '示例科技有限公司', 'string', 'basic_settings', '公司名称', 1, 1, 3),
-('contactPhone', '400-123-4567', 'string', 'basic_settings', '联系电话', 1, 1, 4),
-('contactEmail', 'contact@example.com', 'string', 'basic_settings', '联系邮箱', 1, 1, 5),
-('websiteUrl', 'https://www.example.com', 'string', 'basic_settings', '网站地址', 1, 1, 6),
-('companyAddress', '北京市朝阳区示例大厦', 'string', 'basic_settings', '公司地址', 1, 1, 7),
-('systemDescription', '专业的客户关系管理系统', 'string', 'basic_settings', '系统描述', 1, 1, 8),
+('systemName', '云客CRM客户管理系统', 'string', 'basic_settings', '系统名称', 1, 1, 1),
+('systemVersion', '2.9.0', 'string', 'basic_settings', '系统版本', 1, 1, 2),
+('companyName', '广州仙狐网络科技有限公司', 'string', 'basic_settings', '公司名称', 1, 1, 3),
+('contactPhone', '13570727364', 'string', 'basic_settings', '联系电话', 1, 1, 4),
+('contactEmail', 'xunhuqawang@163.com', 'string', 'basic_settings', '联系邮箱', 1, 1, 5),
+('websiteUrl', 'https://xunhuqw.com', 'string', 'basic_settings', '网站地址', 1, 1, 6),
+('companyAddress', '广州市黄埔区南翔一路68号', 'string', 'basic_settings', '公司地址', 1, 1, 7),
+('systemDescription', '智能、专业、高效的客户关系管理系统', 'string', 'basic_settings', '系统描述', 1, 1, 8),
 ('systemLogo', '', 'string', 'basic_settings', '系统Logo', 1, 1, 9),
 ('contactQRCode', '', 'string', 'basic_settings', '联系二维码', 1, 1, 10),
 -- 安全设置
@@ -1405,14 +1405,14 @@ INSERT INTO `product_categories` (`id`, `name`, `description`, `sort_order`) VAL
 
 -- 插入系统配置（基本设置）
 INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
-('systemName', 'CRM客户管理系统', 'string', 'basic_settings', '系统名称', TRUE, TRUE, 1),
-('systemVersion', '1.0.0', 'string', 'basic_settings', '系统版本', TRUE, TRUE, 2),
-('companyName', '', 'string', 'basic_settings', '公司名称', TRUE, TRUE, 3),
-('contactPhone', '', 'string', 'basic_settings', '联系电话', TRUE, TRUE, 4),
-('contactEmail', '', 'string', 'basic_settings', '联系邮箱', TRUE, TRUE, 5),
-('websiteUrl', '', 'string', 'basic_settings', '网站地址', TRUE, TRUE, 6),
-('companyAddress', '', 'string', 'basic_settings', '公司地址', TRUE, TRUE, 7),
-('systemDescription', '', 'text', 'basic_settings', '系统描述', TRUE, TRUE, 8),
+('systemName', '云客CRM客户管理系统', 'string', 'basic_settings', '系统名称', TRUE, TRUE, 1),
+('systemVersion', '2.9.0', 'string', 'basic_settings', '系统版本', TRUE, TRUE, 2),
+('companyName', '广州仙狐网络科技有限公司', 'string', 'basic_settings', '公司名称', TRUE, TRUE, 3),
+('contactPhone', '13570727364', 'string', 'basic_settings', '联系电话', TRUE, TRUE, 4),
+('contactEmail', 'xunhuqawang@163.com', 'string', 'basic_settings', '联系邮箱', TRUE, TRUE, 5),
+('websiteUrl', 'https://xunhuqw.com', 'string', 'basic_settings', '网站地址', TRUE, TRUE, 6),
+('companyAddress', '广州市黄埔区南翔一路68号', 'string', 'basic_settings', '公司地址', TRUE, TRUE, 7),
+('systemDescription', '智能、专业、高效的客户关系管理系统', 'text', 'basic_settings', '系统描述', TRUE, TRUE, 8),
 ('systemLogo', '', 'text', 'basic_settings', '系统Logo', TRUE, TRUE, 9),
 ('contactQRCode', '', 'text', 'basic_settings', '联系二维码', TRUE, TRUE, 10),
 ('contactQRCodeLabel', '扫码联系', 'string', 'basic_settings', '二维码标签', TRUE, TRUE, 11);
