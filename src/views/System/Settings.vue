@@ -2639,7 +2639,7 @@
 
           <div class="logs-container">
             <el-table
-              :data="filteredLogs"
+              :data="paginatedLogs"
               v-loading="logsLoading"
               style="width: 100%"
               height="400"
@@ -2662,11 +2662,11 @@
               </el-table-column>
               <el-table-column prop="module" label="模块" width="120" />
               <el-table-column prop="message" label="消息" show-overflow-tooltip />
-              <el-table-column prop="details" label="详情" width="100">
+              <el-table-column label="操作" width="100">
                 <template #default="{ row }">
                   <el-button
-                    v-if="row.details"
-                    type="text"
+                    type="primary"
+                    link
                     size="small"
                     @click="showLogDetails(row)"
                   >
@@ -2675,6 +2675,20 @@
                 </template>
               </el-table-column>
             </el-table>
+
+            <!-- 分页控件 -->
+            <div class="logs-pagination">
+              <span class="logs-total">共 {{ filteredLogs.length }} 条记录</span>
+              <el-pagination
+                v-model:current-page="logPagination.currentPage"
+                v-model:page-size="logPagination.pageSize"
+                :page-sizes="[10, 20, 50, 100]"
+                :total="filteredLogs.length"
+                layout="sizes, prev, pager, next, jumper"
+                @size-change="handleLogPageSizeChange"
+                @current-change="handleLogPageChange"
+              />
+            </div>
           </div>
         </el-card>
       </el-tab-pane>
@@ -2769,6 +2783,10 @@ const testingDataPersistence = ref(false)
 const callLoading = ref(false)
 const testingCallConnection = ref(false)
 const logsLoading = ref(false)
+const logPagination = ref({
+  currentPage: 1,
+  pageSize: 20
+})
 
 // 基本设置表单 - 从配置store获取
 const basicForm = computed(() => configStore.systemConfig)
@@ -3042,6 +3060,13 @@ const logStats = ref({
 const filteredLogs = computed(() => {
   if (!logLevelFilter.value) return systemLogs.value
   return systemLogs.value.filter(log => log.level === logLevelFilter.value)
+})
+
+// 分页后的日志
+const paginatedLogs = computed(() => {
+  const start = (logPagination.value.currentPage - 1) * logPagination.value.pageSize
+  const end = start + logPagination.value.pageSize
+  return filteredLogs.value.slice(start, end)
 })
 
 // 移动应用相关数据
@@ -5220,10 +5245,12 @@ const openDocumentation = (type: string) => {
 }
 
 /**
+/**
  * 格式化时间戳
  */
-const formatTimestamp = (timestamp: Date) => {
-  return timestamp.toLocaleString('zh-CN', {
+const formatTimestamp = (timestamp: Date | string) => {
+  const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp
+  return date.toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -5402,11 +5429,52 @@ const loadLogConfig = async () => {
 /**
  * 显示日志详情
  */
-const showLogDetails = (log: unknown) => {
-  ElMessageBox.alert(log.details, `日志详情 - ${log.message}`, {
+const showLogDetails = (log: SystemLog) => {
+  const levelColors: Record<string, string> = {
+    ERROR: '#f56c6c',
+    WARN: '#e6a23c',
+    INFO: '#409eff',
+    DEBUG: '#909399'
+  }
+  const levelColor = levelColors[log.level] || '#909399'
+
+  const detailsHtml = `
+    <div style="text-align: left; font-size: 13px; line-height: 1.8;">
+      <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #eee;">
+        <div style="margin-bottom: 6px;"><strong>时间：</strong>${formatTimestamp(log.timestamp)}</div>
+        <div style="margin-bottom: 6px;"><strong>级别：</strong><span style="color: ${levelColor}; font-weight: bold;">${log.level}</span></div>
+        <div style="margin-bottom: 6px;"><strong>模块：</strong>${log.module || '-'}</div>
+        <div><strong>消息：</strong>${log.message}</div>
+      </div>
+      <div>
+        <strong>详细信息：</strong>
+        <div style="margin-top: 8px; padding: 12px; background: #f5f7fa; border-radius: 4px; font-family: monospace; white-space: pre-wrap; max-height: 300px; overflow-y: auto; word-break: break-all;">
+${log.details || '无详细信息'}
+        </div>
+      </div>
+    </div>
+  `
+
+  ElMessageBox.alert(detailsHtml, '日志详情', {
     confirmButtonText: '确定',
-    type: 'info'
+    dangerouslyUseHTMLString: true,
+    customStyle: { width: '600px' }
   })
+}
+
+/**
+ * 分页大小变化
+ */
+const handleLogPageSizeChange = (size: number) => {
+  logPagination.value.pageSize = size
+  logPagination.value.currentPage = 1
+}
+
+/**
+ * 当前页变化
+ */
+const handleLogPageChange = (page: number) => {
+  logPagination.value.currentPage = page
 }
 
 // 移动应用相关方法
@@ -6627,6 +6695,21 @@ onMounted(() => {
 }
 
 .form-tip .el-icon {
+  font-size: 14px;
+}
+
+/* 日志分页样式 */
+.logs-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  padding: 12px 0;
+  border-top: 1px solid #ebeef5;
+}
+
+.logs-total {
+  color: #606266;
   font-size: 14px;
 }
 </style>
