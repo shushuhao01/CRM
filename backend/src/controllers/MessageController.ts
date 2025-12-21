@@ -785,13 +785,13 @@ export class MessageController {
 
       // 获取用户的阅读记录
       const readRepo = dataSource.getRepository(AnnouncementRead);
-      const userId = currentUser?.id; // 保持为数字类型
+      const userId = currentUser?.id; // userId 是字符串类型
       console.log('[获取公告] 用户ID:', userId, '(类型:', typeof userId, '), 公告数量:', filteredAnnouncements.length);
 
       let readIds = new Set<string>();
       if (userId) {
         const readRecords = await readRepo.find({
-          where: { userId: Number(userId) } // 确保是数字类型
+          where: { userId: String(userId) } // 确保是字符串类型
         });
         readIds = new Set(readRecords.map(r => r.announcementId));
         console.log('[获取公告] 已读公告数量:', readIds.size, ', 已读公告IDs:', Array.from(readIds));
@@ -834,7 +834,7 @@ export class MessageController {
       }
 
       const currentUser = (req as any).currentUser || (req as any).user;
-      const userId = currentUser?.id; // 保持为数字类型，不要转换为字符串
+      const userId = currentUser?.id; // userId 是字符串类型
 
       console.log('[公告已读] 用户信息:', JSON.stringify(currentUser));
       console.log('[公告已读] 用户ID:', userId, '(类型:', typeof userId, '), 公告ID:', id);
@@ -847,9 +847,9 @@ export class MessageController {
 
       const readRepo = dataSource.getRepository(AnnouncementRead);
 
-      // 检查是否已读 - userId 是数字类型
+      // 检查是否已读 - userId 是字符串类型
       const existing = await readRepo.findOne({
-        where: { announcementId: id, userId: Number(userId) }
+        where: { announcementId: id, userId: String(userId) }
       });
 
       console.log('[公告已读] 已存在记录:', existing ? '是' : '否');
@@ -859,7 +859,7 @@ export class MessageController {
         const readRecord = readRepo.create({
           id: uuidv4(),
           announcementId: id,
-          userId: Number(userId) // 确保是数字类型
+          userId: String(userId) // 确保是字符串类型
         });
         const savedRecord = await readRepo.save(readRecord);
         console.log('[公告已读] ✅ 已创建阅读记录, ID:', savedRecord.id, ', userId:', savedRecord.userId);
