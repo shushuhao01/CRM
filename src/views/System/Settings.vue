@@ -1541,7 +1541,14 @@
         </el-card>
       </el-tab-pane>
 
-      <!-- 数据迁移 -->
+      <!--
+        ========== 数据迁移选项卡（已注释） ==========
+        说明：此功能是开发环境时用于将localStorage数据同步到数据库的工具
+        现在系统已经完全使用后端API/数据库作为数据唯一来源，此功能不再需要
+        如需恢复，取消下面的注释即可
+        注释时间：2025-12-21
+      -->
+      <!--
       <el-tab-pane label="数据迁移" name="migration">
         <el-card class="setting-card">
           <template #header>
@@ -1568,7 +1575,6 @@
           </template>
 
           <div class="migration-content">
-            <!-- 迁移说明 -->
             <el-alert
               title="数据迁移说明"
               type="info"
@@ -1588,7 +1594,6 @@
               </template>
             </el-alert>
 
-            <!-- 数据统计 -->
             <div v-if="dataStatistics" class="data-statistics">
               <h4>当前数据统计</h4>
               <el-row :gutter="20">
@@ -1613,7 +1618,6 @@
               </el-row>
             </div>
 
-            <!-- 数据验证结果 -->
             <div v-if="validationResult" class="validation-result">
               <h4>数据验证结果</h4>
               <el-alert
@@ -1643,7 +1647,6 @@
               </el-alert>
             </div>
 
-            <!-- 迁移步骤 -->
             <div class="migration-steps">
               <h4>数据迁移步骤</h4>
               <el-steps :active="migrationStep" direction="vertical">
@@ -1655,7 +1658,6 @@
               </el-steps>
             </div>
 
-            <!-- 技术文档链接 -->
             <div class="documentation-links">
               <h4>技术文档</h4>
               <el-space wrap>
@@ -1688,6 +1690,7 @@
           </div>
         </el-card>
       </el-tab-pane>
+      -->
 
       <!-- 通知设置 -->
       <el-tab-pane label="通知设置" name="notification">
@@ -2748,7 +2751,7 @@ import { dataSyncService } from '@/services/dataSyncService'
 import { runDataPersistenceTests, type TestResult } from '@/utils/testDataPersistence'
 import { dataBackupService } from '@/services/dataBackupService'
 import { runAllTests } from '@/utils/testBackupService'
-import { DataExportTool } from '@/utils/dataExport'
+// import { DataExportTool } from '@/utils/dataExport' // 数据迁移功能已禁用
 import SmsManagement from '@/components/SmsManagement.vue'
 import HealthCheckNotificationSettings from '@/components/HealthCheckNotificationSettings.vue'
 import OrderSettings from '@/views/Settings/OrderSettings.vue'
@@ -3050,12 +3053,12 @@ const backupCount = ref(0)
 const totalBackupSize = ref(0)
 const backupList = ref([])
 
-// 数据迁移相关数据
-const exportLoading = ref(false)
-const validateLoading = ref(false)
-const dataStatistics = ref(null)
-const validationResult = ref(null)
-const migrationStep = ref(0)
+// ========== 数据迁移相关数据（已注释，功能已禁用） ==========
+// const exportLoading = ref(false)
+// const validateLoading = ref(false)
+// const dataStatistics = ref(null)
+// const validationResult = ref(null)
+// const migrationStep = ref(0)
 
 // 系统日志数据
 const systemLogs = ref<SystemLog[]>([])
@@ -5338,9 +5341,13 @@ const formatFileSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-/**
- * 导出数据
- */
+// ========== 数据迁移相关方法（已注释，功能已禁用） ==========
+// 说明：此功能是开发环境时用于将localStorage数据同步到数据库的工具
+// 现在系统已经完全使用后端API/数据库作为数据唯一来源，此功能不再需要
+// 如需恢复，取消下面的注释即可
+// 注释时间：2025-12-21
+
+/*
 const exportData = async () => {
   try {
     exportLoading.value = true
@@ -5350,7 +5357,6 @@ const exportData = async () => {
 
     if (result.success) {
       ElMessage.success('数据导出成功！')
-      // 更新数据统计
       dataStatistics.value = result.statistics
       migrationStep.value = 1
     } else {
@@ -5364,9 +5370,6 @@ const exportData = async () => {
   }
 }
 
-/**
- * 验证数据
- */
 const validateData = async () => {
   try {
     validateLoading.value = true
@@ -5389,9 +5392,6 @@ const validateData = async () => {
   }
 }
 
-/**
- * 格式化数据大小
- */
 const formatDataSize = (bytes: number) => {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -5400,9 +5400,6 @@ const formatDataSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-/**
- * 打开技术文档
- */
 const openDocumentation = (type: string) => {
   const docs = {
     database: 'DATABASE_ARCHITECTURE.md',
@@ -5415,6 +5412,7 @@ const openDocumentation = (type: string) => {
     ElMessage.info(`请查看项目根目录下的 ${filename} 文件`)
   }
 }
+*/
 
 /**
 /**
@@ -5939,17 +5937,17 @@ onMounted(() => {
   // 改为加载协议列表
   loadAgreementList()
 
-  // 初始化数据统计
-  const initDataStatistics = async () => {
-    try {
-      const exportTool = new DataExportTool()
-      const statistics = await exportTool.getDataStatistics()
-      dataStatistics.value = statistics
-    } catch (error) {
-      console.error('获取数据统计失败:', error)
-    }
-  }
-  initDataStatistics()
+  // ========== 数据迁移统计初始化（已注释，功能已禁用） ==========
+  // const initDataStatistics = async () => {
+  //   try {
+  //     const exportTool = new DataExportTool()
+  //     const statistics = await exportTool.getDataStatistics()
+  //     dataStatistics.value = statistics
+  //   } catch (error) {
+  //     console.error('获取数据统计失败:', error)
+  //   }
+  // }
+  // initDataStatistics()
 
   // 初始化已连接设备列表
   handleRefreshDevices()
