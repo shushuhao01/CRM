@@ -4809,7 +4809,8 @@ const handleRefreshMonitor = async () => {
     // 2. 尝试从后端API获取服务器监控数据
     try {
       const { apiService } = await import('@/services/apiService')
-      const serverData = await apiService.get('/system/monitor')
+      const response = await apiService.get('/system/monitor')
+      const serverData = response.data || response
 
       // 合并服务器数据
       if (serverData.systemInfo) {
@@ -4834,20 +4835,18 @@ const handleRefreshMonitor = async () => {
       }
 
       if (serverData.services && serverData.services.length > 0) {
-        // 合并前端服务和后端服务
-        monitorData.value.services = [
-          ...monitorData.value.services,
-          ...serverData.services
-        ]
+        // 使用服务器返回的服务列表替换前端服务
+        monitorData.value.services = serverData.services
       }
 
       console.log('[系统监控] 已同步服务器监控数据')
-      ElMessage.success('监控数据刷新成功（包含服务器数据）')
+      ElMessage.success('监控数据刷新成功')
     } catch (apiError: unknown) {
       // API调用失败时降级处理
-      console.warn('[系统监控] API调用失败，使用前端数据:', apiError.message || apiError)
+      const err = apiError as { message?: string; code?: string; response?: { status?: number } }
+      console.warn('[系统监控] API调用失败，使用前端数据:', err.message || apiError)
 
-      if (apiError.code === 'ECONNREFUSED' || apiError.response?.status === 404) {
+      if (err.code === 'ECONNREFUSED' || err.response?.status === 404) {
         ElMessage.success('监控数据刷新成功（前端模式）')
       } else {
         ElMessage.warning('监控数据已刷新，但未能获取服务器数据')
