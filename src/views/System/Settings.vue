@@ -5021,31 +5021,30 @@ const handleManualBackup = async () => {
   try {
     backupLoading.value = true
 
-    // 优先使用后端API进行备份
+    // 使用后端API进行备份
     try {
       const { apiService } = await import('@/services/apiService')
-      const response = await apiService.post('/system/backup/create', { type: 'manual' })
+      const data = await apiService.post('/system/backup/create', { type: 'manual' })
 
-      if (response.success) {
-        ElMessage.success(`备份成功！备份了 ${response.data?.totalRecords || 0} 条记录`)
-        await loadBackupList()
-        await loadBackupStatus()
+      // apiService已经处理了success检查，这里直接使用返回的data
+      ElMessage.success(`备份成功！备份了 ${data?.totalRecords || 0} 条记录`)
+      await loadBackupList()
+      await loadBackupStatus()
+      return
+    } catch (apiError) {
+      console.warn('[备份] 后端API调用失败:', apiError)
+
+      // 降级到OSS备份
+      if (!isOssConfigured.value) {
+        ElMessage.warning('后端备份服务暂时不可用，请稍后重试')
         return
       }
-    } catch (apiError) {
-      console.warn('[备份] 后端API不可用，尝试使用OSS备份:', apiError)
-    }
 
-    // 降级到OSS备份
-    if (!isOssConfigured.value) {
-      ElMessage.warning('后端备份服务不可用，且OSS未配置')
-      return
+      await dataBackupService.performManualBackup()
+      ElMessage.success('备份成功（OSS模式）')
+      await loadBackupList()
+      await loadBackupStatus()
     }
-
-    await dataBackupService.performManualBackup()
-    ElMessage.success('备份成功')
-    await loadBackupList()
-    await loadBackupStatus()
   } catch (error) {
     console.error('备份失败:', error)
     ElMessage.error('备份失败: ' + (error as Error).message)
@@ -5262,10 +5261,11 @@ const loadBackupList = async () => {
     // 优先使用后端API
     try {
       const { apiService } = await import('@/services/apiService')
-      const response = await apiService.get('/system/backup/list')
+      const data = await apiService.get('/system/backup/list')
 
-      if (response.success && response.data) {
-        backupList.value = response.data
+      // apiService已经处理了success检查，直接使用返回的data
+      if (data && Array.isArray(data)) {
+        backupList.value = data
         return
       }
     } catch (apiError) {
@@ -5294,12 +5294,13 @@ const loadBackupStatus = async () => {
     // 优先使用后端API
     try {
       const { apiService } = await import('@/services/apiService')
-      const response = await apiService.get('/system/backup/status')
+      const data = await apiService.get('/system/backup/status')
 
-      if (response.success && response.data) {
-        backupCount.value = response.data.backupCount || 0
-        totalBackupSize.value = response.data.totalSize || 0
-        lastBackupTime.value = response.data.lastBackupTime || ''
+      // apiService已经处理了success检查，直接使用返回的data
+      if (data) {
+        backupCount.value = data.backupCount || 0
+        totalBackupSize.value = data.totalSize || 0
+        lastBackupTime.value = data.lastBackupTime || ''
         return
       }
     } catch (apiError) {
