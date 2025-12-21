@@ -1704,11 +1704,13 @@ DROP TABLE IF EXISTS `announcement_reads`;
 CREATE TABLE `announcement_reads` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '记录ID',
   `announcement_id` VARCHAR(36) NOT NULL COMMENT '公告ID',
-  `user_id` VARCHAR(36) NOT NULL COMMENT '用户ID',
+  `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID，与users表id类型一致',
   `read_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '阅读时间',
   UNIQUE KEY `uk_announcement_user` (`announcement_id`, `user_id`),
   INDEX `idx_announcement_id` (`announcement_id`),
-  INDEX `idx_user_id` (`user_id`)
+  INDEX `idx_user_id` (`user_id`),
+  CONSTRAINT `fk_announcement_reads_announcement` FOREIGN KEY (`announcement_id`) REFERENCES `announcements`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_announcement_reads_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公告阅读记录表';
 
 -- 28. 系统消息表
