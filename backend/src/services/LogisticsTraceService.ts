@@ -206,16 +206,18 @@ class LogisticsTraceService {
     // 服务代码: EXP_RECE_SEARCH_ROUTES - 路由查询接口
     const serviceCode = 'EXP_RECE_SEARCH_ROUTES';
 
-    // 请求数据 (JSON格式) - 🔥 注意：不能有多余空格
+    // 请求数据 (JSON格式)
     const msgData = JSON.stringify({
       trackingType: '1',
       trackingNumber: [trackingNo],
       methodType: '1'
     });
 
-    // 🔥 签名计算: Base64(MD5(msgData + timestamp + checkword))
-    // 根据官方文档：签名字符串 = 原始msgData + timestamp + checkword（不需要URL编码）
-    const signStr = msgData + timestamp + checkword;
+    // 🔥 关键：先对msgData进行URL编码，然后用编码后的值计算签名
+    const encodedMsgData = encodeURIComponent(msgData);
+
+    // 签名计算: Base64(MD5(URL编码后的msgData + timestamp + checkword))
+    const signStr = encodedMsgData + timestamp + checkword;
     const msgDigest = crypto.createHash('md5').update(signStr, 'utf8').digest('base64');
 
     // API地址
@@ -228,22 +230,17 @@ class LogisticsTraceService {
     console.log('[顺丰开放平台API] partnerID:', partnerID);
     console.log('[顺丰开放平台API] serviceCode:', serviceCode);
     console.log('[顺丰开放平台API] timestamp:', timestamp);
-    console.log('[顺丰开放平台API] msgData:', msgData);
-    console.log('[顺丰开放平台API] signStr:', signStr);
+    console.log('[顺丰开放平台API] msgData(原始):', msgData);
+    console.log('[顺丰开放平台API] msgData(编码后):', encodedMsgData);
+    console.log('[顺丰开放平台API] signStr:', signStr.substring(0, 100) + '...');
     console.log('[顺丰开放平台API] msgDigest:', msgDigest);
 
-    // 使用 application/x-www-form-urlencoded 格式
-    const params = new URLSearchParams();
-    params.append('partnerID', partnerID);
-    params.append('requestID', requestID);
-    params.append('serviceCode', serviceCode);
-    params.append('timestamp', timestamp);
-    params.append('msgDigest', msgDigest);
-    params.append('msgData', msgData);
+    // 🔥 手动构建请求体，避免URLSearchParams的二次编码问题
+    const requestBody = `partnerID=${encodeURIComponent(partnerID)}&requestID=${encodeURIComponent(requestID)}&serviceCode=${encodeURIComponent(serviceCode)}&timestamp=${timestamp}&msgDigest=${encodeURIComponent(msgDigest)}&msgData=${encodedMsgData}`;
 
-    console.log('[顺丰开放平台API] 完整请求体:', params.toString());
+    console.log('[顺丰开放平台API] 完整请求体:', requestBody);
 
-    const response = await axios.post(apiUrl, params.toString(), {
+    const response = await axios.post(apiUrl, requestBody, {
       timeout: 15000,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'

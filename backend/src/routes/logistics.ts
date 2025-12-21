@@ -1214,40 +1214,36 @@ async function testSFExpressApi(partnerId: string, checkWord: string, apiUrl: st
 
     // 测试用的路由查询接口
     const serviceCode = 'EXP_RECE_SEARCH_ROUTES';
-    // 🔥 注意：JSON不能有多余空格
     const msgData = JSON.stringify({
       trackingType: '1',
       trackingNumber: [trackingNo || 'SF1234567890'],
       methodType: '1'
     });
 
-    // 🔥 生成签名: Base64(MD5(msgData + timestamp + checkWord))
-    // 签名字符串 = 原始msgData + timestamp + checkword（不需要URL编码）
-    const signStr = msgData + timestamp + checkWord;
+    // 🔥 关键：先对msgData进行URL编码，然后用编码后的值计算签名
+    const encodedMsgData = encodeURIComponent(msgData);
+
+    // 签名计算: Base64(MD5(URL编码后的msgData + timestamp + checkWord))
+    const signStr = encodedMsgData + timestamp + checkWord;
     const msgDigest = crypto.createHash('md5').update(signStr, 'utf8').digest('base64');
 
     console.log('[顺丰API测试] ========== 请求参数 ==========');
     console.log('[顺丰API测试] URL:', apiUrl);
     console.log('[顺丰API测试] partnerID:', partnerId);
-    console.log('[顺丰API测试] msgData:', msgData);
+    console.log('[顺丰API测试] msgData(原始):', msgData);
+    console.log('[顺丰API测试] msgData(编码后):', encodedMsgData);
     console.log('[顺丰API测试] timestamp:', timestamp);
-    console.log('[顺丰API测试] signStr:', signStr);
+    console.log('[顺丰API测试] signStr:', signStr.substring(0, 100) + '...');
     console.log('[顺丰API测试] msgDigest:', msgDigest);
 
-    // 使用POST body方式
-    const params = new URLSearchParams();
-    params.append('partnerID', partnerId);
-    params.append('requestID', requestId);
-    params.append('serviceCode', serviceCode);
-    params.append('timestamp', timestamp);
-    params.append('msgDigest', msgDigest);
-    params.append('msgData', msgData);
+    // 🔥 手动构建请求体，避免URLSearchParams的二次编码问题
+    const requestBody = `partnerID=${encodeURIComponent(partnerId)}&requestID=${encodeURIComponent(requestId)}&serviceCode=${encodeURIComponent(serviceCode)}&timestamp=${timestamp}&msgDigest=${encodeURIComponent(msgDigest)}&msgData=${encodedMsgData}`;
 
-    console.log('[顺丰API测试] 完整请求体:', params.toString());
+    console.log('[顺丰API测试] 完整请求体:', requestBody);
 
     const response = await axios.post(
       apiUrl || 'https://sfapi-sbox.sf-express.com/std/service',
-      params.toString(),
+      requestBody,
       {
         timeout: 15000,
         headers: {
