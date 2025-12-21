@@ -2742,7 +2742,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Discount, Money, Box, Grid, Setting, Lock, Upload, Download, Check, Phone, Connection, VideoPlay, Refresh, Platform, Iphone, Monitor, Link, Document, ArrowLeft, ArrowRight, DocumentCopy, ZoomIn, Delete, Picture, Edit, View, Clock, Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -3027,10 +3027,8 @@ const getRealMonitorData = () => {
   }
 }
 
-// 🔥 批次266修复：初始化时加载真实数据
-onMounted(() => {
-  getRealMonitorData()
-})
+// 标记系统监控数据是否已加载
+const monitorDataLoaded = ref(false)
 
 // 备份相关数据
 const backupLoading = ref(false)
@@ -6007,6 +6005,16 @@ onMounted(() => {
   onUnmounted(() => {
     clearInterval(statusTimer)
   })
+})
+
+// 监听选项卡切换，延迟加载系统监控数据
+watch(activeTab, (newTab) => {
+  // 当切换到系统监控选项卡时，加载监控数据
+  if (newTab === 'monitor' && !monitorDataLoaded.value) {
+    console.log('[系统监控] 首次进入，加载监控数据')
+    getRealMonitorData()
+    monitorDataLoaded.value = true
+  }
 })
 </script>
 
