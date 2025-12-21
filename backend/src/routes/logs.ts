@@ -4,8 +4,12 @@ import path from 'path';
 import { logger } from '../config/logger';
 import { getDataSource } from '../config/database';
 import { SystemConfig } from '../entities/SystemConfig';
+import { authenticateToken } from '../middleware/auth';
 
 const router = Router();
+
+// 所有日志路由都需要认证
+router.use(authenticateToken);
 
 /**
  * @swagger
