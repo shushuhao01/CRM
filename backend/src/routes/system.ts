@@ -2090,4 +2090,257 @@ router.get('/monitor', authenticateToken, requireAdmin, async (_req: Request, re
   }
 });
 
+// ========== 数据库备份路由 ==========
+
+/**
+ * @route GET /api/v1/system/backup/list
+ * @desc 获取备份列表
+ * @access Private (Admin)
+ */
+router.get('/backup/list', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const backupDir = path.join(process.cwd(), 'backups');
+
+    // 确保备份目录存在
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+
+    // 读取备份文件列表
+    const files = fs.readdirSync(backupDir)
+      .filter(file => file.endsWith('.sql') || file.endsWith('.json') || file.endsWith('.gz'))
+      .map(filename => {
+        const filePath = path.join(backupDir, filename);
+        const stats = fs.statSync(filePath);
+        const isManual = filename.includes('manual');
+
+        return {
+          filename,
+          timestamp: stats.mtime.toISOString(),
+          size: stats.size,
+          type: isManual ? 'manual' : 'auto'
+        };
+      })
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    res.json({
+      success: true,
+      data: files
+    });
+  } catch (error) {
+    console.error('获取备份列表失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取备份列表失败'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/system/backup/create
+ * @desc 创建数据库备份
+ * @access Private (Admin)
+ */
+router.post('/backup/create', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { type = 'manual' } = req.body;
+    const backupDir = path.join(process.cwd(), 'backups');
+
+    // 确保备份目录存在
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `${type}-backup-${timestamp}.json`;
+    const filePath = path.join(backupDir, filename);
+
+    // 导出数据库数据
+    const backupData: Record<string, unknown[]> = {};
+
+    // 获取所有实体的数据
+    const entities = [
+      { name: 'users', repo: AppDataSource.getRepository(User) },
+      { name: 'departments', repo: AppDataSource.getRepository(Department) },
+      { name: 'system_configs', repo: AppDataSource.getRepository(SystemConfig) }
+    ];
+
+    for (const entity of entities) {
+      try {
+        const data = await entity.repo.find();
+        backupData[entity.name] = data;
+      } catch (err) {
+        console.warn(`备份 ${entity.name} 失败:`, err);
+        backupData[entity.name] = [];
+      }
+    }
+
+    // 添加元数据
+    const backup = {
+      version: '1.0.0',
+      timestamp: new Date().toISOString(),
+      type,
+      data: backupData,
+      metadata: {
+        tables: Object.keys(backupData),
+        totalRecords: Object.values(backupData).reduce((sum, arr) => sum + arr.length, 0)
+      }
+    };
+
+    // 写入文件
+    fs.writeFileSync(filePath, JSON.stringify(backup, null, 2));
+
+    const stats = fs.statSync(filePath);
+
+    res.json({
+      success: true,
+      message: '备份创建成功',
+      data: {
+        filename,
+        timestamp: backup.timestamp,
+        size: stats.size,
+        type,
+        tables: backup.metadata.tables,
+        totalRecords: backup.metadata.totalRecords
+      }
+    });
+  } catch (error) {
+    console.error('创建备份失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '创建备份失败: ' + (error instanceof Error ? error.message : '未知错误')
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/system/backup/download/:filename
+ * @desc 下载备份文件
+ * @access Private (Admin)
+ */
+router.get('/backup/download/:filename', authenticateToken, requireAdmin, (req: Request, res: Response) => {
+  try {
+    const { filename } = req.params;
+    const backupDir = path.join(process.cwd(), 'backups');
+    const filePath = path.join(backupDir, path.basename(filename));
+
+    // 安全检查
+    if (!filePath.startsWith(backupDir)) {
+      return res.status(400).json({
+        success: false,
+        message: '无效的文件路径'
+      });
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: '备份文件不存在'
+      });
+    }
+
+    res.download(filePath, filename);
+  } catch (error) {
+    console.error('下载备份失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '下载备份失败'
+    });
+  }
+});
+
+/**
+ * @route DELETE /api/v1/system/backup/:filename
+ * @desc 删除备份文件
+ * @access Private (Admin)
+ */
+router.delete('/backup/:filename', authenticateToken, requireAdmin, (req: Request, res: Response) => {
+  try {
+    const { filename } = req.params;
+    const backupDir = path.join(process.cwd(), 'backups');
+    const filePath = path.join(backupDir, path.basename(filename));
+
+    // 安全检查
+    if (!filePath.startsWith(backupDir)) {
+      return res.status(400).json({
+        success: false,
+        message: '无效的文件路径'
+      });
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: '备份文件不存在'
+      });
+    }
+
+    fs.unlinkSync(filePath);
+
+    res.json({
+      success: true,
+      message: '备份删除成功'
+    });
+  } catch (error) {
+    console.error('删除备份失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '删除备份失败'
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/system/backup/status
+ * @desc 获取备份状态
+ * @access Private (Admin)
+ */
+router.get('/backup/status', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const backupDir = path.join(process.cwd(), 'backups');
+
+    // 确保备份目录存在
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+
+    // 读取备份文件列表
+    const files = fs.readdirSync(backupDir)
+      .filter(file => file.endsWith('.sql') || file.endsWith('.json') || file.endsWith('.gz'))
+      .map(filename => {
+        const filePath = path.join(backupDir, filename);
+        const stats = fs.statSync(filePath);
+        return {
+          filename,
+          timestamp: stats.mtime,
+          size: stats.size
+        };
+      })
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+    // 计算统计信息
+    const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+    const lastBackup = files.length > 0 ? files[0].timestamp.toISOString() : null;
+
+    // 获取备份配置
+    const settings = await getConfigsByGroup('backup_settings');
+
+    res.json({
+      success: true,
+      data: {
+        backupCount: files.length,
+        totalSize,
+        lastBackupTime: lastBackup,
+        autoBackupEnabled: settings.autoBackupEnabled || false
+      }
+    });
+  } catch (error) {
+    console.error('获取备份状态失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取备份状态失败'
+    });
+  }
+});
+
 export default router;

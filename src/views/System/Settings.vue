@@ -1371,7 +1371,6 @@
                   @click="handleManualBackup"
                   type="primary"
                   :loading="backupLoading"
-                  :disabled="!isOssConfigured"
                 >
                   立即备份
                 </el-button>
@@ -1530,12 +1529,11 @@
               </el-table>
             </div>
 
-            <!-- OSS配置提示 -->
+            <!-- 备份说明 -->
             <el-alert
-              v-if="!isOssConfigured"
-              title="请先配置OSS存储"
-              description="数据备份功能需要先在存储设置中配置阿里云OSS，才能正常使用备份和恢复功能。"
-              type="warning"
+              title="备份说明"
+              description="系统支持两种备份方式：1. 服务器本地备份（默认）- 备份文件存储在服务器本地；2. OSS云存储备份 - 需要在存储设置中配置阿里云OSS。"
+              type="info"
               :closable="false"
               show-icon
             />
@@ -5017,13 +5015,30 @@ const handleTestDataPersistence = async () => {
  * 手动备份
  */
 const handleManualBackup = async () => {
-  if (!isOssConfigured.value) {
-    ElMessage.warning('请先配置OSS存储')
-    return
-  }
-
   try {
     backupLoading.value = true
+
+    // 优先使用后端API进行备份
+    try {
+      const { apiService } = await import('@/services/apiService')
+      const response = await apiService.post('/system/backup/create', { type: 'manual' })
+
+      if (response.success) {
+        ElMessage.success(`备份成功！备份了 ${response.data?.totalRecords || 0} 条记录`)
+        await loadBackupList()
+        await loadBackupStatus()
+        return
+      }
+    } catch (apiError) {
+      console.warn('[备份] 后端API不可用，尝试使用OSS备份:', apiError)
+    }
+
+    // 降级到OSS备份
+    if (!isOssConfigured.value) {
+      ElMessage.warning('后端备份服务不可用，且OSS未配置')
+      return
+    }
+
     await dataBackupService.performManualBackup()
     ElMessage.success('备份成功')
     await loadBackupList()
@@ -5092,7 +5107,7 @@ const handleTestBackup = async () => {
 /**
  * 恢复备份
  */
-const handleRestoreBackup = async (backup: unknown) => {
+const handleRestoreBackup = async (backup: { filename: string }) => {
   try {
     await ElMessageBox.confirm(
       `确定要恢复备份 "${backup.filename}" 吗？这将覆盖当前所有数据！`,
@@ -5105,13 +5120,19 @@ const handleRestoreBackup = async (backup: unknown) => {
     )
 
     restoreLoading.value = backup.filename
-    await dataBackupService.restoreFromBackup(backup.filename)
-    ElMessage.success('数据恢复成功，请刷新页面')
 
-    // 延迟刷新页面
-    setTimeout(() => {
-      window.location.reload()
-    }, 2000)
+    // 目前恢复功能仅支持OSS模式
+    if (isOssConfigured.value) {
+      await dataBackupService.restoreFromBackup(backup.filename)
+      ElMessage.success('数据恢复成功，请刷新页面')
+
+      // 延迟刷新页面
+      setTimeout(() => {
+        window.location.reload()
+      }, 2000)
+    } else {
+      ElMessage.warning('恢复功能需要配置OSS存储')
+    }
   } catch (error) {
     if (error !== 'cancel') {
       console.error('恢复失败:', error)
@@ -5125,16 +5146,39 @@ const handleRestoreBackup = async (backup: unknown) => {
 /**
  * 下载备份
  */
-const handleDownloadBackup = async (backup: unknown) => {
+const handleDownloadBackup = async (backup: { filename: string }) => {
   try {
-    const url = await dataBackupService.getBackupDownloadUrl(backup.filename)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = backup.filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    ElMessage.success('备份下载开始')
+    // 优先使用后端API
+    try {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+      const token = localStorage.getItem('token')
+      const url = `${baseUrl}/system/backup/download/${encodeURIComponent(backup.filename)}`
+
+      const link = document.createElement('a')
+      link.href = url + (token ? `?token=${token}` : '')
+      link.download = backup.filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      ElMessage.success('备份下载开始')
+      return
+    } catch (apiError) {
+      console.warn('[下载备份] 后端API不可用，尝试使用OSS:', apiError)
+    }
+
+    // 降级到OSS
+    if (isOssConfigured.value) {
+      const url = await dataBackupService.getBackupDownloadUrl(backup.filename)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = backup.filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      ElMessage.success('备份下载开始')
+    } else {
+      ElMessage.warning('下载服务不可用')
+    }
   } catch (error) {
     console.error('下载失败:', error)
     ElMessage.error('下载失败: ' + (error as Error).message)
@@ -5144,7 +5188,7 @@ const handleDownloadBackup = async (backup: unknown) => {
 /**
  * 删除备份
  */
-const handleDeleteBackup = async (backup: unknown) => {
+const handleDeleteBackup = async (backup: { filename: string }) => {
   try {
     await ElMessageBox.confirm(
       `确定要删除备份 "${backup.filename}" 吗？`,
@@ -5156,10 +5200,30 @@ const handleDeleteBackup = async (backup: unknown) => {
       }
     )
 
-    await dataBackupService.deleteBackup(backup.filename)
-    ElMessage.success('备份删除成功')
-    await loadBackupList()
-    await loadBackupStatus()
+    // 优先使用后端API
+    try {
+      const { apiService } = await import('@/services/apiService')
+      const response = await apiService.delete(`/system/backup/${encodeURIComponent(backup.filename)}`)
+
+      if (response.success) {
+        ElMessage.success('备份删除成功')
+        await loadBackupList()
+        await loadBackupStatus()
+        return
+      }
+    } catch (apiError) {
+      console.warn('[删除备份] 后端API不可用，尝试使用OSS:', apiError)
+    }
+
+    // 降级到OSS
+    if (isOssConfigured.value) {
+      await dataBackupService.deleteBackup(backup.filename)
+      ElMessage.success('备份删除成功')
+      await loadBackupList()
+      await loadBackupStatus()
+    } else {
+      ElMessage.warning('删除服务不可用')
+    }
   } catch (error) {
     if (error !== 'cancel') {
       console.error('删除失败:', error)
@@ -5174,9 +5238,29 @@ const handleDeleteBackup = async (backup: unknown) => {
 const loadBackupList = async () => {
   try {
     backupListLoading.value = true
-    backupList.value = await dataBackupService.getBackupList()
+
+    // 优先使用后端API
+    try {
+      const { apiService } = await import('@/services/apiService')
+      const response = await apiService.get('/system/backup/list')
+
+      if (response.success && response.data) {
+        backupList.value = response.data
+        return
+      }
+    } catch (apiError) {
+      console.warn('[备份列表] 后端API不可用，尝试使用OSS:', apiError)
+    }
+
+    // 降级到OSS
+    if (isOssConfigured.value) {
+      backupList.value = await dataBackupService.getBackupList()
+    } else {
+      backupList.value = []
+    }
   } catch (error) {
     console.error('加载备份列表失败:', error)
+    backupList.value = []
   } finally {
     backupListLoading.value = false
   }
@@ -5187,17 +5271,35 @@ const loadBackupList = async () => {
  */
 const loadBackupStatus = async () => {
   try {
+    // 优先使用后端API
+    try {
+      const { apiService } = await import('@/services/apiService')
+      const response = await apiService.get('/system/backup/status')
+
+      if (response.success && response.data) {
+        backupCount.value = response.data.backupCount || 0
+        totalBackupSize.value = response.data.totalSize || 0
+        lastBackupTime.value = response.data.lastBackupTime || ''
+        return
+      }
+    } catch (apiError) {
+      console.warn('[备份状态] 后端API不可用，使用本地数据:', apiError)
+    }
+
+    // 降级到本地数据
     const config = await dataBackupService.getBackupConfig()
     Object.assign(backupForm, config)
 
-    const list = await dataBackupService.getBackupList()
-    if (list && Array.isArray(list)) {
-      backupCount.value = list.length
-      totalBackupSize.value = list.reduce((total, backup) => total + backup.size, 0)
+    if (isOssConfigured.value) {
+      const list = await dataBackupService.getBackupList()
+      if (list && Array.isArray(list)) {
+        backupCount.value = list.length
+        totalBackupSize.value = list.reduce((total: number, backup: { size: number }) => total + backup.size, 0)
 
-      if (list.length > 0) {
-        const latest = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
-        lastBackupTime.value = latest.timestamp
+        if (list.length > 0) {
+          const latest = list.sort((a: { timestamp: string | number | Date }, b: { timestamp: string | number | Date }) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
+          lastBackupTime.value = latest.timestamp
+        }
       }
     } else {
       backupCount.value = 0
