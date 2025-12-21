@@ -6,6 +6,16 @@ import { SystemConfig } from '../entities/SystemConfig';
 import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
 import { Department } from '../entities/Department';
 import { User } from '../entities/User';
+import { Customer } from '../entities/Customer';
+import { Order } from '../entities/Order';
+import { OrderItem } from '../entities/OrderItem';
+import { Product } from '../entities/Product';
+import { ProductCategory } from '../entities/ProductCategory';
+import { Role } from '../entities/Role';
+import { Permission } from '../entities/Permission';
+import { AfterSalesService } from '../entities/AfterSalesService';
+import { LogisticsCompany } from '../entities/LogisticsCompany';
+import { Announcement } from '../entities/Announcement';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -2155,27 +2165,50 @@ router.post('/backup/create', authenticateToken, requireAdmin, async (req: Reque
     const filename = `${type}-backup-${timestamp}.json`;
     const filePath = path.join(backupDir, filename);
 
-    // 导出数据库数据
+    // 导出数据库数据 - 备份所有重要的业务表
     const backupData: Record<string, unknown[]> = {};
 
-    // 获取所有实体的数据
+    // 定义需要备份的实体（按依赖顺序排列）
     const entities = [
-      { name: 'users', repo: AppDataSource.getRepository(User) },
+      // 基础配置表
+      { name: 'system_configs', repo: AppDataSource.getRepository(SystemConfig) },
+      { name: 'roles', repo: AppDataSource.getRepository(Role) },
+      { name: 'permissions', repo: AppDataSource.getRepository(Permission) },
+      // 组织架构
       { name: 'departments', repo: AppDataSource.getRepository(Department) },
-      { name: 'system_configs', repo: AppDataSource.getRepository(SystemConfig) }
+      { name: 'department_order_limits', repo: AppDataSource.getRepository(DepartmentOrderLimit) },
+      { name: 'users', repo: AppDataSource.getRepository(User) },
+      // 商品相关
+      { name: 'product_categories', repo: AppDataSource.getRepository(ProductCategory) },
+      { name: 'products', repo: AppDataSource.getRepository(Product) },
+      // 客户相关
+      { name: 'customers', repo: AppDataSource.getRepository(Customer) },
+      // 订单相关
+      { name: 'orders', repo: AppDataSource.getRepository(Order) },
+      { name: 'order_items', repo: AppDataSource.getRepository(OrderItem) },
+      // 售后服务
+      { name: 'after_sales_services', repo: AppDataSource.getRepository(AfterSalesService) },
+      // 物流相关
+      { name: 'logistics_companies', repo: AppDataSource.getRepository(LogisticsCompany) },
+      // 公告
+      { name: 'announcements', repo: AppDataSource.getRepository(Announcement) }
     ];
+
+    console.log(`[备份] 开始备份 ${entities.length} 个数据表...`);
 
     for (const entity of entities) {
       try {
         const data = await entity.repo.find();
         backupData[entity.name] = data;
+        console.log(`[备份] ${entity.name}: ${data.length} 条记录`);
       } catch (err) {
-        console.warn(`备份 ${entity.name} 失败:`, err);
+        console.warn(`[备份] ${entity.name} 失败:`, err);
         backupData[entity.name] = [];
       }
     }
 
     // 添加元数据
+    const totalRecords = Object.values(backupData).reduce((sum, arr) => sum + arr.length, 0);
     const backup = {
       version: '1.0.0',
       timestamp: new Date().toISOString(),
@@ -2183,7 +2216,11 @@ router.post('/backup/create', authenticateToken, requireAdmin, async (req: Reque
       data: backupData,
       metadata: {
         tables: Object.keys(backupData),
-        totalRecords: Object.values(backupData).reduce((sum, arr) => sum + arr.length, 0)
+        tableCount: Object.keys(backupData).length,
+        totalRecords,
+        recordsByTable: Object.fromEntries(
+          Object.entries(backupData).map(([name, data]) => [name, data.length])
+        )
       }
     };
 
@@ -2191,6 +2228,7 @@ router.post('/backup/create', authenticateToken, requireAdmin, async (req: Reque
     fs.writeFileSync(filePath, JSON.stringify(backup, null, 2));
 
     const stats = fs.statSync(filePath);
+    console.log(`[备份] 备份完成: ${filename}, 大小: ${(stats.size / 1024).toFixed(2)} KB, 共 ${totalRecords} 条记录`);
 
     res.json({
       success: true,
