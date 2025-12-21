@@ -191,41 +191,49 @@ class LogisticsTraceService {
   }
 
   // ========== 顺丰速运 ==========
-  // 顺丰丰桥开放平台API文档: https://qiao.sf-express.com/Api
+  // 顺丰开放平台API文档: https://open.sf-express.com
+  // 使用JSON格式请求，服务代码: EXP_RECE_SEARCH_ROUTES
   private async querySFTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
+    // 顺丰开放平台参数映射:
+    // config.appId -> partnerID (顾客编码)
+    // config.appSecret -> checkword (校验码)
+    const partnerID = config.appId;
+    const checkword = config.appSecret;
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    const requestId = `REQ${Date.now()}${Math.random().toString(36).substr(2, 6)}`;
+    const requestID = `REQ${Date.now()}${Math.random().toString(36).substr(2, 6)}`;
 
-    // 使用路由查询接口 EXP_RECE_SEARCH_ROUTES
+    // 服务代码: EXP_RECE_SEARCH_ROUTES - 路由查询接口
     const serviceCode = 'EXP_RECE_SEARCH_ROUTES';
 
-    // 请求数据格式
+    // 请求数据 (JSON格式)
     const msgData = JSON.stringify({
-      trackingType: '1',           // 查询类型: 1-根据运单号查询
-      trackingNumber: trackingNo,  // 运单号
-      methodType: '1'              // 查询方法: 1-标准查询
+      language: '0',           // 0-中文 1-英文
+      trackingType: '1',       // 查询类型: 1-根据运单号查询
+      trackingNumber: [trackingNo], // 运单号数组
+      methodType: '1'          // 查询方法: 1-标准查询
     });
 
-    // 签名: Base64(MD5(msgData + timestamp + checkword))
-    const signStr = msgData + timestamp + config.appSecret;
-    const sign = crypto.createHash('md5').update(signStr, 'utf8').digest('base64');
+    // 签名计算: Base64(MD5(msgData + timestamp + checkword))
+    const signStr = msgData + timestamp + checkword;
+    const msgDigest = crypto.createHash('md5').update(signStr, 'utf8').digest('base64');
 
+    // API地址
     const apiUrl = config.apiEnvironment === 'production'
-      ? 'https://bspgw.sf-express.com/std/service'
+      ? 'https://sfapi.sf-express.com/std/service'
       : 'https://sfapi-sbox.sf-express.com/std/service';
 
-    console.log('[顺丰API] 请求URL:', apiUrl);
-    console.log('[顺丰API] partnerID:', config.appId);
-    console.log('[顺丰API] serviceCode:', serviceCode);
-    console.log('[顺丰API] msgData:', msgData);
+    console.log('[顺丰开放平台API] 请求URL:', apiUrl);
+    console.log('[顺丰开放平台API] partnerID:', partnerID);
+    console.log('[顺丰开放平台API] serviceCode:', serviceCode);
+    console.log('[顺丰开放平台API] msgData:', msgData);
 
     // 使用 application/x-www-form-urlencoded 格式
     const params = new URLSearchParams();
-    params.append('partnerID', config.appId);
-    params.append('requestID', requestId);
+    params.append('partnerID', partnerID);
+    params.append('requestID', requestID);
     params.append('serviceCode', serviceCode);
     params.append('timestamp', timestamp);
-    params.append('msgDigest', sign);
+    params.append('msgDigest', msgDigest);
     params.append('msgData', msgData);
 
     const response = await axios.post(apiUrl, params.toString(), {
@@ -235,11 +243,14 @@ class LogisticsTraceService {
       }
     });
 
-    console.log('[顺丰API] 响应:', JSON.stringify(response.data));
-    return this.parseSFResponse(trackingNo, response.data);
+    console.log('[顺丰开放平台API] 响应:', JSON.stringify(response.data));
+    return this.parseSFJsonResponse(trackingNo, response.data);
   }
 
-  private parseSFResponse(trackingNo: string, data: any): LogisticsTrackResult {
+  /**
+   * 解析顺丰JSON响应报文
+   */
+  private parseSFJsonResponse(trackingNo: string, data: any): LogisticsTrackResult {
     const result: LogisticsTrackResult = {
       success: false,
       trackingNo,
@@ -251,25 +262,52 @@ class LogisticsTraceService {
       rawData: data
     };
 
-    if (data.apiResultCode === 'A1000' && data.apiResultData) {
-      const routeData = JSON.parse(data.apiResultData);
-      if (routeData.success && routeData.msgData && routeData.msgData.routeResps) {
-        const routes = routeData.msgData.routeResps[0]?.routes || [];
+    try {
+      // 检查API响应状态
+      if (data.apiResultCode !== 'A1000') {
+        result.statusText = `API错误: ${data.apiErrorMsg || data.apiResultCode}`;
+        console.error('[顺丰开放平台API] 错误:', result.statusText);
+        return result;
+      }
+
+      // 解析apiResultData (是一个JSON字符串)
+      const resultData = typeof data.apiResultData === 'string'
+        ? JSON.parse(data.apiResultData)
+        : data.apiResultData;
+
+      if (!resultData.success) {
+        result.statusText = `查询失败: ${resultData.errorMsg || resultData.errorCode}`;
+        console.error('[顺丰开放平台API] 业务错误:', result.statusText);
+        return result;
+      }
+
+      // 解析路由信息
+      // 响应格式: { success: true, msgData: { routeResps: [{ mailNo, routes: [...] }] } }
+      const routeResps = resultData.msgData?.routeResps || [];
+
+      // 找到对应运单号的路由
+      const routeResp = routeResps.find((r: any) => r.mailNo === trackingNo) || routeResps[0];
+
+      if (routeResp && routeResp.routes) {
         result.success = true;
-        result.traces = routes.map((r: any) => ({
+        result.traces = routeResp.routes.map((r: any) => ({
           time: r.acceptTime,
           status: r.opCode,
           description: r.remark,
           location: r.acceptAddress
         }));
 
-        if (routes.length > 0) {
-          const latestStatus = routes[0].opCode;
-          const statusInfo = this.mapSFStatus(latestStatus);
+        // 设置最新状态 (路由按时间倒序，第一条是最新的)
+        if (result.traces.length > 0) {
+          const latestOpcode = result.traces[0].status;
+          const statusInfo = this.mapSFStatus(latestOpcode);
           result.status = statusInfo.status;
           result.statusText = statusInfo.text;
         }
       }
+    } catch (error: any) {
+      console.error('[顺丰开放平台API] 解析响应失败:', error.message);
+      result.statusText = '解析响应失败: ' + error.message;
     }
 
     return result;
@@ -280,9 +318,13 @@ class LogisticsTraceService {
       '50': { status: 'picked_up', text: '已揽收' },
       '30': { status: 'in_transit', text: '运输中' },
       '31': { status: 'in_transit', text: '到达' },
+      '33': { status: 'in_transit', text: '顺丰已收件' },
       '36': { status: 'out_for_delivery', text: '派送中' },
+      '44': { status: 'out_for_delivery', text: '派件中' },
       '80': { status: 'delivered', text: '已签收' },
-      '99': { status: 'exception', text: '异常' }
+      '8000': { status: 'delivered', text: '已签收' },
+      '99': { status: 'exception', text: '异常' },
+      '648': { status: 'exception', text: '异常件' }
     };
     return map[opCode] || { status: 'in_transit', text: '运输中' };
   }

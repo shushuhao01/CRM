@@ -85,12 +85,27 @@ export const createLogisticsTracking = (data: {
   return api.post('/logistics/tracking', data)
 }
 
-// 获取物流轨迹
-export const getLogisticsTrace = (params: {
+// 获取物流轨迹（调用真实快递API）
+export const getLogisticsTrace = async (params: {
   trackingNo: string
   companyCode?: string
 }) => {
-  return api.get('/logistics/trace', params)
+  // 优先使用新的真实API接口
+  try {
+    const response = await api.get('/logistics/trace/query', params)
+    if (response.success && response.data) {
+      // 转换响应格式以兼容旧接口
+      return {
+        success: true,
+        data: response.data.traces || []
+      }
+    }
+    return response
+  } catch (error) {
+    console.error('获取物流轨迹失败:', error)
+    // 降级到旧接口
+    return api.get('/logistics/trace', params)
+  }
 }
 
 // 批量同步物流状态
