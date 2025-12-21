@@ -2622,27 +2622,51 @@
           <template #header>
             <div class="card-header">
               <span>系统日志</span>
-              <div>
-                <el-select v-model="logLevelFilter" placeholder="日志级别" style="width: 120px; margin-right: 10px;" clearable>
-                  <el-option label="全部" value="" />
-                  <el-option label="ERROR" value="ERROR" />
-                  <el-option label="WARN" value="WARN" />
-                  <el-option label="INFO" value="INFO" />
-                  <el-option label="DEBUG" value="DEBUG" />
-                </el-select>
-                <el-button @click="refreshLogs" :loading="logsLoading" type="primary">
-                  刷新日志
-                </el-button>
-              </div>
+              <el-button @click="refreshLogs" :loading="logsLoading" type="primary">
+                刷新日志
+              </el-button>
             </div>
           </template>
+
+          <!-- 筛选器区域 -->
+          <div class="logs-filter-bar">
+            <el-date-picker
+              v-model="logDateRange"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              style="width: 260px;"
+              value-format="YYYY-MM-DD"
+              clearable
+              @change="handleLogFilterChange"
+            />
+            <el-select v-model="logLevelFilter" placeholder="日志级别" style="width: 120px;" clearable @change="handleLogFilterChange">
+              <el-option label="全部" value="" />
+              <el-option label="ERROR" value="ERROR" />
+              <el-option label="WARN" value="WARN" />
+              <el-option label="INFO" value="INFO" />
+              <el-option label="DEBUG" value="DEBUG" />
+            </el-select>
+            <el-input
+              v-model="logSearchKeyword"
+              placeholder="搜索日志内容..."
+              style="width: 240px;"
+              clearable
+              @input="handleLogFilterChange"
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
+          </div>
 
           <div class="logs-container">
             <el-table
               :data="paginatedLogs"
               v-loading="logsLoading"
               style="width: 100%"
-              height="400"
+              :height="logTableHeight"
               stripe
             >
               <el-table-column prop="timestamp" label="时间" width="180">
@@ -2682,7 +2706,7 @@
               <el-pagination
                 v-model:current-page="logPagination.currentPage"
                 v-model:page-size="logPagination.pageSize"
-                :page-sizes="[10, 20, 50, 100]"
+                :page-sizes="[20, 50, 100]"
                 :total="filteredLogs.length"
                 layout="sizes, prev, pager, next, jumper"
                 @size-change="handleLogPageSizeChange"
@@ -2720,7 +2744,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Discount, Money, Box, Grid, Setting, Lock, Upload, Download, Check, Phone, Connection, VideoPlay, Refresh, Platform, Iphone, Monitor, Link, Document, ArrowLeft, ArrowRight, DocumentCopy, ZoomIn, Delete, Picture, Edit, View, Clock } from '@element-plus/icons-vue'
+import { Plus, Discount, Money, Box, Grid, Setting, Lock, Upload, Download, Check, Phone, Connection, VideoPlay, Refresh, Platform, Iphone, Monitor, Link, Document, ArrowLeft, ArrowRight, DocumentCopy, ZoomIn, Delete, Picture, Edit, View, Clock, Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useConfigStore } from '@/stores/config'
 import { dataSyncService } from '@/services/dataSyncService'
@@ -2787,6 +2811,8 @@ const logPagination = ref({
   currentPage: 1,
   pageSize: 20
 })
+const logDateRange = ref<string[]>([])
+const logSearchKeyword = ref('')
 
 // 基本设置表单 - 从配置store获取
 const basicForm = computed(() => configStore.systemConfig)
@@ -3058,8 +3084,37 @@ const logStats = ref({
 
 // 过滤后的日志
 const filteredLogs = computed(() => {
-  if (!logLevelFilter.value) return systemLogs.value
-  return systemLogs.value.filter(log => log.level === logLevelFilter.value)
+  let logs = systemLogs.value
+
+  // 按日志级别过滤
+  if (logLevelFilter.value) {
+    logs = logs.filter(log => log.level === logLevelFilter.value)
+  }
+
+  // 按时间范围过滤
+  if (logDateRange.value && logDateRange.value.length === 2) {
+    const startDate = new Date(logDateRange.value[0])
+    startDate.setHours(0, 0, 0, 0)
+    const endDate = new Date(logDateRange.value[1])
+    endDate.setHours(23, 59, 59, 999)
+
+    logs = logs.filter(log => {
+      const logDate = new Date(log.timestamp)
+      return logDate >= startDate && logDate <= endDate
+    })
+  }
+
+  // 按关键词搜索
+  if (logSearchKeyword.value) {
+    const keyword = logSearchKeyword.value.toLowerCase()
+    logs = logs.filter(log =>
+      log.message.toLowerCase().includes(keyword) ||
+      (log.module && log.module.toLowerCase().includes(keyword)) ||
+      (log.details && log.details.toLowerCase().includes(keyword))
+    )
+  }
+
+  return logs
 })
 
 // 分页后的日志
@@ -3067,6 +3122,13 @@ const paginatedLogs = computed(() => {
   const start = (logPagination.value.currentPage - 1) * logPagination.value.pageSize
   const end = start + logPagination.value.pageSize
   return filteredLogs.value.slice(start, end)
+})
+
+// 表格高度根据分页条数动态计算
+const logTableHeight = computed(() => {
+  const rowHeight = 48 // 每行高度
+  const headerHeight = 48 // 表头高度
+  return headerHeight + rowHeight * logPagination.value.pageSize
 })
 
 // 移动应用相关数据
@@ -5477,6 +5539,13 @@ const handleLogPageChange = (page: number) => {
   logPagination.value.currentPage = page
 }
 
+/**
+ * 筛选条件变化时重置分页
+ */
+const handleLogFilterChange = () => {
+  logPagination.value.currentPage = 1
+}
+
 // 移动应用相关方法
 
 /**
@@ -6696,6 +6765,14 @@ onMounted(() => {
 
 .form-tip .el-icon {
   font-size: 14px;
+}
+
+/* 日志筛选器样式 */
+.logs-filter-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 /* 日志分页样式 */
