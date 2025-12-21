@@ -23,7 +23,18 @@
         <el-row :gutter="24">
           <el-col :span="12">
             <div class="section-card">
-              <h4>当前状态</h4>
+              <div class="section-header">
+                <h4>当前状态</h4>
+                <el-button
+                  @click="refreshApiStatus"
+                  :loading="refreshLoading"
+                  type="primary"
+                  size="small"
+                  :icon="Refresh"
+                >
+                  刷新状态
+                </el-button>
+              </div>
               <el-descriptions :column="1" border size="default">
                 <el-descriptions-item label="API状态">
                   <el-tag :type="apiStatus ? 'success' : 'danger'" size="default">
@@ -154,14 +165,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { healthCheckNotificationService } from '@/services/healthCheckNotificationService'
-import { storageModeService } from '@/services/storageMode'
 
 const userStore = useUserStore()
 
 // 响应式数据
 const testLoading = ref(false)
+const refreshLoading = ref(false)
+const apiStatus = ref(true) // 默认正常
+const lastCheckTimeValue = ref<string | null>(null)
+const errorCountValue = ref(0)
 const preferences = ref({
   suppressType: 'none' as 'none' | 'today' | 'month',
   suppressUntil: null as number | null,
@@ -171,25 +186,9 @@ const preferences = ref({
 // 计算属性
 const isSuperAdmin = computed(() => userStore.isSuperAdmin)
 
-const apiStatus = computed(() => {
-  return storageModeService.isApiMode()
-})
+const errorCount = computed(() => errorCountValue.value)
 
-const errorCount = computed(() => {
-  // 从localStorage获取错误计数
-  const errorData = localStorage.getItem('api_health_check_errors')
-  return errorData ? JSON.parse(errorData).count || 0 : 0
-})
-
-const lastCheckTime = computed(() => {
-  // 从localStorage获取最后检查时间
-  const errorData = localStorage.getItem('api_health_check_errors')
-  if (errorData) {
-    const data = JSON.parse(errorData)
-    return data.lastCheck ? new Date(data.lastCheck).toLocaleString() : null
-  }
-  return null
-})
+const lastCheckTime = computed(() => lastCheckTimeValue.value)
 
 const notificationEnabled = computed(() => {
   return preferences.value.suppressType === 'none'
@@ -309,9 +308,73 @@ const loadUserPreferences = () => {
   }
 }
 
+/**
+ * 刷新API状态 - 真实检测后端API是否可用
+ */
+const refreshApiStatus = async () => {
+  refreshLoading.value = true
+  try {
+    // 调用后端健康检查API
+    const { apiService } = await import('@/services/apiService')
+    await apiService.get('/health')
+
+    // API正常
+    apiStatus.value = true
+    errorCountValue.value = 0
+    lastCheckTimeValue.value = new Date().toLocaleString()
+
+    // 清除错误记录
+    localStorage.removeItem('api_health_check_errors')
+
+    ElMessage.success('API状态正常')
+  } catch (_error) {
+    // API异常
+    apiStatus.value = false
+    errorCountValue.value += 1
+    lastCheckTimeValue.value = new Date().toLocaleString()
+
+    // 保存错误记录
+    localStorage.setItem('api_health_check_errors', JSON.stringify({
+      count: errorCountValue.value,
+      lastCheck: Date.now()
+    }))
+
+    ElMessage.error('API连接异常')
+  } finally {
+    refreshLoading.value = false
+  }
+}
+
+/**
+ * 加载API状态（从localStorage或实时检测）
+ */
+const loadApiStatus = () => {
+  // 从localStorage获取上次检查结果
+  const errorData = localStorage.getItem('api_health_check_errors')
+  if (errorData) {
+    try {
+      const data = JSON.parse(errorData)
+      errorCountValue.value = data.count || 0
+      lastCheckTimeValue.value = data.lastCheck ? new Date(data.lastCheck).toLocaleString() : null
+      // 如果有错误记录，状态为异常
+      apiStatus.value = data.count === 0
+    } catch {
+      // 解析失败，默认正常
+      apiStatus.value = true
+    }
+  } else {
+    // 没有错误记录，默认正常
+    apiStatus.value = true
+  }
+
+  // 自动刷新一次状态
+  refreshApiStatus()
+}
+
 // 生命周期
 onMounted(() => {
   loadUserPreferences()
+  loadApiStatus()
 })
 </script>
 
@@ -350,6 +413,21 @@ onMounted(() => {
   font-weight: 600;
   border-bottom: 2px solid #409eff;
   padding-bottom: 8px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #409eff;
+}
+
+.section-header h4 {
+  margin: 0;
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .preference-content {
