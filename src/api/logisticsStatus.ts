@@ -90,21 +90,35 @@ export const getLogisticsTrace = async (params: {
   trackingNo: string
   companyCode?: string
 }) => {
-  // 优先使用新的真实API接口
+  // 调用后端真实API接口
   try {
     const response = await api.get('/logistics/trace/query', params)
+    console.log('[物流API] 查询响应:', response)
+
     if (response.success && response.data) {
-      // 转换响应格式以兼容旧接口
+      // 返回完整的响应数据，包含traces数组
       return {
         success: true,
-        data: response.data.traces || []
+        code: 200,
+        data: response.data.traces || [],
+        rawData: response.data
       }
     }
-    return response
+
+    return {
+      success: false,
+      code: response.code || 500,
+      data: [],
+      message: response.message || '查询失败'
+    }
   } catch (error) {
-    console.error('获取物流轨迹失败:', error)
-    // 降级到旧接口
-    return api.get('/logistics/trace', params)
+    console.error('[物流API] 获取物流轨迹失败:', error)
+    return {
+      success: false,
+      code: 500,
+      data: [],
+      message: error instanceof Error ? error.message : '查询失败'
+    }
   }
 }
 
@@ -134,8 +148,10 @@ export const getSupportedCompanies = () => {
   return api.get('/logistics/companies')
 }
 
-// 兼容旧接口的别名
-export const getLogisticsTracking = getLogisticsTrace
+// 兼容旧接口的别名 - 修改为接受对象参数
+export const getLogisticsTracking = (params: { trackingNo: string; companyCode?: string }) => {
+  return getLogisticsTrace(params)
+}
 export const autoUpdateLogisticsStatus = () => batchSyncLogisticsStatus({ trackingIds: [] })
 
 // 获取物流状态更新列表（兼容旧接口）

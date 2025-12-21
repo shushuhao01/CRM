@@ -1,6 +1,5 @@
 import { ElMessage } from 'element-plus'
 import {
-  getLogisticsTrace,
   createLogisticsTracking,
   getSupportedCompanies,
   batchSyncLogisticsStatus,
@@ -75,7 +74,7 @@ class LogisticsService {
 
   /**
    * 查询物流轨迹
-   * 优先使用后端API（调用各快递公司官方API），失败后回退到快递100
+   * 优先使用后端API（调用各快递公司官方API）
    */
   async queryLogistics(trackingNumber: string, expressCompany: string): Promise<LogisticsResult> {
     const cacheKey = `${expressCompany}_${trackingNumber}`
@@ -87,9 +86,11 @@ class LogisticsService {
     }
 
     try {
-      // 🔥 优先调用后端新API（调用各快递公司官方API）
+      // 🔥 调用后端API（调用各快递公司官方API）
       const { logisticsApi } = await import('@/api/logistics')
       const response = await logisticsApi.queryTrace(trackingNumber, expressCompany)
+
+      console.log('[物流服务] API响应:', response)
 
       if (response.success && response.data && response.data.success) {
         const apiData = response.data
@@ -117,41 +118,14 @@ class LogisticsService {
         return result
       }
 
-      // 如果新API返回失败，尝试旧API
-      throw new Error(response.message || '新API查询失败')
-    } catch (newApiError) {
-      console.warn('新物流API查询失败，尝试旧API:', newApiError)
-
-      try {
-        // 调用旧的API
-        const response = await getLogisticsTrace({
-          trackingNo: trackingNumber,
-          companyCode: expressCompany
-        })
-
-        if (response.code === 200 && response.data) {
-          const result = this.transformApiResponse(response.data)
-
-          // 缓存结果
-          this.cache.set(cacheKey, {
-            data: result,
-            timestamp: Date.now()
-          })
-
-          return result
-        } else {
-          throw new Error(response.message || '查询失败')
-        }
-      } catch (error) {
-        console.error('物流查询失败:', error)
-        // 如果API调用失败，使用模拟数据作为兜底
-        try {
-          const mockResult = await this.mockApiCall(trackingNumber, expressCompany)
-          return mockResult
-        } catch (_mockError) {
-          throw new Error('物流信息查询失败，请稍后重试')
-        }
-      }
+      // 如果API返回失败，抛出错误（不再回退到mock数据）
+      const errorMsg = response.data?.statusText || response.message || 'API查询失败'
+      console.error('[物流服务] API查询失败:', errorMsg)
+      throw new Error(errorMsg)
+    } catch (error) {
+      console.error('[物流服务] 查询失败:', error)
+      // 🔥 不再使用mock数据，直接抛出错误让上层处理
+      throw error
     }
   }
 

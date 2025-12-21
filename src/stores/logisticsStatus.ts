@@ -356,10 +356,32 @@ export const useLogisticsStatusStore = defineStore('logisticsStatus', () => {
   }
 
   // 获取物流轨迹
-  const fetchTrackingInfo = async (trackingNo: string): Promise<TrackingInfo[]> => {
+  const fetchTrackingInfo = async (trackingNo: string, companyCode?: string): Promise<TrackingInfo[]> => {
     try {
-      const response = await getLogisticsTracking(trackingNo)
-      return response.data || []
+      const response = await getLogisticsTracking({ trackingNo, companyCode })
+      console.log('[物流状态Store] 获取物流轨迹响应:', response)
+
+      if (response.success && response.data && Array.isArray(response.data)) {
+        // 转换数据格式
+        return response.data.map((item: any) => ({
+          time: item.time || item.acceptTime,
+          description: item.description || item.remark,
+          location: item.location || item.acceptAddress,
+          operator: item.operator
+        }))
+      }
+
+      // 如果有rawData，尝试从中提取
+      if (response.rawData && response.rawData.traces) {
+        return response.rawData.traces.map((item: any) => ({
+          time: item.time || item.acceptTime,
+          description: item.description || item.remark,
+          location: item.location || item.acceptAddress,
+          operator: item.operator
+        }))
+      }
+
+      return []
     } catch (error) {
       console.error('获取物流轨迹失败:', error)
       throw error
