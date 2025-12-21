@@ -5110,10 +5110,10 @@ const handleTestBackup = async () => {
 const handleRestoreBackup = async (backup: { filename: string }) => {
   try {
     await ElMessageBox.confirm(
-      `确定要恢复备份 "${backup.filename}" 吗？这将覆盖当前所有数据！`,
+      `确定要恢复备份 "${backup.filename}" 吗？\n\n⚠️ 警告：这将覆盖当前所有数据，此操作不可撤销！`,
       '确认恢复',
       {
-        confirmButtonText: '确定',
+        confirmButtonText: '确定恢复',
         cancelButtonText: '取消',
         type: 'warning'
       }
@@ -5121,17 +5121,34 @@ const handleRestoreBackup = async (backup: { filename: string }) => {
 
     restoreLoading.value = backup.filename
 
-    // 目前恢复功能仅支持OSS模式
+    // 优先使用后端API进行恢复
+    try {
+      const { apiService } = await import('@/services/apiService')
+      const response = await apiService.post(`/system/backup/restore/${encodeURIComponent(backup.filename)}`)
+
+      if (response.success) {
+        ElMessage.success(`数据恢复成功！共恢复 ${response.data?.totalRestored || 0} 条记录，页面将自动刷新`)
+
+        // 延迟刷新页面
+        setTimeout(() => {
+          window.location.reload()
+        }, 2000)
+        return
+      }
+    } catch (apiError) {
+      console.warn('[恢复] 后端API不可用，尝试使用OSS恢复:', apiError)
+    }
+
+    // 降级到OSS恢复
     if (isOssConfigured.value) {
       await dataBackupService.restoreFromBackup(backup.filename)
       ElMessage.success('数据恢复成功，请刷新页面')
 
-      // 延迟刷新页面
       setTimeout(() => {
         window.location.reload()
       }, 2000)
     } else {
-      ElMessage.warning('恢复功能需要配置OSS存储')
+      ElMessage.warning('恢复服务不可用')
     }
   } catch (error) {
     if (error !== 'cancel') {
