@@ -5232,6 +5232,36 @@ const handleDeleteBackup = async (backup: { filename: string }) => {
 }
 
 /**
+ * 加载备份配置（自动备份、保留天数等）
+ */
+const loadBackupConfig = async () => {
+  try {
+    // 从后端API加载备份配置
+    const { apiService } = await import('@/services/apiService')
+    const data = await apiService.get('/system/backup-settings')
+
+    if (data) {
+      // 更新表单数据
+      if (data.autoBackupEnabled !== undefined) {
+        backupForm.autoBackupEnabled = data.autoBackupEnabled
+      }
+      if (data.backupFrequency) {
+        backupForm.backupFrequency = data.backupFrequency
+      }
+      if (data.retentionDays !== undefined) {
+        backupForm.retentionDays = data.retentionDays
+      }
+      if (data.compression !== undefined) {
+        backupForm.compression = data.compression
+      }
+      console.log('[备份配置] 已从后端API加载:', data)
+    }
+  } catch (error) {
+    console.warn('[备份配置] 后端API不可用，使用默认配置:', error)
+  }
+}
+
+/**
  * 加载备份列表
  */
 const loadBackupList = async () => {
@@ -5903,7 +5933,8 @@ onMounted(() => {
   // 🔥 从数据库加载系统配置
   configStore.initConfig()
 
-  // 初始化数据
+  // 初始化备份数据
+  loadBackupConfig() // 加载备份配置（自动备份、保留天数等）
   loadBackupStatus()
   loadBackupList()
 
