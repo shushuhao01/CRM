@@ -5123,34 +5123,33 @@ const handleRestoreBackup = async (backup: { filename: string }) => {
 
     restoreLoading.value = backup.filename
 
-    // 优先使用后端API进行恢复
+    // 使用后端API进行恢复
     try {
       const { apiService } = await import('@/services/apiService')
-      const response = await apiService.post(`/system/backup/restore/${encodeURIComponent(backup.filename)}`)
+      const data = await apiService.post(`/system/backup/restore/${encodeURIComponent(backup.filename)}`)
 
-      if (response.success) {
-        ElMessage.success(`数据恢复成功！共恢复 ${response.data?.totalRestored || 0} 条记录，页面将自动刷新`)
+      // apiService已经处理了success检查，直接使用返回的data
+      ElMessage.success(`数据恢复成功！共恢复 ${data?.totalRestored || 0} 条记录，页面将自动刷新`)
 
-        // 延迟刷新页面
-        setTimeout(() => {
-          window.location.reload()
-        }, 2000)
-        return
-      }
-    } catch (apiError) {
-      console.warn('[恢复] 后端API不可用，尝试使用OSS恢复:', apiError)
-    }
-
-    // 降级到OSS恢复
-    if (isOssConfigured.value) {
-      await dataBackupService.restoreFromBackup(backup.filename)
-      ElMessage.success('数据恢复成功，请刷新页面')
-
+      // 延迟刷新页面
       setTimeout(() => {
         window.location.reload()
       }, 2000)
-    } else {
-      ElMessage.warning('恢复服务不可用')
+      return
+    } catch (apiError) {
+      console.warn('[恢复] 后端API调用失败:', apiError)
+
+      // 降级到OSS恢复
+      if (isOssConfigured.value) {
+        await dataBackupService.restoreFromBackup(backup.filename)
+        ElMessage.success('数据恢复成功，请刷新页面')
+
+        setTimeout(() => {
+          window.location.reload()
+        }, 2000)
+      } else {
+        ElMessage.error('恢复失败，请稍后重试')
+      }
     }
   } catch (error) {
     if (error !== 'cancel') {
@@ -5167,37 +5166,19 @@ const handleRestoreBackup = async (backup: { filename: string }) => {
  */
 const handleDownloadBackup = async (backup: { filename: string }) => {
   try {
-    // 优先使用后端API
-    try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1'
-      const token = localStorage.getItem('token')
-      const url = `${baseUrl}/system/backup/download/${encodeURIComponent(backup.filename)}`
+    // 使用后端API下载
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+    const token = localStorage.getItem('auth_token') || localStorage.getItem('token')
+    const url = `${baseUrl}/system/backup/download/${encodeURIComponent(backup.filename)}`
 
-      const link = document.createElement('a')
-      link.href = url + (token ? `?token=${token}` : '')
-      link.download = backup.filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      ElMessage.success('备份下载开始')
-      return
-    } catch (apiError) {
-      console.warn('[下载备份] 后端API不可用，尝试使用OSS:', apiError)
-    }
-
-    // 降级到OSS
-    if (isOssConfigured.value) {
-      const url = await dataBackupService.getBackupDownloadUrl(backup.filename)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = backup.filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      ElMessage.success('备份下载开始')
-    } else {
-      ElMessage.warning('下载服务不可用')
-    }
+    // 创建下载链接
+    const link = document.createElement('a')
+    link.href = url + (token ? `?token=${token}` : '')
+    link.download = backup.filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    ElMessage.success('备份下载开始')
   } catch (error) {
     console.error('下载失败:', error)
     ElMessage.error('下载失败: ' + (error as Error).message)
@@ -5219,29 +5200,28 @@ const handleDeleteBackup = async (backup: { filename: string }) => {
       }
     )
 
-    // 优先使用后端API
+    // 使用后端API删除
     try {
       const { apiService } = await import('@/services/apiService')
-      const response = await apiService.delete(`/system/backup/${encodeURIComponent(backup.filename)}`)
+      await apiService.delete(`/system/backup/${encodeURIComponent(backup.filename)}`)
 
-      if (response.success) {
-        ElMessage.success('备份删除成功')
-        await loadBackupList()
-        await loadBackupStatus()
-        return
-      }
-    } catch (apiError) {
-      console.warn('[删除备份] 后端API不可用，尝试使用OSS:', apiError)
-    }
-
-    // 降级到OSS
-    if (isOssConfigured.value) {
-      await dataBackupService.deleteBackup(backup.filename)
+      // apiService已经处理了success检查，如果没抛错就是成功
       ElMessage.success('备份删除成功')
       await loadBackupList()
       await loadBackupStatus()
-    } else {
-      ElMessage.warning('删除服务不可用')
+      return
+    } catch (apiError) {
+      console.warn('[删除备份] 后端API调用失败:', apiError)
+
+      // 降级到OSS删除
+      if (isOssConfigured.value) {
+        await dataBackupService.deleteBackup(backup.filename)
+        ElMessage.success('备份删除成功')
+        await loadBackupList()
+        await loadBackupStatus()
+      } else {
+        ElMessage.error('删除失败，请稍后重试')
+      }
     }
   } catch (error) {
     if (error !== 'cancel') {
