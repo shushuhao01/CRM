@@ -18,29 +18,29 @@ export interface LogsResponse {
 /**
  * 获取系统日志
  */
-export const getSystemLogs = (params?: {
+export const getSystemLogs = async (params?: {
   limit?: number
   level?: string
 }): Promise<LogsResponse> => {
-  return request({
-    url: '/logs/system',
-    method: 'get',
+  const response = await request<LogsResponse>('/logs/system', {
+    method: 'GET',
     params
   })
+  return response as unknown as LogsResponse
 }
 
 /**
  * 清空系统日志
  */
-export const clearSystemLogs = (): Promise<{
+export const clearSystemLogs = async (): Promise<{
   success: boolean
   message: string
   clearedFiles: number
 }> => {
-  return request({
-    url: '/logs/clear',
-    method: 'delete'
+  const response = await request('/logs/clear', {
+    method: 'DELETE'
   })
+  return response as unknown as { success: boolean; message: string; clearedFiles: number }
 }
 
 /**
@@ -65,52 +65,52 @@ export interface LogStats {
 /**
  * 获取日志清理配置
  */
-export const getLogConfig = (): Promise<{
+export const getLogConfig = async (): Promise<{
   success: boolean
   data: LogCleanupConfig
 }> => {
-  return request({
-    url: '/logs/config',
-    method: 'get'
+  const response = await request('/logs/config', {
+    method: 'GET'
   })
+  return response as unknown as { success: boolean; data: LogCleanupConfig }
 }
 
 /**
  * 保存日志清理配置
  */
-export const saveLogConfig = (config: LogCleanupConfig): Promise<{
+export const saveLogConfig = async (config: LogCleanupConfig): Promise<{
   success: boolean
   message: string
 }> => {
-  return request({
-    url: '/logs/config',
-    method: 'post',
-    data: config
+  const response = await request('/logs/config', {
+    method: 'POST',
+    data: config as unknown as Record<string, unknown>
   })
+  return response as unknown as { success: boolean; message: string }
 }
 
 /**
  * 获取日志统计
  */
-export const getLogStats = (): Promise<{
+export const getLogStats = async (): Promise<{
   success: boolean
   data: LogStats
 }> => {
-  return request({
-    url: '/logs/stats',
-    method: 'get'
+  const response = await request('/logs/stats', {
+    method: 'GET'
   })
+  return response as unknown as { success: boolean; data: LogStats }
 }
 
 /**
  * 清理过期日志
  */
-export const cleanupOldLogs = (retentionDays: number): Promise<{
+export const cleanupOldLogs = async (retentionDays: number): Promise<{
   success: boolean
   message: string
 }> => {
-  return request({
-    url: `/logs/cleanup/${retentionDays}`,
-    method: 'delete'
+  const response = await request(`/logs/cleanup/${retentionDays}`, {
+    method: 'DELETE'
   })
+  return response as unknown as { success: boolean; message: string }
 }
