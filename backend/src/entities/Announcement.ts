@@ -79,9 +79,10 @@ export class AnnouncementRead {
   @Index()
   announcementId!: string;
 
-  @Column({ name: 'user_id', type: 'int', comment: '用户ID' })
+  // 🔥 修复：userId 应该是 varchar 类型，与 users 表的 id 类型一致
+  @Column({ name: 'user_id', type: 'varchar', length: 50, comment: '用户ID' })
   @Index()
-  userId!: number;
+  userId!: string;
 
   @CreateDateColumn({ name: 'read_at', comment: '阅读时间' })
   readAt!: Date;
