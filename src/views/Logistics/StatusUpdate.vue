@@ -892,11 +892,7 @@ const loadData = async (showMessage = false) => {
       amount: order.totalAmount,
       trackingNo: order.trackingNumber || order.expressNo || '',
       logisticsCompany: order.expressCompany || '',
-      latestUpdate: order.logisticsHistory && order.logisticsHistory.length > 0
-        ? order.logisticsHistory[order.logisticsHistory.length - 1].description
-        : (order.statusHistory && order.statusHistory.length > 0
-          ? order.statusHistory[order.statusHistory.length - 1].description
-          : ''),
+      latestUpdate: '获取中...',  // 🔥 初始值，后续异步更新
       assignedTo: order.salesPersonId || order.createdBy || '',
       assignedToName: order.createdByName || order.salesPersonName || getUserDisplayName(order.salesPersonId || order.createdBy) || order.createdBy || '-',
       orderDate: formatOrderDate(order.createTime),
@@ -914,6 +910,9 @@ const loadData = async (showMessage = false) => {
     orderList.value = logisticsData.slice(startIndex, endIndex)
     pagination.total = logisticsData.length
 
+    // 🔥 异步获取物流最新动态
+    fetchLatestLogisticsUpdates()
+
     if (showMessage) {
       ElMessage.success('数据刷新成功')
     }
@@ -930,6 +929,64 @@ const loadData = async (showMessage = false) => {
   }
 }
 
+/**
+ * 🔥 异步获取物流最新动态
+ */
+const fetchLatestLogisticsUpdates = async () => {
+  const { logisticsApi } = await import('@/api/logistics')
+
+  // 只处理有物流单号的订单
+  const ordersWithTracking = orderList.value.filter(order =>
+    order.trackingNo && order.logisticsCompany
+  )
+
+  if (ordersWithTracking.length === 0) {
+    // 没有物流信息的订单，设置默认值
+    orderList.value.forEach(order => {
+      if (!order.trackingNo || !order.logisticsCompany) {
+        order.latestUpdate = '暂无物流信息'
+      }
+    })
+    return
+  }
+
+  // 并发获取物流信息，限制并发数量避免API限制
+  const batchSize = 3
+  for (let i = 0; i < ordersWithTracking.length; i += batchSize) {
+    const batch = ordersWithTracking.slice(i, i + batchSize)
+    await Promise.all(batch.map(async (order) => {
+      try {
+        // 获取物流轨迹
+        const response = await logisticsApi.queryTrace(
+          order.trackingNo,
+          order.logisticsCompany,
+          order.customerPhone || ''
+        )
+
+        if (response?.success && response.data?.success && response.data.traces?.length > 0) {
+          const traces = response.data.traces
+          // 获取最新动态（第一条，因为已经是倒序）
+          const latestTrace = traces[0]
+          order.latestUpdate = latestTrace.description || latestTrace.status || '暂无描述'
+        } else if (response?.success && response.data?.traces?.length > 0) {
+          const traces = response.data.traces
+          const latestTrace = traces[0]
+          order.latestUpdate = latestTrace.description || latestTrace.status || '暂无描述'
+        } else {
+          order.latestUpdate = '暂无物流信息'
+        }
+      } catch (error) {
+        console.error(`获取订单 ${order.orderNo} 物流信息失败:`, error)
+        order.latestUpdate = '获取失败'
+      }
+    }))
+
+    // 每批次之间稍微延迟，避免API限制
+    if (i + batchSize < ordersWithTracking.length) {
+      await new Promise(resolve => setTimeout(resolve, 300))
+    }
+  }
+}
 
 
 const loadSummaryData = async (showAnimation = false) => {
