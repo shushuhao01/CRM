@@ -141,8 +141,12 @@ const queryTrace = async () => {
   try {
     const response = await logisticsApi.queryTrace(props.trackingNo, props.companyCode || undefined)
 
+    console.log('[物流轨迹弹窗] API响应:', response)
+
     if (response.success && response.data) {
       traceResult.value = response.data
+
+      // 🔥 检查业务层面是否成功
       if (!response.data.success) {
         errorMessage.value = response.data.statusText || '查询失败'
       }
