@@ -303,6 +303,7 @@
       v-model="trackingDialogVisible"
       :tracking-no="currentTrackingNo"
       :logistics-company="currentLogisticsCompany"
+      :phone="currentOrderPhone"
     />
 
     <!-- 订单详情弹窗 -->
@@ -381,6 +382,7 @@ const trackingDialogVisible = ref(false)
 const orderDetailDialogVisible = ref(false)
 const currentTrackingNo = ref('')
 const currentLogisticsCompany = ref('')
+const currentOrderPhone = ref('')  // 🔥 新增：当前订单的手机号
 
 // 实时更新相关
 const autoRefreshTimer = ref<NodeJS.Timeout | null>(null)
@@ -641,6 +643,7 @@ const handleExternalOrderStatusUpdate = (event: CustomEvent) => {
 const handleViewTracking = (order: any) => {
   currentTrackingNo.value = order.trackingNo
   currentLogisticsCompany.value = order.logisticsCompany
+  currentOrderPhone.value = order.customerPhone || order.phone || ''  // 🔥 设置订单手机号
   trackingDialogVisible.value = true
 }
 

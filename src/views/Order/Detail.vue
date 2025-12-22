@@ -1473,21 +1473,25 @@ const refreshLogistics = async (phone?: string) => {
   try {
     logisticsLoading.value = true
 
+    // 🔥 自动使用订单中的手机号（如果没有手动传入）
+    const phoneToUse = phone || orderDetail.customer?.phone || orderDetail.phone || ''
+    console.log('[订单详情] 查询物流，使用手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未提供')
+
     // 🔥 直接调用物流API，支持手机号验证
     const { logisticsApi } = await import('@/api/logistics')
     const response = await logisticsApi.queryTrace(
       orderDetail.trackingNumber,
       orderDetail.expressCompany,
-      phone
+      phoneToUse
     )
 
     if (response && response.success && response.data) {
       const data = response.data
 
-      // 🔥 检查是否需要手机号验证
+      // 🔥 检查是否需要手机号验证（即使带了手机号也可能验证失败，因为可能是寄件人手机号）
       if (data.status === 'need_phone_verify' ||
-          (!data.success && data.statusText === '需要手机号验证')) {
-        // 弹出手机号验证对话框
+          (!data.success && (data.statusText === '需要手机号验证' || data.statusText?.includes('routes为空')))) {
+        // 弹出手机号验证对话框，让用户手动输入
         pendingTrackingNo.value = orderDetail.trackingNumber
         pendingCompanyCode.value = orderDetail.expressCompany
         phoneVerifyDialogVisible.value = true
