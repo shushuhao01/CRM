@@ -347,6 +347,12 @@
         <span v-else class="no-data">-</span>
       </template>
 
+      <!-- 预计送达列 -->
+      <template #estimatedDeliveryTime="{ row }">
+        <span v-if="row.estimatedDeliveryTime">{{ formatDate(row.estimatedDeliveryTime) }}</span>
+        <span v-else class="no-data">-</span>
+      </template>
+
       <!-- 操作记录列 -->
       <template #lastOperation="{ row }">
         <div v-if="row.lastOperation" class="operation-info">
@@ -991,6 +997,13 @@ const baseTableColumns = [
     visible: true
   },
   {
+    prop: 'estimatedDeliveryTime',
+    label: '预计送达',
+    width: 120,
+    align: 'center',
+    visible: true
+  },
+  {
     prop: 'lastOperation',
     label: '最近操作',
     width: 200,
@@ -1030,6 +1043,18 @@ const formatNumber = (num: number | null | undefined) => {
     return '0'
   }
   return num.toLocaleString()
+}
+
+// 格式化日期（只显示日期部分）
+const formatDate = (dateStr: string | null | undefined) => {
+  if (!dateStr) return '-'
+  try {
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return dateStr
+    return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+  } catch {
+    return dateStr
+  }
 }
 
 // formatDateTime 已从 @/utils/dateFormat 导入
@@ -2096,7 +2121,8 @@ const getExpressCompanyText = getExpressCompanyName
 
 // 获取物流状态类型
 const getLogisticsStatusType = (status: string) => {
-  const statusTypes = {
+  // 🔥 使用统一的物流状态配置
+  const statusTypes: Record<string, string> = {
     'pending': 'info',
     'picked_up': 'warning',
     'in_transit': 'primary',
@@ -2104,24 +2130,27 @@ const getLogisticsStatusType = (status: string) => {
     'delivered': 'success',
     'exception': 'danger',
     'rejected': 'danger',
-    'returned': 'info'
+    'returned': 'info',
+    'unknown': 'info'
   }
   return statusTypes[status] || 'info'
 }
 
 // 获取物流状态文本
 const getLogisticsStatusText = (status: string) => {
-  const statusTexts = {
+  // 🔥 使用统一的物流状态配置
+  const statusTexts: Record<string, string> = {
     'pending': '待揽收',
     'picked_up': '已揽收',
     'in_transit': '运输中',
     'out_for_delivery': '派送中',
     'delivered': '已签收',
-    'exception': '异常',
+    'exception': '派送异常',
     'rejected': '拒收',
-    'returned': '已退回'
+    'returned': '已退回',
+    'unknown': '未知'
   }
-  return statusTexts[status] || status
+  return statusTexts[status] || status || '未知'
 }
 
 // 跟踪物流

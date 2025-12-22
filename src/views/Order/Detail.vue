@@ -1431,6 +1431,11 @@ const refreshLogistics = async (phone?: string) => {
           location: track.location || ''
         })).reverse()  // 🔥 倒序排列
 
+        // 🔥 如果API返回了预计送达时间，更新订单详情
+        if (data.estimatedDeliveryTime && !orderDetail.expectedDeliveryDate) {
+          orderDetail.expectedDeliveryDate = data.estimatedDeliveryTime
+        }
+
         ElMessage.success('物流信息已更新')
       } else {
         // 🔥 如果没有查询到数据，给出友好提示
