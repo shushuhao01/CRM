@@ -1052,10 +1052,23 @@ router.post('/api-configs/:companyCode', async (req: Request, res: Response) => 
     const { appId, appKey, appSecret, customerId, apiUrl, apiEnvironment, extraConfig, enabled } = req.body;
     const currentUser = (req as any).user;
 
+    console.log(`[物流API配置] 保存配置请求: companyCode=${companyCode}`);
+    console.log(`[物流API配置] 请求参数:`, {
+      appId: appId ? `${appId.substring(0, 4)}***` : '(空)',
+      appKey: appKey ? '***' : '(空)',
+      appSecret: appSecret ? '***' : '(空)',
+      customerId: customerId || '(空)',
+      apiUrl: apiUrl || '(空)',
+      apiEnvironment,
+      enabled
+    });
+
     const repository = AppDataSource!.getRepository(LogisticsApiConfig);
     let config = await repository.findOne({
       where: { companyCode: companyCode.toUpperCase() }
     });
+
+    console.log(`[物流API配置] 现有配置: ${config ? `已存在(id=${config.id}, appId=${config.appId || '空'})` : '不存在'}`);
 
     if (!config) {
       // 创建新配置
@@ -1065,29 +1078,53 @@ router.post('/api-configs/:companyCode', async (req: Request, res: Response) => 
         companyName: getCompanyName(companyCode),
         createdBy: currentUser?.userId || currentUser?.id
       });
+      console.log(`[物流API配置] 创建新配置: id=${config.id}`);
     }
 
-    // 更新配置
-    if (appId !== undefined) config.appId = appId;
-    if (appKey !== undefined) config.appKey = appKey;
-    if (appSecret !== undefined) config.appSecret = appSecret;
-    if (customerId !== undefined) config.customerId = customerId;
-    if (apiUrl !== undefined) config.apiUrl = apiUrl;
-    if (apiEnvironment !== undefined) config.apiEnvironment = apiEnvironment;
+    // 🔥 关键：更新配置字段（即使是空字符串也要更新，因为用户可能清空了某个字段）
+    config.appId = appId || config.appId || '';
+    config.appKey = appKey || config.appKey || '';
+    config.appSecret = appSecret || config.appSecret || '';
+    config.customerId = customerId !== undefined ? customerId : (config.customerId || '');
+    config.apiUrl = apiUrl || config.apiUrl || '';
+    config.apiEnvironment = apiEnvironment || config.apiEnvironment || 'sandbox';
     if (extraConfig !== undefined) config.extraConfig = extraConfig;
-    if (enabled !== undefined) config.enabled = enabled ? 1 : 0;
+    // 🔥 关键：enabled 字段需要正确处理布尔值
+    config.enabled = enabled === true || enabled === 1 || enabled === '1' ? 1 : 0;
     config.updatedBy = currentUser?.userId || currentUser?.id;
 
-    await repository.save(config);
+    console.log(`[物流API配置] 准备保存:`, {
+      id: config.id,
+      companyCode: config.companyCode,
+      appId: config.appId ? `${config.appId.substring(0, 4)}***` : '(空)',
+      appSecret: config.appSecret ? '***已设置***' : '(空)',
+      enabled: config.enabled,
+      apiEnvironment: config.apiEnvironment
+    });
 
-    res.json({
+    const savedConfig = await repository.save(config);
+
+    console.log(`[物流API配置] ✅ 保存成功, id=${savedConfig.id}`);
+
+    // 🔥 验证保存结果
+    const verifyConfig = await repository.findOne({
+      where: { companyCode: companyCode.toUpperCase() }
+    });
+    console.log(`[物流API配置] 验证保存结果:`, {
+      id: verifyConfig?.id,
+      appId: verifyConfig?.appId ? `${verifyConfig.appId.substring(0, 4)}***` : '(空)',
+      appSecret: verifyConfig?.appSecret ? '***已设置***' : '(空)',
+      enabled: verifyConfig?.enabled
+    });
+
+    return res.json({
       success: true,
       message: '配置保存成功',
-      data: config
+      data: savedConfig
     });
   } catch (error) {
-    console.error('保存物流API配置失败:', error);
-    res.status(500).json({
+    console.error('[物流API配置] ❌ 保存失败:', error);
+    return res.status(500).json({
       success: false,
       message: '保存配置失败'
     });
