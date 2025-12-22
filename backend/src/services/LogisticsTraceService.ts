@@ -343,8 +343,7 @@ class LogisticsTraceService {
 
     try {
       console.log('[顺丰开放平台API] ========== 解析响应 ==========');
-      console.log('[顺丰开放平台API] apiResultCode:', data.apiResultCode);
-      console.log('[顺丰开放平台API] apiErrorMsg:', data.apiErrorMsg);
+      console.log('[顺丰开放平台API] 完整响应:', JSON.stringify(data, null, 2));
 
       // 检查API响应状态
       if (data.apiResultCode !== 'A1000') {
@@ -354,63 +353,90 @@ class LogisticsTraceService {
       }
 
       // 解析apiResultData (是一个JSON字符串)
-      console.log('[顺丰开放平台API] apiResultData类型:', typeof data.apiResultData);
-      console.log('[顺丰开放平台API] apiResultData:', data.apiResultData);
+      let resultData: any;
+      if (typeof data.apiResultData === 'string') {
+        try {
+          resultData = JSON.parse(data.apiResultData);
+        } catch (e) {
+          console.error('[顺丰开放平台API] 解析apiResultData失败:', e);
+          result.statusText = '解析响应数据失败';
+          return result;
+        }
+      } else {
+        resultData = data.apiResultData;
+      }
 
-      const resultData = typeof data.apiResultData === 'string'
-        ? JSON.parse(data.apiResultData)
-        : data.apiResultData;
-
-      console.log('[顺丰开放平台API] 解析后的resultData:', JSON.stringify(resultData, null, 2));
+      console.log('[顺丰开放平台API] resultData:', JSON.stringify(resultData, null, 2));
 
       if (!resultData.success) {
-        result.statusText = `查询失败: ${resultData.errorMsg || resultData.errorCode}`;
+        result.statusText = `查询失败: ${resultData.errorMsg || resultData.errorCode || '未知错误'}`;
         console.error('[顺丰开放平台API] 业务错误:', result.statusText);
         return result;
       }
 
-      // 解析路由信息
-      // 响应格式: { success: true, msgData: { routeResps: [{ mailNo, routes: [...] }] } }
-      console.log('[顺丰开放平台API] msgData:', JSON.stringify(resultData.msgData, null, 2));
+      // 🔥 解析路由信息 - 支持多种可能的数据结构
+      const msgData = resultData.msgData || resultData;
+      console.log('[顺丰开放平台API] msgData键:', Object.keys(msgData || {}));
 
-      const routeResps = resultData.msgData?.routeResps || [];
+      // 尝试多种可能的路由数据路径
+      let routeResps = msgData?.routeResps || msgData?.routeResp || [];
+      if (!Array.isArray(routeResps)) {
+        routeResps = [routeResps];
+      }
+
       console.log('[顺丰开放平台API] routeResps数量:', routeResps.length);
 
+      if (routeResps.length === 0) {
+        // 🔥 尝试其他可能的数据结构
+        if (msgData?.routes) {
+          routeResps = [{ mailNo: trackingNo, routes: msgData.routes }];
+        } else if (msgData?.routeList) {
+          routeResps = [{ mailNo: trackingNo, routes: msgData.routeList }];
+        }
+      }
+
       // 找到对应运单号的路由
-      const routeResp = routeResps.find((r: any) => r.mailNo === trackingNo) || routeResps[0];
-      console.log('[顺丰开放平台API] 匹配的routeResp:', JSON.stringify(routeResp, null, 2));
+      let routeResp = routeResps.find((r: any) => r.mailNo === trackingNo);
+      if (!routeResp && routeResps.length > 0) {
+        routeResp = routeResps[0];
+      }
 
-      if (routeResp && routeResp.routes && routeResp.routes.length > 0) {
-        result.success = true;
-        result.traces = routeResp.routes.map((r: any) => ({
-          time: r.acceptTime,
-          status: r.opCode,
-          description: r.remark,
-          location: r.acceptAddress
-        }));
+      console.log('[顺丰开放平台API] routeResp:', JSON.stringify(routeResp, null, 2));
 
-        console.log('[顺丰开放平台API] 解析到轨迹数量:', result.traces.length);
-        console.log('[顺丰开放平台API] 第一条轨迹:', result.traces[0]);
+      if (routeResp) {
+        // 🔥 尝试多种可能的路由字段名
+        const routes = routeResp.routes || routeResp.routeList || routeResp.route || [];
+        console.log('[顺丰开放平台API] routes数量:', routes.length);
 
-        // 设置最新状态 (路由按时间倒序，第一条是最新的)
-        if (result.traces.length > 0) {
-          const latestOpcode = result.traces[0].status;
-          const statusInfo = this.mapSFStatus(latestOpcode);
-          result.status = statusInfo.status;
-          result.statusText = statusInfo.text;
-          console.log('[顺丰开放平台API] 最新状态:', result.status, result.statusText);
+        if (routes.length > 0) {
+          result.success = true;
+          result.traces = routes.map((r: any) => ({
+            time: r.acceptTime || r.scanTime || r.time || '',
+            status: r.opCode || r.scanType || r.status || '',
+            description: r.remark || r.desc || r.description || r.acceptAddress || '',
+            location: r.acceptAddress || r.location || r.city || ''
+          }));
+
+          console.log('[顺丰开放平台API] 解析到轨迹数量:', result.traces.length);
+          if (result.traces.length > 0) {
+            console.log('[顺丰开放平台API] 第一条轨迹:', result.traces[0]);
+          }
+
+          // 设置最新状态 (路由按时间倒序，第一条是最新的)
+          if (result.traces.length > 0) {
+            const latestOpcode = result.traces[0].status;
+            const statusInfo = this.mapSFStatus(latestOpcode);
+            result.status = statusInfo.status;
+            result.statusText = statusInfo.text;
+            console.log('[顺丰开放平台API] 最新状态:', result.status, result.statusText);
+          }
+        } else {
+          console.log('[顺丰开放平台API] routes为空');
+          result.statusText = '未查询到物流轨迹（routes为空）';
         }
       } else {
-        console.log('[顺丰开放平台API] 未找到路由数据');
-        console.log('[顺丰开放平台API] routeResp:', routeResp);
-        console.log('[顺丰开放平台API] routes:', routeResp?.routes);
-
-        // 🔥 检查是否有其他格式的数据
-        if (resultData.msgData) {
-          console.log('[顺丰开放平台API] msgData所有键:', Object.keys(resultData.msgData));
-        }
-
-        result.statusText = '未查询到物流轨迹';
+        console.log('[顺丰开放平台API] 未找到routeResp');
+        result.statusText = '未查询到物流轨迹（无routeResp）';
       }
     } catch (error: any) {
       console.error('[顺丰开放平台API] 解析响应失败:', error.message);
