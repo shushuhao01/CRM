@@ -7,6 +7,32 @@
     @close="handleClose"
   >
     <div v-loading="loading" class="trace-container">
+      <!-- 顺丰手机号验证提示 -->
+      <el-alert
+        v-if="needPhoneVerify && !traceResult?.success"
+        title="顺丰运单需要手机号验证"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        <template #default>
+          <div class="phone-verify-form">
+            <span>请输入收件人或寄件人手机号后4位：</span>
+            <el-input
+              v-model="phoneInput"
+              placeholder="手机号后4位"
+              maxlength="4"
+              style="width: 120px; margin: 0 8px"
+              @keyup.enter="handleRetryWithPhone"
+            />
+            <el-button type="primary" size="small" @click="handleRetryWithPhone" :loading="loading">
+              重新查询
+            </el-button>
+          </div>
+        </template>
+      </el-alert>
+
       <!-- 基本信息 -->
       <div class="trace-header" v-if="traceResult">
         <div class="header-info">
@@ -26,7 +52,7 @@
 
       <!-- 错误提示 -->
       <el-alert
-        v-if="errorMessage"
+        v-if="errorMessage && !needPhoneVerify"
         :title="errorMessage"
         type="warning"
         :closable="false"
@@ -65,7 +91,7 @@
 
       <!-- 空状态 -->
       <el-empty
-        v-else-if="!loading && !errorMessage"
+        v-else-if="!loading && !errorMessage && !needPhoneVerify"
         description="暂无物流轨迹信息"
         :image-size="100"
       />
@@ -93,10 +119,12 @@ interface Props {
   visible: boolean
   trackingNo: string
   companyCode?: string
+  phone?: string  // 可选的手机号参数
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  companyCode: ''
+  companyCode: '',
+  phone: ''
 })
 
 const emit = defineEmits<{
@@ -114,10 +142,15 @@ const loading = ref(false)
 const refreshing = ref(false)
 const errorMessage = ref('')
 const traceResult = ref<LogisticsTrackResult | null>(null)
+const phoneInput = ref('')  // 用户输入的手机号后4位
+const needPhoneVerify = ref(false)  // 是否需要手机号验证
 
 // 监听visible变化，自动查询
 watch(() => props.visible, (newVal) => {
   if (newVal && props.trackingNo) {
+    // 重置状态
+    phoneInput.value = ''
+    needPhoneVerify.value = false
     queryTrace()
   }
 })
@@ -125,6 +158,8 @@ watch(() => props.visible, (newVal) => {
 // 监听trackingNo变化
 watch(() => props.trackingNo, (newVal) => {
   if (props.visible && newVal) {
+    phoneInput.value = ''
+    needPhoneVerify.value = false
     queryTrace()
   }
 })
@@ -132,14 +167,17 @@ watch(() => props.trackingNo, (newVal) => {
 /**
  * 查询物流轨迹
  */
-const queryTrace = async () => {
+const queryTrace = async (phone?: string) => {
   if (!props.trackingNo) return
 
   loading.value = true
   errorMessage.value = ''
+  needPhoneVerify.value = false
 
   try {
-    const response = await logisticsApi.queryTrace(props.trackingNo, props.companyCode || undefined)
+    // 使用传入的手机号或props中的手机号
+    const phoneToUse = phone || props.phone || undefined
+    const response = await logisticsApi.queryTrace(props.trackingNo, props.companyCode || undefined, phoneToUse)
 
     console.log('[物流轨迹弹窗] API响应:', response)
 
@@ -149,6 +187,14 @@ const queryTrace = async () => {
       // 🔥 检查业务层面是否成功
       if (!response.data.success) {
         errorMessage.value = response.data.statusText || '查询失败'
+
+        // 🔥 检查是否是顺丰运单且routes为空，提示需要手机号验证
+        if (response.data.companyCode === 'SF' &&
+            (response.data.statusText?.includes('routes为空') ||
+             response.data.statusText?.includes('未查询到物流轨迹') ||
+             response.data.traces.length === 0)) {
+          needPhoneVerify.value = true
+        }
       }
     } else {
       errorMessage.value = response.message || '查询失败'
@@ -159,6 +205,17 @@ const queryTrace = async () => {
   } finally {
     loading.value = false
   }
+}
+
+/**
+ * 使用手机号重新查询
+ */
+const handleRetryWithPhone = () => {
+  if (!phoneInput.value || phoneInput.value.length !== 4) {
+    ElMessage.warning('请输入手机号后4位')
+    return
+  }
+  queryTrace(phoneInput.value)
 }
 
 /**
@@ -301,5 +358,11 @@ const handleClose = () => {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.phone-verify-form {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
 }
 </style>

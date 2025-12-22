@@ -60,9 +60,12 @@ export const STATUS_MAP: Record<string, { status: string; text: string }> = {
 class LogisticsTraceService {
   /**
    * 查询物流轨迹
+   * @param trackingNo 运单号
+   * @param companyCode 快递公司代码（可选，自动识别）
+   * @param phone 收件人/寄件人手机号（可选，用于顺丰等需要验证的快递）
    */
-  async queryTrace(trackingNo: string, companyCode?: string): Promise<LogisticsTrackResult> {
-    console.log(`[物流查询] 开始查询: 单号=${trackingNo}, 公司代码=${companyCode || '自动识别'}`);
+  async queryTrace(trackingNo: string, companyCode?: string, phone?: string): Promise<LogisticsTrackResult> {
+    console.log(`[物流查询] 开始查询: 单号=${trackingNo}, 公司代码=${companyCode || '自动识别'}, 手机号=${phone ? phone.slice(-4) + '****' : '未提供'}`);
 
     // 如果没有指定快递公司，尝试自动识别
     if (!companyCode || companyCode === 'auto') {
@@ -133,7 +136,7 @@ class LogisticsTraceService {
       console.log(`[物流查询] 调用${companyCode}的API...`);
       switch (companyCode) {
         case 'SF':
-          return await this.querySFTrace(trackingNo, config);
+          return await this.querySFTrace(trackingNo, config, phone);
         case 'ZTO':
           return await this.queryZTOTrace(trackingNo, config);
         case 'YTO':
@@ -245,7 +248,7 @@ class LogisticsTraceService {
   // ========== 顺丰速运 ==========
   // 顺丰开放平台API文档: https://open.sf-express.com
   // 使用JSON格式请求，服务代码: EXP_RECE_SEARCH_ROUTES
-  private async querySFTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
+  private async querySFTrace(trackingNo: string, config: LogisticsApiConfig, phone?: string): Promise<LogisticsTrackResult> {
     // 顺丰开放平台参数映射:
     // config.appId -> partnerID (顾客编码)
     // config.appSecret -> checkword (校验码)
@@ -273,11 +276,19 @@ class LogisticsTraceService {
     const serviceCode = 'EXP_RECE_SEARCH_ROUTES';
 
     // 请求数据 (JSON格式)
-    const msgData = JSON.stringify({
+    // 🔥 重要：如果不是自己发出的运单，需要提供手机号后四位
+    const msgDataObj: any = {
       trackingType: '1',
       trackingNumber: [trackingNo],
       methodType: '1'
-    });
+    };
+
+    // 如果提供了手机号，添加到请求中（用于验证非自己发出的运单）
+    if (phone) {
+      msgDataObj.checkPhoneNo = phone.slice(-4); // 取手机号后四位
+    }
+
+    const msgData = JSON.stringify(msgDataObj);
 
     // 🔥 关键：先对msgData进行URL编码，然后用编码后的值计算签名
     const encodedMsgData = encodeURIComponent(msgData);
@@ -367,16 +378,34 @@ class LogisticsTraceService {
       }
 
       console.log('[顺丰开放平台API] resultData:', JSON.stringify(resultData, null, 2));
+      console.log('[顺丰开放平台API] resultData所有键:', Object.keys(resultData || {}));
 
       if (!resultData.success) {
-        result.statusText = `查询失败: ${resultData.errorMsg || resultData.errorCode || '未知错误'}`;
-        console.error('[顺丰开放平台API] 业务错误:', result.statusText);
+        const errorCode = resultData.errorCode || '';
+        const errorMsg = resultData.errorMsg || '';
+
+        // 🔥 针对常见错误码提供更友好的提示
+        let friendlyMsg = '';
+        switch (errorCode) {
+          case 'S0002':
+            friendlyMsg = '运单号不存在或已过期。请检查：1.单号是否正确 2.是否为顺丰运单 3.运单是否在有效期内';
+            break;
+          case 'S0001':
+            friendlyMsg = '无权限查询此运单，请联系顺丰客服';
+            break;
+          default:
+            friendlyMsg = `${errorMsg || errorCode || '未知错误'}`;
+        }
+
+        result.statusText = friendlyMsg;
+        console.error('[顺丰开放平台API] 业务错误:', { errorCode, errorMsg, friendlyMsg });
         return result;
       }
 
       // 🔥 解析路由信息 - 支持多种可能的数据结构
       const msgData = resultData.msgData || resultData;
       console.log('[顺丰开放平台API] msgData键:', Object.keys(msgData || {}));
+      console.log('[顺丰开放平台API] msgData完整内容:', JSON.stringify(msgData, null, 2));
 
       // 尝试多种可能的路由数据路径
       let routeResps = msgData?.routeResps || msgData?.routeResp || [];
