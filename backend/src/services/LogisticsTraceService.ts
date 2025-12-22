@@ -193,9 +193,25 @@ class LogisticsTraceService {
   private async getApiConfig(companyCode: string): Promise<LogisticsApiConfig | null> {
     try {
       const repository = AppDataSource!.getRepository(LogisticsApiConfig);
-      return await repository.findOne({
+      const config = await repository.findOne({
         where: { companyCode: companyCode.toUpperCase() }
       });
+
+      // 🔥 详细日志：输出配置内容
+      if (config) {
+        console.log(`[物流查询] 找到API配置:`, {
+          companyCode: config.companyCode,
+          companyName: config.companyName,
+          appId: config.appId ? `${config.appId.substring(0, 4)}***` : '(空)',
+          appSecret: config.appSecret ? '***已设置***' : '(空)',
+          enabled: config.enabled,
+          apiEnvironment: config.apiEnvironment
+        });
+      } else {
+        console.log(`[物流查询] 未找到API配置: companyCode=${companyCode}`);
+      }
+
+      return config;
     } catch (error) {
       console.error('[物流查询] 获取API配置失败:', error);
       return null;
