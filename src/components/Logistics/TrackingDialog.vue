@@ -113,6 +113,7 @@ interface Props {
   modelValue: boolean
   trackingNo: string
   logisticsCompany?: string
+  phone?: string  // 🔥 新增：订单中的手机号，用于自动验证
 }
 
 interface Emits {
@@ -126,7 +127,10 @@ interface TrackingInfo {
   operator?: string
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  logisticsCompany: '',
+  phone: ''
+})
 const emit = defineEmits<Emits>()
 
 // 响应式数据
@@ -213,11 +217,15 @@ const fetchTrackingInfo = async (phone?: string) => {
   needPhoneVerify.value = false
 
   try {
+    // 🔥 自动使用props中的手机号（如果没有手动传入）
+    const phoneToUse = phone || props.phone || ''
+    console.log('[物流轨迹弹窗] 查询物流，使用手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未提供')
+
     // 🔥 直接调用物流API，支持手机号验证
     const response = await logisticsApi.queryTrace(
       props.trackingNo,
       props.logisticsCompany,
-      phone
+      phoneToUse
     )
 
     console.log('[物流轨迹弹窗] API响应:', response)
@@ -225,9 +233,9 @@ const fetchTrackingInfo = async (phone?: string) => {
     if (response && response.success && response.data) {
       const data = response.data
 
-      // 🔥 检查是否需要手机号验证
+      // 🔥 检查是否需要手机号验证（即使带了手机号也可能验证失败）
       if (data.status === 'need_phone_verify' ||
-          (!data.success && data.statusText === '需要手机号验证')) {
+          (!data.success && (data.statusText === '需要手机号验证' || data.statusText?.includes('routes为空')))) {
         needPhoneVerify.value = true
         trackingList.value = []
         return
