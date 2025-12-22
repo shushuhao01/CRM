@@ -404,16 +404,31 @@ const handleSearch = async (phone?: string) => {
     // 🔥 如果没有传入手机号，尝试从订单中获取
     let phoneToUse = phone
     if (!phoneToUse) {
-      // 尝试从本地订单数据获取手机号
+      // 先尝试从本地订单数据获取手机号
       const accessibleOrders = applyDataScopeControl(orderStore.orders)
-      const order = accessibleOrders.find(o =>
+      let order = accessibleOrders.find(o =>
         o.expressNo === trackingNum ||
         o.trackingNumber === trackingNum ||
         o.expressNumber === trackingNum
       )
+
+      // 🔥 如果本地没有找到，尝试从API获取订单信息
+      if (!order) {
+        try {
+          const { orderApi } = await import('@/api/order')
+          const response = await orderApi.getOrderByTrackingNo(trackingNum)
+          if (response?.success && response.data) {
+            order = response.data
+            console.log('[物流跟踪] 从API获取订单信息成功')
+          }
+        } catch (e) {
+          console.log('[物流跟踪] 从API获取订单信息失败:', e)
+        }
+      }
+
       if (order) {
         phoneToUse = order.receiverPhone || order.phone || order.customerPhone || ''
-        console.log('[物流跟踪] 从订单获取手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未找到')
+        console.log('[物流跟踪] 获取到手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未找到')
       }
     }
 
@@ -460,16 +475,30 @@ const handleSearch = async (phone?: string) => {
           estimatedTime: data.estimatedDeliveryTime || ''
         })
 
-        // 使用API返回的轨迹数据（🔥 倒序显示，最新的在最上面）
+        // 使用API返回的轨迹数据
         if (data.traces && Array.isArray(data.traces)) {
-          trackingHistory.value = data.traces.map((trace: any) => ({
+          // 🔥 去重：根据时间和描述去重
+          const seen = new Set<string>()
+          const uniqueTraces = data.traces.filter((trace: any) => {
+            const key = `${trace.time}-${trace.description}`
+            if (seen.has(key)) return false
+            seen.add(key)
+            return true
+          })
+
+          // 🔥 按时间倒序排列（最新的在最上面）
+          trackingHistory.value = uniqueTraces.map((trace: any) => ({
             time: trace.time,
             status: trace.status,
             description: trace.description,
             location: trace.location || '',
             operator: trace.operator || '',
             type: getTraceType(trace.status)
-          })).reverse()  // 🔥 倒序排列
+          })).sort((a: any, b: any) => {
+            const timeA = new Date(a.time).getTime()
+            const timeB = new Date(b.time).getTime()
+            return timeB - timeA
+          })
         } else {
           trackingHistory.value = []
         }

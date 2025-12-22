@@ -1422,14 +1422,30 @@ const refreshLogistics = async (phone?: string) => {
       }
 
       if (data.success && data.traces && data.traces.length > 0) {
-        // 转换并显示物流轨迹数据（🔥 倒序显示，最新的在最上面）
-        logisticsInfo.value = data.traces.map((track: any) => ({
+        // 🔥 去重：根据时间和描述去重
+        const seen = new Set<string>()
+        const uniqueTraces = data.traces.filter((track: any) => {
+          const key = `${track.time}-${track.description}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+
+        // 转换并显示物流轨迹数据
+        const mappedTraces = uniqueTraces.map((track: any) => ({
           time: track.time,
           status: track.status,
           statusText: track.description || track.status,
           description: track.description || track.status || '状态更新',
           location: track.location || ''
-        })).reverse()  // 🔥 倒序排列
+        }))
+
+        // 🔥 按时间倒序排列（最新的在最上面）
+        logisticsInfo.value = mappedTraces.sort((a: any, b: any) => {
+          const timeA = new Date(a.time).getTime()
+          const timeB = new Date(b.time).getTime()
+          return timeB - timeA
+        })
 
         // 🔥 如果API返回了预计送达时间，更新订单详情
         if (data.estimatedDeliveryTime && !orderDetail.expectedDeliveryDate) {

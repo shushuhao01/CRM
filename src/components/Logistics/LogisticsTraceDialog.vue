@@ -60,11 +60,11 @@
         style="margin-bottom: 16px"
       />
 
-      <!-- 物流轨迹时间线（🔥 倒序显示，最新的在最上面） -->
+      <!-- 物流轨迹时间线（🔥 确保最新的在最上面） -->
       <div class="trace-timeline" v-if="traceResult && traceResult.traces.length > 0">
         <el-timeline>
           <el-timeline-item
-            v-for="(trace, index) in [...traceResult.traces].reverse()"
+            v-for="(trace, index) in sortedTraces"
             :key="index"
             :timestamp="trace.time"
             :type="index === 0 ? 'primary' : 'info'"
@@ -144,6 +144,30 @@ const errorMessage = ref('')
 const traceResult = ref<LogisticsTrackResult | null>(null)
 const phoneInput = ref('')  // 用户输入的手机号后4位
 const needPhoneVerify = ref(false)  // 是否需要手机号验证
+
+/**
+ * 🔥 计算属性：按时间倒序排列的轨迹（最新的在最上面）
+ * 同时去重，避免重复显示
+ */
+const sortedTraces = computed(() => {
+  if (!traceResult.value?.traces?.length) return []
+
+  // 去重：根据时间和描述去重
+  const seen = new Set<string>()
+  const uniqueTraces = traceResult.value.traces.filter(trace => {
+    const key = `${trace.time}-${trace.description}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  // 按时间排序（倒序，最新的在前面）
+  return [...uniqueTraces].sort((a, b) => {
+    const timeA = new Date(a.time).getTime()
+    const timeB = new Date(b.time).getTime()
+    return timeB - timeA  // 倒序
+  })
+})
 
 // 监听visible变化，自动查询
 watch(() => props.visible, (newVal) => {

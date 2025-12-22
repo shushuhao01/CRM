@@ -171,4 +171,8 @@ export const orderApi = {
       todayCount: number;
       urgentCount: number;
     }>('/orders/audit-statistics'),
+
+  // 🔥 新增：根据物流单号获取订单信息
+  getOrderByTrackingNo: (trackingNo: string) =>
+    api.get<Order>('/orders/by-tracking-no', { trackingNo }),
 }
