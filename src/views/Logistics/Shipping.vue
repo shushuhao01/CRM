@@ -353,6 +353,23 @@
         <span v-else class="no-data">-</span>
       </template>
 
+      <!-- 物流最新动态列 -->
+      <template #latestLogistics="{ row }">
+        <el-tooltip
+          :content="row.latestLogistics"
+          placement="top"
+          :disabled="!row.latestLogistics || row.latestLogistics === '获取中...' || row.latestLogistics === '暂无物流信息'"
+        >
+          <span
+            v-if="row.latestLogistics"
+            class="logistics-latest"
+          >
+            {{ row.latestLogistics }}
+          </span>
+        </el-tooltip>
+        <span v-if="!row.latestLogistics" class="no-data">-</span>
+      </template>
+
       <!-- 操作记录列 -->
       <template #lastOperation="{ row }">
         <div v-if="row.lastOperation" class="operation-info">
@@ -1004,6 +1021,13 @@ const baseTableColumns = [
     visible: true
   },
   {
+    prop: 'latestLogistics',
+    label: '物流最新动态',
+    width: 200,
+    showOverflowTooltip: true,
+    visible: true
+  },
+  {
     prop: 'lastOperation',
     label: '最近操作',
     width: 200,
@@ -1474,6 +1498,8 @@ const loadOrderList = async () => {
         logisticsStatus: order.logisticsStatus || null,
         // 🔥 预计送达时间
         estimatedDeliveryTime: order.estimatedDeliveryTime || order.expectedDeliveryDate || null,
+        // 🔥 物流最新动态（初始值，后续异步更新）
+        latestLogistics: '获取中...',
         // 🔥 订单来源 - 从订单获取
         orderSource: order.orderSource || null,
         // 🔥 自定义字段 - 确保正确传递
@@ -1529,6 +1555,68 @@ const syncLogisticsData = async () => {
     // loadOrderList() 会在后台自动调用，这里不需要重复加载
   } catch (_error) {
     console.error('同步物流数据失败:', _error)
+  }
+
+  // 🔥 获取物流最新动态
+  await fetchLatestLogisticsForShipping()
+}
+
+/**
+ * 🔥 获取物流最新动态（物流列表页面专用）
+ */
+const fetchLatestLogisticsForShipping = async () => {
+  const { logisticsApi } = await import('@/api/logistics')
+
+  // 只处理已发货且有物流单号的订单
+  const ordersWithTracking = allFilteredOrders.value.filter(order =>
+    order.expressNo && order.expressCompany && order.status !== 'pending'
+  )
+
+  if (ordersWithTracking.length === 0) {
+    // 没有物流信息的订单，设置默认值
+    allFilteredOrders.value.forEach(order => {
+      if (!order.expressNo || !order.expressCompany) {
+        order.latestLogistics = order.status === 'pending' ? '待发货' : '暂无物流信息'
+      }
+    })
+    return
+  }
+
+  // 并发获取物流信息，限制并发数量避免API限制
+  const batchSize = 3
+  for (let i = 0; i < ordersWithTracking.length; i += batchSize) {
+    const batch = ordersWithTracking.slice(i, i + batchSize)
+    await Promise.all(batch.map(async (order) => {
+      try {
+        // 获取物流轨迹
+        const response = await logisticsApi.queryTrace(
+          order.expressNo,
+          order.expressCompany,
+          order.phone || order.customerPhone || ''
+        )
+
+        if (response?.success && response.data?.success && response.data.traces?.length > 0) {
+          const traces = response.data.traces
+          // 获取最新动态（第一条，因为已经是倒序）
+          const latestTrace = traces[0]
+          order.latestLogistics = latestTrace.description || latestTrace.status || '暂无描述'
+        } else if (response?.success && response.data?.traces?.length > 0) {
+          const traces = response.data.traces
+          const latestTrace = traces[0]
+          order.latestLogistics = latestTrace.description || latestTrace.status || '暂无描述'
+        } else {
+          order.latestLogistics = '暂无物流信息'
+        }
+      } catch (error) {
+        console.error(`获取订单 ${order.orderNo} 物流信息失败:`, error)
+        order.latestLogistics = '获取失败'
+      }
+    }))
+
+    // 每批次之间稍微延迟，避免API限制
+    if (i + batchSize < ordersWithTracking.length) {
+      await new Promise(resolve => setTimeout(resolve, 300))
+    }
   }
 }
 
@@ -2886,5 +2974,23 @@ onUnmounted(() => {
     margin: 0 12px 12px 12px;
     padding: 16px;
   }
+}
+
+/* 🔥 物流最新动态样式 */
+.logistics-latest {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: default;
+}
+
+.no-data {
+  color: #c0c4cc;
+  font-style: italic;
 }
 </style>
