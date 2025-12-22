@@ -500,15 +500,12 @@
               v-for="(item, index) in logisticsInfo"
               :key="index"
               :timestamp="item.time"
-              :type="getLogisticsType(item.statusText)"
+              :type="index === 0 ? 'primary' : 'info'"
+              :size="index === 0 ? 'large' : 'normal'"
               placement="top"
             >
-              <div class="logistics-content">
-                <div class="logistics-status">
-                  <el-tag :type="getLogisticsType(item.statusText)">
-                    {{ item.statusText || item.status }}
-                  </el-tag>
-                </div>
+              <div class="logistics-content" :class="{ 'logistics-content-first': index === 0 }">
+                <div class="logistics-status-text">{{ item.statusText || item.status }}</div>
                 <div class="logistics-description">{{ item.description }}</div>
                 <div class="logistics-location" v-if="item.location">
                   <el-icon><Location /></el-icon>
@@ -594,73 +591,6 @@
                 </div>
               </el-timeline-item>
             </el-timeline>
-          </div>
-        </el-collapse-transition>
-      </el-card>
-    </div>
-
-    <!-- 物流轨迹 -->
-    <div v-if="showLogisticsTrack" class="row-layout full-width">
-      <el-card class="logistics-track-card">
-        <template #header>
-          <div class="card-header">
-            <el-icon><Van /></el-icon>
-            <span>物流轨迹</span>
-            <div class="logistics-header-info">
-              <el-tag v-if="orderDetail.expressCompany" type="info" size="small">
-                {{ orderDetail.expressCompany }}
-              </el-tag>
-              <span v-if="orderDetail.trackingNumber" class="tracking-number">
-                {{ orderDetail.trackingNumber }}
-              </span>
-            </div>
-            <el-button
-              size="small"
-              type="text"
-              @click="logisticsCollapsed = !logisticsCollapsed"
-              :icon="logisticsCollapsed ? ArrowDown : ArrowUp"
-            >
-              {{ logisticsCollapsed ? '展开' : '收起' }}
-            </el-button>
-          </div>
-        </template>
-
-        <el-collapse-transition>
-          <div v-show="!logisticsCollapsed">
-            <div v-if="logisticsLoading" class="logistics-loading">
-              <el-skeleton :rows="3" animated />
-            </div>
-            <el-timeline v-else-if="logisticsInfo.length > 0">
-              <el-timeline-item
-                v-for="(item, index) in logisticsInfo"
-                :key="index"
-                :timestamp="item.time"
-                :type="getLogisticsType(item.status)"
-                :icon="getLogisticsIcon(item.status)"
-              >
-                <div class="logistics-content">
-                  <div class="logistics-status">{{ item.statusText }}</div>
-                  <div class="logistics-description">{{ item.description }}</div>
-                  <div v-if="item.location" class="logistics-location">
-                    <el-icon><Location /></el-icon>
-                    {{ item.location }}
-                  </div>
-                </div>
-              </el-timeline-item>
-            </el-timeline>
-            <el-empty v-else description="暂无物流信息" />
-
-            <!-- 刷新按钮 -->
-            <div class="logistics-actions">
-              <el-button
-                size="small"
-                type="primary"
-                :loading="logisticsLoading"
-                @click="refreshLogistics"
-              >
-                刷新物流信息
-              </el-button>
-            </div>
           </div>
         </el-collapse-transition>
       </el-card>
@@ -820,7 +750,6 @@ const afterSalesHistory = ref([])
 const operationLogCollapsed = ref(true)
 const statusTimelineCollapsed = ref(true)
 const afterSalesCollapsed = ref(true)
-const logisticsCollapsed = ref(false) // 物流轨迹默认展开
 
 // 物流轨迹相关
 const logisticsLoading = ref(false)
@@ -1129,13 +1058,6 @@ const isInAuditProcess = computed(() => {
 // 图片查看器
 const showImageViewer = ref(false)
 const currentImageIndex = ref(0)
-
-// 是否显示物流轨迹
-const showLogisticsTrack = computed(() => {
-  // 只有已发货及之后的状态才显示物流轨迹
-  const allowedStatuses = ['shipped', 'delivered', 'completed', 'package_exception', 'rejected', 'rejected_returned']
-  return allowedStatuses.includes(orderDetail.status) && orderDetail.trackingNumber
-})
 
 // 🔥 判断是否已发货且有物流单号（用于显示物流信息）
 const hasShippedWithTracking = computed(() => {
@@ -1500,14 +1422,14 @@ const refreshLogistics = async (phone?: string) => {
       }
 
       if (data.success && data.traces && data.traces.length > 0) {
-        // 转换并显示物流轨迹数据
+        // 转换并显示物流轨迹数据（🔥 倒序显示，最新的在最上面）
         logisticsInfo.value = data.traces.map((track: any) => ({
           time: track.time,
           status: track.status,
           statusText: track.description || track.status,
           description: track.description || track.status || '状态更新',
           location: track.location || ''
-        }))
+        })).reverse()  // 🔥 倒序排列
 
         ElMessage.success('物流信息已更新')
       } else {
@@ -3250,20 +3172,48 @@ onUnmounted(() => {
   text-align: center;
 }
 
-/* 物流轨迹 */
+/* 🔥 优化物流轨迹样式，类似顺丰官网 */
 .logistics-content {
-  padding: 4px 0;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 3px solid #dcdfe6;
+  transition: all 0.3s ease;
 }
 
-.logistics-status {
+.logistics-content:hover {
+  background: #f0f2f5;
+}
+
+.logistics-content-first {
+  background: linear-gradient(135deg, #ecf5ff 0%, #f0f9eb 100%);
+  border-left-color: #409eff;
+}
+
+.logistics-status-text {
   font-weight: 600;
   color: #303133;
-  margin-bottom: 4px;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.logistics-content-first .logistics-status-text {
+  color: #409eff;
+}
+
+.logistics-description {
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-bottom: 8px;
 }
 
 .logistics-location {
-  color: #606266;
-  font-size: 14px;
+  color: #909399;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .tracking-number {

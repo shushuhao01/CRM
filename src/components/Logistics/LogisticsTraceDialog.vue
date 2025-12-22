@@ -60,18 +60,18 @@
         style="margin-bottom: 16px"
       />
 
-      <!-- 物流轨迹时间线 -->
+      <!-- 物流轨迹时间线（🔥 倒序显示，最新的在最上面） -->
       <div class="trace-timeline" v-if="traceResult && traceResult.traces.length > 0">
         <el-timeline>
           <el-timeline-item
-            v-for="(trace, index) in traceResult.traces"
+            v-for="(trace, index) in [...traceResult.traces].reverse()"
             :key="index"
             :timestamp="trace.time"
             :type="index === 0 ? 'primary' : 'info'"
             :size="index === 0 ? 'large' : 'normal'"
             placement="top"
           >
-            <div class="trace-item">
+            <div class="trace-item" :class="{ 'trace-item-first': index === 0 }">
               <div class="trace-status">{{ trace.status }}</div>
               <div class="trace-desc">{{ trace.description }}</div>
               <div class="trace-meta" v-if="trace.location || trace.operator">
@@ -328,20 +328,37 @@ const handleClose = () => {
 }
 
 .trace-item {
-  padding-left: 10px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 3px solid #dcdfe6;
+  transition: all 0.3s ease;
+}
+
+.trace-item:hover {
+  background: #f0f2f5;
+}
+
+.trace-item-first {
+  background: linear-gradient(135deg, #ecf5ff 0%, #f0f9eb 100%);
+  border-left-color: #409eff;
 }
 
 .trace-status {
   font-weight: 600;
   color: #303133;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+}
+
+.trace-item-first .trace-status {
+  color: #409eff;
 }
 
 .trace-desc {
   color: #606266;
   font-size: 14px;
-  line-height: 1.5;
-  margin-bottom: 6px;
+  line-height: 1.6;
+  margin-bottom: 8px;
 }
 
 .trace-meta {

@@ -109,12 +109,13 @@
             v-for="(item, index) in trackingHistory"
             :key="index"
             :timestamp="item.time"
-            :type="item.type"
-            :icon="getTimelineIcon(item.status)"
+            :type="index === 0 ? 'primary' : 'info'"
+            :size="index === 0 ? 'large' : 'normal'"
+            placement="top"
           >
-            <div class="timeline-content">
-              <h5>{{ item.status }}</h5>
-              <p>{{ item.description }}</p>
+            <div class="timeline-content" :class="{ 'timeline-content-first': index === 0 }">
+              <div class="timeline-status">{{ item.status }}</div>
+              <div class="timeline-desc">{{ item.description }}</div>
               <div class="timeline-meta">
                 <div class="timeline-location" v-if="item.location">
                   <el-icon><Location /></el-icon>
@@ -400,11 +401,27 @@ const handleSearch = async (phone?: string) => {
     const trackingNum = searchForm.trackingNo.trim()
     const companyCode = searchForm.company || ''
 
+    // 🔥 如果没有传入手机号，尝试从订单中获取
+    let phoneToUse = phone
+    if (!phoneToUse) {
+      // 尝试从本地订单数据获取手机号
+      const accessibleOrders = applyDataScopeControl(orderStore.orders)
+      const order = accessibleOrders.find(o =>
+        o.expressNo === trackingNum ||
+        o.trackingNumber === trackingNum ||
+        o.expressNumber === trackingNum
+      )
+      if (order) {
+        phoneToUse = order.receiverPhone || order.phone || order.customerPhone || ''
+        console.log('[物流跟踪] 从订单获取手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未找到')
+      }
+    }
+
     // 🔥 调用物流轨迹查询API（调用真实快递API）
     try {
       const { logisticsApi } = await import('@/api/logistics')
       // 如果没有选择公司，传undefined让后端自动识别
-      const response = await logisticsApi.queryTrace(trackingNum, companyCode || undefined, phone)
+      const response = await logisticsApi.queryTrace(trackingNum, companyCode || undefined, phoneToUse)
 
       console.log('[物流跟踪] API响应:', response)
 
@@ -417,7 +434,6 @@ const handleSearch = async (phone?: string) => {
           // 保存待验证的信息
           pendingTrackingNo.value = trackingNum
           pendingCompanyCode.value = companyCode
-          phoneInput.value = ''
           phoneVerifyDialogVisible.value = true
           loading.value = false
           return
@@ -443,7 +459,7 @@ const handleSearch = async (phone?: string) => {
           estimatedTime: data.estimatedDeliveryTime || ''
         })
 
-        // 使用API返回的轨迹数据
+        // 使用API返回的轨迹数据（🔥 倒序显示，最新的在最上面）
         if (data.traces && Array.isArray(data.traces)) {
           trackingHistory.value = data.traces.map((trace: any) => ({
             time: trace.time,
@@ -452,7 +468,7 @@ const handleSearch = async (phone?: string) => {
             location: trace.location || '',
             operator: trace.operator || '',
             type: getTraceType(trace.status)
-          }))
+          })).reverse()  // 🔥 倒序排列
         } else {
           trackingHistory.value = []
         }
@@ -809,18 +825,44 @@ onBeforeUnmount(() => {
 .tracking-timeline h4 {
   margin: 0 0 20px 0;
   color: #303133;
+  font-size: 16px;
+  font-weight: 600;
 }
 
-.timeline-content h5 {
-  margin: 0 0 8px 0;
+/* 🔥 优化物流轨迹样式，类似顺丰官网 */
+.timeline-content {
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 3px solid #dcdfe6;
+  transition: all 0.3s ease;
+}
+
+.timeline-content:hover {
+  background: #f0f2f5;
+}
+
+.timeline-content-first {
+  background: linear-gradient(135deg, #ecf5ff 0%, #f0f9eb 100%);
+  border-left-color: #409eff;
+}
+
+.timeline-status {
+  font-weight: 600;
   color: #303133;
   font-size: 14px;
+  margin-bottom: 6px;
 }
 
-.timeline-content p {
-  margin: 0 0 8px 0;
+.timeline-content-first .timeline-status {
+  color: #409eff;
+}
+
+.timeline-desc {
   color: #606266;
   font-size: 13px;
+  line-height: 1.6;
+  margin-bottom: 8px;
 }
 
 .timeline-meta {
