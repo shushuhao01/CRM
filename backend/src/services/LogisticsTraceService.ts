@@ -190,26 +190,57 @@ class LogisticsTraceService {
           };
       }
 
-      // 🔥 如果官方API查询失败或没有轨迹，尝试使用快递100
+      // 🔥 如果官方API查询失败或没有轨迹
       if (!result.success || result.traces.length === 0) {
-        console.log(`[物流查询] 官方API查询失败或无轨迹，尝试快递100...`);
-        const fallbackResult = await this.queryByKuaidi100(trackingNo, companyCode);
-        if (fallbackResult.success && fallbackResult.traces.length > 0) {
-          console.log(`[物流查询] 快递100查询成功，返回${fallbackResult.traces.length}条轨迹`);
-          return fallbackResult;
+        // 检查快递100是否配置
+        const expressService = ExpressAPIService.getInstance();
+        const configStatus = expressService.getConfigStatus();
+
+        if (configStatus.kuaidi100) {
+          // 快递100已配置，尝试使用快递100查询
+          console.log(`[物流查询] 官方API查询失败或无轨迹，尝试快递100...`);
+          const fallbackResult = await this.queryByKuaidi100(trackingNo, companyCode);
+          if (fallbackResult.success && fallbackResult.traces.length > 0) {
+            console.log(`[物流查询] 快递100查询成功，返回${fallbackResult.traces.length}条轨迹`);
+            return fallbackResult;
+          }
+          console.log(`[物流查询] 快递100也查询失败，返回原始结果`);
+        } else {
+          // 快递100未配置，对于顺丰等需要验证的快递，提示需要手机号
+          if (companyCode === 'SF' && !phone) {
+            console.log(`[物流查询] 快递100未配置，顺丰需要手机号验证`);
+            result.statusText = '需要手机号验证';
+            result.status = 'need_phone_verify';
+          }
         }
-        console.log(`[物流查询] 快递100也查询失败，返回原始结果`);
       }
 
       return result;
     } catch (error: any) {
       console.error(`[物流查询] ${companyCode} 查询失败:`, error.message);
 
-      // 🔥 官方API异常时，尝试快递100
-      console.log(`[物流查询] 官方API异常，尝试快递100...`);
-      const fallbackResult = await this.queryByKuaidi100(trackingNo, companyCode);
-      if (fallbackResult.success) {
-        return fallbackResult;
+      // 检查快递100是否配置
+      const expressService = ExpressAPIService.getInstance();
+      const configStatus = expressService.getConfigStatus();
+
+      if (configStatus.kuaidi100) {
+        // 🔥 官方API异常时，尝试快递100
+        console.log(`[物流查询] 官方API异常，尝试快递100...`);
+        const fallbackResult = await this.queryByKuaidi100(trackingNo, companyCode);
+        if (fallbackResult.success) {
+          return fallbackResult;
+        }
+      } else if (companyCode === 'SF' && !phone) {
+        // 快递100未配置，顺丰需要手机号验证
+        return {
+          success: false,
+          trackingNo,
+          companyCode,
+          companyName: COMPANY_NAMES[companyCode] || companyCode,
+          status: 'need_phone_verify',
+          statusText: '需要手机号验证',
+          traces: []
+        };
       }
 
       return {
