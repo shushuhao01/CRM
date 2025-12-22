@@ -1448,7 +1448,7 @@ const refreshLogistics = async (phone?: string) => {
         })
 
         // 🔥 如果API返回了预计送达时间，更新订单详情
-        if (data.estimatedDeliveryTime && !orderDetail.expectedDeliveryDate) {
+        if (data.estimatedDeliveryTime) {
           orderDetail.expectedDeliveryDate = data.estimatedDeliveryTime
         }
 
