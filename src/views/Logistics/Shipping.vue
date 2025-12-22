@@ -213,6 +213,8 @@
       :show-selection="true"
       :show-index="true"
       :show-pagination="true"
+      :show-actions="true"
+      :actions-width="280"
       :total="total"
       :page-sizes="[20, 50, 100, 200]"
       @selection-change="handleSelectionChange"
@@ -311,7 +313,7 @@
       </template>
 
       <!-- 物流公司列 -->
-      <template #expressCompany="{ row }">
+      <template #column-expressCompany="{ row }">
         <el-tag v-if="row.expressCompany" type="info">
           {{ getExpressCompanyName(row.expressCompany) }}
         </el-tag>
@@ -319,7 +321,7 @@
       </template>
 
       <!-- 物流单号列 -->
-      <template #expressNo="{ row }">
+      <template #column-expressNo="{ row }">
         <div v-if="row.expressNo" class="express-no">
           <el-link type="primary" @click="trackLogistics(row)">
             {{ row.expressNo }}
@@ -337,7 +339,7 @@
       </template>
 
       <!-- 物流状态列 -->
-      <template #logisticsStatus="{ row }">
+      <template #column-logisticsStatus="{ row }">
         <el-tag
           v-if="row.logisticsStatus"
           :type="getLogisticsStatusType(row.logisticsStatus)"
@@ -348,13 +350,13 @@
       </template>
 
       <!-- 预计送达列 -->
-      <template #estimatedDeliveryTime="{ row }">
+      <template #column-estimatedDeliveryTime="{ row }">
         <span v-if="row.estimatedDeliveryTime">{{ formatDate(row.estimatedDeliveryTime) }}</span>
         <span v-else class="no-data">-</span>
       </template>
 
       <!-- 物流最新动态列 -->
-      <template #latestLogistics="{ row }">
+      <template #column-latestLogistics="{ row }">
         <el-tooltip
           :content="row.latestLogistics"
           placement="top"
@@ -371,7 +373,7 @@
       </template>
 
       <!-- 操作记录列 -->
-      <template #lastOperation="{ row }">
+      <template #column-lastOperation="{ row }">
         <div v-if="row.lastOperation" class="operation-info">
           <div class="operation-action">{{ row.lastOperation.action }}</div>
           <div class="operation-meta">
