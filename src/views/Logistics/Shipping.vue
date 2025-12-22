@@ -669,6 +669,23 @@
                 </el-tag>
               </template>
             </el-table-column>
+            <el-table-column prop="estimatedDeliveryTime" label="预计送达" width="110" align="center">
+              <template #default="{ row }">
+                <span v-if="row.estimatedDeliveryTime">{{ formatDate(row.estimatedDeliveryTime) }}</span>
+                <span v-else class="no-data">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="latestLogistics" label="物流最新动态" width="200" align="left" show-overflow-tooltip>
+              <template #default="{ row }">
+                <el-tooltip
+                  :content="row.latestLogistics"
+                  placement="top"
+                  :disabled="!row.latestLogistics || row.latestLogistics === '获取中...' || row.latestLogistics === '暂无物流信息' || row.latestLogistics === '待发货'"
+                >
+                  <span class="logistics-latest">{{ row.latestLogistics || '-' }}</span>
+                </el-tooltip>
+              </template>
+            </el-table-column>
             <el-table-column prop="remark" label="备注" width="140" align="left" show-overflow-tooltip />
             <el-table-column label="操作" width="200" align="center" fixed="right">
               <template #default="{ row }">
@@ -1597,12 +1614,32 @@ const fetchLatestLogisticsForShipping = async () => {
 
         if (response?.success && response.data?.success && response.data.traces?.length > 0) {
           const traces = response.data.traces
-          // 获取最新动态（第一条，因为已经是倒序）
-          const latestTrace = traces[0]
+          // 🔥 按时间排序，获取最新动态
+          const sortedTraces = [...traces].sort((a: any, b: any) => {
+            const timeA = new Date(a.time).getTime()
+            const timeB = new Date(b.time).getTime()
+            return timeB - timeA  // 倒序，最新的在前面
+          })
+          const latestTrace = sortedTraces[0]
           order.latestLogistics = latestTrace.description || latestTrace.status || '暂无描述'
+
+          // 🔥 同时更新物流状态
+          if (response.data.status) {
+            order.logisticsStatus = response.data.status
+          }
+          // 🔥 更新预计送达时间
+          if (response.data.estimatedDeliveryTime) {
+            order.estimatedDeliveryTime = response.data.estimatedDeliveryTime
+          }
         } else if (response?.success && response.data?.traces?.length > 0) {
           const traces = response.data.traces
-          const latestTrace = traces[0]
+          // 🔥 按时间排序，获取最新动态
+          const sortedTraces = [...traces].sort((a: any, b: any) => {
+            const timeA = new Date(a.time).getTime()
+            const timeB = new Date(b.time).getTime()
+            return timeB - timeA
+          })
+          const latestTrace = sortedTraces[0]
           order.latestLogistics = latestTrace.description || latestTrace.status || '暂无描述'
         } else {
           order.latestLogistics = '暂无物流信息'

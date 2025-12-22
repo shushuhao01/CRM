@@ -965,12 +965,23 @@ const fetchLatestLogisticsUpdates = async () => {
 
         if (response?.success && response.data?.success && response.data.traces?.length > 0) {
           const traces = response.data.traces
-          // 获取最新动态（第一条，因为已经是倒序）
-          const latestTrace = traces[0]
+          // 🔥 按时间排序，获取最新动态
+          const sortedTraces = [...traces].sort((a: any, b: any) => {
+            const timeA = new Date(a.time).getTime()
+            const timeB = new Date(b.time).getTime()
+            return timeB - timeA  // 倒序，最新的在前面
+          })
+          const latestTrace = sortedTraces[0]
           order.latestUpdate = latestTrace.description || latestTrace.status || '暂无描述'
         } else if (response?.success && response.data?.traces?.length > 0) {
           const traces = response.data.traces
-          const latestTrace = traces[0]
+          // 🔥 按时间排序，获取最新动态
+          const sortedTraces = [...traces].sort((a: any, b: any) => {
+            const timeA = new Date(a.time).getTime()
+            const timeB = new Date(b.time).getTime()
+            return timeB - timeA
+          })
+          const latestTrace = sortedTraces[0]
           order.latestUpdate = latestTrace.description || latestTrace.status || '暂无描述'
         } else {
           order.latestUpdate = '暂无物流信息'

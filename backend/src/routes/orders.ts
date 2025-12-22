@@ -959,6 +959,61 @@ router.get('/shipping/statistics', authenticateToken, async (_req: Request, res:
 });
 
 /**
+ * @route GET /api/v1/orders/by-tracking-no
+ * @desc 根据物流单号获取订单信息
+ * @access Private
+ */
+router.get('/by-tracking-no', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { trackingNo } = req.query;
+
+    if (!trackingNo) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: '缺少物流单号参数'
+      });
+    }
+
+    const orderRepository = AppDataSource.getRepository(Order);
+
+    const order = await orderRepository.findOne({
+      where: { trackingNumber: trackingNo as string }
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '未找到对应订单'
+      });
+    }
+
+    res.json({
+      success: true,
+      code: 200,
+      data: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        receiverPhone: order.shippingPhone,
+        phone: order.shippingPhone || order.customerPhone,
+        expressCompany: order.expressCompany,
+        trackingNumber: order.trackingNumber
+      }
+    });
+  } catch (error) {
+    console.error('根据物流单号获取订单失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取订单失败'
+    });
+  }
+});
+
+/**
  * @route GET /api/v1/orders
  * @desc 获取订单列表
  * @access Private
