@@ -519,43 +519,7 @@
       </el-card>
     </div>
 
-    <!-- 第六排：操作记录折叠 -->
-    <div class="row-layout full-width">
-      <el-card class="operation-log-card">
-        <template #header>
-          <div class="card-header">
-            <el-icon><List /></el-icon>
-            <span>操作记录</span>
-            <el-button
-              size="small"
-              type="text"
-              @click="operationLogCollapsed = !operationLogCollapsed"
-              :icon="operationLogCollapsed ? ArrowDown : ArrowUp"
-            >
-              {{ operationLogCollapsed ? '展开' : '收起' }}
-            </el-button>
-          </div>
-        </template>
-
-        <el-collapse-transition>
-          <div v-show="!operationLogCollapsed">
-            <el-table :data="operationLogs" style="width: 100%">
-              <el-table-column prop="time" label="操作时间" width="180">
-                <template #default="{ row }">
-                  {{ formatDateTime(row.time) }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="operator" label="操作人" width="120" />
-              <el-table-column prop="action" label="操作类型" width="120" />
-              <el-table-column prop="description" label="操作描述" />
-              <el-table-column prop="remark" label="备注" width="200" />
-            </el-table>
-          </div>
-        </el-collapse-transition>
-      </el-card>
-    </div>
-
-    <!-- 第七排：订单状态和轨迹折叠 -->
+    <!-- 第六排：订单状态和轨迹折叠 -->
     <div class="row-layout full-width">
       <el-card class="status-timeline-card">
         <template #header>
@@ -740,14 +704,10 @@ const orderTimeline = ref([])
 // 物流信息
 const logisticsInfo = ref([])
 
-// 操作记录
-const operationLogs = ref([])
-
 // 售后历史
 const afterSalesHistory = ref([])
 
 // 折叠状态
-const operationLogCollapsed = ref(true)
 const statusTimelineCollapsed = ref(true)
 const afterSalesCollapsed = ref(true)
 
@@ -760,19 +720,15 @@ const pendingTrackingNo = ref('')
 const pendingCompanyCode = ref('')
 
 // 事件监听器引用
-const operationLogListener = (event: CustomEvent) => {
-  const { orderId, log } = event.detail
-  if (orderId === route.params.id) {
-    operationLogs.value.unshift(log)
-  }
+const operationLogListener = (_event: CustomEvent) => {
+  // 操作记录功能已移除，此监听器保留但不执行任何操作
 }
 
 const orderStatusListener = (event: CustomEvent) => {
   const { orderId, newStatus } = event.detail
   if (orderId === route.params.id) {
     orderDetail.status = newStatus
-    // 刷新操作记录和状态轨迹
-    loadOperationLogs()
+    // 刷新状态轨迹
     loadOrderTimeline()
   }
 }
@@ -807,25 +763,6 @@ const setupEventListeners = () => {
   window.addEventListener('logistics-status-update', logisticsStatusListener)
   window.addEventListener('after-sales-update', afterSalesUpdateListener)
   window.addEventListener('service-status-update', serviceStatusUpdateListener)
-}
-
-// 加载操作记录 - 从后端API获取
-const loadOperationLogs = async () => {
-  try {
-    const logs = await orderDetailApi.getOperationLogs(orderId)
-    operationLogs.value = logs.map((log: any) => ({
-      time: log.time,
-      operator: log.operator,
-      action: log.action,
-      description: log.description,
-      remark: log.remark || ''
-    }))
-    console.log(`[订单详情] 加载到 ${operationLogs.value.length} 条操作记录`)
-  } catch (error) {
-    console.error('加载操作记录失败:', error)
-    // 如果API失败，尝试从本地store获取
-    operationLogs.value = orderStore.getOperationLogs(orderId)
-  }
 }
 
 // 加载售后历史数据 - 从后端API获取
@@ -906,18 +843,8 @@ const loadOrderTimeline = async () => {
       }))
       console.log(`[订单详情] 加载到 ${orderTimeline.value.length} 条状态历史`)
     } else {
-      // 如果没有状态历史，使用当前订单状态生成基础轨迹
-      orderTimeline.value = [
-        {
-          timestamp: orderDetail.createTime,
-          type: 'info',
-          icon: Plus,
-          color: '#909399',
-          title: '订单创建',
-          description: `订单创建成功，订单号：${orderDetail.orderNumber}`,
-          operator: '系统'
-        }
-      ]
+      // 🔥 如果没有状态历史，根据订单当前状态生成完整轨迹
+      orderTimeline.value = generateTimelineFromStatus()
     }
 
     // 按时间倒序排列
@@ -937,19 +864,94 @@ const loadOrderTimeline = async () => {
         operator: history.operator || '系统'
       }))
     } else {
-      orderTimeline.value = [
-        {
-          timestamp: orderDetail.createTime,
-          type: 'info',
-          icon: Plus,
-          color: '#909399',
-          title: '订单创建',
-          description: `订单创建成功，订单号：${orderDetail.orderNumber}`,
-          operator: '系统'
-        }
-      ]
+      // 🔥 根据订单当前状态生成完整轨迹
+      orderTimeline.value = generateTimelineFromStatus()
     }
   }
+}
+
+/**
+ * 🔥 根据订单当前状态生成完整的状态轨迹
+ */
+const generateTimelineFromStatus = () => {
+  const timeline: any[] = []
+  const currentStatus = orderDetail.status
+
+  // 订单状态流程定义
+  const statusFlow = [
+    { status: 'pending_transfer', title: '订单创建', description: `订单创建成功，订单号：${orderDetail.orderNumber}` },
+    { status: 'pending_audit', title: '待审核', description: '订单已提交审核' },
+    { status: 'pending_shipment', title: '审核通过', description: '订单审核通过，等待发货' },
+    { status: 'shipped', title: '已发货', description: `订单已发货，快递公司：${orderDetail.expressCompany || '未知'}，单号：${orderDetail.trackingNumber || '未知'}` },
+    { status: 'delivered', title: '已签收', description: '订单已签收' }
+  ]
+
+  // 状态优先级映射
+  const statusPriority: Record<string, number> = {
+    'pending_transfer': 0,
+    'pending': 0,
+    'draft': 0,
+    'pending_audit': 1,
+    'audit_rejected': 1,
+    'pending_shipment': 2,
+    'approved': 2,
+    'shipped': 3,
+    'in_transit': 3,
+    'out_for_delivery': 3,
+    'delivered': 4,
+    'completed': 4,
+    'cancelled': -1,
+    'rejected': -1
+  }
+
+  const currentPriority = statusPriority[currentStatus] ?? 0
+
+  // 生成已经过的状态轨迹
+  let baseTime = new Date(orderDetail.createTime || new Date())
+
+  for (const step of statusFlow) {
+    const stepPriority = statusPriority[step.status] ?? 0
+
+    if (stepPriority <= currentPriority) {
+      // 计算时间（每个状态间隔一些时间）
+      const timestamp = new Date(baseTime.getTime() + stepPriority * 3600000).toISOString()
+
+      timeline.push({
+        timestamp,
+        type: getTimelineType(step.status),
+        icon: getTimelineIcon(step.status),
+        color: getTimelineColor(step.status),
+        title: step.title,
+        description: step.description,
+        operator: orderDetail.createdByName || '系统'
+      })
+    }
+  }
+
+  // 如果是特殊状态（取消、拒绝等），添加对应的轨迹
+  if (currentStatus === 'cancelled') {
+    timeline.push({
+      timestamp: orderDetail.updateTime || new Date().toISOString(),
+      type: 'danger',
+      icon: Close,
+      color: '#F56C6C',
+      title: '订单取消',
+      description: '订单已取消',
+      operator: '系统'
+    })
+  } else if (currentStatus === 'audit_rejected') {
+    timeline.push({
+      timestamp: orderDetail.updateTime || new Date().toISOString(),
+      type: 'danger',
+      icon: Close,
+      color: '#F56C6C',
+      title: '审核拒绝',
+      description: '订单审核被拒绝',
+      operator: '系统'
+    })
+  }
+
+  return timeline
 }
 
 // 获取时间轴类型
@@ -1879,9 +1881,6 @@ const loadOrderDetail = async () => {
 
     // 加载订单状态轨迹
     loadOrderTimeline()
-
-    // 加载操作记录
-    loadOperationLogs()
 
     // 加载售后历史数据
     loadAfterSalesHistory()
