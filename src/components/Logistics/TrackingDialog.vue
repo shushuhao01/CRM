@@ -5,6 +5,32 @@
     width="600px"
     @close="handleClose"
   >
+    <!-- 手机号验证提示 -->
+    <el-alert
+      v-if="needPhoneVerify"
+      title="该运单需要手机号验证才能查询物流轨迹"
+      type="info"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 16px"
+    >
+      <template #default>
+        <div class="phone-verify-form">
+          <span>请输入收件人或寄件人手机号后4位：</span>
+          <el-input
+            v-model="phoneInput"
+            placeholder="手机号后4位"
+            maxlength="4"
+            style="width: 120px; margin: 0 8px"
+            @keyup.enter="handleRetryWithPhone"
+          />
+          <el-button type="primary" size="small" @click="handleRetryWithPhone" :loading="loading">
+            查询
+          </el-button>
+        </div>
+      </template>
+    </el-alert>
+
     <div class="tracking-header">
       <div class="tracking-info">
         <el-descriptions :column="2" border>
@@ -31,11 +57,11 @@
         <el-skeleton :rows="5" animated />
       </div>
 
-      <div v-else-if="trackingList.length === 0" class="empty-container">
+      <div v-else-if="trackingList.length === 0 && !needPhoneVerify" class="empty-container">
         <el-empty description="暂无物流轨迹信息" />
       </div>
 
-      <div v-else class="timeline-container">
+      <div v-else-if="trackingList.length > 0" class="timeline-container">
         <el-timeline>
           <el-timeline-item
             v-for="(item, index) in trackingList"
@@ -81,8 +107,7 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Location, User, Refresh } from '@element-plus/icons-vue'
-import { useLogisticsStatusStore } from '@/stores/logisticsStatus'
-import type { TrackingInfo } from '@/stores/logisticsStatus'
+import { logisticsApi } from '@/api/logistics'
 
 interface Props {
   modelValue: boolean
@@ -94,14 +119,21 @@ interface Emits {
   (e: 'update:modelValue', value: boolean): void
 }
 
+interface TrackingInfo {
+  time: string
+  description: string
+  location?: string
+  operator?: string
+}
+
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
-
-const logisticsStatusStore = useLogisticsStatusStore()
 
 // 响应式数据
 const loading = ref(false)
 const trackingList = ref<TrackingInfo[]>([])
+const needPhoneVerify = ref(false)
+const phoneInput = ref('')
 
 const visible = computed({
   get: () => props.modelValue,
@@ -174,13 +206,50 @@ const getTimelineType = (item: TrackingInfo, index: number): string => {
 }
 
 // 获取物流轨迹
-const fetchTrackingInfo = async () => {
+const fetchTrackingInfo = async (phone?: string) => {
   if (!props.trackingNo) return
 
   loading.value = true
+  needPhoneVerify.value = false
+
   try {
-    const data = await logisticsStatusStore.fetchTrackingInfo(props.trackingNo, props.logisticsCompany)
-    trackingList.value = data
+    // 🔥 直接调用物流API，支持手机号验证
+    const response = await logisticsApi.queryTrace(
+      props.trackingNo,
+      props.logisticsCompany,
+      phone
+    )
+
+    console.log('[物流轨迹弹窗] API响应:', response)
+
+    if (response && response.success && response.data) {
+      const data = response.data
+
+      // 🔥 检查是否需要手机号验证
+      if (data.status === 'need_phone_verify' ||
+          (!data.success && data.statusText === '需要手机号验证')) {
+        needPhoneVerify.value = true
+        trackingList.value = []
+        return
+      }
+
+      if (data.success && data.traces && data.traces.length > 0) {
+        trackingList.value = data.traces.map((item: any) => ({
+          time: item.time,
+          description: item.description || item.status,
+          location: item.location,
+          operator: item.operator
+        }))
+      } else {
+        trackingList.value = []
+        if (data.statusText && !data.success) {
+          ElMessage.warning(data.statusText)
+        }
+      }
+    } else {
+      trackingList.value = []
+      ElMessage.warning(response?.message || '获取物流轨迹失败')
+    }
   } catch (error) {
     console.error('获取物流轨迹失败:', error)
     ElMessage.error('获取物流轨迹失败，请重试')
@@ -190,19 +259,33 @@ const fetchTrackingInfo = async () => {
   }
 }
 
+// 使用手机号重新查询
+const handleRetryWithPhone = () => {
+  if (!phoneInput.value || phoneInput.value.length !== 4) {
+    ElMessage.warning('请输入手机号后4位')
+    return
+  }
+  fetchTrackingInfo(phoneInput.value)
+}
+
 // 刷新物流轨迹
 const handleRefresh = () => {
+  phoneInput.value = ''
   fetchTrackingInfo()
 }
 
 // 处理关闭
 const handleClose = () => {
   visible.value = false
+  needPhoneVerify.value = false
+  phoneInput.value = ''
 }
 
 // 监听弹窗打开，获取物流轨迹
 watch(visible, (newVal) => {
   if (newVal && props.trackingNo) {
+    needPhoneVerify.value = false
+    phoneInput.value = ''
     fetchTrackingInfo()
   }
 })
@@ -210,6 +293,8 @@ watch(visible, (newVal) => {
 // 监听快递单号变化
 watch(() => props.trackingNo, (newVal) => {
   if (newVal && visible.value) {
+    needPhoneVerify.value = false
+    phoneInput.value = ''
     fetchTrackingInfo()
   }
 })
@@ -279,6 +364,12 @@ watch(() => props.trackingNo, (newVal) => {
 
 .dialog-footer {
   text-align: right;
+}
+
+.phone-verify-form {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
 }
 
 :deep(.el-timeline-item__timestamp) {
