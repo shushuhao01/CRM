@@ -193,8 +193,20 @@
         </template>
         <el-table-column type="selection" width="50" />
         <el-table-column prop="index" label="序号" width="60" />
-        <el-table-column prop="orderNo" label="订单号" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="customerName" label="客户名称" min-width="100" show-overflow-tooltip />
+        <el-table-column prop="orderNo" label="订单号" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-link type="primary" @click="goToOrderDetail(row.id)">
+              {{ row.orderNo }}
+            </el-link>
+          </template>
+        </el-table-column>
+        <el-table-column prop="customerName" label="客户名称" min-width="100" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-link type="primary" @click="goToCustomerDetail(row.customerId)">
+              {{ row.customerName }}
+            </el-link>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" min-width="90">
           <template #default="{ row }">
             <el-tag :style="getOrderStatusStyle(row.status)" size="small" effect="plain">
@@ -647,6 +659,20 @@ const handleViewTracking = (order: any) => {
   trackingDialogVisible.value = true
 }
 
+// 🔥 跳转到订单详情页面
+const goToOrderDetail = (orderId: string) => {
+  if (orderId) {
+    router.push(`/order/detail/${orderId}`)
+  }
+}
+
+// 🔥 跳转到客户详情页面
+const goToCustomerDetail = (customerId: string) => {
+  if (customerId) {
+    router.push(`/customer/detail/${customerId}`)
+  }
+}
+
 // 🔥 点击查询图标：弹窗选择查询方式（使用统一的物流查询弹窗）
 const handleTrackingNoClick = async (trackingNo: string, logisticsCompany?: string) => {
   const { showLogisticsQueryDialog } = await import('@/utils/logisticsQuery')
@@ -858,6 +884,7 @@ const loadData = async (showMessage = false) => {
       index: (pagination.currentPage - 1) * pagination.pageSize + index + 1,
       orderNo: order.orderNumber,
       customerName: order.customerName,
+      customerId: order.customerId || order.customer?.id || '',  // 🔥 新增：客户ID用于跳转
       // 🔥 修复：status字段应该显示订单状态，而不是物流状态
       status: order.status || 'shipped',
       // 保留物流状态字段用于其他用途
