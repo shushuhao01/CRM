@@ -186,8 +186,6 @@ const queryTrace = async (phone?: string) => {
 
       // 🔥 检查业务层面是否成功
       if (!response.data.success) {
-        errorMessage.value = response.data.statusText || '查询失败'
-
         // 🔥 检查是否需要手机号验证
         // 1. 后端返回 need_phone_verify 状态
         // 2. 或者是顺丰运单且routes为空
@@ -198,10 +196,14 @@ const queryTrace = async (phone?: string) => {
               response.data.traces.length === 0))) {
           needPhoneVerify.value = true
           errorMessage.value = '该运单需要手机号验证才能查询'
+        } else {
+          // 🔥 给出友好提示，而不是显示技术性错误
+          errorMessage.value = getFriendlyNoTraceMessage(response.data.statusText)
         }
       }
     } else {
-      errorMessage.value = response.message || '查询失败'
+      // 🔥 给出友好提示
+      errorMessage.value = getFriendlyNoTraceMessage(response.message)
     }
   } catch (error) {
     console.error('查询物流轨迹失败:', error)
@@ -260,6 +262,23 @@ const getStatusType = (status: string) => {
     'returned': 'info'
   }
   return typeMap[status] || 'info'
+}
+
+/**
+ * 🔥 获取友好的无物流信息提示
+ * 针对刚发货的订单给出更友好的提示
+ */
+const getFriendlyNoTraceMessage = (originalMessage?: string) => {
+  // 如果是API未配置等技术性错误，给出友好提示
+  if (originalMessage?.includes('API未配置') ||
+      originalMessage?.includes('未查询到') ||
+      originalMessage?.includes('routes为空') ||
+      originalMessage?.includes('查询失败') ||
+      !originalMessage) {
+    return '暂无物流信息，快递可能刚揽收，建议12-24小时后再查询'
+  }
+  // 其他情况返回原始消息
+  return originalMessage
 }
 
 /**
