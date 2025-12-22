@@ -4,6 +4,9 @@
     <div class="page-header">
       <h2>物流公司管理</h2>
       <div class="header-actions">
+        <el-button @click="handleKuaidi100Config" type="success" :icon="Setting">
+          快递100配置
+        </el-button>
         <el-button @click="handleAdd" type="primary" :icon="Plus">
           新增物流公司
         </el-button>
@@ -151,6 +154,89 @@
       @success="handleApiConfigSuccess"
     />
 
+    <!-- 快递100配置对话框 -->
+    <el-dialog
+      v-model="kuaidi100DialogVisible"
+      title="快递100 API配置"
+      width="550px"
+    >
+      <el-alert
+        title="快递100是第三方物流查询平台，可以查询任意运单号（无权限限制）"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 20px"
+      />
+
+      <el-form
+        ref="kuaidi100FormRef"
+        :model="kuaidi100Form"
+        :rules="kuaidi100FormRules"
+        label-width="120px"
+      >
+        <el-form-item label="Customer" prop="customer">
+          <el-input
+            v-model="kuaidi100Form.customer"
+            placeholder="请输入快递100的Customer"
+          />
+          <div class="form-tip">在快递100开放平台获取</div>
+        </el-form-item>
+
+        <el-form-item label="Key" prop="key">
+          <el-input
+            v-model="kuaidi100Form.key"
+            placeholder="请输入快递100的Key"
+            show-password
+          />
+          <div class="form-tip">在快递100开放平台获取</div>
+        </el-form-item>
+
+        <el-form-item label="API地址" prop="url">
+          <el-input
+            v-model="kuaidi100Form.url"
+            placeholder="https://poll.kuaidi100.com/poll/query.do"
+          />
+          <div class="form-tip">一般不需要修改</div>
+        </el-form-item>
+
+        <el-form-item label="启用状态">
+          <el-switch
+            v-model="kuaidi100Form.enabled"
+            active-text="启用"
+            inactive-text="禁用"
+          />
+          <div class="form-tip">启用后，当官方API查询失败时自动使用快递100</div>
+        </el-form-item>
+      </el-form>
+
+      <div class="kuaidi100-help">
+        <el-divider content-position="left">如何获取快递100 API密钥？</el-divider>
+        <ol>
+          <li>访问 <el-link type="primary" href="https://www.kuaidi100.com/openapi/" target="_blank">快递100开放平台</el-link></li>
+          <li>注册并登录账号</li>
+          <li>创建应用，获取 Customer 和 Key</li>
+          <li>将获取的密钥填入上方表单</li>
+        </ol>
+      </div>
+
+      <template #footer>
+        <el-button @click="kuaidi100DialogVisible = false">取消</el-button>
+        <el-button
+          @click="handleTestKuaidi100"
+          :loading="testingKuaidi100"
+        >
+          测试连接
+        </el-button>
+        <el-button
+          @click="handleSaveKuaidi100"
+          type="primary"
+          :loading="savingKuaidi100"
+        >
+          保存配置
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 新增/编辑对话框 -->
     <el-dialog
       v-model="dialogVisible"
@@ -273,6 +359,22 @@ const isEdit = ref(false)
 const apiConfigVisible = ref(false)
 const currentApiCompanyCode = ref('')
 const currentApiConfig = ref(null)
+
+// 快递100配置相关
+const kuaidi100DialogVisible = ref(false)
+const testingKuaidi100 = ref(false)
+const savingKuaidi100 = ref(false)
+const kuaidi100FormRef = ref()
+const kuaidi100Form = reactive({
+  customer: '',
+  key: '',
+  url: 'https://poll.kuaidi100.com/poll/query.do',
+  enabled: true
+})
+const kuaidi100FormRules = {
+  customer: [{ required: true, message: '请输入Customer', trigger: 'blur' }],
+  key: [{ required: true, message: '请输入Key', trigger: 'blur' }]
+}
 
 // 支持API配置的快递公司代码（所有主流快递公司）
 const supportedApiCompanies = ['SF', 'ZTO', 'YTO', 'STO', 'YD', 'JTSD', 'EMS', 'JD', 'DBL']
@@ -429,6 +531,86 @@ const handleApiConfigSuccess = (_config: unknown) => {
   }
   const name = companyNames[currentApiCompanyCode.value] || currentApiCompanyCode.value
   ElMessage.success(`${name}配置已保存,现在可以使用API功能了`)
+}
+
+/**
+ * 打开快递100配置对话框
+ */
+const handleKuaidi100Config = async () => {
+  // 加载已保存的配置
+  try {
+    const { apiService } = await import('@/services/apiService')
+    const response = await apiService.get('/logistics/kuaidi100/config')
+    if (response.success && response.data) {
+      kuaidi100Form.customer = response.data.customer || ''
+      kuaidi100Form.key = response.data.key || ''
+      kuaidi100Form.url = response.data.url || 'https://poll.kuaidi100.com/poll/query.do'
+      kuaidi100Form.enabled = response.data.enabled !== false
+    }
+  } catch (error) {
+    console.log('加载快递100配置失败，使用默认值')
+  }
+  kuaidi100DialogVisible.value = true
+}
+
+/**
+ * 测试快递100连接
+ */
+const handleTestKuaidi100 = async () => {
+  if (!kuaidi100Form.customer || !kuaidi100Form.key) {
+    ElMessage.warning('请先填写Customer和Key')
+    return
+  }
+
+  testingKuaidi100.value = true
+  try {
+    const { apiService } = await import('@/services/apiService')
+    const response = await apiService.post('/logistics/kuaidi100/test', {
+      customer: kuaidi100Form.customer,
+      key: kuaidi100Form.key,
+      url: kuaidi100Form.url
+    })
+
+    if (response.success) {
+      ElMessage.success('连接测试成功！')
+    } else {
+      ElMessage.error(response.message || '连接测试失败')
+    }
+  } catch (error: any) {
+    ElMessage.error('连接测试失败: ' + (error.message || '未知错误'))
+  } finally {
+    testingKuaidi100.value = false
+  }
+}
+
+/**
+ * 保存快递100配置
+ */
+const handleSaveKuaidi100 = async () => {
+  const valid = await kuaidi100FormRef.value?.validate().catch(() => false)
+  if (!valid) return
+
+  savingKuaidi100.value = true
+  try {
+    const { apiService } = await import('@/services/apiService')
+    const response = await apiService.post('/logistics/kuaidi100/config', {
+      customer: kuaidi100Form.customer,
+      key: kuaidi100Form.key,
+      url: kuaidi100Form.url,
+      enabled: kuaidi100Form.enabled
+    })
+
+    if (response.success) {
+      ElMessage.success('快递100配置已保存')
+      kuaidi100DialogVisible.value = false
+    } else {
+      ElMessage.error(response.message || '保存失败')
+    }
+  } catch (error: any) {
+    ElMessage.error('保存失败: ' + (error.message || '未知错误'))
+  } finally {
+    savingKuaidi100.value = false
+  }
 }
 
 /**
@@ -719,5 +901,29 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-left: 8px;
+}
+
+.kuaidi100-help {
+  margin-top: 20px;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+
+.kuaidi100-help ol {
+  margin: 10px 0 0 20px;
+  padding: 0;
+  color: #606266;
+  font-size: 14px;
+}
+
+.kuaidi100-help li {
+  margin-bottom: 8px;
 }
 </style>
