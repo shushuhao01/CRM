@@ -174,6 +174,38 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 手机号验证对话框 -->
+    <el-dialog
+      v-model="phoneVerifyDialogVisible"
+      title="手机号验证"
+      width="400px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        title="该运单需要手机号验证才能查询物流轨迹"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 20px"
+      />
+      <el-form label-width="120px">
+        <el-form-item label="手机号后4位">
+          <el-input
+            v-model="phoneInput"
+            placeholder="请输入收件人/寄件人手机号后4位"
+            maxlength="4"
+            @keyup.enter="handlePhoneVerifySubmit"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="phoneVerifyDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handlePhoneVerifySubmit">
+          确认查询
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -210,6 +242,12 @@ const loading = ref(false)
 const refreshLoading = ref(false)
 const batchLoading = ref(false)
 const batchDialogVisible = ref(false)
+
+// 手机号验证相关
+const phoneVerifyDialogVisible = ref(false)
+const phoneInput = ref('')
+const pendingTrackingNo = ref('')
+const pendingCompanyCode = ref('')
 
 // 超时ID跟踪，用于清理异步操作
 const timeoutIds = new Set<NodeJS.Timeout>()
@@ -372,7 +410,7 @@ const applyDataScopeControl = (orderList: unknown[]) => {
 /**
  * 查询物流轨迹
  */
-const handleSearch = async () => {
+const handleSearch = async (phone?: string) => {
   if (!searchForm.trackingNo.trim()) {
     ElMessage.warning('请输入物流单号')
     return
@@ -390,12 +428,24 @@ const handleSearch = async () => {
     try {
       const { logisticsApi } = await import('@/api/logistics')
       // 如果没有选择公司，传undefined让后端自动识别
-      const response = await logisticsApi.queryTrace(trackingNum, companyCode || undefined)
+      const response = await logisticsApi.queryTrace(trackingNum, companyCode || undefined, phone)
 
       console.log('[物流跟踪] API响应:', response)
 
       if (response && response.success && response.data) {
         const data = response.data
+
+        // 🔥 检查是否需要手机号验证
+        if (data.status === 'need_phone_verify' ||
+            (!data.success && data.statusText === '需要手机号验证')) {
+          // 保存待验证的信息
+          pendingTrackingNo.value = trackingNum
+          pendingCompanyCode.value = companyCode
+          phoneInput.value = ''
+          phoneVerifyDialogVisible.value = true
+          loading.value = false
+          return
+        }
 
         // 🔥 检查业务层面是否成功
         if (!data.success) {
@@ -475,6 +525,22 @@ const handleSearch = async () => {
       loading.value = false
     }
   }
+}
+
+/**
+ * 使用手机号重新查询
+ */
+const handlePhoneVerifySubmit = () => {
+  if (!phoneInput.value || phoneInput.value.length !== 4) {
+    ElMessage.warning('请输入手机号后4位')
+    return
+  }
+  phoneVerifyDialogVisible.value = false
+  // 恢复搜索表单
+  searchForm.trackingNo = pendingTrackingNo.value
+  searchForm.company = pendingCompanyCode.value
+  // 带手机号重新查询
+  handleSearch(phoneInput.value)
 }
 
 /**

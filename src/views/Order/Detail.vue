@@ -517,7 +517,7 @@
               </div>
             </el-timeline-item>
           </el-timeline>
-          <el-empty v-else description="暂无物流信息" />
+          <el-empty v-else description="物流信息请点击上方刷新按钮获取" />
         </div>
       </el-card>
     </div>
@@ -706,6 +706,38 @@
         </el-collapse-transition>
       </el-card>
     </div>
+
+    <!-- 手机号验证对话框 -->
+    <el-dialog
+      v-model="phoneVerifyDialogVisible"
+      title="手机号验证"
+      width="400px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        title="该运单需要手机号验证才能查询物流轨迹"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 20px"
+      />
+      <el-form label-width="120px">
+        <el-form-item label="手机号后4位">
+          <el-input
+            v-model="phoneInput"
+            placeholder="请输入收件人/寄件人手机号后4位"
+            maxlength="4"
+            @keyup.enter="handlePhoneVerifySubmit"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="phoneVerifyDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handlePhoneVerifySubmit">
+          确认查询
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -815,6 +847,12 @@ const logisticsCollapsed = ref(false) // 物流轨迹默认展开
 
 // 物流轨迹相关
 const logisticsLoading = ref(false)
+
+// 手机号验证相关
+const phoneVerifyDialogVisible = ref(false)
+const phoneInput = ref('')
+const pendingTrackingNo = ref('')
+const pendingCompanyCode = ref('')
 
 // 事件监听器引用
 const operationLogListener = (event: CustomEvent) => {
@@ -1449,9 +1487,9 @@ const updateEstimatedDeliveryTime = (logisticsResult: any) => {
   }
 }
 
-const refreshLogistics = async () => {
+const refreshLogistics = async (phone?: string) => {
   if (!orderDetail.trackingNumber || !orderDetail.expressCompany) {
-    ElMessage.warning('缺少快递单号或快递公司信息')
+    // 🔥 改进提示：不要误导用户
     logisticsInfo.value = []
     return
   }
@@ -1459,29 +1497,48 @@ const refreshLogistics = async () => {
   try {
     logisticsLoading.value = true
 
-    // 使用物流服务查询轨迹（调用真实API）
-    const result = await orderStore.queryLogisticsTrack(orderId)
+    // 🔥 直接调用物流API，支持手机号验证
+    const { logisticsApi } = await import('@/api/logistics')
+    const response = await logisticsApi.queryTrace(
+      orderDetail.trackingNumber,
+      orderDetail.expressCompany,
+      phone
+    )
 
-    if (result && result.tracks && result.tracks.length > 0) {
-      // 转换并显示物流轨迹数据
-      logisticsInfo.value = result.tracks.map(track => ({
-        time: track.time,
-        status: track.status,
-        statusText: track.statusText || track.description || track.status,
-        description: track.description || track.statusText || '状态更新',
-        location: track.location || ''
-      }))
+    if (response && response.success && response.data) {
+      const data = response.data
 
-      // 动态更新预计到达时间
-      if (result.estimatedDeliveryTime) {
-        updateEstimatedDeliveryTime(result)
+      // 🔥 检查是否需要手机号验证
+      if (data.status === 'need_phone_verify' ||
+          (!data.success && data.statusText === '需要手机号验证')) {
+        // 弹出手机号验证对话框
+        pendingTrackingNo.value = orderDetail.trackingNumber
+        pendingCompanyCode.value = orderDetail.expressCompany
+        phoneInput.value = ''
+        phoneVerifyDialogVisible.value = true
+        logisticsLoading.value = false
+        return
       }
 
-      ElMessage.success('物流信息已更新')
+      if (data.success && data.traces && data.traces.length > 0) {
+        // 转换并显示物流轨迹数据
+        logisticsInfo.value = data.traces.map((track: any) => ({
+          time: track.time,
+          status: track.status,
+          statusText: track.description || track.status,
+          description: track.description || track.status || '状态更新',
+          location: track.location || ''
+        }))
+
+        ElMessage.success('物流信息已更新')
+      } else {
+        // 如果没有查询到数据，显示提示
+        logisticsInfo.value = []
+        ElMessage.warning(data.statusText || '暂无物流信息')
+      }
     } else {
-      // 如果没有查询到数据，显示提示
       logisticsInfo.value = []
-      ElMessage.warning('暂无物流信息，可能是单号未录入系统或查询失败')
+      ElMessage.warning(response?.message || '获取物流信息失败')
     }
   } catch (error) {
     console.error('获取物流信息失败:', error)
@@ -1490,6 +1547,16 @@ const refreshLogistics = async () => {
   } finally {
     logisticsLoading.value = false
   }
+}
+
+// 手机号验证后重新查询物流
+const handlePhoneVerifySubmit = () => {
+  if (!phoneInput.value || phoneInput.value.length !== 4) {
+    ElMessage.warning('请输入手机号后4位')
+    return
+  }
+  phoneVerifyDialogVisible.value = false
+  refreshLogistics(phoneInput.value)
 }
 
 // 物流轨迹相关辅助方法
