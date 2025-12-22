@@ -284,6 +284,15 @@ class LogisticsTraceService {
       const result = await expressService.queryExpress(trackingNo, kuaidi100Code);
 
       if (result.success) {
+        const traces = result.traces.map(t => ({
+          time: t.time,
+          status: t.status || '',
+          description: t.description,
+          location: t.location,
+          operator: t.operator,
+          phone: t.phone
+        }));
+
         return {
           success: true,
           trackingNo: result.trackingNo,
@@ -291,14 +300,9 @@ class LogisticsTraceService {
           companyName: COMPANY_NAMES[companyCode] || result.companyName,
           status: result.status,
           statusText: result.statusDescription + ' (快递100)',
-          traces: result.traces.map(t => ({
-            time: t.time,
-            status: t.status || '',
-            description: t.description,
-            location: t.location,
-            operator: t.operator,
-            phone: t.phone
-          })),
+          traces,
+          // 🔥 计算预计送达时间
+          estimatedDeliveryTime: this.calculateEstimatedDeliveryTime(result.status, traces),
           rawData: result.rawData
         };
       }
@@ -606,6 +610,9 @@ class LogisticsTraceService {
             result.status = statusInfo.status;
             result.statusText = statusInfo.text;
             console.log('[顺丰开放平台API] 最新状态:', result.status, result.statusText);
+
+            // 🔥 计算预计送达时间
+            result.estimatedDeliveryTime = this.calculateEstimatedDeliveryTime(result.status, result.traces);
           }
         } else {
           console.log('[顺丰开放平台API] routes为空');
@@ -638,6 +645,51 @@ class LogisticsTraceService {
       '648': { status: 'exception', text: '异常件' }
     };
     return map[opCode] || { status: 'in_transit', text: '运输中' };
+  }
+
+  /**
+   * 🔥 根据物流状态计算预计送达时间
+   */
+  private calculateEstimatedDeliveryTime(status: string, traces: LogisticsTrace[]): string | undefined {
+    // 如果已签收，返回签收时间
+    if (status === 'delivered' && traces.length > 0) {
+      // 找到签收的轨迹
+      const deliveredTrace = traces.find(t =>
+        t.description?.includes('签收') ||
+        t.description?.includes('已签收') ||
+        t.status === '80' ||
+        t.status === '8000'
+      );
+      if (deliveredTrace) {
+        return deliveredTrace.time;
+      }
+      return traces[0].time; // 返回最新轨迹时间
+    }
+
+    // 如果还在运输中，根据状态估算
+    const now = new Date();
+    let estimatedDays = 3; // 默认3天
+
+    switch (status) {
+      case 'picked_up':
+        estimatedDays = 3; // 刚揽收，预计3天
+        break;
+      case 'in_transit':
+        estimatedDays = 2; // 运输中，预计2天
+        break;
+      case 'out_for_delivery':
+        estimatedDays = 0; // 派送中，预计当天
+        break;
+      case 'exception':
+        estimatedDays = 5; // 异常，预计5天
+        break;
+      default:
+        estimatedDays = 3;
+    }
+
+    // 计算预计送达日期
+    const estimatedDate = new Date(now.getTime() + estimatedDays * 24 * 60 * 60 * 1000);
+    return estimatedDate.toISOString().split('T')[0];
   }
 
 
@@ -693,6 +745,9 @@ class LogisticsTraceService {
         const latestStatus = traces[0].scanType;
         result.status = this.mapZTOStatus(latestStatus);
         result.statusText = this.getStatusText(result.status);
+
+        // 🔥 计算预计送达时间
+        result.estimatedDeliveryTime = this.calculateEstimatedDeliveryTime(result.status, result.traces);
       }
     }
 
