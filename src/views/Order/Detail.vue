@@ -1396,7 +1396,7 @@ const refreshLogistics = async (phone?: string) => {
     logisticsLoading.value = true
 
     // 🔥 自动使用订单中的手机号（如果没有手动传入）
-    const phoneToUse = phone || orderDetail.customer?.phone || orderDetail.phone || ''
+    const phoneToUse = phone || orderDetail.receiverPhone || orderDetail.customer?.phone || ''
     console.log('[订单详情] 查询物流，使用手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未提供')
 
     // 🔥 直接调用物流API，支持手机号验证
@@ -1433,13 +1433,16 @@ const refreshLogistics = async (phone?: string) => {
 
         ElMessage.success('物流信息已更新')
       } else {
-        // 如果没有查询到数据，显示提示
+        // 🔥 如果没有查询到数据，给出友好提示
         logisticsInfo.value = []
-        ElMessage.warning(data.statusText || '暂无物流信息')
+        const friendlyMessage = getFriendlyNoTraceMessage(data.statusText)
+        ElMessage.info(friendlyMessage)
       }
     } else {
       logisticsInfo.value = []
-      ElMessage.warning(response?.message || '获取物流信息失败')
+      // 🔥 友好提示
+      const friendlyMessage = getFriendlyNoTraceMessage(response?.message)
+      ElMessage.info(friendlyMessage)
     }
   } catch (error) {
     console.error('获取物流信息失败:', error)
@@ -1448,6 +1451,22 @@ const refreshLogistics = async (phone?: string) => {
   } finally {
     logisticsLoading.value = false
   }
+}
+
+/**
+ * 🔥 获取友好的无物流信息提示
+ * 针对刚发货的订单给出更友好的提示
+ */
+const getFriendlyNoTraceMessage = (originalMessage?: string) => {
+  // 如果是API未配置等技术性错误，给出友好提示
+  if (originalMessage?.includes('API未配置') ||
+      originalMessage?.includes('未查询到') ||
+      originalMessage?.includes('routes为空') ||
+      !originalMessage) {
+    return '暂无物流信息，快递可能刚揽收，建议12-24小时后再查询'
+  }
+  // 其他情况返回原始消息
+  return originalMessage
 }
 
 // 手机号验证后重新查询物流（统一组件回调）

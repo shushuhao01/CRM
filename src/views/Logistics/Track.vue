@@ -441,8 +441,9 @@ const handleSearch = async (phone?: string) => {
 
         // 🔥 检查业务层面是否成功
         if (!data.success) {
-          // API调用成功但业务查询失败，显示错误信息
-          ElMessage.warning(data.statusText || '查询失败')
+          // 🔥 给出友好提示，而不是显示技术性错误
+          const friendlyMessage = getFriendlyNoTraceMessage(data.statusText)
+          ElMessage.info(friendlyMessage)
           loading.value = false
           return
         }
@@ -491,14 +492,16 @@ const handleSearch = async (phone?: string) => {
           if (trackingHistory.value.length > 0) {
             ElMessage.success('查询成功')
           } else {
-            ElMessage.info('查询成功，暂无物流轨迹信息')
+            // 🔥 友好提示
+            ElMessage.info('暂无物流轨迹，快递可能刚揽收，建议12-24小时后再查询')
           }
         }
         loading.value = false
         return
       } else {
-        // API返回失败
-        ElMessage.warning(response?.message || '查询失败')
+        // 🔥 API返回失败，给出友好提示
+        const friendlyMessage = getFriendlyNoTraceMessage(response?.message)
+        ElMessage.info(friendlyMessage)
         loading.value = false
         return
       }
@@ -687,6 +690,23 @@ const handleBatchQuery = async () => {
 const getCompanyName = (code: string) => {
   const company = logisticsCompanies.value.find(c => c.code === code)
   return company?.name || ''
+}
+
+/**
+ * 🔥 获取友好的无物流信息提示
+ * 针对刚发货的订单给出更友好的提示
+ */
+const getFriendlyNoTraceMessage = (originalMessage?: string) => {
+  // 如果是API未配置等技术性错误，给出友好提示
+  if (originalMessage?.includes('API未配置') ||
+      originalMessage?.includes('未查询到') ||
+      originalMessage?.includes('routes为空') ||
+      originalMessage?.includes('查询失败') ||
+      !originalMessage) {
+    return '暂无物流信息，快递可能刚揽收，建议12-24小时后再查询'
+  }
+  // 其他情况返回原始消息
+  return originalMessage
 }
 
 // 生命周期钩子
