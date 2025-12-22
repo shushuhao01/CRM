@@ -1559,18 +1559,20 @@ ON DUPLICATE KEY UPDATE
 
 -- 插入物流API配置初始数据（默认启用状态，但需要用户配置密钥后才能使用）
 -- 注意：enabled=1表示启用，但如果app_id或app_secret为空，查询时会提示"API密钥未配置完整"
+-- ON DUPLICATE KEY UPDATE 会更新enabled字段，确保已存在的记录也被启用
 INSERT INTO `logistics_api_configs` (`id`, `company_code`, `company_name`, `api_environment`, `enabled`) VALUES
 ('lac-001', 'SF', '顺丰速运', 'production', 1),
-('lac-002', 'ZTO', '中通快递', 'sandbox', 1),
-('lac-003', 'YTO', '圆通速递', 'sandbox', 1),
-('lac-004', 'STO', '申通快递', 'sandbox', 1),
-('lac-005', 'YD', '韵达速递', 'sandbox', 1),
-('lac-006', 'JTSD', '极兔速递', 'sandbox', 1),
-('lac-007', 'EMS', '邮政EMS', 'sandbox', 1),
-('lac-008', 'JD', '京东物流', 'sandbox', 1),
-('lac-009', 'DBL', '德邦快递', 'sandbox', 1)
+('lac-002', 'ZTO', '中通快递', 'production', 1),
+('lac-003', 'YTO', '圆通速递', 'production', 1),
+('lac-004', 'STO', '申通快递', 'production', 1),
+('lac-005', 'YD', '韵达速递', 'production', 1),
+('lac-006', 'JTSD', '极兔速递', 'production', 1),
+('lac-007', 'EMS', '邮政EMS', 'production', 1),
+('lac-008', 'JD', '京东物流', 'production', 1),
+('lac-009', 'DBL', '德邦快递', 'production', 1)
 ON DUPLICATE KEY UPDATE
   `company_name` = VALUES(`company_name`),
+  `enabled` = 1,
   `updated_at` = CURRENT_TIMESTAMP;
 
 -- 30. 部门下单限制配置表
