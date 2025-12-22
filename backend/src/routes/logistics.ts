@@ -990,6 +990,179 @@ router.get('/yto-callback', async (_req: Request, res: Response) => {
   });
 });
 
+// ========== 快递100配置API ==========
+import { ExpressAPIService } from '../services/ExpressAPIService';
+
+/**
+ * 获取快递100配置
+ */
+router.get('/kuaidi100/config', async (_req: Request, res: Response) => {
+  try {
+    // 从系统配置表获取快递100配置
+    const repository = AppDataSource!.getRepository('SystemConfig');
+    const config = await repository.findOne({
+      where: { configKey: 'kuaidi100_config' }
+    });
+
+    if (config && config.configValue) {
+      const data = JSON.parse(config.configValue);
+      // 不返回完整的key，只返回部分用于显示
+      res.json({
+        success: true,
+        data: {
+          customer: data.customer || '',
+          key: data.key ? '***已配置***' : '',
+          url: data.url || 'https://poll.kuaidi100.com/poll/query.do',
+          enabled: data.enabled !== false,
+          hasKey: !!data.key
+        }
+      });
+    } else {
+      // 从环境变量获取
+      const expressService = ExpressAPIService.getInstance();
+      const status = expressService.getConfigStatus();
+      res.json({
+        success: true,
+        data: {
+          customer: process.env.EXPRESS_API_CUSTOMER ? '***已配置***' : '',
+          key: process.env.EXPRESS_API_KEY ? '***已配置***' : '',
+          url: process.env.EXPRESS_API_URL || 'https://poll.kuaidi100.com/poll/query.do',
+          enabled: status.kuaidi100,
+          hasKey: status.kuaidi100
+        }
+      });
+    }
+  } catch (error) {
+    console.error('获取快递100配置失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取配置失败'
+    });
+  }
+});
+
+/**
+ * 保存快递100配置
+ */
+router.post('/kuaidi100/config', async (req: Request, res: Response) => {
+  try {
+    const { customer, key, url, enabled } = req.body;
+
+    if (!customer || !key) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customer和Key不能为空'
+      });
+    }
+
+    // 保存到系统配置表
+    const repository = AppDataSource!.getRepository('SystemConfig');
+    const config = await repository.findOne({
+      where: { configKey: 'kuaidi100_config' }
+    });
+
+    const configValue = JSON.stringify({
+      customer,
+      key,
+      url: url || 'https://poll.kuaidi100.com/poll/query.do',
+      enabled: enabled !== false
+    });
+
+    if (config) {
+      (config as any).configValue = configValue;
+      await repository.save(config);
+    } else {
+      await repository.insert({
+        id: uuidv4(),
+        configKey: 'kuaidi100_config',
+        configValue,
+        configGroup: 'logistics',
+        description: '快递100 API配置',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    }
+
+    // 更新环境变量（运行时生效）
+    process.env.EXPRESS_API_CUSTOMER = customer;
+    process.env.EXPRESS_API_KEY = key;
+    process.env.EXPRESS_API_URL = url || 'https://poll.kuaidi100.com/poll/query.do';
+
+    res.json({
+      success: true,
+      message: '配置保存成功'
+    });
+  } catch (error) {
+    console.error('保存快递100配置失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '保存配置失败'
+    });
+  }
+});
+
+/**
+ * 测试快递100连接
+ */
+router.post('/kuaidi100/test', async (req: Request, res: Response) => {
+  try {
+    const { customer, key, url } = req.body;
+
+    if (!customer || !key) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customer和Key不能为空'
+      });
+    }
+
+    // 临时设置环境变量进行测试
+    const oldCustomer = process.env.EXPRESS_API_CUSTOMER;
+    const oldKey = process.env.EXPRESS_API_KEY;
+    const oldUrl = process.env.EXPRESS_API_URL;
+
+    process.env.EXPRESS_API_CUSTOMER = customer;
+    process.env.EXPRESS_API_KEY = key;
+    process.env.EXPRESS_API_URL = url || 'https://poll.kuaidi100.com/poll/query.do';
+
+    try {
+      // 使用一个测试单号进行查询
+      const expressService = ExpressAPIService.getInstance();
+      const result = await expressService.queryExpress('SF1234567890', 'shunfeng');
+
+      // 恢复环境变量
+      process.env.EXPRESS_API_CUSTOMER = oldCustomer;
+      process.env.EXPRESS_API_KEY = oldKey;
+      process.env.EXPRESS_API_URL = oldUrl;
+
+      // 即使查询结果为空也算连接成功（因为测试单号不存在）
+      res.json({
+        success: true,
+        message: '连接测试成功',
+        data: {
+          connected: true,
+          testResult: result
+        }
+      });
+    } catch (testError: any) {
+      // 恢复环境变量
+      process.env.EXPRESS_API_CUSTOMER = oldCustomer;
+      process.env.EXPRESS_API_KEY = oldKey;
+      process.env.EXPRESS_API_URL = oldUrl;
+
+      res.json({
+        success: false,
+        message: '连接测试失败: ' + testError.message
+      });
+    }
+  } catch (error) {
+    console.error('测试快递100连接失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '测试失败'
+    });
+  }
+});
+
 /**
  * 获取物流API配置列表
  */
