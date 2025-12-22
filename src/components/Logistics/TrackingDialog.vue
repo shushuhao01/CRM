@@ -108,6 +108,11 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Location, User, Refresh } from '@element-plus/icons-vue'
 import { logisticsApi } from '@/api/logistics'
+import {
+  getLogisticsStatusText,
+  getLogisticsStatusType,
+  detectLogisticsStatusFromDescription
+} from '@/utils/logisticsStatusConfig'
 
 interface Props {
   modelValue: boolean
@@ -144,25 +149,11 @@ const visible = computed({
   set: (value) => emit('update:modelValue', value)
 })
 
-// 计算属性
+// 🔥 计算当前物流状态（使用统一的状态检测函数）
 const currentStatus = computed(() => {
-  if (trackingList.value.length === 0) return ''
+  if (trackingList.value.length === 0) return 'unknown'
   const latest = trackingList.value[0]
-
-  // 根据描述判断状态
-  const description = latest.description.toLowerCase()
-  if (description.includes('签收') || description.includes('已收货')) {
-    return 'delivered'
-  } else if (description.includes('拒收') || description.includes('拒绝')) {
-    return 'rejected'
-  } else if (description.includes('派送') || description.includes('配送')) {
-    return 'delivering'
-  } else if (description.includes('运输') || description.includes('转运')) {
-    return 'shipping'
-  } else if (description.includes('揽收') || description.includes('收件')) {
-    return 'picked'
-  }
-  return 'unknown'
+  return detectLogisticsStatusFromDescription(latest.description)
 })
 
 const lastUpdateTime = computed(() => {
@@ -170,30 +161,14 @@ const lastUpdateTime = computed(() => {
   return trackingList.value[0].time
 })
 
-// 获取状态文本
+// 🔥 使用统一的状态文本函数
 const getStatusText = (status: string): string => {
-  const statusMap: Record<string, string> = {
-    delivered: '已签收',
-    rejected: '拒收',
-    delivering: '派送中',
-    shipping: '运输中',
-    picked: '已揽收',
-    unknown: '未知状态'
-  }
-  return statusMap[status] || status
+  return getLogisticsStatusText(status)
 }
 
-// 获取状态类型
+// 🔥 使用统一的状态类型函数
 const getStatusType = (status: string): string => {
-  const statusMap: Record<string, string> = {
-    delivered: 'success',
-    rejected: 'danger',
-    delivering: 'warning',
-    shipping: 'info',
-    picked: 'primary',
-    unknown: 'info'
-  }
-  return statusMap[status] || 'info'
+  return getLogisticsStatusType(status)
 }
 
 // 获取时间线类型
