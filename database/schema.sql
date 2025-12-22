@@ -1557,17 +1557,18 @@ ON DUPLICATE KEY UPDATE
   `contact_phone` = VALUES(`contact_phone`),
   `updated_at` = CURRENT_TIMESTAMP;
 
--- 插入物流API配置初始数据（默认未配置状态）
+-- 插入物流API配置初始数据（默认启用状态，但需要用户配置密钥后才能使用）
+-- 注意：enabled=1表示启用，但如果app_id或app_secret为空，查询时会提示"API密钥未配置完整"
 INSERT INTO `logistics_api_configs` (`id`, `company_code`, `company_name`, `api_environment`, `enabled`) VALUES
-('lac-001', 'SF', '顺丰速运', 'sandbox', 0),
-('lac-002', 'ZTO', '中通快递', 'sandbox', 0),
-('lac-003', 'YTO', '圆通速递', 'sandbox', 0),
-('lac-004', 'STO', '申通快递', 'sandbox', 0),
-('lac-005', 'YD', '韵达速递', 'sandbox', 0),
-('lac-006', 'JTSD', '极兔速递', 'sandbox', 0),
-('lac-007', 'EMS', '邮政EMS', 'sandbox', 0),
-('lac-008', 'JD', '京东物流', 'sandbox', 0),
-('lac-009', 'DBL', '德邦快递', 'sandbox', 0)
+('lac-001', 'SF', '顺丰速运', 'production', 1),
+('lac-002', 'ZTO', '中通快递', 'sandbox', 1),
+('lac-003', 'YTO', '圆通速递', 'sandbox', 1),
+('lac-004', 'STO', '申通快递', 'sandbox', 1),
+('lac-005', 'YD', '韵达速递', 'sandbox', 1),
+('lac-006', 'JTSD', '极兔速递', 'sandbox', 1),
+('lac-007', 'EMS', '邮政EMS', 'sandbox', 1),
+('lac-008', 'JD', '京东物流', 'sandbox', 1),
+('lac-009', 'DBL', '德邦快递', 'sandbox', 1)
 ON DUPLICATE KEY UPDATE
   `company_name` = VALUES(`company_name`),
   `updated_at` = CURRENT_TIMESTAMP;
