@@ -188,12 +188,16 @@ const queryTrace = async (phone?: string) => {
       if (!response.data.success) {
         errorMessage.value = response.data.statusText || '查询失败'
 
-        // 🔥 检查是否是顺丰运单且routes为空，提示需要手机号验证
-        if (response.data.companyCode === 'SF' &&
-            (response.data.statusText?.includes('routes为空') ||
-             response.data.statusText?.includes('未查询到物流轨迹') ||
-             response.data.traces.length === 0)) {
+        // 🔥 检查是否需要手机号验证
+        // 1. 后端返回 need_phone_verify 状态
+        // 2. 或者是顺丰运单且routes为空
+        if (response.data.status === 'need_phone_verify' ||
+            (response.data.companyCode === 'SF' &&
+             (response.data.statusText?.includes('routes为空') ||
+              response.data.statusText?.includes('未查询到物流轨迹') ||
+              response.data.traces.length === 0))) {
           needPhoneVerify.value = true
+          errorMessage.value = '该运单需要手机号验证才能查询'
         }
       }
     } else {
