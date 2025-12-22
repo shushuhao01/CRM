@@ -45,9 +45,12 @@ export interface LogisticsTrackResult {
 export const logisticsApi = {
   /**
    * 查询物流轨迹（调用真实快递API）
+   * @param trackingNo 运单号
+   * @param companyCode 快递公司代码（可选）
+   * @param phone 收件人/寄件人手机号（可选，用于顺丰等需要验证的快递）
    */
-  async queryTrace(trackingNo: string, companyCode?: string): Promise<{ success: boolean; data: LogisticsTrackResult; message?: string }> {
-    return api.get('/logistics/trace/query', { trackingNo, companyCode })
+  async queryTrace(trackingNo: string, companyCode?: string, phone?: string): Promise<{ success: boolean; data: LogisticsTrackResult; message?: string }> {
+    return api.get('/logistics/trace/query', { trackingNo, companyCode, phone })
   },
 
   /**

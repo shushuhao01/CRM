@@ -295,7 +295,7 @@ import { logisticsTraceService } from '../services/LogisticsTraceService';
  */
 router.get('/trace/query', async (req: Request, res: Response) => {
   try {
-    const { trackingNo, companyCode } = req.query;
+    const { trackingNo, companyCode, phone } = req.query;
 
     if (!trackingNo) {
       return res.status(400).json({
@@ -304,11 +304,12 @@ router.get('/trace/query', async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`[物流轨迹查询] 单号: ${trackingNo}, 快递公司: ${companyCode || '自动识别'}`);
+    console.log(`[物流轨迹查询] 单号: ${trackingNo}, 快递公司: ${companyCode || '自动识别'}, 手机号: ${phone ? '已提供' : '未提供'}`);
 
     const result = await logisticsTraceService.queryTrace(
       trackingNo as string,
-      companyCode as string | undefined
+      companyCode as string | undefined,
+      phone as string | undefined
     );
 
     return res.json({
