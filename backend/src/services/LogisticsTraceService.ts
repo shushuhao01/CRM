@@ -62,9 +62,17 @@ class LogisticsTraceService {
    * 查询物流轨迹
    */
   async queryTrace(trackingNo: string, companyCode?: string): Promise<LogisticsTrackResult> {
+    console.log(`[物流查询] 开始查询: 单号=${trackingNo}, 公司代码=${companyCode || '自动识别'}`);
+
     // 如果没有指定快递公司，尝试自动识别
-    if (!companyCode) {
+    if (!companyCode || companyCode === 'auto') {
       companyCode = this.detectCompanyCode(trackingNo);
+      console.log(`[物流查询] 自动识别快递公司: ${companyCode || '未识别'}`);
+    }
+
+    // 标准化公司代码（转大写）
+    if (companyCode) {
+      companyCode = companyCode.toUpperCase();
     }
 
     if (!companyCode) {
@@ -74,28 +82,56 @@ class LogisticsTraceService {
         companyCode: '',
         companyName: '未知',
         status: 'unknown',
-        statusText: '无法识别快递公司',
+        statusText: '无法识别快递公司，请手动选择',
         traces: []
       };
     }
 
     // 获取API配置
     const config = await this.getApiConfig(companyCode);
-    if (!config || !config.enabled) {
+    console.log(`[物流查询] API配置: ${config ? `已找到(enabled=${config.enabled})` : '未找到'}`);
+
+    if (!config) {
       return {
         success: false,
         trackingNo,
         companyCode,
         companyName: COMPANY_NAMES[companyCode] || companyCode,
         status: 'unknown',
-        statusText: '该快递公司API未配置或未启用',
+        statusText: `${COMPANY_NAMES[companyCode] || companyCode}的API未配置，请在物流公司管理中配置API`,
+        traces: []
+      };
+    }
+
+    if (!config.enabled) {
+      return {
+        success: false,
+        trackingNo,
+        companyCode,
+        companyName: COMPANY_NAMES[companyCode] || companyCode,
+        status: 'unknown',
+        statusText: `${COMPANY_NAMES[companyCode] || companyCode}的API已禁用，请在物流公司管理中启用`,
+        traces: []
+      };
+    }
+
+    // 检查必要的API配置
+    if (!config.appId || !config.appSecret) {
+      return {
+        success: false,
+        trackingNo,
+        companyCode,
+        companyName: COMPANY_NAMES[companyCode] || companyCode,
+        status: 'unknown',
+        statusText: `${COMPANY_NAMES[companyCode] || companyCode}的API密钥未配置完整`,
         traces: []
       };
     }
 
     // 根据快递公司调用对应的API
     try {
-      switch (companyCode.toUpperCase()) {
+      console.log(`[物流查询] 调用${companyCode}的API...`);
+      switch (companyCode) {
         case 'SF':
           return await this.querySFTrace(trackingNo, config);
         case 'ZTO':
@@ -121,7 +157,7 @@ class LogisticsTraceService {
             companyCode,
             companyName: COMPANY_NAMES[companyCode] || companyCode,
             status: 'unknown',
-            statusText: '暂不支持该快递公司',
+            statusText: '暂不支持该快递公司的API查询',
             traces: []
           };
       }
@@ -199,6 +235,20 @@ class LogisticsTraceService {
     // config.appSecret -> checkword (校验码)
     const partnerID = config.appId;
     const checkword = config.appSecret;
+
+    // 检查必要参数
+    if (!partnerID || !checkword) {
+      return {
+        success: false,
+        trackingNo,
+        companyCode: 'SF',
+        companyName: '顺丰速运',
+        status: 'error',
+        statusText: '顺丰API配置不完整：缺少顾客编码或校验码',
+        traces: []
+      };
+    }
+
     // 时间戳使用毫秒级（13位）
     const timestamp = Date.now().toString();
     const requestID = `REQ${Date.now()}${Math.random().toString(36).substr(2, 6)}`;
@@ -220,7 +270,7 @@ class LogisticsTraceService {
     const signStr = encodedMsgData + timestamp + checkword;
     const msgDigest = crypto.createHash('md5').update(signStr, 'utf8').digest('base64');
 
-    // API地址
+    // API地址 - 根据配置的环境选择
     const apiUrl = config.apiEnvironment === 'production'
       ? 'https://sfapi.sf-express.com/std/service'
       : 'https://sfapi-sbox.sf-express.com/std/service';
@@ -231,24 +281,33 @@ class LogisticsTraceService {
     console.log('[顺丰开放平台API] serviceCode:', serviceCode);
     console.log('[顺丰开放平台API] timestamp:', timestamp);
     console.log('[顺丰开放平台API] msgData(原始):', msgData);
-    console.log('[顺丰开放平台API] msgData(编码后):', encodedMsgData);
-    console.log('[顺丰开放平台API] signStr:', signStr.substring(0, 100) + '...');
-    console.log('[顺丰开放平台API] msgDigest:', msgDigest);
+    console.log('[顺丰开放平台API] apiEnvironment:', config.apiEnvironment);
 
     // 🔥 手动构建请求体，避免URLSearchParams的二次编码问题
     const requestBody = `partnerID=${encodeURIComponent(partnerID)}&requestID=${encodeURIComponent(requestID)}&serviceCode=${encodeURIComponent(serviceCode)}&timestamp=${timestamp}&msgDigest=${encodeURIComponent(msgDigest)}&msgData=${encodedMsgData}`;
 
-    console.log('[顺丰开放平台API] 完整请求体:', requestBody);
+    try {
+      const response = await axios.post(apiUrl, requestBody, {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+        }
+      });
 
-    const response = await axios.post(apiUrl, requestBody, {
-      timeout: 15000,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
-      }
-    });
-
-    console.log('[顺丰开放平台API] 响应:', JSON.stringify(response.data));
-    return this.parseSFJsonResponse(trackingNo, response.data);
+      console.log('[顺丰开放平台API] 响应:', JSON.stringify(response.data));
+      return this.parseSFJsonResponse(trackingNo, response.data);
+    } catch (error: any) {
+      console.error('[顺丰开放平台API] 请求失败:', error.message);
+      return {
+        success: false,
+        trackingNo,
+        companyCode: 'SF',
+        companyName: '顺丰速运',
+        status: 'error',
+        statusText: '顺丰API请求失败: ' + error.message,
+        traces: []
+      };
+    }
   }
 
   /**

@@ -384,15 +384,26 @@ const handleSearch = async () => {
 
   try {
     const trackingNum = searchForm.trackingNo.trim()
-    const companyCode = searchForm.company || 'auto'
+    const companyCode = searchForm.company || ''
 
-    // 🔥 首先尝试调用新的物流轨迹查询API（调用真实快递API）
+    // 🔥 调用物流轨迹查询API（调用真实快递API）
     try {
       const { logisticsApi } = await import('@/api/logistics')
-      const response = await logisticsApi.queryTrace(trackingNum, companyCode !== 'auto' ? companyCode : undefined)
+      // 如果没有选择公司，传undefined让后端自动识别
+      const response = await logisticsApi.queryTrace(trackingNum, companyCode || undefined)
+
+      console.log('[物流跟踪] API响应:', response)
 
       if (response && response.success && response.data) {
         const data = response.data
+
+        // 🔥 检查业务层面是否成功
+        if (!data.success) {
+          // API调用成功但业务查询失败，显示错误信息
+          ElMessage.warning(data.statusText || '查询失败')
+          loading.value = false
+          return
+        }
 
         // 使用API返回的数据
         Object.assign(trackingResult, {
@@ -416,6 +427,8 @@ const handleSearch = async () => {
             operator: trace.operator || '',
             type: getTraceType(trace.status)
           }))
+        } else {
+          trackingHistory.value = []
         }
 
         // 尝试从订单数据补充收货人信息
@@ -433,112 +446,25 @@ const handleSearch = async () => {
         }
 
         if (!isUnmounted.value) {
-          ElMessage.success('查询成功')
+          if (trackingHistory.value.length > 0) {
+            ElMessage.success('查询成功')
+          } else {
+            ElMessage.info('查询成功，暂无物流轨迹信息')
+          }
         }
         loading.value = false
         return
+      } else {
+        // API返回失败
+        ElMessage.warning(response?.message || '查询失败')
+        loading.value = false
+        return
       }
-    } catch (apiError) {
-      console.log('[物流跟踪] 新API查询失败，尝试从本地订单数据查询:', apiError)
-    }
-
-    // 🔥 如果API查询失败，从本地订单数据查询
-    const accessibleOrders = applyDataScopeControl(orderStore.orders)
-
-    // 支持多种物流单号字段查询
-    const order = accessibleOrders.find(o =>
-      o.expressNo === trackingNum ||
-      o.trackingNumber === trackingNum ||
-      o.expressNumber === trackingNum
-    )
-
-    if (!order) {
-      ElMessage.warning('未找到该快递单号对应的订单，请确认单号是否正确')
+    } catch (apiError: any) {
+      console.error('[物流跟踪] API查询失败:', apiError)
+      ElMessage.error('查询失败: ' + (apiError.message || '网络错误'))
       loading.value = false
       return
-    }
-
-    // 获取物流单号(支持多种字段)
-    const actualTrackingNo = order.expressNo || order.trackingNumber || order.expressNumber
-    const actualCompany = order.expressCompany || order.logisticsCompany || '未知快递'
-
-    if (!actualTrackingNo) {
-      ElMessage.warning('该订单尚未发货或缺少物流信息')
-      loading.value = false
-      return
-    }
-
-    // 检查组件是否已卸载
-    if (isUnmounted.value) return
-
-    // 使用真实订单数据
-    Object.assign(trackingResult, {
-      trackingNo: actualTrackingNo,
-      companyName: getCompanyName(actualCompany) || actualCompany,
-      status: order.status,
-      receiverName: order.customerName,
-      receiverPhone: order.phone || order.customerPhone || '',
-      receiverAddress: order.address || order.shippingAddress || order.deliveryAddress || '',
-      shipTime: order.shipTime || order.shippedAt || order.deliveryTime || order.createTime,
-      estimatedTime: order.estimatedDeliveryTime || ''
-    })
-
-    // 生成基于订单状态的物流轨迹
-    const history: any[] = []
-
-    // 根据订单状态生成相应的物流轨迹
-    if (order.status === 'shipped' || order.status === 'delivered') {
-      // 已发货轨迹
-      history.push({
-        time: order.shipTime || order.shippedAt || order.deliveryTime || order.createTime,
-        status: '已发货',
-        description: `快件已从${getCompanyName(actualCompany) || actualCompany}发出，快递单号：${actualTrackingNo}`,
-        location: '发货地',
-        operator: '物流员',
-        type: 'warning'
-      })
-
-      // 如果是已送达，添加更多轨迹
-      if (order.status === 'delivered') {
-        const deliveryTime = new Date(order.shipTime || order.shippedAt || order.deliveryTime || order.createTime)
-        deliveryTime.setDate(deliveryTime.getDate() + 1)
-
-        history.unshift({
-          time: deliveryTime.toISOString().replace('T', ' ').substring(0, 19),
-          status: '运输中',
-          description: '快件正在运输途中',
-          location: '中转站',
-          operator: '系统',
-          type: 'info'
-        })
-
-        deliveryTime.setDate(deliveryTime.getDate() + 1)
-        const receiverAddr = order.address || order.shippingAddress || order.deliveryAddress || '目的地'
-        history.unshift({
-          time: deliveryTime.toISOString().replace('T', ' ').substring(0, 19),
-          status: '派送中',
-          description: `快件正在派送中，派送员正在配送至${receiverAddr}`,
-          location: receiverAddr.split('省')[0] + '省' || '目的地',
-          operator: '派送员',
-          type: 'primary'
-        })
-
-        deliveryTime.setHours(deliveryTime.getHours() + 4)
-        history.unshift({
-          time: deliveryTime.toISOString().replace('T', ' ').substring(0, 19),
-          status: '已签收',
-          description: `您的快件已由${order.customerName}签收，感谢使用${getCompanyName(actualCompany) || actualCompany}`,
-          location: receiverAddr,
-          operator: order.customerName,
-          type: 'success'
-        })
-      }
-    }
-
-    trackingHistory.value = history
-
-    if (!isUnmounted.value) {
-      ElMessage.success('查询成功')
     }
   } catch (error) {
     if (!isUnmounted.value) {
