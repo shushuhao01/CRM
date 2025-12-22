@@ -707,37 +707,13 @@
       </el-card>
     </div>
 
-    <!-- 手机号验证对话框 -->
-    <el-dialog
-      v-model="phoneVerifyDialogVisible"
-      title="手机号验证"
-      width="400px"
-      :close-on-click-modal="false"
-    >
-      <el-alert
-        title="该运单需要手机号验证才能查询物流轨迹"
-        type="info"
-        :closable="false"
-        show-icon
-        style="margin-bottom: 20px"
-      />
-      <el-form label-width="120px">
-        <el-form-item label="手机号后4位">
-          <el-input
-            v-model="phoneInput"
-            placeholder="请输入收件人/寄件人手机号后4位"
-            maxlength="4"
-            @keyup.enter="handlePhoneVerifySubmit"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="phoneVerifyDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handlePhoneVerifySubmit">
-          确认查询
-        </el-button>
-      </template>
-    </el-dialog>
+    <!-- 手机号验证对话框（统一组件） -->
+    <PhoneVerifyDialog
+      v-model:visible="phoneVerifyDialogVisible"
+      :tracking-no="pendingTrackingNo"
+      :loading="logisticsLoading"
+      @submit="handlePhoneVerifySubmit"
+    />
   </div>
 </template>
 
@@ -745,6 +721,7 @@
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import PhoneVerifyDialog from '@/components/Logistics/PhoneVerifyDialog.vue'
 import {
   ArrowLeft, Clock, User, Phone, Message, Location, Van, Document,
   ShoppingBag, Money, List, Sell, Check, Plus, ArrowDown, ArrowUp, Service, Lock, Timer, ZoomIn,
@@ -850,7 +827,6 @@ const logisticsLoading = ref(false)
 
 // 手机号验证相关
 const phoneVerifyDialogVisible = ref(false)
-const phoneInput = ref('')
 const pendingTrackingNo = ref('')
 const pendingCompanyCode = ref('')
 
@@ -1514,7 +1490,6 @@ const refreshLogistics = async (phone?: string) => {
         // 弹出手机号验证对话框
         pendingTrackingNo.value = orderDetail.trackingNumber
         pendingCompanyCode.value = orderDetail.expressCompany
-        phoneInput.value = ''
         phoneVerifyDialogVisible.value = true
         logisticsLoading.value = false
         return
@@ -1549,14 +1524,10 @@ const refreshLogistics = async (phone?: string) => {
   }
 }
 
-// 手机号验证后重新查询物流
-const handlePhoneVerifySubmit = () => {
-  if (!phoneInput.value || phoneInput.value.length !== 4) {
-    ElMessage.warning('请输入手机号后4位')
-    return
-  }
+// 手机号验证后重新查询物流（统一组件回调）
+const handlePhoneVerifySubmit = (phone: string) => {
   phoneVerifyDialogVisible.value = false
-  refreshLogistics(phoneInput.value)
+  refreshLogistics(phone)
 }
 
 // 物流轨迹相关辅助方法
