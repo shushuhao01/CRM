@@ -6,6 +6,20 @@ import crypto from 'crypto';
 import axios from 'axios';
 import { AppDataSource } from '../config/database';
 import { LogisticsApiConfig } from '../entities/LogisticsApiConfig';
+import { ExpressAPIService } from './ExpressAPIService';
+
+// 快递100公司代码映射（我们的代码 -> 快递100代码）
+const KUAIDI100_COMPANY_MAP: Record<string, string> = {
+  'SF': 'shunfeng',
+  'ZTO': 'zhongtong',
+  'YTO': 'yuantong',
+  'STO': 'shentong',
+  'YD': 'yunda',
+  'JTSD': 'jtexpress',
+  'EMS': 'ems',
+  'JD': 'jingdong',
+  'DBL': 'debangwuliu'
+};
 
 // 物流轨迹接口
 export interface LogisticsTrace {
@@ -134,27 +148,38 @@ class LogisticsTraceService {
     // 根据快递公司调用对应的API
     try {
       console.log(`[物流查询] 调用${companyCode}的API...`);
+      let result: LogisticsTrackResult;
+
       switch (companyCode) {
         case 'SF':
-          return await this.querySFTrace(trackingNo, config, phone);
+          result = await this.querySFTrace(trackingNo, config, phone);
+          break;
         case 'ZTO':
-          return await this.queryZTOTrace(trackingNo, config);
+          result = await this.queryZTOTrace(trackingNo, config);
+          break;
         case 'YTO':
-          return await this.queryYTOTrace(trackingNo, config);
+          result = await this.queryYTOTrace(trackingNo, config);
+          break;
         case 'STO':
-          return await this.querySTOTrace(trackingNo, config);
+          result = await this.querySTOTrace(trackingNo, config);
+          break;
         case 'YD':
-          return await this.queryYDTrace(trackingNo, config);
+          result = await this.queryYDTrace(trackingNo, config);
+          break;
         case 'JTSD':
-          return await this.queryJTTrace(trackingNo, config);
+          result = await this.queryJTTrace(trackingNo, config);
+          break;
         case 'EMS':
-          return await this.queryEMSTrace(trackingNo, config);
+          result = await this.queryEMSTrace(trackingNo, config);
+          break;
         case 'JD':
-          return await this.queryJDTrace(trackingNo, config);
+          result = await this.queryJDTrace(trackingNo, config);
+          break;
         case 'DBL':
-          return await this.queryDBLTrace(trackingNo, config);
+          result = await this.queryDBLTrace(trackingNo, config);
+          break;
         default:
-          return {
+          result = {
             success: false,
             trackingNo,
             companyCode,
@@ -164,8 +189,29 @@ class LogisticsTraceService {
             traces: []
           };
       }
+
+      // 🔥 如果官方API查询失败或没有轨迹，尝试使用快递100
+      if (!result.success || result.traces.length === 0) {
+        console.log(`[物流查询] 官方API查询失败或无轨迹，尝试快递100...`);
+        const fallbackResult = await this.queryByKuaidi100(trackingNo, companyCode);
+        if (fallbackResult.success && fallbackResult.traces.length > 0) {
+          console.log(`[物流查询] 快递100查询成功，返回${fallbackResult.traces.length}条轨迹`);
+          return fallbackResult;
+        }
+        console.log(`[物流查询] 快递100也查询失败，返回原始结果`);
+      }
+
+      return result;
     } catch (error: any) {
       console.error(`[物流查询] ${companyCode} 查询失败:`, error.message);
+
+      // 🔥 官方API异常时，尝试快递100
+      console.log(`[物流查询] 官方API异常，尝试快递100...`);
+      const fallbackResult = await this.queryByKuaidi100(trackingNo, companyCode);
+      if (fallbackResult.success) {
+        return fallbackResult;
+      }
+
       return {
         success: false,
         trackingNo,
@@ -173,6 +219,77 @@ class LogisticsTraceService {
         companyName: COMPANY_NAMES[companyCode] || companyCode,
         status: 'error',
         statusText: '查询失败: ' + error.message,
+        traces: []
+      };
+    }
+  }
+
+  /**
+   * 使用快递100 API查询（备选方案）
+   */
+  private async queryByKuaidi100(trackingNo: string, companyCode: string): Promise<LogisticsTrackResult> {
+    try {
+      const expressService = ExpressAPIService.getInstance();
+
+      // 检查快递100是否配置
+      const configStatus = expressService.getConfigStatus();
+      if (!configStatus.kuaidi100) {
+        console.log('[物流查询] 快递100未配置，跳过');
+        return {
+          success: false,
+          trackingNo,
+          companyCode,
+          companyName: COMPANY_NAMES[companyCode] || companyCode,
+          status: 'unknown',
+          statusText: '快递100 API未配置',
+          traces: []
+        };
+      }
+
+      // 转换公司代码
+      const kuaidi100Code = KUAIDI100_COMPANY_MAP[companyCode] || companyCode.toLowerCase();
+      console.log(`[物流查询] 调用快递100 API: 单号=${trackingNo}, 公司代码=${kuaidi100Code}`);
+
+      const result = await expressService.queryExpress(trackingNo, kuaidi100Code);
+
+      if (result.success) {
+        return {
+          success: true,
+          trackingNo: result.trackingNo,
+          companyCode,
+          companyName: COMPANY_NAMES[companyCode] || result.companyName,
+          status: result.status,
+          statusText: result.statusDescription + ' (快递100)',
+          traces: result.traces.map(t => ({
+            time: t.time,
+            status: t.status || '',
+            description: t.description,
+            location: t.location,
+            operator: t.operator,
+            phone: t.phone
+          })),
+          rawData: result.rawData
+        };
+      }
+
+      return {
+        success: false,
+        trackingNo,
+        companyCode,
+        companyName: COMPANY_NAMES[companyCode] || companyCode,
+        status: 'unknown',
+        statusText: result.error || '快递100查询失败',
+        traces: []
+      };
+    } catch (error: any) {
+      console.error('[物流查询] 快递100查询异常:', error.message);
+      return {
+        success: false,
+        trackingNo,
+        companyCode,
+        companyName: COMPANY_NAMES[companyCode] || companyCode,
+        status: 'error',
+        statusText: '快递100查询异常: ' + error.message,
         traces: []
       };
     }
