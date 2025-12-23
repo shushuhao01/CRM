@@ -59,6 +59,29 @@ const COMPANY_NAMES: Record<string, string> = {
   'DBL': '德邦快递'
 };
 
+// 🔥 新增：公司名称到代码的反向映射（用于处理前端传递中文名称的情况）
+const COMPANY_NAME_TO_CODE: Record<string, string> = {
+  '顺丰速运': 'SF',
+  '顺丰': 'SF',
+  '中通快递': 'ZTO',
+  '中通': 'ZTO',
+  '圆通速递': 'YTO',
+  '圆通': 'YTO',
+  '申通快递': 'STO',
+  '申通': 'STO',
+  '韵达速递': 'YD',
+  '韵达': 'YD',
+  '极兔速递': 'JTSD',
+  '极兔': 'JTSD',
+  '邮政EMS': 'EMS',
+  'EMS': 'EMS',
+  '邮政': 'EMS',
+  '京东物流': 'JD',
+  '京东': 'JD',
+  '德邦快递': 'DBL',
+  '德邦': 'DBL'
+};
+
 // 物流状态映射（供外部使用）
 export const STATUS_MAP: Record<string, { status: string; text: string }> = {
   'WAIT_ACCEPT': { status: 'pending', text: '待揽收' },
@@ -81,6 +104,13 @@ class LogisticsTraceService {
   async queryTrace(trackingNo: string, companyCode?: string, phone?: string): Promise<LogisticsTrackResult> {
     console.log(`[物流查询] 开始查询: 单号=${trackingNo}, 公司代码=${companyCode || '自动识别'}, 手机号=${phone ? phone.slice(-4) + '****' : '未提供'}`);
 
+    // 🔥 修复：如果传入的是中文公司名称，转换为代码
+    if (companyCode && COMPANY_NAME_TO_CODE[companyCode]) {
+      const originalCode = companyCode;
+      companyCode = COMPANY_NAME_TO_CODE[companyCode];
+      console.log(`[物流查询] 公司名称转换: ${originalCode} -> ${companyCode}`);
+    }
+
     // 如果没有指定快递公司，尝试自动识别
     if (!companyCode || companyCode === 'auto') {
       companyCode = this.detectCompanyCode(trackingNo);
@@ -90,6 +120,10 @@ class LogisticsTraceService {
     // 标准化公司代码（转大写）
     if (companyCode) {
       companyCode = companyCode.toUpperCase();
+      // 🔥 再次检查是否需要转换（处理大写中文的情况）
+      if (COMPANY_NAME_TO_CODE[companyCode]) {
+        companyCode = COMPANY_NAME_TO_CODE[companyCode];
+      }
     }
 
     if (!companyCode) {
