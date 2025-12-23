@@ -1,5 +1,4 @@
 import { api } from './request'
-import { API_ENDPOINTS } from './config'
 import { mockApi, shouldUseMockApi } from './mock'
 import type { Product, ProductCategory } from '@/stores/product'
 import { isProduction } from '@/utils/env'
@@ -32,12 +31,19 @@ export const productApi = {
    */
   async getList(params: ProductListParams = {}): Promise<ProductListResponse> {
     try {
-      const response = await api.get('/products', { params })
-      return response.data
+      const response = await api.get<{ data: ProductListResponse }>('/products', { params: params as any })
+      // 🔥 修复：后端返回格式是 { success: true, data: { list, total, page, pageSize } }，需要提取data
+      const data = (response as any).data?.data || (response as any).data
+      return {
+        list: data?.list || [],
+        total: data?.total || 0,
+        page: data?.page || 1,
+        pageSize: data?.pageSize || 10
+      }
     } catch (error) {
       console.error('获取产品列表失败:', error)
       // 如果API调用失败，返回模拟数据
-      return this.getMockProductList(params)
+      return this.getMockProductList(params) as ProductListResponse
     }
   },
 
@@ -53,8 +59,8 @@ export const productApi = {
    */
   async getDetail(id: string): Promise<Product> {
     try {
-      const response = await api.get(`/products/${id}`)
-      return response.data
+      const response = await api.get<{ data: Product }>(`/products/${id}`)
+      return (response as any).data?.data || (response as any).data as Product
     } catch (error) {
       console.error('获取产品详情失败:', error)
       throw error
@@ -66,8 +72,8 @@ export const productApi = {
    */
   async create(data: Partial<Product>): Promise<Product> {
     try {
-      const response = await api.post('/products', data)
-      return response.data
+      const response = await api.post<{ data: Product }>('/products', data as any)
+      return (response as any).data?.data || (response as any).data as Product
     } catch (error) {
       console.error('创建产品失败:', error)
       throw error
@@ -79,8 +85,8 @@ export const productApi = {
    */
   async update(id: string, data: Partial<Product>): Promise<Product> {
     try {
-      const response = await api.put(`/products/${id}`, data)
-      return response.data
+      const response = await api.put<{ data: Product }>(`/products/${id}`, data as any)
+      return (response as any).data?.data || (response as any).data as Product
     } catch (error) {
       console.error('更新产品失败:', error)
       throw error
@@ -113,7 +119,7 @@ export const productApi = {
     try {
       const response = await api.get(`/products/${productId}/stats`)
       // 后端返回格式是 { success: true, data: stats }
-      return response.data?.data || response.data
+      return (response as any).data?.data || (response as any).data
     } catch (error) {
       console.error('获取商品统计数据失败:', error)
       // 返回默认值
@@ -134,7 +140,7 @@ export const productApi = {
   async getStockStatistics(): Promise<any> {
     try {
       const response = await api.get('/products/stock/statistics')
-      return response.data
+      return (response as any).data?.data || (response as any).data
     } catch (error) {
       console.error('获取库存统计失败:', error)
       throw error
@@ -152,8 +158,8 @@ export const productApi = {
     remark?: string
   }): Promise<any> {
     try {
-      const response = await api.post('/products/stock/adjust', data)
-      return response.data
+      const response = await api.post('/products/stock/adjust', data as any)
+      return (response as any).data?.data || (response as any).data
     } catch (error) {
       console.error('库存调整失败:', error)
       throw error
@@ -172,8 +178,8 @@ export const productApi = {
     endDate?: string
   }): Promise<any> {
     try {
-      const response = await api.get('/products/stock/adjustments', { params })
-      return response.data
+      const response = await api.get('/products/stock/adjustments', { params: params as any })
+      return (response as any).data?.data || (response as any).data
     } catch (error) {
       console.error('获取库存调整记录失败:', error)
       throw error
@@ -185,8 +191,8 @@ export const productApi = {
    */
   async batchImport(data: { products: any[] }): Promise<any> {
     try {
-      const response = await api.post('/products/batch-import', data)
-      return response.data
+      const response = await api.post('/products/batch-import', data as any)
+      return (response as any).data?.data || (response as any).data
     } catch (error) {
       console.error('批量导入产品失败:', error)
       throw error
@@ -202,8 +208,8 @@ export const productApi = {
     format?: 'json' | 'csv'
   }): Promise<unknown> {
     try {
-      const response = await api.get('/products/export', { params })
-      return response.data
+      const response = await api.get('/products/export', { params: params as any })
+      return (response as any).data?.data || (response as any).data
     } catch (error) {
       console.error('导出产品数据失败:', error)
       throw error
@@ -217,7 +223,7 @@ export const productApi = {
     // 生产环境：强制使用真实API
     if (isProduction()) {
       const response = await api.get('/products/categories')
-      return response.data?.data || response.data || []
+      return (response as any).data?.data || (response as any).data || []
     }
 
     // 开发环境：根据配置决定
@@ -229,7 +235,7 @@ export const productApi = {
 
     try {
       const response = await api.get('/products/categories')
-      return response.data?.data || response.data || []
+      return (response as any).data?.data || (response as any).data || []
     } catch (error) {
       console.error('获取产品分类列表失败:', error)
       // 返回空数组而不是抛出异常，避免页面崩溃
@@ -244,7 +250,7 @@ export const productApi = {
     // 生产环境：强制使用真实API
     if (isProduction()) {
       const response = await api.get('/products/categories/tree')
-      return response.data?.data || response.data || []
+      return (response as any).data?.data || (response as any).data || []
     }
 
     // 开发环境：根据配置决定
@@ -256,7 +262,7 @@ export const productApi = {
 
     try {
       const response = await api.get('/products/categories/tree')
-      return response.data?.data || response.data || []
+      return (response as any).data?.data || (response as any).data || []
     } catch (error) {
       console.error('获取产品分类树形结构失败:', error)
       // 返回空数组而不是抛出异常，避免页面崩溃
@@ -270,18 +276,18 @@ export const productApi = {
   async createCategory(data: Partial<ProductCategory>): Promise<ProductCategory> {
     // 生产环境：强制使用真实API
     if (isProduction()) {
-      const response = await api.post('/products/categories', data)
-      return response.data
+      const response = await api.post('/products/categories', data as any)
+      return (response as any).data?.data || (response as any).data as ProductCategory
     }
 
     // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
-      return mockApi.createCategory(data)
+      return mockApi.createCategory(data) as Promise<ProductCategory>
     }
 
     try {
-      const response = await api.post('/products/categories', data)
-      return response.data
+      const response = await api.post('/products/categories', data as any)
+      return (response as any).data?.data || (response as any).data as ProductCategory
     } catch (error) {
       console.error('创建产品分类失败:', error)
       throw error
@@ -294,18 +300,18 @@ export const productApi = {
   async updateCategory(id: string, data: Partial<ProductCategory>): Promise<ProductCategory> {
     // 生产环境：强制使用真实API
     if (isProduction()) {
-      const response = await api.put(`/products/categories/${id}`, data)
-      return response.data
+      const response = await api.put(`/products/categories/${id}`, data as any)
+      return (response as any).data?.data || (response as any).data as ProductCategory
     }
 
     // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
-      return mockApi.updateCategory(id, data)
+      return mockApi.updateCategory(id, data) as Promise<ProductCategory>
     }
 
     try {
-      const response = await api.put(`/products/categories/${id}`, data)
-      return response.data
+      const response = await api.put(`/products/categories/${id}`, data as any)
+      return (response as any).data?.data || (response as any).data as ProductCategory
     } catch (error) {
       console.error('更新产品分类失败:', error)
       throw error
@@ -342,17 +348,17 @@ export const productApi = {
     // 生产环境：强制使用真实API
     if (isProduction()) {
       const response = await api.get(`/products/categories/${id}`)
-      return response.data
+      return (response as any).data?.data || (response as any).data as ProductCategory
     }
 
     // 开发环境：根据配置决定
     if (shouldUseMockApi()) {
-      return mockApi.getCategoryDetail(id)
+      return mockApi.getCategoryDetail(id) as Promise<ProductCategory>
     }
 
     try {
       const response = await api.get(`/products/categories/${id}`)
-      return response.data
+      return (response as any).data?.data || (response as any).data as ProductCategory
     } catch (error) {
       console.error('获取产品分类详情失败:', error)
       throw error
@@ -377,17 +383,27 @@ export const productApi = {
     warningChange: string
   }> {
     try {
-      const response = await api.get('/products/sales/statistics', { params })
-      return response.data
+      const response = await api.get('/products/sales/statistics', { params: params as any })
+      // 🔥 修复：后端返回格式是 { success: true, data: {...} }，需要提取data
+      return (response as any).data?.data || (response as any).data || {
+        totalRevenue: 0,
+        totalSales: 0,
+        totalProducts: 0,
+        lowStockWarning: 0,
+        revenueChange: '+0%',
+        salesChange: '+0%',
+        productsChange: '+0%',
+        warningChange: '+0%'
+      }
     } catch (error) {
       console.error('获取销售统计失败:', error)
       // 返回基于当前产品数据的统计
-      const mockData = this.getMockProductList()
+      const mockData = this.getMockProductList() as ProductListResponse
       const products = mockData.list || []
-      const totalRevenue = products.reduce((sum, p) => sum + ((p.salesCount || 0) * p.price), 0)
-      const totalSales = products.reduce((sum, p) => sum + (p.salesCount || 0), 0)
+      const totalRevenue = products.reduce((sum: number, p: Product) => sum + ((p.salesCount || 0) * p.price), 0)
+      const totalSales = products.reduce((sum: number, p: Product) => sum + (p.salesCount || 0), 0)
       const totalProducts = products.length
-      const lowStockWarning = products.filter(p => p.stock <= (p.minStock || 10) && p.stock > 0).length
+      const lowStockWarning = products.filter((p: Product) => p.stock <= (p.minStock || 10) && p.stock > 0).length
 
       return {
         totalRevenue,
@@ -416,8 +432,9 @@ export const productApi = {
     revenueData: number[]
   }> {
     try {
-      const response = await api.get('/products/sales/trend', { params })
-      return response.data
+      const response = await api.get('/products/sales/trend', { params: params as any })
+      // 🔥 修复：后端返回格式是 { success: true, data: {...} }，需要提取data
+      return (response as any).data?.data || (response as any).data || { timeLabels: [], salesData: [], revenueData: [] }
     } catch (error) {
       console.error('获取销售趋势失败:', error)
       // 返回模拟趋势数据
@@ -466,27 +483,28 @@ export const productApi = {
     percentage: number
   }>> {
     try {
-      const response = await api.get('/products/sales/category', { params })
-      return response.data
+      const response = await api.get('/products/sales/category', { params: params as any })
+      // 🔥 修复：后端返回格式是 { success: true, data: [...] }，需要提取data
+      return (response as any).data?.data || (response as any).data || []
     } catch (error) {
       console.error('获取分类销售占比失败:', error)
       // 返回基于当前产品数据的分类统计
-      const mockData = this.getMockProductList()
+      const mockData = this.getMockProductList() as ProductListResponse
       const products = mockData.list || []
-      const categoryStats = new Map()
+      const categoryStats = new Map<string, number>()
 
-      products.forEach(product => {
+      products.forEach((product: Product) => {
         const categoryName = product.categoryName || '未分类'
         const revenue = (product.salesCount || 0) * product.price
 
         if (categoryStats.has(categoryName)) {
-          categoryStats.set(categoryName, categoryStats.get(categoryName) + revenue)
+          categoryStats.set(categoryName, categoryStats.get(categoryName)! + revenue)
         } else {
           categoryStats.set(categoryName, revenue)
         }
       })
 
-      const totalRevenue = Array.from(categoryStats.values()).reduce((sum, value) => sum + value, 0)
+      const totalRevenue = Array.from(categoryStats.values()).reduce((sum: number, value: number) => sum + value, 0)
 
       return Array.from(categoryStats.entries()).map(([name, value]) => ({
         name,
@@ -513,25 +531,26 @@ export const productApi = {
     categoryName: string
   }>> {
     try {
-      const response = await api.get('/products/sales/top', { params })
-      return response.data
+      const response = await api.get('/products/sales/top', { params: params as any })
+      // 🔥 修复：后端返回格式是 { success: true, data: [...] }，需要提取data
+      return (response as any).data?.data || (response as any).data || []
     } catch (error) {
       console.error('获取热销商品排行失败:', error)
       // 返回基于当前产品数据的热销排行
-      const mockData = this.getMockProductList()
+      const mockData = this.getMockProductList() as ProductListResponse
       const products = mockData.list || []
       const limit = params.limit || 5
 
       return products
-        .map(product => ({
-          id: product.id,
+        .map((product: Product) => ({
+          id: String(product.id),
           name: product.name,
           sales: product.salesCount || 0,
           revenue: (product.salesCount || 0) * product.price,
           image: product.image,
           categoryName: product.categoryName || '未分类'
         }))
-        .sort((a, b) => b.sales - a.sales)
+        .sort((a: { sales: number }, b: { sales: number }) => b.sales - a.sales)
         .slice(0, limit)
     }
   },
@@ -553,18 +572,24 @@ export const productApi = {
     }>
   }> {
     try {
-      const response = await api.get('/products/inventory/warning', { params })
-      return response.data
+      const response = await api.get('/products/inventory/warning', { params: params as any })
+      // 🔥 修复：后端返回格式是 { success: true, data: {...} }，需要提取data
+      return (response as any).data?.data || (response as any).data || {
+        lowStockCount: 0,
+        outOfStockCount: 0,
+        totalWarning: 0,
+        categories: []
+      }
     } catch (error) {
       console.error('获取库存预警失败:', error)
       // 返回基于当前产品数据的库存预警
-      const mockData = this.getMockProductList()
+      const mockData = this.getMockProductList() as ProductListResponse
       const products = mockData.list || []
-      const lowStockProducts = products.filter(p => p.stock <= (p.minStock || 10) && p.stock > 0)
-      const outOfStockProducts = products.filter(p => p.stock === 0)
+      const lowStockProducts = products.filter((p: Product) => p.stock <= (p.minStock || 10) && p.stock > 0)
+      const outOfStockProducts = products.filter((p: Product) => p.stock === 0)
 
-      const categoryWarning = new Map()
-      products.forEach(product => {
+      const categoryWarning = new Map<string, { name: string; lowStock: number; outOfStock: number; totalStock: number }>()
+      products.forEach((product: Product) => {
         const categoryName = product.categoryName || '未分类'
         if (!categoryWarning.has(categoryName)) {
           categoryWarning.set(categoryName, {
@@ -575,7 +600,7 @@ export const productApi = {
           })
         }
 
-        const category = categoryWarning.get(categoryName)
+        const category = categoryWarning.get(categoryName)!
         category.totalStock += product.stock
 
         if (product.stock === 0) {
@@ -598,7 +623,7 @@ export const productApi = {
    * 模拟数据方法（当API调用失败时使用）
    * 从localStorage获取真实的商品数据
    */
-  getMockProductList(params: ProductListParams = {}): unknown {
+  getMockProductList(params: ProductListParams = {}): ProductListResponse {
     // 从localStorage获取商品数据
     const productsStr = localStorage.getItem('products')
     const mockProducts: Product[] = productsStr ? JSON.parse(productsStr) : []
