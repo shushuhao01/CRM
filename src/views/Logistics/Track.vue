@@ -475,7 +475,15 @@ const handleSearch = async (phone?: string) => {
 
         // 🔥 检查业务层面是否成功
         if (!data.success) {
-          // 🔥 给出友好提示，而不是显示技术性错误
+          // 🔥 如果是手机号验证失败，弹出手机号验证对话框
+          if (data.statusText?.includes('手机号') || data.statusText?.includes('可能原因')) {
+            pendingTrackingNo.value = trackingNum
+            pendingCompanyCode.value = companyCode
+            phoneVerifyDialogVisible.value = true
+            loading.value = false
+            return
+          }
+          // 🔥 其他错误，给出友好提示
           const friendlyMessage = getFriendlyNoTraceMessage(data.statusText)
           ElMessage.info(friendlyMessage)
           loading.value = false
