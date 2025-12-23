@@ -46,6 +46,7 @@ import performanceReportRoutes from './routes/performanceReport';
 import customerServicePermissionRoutes from './routes/customerServicePermissions';
 import timeoutReminderRoutes from './routes/timeoutReminder';
 import sensitiveInfoPermissionRoutes from './routes/sensitiveInfoPermissions';
+import messageCleanupRoutes from './routes/messageCleanup';
 
 // 加载环境变量
 dotenv.config();
@@ -236,6 +237,7 @@ app.use(`${API_PREFIX}/customer-share`, customerShareRoutes);
 app.use(`${API_PREFIX}/customer-service-permissions`, customerServicePermissionRoutes);
 app.use(`${API_PREFIX}/timeout-reminder`, timeoutReminderRoutes);
 app.use(`${API_PREFIX}/sensitive-info-permissions`, sensitiveInfoPermissionRoutes);
+app.use(`${API_PREFIX}/message-cleanup`, messageCleanupRoutes);
 
 // 404处理
 app.use(notFoundHandler);
@@ -360,6 +362,19 @@ const startServer = async () => {
     };
 
     startPerformanceReportScheduler();
+
+    // 🔥 启动消息清理定时服务
+    const startMessageCleanupService = async () => {
+      try {
+        const { messageCleanupService } = await import('./services/MessageCleanupService');
+        messageCleanupService.start();
+        logger.info('🧹 [定时任务] 消息清理服务已启动');
+      } catch (error) {
+        logger.error('[定时任务] 启动消息清理服务失败:', error);
+      }
+    };
+
+    startMessageCleanupService();
 
     // 优雅关闭处理
     const gracefulShutdown = async (signal: string) => {
