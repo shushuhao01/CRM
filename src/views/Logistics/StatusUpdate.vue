@@ -916,6 +916,9 @@ const loadData = async (showMessage = false) => {
         // 联系信息
         customerPhone: order.receiverPhone || order.customerPhone,
         phone: order.receiverPhone || order.customerPhone,
+        // 客服微信号和订单来源
+        serviceWechat: order.serviceWechat || '',
+        orderSource: order.orderSource || '',
         // 地址
         address: order.receiverAddress || order.address || '',
         receiverAddress: order.receiverAddress || order.address || '',
