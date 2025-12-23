@@ -597,7 +597,8 @@ const loadData = async () => {
       }
 
       // 🔥 判断是否是已完结的物流状态（不需要再请求API）
-      const isLogisticsFinished = ['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled', 'package_exception', 'exception'].includes(logisticsStatus)
+      // 注意：package_exception和exception状态仍需继续请求API跟踪后续变化
+      const isLogisticsFinished = ['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled'].includes(logisticsStatus)
 
       return {
         id: order.id,
@@ -806,7 +807,8 @@ const fetchLatestLogisticsUpdates = async () => {
         if (newStatus !== order.logisticsStatus) {
           order.logisticsStatus = newStatus
           // 🔥 如果状态变为已完结，标记为已完结
-          if (['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled', 'package_exception', 'exception'].includes(newStatus)) {
+          // 注意：package_exception和exception状态仍需继续请求API
+          if (['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled'].includes(newStatus)) {
             order.isLogisticsFinished = true
           }
         }
