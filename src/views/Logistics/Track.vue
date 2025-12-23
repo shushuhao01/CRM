@@ -366,8 +366,8 @@ const getTimelineIcon = (status: string) => {
 }
 
 /**
- * 查询物流轨迹 - 简化版
- * 前端只传单号和可选的物流公司，后端自动匹配手机号
+ * 查询物流轨迹 - 优化版
+ * 🔥 修复：先从订单API获取手机号，确保顺丰等需要验证的快递能正常查询
  */
 const handleSearch = async (phone?: string) => {
   const trackingNum = searchForm.trackingNo.trim()
@@ -384,12 +384,24 @@ const handleSearch = async (phone?: string) => {
   try {
     const companyCode = searchForm.company || undefined
 
-    // 直接调用后端API，后端会自动：
-    // 1. 根据单号匹配物流公司
-    // 2. 从数据库查询订单获取手机号
-    // 3. 调用物流API返回结果
+    // 🔥 修复：如果没有传入手机号，先尝试从订单API获取
+    let phoneToUse = phone
+    if (!phoneToUse) {
+      try {
+        const { orderApi } = await import('@/api/order')
+        const orderRes = await orderApi.getOrderByTrackingNo(trackingNum)
+        if (orderRes?.success && orderRes.data) {
+          const orderData = orderRes.data as any
+          phoneToUse = orderData.shippingPhone || orderData.receiverPhone || orderData.phone || orderData.customerPhone || ''
+          console.log('[物流跟踪] 从订单API获取手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未找到')
+        }
+      } catch (orderErr) {
+        console.log('[物流跟踪] 从订单API获取手机号失败:', orderErr)
+      }
+    }
+
     const { logisticsApi } = await import('@/api/logistics')
-    const response = await logisticsApi.queryTrace(trackingNum, companyCode, phone)
+    const response = await logisticsApi.queryTrace(trackingNum, companyCode, phoneToUse)
 
     console.log('[物流跟踪] API响应:', response)
 
