@@ -954,53 +954,53 @@ const fetchLatestLogisticsUpdates = async () => {
 
   console.log(`[状态更新] 开始从API获取 ${ordersWithTracking.length} 个订单的物流信息`)
 
-  // 并发获取物流信息，限制并发数量避免API限制
-  const batchSize = 3
-  for (let i = 0; i < ordersWithTracking.length; i += batchSize) {
-    const batch = ordersWithTracking.slice(i, i + batchSize)
-    await Promise.all(batch.map(async (order) => {
-      try {
-        // 从官方API获取物流轨迹
-        const response = await logisticsApi.queryTrace(
-          order.trackingNo,
-          order.logisticsCompany,
-          order.customerPhone || ''
-        )
+  // 🔥 改进：依次请求，避免并发过多导致API限制
+  for (let i = 0; i < ordersWithTracking.length; i++) {
+    const order = ordersWithTracking[i]
+    try {
+      // 🔥 添加详细日志
+      console.log(`[状态更新] 正在获取第 ${i + 1}/${ordersWithTracking.length} 个订单的物流信息:`, {
+        orderNo: order.orderNo,
+        trackingNo: order.trackingNo,
+        company: order.logisticsCompany,
+        customerPhone: order.customerPhone ? order.customerPhone.slice(-4) + '****' : '(空)'
+      })
 
-        if (response?.success && response.data?.success && response.data.traces?.length > 0) {
-          const traces = response.data.traces
-          // 🔥 按时间排序，获取最新动态
-          const sortedTraces = [...traces].sort((a: any, b: any) => {
-            const timeA = new Date(a.time).getTime()
-            const timeB = new Date(b.time).getTime()
-            return timeB - timeA  // 倒序，最新的在前面
-          })
-          const latestTrace = sortedTraces[0]
-          order.latestUpdate = latestTrace.description || latestTrace.status || '暂无描述'
-        } else if (response?.success && response.data?.traces?.length > 0) {
-          const traces = response.data.traces
-          // 🔥 按时间排序，获取最新动态
-          const sortedTraces = [...traces].sort((a: any, b: any) => {
-            const timeA = new Date(a.time).getTime()
-            const timeB = new Date(b.time).getTime()
-            return timeB - timeA
-          })
-          const latestTrace = sortedTraces[0]
-          order.latestUpdate = latestTrace.description || latestTrace.status || '暂无描述'
-        } else if (response?.data?.statusText) {
-          order.latestUpdate = response.data.statusText
-        } else {
-          order.latestUpdate = '暂无物流信息'
-        }
-      } catch (error) {
-        console.error(`获取订单 ${order.orderNo} 物流信息失败:`, error)
-        order.latestUpdate = '获取失败'
+      // 从官方API获取物流轨迹
+      // 🔥 修复：如果手机号为空，传undefined而不是空字符串
+      const phoneToSend = order.customerPhone && order.customerPhone.trim() ? order.customerPhone : undefined
+      const response = await logisticsApi.queryTrace(
+        order.trackingNo,
+        order.logisticsCompany,
+        phoneToSend
+      )
+
+      if (response?.success && response.data?.success && response.data.traces?.length > 0) {
+        const traces = response.data.traces
+        // 🔥 按时间排序，获取最新动态
+        const sortedTraces = [...traces].sort((a: any, b: any) => {
+          const timeA = new Date(a.time).getTime()
+          const timeB = new Date(b.time).getTime()
+          return timeB - timeA  // 倒序，最新的在前面
+        })
+        const latestTrace = sortedTraces[0]
+        order.latestUpdate = latestTrace.description || latestTrace.status || '暂无描述'
+        console.log(`[状态更新] ✅ ${order.orderNo} 获取成功:`, order.latestUpdate.substring(0, 30))
+      } else if (response?.data?.statusText) {
+        order.latestUpdate = response.data.statusText
+        console.log(`[状态更新] ⚠️ ${order.orderNo} 返回状态:`, response.data.statusText)
+      } else {
+        order.latestUpdate = '暂无物流信息'
+        console.log(`[状态更新] ⚠️ ${order.orderNo} 暂无物流信息`)
       }
-    }))
+    } catch (error) {
+      console.error(`[状态更新] ❌ 获取订单 ${order.orderNo} 物流信息失败:`, error)
+      order.latestUpdate = '获取失败'
+    }
 
-    // 每批次之间稍微延迟，避免API限制
-    if (i + batchSize < ordersWithTracking.length) {
-      await new Promise(resolve => setTimeout(resolve, 300))
+    // 🔥 每个请求之间延迟500ms，避免API限制
+    if (i < ordersWithTracking.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 500))
     }
   }
 
