@@ -2,10 +2,10 @@
   <el-dialog
     v-model="dialogVisible"
     title="订单详情"
-    width="800px"
+    width="850px"
     :before-close="handleClose"
     class="order-detail-dialog"
-    top="3vh"
+    top="2vh"
   >
     <div v-if="order" class="order-detail-content">
       <!-- 基本信息 -->
@@ -59,8 +59,23 @@
           </div>
           <div class="info-item full-width" v-if="order.remark">
             <label>备注：</label>
-            <span class="value">{{ order.remark || '-' }}</span>
+            <span class="value remark-text">{{ order.remark }}</span>
           </div>
+          <!-- 调理标准等额外字段 -->
+          <template v-if="order.treatmentStandard || order.usageDays || order.courseCount">
+            <div class="info-item" v-if="order.treatmentStandard">
+              <label>调理标准：</label>
+              <span class="value">{{ order.treatmentStandard }}</span>
+            </div>
+            <div class="info-item" v-if="order.usageDays">
+              <label>用药天数：</label>
+              <span class="value">{{ order.usageDays }}</span>
+            </div>
+            <div class="info-item" v-if="order.courseCount">
+              <label>疗程行数：</label>
+              <span class="value">{{ order.courseCount }}</span>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -70,7 +85,7 @@
           <el-icon><Van /></el-icon>
           物流信息
         </h3>
-        <div class="info-grid">
+        <div class="info-grid two-cols">
           <div class="info-item">
             <label>快递单号：</label>
             <span class="value">{{ order.expressNo || order.trackingNumber || order.trackingNo || '-' }}</span>
@@ -79,9 +94,9 @@
             <label>快递公司：</label>
             <span class="value">{{ getExpressCompanyName(order.expressCompany || order.logisticsCompany) || '-' }}</span>
           </div>
-          <div class="info-item full-width">
+          <div class="info-item full-width" v-if="order.latestUpdate">
             <label>最新动态：</label>
-            <span class="value">{{ order.latestUpdate || order.logisticsStatus || '-' }}</span>
+            <span class="value">{{ order.latestUpdate }}</span>
           </div>
         </div>
       </div>
@@ -92,7 +107,7 @@
           <el-icon><Box /></el-icon>
           商品信息
         </h3>
-        <div class="info-grid">
+        <div class="info-grid two-cols">
           <div class="info-item full-width">
             <label>商品名称：</label>
             <span class="value">{{ order.productsText || order.productName || getProductsText(order.products) || '-' }}</span>
@@ -115,11 +130,23 @@
             <label>订单金额：</label>
             <span class="value total">¥{{ formatNumber(order.totalAmount || order.amount) }}</span>
           </div>
+          <div class="amount-item" v-if="order.deposit || order.depositAmount">
+            <label>定金：</label>
+            <span class="value">¥{{ formatNumber(order.deposit || order.depositAmount) }}</span>
+          </div>
+          <div class="amount-item" v-if="order.codAmount || order.collectAmount">
+            <label>代收金额：</label>
+            <span class="value cod">¥{{ formatNumber(order.codAmount || order.collectAmount) }}</span>
+          </div>
+          <div class="amount-item" v-if="order.paymentMethod">
+            <label>支付方式：</label>
+            <span class="value">{{ getPaymentMethodText(order.paymentMethod) }}</span>
+          </div>
         </div>
       </div>
 
-      <!-- 订单备注 -->
-      <div class="detail-section compact-section" v-if="order.remark">
+      <!-- 订单备注（单独区块，仅当备注较长时显示） -->
+      <div class="detail-section compact-section" v-if="order.remark && order.remark.length > 50">
         <h3 class="section-title small">
           <el-icon><ChatDotRound /></el-icon>
           订单备注
@@ -262,6 +289,22 @@ const getOrderSourceText = (source: string | null | undefined) => {
   return sourceMap[source] || source
 }
 
+// 获取支付方式文本
+const getPaymentMethodText = (method: string | null | undefined) => {
+  if (!method) return '-'
+  const methodMap: Record<string, string> = {
+    wechat: '微信支付',
+    alipay: '支付宝',
+    bank_transfer: '银行转账',
+    unionpay: '云闪付',
+    cod: '货到付款',
+    cash: '现金',
+    card: '刷卡',
+    other: '其他'
+  }
+  return methodMap[method] || method
+}
+
 // 获取快递公司名称
 const getExpressCompanyName = (code: string | null | undefined) => {
   if (!code) return null
@@ -340,17 +383,22 @@ const handleSetTodo = () => {
 <style scoped>
 .order-detail-dialog {
   :deep(.el-dialog__body) {
-    padding: 16px 20px;
-    max-height: 75vh;
+    padding: 12px 16px;
+    max-height: 80vh;
     overflow-y: auto;
   }
   :deep(.el-dialog__header) {
-    padding: 12px 20px;
+    padding: 10px 16px;
     border-bottom: 1px solid #e4e7ed;
+    margin-right: 0;
   }
   :deep(.el-dialog__footer) {
-    padding: 12px 20px;
+    padding: 10px 16px;
     border-top: 1px solid #e4e7ed;
+  }
+  :deep(.el-dialog__title) {
+    font-size: 15px;
+    font-weight: 600;
   }
 }
 
@@ -359,45 +407,50 @@ const handleSetTodo = () => {
 }
 
 .detail-section {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   background: #f8f9fa;
   border-radius: 6px;
-  padding: 12px 16px;
+  padding: 10px 14px;
 }
 
 .compact-section {
-  margin-bottom: 12px;
-  padding: 10px 14px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
 }
 
 .section-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #303133;
-  margin: 0 0 10px 0;
-  padding-bottom: 8px;
+  margin: 0 0 8px 0;
+  padding-bottom: 6px;
   border-bottom: 1px solid #e4e7ed;
 }
 
 .section-title.small {
-  font-size: 13px;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
+  font-size: 12px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
 }
 
 .info-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px 16px;
+  gap: 6px 12px;
+}
+
+.info-grid.two-cols {
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .info-item {
   display: flex;
   align-items: flex-start;
-  line-height: 1.5;
+  line-height: 1.4;
+  font-size: 12px;
 }
 
 .info-item.full-width {
@@ -407,7 +460,7 @@ const handleSetTodo = () => {
 .info-item label {
   font-weight: 500;
   color: #606266;
-  min-width: 80px;
+  min-width: 70px;
   flex-shrink: 0;
 }
 
@@ -417,11 +470,16 @@ const handleSetTodo = () => {
   word-break: break-all;
 }
 
+.info-item .value.remark-text {
+  color: #606266;
+  font-size: 12px;
+}
+
 /* 指定快递红色高亮样式 */
 .info-item.highlight-red {
   background-color: #fef0f0;
   border-radius: 4px;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border: 1px solid #f56c6c;
 }
 
@@ -438,13 +496,15 @@ const handleSetTodo = () => {
 .amount-row {
   display: flex;
   align-items: center;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .amount-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  font-size: 12px;
 }
 
 .amount-item label {
@@ -453,18 +513,27 @@ const handleSetTodo = () => {
 }
 
 .amount-item .value.total {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: #409eff;
+}
+
+.amount-item .value.cod {
+  color: #e6a23c;
+  font-weight: 600;
 }
 
 .remark-content {
   background: white;
   border-radius: 4px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid #e4e7ed;
-  line-height: 1.5;
-  font-size: 13px;
+  line-height: 1.4;
+  font-size: 12px;
+}
+
+.remark-content p {
+  margin: 0;
 }
 
 .highlight-keyword {
@@ -478,6 +547,6 @@ const handleSetTodo = () => {
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
 }
 </style>
