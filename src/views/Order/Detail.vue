@@ -546,7 +546,7 @@
               <el-timeline-item
                 v-for="(item, index) in orderTimeline"
                 :key="index"
-                :timestamp="item.timestamp"
+                :timestamp="formatDateTime(item.timestamp)"
                 :type="item.type"
                 :icon="item.icon"
                 :color="item.color"
@@ -670,6 +670,16 @@ const orderDetail = reactive({
   updateTime: '',
   auditTransferTime: '', // 流转审核时间
   isAuditTransferred: false, // 是否已流转到审核
+  // 🔥 操作人信息
+  createdBy: '',
+  createdByName: '',
+  auditBy: '',
+  auditByName: '',
+  auditRemark: '',
+  shippedBy: '',
+  shippedByName: '',
+  cancelledBy: '',
+  cancelledByName: '',
   customer: {
     id: '',
     name: '',
@@ -918,22 +928,35 @@ const generateTimelineFromStatus = () => {
 
   // 生成已经过的状态轨迹
   const baseTime = new Date(orderDetail.createTime || new Date())
+  const creatorName = orderDetail.createdByName || '销售员'
 
   for (const step of statusFlow) {
     const stepPriority = statusPriority[step.status] ?? 0
 
     if (stepPriority <= currentPriority) {
       // 计算时间（每个状态间隔一些时间）
-      const timestamp = new Date(baseTime.getTime() + stepPriority * 3600000).toISOString()
+      const timestamp = new Date(baseTime.getTime() + stepPriority * 3600000)
+
+      // 🔥 根据状态确定操作人
+      let operator = creatorName
+      if (step.status === 'pending_audit') {
+        operator = creatorName // 提交审核的是创建人
+      } else if (step.status === 'pending_shipment') {
+        operator = orderDetail.auditByName || '审核员'
+      } else if (step.status === 'shipped') {
+        operator = orderDetail.shippedByName || '物流部'
+      } else if (step.status === 'delivered') {
+        operator = '快递员'
+      }
 
       timeline.push({
-        timestamp,
+        timestamp: timestamp.toISOString(),
         type: getTimelineType(step.status),
         icon: getTimelineIcon(step.status),
         color: getTimelineColor(step.status),
         title: step.title,
         description: step.description,
-        operator: orderDetail.createdByName || '系统'
+        operator
       })
     }
   }
@@ -947,7 +970,7 @@ const generateTimelineFromStatus = () => {
       color: '#F56C6C',
       title: '订单取消',
       description: '订单已取消',
-      operator: '系统'
+      operator: orderDetail.cancelledByName || creatorName
     })
   } else if (currentStatus === 'audit_rejected') {
     timeline.push({
@@ -956,8 +979,8 @@ const generateTimelineFromStatus = () => {
       icon: Close,
       color: '#F56C6C',
       title: '审核拒绝',
-      description: '订单审核被拒绝',
-      operator: '系统'
+      description: orderDetail.auditRemark || '订单审核被拒绝',
+      operator: orderDetail.auditByName || '审核员'
     })
   }
 
@@ -1877,9 +1900,19 @@ const loadOrderDetail = async () => {
       auditStatus: order.auditStatus || 'pending', // 审核状态
       markType: order.markType || 'normal', // 默认为正常发货单
       createTime: order.createTime,
-      updateTime: order.createTime, // 暂时使用创建时间
+      updateTime: order.updateTime || order.createTime,
       auditTransferTime: order.auditTransferTime || '', // 流转审核时间
       isAuditTransferred: order.isAuditTransferred || false, // 是否已流转到审核
+      // 🔥 操作人信息
+      createdBy: order.createdBy || '',
+      createdByName: order.createdByName || '系统',
+      auditBy: order.auditBy || '',
+      auditByName: order.auditByName || '',
+      auditRemark: order.auditRemark || '',
+      shippedBy: order.shippedBy || '',
+      shippedByName: order.shippedByName || '',
+      cancelledBy: order.cancelledBy || '',
+      cancelledByName: order.cancelledByName || '',
       customer: customer ? {
         id: customer.id,
         name: customer.name,
