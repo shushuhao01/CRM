@@ -978,6 +978,8 @@ router.get('/by-tracking-no', authenticateToken, async (req: Request, res: Respo
       });
     }
 
+    console.log('[订单API] 根据物流单号查询订单:', trackingNo);
+
     const orderRepository = AppDataSource.getRepository(Order);
 
     const order = await orderRepository.findOne({
@@ -985,12 +987,19 @@ router.get('/by-tracking-no', authenticateToken, async (req: Request, res: Respo
     });
 
     if (!order) {
+      console.log('[订单API] 未找到对应订单, trackingNo:', trackingNo);
       return res.status(404).json({
         success: false,
         code: 404,
         message: '未找到对应订单'
       });
     }
+
+    // 🔥 优先使用收货人电话，其次使用客户电话
+    const phoneToReturn = order.shippingPhone || order.customerPhone || '';
+    console.log('[订单API] 找到订单:', order.orderNumber);
+    console.log('[订单API] 手机号字段 - shippingPhone:', order.shippingPhone, ', customerPhone:', order.customerPhone);
+    console.log('[订单API] 返回手机号:', phoneToReturn || '(空)');
 
     res.json({
       success: true,
@@ -999,9 +1008,10 @@ router.get('/by-tracking-no', authenticateToken, async (req: Request, res: Respo
         id: order.id,
         orderNumber: order.orderNumber,
         customerName: order.customerName,
-        customerPhone: order.customerPhone,
-        receiverPhone: order.shippingPhone,
-        phone: order.shippingPhone || order.customerPhone,
+        customerPhone: order.customerPhone || '',
+        // 🔥 确保receiverPhone有值
+        receiverPhone: order.shippingPhone || order.customerPhone || '',
+        phone: phoneToReturn,
         expressCompany: order.expressCompany,
         trackingNumber: order.trackingNumber,
         // 🔥 新增：收货地址和发货时间

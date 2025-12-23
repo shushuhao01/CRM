@@ -187,7 +187,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, onActivated, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useOrderStore } from '@/stores/order'
@@ -372,7 +372,7 @@ const getTimelineIcon = (status: string) => {
 }
 
 // 数据范围控制函数
-const applyDataScopeControl = (orderList: unknown[]) => {
+const applyDataScopeControl = (orderList: any[]) => {
   const currentUser = userStore.currentUser
   if (!currentUser) return []
 
@@ -383,7 +383,7 @@ const applyDataScopeControl = (orderList: unknown[]) => {
 
   // 部门负责人可以查看本部门所有订单
   if (currentUser.role === 'department_manager') {
-    return orderList.filter(order => {
+    return orderList.filter((order: any) => {
       const orderCreator = userStore.getUserById(order.createdBy)
       return orderCreator?.department === currentUser.department
     })
@@ -391,16 +391,16 @@ const applyDataScopeControl = (orderList: unknown[]) => {
 
   // 销售员只能查看自己创建的订单
   if (currentUser.role === 'sales_staff') {
-    return orderList.filter(order => order.createdBy === currentUser.id)
+    return orderList.filter((order: any) => order.createdBy === currentUser.id)
   }
 
   // 客服只能查看自己处理的订单
   if (currentUser.role === 'customer_service') {
-    return orderList.filter(order => order.servicePersonId === currentUser.id)
+    return orderList.filter((order: any) => order.servicePersonId === currentUser.id)
   }
 
   // 其他角色默认只能查看自己创建的订单
-  return orderList.filter(order => order.createdBy === currentUser.id)
+  return orderList.filter((order: any) => order.createdBy === currentUser.id)
 }
 
 /**
@@ -423,32 +423,61 @@ const handleSearch = async (phone?: string) => {
     // 🔥 如果没有传入手机号，尝试从订单中获取
     let phoneToUse = phone
     if (!phoneToUse) {
+      console.log('[物流跟踪] 未传入手机号，尝试从订单数据获取...')
+
       // 先尝试从本地订单数据获取手机号
       const accessibleOrders = applyDataScopeControl(orderStore.orders)
-      let order = accessibleOrders.find(o =>
+      console.log('[物流跟踪] 本地订单数量:', accessibleOrders.length)
+
+      let order = accessibleOrders.find((o: any) =>
         o.expressNo === trackingNum ||
         o.trackingNumber === trackingNum ||
         o.expressNumber === trackingNum
       )
 
+      if (order) {
+        console.log('[物流跟踪] 从本地订单数据找到订单')
+      }
+
       // 🔥 如果本地没有找到，尝试从API获取订单信息
       if (!order) {
+        console.log('[物流跟踪] 本地未找到订单，尝试从API获取...')
         try {
           const { orderApi } = await import('@/api/order')
+          console.log('[物流跟踪] 正在调用API: /orders/by-tracking-no?trackingNo=' + trackingNum)
           const response = await orderApi.getOrderByTrackingNo(trackingNum)
+          console.log('[物流跟踪] API返回:', JSON.stringify(response))
           if (response?.success && response.data) {
             order = response.data
             console.log('[物流跟踪] 从API获取订单信息成功')
+          } else {
+            console.log('[物流跟踪] API返回失败或无数据:', response?.message || '未知错误')
           }
-        } catch (e) {
-          console.log('[物流跟踪] 从API获取订单信息失败:', e)
+        } catch (e: any) {
+          // 🔥 404错误表示订单不存在，这是正常情况（可能是外部单号）
+          if (e?.status === 404) {
+            console.log('[物流跟踪] 订单不存在（404），可能是外部单号')
+          } else {
+            console.log('[物流跟踪] API调用失败:', e?.message || e)
+          }
         }
       }
 
       if (order) {
-        phoneToUse = order.receiverPhone || order.phone || order.customerPhone || ''
-        console.log('[物流跟踪] 获取到手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未找到')
+        // 🔥 修复：确保从正确的字段获取手机号
+        const orderData = order as any
+        phoneToUse = orderData.receiverPhone || orderData.phone || orderData.customerPhone || ''
+        console.log('[物流跟踪] 订单字段 - receiverPhone:', orderData.receiverPhone, ', phone:', orderData.phone, ', customerPhone:', orderData.customerPhone)
+        if (phoneToUse) {
+          console.log('[物流跟踪] ✅ 获取到手机号:', phoneToUse.slice(0, 3) + '****' + phoneToUse.slice(-4))
+        } else {
+          console.log('[物流跟踪] ⚠️ 订单存在但手机号为空')
+        }
+      } else {
+        console.log('[物流跟踪] ⚠️ 未找到订单信息，将不带手机号查询（顺丰可能会失败）')
       }
+    } else {
+      console.log('[物流跟踪] 已传入手机号:', phoneToUse.slice(0, 3) + '****' + phoneToUse.slice(-4))
     }
 
     // 🔥 调用物流轨迹查询API（调用真实快递API）
@@ -898,28 +927,18 @@ onMounted(async () => {
   orderStore.startLogisticsAutoSync()
 
   // 检查路由参数并自动搜索
-  const trackingNo = route.query.trackingNo as string
-  const company = route.query.company as string
-
-  if (trackingNo) {
-    searchForm.trackingNo = trackingNo
-    if (company) {
-      searchForm.company = company
-    }
-    // 自动执行搜索
-    handleSearch()
-  }
+  checkRouteParamsAndSearch()
 
   // 监听订单变化，当物流信息更新时自动刷新
-  orderStore.$subscribe((mutation, state) => {
+  orderStore.$subscribe((mutation: any, _state: any) => {
     // 如果当前正在查看某个快递单号，且该订单的物流信息发生变化，则自动刷新
-    if (trackingResult.trackingNo && mutation.events.some(event =>
+    if (trackingResult.trackingNo && mutation.events.some((event: any) =>
       event.key === 'expressNo' ||
       event.key === 'expressCompany' ||
       event.key === 'status'
     )) {
       const accessibleOrders = applyDataScopeControl(orderStore.orders)
-      const updatedOrder = accessibleOrders.find(o => o.expressNo === trackingResult.trackingNo)
+      const updatedOrder = accessibleOrders.find((o: any) => o.expressNo === trackingResult.trackingNo)
       if (updatedOrder) {
         // 自动刷新当前查询结果
         handleSearch()
@@ -927,6 +946,46 @@ onMounted(async () => {
     }
   })
 })
+
+// 🔥 检查路由参数并执行搜索
+const checkRouteParamsAndSearch = () => {
+  const trackingNo = route.query.trackingNo as string
+  const company = route.query.company as string
+
+  console.log('[物流跟踪] 检查路由参数 - trackingNo:', trackingNo, ', company:', company)
+
+  if (trackingNo) {
+    // 只有当单号变化时才更新和搜索
+    if (searchForm.trackingNo !== trackingNo) {
+      searchForm.trackingNo = trackingNo
+      if (company) {
+        searchForm.company = company
+      }
+      // 自动执行搜索
+      console.log('[物流跟踪] 路由参数变化，自动执行搜索')
+      handleSearch()
+    }
+  }
+}
+
+// 🔥 组件被激活时（从keep-alive缓存恢复）
+onActivated(() => {
+  console.log('[物流跟踪] 🔄 组件激活（onActivated）')
+  // 重新检查路由参数
+  checkRouteParamsAndSearch()
+})
+
+// 🔥 监听路由参数变化
+watch(
+  () => route.query,
+  (newQuery) => {
+    console.log('[物流跟踪] 路由参数变化:', newQuery)
+    if (newQuery.trackingNo) {
+      checkRouteParamsAndSearch()
+    }
+  },
+  { deep: true }
+)
 
 // 组件卸载时清理异步操作
 onBeforeUnmount(() => {
