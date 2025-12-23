@@ -75,17 +75,6 @@
     <!-- 功能选项卡 -->
     <div class="tabs-section">
       <el-tabs v-model="activeTab" class="message-tabs">
-        <!-- 消息订阅暂时隐藏，功能已整合到通知配置中 -->
-        <!-- <el-tab-pane name="subscription">
-          <template #label>
-            <div class="tab-label">
-              <el-icon class="tab-icon"><Bell /></el-icon>
-              <span>消息订阅</span>
-            </div>
-          </template>
-          <MessageSubscription />
-        </el-tab-pane> -->
-
         <el-tab-pane name="announcement">
           <template #label>
             <div class="tab-label">
@@ -115,6 +104,16 @@
           </template>
           <TimeoutReminderConfig />
         </el-tab-pane>
+
+        <el-tab-pane name="cleanup">
+          <template #label>
+            <div class="tab-label">
+              <el-icon class="tab-icon"><Delete /></el-icon>
+              <span>消息清理</span>
+            </div>
+          </template>
+          <MessageCleanupConfig />
+        </el-tab-pane>
       </el-tabs>
     </div>
   </div>
@@ -123,17 +122,18 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useMessageStore } from '@/stores/message'
-// import MessageSubscription from './components/MessageSubscription.vue' // 暂时隐藏
 import AnnouncementPublish from './components/AnnouncementPublish.vue'
 import MessageConfig from './components/MessageConfig.vue'
 import TimeoutReminderConfig from './components/TimeoutReminderConfig.vue'
+import MessageCleanupConfig from './components/MessageCleanupConfig.vue'
 import {
   Bell,
   ChatDotRound,
   Message,
   Setting,
   DataAnalysis,
-  AlarmClock
+  AlarmClock,
+  Delete
 } from '@element-plus/icons-vue'
 
 // 当前激活的选项卡（默认显示公告发布）
