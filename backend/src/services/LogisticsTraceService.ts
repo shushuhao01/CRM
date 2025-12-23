@@ -446,13 +446,17 @@ class LogisticsTraceService {
     };
 
     // 如果提供了手机号，添加到请求中（用于验证非自己发出的运单）
-    if (phone) {
+    if (phone && phone.trim()) {
       // 🔥 确保只取后4位数字
       const phoneDigits = phone.replace(/\D/g, ''); // 移除非数字字符
-      msgDataObj.checkPhoneNo = phoneDigits.slice(-4); // 取手机号后四位
-      console.log('[顺丰开放平台API] 使用手机号后4位:', msgDataObj.checkPhoneNo);
+      if (phoneDigits.length >= 4) {
+        msgDataObj.checkPhoneNo = phoneDigits.slice(-4); // 取手机号后四位
+        console.log(`[顺丰开放平台API] 单号: ${trackingNo}, 使用手机号后4位: ${msgDataObj.checkPhoneNo}`);
+      } else {
+        console.log(`[顺丰开放平台API] 单号: ${trackingNo}, 手机号格式不正确: ${phone}`);
+      }
     } else {
-      console.log('[顺丰开放平台API] 未提供手机号，可能无法查询非自己发出的运单');
+      console.log(`[顺丰开放平台API] 单号: ${trackingNo}, 未提供手机号，可能无法查询非自己发出的运单`);
     }
 
     const msgData = JSON.stringify(msgDataObj);
@@ -489,10 +493,10 @@ class LogisticsTraceService {
         }
       });
 
-      console.log('[顺丰开放平台API] 响应:', JSON.stringify(response.data));
+      console.log(`[顺丰开放平台API] 单号: ${trackingNo}, 响应:`, JSON.stringify(response.data));
       return this.parseSFJsonResponse(trackingNo, response.data);
     } catch (error: any) {
-      console.error('[顺丰开放平台API] 请求失败:', error.message);
+      console.error(`[顺丰开放平台API] 单号: ${trackingNo}, 请求失败:`, error.message);
       return {
         success: false,
         trackingNo,
