@@ -538,6 +538,18 @@ class OrderNotificationService {
     }
   ): Promise<number> {
     try {
+      console.log(`[OrderNotification] 📤 sendBatchMessages 被调用: type=${type}, targetUserIds=${targetUserIds.length}个`);
+
+      // 🔥 如果没有目标用户，直接返回但仍然发送到外部渠道
+      if (!targetUserIds || targetUserIds.length === 0) {
+        console.warn('[OrderNotification] ⚠️ 没有目标用户，跳过系统消息，但仍发送到外部渠道');
+        // 发送到外部渠道
+        this.sendToAllChannels(type, title, content).catch(err => {
+          console.warn('[OrderNotification] 外部渠道推送失败:', err.message);
+        });
+        return 0;
+      }
+
       const dataSource = getDataSource();
       if (!dataSource) {
         console.error('[OrderNotification] 数据库未连接');
@@ -562,11 +574,11 @@ class OrderNotificationService {
       }));
 
       await messageRepo.save(messages);
-      console.log(`[OrderNotification] ✅ 批量发送 ${messages.length} 条消息: ${type}`);
+      console.log(`[OrderNotification] ✅ 批量发送 ${messages.length} 条系统消息: ${type}`);
 
-      // 🔥 同时发送到企业微信机器人（只发送一次，不重复）
-      this.sendToWechatRobot(type, title, content).catch(err => {
-        console.warn('[OrderNotification] 企业微信推送失败:', err.message);
+      // 🔥 同时发送到外部渠道（只发送一次，不重复）
+      this.sendToAllChannels(type, title, content).catch(err => {
+        console.warn('[OrderNotification] 外部渠道推送失败:', err.message);
       });
 
       return messages.length;
@@ -597,6 +609,7 @@ class OrderNotificationService {
 
       console.log(`[OrderNotification] 📋 数据库中共有 ${allUsers.length} 个用户`);
       console.log(`[OrderNotification] 📋 查找角色: ${roles.join(', ')}`);
+      console.log(`[OrderNotification] 📋 所有用户角色: ${allUsers.map(u => `${u.username || u.realName}(${u.role})`).join(', ')}`);
 
       // 🔥 过滤：角色匹配 且 状态为活跃（兼容 'active', 1, '1', true）
       const matchedUsers = allUsers.filter(u => {
