@@ -315,9 +315,10 @@ router.get('/trace/query', async (req: Request, res: Response) => {
         const { Order } = await import('../entities/Order');
         const orderRepository = AppDataSource!.getRepository(Order);
 
-        // 🔥 改进：同时通过trackingNumber和expressNo查找
+        // 🔥 改进：多种方式查找订单
         let order = await orderRepository.findOne({
-          where: { trackingNumber: trackingNo as string }
+          where: { trackingNumber: trackingNo as string },
+          select: ['id', 'orderNumber', 'trackingNumber', 'shippingPhone', 'customerPhone', 'shippingName', 'customerName', 'customerId']
         });
 
         // 如果通过trackingNumber找不到，尝试其他方式
@@ -325,20 +326,47 @@ router.get('/trace/query', async (req: Request, res: Response) => {
           // 尝试模糊匹配（有些系统可能存储格式不同）
           order = await orderRepository
             .createQueryBuilder('order')
-            .where('order.trackingNumber = :trackingNo OR order.trackingNumber LIKE :trackingNoLike', {
-              trackingNo: trackingNo as string,
-              trackingNoLike: `%${trackingNo}%`
-            })
+            .select(['order.id', 'order.orderNumber', 'order.trackingNumber', 'order.shippingPhone', 'order.customerPhone', 'order.shippingName', 'order.customerName', 'order.customerId'])
+            .where('order.trackingNumber = :trackingNo', { trackingNo: trackingNo as string })
+            .orWhere('order.trackingNumber LIKE :trackingNoLike', { trackingNoLike: `%${trackingNo}%` })
             .getOne();
         }
 
         if (order) {
           // 🔥 优先使用收货人手机号，其次使用客户手机号
-          phoneToUse = order.shippingPhone || order.customerPhone || undefined;
+          // 确保手机号不是空字符串
+          const shippingPhone = order.shippingPhone?.trim() || '';
+          const customerPhone = order.customerPhone?.trim() || '';
+
+          if (shippingPhone) {
+            phoneToUse = shippingPhone;
+          } else if (customerPhone) {
+            phoneToUse = customerPhone;
+          }
+
           console.log(`[物流轨迹查询] 从数据库获取订单: ${order.orderNumber}`);
-          console.log(`[物流轨迹查询] shippingPhone: ${order.shippingPhone || '(空)'}`);
-          console.log(`[物流轨迹查询] customerPhone: ${order.customerPhone || '(空)'}`);
-          console.log(`[物流轨迹查询] 最终使用手机号: ${phoneToUse ? phoneToUse.slice(-4) + '****' : '未找到'}`);
+          console.log(`[物流轨迹查询] shippingPhone: "${order.shippingPhone}" -> "${shippingPhone || '(空)'}"`);
+          console.log(`[物流轨迹查询] customerPhone: "${order.customerPhone}" -> "${customerPhone || '(空)'}"`);
+
+          // 🔥 如果订单中没有手机号，尝试从客户表获取
+          if (!phoneToUse && order.customerId) {
+            try {
+              const { Customer } = await import('../entities/Customer');
+              const customerRepository = AppDataSource!.getRepository(Customer);
+              const customer = await customerRepository.findOne({
+                where: { id: order.customerId },
+                select: ['id', 'phone', 'name']
+              });
+              if (customer && customer.phone?.trim()) {
+                phoneToUse = customer.phone.trim();
+                console.log(`[物流轨迹查询] 从客户表获取手机号: ${phoneToUse.slice(-4)}****`);
+              }
+            } catch (customerError) {
+              console.log('[物流轨迹查询] 从客户表获取手机号失败:', customerError);
+            }
+          }
+
+          console.log(`[物流轨迹查询] 最终使用手机号: ${phoneToUse ? phoneToUse.slice(-4) + '****' : '未找到有效手机号'}`);
         } else {
           console.log(`[物流轨迹查询] 数据库中未找到物流单号: ${trackingNo}`);
         }
