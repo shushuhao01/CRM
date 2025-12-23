@@ -228,6 +228,8 @@ interface LogisticsItem {
   estimatedDate: string
   // 🔥 新增：客户手机号（用于物流查询）
   customerPhone?: string
+  // 🔥 新增：标记物流是否已完结（用于跳过API请求）
+  isLogisticsFinished?: boolean
 }
 
 const router = useRouter()
@@ -555,13 +557,10 @@ const loadData = async () => {
 
     // 转换为物流列表格式
     let logisticsData = shippedOrders.map((order: any) => {
-      // 🔥 获取最新物流动态 - 初始值，后续从API实时获取
-      const latestLogisticsInfo = ''
-
       // 🔥 智能映射物流状态：根据订单状态和最新物流动态来判断
       let logisticsStatus = order.logisticsStatus || ''
       if (!logisticsStatus) {
-        logisticsStatus = mapOrderStatusToLogisticsStatus(order.status, latestLogisticsInfo)
+        logisticsStatus = mapOrderStatusToLogisticsStatus(order.status, order.latestLogisticsInfo || '')
       }
 
       // 🔥 预计送达时间处理
@@ -574,9 +573,14 @@ const loadData = async () => {
           trackingNo: order.trackingNumber || order.expressNo,
           receiverPhone: order.receiverPhone || '(空)',
           customerPhone: order.customerPhone || '(空)',
-          finalPhone: customerPhone || '(空)'
+          finalPhone: customerPhone || '(空)',
+          logisticsStatus: logisticsStatus || '(空)',
+          latestLogisticsInfo: order.latestLogisticsInfo || '(空)'
         })
       }
+
+      // 🔥 判断是否是已完结的物流状态（不需要再请求API）
+      const isLogisticsFinished = ['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled'].includes(logisticsStatus)
 
       return {
         id: order.id,
@@ -590,11 +594,15 @@ const loadData = async () => {
         destination: order.receiverAddress || order.shippingAddress || '',
         shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
         logisticsStatus,
-        // 🔥 初始值，后续从API实时获取
-        latestLogisticsInfo: (order.trackingNumber || order.expressNo) ? '获取中...' : '暂无物流信息',
+        // 🔥 优化：如果物流已完结且有缓存的动态，直接使用；否则显示"获取中..."
+        latestLogisticsInfo: isLogisticsFinished && order.latestLogisticsInfo
+          ? order.latestLogisticsInfo
+          : (order.trackingNumber || order.expressNo) ? '获取中...' : '暂无物流信息',
         estimatedDate,
         // 🔥 用于异步获取物流信息 - 优先使用收货人手机号
-        customerPhone
+        customerPhone,
+        // 🔥 新增：标记是否已完结，用于跳过API请求
+        isLogisticsFinished
       }
     })
 
@@ -717,17 +725,27 @@ const formatEstimatedDate = (dateStr: string): string => {
 
 /**
  * 🔥 异步从官方API获取物流最新动态
- * 实时获取最新数据，不依赖数据库缓存
+ * 优化：跳过已完结的物流状态，减少不必要的API请求
  */
 const fetchLatestLogisticsUpdates = async () => {
   const { logisticsApi } = await import('@/api/logistics')
 
-  // 只处理有物流单号的订单
+  // 🔥 优化：只处理有物流单号且物流未完结的订单
   const ordersWithTracking = tableData.value.filter(order =>
-    order.trackingNo && order.company
+    order.trackingNo && order.company && !order.isLogisticsFinished
   )
 
+  // 🔥 统计已跳过的订单数量
+  const skippedCount = tableData.value.filter(order =>
+    order.trackingNo && order.company && order.isLogisticsFinished
+  ).length
+
+  if (skippedCount > 0) {
+    console.log(`[物流列表] 跳过 ${skippedCount} 个已完结的物流订单（已签收/拒收等）`)
+  }
+
   if (ordersWithTracking.length === 0) {
+    console.log('[物流列表] 没有需要获取物流信息的订单')
     return
   }
 
@@ -770,6 +788,10 @@ const fetchLatestLogisticsUpdates = async () => {
         const newStatus = mapOrderStatusToLogisticsStatus(order.status, order.latestLogisticsInfo)
         if (newStatus !== order.logisticsStatus) {
           order.logisticsStatus = newStatus
+          // 🔥 如果状态变为已完结，标记为已完结
+          if (['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled'].includes(newStatus)) {
+            order.isLogisticsFinished = true
+          }
         }
 
         // 🔥 更新预计送达时间

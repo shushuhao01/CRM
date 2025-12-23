@@ -795,6 +795,7 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
         'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt',
         'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
         'order.expressCompany', 'order.trackingNumber', 'order.logisticsStatus',
+        'order.latestLogisticsInfo',  // 🔥 新增：最新物流动态
         'order.shippedAt', 'order.serviceWechat', 'order.orderSource', 'order.products',
         'order.customField1', 'order.customField2', 'order.customField3',
         'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
@@ -863,6 +864,8 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
         trackingNumber: order.trackingNumber || '',
         expressCompany: order.expressCompany || '',
         logisticsStatus: order.logisticsStatus || '',
+        // 🔥 新增：最新物流动态（用于避免重复请求已完结的物流）
+        latestLogisticsInfo: order.latestLogisticsInfo || '',
         // 🔥 新版自定义字段：优先从独立字段读取，其次从JSON字段读取
         customFields: {
           custom_field1: order.customField1 || (order.customFields as any)?.custom_field1 || '',
