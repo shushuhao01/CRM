@@ -722,54 +722,64 @@ const fetchLatestLogisticsUpdates = async () => {
 
   console.log(`[物流列表] 开始从API获取 ${ordersWithTracking.length} 个订单的物流信息`)
 
-  // 并发获取物流信息，限制并发数量避免API限制
-  const batchSize = 3
-  for (let i = 0; i < ordersWithTracking.length; i += batchSize) {
-    const batch = ordersWithTracking.slice(i, i + batchSize)
-    await Promise.all(batch.map(async (order) => {
-      try {
-        // 从官方API获取物流轨迹
-        const response = await logisticsApi.queryTrace(
-          order.trackingNo,
-          order.company,
-          order.customerPhone || ''
-        )
+  // 🔥 改进：依次请求，避免并发过多导致API限制
+  for (let i = 0; i < ordersWithTracking.length; i++) {
+    const order = ordersWithTracking[i]
+    try {
+      // 🔥 添加详细日志
+      console.log(`[物流列表] 正在获取第 ${i + 1}/${ordersWithTracking.length} 个订单的物流信息:`, {
+        orderNo: order.orderNo,
+        trackingNo: order.trackingNo,
+        company: order.company,
+        customerPhone: order.customerPhone ? order.customerPhone.slice(-4) + '****' : '(空)'
+      })
 
-        if (response?.success && response.data?.success && response.data.traces?.length > 0) {
-          const traces = response.data.traces
-          // 按时间排序，获取最新动态
-          const sortedTraces = [...traces].sort((a: any, b: any) => {
-            const timeA = new Date(a.time).getTime()
-            const timeB = new Date(b.time).getTime()
-            return timeB - timeA
-          })
-          const latestTrace = sortedTraces[0]
-          order.latestLogisticsInfo = latestTrace.description || latestTrace.status || '暂无描述'
+      // 从官方API获取物流轨迹
+      // 🔥 修复：如果手机号为空，传undefined而不是空字符串
+      const phoneToSend = order.customerPhone && order.customerPhone.trim() ? order.customerPhone : undefined
+      const response = await logisticsApi.queryTrace(
+        order.trackingNo,
+        order.company,
+        phoneToSend
+      )
 
-          // 🔥 同时更新物流状态
-          const newStatus = mapOrderStatusToLogisticsStatus(order.status, order.latestLogisticsInfo)
-          if (newStatus !== order.logisticsStatus) {
-            order.logisticsStatus = newStatus
-          }
+      if (response?.success && response.data?.success && response.data.traces?.length > 0) {
+        const traces = response.data.traces
+        // 按时间排序，获取最新动态
+        const sortedTraces = [...traces].sort((a: any, b: any) => {
+          const timeA = new Date(a.time).getTime()
+          const timeB = new Date(b.time).getTime()
+          return timeB - timeA
+        })
+        const latestTrace = sortedTraces[0]
+        order.latestLogisticsInfo = latestTrace.description || latestTrace.status || '暂无描述'
+        console.log(`[物流列表] ✅ ${order.orderNo} 获取成功:`, order.latestLogisticsInfo.substring(0, 30))
 
-          // 🔥 更新预计送达时间
-          if (response.data.estimatedDeliveryTime) {
-            order.estimatedDate = response.data.estimatedDeliveryTime
-          }
-        } else if (response?.data?.statusText) {
-          order.latestLogisticsInfo = response.data.statusText
-        } else {
-          order.latestLogisticsInfo = '暂无物流信息'
+        // 🔥 同时更新物流状态
+        const newStatus = mapOrderStatusToLogisticsStatus(order.status, order.latestLogisticsInfo)
+        if (newStatus !== order.logisticsStatus) {
+          order.logisticsStatus = newStatus
         }
-      } catch (error) {
-        console.error(`获取订单 ${order.orderNo} 物流信息失败:`, error)
-        order.latestLogisticsInfo = '获取失败'
-      }
-    }))
 
-    // 每批次之间稍微延迟，避免API限制
-    if (i + batchSize < ordersWithTracking.length) {
-      await new Promise(resolve => setTimeout(resolve, 300))
+        // 🔥 更新预计送达时间
+        if (response.data.estimatedDeliveryTime) {
+          order.estimatedDate = response.data.estimatedDeliveryTime
+        }
+      } else if (response?.data?.statusText) {
+        order.latestLogisticsInfo = response.data.statusText
+        console.log(`[物流列表] ⚠️ ${order.orderNo} 返回状态:`, response.data.statusText)
+      } else {
+        order.latestLogisticsInfo = '暂无物流信息'
+        console.log(`[物流列表] ⚠️ ${order.orderNo} 暂无物流信息`)
+      }
+    } catch (error) {
+      console.error(`[物流列表] ❌ 获取订单 ${order.orderNo} 物流信息失败:`, error)
+      order.latestLogisticsInfo = '获取失败'
+    }
+
+    // 🔥 每个请求之间延迟500ms，避免API限制
+    if (i < ordersWithTracking.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 500))
     }
   }
 
