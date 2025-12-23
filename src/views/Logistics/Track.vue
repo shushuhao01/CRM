@@ -704,10 +704,8 @@ const refreshTracking = async () => {
     if (response.success && response.data) {
       const data = response.data
 
-      // 更新状态
-      trackingResult.status = data.status
-
       // 更新轨迹
+      let sortedTraces: any[] = []
       if (data.traces && Array.isArray(data.traces)) {
         // 🔥 去重并排序
         const seen = new Set<string>()
@@ -718,7 +716,7 @@ const refreshTracking = async () => {
           return true
         })
 
-        trackingHistory.value = uniqueTraces.map((trace: any) => ({
+        sortedTraces = uniqueTraces.map((trace: any) => ({
           time: trace.time,
           status: trace.status,
           description: trace.description,
@@ -730,7 +728,36 @@ const refreshTracking = async () => {
           const timeB = new Date(b.time).getTime()
           return timeB - timeA
         })
+
+        trackingHistory.value = sortedTraces
       }
+
+      // 🔥 修复：根据最新轨迹判断真实状态（和初始查询逻辑一致）
+      let realStatus = data.status || 'shipped'
+      if (sortedTraces.length > 0) {
+        const latestTrace = sortedTraces[0]
+        // 检查是否已签收
+        if (latestTrace.description?.includes('签收') ||
+            latestTrace.description?.includes('已签收') ||
+            latestTrace.description?.includes('已送达') ||
+            latestTrace.description?.includes('代收') ||
+            latestTrace.status === '80' ||
+            latestTrace.status === '8000') {
+          realStatus = 'delivered'
+        } else if (latestTrace.description?.includes('派送') ||
+                   latestTrace.description?.includes('派件')) {
+          realStatus = 'out_for_delivery'
+        } else if (latestTrace.description?.includes('到达') ||
+                   latestTrace.description?.includes('运输')) {
+          realStatus = 'in_transit'
+        } else if (latestTrace.description?.includes('揽收') ||
+                   latestTrace.description?.includes('收件')) {
+          realStatus = 'picked_up'
+        }
+      }
+
+      // 更新状态
+      trackingResult.status = realStatus
 
       ElMessage.success('轨迹已刷新')
     } else {
