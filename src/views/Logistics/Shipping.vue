@@ -312,11 +312,15 @@
         <span v-else class="no-remark">无备注</span>
       </template>
 
-      <!-- 物流公司列 -->
+      <!-- 物流公司列 - 使用和指定快递一样的彩色样式 -->
       <template #column-expressCompany="{ row }">
-        <el-tag v-if="row.expressCompany" type="info">
+        <span
+          v-if="row.expressCompany"
+          class="express-tag"
+          :style="getExpressCompanyStyle(row.expressCompany)"
+        >
           {{ getExpressCompanyName(row.expressCompany) }}
-        </el-tag>
+        </span>
         <span v-else class="no-data">未选择</span>
       </template>
 
