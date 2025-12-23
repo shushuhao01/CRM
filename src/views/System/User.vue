@@ -2159,7 +2159,11 @@ const handleDelete = async (row: UserData) => {
 
     console.log('[User] 开始删除用户:', row.id, userName)
 
-    // 【生产环境修复】仅在开发环境操作localStorage
+    // 🔥 修复：调用API删除用户
+    await userApiService.deleteUser(row.id)
+    console.log('[User] API删除用户成功')
+
+    // 【开发环境】同步清理localStorage
     if (!import.meta.env.PROD) {
       // 直接操作localStorage删除用户
       const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
@@ -2180,9 +2184,6 @@ const handleDelete = async (row: UserData) => {
         localStorage.setItem('userDatabase', JSON.stringify(userDatabase))
         console.log('[User] 已从 userDatabase 删除')
       }
-    } else {
-      console.log('[User] 生产环境：应通过API删除用户')
-      // TODO: 生产环境应该调用API删除用户
     }
 
     ElMessage.success('删除成功')
@@ -2193,7 +2194,7 @@ const handleDelete = async (row: UserData) => {
   } catch (error) {
     if (error !== 'cancel') {
       console.error('[User] 删除用户失败:', error)
-      ElMessage.error('删除失败')
+      ElMessage.error('删除失败: ' + (error instanceof Error ? error.message : '未知错误'))
     }
   }
 }
