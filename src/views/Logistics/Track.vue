@@ -190,8 +190,6 @@
 import { ref, reactive, onMounted, onBeforeUnmount, onActivated, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useOrderStore } from '@/stores/order'
-import { useUserStore } from '@/stores/user'
 import { createSafeNavigator } from '@/utils/navigation'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 import PhoneVerifyDialog from '@/components/Logistics/PhoneVerifyDialog.vue'
@@ -210,10 +208,6 @@ import {
 const route = useRoute()
 const router = useRouter()
 const safeNavigator = createSafeNavigator(router)
-
-// Store
-const orderStore = useOrderStore()
-const userStore = useUserStore()
 
 // 响应式数据
 const loading = ref(false)
@@ -371,294 +365,125 @@ const getTimelineIcon = (status: string) => {
   return iconMap[status] || Box
 }
 
-// 数据范围控制函数
-const applyDataScopeControl = (orderList: any[]) => {
-  const currentUser = userStore.currentUser
-  if (!currentUser) return []
-
-  // 超级管理员可以查看所有订单
-  if (currentUser.role === 'admin') {
-    return orderList
-  }
-
-  // 部门负责人可以查看本部门所有订单
-  if (currentUser.role === 'department_manager') {
-    return orderList.filter((order: any) => {
-      const orderCreator = userStore.getUserById(order.createdBy)
-      return orderCreator?.department === currentUser.department
-    })
-  }
-
-  // 销售员只能查看自己创建的订单
-  if (currentUser.role === 'sales_staff') {
-    return orderList.filter((order: any) => order.createdBy === currentUser.id)
-  }
-
-  // 客服只能查看自己处理的订单
-  if (currentUser.role === 'customer_service') {
-    return orderList.filter((order: any) => order.servicePersonId === currentUser.id)
-  }
-
-  // 其他角色默认只能查看自己创建的订单
-  return orderList.filter((order: any) => order.createdBy === currentUser.id)
-}
-
 /**
- * 查询物流轨迹
+ * 查询物流轨迹 - 简化版
+ * 前端只传单号和可选的物流公司，后端自动匹配手机号
  */
 const handleSearch = async (phone?: string) => {
-  console.log('[物流跟踪] handleSearch 被调用, phone:', phone)
+  const trackingNum = searchForm.trackingNo.trim()
 
-  if (!searchForm.trackingNo.trim()) {
+  if (!trackingNum) {
     ElMessage.warning('请输入物流单号')
     return
   }
 
   if (isUnmounted.value) return
 
-  console.log('[物流跟踪] 开始查询, trackingNo:', searchForm.trackingNo)
   loading.value = true
 
   try {
-    const trackingNum = searchForm.trackingNo.trim()
-    const companyCode = searchForm.company || ''
+    const companyCode = searchForm.company || undefined
 
-    // 🔥 如果没有传入手机号，尝试从订单中获取
-    let phoneToUse = phone
-    if (!phoneToUse) {
-      console.log('[物流跟踪] 未传入手机号，尝试从订单数据获取...')
+    // 直接调用后端API，后端会自动：
+    // 1. 根据单号匹配物流公司
+    // 2. 从数据库查询订单获取手机号
+    // 3. 调用物流API返回结果
+    const { logisticsApi } = await import('@/api/logistics')
+    const response = await logisticsApi.queryTrace(trackingNum, companyCode, phone)
 
-      // 先尝试从本地订单数据获取手机号
-      const orderList = orderStore.orders || []
-      console.log('[物流跟踪] orderStore.orders 类型:', typeof orderList, ', 是否数组:', Array.isArray(orderList))
-
-      const accessibleOrders = applyDataScopeControl(orderList)
-      console.log('[物流跟踪] 本地订单数量:', accessibleOrders.length)
-
-      let order = accessibleOrders.find((o: any) =>
-        o.expressNo === trackingNum ||
-        o.trackingNumber === trackingNum ||
-        o.expressNumber === trackingNum
-      )
-
-      if (order) {
-        console.log('[物流跟踪] 从本地订单数据找到订单')
-      }
-
-      // 🔥 如果本地没有找到，尝试从API获取订单信息
-      if (!order) {
-        console.log('[物流跟踪] 本地未找到订单，尝试从API获取...')
-        try {
-          const { orderApi } = await import('@/api/order')
-          console.log('[物流跟踪] 正在调用API: /orders/by-tracking-no?trackingNo=' + trackingNum)
-          const response = await orderApi.getOrderByTrackingNo(trackingNum)
-          console.log('[物流跟踪] API返回:', JSON.stringify(response))
-          if (response?.success && response.data) {
-            order = response.data
-            console.log('[物流跟踪] 从API获取订单信息成功')
-          } else {
-            console.log('[物流跟踪] API返回失败或无数据:', response?.message || '未知错误')
-          }
-        } catch (e: any) {
-          // 🔥 404错误表示订单不存在，这是正常情况（可能是外部单号）
-          if (e?.status === 404) {
-            console.log('[物流跟踪] 订单不存在（404），可能是外部单号')
-          } else {
-            console.log('[物流跟踪] API调用失败:', e?.message || e)
-          }
-        }
-      }
-
-      if (order) {
-        // 🔥 修复：确保从正确的字段获取手机号
-        const orderData = order as any
-        phoneToUse = orderData.receiverPhone || orderData.phone || orderData.customerPhone || ''
-        console.log('[物流跟踪] 订单字段 - receiverPhone:', orderData.receiverPhone, ', phone:', orderData.phone, ', customerPhone:', orderData.customerPhone)
-        if (phoneToUse) {
-          console.log('[物流跟踪] ✅ 获取到手机号:', phoneToUse.slice(0, 3) + '****' + phoneToUse.slice(-4))
-        } else {
-          console.log('[物流跟踪] ⚠️ 订单存在但手机号为空')
-        }
-      } else {
-        console.log('[物流跟踪] ⚠️ 未找到订单信息，将不带手机号查询（顺丰可能会失败）')
-      }
-    } else {
-      console.log('[物流跟踪] 已传入手机号:', phoneToUse.slice(0, 3) + '****' + phoneToUse.slice(-4))
-    }
-
-    // 🔥 调用物流轨迹查询API（调用真实快递API）
-    try {
-      const { logisticsApi } = await import('@/api/logistics')
-      // 如果没有选择公司，传undefined让后端自动识别
-      const response = await logisticsApi.queryTrace(trackingNum, companyCode || undefined, phoneToUse)
-
-      console.log('[物流跟踪] API响应:', response)
-
-      if (response && response.success && response.data) {
-        const data = response.data
-
-        // 🔥 检查是否需要手机号验证
-        if (data.status === 'need_phone_verify' ||
-            (!data.success && data.statusText === '需要手机号验证')) {
-          // 保存待验证的信息
-          pendingTrackingNo.value = trackingNum
-          pendingCompanyCode.value = companyCode
-          phoneVerifyDialogVisible.value = true
-          loading.value = false
-          return
-        }
-
-        // 🔥 检查业务层面是否成功
-        if (!data.success) {
-          // 🔥 如果是手机号验证失败，弹出手机号验证对话框
-          if (data.statusText?.includes('手机号') || data.statusText?.includes('可能原因')) {
-            pendingTrackingNo.value = trackingNum
-            pendingCompanyCode.value = companyCode
-            phoneVerifyDialogVisible.value = true
-            loading.value = false
-            return
-          }
-          // 🔥 其他错误，给出友好提示
-          const friendlyMessage = getFriendlyNoTraceMessage(data.statusText)
-          ElMessage.info(friendlyMessage)
-          loading.value = false
-          return
-        }
-
-        // 使用API返回的轨迹数据
-        let sortedTraces: any[] = []
-        if (data.traces && Array.isArray(data.traces)) {
-          // 🔥 去重：根据时间和描述去重
-          const seen = new Set<string>()
-          const uniqueTraces = data.traces.filter((trace: any) => {
-            const key = `${trace.time}-${trace.description}`
-            if (seen.has(key)) return false
-            seen.add(key)
-            return true
-          })
-
-          // 🔥 按时间倒序排列（最新的在最上面）
-          sortedTraces = uniqueTraces.map((trace: any) => ({
-            time: trace.time,
-            status: trace.status,
-            description: trace.description,
-            location: trace.location || '',
-            operator: trace.operator || '',
-            type: getTraceType(trace.status)
-          })).sort((a: any, b: any) => {
-            const timeA = new Date(a.time).getTime()
-            const timeB = new Date(b.time).getTime()
-            return timeB - timeA
-          })
-          trackingHistory.value = sortedTraces
-        } else {
-          trackingHistory.value = []
-        }
-
-        // 🔥 根据最新轨迹判断真实状态
-        let realStatus = data.status || 'shipped'
-        let estimatedTime = data.estimatedDeliveryTime || ''
-        let deliveredTime = '' // 签收时间
-        if (sortedTraces.length > 0) {
-          const latestTrace = sortedTraces[0]
-          // 检查是否已签收
-          if (latestTrace.description?.includes('签收') ||
-              latestTrace.description?.includes('已签收') ||
-              latestTrace.description?.includes('已送达') ||
-              latestTrace.description?.includes('代收') ||
-              latestTrace.status === '80' ||
-              latestTrace.status === '8000') {
-            realStatus = 'delivered'
-            deliveredTime = latestTrace.time // 记录签收时间
-            estimatedTime = '' // 已签收，不显示预计送达
-          } else if (latestTrace.description?.includes('派送') ||
-                     latestTrace.description?.includes('派件')) {
-            realStatus = 'out_for_delivery'
-          } else if (latestTrace.description?.includes('到达') ||
-                     latestTrace.description?.includes('运输')) {
-            realStatus = 'in_transit'
-          } else if (latestTrace.description?.includes('揽收') ||
-                     latestTrace.description?.includes('收件')) {
-            realStatus = 'picked_up'
-          }
-        }
-
-        // 使用API返回的数据
-        Object.assign(trackingResult, {
-          trackingNo: data.trackingNo || trackingNum,
-          companyName: data.companyName || getCompanyName(data.companyCode) || companyCode,
-          status: realStatus,
-          receiverName: '',
-          receiverPhone: '',
-          receiverAddress: '',
-          shipTime: '',
-          // 🔥 已签收显示签收时间，否则显示预计送达
-          estimatedTime: realStatus === 'delivered' ? (deliveredTime ? `已签收 (${deliveredTime})` : '已签收') : estimatedTime
-        })
-
-        // 🔥 尝试从API获取订单信息补充收货人信息
-        try {
-          const { orderApi } = await import('@/api/order')
-          const orderResponse = await orderApi.getOrderByTrackingNo(trackingNum)
-          if (orderResponse?.success && orderResponse.data) {
-            const orderData = orderResponse.data
-            trackingResult.receiverName = orderData.customerName || ''
-            // 🔥 联系电话加密显示
-            const phone = orderData.receiverPhone || orderData.phone || orderData.customerPhone || ''
-            trackingResult.receiverPhone = phone ? maskPhoneNumber(phone) : ''
-            trackingResult.receiverAddress = orderData.shippingAddress || orderData.address || ''
-            trackingResult.shipTime = orderData.shipTime || orderData.shippedAt || ''
-          }
-        } catch (orderError) {
-          console.log('[物流跟踪] 获取订单信息失败，尝试从本地store获取:', orderError)
-          // 回退到本地store
-          const accessibleOrders = applyDataScopeControl(orderStore.orders)
-          const order = accessibleOrders.find((o: any) =>
-            o.expressNo === trackingNum ||
-            o.trackingNumber === trackingNum ||
-            o.expressNumber === trackingNum
-          )
-          if (order) {
-            trackingResult.receiverName = order.customerName || ''
-            const phone = order.phone || order.customerPhone || ''
-            trackingResult.receiverPhone = phone ? maskPhoneNumber(phone) : ''
-            trackingResult.receiverAddress = order.address || order.shippingAddress || order.deliveryAddress || ''
-            trackingResult.shipTime = order.shipTime || order.shippedAt || order.deliveryTime || ''
-          }
-        }
-
-        if (!isUnmounted.value) {
-          if (trackingHistory.value.length > 0) {
-            ElMessage.success('查询成功')
-          } else {
-            // 🔥 友好提示
-            ElMessage.info('暂无物流轨迹，快递可能刚揽收，建议12-24小时后再查询')
-          }
-        }
-        loading.value = false
-        return
-      } else {
-        // 🔥 API返回失败，给出友好提示
-        const friendlyMessage = getFriendlyNoTraceMessage(response?.message)
-        ElMessage.info(friendlyMessage)
-        loading.value = false
-        return
-      }
-    } catch (apiError: any) {
-      console.error('[物流跟踪] API查询失败:', apiError)
-      ElMessage.error('查询失败: ' + (apiError.message || '网络错误'))
-      loading.value = false
+    if (!response?.success || !response.data) {
+      ElMessage.info(response?.message || '暂无物流信息')
       return
     }
-  } catch (error) {
-    console.error('[物流跟踪] handleSearch 发生错误:', error)
-    if (!isUnmounted.value) {
-      ElMessage.error('查询失败，请稍后重试')
+
+    const data = response.data
+
+    // 需要手机号验证
+    if (data.status === 'need_phone_verify' || data.statusText?.includes('手机号') || data.statusText?.includes('可能原因')) {
+      pendingTrackingNo.value = trackingNum
+      pendingCompanyCode.value = companyCode || ''
+      phoneVerifyDialogVisible.value = true
+      return
     }
+
+    // 查询失败
+    if (!data.success) {
+      ElMessage.info(getFriendlyNoTraceMessage(data.statusText))
+      return
+    }
+
+    // 处理轨迹数据
+    if (data.traces?.length > 0) {
+      // 去重并排序
+      const seen = new Set<string>()
+      trackingHistory.value = data.traces
+        .filter((t: any) => {
+          const key = `${t.time}-${t.description}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+        .map((t: any) => ({
+          time: t.time,
+          status: t.status,
+          description: t.description,
+          location: t.location || '',
+          operator: t.operator || '',
+          type: getTraceType(t.status)
+        }))
+        .sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime())
+    } else {
+      trackingHistory.value = []
+    }
+
+    // 判断状态
+    let realStatus = data.status || 'shipped'
+    let deliveredTime = ''
+    if (trackingHistory.value.length > 0) {
+      const latest = trackingHistory.value[0]
+      if (latest.description?.includes('签收') || latest.description?.includes('代收')) {
+        realStatus = 'delivered'
+        deliveredTime = latest.time
+      } else if (latest.description?.includes('派送')) {
+        realStatus = 'out_for_delivery'
+      } else if (latest.description?.includes('运输') || latest.description?.includes('到达')) {
+        realStatus = 'in_transit'
+      }
+    }
+
+    // 更新结果
+    Object.assign(trackingResult, {
+      trackingNo: data.trackingNo || trackingNum,
+      companyName: data.companyName || getCompanyName(data.companyCode) || '',
+      status: realStatus,
+      receiverName: '',
+      receiverPhone: '',
+      receiverAddress: '',
+      shipTime: '',
+      estimatedTime: realStatus === 'delivered' ? (deliveredTime ? `已签收 (${deliveredTime})` : '已签收') : (data.estimatedDeliveryTime || '')
+    })
+
+    // 补充订单信息
+    try {
+      const { orderApi } = await import('@/api/order')
+      const orderRes = await orderApi.getOrderByTrackingNo(trackingNum)
+      if (orderRes?.success && orderRes.data) {
+        const o = orderRes.data as any
+        trackingResult.receiverName = o.customerName || ''
+        trackingResult.receiverPhone = maskPhoneNumber(o.receiverPhone || o.phone || o.customerPhone || '')
+        trackingResult.receiverAddress = o.shippingAddress || o.address || ''
+        trackingResult.shipTime = o.shipTime || o.shippedAt || ''
+      }
+    } catch {
+      // 忽略，订单信息是可选的
+    }
+
+    ElMessage.success(trackingHistory.value.length > 0 ? '查询成功' : '暂无物流轨迹')
+  } catch (err: any) {
+    console.error('[物流跟踪] 查询失败:', err)
+    ElMessage.error('查询失败: ' + (err.message || '网络错误'))
   } finally {
-    if (!isUnmounted.value) {
-      loading.value = false
-    }
+    loading.value = false
   }
 }
 
@@ -727,10 +552,11 @@ const refreshTracking = async () => {
       const { orderApi } = await import('@/api/order')
       const orderResponse = await orderApi.getOrderByTrackingNo(trackingResult.trackingNo)
       if (orderResponse?.success && orderResponse.data) {
-        phoneToUse = orderResponse.data.receiverPhone || orderResponse.data.phone || orderResponse.data.customerPhone || ''
+        const orderData = orderResponse.data as any
+        phoneToUse = orderData.receiverPhone || orderData.phone || orderData.customerPhone || ''
       }
-    } catch (e) {
-      console.log('[物流跟踪] 获取订单手机号失败:', e)
+    } catch {
+      // 忽略
     }
 
     console.log('[物流跟踪] 刷新轨迹，使用手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未提供')
@@ -869,7 +695,7 @@ const handleBatchQuery = async () => {
       ElMessage.success('批量查询完成')
       batchDialogVisible.value = false
     }
-  } catch (error) {
+  } catch {
     if (!isUnmounted.value) {
       ElMessage.error('批量查询失败')
     }
@@ -929,29 +755,8 @@ onMounted(async () => {
   const loadTime = Date.now() - startTime
   console.log(`[物流跟踪] ✅ 页面初始化完成，耗时: ${loadTime}ms`)
 
-  // 启动物流同步服务
-  orderStore.setupLogisticsEventListener()
-  orderStore.startLogisticsAutoSync()
-
   // 检查路由参数并自动搜索
   checkRouteParamsAndSearch()
-
-  // 监听订单变化，当物流信息更新时自动刷新
-  orderStore.$subscribe((mutation: any, _state: any) => {
-    // 如果当前正在查看某个快递单号，且该订单的物流信息发生变化，则自动刷新
-    if (trackingResult.trackingNo && mutation.events.some((event: any) =>
-      event.key === 'expressNo' ||
-      event.key === 'expressCompany' ||
-      event.key === 'status'
-    )) {
-      const accessibleOrders = applyDataScopeControl(orderStore.orders)
-      const updatedOrder = accessibleOrders.find((o: any) => o.expressNo === trackingResult.trackingNo)
-      if (updatedOrder) {
-        // 自动刷新当前查询结果
-        handleSearch()
-      }
-    }
-  })
 })
 
 // 🔥 检查路由参数并执行搜索
