@@ -490,35 +490,47 @@
           <div class="card-header">
             <el-icon><Van /></el-icon>
             <span>物流信息跟踪</span>
-            <el-button size="small" @click="refreshLogistics()" :loading="logisticsLoading">
-              {{ logisticsLoading ? '查询中...' : '刷新' }}
-            </el-button>
+            <div class="header-actions">
+              <el-button size="small" @click="refreshLogistics()" :loading="logisticsLoading">
+                {{ logisticsLoading ? '查询中...' : '刷新' }}
+              </el-button>
+              <el-button
+                size="small"
+                type="text"
+                @click="logisticsCollapsed = !logisticsCollapsed"
+                :icon="logisticsCollapsed ? ArrowDown : ArrowUp"
+              >
+                {{ logisticsCollapsed ? '展开' : '收起' }}
+              </el-button>
+            </div>
           </div>
         </template>
 
-        <div class="logistics-timeline" v-loading="logisticsLoading">
-          <!-- 有物流信息时显示时间线 -->
-          <el-timeline v-if="logisticsInfo.length > 0">
-            <el-timeline-item
-              v-for="(item, index) in logisticsInfo"
-              :key="index"
-              :timestamp="item.time"
-              :type="index === 0 ? 'primary' : 'info'"
-              :size="index === 0 ? 'large' : 'normal'"
-              placement="top"
-            >
-              <div class="logistics-trace-item" :class="{ 'logistics-trace-first': index === 0 }">
-                <div class="trace-description">{{ item.description }}</div>
-                <div class="trace-location" v-if="item.location">
-                  <el-icon><Location /></el-icon>
-                  <span>{{ item.location }}</span>
+        <el-collapse-transition>
+          <div v-show="!logisticsCollapsed" class="logistics-timeline" v-loading="logisticsLoading">
+            <!-- 有物流信息时显示时间线 -->
+            <el-timeline v-if="logisticsInfo.length > 0">
+              <el-timeline-item
+                v-for="(item, index) in logisticsInfo"
+                :key="index"
+                :timestamp="item.time"
+                :type="index === 0 ? 'primary' : 'info'"
+                :size="index === 0 ? 'large' : 'normal'"
+                placement="top"
+              >
+                <div class="logistics-trace-item" :class="{ 'logistics-trace-first': index === 0 }">
+                  <div class="trace-description">{{ item.description }}</div>
+                  <div class="trace-location" v-if="item.location">
+                    <el-icon><Location /></el-icon>
+                    <span>{{ item.location }}</span>
+                  </div>
                 </div>
-              </div>
-            </el-timeline-item>
-          </el-timeline>
-          <!-- 无物流信息时显示空状态 -->
-          <el-empty v-else description="物流信息请点击上方刷新按钮获取" />
-        </div>
+              </el-timeline-item>
+            </el-timeline>
+            <!-- 无物流信息时显示空状态 -->
+            <el-empty v-else description="物流信息请点击上方刷新按钮获取" />
+          </div>
+        </el-collapse-transition>
       </el-card>
     </div>
 
@@ -730,6 +742,7 @@ const afterSalesHistory = ref([])
 // 折叠状态
 const statusTimelineCollapsed = ref(true)
 const afterSalesCollapsed = ref(true)
+const logisticsCollapsed = ref(false) // 物流信息默认展开
 
 // 物流轨迹相关
 const logisticsLoading = ref(false)
