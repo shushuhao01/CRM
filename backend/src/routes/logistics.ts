@@ -304,8 +304,12 @@ router.get('/trace/query', async (req: Request, res: Response) => {
       });
     }
 
-    // 🔥 如果前端没有传递手机号，尝试从数据库获取
-    let phoneToUse = phone as string | undefined;
+    // 🔥 修复：检查手机号是否为有效值（不是空字符串）
+    let phoneToUse = (phone && typeof phone === 'string' && phone.trim()) ? phone.trim() : undefined;
+
+    console.log(`[物流轨迹查询] 前端传递的phone参数: "${phone}", 处理后: ${phoneToUse ? phoneToUse.slice(-4) + '****' : '(空)'}`);
+
+    // 🔥 如果前端没有传递有效手机号，尝试从数据库获取
     if (!phoneToUse) {
       try {
         const { Order } = await import('../entities/Order');
@@ -341,11 +345,9 @@ router.get('/trace/query', async (req: Request, res: Response) => {
       } catch (dbError) {
         console.log('[物流轨迹查询] 从数据库获取手机号失败:', dbError);
       }
-    } else {
-      console.log(`[物流轨迹查询] 前端传递手机号: ${phoneToUse.slice(-4)}****`);
     }
 
-    console.log(`[物流轨迹查询] 单号: ${trackingNo}, 快递公司: ${companyCode || '自动识别'}, 手机号: ${phoneToUse ? '已提供' : '未提供'}`);
+    console.log(`[物流轨迹查询] 单号: ${trackingNo}, 快递公司: ${companyCode || '自动识别'}, 手机号: ${phoneToUse ? '已提供(' + phoneToUse.slice(-4) + ')' : '未提供'}`);
 
     const result = await logisticsTraceService.queryTrace(
       trackingNo as string,

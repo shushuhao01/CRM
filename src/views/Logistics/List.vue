@@ -567,6 +567,17 @@ const loadData = async () => {
       // 🔥 预计送达时间处理
       const estimatedDate = order.expectedDeliveryDate || order.estimatedDeliveryTime || order.estimatedDelivery || order.estimatedDate || ''
 
+      // 🔥 调试：打印手机号字段
+      const customerPhone = order.receiverPhone || order.customerPhone || ''
+      if (order.trackingNumber || order.expressNo) {
+        console.log(`[物流列表] 订单 ${order.orderNumber} 手机号映射:`, {
+          trackingNo: order.trackingNumber || order.expressNo,
+          receiverPhone: order.receiverPhone || '(空)',
+          customerPhone: order.customerPhone || '(空)',
+          finalPhone: customerPhone || '(空)'
+        })
+      }
+
       return {
         id: order.id,
         orderId: order.id,
@@ -582,8 +593,8 @@ const loadData = async () => {
         // 🔥 初始值，后续从API实时获取
         latestLogisticsInfo: (order.trackingNumber || order.expressNo) ? '获取中...' : '暂无物流信息',
         estimatedDate,
-        // 🔥 用于异步获取物流信息
-        customerPhone: order.receiverPhone || order.customerPhone || ''
+        // 🔥 用于异步获取物流信息 - 优先使用收货人手机号
+        customerPhone
       }
     })
 
