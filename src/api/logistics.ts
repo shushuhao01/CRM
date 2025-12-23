@@ -66,7 +66,8 @@ export const logisticsApi = {
       }
     }
 
-    return api.get('/logistics/trace/query', params)
+    // 🔥 修复：api.get 需要 { params: {...} } 格式
+    return api.get('/logistics/trace/query', { params })
   },
 
   /**
@@ -129,7 +130,7 @@ export const logisticsApi = {
     page?: number
     pageSize?: number
   }): Promise<{ success: boolean; data: { list: any[]; total: number } }> {
-    return api.get('/logistics/companies/list', params)
+    return api.get('/logistics/companies/list', { params })
   },
 
   /**
