@@ -776,8 +776,17 @@ const fetchLatestLogisticsUpdates = async () => {
         if (response.data.estimatedDeliveryTime) {
           order.estimatedDate = response.data.estimatedDeliveryTime
         }
+      } else if (response?.data?.status === 'need_phone_verify') {
+        // 🔥 需要手机号验证，显示友好提示
+        order.latestLogisticsInfo = '需验证手机号，点击单号查询'
+        console.log(`[物流列表] ⚠️ ${order.orderNo} 需要手机号验证`)
       } else if (response?.data?.statusText) {
-        order.latestLogisticsInfo = response.data.statusText
+        // 🔥 改进：如果是手机号验证失败，显示更友好的提示
+        if (response.data.statusText.includes('手机号') || response.data.statusText.includes('可能原因')) {
+          order.latestLogisticsInfo = '需验证手机号，点击单号查询'
+        } else {
+          order.latestLogisticsInfo = response.data.statusText
+        }
         console.log(`[物流列表] ⚠️ ${order.orderNo} 返回状态:`, response.data.statusText)
       } else {
         order.latestLogisticsInfo = '暂无物流信息'
