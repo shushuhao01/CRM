@@ -407,6 +407,8 @@ const applyDataScopeControl = (orderList: any[]) => {
  * 查询物流轨迹
  */
 const handleSearch = async (phone?: string) => {
+  console.log('[物流跟踪] handleSearch 被调用, phone:', phone)
+
   if (!searchForm.trackingNo.trim()) {
     ElMessage.warning('请输入物流单号')
     return
@@ -414,6 +416,7 @@ const handleSearch = async (phone?: string) => {
 
   if (isUnmounted.value) return
 
+  console.log('[物流跟踪] 开始查询, trackingNo:', searchForm.trackingNo)
   loading.value = true
 
   try {
@@ -426,7 +429,10 @@ const handleSearch = async (phone?: string) => {
       console.log('[物流跟踪] 未传入手机号，尝试从订单数据获取...')
 
       // 先尝试从本地订单数据获取手机号
-      const accessibleOrders = applyDataScopeControl(orderStore.orders)
+      const orderList = orderStore.orders || []
+      console.log('[物流跟踪] orderStore.orders 类型:', typeof orderList, ', 是否数组:', Array.isArray(orderList))
+
+      const accessibleOrders = applyDataScopeControl(orderList)
       console.log('[物流跟踪] 本地订单数量:', accessibleOrders.length)
 
       let order = accessibleOrders.find((o: any) =>
@@ -645,6 +651,7 @@ const handleSearch = async (phone?: string) => {
       return
     }
   } catch (error) {
+    console.error('[物流跟踪] handleSearch 发生错误:', error)
     if (!isUnmounted.value) {
       ElMessage.error('查询失败，请稍后重试')
     }
