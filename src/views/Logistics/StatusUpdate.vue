@@ -943,7 +943,8 @@ const fetchLatestLogisticsUpdates = async () => {
   const { logisticsApi } = await import('@/api/logistics')
 
   // 🔥 已完结的物流状态列表（不需要再请求API）
-  const finishedStatuses = ['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled', 'package_exception']
+  // 注意：package_exception和exception状态仍需继续请求API跟踪后续变化
+  const finishedStatuses = ['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled']
 
   // 🔥 优化：只处理有物流单号且物流未完结的订单
   const ordersWithTracking = orderList.value.filter(order => {
