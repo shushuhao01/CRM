@@ -490,11 +490,14 @@
           <div class="card-header">
             <el-icon><Van /></el-icon>
             <span>物流信息跟踪</span>
-            <el-button size="small" @click="refreshLogistics">刷新</el-button>
+            <el-button size="small" @click="refreshLogistics()" :loading="logisticsLoading">
+              {{ logisticsLoading ? '查询中...' : '刷新' }}
+            </el-button>
           </div>
         </template>
 
-        <div class="logistics-timeline">
+        <div class="logistics-timeline" v-loading="logisticsLoading">
+          <!-- 有物流信息时显示时间线 -->
           <el-timeline v-if="logisticsInfo.length > 0">
             <el-timeline-item
               v-for="(item, index) in logisticsInfo"
@@ -504,16 +507,16 @@
               :size="index === 0 ? 'large' : 'normal'"
               placement="top"
             >
-              <div class="logistics-content" :class="{ 'logistics-content-first': index === 0 }">
-                <div class="logistics-status-text">{{ item.statusText || item.status }}</div>
-                <div class="logistics-description">{{ item.description }}</div>
-                <div class="logistics-location" v-if="item.location">
+              <div class="logistics-trace-item" :class="{ 'logistics-trace-first': index === 0 }">
+                <div class="trace-description">{{ item.description }}</div>
+                <div class="trace-location" v-if="item.location">
                   <el-icon><Location /></el-icon>
-                  {{ item.location }}
+                  <span>{{ item.location }}</span>
                 </div>
               </div>
             </el-timeline-item>
           </el-timeline>
+          <!-- 无物流信息时显示空状态 -->
           <el-empty v-else description="物流信息请点击上方刷新按钮获取" />
         </div>
       </el-card>
@@ -1416,13 +1419,31 @@ const refreshLogistics = async (phone?: string) => {
 
     // 🔥 直接调用物流API，支持手机号验证
     const { logisticsApi } = await import('@/api/logistics')
-    const response = await logisticsApi.queryTrace(
-      orderDetail.trackingNumber,
-      orderDetail.expressCompany,
-      phoneToUse
-    )
 
-    if (response && response.success && response.data) {
+    let response: any
+    try {
+      response = await logisticsApi.queryTrace(
+        orderDetail.trackingNumber,
+        orderDetail.expressCompany,
+        phoneToUse
+      )
+    } catch (apiError: any) {
+      console.error('[订单详情] 物流API调用失败:', apiError)
+      // 🔥 网络错误或API错误时，给出友好提示
+      logisticsInfo.value = []
+      const errorMsg = apiError?.message || apiError?.response?.data?.message || '网络请求失败'
+      ElMessage.error(`查询失败: ${errorMsg}`)
+      return
+    }
+
+    // 🔥 检查响应是否有效
+    if (!response) {
+      logisticsInfo.value = []
+      ElMessage.info('暂无物流信息')
+      return
+    }
+
+    if (response.success && response.data) {
       const data = response.data
 
       // 🔥 检查是否需要手机号验证（即使带了手机号也可能验证失败，因为可能是寄件人手机号）
@@ -1446,11 +1467,11 @@ const refreshLogistics = async (phone?: string) => {
           return true
         })
 
-        // 转换并显示物流轨迹数据
+        // 转换并显示物流轨迹数据 - 只保留必要信息
         const mappedTraces = uniqueTraces.map((track: any) => ({
           time: track.time,
-          status: track.status,
-          statusText: track.description || track.status,
+          status: track.status || '',
+          statusText: track.description || track.status || '',
           description: track.description || track.status || '状态更新',
           location: track.location || ''
         }))
@@ -1477,13 +1498,19 @@ const refreshLogistics = async (phone?: string) => {
     } else {
       logisticsInfo.value = []
       // 🔥 友好提示
-      const friendlyMessage = getFriendlyNoTraceMessage(response?.message)
+      const friendlyMessage = getFriendlyNoTraceMessage(response?.message || response?.data?.statusText)
       ElMessage.info(friendlyMessage)
     }
-  } catch (error) {
-    console.error('获取物流信息失败:', error)
+  } catch (error: any) {
+    console.error('[订单详情] 获取物流信息失败:', error)
     logisticsInfo.value = []
-    ElMessage.error('获取物流信息失败，请检查网络连接或稍后重试')
+    // 🔥 改进错误提示，不要显示技术性错误
+    const errorMsg = error?.message || '未知错误'
+    if (errorMsg.includes('Network') || errorMsg.includes('timeout') || errorMsg.includes('ECONNREFUSED')) {
+      ElMessage.error('网络连接失败，请检查网络后重试')
+    } else {
+      ElMessage.error('获取物流信息失败，请稍后重试')
+    }
   } finally {
     logisticsLoading.value = false
   }
@@ -3224,7 +3251,50 @@ onUnmounted(() => {
   text-align: center;
 }
 
-/* 🔥 优化物流轨迹样式，类似顺丰官网 */
+/* 🔥 优化物流轨迹样式 - 简洁清晰 */
+.logistics-trace-item {
+  padding: 10px 14px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 3px solid #dcdfe6;
+  transition: all 0.3s ease;
+}
+
+.logistics-trace-item:hover {
+  background: #f0f2f5;
+}
+
+.logistics-trace-first {
+  background: linear-gradient(135deg, #ecf5ff 0%, #f0f9eb 100%);
+  border-left-color: #409eff;
+}
+
+.logistics-trace-first .trace-description {
+  color: #409eff;
+  font-weight: 600;
+}
+
+.trace-description {
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.trace-location {
+  margin-top: 6px;
+  color: #909399;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.trace-location .el-icon {
+  font-size: 14px;
+}
+
+/* 保留旧样式兼容 */
 .logistics-content {
   padding: 8px 12px;
   background: #f8f9fa;
