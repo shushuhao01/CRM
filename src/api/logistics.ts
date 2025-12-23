@@ -50,7 +50,15 @@ export const logisticsApi = {
    * @param phone 收件人/寄件人手机号（可选，用于顺丰等需要验证的快递）
    */
   async queryTrace(trackingNo: string, companyCode?: string, phone?: string): Promise<{ success: boolean; data: LogisticsTrackResult; message?: string }> {
-    return api.get('/logistics/trace/query', { trackingNo, companyCode, phone })
+    // 🔥 修复：只传递有效的参数，避免传递空字符串或undefined
+    const params: Record<string, string> = { trackingNo }
+    if (companyCode && companyCode.trim()) {
+      params.companyCode = companyCode.trim()
+    }
+    if (phone && phone.trim()) {
+      params.phone = phone.trim()
+    }
+    return api.get('/logistics/trace/query', params)
   },
 
   /**
