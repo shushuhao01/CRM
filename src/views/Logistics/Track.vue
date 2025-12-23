@@ -391,15 +391,23 @@ const handleSearch = async (phone?: string) => {
     const { logisticsApi } = await import('@/api/logistics')
     const response = await logisticsApi.queryTrace(trackingNum, companyCode, phone)
 
+    console.log('[物流跟踪] API响应:', response)
+
     if (!response?.success || !response.data) {
+      console.log('[物流跟踪] API返回失败:', response?.message)
       ElMessage.info(response?.message || '暂无物流信息')
       return
     }
 
     const data = response.data
+    console.log('[物流跟踪] 响应数据:', data)
+    console.log('[物流跟踪] data.status:', data.status)
+    console.log('[物流跟踪] data.statusText:', data.statusText)
+    console.log('[物流跟踪] data.success:', data.success)
 
     // 需要手机号验证
     if (data.status === 'need_phone_verify' || data.statusText?.includes('手机号') || data.statusText?.includes('可能原因')) {
+      console.log('[物流跟踪] 需要手机号验证，弹出对话框')
       pendingTrackingNo.value = trackingNum
       pendingCompanyCode.value = companyCode || ''
       phoneVerifyDialogVisible.value = true
@@ -408,6 +416,7 @@ const handleSearch = async (phone?: string) => {
 
     // 查询失败
     if (!data.success) {
+      console.log('[物流跟踪] 查询失败:', data.statusText)
       ElMessage.info(getFriendlyNoTraceMessage(data.statusText))
       return
     }
