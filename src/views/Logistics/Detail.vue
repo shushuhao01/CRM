@@ -511,13 +511,17 @@ const totalFee = computed(() => {
  * 获取状态颜色
  */
 const getStatusColor = (status: string) => {
-  const colorMap = {
+  const colorMap: Record<string, string> = {
     pending: 'warning',
+    picked_up: 'primary',
     shipped: 'primary',
     in_transit: 'info',
+    out_for_delivery: 'success',
     delivering: 'success',
     delivered: 'success',
-    exception: 'danger'
+    exception: 'danger',
+    returned: 'danger',
+    cancelled: 'info'
   }
   return colorMap[status] || ''
 }
@@ -526,13 +530,17 @@ const getStatusColor = (status: string) => {
  * 获取状态文本
  */
 const getStatusText = (status: string) => {
-  const textMap = {
+  const textMap: Record<string, string> = {
     pending: '待发货',
+    picked_up: '已揽收',
     shipped: '已发货',
     in_transit: '运输中',
+    out_for_delivery: '派送中',
     delivering: '派送中',
     delivered: '已签收',
-    exception: '异常'
+    exception: '异常',
+    returned: '已退回',
+    cancelled: '已取消'
   }
   return textMap[status] || status
 }
