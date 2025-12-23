@@ -9,8 +9,30 @@ export interface ApiResponse<T = unknown> {
   success: boolean
 }
 
-// 请求参数类型
-export type RequestParams = Record<string, string | number | boolean | undefined | null>
+// 请求参数类型 - 支持嵌套对象
+export type RequestParams = Record<string, string | number | boolean | undefined | null | Record<string, unknown>>
+
+// 扁平化参数用于URL查询字符串
+const flattenParams = (params: RequestParams): Record<string, string> => {
+  const result: Record<string, string> = {}
+  Object.keys(params).forEach(key => {
+    const value = params[key]
+    if (value !== undefined && value !== null) {
+      if (typeof value === 'object') {
+        // 对于对象类型的参数，将其属性展开
+        Object.keys(value).forEach(subKey => {
+          const subValue = (value as Record<string, unknown>)[subKey]
+          if (subValue !== undefined && subValue !== null) {
+            result[subKey] = String(subValue)
+          }
+        })
+      } else {
+        result[key] = String(value)
+      }
+    }
+  })
+  return result
+}
 
 // 请求数据类型
 export type RequestData = Record<string, unknown> | FormData | string | null
@@ -44,11 +66,10 @@ const buildUrl = (endpoint: string, params?: RequestParams): string => {
 
   // 添加查询参数
   if (params && Object.keys(params).length > 0) {
+    const flatParams = flattenParams(params)
     const searchParams = new URLSearchParams()
-    Object.keys(params).forEach(key => {
-      if (params[key] !== undefined && params[key] !== null) {
-        searchParams.append(key, String(params[key]))
-      }
+    Object.keys(flatParams).forEach(key => {
+      searchParams.append(key, flatParams[key])
     })
     const queryString = searchParams.toString()
     if (queryString) {
@@ -136,8 +157,8 @@ export const request = async <T = unknown>(
 
 // 便捷方法
 export const api = {
-  get: <T = unknown>(endpoint: string, params?: RequestParams) =>
-    request<T>(endpoint, { method: 'GET', params }),
+  get: <T = unknown>(endpoint: string, config?: { params?: RequestParams }) =>
+    request<T>(endpoint, { method: 'GET', params: config?.params }),
 
   post: <T = unknown>(endpoint: string, data?: RequestData) =>
     request<T>(endpoint, { method: 'POST', data }),
