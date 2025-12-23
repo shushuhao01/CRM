@@ -2415,17 +2415,16 @@ onUnmounted(() => {
 
 /* 订单状态现代化样式 */
 .order-status-modern {
-  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
-  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  border: 1px solid #f0f2f5;
   border-radius: 16px;
   padding: 24px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
   transition: all 0.3s ease;
 }
 
 .order-status-modern:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
 
 .status-header {
@@ -2730,9 +2729,9 @@ onUnmounted(() => {
 
 /* 收货信息现代化样式 */
 .delivery-info-card {
-  background: transparent;
-  border: none;
-  box-shadow: none;
+  background: #ffffff;
+  border: 1px solid #f0f2f5;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
 .delivery-info-modern {
