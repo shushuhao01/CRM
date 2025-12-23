@@ -444,10 +444,27 @@ const getLogisticsStatusText = (status: string) => {
     delivering: '派送中',
     delivered: '已签收',
     exception: '异常',
+    package_exception: '包裹异常',
     rejected: '拒收',
-    returned: '已退回'
+    rejected_returned: '拒收已退回',
+    returned: '已退回',
+    cancelled: '已取消'
   }
   return statusMap[status] || status || '-'
+}
+
+// 🔥 获取已完结状态的默认文本（当数据库没有缓存时使用）
+const getFinishedStatusText = (status: string) => {
+  const textMap: Record<string, string> = {
+    delivered: '已签收',
+    rejected: '客户拒收',
+    rejected_returned: '拒收已退回',
+    returned: '已退回',
+    cancelled: '已取消',
+    package_exception: '包裹异常',
+    exception: '物流异常'
+  }
+  return textMap[status] || '物流已完结'
 }
 
 // 🔥 获取物流状态样式
@@ -580,7 +597,7 @@ const loadData = async () => {
       }
 
       // 🔥 判断是否是已完结的物流状态（不需要再请求API）
-      const isLogisticsFinished = ['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled'].includes(logisticsStatus)
+      const isLogisticsFinished = ['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled', 'package_exception', 'exception'].includes(logisticsStatus)
 
       return {
         id: order.id,
@@ -594,9 +611,9 @@ const loadData = async () => {
         destination: order.receiverAddress || order.shippingAddress || '',
         shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
         logisticsStatus,
-        // 🔥 优化：如果物流已完结且有缓存的动态，直接使用；否则显示"获取中..."
-        latestLogisticsInfo: isLogisticsFinished && order.latestLogisticsInfo
-          ? order.latestLogisticsInfo
+        // 🔥 优化：如果物流已完结，直接使用数据库缓存的动态；否则显示"获取中..."
+        latestLogisticsInfo: isLogisticsFinished
+          ? (order.latestLogisticsInfo || getFinishedStatusText(logisticsStatus))
           : (order.trackingNumber || order.expressNo) ? '获取中...' : '暂无物流信息',
         estimatedDate,
         // 🔥 用于异步获取物流信息 - 优先使用收货人手机号
@@ -789,7 +806,7 @@ const fetchLatestLogisticsUpdates = async () => {
         if (newStatus !== order.logisticsStatus) {
           order.logisticsStatus = newStatus
           // 🔥 如果状态变为已完结，标记为已完结
-          if (['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled'].includes(newStatus)) {
+          if (['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled', 'package_exception', 'exception'].includes(newStatus)) {
             order.isLogisticsFinished = true
           }
         }
