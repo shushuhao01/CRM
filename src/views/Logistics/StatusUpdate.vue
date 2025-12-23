@@ -937,15 +937,43 @@ const loadData = async (showMessage = false) => {
 
 /**
  * 🔥 异步从官方API获取物流最新动态
- * 实时获取最新数据，不依赖数据库缓存
+ * 优化：跳过已完结的物流状态，减少不必要的API请求
  */
 const fetchLatestLogisticsUpdates = async () => {
   const { logisticsApi } = await import('@/api/logistics')
 
-  // 🔥 处理所有有物流单号和物流公司的订单
-  const ordersWithTracking = orderList.value.filter(order =>
-    order.trackingNo && order.logisticsCompany
-  )
+  // 🔥 已完结的物流状态列表（不需要再请求API）
+  const finishedStatuses = ['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled', 'package_exception']
+
+  // 🔥 优化：只处理有物流单号且物流未完结的订单
+  const ordersWithTracking = orderList.value.filter(order => {
+    // 必须有物流单号和物流公司
+    if (!order.trackingNo || !order.logisticsCompany) return false
+
+    // 🔥 跳过已完结的物流状态
+    if (finishedStatuses.includes(order.logisticsStatus)) {
+      // 如果已有缓存的物流动态，直接使用
+      if (order.latestUpdate && order.latestUpdate !== '获取中...' && order.latestUpdate !== '暂无物流信息') {
+        return false
+      }
+      // 如果数据库有缓存，使用数据库的值
+      if (order.latestLogisticsInfo) {
+        order.latestUpdate = order.latestLogisticsInfo
+        return false
+      }
+    }
+
+    return true
+  })
+
+  // 🔥 统计已跳过的订单数量
+  const skippedCount = orderList.value.filter(order =>
+    order.trackingNo && order.logisticsCompany && finishedStatuses.includes(order.logisticsStatus)
+  ).length
+
+  if (skippedCount > 0) {
+    console.log(`[状态更新] 跳过 ${skippedCount} 个已完结的物流订单（已签收/拒收/异常等）`)
+  }
 
   if (ordersWithTracking.length === 0) {
     console.log('[状态更新] 没有需要获取物流信息的订单')
