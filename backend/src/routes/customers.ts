@@ -6,6 +6,7 @@ import { CustomerGroup } from '../entities/CustomerGroup';
 import { CustomerTag } from '../entities/CustomerTag';
 import { User } from '../entities/User';
 import { Order } from '../entities/Order';
+import { CustomerShare } from '../entities/CustomerShare';
 import { Like, Between } from 'typeorm';
 import { formatDateTime, formatDate } from '../utils/dateFormat';
 
@@ -71,6 +72,8 @@ router.get('/', async (req: Request, res: Response) => {
 
     // 获取订单仓库，用于统计每个客户的订单数
     const orderRepository = AppDataSource.getRepository(Order);
+    // 获取分享仓库，用于查询客户的分享状态
+    const shareRepository = AppDataSource.getRepository(CustomerShare);
 
     // 转换数据格式以匹配前端期望，并动态计算订单数
     const list = await Promise.all(customers.map(async customer => {
@@ -82,6 +85,33 @@ router.get('/', async (req: Request, res: Response) => {
         });
       } catch (e) {
         console.warn(`统计客户${customer.id}订单数失败:`, e);
+      }
+
+      // 🔥 查询客户的分享状态
+      let shareInfo = null;
+      try {
+        const activeShare = await shareRepository.findOne({
+          where: {
+            customerId: customer.id,
+            status: 'active'
+          },
+          order: { shareTime: 'DESC' }
+        });
+        if (activeShare) {
+          shareInfo = {
+            id: activeShare.id,
+            status: activeShare.status,
+            sharedBy: activeShare.sharedBy,
+            sharedByName: activeShare.sharedByName,
+            sharedTo: activeShare.sharedTo,
+            sharedToName: activeShare.sharedToName,
+            shareTime: activeShare.shareTime,
+            expireTime: activeShare.expireTime,
+            timeLimit: activeShare.timeLimit
+          };
+        }
+      } catch (e) {
+        console.warn(`查询客户${customer.id}分享状态失败:`, e);
       }
 
       return {
@@ -119,7 +149,8 @@ router.get('/', async (req: Request, res: Response) => {
         medicalHistory: customer.medicalHistory || '',
         improvementGoals: customer.improvementGoals || [],
         otherGoals: customer.otherGoals || '',
-        fanAcquisitionTime: formatDate(customer.fanAcquisitionTime)
+        fanAcquisitionTime: formatDate(customer.fanAcquisitionTime),
+        shareInfo // 🔥 添加分享信息
       };
     }));
 
