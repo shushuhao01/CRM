@@ -95,7 +95,7 @@ router.get('/', async (req: Request, res: Response) => {
             customerId: customer.id,
             status: 'active'
           },
-          order: { shareTime: 'DESC' }
+          order: { createdAt: 'DESC' }
         });
         if (activeShare) {
           shareInfo = {
@@ -105,7 +105,7 @@ router.get('/', async (req: Request, res: Response) => {
             sharedByName: activeShare.sharedByName,
             sharedTo: activeShare.sharedTo,
             sharedToName: activeShare.sharedToName,
-            shareTime: activeShare.shareTime,
+            shareTime: activeShare.createdAt,
             expireTime: activeShare.expireTime,
             timeLimit: activeShare.timeLimit
           };
