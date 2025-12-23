@@ -53,6 +53,18 @@ export interface Customer {
   street?: string  // 街道
   detailAddress?: string  // 详细地址
   overseasAddress?: string  // 境外地址
+  // 🔥 分享信息
+  shareInfo?: {
+    id: string
+    status: string
+    sharedBy: string
+    sharedByName: string
+    sharedTo: string
+    sharedToName: string
+    shareTime: string
+    expireTime: string | null
+    timeLimit: number
+  }
 }
 
 // 🔥 批次262终极修复：使用createPersistentStore，与订单、商品保持一致
@@ -487,18 +499,23 @@ export const useCustomerStore = createPersistentStore('customer', () => {
         console.log('loadCustomers - API返回客户数量:', apiCustomers.length)
         console.log('loadCustomers - 当前内存客户数量:', localCustomers.length)
 
-        // 合并数据：优先保留本地新增的客户，然后添加API中的客户
-        const mergedCustomers = [...localCustomers]
+        // 🔥 修复：合并数据时，优先使用API返回的数据（包含最新的shareInfo等信息）
+        const mergedCustomers: Customer[] = []
 
-        // 添加API中存在但本地不存在的客户
-        apiCustomers.forEach(apiCustomer => {
-          const existsInLocal = localCustomers.some(localCustomer =>
-            localCustomer.id === apiCustomer.id ||
-            localCustomer.phone === apiCustomer.phone
+        // 先处理API返回的客户数据
+        apiCustomers.forEach((apiCustomer: Customer) => {
+          mergedCustomers.push(apiCustomer)
+        })
+
+        // 添加本地存在但API中不存在的客户（可能是刚创建还未同步的）
+        localCustomers.forEach(localCustomer => {
+          const existsInApi = apiCustomers.some((apiCustomer: Customer) =>
+            apiCustomer.id === localCustomer.id ||
+            apiCustomer.phone === localCustomer.phone
           )
 
-          if (!existsInLocal) {
-            mergedCustomers.push(apiCustomer)
+          if (!existsInApi) {
+            mergedCustomers.push(localCustomer)
           }
         })
 
