@@ -206,11 +206,21 @@ class LogisticsTraceService {
           }
           console.log(`[物流查询] 快递100也查询失败，返回原始结果`);
         } else {
-          // 快递100未配置，对于顺丰等需要验证的快递，提示需要手机号
-          if (companyCode === 'SF' && !phone) {
-            console.log(`[物流查询] 快递100未配置，顺丰需要手机号验证`);
-            result.statusText = '需要手机号验证';
-            result.status = 'need_phone_verify';
+          // 快递100未配置
+          if (companyCode === 'SF') {
+            if (!phone) {
+              // 没有提供手机号
+              console.log(`[物流查询] 快递100未配置，顺丰需要手机号验证`);
+              result.statusText = '需要手机号验证';
+              result.status = 'need_phone_verify';
+            } else {
+              // 提供了手机号但仍然查询不到，可能是手机号不正确
+              console.log(`[物流查询] 已提供手机号但查询失败，可能手机号不正确`);
+              if (result.statusText.includes('routes为空') || result.statusText.includes('未查询到')) {
+                result.statusText = '查询失败。可能原因：1.手机号后4位不正确 2.运单刚发出，建议12-24小时后再查询 3.运单号不存在';
+                result.status = 'need_phone_verify'; // 让用户可以重新输入手机号
+              }
+            }
           }
         }
       }
@@ -437,7 +447,12 @@ class LogisticsTraceService {
 
     // 如果提供了手机号，添加到请求中（用于验证非自己发出的运单）
     if (phone) {
-      msgDataObj.checkPhoneNo = phone.slice(-4); // 取手机号后四位
+      // 🔥 确保只取后4位数字
+      const phoneDigits = phone.replace(/\D/g, ''); // 移除非数字字符
+      msgDataObj.checkPhoneNo = phoneDigits.slice(-4); // 取手机号后四位
+      console.log('[顺丰开放平台API] 使用手机号后4位:', msgDataObj.checkPhoneNo);
+    } else {
+      console.log('[顺丰开放平台API] 未提供手机号，可能无法查询非自己发出的运单');
     }
 
     const msgData = JSON.stringify(msgDataObj);
@@ -460,6 +475,7 @@ class LogisticsTraceService {
     console.log('[顺丰开放平台API] serviceCode:', serviceCode);
     console.log('[顺丰开放平台API] timestamp:', timestamp);
     console.log('[顺丰开放平台API] msgData(原始):', msgData);
+    console.log('[顺丰开放平台API] 是否包含手机号验证:', msgDataObj.checkPhoneNo ? `是(${msgDataObj.checkPhoneNo})` : '否');
     console.log('[顺丰开放平台API] apiEnvironment:', config.apiEnvironment);
 
     // 🔥 手动构建请求体，避免URLSearchParams的二次编码问题
@@ -543,7 +559,16 @@ class LogisticsTraceService {
             friendlyMsg = '运单号不存在或已过期。请检查：1.单号是否正确 2.是否为顺丰运单 3.运单是否在有效期内';
             break;
           case 'S0001':
-            friendlyMsg = '无权限查询此运单，请联系顺丰客服';
+            friendlyMsg = '无权限查询此运单。可能原因：1.非本账号发出的运单需要提供收件人手机号后4位 2.运单已超过查询有效期';
+            break;
+          case 'S0003':
+            friendlyMsg = '运单号格式错误，请检查运单号是否正确';
+            break;
+          case 'S0004':
+            friendlyMsg = '查询频率过高，请稍后再试';
+            break;
+          case 'S0005':
+            friendlyMsg = '手机号验证失败，请确认手机号后4位是否正确';
             break;
           default:
             friendlyMsg = `${errorMsg || errorCode || '未知错误'}`;
@@ -616,7 +641,8 @@ class LogisticsTraceService {
           }
         } else {
           console.log('[顺丰开放平台API] routes为空');
-          result.statusText = '未查询到物流轨迹（routes为空）';
+          // 🔥 改进提示：告知用户可能的原因
+          result.statusText = '未查询到物流轨迹。可能原因：1.运单刚发出，建议12-24小时后再查询 2.需要配置快递100作为备选查询渠道';
         }
       } else {
         console.log('[顺丰开放平台API] 未找到routeResp');

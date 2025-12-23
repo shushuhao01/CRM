@@ -1122,8 +1122,9 @@ const loadData = async () => {
       try {
         const { apiService } = await import('@/services/apiService')
         const response = await apiService.get(`/orders/${id}`)
-        if (response && response.data) {
-          order = response.data
+        // 🔥 修复：apiService.get 直接返回 data，不需要再访问 .data
+        if (response) {
+          order = response
           console.log('[物流编辑] 从API获取订单成功:', order.orderNumber)
         }
       } catch (apiError) {
@@ -1167,9 +1168,10 @@ const loadData = async () => {
       Object.assign(form, {
         orderNo: order.orderNumber,
         company: order.expressCompany || '',
-        trackingNo: order.trackingNumber || order.expressNo || '',
+        trackingNo: order.trackingNumber || '',
         status: order.logisticsStatus || 'pending',
-        shipTime: order.shippingTime || order.shipTime || order.shippedAt || '',
+        // 🔥 修复：优先使用shippingTime，其次shippedAt
+        shipTime: order.shippingTime || order.shippedAt || '',
         estimatedTime: order.expectedDeliveryDate ? `${order.expectedDeliveryDate} 18:00:00` : '',
         freight: 0,
         insuranceFee: 0,
@@ -1178,8 +1180,8 @@ const loadData = async () => {
 
       // 加载收货信息
       Object.assign(receiverForm, {
-        receiverName: order.receiverName || order.customerName,
-        receiverPhone: order.receiverPhone || order.customerPhone,
+        receiverName: order.receiverName || order.customerName || '',
+        receiverPhone: order.receiverPhone || order.customerPhone || '',
         receiverAddress: order.receiverAddress || ''
       })
 

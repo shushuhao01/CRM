@@ -257,7 +257,15 @@ const trackingResult = reactive({
 })
 
 // 物流轨迹
-const trackingHistory = ref([])
+interface TrackingItem {
+  time: string
+  status: string
+  description: string
+  location: string
+  operator: string
+  type: string
+}
+const trackingHistory = ref<TrackingItem[]>([])
 
 // 物流公司列表 - 从API获取
 const logisticsCompanies = ref<Array<{ code: string; name: string }>>([])
@@ -309,10 +317,19 @@ const useDefaultCompanies = () => {
 }
 
 /**
+ * 🔥 手机号加密显示
+ */
+const maskPhoneNumber = (phone: string): string => {
+  if (!phone || phone.length < 7) return phone
+  // 保留前3位和后4位，中间用*替换
+  return phone.slice(0, 3) + '****' + phone.slice(-4)
+}
+
+/**
  * 获取状态颜色
  */
 const getStatusColor = (status: string) => {
-  const colorMap = {
+  const colorMap: Record<string, string> = {
     'pending': 'info',
     'shipped': 'warning',
     'in_transit': 'primary',
@@ -327,11 +344,13 @@ const getStatusColor = (status: string) => {
  * 获取状态文本
  */
 const getStatusText = (status: string) => {
-  const textMap = {
+  const textMap: Record<string, string> = {
     'pending': '待发货',
     'shipped': '已发货',
+    'picked_up': '已揽收',
     'in_transit': '运输中',
     'delivering': '派送中',
+    'out_for_delivery': '派送中',
     'delivered': '已签收',
     'exception': '异常'
   }
@@ -342,7 +361,7 @@ const getStatusText = (status: string) => {
  * 获取时间轴图标
  */
 const getTimelineIcon = (status: string) => {
-  const iconMap = {
+  const iconMap: Record<string, any> = {
     '已签收': Check,
     '派送中': Box,
     '运输中': Box,
@@ -463,19 +482,8 @@ const handleSearch = async (phone?: string) => {
           return
         }
 
-        // 使用API返回的数据
-        Object.assign(trackingResult, {
-          trackingNo: data.trackingNo || trackingNum,
-          companyName: data.companyName || getCompanyName(data.companyCode) || companyCode,
-          status: data.status || 'shipped',
-          receiverName: '',
-          receiverPhone: '',
-          receiverAddress: '',
-          shipTime: '',
-          estimatedTime: data.estimatedDeliveryTime || ''
-        })
-
         // 使用API返回的轨迹数据
+        let sortedTraces: any[] = []
         if (data.traces && Array.isArray(data.traces)) {
           // 🔥 去重：根据时间和描述去重
           const seen = new Set<string>()
@@ -487,7 +495,7 @@ const handleSearch = async (phone?: string) => {
           })
 
           // 🔥 按时间倒序排列（最新的在最上面）
-          trackingHistory.value = uniqueTraces.map((trace: any) => ({
+          sortedTraces = uniqueTraces.map((trace: any) => ({
             time: trace.time,
             status: trace.status,
             description: trace.description,
@@ -499,22 +507,81 @@ const handleSearch = async (phone?: string) => {
             const timeB = new Date(b.time).getTime()
             return timeB - timeA
           })
+          trackingHistory.value = sortedTraces
         } else {
           trackingHistory.value = []
         }
 
-        // 尝试从订单数据补充收货人信息
-        const accessibleOrders = applyDataScopeControl(orderStore.orders)
-        const order = accessibleOrders.find(o =>
-          o.expressNo === trackingNum ||
-          o.trackingNumber === trackingNum ||
-          o.expressNumber === trackingNum
-        )
-        if (order) {
-          trackingResult.receiverName = order.customerName || ''
-          trackingResult.receiverPhone = order.phone || order.customerPhone || ''
-          trackingResult.receiverAddress = order.address || order.shippingAddress || order.deliveryAddress || ''
-          trackingResult.shipTime = order.shipTime || order.shippedAt || order.deliveryTime || ''
+        // 🔥 根据最新轨迹判断真实状态
+        let realStatus = data.status || 'shipped'
+        let estimatedTime = data.estimatedDeliveryTime || ''
+        let deliveredTime = '' // 签收时间
+        if (sortedTraces.length > 0) {
+          const latestTrace = sortedTraces[0]
+          // 检查是否已签收
+          if (latestTrace.description?.includes('签收') ||
+              latestTrace.description?.includes('已签收') ||
+              latestTrace.description?.includes('已送达') ||
+              latestTrace.description?.includes('代收') ||
+              latestTrace.status === '80' ||
+              latestTrace.status === '8000') {
+            realStatus = 'delivered'
+            deliveredTime = latestTrace.time // 记录签收时间
+            estimatedTime = '' // 已签收，不显示预计送达
+          } else if (latestTrace.description?.includes('派送') ||
+                     latestTrace.description?.includes('派件')) {
+            realStatus = 'out_for_delivery'
+          } else if (latestTrace.description?.includes('到达') ||
+                     latestTrace.description?.includes('运输')) {
+            realStatus = 'in_transit'
+          } else if (latestTrace.description?.includes('揽收') ||
+                     latestTrace.description?.includes('收件')) {
+            realStatus = 'picked_up'
+          }
+        }
+
+        // 使用API返回的数据
+        Object.assign(trackingResult, {
+          trackingNo: data.trackingNo || trackingNum,
+          companyName: data.companyName || getCompanyName(data.companyCode) || companyCode,
+          status: realStatus,
+          receiverName: '',
+          receiverPhone: '',
+          receiverAddress: '',
+          shipTime: '',
+          // 🔥 已签收显示签收时间，否则显示预计送达
+          estimatedTime: realStatus === 'delivered' ? (deliveredTime ? `已签收 (${deliveredTime})` : '已签收') : estimatedTime
+        })
+
+        // 🔥 尝试从API获取订单信息补充收货人信息
+        try {
+          const { orderApi } = await import('@/api/order')
+          const orderResponse = await orderApi.getOrderByTrackingNo(trackingNum)
+          if (orderResponse?.success && orderResponse.data) {
+            const orderData = orderResponse.data
+            trackingResult.receiverName = orderData.customerName || ''
+            // 🔥 联系电话加密显示
+            const phone = orderData.receiverPhone || orderData.phone || orderData.customerPhone || ''
+            trackingResult.receiverPhone = phone ? maskPhoneNumber(phone) : ''
+            trackingResult.receiverAddress = orderData.shippingAddress || orderData.address || ''
+            trackingResult.shipTime = orderData.shipTime || orderData.shippedAt || ''
+          }
+        } catch (orderError) {
+          console.log('[物流跟踪] 获取订单信息失败，尝试从本地store获取:', orderError)
+          // 回退到本地store
+          const accessibleOrders = applyDataScopeControl(orderStore.orders)
+          const order = accessibleOrders.find((o: any) =>
+            o.expressNo === trackingNum ||
+            o.trackingNumber === trackingNum ||
+            o.expressNumber === trackingNum
+          )
+          if (order) {
+            trackingResult.receiverName = order.customerName || ''
+            const phone = order.phone || order.customerPhone || ''
+            trackingResult.receiverPhone = phone ? maskPhoneNumber(phone) : ''
+            trackingResult.receiverAddress = order.address || order.shippingAddress || order.deliveryAddress || ''
+            trackingResult.shipTime = order.shipTime || order.shippedAt || order.deliveryTime || ''
+          }
         }
 
         if (!isUnmounted.value) {
@@ -610,10 +677,26 @@ const refreshTracking = async () => {
   refreshLoading.value = true
 
   try {
+    // 🔥 尝试获取手机号
+    let phoneToUse = ''
+    try {
+      const { orderApi } = await import('@/api/order')
+      const orderResponse = await orderApi.getOrderByTrackingNo(trackingResult.trackingNo)
+      if (orderResponse?.success && orderResponse.data) {
+        phoneToUse = orderResponse.data.receiverPhone || orderResponse.data.phone || orderResponse.data.customerPhone || ''
+      }
+    } catch (e) {
+      console.log('[物流跟踪] 获取订单手机号失败:', e)
+    }
+
+    console.log('[物流跟踪] 刷新轨迹，使用手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未提供')
+
     const { logisticsApi } = await import('@/api/logistics')
-    const response = await logisticsApi.refreshTrace(
+    // 🔥 使用queryTrace而不是refreshTrace，这样可以传递手机号
+    const response = await logisticsApi.queryTrace(
       trackingResult.trackingNo,
-      searchForm.company || undefined
+      searchForm.company || undefined,
+      phoneToUse || undefined
     )
 
     if (isUnmounted.value) return
@@ -626,14 +709,27 @@ const refreshTracking = async () => {
 
       // 更新轨迹
       if (data.traces && Array.isArray(data.traces)) {
-        trackingHistory.value = data.traces.map((trace: any) => ({
+        // 🔥 去重并排序
+        const seen = new Set<string>()
+        const uniqueTraces = data.traces.filter((trace: any) => {
+          const key = `${trace.time}-${trace.description}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+
+        trackingHistory.value = uniqueTraces.map((trace: any) => ({
           time: trace.time,
           status: trace.status,
           description: trace.description,
           location: trace.location || '',
           operator: trace.operator || '',
           type: getTraceType(trace.status)
-        }))
+        })).sort((a: any, b: any) => {
+          const timeA = new Date(a.time).getTime()
+          const timeB = new Date(b.time).getTime()
+          return timeB - timeA
+        })
       }
 
       ElMessage.success('轨迹已刷新')
@@ -726,14 +822,26 @@ const getCompanyName = (code: string) => {
  * 针对刚发货的订单给出更友好的提示
  */
 const getFriendlyNoTraceMessage = (originalMessage?: string) => {
-  // 如果是API未配置等技术性错误，给出友好提示
-  if (originalMessage?.includes('API未配置') ||
-      originalMessage?.includes('未查询到') ||
-      originalMessage?.includes('routes为空') ||
-      originalMessage?.includes('查询失败') ||
-      !originalMessage) {
+  if (!originalMessage) {
     return '暂无物流信息，快递可能刚揽收，建议12-24小时后再查询'
   }
+
+  // 🔥 保留后端返回的详细错误信息
+  if (originalMessage.includes('手机号') ||
+      originalMessage.includes('验证') ||
+      originalMessage.includes('运单号不存在') ||
+      originalMessage.includes('无权限') ||
+      originalMessage.includes('可能原因')) {
+    return originalMessage
+  }
+
+  // 如果是API未配置等技术性错误，给出友好提示
+  if (originalMessage.includes('API未配置') ||
+      originalMessage.includes('routes为空') ||
+      originalMessage.includes('未查询到物流轨迹')) {
+    return '暂无物流信息，快递可能刚揽收，建议12-24小时后再查询'
+  }
+
   // 其他情况返回原始消息
   return originalMessage
 }

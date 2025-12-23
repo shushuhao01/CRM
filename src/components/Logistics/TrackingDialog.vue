@@ -217,7 +217,29 @@ const fetchTrackingInfo = async (phone?: string) => {
       }
 
       if (data.success && data.traces && data.traces.length > 0) {
-        trackingList.value = data.traces.map((item: any) => ({
+        // 🔥 去重并按时间倒序排列（最新的在最上面）
+        const seen = new Set<string>()
+        const uniqueTraces = data.traces.filter((item: any) => {
+          const key = `${item.time}-${item.description}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+
+        // 按时间排序（倒序）
+        const sortedTraces = uniqueTraces.sort((a: any, b: any) => {
+          const parseTime = (timeStr: string): number => {
+            if (!timeStr) return 0
+            let time = new Date(timeStr).getTime()
+            if (!isNaN(time)) return time
+            const normalized = timeStr.replace(/年|月/g, '-').replace(/日/g, ' ')
+            time = new Date(normalized).getTime()
+            return isNaN(time) ? 0 : time
+          }
+          return parseTime(b.time) - parseTime(a.time)
+        })
+
+        trackingList.value = sortedTraces.map((item: any) => ({
           time: item.time,
           description: item.description || item.status,
           location: item.location,

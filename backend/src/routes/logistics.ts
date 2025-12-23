@@ -304,13 +304,56 @@ router.get('/trace/query', async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`[物流轨迹查询] 单号: ${trackingNo}, 快递公司: ${companyCode || '自动识别'}, 手机号: ${phone ? '已提供' : '未提供'}`);
+    // 🔥 如果前端没有传递手机号，尝试从数据库获取
+    let phoneToUse = phone as string | undefined;
+    if (!phoneToUse) {
+      try {
+        const { Order } = await import('../entities/Order');
+        const orderRepository = AppDataSource!.getRepository(Order);
+        const order = await orderRepository.findOne({
+          where: { trackingNumber: trackingNo as string }
+        });
+        if (order) {
+          phoneToUse = order.shippingPhone || order.customerPhone || undefined;
+          console.log(`[物流轨迹查询] 从数据库获取手机号: ${phoneToUse ? phoneToUse.slice(-4) + '****' : '未找到'}`);
+        }
+      } catch (dbError) {
+        console.log('[物流轨迹查询] 从数据库获取手机号失败:', dbError);
+      }
+    }
+
+    console.log(`[物流轨迹查询] 单号: ${trackingNo}, 快递公司: ${companyCode || '自动识别'}, 手机号: ${phoneToUse ? '已提供' : '未提供'}`);
 
     const result = await logisticsTraceService.queryTrace(
       trackingNo as string,
       companyCode as string | undefined,
-      phone as string | undefined
+      phoneToUse
     );
+
+    // 🔥 如果查询成功，更新数据库中的物流状态和最新动态
+    if (result.success && result.traces.length > 0) {
+      try {
+        const { Order } = await import('../entities/Order');
+        const orderRepository = AppDataSource!.getRepository(Order);
+        const order = await orderRepository.findOne({
+          where: { trackingNumber: trackingNo as string }
+        });
+        if (order) {
+          order.logisticsStatus = result.status;
+          // 保存最新物流动态
+          if (result.traces.length > 0) {
+            order.latestLogisticsInfo = result.traces[0].description || result.traces[0].status || '';
+          }
+          if (result.estimatedDeliveryTime) {
+            order.expectedDeliveryDate = result.estimatedDeliveryTime;
+          }
+          order.updatedAt = new Date();
+          await orderRepository.save(order);
+        }
+      } catch (updateError) {
+        console.warn('[物流轨迹查询] 更新订单状态失败:', updateError);
+      }
+    }
 
     return res.json({
       success: result.success,
@@ -370,7 +413,7 @@ router.post('/trace/batch-query', async (req: Request, res: Response) => {
  */
 router.post('/trace/refresh', async (req: Request, res: Response) => {
   try {
-    const { trackingNo, companyCode } = req.body;
+    const { trackingNo, companyCode, phone } = req.body;
 
     if (!trackingNo) {
       return res.status(400).json({
@@ -379,10 +422,28 @@ router.post('/trace/refresh', async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`[刷新物流轨迹] 单号: ${trackingNo}`);
+    // 🔥 如果前端没有传递手机号，尝试从数据库获取
+    let phoneToUse = phone as string | undefined;
+    if (!phoneToUse) {
+      try {
+        const { Order } = await import('../entities/Order');
+        const orderRepository = AppDataSource!.getRepository(Order);
+        const order = await orderRepository.findOne({
+          where: { trackingNumber: trackingNo as string }
+        });
+        if (order) {
+          phoneToUse = order.shippingPhone || order.customerPhone || undefined;
+          console.log(`[刷新物流轨迹] 从数据库获取手机号: ${phoneToUse ? phoneToUse.slice(-4) + '****' : '未找到'}`);
+        }
+      } catch (dbError) {
+        console.log('[刷新物流轨迹] 从数据库获取手机号失败:', dbError);
+      }
+    }
 
-    // 强制从API获取最新数据
-    const result = await logisticsTraceService.queryTrace(trackingNo, companyCode);
+    console.log(`[刷新物流轨迹] 单号: ${trackingNo}, 手机号: ${phoneToUse ? '已提供' : '未提供'}`);
+
+    // 强制从API获取最新数据（带手机号）
+    const result = await logisticsTraceService.queryTrace(trackingNo, companyCode, phoneToUse);
 
     // 如果查询成功，可以更新数据库中的物流状态
     if (result.success && result.traces.length > 0) {
@@ -398,9 +459,18 @@ router.post('/trace/refresh', async (req: Request, res: Response) => {
         if (order) {
           // 更新订单的物流状态
           order.logisticsStatus = result.status;
+          // 🔥 保存最新物流动态（取第一条轨迹的描述）
+          if (result.traces.length > 0) {
+            const latestTrace = result.traces[0];
+            order.latestLogisticsInfo = latestTrace.description || latestTrace.status || '';
+          }
+          // 🔥 如果有预计送达时间，也更新
+          if (result.estimatedDeliveryTime) {
+            order.expectedDeliveryDate = result.estimatedDeliveryTime;
+          }
           order.updatedAt = new Date();
           await orderRepository.save(order);
-          console.log(`[刷新物流轨迹] 订单 ${order.orderNumber} 物流状态已更新为: ${result.status}`);
+          console.log(`[刷新物流轨迹] 订单 ${order.orderNumber} 物流状态已更新为: ${result.status}, 最新动态: ${order.latestLogisticsInfo?.substring(0, 30)}...`);
         }
       } catch (updateError) {
         console.warn('[刷新物流轨迹] 更新订单状态失败:', updateError);

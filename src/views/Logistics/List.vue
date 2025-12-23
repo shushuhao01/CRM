@@ -147,6 +147,25 @@
         <span v-else class="no-data">-</span>
       </template>
 
+      <!-- 🔥 最新物流动态列 -->
+      <template #column-latestLogisticsInfo="{ row }">
+        <div v-if="row.latestLogisticsInfo" class="latest-logistics-info">
+          <span class="logistics-info-text">{{ row.latestLogisticsInfo }}</span>
+        </div>
+        <span v-else class="no-data">暂无物流信息</span>
+      </template>
+
+      <!-- 🔥 预计送达列 -->
+      <template #column-estimatedDate="{ row }">
+        <span v-if="row.logisticsStatus === 'delivered'" class="delivered-text">
+          已签收
+        </span>
+        <span v-else-if="row.estimatedDate" class="estimated-date">
+          {{ formatEstimatedDate(row.estimatedDate) }}
+        </span>
+        <span v-else class="no-data">-</span>
+      </template>
+
       <!-- 操作列 -->
       <template #table-actions="{ row }">
         <el-button
@@ -180,7 +199,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Search, Refresh, RefreshLeft, CopyDocument } from '@element-plus/icons-vue'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { useOrderStore } from '@/stores/order'
@@ -189,7 +208,6 @@ import { createSafeNavigator } from '@/utils/navigation'
 import { eventBus, EventNames } from '@/utils/eventBus'
 import { getOrderStatusStyle, getOrderStatusText } from '@/utils/orderStatusConfig'
 import { formatDateTime } from '@/utils/dateFormat'
-import { getCompanyShortName, getTrackingUrl, KUAIDI100_URL } from '@/utils/logisticsCompanyConfig'
 
 interface LogisticsItem {
   id: string | number // 🔥 修复：支持UUID字符串和数字ID
@@ -203,9 +221,13 @@ interface LogisticsItem {
   status: string
   destination: string
   shipDate: string
-  // 🔥 新增：物流状态（独立于订单状态）
+  // 🔥 物流状态（独立于订单状态）
   logisticsStatus: string
+  // 🔥 新增：最新物流动态
+  latestLogisticsInfo: string
   estimatedDate: string
+  // 🔥 新增：客户手机号（用于物流查询）
+  customerPhone?: string
 }
 
 const router = useRouter()
@@ -326,11 +348,12 @@ const tableColumns = computed(() => [
     label: '物流公司',
     minWidth: 100,
     visible: true,
+    slot: true,
     showOverflowTooltip: true
   },
   {
     prop: 'status',
-    label: '状态',
+    label: '订单状态',
     minWidth: 90,
     visible: true,
     slot: true,
@@ -360,11 +383,19 @@ const tableColumns = computed(() => [
     showOverflowTooltip: true
   },
   {
+    prop: 'latestLogisticsInfo',
+    label: '最新物流动态',
+    minWidth: 220,
+    visible: true,
+    slot: true,
+    showOverflowTooltip: true
+  },
+  {
     prop: 'estimatedDate',
     label: '预计送达',
-    minWidth: 150,
+    minWidth: 120,
     visible: true,
-    formatter: (value: unknown) => formatDateTime(value as string),
+    slot: true,
     showOverflowTooltip: true
   }
 ])
@@ -400,65 +431,19 @@ const getCompanyName = (code: string) => {
   return companies[code] || code
 }
 
-// 获取状态文本
-const getStatusText = (status: string) => {
-  const statusMap: Record<string, string> = {
-    // 订单状态
-    pending_transfer: '待流转',
-    pending_audit: '待审核',
-    audit_rejected: '审核拒绝',
-    pending_shipment: '待发货',
-    shipped: '已发货',
-    delivered: '已签收',
-    logistics_returned: '物流部退回',
-    logistics_cancelled: '物流部取消',
-    package_exception: '包裹异常',
-    rejected: '拒收',
-    rejected_returned: '拒收已退回',
-    after_sales_created: '已建售后',
-    cancelled: '已取消',
-    // 物流状态
-    pending: '待发货',
-    picked_up: '已揽收',
-    in_transit: '运输中',
-    out_for_delivery: '派送中',
-    exception: '异常',
-    returned: '已退回',
-    refunded: '退货退款',
-    abnormal: '状态异常'
-  }
-  return statusMap[status] || status
-}
-
-// 获取状态类型
-const getStatusType = (status: string) => {
-  const types: Record<string, string> = {
-    pending: 'info',
-    shipped: 'primary',           // 已发货用蓝色
-    picked_up: 'primary',
-    in_transit: 'warning',
-    out_for_delivery: 'warning',
-    delivered: 'success',         // 已签收用绿色
-    rejected: 'danger',
-    rejected_returned: 'warning',
-    exception: 'danger',
-    abnormal: 'danger',
-    package_exception: 'danger'
-  }
-  return types[status] || 'info'
-}
-
 // 🔥 获取物流状态文本
 const getLogisticsStatusText = (status: string) => {
   const statusMap: Record<string, string> = {
     pending: '待发货',
     shipped: '已发货',
+    picked_up: '已揽收',
     in_transit: '运输中',
+    out_for_delivery: '派送中',
     delivering: '派送中',
     delivered: '已签收',
     exception: '异常',
-    returned: '已退回',
-    picked_up: '已揽收'
+    rejected: '拒收',
+    returned: '已退回'
   }
   return statusMap[status] || status || '-'
 }
@@ -468,12 +453,14 @@ const getLogisticsStatusStyle = (status: string) => {
   const styleMap: Record<string, { backgroundColor: string; color: string; borderColor: string }> = {
     pending: { backgroundColor: '#f0f0f0', color: '#909399', borderColor: '#d9d9d9' },
     shipped: { backgroundColor: '#e6f7ff', color: '#1890ff', borderColor: '#91d5ff' },
+    picked_up: { backgroundColor: '#e6fffb', color: '#13c2c2', borderColor: '#87e8de' },
     in_transit: { backgroundColor: '#fff7e6', color: '#fa8c16', borderColor: '#ffd591' },
-    delivering: { backgroundColor: '#fff1f0', color: '#f5222d', borderColor: '#ffa39e' },
+    out_for_delivery: { backgroundColor: '#fffbe6', color: '#faad14', borderColor: '#ffe58f' },
+    delivering: { backgroundColor: '#fffbe6', color: '#faad14', borderColor: '#ffe58f' },
     delivered: { backgroundColor: '#f6ffed', color: '#52c41a', borderColor: '#b7eb8f' },
     exception: { backgroundColor: '#fff1f0', color: '#f5222d', borderColor: '#ffa39e' },
-    returned: { backgroundColor: '#fff2e8', color: '#fa541c', borderColor: '#ffbb96' },
-    picked_up: { backgroundColor: '#e6fffb', color: '#13c2c2', borderColor: '#87e8de' }
+    rejected: { backgroundColor: '#fff1f0', color: '#f5222d', borderColor: '#ffa39e' },
+    returned: { backgroundColor: '#fff2e8', color: '#fa541c', borderColor: '#ffbb96' }
   }
   return styleMap[status] || { backgroundColor: '#f0f0f0', color: '#909399', borderColor: '#d9d9d9' }
 }
@@ -493,11 +480,6 @@ const handleReset = () => {
     company: ''
   })
   pagination.page = 1
-  loadData()
-}
-
-// 刷新
-const handleRefresh = () => {
   loadData()
 }
 
@@ -538,7 +520,7 @@ const loadData = async () => {
     if (shippedOrders.length === 0) {
       const allOrders = orderStore.getOrders()
       // 获取所有有物流信息的订单（已发货、运输中、已签收等）
-      shippedOrders = allOrders.filter(order =>
+      shippedOrders = allOrders.filter((order: any) =>
         ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'rejected', 'rejected_returned'].includes(order.status) ||
         ((order.trackingNumber || order.expressNo) && order.expressCompany)
       )
@@ -572,24 +554,38 @@ const loadData = async () => {
     }
 
     // 转换为物流列表格式
-    let logisticsData = shippedOrders.map(order => ({
-      id: order.id, // 🔥 修复：保持原始订单ID（UUID格式），不要转换为数字
-      orderId: order.id,
-      customerId: order.customerId,
-      trackingNo: order.trackingNumber || order.expressNo || '',
-      orderNo: order.orderNumber,
-      customerName: order.customerName,
-      company: order.expressCompany || '',
-      // 🔥 订单状态
-      status: order.status || 'shipped',
-      destination: order.receiverAddress || order.shippingAddress || '',
-      // 发货时间：优先使用shippedAt，其次shippingTime
-      shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
-      // 物流状态（独立于订单状态）
-      logisticsStatus: order.logisticsStatus || '',
-      // 预计送达时间：尝试多个字段
-      estimatedDate: order.expectedDeliveryDate || order.estimatedDeliveryTime || order.estimatedDelivery || order.estimatedDate || ''
-    }))
+    let logisticsData = shippedOrders.map((order: any) => {
+      // 🔥 获取最新物流动态 - 初始值，后续从API实时获取
+      const latestLogisticsInfo = ''
+
+      // 🔥 智能映射物流状态：根据订单状态和最新物流动态来判断
+      let logisticsStatus = order.logisticsStatus || ''
+      if (!logisticsStatus) {
+        logisticsStatus = mapOrderStatusToLogisticsStatus(order.status, latestLogisticsInfo)
+      }
+
+      // 🔥 预计送达时间处理
+      const estimatedDate = order.expectedDeliveryDate || order.estimatedDeliveryTime || order.estimatedDelivery || order.estimatedDate || ''
+
+      return {
+        id: order.id,
+        orderId: order.id,
+        customerId: order.customerId,
+        trackingNo: order.trackingNumber || order.expressNo || '',
+        orderNo: order.orderNumber,
+        customerName: order.customerName,
+        company: order.expressCompany || '',
+        status: order.status || 'shipped',
+        destination: order.receiverAddress || order.shippingAddress || '',
+        shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
+        logisticsStatus,
+        // 🔥 初始值，后续从API实时获取
+        latestLogisticsInfo: (order.trackingNumber || order.expressNo) ? '获取中...' : '暂无物流信息',
+        estimatedDate,
+        // 🔥 用于异步获取物流信息
+        customerPhone: order.receiverPhone || order.customerPhone || ''
+      }
+    })
 
     // 应用搜索过滤
     if (searchForm.trackingNo) {
@@ -606,7 +602,7 @@ const loadData = async () => {
 
     if (searchForm.status) {
       logisticsData = logisticsData.filter(item =>
-        item.status === searchForm.status
+        item.status === searchForm.status || item.logisticsStatus === searchForm.status
       )
     }
 
@@ -629,6 +625,9 @@ const loadData = async () => {
     tableData.value = logisticsData.slice(startIndex, endIndex)
     total.value = logisticsData.length
 
+    // 🔥 异步从官方API获取物流最新动态（不阻塞页面加载）
+    fetchLatestLogisticsUpdates()
+
   } catch (error) {
     ElMessage.error('加载数据失败')
     console.error('Load data error:', error)
@@ -637,9 +636,149 @@ const loadData = async () => {
   }
 }
 
+// 🔥 根据订单状态和物流动态智能映射物流状态
+const mapOrderStatusToLogisticsStatus = (orderStatus: string, logisticsInfo: string): string => {
+  // 如果有物流动态信息，根据内容判断状态
+  if (logisticsInfo) {
+    const info = logisticsInfo.toLowerCase()
+    if (info.includes('签收') || info.includes('已签收') || info.includes('已送达') || info.includes('代收')) {
+      return 'delivered'
+    }
+    if (info.includes('派送') || info.includes('派件') || info.includes('正在投递') || info.includes('送货')) {
+      return 'out_for_delivery'
+    }
+    if (info.includes('到达') || info.includes('运输') || info.includes('转运') || info.includes('发往') || info.includes('离开')) {
+      return 'in_transit'
+    }
+    if (info.includes('揽收') || info.includes('收件') || info.includes('已揽')) {
+      return 'picked_up'
+    }
+    if (info.includes('拒收') || info.includes('拒签')) {
+      return 'rejected'
+    }
+    if (info.includes('退回') || info.includes('退件')) {
+      return 'returned'
+    }
+    if (info.includes('异常') || info.includes('问题件') || info.includes('滞留')) {
+      return 'exception'
+    }
+  }
+
+  // 根据订单状态映射
+  const statusMap: Record<string, string> = {
+    'shipped': 'shipped',
+    'delivered': 'delivered',
+    'in_transit': 'in_transit',
+    'out_for_delivery': 'out_for_delivery',
+    'rejected': 'rejected',
+    'rejected_returned': 'returned',
+    'pending_shipment': 'pending',
+    'package_exception': 'exception'
+  }
+
+  return statusMap[orderStatus] || 'shipped'
+}
+
+// 🔥 格式化预计送达日期
+const formatEstimatedDate = (dateStr: string): string => {
+  if (!dateStr) return '-'
+  try {
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return dateStr
+    const now = new Date()
+    const diffDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+
+    if (diffDays < 0) {
+      return '已超期'
+    } else if (diffDays === 0) {
+      return '今天'
+    } else if (diffDays === 1) {
+      return '明天'
+    } else if (diffDays <= 3) {
+      return `${diffDays}天后`
+    } else {
+      return `${date.getMonth() + 1}/${date.getDate()}`
+    }
+  } catch {
+    return dateStr
+  }
+}
+
+/**
+ * 🔥 异步从官方API获取物流最新动态
+ * 实时获取最新数据，不依赖数据库缓存
+ */
+const fetchLatestLogisticsUpdates = async () => {
+  const { logisticsApi } = await import('@/api/logistics')
+
+  // 只处理有物流单号的订单
+  const ordersWithTracking = tableData.value.filter(order =>
+    order.trackingNo && order.company
+  )
+
+  if (ordersWithTracking.length === 0) {
+    return
+  }
+
+  console.log(`[物流列表] 开始从API获取 ${ordersWithTracking.length} 个订单的物流信息`)
+
+  // 并发获取物流信息，限制并发数量避免API限制
+  const batchSize = 3
+  for (let i = 0; i < ordersWithTracking.length; i += batchSize) {
+    const batch = ordersWithTracking.slice(i, i + batchSize)
+    await Promise.all(batch.map(async (order) => {
+      try {
+        // 从官方API获取物流轨迹
+        const response = await logisticsApi.queryTrace(
+          order.trackingNo,
+          order.company,
+          order.customerPhone || ''
+        )
+
+        if (response?.success && response.data?.success && response.data.traces?.length > 0) {
+          const traces = response.data.traces
+          // 按时间排序，获取最新动态
+          const sortedTraces = [...traces].sort((a: any, b: any) => {
+            const timeA = new Date(a.time).getTime()
+            const timeB = new Date(b.time).getTime()
+            return timeB - timeA
+          })
+          const latestTrace = sortedTraces[0]
+          order.latestLogisticsInfo = latestTrace.description || latestTrace.status || '暂无描述'
+
+          // 🔥 同时更新物流状态
+          const newStatus = mapOrderStatusToLogisticsStatus(order.status, order.latestLogisticsInfo)
+          if (newStatus !== order.logisticsStatus) {
+            order.logisticsStatus = newStatus
+          }
+
+          // 🔥 更新预计送达时间
+          if (response.data.estimatedDeliveryTime) {
+            order.estimatedDate = response.data.estimatedDeliveryTime
+          }
+        } else if (response?.data?.statusText) {
+          order.latestLogisticsInfo = response.data.statusText
+        } else {
+          order.latestLogisticsInfo = '暂无物流信息'
+        }
+      } catch (error) {
+        console.error(`获取订单 ${order.orderNo} 物流信息失败:`, error)
+        order.latestLogisticsInfo = '获取失败'
+      }
+    }))
+
+    // 每批次之间稍微延迟，避免API限制
+    if (i + batchSize < ordersWithTracking.length) {
+      await new Promise(resolve => setTimeout(resolve, 300))
+    }
+  }
+
+  console.log('[物流列表] 物流信息获取完成')
+}
+
 // 选择变化
-const handleSelectionChange = (selection: LogisticsItem[]) => {
-  selectedRows.value = selection
+const handleSelectionChange = (selection: any[]) => {
+  selectedRows.value = selection as LogisticsItem[]
 }
 
 // 分页大小变化
@@ -773,9 +912,9 @@ onMounted(async () => {
   orderStore.startLogisticsAutoSync()
 
   // 监听订单变化
-  orderStore.$subscribe((mutation, state) => {
+  orderStore.$subscribe((mutation: any, _state: any) => {
     // 当订单状态变化时，重新加载物流数据
-    if (mutation.events.some(event =>
+    if (mutation.events?.some((event: any) =>
       event.key === 'status' ||
       event.key === 'expressNo' ||
       event.key === 'expressCompany'
@@ -899,5 +1038,32 @@ onUnmounted(() => {
 
 .no-data {
   color: #909399;
+}
+
+/* 🔥 最新物流动态样式 */
+.latest-logistics-info {
+  max-width: 200px;
+}
+
+.logistics-info-text {
+  font-size: 12px;
+  color: #606266;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 🔥 预计送达样式 */
+.delivered-text {
+  color: #52c41a;
+  font-weight: 500;
+}
+
+.estimated-date {
+  color: #fa8c16;
+  font-size: 13px;
 }
 </style>

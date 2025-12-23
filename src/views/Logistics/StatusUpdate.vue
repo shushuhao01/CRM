@@ -879,30 +879,36 @@ const loadData = async (showMessage = false) => {
     })
 
     // 转换为物流状态格式
-    const logisticsData = shippedOrders.map((order, index) => ({
-      id: order.id,
-      index: (pagination.currentPage - 1) * pagination.pageSize + index + 1,
-      orderNo: order.orderNumber,
-      customerName: order.customerName,
-      customerId: order.customerId || order.customer?.id || '',  // 🔥 新增：客户ID用于跳转
-      // 🔥 修复：status字段应该显示订单状态，而不是物流状态
-      status: order.status || 'shipped',
-      // 保留物流状态字段用于其他用途
-      logisticsStatus: order.logisticsStatus || '',
-      amount: order.totalAmount,
-      trackingNo: order.trackingNumber || order.expressNo || '',
-      logisticsCompany: order.expressCompany || '',
-      latestUpdate: '获取中...',  // 🔥 初始值，后续异步更新
-      assignedTo: order.salesPersonId || order.createdBy || '',
-      assignedToName: order.createdByName || order.salesPersonName || getUserDisplayName(order.salesPersonId || order.createdBy) || order.createdBy || '-',
-      orderDate: formatOrderDate(order.createTime),
-      shippingTime: order.shippingTime || order.shipTime || order.createTime,
-      customerPhone: order.receiverPhone || order.customerPhone,
-      productName: order.products?.map((p: any) => p.name).join('、') || '商品',
-      quantity: order.products?.reduce((sum: number, p: any) => sum + p.quantity, 0) || 1,
-      remark: order.remark || '',
-      isTodo: order.isTodo || false
-    }))
+    const logisticsData = shippedOrders.map((order, index) => {
+      const trackingNo = order.trackingNumber || order.expressNo || ''
+      const logisticsCompany = order.expressCompany || ''
+
+      return {
+        id: order.id,
+        index: (pagination.currentPage - 1) * pagination.pageSize + index + 1,
+        orderNo: order.orderNumber,
+        customerName: order.customerName,
+        customerId: order.customerId || order.customer?.id || '',  // 🔥 新增：客户ID用于跳转
+        // 🔥 修复：status字段应该显示订单状态，而不是物流状态
+        status: order.status || 'shipped',
+        // 保留物流状态字段用于其他用途
+        logisticsStatus: order.logisticsStatus || '',
+        amount: order.totalAmount,
+        trackingNo,
+        logisticsCompany,
+        // 🔥 初始值，后续从官方API实时获取
+        latestUpdate: (trackingNo && logisticsCompany) ? '获取中...' : '暂无物流信息',
+        assignedTo: order.salesPersonId || order.createdBy || '',
+        assignedToName: order.createdByName || order.salesPersonName || getUserDisplayName(order.salesPersonId || order.createdBy) || order.createdBy || '-',
+        orderDate: formatOrderDate(order.createTime),
+        shippingTime: order.shippingTime || order.shipTime || order.createTime,
+        customerPhone: order.receiverPhone || order.customerPhone,
+        productName: order.products?.map((p: any) => p.name).join('、') || '商品',
+        quantity: order.products?.reduce((sum: number, p: any) => sum + p.quantity, 0) || 1,
+        remark: order.remark || '',
+        isTodo: order.isTodo || false
+      }
+    })
 
     // 分页处理
     const startIndex = (pagination.currentPage - 1) * pagination.pageSize
@@ -930,25 +936,23 @@ const loadData = async (showMessage = false) => {
 }
 
 /**
- * 🔥 异步获取物流最新动态
+ * 🔥 异步从官方API获取物流最新动态
+ * 实时获取最新数据，不依赖数据库缓存
  */
 const fetchLatestLogisticsUpdates = async () => {
   const { logisticsApi } = await import('@/api/logistics')
 
-  // 只处理有物流单号的订单
+  // 🔥 处理所有有物流单号和物流公司的订单
   const ordersWithTracking = orderList.value.filter(order =>
     order.trackingNo && order.logisticsCompany
   )
 
   if (ordersWithTracking.length === 0) {
-    // 没有物流信息的订单，设置默认值
-    orderList.value.forEach(order => {
-      if (!order.trackingNo || !order.logisticsCompany) {
-        order.latestUpdate = '暂无物流信息'
-      }
-    })
+    console.log('[状态更新] 没有需要获取物流信息的订单')
     return
   }
+
+  console.log(`[状态更新] 开始从API获取 ${ordersWithTracking.length} 个订单的物流信息`)
 
   // 并发获取物流信息，限制并发数量避免API限制
   const batchSize = 3
@@ -956,7 +960,7 @@ const fetchLatestLogisticsUpdates = async () => {
     const batch = ordersWithTracking.slice(i, i + batchSize)
     await Promise.all(batch.map(async (order) => {
       try {
-        // 获取物流轨迹
+        // 从官方API获取物流轨迹
         const response = await logisticsApi.queryTrace(
           order.trackingNo,
           order.logisticsCompany,
@@ -983,6 +987,8 @@ const fetchLatestLogisticsUpdates = async () => {
           })
           const latestTrace = sortedTraces[0]
           order.latestUpdate = latestTrace.description || latestTrace.status || '暂无描述'
+        } else if (response?.data?.statusText) {
+          order.latestUpdate = response.data.statusText
         } else {
           order.latestUpdate = '暂无物流信息'
         }
@@ -997,6 +1003,8 @@ const fetchLatestLogisticsUpdates = async () => {
       await new Promise(resolve => setTimeout(resolve, 300))
     }
   }
+
+  console.log('[状态更新] 物流信息获取完成')
 }
 
 

@@ -163,8 +163,19 @@ const sortedTraces = computed(() => {
 
   // 按时间排序（倒序，最新的在前面）
   return [...uniqueTraces].sort((a, b) => {
-    const timeA = new Date(a.time).getTime()
-    const timeB = new Date(b.time).getTime()
+    // 🔥 改进时间解析，支持多种格式
+    const parseTime = (timeStr: string): number => {
+      if (!timeStr) return 0
+      // 尝试直接解析
+      let time = new Date(timeStr).getTime()
+      if (!isNaN(time)) return time
+      // 尝试替换中文格式
+      const normalized = timeStr.replace(/年|月/g, '-').replace(/日/g, ' ')
+      time = new Date(normalized).getTime()
+      return isNaN(time) ? 0 : time
+    }
+    const timeA = parseTime(a.time)
+    const timeB = parseTime(b.time)
     return timeB - timeA  // 倒序
   })
 })
@@ -206,23 +217,66 @@ const queryTrace = async (phone?: string) => {
     console.log('[物流轨迹弹窗] API响应:', response)
 
     if (response.success && response.data) {
-      traceResult.value = response.data
+      const data = response.data
+
+      // 🔥 根据最新轨迹判断真实状态
+      if (data.success && data.traces && data.traces.length > 0) {
+        // 先按时间排序找到最新的轨迹
+        const sortedTraces = [...data.traces].sort((a, b) => {
+          const timeA = new Date(a.time).getTime()
+          const timeB = new Date(b.time).getTime()
+          return timeB - timeA
+        })
+        const latestTrace = sortedTraces[0]
+
+        // 根据最新轨迹判断状态
+        let realStatus = data.status || 'in_transit'
+        let realStatusText = data.statusText || '运输中'
+
+        if (latestTrace.description?.includes('签收') ||
+            latestTrace.description?.includes('已签收') ||
+            latestTrace.description?.includes('已送达') ||
+            latestTrace.description?.includes('代收') ||
+            latestTrace.status === '80' ||
+            latestTrace.status === '8000') {
+          realStatus = 'delivered'
+          realStatusText = '已签收'
+        } else if (latestTrace.description?.includes('派送') ||
+                   latestTrace.description?.includes('派件')) {
+          realStatus = 'out_for_delivery'
+          realStatusText = '派送中'
+        } else if (latestTrace.description?.includes('到达') ||
+                   latestTrace.description?.includes('运输')) {
+          realStatus = 'in_transit'
+          realStatusText = '运输中'
+        } else if (latestTrace.description?.includes('揽收') ||
+                   latestTrace.description?.includes('收件')) {
+          realStatus = 'picked_up'
+          realStatusText = '已揽收'
+        }
+
+        // 更新状态
+        data.status = realStatus
+        data.statusText = realStatusText
+      }
+
+      traceResult.value = data
 
       // 🔥 检查业务层面是否成功
-      if (!response.data.success) {
+      if (!data.success) {
         // 🔥 检查是否需要手机号验证
         // 1. 后端返回 need_phone_verify 状态
         // 2. 或者是顺丰运单且routes为空
-        if (response.data.status === 'need_phone_verify' ||
-            (response.data.companyCode === 'SF' &&
-             (response.data.statusText?.includes('routes为空') ||
-              response.data.statusText?.includes('未查询到物流轨迹') ||
-              response.data.traces.length === 0))) {
+        if (data.status === 'need_phone_verify' ||
+            (data.companyCode === 'SF' &&
+             (data.statusText?.includes('routes为空') ||
+              data.statusText?.includes('未查询到物流轨迹') ||
+              data.traces.length === 0))) {
           needPhoneVerify.value = true
           errorMessage.value = '该运单需要手机号验证才能查询'
         } else {
           // 🔥 给出友好提示，而不是显示技术性错误
-          errorMessage.value = getFriendlyNoTraceMessage(response.data.statusText)
+          errorMessage.value = getFriendlyNoTraceMessage(data.statusText)
         }
       }
     } else {
@@ -257,7 +311,11 @@ const handleRefresh = async () => {
   refreshing.value = true
 
   try {
-    const response = await logisticsApi.refreshTrace(props.trackingNo, props.companyCode || undefined)
+    // 🔥 刷新时也要传递手机号
+    const phoneToUse = phoneInput.value || props.phone || undefined
+    console.log('[物流轨迹弹窗] 刷新物流，使用手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未提供')
+
+    const response = await logisticsApi.queryTrace(props.trackingNo, props.companyCode || undefined, phoneToUse)
 
     if (response.success && response.data) {
       traceResult.value = response.data
