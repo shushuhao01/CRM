@@ -93,11 +93,14 @@
                     style="width: 100%"
                     :disabled="!canEditLogisticsStatus"
                   >
-                    <!-- 🔥 去掉待发货选项，物流编辑页面只显示已发货之后的状态 -->
+                    <!-- 🔥 物流编辑页面显示已发货之后的所有状态 -->
                     <el-option label="已揽收" value="picked_up" />
                     <el-option label="运输中" value="in_transit" />
-                    <el-option label="派送中" value="delivering" />
+                    <el-option label="派送中" value="out_for_delivery" />
                     <el-option label="已签收" value="delivered" />
+                    <el-option label="拒收" value="rejected" />
+                    <el-option label="拒收已退回" value="rejected_returned" />
+                    <el-option label="已退回" value="returned" />
                     <el-option label="异常" value="exception" />
                   </el-select>
                   <!-- 🔥 物流状态编辑权限提示 -->
