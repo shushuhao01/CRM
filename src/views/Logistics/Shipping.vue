@@ -1734,8 +1734,7 @@ const formatOrderForDialog = (order: any) => {
         customerAge: customer.age || null,
         customerHeight: customer.height || null,
         customerWeight: customer.weight || null,
-        medicalHistory: customer.medicalHistory || null,
-        serviceWechat: customer.wechatId || null
+        medicalHistory: customer.medicalHistory || null
       }
     }
   }
@@ -1753,6 +1752,9 @@ const formatOrderForDialog = (order: any) => {
     orderNo: order.orderNumber || order.orderNo || '-',
     phone: order.customerPhone || order.receiverPhone || order.phone || '-',
     address: order.receiverAddress || order.address || '-',
+    // 客服微信号和订单来源
+    serviceWechat: order.serviceWechat || '',
+    orderSource: order.orderSource || '',
     // 同步的客户信息
     ...customerInfo,
     // 计算的订单字段
