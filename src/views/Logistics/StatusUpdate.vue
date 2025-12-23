@@ -888,25 +888,51 @@ const loadData = async (showMessage = false) => {
         index: (pagination.currentPage - 1) * pagination.pageSize + index + 1,
         orderNo: order.orderNumber,
         customerName: order.customerName,
-        customerId: order.customerId || order.customer?.id || '',  // 🔥 新增：客户ID用于跳转
-        // 🔥 修复：status字段应该显示订单状态，而不是物流状态
+        customerId: order.customerId || order.customer?.id || '',
+        // 订单状态
         status: order.status || 'shipped',
-        // 保留物流状态字段用于其他用途
+        // 物流状态
         logisticsStatus: order.logisticsStatus || '',
+        // 金额信息
         amount: order.totalAmount,
+        totalAmount: order.totalAmount,
+        deposit: order.depositAmount || 0,
+        codAmount: order.collectAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
+        paymentMethod: order.paymentMethod || '',
+        // 物流信息
         trackingNo,
+        expressNo: trackingNo,
         logisticsCompany,
-        // 🔥 初始值，后续从官方API实时获取
+        expressCompany: logisticsCompany,
+        // 物流动态
         latestUpdate: (trackingNo && logisticsCompany) ? '获取中...' : '暂无物流信息',
+        // 归属人
         assignedTo: order.salesPersonId || order.createdBy || '',
         assignedToName: order.createdByName || order.salesPersonName || getUserDisplayName(order.salesPersonId || order.createdBy) || order.createdBy || '-',
+        // 日期
         orderDate: formatOrderDate(order.createTime),
+        createTime: order.createTime,
         shippingTime: order.shippingTime || order.shipTime || order.createTime,
+        // 联系信息
         customerPhone: order.receiverPhone || order.customerPhone,
+        phone: order.receiverPhone || order.customerPhone,
+        // 地址
+        address: order.receiverAddress || order.address || '',
+        receiverAddress: order.receiverAddress || order.address || '',
+        // 商品信息
         productName: order.products?.map((p: any) => p.name).join('、') || '商品',
+        productsText: order.products?.map((p: any) => `${p.name} × ${p.quantity}`).join('，') || '',
+        products: order.products || [],
         quantity: order.products?.reduce((sum: number, p: any) => sum + p.quantity, 0) || 1,
+        totalQuantity: order.products?.reduce((sum: number, p: any) => sum + p.quantity, 0) || 1,
+        // 备注
         remark: order.remark || '',
-        isTodo: order.isTodo || false
+        // 待办标记
+        isTodo: order.isTodo || false,
+        // 其他字段
+        treatmentStandard: order.treatmentStandard || '',
+        usageDays: order.usageDays || '',
+        auxiliaryCount: order.auxiliaryCount || ''
       }
     })
 
