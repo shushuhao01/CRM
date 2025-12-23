@@ -52,12 +52,20 @@ export const logisticsApi = {
   async queryTrace(trackingNo: string, companyCode?: string, phone?: string): Promise<{ success: boolean; data: LogisticsTrackResult; message?: string }> {
     // 🔥 修复：只传递有效的参数，避免传递空字符串或undefined
     const params: Record<string, string> = { trackingNo }
-    if (companyCode && companyCode.trim()) {
+
+    // 🔥 修复：确保companyCode是字符串类型再调用trim
+    if (companyCode && typeof companyCode === 'string' && companyCode.trim()) {
       params.companyCode = companyCode.trim()
     }
-    if (phone && phone.trim()) {
-      params.phone = phone.trim()
+
+    // 🔥 修复：确保phone是字符串类型再调用trim
+    if (phone) {
+      const phoneStr = String(phone).trim()
+      if (phoneStr) {
+        params.phone = phoneStr
+      }
     }
+
     return api.get('/logistics/trace/query', params)
   },
 
