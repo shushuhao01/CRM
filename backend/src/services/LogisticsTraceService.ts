@@ -345,8 +345,8 @@ class LogisticsTraceService {
           status: result.status,
           statusText: result.statusDescription + ' (快递100)',
           traces,
-          // 🔥 计算预计送达时间
-          estimatedDeliveryTime: this.calculateEstimatedDeliveryTime(result.status, traces),
+          // 🔥 计算预计送达时间（传入快递公司代码）
+          estimatedDeliveryTime: this.calculateEstimatedDeliveryTime(result.status, traces, companyCode),
           rawData: result.rawData
         };
       }
@@ -674,8 +674,8 @@ class LogisticsTraceService {
             result.statusText = statusInfo.text;
             console.log('[顺丰开放平台API] 最新状态:', result.status, result.statusText);
 
-            // 🔥 计算预计送达时间
-            result.estimatedDeliveryTime = this.calculateEstimatedDeliveryTime(result.status, result.traces);
+            // 🔥 计算预计送达时间（顺丰）
+            result.estimatedDeliveryTime = this.calculateEstimatedDeliveryTime(result.status, result.traces, 'SF');
           }
         } else {
           console.log('[顺丰开放平台API] routes为空');
@@ -712,47 +712,123 @@ class LogisticsTraceService {
   }
 
   /**
-   * 🔥 根据物流状态计算预计送达时间
+   * 🔥 根据物流状态和轨迹智能计算预计送达时间
+   *
+   * 计算逻辑：
+   * 1. 已签收 → 返回"已签收"或签收时间
+   * 2. 派送中 → 预计当天送达
+   * 3. 到达目的地城市 → 预计1天内送达
+   * 4. 运输中 → 根据已运输天数和快递公司估算
+   * 5. 刚揽收 → 根据快递公司默认时效估算
    */
-  private calculateEstimatedDeliveryTime(status: string, traces: LogisticsTrace[]): string | undefined {
+  private calculateEstimatedDeliveryTime(status: string, traces: LogisticsTrace[], companyCode?: string): string | undefined {
     // 如果已签收，返回签收时间
-    if (status === 'delivered' && traces.length > 0) {
-      // 找到签收的轨迹
-      const deliveredTrace = traces.find(t =>
-        t.description?.includes('签收') ||
-        t.description?.includes('已签收') ||
-        t.status === '80' ||
-        t.status === '8000'
-      );
-      if (deliveredTrace) {
-        return deliveredTrace.time;
+    if (status === 'delivered') {
+      if (traces.length > 0) {
+        // 找到签收的轨迹
+        const deliveredTrace = traces.find(t =>
+          t.description?.includes('签收') ||
+          t.description?.includes('已签收') ||
+          t.description?.includes('代收') ||
+          t.description?.includes('已送达') ||
+          t.status === '80' ||
+          t.status === '8000'
+        );
+        if (deliveredTrace) {
+          // 返回格式化的签收时间
+          return `已签收 (${deliveredTrace.time})`;
+        }
+        return `已签收 (${traces[0].time})`;
       }
-      return traces[0].time; // 返回最新轨迹时间
+      return '已签收';
     }
 
-    // 如果还在运输中，根据状态估算
-    const now = new Date();
-    let estimatedDays = 3; // 默认3天
+    // 获取最新轨迹信息
+    const latestTrace = traces.length > 0 ? traces[0] : null;
+    const latestDesc = latestTrace?.description || '';
 
+    // 派送中 - 预计当天送达
+    if (status === 'out_for_delivery' ||
+        latestDesc.includes('派送') ||
+        latestDesc.includes('派件') ||
+        latestDesc.includes('正在派送')) {
+      const today = new Date();
+      return `预计今日 (${today.toISOString().split('T')[0]})`;
+    }
+
+    // 到达目的地城市/网点 - 预计1天内送达
+    if (latestDesc.includes('到达') && (latestDesc.includes('网点') || latestDesc.includes('营业部'))) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return tomorrow.toISOString().split('T')[0];
+    }
+
+    // 计算已运输天数
+    let shippedDays = 0;
+    if (traces.length > 0) {
+      // 找到揽收时间
+      const pickedUpTrace = traces.find(t =>
+        t.description?.includes('揽收') ||
+        t.description?.includes('收件') ||
+        t.description?.includes('已收取')
+      ) || traces[traces.length - 1]; // 最早的轨迹
+
+      if (pickedUpTrace?.time) {
+        const pickedUpTime = new Date(pickedUpTrace.time);
+        const now = new Date();
+        shippedDays = Math.floor((now.getTime() - pickedUpTime.getTime()) / (24 * 60 * 60 * 1000));
+      }
+    }
+
+    // 根据快递公司和状态估算剩余天数
+    let remainingDays = 2; // 默认2天
+
+    // 快递公司时效（从揽收到签收的平均天数）
+    const companyDeliveryDays: Record<string, number> = {
+      'SF': 2,      // 顺丰 2天
+      'JD': 2,      // 京东 2天
+      'JTSD': 3,    // 极兔 3天
+      'YTO': 3,     // 圆通 3天
+      'ZTO': 3,     // 中通 3天
+      'STO': 3,     // 申通 3天
+      'YD': 3,      // 韵达 3天
+      'EMS': 4,     // EMS 4天
+      'DBL': 3,     // 德邦 3天
+    };
+
+    const totalDays = companyDeliveryDays[companyCode || ''] || 3;
+
+    // 根据当前状态调整
     switch (status) {
       case 'picked_up':
-        estimatedDays = 3; // 刚揽收，预计3天
+        // 刚揽收，使用快递公司默认时效
+        remainingDays = totalDays;
         break;
       case 'in_transit':
-        estimatedDays = 2; // 运输中，预计2天
-        break;
-      case 'out_for_delivery':
-        estimatedDays = 0; // 派送中，预计当天
+        // 运输中，根据已运输天数估算
+        remainingDays = Math.max(1, totalDays - shippedDays);
         break;
       case 'exception':
-        estimatedDays = 5; // 异常，预计5天
+        // 异常，增加2天
+        remainingDays = Math.max(2, totalDays - shippedDays + 2);
         break;
       default:
-        estimatedDays = 3;
+        remainingDays = Math.max(1, totalDays - shippedDays);
+    }
+
+    // 根据轨迹描述微调
+    if (latestDesc.includes('到达') || latestDesc.includes('离开')) {
+      // 已经在运输途中
+      remainingDays = Math.min(remainingDays, 2);
+    }
+    if (latestDesc.includes('转运') || latestDesc.includes('中转')) {
+      // 在中转站
+      remainingDays = Math.min(remainingDays, 2);
     }
 
     // 计算预计送达日期
-    const estimatedDate = new Date(now.getTime() + estimatedDays * 24 * 60 * 60 * 1000);
+    const estimatedDate = new Date();
+    estimatedDate.setDate(estimatedDate.getDate() + remainingDays);
     return estimatedDate.toISOString().split('T')[0];
   }
 
@@ -810,8 +886,8 @@ class LogisticsTraceService {
         result.status = this.mapZTOStatus(latestStatus);
         result.statusText = this.getStatusText(result.status);
 
-        // 🔥 计算预计送达时间
-        result.estimatedDeliveryTime = this.calculateEstimatedDeliveryTime(result.status, result.traces);
+        // 🔥 计算预计送达时间（中通）
+        result.estimatedDeliveryTime = this.calculateEstimatedDeliveryTime(result.status, result.traces, 'ZTO');
       }
     }
 
