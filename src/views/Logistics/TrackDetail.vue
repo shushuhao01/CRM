@@ -452,8 +452,9 @@ const loadTrackingData = async () => {
       const { apiService } = await import('@/services/apiService')
       // 尝试通过订单ID获取
       const response = await apiService.get(`/orders/${paramId}`)
-      if (response && response.data) {
-        order = response.data
+      // 🔥 修复：apiService.get 直接返回 data，不需要再访问 .data
+      if (response) {
+        order = response
         console.log('[物流跟踪详情] 从API获取订单成功:', order.orderNumber)
       }
     } catch (apiError) {
@@ -506,15 +507,16 @@ const loadTrackingData = async () => {
 
     // 使用真实订单数据
     Object.assign(trackingInfo, {
-      trackingNo: order.trackingNumber || order.expressNo || paramId || '',
+      trackingNo: order.trackingNumber || paramId || '',
       companyName: getExpressCompanyName(expressCompany),
       companyCode: expressCompany,
       senderName: '发货方', // 可以从订单或配置中获取
       senderAddress: '', // 可以从订单或配置中获取
       receiverName: order.receiverName || order.customerName || '',
-      receiverAddress: order.receiverAddress || order.shippingAddress || '',
-      shipTime: order.shippingTime || order.shipTime || order.shippedAt || '',
-      estimatedTime: order.estimatedDeliveryTime || order.expectedDeliveryDate || '',
+      receiverAddress: order.receiverAddress || '',
+      // 🔥 修复：优先使用shippingTime，其次shippedAt
+      shipTime: order.shippingTime || order.shippedAt || '',
+      estimatedTime: order.expectedDeliveryDate || '',
       status: order.logisticsStatus || mapOrderStatusToLogisticsStatus(order.status),
       serviceType: '标准快递', // 可以从订单或配置中获取
       servicePhone: companyContact.service,

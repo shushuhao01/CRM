@@ -349,6 +349,7 @@ CREATE TABLE `orders` (
   `invoice_number` VARCHAR(100) COMMENT '发票号码',
   `mark_type` VARCHAR(20) DEFAULT 'normal' COMMENT '订单标记类型',
   `logistics_status` VARCHAR(50) DEFAULT NULL COMMENT '物流状态',
+  `latest_logistics_info` VARCHAR(500) DEFAULT NULL COMMENT '最新物流动态',
   `is_todo` TINYINT(1) DEFAULT 0 COMMENT '是否待办',
   `todo_date` DATE DEFAULT NULL COMMENT '待办日期',
   `todo_remark` TEXT DEFAULT NULL COMMENT '待办备注',

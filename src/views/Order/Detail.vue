@@ -702,7 +702,14 @@ const orderDetail = reactive({
 const orderTimeline = ref([])
 
 // 物流信息
-const logisticsInfo = ref([])
+interface LogisticsItem {
+  time: string
+  status: string
+  statusText: string
+  description: string
+  location: string
+}
+const logisticsInfo = ref<LogisticsItem[]>([])
 
 // 售后历史
 const afterSalesHistory = ref([])
@@ -907,7 +914,7 @@ const generateTimelineFromStatus = () => {
   const currentPriority = statusPriority[currentStatus] ?? 0
 
   // 生成已经过的状态轨迹
-  let baseTime = new Date(orderDetail.createTime || new Date())
+  const baseTime = new Date(orderDetail.createTime || new Date())
 
   for (const step of statusFlow) {
     const stepPriority = statusPriority[step.status] ?? 0
@@ -1391,6 +1398,7 @@ const refreshLogistics = async (phone?: string) => {
   if (!orderDetail.trackingNumber || !orderDetail.expressCompany) {
     // 🔥 改进提示：不要误导用户
     logisticsInfo.value = []
+    ElMessage.warning('缺少快递单号或快递公司信息')
     return
   }
 
@@ -1398,7 +1406,12 @@ const refreshLogistics = async (phone?: string) => {
     logisticsLoading.value = true
 
     // 🔥 自动使用订单中的手机号（如果没有手动传入）
-    const phoneToUse = phone || orderDetail.receiverPhone || orderDetail.customer?.phone || ''
+    // 确保手机号是字符串类型
+    let phoneToUse = phone || ''
+    if (!phoneToUse) {
+      const rawPhone = orderDetail.receiverPhone || orderDetail.customer?.phone || ''
+      phoneToUse = String(rawPhone || '')
+    }
     console.log('[订单详情] 查询物流，使用手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未提供')
 
     // 🔥 直接调用物流API，支持手机号验证

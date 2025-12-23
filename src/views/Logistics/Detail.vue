@@ -425,7 +425,8 @@ const logisticsInfo = reactive({
   remark: '',
   customerName: '',
   customerPhone: '',
-  orderTime: ''
+  orderTime: '',
+  customerId: ''
 })
 
 // 商品列表
@@ -854,8 +855,9 @@ const loadData = async () => {
     try {
       const { apiService } = await import('@/services/apiService')
       const response = await apiService.get(`/orders/${id}`)
-      if (response && response.data) {
-        order = response.data
+      // 🔥 修复：apiService.get 直接返回 data，不需要再访问 .data
+      if (response) {
+        order = response
         console.log('[物流详情] 从API获取订单成功:', order.orderNumber)
       }
     } catch (apiError) {
@@ -906,14 +908,16 @@ const loadData = async () => {
       orderNo: order.orderNumber,
       companyName: getExpressCompanyName(order.expressCompany || ''),
       status: mapOrderStatusToLogisticsStatus(order.status, order.logisticsStatus),
-      shipTime: order.shippingTime || order.shipTime || order.shippedAt || '',
-      estimatedTime: order.estimatedDeliveryTime || order.expectedDeliveryDate || '',
-      actualTime: order.logisticsStatus === 'delivered' ? (order.statusHistory?.find(h => h.status === 'delivered')?.time || '') : '',
+      // 🔥 修复：优先使用shippingTime，其次shippedAt
+      shipTime: order.shippingTime || order.shippedAt || '',
+      estimatedTime: order.expectedDeliveryDate || '',
+      // 🔥 修复：使用deliveredAt作为实际送达时间
+      actualTime: order.deliveredAt || '',
       freight: 0, // 运费信息需要从订单或物流信息中获取
       insuranceFee: 0, // 保价费信息需要从订单或物流信息中获取
       receiverName: order.receiverName || order.customerName || '',
       receiverPhone: order.receiverPhone || order.customerPhone || '',
-      receiverAddress: order.receiverAddress || order.shippingAddress || '',
+      receiverAddress: order.receiverAddress || '',
       remark: order.remark || '',
       customerName: order.customerName || '',
       customerPhone: order.customerPhone || '',

@@ -134,6 +134,9 @@ export class Order {
   @Column({ name: 'logistics_status', length: 50, nullable: true, comment: '物流状态' })
   logisticsStatus?: string;
 
+  @Column({ name: 'latest_logistics_info', type: 'varchar', length: 500, nullable: true, comment: '最新物流动态' })
+  latestLogisticsInfo?: string;
+
   @Column({ name: 'is_todo', type: 'boolean', default: false, comment: '是否待办' })
   isTodo?: boolean;
 

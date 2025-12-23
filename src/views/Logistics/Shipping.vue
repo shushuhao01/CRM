@@ -1929,7 +1929,8 @@ const handleCommand = async ({ action, row }: { action: string, row: any }) => {
 
 // 订单发货成功
 const handleOrderShipped = async (shippingData: any) => {
-  // 更新订单状态为已发货
+  // 🔥 注意：ShippingDialog已经调用了后端API更新订单状态
+  // 这里只需要更新本地缓存和刷新列表，不需要再调用API
   if (shippingData.orderId && shippingData.logisticsCompany && shippingData.trackingNumber) {
     // 🔥 计算预计送达时间（发货时间 + 3天）
     const now = new Date()
@@ -1945,17 +1946,19 @@ const handleOrderShipped = async (shippingData: any) => {
       trackingNumber: shippingData.trackingNumber
     })
 
-    // 调用发货方法
-    await orderStore.shipOrder(shippingData.orderId, shippingData.logisticsCompany, shippingData.trackingNumber)
-
-    // 🔥 保存预计送达时间（确保字段名称一致）
-    await orderStore.updateOrder(shippingData.orderId, {
+    // 🔥 只更新本地缓存，不再调用API（ShippingDialog已经调用过了）
+    orderStore.updateOrder(shippingData.orderId, {
+      status: 'shipped',
+      shippingTime,
+      shippedAt: shippingTime,
       estimatedDeliveryTime: expectedDeliveryDate,
       expectedDeliveryDate: expectedDeliveryDate,
-      shippedAt: shippingTime // 同时保存shippedAt字段
+      expressCompany: shippingData.logisticsCompany,
+      trackingNumber: shippingData.trackingNumber,
+      logisticsStatus: 'picked_up'
     })
 
-    console.log('[发货列表] 预计送达时间已保存:', expectedDeliveryDate)
+    console.log('[发货列表] 本地缓存已更新')
   }
   ElMessage.success('发货成功')
   loadOrderList()
