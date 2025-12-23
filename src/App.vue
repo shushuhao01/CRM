@@ -1084,6 +1084,7 @@ watch(isMobile, (newValue) => {
 
 .sidebar-collapsed {
   width: 64px !important;
+  min-width: 64px !important;
 }
 
 .sidebar-menu {
@@ -1408,12 +1409,14 @@ watch(isMobile, (newValue) => {
     max-width: none;
   }
 
-  .sidebar {
+  .sidebar:not(.sidebar-collapsed) {
+    width: 260px !important;
     min-width: 260px;
   }
 
-  .sidebar:not(.sidebar-collapsed) {
-    width: 260px !important;
+  .sidebar.sidebar-collapsed {
+    width: 64px !important;
+    min-width: 64px !important;
   }
 }
 
@@ -1429,6 +1432,12 @@ watch(isMobile, (newValue) => {
 
   .sidebar:not(.sidebar-collapsed) {
     width: 240px !important;
+    min-width: 240px;
+  }
+
+  .sidebar.sidebar-collapsed {
+    width: 64px !important;
+    min-width: 64px !important;
   }
 }
 
