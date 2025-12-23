@@ -1000,7 +1000,12 @@ router.get('/by-tracking-no', authenticateToken, async (req: Request, res: Respo
         receiverPhone: order.shippingPhone,
         phone: order.shippingPhone || order.customerPhone,
         expressCompany: order.expressCompany,
-        trackingNumber: order.trackingNumber
+        trackingNumber: order.trackingNumber,
+        // 🔥 新增：收货地址和发货时间
+        shippingAddress: order.shippingAddress || '',
+        address: order.shippingAddress || '',
+        shippedAt: order.shippedAt ? formatToBeijingTime(order.shippedAt) : '',
+        shipTime: order.shippedAt ? formatToBeijingTime(order.shippedAt) : ''
       }
     });
   } catch (error) {
