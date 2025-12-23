@@ -488,9 +488,11 @@
       <el-card class="logistics-card">
         <template #header>
           <div class="card-header">
-            <el-icon><Van /></el-icon>
-            <span>物流信息跟踪</span>
-            <div class="header-actions">
+            <div class="card-header-left">
+              <el-icon><Van /></el-icon>
+              <span>物流信息跟踪</span>
+            </div>
+            <div class="card-header-right">
               <el-button size="small" @click="refreshLogistics()" :loading="logisticsLoading">
                 {{ logisticsLoading ? '查询中...' : '刷新' }}
               </el-button>
@@ -539,16 +541,20 @@
       <el-card class="status-timeline-card">
         <template #header>
           <div class="card-header">
-            <el-icon><Clock /></el-icon>
-            <span>订单状态和轨迹</span>
-            <el-button
-              size="small"
-              type="text"
-              @click="statusTimelineCollapsed = !statusTimelineCollapsed"
-              :icon="statusTimelineCollapsed ? ArrowDown : ArrowUp"
-            >
-              {{ statusTimelineCollapsed ? '展开' : '收起' }}
-            </el-button>
+            <div class="card-header-left">
+              <el-icon><Clock /></el-icon>
+              <span>订单状态和轨迹</span>
+            </div>
+            <div class="card-header-right">
+              <el-button
+                size="small"
+                type="text"
+                @click="statusTimelineCollapsed = !statusTimelineCollapsed"
+                :icon="statusTimelineCollapsed ? ArrowDown : ArrowUp"
+              >
+                {{ statusTimelineCollapsed ? '展开' : '收起' }}
+              </el-button>
+            </div>
           </div>
         </template>
 
@@ -2187,8 +2193,22 @@ onUnmounted(() => {
 .card-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   font-weight: 600;
+  width: 100%;
+}
+
+.card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .status-timeline-card {
@@ -3421,11 +3441,6 @@ onUnmounted(() => {
   color: #f56c6c;
   font-weight: 600;
   font-size: 14px;
-}
-
-/* 折叠组件样式 */
-.card-header .el-button {
-  margin-left: auto;
 }
 
 /* 响应式设计 */
