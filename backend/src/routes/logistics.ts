@@ -287,6 +287,76 @@ router.get('/companies', (req, res) => logisticsController.getSupportedCompanies
 // 创建物流跟踪
 router.post('/tracking', (req, res) => logisticsController.createLogisticsTracking(req, res));
 
+/**
+ * 🔥 调试端点：测试根据物流单号查询订单手机号
+ */
+router.get('/debug/order-phone', async (req: Request, res: Response) => {
+  try {
+    const { trackingNo } = req.query;
+
+    if (!trackingNo) {
+      return res.json({ success: false, message: '请提供物流单号' });
+    }
+
+    const { Order } = await import('../entities/Order');
+    const orderRepository = AppDataSource!.getRepository(Order);
+
+    // 精确匹配
+    let order = await orderRepository.findOne({
+      where: { trackingNumber: trackingNo as string },
+      select: ['id', 'orderNumber', 'trackingNumber', 'shippingPhone', 'customerPhone', 'shippingName', 'customerName', 'customerId']
+    });
+
+    // 模糊匹配
+    if (!order) {
+      order = await orderRepository
+        .createQueryBuilder('order')
+        .select(['order.id', 'order.orderNumber', 'order.trackingNumber', 'order.shippingPhone', 'order.customerPhone', 'order.shippingName', 'order.customerName', 'order.customerId'])
+        .where('order.trackingNumber LIKE :trackingNoLike', { trackingNoLike: `%${trackingNo}%` })
+        .getOne();
+    }
+
+    if (!order) {
+      // 列出所有有物流单号的订单
+      const allOrders = await orderRepository
+        .createQueryBuilder('order')
+        .select(['order.orderNumber', 'order.trackingNumber', 'order.shippingPhone', 'order.customerPhone'])
+        .where('order.trackingNumber IS NOT NULL')
+        .andWhere('order.trackingNumber != :empty', { empty: '' })
+        .limit(10)
+        .getMany();
+
+      return res.json({
+        success: false,
+        message: `未找到物流单号: ${trackingNo}`,
+        hint: '数据库中有以下物流单号:',
+        existingOrders: allOrders.map(o => ({
+          orderNumber: o.orderNumber,
+          trackingNumber: o.trackingNumber,
+          shippingPhone: o.shippingPhone || '(空)',
+          customerPhone: o.customerPhone || '(空)'
+        }))
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        orderNumber: order.orderNumber,
+        trackingNumber: order.trackingNumber,
+        shippingPhone: order.shippingPhone || '(空)',
+        customerPhone: order.customerPhone || '(空)',
+        shippingName: order.shippingName || '(空)',
+        customerName: order.customerName || '(空)',
+        customerId: order.customerId || '(空)'
+      }
+    });
+  } catch (error) {
+    console.error('[调试] 查询失败:', error);
+    return res.status(500).json({ success: false, message: '查询失败', error: String(error) });
+  }
+});
+
 // ========== 物流轨迹查询 API（调用真实快递API） ==========
 import { logisticsTraceService } from '../services/LogisticsTraceService';
 
