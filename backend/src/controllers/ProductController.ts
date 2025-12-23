@@ -1,5 +1,5 @@
 import { Request, Response } from 'express'
-import { AppDataSource } from '../config/database'
+import { AppDataSource, getDataSource } from '../config/database'
 import { Product } from '../entities/Product'
 import { ProductCategory } from '../entities/ProductCategory'
 
@@ -327,6 +327,45 @@ export class ProductController {
 
       const products = await queryBuilder.getMany()
 
+      // 🔥 从订单商品表统计每个商品的销量
+      const productIds = products.map(p => p.id)
+      let salesCountMap: Record<string, number> = {}
+
+      if (productIds.length > 0) {
+        try {
+          const { OrderItem } = await import('../entities/OrderItem')
+          const { Order } = await import('../entities/Order')
+          const dataSource = getDataSource()
+
+          if (dataSource) {
+            const orderItemRepo = dataSource.getRepository(OrderItem)
+
+            // 🔥 统计每个商品的销量（只统计有效订单：已审核通过且未取消的订单）
+            const salesData = await orderItemRepo
+              .createQueryBuilder('item')
+              .select('item.productId', 'productId')
+              .addSelect('SUM(item.quantity)', 'totalQuantity')
+              .innerJoin(Order, 'order', 'order.id = item.orderId')
+              .where('item.productId IN (:...productIds)', { productIds })
+              .andWhere('order.status NOT IN (:...excludeStatuses)', {
+                excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
+              })
+              .groupBy('item.productId')
+              .getRawMany()
+
+            // 构建销量映射
+            salesData.forEach((item: { productId: string; totalQuantity: string }) => {
+              salesCountMap[item.productId] = parseInt(item.totalQuantity) || 0
+            })
+
+            console.log('[商品列表] 销量统计:', salesCountMap)
+          }
+        } catch (salesError) {
+          console.error('[商品列表] 统计销量失败:', salesError)
+          // 销量统计失败不影响商品列表返回
+        }
+      }
+
       // 转换数据格式以匹配前端期望
       const list = products.map(p => ({
         id: p.id,
@@ -346,7 +385,7 @@ export class ProductController {
         stock: p.stock,
         minStock: p.minStock || 0,
         maxStock: 0,
-        salesCount: 0,
+        salesCount: salesCountMap[p.id] || 0, // 🔥 使用统计的销量
         status: p.status,
         image: p.images?.[0] || '',
         images: p.images || [],
