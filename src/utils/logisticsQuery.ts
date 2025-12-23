@@ -162,7 +162,7 @@ export const showLogisticsQueryDialog = async (options: LogisticsQueryOptions): 
         ElMessageBox.close()
         if (onSystemQuery) {
           onSystemQuery()
-        } else if (router) {
+        } else if (router && typeof router.push === 'function') {
           router.push({
             path: '/logistics/track',
             query: {
@@ -170,6 +170,10 @@ export const showLogisticsQueryDialog = async (options: LogisticsQueryOptions): 
               company: companyKey
             }
           })
+        } else {
+          // 🔥 如果router不可用，使用window.location跳转
+          console.warn('[物流查询] router不可用，使用window.location跳转')
+          window.location.href = `/logistics/track?trackingNo=${encodeURIComponent(trackingNo)}&company=${encodeURIComponent(companyKey || '')}`
         }
       }
     }
