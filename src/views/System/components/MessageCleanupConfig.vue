@@ -94,8 +94,8 @@
 
           <el-form-item label="清理模式" prop="cleanupMode">
             <el-radio-group v-model="config.cleanupMode">
-              <el-radio value="auto">过期自动清理</el-radio>
-              <el-radio value="scheduled">定时清理</el-radio>
+              <el-radio label="auto">过期自动清理</el-radio>
+              <el-radio label="scheduled">定时清理</el-radio>
             </el-radio-group>
           </el-form-item>
 
@@ -139,8 +139,8 @@
         <el-form label-width="140px">
           <el-form-item label="清理范围">
             <el-radio-group v-model="manualCleanup.mode">
-              <el-radio value="byDays">按天数清理</el-radio>
-              <el-radio value="byDate">按日期清理</el-radio>
+              <el-radio label="byDays">按天数清理</el-radio>
+              <el-radio label="byDate">按日期清理</el-radio>
             </el-radio-group>
           </el-form-item>
 

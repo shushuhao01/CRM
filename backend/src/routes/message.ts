@@ -210,7 +210,7 @@ router.put('/system-messages/read-all', messageController.markAllMessagesAsRead.
  * @desc 获取消息统计数据
  * @access Private
  */
-router.get('/stats', messageController.getMessageStats.bind(messageController));
+router.get('/stats', authenticateToken, messageController.getMessageStats.bind(messageController));
 
 /**
  * @route DELETE /api/v1/message/system-messages/:id
