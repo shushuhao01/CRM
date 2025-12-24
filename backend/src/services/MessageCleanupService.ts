@@ -66,12 +66,12 @@ class MessageCleanupService {
   private async getConfig(): Promise<CleanupConfig | null> {
     try {
       const result = await AppDataSource.query(
-        `SELECT config_value FROM system_configs WHERE config_key = ?`,
+        `SELECT configValue FROM system_configs WHERE configKey = ?`,
         [CONFIG_KEY]
       )
 
-      if (result[0]?.config_value) {
-        return JSON.parse(result[0].config_value)
+      if (result[0]?.configValue) {
+        return JSON.parse(result[0].configValue)
       }
       return null
     } catch (error) {

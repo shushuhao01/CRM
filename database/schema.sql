@@ -1833,6 +1833,20 @@ CREATE TABLE `performance_report_logs` (
   INDEX `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='业绩消息发送记录表';
 
+-- 33. 消息清理历史表
+DROP TABLE IF EXISTS `message_cleanup_history`;
+CREATE TABLE `message_cleanup_history` (
+  `id` VARCHAR(36) PRIMARY KEY COMMENT '记录ID',
+  `cleanup_type` VARCHAR(20) NOT NULL COMMENT '清理类型: auto/manual',
+  `deleted_count` INT NOT NULL DEFAULT 0 COMMENT '删除记录数',
+  `operator` VARCHAR(100) COMMENT '操作人',
+  `operator_id` VARCHAR(36) COMMENT '操作人ID',
+  `remark` VARCHAR(500) COMMENT '备注',
+  `cleanup_time` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '清理时间',
+  INDEX `idx_cleanup_time` (`cleanup_time`),
+  INDEX `idx_cleanup_type` (`cleanup_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息清理历史表';
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =============================================
