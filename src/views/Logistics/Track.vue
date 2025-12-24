@@ -366,8 +366,43 @@ const getTimelineIcon = (status: string) => {
 }
 
 /**
+ * 🔥 判断物流公司是否需要手机号验证
+ * 目前顺丰需要手机号后4位验证
+ */
+const isPhoneVerifyRequired = (companyCode: string): boolean => {
+  const phoneRequiredCompanies = ['SF'] // 顺丰需要手机号验证
+  return phoneRequiredCompanies.includes(companyCode.toUpperCase())
+}
+
+/**
+ * 🔥 根据单号前缀自动识别物流公司
+ */
+const detectCompanyByTrackingNo = (trackingNo: string): string => {
+  const no = trackingNo.trim().toUpperCase()
+  // 顺丰单号规则：SF开头，或者纯数字12位/15位
+  if (no.startsWith('SF')) return 'SF'
+  // 纯数字12位或15位也可能是顺丰
+  if (/^\d{12}$/.test(no) || /^\d{15}$/.test(no)) return 'SF'
+  // 中通单号：75/76/77开头
+  if (/^7[567]\d+$/.test(no)) return 'ZTO'
+  // 圆通单号：YT开头或者纯数字13位
+  if (no.startsWith('YT') || /^\d{13}$/.test(no)) return 'YTO'
+  // 申通单号：77开头或者STO开头
+  if (no.startsWith('STO') || /^77\d+$/.test(no)) return 'STO'
+  // 韵达单号：YD开头或者纯数字13位
+  if (no.startsWith('YD')) return 'YD'
+  // 极兔单号：JT开头
+  if (no.startsWith('JT')) return 'JTSD'
+  // 京东单号：JD开头
+  if (no.startsWith('JD')) return 'JD'
+  // EMS单号：E开头
+  if (no.startsWith('E')) return 'EMS'
+  return ''
+}
+
+/**
  * 查询物流轨迹 - 优化版
- * 🔥 修复：先从订单API获取手机号，确保顺丰等需要验证的快递能正常查询
+ * 🔥 修复：在发起请求前判断是否需要手机号验证
  */
 const handleSearch = async (phone?: string) => {
   const trackingNum = searchForm.trackingNo.trim()
@@ -379,12 +414,30 @@ const handleSearch = async (phone?: string) => {
 
   if (isUnmounted.value) return
 
+  // 🔥 确定物流公司代码
+  let companyCode = searchForm.company || ''
+  if (!companyCode) {
+    // 尝试自动识别
+    companyCode = detectCompanyByTrackingNo(trackingNum)
+    if (companyCode) {
+      searchForm.company = companyCode
+      console.log('[物流跟踪] 自动识别物流公司:', companyCode)
+    }
+  }
+
+  // 🔥 在发起请求前判断是否需要手机号验证
+  if (companyCode && isPhoneVerifyRequired(companyCode) && !phone) {
+    console.log('[物流跟踪] 物流公司需要手机号验证，弹出输入框')
+    pendingTrackingNo.value = trackingNum
+    pendingCompanyCode.value = companyCode
+    phoneVerifyDialogVisible.value = true
+    return
+  }
+
   loading.value = true
 
   try {
-    const companyCode = searchForm.company || undefined
-
-    // 🔥 修复：如果没有传入手机号，先尝试从订单API获取
+    // 🔥 如果没有传入手机号，先尝试从订单API获取
     let phoneToUse = phone
     if (!phoneToUse) {
       try {
@@ -401,7 +454,7 @@ const handleSearch = async (phone?: string) => {
     }
 
     const { logisticsApi } = await import('@/api/logistics')
-    const response = await logisticsApi.queryTrace(trackingNum, companyCode, phoneToUse)
+    const response = await logisticsApi.queryTrace(trackingNum, companyCode || undefined, phoneToUse)
 
     console.log('[物流跟踪] API响应:', response)
 
@@ -413,11 +466,8 @@ const handleSearch = async (phone?: string) => {
 
     const data = response.data
     console.log('[物流跟踪] 响应数据:', data)
-    console.log('[物流跟踪] data.status:', data.status)
-    console.log('[物流跟踪] data.statusText:', data.statusText)
-    console.log('[物流跟踪] data.success:', data.success)
 
-    // 需要手机号验证
+    // 需要手机号验证（后端返回的情况，作为兜底）
     if (data.status === 'need_phone_verify' || data.statusText?.includes('手机号') || data.statusText?.includes('可能原因')) {
       console.log('[物流跟踪] 需要手机号验证，弹出对话框')
       pendingTrackingNo.value = trackingNum
