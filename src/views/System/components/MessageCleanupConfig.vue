@@ -254,7 +254,7 @@ const disabledDate = (date: Date) => {
 const loadStats = async () => {
   statsLoading.value = true
   try {
-    const res = await api.get('/api/message-cleanup/stats')
+    const res = await api.get('/message-cleanup/stats')
     if (res.data) {
       dataStats.value = res.data
     }
@@ -268,7 +268,7 @@ const loadStats = async () => {
 // 加载配置
 const loadConfig = async () => {
   try {
-    const res = await api.get('/api/message-cleanup/config')
+    const res = await api.get('/message-cleanup/config')
     if (res.data) {
       Object.assign(config, res.data)
     }
@@ -281,7 +281,7 @@ const loadConfig = async () => {
 const loadHistory = async () => {
   historyLoading.value = true
   try {
-    const res = await api.get('/api/message-cleanup/history')
+    const res = await api.get('/message-cleanup/history')
     if (res.data) {
       cleanupHistory.value = res.data
     }
@@ -306,7 +306,7 @@ const saveConfig = async () => {
 
   saving.value = true
   try {
-    await api.post('/api/message-cleanup/config', config)
+    await api.post('/message-cleanup/config', config)
     ElMessage.success('配置保存成功')
   } catch (error: any) {
     ElMessage.error(error.message || '保存失败')
@@ -341,7 +341,7 @@ const executeManualCleanup = async () => {
       ? { mode: 'byDays', days: manualCleanup.days }
       : { mode: 'byDate', beforeDate: manualCleanup.beforeDate }
 
-    const res = await api.post('/api/message-cleanup/execute', params)
+    const res = await api.post('/message-cleanup/execute', params)
     ElMessage.success(`清理完成，共删除 ${res.data?.deletedCount || 0} 条记录`)
 
     // 刷新数据
