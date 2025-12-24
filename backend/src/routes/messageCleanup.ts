@@ -74,20 +74,31 @@ router.get('/stats', authenticateToken, async (_req: Request, res: Response) => 
       // 表可能不存在，静默处理
     }
 
+    // 返回标准格式
     res.json({
-      totalRecords,
-      expiredRecords,
-      oldestRecord,
-      lastCleanup
+      success: true,
+      code: 200,
+      message: 'success',
+      data: {
+        totalRecords,
+        expiredRecords,
+        oldestRecord,
+        lastCleanup
+      }
     })
   } catch (error: any) {
     console.error('获取清理统计失败:', error)
     // 静默返回默认值
     res.json({
-      totalRecords: 0,
-      expiredRecords: 0,
-      oldestRecord: null,
-      lastCleanup: null
+      success: true,
+      code: 200,
+      message: 'success',
+      data: {
+        totalRecords: 0,
+        expiredRecords: 0,
+        oldestRecord: null,
+        lastCleanup: null
+      }
     })
   }
 })
@@ -100,27 +111,36 @@ router.get('/config', authenticateToken, async (_req: Request, res: Response) =>
       [CONFIG_KEY]
     )
 
-    if (result[0]?.configValue) {
-      res.json(JSON.parse(result[0].configValue))
-    } else {
-      // 返回默认配置
-      res.json({
+    const configData = result[0]?.configValue
+      ? JSON.parse(result[0].configValue)
+      : {
+          enabled: false,
+          retentionDays: 30,
+          cleanupMode: 'auto',
+          cleanupTime: '02:00',
+          cleanupFrequency: 'daily'
+        }
+
+    res.json({
+      success: true,
+      code: 200,
+      message: 'success',
+      data: configData
+    })
+  } catch (error: any) {
+    console.error('获取清理配置失败:', error)
+    // 静默返回默认配置
+    res.json({
+      success: true,
+      code: 200,
+      message: 'success',
+      data: {
         enabled: false,
         retentionDays: 30,
         cleanupMode: 'auto',
         cleanupTime: '02:00',
         cleanupFrequency: 'daily'
-      })
-    }
-  } catch (error: any) {
-    console.error('获取清理配置失败:', error)
-    // 静默返回默认配置
-    res.json({
-      enabled: false,
-      retentionDays: 30,
-      cleanupMode: 'auto',
-      cleanupTime: '02:00',
-      cleanupFrequency: 'daily'
+      }
     })
   }
 })
@@ -150,10 +170,10 @@ router.post('/config', authenticateToken, async (req: Request, res: Response) =>
       )
     }
 
-    res.json({ message: '配置保存成功' })
+    res.json({ success: true, code: 200, message: '配置保存成功', data: null })
   } catch (error: any) {
     console.error('保存清理配置失败:', error)
-    res.status(500).json({ message: '保存配置失败: ' + (error.message || '未知错误') })
+    res.status(500).json({ success: false, code: 500, message: '保存配置失败: ' + (error.message || '未知错误'), data: null })
   }
 })
 
@@ -168,7 +188,7 @@ router.post('/execute', authenticateToken, async (req: Request, res: Response) =
 
     if (mode === 'byDays') {
       if (!days || days < 1) {
-        return res.status(400).json({ message: '请输入有效的保留天数' })
+        return res.status(400).json({ success: false, code: 400, message: '请输入有效的保留天数', data: null })
       }
       // 按天数清理
       const result = await AppDataSource.query(
@@ -179,7 +199,7 @@ router.post('/execute', authenticateToken, async (req: Request, res: Response) =
       remark = `清理 ${days} 天前的记录`
     } else if (mode === 'byDate') {
       if (!beforeDate) {
-        return res.status(400).json({ message: '请选择清理日期' })
+        return res.status(400).json({ success: false, code: 400, message: '请选择清理日期', data: null })
       }
       // 按日期清理
       const result = await AppDataSource.query(
@@ -189,7 +209,7 @@ router.post('/execute', authenticateToken, async (req: Request, res: Response) =
       deletedCount = result.affectedRows || 0
       remark = `清理 ${beforeDate} 之前的记录`
     } else {
-      return res.status(400).json({ message: '无效的清理模式' })
+      return res.status(400).json({ success: false, code: 400, message: '无效的清理模式', data: null })
     }
 
     // 记录清理历史
@@ -204,10 +224,10 @@ router.post('/execute', authenticateToken, async (req: Request, res: Response) =
       // 不影响主流程
     }
 
-    res.json({ deletedCount, message: `成功清理 ${deletedCount} 条记录` })
+    res.json({ success: true, code: 200, message: `成功清理 ${deletedCount} 条记录`, data: { deletedCount } })
   } catch (error: any) {
     console.error('执行清理失败:', error)
-    res.status(500).json({ message: '清理失败: ' + (error.message || '未知错误') })
+    res.status(500).json({ success: false, code: 500, message: '清理失败: ' + (error.message || '未知错误'), data: null })
   }
 })
 
@@ -227,11 +247,11 @@ router.get('/history', authenticateToken, async (_req: Request, res: Response) =
        LIMIT 50`
     )
 
-    res.json(result)
+    res.json({ success: true, code: 200, message: 'success', data: result })
   } catch (error: any) {
     console.error('获取清理历史失败:', error)
     // 静默返回空数组
-    res.json([])
+    res.json({ success: true, code: 200, message: 'success', data: [] })
   }
 })
 
