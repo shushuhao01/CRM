@@ -255,8 +255,8 @@ const loadStats = async () => {
   statsLoading.value = true
   try {
     const res = await api.get('/message-cleanup/stats')
-    if (res.data) {
-      dataStats.value = res.data
+    if (res) {
+      dataStats.value = { ...dataStats.value, ...res }
     }
   } catch (error) {
     console.error('加载统计数据失败:', error)
@@ -269,8 +269,8 @@ const loadStats = async () => {
 const loadConfig = async () => {
   try {
     const res = await api.get('/message-cleanup/config')
-    if (res.data) {
-      Object.assign(config, res.data)
+    if (res) {
+      Object.assign(config, res)
     }
   } catch (error) {
     console.error('加载配置失败:', error)
@@ -282,8 +282,8 @@ const loadHistory = async () => {
   historyLoading.value = true
   try {
     const res = await api.get('/message-cleanup/history')
-    if (res.data) {
-      cleanupHistory.value = res.data
+    if (res) {
+      cleanupHistory.value = Array.isArray(res) ? res : []
     }
   } catch (error) {
     console.error('加载清理历史失败:', error)
@@ -341,8 +341,8 @@ const executeManualCleanup = async () => {
       ? { mode: 'byDays', days: manualCleanup.days }
       : { mode: 'byDate', beforeDate: manualCleanup.beforeDate }
 
-    const res = await api.post('/message-cleanup/execute', params)
-    ElMessage.success(`清理完成，共删除 ${res.data?.deletedCount || 0} 条记录`)
+    const res: any = await api.post('/message-cleanup/execute', params)
+    ElMessage.success(`清理完成，共删除 ${res?.deletedCount || 0} 条记录`)
 
     // 刷新数据
     loadStats()
