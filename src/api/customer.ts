@@ -53,7 +53,7 @@ export const customerApi = {
         phone: string
         creatorName: string
         createTime: string
-      } | null>('/customers/check-exists', { phone })
+      } | null>('/customers/check-exists', { params: { phone } })
 
       console.log('后端API响应:', response)
 
