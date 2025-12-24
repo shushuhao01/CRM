@@ -1,13 +1,5 @@
 <template>
   <div class="message-cleanup-config">
-    <!-- 权限检查 -->
-    <div v-if="!hasPermission" class="no-permission">
-      <el-empty description="您没有权限访问此功能，仅管理员和超级管理员可以设置">
-        <el-icon :size="60" color="#909399"><Lock /></el-icon>
-      </el-empty>
-    </div>
-
-    <div v-else>
       <!-- 功能说明 -->
       <el-alert
         title="消息清理说明"
@@ -199,27 +191,17 @@
           <el-table-column prop="remark" label="备注" />
         </el-table>
       </el-card>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Lock, DataAnalysis, Refresh, Setting, Check, RefreshLeft,
+  DataAnalysis, Refresh, Setting, Check, RefreshLeft,
   Delete, Warning, Document
 } from '@element-plus/icons-vue'
-import { useUserStore } from '@/stores/user'
 import api from '@/utils/request'
-
-const userStore = useUserStore()
-
-// 权限检查
-const hasPermission = computed(() => {
-  const role = userStore.currentUser?.role
-  return role === 'super_admin' || role === 'admin'
-})
 
 // 数据统计
 const dataStats = ref({
@@ -375,22 +357,15 @@ const executeManualCleanup = async () => {
 }
 
 onMounted(() => {
-  if (hasPermission.value) {
-    loadStats()
-    loadConfig()
-    loadHistory()
-  }
+  loadStats()
+  loadConfig()
+  loadHistory()
 })
 </script>
 
 <style scoped>
 .message-cleanup-config {
   padding: 0;
-}
-
-.no-permission {
-  padding: 60px 0;
-  text-align: center;
 }
 
 .info-alert {
