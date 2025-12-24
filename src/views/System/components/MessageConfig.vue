@@ -1516,7 +1516,7 @@ onMounted(async () => {
 }
 
 .last-sent-time {
-  color: #303133;
+  color: #409EFF;
   font-weight: 500;
 }
 
