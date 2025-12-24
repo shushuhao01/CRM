@@ -19,10 +19,10 @@ router.get('/stats', authenticateToken, requireAdmin, async (_req: Request, res:
 
     // 获取配置中的保留天数
     const configResult = await AppDataSource.query(
-      `SELECT config_value FROM system_configs WHERE config_key = ?`,
+      `SELECT configValue FROM system_configs WHERE configKey = ?`,
       [CONFIG_KEY]
     )
-    const config = configResult[0]?.config_value ? JSON.parse(configResult[0].config_value) : { retentionDays: 30 }
+    const config = configResult[0]?.configValue ? JSON.parse(configResult[0].configValue) : { retentionDays: 30 }
     const retentionDays = config.retentionDays || 30
 
     // 获取可清理记录数（超过保留天数的记录）
@@ -64,12 +64,12 @@ router.get('/stats', authenticateToken, requireAdmin, async (_req: Request, res:
 router.get('/config', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
   try {
     const result = await AppDataSource.query(
-      `SELECT config_value FROM system_configs WHERE config_key = ?`,
+      `SELECT configValue FROM system_configs WHERE configKey = ?`,
       [CONFIG_KEY]
     )
 
-    if (result[0]?.config_value) {
-      res.json(JSON.parse(result[0].config_value))
+    if (result[0]?.configValue) {
+      res.json(JSON.parse(result[0].configValue))
     } else {
       // 返回默认配置
       res.json({
@@ -94,20 +94,20 @@ router.post('/config', authenticateToken, requireAdmin, async (req: Request, res
 
     // 检查配置是否存在
     const existing = await AppDataSource.query(
-      `SELECT id FROM system_configs WHERE config_key = ?`,
+      `SELECT id FROM system_configs WHERE configKey = ?`,
       [CONFIG_KEY]
     )
 
     if (existing.length > 0) {
       await AppDataSource.query(
-        `UPDATE system_configs SET config_value = ?, updated_at = NOW() WHERE config_key = ?`,
+        `UPDATE system_configs SET configValue = ?, updatedAt = NOW() WHERE configKey = ?`,
         [configJson, CONFIG_KEY]
       )
     } else {
       await AppDataSource.query(
-        `INSERT INTO system_configs (id, config_key, config_value, description, created_at, updated_at)
-         VALUES (?, ?, ?, ?, NOW(), NOW())`,
-        [uuidv4(), CONFIG_KEY, configJson, '消息清理配置']
+        `INSERT INTO system_configs (configKey, configValue, valueType, configGroup, description, isEnabled, isSystem, sortOrder, createdAt, updatedAt)
+         VALUES (?, ?, 'json', 'message_settings', '消息清理配置', 1, 0, 1, NOW(), NOW())`,
+        [CONFIG_KEY, configJson]
       )
     }
 
