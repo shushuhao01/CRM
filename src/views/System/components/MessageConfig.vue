@@ -98,8 +98,8 @@
           <div class="info-row">
             <span class="info-label">上次发送</span>
             <div class="info-value">
-              <span v-if="config.lastSentAt">{{ formatDate(config.lastSentAt) }}</span>
-              <span v-else style="color: #909399;">暂未发送</span>
+              <span v-if="config.lastSentAt" class="last-sent-time">{{ formatDate(config.lastSentAt) }}</span>
+              <span v-else class="no-sent-yet">暂未发送</span>
               <el-tag v-if="config.lastSentStatus" :type="config.lastSentStatus === 'success' ? 'success' : 'danger'" size="small" style="margin-left: 8px;">
                 {{ config.lastSentStatus === 'success' ? '成功' : '失败' }}
               </el-tag>
@@ -1512,6 +1512,16 @@ onMounted(async () => {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  color: #303133;
+}
+
+.last-sent-time {
+  color: #303133;
+  font-weight: 500;
+}
+
+.no-sent-yet {
+  color: #909399;
 }
 
 .member-tags {
