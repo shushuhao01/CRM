@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../config/database'
-import { authenticateToken, requireAdmin } from '../middleware/auth'
+import { authenticateToken } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 
 const router = Router()
@@ -9,7 +9,7 @@ const router = Router()
 const CONFIG_KEY = 'message_cleanup_config'
 
 // 获取清理统计数据
-router.get('/stats', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+router.get('/stats', authenticateToken, async (_req: Request, res: Response) => {
   try {
     let totalRecords = 0
     let expiredRecords = 0
@@ -93,7 +93,7 @@ router.get('/stats', authenticateToken, requireAdmin, async (_req: Request, res:
 })
 
 // 获取清理配置
-router.get('/config', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+router.get('/config', authenticateToken, async (_req: Request, res: Response) => {
   try {
     const result = await AppDataSource.query(
       `SELECT configValue FROM system_configs WHERE configKey = ?`,
@@ -126,7 +126,7 @@ router.get('/config', authenticateToken, requireAdmin, async (_req: Request, res
 })
 
 // 保存清理配置
-router.post('/config', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+router.post('/config', authenticateToken, async (req: Request, res: Response) => {
   try {
     const config = req.body
     const configJson = JSON.stringify(config)
@@ -158,7 +158,7 @@ router.post('/config', authenticateToken, requireAdmin, async (req: Request, res
 })
 
 // 执行手动清理
-router.post('/execute', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+router.post('/execute', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { mode, days, beforeDate } = req.body
     const user = (req as any).user
@@ -212,7 +212,7 @@ router.post('/execute', authenticateToken, requireAdmin, async (req: Request, re
 })
 
 // 获取清理历史
-router.get('/history', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+router.get('/history', authenticateToken, async (_req: Request, res: Response) => {
   try {
     const result = await AppDataSource.query(
       `SELECT
