@@ -316,10 +316,11 @@ class AliyunCallService {
           [callId]
         );
         if (callRecords.length > 0) {
-          global.webSocketService.sendToUser(callRecords[0].user_id, {
-            type: `CALL_${status.toUpperCase()}`,
-            data: { callId, status, duration }
-          });
+          global.webSocketService.sendToUser(
+            callRecords[0].user_id,
+            `CALL_${status.toUpperCase()}`,
+            { callId, status, duration }
+          );
         }
       }
     } catch (error) {
