@@ -2569,11 +2569,18 @@ const loadFollowUpRecords = async () => {
     const response = await customerDetailApi.getCustomerFollowUps(customerId)
 
     // 🔥 修复：正确处理API返回值格式 { success: true, data: [...] }
-    const customerFollowUps = response?.data || response || []
+    let customerFollowUps: any[] = []
+    if (response?.success && Array.isArray(response.data)) {
+      customerFollowUps = response.data
+    } else if (Array.isArray(response?.data)) {
+      customerFollowUps = response.data
+    } else if (Array.isArray(response)) {
+      customerFollowUps = response
+    }
 
     // 转换为页面显示格式并检查编辑权限
-    followUpRecords.value = (Array.isArray(customerFollowUps) ? customerFollowUps : []).map((followUp: any) => {
-      const createTime = new Date(followUp.createTime)
+    followUpRecords.value = customerFollowUps.map((followUp: any) => {
+      const createTime = new Date(followUp.createTime || followUp.createdAt)
       const now = new Date()
       const hoursDiff = (now.getTime() - createTime.getTime()) / (1000 * 60 * 60)
 
@@ -2582,8 +2589,8 @@ const loadFollowUpRecords = async () => {
         type: followUp.type,
         title: followUp.title || followUp.type,
         content: followUp.content,
-        createTime: followUp.createTime,
-        author: followUp.author || followUp.createdBy || '未知',
+        createTime: followUp.createTime || followUp.createdAt,
+        author: followUp.author || followUp.createdByName || followUp.createdBy || '未知',
         canEdit: hoursDiff <= 24 // 24小时内可编辑
       }
     })
