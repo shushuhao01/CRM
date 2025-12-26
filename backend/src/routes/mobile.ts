@@ -397,7 +397,7 @@ router.post('/bind', async (req: Request, res: Response) => {
 
     // 记录绑定日志
     await AppDataSource.query(
-      `INSERT INTO device_bindlogs
+      `INSERT INTO device_bind_logs
        (user_id, device_id, phone_number, device_name, device_model, os_type, os_version, app_version, action, ip_address)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'binddevice', ?)`,
       [
@@ -510,7 +510,7 @@ router.delete('/unbind', authenticateToken, async (req: Request, res: Response) 
 
     // 记录解绑日志
     await AppDataSource.query(
-      `INSERT INTO device_bindlogs (user_id, device_id, action, ip_address, remark)
+      `INSERT INTO device_bind_logs (user_id, device_id, action, ip_address, remark)
        VALUES (?, ?, 'unbind', ?, '用户主动解绑')`,
       [userId, device.device_id, req.ip]
     )
