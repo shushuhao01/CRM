@@ -1,13 +1,20 @@
 import { DataSource } from 'typeorm';
 import dotenv from 'dotenv';
 import * as path from 'path';
+import * as fs from 'fs';
 import { User } from '../entities/User';
 
 // 根据NODE_ENV环境变量加载对应配置文件
 // 生产环境(production): 加载 .env
-// 开发环境(development): 加载 .env.local
+// 开发环境(development): 优先加载 .env.local，如果不存在则加载 .env
 const isProduction = process.env.NODE_ENV === 'production';
-const envFile = isProduction ? '.env' : '.env.local';
+let envFile = '.env';
+if (!isProduction) {
+  const localEnvPath = path.join(__dirname, '../../', '.env.local');
+  if (fs.existsSync(localEnvPath)) {
+    envFile = '.env.local';
+  }
+}
 const envPath = path.join(__dirname, '../../', envFile);
 dotenv.config({ path: envPath });
 
