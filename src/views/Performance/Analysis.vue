@@ -643,6 +643,16 @@ const userStore = useUserStore()
 const departmentStore = useDepartmentStore()
 const orderStore = useOrderStore()
 
+// 🔥 日期比较工具函数 - 使用北京时间字符串比较，避免时区问题
+const isOrderInDateRange = (orderCreateTime: string, startDateStr: string, endDateStr: string): boolean => {
+  if (!orderCreateTime) return false
+  // 将 "YYYY/MM/DD HH:mm:ss" 格式转换为 "YYYY-MM-DD HH:mm:ss"
+  const normalizedTime = orderCreateTime.replace(/\//g, '-')
+  const startTime = startDateStr + ' 00:00:00'
+  const endTime = endDateStr + ' 23:59:59'
+  return normalizedTime >= startTime && normalizedTime <= endTime
+}
+
 // 图表引用
 const performanceChartRef = ref()
 const orderStatusChartRef = ref()
@@ -889,14 +899,11 @@ const viewOrdersByType = (row: any, columnProp: string) => {
     orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
   }
 
-  // 应用日期筛选
+  // 应用日期筛选 - 🔥 使用北京时间字符串比较
   if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-    const startDate = new Date(dateRange.value[0]).getTime()
-    const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
-    orders = orders.filter(order => {
-      const orderTime = new Date(order.createTime).getTime()
-      return orderTime >= startDate && orderTime <= endDate
-    })
+    orders = orders.filter(order =>
+      isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+    )
   }
 
   // 根据列类型筛选订单
@@ -1085,18 +1092,14 @@ const loadChartData = () => {
       console.log('📊 [业绩分析] 部门筛选后订单数量:', orders.length)
     }
 
-    // 应用日期筛选（只有当日期范围有效时才筛选）
+    // 应用日期筛选（只有当日期范围有效时才筛选）- 🔥 使用北京时间字符串比较
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      const startDate = new Date(dateRange.value[0]).getTime()
-      const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
-
       console.log('📊 [业绩分析] 日期筛选范围:', dateRange.value[0], '至', dateRange.value[1])
       console.log('📊 [业绩分析] 日期筛选前订单数量:', orders.length)
 
-      orders = orders.filter(order => {
-        const orderTime = new Date(order.createTime).getTime()
-        return orderTime >= startDate && orderTime <= endDate
-      })
+      orders = orders.filter(order =>
+        isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+      )
 
       console.log('📊 [业绩分析] 日期筛选后订单数量:', orders.length)
     }
@@ -1491,15 +1494,11 @@ const loadDepartmentData = () => {
       orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
     }
 
-    // 应用日期筛选（只有当日期范围有效时才筛选）
+    // 应用日期筛选（只有当日期范围有效时才筛选）- 🔥 使用北京时间字符串比较
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      const startDate = new Date(dateRange.value[0]).getTime()
-      const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
-
-      orders = orders.filter(order => {
-        const orderTime = new Date(order.createTime).getTime()
-        return orderTime >= startDate && orderTime <= endDate
-      })
+      orders = orders.filter(order =>
+        isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+      )
     }
 
     // 计算各项指标（与loadCompanyData相同的逻辑）
@@ -1579,15 +1578,11 @@ const loadCompanyData = () => {
       return !excludedStatuses.includes(order.status)
     })
 
-    // 应用日期筛选（只有当日期范围有效时才筛选）
+    // 应用日期筛选（只有当日期范围有效时才筛选）- 🔥 使用北京时间字符串比较
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      const startDate = new Date(dateRange.value[0]).getTime()
-      const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
-
-      orders = orders.filter(order => {
-        const orderTime = new Date(order.createTime).getTime()
-        return orderTime >= startDate && orderTime <= endDate
-      })
+      orders = orders.filter(order =>
+        isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+      )
     }
 
     // 计算各项指标
@@ -1662,15 +1657,11 @@ const loadMetrics = () => {
       orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
     }
 
-    // 应用日期筛选（只有当日期范围有效时才筛选）
+    // 应用日期筛选（只有当日期范围有效时才筛选）- 🔥 使用北京时间字符串比较
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      const startDate = new Date(dateRange.value[0]).getTime()
-      const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
-
-      orders = orders.filter(order => {
-        const orderTime = new Date(order.createTime).getTime()
-        return orderTime >= startDate && orderTime <= endDate
-      })
+      orders = orders.filter(order =>
+        isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+      )
     }
 
     // 计算指标

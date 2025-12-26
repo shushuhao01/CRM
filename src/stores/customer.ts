@@ -449,36 +449,8 @@ export const useCustomerStore = createPersistentStore('customer', () => {
 
       console.log('loadCustomers 被调用，参数:', params)
 
-      // 🔥 直接检查hostname判断环境，不依赖任何其他函数
-      const hostname = window.location.hostname
-      const isProdEnv = !(
-        hostname === 'localhost' ||
-        hostname === '127.0.0.1' ||
-        hostname.includes('192.168') ||
-        hostname.includes('dev.') ||
-        hostname.includes('test.')
-      )
-
-      console.log('[loadCustomers] hostname:', hostname, ', isProdEnv:', isProdEnv)
-
-      if (!isProdEnv) {
-        // 开发环境：直接使用本地数据，不调用API
-        console.log('开发环境：使用本地客户数据，不调用API')
-        console.log('当前本地客户数量:', customers.value.length)
-
-        // 确保数据按创建时间排序
-        customers.value = customers.value.sort((a, b) => {
-          const timeA = new Date(a.createTime).getTime()
-          const timeB = new Date(b.createTime).getTime()
-          return timeB - timeA
-        })
-
-        console.log('loadCustomers 完成（开发环境），客户数量:', customers.value.length)
-        return customers.value
-      }
-
-      // 🔥 生产环境：强制调用真实API获取客户数据
-      console.log('🌐 生产环境：强制调用真实API获取客户数据')
+      // 🔥 无论开发还是生产环境，都从API加载数据
+      console.log('🌐 从API获取客户数据')
       const response = await customerApi.getList(params)
 
       // 安全检查API响应结构

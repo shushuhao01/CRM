@@ -341,12 +341,13 @@ router.get('/personal', async (req: Request, res: Response) => {
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
 
-    // 构建日期条件
+    // 🔥 数据库已配置为北京时区，直接使用北京时间进行查询
     let dateCondition = '';
     const orderParams: any[] = [userId];
     if (startDate && endDate) {
       dateCondition = ' AND created_at >= ? AND created_at <= ?';
       orderParams.push(startDate + ' 00:00:00', endDate + ' 23:59:59');
+      console.log(`[业绩统计] 查询日期范围: ${startDate} 00:00:00 ~ ${endDate} 23:59:59`);
     }
 
     // 获取所有订单用于业绩计算
@@ -409,7 +410,7 @@ router.get('/personal', async (req: Request, res: Response) => {
     const rejectRate = orderCount > 0 ? ((rejectCount / orderCount) * 100).toFixed(1) : '0.0';
     const returnRate = orderCount > 0 ? ((returnCount / orderCount) * 100).toFixed(1) : '0.0';
 
-    // 新增客户数
+    // 新增客户数 - 🔥 数据库已配置为北京时区
     let customerDateCondition = '';
     const customerParams: any[] = [userId];
     if (startDate && endDate) {
@@ -470,7 +471,7 @@ router.get('/team', async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
 
-    // 构建日期条件 - 🔥 修复：移除表别名o，因为订单查询中没有使用别名
+    // 🔥 数据库已配置为北京时区，直接使用北京时间
     let dateCondition = '';
     if (startDate && endDate) {
       dateCondition = ` AND created_at >= '${startDate} 00:00:00' AND created_at <= '${endDate} 23:59:59'`;

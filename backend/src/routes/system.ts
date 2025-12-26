@@ -291,6 +291,9 @@ router.post('/upload-image', authenticateToken, requireAdmin, systemImageUpload.
  * @access Private (Admin)
  */
 router.post('/upload-product-image', authenticateToken, requireAdmin, productImageUpload.single('image'), (req: Request, res: Response) => {
+  console.log('[Upload] 收到商品图片上传请求');
+  console.log('[Upload] 用户:', (req as any).user?.username, '角色:', (req as any).user?.role);
+  console.log('[Upload] 文件:', req.file ? req.file.originalname : '无文件');
   handleImageUpload(req, res, 'products');
 });
 

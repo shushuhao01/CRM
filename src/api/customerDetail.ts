@@ -4,11 +4,14 @@ import { request } from './request'
 const safeRequest = async (url: string, options: any, defaultValue: any = []) => {
   try {
     const response = await request(url, options)
-    // 处理不同的响应格式
-    if (response && response.data !== undefined) {
-      return response.data
+    // 处理不同的响应格式，返回统一的格式 { success: true, data: ... }
+    if (response && response.success !== undefined) {
+      return response
     }
-    return response || defaultValue
+    if (response && response.data !== undefined) {
+      return { success: true, data: response.data }
+    }
+    return { success: true, data: response || defaultValue }
   } catch (error: any) {
     // 如果是404错误（API端点不存在或数据不存在），返回默认值而不是抛出错误
     if (error?.message?.includes('404') ||
@@ -16,7 +19,7 @@ const safeRequest = async (url: string, options: any, defaultValue: any = []) =>
         error?.message?.includes('Not Found') ||
         error?.response?.status === 404) {
       console.log(`[API] ${url} 返回空数据（404）`)
-      return defaultValue
+      return { success: true, data: defaultValue }
     }
     // 其他错误继续抛出
     throw error

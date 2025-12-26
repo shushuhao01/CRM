@@ -4,22 +4,19 @@
     <div class="page-header">
       <h2>通话管理</h2>
       <div class="header-actions">
-        <el-button
-          :type="callStatus === 'ready' ? 'success' : 'warning'"
-          :icon="callStatus === 'ready' ? 'Check' : 'Close'"
-          @click="toggleCallStatus"
-          class="status-button"
-        >
-          {{ callStatus === 'ready' ? '就绪' : '忙碌' }}
-        </el-button>
-        <el-button type="primary" :icon="Phone" @click="openOutboundDialog">
-          发起外呼
-        </el-button>
+        <el-tooltip :content="callStatus === 'ready' ? '点击切换为忙碌状态，将不接收来电分配' : '点击切换为就绪状态，可以接收来电分配'">
+          <el-button
+            :type="callStatus === 'ready' ? 'success' : 'warning'"
+            @click="toggleCallStatus"
+            class="status-button"
+          >
+            <el-icon style="margin-right: 6px;" v-if="callStatus === 'ready'"><CircleCheckFilled /></el-icon>
+            <el-icon style="margin-right: 6px;" v-else><WarningFilled /></el-icon>
+            {{ callStatus === 'ready' ? '就绪' : '忙碌' }}
+          </el-button>
+        </el-tooltip>
         <el-button type="info" :icon="Setting" @click="openCallConfigDialog">
           呼出配置
-        </el-button>
-        <el-button :icon="Refresh" @click="refreshData" :loading="refreshLoading">
-          刷新数据
         </el-button>
         <el-tooltip :content="autoRefresh ? '关闭自动刷新' : '开启自动刷新'">
           <el-button
@@ -165,6 +162,8 @@
         <div class="table-header">
           <span>呼出列表</span>
           <div class="table-actions">
+            <el-button type="primary" :icon="Phone" @click="openOutboundDialog">发起外呼</el-button>
+            <el-button :icon="Refresh" @click="refreshData" :loading="refreshLoading">刷新数据</el-button>
             <el-button type="primary" :icon="Phone" @click="showCallRecordsDialog">通话记录</el-button>
             <el-button :icon="Download" @click="handleExport">导出数据</el-button>
           </div>
@@ -193,6 +192,22 @@
         </el-table-column>
         <el-table-column prop="lastCallTime" label="最后通话" width="160" />
         <el-table-column prop="callCount" label="通话次数" width="100" />
+        <el-table-column prop="lastFollowUp" label="最新跟进" min-width="150" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.lastFollowUp">{{ row.lastFollowUp }}</span>
+            <span v-else class="text-muted">暂无记录</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="callTags" label="通话标签" min-width="120">
+          <template #default="{ row }">
+            <template v-if="row.callTags && row.callTags.length > 0">
+              <el-tag v-for="tag in row.callTags" :key="tag" size="small" type="info" style="margin-right: 4px;">
+                {{ tag }}
+              </el-tag>
+            </template>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">
@@ -232,48 +247,83 @@
     </el-card>
 
     <!-- 外呼对话框 -->
-    <el-dialog v-model="showOutboundDialog" title="发起外呼" width="600px">
+    <el-dialog v-model="showOutboundDialog" title="发起外呼" width="650px" @open="initOutboundDialog">
       <el-form :model="outboundForm" :rules="outboundRules" ref="outboundFormRef" label-width="100px">
         <el-form-item label="外呼方式" prop="callMethod">
           <el-select
             v-model="outboundForm.callMethod"
             placeholder="请选择外呼方式"
             style="width: 100%"
-            @change="onCallMethodChange"
+            @change="onOutboundMethodChange"
           >
-            <el-option label="网络电话" value="network_phone">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                  <div style="font-weight: 500;">网络电话</div>
-                  <div style="color: #8492a6; font-size: 12px;">使用阿里云通信等第三方服务</div>
-                </div>
-                <el-tag size="small" type="success">推荐</el-tag>
-              </div>
-            </el-option>
-            <el-option label="工作手机" value="work_phone">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
+            <el-option
+              v-if="workPhones.length > 0"
+              label="工作手机"
+              value="work_phone"
+            >
+              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div style="flex: 1;">
                   <div style="font-weight: 500;">工作手机</div>
                   <div style="color: #8492a6; font-size: 12px;">使用绑定的工作手机拨打</div>
                 </div>
-                <el-tag size="small" type="info">录音</el-tag>
+                <el-tag size="small" type="success" style="margin-left: 12px;">推荐</el-tag>
+              </div>
+            </el-option>
+            <el-option
+              v-if="availableLines.length > 0"
+              label="网络电话"
+              value="network_phone"
+            >
+              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div style="flex: 1;">
+                  <div style="font-weight: 500;">网络电话</div>
+                  <div style="color: #8492a6; font-size: 12px;">使用系统分配的外呼线路</div>
+                </div>
+                <el-tag size="small" type="info" style="margin-left: 12px;">录音</el-tag>
               </div>
             </el-option>
           </el-select>
-          <div style="color: #909399; font-size: 12px; margin-top: 4px;">
-            <span v-if="outboundForm.callMethod === 'network_phone'">
-              网络电话支持自动录音，通话质量稳定
-            </span>
-            <span v-else-if="outboundForm.callMethod === 'work_phone'">
-              工作手机需要预先绑定，支持系统级录音
-            </span>
-            <span v-else>
-              请选择合适的外呼方式
-            </span>
+          <div v-if="!workPhones.length && !availableLines.length" style="color: #f56c6c; font-size: 12px; margin-top: 4px;">
+            暂无可用的外呼方式，请先在"呼出配置"中绑定工作手机或联系管理员分配线路
           </div>
         </el-form-item>
 
-        <!-- 网络电话配置 -->
+        <!-- 工作手机选择 -->
+        <el-form-item
+          v-if="outboundForm.callMethod === 'work_phone'"
+          label="选择手机"
+          prop="selectedWorkPhone"
+        >
+          <el-select
+            v-model="outboundForm.selectedWorkPhone"
+            placeholder="请选择工作手机"
+            style="width: 100%"
+            popper-class="outbound-select-popper"
+          >
+            <el-option
+              v-for="phone in workPhones"
+              :key="phone.id"
+              :label="`${phone.number} (${phone.status === 'online' ? '在线' : (phone.status === 'offline' ? '离线' : phone.status)})`"
+              :value="phone.id"
+            >
+              <div class="select-option-row">
+                <div class="option-content">
+                  <div class="option-title">{{ phone.number }}</div>
+                  <div class="option-desc">{{ phone.name || '工作手机' }}</div>
+                </div>
+                <el-tag
+                  size="small"
+                  :type="phone.status === '在线' || phone.status === 'online' ? 'success' : 'info'"
+                  class="option-tag"
+                >
+                  {{ phone.status === 'online' ? '在线' : (phone.status === 'offline' ? '离线' : phone.status) }}
+                </el-tag>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+
+        <!-- 网络电话线路选择 -->
         <el-form-item
           v-if="outboundForm.callMethod === 'network_phone'"
           label="选择线路"
@@ -283,72 +333,29 @@
             v-model="outboundForm.selectedLine"
             placeholder="请选择外呼线路"
             style="width: 100%"
+            popper-class="outbound-select-popper"
           >
             <el-option
               v-for="line in availableLines"
               :key="line.id"
-              :label="line.name"
+              :label="`${line.name} (${line.status})`"
               :value="line.id"
             >
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                  <div style="font-weight: 500;">{{ line.name }}</div>
-                  <div style="color: #8492a6; font-size: 12px;">{{ line.provider }} - {{ line.status }}</div>
+              <div class="select-option-row">
+                <div class="option-content">
+                  <div class="option-title">{{ line.name }}</div>
+                  <div class="option-desc">{{ getProviderText(line.provider) }} · {{ line.callerNumber || '未设置主叫号码' }}</div>
                 </div>
                 <el-tag
                   size="small"
                   :type="line.status === '正常' ? 'success' : 'warning'"
+                  class="option-tag"
                 >
                   {{ line.status }}
                 </el-tag>
               </div>
             </el-option>
           </el-select>
-          <div style="color: #909399; font-size: 12px; margin-top: 4px;">
-            <el-button type="text" size="small" @click="openLineConfig">
-              <el-icon><Setting /></el-icon>
-              配置外呼线路
-            </el-button>
-          </div>
-        </el-form-item>
-
-        <!-- 工作手机配置 -->
-        <el-form-item
-          v-if="outboundForm.callMethod === 'work_phone'"
-          label="工作手机"
-          prop="workPhone"
-        >
-          <el-select
-            v-model="outboundForm.workPhone"
-            placeholder="请选择工作手机"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="phone in workPhones"
-              :key="phone.id"
-              :label="phone.number"
-              :value="phone.id"
-            >
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                  <div style="font-weight: 500;">{{ phone.number }}</div>
-                  <div style="color: #8492a6; font-size: 12px;">{{ phone.brand }} {{ phone.model }}</div>
-                </div>
-                <el-tag
-                  size="small"
-                  :type="phone.status === '已绑定' ? 'success' : 'warning'"
-                >
-                  {{ phone.status }}
-                </el-tag>
-              </div>
-            </el-option>
-          </el-select>
-          <div style="color: #909399; font-size: 12px; margin-top: 4px;">
-            <el-button type="text" size="small" @click="openPhoneConfig">
-              <el-icon><Setting /></el-icon>
-              配置工作手机
-            </el-button>
-          </div>
         </el-form-item>
 
         <el-form-item label="选择客户" prop="selectedCustomer">
@@ -360,36 +367,37 @@
             :remote-method="debouncedSearchCustomers"
             :loading="isSearching || customerStore.loading"
             style="width: 100%"
+            popper-class="outbound-select-popper"
             @change="onCustomerChange"
             @focus="() => { if (customerOptions.length === 0) searchCustomers() }"
             clearable
             no-data-text="暂无客户数据，请输入关键词搜索"
             no-match-text="未找到匹配的客户"
             loading-text="正在搜索客户..."
+            value-key="id"
           >
             <el-option
               v-for="customer in customerOptions"
               :key="customer.id"
-              :label="`${customer.name} (${customer.code || ''})`"
+              :label="customer.name"
               :value="customer"
             >
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="flex: 1;">
-                  <div style="font-weight: 500;">{{ customer.name }}</div>
-                  <div style="color: #8492a6; font-size: 12px; margin-top: 2px;">
-                    {{ customer.company || '未填写公司' }}
-                    <span v-if="customer.phone" style="margin-left: 8px;">{{ displaySensitiveInfoNew(customer.phone, SensitiveInfoType.PHONE) }}</span>
+              <div class="select-option-row">
+                <div class="option-content">
+                  <div class="option-title">
+                    {{ customer.name }}
+                  </div>
+                  <div class="option-desc">
+                    <span v-if="customer.phone">{{ displaySensitiveInfoNew(customer.phone, SensitiveInfoType.PHONE) }}</span>
+                    <el-tag v-if="customer.phone && getPhoneCarrier(customer.phone)" size="small" type="info" style="margin-left: 6px; transform: scale(0.9);">{{ getPhoneCarrier(customer.phone) }}</el-tag>
                   </div>
                 </div>
-                <span style="color: #409eff; font-size: 12px; font-weight: 500;">
+                <el-tag size="small" type="primary" class="option-tag">
                   {{ customer.code || '无编号' }}
-                </span>
+                </el-tag>
               </div>
             </el-option>
           </el-select>
-          <div style="color: #909399; font-size: 12px; margin-top: 4px;">
-            支持按客户姓名、编号、电话号码或公司名称搜索
-          </div>
         </el-form-item>
 
         <el-form-item label="选择号码" prop="customerPhone">
@@ -397,14 +405,23 @@
             v-model="outboundForm.customerPhone"
             placeholder="请选择号码"
             style="width: 100%"
+            popper-class="outbound-select-popper"
             :disabled="!outboundForm.selectedCustomer"
           >
             <el-option
               v-for="phone in phoneOptions"
               :key="phone.phone"
-              :label="`${phone.phone} (${phone.type})`"
+              :label="displaySensitiveInfoNew(phone.phone, SensitiveInfoType.PHONE)"
               :value="phone.phone"
-            />
+            >
+              <div class="select-option-row">
+                <div class="option-content">
+                  <span>{{ displaySensitiveInfoNew(phone.phone, SensitiveInfoType.PHONE) }}</span>
+                  <el-tag v-if="getPhoneCarrier(phone.phone)" size="small" type="info" style="margin-left: 6px; transform: scale(0.9);">{{ getPhoneCarrier(phone.phone) }}</el-tag>
+                </div>
+                <el-tag size="small" type="info" class="option-tag">{{ phone.type }}</el-tag>
+              </div>
+            </el-option>
           </el-select>
         </el-form-item>
 
@@ -412,7 +429,6 @@
           <el-input
             v-model="outboundForm.manualPhone"
             placeholder="或手动输入电话号码"
-            @input="onManualPhoneInput"
           />
           <div style="color: #909399; font-size: 12px; margin-top: 4px;">
             手动输入号码将优先使用，不会同步客户信息
@@ -420,13 +436,18 @@
         </el-form-item>
 
         <el-form-item label="备注">
-          <el-input v-model="outboundForm.notes" type="textarea" :rows="3" placeholder="请输入通话备注" />
+          <el-input v-model="outboundForm.notes" type="textarea" :rows="3" placeholder="请输入通话备注" maxlength="200" show-word-limit />
         </el-form-item>
       </el-form>
 
       <template #footer>
         <el-button @click="closeOutboundDialog">取消</el-button>
-        <el-button type="primary" @click="startOutboundCall" :loading="outboundLoading">
+        <el-button
+          type="primary"
+          @click="startOutboundCall"
+          :loading="outboundLoading"
+          :disabled="!canStartCall"
+        >
           开始呼叫
         </el-button>
       </template>
@@ -436,183 +457,195 @@
     <el-dialog
       v-model="showDetailDialog"
       :title="`客户详情 - ${currentCustomer?.customerName}`"
-      width="80%"
+      width="900px"
       top="5vh"
+      class="customer-detail-dialog"
+      :close-on-click-modal="false"
     >
       <div v-if="currentCustomer" class="customer-detail">
-        <!-- 客户基本信息 -->
-        <el-card class="customer-info-card">
-          <template #header>
-            <span>客户基本信息</span>
-          </template>
-          <el-row :gutter="20">
-            <el-col :span="8">
-              <div class="info-item">
-                <label>客户姓名：</label>
-                <span>{{ currentCustomer.customerName }}</span>
-              </div>
-            </el-col>
-            <el-col :span="8">
-              <div class="info-item">
-                <label>联系电话：</label>
-                <span>{{ displaySensitiveInfoNew(currentCustomer.phone, SensitiveInfoType.PHONE) }}</span>
-              </div>
-            </el-col>
-            <el-col :span="8">
-              <div class="info-item">
-                <label>客户等级：</label>
-                <el-tag :type="getLevelType(currentCustomer.customerLevel)">
+        <!-- 客户基本信息卡片 -->
+        <div class="customer-header">
+          <div class="customer-main-info">
+            <div class="customer-avatar">
+              <el-avatar :size="48">{{ currentCustomer.customerName?.charAt(0) }}</el-avatar>
+            </div>
+            <div class="customer-basic">
+              <div class="customer-name">
+                {{ currentCustomer.customerName }}
+                <el-tag :type="getLevelType(currentCustomer.customerLevel)" size="small" style="margin-left: 8px;">
                   {{ getLevelText(currentCustomer.customerLevel) }}
                 </el-tag>
               </div>
-            </el-col>
-            <el-col :span="8">
-              <div class="info-item">
-                <label>负责人：</label>
-                <span>{{ currentCustomer.salesPerson }}</span>
+              <div class="customer-contact">
+                <span class="contact-item">
+                  <el-icon><Phone /></el-icon>
+                  {{ displaySensitiveInfoNew(currentCustomer.phone, SensitiveInfoType.PHONE) }}
+                </span>
+                <span class="contact-item">
+                  <el-icon><User /></el-icon>
+                  {{ currentCustomer.salesPerson || '未分配' }}
+                </span>
               </div>
-            </el-col>
-            <el-col :span="8">
-              <div class="info-item">
-                <label>通话次数：</label>
-                <span>{{ currentCustomer.callCount }} 次</span>
-              </div>
-            </el-col>
-            <el-col :span="8">
-              <div class="info-item">
-                <label>最后通话：</label>
-                <span>{{ currentCustomer.lastCallTime }}</span>
-              </div>
-            </el-col>
-          </el-row>
-        </el-card>
+            </div>
+          </div>
+          <div class="customer-stats">
+            <div class="stat-item">
+              <div class="stat-value">{{ customerOrders.length }}</div>
+              <div class="stat-label">订单</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{{ customerCalls.length }}</div>
+              <div class="stat-label">通话</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{{ customerFollowups.length }}</div>
+              <div class="stat-label">跟进</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value last-call">{{ customerCalls.length > 0 ? customerCalls[0].startTime?.split(' ')[0] : '-' }}</div>
+              <div class="stat-label">最后通话</div>
+            </div>
+          </div>
+        </div>
 
         <!-- 选项卡内容 -->
-        <el-card class="tabs-card">
-          <el-tabs v-model="activeTab" type="border-card">
-            <!-- 订单记录 -->
-            <el-tab-pane label="订单记录" name="orders">
-              <div class="tab-content">
-                <div class="tab-header">
-                  <el-button type="primary" size="small" :icon="Plus">新建订单</el-button>
-                </div>
-                <el-table :data="customerOrders" style="width: 100%" v-loading="detailLoading">
-                  <el-table-column prop="orderNo" label="订单号" width="150" />
-                  <el-table-column prop="productName" label="商品名称" width="200" />
-                  <el-table-column prop="amount" label="订单金额" width="120">
-                    <template #default="{ row }">
-                      ¥{{ row.amount }}
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="status" label="订单状态" width="100">
-                    <template #default="{ row }">
-                      <el-tag :type="getOrderStatusType(row.status)">
-                        {{ getOrderStatusText(row.status) }}
-                      </el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="createTime" label="下单时间" width="160" />
-                  <el-table-column label="操作" width="120">
-                    <template #default="{ row }">
-                      <el-button size="small" type="primary" @click="viewOrder(row)">查看</el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
-                <el-empty v-if="!detailLoading && customerOrders.length === 0" description="暂无订单记录" />
-              </div>
-            </el-tab-pane>
+        <div class="tabs-section">
+          <div class="tabs-header">
+            <el-tabs v-model="activeTab" class="detail-tabs">
+              <el-tab-pane label="订单记录" name="orders" />
+              <el-tab-pane label="售后记录" name="aftersales" />
+              <el-tab-pane label="通话记录" name="calls" />
+              <el-tab-pane label="跟进记录" name="followups" />
+            </el-tabs>
+            <div class="tabs-actions">
+              <el-button v-if="activeTab === 'orders'" type="primary" size="small" @click="handleCreateOrder">新建订单</el-button>
+              <el-button v-if="activeTab === 'aftersales'" type="primary" size="small" @click="handleCreateAftersales">新建售后</el-button>
+              <el-button v-if="activeTab === 'calls'" type="primary" size="small" @click="handleDetailOutboundCall">发起外呼</el-button>
+              <el-button v-if="activeTab === 'followups'" type="primary" size="small" @click="openFollowupDialog">新建跟进</el-button>
+            </div>
+          </div>
 
-            <!-- 售后记录 -->
-            <el-tab-pane label="售后记录" name="aftersales">
-              <div class="tab-content">
-                <div class="tab-header">
-                  <el-button type="primary" size="small" :icon="Plus">新建售后</el-button>
-                </div>
-                <el-table :data="customerAftersales" style="width: 100%" v-loading="detailLoading">
-                  <el-table-column prop="ticketNo" label="工单号" width="150" />
-                  <el-table-column prop="type" label="售后类型" width="100" />
-                  <el-table-column prop="description" label="问题描述" min-width="200" show-overflow-tooltip />
-                  <el-table-column prop="status" label="处理状态" width="100">
-                    <template #default="{ row }">
-                      <el-tag :type="getAftersalesStatusType(row.status)">
-                        {{ getAftersalesStatusText(row.status) }}
-                      </el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="createTime" label="创建时间" width="160" />
-                  <el-table-column label="操作" width="120">
-                    <template #default="{ row }">
-                      <el-button size="small" type="primary" @click="viewAftersales(row)">查看</el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
-                <el-empty v-if="!detailLoading && customerAftersales.length === 0" description="暂无售后记录" />
-              </div>
-            </el-tab-pane>
+          <!-- 订单记录表格 -->
+          <div v-show="activeTab === 'orders'" class="tab-content">
+            <el-table :data="customerOrders" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
+              <el-table-column prop="orderNo" label="订单号" min-width="160" />
+              <el-table-column prop="productName" label="商品名称" min-width="180" show-overflow-tooltip />
+              <el-table-column prop="amount" label="金额" width="100" align="right">
+                <template #default="{ row }">
+                  <span style="color: #f56c6c; font-weight: 500;">¥{{ row.amount }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="status" label="状态" width="100" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="getOrderStatusTagType(row.status)" size="small">
+                    {{ getOrderStatusTextFromConfig(row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="createTime" label="下单时间" width="150" />
+              <el-table-column label="操作" width="60" align="center">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" @click="viewOrder(row)">查看</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <el-empty v-if="!detailLoading && customerOrders.length === 0" description="暂无订单记录" :image-size="60" />
+          </div>
 
-            <!-- 通话记录 -->
-            <el-tab-pane label="通话记录" name="calls">
-              <div class="tab-content">
-                <div class="tab-header">
-                  <el-button type="primary" size="small" :icon="Phone">发起外呼</el-button>
-                </div>
-                <el-table :data="customerCalls" style="width: 100%" v-loading="detailLoading">
-                  <el-table-column prop="callType" label="呼叫类型" width="100">
-                    <template #default="{ row }">
-                      <el-tag :type="row.callType === 'outbound' ? 'primary' : 'success'">
-                        {{ row.callType === 'outbound' ? '外呼' : '来电' }}
-                      </el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="duration" label="通话时长" width="100" />
-                  <el-table-column prop="status" label="通话状态" width="100">
-                    <template #default="{ row }">
-                      <el-tag :type="getStatusType(row.status)">
-                        {{ getStatusText(row.status) }}
-                      </el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="startTime" label="开始时间" width="160" />
-                  <el-table-column prop="operator" label="操作人员" width="100" />
-                  <el-table-column prop="remark" label="备注" min-width="150" show-overflow-tooltip />
-                  <el-table-column label="操作" width="200">
-                    <template #default="{ row }">
-                      <div class="call-actions">
-                        <span class="action-link" @click="viewCallDetail(row)">详情</span>
-                        <span v-if="row.recordingUrl" class="action-link" @click="playRecording(row)">播放录音</span>
-                        <span v-if="row.recordingUrl" class="action-link" @click="downloadRecording(row)">下载录音</span>
-                        <span v-else class="no-recording">无录音</span>
-                      </div>
-                    </template>
-                  </el-table-column>
-                </el-table>
-                <el-empty v-if="!detailLoading && customerCalls.length === 0" description="暂无通话记录" />
-              </div>
-            </el-tab-pane>
+          <!-- 售后记录表格 -->
+          <div v-show="activeTab === 'aftersales'" class="tab-content">
+            <el-table :data="customerAftersales" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
+              <el-table-column prop="ticketNo" label="工单号" min-width="150" />
+              <el-table-column prop="type" label="类型" width="100" />
+              <el-table-column prop="description" label="问题描述" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="status" label="状态" width="100" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="getAftersalesStatusType(row.status)" size="small">
+                    {{ getAftersalesStatusText(row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="createTime" label="创建时间" width="150" />
+              <el-table-column label="操作" width="60" align="center">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" @click="viewAftersales(row)">查看</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <el-empty v-if="!detailLoading && customerAftersales.length === 0" description="暂无售后记录" :image-size="60" />
+          </div>
 
-            <!-- 跟进记录 -->
-            <el-tab-pane label="跟进记录" name="followups">
-              <div class="tab-content">
-                <div class="tab-header">
-                  <el-button type="primary" size="small" :icon="EditPen" @click="openFollowupDialog">新建跟进</el-button>
-                </div>
-                <el-table :data="customerFollowups" style="width: 100%" v-loading="detailLoading">
-                  <el-table-column prop="type" label="跟进类型" width="100" />
-                  <el-table-column prop="content" label="跟进内容" min-width="200" show-overflow-tooltip />
-                  <el-table-column prop="nextPlan" label="下次计划" width="160" />
-                  <el-table-column prop="operator" label="跟进人" width="100" />
-                  <el-table-column prop="createTime" label="跟进时间" width="160" />
-                  <el-table-column label="操作" width="120">
-                    <template #default="{ row }">
-                      <el-button size="small" type="primary" @click="viewFollowup(row)">查看</el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
-                <el-empty v-if="!detailLoading && customerFollowups.length === 0" description="暂无跟进记录" />
-              </div>
-            </el-tab-pane>
-          </el-tabs>
-        </el-card>
+          <!-- 通话记录表格 -->
+          <div v-show="activeTab === 'calls'" class="tab-content">
+            <el-table :data="customerCalls" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
+              <el-table-column prop="callType" label="类型" width="70" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="row.callType === 'outbound' ? '' : 'success'" size="small">
+                    {{ row.callType === 'outbound' ? '外呼' : '来电' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="duration" label="时长" width="80" align="center" />
+              <el-table-column prop="status" label="状态" width="80" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="getStatusType(row.status)" size="small">
+                    {{ getStatusText(row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="startTime" label="开始时间" width="150" />
+              <el-table-column prop="operator" label="操作人" width="90" />
+              <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
+              <el-table-column label="操作" width="100" align="center">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" @click="viewCallDetail(row)">详情</el-button>
+                  <el-button v-if="row.recordingUrl" link type="primary" size="small" @click="playRecording(row)">播放</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <el-empty v-if="!detailLoading && customerCalls.length === 0" description="暂无通话记录" :image-size="60" />
+          </div>
+
+          <!-- 跟进记录表格 -->
+          <div v-show="activeTab === 'followups'" class="tab-content">
+            <el-table :data="customerFollowups" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
+              <el-table-column prop="type" label="类型" width="90">
+                <template #default="{ row }">
+                  {{ getFollowUpTypeLabel(row.type) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="content" label="跟进内容" min-width="160" show-overflow-tooltip />
+              <el-table-column prop="customerIntent" label="意向" width="80" align="center">
+                <template #default="{ row }">
+                  <el-tag v-if="row.customerIntent" :type="getIntentType(row.customerIntent)" size="small">
+                    {{ getIntentLabel(row.customerIntent) }}
+                  </el-tag>
+                  <span v-else style="color: #c0c4cc;">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="callTags" label="标签" min-width="100">
+                <template #default="{ row }">
+                  <template v-if="row.callTags && row.callTags.length > 0">
+                    <el-tag v-for="tag in row.callTags.slice(0, 2)" :key="tag" size="small" type="info" style="margin-right: 2px;">
+                      {{ tag }}
+                    </el-tag>
+                    <span v-if="row.callTags.length > 2" style="color: #909399;">+{{ row.callTags.length - 2 }}</span>
+                  </template>
+                  <span v-else style="color: #c0c4cc;">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="nextPlan" label="下次计划" width="150" />
+              <el-table-column prop="operator" label="跟进人" width="80" />
+              <el-table-column prop="createTime" label="跟进时间" width="150" />
+              <el-table-column label="操作" width="60" align="center">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" @click="viewFollowup(row)">查看</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <el-empty v-if="!detailLoading && customerFollowups.length === 0" description="暂无跟进记录" :image-size="60" />
+          </div>
+        </div>
       </div>
     </el-dialog>
 
@@ -660,20 +693,24 @@
         </div>
 
         <!-- 通话记录表格 -->
-        <el-table :data="callRecordsList" style="width: 100%" v-loading="callRecordsLoading">
+        <el-table :data="callRecordsList" style="width: 100%" v-loading="callRecordsLoading" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
           <el-table-column prop="customerName" label="客户姓名" width="120" />
-          <el-table-column prop="customerPhone" label="客户电话" width="140" />
+          <el-table-column prop="customerPhone" label="客户电话" width="140">
+            <template #default="{ row }">
+              {{ displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE) }}
+            </template>
+          </el-table-column>
           <el-table-column prop="callType" label="通话类型" width="100">
             <template #default="{ row }">
-              <el-tag :type="row.callType === 'outbound' ? 'primary' : 'success'">
+              <el-tag :type="row.callType === 'outbound' ? '' : 'success'" size="small">
                 {{ row.callType === 'outbound' ? '外呼' : '来电' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="duration" label="通话时长" width="100" />
-          <el-table-column prop="status" label="通话状态" width="100">
+          <el-table-column prop="duration" label="通话时长" width="100" align="center" />
+          <el-table-column prop="status" label="通话状态" width="100" align="center">
             <template #default="{ row }">
-              <el-tag :type="getStatusType(row.status)">
+              <el-tag :type="getStatusType(row.status)" size="small">
                 {{ getStatusText(row.status) }}
               </el-tag>
             </template>
@@ -681,17 +718,13 @@
           <el-table-column prop="startTime" label="开始时间" width="160" />
           <el-table-column prop="operator" label="操作人员" width="100" />
           <el-table-column prop="remark" label="备注" min-width="150" show-overflow-tooltip />
-          <el-table-column label="录音操作" width="160">
+          <el-table-column label="录音" width="140" align="center">
             <template #default="{ row }">
-              <div v-if="row.recordingUrl">
-                <el-button size="small" type="primary" @click="playRecording(row)" :icon="VideoPlay">
-                  播放
-                </el-button>
-                <el-button size="small" type="success" @click="downloadRecording(row)" :icon="Download">
-                  下载
-                </el-button>
-              </div>
-              <span v-else class="no-recording">无录音</span>
+              <template v-if="row.recordingUrl">
+                <el-button link type="primary" size="small" @click="playRecording(row)">播放</el-button>
+                <el-button link type="success" size="small" @click="downloadRecording(row)">下载</el-button>
+              </template>
+              <span v-else style="color: #c0c4cc;">无录音</span>
             </template>
           </el-table-column>
         </el-table>
@@ -715,15 +748,27 @@
     <el-dialog
       v-model="recordingPlayerVisible"
       title="录音播放"
-      width="600px"
+      width="500px"
       :before-close="stopRecording"
     >
       <div class="recording-player">
         <div class="recording-info">
-          <p><strong>客户：</strong>{{ currentRecording?.customerName }}</p>
-          <p><strong>电话：</strong>{{ currentRecording?.customerPhone }}</p>
-          <p><strong>时间：</strong>{{ currentRecording?.startTime }}</p>
-          <p><strong>时长：</strong>{{ currentRecording?.duration }}</p>
+          <div class="info-row">
+            <span class="info-label">客户</span>
+            <span class="info-value">{{ currentRecording?.customerName || '-' }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">电话</span>
+            <span class="info-value">{{ displaySensitiveInfoNew(currentRecording?.customerPhone, SensitiveInfoType.PHONE) }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">时间</span>
+            <span class="info-value">{{ currentRecording?.startTime || '-' }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">时长</span>
+            <span class="info-value">{{ currentRecording?.duration || '-' }}</span>
+          </div>
         </div>
         <div class="audio-player">
           <audio
@@ -784,6 +829,8 @@
               style="width: 100%"
               format="YYYY-MM-DD HH:mm"
               value-format="YYYY-MM-DD HH:mm:ss"
+              :disabled-date="disablePastDate"
+              :default-time="new Date()"
             />
           </el-form-item>
 
@@ -793,6 +840,24 @@
               <el-option label="一般意向" value="medium" />
               <el-option label="意向较低" value="low" />
               <el-option label="暂无意向" value="none" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="通话标签">
+            <el-select
+              v-model="quickFollowUpForm.callTags"
+              multiple
+              placeholder="选择通话标签（可多选）"
+              style="width: 100%"
+              collapse-tags
+              collapse-tags-tooltip
+            >
+              <el-option
+                v-for="tag in callTagOptions"
+                :key="tag"
+                :label="tag"
+                :value="tag"
+              />
             </el-select>
           </el-form-item>
 
@@ -876,53 +941,122 @@
       </div>
     </el-dialog>
 
-    <!-- 通话中弹窗 -->
-    <el-dialog
-      v-model="callInProgressVisible"
-      title="通话中"
-      width="400px"
-      :close-on-click-modal="false"
-      :close-on-press-escape="false"
-      :show-close="false"
-      center
-    >
-      <div class="call-in-progress" v-if="currentCallData">
-        <div class="call-timer">
-          <div class="timer-display">{{ formatCallDuration(callDuration) }}</div>
-          <div class="call-status">通话中...</div>
+    <!-- 通话中浮动窗口（支持拖动和最小化） -->
+    <Teleport to="body">
+      <div
+        v-if="callInProgressVisible && currentCallData"
+        class="call-floating-window"
+        :class="{ 'is-minimized': isCallWindowMinimized }"
+        :style="callWindowStyle"
+        ref="callWindowRef"
+      >
+        <!-- 窗口标题栏（可拖动） -->
+        <div
+          class="call-window-header"
+          @mousedown="startDrag"
+        >
+          <div class="header-left">
+            <span class="status-dot"></span>
+            <span class="header-title">{{ isCallWindowMinimized ? formatCallDuration(callDuration) : '通话中' }}</span>
+          </div>
+          <div class="header-actions">
+            <el-tooltip :content="isCallWindowMinimized ? '展开' : '最小化'" placement="top">
+              <el-button
+                :icon="isCallWindowMinimized ? 'FullScreen' : 'Minus'"
+                size="small"
+                circle
+                @click.stop="toggleMinimize"
+              />
+            </el-tooltip>
+          </div>
         </div>
 
-        <div class="caller-info-mini">
-          <p class="caller-name">{{ currentCallData.customerName || '未知客户' }}</p>
-          <p class="caller-phone">{{ displaySensitiveInfoNew(currentCallData.phone, SensitiveInfoType.PHONE) }}</p>
-        </div>
-
-        <div class="call-controls">
+        <!-- 最小化状态显示 -->
+        <div v-if="isCallWindowMinimized" class="call-minimized-content">
+          <div class="mini-info">
+            <span class="mini-name">{{ currentCallData.customerName || '未知客户' }}</span>
+            <span class="mini-phone">{{ displaySensitiveInfoNew(currentCallData.phone, SensitiveInfoType.PHONE) }}</span>
+          </div>
           <el-button
             type="danger"
-            size="large"
+            size="small"
             :icon="TurnOff"
             @click="endCall"
-            class="end-call-btn"
-          >
-            结束通话
-          </el-button>
-        </div>
-
-        <div class="call-notes">
-          <el-input
-            v-model="callNotes"
-            type="textarea"
-            :rows="3"
-            placeholder="通话备注..."
-            maxlength="200"
-            show-word-limit
+            circle
           />
         </div>
-      </div>
-    </el-dialog>
 
-    <!-- 呼出配置弹窗 -->
+        <!-- 展开状态显示 -->
+        <div v-else class="call-window-content">
+          <div class="call-timer">
+            <div class="timer-display">{{ formatCallDuration(callDuration) }}</div>
+            <div class="call-status">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              通话中...
+            </div>
+          </div>
+
+          <div class="caller-info-mini">
+            <p class="caller-name">{{ currentCallData.customerName || '未知客户' }}</p>
+            <p class="caller-phone">
+              {{ displaySensitiveInfoNew(currentCallData.phone, SensitiveInfoType.PHONE) }}
+              <el-tag v-if="getPhoneCarrier(currentCallData.phone)" size="small" type="info" style="margin-left: 8px;">
+                {{ getPhoneCarrier(currentCallData.phone) }}
+              </el-tag>
+            </p>
+            <div class="call-method-info">
+              <el-tag v-if="currentCallData.callMethod === 'work_phone'" type="success" size="small">
+                <el-icon><Cellphone /></el-icon>
+                工作手机: {{ currentCallData.workPhoneName || '未知' }}
+              </el-tag>
+              <el-tag v-else-if="currentCallData.callMethod === 'network_phone'" type="primary" size="small">
+                <el-icon><Phone /></el-icon>
+                网络电话: {{ currentCallData.lineName || '未知线路' }}
+              </el-tag>
+            </div>
+          </div>
+
+          <div class="call-controls">
+            <el-button
+              type="danger"
+              size="large"
+              :icon="TurnOff"
+              @click="endCall"
+              class="end-call-btn"
+            >
+              结束通话
+            </el-button>
+          </div>
+
+          <div class="call-notes">
+            <el-input
+              v-model="callNotes"
+              type="textarea"
+              :rows="3"
+              placeholder="通话备注（可在通话中随时记录）..."
+              maxlength="500"
+              show-word-limit
+            />
+          </div>
+
+          <div class="call-quick-actions">
+            <el-button size="small" @click="openQuickFollowUpFromCall">
+              <el-icon><EditPen /></el-icon>
+              快速跟进
+            </el-button>
+            <el-button size="small" @click="viewCustomerDetailFromCall">
+              <el-icon><User /></el-icon>
+              查看客户
+            </el-button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 呼出配置弹窗 - 新组件 -->
+    <CallConfigDialog v-model="showNewCallConfigDialog" />
+
+    <!-- 呼出配置弹窗 - 旧版本(保留备用) -->
     <el-dialog
       v-model="callConfigDialogVisible"
       title="呼出配置"
@@ -1670,12 +1804,18 @@ import {
   Key,
   Connection,
   Loading,
-  InfoFilled
+  InfoFilled,
+  Minus,
+  FullScreen
 } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { formatDateTime } from '@/utils/dateFormat'
 import { customerDetailApi } from '@/api/customerDetail'
+import CallConfigDialog from '@/components/Call/CallConfigDialog.vue'
+import * as callConfigApi from '@/api/callConfig'
+import { getAddressLabel } from '@/utils/addressData'
+import { getOrderStatusText as getOrderStatusTextFromConfig, getOrderStatusTagType } from '@/utils/orderStatusConfig'
 
 const router = useRouter()
 const safeNavigator = createSafeNavigator(router)
@@ -1706,8 +1846,70 @@ const callDuration = ref(0)
 const callNotes = ref('')
 const callTimer = ref(null)
 
+// 通话浮动窗口相关
+const isCallWindowMinimized = ref(false)
+const callWindowRef = ref<HTMLElement | null>(null)
+const callWindowPosition = reactive({
+  x: window.innerWidth - 470,
+  y: 100
+})
+const isDragging = ref(false)
+const dragOffset = reactive({ x: 0, y: 0 })
+
+// 计算通话窗口样式
+const callWindowStyle = computed(() => ({
+  left: `${callWindowPosition.x}px`,
+  top: `${callWindowPosition.y}px`
+}))
+
+// 切换最小化状态
+const toggleMinimize = () => {
+  isCallWindowMinimized.value = !isCallWindowMinimized.value
+}
+
+// 开始拖动
+const startDrag = (e: MouseEvent) => {
+  if ((e.target as HTMLElement).closest('.header-actions')) return
+
+  isDragging.value = true
+  const rect = callWindowRef.value?.getBoundingClientRect()
+  if (rect) {
+    dragOffset.x = e.clientX - rect.left
+    dragOffset.y = e.clientY - rect.top
+  }
+
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
+}
+
+// 拖动中
+const onDrag = (e: MouseEvent) => {
+  if (!isDragging.value) return
+
+  let newX = e.clientX - dragOffset.x
+  let newY = e.clientY - dragOffset.y
+
+  // 限制在窗口范围内
+  const windowWidth = isCallWindowMinimized.value ? 280 : 420
+  const windowHeight = isCallWindowMinimized.value ? 60 : 400
+
+  newX = Math.max(0, Math.min(newX, window.innerWidth - windowWidth))
+  newY = Math.max(0, Math.min(newY, window.innerHeight - windowHeight))
+
+  callWindowPosition.x = newX
+  callWindowPosition.y = newY
+}
+
+// 停止拖动
+const stopDrag = () => {
+  isDragging.value = false
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+}
+
 // 呼出配置相关
 const callConfigDialogVisible = ref(false)
+const showNewCallConfigDialog = ref(false) // 新版呼出配置弹窗
 const callConfigSaving = ref(false)
 const callConfigFormRef = ref()
 const activeConfigTab = ref('callMethod')
@@ -1857,56 +2059,13 @@ const pagination = reactive({
 })
 
 // 呼出列表数据
-const outboundList = ref([
-  {
-    id: 1,
-    customerName: '张三',
-    phone: '13800138001',
-    company: '北京科技有限公司',
-    customerLevel: 'gold',
-    lastCallTime: '2024-01-15 14:30:00',
-    callCount: 5,
-    status: 'pending',
-    salesPerson: '李销售',
-    remark: '意向客户，需要跟进产品A'
-  },
-  {
-    id: 2,
-    customerName: '李四',
-    phone: '13800138002',
-    company: '上海贸易集团',
-    customerLevel: 'silver',
-    lastCallTime: '2024-01-14 16:20:00',
-    callCount: 3,
-    status: 'connected',
-    salesPerson: '王销售',
-    remark: '已下单，需要确认发货时间'
-  },
-  {
-    id: 3,
-    customerName: '王五',
-    phone: '13800138003',
-    company: '深圳制造企业',
-    customerLevel: 'normal',
-    lastCallTime: '2024-01-13 10:15:00',
-    callCount: 2,
-    status: 'no_answer',
-    salesPerson: '张销售',
-    remark: '多次未接听，建议更换联系时间'
-  }
-])
+const outboundList = ref<any[]>([])
 
 const outboundForm = ref({
-  callMethod: 'network', // 外呼方式：network(网络电话) | mobile(工作手机)
-  networkConfig: {
-    lineId: '', // 选择的线路ID
-    audioQuality: 'standard' // 音质选择
-  },
-  mobileConfig: {
-    phoneNumber: '', // 工作手机号码
-    enableRecording: true // 是否启用录音
-  },
-  selectedCustomer: null,
+  callMethod: '', // 外呼方式：work_phone(工作手机) | network_phone(网络电话)
+  selectedLine: null as number | null, // 选择的线路ID
+  selectedWorkPhone: null as number | null, // 选择的工作手机ID
+  selectedCustomer: null as any,
   customerPhone: '', // 从客户选择的号码
   manualPhone: '', // 手动输入的号码
   customerId: '',
@@ -1914,23 +2073,20 @@ const outboundForm = ref({
 })
 
 // 客户选择相关
-const customerOptions = ref([])
-const phoneOptions = ref([])
+const customerOptions = ref<any[]>([])
+const phoneOptions = ref<any[]>([])
 
-// 网络电话线路选择数据
-const networkLines = ref([
-  { id: 'line001', name: '阿里云线路1', provider: 'aliyun', status: 'active', quality: '高清' },
-  { id: 'line002', name: '阿里云线路2', provider: 'aliyun', status: 'active', quality: '标准' },
-  { id: 'line003', name: '腾讯云线路1', provider: 'tencent', status: 'active', quality: '高清' },
-  { id: 'line004', name: '华为云线路1', provider: 'huawei', status: 'maintenance', quality: '高清' }
-])
+// 网络电话线路选择数据 - 从呼出配置API获取
+const availableLines = ref<any[]>([])
 
-// 工作手机配置数据
-const workPhones = ref([
-  { id: 'phone001', number: '13800138001', name: '销售专线1', status: 'active', owner: '张三' },
-  { id: 'phone002', number: '13800138002', name: '销售专线2', status: 'active', owner: '李四' },
-  { id: 'phone003', number: '13800138003', name: '客服专线1', status: 'busy', owner: '王五' }
-])
+// 工作手机配置数据 - 从呼出配置API获取
+const workPhones = ref<any[]>([])
+
+// 用户偏好设置
+const userCallPreference = ref({
+  preferMobile: false,
+  defaultLineId: null as number | null
+})
 
 const outboundRules = {
   customerPhone: [
@@ -1972,8 +2128,12 @@ const quickFollowUpForm = reactive({
   content: '',
   nextFollowTime: '',
   intention: '',
+  callTags: [] as string[],
   remark: ''
 })
+
+// 通话标签选项（与APP保持一致）
+const callTagOptions = ['意向', '无意向', '再联系', '成交', '需报价', '已成交']
 
 const quickFollowUpRules = {
   type: [
@@ -1981,11 +2141,16 @@ const quickFollowUpRules = {
   ],
   content: [
     { required: true, message: '请输入跟进内容', trigger: 'blur' },
-    { min: 10, message: '跟进内容至少10个字符', trigger: 'blur' }
-  ],
-  intention: [
-    { required: true, message: '请选择客户意向', trigger: 'change' }
+    { min: 2, message: '跟进内容至少2个字符', trigger: 'blur' }
   ]
+}
+
+// 禁止选择过去的日期（只能选择今天及以后的日期）
+const disablePastDate = (time: Date) => {
+  // 获取今天的开始时间（0点0分0秒）
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return time.getTime() < today.getTime()
 }
 
 // 客户详情数据 - 从API加载
@@ -2011,11 +2176,12 @@ const loadCustomerDetailData = async (customerId: string) => {
     // 处理订单数据
     if (ordersRes.success && ordersRes.data) {
       customerOrders.value = ordersRes.data.map((order: any) => ({
-        orderNo: order.orderNo || order.id,
-        productName: order.productName || order.items?.[0]?.productName || '未知商品',
-        amount: order.totalAmount || order.amount || 0,
+        id: order.id,
+        orderNo: order.orderNumber || order.orderNo || order.id,
+        productName: order.productNames || order.products?.[0]?.name || order.productName || '未知商品',
+        amount: order.totalAmount || order.finalAmount || order.amount || 0,
         status: order.status || 'pending',
-        createTime: order.createdAt || order.createTime
+        createTime: formatDateTime(order.createdAt || order.createTime || order.orderDate)
       }))
     } else {
       customerOrders.value = []
@@ -2024,13 +2190,17 @@ const loadCustomerDetailData = async (customerId: string) => {
     // 处理通话记录数据
     if (callsRes.success && callsRes.data) {
       customerCalls.value = callsRes.data.map((call: any) => ({
+        id: call.id,
         callType: call.callType || call.type || 'outbound',
         duration: formatCallDuration(call.duration),
-        status: call.status || 'connected',
-        startTime: call.startTime || call.createdAt,
-        operator: call.operatorName || call.operator || '未知',
-        remark: call.remark || call.notes || '',
-        recordingUrl: call.recordingUrl || null
+        status: call.callStatus || call.status || 'connected',
+        startTime: formatDateTime(call.startTime || call.createdAt),
+        operator: call.userName || call.operatorName || call.operator || '未知',
+        callTags: call.callTags || [],
+        remark: call.notes || call.remark || '',
+        recordingUrl: call.recordingUrl || null,
+        // 保留原始数据用于详情查看
+        _raw: call
       }))
     } else {
       customerCalls.value = []
@@ -2039,11 +2209,16 @@ const loadCustomerDetailData = async (customerId: string) => {
     // 处理跟进记录数据
     if (followupsRes.success && followupsRes.data) {
       customerFollowups.value = followupsRes.data.map((followup: any) => ({
-        type: followup.type || '电话跟进',
+        id: followup.id,
+        type: followup.type || followup.followUpType || 'call',
         content: followup.content || followup.description || '',
-        nextPlan: followup.nextPlanTime || followup.nextPlan || '',
-        operator: followup.operatorName || followup.operator || '未知',
-        createTime: followup.createdAt || followup.createTime
+        customerIntent: followup.customerIntent || followup.customer_intent || null,
+        callTags: followup.callTags || followup.call_tags || [],
+        nextPlan: formatDateTime(followup.nextFollowUp || followup.nextTime || followup.nextPlanTime || followup.next_follow_up_date),
+        operator: followup.createdByName || followup.author || followup.operatorName || followup.user_name || '未知',
+        createTime: formatDateTime(followup.createdAt || followup.createTime || followup.created_at),
+        // 保留原始数据用于详情查看
+        _raw: followup
       }))
     } else {
       customerFollowups.value = []
@@ -2094,18 +2269,19 @@ const formatDuration = (seconds: number) => {
 const getCustomerShippingAddress = (customer: any) => {
   if (!customer) return '暂无地址'
 
-  // 如果客户有完整的地址信息，组合成收货地址
-  if (customer.province || customer.city || customer.district || customer.street || customer.detailAddress) {
-    const addressParts = [
+  // 如果客户有完整的地址信息，使用地址转换函数获取中文名称
+  if (customer.province || customer.city || customer.district || customer.street) {
+    // 使用地址数据工具将代码转换为中文名称
+    const addressLabel = getAddressLabel(
       customer.province,
       customer.city,
       customer.district,
-      customer.street,
-      customer.detailAddress
-    ].filter(Boolean)
+      customer.street
+    )
 
-    if (addressParts.length > 0) {
-      return addressParts.join(' ')
+    // 拼接详细地址
+    if (addressLabel) {
+      return customer.detailAddress ? addressLabel + customer.detailAddress : addressLabel
     }
   }
 
@@ -2123,10 +2299,41 @@ const getCustomerShippingAddress = (customer: any) => {
 }
 
 // 通话状态切换
-const toggleCallStatus = () => {
-  callStatus.value = callStatus.value === 'ready' ? 'busy' : 'ready'
-  const statusText = callStatus.value === 'ready' ? '就绪' : '忙碌'
-  ElMessage.success(`状态已切换为：${statusText}`)
+const toggleCallStatus = async () => {
+  const newStatus = callStatus.value === 'ready' ? 'busy' : 'ready'
+  const statusText = newStatus === 'ready' ? '就绪' : '忙碌'
+
+  try {
+    // 保存状态到本地存储
+    localStorage.setItem('call_agent_status', newStatus)
+    localStorage.setItem('call_agent_status_time', new Date().toISOString())
+
+    // 更新状态
+    callStatus.value = newStatus
+
+    // 如果切换到忙碌状态，记录原因（可选）
+    if (newStatus === 'busy') {
+      // 可以弹出选择忙碌原因的对话框
+      ElMessage.warning(`状态已切换为：${statusText}，来电将不会分配给您`)
+    } else {
+      ElMessage.success(`状态已切换为：${statusText}，您可以接收来电了`)
+    }
+
+    // TODO: 同步到后端（如果有坐席状态 API）
+    // await callApi.updateAgentStatus({ status: newStatus })
+
+  } catch (error) {
+    console.error('切换状态失败:', error)
+    ElMessage.error('切换状态失败')
+  }
+}
+
+// 初始化坐席状态（从本地存储恢复）
+const initAgentStatus = () => {
+  const savedStatus = localStorage.getItem('call_agent_status')
+  if (savedStatus === 'ready' || savedStatus === 'busy') {
+    callStatus.value = savedStatus
+  }
 }
 
 // 工作手机相关方法
@@ -2233,6 +2440,11 @@ const refreshQRCode = async () => {
   await generateQRCode()
 }
 
+// 断开二维码连接（别名，用于模板）
+const disconnectQRConnection = async () => {
+  await disconnectQRDevice()
+}
+
 const disconnectQRDevice = async () => {
   if (!qrConnection.connectionId) return
 
@@ -2259,6 +2471,40 @@ const disconnectQRDevice = async () => {
   } catch (error) {
     console.error('断开连接失败:', error)
     ElMessage.error('断开连接失败')
+  }
+}
+
+// 获取二维码过期时间文本
+const getQRExpiryText = () => {
+  if (!qrConnection.expiresAt) return ''
+  const now = new Date()
+  const expiresAt = new Date(qrConnection.expiresAt)
+  const diffMs = expiresAt.getTime() - now.getTime()
+
+  if (diffMs <= 0) return '已过期'
+
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffSecs = Math.floor((diffMs % 60000) / 1000)
+
+  if (diffMins > 0) {
+    return `${diffMins}分${diffSecs}秒后过期`
+  }
+  return `${diffSecs}秒后过期`
+}
+
+// 移除已连接设备
+const removeConnectedDevice = async (deviceId: string) => {
+  try {
+    const response = await disconnectDevice(deviceId)
+    if (response.success) {
+      ElMessage.success('设备已移除')
+      await loadConnectedDevices()
+    } else {
+      ElMessage.error(response.message || '移除设备失败')
+    }
+  } catch (error) {
+    console.error('移除设备失败:', error)
+    ElMessage.error('移除设备失败')
   }
 }
 
@@ -2603,6 +2849,12 @@ const refreshCallRecords = async () => {
 
 // 呼出配置相关方法
 const openCallConfigDialog = () => {
+  // 使用新版呼出配置弹窗
+  showNewCallConfigDialog.value = true
+}
+
+// 旧版打开方法（保留备用）
+const openOldCallConfigDialog = () => {
   // 加载当前配置
   loadCallConfig()
   callConfigDialogVisible.value = true
@@ -2720,26 +2972,56 @@ const loadOutboundList = async () => {
       customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
     )
 
-    // 转换为呼出列表格式
-    const convertedList = userCustomers.map(customer => ({
-      id: customer.id,
-      customerName: customer.name,
-      phone: customer.phone, // 修正字段名称，与表格显示一致
-      customerPhone: customer.phone, // 保留原字段名，用于其他地方
-      company: customer.company || '未填写',
-      customerLevel: customer.level,
-      lastCallTime: customer.lastServiceDate || '暂无记录',
-      callCount: 0, // 可以后续从通话记录中统计
-      status: 'pending', // 默认待呼叫状态
-      salesPerson: userStore.currentUser?.name || '当前用户',
-      remark: customer.remarks || '',
-      // 添加完整的地址信息
-      address: customer.address || '',
-      province: customer.province || '',
-      city: customer.city || '',
-      district: customer.district || '',
-      street: customer.street || '',
-      detailAddress: customer.detailAddress || ''
+    // 转换为呼出列表格式，并异步加载每个客户的跟进和通话数据
+    const convertedList = await Promise.all(userCustomers.map(async customer => {
+      // 尝试获取客户的最新跟进记录和通话记录
+      let lastFollowUp = ''
+      let callTags: string[] = []
+      let lastCallTime = customer.lastServiceDate || '暂无记录'
+      let callCount = 0
+
+      try {
+        // 获取跟进记录
+        const followupsRes = await customerDetailApi.getCustomerFollowUps(customer.id)
+        if (followupsRes.success && followupsRes.data && followupsRes.data.length > 0) {
+          const latestFollowup = followupsRes.data[0]
+          lastFollowUp = latestFollowup.content ? (latestFollowup.content.length > 20 ? latestFollowup.content.substring(0, 20) + '...' : latestFollowup.content) : ''
+          callTags = latestFollowup.callTags || latestFollowup.call_tags || []
+        }
+
+        // 获取通话记录
+        const callsRes = await customerDetailApi.getCustomerCalls(customer.id)
+        if (callsRes.success && callsRes.data) {
+          callCount = callsRes.data.length
+          if (callsRes.data.length > 0) {
+            lastCallTime = formatDateTime(callsRes.data[0].startTime || callsRes.data[0].createdAt)
+          }
+        }
+      } catch (e) {
+        // 忽略单个客户数据加载失败
+      }
+
+      return {
+        id: customer.id,
+        customerName: customer.name,
+        phone: customer.phone,
+        customerPhone: customer.phone,
+        company: customer.company || '未填写',
+        customerLevel: customer.level,
+        lastCallTime,
+        callCount,
+        lastFollowUp,
+        callTags,
+        status: callCount > 0 ? 'connected' : 'pending',
+        salesPerson: userStore.currentUser?.name || '当前用户',
+        remark: customer.remarks || '',
+        address: customer.address || '',
+        province: customer.province || '',
+        city: customer.city || '',
+        district: customer.district || '',
+        street: customer.street || '',
+        detailAddress: customer.detailAddress || ''
+      }
     }))
 
     // 更新呼出列表数据
@@ -2863,17 +3145,18 @@ const loadCallRecords = async () => {
     })
 
     // 从store获取数据并转换格式
-    callRecordsList.value = callStore.callRecords.map(record => ({
+    callRecordsList.value = callStore.callRecords.map((record: any) => ({
       id: record.id,
-      customerName: record.customerName,
-      customerPhone: record.customerPhone,
-      callType: record.callType,
+      // 尝试从多个字段获取客户姓名
+      customerName: record.customerName || record.customer_name || '未知客户',
+      customerPhone: record.customerPhone || record.customer_phone || '-',
+      callType: record.callType || record.call_type || 'outbound',
       duration: formatCallDuration(record.duration),
-      status: record.callStatus,
-      startTime: record.createdAt,
-      operator: record.operatorName || '系统',
-      remark: record.notes || '',
-      recordingUrl: record.recordingUrl || null
+      status: record.callStatus || record.call_status || record.status || 'connected',
+      startTime: formatDateTime(record.startTime || record.start_time || record.createdAt || record.created_at),
+      operator: record.userName || record.user_name || record.operatorName || '系统',
+      remark: record.notes || record.remark || '',
+      recordingUrl: record.recordingUrl || record.recording_url || null
     }))
     callRecordsPagination.total = callStore.pagination.total
   } catch (error) {
@@ -2957,6 +3240,7 @@ const resetQuickFollowUpForm = () => {
     content: '',
     nextFollowTime: '',
     intention: '',
+    callTags: [],
     remark: ''
   })
   quickFollowUpFormRef.value?.clearValidate()
@@ -2970,17 +3254,17 @@ const submitQuickFollowUp = async () => {
     quickFollowUpSubmitting.value = true
 
     // 准备跟进记录数据
-    const followUpData: Omit<FollowUpRecord, 'id' | 'createdAt' | 'updatedAt'> = {
+    const followUpData: any = {
       callId: '', // 如果有关联的通话记录ID，可以在这里设置
       customerId: currentCustomer.value.id,
       customerName: currentCustomer.value.name,
-      followUpType: quickFollowUpForm.type as 'call' | 'visit' | 'email' | 'message',
+      type: quickFollowUpForm.type,
       content: quickFollowUpForm.content,
-      nextFollowUpDate: quickFollowUpForm.nextFollowTime || undefined,
+      customerIntent: quickFollowUpForm.intention || null,
+      callTags: quickFollowUpForm.callTags.length > 0 ? quickFollowUpForm.callTags : null,
+      nextFollowUpDate: quickFollowUpForm.nextFollowTime || null,
       priority: 'medium', // 默认中等优先级
-      status: 'pending', // 默认待跟进状态
-      userId: userStore.currentUser?.id || '1',
-      userName: userStore.currentUser?.name || '当前用户'
+      status: 'pending' // 默认待跟进状态
     }
 
     // 调用API创建跟进记录
@@ -3011,19 +3295,97 @@ const getFollowUpTypeText = (type: string) => {
   return typeMap[type] || '其他跟进'
 }
 
-const handleExport = () => {
-  ElMessage.info('导出数据功能开发中...')
+const handleExport = async () => {
+  if (outboundList.value.length === 0) {
+    ElMessage.warning('没有可导出的数据')
+    return
+  }
+
+  try {
+    // 动态导入 xlsx 库
+    const XLSX = await import('xlsx')
+
+    // 准备导出数据
+    const exportData = outboundList.value.map(item => ({
+      '客户姓名': item.customerName || '-',
+      '电话号码': item.phone || '-',
+      '客户等级': getLevelText(item.customerLevel),
+      '最后通话': item.lastCallTime || '-',
+      '通话次数': item.callCount || 0,
+      '最新跟进': item.lastFollowUp || '-',
+      '通话标签': item.callTags?.join('、') || '-',
+      '状态': getStatusText(item.status),
+      '负责人': item.salesPerson || '-',
+      '备注': item.remark || '-'
+    }))
+
+    // 创建工作簿和工作表
+    const worksheet = XLSX.utils.json_to_sheet(exportData)
+
+    // 设置列宽
+    const columnWidths = [
+      { wch: 12 },  // 客户姓名
+      { wch: 14 },  // 电话号码
+      { wch: 10 },  // 客户等级
+      { wch: 18 },  // 最后通话
+      { wch: 10 },  // 通话次数
+      { wch: 25 },  // 最新跟进
+      { wch: 20 },  // 通话标签
+      { wch: 10 },  // 状态
+      { wch: 10 },  // 负责人
+      { wch: 30 }   // 备注
+    ]
+    worksheet['!cols'] = columnWidths
+
+    // 创建工作簿
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, '呼出列表')
+
+    // 生成文件名（包含日期）
+    const now = new Date()
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
+    const fileName = `呼出列表_${dateStr}_${timeStr}.xlsx`
+
+    // 导出文件
+    XLSX.writeFile(workbook, fileName)
+
+    ElMessage.success(`已导出 ${exportData.length} 条数据`)
+  } catch (error) {
+    console.error('导出失败:', error)
+    ElMessage.error('导出失败，请重试')
+  }
 }
 
 const handleCall = (row: any) => {
   // 打开外呼对话框并预填客户信息
-  outboundForm.value.selectedCustomer = {
+  const customer = {
     id: row.id || row.customerId,
     name: row.customerName,
     phone: row.phone,
     company: row.company || ''
-  } as any
+  }
+
+  // 将预填充的客户添加到选项列表中，确保 select 组件能正确显示
+  const existingIndex = customerOptions.value.findIndex((c: any) => c.id === customer.id)
+  if (existingIndex === -1) {
+    customerOptions.value = [customer, ...customerOptions.value]
+  }
+
+  outboundForm.value.selectedCustomer = customer as any
+  outboundForm.value.customerId = customer.id
+
+  // 更新号码选项
+  const phones = []
+  if (customer.phone) {
+    phones.push({
+      phone: customer.phone,
+      type: '主号码'
+    })
+  }
+  phoneOptions.value = phones
   outboundForm.value.customerPhone = row.phone
+
   showOutboundDialog.value = true
 }
 
@@ -3064,15 +3426,19 @@ const handleAddFollowUp = async (row: any) => {
   quickFollowUpVisible.value = true
 }
 
-const handleCreateOrder = (row: any) => {
+const handleCreateOrder = (row?: any) => {
+  // 如果有传入row参数，使用row的数据；否则使用currentCustomer
+  const customer = row || currentCustomer.value
+  if (!customer) return
+
   // 跳转到新增订单页面，并传递客户信息
   safeNavigator.push({
     name: 'OrderAdd',
     query: {
-      customerId: row.id,
-      customerName: row.customerName,
-      customerPhone: row.phone,
-      customerCompany: row.company || '',
+      customerId: customer.id,
+      customerName: customer.customerName || customer.name,
+      customerPhone: customer.phone,
+      customerCompany: customer.company || '',
       source: 'call_management' // 标识来源
     }
   })
@@ -3133,6 +3499,80 @@ const getStatusText = (status: string) => {
     'failed': '失败'
   }
   return statusMap[status] || '未知'
+}
+
+// 获取跟进类型标签
+const getFollowUpTypeLabel = (type: string) => {
+  const typeMap: Record<string, string> = {
+    'call': '电话跟进',
+    'visit': '上门拜访',
+    'email': '邮件跟进',
+    'message': '短信跟进'
+  }
+  return typeMap[type] || type || '其他'
+}
+
+// 获取客户意向类型
+const getIntentType = (intent: string) => {
+  const intentMap: Record<string, string> = {
+    'high': 'success',
+    'medium': 'warning',
+    'low': 'info',
+    'none': 'danger'
+  }
+  return intentMap[intent] || 'info'
+}
+
+// 获取客户意向标签
+const getIntentLabel = (intent: string) => {
+  const intentMap: Record<string, string> = {
+    'high': '高意向',
+    'medium': '中意向',
+    'low': '低意向',
+    'none': '无意向'
+  }
+  return intentMap[intent] || intent || '未知'
+}
+
+// 详情弹窗中发起外呼
+const handleDetailOutboundCall = () => {
+  if (!currentCustomer.value) return
+
+  // 关闭详情弹窗
+  showDetailDialog.value = false
+
+  // 预填充客户信息并打开外呼弹窗
+  const customer = {
+    id: currentCustomer.value.id,
+    name: currentCustomer.value.customerName,
+    phone: currentCustomer.value.phone,
+    company: ''
+  }
+
+  // 将预填充的客户添加到选项列表中
+  const existingIndex = customerOptions.value.findIndex((c: any) => c.id === customer.id)
+  if (existingIndex === -1) {
+    customerOptions.value = [customer, ...customerOptions.value]
+  }
+
+  outboundForm.value.selectedCustomer = customer as any
+  outboundForm.value.customerId = customer.id
+  showOutboundDialog.value = true
+}
+
+// 新建售后
+const handleCreateAftersales = () => {
+  if (!currentCustomer.value) return
+
+  // 跳转到售后创建页面，带上客户信息
+  router.push({
+    path: '/service/aftersales/add',
+    query: {
+      customerId: currentCustomer.value.id,
+      customerName: currentCustomer.value.customerName,
+      customerPhone: currentCustomer.value.phone
+    }
+  })
 }
 
 // 搜索防抖定时器
@@ -3345,27 +3785,107 @@ const startOutboundCall = async () => {
       return
     }
 
+    // 检查外呼方式
+    if (!outboundForm.value.callMethod) {
+      ElMessage.warning('请选择外呼方式')
+      return
+    }
+
     outboundLoading.value = true
 
-    // 根据是否有客户选择来决定传递的参数
-    const callParams = {
-      customerPhone: phoneToCall,
-      notes: outboundForm.value.notes,
-      callMethod: outboundForm.value.callMethod,
-      callConfig: outboundForm.value.callMethod === 'network'
-        ? outboundForm.value.networkConfig
-        : outboundForm.value.mobileConfig
+    // 获取客户名称
+    const customerName = outboundForm.value.selectedCustomer?.name || '未知客户'
+
+    // 根据外呼方式处理
+    if (outboundForm.value.callMethod === 'work_phone') {
+      // 工作手机外呼 - 通过APP发起呼叫
+      const selectedPhone = workPhones.value.find(p => p.id === outboundForm.value.selectedWorkPhone)
+      if (!selectedPhone) {
+        ElMessage.warning('请选择工作手机')
+        return
+      }
+
+      // 调用后端API通知APP发起呼叫
+      try {
+        const response = await callConfigApi.initiateWorkPhoneCall({
+          workPhoneId: outboundForm.value.selectedWorkPhone,
+          targetPhone: phoneToCall,
+          customerId: outboundForm.value.customerId || undefined,
+          customerName: customerName,
+          notes: outboundForm.value.notes
+        })
+
+        if (response && (response as any).success !== false) {
+          // 关闭外呼弹窗
+          closeOutboundDialog()
+
+          // 设置当前通话数据并显示通话中弹窗
+          currentCallData.value = {
+            id: (response as any).callId || Date.now().toString(),
+            customerName: customerName,
+            phone: phoneToCall,
+            callMethod: 'work_phone',
+            workPhoneName: selectedPhone.name || selectedPhone.number
+          }
+          callDuration.value = 0
+          callNotes.value = outboundForm.value.notes || ''
+          callInProgressVisible.value = true
+
+          // 开始计时
+          startCallTimer()
+
+          ElMessage.success(`正在通过工作手机 ${selectedPhone.number} 呼叫...`)
+        } else {
+          ElMessage.error((response as any)?.message || '发起呼叫失败')
+        }
+      } catch (error: any) {
+        console.error('工作手机外呼失败:', error)
+        ElMessage.error(error.message || '工作手机外呼失败')
+      }
+    } else if (outboundForm.value.callMethod === 'network_phone') {
+      // 网络电话外呼 - 通过系统线路发起呼叫
+      const selectedLine = availableLines.value.find(l => l.id === outboundForm.value.selectedLine)
+      if (!selectedLine) {
+        ElMessage.warning('请选择外呼线路')
+        return
+      }
+
+      // 调用后端API发起网络电话呼叫
+      try {
+        const callParams = {
+          customerId: outboundForm.value.customerId || '',
+          customerPhone: phoneToCall,
+          customerName: customerName,
+          notes: outboundForm.value.notes,
+          lineId: outboundForm.value.selectedLine
+        }
+
+        await callStore.makeOutboundCall(callParams)
+
+        // 关闭外呼弹窗
+        closeOutboundDialog()
+
+        // 设置当前通话数据并显示通话中弹窗
+        currentCallData.value = {
+          id: Date.now().toString(),
+          customerName: customerName,
+          phone: phoneToCall,
+          callMethod: 'network_phone',
+          lineName: selectedLine.name
+        }
+        callDuration.value = 0
+        callNotes.value = outboundForm.value.notes || ''
+        callInProgressVisible.value = true
+
+        // 开始计时
+        startCallTimer()
+
+        ElMessage.success(`正在通过线路 ${selectedLine.name} 呼叫...`)
+      } catch (error: any) {
+        console.error('网络电话外呼失败:', error)
+        ElMessage.error(error.message || '网络电话外呼失败')
+      }
     }
-
-    // 只有在选择了客户且没有手动输入号码时，才传递客户ID
-    if (outboundForm.value.selectedCustomer && !outboundForm.value.manualPhone) {
-      callParams.customerId = outboundForm.value.customerId || ''
-    }
-
-    await callStore.makeOutboundCall(callParams)
-
-    closeOutboundDialog()
-    ElMessage.success('外呼已发起')
 
     // 刷新通话记录
     await callStore.fetchCallRecords()
@@ -3445,18 +3965,28 @@ const endCall = async () => {
 
   // 保存通话记录
   try {
-    await saveCallRecord()
+    // 如果有callId，调用后端API结束通话
+    if (currentCallData.value?.id) {
+      await callConfigApi.endCall(currentCallData.value.id, {
+        notes: callNotes.value,
+        duration: callDuration.value
+      })
+    }
     ElMessage.success('通话已结束，记录已保存')
   } catch (error) {
     console.error('保存通话记录失败:', error)
     ElMessage.error('保存通话记录失败')
   }
 
-  // 关闭通话中弹窗
+  // 关闭通话中弹窗并重置状态
   callInProgressVisible.value = false
   currentCallData.value = null
   callDuration.value = 0
   callNotes.value = ''
+  isCallWindowMinimized.value = false
+
+  // 刷新通话记录
+  await callStore.fetchCallRecords()
 }
 
 const startCallTimer = () => {
@@ -3475,22 +4005,8 @@ const stopCallTimer = () => {
 const saveCallRecord = async () => {
   if (!currentCallData.value) return
 
-  const callRecord = {
-    customerId: currentCallData.value.id || '',
-    customerName: currentCallData.value.customerName || '未知客户',
-    phone: currentCallData.value.phone,
-    direction: 'incoming',
-    duration: callDuration.value,
-    status: 'completed',
-    notes: callNotes.value,
-    startTime: new Date(Date.now() - callDuration.value * 1000).toISOString(),
-    endTime: new Date().toISOString()
-  }
-
-  // 这里应该调用API保存通话记录
-  await callStore.saveCallRecord(callRecord)
-
-  // 刷新数据
+  // 如果是通过新的发起呼叫流程，通话记录已经在后端创建
+  // 这里只需要刷新数据
   await refreshData()
 }
 
@@ -3510,6 +4026,31 @@ const quickFollowUp = () => {
   incomingCallVisible.value = false
 }
 
+// 通话中弹窗的快捷操作
+const openQuickFollowUpFromCall = () => {
+  if (!currentCallData.value) return
+
+  // 设置当前客户信息用于跟进
+  currentCustomer.value = {
+    id: currentCallData.value.customerId || currentCallData.value.id,
+    name: currentCallData.value.customerName,
+    phone: currentCallData.value.phone
+  }
+  quickFollowUpVisible.value = true
+}
+
+const viewCustomerDetailFromCall = () => {
+  if (!currentCallData.value) return
+
+  // 设置当前客户信息用于查看详情
+  currentCustomer.value = {
+    id: currentCallData.value.customerId || currentCallData.value.id,
+    customerName: currentCallData.value.customerName,
+    phone: currentCallData.value.phone
+  }
+  showDetailDialog.value = true
+}
+
 // 模拟呼入测试方法（开发测试用）
 const testIncomingCall = () => {
   const testCustomer = {
@@ -3524,17 +4065,55 @@ const testIncomingCall = () => {
 }
 
 const viewCallDetail = (record: any) => {
-  // 处理不同的数据结构
-  const callId = record.id || record.callId
-  const customerId = record.customerId || record.customer_id
+  // 显示通话详情对话框 - 美化版
+  const callTypeTag = record.callType === 'outbound'
+    ? '<span style="display: inline-block; padding: 2px 8px; background: #ecf5ff; color: #409eff; border-radius: 4px; font-size: 12px;">外呼</span>'
+    : '<span style="display: inline-block; padding: 2px 8px; background: #f0f9eb; color: #67c23a; border-radius: 4px; font-size: 12px;">来电</span>'
 
-  if (callId) {
-    // 跳转到通话详情页面或显示详情对话框
-    safeNavigator.push(`/service-management/call/records?callId=${callId}`)
-  } else {
-    // 如果没有ID，显示提示信息
-    ElMessage.info(`查看通话详情`)
-  }
+  const statusColor = record.status === 'connected' ? '#67c23a' : (record.status === 'no_answer' ? '#e6a23c' : '#f56c6c')
+  const statusTag = `<span style="display: inline-block; padding: 2px 8px; background: ${statusColor}20; color: ${statusColor}; border-radius: 4px; font-size: 12px;">${getStatusText(record.status)}</span>`
+
+  ElMessageBox.alert(
+    `<div style="padding: 8px 0;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="color: #909399; font-size: 12px;">呼叫类型</span>
+          <span>${callTypeTag}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="color: #909399; font-size: 12px;">通话状态</span>
+          <span>${statusTag}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="color: #909399; font-size: 12px;">通话时长</span>
+          <span style="color: #303133; font-weight: 500;">${record.duration || '0秒'}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="color: #909399; font-size: 12px;">操作人员</span>
+          <span style="color: #303133;">${record.operator || '-'}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px; grid-column: span 2;">
+          <span style="color: #909399; font-size: 12px;">开始时间</span>
+          <span style="color: #303133;">${record.startTime || '-'}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px; grid-column: span 2;">
+          <span style="color: #909399; font-size: 12px;">备注</span>
+          <span style="color: #606266;">${record.remark || '无'}</span>
+        </div>
+        ${record.recordingUrl ? `
+        <div style="display: flex; flex-direction: column; gap: 4px; grid-column: span 2;">
+          <span style="color: #909399; font-size: 12px;">录音</span>
+          <a href="${record.recordingUrl}" target="_blank" style="color: #409eff; text-decoration: none;">点击播放录音</a>
+        </div>` : ''}
+      </div>
+    </div>`,
+    '通话详情',
+    {
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: '关闭',
+      customClass: 'detail-message-box'
+    }
+  )
 }
 
 const createFollowUp = (record: CallRecord) => {
@@ -3546,8 +4125,14 @@ const createFollowUp = (record: CallRecord) => {
 const getOrderStatusType = (status: string) => {
   const statusMap: Record<string, string> = {
     'pending': 'warning',
+    'pending_audit': 'warning',
+    'pending_transfer': 'warning',
+    'processing': 'primary',
+    'shipped': 'primary',
+    'delivered': 'success',
     'completed': 'success',
-    'cancelled': 'danger'
+    'cancelled': 'danger',
+    'refunded': 'danger'
   }
   return statusMap[status] || 'info'
 }
@@ -3555,10 +4140,16 @@ const getOrderStatusType = (status: string) => {
 const getOrderStatusText = (status: string) => {
   const statusMap: Record<string, string> = {
     'pending': '待处理',
+    'pending_audit': '待审核',
+    'pending_transfer': '待流转',
+    'processing': '处理中',
+    'shipped': '已发货',
+    'delivered': '已签收',
     'completed': '已完成',
-    'cancelled': '已取消'
+    'cancelled': '已取消',
+    'refunded': '已退款'
   }
-  return statusMap[status] || '未知'
+  return statusMap[status] || status || '未知'
 }
 
 const getAftersalesStatusType = (status: string) => {
@@ -3582,15 +4173,91 @@ const getAftersalesStatusText = (status: string) => {
 }
 
 const viewOrder = (row: any) => {
-  ElMessage.info(`查看订单：${row.orderNo}`)
+  // 跳转到订单详情页面
+  const orderId = row.id || row.orderNo
+  if (orderId) {
+    router.push(`/order/detail/${orderId}`)
+  } else {
+    ElMessage.warning('订单ID不存在')
+  }
 }
 
 const viewAftersales = (row: any) => {
-  ElMessage.info(`查看售后工单：${row.ticketNo}`)
+  // 跳转到售后详情页面
+  const ticketId = row.id || row.ticketNo
+  if (ticketId) {
+    router.push(`/service/aftersales/detail/${ticketId}`)
+  } else {
+    ElMessage.warning('工单ID不存在')
+  }
 }
 
 const viewFollowup = (row: any) => {
-  ElMessage.info(`查看跟进记录`)
+  // 显示跟进记录详情对话框 - 美化版
+  const typeMap: Record<string, { bg: string; color: string }> = {
+    'call': { bg: '#ecf5ff', color: '#409eff' },
+    'visit': { bg: '#f0f9eb', color: '#67c23a' },
+    'email': { bg: '#fdf6ec', color: '#e6a23c' },
+    'message': { bg: '#f4f4f5', color: '#909399' }
+  }
+  const typeStyle = typeMap[row.type] || { bg: '#f4f4f5', color: '#909399' }
+  const typeTag = `<span style="display: inline-block; padding: 2px 8px; background: ${typeStyle.bg}; color: ${typeStyle.color}; border-radius: 4px; font-size: 12px;">${getFollowUpTypeLabel(row.type)}</span>`
+
+  const intentMap: Record<string, { bg: string; color: string }> = {
+    'high': { bg: '#f0f9eb', color: '#67c23a' },
+    'medium': { bg: '#fdf6ec', color: '#e6a23c' },
+    'low': { bg: '#f4f4f5', color: '#909399' },
+    'none': { bg: '#fef0f0', color: '#f56c6c' }
+  }
+  const intentStyle = row.customerIntent ? (intentMap[row.customerIntent] || { bg: '#f4f4f5', color: '#909399' }) : null
+  const intentTag = intentStyle
+    ? `<span style="display: inline-block; padding: 2px 8px; background: ${intentStyle.bg}; color: ${intentStyle.color}; border-radius: 4px; font-size: 12px;">${getIntentLabel(row.customerIntent)}</span>`
+    : '<span style="color: #c0c4cc;">未设置</span>'
+
+  const tagsHtml = row.callTags && row.callTags.length > 0
+    ? row.callTags.map((tag: string) => `<span style="display: inline-block; padding: 2px 6px; background: #f4f4f5; color: #606266; border-radius: 4px; font-size: 12px; margin-right: 4px;">${tag}</span>`).join('')
+    : '<span style="color: #c0c4cc;">无</span>'
+
+  ElMessageBox.alert(
+    `<div style="padding: 8px 0;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="color: #909399; font-size: 12px;">跟进类型</span>
+          <span>${typeTag}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="color: #909399; font-size: 12px;">客户意向</span>
+          <span>${intentTag}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="color: #909399; font-size: 12px;">跟进人</span>
+          <span style="color: #303133;">${row.operator || '-'}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="color: #909399; font-size: 12px;">跟进时间</span>
+          <span style="color: #303133;">${row.createTime || '-'}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px; grid-column: span 2;">
+          <span style="color: #909399; font-size: 12px;">跟进内容</span>
+          <span style="color: #606266; line-height: 1.6;">${row.content || '无'}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px; grid-column: span 2;">
+          <span style="color: #909399; font-size: 12px;">通话标签</span>
+          <div>${tagsHtml}</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px; grid-column: span 2;">
+          <span style="color: #909399; font-size: 12px;">下次计划</span>
+          <span style="color: #606266;">${row.nextPlan || '无'}</span>
+        </div>
+      </div>
+    </div>`,
+    '跟进记录详情',
+    {
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: '关闭',
+      customClass: 'detail-message-box'
+    }
+  )
 }
 
 
@@ -3643,6 +4310,8 @@ const salesPersonList = computed(() => {
 // 生命周期
 onMounted(async () => {
   try {
+    // 初始化坐席状态（从本地存储恢复）
+    initAgentStatus()
     // 加载用户列表（用于负责人筛选）
     await userStore.loadUsers()
     // 加载统计数据
@@ -3659,9 +4328,138 @@ onMounted(async () => {
     await loadSDKInfo()
     // 加载已连接设备列表
     await loadConnectedDevices()
+    // 加载可用外呼线路和工作手机
+    await loadAvailableCallMethods()
   } catch (error) {
     console.error('加载数据失败:', error)
   }
+})
+
+// 加载可用的外呼线路和工作手机
+const loadAvailableCallMethods = async () => {
+  try {
+    const res = await callConfigApi.getMyAvailableLines()
+    console.log('[CallManagement] loadAvailableCallMethods response:', res)
+    // request.ts 响应拦截器返回的是 data
+    if (res && (res as any).assignedLines !== undefined) {
+      availableLines.value = ((res as any).assignedLines || []).map((line: any) => ({
+        id: line.id,
+        name: line.name,
+        provider: line.provider,
+        status: '正常',
+        callerNumber: line.callerNumber
+      }))
+      // 工作手机数据
+      workPhones.value = ((res as any).workPhones || []).map((phone: any) => ({
+        id: phone.id,
+        number: phone.phoneNumber,
+        name: phone.deviceName || '工作手机',
+        status: phone.onlineStatus === 'online' ? '在线' : '离线',
+        brand: phone.deviceModel || ''
+      }))
+    } else if (res && (res as any).success && (res as any).data) {
+      availableLines.value = ((res as any).data.assignedLines || []).map((line: any) => ({
+        id: line.id,
+        name: line.name,
+        provider: line.provider,
+        status: '正常',
+        callerNumber: line.callerNumber
+      }))
+      workPhones.value = ((res as any).data.workPhones || []).map((phone: any) => ({
+        id: phone.id,
+        number: phone.phoneNumber,
+        name: phone.deviceName || '工作手机',
+        status: phone.onlineStatus === 'online' ? '在线' : '离线',
+        brand: phone.deviceModel || ''
+      }))
+    }
+    console.log('[CallManagement] availableLines:', availableLines.value.length, 'workPhones:', workPhones.value.length)
+  } catch (e) {
+    console.error('加载可用外呼方式失败:', e)
+  }
+}
+
+// 初始化外呼弹窗
+const initOutboundDialog = async () => {
+  // 加载可用的外呼方式
+  await loadAvailableCallMethods()
+
+  // 设置默认外呼方式
+  if (workPhones.value.length > 0) {
+    outboundForm.value.callMethod = 'work_phone'
+    outboundForm.value.selectedWorkPhone = workPhones.value[0].id
+  } else if (availableLines.value.length > 0) {
+    outboundForm.value.callMethod = 'network_phone'
+    outboundForm.value.selectedLine = availableLines.value[0].id
+  }
+}
+
+// 外呼方式变更处理
+const onOutboundMethodChange = (method: string) => {
+  if (method === 'work_phone' && workPhones.value.length > 0) {
+    outboundForm.value.selectedWorkPhone = workPhones.value[0].id
+    outboundForm.value.selectedLine = null
+  } else if (method === 'network_phone' && availableLines.value.length > 0) {
+    outboundForm.value.selectedLine = availableLines.value[0].id
+    outboundForm.value.selectedWorkPhone = null
+  }
+}
+
+// 获取服务商文本
+const getProviderText = (provider: string) => {
+  const providerMap: Record<string, string> = {
+    aliyun: '阿里云',
+    tencent: '腾讯云',
+    huawei: '华为云',
+    custom: '自定义'
+  }
+  return providerMap[provider] || provider || '未知'
+}
+
+// 手机号运营商映射（根据手机号前三位判断）
+const phoneCarrierMap: Record<string, string> = {
+  // 中国移动
+  '134': '移动', '135': '移动', '136': '移动', '137': '移动', '138': '移动', '139': '移动',
+  '147': '移动', '148': '移动', '150': '移动', '151': '移动', '152': '移动', '157': '移动',
+  '158': '移动', '159': '移动', '172': '移动', '178': '移动', '182': '移动', '183': '移动',
+  '184': '移动', '187': '移动', '188': '移动', '195': '移动', '197': '移动', '198': '移动',
+  // 中国联通
+  '130': '联通', '131': '联通', '132': '联通', '145': '联通', '146': '联通', '155': '联通',
+  '156': '联通', '166': '联通', '167': '联通', '171': '联通', '175': '联通', '176': '联通',
+  '185': '联通', '186': '联通', '196': '联通',
+  // 中国电信
+  '133': '电信', '149': '电信', '153': '电信', '173': '电信', '174': '电信', '177': '电信',
+  '180': '电信', '181': '电信', '189': '电信', '190': '电信', '191': '电信', '193': '电信',
+  '199': '电信'
+}
+
+// 获取手机号运营商
+const getPhoneCarrier = (phone: string): string => {
+  if (!phone) return ''
+  const cleanPhone = phone.replace(/\D/g, '')
+  if (cleanPhone.length < 3) return ''
+  const prefix = cleanPhone.substring(0, 3)
+  return phoneCarrierMap[prefix] || ''
+}
+
+// 计算属性：是否可以开始呼叫
+const canStartCall = computed(() => {
+  // 必须有外呼方式
+  if (!outboundForm.value.callMethod) return false
+
+  // 如果选择工作手机，必须选择一个手机
+  if (outboundForm.value.callMethod === 'work_phone' && !outboundForm.value.selectedWorkPhone) {
+    return false
+  }
+
+  // 如果选择网络电话，必须选择一条线路
+  if (outboundForm.value.callMethod === 'network_phone' && !outboundForm.value.selectedLine) {
+    return false
+  }
+
+  // 必须有电话号码（手动输入或从客户选择）
+  const hasPhone = outboundForm.value.manualPhone || outboundForm.value.customerPhone
+  return !!hasPhone
 })
 
 // 组件卸载时清理定时器
@@ -3676,6 +4474,10 @@ onUnmounted(() => {
     clearTimeout(searchTimer)
     searchTimer = null
   }
+
+  // 清理拖动事件监听器
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
 })
 
 // 监听平台变化，重新加载SDK信息
@@ -3847,8 +4649,182 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
 }
 
 /* 详情弹窗样式 */
+.customer-detail-dialog :deep(.el-dialog__header) {
+  padding: 16px 20px;
+  border-bottom: 1px solid #ebeef5;
+  margin-right: 0;
+}
+
+.customer-detail-dialog :deep(.el-dialog__body) {
+  padding: 0;
+  max-height: calc(90vh - 120px);
+  overflow-y: auto;
+}
+
 .customer-detail {
-  padding: 20px;
+  padding: 0;
+}
+
+/* 客户头部信息 */
+.customer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.customer-main-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.customer-avatar :deep(.el-avatar) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.customer-basic {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.customer-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  display: flex;
+  align-items: center;
+}
+
+.customer-contact {
+  display: flex;
+  gap: 20px;
+  color: #606266;
+  font-size: 13px;
+}
+
+.customer-contact .contact-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.customer-contact .el-icon {
+  font-size: 14px;
+  color: #909399;
+}
+
+.customer-stats {
+  display: flex;
+  gap: 32px;
+}
+
+.customer-stats .stat-item {
+  text-align: center;
+  min-width: 60px;
+}
+
+.customer-stats .stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: #409eff;
+  line-height: 1.2;
+}
+
+.customer-stats .stat-value.last-call {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.customer-stats .stat-label {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+
+/* 标签页区域 */
+.tabs-section {
+  padding: 0;
+}
+
+.tabs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 24px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.tabs-header .detail-tabs {
+  flex: 1;
+}
+
+.tabs-header .detail-tabs :deep(.el-tabs__header) {
+  margin: 0;
+  border: none;
+}
+
+.tabs-header .detail-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+.tabs-header .detail-tabs :deep(.el-tabs__item) {
+  height: 48px;
+  line-height: 48px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.tabs-header .detail-tabs :deep(.el-tabs__item.is-active) {
+  color: #409eff;
+  font-weight: 500;
+}
+
+.tabs-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 表格内容区域 */
+.tab-content {
+  padding: 16px 24px 24px;
+  min-height: 280px;
+}
+
+.tab-content :deep(.el-table) {
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
+}
+
+.tab-content :deep(.el-table th.el-table__cell) {
+  font-weight: 500;
+}
+
+.tab-content :deep(.el-table td.el-table__cell) {
+  padding: 10px 0;
+}
+
+.tab-content :deep(.el-empty) {
+  padding: 40px 0;
+}
+
+.tabs-section {
+  background: #fff;
+}
+
+.tab-table .el-table {
+  border-radius: 4px;
+}
+
+.tab-table .amount {
+  color: #f56c6c;
+  font-weight: 500;
 }
 
 .customer-info-card {
@@ -3979,25 +4955,43 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
   font-size: 12px;
 }
 
+.text-muted {
+  color: #909399;
+  font-size: 12px;
+}
+
 /* 录音播放器样式 */
 .recording-player {
-  padding: 20px;
+  padding: 0;
 }
 
 .recording-info {
-  margin-bottom: 20px;
-  padding: 16px;
-  background-color: #f8f9fa;
-  border-radius: 8px;
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
-.recording-info p {
-  margin: 8px 0;
+.recording-info .info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recording-info .info-label {
+  font-size: 12px;
+  color: #909399;
+}
+
+.recording-info .info-value {
   font-size: 14px;
+  color: #303133;
 }
 
 .audio-player {
-  text-align: center;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
 }
 
 /* 快捷跟进弹窗样式 */
@@ -4183,61 +5177,203 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
   gap: 12px;
 }
 
-/* 通话中弹窗样式 */
-.call-in-progress {
-  text-align: center;
-  padding: 20px;
+/* 通话浮动窗口样式 */
+.call-floating-window {
+  position: fixed;
+  z-index: 9999;
+  width: 420px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transition: width 0.3s ease, height 0.3s ease;
 }
 
-.call-timer {
-  margin-bottom: 20px;
+.call-floating-window.is-minimized {
+  width: 280px;
 }
 
-.timer-display {
-  font-size: 32px;
-  font-weight: bold;
-  color: #409eff;
-  margin-bottom: 8px;
+.call-window-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #409eff 0%, #36cfc9 100%);
+  color: white;
+  cursor: move;
+  user-select: none;
 }
 
-.call-status {
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  background: #67c23a;
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.2);
+  }
+}
+
+.header-title {
+  font-weight: 600;
   font-size: 14px;
+}
+
+.call-floating-window .header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.call-floating-window .header-actions .el-button {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+}
+
+.call-floating-window .header-actions .el-button:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 最小化状态内容 */
+.call-minimized-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f8f9fa;
+}
+
+.mini-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mini-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #303133;
+}
+
+.mini-phone {
+  font-size: 12px;
   color: #909399;
 }
 
-.caller-info-mini {
-  margin-bottom: 20px;
-  padding: 15px;
-  background-color: #f5f7fa;
-  border-radius: 8px;
+/* 展开状态内容 */
+.call-window-content {
+  padding: 20px;
+  text-align: center;
 }
 
-.caller-name {
+.call-window-content .call-timer {
+  margin-bottom: 16px;
+}
+
+.call-window-content .timer-display {
+  font-size: 36px;
+  font-weight: bold;
+  color: #409eff;
+  margin-bottom: 6px;
+  font-family: 'Courier New', monospace;
+}
+
+.call-window-content .call-status {
+  font-size: 13px;
+  color: #67c23a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.call-window-content .call-status .is-loading {
+  animation: rotating 2s linear infinite;
+}
+
+@keyframes rotating {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.call-window-content .caller-info-mini {
+  margin-bottom: 16px;
+  padding: 14px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8f4ff 100%);
+  border-radius: 10px;
+  border: 1px solid #e4e7ed;
+}
+
+.call-window-content .caller-name {
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 600;
   color: #303133;
   margin: 0 0 4px 0;
 }
 
-.caller-phone {
+.call-window-content .caller-phone {
   font-size: 14px;
   color: #606266;
-  margin: 0;
+  margin: 0 0 8px 0;
 }
 
-.call-controls {
-  margin-bottom: 20px;
+.call-window-content .call-method-info {
+  margin-top: 6px;
 }
 
-.end-call-btn {
+.call-window-content .call-method-info .el-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.call-window-content .call-controls {
+  margin-bottom: 16px;
+}
+
+.call-window-content .end-call-btn {
   width: 140px;
-  height: 50px;
-  font-size: 16px;
-  border-radius: 25px;
+  height: 44px;
+  font-size: 15px;
+  border-radius: 22px;
+  font-weight: 500;
 }
 
-.call-notes {
-  margin-top: 20px;
+.call-window-content .call-notes {
+  margin-top: 12px;
+  text-align: left;
+}
+
+.call-window-content .call-quick-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.call-window-content .call-quick-actions .el-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* SDK配置卡片样式 */
@@ -4406,5 +5542,60 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
   .permission-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* 下拉选项通用样式 */
+.select-option-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 4px 0;
+}
+
+.option-content {
+  flex: 1;
+  min-width: 0;
+  margin-right: 12px;
+}
+
+.option-title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.option-code {
+  color: #409eff;
+  font-size: 12px;
+  margin-left: 6px;
+  font-weight: normal;
+}
+
+.option-desc {
+  color: #8492a6;
+  font-size: 12px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.option-tag {
+  flex-shrink: 0;
+}
+</style>
+
+<!-- 全局样式，用于下拉框弹出层 -->
+<style>
+.outbound-select-popper {
+  min-width: 450px !important;
+}
+
+.outbound-select-popper .el-select-dropdown__item {
+  height: auto;
+  padding: 8px 12px;
+  line-height: 1.4;
 }
 </style>

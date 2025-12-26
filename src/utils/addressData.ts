@@ -51782,4 +51782,42 @@ export function getStreetsByDistrict(provinceValue: string, cityValue: string, d
   return district?.children || [];
 }
 
+// 根据代码获取地址名称
+export function getAddressLabel(provinceValue?: string, cityValue?: string, districtValue?: string, streetValue?: string): string {
+  const parts: string[] = [];
+
+  if (provinceValue) {
+    const province = provinces.find(p => p.value === provinceValue);
+    if (province) {
+      parts.push(province.label);
+
+      if (cityValue && province.children) {
+        const city = province.children.find(c => c.value === cityValue);
+        if (city) {
+          // 如果城市名和省份名相同（如直辖市），不重复添加
+          if (city.label !== province.label) {
+            parts.push(city.label);
+          }
+
+          if (districtValue && city.children) {
+            const district = city.children.find(d => d.value === districtValue);
+            if (district) {
+              parts.push(district.label);
+
+              if (streetValue && district.children) {
+                const street = district.children.find(s => s.value === streetValue);
+                if (street) {
+                  parts.push(street.label);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return parts.join('');
+}
+
 export default provinces;

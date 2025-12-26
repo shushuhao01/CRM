@@ -47,9 +47,18 @@ import customerServicePermissionRoutes from './routes/customerServicePermissions
 import timeoutReminderRoutes from './routes/timeoutReminder';
 import sensitiveInfoPermissionRoutes from './routes/sensitiveInfoPermissions';
 import messageCleanupRoutes from './routes/messageCleanup';
+import mobileRoutes from './routes/mobile';
+import callWebhookRoutes from './routes/callWebhook';
+import callConfigRoutes from './routes/callConfig';
 
-// 加载环境变量
-dotenv.config();
+// 根据NODE_ENV环境变量加载对应配置文件
+// 生产环境(production): 加载 .env
+// 开发环境(development): 加载 .env.local
+const isProduction = process.env.NODE_ENV === 'production';
+const envFile = isProduction ? '.env' : '.env.local';
+const envPath = path.join(__dirname, '../', envFile);
+dotenv.config({ path: envPath });
+console.log(`✅ 已加载${isProduction ? '生产' : '开发'}环境配置: ${envFile}`);
 
 const app = express();
 const httpServer = createServer(app);
@@ -119,7 +128,7 @@ const loginLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => {
+  skip: (_req) => {
     // 开发环境跳过登录限流
     return process.env.NODE_ENV === 'development';
   }
@@ -238,6 +247,9 @@ app.use(`${API_PREFIX}/customer-service-permissions`, customerServicePermissionR
 app.use(`${API_PREFIX}/timeout-reminder`, timeoutReminderRoutes);
 app.use(`${API_PREFIX}/sensitive-info-permissions`, sensitiveInfoPermissionRoutes);
 app.use(`${API_PREFIX}/message-cleanup`, messageCleanupRoutes);
+app.use(`${API_PREFIX}/mobile`, mobileRoutes);
+app.use(`${API_PREFIX}/calls/webhook`, callWebhookRoutes);
+app.use(`${API_PREFIX}/call-config`, callConfigRoutes);
 
 // 404处理
 app.use(notFoundHandler);
@@ -251,6 +263,11 @@ const startServer = async () => {
     // 初始化数据库连接
     await initializeDatabase();
     logger.info('✅ 数据库初始化完成');
+
+    // 初始化录音存储服务
+    const { recordingStorageService } = await import('./services/RecordingStorageService');
+    await recordingStorageService.initialize();
+    logger.info('✅ 录音存储服务初始化完成');
 
     // 启动HTTP服务器（使用httpServer以支持WebSocket）
     const server = httpServer.listen(PORT, () => {

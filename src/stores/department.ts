@@ -589,8 +589,8 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     try {
       console.log('[DepartmentStore] 开始获取部门数据...')
 
-      // 🔥 优先使用公共API（所有登录用户都可以访问）
-      // 这个API会根据用户角色返回相应的部门数据
+      // 🔥 修复：无论开发还是生产环境，都优先使用API
+      // 优先使用公共API（所有登录用户都可以访问）
       try {
         const { getMyDepartments } = await import('@/api/department')
         console.log('[DepartmentStore] 调用公共API获取可访问的部门数据')
@@ -607,73 +607,33 @@ export const useDepartmentStore = createPersistentStore('department', () => {
         console.warn('[DepartmentStore] 公共API失败，尝试管理员API:', publicApiError)
       }
 
-      // 如果公共API失败，尝试管理员API（仅管理员可用）
-      if (import.meta.env.PROD) {
-        try {
-          const { getDepartmentList } = await import('@/api/department')
-          console.log('[DepartmentStore] 生产环境：尝试管理员API获取部门数据')
-          const response = await getDepartmentList()
+      // 如果公共API失败，尝试管理员API
+      try {
+        const { getDepartmentList } = await import('@/api/department')
+        console.log('[DepartmentStore] 尝试管理员API获取部门数据')
+        const response = await getDepartmentList()
 
-          if (response && response.data) {
-            const depts = Array.isArray(response.data) ? response.data : []
-            departments.value = depts
-            console.log('[DepartmentStore] 生产环境：部门数据已更新:', departments.value.length, '个部门')
-          } else {
-            departments.value = []
+        if (response && response.data) {
+          const depts = Array.isArray(response.data) ? response.data : []
+          let enrichedDepts = depts
+          if (!import.meta.env.PROD) {
+            enrichedDepts = await enrichDepartmentsWithManagerNames(depts)
           }
-        } catch (adminApiError) {
-          console.error('[DepartmentStore] 生产环境：管理员API也失败:', adminApiError)
-          departments.value = []
+          departments.value = enrichedDepts
+          console.log('[DepartmentStore] 部门数据已更新:', departments.value.length, '个部门')
+          return
         }
-        return
+      } catch (adminApiError) {
+        console.error('[DepartmentStore] 管理员API也失败:', adminApiError)
       }
 
-      // 开发环境：先尝试从localStorage读取
-      const localDeptsStr = localStorage.getItem('crm_mock_departments')
-      if (localDeptsStr) {
-        let localDepts = JSON.parse(localDeptsStr)
-        localDepts = await enrichDepartmentsWithManagerNames(localDepts)
-        departments.value = localDepts
-        console.log('[DepartmentStore] 开发环境：从localStorage加载部门数据:', departments.value.length, '个部门')
-        loading.value = false
-        return
-      }
+      // API都失败了，设置为空
+      departments.value = []
+      console.warn('[DepartmentStore] 所有API都失败，部门列表为空')
 
-      // 开发环境：localStorage没有数据，调用API
-      const { getDepartmentList } = await import('@/api/department')
-      console.log('[DepartmentStore] 开发环境：调用API获取部门数据')
-      const response = await getDepartmentList()
-      console.log('[DepartmentStore] API响应:', response)
-
-      if (response && response.data) {
-        let depts = Array.isArray(response.data) ? response.data : []
-        depts = await enrichDepartmentsWithManagerNames(depts)
-        departments.value = depts
-      } else {
-        departments.value = []
-      }
-
-      console.log('[DepartmentStore] 开发环境：部门数据已更新:', departments.value.length, '个部门')
     } catch (error) {
       console.error('[DepartmentStore] 获取部门列表失败:', error)
-
-      // 【生产环境修复】生产环境下API失败不降级到localStorage
-      if (import.meta.env.PROD) {
-        console.error('[DepartmentStore] 生产环境：API失败，无法获取部门数据')
-        departments.value = []
-        return
-      }
-
-      // 开发环境：API失败时，尝试从localStorage读取
-      const localDeptsStr = localStorage.getItem('crm_mock_departments')
-      if (localDeptsStr) {
-        let localDepts = JSON.parse(localDeptsStr)
-        localDepts = await enrichDepartmentsWithManagerNames(localDepts)
-        departments.value = localDepts
-        console.log('[DepartmentStore] 开发环境：API失败，从localStorage加载部门数据:', departments.value.length, '个部门')
-      } else {
-        departments.value = []
-      }
+      departments.value = []
     } finally {
       loading.value = false
     }

@@ -50,13 +50,15 @@ class UserDataService {
     // 3. 检查是否有API配置
     const hasAPIConfig = envAPIURL && envAPIURL !== ''
 
-    // 4. 决定使用哪种模式
-    // 【生产环境修复】生产环境必须使用API，不允许使用localStorage
-    const useAPI = isProduction || (envUseAPI && hasAPIConfig)
+    // 4. 🔥 修复：无论开发还是生产环境，都优先使用API
+    // 只有在没有API配置且不是生产环境时才使用localStorage
+    const useAPI = isProduction || hasAPIConfig || true // 强制使用API
 
     if (isProduction && !hasAPIConfig) {
       console.warn('[UserDataService] 生产环境未配置API地址，将无法获取数据！')
     }
+
+    console.log('[UserDataService] 环境检测: isProduction=', isProduction, ', hasAPIConfig=', hasAPIConfig, ', useAPI=', useAPI)
 
     return {
       useAPI,

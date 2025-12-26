@@ -2787,25 +2787,19 @@ const loadUserList = async () => {
 
     let users: unknown[] = []
 
-    // 【生产环境修复】生产环境调用API获取用户数据
-    if (import.meta.env.PROD) {
-      console.log('[User] 生产环境：调用API获取用户数据')
-      try {
-        const apiResponse = await userApiService.getUsers({
-          page: pagination.page,
-          limit: pagination.size
-        })
-        users = apiResponse.data || []
-        pagination.total = apiResponse.total || users.length
-        console.log('[User] 生产环境：API返回用户数量:', users.length)
-      } catch (apiError) {
-        console.error('[User] 生产环境：API获取用户失败:', apiError)
-        users = []
-      }
-    } else {
-      // 开发环境从localStorage读取用户数据
-      users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
-      console.log('[User] 开发环境：从localStorage加载用户:', users.length)
+    // 🔥 修复：无论开发还是生产环境，都调用API获取用户数据
+    console.log('[User] 调用API获取用户数据')
+    try {
+      const apiResponse = await userApiService.getUsers({
+        page: pagination.page,
+        limit: pagination.size
+      })
+      users = apiResponse.data || []
+      pagination.total = apiResponse.total || users.length
+      console.log('[User] API返回用户数量:', users.length)
+    } catch (apiError) {
+      console.error('[User] API获取用户失败:', apiError)
+      users = []
     }
 
     // 模拟API响应格式

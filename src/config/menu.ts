@@ -380,6 +380,13 @@ export const menuConfig: MenuItem[] = [
         path: '/system/settings',
         roles: ['super_admin', 'admin'],
         permissions: ['system:settings']
+      },
+      {
+        id: 'system-api-management',
+        title: '接口管理',
+        path: '/system/api-management',
+        roles: ['super_admin', 'admin'],
+        permissions: ['system:api']
       }
     ]
   }

@@ -85,11 +85,22 @@ class WebSocketService {
       }
 
       // WebSocket需要完整的服务器URL，不能使用相对路径
-      let serverUrl = import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_BASE_URL || ''
+      let serverUrl = import.meta.env.VITE_WS_URL || ''
 
-      // 如果是相对路径或空，使用当前页面的origin
-      if (!serverUrl || serverUrl.startsWith('/')) {
-        serverUrl = window.location.origin
+      // 如果没有配置WS_URL，根据环境自动判断
+      if (!serverUrl) {
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
+        if (apiBaseUrl.startsWith('http')) {
+          // 完整URL，提取origin
+          serverUrl = new URL(apiBaseUrl).origin
+        } else {
+          // 相对路径，本地开发环境使用后端端口
+          if (import.meta.env.DEV) {
+            serverUrl = 'http://localhost:3000'
+          } else {
+            serverUrl = window.location.origin
+          }
+        }
       }
 
       console.log('[WebSocket] 连接服务器:', serverUrl)

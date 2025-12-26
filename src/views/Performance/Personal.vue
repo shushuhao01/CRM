@@ -502,6 +502,16 @@ const orderStore = useOrderStore()
 const customerStore = useCustomerStore()
 const configStore = useConfigStore()
 
+// 🔥 日期比较工具函数 - 使用北京时间字符串比较，避免时区问题
+const isOrderInDateRange = (orderCreateTime: string, startDateStr: string, endDateStr: string): boolean => {
+  if (!orderCreateTime) return false
+  // 将 "YYYY/MM/DD HH:mm:ss" 格式转换为 "YYYY-MM-DD HH:mm:ss"
+  const normalizedTime = orderCreateTime.replace(/\//g, '-')
+  const startTime = startDateStr + ' 00:00:00'
+  const endTime = endDateStr + ' 23:59:59'
+  return normalizedTime >= startTime && normalizedTime <= endTime
+}
+
 // 响应式数据
 const dateRange = ref<string[]>([])
 const salesChartType = ref('daily')
@@ -555,14 +565,17 @@ const performanceData = computed(() => {
     return !excludedStatuses.includes(order.status)
   })
 
-  // 应用日期筛选
+  // 应用日期筛选 - 🔥 修复：使用北京时间进行比较
   if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-    const startDate = new Date(dateRange.value[0]).getTime()
-    const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1 // 包含结束日期的全天
+    // 将日期字符串解析为北京时间的开始和结束
+    const startDateStr = dateRange.value[0] + ' 00:00:00'
+    const endDateStr = dateRange.value[1] + ' 23:59:59'
 
     userOrders = userOrders.filter(order => {
-      const orderTime = new Date(order.createTime).getTime()
-      return orderTime >= startDate && orderTime <= endDate
+      // order.createTime 格式为 "YYYY/MM/DD HH:mm:ss" 或 "YYYY-MM-DD HH:mm:ss"
+      const orderTimeStr = order.createTime?.replace(/\//g, '-') || ''
+      // 直接比较字符串（因为都是北京时间格式）
+      return orderTimeStr >= startDateStr && orderTimeStr <= endDateStr
     })
   }
 
@@ -1519,15 +1532,11 @@ const getSalesTrendData = () => {
     return !excludedStatuses.includes(order.status)
   })
 
-  // 应用日期筛选
+  // 应用日期筛选 - 🔥 使用北京时间字符串比较
   if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-    const startDate = new Date(dateRange.value[0]).getTime()
-    const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
-
-    userOrders = userOrders.filter(order => {
-      const orderTime = new Date(order.createTime).getTime()
-      return orderTime >= startDate && orderTime <= endDate
-    })
+    userOrders = userOrders.filter(order =>
+      isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+    )
   }
 
   const currentDate = new Date()
@@ -1823,15 +1832,11 @@ const getOrderStatusData = () => {
     return !excludedStatuses.includes(order.status)
   })
 
-  // 应用日期筛选
+  // 应用日期筛选 - 🔥 使用北京时间字符串比较
   if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-    const startDate = new Date(dateRange.value[0]).getTime()
-    const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
-
-    userOrders = userOrders.filter(order => {
-      const orderTime = new Date(order.createTime).getTime()
-      return orderTime >= startDate && orderTime <= endDate
-    })
+    userOrders = userOrders.filter(order =>
+      isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+    )
   }
 
   // 统计各状态的订单数量和业绩
@@ -2084,15 +2089,11 @@ const getProductSalesData = () => {
     return !excludedStatuses.includes(order.status)
   })
 
-  // 应用日期筛选
+  // 应用日期筛选 - 🔥 使用北京时间字符串比较
   if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-    const startDate = new Date(dateRange.value[0]).getTime()
-    const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
-
-    userOrders = userOrders.filter(order => {
-      const orderTime = new Date(order.createTime).getTime()
-      return orderTime >= startDate && orderTime <= endDate
-    })
+    userOrders = userOrders.filter(order =>
+      isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+    )
   }
 
   // 统计商品销售数据
@@ -2212,20 +2213,19 @@ const loadTableData = async () => {
           return !excludedStatuses.includes(order.status)
         })
 
-        // 应用日期筛选
+        // 应用日期筛选 - 🔥 使用北京时间字符串比较
         if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-          const startDate = new Date(dateRange.value[0]).getTime()
-          const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
-
-          userOrders = userOrders.filter(order => {
-            const orderTime = new Date(order.createTime).getTime()
-            return orderTime >= startDate && orderTime <= endDate
-          })
+          userOrders = userOrders.filter(order =>
+            isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+          )
         }
 
         // 倒序排列（最新的在前面）
         userOrders = userOrders.sort((a, b) => {
-          return new Date(b.createTime).getTime() - new Date(a.createTime).getTime()
+          // 使用字符串比较排序（北京时间格式）
+          const timeA = a.createTime?.replace(/\//g, '-') || ''
+          const timeB = b.createTime?.replace(/\//g, '-') || ''
+          return timeB.localeCompare(timeA)
         })
 
         // 分页处理
@@ -2292,21 +2292,19 @@ const loadTableData = async () => {
             return !excludedStatuses.includes(order.status)
           })
 
-          // 应用日期筛选
+          // 应用日期筛选 - 🔥 使用北京时间字符串比较
           if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-            const startDate = new Date(dateRange.value[0]).getTime()
-            const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
-
-            customerOrders = customerOrders.filter(order => {
-              const orderTime = new Date(order.createTime).getTime()
-              return orderTime >= startDate && orderTime <= endDate
-            })
+            customerOrders = customerOrders.filter(order =>
+              isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+            )
           }
 
           const totalAmount = customerOrders.reduce((sum, order) => sum + order.totalAmount, 0)
-          const lastOrder = customerOrders.sort((a, b) =>
-            new Date(b.createTime).getTime() - new Date(a.createTime).getTime()
-          )[0]
+          const lastOrder = customerOrders.sort((a, b) => {
+            const timeA = a.createTime?.replace(/\//g, '-') || ''
+            const timeB = b.createTime?.replace(/\//g, '-') || ''
+            return timeB.localeCompare(timeA)
+          })[0]
 
           return {
             id: customer.id,
@@ -2345,15 +2343,11 @@ const loadTableData = async () => {
           return !excludedStatuses.includes(order.status)
         })
 
-        // 应用日期筛选
+        // 应用日期筛选 - 🔥 使用北京时间字符串比较
         if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-          const startDate = new Date(dateRange.value[0]).getTime()
-          const endDate = new Date(dateRange.value[1]).getTime() + 24 * 60 * 60 * 1000 - 1
-
-          userOrders = userOrders.filter(order => {
-            const orderTime = new Date(order.createTime).getTime()
-            return orderTime >= startDate && orderTime <= endDate
-          })
+          userOrders = userOrders.filter(order =>
+            isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+          )
         }
 
         console.log('[个人业绩-商品明细] 当前用户的订单数:', userOrders.length)

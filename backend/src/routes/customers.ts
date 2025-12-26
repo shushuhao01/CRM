@@ -1274,16 +1274,18 @@ router.get('/:id/calls', async (req: Request, res: Response) => {
     const list = calls.map(call => ({
       id: call.id,
       customerId: call.customerId,
+      customerName: call.customerName,
       customerPhone: call.customerPhone,
-      phone: call.customerPhone,
-      direction: 'outbound',
-      type: '呼出',
+      callType: call.callType || 'outbound',
+      callStatus: call.callStatus || 'connected',
       duration: call.duration || 0,
-      status: call.callStatus || 'completed',
-      summary: call.notes || '',
-      remark: call.notes || '',
-      startTime: call.createdAt?.toISOString() || '',
-      callTime: call.createdAt?.toISOString() || ''
+      startTime: call.startTime?.toISOString() || call.createdAt?.toISOString() || '',
+      endTime: call.endTime?.toISOString() || '',
+      notes: call.notes || '',
+      recordingUrl: call.recordingUrl || null,
+      userName: call.userName || '未知',
+      callTags: [],
+      createdAt: call.createdAt?.toISOString() || ''
     }));
 
     console.log(`[客户通话] 客户 ${customerId} 有 ${list.length} 条通话记录`);
@@ -1320,11 +1322,14 @@ router.get('/:id/followups', async (req: Request, res: Response) => {
              followUp.type === 'email' ? '邮件跟进' :
              followUp.type === 'message' ? '消息跟进' : '跟进记录',
       content: followUp.content || '',
+      customerIntent: followUp.customerIntent || null,
+      callTags: followUp.callTags || [],
       status: followUp.status,
       priority: followUp.priority,
       nextFollowUp: followUp.nextFollowUp?.toISOString() || '',
       nextTime: followUp.nextFollowUp?.toISOString() || '',
       createdBy: followUp.createdBy,
+      createdByName: followUp.createdByName || followUp.createdBy || '系统',
       author: followUp.createdByName || followUp.createdBy || '系统',
       createTime: followUp.createdAt?.toISOString() || '',
       createdAt: followUp.createdAt?.toISOString() || ''

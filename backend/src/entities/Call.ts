@@ -15,10 +15,20 @@ export class Call {
   @Column({ name: 'customer_phone', length: 20 })
   customerPhone: string;
 
-  @Column({ name: 'call_type', type: 'varchar', length: 20, default: 'outbound' })
+  @Column({
+    name: 'call_type',
+    type: 'enum',
+    enum: ['outbound', 'inbound'],
+    default: 'outbound'
+  })
   callType: 'outbound' | 'inbound';
 
-  @Column({ name: 'call_status', type: 'varchar', length: 20, default: 'connected' })
+  @Column({
+    name: 'call_status',
+    type: 'enum',
+    enum: ['connected', 'missed', 'busy', 'failed', 'rejected'],
+    default: 'connected'
+  })
   callStatus: 'connected' | 'missed' | 'busy' | 'failed' | 'rejected';
 
   @Column({ name: 'start_time', type: 'datetime', nullable: true })
@@ -33,13 +43,13 @@ export class Call {
   @Column({ name: 'recording_url', length: 500, nullable: true })
   recordingUrl: string;
 
-  @Column({ name: 'has_recording', type: 'boolean', default: false })
+  @Column({ name: 'has_recording', type: 'tinyint', default: 0 })
   hasRecording: boolean;
 
   @Column({ type: 'text', nullable: true })
   notes: string;
 
-  @Column({ name: 'follow_up_required', type: 'boolean', default: false })
+  @Column({ name: 'follow_up_required', type: 'tinyint', default: 0 })
   followUpRequired: boolean;
 
   @Column({ name: 'user_id', length: 100 })
