@@ -2374,12 +2374,15 @@ const loadCustomerDetail = async () => {
 
     // 加载标签 - 使用统一的API
     try {
-      const tags = await customerDetailApi.getCustomerTags(customerId)
-      customerTags.value = tags.map((tag: any) => ({
+      const response = await customerDetailApi.getCustomerTags(customerId)
+      // 🔥 修复：正确处理API返回值格式 { success: true, data: [...] }
+      const tags = response?.data || response || []
+      customerTags.value = (Array.isArray(tags) ? tags : []).map((tag: any) => ({
         id: tag.id,
         name: tag.name,
         type: tag.type || 'info'
       }))
+      console.log('[客户详情] 加载标签成功:', customerTags.value.length, '个')
     } catch (error) {
       console.error('加载客户标签失败:', error)
       customerTags.value = []
@@ -2387,10 +2390,12 @@ const loadCustomerDetail = async () => {
 
     // 加载疾病史数据
     try {
-      const medicalRecords = await customerDetailApi.getCustomerMedicalHistory(customerId as string)
+      const response = await customerDetailApi.getCustomerMedicalHistory(customerId as string)
+      // 🔥 修复：正确处理API返回值格式 { success: true, data: [...] }
+      const medicalRecords = response?.data || response || []
       console.log('📋 [疾病史API] 返回数据:', medicalRecords)
 
-      if (medicalRecords && medicalRecords.length > 0) {
+      if (Array.isArray(medicalRecords) && medicalRecords.length > 0) {
         medicalHistory.value = medicalRecords.map((record: any) => ({
           id: record.id,
           content: record.content || record.description || '',
@@ -2523,6 +2528,7 @@ const loadServiceRecords = async () => {
 
     // 🔥 修复：正确处理API返回值格式 { success: true, data: [...] }
     const customerServices = response?.data || response || []
+    console.log('[客户详情] 售后记录API返回:', customerServices)
 
     // 转换为页面显示格式
     serviceRecords.value = (Array.isArray(customerServices) ? customerServices : []).map((service: any) => ({
@@ -2533,8 +2539,9 @@ const loadServiceRecords = async () => {
       reason: service.reason || service.description || '暂无描述',
       amount: service.price || service.amount || 0,
       status: getServiceStatusText(service.status),
-      createTime: service.createTime
+      createTime: service.createTime || service.createdAt
     }))
+    console.log('[客户详情] 加载售后记录成功:', serviceRecords.value.length, '条')
   } catch (error: any) {
     console.error('加载售后记录失败:', error)
     // 只有在非404错误时才显示错误提示，404表示没有数据是正常的
@@ -2556,20 +2563,22 @@ const loadCallRecords = async () => {
 
     // 🔥 修复：正确处理API返回值格式 { success: true, data: [...] }
     const customerCalls = response?.data || response || []
+    console.log('[客户详情] 通话记录API返回:', customerCalls)
 
     // 转换为页面显示格式
     callRecords.value = (Array.isArray(customerCalls) ? customerCalls : []).map((call: any) => ({
       id: call.id,
-      callType: call.direction === 'outbound' || call.type === '呼出' ? '呼出' : '呼入',
+      callType: call.callType === 'outbound' || call.direction === 'outbound' || call.type === '呼出' ? '呼出' : '呼入',
       phone: call.customerPhone || call.phone,
       duration: call.duration ? `${Math.floor(call.duration / 60)}分${call.duration % 60}秒` : '-',
-      status: call.status === 'connected' || call.status === '已接通' ? '已接通' :
-              call.status === 'busy' || call.status === '忙线' ? '忙线' :
-              call.status === 'no_answer' || call.status === '未接听' ? '未接听' :
-              call.status === 'failed' || call.status === '失败' ? '失败' : '未知',
-      summary: call.summary || call.remark || '-',
-      callTime: call.startTime || call.callTime
+      status: call.callStatus === 'connected' || call.status === 'connected' || call.status === '已接通' ? '已接通' :
+              call.callStatus === 'busy' || call.status === 'busy' || call.status === '忙线' ? '忙线' :
+              call.callStatus === 'missed' || call.status === 'no_answer' || call.status === '未接听' ? '未接听' :
+              call.callStatus === 'failed' || call.status === 'failed' || call.status === '失败' ? '失败' : '未知',
+      summary: call.notes || call.summary || call.remark || '-',
+      callTime: call.startTime || call.callTime || call.createdAt
     }))
+    console.log('[客户详情] 加载通话记录成功:', callRecords.value.length, '条')
   } catch (error: any) {
     console.error('加载通话记录失败:', error)
     // 只有在非404错误时才显示错误提示，404表示没有数据是正常的
@@ -2597,6 +2606,7 @@ const loadFollowUpRecords = async () => {
     } else if (Array.isArray(response)) {
       customerFollowUps = response
     }
+    console.log('[客户详情] 跟进记录API返回:', customerFollowUps)
 
     // 转换为页面显示格式并检查编辑权限
     followUpRecords.value = customerFollowUps.map((followUp: any) => {
@@ -2614,6 +2624,7 @@ const loadFollowUpRecords = async () => {
         canEdit: hoursDiff <= 24 // 24小时内可编辑
       }
     })
+    console.log('[客户详情] 加载跟进记录成功:', followUpRecords.value.length, '条')
   } catch (error: any) {
     console.error('加载跟进记录失败:', error)
     // 只有在非404错误时才显示错误提示，404表示没有数据是正常的
