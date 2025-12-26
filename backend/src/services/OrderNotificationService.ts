@@ -596,7 +596,13 @@ class OrderNotificationService {
     try {
       const dataSource = getDataSource();
       if (!dataSource) {
-        console.error('[OrderNotification] ❌ 数据库未连接');
+        console.error('[OrderNotification] ❌ 数据库未连接 (getDataSource返回null)');
+        return [];
+      }
+
+      // 🔥 检查数据源是否已初始化
+      if (!dataSource.isInitialized) {
+        console.error('[OrderNotification] ❌ 数据库未初始化 (isInitialized=false)');
         return [];
       }
 
@@ -609,7 +615,7 @@ class OrderNotificationService {
 
       console.log(`[OrderNotification] 📋 数据库中共有 ${allUsers.length} 个用户`);
       console.log(`[OrderNotification] 📋 查找角色: ${roles.join(', ')}`);
-      console.log(`[OrderNotification] 📋 所有用户角色: ${allUsers.map(u => `${u.username || u.realName}(${u.role})`).join(', ')}`);
+      console.log(`[OrderNotification] 📋 所有用户角色: ${allUsers.map(u => `${u.username || u.realName}(${u.role}, status=${u.status})`).join(', ')}`);
 
       // 🔥 过滤：角色匹配 且 状态为活跃（兼容 'active', 1, '1', true）
       const matchedUsers = allUsers.filter(u => {

@@ -3416,7 +3416,12 @@ const handleCall = (row: any) => {
 }
 
 const handleViewDetail = async (row: any) => {
-  currentCustomer.value = row
+  // 🔥 修复：确保currentCustomer有完整的客户信息，包括id字段
+  currentCustomer.value = {
+    ...row,
+    id: row.id || row.customerId,
+    customerId: row.id || row.customerId
+  }
   showDetailDialog.value = true
   activeTab.value = 'orders' // 重置到第一个标签页
 
