@@ -2309,17 +2309,31 @@ const loadCustomerDetail = async () => {
     console.log('找到客户信息:', customer)
 
     // 获取负责销售人员信息
+    // 🔥 优先使用后端返回的名字，如果没有再从userStore查找
     let salespersonName = ''
-    if (customer.salesPersonId) {
+    if (customer.salesPersonName) {
+      salespersonName = customer.salesPersonName
+    } else if (customer.salesPersonId) {
       const salesPerson = userStore.users?.find(u => u.id === customer.salesPersonId)
-      salespersonName = salesPerson?.realName || salesPerson?.name || customer.salesPersonName || ''
+      salespersonName = salesPerson?.realName || salesPerson?.name || ''
     } else if (customer.salesperson) {
       salespersonName = customer.salesperson
+    } else if (customer.createdByName) {
+      // 如果没有负责销售，使用创建人名字
+      salespersonName = customer.createdByName
     } else if (customer.createdBy) {
-      // 如果没有负责销售，使用创建人
+      // 如果后端没有返回创建人名字，从userStore查找
       const creator = userStore.users?.find(u => u.id === customer.createdBy)
-      salespersonName = creator?.realName || creator?.name || customer.createdByName || ''
+      salespersonName = creator?.realName || creator?.name || ''
     }
+
+    console.log('[客户详情] 负责销售映射:', {
+      salesPersonName: customer.salesPersonName,
+      salesPersonId: customer.salesPersonId,
+      createdByName: customer.createdByName,
+      createdBy: customer.createdBy,
+      finalSalesperson: salespersonName
+    })
 
     // 调试日志：查看客户数据中的疾病史和备注字段
     console.log('📋 [客户数据] medicalHistory:', customer.medicalHistory)
@@ -2428,7 +2442,13 @@ const loadOrderHistory = async () => {
     // 优先从后端API获取订单数据
     let customerOrders: any[] = []
     try {
-      customerOrders = await customerDetailApi.getCustomerOrders(customerId)
+      const response = await customerDetailApi.getCustomerOrders(customerId)
+      // 🔥 修复：正确处理API返回值格式 { success: true, data: [...] }
+      if (response && response.success && Array.isArray(response.data)) {
+        customerOrders = response.data
+      } else if (Array.isArray(response)) {
+        customerOrders = response
+      }
       console.log(`[客户详情] 从API获取到 ${customerOrders.length} 条订单记录`)
     } catch (apiError) {
       console.log('API获取订单失败，尝试从本地store获取')
@@ -2618,7 +2638,9 @@ const loadCustomerStats = async () => {
     console.log(`[客户详情] 加载客户 ${customerId} 的统计数据`)
 
     // 优先从API获取统计数据
-    const stats = await customerDetailApi.getCustomerStats(customerId)
+    const response = await customerDetailApi.getCustomerStats(customerId)
+    // 🔥 修复：正确处理API返回值格式 { success: true, data: {...} }
+    const stats = response?.data || response
     if (stats && typeof stats === 'object') {
       customerStats.value = {
         totalConsumption: stats.totalConsumption || 0,
@@ -2718,7 +2740,17 @@ watch(() => serviceStore.services, () => {
   loadCustomerStats()
 }, { deep: true })
 
-onMounted(() => {
+onMounted(async () => {
+  // 🔥 确保用户列表已加载，用于映射负责销售等信息
+  if (!userStore.users || userStore.users.length === 0) {
+    try {
+      await userStore.loadUsers()
+      console.log('[客户详情] 用户列表加载完成，共', userStore.users?.length || 0, '个用户')
+    } catch (error) {
+      console.warn('[客户详情] 加载用户列表失败:', error)
+    }
+  }
+
   loadCustomerDetail()
   loadOrderHistory()
   loadServiceRecords()

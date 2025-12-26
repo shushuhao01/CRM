@@ -813,6 +813,8 @@ router.get('/search', async (req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const customerRepository = AppDataSource.getRepository(Customer);
+    const userRepository = AppDataSource.getRepository(User);
+
     const customer = await customerRepository.findOne({
       where: { id: req.params.id }
     });
@@ -823,6 +825,20 @@ router.get('/:id', async (req: Request, res: Response) => {
         code: 404,
         message: '客户不存在'
       });
+    }
+
+    // 🔥 获取创建人和负责销售的名字
+    let createdByName = '';
+    let salesPersonName = '';
+
+    if (customer.createdBy) {
+      const creator = await userRepository.findOne({ where: { id: customer.createdBy } });
+      createdByName = creator?.realName || creator?.name || '';
+    }
+
+    if (customer.salesPersonId) {
+      const salesPerson = await userRepository.findOne({ where: { id: customer.salesPersonId } });
+      salesPersonName = salesPerson?.realName || salesPerson?.name || '';
     }
 
     // 转换数据格式
@@ -845,11 +861,13 @@ router.get('/:id', async (req: Request, res: Response) => {
       level: customer.level || 'normal',
       status: customer.status || 'active',
       salesPersonId: customer.salesPersonId || '',
+      salesPersonName: salesPersonName,  // 🔥 添加负责销售名字
       orderCount: customer.orderCount || 0,
       returnCount: customer.returnCount || 0,
       totalAmount: customer.totalAmount || 0,
       createTime: formatDateTime(customer.createdAt),
       createdBy: customer.createdBy || '',
+      createdByName: createdByName,  // 🔥 添加创建人名字
       wechat: customer.wechat || '',
       wechatId: customer.wechat || '',
       email: customer.email || '',
@@ -1614,7 +1632,8 @@ router.post('/:id/medical-history', async (req: Request, res: Response) => {
     }
 
     const { content } = req.body;
-    const currentUser = (req as any).user;
+    // 🔥 修复：使用正确的currentUser字段
+    const currentUser = (req as any).currentUser;
 
     // 解析现有疾病史
     let medicalRecords: any[] = [];
