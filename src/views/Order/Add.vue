@@ -760,6 +760,9 @@ const expressCompanyList = ref<{ code: string; name: string; logo?: string }[]>(
 const expressCompanyLoading = ref(false)
 
 // 客户选项 - 🔥 添加权限过滤
+// 🔥 临时客户（从外部传递的客户信息）
+const tempCustomer = ref<Customer | null>(null)
+
 const customerOptions = computed(() => {
   const currentUser = userStore.currentUser
   if (!currentUser) return []
@@ -767,31 +770,38 @@ const customerOptions = computed(() => {
   const allCustomers = customerStore.customers
   const userRole = currentUser.role
 
+  let filteredCustomers: Customer[] = []
+
   // 超管和管理员不受限
   if (userRole === 'super_admin' || userRole === 'admin') {
-    return allCustomers
-  }
-
-  // 部门经理看部门成员创建的客户
-  if (userRole === 'department_manager') {
+    filteredCustomers = [...allCustomers]
+  } else if (userRole === 'department_manager') {
+    // 部门经理看部门成员创建的客户
     const deptId = currentUser.departmentId
     // 获取部门成员ID列表
     const deptMemberIds = userStore.users
       ?.filter(u => u.departmentId === deptId)
       .map(u => u.id) || []
-    return allCustomers.filter(customer =>
+    filteredCustomers = allCustomers.filter(customer =>
       deptMemberIds.includes(customer.createdBy) ||
       customer.createdBy === currentUser.id ||
       // 分享给部门成员的客户
       customer.sharedWith?.some((share: any) => deptMemberIds.includes(share.userId))
     )
+  } else {
+    // 普通成员只看自己创建的客户和分享给自己的客户
+    filteredCustomers = allCustomers.filter(customer =>
+      customer.createdBy === currentUser.id ||
+      customer.sharedWith?.some((share: any) => share.userId === currentUser.id)
+    )
   }
 
-  // 普通成员只看自己创建的客户和分享给自己的客户
-  return allCustomers.filter(customer =>
-    customer.createdBy === currentUser.id ||
-    customer.sharedWith?.some((share: any) => share.userId === currentUser.id)
-  )
+  // 🔥 如果有临时客户且不在列表中，添加到列表
+  if (tempCustomer.value && !filteredCustomers.some(c => c.id === tempCustomer.value?.id)) {
+    filteredCustomers = [tempCustomer.value, ...filteredCustomers]
+  }
+
+  return filteredCustomers
 })
 
 // 产品列表 - 从productStore获取，只显示有库存的上架在售产品
@@ -1654,9 +1664,12 @@ onMounted(async () => {
   // 检查是否有传递的客户信息和商品信息
   const { customerId, customerName, customerPhone, customerAddress, productId } = route.query
 
+  console.log('[新增订单] 路由参数:', { customerId, customerName, customerPhone, customerAddress, productId })
+
   if (customerId) {
     // 查找客户信息
     let customerInfo = customerStore.customers.find(c => c.id === customerId)
+    console.log('[新增订单] 从store查找客户:', customerInfo ? '找到' : '未找到')
 
     if (customerInfo) {
       // 从store中找到客户，使用store中的完整信息
@@ -1676,6 +1689,8 @@ onMounted(async () => {
       ElMessage.success(`已自动选择客户：${customerInfo.name}`)
     } else if (customerName && customerPhone) {
       // 如果store中找不到但有传递的客户信息，使用传递的信息
+      console.log('[新增订单] 使用路由传递的客户信息')
+
       orderForm.customerId = customerId as string
       orderForm.receiverName = customerName as string
       orderForm.receiverPhone = customerPhone as string
@@ -1696,6 +1711,9 @@ onMounted(async () => {
       }
 
       selectedCustomer.value = customerInfo
+
+      // 🔥 设置临时客户，确保下拉框能显示
+      tempCustomer.value = customerInfo
 
       // 🔥 初始化手机号列表并设置选中
       customerPhones.value = [

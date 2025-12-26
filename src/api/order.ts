@@ -63,7 +63,7 @@ export interface OrderStatistics {
 export const orderApi = {
   // 获取订单列表
   getList: (params?: OrderSearchParams) =>
-    api.get<OrderListResponse>(API_ENDPOINTS.ORDERS.LIST, params),
+    api.get<OrderListResponse>(API_ENDPOINTS.ORDERS.LIST, { params }),
 
   // 创建订单
   create: (data: Omit<Order, 'id' | 'orderNumber' | 'createTime'>) =>
@@ -126,7 +126,7 @@ export const orderApi = {
     orderNumber?: string;
     customerName?: string;
   }) =>
-    api.get<OrderListResponse>('/orders/shipping/pending', params),
+    api.get<OrderListResponse>('/orders/shipping/pending', { params }),
 
   // 获取已发货订单列表（优化版）
   getShippingShipped: (params?: {
@@ -137,7 +137,7 @@ export const orderApi = {
     trackingNumber?: string;
     status?: string;
   }) =>
-    api.get<OrderListResponse>('/orders/shipping/shipped', params),
+    api.get<OrderListResponse>('/orders/shipping/shipped', { params }),
 
   // 获取物流统计数据
   getShippingStatistics: () =>
@@ -159,7 +159,7 @@ export const orderApi = {
     startDate?: string;
     endDate?: string;
   }) =>
-    api.get<OrderListResponse>('/orders/audit-list', params),
+    api.get<OrderListResponse>('/orders/audit-list', { params }),
 
   // 🔥 新增：获取审核统计数据（优化版）
   getAuditStatistics: () =>
