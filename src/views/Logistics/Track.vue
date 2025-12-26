@@ -459,8 +459,26 @@ const handleSearch = async (phone?: string) => {
 
     console.log('[物流跟踪] API响应:', response)
 
+    // 🔥 修复：检查响应消息是否包含需要手机号验证的提示
+    const responseMessage = response?.message || response?.data?.statusText || ''
+    const needPhoneVerify = responseMessage.includes('手机号') ||
+                           responseMessage.includes('可能原因') ||
+                           responseMessage.includes('无权限') ||
+                           responseMessage.includes('验证失败')
+
     if (!response?.success || !response.data) {
       console.log('[物流跟踪] API返回失败:', response?.message)
+
+      // 🔥 如果是需要手机号验证的错误，弹出手机号输入框
+      if (needPhoneVerify && companyCode && isPhoneVerifyRequired(companyCode)) {
+        console.log('[物流跟踪] 检测到需要手机号验证，弹出输入框')
+        loading.value = false
+        pendingTrackingNo.value = trackingNum
+        pendingCompanyCode.value = companyCode
+        phoneVerifyDialogVisible.value = true
+        return
+      }
+
       ElMessage.info(response?.message || '暂无物流信息')
       return
     }
@@ -469,7 +487,7 @@ const handleSearch = async (phone?: string) => {
     console.log('[物流跟踪] 响应数据:', data)
 
     // 需要手机号验证（后端返回的情况，作为兜底）
-    if (data.status === 'need_phone_verify' || data.statusText?.includes('手机号') || data.statusText?.includes('可能原因')) {
+    if (data.status === 'need_phone_verify' || data.statusText?.includes('手机号') || data.statusText?.includes('可能原因') || data.statusText?.includes('无权限')) {
       console.log('[物流跟踪] 需要手机号验证，弹出对话框')
       pendingTrackingNo.value = trackingNum
       pendingCompanyCode.value = companyCode || ''
@@ -480,6 +498,18 @@ const handleSearch = async (phone?: string) => {
     // 查询失败
     if (!data.success) {
       console.log('[物流跟踪] 查询失败:', data.statusText)
+
+      // 🔥 再次检查是否需要手机号验证
+      if ((data.statusText?.includes('手机号') || data.statusText?.includes('可能原因') || data.statusText?.includes('无权限')) &&
+          companyCode && isPhoneVerifyRequired(companyCode)) {
+        console.log('[物流跟踪] 检测到需要手机号验证，弹出输入框')
+        loading.value = false
+        pendingTrackingNo.value = trackingNum
+        pendingCompanyCode.value = companyCode
+        phoneVerifyDialogVisible.value = true
+        return
+      }
+
       ElMessage.info(getFriendlyNoTraceMessage(data.statusText))
       return
     }
@@ -835,8 +865,9 @@ onMounted(async () => {
 const checkRouteParamsAndSearch = () => {
   const trackingNo = route.query.trackingNo as string
   const company = route.query.company as string
+  const phone = route.query.phone as string  // 🔥 新增：从路由获取手机号
 
-  console.log('[物流跟踪] 检查路由参数 - trackingNo:', trackingNo, ', company:', company)
+  console.log('[物流跟踪] 检查路由参数 - trackingNo:', trackingNo, ', company:', company, ', phone:', phone ? phone.slice(-4) + '****' : '(空)')
 
   if (trackingNo) {
     // 只有当单号变化时才更新和搜索
@@ -845,9 +876,9 @@ const checkRouteParamsAndSearch = () => {
       if (company) {
         searchForm.company = company
       }
-      // 自动执行搜索
+      // 🔥 修复：如果路由传递了手机号，直接使用该手机号进行搜索
       console.log('[物流跟踪] 路由参数变化，自动执行搜索')
-      handleSearch()
+      handleSearch(phone || undefined)
     }
   }
 }

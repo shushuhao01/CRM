@@ -98,7 +98,7 @@
       <!-- 物流单号列 -->
       <template #column-trackingNo="{ row }">
         <div v-if="row.trackingNo" class="tracking-no-wrapper">
-          <el-link type="primary" @click="handleTrackingNoClick(row.trackingNo, row.logisticsCompany)">
+          <el-link type="primary" @click="handleTrackingNoClick(row.trackingNo, row.logisticsCompany, row.customerPhone)">
             {{ row.trackingNo }}
           </el-link>
           <el-button
@@ -887,11 +887,13 @@ const handleViewDetail = (row: LogisticsItem) => {
 }
 
 // 点击物流单号：使用统一的物流查询弹窗（系统内查询/快递100/官网）
-const handleTrackingNoClick = async (trackingNo: string, logisticsCompany?: string) => {
+// 🔥 修复：传递手机号，系统内查询时不需要再弹窗输入
+const handleTrackingNoClick = async (trackingNo: string, logisticsCompany?: string, customerPhone?: string) => {
   const { showLogisticsQueryDialog } = await import('@/utils/logisticsQuery')
   showLogisticsQueryDialog({
     trackingNo,
     companyCode: logisticsCompany,
+    customerPhone,  // 🔥 传递手机号
     router
   })
 }

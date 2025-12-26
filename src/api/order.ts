@@ -174,5 +174,5 @@ export const orderApi = {
 
   // 🔥 新增：根据物流单号获取订单信息
   getOrderByTrackingNo: (trackingNo: string) =>
-    api.get<Order>('/orders/by-tracking-no', { trackingNo }),
+    api.get<Order>('/orders/by-tracking-no', { params: { trackingNo } }),
 }

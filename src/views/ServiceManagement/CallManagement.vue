@@ -2962,15 +2962,21 @@ const loadOutboundList = async () => {
   try {
     loading.value = true
 
-    // 从客户store获取归属于当前用户的客户数据
+    // 从客户store获取客户数据
     await customerStore.loadCustomers()
     const allCustomers = customerStore.customers
     const currentUserId = userStore.currentUser?.id
+    const currentUserRole = userStore.currentUser?.role
 
-    // 筛选归属于当前用户的客户
-    const userCustomers = allCustomers.filter(customer =>
-      customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
-    )
+    // 🔥 修复：管理员和超管可以看到所有客户，其他角色只能看到自己的客户
+    const isAdminOrSuperAdmin = currentUserRole === 'admin' || currentUserRole === 'super_admin'
+    const userCustomers = isAdminOrSuperAdmin
+      ? allCustomers  // 管理员和超管看到所有客户
+      : allCustomers.filter(customer =>
+          customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
+        )
+
+    console.log(`[通话管理] 当前用户角色: ${currentUserRole}, 是否管理员: ${isAdminOrSuperAdmin}, 客户数量: ${userCustomers.length}`)
 
     // 转换为呼出列表格式，并异步加载每个客户的跟进和通话数据
     const convertedList = await Promise.all(userCustomers.map(async customer => {
@@ -3013,7 +3019,7 @@ const loadOutboundList = async () => {
         lastFollowUp,
         callTags,
         status: callCount > 0 ? 'connected' : 'pending',
-        salesPerson: userStore.currentUser?.name || '当前用户',
+        salesPerson: customer.salesPersonName || userStore.currentUser?.name || '当前用户',
         remark: customer.remarks || '',
         address: customer.address || '',
         province: customer.province || '',
@@ -3040,15 +3046,19 @@ const handleSearch = async () => {
   try {
     loading.value = true
 
-    // 从客户store获取归属于当前用户的客户数据
+    // 从客户store获取客户数据
     await customerStore.loadCustomers()
     const allCustomers = customerStore.customers
     const currentUserId = userStore.currentUser?.id
+    const currentUserRole = userStore.currentUser?.role
 
-    // 筛选归属于当前用户的客户
-    let userCustomers = allCustomers.filter(customer =>
-      customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
-    )
+    // 🔥 修复：管理员和超管可以看到所有客户，其他角色只能看到自己的客户
+    const isAdminOrSuperAdmin = currentUserRole === 'admin' || currentUserRole === 'super_admin'
+    let userCustomers = isAdminOrSuperAdmin
+      ? allCustomers  // 管理员和超管看到所有客户
+      : allCustomers.filter(customer =>
+          customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
+        )
 
     // 应用搜索关键词筛选
     if (searchKeyword.value) {
@@ -3081,7 +3091,7 @@ const handleSearch = async () => {
       lastCallTime: customer.lastServiceDate || '暂无记录',
       callCount: 0,
       status: 'pending',
-      salesPerson: userStore.currentUser?.name || '当前用户',
+      salesPerson: customer.salesPersonName || userStore.currentUser?.name || '当前用户',
       remark: customer.remarks || '',
       // 添加完整的地址信息
       address: customer.address || '',

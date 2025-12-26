@@ -2499,10 +2499,13 @@ const loadServiceRecords = async () => {
   try {
     // 使用统一的API获取客户售后记录
     const customerId = route.params.id as string
-    const customerServices = await customerDetailApi.getCustomerServices(customerId)
+    const response = await customerDetailApi.getCustomerServices(customerId)
+
+    // 🔥 修复：正确处理API返回值格式 { success: true, data: [...] }
+    const customerServices = response?.data || response || []
 
     // 转换为页面显示格式
-    serviceRecords.value = customerServices.map((service: any) => ({
+    serviceRecords.value = (Array.isArray(customerServices) ? customerServices : []).map((service: any) => ({
       id: service.id,
       serviceNo: service.serviceNumber || service.serviceNo,
       orderNo: service.orderNumber || service.orderNo,
@@ -2529,10 +2532,13 @@ const loadCallRecords = async () => {
   try {
     // 使用统一的API获取客户通话记录
     const customerId = route.params.id as string
-    const customerCalls = await customerDetailApi.getCustomerCalls(customerId)
+    const response = await customerDetailApi.getCustomerCalls(customerId)
+
+    // 🔥 修复：正确处理API返回值格式 { success: true, data: [...] }
+    const customerCalls = response?.data || response || []
 
     // 转换为页面显示格式
-    callRecords.value = customerCalls.map((call: any) => ({
+    callRecords.value = (Array.isArray(customerCalls) ? customerCalls : []).map((call: any) => ({
       id: call.id,
       callType: call.direction === 'outbound' || call.type === '呼出' ? '呼出' : '呼入',
       phone: call.customerPhone || call.phone,
@@ -2560,10 +2566,13 @@ const loadFollowUpRecords = async () => {
   try {
     // 使用统一的API获取客户跟进记录
     const customerId = route.params.id as string
-    const customerFollowUps = await customerDetailApi.getCustomerFollowUps(customerId)
+    const response = await customerDetailApi.getCustomerFollowUps(customerId)
+
+    // 🔥 修复：正确处理API返回值格式 { success: true, data: [...] }
+    const customerFollowUps = response?.data || response || []
 
     // 转换为页面显示格式并检查编辑权限
-    followUpRecords.value = customerFollowUps.map((followUp: any) => {
+    followUpRecords.value = (Array.isArray(customerFollowUps) ? customerFollowUps : []).map((followUp: any) => {
       const createTime = new Date(followUp.createTime)
       const now = new Date()
       const hoursDiff = (now.getTime() - createTime.getTime()) / (1000 * 60 * 60)
