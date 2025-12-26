@@ -2173,56 +2173,72 @@ const loadCustomerDetailData = async (customerId: string) => {
       customerDetailApi.getCustomerFollowUps(customerId)
     ])
 
+    // 🔥 修复：正确处理API返回值格式
     // 处理订单数据
-    if (ordersRes.success && ordersRes.data) {
-      customerOrders.value = ordersRes.data.map((order: any) => ({
-        id: order.id,
-        orderNo: order.orderNumber || order.orderNo || order.id,
-        productName: order.productNames || order.products?.[0]?.name || order.productName || '未知商品',
-        amount: order.totalAmount || order.finalAmount || order.amount || 0,
-        status: order.status || 'pending',
-        createTime: formatDateTime(order.createdAt || order.createTime || order.orderDate)
-      }))
-    } else {
-      customerOrders.value = []
+    let ordersData: any[] = []
+    if (ordersRes?.success && Array.isArray(ordersRes.data)) {
+      ordersData = ordersRes.data
+    } else if (Array.isArray(ordersRes?.data)) {
+      ordersData = ordersRes.data
+    } else if (Array.isArray(ordersRes)) {
+      ordersData = ordersRes
     }
+
+    customerOrders.value = ordersData.map((order: any) => ({
+      id: order.id,
+      orderNo: order.orderNumber || order.orderNo || order.id,
+      productName: order.productNames || order.products?.[0]?.name || order.productName || '未知商品',
+      amount: order.totalAmount || order.finalAmount || order.amount || 0,
+      status: order.status || 'pending',
+      createTime: formatDateTime(order.createdAt || order.createTime || order.orderDate)
+    }))
 
     // 处理通话记录数据
-    if (callsRes.success && callsRes.data) {
-      customerCalls.value = callsRes.data.map((call: any) => ({
-        id: call.id,
-        callType: call.callType || call.type || 'outbound',
-        duration: formatCallDuration(call.duration),
-        status: call.callStatus || call.status || 'connected',
-        startTime: formatDateTime(call.startTime || call.createdAt),
-        operator: call.userName || call.operatorName || call.operator || '未知',
-        callTags: call.callTags || [],
-        remark: call.notes || call.remark || '',
-        recordingUrl: call.recordingUrl || null,
-        // 保留原始数据用于详情查看
-        _raw: call
-      }))
-    } else {
-      customerCalls.value = []
+    let callsData: any[] = []
+    if (callsRes?.success && Array.isArray(callsRes.data)) {
+      callsData = callsRes.data
+    } else if (Array.isArray(callsRes?.data)) {
+      callsData = callsRes.data
+    } else if (Array.isArray(callsRes)) {
+      callsData = callsRes
     }
 
+    customerCalls.value = callsData.map((call: any) => ({
+      id: call.id,
+      callType: call.callType || call.type || 'outbound',
+      duration: formatCallDuration(call.duration),
+      status: call.callStatus || call.status || 'connected',
+      startTime: formatDateTime(call.startTime || call.createdAt),
+      operator: call.userName || call.operatorName || call.operator || '未知',
+      callTags: call.callTags || [],
+      remark: call.notes || call.remark || '',
+      recordingUrl: call.recordingUrl || null,
+      // 保留原始数据用于详情查看
+      _raw: call
+    }))
+
     // 处理跟进记录数据
-    if (followupsRes.success && followupsRes.data) {
-      customerFollowups.value = followupsRes.data.map((followup: any) => ({
-        id: followup.id,
-        type: followup.type || followup.followUpType || 'call',
-        content: followup.content || followup.description || '',
-        customerIntent: followup.customerIntent || followup.customer_intent || null,
-        callTags: followup.callTags || followup.call_tags || [],
-        nextPlan: formatDateTime(followup.nextFollowUp || followup.nextTime || followup.nextPlanTime || followup.next_follow_up_date),
-        operator: followup.createdByName || followup.author || followup.operatorName || followup.user_name || '未知',
-        createTime: formatDateTime(followup.createdAt || followup.createTime || followup.created_at),
-        // 保留原始数据用于详情查看
-        _raw: followup
-      }))
-    } else {
-      customerFollowups.value = []
+    let followupsData: any[] = []
+    if (followupsRes?.success && Array.isArray(followupsRes.data)) {
+      followupsData = followupsRes.data
+    } else if (Array.isArray(followupsRes?.data)) {
+      followupsData = followupsRes.data
+    } else if (Array.isArray(followupsRes)) {
+      followupsData = followupsRes
     }
+
+    customerFollowups.value = followupsData.map((followup: any) => ({
+      id: followup.id,
+      type: followup.type || followup.followUpType || 'call',
+      content: followup.content || followup.description || '',
+      customerIntent: followup.customerIntent || followup.customer_intent || null,
+      callTags: followup.callTags || followup.call_tags || [],
+      nextPlan: formatDateTime(followup.nextFollowUp || followup.nextTime || followup.nextPlanTime || followup.next_follow_up_date),
+      operator: followup.createdByName || followup.author || followup.operatorName || followup.user_name || '未知',
+      createTime: formatDateTime(followup.createdAt || followup.createTime || followup.created_at),
+      // 保留原始数据用于详情查看
+      _raw: followup
+    }))
 
     // 售后记录暂时为空（如果有售后API可以添加）
     customerAftersales.value = []
@@ -3441,14 +3457,16 @@ const handleCreateOrder = (row?: any) => {
   const customer = row || currentCustomer.value
   if (!customer) return
 
+  console.log('[通话管理] 新建订单，客户信息:', customer)
+
   // 跳转到新增订单页面，并传递客户信息
   safeNavigator.push({
     name: 'OrderAdd',
     query: {
-      customerId: customer.id,
+      customerId: customer.id || customer.customerId,
       customerName: customer.customerName || customer.name,
-      customerPhone: customer.phone,
-      customerCompany: customer.company || '',
+      customerPhone: customer.phone || customer.customerPhone,
+      customerAddress: customer.address || customer.detailAddress || '',
       source: 'call_management' // 标识来源
     }
   })
@@ -3574,12 +3592,12 @@ const handleDetailOutboundCall = () => {
 const handleCreateAftersales = () => {
   if (!currentCustomer.value) return
 
-  // 跳转到售后创建页面，带上客户信息
+  // 🔥 修复：使用正确的路由路径 /service/add
   router.push({
-    path: '/service/aftersales/add',
+    path: '/service/add',
     query: {
       customerId: currentCustomer.value.id,
-      customerName: currentCustomer.value.customerName,
+      customerName: currentCustomer.value.customerName || currentCustomer.value.name,
       customerPhone: currentCustomer.value.phone
     }
   })
