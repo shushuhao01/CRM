@@ -134,7 +134,8 @@ router.post('/check', async (_req: Request, res: Response) => {
         orderShipmentTimeoutCount: result.orderShipmentTimeout,
         afterSalesTimeoutCount: result.afterSalesTimeout,
         orderFollowupCount: result.orderFollowup,
-        totalSent: result.orderAuditTimeout + result.orderShipmentTimeout + result.afterSalesTimeout + result.orderFollowup
+        customerFollowupCount: result.customerFollowup,
+        totalSent: result.orderAuditTimeout + result.orderShipmentTimeout + result.afterSalesTimeout + result.orderFollowup + result.customerFollowup
       }
     });
   } catch (error: any) {

@@ -339,86 +339,32 @@ export const useOrderStore = createPersistentStore('order', () => {
 
     console.log('[OrderStore] 环境检测: hostname=', hostname, ', isProdEnv=', isProdEnv)
 
-    // 生产环境强制使用API
-    if (isProdEnv) {
-      console.log('[OrderStore] 🌐 生产环境：调用真实API保存订单到数据库')
-      try {
-        const { orderApi } = await import('@/api/order')
-        console.log('[OrderStore] 准备发送到API的数据:', orderData)
+    // 🔥 修复：开发环境也使用API保存订单到数据库
+    console.log('[OrderStore] 🌐 调用API保存订单到数据库')
+    try {
+      const { orderApi } = await import('@/api/order')
+      console.log('[OrderStore] 准备发送到API的数据:', orderData)
 
-        const response = await orderApi.create(orderData)
-        console.log('[OrderStore] API响应:', response)
+      const response = await orderApi.create(orderData)
+      console.log('[OrderStore] API响应:', response)
 
-        if (response.success && response.data) {
-          const newOrder = response.data
-          console.log('[OrderStore] ✅ API保存成功，订单ID:', newOrder.id)
+      if (response.success && response.data) {
+        const newOrder = response.data
+        console.log('[OrderStore] ✅ API保存成功，订单ID:', newOrder.id)
 
-          // 同时更新本地缓存
-          orders.value.unshift(newOrder)
-          console.log('[OrderStore] 本地缓存已更新，订单总数:', orders.value.length)
+        // 同时更新本地缓存
+        orders.value.unshift(newOrder)
+        console.log('[OrderStore] 本地缓存已更新，订单总数:', orders.value.length)
 
-          return newOrder
-        } else {
-          console.error('[OrderStore] API响应失败:', response)
-          throw new Error((response as { message?: string }).message || '创建订单失败')
-        }
-      } catch (apiError) {
-        console.error('[OrderStore] ❌ API保存失败:', apiError)
-        throw apiError
+        return newOrder
+      } else {
+        console.error('[OrderStore] API响应失败:', response)
+        throw new Error((response as { message?: string }).message || '创建订单失败')
       }
+    } catch (apiError) {
+      console.error('[OrderStore] ❌ API保存失败:', apiError)
+      throw apiError
     }
-
-    // 开发环境：使用本地存储
-    console.log('[OrderStore] 💻 开发环境：使用本地存储')
-
-    const id = `order_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
-
-    const newOrder: Order = {
-      ...orderData,
-      id,
-      createTime: formatTime(now)
-    }
-
-    // 使用配置的延迟时间设置自动流转到审核
-    const delayMs = transferDelayMinutes.value * 60 * 1000
-    const transferTime = new Date(now.getTime() + delayMs)
-    newOrder.auditTransferTime = formatTime(transferTime)
-    newOrder.isAuditTransferred = false
-
-    console.log('[订单创建] 流转时间设置:', {
-      当前时间: formatTime(now),
-      流转时间: newOrder.auditTransferTime,
-      延迟分钟: transferDelayMinutes.value,
-      剩余毫秒: transferTime.getTime() - now.getTime()
-    })
-
-    // 初始化状态历史
-    newOrder.statusHistory = [
-      {
-        status: 'pending_transfer',
-        time: formatTime(now),
-        operator: newOrder.createdBy,
-        description: '订单创建成功',
-        remark: payload.remark || '客户下单'
-      }
-    ]
-
-    // 初始化操作日志
-    newOrder.operationLogs = [
-      {
-        id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        time: formatTime(now),
-        operator: newOrder.createdBy,
-        action: '创建订单',
-        description: '订单创建成功',
-        remark: payload.remark || ''
-      }
-    ]
-
-    // 入库并由持久化工具自动保存
-    addOrder(newOrder)
-
-    return newOrder
   }
 
   // 生成订单号
@@ -1085,108 +1031,24 @@ export const useOrderStore = createPersistentStore('order', () => {
 
   // 检查并流转订单（用于定时任务）
   const checkAndTransferOrders = async () => {
-    const now = new Date()
+    // 🔥 修复：开发环境也使用后端API执行流转
+    try {
+      console.log('[订单流转] 🌐 调用后端API检查流转')
+      const { orderApi } = await import('@/api/order')
+      const response = await orderApi.checkTransfer()
 
-    // 🔥 检测环境，生产环境调用后端API
-    const hostname = window.location.hostname
-    const isProdEnv = (
-      hostname.includes('abc789.cn') ||
-      hostname.includes('vercel.app') ||
-      hostname.includes('netlify.app') ||
-      hostname.includes('railway.app') ||
-      !hostname.includes('localhost') && !hostname.includes('127.0.0.1')
-    )
-
-    // 生产环境：调用后端API执行流转
-    if (isProdEnv) {
-      try {
-        console.log('[订单流转] 🌐 生产环境：调用后端API检查流转')
-        const { orderApi } = await import('@/api/order')
-        const response = await orderApi.checkTransfer()
-
-        if (response.success && response.data?.transferredCount > 0) {
-          console.log(`[订单流转] ✅ 后端流转成功: ${response.data.transferredCount} 个订单`)
-          // 重新加载订单列表以获取最新状态
-          await loadOrdersFromAPI()
-          eventBus.emit(EventNames.ORDER_TRANSFERRED, response.data.orders || [])
-          eventBus.emit(EventNames.REFRESH_ORDER_LIST)
-          eventBus.emit(EventNames.REFRESH_AUDIT_LIST)
-        } else {
-          console.log('[订单流转] 没有需要流转的订单')
-        }
-      } catch (error) {
-        console.error('[订单流转] ❌ 后端API调用失败:', error)
+      if (response.success && response.data?.transferredCount > 0) {
+        console.log(`[订单流转] ✅ 后端流转成功: ${response.data.transferredCount} 个订单`)
+        // 重新加载订单列表以获取最新状态
+        await loadOrdersFromAPI(true)
+        eventBus.emit(EventNames.ORDER_TRANSFERRED, response.data.orders || [])
+        eventBus.emit(EventNames.REFRESH_ORDER_LIST)
+        eventBus.emit(EventNames.REFRESH_AUDIT_LIST)
+      } else {
+        console.log('[订单流转] 没有需要流转的订单')
       }
-      return
-    }
-
-    // 开发环境：本地执行流转逻辑
-    console.log('[订单流转] 💻 开发环境：本地执行流转检查')
-    let hasTransferred = false
-    const transferredOrders: Order[] = []
-
-    orders.value.forEach(order => {
-      // 检查待流转的订单是否需要自动流转到审核
-      if (order.status === 'pending_transfer' && order.auditTransferTime) {
-        const transferTime = new Date(order.auditTransferTime)
-        if (now >= transferTime && !order.isAuditTransferred) {
-          // 自动流转到审核状态
-          updateOrder(order.id, {
-            status: 'pending_audit',
-            auditStatus: 'pending',
-            isAuditTransferred: true
-          })
-
-          // 添加状态历史
-          if (order.statusHistory) {
-            order.statusHistory.push({
-              status: 'pending_audit',
-              time: now.toISOString().slice(0, 19).replace('T', ' '),
-              operator: 'system',
-              description: '订单自动流转到审核状态',
-              remark: `${transferDelayMinutes.value}分钟后自动流转`
-            })
-          }
-
-          // 添加操作日志
-          if (order.operationLogs) {
-            order.operationLogs.push({
-              id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-              time: now.toISOString().slice(0, 19).replace('T', ' '),
-              operator: 'system',
-              action: '自动流转',
-              description: '订单自动流转到审核状态',
-              remark: '系统自动执行'
-            })
-          }
-
-          hasTransferred = true
-          transferredOrders.push(order)
-        }
-      }
-    })
-
-    // 如果有订单被流转，发送事件通知
-    if (hasTransferred) {
-      console.log(`[订单流转] 共有 ${transferredOrders.length} 个订单自动流转到审核状态`)
-      eventBus.emit(EventNames.ORDER_TRANSFERRED, transferredOrders)
-      eventBus.emit(EventNames.REFRESH_ORDER_LIST)
-      eventBus.emit(EventNames.REFRESH_AUDIT_LIST)
-
-      // 【2025-12-13新增】发送待审核通知给审核员
-      transferredOrders.forEach(order => {
-        try {
-          messageNotificationService.sendOrderAuditPending(
-            order.orderNumber,
-            order.customerName,
-            order.totalAmount,
-            order.createdByName || order.createdBy || '销售员',
-            { orderId: order.id }
-          )
-        } catch (error) {
-          console.error('[订单流转] 发送审核通知失败:', error)
-        }
-      })
+    } catch (error) {
+      console.error('[订单流转] ❌ 后端API调用失败:', error)
     }
   }
 
@@ -1433,26 +1295,16 @@ export const useOrderStore = createPersistentStore('order', () => {
         throw new Error('API返回失败')
       }
 
-      // 生产环境下，如果API返回空数据，不使用本地数据
-      if (isProdEnv) {
-        console.log('[OrderStore] 生产环境：API返回空数据，订单列表为空')
-        orders.value = []
-        return []
-      }
-
+      // 🔥 修复：开发环境也使用API数据，不使用本地模拟数据
+      console.log('[OrderStore] API返回空数据，订单列表为空')
+      orders.value = []
       return []
     } catch (error) {
       console.error('[OrderStore] ❌ 从API加载订单失败:', error)
 
-      // 生产环境下，API失败时不使用本地数据，直接返回空数组
-      if (isProdEnv) {
-        console.warn('[OrderStore] 生产环境：API失败，不使用本地数据')
-        orders.value = []
-        return []
-      }
-
-      // 开发环境可以使用本地数据
-      console.warn('[OrderStore] 开发环境：使用本地数据')
+      // 🔥 修复：开发环境也不使用本地数据，直接返回空数组
+      console.warn('[OrderStore] API失败，订单列表为空')
+      orders.value = []
       return []
     }
   }
@@ -1545,295 +1397,14 @@ export const useOrderStore = createPersistentStore('order', () => {
     }
   }
 
-  // 初始化模拟数据（仅用于开发环境）
+  // 初始化模拟数据（已废弃，保留函数签名以兼容旧代码）
   const initializeWithMockData = () => {
-    // 检测是否为生产环境
-    const hostname = window.location.hostname
-    const isProdEnv = (
-      hostname.includes('abc789.cn') ||
-      hostname.includes('vercel.app') ||
-      hostname.includes('netlify.app') ||
-      hostname.includes('railway.app') ||
-      (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
-    )
-
-    // 🔥 生产环境不使用模拟数据和localStorage
-    if (isProdEnv) {
-      console.log('[OrderStore] 生产环境：不使用模拟数据，订单数据从API获取')
-      return
-    }
-
-    // 如果已有数据，不重复初始化
-    if (orders.value.length > 0) {
-      console.log('Order Store: 订单数据已存在，跳过初始化')
-      return
-    }
-
-    try {
-      // 从localStorage获取订单数据（仅开发环境）
-      const stored = localStorage.getItem('crm_mock_orders')
-      if (stored) {
-        const mockOrders = JSON.parse(stored)
-        // 检查数据结构是否完整，如果缺少必要字段则重新初始化
-        const firstOrder = mockOrders[0]
-        if (firstOrder && (!firstOrder.receiverName || !firstOrder.subtotal)) {
-          console.log('Order Store: 检测到旧版本数据结构，重新初始化')
-          localStorage.removeItem('crm_mock_orders')
-        } else {
-          orders.value = mockOrders
-          console.log(`Order Store: 从localStorage加载了 ${mockOrders.length} 个订单`)
-          return
-        }
-      }
-    } catch (error) {
-      console.warn('Order Store: 从localStorage加载订单数据失败:', error)
-    }
-
-    // 如果localStorage中没有数据，使用默认的模拟数据
-    const initialMockOrders: Order[] = [
-      {
-        id: '1',
-        orderNumber: 'ORD202401001',
-        customerId: '1',
-        customerName: '张三',
-        customerPhone: '13800138001',
-        products: [
-          { id: '1', name: '产品A', price: 1000, quantity: 2, total: 2000 }
-        ],
-        subtotal: 2000,
-        discount: 0,
-        totalAmount: 2000,
-        collectAmount: 1500,
-        depositAmount: 500,
-        receiverName: '张三',
-        receiverPhone: '13800138001',
-        receiverAddress: '北京市朝阳区建国门外大街1号',
-        remark: '请尽快发货',
-        status: 'pending_shipment',
-        auditStatus: 'approved',
-        markType: 'normal',
-        createTime: '2024-01-15 10:30:00',
-        createdBy: 'admin',
-        salesPersonId: 'admin',
-        serviceWechat: 'service001',
-        orderSource: 'online_store',
-        expectedShipDate: '2024-01-16',
-        expectedDeliveryDate: '2024-01-18',
-        expressCompany: 'sf',
-        trackingNumber: 'SF1234567890',
-        logisticsStatus: 'picked_up',
-        statusHistory: [
-          {
-            status: 'pending_transfer',
-            time: '2024-01-15 10:30:00',
-            operator: 'admin',
-            description: '订单创建成功',
-            remark: '客户下单'
-          },
-          {
-            status: 'pending_audit',
-            time: '2024-01-15 10:33:00',
-            operator: 'admin',
-            description: '订单流转到审核',
-            remark: '自动流转'
-          },
-          {
-            status: 'pending_shipment',
-            time: '2024-01-15 11:00:00',
-            operator: '审核员',
-            description: '订单审核通过，等待发货',
-            remark: '审核通过'
-          }
-        ],
-        operationLogs: [
-          {
-            id: 'op_1',
-            time: '2024-01-15 10:30:00',
-            operator: 'admin',
-            action: '创建订单',
-            description: '订单创建成功',
-            remark: '客户下单'
-          },
-          {
-            id: 'op_2',
-            time: '2024-01-15 11:00:00',
-            operator: '审核员',
-            action: '审核通过',
-            description: '订单审核通过，等待发货',
-            remark: '审核通过'
-          }
-        ]
-      },
-      {
-        id: '2',
-        orderNumber: 'ORD202401002',
-        customerId: '2',
-        customerName: '李四',
-        customerPhone: '13900139002',
-        products: [
-          { id: '2', name: '产品B', price: 1500, quantity: 1, total: 1500 }
-        ],
-        subtotal: 1500,
-        discount: 100,
-        totalAmount: 1400,
-        collectAmount: 900,
-        depositAmount: 500,
-        receiverName: '李四',
-        receiverPhone: '13900139002',
-        receiverAddress: '上海市浦东新区陆家嘴环路1000号',
-        remark: '客户要求包装精美',
-        status: 'pending_cancel',
-        auditStatus: 'pending',
-        markType: 'normal',
-        createTime: '2024-01-16 14:20:00',
-        createdBy: 'sales1',
-        salesPersonId: 'sales1',
-        cancelStatus: 'pending',
-        cancelReason: 'customer_cancel',
-        cancelDescription: '客户临时改变主意，不需要此产品',
-        cancelRequestTime: '2024-01-17 09:15:00',
-        serviceWechat: 'service002',
-        orderSource: 'wechat_mini',
-        statusHistory: [
-          {
-            status: 'pending_transfer',
-            time: '2024-01-16 14:20:00',
-            operator: 'sales1',
-            description: '订单创建成功',
-            remark: '客户下单'
-          },
-          {
-            status: 'pending_cancel',
-            time: '2024-01-17 09:15:00',
-            operator: 'sales1',
-            description: '申请取消订单',
-            remark: '客户要求取消'
-          }
-        ],
-        operationLogs: [
-          {
-            id: 'op_3',
-            time: '2024-01-16 14:20:00',
-            operator: 'sales1',
-            action: '创建订单',
-            description: '订单创建成功',
-            remark: '客户下单'
-          },
-          {
-            id: 'op_4',
-            time: '2024-01-17 09:15:00',
-            operator: 'sales1',
-            action: '申请取消',
-            description: '申请取消订单',
-            remark: '客户要求取消'
-          }
-        ]
-      },
-      {
-        id: '3',
-        orderNumber: 'ORD202401003',
-        customerId: '3',
-        customerName: '王五',
-        customerPhone: '13700137003',
-        products: [
-          { id: '3', name: '产品C', price: 800, quantity: 3, total: 2400 }
-        ],
-        subtotal: 2400,
-        discount: 0,
-        totalAmount: 2400,
-        collectAmount: 2400,
-        depositAmount: 0,
-        receiverName: '王五',
-        receiverPhone: '13700137003',
-        receiverAddress: '广州市天河区珠江新城花城大道1号',
-        remark: '货到付款',
-        status: 'shipped',
-        auditStatus: 'approved',
-        markType: 'normal',
-        createTime: '2024-01-18 09:15:00',
-        createdBy: 'sales2',
-        salesPersonId: 'sales2',
-        auditRemark: '审核通过',
-        auditTime: '2024-01-18 14:20:00',
-        auditorId: 'admin',
-        serviceWechat: 'service003',
-        orderSource: 'phone_call',
-        expectedShipDate: '2024-01-19',
-        expectedDeliveryDate: '2024-01-21',
-        expressCompany: 'yt',
-        trackingNumber: 'YT9876543210',
-        logisticsStatus: 'in_transit',
-        statusHistory: [
-          {
-            status: 'pending_transfer',
-            time: '2024-01-18 09:15:00',
-            operator: 'sales2',
-            description: '订单创建成功',
-            remark: '客户下单'
-          },
-          {
-            status: 'pending_audit',
-            time: '2024-01-18 09:18:00',
-            operator: 'sales2',
-            description: '订单流转到审核',
-            remark: '自动流转'
-          },
-          {
-            status: 'pending_shipment',
-            time: '2024-01-18 14:20:00',
-            operator: 'admin',
-            description: '订单审核通过，等待发货',
-            remark: '审核通过'
-          },
-          {
-            status: 'shipped',
-            time: '2024-01-19 10:30:00',
-            operator: '物流员',
-            description: '订单已发货',
-            remark: '圆通快递'
-          }
-        ],
-        operationLogs: [
-          {
-            id: 'op_5',
-            time: '2024-01-18 09:15:00',
-            operator: 'sales2',
-            action: '创建订单',
-            description: '订单创建成功',
-            remark: '客户下单'
-          },
-          {
-            id: 'op_6',
-            time: '2024-01-18 14:20:00',
-            operator: 'admin',
-            action: '审核通过',
-            description: '订单审核通过，等待发货',
-            remark: '审核通过'
-          },
-          {
-            id: 'op_7',
-            time: '2024-01-19 10:30:00',
-            operator: '物流员',
-            action: '订单发货',
-            description: '订单已通过圆通快递发货',
-            remark: '正常发货'
-          }
-        ]
-      }
-    ]
-
-    orders.value = initialMockOrders
-
-    // 保存到localStorage
-    try {
-      localStorage.setItem('crm_mock_orders', JSON.stringify(initialMockOrders))
-      console.log(`Order Store: 初始化了 ${initialMockOrders.length} 个模拟订单`)
-    } catch (error) {
-      console.warn('Order Store: 保存订单数据到localStorage失败:', error)
-    }
+    // 🔥 修复：不再使用模拟数据，所有环境都从API获取数据
+    console.log('[OrderStore] initializeWithMockData已废弃，订单数据从API获取')
+    return
   }
 
-    return {
+  return {
     orders,
     totalOrders,
     pendingOrders,

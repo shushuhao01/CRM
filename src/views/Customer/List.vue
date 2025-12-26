@@ -1721,13 +1721,9 @@ const loadCustomerList = async (forceReload = false) => {
 
     console.log('[CustomerList] hostname:', hostname, ', isProdEnv:', isProdEnv)
 
-    // 🔥 生产环境强制从API加载数据
-    if (isProdEnv) {
-      console.log('[CustomerList] 🌐 生产环境：强制从API加载客户数据')
-      await customerStore.loadCustomers()
-    } else {
-      console.log('[CustomerList] 💻 开发环境：使用本地客户数据')
-    }
+    // 🔥 无论开发还是生产环境，都从API加载数据
+    console.log('[CustomerList] 从API加载客户数据')
+    await customerStore.loadCustomers()
 
     // 确保搜索结果已更新
     await nextTick()

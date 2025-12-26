@@ -402,7 +402,7 @@ const detectCompanyByTrackingNo = (trackingNo: string): string => {
 
 /**
  * 查询物流轨迹 - 优化版
- * 🔥 修复：在发起请求前判断是否需要手机号验证
+ * 🔥 修复：先尝试从订单API获取手机号，再判断是否需要弹窗
  */
 const handleSearch = async (phone?: string) => {
   const trackingNum = searchForm.trackingNo.trim()
@@ -425,19 +425,10 @@ const handleSearch = async (phone?: string) => {
     }
   }
 
-  // 🔥 在发起请求前判断是否需要手机号验证
-  if (companyCode && isPhoneVerifyRequired(companyCode) && !phone) {
-    console.log('[物流跟踪] 物流公司需要手机号验证，弹出输入框')
-    pendingTrackingNo.value = trackingNum
-    pendingCompanyCode.value = companyCode
-    phoneVerifyDialogVisible.value = true
-    return
-  }
-
   loading.value = true
 
   try {
-    // 🔥 如果没有传入手机号，先尝试从订单API获取
+    // 🔥 修复：先尝试从订单API获取手机号（无论是否传入phone参数）
     let phoneToUse = phone
     if (!phoneToUse) {
       try {
@@ -451,6 +442,16 @@ const handleSearch = async (phone?: string) => {
       } catch (orderErr) {
         console.log('[物流跟踪] 从订单API获取手机号失败:', orderErr)
       }
+    }
+
+    // 🔥 修复：只有在需要手机号验证且没有获取到手机号时才弹窗
+    if (companyCode && isPhoneVerifyRequired(companyCode) && !phoneToUse) {
+      console.log('[物流跟踪] 物流公司需要手机号验证，且未能从订单获取手机号，弹出输入框')
+      loading.value = false
+      pendingTrackingNo.value = trackingNum
+      pendingCompanyCode.value = companyCode
+      phoneVerifyDialogVisible.value = true
+      return
     }
 
     const { logisticsApi } = await import('@/api/logistics')

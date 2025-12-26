@@ -1,9 +1,16 @@
 import { DataSource } from 'typeorm';
 import dotenv from 'dotenv';
+import * as path from 'path';
 import { User } from '../entities/User';
 
-// 确保环境变量被加载
-dotenv.config();
+// 根据NODE_ENV环境变量加载对应配置文件
+// 生产环境(production): 加载 .env
+// 开发环境(development): 加载 .env.local
+const isProduction = process.env.NODE_ENV === 'production';
+const envFile = isProduction ? '.env' : '.env.local';
+const envPath = path.join(__dirname, '../../', envFile);
+dotenv.config({ path: envPath });
+
 import { Customer } from '../entities/Customer';
 import { Order } from '../entities/Order';
 import { Product } from '../entities/Product';
@@ -47,11 +54,9 @@ import { PerformanceReportConfig, PerformanceReportLog } from '../entities/Perfo
 import { LogisticsApiConfig } from '../entities/LogisticsApiConfig';
 import { CustomerServicePermission } from '../entities/CustomerServicePermission';
 import { SensitiveInfoPermission } from '../entities/SensitiveInfoPermission';
-import path from 'path';
 
 // 根据环境变量选择数据库配置
 const dbType = process.env.DB_TYPE || (process.env.NODE_ENV === 'production' ? 'mysql' : 'sqlite');
-const isProduction = process.env.NODE_ENV === 'production';
 
 const AppDataSource = new DataSource(
   dbType === 'mysql'
@@ -65,6 +70,11 @@ const AppDataSource = new DataSource(
         database: process.env.DB_DATABASE || process.env.DB_NAME || 'crm',
         synchronize: false, // 生产环境不自动同步
         logging: process.env.NODE_ENV === 'development',
+        // 🔥 统一使用北京时间
+        timezone: '+08:00',
+        extra: {
+          connectionLimit: 10
+        },
         entities: [
           User,
           Customer,
@@ -188,6 +198,9 @@ export const getDataSource = (): DataSource | null => {
 // 初始化数据库连接
 export const initializeDatabase = async (): Promise<void> => {
   try {
+    // 打印当前连接的数据库信息
+    console.log(`📦 正在连接数据库: ${process.env.DB_DATABASE || 'crm'} @ ${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || '3306'}`);
+
     await AppDataSource.initialize();
     console.log('✅ 数据库连接成功');
 

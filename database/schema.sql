@@ -652,6 +652,10 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('lowStockThreshold', '10', 'number', 'product_settings', '低库存阈值', 1, 1, 8)
 ON DUPLICATE KEY UPDATE `configValue` = VALUES(`configValue`), `updatedAt` = CURRENT_TIMESTAMP;
 
+-- =============================================
+-- 通话管理模块表
+-- =============================================
+
 -- 16. 通话记录表
 DROP TABLE IF EXISTS `call_records`;
 CREATE TABLE `call_records` (
@@ -660,14 +664,19 @@ CREATE TABLE `call_records` (
   `customer_name` VARCHAR(100) COMMENT '客户姓名',
   `customer_phone` VARCHAR(20) NOT NULL COMMENT '客户电话',
   `call_type` ENUM('outbound', 'inbound') DEFAULT 'outbound' COMMENT '通话类型：outbound-呼出，inbound-呼入',
-  `call_status` ENUM('connected', 'missed', 'busy', 'failed', 'rejected') DEFAULT 'connected' COMMENT '通话状态',
+  `call_status` ENUM('connected', 'missed', 'busy', 'failed', 'rejected', 'pending', 'calling') DEFAULT 'connected' COMMENT '通话状态',
   `start_time` DATETIME COMMENT '通话开始时间',
   `end_time` DATETIME COMMENT '通话结束时间',
   `duration` INT DEFAULT 0 COMMENT '通话时长(秒)',
   `recording_url` VARCHAR(500) COMMENT '录音文件URL',
   `has_recording` TINYINT(1) DEFAULT 0 COMMENT '是否有录音',
+  `recording_size` BIGINT DEFAULT 0 COMMENT '录音文件大小(字节)',
   `notes` TEXT COMMENT '通话备注',
+  `call_tags` JSON COMMENT '通话标签（JSON数组，如：["意向","需报价"]）',
   `follow_up_required` TINYINT(1) DEFAULT 0 COMMENT '是否需要跟进',
+  `call_method` VARCHAR(20) DEFAULT 'system' COMMENT '外呼方式：system-系统线路，mobile-工作手机，voip-网络电话',
+  `line_id` VARCHAR(50) COMMENT '外呼线路ID',
+  `caller_number` VARCHAR(20) COMMENT '主叫号码',
   `user_id` VARCHAR(100) NOT NULL COMMENT '操作用户ID',
   `user_name` VARCHAR(100) COMMENT '操作用户姓名',
   `department` VARCHAR(100) COMMENT '部门',
@@ -679,7 +688,8 @@ CREATE TABLE `call_records` (
   INDEX `idx_call_status` (`call_status`),
   INDEX `idx_user_id` (`user_id`),
   INDEX `idx_start_time` (`start_time`),
-  INDEX `idx_has_recording` (`has_recording`)
+  INDEX `idx_has_recording` (`has_recording`),
+  INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通话记录表';
 
 -- 17. 跟进记录表
@@ -689,11 +699,13 @@ CREATE TABLE `follow_up_records` (
   `call_id` VARCHAR(50) COMMENT '关联通话ID',
   `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
   `customer_name` VARCHAR(100) COMMENT '客户姓名',
-  `follow_up_type` ENUM('call', 'visit', 'email', 'message') NOT NULL COMMENT '跟进方式',
-  `content` TEXT NOT NULL COMMENT '跟进内容',
-  `next_follow_up_date` TIMESTAMP NULL COMMENT '下次跟进时间',
+  `follow_up_type` ENUM('call', 'visit', 'email', 'message', 'wechat') NOT NULL DEFAULT 'call' COMMENT '跟进方式',
+  `content` TEXT COMMENT '跟进内容',
+  `next_follow_up_date` DATETIME COMMENT '下次跟进时间',
   `priority` ENUM('low', 'medium', 'high', 'urgent') DEFAULT 'medium' COMMENT '优先级',
   `status` ENUM('pending', 'completed', 'cancelled') DEFAULT 'pending' COMMENT '状态',
+  `intention` VARCHAR(20) COMMENT '客户意向：high-很有意向，medium-一般，low-较低，none-暂无',
+  `result` VARCHAR(50) COMMENT '跟进结果',
   `user_id` VARCHAR(50) NOT NULL COMMENT '跟进人ID',
   `user_name` VARCHAR(50) COMMENT '跟进人姓名',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -703,8 +715,215 @@ CREATE TABLE `follow_up_records` (
   INDEX `idx_user` (`user_id`),
   INDEX `idx_status` (`status`),
   INDEX `idx_priority` (`priority`),
-  INDEX `idx_next_follow_up` (`next_follow_up_date`)
+  INDEX `idx_next_follow_up` (`next_follow_up_date`),
+  INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='跟进记录表';
+
+-- 17.1 电话配置表
+DROP TABLE IF EXISTS `phone_configs`;
+CREATE TABLE `phone_configs` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT COMMENT '配置ID',
+  `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
+  `config_type` VARCHAR(50) NOT NULL DEFAULT 'call' COMMENT '配置类型: call-通话配置',
+  
+  -- 外呼方式配置
+  `call_method` VARCHAR(20) DEFAULT 'system' COMMENT '外呼方式: system/mobile/voip',
+  `line_id` VARCHAR(50) COMMENT '系统外呼线路ID',
+  `work_phone` VARCHAR(20) COMMENT '工作手机号',
+  `dial_method` VARCHAR(20) DEFAULT 'direct' COMMENT '拨号方式: direct/callback',
+  
+  -- 用户偏好设置 (新增)
+  `prefer_mobile` TINYINT(1) DEFAULT 0 COMMENT '优先使用工作手机',
+  `default_line_id` INT COMMENT '默认线路ID',
+  
+  -- 工作手机配置
+  `mobile_config` JSON COMMENT '工作手机配置',
+  
+  -- 回拨配置
+  `callback_config` JSON COMMENT '回拨模式配置',
+  
+  -- VoIP配置
+  `voip_provider` VARCHAR(20) COMMENT 'VoIP服务商: aliyun/tencent/huawei/custom',
+  `audio_device` VARCHAR(20) DEFAULT 'default' COMMENT '音频设备',
+  `audio_quality` VARCHAR(20) DEFAULT 'standard' COMMENT '音频质量',
+  
+  -- 云服务商配置
+  `aliyun_config` JSON COMMENT '阿里云通信配置',
+  `tencent_config` JSON COMMENT '腾讯云通信配置',
+  `huawei_config` JSON COMMENT '华为云通信配置',
+  
+  -- 呼叫参数
+  `call_mode` VARCHAR(20) DEFAULT 'manual' COMMENT '呼叫模式',
+  `call_interval` INT DEFAULT 30 COMMENT '呼叫间隔(秒)',
+  `max_retries` INT DEFAULT 3 COMMENT '最大重试次数',
+  `call_timeout` INT DEFAULT 60 COMMENT '呼叫超时(秒)',
+  `enable_recording` TINYINT(1) DEFAULT 1 COMMENT '是否启用录音',
+  `auto_follow_up` TINYINT(1) DEFAULT 0 COMMENT '是否自动跟进',
+  
+  -- 高级设置
+  `concurrent_calls` INT DEFAULT 1 COMMENT '并发呼叫数',
+  `priority` VARCHAR(20) DEFAULT 'medium' COMMENT '优先级',
+  `blacklist_check` TINYINT(1) DEFAULT 1 COMMENT '是否检查黑名单',
+  `show_location` TINYINT(1) DEFAULT 1 COMMENT '是否显示归属地',
+  
+  `is_active` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  
+  UNIQUE KEY `uk_user_type` (`user_id`, `config_type`),
+  INDEX `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户电话配置表';
+
+-- 17.2 外呼线路表
+DROP TABLE IF EXISTS `call_lines`;
+CREATE TABLE `call_lines` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '线路ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '线路名称',
+  `provider` VARCHAR(50) NOT NULL COMMENT '服务商：system-系统，aliyun-阿里云，tencent-腾讯云，huawei-华为云，custom-自定义',
+  `type` VARCHAR(20) DEFAULT 'voip' COMMENT '线路类型：voip-网络电话，pstn-传统电话，sip-SIP线路',
+  `caller_number` VARCHAR(30) COMMENT '主叫显示号码/外显号码',
+  `line_number` VARCHAR(30) COMMENT '线路号码',
+  `config` JSON COMMENT '线路配置（加密存储AccessKey等）',
+  `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态：active-正常，inactive-停用，error-异常',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用(管理员控制)',
+  `max_concurrent` INT DEFAULT 10 COMMENT '最大并发数',
+  `current_concurrent` INT DEFAULT 0 COMMENT '当前并发数',
+  `daily_limit` INT DEFAULT 1000 COMMENT '每日限额',
+  `daily_used` INT DEFAULT 0 COMMENT '今日已用',
+  `total_calls` INT DEFAULT 0 COMMENT '总通话次数',
+  `total_duration` INT DEFAULT 0 COMMENT '总通话时长(秒)',
+  `success_rate` DECIMAL(5,2) DEFAULT 0 COMMENT '接通率(%)',
+  `last_used_at` DATETIME COMMENT '最后使用时间',
+  `sort_order` INT DEFAULT 0 COMMENT '排序',
+  `description` TEXT COMMENT '线路描述',
+  `remark` TEXT COMMENT '备注',
+  `created_by` VARCHAR(50) COMMENT '创建人ID',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_provider` (`provider`),
+  INDEX `idx_type` (`type`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_is_enabled` (`is_enabled`),
+  INDEX `idx_sort` (`sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='外呼线路表';
+
+-- 17.3 外呼任务表
+DROP TABLE IF EXISTS `outbound_tasks`;
+CREATE TABLE `outbound_tasks` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '任务ID',
+  `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
+  `customer_name` VARCHAR(100) COMMENT '客户姓名',
+  `customer_phone` VARCHAR(20) NOT NULL COMMENT '客户电话',
+  `customer_level` VARCHAR(20) COMMENT '客户等级',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '状态：pending-待外呼，calling-呼叫中，connected-已接通，no_answer-未接听，busy-忙线，failed-失败，completed-已完成',
+  `call_count` INT DEFAULT 0 COMMENT '已呼叫次数',
+  `last_call_time` DATETIME COMMENT '最后通话时间',
+  `last_call_id` VARCHAR(50) COMMENT '最后通话记录ID',
+  `next_call_time` DATETIME COMMENT '下次呼叫时间',
+  `priority` INT DEFAULT 0 COMMENT '优先级(数字越大越优先)',
+  `source` VARCHAR(50) COMMENT '任务来源：manual-手动添加，import-导入，system-系统生成',
+  `campaign_id` VARCHAR(50) COMMENT '所属活动ID',
+  `assigned_to` VARCHAR(50) COMMENT '分配给用户ID',
+  `assigned_to_name` VARCHAR(50) COMMENT '分配给用户姓名',
+  `remark` TEXT COMMENT '备注',
+  `created_by` VARCHAR(50) COMMENT '创建人ID',
+  `created_by_name` VARCHAR(50) COMMENT '创建人姓名',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_customer` (`customer_id`),
+  INDEX `idx_phone` (`customer_phone`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_assigned` (`assigned_to`),
+  INDEX `idx_priority` (`priority`),
+  INDEX `idx_next_call` (`next_call_time`),
+  INDEX `idx_campaign` (`campaign_id`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='外呼任务表';
+
+-- 17.4 通话录音表
+DROP TABLE IF EXISTS `call_recordings`;
+CREATE TABLE `call_recordings` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '录音ID',
+  `call_id` VARCHAR(50) NOT NULL COMMENT '通话记录ID',
+  `customer_id` VARCHAR(50) COMMENT '客户ID',
+  `customer_name` VARCHAR(100) COMMENT '客户姓名',
+  `customer_phone` VARCHAR(20) COMMENT '客户电话',
+  `file_name` VARCHAR(200) NOT NULL COMMENT '文件名',
+  `file_path` VARCHAR(500) NOT NULL COMMENT '文件路径',
+  `file_url` VARCHAR(500) COMMENT '访问URL',
+  `file_size` BIGINT DEFAULT 0 COMMENT '文件大小(字节)',
+  `duration` INT DEFAULT 0 COMMENT '录音时长(秒)',
+  `format` VARCHAR(20) DEFAULT 'mp3' COMMENT '文件格式：mp3，wav，ogg',
+  `sample_rate` INT DEFAULT 16000 COMMENT '采样率',
+  `channels` INT DEFAULT 1 COMMENT '声道数',
+  `quality_score` DECIMAL(3,1) COMMENT '质量评分(1-5)',
+  `transcription` TEXT COMMENT '语音转文字内容',
+  `transcription_status` VARCHAR(20) DEFAULT 'none' COMMENT '转写状态：none-未转写，processing-处理中，completed-已完成，failed-失败',
+  `storage_type` VARCHAR(20) DEFAULT 'local' COMMENT '存储类型：local-本地，oss-阿里云OSS，cos-腾讯云COS',
+  `expire_at` DATETIME COMMENT '过期时间',
+  `is_deleted` TINYINT(1) DEFAULT 0 COMMENT '是否已删除',
+  `deleted_at` DATETIME COMMENT '删除时间',
+  `user_id` VARCHAR(50) COMMENT '操作用户ID',
+  `user_name` VARCHAR(50) COMMENT '操作用户姓名',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_call` (`call_id`),
+  INDEX `idx_customer` (`customer_id`),
+  INDEX `idx_user` (`user_id`),
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_expire` (`expire_at`),
+  INDEX `idx_deleted` (`is_deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通话录音表';
+
+-- 17.5 工作手机绑定表
+DROP TABLE IF EXISTS `work_phones`;
+CREATE TABLE `work_phones` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '绑定ID',
+  `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
+  `phone_number` VARCHAR(20) NOT NULL COMMENT '手机号码',
+  `device_id` VARCHAR(100) COMMENT '设备ID',
+  `device_name` VARCHAR(100) COMMENT '设备名称',
+  `device_model` VARCHAR(100) COMMENT '设备型号',
+  `platform` VARCHAR(20) DEFAULT 'android' COMMENT '平台：android，ios',
+  `sdk_version` VARCHAR(20) COMMENT 'SDK版本',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '状态：pending-待绑定，active-已绑定，offline-离线，disabled-已禁用',
+  `online_status` VARCHAR(20) DEFAULT 'offline' COMMENT '在线状态：online-在线，offline-离线',
+  `is_primary` TINYINT(1) DEFAULT 1 COMMENT '是否为主要设备',
+  `last_online_at` DATETIME COMMENT '最后在线时间',
+  `last_active_at` DATETIME COMMENT '最后活跃时间',
+  `bind_time` DATETIME COMMENT '绑定时间',
+  `connection_type` VARCHAR(20) DEFAULT 'qrcode' COMMENT '连接方式：qrcode-二维码，bluetooth-蓝牙，network-同网络，digital-数字配对',
+  `connection_id` VARCHAR(100) COMMENT '连接ID',
+  `push_token` VARCHAR(500) COMMENT '推送Token',
+  `call_count` INT DEFAULT 0 COMMENT '通话次数',
+  `total_duration` INT DEFAULT 0 COMMENT '总通话时长(秒)',
+  `remark` TEXT COMMENT '备注',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_user` (`user_id`),
+  INDEX `idx_phone` (`phone_number`),
+  INDEX `idx_device` (`device_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_is_primary` (`is_primary`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作手机绑定表';
+
+-- 17.6 号码黑名单表
+DROP TABLE IF EXISTS `phone_blacklist`;
+CREATE TABLE `phone_blacklist` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '黑名单ID',
+  `phone` VARCHAR(20) NOT NULL COMMENT '电话号码',
+  `reason` VARCHAR(200) COMMENT '加入原因',
+  `source` VARCHAR(50) DEFAULT 'manual' COMMENT '来源：manual-手动添加，complaint-投诉，system-系统识别',
+  `expire_at` DATETIME COMMENT '过期时间(NULL表示永久)',
+  `is_active` TINYINT(1) DEFAULT 1 COMMENT '是否生效',
+  `created_by` VARCHAR(50) COMMENT '创建人ID',
+  `created_by_name` VARCHAR(50) COMMENT '创建人姓名',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE INDEX `idx_phone` (`phone`),
+  INDEX `idx_active` (`is_active`),
+  INDEX `idx_expire` (`expire_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='号码黑名单表';
 
 -- 18. 短信模板表
 DROP TABLE IF EXISTS `sms_templates`;
@@ -1843,6 +2062,81 @@ CREATE TABLE `message_cleanup_history` (
   INDEX `idx_cleanup_type` (`cleanup_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息清理历史表';
 
+-- =============================================
+-- 外呼系统扩展表 (v1.8.2)
+-- =============================================
+
+-- 全局外呼配置表 (管理员配置)
+DROP TABLE IF EXISTS `global_call_config`;
+CREATE TABLE `global_call_config` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `config_key` VARCHAR(50) NOT NULL UNIQUE COMMENT '配置键',
+  `config_value` TEXT COMMENT '配置值',
+  `config_type` VARCHAR(20) DEFAULT 'string' COMMENT '配置类型: string/json/number/boolean',
+  `description` VARCHAR(255) COMMENT '配置说明',
+  `updated_by` VARCHAR(50) COMMENT '最后更新人',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='全局外呼配置表';
+
+-- 用户线路分配表 (管理员分配号码给成员)
+DROP TABLE IF EXISTS `user_line_assignments`;
+CREATE TABLE `user_line_assignments` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
+  `line_id` INT NOT NULL COMMENT '线路ID',
+  `caller_number` VARCHAR(30) COMMENT '分配的外显号码(可为空则使用线路默认)',
+  `is_default` TINYINT(1) DEFAULT 0 COMMENT '是否为该用户默认线路',
+  `daily_limit` INT DEFAULT 0 COMMENT '个人每日限额(0=使用线路限额)',
+  `is_active` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `assigned_by` VARCHAR(50) COMMENT '分配人ID',
+  `assigned_at` DATETIME COMMENT '分配时间',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_user_line` (`user_id`, `line_id`),
+  INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_line_id` (`line_id`),
+  INDEX `idx_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户线路分配表';
+
+-- 设备绑定操作日志表
+DROP TABLE IF EXISTS `device_bindlogs`;
+CREATE TABLE `device_bindlogs` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
+  `device_id` VARCHAR(100) COMMENT '设备ID',
+  `phone_number` VARCHAR(20) COMMENT '手机号码',
+  `device_name` VARCHAR(100) COMMENT '设备名称',
+  `device_model` VARCHAR(100) COMMENT '设备型号',
+  `os_type` VARCHAR(20) COMMENT '操作系统',
+  `os_version` VARCHAR(20) COMMENT '操作系统版本',
+  `app_version` VARCHAR(20) COMMENT 'APP版本',
+  `action` VARCHAR(20) NOT NULL COMMENT '操作类型：bind/unbind',
+  `ip_address` VARCHAR(50) COMMENT 'IP地址',
+  `remark` VARCHAR(255) COMMENT '备注',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_device_id` (`device_id`),
+  INDEX `idx_action` (`action`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备绑定操作日志表';
+
+-- 二维码绑定状态表 (用于扫码绑定工作手机)
+DROP TABLE IF EXISTS `device_bind_logs`;
+CREATE TABLE `device_bind_logs` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
+  `connection_id` VARCHAR(100) NOT NULL UNIQUE COMMENT '连接ID',
+  `phone_id` INT COMMENT '绑定成功后的手机ID',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '状态: pending/connected/expired',
+  `expires_at` DATETIME COMMENT '过期时间',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_connection_id` (`connection_id`),
+  INDEX `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='二维码绑定状态表';
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =============================================
@@ -2011,3 +2305,156 @@ INSERT INTO `follow_up_records` (`id`, `call_id`, `customer_id`, `customer_name`
 ('followup_001', 'call_1734567890_002', 'cust_002', '王小雨', 'call', '客户反馈产品使用问题，需要技术支持跟进', DATE_ADD(NOW(), INTERVAL 1 DAY), 'high', 'pending', 'admin', '管理员'),
 ('followup_002', 'call_1734567890_003', 'cust_003', '单芳波', 'call', '未接听，需要回拨', DATE_ADD(NOW(), INTERVAL 2 HOUR), 'urgent', 'pending', 'admin', '管理员')
 ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
+
+-- 外呼线路默认数据
+INSERT INTO `call_lines` (`id`, `name`, `provider`, `caller_number`, `status`, `max_concurrent`, `daily_limit`, `sort_order`, `remark`) VALUES
+('line_default_001', '默认线路', 'system', '', 'active', 10, 1000, 1, '系统默认外呼线路'),
+('line_aliyun_001', '阿里云通信', 'aliyun', '', 'inactive', 20, 2000, 2, '阿里云语音通话服务'),
+('line_tencent_001', '腾讯云通信', 'tencent', '', 'inactive', 20, 2000, 3, '腾讯云语音通话服务')
+ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
+
+
+-- =============================================
+-- API接口管理相关表
+-- 版本：1.0
+-- 创建时间：2025-12-25
+-- 说明：用于管理APP对接接口、设备绑定等
+-- =============================================
+
+-- API接口配置表
+DROP TABLE IF EXISTS `api_interfaces`;
+CREATE TABLE `api_interfaces` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '接口ID',
+  `code` VARCHAR(50) NOT NULL UNIQUE COMMENT '接口编码',
+  `name` VARCHAR(100) NOT NULL COMMENT '接口名称',
+  `description` TEXT COMMENT '接口描述',
+  `category` VARCHAR(50) DEFAULT 'mobile' COMMENT '接口分类：mobile-移动端,third_party-第三方,webhook-回调',
+  `endpoint` VARCHAR(255) NOT NULL COMMENT '接口地址',
+  `method` VARCHAR(10) DEFAULT 'POST' COMMENT '请求方法',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `auth_required` TINYINT(1) DEFAULT 1 COMMENT '是否需要认证',
+  `rate_limit` INT DEFAULT 100 COMMENT '频率限制(次/分钟)',
+  `last_called_at` DATETIME COMMENT '最后调用时间',
+  `call_count` BIGINT DEFAULT 0 COMMENT '调用次数',
+  `success_count` BIGINT DEFAULT 0 COMMENT '成功次数',
+  `fail_count` BIGINT DEFAULT 0 COMMENT '失败次数',
+  `avg_response_time` INT DEFAULT 0 COMMENT '平均响应时间(ms)',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_api_interfaces_code` (`code`),
+  INDEX `idx_api_interfaces_category` (`category`),
+  INDEX `idx_api_interfaces_enabled` (`is_enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='API接口配置表';
+
+-- 设备绑定日志表
+DROP TABLE IF EXISTS `device_bindlogs`;
+CREATE TABLE `device_bindlogs` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '日志ID',
+  `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
+  `user_name` VARCHAR(100) COMMENT '用户姓名',
+  `device_id` VARCHAR(100) COMMENT '设备ID',
+  `phone_number` VARCHAR(20) COMMENT '手机号码',
+  `device_name` VARCHAR(100) COMMENT '设备名称',
+  `device_model` VARCHAR(100) COMMENT '设备型号',
+  `os_type` ENUM('android', 'ios') COMMENT '操作系统',
+  `os_version` VARCHAR(20) COMMENT '系统版本',
+  `app_version` VARCHAR(20) COMMENT 'APP版本',
+  `action` ENUM('bind', 'unbind', 'online', 'offline') NOT NULL COMMENT '操作类型',
+  `ip_address` VARCHAR(50) COMMENT 'IP地址',
+  `remark` VARCHAR(255) COMMENT '备注',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `idx_device_bindlogs_user_id` (`user_id`),
+  INDEX `idx_device_bindlogs_device_id` (`device_id`),
+  INDEX `idx_device_bindlogs_action` (`action`),
+  INDEX `idx_device_bindlogs_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备绑定日志表';
+
+-- API调用日志表
+DROP TABLE IF EXISTS `api_call_logs`;
+CREATE TABLE `api_call_logs` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '日志ID',
+  `interface_code` VARCHAR(50) NOT NULL COMMENT '接口编码',
+  `method` VARCHAR(10) COMMENT '请求方法',
+  `endpoint` VARCHAR(255) COMMENT '请求地址',
+  `request_params` TEXT COMMENT '请求参数(脱敏)',
+  `response_code` INT COMMENT '响应状态码',
+  `response_time` INT COMMENT '响应时间(ms)',
+  `success` TINYINT(1) DEFAULT 1 COMMENT '是否成功',
+  `error_message` VARCHAR(500) COMMENT '错误信息',
+  `client_ip` VARCHAR(50) COMMENT '客户端IP',
+  `user_agent` VARCHAR(255) COMMENT '用户代理',
+  `user_id` VARCHAR(50) COMMENT '调用用户ID',
+  `device_id` VARCHAR(100) COMMENT '设备ID',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `idx_api_call_logs_interface_code` (`interface_code`),
+  INDEX `idx_api_call_logs_created_at` (`created_at`),
+  INDEX `idx_api_call_logs_user_id` (`user_id`),
+  INDEX `idx_api_call_logs_success` (`success`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='API调用日志表';
+
+-- 初始化API接口数据
+INSERT INTO `api_interfaces` (`code`, `name`, `description`, `category`, `endpoint`, `method`, `is_enabled`, `auth_required`) VALUES
+('mobile_login', 'APP登录', 'APP用户登录认证接口', 'mobile', '/api/v1/mobile/login', 'POST', 1, 0),
+('mobile_bindqrcode', '生成绑定二维码', 'PC端生成设备绑定二维码', 'mobile', '/api/v1/mobile/bindQRCode', 'POST', 1, 1),
+('mobile_binddevice', '扫码绑定设备', 'APP扫码绑定设备', 'mobile', '/api/v1/mobile/bind', 'POST', 1, 0),
+('mobile_unbind', '解绑设备', '解除设备绑定', 'mobile', '/api/v1/mobile/unbind', 'DELETE', 1, 1),
+('mobile_device_status', '获取设备状态', '获取绑定设备的在线状态', 'mobile', '/api/v1/mobile/device/status', 'GET', 1, 1),
+('mobile_call_status', '上报通话状态', 'APP上报通话状态变更', 'mobile', '/api/v1/mobile/call/status', 'POST', 1, 1),
+('mobile_call_end', '上报通话结束', 'APP上报通话结束信息', 'mobile', '/api/v1/mobile/call/end', 'POST', 1, 1),
+('mobile_recording_upload', '上传录音文件', 'APP上传通话录音', 'mobile', '/api/v1/mobile/recording/upload', 'POST', 1, 1),
+('mobile_websocket', 'WebSocket连接', 'APP实时通信WebSocket', 'mobile', '/ws/mobile', 'WS', 1, 1)
+ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`);
+
+
+-- =============================================
+-- 外呼系统相关表 (2025-12-25 新增)
+-- =============================================
+
+-- 全局外呼配置表 (管理员配置)
+DROP TABLE IF EXISTS `global_call_config`;
+CREATE TABLE `global_call_config` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `config_key` VARCHAR(50) NOT NULL UNIQUE COMMENT '配置键',
+  `config_value` TEXT COMMENT '配置值',
+  `config_type` VARCHAR(20) DEFAULT 'string' COMMENT '配置类型: string/json/number/boolean',
+  `description` VARCHAR(255) COMMENT '配置说明',
+  `updated_by` VARCHAR(50) COMMENT '最后更新人',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='全局外呼配置表';
+
+-- 用户线路分配表 (管理员分配号码给成员)
+DROP TABLE IF EXISTS `user_line_assignments`;
+CREATE TABLE `user_line_assignments` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
+  `line_id` INT NOT NULL COMMENT '线路ID',
+  `caller_number` VARCHAR(30) COMMENT '分配的外显号码(可为空则使用线路默认)',
+  `is_default` TINYINT(1) DEFAULT 0 COMMENT '是否为该用户默认线路',
+  `daily_limit` INT DEFAULT 0 COMMENT '个人每日限额(0=使用线路限额)',
+  `is_active` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `assigned_by` VARCHAR(50) COMMENT '分配人ID',
+  `assigned_at` DATETIME COMMENT '分配时间',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_user_line` (`user_id`, `line_id`),
+  INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_line_id` (`line_id`),
+  INDEX `idx_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户线路分配表';
+
+-- 插入默认全局外呼配置
+INSERT INTO `global_call_config` (`config_key`, `config_value`, `config_type`, `description`) VALUES
+('default_call_method', 'system', 'string', '默认外呼方式: system/voip'),
+('voip_provider', 'aliyun', 'string', 'VoIP服务商: aliyun/tencent/huawei'),
+('aliyun_config', '{}', 'json', '阿里云通信配置'),
+('tencent_config', '{}', 'json', '腾讯云通信配置'),
+('huawei_config', '{}', 'json', '华为云通信配置'),
+('call_timeout', '60', 'number', '呼叫超时时间(秒)'),
+('max_retries', '3', 'number', '最大重试次数'),
+('enable_recording', 'true', 'boolean', '是否启用录音'),
+('recording_storage', 'local', 'string', '录音存储方式: local/oss'),
+('blacklist_check', 'true', 'boolean', '是否检查黑名单')
+ON DUPLICATE KEY UPDATE `updated_at` = NOW();
+
+SET FOREIGN_KEY_CHECKS = 1;

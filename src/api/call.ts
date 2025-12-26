@@ -30,6 +30,8 @@ export interface FollowUpRecord {
   customerName: string
   followUpType: 'call' | 'visit' | 'email' | 'message'
   content: string
+  customerIntent?: 'high' | 'medium' | 'low' | 'none'  // 客户意向
+  callTags?: string[]  // 通话标签
   nextFollowUpDate?: string
   priority: 'low' | 'medium' | 'high' | 'urgent'
   status: 'pending' | 'completed' | 'cancelled'
@@ -64,20 +66,87 @@ export interface CallStatistics {
 
 // 电话配置接口
 export interface PhoneConfig {
-  id: string
+  id?: string | number
   userId: string
-  sipServer: string
-  sipUsername: string
-  sipPassword: string
-  displayNumber: string
-  autoRecord: boolean
-  recordingQuality: 'low' | 'medium' | 'high'
-  maxCallDuration: number
-  enableCallTransfer: boolean
-  enableConference: boolean
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
+  // 外呼方式配置
+  callMethod: 'system' | 'mobile' | 'voip'
+  lineId?: string
+  workPhone?: string
+  dialMethod: 'direct' | 'callback'
+
+  // 工作手机配置
+  mobileConfig: {
+    platform: 'android' | 'ios'
+    sdkInstalled: boolean
+    deviceAuthorized: boolean
+    callPermission: boolean
+    connectionStatus: 'connected' | 'disconnected' | 'connecting'
+    sdkInfo: {
+      version: string
+      fileSize: string
+      updateTime: string
+      supportedSystems: string
+      packageType: string
+    }
+  }
+
+  // 回拨配置
+  callbackConfig: {
+    provider: 'aliyun' | 'tencent' | 'custom'
+    delay: number
+    maxRetries: number
+  }
+
+  // VoIP配置
+  voipProvider: 'aliyun' | 'tencent' | 'huawei' | 'custom'
+  audioDevice: string
+  audioQuality: 'standard' | 'high'
+
+  // 阿里云通信配置
+  aliyunConfig: {
+    accessKeyId: string
+    accessKeySecret: string
+    appId: string
+    callerNumber: string
+    region: string
+    enableRecording: boolean
+    recordingBucket: string
+  }
+
+  // 腾讯云通信配置
+  tencentConfig: {
+    secretId: string
+    secretKey: string
+    appId: string
+    callerNumber: string
+    region: string
+  }
+
+  // 华为云通信配置
+  huaweiConfig: {
+    accessKey: string
+    secretKey: string
+    appId: string
+    callerNumber: string
+    region: string
+  }
+
+  // 呼叫参数
+  callMode: 'manual' | 'auto'
+  callInterval: number
+  maxRetries: number
+  callTimeout: number
+  enableRecording: boolean
+  autoFollowUp: boolean
+
+  // 高级设置
+  concurrentCalls: number
+  priority: 'low' | 'medium' | 'high'
+  blacklistCheck: boolean
+  showLocation: boolean
+
+  createdAt?: string
+  updatedAt?: string
 }
 
 // 获取通话记录列表
@@ -102,6 +171,40 @@ export const getCallRecords = (params: {
 // 获取单个通话记录详情
 export const getCallRecord = (id: string) => {
   return api.get<CallRecord>(`/calls/records/${id}`)
+}
+
+// 获取通话记录详情（包含跟进记录）
+export const getCallRecordDetail = async (id: string) => {
+  try {
+    // 获取通话记录
+    const callRes = await api.get<any>(`/calls/records/${id}`)
+
+    if (callRes.success && callRes.data) {
+      // 尝试获取关联的跟进记录
+      let followUpRecords: any[] = []
+      try {
+        const followUpRes = await api.get<any>('/calls/followups', { callId: id })
+        if (followUpRes.success && followUpRes.data?.records) {
+          followUpRecords = followUpRes.data.records
+        }
+      } catch (e) {
+        console.warn('获取跟进记录失败:', e)
+      }
+
+      return {
+        success: true,
+        data: {
+          ...callRes.data,
+          followUpRecords
+        }
+      }
+    }
+
+    return callRes
+  } catch (error) {
+    console.error('获取通话详情失败:', error)
+    return { success: false, message: '获取通话详情失败' }
+  }
 }
 
 // 创建通话记录
@@ -203,14 +306,63 @@ export const getRecordings = (params: {
       callId: string
       fileName: string
       fileUrl: string
+      filePath?: string
       duration: number
       fileSize: number
+      format?: string
+      storageType?: string
+      qualityScore?: number
+      transcription?: string
+      transcriptionStatus?: string
+      customerName?: string
+      customerPhone?: string
+      userName?: string
       createdAt: string
     }>
     total: number
     page: number
     pageSize: number
   }>('/calls/recordings', params)
+}
+
+// 上传录音文件
+export const uploadRecording = (data: {
+  file: File
+  callId: string
+  duration?: number
+  customerId?: string
+  customerName?: string
+  customerPhone?: string
+}) => {
+  const formData = new FormData()
+  formData.append('file', data.file)
+  formData.append('callId', data.callId)
+  if (data.duration) formData.append('duration', String(data.duration))
+  if (data.customerId) formData.append('customerId', data.customerId)
+  if (data.customerName) formData.append('customerName', data.customerName)
+  if (data.customerPhone) formData.append('customerPhone', data.customerPhone)
+
+  return api.post<{
+    id: string
+    callId: string
+    fileName: string
+    filePath: string
+    fileUrl: string
+    fileSize: number
+    duration: number
+    format: string
+    storageType: string
+  }>('/calls/recordings/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+}
+
+// 获取录音流式播放URL
+export const getRecordingStreamUrl = (recordingPath: string): string => {
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
+  return `${baseUrl}/api/v1/calls/recordings/stream/${encodeURIComponent(recordingPath)}`
 }
 
 // 下载录音
@@ -223,9 +375,24 @@ export const deleteRecording = (recordingId: string) => {
   return api.delete(`/calls/recordings/${recordingId}`)
 }
 
+// 获取录音存储统计
+export const getRecordingStats = () => {
+  return api.get<{
+    totalRecordings: number
+    totalSize: number
+    totalDuration: number
+    byStorageType: Record<string, { count: number; size: number }>
+  }>('/calls/recordings/stats')
+}
+
 // 获取电话配置
 export const getPhoneConfig = (userId?: string) => {
   return api.get<PhoneConfig>('/calls/config', userId ? { userId } : undefined)
+}
+
+// 保存电话配置
+export const savePhoneConfig = (data: Partial<PhoneConfig>) => {
+  return api.put<PhoneConfig>('/calls/config', data)
 }
 
 // 更新电话配置
@@ -240,6 +407,15 @@ export const testPhoneConnection = () => {
     message: string
     latency?: number
   }>('/calls/test-connection')
+}
+
+// 测试外呼线路
+export const testCallLine = (lineId: string) => {
+  return api.post<{
+    success: boolean
+    message: string
+    latency?: number
+  }>(`/calls/lines/${lineId}/test`)
 }
 
 // 获取客户通话历史
@@ -266,6 +442,183 @@ export const exportCallRecords = (params: {
   format?: 'excel' | 'csv'
 }) => {
   return api.get('/calls/export', params)
+}
+
+// ==================== 外呼任务管理 ====================
+
+export interface OutboundTask {
+  id: string
+  customerId: string
+  customerName: string
+  customerPhone: string
+  customerLevel?: string
+  status: 'pending' | 'calling' | 'connected' | 'no_answer' | 'busy' | 'failed' | 'completed'
+  callCount: number
+  lastCallTime?: string
+  lastCallId?: string
+  nextCallTime?: string
+  priority: number
+  source: 'manual' | 'import' | 'system'
+  campaignId?: string
+  assignedTo?: string
+  assignedToName?: string
+  remark?: string
+  createdBy?: string
+  createdByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// 获取外呼任务列表
+export const getOutboundTasks = (params: {
+  page?: number
+  pageSize?: number
+  status?: string
+  assignedTo?: string
+  customerLevel?: string
+  keyword?: string
+}) => {
+  return api.get<{
+    records: OutboundTask[]
+    total: number
+    page: number
+    pageSize: number
+  }>('/calls/outbound-tasks', params)
+}
+
+// 创建外呼任务
+export const createOutboundTask = (data: {
+  customerId: string
+  customerName?: string
+  customerPhone: string
+  customerLevel?: string
+  priority?: number
+  source?: string
+  assignedTo?: string
+  assignedToName?: string
+  remark?: string
+}) => {
+  return api.post<{ id: string }>('/calls/outbound-tasks', data)
+}
+
+// 更新外呼任务
+export const updateOutboundTask = (id: string, data: {
+  status?: string
+  remark?: string
+  nextCallTime?: string
+}) => {
+  return api.put(`/calls/outbound-tasks/${id}`, data)
+}
+
+// 删除外呼任务
+export const deleteOutboundTask = (id: string) => {
+  return api.delete(`/calls/outbound-tasks/${id}`)
+}
+
+// ==================== 外呼线路管理 ====================
+
+export interface CallLine {
+  id: string
+  name: string
+  provider: string
+  callerNumber?: string
+  config?: Record<string, any>
+  status: 'active' | 'inactive' | 'error'
+  maxConcurrent: number
+  currentConcurrent: number
+  dailyLimit: number
+  dailyUsed: number
+  totalCalls: number
+  totalDuration: number
+  successRate: number
+  lastUsedAt?: string
+  sortOrder: number
+  remark?: string
+  createdBy?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// 获取外呼线路列表
+export const getCallLines = () => {
+  return api.get<CallLine[]>('/calls/lines')
+}
+
+// 创建外呼线路
+export const createCallLine = (data: {
+  name: string
+  provider: string
+  callerNumber?: string
+  config?: Record<string, any>
+  maxConcurrent?: number
+  dailyLimit?: number
+  sortOrder?: number
+  remark?: string
+}) => {
+  return api.post<{ id: string }>('/calls/lines', data)
+}
+
+// 更新外呼线路
+export const updateCallLine = (id: string, data: Partial<CallLine>) => {
+  return api.put(`/calls/lines/${id}`, data)
+}
+
+// 删除外呼线路
+export const deleteCallLine = (id: string) => {
+  return api.delete(`/calls/lines/${id}`)
+}
+
+// ==================== 号码黑名单管理 ====================
+
+export interface PhoneBlacklist {
+  id: string
+  phone: string
+  reason?: string
+  source: 'manual' | 'complaint' | 'system'
+  expireAt?: string
+  isActive: boolean
+  createdBy?: string
+  createdByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// 获取黑名单列表
+export const getPhoneBlacklist = (params: {
+  page?: number
+  pageSize?: number
+  keyword?: string
+  isActive?: boolean
+}) => {
+  return api.get<{
+    records: PhoneBlacklist[]
+    total: number
+    page: number
+    pageSize: number
+  }>('/calls/blacklist', params)
+}
+
+// 添加号码到黑名单
+export const addToBlacklist = (data: {
+  phone: string
+  reason?: string
+  source?: string
+  expireAt?: string
+}) => {
+  return api.post('/calls/blacklist', data)
+}
+
+// 从黑名单移除号码
+export const removeFromBlacklist = (id: string) => {
+  return api.delete(`/calls/blacklist/${id}`)
+}
+
+// 检查号码是否在黑名单中
+export const checkBlacklist = (phone: string) => {
+  return api.get<{
+    isBlacklisted: boolean
+    record?: PhoneBlacklist
+  }>(`/calls/blacklist/check/${phone}`)
 }
 
 

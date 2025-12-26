@@ -2205,23 +2205,17 @@ const loadOrderList = async (force = false) => {
     // 尝试从API加载订单数据
     const apiOrders = await orderStore.loadOrdersFromAPI(force)
 
-    // 如果API返回空数据且本地也没有数据，则初始化模拟数据（仅开发环境）
+    // 🔥 修复：开发环境也使用API数据，不再使用模拟数据
     if (apiOrders.length === 0 && orderStore.orders.length === 0) {
-      console.log('[订单列表] API无数据，检查是否需要初始化本地数据')
-      // 在生产环境不初始化模拟数据
-      if (import.meta.env.DEV) {
-        orderStore.initializeWithMockData()
-      }
+      console.log('[订单列表] API无数据，订单列表为空')
+      // 不再初始化模拟数据，让用户看到真实的空列表
     }
 
     updatePagination()
     updateQuickFilterCounts()
   } catch (error) {
     console.error('加载订单列表失败:', error)
-    // 如果API失败，尝试使用本地数据
-    if (orderStore.orders.length === 0 && import.meta.env.DEV) {
-      orderStore.initializeWithMockData()
-    }
+    // 🔥 修复：API失败时不再使用模拟数据
     updatePagination()
     updateQuickFilterCounts()
   } finally {

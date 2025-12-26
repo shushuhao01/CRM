@@ -26,6 +26,7 @@ export const TimeoutMessageTypes = {
   ORDER_SHIPMENT_TIMEOUT: 'order_shipment_timeout',     // 发货超时
   AFTER_SALES_TIMEOUT: 'after_sales_timeout',           // 售后处理超时
   ORDER_FOLLOWUP_REMINDER: 'order_followup_reminder',   // 订单跟进提醒
+  CUSTOMER_FOLLOWUP_REMINDER: 'customer_followup_reminder', // 客户跟进提醒
 };
 
 // 默认超时配置（小时）
@@ -104,12 +105,13 @@ class TimeoutReminderService {
         this.checkOrderShipmentTimeout(config.orderShipmentTimeout),
         this.checkAfterSalesTimeout(config.afterSalesTimeout),
         this.checkOrderFollowupReminder(config.orderFollowupDays),
+        this.checkCustomerFollowupReminder(),
       ]);
 
       const successCount = results.filter(r => r.status === 'fulfilled').length;
       const duration = Date.now() - startTime;
 
-      console.log(`[TimeoutReminder] ✅ 超时检测完成，成功：${successCount}/4，耗时：${duration}ms`);
+      console.log(`[TimeoutReminder] ✅ 超时检测完成，成功：${successCount}/5，耗时：${duration}ms`);
     } catch (error) {
       console.error('[TimeoutReminder] ❌ 超时检测失败:', error);
     }
@@ -501,6 +503,90 @@ class TimeoutReminderService {
     );
   }
 
+  /**
+   * 检测客户跟进提醒（基于跟进记录的下次跟进时间）
+   */
+  async checkCustomerFollowupReminder(): Promise<number> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource || !dataSource.isInitialized) {
+        console.log('[TimeoutReminder] ⚠️ 数据源未初始化，跳过客户跟进提醒检查');
+        return 0;
+      }
+
+      // 查找到期的跟进记录（下次跟进时间在当前时间之前，且状态为待跟进）
+      const now = new Date();
+      const followupRecords = await dataSource.query(`
+        SELECT
+          id, call_id, customer_id, customer_name, content,
+          next_follow_up_date,
+          user_id, user_name,
+          follow_up_type, priority
+        FROM follow_up_records
+        WHERE status = 'pending'
+          AND next_follow_up_date IS NOT NULL
+          AND next_follow_up_date <= ?
+          AND next_follow_up_date > DATE_SUB(?, INTERVAL 1 DAY)
+        ORDER BY next_follow_up_date ASC
+      `, [now, now]);
+
+      console.log(`[TimeoutReminder] 📋 发现 ${followupRecords.length} 个到期的客户跟进记录`);
+
+      let sentCount = 0;
+      for (const record of followupRecords) {
+        if (this.hasRecentReminder(TimeoutMessageTypes.CUSTOMER_FOLLOWUP_REMINDER, record.id)) {
+          continue;
+        }
+
+        await this.sendCustomerFollowupReminder(record);
+        this.markReminderSent(TimeoutMessageTypes.CUSTOMER_FOLLOWUP_REMINDER, record.id);
+        sentCount++;
+      }
+
+      if (sentCount > 0) {
+        console.log(`[TimeoutReminder] ✅ 发送了 ${sentCount} 条客户跟进提醒`);
+      }
+
+      return sentCount;
+    } catch (error) {
+      console.error('[TimeoutReminder] ❌ 检测客户跟进提醒失败:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * 发送客户跟进提醒
+   */
+  private async sendCustomerFollowupReminder(record: any): Promise<void> {
+    if (!record.user_id) return;
+
+    const followupTypeText: Record<string, string> = {
+      'call': '电话跟进',
+      'visit': '上门拜访',
+      'email': '邮件跟进',
+      'message': '短信跟进'
+    };
+    const typeText = followupTypeText[record.follow_up_type] || '跟进';
+
+    const content = `📞 客户跟进提醒：${record.customer_name || '未知客户'} 需要进行${typeText}
+跟进内容：${record.content || '无'}
+计划时间：${new Date(record.next_follow_up_date).toLocaleString('zh-CN')}`;
+
+    await this.sendMessage(
+      TimeoutMessageTypes.CUSTOMER_FOLLOWUP_REMINDER,
+      '📞 客户跟进提醒',
+      content,
+      record.user_id,
+      {
+        priority: record.priority || 'normal',
+        category: '跟进提醒',
+        relatedId: record.customer_id,
+        relatedType: 'customer',
+        actionUrl: `/service-management/call?customerId=${record.customer_id}`
+      }
+    );
+  }
+
   // ==================== 辅助方法 ====================
 
   /**
@@ -672,21 +758,24 @@ class TimeoutReminderService {
     orderShipmentTimeout: number;
     afterSalesTimeout: number;
     orderFollowup: number;
+    customerFollowup: number;
   }> {
     const config = await this.getTimeoutConfig();
 
-    const [orderAuditTimeout, orderShipmentTimeout, afterSalesTimeout, orderFollowup] = await Promise.all([
+    const [orderAuditTimeout, orderShipmentTimeout, afterSalesTimeout, orderFollowup, customerFollowup] = await Promise.all([
       this.checkOrderAuditTimeout(config.orderAuditTimeout),
       this.checkOrderShipmentTimeout(config.orderShipmentTimeout),
       this.checkAfterSalesTimeout(config.afterSalesTimeout),
       this.checkOrderFollowupReminder(config.orderFollowupDays),
+      this.checkCustomerFollowupReminder(),
     ]);
 
     return {
       orderAuditTimeout,
       orderShipmentTimeout,
       afterSalesTimeout,
-      orderFollowup
+      orderFollowup,
+      customerFollowup
     };
   }
 

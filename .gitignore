@@ -88,3 +88,6 @@ public/uploads/
 dist-electron/
 dist_electron/
 out/
+
+# APP项目（独立仓库管理）
+crmAPP/

@@ -14,19 +14,49 @@ export class FollowUp {
   @Column({ name: 'customer_name', length: 100, nullable: true })
   customerName: string;
 
-  @Column({ name: 'follow_up_type', type: 'enum', enum: ['call', 'visit', 'email', 'message'], default: 'call' })
+  @Column({
+    name: 'follow_up_type',
+    type: 'enum',
+    enum: ['call', 'visit', 'email', 'message'],
+    default: 'call'
+  })
   type: string;
 
   @Column({ type: 'text', nullable: true })
   content: string;
 
+  @Column({
+    name: 'customer_intent',
+    type: 'enum',
+    enum: ['high', 'medium', 'low', 'none'],
+    nullable: true,
+    comment: '客户意向'
+  })
+  customerIntent: string;
+
+  @Column({
+    name: 'call_tags',
+    type: 'json',
+    nullable: true,
+    comment: '通话标签'
+  })
+  callTags: string[];
+
   @Column({ name: 'next_follow_up_date', type: 'timestamp', nullable: true })
   nextFollowUp: Date;
 
-  @Column({ type: 'enum', enum: ['low', 'medium', 'high', 'urgent'], default: 'medium' })
+  @Column({
+    type: 'enum',
+    enum: ['low', 'medium', 'high', 'urgent'],
+    default: 'medium'
+  })
   priority: string;
 
-  @Column({ type: 'enum', enum: ['pending', 'completed', 'cancelled'], default: 'pending' })
+  @Column({
+    type: 'enum',
+    enum: ['pending', 'completed', 'cancelled'],
+    default: 'pending'
+  })
   status: string;
 
   @Column({ name: 'user_id', length: 50 })

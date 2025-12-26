@@ -421,6 +421,12 @@ const router = createRouter({
       component: () => import('../views/System/Settings.vue'),
       meta: { title: '系统设置', requiresAuth: true }
     },
+    {
+      path: '/system/api-management',
+      name: 'ApiManagement',
+      component: () => import('../views/System/ApiManagement.vue'),
+      meta: { title: '接口管理', requiresAuth: true, requiresAdmin: true }
+    },
     // 🔥 批次274新增：关于我们页面
     {
       path: '/about',

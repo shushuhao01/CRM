@@ -110,36 +110,48 @@ export const useCallStore = defineStore('call', () => {
         ...params
       })
 
-      callRecords.value = response.data.records
+      callRecords.value = response.data.records || []
       pagination.value = {
-        current: response.data.page,
-        pageSize: response.data.pageSize,
-        total: response.data.total
+        current: response.data.page || 1,
+        pageSize: response.data.pageSize || 20,
+        total: response.data.total || 0
       }
 
       return response.data
     } catch (error) {
       console.error('获取通话记录失败:', error)
 
+      // 🔥 修复：API失败时静默处理，返回空数据而不是显示错误
+      callRecords.value = []
+      pagination.value = {
+        current: 1,
+        pageSize: 20,
+        total: 0
+      }
+
       // 如果是开发环境且API失败,使用Mock数据
       if (shouldUseMockApi()) {
         console.log('[Call Store] API失败,使用Mock数据')
-        const mockResponse = await callApi.getCallRecordsWithMock({
-          page: pagination.value.current,
-          pageSize: pagination.value.pageSize,
-          ...params
-        })
-        callRecords.value = mockResponse.data.records
-        pagination.value = {
-          current: mockResponse.data.page,
-          pageSize: mockResponse.data.pageSize,
-          total: mockResponse.data.total
+        try {
+          const mockResponse = await callApi.getCallRecordsWithMock({
+            page: pagination.value.current,
+            pageSize: pagination.value.pageSize,
+            ...params
+          })
+          callRecords.value = mockResponse.data.records || []
+          pagination.value = {
+            current: mockResponse.data.page || 1,
+            pageSize: mockResponse.data.pageSize || 20,
+            total: mockResponse.data.total || 0
+          }
+          return mockResponse.data
+        } catch (mockError) {
+          console.error('[Call Store] Mock数据也失败:', mockError)
         }
-        return mockResponse.data
       }
 
-      ElMessage.error('获取通话记录失败')
-      throw error
+      // 静默返回空数据，不显示错误提示
+      return { records: [], total: 0, page: 1, pageSize: 20 }
     }
   }
 
@@ -162,18 +174,24 @@ export const useCallStore = defineStore('call', () => {
         ...params
       })
 
-      followUpRecords.value = response.data.records
+      followUpRecords.value = response.data.records || []
       followUpPagination.value = {
-        current: response.data.page,
-        pageSize: response.data.pageSize,
-        total: response.data.total
+        current: response.data.page || 1,
+        pageSize: response.data.pageSize || 20,
+        total: response.data.total || 0
       }
 
       return response.data
     } catch (error) {
       console.error('获取跟进记录失败:', error)
-      ElMessage.error('获取跟进记录失败')
-      throw error
+      // 🔥 修复：静默处理，返回空数据
+      followUpRecords.value = []
+      followUpPagination.value = {
+        current: 1,
+        pageSize: 20,
+        total: 0
+      }
+      return { records: [], total: 0, page: 1, pageSize: 20 }
     }
   }
 
@@ -458,13 +476,31 @@ export const useCallStore = defineStore('call', () => {
       // 如果是开发环境且API失败,使用Mock数据
       if (shouldUseMockApi()) {
         console.log('[Call Store] API失败,使用Mock统计数据')
-        const mockResponse = await callApi.getCallStatisticsWithMock(params)
-        callStatistics.value = mockResponse.data
-        return mockResponse.data
+        try {
+          const mockResponse = await callApi.getCallStatisticsWithMock(params)
+          callStatistics.value = mockResponse.data
+          return mockResponse.data
+        } catch (mockError) {
+          console.error('[Call Store] Mock统计数据也失败:', mockError)
+        }
       }
 
-      ElMessage.error('获取通话统计失败')
-      throw error
+      // 🔥 修复：返回空统计数据而不是抛出错误
+      const emptyStats = {
+        totalCalls: 0,
+        connectedCalls: 0,
+        missedCalls: 0,
+        incomingCalls: 0,
+        outgoingCalls: 0,
+        totalDuration: 0,
+        averageDuration: 0,
+        connectionRate: 0,
+        dailyStats: [],
+        userStats: [],
+        todayIncrease: 0
+      }
+      callStatistics.value = emptyStats
+      return emptyStats
     }
   }
 
