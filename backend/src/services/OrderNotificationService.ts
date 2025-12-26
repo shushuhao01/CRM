@@ -659,9 +659,10 @@ class OrderNotificationService {
 
   /**
    * 订单待审核通知 - 通知下单员 + 管理员
+   * 🔥 修复：添加销售员名字，确保管理员、超管、客服都能收到
    */
   async notifyOrderPendingAudit(order: OrderInfo, _operatorName?: string): Promise<void> {
-    console.log(`[OrderNotification] 🔔 notifyOrderPendingAudit 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}`);
+    console.log(`[OrderNotification] 🔔 notifyOrderPendingAudit 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}, createdByName=${order.createdByName}`);
 
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
     console.log(`[OrderNotification] 📋 获取到管理员用户: ${adminUserIds.length} 个, IDs: ${adminUserIds.join(', ')}`);
@@ -675,7 +676,9 @@ class OrderNotificationService {
 
     console.log(`[OrderNotification] 📤 待审核通知目标用户: ${Array.from(allTargets).join(', ')}`);
 
-    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}，金额：¥${(order.totalAmount || 0).toFixed(2)}）已提交审核，请及时处理`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    const content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}，金额：¥${(order.totalAmount || 0).toFixed(2)}）已提交审核，请及时处理`;
 
     const sentCount = await this.sendBatchMessages(
       OrderMessageTypes.ORDER_PENDING_AUDIT,
@@ -694,6 +697,7 @@ class OrderNotificationService {
 
   /**
    * 订单审核通过通知 - 通知下单员
+   * 🔥 添加销售员名字
    */
   async notifyOrderAuditApproved(order: OrderInfo, auditorName: string): Promise<void> {
     console.log(`[OrderNotification] 🔔 notifyOrderAuditApproved 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}, auditorName=${auditorName}`);
@@ -703,7 +707,9 @@ class OrderNotificationService {
       return;
     }
 
-    const content = `您的订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已被 ${auditorName} 审核通过，即将安排发货`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    const content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已被 ${auditorName} 审核通过，即将安排发货`;
 
     await this.sendMessage(
       OrderMessageTypes.ORDER_AUDIT_APPROVED,
@@ -719,6 +725,7 @@ class OrderNotificationService {
 
   /**
    * 订单审核拒绝通知 - 通知下单员 + 管理员
+   * 🔥 添加销售员名字
    */
   async notifyOrderAuditRejected(order: OrderInfo, auditorName: string, reason?: string): Promise<void> {
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
@@ -728,7 +735,9 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）被 ${auditorName} 审核拒绝${reason ? `，原因：${reason}` : ''}`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    const content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）被 ${auditorName} 审核拒绝${reason ? `，原因：${reason}` : ''}`;
 
     await this.sendBatchMessages(
       OrderMessageTypes.ORDER_AUDIT_REJECTED,
@@ -744,32 +753,53 @@ class OrderNotificationService {
   }
 
   /**
-   * 订单待发货通知 - 通知下单员
+   * 订单待发货通知 - 通知下单员 + 管理员
+   * 🔥 修复：审核通过后待发货状态也要通知管理员、超管、客服
    */
   async notifyOrderPendingShipment(order: OrderInfo): Promise<void> {
-    if (!order.createdBy) return;
+    console.log(`[OrderNotification] 🔔 notifyOrderPendingShipment 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}, createdByName=${order.createdByName}`);
 
-    const content = `您的订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已进入待发货状态，请耐心等待`;
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    console.log(`[OrderNotification] 📋 获取到管理员用户: ${adminUserIds.length} 个, IDs: ${adminUserIds.join(', ')}`);
 
-    await this.sendMessage(
+    const allTargets = new Set<string>(adminUserIds);
+
+    // 添加下单员
+    if (order.createdBy) {
+      allTargets.add(order.createdBy);
+    }
+
+    console.log(`[OrderNotification] 📤 待发货通知目标用户: ${Array.from(allTargets).join(', ')}`);
+
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    const content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已审核通过，进入待发货状态，请及时安排发货`;
+
+    const sentCount = await this.sendBatchMessages(
       OrderMessageTypes.ORDER_PENDING_SHIPMENT,
       '📦 订单待发货',
       content,
-      order.createdBy,
+      Array.from(allTargets),
       {
+        priority: 'high',
         relatedId: order.id,
-        actionUrl: '/order/list'
+        actionUrl: '/logistics/shipping'
       }
     );
+
+    console.log(`[OrderNotification] ✅ 待发货通知发送完成: ${sentCount} 条消息`);
   }
 
   /**
    * 订单已发货通知 - 通知下单员
+   * 🔥 添加销售员名字
    */
   async notifyOrderShipped(order: OrderInfo, trackingNumber?: string, expressCompany?: string): Promise<void> {
     if (!order.createdBy) return;
 
-    let content = `您的订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已发货`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    let content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已发货`;
     if (expressCompany) content += `，快递公司：${expressCompany}`;
     if (trackingNumber) content += `，运单号：${trackingNumber}`;
 
@@ -787,11 +817,14 @@ class OrderNotificationService {
 
   /**
    * 订单已签收通知 - 通知下单员
+   * 🔥 添加销售员名字
    */
   async notifyOrderDelivered(order: OrderInfo): Promise<void> {
     if (!order.createdBy) return;
 
-    const content = `您的订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已签收，感谢您的支持`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    const content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已签收，感谢您的支持`;
 
     await this.sendMessage(
       OrderMessageTypes.ORDER_DELIVERED,
@@ -807,6 +840,7 @@ class OrderNotificationService {
 
   /**
    * 订单拒收通知 - 通知下单员 + 管理员
+   * 🔥 添加销售员名字
    */
   async notifyOrderRejected(order: OrderInfo, reason?: string): Promise<void> {
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
@@ -816,7 +850,9 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）被客户拒收${reason ? `，原因：${reason}` : ''}`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    const content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）被客户拒收${reason ? `，原因：${reason}` : ''}`;
 
     await this.sendBatchMessages(
       OrderMessageTypes.ORDER_REJECTED,
@@ -833,6 +869,7 @@ class OrderNotificationService {
 
   /**
    * 订单取消通知 - 通知下单员 + 管理员
+   * 🔥 添加销售员名字
    */
   async notifyOrderCancelled(order: OrderInfo, reason?: string, operatorName?: string): Promise<void> {
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
@@ -842,7 +879,9 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    let content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已取消`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    let content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已取消`;
     if (operatorName) content += `，操作人：${operatorName}`;
     if (reason) content += `，原因：${reason}`;
 
@@ -862,6 +901,7 @@ class OrderNotificationService {
 
   /**
    * 物流退回通知 - 通知下单员 + 管理员
+   * 🔥 添加销售员名字
    */
   async notifyLogisticsReturned(order: OrderInfo, reason?: string): Promise<void> {
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
@@ -871,7 +911,9 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）物流已退回${reason ? `，原因：${reason}` : ''}`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    const content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）物流已退回${reason ? `，原因：${reason}` : ''}`;
 
     await this.sendBatchMessages(
       OrderMessageTypes.ORDER_LOGISTICS_RETURNED,
@@ -888,6 +930,7 @@ class OrderNotificationService {
 
   /**
    * 物流取消通知 - 通知下单员 + 管理员
+   * 🔥 添加销售员名字
    */
   async notifyLogisticsCancelled(order: OrderInfo, reason?: string): Promise<void> {
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
@@ -897,7 +940,9 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）物流已取消${reason ? `，原因：${reason}` : ''}`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    const content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）物流已取消${reason ? `，原因：${reason}` : ''}`;
 
     await this.sendBatchMessages(
       OrderMessageTypes.ORDER_LOGISTICS_CANCELLED,
@@ -914,6 +959,7 @@ class OrderNotificationService {
 
   /**
    * 包裹异常通知 - 通知下单员 + 管理员
+   * 🔥 添加销售员名字
    */
   async notifyPackageException(order: OrderInfo, reason?: string): Promise<void> {
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
@@ -923,7 +969,9 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）包裹异常${reason ? `，详情：${reason}` : '，请及时处理'}`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    const content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）包裹异常${reason ? `，详情：${reason}` : '，请及时处理'}`;
 
     await this.sendBatchMessages(
       OrderMessageTypes.ORDER_PACKAGE_EXCEPTION,
@@ -942,11 +990,14 @@ class OrderNotificationService {
 
   /**
    * 取消申请通知 - 通知管理员
+   * 🔥 添加销售员名字
    */
   async notifyOrderCancelRequest(order: OrderInfo, reason?: string): Promise<void> {
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
 
-    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）申请取消${reason ? `，原因：${reason}` : ''}，请及时审核`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    const content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）申请取消${reason ? `，原因：${reason}` : ''}，请及时审核`;
 
     await this.sendBatchMessages(
       OrderMessageTypes.ORDER_CANCEL_REQUEST,
@@ -963,11 +1014,14 @@ class OrderNotificationService {
 
   /**
    * 取消审核通过通知 - 通知下单员
+   * 🔥 添加销售员名字
    */
   async notifyOrderCancelApproved(order: OrderInfo, auditorName: string): Promise<void> {
     if (!order.createdBy) return;
 
-    const content = `您的订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）取消申请已被 ${auditorName} 审核通过`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    const content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）取消申请已被 ${auditorName} 审核通过`;
 
     await this.sendMessage(
       OrderMessageTypes.ORDER_CANCEL_APPROVED,
@@ -983,11 +1037,14 @@ class OrderNotificationService {
 
   /**
    * 取消审核拒绝通知 - 通知下单员
+   * 🔥 添加销售员名字
    */
   async notifyOrderCancelRejected(order: OrderInfo, auditorName: string, reason?: string): Promise<void> {
     if (!order.createdBy) return;
 
-    const content = `您的订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）取消申请被 ${auditorName} 拒绝${reason ? `，原因：${reason}` : ''}`;
+    // 🔥 添加销售员名字
+    const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
+    const content = `${salesPersonInfo}订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）取消申请被 ${auditorName} 拒绝${reason ? `，原因：${reason}` : ''}`;
 
     await this.sendMessage(
       OrderMessageTypes.ORDER_CANCEL_REJECTED,
