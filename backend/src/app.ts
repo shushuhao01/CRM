@@ -50,12 +50,20 @@ import messageCleanupRoutes from './routes/messageCleanup';
 import mobileRoutes from './routes/mobile';
 import callWebhookRoutes from './routes/callWebhook';
 import callConfigRoutes from './routes/callConfig';
+import * as fs from 'fs';
 
 // 根据NODE_ENV环境变量加载对应配置文件
 // 生产环境(production): 加载 .env
-// 开发环境(development): 加载 .env.local
+// 开发环境(development): 优先加载 .env.local，如果不存在则加载 .env
 const isProduction = process.env.NODE_ENV === 'production';
-const envFile = isProduction ? '.env' : '.env.local';
+let envFile = '.env';
+if (!isProduction) {
+  // 开发环境：优先使用 .env.local
+  const localEnvPath = path.join(__dirname, '../', '.env.local');
+  if (fs.existsSync(localEnvPath)) {
+    envFile = '.env.local';
+  }
+}
 const envPath = path.join(__dirname, '../', envFile);
 dotenv.config({ path: envPath });
 console.log(`✅ 已加载${isProduction ? '生产' : '开发'}环境配置: ${envFile}`);
