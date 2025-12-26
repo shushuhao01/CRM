@@ -3455,18 +3455,34 @@ const handleAddFollowUp = async (row: any) => {
 const handleCreateOrder = (row?: any) => {
   // 如果有传入row参数，使用row的数据；否则使用currentCustomer
   const customer = row || currentCustomer.value
-  if (!customer) return
+  if (!customer) {
+    ElMessage.warning('请先选择客户')
+    return
+  }
 
   console.log('[通话管理] 新建订单，客户信息:', customer)
+
+  // 🔥 修复：确保正确获取客户ID和其他信息
+  const customerId = customer.id || customer.customerId
+  const customerName = customer.customerName || customer.name
+  const customerPhone = customer.phone || customer.customerPhone
+  const customerAddress = customer.address || customer.detailAddress || ''
+
+  if (!customerId) {
+    ElMessage.warning('客户ID不存在')
+    return
+  }
+
+  console.log('[通话管理] 跳转参数:', { customerId, customerName, customerPhone, customerAddress })
 
   // 跳转到新增订单页面，并传递客户信息
   safeNavigator.push({
     name: 'OrderAdd',
     query: {
-      customerId: customer.id || customer.customerId,
-      customerName: customer.customerName || customer.name,
-      customerPhone: customer.phone || customer.customerPhone,
-      customerAddress: customer.address || customer.detailAddress || '',
+      customerId,
+      customerName,
+      customerPhone,
+      customerAddress,
       source: 'call_management' // 标识来源
     }
   })
