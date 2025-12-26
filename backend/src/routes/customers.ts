@@ -1679,11 +1679,15 @@ router.post('/:id/medical-history', async (req: Request, res: Response) => {
     }
 
     // 添加新记录
+    // 🔥 修复：优先使用 realName，其次 name，最后才是 '系统'
+    const operatorName = currentUser?.realName || currentUser?.name || '系统';
+    console.log('[疾病史] 添加记录，操作人:', operatorName, '当前用户:', currentUser?.id, currentUser?.realName, currentUser?.name);
+
     const newRecord = {
       id: Date.now(),
       content: content,
       createTime: new Date().toISOString(),
-      operator: currentUser?.name || '系统',
+      operator: operatorName,
       operationType: 'add'
     };
 
@@ -1724,10 +1728,12 @@ router.get('/:id/stats', async (req: Request, res: Response) => {
       order: { createdAt: 'DESC' }
     });
 
-    // 计算累计消费（只统计已完成/已签收的订单）
-    const completedStatuses = ['completed', 'delivered', 'paid', 'shipped'];
-    const completedOrders = orders.filter(o => completedStatuses.includes(o.status));
-    const totalConsumption = completedOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
+    // 计算累计消费（统计已审核通过及之后状态的订单）
+    // 🔥 修复：包含待发货、已发货、已签收、已完成等状态
+    const validStatuses = ['approved', 'pending_shipment', 'shipped', 'delivered', 'signed', 'completed', 'paid'];
+    const validOrders = orders.filter(o => validStatuses.includes(o.status));
+    const totalConsumption = validOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
+    console.log(`[客户统计] 客户 ${customerId}: 有效订单状态=${validStatuses.join(',')}, 有效订单数=${validOrders.length}`);
 
     // 订单数量
     const orderCount = orders.length;

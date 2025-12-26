@@ -562,7 +562,7 @@
               </el-table-column>
               <el-table-column prop="status" label="订单状态" width="90">
                 <template #default="{ row }">
-                  <el-tag :type="getOrderStatusType(row.status)" size="small">{{ row.status }}</el-tag>
+                  <el-tag :type="getOrderStatusTagType(row.status)" size="small">{{ row.status }}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column prop="orderDate" label="下单时间" width="160" show-overflow-tooltip />
@@ -954,6 +954,7 @@ import { copyToClipboard } from '@/utils/customerCode'
 import CreateTemplateDialog from '@/components/CreateTemplateDialog.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import { customerDetailApi } from '@/api/customerDetail'
+import { getOrderStatusText as getOrderStatusTextFromConfig, getOrderStatusTagType } from '@/utils/orderStatusConfig'
 
 const route = useRoute()
 const router = useRouter()
@@ -2462,6 +2463,7 @@ const loadOrderHistory = async () => {
     }
 
     // 转换为页面显示格式
+    // 🔥 修复：使用统一的订单状态配置，显示中文状态
     orderHistory.value = customerOrders.map((order: any) => ({
       id: order.id,
       orderNo: order.orderNumber || order.orderNo,
@@ -2471,7 +2473,7 @@ const loadOrderHistory = async () => {
             : order.productNames || '暂无商品信息')
         : order.productNames || '暂无商品信息',
       totalAmount: Number(order.totalAmount) || Number(order.amount) || 0,
-      status: getOrderStatusText(order.status),
+      status: getOrderStatusTextFromConfig(order.status),
       orderDate: order.createTime || order.orderDate
     }))
 
