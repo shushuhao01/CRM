@@ -2126,16 +2126,27 @@ DROP TABLE IF EXISTS `device_bind_logs`;
 CREATE TABLE `device_bind_logs` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
-  `connection_id` VARCHAR(100) NOT NULL UNIQUE COMMENT '连接ID',
+  `device_id` VARCHAR(100) COMMENT '设备ID',
+  `phone_number` VARCHAR(20) COMMENT '手机号',
+  `device_name` VARCHAR(100) COMMENT '设备名称',
+  `device_model` VARCHAR(100) COMMENT '设备型号',
+  `os_type` VARCHAR(20) COMMENT '操作系统类型',
+  `os_version` VARCHAR(50) COMMENT '操作系统版本',
+  `app_version` VARCHAR(20) COMMENT 'APP版本',
+  `action` VARCHAR(20) COMMENT '操作类型: binddevice/unbind',
+  `connection_id` VARCHAR(100) COMMENT '连接ID',
   `phone_id` INT COMMENT '绑定成功后的手机ID',
   `status` VARCHAR(20) DEFAULT 'pending' COMMENT '状态: pending/connected/expired',
   `expires_at` DATETIME COMMENT '过期时间',
+  `ip_address` VARCHAR(50) COMMENT 'IP地址',
+  `remark` TEXT COMMENT '备注',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_device_id` (`device_id`),
   INDEX `idx_connection_id` (`connection_id`),
   INDEX `idx_status` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='二维码绑定状态表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备绑定日志表';
 
 SET FOREIGN_KEY_CHECKS = 1;
 
