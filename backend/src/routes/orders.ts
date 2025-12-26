@@ -354,8 +354,9 @@ router.get('/audit-list', authenticateToken, async (req: Request, res: Response)
       queryBuilder.where('order.status = :status', { status: 'pending_audit' });
       console.log(`📋 [审核列表] 筛选待审核订单: status=pending_audit`);
     } else if (status === 'approved') {
-      // 已审核通过：待发货、已发货、已签收等
-      const approvedStatuses = ['pending_shipment', 'shipped', 'delivered', 'paid'];
+      // 🔥 修复：已审核通过的订单状态只包括审核通过后的状态
+      // 不包括 pending_transfer（待流转）和 pending_audit（待审核）
+      const approvedStatuses = ['pending_shipment', 'shipped', 'delivered', 'paid', 'completed'];
       queryBuilder.where('order.status IN (:...statuses)', {
         statuses: approvedStatuses
       });
@@ -364,6 +365,7 @@ router.get('/audit-list', authenticateToken, async (req: Request, res: Response)
       queryBuilder.where('order.status = :status', { status: 'audit_rejected' });
       console.log(`📋 [审核列表] 筛选审核拒绝订单: status=audit_rejected`);
     } else if (status) {
+      // 🔥 修复：其他状态直接使用传入的状态值
       queryBuilder.where('order.status = :status', { status });
       console.log(`📋 [审核列表] 筛选其他状态订单: status=${status}`);
     }
@@ -422,8 +424,13 @@ router.get('/audit-list', authenticateToken, async (req: Request, res: Response)
         depositAmount: Number(order.depositAmount) || 0,
         collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
         status: order.status,
-        auditStatus: order.status === 'pending_audit' ? 'pending' :
-                     order.status === 'audit_rejected' ? 'rejected' : 'approved',
+        // 🔥 修复：正确映射auditStatus
+        // pending_audit 和 pending_transfer -> pending（待审核）
+        // audit_rejected -> rejected（审核拒绝）
+        // pending_shipment, shipped, delivered, paid, completed -> approved（已审核通过）
+        auditStatus: (order.status === 'pending_audit' || order.status === 'pending_transfer') ? 'pending' :
+                     order.status === 'audit_rejected' ? 'rejected' :
+                     ['pending_shipment', 'shipped', 'delivered', 'paid', 'completed'].includes(order.status) ? 'approved' : 'pending',
         markType: order.markType || 'normal',
         paymentStatus: order.paymentStatus || 'unpaid',
         paymentMethod: order.paymentMethod || '',
@@ -1166,11 +1173,14 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       }
 
       // 根据订单状态推断auditStatus
+      // 🔥 修复：正确映射auditStatus
       let auditStatus = 'pending';
-      if (order.status === 'pending_shipment' || order.status === 'shipped' || order.status === 'delivered' || order.status === 'paid') {
+      if (['pending_shipment', 'shipped', 'delivered', 'paid', 'completed'].includes(order.status)) {
         auditStatus = 'approved';
       } else if (order.status === 'audit_rejected') {
         auditStatus = 'rejected';
+      } else if (order.status === 'pending_audit' || order.status === 'pending_transfer') {
+        auditStatus = 'pending';
       }
 
       return {
@@ -1444,11 +1454,14 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 
     // 根据订单状态推断auditStatus
+    // 🔥 修复：正确映射auditStatus
     let auditStatus = 'pending';
-    if (order.status === 'pending_shipment' || order.status === 'shipped' || order.status === 'delivered' || order.status === 'paid') {
+    if (['pending_shipment', 'shipped', 'delivered', 'paid', 'completed'].includes(order.status)) {
       auditStatus = 'approved';
     } else if (order.status === 'audit_rejected') {
       auditStatus = 'rejected';
+    } else if (order.status === 'pending_audit' || order.status === 'pending_transfer') {
+      auditStatus = 'pending';
     }
 
     // 计算流转时间（创建时间 + 配置的延迟分钟数）

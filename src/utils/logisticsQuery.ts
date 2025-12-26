@@ -48,6 +48,7 @@ export interface LogisticsQueryOptions {
   trackingNo: string
   companyCode?: string
   companyName?: string
+  customerPhone?: string  // 🔥 新增：客户手机号，用于系统内查询
   router?: Router
   onSystemQuery?: () => void
 }
@@ -86,7 +87,7 @@ const detectCompanyByTrackingNo = (trackingNo: string): string => {
  * @param options 查询选项
  */
 export const showLogisticsQueryDialog = async (options: LogisticsQueryOptions): Promise<void> => {
-  const { trackingNo, companyCode, companyName, router, onSystemQuery } = options
+  const { trackingNo, companyCode, companyName, customerPhone, router, onSystemQuery } = options
 
   if (!trackingNo) {
     return
@@ -163,12 +164,18 @@ export const showLogisticsQueryDialog = async (options: LogisticsQueryOptions): 
         if (onSystemQuery) {
           onSystemQuery()
         } else if (router) {
+          // 🔥 修复：传递手机号到物流跟踪页面，避免再次弹窗输入
+          const query: Record<string, string> = {
+            trackingNo: trackingNo,
+            company: companyKey
+          }
+          // 如果有手机号，也传递过去
+          if (customerPhone) {
+            query.phone = customerPhone
+          }
           router.push({
             path: '/logistics/track',
-            query: {
-              trackingNo: trackingNo,
-              company: companyKey
-            }
+            query
           })
         }
       }
