@@ -1371,7 +1371,8 @@ router.post('/:id/followups', async (req: Request, res: Response) => {
   try {
     const customerId = req.params.id;
     const { type, content, status, priority, nextFollowUp } = req.body;
-    const currentUser = (req as any).user;
+    // 🔥 修复：使用正确的currentUser字段
+    const currentUser = (req as any).currentUser;
 
     const { FollowUp } = await import('../entities/FollowUp');
     const followUpRepository = AppDataSource.getRepository(FollowUp);
@@ -1393,7 +1394,7 @@ router.post('/:id/followups', async (req: Request, res: Response) => {
       priority: priority || 'medium',
       nextFollowUp: nextFollowUp ? new Date(nextFollowUp) : undefined,
       createdBy: currentUser?.id || 'system',
-      createdByName: currentUser?.name || '系统'
+      createdByName: currentUser?.name || currentUser?.realName || '系统'
     });
 
     const savedFollowUp = await followUpRepository.save(followUp);
