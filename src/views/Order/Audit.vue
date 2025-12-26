@@ -1071,12 +1071,10 @@ const orderList = computed(() => {
   }
 })
 
-// 🔥 分页后的订单列表 - 参考订单列表页面的实现
+// 🔥 分页后的订单列表 - API已经返回分页数据，直接使用
 const paginatedOrderList = computed(() => {
-  const allData = orderList.value
-  const startIndex = (pagination.page - 1) * pagination.size
-  const endIndex = startIndex + pagination.size
-  return allData.slice(startIndex, endIndex)
+  // API已经返回分页后的数据，不需要再次分页
+  return orderList.value
 })
 
 // 表格列配置

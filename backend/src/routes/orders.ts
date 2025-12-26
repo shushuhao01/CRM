@@ -317,6 +317,14 @@ router.get('/audit-list', authenticateToken, async (req: Request, res: Response)
 
     console.log(`📋 [审核列表] 查询参数: status=${status}, page=${pageNum}, pageSize=${pageSizeNum}`);
 
+    // 🔥 调试：先查询所有订单的状态分布
+    const statusCountQuery = await orderRepository.createQueryBuilder('order')
+      .select('order.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('order.status')
+      .getRawMany();
+    console.log(`📋 [审核列表] 订单状态分布:`, statusCountQuery);
+
     // 🔥 优化：使用QueryBuilder只查询需要的字段
     const queryBuilder = orderRepository.createQueryBuilder('order')
       .select([
@@ -344,15 +352,20 @@ router.get('/audit-list', authenticateToken, async (req: Request, res: Response)
     // 状态筛选
     if (status === 'pending_audit') {
       queryBuilder.where('order.status = :status', { status: 'pending_audit' });
+      console.log(`📋 [审核列表] 筛选待审核订单: status=pending_audit`);
     } else if (status === 'approved') {
       // 已审核通过：待发货、已发货、已签收等
+      const approvedStatuses = ['pending_shipment', 'shipped', 'delivered', 'paid'];
       queryBuilder.where('order.status IN (:...statuses)', {
-        statuses: ['pending_shipment', 'shipped', 'delivered', 'paid']
+        statuses: approvedStatuses
       });
+      console.log(`📋 [审核列表] 筛选已审核通过订单: statuses=${approvedStatuses.join(', ')}`);
     } else if (status === 'rejected') {
       queryBuilder.where('order.status = :status', { status: 'audit_rejected' });
+      console.log(`📋 [审核列表] 筛选审核拒绝订单: status=audit_rejected`);
     } else if (status) {
       queryBuilder.where('order.status = :status', { status });
+      console.log(`📋 [审核列表] 筛选其他状态订单: status=${status}`);
     }
 
     // 订单号筛选
