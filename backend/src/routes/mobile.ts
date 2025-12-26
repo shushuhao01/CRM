@@ -11,6 +11,7 @@ import QRCode from 'qrcode'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
+import bcrypt from 'bcryptjs'
 
 const router = Router()
 
@@ -114,7 +115,7 @@ async function logApiCall(data: {
 router.post('/login', async (req: Request, res: Response) => {
   const startTime = Date.now()
   try {
-    const { username, password, deviceInfo } = req.body
+    const { username, password, deviceInfo: _deviceInfo } = req.body
 
     if (!username || !password) {
       return res.status(400).json({
@@ -152,8 +153,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
     const user = users[0]
 
-    // 验证密码（简单比对，实际应使用bcrypt）
-    const bcrypt = require('bcryptjs')
+    // 验证密码
     const isValidPassword = await bcrypt.compare(password, user.password)
     if (!isValidPassword) {
       await logApiCall({
@@ -438,13 +438,10 @@ router.post('/bind', async (req: Request, res: Response) => {
 
     // 通知PC端设备已绑定
     if (global.webSocketService) {
-      global.webSocketService.sendToUser(record.user_id, {
-        type: 'DEVICE_BOUND',
-        data: {
-          deviceId,
-          deviceName: deviceInfo?.deviceName,
-          phoneNumber
-        }
+      global.webSocketService.sendToUser(record.user_id, 'DEVICE_BOUND', {
+        deviceId,
+        deviceName: deviceInfo?.deviceName,
+        phoneNumber
       })
     }
 
@@ -531,11 +528,11 @@ router.delete('/unbind', authenticateToken, async (req: Request, res: Response) 
       deviceId: device.device_id
     })
 
-    // 通知APP设备已解绑
+    // 通知APP设备已解绑（通过用户ID发送，因为设备可能已离线）
     if (global.webSocketService) {
-      global.webSocketService.sendToDevice(device.device_id, {
-        type: 'DEVICE_UNBIND',
-        data: { reason: '设备已被解绑' }
+      global.webSocketService.sendToUser(userId, 'DEVICE_UNBIND', {
+        deviceId: device.device_id,
+        reason: '设备已被解绑'
       })
     }
 
@@ -672,9 +669,8 @@ router.post('/call/status', authenticateToken, async (req: Request, res: Respons
 
     // 推送PC端
     if (global.webSocketService) {
-      global.webSocketService.sendToUser(currentUser?.userId || currentUser?.id, {
-        type: 'CALL_STATUS_CHANGED',
-        data: { callId, status, timestamp }
+      global.webSocketService.sendToUser(currentUser?.userId || currentUser?.id, 'CALL_STATUS_CHANGED', {
+        callId, status, timestamp
       })
     }
 
@@ -743,9 +739,8 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
 
     // 推送PC端
     if (global.webSocketService) {
-      global.webSocketService.sendToUser(currentUser?.userId || currentUser?.id, {
-        type: 'CALL_ENDED',
-        data: { callId, status, duration, hasRecording }
+      global.webSocketService.sendToUser(currentUser?.userId || currentUser?.id, 'CALL_ENDED', {
+        callId, status, duration, hasRecording
       })
     }
 
@@ -774,7 +769,7 @@ router.post('/recording/upload', authenticateToken, uploadRecording.single('file
   const startTime = Date.now()
   try {
     const currentUser = (req as any).user
-    const { callId, duration } = req.body
+    const { callId, duration: _duration } = req.body
     const file = req.file
 
     if (!callId || !file) {
@@ -946,7 +941,7 @@ router.post('/call/followup', authenticateToken, async (req: Request, res: Respo
         if (customers[0]?.tags) {
           try {
             existingTags = JSON.parse(customers[0].tags)
-          } catch (e) {
+          } catch (_e) {
             existingTags = []
           }
         }
@@ -990,17 +985,14 @@ router.post('/call/followup', authenticateToken, async (req: Request, res: Respo
 
     // 5. 推送PC端更新
     if (global.webSocketService) {
-      global.webSocketService.sendToUser(userId, {
-        type: 'CALL_FOLLOWUP_UPDATED',
-        data: {
-          callId,
-          customerId: actualCustomerId,
-          notes,
-          tags,
-          intention,
-          followUpRequired,
-          nextFollowUpDate
-        }
+      global.webSocketService.sendToUser(userId, 'CALL_FOLLOWUP_UPDATED', {
+        callId,
+        customerId: actualCustomerId,
+        notes,
+        tags,
+        intention,
+        followUpRequired,
+        nextFollowUpDate
       })
     }
 
