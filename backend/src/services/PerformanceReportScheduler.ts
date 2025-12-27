@@ -228,20 +228,36 @@ class PerformanceReportScheduler {
     const dataSource = getDataSource();
     if (!dataSource) return {};
 
+    // 🔥 修复：使用北京时间计算日期
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    // 获取北京时间的当前时间（UTC+8）
+    const beijingOffset = 8 * 60 * 60 * 1000; // 8小时的毫秒数
+    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
+    const beijingTime = new Date(utcTime + beijingOffset);
+
+    // 计算北京时间的今天和昨天
+    const beijingYear = beijingTime.getFullYear();
+    const beijingMonth = beijingTime.getMonth();
+    const beijingDate = beijingTime.getDate();
+
+    // 昨天的日期字符串（北京时间）
+    const yesterdayBeijing = new Date(beijingYear, beijingMonth, beijingDate - 1);
+    const yesterdayStr = `${yesterdayBeijing.getFullYear()}-${String(yesterdayBeijing.getMonth() + 1).padStart(2, '0')}-${String(yesterdayBeijing.getDate()).padStart(2, '0')}`;
+
+    // 本月第一天（北京时间）
+    const monthStartStr = `${beijingYear}-${String(beijingMonth + 1).padStart(2, '0')}-01`;
+
+    logger.info(`[业绩报表] 📅 统计日期: 昨日=${yesterdayStr}, 本月开始=${monthStartStr}, 当前北京时间=${beijingTime.toISOString()}`);
 
     const orderRepo = dataSource.getRepository(Order);
 
-    // 查询昨日数据
+    // 查询昨日数据 - 使用字符串日期比较
     const dailyQuery = orderRepo.createQueryBuilder('o')
-      .where('DATE(o.created_at) = :date', { date: yesterday.toISOString().split('T')[0] });
+      .where('DATE(o.created_at) = :date', { date: yesterdayStr });
 
     // 查询本月数据
     const monthlyQuery = orderRepo.createQueryBuilder('o')
-      .where('o.created_at >= :start', { start: monthStart });
+      .where('DATE(o.created_at) >= :start', { start: monthStartStr });
 
     if (viewScope === 'department' && targetDepartments.length > 0) {
       dailyQuery.andWhere('o.department_id IN (:...depts)', { depts: targetDepartments });
@@ -256,6 +272,8 @@ class PerformanceReportScheduler {
         `COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END), 0) as signedAmount`
       ])
       .getRawOne();
+
+    logger.info(`[业绩报表] 📊 昨日统计结果: orderCount=${dailyStats?.orderCount}, orderAmount=${dailyStats?.orderAmount}`);
 
     const monthlyStats = await monthlyQuery
       .select([
@@ -278,7 +296,7 @@ class PerformanceReportScheduler {
         `COALESCE(SUM(CASE WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded') AND (o.status != 'pending_transfer' OR o.mark_type = 'normal') THEN o.total_amount ELSE 0 END), 0) as totalAmount`,
         `SUM(CASE WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded') AND (o.status != 'pending_transfer' OR o.mark_type = 'normal') THEN 1 ELSE 0 END) as orderCount`
       ])
-      .where('o.created_at >= :start', { start: monthStart })
+      .where('DATE(o.created_at) >= :start', { start: monthStartStr })
       .groupBy('o.created_by')
       .orderBy('totalAmount', 'DESC')
       .limit(3);
@@ -307,8 +325,8 @@ class PerformanceReportScheduler {
     );
 
     return {
-      reportDate: yesterday.toISOString().split('T')[0],
-      reportDateText: this.formatDateText(yesterday),
+      reportDate: yesterdayStr,
+      reportDateText: this.formatDateText(yesterdayBeijing),
       daily: {
         orderCount: parseInt(dailyStats?.orderCount || '0'),
         orderAmount: parseFloat(dailyStats?.orderAmount || '0'),
