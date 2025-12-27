@@ -5,9 +5,34 @@ import { Order } from '../entities/Order';
 import { Product } from '../entities/Product';
 import { SystemConfig } from '../entities/SystemConfig';
 import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
+import { OrderStatusHistory } from '../entities/OrderStatusHistory';
 import { orderNotificationService } from '../services/OrderNotificationService';
 // Like 和 Between 现在通过 QueryBuilder 使用，不再直接导入
 // import { Like, Between } from 'typeorm';
+
+// 🔥 保存订单状态历史记录
+const saveStatusHistory = async (
+  orderId: string,
+  status: string,
+  operatorId: string | number | null,
+  operatorName: string,
+  notes?: string
+): Promise<void> => {
+  try {
+    const statusHistoryRepository = AppDataSource.getRepository(OrderStatusHistory);
+    const history = statusHistoryRepository.create({
+      orderId,
+      status: status as any,
+      operatorId: operatorId ? Number(operatorId) : undefined,
+      operatorName,
+      notes
+    });
+    await statusHistoryRepository.save(history);
+    console.log(`[状态历史] ✅ 保存成功: orderId=${orderId}, status=${status}, operator=${operatorName}`);
+  } catch (error) {
+    console.error(`[状态历史] ❌ 保存失败:`, error);
+  }
+};
 
 // 格式化时间为北京时间友好格式 (YYYY/MM/DD HH:mm:ss)
 const formatToBeijingTime = (date: Date | string | null | undefined): string => {
@@ -1763,6 +1788,15 @@ router.post('/', async (req: Request, res: Response) => {
 
     console.log('✅ [订单创建] 返回数据:', responseData);
 
+    // 🔥 保存订单创建的状态历史记录
+    await saveStatusHistory(
+      savedOrder.id,
+      savedOrder.status,
+      finalCreatedBy,
+      finalCreatedByName,
+      `订单创建成功，订单号：${savedOrder.orderNumber}`
+    );
+
     // 🔥 发送订单创建成功通知给下单员
     orderNotificationService.notifyOrderCreated({
       id: savedOrder.id,
@@ -1924,8 +1958,22 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
 
     const updatedOrder = await orderRepository.save(order);
 
-    // 🔥 根据状态变更发送相应通知
+    // 🔥 根据状态变更发送相应通知和保存状态历史
     if (updateData.status !== undefined && updateData.status !== previousStatus) {
+      // 获取当前操作人信息
+      const currentUser = (req as any).currentUser || (req as any).user;
+      const operatorId = currentUser?.id || null;
+      const operatorName = currentUser?.realName || currentUser?.name || currentUser?.username || '系统';
+
+      // 🔥 保存状态历史记录
+      await saveStatusHistory(
+        order.id,
+        updateData.status,
+        operatorId,
+        operatorName,
+        updateData.remark || `状态变更为：${getStatusName(updateData.status)}`
+      );
+
       const orderInfo = {
         id: order.id,
         orderNumber: order.orderNumber,
@@ -2067,6 +2115,18 @@ router.post('/:id/submit-audit', async (req: Request, res: Response) => {
 
     await orderRepository.save(order);
 
+    // 🔥 保存状态历史记录
+    const currentUser = (req as any).currentUser || (req as any).user;
+    const operatorId = currentUser?.id || order.createdBy;
+    const operatorName = currentUser?.realName || currentUser?.name || order.createdByName || '销售员';
+    await saveStatusHistory(
+      order.id,
+      order.status,
+      operatorId,
+      operatorName,
+      `订单已提交审核${remark ? `，备注：${remark}` : ''}`
+    );
+
     console.log(`✅ [订单提审] 订单 ${order.orderNumber} 已提交审核，状态变更为 pending_audit`);
 
     // 🔥 发送待审核通知给下单员和管理员
@@ -2172,6 +2232,16 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
 
     await orderRepository.save(order);
 
+    // 🔥 保存状态历史记录
+    const operatorId = currentUser?.id || null;
+    await saveStatusHistory(
+      order.id,
+      order.status,
+      operatorId,
+      auditorName,
+      isApproved ? `审核通过: ${finalRemark}` : `审核拒绝: ${finalRemark}`
+    );
+
     res.json({
       success: true,
       code: 200,
@@ -2248,6 +2318,16 @@ router.post('/:id/cancel-audit', authenticateToken, async (req: Request, res: Re
     }
 
     await orderRepository.save(order);
+
+    // 🔥 保存状态历史记录
+    const operatorId = currentUser?.id || null;
+    await saveStatusHistory(
+      order.id,
+      order.status,
+      operatorId,
+      auditorName,
+      action === 'approve' ? `取消申请已通过${remark ? `，原因：${remark}` : ''}` : `取消申请已拒绝${remark ? `，原因：${remark}` : ''}`
+    );
 
     res.json({
       success: true,
