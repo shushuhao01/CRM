@@ -668,13 +668,17 @@ const loadWorkPhones = async () => {
   try {
     const res = await callConfigApi.getMyWorkPhones()
     console.log('[CallConfig] loadWorkPhones response:', res)
+    console.log('[CallConfig] loadWorkPhones raw data:', JSON.stringify(res))
     // request.ts 响应拦截器返回的是 data
     if (Array.isArray(res)) {
       workPhones.value = res
+      console.log('[CallConfig] workPhones set from array:', workPhones.value)
     } else if (res && (res as any).success !== undefined) {
       workPhones.value = (res as any).data || []
+      console.log('[CallConfig] workPhones set from success response:', workPhones.value)
     } else if (res) {
       workPhones.value = (res as unknown as any[]) || []
+      console.log('[CallConfig] workPhones set from other:', workPhones.value)
     }
   } catch (e) {
     console.error('加载工作手机失败:', e)
@@ -1066,6 +1070,8 @@ const setAsPrimary = async (phone: WorkPhone) => {
 
 const unbindPhone = async (phone: WorkPhone) => {
   try {
+    console.log('[unbindPhone] phone:', phone)
+    console.log('[unbindPhone] phone.id:', phone.id, 'type:', typeof phone.id)
     await ElMessageBox.confirm(`确定要解绑手机 ${phone.phoneNumber} 吗？`, '确认解绑', { type: 'warning' })
     await callConfigApi.unbindWorkPhone(phone.id)
     ElMessage.success('解绑成功')
