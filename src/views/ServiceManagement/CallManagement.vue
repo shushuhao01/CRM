@@ -2089,8 +2089,8 @@ const userCallPreference = ref({
 })
 
 const outboundRules = {
+  // customerPhone 不再是必填，因为可以手动输入号码
   customerPhone: [
-    { required: true, message: '请输入客户电话号码', trigger: 'blur' },
     { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码', trigger: 'blur' }
   ]
 }
@@ -3646,11 +3646,18 @@ const searchCustomers = async (query: string = '') => {
     await customerStore.loadCustomers()
     const allCustomers = customerStore.customers
     const currentUserId = userStore.currentUser?.id
+    const currentUserRole = userStore.currentUser?.role
 
-    // 筛选归属于当前用户的客户
-    let filteredCustomers = allCustomers.filter(customer => {
-      return customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
-    })
+    // 超管和管理员可以看到所有客户，其他角色只能看到自己的客户
+    const isAdminOrSuperAdmin = currentUserRole === 'super_admin' || currentUserRole === 'admin'
+
+    let filteredCustomers = allCustomers
+    if (!isAdminOrSuperAdmin) {
+      // 非管理员只能看到归属于自己的客户
+      filteredCustomers = allCustomers.filter(customer => {
+        return customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
+      })
+    }
 
     // 如果有查询条件，进行智能匹配
     if (query && query.trim()) {
@@ -4493,35 +4500,24 @@ const getPhoneCarrier = (phone: string): string => {
 
 // 计算属性：是否可以开始呼叫
 const canStartCall = computed(() => {
-  console.log('[canStartCall] 检查条件:', {
-    callMethod: outboundForm.value.callMethod,
-    selectedWorkPhone: outboundForm.value.selectedWorkPhone,
-    selectedLine: outboundForm.value.selectedLine,
-    customerPhone: outboundForm.value.customerPhone,
-    manualPhone: outboundForm.value.manualPhone
-  })
-
   // 必须有外呼方式
   if (!outboundForm.value.callMethod) {
-    console.log('[canStartCall] 缺少外呼方式')
     return false
   }
 
   // 如果选择工作手机，必须选择一个手机
   if (outboundForm.value.callMethod === 'work_phone' && !outboundForm.value.selectedWorkPhone) {
-    console.log('[canStartCall] 选择了工作手机但未选择具体手机')
     return false
   }
 
   // 如果选择网络电话，必须选择一条线路
   if (outboundForm.value.callMethod === 'network_phone' && !outboundForm.value.selectedLine) {
-    console.log('[canStartCall] 选择了网络电话但未选择线路')
     return false
   }
 
   // 必须有电话号码（手动输入或从客户选择）
-  const hasPhone = outboundForm.value.manualPhone || outboundForm.value.customerPhone
-  console.log('[canStartCall] 是否有电话号码:', hasPhone)
+  // 手动输入号码时不需要选择客户
+  const hasPhone = outboundForm.value.manualPhone?.trim() || outboundForm.value.customerPhone
   return !!hasPhone
 })
 
