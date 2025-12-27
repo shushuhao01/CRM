@@ -574,14 +574,27 @@ const loadData = async () => {
 
     // 转换为物流列表格式
     let logisticsData = shippedOrders.map((order: any) => {
-      // 🔥 智能映射物流状态：根据订单状态和最新物流动态来判断
-      let logisticsStatus = order.logisticsStatus || ''
-      if (!logisticsStatus) {
+      // 🔥 智能映射物流状态：优先根据订单状态判断，确保已签收订单显示正确
+      let logisticsStatus = ''
+
+      // 🔥 修复：如果订单状态是已签收，物流状态也应该是已签收
+      if (order.status === 'delivered') {
+        logisticsStatus = 'delivered'
+      } else if (order.status === 'rejected' || order.status === 'rejected_returned') {
+        logisticsStatus = order.status === 'rejected_returned' ? 'returned' : 'rejected'
+      } else if (order.logisticsStatus) {
+        // 使用订单中已有的物流状态
+        logisticsStatus = order.logisticsStatus
+      } else {
+        // 根据订单状态和物流动态智能映射
         logisticsStatus = mapOrderStatusToLogisticsStatus(order.status, order.latestLogisticsInfo || '')
       }
 
-      // 🔥 预计送达时间处理
-      const estimatedDate = order.expectedDeliveryDate || order.estimatedDeliveryTime || order.estimatedDelivery || order.estimatedDate || ''
+      // 🔥 预计送达时间处理：已签收的订单不显示预计送达
+      let estimatedDate = ''
+      if (order.status !== 'delivered' && logisticsStatus !== 'delivered') {
+        estimatedDate = order.expectedDeliveryDate || order.estimatedDeliveryTime || order.estimatedDelivery || order.estimatedDate || ''
+      }
 
       // 🔥 调试：打印手机号字段
       const customerPhone = order.receiverPhone || order.customerPhone || ''
