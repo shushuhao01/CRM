@@ -697,9 +697,26 @@ router.delete('/work-phones/:id', async (req: Request, res: Response) => {
     const userIdStr = String(userId);
     const { id } = req.params;
 
+    console.log('[解绑工作手机] 请求参数:', { id, userId: userIdStr });
+
+    // 先查询不带 user_id 条件，看看记录是否存在
+    const allPhones = await AppDataSource.query(`SELECT id, user_id, device_id, phone_number FROM work_phones WHERE id = ?`, [id]);
+    console.log('[解绑工作手机] 查询结果(不带user_id):', allPhones);
+
     const phones = await AppDataSource.query(`SELECT * FROM work_phones WHERE id = ? AND user_id = ?`, [id, userIdStr]);
+    console.log('[解绑工作手机] 查询结果(带user_id):', phones);
 
     if (phones.length === 0) {
+      // 如果找不到，尝试用 device_id 查询
+      const phonesByDeviceId = await AppDataSource.query(`SELECT * FROM work_phones WHERE device_id = ? AND user_id = ?`, [id, userIdStr]);
+      console.log('[解绑工作手机] 用device_id查询结果:', phonesByDeviceId);
+
+      if (phonesByDeviceId.length > 0) {
+        // 用 device_id 找到了，执行删除
+        await AppDataSource.query(`DELETE FROM work_phones WHERE device_id = ? AND user_id = ?`, [id, userIdStr]);
+        return res.json(successResponse(null, '解绑成功'));
+      }
+
       return res.status(404).json(errorResponse('手机不存在或无权操作', 404));
     }
 

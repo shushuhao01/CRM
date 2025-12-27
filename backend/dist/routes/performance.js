@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_1 = require("../middleware/auth");
@@ -51,6 +84,8 @@ router.get('/shares', async (req, res) => {
         const [countResult] = await database_1.AppDataSource.query(countSql, countParams);
         res.json({
             success: true,
+            code: 200,
+            message: '获取业绩分享列表成功',
             data: {
                 shares: shares.map((s) => ({
                     ...s,
@@ -64,7 +99,7 @@ router.get('/shares', async (req, res) => {
     }
     catch (error) {
         console.error('获取业绩分享列表失败:', error);
-        res.status(500).json({ success: false, message: '获取业绩分享列表失败' });
+        res.status(500).json({ success: false, code: 500, message: '获取业绩分享列表失败' });
     }
 });
 /**
@@ -76,17 +111,19 @@ router.get('/shares/:id', async (req, res) => {
         const { id } = req.params;
         const [share] = await database_1.AppDataSource.query(`SELECT * FROM performance_shares WHERE id = ?`, [id]);
         if (!share) {
-            return res.status(404).json({ success: false, message: '业绩分享记录不存在' });
+            return res.status(404).json({ success: false, code: 404, message: '业绩分享记录不存在' });
         }
         const members = await database_1.AppDataSource.query(`SELECT * FROM performance_share_members WHERE share_id = ?`, [id]);
         res.json({
             success: true,
+            code: 200,
+            message: '获取业绩分享详情成功',
             data: { ...share, shareMembers: members }
         });
     }
     catch (error) {
         console.error('获取业绩分享详情失败:', error);
-        res.status(500).json({ success: false, message: '获取业绩分享详情失败' });
+        res.status(500).json({ success: false, code: 500, message: '获取业绩分享详情失败' });
     }
 });
 /**
@@ -124,15 +161,43 @@ router.post('/shares', async (req, res) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`, [memberId, shareId, member.userId, member.userName, member.department || '',
                 member.percentage, shareAmount]);
         }
+        // 🔥 发送业绩分享通知给每个成员
+        const creatorName = currentUser?.realName || currentUser?.username || '系统';
+        for (const member of shareMembers) {
+            // 不给创建者自己发送通知
+            if (member.userId !== currentUser?.userId) {
+                const shareAmount = (orderAmount * member.percentage) / 100;
+                try {
+                    const { orderNotificationService } = await Promise.resolve().then(() => __importStar(require('../services/OrderNotificationService')));
+                    await orderNotificationService.notifyPerformanceShare({
+                        shareId,
+                        shareNumber,
+                        orderNumber,
+                        orderAmount,
+                        memberId: member.userId,
+                        memberName: member.userName,
+                        percentage: member.percentage,
+                        shareAmount,
+                        createdBy: currentUser?.userId,
+                        createdByName: creatorName
+                    });
+                    console.log(`[业绩分享] ✅ 已发送通知给 ${member.userName} (${member.userId})`);
+                }
+                catch (notifyError) {
+                    console.error(`[业绩分享] ❌ 发送通知失败:`, notifyError);
+                }
+            }
+        }
         res.status(201).json({
             success: true,
+            code: 200,
             message: '业绩分享创建成功',
             data: { id: shareId, shareNumber }
         });
     }
     catch (error) {
         console.error('创建业绩分享失败:', error);
-        res.status(500).json({ success: false, message: '创建业绩分享失败' });
+        res.status(500).json({ success: false, code: 500, message: '创建业绩分享失败' });
     }
 });
 /**
@@ -145,20 +210,20 @@ router.delete('/shares/:id', async (req, res) => {
         const currentUser = req.user;
         const [share] = await database_1.AppDataSource.query(`SELECT * FROM performance_shares WHERE id = ?`, [id]);
         if (!share) {
-            return res.status(404).json({ success: false, message: '业绩分享记录不存在' });
+            return res.status(404).json({ success: false, code: 404, message: '业绩分享记录不存在' });
         }
         if (share.created_by !== currentUser?.userId) {
-            return res.status(403).json({ success: false, message: '无权限取消此分享记录' });
+            return res.status(403).json({ success: false, code: 403, message: '无权限取消此分享记录' });
         }
         if (share.status !== 'active') {
-            return res.status(400).json({ success: false, message: '只能取消活跃状态的分享记录' });
+            return res.status(400).json({ success: false, code: 400, message: '只能取消活跃状态的分享记录' });
         }
         await database_1.AppDataSource.query(`UPDATE performance_shares SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?`, [id]);
-        res.json({ success: true, message: '业绩分享已取消' });
+        res.json({ success: true, code: 200, message: '业绩分享已取消' });
     }
     catch (error) {
         console.error('取消业绩分享失败:', error);
-        res.status(500).json({ success: false, message: '取消业绩分享失败' });
+        res.status(500).json({ success: false, code: 500, message: '取消业绩分享失败' });
     }
 });
 /**
@@ -177,11 +242,11 @@ router.post('/shares/:id/confirm', async (req, res) => {
         if (pendingCount?.count === 0) {
             await database_1.AppDataSource.query(`UPDATE performance_shares SET status = 'completed', completed_at = NOW() WHERE id = ?`, [id]);
         }
-        res.json({ success: true, message: '业绩分享确认成功' });
+        res.json({ success: true, code: 200, message: '业绩分享确认成功' });
     }
     catch (error) {
         console.error('确认业绩分享失败:', error);
-        res.status(500).json({ success: false, message: '确认业绩分享失败' });
+        res.status(500).json({ success: false, code: 500, message: '确认业绩分享失败' });
     }
 });
 /**
@@ -201,6 +266,8 @@ router.get('/stats', async (req, res) => {
        WHERE psm.user_id = ? OR ps.created_by = ?`, [currentUser?.userId, currentUser?.userId]);
         res.json({
             success: true,
+            code: 200,
+            message: '获取业绩分享统计成功',
             data: {
                 totalShares: totalResult?.total || 0,
                 totalAmount: totalResult?.totalAmount || 0,
@@ -215,78 +282,278 @@ router.get('/stats', async (req, res) => {
     }
     catch (error) {
         console.error('获取业绩分享统计失败:', error);
-        res.status(500).json({ success: false, message: '获取业绩分享统计失败' });
+        res.status(500).json({ success: false, code: 500, message: '获取业绩分享统计失败' });
     }
 });
 /**
+ * 🔥 统一的业绩计算规则 - 判断订单是否计入下单业绩
+ */
+const isValidForOrderPerformance = (status, markType) => {
+    const excludedStatuses = [
+        'pending_cancel', 'cancelled', 'audit_rejected',
+        'logistics_returned', 'logistics_cancelled', 'refunded'
+    ];
+    if (status === 'pending_transfer') {
+        return markType === 'normal';
+    }
+    return !excludedStatuses.includes(status);
+};
+/**
  * @route GET /api/v1/performance/personal
- * @desc 获取个人业绩数据
+ * @desc 获取个人业绩数据（支持日期筛选）
  */
 router.get('/personal', async (req, res) => {
     try {
         const currentUser = req.user;
         const userId = req.query.userId || currentUser?.userId;
-        // 从订单表统计个人业绩
-        const [orderStats] = await database_1.AppDataSource.query(`SELECT
-         COUNT(*) as totalOrders,
-         SUM(total_amount) as totalAmount,
-         SUM(CASE WHEN status IN ('completed', 'delivered') THEN 1 ELSE 0 END) as completedOrders,
-         SUM(CASE WHEN status IN ('completed', 'delivered') THEN total_amount ELSE 0 END) as completedAmount,
-         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pendingOrders,
-         SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelledOrders
-       FROM orders WHERE created_by = ?`, [userId]);
-        // 新增客户数
-        const [customerStats] = await database_1.AppDataSource.query(`SELECT COUNT(*) as newCustomers FROM customers WHERE sales_person_id = ?`, [userId]);
+        const startDate = req.query.startDate;
+        const endDate = req.query.endDate;
+        // 🔥 数据库已配置为北京时区，直接使用北京时间进行查询
+        let dateCondition = '';
+        const orderParams = [userId];
+        if (startDate && endDate) {
+            dateCondition = ' AND created_at >= ? AND created_at <= ?';
+            orderParams.push(startDate + ' 00:00:00', endDate + ' 23:59:59');
+            console.log(`[业绩统计] 查询日期范围: ${startDate} 00:00:00 ~ ${endDate} 23:59:59`);
+        }
+        // 获取所有订单用于业绩计算
+        // 🔥 修复：orders表没有sales_person_id字段，只使用created_by
+        const orders = await database_1.AppDataSource.query(`SELECT status, mark_type as markType, total_amount as totalAmount
+       FROM orders WHERE created_by = ?${dateCondition}`, orderParams);
+        // 🔥 使用统一的业绩计算规则
+        let orderCount = 0;
+        let orderAmount = 0;
+        let signCount = 0;
+        let signAmount = 0;
+        let shipCount = 0;
+        let shipAmount = 0;
+        let rejectCount = 0;
+        let rejectAmount = 0;
+        let returnCount = 0;
+        let returnAmount = 0;
+        orders.forEach((order) => {
+            const amount = Number(order.totalAmount) || 0;
+            // 下单业绩
+            if (isValidForOrderPerformance(order.status, order.markType)) {
+                orderCount++;
+                orderAmount += amount;
+            }
+            // 签收业绩
+            if (order.status === 'delivered') {
+                signCount++;
+                signAmount += amount;
+            }
+            // 发货业绩
+            if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(order.status)) {
+                shipCount++;
+                shipAmount += amount;
+            }
+            // 拒收
+            if (['rejected', 'rejected_returned'].includes(order.status)) {
+                rejectCount++;
+                rejectAmount += amount;
+            }
+            // 退货
+            if (order.status === 'refunded') {
+                returnCount++;
+                returnAmount += amount;
+            }
+        });
+        // 计算比率
+        const signRate = orderCount > 0 ? ((signCount / orderCount) * 100).toFixed(1) : '0.0';
+        const shipRate = orderCount > 0 ? ((shipCount / orderCount) * 100).toFixed(1) : '0.0';
+        const rejectRate = orderCount > 0 ? ((rejectCount / orderCount) * 100).toFixed(1) : '0.0';
+        const returnRate = orderCount > 0 ? ((returnCount / orderCount) * 100).toFixed(1) : '0.0';
+        // 新增客户数 - 🔥 数据库已配置为北京时区
+        let customerDateCondition = '';
+        const customerParams = [userId];
+        if (startDate && endDate) {
+            customerDateCondition = ' AND created_at >= ? AND created_at <= ?';
+            customerParams.push(startDate + ' 00:00:00', endDate + ' 23:59:59');
+        }
+        const [customerStats] = await database_1.AppDataSource.query(`SELECT COUNT(*) as newCustomers FROM customers WHERE sales_person_id = ?${customerDateCondition}`, customerParams);
         res.json({
             success: true,
+            code: 200,
+            message: '获取个人业绩成功',
             data: {
                 userId,
-                totalOrders: orderStats?.totalOrders || 0,
-                totalAmount: orderStats?.totalAmount || 0,
-                completedOrders: orderStats?.completedOrders || 0,
-                completedAmount: orderStats?.completedAmount || 0,
-                pendingOrders: orderStats?.pendingOrders || 0,
-                cancelledOrders: orderStats?.cancelledOrders || 0,
+                // 下单业绩
+                orderCount,
+                orderAmount,
+                // 签收业绩
+                signCount,
+                signAmount,
+                signRate: parseFloat(signRate),
+                // 发货业绩
+                shipCount,
+                shipAmount,
+                shipRate: parseFloat(shipRate),
+                // 拒收
+                rejectCount,
+                rejectAmount,
+                rejectRate: parseFloat(rejectRate),
+                // 退货
+                returnCount,
+                returnAmount,
+                returnRate: parseFloat(returnRate),
+                // 客户
                 newCustomers: customerStats?.newCustomers || 0
             }
         });
     }
     catch (error) {
         console.error('获取个人业绩失败:', error);
-        res.status(500).json({ success: false, message: '获取个人业绩失败' });
+        res.status(500).json({ success: false, code: 500, message: '获取个人业绩失败' });
     }
 });
 /**
  * @route GET /api/v1/performance/team
- * @desc 获取团队业绩数据
+ * @desc 获取团队业绩数据（支持日期筛选和排序）
  */
 router.get('/team', async (req, res) => {
     try {
         const currentUser = req.user;
         const departmentId = req.query.departmentId || currentUser?.departmentId;
-        // 获取部门成员业绩
-        const members = await database_1.AppDataSource.query(`SELECT u.id as userId, u.real_name as userName, u.department_name as department,
-              COUNT(o.id) as totalOrders,
-              COALESCE(SUM(o.total_amount), 0) as totalAmount,
-              SUM(CASE WHEN o.status IN ('completed', 'delivered') THEN 1 ELSE 0 END) as completedOrders,
-              COALESCE(SUM(CASE WHEN o.status IN ('completed', 'delivered') THEN o.total_amount ELSE 0 END), 0) as completedAmount
-       FROM users u
-       LEFT JOIN orders o ON o.created_by = u.id
-       WHERE u.department_id = ?
-       GROUP BY u.id, u.real_name, u.department_name`, [departmentId]);
-        const teamPerformance = {
-            totalOrders: members.reduce((sum, m) => sum + (m.totalOrders || 0), 0),
-            totalAmount: members.reduce((sum, m) => sum + parseFloat(m.totalAmount || 0), 0),
-            completedOrders: members.reduce((sum, m) => sum + (m.completedOrders || 0), 0),
-            completedAmount: members.reduce((sum, m) => sum + parseFloat(m.completedAmount || 0), 0),
-            memberCount: members.length,
-            members
-        };
-        res.json({ success: true, data: teamPerformance });
+        const startDate = req.query.startDate;
+        const endDate = req.query.endDate;
+        const sortBy = req.query.sortBy || 'orderAmount';
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+        // 🔥 数据库已配置为北京时区，直接使用北京时间
+        let dateCondition = '';
+        if (startDate && endDate) {
+            dateCondition = ` AND created_at >= '${startDate} 00:00:00' AND created_at <= '${endDate} 23:59:59'`;
+        }
+        // 获取部门成员列表
+        let userCondition = '';
+        if (departmentId && departmentId !== 'all') {
+            userCondition = ` WHERE u.department_id = '${departmentId}'`;
+        }
+        const users = await database_1.AppDataSource.query(`SELECT u.id, u.real_name as realName, u.username, u.department_name as departmentName,
+              u.department_id as departmentId, u.created_at as createTime
+       FROM users u${userCondition}`);
+        // 获取每个成员的订单数据
+        const memberStats = [];
+        for (const user of users) {
+            // 🔥 修复：orders表没有sales_person_id字段，只使用created_by
+            const orders = await database_1.AppDataSource.query(`SELECT status, mark_type as markType, total_amount as totalAmount
+         FROM orders
+         WHERE created_by = ?${dateCondition}`, [user.id]);
+            // 🔥 使用统一的业绩计算规则
+            let orderCount = 0, orderAmount = 0;
+            let signCount = 0, signAmount = 0;
+            let shipCount = 0, shipAmount = 0;
+            let transitCount = 0, transitAmount = 0;
+            let rejectCount = 0, rejectAmount = 0;
+            let returnCount = 0, returnAmount = 0;
+            orders.forEach((order) => {
+                const amount = Number(order.totalAmount) || 0;
+                // 下单业绩
+                if (isValidForOrderPerformance(order.status, order.markType)) {
+                    orderCount++;
+                    orderAmount += amount;
+                }
+                // 签收业绩
+                if (order.status === 'delivered') {
+                    signCount++;
+                    signAmount += amount;
+                }
+                // 发货业绩
+                if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(order.status)) {
+                    shipCount++;
+                    shipAmount += amount;
+                }
+                // 在途
+                if (order.status === 'shipped') {
+                    transitCount++;
+                    transitAmount += amount;
+                }
+                // 拒收
+                if (['rejected', 'rejected_returned'].includes(order.status)) {
+                    rejectCount++;
+                    rejectAmount += amount;
+                }
+                // 退货
+                if (order.status === 'refunded') {
+                    returnCount++;
+                    returnAmount += amount;
+                }
+            });
+            // 计算比率
+            const signRate = orderCount > 0 ? parseFloat(((signCount / orderCount) * 100).toFixed(1)) : 0;
+            const shipRate = orderCount > 0 ? parseFloat(((shipCount / orderCount) * 100).toFixed(1)) : 0;
+            const transitRate = orderCount > 0 ? parseFloat(((transitCount / orderCount) * 100).toFixed(1)) : 0;
+            const rejectRate = orderCount > 0 ? parseFloat(((rejectCount / orderCount) * 100).toFixed(1)) : 0;
+            const returnRate = orderCount > 0 ? parseFloat(((returnCount / orderCount) * 100).toFixed(1)) : 0;
+            memberStats.push({
+                id: user.id,
+                name: user.realName || user.username,
+                username: user.username,
+                department: user.departmentName,
+                departmentId: user.departmentId,
+                createTime: user.createTime,
+                orderCount,
+                orderAmount,
+                signCount,
+                signAmount,
+                signRate,
+                shipCount,
+                shipAmount,
+                shipRate,
+                transitCount,
+                transitAmount,
+                transitRate,
+                rejectCount,
+                rejectAmount,
+                rejectRate,
+                returnCount,
+                returnAmount,
+                returnRate,
+                isCurrentUser: user.id === currentUser?.userId
+            });
+        }
+        // 排序
+        const sortField = sortBy === 'signAmount' ? 'signAmount' :
+            sortBy === 'signRate' ? 'signRate' :
+                sortBy === 'orderCount' ? 'orderCount' : 'orderAmount';
+        memberStats.sort((a, b) => b[sortField] - a[sortField]);
+        // 计算团队汇总
+        const totalOrderCount = memberStats.reduce((sum, m) => sum + m.orderCount, 0);
+        const totalOrderAmount = memberStats.reduce((sum, m) => sum + m.orderAmount, 0);
+        const totalSignCount = memberStats.reduce((sum, m) => sum + m.signCount, 0);
+        const totalSignAmount = memberStats.reduce((sum, m) => sum + m.signAmount, 0);
+        const avgPerformance = memberStats.length > 0 ? totalOrderAmount / memberStats.length : 0;
+        const totalSignRate = totalOrderCount > 0 ? parseFloat(((totalSignCount / totalOrderCount) * 100).toFixed(1)) : 0;
+        // 分页
+        const total = memberStats.length;
+        const offset = (page - 1) * limit;
+        const paginatedMembers = memberStats.slice(offset, offset + limit);
+        res.json({
+            success: true,
+            code: 200,
+            message: '获取团队业绩成功',
+            data: {
+                members: paginatedMembers,
+                total,
+                page,
+                limit,
+                // 团队汇总数据
+                summary: {
+                    totalPerformance: totalOrderAmount,
+                    totalOrders: totalOrderCount,
+                    avgPerformance: Math.round(avgPerformance),
+                    signOrders: totalSignCount,
+                    signRate: totalSignRate,
+                    signPerformance: totalSignAmount,
+                    memberCount: memberStats.length
+                }
+            }
+        });
     }
     catch (error) {
         console.error('获取团队业绩失败:', error);
-        res.status(500).json({ success: false, message: '获取团队业绩失败' });
+        res.status(500).json({ success: false, code: 500, message: '获取团队业绩失败' });
     }
 });
 /**
@@ -312,6 +579,8 @@ router.get('/analysis', async (req, res) => {
        FROM orders`);
         res.json({
             success: true,
+            code: 200,
+            message: '获取业绩分析成功',
             data: {
                 trend: trendData,
                 statusDistribution,
@@ -325,7 +594,7 @@ router.get('/analysis', async (req, res) => {
     }
     catch (error) {
         console.error('获取业绩分析失败:', error);
-        res.status(500).json({ success: false, message: '获取业绩分析失败' });
+        res.status(500).json({ success: false, code: 500, message: '获取业绩分析失败' });
     }
 });
 /**
@@ -372,7 +641,7 @@ router.get('/analysis/personal', async (req, res) => {
     }
     catch (error) {
         console.error('获取个人业绩分析失败:', error);
-        res.status(500).json({ success: false, message: '获取个人业绩分析失败' });
+        res.status(500).json({ success: false, code: 500, message: '获取个人业绩分析失败' });
     }
 });
 /**
@@ -396,6 +665,8 @@ router.get('/analysis/department', async (req, res) => {
         const orderCount = stats?.orderCount || 1;
         res.json({
             success: true,
+            code: 200,
+            message: '获取部门业绩分析成功',
             data: {
                 name: '部门',
                 orderCount: stats?.orderCount || 0,
@@ -413,7 +684,7 @@ router.get('/analysis/department', async (req, res) => {
     }
     catch (error) {
         console.error('获取部门业绩分析失败:', error);
-        res.status(500).json({ success: false, message: '获取部门业绩分析失败' });
+        res.status(500).json({ success: false, code: 500, message: '获取部门业绩分析失败' });
     }
 });
 /**
@@ -433,6 +704,8 @@ router.get('/analysis/company', async (_req, res) => {
         const orderCount = stats?.orderCount || 1;
         res.json({
             success: true,
+            code: 200,
+            message: '获取公司业绩分析成功',
             data: {
                 name: '公司总体',
                 orderCount: stats?.orderCount || 0,
@@ -450,7 +723,7 @@ router.get('/analysis/company', async (_req, res) => {
     }
     catch (error) {
         console.error('获取公司业绩分析失败:', error);
-        res.status(500).json({ success: false, message: '获取公司业绩分析失败' });
+        res.status(500).json({ success: false, code: 500, message: '获取公司业绩分析失败' });
     }
 });
 /**
@@ -483,6 +756,8 @@ router.get('/analysis/metrics', async (req, res) => {
         const totalOrders = stats?.totalOrders || 1;
         res.json({
             success: true,
+            code: 200,
+            message: '获取业绩统计指标成功',
             data: {
                 totalPerformance: stats?.totalPerformance || 0,
                 totalOrders: stats?.totalOrders || 0,
@@ -495,7 +770,7 @@ router.get('/analysis/metrics', async (req, res) => {
     }
     catch (error) {
         console.error('获取业绩统计指标失败:', error);
-        res.status(500).json({ success: false, message: '获取业绩统计指标失败' });
+        res.status(500).json({ success: false, code: 500, message: '获取业绩统计指标失败' });
     }
 });
 /**
@@ -513,11 +788,11 @@ router.get('/analysis/trend', async (req, res) => {
        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
        GROUP BY DATE(created_at)
        ORDER BY date`, [days]);
-        res.json({ success: true, data: trendData });
+        res.json({ success: true, code: 200, message: '获取业绩趋势成功', data: trendData });
     }
     catch (error) {
         console.error('获取业绩趋势失败:', error);
-        res.status(500).json({ success: false, message: '获取业绩趋势失败' });
+        res.status(500).json({ success: false, code: 500, message: '获取业绩趋势失败' });
     }
 });
 exports.default = router;

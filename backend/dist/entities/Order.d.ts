@@ -40,6 +40,7 @@ export declare class Order {
     invoiceNumber?: string;
     markType?: string;
     logisticsStatus?: string;
+    latestLogisticsInfo?: string;
     isTodo?: boolean;
     todoDate?: string;
     todoRemark?: string;

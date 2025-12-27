@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProductController = void 0;
 const database_1 = require("../config/database");
@@ -290,6 +323,40 @@ class ProductController {
             queryBuilder.skip(skip).take(Number(pageSize));
             queryBuilder.orderBy('product.createdAt', 'DESC');
             const products = await queryBuilder.getMany();
+            // 🔥 从订单商品表统计每个商品的销量
+            const productIds = products.map(p => p.id);
+            let salesCountMap = {};
+            if (productIds.length > 0) {
+                try {
+                    const { OrderItem } = await Promise.resolve().then(() => __importStar(require('../entities/OrderItem')));
+                    const { Order } = await Promise.resolve().then(() => __importStar(require('../entities/Order')));
+                    const dataSource = (0, database_1.getDataSource)();
+                    if (dataSource) {
+                        const orderItemRepo = dataSource.getRepository(OrderItem);
+                        // 🔥 统计每个商品的销量（只统计有效订单：已审核通过且未取消的订单）
+                        const salesData = await orderItemRepo
+                            .createQueryBuilder('item')
+                            .select('item.productId', 'productId')
+                            .addSelect('SUM(item.quantity)', 'totalQuantity')
+                            .innerJoin(Order, 'order', 'order.id = item.orderId')
+                            .where('item.productId IN (:...productIds)', { productIds })
+                            .andWhere('order.status NOT IN (:...excludeStatuses)', {
+                            excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
+                        })
+                            .groupBy('item.productId')
+                            .getRawMany();
+                        // 构建销量映射
+                        salesData.forEach((item) => {
+                            salesCountMap[item.productId] = parseInt(item.totalQuantity) || 0;
+                        });
+                        console.log('[商品列表] 销量统计:', salesCountMap);
+                    }
+                }
+                catch (salesError) {
+                    console.error('[商品列表] 统计销量失败:', salesError);
+                    // 销量统计失败不影响商品列表返回
+                }
+            }
             // 转换数据格式以匹配前端期望
             const list = products.map(p => ({
                 id: p.id,
@@ -309,7 +376,7 @@ class ProductController {
                 stock: p.stock,
                 minStock: p.minStock || 0,
                 maxStock: 0,
-                salesCount: 0,
+                salesCount: salesCountMap[p.id] || 0, // 🔥 使用统计的销量
                 status: p.status,
                 image: p.images?.[0] || '',
                 images: p.images || [],

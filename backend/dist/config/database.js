@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -6,9 +39,22 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.closeDatabase = exports.initializeDatabase = exports.getDataSource = exports.AppDataSource = void 0;
 const typeorm_1 = require("typeorm");
 const dotenv_1 = __importDefault(require("dotenv"));
+const path = __importStar(require("path"));
+const fs = __importStar(require("fs"));
 const User_1 = require("../entities/User");
-// 确保环境变量被加载
-dotenv_1.default.config();
+// 根据NODE_ENV环境变量加载对应配置文件
+// 生产环境(production): 加载 .env
+// 开发环境(development): 优先加载 .env.local，如果不存在则加载 .env
+const isProduction = process.env.NODE_ENV === 'production';
+let envFile = '.env';
+if (!isProduction) {
+    const localEnvPath = path.join(__dirname, '../../', '.env.local');
+    if (fs.existsSync(localEnvPath)) {
+        envFile = '.env.local';
+    }
+}
+const envPath = path.join(__dirname, '../../', envFile);
+dotenv_1.default.config({ path: envPath });
 const Customer_1 = require("../entities/Customer");
 const Order_1 = require("../entities/Order");
 const Product_1 = require("../entities/Product");
@@ -51,10 +97,9 @@ const SystemMessage_1 = require("../entities/SystemMessage");
 const PerformanceReportConfig_1 = require("../entities/PerformanceReportConfig");
 const LogisticsApiConfig_1 = require("../entities/LogisticsApiConfig");
 const CustomerServicePermission_1 = require("../entities/CustomerServicePermission");
-const path_1 = __importDefault(require("path"));
+const SensitiveInfoPermission_1 = require("../entities/SensitiveInfoPermission");
 // 根据环境变量选择数据库配置
 const dbType = process.env.DB_TYPE || (process.env.NODE_ENV === 'production' ? 'mysql' : 'sqlite');
-const isProduction = process.env.NODE_ENV === 'production';
 const AppDataSource = new typeorm_1.DataSource(dbType === 'mysql'
     ? {
         // MySQL配置
@@ -66,6 +111,11 @@ const AppDataSource = new typeorm_1.DataSource(dbType === 'mysql'
         database: process.env.DB_DATABASE || process.env.DB_NAME || 'crm',
         synchronize: false, // 生产环境不自动同步
         logging: process.env.NODE_ENV === 'development',
+        // 🔥 统一使用北京时间
+        timezone: '+08:00',
+        extra: {
+            connectionLimit: 10
+        },
         entities: [
             User_1.User,
             Customer_1.Customer,
@@ -112,7 +162,8 @@ const AppDataSource = new typeorm_1.DataSource(dbType === 'mysql'
             PerformanceReportConfig_1.PerformanceReportConfig,
             PerformanceReportConfig_1.PerformanceReportLog,
             LogisticsApiConfig_1.LogisticsApiConfig,
-            CustomerServicePermission_1.CustomerServicePermission
+            CustomerServicePermission_1.CustomerServicePermission,
+            SensitiveInfoPermission_1.SensitiveInfoPermission
         ],
         migrations: [],
         subscribers: [],
@@ -120,7 +171,7 @@ const AppDataSource = new typeorm_1.DataSource(dbType === 'mysql'
     : {
         // 开发环境使用SQLite
         type: 'sqlite',
-        database: path_1.default.join(process.cwd(), 'data', 'crm.db'),
+        database: path.join(process.cwd(), 'data', 'crm.db'),
         synchronize: true,
         logging: false,
         entities: [
@@ -169,7 +220,8 @@ const AppDataSource = new typeorm_1.DataSource(dbType === 'mysql'
             PerformanceReportConfig_1.PerformanceReportConfig,
             PerformanceReportConfig_1.PerformanceReportLog,
             LogisticsApiConfig_1.LogisticsApiConfig,
-            CustomerServicePermission_1.CustomerServicePermission
+            CustomerServicePermission_1.CustomerServicePermission,
+            SensitiveInfoPermission_1.SensitiveInfoPermission
         ],
         migrations: [],
         subscribers: [],
@@ -183,6 +235,8 @@ exports.getDataSource = getDataSource;
 // 初始化数据库连接
 const initializeDatabase = async () => {
     try {
+        // 打印当前连接的数据库信息
+        console.log(`📦 正在连接数据库: ${process.env.DB_DATABASE || 'crm'} @ ${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || '3306'}`);
         await AppDataSource.initialize();
         console.log('✅ 数据库连接成功');
         // 开发环境下同步数据库结构

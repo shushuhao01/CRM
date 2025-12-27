@@ -13,6 +13,7 @@ import { initializeDatabase, closeDatabase } from './config/database';
 import { logger } from './config/logger';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { webSocketService } from './services/WebSocketService';
+import { mobileWebSocketService } from './services/MobileWebSocketService';
 
 // 路由导入
 import authRoutes from './routes/auth';
@@ -294,6 +295,15 @@ const startServer = async () => {
       }).catch(err => {
         logger.warn('WebSocket服务启动失败:', err.message);
       });
+
+      // 初始化移动端 WebSocket 服务
+      try {
+        mobileWebSocketService.initialize(httpServer);
+        (global as any).mobileWebSocketService = mobileWebSocketService;
+        logger.info(`📱 移动端 WebSocket 服务已启动`);
+      } catch (err: any) {
+        logger.warn('移动端 WebSocket 服务启动失败:', err.message);
+      }
     });
 
     // 🔥 启动定时任务：每天凌晨3点清理过期消息（超过30天）

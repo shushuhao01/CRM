@@ -41,6 +41,7 @@ const CustomerGroup_1 = require("../entities/CustomerGroup");
 const CustomerTag_1 = require("../entities/CustomerTag");
 const User_1 = require("../entities/User");
 const Order_1 = require("../entities/Order");
+const CustomerShare_1 = require("../entities/CustomerShare");
 const typeorm_1 = require("typeorm");
 const dateFormat_1 = require("../utils/dateFormat");
 const router = (0, express_1.Router)();
@@ -84,6 +85,8 @@ router.get('/', async (req, res) => {
         });
         // 获取订单仓库，用于统计每个客户的订单数
         const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
+        // 获取分享仓库，用于查询客户的分享状态
+        const shareRepository = database_1.AppDataSource.getRepository(CustomerShare_1.CustomerShare);
         // 转换数据格式以匹配前端期望，并动态计算订单数
         const list = await Promise.all(customers.map(async (customer) => {
             // 从订单表统计该客户的订单数量
@@ -95,6 +98,33 @@ router.get('/', async (req, res) => {
             }
             catch (e) {
                 console.warn(`统计客户${customer.id}订单数失败:`, e);
+            }
+            // 🔥 查询客户的分享状态
+            let shareInfo = null;
+            try {
+                const activeShare = await shareRepository.findOne({
+                    where: {
+                        customerId: customer.id,
+                        status: 'active'
+                    },
+                    order: { createdAt: 'DESC' }
+                });
+                if (activeShare) {
+                    shareInfo = {
+                        id: activeShare.id,
+                        status: activeShare.status,
+                        sharedBy: activeShare.sharedBy,
+                        sharedByName: activeShare.sharedByName,
+                        sharedTo: activeShare.sharedTo,
+                        sharedToName: activeShare.sharedToName,
+                        shareTime: activeShare.createdAt,
+                        expireTime: activeShare.expireTime,
+                        timeLimit: activeShare.timeLimit
+                    };
+                }
+            }
+            catch (e) {
+                console.warn(`查询客户${customer.id}分享状态失败:`, e);
             }
             return {
                 id: customer.id,
@@ -131,7 +161,8 @@ router.get('/', async (req, res) => {
                 medicalHistory: customer.medicalHistory || '',
                 improvementGoals: customer.improvementGoals || [],
                 otherGoals: customer.otherGoals || '',
-                fanAcquisitionTime: (0, dateFormat_1.formatDate)(customer.fanAcquisitionTime)
+                fanAcquisitionTime: (0, dateFormat_1.formatDate)(customer.fanAcquisitionTime),
+                shareInfo // 🔥 添加分享信息
             };
         }));
         res.json({
@@ -744,6 +775,7 @@ router.get('/search', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
+        const userRepository = database_1.AppDataSource.getRepository(User_1.User);
         const customer = await customerRepository.findOne({
             where: { id: req.params.id }
         });
@@ -753,6 +785,17 @@ router.get('/:id', async (req, res) => {
                 code: 404,
                 message: '客户不存在'
             });
+        }
+        // 🔥 获取创建人和负责销售的名字
+        let createdByName = '';
+        let salesPersonName = '';
+        if (customer.createdBy) {
+            const creator = await userRepository.findOne({ where: { id: customer.createdBy } });
+            createdByName = creator?.realName || creator?.name || '';
+        }
+        if (customer.salesPersonId) {
+            const salesPerson = await userRepository.findOne({ where: { id: customer.salesPersonId } });
+            salesPersonName = salesPerson?.realName || salesPerson?.name || '';
         }
         // 转换数据格式
         const data = {
@@ -774,11 +817,13 @@ router.get('/:id', async (req, res) => {
             level: customer.level || 'normal',
             status: customer.status || 'active',
             salesPersonId: customer.salesPersonId || '',
+            salesPersonName: salesPersonName, // 🔥 添加负责销售名字
             orderCount: customer.orderCount || 0,
             returnCount: customer.returnCount || 0,
             totalAmount: customer.totalAmount || 0,
             createTime: (0, dateFormat_1.formatDateTime)(customer.createdAt),
             createdBy: customer.createdBy || '',
+            createdByName: createdByName, // 🔥 添加创建人名字
             wechat: customer.wechat || '',
             wechatId: customer.wechat || '',
             email: customer.email || '',
@@ -1180,16 +1225,18 @@ router.get('/:id/calls', async (req, res) => {
         const list = calls.map(call => ({
             id: call.id,
             customerId: call.customerId,
-            customerPhone: call.phoneNumber,
-            phone: call.phoneNumber,
-            direction: 'outbound',
-            type: '呼出',
+            customerName: call.customerName,
+            customerPhone: call.customerPhone,
+            callType: call.callType || 'outbound',
+            callStatus: call.callStatus || 'connected',
             duration: call.duration || 0,
-            status: call.status || 'completed',
-            summary: call.notes || '',
-            remark: call.notes || '',
-            startTime: call.createdAt?.toISOString() || '',
-            callTime: call.createdAt?.toISOString() || ''
+            startTime: call.startTime?.toISOString() || call.createdAt?.toISOString() || '',
+            endTime: call.endTime?.toISOString() || '',
+            notes: call.notes || '',
+            recordingUrl: call.recordingUrl || null,
+            userName: call.userName || '未知',
+            callTags: [],
+            createdAt: call.createdAt?.toISOString() || ''
         }));
         console.log(`[客户通话] 客户 ${customerId} 有 ${list.length} 条通话记录`);
         res.json({ success: true, code: 200, data: list });
@@ -1207,36 +1254,56 @@ router.get('/:id/calls', async (req, res) => {
 router.get('/:id/followups', async (req, res) => {
     try {
         const customerId = req.params.id;
-        const { FollowUp } = await Promise.resolve().then(() => __importStar(require('../entities/FollowUp')));
-        const followUpRepository = database_1.AppDataSource.getRepository(FollowUp);
-        const followUps = await followUpRepository.find({
-            where: { customerId },
-            order: { createdAt: 'DESC' }
-        });
-        const list = followUps.map(followUp => ({
+        // 🔥 修复：使用原生SQL查询，避免实体字段不匹配问题
+        const followUps = await database_1.AppDataSource.query(`
+      SELECT
+        id,
+        call_id as callId,
+        customer_id as customerId,
+        customer_name as customerName,
+        follow_up_type as type,
+        content,
+        intention as customerIntent,
+        next_follow_up_date as nextFollowUp,
+        priority,
+        status,
+        user_id as createdBy,
+        user_name as createdByName,
+        created_at as createdAt,
+        updated_at as updatedAt
+      FROM follow_up_records
+      WHERE customer_id = ?
+      ORDER BY created_at DESC
+    `, [customerId]);
+        const list = followUps.map((followUp) => ({
             id: followUp.id,
             customerId: followUp.customerId,
             type: followUp.type,
             title: followUp.type === 'call' ? '电话跟进' :
                 followUp.type === 'visit' ? '上门拜访' :
                     followUp.type === 'email' ? '邮件跟进' :
-                        followUp.type === 'message' ? '消息跟进' : '跟进记录',
+                        followUp.type === 'message' ? '消息跟进' :
+                            followUp.type === 'wechat' ? '微信跟进' : '跟进记录',
             content: followUp.content || '',
+            customerIntent: followUp.customerIntent || null,
+            callTags: [],
             status: followUp.status,
             priority: followUp.priority,
-            nextFollowUp: followUp.nextFollowUp?.toISOString() || '',
-            nextTime: followUp.nextFollowUp?.toISOString() || '',
+            nextFollowUp: followUp.nextFollowUp ? new Date(followUp.nextFollowUp).toISOString() : '',
+            nextTime: followUp.nextFollowUp ? new Date(followUp.nextFollowUp).toISOString() : '',
             createdBy: followUp.createdBy,
+            createdByName: followUp.createdByName || followUp.createdBy || '系统',
             author: followUp.createdByName || followUp.createdBy || '系统',
-            createTime: followUp.createdAt?.toISOString() || '',
-            createdAt: followUp.createdAt?.toISOString() || ''
+            createTime: followUp.createdAt ? new Date(followUp.createdAt).toISOString() : '',
+            createdAt: followUp.createdAt ? new Date(followUp.createdAt).toISOString() : ''
         }));
         console.log(`[客户跟进] 客户 ${customerId} 有 ${list.length} 条跟进记录`);
         res.json({ success: true, code: 200, data: list });
     }
     catch (error) {
         console.error('获取客户跟进记录失败:', error);
-        res.status(500).json({ success: false, code: 500, message: '获取客户跟进记录失败' });
+        // 🔥 返回空数组而不是500错误，避免前端显示错误
+        res.json({ success: true, code: 200, data: [], message: '暂无跟进记录' });
     }
 });
 /**
@@ -1248,7 +1315,8 @@ router.post('/:id/followups', async (req, res) => {
     try {
         const customerId = req.params.id;
         const { type, content, status, priority, nextFollowUp } = req.body;
-        const currentUser = req.user;
+        // 🔥 修复：使用正确的currentUser字段
+        const currentUser = req.currentUser;
         const { FollowUp } = await Promise.resolve().then(() => __importStar(require('../entities/FollowUp')));
         const followUpRepository = database_1.AppDataSource.getRepository(FollowUp);
         // 获取客户信息
@@ -1266,7 +1334,7 @@ router.post('/:id/followups', async (req, res) => {
             priority: priority || 'medium',
             nextFollowUp: nextFollowUp ? new Date(nextFollowUp) : undefined,
             createdBy: currentUser?.id || 'system',
-            createdByName: currentUser?.name || '系统'
+            createdByName: currentUser?.name || currentUser?.realName || '系统'
         });
         const savedFollowUp = await followUpRepository.save(followUp);
         console.log(`[添加跟进] 客户 ${customerId} 添加跟进记录成功`);
@@ -1491,7 +1559,8 @@ router.post('/:id/medical-history', async (req, res) => {
             return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
         }
         const { content } = req.body;
-        const currentUser = req.user;
+        // 🔥 修复：使用正确的currentUser字段
+        const currentUser = req.currentUser;
         // 解析现有疾病史
         let medicalRecords = [];
         if (customer.medicalHistory) {
@@ -1519,11 +1588,14 @@ router.post('/:id/medical-history', async (req, res) => {
             }
         }
         // 添加新记录
+        // 🔥 修复：优先使用 realName，其次 name，最后才是 '系统'
+        const operatorName = currentUser?.realName || currentUser?.name || '系统';
+        console.log('[疾病史] 添加记录，操作人:', operatorName, '当前用户:', currentUser?.id, currentUser?.realName, currentUser?.name);
         const newRecord = {
             id: Date.now(),
             content: content,
             createTime: new Date().toISOString(),
-            operator: currentUser?.name || '系统',
+            operator: operatorName,
             operationType: 'add'
         };
         medicalRecords.unshift(newRecord);
@@ -1558,10 +1630,12 @@ router.get('/:id/stats', async (req, res) => {
             where: { customerId },
             order: { createdAt: 'DESC' }
         });
-        // 计算累计消费（只统计已完成/已签收的订单）
-        const completedStatuses = ['completed', 'delivered', 'paid', 'shipped'];
-        const completedOrders = orders.filter(o => completedStatuses.includes(o.status));
-        const totalConsumption = completedOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
+        // 计算累计消费（统计已审核通过及之后状态的订单）
+        // 🔥 修复：包含待发货、已发货、已签收、已完成等状态
+        const validStatuses = ['approved', 'pending_shipment', 'shipped', 'delivered', 'signed', 'completed', 'paid'];
+        const validOrders = orders.filter(o => validStatuses.includes(o.status));
+        const totalConsumption = validOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
+        console.log(`[客户统计] 客户 ${customerId}: 有效订单状态=${validStatuses.join(',')}, 有效订单数=${validOrders.length}`);
         // 订单数量
         const orderCount = orders.length;
         // 退货次数（统计退款/取消的订单）

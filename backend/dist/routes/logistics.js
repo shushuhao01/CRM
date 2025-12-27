@@ -45,7 +45,70 @@ const uuid_1 = require("uuid");
 const OrderNotificationService_1 = require("../services/OrderNotificationService");
 const router = (0, express_1.Router)();
 const logisticsController = new LogisticsController_1.LogisticsController();
-// 应用认证中间件
+/**
+ * 🔥 调试端点：测试根据物流单号查询订单手机号（不需要认证）
+ */
+router.get('/debug/order-phone', async (req, res) => {
+    try {
+        const { trackingNo } = req.query;
+        if (!trackingNo) {
+            return res.json({ success: false, message: '请提供物流单号' });
+        }
+        const { Order } = await Promise.resolve().then(() => __importStar(require('../entities/Order')));
+        const orderRepository = database_1.AppDataSource.getRepository(Order);
+        // 精确匹配
+        let order = await orderRepository.findOne({
+            where: { trackingNumber: trackingNo },
+            select: ['id', 'orderNumber', 'trackingNumber', 'shippingPhone', 'customerPhone', 'shippingName', 'customerName', 'customerId']
+        });
+        // 模糊匹配
+        if (!order) {
+            order = await orderRepository
+                .createQueryBuilder('order')
+                .select(['order.id', 'order.orderNumber', 'order.trackingNumber', 'order.shippingPhone', 'order.customerPhone', 'order.shippingName', 'order.customerName', 'order.customerId'])
+                .where('order.trackingNumber LIKE :trackingNoLike', { trackingNoLike: `%${trackingNo}%` })
+                .getOne();
+        }
+        if (!order) {
+            // 列出所有有物流单号的订单
+            const allOrders = await orderRepository
+                .createQueryBuilder('order')
+                .select(['order.orderNumber', 'order.trackingNumber', 'order.shippingPhone', 'order.customerPhone'])
+                .where('order.trackingNumber IS NOT NULL')
+                .andWhere('order.trackingNumber != :empty', { empty: '' })
+                .limit(10)
+                .getMany();
+            return res.json({
+                success: false,
+                message: `未找到物流单号: ${trackingNo}`,
+                hint: '数据库中有以下物流单号:',
+                existingOrders: allOrders.map(o => ({
+                    orderNumber: o.orderNumber,
+                    trackingNumber: o.trackingNumber,
+                    shippingPhone: o.shippingPhone || '(空)',
+                    customerPhone: o.customerPhone || '(空)'
+                }))
+            });
+        }
+        return res.json({
+            success: true,
+            data: {
+                orderNumber: order.orderNumber,
+                trackingNumber: order.trackingNumber,
+                shippingPhone: order.shippingPhone || '(空)',
+                customerPhone: order.customerPhone || '(空)',
+                shippingName: order.shippingName || '(空)',
+                customerName: order.customerName || '(空)',
+                customerId: order.customerId || '(空)'
+            }
+        });
+    }
+    catch (error) {
+        console.error('[调试] 查询失败:', error);
+        return res.status(500).json({ success: false, message: '查询失败', error: String(error) });
+    }
+});
+// 应用认证中间件（调试端点之后的路由都需要认证）
 router.use(auth_1.authenticateToken);
 // ========== 物流公司管理 API ==========
 /**
@@ -308,15 +371,105 @@ const LogisticsTraceService_1 = require("../services/LogisticsTraceService");
  */
 router.get('/trace/query', async (req, res) => {
     try {
-        const { trackingNo, companyCode } = req.query;
+        const { trackingNo, companyCode, phone } = req.query;
         if (!trackingNo) {
             return res.status(400).json({
                 success: false,
                 message: '请提供物流单号'
             });
         }
-        console.log(`[物流轨迹查询] 单号: ${trackingNo}, 快递公司: ${companyCode || '自动识别'}`);
-        const result = await LogisticsTraceService_1.logisticsTraceService.queryTrace(trackingNo, companyCode);
+        // 🔥 修复：检查手机号是否为有效值（不是空字符串）
+        let phoneToUse = (phone && typeof phone === 'string' && phone.trim()) ? phone.trim() : undefined;
+        console.log(`[物流轨迹查询] 前端传递的phone参数: "${phone}", 处理后: ${phoneToUse ? phoneToUse.slice(-4) + '****' : '(空)'}`);
+        // 🔥 如果前端没有传递有效手机号，尝试从数据库获取
+        if (!phoneToUse) {
+            try {
+                const { Order } = await Promise.resolve().then(() => __importStar(require('../entities/Order')));
+                const orderRepository = database_1.AppDataSource.getRepository(Order);
+                // 🔥 改进：多种方式查找订单
+                let order = await orderRepository.findOne({
+                    where: { trackingNumber: trackingNo },
+                    select: ['id', 'orderNumber', 'trackingNumber', 'shippingPhone', 'customerPhone', 'shippingName', 'customerName', 'customerId']
+                });
+                // 如果通过trackingNumber找不到，尝试其他方式
+                if (!order) {
+                    // 尝试模糊匹配（有些系统可能存储格式不同）
+                    order = await orderRepository
+                        .createQueryBuilder('order')
+                        .select(['order.id', 'order.orderNumber', 'order.trackingNumber', 'order.shippingPhone', 'order.customerPhone', 'order.shippingName', 'order.customerName', 'order.customerId'])
+                        .where('order.trackingNumber = :trackingNo', { trackingNo: trackingNo })
+                        .orWhere('order.trackingNumber LIKE :trackingNoLike', { trackingNoLike: `%${trackingNo}%` })
+                        .getOne();
+                }
+                if (order) {
+                    // 🔥 优先使用收货人手机号，其次使用客户手机号
+                    // 确保手机号不是空字符串
+                    const shippingPhone = order.shippingPhone?.trim() || '';
+                    const customerPhone = order.customerPhone?.trim() || '';
+                    if (shippingPhone) {
+                        phoneToUse = shippingPhone;
+                    }
+                    else if (customerPhone) {
+                        phoneToUse = customerPhone;
+                    }
+                    console.log(`[物流轨迹查询] 从数据库获取订单: ${order.orderNumber}`);
+                    console.log(`[物流轨迹查询] shippingPhone: "${order.shippingPhone}" -> "${shippingPhone || '(空)'}"`);
+                    console.log(`[物流轨迹查询] customerPhone: "${order.customerPhone}" -> "${customerPhone || '(空)'}"`);
+                    // 🔥 如果订单中没有手机号，尝试从客户表获取
+                    if (!phoneToUse && order.customerId) {
+                        try {
+                            const { Customer } = await Promise.resolve().then(() => __importStar(require('../entities/Customer')));
+                            const customerRepository = database_1.AppDataSource.getRepository(Customer);
+                            const customer = await customerRepository.findOne({
+                                where: { id: order.customerId },
+                                select: ['id', 'phone', 'name']
+                            });
+                            if (customer && customer.phone?.trim()) {
+                                phoneToUse = customer.phone.trim();
+                                console.log(`[物流轨迹查询] 从客户表获取手机号: ${phoneToUse.slice(-4)}****`);
+                            }
+                        }
+                        catch (customerError) {
+                            console.log('[物流轨迹查询] 从客户表获取手机号失败:', customerError);
+                        }
+                    }
+                    console.log(`[物流轨迹查询] 最终使用手机号: ${phoneToUse ? phoneToUse.slice(-4) + '****' : '未找到有效手机号'}`);
+                }
+                else {
+                    console.log(`[物流轨迹查询] 数据库中未找到物流单号: ${trackingNo}`);
+                }
+            }
+            catch (dbError) {
+                console.log('[物流轨迹查询] 从数据库获取手机号失败:', dbError);
+            }
+        }
+        console.log(`[物流轨迹查询] 单号: ${trackingNo}, 快递公司: ${companyCode || '自动识别'}, 手机号: ${phoneToUse ? '已提供(' + phoneToUse.slice(-4) + ')' : '未提供'}`);
+        const result = await LogisticsTraceService_1.logisticsTraceService.queryTrace(trackingNo, companyCode, phoneToUse);
+        // 🔥 如果查询成功，更新数据库中的物流状态和最新动态
+        if (result.success && result.traces.length > 0) {
+            try {
+                const { Order } = await Promise.resolve().then(() => __importStar(require('../entities/Order')));
+                const orderRepository = database_1.AppDataSource.getRepository(Order);
+                const order = await orderRepository.findOne({
+                    where: { trackingNumber: trackingNo }
+                });
+                if (order) {
+                    order.logisticsStatus = result.status;
+                    // 保存最新物流动态
+                    if (result.traces.length > 0) {
+                        order.latestLogisticsInfo = result.traces[0].description || result.traces[0].status || '';
+                    }
+                    if (result.estimatedDeliveryTime) {
+                        order.expectedDeliveryDate = result.estimatedDeliveryTime;
+                    }
+                    order.updatedAt = new Date();
+                    await orderRepository.save(order);
+                }
+            }
+            catch (updateError) {
+                console.warn('[物流轨迹查询] 更新订单状态失败:', updateError);
+            }
+        }
         return res.json({
             success: result.success,
             data: result,
@@ -370,16 +523,34 @@ router.post('/trace/batch-query', async (req, res) => {
  */
 router.post('/trace/refresh', async (req, res) => {
     try {
-        const { trackingNo, companyCode } = req.body;
+        const { trackingNo, companyCode, phone } = req.body;
         if (!trackingNo) {
             return res.status(400).json({
                 success: false,
                 message: '请提供物流单号'
             });
         }
-        console.log(`[刷新物流轨迹] 单号: ${trackingNo}`);
-        // 强制从API获取最新数据
-        const result = await LogisticsTraceService_1.logisticsTraceService.queryTrace(trackingNo, companyCode);
+        // 🔥 如果前端没有传递手机号，尝试从数据库获取
+        let phoneToUse = phone;
+        if (!phoneToUse) {
+            try {
+                const { Order } = await Promise.resolve().then(() => __importStar(require('../entities/Order')));
+                const orderRepository = database_1.AppDataSource.getRepository(Order);
+                const order = await orderRepository.findOne({
+                    where: { trackingNumber: trackingNo }
+                });
+                if (order) {
+                    phoneToUse = order.shippingPhone || order.customerPhone || undefined;
+                    console.log(`[刷新物流轨迹] 从数据库获取手机号: ${phoneToUse ? phoneToUse.slice(-4) + '****' : '未找到'}`);
+                }
+            }
+            catch (dbError) {
+                console.log('[刷新物流轨迹] 从数据库获取手机号失败:', dbError);
+            }
+        }
+        console.log(`[刷新物流轨迹] 单号: ${trackingNo}, 手机号: ${phoneToUse ? '已提供' : '未提供'}`);
+        // 强制从API获取最新数据（带手机号）
+        const result = await LogisticsTraceService_1.logisticsTraceService.queryTrace(trackingNo, companyCode, phoneToUse);
         // 如果查询成功，可以更新数据库中的物流状态
         if (result.success && result.traces.length > 0) {
             try {
@@ -392,9 +563,18 @@ router.post('/trace/refresh', async (req, res) => {
                 if (order) {
                     // 更新订单的物流状态
                     order.logisticsStatus = result.status;
+                    // 🔥 保存最新物流动态（取第一条轨迹的描述）
+                    if (result.traces.length > 0) {
+                        const latestTrace = result.traces[0];
+                        order.latestLogisticsInfo = latestTrace.description || latestTrace.status || '';
+                    }
+                    // 🔥 如果有预计送达时间，也更新
+                    if (result.estimatedDeliveryTime) {
+                        order.expectedDeliveryDate = result.estimatedDeliveryTime;
+                    }
                     order.updatedAt = new Date();
                     await orderRepository.save(order);
-                    console.log(`[刷新物流轨迹] 订单 ${order.orderNumber} 物流状态已更新为: ${result.status}`);
+                    console.log(`[刷新物流轨迹] 订单 ${order.orderNumber} 物流状态已更新为: ${result.status}, 最新动态: ${order.latestLogisticsInfo?.substring(0, 30)}...`);
                 }
             }
             catch (updateError) {
@@ -929,6 +1109,167 @@ router.get('/yto-callback', async (_req, res) => {
         }
     });
 });
+// ========== 快递100配置API ==========
+const ExpressAPIService_1 = require("../services/ExpressAPIService");
+/**
+ * 获取快递100配置
+ */
+router.get('/kuaidi100/config', async (_req, res) => {
+    try {
+        // 从系统配置表获取快递100配置
+        const repository = database_1.AppDataSource.getRepository('SystemConfig');
+        const config = await repository.findOne({
+            where: { configKey: 'kuaidi100_config' }
+        });
+        if (config && config.configValue) {
+            const data = JSON.parse(config.configValue);
+            // 不返回完整的key，只返回部分用于显示
+            res.json({
+                success: true,
+                data: {
+                    customer: data.customer || '',
+                    key: data.key ? '***已配置***' : '',
+                    url: data.url || 'https://poll.kuaidi100.com/poll/query.do',
+                    enabled: data.enabled !== false,
+                    hasKey: !!data.key
+                }
+            });
+        }
+        else {
+            // 从环境变量获取
+            const expressService = ExpressAPIService_1.ExpressAPIService.getInstance();
+            const status = expressService.getConfigStatus();
+            res.json({
+                success: true,
+                data: {
+                    customer: process.env.EXPRESS_API_CUSTOMER ? '***已配置***' : '',
+                    key: process.env.EXPRESS_API_KEY ? '***已配置***' : '',
+                    url: process.env.EXPRESS_API_URL || 'https://poll.kuaidi100.com/poll/query.do',
+                    enabled: status.kuaidi100,
+                    hasKey: status.kuaidi100
+                }
+            });
+        }
+    }
+    catch (error) {
+        console.error('获取快递100配置失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取配置失败'
+        });
+    }
+});
+/**
+ * 保存快递100配置
+ */
+router.post('/kuaidi100/config', async (req, res) => {
+    try {
+        const { customer, key, url, enabled } = req.body;
+        if (!customer || !key) {
+            return res.status(400).json({
+                success: false,
+                message: 'Customer和Key不能为空'
+            });
+        }
+        // 保存到系统配置表
+        const repository = database_1.AppDataSource.getRepository('SystemConfig');
+        const config = await repository.findOne({
+            where: { configKey: 'kuaidi100_config' }
+        });
+        const configValue = JSON.stringify({
+            customer,
+            key,
+            url: url || 'https://poll.kuaidi100.com/poll/query.do',
+            enabled: enabled !== false
+        });
+        if (config) {
+            config.configValue = configValue;
+            await repository.save(config);
+        }
+        else {
+            await repository.insert({
+                id: (0, uuid_1.v4)(),
+                configKey: 'kuaidi100_config',
+                configValue,
+                configGroup: 'logistics',
+                description: '快递100 API配置',
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+        }
+        // 更新环境变量（运行时生效）
+        process.env.EXPRESS_API_CUSTOMER = customer;
+        process.env.EXPRESS_API_KEY = key;
+        process.env.EXPRESS_API_URL = url || 'https://poll.kuaidi100.com/poll/query.do';
+        res.json({
+            success: true,
+            message: '配置保存成功'
+        });
+    }
+    catch (error) {
+        console.error('保存快递100配置失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '保存配置失败'
+        });
+    }
+});
+/**
+ * 测试快递100连接
+ */
+router.post('/kuaidi100/test', async (req, res) => {
+    try {
+        const { customer, key, url } = req.body;
+        if (!customer || !key) {
+            return res.status(400).json({
+                success: false,
+                message: 'Customer和Key不能为空'
+            });
+        }
+        // 临时设置环境变量进行测试
+        const oldCustomer = process.env.EXPRESS_API_CUSTOMER;
+        const oldKey = process.env.EXPRESS_API_KEY;
+        const oldUrl = process.env.EXPRESS_API_URL;
+        process.env.EXPRESS_API_CUSTOMER = customer;
+        process.env.EXPRESS_API_KEY = key;
+        process.env.EXPRESS_API_URL = url || 'https://poll.kuaidi100.com/poll/query.do';
+        try {
+            // 使用一个测试单号进行查询
+            const expressService = ExpressAPIService_1.ExpressAPIService.getInstance();
+            const result = await expressService.queryExpress('SF1234567890', 'shunfeng');
+            // 恢复环境变量
+            process.env.EXPRESS_API_CUSTOMER = oldCustomer;
+            process.env.EXPRESS_API_KEY = oldKey;
+            process.env.EXPRESS_API_URL = oldUrl;
+            // 即使查询结果为空也算连接成功（因为测试单号不存在）
+            res.json({
+                success: true,
+                message: '连接测试成功',
+                data: {
+                    connected: true,
+                    testResult: result
+                }
+            });
+        }
+        catch (testError) {
+            // 恢复环境变量
+            process.env.EXPRESS_API_CUSTOMER = oldCustomer;
+            process.env.EXPRESS_API_KEY = oldKey;
+            process.env.EXPRESS_API_URL = oldUrl;
+            res.json({
+                success: false,
+                message: '连接测试失败: ' + testError.message
+            });
+        }
+    }
+    catch (error) {
+        console.error('测试快递100连接失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '测试失败'
+        });
+    }
+});
 /**
  * 获取物流API配置列表
  */
@@ -988,10 +1329,21 @@ router.post('/api-configs/:companyCode', async (req, res) => {
         const { companyCode } = req.params;
         const { appId, appKey, appSecret, customerId, apiUrl, apiEnvironment, extraConfig, enabled } = req.body;
         const currentUser = req.user;
+        console.log(`[物流API配置] 保存配置请求: companyCode=${companyCode}`);
+        console.log(`[物流API配置] 请求参数:`, {
+            appId: appId ? `${appId.substring(0, 4)}***` : '(空)',
+            appKey: appKey ? '***' : '(空)',
+            appSecret: appSecret ? '***' : '(空)',
+            customerId: customerId || '(空)',
+            apiUrl: apiUrl || '(空)',
+            apiEnvironment,
+            enabled
+        });
         const repository = database_1.AppDataSource.getRepository(LogisticsApiConfig_1.LogisticsApiConfig);
         let config = await repository.findOne({
             where: { companyCode: companyCode.toUpperCase() }
         });
+        console.log(`[物流API配置] 现有配置: ${config ? `已存在(id=${config.id}, appId=${config.appId || '空'})` : '不存在'}`);
         if (!config) {
             // 创建新配置
             config = repository.create({
@@ -1000,35 +1352,49 @@ router.post('/api-configs/:companyCode', async (req, res) => {
                 companyName: getCompanyName(companyCode),
                 createdBy: currentUser?.userId || currentUser?.id
             });
+            console.log(`[物流API配置] 创建新配置: id=${config.id}`);
         }
-        // 更新配置
-        if (appId !== undefined)
-            config.appId = appId;
-        if (appKey !== undefined)
-            config.appKey = appKey;
-        if (appSecret !== undefined)
-            config.appSecret = appSecret;
-        if (customerId !== undefined)
-            config.customerId = customerId;
-        if (apiUrl !== undefined)
-            config.apiUrl = apiUrl;
-        if (apiEnvironment !== undefined)
-            config.apiEnvironment = apiEnvironment;
+        // 🔥 关键：更新配置字段（即使是空字符串也要更新，因为用户可能清空了某个字段）
+        config.appId = appId || config.appId || '';
+        config.appKey = appKey || config.appKey || '';
+        config.appSecret = appSecret || config.appSecret || '';
+        config.customerId = customerId !== undefined ? customerId : (config.customerId || '');
+        config.apiUrl = apiUrl || config.apiUrl || '';
+        config.apiEnvironment = apiEnvironment || config.apiEnvironment || 'sandbox';
         if (extraConfig !== undefined)
             config.extraConfig = extraConfig;
-        if (enabled !== undefined)
-            config.enabled = enabled ? 1 : 0;
+        // 🔥 关键：enabled 字段需要正确处理布尔值
+        config.enabled = enabled === true || enabled === 1 || enabled === '1' ? 1 : 0;
         config.updatedBy = currentUser?.userId || currentUser?.id;
-        await repository.save(config);
-        res.json({
+        console.log(`[物流API配置] 准备保存:`, {
+            id: config.id,
+            companyCode: config.companyCode,
+            appId: config.appId ? `${config.appId.substring(0, 4)}***` : '(空)',
+            appSecret: config.appSecret ? '***已设置***' : '(空)',
+            enabled: config.enabled,
+            apiEnvironment: config.apiEnvironment
+        });
+        const savedConfig = await repository.save(config);
+        console.log(`[物流API配置] ✅ 保存成功, id=${savedConfig.id}`);
+        // 🔥 验证保存结果
+        const verifyConfig = await repository.findOne({
+            where: { companyCode: companyCode.toUpperCase() }
+        });
+        console.log(`[物流API配置] 验证保存结果:`, {
+            id: verifyConfig?.id,
+            appId: verifyConfig?.appId ? `${verifyConfig.appId.substring(0, 4)}***` : '(空)',
+            appSecret: verifyConfig?.appSecret ? '***已设置***' : '(空)',
+            enabled: verifyConfig?.enabled
+        });
+        return res.json({
             success: true,
             message: '配置保存成功',
-            data: config
+            data: savedConfig
         });
     }
     catch (error) {
-        console.error('保存物流API配置失败:', error);
-        res.status(500).json({
+        console.error('[物流API配置] ❌ 保存失败:', error);
+        return res.status(500).json({
             success: false,
             message: '保存配置失败'
         });
@@ -1130,7 +1496,7 @@ function getCompanyName(code) {
 const crypto_1 = __importDefault(require("crypto"));
 const axios_1 = __importDefault(require("axios"));
 /**
- * 顺丰速运API测试 - 丰桥开放平台
+ * 顺丰速运API测试 - 顺丰开放平台
  * 文档: https://open.sf-express.com/
  */
 async function testSFExpressApi(partnerId, checkWord, apiUrl, trackingNo) {
@@ -1138,45 +1504,65 @@ async function testSFExpressApi(partnerId, checkWord, apiUrl, trackingNo) {
         if (!partnerId || !checkWord) {
             return { success: false, message: '请填写顾客编码和校验码' };
         }
-        // 构建请求参数
-        const timestamp = Math.floor(Date.now() / 1000).toString();
-        const requestId = `REQ${Date.now()}`;
+        // 构建请求参数 - 时间戳使用毫秒级（13位）
+        const timestamp = Date.now().toString();
+        const requestId = `REQ${Date.now()}${Math.random().toString(36).substr(2, 6)}`;
         // 测试用的路由查询接口
         const serviceCode = 'EXP_RECE_SEARCH_ROUTES';
         const msgData = JSON.stringify({
             trackingType: '1',
-            trackingNumber: trackingNo || 'SF1234567890', // 测试单号
+            trackingNumber: [trackingNo || 'SF1234567890'],
             methodType: '1'
         });
-        // 生成签名: Base64(MD5(msgData + timestamp + checkWord))
-        const signStr = msgData + timestamp + checkWord;
-        const sign = crypto_1.default.createHash('md5').update(signStr, 'utf8').digest('base64');
-        const response = await axios_1.default.post(apiUrl || 'https://bspgw.sf-express.com/std/service', null, {
-            params: {
-                partnerID: partnerId,
-                requestID: requestId,
-                serviceCode: serviceCode,
-                timestamp: timestamp,
-                msgDigest: sign,
-                msgData: msgData
-            },
-            timeout: 10000,
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        // 🔥 关键：先对msgData进行URL编码，然后用编码后的值计算签名
+        const encodedMsgData = encodeURIComponent(msgData);
+        // 签名计算: Base64(MD5(URL编码后的msgData + timestamp + checkWord))
+        const signStr = encodedMsgData + timestamp + checkWord;
+        const msgDigest = crypto_1.default.createHash('md5').update(signStr, 'utf8').digest('base64');
+        console.log('[顺丰API测试] ========== 请求参数 ==========');
+        console.log('[顺丰API测试] URL:', apiUrl);
+        console.log('[顺丰API测试] partnerID:', partnerId);
+        console.log('[顺丰API测试] msgData(原始):', msgData);
+        console.log('[顺丰API测试] msgData(编码后):', encodedMsgData);
+        console.log('[顺丰API测试] timestamp:', timestamp);
+        console.log('[顺丰API测试] signStr:', signStr.substring(0, 100) + '...');
+        console.log('[顺丰API测试] msgDigest:', msgDigest);
+        // 🔥 手动构建请求体，避免URLSearchParams的二次编码问题
+        const requestBody = `partnerID=${encodeURIComponent(partnerId)}&requestID=${encodeURIComponent(requestId)}&serviceCode=${encodeURIComponent(serviceCode)}&timestamp=${timestamp}&msgDigest=${encodeURIComponent(msgDigest)}&msgData=${encodedMsgData}`;
+        console.log('[顺丰API测试] 完整请求体:', requestBody);
+        const response = await axios_1.default.post(apiUrl || 'https://sfapi-sbox.sf-express.com/std/service', requestBody, {
+            timeout: 15000,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+            }
         });
+        console.log('[顺丰API测试] 响应:', JSON.stringify(response.data));
         const result = response.data;
-        if (result && (result.apiResultCode === 'A1000' || result.apiResultCode === 'A0000')) {
-            return { success: true, message: 'API连接成功' };
+        if (result && result.apiResultCode === 'A1000') {
+            // 解析业务结果
+            try {
+                const resultData = typeof result.apiResultData === 'string'
+                    ? JSON.parse(result.apiResultData)
+                    : result.apiResultData;
+                if (resultData.success) {
+                    return { success: true, message: 'API连接成功，路由查询正常' };
+                }
+                else {
+                    return { success: false, message: `业务错误: ${resultData.errorMsg || resultData.errorCode}` };
+                }
+            }
+            catch {
+                return { success: true, message: 'API连接成功' };
+            }
         }
         else if (result && result.apiErrorMsg) {
-            // 如果是认证错误，说明API可达但密钥有问题
-            if (result.apiResultCode === 'A1001' || result.apiResultCode === 'A1002') {
-                return { success: false, message: `认证失败: ${result.apiErrorMsg}` };
-            }
-            return { success: false, message: result.apiErrorMsg };
+            // 认证错误
+            return { success: false, message: `API错误: ${result.apiErrorMsg} (${result.apiResultCode})` };
         }
-        return { success: true, message: 'API连接成功（请使用真实单号验证）' };
+        return { success: false, message: '未知响应格式' };
     }
     catch (error) {
+        console.error('[顺丰API测试] 错误:', error);
         if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
             return { success: false, message: 'API服务器无法连接' };
         }

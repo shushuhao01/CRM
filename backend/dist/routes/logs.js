@@ -7,7 +7,12 @@ const express_1 = require("express");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const logger_1 = require("../config/logger");
+const database_1 = require("../config/database");
+const SystemConfig_1 = require("../entities/SystemConfig");
+const auth_1 = require("../middleware/auth");
 const router = (0, express_1.Router)();
+// 所有日志路由都需要认证
+router.use(auth_1.authenticateToken);
 /**
  * @swagger
  * /api/v1/logs/system:
@@ -65,11 +70,19 @@ router.get('/system', async (req, res) => {
             ip: req.ip,
             userAgent: req.get('User-Agent')
         });
-        const logsDir = path_1.default.join(process.cwd(), 'logs');
+        // 优先使用环境变量配置的日志路径，否则使用默认路径
+        const logsDir = process.env.LOG_FILE_PATH || path_1.default.join(process.cwd(), 'logs');
+        logger_1.logger.info('读取日志目录:', { logsDir, exists: fs_1.default.existsSync(logsDir) });
+        // 🔥 读取所有常见的日志文件
         const logFiles = [
             path_1.default.join(logsDir, 'combined.log'),
             path_1.default.join(logsDir, 'error.log'),
-            path_1.default.join(logsDir, 'operations.log')
+            path_1.default.join(logsDir, 'operations.log'),
+            path_1.default.join(logsDir, 'exceptions.log'),
+            path_1.default.join(logsDir, 'out.log'),
+            path_1.default.join(logsDir, 'access.log'),
+            path_1.default.join(logsDir, 'performance.log'),
+            path_1.default.join(logsDir, 'rejections.log')
         ];
         let allLogs = [];
         // 读取所有日志文件
@@ -80,39 +93,52 @@ router.get('/system', async (req, res) => {
                     const lines = content.split('\n').filter(line => line.trim());
                     for (const line of lines) {
                         try {
-                            // 尝试解析JSON格式的日志
-                            if (line.includes('{') && line.includes('}')) {
-                                const jsonStart = line.indexOf('{');
-                                const jsonPart = line.substring(jsonStart);
-                                const logData = JSON.parse(jsonPart);
-                                if (logData.timestamp && logData.level && logData.message) {
-                                    allLogs.push({
-                                        id: `${logData.timestamp}_${Math.random().toString(36).substr(2, 9)}`,
-                                        timestamp: logData.timestamp,
-                                        level: logData.level.toUpperCase(),
-                                        module: logData.service || '系统',
-                                        message: logData.message,
-                                        details: JSON.stringify(logData, null, 2)
-                                    });
-                                }
+                            // 🔥 优先解析文本格式的日志（如：2025-12-19 09:41:55 [ERROR]: 消息内容）
+                            const timestampMatch = line.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+                            const levelMatch = line.match(/\[(ERROR|WARN|INFO|DEBUG)\]/i);
+                            if (timestampMatch && levelMatch) {
+                                const timestamp = timestampMatch[1];
+                                const level = levelMatch[1].toUpperCase();
+                                const messageStart = line.indexOf(']:');
+                                const message = messageStart > -1 ? line.substring(messageStart + 2).trim() : line;
+                                allLogs.push({
+                                    id: `${timestamp}_${Math.random().toString(36).substring(2, 11)}`,
+                                    timestamp,
+                                    level,
+                                    module: '系统',
+                                    message: message || '(无消息内容)',
+                                    details: line
+                                });
                             }
-                            else {
-                                // 解析文本格式的日志
-                                const timestampMatch = line.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
-                                const levelMatch = line.match(/\[(ERROR|WARN|INFO|DEBUG)\]/);
-                                if (timestampMatch && levelMatch) {
-                                    const timestamp = timestampMatch[1];
-                                    const level = levelMatch[1];
-                                    const messageStart = line.indexOf(']:') + 2;
-                                    const message = line.substring(messageStart).trim();
-                                    allLogs.push({
-                                        id: `${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
-                                        timestamp,
-                                        level,
-                                        module: '系统',
-                                        message,
-                                        details: line
-                                    });
+                            // 尝试解析JSON格式的日志
+                            else if (line.startsWith('{') && line.endsWith('}')) {
+                                try {
+                                    const logData = JSON.parse(line);
+                                    // 检查是否有必要的字段
+                                    if (logData.timestamp && logData.level && logData.message) {
+                                        allLogs.push({
+                                            id: `${logData.timestamp}_${Math.random().toString(36).substring(2, 11)}`,
+                                            timestamp: logData.timestamp,
+                                            level: logData.level.toUpperCase(),
+                                            module: logData.service || '系统',
+                                            message: logData.message,
+                                            details: JSON.stringify(logData, null, 2)
+                                        });
+                                    }
+                                    // 如果是错误日志但没有标准字段，也尝试解析
+                                    else if (logData.service || logData.code || logData.error) {
+                                        allLogs.push({
+                                            id: `json_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+                                            timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                                            level: logData.fatal ? 'ERROR' : 'INFO',
+                                            module: logData.service || '系统',
+                                            message: logData.error || logData.code || JSON.stringify(logData),
+                                            details: JSON.stringify(logData, null, 2)
+                                        });
+                                    }
+                                }
+                                catch (_jsonError) {
+                                    // JSON解析失败，忽略
                                 }
                             }
                         }
@@ -169,7 +195,7 @@ router.delete('/clear', async (req, res) => {
             ip: req.ip,
             userAgent: req.get('User-Agent')
         });
-        const logsDir = path_1.default.join(process.cwd(), 'logs');
+        const logsDir = process.env.LOG_FILE_PATH || path_1.default.join(process.cwd(), 'logs');
         const logFiles = [
             path_1.default.join(logsDir, 'combined.log'),
             path_1.default.join(logsDir, 'error.log'),
@@ -223,7 +249,7 @@ router.get('/operation-logs', async (req, res) => {
         const action = req.query.action;
         const userId = req.query.userId;
         // 从操作日志文件读取数据
-        const logsDir = path_1.default.join(process.cwd(), 'logs');
+        const logsDir = process.env.LOG_FILE_PATH || path_1.default.join(process.cwd(), 'logs');
         const operationsLogFile = path_1.default.join(logsDir, 'operations.log');
         let logs = [];
         if (fs_1.default.existsSync(operationsLogFile)) {
@@ -292,6 +318,187 @@ router.get('/operation-logs', async (req, res) => {
             data: [],
             total: 0
         });
+    }
+});
+/**
+ * @route GET /api/v1/logs/config
+ * @desc 获取日志清理配置
+ * @access Private (Admin only)
+ */
+router.get('/config', async (req, res) => {
+    try {
+        const dataSource = (0, database_1.getDataSource)();
+        if (!dataSource) {
+            res.status(500).json({ success: false, message: '数据库未连接' });
+            return;
+        }
+        const configRepo = dataSource.getRepository(SystemConfig_1.SystemConfig);
+        const configs = await configRepo.find({
+            where: [
+                { configKey: 'log_auto_cleanup' },
+                { configKey: 'log_retention_days' },
+                { configKey: 'log_max_file_size_mb' },
+                { configKey: 'log_cleanup_time' }
+            ]
+        });
+        const configMap = configs.reduce((acc, config) => {
+            acc[config.configKey] = config.configValue;
+            return acc;
+        }, {});
+        const logConfig = {
+            autoCleanup: configMap['log_auto_cleanup'] === 'true',
+            retentionDays: parseInt(configMap['log_retention_days'] || '7'),
+            maxFileSizeMB: parseInt(configMap['log_max_file_size_mb'] || '20'),
+            cleanupTime: configMap['log_cleanup_time'] || '03:00'
+        };
+        res.json({ success: true, data: logConfig });
+    }
+    catch (error) {
+        logger_1.logger.error('获取日志配置失败', { error: error instanceof Error ? error.message : String(error) });
+        res.status(500).json({ success: false, message: '获取配置失败' });
+    }
+});
+/**
+ * @route POST /api/v1/logs/config
+ * @desc 保存日志清理配置
+ * @access Private (Admin only)
+ */
+router.post('/config', async (req, res) => {
+    try {
+        const { autoCleanup, retentionDays, maxFileSizeMB, cleanupTime } = req.body;
+        const dataSource = (0, database_1.getDataSource)();
+        if (!dataSource) {
+            res.status(500).json({ success: false, message: '数据库未连接' });
+            return;
+        }
+        const configRepo = dataSource.getRepository(SystemConfig_1.SystemConfig);
+        const configs = [
+            { configKey: 'log_auto_cleanup', configValue: autoCleanup ? 'true' : 'false' },
+            { configKey: 'log_retention_days', configValue: retentionDays?.toString() || '7' },
+            { configKey: 'log_max_file_size_mb', configValue: maxFileSizeMB?.toString() || '20' },
+            { configKey: 'log_cleanup_time', configValue: cleanupTime || '03:00' }
+        ];
+        for (const config of configs) {
+            const existing = await configRepo.findOne({ where: { configKey: config.configKey } });
+            if (existing) {
+                existing.configValue = config.configValue;
+                await configRepo.save(existing);
+            }
+            else {
+                await configRepo.save({
+                    configKey: config.configKey,
+                    configValue: config.configValue,
+                    configGroup: 'logs',
+                    valueType: 'string',
+                    description: `日志清理配置: ${config.configKey}`,
+                    isEnabled: true,
+                    isSystem: false,
+                    sortOrder: 0
+                });
+            }
+        }
+        logger_1.logger.info('日志清理配置已保存', { autoCleanup, retentionDays, maxFileSizeMB, cleanupTime });
+        res.json({ success: true, message: '配置保存成功' });
+    }
+    catch (error) {
+        logger_1.logger.error('保存日志配置失败', { error: error instanceof Error ? error.message : String(error) });
+        res.status(500).json({ success: false, message: '保存配置失败' });
+    }
+});
+/**
+ * @route GET /api/v1/logs/stats
+ * @desc 获取日志统计信息
+ * @access Private (Admin only)
+ */
+router.get('/stats', async (req, res) => {
+    try {
+        const logsDir = process.env.LOG_FILE_PATH || path_1.default.join(process.cwd(), 'logs');
+        if (!fs_1.default.existsSync(logsDir)) {
+            res.json({
+                success: true,
+                data: { fileCount: 0, totalSize: '0 MB', oldestLog: '' }
+            });
+            return;
+        }
+        const files = fs_1.default.readdirSync(logsDir);
+        const logFiles = files.filter(file => file.endsWith('.log'));
+        let totalSizeBytes = 0;
+        let oldestTime = Date.now();
+        for (const file of logFiles) {
+            const filePath = path_1.default.join(logsDir, file);
+            try {
+                const stats = fs_1.default.statSync(filePath);
+                totalSizeBytes += stats.size;
+                if (stats.mtime.getTime() < oldestTime) {
+                    oldestTime = stats.mtime.getTime();
+                }
+            }
+            catch (_e) {
+                // 忽略无法读取的文件
+            }
+        }
+        const totalSizeMB = (totalSizeBytes / (1024 * 1024)).toFixed(2);
+        const oldestLog = logFiles.length > 0
+            ? new Date(oldestTime).toLocaleDateString('zh-CN')
+            : '';
+        res.json({
+            success: true,
+            data: {
+                fileCount: logFiles.length,
+                totalSize: `${totalSizeMB} MB`,
+                oldestLog
+            }
+        });
+    }
+    catch (error) {
+        logger_1.logger.error('获取日志统计失败', { error: error instanceof Error ? error.message : String(error) });
+        res.status(500).json({ success: false, message: '获取统计失败' });
+    }
+});
+/**
+ * @route DELETE /api/v1/logs/cleanup/:days
+ * @desc 清理过期日志
+ * @access Private (Admin only)
+ */
+router.delete('/cleanup/:days', async (req, res) => {
+    try {
+        const retentionDays = parseInt(req.params.days);
+        if (isNaN(retentionDays) || retentionDays < 1) {
+            res.status(400).json({ success: false, message: '保留天数参数无效' });
+            return;
+        }
+        const logsDir = process.env.LOG_FILE_PATH || path_1.default.join(process.cwd(), 'logs');
+        if (!fs_1.default.existsSync(logsDir)) {
+            res.json({ success: true, message: '日志目录不存在，无需清理' });
+            return;
+        }
+        const files = fs_1.default.readdirSync(logsDir);
+        const logFiles = files.filter(file => file.endsWith('.log'));
+        const cutoffTime = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
+        let deletedCount = 0;
+        let deletedSize = 0;
+        for (const file of logFiles) {
+            const filePath = path_1.default.join(logsDir, file);
+            try {
+                const stats = fs_1.default.statSync(filePath);
+                if (stats.mtime.getTime() < cutoffTime) {
+                    deletedSize += stats.size;
+                    fs_1.default.unlinkSync(filePath);
+                    deletedCount++;
+                }
+            }
+            catch (_e) {
+                // 忽略无法处理的文件
+            }
+        }
+        const deletedSizeMB = (deletedSize / (1024 * 1024)).toFixed(2);
+        const message = `已清理 ${deletedCount} 个过期日志文件，释放空间 ${deletedSizeMB} MB`;
+        logger_1.logger.info('清理过期日志', { deletedCount, deletedSizeMB, retentionDays });
+        res.json({ success: true, message });
+    }
+    catch (error) {
+        logger_1.logger.error('清理过期日志失败', { error: error instanceof Error ? error.message : String(error) });
+        res.status(500).json({ success: false, message: '清理失败' });
     }
 });
 exports.default = router;
