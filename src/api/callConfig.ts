@@ -310,7 +310,8 @@ export function checkWorkPhoneBindStatus(connectionId: string): Promise<ApiRespo
 /**
  * 解绑工作手机
  */
-export function unbindWorkPhone(phoneId: number): Promise<ApiResponse> {
+export function unbindWorkPhone(phoneId: number | string): Promise<ApiResponse> {
+  console.log('[API] unbindWorkPhone called with phoneId:', phoneId, 'type:', typeof phoneId)
   return request({
     url: `/call-config/work-phones/${phoneId}`,
     method: 'delete'

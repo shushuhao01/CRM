@@ -42,13 +42,26 @@ class MobileWebSocketService {
    */
   initialize(server: HTTPServer): void {
     try {
+      // 使用 noServer 模式，手动处理升级请求
       this.wss = new WebSocketServer({
-        server,
-        path: '/ws/mobile'
+        noServer: true
+      });
+
+      // 监听 HTTP 服务器的 upgrade 事件
+      server.on('upgrade', (request, socket, head) => {
+        const pathname = new URL(request.url || '', `http://${request.headers.host}`).pathname;
+
+        // 只处理 /ws/mobile 路径的请求
+        if (pathname === '/ws/mobile') {
+          this.wss?.handleUpgrade(request, socket, head, (ws) => {
+            this.wss?.emit('connection', ws, request);
+          });
+        }
+        // 其他路径（如 /socket.io/）由 Socket.IO 处理，不做任何操作
       });
 
       this.wss.on('connection', (ws, req) => {
-        this.handleConnection(ws, req);
+        this.handleConnection(ws, req as IncomingMessage);
       });
 
       // 启动心跳检测
