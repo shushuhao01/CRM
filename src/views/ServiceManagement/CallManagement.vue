@@ -4500,25 +4500,42 @@ const getPhoneCarrier = (phone: string): string => {
 
 // 计算属性：是否可以开始呼叫
 const canStartCall = computed(() => {
+  console.log('[canStartCall] 检查条件:', {
+    callMethod: outboundForm.value.callMethod,
+    selectedWorkPhone: outboundForm.value.selectedWorkPhone,
+    selectedLine: outboundForm.value.selectedLine,
+    manualPhone: outboundForm.value.manualPhone,
+    customerPhone: outboundForm.value.customerPhone
+  })
+
   // 必须有外呼方式
   if (!outboundForm.value.callMethod) {
+    console.log('[canStartCall] 失败: 没有选择外呼方式')
     return false
   }
 
   // 如果选择工作手机，必须选择一个手机
   if (outboundForm.value.callMethod === 'work_phone' && !outboundForm.value.selectedWorkPhone) {
+    console.log('[canStartCall] 失败: 没有选择工作手机')
     return false
   }
 
   // 如果选择网络电话，必须选择一条线路
   if (outboundForm.value.callMethod === 'network_phone' && !outboundForm.value.selectedLine) {
+    console.log('[canStartCall] 失败: 没有选择线路')
     return false
   }
 
   // 必须有电话号码（手动输入或从客户选择）
   // 手动输入号码时不需要选择客户
   const hasPhone = outboundForm.value.manualPhone?.trim() || outboundForm.value.customerPhone
-  return !!hasPhone
+  if (!hasPhone) {
+    console.log('[canStartCall] 失败: 没有电话号码')
+    return false
+  }
+
+  console.log('[canStartCall] 通过所有检查')
+  return true
 })
 
 // 组件卸载时清理定时器

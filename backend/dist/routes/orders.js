@@ -40,9 +40,28 @@ const Order_1 = require("../entities/Order");
 const Product_1 = require("../entities/Product");
 const SystemConfig_1 = require("../entities/SystemConfig");
 const DepartmentOrderLimit_1 = require("../entities/DepartmentOrderLimit");
+const OrderStatusHistory_1 = require("../entities/OrderStatusHistory");
 const OrderNotificationService_1 = require("../services/OrderNotificationService");
 // Like 和 Between 现在通过 QueryBuilder 使用，不再直接导入
 // import { Like, Between } from 'typeorm';
+// 🔥 保存订单状态历史记录
+const saveStatusHistory = async (orderId, status, operatorId, operatorName, notes) => {
+    try {
+        const statusHistoryRepository = database_1.AppDataSource.getRepository(OrderStatusHistory_1.OrderStatusHistory);
+        const history = statusHistoryRepository.create({
+            orderId,
+            status: status,
+            operatorId: operatorId ? Number(operatorId) : undefined,
+            operatorName,
+            notes
+        });
+        await statusHistoryRepository.save(history);
+        console.log(`[状态历史] ✅ 保存成功: orderId=${orderId}, status=${status}, operator=${operatorName}`);
+    }
+    catch (error) {
+        console.error(`[状态历史] ❌ 保存失败:`, error);
+    }
+};
 // 格式化时间为北京时间友好格式 (YYYY/MM/DD HH:mm:ss)
 const formatToBeijingTime = (date) => {
     if (!date)
@@ -284,6 +303,212 @@ router.get('/statistics', async (_req, res) => {
     }
 });
 /**
+ * @route GET /api/v1/orders/audit-list
+ * @desc 获取审核订单列表（优化版，只返回需要审核的订单）
+ * @access Private
+ */
+router.get('/audit-list', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
+        const startTime = Date.now();
+        const { page = 1, pageSize = 20, status = 'pending_audit', // 默认只查待审核
+        orderNumber, customerName, startDate, endDate } = req.query;
+        const pageNum = parseInt(page) || 1;
+        const pageSizeNum = Math.min(parseInt(pageSize) || 20, 100); // 限制最大100条
+        const skip = (pageNum - 1) * pageSizeNum;
+        console.log(`📋 [审核列表] 查询参数: status=${status}, page=${pageNum}, pageSize=${pageSizeNum}`);
+        // 🔥 调试：先查询所有订单的状态分布
+        const statusCountQuery = await orderRepository.createQueryBuilder('order')
+            .select('order.status', 'status')
+            .addSelect('COUNT(*)', 'count')
+            .groupBy('order.status')
+            .getRawMany();
+        console.log(`📋 [审核列表] 订单状态分布:`, statusCountQuery);
+        // 🔥 优化：使用QueryBuilder只查询需要的字段
+        const queryBuilder = orderRepository.createQueryBuilder('order')
+            .select([
+            'order.id',
+            'order.orderNumber',
+            'order.customerId',
+            'order.customerName',
+            'order.customerPhone',
+            'order.totalAmount',
+            'order.depositAmount',
+            'order.status',
+            'order.markType',
+            'order.paymentStatus',
+            'order.paymentMethod',
+            'order.remark',
+            'order.createdBy',
+            'order.createdByName',
+            'order.createdAt',
+            'order.shippingName',
+            'order.shippingPhone',
+            'order.shippingAddress',
+            'order.products'
+        ]);
+        // 状态筛选
+        if (status === 'pending_audit') {
+            queryBuilder.where('order.status = :status', { status: 'pending_audit' });
+            console.log(`📋 [审核列表] 筛选待审核订单: status=pending_audit`);
+        }
+        else if (status === 'approved') {
+            // 🔥 修复：已审核通过的订单状态只包括审核通过后的状态
+            // 不包括 pending_transfer（待流转）和 pending_audit（待审核）
+            const approvedStatuses = ['pending_shipment', 'shipped', 'delivered', 'paid', 'completed'];
+            queryBuilder.where('order.status IN (:...statuses)', {
+                statuses: approvedStatuses
+            });
+            console.log(`📋 [审核列表] 筛选已审核通过订单: statuses=${approvedStatuses.join(', ')}`);
+        }
+        else if (status === 'rejected') {
+            queryBuilder.where('order.status = :status', { status: 'audit_rejected' });
+            console.log(`📋 [审核列表] 筛选审核拒绝订单: status=audit_rejected`);
+        }
+        else if (status) {
+            // 🔥 修复：其他状态直接使用传入的状态值
+            queryBuilder.where('order.status = :status', { status });
+            console.log(`📋 [审核列表] 筛选其他状态订单: status=${status}`);
+        }
+        // 订单号筛选
+        if (orderNumber) {
+            queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+        }
+        // 客户名称筛选
+        if (customerName) {
+            queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+        }
+        // 日期范围筛选
+        if (startDate && endDate) {
+            queryBuilder.andWhere('order.createdAt BETWEEN :startDate AND :endDate', {
+                startDate: new Date(startDate),
+                endDate: new Date(endDate)
+            });
+        }
+        // 🔥 优化：先获取总数（使用count查询更快）
+        const total = await queryBuilder.getCount();
+        // 排序和分页
+        queryBuilder.orderBy('order.createdAt', 'DESC')
+            .skip(skip)
+            .take(pageSizeNum);
+        const orders = await queryBuilder.getMany();
+        const queryTime = Date.now() - startTime;
+        console.log(`📋 [审核列表] 查询完成: ${orders.length}条, 总数${total}, 耗时${queryTime}ms`);
+        // 🔥 优化：简化数据转换
+        const list = orders.map(order => {
+            let products = [];
+            if (order.products) {
+                try {
+                    products = typeof order.products === 'string' ? JSON.parse(order.products) : order.products;
+                }
+                catch {
+                    products = [];
+                }
+            }
+            return {
+                id: order.id,
+                orderNo: order.orderNumber,
+                orderNumber: order.orderNumber,
+                customerId: order.customerId || '',
+                customerName: order.customerName || '',
+                customerPhone: order.customerPhone || '',
+                products,
+                totalAmount: Number(order.totalAmount) || 0,
+                depositAmount: Number(order.depositAmount) || 0,
+                collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+                status: order.status,
+                // 🔥 修复：正确映射auditStatus
+                // pending_audit 和 pending_transfer -> pending（待审核）
+                // audit_rejected -> rejected（审核拒绝）
+                // pending_shipment, shipped, delivered, paid, completed -> approved（已审核通过）
+                auditStatus: (order.status === 'pending_audit' || order.status === 'pending_transfer') ? 'pending' :
+                    order.status === 'audit_rejected' ? 'rejected' :
+                        ['pending_shipment', 'shipped', 'delivered', 'paid', 'completed'].includes(order.status) ? 'approved' : 'pending',
+                markType: order.markType || 'normal',
+                paymentStatus: order.paymentStatus || 'unpaid',
+                paymentMethod: order.paymentMethod || '',
+                remark: order.remark || '',
+                salesPerson: order.createdByName || '',
+                createdBy: order.createdBy || '',
+                createdByName: order.createdByName || '',
+                createTime: formatToBeijingTime(order.createdAt),
+                receiverName: order.shippingName || '',
+                receiverPhone: order.shippingPhone || '',
+                deliveryAddress: order.shippingAddress || ''
+            };
+        });
+        res.json({
+            success: true,
+            code: 200,
+            message: '获取审核订单列表成功',
+            data: {
+                list,
+                total,
+                page: pageNum,
+                pageSize: pageSizeNum
+            }
+        });
+    }
+    catch (error) {
+        console.error('❌ [审核列表] 获取失败:', error);
+        res.status(500).json({
+            success: false,
+            code: 500,
+            message: '获取审核订单列表失败',
+            error: error instanceof Error ? error.message : '未知错误'
+        });
+    }
+});
+/**
+ * @route GET /api/v1/orders/audit-statistics
+ * @desc 获取审核统计数据（优化版）
+ * @access Private
+ */
+router.get('/audit-statistics', auth_1.authenticateToken, async (_req, res) => {
+    try {
+        const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
+        const startTime = Date.now();
+        // 🔥 优化：使用单个查询获取所有统计数据
+        const [pendingCount, approvedCount, rejectedCount, pendingAmountResult, todayCount] = await Promise.all([
+            orderRepository.count({ where: { status: 'pending_audit' } }),
+            orderRepository.createQueryBuilder('order')
+                .where('order.status IN (:...statuses)', { statuses: ['pending_shipment', 'shipped', 'delivered', 'paid'] })
+                .getCount(),
+            orderRepository.count({ where: { status: 'audit_rejected' } }),
+            orderRepository.createQueryBuilder('order')
+                .select('SUM(order.totalAmount)', 'total')
+                .where('order.status = :status', { status: 'pending_audit' })
+                .getRawOne(),
+            orderRepository.createQueryBuilder('order')
+                .where('order.createdAt >= :today', { today: new Date(new Date().setHours(0, 0, 0, 0)) })
+                .andWhere('order.status = :status', { status: 'pending_audit' })
+                .getCount()
+        ]);
+        const queryTime = Date.now() - startTime;
+        console.log(`📊 [审核统计] 查询完成: 待审核${pendingCount}, 已通过${approvedCount}, 已拒绝${rejectedCount}, 耗时${queryTime}ms`);
+        res.json({
+            success: true,
+            code: 200,
+            data: {
+                pendingCount,
+                approvedCount,
+                rejectedCount,
+                pendingAmount: Number(pendingAmountResult?.total || 0),
+                todayCount,
+                urgentCount: 0
+            }
+        });
+    }
+    catch (error) {
+        console.error('获取审核统计失败:', error);
+        res.status(500).json({
+            success: false,
+            code: 500,
+            message: '获取审核统计失败'
+        });
+    }
+});
+/**
  * @route POST /api/v1/orders/cancel-request
  * @desc 提交取消订单申请
  * @access Private
@@ -409,23 +634,46 @@ router.get('/audited-cancel', async (_req, res) => {
 // ========== 通用路由 ==========
 /**
  * @route GET /api/v1/orders/shipping/pending
- * @desc 获取待发货订单列表
+ * @desc 获取待发货订单列表（优化版）
  * @access Private
  */
 router.get('/shipping/pending', async (req, res) => {
     try {
         const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
-        const { page = 1, pageSize = 500 } = req.query;
+        const startTime = Date.now();
+        // 🔥 优化：默认每页20条，最大100条
+        const { page = 1, pageSize = 20, orderNumber, customerName } = req.query;
         const pageNum = parseInt(page) || 1;
-        const pageSizeNum = parseInt(pageSize) || 500;
+        const pageSizeNum = Math.min(parseInt(pageSize) || 20, 100);
         const skip = (pageNum - 1) * pageSizeNum;
-        // 查询待发货订单 (status = 'pending_shipment')
-        const [orders, total] = await orderRepository.findAndCount({
-            where: { status: 'pending_shipment' },
-            skip,
-            take: pageSizeNum,
-            order: { createdAt: 'DESC' }
-        });
+        // 🔥 优化：使用QueryBuilder只查询需要的字段
+        const queryBuilder = orderRepository.createQueryBuilder('order')
+            .select([
+            'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
+            'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
+            'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
+            'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt',
+            'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
+            'order.expressCompany', 'order.logisticsStatus', 'order.serviceWechat',
+            'order.orderSource', 'order.products',
+            'order.customField1', 'order.customField2', 'order.customField3',
+            'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
+        ])
+            .where('order.status = :status', { status: 'pending_shipment' });
+        // 支持筛选
+        if (orderNumber) {
+            queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+        }
+        if (customerName) {
+            queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+        }
+        // 先获取总数
+        const total = await queryBuilder.getCount();
+        // 分页和排序
+        queryBuilder.orderBy('order.createdAt', 'DESC').skip(skip).take(pageSizeNum);
+        const orders = await queryBuilder.getMany();
+        const queryTime = Date.now() - startTime;
+        console.log(`📦 [待发货订单] 查询完成: ${orders.length}条, 总数${total}, 耗时${queryTime}ms`);
         console.log(`📦 [待发货订单] 查询到 ${orders.length} 条待发货订单, 总数: ${total}`);
         // 转换数据格式
         const list = orders.map(order => {
@@ -511,25 +759,56 @@ router.get('/shipping/pending', async (req, res) => {
 });
 /**
  * @route GET /api/v1/orders/shipping/shipped
- * @desc 获取已发货订单列表
+ * @desc 获取已发货订单列表（优化版）
  * @access Private
  */
 router.get('/shipping/shipped', async (req, res) => {
     try {
         const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
-        const { page = 1, pageSize = 500 } = req.query;
+        const startTime = Date.now();
+        // 🔥 优化：默认每页20条，最大100条
+        const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status } = req.query;
         const pageNum = parseInt(page) || 1;
-        const pageSizeNum = parseInt(pageSize) || 500;
+        const pageSizeNum = Math.min(parseInt(pageSize) || 20, 100);
         const skip = (pageNum - 1) * pageSizeNum;
-        // 查询已发货订单 (status = 'shipped' 或 'delivered')
-        const [orders, total] = await orderRepository
-            .createQueryBuilder('order')
-            .where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered'] })
-            .skip(skip)
-            .take(pageSizeNum)
-            .orderBy('order.createdAt', 'DESC')
-            .getManyAndCount();
-        console.log(`🚚 [已发货订单] 查询到 ${orders.length} 条已发货订单, 总数: ${total}`);
+        // 🔥 优化：使用QueryBuilder只查询需要的字段
+        const queryBuilder = orderRepository.createQueryBuilder('order')
+            .select([
+            'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
+            'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
+            'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
+            'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt',
+            'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
+            'order.expressCompany', 'order.trackingNumber', 'order.logisticsStatus',
+            'order.latestLogisticsInfo', // 🔥 新增：最新物流动态
+            'order.shippedAt', 'order.serviceWechat', 'order.orderSource', 'order.products',
+            'order.customField1', 'order.customField2', 'order.customField3',
+            'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
+        ]);
+        // 状态筛选
+        if (status && status !== 'all') {
+            queryBuilder.where('order.status = :status', { status });
+        }
+        else {
+            queryBuilder.where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered'] });
+        }
+        // 支持筛选
+        if (orderNumber) {
+            queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+        }
+        if (customerName) {
+            queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+        }
+        if (trackingNumber) {
+            queryBuilder.andWhere('order.trackingNumber LIKE :trackingNumber', { trackingNumber: `%${trackingNumber}%` });
+        }
+        // 先获取总数
+        const total = await queryBuilder.getCount();
+        // 分页和排序
+        queryBuilder.orderBy('order.createdAt', 'DESC').skip(skip).take(pageSizeNum);
+        const orders = await queryBuilder.getMany();
+        const queryTime = Date.now() - startTime;
+        console.log(`🚚 [已发货订单] 查询完成: ${orders.length}条, 总数${total}, 耗时${queryTime}ms`);
         // 转换数据格式
         const list = orders.map(order => {
             let products = [];
@@ -565,6 +844,8 @@ router.get('/shipping/shipped', async (req, res) => {
                 trackingNumber: order.trackingNumber || '',
                 expressCompany: order.expressCompany || '',
                 logisticsStatus: order.logisticsStatus || '',
+                // 🔥 新增：最新物流动态（用于避免重复请求已完结的物流）
+                latestLogisticsInfo: order.latestLogisticsInfo || '',
                 // 🔥 新版自定义字段：优先从独立字段读取，其次从JSON字段读取
                 customFields: {
                     custom_field1: order.customField1 || order.customFields?.custom_field1 || '',
@@ -614,6 +895,112 @@ router.get('/shipping/shipped', async (req, res) => {
     }
 });
 /**
+ * @route GET /api/v1/orders/shipping/statistics
+ * @desc 获取物流统计数据（优化版）
+ * @access Private
+ */
+router.get('/shipping/statistics', auth_1.authenticateToken, async (_req, res) => {
+    try {
+        const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
+        const startTime = Date.now();
+        // 🔥 优化：使用并行查询获取所有统计数据
+        const [pendingCount, shippedCount, deliveredCount, exceptionCount] = await Promise.all([
+            orderRepository.count({ where: { status: 'pending_shipment' } }),
+            orderRepository.count({ where: { status: 'shipped' } }),
+            orderRepository.count({ where: { status: 'delivered' } }),
+            orderRepository.createQueryBuilder('order')
+                .where('order.status IN (:...statuses)', {
+                statuses: ['rejected', 'package_exception', 'logistics_returned', 'logistics_cancelled']
+            })
+                .getCount()
+        ]);
+        const queryTime = Date.now() - startTime;
+        console.log(`📊 [物流统计] 查询完成: 待发货${pendingCount}, 已发货${shippedCount}, 已签收${deliveredCount}, 异常${exceptionCount}, 耗时${queryTime}ms`);
+        res.json({
+            success: true,
+            code: 200,
+            data: {
+                pendingCount,
+                shippedCount,
+                deliveredCount,
+                exceptionCount,
+                totalShipped: shippedCount + deliveredCount
+            }
+        });
+    }
+    catch (error) {
+        console.error('获取物流统计失败:', error);
+        res.status(500).json({
+            success: false,
+            code: 500,
+            message: '获取物流统计失败'
+        });
+    }
+});
+/**
+ * @route GET /api/v1/orders/by-tracking-no
+ * @desc 根据物流单号获取订单信息
+ * @access Private
+ */
+router.get('/by-tracking-no', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const { trackingNo } = req.query;
+        if (!trackingNo) {
+            return res.status(400).json({
+                success: false,
+                code: 400,
+                message: '缺少物流单号参数'
+            });
+        }
+        console.log('[订单API] 根据物流单号查询订单:', trackingNo);
+        const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
+        const order = await orderRepository.findOne({
+            where: { trackingNumber: trackingNo }
+        });
+        if (!order) {
+            console.log('[订单API] 未找到对应订单, trackingNo:', trackingNo);
+            return res.status(404).json({
+                success: false,
+                code: 404,
+                message: '未找到对应订单'
+            });
+        }
+        // 🔥 优先使用收货人电话，其次使用客户电话
+        const phoneToReturn = order.shippingPhone || order.customerPhone || '';
+        console.log('[订单API] 找到订单:', order.orderNumber);
+        console.log('[订单API] 手机号字段 - shippingPhone:', order.shippingPhone, ', customerPhone:', order.customerPhone);
+        console.log('[订单API] 返回手机号:', phoneToReturn || '(空)');
+        res.json({
+            success: true,
+            code: 200,
+            data: {
+                id: order.id,
+                orderNumber: order.orderNumber,
+                customerName: order.customerName,
+                customerPhone: order.customerPhone || '',
+                // 🔥 确保receiverPhone有值
+                receiverPhone: order.shippingPhone || order.customerPhone || '',
+                phone: phoneToReturn,
+                expressCompany: order.expressCompany,
+                trackingNumber: order.trackingNumber,
+                // 🔥 新增：收货地址和发货时间
+                shippingAddress: order.shippingAddress || '',
+                address: order.shippingAddress || '',
+                shippedAt: order.shippedAt ? formatToBeijingTime(order.shippedAt) : '',
+                shipTime: order.shippedAt ? formatToBeijingTime(order.shippedAt) : ''
+            }
+        });
+    }
+    catch (error) {
+        console.error('根据物流单号获取订单失败:', error);
+        res.status(500).json({
+            success: false,
+            code: 500,
+            message: '获取订单失败'
+        });
+    }
+});
+/**
  * @route GET /api/v1/orders
  * @desc 获取订单列表
  * @access Private
@@ -638,29 +1025,39 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
         // 🔥 数据权限过滤
         // 超级管理员、管理员、客服可以看所有订单
         const allowAllRoles = ['super_admin', 'admin', 'customer_service', 'service'];
+        // 🔥 经理角色（可以看本部门订单）
+        const managerRoles = ['department_manager', 'manager'];
         if (!allowAllRoles.includes(userRole)) {
-            if (userRole === 'department_manager') {
-                // 部门经理可以看本部门所有成员的订单
+            if (managerRoles.includes(userRole)) {
+                // 部门经理可以看本部门所有成员的订单，也包括自己的订单
                 if (userDepartmentId) {
-                    queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId: userDepartmentId });
-                    console.log(`📋 [订单列表] 部门经理过滤: 部门ID = ${userDepartmentId}`);
+                    // 🔥 修复：同时匹配部门ID或创建人ID（确保能看到自己的订单）
+                    queryBuilder.andWhere('(order.createdByDepartmentId = :departmentId OR order.createdBy = :userId)', {
+                        departmentId: userDepartmentId,
+                        userId
+                    });
+                    console.log(`📋 [订单列表] 经理过滤: 部门ID = ${userDepartmentId} 或 创建人ID = ${userId}`);
                 }
                 else {
                     // 如果没有部门ID，只能看自己的订单
                     queryBuilder.andWhere('order.createdBy = :userId', { userId });
-                    console.log(`📋 [订单列表] 部门经理无部门ID，只看自己的订单`);
+                    console.log(`📋 [订单列表] 经理无部门ID，只看自己的订单: userId = ${userId}`);
                 }
             }
             else {
                 // 🔥 普通员工（销售员等）可以看到同部门成员的订单（用于团队业绩统计）
                 if (userDepartmentId) {
-                    queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId: userDepartmentId });
-                    console.log(`📋 [订单列表] 普通员工过滤: 部门ID = ${userDepartmentId}（可查看同部门订单）`);
+                    // 🔥 修复：同时匹配部门ID或创建人ID（确保能看到自己的订单）
+                    queryBuilder.andWhere('(order.createdByDepartmentId = :departmentId OR order.createdBy = :userId)', {
+                        departmentId: userDepartmentId,
+                        userId
+                    });
+                    console.log(`📋 [订单列表] 普通员工过滤: 部门ID = ${userDepartmentId} 或 创建人ID = ${userId}`);
                 }
                 else {
                     // 如果没有部门ID，只能看自己的订单
                     queryBuilder.andWhere('order.createdBy = :userId', { userId });
-                    console.log(`📋 [订单列表] 普通员工无部门ID，只看自己的订单`);
+                    console.log(`📋 [订单列表] 普通员工无部门ID，只看自己的订单: userId = ${userId}`);
                 }
             }
         }
@@ -705,12 +1102,16 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
                 }
             }
             // 根据订单状态推断auditStatus
+            // 🔥 修复：正确映射auditStatus
             let auditStatus = 'pending';
-            if (order.status === 'pending_shipment' || order.status === 'shipped' || order.status === 'delivered' || order.status === 'paid') {
+            if (['pending_shipment', 'shipped', 'delivered', 'paid', 'completed'].includes(order.status)) {
                 auditStatus = 'approved';
             }
             else if (order.status === 'audit_rejected') {
                 auditStatus = 'rejected';
+            }
+            else if (order.status === 'pending_audit' || order.status === 'pending_transfer') {
+                auditStatus = 'pending';
             }
             return {
                 id: order.id,
@@ -797,24 +1198,32 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
 router.get('/:id/status-history', async (req, res) => {
     try {
         const orderId = req.params.id;
-        const { OrderStatusHistory } = await Promise.resolve().then(() => __importStar(require('../entities/OrderStatusHistory')));
-        const statusHistoryRepository = database_1.AppDataSource.getRepository(OrderStatusHistory);
-        const history = await statusHistoryRepository.find({
-            where: { orderId },
-            order: { createdAt: 'DESC' }
-        });
-        const list = history.map(item => ({
-            id: item.id,
-            orderId: item.orderId,
-            status: item.status,
-            title: getStatusTitle(item.status),
-            description: item.notes || `订单状态变更为：${getStatusTitle(item.status)}`,
-            operator: item.operatorName || '系统',
-            operatorId: item.operatorId,
-            timestamp: item.createdAt?.toISOString() || ''
-        }));
-        console.log(`[订单状态历史] 订单 ${orderId} 有 ${list.length} 条状态记录`);
-        res.json({ success: true, code: 200, data: list });
+        // 🔥 先检查表是否存在，避免报错
+        try {
+            const { OrderStatusHistory } = await Promise.resolve().then(() => __importStar(require('../entities/OrderStatusHistory')));
+            const statusHistoryRepository = database_1.AppDataSource.getRepository(OrderStatusHistory);
+            const history = await statusHistoryRepository.find({
+                where: { orderId },
+                order: { createdAt: 'DESC' }
+            });
+            const list = history.map(item => ({
+                id: item.id,
+                orderId: item.orderId,
+                status: item.status,
+                title: getStatusTitle(item.status),
+                description: item.notes || `订单状态变更为：${getStatusTitle(item.status)}`,
+                operator: item.operatorName || '系统',
+                operatorId: item.operatorId,
+                timestamp: item.createdAt?.toISOString() || ''
+            }));
+            console.log(`[订单状态历史] 订单 ${orderId} 有 ${list.length} 条状态记录`);
+            res.json({ success: true, code: 200, data: list });
+        }
+        catch (entityError) {
+            // 如果表不存在，返回空数组
+            console.warn(`[订单状态历史] 表可能不存在，返回空数组:`, entityError);
+            res.json({ success: true, code: 200, data: [] });
+        }
     }
     catch (error) {
         console.error('获取订单状态历史失败:', error);
@@ -956,12 +1365,16 @@ router.get('/:id', async (req, res) => {
             }
         }
         // 根据订单状态推断auditStatus
+        // 🔥 修复：正确映射auditStatus
         let auditStatus = 'pending';
-        if (order.status === 'pending_shipment' || order.status === 'shipped' || order.status === 'delivered' || order.status === 'paid') {
+        if (['pending_shipment', 'shipped', 'delivered', 'paid', 'completed'].includes(order.status)) {
             auditStatus = 'approved';
         }
         else if (order.status === 'audit_rejected') {
             auditStatus = 'rejected';
+        }
+        else if (order.status === 'pending_audit' || order.status === 'pending_transfer') {
+            auditStatus = 'pending';
         }
         // 计算流转时间（创建时间 + 配置的延迟分钟数）
         let auditTransferTime = '';
@@ -1002,6 +1415,16 @@ router.get('/:id', async (req, res) => {
             paymentMethodOther: order.paymentMethodOther || '',
             expressCompany: order.expressCompany || '',
             trackingNumber: order.trackingNumber || '',
+            // 🔥 新增：物流相关字段
+            shippedAt: order.shippedAt ? formatToBeijingTime(order.shippedAt) : '',
+            shippingTime: order.shippingTime || (order.shippedAt ? formatToBeijingTime(order.shippedAt) : ''),
+            expectedDeliveryDate: order.expectedDeliveryDate || '',
+            logisticsStatus: order.logisticsStatus || '',
+            latestLogisticsInfo: order.latestLogisticsInfo || '',
+            deliveredAt: order.deliveredAt ? formatToBeijingTime(order.deliveredAt) : '',
+            isTodo: order.isTodo || false,
+            todoDate: order.todoDate || '',
+            todoRemark: order.todoRemark || '',
             serviceWechat: order.serviceWechat || '',
             orderSource: order.orderSource || '',
             depositScreenshots: order.depositScreenshots || [],
@@ -1206,6 +1629,8 @@ router.post('/', async (req, res) => {
             operator: finalCreatedByName
         };
         console.log('✅ [订单创建] 返回数据:', responseData);
+        // 🔥 保存订单创建的状态历史记录
+        await saveStatusHistory(savedOrder.id, savedOrder.status, finalCreatedBy, finalCreatedByName, `订单创建成功，订单号：${savedOrder.orderNumber}`);
         // 🔥 发送订单创建成功通知给下单员
         OrderNotificationService_1.orderNotificationService.notifyOrderCreated({
             id: savedOrder.id,
@@ -1376,8 +1801,14 @@ router.put('/:id', auth_1.authenticateToken, async (req, res) => {
                 order.customField7 = updateData.customFields.custom_field7;
         }
         const updatedOrder = await orderRepository.save(order);
-        // 🔥 根据状态变更发送相应通知
+        // 🔥 根据状态变更发送相应通知和保存状态历史
         if (updateData.status !== undefined && updateData.status !== previousStatus) {
+            // 获取当前操作人信息
+            const currentUser = req.currentUser || req.user;
+            const operatorId = currentUser?.id || null;
+            const operatorName = currentUser?.realName || currentUser?.name || currentUser?.username || '系统';
+            // 🔥 保存状态历史记录
+            await saveStatusHistory(order.id, updateData.status, operatorId, operatorName, updateData.remark || `状态变更为：${getStatusName(updateData.status)}`);
             const orderInfo = {
                 id: order.id,
                 orderNumber: order.orderNumber,
@@ -1496,11 +1927,22 @@ router.post('/:id/submit-audit', async (req, res) => {
                 message: '订单不存在'
             });
         }
+        // 🔥 提审时，如果是预留单或退单，自动改为正常发货单
+        const previousMarkType = order.markType;
+        if (order.markType === 'reserved' || order.markType === 'return') {
+            order.markType = 'normal';
+            console.log(`📝 [订单提审] 订单 ${order.orderNumber} 标记从 ${previousMarkType} 改为 normal`);
+        }
         order.status = 'pending_audit';
         if (remark) {
             order.remark = `${order.remark || ''} | 提审备注: ${remark}`;
         }
         await orderRepository.save(order);
+        // 🔥 保存状态历史记录
+        const currentUser = req.currentUser || req.user;
+        const operatorId = currentUser?.id || order.createdBy;
+        const operatorName = currentUser?.realName || currentUser?.name || order.createdByName || '销售员';
+        await saveStatusHistory(order.id, order.status, operatorId, operatorName, `订单已提交审核${remark ? `，备注：${remark}` : ''}`);
         console.log(`✅ [订单提审] 订单 ${order.orderNumber} 已提交审核，状态变更为 pending_audit`);
         // 🔥 发送待审核通知给下单员和管理员
         OrderNotificationService_1.orderNotificationService.notifyOrderPendingAudit({
@@ -1518,7 +1960,9 @@ router.post('/:id/submit-audit', async (req, res) => {
             data: {
                 id: order.id,
                 orderNumber: order.orderNumber,
-                status: order.status
+                status: order.status,
+                markType: order.markType,
+                previousMarkType: previousMarkType !== order.markType ? previousMarkType : undefined
             }
         });
     }
@@ -1590,6 +2034,9 @@ router.post('/:id/audit', auth_1.authenticateToken, async (req, res) => {
                 .catch(err => console.error('[订单审核] 发送审核拒绝通知失败:', err));
         }
         await orderRepository.save(order);
+        // 🔥 保存状态历史记录
+        const operatorId = currentUser?.id || null;
+        await saveStatusHistory(order.id, order.status, operatorId, auditorName, isApproved ? `审核通过: ${finalRemark}` : `审核拒绝: ${finalRemark}`);
         res.json({
             success: true,
             code: 200,
@@ -1658,6 +2105,9 @@ router.post('/:id/cancel-audit', auth_1.authenticateToken, async (req, res) => {
                 .catch(err => console.error('[取消审核] 发送拒绝通知失败:', err));
         }
         await orderRepository.save(order);
+        // 🔥 保存状态历史记录
+        const operatorId = currentUser?.id || null;
+        await saveStatusHistory(order.id, order.status, operatorId, auditorName, action === 'approve' ? `取消申请已通过${remark ? `，原因：${remark}` : ''}` : `取消申请已拒绝${remark ? `，原因：${remark}` : ''}`);
         res.json({
             success: true,
             code: 200,

@@ -191,6 +191,10 @@ __decorate([
     __metadata("design:type", String)
 ], Order.prototype, "logisticsStatus", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ name: 'latest_logistics_info', type: 'varchar', length: 500, nullable: true, comment: '最新物流动态' }),
+    __metadata("design:type", String)
+], Order.prototype, "latestLogisticsInfo", void 0);
+__decorate([
     (0, typeorm_1.Column)({ name: 'is_todo', type: 'boolean', default: false, comment: '是否待办' }),
     __metadata("design:type", Boolean)
 ], Order.prototype, "isTodo", void 0);

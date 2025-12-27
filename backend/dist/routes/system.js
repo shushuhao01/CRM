@@ -44,6 +44,22 @@ const SystemConfig_1 = require("../entities/SystemConfig");
 const DepartmentOrderLimit_1 = require("../entities/DepartmentOrderLimit");
 const Department_1 = require("../entities/Department");
 const User_1 = require("../entities/User");
+const Customer_1 = require("../entities/Customer");
+const Order_1 = require("../entities/Order");
+const OrderItem_1 = require("../entities/OrderItem");
+const Product_1 = require("../entities/Product");
+const ProductCategory_1 = require("../entities/ProductCategory");
+const Role_1 = require("../entities/Role");
+const Permission_1 = require("../entities/Permission");
+const AfterSalesService_1 = require("../entities/AfterSalesService");
+const LogisticsCompany_1 = require("../entities/LogisticsCompany");
+const LogisticsTracking_1 = require("../entities/LogisticsTracking");
+const Announcement_1 = require("../entities/Announcement");
+const PerformanceMetric_1 = require("../entities/PerformanceMetric");
+const FollowUp_1 = require("../entities/FollowUp");
+const CustomerTag_1 = require("../entities/CustomerTag");
+const CustomerGroup_1 = require("../entities/CustomerGroup");
+const SmsTemplate_1 = require("../entities/SmsTemplate");
 const multer_1 = __importDefault(require("multer"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
@@ -288,6 +304,9 @@ router.post('/upload-image', auth_1.authenticateToken, auth_1.requireAdmin, syst
  * @access Private (Admin)
  */
 router.post('/upload-product-image', auth_1.authenticateToken, auth_1.requireAdmin, productImageUpload.single('image'), (req, res) => {
+    console.log('[Upload] 收到商品图片上传请求');
+    console.log('[Upload] 用户:', req.user?.username, '角色:', req.user?.role);
+    console.log('[Upload] 文件:', req.file ? req.file.originalname : '无文件');
     handleImageUpload(req, res, 'products');
 });
 /**
@@ -1866,6 +1885,551 @@ router.post('/user-settings/:settingKey', auth_1.authenticateToken, async (req, 
             success: false,
             code: 500,
             message: '保存用户设置失败'
+        });
+    }
+});
+// ========== 系统监控路由 ==========
+/**
+ * @route GET /api/v1/system/monitor
+ * @desc 获取系统监控数据
+ * @access Private (Admin)
+ */
+router.get('/monitor', auth_1.authenticateToken, auth_1.requireAdmin, async (_req, res) => {
+    try {
+        const os = await Promise.resolve().then(() => __importStar(require('os')));
+        // 获取系统信息
+        const cpus = os.cpus();
+        const totalMemory = os.totalmem();
+        const freeMemory = os.freemem();
+        const usedMemory = totalMemory - freeMemory;
+        const memoryUsage = Math.round((usedMemory / totalMemory) * 100);
+        // 计算CPU使用率
+        let cpuUsage = 0;
+        if (cpus.length > 0) {
+            const cpu = cpus[0];
+            const total = cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq;
+            const idle = cpu.times.idle;
+            cpuUsage = Math.round(((total - idle) / total) * 100);
+        }
+        // 格式化内存大小
+        const formatBytes = (bytes) => {
+            if (bytes >= 1073741824)
+                return `${(bytes / 1073741824).toFixed(2)} GB`;
+            if (bytes >= 1048576)
+                return `${(bytes / 1048576).toFixed(2)} MB`;
+            return `${(bytes / 1024).toFixed(2)} KB`;
+        };
+        // 格式化运行时间
+        const formatUptime = (seconds) => {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            if (days > 0)
+                return `${days}天 ${hours}小时 ${minutes}分钟`;
+            if (hours > 0)
+                return `${hours}小时 ${minutes}分钟`;
+            return `${minutes}分钟`;
+        };
+        // 获取数据库连接状态
+        let dbConnected = false;
+        let dbActiveConnections = 0;
+        try {
+            if (database_1.AppDataSource.isInitialized) {
+                dbConnected = true;
+                // 尝试获取活跃连接数
+                const queryRunner = database_1.AppDataSource.createQueryRunner();
+                await queryRunner.connect();
+                dbActiveConnections = 1; // 至少有一个连接
+                await queryRunner.release();
+            }
+        }
+        catch {
+            dbConnected = false;
+        }
+        const monitorData = {
+            systemInfo: {
+                os: `${os.type()} ${os.release()}`,
+                arch: os.arch(),
+                cpuCores: cpus.length,
+                totalMemory: formatBytes(totalMemory),
+                nodeVersion: process.version,
+                uptime: formatUptime(os.uptime())
+            },
+            performance: {
+                cpuUsage,
+                memoryUsage,
+                diskUsage: 0, // 磁盘使用率需要额外的库来获取
+                networkLatency: 0 // 网络延迟需要实际测量
+            },
+            database: {
+                type: 'MySQL',
+                version: '8.0',
+                connected: dbConnected,
+                activeConnections: dbActiveConnections,
+                size: '计算中...',
+                lastBackup: '未备份'
+            },
+            services: [
+                {
+                    name: '后端API服务',
+                    status: 'running',
+                    port: process.env.PORT || '3000',
+                    uptime: formatUptime(process.uptime()),
+                    memory: formatBytes(process.memoryUsage().heapUsed)
+                },
+                {
+                    name: '数据库服务',
+                    status: dbConnected ? 'running' : 'stopped',
+                    port: process.env.DB_PORT || '3306',
+                    uptime: dbConnected ? '运行中' : '已停止',
+                    memory: '-'
+                }
+            ]
+        };
+        res.json({
+            success: true,
+            data: monitorData
+        });
+    }
+    catch (error) {
+        console.error('获取系统监控数据失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取系统监控数据失败'
+        });
+    }
+});
+// ========== 数据库备份路由 ==========
+/**
+ * @route GET /api/v1/system/backup/list
+ * @desc 获取备份列表
+ * @access Private (Admin)
+ */
+router.get('/backup/list', auth_1.authenticateToken, auth_1.requireAdmin, async (_req, res) => {
+    try {
+        const backupDir = path_1.default.join(process.cwd(), 'backups');
+        // 确保备份目录存在
+        if (!fs_1.default.existsSync(backupDir)) {
+            fs_1.default.mkdirSync(backupDir, { recursive: true });
+        }
+        // 读取备份文件列表
+        const files = fs_1.default.readdirSync(backupDir)
+            .filter(file => file.endsWith('.sql') || file.endsWith('.json') || file.endsWith('.gz'))
+            .map(filename => {
+            const filePath = path_1.default.join(backupDir, filename);
+            const stats = fs_1.default.statSync(filePath);
+            const isManual = filename.includes('manual');
+            return {
+                filename,
+                timestamp: stats.mtime.toISOString(),
+                size: stats.size,
+                type: isManual ? 'manual' : 'auto'
+            };
+        })
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        res.json({
+            success: true,
+            data: files
+        });
+    }
+    catch (error) {
+        console.error('获取备份列表失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取备份列表失败'
+        });
+    }
+});
+/**
+ * @route POST /api/v1/system/backup/create
+ * @desc 创建数据库备份
+ * @access Private (Admin)
+ */
+router.post('/backup/create', auth_1.authenticateToken, auth_1.requireAdmin, async (req, res) => {
+    try {
+        const { type = 'manual' } = req.body;
+        const backupDir = path_1.default.join(process.cwd(), 'backups');
+        // 确保备份目录存在
+        if (!fs_1.default.existsSync(backupDir)) {
+            fs_1.default.mkdirSync(backupDir, { recursive: true });
+        }
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `${type}-backup-${timestamp}.json`;
+        const filePath = path_1.default.join(backupDir, filename);
+        // 导出数据库数据 - 备份所有重要的业务表
+        const backupData = {};
+        // 定义需要备份的实体（按依赖顺序排列，共20+个核心业务表）
+        const entities = [
+            // 基础配置表
+            { name: 'system_configs', repo: database_1.AppDataSource.getRepository(SystemConfig_1.SystemConfig) },
+            { name: 'roles', repo: database_1.AppDataSource.getRepository(Role_1.Role) },
+            { name: 'permissions', repo: database_1.AppDataSource.getRepository(Permission_1.Permission) },
+            // 组织架构
+            { name: 'departments', repo: database_1.AppDataSource.getRepository(Department_1.Department) },
+            { name: 'department_order_limits', repo: database_1.AppDataSource.getRepository(DepartmentOrderLimit_1.DepartmentOrderLimit) },
+            { name: 'users', repo: database_1.AppDataSource.getRepository(User_1.User) },
+            // 商品相关
+            { name: 'product_categories', repo: database_1.AppDataSource.getRepository(ProductCategory_1.ProductCategory) },
+            { name: 'products', repo: database_1.AppDataSource.getRepository(Product_1.Product) },
+            // 客户相关
+            { name: 'customers', repo: database_1.AppDataSource.getRepository(Customer_1.Customer) },
+            { name: 'customer_tags', repo: database_1.AppDataSource.getRepository(CustomerTag_1.CustomerTag) },
+            { name: 'customer_groups', repo: database_1.AppDataSource.getRepository(CustomerGroup_1.CustomerGroup) },
+            { name: 'follow_ups', repo: database_1.AppDataSource.getRepository(FollowUp_1.FollowUp) },
+            // 订单相关
+            { name: 'orders', repo: database_1.AppDataSource.getRepository(Order_1.Order) },
+            { name: 'order_items', repo: database_1.AppDataSource.getRepository(OrderItem_1.OrderItem) },
+            // 售后服务
+            { name: 'after_sales_services', repo: database_1.AppDataSource.getRepository(AfterSalesService_1.AfterSalesService) },
+            // 物流相关
+            { name: 'logistics_companies', repo: database_1.AppDataSource.getRepository(LogisticsCompany_1.LogisticsCompany) },
+            { name: 'logistics_trackings', repo: database_1.AppDataSource.getRepository(LogisticsTracking_1.LogisticsTracking) },
+            // 业绩相关
+            { name: 'performance_metrics', repo: database_1.AppDataSource.getRepository(PerformanceMetric_1.PerformanceMetric) },
+            // 短信模板
+            { name: 'sms_templates', repo: database_1.AppDataSource.getRepository(SmsTemplate_1.SmsTemplate) },
+            // 公告
+            { name: 'announcements', repo: database_1.AppDataSource.getRepository(Announcement_1.Announcement) }
+        ];
+        console.log(`[备份] 开始备份 ${entities.length} 个数据表...`);
+        for (const entity of entities) {
+            try {
+                const data = await entity.repo.find();
+                backupData[entity.name] = data;
+                console.log(`[备份] ${entity.name}: ${data.length} 条记录`);
+            }
+            catch (err) {
+                console.warn(`[备份] ${entity.name} 失败:`, err);
+                backupData[entity.name] = [];
+            }
+        }
+        // 添加元数据
+        const totalRecords = Object.values(backupData).reduce((sum, arr) => sum + arr.length, 0);
+        const backup = {
+            version: '1.0.0',
+            timestamp: new Date().toISOString(),
+            type,
+            data: backupData,
+            metadata: {
+                tables: Object.keys(backupData),
+                tableCount: Object.keys(backupData).length,
+                totalRecords,
+                recordsByTable: Object.fromEntries(Object.entries(backupData).map(([name, data]) => [name, data.length]))
+            }
+        };
+        // 写入文件
+        fs_1.default.writeFileSync(filePath, JSON.stringify(backup, null, 2));
+        const stats = fs_1.default.statSync(filePath);
+        console.log(`[备份] 备份完成: ${filename}, 大小: ${(stats.size / 1024).toFixed(2)} KB, 共 ${totalRecords} 条记录`);
+        res.json({
+            success: true,
+            message: '备份创建成功',
+            data: {
+                filename,
+                timestamp: backup.timestamp,
+                size: stats.size,
+                type,
+                tables: backup.metadata.tables,
+                totalRecords: backup.metadata.totalRecords
+            }
+        });
+    }
+    catch (error) {
+        console.error('创建备份失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '创建备份失败: ' + (error instanceof Error ? error.message : '未知错误')
+        });
+    }
+});
+/**
+ * @route GET /api/v1/system/backup/download/:filename
+ * @desc 下载备份文件
+ * @access Private (Admin)
+ */
+router.get('/backup/download/:filename', auth_1.authenticateToken, auth_1.requireAdmin, (req, res) => {
+    try {
+        const { filename } = req.params;
+        const backupDir = path_1.default.join(process.cwd(), 'backups');
+        const filePath = path_1.default.join(backupDir, path_1.default.basename(filename));
+        // 安全检查
+        if (!filePath.startsWith(backupDir)) {
+            return res.status(400).json({
+                success: false,
+                message: '无效的文件路径'
+            });
+        }
+        if (!fs_1.default.existsSync(filePath)) {
+            return res.status(404).json({
+                success: false,
+                message: '备份文件不存在'
+            });
+        }
+        res.download(filePath, filename);
+    }
+    catch (error) {
+        console.error('下载备份失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '下载备份失败'
+        });
+    }
+});
+/**
+ * @route DELETE /api/v1/system/backup/:filename
+ * @desc 删除备份文件
+ * @access Private (Admin)
+ */
+router.delete('/backup/:filename', auth_1.authenticateToken, auth_1.requireAdmin, (req, res) => {
+    try {
+        const { filename } = req.params;
+        const backupDir = path_1.default.join(process.cwd(), 'backups');
+        const filePath = path_1.default.join(backupDir, path_1.default.basename(filename));
+        // 安全检查
+        if (!filePath.startsWith(backupDir)) {
+            return res.status(400).json({
+                success: false,
+                message: '无效的文件路径'
+            });
+        }
+        if (!fs_1.default.existsSync(filePath)) {
+            return res.status(404).json({
+                success: false,
+                message: '备份文件不存在'
+            });
+        }
+        fs_1.default.unlinkSync(filePath);
+        res.json({
+            success: true,
+            message: '备份删除成功'
+        });
+    }
+    catch (error) {
+        console.error('删除备份失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '删除备份失败'
+        });
+    }
+});
+/**
+ * @route GET /api/v1/system/backup/status
+ * @desc 获取备份状态
+ * @access Private (Admin)
+ */
+router.get('/backup/status', auth_1.authenticateToken, auth_1.requireAdmin, async (_req, res) => {
+    try {
+        const backupDir = path_1.default.join(process.cwd(), 'backups');
+        // 确保备份目录存在
+        if (!fs_1.default.existsSync(backupDir)) {
+            fs_1.default.mkdirSync(backupDir, { recursive: true });
+        }
+        // 读取备份文件列表
+        const files = fs_1.default.readdirSync(backupDir)
+            .filter(file => file.endsWith('.sql') || file.endsWith('.json') || file.endsWith('.gz'))
+            .map(filename => {
+            const filePath = path_1.default.join(backupDir, filename);
+            const stats = fs_1.default.statSync(filePath);
+            return {
+                filename,
+                timestamp: stats.mtime,
+                size: stats.size
+            };
+        })
+            .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+        // 计算统计信息
+        const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+        const lastBackup = files.length > 0 ? files[0].timestamp.toISOString() : null;
+        // 获取备份配置
+        const settings = await getConfigsByGroup('backup_settings');
+        res.json({
+            success: true,
+            data: {
+                backupCount: files.length,
+                totalSize,
+                lastBackupTime: lastBackup,
+                autoBackupEnabled: settings.autoBackupEnabled || false
+            }
+        });
+    }
+    catch (error) {
+        console.error('获取备份状态失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取备份状态失败'
+        });
+    }
+});
+/**
+ * @route POST /api/v1/system/backup/restore/:filename
+ * @desc 从备份恢复数据（覆盖现有数据）
+ * @access Private (Admin)
+ */
+router.post('/backup/restore/:filename', auth_1.authenticateToken, auth_1.requireAdmin, async (req, res) => {
+    try {
+        const { filename } = req.params;
+        const backupDir = path_1.default.join(process.cwd(), 'backups');
+        const filePath = path_1.default.join(backupDir, path_1.default.basename(filename));
+        // 安全检查
+        if (!filePath.startsWith(backupDir)) {
+            return res.status(400).json({
+                success: false,
+                message: '无效的文件路径'
+            });
+        }
+        if (!fs_1.default.existsSync(filePath)) {
+            return res.status(404).json({
+                success: false,
+                message: '备份文件不存在'
+            });
+        }
+        // 读取备份文件
+        const backupContent = fs_1.default.readFileSync(filePath, 'utf-8');
+        const backup = JSON.parse(backupContent);
+        if (!backup.data || !backup.version) {
+            return res.status(400).json({
+                success: false,
+                message: '备份文件格式无效'
+            });
+        }
+        console.log(`[恢复] 开始从备份恢复数据: ${filename}`);
+        console.log(`[恢复] 备份版本: ${backup.version}, 时间: ${backup.timestamp}`);
+        const restoreResults = {};
+        // 定义恢复顺序（先删除依赖表，再恢复基础表）
+        // 注意：恢复是覆盖操作，会先清空表再插入数据
+        const restoreOrder = [
+            // 先恢复基础表
+            { name: 'system_configs', repo: database_1.AppDataSource.getRepository(SystemConfig_1.SystemConfig) },
+            { name: 'roles', repo: database_1.AppDataSource.getRepository(Role_1.Role) },
+            { name: 'permissions', repo: database_1.AppDataSource.getRepository(Permission_1.Permission) },
+            { name: 'departments', repo: database_1.AppDataSource.getRepository(Department_1.Department) },
+            { name: 'users', repo: database_1.AppDataSource.getRepository(User_1.User) },
+            { name: 'product_categories', repo: database_1.AppDataSource.getRepository(ProductCategory_1.ProductCategory) },
+            { name: 'products', repo: database_1.AppDataSource.getRepository(Product_1.Product) },
+            { name: 'customers', repo: database_1.AppDataSource.getRepository(Customer_1.Customer) },
+            { name: 'customer_tags', repo: database_1.AppDataSource.getRepository(CustomerTag_1.CustomerTag) },
+            { name: 'customer_groups', repo: database_1.AppDataSource.getRepository(CustomerGroup_1.CustomerGroup) },
+            { name: 'orders', repo: database_1.AppDataSource.getRepository(Order_1.Order) },
+            { name: 'order_items', repo: database_1.AppDataSource.getRepository(OrderItem_1.OrderItem) },
+            { name: 'after_sales_services', repo: database_1.AppDataSource.getRepository(AfterSalesService_1.AfterSalesService) },
+            { name: 'logistics_companies', repo: database_1.AppDataSource.getRepository(LogisticsCompany_1.LogisticsCompany) },
+            { name: 'logistics_trackings', repo: database_1.AppDataSource.getRepository(LogisticsTracking_1.LogisticsTracking) },
+            { name: 'performance_metrics', repo: database_1.AppDataSource.getRepository(PerformanceMetric_1.PerformanceMetric) },
+            { name: 'follow_ups', repo: database_1.AppDataSource.getRepository(FollowUp_1.FollowUp) },
+            { name: 'sms_templates', repo: database_1.AppDataSource.getRepository(SmsTemplate_1.SmsTemplate) },
+            { name: 'announcements', repo: database_1.AppDataSource.getRepository(Announcement_1.Announcement) },
+            { name: 'department_order_limits', repo: database_1.AppDataSource.getRepository(DepartmentOrderLimit_1.DepartmentOrderLimit) }
+        ];
+        // 使用事务进行恢复
+        const queryRunner = database_1.AppDataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+        try {
+            for (const entity of restoreOrder) {
+                const tableData = backup.data[entity.name];
+                if (!tableData || !Array.isArray(tableData)) {
+                    restoreResults[entity.name] = { success: true, count: 0 };
+                    continue;
+                }
+                try {
+                    // 清空表（使用TRUNCATE会更快，但需要禁用外键检查）
+                    await queryRunner.query(`SET FOREIGN_KEY_CHECKS = 0`);
+                    await queryRunner.query(`TRUNCATE TABLE ${entity.name}`);
+                    await queryRunner.query(`SET FOREIGN_KEY_CHECKS = 1`);
+                    // 插入数据
+                    if (tableData.length > 0) {
+                        // 使用queryRunner直接插入以避免类型问题
+                        const repo = entity.repo;
+                        await repo.save(tableData);
+                    }
+                    restoreResults[entity.name] = { success: true, count: tableData.length };
+                    console.log(`[恢复] ${entity.name}: 恢复 ${tableData.length} 条记录`);
+                }
+                catch (err) {
+                    const errorMsg = err instanceof Error ? err.message : '未知错误';
+                    restoreResults[entity.name] = { success: false, count: 0, error: errorMsg };
+                    console.error(`[恢复] ${entity.name} 失败:`, err);
+                }
+            }
+            await queryRunner.commitTransaction();
+            console.log(`[恢复] 数据恢复完成`);
+            res.json({
+                success: true,
+                message: '数据恢复成功',
+                data: {
+                    filename,
+                    backupTime: backup.timestamp,
+                    results: restoreResults,
+                    totalRestored: Object.values(restoreResults).reduce((sum, r) => sum + r.count, 0)
+                }
+            });
+        }
+        catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        }
+        finally {
+            await queryRunner.release();
+        }
+    }
+    catch (error) {
+        console.error('恢复备份失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '恢复备份失败: ' + (error instanceof Error ? error.message : '未知错误')
+        });
+    }
+});
+/**
+ * @route DELETE /api/v1/system/backup/cleanup
+ * @desc 清理过期备份文件
+ * @access Private (Admin)
+ */
+router.delete('/backup/cleanup', auth_1.authenticateToken, auth_1.requireAdmin, async (req, res) => {
+    try {
+        const { retentionDays = 30 } = req.body;
+        const backupDir = path_1.default.join(process.cwd(), 'backups');
+        if (!fs_1.default.existsSync(backupDir)) {
+            return res.json({
+                success: true,
+                message: '没有需要清理的备份',
+                data: { deletedCount: 0, freedSize: 0 }
+            });
+        }
+        const now = Date.now();
+        const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
+        let deletedCount = 0;
+        let freedSize = 0;
+        const files = fs_1.default.readdirSync(backupDir);
+        for (const filename of files) {
+            if (!filename.endsWith('.json') && !filename.endsWith('.sql') && !filename.endsWith('.gz')) {
+                continue;
+            }
+            const filePath = path_1.default.join(backupDir, filename);
+            const stats = fs_1.default.statSync(filePath);
+            const fileAge = now - stats.mtime.getTime();
+            if (fileAge > retentionMs) {
+                freedSize += stats.size;
+                fs_1.default.unlinkSync(filePath);
+                deletedCount++;
+                console.log(`[清理] 删除过期备份: ${filename}`);
+            }
+        }
+        res.json({
+            success: true,
+            message: `清理完成，删除了 ${deletedCount} 个过期备份`,
+            data: {
+                deletedCount,
+                freedSize,
+                freedSizeFormatted: `${(freedSize / 1024 / 1024).toFixed(2)} MB`
+            }
+        });
+    }
+    catch (error) {
+        console.error('清理备份失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '清理备份失败'
         });
     }
 });

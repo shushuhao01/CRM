@@ -752,10 +752,16 @@ class MessageController {
             });
             // 获取用户的阅读记录
             const readRepo = dataSource.getRepository(Announcement_1.AnnouncementRead);
-            const readRecords = await readRepo.find({
-                where: { userId: currentUser?.id }
-            });
-            const readIds = new Set(readRecords.map(r => r.announcementId));
+            const userId = currentUser?.id; // userId 是字符串类型
+            console.log('[获取公告] 用户ID:', userId, '(类型:', typeof userId, '), 公告数量:', filteredAnnouncements.length);
+            let readIds = new Set();
+            if (userId) {
+                const readRecords = await readRepo.find({
+                    where: { userId: String(userId) } // 确保是字符串类型
+                });
+                readIds = new Set(readRecords.map(r => r.announcementId));
+                console.log('[获取公告] 已读公告数量:', readIds.size, ', 已读公告IDs:', Array.from(readIds));
+            }
             res.json({
                 success: true,
                 data: filteredAnnouncements.map(ann => ({
@@ -786,36 +792,45 @@ class MessageController {
             const { id } = req.params;
             const dataSource = (0, database_1.getDataSource)();
             if (!dataSource) {
-                res.json({ success: true });
+                console.error('[公告已读] ❌ 数据库未连接!');
+                res.status(500).json({ success: false, message: '数据库未连接' });
                 return;
             }
             const currentUser = req.currentUser || req.user;
-            const userId = currentUser?.id;
+            const userId = currentUser?.id; // userId 是字符串类型
+            console.log('[公告已读] 用户信息:', JSON.stringify(currentUser));
+            console.log('[公告已读] 用户ID:', userId, '(类型:', typeof userId, '), 公告ID:', id);
             if (!userId) {
+                console.error('[公告已读] ❌ 用户未登录或无法获取用户ID');
                 res.status(401).json({ success: false, message: '未登录' });
                 return;
             }
             const readRepo = dataSource.getRepository(Announcement_1.AnnouncementRead);
-            // 检查是否已读
+            // 检查是否已读 - userId 是字符串类型
             const existing = await readRepo.findOne({
-                where: { announcementId: id, userId }
+                where: { announcementId: id, userId: String(userId) }
             });
+            console.log('[公告已读] 已存在记录:', existing ? '是' : '否');
             if (!existing) {
                 // 创建阅读记录
                 const readRecord = readRepo.create({
                     id: (0, uuid_1.v4)(),
                     announcementId: id,
-                    userId
+                    userId: String(userId) // 确保是字符串类型
                 });
-                await readRepo.save(readRecord);
+                const savedRecord = await readRepo.save(readRecord);
+                console.log('[公告已读] ✅ 已创建阅读记录, ID:', savedRecord.id, ', userId:', savedRecord.userId);
                 // 更新公告查看次数
                 const announcementRepo = dataSource.getRepository(Announcement_1.Announcement);
                 await announcementRepo.increment({ id }, 'viewCount', 1);
             }
+            else {
+                console.log('[公告已读] 记录已存在，无需重复创建');
+            }
             res.json({ success: true, message: '已标记为已读' });
         }
         catch (error) {
-            console.error('标记公告已读失败:', error);
+            console.error('[公告已读] ❌ 标记公告已读失败:', error);
             res.status(500).json({ success: false, message: '标记公告已读失败' });
         }
     }
@@ -1362,6 +1377,7 @@ class MessageController {
     }
     /**
      * 发送系统消息（内部调用或API调用）
+     * 🔥 2025-12-19 新增：WebSocket实时推送
      */
     async sendSystemMessage(req, res) {
         try {
@@ -1393,6 +1409,20 @@ class MessageController {
                 isRead: 0
             });
             await messageRepo.save(message);
+            // 🔥 通过WebSocket实时推送消息
+            if (global.webSocketService) {
+                global.webSocketService.pushSystemMessage({
+                    id: message.id,
+                    type: message.type,
+                    title: message.title,
+                    content: message.content,
+                    priority: message.priority,
+                    relatedId: message.relatedId,
+                    relatedType: message.relatedType,
+                    actionUrl: message.actionUrl
+                }, { userId: targetUserId });
+                console.log(`[系统消息] 🔌 WebSocket推送: ${title} -> 用户 ${targetUserId}`);
+            }
             console.log(`[系统消息] ✅ 发送成功: ${title} -> 用户 ${targetUserId}`);
             res.json({
                 success: true,
@@ -1464,7 +1494,8 @@ class MessageController {
             const currentUser = req.currentUser || req.user;
             const userId = currentUser?.id || currentUser?.userId;
             const messageRepo = dataSource.getRepository(SystemMessage_1.SystemMessage);
-            await messageRepo.update({ id, targetUserId: userId }, { isRead: 1, readAt: new Date() });
+            // 🔥 修复：不限制targetUserId，因为全局消息的targetUserId为null
+            await messageRepo.update({ id }, { isRead: 1, readAt: new Date() });
             res.json({
                 success: true,
                 message: '消息已标记为已读'
@@ -1492,7 +1523,14 @@ class MessageController {
                 return;
             }
             const messageRepo = dataSource.getRepository(SystemMessage_1.SystemMessage);
-            const result = await messageRepo.update({ targetUserId: userId, isRead: 0 }, { isRead: 1, readAt: new Date() });
+            // 🔥 修复：标记该用户可见的所有消息为已读（包括全局消息）
+            const result = await messageRepo
+                .createQueryBuilder()
+                .update()
+                .set({ isRead: 1, readAt: new Date() })
+                .where('isRead = :isRead', { isRead: 0 })
+                .andWhere('(targetUserId = :userId OR targetUserId IS NULL)', { userId })
+                .execute();
             res.json({
                 success: true,
                 message: `已标记 ${result.affected || 0} 条消息为已读`

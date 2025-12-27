@@ -34,6 +34,7 @@ export declare class MessageController {
     getSystemMessages(req: Request, res: Response): Promise<void>;
     /**
      * 发送系统消息（内部调用或API调用）
+     * 🔥 2025-12-19 新增：WebSocket实时推送
      */
     sendSystemMessage(req: Request, res: Response): Promise<void>;
     /**

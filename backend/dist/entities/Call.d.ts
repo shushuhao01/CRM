@@ -1,12 +1,22 @@
 export declare class Call {
-    id: number;
+    id: string;
     customerId: string;
-    userId: string;
-    phoneNumber: string;
+    customerName: string;
+    customerPhone: string;
+    callType: 'outbound' | 'inbound';
+    callStatus: 'connected' | 'missed' | 'busy' | 'failed' | 'rejected';
+    startTime: Date;
+    endTime: Date;
     duration: number;
-    status: string;
+    recordingUrl: string;
+    hasRecording: boolean;
     notes: string;
+    followUpRequired: boolean;
+    userId: string;
+    userName: string;
+    department: string;
     createdAt: Date;
     updatedAt: Date;
+    static generateId(): string;
 }
 //# sourceMappingURL=Call.d.ts.map

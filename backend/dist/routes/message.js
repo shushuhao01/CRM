@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const MessageController_1 = require("../controllers/MessageController");
+const auth_1 = require("../middleware/auth");
 const router = (0, express_1.Router)();
 const messageController = new MessageController_1.MessageController();
 // 暂时禁用身份验证以便测试
@@ -180,7 +181,7 @@ router.put('/system-messages/read-all', messageController.markAllMessagesAsRead.
  * @desc 获取消息统计数据
  * @access Private
  */
-router.get('/stats', messageController.getMessageStats.bind(messageController));
+router.get('/stats', auth_1.authenticateToken, messageController.getMessageStats.bind(messageController));
 /**
  * @route DELETE /api/v1/message/system-messages/:id
  * @desc 删除单条消息

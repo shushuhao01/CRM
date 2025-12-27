@@ -41,7 +41,7 @@ const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
 const morgan_1 = __importDefault(require("morgan"));
-// Trigger restart
+const http_1 = require("http");
 const compression_1 = __importDefault(require("compression"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const dotenv_1 = __importDefault(require("dotenv"));
@@ -49,6 +49,8 @@ const path_1 = __importDefault(require("path"));
 const database_1 = require("./config/database");
 const logger_1 = require("./config/logger");
 const errorHandler_1 = require("./middleware/errorHandler");
+const WebSocketService_1 = require("./services/WebSocketService");
+const MobileWebSocketService_1 = require("./services/MobileWebSocketService");
 // 路由导入
 const auth_1 = __importDefault(require("./routes/auth"));
 // import mockAuthRoutes from './routes/mockAuth'; // 文件已删除
@@ -79,9 +81,30 @@ const sms_1 = __importDefault(require("./routes/sms"));
 const customerShare_1 = __importDefault(require("./routes/customerShare"));
 const performanceReport_1 = __importDefault(require("./routes/performanceReport"));
 const customerServicePermissions_1 = __importDefault(require("./routes/customerServicePermissions"));
-// 加载环境变量
-dotenv_1.default.config();
+const timeoutReminder_1 = __importDefault(require("./routes/timeoutReminder"));
+const sensitiveInfoPermissions_1 = __importDefault(require("./routes/sensitiveInfoPermissions"));
+const messageCleanup_1 = __importDefault(require("./routes/messageCleanup"));
+const mobile_1 = __importDefault(require("./routes/mobile"));
+const callWebhook_1 = __importDefault(require("./routes/callWebhook"));
+const callConfig_1 = __importDefault(require("./routes/callConfig"));
+const fs = __importStar(require("fs"));
+// 根据NODE_ENV环境变量加载对应配置文件
+// 生产环境(production): 加载 .env
+// 开发环境(development): 优先加载 .env.local，如果不存在则加载 .env
+const isProduction = process.env.NODE_ENV === 'production';
+let envFile = '.env';
+if (!isProduction) {
+    // 开发环境：优先使用 .env.local
+    const localEnvPath = path_1.default.join(__dirname, '../', '.env.local');
+    if (fs.existsSync(localEnvPath)) {
+        envFile = '.env.local';
+    }
+}
+const envPath = path_1.default.join(__dirname, '../', envFile);
+dotenv_1.default.config({ path: envPath });
+console.log(`✅ 已加载${isProduction ? '生产' : '开发'}环境配置: ${envFile}`);
 const app = (0, express_1.default)();
+const httpServer = (0, http_1.createServer)(app);
 const PORT = process.env.PORT || 3000;
 const API_PREFIX = process.env.API_PREFIX || '/api/v1';
 // 信任代理（用于获取真实IP）
@@ -142,7 +165,7 @@ const loginLimiter = (0, express_rate_limit_1.default)({
     },
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => {
+    skip: (_req) => {
         // 开发环境跳过登录限流
         return process.env.NODE_ENV === 'development';
     }
@@ -179,7 +202,8 @@ app.get('/health', (req, res) => {
         message: 'CRM API服务运行正常',
         timestamp: new Date().toISOString(),
         version: process.env.npm_package_version || '1.0.0',
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'development',
+        onlineUsers: WebSocketService_1.webSocketService.getOnlineUsersCount()
     });
 });
 // API健康检查端点
@@ -250,6 +274,12 @@ app.use(`${API_PREFIX}/assignment`, assignment_1.default);
 app.use(`${API_PREFIX}/sms`, sms_1.default);
 app.use(`${API_PREFIX}/customer-share`, customerShare_1.default);
 app.use(`${API_PREFIX}/customer-service-permissions`, customerServicePermissions_1.default);
+app.use(`${API_PREFIX}/timeout-reminder`, timeoutReminder_1.default);
+app.use(`${API_PREFIX}/sensitive-info-permissions`, sensitiveInfoPermissions_1.default);
+app.use(`${API_PREFIX}/message-cleanup`, messageCleanup_1.default);
+app.use(`${API_PREFIX}/mobile`, mobile_1.default);
+app.use(`${API_PREFIX}/calls/webhook`, callWebhook_1.default);
+app.use(`${API_PREFIX}/call-config`, callConfig_1.default);
 // 404处理
 app.use(errorHandler_1.notFoundHandler);
 // 全局错误处理
@@ -260,13 +290,35 @@ const startServer = async () => {
         // 初始化数据库连接
         await (0, database_1.initializeDatabase)();
         logger_1.logger.info('✅ 数据库初始化完成');
-        // 启动HTTP服务器
-        const server = app.listen(PORT, () => {
+        // 初始化录音存储服务
+        const { recordingStorageService } = await Promise.resolve().then(() => __importStar(require('./services/RecordingStorageService')));
+        await recordingStorageService.initialize();
+        logger_1.logger.info('✅ 录音存储服务初始化完成');
+        // 启动HTTP服务器（使用httpServer以支持WebSocket）
+        const server = httpServer.listen(PORT, () => {
             logger_1.logger.info(`🚀 CRM API服务已启动`);
             logger_1.logger.info(`📍 服务地址: http://localhost:${PORT}`);
             logger_1.logger.info(`🔗 API前缀: ${API_PREFIX}`);
             logger_1.logger.info(`🌍 运行环境: ${process.env.NODE_ENV || 'development'}`);
             logger_1.logger.info(`📊 健康检查: http://localhost:${PORT}/health`);
+            // 初始化WebSocket服务（异步）
+            WebSocketService_1.webSocketService.initialize(httpServer).then(() => {
+                global.webSocketService = WebSocketService_1.webSocketService;
+                if (WebSocketService_1.webSocketService.isInitialized()) {
+                    logger_1.logger.info(`🔌 WebSocket实时推送服务已启动`);
+                }
+            }).catch(err => {
+                logger_1.logger.warn('WebSocket服务启动失败:', err.message);
+            });
+            // 初始化移动端 WebSocket 服务
+            try {
+                MobileWebSocketService_1.mobileWebSocketService.initialize(httpServer);
+                global.mobileWebSocketService = MobileWebSocketService_1.mobileWebSocketService;
+                logger_1.logger.info(`📱 移动端 WebSocket 服务已启动`);
+            }
+            catch (err) {
+                logger_1.logger.warn('移动端 WebSocket 服务启动失败:', err.message);
+            }
         });
         // 🔥 启动定时任务：每天凌晨3点清理过期消息（超过30天）
         const scheduleMessageCleanup = () => {
@@ -300,6 +352,66 @@ const startServer = async () => {
             logger_1.logger.info('📅 [定时任务] 消息自动清理任务已启动（每24小时清理超过30天的消息）');
         };
         scheduleMessageCleanup();
+        // 🔥 启动超时提醒服务
+        const startTimeoutReminderService = async () => {
+            try {
+                const { timeoutReminderService } = await Promise.resolve().then(() => __importStar(require('./services/TimeoutReminderService')));
+                // 从数据库读取配置，决定是否启用
+                const { SystemConfig } = await Promise.resolve().then(() => __importStar(require('./entities/SystemConfig')));
+                const { AppDataSource } = await Promise.resolve().then(() => __importStar(require('./config/database')));
+                if (AppDataSource?.isInitialized) {
+                    const configRepo = AppDataSource.getRepository(SystemConfig);
+                    const enabledConfig = await configRepo.findOne({
+                        where: { configKey: 'timeout_reminder_enabled', configGroup: 'timeout_reminder' }
+                    });
+                    const intervalConfig = await configRepo.findOne({
+                        where: { configKey: 'timeout_check_interval_minutes', configGroup: 'timeout_reminder' }
+                    });
+                    const isEnabled = enabledConfig?.configValue !== 'false';
+                    const intervalMinutes = parseInt(intervalConfig?.configValue || '30', 10);
+                    if (isEnabled) {
+                        timeoutReminderService.start(intervalMinutes);
+                        logger_1.logger.info(`⏰ [定时任务] 超时提醒服务已启动（检测间隔：${intervalMinutes}分钟）`);
+                    }
+                    else {
+                        logger_1.logger.info('⏰ [定时任务] 超时提醒服务已禁用');
+                    }
+                }
+                else {
+                    // 数据库未初始化，使用默认配置启动
+                    timeoutReminderService.start(30);
+                    logger_1.logger.info('⏰ [定时任务] 超时提醒服务已启动（默认配置）');
+                }
+            }
+            catch (error) {
+                logger_1.logger.error('[定时任务] 启动超时提醒服务失败:', error);
+            }
+        };
+        startTimeoutReminderService();
+        // 🔥 启动业绩报表定时发送服务
+        const startPerformanceReportScheduler = async () => {
+            try {
+                const { performanceReportScheduler } = await Promise.resolve().then(() => __importStar(require('./services/PerformanceReportScheduler')));
+                performanceReportScheduler.start();
+                logger_1.logger.info('📊 [定时任务] 业绩报表定时发送服务已启动');
+            }
+            catch (error) {
+                logger_1.logger.error('[定时任务] 启动业绩报表定时发送服务失败:', error);
+            }
+        };
+        startPerformanceReportScheduler();
+        // 🔥 启动消息清理定时服务
+        const startMessageCleanupService = async () => {
+            try {
+                const { messageCleanupService } = await Promise.resolve().then(() => __importStar(require('./services/MessageCleanupService')));
+                messageCleanupService.start();
+                logger_1.logger.info('🧹 [定时任务] 消息清理服务已启动');
+            }
+            catch (error) {
+                logger_1.logger.error('[定时任务] 启动消息清理服务失败:', error);
+            }
+        };
+        startMessageCleanupService();
         // 优雅关闭处理
         const gracefulShutdown = async (signal) => {
             logger_1.logger.info(`收到 ${signal} 信号，开始优雅关闭...`);
