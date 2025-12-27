@@ -342,69 +342,55 @@ router.post('/bind', async (req: Request, res: Response) => {
     let record: any = null
     let userId: string = ''
 
-    // 首先尝试从 work_phones 表查找（旧格式）
-    console.log('查询 work_phones 表...')
-    const workPhoneRecords = await AppDataSource.query(
-      `SELECT id, user_id FROM work_phones
-       WHERE bind_token = ? AND bind_token_expires > NOW()`,
+    // 从 device_bind_logs 表查找（connectionId）
+    console.log('查询 device_bind_logs 表, bindToken:', bindToken)
+    const bindLogs = await AppDataSource.query(
+      `SELECT id, user_id FROM device_bind_logs
+       WHERE connection_id = ? AND status = 'pending' AND expires_at > NOW()`,
       [bindToken]
     )
-    console.log('work_phones 查询结果:', workPhoneRecords)
+    console.log('device_bind_logs 查询结果:', bindLogs)
 
-    if (workPhoneRecords.length > 0) {
-      record = workPhoneRecords[0]
-      userId = record.user_id
-    } else {
-      // 尝试从 device_bind_logs 表查找（新格式，connectionId）
-      console.log('查询 device_bind_logs 表...')
-      const bindLogs = await AppDataSource.query(
-        `SELECT id, user_id FROM device_bind_logs
-         WHERE connection_id = ? AND status = 'pending' AND expires_at > NOW()`,
-        [bindToken]
+    if (bindLogs.length > 0) {
+      const bindLog = bindLogs[0]
+      userId = bindLog.user_id
+      console.log('找到绑定记录, userId:', userId)
+
+      // 检查用户是否已有 work_phones 记录
+      const existingPhones = await AppDataSource.query(
+        `SELECT id FROM work_phones WHERE user_id = ?`,
+        [userId]
       )
-      console.log('device_bind_logs 查询结果:', bindLogs)
+      console.log('现有手机记录:', existingPhones)
 
-      if (bindLogs.length > 0) {
-        const bindLog = bindLogs[0]
-        userId = bindLog.user_id
-        console.log('找到绑定记录, userId:', userId)
-
-        // 检查用户是否已有 work_phones 记录
-        const existingPhones = await AppDataSource.query(
-          `SELECT id FROM work_phones WHERE user_id = ?`,
-          [userId]
-        )
-        console.log('现有手机记录:', existingPhones)
-
-        if (existingPhones.length > 0) {
-          record = existingPhones[0]
-          console.log('使用现有记录:', record)
-        } else {
-          // 创建新的 work_phones 记录
-          console.log('创建新的work_phones记录...')
-          const tempPhoneNumber = `temp_${Date.now()}`
-          try {
-            const insertResult = await AppDataSource.query(
-              `INSERT INTO work_phones (user_id, phone_number, status, online_status, created_at, updated_at)
-               VALUES (?, ?, 'inactive', 'offline', NOW(), NOW())`,
-              [userId, tempPhoneNumber]
-            )
-            console.log('插入结果:', insertResult)
-            record = { id: insertResult.insertId, user_id: userId }
-          } catch (insertError) {
-            console.error('创建work_phones记录失败:', insertError)
-            throw insertError
-          }
+      if (existingPhones.length > 0) {
+        record = existingPhones[0]
+        console.log('使用现有记录:', record)
+      } else {
+        // 创建新的 work_phones 记录
+        console.log('创建新的work_phones记录...')
+        const tempPhoneNumber = `temp_${Date.now()}`
+        try {
+          const insertResult = await AppDataSource.query(
+            `INSERT INTO work_phones (user_id, phone_number, status, online_status, created_at, updated_at)
+             VALUES (?, ?, 'inactive', 'offline', NOW(), NOW())`,
+            [userId, tempPhoneNumber]
+          )
+          console.log('插入结果:', insertResult)
+          record = { id: insertResult.insertId, user_id: userId }
+        } catch (insertError) {
+          console.error('创建work_phones记录失败:', insertError)
+          throw insertError
         }
-
-        // 更新 device_bind_logs 状态
-        console.log('更新device_bind_logs状态...')
-        await AppDataSource.query(
-          `UPDATE device_bind_logs SET status = 'connected', phone_id = ? WHERE id = ?`,
-          [record.id, bindLog.id]
-        )
-        console.log('device_bind_logs状态更新成功')
       }
+
+      // 更新 device_bind_logs 状态
+      console.log('更新device_bind_logs状态...')
+      await AppDataSource.query(
+        `UPDATE device_bind_logs SET status = 'connected', phone_id = ? WHERE id = ?`,
+        [record.id, bindLog.id]
+      )
+      console.log('device_bind_logs状态更新成功')
     }
 
     if (!record) {
