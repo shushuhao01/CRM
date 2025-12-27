@@ -486,9 +486,10 @@ router.get('/my-lines', async (req: Request, res: Response) => {
     console.log('[my-lines] assignments:', assignments.length);
 
     const workPhones = await AppDataSource.query(
-      `SELECT * FROM work_phones WHERE user_id = ? AND status = 'active'`,
+      `SELECT * FROM work_phones WHERE user_id = ? AND status IN ('active', 'online')`,
       [userIdStr]
     );
+    console.log('[my-lines] workPhones:', workPhones.length, workPhones.map((p: any) => ({ id: p.id, status: p.status, device_id: p.device_id })));
 
     res.json(successResponse({
       assignedLines: assignments.map((a: any) => ({

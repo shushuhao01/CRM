@@ -114,6 +114,18 @@ router.get('/', async (req: Request, res: Response) => {
         console.warn(`查询客户${customer.id}分享状态失败:`, e);
       }
 
+      // 🔥 获取负责销售的名字
+      let salesPersonName = '';
+      if (customer.salesPersonId) {
+        try {
+          const userRepository = AppDataSource.getRepository(User);
+          const salesPerson = await userRepository.findOne({ where: { id: customer.salesPersonId } });
+          salesPersonName = salesPerson?.realName || salesPerson?.name || '';
+        } catch (e) {
+          console.warn(`获取销售人员${customer.salesPersonId}信息失败:`, e);
+        }
+      }
+
       return {
         id: customer.id,
         code: customer.customerNo || '',
@@ -133,6 +145,7 @@ router.get('/', async (req: Request, res: Response) => {
         level: customer.level || 'normal',
         status: customer.status || 'active',
         salesPersonId: customer.salesPersonId || '',
+        salesPersonName: salesPersonName, // 🔥 添加负责销售名字
         orderCount: realOrderCount,
         returnCount: customer.returnCount || 0,
         totalAmount: customer.totalAmount || 0,
