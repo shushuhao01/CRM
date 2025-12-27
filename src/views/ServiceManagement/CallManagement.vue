@@ -4493,21 +4493,35 @@ const getPhoneCarrier = (phone: string): string => {
 
 // 计算属性：是否可以开始呼叫
 const canStartCall = computed(() => {
+  console.log('[canStartCall] 检查条件:', {
+    callMethod: outboundForm.value.callMethod,
+    selectedWorkPhone: outboundForm.value.selectedWorkPhone,
+    selectedLine: outboundForm.value.selectedLine,
+    customerPhone: outboundForm.value.customerPhone,
+    manualPhone: outboundForm.value.manualPhone
+  })
+
   // 必须有外呼方式
-  if (!outboundForm.value.callMethod) return false
+  if (!outboundForm.value.callMethod) {
+    console.log('[canStartCall] 缺少外呼方式')
+    return false
+  }
 
   // 如果选择工作手机，必须选择一个手机
   if (outboundForm.value.callMethod === 'work_phone' && !outboundForm.value.selectedWorkPhone) {
+    console.log('[canStartCall] 选择了工作手机但未选择具体手机')
     return false
   }
 
   // 如果选择网络电话，必须选择一条线路
   if (outboundForm.value.callMethod === 'network_phone' && !outboundForm.value.selectedLine) {
+    console.log('[canStartCall] 选择了网络电话但未选择线路')
     return false
   }
 
   // 必须有电话号码（手动输入或从客户选择）
   const hasPhone = outboundForm.value.manualPhone || outboundForm.value.customerPhone
+  console.log('[canStartCall] 是否有电话号码:', hasPhone)
   return !!hasPhone
 })
 
