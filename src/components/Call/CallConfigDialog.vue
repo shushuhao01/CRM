@@ -163,9 +163,14 @@
 
           <div class="section-header">
             <span class="section-title">已绑定手机</span>
-            <el-button type="primary" size="small" :icon="Plus" @click="showBindQRCode">
-              绑定新手机
-            </el-button>
+            <div class="section-actions">
+              <el-button type="default" size="small" :icon="Refresh" @click="refreshWorkPhoneStatus" :loading="refreshingStatus">
+                刷新状态
+              </el-button>
+              <el-button type="primary" size="small" :icon="Plus" @click="showBindQRCode">
+                绑定新手机
+              </el-button>
+            </div>
           </div>
 
           <div v-if="workPhones.length > 0" class="work-phones-list">
@@ -181,12 +186,15 @@
                   <span v-if="phone.deviceModel"> · {{ phone.deviceModel }}</span>
                 </div>
                 <div class="phone-status">
-                  <el-tag :type="phone.onlineStatus === 'online' ? 'success' : 'info'" size="small">
+                  <el-tag :type="phone.onlineStatus === 'online' ? 'success' : 'danger'" size="small">
                     {{ phone.onlineStatus === 'online' ? '在线' : '离线' }}
                   </el-tag>
                 </div>
               </div>
               <div class="phone-actions">
+                <el-button v-if="phone.onlineStatus !== 'online'" type="primary" link size="small" @click="showBindQRCode">
+                  重新扫码
+                </el-button>
                 <el-button v-if="!phone.isPrimary" type="primary" link size="small" @click="setAsPrimary(phone)">
                   设为主要
                 </el-button>
@@ -417,7 +425,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Cellphone, Loading, CircleCheckFilled, WarningFilled } from '@element-plus/icons-vue'
+import { Plus, Cellphone, Loading, CircleCheckFilled, WarningFilled, Refresh } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import * as callConfigApi from '@/api/callConfig'
 import type { CallLine, UserLineAssignment, WorkPhone, UserCallPreference } from '@/api/callConfig'
@@ -452,6 +460,7 @@ const testingVoip = ref(false)
 const savingLine = ref(false)
 const savingAssignment = ref(false)
 const savingPreference = ref(false)
+const refreshingStatus = ref(false)
 
 // 数据
 const callLines = ref<CallLine[]>([])
@@ -682,6 +691,19 @@ const loadWorkPhones = async () => {
     }
   } catch (e) {
     console.error('加载工作手机失败:', e)
+  }
+}
+
+// 刷新工作手机状态
+const refreshWorkPhoneStatus = async () => {
+  refreshingStatus.value = true
+  try {
+    await loadWorkPhones()
+    ElMessage.success('状态已刷新')
+  } catch (_e) {
+    ElMessage.error('刷新失败')
+  } finally {
+    refreshingStatus.value = false
   }
 }
 
@@ -1117,6 +1139,11 @@ onMounted(() => {
       font-size: 15px;
       font-weight: 500;
       color: #303133;
+    }
+
+    .section-actions {
+      display: flex;
+      gap: 8px;
     }
   }
 }

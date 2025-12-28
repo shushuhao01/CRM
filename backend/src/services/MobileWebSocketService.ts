@@ -131,6 +131,28 @@ class MobileWebSocketService {
 
       logger.info(`📱 [MobileWS] 设备已连接: ${deviceId} (用户: ${username})`);
 
+      // 更新数据库中的设备在线状态
+      try {
+        const dataSource = getDataSource();
+        if (dataSource) {
+          await dataSource.query(
+            `UPDATE work_phones SET online_status = 'online', last_active_at = NOW() WHERE device_id = ?`,
+            [deviceId]
+          );
+        }
+      } catch (error: any) {
+        logger.error('[MobileWS] 更新设备在线状态失败:', error.message);
+      }
+
+      // 通知 PC 端设备已上线
+      if (global.webSocketService) {
+        global.webSocketService.sendToUser(userId, 'DEVICE_ONLINE', {
+          deviceId,
+          userId,
+          onlineAt: new Date().toISOString()
+        });
+      }
+
       // 发送连接成功消息
       this.sendToDevice(deviceId, {
         type: 'CONNECTED',
@@ -258,6 +280,12 @@ class MobileWebSocketService {
           this.handleDialRejected(deviceId, connection.userId, message.data);
           break;
 
+        case 'DEVICE_OFFLINE':
+          // APP 主动通知离线（如退出登录）
+          logger.info(`[MobileWS] 设备主动离线: ${deviceId}, 原因: ${message.data?.reason}`);
+          connection.ws.close(4005, '设备主动断开');
+          break;
+
         default:
           logger.debug(`[MobileWS] 未知消息类型: ${message.type}`);
       }
@@ -274,13 +302,35 @@ class MobileWebSocketService {
       const dataSource = getDataSource();
       if (!dataSource || !data.callId) return;
 
+      const status = data.status;
+      logger.info(`[MobileWS] 通话状态更新: ${data.callId} -> ${status}`);
+
+      // 映射状态到数据库状态
+      let dbStatus = status;
+      if (status === 'connected' || status === 'offhook') {
+        dbStatus = 'connected';
+      } else if (status === 'ringing') {
+        dbStatus = 'ringing';
+      } else if (status === 'dialing') {
+        dbStatus = 'dialing';
+      }
+
       // 更新通话记录状态
       await dataSource.query(
         `UPDATE calls SET status = ?, updated_at = NOW() WHERE id = ?`,
-        [data.status, data.callId]
+        [dbStatus, data.callId]
       );
 
-      logger.info(`[MobileWS] 通话状态更新: ${data.callId} -> ${data.status}`);
+      // 转发通话状态给CRM端
+      if (global.webSocketService) {
+        global.webSocketService.sendToUser(userId, 'CALL_STATUS', {
+          callId: data.callId,
+          status: dbStatus,
+          deviceId,
+          timestamp: new Date().toISOString()
+        });
+        logger.info(`[MobileWS] 已转发通话状态给CRM端: userId=${userId}, status=${dbStatus}`);
+      }
     } catch (error: any) {
       logger.error('[MobileWS] 更新通话状态失败:', error.message);
     }
@@ -294,18 +344,46 @@ class MobileWebSocketService {
       const dataSource = getDataSource();
       if (!dataSource || !data.callId) return;
 
+      // 映射状态
+      let finalStatus = 'completed';
+      if (data.status === 'connected' || data.duration > 0) {
+        finalStatus = 'connected';
+      } else if (data.status === 'missed' || data.status === 'no_answer') {
+        finalStatus = 'missed';
+      } else if (data.status === 'busy') {
+        finalStatus = 'busy';
+      } else if (data.status === 'failed' || data.status === 'invalid') {
+        finalStatus = 'failed';
+      }
+
       // 更新通话记录
       await dataSource.query(
         `UPDATE calls SET
-          status = 'completed',
+          status = ?,
           duration = ?,
           end_time = NOW(),
+          has_recording = ?,
           updated_at = NOW()
          WHERE id = ?`,
-        [data.duration || 0, data.callId]
+        [finalStatus, data.duration || 0, data.hasRecording ? 1 : 0, data.callId]
       );
 
-      logger.info(`[MobileWS] 通话结束: ${data.callId}, 时长: ${data.duration}秒`);
+      logger.info(`[MobileWS] 通话结束: ${data.callId}, 状态: ${finalStatus}, 时长: ${data.duration}秒, 有录音: ${data.hasRecording}`);
+
+      // 转发通话结束给CRM端
+      if (global.webSocketService) {
+        global.webSocketService.sendToUser(userId, 'CALL_ENDED', {
+          callId: data.callId,
+          duration: data.duration || 0,
+          status: finalStatus,
+          hasRecording: data.hasRecording || false,
+          recordingUrl: data.recordingUrl || null,
+          endReason: data.endReason || 'normal',
+          deviceId,
+          timestamp: new Date().toISOString()
+        });
+        logger.info(`[MobileWS] 已转发通话结束给CRM端: userId=${userId}, duration=${data.duration}, status=${finalStatus}`);
+      }
     } catch (error: any) {
       logger.error('[MobileWS] 更新通话结束状态失败:', error.message);
     }
@@ -320,9 +398,9 @@ class MobileWebSocketService {
   }
 
   /**
-   * 移除连接
+   * 移除连接并更新设备状态
    */
-  private removeConnection(deviceId: string, userId: number): void {
+  private async removeConnection(deviceId: string, userId: number): Promise<void> {
     this.connections.delete(deviceId);
 
     const devices = this.userDevices.get(userId);
@@ -331,6 +409,29 @@ class MobileWebSocketService {
       if (devices.size === 0) {
         this.userDevices.delete(userId);
       }
+    }
+
+    // 更新数据库中的设备在线状态
+    try {
+      const dataSource = getDataSource();
+      if (dataSource) {
+        await dataSource.query(
+          `UPDATE work_phones SET online_status = 'offline', last_active_at = NOW() WHERE device_id = ?`,
+          [deviceId]
+        );
+        logger.info(`[MobileWS] 设备 ${deviceId} 状态已更新为离线`);
+      }
+    } catch (error: any) {
+      logger.error('[MobileWS] 更新设备离线状态失败:', error.message);
+    }
+
+    // 通知 PC 端设备已离线
+    if (global.webSocketService) {
+      global.webSocketService.sendToUser(userId, 'DEVICE_OFFLINE', {
+        deviceId,
+        userId,
+        offlineAt: new Date().toISOString()
+      });
     }
   }
 
@@ -418,6 +519,37 @@ class MobileWebSocketService {
       type: 'DIAL_CANCEL',
       data: { callId }
     });
+  }
+
+  /**
+   * 发送结束通话指令（从CRM端结束通话时调用）
+   */
+  sendEndCall(deviceId: string, callId: string, reason?: string): boolean {
+    logger.info(`[MobileWS] 发送结束通话指令到设备 ${deviceId}, callId: ${callId}`);
+    return this.sendToDevice(deviceId, {
+      type: 'CALL_END',
+      data: {
+        callId,
+        reason: reason || 'crm_end',
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  /**
+   * 发送结束通话指令到用户的所有设备
+   */
+  sendEndCallToUser(userId: number, callId: string, reason?: string): number {
+    const devices = this.userDevices.get(userId);
+    if (!devices) return 0;
+
+    let sent = 0;
+    devices.forEach(deviceId => {
+      if (this.sendEndCall(deviceId, callId, reason)) {
+        sent++;
+      }
+    });
+    return sent;
   }
 
   /**

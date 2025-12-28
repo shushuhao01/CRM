@@ -647,7 +647,6 @@ import {
 import { useOrderStore } from '@/stores/order'
 import { useCustomerStore } from '@/stores/customer'
 import { useUserStore } from '@/stores/user'
-import { useNotificationStore } from '@/stores/notification'
 import { useConfigStore } from '@/stores/config'
 import { useProductStore } from '@/stores/product'
 import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
@@ -736,7 +735,6 @@ const safeNavigator = createSafeNavigator(router)
 const orderStore = useOrderStore()
 const customerStore = useCustomerStore()
 const userStore = useUserStore()
-const notificationStore = useNotificationStore()
 const configStore = useConfigStore()
 const productStore = useProductStore()
 const fieldConfigStore = useOrderFieldConfigStore()
@@ -1502,16 +1500,7 @@ const handleSubmitOrder = async () => {
       customerStore.incrementOrderCount(orderData.customerId)
     }
 
-    // 发送订单提交消息提醒
-    notificationStore.sendMessage(
-      notificationStore.MessageType.ORDER_SUBMITTED,
-      `新订单已提交：客户 ${orderData.customerName}，订单金额 ¥${totalAmount.toFixed(2)}`,
-      {
-        relatedId: newOrder?.id || Date.now().toString(),
-        relatedType: 'order',
-        actionUrl: `/order/detail/${newOrder?.id || Date.now().toString()}`
-      }
-    )
+    // 🔥 注意：订单创建通知由后端统一发送（ORDER_CREATED），前端不再重复发送
 
     // 根据订单类型显示不同的提示信息
     if (orderData.markType === 'normal') {

@@ -104,10 +104,22 @@ export const useCallStore = defineStore('call', () => {
       // 使用支持Mock的API
       const apiMethod = shouldUseMockApi() ? callApi.getCallRecordsWithMock : callApi.getCallRecords
 
-      const response = await apiMethod({
-        page: pagination.value.current,
-        pageSize: pagination.value.pageSize,
+      // 使用传入的分页参数，如果没有则使用默认值
+      const requestParams = {
+        page: params?.page || pagination.value.current || 1,
+        pageSize: params?.pageSize || pagination.value.pageSize || 20,
         ...params
+      }
+
+      console.log('[Call Store] fetchCallRecords params:', requestParams)
+
+      const response = await apiMethod(requestParams)
+
+      console.log('[Call Store] fetchCallRecords response:', {
+        recordsCount: response.data.records?.length,
+        total: response.data.total,
+        page: response.data.page,
+        pageSize: response.data.pageSize
       })
 
       callRecords.value = response.data.records || []

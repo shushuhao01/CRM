@@ -303,8 +303,9 @@
             <el-option
               v-for="phone in workPhones"
               :key="phone.id"
-              :label="`${phone.number} (${phone.status === 'online' ? '在线' : (phone.status === 'offline' ? '离线' : phone.status)})`"
+              :label="`${phone.number} (${phone.status === 'online' || phone.status === '在线' ? '在线' : '离线'})`"
               :value="phone.id"
+              :disabled="phone.status !== 'online' && phone.status !== '在线'"
             >
               <div class="select-option-row">
                 <div class="option-content">
@@ -313,14 +314,47 @@
                 </div>
                 <el-tag
                   size="small"
-                  :type="phone.status === '在线' || phone.status === 'online' ? 'success' : 'info'"
+                  :type="phone.status === 'online' || phone.status === '在线' ? 'success' : 'danger'"
                   class="option-tag"
                 >
-                  {{ phone.status === 'online' ? '在线' : (phone.status === 'offline' ? '离线' : phone.status) }}
+                  {{ phone.status === 'online' || phone.status === '在线' ? '在线' : '离线' }}
                 </el-tag>
               </div>
             </el-option>
           </el-select>
+          <!-- 在线提示 -->
+          <div v-if="selectedWorkPhoneOnline" class="phone-online-tip">
+            <el-alert
+              type="success"
+              :closable="false"
+              show-icon
+            >
+              <template #title>
+                <span>已连接到手机，可拨打电话</span>
+                <el-button type="primary" size="small" link @click="handleRefreshDeviceStatus" style="margin-left: 12px;">
+                  刷新状态
+                </el-button>
+              </template>
+            </el-alert>
+          </div>
+          <!-- 离线提示和重新连接按钮 -->
+          <div v-if="selectedWorkPhoneOffline" class="phone-offline-tip">
+            <el-alert
+              type="warning"
+              :closable="false"
+              show-icon
+            >
+              <template #title>
+                <span>当前选择的手机已离线，请在手机APP上重新连接</span>
+                <el-button type="primary" size="small" link @click="handleRefreshDeviceStatus" style="margin-left: 12px;">
+                  刷新状态
+                </el-button>
+                <el-button type="primary" size="small" link @click="handleShowBindQRCode" style="margin-left: 8px;">
+                  重新扫码绑定
+                </el-button>
+              </template>
+            </el-alert>
+          </div>
         </el-form-item>
 
         <!-- 网络电话线路选择 -->
@@ -453,6 +487,44 @@
       </template>
     </el-dialog>
 
+    <!-- 绑定二维码弹窗 -->
+    <el-dialog v-model="bindQRDialogVisible" title="扫码绑定工作手机" width="400px" @close="stopBindStatusCheck">
+      <div class="qr-bind-content">
+        <div v-if="bindQRCodeUrl" class="qr-code-wrapper">
+          <img :src="bindQRCodeUrl" alt="绑定二维码" class="qr-code-img" />
+          <div class="qr-status">
+            <template v-if="bindStatus === 'pending'">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              等待扫码...
+            </template>
+            <template v-else-if="bindStatus === 'connected'">
+              <el-icon style="color: #67c23a;"><CircleCheckFilled /></el-icon>
+              绑定成功！
+            </template>
+            <template v-else-if="bindStatus === 'expired'">
+              <el-icon style="color: #f56c6c;"><WarningFilled /></el-icon>
+              二维码已过期
+            </template>
+          </div>
+        </div>
+        <div v-else class="qr-loading">
+          <el-icon class="is-loading" size="32"><Loading /></el-icon>
+          <p>正在生成二维码...</p>
+        </div>
+        <div class="qr-tips">
+          <p>1. 在工作手机上打开"外呼助手"APP</p>
+          <p>2. 点击"扫码绑定"功能</p>
+          <p>3. 扫描上方二维码完成绑定</p>
+        </div>
+      </div>
+      <template #footer>
+        <el-button v-if="bindStatus === 'expired'" type="primary" @click="refreshBindQRCode">
+          重新生成
+        </el-button>
+        <el-button @click="bindQRDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 客户详情弹窗 -->
     <el-dialog
       v-model="showDetailDialog"
@@ -490,15 +562,15 @@
           </div>
           <div class="customer-stats">
             <div class="stat-item">
-              <div class="stat-value">{{ customerOrders.length }}</div>
+              <div class="stat-value">{{ detailPagination.orders.total }}</div>
               <div class="stat-label">订单</div>
             </div>
             <div class="stat-item">
-              <div class="stat-value">{{ customerCalls.length }}</div>
+              <div class="stat-value">{{ detailPagination.calls.total }}</div>
               <div class="stat-label">通话</div>
             </div>
             <div class="stat-item">
-              <div class="stat-value">{{ customerFollowups.length }}</div>
+              <div class="stat-value">{{ detailPagination.followups.total }}</div>
               <div class="stat-label">跟进</div>
             </div>
             <div class="stat-item">
@@ -527,7 +599,7 @@
 
           <!-- 订单记录表格 -->
           <div v-show="activeTab === 'orders'" class="tab-content">
-            <el-table :data="customerOrders" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
+            <el-table :data="paginatedOrders" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
               <el-table-column prop="orderNo" label="订单号" min-width="160" />
               <el-table-column prop="productName" label="商品名称" min-width="180" show-overflow-tooltip />
               <el-table-column prop="amount" label="金额" width="100" align="right">
@@ -550,11 +622,21 @@
               </el-table-column>
             </el-table>
             <el-empty v-if="!detailLoading && customerOrders.length === 0" description="暂无订单记录" :image-size="60" />
+            <div v-if="detailPagination.orders.total > 0" class="tab-pagination">
+              <el-pagination
+                v-model:current-page="detailPagination.orders.page"
+                v-model:page-size="detailPagination.orders.pageSize"
+                :page-sizes="[10, 20, 50]"
+                :total="detailPagination.orders.total"
+                layout="total, sizes, prev, pager, next"
+                size="small"
+              />
+            </div>
           </div>
 
           <!-- 售后记录表格 -->
           <div v-show="activeTab === 'aftersales'" class="tab-content">
-            <el-table :data="customerAftersales" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
+            <el-table :data="paginatedAftersales" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
               <el-table-column prop="ticketNo" label="工单号" min-width="150" />
               <el-table-column prop="type" label="类型" width="100" />
               <el-table-column prop="description" label="问题描述" min-width="200" show-overflow-tooltip />
@@ -573,11 +655,21 @@
               </el-table-column>
             </el-table>
             <el-empty v-if="!detailLoading && customerAftersales.length === 0" description="暂无售后记录" :image-size="60" />
+            <div v-if="detailPagination.aftersales.total > 0" class="tab-pagination">
+              <el-pagination
+                v-model:current-page="detailPagination.aftersales.page"
+                v-model:page-size="detailPagination.aftersales.pageSize"
+                :page-sizes="[10, 20, 50]"
+                :total="detailPagination.aftersales.total"
+                layout="total, sizes, prev, pager, next"
+                size="small"
+              />
+            </div>
           </div>
 
           <!-- 通话记录表格 -->
           <div v-show="activeTab === 'calls'" class="tab-content">
-            <el-table :data="customerCalls" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
+            <el-table :data="paginatedCalls" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
               <el-table-column prop="callType" label="类型" width="70" align="center">
                 <template #default="{ row }">
                   <el-tag :type="row.callType === 'outbound' ? '' : 'success'" size="small">
@@ -586,29 +678,51 @@
                 </template>
               </el-table-column>
               <el-table-column prop="duration" label="时长" width="80" align="center" />
-              <el-table-column prop="status" label="状态" width="80" align="center">
+              <el-table-column prop="status" label="状态" width="100" align="center">
                 <template #default="{ row }">
-                  <el-tag :type="getStatusType(row.status)" size="small">
-                    {{ getStatusText(row.status) }}
+                  <el-tag :type="getCallStatusType(row.status)" size="small">
+                    {{ getCallStatusText(row.status) }}
                   </el-tag>
                 </template>
               </el-table-column>
               <el-table-column prop="startTime" label="开始时间" width="150" />
               <el-table-column prop="operator" label="操作人" width="90" />
-              <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
-              <el-table-column label="操作" width="100" align="center">
+              <el-table-column label="录音" width="120" align="center">
+                <template #default="{ row }">
+                  <template v-if="row.recordingUrl">
+                    <el-button link type="primary" size="small" @click="playRecording(row)">
+                      <el-icon><VideoPlay /></el-icon> 播放
+                    </el-button>
+                    <el-button link type="success" size="small" @click="downloadRecording(row)">
+                      <el-icon><Download /></el-icon>
+                    </el-button>
+                  </template>
+                  <span v-else style="color: #c0c4cc;">无录音</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="remark" label="备注" min-width="100" show-overflow-tooltip />
+              <el-table-column label="操作" width="60" align="center">
                 <template #default="{ row }">
                   <el-button link type="primary" size="small" @click="viewCallDetail(row)">详情</el-button>
-                  <el-button v-if="row.recordingUrl" link type="primary" size="small" @click="playRecording(row)">播放</el-button>
                 </template>
               </el-table-column>
             </el-table>
             <el-empty v-if="!detailLoading && customerCalls.length === 0" description="暂无通话记录" :image-size="60" />
+            <div v-if="detailPagination.calls.total > 0" class="tab-pagination">
+              <el-pagination
+                v-model:current-page="detailPagination.calls.page"
+                v-model:page-size="detailPagination.calls.pageSize"
+                :page-sizes="[10, 20, 50]"
+                :total="detailPagination.calls.total"
+                layout="total, sizes, prev, pager, next"
+                size="small"
+              />
+            </div>
           </div>
 
           <!-- 跟进记录表格 -->
           <div v-show="activeTab === 'followups'" class="tab-content">
-            <el-table :data="customerFollowups" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
+            <el-table :data="paginatedFollowups" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
               <el-table-column prop="type" label="类型" width="90">
                 <template #default="{ row }">
                   {{ getFollowUpTypeLabel(row.type) }}
@@ -644,6 +758,16 @@
               </el-table-column>
             </el-table>
             <el-empty v-if="!detailLoading && customerFollowups.length === 0" description="暂无跟进记录" :image-size="60" />
+            <div v-if="detailPagination.followups.total > 0" class="tab-pagination">
+              <el-pagination
+                v-model:current-page="detailPagination.followups.page"
+                v-model:page-size="detailPagination.followups.pageSize"
+                :page-sizes="[10, 20, 50]"
+                :total="detailPagination.followups.total"
+                layout="total, sizes, prev, pager, next"
+                size="small"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -956,8 +1080,8 @@
           @mousedown="startDrag"
         >
           <div class="header-left">
-            <span class="status-dot"></span>
-            <span class="header-title">{{ isCallWindowMinimized ? formatCallDuration(callDuration) : '通话中' }}</span>
+            <span class="status-dot" :class="{ 'is-connected': callConnected }"></span>
+            <span class="header-title">{{ isCallWindowMinimized ? formatCallDuration(callDuration) : (callConnected ? '通话中' : '呼出中') }}</span>
           </div>
           <div class="header-actions">
             <el-tooltip :content="isCallWindowMinimized ? '展开' : '最小化'" placement="top">
@@ -981,7 +1105,7 @@
             type="danger"
             size="small"
             :icon="TurnOff"
-            @click="endCall"
+            @click="handleEndCallClick"
             circle
           />
         </div>
@@ -989,10 +1113,10 @@
         <!-- 展开状态显示 -->
         <div v-else class="call-window-content">
           <div class="call-timer">
-            <div class="timer-display">{{ formatCallDuration(callDuration) }}</div>
+            <div class="timer-display">{{ callConnected ? formatCallDuration(callDuration) : '--:--' }}</div>
             <div class="call-status">
               <el-icon class="is-loading"><Loading /></el-icon>
-              通话中...
+              {{ callConnected ? '通话中...' : '呼出中，等待接听...' }}
             </div>
           </div>
 
@@ -1021,14 +1145,25 @@
               type="danger"
               size="large"
               :icon="TurnOff"
-              @click="endCall"
+              @click="handleEndCallClick"
               class="end-call-btn"
             >
-              结束通话
+              {{ currentCallData.callMethod === 'work_phone' ? '挂断提示' : '结束通话' }}
             </el-button>
           </div>
 
           <div class="call-notes">
+            <div class="notes-header">
+              <span>通话备注</span>
+              <el-button
+                type="primary"
+                size="small"
+                @click="saveCallNotes(false)"
+                :loading="savingNotes"
+              >
+                保存备注
+              </el-button>
+            </div>
             <el-input
               v-model="callNotes"
               type="textarea"
@@ -1399,7 +1534,7 @@
                     <div v-for="device in connectedDevices" :key="device.id"
                          style="padding: 12px; border-bottom: 1px solid #f5f7fa; display: flex; align-items: center; justify-content: space-between;">
                       <div style="display: flex; align-items: center; gap: 12px;">
-                        <el-icon :style="{ color: device.status === 'online' ? '#67c23a' : '#909399' }">
+                        <el-icon :style="{ color: device.status === 'online' ? '#67c23a' : '#f56c6c' }">
                           <Cellphone />
                         </el-icon>
                         <div>
@@ -1410,9 +1545,18 @@
                         </div>
                       </div>
                       <div style="display: flex; align-items: center; gap: 8px;">
-                        <el-tag :type="device.status === 'online' ? 'success' : 'info'" size="small">
+                        <el-tag :type="device.status === 'online' ? 'success' : 'danger'" size="small">
                           {{ device.status === 'online' ? '在线' : '离线' }}
                         </el-tag>
+                        <!-- 离线时显示重新连接按钮 -->
+                        <el-button
+                          v-if="device.status !== 'online'"
+                          type="primary"
+                          size="small"
+                          @click="handleReconnectDevice(device)"
+                        >
+                          重新连接
+                        </el-button>
                         <el-button
                           type="text"
                           :icon="Close"
@@ -1424,6 +1568,18 @@
                         </el-button>
                       </div>
                     </div>
+                  </div>
+                  <!-- 离线设备提示 -->
+                  <div v-if="hasOfflineDevices" style="margin-top: 8px;">
+                    <el-alert
+                      type="warning"
+                      :closable="false"
+                      show-icon
+                    >
+                      <template #title>
+                        <span>有设备处于离线状态，请在手机APP上重新连接或点击"重新连接"按钮生成新的绑定二维码</span>
+                      </template>
+                    </el-alert>
                   </div>
                 </el-form-item>
               </template>
@@ -1816,6 +1972,7 @@ import CallConfigDialog from '@/components/Call/CallConfigDialog.vue'
 import * as callConfigApi from '@/api/callConfig'
 import { getAddressLabel } from '@/utils/addressData'
 import { getOrderStatusText as getOrderStatusTextFromConfig, getOrderStatusTagType } from '@/utils/orderStatusConfig'
+import { webSocketService } from '@/services/webSocketService'
 
 const router = useRouter()
 const safeNavigator = createSafeNavigator(router)
@@ -1842,9 +1999,12 @@ const incomingCallVisible = ref(false)
 const callInProgressVisible = ref(false)
 const incomingCallData = ref(null)
 const currentCallData = ref(null)
+const currentCallId = ref<string | null>(null) // 当前通话ID
 const callDuration = ref(0)
 const callNotes = ref('')
 const callTimer = ref(null)
+const callConnected = ref(false) // 通话是否已接通
+const savingNotes = ref(false) // 保存备注状态
 
 // 通话浮动窗口相关
 const isCallWindowMinimized = ref(false)
@@ -1945,6 +2105,23 @@ const alternativeConnections = reactive({
 })
 
 const connectedDevices = ref([])
+
+// 计算是否有离线设备
+const hasOfflineDevices = computed(() => {
+  return connectedDevices.value.some((d: any) => d.status !== 'online')
+})
+
+// 重新连接设备（生成新的绑定二维码）
+const handleReconnectDevice = async (_device: any) => {
+  try {
+    // 生成新的绑定二维码
+    await generateQRCode()
+    ElMessage.info('请使用手机APP扫描二维码重新连接')
+  } catch (_e) {
+    ElMessage.error('生成二维码失败')
+  }
+}
+
 const callConfigForm = reactive({
   // 外呼方式
   callMethod: 'system', // system: 系统外呼路线, mobile: 工作手机外呼, voip: 网络电话
@@ -2082,6 +2259,103 @@ const availableLines = ref<any[]>([])
 // 工作手机配置数据 - 从呼出配置API获取
 const workPhones = ref<any[]>([])
 
+// 计算当前选择的工作手机是否离线
+const selectedWorkPhoneOffline = computed(() => {
+  if (!outboundForm.value.selectedWorkPhone) return false
+  const phone = workPhones.value.find(p => p.id === outboundForm.value.selectedWorkPhone)
+  // 状态可能是 'online'/'offline' 或 '在线'/'离线'
+  return phone && phone.status !== 'online' && phone.status !== '在线'
+})
+
+// 计算当前选择的工作手机是否在线
+const selectedWorkPhoneOnline = computed(() => {
+  if (!outboundForm.value.selectedWorkPhone) return false
+  const phone = workPhones.value.find(p => p.id === outboundForm.value.selectedWorkPhone)
+  return phone && (phone.status === 'online' || phone.status === '在线')
+})
+
+// 刷新设备状态
+const handleRefreshDeviceStatus = async () => {
+  try {
+    await loadAvailableCallMethods()
+    ElMessage.success('设备状态已刷新')
+  } catch (_e) {
+    ElMessage.error('刷新失败')
+  }
+}
+
+// 直接显示绑定二维码弹窗
+const bindQRDialogVisible = ref(false)
+const bindQRCodeUrl = ref('')
+const bindConnectionId = ref('')
+const bindStatus = ref<'pending' | 'connected' | 'expired'>('pending')
+let bindCheckTimer: ReturnType<typeof setInterval> | null = null
+
+const handleShowBindQRCode = async () => {
+  bindQRDialogVisible.value = true
+  bindQRCodeUrl.value = ''
+  bindStatus.value = 'pending'
+  await generateBindQRCode()
+}
+
+const generateBindQRCode = async () => {
+  try {
+    const res = await callConfigApi.generateWorkPhoneQRCode()
+    console.log('[CallManagement] generateBindQRCode response:', res)
+    if (res && (res as any).qrCodeUrl) {
+      bindQRCodeUrl.value = (res as any).qrCodeUrl
+      bindConnectionId.value = (res as any).connectionId
+      startBindStatusCheck()
+    } else if (res && (res as any).success && (res as any).data) {
+      bindQRCodeUrl.value = (res as any).data.qrCodeUrl
+      bindConnectionId.value = (res as any).data.connectionId
+      startBindStatusCheck()
+    } else {
+      ElMessage.error('生成二维码失败')
+    }
+  } catch (_e) {
+    console.error('[CallManagement] generateBindQRCode error:', _e)
+    ElMessage.error('生成二维码失败')
+  }
+}
+
+const refreshBindQRCode = () => {
+  stopBindStatusCheck()
+  generateBindQRCode()
+}
+
+const startBindStatusCheck = () => {
+  stopBindStatusCheck()
+  bindCheckTimer = setInterval(async () => {
+    try {
+      const res = await callConfigApi.checkWorkPhoneBindStatus(bindConnectionId.value)
+      const status = (res as any).status || ((res as any).data?.status)
+      if (status) {
+        bindStatus.value = status
+        if (status === 'connected') {
+          stopBindStatusCheck()
+          ElMessage.success('绑定成功')
+          await loadAvailableCallMethods()
+          setTimeout(() => {
+            bindQRDialogVisible.value = false
+          }, 1500)
+        } else if (status === 'expired') {
+          stopBindStatusCheck()
+        }
+      }
+    } catch (_e) {
+      console.error('检查绑定状态失败:', _e)
+    }
+  }, 2000)
+}
+
+const stopBindStatusCheck = () => {
+  if (bindCheckTimer) {
+    clearInterval(bindCheckTimer)
+    bindCheckTimer = null
+  }
+}
+
 // 用户偏好设置
 const userCallPreference = ref({
   preferMobile: false,
@@ -2110,7 +2384,7 @@ const callRecordsFilter = reactive({
 })
 const callRecordsPagination = reactive({
   currentPage: 1,
-  pageSize: 20,
+  pageSize: 10,
   total: 0
 })
 
@@ -2159,6 +2433,39 @@ const customerAftersales = ref<any[]>([])
 const customerCalls = ref<any[]>([])
 const customerFollowups = ref<any[]>([])
 const detailLoading = ref(false)
+
+// 详情弹窗分页数据
+const detailPagination = reactive({
+  orders: { page: 1, pageSize: 10, total: 0 },
+  calls: { page: 1, pageSize: 10, total: 0 },
+  followups: { page: 1, pageSize: 10, total: 0 },
+  aftersales: { page: 1, pageSize: 10, total: 0 }
+})
+
+// 分页后的数据 - 计算属性
+const paginatedOrders = computed(() => {
+  const start = (detailPagination.orders.page - 1) * detailPagination.orders.pageSize
+  const end = start + detailPagination.orders.pageSize
+  return customerOrders.value.slice(start, end)
+})
+
+const paginatedCalls = computed(() => {
+  const start = (detailPagination.calls.page - 1) * detailPagination.calls.pageSize
+  const end = start + detailPagination.calls.pageSize
+  return customerCalls.value.slice(start, end)
+})
+
+const paginatedFollowups = computed(() => {
+  const start = (detailPagination.followups.page - 1) * detailPagination.followups.pageSize
+  const end = start + detailPagination.followups.pageSize
+  return customerFollowups.value.slice(start, end)
+})
+
+const paginatedAftersales = computed(() => {
+  const start = (detailPagination.aftersales.page - 1) * detailPagination.aftersales.pageSize
+  const end = start + detailPagination.aftersales.pageSize
+  return customerAftersales.value.slice(start, end)
+})
 
 // 加载客户详情数据
 const loadCustomerDetailData = async (customerId: string) => {
@@ -2242,6 +2549,16 @@ const loadCustomerDetailData = async (customerId: string) => {
 
     // 售后记录暂时为空（如果有售后API可以添加）
     customerAftersales.value = []
+
+    // 更新分页总数
+    detailPagination.orders.total = customerOrders.value.length
+    detailPagination.orders.page = 1
+    detailPagination.calls.total = customerCalls.value.length
+    detailPagination.calls.page = 1
+    detailPagination.followups.total = customerFollowups.value.length
+    detailPagination.followups.page = 1
+    detailPagination.aftersales.total = customerAftersales.value.length
+    detailPagination.aftersales.page = 1
 
   } catch (error) {
     console.error('加载客户详情数据失败:', error)
@@ -3004,11 +3321,13 @@ const loadOutboundList = async () => {
 
       try {
         // 获取跟进记录
+        console.log(`[通话管理] 获取客户 ${customer.id} 的跟进记录`)
         const followupsRes = await customerDetailApi.getCustomerFollowUps(customer.id)
+        console.log(`[通话管理] 客户 ${customer.id} 跟进记录响应:`, followupsRes)
         if (followupsRes.success && followupsRes.data && followupsRes.data.length > 0) {
           const latestFollowup = followupsRes.data[0]
+          console.log(`[通话管理] 客户 ${customer.id} 最新跟进:`, latestFollowup)
           lastFollowUp = latestFollowup.content ? (latestFollowup.content.length > 20 ? latestFollowup.content.substring(0, 20) + '...' : latestFollowup.content) : ''
-          callTags = latestFollowup.callTags || latestFollowup.call_tags || []
         }
 
         // 获取通话记录
@@ -3016,7 +3335,21 @@ const loadOutboundList = async () => {
         if (callsRes.success && callsRes.data) {
           callCount = callsRes.data.length
           if (callsRes.data.length > 0) {
-            lastCallTime = formatDateTime(callsRes.data[0].startTime || callsRes.data[0].createdAt)
+            const latestCall = callsRes.data[0]
+            lastCallTime = formatDateTime(latestCall.startTime || latestCall.createdAt)
+            // 从最新通话记录获取通话标签
+            // 如果最新通话没有标签，则查找之前有标签的通话
+            if (latestCall.callTags && latestCall.callTags.length > 0) {
+              callTags = latestCall.callTags
+            } else {
+              // 查找之前有标签的通话
+              for (const call of callsRes.data) {
+                if (call.callTags && call.callTags.length > 0) {
+                  callTags = call.callTags
+                  break
+                }
+              }
+            }
           }
         }
       } catch (e) {
@@ -3161,6 +3494,11 @@ const handleCloseCallRecordsDialog = () => {
 const loadCallRecords = async () => {
   callRecordsLoading.value = true
   try {
+    console.log('[CallManagement] loadCallRecords params:', {
+      page: callRecordsPagination.currentPage,
+      pageSize: callRecordsPagination.pageSize
+    })
+
     // 使用callStore的API获取通话记录
     await callStore.fetchCallRecords({
       page: callRecordsPagination.currentPage,
@@ -3169,6 +3507,9 @@ const loadCallRecords = async () => {
       startDate: callRecordsFilter.dateRange?.[0] || undefined,
       endDate: callRecordsFilter.dateRange?.[1] || undefined
     })
+
+    console.log('[CallManagement] callStore.callRecords count:', callStore.callRecords.length)
+    console.log('[CallManagement] callStore.pagination:', callStore.pagination)
 
     // 从store获取数据并转换格式
     callRecordsList.value = callStore.callRecords.map((record: any) => ({
@@ -3185,6 +3526,8 @@ const loadCallRecords = async () => {
       recordingUrl: record.recordingUrl || record.recording_url || null
     }))
     callRecordsPagination.total = callStore.pagination.total
+
+    console.log('[CallManagement] callRecordsList count:', callRecordsList.value.length)
   } catch (error) {
     console.error('加载通话记录失败:', error)
     ElMessage.error('加载通话记录失败')
@@ -3279,11 +3622,24 @@ const submitQuickFollowUp = async () => {
     await quickFollowUpFormRef.value.validate()
     quickFollowUpSubmitting.value = true
 
+    // 验证currentCustomer
+    if (!currentCustomer.value) {
+      console.error('[CallManagement] currentCustomer 为空')
+      ElMessage.error('客户信息不完整，请重试')
+      return
+    }
+
+    if (!currentCustomer.value.id) {
+      console.error('[CallManagement] currentCustomer.id 为空', currentCustomer.value)
+      ElMessage.error('客户ID不存在，请重试')
+      return
+    }
+
     // 准备跟进记录数据
     const followUpData: any = {
       callId: '', // 如果有关联的通话记录ID，可以在这里设置
       customerId: currentCustomer.value.id,
-      customerName: currentCustomer.value.name,
+      customerName: currentCustomer.value.name || currentCustomer.value.customerName || '',
       type: quickFollowUpForm.type,
       content: quickFollowUpForm.content,
       customerIntent: quickFollowUpForm.intention || null,
@@ -3293,15 +3649,26 @@ const submitQuickFollowUp = async () => {
       status: 'pending' // 默认待跟进状态
     }
 
+    console.log('[CallManagement] 提交跟进记录数据:', followUpData)
+    console.log('[CallManagement] currentCustomer:', currentCustomer.value)
+
     // 调用API创建跟进记录
-    await callStore.createFollowUp(followUpData)
+    const result = await callStore.createFollowUp(followUpData)
+    console.log('[CallManagement] 创建跟进记录结果:', result)
 
     ElMessage.success('跟进记录保存成功')
     quickFollowUpVisible.value = false
     resetQuickFollowUpForm()
 
     // 刷新相关页面数据
-    loadOutboundList()
+    console.log('[CallManagement] 刷新呼出列表...')
+    await loadOutboundList()
+
+    // 如果详情弹窗打开，也刷新详情数据
+    if (showDetailDialog.value && currentCustomer.value?.id) {
+      console.log('[CallManagement] 刷新详情数据, customerId:', currentCustomer.value.id)
+      await loadCustomerDetailData(currentCustomer.value.id)
+    }
 
   } catch (error) {
     console.error('保存跟进记录失败:', error)
@@ -3550,6 +3917,62 @@ const getStatusText = (status: string) => {
   return statusMap[status] || '未知'
 }
 
+// 通话状态相关辅助函数
+const getCallStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    'connected': '已接通',
+    'missed': '未接听',
+    'rejected': '已拒绝',
+    'busy': '忙线',
+    'failed': '失败',
+    'no_answer': '无人接听',
+    'unreachable': '无法接通',
+    'cancelled': '已取消',
+    'timeout': '超时',
+    'pending': '待外呼'
+  }
+  return statusMap[status] || status || '未知'
+}
+
+const getCallStatusType = (status: string) => {
+  const typeMap: Record<string, string> = {
+    'connected': 'success',
+    'missed': 'danger',
+    'rejected': 'danger',
+    'busy': 'warning',
+    'failed': 'danger',
+    'no_answer': 'warning',
+    'unreachable': 'danger',
+    'cancelled': 'info',
+    'timeout': 'warning',
+    'pending': 'info'
+  }
+  return typeMap[status] || 'info'
+}
+
+// 售后状态相关辅助函数
+const getAftersalesStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    'pending': '待处理',
+    'processing': '处理中',
+    'completed': '已完成',
+    'closed': '已关闭',
+    'cancelled': '已取消'
+  }
+  return statusMap[status] || status || '未知'
+}
+
+const getAftersalesStatusType = (status: string) => {
+  const typeMap: Record<string, string> = {
+    'pending': 'warning',
+    'processing': 'primary',
+    'completed': 'success',
+    'closed': 'info',
+    'cancelled': 'danger'
+  }
+  return typeMap[status] || 'info'
+}
+
 // 获取跟进类型标签
 const getFollowUpTypeLabel = (type: string) => {
   const typeMap: Record<string, string> = {
@@ -3592,10 +4015,10 @@ const handleDetailOutboundCall = () => {
 
   // 预填充客户信息并打开外呼弹窗
   const customer = {
-    id: currentCustomer.value.id,
-    name: currentCustomer.value.customerName,
-    phone: currentCustomer.value.phone,
-    company: ''
+    id: currentCustomer.value.id || currentCustomer.value.customerId,
+    name: currentCustomer.value.customerName || currentCustomer.value.name,
+    phone: currentCustomer.value.phone || currentCustomer.value.customerPhone,
+    company: currentCustomer.value.company || ''
   }
 
   // 将预填充的客户添加到选项列表中
@@ -3606,6 +4029,18 @@ const handleDetailOutboundCall = () => {
 
   outboundForm.value.selectedCustomer = customer as any
   outboundForm.value.customerId = customer.id
+
+  // 更新号码选项并自动选择
+  const phones = []
+  if (customer.phone) {
+    phones.push({
+      phone: customer.phone,
+      type: '主号码'
+    })
+  }
+  phoneOptions.value = phones
+  outboundForm.value.customerPhone = customer.phone || ''
+
   showOutboundDialog.value = true
 }
 
@@ -3875,20 +4310,23 @@ const startOutboundCall = async () => {
           // 关闭外呼弹窗
           closeOutboundDialog()
 
+          const callId = (response as any).callId || `call_${Date.now()}`
+
           // 设置当前通话数据并显示通话中弹窗
           currentCallData.value = {
-            id: (response as any).callId || Date.now().toString(),
+            id: callId,
             customerName: customerName,
             phone: phoneToCall,
             callMethod: 'work_phone',
             workPhoneName: selectedPhone.name || selectedPhone.number
           }
+          currentCallId.value = callId // 设置当前通话ID
           callDuration.value = 0
           callNotes.value = outboundForm.value.notes || ''
+          callConnected.value = false // 初始状态为未接通
           callInProgressVisible.value = true
 
-          // 开始计时
-          startCallTimer()
+          // 不立即开始计时，等待接通后再计时
 
           ElMessage.success(`正在通过工作手机 ${selectedPhone.number} 呼叫...`)
         } else {
@@ -3921,14 +4359,17 @@ const startOutboundCall = async () => {
         // 关闭外呼弹窗
         closeOutboundDialog()
 
+        const callId = `call_${Date.now()}`
+
         // 设置当前通话数据并显示通话中弹窗
         currentCallData.value = {
-          id: Date.now().toString(),
+          id: callId,
           customerName: customerName,
           phone: phoneToCall,
           callMethod: 'network_phone',
           lineName: selectedLine.name
         }
+        currentCallId.value = callId // 设置当前通话ID
         callDuration.value = 0
         callNotes.value = outboundForm.value.notes || ''
         callInProgressVisible.value = true
@@ -4035,20 +4476,102 @@ const endCall = async () => {
   }
 
   // 关闭通话中弹窗并重置状态
-  callInProgressVisible.value = false
-  currentCallData.value = null
-  callDuration.value = 0
-  callNotes.value = ''
-  isCallWindowMinimized.value = false
+  closeCallWindow()
 
   // 刷新通话记录
   await callStore.fetchCallRecords()
 }
 
+// 关闭通话窗口并重置状态
+const closeCallWindow = () => {
+  callInProgressVisible.value = false
+  currentCallData.value = null
+  currentCallId.value = null
+  callDuration.value = 0
+  callNotes.value = ''
+  isCallWindowMinimized.value = false
+  callConnected.value = false
+
+  // 停止计时器
+  if (callTimer.value) {
+    clearInterval(callTimer.value)
+    callTimer.value = null
+  }
+}
+
+// 保存通话备注
+const saveCallNotes = async (silent = false) => {
+  if (!currentCallId.value && !currentCallData.value?.id) {
+    if (!silent) ElMessage.warning('没有正在进行的通话')
+    return
+  }
+
+  if (!callNotes.value.trim()) {
+    if (!silent) ElMessage.warning('请输入备注内容')
+    return
+  }
+
+  try {
+    savingNotes.value = true
+    const callId = currentCallId.value || currentCallData.value?.id
+
+    // 调用API更新通话记录的备注
+    await callConfigApi.updateCallNotes(callId, callNotes.value.trim())
+
+    if (!silent) {
+      ElMessage.success('备注保存成功')
+    }
+  } catch (error) {
+    console.error('保存备注失败:', error)
+    if (!silent) {
+      ElMessage.error('保存备注失败，请重试')
+    }
+  } finally {
+    savingNotes.value = false
+  }
+}
+
+// 处理结束通话按钮点击
+const handleEndCallClick = () => {
+  // 如果是工作手机外呼，提示用户在手机端挂断
+  if (currentCallData.value?.callMethod === 'work_phone') {
+    ElMessageBox.confirm(
+      '本次通话需要在手机上挂断，挂断后本窗口会自动关闭。',
+      '提示',
+      {
+        confirmButtonText: '我知道了',
+        cancelButtonText: '关闭窗口',
+        distinguishCancelAndClose: true,
+        type: 'info'
+      }
+    ).then(() => {
+      // 用户点击"我知道了"，不做任何操作
+    }).catch((action) => {
+      if (action === 'cancel') {
+        // 用户点击"关闭窗口"，直接关闭通话窗口
+        closeCallWindow()
+      }
+    })
+  } else {
+    // 网络电话可以直接结束
+    endCall()
+  }
+}
+
 const startCallTimer = () => {
+  // 只有在接通状态下才开始计时
+  if (!callConnected.value) return
+
   callTimer.value = setInterval(() => {
     callDuration.value++
   }, 1000)
+}
+
+// 通话接通时调用
+const onCallConnected = () => {
+  callConnected.value = true
+  callDuration.value = 0
+  startCallTimer()
 }
 
 const stopCallTimer = () => {
@@ -4086,6 +4609,9 @@ const quickFollowUp = () => {
 const openQuickFollowUpFromCall = () => {
   if (!currentCallData.value) return
 
+  // 最小化通话窗口
+  isCallWindowMinimized.value = true
+
   // 设置当前客户信息用于跟进
   currentCustomer.value = {
     id: currentCallData.value.customerId || currentCallData.value.id,
@@ -4095,15 +4621,27 @@ const openQuickFollowUpFromCall = () => {
   quickFollowUpVisible.value = true
 }
 
-const viewCustomerDetailFromCall = () => {
+const viewCustomerDetailFromCall = async () => {
   if (!currentCallData.value) return
+
+  // 最小化通话窗口
+  isCallWindowMinimized.value = true
+
+  const customerId = currentCallData.value.customerId || currentCallData.value.id
 
   // 设置当前客户信息用于查看详情
   currentCustomer.value = {
-    id: currentCallData.value.customerId || currentCallData.value.id,
+    id: customerId,
     customerName: currentCallData.value.customerName,
+    name: currentCallData.value.customerName,
     phone: currentCallData.value.phone
   }
+
+  // 加载客户详情数据
+  if (customerId) {
+    await loadCustomerDetailData(customerId)
+  }
+
   showDetailDialog.value = true
 }
 
@@ -4129,6 +4667,11 @@ const viewCallDetail = (record: any) => {
   const statusColor = record.status === 'connected' ? '#67c23a' : (record.status === 'no_answer' ? '#e6a23c' : '#f56c6c')
   const statusTag = `<span style="display: inline-block; padding: 2px 8px; background: ${statusColor}20; color: ${statusColor}; border-radius: 4px; font-size: 12px;">${getStatusText(record.status)}</span>`
 
+  // 通话标签
+  const callTagsHtml = record.callTags && record.callTags.length > 0
+    ? record.callTags.map((tag: string) => `<span style="display: inline-block; padding: 2px 8px; background: #f4f4f5; color: #909399; border-radius: 4px; font-size: 12px; margin-right: 4px;">${tag}</span>`).join('')
+    : '<span style="color: #c0c4cc;">无</span>'
+
   ElMessageBox.alert(
     `<div style="padding: 8px 0;">
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px;">
@@ -4151,6 +4694,10 @@ const viewCallDetail = (record: any) => {
         <div style="display: flex; flex-direction: column; gap: 4px; grid-column: span 2;">
           <span style="color: #909399; font-size: 12px;">开始时间</span>
           <span style="color: #303133;">${record.startTime || '-'}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px; grid-column: span 2;">
+          <span style="color: #909399; font-size: 12px;">通话标签</span>
+          <div>${callTagsHtml}</div>
         </div>
         <div style="display: flex; flex-direction: column; gap: 4px; grid-column: span 2;">
           <span style="color: #909399; font-size: 12px;">备注</span>
@@ -4206,26 +4753,6 @@ const getOrderStatusText = (status: string) => {
     'refunded': '已退款'
   }
   return statusMap[status] || status || '未知'
-}
-
-const getAftersalesStatusType = (status: string) => {
-  const statusMap: Record<string, string> = {
-    'pending': 'warning',
-    'processing': 'primary',
-    'completed': 'success',
-    'rejected': 'danger'
-  }
-  return statusMap[status] || 'info'
-}
-
-const getAftersalesStatusText = (status: string) => {
-  const statusMap: Record<string, string> = {
-    'pending': '待处理',
-    'processing': '处理中',
-    'completed': '已完成',
-    'rejected': '已拒绝'
-  }
-  return statusMap[status] || '未知'
 }
 
 const viewOrder = (row: any) => {
@@ -4386,10 +4913,166 @@ onMounted(async () => {
     await loadConnectedDevices()
     // 加载可用外呼线路和工作手机
     await loadAvailableCallMethods()
+
+    // 监听WebSocket通话状态变化
+    setupCallStatusListener()
   } catch (error) {
     console.error('加载数据失败:', error)
   }
 })
+
+// 设置通话状态监听
+const setupCallStatusListener = () => {
+  // 监听设备状态变化（包括通话状态）
+  webSocketService.onDeviceStatusChange((data) => {
+    console.log('[CallManagement] 设备状态变化:', data)
+    // 刷新工作手机状态
+    loadAvailableCallMethods()
+  })
+
+  // 监听通话状态变化（APP端同步）
+  webSocketService.on('call:status', (data: any) => {
+    console.log('[CallManagement] 收到通话状态变化:', data)
+    handleCallStatusFromWebSocket(data)
+  })
+
+  // 监听通话接通
+  webSocketService.on('call:connected', (data: any) => {
+    console.log('[CallManagement] 收到通话接通:', data)
+    handleCallStatusFromWebSocket({ ...data, status: 'connected' })
+  })
+
+  // 监听通话结束
+  webSocketService.on('call:ended', (data: any) => {
+    console.log('[CallManagement] 收到通话结束:', data)
+    handleCallEndedFromWebSocket(data)
+  })
+
+  // 监听WebSocket消息，处理通话状态变化（兼容旧格式）
+  webSocketService.onMessage((message) => {
+    console.log('[CallManagement] 收到WebSocket消息:', message)
+
+    // 处理通话状态变化消息
+    if (message.type === 'CALL_STATUS' || message.type === 'call_status') {
+      handleCallStatusChange(message)
+    }
+
+    // 处理通话结束消息
+    if (message.type === 'CALL_ENDED' || message.type === 'call_ended') {
+      handleCallEnded(message)
+    }
+  })
+}
+
+// 处理WebSocket推送的通话状态变化
+const handleCallStatusFromWebSocket = (data: any) => {
+  const callId = data.callId
+  const status = data.status
+
+  console.log('[CallManagement] 处理通话状态:', { callId, status, currentCallId: currentCallId.value })
+
+  // 检查是否是当前通话
+  if (currentCallId.value && currentCallId.value === callId) {
+    if (status === 'connected' || status === 'answered') {
+      // 通话已接通，开始计时
+      if (!callConnected.value) {
+        console.log('[CallManagement] 通话已接通，开始计时')
+        callConnected.value = true
+        callDuration.value = 0
+        startCallTimer()
+        ElMessage.success('通话已接通')
+      }
+    } else if (status === 'ringing') {
+      console.log('[CallManagement] 对方响铃中')
+    } else if (status === 'ended' || status === 'released' || status === 'hangup') {
+      // 通话结束
+      handleCallEndedFromWebSocket(data)
+    }
+  }
+}
+
+// 处理WebSocket推送的通话结束
+const handleCallEndedFromWebSocket = (data: any) => {
+  const callId = data.callId
+
+  console.log('[CallManagement] 处理通话结束:', { callId, currentCallId: currentCallId.value })
+
+  // 检查是否是当前通话
+  if (currentCallId.value && currentCallId.value === callId) {
+    console.log('[CallManagement] 当前通话已结束，自动关闭窗口')
+
+    // 更新通话时长（如果APP传来了时长）
+    if (data.duration !== undefined) {
+      callDuration.value = data.duration
+    }
+
+    // 自动保存备注
+    if (callNotes.value.trim()) {
+      saveCallNotes(true) // 静默保存
+    }
+
+    // 停止计时器
+    if (callTimer.value) {
+      clearInterval(callTimer.value)
+      callTimer.value = null
+    }
+
+    // 关闭通话窗口
+    closeCallWindow()
+
+    // 显示通话结束提示
+    ElMessage.info(`通话已结束，通话时长：${formatCallDuration(callDuration.value)}`)
+
+    // 刷新通话记录
+    loadCallRecords()
+    loadOutboundList()
+  }
+}
+
+// 处理通话状态变化
+const handleCallStatusChange = (message: any) => {
+  const data = message.data || message
+  const callId = data.callId
+
+  // 检查是否是当前通话
+  if (currentCallData.value && currentCallData.value.id === callId) {
+    const status = data.status
+
+    console.log('[CallManagement] 通话状态变化:', status)
+
+    if (status === 'connected' || status === 'answered') {
+      // 通话已接通，开始计时
+      if (!callConnected.value) {
+        callConnected.value = true
+        callDuration.value = 0
+        startCallTimer()
+        ElMessage.success('通话已接通')
+      }
+    } else if (status === 'ringing') {
+      // 对方响铃中
+      console.log('[CallManagement] 对方响铃中')
+    }
+  }
+}
+
+// 处理通话结束
+const handleCallEnded = (message: any) => {
+  const data = message.data || message
+  const callId = data.callId
+
+  // 检查是否是当前通话
+  if (currentCallData.value && currentCallData.value.id === callId) {
+    console.log('[CallManagement] 通话已结束:', data)
+
+    // 更新通话时长（如果APP传来了时长）
+    if (data.duration !== undefined) {
+      callDuration.value = data.duration
+    }
+
+    // 自动关闭通话窗口
+    endCall()
+  }
+}
 
 // 加载可用的外呼线路和工作手机
 const loadAvailableCallMethods = async () => {
@@ -4602,6 +5285,66 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
 .header-actions {
   display: flex;
   gap: 12px;
+}
+
+/* 手机离线提示样式 */
+.phone-offline-tip {
+  margin-top: 12px;
+}
+
+/* 手机在线提示样式 */
+.phone-online-tip {
+  margin-top: 12px;
+}
+
+/* 二维码绑定弹窗样式 */
+.qr-bind-content {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.qr-code-wrapper {
+  margin-bottom: 20px;
+}
+
+.qr-code-img {
+  width: 200px;
+  height: 200px;
+  border: 1px solid #eee;
+  border-radius: 8px;
+}
+
+.qr-status {
+  margin-top: 16px;
+  font-size: 14px;
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.qr-loading {
+  padding: 40px 0;
+  color: #999;
+}
+
+.qr-loading p {
+  margin-top: 12px;
+}
+
+.qr-tips {
+  text-align: left;
+  background: #f5f7fa;
+  padding: 16px;
+  border-radius: 8px;
+  margin-top: 20px;
+}
+
+.qr-tips p {
+  margin: 8px 0;
+  font-size: 13px;
+  color: #666;
 }
 
 /* 统计卡片样式 */
@@ -5289,9 +6032,13 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
 .status-dot {
   width: 10px;
   height: 10px;
-  background: #67c23a;
+  background: #e6a23c;
   border-radius: 50%;
   animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-dot.is-connected {
+  background: #67c23a;
 }
 
 @keyframes pulse {
@@ -5437,6 +6184,15 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
 .call-window-content .call-notes {
   margin-top: 12px;
   text-align: left;
+}
+
+.call-window-content .call-notes .notes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #606266;
 }
 
 .call-window-content .call-quick-actions {
@@ -5660,6 +6416,17 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
 
 .option-tag {
   flex-shrink: 0;
+}
+
+/* 详情弹窗标签页内容样式 */
+.tab-content {
+  margin-top: 16px;
+}
+
+.tab-pagination {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
 }
 </style>
 

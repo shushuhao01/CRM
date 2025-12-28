@@ -363,7 +363,6 @@ const messageTypeCategories = [
     name: '订单管理',
     types: [
       { value: 'order_created', label: '新建订单通知', description: '有新订单创建时通知' },
-      { value: 'order_submitted', label: '订单提交成功', description: '订单提交成功时通知' },
       { value: 'order_paid', label: '订单支付成功', description: '订单支付成功时通知' },
       { value: 'order_shipped', label: '订单发货通知', description: '订单发货时通知' },
       { value: 'order_delivered', label: '订单送达通知', description: '订单送达时通知' },

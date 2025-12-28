@@ -184,16 +184,41 @@ class TimeoutReminderService {
 
   /**
    * 检查是否已发送过提醒（避免重复发送）
+   * 🔥 修复：改为基于数据库的去重，避免服务重启后重复发送
    */
-  private hasRecentReminder(type: string, id: string): boolean {
-    const key = `${type}:${id}`;
-    const lastSent = sentTimeoutReminders.get(key);
+  private async hasRecentReminder(type: string, id: string): Promise<boolean> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        // 如果数据库不可用，使用内存缓存
+        const key = `${type}:${id}`;
+        const lastSent = sentTimeoutReminders.get(key);
+        return !!(lastSent && Date.now() - lastSent < REMINDER_COOLDOWN_MS);
+      }
 
-    if (lastSent && Date.now() - lastSent < REMINDER_COOLDOWN_MS) {
-      return true;
+      const messageRepo = dataSource.getRepository(SystemMessage);
+
+      // 检查数据库中是否已有相同类型和关联ID的消息（24小时内）
+      const recentMessage = await messageRepo
+        .createQueryBuilder('msg')
+        .where('msg.type = :type', { type })
+        .andWhere('msg.relatedId = :relatedId', { relatedId: id })
+        .andWhere('msg.createdAt > :since', { since: new Date(Date.now() - REMINDER_COOLDOWN_MS) })
+        .getOne();
+
+      if (recentMessage) {
+        console.log(`[TimeoutReminder] ⏭️ 跳过重复提醒: ${type}:${id} (已在 ${recentMessage.createdAt} 发送过)`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('[TimeoutReminder] 检查重复提醒失败:', error);
+      // 出错时使用内存缓存
+      const key = `${type}:${id}`;
+      const lastSent = sentTimeoutReminders.get(key);
+      return !!(lastSent && Date.now() - lastSent < REMINDER_COOLDOWN_MS);
     }
-
-    return false;
   }
 
   /**
@@ -232,7 +257,7 @@ class TimeoutReminderService {
       let sentCount = 0;
       for (const order of timeoutOrders) {
         // 检查是否已发送过提醒
-        if (this.hasRecentReminder(TimeoutMessageTypes.ORDER_AUDIT_TIMEOUT, order.id)) {
+        if (await this.hasRecentReminder(TimeoutMessageTypes.ORDER_AUDIT_TIMEOUT, order.id)) {
           continue;
         }
 
@@ -280,7 +305,7 @@ class TimeoutReminderService {
 
       let sentCount = 0;
       for (const order of timeoutOrders) {
-        if (this.hasRecentReminder(TimeoutMessageTypes.ORDER_SHIPMENT_TIMEOUT, order.id)) {
+        if (await this.hasRecentReminder(TimeoutMessageTypes.ORDER_SHIPMENT_TIMEOUT, order.id)) {
           continue;
         }
 
@@ -327,7 +352,7 @@ class TimeoutReminderService {
 
       let sentCount = 0;
       for (const service of timeoutServices) {
-        if (this.hasRecentReminder(TimeoutMessageTypes.AFTER_SALES_TIMEOUT, service.id)) {
+        if (await this.hasRecentReminder(TimeoutMessageTypes.AFTER_SALES_TIMEOUT, service.id)) {
           continue;
         }
 
@@ -376,7 +401,7 @@ class TimeoutReminderService {
 
       let sentCount = 0;
       for (const order of orders) {
-        if (this.hasRecentReminder(TimeoutMessageTypes.ORDER_FOLLOWUP_REMINDER, order.id)) {
+        if (await this.hasRecentReminder(TimeoutMessageTypes.ORDER_FOLLOWUP_REMINDER, order.id)) {
           continue;
         }
 
@@ -534,7 +559,7 @@ class TimeoutReminderService {
 
       let sentCount = 0;
       for (const record of followupRecords) {
-        if (this.hasRecentReminder(TimeoutMessageTypes.CUSTOMER_FOLLOWUP_REMINDER, record.id)) {
+        if (await this.hasRecentReminder(TimeoutMessageTypes.CUSTOMER_FOLLOWUP_REMINDER, record.id)) {
           continue;
         }
 

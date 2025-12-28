@@ -2036,29 +2036,39 @@ const loadOrderList = async () => {
       const { list, total } = response.data
 
       // 🔥 转换数据格式
-      const convertedOrders = list.map((order: any) => ({
-        id: order.id,
-        orderNo: order.orderNo || order.orderNumber,
-        customerId: order.customerId,
-        customerName: order.customerName,
-        customerPhone: order.customerPhone,
-        salesPerson: order.salesPerson || order.createdByName || '-',
-        totalAmount: order.totalAmount || 0,
-        depositAmount: order.depositAmount || 0,
-        codAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
-        productCount: order.products?.length || 0,
-        createTime: order.createTime,
-        paymentMethod: order.paymentMethod || '',
-        waitingMinutes: Math.floor((new Date().getTime() - new Date(order.createTime).getTime()) / (1000 * 60)),
-        remark: order.remark || '',
-        auditStatus: order.auditStatus,
-        auditFlag: order.auditStatus || 'pending',
-        hasBeenAudited: order.auditStatus !== 'pending',
-        deliveryAddress: order.deliveryAddress || order.receiverAddress || '',
-        paymentScreenshots: [],
-        depositScreenshots: [],
-        auditHistory: []
-      }))
+      const convertedOrders = list.map((order: any) => {
+        // 转换截图数据：将字符串数组转换为对象数组
+        const screenshots = order.depositScreenshots || []
+        const paymentScreenshots = screenshots.map((url: string, index: number) => ({
+          id: index + 1,
+          url: url,
+          name: `支付截图${index + 1}`
+        }))
+
+        return {
+          id: order.id,
+          orderNo: order.orderNo || order.orderNumber,
+          customerId: order.customerId,
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          salesPerson: order.salesPerson || order.createdByName || '-',
+          totalAmount: order.totalAmount || 0,
+          depositAmount: order.depositAmount || 0,
+          codAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
+          productCount: order.products?.length || 0,
+          createTime: order.createTime,
+          paymentMethod: order.paymentMethod || '',
+          waitingMinutes: Math.floor((new Date().getTime() - new Date(order.createTime).getTime()) / (1000 * 60)),
+          remark: order.remark || '',
+          auditStatus: order.auditStatus,
+          auditFlag: order.auditStatus || 'pending',
+          hasBeenAudited: order.auditStatus !== 'pending',
+          deliveryAddress: order.deliveryAddress || order.receiverAddress || '',
+          paymentScreenshots: paymentScreenshots,
+          depositScreenshots: screenshots,
+          auditHistory: []
+        }
+      })
 
       // 🔥 根据当前标签页更新对应的数据
       if (activeTab.value === 'pending') {

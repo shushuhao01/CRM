@@ -5,7 +5,6 @@ import { ref, computed } from 'vue'
 export enum MessageType {
   // 订单相关
   ORDER_CREATED = 'order_created',
-  ORDER_SUBMITTED = 'order_submitted', // 订单提交成功
   ORDER_PAID = 'order_paid',
   ORDER_PENDING_AUDIT = 'order_pending_audit', // 订单待审核
   ORDER_AUDIT_APPROVED = 'order_audit_approved', // 订单审核通过
@@ -147,13 +146,6 @@ export const MESSAGE_TEMPLATES: Record<MessageType, {
     color: '#409EFF',
     category: '订单通知',
     priority: MessagePriority.NORMAL
-  },
-  [MessageType.ORDER_SUBMITTED]: {
-    title: '订单提交成功',
-    icon: 'DocumentAdd',
-    color: '#67C23A',
-    category: '订单通知',
-    priority: MessagePriority.HIGH
   },
   [MessageType.ORDER_PAID]: {
     title: '订单已支付',

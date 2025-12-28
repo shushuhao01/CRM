@@ -165,7 +165,7 @@ export const getCallRecords = (params: {
     total: number
     page: number
     pageSize: number
-  }>('/calls/records', params)
+  }>('/calls/records', { params })
 }
 
 // 获取单个通话记录详情
@@ -262,7 +262,7 @@ export const getFollowUpRecords = (params: {
     total: number
     page: number
     pageSize: number
-  }>('/calls/followups', params)
+  }>('/calls/followups', { params })
 }
 
 // 创建跟进记录
@@ -441,7 +441,7 @@ export const exportCallRecords = (params: {
   callType?: string
   format?: 'excel' | 'csv'
 }) => {
-  return api.get('/calls/export', params)
+  return api.get('/calls/export', { params })
 }
 
 // ==================== 外呼任务管理 ====================

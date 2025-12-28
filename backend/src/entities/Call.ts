@@ -52,6 +52,9 @@ export class Call {
   @Column({ name: 'follow_up_required', type: 'tinyint', default: 0 })
   followUpRequired: boolean;
 
+  @Column({ name: 'call_tags', type: 'json', nullable: true })
+  callTags: string[];
+
   @Column({ name: 'user_id', length: 100 })
   userId: string;
 

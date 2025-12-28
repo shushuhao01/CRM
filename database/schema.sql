@@ -664,7 +664,7 @@ CREATE TABLE `call_records` (
   `customer_name` VARCHAR(100) COMMENT '客户姓名',
   `customer_phone` VARCHAR(20) NOT NULL COMMENT '客户电话',
   `call_type` ENUM('outbound', 'inbound') DEFAULT 'outbound' COMMENT '通话类型：outbound-呼出，inbound-呼入',
-  `call_status` ENUM('connected', 'missed', 'busy', 'failed', 'rejected', 'pending', 'calling') DEFAULT 'connected' COMMENT '通话状态',
+  `call_status` ENUM('connected', 'missed', 'busy', 'failed', 'rejected', 'pending', 'calling') DEFAULT 'connected' COMMENT '通话状态：connected-已接通，missed-未接，busy-忙线，failed-失败，rejected-拒接，pending-待处理，calling-拨号中',
   `start_time` DATETIME COMMENT '通话开始时间',
   `end_time` DATETIME COMMENT '通话结束时间',
   `duration` INT DEFAULT 0 COMMENT '通话时长(秒)',

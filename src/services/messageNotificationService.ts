@@ -43,7 +43,6 @@ export const MESSAGE_RECEIVERS: Record<string, string[]> = {
   [MessageType.ORDER_AUDIT_TIMEOUT]: ['super_admin', 'admin', 'customer_service'],
   [MessageType.ORDER_SHIPMENT_TIMEOUT]: ['super_admin', 'admin', 'customer_service'],
   [MessageType.ORDER_FOLLOWUP_REMINDER]: ['sales_staff', 'department_manager'],
-  [MessageType.ORDER_SUBMITTED]: ['sales_staff'], // 发送给订单创建者
   [MessageType.ORDER_SIGNED]: ['sales_staff'],
 
   // 售后相关 - 🔥 2025-12-14 完善

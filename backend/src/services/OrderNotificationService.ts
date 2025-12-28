@@ -127,6 +127,21 @@ class OrderNotificationService {
       await messageRepo.save(message);
       console.log(`[OrderNotification] ✅ 系统消息已保存: id=${messageId}, type=${type} -> ${targetUserId}`);
 
+      // 🔥 通过WebSocket实时推送
+      if (global.webSocketService) {
+        global.webSocketService.pushSystemMessage({
+          id: message.id,
+          type: message.type,
+          title: message.title,
+          content: message.content,
+          priority: message.priority as any,
+          relatedId: message.relatedId,
+          relatedType: message.relatedType,
+          actionUrl: message.actionUrl
+        }, { userId: parseInt(targetUserId) });
+        console.log(`[OrderNotification] 🔌 WebSocket推送: ${title} -> 用户 ${targetUserId}`);
+      }
+
       // 🔥 同时发送到企业微信机器人
       this.sendToWechatRobot(type, title, content).catch(err => {
         console.warn('[OrderNotification] 企业微信推送失败:', err.message);
@@ -558,12 +573,15 @@ class OrderNotificationService {
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
-      const messages = targetUserIds.map(userId => messageRepo.create({
-        id: uuidv4(),
+      // 🔥 修复：只创建一条消息记录，targetUserId 存储所有目标用户ID（逗号分隔）
+      // 这样每种通知只有一条记录，避免重复
+      const messageId = uuidv4();
+      const message = messageRepo.create({
+        id: messageId,
         type,
         title,
         content,
-        targetUserId: userId,
+        targetUserId: targetUserIds.join(','), // 多个用户ID用逗号分隔
         priority: options?.priority || 'normal',
         category: options?.category || '订单通知',
         relatedId: options?.relatedId,
@@ -571,17 +589,34 @@ class OrderNotificationService {
         actionUrl: options?.actionUrl,
         createdBy: options?.createdBy,
         isRead: 0
-      }));
+      });
 
-      await messageRepo.save(messages);
-      console.log(`[OrderNotification] ✅ 批量发送 ${messages.length} 条系统消息: ${type}`);
+      await messageRepo.save(message);
+      console.log(`[OrderNotification] ✅ 创建1条系统消息: ${type}, 目标用户: ${targetUserIds.length}个`);
+
+      // 🔥 通过WebSocket实时推送给所有目标用户
+      if (global.webSocketService) {
+        targetUserIds.forEach(userId => {
+          global.webSocketService.pushSystemMessage({
+            id: messageId,
+            type: message.type,
+            title: message.title,
+            content: message.content,
+            priority: message.priority as any,
+            relatedId: message.relatedId,
+            relatedType: message.relatedType,
+            actionUrl: message.actionUrl
+          }, { userId: parseInt(userId) });
+        });
+        console.log(`[OrderNotification] 🔌 WebSocket推送给 ${targetUserIds.length} 个用户`);
+      }
 
       // 🔥 同时发送到外部渠道（只发送一次，不重复）
       this.sendToAllChannels(type, title, content).catch(err => {
         console.warn('[OrderNotification] 外部渠道推送失败:', err.message);
       });
 
-      return messages.length;
+      return 1; // 返回1表示创建了1条消息
     } catch (error) {
       console.error('[OrderNotification] ❌ 批量发送消息失败:', error);
       return 0;
@@ -664,8 +699,8 @@ class OrderNotificationService {
   }
 
   /**
-   * 订单待审核通知 - 通知下单员 + 管理员
-   * 🔥 修复：添加销售员名字，确保管理员、超管、客服都能收到
+   * 订单待审核通知 - 只通知管理员、超管、客服
+   * 🔥 修复：不通知下单员（销售员），只通知审核相关人员
    */
   async notifyOrderPendingAudit(order: OrderInfo, _operatorName?: string): Promise<void> {
     console.log(`[OrderNotification] 🔔 notifyOrderPendingAudit 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}, createdByName=${order.createdByName}`);
@@ -673,12 +708,13 @@ class OrderNotificationService {
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
     console.log(`[OrderNotification] 📋 获取到管理员用户: ${adminUserIds.length} 个, IDs: ${adminUserIds.join(', ')}`);
 
+    // 🔥 修复：只通知管理员、超管、客服，不通知下单员
     const allTargets = new Set<string>(adminUserIds);
 
-    // 添加下单员
-    if (order.createdBy) {
-      allTargets.add(order.createdBy);
-    }
+    // 🔥 移除：不再添加下单员到通知目标
+    // if (order.createdBy) {
+    //   allTargets.add(order.createdBy);
+    // }
 
     console.log(`[OrderNotification] 📤 待审核通知目标用户: ${Array.from(allTargets).join(', ')}`);
 

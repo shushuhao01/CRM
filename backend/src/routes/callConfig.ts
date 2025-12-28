@@ -10,6 +10,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
+import { mobileWebSocketService } from '../services/MobileWebSocketService';
 
 const router = Router();
 
@@ -581,21 +582,43 @@ router.get('/work-phones', async (req: Request, res: Response) => {
     const userId = currentUser?.userId || currentUser?.id;
     const userIdStr = String(userId);
 
+    console.log('[work-phones] 获取工作手机列表, userId:', userIdStr);
+
+    // 先查询所有记录（不带 status 条件）看看数据库里有什么
+    const allPhones = await AppDataSource.query(
+      `SELECT id, user_id, phone_number, device_id, status, online_status FROM work_phones WHERE user_id = ?`,
+      [userIdStr]
+    );
+    console.log('[work-phones] 所有记录(不带status条件):', JSON.stringify(allPhones));
+
+    // 查询 active 或 online 状态的记录
     const phones = await AppDataSource.query(
-      `SELECT * FROM work_phones WHERE user_id = ? ORDER BY is_primary DESC, created_at DESC`,
+      `SELECT * FROM work_phones WHERE user_id = ? AND status IN ('active', 'online') ORDER BY is_primary DESC, created_at DESC`,
       [userIdStr]
     );
 
-    res.json(successResponse(phones.map((p: any) => ({
-      id: p.id,
-      phoneNumber: p.phone_number,
-      deviceName: p.device_name,
-      deviceModel: p.device_model,
-      onlineStatus: p.online_status || 'offline',
-      isPrimary: p.is_primary === 1,
-      lastActiveAt: p.last_active_at,
-      createdAt: p.created_at
-    }))));
+    console.log('[work-phones] 查询结果(status in active/online):', phones.length, '条记录');
+    console.log('[work-phones] 详细数据:', JSON.stringify(phones));
+
+    const result = phones.map((p: any) => {
+      console.log('[work-phones] 原始记录 p.id:', p.id, 'typeof:', typeof p.id);
+      const item = {
+        id: p.id,  // 确保返回数据库的自增 ID
+        phoneNumber: p.phone_number,
+        deviceName: p.device_name,
+        deviceModel: p.device_model,
+        onlineStatus: p.online_status || 'offline',
+        isPrimary: p.is_primary === 1,
+        lastActiveAt: p.last_active_at,
+        createdAt: p.created_at
+      };
+      console.log('[work-phones] 映射后的数据项:', JSON.stringify(item));
+      return item;
+    });
+
+    console.log('[work-phones] 最终返回数据:', JSON.stringify(result));
+
+    res.json(successResponse(result));
   } catch (error) {
     console.error('获取工作手机失败:', error);
     res.status(500).json(errorResponse('获取工作手机失败'));
@@ -698,30 +721,33 @@ router.delete('/work-phones/:id', async (req: Request, res: Response) => {
     const userIdStr = String(userId);
     const { id } = req.params;
 
-    console.log('[解绑工作手机] 请求参数:', { id, userId: userIdStr });
+    console.log('[解绑工作手机] ========== 开始解绑 ==========');
+    console.log('[解绑工作手机] 请求参数 id:', id, '类型:', typeof id);
+    console.log('[解绑工作手机] 当前用户 userId:', userIdStr);
 
-    // 先查询不带 user_id 条件，看看记录是否存在
-    const allPhones = await AppDataSource.query(`SELECT id, user_id, device_id, phone_number FROM work_phones WHERE id = ?`, [id]);
-    console.log('[解绑工作手机] 查询结果(不带user_id):', allPhones);
+    // 先查询所有该用户的手机记录
+    const allUserPhones = await AppDataSource.query(
+      `SELECT id, user_id, device_id, phone_number, status FROM work_phones WHERE user_id = ?`,
+      [userIdStr]
+    );
+    console.log('[解绑工作手机] 该用户所有手机记录:', JSON.stringify(allUserPhones));
 
+    // 查询指定 ID 的记录（不带 user_id 条件）
+    const phoneById = await AppDataSource.query(`SELECT id, user_id, device_id, phone_number, status FROM work_phones WHERE id = ?`, [id]);
+    console.log('[解绑工作手机] 按 ID 查询结果(不带user_id):', JSON.stringify(phoneById));
+
+    // 查询指定 ID 且属于当前用户的记录
     const phones = await AppDataSource.query(`SELECT * FROM work_phones WHERE id = ? AND user_id = ?`, [id, userIdStr]);
-    console.log('[解绑工作手机] 查询结果(带user_id):', phones);
+    console.log('[解绑工作手机] 按 ID+user_id 查询结果:', JSON.stringify(phones));
 
     if (phones.length === 0) {
-      // 如果找不到，尝试用 device_id 查询
-      const phonesByDeviceId = await AppDataSource.query(`SELECT * FROM work_phones WHERE device_id = ? AND user_id = ?`, [id, userIdStr]);
-      console.log('[解绑工作手机] 用device_id查询结果:', phonesByDeviceId);
-
-      if (phonesByDeviceId.length > 0) {
-        // 用 device_id 找到了，执行删除
-        await AppDataSource.query(`DELETE FROM work_phones WHERE device_id = ? AND user_id = ?`, [id, userIdStr]);
-        return res.json(successResponse(null, '解绑成功'));
-      }
-
+      console.log('[解绑工作手机] 未找到匹配记录，返回 404');
       return res.status(404).json(errorResponse('手机不存在或无权操作', 404));
     }
 
+    console.log('[解绑工作手机] 找到记录，执行删除...');
     await AppDataSource.query(`DELETE FROM work_phones WHERE id = ?`, [id]);
+    console.log('[解绑工作手机] 删除成功');
 
     res.json(successResponse(null, '解绑成功'));
   } catch (error) {
@@ -770,6 +796,8 @@ router.post('/work-phones/call', async (req: Request, res: Response) => {
     const userName = currentUser?.name || currentUser?.username || '未知用户';
     const { workPhoneId, targetPhone, customerId, customerName, notes } = req.body;
 
+    console.log('[work-phones/call] 发起呼叫请求:', { workPhoneId, targetPhone, customerId, customerName, userId: userIdStr });
+
     if (!workPhoneId || !targetPhone) {
       return res.status(400).json(errorResponse('缺少必要参数', 400));
     }
@@ -780,30 +808,61 @@ router.post('/work-phones/call', async (req: Request, res: Response) => {
       [workPhoneId, userIdStr]
     );
 
+    console.log('[work-phones/call] 查询工作手机结果:', phones.length, '条');
+
     if (phones.length === 0) {
       return res.status(404).json(errorResponse('工作手机不存在或无权使用', 404));
     }
 
     const phone = phones[0];
 
-    // 创建通话记录
+    // 创建通话记录 - 使用 id 字段作为主键，call_status 使用 'calling'（拨号中）
     const callId = `WP-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     await AppDataSource.query(
       `INSERT INTO call_records (
-        call_id, customer_id, customer_name, customer_phone, call_type, call_status,
-        user_id, user_name, call_method, work_phone_id, notes, start_time, created_at
-      ) VALUES (?, ?, ?, ?, 'outbound', 'dialing', ?, ?, 'work_phone', ?, ?, NOW(), NOW())`,
-      [callId, customerId || null, customerName || '未知客户', targetPhone, userIdStr, userName, workPhoneId, notes || null]
+        id, customer_id, customer_name, customer_phone, call_type, call_status,
+        user_id, user_name, call_method, line_id, notes, start_time, created_at
+      ) VALUES (?, ?, ?, ?, 'outbound', 'calling', ?, ?, 'mobile', ?, ?, NOW(), NOW())`,
+      [callId, customerId || null, customerName || '未知客户', targetPhone, userIdStr, userName, String(workPhoneId), notes || null]
     );
 
-    // TODO: 通过WebSocket通知APP发起呼叫
-    // 这里需要集成WebSocket服务，向对应的工作手机APP发送呼叫指令
-    // const wsService = require('../services/WebSocketService').default;
-    // wsService.sendToDevice(phone.device_id, { type: 'INITIATE_CALL', targetPhone, callId });
+    console.log('[work-phones/call] 通话记录已创建:', callId);
+
+    // 通过WebSocket通知APP发起呼叫
+    const deviceId = phone.device_id;
+    console.log('[work-phones/call] 工作手机信息:', {
+      phoneId: phone.id,
+      phoneNumber: phone.phone_number,
+      deviceId: deviceId,
+      userId: userIdStr
+    });
+
+    if (deviceId) {
+      // 检查设备是否在线
+      const isOnline = mobileWebSocketService.isDeviceOnline(deviceId);
+      console.log('[work-phones/call] 设备在线状态:', isOnline);
+
+      const sent = mobileWebSocketService.sendDialCommand(deviceId, {
+        callId,
+        phoneNumber: targetPhone,
+        customerName: customerName || '未知客户',
+        customerId: customerId || undefined,
+        source: 'pc_crm'
+      });
+      console.log('[work-phones/call] WebSocket通知发送结果:', sent ? '成功' : '失败', 'deviceId:', deviceId);
+
+      if (!sent) {
+        // 设备不在线，但通话记录已创建
+        console.log('[work-phones/call] 设备不在线，无法发送拨号指令');
+      }
+    } else {
+      console.log('[work-phones/call] 工作手机没有 device_id，无法发送拨号指令');
+    }
 
     res.json(successResponse({
       callId,
-      status: 'dialing',
+      status: 'calling',
+      deviceOnline: deviceId ? mobileWebSocketService.isDeviceOnline(deviceId) : false,
       message: `正在通过工作手机 ${phone.phone_number} 发起呼叫`
     }));
   } catch (error) {
@@ -842,14 +901,14 @@ router.post('/lines/call', async (req: Request, res: Response) => {
 
     const assignment = assignments[0];
 
-    // 创建通话记录
+    // 创建通话记录 - 使用 id 字段作为主键，call_status 使用 'calling'（拨号中）
     const callId = `NP-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     await AppDataSource.query(
       `INSERT INTO call_records (
-        call_id, customer_id, customer_name, customer_phone, call_type, call_status,
+        id, customer_id, customer_name, customer_phone, call_type, call_status,
         user_id, user_name, call_method, line_id, notes, start_time, created_at
-      ) VALUES (?, ?, ?, ?, 'outbound', 'dialing', ?, ?, 'network_phone', ?, ?, NOW(), NOW())`,
-      [callId, customerId || null, customerName || '未知客户', targetPhone, userIdStr, userName, lineId, notes || null]
+      ) VALUES (?, ?, ?, ?, 'outbound', 'calling', ?, ?, 'voip', ?, ?, NOW(), NOW())`,
+      [callId, customerId || null, customerName || '未知客户', targetPhone, userIdStr, userName, String(lineId), notes || null]
     );
 
     // TODO: 调用云通信服务发起呼叫
@@ -859,7 +918,7 @@ router.post('/lines/call', async (req: Request, res: Response) => {
 
     res.json(successResponse({
       callId,
-      status: 'dialing',
+      status: 'calling',
       message: `正在通过线路 ${assignment.line_name} 发起呼叫`
     }));
   } catch (error) {
@@ -879,9 +938,11 @@ router.post('/calls/:callId/end', async (req: Request, res: Response) => {
     const { callId } = req.params;
     const { notes, duration } = req.body;
 
-    // 查找通话记录
+    console.log(`[CallConfig] 结束通话: callId=${callId}, userId=${userId}`);
+
+    // 查找通话记录 - 使用 id 字段
     const calls = await AppDataSource.query(
-      `SELECT * FROM call_records WHERE call_id = ? AND user_id = ?`,
+      `SELECT * FROM call_records WHERE id = ? AND user_id = ?`,
       [callId, userIdStr]
     );
 
@@ -889,17 +950,28 @@ router.post('/calls/:callId/end', async (req: Request, res: Response) => {
       return res.status(404).json(errorResponse('通话记录不存在', 404));
     }
 
-    // 更新通话记录
+    // 更新通话记录 - 使用 id 字段
     await AppDataSource.query(
       `UPDATE call_records SET
-        call_status = 'completed',
+        call_status = 'connected',
         end_time = NOW(),
         duration = ?,
         notes = COALESCE(?, notes),
         updated_at = NOW()
-       WHERE call_id = ?`,
+       WHERE id = ?`,
       [duration || 0, notes, callId]
     );
+
+    // 通过 WebSocket 通知 APP 端结束通话
+    try {
+      const { mobileWebSocketService } = await import('../services/MobileWebSocketService');
+      if (mobileWebSocketService && mobileWebSocketService.isInitialized()) {
+        const sent = mobileWebSocketService.sendEndCallToUser(Number(userId), callId, 'crm_end');
+        console.log(`[CallConfig] 已通知 ${sent} 个设备结束通话`);
+      }
+    } catch (wsError) {
+      console.error('[CallConfig] 通知APP结束通话失败:', wsError);
+    }
 
     res.json(successResponse(null, '通话已结束'));
   } catch (error) {

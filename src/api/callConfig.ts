@@ -379,3 +379,14 @@ export function endCall(callId: string, data?: {
     data
   })
 }
+
+/**
+ * 更新通话备注
+ */
+export function updateCallNotes(callId: string, notes: string): Promise<ApiResponse> {
+  return request({
+    url: `/calls/${callId}/notes`,
+    method: 'put',
+    data: { notes }
+  })
+}
