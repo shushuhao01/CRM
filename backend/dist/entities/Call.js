@@ -82,6 +82,10 @@ __decorate([
     __metadata("design:type", Boolean)
 ], Call.prototype, "followUpRequired", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ name: 'call_tags', type: 'json', nullable: true }),
+    __metadata("design:type", Array)
+], Call.prototype, "callTags", void 0);
+__decorate([
     (0, typeorm_1.Column)({ name: 'user_id', length: 100 }),
     __metadata("design:type", String)
 ], Call.prototype, "userId", void 0);

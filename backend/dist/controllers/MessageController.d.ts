@@ -30,6 +30,7 @@ export declare class MessageController {
     getDepartmentsAndMembers(req: Request, res: Response): Promise<void>;
     /**
      * 获取当前用户的系统消息
+     * 🔥 修复：支持查询 targetUserId 包含当前用户ID的消息（逗号分隔的多个ID）
      */
     getSystemMessages(req: Request, res: Response): Promise<void>;
     /**

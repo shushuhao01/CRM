@@ -360,6 +360,38 @@ router.put('/records/:id/end', async (req, res) => {
         });
     }
 });
+// 更新通话备注
+router.put('/:id/notes', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { notes } = req.body;
+        const callRepository = database_1.AppDataSource.getRepository(Call_1.Call);
+        console.log('[Calls] 更新通话备注:', { callId: id, notes });
+        const record = await callRepository.findOne({ where: { id } });
+        if (!record) {
+            return res.status(404).json({
+                success: false,
+                message: '通话记录不存在'
+            });
+        }
+        record.notes = notes || '';
+        record.updatedAt = new Date();
+        const savedRecord = await callRepository.save(record);
+        console.log('[Calls] 通话备注更新成功:', savedRecord.id);
+        res.json({
+            success: true,
+            message: '备注更新成功',
+            data: savedRecord
+        });
+    }
+    catch (error) {
+        console.error('更新通话备注失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '更新备注失败'
+        });
+    }
+});
 // 删除通话记录
 router.delete('/records/:id', async (req, res) => {
     try {
@@ -489,11 +521,43 @@ router.post('/followups', async (req, res) => {
         const followUpRepository = database_1.AppDataSource.getRepository(FollowUp_1.FollowUp);
         const currentUser = req.user;
         const { callId, customerId, customerName, type = 'call', content, customerIntent, callTags, nextFollowUpDate, priority = 'medium', status = 'pending' } = req.body;
-        const followUp = followUpRepository.create({
-            id: `followup_${Date.now()}_${(0, uuid_1.v4)().substring(0, 8)}`,
+        console.log('[Calls] 创建跟进记录请求:', {
             callId,
             customerId,
             customerName,
+            type,
+            content,
+            customerIntent,
+            callTags,
+            nextFollowUpDate,
+            priority,
+            status,
+            userId: currentUser?.userId || currentUser?.id,
+            currentUser: currentUser
+        });
+        // 验证必要字段
+        if (!customerId) {
+            console.error('[Calls] 创建跟进记录失败: customerId 为空');
+            return res.status(400).json({
+                success: false,
+                message: '客户ID不能为空'
+            });
+        }
+        if (!content) {
+            console.error('[Calls] 创建跟进记录失败: content 为空');
+            return res.status(400).json({
+                success: false,
+                message: '跟进内容不能为空'
+            });
+        }
+        const followUpId = `followup_${Date.now()}_${(0, uuid_1.v4)().substring(0, 8)}`;
+        const userId = currentUser?.userId || currentUser?.id || 'system';
+        const userName = currentUser?.realName || currentUser?.username || '未知用户';
+        const followUp = followUpRepository.create({
+            id: followUpId,
+            callId: callId || null,
+            customerId,
+            customerName: customerName || '',
             type,
             content,
             customerIntent: customerIntent || null,
@@ -501,10 +565,15 @@ router.post('/followups', async (req, res) => {
             nextFollowUp: nextFollowUpDate ? new Date(nextFollowUpDate) : null,
             priority,
             status,
-            createdBy: currentUser?.userId || currentUser?.id,
-            createdByName: currentUser?.realName || currentUser?.username || '未知用户'
+            createdBy: userId,
+            createdByName: userName
         });
+        console.log('[Calls] 准备保存的跟进记录:', JSON.stringify(followUp, null, 2));
         const savedFollowUp = await followUpRepository.save(followUp);
+        console.log('[Calls] 跟进记录保存成功:', savedFollowUp.id);
+        // 验证保存结果
+        const verifyRecord = await database_1.AppDataSource.query(`SELECT * FROM follow_up_records WHERE id = ?`, [savedFollowUp.id]);
+        console.log('[Calls] 验证保存的记录:', verifyRecord);
         res.status(201).json({
             success: true,
             message: '跟进记录创建成功',
