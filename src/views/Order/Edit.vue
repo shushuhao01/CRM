@@ -1466,6 +1466,20 @@ const confirmSaveOrder = async () => {
     // 🔥 修复：调用API保存到数据库
     const { orderApi } = await import('@/api/order')
 
+    // 🔥 修复：转换产品数据格式，确保字段名与列表显示一致
+    const formattedProducts = orderForm.products.map((p: any) => ({
+      id: p.productId || p.id,
+      productId: p.productId || p.id,
+      name: p.productName || p.name || '',  // 列表显示用 name
+      productName: p.productName || p.name || '',
+      code: p.productCode || p.code || '',
+      productCode: p.productCode || p.code || '',
+      specification: p.specification || '',
+      price: Number(p.price) || 0,
+      quantity: Number(p.quantity) || 1,
+      subtotal: (Number(p.price) || 0) * (Number(p.quantity) || 1)
+    }))
+
     // 构建要更新的订单数据
     const updateData = {
       customerId: orderForm.customerId,
@@ -1479,8 +1493,8 @@ const confirmSaveOrder = async () => {
       // 客服和订单来源
       serviceWechat: orderForm.serviceWechat,
       orderSource: orderForm.orderSource,
-      // 产品和金额
-      products: orderForm.products,
+      // 产品和金额 - 🔥 使用格式化后的产品数据
+      products: formattedProducts,
       totalAmount: orderForm.totalAmount,
       depositAmount: orderForm.depositAmount,
       discountAmount: discountAmount.value,
