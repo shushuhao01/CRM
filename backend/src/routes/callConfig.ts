@@ -736,18 +736,43 @@ router.delete('/work-phones/:id', async (req: Request, res: Response) => {
     const phoneById = await AppDataSource.query(`SELECT id, user_id, device_id, phone_number, status FROM work_phones WHERE id = ?`, [id]);
     console.log('[解绑工作手机] 按 ID 查询结果(不带user_id):', JSON.stringify(phoneById));
 
-    // 查询指定 ID 且属于当前用户的记录
-    const phones = await AppDataSource.query(`SELECT * FROM work_phones WHERE id = ? AND user_id = ?`, [id, userIdStr]);
-    console.log('[解绑工作手机] 按 ID+user_id 查询结果:', JSON.stringify(phones));
+    // 查询指定 ID 且属于当前用户的记录（包括 active 和 online 状态）
+    const phones = await AppDataSource.query(
+      `SELECT * FROM work_phones WHERE id = ? AND user_id = ? AND status IN ('active', 'online')`,
+      [id, userIdStr]
+    );
+    console.log('[解绑工作手机] 按 ID+user_id+status 查询结果:', JSON.stringify(phones));
 
     if (phones.length === 0) {
       console.log('[解绑工作手机] 未找到匹配记录，返回 404');
       return res.status(404).json(errorResponse('手机不存在或无权操作', 404));
     }
 
-    console.log('[解绑工作手机] 找到记录，执行删除...');
-    await AppDataSource.query(`DELETE FROM work_phones WHERE id = ?`, [id]);
-    console.log('[解绑工作手机] 删除成功');
+    const phone = phones[0];
+
+    // 🔥 修复：使用 UPDATE 而不是 DELETE，与 APP 端保持一致
+    console.log('[解绑工作手机] 找到记录，更新状态为 inactive...');
+    await AppDataSource.query(
+      `UPDATE work_phones SET status = 'inactive', online_status = 'offline', updated_at = NOW() WHERE id = ?`,
+      [id]
+    );
+    console.log('[解绑工作手机] 状态更新成功');
+
+    // 记录解绑日志
+    await AppDataSource.query(
+      `INSERT INTO device_bind_logs (user_id, device_id, action, ip_address, remark)
+       VALUES (?, ?, 'unbind', ?, 'CRM端主动解绑')`,
+      [userIdStr, phone.device_id, req.ip || '']
+    );
+
+    // 🔥 通知 APP 设备已解绑
+    if (global.webSocketService) {
+      global.webSocketService.sendToUser(userIdStr, 'DEVICE_UNBIND', {
+        deviceId: phone.device_id,
+        reason: 'CRM端解绑'
+      });
+      console.log('[解绑工作手机] 已通知APP设备解绑');
+    }
 
     res.json(successResponse(null, '解绑成功'));
   } catch (error) {
