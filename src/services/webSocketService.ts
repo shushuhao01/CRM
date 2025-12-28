@@ -48,6 +48,10 @@ class WebSocketService {
   private token: string | null = null
   private ioModule: any = null
 
+  // 🔥 消息去重：记录最近处理过的消息ID，避免重复弹窗
+  private processedMessageIds: Set<string> = new Set()
+  private maxProcessedMessages = 100 // 最多记录100条
+
   // 事件回调
   private messageCallbacks: MessageCallback[] = []
   private statusCallbacks: StatusCallback[] = []
@@ -284,6 +288,21 @@ class WebSocketService {
    * 处理新消息
    */
   private handleNewMessage(message: WebSocketMessage): void {
+    // 🔥 消息去重：如果已经处理过这条消息，跳过
+    if (this.processedMessageIds.has(message.id)) {
+      console.log('[WebSocket] ⏭️ 跳过重复消息:', message.id)
+      return
+    }
+
+    // 记录已处理的消息ID
+    this.processedMessageIds.add(message.id)
+
+    // 如果记录太多，清理旧的
+    if (this.processedMessageIds.size > this.maxProcessedMessages) {
+      const idsArray = Array.from(this.processedMessageIds)
+      this.processedMessageIds = new Set(idsArray.slice(-50)) // 保留最近50条
+    }
+
     this.messageCallbacks.forEach(cb => cb(message))
     this.showDesktopNotification(message)
     this.playNotificationSound(message.priority)
