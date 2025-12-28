@@ -27,7 +27,7 @@
                 <el-option
                   v-for="customer in customerOptions"
                   :key="customer.id"
-                  :label="`${customer.name} (${customer.phone})`"
+                  :label="`${customer.name} (${displaySensitiveInfoNew(customer.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '')})`"
                   :value="customer.id"
                 />
               </el-select>
@@ -92,24 +92,22 @@
                   />
                 </el-form-item>
               </el-col>
-              <el-col :span="12">
+              <el-col :span="8">
                 <el-form-item label="收货电话" prop="receiverPhone">
                   <div class="phone-management">
-                    <!-- 🔥 修复：使用自定义显示格式，选中后也显示加密号码 -->
+                    <!-- 🔥 修复：使用selectedPhoneId来显示加密号码 -->
                     <el-select
-                      v-model="orderForm.receiverPhone"
+                      v-model="selectedPhoneId"
                       placeholder="请选择收货电话"
-                      style="width: 100%"
+                      style="width: 180px"
                       clearable
+                      @change="handlePhoneSelect"
                     >
-                      <template #label="{ value }">
-                        <span>{{ maskPhone(value) }}</span>
-                      </template>
                       <el-option
                         v-for="phone in customerPhones"
                         :key="phone.id"
                         :label="maskPhone(phone.number)"
-                        :value="phone.number"
+                        :value="phone.id"
                       />
                     </el-select>
                     <el-button
@@ -650,9 +648,10 @@ defineOptions({
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, ZoomIn, Close, Delete, ArrowDown, User, Message, Location, Plus, ShoppingBag, Refresh } from '@element-plus/icons-vue'
-import { request } from '@/api/request'
+import { Search, ZoomIn, Delete, ArrowDown, User, Message, Location, Plus, ShoppingBag, Refresh, View, Upload, DocumentCopy, Money } from '@element-plus/icons-vue'
 import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 import { useOrderStore } from '@/stores/order'
 import { useCustomerStore } from '@/stores/customer'
 import { useProductStore } from '@/stores/product'
@@ -681,18 +680,20 @@ const searchKeyword = ref('')
 const searchResults = ref([])
 const productSearchKeyword = ref('')
 const customerSearchKeyword = ref('')
-const customerSearchResults = ref([])
-const customerPhones = ref([])
+const customerSearchResults = ref<any[]>([])
+const customerPhones = ref<{ id: string; number: string }[]>([])
+// 🔥 选中的手机号ID（用于下拉框显示加密号码）
+const selectedPhoneId = ref<string | null>(null)
 const showCustomerDialog = ref(false)
 const showAddPhoneDialog = ref(false)
 const showConfirmDialog = ref(false)
 const showImageViewer = ref(false)
-const currentImageList = ref([])
+const currentImageList = ref<string[]>([])
 const viewImageUrl = ref('')
-const fileInput = ref(null)
-const depositScreenshots = ref([])
+const fileInput = ref<HTMLInputElement | null>(null)
+const depositScreenshots = ref<string[]>([])
 const showZoomIcon = ref(-1)
-const selectedCustomer = ref(null)
+const selectedCustomer = ref<any>(null)
 const deliveryCollapsed = ref(false) // 配送信息默认展开
 
 // 物流公司列表
@@ -712,7 +713,7 @@ const orderForm = reactive({
   expressCompany: '',
   serviceWechat: '',
   orderSource: '',
-  products: [],
+  products: [] as any[],
   subtotal: 0,
   totalAmount: 0,
   depositAmount: 0,
@@ -722,7 +723,9 @@ const orderForm = reactive({
   paymentMethod: '',
   paymentMethodOther: '',
   orderType: 'normal',
+  markType: 'normal',
   remarks: '',
+  remark: '',
   customFields: {} as Record<string, unknown>
 })
 
@@ -762,10 +765,24 @@ const handlePaymentMethodChange = (value: string) => {
   }
 }
 
+// 处理订单标记类型变化
+const handleMarkTypeChange = (value: string) => {
+  orderForm.markType = value
+  orderForm.orderType = value
+}
+
 // 电话表单
 const phoneForm = reactive({
   phone: ''
 })
+
+// 表单验证规则
+const formRules = {
+  customerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
+  serviceWechat: [{ required: true, message: '请输入客服微信号', trigger: 'blur' }],
+  orderSource: [{ required: true, message: '请选择订单来源', trigger: 'change' }],
+  expressCompany: [{ required: true, message: '请选择快递公司', trigger: 'change' }]
+}
 
 // 计算属性
 const subtotal = computed(() => {
@@ -792,7 +809,18 @@ const discountPercentage = computed(() => {
 // 根据用户角色获取最大优惠比例
 const maxDiscountRate = computed(() => {
   const userRole = userStore.currentUser?.role || 'employee'
-  const mappedRole = userRole === 'employee' ? 'sales' : userRole
+  // 🔥 修复：正确映射所有销售相关角色
+  let mappedRole = userRole
+  if (userRole === 'employee' || userRole === 'sales_staff' || userRole === 'sales') {
+    mappedRole = 'sales'
+  }
+
+  console.log('[编辑订单] 计算最大折扣率, 用户角色:', userRole, '映射角色:', mappedRole, '配置:', {
+    adminMaxDiscount: configStore.productConfig.adminMaxDiscount,
+    managerMaxDiscount: configStore.productConfig.managerMaxDiscount,
+    salesMaxDiscount: configStore.productConfig.salesMaxDiscount
+  })
+
   // 【批次202修复】直接从productConfig读取,确保实时同步
   let discountValue = 0
   if (mappedRole === 'admin' || mappedRole === 'super_admin') {
@@ -802,7 +830,8 @@ const maxDiscountRate = computed(() => {
   } else if (mappedRole === 'sales') {
     discountValue = configStore.productConfig.salesMaxDiscount
   } else {
-    discountValue = 0
+    // 其他角色默认使用销售员的折扣
+    discountValue = configStore.productConfig.salesMaxDiscount || 0
   }
   return discountValue / 100
 })
@@ -904,35 +933,65 @@ const handleOrderStatusUpdate = (event) => {
 // 加载订单数据
 const loadOrderData = async () => {
   try {
+    // 🔥 修复：先加载系统配置，确保折扣限制生效
+    await configStore.loadProductConfigFromAPI()
+
     const order = orderStore.getOrderById(orderId)
     if (order) {
+      // 🔥 修复：设置selectedCustomer，确保收货信息和自定义字段卡片显示
+      if (order.customerId) {
+        const customer = customerStore.getCustomerById(order.customerId)
+        if (customer) {
+          selectedCustomer.value = customer
+        } else {
+          // 如果客户不在列表中，创建一个临时客户对象
+          selectedCustomer.value = {
+            id: order.customerId,
+            name: order.customerName || '',
+            phone: order.customerPhone || '',
+            address: order.deliveryAddress || ''
+          }
+        }
+      }
+
       // 填充表单数据 - 确保所有字段都同步
       Object.assign(orderForm, {
         id: order.id,
         customerId: order.customerId,
-        customerName: order.customerName,
-        customerPhone: order.customerPhone,
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
         // 配送信息
-        receiverName: order.receiverName || '',
-        receiverPhone: order.receiverPhone || '',
-        deliveryAddress: order.deliveryAddress || '',
+        receiverName: order.receiverName || order.shippingName || '',
+        receiverPhone: order.receiverPhone || order.shippingPhone || '',
+        deliveryAddress: order.deliveryAddress || order.shippingAddress || '',
         deliveryTime: order.deliveryTime || '',
         expressCompany: order.expressCompany || '',
         // 客服和订单来源
         serviceWechat: order.serviceWechat || '',
         orderSource: order.orderSource || '',
-        // 产品和金额
-        products: order.products || [],
-        subtotal: order.subtotal || 0,
-        totalAmount: order.totalAmount || 0,
-        depositAmount: order.depositAmount || 0,
-        collectedAmount: order.collectedAmount || 0,
-        discountAmount: order.discountAmount || 0,
+        // 产品和金额 - 🔥 修复：确保产品数据正确映射
+        products: (order.products || []).map((p: any) => ({
+          productId: p.productId || p.id,
+          productName: p.productName || p.name || '',
+          productCode: p.productCode || p.code || '',
+          specification: p.specification || '',
+          price: Number(p.price) || 0,
+          quantity: Number(p.quantity) || 1,
+          subtotal: (Number(p.price) || 0) * (Number(p.quantity) || 1),
+          stock: p.stock || 999
+        })),
+        subtotal: Number(order.subtotal) || 0,
+        totalAmount: Number(order.totalAmount) || 0,
+        depositAmount: Number(order.depositAmount) || 0,
+        collectedAmount: Number(order.collectedAmount) || 0,
+        discountAmount: Number(order.discountAmount) || 0,
         depositScreenshot: order.depositScreenshot || '',
         paymentMethod: order.paymentMethod || '',
         paymentMethodOther: order.paymentMethodOther || '',
-        orderType: order.orderType || 'normal',
-        remarks: order.remarks || '',
+        orderType: order.orderType || order.markType || 'normal',
+        markType: order.markType || 'normal',
+        remarks: order.remarks || order.remark || '',
+        remark: order.remark || order.remarks || '',
         // 🔥 自定义字段
         customFields: order.customFields || {}
       })
@@ -1188,10 +1247,40 @@ const selectCustomer = async (customer) => {
 const loadCustomerPhones = async (customerId) => {
   try {
     const phones = await customerStore.getCustomerPhones(customerId)
-    customerPhones.value = phones || []
+    // 🔥 修复：统一数据格式，store返回的是 { id, phone }，需要转换为 { id, number }
+    customerPhones.value = (phones || []).map((p: any) => ({
+      id: String(p.id),
+      number: p.phone || p.number || ''
+    }))
+
+    // 🔥 设置默认选中的电话
+    if (customerPhones.value.length > 0) {
+      // 如果当前收货电话在列表中，选中它
+      const currentPhone = customerPhones.value.find(p => p.number === orderForm.receiverPhone)
+      if (currentPhone) {
+        selectedPhoneId.value = currentPhone.id
+      } else {
+        // 否则选择第一个
+        selectedPhoneId.value = customerPhones.value[0].id
+        orderForm.receiverPhone = customerPhones.value[0].number
+      }
+    }
   } catch (error) {
     console.error('加载客户电话失败:', error)
     customerPhones.value = []
+    selectedPhoneId.value = null
+  }
+}
+
+// 🔥 处理手机号选择（用于显示加密号码）
+const handlePhoneSelect = (phoneId: string | null) => {
+  if (phoneId === null) {
+    orderForm.receiverPhone = ''
+    return
+  }
+  const phone = customerPhones.value.find(p => p.id === phoneId)
+  if (phone) {
+    orderForm.receiverPhone = phone.number
   }
 }
 
@@ -1204,13 +1293,18 @@ const addPhoneNumber = async () => {
 
   try {
     await customerStore.addCustomerPhone(orderForm.customerId, phoneForm.phone)
-    customerPhones.value.push(phoneForm.phone)
-    orderForm.customerPhone = phoneForm.phone
+    const newPhone = { id: Date.now().toString(), number: phoneForm.phone }
+    customerPhones.value.push(newPhone)
+
+    // 🔥 自动选中新添加的电话
+    selectedPhoneId.value = newPhone.id
+    orderForm.receiverPhone = phoneForm.phone
+
     phoneForm.phone = ''
     showAddPhoneDialog.value = false
     ElMessage.success('添加电话号码成功')
-  } catch (error) {
-    console.error('添加电话号码失败:', error)
+  } catch (_error) {
+    console.error('添加电话号码失败:', _error)
     ElMessage.error('添加电话号码失败')
   }
 }
@@ -1369,23 +1463,68 @@ const saveOrder = () => {
 const confirmSaveOrder = async () => {
   saving.value = true
   try {
-    // 将截图数组添加到订单数据中
-    const orderData = {
-      ...orderForm,
-      depositScreenshots: depositScreenshots.value,
-      depositScreenshot: depositScreenshots.value[0] || ''
-    }
-    await orderStore.updateOrder(orderId, orderData)
-    ElMessage.success('订单更新成功')
-    showConfirmDialog.value = false
+    // 🔥 修复：调用API保存到数据库
+    const { orderApi } = await import('@/api/order')
 
-    // 自动关闭页面并刷新订单列表
-    setTimeout(() => {
-      safeNavigator.push('/order/list')
-    }, 1000)
-  } catch (error) {
+    // 构建要更新的订单数据
+    const updateData = {
+      customerId: orderForm.customerId,
+      customerName: orderForm.customerName,
+      customerPhone: orderForm.customerPhone,
+      // 收货信息
+      shippingName: orderForm.receiverName,
+      shippingPhone: orderForm.receiverPhone,
+      shippingAddress: orderForm.deliveryAddress,
+      expressCompany: orderForm.expressCompany,
+      // 客服和订单来源
+      serviceWechat: orderForm.serviceWechat,
+      orderSource: orderForm.orderSource,
+      // 产品和金额
+      products: orderForm.products,
+      totalAmount: orderForm.totalAmount,
+      depositAmount: orderForm.depositAmount,
+      discountAmount: discountAmount.value,
+      // 截图
+      depositScreenshots: depositScreenshots.value,
+      depositScreenshot: depositScreenshots.value[0] || '',
+      // 支付方式
+      paymentMethod: orderForm.paymentMethod,
+      paymentMethodOther: orderForm.paymentMethodOther,
+      // 订单标记
+      markType: orderForm.markType,
+      // 备注
+      remark: orderForm.remarks || orderForm.remark,
+      // 自定义字段
+      customFields: orderForm.customFields
+    }
+
+    console.log('[编辑订单] 提交更新数据:', updateData)
+
+    const response = await orderApi.update(orderId as string, updateData as any)
+
+    if (response && response.success !== false) {
+      // 🔥 同时更新本地store数据
+      orderStore.updateOrder(orderId as string, {
+        ...updateData,
+        customerId: orderForm.customerId || undefined,
+        receiverName: orderForm.receiverName,
+        receiverPhone: orderForm.receiverPhone,
+        deliveryAddress: orderForm.deliveryAddress
+      } as any)
+
+      ElMessage.success('订单更新成功')
+      showConfirmDialog.value = false
+
+      // 自动关闭页面并刷新订单列表
+      setTimeout(() => {
+        safeNavigator.push('/order/list')
+      }, 1000)
+    } else {
+      throw new Error(response?.message || '更新失败')
+    }
+  } catch (error: any) {
     console.error('更新订单失败:', error)
-    ElMessage.error('更新订单失败')
+    ElMessage.error(error.message || '更新订单失败')
   } finally {
     saving.value = false
   }

@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../config/database'
 import { authenticateToken } from '../middleware/auth'
+import { JwtConfig } from '../config/jwt'
 import { v4 as uuidv4 } from 'uuid'
 import jwt from 'jsonwebtoken'
 import QRCode from 'qrcode'
@@ -174,12 +175,13 @@ router.post('/login', async (req: Request, res: Response) => {
       })
     }
 
-    // 生成Token
-    const token = jwt.sign(
-      { userId: user.id, username: user.username, role: user.role, source: 'mobile' },
-      process.env.JWT_SECRET || 'crm-secret-key',
-      { expiresIn: '7d' }
-    )
+    // 生成Token - 使用 JwtConfig 确保与认证中间件兼容
+    const token = JwtConfig.generateAccessToken({
+      userId: user.id,
+      username: user.username,
+      role: user.role,
+      departmentId: user.department_id
+    })
 
     // 获取部门信息
     let departmentName = ''
@@ -955,18 +957,20 @@ router.post('/call/followup', authenticateToken, async (req: Request, res: Respo
         followUpContent += followUpContent ? `\n标签: ${tags.join(', ')}` : `标签: ${tags.join(', ')}`
       }
 
+      // 使用正确的字段名：customer_intent 而不是 intention，call_tags 存储标签
       await AppDataSource.query(
         `INSERT INTO follow_up_records
-         (id, call_id, customer_id, customer_name, follow_up_type, content, intention,
-          next_follow_up_date, status, user_id, user_name, created_at)
-         VALUES (?, ?, ?, ?, 'call', ?, ?, ?, 'completed', ?, ?, NOW())`,
+         (id, call_id, customer_id, customer_name, follow_up_type, content, customer_intent,
+          call_tags, next_follow_up_date, status, user_id, user_name, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'call', ?, ?, ?, ?, 'completed', ?, ?, NOW(), NOW())`,
         [
           followUpId,
           callId,
-          actualCustomerId,
-          callRecord?.customer_name,
+          actualCustomerId || '',
+          callRecord?.customer_name || '',
           followUpContent,
           intention || null,
+          tags?.length > 0 ? JSON.stringify(tags) : null,
           nextFollowUpDate ? new Date(nextFollowUpDate) : null,
           userId,
           userName
@@ -1089,15 +1093,11 @@ router.post('/call/followup', authenticateToken, async (req: Request, res: Respo
 router.get('/call/:callId', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { callId } = req.params
+    console.log('[Mobile API] 获取通话详情, callId:', callId)
 
-    // 获取通话记录
+    // 获取通话记录 - 简化查询，不依赖 customers 表
     const records = await AppDataSource.query(
-      `SELECT cr.*,
-              c.name as customer_full_name, c.level as customer_level,
-              c.tags as customer_tags, c.follow_status
-       FROM call_records cr
-       LEFT JOIN customers c ON cr.customer_id = c.id
-       WHERE cr.id = ?`,
+      `SELECT * FROM call_records WHERE id = ?`,
       [callId]
     )
 
@@ -1111,11 +1111,26 @@ router.get('/call/:callId', authenticateToken, async (req: Request, res: Respons
 
     const record = records[0]
 
-    // 获取相关跟进记录
-    const followUps = await AppDataSource.query(
-      `SELECT * FROM follow_up_records WHERE call_id = ? ORDER BY created_at DESC`,
-      [callId]
-    )
+    // 尝试获取相关跟进记录
+    let followUps: any[] = []
+    try {
+      followUps = await AppDataSource.query(
+        `SELECT * FROM follow_up_records WHERE call_id = ? ORDER BY created_at DESC`,
+        [callId]
+      )
+    } catch (_e) {
+      console.log('[Mobile API] 获取跟进记录失败，可能表不存在')
+    }
+
+    // 解析 call_tags
+    let callTags: string[] = []
+    if (record.call_tags) {
+      try {
+        callTags = typeof record.call_tags === 'string' ? JSON.parse(record.call_tags) : record.call_tags
+      } catch (_e) {
+        callTags = []
+      }
+    }
 
     res.json({
       code: 200,
@@ -1124,19 +1139,16 @@ router.get('/call/:callId', authenticateToken, async (req: Request, res: Respons
         id: record.id,
         customerId: record.customer_id,
         customerName: record.customer_name,
-        customerPhone: record.customer_phone,
-        customerLevel: record.customer_level,
-        customerTags: record.customer_tags ? JSON.parse(record.customer_tags) : [],
-        followStatus: record.follow_status,
+        customerPhone: record.customer_phone, // 返回完整号码，前端自行脱敏显示
         callType: record.call_type,
         callStatus: record.call_status,
         startTime: record.start_time,
         endTime: record.end_time,
-        duration: record.duration,
+        duration: record.duration || 0,
         hasRecording: record.has_recording === 1,
         recordingUrl: record.recording_url,
         notes: record.notes,
-        callTags: record.call_tags ? JSON.parse(record.call_tags) : [],
+        callTags: callTags,
         followUpRequired: record.follow_up_required === 1,
         userId: record.user_id,
         userName: record.user_name,
@@ -1144,18 +1156,18 @@ router.get('/call/:callId', authenticateToken, async (req: Request, res: Respons
         followUpRecords: followUps.map((f: any) => ({
           id: f.id,
           content: f.content,
-          intention: f.intention,
+          intention: f.customer_intent || f.intention,
           nextFollowUpDate: f.next_follow_up_date,
           userName: f.user_name,
           createdAt: f.created_at
         }))
       }
     })
-  } catch (error) {
-    console.error('获取通话详情失败:', error)
+  } catch (error: any) {
+    console.error('获取通话详情失败:', error.message, error.stack)
     res.status(500).json({
       success: false,
-      message: '获取失败',
+      message: '获取失败: ' + error.message,
       code: 'SERVER_ERROR'
     })
   }
@@ -1169,7 +1181,27 @@ router.get('/calls', authenticateToken, async (req: Request, res: Response) => {
   try {
     const currentUser = (req as any).user
     const userId = currentUser?.userId || currentUser?.id
-    const { page = 1, pageSize = 20, callType, startDate, endDate } = req.query
+    const { page = 1, pageSize = 20, callType, callStatus, startDate, endDate } = req.query
+
+    console.log('[Mobile API] 获取通话记录, userId:', userId, 'params:', { page, pageSize, callType, callStatus, startDate, endDate })
+
+    // 先检查表是否存在
+    try {
+      await AppDataSource.query(`SELECT 1 FROM call_records LIMIT 1`)
+    } catch (tableError: any) {
+      console.error('[Mobile API] call_records 表不存在或无法访问:', tableError.message)
+      // 返回空数据而不是错误
+      return res.json({
+        code: 200,
+        success: true,
+        data: {
+          records: [],
+          total: 0,
+          page: Number(page),
+          pageSize: Number(pageSize)
+        }
+      })
+    }
 
     let query = `SELECT * FROM call_records WHERE user_id = ?`
     let countQuery = `SELECT COUNT(*) as total FROM call_records WHERE user_id = ?`
@@ -1179,6 +1211,11 @@ router.get('/calls', authenticateToken, async (req: Request, res: Response) => {
       query += ` AND call_type = ?`
       countQuery += ` AND call_type = ?`
       params.push(callType)
+    }
+    if (callStatus) {
+      query += ` AND call_status = ?`
+      countQuery += ` AND call_status = ?`
+      params.push(callStatus)
     }
     if (startDate) {
       query += ` AND DATE(start_time) >= ?`
@@ -1201,6 +1238,7 @@ router.get('/calls', authenticateToken, async (req: Request, res: Response) => {
     params.push(Number(pageSize), offset)
 
     const records = await AppDataSource.query(query, params)
+    console.log('[Mobile API] 查询到通话记录:', records.length, '条')
 
     res.json({
       code: 200,
@@ -1217,18 +1255,18 @@ router.get('/calls', authenticateToken, async (req: Request, res: Response) => {
           duration: r.duration,
           hasRecording: r.has_recording === 1,
           notes: r.notes,
-          callTags: r.call_tags ? JSON.parse(r.call_tags) : []
+          callTags: r.call_tags ? (typeof r.call_tags === 'string' ? JSON.parse(r.call_tags) : r.call_tags) : []
         })),
         total,
         page: Number(page),
         pageSize: Number(pageSize)
       }
     })
-  } catch (error) {
-    console.error('获取通话记录失败:', error)
+  } catch (error: any) {
+    console.error('获取通话记录失败:', error.message, error.stack)
     res.status(500).json({
       success: false,
-      message: '获取失败',
+      message: '获取失败: ' + error.message,
       code: 'SERVER_ERROR'
     })
   }
@@ -1242,6 +1280,30 @@ router.get('/stats/today', authenticateToken, async (req: Request, res: Response
   try {
     const currentUser = (req as any).user
     const userId = currentUser?.userId || currentUser?.id
+
+    console.log('[Mobile API] 获取今日统计, userId:', userId)
+
+    // 先检查表是否存在
+    try {
+      await AppDataSource.query(`SELECT 1 FROM call_records LIMIT 1`)
+    } catch (tableError: any) {
+      console.error('[Mobile API] call_records 表不存在:', tableError.message)
+      // 返回空统计数据
+      return res.json({
+        code: 200,
+        success: true,
+        data: {
+          totalCalls: 0,
+          connectedCalls: 0,
+          missedCalls: 0,
+          inboundCalls: 0,
+          outboundCalls: 0,
+          totalDuration: 0,
+          avgDuration: 0,
+          connectRate: 0
+        }
+      })
+    }
 
     const stats = await AppDataSource.query(
       `SELECT
@@ -1275,11 +1337,98 @@ router.get('/stats/today', authenticateToken, async (req: Request, res: Response
           : 0
       }
     })
-  } catch (error) {
+  } catch (error: any) {
+    console.error('获取今日统计失败:', error.message, error.stack)
     console.error('获取今日统计失败:', error)
     res.status(500).json({
       success: false,
       message: '获取失败',
+      code: 'SERVER_ERROR'
+    })
+  }
+})
+
+/**
+ * 获取通话统计（支持时间范围）
+ * GET /api/v1/mobile/stats
+ * @query period - today/week/month
+ */
+router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user
+    const userId = currentUser?.userId || currentUser?.id
+    const { period = 'today' } = req.query
+
+    console.log('[Mobile API] 获取统计, userId:', userId, 'period:', period)
+
+    // 先检查表是否存在
+    try {
+      await AppDataSource.query(`SELECT 1 FROM call_records LIMIT 1`)
+    } catch (tableError: any) {
+      console.error('[Mobile API] call_records 表不存在:', tableError.message)
+      return res.json({
+        code: 200,
+        success: true,
+        data: {
+          period,
+          totalCalls: 0,
+          connectedCalls: 0,
+          missedCalls: 0,
+          inboundCalls: 0,
+          outboundCalls: 0,
+          totalDuration: 0,
+          avgDuration: 0,
+          connectRate: 0
+        }
+      })
+    }
+
+    // 根据时间范围构建日期条件
+    let dateCondition = 'DATE(start_time) = CURDATE()'
+    if (period === 'week') {
+      dateCondition = 'start_time >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)'
+    } else if (period === 'month') {
+      dateCondition = 'start_time >= DATE_FORMAT(CURDATE(), "%Y-%m-01")'
+    }
+
+    const stats = await AppDataSource.query(
+      `SELECT
+        COUNT(*) as totalCalls,
+        SUM(CASE WHEN call_status = 'connected' THEN 1 ELSE 0 END) as connectedCalls,
+        SUM(CASE WHEN call_status IN ('missed', 'busy', 'failed', 'rejected') THEN 1 ELSE 0 END) as missedCalls,
+        SUM(CASE WHEN call_type = 'inbound' THEN 1 ELSE 0 END) as inboundCalls,
+        SUM(CASE WHEN call_type = 'outbound' THEN 1 ELSE 0 END) as outboundCalls,
+        SUM(duration) as totalDuration,
+        AVG(CASE WHEN call_status = 'connected' THEN duration ELSE NULL END) as avgDuration
+       FROM call_records
+       WHERE user_id = ? AND ${dateCondition}`,
+      [userId]
+    )
+
+    const stat = stats[0] || {}
+
+    res.json({
+      code: 200,
+      success: true,
+      data: {
+        period,
+        totalCalls: stat.totalCalls || 0,
+        connectedCalls: stat.connectedCalls || 0,
+        missedCalls: stat.missedCalls || 0,
+        inboundCalls: stat.inboundCalls || 0,
+        outboundCalls: stat.outboundCalls || 0,
+        totalDuration: stat.totalDuration || 0,
+        avgDuration: Math.round(stat.avgDuration || 0),
+        connectRate: stat.totalCalls > 0
+          ? Math.round((stat.connectedCalls / stat.totalCalls) * 100)
+          : 0
+      }
+    })
+  } catch (error: any) {
+    console.error('获取统计失败:', error.message, error.stack)
+    res.status(500).json({
+      success: false,
+      message: '获取失败: ' + error.message,
       code: 'SERVER_ERROR'
     })
   }

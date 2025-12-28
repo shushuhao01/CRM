@@ -1319,7 +1319,6 @@ export class MessageController {
           messageTypes: [
             // 订单管理
             { value: 'order_created', label: '新建订单通知', category: '订单管理' },
-            { value: 'order_submitted', label: '订单提交成功', category: '订单管理' },
             { value: 'order_paid', label: '订单支付成功', category: '订单管理' },
             { value: 'order_shipped', label: '订单发货通知', category: '订单管理' },
             { value: 'order_delivered', label: '订单送达通知', category: '订单管理' },
@@ -1425,6 +1424,7 @@ export class MessageController {
 
   /**
    * 获取当前用户的系统消息
+   * 🔥 修复：支持查询 targetUserId 包含当前用户ID的消息（逗号分隔的多个ID）
    */
   async getSystemMessages(req: Request, res: Response): Promise<void> {
     try {
@@ -1447,9 +1447,12 @@ export class MessageController {
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
-      // 构建查询
+      // 🔥 修复：查询 targetUserId 等于当前用户ID 或 包含当前用户ID（逗号分隔）
       const queryBuilder = messageRepo.createQueryBuilder('msg')
-        .where('msg.target_user_id = :userId', { userId })
+        .where('(msg.target_user_id = :userId OR msg.target_user_id LIKE :userIdPattern)', {
+          userId,
+          userIdPattern: `%${userId}%`
+        })
         .orderBy('msg.created_at', 'DESC')
         .skip(Number(offset))
         .take(Number(limit));
@@ -1461,10 +1464,14 @@ export class MessageController {
 
       const [messages, total] = await queryBuilder.getManyAndCount();
 
-      // 统计未读数量
-      const unreadCount = await messageRepo.count({
-        where: { targetUserId: userId, isRead: 0 }
-      });
+      // 🔥 修复：统计未读数量也需要支持逗号分隔的ID
+      const unreadCount = await messageRepo.createQueryBuilder('msg')
+        .where('(msg.target_user_id = :userId OR msg.target_user_id LIKE :userIdPattern)', {
+          userId,
+          userIdPattern: `%${userId}%`
+        })
+        .andWhere('msg.is_read = 0')
+        .getCount();
 
       res.json({
         success: true,

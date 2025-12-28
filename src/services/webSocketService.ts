@@ -36,6 +36,8 @@ export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'er
 type MessageCallback = (message: WebSocketMessage) => void
 type StatusCallback = (status: ConnectionStatus) => void
 type UnreadCallback = (count: number) => void
+type DeviceStatusCallback = (data: { deviceId: string; userId: number; status: 'online' | 'offline' }) => void
+type GenericCallback = (data: any) => void
 
 class WebSocketService {
   private socket: any = null
@@ -50,6 +52,8 @@ class WebSocketService {
   private messageCallbacks: MessageCallback[] = []
   private statusCallbacks: StatusCallback[] = []
   private unreadCallbacks: UnreadCallback[] = []
+  private deviceStatusCallbacks: DeviceStatusCallback[] = []
+  private eventCallbacks: Map<string, GenericCallback[]> = new Map()
 
   // 当前状态
   private _status: ConnectionStatus = 'disconnected'
@@ -169,6 +173,76 @@ class WebSocketService {
 
     this.socket.on('channel_notification_status', (data: any) => {
       console.log('[WebSocket] 渠道通知状态:', data)
+    })
+
+    // 设备上线通知 - 不弹窗，只通知回调
+    this.socket.on('DEVICE_ONLINE', (data: any) => {
+      console.log('[WebSocket] 📱 设备上线:', data)
+      this.deviceStatusCallbacks.forEach(cb => cb({
+        deviceId: data.deviceId,
+        userId: data.userId,
+        status: 'online'
+      }))
+    })
+
+    // 设备离线通知 - 不弹窗，只通知回调
+    this.socket.on('DEVICE_OFFLINE', (data: any) => {
+      console.log('[WebSocket] 📱 设备离线:', data)
+      this.deviceStatusCallbacks.forEach(cb => cb({
+        deviceId: data.deviceId,
+        userId: data.userId,
+        status: 'offline'
+      }))
+    })
+
+    // 设备绑定通知 - 不弹窗，只通知回调
+    this.socket.on('DEVICE_BOUND', (data: any) => {
+      console.log('[WebSocket] 📱 设备已绑定:', data)
+      this.deviceStatusCallbacks.forEach(cb => cb({
+        deviceId: data.deviceId,
+        userId: data.userId,
+        status: 'online'
+      }))
+    })
+
+    // 通话状态变化 - APP端通话状态同步到CRM
+    this.socket.on('CALL_STATUS', (data: any) => {
+      console.log('[WebSocket] 📞 通话状态变化:', data)
+      this.emitEvent('call:status', data)
+    })
+
+    // 通话已接通
+    this.socket.on('CALL_CONNECTED', (data: any) => {
+      console.log('[WebSocket] 📞 通话已接通:', data)
+      this.emitEvent('call:connected', data)
+      this.emitEvent('call:status', { ...data, status: 'connected' })
+    })
+
+    // 通话结束
+    this.socket.on('CALL_ENDED', (data: any) => {
+      console.log('[WebSocket] 📞 通话已结束:', data)
+      this.emitEvent('call:ended', data)
+    })
+
+    // 通话释放（挂断）
+    this.socket.on('CALL_RELEASED', (data: any) => {
+      console.log('[WebSocket] 📞 通话已释放:', data)
+      this.emitEvent('call:ended', data)
+    })
+
+    // APP端通话状态变化
+    this.socket.on('mobile:call:status', (data: any) => {
+      console.log('[WebSocket] 📱 APP端通话状态:', data)
+      this.emitEvent('mobile:call:status', data)
+      // 同时触发通用的call:status事件
+      this.emitEvent('call:status', data)
+    })
+
+    // APP端通话结束
+    this.socket.on('mobile:call:ended', (data: any) => {
+      console.log('[WebSocket] 📱 APP端通话结束:', data)
+      this.emitEvent('mobile:call:ended', data)
+      this.emitEvent('call:ended', data)
     })
 
     this.socket.on('pong', () => {
@@ -367,6 +441,53 @@ class WebSocketService {
     return () => {
       const index = this.unreadCallbacks.indexOf(callback)
       if (index > -1) this.unreadCallbacks.splice(index, 1)
+    }
+  }
+
+  // 监听设备状态变化
+  onDeviceStatusChange(callback: DeviceStatusCallback): () => void {
+    this.deviceStatusCallbacks.push(callback)
+    return () => {
+      const index = this.deviceStatusCallbacks.indexOf(callback)
+      if (index > -1) this.deviceStatusCallbacks.splice(index, 1)
+    }
+  }
+
+  // 通用事件监听方法
+  on(event: string, callback: GenericCallback): () => void {
+    if (!this.eventCallbacks.has(event)) {
+      this.eventCallbacks.set(event, [])
+    }
+    this.eventCallbacks.get(event)!.push(callback)
+    return () => {
+      const callbacks = this.eventCallbacks.get(event)
+      if (callbacks) {
+        const index = callbacks.indexOf(callback)
+        if (index > -1) callbacks.splice(index, 1)
+      }
+    }
+  }
+
+  // 触发事件
+  private emitEvent(event: string, data: any): void {
+    const callbacks = this.eventCallbacks.get(event)
+    if (callbacks) {
+      callbacks.forEach(cb => {
+        try {
+          cb(data)
+        } catch (e) {
+          console.error(`[WebSocket] 事件回调错误 (${event}):`, e)
+        }
+      })
+    }
+  }
+
+  // 发送消息到服务器
+  emit(event: string, data?: any): void {
+    if (this.socket?.connected) {
+      this.socket.emit(event, data)
+    } else {
+      console.warn('[WebSocket] 未连接，无法发送消息:', event)
     }
   }
 
