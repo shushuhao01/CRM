@@ -59,30 +59,101 @@ router.get('/', async (req, res) => {
         const pageNum = parseInt(page) || 1;
         const pageSizeNum = parseInt(pageSize) || 10;
         const skip = (pageNum - 1) * pageSizeNum;
-        // 构建查询条件
-        const where = {};
+        // 🔥 获取当前用户信息，用于权限过滤
+        // 优先使用 currentUser（从数据库查询的完整用户对象），其次使用 user（JWT payload）
+        const currentUser = req.currentUser || req.user;
+        const userId = currentUser?.id || req.user?.userId;
+        const userRole = currentUser?.role;
+        const userDepartmentId = currentUser?.departmentId;
+        console.log('[客户列表] 当前用户信息:', {
+            userId,
+            userRole,
+            userDepartmentId,
+            userName: currentUser?.name || currentUser?.realName
+        });
+        // 构建查询
+        const queryBuilder = customerRepository.createQueryBuilder('customer');
+        // 🔥 根据用户角色进行权限过滤
+        // 管理员和超级管理员可以看到所有客户
+        // 部门经理可以看到本部门的客户
+        // 普通成员只能看到自己创建的或分配给自己的客户
+        if (userRole !== 'admin' && userRole !== 'super_admin') {
+            // 获取分享仓库，用于查询分享给当前用户的客户
+            const shareRepository = database_1.AppDataSource.getRepository(CustomerShare_1.CustomerShare);
+            const userRepository = database_1.AppDataSource.getRepository(User_1.User);
+            // 查询分享给当前用户的客户ID列表
+            const sharedCustomers = await shareRepository.find({
+                where: {
+                    sharedTo: userId,
+                    status: 'active'
+                },
+                select: ['customerId']
+            });
+            const sharedCustomerIds = sharedCustomers.map(s => s.customerId);
+            // 🔥 判断是否是部门经理
+            const isManager = userRole === 'department_manager' || userRole === 'manager';
+            if (isManager && userDepartmentId) {
+                // 部门经理：可以看到本部门所有成员创建的或分配给本部门成员的客户
+                // 先获取本部门所有成员的ID
+                const departmentMembers = await userRepository.find({
+                    where: { departmentId: userDepartmentId },
+                    select: ['id']
+                });
+                const departmentMemberIds = departmentMembers.map(m => m.id);
+                if (departmentMemberIds.length > 0) {
+                    if (sharedCustomerIds.length > 0) {
+                        queryBuilder.where('(customer.createdBy IN (:...memberIds) OR customer.salesPersonId IN (:...memberIds) OR customer.id IN (:...sharedIds))', { memberIds: departmentMemberIds, sharedIds: sharedCustomerIds });
+                    }
+                    else {
+                        queryBuilder.where('(customer.createdBy IN (:...memberIds) OR customer.salesPersonId IN (:...memberIds))', { memberIds: departmentMemberIds });
+                    }
+                }
+                else {
+                    // 如果部门没有成员，只能看自己的
+                    if (sharedCustomerIds.length > 0) {
+                        queryBuilder.where('(customer.createdBy = :userId OR customer.salesPersonId = :userId OR customer.id IN (:...sharedIds))', { userId, sharedIds: sharedCustomerIds });
+                    }
+                    else {
+                        queryBuilder.where('(customer.createdBy = :userId OR customer.salesPersonId = :userId)', { userId });
+                    }
+                }
+            }
+            else {
+                // 普通成员：只能看到自己创建的或分配给自己的客户
+                console.log('[客户列表] 普通成员权限过滤, userId:', userId, '分享客户数:', sharedCustomerIds.length);
+                if (sharedCustomerIds.length > 0) {
+                    queryBuilder.where('(customer.createdBy = :userId OR customer.salesPersonId = :userId OR customer.id IN (:...sharedIds))', { userId, sharedIds: sharedCustomerIds });
+                }
+                else {
+                    queryBuilder.where('(customer.createdBy = :userId OR customer.salesPersonId = :userId)', { userId });
+                }
+            }
+        }
+        // 添加其他筛选条件
         if (name) {
-            where.name = (0, typeorm_1.Like)(`%${name}%`);
+            queryBuilder.andWhere('customer.name LIKE :name', { name: `%${name}%` });
         }
         if (phone) {
-            where.phone = (0, typeorm_1.Like)(`%${phone}%`);
+            queryBuilder.andWhere('customer.phone LIKE :phone', { phone: `%${phone}%` });
         }
         if (level) {
-            where.level = level;
+            queryBuilder.andWhere('customer.level = :level', { level });
         }
         if (status) {
-            where.status = status;
+            queryBuilder.andWhere('customer.status = :status', { status });
         }
         // 日期范围筛选
         if (startDate && endDate) {
-            where.createdAt = (0, typeorm_1.Between)(new Date(startDate), new Date(endDate));
+            queryBuilder.andWhere('customer.createdAt BETWEEN :startDate AND :endDate', {
+                startDate: new Date(startDate),
+                endDate: new Date(endDate)
+            });
         }
-        const [customers, total] = await customerRepository.findAndCount({
-            where,
-            skip,
-            take: pageSizeNum,
-            order: { createdAt: 'DESC' }
-        });
+        // 排序和分页
+        queryBuilder.orderBy('customer.createdAt', 'DESC')
+            .skip(skip)
+            .take(pageSizeNum);
+        const [customers, total] = await queryBuilder.getManyAndCount();
         // 获取订单仓库，用于统计每个客户的订单数
         const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
         // 获取分享仓库，用于查询客户的分享状态
@@ -126,6 +197,18 @@ router.get('/', async (req, res) => {
             catch (e) {
                 console.warn(`查询客户${customer.id}分享状态失败:`, e);
             }
+            // 🔥 获取负责销售的名字
+            let salesPersonName = '';
+            if (customer.salesPersonId) {
+                try {
+                    const userRepository = database_1.AppDataSource.getRepository(User_1.User);
+                    const salesPerson = await userRepository.findOne({ where: { id: customer.salesPersonId } });
+                    salesPersonName = salesPerson?.realName || salesPerson?.name || '';
+                }
+                catch (e) {
+                    console.warn(`获取销售人员${customer.salesPersonId}信息失败:`, e);
+                }
+            }
             return {
                 id: customer.id,
                 code: customer.customerNo || '',
@@ -145,6 +228,7 @@ router.get('/', async (req, res) => {
                 level: customer.level || 'normal',
                 status: customer.status || 'active',
                 salesPersonId: customer.salesPersonId || '',
+                salesPersonName: salesPersonName, // 🔥 添加负责销售名字
                 orderCount: realOrderCount,
                 returnCount: customer.returnCount || 0,
                 totalAmount: customer.totalAmount || 0,
@@ -884,8 +968,19 @@ router.post('/', async (req, res) => {
             }
         }
         // 获取当前用户信息
-        const currentUser = req.user;
-        const finalCreatedBy = createdBy || salesPersonId || currentUser?.id || 'admin';
+        // 优先使用 currentUser（从数据库查询的完整用户对象），其次使用 user（JWT payload）
+        const currentUser = req.currentUser || req.user;
+        const currentUserId = currentUser?.id || req.user?.userId;
+        console.log('[创建客户] 当前用户信息:', {
+            id: currentUserId,
+            name: currentUser?.name,
+            role: currentUser?.role,
+            departmentId: currentUser?.departmentId
+        });
+        // 🔥 修复：优先使用当前登录用户的ID作为创建人
+        const finalCreatedBy = currentUserId || createdBy || salesPersonId || 'admin';
+        const finalSalesPersonId = salesPersonId || currentUserId || null;
+        console.log('[创建客户] 最终创建人ID:', finalCreatedBy, '销售人员ID:', finalSalesPersonId);
         // 创建客户
         const customer = customerRepository.create({
             name,
@@ -904,7 +999,7 @@ router.post('/', async (req, res) => {
             remark: remarks || remark || null,
             company,
             status: status || 'active',
-            salesPersonId: salesPersonId || currentUser?.id || null,
+            salesPersonId: finalSalesPersonId,
             createdBy: finalCreatedBy,
             // 新增字段
             age: age || null,
@@ -1222,22 +1317,40 @@ router.get('/:id/calls', async (req, res) => {
             where: { customerId },
             order: { createdAt: 'DESC' }
         });
-        const list = calls.map(call => ({
-            id: call.id,
-            customerId: call.customerId,
-            customerName: call.customerName,
-            customerPhone: call.customerPhone,
-            callType: call.callType || 'outbound',
-            callStatus: call.callStatus || 'connected',
-            duration: call.duration || 0,
-            startTime: call.startTime?.toISOString() || call.createdAt?.toISOString() || '',
-            endTime: call.endTime?.toISOString() || '',
-            notes: call.notes || '',
-            recordingUrl: call.recordingUrl || null,
-            userName: call.userName || '未知',
-            callTags: [],
-            createdAt: call.createdAt?.toISOString() || ''
-        }));
+        const list = calls.map(call => {
+            // 解析 callTags，可能是 JSON 字符串或数组
+            let parsedCallTags = [];
+            if (call.callTags) {
+                if (typeof call.callTags === 'string') {
+                    try {
+                        parsedCallTags = JSON.parse(call.callTags);
+                    }
+                    catch (_e) {
+                        parsedCallTags = [];
+                    }
+                }
+                else if (Array.isArray(call.callTags)) {
+                    parsedCallTags = call.callTags;
+                }
+            }
+            return {
+                id: call.id,
+                customerId: call.customerId,
+                customerName: call.customerName,
+                customerPhone: call.customerPhone,
+                callType: call.callType || 'outbound',
+                callStatus: call.callStatus || 'connected',
+                duration: call.duration || 0,
+                startTime: call.startTime?.toISOString() || call.createdAt?.toISOString() || '',
+                endTime: call.endTime?.toISOString() || '',
+                notes: call.notes || '',
+                recordingUrl: call.recordingUrl || null,
+                hasRecording: call.hasRecording || false,
+                userName: call.userName || '未知',
+                callTags: parsedCallTags,
+                createdAt: call.createdAt?.toISOString() || ''
+            };
+        });
         console.log(`[客户通话] 客户 ${customerId} 有 ${list.length} 条通话记录`);
         res.json({ success: true, code: 200, data: list });
     }
@@ -1254,6 +1367,7 @@ router.get('/:id/calls', async (req, res) => {
 router.get('/:id/followups', async (req, res) => {
     try {
         const customerId = req.params.id;
+        console.log(`[客户跟进] 查询客户 ${customerId} 的跟进记录`);
         // 🔥 修复：使用原生SQL查询，避免实体字段不匹配问题
         const followUps = await database_1.AppDataSource.query(`
       SELECT
@@ -1263,7 +1377,8 @@ router.get('/:id/followups', async (req, res) => {
         customer_name as customerName,
         follow_up_type as type,
         content,
-        intention as customerIntent,
+        customer_intent as customerIntent,
+        call_tags as callTags,
         next_follow_up_date as nextFollowUp,
         priority,
         status,
@@ -1275,28 +1390,50 @@ router.get('/:id/followups', async (req, res) => {
       WHERE customer_id = ?
       ORDER BY created_at DESC
     `, [customerId]);
-        const list = followUps.map((followUp) => ({
-            id: followUp.id,
-            customerId: followUp.customerId,
-            type: followUp.type,
-            title: followUp.type === 'call' ? '电话跟进' :
-                followUp.type === 'visit' ? '上门拜访' :
-                    followUp.type === 'email' ? '邮件跟进' :
-                        followUp.type === 'message' ? '消息跟进' :
-                            followUp.type === 'wechat' ? '微信跟进' : '跟进记录',
-            content: followUp.content || '',
-            customerIntent: followUp.customerIntent || null,
-            callTags: [],
-            status: followUp.status,
-            priority: followUp.priority,
-            nextFollowUp: followUp.nextFollowUp ? new Date(followUp.nextFollowUp).toISOString() : '',
-            nextTime: followUp.nextFollowUp ? new Date(followUp.nextFollowUp).toISOString() : '',
-            createdBy: followUp.createdBy,
-            createdByName: followUp.createdByName || followUp.createdBy || '系统',
-            author: followUp.createdByName || followUp.createdBy || '系统',
-            createTime: followUp.createdAt ? new Date(followUp.createdAt).toISOString() : '',
-            createdAt: followUp.createdAt ? new Date(followUp.createdAt).toISOString() : ''
-        }));
+        console.log(`[客户跟进] 查询结果:`, followUps.length, '条记录');
+        if (followUps.length > 0) {
+            console.log(`[客户跟进] 最新记录:`, followUps[0]);
+        }
+        const list = followUps.map((followUp) => {
+            // 解析 callTags，可能是 JSON 字符串或数组
+            let parsedCallTags = [];
+            if (followUp.callTags) {
+                if (typeof followUp.callTags === 'string') {
+                    try {
+                        parsedCallTags = JSON.parse(followUp.callTags);
+                    }
+                    catch (_e) {
+                        parsedCallTags = [];
+                    }
+                }
+                else if (Array.isArray(followUp.callTags)) {
+                    parsedCallTags = followUp.callTags;
+                }
+            }
+            return {
+                id: followUp.id,
+                customerId: followUp.customerId,
+                type: followUp.type,
+                title: followUp.type === 'call' ? '电话跟进' :
+                    followUp.type === 'visit' ? '上门拜访' :
+                        followUp.type === 'email' ? '邮件跟进' :
+                            followUp.type === 'message' ? '消息跟进' :
+                                followUp.type === 'wechat' ? '微信跟进' : '跟进记录',
+                content: followUp.content || '',
+                customerIntent: followUp.customerIntent || null,
+                callTags: parsedCallTags,
+                call_tags: parsedCallTags,
+                status: followUp.status,
+                priority: followUp.priority,
+                nextFollowUp: followUp.nextFollowUp ? new Date(followUp.nextFollowUp).toISOString() : '',
+                nextTime: followUp.nextFollowUp ? new Date(followUp.nextFollowUp).toISOString() : '',
+                createdBy: followUp.createdBy,
+                createdByName: followUp.createdByName || followUp.createdBy || '系统',
+                author: followUp.createdByName || followUp.createdBy || '系统',
+                createTime: followUp.createdAt ? new Date(followUp.createdAt).toISOString() : '',
+                createdAt: followUp.createdAt ? new Date(followUp.createdAt).toISOString() : ''
+            };
+        });
         console.log(`[客户跟进] 客户 ${customerId} 有 ${list.length} 条跟进记录`);
         res.json({ success: true, code: 200, data: list });
     }

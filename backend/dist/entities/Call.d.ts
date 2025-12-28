@@ -12,6 +12,7 @@ export declare class Call {
     hasRecording: boolean;
     notes: string;
     followUpRequired: boolean;
+    callTags: string[];
     userId: string;
     userName: string;
     department: string;

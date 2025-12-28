@@ -16,6 +16,37 @@ import bcrypt from 'bcryptjs'
 
 const router = Router()
 
+// 辅助函数：生成正确的WebSocket URL
+function generateWsUrl(req: Request): string {
+  // 优先使用环境变量配置的服务器URL
+  let serverUrl = process.env.API_BASE_URL || process.env.SERVER_URL || ''
+
+  if (!serverUrl) {
+    // 从请求头推断
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http'
+    const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000'
+    serverUrl = `${protocol}://${host}`
+  }
+
+  // 转换为WebSocket协议
+  let wsUrl = serverUrl
+  if (wsUrl.startsWith('https://')) {
+    wsUrl = wsUrl.replace('https://', 'wss://')
+  } else if (wsUrl.startsWith('http://')) {
+    wsUrl = wsUrl.replace('http://', 'ws://')
+  } else if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
+    // 如果没有协议前缀，根据环境添加
+    wsUrl = process.env.NODE_ENV === 'production' ? `wss://${wsUrl}` : `ws://${wsUrl}`
+  }
+
+  // 确保路径正确
+  if (!wsUrl.endsWith('/ws/mobile')) {
+    wsUrl = wsUrl.replace(/\/$/, '') + '/ws/mobile'
+  }
+
+  return wsUrl
+}
+
 // ==================== 服务器连接测试（无需认证）====================
 
 /**
@@ -273,9 +304,9 @@ router.post('/bindQRCode', authenticateToken, async (req: Request, res: Response
       [userId, bindToken, expiresAt, bindToken, expiresAt]
     )
 
-    // 构建二维码数据
+    // 构建二维码数据 - 使用辅助函数生成正确的WebSocket URL
     const serverUrl = process.env.API_BASE_URL || `http://${req.headers.host}`
-    const wsUrl = serverUrl.replace('http', 'ws') + '/ws/mobile'
+    const wsUrl = generateWsUrl(req)
 
     const qrCodeData = {
       action: 'bind_device',
@@ -473,8 +504,9 @@ router.post('/bind', async (req: Request, res: Response) => {
       { expiresIn: '30d' }
     )
 
-    const serverUrl = process.env.API_BASE_URL || `http://${req.headers.host}`
-    const wsUrl = serverUrl.replace('http', 'ws') + '/ws/mobile'
+    // 使用辅助函数生成正确的WebSocket URL
+    const wsUrl = generateWsUrl(req)
+    console.log('[Mobile Bind] 生成的 wsUrl:', wsUrl)
 
     await logApiCall({
       interfaceCode: 'mobile_binddevice',

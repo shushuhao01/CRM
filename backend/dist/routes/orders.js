@@ -334,6 +334,7 @@ router.get('/audit-list', auth_1.authenticateToken, async (req, res) => {
             'order.customerPhone',
             'order.totalAmount',
             'order.depositAmount',
+            'order.depositScreenshots',
             'order.status',
             'order.markType',
             'order.paymentStatus',
@@ -434,7 +435,8 @@ router.get('/audit-list', auth_1.authenticateToken, async (req, res) => {
                 createTime: formatToBeijingTime(order.createdAt),
                 receiverName: order.shippingName || '',
                 receiverPhone: order.shippingPhone || '',
-                deliveryAddress: order.shippingAddress || ''
+                deliveryAddress: order.shippingAddress || '',
+                depositScreenshots: order.depositScreenshots || []
             };
         });
         res.json({
@@ -1769,6 +1771,36 @@ router.put('/:id', auth_1.authenticateToken, async (req, res) => {
             order.trackingNumber = updateData.trackingNumber;
         if (updateData.markType !== undefined)
             order.markType = updateData.markType;
+        // 🔥 修复：添加金额字段的更新
+        if (updateData.totalAmount !== undefined)
+            order.totalAmount = updateData.totalAmount;
+        if (updateData.depositAmount !== undefined)
+            order.depositAmount = updateData.depositAmount;
+        if (updateData.discountAmount !== undefined)
+            order.discountAmount = updateData.discountAmount;
+        // 🔥 修复：添加产品列表的更新
+        if (updateData.products !== undefined)
+            order.products = updateData.products;
+        // 🔥 修复：添加截图字段的更新
+        if (updateData.depositScreenshots !== undefined)
+            order.depositScreenshots = updateData.depositScreenshots;
+        if (updateData.depositScreenshot !== undefined) {
+            // 如果只传了单个截图，也更新到数组中
+            if (!updateData.depositScreenshots && updateData.depositScreenshot) {
+                order.depositScreenshots = [updateData.depositScreenshot];
+            }
+        }
+        // 🔥 修复：添加客户信息字段的更新
+        if (updateData.customerId !== undefined)
+            order.customerId = updateData.customerId;
+        if (updateData.customerName !== undefined)
+            order.customerName = updateData.customerName;
+        if (updateData.customerPhone !== undefined)
+            order.customerPhone = updateData.customerPhone;
+        if (updateData.serviceWechat !== undefined)
+            order.serviceWechat = updateData.serviceWechat;
+        if (updateData.orderSource !== undefined)
+            order.orderSource = updateData.orderSource;
         // 🔥 发货时间和预计送达时间
         if (updateData.shippingTime !== undefined)
             order.shippingTime = updateData.shippingTime;

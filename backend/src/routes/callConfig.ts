@@ -767,7 +767,8 @@ router.delete('/work-phones/:id', async (req: Request, res: Response) => {
 
     // 🔥 通知 APP 设备已解绑
     if (global.webSocketService) {
-      global.webSocketService.sendToUser(userIdStr, 'DEVICE_UNBIND', {
+      // sendToUser 需要 number 类型的 userId
+      global.webSocketService.sendToUser(Number(userId), 'DEVICE_UNBIND', {
         deviceId: phone.device_id,
         reason: 'CRM端解绑'
       });

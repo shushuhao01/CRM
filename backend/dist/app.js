@@ -307,18 +307,19 @@ const startServer = async () => {
                 if (WebSocketService_1.webSocketService.isInitialized()) {
                     logger_1.logger.info(`🔌 WebSocket实时推送服务已启动`);
                 }
+                // Socket.IO 初始化完成后，再初始化移动端 WebSocket 服务
+                // 这样可以确保 Socket.IO 先注册 upgrade 处理器
+                try {
+                    MobileWebSocketService_1.mobileWebSocketService.initialize(httpServer);
+                    global.mobileWebSocketService = MobileWebSocketService_1.mobileWebSocketService;
+                    logger_1.logger.info(`📱 移动端 WebSocket 服务已启动`);
+                }
+                catch (err) {
+                    logger_1.logger.warn('移动端 WebSocket 服务启动失败:', err.message);
+                }
             }).catch(err => {
                 logger_1.logger.warn('WebSocket服务启动失败:', err.message);
             });
-            // 初始化移动端 WebSocket 服务
-            try {
-                MobileWebSocketService_1.mobileWebSocketService.initialize(httpServer);
-                global.mobileWebSocketService = MobileWebSocketService_1.mobileWebSocketService;
-                logger_1.logger.info(`📱 移动端 WebSocket 服务已启动`);
-            }
-            catch (err) {
-                logger_1.logger.warn('移动端 WebSocket 服务启动失败:', err.message);
-            }
         });
         // 🔥 启动定时任务：每天凌晨3点清理过期消息（超过30天）
         const scheduleMessageCleanup = () => {
