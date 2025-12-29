@@ -71,7 +71,7 @@
             >
               <div class="message-icon">
                 <el-icon :color="message.color" :size="20">
-                  <component :is="message.icon" />
+                  <component :is="getIconComponent(message.icon)" />
                 </el-icon>
               </div>
               <div class="message-content">
@@ -192,8 +192,77 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Bell,
   Message,
-  ChatDotRound
+  ChatDotRound,
+  // 订单相关图标
+  Plus,
+  Money,
+  Box,
+  Van,
+  Check,
+  CircleCheck,
+  Close,
+  CircleClose,
+  Document,
+  RefreshLeft,
+  Clock,
+  Warning,
+  // 售后相关图标
+  Service,
+  User,
+  Loading,
+  Delete,
+  // 客户相关图标
+  Edit,
+  Phone,
+  Share,
+  // 商品相关图标
+  Goods,
+  // 系统相关图标
+  Tools,
+  Refresh,
+  UserFilled,
+  Key,
+  Download,
+  Upload
 } from '@element-plus/icons-vue'
+
+// 图标映射表 - 用于动态组件
+const iconComponents: Record<string, any> = {
+  Bell,
+  Message,
+  ChatDotRound,
+  Plus,
+  Money,
+  Box,
+  Van,
+  Check,
+  CircleCheck,
+  Close,
+  CircleClose,
+  Document,
+  RefreshLeft,
+  Clock,
+  Warning,
+  Service,
+  User,
+  Loading,
+  Delete,
+  Edit,
+  Phone,
+  Share,
+  Goods,
+  Tools,
+  Refresh,
+  UserFilled,
+  Key,
+  Download,
+  Upload
+}
+
+// 获取图标组件
+const getIconComponent = (iconName: string) => {
+  return iconComponents[iconName] || Bell
+}
 
 // 使用Store
 const notificationStore = useNotificationStore()
