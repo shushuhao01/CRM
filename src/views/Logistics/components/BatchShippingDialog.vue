@@ -222,6 +222,9 @@ const formRef = ref<FormInstance>()
 const loading = ref(false)
 const showOrderDetail = ref(false)
 
+// 🔥 新增：缓存选中的订单数据，弹窗打开后不受主列表刷新影响
+const cachedOrders = ref<Order[]>([])
+
 // 批量表单
 const batchForm = reactive({
   logisticsCompany: '',
@@ -293,28 +296,37 @@ const useDefaultCompanies = () => {
   ]
 }
 
+// 🔥 修改：使用缓存的订单数据
+const selectedOrders = computed(() => {
+  // 如果弹窗打开且有缓存数据，使用缓存数据
+  if (props.visible && cachedOrders.value.length > 0) {
+    return cachedOrders.value
+  }
+  return props.selectedOrders || []
+})
+
 // 计算属性
 const totalAmount = computed(() => {
-  if (!Array.isArray(props.selectedOrders)) return 0
-  return props.selectedOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0)
+  if (!Array.isArray(selectedOrders.value)) return 0
+  return selectedOrders.value.reduce((sum, order) => sum + (order.totalAmount || 0), 0)
 })
 
 const totalCodAmount = computed(() => {
-  if (!Array.isArray(props.selectedOrders)) return 0
-  return props.selectedOrders.reduce((sum, order) => sum + (order.codAmount || 0), 0)
+  if (!Array.isArray(selectedOrders.value)) return 0
+  return selectedOrders.value.reduce((sum, order) => sum + (order.codAmount || 0), 0)
 })
 
 const previewData = computed(() => {
-  if (!Array.isArray(props.selectedOrders)) return []
+  if (!Array.isArray(selectedOrders.value)) return []
 
   // 如果是导入模式，只显示有运单号的订单
   if (batchForm.trackingMode === 'import') {
-    return props.selectedOrders.filter((_, index) => {
+    return selectedOrders.value.filter((_, index) => {
       return importedTrackingNumbers.value[index] && importedTrackingNumbers.value[index].trim()
     })
   }
 
-  return props.selectedOrders
+  return selectedOrders.value
 })
 
 // 🔥 新增：根据订单获取物流公司（优先使用订单自带的物流公司信息）
@@ -344,6 +356,12 @@ const initEstimatedDelivery = () => {
 // 监听弹窗打开，初始化默认值
 watch(() => props.visible, async (newVal) => {
   if (newVal) {
+    // 🔥 关键：弹窗打开时，缓存当前选中的订单数据
+    if (props.selectedOrders && props.selectedOrders.length > 0) {
+      cachedOrders.value = JSON.parse(JSON.stringify(props.selectedOrders))
+      console.log('[批量发货弹窗] 缓存订单数据:', cachedOrders.value.length, '个')
+    }
+
     // 加载物流公司列表
     if (logisticsCompanies.value.length === 0) {
       await loadLogisticsCompanies()
@@ -354,13 +372,29 @@ watch(() => props.visible, async (newVal) => {
 }, { immediate: true })
 
 // 监听选中订单变化，初始化运单号数组
+// 🔥 修改：只在弹窗关闭时或首次打开时响应
 watch(() => props.selectedOrders, (newOrders) => {
+  // 如果弹窗已打开且有缓存数据，不响应外部变化
+  if (props.visible && cachedOrders.value.length > 0) {
+    console.log('[批量发货弹窗] 弹窗已打开，忽略外部订单变化')
+    return
+  }
+
   if (Array.isArray(newOrders)) {
     trackingNumbers.value = new Array(newOrders.length).fill('')
     importedTrackingNumbers.value = new Array(newOrders.length).fill('')
   } else {
     trackingNumbers.value = []
     importedTrackingNumbers.value = []
+  }
+}, { immediate: true })
+
+// 🔥 新增：监听缓存订单变化，初始化运单号数组
+watch(() => cachedOrders.value, (newOrders) => {
+  if (Array.isArray(newOrders) && newOrders.length > 0) {
+    trackingNumbers.value = new Array(newOrders.length).fill('')
+    importedTrackingNumbers.value = new Array(newOrders.length).fill('')
+    console.log('[批量发货弹窗] 初始化运单号数组:', newOrders.length, '个')
   }
 }, { immediate: true })
 
@@ -419,7 +453,7 @@ const getPreviewStatus = (index: number) => {
 
 // 🔥 新增：根据订单获取原始索引
 const getOriginalIndex = (order: Order) => {
-  return props.selectedOrders.findIndex(o => o.id === order.id || o.orderNo === order.orderNo)
+  return selectedOrders.value.findIndex(o => o.id === order.id || o.orderNo === order.orderNo)
 }
 
 // 🔥 新增：根据订单获取预览状态
@@ -528,7 +562,7 @@ const handleFileChange = (uploadFile: { raw?: File }) => {
       })
 
       console.log('[批量导入] 有效数据（有运单号的）:', importedData.length, '条')
-      console.log('[批量导入] 选中的订单号:', props.selectedOrders.map(o => o.orderNo))
+      console.log('[批量导入] 选中的订单号:', selectedOrders.value.map(o => o.orderNo))
 
       if (importedData.length === 0) {
         ElMessage.warning('未找到有运单号的数据，请在第5列（运单号）填写运单号后再导入')
@@ -542,7 +576,7 @@ const handleFileChange = (uploadFile: { raw?: File }) => {
 
       // 创建系统订单号的映射（支持多种格式匹配）
       const orderNoMap = new Map<string, { index: number; order: Order }>()
-      props.selectedOrders.forEach((order, index) => {
+      selectedOrders.value.forEach((order, index) => {
         const orderNoStr = String(order.orderNo || '').trim()
         // 存储原始订单号
         orderNoMap.set(orderNoStr, { index, order })
@@ -599,7 +633,7 @@ const handleFileChange = (uploadFile: { raw?: File }) => {
       } else {
         console.error('[批量导入] 未匹配到任何订单')
         console.error('[批量导入] 导入的订单号:', importedData.map(d => d.orderNo))
-        console.error('[批量导入] 系统中的订单号:', props.selectedOrders.map(o => o.orderNo))
+        console.error('[批量导入] 系统中的订单号:', selectedOrders.value.map(o => o.orderNo))
         ElMessage.error('未匹配到任何订单，请检查订单号格式是否正确')
       }
 
@@ -629,14 +663,17 @@ const downloadTemplate = () => {
     // 创建表头
     const headers = ['订单号', '客户姓名', '联系电话', '收货地址', '运单号', '物流公司(仅参考)']
 
-    // 创建数据行 - 注意：联系电话保持为字符串以避免科学计数法
-    const data = props.selectedOrders.map(order => {
-      // 获取电话号码，确保是字符串格式
-      const phone = order.phone || order.customerPhone || ''
+    // 创建数据行 - 联系电话使用数字格式便于匹配
+    const data = selectedOrders.value.map(order => {
+      // 获取电话号码
+      const phoneStr = order.phone || order.customerPhone || ''
+      // 🔥 转换为数字格式（去除非数字字符）
+      const phoneNum = phoneStr.replace(/\D/g, '')
+
       return [
         order.orderNo || '',
         order.customerName || '',
-        phone, // 电话号码
+        phoneNum ? Number(phoneNum) : '', // 🔥 电话号码转为数字
         order.address || order.receiverAddress || '',
         '', // 运单号留空待填写
         ''  // 物流公司留空待填写（仅参考）
@@ -666,19 +703,18 @@ const downloadTemplate = () => {
     })
     ws['!cols'] = colWidths
 
-    // 🔥 关键：设置联系电话列（第3列，索引2）为文本格式，避免Excel自动转换为数值
-    // 遍历所有数据行，设置电话列的单元格格式
-    const phoneColIndex = 2 // 联系电话是第3列（索引2）
+    // 🔥 设置联系电话列（第3列，索引2）为数字格式
+    const phoneColIndex = 2
     for (let rowIndex = 1; rowIndex <= data.length; rowIndex++) {
       const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c: phoneColIndex })
-      if (ws[cellAddress]) {
-        // 设置为文本格式，保留原始字符串
-        ws[cellAddress].t = 's' // 's' 表示字符串类型
-        ws[cellAddress].z = '@' // '@' 表示文本格式
+      if (ws[cellAddress] && ws[cellAddress].v) {
+        // 设置为数字格式
+        ws[cellAddress].t = 'n' // 'n' 表示数字类型
+        ws[cellAddress].z = '0' // 整数格式，不显示小数
       }
     }
 
-    // 同样设置订单号列为文本格式（第1列，索引0）
+    // 设置订单号列为文本格式（第1列，索引0）
     const orderNoColIndex = 0
     for (let rowIndex = 1; rowIndex <= data.length; rowIndex++) {
       const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c: orderNoColIndex })
@@ -728,7 +764,7 @@ const confirmBatchShipping = async () => {
 
     if (batchForm.trackingMode === 'import') {
       // 导入模式：只发货有运单号的订单
-      ordersToShip = props.selectedOrders.filter((_, index) => {
+      ordersToShip = selectedOrders.value.filter((_, index) => {
         return importedTrackingNumbers.value[index] && importedTrackingNumbers.value[index].trim()
       })
 
@@ -743,14 +779,14 @@ const confirmBatchShipping = async () => {
         ElMessage.error(`还有 ${emptyTrackingCount} 个订单的运单号未填写`)
         return
       }
-      ordersToShip = props.selectedOrders
+      ordersToShip = selectedOrders.value
     } else {
       // 自动模式：所有订单都发货
       if (!batchForm.logisticsCompany) {
         ElMessage.error('请选择物流公司')
         return
       }
-      ordersToShip = props.selectedOrders
+      ordersToShip = selectedOrders.value
     }
 
     await ElMessageBox.confirm(
@@ -876,6 +912,8 @@ const handleClose = () => {
 
   trackingNumbers.value = []
   importedTrackingNumbers.value = []
+  // 🔥 清空缓存的订单数据
+  cachedOrders.value = []
 
   dialogVisible.value = false
 }
