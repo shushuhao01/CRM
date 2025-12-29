@@ -214,6 +214,10 @@ import { useUserStore } from '@/stores/user'
 import { createSafeNavigator } from '@/utils/navigation'
 import { eventBus, EventNames } from '@/utils/eventBus'
 import { getOrderStatusStyle, getOrderStatusText } from '@/utils/orderStatusConfig'
+import {
+  getLogisticsInfoStyle as getLogisticsInfoStyleFromConfig,
+  detectLogisticsStatusFromDescription as _detectLogisticsStatusFromDescription
+} from '@/utils/logisticsStatusConfig'
 import { formatDateTime } from '@/utils/dateFormat'
 
 interface LogisticsItem {
