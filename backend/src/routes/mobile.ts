@@ -786,7 +786,8 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
   const startTime = Date.now()
   try {
     const currentUser = (req as any).user
-    const { callId, status, startTime: callStartTime, endTime, duration, hasRecording } = req.body
+    const userId = currentUser?.userId || currentUser?.id
+    const { callId, phoneNumber, status, startTime: callStartTime, endTime, duration, hasRecording } = req.body
     const deviceId = req.headers['x-device-id'] as string
 
     if (!callId) {
@@ -797,25 +798,68 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
       })
     }
 
-    // 更新通话记录
-    await AppDataSource.query(
-      `UPDATE call_records SET
-       call_status = ?,
-       start_time = ?,
-       end_time = ?,
-       duration = ?,
-       has_recording = ?,
-       updated_at = NOW()
-       WHERE id = ?`,
-      [
-        status || 'connected',
-        callStartTime ? new Date(callStartTime) : null,
-        endTime ? new Date(endTime) : new Date(),
-        duration || 0,
-        hasRecording ? 1 : 0,
-        callId
-      ]
+    // 检查通话记录是否存在
+    const existingRecords = await AppDataSource.query(
+      `SELECT id, start_time FROM call_records WHERE id = ?`,
+      [callId]
     )
+
+    const callEndTime = endTime ? new Date(endTime) : new Date()
+    const callDuration = duration || 0
+
+    if (existingRecords.length > 0) {
+      // 记录存在，更新它
+      // 只有当原记录没有 start_time 且 APP 传来了有效的 startTime 时才更新
+      const existingStartTime = existingRecords[0].start_time
+      let finalStartTime = existingStartTime
+
+      if (!existingStartTime && callStartTime) {
+        finalStartTime = new Date(callStartTime)
+      } else if (!existingStartTime && callDuration > 0) {
+        // 如果没有开始时间，根据结束时间和时长计算
+        finalStartTime = new Date(callEndTime.getTime() - callDuration * 1000)
+      }
+
+      await AppDataSource.query(
+        `UPDATE call_records SET
+         call_status = ?,
+         start_time = COALESCE(start_time, ?),
+         end_time = ?,
+         duration = ?,
+         has_recording = ?,
+         updated_at = NOW()
+         WHERE id = ?`,
+        [
+          status || 'connected',
+          finalStartTime,
+          callEndTime,
+          callDuration,
+          hasRecording ? 1 : 0,
+          callId
+        ]
+      )
+      console.log('[通话结束] 更新通话记录:', callId)
+    } else {
+      // 记录不存在，创建新记录
+      console.log('[通话结束] 未找到现有记录，创建新记录')
+
+      // 根据通话持续时间计算正确的开始时间
+      let finalStartTime: Date
+      if (callStartTime) {
+        finalStartTime = new Date(callStartTime)
+      } else if (callDuration > 0) {
+        finalStartTime = new Date(callEndTime.getTime() - callDuration * 1000)
+      } else {
+        finalStartTime = callEndTime
+      }
+
+      await AppDataSource.query(
+        `INSERT INTO call_records (id, user_id, customer_phone, call_type, call_status, duration, has_recording, start_time, end_time, created_at, updated_at)
+         VALUES (?, ?, ?, 'outbound', ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [callId, userId, phoneNumber || '', status || 'connected', callDuration, hasRecording ? 1 : 0, finalStartTime, callEndTime]
+      )
+      console.log('[通话结束] 创建新通话记录:', callId)
+    }
 
     await logApiCall({
       interfaceCode: 'mobile_call_end',
