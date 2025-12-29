@@ -897,7 +897,13 @@ export const useNotificationStore = defineStore('notification', () => {
         const responseData = response.data as { messages?: any[]; total?: number; unreadCount?: number }
         const apiMessages = responseData.messages || []
 
-        // 🔥 清空本地消息，使用数据库消息作为唯一数据源
+        // 🔥 修复：如果API返回空消息，保留本地缓存，不清空
+        if (apiMessages.length === 0) {
+          console.log('[Notification] API返回空消息，保留本地缓存')
+          return []
+        }
+
+        // 🔥 将API消息转换为本地格式
         const newMessages: NotificationMessage[] = []
 
         apiMessages.forEach((msg: any) => {
@@ -927,11 +933,15 @@ export const useNotificationStore = defineStore('notification', () => {
           newMessages.push(notificationMessage)
         })
 
-        // 🔥 替换本地消息为数据库消息
-        messages.value = newMessages
+        // 🔥 合并消息：API消息优先，本地消息补充（避免重复）
+        const existingIds = new Set(newMessages.map(m => m.id))
+        const localOnlyMessages = messages.value.filter(m => !existingIds.has(m.id))
+
+        // 合并：API消息 + 本地独有消息
+        messages.value = [...newMessages, ...localOnlyMessages]
         saveMessagesToStorage(messages.value)
 
-        console.log(`[Notification] ✅ 从数据库加载了 ${newMessages.length} 条消息，未读 ${responseData.unreadCount || 0} 条`)
+        console.log(`[Notification] ✅ 从数据库加载了 ${newMessages.length} 条消息，本地独有 ${localOnlyMessages.length} 条，未读 ${responseData.unreadCount || 0} 条`)
 
         return apiMessages
       }
