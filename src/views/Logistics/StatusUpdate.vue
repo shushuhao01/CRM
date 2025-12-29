@@ -243,6 +243,20 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
+        <!-- 🔥 新增：物流状态列 -->
+        <el-table-column prop="logisticsStatus" label="物流状态" min-width="100">
+          <template #default="{ row }">
+            <el-tag
+              v-if="row.logisticsStatus"
+              :style="getLogisticsStatusStyleFromConfig(row.logisticsStatus)"
+              size="small"
+              effect="plain"
+            >
+              {{ getLogisticsStatusTextFromConfig(row.logisticsStatus) }}
+            </el-tag>
+            <span v-else class="no-data">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="latestUpdate" label="物流最新动态" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
             <el-tooltip
@@ -250,7 +264,8 @@
               placement="top"
               v-if="row.latestUpdate"
             >
-              <div class="logistics-update">
+              <!-- 🔥 根据物流动态内容显示不同颜色 -->
+              <div class="logistics-update" :style="getLogisticsInfoStyleFromConfig(row.latestUpdate)">
                 {{ row.latestUpdate }}
               </div>
             </el-tooltip>
@@ -346,6 +361,12 @@ import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
+import {
+  getLogisticsStatusText as getLogisticsStatusTextFromConfig,
+  getLogisticsStatusStyle as getLogisticsStatusStyleFromConfig,
+  getLogisticsInfoStyle as getLogisticsInfoStyleFromConfig,
+  detectLogisticsStatusFromDescription
+} from '@/utils/logisticsStatusConfig'
 import {
   Clock,
   Check,
@@ -1054,8 +1075,12 @@ const fetchLatestLogisticsUpdates = async () => {
             })
             const latestTrace = sortedTraces[0]
             order.latestUpdate = latestTrace.description || latestTrace.status || '暂无描述'
+            // 🔥 根据最新物流动态更新物流状态
+            order.logisticsStatus = detectLogisticsStatusFromDescription(order.latestUpdate)
           } else if (result?.statusText) {
             order.latestUpdate = result.statusText
+            // 🔥 根据状态文本更新物流状态
+            order.logisticsStatus = detectLogisticsStatusFromDescription(order.latestUpdate)
           } else {
             order.latestUpdate = '暂无物流信息'
           }

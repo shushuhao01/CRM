@@ -154,7 +154,10 @@
       <!-- 🔥 最新物流动态列 -->
       <template #column-latestLogisticsInfo="{ row }">
         <div v-if="row.latestLogisticsInfo" class="latest-logistics-info">
-          <span class="logistics-info-text">{{ row.latestLogisticsInfo }}</span>
+          <!-- 🔥 根据物流动态内容显示不同颜色 -->
+          <span class="logistics-info-text" :style="getLogisticsInfoStyleFromConfig(row.latestLogisticsInfo)">
+            {{ row.latestLogisticsInfo }}
+          </span>
         </div>
         <span v-else class="no-data">暂无物流信息</span>
       </template>
