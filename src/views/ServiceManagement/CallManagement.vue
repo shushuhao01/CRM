@@ -688,15 +688,6 @@
                 </template>
               </el-table-column>
               <el-table-column prop="duration" label="时长" width="80" align="center" />
-              <el-table-column prop="status" label="状态" width="100" align="center">
-                <template #default="{ row }">
-                  <el-tag :type="getCallStatusType(row.status)" size="small">
-                    {{ getCallStatusText(row.status) }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="startTime" label="开始时间" width="150" />
-              <el-table-column prop="operator" label="操作人" width="90" />
               <el-table-column label="录音" width="120" align="center">
                 <template #default="{ row }">
                   <template v-if="row.recordingUrl">
@@ -710,7 +701,16 @@
                   <span v-else style="color: #c0c4cc;">无录音</span>
                 </template>
               </el-table-column>
+              <el-table-column prop="status" label="状态" width="100" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="getCallStatusType(row.status)" size="small">
+                    {{ getCallStatusText(row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="operator" label="操作人" width="90" />
               <el-table-column prop="remark" label="备注" min-width="100" show-overflow-tooltip />
+              <el-table-column prop="startTime" label="开始时间" width="150" />
               <el-table-column label="操作" width="60" align="center">
                 <template #default="{ row }">
                   <el-button link type="primary" size="small" @click="viewCallDetail(row)">详情</el-button>
