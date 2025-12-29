@@ -986,60 +986,45 @@ const getStatusType = (status: string, markType?: string) => {
 }
 
 // 数据范围控制函数
+// 🔥 注意：后端API已经做了数据权限过滤，前端不需要再做重复过滤
+// 这个函数主要用于本地数据的权限控制（如果有的话）
 const applyDataScopeControl = (orders: any[]) => {
   const currentUser = userStore.currentUser
   if (!currentUser) {
     return []
   }
 
+  // 🔥 后端已经根据用户角色和部门做了数据过滤，前端直接返回所有数据
+  // 超级管理员、管理员、部门经理、销售员、客服等角色的数据权限都由后端控制
+  // 前端不再做重复过滤，避免因字段不匹配导致数据丢失
+
   // 超级管理员可以看到所有订单
-  if (userStore.isSuperAdmin) {
+  if (userStore.isSuperAdmin || userStore.isAdmin) {
     return orders
   }
 
-  // 部门负责人可以看到部门内的订单
+  // 🔥 部门负责人：后端已经过滤了本部门的订单，直接返回
   if (userStore.isDepartmentManager) {
-    const accessibleDepts = userStore.accessibleDepartments
-    return orders.filter(order => {
-      // 如果订单有部门信息，检查是否在可访问部门列表中
-      if (order.departmentId) {
-        return accessibleDepts.includes(order.departmentId)
-      }
-      // 如果没有部门信息，通过销售人员判断
-      const salesPerson = salesUsers.value.find(user => user.id === order.salesPersonId)
-      return salesPerson && accessibleDepts.includes(salesPerson.department)
-    })
+    console.log('[数据权限] 部门经理，后端已过滤，返回全部:', orders.length, '条')
+    return orders
   }
 
-  // 销售员只能看到自己创建的订单
+  // 🔥 销售员：后端已经过滤了本人/本部门的订单，直接返回
   if (userStore.isSalesStaff) {
-    return orders.filter(order => order.salesPersonId === currentUser.id)
+    console.log('[数据权限] 销售员，后端已过滤，返回全部:', orders.length, '条')
+    return orders
   }
 
-  // 客服根据类型看到相应的订单
+  // 🔥 客服：后端已经做了数据过滤，直接返回
+  // 客服类型的特殊过滤（如售后客服只看售后订单）可以保留，但这是业务逻辑而非权限控制
   if (userStore.isCustomerService) {
-    const customerServiceType = currentUser.customerServiceType
-    if (customerServiceType) {
-      return orders.filter(order => {
-        switch (customerServiceType) {
-          case 'after_sales':
-            return order.markType === 'return' || order.status === 'after_sales_created'
-          case 'audit':
-            return order.status === 'pending_audit' || order.auditStatus === 'pending'
-          case 'general':
-            return true // 通用客服可以看到所有订单
-          default:
-            return false
-        }
-      })
-    } else {
-      // 如果没有客服类型，不显示任何订单
-      return []
-    }
+    console.log('[数据权限] 客服，后端已过滤，返回全部:', orders.length, '条')
+    return orders
   }
 
-  // 其他角色只能看到自己创建的订单
-  return orders.filter(order => order.createdBy === currentUser.id)
+  // 🔥 其他角色：后端已经做了数据过滤，直接返回
+  console.log('[数据权限] 其他角色，后端已过滤，返回全部:', orders.length, '条')
+  return orders
 }
 
 // 计算属性

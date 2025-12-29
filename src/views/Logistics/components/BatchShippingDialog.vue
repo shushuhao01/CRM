@@ -116,22 +116,25 @@
       <div class="preview-section">
         <div class="section-header">
           <span>发货预览</span>
+          <span v-if="batchForm.trackingMode === 'import'" class="preview-count">
+            共 {{ previewData.length }} 个订单待发货
+          </span>
         </div>
-        <el-table :data="previewData" size="small" max-height="120" border>
-          <el-table-column prop="orderNo" label="订单号" width="130" />
-          <el-table-column label="物流" width="100">
-            <template #default>{{ getLogisticsName() || '-' }}</template>
+        <el-table :data="previewData" size="small" max-height="250" border>
+          <el-table-column prop="orderNo" label="订单号" width="150" />
+          <el-table-column label="物流公司" width="120">
+            <template #default="{ row }">{{ getOrderLogisticsCompany(row) }}</template>
           </el-table-column>
-          <el-table-column label="运单号" min-width="130">
-            <template #default="{ $index }">
+          <el-table-column label="运单号" min-width="150">
+            <template #default="{ row }">
               <span v-if="batchForm.trackingMode === 'auto'" style="color: #409eff">自动生成</span>
-              <span v-else-if="batchForm.trackingMode === 'manual'">{{ trackingNumbers[$index] || '-' }}</span>
-              <span v-else>{{ importedTrackingNumbers[$index] || '-' }}</span>
+              <span v-else-if="batchForm.trackingMode === 'manual'">{{ trackingNumbers[getOriginalIndex(row)] || '-' }}</span>
+              <span v-else>{{ importedTrackingNumbers[getOriginalIndex(row)] || '-' }}</span>
             </template>
           </el-table-column>
           <el-table-column label="状态" width="80">
-            <template #default="{ $index }">
-              <el-tag :type="getPreviewStatus($index).type" size="small">{{ getPreviewStatus($index).text }}</el-tag>
+            <template #default="{ row }">
+              <el-tag :type="getPreviewStatusByOrder(row).type" size="small">{{ getPreviewStatusByOrder(row).text }}</el-tag>
             </template>
           </el-table-column>
         </el-table>
@@ -159,13 +162,37 @@
 import { ref, computed, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import {
-  Box, Setting, Edit, Upload, View, Delete, UploadFilled,
-  Download, Document, Van, WarningFilled, ArrowDown, ArrowUp
+  Delete, UploadFilled,
+  Download, Van, WarningFilled, ArrowDown, ArrowUp
 } from '@element-plus/icons-vue'
-import type { Order } from '@/stores/order'
+import type { Order as BaseOrder } from '@/stores/order'
 import * as XLSX from 'xlsx'
 
-interface BatchShippingData {
+// 扩展Order类型，添加可能的字段别名
+interface Order extends BaseOrder {
+  orderNo?: string           // 订单号别名
+  phone?: string             // 电话别名
+  address?: string           // 地址别名
+  logisticsCompany?: string  // 物流公司
+  codAmount?: number         // 代收款金额
+}
+
+// 发货数据类型
+interface ShippingDataItem {
+  orderId: string
+  orderNo?: string
+  logisticsCompany: string
+  trackingNumber: string
+  estimatedDelivery: string
+  remarks: string
+  shippingMethod: string
+  shippingTime: string
+  shippedAt: string
+  status: string
+}
+
+// 保留旧接口定义以兼容
+interface _BatchShippingData {
   company: string
   trackingNumbers: string[]
   shipDate: string
@@ -180,7 +207,7 @@ interface Props {
 
 interface Emits {
   (e: 'update:visible', value: boolean): void
-  (e: 'batch-shipped', data: BatchShippingData): void
+  (e: 'batch-shipped', data: ShippingDataItem[]): void
 }
 
 const props = defineProps<Props>()
@@ -278,8 +305,34 @@ const totalCodAmount = computed(() => {
 })
 
 const previewData = computed(() => {
-  return Array.isArray(props.selectedOrders) ? props.selectedOrders : []
+  if (!Array.isArray(props.selectedOrders)) return []
+
+  // 如果是导入模式，只显示有运单号的订单
+  if (batchForm.trackingMode === 'import') {
+    return props.selectedOrders.filter((_, index) => {
+      return importedTrackingNumbers.value[index] && importedTrackingNumbers.value[index].trim()
+    })
+  }
+
+  return props.selectedOrders
 })
+
+// 🔥 新增：根据订单获取物流公司（优先使用订单自带的物流公司信息）
+const getOrderLogisticsCompany = (order: Order) => {
+  // 优先使用订单已有的物流公司信息
+  const orderCompany = order.expressCompany || order.logisticsCompany
+  if (orderCompany) {
+    const company = logisticsCompanies.value.find(
+      c => c.code === orderCompany || c.name === orderCompany
+    )
+    if (company) {
+      return company.name
+    }
+    return orderCompany
+  }
+  // 如果订单没有物流公司信息，使用表单选择的
+  return getLogisticsName() || '-'
+}
 
 // 初始化预计送达时间为3天后
 const initEstimatedDelivery = () => {
@@ -317,13 +370,13 @@ const formatNumber = (num: number) => {
 }
 
 // 移除订单
-const removeOrder = (index: number) => {
+const removeOrder = (_index: number) => {
   // 这里应该通知父组件移除订单
   ElMessage.info('请在订单列表中取消选择该订单')
 }
 
 // 物流公司变化
-const onLogisticsChange = (value: string) => {
+const onLogisticsChange = (_value: string) => {
   // 如果预计送达时间未设置，则设置为3天后（默认值）
   // 如果已设置，则根据物流公司调整（可选）
   if (!batchForm.estimatedDelivery) {
@@ -331,9 +384,9 @@ const onLogisticsChange = (value: string) => {
   }
 }
 
-// 获取预计送达天数
-const getDeliveryDays = (companyCode: string) => {
-  const deliveryMap = {
+// 获取预计送达天数（保留供将来使用）
+const _getDeliveryDays = (companyCode: string) => {
+  const deliveryMap: Record<string, number> = {
     'SF': 1, 'JD': 1, 'YTO': 2, 'ZTO': 2, 'STO': 2, 'YD': 2, 'HTKY': 3, 'EMS': 3
   }
   return deliveryMap[companyCode] || 3
@@ -364,13 +417,39 @@ const getPreviewStatus = (index: number) => {
   }
 }
 
+// 🔥 新增：根据订单获取原始索引
+const getOriginalIndex = (order: Order) => {
+  return props.selectedOrders.findIndex(o => o.id === order.id || o.orderNo === order.orderNo)
+}
+
+// 🔥 新增：根据订单获取预览状态
+const getPreviewStatusByOrder = (order: Order) => {
+  const index = getOriginalIndex(order)
+
+  // 导入模式下，检查订单是否有物流公司信息
+  if (batchForm.trackingMode === 'import') {
+    const hasCompany = order.expressCompany || order.logisticsCompany || batchForm.logisticsCompany
+    const hasTracking = importedTrackingNumbers.value[index]
+
+    if (!hasCompany) {
+      return { type: 'warning', text: '无物流' }
+    }
+    if (!hasTracking) {
+      return { type: 'warning', text: '待导入' }
+    }
+    return { type: 'success', text: '就绪' }
+  }
+
+  return getPreviewStatus(index)
+}
+
 // 禁用日期
 const disabledDate = (time: Date) => {
   return time.getTime() < Date.now() - 24 * 60 * 60 * 1000
 }
 
 // 处理文件变化
-const handleFileChange = (uploadFile: unknown) => {
+const handleFileChange = (uploadFile: { raw?: File }) => {
   const file = uploadFile.raw
   if (!file) return
 
@@ -383,13 +462,17 @@ const handleFileChange = (uploadFile: unknown) => {
         return
       }
 
-      // 解析Excel文件
-      const workbook = XLSX.read(data, { type: 'binary' })
+      // 解析Excel文件 - 设置raw:false确保所有单元格都作为字符串读取
+      const workbook = XLSX.read(data, { type: 'binary', raw: false })
       const firstSheetName = workbook.SheetNames[0]
       const worksheet = workbook.Sheets[firstSheetName]
 
-      // 转换为JSON数据
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][]
+      // 转换为JSON数据，设置defval为空字符串，raw为false确保数字也作为字符串处理
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        defval: '',
+        raw: false // 🔥 关键：确保所有值都作为字符串读取
+      }) as unknown[][]
 
       if (jsonData.length < 2) {
         ElMessage.error('文件格式错误，至少需要包含表头和一行数据')
@@ -400,78 +483,128 @@ const handleFileChange = (uploadFile: unknown) => {
       const dataRows = jsonData.slice(1)
       const importedData: { orderNo: string; trackingNo: string; company: string }[] = []
 
+      console.log('[批量导入] 开始解析Excel数据，共', dataRows.length, '行')
+
       dataRows.forEach((row, rowIndex) => {
-        if (Array.isArray(row) && row.length >= 5) {
-          // 处理订单号，可能是字符串或数字
-          let orderNo = String(row[0] || '').trim()
-          // 如果订单号是数字，转换为字符串
-          if (typeof row[0] === 'number') {
-            orderNo = row[0].toString()
+        if (Array.isArray(row) && row.length >= 1) {
+          // 🔥 改进：更健壮的订单号处理
+          let orderNo = ''
+          const rawOrderNo = row[0]
+
+          if (rawOrderNo !== null && rawOrderNo !== undefined) {
+            // 处理各种可能的格式
+            if (typeof rawOrderNo === 'number') {
+              // 数字类型，直接转字符串（避免科学计数法）
+              orderNo = rawOrderNo.toFixed(0)
+            } else {
+              orderNo = String(rawOrderNo).trim()
+            }
+            // 移除可能的引号
+            orderNo = orderNo.replace(/^['"]|['"]$/g, '')
           }
 
-          const trackingNo = String(row[4] || '').trim()
-          const company = String(row[5] || '').trim()
+          // 🔥 改进：运单号处理（第5列，索引4）
+          let trackingNo = ''
+          if (row.length > 4 && row[4] !== null && row[4] !== undefined) {
+            trackingNo = String(row[4]).trim()
+          }
 
-          console.log(`第${rowIndex + 2}行数据:`, { orderNo, trackingNo, company })
+          // 物流公司（第6列，索引5）- 仅作参考
+          const company = row.length > 5 ? String(row[5] || '').trim() : ''
 
+          console.log(`[批量导入] 第${rowIndex + 2}行:`, {
+            rawOrderNo,
+            orderNo,
+            trackingNo,
+            company,
+            hasTrackingNo: !!trackingNo
+          })
+
+          // 🔥 关键改进：只收集有运单号的记录（允许部分导入）
           if (orderNo && trackingNo) {
             importedData.push({ orderNo, trackingNo, company })
           }
         }
       })
 
-      console.log('导入的数据:', importedData)
-      console.log('选中的订单号:', props.selectedOrders.map(o => o.orderNo))
+      console.log('[批量导入] 有效数据（有运单号的）:', importedData.length, '条')
+      console.log('[批量导入] 选中的订单号:', props.selectedOrders.map(o => o.orderNo))
 
       if (importedData.length === 0) {
-        ElMessage.error('未找到有效的运单号数据，请确保第5列填写了运单号')
+        ElMessage.warning('未找到有运单号的数据，请在第5列（运单号）填写运单号后再导入')
         return
       }
 
-      // 匹配导入的数据到选中的订单
+      // 🔥 改进：更宽松的订单号匹配逻辑
       let matchedCount = 0
-      const unmatchedOrders: string[] = []
+      const matchedOrders: string[] = []
+      const unmatchedImports: string[] = []
 
+      // 创建系统订单号的映射（支持多种格式匹配）
+      const orderNoMap = new Map<string, { index: number; order: Order }>()
       props.selectedOrders.forEach((order, index) => {
-        // 宽松匹配：去除空格、转换为字符串后比较
         const orderNoStr = String(order.orderNo || '').trim()
-        const found = importedData.find(item => {
-          const importOrderNo = String(item.orderNo || '').trim()
-          return importOrderNo === orderNoStr
-        })
-
-        if (found) {
-          importedTrackingNumbers.value[index] = found.trackingNo
-          // 如果导入的数据包含物流公司，也更新物流公司
-          if (found.company && !batchForm.logisticsCompany) {
-            const companyMatch = logisticsCompanies.value.find(
-              c => c.name === found.company || c.code === found.company
-            )
-            if (companyMatch) {
-              batchForm.logisticsCompany = companyMatch.code
-            }
-          }
-          matchedCount++
-        } else {
-          unmatchedOrders.push(orderNoStr)
+        // 存储原始订单号
+        orderNoMap.set(orderNoStr, { index, order })
+        // 存储去除前缀的订单号（如果有ORD前缀）
+        if (orderNoStr.startsWith('ORD')) {
+          orderNoMap.set(orderNoStr.substring(3), { index, order })
+        }
+        // 存储纯数字部分
+        const numericPart = orderNoStr.replace(/\D/g, '')
+        if (numericPart && numericPart !== orderNoStr) {
+          orderNoMap.set(numericPart, { index, order })
         }
       })
 
+      importedData.forEach(item => {
+        const importOrderNo = String(item.orderNo || '').trim()
+
+        // 尝试多种匹配方式
+        let matched = orderNoMap.get(importOrderNo)
+
+        // 如果直接匹配失败，尝试添加ORD前缀
+        if (!matched && !importOrderNo.startsWith('ORD')) {
+          matched = orderNoMap.get('ORD' + importOrderNo)
+        }
+
+        // 尝试纯数字匹配
+        if (!matched) {
+          const numericPart = importOrderNo.replace(/\D/g, '')
+          if (numericPart) {
+            matched = orderNoMap.get(numericPart)
+          }
+        }
+
+        if (matched) {
+          importedTrackingNumbers.value[matched.index] = item.trackingNo
+          matchedOrders.push(importOrderNo)
+          matchedCount++
+
+          console.log(`[批量导入] 匹配成功: ${importOrderNo} -> ${matched.order.orderNo}, 运单号: ${item.trackingNo}`)
+        } else {
+          unmatchedImports.push(importOrderNo)
+          console.warn(`[批量导入] 未匹配: ${importOrderNo}`)
+        }
+      })
+
+      // 🔥 改进：更新预览数据，只显示有运单号的订单
+      updatePreviewWithImportedData()
+
       if (matchedCount > 0) {
         ElMessage.success(`成功导入 ${matchedCount} 个订单的运单号`)
-        if (unmatchedOrders.length > 0) {
-          console.warn('未匹配的订单号:', unmatchedOrders)
-          ElMessage.warning(`有 ${unmatchedOrders.length} 个订单未匹配到运单号`)
+        if (unmatchedImports.length > 0) {
+          console.warn('[批量导入] 未匹配的导入订单号:', unmatchedImports)
         }
       } else {
-        console.error('未匹配到任何订单')
-        console.error('导入的订单号:', importedData.map(d => d.orderNo))
-        console.error('系统中的订单号:', props.selectedOrders.map(o => o.orderNo))
-        ElMessage.error('未匹配到任何订单，请检查订单号是否与系统中的订单号完全一致')
+        console.error('[批量导入] 未匹配到任何订单')
+        console.error('[批量导入] 导入的订单号:', importedData.map(d => d.orderNo))
+        console.error('[批量导入] 系统中的订单号:', props.selectedOrders.map(o => o.orderNo))
+        ElMessage.error('未匹配到任何订单，请检查订单号格式是否正确')
       }
 
     } catch (error) {
-      console.error('文件解析失败:', error)
+      console.error('[批量导入] 文件解析失败:', error)
       ElMessage.error('文件解析失败，请确保文件格式正确')
     }
   }
@@ -483,21 +616,32 @@ const handleFileChange = (uploadFile: unknown) => {
   reader.readAsBinaryString(file)
 }
 
+// 更新预览数据（导入后）
+const updatePreviewWithImportedData = () => {
+  // 预览数据会自动根据 importedTrackingNumbers 更新
+  console.log('[批量导入] 更新预览数据，有运单号的订单数:',
+    importedTrackingNumbers.value.filter(n => n).length)
+}
+
 // 下载模板
 const downloadTemplate = () => {
   try {
     // 创建表头
-    const headers = ['订单号', '客户姓名', '联系电话', '收货地址', '运单号', '物流公司']
+    const headers = ['订单号', '客户姓名', '联系电话', '收货地址', '运单号', '物流公司(仅参考)']
 
-    // 创建数据行
-    const data = props.selectedOrders.map(order => [
-      order.orderNo || '',
-      order.customerName || '',
-      order.phone || order.customerPhone || '',
-      order.address || order.receiverAddress || '',
-      '', // 运单号留空待填写
-      ''  // 物流公司留空待填写
-    ])
+    // 创建数据行 - 注意：联系电话保持为字符串以避免科学计数法
+    const data = props.selectedOrders.map(order => {
+      // 获取电话号码，确保是字符串格式
+      const phone = order.phone || order.customerPhone || ''
+      return [
+        order.orderNo || '',
+        order.customerName || '',
+        phone, // 电话号码
+        order.address || order.receiverAddress || '',
+        '', // 运单号留空待填写
+        ''  // 物流公司留空待填写（仅参考）
+      ]
+    })
 
     // 合并表头和数据
     const wsData = [headers, ...data]
@@ -522,6 +666,28 @@ const downloadTemplate = () => {
     })
     ws['!cols'] = colWidths
 
+    // 🔥 关键：设置联系电话列（第3列，索引2）为文本格式，避免Excel自动转换为数值
+    // 遍历所有数据行，设置电话列的单元格格式
+    const phoneColIndex = 2 // 联系电话是第3列（索引2）
+    for (let rowIndex = 1; rowIndex <= data.length; rowIndex++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c: phoneColIndex })
+      if (ws[cellAddress]) {
+        // 设置为文本格式，保留原始字符串
+        ws[cellAddress].t = 's' // 's' 表示字符串类型
+        ws[cellAddress].z = '@' // '@' 表示文本格式
+      }
+    }
+
+    // 同样设置订单号列为文本格式（第1列，索引0）
+    const orderNoColIndex = 0
+    for (let rowIndex = 1; rowIndex <= data.length; rowIndex++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c: orderNoColIndex })
+      if (ws[cellAddress]) {
+        ws[cellAddress].t = 's'
+        ws[cellAddress].z = '@'
+      }
+    }
+
     // 创建工作簿
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, '批量发货模板')
@@ -529,7 +695,7 @@ const downloadTemplate = () => {
     // 生成Excel文件并下载
     XLSX.writeFile(wb, `批量发货模板_${new Date().getTime()}.xlsx`)
 
-    ElMessage.success('模板下载成功！请填写运单号和物流公司后导入')
+    ElMessage.success('模板下载成功！请填写运单号后导入（物流公司列仅供参考）')
   } catch (error) {
     console.error('下载模板失败:', error)
     ElMessage.error('模板下载失败，请重试')
@@ -537,12 +703,12 @@ const downloadTemplate = () => {
 }
 
 // 保存草稿
-const saveAsDraft = async () => {
+const _saveAsDraft = async () => {
   try {
-    ElMessage.loading('正在保存草稿...')
+    ElMessage.info('正在保存草稿...')
     await new Promise(resolve => setTimeout(resolve, 1000))
     ElMessage.success('草稿保存成功')
-  } catch (error) {
+  } catch (_error) {
     ElMessage.error('草稿保存失败')
   }
 }
@@ -552,25 +718,43 @@ const confirmBatchShipping = async () => {
   if (!formRef.value) return
 
   try {
-    await formRef.value.validate()
+    // 导入模式下，物流公司不是必填（使用订单自带的）
+    if (batchForm.trackingMode !== 'import') {
+      await formRef.value.validate()
+    }
 
-    // 验证运单号
-    if (batchForm.trackingMode === 'manual') {
+    // 🔥 改进：根据模式确定要发货的订单
+    let ordersToShip: Order[] = []
+
+    if (batchForm.trackingMode === 'import') {
+      // 导入模式：只发货有运单号的订单
+      ordersToShip = props.selectedOrders.filter((_, index) => {
+        return importedTrackingNumbers.value[index] && importedTrackingNumbers.value[index].trim()
+      })
+
+      if (ordersToShip.length === 0) {
+        ElMessage.error('没有可发货的订单，请先导入运单号')
+        return
+      }
+    } else if (batchForm.trackingMode === 'manual') {
+      // 手动模式：验证所有运单号都已填写
       const emptyTrackingCount = trackingNumbers.value.filter(num => !num.trim()).length
       if (emptyTrackingCount > 0) {
         ElMessage.error(`还有 ${emptyTrackingCount} 个订单的运单号未填写`)
         return
       }
-    } else if (batchForm.trackingMode === 'import') {
-      const emptyTrackingCount = importedTrackingNumbers.value.filter(num => !num.trim()).length
-      if (emptyTrackingCount > 0) {
-        ElMessage.error(`还有 ${emptyTrackingCount} 个订单的运单号未导入，请先导入完整数据`)
+      ordersToShip = props.selectedOrders
+    } else {
+      // 自动模式：所有订单都发货
+      if (!batchForm.logisticsCompany) {
+        ElMessage.error('请选择物流公司')
         return
       }
+      ordersToShip = props.selectedOrders
     }
 
     await ElMessageBox.confirm(
-      `确认批量发货 ${props.selectedOrders.length} 个订单吗？发货后将无法撤销。`,
+      `确认批量发货 ${ordersToShip.length} 个订单吗？发货后将无法撤销。`,
       '确认批量发货',
       {
         confirmButtonText: '确认发货',
@@ -582,32 +766,39 @@ const confirmBatchShipping = async () => {
     loading.value = true
 
     // 生成发货数据
-    const shippingData = props.selectedOrders.map((order, index) => {
+    const shippingData = ordersToShip.map((order) => {
+      const originalIndex = getOriginalIndex(order)
       let trackingNumber = ''
+      let logisticsCompanyCode = ''
 
       if (batchForm.trackingMode === 'auto') {
         // 自动生成运单号
         const company = logisticsCompanies.value.find(c => c.code === batchForm.logisticsCompany)
         const timestamp = Date.now().toString()
         const random = Math.random().toString(36).substring(2, 6).toUpperCase()
-        trackingNumber = `${company?.prefix}${timestamp.slice(-8)}${random}${index}`
+        trackingNumber = `${company?.prefix}${timestamp.slice(-8)}${random}${originalIndex}`
+        logisticsCompanyCode = batchForm.logisticsCompany
       } else if (batchForm.trackingMode === 'manual') {
-        trackingNumber = trackingNumbers.value[index]
+        trackingNumber = trackingNumbers.value[originalIndex]
+        logisticsCompanyCode = batchForm.logisticsCompany
       } else {
-        trackingNumber = importedTrackingNumbers.value[index]
+        // 导入模式
+        trackingNumber = importedTrackingNumbers.value[originalIndex]
+        // 🔥 关键：优先使用订单自带的物流公司
+        logisticsCompanyCode = order.expressCompany || order.logisticsCompany || batchForm.logisticsCompany
       }
 
       const now = new Date().toISOString()
       return {
         orderId: order.id,
         orderNo: order.orderNo,
-        logisticsCompany: batchForm.logisticsCompany,
+        logisticsCompany: logisticsCompanyCode,
         trackingNumber,
         estimatedDelivery: batchForm.estimatedDelivery,
         remarks: batchForm.remarks,
         shippingMethod: batchForm.shippingMethod,
         shippingTime: now,
-        shippedAt: now, // 同时设置shippedAt字段
+        shippedAt: now,
         status: 'shipped'
       }
     })
@@ -620,9 +811,10 @@ const confirmBatchShipping = async () => {
     console.log('[批量发货] 开始批量更新订单状态:', shippingData.length, '个订单')
 
     // 批量调用后端API更新订单状态
+    let successCount = 0
     for (const data of shippingData) {
       try {
-        console.log(`[批量发货] 更新订单 ${data.orderNo} 状态为 shipped`)
+        console.log(`[批量发货] 更新订单 ${data.orderNo} 状态为 shipped, 物流公司: ${data.logisticsCompany}`)
         await orderApi.update(data.orderId, {
           status: 'shipped',
           trackingNumber: data.trackingNumber,
@@ -630,32 +822,33 @@ const confirmBatchShipping = async () => {
           shippedAt: data.shippedAt,
           remark: data.remarks || `批量发货，快递公司：${data.logisticsCompany}，运单号：${data.trackingNumber}`
         })
+        successCount++
       } catch (error: any) {
         console.error(`[批量发货] 订单 ${data.orderNo} 更新失败:`, error)
         ElMessage.warning(`订单 ${data.orderNo} 发货失败: ${error?.message || '未知错误'}`)
       }
     }
 
-    console.log('[批量发货] 后端API更新完成')
+    console.log('[批量发货] 后端API更新完成，成功:', successCount, '个')
 
     // 同步更新前端store
     shippingData.forEach(data => {
       orderStore.updateOrder(data.orderId, {
         status: 'shipped',
         trackingNumber: data.trackingNumber,
-        expressNo: data.trackingNumber, // 同时更新expressNo字段
-        expressCompany: data.logisticsCompany, // 使用expressCompany字段
-        logisticsCompany: data.logisticsCompany, // 同时保留logisticsCompany字段
+        expressNo: data.trackingNumber,
+        expressCompany: data.logisticsCompany,
+        logisticsCompany: data.logisticsCompany,
         shippingTime: data.shippingTime,
-        shippedAt: data.shippedAt, // 同时更新shippedAt字段
+        shippedAt: data.shippedAt,
         estimatedDelivery: data.estimatedDelivery,
-        expectedDeliveryDate: data.estimatedDelivery, // 同时更新expectedDeliveryDate字段
+        expectedDeliveryDate: data.estimatedDelivery,
         remarks: data.remarks
       })
     })
 
     emit('batch-shipped', shippingData)
-    ElMessage.success(`成功批量发货 ${props.selectedOrders.length} 个订单！`)
+    ElMessage.success(`成功批量发货 ${successCount} 个订单！`)
     handleClose()
 
   } catch (error) {
@@ -822,11 +1015,15 @@ const handleClose = () => {
   min-width: 110px;
 }
 
-/* 上传区域 */
+/* 上传区域 - 紧凑设计 */
 .upload-compact {
   :deep(.el-upload-dragger) {
-    padding: 20px;
+    padding: 12px 16px;
     height: auto;
+    min-height: 60px;
+  }
+  :deep(.el-upload) {
+    width: 100%;
   }
 }
 .upload-content {
@@ -835,19 +1032,30 @@ const handleClose = () => {
   justify-content: center;
   gap: 8px;
   color: #666;
+  font-size: 13px;
 }
 .upload-icon {
-  font-size: 24px;
+  font-size: 20px;
   color: #409eff;
 }
 
-/* 预览区域 */
+/* 预览区域 - 增加高度 */
 .preview-section {
   background: #fff;
   padding: 12px 16px;
   border-radius: 8px;
   border: 1px solid #eee;
   margin-bottom: 16px;
+}
+.preview-section .section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.preview-count {
+  font-size: 12px;
+  color: #409eff;
+  font-weight: normal;
 }
 
 /* 确认提示 */

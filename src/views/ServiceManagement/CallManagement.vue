@@ -2251,7 +2251,7 @@ const outboundList = ref<any[]>([])
 const outboundForm = ref({
   callMethod: '', // 外呼方式：work_phone(工作手机) | network_phone(网络电话)
   selectedLine: null as number | null, // 选择的线路ID
-  selectedWorkPhone: null as number | null, // 选择的工作手机ID
+  selectedWorkPhone: null as number | string | null, // 选择的工作手机ID（可能是数字或字符串）
   selectedCustomer: null as any,
   customerPhone: '', // 从客户选择的号码
   manualPhone: '', // 手动输入的号码
@@ -2271,16 +2271,18 @@ const workPhones = ref<any[]>([])
 
 // 计算当前选择的工作手机是否离线
 const selectedWorkPhoneOffline = computed(() => {
-  if (!outboundForm.value.selectedWorkPhone) return false
-  const phone = workPhones.value.find(p => p.id === outboundForm.value.selectedWorkPhone)
+  if (!outboundForm.value.selectedWorkPhone && outboundForm.value.selectedWorkPhone !== 0) return false
+  // 🔥 修复：使用宽松比较，支持字符串和数字类型的 ID
+  const phone = workPhones.value.find(p => String(p.id) === String(outboundForm.value.selectedWorkPhone))
   // 状态可能是 'online'/'offline' 或 '在线'/'离线'
   return phone && phone.status !== 'online' && phone.status !== '在线'
 })
 
 // 计算当前选择的工作手机是否在线
 const selectedWorkPhoneOnline = computed(() => {
-  if (!outboundForm.value.selectedWorkPhone) return false
-  const phone = workPhones.value.find(p => p.id === outboundForm.value.selectedWorkPhone)
+  if (!outboundForm.value.selectedWorkPhone && outboundForm.value.selectedWorkPhone !== 0) return false
+  // 🔥 修复：使用宽松比较，支持字符串和数字类型的 ID
+  const phone = workPhones.value.find(p => String(p.id) === String(outboundForm.value.selectedWorkPhone))
   return phone && (phone.status === 'online' || phone.status === '在线')
 })
 
@@ -4294,8 +4296,10 @@ const startOutboundCall = async () => {
     // 根据外呼方式处理
     if (outboundForm.value.callMethod === 'work_phone') {
       // 工作手机外呼 - 通过APP发起呼叫
-      const selectedPhone = workPhones.value.find(p => p.id === outboundForm.value.selectedWorkPhone)
+      // 🔥 修复：使用宽松比较，支持字符串和数字类型的 ID
+      const selectedPhone = workPhones.value.find(p => String(p.id) === String(outboundForm.value.selectedWorkPhone))
       if (!selectedPhone) {
+        console.error('[startOutboundCall] 找不到选中的工作手机, selectedWorkPhone:', outboundForm.value.selectedWorkPhone, 'workPhones:', workPhones.value.map(p => ({ id: p.id, type: typeof p.id })))
         ElMessage.warning('请选择工作手机')
         return
       }
@@ -5108,9 +5112,24 @@ const loadAvailableCallMethods = async () => {
 
     // 🔥 修复：正确映射工作手机数据，确保 id 和 status 字段正确
     workPhones.value = workPhonesData.map((phone: any, index: number) => {
+      // 🔥 调试：打印原始数据
+      console.log(`[CallManagement] 原始工作手机数据 ${index}:`, JSON.stringify(phone))
+
+      // 🔥 关键修复：确保 id 有效
+      // id 可能是数字或字符串，都需要正确处理
+      let phoneId: number | string = phone.id
+      if (phoneId === undefined || phoneId === null || phoneId === '') {
+        console.warn(`[CallManagement] 工作手机 ${index} 的 id 无效，使用 index+1 作为临时 ID`)
+        phoneId = index + 1
+      }
+      // 如果是字符串类型的数字，转换为数字
+      if (typeof phoneId === 'string' && /^\d+$/.test(phoneId)) {
+        phoneId = parseInt(phoneId)
+      }
+
       const mappedPhone = {
-        id: phone.id,  // 数据库自增 ID
-        number: phone.phoneNumber || phone.phone_number,
+        id: phoneId,
+        number: phone.phoneNumber || phone.phone_number || phone.deviceName || phone.device_name || '未知号码',
         name: phone.deviceName || phone.device_name || '工作手机',
         // 🔥 修复：正确处理状态字段
         status: (phone.onlineStatus === 'online' || phone.online_status === 'online') ? '在线' : '离线',
@@ -5219,13 +5238,17 @@ const canStartCall = computed(() => {
 
   // 如果选择工作手机，必须选择一个手机
   if (outboundForm.value.callMethod === 'work_phone') {
-    if (!outboundForm.value.selectedWorkPhone) {
+    if (!outboundForm.value.selectedWorkPhone && outboundForm.value.selectedWorkPhone !== 0) {
       console.log('[canStartCall] 失败: 没有选择工作手机')
       return false
     }
-    // 🔥 新增：检查选中的手机是否在线
-    const selectedPhone = workPhones.value.find(p => p.id === outboundForm.value.selectedWorkPhone)
-    if (selectedPhone && selectedPhone.status !== 'online' && selectedPhone.status !== '在线') {
+    // 🔥 修复：使用宽松比较，支持字符串和数字类型的 ID
+    const selectedPhone = workPhones.value.find(p => String(p.id) === String(outboundForm.value.selectedWorkPhone))
+    if (!selectedPhone) {
+      console.log('[canStartCall] 失败: 找不到选中的工作手机, selectedWorkPhone:', outboundForm.value.selectedWorkPhone, 'workPhones:', workPhones.value.map(p => p.id))
+      return false
+    }
+    if (selectedPhone.status !== 'online' && selectedPhone.status !== '在线') {
       console.log('[canStartCall] 失败: 选中的工作手机已离线')
       return false
     }
@@ -5259,12 +5282,15 @@ const getCannotCallReason = computed(() => {
   }
 
   if (outboundForm.value.callMethod === 'work_phone') {
-    if (!outboundForm.value.selectedWorkPhone) {
+    if (!outboundForm.value.selectedWorkPhone && outboundForm.value.selectedWorkPhone !== 0) {
       return '请选择工作手机'
     }
-    // 检查选中的手机是否在线
-    const selectedPhone = workPhones.value.find(p => p.id === outboundForm.value.selectedWorkPhone)
-    if (selectedPhone && selectedPhone.status !== 'online' && selectedPhone.status !== '在线') {
+    // 🔥 修复：使用宽松比较，支持字符串和数字类型的 ID
+    const selectedPhone = workPhones.value.find(p => String(p.id) === String(outboundForm.value.selectedWorkPhone))
+    if (!selectedPhone) {
+      return '选中的工作手机不存在，请重新选择'
+    }
+    if (selectedPhone.status !== 'online' && selectedPhone.status !== '在线') {
       return '选中的工作手机已离线，请在手机APP上重新连接'
     }
   }
