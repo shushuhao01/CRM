@@ -318,14 +318,18 @@ class WebSocketService {
       createdAt: new Date().toISOString()
     };
 
-    if (target?.userId) {
+    // 🔥 修复：确保有有效的目标，避免意外广播
+    if (target?.userId && target.userId > 0) {
       this.sendToUser(target.userId, event, payload);
     } else if (target?.roleName) {
       this.sendToRole(target.roleName, event, payload);
-    } else if (target?.departmentId) {
+    } else if (target?.departmentId && target.departmentId > 0) {
       this.sendToDepartment(target.departmentId, event, payload);
     } else {
-      this.broadcast(event, payload);
+      // 🔥 修复：如果没有有效目标，不广播，只记录警告
+      logger.warn(`[WebSocket] ⚠️ pushSystemMessage 没有有效目标，跳过推送: ${message.title}`);
+      // 注释掉广播，避免消息发送给所有人
+      // this.broadcast(event, payload);
     }
   }
 
