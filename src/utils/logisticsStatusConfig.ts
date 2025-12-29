@@ -88,7 +88,9 @@ export const detectLogisticsStatusFromDescription = (description: string): strin
 
   // 已签收
   if (desc.includes('签收') || desc.includes('已收货') || desc.includes('已取件') ||
-      desc.includes('代收') || desc.includes('本人签收') || desc.includes('已签')) {
+      desc.includes('代收') || desc.includes('本人签收') || desc.includes('已签') ||
+      desc.includes('已送达') || desc.includes('妥投') || desc.includes('派送成功') ||
+      desc.includes('已领取') || desc.includes('已自提')) {
     return LOGISTICS_STATUS.DELIVERED
   }
 
