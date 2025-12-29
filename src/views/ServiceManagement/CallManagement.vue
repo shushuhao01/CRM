@@ -1090,8 +1090,8 @@
           @mousedown="startDrag"
         >
           <div class="header-left">
-            <span class="status-dot" :class="{ 'is-connected': callConnected }"></span>
-            <span class="header-title">{{ isCallWindowMinimized ? formatCallDuration(callDuration) : (callConnected ? '通话中' : '呼出中') }}</span>
+            <span class="status-dot" :class="{ 'is-connected': true }"></span>
+            <span class="header-title">{{ isCallWindowMinimized ? '通话中' : '正在通话' }}</span>
           </div>
           <div class="header-actions">
             <el-tooltip :content="isCallWindowMinimized ? '展开' : '最小化'" placement="top">
@@ -1123,10 +1123,10 @@
         <!-- 展开状态显示 -->
         <div v-else class="call-window-content">
           <div class="call-timer">
-            <div class="timer-display">{{ callConnected ? formatCallDuration(callDuration) : '--:--' }}</div>
+            <div class="timer-display">📞</div>
             <div class="call-status">
               <el-icon class="is-loading"><Loading /></el-icon>
-              {{ callConnected ? '通话中...' : '呼出中，等待接听...' }}
+              正在通话中...
             </div>
           </div>
 
@@ -3568,7 +3568,20 @@ const handleCallRecordsPageChange = (page: number) => {
 
 // 播放录音
 const playRecording = (record: any) => {
-  currentRecording.value = record
+  if (!record.recordingUrl) {
+    ElMessage.warning('该通话没有录音文件')
+    return
+  }
+
+  // 🔥 修复：确保录音URL是完整的URL
+  const recordingUrl = record.recordingUrl.startsWith('http')
+    ? record.recordingUrl
+    : `${import.meta.env.VITE_API_BASE_URL || ''}${record.recordingUrl}`
+
+  currentRecording.value = {
+    ...record,
+    recordingUrl
+  }
   recordingPlayerVisible.value = true
 }
 
