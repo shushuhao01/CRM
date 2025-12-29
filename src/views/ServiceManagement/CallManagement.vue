@@ -4225,15 +4225,9 @@ const closeOutboundDialog = () => {
 // 重置外呼表单
 const resetOutboundForm = () => {
   outboundForm.value = {
-    callMethod: 'network', // 外呼方式：network(网络电话) | mobile(工作手机)
-    networkConfig: {
-      lineId: '', // 选择的线路ID
-      audioQuality: 'standard' // 音质选择
-    },
-    mobileConfig: {
-      phoneNumber: '', // 工作手机号码
-      enableRecording: true // 是否启用录音
-    },
+    callMethod: '', // 外呼方式：work_phone(工作手机) | network_phone(网络电话)
+    selectedLine: null, // 选择的线路ID
+    selectedWorkPhone: null, // 选择的工作手机ID
     selectedCustomer: null,
     customerPhone: '', // 从客户选择的号码
     manualPhone: '', // 手动输入的号码
@@ -4408,7 +4402,7 @@ const handleOutboundCall = async () => {
     })
 
     showOutboundDialog.value = false
-    outboundForm.value = { customerPhone: '', customerId: '', notes: '' }
+    resetOutboundForm()
 
     // 刷新通话记录
     await callStore.fetchCallRecords()
@@ -5123,14 +5117,25 @@ const initOutboundDialog = async () => {
   // 加载可用的外呼方式
   await loadAvailableCallMethods()
 
+  console.log('[initOutboundDialog] workPhones:', workPhones.value.length, workPhones.value.map(p => ({ id: p.id, status: p.status })))
+  console.log('[initOutboundDialog] availableLines:', availableLines.value.length)
+
   // 设置默认外呼方式
   if (workPhones.value.length > 0) {
     outboundForm.value.callMethod = 'work_phone'
     outboundForm.value.selectedWorkPhone = workPhones.value[0].id
+    console.log('[initOutboundDialog] 设置默认工作手机:', workPhones.value[0].id, typeof workPhones.value[0].id)
   } else if (availableLines.value.length > 0) {
     outboundForm.value.callMethod = 'network_phone'
     outboundForm.value.selectedLine = availableLines.value[0].id
+    console.log('[initOutboundDialog] 设置默认线路:', availableLines.value[0].id)
   }
+
+  console.log('[initOutboundDialog] 最终 outboundForm:', {
+    callMethod: outboundForm.value.callMethod,
+    selectedWorkPhone: outboundForm.value.selectedWorkPhone,
+    selectedLine: outboundForm.value.selectedLine
+  })
 }
 
 // 外呼方式变更处理

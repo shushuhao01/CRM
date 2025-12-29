@@ -459,7 +459,7 @@ router.post('/bind', async (req: Request, res: Response) => {
          device_name = ?,
          device_model = ?,
          status = 'active',
-         online_status = 'online',
+         online_status = 'offline',
          last_active_at = NOW(),
          updated_at = NOW()
          WHERE id = ?`,
@@ -471,7 +471,7 @@ router.post('/bind', async (req: Request, res: Response) => {
           record.id
         ]
       )
-      console.log('设备信息更新成功')
+      console.log('设备信息更新成功，online_status 设置为 offline，等待 WebSocket 连接后更新为 online')
     } catch (updateError) {
       console.error('更新设备信息失败:', updateError)
       throw updateError
