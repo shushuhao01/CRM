@@ -190,9 +190,9 @@ class MobileWebSocketService {
    */
   private async verifyToken(token: string): Promise<{ userId: number; deviceId: string; username: string } | null> {
     try {
-      // 使用与生成 token 时相同的默认密钥
+      // 使用与生成 token 时相同的密钥
       const jwtSecret = process.env.JWT_SECRET || 'crm-secret-key';
-      logger.info(`[MobileWS] 验证 token, JWT_SECRET 前缀: ${jwtSecret.substring(0, 10)}...`);
+      logger.info(`[MobileWS] 验证 token, JWT_SECRET 长度: ${jwtSecret.length}, 前缀: ${jwtSecret.substring(0, 8)}...`);
 
       const decoded = jwt.verify(token, jwtSecret) as any;
       logger.info(`[MobileWS] Token 解码成功: deviceId=${decoded.deviceId}, userId=${decoded.userId}, type=${typeof decoded.userId}`);
@@ -210,7 +210,8 @@ class MobileWebSocketService {
         return null;
       }
 
-      // 确保 userId 是数字类型
+      // 🔥 修复：同时支持字符串和数字类型的 userId
+      const userIdStr = String(decoded.userId);
       const userIdNum = Number(decoded.userId);
 
       // 先查询 work_phones 表看看有什么数据
@@ -220,18 +221,37 @@ class MobileWebSocketService {
       );
       logger.info(`[MobileWS] 按 device_id 查询结果: ${JSON.stringify(allPhones)}`);
 
-      // 使用数字类型的 userId 进行查询
+      // 🔥 修复：使用字符串类型的 userId 进行查询（因为数据库中 user_id 是 VARCHAR）
+      // 同时支持 active 和 online 状态
       const result = await dataSource.query(
         `SELECT wp.*, u.username, u.real_name
          FROM work_phones wp
          JOIN users u ON wp.user_id = u.id
-         WHERE wp.device_id = ? AND wp.user_id = ? AND wp.status = 'active'`,
-        [decoded.deviceId, userIdNum]
+         WHERE wp.device_id = ? AND wp.user_id = ? AND wp.status IN ('active', 'online')`,
+        [decoded.deviceId, userIdStr]
       );
-      logger.info(`[MobileWS] 完整查询结果: ${JSON.stringify(result)}`);
+      logger.info(`[MobileWS] 完整查询结果(字符串userId): ${JSON.stringify(result)}`);
 
+      // 如果字符串查询没结果，尝试数字类型
       if (!result || result.length === 0) {
-        logger.warn(`[MobileWS] 设备未绑定或已失效: deviceId=${decoded.deviceId}, userId=${userIdNum}`);
+        const resultNum = await dataSource.query(
+          `SELECT wp.*, u.username, u.real_name
+           FROM work_phones wp
+           JOIN users u ON wp.user_id = u.id
+           WHERE wp.device_id = ? AND wp.user_id = ? AND wp.status IN ('active', 'online')`,
+          [decoded.deviceId, userIdNum]
+        );
+        logger.info(`[MobileWS] 完整查询结果(数字userId): ${JSON.stringify(resultNum)}`);
+
+        if (resultNum && resultNum.length > 0) {
+          return {
+            userId: decoded.userId,
+            deviceId: decoded.deviceId,
+            username: resultNum[0].real_name || resultNum[0].username
+          };
+        }
+
+        logger.warn(`[MobileWS] 设备未绑定或已失效: deviceId=${decoded.deviceId}, userId=${userIdStr}`);
         return null;
       }
 

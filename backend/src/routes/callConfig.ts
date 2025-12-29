@@ -11,6 +11,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
 import { mobileWebSocketService } from '../services/MobileWebSocketService';
+import QRCode from 'qrcode';
 
 const router = Router();
 
@@ -630,7 +631,6 @@ router.get('/work-phones', async (req: Request, res: Response) => {
  */
 router.post('/work-phones/qrcode', async (req: Request, res: Response) => {
   try {
-    const QRCode = require('qrcode');
     const currentUser = (req as any).user;
     const userId = currentUser?.userId || currentUser?.id;
     const userIdStr = String(userId);
@@ -736,19 +736,28 @@ router.delete('/work-phones/:id', async (req: Request, res: Response) => {
     const phoneById = await AppDataSource.query(`SELECT id, user_id, device_id, phone_number, status FROM work_phones WHERE id = ?`, [id]);
     console.log('[解绑工作手机] 按 ID 查询结果(不带user_id):', JSON.stringify(phoneById));
 
-    // 查询指定 ID 且属于当前用户的记录（包括 active 和 online 状态）
+    // 🔥 修复：先只按 ID 查询，不限制 user_id（因为管理员可能需要解绑任何手机）
+    // 同时支持 active 和 online 状态
     const phones = await AppDataSource.query(
-      `SELECT * FROM work_phones WHERE id = ? AND user_id = ? AND status IN ('active', 'online')`,
-      [id, userIdStr]
+      `SELECT * FROM work_phones WHERE id = ? AND status IN ('active', 'online')`,
+      [id]
     );
-    console.log('[解绑工作手机] 按 ID+user_id+status 查询结果:', JSON.stringify(phones));
+    console.log('[解绑工作手机] 按 ID+status 查询结果:', JSON.stringify(phones));
 
     if (phones.length === 0) {
       console.log('[解绑工作手机] 未找到匹配记录，返回 404');
-      return res.status(404).json(errorResponse('手机不存在或无权操作', 404));
+      return res.status(404).json(errorResponse('手机不存在', 404));
     }
 
+    // 检查权限：只有管理员或手机所有者可以解绑
     const phone = phones[0];
+    const isOwner = String(phone.user_id) === userIdStr;
+    const isAdminUser = ['super_admin', 'admin'].includes(currentUser?.role);
+
+    if (!isOwner && !isAdminUser) {
+      console.log('[解绑工作手机] 无权操作，user_id不匹配且非管理员');
+      return res.status(403).json(errorResponse('无权操作此手机', 403));
+    }
 
     // 🔥 修复：使用 UPDATE 而不是 DELETE，与 APP 端保持一致
     console.log('[解绑工作手机] 找到记录，更新状态为 inactive...');
