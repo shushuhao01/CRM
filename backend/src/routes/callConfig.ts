@@ -784,13 +784,9 @@ router.delete('/work-phones/:id', async (req: Request, res: Response) => {
       [userIdStr, phone.device_id, req.ip || '']
     );
 
-    // 🔥 通知 APP 设备已解绑
-    if (global.webSocketService) {
-      // sendToUser 需要 number 类型的 userId
-      global.webSocketService.sendToUser(Number(userId), 'DEVICE_UNBIND', {
-        deviceId: phone.device_id,
-        reason: 'CRM端解绑'
-      });
+    // 🔥 通知 APP 设备已解绑 - 使用 mobileWebSocketService
+    if (phone.device_id) {
+      mobileWebSocketService.sendDeviceUnbind(phone.device_id);
       console.log('[解绑工作手机] 已通知APP设备解绑');
     }
 
