@@ -693,10 +693,10 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
     const orderRepository = AppDataSource.getRepository(Order);
     const startTime = Date.now();
 
-    // 🔥 优化：默认每页20条，最大100条
+    // 🔥 优化：默认每页20条，最大1000条（支持前端一次性获取所有数据）
     const { page = 1, pageSize = 20, orderNumber, customerName } = req.query;
     const pageNum = parseInt(page as string) || 1;
-    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 100);
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 1000);
     const skip = (pageNum - 1) * pageSizeNum;
 
     // 🔥 优化：使用QueryBuilder只查询需要的字段
@@ -827,10 +827,10 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
     const orderRepository = AppDataSource.getRepository(Order);
     const startTime = Date.now();
 
-    // 🔥 优化：默认每页20条，最大100条
+    // 🔥 优化：默认每页20条，最大1000条（支持前端一次性获取所有数据）
     const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status } = req.query;
     const pageNum = parseInt(page as string) || 1;
-    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 100);
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 1000);
     const skip = (pageNum - 1) * pageSizeNum;
 
     // 🔥 优化：使用QueryBuilder只查询需要的字段
