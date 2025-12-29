@@ -493,34 +493,135 @@ router.get('/trace/query', async (req: Request, res: Response) => {
 });
 
 /**
- * 批量查询物流轨迹
+ * 批量查询物流轨迹（增强版，支持传递订单详情）
  */
 router.post('/trace/batch-query', async (req: Request, res: Response) => {
   try {
-    const { trackingNos, companyCode } = req.body;
+    const { trackingNos, companyCode, orders } = req.body;
 
-    if (!trackingNos || !Array.isArray(trackingNos) || trackingNos.length === 0) {
+    // 🔥 支持两种模式：
+    // 1. 简单模式：只传 trackingNos 数组
+    // 2. 详情模式：传 orders 数组，包含 trackingNo, companyCode, phone 等信息
+
+    let queryItems: Array<{ trackingNo: string; companyCode?: string; phone?: string }> = [];
+
+    if (orders && Array.isArray(orders) && orders.length > 0) {
+      // 详情模式
+      queryItems = orders.map((o: any) => ({
+        trackingNo: o.trackingNo,
+        companyCode: o.companyCode || companyCode,
+        phone: o.phone
+      }));
+    } else if (trackingNos && Array.isArray(trackingNos) && trackingNos.length > 0) {
+      // 简单模式
+      queryItems = trackingNos.map((no: string) => ({
+        trackingNo: no,
+        companyCode
+      }));
+    } else {
       return res.status(400).json({
         success: false,
-        message: '请提供物流单号列表'
+        message: '请提供物流单号列表或订单详情'
       });
     }
 
-    if (trackingNos.length > 50) {
+    if (queryItems.length > 50) {
       return res.status(400).json({
         success: false,
         message: '单次最多查询50个单号'
       });
     }
 
-    console.log(`[批量物流轨迹查询] 单号数量: ${trackingNos.length}`);
+    console.log(`[批量物流轨迹查询] 单号数量: ${queryItems.length}`);
 
-    const results = await logisticsTraceService.batchQueryTrace(trackingNos, companyCode);
+    // 🔥 并行查询所有订单（使用 Promise.allSettled 避免单个失败影响整体）
+    const results = await Promise.allSettled(
+      queryItems.map(async (item) => {
+        try {
+          // 如果没有传手机号，尝试从数据库获取
+          let phoneToUse = item.phone;
+          if (!phoneToUse) {
+            try {
+              const { Order } = await import('../entities/Order');
+              const orderRepository = AppDataSource!.getRepository(Order);
+              const order = await orderRepository.findOne({
+                where: { trackingNumber: item.trackingNo }
+              });
+              if (order) {
+                phoneToUse = order.shippingPhone?.trim() || order.customerPhone?.trim() || undefined;
+              }
+            } catch (_e) {
+              // 忽略数据库查询错误
+            }
+          }
+
+          const result = await logisticsTraceService.queryTrace(
+            item.trackingNo,
+            item.companyCode,
+            phoneToUse
+          );
+
+          // 🔥 如果查询成功，更新数据库中的物流状态
+          if (result.success && result.traces.length > 0) {
+            try {
+              const { Order } = await import('../entities/Order');
+              const orderRepository = AppDataSource!.getRepository(Order);
+              const order = await orderRepository.findOne({
+                where: { trackingNumber: item.trackingNo }
+              });
+              if (order) {
+                order.logisticsStatus = result.status;
+                order.latestLogisticsInfo = result.traces[0].description || result.traces[0].status || '';
+                if (result.estimatedDeliveryTime) {
+                  order.expectedDeliveryDate = result.estimatedDeliveryTime;
+                }
+                order.updatedAt = new Date();
+                await orderRepository.save(order);
+              }
+            } catch (_e) {
+              // 忽略更新错误
+            }
+          }
+
+          return result;
+        } catch (error) {
+          return {
+            success: false,
+            trackingNo: item.trackingNo,
+            companyCode: item.companyCode || '',
+            companyName: '',
+            status: 'error',
+            statusText: error instanceof Error ? error.message : '查询失败',
+            traces: []
+          };
+        }
+      })
+    );
+
+    // 🔥 处理结果
+    const finalResults = results.map((r, index) => {
+      if (r.status === 'fulfilled') {
+        return r.value;
+      } else {
+        return {
+          success: false,
+          trackingNo: queryItems[index].trackingNo,
+          companyCode: queryItems[index].companyCode || '',
+          companyName: '',
+          status: 'error',
+          statusText: r.reason?.message || '查询失败',
+          traces: []
+        };
+      }
+    });
+
+    const successCount = finalResults.filter(r => r.success).length;
+    console.log(`[批量物流轨迹查询] 完成，成功 ${successCount}/${queryItems.length} 个`);
 
     return res.json({
       success: true,
-      data: results,
-      message: `查询完成，成功 ${results.filter(r => r.success).length} 个`
+      data: finalResults,
+      message: `查询完成，成功 ${successCount} 个`
     });
   } catch (error) {
     console.error('[批量物流轨迹查询] 失败:', error);

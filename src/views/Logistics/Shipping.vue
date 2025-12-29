@@ -1540,7 +1540,7 @@ const syncLogisticsData = async () => {
 }
 
 /**
- * 🔥 获取物流最新动态（物流列表页面专用）
+ * 🔥 获取物流最新动态（物流列表页面专用，批量查询优化版）
  */
 const fetchLatestLogisticsForShipping = async () => {
   const { logisticsApi } = await import('@/api/logistics')
@@ -1560,62 +1560,86 @@ const fetchLatestLogisticsForShipping = async () => {
     return
   }
 
-  // 并发获取物流信息，限制并发数量避免API限制
-  const batchSize = 3
-  for (let i = 0; i < ordersWithTracking.length; i += batchSize) {
-    const batch = ordersWithTracking.slice(i, i + batchSize)
-    await Promise.all(batch.map(async (order) => {
-      try {
-        // 获取物流轨迹
-        const response = await logisticsApi.queryTrace(
-          order.expressNo,
-          order.expressCompany,
-          order.phone || order.customerPhone || ''
-        )
+  console.log(`[发货管理] 开始从API获取 ${ordersWithTracking.length} 个订单的物流信息`)
 
-        if (response?.success && response.data?.success && response.data.traces?.length > 0) {
-          const traces = response.data.traces
-          // 🔥 按时间排序，获取最新动态
-          const sortedTraces = [...traces].sort((a: any, b: any) => {
-            const timeA = new Date(a.time).getTime()
-            const timeB = new Date(b.time).getTime()
-            return timeB - timeA  // 倒序，最新的在前面
-          })
-          const latestTrace = sortedTraces[0]
-          order.latestLogistics = latestTrace.description || latestTrace.status || '暂无描述'
+  // 🔥 批量查询优化：每批次10个订单
+  const BATCH_SIZE = 10
+  const batches: typeof ordersWithTracking[] = []
 
-          // 🔥 同时更新物流状态
-          if (response.data.status) {
-            order.logisticsStatus = response.data.status
+  for (let i = 0; i < ordersWithTracking.length; i += BATCH_SIZE) {
+    batches.push(ordersWithTracking.slice(i, i + BATCH_SIZE))
+  }
+
+  console.log(`[发货管理] 分为 ${batches.length} 批次查询，每批 ${BATCH_SIZE} 个`)
+
+  // 🔥 依次处理每个批次
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    const batch = batches[batchIndex]
+    console.log(`[发货管理] 正在查询第 ${batchIndex + 1}/${batches.length} 批次，共 ${batch.length} 个订单`)
+
+    try {
+      // 🔥 构建批量查询参数
+      const queryOrders = batch.map(order => ({
+        trackingNo: order.expressNo,
+        companyCode: order.expressCompany,
+        phone: order.phone?.trim() || order.customerPhone?.trim() || undefined
+      }))
+
+      // 🔥 批量查询
+      const response = await logisticsApi.batchQueryTrace(queryOrders)
+
+      if (response?.success && response.data) {
+        // 🔥 处理每个查询结果
+        response.data.forEach((result: any, index: number) => {
+          const order = batch[index]
+          if (!order) return
+
+          if (result?.success && result.traces?.length > 0) {
+            // 按时间排序，获取最新动态
+            const sortedTraces = [...result.traces].sort((a: any, b: any) => {
+              const timeA = new Date(a.time).getTime()
+              const timeB = new Date(b.time).getTime()
+              return timeB - timeA
+            })
+            const latestTrace = sortedTraces[0]
+            order.latestLogistics = latestTrace.description || latestTrace.status || '暂无描述'
+
+            // 🔥 同时更新物流状态
+            if (result.status) {
+              order.logisticsStatus = result.status
+            }
+            // 🔥 更新预计送达时间
+            if (result.estimatedDeliveryTime) {
+              order.estimatedDeliveryTime = result.estimatedDeliveryTime
+            }
+          } else {
+            order.latestLogistics = '暂无物流信息'
           }
-          // 🔥 更新预计送达时间
-          if (response.data.estimatedDeliveryTime) {
-            order.estimatedDeliveryTime = response.data.estimatedDeliveryTime
-          }
-        } else if (response?.success && response.data?.traces?.length > 0) {
-          const traces = response.data.traces
-          // 🔥 按时间排序，获取最新动态
-          const sortedTraces = [...traces].sort((a: any, b: any) => {
-            const timeA = new Date(a.time).getTime()
-            const timeB = new Date(b.time).getTime()
-            return timeB - timeA
-          })
-          const latestTrace = sortedTraces[0]
-          order.latestLogistics = latestTrace.description || latestTrace.status || '暂无描述'
-        } else {
-          order.latestLogistics = '暂无物流信息'
-        }
-      } catch (error) {
-        console.error(`获取订单 ${order.orderNo} 物流信息失败:`, error)
-        order.latestLogistics = '获取失败'
+        })
+
+        const successCount = response.data.filter((r: any) => r?.success).length
+        console.log(`[发货管理] ✅ 第 ${batchIndex + 1} 批次完成，成功 ${successCount}/${batch.length} 个`)
+      } else {
+        // 批量查询失败，标记所有订单
+        batch.forEach(order => {
+          order.latestLogistics = '获取失败'
+        })
+        console.log(`[发货管理] ❌ 第 ${batchIndex + 1} 批次查询失败`)
       }
-    }))
+    } catch (error) {
+      console.error(`[发货管理] ❌ 第 ${batchIndex + 1} 批次查询异常:`, error)
+      batch.forEach(order => {
+        order.latestLogistics = '获取失败'
+      })
+    }
 
-    // 每批次之间稍微延迟，避免API限制
-    if (i + batchSize < ordersWithTracking.length) {
+    // 🔥 批次之间延迟300ms，避免API限制
+    if (batchIndex < batches.length - 1) {
       await new Promise(resolve => setTimeout(resolve, 300))
     }
   }
+
+  console.log('[发货管理] 物流信息获取完成')
 }
 
 // 定时器引用
