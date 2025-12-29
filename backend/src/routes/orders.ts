@@ -694,7 +694,7 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
     const startTime = Date.now();
 
     // 🔥 服务端分页参数
-    const { page = 1, pageSize = 20, orderNumber, customerName, startDate, endDate, quickFilter } = req.query;
+    const { page = 1, pageSize = 20, orderNumber, customerName, startDate, endDate, quickFilter, departmentId, salesPersonId } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 200); // 最大200条/页
     const skip = (pageNum - 1) * pageSizeNum;
@@ -708,7 +708,7 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
         'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt',
         'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
         'order.expressCompany', 'order.logisticsStatus', 'order.serviceWechat',
-        'order.orderSource', 'order.products',
+        'order.orderSource', 'order.products', 'order.createdByDepartmentId',
         'order.customField1', 'order.customField2', 'order.customField3',
         'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
       ])
@@ -720,6 +720,16 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
     }
     if (customerName) {
       queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+    }
+
+    // 🔥 部门筛选
+    if (departmentId) {
+      queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
+    }
+
+    // 🔥 销售人员筛选
+    if (salesPersonId) {
+      queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     }
 
     // 🔥 日期范围筛选
@@ -755,11 +765,10 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
           const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
           queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
           break;
-        case 'cod':
-          queryBuilder.andWhere('(order.totalAmount - COALESCE(order.depositAmount, 0)) > 0');
-          break;
-        case 'large':
-          queryBuilder.andWhere('order.totalAmount > 1000');
+        case 'timeout':
+          // 🔥 超时订单：待发货超过24小时的订单
+          const timeoutDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          queryBuilder.andWhere('order.createdAt <= :timeoutDate', { timeoutDate: timeoutDate.toISOString() });
           break;
       }
     }

@@ -57,8 +57,8 @@
             <el-icon><CreditCard /></el-icon>
           </div>
           <div class="metric-content">
-            <div class="metric-value">{{ overviewData.codOrders }}</div>
-            <div class="metric-label">代收款订单</div>
+            <div class="metric-value">{{ overviewData.timeoutOrders }}</div>
+            <div class="metric-label">超时发货订单</div>
           </div>
         </div>
 
@@ -67,8 +67,8 @@
             <el-icon><Coin /></el-icon>
           </div>
           <div class="metric-content">
-            <div class="metric-value">¥{{ formatNumber(overviewData.codAmount) }}</div>
-            <div class="metric-label">代收款金额</div>
+            <div class="metric-value">¥{{ formatNumber(overviewData.timeoutAmount) }}</div>
+            <div class="metric-label">超时订单金额</div>
           </div>
         </div>
       </div>
@@ -102,9 +102,10 @@
         />
         <el-select
           v-model="selectedDepartment"
-          placeholder="选择部门"
+          placeholder="全部部门"
           class="department-select"
           size="default"
+          clearable
         >
           <el-option label="全部部门" value="" />
           <el-option
@@ -112,6 +113,22 @@
             :key="dept.id"
             :label="dept.name"
             :value="dept.id"
+          />
+        </el-select>
+        <el-select
+          v-model="selectedSalesPerson"
+          placeholder="全部销售"
+          class="sales-select"
+          size="default"
+          clearable
+          filterable
+        >
+          <el-option label="全部销售" value="" />
+          <el-option
+            v-for="user in salesUserList"
+            :key="user.id"
+            :label="user.name"
+            :value="user.id"
           />
         </el-select>
         <el-input
@@ -774,8 +791,8 @@ const overviewData = reactive({
   totalAmount: 0,
   shippedToday: 0,
   urgentOrders: 0,
-  codOrders: 0,
-  codAmount: 0
+  timeoutOrders: 0,
+  timeoutAmount: 0
 })
 
 // 快速筛选
@@ -787,8 +804,7 @@ const quickFilters = [
   { label: '本月订单', value: 'thisMonth' },
   { label: '今年订单', value: 'thisYear' },
   { label: '紧急订单', value: 'urgent' },
-  { label: '代收款订单', value: 'cod' },
-  { label: '大额订单', value: 'large' }
+  { label: '超时订单', value: 'timeout' }
 ]
 
 const selectedQuickFilter = ref('all')
@@ -806,8 +822,26 @@ const tabCounts = reactive({
 // 筛选条件
 const dateRange = ref<[string, string] | null>(null)
 const selectedDepartment = ref('')
+const selectedSalesPerson = ref('')
 const searchOrderNo = ref('')
 const searchCustomerPhone = ref('')
+
+// 🔥 销售人员列表（从用户store获取）
+const salesUserList = computed(() => {
+  return userStore.users
+    .filter((u: any) => {
+      // 只显示启用的用户
+      const isEnabled = !u.status || u.status === 'active'
+      // 包含销售员、部门经理等可以创建订单的角色
+      const hasValidRole = ['sales_staff', 'department_manager', 'admin', 'super_admin'].includes(u.role || u.roleId)
+      return isEnabled && hasValidRole
+    })
+    .map((u: any) => ({
+      id: u.id,
+      name: u.realName || u.name || u.username,
+      department: u.departmentName || u.department || '未分配'
+    }))
+})
 
 // 列表数据
 const orderList = ref<any[]>([])
@@ -1318,7 +1352,11 @@ const loadOrderList = async () => {
         startDate: dateRange.value?.[0] || undefined,
         endDate: dateRange.value?.[1] || undefined,
         // 🔥 快速筛选
-        quickFilter: selectedQuickFilter.value !== 'all' ? selectedQuickFilter.value : undefined
+        quickFilter: selectedQuickFilter.value !== 'all' ? selectedQuickFilter.value : undefined,
+        // 🔥 部门筛选
+        departmentId: selectedDepartment.value || undefined,
+        // 🔥 销售人员筛选
+        salesPersonId: selectedSalesPerson.value || undefined
       }
 
       if (activeTab.value === 'pending') {
@@ -1473,8 +1511,17 @@ const updateOverviewData = (currentPageOrders: any[] = []) => {
   ).length
 
   overviewData.urgentOrders = orders.filter((order: any) => order.status === 'urgent').length
-  overviewData.codOrders = orders.filter((order: any) => (order.codAmount || 0) > 0).length
-  overviewData.codAmount = orders.reduce((sum: number, order: any) => sum + (order.codAmount || 0), 0)
+
+  // 🔥 超时发货订单：待发货超过24小时的订单
+  const now = new Date().getTime()
+  const timeoutThreshold = 24 * 60 * 60 * 1000 // 24小时
+  const timeoutOrders = orders.filter((order: any) => {
+    if (order.status !== 'pending_shipment' && order.status !== 'pending') return false
+    const createTime = new Date(order.createTime || order.createdAt).getTime()
+    return (now - createTime) > timeoutThreshold
+  })
+  overviewData.timeoutOrders = timeoutOrders.length
+  overviewData.timeoutAmount = timeoutOrders.reduce((sum: number, order: any) => sum + (order.totalAmount || 0), 0)
 }
 
 // 同步物流数据
@@ -2031,17 +2078,28 @@ const deleteDraft = async (row) => {
 // 计算各个标签页的订单数量
 const updateTabCounts = async () => {
   try {
-    const pendingOrders = await orderStore.getOrdersByShippingStatus('pending')
-    const shippedOrders = await orderStore.getOrdersByShippingStatus('shipped')
-    const returnedOrders = await orderStore.getOrdersByShippingStatus('returned')
-    const cancelledOrders = await orderStore.getOrdersByShippingStatus('cancelled')
-    const draftOrders = await orderStore.getOrdersByShippingStatus('draft')
+    // 🔥 从API获取各状态的订单数量
+    const { orderApi } = await import('@/api/order')
 
-    tabCounts.pending = Array.isArray(pendingOrders) ? pendingOrders.length : 0
-    tabCounts.shipped = Array.isArray(shippedOrders) ? shippedOrders.length : 0
-    tabCounts.returned = Array.isArray(returnedOrders) ? returnedOrders.length : 0
-    tabCounts.cancelled = Array.isArray(cancelledOrders) ? cancelledOrders.length : 0
-    tabCounts.draft = Array.isArray(draftOrders) ? draftOrders.length : 0
+    // 获取待发货订单数量
+    try {
+      const pendingResponse = await orderApi.getShippingPending({ page: 1, pageSize: 1 })
+      tabCounts.pending = pendingResponse?.data?.total || 0
+    } catch (e) {
+      console.warn('[发货列表] 获取待发货数量失败:', e)
+      tabCounts.pending = 0
+    }
+
+    // 草稿订单数量（从store获取，因为草稿通常是本地数据）
+    try {
+      const draftOrders = await orderStore.getOrdersByShippingStatus('draft')
+      tabCounts.draft = Array.isArray(draftOrders) ? draftOrders.length : 0
+    } catch (e) {
+      console.warn('[发货列表] 获取草稿数量失败:', e)
+      tabCounts.draft = 0
+    }
+
+    console.log('[发货列表] 标签页数量更新:', tabCounts)
   } catch (error) {
     console.error('更新标签页数量失败:', error)
   }
@@ -2437,6 +2495,7 @@ onUnmounted(() => {
 
 .date-picker,
 .department-select,
+.sales-select,
 .search-input {
   width: 200px;
 }

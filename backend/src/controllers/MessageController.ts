@@ -1425,6 +1425,7 @@ export class MessageController {
   /**
    * 获取当前用户的系统消息
    * 🔥 修复：支持查询 targetUserId 包含当前用户ID的消息（逗号分隔的多个ID）
+   * 🔥 2025-12-29 修复：精确匹配用户ID，避免模糊匹配导致的错误
    */
   async getSystemMessages(req: Request, res: Response): Promise<void> {
     try {
@@ -1447,12 +1448,16 @@ export class MessageController {
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
-      // 🔥 修复：查询 targetUserId 等于当前用户ID 或 包含当前用户ID（逗号分隔）
+      // 🔥 修复：精确匹配用户ID
+      // 支持以下格式：
+      // 1. targetUserId = '123' (单个用户)
+      // 2. targetUserId = '123,456,789' (多个用户，逗号分隔)
+      // 使用 FIND_IN_SET 或精确匹配，避免 LIKE 模糊匹配的问题
       const queryBuilder = messageRepo.createQueryBuilder('msg')
-        .where('(msg.target_user_id = :userId OR msg.target_user_id LIKE :userIdPattern)', {
-          userId,
-          userIdPattern: `%${userId}%`
-        })
+        .where(
+          '(msg.target_user_id = :userId OR FIND_IN_SET(:userId, msg.target_user_id) > 0)',
+          { userId: String(userId) }
+        )
         .orderBy('msg.created_at', 'DESC')
         .skip(Number(offset))
         .take(Number(limit));
@@ -1464,12 +1469,12 @@ export class MessageController {
 
       const [messages, total] = await queryBuilder.getManyAndCount();
 
-      // 🔥 修复：统计未读数量也需要支持逗号分隔的ID
+      // 🔥 修复：统计未读数量也使用精确匹配
       const unreadCount = await messageRepo.createQueryBuilder('msg')
-        .where('(msg.target_user_id = :userId OR msg.target_user_id LIKE :userIdPattern)', {
-          userId,
-          userIdPattern: `%${userId}%`
-        })
+        .where(
+          '(msg.target_user_id = :userId OR FIND_IN_SET(:userId, msg.target_user_id) > 0)',
+          { userId: String(userId) }
+        )
         .andWhere('msg.is_read = 0')
         .getCount();
 
@@ -1657,6 +1662,7 @@ export class MessageController {
 
   /**
    * 标记所有消息为已读
+   * 🔥 2025-12-29 修复：使用 FIND_IN_SET 精确匹配用户ID
    */
   async markAllMessagesAsRead(req: Request, res: Response): Promise<void> {
     try {
@@ -1676,13 +1682,13 @@ export class MessageController {
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
-      // 🔥 修复：标记该用户可见的所有消息为已读（包括全局消息）
+      // 🔥 修复：使用 FIND_IN_SET 精确匹配用户ID
       const result = await messageRepo
         .createQueryBuilder()
         .update()
         .set({ isRead: 1, readAt: new Date() })
         .where('isRead = :isRead', { isRead: 0 })
-        .andWhere('(targetUserId = :userId OR targetUserId IS NULL)', { userId })
+        .andWhere('(targetUserId = :userId OR FIND_IN_SET(:userId, targetUserId) > 0 OR targetUserId IS NULL)', { userId: String(userId) })
         .execute();
 
       res.json({

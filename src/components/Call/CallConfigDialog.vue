@@ -695,10 +695,22 @@ const loadWorkPhones = async () => {
 
     // 🔥 修复：确保每个手机对象都有正确的 id 字段
     workPhones.value = phones.map((p: any, index: number) => {
+      // 🔥 调试：打印原始数据
+      console.log(`[CallConfig] 原始手机数据 ${index}:`, JSON.stringify(p))
+
+      // 🔥 关键修复：确保 id 有效
+      let phoneId = p.id
+      if (phoneId === undefined || phoneId === null || phoneId === '') {
+        console.warn(`[CallConfig] 工作手机 ${index} 的 id 无效，使用 index+1 作为临时 ID`)
+        phoneId = index + 1
+      } else if (typeof phoneId === 'string') {
+        phoneId = parseInt(phoneId) || index + 1
+      }
+
       const phone = {
-        id: p.id,  // 数据库自增 ID
-        phoneNumber: p.phoneNumber || p.phone_number,
-        deviceName: p.deviceName || p.device_name,
+        id: phoneId,
+        phoneNumber: p.phoneNumber || p.phone_number || p.deviceName || p.device_name || '未知号码',
+        deviceName: p.deviceName || p.device_name || '工作手机',
         deviceModel: p.deviceModel || p.device_model,
         onlineStatus: p.onlineStatus || p.online_status || 'offline',
         isPrimary: p.isPrimary || p.is_primary === 1,

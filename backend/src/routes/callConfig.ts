@@ -493,6 +493,11 @@ router.get('/my-lines', async (req: Request, res: Response) => {
     );
     console.log('[my-lines] workPhones:', workPhones.length, workPhones.map((p: any) => ({ id: p.id, status: p.status, device_id: p.device_id })));
 
+    // 🔥 调试：打印完整的工作手机数据
+    workPhones.forEach((p: any, index: number) => {
+      console.log(`[my-lines] workPhone ${index} 完整数据:`, JSON.stringify(p));
+    });
+
     res.json(successResponse({
       assignedLines: assignments.map((a: any) => ({
         id: a.line_id,
@@ -503,15 +508,20 @@ router.get('/my-lines', async (req: Request, res: Response) => {
         isDefault: a.is_default === 1,
         dailyLimit: a.daily_limit
       })),
-      workPhones: workPhones.map((p: any) => ({
-        id: p.id,
-        phoneNumber: p.phone_number,
-        deviceName: p.device_name,
-        deviceModel: p.device_model,
-        onlineStatus: p.online_status,
-        isPrimary: p.is_primary === 1,
-        lastActiveAt: p.last_active_at
-      })),
+      workPhones: workPhones.map((p: any) => {
+        // 🔥 调试：打印映射前后的数据
+        const mapped = {
+          id: p.id,
+          phoneNumber: p.phone_number,
+          deviceName: p.device_name,
+          deviceModel: p.device_model,
+          onlineStatus: p.online_status,
+          isPrimary: p.is_primary === 1,
+          lastActiveAt: p.last_active_at
+        };
+        console.log('[my-lines] 映射后的 workPhone:', JSON.stringify(mapped));
+        return mapped;
+      }),
       hasAvailableMethod: assignments.length > 0 || workPhones.length > 0
     }));
   } catch (error) {
