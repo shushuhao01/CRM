@@ -8,8 +8,8 @@
           <h2>物流详情</h2>
           <div class="header-meta">
             <span class="tracking-no">{{ logisticsInfo.trackingNo }}</span>
-            <el-tag :type="getStatusColor(logisticsInfo.status)" size="large">
-              {{ getStatusText(logisticsInfo.status) }}
+            <el-tag :style="getLogisticsStatusStyle(logisticsInfo.status)" size="large" effect="plain">
+              {{ getLogisticsStatusTextFromConfig(logisticsInfo.status) }}
             </el-tag>
           </div>
         </div>
@@ -60,8 +60,8 @@
             </div>
             <div class="info-item">
               <span class="label">物流状态：</span>
-              <el-tag :type="getStatusColor(logisticsInfo.status)" class="value">
-                {{ getStatusText(logisticsInfo.status) }}
+              <el-tag :style="getLogisticsStatusStyle(logisticsInfo.status)" class="value" effect="plain">
+                {{ getLogisticsStatusTextFromConfig(logisticsInfo.status) }}
               </el-tag>
             </div>
             <div class="info-item">
@@ -167,7 +167,8 @@
               >
                 <div class="timeline-content">
                   <h4>{{ item.status }}</h4>
-                  <p>{{ item.description }}</p>
+                  <!-- 🔥 根据物流动态内容显示不同颜色 -->
+                  <p :style="getLogisticsInfoStyle(item.description)">{{ item.description }}</p>
                   <div class="timeline-location" v-if="item.location">
                     <el-icon><Location /></el-icon>
                     <span>{{ item.location }}</span>
@@ -387,6 +388,12 @@ import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { useOrderStore } from '@/stores/order'
 import { useNotificationStore } from '@/stores/notification'
 import { createSafeNavigator } from '@/utils/navigation'
+import {
+  getLogisticsStatusText as getLogisticsStatusTextFromConfig,
+  getLogisticsStatusStyle,
+  getLogisticsInfoStyle,
+  detectLogisticsStatusFromDescription as _detectLogisticsStatusFromDescription
+} from '@/utils/logisticsStatusConfig'
 
 // 路由
 const router = useRouter()
@@ -507,43 +514,6 @@ const totalFee = computed(() => {
 
 
 // 方法定义
-/**
- * 获取状态颜色
- */
-const getStatusColor = (status: string) => {
-  const colorMap: Record<string, string> = {
-    pending: 'warning',
-    picked_up: 'primary',
-    shipped: 'primary',
-    in_transit: 'info',
-    out_for_delivery: 'success',
-    delivering: 'success',
-    delivered: 'success',
-    exception: 'danger',
-    returned: 'danger',
-    cancelled: 'info'
-  }
-  return colorMap[status] || ''
-}
-
-/**
- * 获取状态文本
- */
-const getStatusText = (status: string) => {
-  const textMap: Record<string, string> = {
-    pending: '待发货',
-    picked_up: '已揽收',
-    shipped: '已发货',
-    in_transit: '运输中',
-    out_for_delivery: '派送中',
-    delivering: '派送中',
-    delivered: '已签收',
-    exception: '异常',
-    returned: '已退回',
-    cancelled: '已取消'
-  }
-  return textMap[status] || status
-}
 
 /**
  * 返回上一页

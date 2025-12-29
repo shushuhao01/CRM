@@ -165,3 +165,84 @@ export const getLogisticsStatusStyle = (status: string): Record<string, string> 
     color: color
   }
 }
+
+// ==================== 物流动态内容颜色服务 ====================
+
+/**
+ * 物流动态内容颜色类型
+ */
+export type LogisticsInfoColorType = 'success' | 'warning' | 'danger' | 'default'
+
+/**
+ * 物流动态内容颜色映射
+ */
+export const LOGISTICS_INFO_COLORS: Record<LogisticsInfoColorType, string> = {
+  success: '#67C23A',  // 绿色 - 已签收
+  warning: '#E6A23C',  // 橙色 - 派送中
+  danger: '#F56C6C',   // 红色 - 异常/拒收
+  default: '#606266'   // 默认灰色 - 运输中
+}
+
+/**
+ * 🔥 根据物流动态内容判断颜色类型
+ * @param description 物流动态描述文本
+ * @returns 颜色类型
+ */
+export const detectLogisticsInfoColorType = (description: string): LogisticsInfoColorType => {
+  if (!description) return 'default'
+
+  const desc = description.toLowerCase()
+
+  // 🟢 绿色 - 已签收/已送达
+  if (desc.includes('签收') || desc.includes('已收货') || desc.includes('已取件') ||
+      desc.includes('代收') || desc.includes('本人签收') || desc.includes('已签') ||
+      desc.includes('已送达') || desc.includes('妥投') || desc.includes('收件人已签收') ||
+      desc.includes('已领取') || desc.includes('已自提') || desc.includes('派送成功')) {
+    return 'success'
+  }
+
+  // 🔴 红色 - 异常/拒收/退回
+  if (desc.includes('拒收') || desc.includes('拒绝') || desc.includes('拒签') ||
+      desc.includes('客户拒') || desc.includes('无法联系') || desc.includes('异常') ||
+      desc.includes('问题件') || desc.includes('滞留') || desc.includes('延误') ||
+      desc.includes('无法派送') || desc.includes('地址不详') || desc.includes('退回') ||
+      desc.includes('退件') || desc.includes('返回') || desc.includes('退货') ||
+      desc.includes('寄回') || desc.includes('联系不上') || desc.includes('电话无人接听') ||
+      desc.includes('超区') || desc.includes('破损') || desc.includes('丢失')) {
+    return 'danger'
+  }
+
+  // 🟠 橙色 - 派送中
+  if (desc.includes('派送') || desc.includes('配送') || desc.includes('派件') ||
+      desc.includes('正在投递') || desc.includes('快递员') || desc.includes('送货') ||
+      desc.includes('正在派送') || desc.includes('派送员') || desc.includes('配送员') ||
+      desc.includes('出库派送') || desc.includes('安排派送') || desc.includes('开始派送')) {
+    return 'warning'
+  }
+
+  // 默认 - 运输中/其他
+  return 'default'
+}
+
+/**
+ * 🔥 获取物流动态内容的颜色
+ * @param description 物流动态描述文本
+ * @returns 颜色值
+ */
+export const getLogisticsInfoColor = (description: string): string => {
+  const colorType = detectLogisticsInfoColorType(description)
+  return LOGISTICS_INFO_COLORS[colorType]
+}
+
+/**
+ * 🔥 获取物流动态内容的样式对象
+ * @param description 物流动态描述文本
+ * @returns 样式对象
+ */
+export const getLogisticsInfoStyle = (description: string): Record<string, string> => {
+  const color = getLogisticsInfoColor(description)
+  return {
+    color: color,
+    fontWeight: color !== LOGISTICS_INFO_COLORS.default ? '500' : 'normal'
+  }
+}
