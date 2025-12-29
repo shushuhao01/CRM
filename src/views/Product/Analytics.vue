@@ -380,17 +380,20 @@ const categories = computed(() => {
 // 商品数据 - 从商品store获取并计算分析数据
 const productData = computed((): ProductAnalyticsItem[] => {
   return productStore.products.map((product: Product) => {
-    const revenue = (product.salesCount || 0) * product.price
-    const profit = (product.salesCount || 0) * (product.price - product.costPrice)
-    const profitRate = product.price > 0 ? (product.price - product.costPrice) / product.price : 0
+    const salesCount = product.salesCount || 0
+    const price = product.price || 0
+    const costPrice = product.costPrice || 0
+    const revenue = salesCount * price
+    const profit = salesCount * (price - costPrice)
+    const profitRate = price > 0 && costPrice > 0 ? (price - costPrice) / price : 0
 
     return {
       id: product.id,
       name: product.name,
       category: product.categoryName || '未分类',
-      price: product.price,
+      price: price,
       stock: product.stock,
-      sales: product.salesCount || 0,
+      sales: salesCount,
       revenue: revenue,
       profit: profit,
       profitRate: profitRate
