@@ -89,7 +89,7 @@ class WebSocketService {
           return next(new Error('认证失败：未提供Token'));
         }
 
-        const jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
+        const jwtSecret = process.env.JWT_SECRET || 'crm-secret-key';
         const decoded = jwt.verify(token, jwtSecret) as any;
 
         const dataSource = getDataSource();

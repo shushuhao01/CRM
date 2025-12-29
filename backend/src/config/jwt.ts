@@ -13,7 +13,7 @@ export interface TokenPair {
 }
 
 export class JwtConfig {
-  private static readonly ACCESS_TOKEN_SECRET: string = process.env.JWT_SECRET || 'your-secret-key';
+  private static readonly ACCESS_TOKEN_SECRET: string = process.env.JWT_SECRET || 'crm-secret-key';
   private static readonly REFRESH_TOKEN_SECRET: string = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
   private static readonly ACCESS_TOKEN_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || '7d';
   private static readonly REFRESH_TOKEN_EXPIRES_IN: string = process.env.JWT_REFRESH_EXPIRES_IN || '30d';

@@ -190,11 +190,12 @@ class MobileWebSocketService {
    */
   private async verifyToken(token: string): Promise<{ userId: number; deviceId: string; username: string } | null> {
     try {
-      const jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
+      // 使用与生成 token 时相同的默认密钥
+      const jwtSecret = process.env.JWT_SECRET || 'crm-secret-key';
       logger.info(`[MobileWS] 验证 token, JWT_SECRET 前缀: ${jwtSecret.substring(0, 10)}...`);
 
       const decoded = jwt.verify(token, jwtSecret) as any;
-      logger.info(`[MobileWS] Token 解码成功: deviceId=${decoded.deviceId}, userId=${decoded.userId}`);
+      logger.info(`[MobileWS] Token 解码成功: deviceId=${decoded.deviceId}, userId=${decoded.userId}, type=${typeof decoded.userId}`);
 
       // wsToken 应该包含 deviceId 和 userId
       if (!decoded.deviceId || !decoded.userId) {
@@ -209,6 +210,9 @@ class MobileWebSocketService {
         return null;
       }
 
+      // 确保 userId 是数字类型
+      const userIdNum = Number(decoded.userId);
+
       // 先查询 work_phones 表看看有什么数据
       const allPhones = await dataSource.query(
         `SELECT id, user_id, device_id, status FROM work_phones WHERE device_id = ?`,
@@ -216,17 +220,18 @@ class MobileWebSocketService {
       );
       logger.info(`[MobileWS] 按 device_id 查询结果: ${JSON.stringify(allPhones)}`);
 
+      // 使用数字类型的 userId 进行查询
       const result = await dataSource.query(
         `SELECT wp.*, u.username, u.real_name
          FROM work_phones wp
          JOIN users u ON wp.user_id = u.id
          WHERE wp.device_id = ? AND wp.user_id = ? AND wp.status = 'active'`,
-        [decoded.deviceId, String(decoded.userId)]
+        [decoded.deviceId, userIdNum]
       );
       logger.info(`[MobileWS] 完整查询结果: ${JSON.stringify(result)}`);
 
       if (!result || result.length === 0) {
-        logger.warn(`[MobileWS] 设备未绑定或已失效: deviceId=${decoded.deviceId}, userId=${decoded.userId}`);
+        logger.warn(`[MobileWS] 设备未绑定或已失效: deviceId=${decoded.deviceId}, userId=${userIdNum}`);
         return null;
       }
 
