@@ -327,35 +327,49 @@ export class ProductController {
 
       const products = await queryBuilder.getMany()
 
-      // 🔥 从订单商品表统计每个商品的销量
+      // 🔥 从订单的products JSON字段统计每个商品的销量
       const productIds = products.map(p => p.id)
-      let salesCountMap: Record<string, number> = {}
+      const salesCountMap: Record<string, number> = {}
 
       if (productIds.length > 0) {
         try {
-          const { OrderItem } = await import('../entities/OrderItem')
           const { Order } = await import('../entities/Order')
           const dataSource = getDataSource()
 
           if (dataSource) {
-            const orderItemRepo = dataSource.getRepository(OrderItem)
+            const orderRepo = dataSource.getRepository(Order)
 
-            // 🔥 统计每个商品的销量（只统计有效订单：已审核通过且未取消的订单）
-            const salesData = await orderItemRepo
-              .createQueryBuilder('item')
-              .select('item.productId', 'productId')
-              .addSelect('SUM(item.quantity)', 'totalQuantity')
-              .innerJoin(Order, 'order', 'order.id = item.orderId')
-              .where('item.productId IN (:...productIds)', { productIds })
-              .andWhere('order.status NOT IN (:...excludeStatuses)', {
+            // 🔥 获取有效订单（已审核通过且未取消的订单）
+            const validOrders = await orderRepo
+              .createQueryBuilder('order')
+              .select(['order.id', 'order.products'])
+              .where('order.status NOT IN (:...excludeStatuses)', {
                 excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
               })
-              .groupBy('item.productId')
-              .getRawMany()
+              .getMany()
 
-            // 构建销量映射
-            salesData.forEach((item: { productId: string; totalQuantity: string }) => {
-              salesCountMap[item.productId] = parseInt(item.totalQuantity) || 0
+            // 🔥 从每个订单的products JSON字段中统计销量
+            validOrders.forEach(order => {
+              if (order.products) {
+                try {
+                  const orderProducts = typeof order.products === 'string'
+                    ? JSON.parse(order.products)
+                    : order.products
+
+                  if (Array.isArray(orderProducts)) {
+                    orderProducts.forEach((item: any) => {
+                      const productId = item.productId || item.id
+                      const quantity = Number(item.quantity) || 1
+                      if (productId && productIds.includes(String(productId))) {
+                        salesCountMap[String(productId)] = (salesCountMap[String(productId)] || 0) + quantity
+                      }
+                    })
+                  }
+                } catch (_parseError) {
+                  // JSON解析失败，跳过该订单
+                  console.warn('[商品列表] 解析订单商品JSON失败:', order.id)
+                }
+              }
             })
 
             console.log('[商品列表] 销量统计:', salesCountMap)
