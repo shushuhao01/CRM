@@ -685,7 +685,7 @@ router.get('/audited-cancel', async (_req: Request, res: Response) => {
 
 /**
  * @route GET /api/v1/orders/shipping/pending
- * @desc 获取待发货订单列表（优化版）
+ * @desc 获取待发货订单列表（优化版 - 服务端分页）
  * @access Private
  */
 router.get('/shipping/pending', async (req: Request, res: Response) => {
@@ -693,10 +693,10 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
     const orderRepository = AppDataSource.getRepository(Order);
     const startTime = Date.now();
 
-    // 🔥 优化：默认每页20条，最大1000条（支持前端一次性获取所有数据）
-    const { page = 1, pageSize = 20, orderNumber, customerName } = req.query;
+    // 🔥 服务端分页参数
+    const { page = 1, pageSize = 20, orderNumber, customerName, startDate, endDate, quickFilter } = req.query;
     const pageNum = parseInt(page as string) || 1;
-    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 1000);
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 200); // 最大200条/页
     const skip = (pageNum - 1) * pageSizeNum;
 
     // 🔥 优化：使用QueryBuilder只查询需要的字段
@@ -722,6 +722,48 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
       queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
     }
 
+    // 🔥 日期范围筛选
+    if (startDate) {
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+    }
+    if (endDate) {
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+    }
+
+    // 🔥 快速筛选
+    if (quickFilter) {
+      const now = new Date();
+      switch (quickFilter) {
+        case 'today':
+          const today = now.toISOString().split('T')[0];
+          queryBuilder.andWhere('DATE(order.createdAt) = :today', { today });
+          break;
+        case 'yesterday':
+          const yesterday = new Date(now);
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().split('T')[0];
+          queryBuilder.andWhere('DATE(order.createdAt) = :yesterday', { yesterday: yesterdayStr });
+          break;
+        case 'thisWeek':
+          const dayOfWeek = now.getDay();
+          const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+          const startOfWeek = new Date(now);
+          startOfWeek.setDate(now.getDate() - diff);
+          queryBuilder.andWhere('order.createdAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+        case 'thisMonth':
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+        case 'cod':
+          queryBuilder.andWhere('(order.totalAmount - COALESCE(order.depositAmount, 0)) > 0');
+          break;
+        case 'large':
+          queryBuilder.andWhere('order.totalAmount > 1000');
+          break;
+      }
+    }
+
     // 先获取总数
     const total = await queryBuilder.getCount();
 
@@ -730,9 +772,7 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
     const orders = await queryBuilder.getMany();
 
     const queryTime = Date.now() - startTime;
-    console.log(`📦 [待发货订单] 查询完成: ${orders.length}条, 总数${total}, 耗时${queryTime}ms`);
-
-    console.log(`📦 [待发货订单] 查询到 ${orders.length} 条待发货订单, 总数: ${total}`);
+    console.log(`📦 [待发货订单] 查询完成: ${orders.length}条, 总数${total}, 页码${pageNum}, 每页${pageSizeNum}, 耗时${queryTime}ms`);
 
     // 转换数据格式
     const list = orders.map(order => {
@@ -819,7 +859,7 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
 
 /**
  * @route GET /api/v1/orders/shipping/shipped
- * @desc 获取已发货订单列表（优化版）
+ * @desc 获取已发货订单列表（优化版 - 服务端分页）
  * @access Private
  */
 router.get('/shipping/shipped', async (req: Request, res: Response) => {
@@ -827,10 +867,10 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
     const orderRepository = AppDataSource.getRepository(Order);
     const startTime = Date.now();
 
-    // 🔥 优化：默认每页20条，最大1000条（支持前端一次性获取所有数据）
-    const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status } = req.query;
+    // 🔥 服务端分页参数
+    const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status, startDate, endDate, quickFilter } = req.query;
     const pageNum = parseInt(page as string) || 1;
-    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 1000);
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 200); // 最大200条/页
     const skip = (pageNum - 1) * pageSizeNum;
 
     // 🔥 优化：使用QueryBuilder只查询需要的字段
@@ -864,6 +904,42 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
     }
     if (trackingNumber) {
       queryBuilder.andWhere('order.trackingNumber LIKE :trackingNumber', { trackingNumber: `%${trackingNumber}%` });
+    }
+
+    // 🔥 日期范围筛选
+    if (startDate) {
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+    }
+    if (endDate) {
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+    }
+
+    // 🔥 快速筛选
+    if (quickFilter) {
+      const now = new Date();
+      switch (quickFilter) {
+        case 'today':
+          const today = now.toISOString().split('T')[0];
+          queryBuilder.andWhere('DATE(order.createdAt) = :today', { today });
+          break;
+        case 'yesterday':
+          const yesterday = new Date(now);
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().split('T')[0];
+          queryBuilder.andWhere('DATE(order.createdAt) = :yesterday', { yesterday: yesterdayStr });
+          break;
+        case 'thisWeek':
+          const dayOfWeek = now.getDay();
+          const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+          const startOfWeek = new Date(now);
+          startOfWeek.setDate(now.getDate() - diff);
+          queryBuilder.andWhere('order.createdAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+        case 'thisMonth':
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+      }
     }
 
     // 先获取总数

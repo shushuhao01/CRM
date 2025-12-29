@@ -816,14 +816,9 @@ const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const loading = ref(false)
-const allFilteredOrders = ref<any[]>([]) // 🔥 存储所有筛选后的订单
 
-// 🔥 分页后的订单列表
-const paginatedOrderList = computed(() => {
-  const startIndex = (currentPage.value - 1) * pageSize.value
-  const endIndex = startIndex + pageSize.value
-  return allFilteredOrders.value.slice(startIndex, endIndex)
-})
+// 🔥 服务端分页：直接使用orderList作为当前页数据
+const paginatedOrderList = computed(() => orderList.value)
 
 // 弹窗状态
 const orderDetailVisible = ref(false)
@@ -1297,161 +1292,75 @@ const refreshData = async () => {
 const loadOrderList = async () => {
   try {
     loading.value = true
-    console.log('[发货列表] 开始加载订单列表，当前标签页:', activeTab.value)
+    console.log('[发货列表] 开始加载订单列表，当前标签页:', activeTab.value, '页码:', currentPage.value, '每页:', pageSize.value)
 
     // 🔥 修复：确保客户数据已加载，用于获取客户详细信息
     if (customerStore.customers.length === 0) {
       await customerStore.loadCustomers()
     }
 
-    // 🔥 优先从API直接获取对应状态的订单
+    // 🔥 服务端分页：传递分页参数和筛选条件
     let orders: any[] = []
+    let serverTotal = 0
+
     try {
       const { orderApi } = await import('@/api/order')
-      // 🔥 添加时间戳参数避免浏览器缓存，并传递足够大的pageSize获取所有数据
       const timestamp = Date.now()
+
+      // 构建筛选参数
+      const params: any = {
+        _t: timestamp,
+        page: currentPage.value,
+        pageSize: pageSize.value,
+        orderNumber: searchOrderNo.value || undefined,
+        customerName: undefined,
+        // 🔥 日期范围筛选
+        startDate: dateRange.value?.[0] || undefined,
+        endDate: dateRange.value?.[1] || undefined,
+        // 🔥 快速筛选
+        quickFilter: selectedQuickFilter.value !== 'all' ? selectedQuickFilter.value : undefined
+      }
+
       if (activeTab.value === 'pending') {
-        const response = await orderApi.getShippingPending({ _t: timestamp, pageSize: 1000 } as any)
+        const response = await orderApi.getShippingPending(params)
         orders = response?.data?.list || []
-        console.log('[发货列表] 从API获取待发货订单:', orders.length, '条')
+        serverTotal = response?.data?.total || orders.length
+        console.log('[发货列表] 从API获取待发货订单:', orders.length, '条，总数:', serverTotal)
       } else if (activeTab.value === 'shipped') {
-        const response = await orderApi.getShippingShipped({ _t: timestamp, pageSize: 1000 } as any)
+        const response = await orderApi.getShippingShipped(params)
         orders = response?.data?.list || []
-        console.log('[发货列表] 从API获取已发货订单:', orders.length, '条')
+        serverTotal = response?.data?.total || orders.length
+        console.log('[发货列表] 从API获取已发货订单:', orders.length, '条，总数:', serverTotal)
       } else {
-        // 其他状态从store获取
-        orders = await orderStore.getOrdersByShippingStatus(activeTab.value)
+        // 其他状态从store获取（暂时保持前端分页）
+        const allOrders = await orderStore.getOrdersByShippingStatus(activeTab.value)
+        serverTotal = allOrders.length
+        const startIndex = (currentPage.value - 1) * pageSize.value
+        orders = allOrders.slice(startIndex, startIndex + pageSize.value)
       }
     } catch (apiError) {
       console.warn('[发货列表] API获取失败，回退到store:', apiError)
-      orders = await orderStore.getOrdersByShippingStatus(activeTab.value)
+      const allOrders = await orderStore.getOrdersByShippingStatus(activeTab.value)
+      serverTotal = allOrders.length
+      const startIndex = (currentPage.value - 1) * pageSize.value
+      orders = allOrders.slice(startIndex, startIndex + pageSize.value)
     }
 
-    console.log('[发货列表] 获取到的订单数量:', orders?.length || 0)
+    // 🔥 设置总数（来自服务端）
+    total.value = serverTotal
+    console.log('[发货列表] 当前页订单数:', orders.length, '总数:', total.value)
 
     // 确保返回的是数组
     if (!Array.isArray(orders)) {
-      console.error('[发货列表] getOrdersByShippingStatus 返回的不是数组:', orders)
-      allFilteredOrders.value = []
+      console.error('[发货列表] 返回的不是数组:', orders)
+      orderList.value = []
       total.value = 0
       return
     }
 
-    console.log('[发货列表] 获取到的订单列表:', orders.map(o => ({
-      orderNumber: o.orderNumber,
-      status: o.status,
-      auditStatus: o.auditStatus,
-      customerName: o.customerName
-    })))
-
-
-
-    // 应用筛选条件
-    let filteredOrders = [...orders]
-
-    // 快速筛选
-    if (selectedQuickFilter.value !== 'all') {
-      switch (selectedQuickFilter.value) {
-        case 'today':
-          const today = new Date().toISOString().split('T')[0]
-          filteredOrders = filteredOrders.filter(order =>
-            order.createTime && order.createTime.startsWith(today)
-          )
-          break
-        case 'yesterday':
-          const yesterday = new Date()
-          yesterday.setDate(yesterday.getDate() - 1)
-          const yesterdayStr = yesterday.toISOString().split('T')[0]
-          filteredOrders = filteredOrders.filter(order =>
-            order.createTime && order.createTime.startsWith(yesterdayStr)
-          )
-          break
-        case 'thisWeek':
-          const now = new Date()
-          const startOfWeek = new Date(now)
-          const dayOfWeek = now.getDay()
-          const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1 // 周一为一周开始
-          startOfWeek.setDate(now.getDate() - diff)
-          startOfWeek.setHours(0, 0, 0, 0)
-          filteredOrders = filteredOrders.filter(order => {
-            if (!order.createTime) return false
-            const orderDate = new Date(order.createTime)
-            return orderDate >= startOfWeek
-          })
-          break
-        case 'thisMonth':
-          const currentMonth = new Date()
-          const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)
-          filteredOrders = filteredOrders.filter(order => {
-            if (!order.createTime) return false
-            const orderDate = new Date(order.createTime)
-            return orderDate >= startOfMonth
-          })
-          break
-        case 'thisYear':
-          const currentYear = new Date().getFullYear()
-          const startOfYear = new Date(currentYear, 0, 1)
-          filteredOrders = filteredOrders.filter(order => {
-            if (!order.createTime) return false
-            const orderDate = new Date(order.createTime)
-            return orderDate >= startOfYear
-          })
-          break
-        case 'urgent':
-          filteredOrders = filteredOrders.filter(order => order.status === 'urgent')
-          break
-        case 'cod':
-          filteredOrders = filteredOrders.filter(order => (order.codAmount || 0) > 0)
-          break
-        case 'large':
-          filteredOrders = filteredOrders.filter(order => (order.totalAmount || 0) > 1000)
-          break
-      }
-    }
-
-    // 日期范围筛选
-    if (dateRange.value && dateRange.value.length === 2) {
-      const [startDate, endDate] = dateRange.value
-      filteredOrders = filteredOrders.filter(order => {
-        const orderDate = order.createTime?.split('T')[0]
-        return orderDate >= startDate && orderDate <= endDate
-      })
-    }
-
-    // 部门筛选
-    if (selectedDepartment.value) {
-      filteredOrders = filteredOrders.filter(order =>
-        order.department && order.department === selectedDepartment.value
-      )
-    }
-
-    // 订单号搜索
-    if (searchOrderNo.value) {
-      filteredOrders = filteredOrders.filter(order =>
-        order.orderNumber && order.orderNumber.includes(searchOrderNo.value)
-      )
-    }
-
-    // 客户电话搜索
-    if (searchCustomerPhone.value) {
-      filteredOrders = filteredOrders.filter(order =>
-        order.customerPhone && order.customerPhone.includes(searchCustomerPhone.value)
-      )
-    }
-
-    // 按创建时间倒序排序（最新的在上面）
-    filteredOrders.sort((a, b) => {
-      const timeA = new Date(a.createTime || a.shippingTime || 0).getTime()
-      const timeB = new Date(b.createTime || b.shippingTime || 0).getTime()
-      return timeB - timeA // 倒序：最新的在上面
-    })
-
-    // 🔥 存储所有筛选后的订单，分页由computed属性处理
-    total.value = filteredOrders.length
-    console.log('[发货列表] 筛选后订单总数:', total.value)
-
+    // 🔥 服务端分页：直接使用返回的订单数据，不再前端筛选
     // 为每个订单添加真实的操作记录并同步客户信息和订单信息
-    allFilteredOrders.value = filteredOrders.map(order => {
+    orderList.value = orders.map(order => {
       // 获取真实的操作记录
       const operationLogs = orderStore.getOperationLogs(order.id) || []
 
@@ -1479,13 +1388,12 @@ const loadOrderList = async () => {
       }
 
       // 🔥 客服微信号优先从订单获取，其次从客户信息获取
-      const serviceWechat = order.serviceWechat || customerInfo.serviceWechat || null
-      console.log(`📋 [订单${order.orderNumber}] serviceWechat:`, order.serviceWechat, 'orderSource:', order.orderSource, 'customFields:', order.customFields)
+      const serviceWechat = order.serviceWechat || (customerInfo as any).serviceWechat || null
 
       // 计算订单相关字段
       const products = Array.isArray(order.products) ? order.products : []
-      const productsText = products.map(p => `${p.name} × ${p.quantity}`).join('，') || '-'
-      const totalQuantity = products.reduce((sum, p) => sum + (p.quantity || 0), 0) || 0
+      const productsText = products.map((p: any) => `${p.name} × ${p.quantity}`).join('，') || '-'
+      const totalQuantity = products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) || 0
       const deposit = order.depositAmount || 0
       const codAmount = order.collectAmount || (order.totalAmount || 0) - (order.depositAmount || 0)
 
@@ -1536,12 +1444,12 @@ const loadOrderList = async () => {
     // 同步物流状态（异步执行，不阻塞页面加载）
     syncLogisticsData()
 
-    // 更新概览数据
-    updateOverviewData(filteredOrders)
+    // 更新概览数据（使用当前页数据，概览数据需要单独从API获取）
+    updateOverviewData(orders)
   } catch (_error) {
     console.error('加载订单列表失败:', _error)
     ElMessage.error('加载订单列表失败')
-    allFilteredOrders.value = []
+    orderList.value = []
     total.value = 0
   } finally {
     loading.value = false
@@ -1549,24 +1457,24 @@ const loadOrderList = async () => {
 }
 
 // 更新概览数据
-const updateOverviewData = (allOrders = []) => {
-  // 确保 allOrders 和 allFilteredOrders.value 都是数组
-  const orders = Array.isArray(allOrders) && allOrders.length > 0
-    ? allOrders
-    : Array.isArray(allFilteredOrders.value) ? allFilteredOrders.value : []
+const updateOverviewData = (currentPageOrders: any[] = []) => {
+  // 🔥 概览数据应该显示总数，这里暂时用当前页数据
+  // 后续可以从API单独获取统计数据
+  const orders = Array.isArray(currentPageOrders) ? currentPageOrders : []
 
-  overviewData.totalOrders = orders.length
-  overviewData.totalAmount = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0)
+  // 使用total作为总订单数
+  overviewData.totalOrders = total.value
+  overviewData.totalAmount = orders.reduce((sum: number, order: any) => sum + (order.totalAmount || 0), 0)
 
   // 今日发货数量
   const today = new Date().toISOString().split('T')[0]
-  overviewData.shippedToday = orders.filter(order =>
+  overviewData.shippedToday = orders.filter((order: any) =>
     order.shipTime && order.shipTime.startsWith(today)
   ).length
 
-  overviewData.urgentOrders = orders.filter(order => order.status === 'urgent').length
-  overviewData.codOrders = orders.filter(order => (order.codAmount || 0) > 0).length
-  overviewData.codAmount = orders.reduce((sum, order) => sum + (order.codAmount || 0), 0)
+  overviewData.urgentOrders = orders.filter((order: any) => order.status === 'urgent').length
+  overviewData.codOrders = orders.filter((order: any) => (order.codAmount || 0) > 0).length
+  overviewData.codAmount = orders.reduce((sum: number, order: any) => sum + (order.codAmount || 0), 0)
 }
 
 // 同步物流数据
@@ -1591,13 +1499,13 @@ const fetchLatestLogisticsForShipping = async () => {
   const { logisticsApi } = await import('@/api/logistics')
 
   // 只处理已发货且有物流单号的订单
-  const ordersWithTracking = allFilteredOrders.value.filter(order =>
+  const ordersWithTracking = orderList.value.filter(order =>
     order.expressNo && order.expressCompany && order.status !== 'pending'
   )
 
   if (ordersWithTracking.length === 0) {
     // 没有物流信息的订单，设置默认值
-    allFilteredOrders.value.forEach(order => {
+    orderList.value.forEach(order => {
       if (!order.expressNo || !order.expressCompany) {
         order.latestLogistics = order.status === 'pending' ? '待发货' : '暂无物流信息'
       }
