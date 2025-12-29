@@ -631,9 +631,13 @@ router.delete('/unbind', authenticateToken, async (req: Request, res: Response) 
     })
   } catch (error) {
     console.error('解绑设备失败:', error)
+    // 打印详细错误信息
+    if (error instanceof Error) {
+      console.error('错误详情:', error.message, error.stack)
+    }
     res.status(500).json({
       success: false,
-      message: '解绑失败',
+      message: '解绑失败: ' + (error instanceof Error ? error.message : '未知错误'),
       code: 'SERVER_ERROR'
     })
   }
