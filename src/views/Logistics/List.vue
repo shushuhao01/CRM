@@ -221,6 +221,8 @@ interface LogisticsItem {
   orderNo: string
   customerName: string
   company: string
+  // 🔥 销售人员（下单员）
+  salesPersonName?: string
   // 🔥 订单状态
   status: string
   destination: string
@@ -632,6 +634,14 @@ const loadData = async () => {
         orderNo: order.orderNumber,
         customerName: order.customerName,
         company: order.expressCompany || '',
+        // 🔥 销售人员字段映射（创建订单的用户姓名）- 与发货列表保持一致
+        salesPersonName: (() => {
+          if (order.createdByName) return order.createdByName
+          if (order.salesPersonName) return order.salesPersonName
+          // 从用户列表查找真实姓名
+          const user = userStore.users.find((u: any) => u.id === order.createdBy || u.username === order.createdBy) as any
+          return user?.realName || user?.name || order.createdBy || '-'
+        })(),
         status: order.status || 'shipped',
         destination: order.receiverAddress || order.shippingAddress || '',
         shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
