@@ -476,14 +476,22 @@
 
       <template #footer>
         <el-button @click="closeOutboundDialog">取消</el-button>
-        <el-button
-          type="primary"
-          @click="startOutboundCall"
-          :loading="outboundLoading"
-          :disabled="!canStartCall"
+        <el-tooltip
+          :disabled="canStartCall"
+          :content="getCannotCallReason"
+          placement="top"
         >
-          开始呼叫
-        </el-button>
+          <span>
+            <el-button
+              type="primary"
+              @click="startOutboundCall"
+              :loading="outboundLoading"
+              :disabled="!canStartCall"
+            >
+              开始呼叫
+            </el-button>
+          </span>
+        </el-tooltip>
       </template>
     </el-dialog>
 
@@ -5224,6 +5232,38 @@ const canStartCall = computed(() => {
 
   console.log('[canStartCall] 通过所有检查')
   return true
+})
+
+// 计算属性：获取不能呼叫的原因
+const getCannotCallReason = computed(() => {
+  if (!outboundForm.value.callMethod) {
+    if (!workPhones.value.length && !availableLines.value.length) {
+      return '暂无可用的外呼方式，请先绑定工作手机或联系管理员分配线路'
+    }
+    return '请选择外呼方式'
+  }
+
+  if (outboundForm.value.callMethod === 'work_phone') {
+    if (!outboundForm.value.selectedWorkPhone) {
+      return '请选择工作手机'
+    }
+    // 检查选中的手机是否在线
+    const selectedPhone = workPhones.value.find(p => p.id === outboundForm.value.selectedWorkPhone)
+    if (selectedPhone && selectedPhone.status !== 'online' && selectedPhone.status !== '在线') {
+      return '选中的工作手机已离线，请在手机APP上重新连接'
+    }
+  }
+
+  if (outboundForm.value.callMethod === 'network_phone' && !outboundForm.value.selectedLine) {
+    return '请选择外呼线路'
+  }
+
+  const hasPhone = outboundForm.value.manualPhone?.trim() || outboundForm.value.customerPhone
+  if (!hasPhone) {
+    return '请选择客户或手动输入电话号码'
+  }
+
+  return ''
 })
 
 // 组件卸载时清理定时器
