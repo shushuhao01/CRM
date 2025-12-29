@@ -767,7 +767,7 @@ export class UserController {
    */
   updateUser = catchAsync(async (req: Request, res: Response) => {
     const userId = req.params.id;
-    const { realName, name, email, phone, role, roleId, departmentId, position, employeeNumber, status, remark } = req.body;
+    const { realName, name, email, phone, role, roleId, departmentId, departmentName, position, employeeNumber, status, remark, authorizedIps } = req.body;
 
     const user = await this.userRepository.findOne({
       where: { id: userId }
@@ -782,13 +782,52 @@ export class UserController {
     if (name !== undefined) user.name = name || realName;
     if (email !== undefined) user.email = email;
     if (phone !== undefined) user.phone = phone;
-    if (role !== undefined) user.role = role;
-    if (roleId !== undefined) user.role = roleId; // roleId 也映射到 role 字段
-    if (departmentId !== undefined) user.departmentId = departmentId ? String(departmentId) : null;
+
+    // 🔥 修复：同时更新 role 和 roleId 字段，确保角色信息一致
+    if (role !== undefined) {
+      user.role = role;
+      user.roleId = role;  // 同步更新 roleId
+    }
+    if (roleId !== undefined) {
+      user.role = roleId;
+      user.roleId = roleId;  // 同步更新 roleId
+    }
+
+    // 🔥 修复：更新部门信息时，同时更新 departmentId 和 departmentName
+    if (departmentId !== undefined) {
+      user.departmentId = departmentId ? String(departmentId) : null;
+
+      // 如果提供了 departmentName，直接使用；否则尝试从数据库查询
+      if (departmentName !== undefined) {
+        user.departmentName = departmentName || null;
+      } else if (departmentId) {
+        // 尝试从部门表获取部门名称
+        try {
+          const department = await this.departmentRepository.findOne({
+            where: { id: departmentId }
+          });
+          if (department) {
+            user.departmentName = department.name;
+          }
+        } catch (error) {
+          console.warn('[UserController] 获取部门名称失败:', error);
+        }
+      } else {
+        user.departmentName = null;
+      }
+    }
+
     if (position !== undefined) user.position = position;
     if (employeeNumber !== undefined) user.employeeNumber = employeeNumber;
     if (status !== undefined) user.status = status;
     if (remark !== undefined) (user as any).remark = remark;
+
+    // 🔥 新增：更新授权登录IP
+    if (authorizedIps !== undefined) {
+      user.authorizedIps = Array.isArray(authorizedIps) && authorizedIps.length > 0 ? authorizedIps : null;
+    }
+
+    console.log(`[UserController] 更新用户角色: role=${user.role}, roleId=${user.roleId}, departmentId=${user.departmentId}, departmentName=${user.departmentName}`);
 
     const updatedUser = await this.userRepository.save(user);
 

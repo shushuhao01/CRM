@@ -475,23 +475,25 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="closeOutboundDialog">取消</el-button>
-        <el-tooltip
-          :disabled="canStartCall"
-          :content="getCannotCallReason"
-          placement="top"
-        >
-          <span>
-            <el-button
-              type="primary"
-              @click="startOutboundCall"
-              :loading="outboundLoading"
-              :disabled="!canStartCall"
-            >
-              开始呼叫
-            </el-button>
-          </span>
-        </el-tooltip>
+        <div class="dialog-footer-buttons">
+          <el-button @click="closeOutboundDialog">取消</el-button>
+          <el-tooltip
+            :disabled="canStartCall"
+            :content="getCannotCallReason"
+            placement="top"
+          >
+            <span>
+              <el-button
+                type="primary"
+                @click="startOutboundCall"
+                :loading="outboundLoading"
+                :disabled="!canStartCall"
+              >
+                开始呼叫
+              </el-button>
+            </span>
+          </el-tooltip>
+        </div>
       </template>
     </el-dialog>
 
@@ -5081,40 +5083,45 @@ const loadAvailableCallMethods = async () => {
   try {
     const res = await callConfigApi.getMyAvailableLines()
     console.log('[CallManagement] loadAvailableCallMethods response:', res)
+    console.log('[CallManagement] loadAvailableCallMethods raw:', JSON.stringify(res))
+
     // request.ts 响应拦截器返回的是 data
+    let assignedLines: any[] = []
+    let workPhonesData: any[] = []
+
     if (res && (res as any).assignedLines !== undefined) {
-      availableLines.value = ((res as any).assignedLines || []).map((line: any) => ({
-        id: line.id,
-        name: line.name,
-        provider: line.provider,
-        status: '正常',
-        callerNumber: line.callerNumber
-      }))
-      // 工作手机数据
-      workPhones.value = ((res as any).workPhones || []).map((phone: any) => ({
-        id: phone.id,
-        number: phone.phoneNumber,
-        name: phone.deviceName || '工作手机',
-        status: phone.onlineStatus === 'online' ? '在线' : '离线',
-        brand: phone.deviceModel || ''
-      }))
+      assignedLines = (res as any).assignedLines || []
+      workPhonesData = (res as any).workPhones || []
     } else if (res && (res as any).success && (res as any).data) {
-      availableLines.value = ((res as any).data.assignedLines || []).map((line: any) => ({
-        id: line.id,
-        name: line.name,
-        provider: line.provider,
-        status: '正常',
-        callerNumber: line.callerNumber
-      }))
-      workPhones.value = ((res as any).data.workPhones || []).map((phone: any) => ({
-        id: phone.id,
-        number: phone.phoneNumber,
-        name: phone.deviceName || '工作手机',
-        status: phone.onlineStatus === 'online' ? '在线' : '离线',
-        brand: phone.deviceModel || ''
-      }))
+      assignedLines = (res as any).data.assignedLines || []
+      workPhonesData = (res as any).data.workPhones || []
     }
+
+    // 映射线路数据
+    availableLines.value = assignedLines.map((line: any) => ({
+      id: line.id,
+      name: line.name,
+      provider: line.provider,
+      status: '正常',
+      callerNumber: line.callerNumber
+    }))
+
+    // 🔥 修复：正确映射工作手机数据，确保 id 和 status 字段正确
+    workPhones.value = workPhonesData.map((phone: any, index: number) => {
+      const mappedPhone = {
+        id: phone.id,  // 数据库自增 ID
+        number: phone.phoneNumber || phone.phone_number,
+        name: phone.deviceName || phone.device_name || '工作手机',
+        // 🔥 修复：正确处理状态字段
+        status: (phone.onlineStatus === 'online' || phone.online_status === 'online') ? '在线' : '离线',
+        brand: phone.deviceModel || phone.device_model || ''
+      }
+      console.log(`[CallManagement] 映射工作手机 ${index}:`, mappedPhone)
+      return mappedPhone
+    })
+
     console.log('[CallManagement] availableLines:', availableLines.value.length, 'workPhones:', workPhones.value.length)
+    console.log('[CallManagement] workPhones 详细:', workPhones.value)
   } catch (e) {
     console.error('加载可用外呼方式失败:', e)
   }
@@ -5211,9 +5218,17 @@ const canStartCall = computed(() => {
   }
 
   // 如果选择工作手机，必须选择一个手机
-  if (outboundForm.value.callMethod === 'work_phone' && !outboundForm.value.selectedWorkPhone) {
-    console.log('[canStartCall] 失败: 没有选择工作手机')
-    return false
+  if (outboundForm.value.callMethod === 'work_phone') {
+    if (!outboundForm.value.selectedWorkPhone) {
+      console.log('[canStartCall] 失败: 没有选择工作手机')
+      return false
+    }
+    // 🔥 新增：检查选中的手机是否在线
+    const selectedPhone = workPhones.value.find(p => p.id === outboundForm.value.selectedWorkPhone)
+    if (selectedPhone && selectedPhone.status !== 'online' && selectedPhone.status !== '在线') {
+      console.log('[canStartCall] 失败: 选中的工作手机已离线')
+      return false
+    }
   }
 
   // 如果选择网络电话，必须选择一条线路
@@ -6472,6 +6487,13 @@ watch(() => callConfigForm.mobileConfig.platform, async (newPlatform) => {
   margin-top: 16px;
   display: flex;
   justify-content: center;
+}
+
+/* 外呼弹窗底部按钮样式 */
+.dialog-footer-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
 }
 </style>
 

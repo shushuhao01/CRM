@@ -678,17 +678,37 @@ const loadWorkPhones = async () => {
     const res = await callConfigApi.getMyWorkPhones()
     console.log('[CallConfig] loadWorkPhones response:', res)
     console.log('[CallConfig] loadWorkPhones raw data:', JSON.stringify(res))
+
     // request.ts 响应拦截器返回的是 data
+    let phones: any[] = []
+
     if (Array.isArray(res)) {
-      workPhones.value = res
-      console.log('[CallConfig] workPhones set from array:', workPhones.value)
+      phones = res
+      console.log('[CallConfig] workPhones from array:', phones.length)
     } else if (res && (res as any).success !== undefined) {
-      workPhones.value = (res as any).data || []
-      console.log('[CallConfig] workPhones set from success response:', workPhones.value)
+      phones = (res as any).data || []
+      console.log('[CallConfig] workPhones from success response:', phones.length)
     } else if (res) {
-      workPhones.value = (res as unknown as any[]) || []
-      console.log('[CallConfig] workPhones set from other:', workPhones.value)
+      phones = (res as unknown as any[]) || []
+      console.log('[CallConfig] workPhones from other:', phones.length)
     }
+
+    // 🔥 修复：确保每个手机对象都有正确的 id 字段
+    workPhones.value = phones.map((p: any, index: number) => {
+      const phone = {
+        id: p.id,  // 数据库自增 ID
+        phoneNumber: p.phoneNumber || p.phone_number,
+        deviceName: p.deviceName || p.device_name,
+        deviceModel: p.deviceModel || p.device_model,
+        onlineStatus: p.onlineStatus || p.online_status || 'offline',
+        isPrimary: p.isPrimary || p.is_primary === 1,
+        lastActiveAt: p.lastActiveAt || p.last_active_at
+      }
+      console.log(`[CallConfig] 映射手机 ${index}:`, phone)
+      return phone
+    })
+
+    console.log('[CallConfig] workPhones 最终数据:', workPhones.value)
   } catch (e) {
     console.error('加载工作手机失败:', e)
   }
@@ -1094,12 +1114,26 @@ const unbindPhone = async (phone: WorkPhone) => {
   try {
     console.log('[unbindPhone] phone:', phone)
     console.log('[unbindPhone] phone.id:', phone.id, 'type:', typeof phone.id)
+
+    // 🔥 修复：确保 phone.id 存在
+    if (!phone.id && phone.id !== 0) {
+      console.error('[unbindPhone] phone.id 为空，无法解绑')
+      ElMessage.error('手机ID无效，无法解绑')
+      return
+    }
+
     await ElMessageBox.confirm(`确定要解绑手机 ${phone.phoneNumber} 吗？`, '确认解绑', { type: 'warning' })
-    await callConfigApi.unbindWorkPhone(phone.id)
+
+    // 🔥 修复：确保传递正确的 ID
+    const phoneId = phone.id
+    console.log('[unbindPhone] 调用API解绑，phoneId:', phoneId)
+
+    await callConfigApi.unbindWorkPhone(phoneId)
     ElMessage.success('解绑成功')
     loadWorkPhones()
   } catch (e: any) {
     if (e !== 'cancel' && e?.message) {
+      console.error('[unbindPhone] 解绑失败:', e)
       ElMessage.error(e.message || '解绑失败')
     }
   }

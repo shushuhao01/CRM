@@ -2560,6 +2560,9 @@ const confirmUser = async () => {
       // 【修复】userForm.roleId现在存储的是角色code，直接使用即可
       const roleCode = userForm.roleId
 
+      // 🔥 修复：获取部门名称
+      const department = departmentStore.departmentList.find(d => d.id === userForm.departmentId)
+
       const updateData = {
         realName: userForm.realName,
         name: userForm.realName, // 同时更新name字段
@@ -2568,10 +2571,12 @@ const confirmUser = async () => {
         roleId: roleCode,  // 使用角色code（如'sales_staff'）
         role: roleCode,  // 使用角色code（如'sales_staff'）
         departmentId: userForm.departmentId,
+        departmentName: department?.name || '',  // 🔥 新增：传递部门名称
         position: userForm.position,
         employeeNumber: userForm.employeeNumber,
         status: userForm.status,
-        remark: userForm.remark
+        remark: userForm.remark,
+        authorizedIps: userForm.authorizedIps  // 🔥 新增：传递授权登录IP
       }
 
       console.log('[User] 更新用户数据:', updateData)

@@ -283,6 +283,46 @@
       </div>
     </div>
 
+    <!-- 移动成员对话框 -->
+    <el-dialog
+      v-model="moveMemberDialogVisible"
+      title="移动成员到其他部门"
+      width="500px"
+    >
+      <div class="move-member-content">
+        <div class="member-info">
+          <el-avatar :size="40">{{ movingMember?.userName?.charAt(0) }}</el-avatar>
+          <div class="member-details">
+            <div class="member-name">{{ movingMember?.userName }}</div>
+            <div class="member-current-dept">当前部门：{{ department?.name }}</div>
+          </div>
+        </div>
+        <el-form label-width="100px" style="margin-top: 20px;">
+          <el-form-item label="目标部门" required>
+            <el-select
+              v-model="targetDepartmentId"
+              placeholder="请选择目标部门"
+              style="width: 100%"
+              filterable
+            >
+              <el-option
+                v-for="dept in availableDepartments"
+                :key="dept.id"
+                :label="dept.name"
+                :value="dept.id"
+              />
+            </el-select>
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="moveMemberDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmMoveMember" :loading="movingLoading">
+          确认移动
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 编辑部门弹窗 -->
     <DepartmentDialog
       v-model="editDialogVisible"
@@ -328,6 +368,12 @@ const departmentStore = useDepartmentStore()
 const departmentId = ref(route.params.id as string)
 const editDialogVisible = ref(false)
 const membersLoading = ref(false)
+
+// 移动成员相关
+const moveMemberDialogVisible = ref(false)
+const movingMember = ref<any>(null)
+const targetDepartmentId = ref('')
+const movingLoading = ref(false)
 const departmentMembers = ref<unknown[]>([])
 
 // 计算属性
@@ -412,9 +458,53 @@ const handleEditMember = (member: unknown) => {
   ElMessage.info('编辑成员功能开发中')
 }
 
-// 移动成员
-const handleMoveMember = (member: unknown) => {
-  ElMessage.info('移动成员功能开发中')
+// 可用的目标部门列表（排除当前部门）
+const availableDepartments = computed(() => {
+  return departmentStore.departmentList.filter(dept =>
+    dept.id !== departmentId.value && dept.status === 'active'
+  )
+})
+
+// 移动成员 - 打开对话框
+const handleMoveMember = (member: any) => {
+  movingMember.value = member
+  targetDepartmentId.value = ''
+  moveMemberDialogVisible.value = true
+}
+
+// 确认移动成员
+const confirmMoveMember = async () => {
+  if (!targetDepartmentId.value) {
+    ElMessage.warning('请选择目标部门')
+    return
+  }
+
+  movingLoading.value = true
+  try {
+    // 调用API更新用户的部门
+    const targetDept = departmentStore.departmentList.find(d => d.id === targetDepartmentId.value)
+
+    // 使用userApiService更新用户部门
+    const { userApiService } = await import('@/services/userApiService')
+    await userApiService.updateUser(movingMember.value.userId, {
+      departmentId: targetDepartmentId.value,
+      departmentName: targetDept?.name || ''
+    })
+
+    ElMessage.success(`已将 ${movingMember.value.userName} 移动到 ${targetDept?.name}`)
+    moveMemberDialogVisible.value = false
+
+    // 刷新成员列表
+    await loadDepartmentMembers()
+
+    // 刷新部门数据
+    await departmentStore.loadDepartments()
+  } catch (error) {
+    console.error('移动成员失败:', error)
+    ElMessage.error('移动成员失败')
+  } finally {
+    movingLoading.value = false
+  }
 }
 
 // 移除成员
@@ -907,5 +997,35 @@ onMounted(() => {
 
 :deep(.el-table td) {
   padding: 12px 0;
+}
+
+/* 移动成员对话框样式 */
+.move-member-content {
+  padding: 10px 0;
+}
+
+.member-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+
+.member-details {
+  flex: 1;
+}
+
+.member-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.member-current-dept {
+  font-size: 13px;
+  color: #909399;
+  margin-top: 4px;
 }
 </style>
