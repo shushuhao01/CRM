@@ -867,20 +867,25 @@ const confirmBatchShipping = async () => {
 
     console.log('[批量发货] 后端API更新完成，成功:', successCount, '个')
 
-    // 同步更新前端store
+    // 同步更新前端store（静默处理错误，因为后端已经成功）
     shippingData.forEach(data => {
-      orderStore.updateOrder(data.orderId, {
-        status: 'shipped',
-        trackingNumber: data.trackingNumber,
-        expressNo: data.trackingNumber,
-        expressCompany: data.logisticsCompany,
-        logisticsCompany: data.logisticsCompany,
-        shippingTime: data.shippingTime,
-        shippedAt: data.shippedAt,
-        estimatedDelivery: data.estimatedDelivery,
-        expectedDeliveryDate: data.estimatedDelivery,
-        remarks: data.remarks
-      })
+      try {
+        orderStore.updateOrder(data.orderId, {
+          status: 'shipped',
+          trackingNumber: data.trackingNumber,
+          expressNo: data.trackingNumber,
+          expressCompany: data.logisticsCompany,
+          logisticsCompany: data.logisticsCompany,
+          shippingTime: data.shippingTime,
+          shippedAt: data.shippedAt,
+          estimatedDelivery: data.estimatedDelivery,
+          expectedDeliveryDate: data.estimatedDelivery,
+          remarks: data.remarks
+        })
+      } catch (storeError) {
+        // 静默处理store更新错误，因为后端已经成功更新
+        console.warn(`[批量发货] 前端store更新失败 (订单 ${data.orderNo}):`, storeError)
+      }
     })
 
     emit('batch-shipped', shippingData)

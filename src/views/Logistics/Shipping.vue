@@ -1926,15 +1926,11 @@ const handleOrderShipped = async (shippingData: any) => {
 }
 
 // 批量发货成功
-const handleBatchShipped = (orders: any[]) => {
-  // 批量更新订单状态
-  orders.forEach(order => {
-    if (order.orderId && order.logisticsCompany && order.trackingNumber) {
-      orderStore.shipOrder(order.orderId, order.logisticsCompany, order.trackingNumber)
-    }
-  })
-  ElMessage.success(`成功发货 ${orders.length} 个订单`)
+const handleBatchShipped = (_orders: any[]) => {
+  // 🔥 注意：BatchShippingDialog 已经完成了所有后端API调用和store更新
+  // 这里只需要刷新列表即可，不需要再调用 shipOrder
   loadOrderList()
+  updateTabCounts()
 }
 
 // 订单退回成功
