@@ -715,6 +715,7 @@ class TimeoutReminderService {
 
   /**
    * 批量发送消息
+   * 🔥 2025-12-29 修复：只创建一条消息记录，targetUserId存储逗号分隔的用户ID
    */
   private async sendBatchMessages(
     type: string,
@@ -736,39 +737,43 @@ class TimeoutReminderService {
       }
 
       const messageRepo = dataSource.getRepository(SystemMessage);
-      const messages = targetUserIds.map(userId => messageRepo.create({
-        id: uuidv4(),
+
+      // 🔥 只创建一条消息，targetUserId 存储所有用户ID（逗号分隔）
+      const messageId = uuidv4();
+      const message = messageRepo.create({
+        id: messageId,
         type,
         title,
         content,
-        targetUserId: userId,
+        targetUserId: targetUserIds.join(','), // 多个用户ID用逗号分隔
         priority: options?.priority || 'normal',
         category: options?.category || '超时提醒',
         relatedId: options?.relatedId,
         relatedType: options?.relatedType,
         actionUrl: options?.actionUrl,
         isRead: 0
-      }));
+      });
 
-      await messageRepo.save(messages);
+      await messageRepo.save(message);
+      console.log(`[TimeoutReminder] ✅ 创建1条消息，目标用户: ${targetUserIds.length}个`);
 
       // 🔥 通过WebSocket实时推送给所有目标用户
       if (global.webSocketService) {
-        messages.forEach(msg => {
+        targetUserIds.forEach(userId => {
           global.webSocketService.pushSystemMessage({
-            id: msg.id,
-            type: msg.type,
-            title: msg.title,
-            content: msg.content,
-            priority: msg.priority as any,
-            relatedId: msg.relatedId,
-            relatedType: msg.relatedType,
-            actionUrl: msg.actionUrl
-          }, { userId: parseInt(msg.targetUserId) });
+            id: messageId,
+            type: message.type,
+            title: message.title,
+            content: message.content,
+            priority: message.priority as any,
+            relatedId: message.relatedId,
+            relatedType: message.relatedType,
+            actionUrl: message.actionUrl
+          }, { userId: parseInt(userId) });
         });
       }
 
-      return messages.length;
+      return 1; // 返回1表示创建了1条消息
     } catch (error) {
       console.error('[TimeoutReminder] 批量发送消息失败:', error);
       return 0;
