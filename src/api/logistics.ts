@@ -71,10 +71,11 @@ export const logisticsApi = {
   },
 
   /**
-   * 批量查询物流轨迹
+   * 批量查询物流轨迹（增强版）
+   * @param orders 订单列表，包含 trackingNo, companyCode, phone 等信息
    */
-  async batchQueryTrace(trackingNos: string[], companyCode?: string): Promise<{ success: boolean; data: LogisticsTrackResult[]; message?: string }> {
-    return api.post('/logistics/trace/batch-query', { trackingNos, companyCode })
+  async batchQueryTrace(orders: Array<{ trackingNo: string; companyCode?: string; phone?: string }>): Promise<{ success: boolean; data: LogisticsTrackResult[]; message?: string }> {
+    return api.post('/logistics/trace/batch-query', { orders })
   },
 
   /**

@@ -36,8 +36,12 @@
           >
             <el-option label="待发货" value="pending" />
             <el-option label="已发货" value="shipped" />
+            <el-option label="已揽收" value="picked_up" />
             <el-option label="运输中" value="in_transit" />
-            <el-option label="已送达" value="delivered" />
+            <el-option label="派送中" value="out_for_delivery" />
+            <el-option label="已签收" value="delivered" />
+            <el-option label="拒收" value="rejected" />
+            <el-option label="已退回" value="returned" />
             <el-option label="异常" value="exception" />
           </el-select>
         </el-form-item>
@@ -354,18 +358,18 @@ const tableColumns = computed(() => [
     showOverflowTooltip: true
   },
   {
+    prop: 'salesPersonName',
+    label: '销售人员',
+    minWidth: 90,
+    visible: true,
+    showOverflowTooltip: true
+  },
+  {
     prop: 'status',
     label: '订单状态',
     minWidth: 90,
     visible: true,
     slot: true,
-    showOverflowTooltip: true
-  },
-  {
-    prop: 'destination',
-    label: '目的地',
-    minWidth: 150,
-    visible: true,
     showOverflowTooltip: true
   },
   {
@@ -398,6 +402,13 @@ const tableColumns = computed(() => [
     minWidth: 120,
     visible: true,
     slot: true,
+    showOverflowTooltip: true
+  },
+  {
+    prop: 'destination',
+    label: '目的地',
+    minWidth: 150,
+    visible: true,
     showOverflowTooltip: true
   }
 ])
@@ -755,8 +766,9 @@ const formatEstimatedDate = (dateStr: string): string => {
 }
 
 /**
- * 🔥 异步从官方API获取物流最新动态
+ * 🔥 异步从官方API获取物流最新动态（批量查询优化版）
  * 优化：跳过已完结的物流状态，减少不必要的API请求
+ * 优化：每批次10个订单并行查询，大幅提升查询速度
  */
 const fetchLatestLogisticsUpdates = async () => {
   const { logisticsApi } = await import('@/api/logistics')
@@ -782,78 +794,93 @@ const fetchLatestLogisticsUpdates = async () => {
 
   console.log(`[物流列表] 开始从API获取 ${ordersWithTracking.length} 个订单的物流信息`)
 
-  // 🔥 改进：依次请求，避免并发过多导致API限制
-  for (let i = 0; i < ordersWithTracking.length; i++) {
-    const order = ordersWithTracking[i]
+  // 🔥 批量查询优化：每批次10个订单
+  const BATCH_SIZE = 10
+  const batches: typeof ordersWithTracking[] = []
+
+  for (let i = 0; i < ordersWithTracking.length; i += BATCH_SIZE) {
+    batches.push(ordersWithTracking.slice(i, i + BATCH_SIZE))
+  }
+
+  console.log(`[物流列表] 分为 ${batches.length} 批次查询，每批 ${BATCH_SIZE} 个`)
+
+  // 🔥 依次处理每个批次
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    const batch = batches[batchIndex]
+    console.log(`[物流列表] 正在查询第 ${batchIndex + 1}/${batches.length} 批次，共 ${batch.length} 个订单`)
+
     try {
-      // 🔥 添加详细日志
-      console.log(`[物流列表] 正在获取第 ${i + 1}/${ordersWithTracking.length} 个订单的物流信息:`, {
-        orderNo: order.orderNo,
+      // 🔥 构建批量查询参数
+      const queryOrders = batch.map(order => ({
         trackingNo: order.trackingNo,
-        company: order.company,
-        customerPhone: order.customerPhone ? order.customerPhone.slice(-4) + '****' : '(空)'
-      })
+        companyCode: order.company,
+        phone: order.customerPhone?.trim() || undefined
+      }))
 
-      // 从官方API获取物流轨迹
-      // 🔥 修复：如果手机号为空，传undefined而不是空字符串
-      const phoneToSend = order.customerPhone && order.customerPhone.trim() ? order.customerPhone : undefined
-      const response = await logisticsApi.queryTrace(
-        order.trackingNo,
-        order.company,
-        phoneToSend
-      )
+      // 🔥 批量查询
+      const response = await logisticsApi.batchQueryTrace(queryOrders)
 
-      if (response?.success && response.data?.success && response.data.traces?.length > 0) {
-        const traces = response.data.traces
-        // 按时间排序，获取最新动态
-        const sortedTraces = [...traces].sort((a: any, b: any) => {
-          const timeA = new Date(a.time).getTime()
-          const timeB = new Date(b.time).getTime()
-          return timeB - timeA
-        })
-        const latestTrace = sortedTraces[0]
-        order.latestLogisticsInfo = latestTrace.description || latestTrace.status || '暂无描述'
-        console.log(`[物流列表] ✅ ${order.orderNo} 获取成功:`, order.latestLogisticsInfo.substring(0, 30))
+      if (response?.success && response.data) {
+        // 🔥 处理每个查询结果
+        response.data.forEach((result: any, index: number) => {
+          const order = batch[index]
+          if (!order) return
 
-        // 🔥 同时更新物流状态
-        const newStatus = mapOrderStatusToLogisticsStatus(order.status, order.latestLogisticsInfo)
-        if (newStatus !== order.logisticsStatus) {
-          order.logisticsStatus = newStatus
-          // 🔥 如果状态变为已完结，标记为已完结
-          // 注意：package_exception和exception状态仍需继续请求API
-          if (['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled'].includes(newStatus)) {
-            order.isLogisticsFinished = true
+          if (result?.success && result.traces?.length > 0) {
+            // 按时间排序，获取最新动态
+            const sortedTraces = [...result.traces].sort((a: any, b: any) => {
+              const timeA = new Date(a.time).getTime()
+              const timeB = new Date(b.time).getTime()
+              return timeB - timeA
+            })
+            const latestTrace = sortedTraces[0]
+            order.latestLogisticsInfo = latestTrace.description || latestTrace.status || '暂无描述'
+
+            // 🔥 同时更新物流状态
+            const newStatus = mapOrderStatusToLogisticsStatus(order.status, order.latestLogisticsInfo)
+            if (newStatus !== order.logisticsStatus) {
+              order.logisticsStatus = newStatus
+              if (['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled'].includes(newStatus)) {
+                order.isLogisticsFinished = true
+              }
+            }
+
+            // 🔥 更新预计送达时间
+            if (result.estimatedDeliveryTime) {
+              order.estimatedDate = result.estimatedDeliveryTime
+            }
+          } else if (result?.status === 'need_phone_verify') {
+            order.latestLogisticsInfo = '需验证手机号，点击单号查询'
+          } else if (result?.statusText) {
+            if (result.statusText.includes('手机号') || result.statusText.includes('可能原因')) {
+              order.latestLogisticsInfo = '需验证手机号，点击单号查询'
+            } else {
+              order.latestLogisticsInfo = result.statusText
+            }
+          } else {
+            order.latestLogisticsInfo = '暂无物流信息'
           }
-        }
+        })
 
-        // 🔥 更新预计送达时间
-        if (response.data.estimatedDeliveryTime) {
-          order.estimatedDate = response.data.estimatedDeliveryTime
-        }
-      } else if (response?.data?.status === 'need_phone_verify') {
-        // 🔥 需要手机号验证，显示友好提示
-        order.latestLogisticsInfo = '需验证手机号，点击单号查询'
-        console.log(`[物流列表] ⚠️ ${order.orderNo} 需要手机号验证`)
-      } else if (response?.data?.statusText) {
-        // 🔥 改进：如果是手机号验证失败，显示更友好的提示
-        if (response.data.statusText.includes('手机号') || response.data.statusText.includes('可能原因')) {
-          order.latestLogisticsInfo = '需验证手机号，点击单号查询'
-        } else {
-          order.latestLogisticsInfo = response.data.statusText
-        }
-        console.log(`[物流列表] ⚠️ ${order.orderNo} 返回状态:`, response.data.statusText)
+        const successCount = response.data.filter((r: any) => r?.success).length
+        console.log(`[物流列表] ✅ 第 ${batchIndex + 1} 批次完成，成功 ${successCount}/${batch.length} 个`)
       } else {
-        order.latestLogisticsInfo = '暂无物流信息'
-        console.log(`[物流列表] ⚠️ ${order.orderNo} 暂无物流信息`)
+        // 批量查询失败，标记所有订单
+        batch.forEach(order => {
+          order.latestLogisticsInfo = '获取失败'
+        })
+        console.log(`[物流列表] ❌ 第 ${batchIndex + 1} 批次查询失败`)
       }
     } catch (error) {
-      console.error(`[物流列表] ❌ 获取订单 ${order.orderNo} 物流信息失败:`, error)
-      order.latestLogisticsInfo = '获取失败'
+      console.error(`[物流列表] ❌ 第 ${batchIndex + 1} 批次查询异常:`, error)
+      batch.forEach(order => {
+        order.latestLogisticsInfo = '获取失败'
+      })
     }
 
-    // 🔥 每个请求之间延迟500ms，避免API限制
-    if (i < ordersWithTracking.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 500))
+    // 🔥 批次之间延迟300ms，避免API限制
+    if (batchIndex < batches.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 300))
     }
   }
 
