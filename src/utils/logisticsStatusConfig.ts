@@ -86,53 +86,101 @@ export const detectLogisticsStatusFromDescription = (description: string): strin
 
   const desc = description.toLowerCase()
 
-  // 已签收
-  if (desc.includes('签收') || desc.includes('已收货') || desc.includes('已取件') ||
-      desc.includes('代收') || desc.includes('本人签收') || desc.includes('已签') ||
-      desc.includes('已送达') || desc.includes('妥投') || desc.includes('派送成功') ||
-      desc.includes('已领取') || desc.includes('已自提')) {
+  // 已签收 - 各种签收场景
+  if (
+    desc.includes('签收') || desc.includes('已收货') || desc.includes('已取件') ||
+    desc.includes('代收') || desc.includes('本人签收') || desc.includes('已签') ||
+    desc.includes('已送达') || desc.includes('妥投') || desc.includes('派送成功') ||
+    desc.includes('已领取') || desc.includes('已自提') || desc.includes('派送至本人') ||
+    desc.includes('投递成功') || desc.includes('收件完成') || desc.includes('快件已送达') ||
+    desc.includes('已完成') || desc.includes('已交付') || desc.includes('已投柜') ||
+    desc.includes('已投递') || desc.includes('已放入') || desc.includes('已存入') ||
+    desc.includes('驿站代收') || desc.includes('快递柜') || desc.includes('丰巢') ||
+    desc.includes('菜鸟驿站') || desc.includes('妈妈驿站') || desc.includes('蜂巢') ||
+    desc.includes('智能柜') || desc.includes('自提柜') || desc.includes('收发室') ||
+    desc.includes('门卫代收') || desc.includes('前台代收') || desc.includes('物业代收') ||
+    desc.includes('家人代收') || desc.includes('同事代收') || desc.includes('邻居代收')
+  ) {
     return LOGISTICS_STATUS.DELIVERED
   }
 
   // 拒收
-  if (desc.includes('拒收') || desc.includes('拒绝') || desc.includes('拒签') ||
-      desc.includes('客户拒') || desc.includes('无法联系')) {
+  if (
+    desc.includes('拒收') || desc.includes('拒绝') || desc.includes('拒签') ||
+    desc.includes('客户拒') || desc.includes('收件人拒') || desc.includes('买家拒') ||
+    desc.includes('不要了') || desc.includes('取消订单') || desc.includes('退回签收')
+  ) {
     return LOGISTICS_STATUS.REJECTED
   }
 
   // 退回
-  if (desc.includes('退回') || desc.includes('退件') || desc.includes('返回') ||
-      desc.includes('退货') || desc.includes('寄回')) {
+  if (
+    desc.includes('退回') || desc.includes('退件') || desc.includes('返回') ||
+    desc.includes('退货') || desc.includes('寄回') || desc.includes('原路返回') ||
+    desc.includes('退回发件') || desc.includes('返回发件') || desc.includes('已退回')
+  ) {
     return LOGISTICS_STATUS.RETURNED
   }
 
   // 派送异常
-  if (desc.includes('异常') || desc.includes('问题件') || desc.includes('滞留') ||
-      desc.includes('延误') || desc.includes('无法派送') || desc.includes('地址不详')) {
+  if (
+    desc.includes('异常') || desc.includes('问题件') || desc.includes('滞留') ||
+    desc.includes('延误') || desc.includes('无法派送') || desc.includes('地址不详') ||
+    desc.includes('联系不上') || desc.includes('电话无人接听') || desc.includes('无人接听') ||
+    desc.includes('超区') || desc.includes('破损') || desc.includes('丢失') ||
+    desc.includes('遗失') || desc.includes('短少') || desc.includes('缺失') ||
+    desc.includes('无法联系') || desc.includes('地址错误') || desc.includes('地址有误') ||
+    desc.includes('停发') || desc.includes('暂停') || desc.includes('疫情') ||
+    desc.includes('不派送') || desc.includes('无法投递') || desc.includes('投递失败') ||
+    desc.includes('派送失败') || desc.includes('配送失败') || desc.includes('多次派送未成功')
+  ) {
     return LOGISTICS_STATUS.EXCEPTION
   }
 
   // 派送中
-  if (desc.includes('派送') || desc.includes('配送') || desc.includes('派件') ||
-      desc.includes('正在投递') || desc.includes('快递员') || desc.includes('送货')) {
+  if (
+    desc.includes('派送') || desc.includes('配送') || desc.includes('派件') ||
+    desc.includes('正在投递') || desc.includes('快递员') || desc.includes('送货') ||
+    desc.includes('正在派送') || desc.includes('派送员') || desc.includes('配送员') ||
+    desc.includes('出库派送') || desc.includes('安排派送') || desc.includes('开始派送') ||
+    desc.includes('正在为您') || desc.includes('即将送达') || desc.includes('预计今天') ||
+    desc.includes('预计送达') || desc.includes('末端派送') || desc.includes('站点派送') ||
+    desc.includes('骑手') || desc.includes('小哥') || desc.includes('师傅')
+  ) {
     return LOGISTICS_STATUS.OUT_FOR_DELIVERY
   }
 
   // 运输中
-  if (desc.includes('运输') || desc.includes('转运') || desc.includes('发往') ||
-      desc.includes('到达') || desc.includes('离开') || desc.includes('中转') ||
-      desc.includes('装车') || desc.includes('卸车') || desc.includes('分拨')) {
+  if (
+    desc.includes('运输') || desc.includes('转运') || desc.includes('发往') ||
+    desc.includes('到达') || desc.includes('离开') || desc.includes('中转') ||
+    desc.includes('装车') || desc.includes('卸车') || desc.includes('分拨') ||
+    desc.includes('发出') || desc.includes('在途') || desc.includes('途中') ||
+    desc.includes('干线') || desc.includes('航班') || desc.includes('班车') ||
+    desc.includes('已发出') || desc.includes('正发往') || desc.includes('运往') ||
+    desc.includes('分拣') || desc.includes('扫描') || desc.includes('处理中') ||
+    desc.includes('集散') || desc.includes('转运中心') || desc.includes('分拨中心') ||
+    desc.includes('营业部') || desc.includes('网点')
+  ) {
     return LOGISTICS_STATUS.IN_TRANSIT
   }
 
   // 已揽收
-  if (desc.includes('揽收') || desc.includes('收件') || desc.includes('已收') ||
-      desc.includes('取件') || desc.includes('揽件') || desc.includes('已揽')) {
+  if (
+    desc.includes('揽收') || desc.includes('收件') || desc.includes('已收') ||
+    desc.includes('取件') || desc.includes('揽件') || desc.includes('已揽') ||
+    desc.includes('已取') || desc.includes('上门取件') || desc.includes('快递员已取') ||
+    desc.includes('寄件成功') || desc.includes('已寄出') || desc.includes('商家已发货')
+  ) {
     return LOGISTICS_STATUS.PICKED_UP
   }
 
   // 待揽收
-  if (desc.includes('待揽') || desc.includes('等待') || desc.includes('下单')) {
+  if (
+    desc.includes('待揽') || desc.includes('等待') || desc.includes('下单') ||
+    desc.includes('已下单') || desc.includes('待取件') || desc.includes('待上门') ||
+    desc.includes('预约取件') || desc.includes('等待揽收')
+  ) {
     return LOGISTICS_STATUS.PENDING
   }
 
@@ -195,34 +243,59 @@ export const detectLogisticsInfoColorType = (description: string): LogisticsInfo
 
   const desc = description.toLowerCase()
 
-  // 🟢 绿色 - 已签收/已送达
-  if (desc.includes('签收') || desc.includes('已收货') || desc.includes('已取件') ||
-      desc.includes('代收') || desc.includes('本人签收') || desc.includes('已签') ||
-      desc.includes('已送达') || desc.includes('妥投') || desc.includes('收件人已签收') ||
-      desc.includes('已领取') || desc.includes('已自提') || desc.includes('派送成功')) {
+  // 🟢 绿色 - 已签收/已送达（各种签收场景）
+  if (
+    desc.includes('签收') || desc.includes('已收货') || desc.includes('已取件') ||
+    desc.includes('代收') || desc.includes('本人签收') || desc.includes('已签') ||
+    desc.includes('已送达') || desc.includes('妥投') || desc.includes('收件人已签收') ||
+    desc.includes('已领取') || desc.includes('已自提') || desc.includes('派送成功') ||
+    desc.includes('派送至本人') || desc.includes('投递成功') || desc.includes('收件完成') ||
+    desc.includes('快件已送达') || desc.includes('已完成') || desc.includes('已交付') ||
+    desc.includes('已投柜') || desc.includes('已投递') || desc.includes('已放入') ||
+    desc.includes('已存入') || desc.includes('驿站代收') || desc.includes('快递柜') ||
+    desc.includes('丰巢') || desc.includes('菜鸟驿站') || desc.includes('妈妈驿站') ||
+    desc.includes('蜂巢') || desc.includes('智能柜') || desc.includes('自提柜') ||
+    desc.includes('收发室') || desc.includes('门卫代收') || desc.includes('前台代收') ||
+    desc.includes('物业代收') || desc.includes('家人代收') || desc.includes('同事代收') ||
+    desc.includes('邻居代收')
+  ) {
     return 'success'
   }
 
   // 🔴 红色 - 异常/拒收/退回
-  if (desc.includes('拒收') || desc.includes('拒绝') || desc.includes('拒签') ||
-      desc.includes('客户拒') || desc.includes('无法联系') || desc.includes('异常') ||
-      desc.includes('问题件') || desc.includes('滞留') || desc.includes('延误') ||
-      desc.includes('无法派送') || desc.includes('地址不详') || desc.includes('退回') ||
-      desc.includes('退件') || desc.includes('返回') || desc.includes('退货') ||
-      desc.includes('寄回') || desc.includes('联系不上') || desc.includes('电话无人接听') ||
-      desc.includes('超区') || desc.includes('破损') || desc.includes('丢失')) {
+  if (
+    desc.includes('拒收') || desc.includes('拒绝') || desc.includes('拒签') ||
+    desc.includes('客户拒') || desc.includes('收件人拒') || desc.includes('买家拒') ||
+    desc.includes('无法联系') || desc.includes('异常') || desc.includes('问题件') ||
+    desc.includes('滞留') || desc.includes('延误') || desc.includes('无法派送') ||
+    desc.includes('地址不详') || desc.includes('退回') || desc.includes('退件') ||
+    desc.includes('返回') || desc.includes('退货') || desc.includes('寄回') ||
+    desc.includes('联系不上') || desc.includes('电话无人接听') || desc.includes('无人接听') ||
+    desc.includes('超区') || desc.includes('破损') || desc.includes('丢失') ||
+    desc.includes('遗失') || desc.includes('短少') || desc.includes('缺失') ||
+    desc.includes('地址错误') || desc.includes('地址有误') || desc.includes('停发') ||
+    desc.includes('暂停') || desc.includes('不派送') || desc.includes('无法投递') ||
+    desc.includes('投递失败') || desc.includes('派送失败') || desc.includes('配送失败') ||
+    desc.includes('多次派送未成功') || desc.includes('退回签收') || desc.includes('原路返回') ||
+    desc.includes('不要了') || desc.includes('取消订单')
+  ) {
     return 'danger'
   }
 
   // 🟠 橙色 - 派送中
-  if (desc.includes('派送') || desc.includes('配送') || desc.includes('派件') ||
-      desc.includes('正在投递') || desc.includes('快递员') || desc.includes('送货') ||
-      desc.includes('正在派送') || desc.includes('派送员') || desc.includes('配送员') ||
-      desc.includes('出库派送') || desc.includes('安排派送') || desc.includes('开始派送')) {
+  if (
+    desc.includes('派送') || desc.includes('配送') || desc.includes('派件') ||
+    desc.includes('正在投递') || desc.includes('快递员') || desc.includes('送货') ||
+    desc.includes('正在派送') || desc.includes('派送员') || desc.includes('配送员') ||
+    desc.includes('出库派送') || desc.includes('安排派送') || desc.includes('开始派送') ||
+    desc.includes('正在为您') || desc.includes('即将送达') || desc.includes('预计今天') ||
+    desc.includes('预计送达') || desc.includes('末端派送') || desc.includes('站点派送') ||
+    desc.includes('骑手') || desc.includes('小哥') || desc.includes('师傅')
+  ) {
     return 'warning'
   }
 
-  // 默认 - 运输中/其他
+  // 默认 - 运输中/揽收/其他
   return 'default'
 }
 
