@@ -129,17 +129,23 @@ class OrderNotificationService {
 
       // 🔥 通过WebSocket实时推送
       if (global.webSocketService) {
-        global.webSocketService.pushSystemMessage({
-          id: message.id,
-          type: message.type,
-          title: message.title,
-          content: message.content,
-          priority: message.priority as any,
-          relatedId: message.relatedId,
-          relatedType: message.relatedType,
-          actionUrl: message.actionUrl
-        }, { userId: parseInt(targetUserId) });
-        console.log(`[OrderNotification] 🔌 WebSocket推送: ${title} -> 用户 ${targetUserId}`);
+        const userIdNum = parseInt(targetUserId);
+        // 🔥 修复：确保 userId 是有效的数字，避免广播给所有人
+        if (!isNaN(userIdNum) && userIdNum > 0) {
+          global.webSocketService.pushSystemMessage({
+            id: message.id,
+            type: message.type,
+            title: message.title,
+            content: message.content,
+            priority: message.priority as any,
+            relatedId: message.relatedId,
+            relatedType: message.relatedType,
+            actionUrl: message.actionUrl
+          }, { userId: userIdNum });
+          console.log(`[OrderNotification] 🔌 WebSocket推送: ${title} -> 用户 ${targetUserId}`);
+        } else {
+          console.warn(`[OrderNotification] ⚠️ 无效的用户ID: ${targetUserId}，跳过WebSocket推送`);
+        }
       }
 
       // 🔥 同时发送到企业微信机器人
@@ -597,16 +603,22 @@ class OrderNotificationService {
       // 🔥 通过WebSocket实时推送给所有目标用户
       if (global.webSocketService) {
         targetUserIds.forEach(userId => {
-          global.webSocketService.pushSystemMessage({
-            id: messageId,
-            type: message.type,
-            title: message.title,
-            content: message.content,
-            priority: message.priority as any,
-            relatedId: message.relatedId,
-            relatedType: message.relatedType,
-            actionUrl: message.actionUrl
-          }, { userId: parseInt(userId) });
+          const userIdNum = parseInt(userId);
+          // 🔥 修复：确保 userId 是有效的数字，避免广播给所有人
+          if (!isNaN(userIdNum) && userIdNum > 0) {
+            global.webSocketService.pushSystemMessage({
+              id: messageId,
+              type: message.type,
+              title: message.title,
+              content: message.content,
+              priority: message.priority as any,
+              relatedId: message.relatedId,
+              relatedType: message.relatedType,
+              actionUrl: message.actionUrl
+            }, { userId: userIdNum });
+          } else {
+            console.warn(`[OrderNotification] ⚠️ 无效的用户ID: ${userId}，跳过WebSocket推送`);
+          }
         });
         console.log(`[OrderNotification] 🔌 WebSocket推送给 ${targetUserIds.length} 个用户`);
       }
