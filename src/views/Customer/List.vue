@@ -1596,20 +1596,32 @@ const loadCustomerList = async (forceReload = false) => {
     })
 
     if (response && response.data) {
-      const { list, total } = response.data
+      const { list, total, statistics } = response.data
       // 🔥 更新客户数据到store
       customerStore.customers = list || []
       // 🔥 更新分页总数（使用后端返回的total）
       pagination.total = total || 0
+
+      // 🔥 更新统计数据（使用后端返回的统计数据）
+      if (statistics) {
+        summaryData.totalCustomers = statistics.totalCustomers || 0
+        summaryData.activeCustomers = statistics.activeCustomers || 0
+        summaryData.newCustomers = statistics.newCustomers || 0
+        summaryData.highValueCustomers = statistics.highValueCustomers || 0
+        console.log(`[CustomerList] ✅ 统计数据已更新:`, statistics)
+      }
+
       console.log(`[CustomerList] ✅ 加载完成: ${list?.length || 0} 条, 总数: ${total}`)
     } else {
       console.log('[CustomerList] API无数据，客户列表为空')
       customerStore.customers = []
       pagination.total = 0
+      // 重置统计数据
+      summaryData.totalCustomers = 0
+      summaryData.activeCustomers = 0
+      summaryData.newCustomers = 0
+      summaryData.highValueCustomers = 0
     }
-
-    // 加载统计数据
-    await loadSummaryData()
 
   } catch (error) {
     console.error('loadCustomerList 错误:', error)
@@ -1621,45 +1633,8 @@ const loadCustomerList = async (forceReload = false) => {
   }
 }
 
-// 加载统计数据（基于当前筛选结果）
-const loadSummaryData = () => {
-  try {
-    // 使用筛选后的客户数据
-    const customers = searchResults.value
-    const today = new Date()
-    const todayStr = today.toISOString().split('T')[0]
-
-    // 总客户数（筛选后的）
-    summaryData.totalCustomers = customers.length
-
-    // 活跃客户数（状态为active的客户）
-    summaryData.activeCustomers = customers.filter(c => c.status === 'active').length
-
-    // 新增客户数（今日创建的客户）
-    summaryData.newCustomers = customers.filter(c => {
-      if (!c.createTime) return false
-
-      try {
-        const createTime = new Date(c.createTime)
-        if (isNaN(createTime.getTime())) return false
-
-        const createDate = createTime.toISOString().split('T')[0]
-        return createDate === todayStr
-      } catch (error) {
-        console.warn('解析客户创建时间失败:', c.createTime, error)
-        return false
-      }
-    }).length
-
-    // 高价值客户数（黄金等级的客户）
-    summaryData.highValueCustomers = customers.filter(c => c.level === 'gold').length
-
-    console.log('统计数据已更新:', summaryData)
-
-  } catch (error) {
-    console.error('加载统计数据失败:', error)
-  }
-}
+// 🔥 统计数据现在由后端API返回，不再需要前端计算
+// loadSummaryData函数已移除，统计数据在loadCustomerList中更新
 
 // 🔥 删除：不再需要监听totalCount，因为它现在直接使用pagination.total
 // watch(totalCount, (newCount) => {
@@ -1675,9 +1650,10 @@ watch(() => customerStore.customers, (newCustomers) => {
   })
 }, { deep: true, immediate: true })
 
-// 监听搜索结果变化，自动更新统计数据
-watch(searchResults, () => {
-  loadSummaryData()
+// 🔥 删除：不再需要监听searchResults变化来更新统计数据，统计数据由后端返回
+// watch(searchResults, () => {
+//   loadSummaryData()
+// }, { immediate: true })
 }, { immediate: true })
 
 // 监听路由变化，确保数据同步
