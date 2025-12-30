@@ -1141,12 +1141,10 @@ const filteredOrderList = computed(() => {
   return filtered
 })
 
-// 🔥 分页后的订单列表
+// 🔥 分页后的订单列表 - API已经返回分页数据，直接使用filteredOrderList
 const paginatedOrderList = computed(() => {
-  const allFiltered = filteredOrderList.value
-  const startIndex = (pagination.page - 1) * pagination.size
-  const endIndex = startIndex + pagination.size
-  return allFiltered.slice(startIndex, endIndex)
+  // 🔥 修复：API已经返回分页后的数据，只需要应用前端筛选
+  return filteredOrderList.value
 })
 
 // 权限控制：取消订单审核按钮是否可见
@@ -2146,16 +2144,19 @@ const handleSizeChange = (size: number) => {
     pagination.size = size
     pagination.page = 1
   }
-  updatePagination()
+  // 🔥 修复：调用API重新加载数据
+  loadOrderList(true)
 }
 
 const handleCurrentChange = (page: number) => {
   pagination.page = page
-  updatePagination()
+  // 🔥 修复：调用API重新加载数据
+  loadOrderList(true)
 }
 
 const updatePagination = () => {
-  pagination.total = filteredOrderList.value.length
+  // 🔥 修复：total由API返回，不再从前端计算
+  // pagination.total 在 loadOrderList 中更新
 }
 
 // 防止重复加载的标志
@@ -2174,34 +2175,35 @@ const loadOrderList = async (force = false) => {
   try {
     isLoadingOrders = true
     lastLoadTime = now
+    loading.value = true
 
-    // 🔥 优化：如果已有缓存数据，先快速显示，不显示loading
-    const hasCachedData = orderStore.orders.length > 0
-    if (!hasCachedData) {
-      loading.value = true
-    }
+    // 🔥 修复：直接调用API，传递分页参数，实现后端分页
+    const { orderApi } = await import('@/api/order')
+    console.log(`[订单列表] 🚀 加载订单, 页码: ${pagination.page}, 每页: ${pagination.size}`)
 
-    // 🔥 先用缓存数据更新UI
-    if (hasCachedData) {
-      updatePagination()
-      updateQuickFilterCounts()
-    }
+    const response = await orderApi.getList({
+      page: pagination.page,
+      pageSize: pagination.size
+    })
 
-    // 尝试从API加载订单数据
-    const apiOrders = await orderStore.loadOrdersFromAPI(force)
-
-    // 🔥 修复：开发环境也使用API数据，不再使用模拟数据
-    if (apiOrders.length === 0 && orderStore.orders.length === 0) {
+    if (response && response.data) {
+      const { list, total } = response.data
+      // 🔥 更新订单数据到store
+      orderStore.orders = list || []
+      // 🔥 更新分页总数
+      pagination.total = total || 0
+      console.log(`[订单列表] ✅ 加载完成: ${list?.length || 0} 条, 总数: ${total}`)
+    } else {
       console.log('[订单列表] API无数据，订单列表为空')
-      // 不再初始化模拟数据，让用户看到真实的空列表
+      orderStore.orders = []
+      pagination.total = 0
     }
 
-    updatePagination()
     updateQuickFilterCounts()
   } catch (error) {
     console.error('加载订单列表失败:', error)
-    // 🔥 修复：API失败时不再使用模拟数据
-    updatePagination()
+    orderStore.orders = []
+    pagination.total = 0
     updateQuickFilterCounts()
   } finally {
     loading.value = false
