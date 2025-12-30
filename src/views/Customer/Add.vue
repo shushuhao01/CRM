@@ -247,7 +247,6 @@
               <el-form-item
                 label="区县"
                 prop="district"
-                :required="!customerForm.isOverseas"
               >
                 <el-select
                   v-model="customerForm.district"
@@ -928,16 +927,7 @@ const formRules: FormRules = {
     }
   ],
   district: [
-    {
-      validator: (rule: unknown, value: string, callback: (error?: Error) => void) => {
-        if (!customerForm.isOverseas && !value) {
-          callback(new Error('请选择区县'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'change'
-    }
+    { min: 1, max: 50, message: '区县长度应在1-50个字符之间', trigger: 'change' }
   ],
   street: [
     { min: 1, max: 100, message: '街道长度应在1-100个字符之间', trigger: 'blur' }
