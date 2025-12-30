@@ -218,7 +218,7 @@
         currentPage: currentPage,
         pageSize: pageSize,
         total: total,
-        pageSizes: [30, 50, 100]
+        pageSizes: [10, 20, 50, 100]
       }"
       @selection-change="handleSelectionChange"
       @sort-change="handleSortChange"
@@ -830,20 +830,20 @@ const hasPendingLeaderAssignments = computed(() => {
 })
 
 // 筛选相关
-const currentDateFilter = ref('today')
+const currentDateFilter = ref('all')  // 🔥 修复：默认选中"全部"
 const dateRange = ref<[Date, Date] | null>(null)
 const searchKeyword = ref('')
 const statusFilter = ref('')
 
 // 日期筛选选项
 const dateFilters = [
+  { label: '全部', value: 'all' },  // 🔥 修复：全部放在第一位
   { label: '今日', value: 'today' },
   { label: '昨日', value: 'yesterday' },
   { label: '本周', value: 'thisWeek' },
   { label: '近30天', value: 'last30Days' },
   { label: '本月', value: 'thisMonth' },
-  { label: '今年', value: 'thisYear' },
-  { label: '全部', value: 'all' }
+  { label: '今年', value: 'thisYear' }
 ]
 
 // 导航标签
@@ -883,7 +883,7 @@ watch(statusFilter, (newStatus) => {
 const tableData = computed(() => dataStore.filteredDataList)
 const selectedItems = ref<DataListItem[]>([])
 const currentPage = ref(1)
-const pageSize = ref(30)
+const pageSize = ref(20)  // 🔥 修复：默认每页20条
 
 // 可见列管理
 const visibleColumns = ref<string[]>([])
@@ -1236,10 +1236,15 @@ const handleSelectionChange = (selection: DataListItem[]) => {
 // 分页变化
 const handlePageChange = (page: number) => {
   currentPage.value = page
+  // 🔥 修复：调用API重新加载数据
+  dataStore.setPagination(page, pageSize.value)
 }
 
-const handlePageSizeChange = () => {
+const handlePageSizeChange = (size: number) => {
+  pageSize.value = size
   currentPage.value = 1
+  // 🔥 修复：调用API重新加载数据
+  dataStore.setPagination(1, size)
 }
 
 // DynamicTable 相关方法
@@ -1938,8 +1943,9 @@ onMounted(async () => {
 
     // 加载用户列表（用于资料分配）
     await userStore.loadUsers()
-    // 设置默认日期筛选为今日
-    dataStore.setFilters({ dateFilter: 'today' })
+    // 🔥 修复：设置默认日期筛选为全部，每页20条
+    dataStore.setFilters({ dateFilter: 'all' })
+    dataStore.setPagination(1, 20)
     // 获取可分配成员列表
     await dataStore.fetchAssigneeOptions()
     // 初始化部门数据
