@@ -493,12 +493,12 @@ router.get('/team', async (req: Request, res: Response) => {
     const memberStats: any[] = [];
 
     for (const user of users) {
-      // 🔥 修复：orders表没有sales_person_id字段，只使用created_by
+      // 🔥 修复：created_by字段可能存储用户ID或用户名，需要同时匹配
       const orders = await AppDataSource.query(
         `SELECT status, mark_type as markType, total_amount as totalAmount
          FROM orders
-         WHERE created_by = ?${dateCondition}`,
-        [user.id]
+         WHERE (created_by = ? OR created_by = ?)${dateCondition}`,
+        [user.id, user.username]
       );
 
       // 🔥 使用统一的业绩计算规则
@@ -843,9 +843,12 @@ router.get('/analysis/metrics', async (req: Request, res: Response) => {
     // 🔥 排除无效订单状态
     conditions.push(`o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded')`);
 
+    // 🔥 排除预留单（pending_transfer状态且mark_type为reserved的不计入）
+    conditions.push(`NOT (o.status = 'pending_transfer' AND o.mark_type = 'reserved')`);
+
     if (type === 'personal') {
-      conditions.push('o.created_by = ?');
-      params.push(currentUser?.userId);
+      conditions.push('(o.created_by = ? OR o.created_by = (SELECT username FROM users WHERE id = ?))');
+      params.push(currentUser?.userId, currentUser?.userId);
     } else if (type === 'department') {
       const deptId = departmentId || currentUser?.departmentId;
       if (deptId) {
@@ -858,6 +861,11 @@ router.get('/analysis/metrics', async (req: Request, res: Response) => {
       whereClause = 'WHERE ' + conditions.join(' AND ');
     }
 
+    // 🔥 修复：JOIN时同时匹配用户ID和用户名
+    const joinClause = type === 'department' || departmentId
+      ? 'JOIN users u ON (o.created_by = u.id OR o.created_by = u.username)'
+      : '';
+
     const sql = `SELECT
        SUM(o.total_amount) as totalPerformance,
        COUNT(o.id) as totalOrders,
@@ -866,7 +874,7 @@ router.get('/analysis/metrics', async (req: Request, res: Response) => {
        SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) as signOrders,
        SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END) as signPerformance
      FROM orders o
-     ${type === 'department' || departmentId ? 'JOIN users u ON o.created_by = u.id' : ''}
+     ${joinClause}
      ${whereClause}`;
 
     const [stats] = await AppDataSource.query(sql, params);
