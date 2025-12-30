@@ -230,7 +230,11 @@
       :loading="loading"
       :show-selection="true"
       :show-pagination="true"
-      :total="pagination.total"
+      :pagination="{
+        currentPage: pagination.page,
+        pageSize: pagination.size,
+        total: pagination.total
+      }"
       :page-sizes="[10, 20, 50, 100]"
       @selection-change="handleSelectionChange"
       @sort-change="handleSortChange"
