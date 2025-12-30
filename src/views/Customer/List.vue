@@ -1705,15 +1705,19 @@ const loadCustomerList = async (forceReload = false) => {
   try {
     loading.value = true
 
-    // 🔥 修复：直接调用API，传递分页参数，实现后端分页
+    // 🔥 修复：直接调用API，传递分页参数和日期参数，实现后端分页
     const { customerApi } = await import('@/api/customer')
     console.log(`[CustomerList] 🚀 加载客户, 页码: ${pagination.page}, 每页: ${pagination.size}`)
 
+    // 🔥 修复：传递日期范围参数
     const response = await customerApi.getList({
       page: pagination.page,
       pageSize: pagination.size,
       keyword: searchForm.keyword || undefined,
-      level: searchForm.level || undefined
+      level: searchForm.level || undefined,
+      dateRange: searchForm.dateRange && searchForm.dateRange.length === 2
+        ? [searchForm.dateRange[0], searchForm.dateRange[1]]
+        : undefined
     })
 
     if (response && response.data) {
