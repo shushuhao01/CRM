@@ -1441,25 +1441,15 @@ const checkPermission = () => {
   return true
 }
 
-const loadData = () => {
+const loadData = async () => {
   // 权限检查
   if (!checkPermission()) {
     return
   }
 
   try {
-    // 根据部门筛选器和用户角色加载不同数据
-    if (userStore.isAdmin) {
-      // 超级管理员：如果选择了部门，加载部门数据；否则加载公司数据
-      if (selectedDepartment.value) {
-        loadDepartmentData()
-      } else {
-        loadCompanyData()
-      }
-    } else if (userStore.isManager) {
-      // 部门经理：只能查看自己部门数据
-      loadDepartmentData()
-    }
+    // 🔥 修复：使用后端API加载数据，确保数据完整
+    await loadDataFromAPI()
 
     // 同时加载统计指标和图表数据
     loadMetrics()
@@ -1467,6 +1457,106 @@ const loadData = () => {
   } catch (error) {
     console.error('加载业绩分析数据失败:', error)
     ElMessage.error('加载数据失败，请稍后重试')
+  }
+}
+
+// 🔥 新增：从后端API加载数据
+const loadDataFromAPI = async () => {
+  try {
+    const { getTeamStats } = await import('@/api/performance')
+
+    console.log('📊 [业绩分析] 从后端API加载表格数据...')
+    const response = await getTeamStats({
+      departmentId: selectedDepartment.value || undefined,
+      startDate: dateRange.value?.[0] || undefined,
+      endDate: dateRange.value?.[1] || undefined,
+      sortBy: sortBy.value,
+      limit: 1000 // 获取所有成员数据
+    })
+
+    if (response.success && response.data) {
+      const { members, summary } = response.data
+
+      // 根据部门筛选器和用户角色显示不同数据
+      if (userStore.isAdmin && !selectedDepartment.value) {
+        // 超级管理员查看全公司数据：显示汇总行
+        tableData.value = [{
+          id: '公司总体',
+          name: '公司总体',
+          department: '全公司',
+          orderCount: summary.totalOrders,
+          orderAmount: summary.totalPerformance,
+          shipCount: members.reduce((sum: number, m: any) => sum + (m.shipCount || 0), 0),
+          shipAmount: members.reduce((sum: number, m: any) => sum + (m.shipAmount || 0), 0),
+          shipRate: summary.totalOrders > 0 ? parseFloat((members.reduce((sum: number, m: any) => sum + (m.shipCount || 0), 0) / summary.totalOrders * 100).toFixed(1)) : 0,
+          signCount: summary.signOrders,
+          signAmount: summary.signPerformance,
+          signRate: summary.signRate,
+          transitCount: members.reduce((sum: number, m: any) => sum + (m.transitCount || 0), 0),
+          transitAmount: members.reduce((sum: number, m: any) => sum + (m.transitAmount || 0), 0),
+          transitRate: summary.totalOrders > 0 ? parseFloat((members.reduce((sum: number, m: any) => sum + (m.transitCount || 0), 0) / summary.totalOrders * 100).toFixed(1)) : 0,
+          rejectCount: members.reduce((sum: number, m: any) => sum + (m.rejectCount || 0), 0),
+          rejectAmount: members.reduce((sum: number, m: any) => sum + (m.rejectAmount || 0), 0),
+          rejectRate: summary.totalOrders > 0 ? parseFloat((members.reduce((sum: number, m: any) => sum + (m.rejectCount || 0), 0) / summary.totalOrders * 100).toFixed(1)) : 0,
+          returnCount: members.reduce((sum: number, m: any) => sum + (m.returnCount || 0), 0),
+          returnAmount: members.reduce((sum: number, m: any) => sum + (m.returnAmount || 0), 0),
+          returnRate: summary.totalOrders > 0 ? parseFloat((members.reduce((sum: number, m: any) => sum + (m.returnCount || 0), 0) / summary.totalOrders * 100).toFixed(1)) : 0,
+          status: 'active'
+        }]
+      } else {
+        // 部门数据：显示部门汇总行
+        const deptId = selectedDepartment.value || userStore.currentUser?.departmentId
+        const dept = departmentStore.departments?.find((d: any) => String(d.id) === String(deptId))
+        const deptName = dept?.name || '未知部门'
+
+        tableData.value = [{
+          id: '部门数据',
+          name: deptName,
+          department: deptName,
+          orderCount: summary.totalOrders,
+          orderAmount: summary.totalPerformance,
+          shipCount: members.reduce((sum: number, m: any) => sum + (m.shipCount || 0), 0),
+          shipAmount: members.reduce((sum: number, m: any) => sum + (m.shipAmount || 0), 0),
+          shipRate: summary.totalOrders > 0 ? parseFloat((members.reduce((sum: number, m: any) => sum + (m.shipCount || 0), 0) / summary.totalOrders * 100).toFixed(1)) : 0,
+          signCount: summary.signOrders,
+          signAmount: summary.signPerformance,
+          signRate: summary.signRate,
+          transitCount: members.reduce((sum: number, m: any) => sum + (m.transitCount || 0), 0),
+          transitAmount: members.reduce((sum: number, m: any) => sum + (m.transitAmount || 0), 0),
+          transitRate: summary.totalOrders > 0 ? parseFloat((members.reduce((sum: number, m: any) => sum + (m.transitCount || 0), 0) / summary.totalOrders * 100).toFixed(1)) : 0,
+          rejectCount: members.reduce((sum: number, m: any) => sum + (m.rejectCount || 0), 0),
+          rejectAmount: members.reduce((sum: number, m: any) => sum + (m.rejectAmount || 0), 0),
+          rejectRate: summary.totalOrders > 0 ? parseFloat((members.reduce((sum: number, m: any) => sum + (m.rejectCount || 0), 0) / summary.totalOrders * 100).toFixed(1)) : 0,
+          returnCount: members.reduce((sum: number, m: any) => sum + (m.returnCount || 0), 0),
+          returnAmount: members.reduce((sum: number, m: any) => sum + (m.returnAmount || 0), 0),
+          returnRate: summary.totalOrders > 0 ? parseFloat((members.reduce((sum: number, m: any) => sum + (m.returnCount || 0), 0) / summary.totalOrders * 100).toFixed(1)) : 0,
+          status: 'active'
+        }]
+      }
+
+      console.log('📊 [业绩分析] ✅ 后端API表格数据加载成功')
+      return
+    }
+
+    console.log('📊 [业绩分析] 后端API返回失败，降级到前端计算')
+    // 降级方案：使用前端数据
+    loadDataFromStore()
+  } catch (error) {
+    console.error('📊 [业绩分析] 后端API加载失败，降级到前端计算:', error)
+    loadDataFromStore()
+  }
+}
+
+// 🔥 降级方案：从前端store加载数据
+const loadDataFromStore = () => {
+  if (userStore.isAdmin) {
+    if (selectedDepartment.value) {
+      loadDepartmentData()
+    } else {
+      loadCompanyData()
+    }
+  } else if (userStore.isManager) {
+    loadDepartmentData()
   }
 }
 
