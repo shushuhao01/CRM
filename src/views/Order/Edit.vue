@@ -405,10 +405,10 @@
             <el-col :span="12">
               <el-form-item label="订单类型" prop="markType" required>
                 <el-radio-group v-model="orderForm.markType" @change="handleMarkTypeChange">
-                  <el-radio value="normal">
+                  <el-radio label="normal">
                     <el-tag type="success" size="small">正常发货单</el-tag>
                   </el-radio>
-                  <el-radio value="reserved">
+                  <el-radio label="reserved">
                     <el-tag type="warning" size="small">预留单</el-tag>
                   </el-radio>
                 </el-radio-group>
