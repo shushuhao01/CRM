@@ -1205,6 +1205,8 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
     const allowAllRoles = ['super_admin', 'admin', 'customer_service', 'service'];
     // 🔥 经理角色（可以看本部门订单）
     const managerRoles = ['department_manager', 'manager'];
+    // 🔥 销售员角色（只能看自己的订单）
+    const salesRoles = ['sales_staff', 'sales', 'salesperson'];
 
     if (!allowAllRoles.includes(userRole)) {
       if (managerRoles.includes(userRole)) {
@@ -1221,20 +1223,14 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
           queryBuilder.andWhere('order.createdBy = :userId', { userId });
           console.log(`📋 [订单列表] 经理无部门ID，只看自己的订单: userId = ${userId}`);
         }
+      } else if (salesRoles.includes(userRole)) {
+        // 🔥 销售员只能看自己的订单（仅限订单列表页面）
+        queryBuilder.andWhere('order.createdBy = :userId', { userId });
+        console.log(`📋 [订单列表] 销售员过滤: 只看自己的订单, userId = ${userId}`);
       } else {
-        // 🔥 普通员工（销售员等）可以看到同部门成员的订单（用于团队业绩统计）
-        if (userDepartmentId) {
-          // 🔥 修复：同时匹配部门ID或创建人ID（确保能看到自己的订单）
-          queryBuilder.andWhere('(order.createdByDepartmentId = :departmentId OR order.createdBy = :userId)', {
-            departmentId: userDepartmentId,
-            userId
-          });
-          console.log(`📋 [订单列表] 普通员工过滤: 部门ID = ${userDepartmentId} 或 创建人ID = ${userId}`);
-        } else {
-          // 如果没有部门ID，只能看自己的订单
-          queryBuilder.andWhere('order.createdBy = :userId', { userId });
-          console.log(`📋 [订单列表] 普通员工无部门ID，只看自己的订单: userId = ${userId}`);
-        }
+        // 🔥 其他角色：只能看自己的订单
+        queryBuilder.andWhere('order.createdBy = :userId', { userId });
+        console.log(`📋 [订单列表] 其他角色过滤: 只看自己的订单, userId = ${userId}`);
       }
     } else {
       console.log(`📋 [订单列表] ${userRole}角色，查看所有订单`);
