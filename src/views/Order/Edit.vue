@@ -140,6 +140,28 @@
                 </el-form-item>
               </el-col>
             </el-row>
+            <el-row>
+              <el-col :span="24">
+                <el-form-item label="收货地址" prop="receiverAddress">
+                  <el-input
+                    v-model="orderForm.receiverAddress"
+                    placeholder="请输入详细收货地址"
+                    clearable
+                  >
+                    <template #suffix v-if="selectedCustomer && selectedCustomer.address">
+                      <el-button
+                        size="small"
+                        type="text"
+                        @click="syncCustomerAddress"
+                        title="同步客户地址"
+                      >
+                        <el-icon><Location /></el-icon>
+                      </el-button>
+                    </template>
+                  </el-input>
+                </el-form-item>
+              </el-col>
+            </el-row>
           </div>
         </el-collapse-transition>
       </div>
@@ -710,6 +732,7 @@ const orderForm = reactive({
   deliveryTime: '',
   receiverName: '',
   receiverPhone: '',
+  receiverAddress: '',
   expressCompany: '',
   serviceWechat: '',
   orderSource: '',
@@ -963,6 +986,7 @@ const loadOrderData = async () => {
         // 配送信息
         receiverName: order.receiverName || order.shippingName || '',
         receiverPhone: order.receiverPhone || order.shippingPhone || '',
+        receiverAddress: order.receiverAddress || order.shippingAddress || order.deliveryAddress || '',
         deliveryAddress: order.deliveryAddress || order.shippingAddress || '',
         deliveryTime: order.deliveryTime || '',
         expressCompany: order.expressCompany || '',
@@ -1284,6 +1308,14 @@ const handlePhoneSelect = (phoneId: string | null) => {
   }
 }
 
+// 🔥 同步客户地址到收货地址
+const syncCustomerAddress = () => {
+  if (selectedCustomer.value && selectedCustomer.value.address) {
+    orderForm.receiverAddress = selectedCustomer.value.address
+    ElMessage.success('已同步客户地址')
+  }
+}
+
 // 添加电话号码
 const addPhoneNumber = async () => {
   if (!phoneForm.phone.trim()) {
@@ -1488,7 +1520,8 @@ const confirmSaveOrder = async () => {
       // 收货信息
       shippingName: orderForm.receiverName,
       shippingPhone: orderForm.receiverPhone,
-      shippingAddress: orderForm.deliveryAddress,
+      shippingAddress: orderForm.receiverAddress || orderForm.deliveryAddress,
+      receiverAddress: orderForm.receiverAddress,
       expressCompany: orderForm.expressCompany,
       // 客服和订单来源
       serviceWechat: orderForm.serviceWechat,
