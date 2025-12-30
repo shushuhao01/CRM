@@ -742,143 +742,14 @@ const loadSharedToMeCustomers = async () => {
 }
 
 // 计算搜索结果 - 根据用户角色过滤客户数据
+// 计算搜索结果 - 🔥 修复：后端已经处理了权限过滤和搜索，直接返回store数据
 const searchResults = computed(() => {
   console.log('=== searchResults computed ===')
   console.log('customerStore.customers.length:', customerStore.customers.length)
 
-  const currentUser = userStore.currentUser
-  if (!currentUser) {
-    console.log('用户未登录，返回空列表')
-    return []
-  }
-
-  console.log('当前用户:', currentUser.name, '角色:', currentUser.role)
-
-  // 🔥 根据角色过滤客户数据
-  let results = [...customerStore.customers]
-
-  // 超级管理员和管理员：可以看到所有客户
-  if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
-    console.log('[权限过滤] 超级管理员/管理员：显示所有客户')
-    // 不做过滤，显示全部
-  }
-  // 部门经理：可以看到所属部门成员创建的客户 + 分享给自己的客户 + 自己创建的客户
-  else if (currentUser.role === 'department_manager') {
-    console.log('[权限过滤] 部门经理：显示部门客户')
-
-    // 获取部门成员ID列表
-    const departmentMemberIds = getDepartmentMemberIds(currentUser.departmentId || currentUser.department)
-
-    results = results.filter(customer => {
-      // 自己创建的客户
-      if (customer.createdBy === currentUser.id || customer.salesPersonId === currentUser.id) {
-        return true
-      }
-      // 部门成员创建的客户
-      if (departmentMemberIds.includes(customer.createdBy || '') ||
-          departmentMemberIds.includes(customer.salesPersonId || '')) {
-        return true
-      }
-      // 分享给自己的客户
-      if (sharedToMeCustomerIds.value.includes(customer.id)) {
-        return true
-      }
-      return false
-    })
-
-    console.log('[权限过滤] 部门经理过滤后客户数量:', results.length)
-  }
-  // 销售员/客服：只能看到自己创建的客户 + 分享给自己的客户
-  else {
-    console.log('[权限过滤] 销售员/客服：显示自己的客户')
-
-    results = results.filter(customer => {
-      // 自己创建的客户
-      if (customer.createdBy === currentUser.id || customer.salesPersonId === currentUser.id) {
-        return true
-      }
-      // 分享给自己的客户
-      if (sharedToMeCustomerIds.value.includes(customer.id)) {
-        return true
-      }
-      return false
-    })
-
-    console.log('[权限过滤] 销售员过滤后客户数量:', results.length)
-  }
-
-  // 应用搜索过滤
-  if (searchForm.keyword) {
-    const keyword = searchForm.keyword.toLowerCase().trim()
-    results = results.filter(customer => {
-      // 搜索客户姓名
-      if (customer.name.toLowerCase().includes(keyword)) return true
-
-      // 搜索电话号码
-      if (customer.phone.includes(searchForm.keyword)) return true
-
-      // 搜索客户编码
-      if (customer.code && customer.code.toLowerCase().includes(keyword)) return true
-
-      // 搜索微信号
-      if (customer.wechatId && customer.wechatId.toLowerCase().includes(keyword)) return true
-
-      // 搜索邮箱
-      if (customer.email && customer.email.toLowerCase().includes(keyword)) return true
-
-      // 搜索公司名称
-      if (customer.company && customer.company.toLowerCase().includes(keyword)) return true
-
-      return false
-    })
-  }
-
-  if (searchForm.level) {
-    results = results.filter(customer =>
-      customer.level === searchForm.level
-    )
-  }
-
-  if (searchForm.status) {
-    results = results.filter(customer =>
-      customer.status === searchForm.status
-    )
-  }
-
-  if (searchForm.dateRange && searchForm.dateRange.length === 2) {
-    const [startDate, endDate] = searchForm.dateRange
-    results = results.filter(customer => {
-      if (!customer.createTime) return false
-
-      // 处理不同格式的日期
-      let createTime: Date
-      try {
-        createTime = new Date(customer.createTime)
-        // 检查日期是否有效
-        if (isNaN(createTime.getTime())) {
-          console.warn('无效的createTime格式:', customer.createTime)
-          return false
-        }
-      } catch (error) {
-        console.warn('解析createTime失败:', customer.createTime, error)
-        return false
-      }
-
-      const start = new Date(startDate + 'T00:00:00')
-      const end = new Date(endDate + 'T23:59:59')
-
-      return createTime >= start && createTime <= end
-    })
-  }
-
-  // 按创建时间倒序排列，确保最新客户显示在顶部
-  results.sort((a, b) => {
-    const timeA = new Date(a.createTime || 0).getTime()
-    const timeB = new Date(b.createTime || 0).getTime()
-    return timeB - timeA // 倒序：最新的在前面
-  })
-
-  return results
+  // 🔥 后端API已经处理了权限过滤和搜索筛选，直接返回store中的数据
+  // 不再在前端重复过滤，避免分页total不匹配的问题
+  return customerStore.customers
 })
 
 // 获取部门成员ID列表

@@ -58,7 +58,7 @@
         </div>
       </div>
 
-      <!-- 基础搜索 -->
+      <!-- 基础搜索 - 第一行 -->
       <el-form :model="searchForm" inline class="basic-search">
         <el-form-item label="订单号">
           <el-input
@@ -93,8 +93,34 @@
             <el-option label="退单" value="return" />
           </el-select>
         </el-form-item>
+      </el-form>
+      <!-- 基础搜索 - 第二行 -->
+      <el-form :model="searchForm" inline class="basic-search" style="margin-top: -10px;">
+        <el-form-item label="部门">
+          <el-select
+            v-model="searchForm.departmentId"
+            placeholder="请选择部门"
+            clearable
+            style="min-width: 150px; width: auto;"
+            @change="handleDepartmentChange"
+          >
+            <el-option
+              v-for="dept in departmentStore.departments"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="销售人员">
-          <el-select v-model="searchForm.salesPersonId" placeholder="请选择销售人员" clearable filterable style="min-width: 160px; width: auto;">
+          <el-select
+            v-model="searchForm.salesPersonId"
+            placeholder="请选择销售人员"
+            clearable
+            filterable
+            style="min-width: 160px; width: auto;"
+            @change="handleSalesPersonChange"
+          >
             <el-option
               v-for="user in salesUserList"
               :key="user.id"
@@ -550,6 +576,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
+import { useDepartmentStore } from '@/stores/department'
 import { useAppStore } from '@/stores/app'
 import { useNotificationStore } from '@/stores/notification'
 import { messageNotificationService } from '@/services/messageNotificationService'
@@ -646,6 +673,7 @@ const route = useRoute()
 const safeNavigator = createSafeNavigator(router)
 const orderStore = useOrderStore()
 const userStore = useUserStore()
+const departmentStore = useDepartmentStore()
 const appStore = useAppStore()
 const performanceStore = usePerformanceStore()
 
@@ -692,6 +720,7 @@ const searchForm = reactive({
   customerName: '',
   status: [],
   markType: '',
+  departmentId: '', // 🔥 新增：部门筛选
   salesPersonId: '', // 🔥 新增：销售人员筛选
   dateRange: [],
   minAmount: undefined,
@@ -1025,56 +1054,12 @@ const applyDataScopeControl = (orders: any[]) => {
 }
 
 // 计算属性
+// 🔥 修复：后端API已经处理了大部分筛选，前端只保留必要的本地过滤
 const filteredOrderList = computed(() => {
-  // 首先应用数据范围控制
-  let filtered = applyDataScopeControl(orderList.value)
+  // 🔥 后端已经处理了权限过滤，直接使用store数据
+  let filtered = orderList.value
 
-  // 快速筛选 - 状态筛选
-  if (activeQuickFilter.value !== 'all') {
-    filtered = filtered.filter(order => {
-      return order.status === activeQuickFilter.value
-    })
-  }
-
-  // 高级筛选
-  if (searchForm.orderNumber) {
-    filtered = filtered.filter(order =>
-      order.orderNumber.toLowerCase().includes(searchForm.orderNumber.toLowerCase())
-    )
-  }
-  if (searchForm.customerName) {
-    filtered = filtered.filter(order =>
-      order.customerName.toLowerCase().includes(searchForm.customerName.toLowerCase())
-    )
-  }
-  if (searchForm.customerPhone) {
-    filtered = filtered.filter(order =>
-      order.customerPhone.includes(searchForm.customerPhone)
-    )
-  }
-  if (searchForm.status.length > 0) {
-    filtered = filtered.filter(order =>
-      searchForm.status.includes(order.status)
-    )
-  }
-  if (searchForm.markType) {
-    filtered = filtered.filter(order =>
-      (order.markType || 'normal') === searchForm.markType
-    )
-  }
-  // 🔥 销售人员筛选已移至后端API
-  if (searchForm.productName) {
-    filtered = filtered.filter(order =>
-      Array.isArray(order.products) && order.products.some((product: ProductItem) =>
-        product.name.toLowerCase().includes(searchForm.productName.toLowerCase())
-      )
-    )
-  }
-  if (searchForm.paymentMethod) {
-    filtered = filtered.filter(order =>
-      order.paymentMethod === searchForm.paymentMethod
-    )
-  }
+  // 🔥 只保留需要本地判断的筛选（这些筛选条件需要前端逻辑判断）
   // 仅显示已提审的待审核订单
   if (searchForm.onlyAuditPendingSubmitted) {
     filtered = filtered.filter(order =>
@@ -1086,49 +1071,6 @@ const filteredOrderList = computed(() => {
     filtered = filtered.filter(order =>
       canSubmitAudit(order.status, order.auditStatus, order.isAuditTransferred, order.operatorId)
     )
-  }
-  if (searchForm.minAmount !== undefined) {
-    filtered = filtered.filter(order => order.totalAmount >= searchForm.minAmount)
-  }
-  if (searchForm.maxAmount !== undefined) {
-    filtered = filtered.filter(order => order.totalAmount <= searchForm.maxAmount)
-  }
-  if (searchForm.dateRange && searchForm.dateRange.length === 2) {
-    const [startDate, endDate] = searchForm.dateRange
-    filtered = filtered.filter(order => {
-      const orderDate = new Date(order.createTime)
-      return orderDate >= startDate && orderDate <= endDate
-    })
-  }
-  // 应用排序（自定义排序）
-  const { prop, order } = sortConfig.value || { prop: 'createTime', order: 'descending' }
-  if (prop && order && order !== null) {
-    const normalize = (o, p) => {
-      switch (p) {
-        case 'createTime':
-          return new Date(o.createTime).getTime() || 0
-        case 'totalAmount':
-        case 'depositAmount':
-          return Number(o[p] ?? 0)
-        case 'products':
-          return Array.isArray(o.products) ? o.products.length : 0
-        default:
-          const v = o[p]
-          if (typeof v === 'string') return v.toLowerCase()
-          return Number(v ?? 0)
-      }
-    }
-    filtered = filtered.slice().sort((a, b) => {
-      const av = normalize(a, prop)
-      const bv = normalize(b, prop)
-      let cmp = 0
-      if (typeof av === 'string' && typeof bv === 'string') {
-        cmp = av.localeCompare(bv)
-      } else {
-        cmp = (av as number) - (bv as number)
-      }
-      return order === 'ascending' ? cmp : -cmp
-    })
   }
 
   return filtered
@@ -1148,14 +1090,12 @@ const canViewCancelAudit = computed(() => {
 
 // 待审核的取消订单列表（应用数据范围控制）
 const pendingCancelOrders = computed(() => {
-  const baseFiltered = applyDataScopeControl(orderList.value)
-  return baseFiltered.filter(order => order.status === 'pending_cancel')
+  return orderList.value.filter(order => order.status === 'pending_cancel')
 })
 
-// 已审核的取消订单列表（包括已取消和取消失败）（应用数据范围控制）
+// 已审核的取消订单列表（包括已取消和取消失败）
 const auditedCancelOrders = computed(() => {
-  const baseFiltered = applyDataScopeControl(orderList.value)
-  return baseFiltered.filter(order =>
+  return orderList.value.filter(order =>
     order.status === 'cancelled' || order.status === 'cancel_failed'
   )
 })
@@ -2120,6 +2060,7 @@ const handleReset = () => {
   searchForm.customerName = ''
   searchForm.status = []
   searchForm.markType = ''
+  searchForm.departmentId = '' // 🔥 新增：重置部门筛选
   searchForm.salesPersonId = '' // 🔥 新增：重置销售人员筛选
   searchForm.dateRange = []
   searchForm.minAmount = undefined
@@ -2134,6 +2075,18 @@ const handleReset = () => {
   advancedSearchVisible.value = false
   pagination.page = 1
   // 🔥 修复：重置后调用API重新加载数据
+  loadOrderList(true)
+}
+
+// 🔥 部门变更时自动加载数据
+const handleDepartmentChange = () => {
+  pagination.page = 1
+  loadOrderList(true)
+}
+
+// 🔥 销售人员变更时自动加载数据
+const handleSalesPersonChange = () => {
+  pagination.page = 1
   loadOrderList(true)
 }
 
@@ -2207,8 +2160,8 @@ const loadOrderList = async (force = false) => {
     }
 
     // 🔥 关键词搜索
-    if (searchForm.orderNo) {
-      params.orderNo = searchForm.orderNo
+    if (searchForm.orderNumber) {
+      params.orderNumber = searchForm.orderNumber
     }
     if (searchForm.customerName) {
       params.customerName = searchForm.customerName
@@ -2217,6 +2170,11 @@ const loadOrderList = async (force = false) => {
     // 🔥 标记筛选
     if (searchForm.markType) {
       params.markType = searchForm.markType
+    }
+
+    // 🔥 部门筛选
+    if (searchForm.departmentId) {
+      params.departmentId = searchForm.departmentId
     }
 
     // 🔥 销售人员筛选
