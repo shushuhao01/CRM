@@ -463,9 +463,14 @@ router.get('/trace/query', async (req: Request, res: Response) => {
         });
         if (order) {
           order.logisticsStatus = result.status;
-          // 保存最新物流动态
+          // 🔥 修复：保存最新物流动态前先按时间排序，确保取到最新的
           if (result.traces.length > 0) {
-            order.latestLogisticsInfo = result.traces[0].description || result.traces[0].status || '';
+            const sortedTraces = [...result.traces].sort((a, b) => {
+              const timeA = new Date(a.time).getTime();
+              const timeB = new Date(b.time).getTime();
+              return timeB - timeA; // 倒序，最新的在前
+            });
+            order.latestLogisticsInfo = sortedTraces[0].description || sortedTraces[0].status || '';
           }
           if (result.estimatedDeliveryTime) {
             order.expectedDeliveryDate = result.estimatedDeliveryTime;
@@ -571,7 +576,13 @@ router.post('/trace/batch-query', async (req: Request, res: Response) => {
               });
               if (order) {
                 order.logisticsStatus = result.status;
-                order.latestLogisticsInfo = result.traces[0].description || result.traces[0].status || '';
+                // 🔥 修复：保存最新物流动态前先按时间排序
+                const sortedTraces = [...result.traces].sort((a, b) => {
+                  const timeA = new Date(a.time).getTime();
+                  const timeB = new Date(b.time).getTime();
+                  return timeB - timeA;
+                });
+                order.latestLogisticsInfo = sortedTraces[0].description || sortedTraces[0].status || '';
                 if (result.estimatedDeliveryTime) {
                   order.expectedDeliveryDate = result.estimatedDeliveryTime;
                 }
@@ -683,9 +694,14 @@ router.post('/trace/refresh', async (req: Request, res: Response) => {
         if (order) {
           // 更新订单的物流状态
           order.logisticsStatus = result.status;
-          // 🔥 保存最新物流动态（取第一条轨迹的描述）
+          // 🔥 修复：保存最新物流动态前先按时间排序，确保取到最新的
           if (result.traces.length > 0) {
-            const latestTrace = result.traces[0];
+            const sortedTraces = [...result.traces].sort((a, b) => {
+              const timeA = new Date(a.time).getTime();
+              const timeB = new Date(b.time).getTime();
+              return timeB - timeA; // 倒序，最新的在前
+            });
+            const latestTrace = sortedTraces[0];
             order.latestLogisticsInfo = latestTrace.description || latestTrace.status || '';
           }
           // 🔥 如果有预计送达时间，也更新

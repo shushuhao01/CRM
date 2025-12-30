@@ -894,15 +894,15 @@ const getDepartmentMemberIds = (departmentId: string): string[] => {
   return members.map(m => m.id)
 }
 
-// 计算分页总数
-const totalCount = computed(() => searchResults.value.length)
+// 计算分页总数 - 🔥 修复：使用后端返回的总数，而不是前端过滤后的数量
+const totalCount = computed(() => pagination.total)
 
 // 使用computed获取客户列表数据
 // 🔥 修复：API已经返回分页后的数据，直接使用searchResults
 const customerList = computed(() => {
   console.log('=== customerList computed ===')
   console.log('searchResults.value.length:', searchResults.value.length)
-  console.log('pagination:', pagination)
+  console.log('pagination.total:', pagination.total)
 
   // 🔥 API已经返回分页后的数据，只需要应用前端搜索筛选
   return searchResults.value
@@ -1782,10 +1782,10 @@ const loadSummaryData = () => {
   }
 }
 
-// 监听搜索结果数量变化，自动更新分页总数
-watch(totalCount, (newCount) => {
-  pagination.total = newCount
-})
+// 🔥 删除：不再需要监听totalCount，因为它现在直接使用pagination.total
+// watch(totalCount, (newCount) => {
+//   pagination.total = newCount
+// })
 
 // 监听customerStore中的客户数据变化，确保列表实时更新
 watch(() => customerStore.customers, (newCustomers) => {
@@ -1843,29 +1843,13 @@ watch(() => route.path, async (newPath, oldPath) => {
 // 监听路由查询参数变化，处理刷新请求（参考商品模块的简单实现）
 watch(() => route.query, (newQuery) => {
   if (route.path === '/customer/list' && newQuery.refresh === 'true') {
-    console.log('检测到刷新参数，更新客户列表显示')
-    console.log('当前客户总数:', customerStore.customers.length)
-    console.log('搜索结果数量:', searchResults.value.length)
+    console.log('检测到刷新参数，重新加载客户列表')
 
-    // 重置分页到第一页，确保新客户能被看到
+    // 重置分页到第一页
     pagination.page = 1
 
-    // 立即更新分页总数
-    pagination.total = searchResults.value.length
-
-    // 强制触发多次响应式更新，确保数据正确显示
-    nextTick(() => {
-      console.log('第一次nextTick - 分页总数:', pagination.total)
-      console.log('第一次nextTick - 当前页客户数:', customerList.value.length)
-
-      // 再次确保数据更新
-      nextTick(() => {
-        pagination.total = searchResults.value.length
-        console.log('第二次nextTick - 最终分页总数:', pagination.total)
-        console.log('第二次nextTick - 最终客户数:', customerList.value.length)
-        console.log('第二次nextTick - 客户列表:', customerList.value.map(c => c.name))
-      })
-    })
+    // 🔥 修复：重新加载数据，让后端返回正确的total
+    loadCustomerList(true)
 
     // 清除刷新参数
     safeNavigator.replace({ path: '/customer/list' })
@@ -1966,10 +1950,7 @@ onActivated(async () => {
   } else {
     // 🔥 批次262修复：createPersistentStore会自动同步数据
     console.log('[客户列表] 当前客户数量:', customerStore.customers.length)
-
-    // 更新分页总数
-    pagination.total = totalCount.value
-    console.log('[客户列表] 更新分页总数:', pagination.total)
+    console.log('[客户列表] 分页总数:', pagination.total)
   }
 
   console.log('[客户列表] onActivated完成，当前显示客户数量:', customerList.value.length)
