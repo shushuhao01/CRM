@@ -898,14 +898,14 @@ const getDepartmentMemberIds = (departmentId: string): string[] => {
 const totalCount = computed(() => pagination.total)
 
 // 使用computed获取客户列表数据
-// 🔥 修复：API已经返回分页后的数据，直接使用searchResults
+// 🔥 修复：后端API已经返回分页后的数据，直接使用customerStore.customers
 const customerList = computed(() => {
   console.log('=== customerList computed ===')
-  console.log('searchResults.value.length:', searchResults.value.length)
+  console.log('customerStore.customers.length:', customerStore.customers.length)
   console.log('pagination.total:', pagination.total)
 
-  // 🔥 API已经返回分页后的数据，只需要应用前端搜索筛选
-  return searchResults.value
+  // 🔥 后端API已经处理了分页和筛选，直接返回store中的数据
+  return customerStore.customers
 })
 
 

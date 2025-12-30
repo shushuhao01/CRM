@@ -634,12 +634,40 @@ const loadData = async () => {
         destination: order.receiverAddress || order.shippingAddress || '',
         shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
         logisticsStatus,
-        latestLogisticsInfo: isLogisticsFinished
-          ? (order.latestLogisticsInfo || getFinishedStatusText(logisticsStatus))
-          : (order.trackingNumber || order.expressNo) ? '获取中...' : '暂无物流信息',
+        // 🔥 修复：检查数据库中的latestLogisticsInfo是否正确
+        // 如果已完成订单的物流动态看起来像是揽收信息，则标记为需要重新查询
+        latestLogisticsInfo: (() => {
+          if (isLogisticsFinished && order.latestLogisticsInfo) {
+            const info = order.latestLogisticsInfo.toLowerCase()
+            // 如果是揽收信息但订单已签收，说明数据库中的值是错误的
+            const isPickupInfo = info.includes('揽收') || info.includes('收件') || info.includes('已收取') || info.includes('快件已收')
+            const isDeliveredStatus = logisticsStatus === 'delivered'
+            if (isPickupInfo && isDeliveredStatus) {
+              // 数据库中的值是错误的，需要重新查询
+              return '获取中...'
+            }
+            return order.latestLogisticsInfo
+          }
+          if (isLogisticsFinished) {
+            return order.latestLogisticsInfo || getFinishedStatusText(logisticsStatus)
+          }
+          return (order.trackingNumber || order.expressNo) ? '获取中...' : '暂无物流信息'
+        })(),
         estimatedDate,
         customerPhone,
-        isLogisticsFinished
+        // 🔥 修复：如果数据库中的latestLogisticsInfo是错误的，也需要重新查询
+        isLogisticsFinished: (() => {
+          if (isLogisticsFinished && order.latestLogisticsInfo) {
+            const info = order.latestLogisticsInfo.toLowerCase()
+            const isPickupInfo = info.includes('揽收') || info.includes('收件') || info.includes('已收取') || info.includes('快件已收')
+            const isDeliveredStatus = logisticsStatus === 'delivered'
+            if (isPickupInfo && isDeliveredStatus) {
+              // 数据库中的值是错误的，需要重新查询
+              return false
+            }
+          }
+          return isLogisticsFinished
+        })()
       }
     })
 
