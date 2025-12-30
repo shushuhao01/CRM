@@ -1606,7 +1606,7 @@ const formatNumber = (num: number) => {
   return num.toLocaleString()
 }
 
-const handleQuickFilter = (value: string) => {
+const handleQuickFilter = async (value: string) => {
   selectedQuickFilter.value = value
   // 根据快速筛选设置日期范围
   const today = new Date()
@@ -1656,6 +1656,9 @@ const handleQuickFilter = (value: string) => {
       dateRange.value = [formatDate(startOfYear), formatDate(today)]
       break
   }
+
+  // 🔥 修复：切换筛选后自动刷新数据
+  await refreshData()
 }
 
 const queryData = async () => {
@@ -2531,8 +2534,7 @@ onMounted(async () => {
     }
   }
 
-  handleQuickFilter('today')
-  await refreshData()
+  await handleQuickFilter('today')
 
   // 设置定时刷新（每5分钟）
   refreshTimer = setInterval(refreshData, 5 * 60 * 1000)
