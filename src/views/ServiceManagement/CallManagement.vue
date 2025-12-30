@@ -3307,24 +3307,31 @@ const loadOutboundList = async () => {
   try {
     loading.value = true
 
-    // 从客户store获取客户数据
-    await customerStore.loadCustomers()
-    const allCustomers = customerStore.customers
-    const currentUserId = userStore.currentUser?.id
-    const currentUserRole = userStore.currentUser?.role
+    // 🔥 修复：直接调用API，传递分页参数，实现后端分页
+    const { customerApi } = await import('@/api/customer')
+    console.log(`[通话管理] 🚀 加载客户, 页码: ${pagination.currentPage}, 每页: ${pagination.pageSize}`)
 
-    // 🔥 修复：管理员和超管可以看到所有客户，其他角色只能看到自己的客户
-    const isAdminOrSuperAdmin = currentUserRole === 'admin' || currentUserRole === 'super_admin'
-    const userCustomers = isAdminOrSuperAdmin
-      ? allCustomers  // 管理员和超管看到所有客户
-      : allCustomers.filter(customer =>
-          customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
-        )
+    const response = await customerApi.getList({
+      page: pagination.currentPage,
+      pageSize: pagination.pageSize,
+      keyword: searchKeyword.value || undefined
+    })
 
-    console.log(`[通话管理] 当前用户角色: ${currentUserRole}, 是否管理员: ${isAdminOrSuperAdmin}, 客户数量: ${userCustomers.length}`)
+    if (!response || !response.data) {
+      console.log('[通话管理] API无数据')
+      outboundList.value = []
+      pagination.total = 0
+      return
+    }
+
+    const { list: customers, total } = response.data
+    console.log(`[通话管理] API返回客户数量: ${customers?.length || 0}, 总数: ${total}`)
+
+    // 🔥 更新分页总数（使用后端返回的total）
+    pagination.total = total || 0
 
     // 转换为呼出列表格式，并异步加载每个客户的跟进和通话数据
-    const convertedList = await Promise.all(userCustomers.map(async customer => {
+    const convertedList = await Promise.all((customers || []).map(async (customer: any) => {
       // 尝试获取客户的最新跟进记录和通话记录
       let lastFollowUp = ''
       let callTags: string[] = []
@@ -3333,12 +3340,9 @@ const loadOutboundList = async () => {
 
       try {
         // 获取跟进记录
-        console.log(`[通话管理] 获取客户 ${customer.id} 的跟进记录`)
         const followupsRes = await customerDetailApi.getCustomerFollowUps(customer.id)
-        console.log(`[通话管理] 客户 ${customer.id} 跟进记录响应:`, followupsRes)
         if (followupsRes.success && followupsRes.data && followupsRes.data.length > 0) {
           const latestFollowup = followupsRes.data[0]
-          console.log(`[通话管理] 客户 ${customer.id} 最新跟进:`, latestFollowup)
           lastFollowUp = latestFollowup.content ? (latestFollowup.content.length > 20 ? latestFollowup.content.substring(0, 20) + '...' : latestFollowup.content) : ''
         }
 
@@ -3350,7 +3354,6 @@ const loadOutboundList = async () => {
             const latestCall = callsRes.data[0]
             lastCallTime = formatDateTime(latestCall.startTime || latestCall.createdAt)
             // 从最新通话记录获取通话标签
-            // 如果最新通话没有标签，则查找之前有标签的通话
             if (latestCall.callTags && latestCall.callTags.length > 0) {
               callTags = latestCall.callTags
             } else {
@@ -3393,86 +3396,22 @@ const loadOutboundList = async () => {
 
     // 更新呼出列表数据
     outboundList.value = convertedList
-    pagination.total = convertedList.length
+    console.log(`[通话管理] ✅ 加载完成: ${convertedList.length} 条, 总数: ${pagination.total}`)
 
   } catch (error) {
     console.error('加载呼出列表失败:', error)
     ElMessage.error('加载呼出列表失败')
+    outboundList.value = []
+    pagination.total = 0
   } finally {
     loading.value = false
   }
 }
 
 const handleSearch = async () => {
-  try {
-    loading.value = true
-
-    // 从客户store获取客户数据
-    await customerStore.loadCustomers()
-    const allCustomers = customerStore.customers
-    const currentUserId = userStore.currentUser?.id
-    const currentUserRole = userStore.currentUser?.role
-
-    // 🔥 修复：管理员和超管可以看到所有客户，其他角色只能看到自己的客户
-    const isAdminOrSuperAdmin = currentUserRole === 'admin' || currentUserRole === 'super_admin'
-    let userCustomers = isAdminOrSuperAdmin
-      ? allCustomers  // 管理员和超管看到所有客户
-      : allCustomers.filter(customer =>
-          customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
-        )
-
-    // 应用搜索关键词筛选
-    if (searchKeyword.value) {
-      const keyword = searchKeyword.value.toLowerCase()
-      userCustomers = userCustomers.filter(customer =>
-        customer.name.toLowerCase().includes(keyword) ||
-        customer.phone.includes(keyword) ||
-        (customer.company && customer.company.toLowerCase().includes(keyword))
-      )
-    }
-
-    // 应用其他筛选条件
-    if (filterForm.customerLevel) {
-      userCustomers = userCustomers.filter(customer => customer.level === filterForm.customerLevel)
-    }
-
-    if (filterForm.status) {
-      // 根据客户状态筛选
-      userCustomers = userCustomers.filter(customer => customer.status === filterForm.status)
-    }
-
-    // 转换为呼出列表格式
-    const convertedList = userCustomers.map(customer => ({
-      id: customer.id,
-      customerName: customer.name,
-      phone: customer.phone, // 修正字段名称，与表格显示一致
-      customerPhone: customer.phone, // 保留原字段名，用于其他地方
-      company: customer.company || '未填写',
-      customerLevel: customer.level,
-      lastCallTime: customer.lastServiceDate || '暂无记录',
-      callCount: 0,
-      status: 'pending',
-      salesPerson: customer.salesPersonName || userStore.currentUser?.name || '当前用户',
-      remark: customer.remarks || '',
-      // 添加完整的地址信息
-      address: customer.address || '',
-      province: customer.province || '',
-      city: customer.city || '',
-      district: customer.district || '',
-      street: customer.street || '',
-      detailAddress: customer.detailAddress || ''
-    }))
-
-    // 更新呼出列表数据
-    outboundList.value = convertedList
-    pagination.total = convertedList.length
-
-  } catch (error) {
-    console.error('搜索失败:', error)
-    ElMessage.error('搜索失败')
-  } finally {
-    loading.value = false
-  }
+  // 🔥 修复：搜索时重置到第一页，然后调用API重新加载数据
+  pagination.currentPage = 1
+  await loadOutboundList()
 }
 
 const resetFilter = () => {
