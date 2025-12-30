@@ -29,6 +29,7 @@ router.get('/', async (req: Request, res: Response) => {
       pageSize = 10,
       name,
       phone,
+      keyword,  // 🔥 新增：支持关键词搜索（同时搜索姓名和电话）
       level,
       status,
       startDate,
@@ -131,6 +132,11 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     // 添加其他筛选条件
+    // 🔥 新增：支持keyword关键词搜索（同时搜索姓名和电话）
+    if (keyword) {
+      queryBuilder.andWhere('(customer.name LIKE :keyword OR customer.phone LIKE :keyword)', { keyword: `%${keyword}%` });
+    }
+
     if (name) {
       queryBuilder.andWhere('customer.name LIKE :name', { name: `%${name}%` });
     }

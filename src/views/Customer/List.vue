@@ -898,21 +898,14 @@ const getDepartmentMemberIds = (departmentId: string): string[] => {
 const totalCount = computed(() => searchResults.value.length)
 
 // 使用computed获取客户列表数据
+// 🔥 修复：API已经返回分页后的数据，直接使用searchResults
 const customerList = computed(() => {
   console.log('=== customerList computed ===')
   console.log('searchResults.value.length:', searchResults.value.length)
   console.log('pagination:', pagination)
 
-  const start = (pagination.page - 1) * pagination.size
-  const end = start + pagination.size
-
-  console.log('分页范围:', start, 'to', end)
-
-  const result = searchResults.value.slice(start, end)
-  console.log('分页结果数量:', result.length)
-  console.log('分页结果:', result.map(c => ({ name: c.name, phone: c.phone })))
-
-  return result
+  // 🔥 API已经返回分页后的数据，只需要应用前端搜索筛选
+  return searchResults.value
 })
 
 
@@ -1623,9 +1616,8 @@ const getShareStatusType = (shareInfo: { status: string; expireTime?: string } |
 
 const handleSearch = () => {
   pagination.page = 1
-  pagination.total = totalCount.value
-  // 搜索后更新统计数据
-  loadSummaryData()
+  // 🔥 修复：搜索时重新加载数据（后端分页）
+  loadCustomerList(true)
 }
 
 const handleReset = () => {
@@ -1641,11 +1633,15 @@ const handleReset = () => {
 
 const handleSizeChange = (size: number) => {
   pagination.size = size
-  pagination.total = totalCount.value
+  pagination.page = 1 // 重置到第一页
+  // 🔥 修复：调用API重新加载数据（后端分页）
+  loadCustomerList(true)
 }
 
 const handleCurrentChange = (page: number) => {
   pagination.page = page
+  // 🔥 修复：调用API重新加载数据（后端分页）
+  loadCustomerList(true)
 }
 
 // 导出客户数据
@@ -1709,36 +1705,38 @@ const loadCustomerList = async (forceReload = false) => {
   try {
     loading.value = true
 
-    // 🔥 直接检查hostname判断环境，不依赖任何其他函数
-    const hostname = window.location.hostname
-    const isProdEnv = !(
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname.includes('192.168') ||
-      hostname.includes('dev.') ||
-      hostname.includes('test.')
-    )
+    // 🔥 修复：直接调用API，传递分页参数，实现后端分页
+    const { customerApi } = await import('@/api/customer')
+    console.log(`[CustomerList] 🚀 加载客户, 页码: ${pagination.page}, 每页: ${pagination.size}`)
 
-    console.log('[CustomerList] hostname:', hostname, ', isProdEnv:', isProdEnv)
+    const response = await customerApi.getList({
+      page: pagination.page,
+      pageSize: pagination.size,
+      keyword: searchForm.keyword || undefined,
+      level: searchForm.level || undefined
+    })
 
-    // 🔥 无论开发还是生产环境，都从API加载数据
-    console.log('[CustomerList] 从API加载客户数据')
-    await customerStore.loadCustomers()
-
-    // 确保搜索结果已更新
-    await nextTick()
-
-    // 更新分页总数（基于搜索结果）
-    pagination.total = searchResults.value.length
+    if (response && response.data) {
+      const { list, total } = response.data
+      // 🔥 更新客户数据到store
+      customerStore.customers = list || []
+      // 🔥 更新分页总数（使用后端返回的total）
+      pagination.total = total || 0
+      console.log(`[CustomerList] ✅ 加载完成: ${list?.length || 0} 条, 总数: ${total}`)
+    } else {
+      console.log('[CustomerList] API无数据，客户列表为空')
+      customerStore.customers = []
+      pagination.total = 0
+    }
 
     // 加载统计数据
     await loadSummaryData()
 
-    console.log('[CustomerList] 加载完成，客户数量:', customerStore.customers.length)
-
   } catch (error) {
     console.error('loadCustomerList 错误:', error)
     appStore.showError('加载客户列表失败', error as Error)
+    customerStore.customers = []
+    pagination.total = 0
   } finally {
     loading.value = false
   }
