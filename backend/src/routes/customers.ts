@@ -159,6 +159,31 @@ router.get('/', async (req: Request, res: Response) => {
       queryBuilder.andWhere('customer.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
     }
 
+    // 🔥 统计数据查询（在应用分页之前，基于相同的筛选条件）
+    const statsQueryBuilder = queryBuilder.clone();
+
+    // 获取今日日期
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    // 统计总数（筛选后的）
+    const totalCustomers = await statsQueryBuilder.getCount();
+
+    // 统计活跃客户数（status = 'active'）
+    const activeCustomers = await statsQueryBuilder.clone()
+      .andWhere('customer.status = :activeStatus', { activeStatus: 'active' })
+      .getCount();
+
+    // 统计今日新增客户数
+    const newCustomers = await customerRepository.createQueryBuilder('customer')
+      .where('DATE(customer.createdAt) = :today', { today: todayStr })
+      .getCount();
+
+    // 统计高价值客户数（level = 'gold'）
+    const highValueCustomers = await statsQueryBuilder.clone()
+      .andWhere('customer.level = :goldLevel', { goldLevel: 'gold' })
+      .getCount();
+
     // 排序和分页
     queryBuilder.orderBy('customer.createdAt', 'DESC')
       .skip(skip)
@@ -271,7 +296,14 @@ router.get('/', async (req: Request, res: Response) => {
         list,
         total,
         page: pageNum,
-        pageSize: pageSizeNum
+        pageSize: pageSizeNum,
+        // 🔥 新增：统计数据
+        statistics: {
+          totalCustomers,
+          activeCustomers,
+          newCustomers,
+          highValueCustomers
+        }
       }
     });
   } catch (error) {
