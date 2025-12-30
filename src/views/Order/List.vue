@@ -93,6 +93,16 @@
             <el-option label="退单" value="return" />
           </el-select>
         </el-form-item>
+        <el-form-item label="销售人员">
+          <el-select v-model="searchForm.salesPersonId" placeholder="请选择销售人员" clearable filterable style="min-width: 160px; width: auto;">
+            <el-option
+              v-for="user in salesUserList"
+              :key="user.id"
+              :label="user.name"
+              :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-checkbox v-model="searchForm.onlyAuditPendingSubmitted">
             已提审待审
@@ -145,18 +155,6 @@
                       class="amount-input"
                     />
                   </div>
-                </el-form-item>
-              </el-col>
-              <el-col :span="8">
-                <el-form-item label="操作人">
-                  <el-select v-model="searchForm.operator" placeholder="请选择操作人" clearable filterable>
-                    <el-option
-                      v-for="user in operatorUserList"
-                      :key="user.id"
-                      :label="user.name"
-                      :value="user.name"
-                    />
-                  </el-select>
                 </el-form-item>
               </el-col>
             </el-row>
@@ -694,10 +692,10 @@ const searchForm = reactive({
   customerName: '',
   status: [],
   markType: '',
+  salesPersonId: '', // 🔥 新增：销售人员筛选
   dateRange: [],
   minAmount: undefined,
   maxAmount: undefined,
-  operator: '',
   productName: '',
   customerPhone: '',
   paymentMethod: '',
@@ -877,9 +875,8 @@ const salesUsers = computed(() => {
     }))
 })
 
-// 操作人列表 - 用于筛选
-// 🔥 【修复】过滤掉禁用用户，只显示启用的用户
-const operatorUserList = computed(() => {
+// 🔥 销售人员列表 - 用于筛选（与订单列表的销售人员映射一致）
+const salesUserList = computed(() => {
   return userStore.users
     .filter((u: any) => !u.status || u.status === 'active')
     .map((u: any) => ({
@@ -1065,11 +1062,7 @@ const filteredOrderList = computed(() => {
       (order.markType || 'normal') === searchForm.markType
     )
   }
-  if (searchForm.operator) {
-    filtered = filtered.filter(order =>
-      order.operator.toLowerCase().includes(searchForm.operator.toLowerCase())
-    )
-  }
+  // 🔥 销售人员筛选已移至后端API
   if (searchForm.productName) {
     filtered = filtered.filter(order =>
       Array.isArray(order.products) && order.products.some((product: ProductItem) =>
@@ -1537,7 +1530,8 @@ const handleSubmitAudit = async (row: OrderItem) => {
 const handleQuickFilter = (filterKey: string) => {
   activeQuickFilter.value = filterKey
   pagination.page = 1
-  updateQuickFilterCounts()
+  // 🔥 修复：调用后端API重新加载数据
+  loadOrderList(true)
 }
 
 // 日期快捷筛选处理
@@ -1575,6 +1569,9 @@ const handleDateQuickFilter = (filterKey: string) => {
       searchForm.dateRange = []
       break
   }
+
+  // 🔥 修复：调用后端API重新加载数据
+  loadOrderList(true)
 }
 
 // 高级搜索切换
@@ -2114,8 +2111,8 @@ const handleAuditReject = async () => {
 
 const handleSearch = () => {
   pagination.page = 1
-  // 使用计算属性filteredOrderList，不需要重新加载数据
-  updatePagination()
+  // 🔥 修复：调用后端API重新加载数据
+  loadOrderList(true)
 }
 
 const handleReset = () => {
@@ -2123,19 +2120,21 @@ const handleReset = () => {
   searchForm.customerName = ''
   searchForm.status = []
   searchForm.markType = ''
+  searchForm.salesPersonId = '' // 🔥 新增：重置销售人员筛选
   searchForm.dateRange = []
   searchForm.minAmount = undefined
   searchForm.maxAmount = undefined
-  searchForm.operator = ''
   searchForm.productName = ''
   searchForm.customerPhone = ''
   searchForm.paymentMethod = ''
   searchForm.onlyAuditPendingSubmitted = false
   searchForm.onlyResubmittable = false
   activeQuickFilter.value = 'all'
+  dateQuickFilter.value = 'all' // 🔥 新增：重置日期快捷筛选
   advancedSearchVisible.value = false
   pagination.page = 1
-  updatePagination()
+  // 🔥 修复：重置后调用API重新加载数据
+  loadOrderList(true)
 }
 
 const handleSizeChange = (size: number) => {
@@ -2177,14 +2176,57 @@ const loadOrderList = async (force = false) => {
     lastLoadTime = now
     loading.value = true
 
-    // 🔥 修复：直接调用API，传递分页参数，实现后端分页
+    // 🔥 修复：直接调用API，传递分页参数和筛选参数，实现后端分页和筛选
     const { orderApi } = await import('@/api/order')
-    console.log(`[订单列表] 🚀 加载订单, 页码: ${pagination.page}, 每页: ${pagination.size}`)
 
-    const response = await orderApi.getList({
+    // 构建筛选参数
+    const params: Record<string, any> = {
       page: pagination.page,
       pageSize: pagination.size
-    })
+    }
+
+    // 🔥 状态筛选
+    if (activeQuickFilter.value && activeQuickFilter.value !== 'all') {
+      params.status = activeQuickFilter.value
+    }
+
+    // 🔥 日期筛选
+    if (searchForm.dateRange && searchForm.dateRange.length === 2) {
+      const startDate = searchForm.dateRange[0]
+      const endDate = searchForm.dateRange[1]
+      if (startDate instanceof Date) {
+        params.startDate = startDate.toISOString().split('T')[0]
+      } else if (typeof startDate === 'string') {
+        params.startDate = startDate
+      }
+      if (endDate instanceof Date) {
+        params.endDate = endDate.toISOString().split('T')[0]
+      } else if (typeof endDate === 'string') {
+        params.endDate = endDate
+      }
+    }
+
+    // 🔥 关键词搜索
+    if (searchForm.orderNo) {
+      params.orderNo = searchForm.orderNo
+    }
+    if (searchForm.customerName) {
+      params.customerName = searchForm.customerName
+    }
+
+    // 🔥 标记筛选
+    if (searchForm.markType) {
+      params.markType = searchForm.markType
+    }
+
+    // 🔥 销售人员筛选
+    if (searchForm.salesPersonId) {
+      params.salesPersonId = searchForm.salesPersonId
+    }
+
+    console.log(`[订单列表] 🚀 加载订单, 页码: ${pagination.page}, 每页: ${pagination.size}, 筛选:`, params)
+
+    const response = await orderApi.getList(params)
 
     if (response && response.data) {
       const { list, total } = response.data

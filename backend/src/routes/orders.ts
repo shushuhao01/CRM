@@ -1179,7 +1179,9 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       orderNumber,
       customerName,
       startDate,
-      endDate
+      endDate,
+      markType,
+      salesPersonId
     } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
@@ -1257,6 +1259,16 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
         startDate: new Date(startDate as string),
         endDate: new Date(endDate as string)
       });
+    }
+
+    // 🔥 标记类型筛选
+    if (markType) {
+      queryBuilder.andWhere('order.markType = :markType', { markType });
+    }
+
+    // 🔥 销售人员筛选
+    if (salesPersonId) {
+      queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     }
 
     // 排序和分页
