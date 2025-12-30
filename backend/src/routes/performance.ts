@@ -824,36 +824,57 @@ router.get('/analysis/company', async (_req: Request, res: Response) => {
 
 /**
  * @route GET /api/v1/performance/analysis/metrics
- * @desc 获取业绩统计指标
+ * @desc 获取业绩统计指标（支持日期筛选）
  */
 router.get('/analysis/metrics', async (req: Request, res: Response) => {
   try {
-    const { type } = req.query;
+    const { type, startDate, endDate, departmentId } = req.query;
     const currentUser = (req as any).user;
 
     let whereClause = '';
     const params: unknown[] = [];
+    const conditions: string[] = [];
+
+    // 🔥 日期筛选
+    if (startDate && endDate) {
+      conditions.push(`o.created_at >= '${startDate} 00:00:00' AND o.created_at <= '${endDate} 23:59:59'`);
+    }
+
+    // 🔥 排除无效订单状态
+    conditions.push(`o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded')`);
 
     if (type === 'personal') {
-      whereClause = 'WHERE o.created_by = ?';
+      conditions.push('o.created_by = ?');
       params.push(currentUser?.userId);
     } else if (type === 'department') {
-      whereClause = 'WHERE u.department_id = ?';
-      params.push(currentUser?.departmentId);
+      const deptId = departmentId || currentUser?.departmentId;
+      if (deptId) {
+        conditions.push('u.department_id = ?');
+        params.push(deptId);
+      }
+    }
+
+    if (conditions.length > 0) {
+      whereClause = 'WHERE ' + conditions.join(' AND ');
     }
 
     const sql = `SELECT
        SUM(o.total_amount) as totalPerformance,
        COUNT(o.id) as totalOrders,
-       SUM(CASE WHEN o.status IN ('delivered', 'completed') THEN 1 ELSE 0 END) as signOrders,
-       SUM(CASE WHEN o.status IN ('delivered', 'completed') THEN o.total_amount ELSE 0 END) as signPerformance
+       SUM(CASE WHEN o.status IN ('shipped', 'delivered') THEN 1 ELSE 0 END) as shipOrders,
+       SUM(CASE WHEN o.status IN ('shipped', 'delivered') THEN o.total_amount ELSE 0 END) as shipPerformance,
+       SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) as signOrders,
+       SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END) as signPerformance
      FROM orders o
-     ${type === 'department' ? 'JOIN users u ON o.created_by = u.id' : ''}
+     ${type === 'department' || departmentId ? 'JOIN users u ON o.created_by = u.id' : ''}
      ${whereClause}`;
 
     const [stats] = await AppDataSource.query(sql, params);
 
     const totalOrders = stats?.totalOrders || 1;
+    const shipOrders = stats?.shipOrders || 0;
+    const signOrders = stats?.signOrders || 0;
+
     res.json({
       success: true,
       code: 200,
@@ -862,8 +883,11 @@ router.get('/analysis/metrics', async (req: Request, res: Response) => {
         totalPerformance: stats?.totalPerformance || 0,
         totalOrders: stats?.totalOrders || 0,
         avgPerformance: Math.round((stats?.totalPerformance || 0) / totalOrders),
-        signOrders: stats?.signOrders || 0,
-        signRate: ((stats?.signOrders || 0) / totalOrders * 100).toFixed(1),
+        shipOrders,
+        shipPerformance: stats?.shipPerformance || 0,
+        shipRate: parseFloat(((shipOrders / totalOrders) * 100).toFixed(1)),
+        signOrders,
+        signRate: parseFloat(((signOrders / totalOrders) * 100).toFixed(1)),
         signPerformance: stats?.signPerformance || 0
       }
     });
