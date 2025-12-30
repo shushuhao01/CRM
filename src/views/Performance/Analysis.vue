@@ -1642,7 +1642,41 @@ const loadCompanyData = () => {
   }
 }
 
-const loadMetrics = () => {
+const loadMetrics = async () => {
+  try {
+    // 🔥 修复：调用后端API获取统计数据
+    const { getAnalysisMetrics } = await import('@/api/performance')
+
+    console.log('📊 [业绩分析] 从后端API加载统计指标...')
+    const response = await getAnalysisMetrics({
+      type: selectedDepartment.value ? 'department' : undefined,
+      departmentId: selectedDepartment.value || undefined,
+      startDate: dateRange.value?.[0] || undefined,
+      endDate: dateRange.value?.[1] || undefined
+    })
+
+    if (response.success && response.data) {
+      metrics.value.totalOrders = response.data.totalOrders || 0
+      metrics.value.totalPerformance = response.data.totalPerformance || 0
+      metrics.value.avgPerformance = response.data.avgPerformance || 0
+      metrics.value.signOrders = response.data.signOrders || 0
+      metrics.value.signPerformance = response.data.signPerformance || 0
+      metrics.value.signRate = response.data.signRate || 0
+      console.log('📊 [业绩分析] ✅ 后端API统计指标加载成功:', response.data)
+      return
+    }
+
+    console.log('📊 [业绩分析] 后端API返回失败，降级到前端计算')
+    // 降级方案：前端计算
+    loadMetricsFromStore()
+  } catch (error) {
+    console.error('📊 [业绩分析] 后端API加载失败，降级到前端计算:', error)
+    loadMetricsFromStore()
+  }
+}
+
+// 🔥 降级方案：从store计算统计指标
+const loadMetricsFromStore = () => {
   try {
     // 🔥 使用新的业绩计算规则
     let orders = orderStore.orders.filter(order => {

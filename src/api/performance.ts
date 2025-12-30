@@ -671,6 +671,7 @@ export const getCompanyAnalysis = async (params?: {
  */
 export const getAnalysisMetrics = async (params?: {
   type?: 'personal' | 'department' | 'company'
+  departmentId?: string
   startDate?: string
   endDate?: string
 }): Promise<{ success: boolean; data: any; message?: string }> => {
