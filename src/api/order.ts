@@ -136,6 +136,9 @@ export const orderApi = {
     customerName?: string;
     trackingNumber?: string;
     status?: string;
+    departmentId?: string;
+    salesPersonId?: string;
+    expressCompany?: string;
   }) =>
     api.get<OrderListResponse>('/orders/shipping/shipped', { params }),
 

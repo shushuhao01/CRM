@@ -27,6 +27,39 @@
             style="width: 200px"
           />
         </el-form-item>
+        <el-form-item label="部门">
+          <el-select
+            v-model="searchForm.departmentId"
+            placeholder="请选择部门"
+            clearable
+            style="width: 150px"
+            @change="handleDepartmentChange"
+          >
+            <el-option
+              v-for="dept in departmentStore.departments"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="销售人员">
+          <el-select
+            v-model="searchForm.salesPersonId"
+            placeholder="请选择销售人员"
+            clearable
+            filterable
+            style="width: 160px"
+            @change="handleSalesPersonChange"
+          >
+            <el-option
+              v-for="user in salesUserList"
+              :key="user.id"
+              :label="user.name"
+              :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="物流状态">
           <el-select
             v-model="searchForm.status"
@@ -211,6 +244,7 @@ import { Search, Refresh, RefreshLeft, CopyDocument } from '@element-plus/icons-
 import DynamicTable from '@/components/DynamicTable.vue'
 import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
+import { useDepartmentStore } from '@/stores/department'
 import { createSafeNavigator } from '@/utils/navigation'
 import { eventBus, EventNames } from '@/utils/eventBus'
 import { getOrderStatusStyle, getOrderStatusText } from '@/utils/orderStatusConfig'
@@ -251,6 +285,17 @@ const safeNavigator = createSafeNavigator(router)
 // Store
 const orderStore = useOrderStore()
 const userStore = useUserStore()
+const departmentStore = useDepartmentStore()
+
+// 🔥 销售人员列表 - 用于筛选
+const salesUserList = computed(() => {
+  return userStore.users
+    .filter((u: any) => !u.status || u.status === 'active')
+    .map((u: any) => ({
+      id: u.id,
+      name: u.realName || u.name || u.username
+    }))
+})
 
 // 响应式数据
 const loading = ref(false)
@@ -319,6 +364,8 @@ const useDefaultCompanies = () => {
 const searchForm = reactive({
   trackingNo: '',
   orderNo: '',
+  departmentId: '',
+  salesPersonId: '',
   status: '',
   company: ''
 })
@@ -515,9 +562,23 @@ const handleReset = () => {
   Object.assign(searchForm, {
     trackingNo: '',
     orderNo: '',
+    departmentId: '',
+    salesPersonId: '',
     status: '',
     company: ''
   })
+  pagination.page = 1
+  loadData()
+}
+
+// 🔥 部门变更时自动加载数据
+const handleDepartmentChange = () => {
+  pagination.page = 1
+  loadData()
+}
+
+// 🔥 销售人员变更时自动加载数据
+const handleSalesPersonChange = () => {
   pagination.page = 1
   loadData()
 }
@@ -553,7 +614,10 @@ const loadData = async () => {
       pageSize: pagination.size,
       orderNumber: searchForm.orderNo || undefined,
       trackingNumber: searchForm.trackingNo || undefined,
-      status: searchForm.status || undefined
+      status: searchForm.status || undefined,
+      departmentId: searchForm.departmentId || undefined,
+      salesPersonId: searchForm.salesPersonId || undefined,
+      expressCompany: searchForm.company || undefined
     })
 
     let shippedOrders = response?.data?.list || []
