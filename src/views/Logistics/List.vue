@@ -66,6 +66,7 @@
             placeholder="请选择状态"
             clearable
             style="width: 150px"
+            @change="handleStatusChange"
           >
             <el-option label="待发货" value="pending" />
             <el-option label="已发货" value="shipped" />
@@ -85,6 +86,7 @@
             clearable
             style="width: 150px"
             :loading="loadingCompanies"
+            @change="handleCompanyChange"
           >
             <el-option
               v-for="company in logisticsCompanies"
@@ -126,7 +128,7 @@
       @current-change="handleCurrentChange"
     >
       <!-- 🔥 刷新按钮放在表格右上方（列设置前面） -->
-      <template #toolbar-right>
+      <template #header-actions>
         <el-button type="primary" size="small" @click="handleManualRefresh" :loading="loading">
           <el-icon><Refresh /></el-icon>
           刷新
@@ -579,6 +581,18 @@ const handleDepartmentChange = () => {
 
 // 🔥 销售人员变更时自动加载数据
 const handleSalesPersonChange = () => {
+  pagination.page = 1
+  loadData()
+}
+
+// 🔥 物流状态变更时自动加载数据
+const handleStatusChange = () => {
+  pagination.page = 1
+  loadData()
+}
+
+// 🔥 物流公司变更时自动加载数据
+const handleCompanyChange = () => {
   pagination.page = 1
   loadData()
 }

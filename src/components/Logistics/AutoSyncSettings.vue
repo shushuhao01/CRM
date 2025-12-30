@@ -16,6 +16,8 @@
           </el-button>
         </div>
         <div class="header-right">
+          <!-- 🔥 新增：刷新按钮插槽（在批量更新按钮前面） -->
+          <slot name="before-batch-update"></slot>
           <el-button
             type="primary"
             :disabled="selectedCount === 0"

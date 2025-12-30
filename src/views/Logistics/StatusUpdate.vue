@@ -103,7 +103,7 @@
     <!-- 搜索和筛选区域 -->
     <div class="search-filters">
       <el-row :gutter="20">
-        <el-col :span="6">
+        <el-col :span="5">
           <el-date-picker
             v-model="dateRange"
             type="daterange"
@@ -115,7 +115,7 @@
             @change="handleDateChange"
           />
         </el-col>
-        <el-col :span="6">
+        <el-col :span="5">
           <el-input
             v-model="searchKeyword"
             placeholder="搜索订单号、客户名称"
@@ -127,7 +127,7 @@
             </template>
           </el-input>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="3">
           <el-select
             v-model="statusFilter"
             placeholder="选择状态"
@@ -142,11 +142,36 @@
             <el-option label="状态异常" value="abnormal" />
           </el-select>
         </el-col>
-        <el-col :span="6">
-          <el-button type="primary" @click="refreshData">
-            <el-icon><Refresh /></el-icon>
-            刷新数据
-          </el-button>
+        <el-col :span="3">
+          <el-select
+            v-model="departmentFilter"
+            placeholder="选择部门"
+            clearable
+            @change="handleDepartmentFilter"
+          >
+            <el-option
+              v-for="dept in departmentStore.departments"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
+            />
+          </el-select>
+        </el-col>
+        <el-col :span="4">
+          <el-select
+            v-model="salesPersonFilter"
+            placeholder="选择销售人员"
+            clearable
+            filterable
+            @change="handleSalesPersonFilter"
+          >
+            <el-option
+              v-for="user in salesUserList"
+              :key="user.id"
+              :label="user.name"
+              :value="user.id"
+            />
+          </el-select>
         </el-col>
       </el-row>
     </div>
@@ -173,7 +198,14 @@
     </div>
 
     <!-- 自动同步设置 -->
-    <AutoSyncSettings />
+    <AutoSyncSettings>
+      <template #before-batch-update>
+        <el-button type="primary" @click="refreshData">
+          <el-icon><Refresh /></el-icon>
+          刷新数据
+        </el-button>
+      </template>
+    </AutoSyncSettings>
 
     <!-- 订单列表 -->
     <div class="order-list">
@@ -360,6 +392,7 @@ import OrderDetailDialog from './components/OrderDetailDialog.vue'
 import { useLogisticsStatusStore } from '@/stores/logisticsStatus'
 import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
+import { useDepartmentStore } from '@/stores/department'
 import { ElMessage } from 'element-plus'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 import {
@@ -386,6 +419,17 @@ const _safeNavigator = createSafeNavigator(router)
 const _logisticsStatusStore = useLogisticsStatusStore()
 const orderStore = useOrderStore()
 const userStore = useUserStore()
+const departmentStore = useDepartmentStore()
+
+// 🔥 销售人员列表 - 用于筛选
+const salesUserList = computed(() => {
+  return userStore.users
+    .filter((u: any) => !u.status || u.status === 'active')
+    .map((u: any) => ({
+      id: u.id,
+      name: u.realName || u.name || u.username
+    }))
+})
 
 // 响应式数据
 const loading = ref(false)
@@ -395,6 +439,8 @@ const activeQuickFilter = ref('all')
 const dateRange = ref<[string, string]>(['', ''])
 const searchKeyword = ref('')
 const statusFilter = ref('')
+const departmentFilter = ref('')
+const salesPersonFilter = ref('')
 const orderList = ref<any[]>([])
 const selectedOrders = ref<any[]>([])
 const currentOrder = ref<any>(null)
@@ -521,6 +567,18 @@ const handleSearch = () => {
 }
 
 const handleStatusFilter = () => {
+  pagination.currentPage = 1
+  loadData()
+}
+
+// 🔥 部门筛选变更时自动加载数据
+const handleDepartmentFilter = () => {
+  pagination.currentPage = 1
+  loadData()
+}
+
+// 🔥 销售人员筛选变更时自动加载数据
+const handleSalesPersonFilter = () => {
   pagination.currentPage = 1
   loadData()
 }
@@ -763,7 +821,9 @@ const loadData = async (showMessage = false) => {
       page: pagination.currentPage,
       pageSize: pagination.pageSize,
       status: statusParam,
-      orderNumber: searchKeyword.value || undefined
+      orderNumber: searchKeyword.value || undefined,
+      departmentId: departmentFilter.value || undefined,
+      salesPersonId: salesPersonFilter.value || undefined
     }) as any
 
     let allOrders = response?.data?.list || []
