@@ -7,6 +7,7 @@ import type { Customer } from '@/stores/customer'
 export interface CustomerSearchParams {
   name?: string
   phone?: string
+  keyword?: string  // 🔥 新增：支持关键词搜索（同时搜索姓名和电话）
   level?: string
   dateRange?: [string, string]
   page?: number
