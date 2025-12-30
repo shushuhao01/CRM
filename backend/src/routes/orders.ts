@@ -406,12 +406,10 @@ router.get('/audit-list', authenticateToken, async (req: Request, res: Response)
       queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
     }
 
-    // 日期范围筛选
+    // 日期范围筛选 - 🔥 修复：确保包含整天的数据
     if (startDate && endDate) {
-      queryBuilder.andWhere('order.createdAt BETWEEN :startDate AND :endDate', {
-        startDate: new Date(startDate as string),
-        endDate: new Date(endDate as string)
-      });
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
     }
 
     // 🔥 优化：先获取总数（使用count查询更快）
@@ -1268,12 +1266,10 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
     }
 
-    // 日期范围筛选
+    // 日期范围筛选 - 🔥 修复：确保包含整天的数据
     if (startDate && endDate) {
-      queryBuilder.andWhere('order.createdAt BETWEEN :startDate AND :endDate', {
-        startDate: new Date(startDate as string),
-        endDate: new Date(endDate as string)
-      });
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
     }
 
     // 🔥 标记类型筛选

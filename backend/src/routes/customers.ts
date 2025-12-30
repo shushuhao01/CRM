@@ -153,12 +153,10 @@ router.get('/', async (req: Request, res: Response) => {
       queryBuilder.andWhere('customer.status = :status', { status });
     }
 
-    // 日期范围筛选
+    // 日期范围筛选 - 🔥 修复：确保包含整天的数据
     if (startDate && endDate) {
-      queryBuilder.andWhere('customer.createdAt BETWEEN :startDate AND :endDate', {
-        startDate: new Date(startDate as string),
-        endDate: new Date(endDate as string)
-      });
+      queryBuilder.andWhere('customer.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+      queryBuilder.andWhere('customer.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
     }
 
     // 排序和分页
