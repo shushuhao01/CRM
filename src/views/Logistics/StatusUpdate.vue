@@ -1253,6 +1253,14 @@ onMounted(async () => {
   console.log('[状态更新] 🚀 页面初始化（优化版）...')
   const startTime = Date.now()
 
+  // 🔥 加载用户列表和部门列表（用于筛选器）
+  if (userStore.users.length === 0) {
+    await userStore.loadUsers()
+  }
+  if (departmentStore.departments.length === 0) {
+    await departmentStore.loadDepartments()
+  }
+
   // 🔥 优化：直接加载当前筛选条件的数据
   handleQuickFilter('all')
   await loadSummaryData()
@@ -1425,6 +1433,16 @@ watch([dateRange, statusFilter, searchKeyword], () => {
 
 .search-filters {
   margin-bottom: 20px;
+}
+
+.search-filters .el-col {
+  margin-bottom: 10px;
+}
+
+.search-filters .el-date-picker,
+.search-filters .el-input,
+.search-filters .el-select {
+  width: 100%;
 }
 
 .list-navigation {

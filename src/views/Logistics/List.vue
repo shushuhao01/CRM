@@ -1080,6 +1080,14 @@ onMounted(async () => {
   console.log('[物流列表] 🚀 页面初始化（优化版）...')
   const startTime = Date.now()
 
+  // 🔥 加载用户列表和部门列表（用于筛选器）
+  if (userStore.users.length === 0) {
+    await userStore.loadUsers()
+  }
+  if (departmentStore.departments.length === 0) {
+    await departmentStore.loadDepartments()
+  }
+
   // 🔥 加载物流公司列表
   await loadLogisticsCompanies()
 
