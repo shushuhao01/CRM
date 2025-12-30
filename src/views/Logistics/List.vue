@@ -544,27 +544,21 @@ const handleManualRefresh = async () => {
 const loadData = async () => {
   loading.value = true
   try {
-    // 🔥 直接从API获取已发货订单，确保数据实时性
-    let shippedOrders: any[] = []
-    try {
-      const { orderApi } = await import('@/api/order')
-      const response = await orderApi.getShippingShipped()
-      shippedOrders = response?.data?.list || []
-      console.log('[物流列表] 从API获取已发货订单:', shippedOrders.length, '条')
-    } catch (apiError) {
-      console.warn('[物流列表] API获取失败，回退到store:', apiError)
-    }
+    // 🔥 修复：直接调用API，传递分页参数，实现后端分页
+    const { orderApi } = await import('@/api/order')
+    console.log(`[物流列表] 🚀 加载数据, 页码: ${pagination.page}, 每页: ${pagination.size}`)
 
-    // 🔥 如果API没有返回数据，从store获取
-    if (shippedOrders.length === 0) {
-      const allOrders = orderStore.getOrders()
-      // 获取所有有物流信息的订单（已发货、运输中、已签收等）
-      shippedOrders = allOrders.filter((order: any) =>
-        ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'rejected', 'rejected_returned'].includes(order.status) ||
-        ((order.trackingNumber || order.expressNo) && order.expressCompany)
-      )
-      console.log('[物流列表] 从store获取物流订单:', shippedOrders.length, '条')
-    }
+    const response = await orderApi.getShippingShipped({
+      page: pagination.page,
+      pageSize: pagination.size,
+      orderNumber: searchForm.orderNo || undefined,
+      trackingNumber: searchForm.trackingNo || undefined,
+      status: searchForm.status || undefined
+    })
+
+    let shippedOrders = response?.data?.list || []
+    const apiTotal = response?.data?.total || 0
+    console.log('[物流列表] 从API获取已发货订单:', shippedOrders.length, '条, 总数:', apiTotal)
 
     // 🔥 权限过滤：成员只看自己的订单，部门经理看部门数据，超管和管理员不受限
     const currentUser = userStore.currentUser
@@ -576,14 +570,14 @@ const loadData = async () => {
       } else if (userRole === 'department_manager') {
         // 部门经理看部门数据
         const deptId = currentUser.departmentId
-        shippedOrders = shippedOrders.filter(order => {
+        shippedOrders = shippedOrders.filter((order: any) => {
           const salesPerson = userStore.getUserById?.(order.salesPersonId || order.createdBy)
           return salesPerson?.departmentId === deptId || order.createdByDepartmentId === deptId
         })
         console.log('[物流列表] 部门经理权限，过滤后:', shippedOrders.length, '条')
       } else {
         // 普通成员只看自己的订单
-        shippedOrders = shippedOrders.filter(order =>
+        shippedOrders = shippedOrders.filter((order: any) =>
           order.salesPersonId === currentUser.id ||
           order.createdBy === currentUser.id ||
           order.operatorId === currentUser.id
@@ -593,7 +587,7 @@ const loadData = async () => {
     }
 
     // 转换为物流列表格式
-    let logisticsData = shippedOrders.map((order: any) => {
+    const logisticsData = shippedOrders.map((order: any) => {
       // 🔥 智能映射物流状态：优先根据订单状态判断，确保已签收订单显示正确
       let logisticsStatus = ''
 
@@ -618,19 +612,8 @@ const loadData = async () => {
 
       // 🔥 调试：打印手机号字段
       const customerPhone = order.receiverPhone || order.customerPhone || ''
-      if (order.trackingNumber || order.expressNo) {
-        console.log(`[物流列表] 订单 ${order.orderNumber} 手机号映射:`, {
-          trackingNo: order.trackingNumber || order.expressNo,
-          receiverPhone: order.receiverPhone || '(空)',
-          customerPhone: order.customerPhone || '(空)',
-          finalPhone: customerPhone || '(空)',
-          logisticsStatus: logisticsStatus || '(空)',
-          latestLogisticsInfo: order.latestLogisticsInfo || '(空)'
-        })
-      }
 
       // 🔥 判断是否是已完结的物流状态（不需要再请求API）
-      // 注意：package_exception和exception状态仍需继续请求API跟踪后续变化
       const isLogisticsFinished = ['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled'].includes(logisticsStatus)
 
       return {
@@ -641,11 +624,9 @@ const loadData = async () => {
         orderNo: order.orderNumber,
         customerName: order.customerName,
         company: order.expressCompany || '',
-        // 🔥 销售人员字段映射（创建订单的用户姓名）- 与发货列表保持一致
         salesPersonName: (() => {
           if (order.createdByName) return order.createdByName
           if (order.salesPersonName) return order.salesPersonName
-          // 从用户列表查找真实姓名
           const user = userStore.users.find((u: any) => u.id === order.createdBy || u.username === order.createdBy) as any
           return user?.realName || user?.name || order.createdBy || '-'
         })(),
@@ -653,55 +634,18 @@ const loadData = async () => {
         destination: order.receiverAddress || order.shippingAddress || '',
         shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
         logisticsStatus,
-        // 🔥 优化：如果物流已完结，直接使用数据库缓存的动态；否则显示"获取中..."
         latestLogisticsInfo: isLogisticsFinished
           ? (order.latestLogisticsInfo || getFinishedStatusText(logisticsStatus))
           : (order.trackingNumber || order.expressNo) ? '获取中...' : '暂无物流信息',
         estimatedDate,
-        // 🔥 用于异步获取物流信息 - 优先使用收货人手机号
         customerPhone,
-        // 🔥 新增：标记是否已完结，用于跳过API请求
         isLogisticsFinished
       }
     })
 
-    // 应用搜索过滤
-    if (searchForm.trackingNo) {
-      logisticsData = logisticsData.filter(item =>
-        item.trackingNo.includes(searchForm.trackingNo)
-      )
-    }
-
-    if (searchForm.orderNo) {
-      logisticsData = logisticsData.filter(item =>
-        item.orderNo.includes(searchForm.orderNo)
-      )
-    }
-
-    if (searchForm.status) {
-      logisticsData = logisticsData.filter(item =>
-        item.status === searchForm.status || item.logisticsStatus === searchForm.status
-      )
-    }
-
-    if (searchForm.company) {
-      logisticsData = logisticsData.filter(item =>
-        item.company === searchForm.company
-      )
-    }
-
-    // 按发货时间倒序排序（最新的在上面）
-    logisticsData.sort((a, b) => {
-      const timeA = new Date(a.shipDate || 0).getTime()
-      const timeB = new Date(b.shipDate || 0).getTime()
-      return timeB - timeA // 倒序：最新的在上面
-    })
-
-    // 分页处理
-    const startIndex = (pagination.page - 1) * pagination.size
-    const endIndex = startIndex + pagination.size
-    tableData.value = logisticsData.slice(startIndex, endIndex)
-    total.value = logisticsData.length
+    // 🔥 修复：直接使用API返回的数据，不再前端分页
+    tableData.value = logisticsData
+    total.value = apiTotal
 
     // 🔥 异步从官方API获取物流最新动态（不阻塞页面加载）
     fetchLatestLogisticsUpdates()
@@ -709,6 +653,8 @@ const loadData = async () => {
   } catch (error) {
     ElMessage.error('加载数据失败')
     console.error('Load data error:', error)
+    tableData.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
