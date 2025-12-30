@@ -877,7 +877,7 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
     const startTime = Date.now();
 
     // 🔥 服务端分页参数
-    const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status, startDate, endDate, quickFilter } = req.query;
+    const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status, startDate, endDate, quickFilter, departmentId, salesPersonId, expressCompany } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 200); // 最大200条/页
     const skip = (pageNum - 1) * pageSizeNum;
@@ -913,6 +913,21 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
     }
     if (trackingNumber) {
       queryBuilder.andWhere('order.trackingNumber LIKE :trackingNumber', { trackingNumber: `%${trackingNumber}%` });
+    }
+
+    // 🔥 部门筛选
+    if (departmentId) {
+      queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
+    }
+
+    // 🔥 销售人员筛选
+    if (salesPersonId) {
+      queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
+    }
+
+    // 🔥 快递公司筛选
+    if (expressCompany) {
+      queryBuilder.andWhere('order.expressCompany = :expressCompany', { expressCompany });
     }
 
     // 🔥 日期范围筛选
