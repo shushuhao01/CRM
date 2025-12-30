@@ -1194,7 +1194,8 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       startDate,
       endDate,
       markType,
-      salesPersonId
+      salesPersonId,
+      departmentId
     } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
@@ -1275,6 +1276,11 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
     // 🔥 标记类型筛选
     if (markType) {
       queryBuilder.andWhere('order.markType = :markType', { markType });
+    }
+
+    // 🔥 部门筛选
+    if (departmentId) {
+      queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
     }
 
     // 🔥 销售人员筛选
