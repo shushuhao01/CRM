@@ -13,6 +13,8 @@ router.use(authenticateToken);
 /**
  * 🔥 统一的业绩计算规则
  * 判断订单是否计入下单业绩
+ * 排除的状态：取消申请、已取消、审核拒绝、物流部退回、物流部取消、已退款
+ * 待流转状态：所有标记类型都计入（包括normal正常发货单）
  */
 const isValidForOrderPerformance = (order: { status: string; markType?: string }): boolean => {
   // 不计入业绩的状态
@@ -25,12 +27,7 @@ const isValidForOrderPerformance = (order: { status: string; markType?: string }
     'refunded'             // 已退款
   ];
 
-  // 如果是待流转状态，需要检查markType
-  if (order.status === 'pending_transfer') {
-    // 只有正常发货单才计入业绩，预留单和退单不计入
-    return order.markType === 'normal';
-  }
-
+  // 🔥 修复：待流转状态的所有订单都计入业绩（包括normal正常发货单）
   // 其他状态，只要不在排除列表中就计入
   return !excludedStatuses.includes(order.status);
 };
