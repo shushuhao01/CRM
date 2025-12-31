@@ -99,12 +99,14 @@
           format="YYYY-MM-DD"
           value-format="YYYY-MM-DD"
           class="date-picker"
+          @change="refreshData"
         />
         <el-select
           v-model="selectedDepartment"
           placeholder="选择部门"
           class="department-select"
           size="default"
+          @change="refreshData"
         >
           <el-option
             v-if="userStore.currentUser?.role === 'super_admin' || userStore.currentUser?.role === 'admin'"
@@ -123,6 +125,7 @@
           placeholder="排序方式"
           class="sort-select"
           size="default"
+          @change="refreshData"
         >
           <el-option label="按下单业绩排序" value="orderAmount" />
           <el-option label="按签收业绩排序" value="signAmount" />
