@@ -500,33 +500,42 @@ router.get('/team', async (req: Request, res: Response) => {
     console.log(`[团队业绩] 查询到订单总数: ${allOrders.length}, 日期条件: ${orderDateCondition || '无'}`);
     console.log(`[团队业绩] 各状态订单数量:`, statusCounts);
 
-    // 获取部门成员列表
+    // 获取部门成员列表 - 🔥 修复：只查询在职用户，但不要遗漏任何用户
     let userCondition = '';
     if (departmentId && departmentId !== 'all') {
       userCondition = ` WHERE u.department_id = '${departmentId}'`;
     }
 
     const users = await AppDataSource.query(
-      `SELECT u.id, u.real_name as realName, u.username, u.department_name as departmentName,
+      `SELECT u.id, u.real_name as realName, u.username, u.name, u.department_name as departmentName,
               u.department_id as departmentId, u.created_at as createTime
        FROM users u${userCondition}`
     );
 
     console.log(`[团队业绩] 查询到用户数: ${users.length}`);
+    console.log(`[团队业绩] 用户列表:`, users.map((u: any) => ({ id: u.id, username: u.username, realName: u.realName, name: u.name })));
 
     // 🔥 创建多种映射，用于匹配订单到用户
     const userIdMap = new Map<string, any>();
     const usernameMap = new Map<string, any>();
     const realNameMap = new Map<string, any>();
+    const nameMap = new Map<string, any>();
 
     users.forEach((user: any) => {
+      // 用户ID映射
       userIdMap.set(user.id, user);
+      // 用户名映射（大小写不敏感）
       if (user.username) {
         usernameMap.set(user.username, user);
         usernameMap.set(user.username.toLowerCase(), user);
       }
+      // 真实姓名映射
       if (user.realName) {
         realNameMap.set(user.realName, user);
+      }
+      // name字段映射
+      if (user.name) {
+        nameMap.set(user.name, user);
       }
     });
 
@@ -563,6 +572,11 @@ router.get('/team', async (req: Request, res: Response) => {
       // 5. 尝试通过createdByName匹配用户名
       if (!matchedUser && createdByName && usernameMap.has(createdByName)) {
         matchedUser = usernameMap.get(createdByName);
+      }
+
+      // 6. 🔥 新增：尝试通过createdByName匹配name字段
+      if (!matchedUser && createdByName && nameMap.has(createdByName)) {
+        matchedUser = nameMap.get(createdByName);
       }
 
       // 🔥 如果有部门筛选但没匹配到用户，检查订单部门
