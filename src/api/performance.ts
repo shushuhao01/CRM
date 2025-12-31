@@ -227,17 +227,17 @@ export const getTeamStats = async (params?: {
         success: true,
         data: {
           members: data.members || [],
-          total: data.pagination?.total || data.members?.length || 0,
-          page: data.pagination?.page || 1,
-          limit: data.pagination?.limit || 50,
+          total: data.total || data.members?.length || 0,
+          page: data.page || 1,
+          limit: data.limit || 50,
           summary: {
-            totalPerformance: data.summary?.totalOrderAmount || 0,
-            totalOrders: data.summary?.totalOrderCount || 0,
+            totalPerformance: data.summary?.totalPerformance || 0,
+            totalOrders: data.summary?.totalOrders || 0,
             avgPerformance: data.summary?.avgPerformance || 0,
-            signOrders: data.summary?.totalSignCount || 0,
-            signRate: data.summary?.totalSignRate || 0,
-            signPerformance: data.summary?.totalSignAmount || 0,
-            memberCount: data.members?.length || 0
+            signOrders: data.summary?.signOrders || 0,
+            signRate: data.summary?.signRate || 0,
+            signPerformance: data.summary?.signPerformance || 0,
+            memberCount: data.summary?.memberCount || data.members?.length || 0
           }
         }
       }
