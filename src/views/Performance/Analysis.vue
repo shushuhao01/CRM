@@ -55,6 +55,7 @@
           format="YYYY-MM-DD"
           value-format="YYYY-MM-DD"
           class="date-picker"
+          @change="queryData"
         />
         <el-select
           v-if="userStore.isAdmin || userStore.isManager"
@@ -63,6 +64,7 @@
           class="department-select"
           size="default"
           :disabled="!userStore.isAdmin"
+          @change="queryData"
         >
           <el-option v-if="userStore.isAdmin" label="全部部门" value="" />
           <el-option
@@ -77,6 +79,7 @@
           placeholder="排序方式"
           class="sort-select"
           size="default"
+          @change="queryData"
         >
           <el-option label="按业绩排序" value="performance" />
           <el-option label="按订单数排序" value="orders" />
