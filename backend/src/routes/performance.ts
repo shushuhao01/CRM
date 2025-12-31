@@ -485,7 +485,6 @@ router.get('/team', async (req: Request, res: Response) => {
     }
 
     // 🔥 修复：先查询所有符合条件的订单，再按用户分组
-    // 这样可以确保不遗漏任何订单
     const allOrders = await AppDataSource.query(
       `SELECT id, status, mark_type as markType, total_amount as totalAmount,
               created_by as createdBy, created_by_name as createdByName,
@@ -515,48 +514,91 @@ router.get('/team', async (req: Request, res: Response) => {
 
     console.log(`[团队业绩] 查询到用户数: ${users.length}`);
 
-    // 🔥 创建用户ID和用户名的映射，用于快速查找
+    // 🔥 创建多种映射，用于匹配订单到用户
     const userIdMap = new Map<string, any>();
     const usernameMap = new Map<string, any>();
+    const realNameMap = new Map<string, any>();
+
     users.forEach((user: any) => {
       userIdMap.set(user.id, user);
       if (user.username) {
         usernameMap.set(user.username, user);
+        usernameMap.set(user.username.toLowerCase(), user);
+      }
+      if (user.realName) {
+        realNameMap.set(user.realName, user);
       }
     });
 
-    // 🔥 按用户分组订单
+    // 🔥 按用户分组订单 - 改进匹配逻辑
     const userOrdersMap = new Map<string, any[]>();
     const unmatchedOrders: any[] = [];
     let matchedOrderCount = 0;
 
     allOrders.forEach((order: any) => {
       const createdBy = order.createdBy;
-      let matchedUser = userIdMap.get(createdBy) || usernameMap.get(createdBy);
+      const createdByName = order.createdByName;
+      let matchedUser = null;
 
-      // 🔥 如果没有匹配到，尝试通过createdByName匹配
-      if (!matchedUser && order.createdByName) {
-        for (const user of users) {
-          if (user.realName === order.createdByName || user.username === order.createdByName) {
-            matchedUser = user;
-            break;
+      // 1. 首先尝试通过created_by匹配用户ID
+      if (createdBy && userIdMap.has(createdBy)) {
+        matchedUser = userIdMap.get(createdBy);
+      }
+
+      // 2. 尝试通过created_by匹配用户名
+      if (!matchedUser && createdBy && usernameMap.has(createdBy)) {
+        matchedUser = usernameMap.get(createdBy);
+      }
+
+      // 3. 尝试通过created_by匹配用户名（小写）
+      if (!matchedUser && createdBy && usernameMap.has(createdBy.toLowerCase())) {
+        matchedUser = usernameMap.get(createdBy.toLowerCase());
+      }
+
+      // 4. 尝试通过createdByName匹配真实姓名
+      if (!matchedUser && createdByName && realNameMap.has(createdByName)) {
+        matchedUser = realNameMap.get(createdByName);
+      }
+
+      // 5. 尝试通过createdByName匹配用户名
+      if (!matchedUser && createdByName && usernameMap.has(createdByName)) {
+        matchedUser = usernameMap.get(createdByName);
+      }
+
+      // 🔥 如果有部门筛选但没匹配到用户，检查订单部门
+      if (!matchedUser && departmentId && departmentId !== 'all') {
+        if (order.createdByDepartmentId === departmentId) {
+          // 订单属于该部门，创建虚拟用户
+          matchedUser = {
+            id: createdBy || 'unknown',
+            realName: createdByName || createdBy || '未知用户',
+            username: createdBy || 'unknown',
+            departmentName: '未知部门',
+            departmentId: order.createdByDepartmentId
+          };
+          // 将虚拟用户添加到users列表
+          if (!userIdMap.has(matchedUser.id)) {
+            users.push(matchedUser);
+            userIdMap.set(matchedUser.id, matchedUser);
           }
         }
       }
 
-      // 🔥 如果有部门筛选，还需要检查订单的部门
-      if (departmentId && departmentId !== 'all' && !matchedUser) {
-        // 尝试通过订单的部门ID匹配
-        if (order.createdByDepartmentId === departmentId) {
-          // 订单属于该部门，但创建者不在用户列表中（可能已删除）
-          // 创建一个虚拟用户
+      // 🔥 如果查询全部部门且没匹配到，也创建虚拟用户
+      if (!matchedUser && (!departmentId || departmentId === 'all')) {
+        const oderId = createdBy || 'unknown_' + order.id;
+        if (!userIdMap.has(oderId)) {
           matchedUser = {
-            id: createdBy,
-            realName: order.createdByName || createdBy,
-            username: createdBy,
+            id: oderId,
+            realName: createdByName || createdBy || '未知用户',
+            username: createdBy || 'unknown',
             departmentName: '未知部门',
-            departmentId: order.createdByDepartmentId
+            departmentId: order.createdByDepartmentId || ''
           };
+          users.push(matchedUser);
+          userIdMap.set(oderId, matchedUser);
+        } else {
+          matchedUser = userIdMap.get(oderId);
         }
       }
 
@@ -567,16 +609,14 @@ router.get('/team', async (req: Request, res: Response) => {
         }
         userOrdersMap.get(userId)!.push(order);
         matchedOrderCount++;
-      } else if (!departmentId || departmentId === 'all') {
-        // 只有在查询全部部门时才统计未匹配的订单
+      } else {
         unmatchedOrders.push(order);
       }
     });
 
-    console.log(`[团队业绩] 已匹配订单数: ${matchedOrderCount}, 未匹配订单数: ${unmatchedOrders.length}`);
+    console.log(`[团队业绩] 已匹配订单数: ${matchedOrderCount}, 未匹配订单数: ${unmatchedOrders.length}, 用户数: ${users.length}`);
     if (unmatchedOrders.length > 0) {
-      const unmatchedCreators = [...new Set(unmatchedOrders.map(o => o.createdBy))];
-      console.log(`[团队业绩] 未匹配订单的创建者:`, unmatchedCreators.slice(0, 10));
+      console.log(`[团队业绩] 未匹配订单:`, unmatchedOrders.slice(0, 5).map(o => ({ id: o.id, createdBy: o.createdBy, createdByName: o.createdByName })));
     }
 
     // 获取每个成员的订单数据
