@@ -318,15 +318,15 @@ router.get('/stats', async (req: Request, res: Response) => {
 
 /**
  * 🔥 统一的业绩计算规则 - 判断订单是否计入下单业绩
+ * 排除的状态：取消申请、已取消、审核拒绝、物流部退回、物流部取消、已退款
+ * 待流转状态：所有标记类型都计入（包括normal正常发货单）
  */
-const isValidForOrderPerformance = (status: string, markType?: string): boolean => {
+const isValidForOrderPerformance = (status: string, _markType?: string): boolean => {
   const excludedStatuses = [
     'pending_cancel', 'cancelled', 'audit_rejected',
     'logistics_returned', 'logistics_cancelled', 'refunded'
   ];
-  if (status === 'pending_transfer') {
-    return markType === 'normal';
-  }
+  // 🔥 修复：待流转状态的所有订单都计入业绩（包括normal正常发货单）
   return !excludedStatuses.includes(status);
 };
 

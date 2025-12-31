@@ -55,10 +55,11 @@ const formatToBeijingTime = (date: Date | string | null | undefined): string => 
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
 
-// 🔥 将北京时间日期字符串转换为UTC时间字符串（用于数据库查询）
+// 🔥 注释掉：数据库已配置为北京时区，不需要转换为UTC时间
+// 将北京时间日期字符串转换为UTC时间字符串（用于数据库查询）
 // 输入: "2025-12-31" + "00:00:00" (北京时间)
 // 输出: "2025-12-30 16:00:00" (UTC时间，用于数据库查询)
-const beijingDateToUTC = (dateStr: string, timeStr: string): string => {
+const _beijingDateToUTC = (dateStr: string, timeStr: string): string => {
   // 解析北京时间
   const [year, month, day] = dateStr.split('-').map(Number);
   const [hours, minutes, seconds] = timeStr.split(':').map(Number);
@@ -430,12 +431,10 @@ router.get('/audit-list', authenticateToken, async (req: Request, res: Response)
       queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
     }
 
-    // 日期范围筛选 - 🔥 修复：将北京时间转换为UTC时间进行查询
+    // 日期范围筛选 - 🔥 修复：数据库已配置为北京时区，直接使用北京时间查询
     if (startDate && endDate) {
-      const utcStartDate = beijingDateToUTC(startDate as string, '00:00:00');
-      const utcEndDate = beijingDateToUTC(endDate as string, '23:59:59');
-      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: utcStartDate });
-      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: utcEndDate });
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
     }
 
     // 🔥 优化：先获取总数（使用count查询更快）
@@ -756,14 +755,12 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
       queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     }
 
-    // 🔥 日期范围筛选 - 将北京时间转换为UTC时间进行查询
+    // 🔥 日期范围筛选 - 数据库已配置为北京时区，直接使用北京时间查询
     if (startDate) {
-      const utcStartDate = beijingDateToUTC(startDate as string, '00:00:00');
-      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: utcStartDate });
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
     }
     if (endDate) {
-      const utcEndDate = beijingDateToUTC(endDate as string, '23:59:59');
-      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: utcEndDate });
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
     }
 
     // 🔥 快速筛选
@@ -956,14 +953,12 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
       queryBuilder.andWhere('order.expressCompany = :expressCompany', { expressCompany });
     }
 
-    // 🔥 日期范围筛选 - 将北京时间转换为UTC时间进行查询
+    // 🔥 日期范围筛选 - 数据库已配置为北京时区，直接使用北京时间查询
     if (startDate) {
-      const utcStartDate = beijingDateToUTC(startDate as string, '00:00:00');
-      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: utcStartDate });
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
     }
     if (endDate) {
-      const utcEndDate = beijingDateToUTC(endDate as string, '23:59:59');
-      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: utcEndDate });
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
     }
 
     // 🔥 快速筛选
@@ -1297,12 +1292,10 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
     }
 
-    // 日期范围筛选 - 🔥 修复：将北京时间转换为UTC时间进行查询
+    // 日期范围筛选 - 🔥 修复：数据库已配置为北京时区，直接使用北京时间查询
     if (startDate && endDate) {
-      const utcStartDate = beijingDateToUTC(startDate as string, '00:00:00');
-      const utcEndDate = beijingDateToUTC(endDate as string, '23:59:59');
-      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: utcStartDate });
-      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: utcEndDate });
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
     }
 
     // 🔥 标记类型筛选
