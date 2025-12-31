@@ -306,24 +306,26 @@
         </el-table-column>
         <el-table-column prop="assignedToName" label="归属人" min-width="90" show-overflow-tooltip />
         <el-table-column prop="orderDate" label="下单日期" min-width="110" show-overflow-tooltip />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="viewOrder(row)">查看</el-button>
-            <el-button
-              size="small"
-              type="primary"
-              @click="updateStatus(row)"
-            >
-              更新状态
-            </el-button>
-            <el-button
-              size="small"
-              type="warning"
-              @click="setTodo(row)"
-              v-if="activeTab === 'pending' || activeTab === 'updated'"
-            >
-              {{ row.isTodo ? '取消待办' : '待办' }}
-            </el-button>
+            <div class="action-buttons">
+              <el-button size="small" @click="viewOrder(row)">查看</el-button>
+              <el-button
+                size="small"
+                type="primary"
+                @click="updateStatus(row)"
+              >
+                更新状态
+              </el-button>
+              <el-button
+                size="small"
+                type="warning"
+                @click="setTodo(row)"
+                v-if="activeTab === 'pending' || activeTab === 'updated'"
+              >
+                {{ row.isTodo ? '取消待办' : '待办' }}
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -1492,5 +1494,18 @@ watch([dateRange, statusFilter, searchKeyword], () => {
   background-color: #909399 !important;
   border-color: #909399 !important;
   color: white !important;
+}
+
+/* 操作按钮样式 - 让按钮排成一行 */
+.action-buttons {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.action-buttons .el-button {
+  padding: 5px 10px;
+  font-size: 12px;
 }
 </style>
