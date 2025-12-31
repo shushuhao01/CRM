@@ -55,6 +55,30 @@ const formatToBeijingTime = (date: Date | string | null | undefined): string => 
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
 
+// 🔥 将北京时间日期字符串转换为UTC时间字符串（用于数据库查询）
+// 输入: "2025-12-31" + "00:00:00" (北京时间)
+// 输出: "2025-12-30 16:00:00" (UTC时间，用于数据库查询)
+const beijingDateToUTC = (dateStr: string, timeStr: string): string => {
+  // 解析北京时间
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+
+  // 创建北京时间的Date对象（注意：month是0-indexed）
+  // 先创建UTC时间，然后减去8小时得到对应的UTC时间
+  const beijingDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
+  // 北京时间比UTC快8小时，所以要减去8小时得到UTC时间
+  const utcDate = new Date(beijingDate.getTime() - 8 * 60 * 60 * 1000);
+
+  const utcYear = utcDate.getUTCFullYear();
+  const utcMonth = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+  const utcDay = String(utcDate.getUTCDate()).padStart(2, '0');
+  const utcHours = String(utcDate.getUTCHours()).padStart(2, '0');
+  const utcMinutes = String(utcDate.getUTCMinutes()).padStart(2, '0');
+  const utcSeconds = String(utcDate.getUTCSeconds()).padStart(2, '0');
+
+  return `${utcYear}-${utcMonth}-${utcDay} ${utcHours}:${utcMinutes}:${utcSeconds}`;
+};
+
 // 验证部门下单限制
 interface OrderLimitCheckResult {
   allowed: boolean;
@@ -406,10 +430,12 @@ router.get('/audit-list', authenticateToken, async (req: Request, res: Response)
       queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
     }
 
-    // 日期范围筛选 - 🔥 修复：确保包含整天的数据
+    // 日期范围筛选 - 🔥 修复：将北京时间转换为UTC时间进行查询
     if (startDate && endDate) {
-      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
-      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+      const utcStartDate = beijingDateToUTC(startDate as string, '00:00:00');
+      const utcEndDate = beijingDateToUTC(endDate as string, '23:59:59');
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: utcStartDate });
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: utcEndDate });
     }
 
     // 🔥 优化：先获取总数（使用count查询更快）
@@ -730,12 +756,14 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
       queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     }
 
-    // 🔥 日期范围筛选
+    // 🔥 日期范围筛选 - 将北京时间转换为UTC时间进行查询
     if (startDate) {
-      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+      const utcStartDate = beijingDateToUTC(startDate as string, '00:00:00');
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: utcStartDate });
     }
     if (endDate) {
-      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+      const utcEndDate = beijingDateToUTC(endDate as string, '23:59:59');
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: utcEndDate });
     }
 
     // 🔥 快速筛选
@@ -928,12 +956,14 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
       queryBuilder.andWhere('order.expressCompany = :expressCompany', { expressCompany });
     }
 
-    // 🔥 日期范围筛选
+    // 🔥 日期范围筛选 - 将北京时间转换为UTC时间进行查询
     if (startDate) {
-      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+      const utcStartDate = beijingDateToUTC(startDate as string, '00:00:00');
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: utcStartDate });
     }
     if (endDate) {
-      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+      const utcEndDate = beijingDateToUTC(endDate as string, '23:59:59');
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: utcEndDate });
     }
 
     // 🔥 快速筛选
@@ -1267,10 +1297,12 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
     }
 
-    // 日期范围筛选 - 🔥 修复：确保包含整天的数据
+    // 日期范围筛选 - 🔥 修复：将北京时间转换为UTC时间进行查询
     if (startDate && endDate) {
-      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
-      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+      const utcStartDate = beijingDateToUTC(startDate as string, '00:00:00');
+      const utcEndDate = beijingDateToUTC(endDate as string, '23:59:59');
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: utcStartDate });
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: utcEndDate });
     }
 
     // 🔥 标记类型筛选

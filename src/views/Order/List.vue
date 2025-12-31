@@ -722,13 +722,13 @@ const auditSubmitting = ref(false)
 const searchForm = reactive({
   orderNumber: '',
   customerName: '',
-  status: [],
+  status: [] as string[],
   markType: '',
   departmentId: '', // 🔥 新增：部门筛选
   salesPersonId: '', // 🔥 新增：销售人员筛选
-  dateRange: [],
-  minAmount: undefined,
-  maxAmount: undefined,
+  dateRange: [] as (Date | string)[],
+  minAmount: undefined as number | undefined,
+  maxAmount: undefined as number | undefined,
   productName: '',
   customerPhone: '',
   paymentMethod: '',
@@ -2147,19 +2147,27 @@ const loadOrderList = async (force = false) => {
       params.status = activeQuickFilter.value
     }
 
-    // 🔥 日期筛选
+    // 🔥 日期筛选 - 使用本地时间格式，避免时区问题
     if (searchForm.dateRange && searchForm.dateRange.length === 2) {
       const startDate = searchForm.dateRange[0]
       const endDate = searchForm.dateRange[1]
-      if (startDate instanceof Date) {
-        params.startDate = startDate.toISOString().split('T')[0]
-      } else if (typeof startDate === 'string') {
-        params.startDate = startDate
+
+      // 格式化日期为本地时间 YYYY-MM-DD 格式
+      const formatLocalDate = (date: Date | string): string => {
+        if (date instanceof Date) {
+          const year = date.getFullYear()
+          const month = String(date.getMonth() + 1).padStart(2, '0')
+          const day = String(date.getDate()).padStart(2, '0')
+          return `${year}-${month}-${day}`
+        }
+        return String(date)
       }
-      if (endDate instanceof Date) {
-        params.endDate = endDate.toISOString().split('T')[0]
-      } else if (typeof endDate === 'string') {
-        params.endDate = endDate
+
+      if (startDate) {
+        params.startDate = formatLocalDate(startDate)
+      }
+      if (endDate) {
+        params.endDate = formatLocalDate(endDate)
       }
     }
 
