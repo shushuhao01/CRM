@@ -178,4 +178,25 @@ export const orderApi = {
   // 🔥 新增：根据物流单号获取订单信息
   getOrderByTrackingNo: (trackingNo: string) =>
     api.get<Order>('/orders/by-tracking-no', { params: { trackingNo } }),
+
+  // 🔥 新增：获取成员订单列表（用于业绩详情弹窗）
+  getMemberOrders: (params: {
+    memberId: string
+    memberUsername?: string
+    startDate?: string
+    endDate?: string
+    status?: string
+    page?: number
+    pageSize?: number
+  }) =>
+    api.get<OrderListResponse>('/orders', {
+      params: {
+        salesPersonId: params.memberId,
+        startDate: params.startDate,
+        endDate: params.endDate,
+        status: params.status,
+        page: params.page || 1,
+        pageSize: params.pageSize || 10
+      }
+    }),
 }

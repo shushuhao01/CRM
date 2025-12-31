@@ -1101,7 +1101,80 @@ const loadRealMetricsFallback = async () => {
 }
 
 // 加载真实的排名数据
-const loadRealRankings = () => {
+const loadRealRankings = async () => {
+  // 🔥 优先尝试从后端API加载数据（确保数据完整）
+  const apiSuccess = await loadRankingsFromAPI()
+  if (apiSuccess) {
+    console.log('[业绩排名] ✅ 使用后端API数据')
+    return
+  }
+
+  console.log('[业绩排名] ⚠️ 后端API失败，降级到前端计算')
+  // 降级方案：使用前端数据
+  loadRankingsFromStore()
+}
+
+// 🔥 新增：从后端API加载排名数据
+const loadRankingsFromAPI = async (): Promise<boolean> => {
+  try {
+    const { getTeamStats } = await import('@/api/performance')
+
+    // 获取本月日期范围
+    const today = new Date()
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+    const startDate = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}-01`
+    const endDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
+    console.log('[业绩排名] 从后端API加载数据, 日期范围:', startDate, '~', endDate)
+
+    // 🔥 管理员查看全部部门，非管理员查看本部门
+    const currentUser = userStore.currentUser
+    const departmentId = userStore.isAdmin ? '' : (currentUser?.departmentId || '')
+
+    const response = await getTeamStats({
+      departmentId: departmentId,
+      startDate: startDate,
+      endDate: endDate,
+      sortBy: 'orderAmount',
+      limit: 1000 // 获取所有成员
+    })
+
+    if (response.success && response.data && response.data.members) {
+      const members = response.data.members
+
+      // 转换为排名格式
+      const salesRankings = members
+        .map((m: any) => ({
+          id: m.id,
+          name: m.name || m.username || '未知',
+          avatar: '',
+          department: m.department || '未分配部门',
+          orders: m.orderCount || 0,
+          revenue: m.orderAmount || 0
+        }))
+        .sort((a: any, b: any) => b.revenue - a.revenue)
+        .slice(0, 10) // 只取前10名
+
+      console.log('[业绩排名] ✅ 后端API数据加载成功, 成员数:', members.length)
+      console.log('[业绩排名] 排名列表:', salesRankings.map((s: any) => ({ name: s.name, revenue: s.revenue, orders: s.orders })))
+
+      rankings.value = {
+        sales: salesRankings,
+        products: []
+      }
+
+      return true
+    }
+
+    return false
+  } catch (error) {
+    console.error('[业绩排名] ❌ 后端API加载失败:', error)
+    return false
+  }
+}
+
+// 🔥 降级方案：从前端store加载排名数据
+const loadRankingsFromStore = () => {
   // 🔥 使用新的业绩计算规则
   let orders = orderStore.orders.filter(order => {
     const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
