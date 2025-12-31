@@ -169,8 +169,51 @@ export const getTeamStats = async (params?: {
 }> => {
   console.log('[Performance API] 获取团队业绩统计')
   try {
-    const response = await request.get('/performance/team', { params })
-    return response
+    // 🔥 request.get 返回的是 response.data.data，即直接的数据对象
+    // 需要包装成 { success: true, data: ... } 格式
+    const data = await request.get('/performance/team', { params })
+    console.log('[Performance API] 后端返回数据:', data)
+
+    // 🔥 如果data存在，说明请求成功
+    if (data) {
+      return {
+        success: true,
+        data: {
+          members: data.members || [],
+          total: data.pagination?.total || data.members?.length || 0,
+          page: data.pagination?.page || 1,
+          limit: data.pagination?.limit || 50,
+          summary: {
+            totalPerformance: data.summary?.totalOrderAmount || 0,
+            totalOrders: data.summary?.totalOrderCount || 0,
+            avgPerformance: data.summary?.avgPerformance || 0,
+            signOrders: data.summary?.totalSignCount || 0,
+            signRate: data.summary?.totalSignRate || 0,
+            signPerformance: data.summary?.totalSignAmount || 0,
+            memberCount: data.members?.length || 0
+          }
+        }
+      }
+    }
+
+    return {
+      success: false,
+      data: {
+        members: [],
+        total: 0,
+        page: 1,
+        limit: 50,
+        summary: {
+          totalPerformance: 0,
+          totalOrders: 0,
+          avgPerformance: 0,
+          signOrders: 0,
+          signRate: 0,
+          signPerformance: 0,
+          memberCount: 0
+        }
+      }
+    }
   } catch (error) {
     console.error('[Performance API] 获取团队业绩统计失败:', error)
     return {
