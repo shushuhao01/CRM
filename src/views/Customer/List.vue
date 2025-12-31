@@ -1654,7 +1654,6 @@ watch(() => customerStore.customers, (newCustomers) => {
 // watch(searchResults, () => {
 //   loadSummaryData()
 // }, { immediate: true })
-}, { immediate: true })
 
 // 监听路由变化，确保数据同步
 watch(() => route.path, async (newPath, oldPath) => {
