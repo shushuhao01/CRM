@@ -38,8 +38,10 @@ export interface CustomerListResponse {
 export const customerApi = {
   // 获取客户列表 - 直接调用真实API
   getList: async (params?: CustomerSearchParams) => {
-    console.log('[customerApi.getList] 直接调用真实API')
-    return api.get<CustomerListResponse>(API_ENDPOINTS.CUSTOMERS.LIST, toRequestParams(params))
+    console.log('[customerApi.getList] 直接调用真实API, 参数:', params)
+    const requestParams = toRequestParams(params)
+    console.log('[customerApi.getList] 转换后参数:', requestParams)
+    return api.get<CustomerListResponse>(API_ENDPOINTS.CUSTOMERS.LIST, { params: requestParams })
   },
 
   // 检查客户是否存在 - 直接调用后端API
@@ -114,6 +116,6 @@ export const customerApi = {
   // 搜索客户 - 直接调用真实API
   search: async (params: CustomerSearchParams) => {
     console.log('[customerApi.search] 直接调用真实API')
-    return api.get<CustomerListResponse>(API_ENDPOINTS.CUSTOMERS.SEARCH, toRequestParams(params))
+    return api.get<CustomerListResponse>(API_ENDPOINTS.CUSTOMERS.SEARCH, { params: toRequestParams(params) })
   }
 }
