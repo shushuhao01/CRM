@@ -88,8 +88,55 @@ export const getPersonalStats = async (params?: {
 }> => {
   console.log('[Performance API] 获取个人业绩统计')
   try {
-    const response = await request.get('/performance/personal', { params })
-    return response
+    // 🔥 request.get 返回的是 response.data.data，即直接的数据对象
+    const data = await request.get('/performance/personal', { params })
+    console.log('[Performance API] 个人业绩后端返回数据:', data)
+
+    if (data) {
+      return {
+        success: true,
+        data: {
+          userId: data.userId || params?.userId || '',
+          orderCount: data.orderCount || 0,
+          orderAmount: data.orderAmount || 0,
+          signCount: data.signCount || 0,
+          signAmount: data.signAmount || 0,
+          signRate: data.signRate || 0,
+          shipCount: data.shipCount || 0,
+          shipAmount: data.shipAmount || 0,
+          shipRate: data.shipRate || 0,
+          rejectCount: data.rejectCount || 0,
+          rejectAmount: data.rejectAmount || 0,
+          rejectRate: data.rejectRate || 0,
+          returnCount: data.returnCount || 0,
+          returnAmount: data.returnAmount || 0,
+          returnRate: data.returnRate || 0,
+          newCustomers: data.newCustomers || 0
+        }
+      }
+    }
+
+    return {
+      success: false,
+      data: {
+        userId: params?.userId || '',
+        orderCount: 0,
+        orderAmount: 0,
+        signCount: 0,
+        signAmount: 0,
+        signRate: 0,
+        shipCount: 0,
+        shipAmount: 0,
+        shipRate: 0,
+        rejectCount: 0,
+        rejectAmount: 0,
+        rejectRate: 0,
+        returnCount: 0,
+        returnAmount: 0,
+        returnRate: 0,
+        newCustomers: 0
+      }
+    }
   } catch (error) {
     console.error('[Performance API] 获取个人业绩统计失败:', error)
     return {
@@ -555,17 +602,38 @@ export interface PerformanceShareListResponse {
  * 获取业绩分享列表
  */
 export const getPerformanceShares = async (params?: PerformanceShareListParams): Promise<PerformanceShareListResponse> => {
-  // 生产环境：强制使用真实API
   // 🔥 统一使用后端API获取业绩分享列表
   console.log('[Performance API] 获取业绩分享列表')
   try {
-    const response = await request.get('/performance/shares', { params })
-    return response
+    // 🔥 request.get 返回的是 response.data.data，即直接的数据对象
+    const data = await request.get('/performance/shares', { params })
+
+    if (data) {
+      return {
+        success: true,
+        data: {
+          shares: data.shares || [],
+          total: data.total || 0,
+          page: data.page || params?.page || 1,
+          limit: data.limit || params?.limit || 10
+        }
+      }
+    }
+
+    return {
+      success: false,
+      data: {
+        shares: [],
+        total: 0,
+        page: params?.page || 1,
+        limit: params?.limit || 10
+      }
+    }
   } catch (error) {
     console.error('[Performance API] 获取业绩分享列表失败:', error)
     // 返回空数据
     return {
-      success: true,
+      success: false,
       data: {
         shares: [],
         total: 0,
@@ -581,8 +649,13 @@ export const getPerformanceShares = async (params?: PerformanceShareListParams):
  */
 export const getPerformanceShareDetail = async (shareId: string): Promise<{ success: boolean; data: PerformanceShare }> => {
   console.log('[Performance API] 获取业绩分享详情:', shareId)
-  const response = await request.get(`/performance/shares/${shareId}`)
-  return response
+  try {
+    const data = await request.get(`/performance/shares/${shareId}`)
+    return { success: true, data }
+  } catch (error) {
+    console.error('[Performance API] 获取业绩分享详情失败:', error)
+    return { success: false, data: {} as PerformanceShare }
+  }
 }
 
 /**
@@ -590,8 +663,13 @@ export const getPerformanceShareDetail = async (shareId: string): Promise<{ succ
  */
 export const createPerformanceShare = async (data: PerformanceShareCreateParams): Promise<{ success: boolean; data: { id: string; shareNumber: string }; message?: string }> => {
   console.log('[Performance API] 创建业绩分享:', data)
-  const response = await request.post('/performance/shares', data)
-  return response
+  try {
+    const result = await request.post('/performance/shares', data)
+    return { success: true, data: result }
+  } catch (error) {
+    console.error('[Performance API] 创建业绩分享失败:', error)
+    return { success: false, data: { id: '', shareNumber: '' }, message: '创建业绩分享失败' }
+  }
 }
 
 /**
@@ -599,8 +677,13 @@ export const createPerformanceShare = async (data: PerformanceShareCreateParams)
  */
 export const cancelPerformanceShare = async (shareId: string): Promise<{ success: boolean; message?: string }> => {
   console.log('[Performance API] 取消业绩分享:', shareId)
-  const response = await request.delete(`/performance/shares/${shareId}`)
-  return response
+  try {
+    await request.delete(`/performance/shares/${shareId}`)
+    return { success: true }
+  } catch (error) {
+    console.error('[Performance API] 取消业绩分享失败:', error)
+    return { success: false, message: '取消业绩分享失败' }
+  }
 }
 
 /**
@@ -608,8 +691,13 @@ export const cancelPerformanceShare = async (shareId: string): Promise<{ success
  */
 export const confirmPerformanceShare = async (shareId: string): Promise<{ success: boolean; message?: string }> => {
   console.log('[Performance API] 确认业绩分享:', shareId)
-  const response = await request.post(`/performance/shares/${shareId}/confirm`)
-  return response
+  try {
+    await request.post(`/performance/shares/${shareId}/confirm`)
+    return { success: true }
+  } catch (error) {
+    console.error('[Performance API] 确认业绩分享失败:', error)
+    return { success: false, message: '确认业绩分享失败' }
+  }
 }
 
 /**
@@ -630,12 +718,41 @@ export const getPerformanceStats = async (): Promise<{
 }> => {
   console.log('[Performance API] 获取业绩分享统计')
   try {
-    const response = await request.get('/performance/stats')
-    return response
+    const data = await request.get('/performance/stats')
+
+    if (data) {
+      return {
+        success: true,
+        data: {
+          totalShares: data.totalShares || 0,
+          totalAmount: data.totalAmount || 0,
+          pendingShares: data.pendingShares || 0,
+          completedShares: data.completedShares || 0,
+          userStats: {
+            totalShares: data.userStats?.totalShares || 0,
+            totalAmount: data.userStats?.totalAmount || 0
+          }
+        }
+      }
+    }
+
+    return {
+      success: false,
+      data: {
+        totalShares: 0,
+        totalAmount: 0,
+        pendingShares: 0,
+        completedShares: 0,
+        userStats: {
+          totalShares: 0,
+          totalAmount: 0
+        }
+      }
+    }
   } catch (error) {
     console.error('[Performance API] 获取业绩分享统计失败:', error)
     return {
-      success: true,
+      success: false,
       data: {
         totalShares: 0,
         totalAmount: 0,
