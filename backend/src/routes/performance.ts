@@ -493,7 +493,13 @@ router.get('/team', async (req: Request, res: Response) => {
        FROM orders${orderDateCondition ? orderDateCondition : ''}`
     );
 
+    // 🔥 统计各状态订单数量用于调试
+    const statusCounts: Record<string, number> = {};
+    allOrders.forEach((order: any) => {
+      statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
+    });
     console.log(`[团队业绩] 查询到订单总数: ${allOrders.length}, 日期条件: ${orderDateCondition || '无'}`);
+    console.log(`[团队业绩] 各状态订单数量:`, statusCounts);
 
     // 获取部门成员列表
     let userCondition = '';
@@ -522,10 +528,21 @@ router.get('/team', async (req: Request, res: Response) => {
     // 🔥 按用户分组订单
     const userOrdersMap = new Map<string, any[]>();
     const unmatchedOrders: any[] = [];
+    let matchedOrderCount = 0;
 
     allOrders.forEach((order: any) => {
       const createdBy = order.createdBy;
       let matchedUser = userIdMap.get(createdBy) || usernameMap.get(createdBy);
+
+      // 🔥 如果没有匹配到，尝试通过createdByName匹配
+      if (!matchedUser && order.createdByName) {
+        for (const user of users) {
+          if (user.realName === order.createdByName || user.username === order.createdByName) {
+            matchedUser = user;
+            break;
+          }
+        }
+      }
 
       // 🔥 如果有部门筛选，还需要检查订单的部门
       if (departmentId && departmentId !== 'all' && !matchedUser) {
@@ -549,13 +566,18 @@ router.get('/team', async (req: Request, res: Response) => {
           userOrdersMap.set(userId, []);
         }
         userOrdersMap.get(userId)!.push(order);
+        matchedOrderCount++;
       } else if (!departmentId || departmentId === 'all') {
         // 只有在查询全部部门时才统计未匹配的订单
         unmatchedOrders.push(order);
       }
     });
 
-    console.log(`[团队业绩] 已匹配订单用户数: ${userOrdersMap.size}, 未匹配订单数: ${unmatchedOrders.length}`);
+    console.log(`[团队业绩] 已匹配订单数: ${matchedOrderCount}, 未匹配订单数: ${unmatchedOrders.length}`);
+    if (unmatchedOrders.length > 0) {
+      const unmatchedCreators = [...new Set(unmatchedOrders.map(o => o.createdBy))];
+      console.log(`[团队业绩] 未匹配订单的创建者:`, unmatchedCreators.slice(0, 10));
+    }
 
     // 获取每个成员的订单数据
     const memberStats: any[] = [];
@@ -738,6 +760,8 @@ router.get('/team', async (req: Request, res: Response) => {
     const totalSignAmount = memberStats.reduce((sum, m) => sum + m.signAmount, 0);
     const avgPerformance = memberStats.length > 0 ? totalOrderAmount / memberStats.length : 0;
     const totalSignRate = totalOrderCount > 0 ? parseFloat(((totalSignCount / totalOrderCount) * 100).toFixed(1)) : 0;
+
+    console.log(`[团队业绩] 汇总统计: 总订单数=${totalOrderCount}, 总金额=${totalOrderAmount}, 成员数=${memberStats.length}`);
 
     // 分页
     const total = memberStats.length;
