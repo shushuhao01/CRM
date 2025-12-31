@@ -341,9 +341,16 @@ router.get('/personal', async (req: Request, res: Response) => {
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
 
+    // 🔥 修复：获取用户名，用于同时匹配订单
+    const [userInfo] = await AppDataSource.query(
+      `SELECT id, username FROM users WHERE id = ?`,
+      [userId]
+    );
+    const username = userInfo?.username;
+
     // 🔥 数据库已配置为北京时区，直接使用北京时间进行查询
     let dateCondition = '';
-    const orderParams: any[] = [userId];
+    const orderParams: any[] = [userId, username];
     if (startDate && endDate) {
       dateCondition = ' AND created_at >= ? AND created_at <= ?';
       orderParams.push(startDate + ' 00:00:00', endDate + ' 23:59:59');
@@ -351,10 +358,10 @@ router.get('/personal', async (req: Request, res: Response) => {
     }
 
     // 获取所有订单用于业绩计算
-    // 🔥 修复：orders表没有sales_person_id字段，只使用created_by
+    // 🔥 修复：同时匹配用户ID和用户名
     const orders = await AppDataSource.query(
       `SELECT status, mark_type as markType, total_amount as totalAmount
-       FROM orders WHERE created_by = ?${dateCondition}`,
+       FROM orders WHERE (created_by = ? OR created_by = ?)${dateCondition}`,
       orderParams
     );
 
@@ -823,6 +830,14 @@ router.get('/analysis/personal', async (req: Request, res: Response) => {
     const currentUser = (req as any).user;
     const userId = (req.query.userId as string) || currentUser?.userId;
 
+    // 🔥 修复：同时获取用户名，用于匹配订单
+    const [userInfo] = await AppDataSource.query(
+      `SELECT id, username FROM users WHERE id = ?`,
+      [userId]
+    );
+    const username = userInfo?.username;
+
+    // 🔥 修复：同时匹配用户ID和用户名
     const [stats] = await AppDataSource.query(
       `SELECT
          COUNT(*) as orderCount,
@@ -835,8 +850,8 @@ router.get('/analysis/personal', async (req: Request, res: Response) => {
          SUM(CASE WHEN status = 'cancelled' THEN total_amount ELSE 0 END) as rejectAmount,
          SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END) as returnCount,
          SUM(CASE WHEN status = 'refunded' THEN total_amount ELSE 0 END) as returnAmount
-       FROM orders WHERE created_by = ?`,
-      [userId]
+       FROM orders WHERE (created_by = ? OR created_by = ?)`,
+      [userId, username]
     );
 
     const orderCount = stats?.orderCount || 1;
@@ -875,6 +890,7 @@ router.get('/analysis/department', async (req: Request, res: Response) => {
     const currentUser = (req as any).user;
     const departmentId = (req.query.departmentId as string) || currentUser?.departmentId;
 
+    // 🔥 修复：同时匹配用户ID和用户名，避免遗漏订单
     const [stats] = await AppDataSource.query(
       `SELECT
          COUNT(o.id) as orderCount,
@@ -884,7 +900,7 @@ router.get('/analysis/department', async (req: Request, res: Response) => {
          SUM(CASE WHEN o.status = 'cancelled' THEN 1 ELSE 0 END) as rejectCount,
          SUM(CASE WHEN o.status = 'refunded' THEN 1 ELSE 0 END) as returnCount
        FROM orders o
-       JOIN users u ON o.created_by = u.id
+       JOIN users u ON (o.created_by = u.id OR o.created_by = u.username)
        WHERE u.department_id = ?`,
       [departmentId]
     );
