@@ -471,12 +471,18 @@ router.get('/personal', async (req: Request, res: Response) => {
 router.get('/team', async (req: Request, res: Response) => {
   try {
     const currentUser = (req as any).user;
-    const departmentId = (req.query.departmentId as string) || currentUser?.departmentId;
+    // 🔥 修复：当departmentId为空字符串或'all'时，查询所有部门
+    const departmentIdParam = req.query.departmentId as string;
+    const departmentId = (departmentIdParam === '' || departmentIdParam === 'all' || departmentIdParam === undefined)
+      ? null  // null表示查询所有部门
+      : departmentIdParam;
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
     const sortBy = (req.query.sortBy as string) || 'orderAmount';
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
+
+    console.log(`[团队业绩API] 🚀 请求参数: departmentId=${departmentIdParam}, 实际使用=${departmentId || '全部部门'}`);
 
     // 🔥 数据库已配置为北京时区，直接使用北京时间
     let dateCondition = '';
@@ -484,9 +490,9 @@ router.get('/team', async (req: Request, res: Response) => {
       dateCondition = ` AND created_at >= '${startDate} 00:00:00' AND created_at <= '${endDate} 23:59:59'`;
     }
 
-    // 获取部门成员列表
+    // 获取部门成员列表 - 🔥 修复：departmentId为null时查询所有用户
     let userCondition = '';
-    if (departmentId && departmentId !== 'all') {
+    if (departmentId) {
       userCondition = ` WHERE u.department_id = '${departmentId}'`;
     }
 

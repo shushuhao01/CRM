@@ -375,12 +375,12 @@
           </div>
           <div class="info-item">
             <span class="label">订单数量：</span>
-            <span class="value">{{ orderTypeOrders.length }}</span>
+            <span class="value">{{ orderTypeTotal }}</span>
           </div>
         </div>
 
         <!-- 订单列表 -->
-        <el-table :data="paginatedOrderTypeList" stripe border class="order-table">
+        <el-table :data="orderTypeOrders" stripe border class="order-table" v-loading="orderTypeLoading">
           <el-table-column type="index" label="序号" width="60" align="center" />
           <el-table-column prop="orderNo" label="订单号" width="140" show-overflow-tooltip />
           <el-table-column prop="orderDate" label="下单日期" width="110" show-overflow-tooltip />
@@ -434,9 +434,11 @@
           <el-pagination
             v-model:current-page="orderTypeCurrentPage"
             v-model:page-size="orderTypePageSize"
-            :page-sizes="[30, 50, 100]"
-            :total="orderTypeOrders.length"
+            :page-sizes="[10, 30, 50, 100]"
+            :total="orderTypeTotal"
             layout="total, sizes, prev, pager, next, jumper"
+            @current-change="handleOrderTypePageChange"
+            @size-change="handleOrderTypeSizeChange"
           />
         </div>
       </div>
@@ -2233,89 +2235,111 @@ const handleTrackingNoClick = async (trackingNo: string, logisticsCompany?: stri
   })
 }
 
-// 根据订单类型查看订单详情
-const viewOrdersByType = (member: TeamMember, columnProp: string) => {
+// 根据订单类型查看订单详情 - 🔥 修改为调用后端API
+const viewOrdersByType = async (member: TeamMember, columnProp: string) => {
   orderTypeMember.value = member
   orderTypeCurrentPage.value = 1
+  orderTypePageSize.value = 10
 
-  // 🔥 获取该成员的所有订单 - 使用新的业绩计算规则
-  let userOrders = orderStore.orders.filter(order => {
-    // 先检查业绩计算规则
-    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
-    if (order.status === 'pending_transfer' && order.markType !== 'normal') return false
-    if (excludedStatuses.includes(order.status)) return false
-
-    if (order.salesPersonId && member.id) {
-      if (String(order.salesPersonId) === String(member.id)) return true
-    }
-    if (order.createdBy && member.name) {
-      if (order.createdBy === member.name) return true
-    }
-    return false
-  })
-
-  // 日期范围过滤
-  if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-    const [startDate, endDate] = dateRange.value
-    userOrders = userOrders.filter(order => {
-      let orderDateStr = (order.orderDate || order.createTime)?.split(' ')[0] || ''
-      // 处理各种日期格式
-      orderDateStr = orderDateStr.replace(/\//g, '-')
-      const start = startDate.replace(/\//g, '-')
-      const end = endDate.replace(/\//g, '-')
-      return orderDateStr >= start && orderDateStr <= end
-    })
-  }
-
-  // 根据列类型筛选订单
-  const typeMap: Record<string, { label: string; filter: (order: any) => boolean }> = {
-    orderCount: {
-      label: '下单订单',
-      filter: () => true
-    },
-    shipCount: {
-      label: '已发货订单',
-      filter: (order) => order.status === 'shipped' || order.status === 'delivered'
-    },
-    signCount: {
-      label: '已签收订单',
-      filter: (order) => order.status === 'delivered'
-    },
-    transitCount: {
-      label: '在途订单',
-      filter: (order) => order.status === 'shipped' && order.logisticsStatus !== 'delivered'
-    },
-    rejectCount: {
-      label: '拒收订单',
-      filter: (order) => order.status === 'rejected' || order.status === 'rejected_returned'
-    },
-    returnCount: {
-      label: '退货订单',
-      filter: (order) => order.status === 'logistics_returned'
-    }
+  // 根据列类型确定订单状态筛选
+  const typeMap: Record<string, { label: string; status?: string }> = {
+    orderCount: { label: '下单订单' },
+    shipCount: { label: '已发货订单', status: 'shipped' },
+    signCount: { label: '已签收订单', status: 'delivered' },
+    transitCount: { label: '在途订单', status: 'shipped' },
+    rejectCount: { label: '拒收订单', status: 'rejected' },
+    returnCount: { label: '退货订单', status: 'logistics_returned' }
   }
 
   const typeConfig = typeMap[columnProp]
   if (typeConfig) {
     orderTypeLabel.value = typeConfig.label
     orderTypeDetailTitle.value = `${member.name} - ${typeConfig.label}详情`
-    const filteredOrders = userOrders.filter(typeConfig.filter)
 
-    // 转换为弹窗显示格式
-    orderTypeOrders.value = filteredOrders.map(order => ({
-      id: order.id,
-      orderNo: order.orderNumber,
-      orderDate: (order.orderDate || order.createTime)?.split(' ')[0] || '',
-      customerName: order.customerName,
-      amount: order.totalAmount || 0,
-      depositAmount: order.depositAmount || 0,
-      collectionAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
-      status: order.status,
-      trackingNumber: order.trackingNumber || order.expressNo || '',
-      productDetails: order.products?.map((item: any) => `${item.name} x${item.quantity}`).join(', ') || '暂无详情'
-    }))
+    // 🔥 调用后端API获取订单数据
+    await loadOrderTypeData(member, typeConfig.status)
 
     orderTypeDetailVisible.value = true
+  }
+}
+
+// 🔥 新增：从后端API加载订单类型数据
+const orderTypeTotal = ref(0)
+const orderTypeLoading = ref(false)
+const currentOrderTypeStatus = ref<string | undefined>(undefined)
+
+const loadOrderTypeData = async (member: TeamMember, status?: string) => {
+  try {
+    orderTypeLoading.value = true
+    currentOrderTypeStatus.value = status
+
+    const { orderApi } = await import('@/api/order')
+
+    const params: any = {
+      memberId: member.id,
+      memberUsername: member.username,
+      page: orderTypeCurrentPage.value,
+      pageSize: orderTypePageSize.value
+    }
+
+    // 添加日期筛选
+    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+      params.startDate = dateRange.value[0]
+      params.endDate = dateRange.value[1]
+    }
+
+    // 添加状态筛选
+    if (status) {
+      params.status = status
+    }
+
+    console.log('[团队业绩] 加载成员订单:', params)
+
+    const response = await orderApi.getMemberOrders(params)
+
+    if (response && response.data) {
+      const { list, total } = response.data
+      orderTypeTotal.value = total || 0
+
+      // 转换为弹窗显示格式
+      orderTypeOrders.value = (list || []).map((order: any) => ({
+        id: order.id,
+        orderNo: order.orderNumber,
+        orderDate: (order.orderDate || order.createTime)?.split(' ')[0] || '',
+        department: order.createdByDepartmentName || '',
+        salesPerson: order.createdByName || order.operator || '',
+        customerName: order.customerName,
+        amount: order.totalAmount || 0,
+        depositAmount: order.depositAmount || 0,
+        collectionAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
+        status: order.status,
+        trackingNumber: order.trackingNumber || order.expressNo || '',
+        productDetails: order.products?.map((item: any) => `${item.name} x${item.quantity}`).join(', ') || '暂无详情'
+      }))
+
+      console.log('[团队业绩] ✅ 成员订单加载成功:', orderTypeOrders.value.length, '条, 总数:', total)
+    }
+  } catch (error) {
+    console.error('[团队业绩] ❌ 加载成员订单失败:', error)
+    orderTypeOrders.value = []
+    orderTypeTotal.value = 0
+  } finally {
+    orderTypeLoading.value = false
+  }
+}
+
+// 🔥 订单类型弹窗分页变化处理
+const handleOrderTypePageChange = async () => {
+  if (orderTypeMember.value) {
+    await loadOrderTypeData(orderTypeMember.value, currentOrderTypeStatus.value)
+  }
+}
+
+const handleOrderTypeSizeChange = async (size: number) => {
+  orderTypePageSize.value = size
+  orderTypeCurrentPage.value = 1
+  if (orderTypeMember.value) {
+    await loadOrderTypeData(orderTypeMember.value, currentOrderTypeStatus.value)
   }
 }
 
