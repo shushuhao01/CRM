@@ -472,10 +472,21 @@ router.get('/team', async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 50;
 
     // 🔥 数据库已配置为北京时区，直接使用北京时间
-    let dateCondition = '';
+    let orderDateCondition = '';
     if (startDate && endDate) {
-      dateCondition = ` AND created_at >= '${startDate} 00:00:00' AND created_at <= '${endDate} 23:59:59'`;
+      orderDateCondition = ` WHERE created_at >= '${startDate} 00:00:00' AND created_at <= '${endDate} 23:59:59'`;
     }
+
+    // 🔥 修复：先查询所有符合条件的订单，再按用户分组
+    // 这样可以确保不遗漏任何订单
+    const allOrders = await AppDataSource.query(
+      `SELECT id, status, mark_type as markType, total_amount as totalAmount,
+              created_by as createdBy, created_by_name as createdByName,
+              created_by_department_id as createdByDepartmentId
+       FROM orders${orderDateCondition ? orderDateCondition : ''}`
+    );
+
+    console.log(`[团队业绩] 查询到订单总数: ${allOrders.length}, 日期条件: ${orderDateCondition || '无'}`);
 
     // 获取部门成员列表
     let userCondition = '';
@@ -489,17 +500,61 @@ router.get('/team', async (req: Request, res: Response) => {
        FROM users u${userCondition}`
     );
 
+    console.log(`[团队业绩] 查询到用户数: ${users.length}`);
+
+    // 🔥 创建用户ID和用户名的映射，用于快速查找
+    const userIdMap = new Map<string, any>();
+    const usernameMap = new Map<string, any>();
+    users.forEach((user: any) => {
+      userIdMap.set(user.id, user);
+      if (user.username) {
+        usernameMap.set(user.username, user);
+      }
+    });
+
+    // 🔥 按用户分组订单
+    const userOrdersMap = new Map<string, any[]>();
+    const unmatchedOrders: any[] = [];
+
+    allOrders.forEach((order: any) => {
+      const createdBy = order.createdBy;
+      let matchedUser = userIdMap.get(createdBy) || usernameMap.get(createdBy);
+
+      // 🔥 如果有部门筛选，还需要检查订单的部门
+      if (departmentId && departmentId !== 'all' && !matchedUser) {
+        // 尝试通过订单的部门ID匹配
+        if (order.createdByDepartmentId === departmentId) {
+          // 订单属于该部门，但创建者不在用户列表中（可能已删除）
+          // 创建一个虚拟用户
+          matchedUser = {
+            id: createdBy,
+            realName: order.createdByName || createdBy,
+            username: createdBy,
+            departmentName: '未知部门',
+            departmentId: order.createdByDepartmentId
+          };
+        }
+      }
+
+      if (matchedUser) {
+        const userId = matchedUser.id;
+        if (!userOrdersMap.has(userId)) {
+          userOrdersMap.set(userId, []);
+        }
+        userOrdersMap.get(userId)!.push(order);
+      } else if (!departmentId || departmentId === 'all') {
+        // 只有在查询全部部门时才统计未匹配的订单
+        unmatchedOrders.push(order);
+      }
+    });
+
+    console.log(`[团队业绩] 已匹配订单用户数: ${userOrdersMap.size}, 未匹配订单数: ${unmatchedOrders.length}`);
+
     // 获取每个成员的订单数据
     const memberStats: any[] = [];
 
     for (const user of users) {
-      // 🔥 修复：created_by字段可能存储用户ID或用户名，需要同时匹配
-      const orders = await AppDataSource.query(
-        `SELECT status, mark_type as markType, total_amount as totalAmount
-         FROM orders
-         WHERE (created_by = ? OR created_by = ?)${dateCondition}`,
-        [user.id, user.username]
-      );
+      const orders = userOrdersMap.get(user.id) || [];
 
       // 🔥 使用统一的业绩计算规则
       let orderCount = 0, orderAmount = 0;
@@ -581,6 +636,85 @@ router.get('/team', async (req: Request, res: Response) => {
         returnAmount,
         returnRate,
         isCurrentUser: user.id === currentUser?.userId
+      });
+    }
+
+    // 🔥 如果有未匹配的订单，添加一个"未分配"用户来统计
+    if (unmatchedOrders.length > 0) {
+      let orderCount = 0, orderAmount = 0;
+      let signCount = 0, signAmount = 0;
+      let shipCount = 0, shipAmount = 0;
+      let transitCount = 0, transitAmount = 0;
+      let rejectCount = 0, rejectAmount = 0;
+      let returnCount = 0, returnAmount = 0;
+
+      unmatchedOrders.forEach((order: any) => {
+        const amount = Number(order.totalAmount) || 0;
+
+        if (isValidForOrderPerformance(order.status, order.markType)) {
+          orderCount++;
+          orderAmount += amount;
+        }
+
+        if (order.status === 'delivered') {
+          signCount++;
+          signAmount += amount;
+        }
+
+        if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(order.status)) {
+          shipCount++;
+          shipAmount += amount;
+        }
+
+        if (order.status === 'shipped') {
+          transitCount++;
+          transitAmount += amount;
+        }
+
+        if (['rejected', 'rejected_returned'].includes(order.status)) {
+          rejectCount++;
+          rejectAmount += amount;
+        }
+
+        if (order.status === 'refunded') {
+          returnCount++;
+          returnAmount += amount;
+        }
+      });
+
+      const signRate = orderCount > 0 ? parseFloat(((signCount / orderCount) * 100).toFixed(1)) : 0;
+      const shipRate = orderCount > 0 ? parseFloat(((shipCount / orderCount) * 100).toFixed(1)) : 0;
+      const transitRate = orderCount > 0 ? parseFloat(((transitCount / orderCount) * 100).toFixed(1)) : 0;
+      const rejectRate = orderCount > 0 ? parseFloat(((rejectCount / orderCount) * 100).toFixed(1)) : 0;
+      const returnRate = orderCount > 0 ? parseFloat(((returnCount / orderCount) * 100).toFixed(1)) : 0;
+
+      console.log(`[团队业绩] 未分配订单统计: ${orderCount}单, ¥${orderAmount}`);
+
+      memberStats.push({
+        id: 'unassigned',
+        name: '未分配',
+        username: 'unassigned',
+        department: '未知',
+        departmentId: '',
+        createTime: null,
+        orderCount,
+        orderAmount,
+        signCount,
+        signAmount,
+        signRate,
+        shipCount,
+        shipAmount,
+        shipRate,
+        transitCount,
+        transitAmount,
+        transitRate,
+        rejectCount,
+        rejectAmount,
+        rejectRate,
+        returnCount,
+        returnAmount,
+        returnRate,
+        isCurrentUser: false
       });
     }
 
