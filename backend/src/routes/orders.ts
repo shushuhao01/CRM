@@ -35,22 +35,20 @@ const saveStatusHistory = async (
 };
 
 // 格式化时间为北京时间友好格式 (YYYY/MM/DD HH:mm:ss)
+// 🔥 修复：数据库已配置为北京时区，createdAt存储的已经是北京时间，不需要再转换
 const formatToBeijingTime = (date: Date | string | null | undefined): string => {
   if (!date) return '';
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return '';
 
-  // 转换为北京时间 (UTC+8)
-  const beijingOffset = 8 * 60; // 北京时间偏移分钟数
-  const localOffset = d.getTimezoneOffset(); // 本地时区偏移分钟数
-  const beijingTime = new Date(d.getTime() + (beijingOffset + localOffset) * 60 * 1000);
-
-  const year = beijingTime.getFullYear();
-  const month = String(beijingTime.getMonth() + 1).padStart(2, '0');
-  const day = String(beijingTime.getDate()).padStart(2, '0');
-  const hours = String(beijingTime.getHours()).padStart(2, '0');
-  const minutes = String(beijingTime.getMinutes()).padStart(2, '0');
-  const seconds = String(beijingTime.getSeconds()).padStart(2, '0');
+  // 🔥 数据库已配置为北京时区，直接使用日期对象的值
+  // 不再进行时区转换，避免时间被错误地加8小时
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const seconds = String(d.getSeconds()).padStart(2, '0');
 
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
