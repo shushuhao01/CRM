@@ -27,6 +27,7 @@
                     placeholder="请输入手机号"
                     clearable
                     @blur="handlePhoneBlur"
+                    @input="handlePhoneInput"
                     style="width: 200px;"
                   />
                   <el-button
@@ -79,6 +80,7 @@
                   v-model="customerForm.name"
                   placeholder="请输入客户姓名"
                   clearable
+                  @input="handleNameInput"
                   style="width: 200px;"
                 />
               </el-form-item>
@@ -1076,6 +1078,22 @@ const viewExistingCustomer = () => {
       query: { keyword: customerForm.phone }
     })
   }
+}
+
+/**
+ * 手机号输入时自动去除空格
+ */
+const handlePhoneInput = (value: string) => {
+  // 去除所有空格
+  customerForm.phone = value.replace(/\s/g, '')
+}
+
+/**
+ * 姓名输入时自动去除空格
+ */
+const handleNameInput = (value: string) => {
+  // 去除所有空格
+  customerForm.name = value.replace(/\s/g, '')
 }
 
 /**
