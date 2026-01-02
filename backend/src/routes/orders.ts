@@ -6,6 +6,7 @@ import { Product } from '../entities/Product';
 import { SystemConfig } from '../entities/SystemConfig';
 import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
 import { OrderStatusHistory } from '../entities/OrderStatusHistory';
+import { Customer } from '../entities/Customer';  // 🔥 新增：导入Customer实体
 import { orderNotificationService } from '../services/OrderNotificationService';
 // Like 和 Between 现在通过 QueryBuilder 使用，不再直接导入
 // import { Like, Between } from 'typeorm';
@@ -717,7 +718,7 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
     // 🔥 服务端分页参数
     const { page = 1, pageSize = 20, orderNumber, customerName, startDate, endDate, quickFilter, departmentId, salesPersonId } = req.query;
     const pageNum = parseInt(page as string) || 1;
-    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 200); // 最大200条/页
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 500); // 🔥 最大500条/页
     const skip = (pageNum - 1) * pageSizeNum;
 
     // 🔥 优化：使用QueryBuilder只查询需要的字段
@@ -804,6 +805,14 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
     const queryTime = Date.now() - startTime;
     console.log(`📦 [待发货订单] 查询完成: ${orders.length}条, 总数${total}, 页码${pageNum}, 每页${pageSizeNum}, 耗时${queryTime}ms`);
 
+    // 🔥 获取所有订单的客户ID，批量查询客户信息
+    const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customers = customerIds.length > 0
+      ? await customerRepository.findByIds(customerIds)
+      : [];
+    const customerMap = new Map(customers.map(c => [c.id, c]));
+
     // 转换数据格式
     const list = orders.map(order => {
       let products: unknown[] = [];
@@ -815,12 +824,20 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
         }
       }
 
+      // 🔥 获取客户信息
+      const customer = order.customerId ? customerMap.get(order.customerId) : null;
+
       return {
         id: order.id,
         orderNumber: order.orderNumber,
         customerId: order.customerId || '',
         customerName: order.customerName || '',
         customerPhone: order.customerPhone || '',
+        // 🔥 新增：客户详细信息
+        customerAge: customer?.age || null,
+        customerHeight: customer?.height || null,
+        customerWeight: customer?.weight || null,
+        medicalHistory: customer?.medicalHistory || null,
         products: products,
         totalAmount: Number(order.totalAmount) || 0,
         depositAmount: Number(order.depositAmount) || 0,
@@ -909,7 +926,7 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
     // 🔥 服务端分页参数
     const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status, startDate, endDate, quickFilter, departmentId, salesPersonId, expressCompany } = req.query;
     const pageNum = parseInt(page as string) || 1;
-    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 200); // 最大200条/页
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 500); // 🔥 最大500条/页
     const skip = (pageNum - 1) * pageSizeNum;
 
     // 🔥 优化：使用QueryBuilder只查询需要的字段
@@ -1038,6 +1055,14 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
     const queryTime = Date.now() - startTime;
     console.log(`🚚 [已发货订单] 查询完成: ${orders.length}条, 总数${total}, 耗时${queryTime}ms`);
 
+    // 🔥 获取所有订单的客户ID，批量查询客户信息
+    const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customers = customerIds.length > 0
+      ? await customerRepository.findByIds(customerIds)
+      : [];
+    const customerMap = new Map(customers.map(c => [c.id, c]));
+
     // 转换数据格式
     const list = orders.map(order => {
       let products: unknown[] = [];
@@ -1049,12 +1074,20 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
         }
       }
 
+      // 🔥 获取客户信息
+      const customer = order.customerId ? customerMap.get(order.customerId) : null;
+
       return {
         id: order.id,
         orderNumber: order.orderNumber,
         customerId: order.customerId || '',
         customerName: order.customerName || '',
         customerPhone: order.customerPhone || '',
+        // 🔥 新增：客户详细信息
+        customerAge: customer?.age || null,
+        customerHeight: customer?.height || null,
+        customerWeight: customer?.weight || null,
+        medicalHistory: customer?.medicalHistory || null,
         products: products,
         totalAmount: Number(order.totalAmount) || 0,
         depositAmount: Number(order.depositAmount) || 0,
