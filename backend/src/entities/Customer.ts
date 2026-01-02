@@ -15,6 +15,9 @@ export class Customer {
   @Column({ length: 20, nullable: true, comment: '手机号' })
   phone?: string;
 
+  @Column({ name: 'other_phones', type: 'json', nullable: true, comment: '其他手机号' })
+  otherPhones?: string[];
+
   @Column({ length: 100, nullable: true, comment: '微信号' })
   wechat?: string;
 

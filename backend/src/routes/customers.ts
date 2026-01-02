@@ -988,6 +988,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       code: customer.customerNo || '',
       name: customer.name,
       phone: customer.phone || '',
+      otherPhones: customer.otherPhones || [],
       age: customer.age || 0,
       gender: customer.gender || 'unknown',
       height: customer.height || null,
@@ -1228,7 +1229,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       name, phone, email, address, level, source, tags, remarks, remark, company, status,
       age, gender, height, weight, wechat, wechatId,
       province, city, district, street, detailAddress, overseasAddress,
-      medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime
+      medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime, otherPhones
     } = req.body;
 
     // 更新字段
@@ -1257,6 +1258,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (improvementGoals !== undefined) customer.improvementGoals = improvementGoals;
     if (otherGoals !== undefined) customer.otherGoals = otherGoals;
     if (fanAcquisitionTime !== undefined) customer.fanAcquisitionTime = fanAcquisitionTime ? new Date(fanAcquisitionTime) : undefined;
+    if (otherPhones !== undefined) customer.otherPhones = otherPhones;
 
     const updatedCustomer = await customerRepository.save(customer);
 
@@ -1266,6 +1268,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       code: updatedCustomer.customerNo || '',
       name: updatedCustomer.name,
       phone: updatedCustomer.phone || '',
+      otherPhones: updatedCustomer.otherPhones || [],
       age: updatedCustomer.age || 0,
       gender: updatedCustomer.gender || 'unknown',
       height: updatedCustomer.height || null,
@@ -1281,7 +1284,9 @@ router.put('/:id', async (req: Request, res: Response) => {
       company: updatedCustomer.company || '',
       source: updatedCustomer.source || '',
       tags: updatedCustomer.tags || [],
-      remarks: updatedCustomer.remark || ''
+      remarks: updatedCustomer.remark || '',
+      improvementGoals: updatedCustomer.improvementGoals || [],
+      fanAcquisitionTime: updatedCustomer.fanAcquisitionTime ? formatDate(updatedCustomer.fanAcquisitionTime) : ''
     };
 
     res.json({
