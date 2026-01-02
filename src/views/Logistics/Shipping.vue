@@ -233,7 +233,7 @@
       :show-actions="true"
       :actions-width="280"
       :total="total"
-      :page-sizes="[20, 50, 100, 200]"
+      :page-sizes="[10, 20, 50, 100, 200, 300, 500]"
       @selection-change="handleSelectionChange"
       @size-change="handlePageSizeChange"
       @current-change="handleCurrentChange"
@@ -736,7 +736,7 @@
           <el-pagination
             v-model:current-page="currentPage"
             v-model:page-size="pageSize"
-            :page-sizes="[50, 100, 200]"
+            :page-sizes="[10, 20, 50, 100, 200, 300, 500]"
             :total="total"
             layout="total, sizes, prev, pager, next, jumper"
             @size-change="handlePageSizeChange"
@@ -849,7 +849,7 @@ const orderList = ref<any[]>([])
 const selectedOrders = ref<any[]>([])
 const total = ref(0)
 const currentPage = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(10)  // 🔥 默认10条/页
 const loading = ref(false)
 
 // 🔥 服务端分页：直接使用orderList作为当前页数据
@@ -1412,9 +1412,16 @@ const loadOrderList = async () => {
             time: order.createTime
           }
 
-      // 同步客户信息
-      let customerInfo: Record<string, unknown> = {}
-      if (order.customerId) {
+      // 🔥 修复：优先使用API返回的客户信息，其次从customerStore获取
+      let customerInfo: Record<string, unknown> = {
+        customerAge: order.customerAge || null,
+        customerHeight: order.customerHeight || null,
+        customerWeight: order.customerWeight || null,
+        medicalHistory: order.medicalHistory || null
+      }
+
+      // 如果API没有返回客户信息，尝试从customerStore获取
+      if (!customerInfo.customerAge && !customerInfo.customerHeight && !customerInfo.customerWeight && order.customerId) {
         const customer = customerStore.getCustomerById(order.customerId)
         if (customer) {
           customerInfo = {
