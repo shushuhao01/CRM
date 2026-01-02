@@ -590,24 +590,27 @@ export const useOrderStore = createPersistentStore('order', () => {
 
   // 退回订单 - 🔥 API优先原则
   const returnOrder = async (id: string, reason: string): Promise<Order | null> => {
+    // 🔥 修复：不再强制要求本地存在订单，直接调用API
     const order = getOrderById(id)
-    if (!order) {
-      console.error('[OrderStore] 订单不存在:', id)
-      throw new Error('订单不存在')
-    }
+    // 即使本地没有订单数据，也继续调用API（后端会验证订单是否存在）
 
     const currentUser = userStore.currentUser
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
     // 根据当前订单状态确定退回后的状态
-    let newStatus: OrderStatus = 'rejected_returned'
-    if (order.status === 'shipped' || order.status === 'pending_shipment') {
-      newStatus = 'logistics_returned'
+    // 🔥 修复：如果本地没有订单，默认使用 logistics_returned 状态
+    let newStatus: OrderStatus = 'logistics_returned'
+    if (order) {
+      if (order.status === 'shipped' || order.status === 'pending_shipment') {
+        newStatus = 'logistics_returned'
+      } else {
+        newStatus = 'rejected_returned'
+      }
     }
 
     // 🔥 API优先原则：必须API成功才更新本地
     try {
-      console.log('[OrderStore] 调用API退回订单:', id)
+      console.log('[OrderStore] 调用API退回订单:', id, '目标状态:', newStatus)
       const { orderApi } = await import('@/api/order')
       const response = await orderApi.update(id, {
         status: newStatus,
@@ -622,26 +625,28 @@ export const useOrderStore = createPersistentStore('order', () => {
 
       console.log('[OrderStore] ✅ API退回订单成功，更新本地缓存')
 
-      // 🔥 API成功后才更新本地数据
-      updateOrder(id, {
-        status: newStatus,
-        returnReason: reason,
-        returnTime: now
-      })
-
-      // 添加状态历史
-      if (order.statusHistory) {
-        order.statusHistory.push({
+      // 🔥 API成功后才更新本地数据（如果本地有订单）
+      if (order) {
+        updateOrder(id, {
           status: newStatus,
-          time: now,
-          operator: currentUser?.name || 'unknown',
-          description: '订单已退回',
-          remark: reason
+          returnReason: reason,
+          returnTime: now
         })
+
+        // 添加状态历史
+        if (order.statusHistory) {
+          order.statusHistory.push({
+            status: newStatus,
+            time: now,
+            operator: currentUser?.name || 'unknown',
+            description: '订单已退回',
+            remark: reason
+          })
+        }
       }
 
       // 发射事件通知
-      console.log(`[订单退回] 订单 ${order.orderNumber} 已退回，原因：${reason}`)
+      console.log(`[订单退回] 订单已退回，原因：${reason}`)
       eventBus.emit(EventNames.ORDER_RETURNED, { order, reason })
       eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
       eventBus.emit(EventNames.REFRESH_ORDER_LIST)
@@ -783,11 +788,9 @@ export const useOrderStore = createPersistentStore('order', () => {
 
   // 取消订单 - 🔥 API优先原则
   const cancelOrder = async (id: string, reason: string): Promise<void> => {
+    // 🔥 修复：不再强制要求本地存在订单，直接调用API
     const order = getOrderById(id)
-    if (!order) {
-      console.error('[OrderStore] 订单不存在:', id)
-      throw new Error('订单不存在')
-    }
+    // 即使本地没有订单数据，也继续调用API（后端会验证订单是否存在）
 
     const currentUser = userStore.currentUser
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
@@ -809,46 +812,50 @@ export const useOrderStore = createPersistentStore('order', () => {
 
       console.log('[OrderStore] ✅ API取消订单成功，更新本地缓存')
 
-      // 🔥 API成功后才更新本地数据
-      updateOrder(id, {
-        status: 'cancelled',
-        cancelReason: reason,
-        cancelTime: now
-      })
-
-      // 添加状态历史
-      if (order.statusHistory) {
-        order.statusHistory.push({
+      // 🔥 API成功后才更新本地数据（如果本地有订单）
+      if (order) {
+        updateOrder(id, {
           status: 'cancelled',
-          time: now,
-          operator: currentUser?.name || 'unknown',
-          description: '订单已取消',
-          remark: reason
+          cancelReason: reason,
+          cancelTime: now
         })
+
+        // 添加状态历史
+        if (order.statusHistory) {
+          order.statusHistory.push({
+            status: 'cancelled',
+            time: now,
+            operator: currentUser?.name || 'unknown',
+            description: '订单已取消',
+            remark: reason
+          })
+        }
       }
 
       // 发射事件通知
-      console.log(`[订单取消] 订单 ${order.orderNumber} 已取消，原因：${reason}`)
+      console.log(`[订单取消] 订单已取消，原因：${reason}`)
       eventBus.emit(EventNames.ORDER_CANCELLED, { order, reason })
       eventBus.emit(EventNames.ORDER_STATUS_CHANGED, order)
       eventBus.emit(EventNames.REFRESH_ORDER_LIST)
       eventBus.emit(EventNames.REFRESH_SHIPPING_LIST)
       eventBus.emit(EventNames.REFRESH_LOGISTICS_LIST)
 
-      // 🔥 发送消息通知给订单创建者
-      try {
-        const creatorId = order.salesPersonId || order.createdBy
-        if (creatorId && creatorId !== currentUser?.id) {
-          messageNotificationService.sendToUser(
-            MessageType.ORDER_CANCELLED,
-            `订单 #${order.orderNumber} 已被取消，原因：${reason}`,
-            creatorId,
-            { relatedId: order.id, relatedType: 'order', actionUrl: '/order/list' }
-          )
-          console.log(`[消息通知] 已通知订单创建者 ${creatorId} 订单已取消`)
+      // 🔥 发送消息通知给订单创建者（如果本地有订单信息）
+      if (order) {
+        try {
+          const creatorId = order.salesPersonId || order.createdBy
+          if (creatorId && creatorId !== currentUser?.id) {
+            messageNotificationService.sendToUser(
+              MessageType.ORDER_CANCELLED,
+              `订单 #${order.orderNumber} 已被取消，原因：${reason}`,
+              creatorId,
+              { relatedId: order.id, relatedType: 'order', actionUrl: '/order/list' }
+            )
+            console.log(`[消息通知] 已通知订单创建者 ${creatorId} 订单已取消`)
+          }
+        } catch (notifyError) {
+          console.warn('[消息通知] 发送通知失败，但不影响取消结果:', notifyError)
         }
-      } catch (notifyError) {
-        console.warn('[消息通知] 发送通知失败，但不影响取消结果:', notifyError)
       }
 
       // 🔥 强制刷新订单列表

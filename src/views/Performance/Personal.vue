@@ -2267,68 +2267,70 @@ const loadTableData = async () => {
         orderPagination.total = 0
       }
     } else if (activeTab.value === 'customers') {
-      // 从customerStore获取当前用户的客户数据
+      // 🔥 从后端API获取当前用户的客户数据（支持分页）
       const currentUserId = userStore.currentUser?.id
 
       console.log('[个人业绩-客户明细] 当前用户ID:', currentUserId)
-      console.log('[个人业绩-客户明细] 客户总数:', customerStore.customers.length)
-      console.log('[个人业绩-客户明细] 客户salesPersonId列表:', [...new Set(customerStore.customers.map(c => c.salesPersonId))])
 
       if (currentUserId) {
-        // 先尝试按salesPersonId过滤
-        let userCustomers = customerStore.customers.filter(customer =>
-          customer.salesPersonId === currentUserId
-        )
-
-        console.log('[个人业绩-客户明细] 当前用户的客户数:', userCustomers.length)
-
-        // 如果没有匹配的客户，显示所有客户（可能是数据中没有salesPersonId字段）
-        if (userCustomers.length === 0 && customerStore.customers.length > 0) {
-          console.log('[个人业绩-客户明细] 警告：没有匹配的客户，显示所有客户')
-          userCustomers = customerStore.customers
-        }
-
-        // 计算客户详情（包含日期筛选）
-        const customerDetailsWithOrders = userCustomers.map(customer => {
-          // 🔥 获取客户的订单 - 使用新的业绩计算规则
-          let customerOrders = orderStore.orders.filter(order => {
-            if (order.customerId !== customer.id) return false
-            const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
-            if (order.status === 'pending_transfer') return order.markType === 'normal'
-            return !excludedStatuses.includes(order.status)
+        try {
+          // 🔥 调用后端API获取客户列表（后端已根据用户角色进行权限过滤）
+          const { customerApi } = await import('@/api/customer')
+          const response = await customerApi.getList({
+            page: customerPagination.currentPage,
+            pageSize: customerPagination.pageSize
           })
 
-          // 应用日期筛选 - 🔥 使用北京时间字符串比较
-          if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-            customerOrders = customerOrders.filter(order =>
-              isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
-            )
-          }
+          console.log('[个人业绩-客户明细] API响应:', response)
 
-          const totalAmount = customerOrders.reduce((sum, order) => sum + order.totalAmount, 0)
-          const lastOrder = customerOrders.sort((a, b) => {
-            const timeA = a.createTime?.replace(/\//g, '-') || ''
-            const timeB = b.createTime?.replace(/\//g, '-') || ''
-            return timeB.localeCompare(timeA)
-          })[0]
+          const customers = response?.data?.list || response?.list || []
+          const total = response?.data?.total || response?.total || 0
 
-          return {
-            id: customer.id,
-            code: customer.code,
-            name: customer.name,
-            phone: customer.phone,
-            level: customer.level || 'normal',
-            orderCount: customerOrders.length,
-            totalAmount,
-            lastOrderTime: lastOrder?.createTime || '暂无订单'
-          }
-        })
+          console.log('[个人业绩-客户明细] 获取到客户数:', customers.length, '总数:', total)
 
-        // 分页处理
-        const startIndex = (customerPagination.currentPage - 1) * customerPagination.pageSize
-        const endIndex = startIndex + customerPagination.pageSize
-        customerDetails.value = customerDetailsWithOrders.slice(startIndex, endIndex)
-        customerPagination.total = customerDetailsWithOrders.length
+          // 🔥 为每个客户计算订单统计（从本地订单数据）
+          const customerDetailsWithOrders = customers.map((customer: any) => {
+            // 获取客户的订单 - 使用新的业绩计算规则
+            let customerOrders = orderStore.orders.filter(order => {
+              if (order.customerId !== customer.id) return false
+              const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+              if (order.status === 'pending_transfer') return order.markType === 'normal'
+              return !excludedStatuses.includes(order.status)
+            })
+
+            // 应用日期筛选
+            if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+              customerOrders = customerOrders.filter(order =>
+                isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+              )
+            }
+
+            const totalAmount = customerOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+            const lastOrder = customerOrders.sort((a, b) => {
+              const timeA = a.createTime?.replace(/\//g, '-') || ''
+              const timeB = b.createTime?.replace(/\//g, '-') || ''
+              return timeB.localeCompare(timeA)
+            })[0]
+
+            return {
+              id: customer.id,
+              code: customer.code || customer.customerCode || '-',
+              name: customer.name,
+              phone: customer.phone,
+              level: customer.level || 'normal',
+              orderCount: customerOrders.length,
+              totalAmount,
+              lastOrderTime: lastOrder?.createTime || '暂无订单'
+            }
+          })
+
+          customerDetails.value = customerDetailsWithOrders
+          customerPagination.total = total
+        } catch (error) {
+          console.error('[个人业绩-客户明细] 加载失败:', error)
+          customerDetails.value = []
+          customerPagination.total = 0
+        }
       } else {
         customerDetails.value = []
         customerPagination.total = 0

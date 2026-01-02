@@ -892,10 +892,19 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
  * @desc 获取已发货订单列表（优化版 - 服务端分页）
  * @access Private
  */
-router.get('/shipping/shipped', async (req: Request, res: Response) => {
+router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
     const startTime = Date.now();
+
+    // 🔥 获取当前用户信息，用于数据权限过滤
+    const jwtUser = (req as any).user;
+    const dbUser = (req as any).currentUser;
+    const userRole = dbUser?.role || jwtUser?.role || '';
+    const userId = dbUser?.id || jwtUser?.userId || '';
+    const userDepartmentId = dbUser?.departmentId || jwtUser?.departmentId || '';
+
+    console.log(`🚚 [已发货订单] 用户: ${dbUser?.username || jwtUser?.username}, 角色: ${userRole}, 部门ID: ${userDepartmentId}`);
 
     // 🔥 服务端分页参数
     const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status, startDate, endDate, quickFilter, departmentId, salesPersonId, expressCompany } = req.query;
@@ -910,6 +919,7 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
         'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
         'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
         'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt',
+        'order.createdByDepartmentId', 'order.createdByDepartmentName',
         'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
         'order.expressCompany', 'order.trackingNumber', 'order.logisticsStatus',
         'order.latestLogisticsInfo',  // 🔥 新增：最新物流动态
@@ -925,6 +935,37 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
       queryBuilder.where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered'] });
     }
 
+    // 🔥 数据权限过滤
+    const allowAllRoles = ['super_admin', 'admin', 'customer_service', 'service'];
+    const managerRoles = ['department_manager', 'manager'];
+    const salesRoles = ['sales_staff', 'sales', 'salesperson'];
+
+    if (!allowAllRoles.includes(userRole)) {
+      if (managerRoles.includes(userRole)) {
+        // 部门经理可以看本部门所有成员的订单
+        if (userDepartmentId) {
+          queryBuilder.andWhere('(order.createdByDepartmentId = :userDeptId OR order.createdBy = :userId)', {
+            userDeptId: userDepartmentId,
+            userId
+          });
+          console.log(`🚚 [已发货订单] 经理过滤: 部门ID = ${userDepartmentId} 或 创建人ID = ${userId}`);
+        } else {
+          queryBuilder.andWhere('order.createdBy = :userId', { userId });
+          console.log(`🚚 [已发货订单] 经理无部门ID，只看自己的订单`);
+        }
+      } else if (salesRoles.includes(userRole)) {
+        // 销售员只能看自己的订单
+        queryBuilder.andWhere('order.createdBy = :userId', { userId });
+        console.log(`🚚 [已发货订单] 销售员过滤: 只看自己的订单, userId = ${userId}`);
+      } else {
+        // 其他角色：只能看自己的订单
+        queryBuilder.andWhere('order.createdBy = :userId', { userId });
+        console.log(`🚚 [已发货订单] 其他角色过滤: 只看自己的订单`);
+      }
+    } else {
+      console.log(`🚚 [已发货订单] ${userRole}角色，查看所有订单`);
+    }
+
     // 支持筛选
     if (orderNumber) {
       queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
@@ -936,13 +977,13 @@ router.get('/shipping/shipped', async (req: Request, res: Response) => {
       queryBuilder.andWhere('order.trackingNumber LIKE :trackingNumber', { trackingNumber: `%${trackingNumber}%` });
     }
 
-    // 🔥 部门筛选
-    if (departmentId) {
+    // 🔥 部门筛选（管理员可以筛选特定部门）
+    if (departmentId && allowAllRoles.includes(userRole)) {
       queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
     }
 
-    // 🔥 销售人员筛选
-    if (salesPersonId) {
+    // 🔥 销售人员筛选（管理员可以筛选特定销售）
+    if (salesPersonId && allowAllRoles.includes(userRole)) {
       queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     }
 
