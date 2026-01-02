@@ -2,228 +2,189 @@
   <el-dialog
     v-model="dialogVisible"
     title="取消订单"
-    width="50%"
+    width="850px"
     :before-close="handleClose"
     class="cancel-order-dialog"
   >
     <div v-if="order" class="cancel-content">
-      <!-- 订单信息 -->
-      <div class="order-summary">
-        <h3 class="section-title">
-          <el-icon><Box /></el-icon>
-          订单信息
-        </h3>
-        <div class="order-info-grid">
-          <div class="info-item">
-            <span class="label">订单号：</span>
-            <span class="value">{{ order.orderNo }}</span>
+      <!-- 订单信息 + 取消原因 并排 -->
+      <div class="main-section">
+        <!-- 左侧：订单信息 -->
+        <div class="order-summary">
+          <h3 class="section-title">
+            <el-icon><Box /></el-icon>
+            订单信息
+          </h3>
+          <div class="order-info-grid">
+            <div class="info-item">
+              <span class="label">订单号：</span>
+              <span class="value">{{ order.orderNo }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">客户姓名：</span>
+              <span class="value">{{ order.customerName }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">联系电话：</span>
+              <span class="value">{{ displaySensitiveInfoNew(order.phone, 'phone') }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">订单金额：</span>
+              <span class="value">¥{{ formatNumber(order.totalAmount) }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">定金：</span>
+              <span class="value">¥{{ formatNumber(order.deposit) }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">代收款：</span>
+              <span class="value cod-amount">¥{{ formatNumber(order.codAmount) }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">当前状态：</span>
+              <span class="value">
+                <el-tag :style="getOrderStatusStyle(order.status)" size="small" effect="plain">
+                  {{ getUnifiedStatusText(order.status) }}
+                </el-tag>
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="label">负责销售：</span>
+              <span class="value">{{ order.createdBy || '系统用户' }}</span>
+            </div>
           </div>
-          <div class="info-item">
-            <span class="label">客户姓名：</span>
-            <span class="value">{{ order.customerName }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">联系电话：</span>
-            <span class="value">{{ displaySensitiveInfoNew(order.phone, 'phone') }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">订单金额：</span>
-            <span class="value">¥{{ formatNumber(order.totalAmount) }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">定金：</span>
-            <span class="value">¥{{ formatNumber(order.deposit) }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">代收款：</span>
-            <span class="value cod-amount">¥{{ formatNumber(order.codAmount) }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">当前状态：</span>
-            <span class="value">
-              <el-tag :style="getOrderStatusStyle(order.status)" size="small" effect="plain">
-                {{ getUnifiedStatusText(order.status) }}
-              </el-tag>
-            </span>
-          </div>
-          <div class="info-item">
-            <span class="label">负责销售：</span>
-            <span class="value">{{ order.createdBy || '系统用户' }}</span>
-          </div>
+        </div>
+
+        <!-- 右侧：取消原因表单 -->
+        <div class="cancel-reason">
+          <h3 class="section-title">
+            <el-icon><Warning /></el-icon>
+            取消原因
+          </h3>
+          <el-form :model="cancelForm" :rules="rules" ref="formRef" label-width="80px" size="default">
+            <el-row :gutter="16">
+              <el-col :span="12">
+                <el-form-item label="取消类型" prop="cancelType" required>
+                  <el-select v-model="cancelForm.cancelType" placeholder="请选择" class="full-width">
+                    <el-option label="客户主动取消" value="customer_cancel" />
+                    <el-option label="客户联系不上" value="customer_unreachable" />
+                    <el-option label="地址无法配送" value="address_undeliverable" />
+                    <el-option label="商品缺货" value="out_of_stock" />
+                    <el-option label="价格争议" value="price_dispute" />
+                    <el-option label="重复订单" value="duplicate_order" />
+                    <el-option label="欺诈订单" value="fraud_order" />
+                    <el-option label="系统错误" value="system_error" />
+                    <el-option label="其他原因" value="other" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="退款处理" prop="refundType" required>
+                  <el-select v-model="cancelForm.refundType" placeholder="请选择" class="full-width">
+                    <el-option label="全额退款" value="full_refund" />
+                    <el-option label="部分退款" value="partial_refund" />
+                    <el-option label="不退款" value="no_refund" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <el-row :gutter="16" v-if="cancelForm.refundType === 'partial_refund'">
+              <el-col :span="12">
+                <el-form-item label="退款金额" prop="refundAmount">
+                  <el-input-number
+                    v-model="cancelForm.refundAmount"
+                    :min="0"
+                    :max="order.deposit"
+                    :precision="2"
+                    class="full-width"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="扣费说明" prop="feeDescription">
+                  <el-input v-model="cancelForm.feeDescription" placeholder="扣费原因" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <el-form-item label="取消原因" prop="reason" required>
+              <el-input
+                v-model="cancelForm.reason"
+                type="textarea"
+                :rows="2"
+                placeholder="请详细说明取消原因"
+                maxlength="500"
+                show-word-limit
+              />
+            </el-form-item>
+
+            <el-row :gutter="16">
+              <el-col :span="12">
+                <el-form-item label="通知客户" prop="notifyCustomer">
+                  <el-switch
+                    v-model="cancelForm.notifyCustomer"
+                    active-text="是"
+                    inactive-text="否"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12" v-if="cancelForm.notifyCustomer">
+                <el-form-item label="通知方式" prop="notificationMethod">
+                  <el-checkbox-group v-model="cancelForm.notificationMethod" class="notify-group">
+                    <el-checkbox label="sms">短信</el-checkbox>
+                    <el-checkbox label="phone">电话</el-checkbox>
+                    <el-checkbox label="wechat">微信</el-checkbox>
+                  </el-checkbox-group>
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <el-form-item label="备注" prop="remarks">
+              <el-input
+                v-model="cancelForm.remarks"
+                type="textarea"
+                :rows="2"
+                placeholder="其他备注说明（选填）"
+                maxlength="300"
+                show-word-limit
+              />
+            </el-form-item>
+          </el-form>
         </div>
       </div>
 
-      <!-- 取消原因 -->
-      <div class="cancel-reason">
-        <h3 class="section-title">
-          <el-icon><Warning /></el-icon>
-          取消原因
-        </h3>
-        <el-form :model="cancelForm" :rules="rules" ref="formRef" label-width="120px">
-          <el-form-item label="取消类型" prop="cancelType" required>
-            <el-select v-model="cancelForm.cancelType" placeholder="请选择取消类型" class="full-width">
-              <el-option label="客户主动取消" value="customer_cancel" />
-              <el-option label="客户联系不上" value="customer_unreachable" />
-              <el-option label="地址无法配送" value="address_undeliverable" />
-              <el-option label="商品缺货" value="out_of_stock" />
-              <el-option label="价格争议" value="price_dispute" />
-              <el-option label="重复订单" value="duplicate_order" />
-              <el-option label="欺诈订单" value="fraud_order" />
-              <el-option label="系统错误" value="system_error" />
-              <el-option label="其他原因" value="other" />
-            </el-select>
-          </el-form-item>
-
-          <el-form-item label="取消原因" prop="reason" required>
-            <el-input
-              v-model="cancelForm.reason"
-              type="textarea"
-              :rows="4"
-              placeholder="请详细说明取消原因"
-              maxlength="500"
-              show-word-limit
-              class="full-width"
-            />
-          </el-form-item>
-
-          <el-form-item label="退款处理" prop="refundType" required>
-            <el-radio-group v-model="cancelForm.refundType">
-              <el-radio label="full_refund">
-                <span class="refund-option">
-                  <strong>全额退款</strong>
-                  <span class="refund-desc">退还全部定金 ¥{{ formatNumber(order.deposit) }}</span>
+      <!-- 底部：取消确认 + 历史记录 并排 -->
+      <div class="bottom-section">
+        <div class="cancel-confirm">
+          <el-alert title="取消确认" type="error" :closable="false" show-icon>
+            <template #default>
+              <div class="confirm-content">
+                <span>
+                  确认后：订单状态改为"已取消" →
+                  <template v-if="cancelForm.refundType === 'full_refund'">全额退款 ¥{{ formatNumber(order.deposit) }}</template>
+                  <template v-else-if="cancelForm.refundType === 'partial_refund'">部分退款 ¥{{ formatNumber(cancelForm.refundAmount) }}</template>
+                  <template v-else>不退款</template>
+                  <template v-if="cancelForm.notifyCustomer"> → 通知客户</template>
                 </span>
-              </el-radio>
-              <el-radio label="partial_refund">
-                <span class="refund-option">
-                  <strong>部分退款</strong>
-                  <span class="refund-desc">扣除手续费后退款</span>
+                <span class="warning-text">
+                  <el-icon><WarningFilled /></el-icon>
+                  订单取消后无法恢复！
                 </span>
-              </el-radio>
-              <el-radio label="no_refund">
-                <span class="refund-option">
-                  <strong>不退款</strong>
-                  <span class="refund-desc">定金不予退还</span>
-                </span>
-              </el-radio>
-            </el-radio-group>
-          </el-form-item>
+              </div>
+            </template>
+          </el-alert>
+        </div>
 
-          <el-form-item
-            v-if="cancelForm.refundType === 'partial_refund'"
-            label="退款金额"
-            prop="refundAmount"
-          >
-            <el-input-number
-              v-model="cancelForm.refundAmount"
-              :min="0"
-              :max="order.deposit"
-              :precision="2"
-              placeholder="退款金额"
-              class="refund-input"
-            />
-            <span class="refund-tip">
-              最大可退款金额：¥{{ formatNumber(order.deposit) }}
-            </span>
-          </el-form-item>
-
-          <el-form-item label="手续费说明" prop="feeDescription" v-if="cancelForm.refundType === 'partial_refund'">
-            <el-input
-              v-model="cancelForm.feeDescription"
-              placeholder="请说明扣除手续费的原因"
-              maxlength="200"
-              show-word-limit
-              class="full-width"
-            />
-          </el-form-item>
-
-          <el-form-item label="通知客户" prop="notifyCustomer">
-            <el-switch
-              v-model="cancelForm.notifyCustomer"
-              active-text="发送取消通知"
-              inactive-text="不发送通知"
-            />
-          </el-form-item>
-
-          <el-form-item v-if="cancelForm.notifyCustomer" label="通知方式" prop="notificationMethod">
-            <el-checkbox-group v-model="cancelForm.notificationMethod">
-              <el-checkbox label="sms">短信通知</el-checkbox>
-              <el-checkbox label="phone">电话通知</el-checkbox>
-              <el-checkbox label="wechat">微信通知</el-checkbox>
-              <el-checkbox label="email">邮件通知</el-checkbox>
-            </el-checkbox-group>
-          </el-form-item>
-
-          <el-form-item label="备注说明" prop="remarks">
-            <el-input
-              v-model="cancelForm.remarks"
-              type="textarea"
-              :rows="3"
-              placeholder="其他备注说明（选填）"
-              maxlength="300"
-              show-word-limit
-              class="full-width"
-            />
-          </el-form-item>
-        </el-form>
-      </div>
-
-      <!-- 取消确认 -->
-      <div class="cancel-confirm">
-        <el-alert
-          title="取消确认"
-          type="error"
-          :closable="false"
-          show-icon
-        >
-          <template #default>
-            <p>确认取消订单后，系统将：</p>
-            <ul>
-              <li>将订单状态更改为"已取消"</li>
-              <li v-if="cancelForm.refundType === 'full_refund'">
-                处理全额退款 ¥{{ formatNumber(order.deposit) }}
-              </li>
-              <li v-else-if="cancelForm.refundType === 'partial_refund'">
-                处理部分退款 ¥{{ formatNumber(cancelForm.refundAmount) }}
-              </li>
-              <li v-else>
-                定金不予退还
-              </li>
-              <li v-if="cancelForm.notifyCustomer">发送取消通知给客户</li>
-              <li>记录取消原因和处理过程</li>
-              <li>更新库存和销售数据</li>
-            </ul>
-            <p class="warning-text">
-              <el-icon><WarningFilled /></el-icon>
-              订单取消后无法恢复，请确认操作无误！
-            </p>
-          </template>
-        </el-alert>
-      </div>
-
-      <!-- 历史取消记录 -->
-      <div v-if="cancelHistory.length > 0" class="cancel-history">
-        <h3 class="section-title">
-          <el-icon><Clock /></el-icon>
-          相关取消记录
-        </h3>
-        <div class="history-list">
-          <div
-            v-for="(record, index) in cancelHistory"
-            :key="index"
-            class="history-item"
-          >
-            <div class="history-header">
-              <span class="history-time">{{ record.cancelTime }}</span>
-              <el-tag type="danger" size="small">已取消</el-tag>
-            </div>
-            <div class="history-content">
-              <p><strong>订单号：</strong>{{ record.orderNo }}</p>
-              <p><strong>取消类型：</strong>{{ getCancelTypeText(record.cancelType) }}</p>
-              <p><strong>取消原因：</strong>{{ record.reason }}</p>
-              <p><strong>退款处理：</strong>{{ getRefundTypeText(record.refundType) }}</p>
-              <p><strong>操作人员：</strong>{{ record.operator }}</p>
-            </div>
+        <div v-if="cancelHistory.length > 0" class="cancel-history">
+          <div class="history-header-title">
+            <el-icon><Clock /></el-icon>
+            相关取消记录
+          </div>
+          <div class="history-item" v-for="(record, index) in cancelHistory" :key="index">
+            <span class="history-time">{{ record.cancelTime }}</span>
+            <el-tag type="danger" size="small">已取消</el-tag>
+            <span class="history-reason">{{ getCancelTypeText(record.cancelType) }}：{{ record.reason }}</span>
           </div>
         </div>
       </div>
@@ -308,9 +269,6 @@ const rules = {
   ],
   refundType: [
     { required: true, message: '请选择退款处理方式', trigger: 'change' }
-  ],
-  refundAmount: [
-    { required: true, message: '请输入退款金额', trigger: 'blur' }
   ]
 }
 
@@ -339,38 +297,12 @@ watch(() => cancelForm.refundType, (newType) => {
 
 // 格式化数字
 const formatNumber = (num: number) => {
-  return num.toLocaleString()
-}
-
-// 获取状态类型
-const getStatusType = (status: string) => {
-  const statusMap = {
-    'pending': 'warning',
-    'confirmed': 'success',
-    'shipped': 'primary',
-    'delivered': 'success',
-    'returned': 'danger',
-    'cancelled': 'info'
-  }
-  return statusMap[status] || 'info'
-}
-
-// 获取状态文本
-const getStatusText = (status: string) => {
-  const statusMap = {
-    'pending': '待审核',
-    'confirmed': '已确认',
-    'shipped': '已发货',
-    'delivered': '已送达',
-    'returned': '已退回',
-    'cancelled': '已取消'
-  }
-  return statusMap[status] || '未知状态'
+  return num?.toLocaleString() || '0'
 }
 
 // 获取取消类型文本
 const getCancelTypeText = (cancelType: string) => {
-  const typeMap = {
+  const typeMap: Record<string, string> = {
     'customer_cancel': '客户主动取消',
     'customer_unreachable': '客户联系不上',
     'address_undeliverable': '地址无法配送',
@@ -384,23 +316,13 @@ const getCancelTypeText = (cancelType: string) => {
   return typeMap[cancelType] || '未知类型'
 }
 
-// 获取退款类型文本
-const getRefundTypeText = (refundType: string) => {
-  const typeMap = {
-    'full_refund': '全额退款',
-    'partial_refund': '部分退款',
-    'no_refund': '不退款'
-  }
-  return typeMap[refundType] || '未知'
-}
-
 // 保存草稿
 const saveAsDraft = async () => {
   try {
     ElMessage.loading('正在保存草稿...')
     await new Promise(resolve => setTimeout(resolve, 1000))
     ElMessage.success('草稿保存成功')
-  } catch (error) {
+  } catch (_error) {
     ElMessage.error('草稿保存失败')
   }
 }
@@ -435,7 +357,7 @@ const confirmCancel = async () => {
       orderNo: props.order.orderNo,
       ...cancelForm,
       cancelTime: new Date().toISOString(),
-      operator: '当前用户', // 应该从用户信息中获取
+      operator: '当前用户',
       status: 'cancelled'
     }
 
@@ -453,7 +375,6 @@ const confirmCancel = async () => {
 
 // 关闭弹窗
 const handleClose = () => {
-  // 重置表单
   if (formRef.value) {
     formRef.value.resetFields()
   }
@@ -467,64 +388,71 @@ const handleClose = () => {
     notificationMethod: ['sms'],
     remarks: ''
   })
-
   dialogVisible.value = false
 }
 </script>
 
 <style scoped>
-.cancel-order-dialog {
-  :deep(.el-dialog__body) {
-    padding: 20px;
-    max-height: 70vh;
-    overflow-y: auto;
-  }
+.cancel-order-dialog :deep(.el-dialog__body) {
+  padding: 16px 20px;
 }
 
 .cancel-content {
   font-size: 14px;
 }
 
+.main-section {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.order-summary {
+  flex: 0 0 280px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.cancel-reason {
+  flex: 1;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+}
+
 .section-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 16px;
+  gap: 6px;
+  font-size: 14px;
   font-weight: 600;
   color: #303133;
-  margin: 0 0 15px 0;
-  padding-bottom: 10px;
-  border-bottom: 2px solid #e4e7ed;
-}
-
-/* 订单信息样式 */
-.order-summary {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e4e7ed;
 }
 
 .order-info-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 15px;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
 .info-item {
   display: flex;
   align-items: center;
+  font-size: 13px;
 }
 
 .info-item .label {
-  font-weight: 600;
+  font-weight: 500;
   color: #606266;
-  min-width: 80px;
+  min-width: 70px;
 }
 
 .info-item .value {
   color: #303133;
-  flex: 1;
 }
 
 .cod-amount {
@@ -532,104 +460,81 @@ const handleClose = () => {
   font-weight: bold;
 }
 
-/* 取消原因样式 */
-.cancel-reason {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
-}
-
 .full-width {
   width: 100%;
 }
 
-.refund-option {
+.notify-group {
+  display: flex;
+  gap: 8px;
+}
+
+.bottom-section {
+  display: flex;
+  gap: 16px;
+}
+
+.cancel-confirm {
+  flex: 1;
+}
+
+.confirm-content {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-}
-
-.refund-desc {
+  gap: 4px;
   font-size: 12px;
-  color: #909399;
-}
-
-.refund-input {
-  width: 200px;
-}
-
-.refund-tip {
-  margin-left: 10px;
-  font-size: 12px;
-  color: #909399;
-}
-
-/* 取消确认样式 */
-.cancel-confirm {
-  margin-bottom: 20px;
-}
-
-.cancel-confirm ul {
-  margin: 10px 0 0 20px;
-  padding: 0;
-}
-
-.cancel-confirm li {
-  margin: 5px 0;
-  color: #606266;
 }
 
 .warning-text {
   display: flex;
   align-items: center;
-  gap: 5px;
-  margin-top: 10px;
+  gap: 4px;
   color: #f56c6c;
-  font-weight: bold;
+  font-weight: 600;
 }
 
-/* 历史记录样式 */
 .cancel-history {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
-}
-
-.history-list {
-  max-height: 200px;
+  flex: 1;
+  background: #fafafa;
+  border-radius: 6px;
+  padding: 12px;
+  max-height: 100px;
   overflow-y: auto;
 }
 
+.history-header-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+  margin-bottom: 8px;
+}
+
 .history-item {
-  background: white;
-  border-radius: 6px;
-  padding: 15px;
-  margin-bottom: 10px;
-  border: 1px solid #e4e7ed;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed #e4e7ed;
 }
 
 .history-item:last-child {
-  margin-bottom: 0;
-}
-
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
+  border-bottom: none;
 }
 
 .history-time {
-  font-size: 12px;
   color: #909399;
+  flex-shrink: 0;
 }
 
-.history-content p {
-  margin: 5px 0;
-  font-size: 13px;
+.history-reason {
   color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dialog-footer {
@@ -638,20 +543,20 @@ const handleClose = () => {
   gap: 10px;
 }
 
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .order-info-grid {
-    grid-template-columns: 1fr;
-  }
+/* 表单紧凑样式 */
+.cancel-reason :deep(.el-form-item) {
+  margin-bottom: 12px;
+}
 
-  .info-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 5px;
-  }
+.cancel-reason :deep(.el-form-item__label) {
+  font-size: 13px;
+}
 
-  .info-item .label {
-    min-width: auto;
-  }
+.cancel-reason :deep(.el-textarea__inner) {
+  font-size: 13px;
+}
+
+.cancel-reason :deep(.el-input-number) {
+  width: 100%;
 }
 </style>
