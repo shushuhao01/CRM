@@ -563,22 +563,40 @@ export const useCustomerStore = createPersistentStore('customer', () => {
       return []
     }
 
-    // 如果客户有phones数组，返回它
-    if (customer.phones && Array.isArray(customer.phones)) {
+    const phones: CustomerPhone[] = []
+    let phoneId = 1
+
+    // 如果客户有phones数组，使用它
+    if (customer.phones && Array.isArray(customer.phones) && customer.phones.length > 0) {
       return customer.phones
     }
 
-    // 如果没有phones数组但有主电话，创建一个包含主电话的数组
+    // 否则，从phone和otherPhones字段构建电话列表
+    // 主电话
     if (customer.phone) {
-      return [{
-        id: 'main',
+      phones.push({
+        id: String(phoneId++),
         phone: customer.phone,
-        remark: '主电话',
+        remark: '主手机号',
         isDefault: true
-      }]
+      })
     }
 
-    return []
+    // 其他手机号（从otherPhones字段获取）
+    if (customer.otherPhones && Array.isArray(customer.otherPhones)) {
+      customer.otherPhones.forEach((phone: string, index: number) => {
+        if (phone && phone !== customer.phone) {
+          phones.push({
+            id: String(phoneId++),
+            phone: phone,
+            remark: `备用号码${index + 1}`,
+            isDefault: false
+          })
+        }
+      })
+    }
+
+    return phones
   }
 
   // 为客户添加电话号码
