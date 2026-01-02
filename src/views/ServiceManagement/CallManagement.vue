@@ -3513,9 +3513,23 @@ const playRecording = (record: any) => {
   }
 
   // 🔥 修复：确保录音URL是完整的URL
-  const recordingUrl = record.recordingUrl.startsWith('http')
-    ? record.recordingUrl
-    : `${import.meta.env.VITE_API_BASE_URL || ''}${record.recordingUrl}`
+  // 如果已经是完整URL则直接使用，否则拼接API基础地址
+  let recordingUrl = record.recordingUrl
+  if (!recordingUrl.startsWith('http')) {
+    // 优先使用环境变量，否则使用当前域名
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
+    if (baseUrl) {
+      recordingUrl = `${baseUrl}${recordingUrl.startsWith('/') ? '' : '/'}${recordingUrl}`
+    } else {
+      // 没有配置API基础地址时，使用相对路径（假设前后端同域）
+      // 确保路径以 /api 开头
+      if (!recordingUrl.startsWith('/api')) {
+        recordingUrl = `/api/v1/calls${recordingUrl.startsWith('/') ? '' : '/'}${recordingUrl}`
+      }
+    }
+  }
+
+  console.log('[录音播放] 原始URL:', record.recordingUrl, '处理后URL:', recordingUrl)
 
   currentRecording.value = {
     ...record,

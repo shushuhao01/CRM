@@ -354,30 +354,62 @@
 
         <el-divider />
 
-        <div class="permission-tree">
-          <el-tree
-            ref="permissionTreeRef"
-            :data="permissionTree"
-            :props="treeProps"
-            show-checkbox
-            node-key="id"
-            :default-checked-keys="checkedPermissions"
-            :check-strictly="true"
-            @check="handlePermissionCheck"
-          >
-            <template #default="{ node, data }">
-              <span class="tree-node">
-                <el-icon v-if="data.icon" class="node-icon">
-                  <component :is="data.icon" />
-                </el-icon>
-                <span>{{ data.name }}</span>
-                <el-tag v-if="data.type" size="small" class="node-tag">
-                  {{ data.type }}
-                </el-tag>
-              </span>
-            </template>
-          </el-tree>
-        </div>
+        <el-tabs v-model="permissionActiveTab" type="card">
+          <!-- 权限设置标签页 -->
+          <el-tab-pane label="权限设置" name="permissions">
+            <div class="permission-tree">
+              <el-tree
+                ref="permissionTreeRef"
+                :data="permissionTree"
+                :props="treeProps"
+                show-checkbox
+                node-key="id"
+                :default-checked-keys="checkedPermissions"
+                :check-strictly="true"
+                @check="handlePermissionCheck"
+              >
+                <template #default="{ node, data }">
+                  <span class="tree-node">
+                    <el-icon v-if="data.icon" class="node-icon">
+                      <component :is="data.icon" />
+                    </el-icon>
+                    <span>{{ data.name }}</span>
+                    <el-tag v-if="data.type" size="small" class="node-tag">
+                      {{ data.type }}
+                    </el-tag>
+                  </span>
+                </template>
+              </el-tree>
+            </div>
+          </el-tab-pane>
+
+          <!-- 数据设置标签页 -->
+          <el-tab-pane label="数据设置" name="dataScope">
+            <div class="data-scope-setting">
+              <div class="scope-title">数据范围</div>
+              <el-radio-group v-model="currentRoleDataScope" @change="handleDataScopeChange" class="scope-radio-group">
+                <div class="scope-item">
+                  <el-radio label="all">
+                    <span class="scope-label">全部数据</span>
+                    <span class="scope-tip">可查看系统中所有数据，适用于管理员角色</span>
+                  </el-radio>
+                </div>
+                <div class="scope-item">
+                  <el-radio label="department">
+                    <span class="scope-label">部门数据</span>
+                    <span class="scope-tip">仅可查看本部门及下属部门的数据，适用于部门经理</span>
+                  </el-radio>
+                </div>
+                <div class="scope-item">
+                  <el-radio label="self">
+                    <span class="scope-label">个人数据</span>
+                    <span class="scope-tip">仅可查看自己创建的数据，适用于普通员工</span>
+                  </el-radio>
+                </div>
+              </el-radio-group>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
       </div>
 
       <template #footer>
@@ -872,6 +904,7 @@ interface RoleData {
   code: string
   status: 'active' | 'inactive'
   roleType?: 'system' | 'business' | 'temporary' | 'custom'
+  dataScope?: 'all' | 'department' | 'self'
   description?: string
   createTime?: string
   userCount?: number
@@ -920,6 +953,10 @@ const selectedRoles = ref([])
 const currentRole = ref(null)
 const currentViewRole = ref(null)
 const checkedPermissions = ref([])
+
+// 权限设置标签页相关
+const permissionActiveTab = ref('permissions')
+const currentRoleDataScope = ref<'all' | 'department' | 'self'>('self')
 
 // 用户列表相关
 const roleUsers = ref([])
@@ -1195,6 +1232,12 @@ const handlePermissions = (row: RoleData) => {
   console.log('[角色权限] 开始配置权限:', row)
 
   currentRole.value = row
+
+  // 设置数据范围
+  currentRoleDataScope.value = row.dataScope || 'self'
+
+  // 重置标签页到权限设置
+  permissionActiveTab.value = 'permissions'
 
   // 根据角色设置默认权限
   let defaultPermissions = row.permissions || []
@@ -1955,19 +1998,22 @@ const confirmPermissions = async () => {
     console.log('[角色权限] 开始保存权限:', {
       roleId: currentRole.value.id,
       roleName: currentRole.value.name,
-      permissionCount: checkedKeys?.length || 0
+      permissionCount: checkedKeys?.length || 0,
+      dataScope: currentRoleDataScope.value
     })
 
-    // 🔥 调用后端API保存权限到数据库
+    // 🔥 调用后端API保存权限和数据范围到数据库
     try {
       await roleApiService.updateRole({
         id: currentRole.value.id,
-        permissions: checkedKeys || []
+        permissions: checkedKeys || [],
+        dataScope: currentRoleDataScope.value
       })
 
-      console.log('[角色权限] 权限已保存到数据库:', {
+      console.log('[角色权限] 权限和数据范围已保存到数据库:', {
         role: currentRole.value.name,
-        permissions: checkedKeys?.length || 0
+        permissions: checkedKeys?.length || 0,
+        dataScope: currentRoleDataScope.value
       })
 
       // 同时更新localStorage作为缓存
@@ -1977,6 +2023,7 @@ const confirmPermissions = async () => {
         if (roleIndex !== -1) {
           roles[roleIndex].permissions = checkedKeys || []
           roles[roleIndex].permissionCount = checkedKeys?.length || 0
+          roles[roleIndex].dataScope = currentRoleDataScope.value
           roles[roleIndex].updatedAt = new Date().toISOString()
           localStorage.setItem('crm_roles', JSON.stringify(roles))
         }
@@ -4022,6 +4069,46 @@ const handleCreateFromTemplate = async (template: {id: string, name: string, cod
   }
 }
 
+/**
+ * 数据范围变更处理
+ */
+const handleDataScopeChange = (value: 'all' | 'department' | 'self') => {
+  console.log('[角色权限] 数据范围变更:', value)
+  currentRoleDataScope.value = value
+}
+
+/**
+ * 获取数据范围提示标题
+ */
+const getDataScopeAlertTitle = () => {
+  switch (currentRoleDataScope.value) {
+    case 'all':
+      return '该角色可以查看系统中所有用户的数据，适用于管理员角色'
+    case 'department':
+      return '该角色只能查看本部门及下属部门的数据，适用于部门经理角色'
+    case 'self':
+      return '该角色只能查看自己创建的数据，适用于普通员工角色'
+    default:
+      return '请选择数据范围'
+  }
+}
+
+/**
+ * 获取数据范围提示类型
+ */
+const getDataScopeAlertType = () => {
+  switch (currentRoleDataScope.value) {
+    case 'all':
+      return 'warning'
+    case 'department':
+      return 'info'
+    case 'self':
+      return 'success'
+    default:
+      return 'info'
+  }
+}
+
 // 生命周期钩子
 onMounted(() => {
   loadRoleStats()
@@ -4401,5 +4488,78 @@ onMounted(() => {
 .list-header .el-input,
 .list-header .el-select {
   width: 100%;
+}
+
+/* 数据设置标签页样式 */
+.data-scope-setting {
+  padding: 16px 0;
+}
+
+.data-scope-setting .scope-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+  margin-bottom: 16px;
+}
+
+.data-scope-setting .scope-radio-group {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.data-scope-setting .scope-item {
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.data-scope-setting .scope-item:last-child {
+  border-bottom: none;
+}
+
+.data-scope-setting .scope-item .el-radio {
+  display: flex;
+  align-items: flex-start;
+  height: auto;
+  white-space: normal;
+  margin-right: 0;
+  width: 100%;
+}
+
+.data-scope-setting .scope-item :deep(.el-radio__input) {
+  margin-top: 2px;
+}
+
+.data-scope-setting .scope-item :deep(.el-radio__label) {
+  display: flex;
+  flex-direction: column;
+  padding-left: 8px;
+  flex: 1;
+}
+
+.data-scope-setting .scope-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+  line-height: 1.5;
+}
+
+.data-scope-setting .scope-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.data-scope-setting .scope-item:hover {
+  background-color: #f5f7fa;
+}
+
+.permission-tree {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  padding: 10px;
 }
 </style>

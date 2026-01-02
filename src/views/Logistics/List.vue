@@ -1127,7 +1127,10 @@ onMounted(async () => {
   // 监听订单变化
   orderStore.$subscribe((mutation: any, _state: any) => {
     // 当订单状态变化时，重新加载物流数据
-    if (mutation.events?.some((event: any) =>
+    // 🔥 修复：mutation.events 可能是数组、单个对象或 undefined
+    const events = mutation.events
+    const eventsArray = Array.isArray(events) ? events : (events ? [events] : [])
+    if (eventsArray.some((event: any) =>
       event.key === 'status' ||
       event.key === 'expressNo' ||
       event.key === 'expressCompany'

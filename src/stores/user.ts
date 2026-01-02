@@ -586,25 +586,33 @@ export const useUserStore = defineStore('user', () => {
         forcePasswordChange: false // API会在响应中提供这个信息
       }
 
-      // 设置用户权限 - 使用新的权限系统，优先从localStorage读取角色权限配置
-      // 【关键修复】优先从crm_roles读取动态配置的权限，没有则使用默认配置
+      // 设置用户权限 - 使用新的权限系统，优先从API响应读取角色权限
+      // 【关键修复】优先使用后端返回的rolePermissions，其次从crm_roles读取，最后使用默认配置
       let userPermissions: string[] = []
 
       // 优先使用 roleId（如 sales_staff），其次使用 role
       const roleKey = userData.roleId || userData.role
 
-      // 尝试从crm_roles读取动态配置的权限
-      try {
-        const savedRoles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
-        const matchedRole = savedRoles.find((r: { code: string; permissions?: string[] }) =>
-          r.code === roleKey || r.code === userData.role
-        )
-        if (matchedRole && matchedRole.permissions && matchedRole.permissions.length > 0) {
-          userPermissions = matchedRole.permissions
-          console.log(`[Auth] ✅ 从动态配置加载权限: ${roleKey}`, userPermissions.length, '个权限')
+      // 🔥 优先使用后端返回的角色权限
+      if (userData.rolePermissions && userData.rolePermissions.length > 0) {
+        userPermissions = userData.rolePermissions
+        console.log(`[Auth] ✅ 从API响应加载角色权限: ${roleKey}`, userPermissions.length, '个权限')
+      }
+
+      // 如果API没有返回权限，尝试从crm_roles读取动态配置的权限
+      if (userPermissions.length === 0) {
+        try {
+          const savedRoles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
+          const matchedRole = savedRoles.find((r: { code: string; permissions?: string[] }) =>
+            r.code === roleKey || r.code === userData.role
+          )
+          if (matchedRole && matchedRole.permissions && matchedRole.permissions.length > 0) {
+            userPermissions = matchedRole.permissions
+            console.log(`[Auth] ✅ 从动态配置加载权限: ${roleKey}`, userPermissions.length, '个权限')
+          }
+        } catch (e) {
+          console.warn('[Auth] 读取动态权限配置失败:', e)
         }
-      } catch (e) {
-        console.warn('[Auth] 读取动态权限配置失败:', e)
       }
 
       // 如果没有动态配置，使用默认权限

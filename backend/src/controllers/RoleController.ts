@@ -50,7 +50,7 @@ export class RoleController {
 
       // 查询角色列表
       const roles = await dataSource.query(
-        `SELECT id, name, code, description, status, level, color, permissions, created_at as createdAt, updated_at as updatedAt
+        `SELECT id, name, code, description, status, level, color, permissions, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt
          FROM roles ${whereClause} ORDER BY level ASC, created_at DESC LIMIT ? OFFSET ?`,
         [...params, Number(limit), offset]
       );
@@ -127,7 +127,7 @@ export class RoleController {
       }
 
       const roles = await dataSource.query(
-        'SELECT id, name, code, description, status, level, color, permissions, created_at as createdAt, updated_at as updatedAt FROM roles WHERE id = ?',
+        'SELECT id, name, code, description, status, level, color, permissions, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt FROM roles WHERE id = ?',
         [id]
       );
 
@@ -184,7 +184,7 @@ export class RoleController {
   // 创建角色
   async createRole(req: Request, res: Response): Promise<void> {
     try {
-      const { name, code, description, status = 'active', level = 0, color, permissions = [] } = req.body;
+      const { name, code, description, status = 'active', level = 0, color, permissions = [], dataScope = 'self' } = req.body;
       const dataSource = getDataSource();
       if (!dataSource) {
         throw new Error('数据库连接未初始化');
@@ -209,14 +209,14 @@ export class RoleController {
 
       // 插入角色
       await dataSource.query(
-        `INSERT INTO roles (id, name, code, description, status, level, color, permissions, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-        [roleId, name, code, description || '', status, level, color || '', JSON.stringify(permissions)]
+        `INSERT INTO roles (id, name, code, description, status, level, color, permissions, data_scope, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [roleId, name, code, description || '', status, level, color || '', JSON.stringify(permissions), dataScope]
       );
 
       res.status(201).json({
         success: true,
-        data: { id: roleId, name, code, description, status, level, color, permissions },
+        data: { id: roleId, name, code, description, status, level, color, permissions, dataScope },
         message: '角色创建成功'
       });
     } catch (error) {
@@ -248,7 +248,7 @@ export class RoleController {
   async updateRole(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { name, code, description, status, level, color, permissions } = req.body;
+      const { name, code, description, status, level, color, permissions, dataScope } = req.body;
       const dataSource = getDataSource();
       if (!dataSource) {
         throw new Error('数据库连接未初始化');
@@ -275,6 +275,7 @@ export class RoleController {
       if (level !== undefined) { updates.push('level = ?'); params.push(level); }
       if (color !== undefined) { updates.push('color = ?'); params.push(color); }
       if (permissions !== undefined) { updates.push('permissions = ?'); params.push(JSON.stringify(permissions)); }
+      if (dataScope !== undefined) { updates.push('data_scope = ?'); params.push(dataScope); }
 
       if (updates.length > 0) {
         updates.push('updated_at = NOW()');

@@ -559,12 +559,14 @@ class TimeoutReminderService {
 
       let sentCount = 0;
       for (const record of followupRecords) {
-        if (await this.hasRecentReminder(TimeoutMessageTypes.CUSTOMER_FOLLOWUP_REMINDER, record.id)) {
+        // 🔥 修复：使用跟进记录ID作为去重标识，与发送消息时的relatedId保持一致
+        const reminderKey = `followup_${record.id}`;
+        if (await this.hasRecentReminder(TimeoutMessageTypes.CUSTOMER_FOLLOWUP_REMINDER, reminderKey)) {
           continue;
         }
 
         await this.sendCustomerFollowupReminder(record);
-        this.markReminderSent(TimeoutMessageTypes.CUSTOMER_FOLLOWUP_REMINDER, record.id);
+        this.markReminderSent(TimeoutMessageTypes.CUSTOMER_FOLLOWUP_REMINDER, reminderKey);
         sentCount++;
       }
 
@@ -597,6 +599,7 @@ class TimeoutReminderService {
 跟进内容：${record.content || '无'}
 计划时间：${new Date(record.next_follow_up_date).toLocaleString('zh-CN')}`;
 
+    // 🔥 修复：使用跟进记录ID作为relatedId，确保去重逻辑正确
     await this.sendMessage(
       TimeoutMessageTypes.CUSTOMER_FOLLOWUP_REMINDER,
       '📞 客户跟进提醒',
@@ -605,8 +608,8 @@ class TimeoutReminderService {
       {
         priority: record.priority || 'normal',
         category: '跟进提醒',
-        relatedId: record.customer_id,
-        relatedType: 'customer',
+        relatedId: `followup_${record.id}`,
+        relatedType: 'followup',
         actionUrl: `/service-management/call?customerId=${record.customer_id}`
       }
     );

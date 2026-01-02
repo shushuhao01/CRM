@@ -381,7 +381,7 @@ class MobileWebSocketService {
         finalStatus = 'failed';
       }
 
-      // 更新通话记录
+      // 更新 calls 表
       await dataSource.query(
         `UPDATE calls SET
           status = ?,
@@ -391,6 +391,19 @@ class MobileWebSocketService {
           updated_at = NOW()
          WHERE id = ?`,
         [finalStatus, data.duration || 0, data.hasRecording ? 1 : 0, data.callId]
+      );
+
+      // 🔥 同时更新 call_records 表（APP端使用的表）
+      await dataSource.query(
+        `UPDATE call_records SET
+          call_status = ?,
+          duration = ?,
+          end_time = NOW(),
+          has_recording = ?,
+          recording_url = COALESCE(?, recording_url),
+          updated_at = NOW()
+         WHERE id = ?`,
+        [finalStatus, data.duration || 0, data.hasRecording ? 1 : 0, data.recordingUrl || null, data.callId]
       );
 
       logger.info(`[MobileWS] 通话结束: ${data.callId}, 状态: ${finalStatus}, 时长: ${data.duration}秒, 有录音: ${data.hasRecording}`);
