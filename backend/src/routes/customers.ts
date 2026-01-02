@@ -252,6 +252,7 @@ router.get('/', async (req: Request, res: Response) => {
         code: customer.customerNo || '',
         name: customer.name,
         phone: customer.phone || '',
+        otherPhones: customer.otherPhones || [],  // 🔥 添加其他手机号
         age: customer.age || 0,
         gender: customer.gender || 'unknown',
         height: customer.height || null,
@@ -915,6 +916,7 @@ router.get('/search', async (req: Request, res: Response) => {
       code: customer.customerNo || '',
       name: customer.name,
       phone: customer.phone || '',
+      otherPhones: customer.otherPhones || [],  // 🔥 添加其他手机号
       gender: customer.gender || 'unknown',
       age: customer.age || 0,
       level: customer.level || 'normal',
