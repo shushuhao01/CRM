@@ -375,7 +375,7 @@
           <!-- 手机号管理 -->
           <el-row :gutter="24">
             <el-col :span="24">
-              <el-form-item label="其他手机号">
+              <el-form-item label="其他手机" class="other-phone-item">
                 <div class="phone-management">
                   <div class="phone-list">
                     <el-tag
@@ -3260,6 +3260,11 @@ onMounted(async () => {
 }
 
 .phone-management {
+}
+
+/* 其他手机号表单项样式 - 标签不换行 */
+.other-phone-item :deep(.el-form-item__label) {
+  white-space: nowrap;
 }
 
 .phone-management .phone-list {
