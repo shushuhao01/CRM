@@ -954,7 +954,23 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
 
     // 🔥 物流状态筛选
     if (logisticsStatus) {
+      console.log(`🚚 [已发货订单] 物流状态筛选: "${logisticsStatus}"`);
       queryBuilder.andWhere('order.logisticsStatus = :logisticsStatus', { logisticsStatus });
+    }
+
+    // 🔥 调试：查询数据库中实际的物流状态分布
+    if (!logisticsStatus) {
+      try {
+        const statusDistribution = await orderRepository.createQueryBuilder('order')
+          .select('order.logisticsStatus', 'status')
+          .addSelect('COUNT(*)', 'count')
+          .where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered'] })
+          .groupBy('order.logisticsStatus')
+          .getRawMany();
+        console.log(`🚚 [已发货订单] 数据库中物流状态分布:`, statusDistribution);
+      } catch (e) {
+        console.log(`🚚 [已发货订单] 查询物流状态分布失败:`, e);
+      }
     }
 
     // 🔥 数据权限过滤
