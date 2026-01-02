@@ -35,6 +35,7 @@ router.use(authenticateToken);
 router.get('/statistics', async (req: Request, res: Response) => {
   try {
     const { startDate, endDate, userId, department } = req.query;
+    const currentUser = (req as any).user;
     const callRepository = AppDataSource.getRepository(Call);
 
     const queryBuilder = callRepository.createQueryBuilder('call');
@@ -46,12 +47,31 @@ router.get('/statistics', async (req: Request, res: Response) => {
       });
     }
 
-    if (userId) {
-      queryBuilder.andWhere('call.userId = :userId', { userId });
-    }
+    // 🔥 角色权限过滤
+    const userRole = currentUser?.role;
+    const currentUserId = currentUser?.userId || currentUser?.id;
+    const userDepartment = currentUser?.department;
 
-    if (department) {
-      queryBuilder.andWhere('call.department = :department', { department });
+    if (userRole === 'super_admin' || userRole === 'admin') {
+      // 超管和管理员可以看所有数据，支持筛选
+      if (userId) {
+        queryBuilder.andWhere('call.userId = :userId', { userId });
+      }
+      if (department) {
+        queryBuilder.andWhere('call.department = :department', { department });
+      }
+    } else if (userRole === 'department_manager') {
+      // 部门经理只能看本部门数据
+      if (userDepartment) {
+        queryBuilder.andWhere('call.department = :department', { department: userDepartment });
+      }
+      // 支持在部门内按用户筛选
+      if (userId) {
+        queryBuilder.andWhere('call.userId = :userId', { userId });
+      }
+    } else {
+      // 销售员只能看自己的数据
+      queryBuilder.andWhere('call.userId = :userId', { userId: currentUserId });
     }
 
     const allCalls = await queryBuilder.getMany();
@@ -160,8 +180,33 @@ router.get('/records', async (req: Request, res: Response) => {
       direction // 兼容前端的direction参数
     } = req.query;
 
+    const currentUser = (req as any).user;
     const callRepository = AppDataSource.getRepository(Call);
     const queryBuilder = callRepository.createQueryBuilder('call');
+
+    // 🔥 角色权限过滤
+    const userRole = currentUser?.role;
+    const currentUserId = currentUser?.userId || currentUser?.id;
+    const userDepartment = currentUser?.department;
+
+    if (userRole === 'super_admin' || userRole === 'admin') {
+      // 超管和管理员可以看所有数据，支持筛选
+      if (userId) {
+        queryBuilder.andWhere('call.userId = :userId', { userId });
+      }
+    } else if (userRole === 'department_manager') {
+      // 部门经理只能看本部门数据
+      if (userDepartment) {
+        queryBuilder.andWhere('call.department = :department', { department: userDepartment });
+      }
+      // 支持在部门内按用户筛选
+      if (userId) {
+        queryBuilder.andWhere('call.userId = :userId', { userId });
+      }
+    } else {
+      // 销售员只能看自己的数据
+      queryBuilder.andWhere('call.userId = :userId', { userId: currentUserId });
+    }
 
     // 通话类型筛选
     const actualCallType = callType || direction;
@@ -192,10 +237,6 @@ router.get('/records', async (req: Request, res: Response) => {
         startDate: new Date(startDate as string),
         endDate: new Date(endDate as string + ' 23:59:59')
       });
-    }
-
-    if (userId) {
-      queryBuilder.andWhere('call.userId = :userId', { userId });
     }
 
     if (keyword) {

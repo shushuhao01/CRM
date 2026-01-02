@@ -950,39 +950,17 @@ const handleOrder = (row: Customer) => {
 }
 
 const handleCall = async (row: Customer) => {
-  try {
-    // 模拟外呼API调用
-    ElMessage.info('正在发起外呼...')
-
-    // 这里应该调用实际的外呼API
-    // await callCustomer(row.phone)
-
-    // 模拟外呼成功
-    setTimeout(() => {
-      ElMessage.success('外呼已发起')
-
-      // 发送外呼消息提醒(不是客户来电,是主动外呼)
-      notificationStore.sendMessage(
-        notificationStore.MessageType.CUSTOMER_CALL,
-        `已向客户 ${row.name}（${displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '')}）发起外呼`,
-        {
-          relatedId: row.id,
-          relatedType: 'customer',
-          actionUrl: `/customer/detail/${row.id}?tab=followup`
-        }
-      )
-
-      // 跳转到客户详情页面的跟进记录tab
-      safeNavigator.push({
-        name: 'CustomerDetail',
-        params: { id: row.id },
-        query: { tab: 'followup' }
-      })
-    }, 1000)
-  } catch (error) {
-    ElMessage.error('外呼失败，请重试')
-    console.error('外呼失败:', error)
-  }
+  // 🔥 跳转到通话管理页面并传递客户信息，自动弹出外呼对话框
+  safeNavigator.push({
+    path: '/service-management/call',
+    query: {
+      action: 'outbound',
+      customerId: row.id,
+      customerName: row.name,
+      customerPhone: row.phone,
+      company: row.company || ''
+    }
+  })
 }
 
 // 处理选择变化
