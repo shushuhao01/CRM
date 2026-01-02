@@ -114,9 +114,9 @@
             </div>
           </div>
 
-          <!-- 第四行：客户标签、进粉时间、负责销售、订单数量 -->
+          <!-- 第四行：客户标签、客户生日、进粉时间、负责销售 -->
           <div class="customer-info-row tags-row">
-            <div class="info-item tags-section">
+            <div class="info-item tags-section-compact">
               <span class="field-label">客户标签</span>
               <div v-if="customerInfo.tags && customerInfo.tags.length > 0" class="customer-tags">
                 <el-tag
@@ -129,6 +129,10 @@
                 </el-tag>
               </div>
               <span v-else class="field-value">暂无</span>
+            </div>
+            <div class="info-item compact">
+              <span class="field-label">客户生日</span>
+              <span class="field-value">{{ customerInfo.birthday || '暂无' }}</span>
             </div>
             <div class="info-group-right">
               <div class="info-item compact">
@@ -401,10 +405,18 @@
                   <div v-if="showAddPhone" class="add-phone">
                     <el-input
                       v-model="newPhoneNumber"
-                      placeholder="请输入手机号"
+                      placeholder="请输入11位手机号"
                       style="width: 200px; margin-right: 10px;"
+                      maxlength="11"
                     />
-                    <el-button type="primary" size="small" @click="addPhone">确认</el-button>
+                    <el-button
+                      type="primary"
+                      size="small"
+                      @click="addPhone"
+                      :disabled="!isValidPhoneNumber"
+                    >
+                      确认
+                    </el-button>
                     <el-button size="small" @click="cancelAddPhone">取消</el-button>
                   </div>
                 </div>
@@ -1172,6 +1184,12 @@ const phoneNumbers = ref<string[]>([])
 const newPhoneNumber = ref('')
 const showAddPhone = ref(false)
 
+// 验证手机号是否有效（11位数字）
+const isValidPhoneNumber = computed(() => {
+  const phone = newPhoneNumber.value.trim()
+  return /^1[3-9]\d{9}$/.test(phone)
+})
+
 // 疾病史管理
 const medicalHistory = ref<{
   id: number | string
@@ -1714,6 +1732,7 @@ const saveCustomerInfo = async () => {
       age: editForm.age ?? undefined,
       height: editForm.height ?? undefined,
       weight: editForm.weight ?? undefined,
+      birthday: editForm.birthday || undefined,
       source: editForm.source,
       address: editForm.address,
       salesperson: editForm.salesperson,
@@ -1731,6 +1750,7 @@ const saveCustomerInfo = async () => {
       customerInfo.value.otherPhones = [...phoneNumbers.value]
       customerInfo.value.joinTime = editForm.joinTime
       customerInfo.value.improvementGoals = [...editForm.improvementGoals]
+      customerInfo.value.birthday = editForm.birthday
       isEditing.value = false
       ElMessage.success('保存成功')
 
@@ -3884,6 +3904,12 @@ onMounted(async () => {
 .tags-section {
   flex: 0 0 40%;
   margin-right: 30px;
+}
+
+/* 紧凑版标签区域 */
+.tags-section-compact {
+  flex: 0 0 25%;
+  margin-right: 20px;
 }
 
 .info-group-right {

@@ -993,6 +993,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       gender: customer.gender || 'unknown',
       height: customer.height || null,
       weight: customer.weight || null,
+      birthday: customer.birthday ? formatDate(customer.birthday) : '',
       address: customer.address || '',
       province: customer.province || '',
       city: customer.city || '',
@@ -1227,7 +1228,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     const {
       name, phone, email, address, level, source, tags, remarks, remark, company, status,
-      age, gender, height, weight, wechat, wechatId,
+      age, gender, height, weight, wechat, wechatId, birthday,
       province, city, district, street, detailAddress, overseasAddress,
       medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime, otherPhones
     } = req.body;
@@ -1253,6 +1254,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (gender !== undefined) customer.gender = gender;
     if (height !== undefined) customer.height = height;
     if (weight !== undefined) customer.weight = weight;
+    if (birthday !== undefined) customer.birthday = birthday ? new Date(birthday) : undefined;
     if (wechat !== undefined || wechatId !== undefined) customer.wechat = wechat || wechatId;
     if (medicalHistory !== undefined) customer.medicalHistory = medicalHistory;
     if (improvementGoals !== undefined) customer.improvementGoals = improvementGoals;
