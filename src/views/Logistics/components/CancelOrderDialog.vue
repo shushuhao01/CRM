@@ -18,7 +18,7 @@
           <div class="order-info-grid">
             <div class="info-item">
               <span class="label">订单号：</span>
-              <span class="value">{{ order.orderNo }}</span>
+              <span class="value">{{ order.orderNumber }}</span>
             </div>
             <div class="info-item">
               <span class="label">客户姓名：</span>
@@ -26,7 +26,7 @@
             </div>
             <div class="info-item">
               <span class="label">联系电话：</span>
-              <span class="value">{{ displaySensitiveInfoNew(order.phone, 'phone') }}</span>
+              <span class="value">{{ displaySensitiveInfoNew(order.customerPhone || order.receiverPhone, SensitiveInfoType.PHONE) }}</span>
             </div>
             <div class="info-item">
               <span class="label">订单金额：</span>
@@ -34,11 +34,11 @@
             </div>
             <div class="info-item">
               <span class="label">定金：</span>
-              <span class="value">¥{{ formatNumber(order.deposit) }}</span>
+              <span class="value">¥{{ formatNumber(order.depositAmount) }}</span>
             </div>
             <div class="info-item">
               <span class="label">代收款：</span>
-              <span class="value cod-amount">¥{{ formatNumber(order.codAmount) }}</span>
+              <span class="value cod-amount">¥{{ formatNumber(order.collectAmount) }}</span>
             </div>
             <div class="info-item">
               <span class="label">当前状态：</span>
@@ -50,7 +50,7 @@
             </div>
             <div class="info-item">
               <span class="label">负责销售：</span>
-              <span class="value">{{ order.createdBy || '系统用户' }}</span>
+              <span class="value">{{ getSalesPersonName() }}</span>
             </div>
           </div>
         </div>
@@ -95,7 +95,7 @@
                   <el-input-number
                     v-model="cancelForm.refundAmount"
                     :min="0"
-                    :max="order.deposit"
+                    :max="order.depositAmount"
                     :precision="2"
                     class="full-width"
                   />
@@ -162,9 +162,10 @@
               <div class="confirm-content">
                 <span>
                   确认后：订单状态改为"已取消" →
-                  <template v-if="cancelForm.refundType === 'full_refund'">全额退款 ¥{{ formatNumber(order.deposit) }}</template>
+                  <template v-if="cancelForm.refundType === 'full_refund'">全额退款 ¥{{ formatNumber(order.depositAmount) }}</template>
                   <template v-else-if="cancelForm.refundType === 'partial_refund'">部分退款 ¥{{ formatNumber(cancelForm.refundAmount) }}</template>
                   <template v-else>不退款</template>
+                  → 通知下单员
                   <template v-if="cancelForm.notifyCustomer"> → 通知客户</template>
                 </span>
                 <span class="warning-text">
@@ -212,18 +213,10 @@ import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import {
   Box, Warning, Clock, Document, CircleClose, WarningFilled
 } from '@element-plus/icons-vue'
-import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { displaySensitiveInfo as displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import type { Order } from '@/stores/order'
+import { useUserStore } from '@/stores/user'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
-
-interface CancelData {
-  cancelType: string
-  reason: string
-  refundType: string
-  refundAmount: number
-  notifyCustomer: boolean
-  remarks: string
-}
 
 interface Props {
   visible: boolean
@@ -232,11 +225,12 @@ interface Props {
 
 interface Emits {
   (e: 'update:visible', value: boolean): void
-  (e: 'cancelled', data: CancelData): void
+  (e: 'cancelled', data: any): void
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+const userStore = useUserStore()
 
 const dialogVisible = computed({
   get: () => props.visible,
@@ -272,24 +266,27 @@ const rules = {
   ]
 }
 
-// 历史取消记录（模拟数据）
-const cancelHistory = ref([
-  {
-    orderNo: 'ORD202401001',
-    cancelTime: '2024-01-05 16:20:00',
-    cancelType: 'customer_cancel',
-    reason: '客户临时改变主意，不需要该商品',
-    refundType: 'full_refund',
-    operator: '李四'
-  }
-])
+// 历史取消记录
+const cancelHistory = ref<any[]>([])
+
+// 获取销售人员名称
+const getSalesPersonName = () => {
+  // 优先使用 createdByName，其次使用 createdBy
+  const order = props.order as any
+  return order.createdByName || order.createdBy || order.salesPersonName || '未分配'
+}
+
+// 获取当前操作人名称
+const getCurrentOperatorName = () => {
+  return userStore.currentUser?.realName || userStore.currentUser?.name || '系统用户'
+}
 
 // 监听退款类型变化
 watch(() => cancelForm.refundType, (newType) => {
   if (newType === 'full_refund') {
-    cancelForm.refundAmount = props.order?.deposit || 0
+    cancelForm.refundAmount = props.order?.depositAmount || 0
   } else if (newType === 'partial_refund') {
-    cancelForm.refundAmount = Math.round((props.order?.deposit || 0) * 0.8)
+    cancelForm.refundAmount = Math.round((props.order?.depositAmount || 0) * 0.8)
   } else {
     cancelForm.refundAmount = 0
   }
@@ -318,13 +315,7 @@ const getCancelTypeText = (cancelType: string) => {
 
 // 保存草稿
 const saveAsDraft = async () => {
-  try {
-    ElMessage.loading('正在保存草稿...')
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    ElMessage.success('草稿保存成功')
-  } catch (_error) {
-    ElMessage.error('草稿保存失败')
-  }
+  ElMessage.success('草稿保存成功')
 }
 
 // 确认取消
@@ -335,10 +326,10 @@ const confirmCancel = async () => {
     await formRef.value.validate()
 
     const confirmText = cancelForm.refundType === 'full_refund'
-      ? `确认取消订单 ${props.order.orderNo} 并全额退款 ¥${formatNumber(props.order.deposit)} 吗？`
+      ? `确认取消订单 ${props.order.orderNumber} 并全额退款 ¥${formatNumber(props.order.depositAmount)} 吗？`
       : cancelForm.refundType === 'partial_refund'
-      ? `确认取消订单 ${props.order.orderNo} 并退款 ¥${formatNumber(cancelForm.refundAmount)} 吗？`
-      : `确认取消订单 ${props.order.orderNo} 且不退款吗？`
+      ? `确认取消订单 ${props.order.orderNumber} 并退款 ¥${formatNumber(cancelForm.refundAmount)} 吗？`
+      : `确认取消订单 ${props.order.orderNumber} 且不退款吗？`
 
     await ElMessageBox.confirm(
       confirmText + ' 此操作无法撤销！',
@@ -354,10 +345,10 @@ const confirmCancel = async () => {
 
     const cancelData = {
       orderId: props.order.id,
-      orderNo: props.order.orderNo,
+      orderNo: props.order.orderNumber,
       ...cancelForm,
       cancelTime: new Date().toISOString(),
-      operator: '当前用户',
+      operator: getCurrentOperatorName(),
       status: 'cancelled'
     }
 
