@@ -197,6 +197,27 @@ export class UserController {
     // 获取客服权限配置
     const customerServicePermissions = await this.getCustomerServicePermissions(user.id);
 
+    // 🔥 获取用户角色的权限列表
+    let rolePermissions: string[] = [];
+    try {
+      const dataSource = getDataSource();
+      if (dataSource) {
+        const roleCode = user.roleId || user.role;
+        const [roleData] = await dataSource.query(
+          'SELECT permissions FROM roles WHERE code = ?',
+          [roleCode]
+        );
+        if (roleData && roleData.permissions) {
+          rolePermissions = typeof roleData.permissions === 'string'
+            ? JSON.parse(roleData.permissions)
+            : roleData.permissions;
+          console.log(`[Login] 从数据库加载角色权限: ${roleCode}, ${rolePermissions.length}个权限`);
+        }
+      }
+    } catch (permError) {
+      console.warn('[Login] 获取角色权限失败:', permError);
+    }
+
     // 返回用户信息和令牌
     const { password: _, ...userInfo } = user;
 
@@ -206,7 +227,8 @@ export class UserController {
       data: {
         user: {
           ...userInfo,
-          customerServicePermissions
+          customerServicePermissions,
+          rolePermissions  // 🔥 返回角色权限列表
         },
         tokens
       }

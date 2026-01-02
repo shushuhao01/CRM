@@ -27,14 +27,20 @@ export function hasMenuPermission(
     return true
   }
 
-  // 检查角色权限
-  if (menuItem.roles && menuItem.roles.length > 0) {
+  // 🔥 定义系统预设角色列表
+  const systemRoles = ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service']
+  const isSystemRole = systemRoles.includes(userRole)
+
+  // 检查角色权限 - 只对系统预设角色进行角色检查，自定义角色跳过角色检查，只检查权限
+  if (menuItem.roles && menuItem.roles.length > 0 && isSystemRole) {
     console.log(`[hasMenuPermission] 检查角色权限 - 要求角色:`, menuItem.roles, '用户角色:', userRole)
     if (!menuItem.roles.includes(userRole)) {
       console.log(`[hasMenuPermission] 角色权限不匹配: ${menuItem.title}`)
       return false
     }
     console.log(`[hasMenuPermission] 角色权限匹配: ${menuItem.title}`)
+  } else if (!isSystemRole) {
+    console.log(`[hasMenuPermission] 自定义角色 ${userRole}，跳过角色检查，只检查权限`)
   }
 
   // 检查具体权限

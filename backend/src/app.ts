@@ -171,6 +171,7 @@ app.use(express.text({
 
 // 静态文件服务
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+app.use('/recordings', express.static(path.join(process.cwd(), 'recordings')));
 
 // 健康检查端点
 app.get('/health', (req, res) => {

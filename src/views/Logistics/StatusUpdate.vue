@@ -1441,39 +1441,45 @@ watch([dateRange, statusFilter, searchKeyword], () => {
 
 .search-filters {
   margin-bottom: 16px;
+  background: #fff;
+  padding: 12px 16px;
+  border-radius: 8px;
 }
 
 .search-filters .filter-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
+  flex-wrap: nowrap;
 }
 
 .search-filters .date-picker-compact {
-  width: 200px !important;
+  width: 200px;
+  flex-shrink: 0;
 }
 
 .search-filters .search-input {
-  width: 180px;
+  flex: 1;
+  min-width: 150px;
 }
 
 .search-filters .filter-select {
-  width: 120px;
+  flex: 1;
+  min-width: 100px;
 }
 
 .search-filters .filter-select-wide {
-  width: 140px;
+  flex: 1;
+  min-width: 120px;
 }
 
-.search-filters .el-col {
-  margin-bottom: 10px;
+.search-filters :deep(.el-date-editor) {
+  width: 200px !important;
 }
 
-.search-filters .el-date-picker,
-.search-filters .el-input,
-.search-filters .el-select {
-  width: 100%;
+.search-filters :deep(.el-input__wrapper),
+.search-filters :deep(.el-select__wrapper) {
+  box-shadow: 0 0 0 1px #dcdfe6 inset;
 }
 
 .list-navigation {

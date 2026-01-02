@@ -23,6 +23,10 @@ export class Role {
   @Column({ nullable: true, length: 20 })
   color: string
 
+  // 数据范围：all=全部数据, department=部门数据, self=个人数据
+  @Column('varchar', { name: 'data_scope', length: 20, default: 'self' })
+  dataScope: 'all' | 'department' | 'self'
+
   @CreateDateColumn()
   createdAt: Date
 

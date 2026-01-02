@@ -13,6 +13,7 @@ export interface Role {
   level?: number
   status: 'active' | 'inactive'
   roleType?: 'system' | 'business' | 'temporary' | 'custom'  // 角色类型
+  dataScope?: 'all' | 'department' | 'self'  // 数据范围
   permissions?: string[]
   createdAt: string
   updatedAt: string
@@ -25,6 +26,7 @@ export interface CreateRoleData {
   permissions?: string[]
   level?: number
   roleType?: 'system' | 'business' | 'temporary' | 'custom'  // 角色类型
+  dataScope?: 'all' | 'department' | 'self'  // 数据范围
 }
 
 export interface UpdateRoleData extends Partial<CreateRoleData> {
@@ -200,6 +202,7 @@ class RoleApiService {
           description: data.description !== undefined ? data.description : roles[roleIndex].description,
           status: data.status || roles[roleIndex].status,
           roleType: data.roleType || roles[roleIndex].roleType,
+          dataScope: data.dataScope || roles[roleIndex].dataScope,
           permissions: data.permissions || roles[roleIndex].permissions,
           updatedAt: new Date().toISOString()
         }
