@@ -823,7 +823,11 @@ const loadData = async (showMessage = false) => {
     }
     // todo标签页暂时不传status，获取全部后前端筛选
 
-    console.log(`[状态更新] 🚀 加载数据, 页码: ${pagination.currentPage}, 每页: ${pagination.pageSize}, 状态: ${statusParam || '全部'}`)
+    // 🔥 修复：将日期参数传递给后端API，而不是前端筛选
+    const startDate = dateRange.value?.[0] || undefined
+    const endDate = dateRange.value?.[1] || undefined
+
+    console.log(`[状态更新] 🚀 加载数据, 页码: ${pagination.currentPage}, 每页: ${pagination.pageSize}, 状态: ${statusParam || '全部'}, 日期: ${startDate || '无'} ~ ${endDate || '无'}`)
 
     const response = await orderApi.getShippingShipped({
       page: pagination.currentPage,
@@ -831,44 +835,23 @@ const loadData = async (showMessage = false) => {
       status: statusParam,
       orderNumber: searchKeyword.value || undefined,
       departmentId: departmentFilter.value || undefined,
-      salesPersonId: salesPersonFilter.value || undefined
+      salesPersonId: salesPersonFilter.value || undefined,
+      startDate,  // 🔥 传递日期参数给后端
+      endDate     // 🔥 传递日期参数给后端
     }) as any
 
     let allOrders = response?.data?.list || []
     const apiTotal = response?.data?.total || 0
     console.log('[状态更新] 从API获取订单:', allOrders.length, '条, 总数:', apiTotal)
 
-    // 🔥 日期筛选（如果有）
-    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      const [startDate, endDate] = dateRange.value
-      const extractDatePart = (dateStr: string) => {
-        if (!dateStr) return ''
-        try {
-          if (dateStr.includes('/')) {
-            return dateStr.split(' ')[0].replace(/\//g, '-')
-          }
-          const date = new Date(dateStr)
-          if (isNaN(date.getTime())) return dateStr.split(' ')[0]
-          return date.toISOString().split('T')[0]
-        } catch {
-          return dateStr.split(' ')[0]
-        }
-      }
-      allOrders = allOrders.filter((order: any) => {
-        const shippingTime = order.shippedAt || order.shippingTime || order.shipTime || order.createTime
-        const shippingDate = extractDatePart(shippingTime)
-        return shippingDate >= startDate && shippingDate <= endDate
-      })
-    }
-
-    // 🔥 待办筛选（todo标签页）
+    // 🔥 待办筛选（todo标签页）- 这个需要前端筛选因为后端可能没有这个字段
     if (activeTab.value === 'todo') {
       allOrders = allOrders.filter((order: any) =>
         order.isTodo === true || order.logisticsStatus === 'todo'
       )
     }
 
-    // 🔥 状态筛选（下拉框）
+    // 🔥 状态筛选（下拉框）- 物流状态筛选
     if (statusFilter.value) {
       allOrders = allOrders.filter((order: any) =>
         order.logisticsStatus === statusFilter.value || order.status === statusFilter.value
