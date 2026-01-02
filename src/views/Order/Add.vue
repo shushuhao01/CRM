@@ -678,6 +678,7 @@ interface Customer {
   id: string
   name: string
   phone: string
+  otherPhones?: string[]  // 其他手机号
   address: string
   age: number
   level: 'normal' | 'vip' | 'premium'
@@ -1051,10 +1052,33 @@ const handleCustomerChange = (customerId: string) => {
 // 加载客户手机号列表
 const loadCustomerPhones = async (customerId: string) => {
   try {
-    // 模拟API调用
-    const phones = [
-      { id: 1, number: selectedCustomer.value?.phone || '', remark: '默认手机号', isDefault: true }
-    ]
+    const phones = []
+    let phoneId = 1
+
+    // 主手机号
+    if (selectedCustomer.value?.phone) {
+      phones.push({
+        id: phoneId++,
+        number: selectedCustomer.value.phone,
+        remark: '主手机号',
+        isDefault: true
+      })
+    }
+
+    // 其他手机号（从otherPhones字段获取）
+    if (selectedCustomer.value?.otherPhones && Array.isArray(selectedCustomer.value.otherPhones)) {
+      selectedCustomer.value.otherPhones.forEach((phone: string, index: number) => {
+        if (phone && phone !== selectedCustomer.value?.phone) {
+          phones.push({
+            id: phoneId++,
+            number: phone,
+            remark: `备用号码${index + 1}`,
+            isDefault: false
+          })
+        }
+      })
+    }
+
     customerPhones.value = phones
 
     // 设置默认手机号
@@ -1670,9 +1694,34 @@ onMounted(async () => {
       selectedCustomer.value = customerInfo
 
       // 🔥 初始化手机号列表并设置选中
-      customerPhones.value = [
-        { id: 1, number: customerInfo.phone, remark: '默认手机号', isDefault: true }
-      ]
+      const phones = []
+      let phoneId = 1
+
+      // 主手机号
+      if (customerInfo.phone) {
+        phones.push({
+          id: phoneId++,
+          number: customerInfo.phone,
+          remark: '主手机号',
+          isDefault: true
+        })
+      }
+
+      // 其他手机号
+      if (customerInfo.otherPhones && Array.isArray(customerInfo.otherPhones)) {
+        customerInfo.otherPhones.forEach((phone: string, index: number) => {
+          if (phone && phone !== customerInfo.phone) {
+            phones.push({
+              id: phoneId++,
+              number: phone,
+              remark: `备用号码${index + 1}`,
+              isDefault: false
+            })
+          }
+        })
+      }
+
+      customerPhones.value = phones
       selectedPhoneId.value = 1
 
       ElMessage.success(`已自动选择客户：${customerInfo.name}`)
@@ -1704,10 +1753,20 @@ onMounted(async () => {
       // 🔥 设置临时客户，确保下拉框能显示
       tempCustomer.value = customerInfo
 
-      // 🔥 初始化手机号列表并设置选中
-      customerPhones.value = [
-        { id: 1, number: customerPhone as string, remark: '默认手机号', isDefault: true }
-      ]
+      // 🔥 初始化手机号列表并设置选中（路由参数来的客户可能没有otherPhones）
+      const phones = []
+      let phoneId = 1
+
+      if (customerPhone) {
+        phones.push({
+          id: phoneId++,
+          number: customerPhone as string,
+          remark: '主手机号',
+          isDefault: true
+        })
+      }
+
+      customerPhones.value = phones
       selectedPhoneId.value = 1
 
       ElMessage.success(`已自动选择客户：${customerName}`)
