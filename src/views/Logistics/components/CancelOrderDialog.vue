@@ -304,7 +304,7 @@ const rules = {
   ],
   reason: [
     { required: true, message: '请填写取消原因', trigger: 'blur' },
-    { min: 10, message: '取消原因至少10个字符', trigger: 'blur' }
+    { min: 2, message: '取消原因至少2个字符', trigger: 'blur' }
   ],
   refundType: [
     { required: true, message: '请选择退款处理方式', trigger: 'change' }
@@ -430,9 +430,6 @@ const confirmCancel = async () => {
 
     loading.value = true
 
-    // 模拟取消处理
-    await new Promise(resolve => setTimeout(resolve, 2000))
-
     const cancelData = {
       orderId: props.order.id,
       orderNo: props.order.orderNo,
@@ -443,12 +440,11 @@ const confirmCancel = async () => {
     }
 
     emit('cancelled', cancelData)
-    ElMessage.success('订单取消成功！')
     handleClose()
 
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('订单取消失败，请重试')
+      console.error('[取消订单] 操作失败:', error)
     }
   } finally {
     loading.value = false
