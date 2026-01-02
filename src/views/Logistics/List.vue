@@ -32,7 +32,7 @@
             v-model="searchForm.departmentId"
             placeholder="请选择部门"
             clearable
-            style="width: 150px"
+            style="width: 130px"
             @change="handleDepartmentChange"
           >
             <el-option
@@ -49,7 +49,7 @@
             placeholder="请选择销售人员"
             clearable
             filterable
-            style="width: 160px"
+            style="width: 130px"
             @change="handleSalesPersonChange"
           >
             <el-option
@@ -65,7 +65,7 @@
             v-model="searchForm.status"
             placeholder="请选择状态"
             clearable
-            style="width: 150px"
+            style="width: 120px"
             @change="handleStatusChange"
           >
             <el-option label="待发货" value="pending" />
@@ -84,7 +84,7 @@
             v-model="searchForm.company"
             placeholder="请选择物流公司"
             clearable
-            style="width: 150px"
+            style="width: 130px"
             :loading="loadingCompanies"
             @change="handleCompanyChange"
           >
@@ -95,6 +95,19 @@
               :value="company.code"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="发货日期">
+          <el-date-picker
+            v-model="searchForm.dateRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            style="width: 220px"
+            @change="handleDateChange"
+          />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">
@@ -369,7 +382,8 @@ const searchForm = reactive({
   departmentId: '',
   salesPersonId: '',
   status: '',
-  company: ''
+  company: '',
+  dateRange: [] as string[]
 })
 
 // 分页
@@ -567,8 +581,15 @@ const handleReset = () => {
     departmentId: '',
     salesPersonId: '',
     status: '',
-    company: ''
+    company: '',
+    dateRange: []
   })
+  pagination.page = 1
+  loadData()
+}
+
+// 🔥 日期变更时自动加载数据
+const handleDateChange = () => {
   pagination.page = 1
   loadData()
 }
@@ -631,7 +652,9 @@ const loadData = async () => {
       status: searchForm.status || undefined,
       departmentId: searchForm.departmentId || undefined,
       salesPersonId: searchForm.salesPersonId || undefined,
-      expressCompany: searchForm.company || undefined
+      expressCompany: searchForm.company || undefined,
+      startDate: searchForm.dateRange?.[0] || undefined,
+      endDate: searchForm.dateRange?.[1] || undefined
     })
 
     let shippedOrders = response?.data?.list || []

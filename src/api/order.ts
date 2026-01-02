@@ -139,6 +139,8 @@ export const orderApi = {
     departmentId?: string;
     salesPersonId?: string;
     expressCompany?: string;
+    startDate?: string;
+    endDate?: string;
   }) =>
     api.get<OrderListResponse>('/orders/shipping/shipped', { params }),
 
