@@ -182,7 +182,7 @@
             <template #header>
               <span>商品销售排行</span>
             </template>
-            <div ref="productRankingChartRef" class="chart-container"></div>
+            <div ref="productRankingChartRef" class="chart-container product-ranking-chart"></div>
           </el-card>
         </el-col>
       </el-row>
@@ -2152,8 +2152,8 @@ const initProductRankingChart = () => {
   // 获取真实的商品销售排行数据
   const salesData = getProductSalesData()
 
-  // 截断产品名称的函数
-  const truncateName = (name: string, maxLen: number = 10) => {
+  // 截断产品名称的函数 - 限制为6个字符，更短以避免挤压
+  const truncateName = (name: string, maxLen: number = 6) => {
     if (!name) return ''
     return name.length > maxLen ? name.substring(0, maxLen) + '...' : name
   }
@@ -2164,41 +2164,53 @@ const initProductRankingChart = () => {
       axisPointer: {
         type: 'shadow'
       },
-      // 自定义tooltip显示完整产品名称
+      // 🔥 自定义tooltip显示完整产品名称
       formatter: (params: any) => {
         const dataIndex = params[0]?.dataIndex
         const fullName = salesData.names[dataIndex] || ''
         const value = params[0]?.value || 0
-        return `<div style="padding: 4px 8px;">
-          <div style="font-weight: bold; margin-bottom: 4px; max-width: 250px; word-wrap: break-word;">${fullName}</div>
-          <div>销售额: ¥${value.toLocaleString()}</div>
+        return `<div style="padding: 8px 12px; max-width: 300px;">
+          <div style="font-weight: bold; margin-bottom: 6px; word-wrap: break-word; white-space: normal;">${fullName}</div>
+          <div style="color: #409EFF;">销售额: ¥${value.toLocaleString()}</div>
         </div>`
-      }
+      },
+      confine: true
     },
     grid: {
-      left: '30%',  // 固定左边距
+      left: '30%',  // 🔥 减少左边距
       right: '15%',
-      bottom: '3%',
-      top: '3%',
+      bottom: '8%',
+      top: '5%',
       containLabel: false
     },
     xAxis: {
       type: 'value',
       axisLabel: {
-        formatter: (value: number) => value >= 10000 ? (value / 10000).toFixed(1) + '万' : value
+        formatter: (value: number) => {
+          if (value >= 10000) return (value / 10000).toFixed(1) + '万'
+          if (value >= 1000) return (value / 1000).toFixed(1) + 'k'
+          return value.toString()
+        },
+        fontSize: 10
       }
     },
     yAxis: {
       type: 'category',
-      data: salesData.names.map(name => truncateName(name, 10)),  // 截断显示
+      data: salesData.names.map(name => truncateName(name, 6)),  // 🔥 截断为6个字符
       axisLabel: {
-        width: 80,
+        fontSize: 10,
+        color: '#606266',
+        width: 60,
         overflow: 'truncate',
-        ellipsis: '...',
-        fontSize: 12
+        ellipsis: '...'
       },
       axisTick: {
         show: false
+      },
+      axisLine: {
+        lineStyle: {
+          color: '#E4E7ED'
+        }
       }
     },
     series: [
@@ -2207,15 +2219,22 @@ const initProductRankingChart = () => {
         type: 'bar',
         data: salesData.values,
         itemStyle: {
-          color: '#409EFF'
+          color: '#409EFF',
+          borderRadius: [0, 4, 4, 0]
         },
         label: {
           show: true,
           position: 'right',
-          formatter: (params: any) => '¥' + params.value.toLocaleString(),
-          fontSize: 11
+          formatter: (params: any) => {
+            const val = params.value
+            if (val >= 10000) return '¥' + (val / 10000).toFixed(1) + '万'
+            return '¥' + val.toLocaleString()
+          },
+          fontSize: 10,
+          color: '#606266'
         },
-        barWidth: '50%'
+        barWidth: '50%',
+        barMaxWidth: 22
       }
     ]
   }
@@ -2792,6 +2811,13 @@ onUnmounted(() => {
 .chart-container {
   height: 320px;
   width: 100%;
+}
+
+/* 🔥 商品销售排行图表专用样式 - 固定高度防止名称过长导致图表被挤压 */
+.product-ranking-chart {
+  height: 380px !important;
+  min-height: 380px !important;
+  max-height: 380px !important;
 }
 
 .data-table-card .card-header {
