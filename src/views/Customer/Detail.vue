@@ -1326,7 +1326,7 @@ const handleCall = () => {
       customerId: route.params.id as string,
       customerName: customerInfo.value.name,
       customerPhone: phone,
-      company: customerInfo.value.company || ''
+      company: ''
     }
   })
 }
@@ -1828,7 +1828,7 @@ const makePhoneCall = (phoneNumber: string) => {
       customerId: route.params.id as string,
       customerName: customerInfo.value.name,
       customerPhone: phoneNumber,
-      company: customerInfo.value.company || ''
+      company: ''
     }
   })
 }
@@ -2162,7 +2162,7 @@ const callBack = (phone: string) => {
       customerId: route.params.id as string,
       customerName: customerInfo.value.name,
       customerPhone: phone,
-      company: customerInfo.value.company || ''
+      company: ''
     }
   })
 }

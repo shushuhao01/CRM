@@ -4947,6 +4947,15 @@ const checkOutboundFromRoute = () => {
     }]
     outboundForm.value.customerPhone = customer.phone
 
+    // 🔥 设置默认外呼方式（如果有可用的工作手机或线路）
+    if (workPhones.value.length > 0) {
+      outboundForm.value.callMethod = 'work_phone'
+      outboundForm.value.selectedWorkPhone = workPhones.value[0].id
+    } else if (availableLines.value.length > 0) {
+      outboundForm.value.callMethod = 'network_phone'
+      outboundForm.value.selectedLine = availableLines.value[0].id
+    }
+
     // 打开外呼对话框
     showOutboundDialog.value = true
 
@@ -5180,21 +5189,25 @@ const initOutboundDialog = async () => {
   console.log('[initOutboundDialog] workPhones:', workPhones.value.length, workPhones.value.map(p => ({ id: p.id, status: p.status })))
   console.log('[initOutboundDialog] availableLines:', availableLines.value.length)
 
-  // 设置默认外呼方式
-  if (workPhones.value.length > 0) {
-    outboundForm.value.callMethod = 'work_phone'
-    outboundForm.value.selectedWorkPhone = workPhones.value[0].id
-    console.log('[initOutboundDialog] 设置默认工作手机:', workPhones.value[0].id, typeof workPhones.value[0].id)
-  } else if (availableLines.value.length > 0) {
-    outboundForm.value.callMethod = 'network_phone'
-    outboundForm.value.selectedLine = availableLines.value[0].id
-    console.log('[initOutboundDialog] 设置默认线路:', availableLines.value[0].id)
+  // 🔥 只有在没有设置外呼方式时才设置默认值（避免覆盖从路由传递的设置）
+  if (!outboundForm.value.callMethod) {
+    if (workPhones.value.length > 0) {
+      outboundForm.value.callMethod = 'work_phone'
+      outboundForm.value.selectedWorkPhone = workPhones.value[0].id
+      console.log('[initOutboundDialog] 设置默认工作手机:', workPhones.value[0].id, typeof workPhones.value[0].id)
+    } else if (availableLines.value.length > 0) {
+      outboundForm.value.callMethod = 'network_phone'
+      outboundForm.value.selectedLine = availableLines.value[0].id
+      console.log('[initOutboundDialog] 设置默认线路:', availableLines.value[0].id)
+    }
   }
 
   console.log('[initOutboundDialog] 最终 outboundForm:', {
     callMethod: outboundForm.value.callMethod,
     selectedWorkPhone: outboundForm.value.selectedWorkPhone,
-    selectedLine: outboundForm.value.selectedLine
+    selectedLine: outboundForm.value.selectedLine,
+    selectedCustomer: outboundForm.value.selectedCustomer,
+    customerPhone: outboundForm.value.customerPhone
   })
 }
 
