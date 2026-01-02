@@ -625,7 +625,7 @@
             <div v-if="performanceForm.reportTypes.includes('order_count')" class="preview-item">   订单数: {{ previewData.daily?.orderCount || 0 }} 单</div>
             <div v-if="performanceForm.reportTypes.includes('order_amount')" class="preview-item">   订单金额: ¥{{ (previewData.daily?.orderAmount || 0).toLocaleString() }}</div>
             <template v-if="performanceForm.includeMonthly">
-              <div class="preview-section-title">📈 本月累计</div>
+              <div class="preview-section-title">📈 当月累计</div>
               <div class="preview-item">   订单数: {{ previewData.monthly?.orderCount || 0 }} 单</div>
               <div class="preview-item">   订单金额: ¥{{ (previewData.monthly?.orderAmount || 0).toLocaleString() }}</div>
               <div v-if="performanceForm.reportTypes.includes('monthly_signed_count')" class="preview-item">   签收单数: {{ previewData.monthly?.signedCount || 0 }} 单</div>

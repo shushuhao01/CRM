@@ -361,7 +361,7 @@ class PerformanceReportScheduler {
 
     if (config.includeMonthly === 1) {
       lines.push('');
-      lines.push('📈 本月累计');
+      lines.push('📈 当月累计');
       lines.push(`   订单数: ${data.monthly.orderCount} 单`);
       lines.push(`   订单金额: ¥${data.monthly.orderAmount.toLocaleString()}`);
       lines.push(`   签收单数: ${data.monthly.signedCount} 单`);
@@ -396,7 +396,7 @@ class PerformanceReportScheduler {
     lines.push('');
 
     if (config.includeMonthly === 1) {
-      lines.push('### 📈 本月累计');
+      lines.push('### 📈 当月累计');
       lines.push(`- **订单数**: ${data.monthly.orderCount} 单`);
       lines.push(`- **订单金额**: ¥${data.monthly.orderAmount.toLocaleString()}`);
       lines.push(`- **签收单数**: ${data.monthly.signedCount} 单`);

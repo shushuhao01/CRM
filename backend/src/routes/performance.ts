@@ -491,14 +491,15 @@ router.get('/team', async (req: Request, res: Response) => {
     }
 
     // 获取部门成员列表 - 🔥 修复：departmentId为null时查询所有用户
-    let userCondition = '';
+    // 🔥 修复：只查询启用状态(status='active')的用户，停用用户不显示在团队业绩中
+    let userCondition = ` WHERE u.status = 'active'`;
     if (departmentId) {
-      userCondition = ` WHERE u.department_id = '${departmentId}'`;
+      userCondition += ` AND u.department_id = '${departmentId}'`;
     }
 
     const users = await AppDataSource.query(
       `SELECT u.id, u.real_name as realName, u.username, u.department_name as departmentName,
-              u.department_id as departmentId, u.created_at as createTime
+              u.department_id as departmentId, u.created_at as createTime, u.status
        FROM users u${userCondition}`
     );
 

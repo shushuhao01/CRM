@@ -511,7 +511,7 @@ export class PerformanceReportController {
     // 月累计数据（包含签收数据）
     if (config.includeMonthly === 1) {
       lines.push('');
-      lines.push('📈 本月累计');
+      lines.push('📈 当月累计');
       lines.push(`   订单数: ${data.monthly.orderCount} 单`);
       lines.push(`   订单金额: ¥${data.monthly.orderAmount.toLocaleString()}`);
       if (config.reportTypes.includes('monthly_signed_count')) {
@@ -578,7 +578,7 @@ export class PerformanceReportController {
 
     // 月累计数据
     if (config.includeMonthly === 1) {
-      lines.push('### 📈 本月累计');
+      lines.push('### 📈 当月累计');
       lines.push(`- **订单数**: ${data.monthly.orderCount} 单`);
       lines.push(`- **订单金额**: ¥${data.monthly.orderAmount.toLocaleString()}`);
       if (config.reportTypes.includes('monthly_signed_count')) {
