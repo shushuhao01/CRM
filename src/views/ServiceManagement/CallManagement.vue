@@ -3736,6 +3736,7 @@ const handleCall = (row: any) => {
     id: row.id || row.customerId,
     name: row.customerName,
     phone: row.phone,
+    otherPhones: row.otherPhones || [],
     company: row.company || ''
   }
 
@@ -3754,6 +3755,17 @@ const handleCall = (row: any) => {
     phones.push({
       phone: customer.phone,
       type: '主号码'
+    })
+  }
+  // 添加其他号码
+  if (customer.otherPhones && Array.isArray(customer.otherPhones)) {
+    customer.otherPhones.forEach((phone: string, index: number) => {
+      if (phone && phone !== customer.phone) {
+        phones.push({
+          phone: phone,
+          type: `备用号码${index + 1}`
+        })
+      }
     })
   }
   phoneOptions.value = phones
@@ -3998,6 +4010,7 @@ const handleDetailOutboundCall = () => {
     id: currentCustomer.value.id || currentCustomer.value.customerId,
     name: currentCustomer.value.customerName || currentCustomer.value.name,
     phone: currentCustomer.value.phone || currentCustomer.value.customerPhone,
+    otherPhones: currentCustomer.value.otherPhones || [],
     company: currentCustomer.value.company || ''
   }
 
@@ -4016,6 +4029,17 @@ const handleDetailOutboundCall = () => {
     phones.push({
       phone: customer.phone,
       type: '主号码'
+    })
+  }
+  // 添加其他号码
+  if (customer.otherPhones && Array.isArray(customer.otherPhones)) {
+    customer.otherPhones.forEach((phone: string, index: number) => {
+      if (phone && phone !== customer.phone) {
+        phones.push({
+          phone: phone,
+          type: `备用号码${index + 1}`
+        })
+      }
     })
   }
   phoneOptions.value = phones
@@ -4159,13 +4183,13 @@ const onCustomerChange = (customer: any) => {
     })
   }
 
-  // 其他号码（如果有phones数组）
-  if (customer.phones && Array.isArray(customer.phones)) {
-    customer.phones.forEach((phoneObj: any) => {
-      if (phoneObj.phone && phoneObj.phone !== customer.phone) {
+  // 其他号码（使用otherPhones字段）
+  if (customer.otherPhones && Array.isArray(customer.otherPhones)) {
+    customer.otherPhones.forEach((phone: string, index: number) => {
+      if (phone && phone !== customer.phone) {
         phones.push({
-          phone: phoneObj.phone,
-          type: phoneObj.type || '其他'
+          phone: phone,
+          type: `备用号码${index + 1}`
         })
       }
     })

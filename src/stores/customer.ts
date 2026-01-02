@@ -17,6 +17,7 @@ export interface Customer {
   code: string  // 客户编码
   name: string
   phone: string
+  otherPhones?: string[]  // 其他手机号
   age: number
   address: string
   level: 'normal' | 'silver' | 'gold'
