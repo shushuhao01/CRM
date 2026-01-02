@@ -146,6 +146,7 @@
                   style="width: 200px;"
                   format="YYYY-MM-DD"
                   value-format="YYYY-MM-DD"
+                  :disabled-date="disableFutureDate"
                 />
               </el-form-item>
             </el-col>
@@ -566,7 +567,10 @@ const customerVerifyResult = ref<{
   customerId?: string
 } | null>(null)
 
-
+// 禁用未来日期（进粉时间不能选择未来）
+const disableFutureDate = (time: Date) => {
+  return time.getTime() > Date.now()
+}
 
 // 判断是否为编辑模式
 const isEdit = computed(() => route.name === 'CustomerEdit')
