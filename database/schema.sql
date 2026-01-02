@@ -138,6 +138,7 @@ CREATE TABLE `customers` (
   `customer_code` VARCHAR(50) UNIQUE COMMENT '客户编号',
   `name` VARCHAR(100) NOT NULL COMMENT '客户姓名',
   `phone` VARCHAR(20) COMMENT '手机号',
+  `other_phones` JSON DEFAULT NULL COMMENT '其他手机号',
   `wechat` VARCHAR(100) COMMENT '微信号',
   `qq` VARCHAR(50) COMMENT 'QQ号',
   `email` VARCHAR(100) COMMENT '邮箱',
