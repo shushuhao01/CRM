@@ -338,6 +338,9 @@
                 </el-input>
               </el-form-item>
             </el-col>
+          </el-row>
+
+          <el-row :gutter="24">
             <el-col :span="8">
               <el-form-item label="邮箱">
                 <el-input :value="displaySensitiveInfoNew(editForm.email, SensitiveInfoType.EMAIL)" readonly>
@@ -347,6 +350,24 @@
                     </el-tooltip>
                   </template>
                 </el-input>
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="性别">
+                <el-select v-model="editForm.gender" placeholder="请选择" style="width: 100%">
+                  <el-option label="男" value="male" />
+                  <el-option label="女" value="female" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="客户等级">
+                <el-select v-model="editForm.level" placeholder="请选择" style="width: 100%">
+                  <el-option label="铜牌客户" value="bronze" />
+                  <el-option label="银牌客户" value="silver" />
+                  <el-option label="金牌客户" value="gold" />
+                  <el-option label="钻石客户" value="diamond" />
+                </el-select>
               </el-form-item>
             </el-col>
           </el-row>
@@ -391,54 +412,53 @@
             </el-col>
           </el-row>
 
+          <!-- 年龄、身高、体重放同一行 -->
           <el-row :gutter="24">
             <el-col :span="8">
-              <el-form-item label="客户等级">
-                <el-select v-model="editForm.level" placeholder="请选择">
-                  <el-option label="铜牌客户" value="bronze" />
-                  <el-option label="银牌客户" value="silver" />
-                  <el-option label="金牌客户" value="gold" />
-                  <el-option label="钻石客户" value="diamond" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
               <el-form-item label="年龄">
-                <el-input-number v-model="editForm.age" :min="0" :max="150" placeholder="请输入年龄" />
+                <el-input-number v-model="editForm.age" :min="1" :max="120" placeholder="年龄" style="width: 100%" />
               </el-form-item>
             </el-col>
             <el-col :span="8">
               <el-form-item label="身高(cm)">
-                <el-input-number v-model="editForm.height" :min="0" :max="300" placeholder="请输入身高" />
+                <el-input-number v-model="editForm.height" :min="50" :max="250" placeholder="身高" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="体重(kg)">
+                <el-input-number v-model="editForm.weight" :min="20" :max="300" placeholder="体重" style="width: 100%" />
               </el-form-item>
             </el-col>
           </el-row>
 
           <el-row :gutter="24">
             <el-col :span="8">
-              <el-form-item label="体重(kg)">
-                <el-input-number v-model="editForm.weight" :min="0" :max="500" placeholder="请输入体重" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item label="性别">
-                <el-select v-model="editForm.gender" placeholder="请选择">
-                  <el-option label="男" value="男" />
-                  <el-option label="女" value="女" />
-                </el-select>
+              <el-form-item label="进粉时间">
+                <el-date-picker
+                  v-model="editForm.joinTime"
+                  type="date"
+                  placeholder="选择进粉时间"
+                  style="width: 100%"
+                  format="YYYY-MM-DD"
+                  value-format="YYYY-MM-DD"
+                  :disabled-date="disableFutureDate"
+                />
               </el-form-item>
             </el-col>
             <el-col :span="8">
               <el-form-item label="客户来源">
-                <el-select v-model="editForm.source" placeholder="请选择">
-                  <el-option label="朋友推荐" value="朋友推荐" />
-                  <el-option label="线上推广" value="线上推广" />
-                  <el-option label="线下门店" value="线下门店" />
-                  <el-option label="社交媒体" value="社交媒体" />
-                  <el-option label="搜索引擎" value="搜索引擎" />
-                  <el-option label="广告投放" value="广告投放" />
-                  <el-option label="其他渠道" value="其他渠道" />
+                <el-select v-model="editForm.source" placeholder="请选择" style="width: 100%">
+                  <el-option label="线上推广" value="online" />
+                  <el-option label="朋友介绍" value="referral" />
+                  <el-option label="电话营销" value="telemarketing" />
+                  <el-option label="门店到访" value="store" />
+                  <el-option label="其他" value="other" />
                 </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="销售人员">
+                <el-input v-model="editForm.salesperson" placeholder="销售人员" />
               </el-form-item>
             </el-col>
           </el-row>
@@ -457,12 +477,24 @@
             </el-col>
             <el-col :span="8">
               <el-form-item label="生日">
-                <el-date-picker v-model="editForm.birthday" type="date" placeholder="选择日期" />
+                <el-date-picker v-model="editForm.birthday" type="date" placeholder="选择日期" style="width: 100%" />
               </el-form-item>
             </el-col>
-            <el-col :span="8">
-              <el-form-item label="销售人员">
-                <el-input v-model="editForm.salesperson" />
+          </el-row>
+
+          <!-- 改善问题 -->
+          <el-row :gutter="24">
+            <el-col :span="24">
+              <el-form-item label="改善问题">
+                <el-checkbox-group v-model="editForm.improvementGoals">
+                  <el-checkbox label="减肥瘦身">减肥瘦身</el-checkbox>
+                  <el-checkbox label="增肌塑形">增肌塑形</el-checkbox>
+                  <el-checkbox label="改善睡眠">改善睡眠</el-checkbox>
+                  <el-checkbox label="调理肠胃">调理肠胃</el-checkbox>
+                  <el-checkbox label="美容养颜">美容养颜</el-checkbox>
+                  <el-checkbox label="增强免疫">增强免疫</el-checkbox>
+                  <el-checkbox label="其他">其他</el-checkbox>
+                </el-checkbox-group>
               </el-form-item>
             </el-col>
           </el-row>
@@ -954,6 +986,7 @@ import { copyToClipboard } from '@/utils/customerCode'
 import CreateTemplateDialog from '@/components/CreateTemplateDialog.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import { customerDetailApi } from '@/api/customerDetail'
+import { customerApi } from '@/api/customer'
 import { getOrderStatusText as getOrderStatusTextFromConfig, getOrderStatusTagType } from '@/utils/orderStatusConfig'
 
 const route = useRoute()
@@ -1125,11 +1158,13 @@ const editForm = reactive({
   gender: '',
   birthday: '',
   salesperson: '',
-  age: null,
-  height: null,
-  weight: null,
+  age: null as number | null,
+  height: null as number | null,
+  weight: null as number | null,
   wechatId: '',
-  source: ''
+  source: '',
+  joinTime: '',  // 进粉时间
+  improvementGoals: [] as string[]  // 改善问题
 })
 
 // 手机号管理
@@ -1639,6 +1674,11 @@ const getTagType = (tag: string) => {
   return typeMap[tag] || 'info'
 }
 
+// 禁用未来日期（进粉时间不能选择未来）
+const disableFutureDate = (time: Date) => {
+  return time.getTime() > Date.now()
+}
+
 const toggleEdit = () => {
   if (isEditing.value) {
     cancelEdit()
@@ -1647,6 +1687,9 @@ const toggleEdit = () => {
     Object.assign(editForm, customerInfo.value)
     // 初始化手机号列表（除了主手机号）
     phoneNumbers.value = customerInfo.value.otherPhones || []
+    // 初始化进粉时间和改善问题
+    editForm.joinTime = customerInfo.value.joinTime || ''
+    editForm.improvementGoals = customerInfo.value.improvementGoals || []
   }
 }
 
@@ -1661,14 +1704,44 @@ const cancelEdit = () => {
 const saveCustomerInfo = async () => {
   saving.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    Object.assign(customerInfo.value, editForm)
-    customerInfo.value.otherPhones = [...phoneNumbers.value]
-    isEditing.value = false
-    ElMessage.success('保存成功')
+    const customerId = route.params.id as string
+
+    // 准备更新数据
+    const updateData: Record<string, unknown> = {
+      name: editForm.name,
+      level: editForm.level,
+      gender: editForm.gender,
+      age: editForm.age ?? undefined,
+      height: editForm.height ?? undefined,
+      weight: editForm.weight ?? undefined,
+      source: editForm.source,
+      address: editForm.address,
+      salesperson: editForm.salesperson,
+      fanAcquisitionTime: editForm.joinTime,
+      improvementGoals: editForm.improvementGoals,
+      otherPhones: phoneNumbers.value
+    }
+
+    // 调用后端API更新客户
+    const response = await customerApi.update(customerId, updateData as any)
+
+    if (response.success) {
+      // 更新本地数据
+      Object.assign(customerInfo.value, editForm)
+      customerInfo.value.otherPhones = [...phoneNumbers.value]
+      customerInfo.value.joinTime = editForm.joinTime
+      customerInfo.value.improvementGoals = [...editForm.improvementGoals]
+      isEditing.value = false
+      ElMessage.success('保存成功')
+
+      // 刷新客户数据
+      await loadCustomerDetail()
+    } else {
+      ElMessage.error(response.message || '保存失败')
+    }
   } catch (error) {
-    ElMessage.error('保存失败')
+    console.error('保存客户信息失败:', error)
+    ElMessage.error('保存失败，请稍后重试')
   } finally {
     saving.value = false
   }
