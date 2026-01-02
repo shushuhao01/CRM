@@ -2152,25 +2152,54 @@ const initProductRankingChart = () => {
   // 获取真实的商品销售排行数据
   const salesData = getProductSalesData()
 
+  // 截断产品名称的函数
+  const truncateName = (name: string, maxLen: number = 10) => {
+    if (!name) return ''
+    return name.length > maxLen ? name.substring(0, maxLen) + '...' : name
+  }
+
   const option = {
     tooltip: {
       trigger: 'axis',
       axisPointer: {
         type: 'shadow'
+      },
+      // 自定义tooltip显示完整产品名称
+      formatter: (params: any) => {
+        const dataIndex = params[0]?.dataIndex
+        const fullName = salesData.names[dataIndex] || ''
+        const value = params[0]?.value || 0
+        return `<div style="padding: 4px 8px;">
+          <div style="font-weight: bold; margin-bottom: 4px; max-width: 250px; word-wrap: break-word;">${fullName}</div>
+          <div>销售额: ¥${value.toLocaleString()}</div>
+        </div>`
       }
     },
     grid: {
-      left: '3%',
-      right: '4%',
+      left: '30%',  // 固定左边距
+      right: '15%',
       bottom: '3%',
-      containLabel: true
+      top: '3%',
+      containLabel: false
     },
     xAxis: {
-      type: 'value'
+      type: 'value',
+      axisLabel: {
+        formatter: (value: number) => value >= 10000 ? (value / 10000).toFixed(1) + '万' : value
+      }
     },
     yAxis: {
       type: 'category',
-      data: salesData.names
+      data: salesData.names.map(name => truncateName(name, 10)),  // 截断显示
+      axisLabel: {
+        width: 80,
+        overflow: 'truncate',
+        ellipsis: '...',
+        fontSize: 12
+      },
+      axisTick: {
+        show: false
+      }
     },
     series: [
       {
@@ -2183,8 +2212,10 @@ const initProductRankingChart = () => {
         label: {
           show: true,
           position: 'right',
-          formatter: '¥{c}'
-        }
+          formatter: (params: any) => '¥' + params.value.toLocaleString(),
+          fontSize: 11
+        },
+        barWidth: '50%'
       }
     ]
   }

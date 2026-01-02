@@ -92,7 +92,7 @@
                 {{ orderDetail.customer.name }}
               </div>
               <div class="customer-contact-modern">
-                <div class="contact-item-modern phone-item-modern" @click="callCustomer">
+                <div class="contact-item-modern phone-item-modern" @click="callCustomer()">
                   <el-icon class="contact-icon"><Phone /></el-icon>
                   <span class="contact-text">{{ displaySensitiveInfoNew(orderDetail.customer.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') }}</span>
                   <el-icon class="call-icon"><Phone /></el-icon>
@@ -1366,8 +1366,24 @@ const rejectOrder = async () => {
   }
 }
 
-const callCustomer = () => {
-  window.open(`tel:${orderDetail.customer.phone}`)
+// 🔥 点击电话号码跳转到通话管理页面发起外呼
+const callCustomer = (phone?: string) => {
+  const phoneNumber = phone || orderDetail.customer?.phone
+  if (!phoneNumber) {
+    ElMessage.warning('电话号码为空')
+    return
+  }
+
+  safeNavigator.push({
+    path: '/service-management/call',
+    query: {
+      action: 'outbound',
+      customerId: orderDetail.customer?.id || '',
+      customerName: orderDetail.customer?.name || orderDetail.customerName || '',
+      customerPhone: phoneNumber,
+      company: ''
+    }
+  })
 }
 
 const goToCustomerDetail = () => {

@@ -125,7 +125,8 @@
               value-format="YYYY-MM-DD"
             />
           </div>
-          <div class="filter-item">
+          <!-- 🔥 只有超管、管理员、部门经理可以看到负责人筛选 -->
+          <div class="filter-item" v-if="canViewSalesPersonFilter">
             <label>负责人：</label>
             <el-select v-model="filterForm.salesPerson" placeholder="请选择负责人" clearable filterable>
               <el-option label="全部" value="" />
@@ -1922,7 +1923,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import { useCallStore } from '@/stores/call'
 import { useUserStore } from '@/stores/user'
@@ -1985,6 +1986,7 @@ import { getOrderStatusText as getOrderStatusTextFromConfig, getOrderStatusTagTy
 import { webSocketService } from '@/services/webSocketService'
 
 const router = useRouter()
+const route = useRoute()
 const safeNavigator = createSafeNavigator(router)
 const callStore = useCallStore()
 const userStore = useUserStore()
@@ -4851,17 +4853,32 @@ const loadStatistics = async () => {
 // 负责人列表 - 从userStore获取真实用户
 // 🔥 【修复】过滤掉禁用用户，只显示启用的用户
 const salesPersonList = computed(() => {
+  const currentUserRole = userStore.currentUser?.role
+  const currentUserDepartment = userStore.currentUser?.department
+
   return userStore.users
     .filter((u: any) => {
       // 检查用户是否启用（禁用用户不显示）
       const isEnabled = !u.status || u.status === 'active'
       const hasValidRole = ['sales_staff', 'department_manager', 'admin', 'super_admin', 'customer_service'].includes(u.role)
+
+      // 🔥 部门经理只能看到本部门的用户
+      if (currentUserRole === 'department_manager') {
+        return isEnabled && hasValidRole && u.department === currentUserDepartment
+      }
+
       return isEnabled && hasValidRole
     })
     .map((u: any) => ({
       id: u.id,
       name: u.realName || u.name || u.username
     }))
+})
+
+// 🔥 是否可以查看负责人筛选（超管、管理员、部门经理可以）
+const canViewSalesPersonFilter = computed(() => {
+  const role = userStore.currentUser?.role
+  return role === 'super_admin' || role === 'admin' || role === 'department_manager'
 })
 
 // 生命周期
@@ -4890,10 +4907,53 @@ onMounted(async () => {
 
     // 监听WebSocket通话状态变化
     setupCallStatusListener()
+
+    // 🔥 检查路由参数，如果是从客户列表跳转过来的外呼请求
+    checkOutboundFromRoute()
   } catch (error) {
     console.error('加载数据失败:', error)
   }
 })
+
+// 🔥 检查路由参数，处理从其他页面跳转过来的外呼请求
+const checkOutboundFromRoute = () => {
+  const { action, customerId, customerName, customerPhone, company } = route.query
+
+  if (action === 'outbound' && customerId && customerPhone) {
+    console.log('[CallManagement] 收到外呼请求:', { customerId, customerName, customerPhone, company })
+
+    // 构建客户信息
+    const customer = {
+      id: customerId as string,
+      name: customerName as string || '未知客户',
+      phone: customerPhone as string,
+      company: (company as string) || ''
+    }
+
+    // 将客户添加到选项列表
+    const existingIndex = customerOptions.value.findIndex((c: any) => c.id === customer.id)
+    if (existingIndex === -1) {
+      customerOptions.value = [customer, ...customerOptions.value]
+    }
+
+    // 预填充外呼表单
+    outboundForm.value.selectedCustomer = customer as any
+    outboundForm.value.customerId = customer.id
+
+    // 更新号码选项
+    phoneOptions.value = [{
+      phone: customer.phone,
+      type: '主号码'
+    }]
+    outboundForm.value.customerPhone = customer.phone
+
+    // 打开外呼对话框
+    showOutboundDialog.value = true
+
+    // 清除路由参数，避免刷新页面时重复弹窗
+    router.replace({ path: route.path })
+  }
+}
 
 // 设置通话状态监听
 const setupCallStatusListener = () => {

@@ -1311,17 +1311,24 @@ const goBack = () => {
   safeNavigator.push('/customer/list')
 }
 
-// 处理拨打电话
+// 处理拨打电话 - 🔥 跳转到通话管理页面
 const handleCall = () => {
-  // 默认选择客户主号码
-  if (customerInfo.value.phone) {
-    callForm.phone = customerInfo.value.phone
-  } else if (customerInfo.value.otherPhones && customerInfo.value.otherPhones.length > 0) {
-    callForm.phone = customerInfo.value.otherPhones[0]
-  } else {
-    callForm.phone = ''
+  const phone = customerInfo.value.phone || (customerInfo.value.otherPhones && customerInfo.value.otherPhones[0]) || ''
+  if (!phone) {
+    ElMessage.warning('该客户没有电话号码')
+    return
   }
-  showCallDialog.value = true
+
+  safeNavigator.push({
+    path: '/service-management/call',
+    query: {
+      action: 'outbound',
+      customerId: route.params.id as string,
+      customerName: customerInfo.value.name,
+      customerPhone: phone,
+      company: customerInfo.value.company || ''
+    }
+  })
 }
 
 // 处理发送短信
@@ -1803,32 +1810,27 @@ const copyCustomerCode = async () => {
 }
 
 const makeCall = () => {
-  callForm.phone = customerInfo.value.phone
-  showCallDialog.value = true
+  // 🔥 跳转到通话管理页面
+  handleCall()
 }
 
-// 点击手机号直接拨打
+// 点击手机号直接拨打 - 🔥 跳转到通话管理页面
 const makePhoneCall = (phoneNumber: string) => {
-  // 检测是否需要加0
-  let dialNumber = phoneNumber
-
-  // 如果是手机号（11位且以1开头），检查是否需要加0
-  if (phoneNumber.length === 11 && phoneNumber.startsWith('1')) {
-    // 手机号通常不需要加0，直接拨打
-    dialNumber = phoneNumber
-  }
-  // 如果是固话（7-8位数字），可能需要加0
-  else if (/^\d{7,8}$/.test(phoneNumber)) {
-    // 固话可能需要加区号，这里可以根据实际需求调整
-    dialNumber = phoneNumber
-  }
-  // 如果已经包含区号或国际号码，直接使用
-  else {
-    dialNumber = phoneNumber
+  if (!phoneNumber) {
+    ElMessage.warning('电话号码为空')
+    return
   }
 
-  callForm.phone = dialNumber
-  showCallDialog.value = true
+  safeNavigator.push({
+    path: '/service-management/call',
+    query: {
+      action: 'outbound',
+      customerId: route.params.id as string,
+      customerName: customerInfo.value.name,
+      customerPhone: phoneNumber,
+      company: customerInfo.value.company || ''
+    }
+  })
 }
 
 const startCall = async () => {
@@ -2146,12 +2148,23 @@ const shareCall = (callId: string) => {
   ElMessage.info('分享通话功能开发中')
 }
 
-// 回拨
+// 回拨 - 🔥 跳转到通话管理页面
 const callBack = (phone: string) => {
-  callForm.phone = phone
-  callForm.purpose = '回拨'
-  callForm.notes = ''
-  showCallDialog.value = true
+  if (!phone) {
+    ElMessage.warning('电话号码为空')
+    return
+  }
+
+  safeNavigator.push({
+    path: '/service-management/call',
+    query: {
+      action: 'outbound',
+      customerId: route.params.id as string,
+      customerName: customerInfo.value.name,
+      customerPhone: phone,
+      company: customerInfo.value.company || ''
+    }
+  })
 }
 
 // 编辑通话记录
