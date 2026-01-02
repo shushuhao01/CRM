@@ -127,17 +127,19 @@
         </el-input>
         <el-select
           v-model="statusFilter"
-          placeholder="选择状态"
+          placeholder="物流状态"
           clearable
           class="filter-select"
           @change="handleStatusFilter"
         >
-          <el-option label="已发货" value="shipped" />
+          <el-option label="待揽收" value="pending" />
+          <el-option label="已揽收" value="picked_up" />
+          <el-option label="运输中" value="in_transit" />
+          <el-option label="派送中" value="out_for_delivery" />
           <el-option label="已签收" value="delivered" />
+          <el-option label="派送异常" value="exception" />
           <el-option label="拒收" value="rejected" />
-          <el-option label="拒收已退回" value="returned" />
-          <el-option label="退货退款" value="refunded" />
-          <el-option label="状态异常" value="abnormal" />
+          <el-option label="已退回" value="returned" />
         </el-select>
         <el-select
           v-model="departmentFilter"
@@ -827,12 +829,13 @@ const loadData = async (showMessage = false) => {
     const startDate = dateRange.value?.[0] || undefined
     const endDate = dateRange.value?.[1] || undefined
 
-    console.log(`[状态更新] 🚀 加载数据, 页码: ${pagination.currentPage}, 每页: ${pagination.pageSize}, 状态: ${statusParam || '全部'}, 日期: ${startDate || '无'} ~ ${endDate || '无'}`)
+    console.log(`[状态更新] 🚀 加载数据, 页码: ${pagination.currentPage}, 每页: ${pagination.pageSize}, 订单状态: ${statusParam || '全部'}, 物流状态: ${statusFilter.value || '全部'}, 日期: ${startDate || '无'} ~ ${endDate || '无'}`)
 
     const response = await orderApi.getShippingShipped({
       page: pagination.currentPage,
       pageSize: pagination.pageSize,
       status: statusParam,
+      logisticsStatus: statusFilter.value || undefined,  // 🔥 传递物流状态筛选参数给后端
       orderNumber: searchKeyword.value || undefined,
       departmentId: departmentFilter.value || undefined,
       salesPersonId: salesPersonFilter.value || undefined,
@@ -848,13 +851,6 @@ const loadData = async (showMessage = false) => {
     if (activeTab.value === 'todo') {
       allOrders = allOrders.filter((order: any) =>
         order.isTodo === true || order.logisticsStatus === 'todo'
-      )
-    }
-
-    // 🔥 状态筛选（下拉框）- 物流状态筛选
-    if (statusFilter.value) {
-      allOrders = allOrders.filter((order: any) =>
-        order.logisticsStatus === statusFilter.value || order.status === statusFilter.value
       )
     }
 

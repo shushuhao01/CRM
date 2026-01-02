@@ -136,6 +136,7 @@ export const orderApi = {
     customerName?: string;
     trackingNumber?: string;
     status?: string;
+    logisticsStatus?: string;  // 🔥 新增：物流状态筛选
     departmentId?: string;
     salesPersonId?: string;
     expressCompany?: string;
