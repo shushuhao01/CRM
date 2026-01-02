@@ -363,6 +363,12 @@ CREATE TABLE `orders` (
   `custom_field6` VARCHAR(500) NULL COMMENT '自定义字段6',
   `custom_field7` VARCHAR(500) NULL COMMENT '自定义字段7',
   `remark` TEXT COMMENT '订单备注',
+  `performance_status` VARCHAR(20) DEFAULT 'pending' COMMENT '绩效状态: pending-待处理, valid-有效, invalid-无效',
+  `performance_coefficient` DECIMAL(3,2) DEFAULT 1.00 COMMENT '绩效系数',
+  `performance_remark` VARCHAR(200) DEFAULT NULL COMMENT '绩效备注',
+  `estimated_commission` DECIMAL(10,2) DEFAULT 0.00 COMMENT '预估佣金',
+  `performance_updated_at` TIMESTAMP NULL COMMENT '绩效更新时间',
+  `performance_updated_by` VARCHAR(50) DEFAULT NULL COMMENT '绩效更新人ID',
   `operator_id` VARCHAR(50) COMMENT '操作员ID',
   `operator_name` VARCHAR(50) COMMENT '操作员姓名',
   `created_by` VARCHAR(50) NOT NULL COMMENT '创建人ID',
@@ -386,7 +392,9 @@ CREATE TABLE `orders` (
   INDEX `idx_delivered_at` (`delivered_at`),
   INDEX `idx_created_at` (`created_at`),
   INDEX `idx_shipping_time` (`shipping_time`),
-  INDEX `idx_expected_delivery_date` (`expected_delivery_date`)
+  INDEX `idx_expected_delivery_date` (`expected_delivery_date`),
+  INDEX `idx_performance_status` (`performance_status`),
+  INDEX `idx_performance_coefficient` (`performance_coefficient`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单表';
 
 -- 10. 物流表
@@ -2472,3 +2480,86 @@ INSERT INTO `global_call_config` (`config_key`, `config_value`, `config_type`, `
 ON DUPLICATE KEY UPDATE `updated_at` = NOW();
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+
+-- =====================================================
+-- 财务管理模块表
+-- =====================================================
+
+-- 绩效配置表（存储预设选项）
+DROP TABLE IF EXISTS `performance_config`;
+CREATE TABLE `performance_config` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `config_type` VARCHAR(20) NOT NULL COMMENT '配置类型: status-有效状态, coefficient-系数, remark-备注',
+  `config_value` VARCHAR(50) NOT NULL COMMENT '配置值',
+  `config_label` VARCHAR(50) DEFAULT NULL COMMENT '显示标签',
+  `sort_order` INT DEFAULT 0 COMMENT '排序',
+  `is_active` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_config_type` (`config_type`),
+  INDEX `idx_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='绩效配置表';
+
+-- 计提阶梯配置表
+DROP TABLE IF EXISTS `commission_ladder`;
+CREATE TABLE `commission_ladder` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `commission_type` ENUM('amount', 'count') NOT NULL DEFAULT 'amount' COMMENT '计提方式: amount-按业绩金额, count-按签收单数',
+  `min_value` DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '阶梯起点',
+  `max_value` DECIMAL(12,2) DEFAULT NULL COMMENT '阶梯终点（NULL表示无上限）',
+  `commission_rate` DECIMAL(5,4) DEFAULT NULL COMMENT '提成比例（按业绩时用，如0.03表示3%）',
+  `commission_per_unit` DECIMAL(10,2) DEFAULT NULL COMMENT '单价（按单数时用，如30表示30元/单）',
+  `sort_order` INT DEFAULT 0 COMMENT '排序',
+  `is_active` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_commission_type` (`commission_type`),
+  INDEX `idx_is_active` (`is_active`),
+  INDEX `idx_sort_order` (`sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='计提阶梯配置表';
+
+-- 计提设置表（存储当前计提模式等全局配置）
+DROP TABLE IF EXISTS `commission_setting`;
+CREATE TABLE `commission_setting` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `setting_key` VARCHAR(50) NOT NULL UNIQUE COMMENT '配置键',
+  `setting_value` VARCHAR(200) NOT NULL COMMENT '配置值',
+  `setting_desc` VARCHAR(200) DEFAULT NULL COMMENT '配置说明',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='计提设置表';
+
+-- 插入默认绩效配置数据
+INSERT INTO `performance_config` (`config_type`, `config_value`, `config_label`, `sort_order`) VALUES
+('status', 'pending', '待处理', 1),
+('status', 'valid', '有效', 2),
+('status', 'invalid', '无效', 3),
+('coefficient', '1.00', '1.0', 1),
+('coefficient', '0.80', '0.8', 2),
+('coefficient', '0.50', '0.5', 3),
+('coefficient', '0.00', '0', 4),
+('remark', '正常订单', '正常订单', 1),
+('remark', '退换货', '退换货', 2),
+('remark', '部分退款', '部分退款', 3),
+('remark', '客户取消', '客户取消', 4)
+ON DUPLICATE KEY UPDATE `config_label` = VALUES(`config_label`);
+
+-- 插入默认计提设置
+INSERT INTO `commission_setting` (`setting_key`, `setting_value`, `setting_desc`) VALUES
+('commission_type', 'amount', '计提方式: amount-按业绩金额, count-按签收单数')
+ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`);
+
+-- 插入默认计提阶梯（按业绩金额）
+INSERT INTO `commission_ladder` (`commission_type`, `min_value`, `max_value`, `commission_rate`, `sort_order`) VALUES
+('amount', 0, 50000, 0.0300, 1),
+('amount', 50000, 100000, 0.0400, 2),
+('amount', 100000, 200000, 0.0500, 3),
+('amount', 200000, NULL, 0.0600, 4)
+ON DUPLICATE KEY UPDATE `commission_rate` = VALUES(`commission_rate`);
+
+-- 插入默认计提阶梯（按签收单数）
+INSERT INTO `commission_ladder` (`commission_type`, `min_value`, `max_value`, `commission_per_unit`, `sort_order`) VALUES
+('count', 0, 50, 30.00, 1),
+('count', 50, 100, 40.00, 2),
+('count', 100, NULL, 50.00, 3)
+ON DUPLICATE KEY UPDATE `commission_per_unit` = VALUES(`commission_per_unit`);

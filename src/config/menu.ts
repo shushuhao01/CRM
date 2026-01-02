@@ -275,6 +275,30 @@ export const menuConfig: MenuItem[] = [
     ]
   },
   {
+    id: 'finance',
+    title: '财务管理',
+    icon: 'Money',
+    roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+    permissions: ['finance'],
+    children: [
+      {
+        id: 'finance-performance-data',
+        title: '绩效数据',
+        path: '/finance/performance-data',
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        permissions: ['finance:data'],
+        dataScope: 'self' // 销售员看个人，经理看部门，管理员看全部
+      },
+      {
+        id: 'finance-performance-manage',
+        title: '绩效管理',
+        path: '/finance/performance-manage',
+        roles: ['super_admin', 'admin'],
+        permissions: ['finance:manage']
+      }
+    ]
+  },
+  {
     id: 'product',
     title: '商品管理',
     icon: 'Box',
@@ -433,6 +457,9 @@ export const rolePermissions: Record<string, string[]> = {
     'data', 'data:customer', 'data:customer:search', 'data:import', 'data:export',
     'data:list', 'data:recycle',
 
+    // 财务管理（全部权限）
+    'finance', 'finance:data', 'finance:manage',
+
     // 商品管理（全部权限）
     'sales:product', 'sales:product:view', 'sales:product:add', 'sales:product:edit',
     'product:analytics',
@@ -475,7 +502,10 @@ export const rolePermissions: Record<string, string[]> = {
     'aftersale:add', 'aftersale:edit', 'aftersale:analysis',
 
     // 资料管理权限 - 一级菜单和二级菜单
-    'data', 'data:customer', 'data:customer:search', 'data:list'
+    'data', 'data:customer', 'data:customer:search', 'data:list',
+
+    // 财务管理权限 - 一级菜单和二级菜单
+    'finance', 'finance:data'
   ],
 
   // 销售员：只能管理自己的客户和订单
@@ -504,7 +534,10 @@ export const rolePermissions: Record<string, string[]> = {
     'aftersale', 'aftersale:order', 'aftersale:view:personal', 'aftersale:add', 'aftersale:analysis',
 
     // 资料管理（移除回收站）
-    'data', 'data:customer', 'data:customer:search'
+    'data', 'data:customer', 'data:customer:search',
+
+    // 财务管理（只看个人绩效数据）
+    'finance', 'finance:data'
   ],
 
   // 客服默认权限：根据客服类型动态配置

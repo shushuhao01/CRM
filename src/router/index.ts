@@ -270,6 +270,20 @@ const router = createRouter({
       meta: { title: '回收站', requiresAuth: true }
     },
 
+    // 财务管理
+    {
+      path: '/finance/performance-data',
+      name: 'FinancePerformanceData',
+      component: () => import('../views/Finance/PerformanceData.vue'),
+      meta: { title: '绩效数据', requiresAuth: true }
+    },
+    {
+      path: '/finance/performance-manage',
+      name: 'FinancePerformanceManage',
+      component: () => import('../views/Finance/PerformanceManage.vue'),
+      meta: { title: '绩效管理', requiresAuth: true, requiresAdmin: true }
+    },
+
     // 商品管理
     {
       path: '/product/list',
