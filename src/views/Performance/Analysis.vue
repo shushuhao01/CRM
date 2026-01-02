@@ -704,6 +704,7 @@ const quickFilterOptions = ref([
   { key: 'yesterday', label: '昨日' },
   { key: 'thisWeek', label: '本周' },
   { key: 'thisMonth', label: '本月' },
+  { key: 'lastMonth', label: '上月' },
   { key: 'thisQuarter', label: '本季' },
   { key: 'thisYear', label: '本年' }
 ])
@@ -1044,6 +1045,11 @@ const handleQuickFilter = (filterKey: string) => {
     case 'thisMonth':
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
       dateRange.value = [formatDateLocal(startOfMonth), formatDateLocal(today)]
+      break
+    case 'lastMonth':
+      const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+      const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
+      dateRange.value = [formatDateLocal(lastMonthStart), formatDateLocal(lastMonthEnd)]
       break
     case 'thisQuarter':
       const currentQuarter = Math.floor(today.getMonth() / 3)

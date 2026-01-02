@@ -1152,6 +1152,7 @@ const quickFilters = [
   { label: '上周', value: 'lastWeek' },
   { label: '近7天', value: 'last7days' },
   { label: '本月', value: 'thisMonth' },
+  { label: '上月', value: 'lastMonth' },
   { label: '今年', value: 'thisYear' },
   { label: '全部', value: 'all' }
 ]
@@ -1655,6 +1656,11 @@ const handleQuickFilter = async (value: string) => {
     case 'thisMonth':
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
       dateRange.value = [formatDate(startOfMonth), formatDate(today)]
+      break
+    case 'lastMonth':
+      const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+      const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
+      dateRange.value = [formatDate(lastMonthStart), formatDate(lastMonthEnd)]
       break
     case 'thisYear':
       const startOfYear = new Date(today.getFullYear(), 0, 1)
