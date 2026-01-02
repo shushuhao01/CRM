@@ -488,6 +488,8 @@ const quickFilters = [
   { label: '10天前', value: '10days' },
   { label: '本周', value: 'week' },
   { label: '30天', value: '30days' },
+  { label: '本月', value: 'thisMonth' },
+  { label: '上月', value: 'lastMonth' },
   { label: '今年', value: 'year' },
   { label: '全部', value: 'all' }
 ]
@@ -545,6 +547,15 @@ const handleQuickFilter = (value: string) => {
     case '30days':
       const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
       dateRange.value = [formatDate(thirtyDaysAgo), formatDate(today)]
+      break
+    case 'thisMonth':
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+      dateRange.value = [formatDate(monthStart), formatDate(today)]
+      break
+    case 'lastMonth':
+      const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+      const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
+      dateRange.value = [formatDate(lastMonthStart), formatDate(lastMonthEnd)]
       break
     case 'year':
       const yearStart = new Date(today.getFullYear(), 0, 1)

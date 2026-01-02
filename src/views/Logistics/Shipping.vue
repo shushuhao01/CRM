@@ -802,6 +802,7 @@ const quickFilters = [
   { label: '昨日订单', value: 'yesterday' },
   { label: '本周订单', value: 'thisWeek' },
   { label: '本月订单', value: 'thisMonth' },
+  { label: '上月订单', value: 'lastMonth' },
   { label: '今年订单', value: 'thisYear' },
   { label: '紧急订单', value: 'urgent' },
   { label: '超时订单', value: 'timeout' }
