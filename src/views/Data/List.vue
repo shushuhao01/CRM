@@ -883,7 +883,7 @@ watch(statusFilter, (newStatus) => {
 const tableData = computed(() => dataStore.filteredDataList)
 const selectedItems = ref<DataListItem[]>([])
 const currentPage = ref(1)
-const pageSize = ref(20)  // 🔥 修复：默认每页20条
+const pageSize = ref(10)  // 🔥 默认每页10条
 
 // 可见列管理
 const visibleColumns = ref<string[]>([])
