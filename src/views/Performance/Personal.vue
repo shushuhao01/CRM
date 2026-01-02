@@ -2152,11 +2152,15 @@ const initProductRankingChart = () => {
   // 获取真实的商品销售排行数据
   const salesData = getProductSalesData()
 
-  // 截断产品名称的函数 - 限制为6个字符，更短以避免挤压
-  const truncateName = (name: string, maxLen: number = 6) => {
+  // 截断产品名称的函数 - 限制为8个字符
+  const truncateName = (name: string, maxLen: number = 8) => {
     if (!name) return ''
     return name.length > maxLen ? name.substring(0, maxLen) + '...' : name
   }
+
+  // 计算条目数量，动态调整间距
+  const itemCount = salesData.names.length || 1
+  const barGap = itemCount <= 3 ? '80%' : itemCount <= 5 ? '50%' : '30%'
 
   const option = {
     tooltip: {
@@ -2177,11 +2181,11 @@ const initProductRankingChart = () => {
       confine: true
     },
     grid: {
-      left: '30%',  // 🔥 减少左边距
-      right: '15%',
-      bottom: '8%',
-      top: '5%',
-      containLabel: false
+      left: 16,
+      right: 80,
+      bottom: 36,
+      top: 16,
+      containLabel: true
     },
     xAxis: {
       type: 'value',
@@ -2191,27 +2195,39 @@ const initProductRankingChart = () => {
           if (value >= 1000) return (value / 1000).toFixed(1) + 'k'
           return value.toString()
         },
-        fontSize: 10
+        fontSize: 11,
+        color: '#909399'
+      },
+      splitLine: {
+        lineStyle: {
+          color: '#EBEEF5',
+          type: 'dashed'
+        }
+      },
+      axisLine: {
+        show: false
+      },
+      axisTick: {
+        show: false
       }
     },
     yAxis: {
       type: 'category',
-      data: salesData.names.map(name => truncateName(name, 6)),  // 🔥 截断为6个字符
+      data: salesData.names.map(name => truncateName(name, 8)),
       axisLabel: {
-        fontSize: 10,
-        color: '#606266',
-        width: 60,
-        overflow: 'truncate',
-        ellipsis: '...'
+        fontSize: 12,
+        color: '#303133',
+        align: 'right',
+        margin: 12,
+        formatter: (value: string) => value
       },
       axisTick: {
         show: false
       },
       axisLine: {
-        lineStyle: {
-          color: '#E4E7ED'
-        }
-      }
+        show: false
+      },
+      inverse: true  // 🔥 倒序显示，销量最高的在最上面
     },
     series: [
       {
@@ -2219,7 +2235,10 @@ const initProductRankingChart = () => {
         type: 'bar',
         data: salesData.values,
         itemStyle: {
-          color: '#409EFF',
+          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+            { offset: 0, color: '#409EFF' },
+            { offset: 1, color: '#66B1FF' }
+          ]),
           borderRadius: [0, 4, 4, 0]
         },
         label: {
@@ -2230,11 +2249,13 @@ const initProductRankingChart = () => {
             if (val >= 10000) return '¥' + (val / 10000).toFixed(1) + '万'
             return '¥' + val.toLocaleString()
           },
-          fontSize: 10,
-          color: '#606266'
+          fontSize: 11,
+          color: '#606266',
+          distance: 8
         },
-        barWidth: '50%',
-        barMaxWidth: 22
+        barWidth: 20,
+        barGap: barGap,
+        barCategoryGap: '40%'
       }
     ]
   }
@@ -2813,11 +2834,11 @@ onUnmounted(() => {
   width: 100%;
 }
 
-/* 🔥 商品销售排行图表专用样式 - 固定高度防止名称过长导致图表被挤压 */
+/* 🔥 商品销售排行图表专用样式 - 优化布局和间距 */
 .product-ranking-chart {
-  height: 380px !important;
-  min-height: 380px !important;
-  max-height: 380px !important;
+  height: 340px !important;
+  min-height: 340px !important;
+  max-height: 340px !important;
 }
 
 .data-table-card .card-header {
