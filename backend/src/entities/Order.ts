@@ -173,6 +173,25 @@ export class Order {
   @Column({ type: 'text', nullable: true, comment: '订单备注' })
   remark?: string;
 
+  // 绩效相关字段
+  @Column({ name: 'performance_status', length: 20, default: 'pending', comment: '绩效状态: pending-待处理, valid-有效, invalid-无效' })
+  performanceStatus?: string;
+
+  @Column({ name: 'performance_coefficient', type: 'decimal', precision: 3, scale: 2, default: 1.00, comment: '绩效系数' })
+  performanceCoefficient?: number;
+
+  @Column({ name: 'performance_remark', length: 200, nullable: true, comment: '绩效备注' })
+  performanceRemark?: string;
+
+  @Column({ name: 'estimated_commission', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '预估佣金' })
+  estimatedCommission?: number;
+
+  @Column({ name: 'performance_updated_at', type: 'datetime', nullable: true, comment: '绩效更新时间' })
+  performanceUpdatedAt?: Date;
+
+  @Column({ name: 'performance_updated_by', type: 'varchar', length: 50, nullable: true, comment: '绩效更新人ID' })
+  performanceUpdatedBy?: string;
+
   @Column({ name: 'operator_id', type: 'varchar', length: 50, nullable: true, comment: '操作员ID' })
   operatorId?: string;
 

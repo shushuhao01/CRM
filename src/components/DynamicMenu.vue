@@ -47,7 +47,8 @@ import {
   Van,
   Files,
   Box,
-  Setting
+  Setting,
+  Money
 } from '@element-plus/icons-vue'
 import { menuConfig } from '@/config/menu'
 import { getUserAccessibleMenus } from '@/utils/menu'
@@ -63,6 +64,7 @@ const iconComponents = {
   Files,
   Box,
   Setting,
+  Money,
   IconCustomerService: User, // 临时使用User图标
   IconHeadset: User // 临时使用User图标
 }
