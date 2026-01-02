@@ -121,20 +121,47 @@
           </span>
         </div>
         <el-table :data="previewData" size="small" max-height="250" border>
-          <el-table-column prop="orderNo" label="订单号" width="150" />
-          <el-table-column label="物流公司" width="120">
-            <template #default="{ row }">{{ getOrderLogisticsCompany(row) }}</template>
+          <el-table-column prop="orderNo" label="订单号" width="140" />
+          <el-table-column label="物流公司" width="140">
+            <template #default="{ row }">
+              <el-select
+                v-model="previewLogisticsCompanies[getOriginalIndex(row)]"
+                placeholder="选择物流公司"
+                size="small"
+                filterable
+                style="width: 100%"
+              >
+                <el-option v-for="c in logisticsCompanies" :key="c.code" :label="c.name" :value="c.code" />
+              </el-select>
+            </template>
           </el-table-column>
-          <el-table-column label="运单号" min-width="150">
+          <el-table-column label="运单号" min-width="160">
             <template #default="{ row }">
               <span v-if="batchForm.trackingMode === 'auto'" style="color: #409eff">自动生成</span>
-              <span v-else-if="batchForm.trackingMode === 'manual'">{{ trackingNumbers[getOriginalIndex(row)] || '-' }}</span>
-              <span v-else>{{ importedTrackingNumbers[getOriginalIndex(row)] || '-' }}</span>
+              <el-input
+                v-else-if="batchForm.trackingMode === 'manual'"
+                v-model="trackingNumbers[getOriginalIndex(row)]"
+                placeholder="输入运单号"
+                size="small"
+                clearable
+              />
+              <el-input
+                v-else
+                v-model="importedTrackingNumbers[getOriginalIndex(row)]"
+                placeholder="输入运单号"
+                size="small"
+                clearable
+              />
             </template>
           </el-table-column>
           <el-table-column label="状态" width="80">
             <template #default="{ row }">
               <el-tag :type="getPreviewStatusByOrder(row).type" size="small">{{ getPreviewStatusByOrder(row).text }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="60" fixed="right">
+            <template #default="{ row }">
+              <el-button type="danger" size="small" :icon="Delete" circle @click="removeOrderFromPreview(row)" title="移除此订单" />
             </template>
           </el-table-column>
         </el-table>
@@ -143,15 +170,15 @@
       <!-- 确认提示（简化） -->
       <div class="confirm-tips">
         <el-icon class="tip-icon"><WarningFilled /></el-icon>
-        <span>确认后将更新 <strong>{{ selectedOrders.length }}</strong> 个订单状态为"已发货"，此操作不可撤销</span>
+        <span>确认后将更新 <strong>{{ previewData.length }}</strong> 个订单状态为"已发货"，此操作不可撤销</span>
       </div>
     </div>
 
     <template #footer>
       <div class="dialog-footer-compact">
         <el-button @click="handleClose">取消</el-button>
-        <el-button type="primary" @click="confirmBatchShipping" :loading="loading">
-          <el-icon><Van /></el-icon>确认发货
+        <el-button type="primary" @click="confirmBatchShipping" :loading="loading" :disabled="previewData.length === 0">
+          <el-icon><Van /></el-icon>确认发货 ({{ previewData.length }})
         </el-button>
       </div>
     </template>
@@ -237,6 +264,10 @@ const batchForm = reactive({
 // 运单号数组
 const trackingNumbers = ref<string[]>([])
 const importedTrackingNumbers = ref<string[]>([])
+// 🔥 新增：预览区物流公司数组（支持单独编辑每个订单的物流公司）
+const previewLogisticsCompanies = ref<string[]>([])
+// 🔥 新增：已移除的订单ID列表
+const removedOrderIds = ref<string[]>([])
 
 // 表单验证规则
 const rules = {
@@ -319,19 +350,38 @@ const totalCodAmount = computed(() => {
 const previewData = computed(() => {
   if (!Array.isArray(selectedOrders.value)) return []
 
+  // 🔥 过滤掉已移除的订单
+  const filteredOrders = selectedOrders.value.filter(order => !removedOrderIds.value.includes(order.id))
+
   // 如果是导入模式，只显示有运单号的订单
   if (batchForm.trackingMode === 'import') {
-    return selectedOrders.value.filter((_, index) => {
+    return filteredOrders.filter((order) => {
+      const index = getOriginalIndex(order)
       return importedTrackingNumbers.value[index] && importedTrackingNumbers.value[index].trim()
     })
   }
 
-  return selectedOrders.value
+  return filteredOrders
 })
 
-// 🔥 新增：根据订单获取物流公司（优先使用订单自带的物流公司信息）
-const getOrderLogisticsCompany = (order: Order) => {
-  // 优先使用订单已有的物流公司信息
+// 🔥 新增：从预览中移除订单
+const removeOrderFromPreview = (order: Order) => {
+  if (!removedOrderIds.value.includes(order.id)) {
+    removedOrderIds.value.push(order.id)
+    ElMessage.success(`已移除订单 ${order.orderNo || order.orderNumber}`)
+  }
+}
+
+// 🔥 新增：根据订单获取物流公司（优先使用预览区编辑的值）
+const _getOrderLogisticsCompany = (order: Order) => {
+  const index = getOriginalIndex(order)
+  // 优先使用预览区编辑的物流公司
+  if (previewLogisticsCompanies.value[index]) {
+    const company = logisticsCompanies.value.find(c => c.code === previewLogisticsCompanies.value[index])
+    if (company) return company.name
+    return previewLogisticsCompanies.value[index]
+  }
+  // 其次使用订单已有的物流公司信息
   const orderCompany = order.expressCompany || order.logisticsCompany
   if (orderCompany) {
     const company = logisticsCompanies.value.find(
@@ -383,9 +433,12 @@ watch(() => props.selectedOrders, (newOrders) => {
   if (Array.isArray(newOrders)) {
     trackingNumbers.value = new Array(newOrders.length).fill('')
     importedTrackingNumbers.value = new Array(newOrders.length).fill('')
+    // 🔥 初始化预览区物流公司数组（使用订单自带的物流公司或表单选择的）
+    previewLogisticsCompanies.value = newOrders.map(order => order.expressCompany || order.logisticsCompany || '')
   } else {
     trackingNumbers.value = []
     importedTrackingNumbers.value = []
+    previewLogisticsCompanies.value = []
   }
 }, { immediate: true })
 
@@ -394,6 +447,8 @@ watch(() => cachedOrders.value, (newOrders) => {
   if (Array.isArray(newOrders) && newOrders.length > 0) {
     trackingNumbers.value = new Array(newOrders.length).fill('')
     importedTrackingNumbers.value = new Array(newOrders.length).fill('')
+    // 🔥 初始化预览区物流公司数组
+    previewLogisticsCompanies.value = newOrders.map(order => order.expressCompany || order.logisticsCompany || '')
     console.log('[批量发货弹窗] 初始化运单号数组:', newOrders.length, '个')
   }
 }, { immediate: true })
@@ -403,7 +458,7 @@ const formatNumber = (num: number) => {
   return num.toLocaleString()
 }
 
-// 移除订单
+// 移除订单（旧方法，保留兼容）
 const removeOrder = (_index: number) => {
   // 这里应该通知父组件移除订单
   ElMessage.info('请在订单列表中取消选择该订单')
@@ -754,39 +809,45 @@ const confirmBatchShipping = async () => {
   if (!formRef.value) return
 
   try {
-    // 导入模式下，物流公司不是必填（使用订单自带的）
+    // 导入模式下，物流公司不是必填（使用订单自带的或预览区编辑的）
     if (batchForm.trackingMode !== 'import') {
       await formRef.value.validate()
     }
 
-    // 🔥 改进：根据模式确定要发货的订单
-    let ordersToShip: Order[] = []
+    // 🔥 改进：使用previewData作为要发货的订单（已过滤掉移除的订单）
+    const ordersToShip: Order[] = previewData.value as Order[]
 
     if (batchForm.trackingMode === 'import') {
-      // 导入模式：只发货有运单号的订单
-      ordersToShip = selectedOrders.value.filter((_, index) => {
-        return importedTrackingNumbers.value[index] && importedTrackingNumbers.value[index].trim()
-      })
-
+      // 导入模式：previewData已经过滤了没有运单号的订单
       if (ordersToShip.length === 0) {
         ElMessage.error('没有可发货的订单，请先导入运单号')
         return
       }
     } else if (batchForm.trackingMode === 'manual') {
-      // 手动模式：验证所有运单号都已填写
-      const emptyTrackingCount = trackingNumbers.value.filter(num => !num.trim()).length
-      if (emptyTrackingCount > 0) {
-        ElMessage.error(`还有 ${emptyTrackingCount} 个订单的运单号未填写`)
+      // 手动模式：验证预览区订单的运单号都已填写
+      const emptyTrackingOrders = ordersToShip.filter(order => {
+        const index = getOriginalIndex(order)
+        return !trackingNumbers.value[index] || !trackingNumbers.value[index].trim()
+      })
+      if (emptyTrackingOrders.length > 0) {
+        ElMessage.error(`还有 ${emptyTrackingOrders.length} 个订单的运单号未填写`)
         return
       }
-      ordersToShip = selectedOrders.value
     } else {
-      // 自动模式：所有订单都发货
-      if (!batchForm.logisticsCompany) {
-        ElMessage.error('请选择物流公司')
+      // 自动模式：检查是否选择了物流公司（全局或每个订单）
+      const ordersWithoutCompany = ordersToShip.filter(order => {
+        const index = getOriginalIndex(order)
+        return !previewLogisticsCompanies.value[index] && !batchForm.logisticsCompany
+      })
+      if (ordersWithoutCompany.length > 0) {
+        ElMessage.error('请为所有订单选择物流公司')
         return
       }
-      ordersToShip = selectedOrders.value
+    }
+
+    if (ordersToShip.length === 0) {
+      ElMessage.error('没有可发货的订单')
+      return
     }
 
     await ElMessageBox.confirm(
@@ -807,21 +868,24 @@ const confirmBatchShipping = async () => {
       let trackingNumber = ''
       let logisticsCompanyCode = ''
 
+      // 🔥 优先使用预览区编辑的物流公司
+      const previewCompany = previewLogisticsCompanies.value[originalIndex]
+
       if (batchForm.trackingMode === 'auto') {
         // 自动生成运单号
-        const company = logisticsCompanies.value.find(c => c.code === batchForm.logisticsCompany)
+        logisticsCompanyCode = previewCompany || batchForm.logisticsCompany
+        const company = logisticsCompanies.value.find(c => c.code === logisticsCompanyCode)
         const timestamp = Date.now().toString()
         const random = Math.random().toString(36).substring(2, 6).toUpperCase()
-        trackingNumber = `${company?.prefix}${timestamp.slice(-8)}${random}${originalIndex}`
-        logisticsCompanyCode = batchForm.logisticsCompany
+        trackingNumber = `${company?.prefix || 'EX'}${timestamp.slice(-8)}${random}${originalIndex}`
       } else if (batchForm.trackingMode === 'manual') {
         trackingNumber = trackingNumbers.value[originalIndex]
-        logisticsCompanyCode = batchForm.logisticsCompany
+        logisticsCompanyCode = previewCompany || batchForm.logisticsCompany
       } else {
         // 导入模式
         trackingNumber = importedTrackingNumbers.value[originalIndex]
-        // 🔥 关键：优先使用订单自带的物流公司
-        logisticsCompanyCode = order.expressCompany || order.logisticsCompany || batchForm.logisticsCompany
+        // 🔥 关键：优先使用预览区编辑的物流公司，其次使用订单自带的
+        logisticsCompanyCode = previewCompany || order.expressCompany || order.logisticsCompany || batchForm.logisticsCompany
       }
 
       const now = new Date().toISOString()
@@ -917,6 +981,10 @@ const handleClose = () => {
 
   trackingNumbers.value = []
   importedTrackingNumbers.value = []
+  // 🔥 清空预览区物流公司数组
+  previewLogisticsCompanies.value = []
+  // 🔥 清空已移除的订单ID列表
+  removedOrderIds.value = []
   // 🔥 清空缓存的订单数据
   cachedOrders.value = []
 

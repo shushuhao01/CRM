@@ -244,7 +244,7 @@ const rules = {
   ],
   reason: [
     { required: true, message: '请填写退回原因', trigger: 'blur' },
-    { min: 10, message: '退回原因至少10个字符', trigger: 'blur' }
+    { min: 2, message: '退回原因至少2个字符', trigger: 'blur' }
   ]
 }
 
@@ -356,9 +356,6 @@ const confirmReturn = async () => {
 
     loading.value = true
 
-    // 模拟退回处理
-    await new Promise(resolve => setTimeout(resolve, 2000))
-
     const returnData = {
       orderId: props.order.id,
       orderNo: props.order.orderNo,
@@ -369,12 +366,11 @@ const confirmReturn = async () => {
     }
 
     emit('returned', returnData)
-    ElMessage.success('订单退回成功！已通知相关人员')
     handleClose()
 
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('订单退回失败，请重试')
+      console.error('[退回订单] 操作失败:', error)
     }
   } finally {
     loading.value = false

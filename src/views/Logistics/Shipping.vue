@@ -1961,31 +1961,42 @@ const handleBatchShipped = (_orders: any[]) => {
 const handleOrderReturned = async (returnData: any) => {
   // 更新订单状态为退回（后端会自动发送通知）
   if (returnData.orderId && returnData.reason) {
-    const returnReason = `${returnData.returnType ? getReturnTypeText(returnData.returnType) + '：' : ''}${returnData.reason}`
-    await orderStore.returnOrder(returnData.orderId, returnReason)
-
-    // 🔥 注意：退回通知已由后端API自动发送，无需前端重复发送
+    try {
+      const returnReason = `${returnData.returnType ? getReturnTypeText(returnData.returnType) + '：' : ''}${returnData.reason}`
+      await orderStore.returnOrder(returnData.orderId, returnReason)
+      ElMessage.success('订单退回成功！已通知相关人员')
+      // 🔥 注意：退回通知已由后端API自动发送，无需前端重复发送
+    } catch (error: any) {
+      console.error('[发货列表] 退回订单失败:', error)
+      ElMessage.error(error?.message || '订单退回失败，请重试')
+      return
+    }
   }
-  ElMessage.success('订单已退回')
   loadOrderList()
   updateTabCounts()
 }
 
 // 订单取消成功
-const handleOrderCancelled = (cancelData: any) => {
+const handleOrderCancelled = async (cancelData: any) => {
   // 更新订单状态为取消
   if (cancelData.orderId && cancelData.reason) {
-    const cancelReason = `${cancelData.cancelType ? getCancelTypeText(cancelData.cancelType) + '：' : ''}${cancelData.reason}`
-    orderStore.cancelOrder(cancelData.orderId, cancelReason)
+    try {
+      const cancelReason = `${cancelData.cancelType ? getCancelTypeText(cancelData.cancelType) + '：' : ''}${cancelData.reason}`
+      await orderStore.cancelOrder(cancelData.orderId, cancelReason)
 
-    // 发送通知给客户（如果需要）
-    const order = orderStore.getOrderById(cancelData.orderId)
-    if (order && cancelData.notifyCustomer && cancelData.notificationMethod && cancelData.notificationMethod.length > 0) {
-      // 这里可以添加客户通知逻辑
-      console.log('通知客户订单已取消:', order.orderNumber)
+      // 发送通知给客户（如果需要）
+      const order = orderStore.getOrderById(cancelData.orderId)
+      if (order && cancelData.notifyCustomer && cancelData.notificationMethod && cancelData.notificationMethod.length > 0) {
+        // 这里可以添加客户通知逻辑
+        console.log('通知客户订单已取消:', order.orderNumber)
+      }
+      ElMessage.success('订单取消成功！')
+    } catch (error: any) {
+      console.error('[发货列表] 取消订单失败:', error)
+      ElMessage.error(error?.message || '订单取消失败，请重试')
+      return
     }
   }
-  ElMessage.success('订单已取消')
   loadOrderList()
   updateTabCounts()
 }
