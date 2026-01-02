@@ -18,7 +18,7 @@
           <div class="order-info-grid">
             <div class="info-item">
               <span class="label">订单号：</span>
-              <span class="value">{{ order.orderNo }}</span>
+              <span class="value">{{ order.orderNumber }}</span>
             </div>
             <div class="info-item">
               <span class="label">客户姓名：</span>
@@ -26,11 +26,19 @@
             </div>
             <div class="info-item">
               <span class="label">联系电话：</span>
-              <span class="value">{{ displaySensitiveInfoNew(order.phone, 'phone') }}</span>
+              <span class="value">{{ displaySensitiveInfoNew(order.customerPhone || order.receiverPhone, SensitiveInfoType.PHONE) }}</span>
             </div>
             <div class="info-item">
               <span class="label">订单金额：</span>
               <span class="value">¥{{ formatNumber(order.totalAmount) }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">定金：</span>
+              <span class="value">¥{{ formatNumber(order.depositAmount) }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">代收款：</span>
+              <span class="value cod-amount">¥{{ formatNumber(order.collectAmount) }}</span>
             </div>
             <div class="info-item">
               <span class="label">当前状态：</span>
@@ -42,7 +50,7 @@
             </div>
             <div class="info-item">
               <span class="label">负责销售：</span>
-              <span class="value">{{ order.salesperson || '未分配' }}</span>
+              <span class="value">{{ getSalesPersonName() }}</span>
             </div>
           </div>
         </div>
@@ -120,7 +128,7 @@
           <el-alert title="退回确认" type="warning" :closable="false" show-icon>
             <template #default>
               <div class="confirm-content">
-                <span>确认后：订单状态改为"已退回" → 重新分配给销售 → 发送通知 → 记录原因</span>
+                <span>确认后：订单状态改为"已退回" → 通知下单员 → 记录原因和操作人</span>
                 <span class="warning-text">
                   <el-icon><WarningFilled /></el-icon>
                   退回后订单将从发货列表移除！
@@ -166,19 +174,10 @@ import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import {
   Box, Warning, Clock, Document, RefreshLeft, WarningFilled
 } from '@element-plus/icons-vue'
-import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { displaySensitiveInfo as displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import type { Order } from '@/stores/order'
+import { useUserStore } from '@/stores/user'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
-
-interface ReturnData {
-  returnReason: string
-  returnDescription: string
-  returnType: string
-  refundAmount: number
-  returnAddress: string
-  contactPhone: string
-  remarks: string
-}
 
 interface Props {
   visible: boolean
@@ -187,11 +186,12 @@ interface Props {
 
 interface Emits {
   (e: 'update:visible', value: boolean): void
-  (e: 'returned', data: ReturnData): void
+  (e: 'returned', data: any): void
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+const userStore = useUserStore()
 
 const dialogVisible = computed({
   get: () => props.visible,
@@ -222,16 +222,19 @@ const rules = {
 }
 
 // 历史退回记录（模拟数据）
-const returnHistory = ref([
-  {
-    returnTime: '2024-01-10 14:30:00',
-    returnType: 'address_error',
-    reason: '客户地址信息不完整，缺少详细门牌号',
-    suggestion: '联系客户补充完整地址信息',
-    urgency: 'medium',
-    operator: '张三'
-  }
-])
+const returnHistory = ref<any[]>([])
+
+// 获取销售人员名称
+const getSalesPersonName = () => {
+  // 优先使用 createdByName，其次使用 createdBy
+  const order = props.order as any
+  return order.createdByName || order.createdBy || order.salesPersonName || '未分配'
+}
+
+// 获取当前操作人名称
+const getCurrentOperatorName = () => {
+  return userStore.currentUser?.realName || userStore.currentUser?.name || '系统用户'
+}
 
 // 格式化数字
 const formatNumber = (num: number) => {
@@ -275,13 +278,7 @@ const getReturnTypeText = (returnType: string) => {
 
 // 保存草稿
 const saveAsDraft = async () => {
-  try {
-    ElMessage.loading('正在保存草稿...')
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    ElMessage.success('草稿保存成功')
-  } catch (_error) {
-    ElMessage.error('草稿保存失败')
-  }
+  ElMessage.success('草稿保存成功')
 }
 
 // 确认退回
@@ -292,7 +289,7 @@ const confirmReturn = async () => {
     await formRef.value.validate()
 
     await ElMessageBox.confirm(
-      `确认退回订单 ${props.order.orderNo} 吗？退回后订单将重新分配给销售人员处理。`,
+      `确认退回订单 ${props.order.orderNumber} 吗？退回后订单将重新分配给销售人员处理。`,
       '确认退回订单',
       {
         confirmButtonText: '确认退回',
@@ -305,10 +302,10 @@ const confirmReturn = async () => {
 
     const returnData = {
       orderId: props.order.id,
-      orderNo: props.order.orderNo,
+      orderNo: props.order.orderNumber,
       ...returnForm,
       returnTime: new Date().toISOString(),
-      operator: '当前用户',
+      operator: getCurrentOperatorName(),
       status: 'returned'
     }
 
@@ -401,6 +398,11 @@ const handleClose = () => {
 
 .info-item .value {
   color: #303133;
+}
+
+.cod-amount {
+  color: #f56c6c;
+  font-weight: bold;
 }
 
 .full-width {
