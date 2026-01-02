@@ -114,11 +114,11 @@
             </div>
           </div>
 
-          <!-- 第四行：客户标签、客户生日、进粉时间、负责销售 -->
-          <div class="customer-info-row tags-row">
-            <div class="info-item tags-section-compact">
+          <!-- 第四行：客户标签、客户生日、进粉时间、负责销售、改善问题 -->
+          <div class="customer-info-row tags-row-flex">
+            <div class="info-item flex-item">
               <span class="field-label">客户标签</span>
-              <div v-if="customerInfo.tags && customerInfo.tags.length > 0" class="customer-tags">
+              <div v-if="customerInfo.tags && customerInfo.tags.length > 0" class="customer-tags-inline">
                 <el-tag
                   v-for="tag in customerInfo.tags"
                   :key="tag"
@@ -130,28 +130,26 @@
               </div>
               <span v-else class="field-value">暂无</span>
             </div>
-            <div class="info-item compact">
+            <div class="info-item flex-item">
               <span class="field-label">客户生日</span>
               <span class="field-value">{{ customerInfo.birthday || '暂无' }}</span>
             </div>
-            <div class="info-group-right">
-              <div class="info-item compact">
-                <span class="field-label">进粉时间</span>
-                <span class="field-value">{{ customerInfo.joinTime || '暂无' }}</span>
-              </div>
-              <div class="info-item compact">
-                <span class="field-label">负责销售</span>
-                <span class="field-value">{{ customerInfo.salesperson || '暂无' }}</span>
-              </div>
-              <div class="info-item compact">
-                <span class="field-label">改善问题</span>
-                <span class="field-value improvement-goals">
-                  <span v-if="customerInfo.improvementGoals && customerInfo.improvementGoals.length > 0">
-                    {{ customerInfo.improvementGoals.join('、') }}
-                  </span>
-                  <span v-else class="no-goals">暂无</span>
+            <div class="info-item flex-item">
+              <span class="field-label">进粉时间</span>
+              <span class="field-value">{{ customerInfo.joinTime || '暂无' }}</span>
+            </div>
+            <div class="info-item flex-item">
+              <span class="field-label">负责销售</span>
+              <span class="field-value">{{ customerInfo.salesperson || '暂无' }}</span>
+            </div>
+            <div class="info-item flex-item-wide">
+              <span class="field-label">改善问题</span>
+              <span class="field-value improvement-goals">
+                <span v-if="customerInfo.improvementGoals && customerInfo.improvementGoals.length > 0">
+                  {{ customerInfo.improvementGoals.join('、') }}
                 </span>
-              </div>
+                <span v-else class="no-goals">暂无</span>
+              </span>
             </div>
           </div>
 
@@ -3895,7 +3893,33 @@ onMounted(async () => {
   color: #059669;
 }
 
-/* 标签行布局样式 */
+/* 标签行布局样式 - 使用flex均匀分布 */
+.tags-row-flex {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.tags-row-flex .flex-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.tags-row-flex .flex-item-wide {
+  flex: 1.5;
+  min-width: 0;
+}
+
+.customer-tags-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.customer-tags-inline .el-tag {
+  margin: 0;
+}
+
 .tags-row {
   display: flex;
   align-items: center;
