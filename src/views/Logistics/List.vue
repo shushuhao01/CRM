@@ -657,35 +657,13 @@ const loadData = async () => {
       endDate: searchForm.dateRange?.[1] || undefined
     })
 
-    let shippedOrders = response?.data?.list || []
+    // 🔥 后端已经根据用户角色进行了数据权限过滤，前端直接使用返回的数据
+    const shippedOrders = response?.data?.list || []
     const apiTotal = response?.data?.total || 0
     console.log('[物流列表] 从API获取已发货订单:', shippedOrders.length, '条, 总数:', apiTotal)
 
-    // 🔥 权限过滤：成员只看自己的订单，部门经理看部门数据，超管和管理员不受限
-    const currentUser = userStore.currentUser
-    if (currentUser) {
-      const userRole = currentUser.role
-      if (userRole === 'super_admin' || userRole === 'admin') {
-        // 超管和管理员不受限
-        console.log('[物流列表] 管理员权限，显示所有数据')
-      } else if (userRole === 'department_manager') {
-        // 部门经理看部门数据
-        const deptId = currentUser.departmentId
-        shippedOrders = shippedOrders.filter((order: any) => {
-          const salesPerson = userStore.getUserById?.(order.salesPersonId || order.createdBy)
-          return salesPerson?.departmentId === deptId || order.createdByDepartmentId === deptId
-        })
-        console.log('[物流列表] 部门经理权限，过滤后:', shippedOrders.length, '条')
-      } else {
-        // 普通成员只看自己的订单
-        shippedOrders = shippedOrders.filter((order: any) =>
-          order.salesPersonId === currentUser.id ||
-          order.createdBy === currentUser.id ||
-          order.operatorId === currentUser.id
-        )
-        console.log('[物流列表] 成员权限，过滤后:', shippedOrders.length, '条')
-      }
-    }
+    // 更新分页总数
+    pagination.total = apiTotal
 
     // 转换为物流列表格式
     const logisticsData = shippedOrders.map((order: any) => {
