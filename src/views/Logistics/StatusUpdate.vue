@@ -102,78 +102,73 @@
 
     <!-- 搜索和筛选区域 -->
     <div class="search-filters">
-      <el-row :gutter="20">
-        <el-col :span="5">
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            format="YYYY-MM-DD"
-            value-format="YYYY-MM-DD"
-            @change="handleDateChange"
+      <div class="filter-row">
+        <el-date-picker
+          v-model="dateRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          format="MM-DD"
+          value-format="YYYY-MM-DD"
+          class="date-picker-compact"
+          @change="handleDateChange"
+        />
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索订单号、客户名称"
+          clearable
+          class="search-input"
+          @input="handleSearch"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-select
+          v-model="statusFilter"
+          placeholder="选择状态"
+          clearable
+          class="filter-select"
+          @change="handleStatusFilter"
+        >
+          <el-option label="已发货" value="shipped" />
+          <el-option label="已签收" value="delivered" />
+          <el-option label="拒收" value="rejected" />
+          <el-option label="拒收已退回" value="returned" />
+          <el-option label="退货退款" value="refunded" />
+          <el-option label="状态异常" value="abnormal" />
+        </el-select>
+        <el-select
+          v-model="departmentFilter"
+          placeholder="选择部门"
+          clearable
+          class="filter-select"
+          @change="handleDepartmentFilter"
+        >
+          <el-option
+            v-for="dept in departmentStore.departments"
+            :key="dept.id"
+            :label="dept.name"
+            :value="dept.id"
           />
-        </el-col>
-        <el-col :span="5">
-          <el-input
-            v-model="searchKeyword"
-            placeholder="搜索订单号、客户名称"
-            clearable
-            @input="handleSearch"
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-        </el-col>
-        <el-col :span="3">
-          <el-select
-            v-model="statusFilter"
-            placeholder="选择状态"
-            clearable
-            @change="handleStatusFilter"
-          >
-            <el-option label="已发货" value="shipped" />
-            <el-option label="已签收" value="delivered" />
-            <el-option label="拒收" value="rejected" />
-            <el-option label="拒收已退回" value="returned" />
-            <el-option label="退货退款" value="refunded" />
-            <el-option label="状态异常" value="abnormal" />
-          </el-select>
-        </el-col>
-        <el-col :span="3">
-          <el-select
-            v-model="departmentFilter"
-            placeholder="选择部门"
-            clearable
-            @change="handleDepartmentFilter"
-          >
-            <el-option
-              v-for="dept in departmentStore.departments"
-              :key="dept.id"
-              :label="dept.name"
-              :value="dept.id"
-            />
-          </el-select>
-        </el-col>
-        <el-col :span="4">
-          <el-select
-            v-model="salesPersonFilter"
-            placeholder="选择销售人员"
-            clearable
-            filterable
-            @change="handleSalesPersonFilter"
-          >
-            <el-option
-              v-for="user in salesUserList"
-              :key="user.id"
-              :label="user.name"
-              :value="user.id"
-            />
-          </el-select>
-        </el-col>
-      </el-row>
+        </el-select>
+        <el-select
+          v-model="salesPersonFilter"
+          placeholder="选择销售人员"
+          clearable
+          filterable
+          class="filter-select-wide"
+          @change="handleSalesPersonFilter"
+        >
+          <el-option
+            v-for="user in salesUserList"
+            :key="user.id"
+            :label="user.name"
+            :value="user.id"
+          />
+        </el-select>
+      </div>
     </div>
 
     <!-- 订单列表导航 -->
@@ -1445,7 +1440,30 @@ watch([dateRange, statusFilter, searchKeyword], () => {
 }
 
 .search-filters {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+}
+
+.search-filters .filter-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.search-filters .date-picker-compact {
+  width: 200px !important;
+}
+
+.search-filters .search-input {
+  width: 180px;
+}
+
+.search-filters .filter-select {
+  width: 120px;
+}
+
+.search-filters .filter-select-wide {
+  width: 140px;
 }
 
 .search-filters .el-col {
