@@ -516,7 +516,7 @@ const isOrderInDateRange = (orderCreateTime: string, startDateStr: string, endDa
 const dateRange = ref<string[]>([])
 const salesChartType = ref('daily')
 const activeTab = ref('orders')
-const selectedQuickFilter = ref('today')
+const selectedQuickFilter = ref('thisMonth')
 
 // 快速筛选选项
 const quickFilters = [
@@ -732,10 +732,7 @@ const handleQuickFilter = (value: string) => {
   }
 
   // 立即刷新所有数据和图表
-  nextTick(() => {
-    loadTableData()
-    initAllCharts()
-  })
+  queryData()
 }
 
 /**
@@ -2577,7 +2574,7 @@ watch(dateRange, () => {
 
 // 生命周期钩子
 onMounted(() => {
-  // 设置默认日期范围为今天
+  // 设置默认日期范围为本月
   const today = new Date()
   // 🔥 使用本地时间格式化日期，避免UTC时区问题
   const formatDate = (date: Date) => {
@@ -2586,8 +2583,9 @@ onMounted(() => {
     const day = String(date.getDate()).padStart(2, '0')
     return `${year}-${month}-${day}`
   }
-  dateRange.value = [formatDate(today), formatDate(today)]
-  selectedQuickFilter.value = 'today'
+  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+  dateRange.value = [formatDate(startOfMonth), formatDate(today)]
+  selectedQuickFilter.value = 'thisMonth'
 
   // 加载数据
   loadTableData()
