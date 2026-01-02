@@ -992,12 +992,12 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
       queryBuilder.andWhere('order.expressCompany = :expressCompany', { expressCompany });
     }
 
-    // 🔥 日期范围筛选 - 数据库已配置为北京时区，直接使用北京时间查询
+    // 🔥 日期范围筛选 - 按发货时间筛选（状态更新页面需要按发货日期筛选）
     if (startDate) {
-      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+      queryBuilder.andWhere('order.shippedAt >= :startDate', { startDate: `${startDate} 00:00:00` });
     }
     if (endDate) {
-      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+      queryBuilder.andWhere('order.shippedAt <= :endDate', { endDate: `${endDate} 23:59:59` });
     }
 
     // 🔥 快速筛选
@@ -1006,24 +1006,24 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
       switch (quickFilter) {
         case 'today':
           const today = now.toISOString().split('T')[0];
-          queryBuilder.andWhere('DATE(order.createdAt) = :today', { today });
+          queryBuilder.andWhere('DATE(order.shippedAt) = :today', { today });
           break;
         case 'yesterday':
           const yesterday = new Date(now);
           yesterday.setDate(yesterday.getDate() - 1);
           const yesterdayStr = yesterday.toISOString().split('T')[0];
-          queryBuilder.andWhere('DATE(order.createdAt) = :yesterday', { yesterday: yesterdayStr });
+          queryBuilder.andWhere('DATE(order.shippedAt) = :yesterday', { yesterday: yesterdayStr });
           break;
         case 'thisWeek':
           const dayOfWeek = now.getDay();
           const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
           const startOfWeek = new Date(now);
           startOfWeek.setDate(now.getDate() - diff);
-          queryBuilder.andWhere('order.createdAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
+          queryBuilder.andWhere('order.shippedAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
           break;
         case 'thisMonth':
           const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-          queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+          queryBuilder.andWhere('order.shippedAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
           break;
       }
     }
@@ -1031,8 +1031,8 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
     // 先获取总数
     const total = await queryBuilder.getCount();
 
-    // 分页和排序
-    queryBuilder.orderBy('order.createdAt', 'DESC').skip(skip).take(pageSizeNum);
+    // 分页和排序 - 按发货时间倒序
+    queryBuilder.orderBy('order.shippedAt', 'DESC').skip(skip).take(pageSizeNum);
     const orders = await queryBuilder.getMany();
 
     const queryTime = Date.now() - startTime;
