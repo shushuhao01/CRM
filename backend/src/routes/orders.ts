@@ -924,7 +924,7 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
     console.log(`🚚 [已发货订单] 用户: ${dbUser?.username || jwtUser?.username}, 角色: ${userRole}, 部门ID: ${userDepartmentId}`);
 
     // 🔥 服务端分页参数
-    const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status, startDate, endDate, quickFilter, departmentId, salesPersonId, expressCompany } = req.query;
+    const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status, logisticsStatus, startDate, endDate, quickFilter, departmentId, salesPersonId, expressCompany } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 500); // 🔥 最大500条/页
     const skip = (pageNum - 1) * pageSizeNum;
@@ -950,6 +950,11 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
       queryBuilder.where('order.status = :status', { status });
     } else {
       queryBuilder.where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered'] });
+    }
+
+    // 🔥 物流状态筛选
+    if (logisticsStatus) {
+      queryBuilder.andWhere('order.logisticsStatus = :logisticsStatus', { logisticsStatus });
     }
 
     // 🔥 数据权限过滤
