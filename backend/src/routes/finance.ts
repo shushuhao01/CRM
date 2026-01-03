@@ -7,6 +7,8 @@ import { Order } from '../entities/Order';
 import { PerformanceConfig } from '../entities/PerformanceConfig';
 import { CommissionLadder } from '../entities/CommissionLadder';
 import { CommissionSetting } from '../entities/CommissionSetting';
+import { Department } from '../entities/Department';
+import { User } from '../entities/User';
 import { authenticateToken } from '../middleware/auth';
 
 const router = Router();
@@ -107,7 +109,7 @@ router.get('/performance-data', async (req: Request, res: Response) => {
     const { page = 1, pageSize = 10, startDate, endDate, orderNumber, departmentId, salesPersonId, performanceStatus, performanceCoefficient } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
-    const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 300);
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 5000);
     const skip = (pageNum - 1) * pageSizeNum;
 
     const orderRepo = AppDataSource.getRepository(Order);
@@ -116,7 +118,26 @@ router.get('/performance-data', async (req: Request, res: Response) => {
     const shippedStatuses = ['shipped', 'delivered', 'completed', 'signed', 'rejected', 'rejected_returned', 'refunded', 'after_sales_created'];
 
     const queryBuilder = orderRepo.createQueryBuilder('order')
-      .select(['order.id', 'order.orderNumber', 'order.customerId', 'order.customerName', 'order.status', 'order.trackingNumber', 'order.latestLogisticsInfo', 'order.createdAt', 'order.totalAmount', 'order.createdByDepartmentName', 'order.createdByName', 'order.createdBy', 'order.performanceStatus', 'order.performanceCoefficient', 'order.performanceRemark', 'order.estimatedCommission'])
+      .leftJoin(Department, 'dept', 'dept.id = order.createdByDepartmentId')
+      .leftJoin(User, 'creator', 'creator.id = order.createdBy')
+      .select([
+        'order.id AS id',
+        'order.orderNumber AS orderNumber',
+        'order.customerId AS customerId',
+        'order.customerName AS customerName',
+        'order.status AS status',
+        'order.trackingNumber AS trackingNumber',
+        'order.latestLogisticsInfo AS latestLogisticsInfo',
+        'order.createdAt AS createdAt',
+        'order.totalAmount AS totalAmount',
+        'order.createdBy AS createdBy',
+        'order.performanceStatus AS performanceStatus',
+        'order.performanceCoefficient AS performanceCoefficient',
+        'order.performanceRemark AS performanceRemark',
+        'order.estimatedCommission AS estimatedCommission',
+        'COALESCE(dept.name, order.createdByDepartmentName) AS createdByDepartmentName',
+        'COALESCE(creator.realName, creator.name, order.createdByName) AS createdByName'
+      ])
       .where('order.status IN (:...statuses)', { statuses: shippedStatuses });
 
     if (startDate) queryBuilder.andWhere('order.createdAt >= :startDate', { startDate });
@@ -138,8 +159,29 @@ router.get('/performance-data', async (req: Request, res: Response) => {
       }
     }
 
-    queryBuilder.orderBy('order.createdAt', 'DESC').skip(skip).take(pageSizeNum);
-    const [list, total] = await queryBuilder.getManyAndCount();
+    queryBuilder.orderBy('order.createdAt', 'DESC').offset(skip).limit(pageSizeNum);
+
+    // 使用 getRawMany 获取原生结果
+    const list = await queryBuilder.getRawMany();
+
+    // 获取总数
+    const countBuilder = orderRepo.createQueryBuilder('order')
+      .where('order.status IN (:...statuses)', { statuses: shippedStatuses });
+    if (startDate) countBuilder.andWhere('order.createdAt >= :startDate', { startDate });
+    if (endDate) countBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+    if (orderNumber) countBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    if (departmentId) countBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
+    if (salesPersonId) countBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
+    if (performanceStatus) countBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
+    if (performanceCoefficient) countBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
+    if (!allowAllRoles.includes(userRole)) {
+      if (managerRoles.includes(userRole) && userDepartmentId) {
+        countBuilder.andWhere('order.createdByDepartmentId = :deptId', { deptId: userDepartmentId });
+      } else {
+        countBuilder.andWhere('order.createdBy = :userId', { userId });
+      }
+    }
+    const total = await countBuilder.getCount();
 
     res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
   } catch (error: any) {
@@ -198,7 +240,7 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
     const { page = 1, pageSize = 10, startDate, endDate, orderNumber, departmentId, salesPersonId, performanceStatus, performanceCoefficient } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
-    const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 300);
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 5000);
     const skip = (pageNum - 1) * pageSizeNum;
 
     const orderRepo = AppDataSource.getRepository(Order);
@@ -207,7 +249,28 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
     const shippedStatuses = ['shipped', 'delivered', 'completed', 'signed', 'rejected', 'rejected_returned', 'refunded', 'after_sales_created'];
 
     const queryBuilder = orderRepo.createQueryBuilder('order')
-      .select(['order.id', 'order.orderNumber', 'order.customerId', 'order.customerName', 'order.status', 'order.trackingNumber', 'order.latestLogisticsInfo', 'order.createdAt', 'order.totalAmount', 'order.createdByDepartmentId', 'order.createdByDepartmentName', 'order.createdByName', 'order.createdBy', 'order.performanceStatus', 'order.performanceCoefficient', 'order.performanceRemark', 'order.estimatedCommission', 'order.performanceUpdatedAt'])
+      .leftJoin(Department, 'dept', 'dept.id = order.createdByDepartmentId')
+      .leftJoin(User, 'creator', 'creator.id = order.createdBy')
+      .select([
+        'order.id AS id',
+        'order.orderNumber AS orderNumber',
+        'order.customerId AS customerId',
+        'order.customerName AS customerName',
+        'order.status AS status',
+        'order.trackingNumber AS trackingNumber',
+        'order.latestLogisticsInfo AS latestLogisticsInfo',
+        'order.createdAt AS createdAt',
+        'order.totalAmount AS totalAmount',
+        'order.createdBy AS createdBy',
+        'order.createdByDepartmentId AS createdByDepartmentId',
+        'order.performanceStatus AS performanceStatus',
+        'order.performanceCoefficient AS performanceCoefficient',
+        'order.performanceRemark AS performanceRemark',
+        'order.estimatedCommission AS estimatedCommission',
+        'order.performanceUpdatedAt AS performanceUpdatedAt',
+        'COALESCE(dept.name, order.createdByDepartmentName) AS createdByDepartmentName',
+        'COALESCE(creator.realName, creator.name, order.createdByName) AS createdByName'
+      ])
       .where('order.status IN (:...statuses)', { statuses: shippedStatuses });
 
     if (startDate) queryBuilder.andWhere('order.createdAt >= :startDate', { startDate });
@@ -218,8 +281,22 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
     if (performanceStatus) queryBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
     if (performanceCoefficient) queryBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
 
-    queryBuilder.orderBy('order.createdAt', 'DESC').skip(skip).take(pageSizeNum);
-    const [list, total] = await queryBuilder.getManyAndCount();
+    queryBuilder.orderBy('order.createdAt', 'DESC').offset(skip).limit(pageSizeNum);
+
+    // 使用 getRawMany 获取原生结果
+    const list = await queryBuilder.getRawMany();
+
+    // 获取总数
+    const countBuilder = orderRepo.createQueryBuilder('order')
+      .where('order.status IN (:...statuses)', { statuses: shippedStatuses });
+    if (startDate) countBuilder.andWhere('order.createdAt >= :startDate', { startDate });
+    if (endDate) countBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+    if (orderNumber) countBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    if (departmentId) countBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
+    if (salesPersonId) countBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
+    if (performanceStatus) countBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
+    if (performanceCoefficient) countBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
+    const total = await countBuilder.getCount();
 
     res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
   } catch (error: any) {
