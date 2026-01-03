@@ -2,148 +2,182 @@
   <el-dialog
     v-model="dialogVisible"
     title="绩效配置管理"
-    width="900px"
+    width="850px"
     :close-on-click-modal="false"
     @close="handleClose"
   >
     <el-tabs v-model="activeTab">
       <!-- 预设配置 -->
       <el-tab-pane label="预设配置" name="preset">
-        <div class="config-section">
-          <el-row :gutter="20">
-            <!-- 有效状态预设 -->
-            <el-col :span="8">
-              <div class="config-card">
-                <div class="config-title">有效状态预设</div>
-                <div class="config-list">
-                  <div v-for="item in configData.statusConfigs" :key="item.id" class="config-item">
-                    <span class="config-label">{{ item.configLabel }}</span>
-                    <el-button type="danger" size="small" link @click="deleteConfig(item.id)">
-                      <el-icon><Delete /></el-icon>
-                    </el-button>
-                  </div>
-                </div>
-                <div class="config-add">
-                  <el-input v-model="newStatus" placeholder="新增状态" size="small" />
-                  <el-button type="primary" size="small" @click="addConfig('status', newStatus)">添加</el-button>
-                </div>
+        <div class="preset-section">
+          <!-- 有效状态预设 -->
+          <div class="preset-group">
+            <div class="preset-header">
+              <span class="preset-title">有效状态预设</span>
+              <div class="preset-add">
+                <el-input v-model="newStatus" placeholder="输入新状态" size="small" style="width: 120px;" @keyup.enter="addConfig('status', newStatus)" />
+                <el-button type="primary" size="small" @click="addConfig('status', newStatus)">添加</el-button>
               </div>
-            </el-col>
+            </div>
+            <div class="preset-tags">
+              <el-tag
+                v-for="item in configData.statusConfigs"
+                :key="item.id"
+                closable
+                class="preset-tag"
+                @close="deleteConfig(item.id)"
+              >
+                {{ getStatusLabel(item.configValue) }}
+              </el-tag>
+              <span v-if="configData.statusConfigs.length === 0" class="empty-hint">暂无配置，请添加</span>
+            </div>
+          </div>
 
-            <!-- 系数预设 -->
-            <el-col :span="8">
-              <div class="config-card">
-                <div class="config-title">系数预设</div>
-                <div class="config-list">
-                  <div v-for="item in configData.coefficientConfigs" :key="item.id" class="config-item">
-                    <span class="config-label">{{ item.configLabel }}</span>
-                    <el-button type="danger" size="small" link @click="deleteConfig(item.id)">
-                      <el-icon><Delete /></el-icon>
-                    </el-button>
-                  </div>
-                </div>
-                <div class="config-add">
-                  <el-input v-model="newCoefficient" placeholder="新增系数" size="small" type="number" step="0.1" />
-                  <el-button type="primary" size="small" @click="addConfig('coefficient', newCoefficient)">添加</el-button>
-                </div>
+          <!-- 系数预设 -->
+          <div class="preset-group">
+            <div class="preset-header">
+              <span class="preset-title">系数预设</span>
+              <div class="preset-add">
+                <el-input v-model="newCoefficient" placeholder="输入系数" size="small" style="width: 120px;" type="number" step="0.1" @keyup.enter="addConfig('coefficient', newCoefficient)" />
+                <el-button type="primary" size="small" @click="addConfig('coefficient', newCoefficient)">添加</el-button>
               </div>
-            </el-col>
+            </div>
+            <div class="preset-tags">
+              <el-tag
+                v-for="item in configData.coefficientConfigs"
+                :key="item.id"
+                closable
+                class="preset-tag"
+                type="success"
+                @close="deleteConfig(item.id)"
+              >
+                {{ item.configValue }}
+              </el-tag>
+              <span v-if="configData.coefficientConfigs.length === 0" class="empty-hint">暂无配置，请添加</span>
+            </div>
+          </div>
 
-            <!-- 备注预设 -->
-            <el-col :span="8">
-              <div class="config-card">
-                <div class="config-title">备注预设</div>
-                <div class="config-list">
-                  <div v-for="item in configData.remarkConfigs" :key="item.id" class="config-item">
-                    <span class="config-label">{{ item.configLabel }}</span>
-                    <el-button type="danger" size="small" link @click="deleteConfig(item.id)">
-                      <el-icon><Delete /></el-icon>
-                    </el-button>
-                  </div>
-                </div>
-                <div class="config-add">
-                  <el-input v-model="newRemark" placeholder="新增备注" size="small" />
-                  <el-button type="primary" size="small" @click="addConfig('remark', newRemark)">添加</el-button>
-                </div>
+          <!-- 备注预设 -->
+          <div class="preset-group">
+            <div class="preset-header">
+              <span class="preset-title">备注预设</span>
+              <div class="preset-add">
+                <el-input v-model="newRemark" placeholder="输入备注" size="small" style="width: 120px;" @keyup.enter="addConfig('remark', newRemark)" />
+                <el-button type="primary" size="small" @click="addConfig('remark', newRemark)">添加</el-button>
               </div>
-            </el-col>
-          </el-row>
+            </div>
+            <div class="preset-tags">
+              <el-tag
+                v-for="item in configData.remarkConfigs"
+                :key="item.id"
+                closable
+                class="preset-tag"
+                type="warning"
+                @close="deleteConfig(item.id)"
+              >
+                {{ getRemarkLabel(item.configValue) }}
+              </el-tag>
+              <span v-if="configData.remarkConfigs.length === 0" class="empty-hint">暂无配置，请添加</span>
+            </div>
+          </div>
         </div>
       </el-tab-pane>
 
       <!-- 计提阶梯 -->
       <el-tab-pane label="计提阶梯" name="ladder">
         <div class="ladder-section">
-          <!-- 计提方式选择 -->
-          <div class="commission-type-selector">
-            <span class="label">计提方式：</span>
-            <el-radio-group v-model="commissionType" @change="handleCommissionTypeChange">
-              <el-radio value="amount">按业绩金额</el-radio>
-              <el-radio value="count">按签收单数</el-radio>
-            </el-radio-group>
+          <div class="ladder-tip">
+            <el-alert type="info" :closable="false" show-icon>
+              <template #title>
+                每个阶梯可设置适用部门，未设置部门的阶梯为全局默认配置
+              </template>
+            </el-alert>
           </div>
 
-          <!-- 按业绩金额阶梯 -->
-          <div v-if="commissionType === 'amount'" class="ladder-card">
-            <div class="ladder-title">按业绩金额阶梯</div>
-            <el-table :data="configData.amountLadders" border size="small">
-              <el-table-column label="起点（元）" width="150">
-                <template #default="{ row }">
-                  <el-input-number v-model="row.minValue" :min="0" size="small" controls-position="right" />
-                </template>
-              </el-table-column>
-              <el-table-column label="终点（元）" width="150">
-                <template #default="{ row }">
-                  <el-input-number v-model="row.maxValue" :min="0" size="small" controls-position="right" placeholder="无上限" />
-                </template>
-              </el-table-column>
-              <el-table-column label="提成比例" width="150">
-                <template #default="{ row }">
-                  <el-input-number v-model="row.commissionRate" :min="0" :max="1" :step="0.01" :precision="4" size="small" controls-position="right" />
-                  <span class="rate-hint">（{{ ((row.commissionRate || 0) * 100).toFixed(2) }}%）</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="120">
-                <template #default="{ row }">
-                  <el-button type="primary" size="small" link @click="updateLadder(row)">保存</el-button>
-                  <el-button type="danger" size="small" link @click="deleteLadder(row.id)">删除</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            <el-button type="primary" size="small" class="add-ladder-btn" @click="addAmountLadder">
-              + 添加阶梯
-            </el-button>
+          <!-- 按业绩金额 -->
+          <div class="ladder-group">
+            <div class="ladder-group-header">
+              <div class="ladder-title-wrap">
+                <span class="ladder-group-title">按签收业绩计提</span>
+                <el-tooltip placement="top">
+                  <template #content>
+                    <div style="max-width: 280px; line-height: 1.6;">
+                      1. 先统计成员在时间范围内的签收业绩总金额<br>
+                      2. 根据总金额匹配对应的阶梯比例<br>
+                      3. 每个订单佣金 = 订单金额 × 系数 × 阶梯比例
+                    </div>
+                  </template>
+                  <el-icon class="info-icon"><InfoFilled /></el-icon>
+                </el-tooltip>
+              </div>
+              <el-button type="primary" size="small" @click="addAmountLadder">+ 添加阶梯</el-button>
+            </div>
+            <div class="ladder-list">
+              <div v-for="(item, index) in configData.amountLadders" :key="item.id" class="ladder-item">
+                <span class="ladder-index">{{ index + 1 }}</span>
+                <el-input-number v-model="item.minValue" :min="0" size="small" placeholder="起点" style="width: 100px;" />
+                <span class="ladder-sep">~</span>
+                <el-input-number v-model="item.maxValue" :min="0" size="small" placeholder="无上限" style="width: 100px;" />
+                <span class="ladder-unit">元</span>
+                <el-input-number v-model="item.commissionRate" :min="0" :max="1" :step="0.01" :precision="4" size="small" style="width: 100px;" />
+                <span class="ladder-unit">({{ ((item.commissionRate || 0) * 100).toFixed(2) }}%)</span>
+                <el-select v-model="item.departmentId" placeholder="适用部门" size="small" clearable style="width: 120px;" @change="(val: string) => onDepartmentChange(item, val)">
+                  <el-option label="全局" value="" />
+                  <el-option
+                    v-for="dept in availableAmountDepts"
+                    :key="dept.id"
+                    :label="dept.name"
+                    :value="dept.id"
+                  />
+                </el-select>
+                <el-button type="primary" size="small" link @click="updateLadder(item)">保存</el-button>
+                <el-button type="danger" size="small" link @click="deleteLadder(item.id)">删除</el-button>
+              </div>
+              <div v-if="configData.amountLadders.length === 0" class="empty-hint">暂无阶梯配置</div>
+            </div>
           </div>
 
-          <!-- 按签收单数阶梯 -->
-          <div v-if="commissionType === 'count'" class="ladder-card">
-            <div class="ladder-title">按签收单数阶梯</div>
-            <el-table :data="configData.countLadders" border size="small">
-              <el-table-column label="起点（单）" width="150">
-                <template #default="{ row }">
-                  <el-input-number v-model="row.minValue" :min="0" size="small" controls-position="right" />
-                </template>
-              </el-table-column>
-              <el-table-column label="终点（单）" width="150">
-                <template #default="{ row }">
-                  <el-input-number v-model="row.maxValue" :min="0" size="small" controls-position="right" placeholder="无上限" />
-                </template>
-              </el-table-column>
-              <el-table-column label="每单金额（元）" width="150">
-                <template #default="{ row }">
-                  <el-input-number v-model="row.commissionPerUnit" :min="0" :step="1" size="small" controls-position="right" />
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="120">
-                <template #default="{ row }">
-                  <el-button type="primary" size="small" link @click="updateLadder(row)">保存</el-button>
-                  <el-button type="danger" size="small" link @click="deleteLadder(row.id)">删除</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            <el-button type="primary" size="small" class="add-ladder-btn" @click="addCountLadder">
-              + 添加阶梯
-            </el-button>
+          <!-- 按签收单数 -->
+          <div class="ladder-group">
+            <div class="ladder-group-header">
+              <div class="ladder-title-wrap">
+                <span class="ladder-group-title">按签收单数计提</span>
+                <el-tooltip placement="top">
+                  <template #content>
+                    <div style="max-width: 280px; line-height: 1.6;">
+                      1. 先统计成员在时间范围内的签收订单数量（按系数累加）<br>
+                      2. 根据总数量匹配对应的阶梯单价<br>
+                      3. 每个订单佣金 = 系数 × 阶梯单价
+                    </div>
+                  </template>
+                  <el-icon class="info-icon"><InfoFilled /></el-icon>
+                </el-tooltip>
+              </div>
+              <el-button type="primary" size="small" @click="addCountLadder">+ 添加阶梯</el-button>
+            </div>
+            <div class="ladder-list">
+              <div v-for="(item, index) in configData.countLadders" :key="item.id" class="ladder-item">
+                <span class="ladder-index">{{ index + 1 }}</span>
+                <el-input-number v-model="item.minValue" :min="0" size="small" placeholder="起点" style="width: 80px;" />
+                <span class="ladder-sep">~</span>
+                <el-input-number v-model="item.maxValue" :min="0" size="small" placeholder="无上限" style="width: 80px;" />
+                <span class="ladder-unit">单</span>
+                <el-input-number v-model="item.commissionPerUnit" :min="0" size="small" style="width: 80px;" />
+                <span class="ladder-unit">元/单</span>
+                <el-select v-model="item.departmentId" placeholder="适用部门" size="small" clearable style="width: 120px;" @change="(val: string) => onDepartmentChange(item, val)">
+                  <el-option label="全局" value="" />
+                  <el-option
+                    v-for="dept in availableCountDepts"
+                    :key="dept.id"
+                    :label="dept.name"
+                    :value="dept.id"
+                  />
+                </el-select>
+                <el-button type="primary" size="small" link @click="updateLadder(item)">保存</el-button>
+                <el-button type="danger" size="small" link @click="deleteLadder(item.id)">删除</el-button>
+              </div>
+              <div v-if="configData.countLadders.length === 0" class="empty-hint">暂无阶梯配置</div>
+            </div>
           </div>
         </div>
       </el-tab-pane>
@@ -156,10 +190,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete } from '@element-plus/icons-vue'
+import { InfoFilled } from '@element-plus/icons-vue'
 import { financeApi, type FinanceConfigData, type CommissionLadder } from '@/api/finance'
+import { useDepartmentStore } from '@/stores/department'
 
 const props = defineProps<{
   visible: boolean
@@ -170,10 +205,12 @@ const emit = defineEmits<{
   (e: 'saved'): void
 }>()
 
+const departmentStore = useDepartmentStore()
+const departments = computed(() => departmentStore.departments)
+
 const dialogVisible = ref(false)
 const activeTab = ref('preset')
 
-// 配置数据
 const configData = reactive<FinanceConfigData>({
   statusConfigs: [],
   coefficientConfigs: [],
@@ -183,253 +220,322 @@ const configData = reactive<FinanceConfigData>({
   settings: {}
 })
 
-// 新增输入
 const newStatus = ref('')
 const newCoefficient = ref('')
 const newRemark = ref('')
 
-// 计提方式
-const commissionType = ref<'amount' | 'count'>('amount')
+// 状态中文映射
+const statusLabelMap: Record<string, string> = {
+  pending: '待处理',
+  valid: '有效',
+  invalid: '无效'
+}
 
-// 监听visible
+// 备注中文映射
+const remarkLabelMap: Record<string, string> = {
+  normal: '正常',
+  return: '退货',
+  refund: '退款'
+}
+
+const getStatusLabel = (value: string) => statusLabelMap[value] || value
+const getRemarkLabel = (value: string) => remarkLabelMap[value] || value
+
+// 获取已在"按业绩"中使用的部门ID列表
+const usedAmountDeptIds = computed(() => {
+  return configData.amountLadders
+    .filter(l => l.departmentId)
+    .map(l => l.departmentId)
+})
+
+// 获取已在"按单数"中使用的部门ID列表
+const usedCountDeptIds = computed(() => {
+  return configData.countLadders
+    .filter(l => l.departmentId)
+    .map(l => l.departmentId)
+})
+
+// 获取"按业绩"可选的部门（排除已在"按单数"中使用的部门）
+const availableAmountDepts = computed(() => {
+  return departments.value.filter((d: any) => !usedCountDeptIds.value.includes(d.id))
+})
+
+// 获取"按单数"可选的部门（排除已在"按业绩"中使用的部门）
+const availableCountDepts = computed(() => {
+  return departments.value.filter((d: any) => !usedAmountDeptIds.value.includes(d.id))
+})
+
+onMounted(() => {
+  departmentStore.fetchDepartments()
+})
+
 watch(() => props.visible, (val) => {
   dialogVisible.value = val
-  if (val) {
-    loadConfig()
-  }
+  if (val) loadConfig()
 })
 
 watch(dialogVisible, (val) => {
   emit('update:visible', val)
 })
 
-// 加载配置
 const loadConfig = async () => {
   try {
-    const res = await financeApi.getConfig()
-    if (res.data?.success) {
-      Object.assign(configData, res.data.data)
-      commissionType.value = (configData.settings.commission_type as 'amount' | 'count') || 'amount'
+    const res = (await financeApi.getConfig()) as any
+    if (res && typeof res === 'object') {
+      if (res.statusConfigs) {
+        Object.assign(configData, res)
+      } else if (res.data && res.data.statusConfigs) {
+        Object.assign(configData, res.data)
+      }
     }
   } catch (e) {
     console.error('加载配置失败:', e)
+    ElMessage.error('加载配置失败')
   }
 }
 
-// 添加配置
 const addConfig = async (type: string, value: string) => {
   if (!value?.trim()) {
     ElMessage.warning('请输入内容')
     return
   }
   try {
-    await financeApi.addConfig({
-      configType: type,
-      configValue: value.trim(),
-      configLabel: value.trim()
-    })
-    ElMessage.success('添加成功')
+    let label = value.trim()
+    if (type === 'status') label = statusLabelMap[value.trim()] || value.trim()
+    else if (type === 'remark') label = remarkLabelMap[value.trim()] || value.trim()
 
-    // 清空输入
+    await financeApi.addConfig({ configType: type, configValue: value.trim(), configLabel: label })
+    ElMessage.success('添加成功')
     if (type === 'status') newStatus.value = ''
     if (type === 'coefficient') newCoefficient.value = ''
     if (type === 'remark') newRemark.value = ''
-
-    loadConfig()
+    setTimeout(() => loadConfig(), 100)
     emit('saved')
-  } catch (_e) {
-    ElMessage.error('添加失败')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '添加失败')
   }
 }
 
-// 删除配置
 const deleteConfig = async (id: number) => {
   try {
     await ElMessageBox.confirm('确定删除此配置项？', '提示', { type: 'warning' })
+  } catch { return }
+  try {
     await financeApi.deleteConfig(id)
     ElMessage.success('删除成功')
-    loadConfig()
+    setTimeout(() => loadConfig(), 100)
     emit('saved')
-  } catch (_e: any) {
-    if (_e !== 'cancel') {
-      ElMessage.error('删除失败')
-    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '删除失败')
   }
 }
 
-// 切换计提方式
-const handleCommissionTypeChange = async (val: 'amount' | 'count') => {
-  try {
-    await financeApi.updateSetting('commission_type', val)
-    ElMessage.success('计提方式已更新')
-    emit('saved')
-  } catch (_e) {
-    ElMessage.error('更新失败')
+// 部门选择变化时更新部门名称
+const onDepartmentChange = (item: CommissionLadder, deptId: string) => {
+  if (deptId) {
+    const dept = departments.value.find((d: any) => d.id === deptId)
+    item.departmentName = dept?.name || ''
+  } else {
+    item.departmentName = ''
   }
 }
 
-// 添加业绩阶梯
 const addAmountLadder = async () => {
   try {
-    const lastLadder = configData.amountLadders[configData.amountLadders.length - 1]
+    const last = configData.amountLadders[configData.amountLadders.length - 1]
     await financeApi.addLadder({
       commissionType: 'amount',
-      minValue: lastLadder?.maxValue || 0,
-      maxValue: undefined,
+      minValue: last?.maxValue || 0,
       commissionRate: 0.03
     })
     ElMessage.success('添加成功')
-    loadConfig()
+    setTimeout(() => loadConfig(), 100)
     emit('saved')
-  } catch (_e) {
-    ElMessage.error('添加失败')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '添加失败')
   }
 }
 
-// 添加单数阶梯
 const addCountLadder = async () => {
   try {
-    const lastLadder = configData.countLadders[configData.countLadders.length - 1]
+    const last = configData.countLadders[configData.countLadders.length - 1]
     await financeApi.addLadder({
       commissionType: 'count',
-      minValue: lastLadder?.maxValue || 0,
-      maxValue: undefined,
+      minValue: last?.maxValue || 0,
       commissionPerUnit: 30
     })
     ElMessage.success('添加成功')
-    loadConfig()
+    setTimeout(() => loadConfig(), 100)
     emit('saved')
-  } catch (_e) {
-    ElMessage.error('添加失败')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '添加失败')
   }
 }
 
-// 更新阶梯
 const updateLadder = async (ladder: CommissionLadder) => {
   try {
     await financeApi.updateLadder(ladder.id, {
       minValue: ladder.minValue,
       maxValue: ladder.maxValue,
       commissionRate: ladder.commissionRate,
-      commissionPerUnit: ladder.commissionPerUnit
+      commissionPerUnit: ladder.commissionPerUnit,
+      departmentId: ladder.departmentId || '',
+      departmentName: ladder.departmentName || ''
     })
     ElMessage.success('保存成功')
     emit('saved')
-  } catch (_e) {
-    ElMessage.error('保存失败')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
   }
 }
 
-// 删除阶梯
 const deleteLadder = async (id: number) => {
   try {
     await ElMessageBox.confirm('确定删除此阶梯？', '提示', { type: 'warning' })
+  } catch { return }
+  try {
     await financeApi.deleteLadder(id)
     ElMessage.success('删除成功')
-    loadConfig()
+    setTimeout(() => loadConfig(), 100)
     emit('saved')
-  } catch (_e: any) {
-    if (_e !== 'cancel') {
-      ElMessage.error('删除失败')
-    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '删除失败')
   }
 }
 
-// 关闭
 const handleClose = () => {
   dialogVisible.value = false
 }
 </script>
 
 <style scoped>
-.config-section {
-  padding: 10px 0;
-}
-
-.config-card {
-  background: #f5f7fa;
-  border-radius: 8px;
-  padding: 16px;
-  height: 300px;
+.preset-section {
   display: flex;
   flex-direction: column;
+  gap: 16px;
 }
 
-.config-title {
-  font-weight: 600;
-  font-size: 14px;
-  color: #303133;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #e4e7ed;
+.preset-group {
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 12px 16px;
 }
 
-.config-list {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.config-item {
+.preset-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
-  background: #fff;
-  border-radius: 4px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
-.config-label {
-  font-size: 13px;
-  color: #606266;
+.preset-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #303133;
 }
 
-.config-add {
+.preset-add {
   display: flex;
   gap: 8px;
-  margin-top: 12px;
 }
 
-.config-add .el-input {
-  flex: 1;
+.preset-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 32px;
+  align-items: center;
+}
+
+.preset-tag {
+  font-size: 13px;
+}
+
+.empty-hint {
+  color: #909399;
+  font-size: 13px;
 }
 
 .ladder-section {
   padding: 10px 0;
 }
 
-.commission-type-selector {
+.ladder-tip {
+  margin-bottom: 16px;
+}
+
+.ladder-group {
   margin-bottom: 20px;
-  padding: 16px;
-  background: #f5f7fa;
-  border-radius: 8px;
-}
-
-.commission-type-selector .label {
-  font-weight: 500;
-  margin-right: 16px;
-}
-
-.ladder-card {
-  background: #f5f7fa;
+  background: #fafafa;
   border-radius: 8px;
   padding: 16px;
 }
 
-.ladder-title {
-  font-weight: 600;
-  font-size: 14px;
-  color: #303133;
+.ladder-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 12px;
 }
 
-.add-ladder-btn {
-  margin-top: 12px;
+.ladder-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.rate-hint {
-  font-size: 12px;
+.ladder-group-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #303133;
+}
+
+.info-icon {
   color: #909399;
-  margin-left: 4px;
+  cursor: help;
+  font-size: 16px;
+}
+
+.info-icon:hover {
+  color: #409eff;
+}
+
+.ladder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ladder-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #ebeef5;
+  flex-wrap: wrap;
+}
+
+.ladder-index {
+  width: 24px;
+  height: 24px;
+  background: #409eff;
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.ladder-sep {
+  color: #909399;
+}
+
+.ladder-unit {
+  color: #909399;
+  font-size: 12px;
 }
 </style>

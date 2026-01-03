@@ -132,8 +132,11 @@ service.interceptors.response.use(
 
     const { code, message, data, success } = response.data
 
-    // 处理业务错误
-    if (!success || code !== 200) {
+    // 处理业务错误 - 兼容两种响应格式：
+    // 1. { success: true, data: ... } - 新格式
+    // 2. { code: 200, success: true, data: ... } - 旧格式
+    const isSuccess = success === true || code === 200
+    if (!isSuccess) {
       const errorMessage = message || '请求失败'
 
       // 特殊错误码处理

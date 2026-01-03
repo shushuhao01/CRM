@@ -568,7 +568,49 @@ const PERMISSION_TREE = [
     ]
   },
 
-  // 10. 系统管理
+  // 10. 财务管理
+  {
+    id: 'finance',
+    name: '财务管理',
+    code: 'finance',
+    type: 'module',
+    path: '/finance',
+    icon: 'Money',
+    sort: 10,
+    status: 'active',
+    children: [
+      {
+        id: 'finance.performance_data',
+        name: '绩效数据',
+        code: 'finance.performance_data',
+        type: 'menu',
+        path: '/finance/performance-data',
+        icon: 'DataLine',
+        sort: 1,
+        status: 'active',
+        children: [
+          { id: 'finance.performance_data.view', name: '查看绩效数据', code: 'finance.performance_data.view', type: 'action', sort: 1, status: 'active' }
+        ]
+      },
+      {
+        id: 'finance.performance_manage',
+        name: '绩效管理',
+        code: 'finance.performance_manage',
+        type: 'menu',
+        path: '/finance/performance-manage',
+        icon: 'Setting',
+        sort: 2,
+        status: 'active',
+        children: [
+          { id: 'finance.performance_manage.view', name: '查看绩效管理', code: 'finance.performance_manage.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'finance.performance_manage.edit', name: '编辑绩效', code: 'finance.performance_manage.edit', type: 'action', sort: 2, status: 'active' },
+          { id: 'finance.performance_manage.config', name: '配置管理', code: 'finance.performance_manage.config', type: 'action', sort: 3, status: 'active' }
+        ]
+      }
+    ]
+  },
+
+  // 11. 系统管理
   {
     id: 'system',
     name: '系统管理',
@@ -576,7 +618,7 @@ const PERMISSION_TREE = [
     type: 'module',
     path: '/system',
     icon: 'Setting',
-    sort: 10,
+    sort: 11,
     status: 'active',
     children: [
       {

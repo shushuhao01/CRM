@@ -460,12 +460,44 @@ export const PERMISSION_TREE: Permission[] = [
     ]
   },
   {
+    id: 'finance',
+    name: '财务管理',
+    code: 'finance',
+    type: 'menu',
+    icon: 'Money',
+    sort: 10,
+    children: [
+      {
+        id: 'finance_performance_data',
+        name: '绩效数据',
+        code: 'finance:performance_data',
+        type: 'page',
+        parentId: 'finance',
+        children: [
+          { id: 'finance_performance_data_view', name: '查看绩效数据', code: 'finance:performance_data:view', type: 'action', parentId: 'finance_performance_data' }
+        ]
+      },
+      {
+        id: 'finance_performance_manage',
+        name: '绩效管理',
+        code: 'finance:performance_manage',
+        type: 'page',
+        parentId: 'finance',
+        children: [
+          { id: 'finance_performance_manage_view', name: '查看绩效管理', code: 'finance:performance_manage:view', type: 'action', parentId: 'finance_performance_manage' },
+          { id: 'finance_performance_manage_edit', name: '编辑绩效', code: 'finance:performance_manage:edit', type: 'action', parentId: 'finance_performance_manage' },
+          { id: 'finance_performance_manage_config', name: '配置管理', code: 'finance:performance_manage:config', type: 'action', parentId: 'finance_performance_manage' }
+        ]
+      }
+    ]
+  },
+  {
     id: 'system',
     name: '系统管理',
     code: 'system',
     type: 'menu',
     icon: 'Setting',
-    sort: 10,
+    sort: 11,
     children: [
       {
         id: 'system_departments',
