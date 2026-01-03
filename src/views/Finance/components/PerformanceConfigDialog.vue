@@ -115,23 +115,34 @@
             <div class="ladder-list">
               <div v-for="(item, index) in configData.amountLadders" :key="item.id" class="ladder-item">
                 <span class="ladder-index">{{ index + 1 }}</span>
-                <el-input-number v-model="item.minValue" :min="0" size="small" placeholder="起点" style="width: 100px;" />
+                <div class="ladder-field">
+                  <el-input-number v-model="item.minValue" :min="0" size="small" placeholder="起点" controls-position="right" />
+                </div>
                 <span class="ladder-sep">~</span>
-                <el-input-number v-model="item.maxValue" :min="0" size="small" placeholder="无上限" style="width: 100px;" />
-                <span class="ladder-unit">元</span>
-                <el-input-number v-model="item.commissionRate" :min="0" :max="1" :step="0.01" :precision="4" size="small" style="width: 100px;" />
-                <span class="ladder-unit">({{ ((item.commissionRate || 0) * 100).toFixed(2) }}%)</span>
-                <el-select v-model="item.departmentId" placeholder="适用部门" size="small" clearable style="width: 120px;" @change="(val: string) => onDepartmentChange(item, val)">
-                  <el-option label="全局" value="" />
-                  <el-option
-                    v-for="dept in availableAmountDepts"
-                    :key="dept.id"
-                    :label="dept.name"
-                    :value="dept.id"
-                  />
-                </el-select>
-                <el-button type="primary" size="small" link @click="updateLadder(item)">保存</el-button>
-                <el-button type="danger" size="small" link @click="deleteLadder(item.id)">删除</el-button>
+                <div class="ladder-field">
+                  <el-input-number v-model="item.maxValue" :min="0" size="small" placeholder="无上限" controls-position="right" />
+                </div>
+                <span class="ladder-unit-fixed">元</span>
+                <span class="ladder-sep">→</span>
+                <div class="ladder-field rate-field">
+                  <el-input-number v-model="item.commissionRate" :min="0" :max="1" :step="0.01" :precision="4" size="small" controls-position="right" />
+                </div>
+                <span class="ladder-unit-fixed">({{ ((item.commissionRate || 0) * 100).toFixed(2) }}%)</span>
+                <div class="ladder-field dept-field">
+                  <el-select v-model="item.departmentId" placeholder="适用部门" size="small" clearable @change="(val: string) => onDepartmentChange(item, val)">
+                    <el-option label="全局" value="" />
+                    <el-option
+                      v-for="dept in availableAmountDepts"
+                      :key="dept.id"
+                      :label="dept.name"
+                      :value="dept.id"
+                    />
+                  </el-select>
+                </div>
+                <div class="ladder-actions">
+                  <el-button type="primary" size="small" link @click="updateLadder(item)">保存</el-button>
+                  <el-button type="danger" size="small" link @click="deleteLadder(item.id)">删除</el-button>
+                </div>
               </div>
               <div v-if="configData.amountLadders.length === 0" class="empty-hint">暂无阶梯配置</div>
             </div>
@@ -158,23 +169,34 @@
             <div class="ladder-list">
               <div v-for="(item, index) in configData.countLadders" :key="item.id" class="ladder-item">
                 <span class="ladder-index">{{ index + 1 }}</span>
-                <el-input-number v-model="item.minValue" :min="0" size="small" placeholder="起点" style="width: 80px;" />
+                <div class="ladder-field">
+                  <el-input-number v-model="item.minValue" :min="0" size="small" placeholder="起点" controls-position="right" />
+                </div>
                 <span class="ladder-sep">~</span>
-                <el-input-number v-model="item.maxValue" :min="0" size="small" placeholder="无上限" style="width: 80px;" />
-                <span class="ladder-unit">单</span>
-                <el-input-number v-model="item.commissionPerUnit" :min="0" size="small" style="width: 80px;" />
-                <span class="ladder-unit">元/单</span>
-                <el-select v-model="item.departmentId" placeholder="适用部门" size="small" clearable style="width: 120px;" @change="(val: string) => onDepartmentChange(item, val)">
-                  <el-option label="全局" value="" />
-                  <el-option
-                    v-for="dept in availableCountDepts"
-                    :key="dept.id"
-                    :label="dept.name"
-                    :value="dept.id"
-                  />
-                </el-select>
-                <el-button type="primary" size="small" link @click="updateLadder(item)">保存</el-button>
-                <el-button type="danger" size="small" link @click="deleteLadder(item.id)">删除</el-button>
+                <div class="ladder-field">
+                  <el-input-number v-model="item.maxValue" :min="0" size="small" placeholder="无上限" controls-position="right" />
+                </div>
+                <span class="ladder-unit-fixed">单</span>
+                <span class="ladder-sep">→</span>
+                <div class="ladder-field rate-field">
+                  <el-input-number v-model="item.commissionPerUnit" :min="0" size="small" controls-position="right" />
+                </div>
+                <span class="ladder-unit-fixed">元/单</span>
+                <div class="ladder-field dept-field">
+                  <el-select v-model="item.departmentId" placeholder="适用部门" size="small" clearable @change="(val: string) => onDepartmentChange(item, val)">
+                    <el-option label="全局" value="" />
+                    <el-option
+                      v-for="dept in availableCountDepts"
+                      :key="dept.id"
+                      :label="dept.name"
+                      :value="dept.id"
+                    />
+                  </el-select>
+                </div>
+                <div class="ladder-actions">
+                  <el-button type="primary" size="small" link @click="updateLadder(item)">保存</el-button>
+                  <el-button type="danger" size="small" link @click="deleteLadder(item.id)">删除</el-button>
+                </div>
               </div>
               <div v-if="configData.countLadders.length === 0" class="empty-hint">暂无阶梯配置</div>
             </div>
@@ -509,12 +531,11 @@ const handleClose = () => {
 .ladder-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 10px 12px;
   background: #fff;
   border-radius: 6px;
   border: 1px solid #ebeef5;
-  flex-wrap: wrap;
 }
 
 .ladder-index {
@@ -530,8 +551,45 @@ const handleClose = () => {
   flex-shrink: 0;
 }
 
+.ladder-field {
+  flex: 1;
+  min-width: 80px;
+}
+
+.ladder-field :deep(.el-input-number) {
+  width: 100%;
+}
+
+.ladder-field :deep(.el-select) {
+  width: 100%;
+}
+
+.ladder-field.rate-field {
+  flex: 0.8;
+  min-width: 70px;
+}
+
+.ladder-field.dept-field {
+  flex: 1.2;
+  min-width: 100px;
+}
+
 .ladder-sep {
   color: #909399;
+  flex-shrink: 0;
+}
+
+.ladder-unit-fixed {
+  color: #606266;
+  font-size: 12px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ladder-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .ladder-unit {

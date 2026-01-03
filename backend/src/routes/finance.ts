@@ -169,10 +169,11 @@ router.get('/performance-manage/statistics', async (req: Request, res: Response)
     if (performanceStatus) queryBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
     if (performanceCoefficient) queryBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
 
-    const [pendingCount, processedCount, validCount, coefficientSum] = await Promise.all([
+    const [pendingCount, processedCount, validCount, invalidCount, coefficientSum] = await Promise.all([
       queryBuilder.clone().andWhere('order.performanceStatus = :ps', { ps: 'pending' }).getCount(),
       queryBuilder.clone().andWhere('order.performanceStatus != :ps', { ps: 'pending' }).getCount(),
       queryBuilder.clone().andWhere('order.performanceStatus = :ps', { ps: 'valid' }).getCount(),
+      queryBuilder.clone().andWhere('order.performanceStatus = :ps', { ps: 'invalid' }).getCount(),
       // 系数合计：只计算有效订单且系数>0的
       queryBuilder.clone()
         .andWhere('order.performanceStatus = :ps', { ps: 'valid' })
@@ -183,7 +184,7 @@ router.get('/performance-manage/statistics', async (req: Request, res: Response)
 
     res.json({
       success: true,
-      data: { pendingCount, processedCount, validCount, coefficientSum: parseFloat(coefficientSum?.total || '0') }
+      data: { pendingCount, processedCount, validCount, invalidCount, coefficientSum: parseFloat(coefficientSum?.total || '0') }
     });
   } catch (error: any) {
     console.error('[Finance] Get manage statistics failed:', error);
