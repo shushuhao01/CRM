@@ -76,50 +76,66 @@
       <el-select v-model="salesPersonFilter" placeholder="销售人员" :clearable="isAdmin || isManager" :disabled="isSales" filterable @change="handleFilterChange" class="filter-item">
         <el-option v-for="user in filteredSalesPersons" :key="user.id" :label="user.name" :value="user.id" />
       </el-select>
-      <el-select v-model="statusFilter" placeholder="有效状态" clearable @change="handleFilterChange" class="filter-item">
-        <el-option label="待处理" value="pending" />
-        <el-option label="有效" value="valid" />
-        <el-option label="无效" value="invalid" />
-      </el-select>
       <el-select v-model="coefficientFilter" placeholder="系数" clearable @change="handleFilterChange" class="filter-item">
         <el-option v-for="c in configData.coefficientConfigs" :key="c.id" :label="c.configLabel" :value="c.configValue" />
       </el-select>
     </div>
 
-    <!-- 操作栏 -->
+    <!-- 操作栏：左侧标签页 + 右侧操作按钮 -->
     <div class="action-bar">
-      <el-button type="primary" :icon="Refresh" @click="handleRefresh">刷新</el-button>
-      <el-button :icon="Setting" @click="showConfigDialog">配置管理</el-button>
-      <el-button type="success" :disabled="selectedRows.length === 0" @click="batchSetValid">
-        批量设为有效
-      </el-button>
-      <el-button type="danger" :disabled="selectedRows.length === 0" @click="batchSetInvalid">
-        批量设为无效
-      </el-button>
-      <el-dropdown :disabled="selectedRows.length === 0" @command="handleBatchCoefficient">
-        <el-button type="warning" :disabled="selectedRows.length === 0">
-          批量设置系数 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+      <div class="action-left">
+        <el-tabs v-model="activeStatusTab" @tab-change="handleStatusTabChange" class="status-tabs">
+          <el-tab-pane name="pending">
+            <template #label>
+              <span>待处理 <el-badge :value="statistics.pendingCount" :max="999" class="tab-badge" /></span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane name="valid">
+            <template #label>
+              <span>有效 <el-badge :value="statistics.validCount" :max="999" type="success" class="tab-badge tab-badge-valid" /></span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane name="invalid">
+            <template #label>
+              <span>无效 <el-badge :value="statistics.invalidCount || 0" :max="999" type="info" class="tab-badge tab-badge-muted" /></span>
+            </template>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+      <div class="action-right">
+        <el-button type="primary" :icon="Refresh" @click="handleRefresh">刷新</el-button>
+        <el-button :icon="Setting" @click="showConfigDialog">配置管理</el-button>
+        <el-button type="success" :disabled="selectedRows.length === 0" @click="batchSetValid">
+          批量设为有效
         </el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item v-for="c in configData.coefficientConfigs" :key="c.id" :command="c.configValue">
-              {{ c.configValue }}
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-      <el-dropdown :disabled="selectedRows.length === 0" @command="handleBatchRemark">
-        <el-button type="info" :disabled="selectedRows.length === 0">
-          批量设置备注 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+        <el-button type="danger" :disabled="selectedRows.length === 0" @click="batchSetInvalid">
+          批量设为无效
         </el-button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item v-for="r in configData.remarkConfigs" :key="r.id" :command="r.configValue">
-              {{ getRemarkLabel(r.configValue) }}
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
+        <el-dropdown :disabled="selectedRows.length === 0" @command="handleBatchCoefficient">
+          <el-button type="warning" :disabled="selectedRows.length === 0">
+            批量设置系数 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-for="c in configData.coefficientConfigs" :key="c.id" :command="c.configValue">
+                {{ c.configValue }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-dropdown :disabled="selectedRows.length === 0" @command="handleBatchRemark">
+          <el-button type="info" :disabled="selectedRows.length === 0">
+            批量设置备注 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-for="r in configData.remarkConfigs" :key="r.id" :command="r.configValue">
+                {{ getRemarkLabel(r.configValue) }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
     </div>
 
     <!-- 数据表格 -->
@@ -132,10 +148,9 @@
       @selection-change="handleSelectionChange"
     >
       <el-table-column type="selection" width="50" />
-      <el-table-column type="index" label="序号" width="60" :index="indexMethod" />
-      <el-table-column prop="orderNumber" label="订单号" min-width="140">
+      <el-table-column prop="orderNumber" label="订单号" min-width="160">
         <template #default="{ row }">
-          <el-link type="primary" @click="goToOrderDetail(row.id)">{{ row.orderNumber }}</el-link>
+          <el-link type="primary" class="order-number-link" @click="goToOrderDetail(row.id)">{{ row.orderNumber }}</el-link>
         </template>
       </el-table-column>
       <el-table-column prop="customerName" label="客户姓名" min-width="100">
@@ -195,15 +210,13 @@
           <el-select
             v-model="row.performanceRemark"
             size="small"
-            allow-create
-            filterable
             @change="(val: string) => updatePerformance(row, 'performanceRemark', val)"
           >
             <el-option v-for="r in configData.remarkConfigs" :key="r.id" :label="getRemarkLabel(r.configValue)" :value="r.configValue" />
           </el-select>
         </template>
       </el-table-column>
-      <el-table-column prop="estimatedCommission" label="预估佣金" width="100" align="right">
+      <el-table-column prop="estimatedCommission" label="预估佣金" width="100" align="center">
         <template #default="{ row }">
           <span class="commission-value">¥{{ formatMoney(row.estimatedCommission || 0) }}</span>
         </template>
@@ -278,6 +291,7 @@ const statistics = reactive<PerformanceManageStatistics>({
   pendingCount: 0,
   processedCount: 0,
   validCount: 0,
+  invalidCount: 0,
   coefficientSum: 0
 })
 
@@ -299,6 +313,9 @@ const departmentFilter = ref('')
 const salesPersonFilter = ref('')
 const statusFilter = ref('')
 const coefficientFilter = ref('')
+
+// 状态标签页
+const activeStatusTab = ref('pending')
 
 // 快捷日期选项
 const quickDateOptions = [
@@ -374,6 +391,9 @@ const initDefaultFilters = () => {
     departmentFilter.value = currentUserDepartmentId.value
     salesPersonFilter.value = currentUserId.value
   }
+  // 默认显示待处理标签页
+  activeStatusTab.value = 'pending'
+  statusFilter.value = 'pending'
 }
 
 // 设置本月日期
@@ -463,6 +483,14 @@ const handleRefresh = () => {
   loadStatistics()
 }
 
+// 状态标签页切换
+const handleStatusTabChange = (tabName: string) => {
+  activeStatusTab.value = tabName
+  statusFilter.value = tabName // 同步到筛选条件
+  pagination.currentPage = 1
+  loadData()
+}
+
 // 加载数据
 const loadData = async () => {
   loading.value = true
@@ -488,10 +516,16 @@ const loadData = async () => {
     // 响应拦截器返回 response.data.data，即 { list: [], total: 0 }
     const resData = res as any
     if (resData && Array.isArray(resData.list)) {
-      // 给没有备注的订单设置默认值"normal"（正常）
+      // 获取配置中的备注值列表
+      const validRemarks = configData.remarkConfigs.map(r => r.configValue)
+      const defaultRemark = validRemarks.length > 0 ? validRemarks[0] : ''
+
+      // 给没有备注或备注不在配置中的订单设置默认值
       tableData.value = resData.list.map((item: PerformanceOrder) => ({
         ...item,
-        performanceRemark: item.performanceRemark || 'normal'
+        performanceRemark: (item.performanceRemark && validRemarks.includes(item.performanceRemark))
+          ? item.performanceRemark
+          : defaultRemark
       }))
       pagination.total = resData.total || 0
     } else {
@@ -613,11 +647,6 @@ const handlePageChange = () => {
 // 选择变化
 const handleSelectionChange = (rows: PerformanceOrder[]) => {
   selectedRows.value = rows
-}
-
-// 序号方法
-const indexMethod = (index: number) => {
-  return (pagination.currentPage - 1) * pagination.pageSize + index + 1
 }
 
 // 更新绩效
@@ -799,7 +828,11 @@ const getStatusType = (status: string) => {
   const map: Record<string, string> = {
     shipped: 'warning',
     delivered: 'success',
-    completed: 'success'
+    completed: 'success',
+    rejected: 'danger',
+    rejected_returned: 'warning',
+    refunded: 'warning',
+    after_sales_created: 'info'
   }
   return map[status] || 'info'
 }
@@ -808,7 +841,11 @@ const getStatusText = (status: string) => {
   const map: Record<string, string> = {
     shipped: '已发货',
     delivered: '已签收',
-    completed: '已完成'
+    completed: '已完成',
+    rejected: '拒收',
+    rejected_returned: '拒收退回',
+    refunded: '已退款',
+    after_sales_created: '售后中'
   }
   return map[status] || status
 }
@@ -958,11 +995,64 @@ const getRemarkLabel = (value: string) => {
 
 .action-bar {
   background: #fff;
-  padding: 12px 16px;
+  padding: 8px 16px;
   border-radius: 8px;
   margin-bottom: 16px;
   display: flex;
-  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.action-left {
+  flex: 1;
+}
+
+.action-right {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.status-tabs {
+  margin: 0;
+}
+
+.status-tabs :deep(.el-tabs__header) {
+  margin: 0;
+}
+
+.status-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+.status-tabs :deep(.el-tabs__item) {
+  padding: 0 16px;
+  height: 36px;
+  line-height: 36px;
+}
+
+.tab-badge {
+  margin-left: 4px;
+}
+
+.tab-badge :deep(.el-badge__content) {
+  font-size: 11px;
+  height: 16px;
+  line-height: 16px;
+  padding: 0 5px;
+}
+
+.tab-badge-muted :deep(.el-badge__content) {
+  background-color: #c0c4cc !important;
+  opacity: 0.7;
+}
+
+.tab-badge-valid :deep(.el-badge__content) {
+  background-color: #95d475 !important;
+}
+
+.order-number-link {
+  white-space: nowrap;
 }
 
 .data-table {

@@ -1179,6 +1179,158 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
 });
 
 /**
+ * @route GET /api/v1/orders/shipping/returned
+ * @desc 获取退回订单列表（服务端分页）
+ * @access Private
+ */
+router.get('/shipping/returned', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const { page = 1, pageSize = 10, orderNumber, customerName } = req.query;
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 500);
+    const skip = (pageNum - 1) * pageSizeNum;
+
+    const queryBuilder = orderRepository.createQueryBuilder('order')
+      .where('order.status IN (:...statuses)', {
+        statuses: ['logistics_returned', 'rejected_returned', 'audit_rejected']
+      });
+
+    if (orderNumber) {
+      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    }
+    if (customerName) {
+      queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+    }
+
+    const total = await queryBuilder.getCount();
+    queryBuilder.orderBy('order.updatedAt', 'DESC').skip(skip).take(pageSizeNum);
+    const orders = await queryBuilder.getMany();
+
+    const list = orders.map(order => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName || '',
+      customerPhone: order.customerPhone || '',
+      totalAmount: Number(order.totalAmount) || 0,
+      status: order.status,
+      trackingNumber: order.trackingNumber || '',
+      expressCompany: order.expressCompany || '',
+      shippingAddress: order.shippingAddress || '',
+      createdByName: order.createdByName || '',
+      createdAt: formatToBeijingTime(order.createdAt),
+      updatedAt: formatToBeijingTime(order.updatedAt),
+      products: typeof order.products === 'string' ? JSON.parse(order.products || '[]') : (order.products || [])
+    }));
+
+    res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
+  } catch (error) {
+    console.error('❌ [退回订单] 获取失败:', error);
+    res.status(500).json({ success: false, message: '获取退回订单失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/orders/shipping/cancelled
+ * @desc 获取取消订单列表（服务端分页）
+ * @access Private
+ */
+router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const { page = 1, pageSize = 10, orderNumber, customerName } = req.query;
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 500);
+    const skip = (pageNum - 1) * pageSizeNum;
+
+    const queryBuilder = orderRepository.createQueryBuilder('order')
+      .where('order.status IN (:...statuses)', {
+        statuses: ['cancelled', 'logistics_cancelled']
+      });
+
+    if (orderNumber) {
+      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    }
+    if (customerName) {
+      queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+    }
+
+    const total = await queryBuilder.getCount();
+    queryBuilder.orderBy('order.updatedAt', 'DESC').skip(skip).take(pageSizeNum);
+    const orders = await queryBuilder.getMany();
+
+    const list = orders.map(order => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName || '',
+      customerPhone: order.customerPhone || '',
+      totalAmount: Number(order.totalAmount) || 0,
+      status: order.status,
+      trackingNumber: order.trackingNumber || '',
+      expressCompany: order.expressCompany || '',
+      shippingAddress: order.shippingAddress || '',
+      createdByName: order.createdByName || '',
+      createdAt: formatToBeijingTime(order.createdAt),
+      updatedAt: formatToBeijingTime(order.updatedAt),
+      products: typeof order.products === 'string' ? JSON.parse(order.products || '[]') : (order.products || [])
+    }));
+
+    res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
+  } catch (error) {
+    console.error('❌ [取消订单] 获取失败:', error);
+    res.status(500).json({ success: false, message: '获取取消订单失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/orders/shipping/draft
+ * @desc 获取草稿订单列表（服务端分页）
+ * @access Private
+ */
+router.get('/shipping/draft', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const orderRepository = AppDataSource.getRepository(Order);
+    const { page = 1, pageSize = 10, orderNumber, customerName } = req.query;
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 500);
+    const skip = (pageNum - 1) * pageSizeNum;
+
+    const queryBuilder = orderRepository.createQueryBuilder('order')
+      .where('order.status = :status', { status: 'draft' });
+
+    if (orderNumber) {
+      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    }
+    if (customerName) {
+      queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+    }
+
+    const total = await queryBuilder.getCount();
+    queryBuilder.orderBy('order.updatedAt', 'DESC').skip(skip).take(pageSizeNum);
+    const orders = await queryBuilder.getMany();
+
+    const list = orders.map(order => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName || '',
+      customerPhone: order.customerPhone || '',
+      totalAmount: Number(order.totalAmount) || 0,
+      status: order.status,
+      shippingAddress: order.shippingAddress || '',
+      createdByName: order.createdByName || '',
+      createdAt: formatToBeijingTime(order.createdAt),
+      updatedAt: formatToBeijingTime(order.updatedAt),
+      products: typeof order.products === 'string' ? JSON.parse(order.products || '[]') : (order.products || [])
+    }));
+
+    res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
+  } catch (error) {
+    console.error('❌ [草稿订单] 获取失败:', error);
+    res.status(500).json({ success: false, message: '获取草稿订单失败' });
+  }
+});
+
+/**
  * @route GET /api/v1/orders/shipping/statistics
  * @desc 获取物流统计数据（优化版）
  * @access Private

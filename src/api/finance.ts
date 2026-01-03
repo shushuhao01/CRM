@@ -15,6 +15,7 @@ export interface PerformanceManageStatistics {
   pendingCount: number
   processedCount: number
   validCount: number
+  invalidCount: number
   coefficientSum: number
 }
 

@@ -99,10 +99,9 @@
     <!-- 数据表格 -->
     <el-table :data="tableData" v-loading="loading" stripe border class="data-table">
       <el-table-column type="selection" width="50" />
-      <el-table-column type="index" label="序号" width="60" :index="indexMethod" />
-      <el-table-column prop="orderNumber" label="订单号" min-width="140">
+      <el-table-column prop="orderNumber" label="订单号" min-width="160">
         <template #default="{ row }">
-          <el-link type="primary" @click="goToOrderDetail(row.id)">{{ row.orderNumber }}</el-link>
+          <el-link type="primary" class="order-number-link" @click="goToOrderDetail(row.id)">{{ row.orderNumber }}</el-link>
         </template>
       </el-table-column>
       <el-table-column prop="customerName" label="客户姓名" min-width="100">
@@ -152,7 +151,7 @@
       <el-table-column prop="performanceRemark" label="备注" min-width="100" show-overflow-tooltip>
         <template #default="{ row }">{{ getRemarkLabel(row.performanceRemark) }}</template>
       </el-table-column>
-      <el-table-column prop="estimatedCommission" label="预估佣金" width="100" align="right">
+      <el-table-column prop="estimatedCommission" label="预估佣金" width="100" align="center">
         <template #default="{ row }">
           <span class="commission-value">¥{{ formatMoney(row.estimatedCommission || 0) }}</span>
         </template>
@@ -492,11 +491,6 @@ const handlePageChange = () => {
   loadData()
 }
 
-// 序号方法
-const indexMethod = (index: number) => {
-  return (pagination.currentPage - 1) * pagination.pageSize + index + 1
-}
-
 // 跳转
 const goToOrderDetail = (id: string) => {
   router.push(`/order/detail/${id}`)
@@ -535,7 +529,11 @@ const getStatusType = (status: string) => {
   const map: Record<string, string> = {
     shipped: 'warning',
     delivered: 'success',
-    completed: 'success'
+    completed: 'success',
+    rejected: 'danger',
+    rejected_returned: 'warning',
+    refunded: 'warning',
+    after_sales_created: 'info'
   }
   return map[status] || 'info'
 }
@@ -544,7 +542,11 @@ const getStatusText = (status: string) => {
   const map: Record<string, string> = {
     shipped: '已发货',
     delivered: '已签收',
-    completed: '已完成'
+    completed: '已完成',
+    rejected: '拒收',
+    rejected_returned: '拒收退回',
+    refunded: '已退款',
+    after_sales_created: '售后中'
   }
   return map[status] || status
 }
@@ -726,6 +728,10 @@ const getCoefficientClass = (val: number | string) => {
 .commission-value {
   color: #f5222d;
   font-weight: 500;
+}
+
+.order-number-link {
+  white-space: nowrap;
 }
 
 .logistics-info-text {

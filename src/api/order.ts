@@ -145,6 +145,33 @@ export const orderApi = {
   }) =>
     api.get<OrderListResponse>('/orders/shipping/shipped', { params }),
 
+  // 获取退回订单列表（服务端分页）
+  getShippingReturned: (params?: {
+    page?: number;
+    pageSize?: number;
+    orderNumber?: string;
+    customerName?: string;
+  }) =>
+    api.get<OrderListResponse>('/orders/shipping/returned', { params }),
+
+  // 获取取消订单列表（服务端分页）
+  getShippingCancelled: (params?: {
+    page?: number;
+    pageSize?: number;
+    orderNumber?: string;
+    customerName?: string;
+  }) =>
+    api.get<OrderListResponse>('/orders/shipping/cancelled', { params }),
+
+  // 获取草稿订单列表（服务端分页）
+  getShippingDraft: (params?: {
+    page?: number;
+    pageSize?: number;
+    orderNumber?: string;
+    customerName?: string;
+  }) =>
+    api.get<OrderListResponse>('/orders/shipping/draft', { params }),
+
   // 获取物流统计数据
   getShippingStatistics: () =>
     api.get<{

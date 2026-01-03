@@ -1370,6 +1370,24 @@ const loadOrderList = async () => {
         orders = response?.data?.list || []
         serverTotal = response?.data?.total || orders.length
         console.log('[发货列表] 从API获取已发货订单:', orders.length, '条，总数:', serverTotal)
+      } else if (activeTab.value === 'returned') {
+        // 退回订单从API获取
+        const response = await orderApi.getShippingReturned(params)
+        orders = response?.data?.list || []
+        serverTotal = response?.data?.total || orders.length
+        console.log('[发货列表] 从API获取退回订单:', orders.length, '条，总数:', serverTotal)
+      } else if (activeTab.value === 'cancelled') {
+        // 取消订单从API获取
+        const response = await orderApi.getShippingCancelled(params)
+        orders = response?.data?.list || []
+        serverTotal = response?.data?.total || orders.length
+        console.log('[发货列表] 从API获取取消订单:', orders.length, '条，总数:', serverTotal)
+      } else if (activeTab.value === 'draft') {
+        // 草稿订单从API获取
+        const response = await orderApi.getShippingDraft(params)
+        orders = response?.data?.list || []
+        serverTotal = response?.data?.total || orders.length
+        console.log('[发货列表] 从API获取草稿订单:', orders.length, '条，总数:', serverTotal)
       } else {
         // 其他状态从store获取（暂时保持前端分页）
         const allOrders = await orderStore.getOrdersByShippingStatus(activeTab.value)
