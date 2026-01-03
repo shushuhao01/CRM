@@ -61,6 +61,9 @@ import { PerformanceReportConfig, PerformanceReportLog } from '../entities/Perfo
 import { LogisticsApiConfig } from '../entities/LogisticsApiConfig';
 import { CustomerServicePermission } from '../entities/CustomerServicePermission';
 import { SensitiveInfoPermission } from '../entities/SensitiveInfoPermission';
+import { PerformanceConfig } from '../entities/PerformanceConfig';
+import { CommissionSetting } from '../entities/CommissionSetting';
+import { CommissionLadder } from '../entities/CommissionLadder';
 
 // 根据环境变量选择数据库配置
 const dbType = process.env.DB_TYPE || (process.env.NODE_ENV === 'production' ? 'mysql' : 'sqlite');
@@ -129,7 +132,10 @@ const AppDataSource = new DataSource(
           PerformanceReportLog,
           LogisticsApiConfig,
           CustomerServicePermission,
-          SensitiveInfoPermission
+          SensitiveInfoPermission,
+          PerformanceConfig,
+          CommissionSetting,
+          CommissionLadder
         ],
         migrations: [],
         subscribers: [],
@@ -187,7 +193,10 @@ const AppDataSource = new DataSource(
           PerformanceReportLog,
           LogisticsApiConfig,
           CustomerServicePermission,
-          SensitiveInfoPermission
+          SensitiveInfoPermission,
+          PerformanceConfig,
+          CommissionSetting,
+          CommissionLadder
         ],
         migrations: [],
         subscribers: [],

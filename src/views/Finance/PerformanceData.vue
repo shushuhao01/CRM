@@ -2,63 +2,57 @@
   <div class="performance-data-page">
     <!-- 统计卡片 -->
     <div class="stats-cards">
-      <el-row :gutter="16">
-        <el-col :xs="12" :sm="6" :md="4" :lg="4">
-          <div class="stat-card">
-            <div class="stat-icon shipped"><el-icon><Van /></el-icon></div>
-            <div class="stat-info">
-              <div class="stat-value">{{ statistics.shippedCount }}</div>
-              <div class="stat-label">发货单数</div>
-            </div>
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-icon shipped"><el-icon><Van /></el-icon></div>
+          <div class="stat-info">
+            <div class="stat-value">{{ statistics.shippedCount }}</div>
+            <div class="stat-label">发货单数</div>
           </div>
-        </el-col>
-        <el-col :xs="12" :sm="6" :md="4" :lg="4">
-          <div class="stat-card">
-            <div class="stat-icon delivered"><el-icon><CircleCheck /></el-icon></div>
-            <div class="stat-info">
-              <div class="stat-value">{{ statistics.deliveredCount }}</div>
-              <div class="stat-label">签收单数</div>
-            </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon delivered"><el-icon><CircleCheck /></el-icon></div>
+          <div class="stat-info">
+            <div class="stat-value">{{ statistics.deliveredCount }}</div>
+            <div class="stat-label">签收单数</div>
           </div>
-        </el-col>
-        <el-col :xs="12" :sm="6" :md="4" :lg="4">
-          <div class="stat-card">
-            <div class="stat-icon valid"><el-icon><Select /></el-icon></div>
-            <div class="stat-info">
-              <div class="stat-value">{{ statistics.validCount }}</div>
-              <div class="stat-label">有效单数</div>
-            </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon valid"><el-icon><Select /></el-icon></div>
+          <div class="stat-info">
+            <div class="stat-value">{{ statistics.validCount }}</div>
+            <div class="stat-label">有效单数</div>
           </div>
-        </el-col>
-        <el-col :xs="12" :sm="6" :md="4" :lg="4">
-          <div class="stat-card">
-            <div class="stat-icon coefficient"><el-icon><TrendCharts /></el-icon></div>
-            <div class="stat-info">
-              <div class="stat-value">{{ statistics.coefficientSum.toFixed(1) }}</div>
-              <div class="stat-label">系数合计</div>
-            </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon coefficient"><el-icon><TrendCharts /></el-icon></div>
+          <div class="stat-info">
+            <div class="stat-value">{{ Number(statistics.coefficientSum || 0).toFixed(1) }}</div>
+            <div class="stat-label">系数合计</div>
           </div>
-        </el-col>
-        <el-col :xs="12" :sm="6" :md="4" :lg="4">
-          <div class="stat-card">
-            <div class="stat-icon commission"><el-icon><Money /></el-icon></div>
-            <div class="stat-info">
-              <div class="stat-value">¥{{ formatMoney(statistics.estimatedCommission) }}</div>
-              <div class="stat-label">预估佣金</div>
-            </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon commission"><el-icon><Money /></el-icon></div>
+          <div class="stat-info">
+            <div class="stat-value">¥{{ formatMoney(statistics.estimatedCommission) }}</div>
+            <div class="stat-label">预估佣金</div>
           </div>
-        </el-col>
-      </el-row>
+        </div>
+      </div>
     </div>
 
     <!-- 快捷日期筛选 -->
     <div class="quick-filters">
-      <el-radio-group v-model="quickDateFilter" @change="handleQuickDateChange">
-        <el-radio-button value="thisMonth">本月</el-radio-button>
-        <el-radio-button value="lastMonth">上月</el-radio-button>
-        <el-radio-button value="thisYear">今年</el-radio-button>
-        <el-radio-button value="all">全部</el-radio-button>
-      </el-radio-group>
+      <div class="quick-btn-group">
+        <button
+          v-for="item in quickDateOptions"
+          :key="item.value"
+          :class="['quick-btn', { active: quickDateFilter === item.value }]"
+          @click="handleQuickDateClick(item.value)"
+        >
+          {{ item.label }}
+        </button>
+      </div>
     </div>
 
     <!-- 筛选器 -->
@@ -71,30 +65,30 @@
         end-placeholder="结束日期"
         value-format="YYYY-MM-DD"
         @change="handleDateChange"
-        class="filter-item"
+        class="filter-date"
       />
       <el-input
         v-model="searchKeyword"
         placeholder="搜索订单号"
         clearable
+        class="filter-item"
         @clear="loadData"
         @keyup.enter="loadData"
-        class="filter-item search-input"
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
-      <el-select v-model="departmentFilter" placeholder="部门" clearable @change="loadData" class="filter-item">
-        <el-option v-for="dept in departments" :key="dept.id" :label="dept.name" :value="dept.id" />
+      <el-select v-model="departmentFilter" placeholder="选择部门" :clearable="isAdmin" :disabled="isSales" @change="handleDepartmentChange" class="filter-item">
+        <el-option v-for="dept in filteredDepartments" :key="dept.id" :label="dept.name" :value="dept.id" />
       </el-select>
-      <el-select v-model="salesPersonFilter" placeholder="销售人员" clearable @change="loadData" class="filter-item">
-        <el-option v-for="user in salesPersons" :key="user.id" :label="user.name" :value="user.id" />
+      <el-select v-model="salesPersonFilter" placeholder="销售人员" :clearable="isAdmin || isManager" :disabled="isSales" filterable @change="handleFilterChange" class="filter-item">
+        <el-option v-for="user in filteredSalesPersons" :key="user.id" :label="user.name" :value="user.id" />
       </el-select>
-      <el-select v-model="statusFilter" placeholder="有效状态" clearable @change="loadData" class="filter-item">
+      <el-select v-model="statusFilter" placeholder="有效状态" clearable @change="handleFilterChange" class="filter-item">
         <el-option label="待处理" value="pending" />
         <el-option label="有效" value="valid" />
         <el-option label="无效" value="invalid" />
       </el-select>
-      <el-select v-model="coefficientFilter" placeholder="系数" clearable @change="loadData" class="filter-item">
+      <el-select v-model="coefficientFilter" placeholder="系数" clearable @change="handleFilterChange" class="filter-item">
         <el-option label="1.0" value="1.00" />
         <el-option label="0.8" value="0.80" />
         <el-option label="0.5" value="0.50" />
@@ -121,12 +115,16 @@
           <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="trackingNumber" label="物流单号" min-width="130">
+      <el-table-column prop="latestLogisticsInfo" label="最新物流动态" min-width="200" show-overflow-tooltip>
         <template #default="{ row }">
-          <el-link v-if="row.trackingNumber" type="primary" @click="showLogisticsDialog(row)">
-            {{ row.trackingNumber }}
-          </el-link>
-          <span v-else>-</span>
+          <span
+            v-if="row.latestLogisticsInfo"
+            :style="getLogisticsInfoStyle(row.latestLogisticsInfo)"
+            class="logistics-info-text"
+          >
+            {{ row.latestLogisticsInfo }}
+          </span>
+          <span v-else class="text-gray-400">暂无物流信息</span>
         </template>
       </el-table-column>
       <el-table-column prop="createdAt" label="下单日期" width="110">
@@ -147,11 +145,13 @@
       <el-table-column prop="performanceCoefficient" label="系数" width="70" align="center">
         <template #default="{ row }">
           <span :class="getCoefficientClass(row.performanceCoefficient)">
-            {{ row.performanceCoefficient?.toFixed(1) || '1.0' }}
+            {{ Number(row.performanceCoefficient || 1).toFixed(1) }}
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="performanceRemark" label="备注" min-width="100" show-overflow-tooltip />
+      <el-table-column prop="performanceRemark" label="备注" min-width="100" show-overflow-tooltip>
+        <template #default="{ row }">{{ getRemarkLabel(row.performanceRemark) }}</template>
+      </el-table-column>
       <el-table-column prop="estimatedCommission" label="预估佣金" width="100" align="right">
         <template #default="{ row }">
           <span class="commission-value">¥{{ formatMoney(row.estimatedCommission || 0) }}</span>
@@ -189,10 +189,26 @@ import { Van, CircleCheck, Select, TrendCharts, Money, Search } from '@element-p
 import { financeApi, type PerformanceOrder, type PerformanceDataStatistics } from '@/api/finance'
 import LogisticsTraceDialog from '@/components/Logistics/LogisticsTraceDialog.vue'
 import { useDepartmentStore } from '@/stores/department'
+import { useUserStore } from '@/stores/user'
+import { getLogisticsInfoStyle } from '@/utils/logisticsStatusConfig'
+import { getDepartmentMembers } from '@/api/department'
 import api from '@/utils/request'
 
 const router = useRouter()
 const departmentStore = useDepartmentStore()
+const userStore = useUserStore()
+
+// 当前用户信息
+const currentUser = computed(() => userStore.currentUser)
+const currentUserRole = computed(() => currentUser.value?.role || '')
+const currentUserId = computed(() => currentUser.value?.id || '')
+const currentUserDepartmentId = computed(() => currentUser.value?.departmentId || '')
+const currentUserName = computed(() => currentUser.value?.name || '')
+
+// 权限判断
+const isAdmin = computed(() => ['super_admin', 'admin', 'customer_service', 'finance'].includes(currentUserRole.value))
+const isManager = computed(() => ['department_manager', 'manager'].includes(currentUserRole.value))
+const isSales = computed(() => !isAdmin.value && !isManager.value)
 
 // 状态
 const loading = ref(false)
@@ -214,6 +230,14 @@ const salesPersonFilter = ref('')
 const statusFilter = ref('')
 const coefficientFilter = ref('')
 
+// 快捷日期选项
+const quickDateOptions = [
+  { label: '本月', value: 'thisMonth' },
+  { label: '上月', value: 'lastMonth' },
+  { label: '今年', value: 'thisYear' },
+  { label: '全部', value: 'all' }
+]
+
 // 分页
 const pagination = reactive({
   currentPage: 1,
@@ -221,9 +245,35 @@ const pagination = reactive({
   total: 0
 })
 
-// 部门和销售人员列表
-const departments = computed(() => departmentStore.departments)
-const salesPersons = ref<{ id: string; name: string }[]>([])
+// 部门列表（根据权限过滤）
+const filteredDepartments = computed(() => {
+  const allDepts = departmentStore.departments
+  if (isAdmin.value) {
+    // 管理员可以看所有部门
+    return allDepts
+  } else if (isManager.value) {
+    // 经理只能看自己的部门
+    return allDepts.filter((d: any) => d.id === currentUserDepartmentId.value)
+  } else {
+    // 销售员只能看自己的部门
+    return allDepts.filter((d: any) => d.id === currentUserDepartmentId.value)
+  }
+})
+
+// 销售人员列表（根据权限过滤）
+const allSalesPersons = ref<{ id: string; name: string; departmentId?: string }[]>([])
+const filteredSalesPersons = computed(() => {
+  if (isAdmin.value) {
+    // 管理员可以看所有人
+    return allSalesPersons.value
+  } else if (isManager.value) {
+    // 经理只能看本部门的人
+    return allSalesPersons.value.filter(u => u.departmentId === currentUserDepartmentId.value)
+  } else {
+    // 销售员只能看自己
+    return [{ id: currentUserId.value, name: currentUserName.value }]
+  }
+})
 
 // 物流弹窗
 const logisticsDialogVisible = ref(false)
@@ -234,13 +284,33 @@ const currentExpressCompany = ref('')
 onMounted(async () => {
   await departmentStore.fetchDepartments()
   await loadSalesPersons()
-  setDefaultDateRange()
+  // 根据角色设置默认筛选值
+  initDefaultFilters()
+  // 默认选择本月
+  setThisMonth()
   await loadData()
   await loadStatistics()
 })
 
-// 设置默认日期范围（本月）
-const setDefaultDateRange = () => {
+// 根据角色初始化默认筛选值
+const initDefaultFilters = () => {
+  if (isAdmin.value) {
+    // 管理员默认不筛选
+    departmentFilter.value = ''
+    salesPersonFilter.value = ''
+  } else if (isManager.value) {
+    // 经理默认筛选本部门
+    departmentFilter.value = currentUserDepartmentId.value
+    salesPersonFilter.value = ''
+  } else {
+    // 销售员默认筛选自己
+    departmentFilter.value = currentUserDepartmentId.value
+    salesPersonFilter.value = currentUserId.value
+  }
+}
+
+// 设置本月日期
+const setThisMonth = () => {
   const now = new Date()
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -248,16 +318,55 @@ const setDefaultDateRange = () => {
 }
 
 // 加载销售人员列表
+// - 管理员：加载全部用户
+// - 经理：加载本部门成员
+// - 销售员：不需要加载（只能看自己的数据）
 const loadSalesPersons = async () => {
-  try {
-    const res = await api.get('/users', { params: { pageSize: 500 } }) as any
-    salesPersons.value = (res?.data?.list || res?.list || []).map((u: any) => ({
-      id: u.id,
-      name: u.name || u.username
-    }))
-  } catch (_e) {
-    console.error('加载销售人员失败:', _e)
+  // 销售员不需要加载销售人员列表
+  if (isSales.value) {
+    return
   }
+
+  try {
+    if (isAdmin.value) {
+      // 管理员加载全部用户
+      const res = (await api.get('/users', { params: { pageSize: 500 } })) as any
+      const users = res?.data?.items || res?.data?.users || res?.items || res?.users || res?.data?.list || res?.list || []
+      allSalesPersons.value = users.map((u: any) => ({
+        id: u.id,
+        name: u.realName || u.name || u.username,
+        departmentId: u.departmentId
+      }))
+    } else if (isManager.value && currentUserDepartmentId.value) {
+      // 经理加载本部门成员
+      const res = await getDepartmentMembers(currentUserDepartmentId.value) as any
+      const members = res?.data || res || []
+      allSalesPersons.value = members.map((m: any) => ({
+        id: m.userId || m.id,
+        name: m.realName || m.name || m.username,
+        departmentId: currentUserDepartmentId.value
+      }))
+    }
+  } catch (_e) {
+    // 静默处理错误
+    console.warn('[PerformanceData] 加载销售人员失败:', _e)
+  }
+}
+
+// 部门变化时，清空销售人员筛选
+const handleDepartmentChange = () => {
+  // 如果选择了部门，清空销售人员筛选（除非是销售员）
+  if (!isSales.value) {
+    salesPersonFilter.value = ''
+  }
+  loadData()
+  loadStatistics()
+}
+
+// 筛选条件变化
+const handleFilterChange = () => {
+  loadData()
+  loadStatistics()
 }
 
 // 加载数据
@@ -278,13 +387,24 @@ const loadData = async () => {
       params.endDate = dateRange.value[1]
     }
 
+    console.log('[PerformanceData] loadData params:', params)
     const res = await financeApi.getPerformanceDataList(params)
-    if (res.data?.success) {
-      tableData.value = res.data.data.list
-      pagination.total = res.data.data.total
+    console.log('[PerformanceData] loadData res:', JSON.stringify(res))
+
+    // 响应拦截器返回 response.data.data，即 { list: [], total: 0 }
+    const resData = res as any
+    if (resData && Array.isArray(resData.list)) {
+      tableData.value = resData.list
+      pagination.total = resData.total || 0
+    } else {
+      tableData.value = []
+      pagination.total = 0
     }
-  } catch (_e) {
+  } catch (e) {
+    console.error('[PerformanceData] loadData error:', e)
     ElMessage.error('加载数据失败')
+    tableData.value = []
+    pagination.total = 0
   } finally {
     loading.value = false
   }
@@ -298,17 +418,31 @@ const loadStatistics = async () => {
       params.startDate = dateRange.value[0]
       params.endDate = dateRange.value[1]
     }
-    const res = await financeApi.getPerformanceDataStatistics(params)
-    if (res.data?.success) {
-      Object.assign(statistics, res.data.data)
+    // 传入所有筛选条件
+    if (departmentFilter.value) params.departmentId = departmentFilter.value
+    if (salesPersonFilter.value) params.salesPersonId = salesPersonFilter.value
+    if (statusFilter.value) params.performanceStatus = statusFilter.value
+    if (coefficientFilter.value) params.performanceCoefficient = coefficientFilter.value
+
+    const res = (await financeApi.getPerformanceDataStatistics(params)) as any
+    console.log('[PerformanceData] loadStatistics res:', res)
+
+    // 处理不同的响应格式
+    if (res && typeof res === 'object') {
+      if (res.shippedCount !== undefined) {
+        Object.assign(statistics, res)
+      } else if (res.data && typeof res.data === 'object') {
+        Object.assign(statistics, res.data)
+      }
     }
   } catch (e) {
-    console.error('加载统计失败:', e)
+    console.error('[PerformanceData] loadStatistics error:', e)
   }
 }
 
-// 快捷日期切换
-const handleQuickDateChange = (val: string) => {
+// 快捷日期点击
+const handleQuickDateClick = (val: string) => {
+  quickDateFilter.value = val
   const now = new Date()
   let start: Date, end: Date
 
@@ -327,6 +461,7 @@ const handleQuickDateChange = (val: string) => {
       break
     case 'all':
       dateRange.value = null
+      pagination.currentPage = 1
       loadData()
       loadStatistics()
       return
@@ -335,11 +470,12 @@ const handleQuickDateChange = (val: string) => {
   }
 
   dateRange.value = [formatDateStr(start), formatDateStr(end)]
+  pagination.currentPage = 1
   loadData()
   loadStatistics()
 }
 
-// 日期变化
+// 日期选择变化
 const handleDateChange = () => {
   quickDateFilter.value = ''
   loadData()
@@ -371,7 +507,7 @@ const goToCustomerDetail = (id: string) => {
 }
 
 // 物流弹窗
-const showLogisticsDialog = (row: PerformanceOrder) => {
+const _showLogisticsDialog = (row: PerformanceOrder) => {
   currentTrackingNumber.value = row.trackingNumber
   currentExpressCompany.value = ''
   logisticsDialogVisible.value = true
@@ -390,8 +526,8 @@ const formatDateStr = (date: Date) => {
   return `${y}-${m}-${d}`
 }
 
-const formatMoney = (val: number) => {
-  return (val || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+const formatMoney = (val: number | string) => {
+  return Number(val || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
 // 状态映射
@@ -431,9 +567,22 @@ const getPerformanceStatusText = (status: string) => {
   return map[status] || status
 }
 
-const getCoefficientClass = (val: number) => {
-  if (val >= 1) return 'coefficient-full'
-  if (val >= 0.5) return 'coefficient-half'
+// 备注中文映射
+const remarkLabelMap: Record<string, string> = {
+  normal: '正常',
+  return: '退货',
+  refund: '退款'
+}
+
+const getRemarkLabel = (value: string) => {
+  if (!value) return '-'
+  return remarkLabelMap[value] || value
+}
+
+const getCoefficientClass = (val: number | string) => {
+  const num = Number(val || 0)
+  if (num >= 1) return 'coefficient-full'
+  if (num >= 0.5) return 'coefficient-half'
   return 'coefficient-zero'
 }
 </script>
@@ -447,6 +596,16 @@ const getCoefficientClass = (val: number) => {
 
 .stats-cards {
   margin-bottom: 20px;
+}
+
+.stats-row {
+  display: flex;
+  gap: 16px;
+}
+
+.stats-row .stat-card {
+  flex: 1;
+  min-width: 0;
 }
 
 .stat-card {
@@ -498,22 +657,53 @@ const getCoefficientClass = (val: number) => {
   margin-bottom: 16px;
 }
 
+.quick-btn-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.quick-btn {
+  padding: 8px 16px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fff;
+  color: #606266;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quick-btn:hover {
+  color: #409eff;
+  border-color: #c6e2ff;
+  background: #ecf5ff;
+}
+
+.quick-btn.active {
+  color: #fff;
+  background: #409eff;
+  border-color: #409eff;
+}
+
 .filter-bar {
   background: #fff;
-  padding: 16px;
+  padding: 12px 16px;
   border-radius: 8px;
   margin-bottom: 16px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
+  align-items: center;
+}
+
+.filter-date {
+  flex: 0 0 25%;
+  max-width: 25%;
 }
 
 .filter-item {
-  width: 160px;
-}
-
-.search-input {
-  width: 200px;
+  flex: 1;
+  min-width: 0;
 }
 
 .data-table {
@@ -536,5 +726,17 @@ const getCoefficientClass = (val: number) => {
 .commission-value {
   color: #f5222d;
   font-weight: 500;
+}
+
+.logistics-info-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-gray-400 {
+  color: #909399;
 }
 </style>

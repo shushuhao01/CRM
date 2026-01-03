@@ -8,6 +8,12 @@ export class CommissionLadder {
   @Column({ name: 'commission_type', type: 'enum', enum: ['amount', 'count'], default: 'amount', comment: '计提方式' })
   commissionType: 'amount' | 'count';
 
+  @Column({ name: 'department_id', type: 'varchar', length: 36, nullable: true, comment: '适用部门ID，为空表示全局' })
+  departmentId?: string;
+
+  @Column({ name: 'department_name', type: 'varchar', length: 100, nullable: true, comment: '适用部门名称' })
+  departmentName?: string;
+
   @Column({ name: 'min_value', type: 'decimal', precision: 12, scale: 2, default: 0, comment: '阶梯起点' })
   minValue: number;
 

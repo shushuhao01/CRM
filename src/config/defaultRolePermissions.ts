@@ -76,7 +76,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       'afterSales.data', 'afterSales.data.view', 'afterSales.data.analysis',
 
       // 资料管理（禁止：回收站）
-      'data', 'data.search', 'data.search.basic', 'data.search.advanced'
+      'data', 'data.search', 'data.search.basic', 'data.search.advanced',
+
+      // 财务管理（仅绩效数据，本部门数据）
+      'finance', 'finance.performance_data', 'finance.performance_data.view'
     ],
     description: '管理本部门业务和团队，查看部门数据'
   },
@@ -113,7 +116,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       'afterSales.add', 'afterSales.add.create',
 
       // 资料管理（移除回收站）
-      'data', 'data.search', 'data.search.basic'
+      'data', 'data.search', 'data.search.basic',
+
+      // 财务管理（仅绩效数据，个人数据）
+      'finance', 'finance.performance_data', 'finance.performance_data.view'
     ],
     description: '专注于客户开发和订单管理，查看个人数据'
   },

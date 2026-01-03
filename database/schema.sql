@@ -2506,6 +2506,8 @@ DROP TABLE IF EXISTS `commission_ladder`;
 CREATE TABLE `commission_ladder` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `commission_type` ENUM('amount', 'count') NOT NULL DEFAULT 'amount' COMMENT '计提方式: amount-按业绩金额, count-按签收单数',
+  `department_id` VARCHAR(36) DEFAULT NULL COMMENT '适用部门ID，为空表示全局',
+  `department_name` VARCHAR(100) DEFAULT NULL COMMENT '适用部门名称',
   `min_value` DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '阶梯起点',
   `max_value` DECIMAL(12,2) DEFAULT NULL COMMENT '阶梯终点（NULL表示无上限）',
   `commission_rate` DECIMAL(5,4) DEFAULT NULL COMMENT '提成比例（按业绩时用，如0.03表示3%）',
@@ -2515,6 +2517,7 @@ CREATE TABLE `commission_ladder` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_commission_type` (`commission_type`),
+  INDEX `idx_department_id` (`department_id`),
   INDEX `idx_is_active` (`is_active`),
   INDEX `idx_sort_order` (`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='计提阶梯配置表';
