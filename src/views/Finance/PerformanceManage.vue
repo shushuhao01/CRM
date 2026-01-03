@@ -105,6 +105,9 @@
       <div class="action-right">
         <el-button type="primary" :icon="Refresh" @click="handleRefresh">刷新</el-button>
         <el-button :icon="Setting" @click="showConfigDialog">配置管理</el-button>
+        <el-button :icon="Download" :disabled="selectedRows.length === 0" @click="handleExport">
+          批量导出
+        </el-button>
         <el-button type="success" :disabled="selectedRows.length === 0" @click="batchSetValid">
           批量设为有效
         </el-button>
@@ -233,7 +236,7 @@
       <el-pagination
         v-model:current-page="pagination.currentPage"
         v-model:page-size="pagination.pageSize"
-        :page-sizes="[10, 20, 50, 100, 200, 300]"
+        :page-sizes="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
         :total="pagination.total"
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="handleSizeChange"
@@ -257,7 +260,7 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Clock, CircleCheck, Select, TrendCharts, Search, Refresh, Setting, ArrowDown } from '@element-plus/icons-vue'
+import { Clock, CircleCheck, Select, TrendCharts, Search, Refresh, Setting, ArrowDown, Download } from '@element-plus/icons-vue'
 import { financeApi, type PerformanceOrder, type PerformanceManageStatistics, type FinanceConfigData } from '@/api/finance'
 import PerformanceConfigDialog from './components/PerformanceConfigDialog.vue'
 import LogisticsTraceDialog from '@/components/Logistics/LogisticsTraceDialog.vue'
@@ -782,6 +785,67 @@ const handleBatchRemark = async (remark: string) => {
     loadStatistics()
   } catch (_e) {
     ElMessage.error('批量设置备注失败')
+  }
+}
+
+// 批量导出
+const handleExport = async () => {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先选择要导出的数据')
+    return
+  }
+
+  try {
+    const XLSX = await import('xlsx')
+
+    // 准备导出数据
+    const exportData = selectedRows.value.map((row) => ({
+      订单号: row.orderNumber,
+      客户姓名: row.customerName,
+      订单状态: getStatusText(row.status),
+      最新物流动态: row.latestLogisticsInfo || '',
+      下单日期: formatDate(row.createdAt),
+      订单金额: Number(row.totalAmount || 0),
+      部门: row.createdByDepartmentName || '',
+      销售人员: row.createdByName || '',
+      有效状态: getStatusLabel(row.performanceStatus || ''),
+      系数: Number(row.performanceCoefficient || 0),
+      备注: getRemarkLabel(row.performanceRemark || ''),
+      预估佣金: Number(row.estimatedCommission || 0)
+    }))
+
+    // 创建工作簿
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(exportData)
+
+    // 设置列宽
+    ws['!cols'] = [
+      { wch: 20 }, // 订单号
+      { wch: 10 }, // 客户姓名
+      { wch: 10 }, // 订单状态
+      { wch: 40 }, // 最新物流动态
+      { wch: 12 }, // 下单日期
+      { wch: 12 }, // 订单金额
+      { wch: 12 }, // 部门
+      { wch: 10 }, // 销售人员
+      { wch: 10 }, // 有效状态
+      { wch: 8 },  // 系数
+      { wch: 10 }, // 备注
+      { wch: 12 }  // 预估佣金
+    ]
+
+    XLSX.utils.book_append_sheet(wb, ws, '绩效管理')
+
+    // 生成文件名
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const fileName = `绩效管理_${dateStr}.xlsx`
+
+    // 导出
+    XLSX.writeFile(wb, fileName)
+    ElMessage.success(`成功导出 ${exportData.length} 条数据`)
+  } catch (e) {
+    console.error('导出失败:', e)
+    ElMessage.error('导出失败')
   }
 }
 
