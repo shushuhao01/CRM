@@ -821,7 +821,7 @@ const loadData = async (showMessage = false) => {
     if (activeTab.value === 'pending') {
       statusParam = 'shipped'  // 待更新 = 已发货状态
     } else if (activeTab.value === 'updated') {
-      statusParam = 'delivered'  // 已更新 = 已签收状态（后端会包含delivered等终态）
+      statusParam = 'updated'  // 🔥 修复：已更新 = 所有非shipped状态（delivered, rejected, returned等）
     }
     // todo标签页暂时不传status，获取全部后前端筛选
 
@@ -831,12 +831,16 @@ const loadData = async (showMessage = false) => {
 
     console.log(`[状态更新] 🚀 加载数据, 页码: ${pagination.currentPage}, 每页: ${pagination.pageSize}, 订单状态: ${statusParam || '全部'}, 物流状态: ${statusFilter.value || '全部'}, 日期: ${startDate || '无'} ~ ${endDate || '无'}`)
 
+    // 🔥 修复：搜索关键词同时传递给 orderNumber 和 customerName
+    const keyword = searchKeyword.value?.trim() || undefined
+
     const response = await orderApi.getShippingShipped({
       page: pagination.currentPage,
       pageSize: pagination.pageSize,
       status: statusParam,
       logisticsStatus: statusFilter.value || undefined,  // 🔥 传递物流状态筛选参数给后端
-      orderNumber: searchKeyword.value || undefined,
+      orderNumber: keyword,  // 🔥 修复：搜索关键词
+      customerName: keyword, // 🔥 修复：同时搜索客户名称
       departmentId: departmentFilter.value || undefined,
       salesPersonId: salesPersonFilter.value || undefined,
       startDate,  // 🔥 传递日期参数给后端

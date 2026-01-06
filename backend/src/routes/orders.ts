@@ -945,11 +945,15 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
         'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
       ]);
 
-    // 状态筛选
-    if (status && status !== 'all') {
+    // 🔥 修复：状态筛选 - 支持 updated 参数查询所有非 shipped 状态
+    if (status === 'updated') {
+      // 已更新 = 所有非 shipped 状态的订单（delivered, rejected, returned 等）
+      queryBuilder.where('order.status IN (:...statuses)', { statuses: ['delivered', 'rejected', 'returned', 'abnormal', 'exception'] });
+      console.log(`🚚 [已发货订单] 查询已更新订单（非shipped状态）`);
+    } else if (status && status !== 'all') {
       queryBuilder.where('order.status = :status', { status });
     } else {
-      queryBuilder.where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered'] });
+      queryBuilder.where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered', 'rejected', 'returned', 'abnormal', 'exception'] });
     }
 
     // 🔥 物流状态筛选
@@ -1004,12 +1008,19 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
       console.log(`🚚 [已发货订单] ${userRole}角色，查看所有订单`);
     }
 
-    // 支持筛选
-    if (orderNumber) {
-      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
-    }
-    if (customerName) {
-      queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+    // 🔥 修复：支持关键词搜索（订单号 OR 客户名称）
+    if (orderNumber && customerName && orderNumber === customerName) {
+      // 如果订单号和客户名称相同，说明是同一个搜索关键词，使用 OR 条件
+      queryBuilder.andWhere('(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword)', { keyword: `%${orderNumber}%` });
+      console.log(`🚚 [已发货订单] 关键词搜索: "${orderNumber}"`);
+    } else {
+      // 分别筛选
+      if (orderNumber) {
+        queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+      }
+      if (customerName) {
+        queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+      }
     }
     if (trackingNumber) {
       queryBuilder.andWhere('order.trackingNumber LIKE :trackingNumber', { trackingNumber: `%${trackingNumber}%` });
