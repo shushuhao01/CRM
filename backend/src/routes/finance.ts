@@ -23,11 +23,25 @@ router.get('/performance-data/statistics', async (req: Request, res: Response) =
     const userId = user?.userId || user?.id || '';
     const userDepartmentId = user?.departmentId || '';
 
-    const { startDate, endDate, departmentId, salesPersonId, performanceStatus, performanceCoefficient } = req.query;
+    const { startDate, endDate, departmentId, salesPersonId, _performanceStatus, performanceCoefficient } = req.query;
     const orderRepo = AppDataSource.getRepository(Order);
 
-    // 已发货后的所有状态（从发货列表提交发货后的订单）
-    const shippedStatuses = ['shipped', 'delivered', 'completed', 'signed', 'rejected', 'rejected_returned', 'refunded', 'after_sales_created'];
+    // 🔥 已发货后的所有状态（从发货列表提交发货后的订单）- 完整列表
+    const shippedStatuses = [
+      'shipped',           // 已发货
+      'delivered',         // 已签收
+      'completed',         // 已完成
+      'signed',            // 已签收（别名）
+      'rejected',          // 拒收
+      'rejected_returned', // 拒收已退回
+      'refunded',          // 已退款
+      'after_sales_created', // 已建售后
+      'package_exception', // 包裹异常
+      'abnormal',          // 异常
+      'exception'          // 异常（别名）
+    ];
+    // 签收状态
+    const deliveredStatuses = ['delivered', 'completed', 'signed'];
 
     const queryBuilder = orderRepo.createQueryBuilder('order')
       .where('order.status IN (:...statuses)', { statuses: shippedStatuses });
@@ -45,14 +59,12 @@ router.get('/performance-data/statistics', async (req: Request, res: Response) =
     if (salesPersonId) {
       queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     }
-    if (performanceStatus) {
-      queryBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
-    }
+    // 🔥 统计卡片不受 performanceStatus 筛选影响
     if (performanceCoefficient) {
       queryBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
     }
 
-    const allowAllRoles = ['super_admin', 'admin', 'customer_service'];
+    const allowAllRoles = ['super_admin', 'admin', 'customer_service', 'finance'];
     const managerRoles = ['department_manager', 'manager'];
 
     if (!allowAllRoles.includes(userRole)) {
@@ -64,8 +76,11 @@ router.get('/performance-data/statistics', async (req: Request, res: Response) =
     }
 
     const [shippedCount, deliveredCount, validCount, coefficientSum] = await Promise.all([
-      queryBuilder.clone().andWhere('order.status = :status', { status: 'shipped' }).getCount(),
-      queryBuilder.clone().andWhere('order.status IN (:...s)', { s: ['delivered', 'completed', 'signed'] }).getCount(),
+      // 🔥 发货单数：统计所有发货后状态的订单总数（已发货、已签收、拒收等）
+      queryBuilder.clone().getCount(),
+      // 🔥 签收单数：只统计已签收状态的订单
+      queryBuilder.clone().andWhere('order.status IN (:...s)', { s: deliveredStatuses }).getCount(),
+      // 有效单数
       queryBuilder.clone().andWhere('order.performanceStatus = :ps', { ps: 'valid' }).getCount(),
       // 系数合计：只计算有效订单且系数>0的
       queryBuilder.clone()
@@ -114,8 +129,20 @@ router.get('/performance-data', async (req: Request, res: Response) => {
 
     const orderRepo = AppDataSource.getRepository(Order);
 
-    // 已发货后的所有状态（从发货列表提交发货后的订单）
-    const shippedStatuses = ['shipped', 'delivered', 'completed', 'signed', 'rejected', 'rejected_returned', 'refunded', 'after_sales_created'];
+    // 🔥 已发货后的所有状态（从发货列表提交发货后的订单）- 完整列表
+    const shippedStatuses = [
+      'shipped',           // 已发货
+      'delivered',         // 已签收
+      'completed',         // 已完成
+      'signed',            // 已签收（别名）
+      'rejected',          // 拒收
+      'rejected_returned', // 拒收已退回
+      'refunded',          // 已退款
+      'after_sales_created', // 已建售后
+      'package_exception', // 包裹异常
+      'abnormal',          // 异常
+      'exception'          // 异常（别名）
+    ];
 
     const queryBuilder = orderRepo.createQueryBuilder('order')
       .leftJoin(Department, 'dept', 'dept.id = order.createdByDepartmentId')
@@ -194,27 +221,44 @@ router.get('/performance-data', async (req: Request, res: Response) => {
 // Get performance manage statistics
 router.get('/performance-manage/statistics', async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate, departmentId, salesPersonId, performanceStatus, performanceCoefficient } = req.query;
+    const { startDate, endDate, departmentId, salesPersonId, performanceCoefficient } = req.query;
+    // 🔥 注意：这里不接收 performanceStatus 参数，因为汇总卡片需要显示所有状态的统计
     const orderRepo = AppDataSource.getRepository(Order);
 
-    // 已发货后的所有状态（从发货列表提交发货后的订单）
-    const shippedStatuses = ['shipped', 'delivered', 'completed', 'signed', 'rejected', 'rejected_returned', 'refunded', 'after_sales_created'];
+    // 🔥 已发货后的所有状态（从发货列表提交发货后的订单）- 完整列表
+    const shippedStatuses = [
+      'shipped',           // 已发货
+      'delivered',         // 已签收
+      'completed',         // 已完成
+      'signed',            // 已签收（别名）
+      'rejected',          // 拒收
+      'rejected_returned', // 拒收已退回
+      'refunded',          // 已退款
+      'after_sales_created', // 已建售后
+      'package_exception', // 包裹异常
+      'abnormal',          // 异常
+      'exception'          // 异常（别名）
+    ];
 
     const queryBuilder = orderRepo.createQueryBuilder('order')
       .where('order.status IN (:...statuses)', { statuses: shippedStatuses });
 
     if (startDate) queryBuilder.andWhere('order.createdAt >= :startDate', { startDate });
     if (endDate) queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
-    // 支持筛选条件
+    // 支持筛选条件（但不包括 performanceStatus，因为汇总卡片需要显示所有状态）
     if (departmentId) queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
     if (salesPersonId) queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
-    if (performanceStatus) queryBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
     if (performanceCoefficient) queryBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
 
+    // 🔥 修复：处理 NULL 值，将 NULL 视为 pending
     const [pendingCount, processedCount, validCount, invalidCount, coefficientSum] = await Promise.all([
-      queryBuilder.clone().andWhere('order.performanceStatus = :ps', { ps: 'pending' }).getCount(),
-      queryBuilder.clone().andWhere('order.performanceStatus != :ps', { ps: 'pending' }).getCount(),
+      // 待处理：performanceStatus = 'pending' 或 NULL
+      queryBuilder.clone().andWhere('(order.performanceStatus = :ps OR order.performanceStatus IS NULL)', { ps: 'pending' }).getCount(),
+      // 已处理：performanceStatus != 'pending' 且不为 NULL
+      queryBuilder.clone().andWhere('order.performanceStatus IS NOT NULL AND order.performanceStatus != :ps', { ps: 'pending' }).getCount(),
+      // 有效：performanceStatus = 'valid'
       queryBuilder.clone().andWhere('order.performanceStatus = :ps', { ps: 'valid' }).getCount(),
+      // 无效：performanceStatus = 'invalid'
       queryBuilder.clone().andWhere('order.performanceStatus = :ps', { ps: 'invalid' }).getCount(),
       // 系数合计：只计算有效订单且系数>0的
       queryBuilder.clone()
@@ -223,6 +267,8 @@ router.get('/performance-manage/statistics', async (req: Request, res: Response)
         .select('SUM(order.performanceCoefficient)', 'total')
         .getRawOne()
     ]);
+
+    console.log(`[Finance] 绩效管理统计: 待处理=${pendingCount}, 已处理=${processedCount}, 有效=${validCount}, 无效=${invalidCount}, 系数合计=${coefficientSum?.total || 0}`);
 
     res.json({
       success: true,
@@ -245,8 +291,20 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
 
     const orderRepo = AppDataSource.getRepository(Order);
 
-    // 已发货后的所有状态（从发货列表提交发货后的订单）
-    const shippedStatuses = ['shipped', 'delivered', 'completed', 'signed', 'rejected', 'rejected_returned', 'refunded', 'after_sales_created'];
+    // 🔥 已发货后的所有状态（从发货列表提交发货后的订单）- 完整列表
+    const shippedStatuses = [
+      'shipped',           // 已发货
+      'delivered',         // 已签收
+      'completed',         // 已完成
+      'signed',            // 已签收（别名）
+      'rejected',          // 拒收
+      'rejected_returned', // 拒收已退回
+      'refunded',          // 已退款
+      'after_sales_created', // 已建售后
+      'package_exception', // 包裹异常
+      'abnormal',          // 异常
+      'exception'          // 异常（别名）
+    ];
 
     const queryBuilder = orderRepo.createQueryBuilder('order')
       .leftJoin(Department, 'dept', 'dept.id = order.createdByDepartmentId')

@@ -191,7 +191,7 @@
     <el-dialog
       v-model="senderPhoneDialogVisible"
       title="寄件人手机号设置"
-      width="450px"
+      width="480px"
       :close-on-click-modal="false"
     >
       <el-form :model="senderPhoneForm" label-width="120px">
@@ -207,11 +207,26 @@
             </template>
           </el-input>
         </el-form-item>
+        <!-- 🔥 管理员可选择全员生效（只有管理员和超管可见） -->
+        <el-form-item v-if="isAdmin" label="应用范围">
+          <el-radio-group v-model="senderPhoneForm.applyToAll">
+            <el-radio :label="false">仅自己使用</el-radio>
+            <el-radio :label="true">全员生效</el-radio>
+          </el-radio-group>
+          <div class="apply-scope-tip">
+            <el-text type="info" size="small">
+              {{ senderPhoneForm.applyToAll ? '💡 设置后所有员工都将使用此手机号' : '💡 仅自己使用，不影响其他员工' }}
+            </el-text>
+          </div>
+        </el-form-item>
         <el-form-item>
           <div class="sender-phone-tips">
             <p>💡 设置后，查询顺丰等需要验证的物流时将自动使用此手机号</p>
             <p>💡 支持输入完整11位手机号或后4位数字</p>
             <p>💡 如果查询失败，仍会弹出手动输入框</p>
+            <p v-if="configSource" class="config-source">
+              📌 当前配置来源：{{ configSource }}
+            </p>
           </div>
         </el-form-item>
       </el-form>
@@ -227,11 +242,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount, onActivated, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, onActivated, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { createSafeNavigator } from '@/utils/navigation'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
+import { useUserStore } from '@/stores/user'
 import PhoneVerifyDialog from '@/components/Logistics/PhoneVerifyDialog.vue'
 import {
   Search,
@@ -266,9 +282,18 @@ const pendingCompanyCode = ref('')
 const senderPhoneDialogVisible = ref(false)
 const savingSenderPhone = ref(false)
 const senderPhoneForm = reactive({
-  phone: ''
+  phone: '',
+  applyToAll: false  // 🔥 是否全员生效
 })
 const presetSenderPhone = ref('') // 预设的寄件人手机号
+const configSource = ref('') // 🔥 配置来源（用户级/系统级）
+
+// 🔥 判断当前用户是否是管理员
+const isAdmin = computed(() => {
+  const userStore = useUserStore()
+  const role = userStore.currentUser?.role
+  return role === 'super_admin' || role === 'admin'
+})
 
 // 超时ID跟踪，用于清理异步操作
 const timeoutIds = new Set<NodeJS.Timeout>()
@@ -371,8 +396,17 @@ const loadPresetSenderPhone = async () => {
     if (response?.configValue) {
       presetSenderPhone.value = response.configValue
       senderPhoneForm.phone = response.configValue
-      console.log('[物流跟踪] ✅ 加载预设寄件人手机号成功:', '****' + presetSenderPhone.value.slice(-4))
+      // 🔥 显示配置来源
+      if (response.isUserLevel) {
+        configSource.value = '个人设置'
+      } else if (response.isSystemLevel) {
+        configSource.value = '系统设置（管理员配置）'
+      } else if (response.isLegacy) {
+        configSource.value = '历史配置'
+      }
+      console.log('[物流跟踪] ✅ 加载预设寄件人手机号成功:', '****' + presetSenderPhone.value.slice(-4), '来源:', configSource.value)
     } else {
+      configSource.value = ''
       console.log('[物流跟踪] ⚠️ 未找到预设寄件人手机号配置')
     }
   } catch (error) {
@@ -385,6 +419,7 @@ const loadPresetSenderPhone = async () => {
  */
 const showSenderPhoneDialog = () => {
   senderPhoneForm.phone = presetSenderPhone.value
+  senderPhoneForm.applyToAll = false  // 🔥 默认不全员生效
   senderPhoneDialogVisible.value = true
 }
 
@@ -405,12 +440,26 @@ const saveSenderPhone = async () => {
     const { apiService } = await import('@/services/apiService')
     await apiService.post('/system/config/logistics_sender_phone', {
       configValue: phone,
-      description: '物流查询预设寄件人手机号'
+      description: '物流查询预设寄件人手机号',
+      applyToAll: isAdmin.value && senderPhoneForm.applyToAll  // 🔥 管理员可选择全员生效
     })
 
     presetSenderPhone.value = phone
     senderPhoneDialogVisible.value = false
-    ElMessage.success(phone ? '寄件人手机号设置成功' : '已清除寄件人手机号设置')
+
+    // 🔥 根据保存类型显示不同提示
+    if (phone) {
+      if (isAdmin.value && senderPhoneForm.applyToAll) {
+        ElMessage.success('寄件人手机号设置成功，已全员生效')
+        configSource.value = '系统设置（管理员配置）'
+      } else {
+        ElMessage.success('寄件人手机号设置成功')
+        configSource.value = '个人设置'
+      }
+    } else {
+      ElMessage.success('已清除寄件人手机号设置')
+      configSource.value = ''
+    }
   } catch (error) {
     console.error('[物流跟踪] 保存寄件人手机号失败:', error)
     ElMessage.error('保存失败，请重试')
@@ -1207,6 +1256,17 @@ onBeforeUnmount(() => {
 
 .sender-phone-tips p {
   margin: 0;
+}
+
+.sender-phone-tips .config-source {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #dcdfe6;
+  color: #909399;
+}
+
+.apply-scope-tip {
+  margin-top: 8px;
 }
 
 /* 响应式设计 */
