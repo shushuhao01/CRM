@@ -2588,4 +2588,89 @@ router.delete('/backup/cleanup', authenticateToken, requireAdmin, async (req: Re
   }
 });
 
+/**
+ * @route GET /api/v1/system/config/:configKey
+ * @desc 获取单个系统配置
+ * @access Private
+ */
+router.get('/config/:configKey', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configKey } = req.params;
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+
+    const config = await configRepository.findOne({
+      where: { configKey, isEnabled: true }
+    });
+
+    if (config) {
+      res.json({
+        success: true,
+        configKey: config.configKey,
+        configValue: config.configValue,
+        valueType: config.valueType,
+        description: config.description
+      });
+    } else {
+      res.json({
+        success: true,
+        configKey,
+        configValue: null
+      });
+    }
+  } catch (error) {
+    console.error('获取系统配置失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取配置失败'
+    });
+  }
+});
+
+/**
+ * @route POST /api/v1/system/config/:configKey
+ * @desc 保存单个系统配置
+ * @access Private
+ */
+router.post('/config/:configKey', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configKey } = req.params;
+    const { configValue, description } = req.body;
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+
+    let config = await configRepository.findOne({
+      where: { configKey }
+    });
+
+    if (config) {
+      config.configValue = configValue || '';
+      if (description) config.description = description;
+      config.updatedAt = new Date();
+    } else {
+      config = configRepository.create({
+        configKey,
+        configValue: configValue || '',
+        valueType: 'string',
+        configGroup: 'logistics_settings',
+        description: description || '',
+        isEnabled: true,
+        isSystem: false,
+        sortOrder: 100
+      });
+    }
+
+    await configRepository.save(config);
+
+    res.json({
+      success: true,
+      message: '配置保存成功'
+    });
+  } catch (error) {
+    console.error('保存系统配置失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '保存配置失败'
+    });
+  }
+});
+
 export default router;

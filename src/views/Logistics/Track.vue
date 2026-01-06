@@ -44,6 +44,9 @@
           <el-button @click="handleReset" :icon="Refresh">
             重置
           </el-button>
+          <el-button @click="showSenderPhoneDialog" :icon="Setting">
+            设置
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -183,6 +186,43 @@
       :loading="loading"
       @submit="handlePhoneVerifySubmit"
     />
+
+    <!-- 寄件人手机号设置弹窗 -->
+    <el-dialog
+      v-model="senderPhoneDialogVisible"
+      title="寄件人手机号设置"
+      width="450px"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="senderPhoneForm" label-width="120px">
+        <el-form-item label="寄件人手机号">
+          <el-input
+            v-model="senderPhoneForm.phone"
+            placeholder="请输入完整手机号或后4位"
+            clearable
+            maxlength="11"
+          >
+            <template #prepend>
+              <el-icon><Phone /></el-icon>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item>
+          <div class="sender-phone-tips">
+            <p>💡 设置后，查询顺丰等需要验证的物流时将自动使用此手机号</p>
+            <p>💡 支持输入完整11位手机号或后4位数字</p>
+            <p>💡 如果查询失败，仍会弹出手动输入框</p>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="clearSenderPhone" type="danger" plain>清除设置</el-button>
+          <el-button @click="senderPhoneDialogVisible = false">取消</el-button>
+          <el-button @click="saveSenderPhone" type="primary" :loading="savingSenderPhone">保存</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -201,7 +241,9 @@ import {
   User,
   Box,
   Check,
-  Warning
+  Warning,
+  Setting,
+  Phone
 } from '@element-plus/icons-vue'
 
 // 路由
@@ -219,6 +261,14 @@ const batchDialogVisible = ref(false)
 const phoneVerifyDialogVisible = ref(false)
 const pendingTrackingNo = ref('')
 const pendingCompanyCode = ref('')
+
+// 寄件人手机号设置相关
+const senderPhoneDialogVisible = ref(false)
+const savingSenderPhone = ref(false)
+const senderPhoneForm = reactive({
+  phone: ''
+})
+const presetSenderPhone = ref('') // 预设的寄件人手机号
 
 // 超时ID跟踪，用于清理异步操作
 const timeoutIds = new Set<NodeJS.Timeout>()
@@ -308,6 +358,70 @@ const useDefaultCompanies = () => {
     { code: 'JD', name: '京东物流' },
     { code: 'EMS', name: '中国邮政' }
   ]
+}
+
+/**
+ * 🔥 加载预设的寄件人手机号
+ */
+const loadPresetSenderPhone = async () => {
+  try {
+    const { apiService } = await import('@/services/apiService')
+    const response = await apiService.get('/system/config/logistics_sender_phone')
+    if (response?.configValue) {
+      presetSenderPhone.value = response.configValue
+      senderPhoneForm.phone = response.configValue
+      console.log('[物流跟踪] 加载预设寄件人手机号:', presetSenderPhone.value ? presetSenderPhone.value.slice(-4) + '****' : '(空)')
+    }
+  } catch (error) {
+    console.log('[物流跟踪] 加载预设寄件人手机号失败:', error)
+  }
+}
+
+/**
+ * 🔥 显示寄件人手机号设置弹窗
+ */
+const showSenderPhoneDialog = () => {
+  senderPhoneForm.phone = presetSenderPhone.value
+  senderPhoneDialogVisible.value = true
+}
+
+/**
+ * 🔥 保存寄件人手机号设置
+ */
+const saveSenderPhone = async () => {
+  const phone = senderPhoneForm.phone.trim()
+
+  // 验证手机号格式（允许4位或11位）
+  if (phone && !/^(\d{4}|\d{11})$/.test(phone)) {
+    ElMessage.warning('请输入完整11位手机号或后4位数字')
+    return
+  }
+
+  savingSenderPhone.value = true
+  try {
+    const { apiService } = await import('@/services/apiService')
+    await apiService.post('/system/config/logistics_sender_phone', {
+      configValue: phone,
+      description: '物流查询预设寄件人手机号'
+    })
+
+    presetSenderPhone.value = phone
+    senderPhoneDialogVisible.value = false
+    ElMessage.success(phone ? '寄件人手机号设置成功' : '已清除寄件人手机号设置')
+  } catch (error) {
+    console.error('[物流跟踪] 保存寄件人手机号失败:', error)
+    ElMessage.error('保存失败，请重试')
+  } finally {
+    savingSenderPhone.value = false
+  }
+}
+
+/**
+ * 🔥 清除寄件人手机号设置
+ */
+const clearSenderPhone = async () => {
+  senderPhoneForm.phone = ''
+  await saveSenderPhone()
 }
 
 /**
@@ -430,6 +544,13 @@ const handleSearch = async (phone?: string) => {
   try {
     // 🔥 修复：先尝试从订单API获取手机号（无论是否传入phone参数）
     let phoneToUse = phone
+
+    // 🔥 新增：如果没有传入手机号，优先使用预设的寄件人手机号
+    if (!phoneToUse && presetSenderPhone.value) {
+      phoneToUse = presetSenderPhone.value
+      console.log('[物流跟踪] 使用预设寄件人手机号:', phoneToUse.slice(-4) + '****')
+    }
+
     if (!phoneToUse) {
       try {
         const { orderApi } = await import('@/api/order')
@@ -854,6 +975,9 @@ onMounted(async () => {
   // 🔥 从API加载物流公司列表
   await loadLogisticsCompanies()
 
+  // 🔥 加载预设的寄件人手机号
+  await loadPresetSenderPhone()
+
   const loadTime = Date.now() - startTime
   console.log(`[物流跟踪] ✅ 页面初始化完成，耗时: ${loadTime}ms`)
 
@@ -1049,6 +1173,19 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.sender-phone-tips {
+  background: #f5f7fa;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.8;
+}
+
+.sender-phone-tips p {
+  margin: 0;
 }
 
 /* 响应式设计 */
