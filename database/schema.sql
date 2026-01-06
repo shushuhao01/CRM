@@ -619,6 +619,8 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('imageCompressEnabled', 'true', 'boolean', 'storage_settings', '启用图片压缩', 1, 1, 6),
 ('imageCompressQuality', 'medium', 'string', 'storage_settings', '图片压缩质量', 1, 1, 7),
 ('imageCompressMaxWidth', '1200', 'number', 'storage_settings', '图片最大宽度', 1, 1, 8),
+-- 物流设置
+('logistics_sender_phone', '', 'string', 'logistics_settings', '物流查询预设寄件人手机号', 1, 0, 1),
 -- 邮件设置
 ('smtpHost', '', 'string', 'email_settings', 'SMTP服务器', 1, 1, 1),
 ('smtpPort', '587', 'number', 'email_settings', 'SMTP端口', 1, 1, 2),
@@ -2566,3 +2568,354 @@ INSERT INTO `commission_ladder` (`commission_type`, `min_value`, `max_value`, `c
 ('count', 50, 100, 40.00, 2),
 ('count', 100, NULL, 50.00, 3)
 ON DUPLICATE KEY UPDATE `commission_per_unit` = VALUES(`commission_per_unit`);
+
+ON DUPLICATE KEY UPDATE `commission_per_unit` = VALUES(`commission_per_unit`);
+
+-- =============================================
+-- 平台管理后台表（可选 - 仅平台运营方需要）
+-- 说明：以下表用于平台管理后台，管理私有部署授权和版本发布
+-- 私有部署客户无需创建这些表，不会影响CRM系统正常使用
+-- =============================================
+
+-- 管理员用户表（可选）
+-- 注意：此表与CRM的users表完全独立，用于平台管理后台登录
+CREATE TABLE IF NOT EXISTS `admin_users` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `username` VARCHAR(50) NOT NULL UNIQUE COMMENT '登录用户名',
+  `password` VARCHAR(255) NOT NULL COMMENT '密码(bcrypt加密)',
+  `name` VARCHAR(50) COMMENT '姓名',
+  `email` VARCHAR(100) COMMENT '邮箱',
+  `phone` VARCHAR(20) COMMENT '手机号',
+  `role` ENUM('super_admin', 'admin', 'operator') DEFAULT 'operator' COMMENT '角色',
+  `status` ENUM('active', 'disabled') DEFAULT 'active' COMMENT '状态',
+  `last_login_at` DATETIME COMMENT '最后登录时间',
+  `last_login_ip` VARCHAR(50) COMMENT '最后登录IP',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='管理员用户表（平台管理后台专用）';
+
+-- 授权码表（可选）
+CREATE TABLE IF NOT EXISTS `licenses` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `license_key` VARCHAR(255) NOT NULL UNIQUE COMMENT '授权码',
+  `customer_name` VARCHAR(100) NOT NULL COMMENT '客户名称',
+  `customer_contact` VARCHAR(100) COMMENT '联系人',
+  `customer_phone` VARCHAR(20) COMMENT '联系电话',
+  `customer_email` VARCHAR(100) COMMENT '邮箱',
+  `license_type` ENUM('trial', 'perpetual', 'annual', 'monthly') DEFAULT 'trial' COMMENT '授权类型',
+  `max_users` INT DEFAULT 10 COMMENT '最大用户数',
+  `max_storage_gb` INT DEFAULT 5 COMMENT '最大存储空间(GB)',
+  `features` JSON COMMENT '开通的功能模块',
+  `machine_id` VARCHAR(255) COMMENT '绑定的机器码',
+  `status` ENUM('active', 'expired', 'revoked', 'pending') DEFAULT 'pending' COMMENT '状态',
+  `activated_at` DATETIME COMMENT '激活时间',
+  `expires_at` DATETIME COMMENT '到期时间',
+  `notes` TEXT COMMENT '备注',
+  `created_by` VARCHAR(36) COMMENT '创建人',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_license_key` (`license_key`),
+  INDEX `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='授权码表（平台管理后台专用-私有客户）';
+
+-- 版本发布表（可选）
+CREATE TABLE IF NOT EXISTS `versions` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `version` VARCHAR(20) NOT NULL UNIQUE COMMENT '版本号',
+  `version_code` INT NOT NULL COMMENT '版本数字',
+  `release_type` ENUM('major', 'minor', 'patch', 'beta') DEFAULT 'patch' COMMENT '发布类型',
+  `changelog` TEXT COMMENT '更新日志',
+  `download_url` VARCHAR(500) COMMENT '下载地址',
+  `file_size` VARCHAR(20) COMMENT '文件大小',
+  `file_hash` VARCHAR(64) COMMENT '文件MD5',
+  `min_version` VARCHAR(20) COMMENT '最低可升级版本',
+  `is_force_update` TINYINT(1) DEFAULT 0 COMMENT '是否强制更新',
+  `status` ENUM('draft', 'published', 'deprecated') DEFAULT 'draft' COMMENT '状态',
+  `published_at` DATETIME COMMENT '发布时间',
+  `created_by` VARCHAR(36) COMMENT '创建人',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_version` (`version`),
+  INDEX `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='版本发布表（平台管理后台专用）';
+
+-- 授权验证日志表（可选）
+CREATE TABLE IF NOT EXISTS `license_logs` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `license_id` VARCHAR(36) COMMENT '授权ID',
+  `license_key` VARCHAR(255) COMMENT '授权码',
+  `action` ENUM('verify', 'activate', 'renew', 'revoke', 'expire') COMMENT '操作类型',
+  `machine_id` VARCHAR(255) COMMENT '机器码',
+  `ip_address` VARCHAR(50) COMMENT 'IP地址',
+  `user_agent` TEXT COMMENT 'User-Agent',
+  `result` ENUM('success', 'failed') COMMENT '结果',
+  `message` TEXT COMMENT '消息',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_license_id` (`license_id`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='授权验证日志表（平台管理后台专用）';
+
+-- 租户表（SaaS模式）
+CREATE TABLE IF NOT EXISTS `tenants` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `name` VARCHAR(200) NOT NULL COMMENT '租户名称',
+  `code` VARCHAR(50) NOT NULL UNIQUE COMMENT '租户编码',
+  `package_id` VARCHAR(36) COMMENT '套餐ID',
+  `contact` VARCHAR(100) COMMENT '联系人',
+  `phone` VARCHAR(20) COMMENT '联系电话',
+  `email` VARCHAR(100) COMMENT '邮箱',
+  `max_users` INT DEFAULT 10 COMMENT '最大用户数',
+  `max_storage_gb` INT DEFAULT 5 COMMENT '最大存储空间(GB)',
+  `user_count` INT DEFAULT 0 COMMENT '当前用户数',
+  `used_storage_mb` DECIMAL(10,2) DEFAULT 0 COMMENT '已使用存储空间(MB)',
+  `expire_date` DATE COMMENT '到期日期',
+  `license_key` VARCHAR(100) COMMENT '租户授权码',
+  `license_status` VARCHAR(20) DEFAULT 'pending' COMMENT '授权状态',
+  `activated_at` DATETIME COMMENT '激活时间',
+  `features` JSON COMMENT '开通的功能模块',
+  `database_name` VARCHAR(100) COMMENT '数据库名称',
+  `remark` TEXT COMMENT '备注',
+  `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_code` (`code`),
+  INDEX `idx_license_key` (`license_key`),
+  INDEX `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='租户表（平台管理后台专用-租户客户）';
+
+-- 套餐表
+CREATE TABLE IF NOT EXISTS `tenant_packages` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `name` VARCHAR(100) NOT NULL COMMENT '套餐名称',
+  `price` DECIMAL(10,2) DEFAULT 0.00 COMMENT '价格',
+  `unit` VARCHAR(10) DEFAULT '月' COMMENT '计费单位',
+  `max_users` INT DEFAULT 10 COMMENT '最大用户数',
+  `storage` VARCHAR(20) DEFAULT '5GB' COMMENT '存储空间',
+  `features` TEXT COMMENT '功能列表(JSON)',
+  `recommended` TINYINT(1) DEFAULT 0 COMMENT '是否推荐',
+  `sort_order` INT DEFAULT 0 COMMENT '排序',
+  `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='套餐表（平台管理后台专用）';
+
+-- 模块方案表
+CREATE TABLE IF NOT EXISTS `module_schemes` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `name` VARCHAR(100) NOT NULL COMMENT '方案名称',
+  `description` TEXT COMMENT '方案描述',
+  `target_type` VARCHAR(20) DEFAULT 'all' COMMENT '目标类型',
+  `targets` TEXT COMMENT '目标列表(JSON)',
+  `modules` TEXT COMMENT '模块配置(JSON)',
+  `is_default` TINYINT(1) DEFAULT 0 COMMENT '是否默认',
+  `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态',
+  `created_by` VARCHAR(36) COMMENT '创建人',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模块方案表（平台管理后台专用）';
+
+-- =============================================
+-- 支付系统表
+-- =============================================
+
+-- 支付配置表
+CREATE TABLE IF NOT EXISTS `payment_configs` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `pay_type` VARCHAR(20) NOT NULL COMMENT '支付类型: wechat/alipay',
+  `enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用',
+  `config_data` TEXT COMMENT '配置数据(JSON加密存储)',
+  `notify_url` VARCHAR(500) COMMENT '回调地址',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_pay_type` (`pay_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='支付配置表';
+
+-- 支付订单表
+CREATE TABLE IF NOT EXISTS `payment_orders` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `order_no` VARCHAR(64) NOT NULL COMMENT '订单号',
+  `customer_type` VARCHAR(20) DEFAULT 'tenant' COMMENT '客户类型: tenant/private',
+  `tenant_id` VARCHAR(36) COMMENT '租户ID',
+  `license_id` VARCHAR(36) COMMENT '私有客户授权ID',
+  `tenant_name` VARCHAR(100) COMMENT '租户名称',
+  `package_id` VARCHAR(36) COMMENT '套餐ID',
+  `package_name` VARCHAR(100) COMMENT '套餐名称',
+  `amount` DECIMAL(10,2) NOT NULL COMMENT '支付金额',
+  `pay_type` VARCHAR(20) COMMENT '支付方式: wechat/alipay',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '订单状态: pending/paid/expired/refunded/closed',
+  `trade_no` VARCHAR(64) COMMENT '第三方交易号',
+  `qr_code` TEXT COMMENT '支付二维码(base64)',
+  `pay_url` VARCHAR(500) COMMENT '支付链接',
+  `contact_name` VARCHAR(50) COMMENT '联系人',
+  `contact_phone` VARCHAR(20) COMMENT '联系电话',
+  `contact_email` VARCHAR(100) COMMENT '联系邮箱',
+  `expire_time` DATETIME COMMENT '订单过期时间',
+  `paid_at` DATETIME COMMENT '支付时间',
+  `refund_amount` DECIMAL(10,2) DEFAULT 0 COMMENT '退款金额',
+  `refund_at` DATETIME COMMENT '退款时间',
+  `refund_reason` VARCHAR(500) COMMENT '退款原因',
+  `remark` VARCHAR(500) COMMENT '备注',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_order_no` (`order_no`),
+  KEY `idx_tenant_id` (`tenant_id`),
+  KEY `idx_license_id` (`license_id`),
+  KEY `idx_customer_type` (`customer_type`),
+  KEY `idx_status` (`status`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='支付订单表';
+
+-- 支付日志表
+CREATE TABLE IF NOT EXISTS `payment_logs` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `order_id` VARCHAR(36) NOT NULL COMMENT '订单ID',
+  `order_no` VARCHAR(64) NOT NULL COMMENT '订单号',
+  `action` VARCHAR(50) NOT NULL COMMENT '操作类型: create/pay/notify/refund/close',
+  `pay_type` VARCHAR(20) COMMENT '支付方式',
+  `request_data` TEXT COMMENT '请求数据',
+  `response_data` TEXT COMMENT '响应数据',
+  `result` VARCHAR(20) COMMENT '结果: success/fail',
+  `error_msg` VARCHAR(500) COMMENT '错误信息',
+  `ip` VARCHAR(50) COMMENT 'IP地址',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  KEY `idx_order_id` (`order_id`),
+  KEY `idx_order_no` (`order_no`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='支付日志表';
+
+-- 旧版支付记录表（兼容）
+CREATE TABLE IF NOT EXISTS `payment_records` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `order_no` VARCHAR(50) NOT NULL UNIQUE COMMENT '订单号',
+  `tenant_id` VARCHAR(36) COMMENT '租户ID',
+  `tenant_name` VARCHAR(200) COMMENT '租户名称',
+  `amount` DECIMAL(10,2) NOT NULL COMMENT '金额',
+  `pay_type` VARCHAR(20) DEFAULT 'wechat' COMMENT '支付方式',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '状态',
+  `transaction_id` VARCHAR(100) COMMENT '交易号',
+  `paid_at` DATETIME COMMENT '支付时间',
+  `refunded_at` DATETIME COMMENT '退款时间',
+  `remark` TEXT COMMENT '备注',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant_id` (`tenant_id`),
+  INDEX `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='支付记录表（平台管理后台专用）';
+
+-- 支付配置表
+CREATE TABLE IF NOT EXISTS `payment_configs` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `pay_type` VARCHAR(20) NOT NULL UNIQUE COMMENT '支付方式',
+  `enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用',
+  `config` TEXT COMMENT '配置信息(JSON)',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='支付配置表（平台管理后台专用）';
+
+-- API接口统计表
+CREATE TABLE IF NOT EXISTS `api_statistics` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `api_name` VARCHAR(100) NOT NULL UNIQUE COMMENT 'API名称',
+  `api_type` VARCHAR(50) COMMENT 'API类型',
+  `provider` VARCHAR(50) COMMENT '服务商',
+  `call_count` BIGINT DEFAULT 0 COMMENT '调用次数',
+  `success_count` BIGINT DEFAULT 0 COMMENT '成功次数',
+  `fail_count` BIGINT DEFAULT 0 COMMENT '失败次数',
+  `total_time` BIGINT DEFAULT 0 COMMENT '总耗时(ms)',
+  `last_call_at` DATETIME COMMENT '最后调用时间',
+  `status` VARCHAR(20) DEFAULT 'normal' COMMENT '状态',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='API接口统计表（平台管理后台专用）';
+
+-- 管理后台操作日志表
+CREATE TABLE IF NOT EXISTS `admin_operation_logs` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `admin_id` VARCHAR(36) NOT NULL COMMENT '管理员ID',
+  `admin_name` VARCHAR(100) COMMENT '管理员姓名',
+  `module` VARCHAR(50) COMMENT '模块',
+  `action` VARCHAR(50) NOT NULL COMMENT '操作',
+  `target_type` VARCHAR(50) COMMENT '目标类型',
+  `target_id` VARCHAR(36) COMMENT '目标ID',
+  `detail` TEXT COMMENT '详情',
+  `ip` VARCHAR(50) COMMENT 'IP地址',
+  `user_agent` VARCHAR(500) COMMENT 'User-Agent',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_admin_id` (`admin_id`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='管理后台操作日志表（平台管理后台专用）';
+
+-- 私有部署客户表
+CREATE TABLE IF NOT EXISTS `private_deployments` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `name` VARCHAR(200) NOT NULL COMMENT '客户名称',
+  `code` VARCHAR(50) NOT NULL UNIQUE COMMENT '客户编码',
+  `contact` VARCHAR(100) COMMENT '联系人',
+  `phone` VARCHAR(20) COMMENT '联系电话',
+  `email` VARCHAR(100) COMMENT '邮箱',
+  `server_ip` VARCHAR(50) COMMENT '服务器IP',
+  `domain` VARCHAR(200) COMMENT '域名',
+  `version` VARCHAR(20) COMMENT '当前版本',
+  `license_id` VARCHAR(36) COMMENT '授权ID',
+  `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态',
+  `last_heartbeat` DATETIME COMMENT '最后心跳时间',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='私有部署客户表（平台管理后台专用）';
+
+-- =============================================
+-- CRM系统本地授权表（私有部署使用）
+-- =============================================
+
+-- 系统授权表（存储本地激活的授权信息）
+CREATE TABLE IF NOT EXISTS `system_license` (
+  `id` VARCHAR(36) PRIMARY KEY COMMENT '授权ID',
+  `license_key` VARCHAR(255) NOT NULL COMMENT '授权码',
+  `customer_name` VARCHAR(200) COMMENT '客户名称',
+  `license_type` VARCHAR(50) DEFAULT 'perpetual' COMMENT '授权类型: trial试用, perpetual永久, annual年度, monthly月度',
+  `max_users` INT DEFAULT 50 COMMENT '最大用户数',
+  `features` TEXT COMMENT '功能模块(JSON)',
+  `expires_at` DATETIME COMMENT '到期时间',
+  `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态: active激活, expired过期, revoked吊销',
+  `activated_at` DATETIME COMMENT '激活时间',
+  `machine_id` VARCHAR(255) COMMENT '机器码',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE KEY `uk_license_key` (`license_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统授权表（私有部署本地存储）';
+
+-- =============================================
+-- 完成
+-- =============================================
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- =============================================
+-- 租户套餐表（官网和管理后台共用）
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS `tenant_packages` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `name` VARCHAR(100) NOT NULL COMMENT '套餐名称',
+  `code` VARCHAR(50) NOT NULL UNIQUE COMMENT '套餐代码',
+  `type` ENUM('saas', 'private') NOT NULL DEFAULT 'saas' COMMENT '套餐类型：saas-云端版，private-私有部署',
+  `description` TEXT COMMENT '套餐描述',
+  `price` DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '价格',
+  `original_price` DECIMAL(10,2) COMMENT '原价（用于显示折扣）',
+  `billing_cycle` ENUM('monthly', 'yearly', 'once') NOT NULL DEFAULT 'monthly' COMMENT '计费周期',
+  `duration_days` INT DEFAULT 30 COMMENT '有效期天数',
+  `max_users` INT DEFAULT 10 COMMENT '最大用户数',
+  `max_customers` INT DEFAULT 10000 COMMENT '最大客户数',
+  `max_orders` INT DEFAULT 10000 COMMENT '最大订单数',
+  `max_storage_gb` INT DEFAULT 5 COMMENT '存储空间(GB)',
+  `features` JSON COMMENT '功能特性列表',
+  `is_trial` TINYINT(1) DEFAULT 0 COMMENT '是否为试用套餐',
+  `is_recommended` TINYINT(1) DEFAULT 0 COMMENT '是否推荐',
+  `is_visible` TINYINT(1) DEFAULT 1 COMMENT '是否在官网显示',
+  `sort_order` INT DEFAULT 0 COMMENT '排序',
+  `status` TINYINT(1) DEFAULT 1 COMMENT '状态：0-禁用，1-启用',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_type` (`type`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_visible` (`is_visible`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='租户套餐表';
