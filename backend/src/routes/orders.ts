@@ -948,12 +948,16 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
     // 🔥 修复：状态筛选 - 支持 updated 参数查询所有非 shipped 状态
     if (status === 'updated') {
       // 已更新 = 所有非 shipped 状态的订单（delivered, rejected, returned 等）
-      queryBuilder.where('order.status IN (:...statuses)', { statuses: ['delivered', 'rejected', 'returned', 'abnormal', 'exception'] });
+      // 🔥 修复：使用完整的发货后状态列表
+      const updatedStatuses = ['delivered', 'completed', 'signed', 'rejected', 'rejected_returned', 'returned', 'refunded', 'after_sales_created', 'abnormal', 'exception', 'package_exception'];
+      queryBuilder.where('order.status IN (:...statuses)', { statuses: updatedStatuses });
       console.log(`🚚 [已发货订单] 查询已更新订单（非shipped状态）`);
     } else if (status && status !== 'all') {
       queryBuilder.where('order.status = :status', { status });
     } else {
-      queryBuilder.where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered', 'rejected', 'returned', 'abnormal', 'exception'] });
+      // 🔥 修复：使用完整的发货后状态列表
+      const allShippedStatuses = ['shipped', 'delivered', 'completed', 'signed', 'rejected', 'rejected_returned', 'returned', 'refunded', 'after_sales_created', 'abnormal', 'exception', 'package_exception'];
+      queryBuilder.where('order.status IN (:...statuses)', { statuses: allShippedStatuses });
     }
 
     // 🔥 物流状态筛选

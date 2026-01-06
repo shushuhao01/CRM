@@ -1064,61 +1064,43 @@ const fetchLatestLogisticsUpdates = async () => {
 
 const loadSummaryData = async (showAnimation = false) => {
   try {
-    // 🔥 修复：从API获取已发货订单，与loadData保持一致
-    let allOrders: any[] = []
-    try {
-      const { orderApi } = await import('@/api/order')
-      const response = await orderApi.getShippingShipped() as any
-      allOrders = response?.data?.list || response?.list || response?.data || []
-    } catch {
-      // 回退到store
-      allOrders = orderStore.getOrders()
-    }
+    // 🔥 修复：从API获取已发货订单统计，传递日期参数
+    const { orderApi } = await import('@/api/order')
 
-    // 筛选已发货的订单（只要是已发货状态就显示，不再强制要求物流单号）
-    let shippedOrders = allOrders.filter((order: any) => {
-      // 检查订单状态是否为已发货相关状态
-      const validStatuses = ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'rejected', 'rejected_returned']
-      return validStatuses.includes(order.status)
-    })
+    // 🔥 修复：传递日期参数和大的pageSize来获取准确的统计数据
+    const startDate = dateRange.value?.[0] || undefined
+    const endDate = dateRange.value?.[1] || undefined
 
-    // 按发货时间筛选（如果有日期范围参数）
-    // 辅助函数：从日期字符串提取日期部分（支持ISO格式和普通格式）
-    const extractDatePartForSummary = (dateStr: string) => {
-      if (!dateStr) return ''
-      try {
-        const date = new Date(dateStr)
-        if (isNaN(date.getTime())) return dateStr.split(' ')[0]
-        return date.toISOString().split('T')[0]
-      } catch {
-        return dateStr.split(' ')[0]
-      }
-    }
-
-    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      const [startDate, endDate] = dateRange.value
-      shippedOrders = shippedOrders.filter(order => {
-        const shippingTime = order.shippingTime || order.shipTime || order.createTime
-        const shippingDate = extractDatePartForSummary(shippingTime)
-        return shippingDate >= startDate && shippingDate <= endDate
+    // 🔥 分别获取待更新和已更新的数量
+    const [pendingResponse, updatedResponse] = await Promise.all([
+      // 待更新 = shipped 状态
+      orderApi.getShippingShipped({
+        status: 'shipped',
+        startDate,
+        endDate,
+        departmentId: departmentFilter.value || undefined,
+        salesPersonId: salesPersonFilter.value || undefined,
+        page: 1,
+        pageSize: 1  // 只需要获取total
+      }),
+      // 已更新 = 非shipped状态
+      orderApi.getShippingShipped({
+        status: 'updated',
+        startDate,
+        endDate,
+        departmentId: departmentFilter.value || undefined,
+        salesPersonId: salesPersonFilter.value || undefined,
+        page: 1,
+        pageSize: 1  // 只需要获取total
       })
-    } else if (dateRange.value && dateRange.value.length === 2 && dateRange.value[1]) {
-      const endDate = dateRange.value[1]
-      shippedOrders = shippedOrders.filter(order => {
-        const shippingTime = order.shippingTime || order.shipTime || order.createTime
-        const shippingDate = extractDatePartForSummary(shippingTime)
-        return shippingDate <= endDate
-      })
-    }
+    ]) as any[]
 
-    // 🔥 修复：计算各状态的数量（与列表筛选逻辑保持一致）
-    // 待更新 = 订单状态为shipped的订单（已发货但未签收）
-    const pending = shippedOrders.filter(order => order.status === 'shipped').length
-    // 已更新 = 订单状态不是shipped的订单（已签收、拒收等终态）
-    const updated = shippedOrders.filter(order => order.status !== 'shipped').length
-    // 待办 = 标记为待办的订单
-    const todo = shippedOrders.filter(order => order.isTodo === true || order.logisticsStatus === 'todo').length
-    const total = shippedOrders.length
+    const pending = pendingResponse?.data?.total || 0
+    const updated = updatedResponse?.data?.total || 0
+    const total = pending + updated
+
+    // 待办数量暂时设为0（需要后端支持）
+    const todo = 0
 
     console.log('[状态更新] 汇总数据计算:', { pending, updated, todo, total })
 
