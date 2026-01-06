@@ -1045,12 +1045,17 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
       queryBuilder.andWhere('order.expressCompany = :expressCompany', { expressCompany });
     }
 
-    // 🔥 日期范围筛选 - 按发货时间筛选（状态更新页面需要按发货日期筛选）
+    // 🔥 日期范围筛选 - 按下单时间筛选（更符合业务需求，上月下单的订单都应该显示）
     if (startDate) {
-      queryBuilder.andWhere('order.shippedAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+      console.log(`🚚 [已发货订单] 日期筛选(下单时间) - 开始日期: ${startDate}`);
     }
     if (endDate) {
-      queryBuilder.andWhere('order.shippedAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+      console.log(`🚚 [已发货订单] 日期筛选(下单时间) - 结束日期: ${endDate}`);
+    }
+    if (!startDate && !endDate) {
+      console.log(`🚚 [已发货订单] 无日期筛选条件`);
     }
 
     // 🔥 快速筛选
