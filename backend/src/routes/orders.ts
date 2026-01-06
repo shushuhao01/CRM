@@ -1206,12 +1206,24 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
 router.get('/shipping/returned', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
-    const { page = 1, pageSize = 10, orderNumber, customerName } = req.query;
+    const { page = 1, pageSize = 10, orderNumber, customerName, startDate, endDate, departmentId, salesPersonId } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 500);
     const skip = (pageNum - 1) * pageSizeNum;
 
+    // 🔥 优化：使用QueryBuilder只查询需要的字段（与待发货API保持一致）
     const queryBuilder = orderRepository.createQueryBuilder('order')
+      .select([
+        'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
+        'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
+        'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
+        'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt', 'order.updatedAt',
+        'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
+        'order.expressCompany', 'order.trackingNumber', 'order.logisticsStatus', 'order.serviceWechat',
+        'order.orderSource', 'order.products', 'order.createdByDepartmentId',
+        'order.customField1', 'order.customField2', 'order.customField3',
+        'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
+      ])
       .where('order.status IN (:...statuses)', {
         statuses: ['logistics_returned', 'rejected_returned', 'audit_rejected']
       });
@@ -1222,26 +1234,102 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
     if (customerName) {
       queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
     }
+    // 🔥 部门筛选
+    if (departmentId) {
+      queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
+    }
+    // 🔥 销售人员筛选
+    if (salesPersonId) {
+      queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
+    }
+    // 🔥 日期范围筛选
+    if (startDate) {
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+    }
+    if (endDate) {
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+    }
 
     const total = await queryBuilder.getCount();
     queryBuilder.orderBy('order.updatedAt', 'DESC').skip(skip).take(pageSizeNum);
     const orders = await queryBuilder.getMany();
 
-    const list = orders.map(order => ({
-      id: order.id,
-      orderNumber: order.orderNumber,
-      customerName: order.customerName || '',
-      customerPhone: order.customerPhone || '',
-      totalAmount: Number(order.totalAmount) || 0,
-      status: order.status,
-      trackingNumber: order.trackingNumber || '',
-      expressCompany: order.expressCompany || '',
-      shippingAddress: order.shippingAddress || '',
-      createdByName: order.createdByName || '',
-      createdAt: formatToBeijingTime(order.createdAt),
-      updatedAt: formatToBeijingTime(order.updatedAt),
-      products: typeof order.products === 'string' ? JSON.parse(order.products || '[]') : (order.products || [])
-    }));
+    // 🔥 获取所有订单的客户ID，批量查询客户信息
+    const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customers = customerIds.length > 0
+      ? await customerRepository.findByIds(customerIds)
+      : [];
+    const customerMap = new Map(customers.map(c => [c.id, c]));
+
+    // 🔥 转换数据格式（与待发货API保持一致）
+    const list = orders.map(order => {
+      let products: unknown[] = [];
+      if (order.products) {
+        try {
+          products = typeof order.products === 'string' ? JSON.parse(order.products as string) : order.products;
+        } catch {
+          products = [];
+        }
+      }
+
+      // 🔥 获取客户信息
+      const customer = order.customerId ? customerMap.get(order.customerId) : null;
+
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerId: order.customerId || '',
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
+        // 🔥 客户详细信息
+        customerAge: customer?.age || null,
+        customerHeight: customer?.height || null,
+        customerWeight: customer?.weight || null,
+        medicalHistory: customer?.medicalHistory || null,
+        products: products,
+        totalAmount: Number(order.totalAmount) || 0,
+        depositAmount: Number(order.depositAmount) || 0,
+        collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+        receiverName: order.shippingName || '',
+        receiverPhone: order.shippingPhone || '',
+        receiverAddress: order.shippingAddress || '',
+        remark: order.remark || '',
+        status: order.status,
+        markType: order.markType || 'normal',
+        paymentStatus: order.paymentStatus || 'unpaid',
+        paymentMethod: order.paymentMethod || '',
+        serviceWechat: order.serviceWechat || '',
+        orderSource: order.orderSource || '',
+        expressCompany: order.expressCompany || '',
+        trackingNumber: order.trackingNumber || '',
+        logisticsStatus: order.logisticsStatus || '',
+        // 🔥 自定义字段
+        customFields: {
+          custom_field1: order.customField1 || (order.customFields as any)?.custom_field1 || '',
+          custom_field2: order.customField2 || (order.customFields as any)?.custom_field2 || '',
+          custom_field3: order.customField3 || (order.customFields as any)?.custom_field3 || '',
+          custom_field4: order.customField4 || (order.customFields as any)?.custom_field4 || '',
+          custom_field5: order.customField5 || (order.customFields as any)?.custom_field5 || '',
+          custom_field6: order.customField6 || (order.customFields as any)?.custom_field6 || '',
+          custom_field7: order.customField7 || (order.customFields as any)?.custom_field7 || ''
+        },
+        customField1: order.customField1 || (order.customFields as any)?.custom_field1 || '',
+        customField2: order.customField2 || (order.customFields as any)?.custom_field2 || '',
+        customField3: order.customField3 || (order.customFields as any)?.custom_field3 || '',
+        customField4: order.customField4 || (order.customFields as any)?.custom_field4 || '',
+        customField5: order.customField5 || (order.customFields as any)?.custom_field5 || '',
+        customField6: order.customField6 || (order.customFields as any)?.custom_field6 || '',
+        customField7: order.customField7 || (order.customFields as any)?.custom_field7 || '',
+        createTime: formatToBeijingTime(order.createdAt),
+        updatedAt: formatToBeijingTime(order.updatedAt),
+        createdBy: order.createdBy || '',
+        createdByName: order.createdByName || '',
+        salesPersonId: order.createdBy || '',
+        operatorId: order.createdBy || '',
+        operator: order.createdByName || ''
+      };
+    });
 
     res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
   } catch (error) {
@@ -1258,12 +1346,24 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
 router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
-    const { page = 1, pageSize = 10, orderNumber, customerName } = req.query;
+    const { page = 1, pageSize = 10, orderNumber, customerName, startDate, endDate, departmentId, salesPersonId } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 500);
     const skip = (pageNum - 1) * pageSizeNum;
 
+    // 🔥 优化：使用QueryBuilder只查询需要的字段（与待发货API保持一致）
     const queryBuilder = orderRepository.createQueryBuilder('order')
+      .select([
+        'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
+        'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
+        'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
+        'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt', 'order.updatedAt',
+        'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
+        'order.expressCompany', 'order.trackingNumber', 'order.logisticsStatus', 'order.serviceWechat',
+        'order.orderSource', 'order.products', 'order.createdByDepartmentId',
+        'order.customField1', 'order.customField2', 'order.customField3',
+        'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
+      ])
       .where('order.status IN (:...statuses)', {
         statuses: ['cancelled', 'logistics_cancelled']
       });
@@ -1274,26 +1374,102 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
     if (customerName) {
       queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
     }
+    // 🔥 部门筛选
+    if (departmentId) {
+      queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
+    }
+    // 🔥 销售人员筛选
+    if (salesPersonId) {
+      queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
+    }
+    // 🔥 日期范围筛选
+    if (startDate) {
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+    }
+    if (endDate) {
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+    }
 
     const total = await queryBuilder.getCount();
     queryBuilder.orderBy('order.updatedAt', 'DESC').skip(skip).take(pageSizeNum);
     const orders = await queryBuilder.getMany();
 
-    const list = orders.map(order => ({
-      id: order.id,
-      orderNumber: order.orderNumber,
-      customerName: order.customerName || '',
-      customerPhone: order.customerPhone || '',
-      totalAmount: Number(order.totalAmount) || 0,
-      status: order.status,
-      trackingNumber: order.trackingNumber || '',
-      expressCompany: order.expressCompany || '',
-      shippingAddress: order.shippingAddress || '',
-      createdByName: order.createdByName || '',
-      createdAt: formatToBeijingTime(order.createdAt),
-      updatedAt: formatToBeijingTime(order.updatedAt),
-      products: typeof order.products === 'string' ? JSON.parse(order.products || '[]') : (order.products || [])
-    }));
+    // 🔥 获取所有订单的客户ID，批量查询客户信息
+    const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customers = customerIds.length > 0
+      ? await customerRepository.findByIds(customerIds)
+      : [];
+    const customerMap = new Map(customers.map(c => [c.id, c]));
+
+    // 🔥 转换数据格式（与待发货API保持一致）
+    const list = orders.map(order => {
+      let products: unknown[] = [];
+      if (order.products) {
+        try {
+          products = typeof order.products === 'string' ? JSON.parse(order.products as string) : order.products;
+        } catch {
+          products = [];
+        }
+      }
+
+      // 🔥 获取客户信息
+      const customer = order.customerId ? customerMap.get(order.customerId) : null;
+
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerId: order.customerId || '',
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
+        // 🔥 客户详细信息
+        customerAge: customer?.age || null,
+        customerHeight: customer?.height || null,
+        customerWeight: customer?.weight || null,
+        medicalHistory: customer?.medicalHistory || null,
+        products: products,
+        totalAmount: Number(order.totalAmount) || 0,
+        depositAmount: Number(order.depositAmount) || 0,
+        collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+        receiverName: order.shippingName || '',
+        receiverPhone: order.shippingPhone || '',
+        receiverAddress: order.shippingAddress || '',
+        remark: order.remark || '',
+        status: order.status,
+        markType: order.markType || 'normal',
+        paymentStatus: order.paymentStatus || 'unpaid',
+        paymentMethod: order.paymentMethod || '',
+        serviceWechat: order.serviceWechat || '',
+        orderSource: order.orderSource || '',
+        expressCompany: order.expressCompany || '',
+        trackingNumber: order.trackingNumber || '',
+        logisticsStatus: order.logisticsStatus || '',
+        // 🔥 自定义字段
+        customFields: {
+          custom_field1: order.customField1 || (order.customFields as any)?.custom_field1 || '',
+          custom_field2: order.customField2 || (order.customFields as any)?.custom_field2 || '',
+          custom_field3: order.customField3 || (order.customFields as any)?.custom_field3 || '',
+          custom_field4: order.customField4 || (order.customFields as any)?.custom_field4 || '',
+          custom_field5: order.customField5 || (order.customFields as any)?.custom_field5 || '',
+          custom_field6: order.customField6 || (order.customFields as any)?.custom_field6 || '',
+          custom_field7: order.customField7 || (order.customFields as any)?.custom_field7 || ''
+        },
+        customField1: order.customField1 || (order.customFields as any)?.custom_field1 || '',
+        customField2: order.customField2 || (order.customFields as any)?.custom_field2 || '',
+        customField3: order.customField3 || (order.customFields as any)?.custom_field3 || '',
+        customField4: order.customField4 || (order.customFields as any)?.custom_field4 || '',
+        customField5: order.customField5 || (order.customFields as any)?.custom_field5 || '',
+        customField6: order.customField6 || (order.customFields as any)?.custom_field6 || '',
+        customField7: order.customField7 || (order.customFields as any)?.custom_field7 || '',
+        createTime: formatToBeijingTime(order.createdAt),
+        updatedAt: formatToBeijingTime(order.updatedAt),
+        createdBy: order.createdBy || '',
+        createdByName: order.createdByName || '',
+        salesPersonId: order.createdBy || '',
+        operatorId: order.createdBy || '',
+        operator: order.createdByName || ''
+      };
+    });
 
     res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
   } catch (error) {
