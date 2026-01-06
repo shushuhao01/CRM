@@ -821,7 +821,7 @@ const loadData = async (showMessage = false) => {
     if (activeTab.value === 'pending') {
       statusParam = 'shipped'  // 待更新 = 已发货状态
     } else if (activeTab.value === 'updated') {
-      statusParam = 'updated'  // 🔥 修复：已更新 = 所有非shipped状态（delivered, rejected, returned等）
+      statusParam = 'updated'  // 🔥 已更新 = 所有非shipped状态（delivered, rejected, returned, abnormal等）
     }
     // todo标签页暂时不传status，获取全部后前端筛选
 
@@ -829,7 +829,12 @@ const loadData = async (showMessage = false) => {
     const startDate = dateRange.value?.[0] || undefined
     const endDate = dateRange.value?.[1] || undefined
 
-    console.log(`[状态更新] 🚀 加载数据, 页码: ${pagination.currentPage}, 每页: ${pagination.pageSize}, 订单状态: ${statusParam || '全部'}, 物流状态: ${statusFilter.value || '全部'}, 日期: ${startDate || '无'} ~ ${endDate || '无'}`)
+    console.log(`[状态更新] 🚀 加载数据:`)
+    console.log(`  - 标签页: ${activeTab.value}`)
+    console.log(`  - 订单状态参数: ${statusParam || '全部'}`)
+    console.log(`  - 物流状态筛选: ${statusFilter.value || '全部'}`)
+    console.log(`  - 日期范围: ${startDate || '无'} ~ ${endDate || '无'}`)
+    console.log(`  - 页码: ${pagination.currentPage}, 每页: ${pagination.pageSize}`)
 
     // 🔥 修复：搜索关键词同时传递给 orderNumber 和 customerName
     const keyword = searchKeyword.value?.trim() || undefined
@@ -849,7 +854,15 @@ const loadData = async (showMessage = false) => {
 
     let allOrders = response?.data?.list || []
     const apiTotal = response?.data?.total || 0
+
+    // 🔥 调试：显示返回的订单状态分布
+    const statusDistribution: Record<string, number> = {}
+    allOrders.forEach((order: any) => {
+      const status = order.status || 'unknown'
+      statusDistribution[status] = (statusDistribution[status] || 0) + 1
+    })
     console.log('[状态更新] 从API获取订单:', allOrders.length, '条, 总数:', apiTotal)
+    console.log('[状态更新] 订单状态分布:', statusDistribution)
 
     // 🔥 待办筛选（todo标签页）- 这个需要前端筛选因为后端可能没有这个字段
     if (activeTab.value === 'todo') {
