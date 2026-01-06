@@ -181,13 +181,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Van, CircleCheck, Select, TrendCharts, Money, Search } from '@element-plus/icons-vue'
 import { financeApi, type PerformanceOrder, type PerformanceDataStatistics } from '@/api/finance'
 import LogisticsTraceDialog from '@/components/Logistics/LogisticsTraceDialog.vue'
 import { useDepartmentStore } from '@/stores/department'
+import { eventBus, EventNames } from '@/utils/eventBus'
 import { useUserStore } from '@/stores/user'
 import { getLogisticsInfoStyle } from '@/utils/logisticsStatusConfig'
 import { getDepartmentMembers } from '@/api/department'
@@ -289,7 +290,23 @@ onMounted(async () => {
   setThisMonth()
   await loadData()
   await loadStatistics()
+
+  // 监听绩效数据更新事件
+  eventBus.on(EventNames.PERFORMANCE_UPDATED, handlePerformanceUpdate)
 })
+
+// 页面卸载时移除事件监听
+onUnmounted(() => {
+  eventBus.off(EventNames.PERFORMANCE_UPDATED, handlePerformanceUpdate)
+})
+
+// 处理绩效数据更新事件
+const handlePerformanceUpdate = (data: { type: string, orderIds?: string[] }) => {
+  console.log('[PerformanceData] 收到绩效数据更新事件:', data)
+  // 重新加载统计数据和列表数据
+  loadStatistics()
+  loadData()
+}
 
 // 根据角色初始化默认筛选值
 const initDefaultFilters = () => {
