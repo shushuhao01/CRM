@@ -100,5 +100,8 @@ export const EventNames = {
   REFRESH_AUDIT_LIST: 'refresh:audit:list',           // 刷新审核列表
   REFRESH_SHIPPING_LIST: 'refresh:shipping:list',     // 刷新发货列表
   REFRESH_LOGISTICS_LIST: 'refresh:logistics:list',   // 刷新物流列表
+
+  // 绩效相关事件
+  PERFORMANCE_UPDATED: 'performance:updated',         // 绩效数据更新（状态/系数/备注变更）
 }
 

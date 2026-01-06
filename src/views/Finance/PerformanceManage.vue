@@ -264,6 +264,7 @@ import { Clock, CircleCheck, Select, TrendCharts, Search, Refresh, Setting, Arro
 import { financeApi, type PerformanceOrder, type PerformanceManageStatistics, type FinanceConfigData } from '@/api/finance'
 import PerformanceConfigDialog from './components/PerformanceConfigDialog.vue'
 import LogisticsTraceDialog from '@/components/Logistics/LogisticsTraceDialog.vue'
+import { eventBus, EventNames } from '@/utils/eventBus'
 import { useDepartmentStore } from '@/stores/department'
 import { useUserStore } from '@/stores/user'
 import { getLogisticsInfoStyle } from '@/utils/logisticsStatusConfig'
@@ -673,6 +674,8 @@ const updatePerformance = async (row: PerformanceOrder, field: string, value: an
     ElMessage.success('更新成功')
     loadData()
     loadStatistics()
+    // 发送绩效更新事件，通知其他页面刷新
+    eventBus.emit(EventNames.PERFORMANCE_UPDATED, { type: field, orderIds: [row.id] })
   } catch (_e) {
     ElMessage.error('更新失败')
   }
@@ -695,6 +698,8 @@ const saveRow = async (row: PerformanceOrder) => {
     ElMessage.success('保存成功')
     loadData()
     loadStatistics()
+    // 发送绩效更新事件
+    eventBus.emit(EventNames.PERFORMANCE_UPDATED, { type: 'save', orderIds: [row.id] })
   } catch (_e) {
     ElMessage.error('保存失败')
   }
@@ -704,8 +709,9 @@ const saveRow = async (row: PerformanceOrder) => {
 const batchSetValid = async () => {
   if (selectedRows.value.length === 0) return
   try {
+    const orderIds = selectedRows.value.map(r => r.id)
     const data: any = {
-      orderIds: selectedRows.value.map(r => r.id),
+      orderIds,
       performanceStatus: 'valid',
       performanceCoefficient: 1
     }
@@ -718,6 +724,8 @@ const batchSetValid = async () => {
     ElMessage.success('批量更新成功')
     loadData()
     loadStatistics()
+    // 发送绩效更新事件
+    eventBus.emit(EventNames.PERFORMANCE_UPDATED, { type: 'batchValid', orderIds })
   } catch (_e) {
     ElMessage.error('批量更新失败')
   }
@@ -727,8 +735,9 @@ const batchSetValid = async () => {
 const batchSetInvalid = async () => {
   if (selectedRows.value.length === 0) return
   try {
+    const orderIds = selectedRows.value.map(r => r.id)
     const data: any = {
-      orderIds: selectedRows.value.map(r => r.id),
+      orderIds,
       performanceStatus: 'invalid',
       performanceCoefficient: 0
     }
@@ -741,6 +750,8 @@ const batchSetInvalid = async () => {
     ElMessage.success('批量更新成功')
     loadData()
     loadStatistics()
+    // 发送绩效更新事件
+    eventBus.emit(EventNames.PERFORMANCE_UPDATED, { type: 'batchInvalid', orderIds })
   } catch (_e) {
     ElMessage.error('批量更新失败')
   }
@@ -750,8 +761,9 @@ const batchSetInvalid = async () => {
 const handleBatchCoefficient = async (coefficient: string) => {
   if (selectedRows.value.length === 0) return
   try {
+    const orderIds = selectedRows.value.map(r => r.id)
     const data: any = {
-      orderIds: selectedRows.value.map(r => r.id),
+      orderIds,
       performanceCoefficient: parseFloat(coefficient)
     }
     if (dateRange.value) {
@@ -762,6 +774,8 @@ const handleBatchCoefficient = async (coefficient: string) => {
     ElMessage.success(`批量设置系数为 ${coefficient} 成功`)
     loadData()
     loadStatistics()
+    // 发送绩效更新事件
+    eventBus.emit(EventNames.PERFORMANCE_UPDATED, { type: 'batchCoefficient', orderIds })
   } catch (_e) {
     ElMessage.error('批量设置系数失败')
   }
@@ -771,8 +785,9 @@ const handleBatchCoefficient = async (coefficient: string) => {
 const handleBatchRemark = async (remark: string) => {
   if (selectedRows.value.length === 0) return
   try {
+    const orderIds = selectedRows.value.map(r => r.id)
     const data: any = {
-      orderIds: selectedRows.value.map(r => r.id),
+      orderIds,
       performanceRemark: remark
     }
     if (dateRange.value) {
@@ -783,6 +798,8 @@ const handleBatchRemark = async (remark: string) => {
     ElMessage.success(`批量设置备注为 ${getRemarkLabel(remark)} 成功`)
     loadData()
     loadStatistics()
+    // 发送绩效更新事件
+    eventBus.emit(EventNames.PERFORMANCE_UPDATED, { type: 'batchRemark', orderIds })
   } catch (_e) {
     ElMessage.error('批量设置备注失败')
   }
