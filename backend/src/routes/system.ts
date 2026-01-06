@@ -2605,16 +2605,20 @@ router.get('/config/:configKey', authenticateToken, async (req: Request, res: Re
     if (config) {
       res.json({
         success: true,
-        configKey: config.configKey,
-        configValue: config.configValue,
-        valueType: config.valueType,
-        description: config.description
+        data: {
+          configKey: config.configKey,
+          configValue: config.configValue,
+          valueType: config.valueType,
+          description: config.description
+        }
       });
     } else {
       res.json({
         success: true,
-        configKey,
-        configValue: null
+        data: {
+          configKey,
+          configValue: null
+        }
       });
     }
   } catch (error) {

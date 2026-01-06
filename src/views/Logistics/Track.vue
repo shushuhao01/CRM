@@ -367,13 +367,16 @@ const loadPresetSenderPhone = async () => {
   try {
     const { apiService } = await import('@/services/apiService')
     const response = await apiService.get('/system/config/logistics_sender_phone')
+    console.log('[物流跟踪] 加载配置响应:', response)
     if (response?.configValue) {
       presetSenderPhone.value = response.configValue
       senderPhoneForm.phone = response.configValue
-      console.log('[物流跟踪] 加载预设寄件人手机号:', presetSenderPhone.value ? presetSenderPhone.value.slice(-4) + '****' : '(空)')
+      console.log('[物流跟踪] ✅ 加载预设寄件人手机号成功:', '****' + presetSenderPhone.value.slice(-4))
+    } else {
+      console.log('[物流跟踪] ⚠️ 未找到预设寄件人手机号配置')
     }
   } catch (error) {
-    console.log('[物流跟踪] 加载预设寄件人手机号失败:', error)
+    console.log('[物流跟踪] ❌ 加载预设寄件人手机号失败:', error)
   }
 }
 
@@ -542,38 +545,49 @@ const handleSearch = async (phone?: string) => {
   loading.value = true
 
   try {
-    // 🔥 修复：先尝试从订单API获取手机号（无论是否传入phone参数）
-    let phoneToUse = phone
-
-    // 🔥 新增：如果没有传入手机号，优先使用预设的寄件人手机号
-    if (!phoneToUse && presetSenderPhone.value) {
-      phoneToUse = presetSenderPhone.value
-      console.log('[物流跟踪] 使用预设寄件人手机号:', phoneToUse.slice(-4) + '****')
+    // 🔥 安全的手机号显示函数
+    const safePhoneDisplay = (p: any): string => {
+      if (!p || typeof p !== 'string') return '(空)'
+      return p.length > 4 ? '****' + p.slice(-4) : p
     }
 
+    // 🔥 修复：确定要使用的手机号，确保是字符串
+    let phoneToUse: string = typeof phone === 'string' ? phone : ''
+    console.log('[物流跟踪] 查询开始 - 传入手机号:', safePhoneDisplay(phoneToUse), ', 预设手机号:', safePhoneDisplay(presetSenderPhone.value))
+
+    // 🔥 如果没有传入手机号，优先使用预设的寄件人手机号
+    if (!phoneToUse && presetSenderPhone.value) {
+      phoneToUse = String(presetSenderPhone.value)
+      console.log('[物流跟踪] ✅ 使用预设寄件人手机号:', safePhoneDisplay(phoneToUse))
+    }
+
+    // 🔥 如果还没有手机号，尝试从订单API获取
     if (!phoneToUse) {
       try {
         const { orderApi } = await import('@/api/order')
         const orderRes = await orderApi.getOrderByTrackingNo(trackingNum)
         if (orderRes?.success && orderRes.data) {
           const orderData = orderRes.data as any
-          phoneToUse = orderData.shippingPhone || orderData.receiverPhone || orderData.phone || orderData.customerPhone || ''
-          console.log('[物流跟踪] 从订单API获取手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未找到')
+          const foundPhone = orderData.shippingPhone || orderData.receiverPhone || orderData.phone || orderData.customerPhone || ''
+          phoneToUse = typeof foundPhone === 'string' ? foundPhone : String(foundPhone || '')
+          console.log('[物流跟踪] 从订单API获取手机号:', safePhoneDisplay(phoneToUse))
         }
       } catch (orderErr) {
         console.log('[物流跟踪] 从订单API获取手机号失败:', orderErr)
       }
     }
 
-    // 🔥 修复：只有在需要手机号验证且没有获取到手机号时才弹窗
+    // 🔥 只有在需要手机号验证且没有获取到手机号时才弹窗
     if (companyCode && isPhoneVerifyRequired(companyCode) && !phoneToUse) {
-      console.log('[物流跟踪] 物流公司需要手机号验证，且未能从订单获取手机号，弹出输入框')
+      console.log('[物流跟踪] ⚠️ 物流公司需要手机号验证，且未能获取手机号，弹出输入框')
       loading.value = false
       pendingTrackingNo.value = trackingNum
       pendingCompanyCode.value = companyCode
       phoneVerifyDialogVisible.value = true
       return
     }
+
+    console.log('[物流跟踪] 🚀 开始查询，使用手机号:', safePhoneDisplay(phoneToUse))
 
     const { logisticsApi } = await import('@/api/logistics')
     const response = await logisticsApi.queryTrace(trackingNum, companyCode || undefined, phoneToUse)
@@ -769,20 +783,27 @@ const refreshTracking = async () => {
   refreshLoading.value = true
 
   try {
-    // 🔥 尝试获取手机号
-    let phoneToUse = ''
-    try {
-      const { orderApi } = await import('@/api/order')
-      const orderResponse = await orderApi.getOrderByTrackingNo(trackingResult.trackingNo)
-      if (orderResponse?.success && orderResponse.data) {
-        const orderData = orderResponse.data as any
-        phoneToUse = orderData.receiverPhone || orderData.phone || orderData.customerPhone || ''
+    // 🔥 优先使用预设的寄件人手机号
+    let phoneToUse = presetSenderPhone.value || ''
+
+    // 🔥 如果没有预设手机号，尝试从订单API获取
+    if (!phoneToUse) {
+      try {
+        const { orderApi } = await import('@/api/order')
+        const orderResponse = await orderApi.getOrderByTrackingNo(trackingResult.trackingNo)
+        if (orderResponse?.success && orderResponse.data) {
+          const orderData = orderResponse.data as any
+          const foundPhone = orderData.receiverPhone || orderData.phone || orderData.customerPhone || ''
+          phoneToUse = typeof foundPhone === 'string' ? foundPhone : String(foundPhone || '')
+        }
+      } catch {
+        // 忽略
       }
-    } catch {
-      // 忽略
     }
 
-    console.log('[物流跟踪] 刷新轨迹，使用手机号:', phoneToUse ? phoneToUse.slice(-4) + '****' : '未提供')
+    // 🔥 安全的手机号显示
+    const phoneDisplay = phoneToUse ? (phoneToUse.length > 4 ? '****' + phoneToUse.slice(-4) : phoneToUse) : '未提供'
+    console.log('[物流跟踪] 刷新轨迹，使用手机号:', phoneDisplay)
 
     const { logisticsApi } = await import('@/api/logistics')
     // 🔥 使用queryTrace而不是refreshTrace，这样可以传递手机号
