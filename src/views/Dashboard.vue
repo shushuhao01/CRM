@@ -962,18 +962,12 @@ const markAsReadAndClose = () => {
   }
   showMessageDetailDialog.value = false
 }
-// 标记所有消息为已读
+// 标记所有消息为已读 - 🔥 使用notificationStore保持与铃铛消息中心同步
 const markAllAsRead = async () => {
   try {
-    // 调用API标记所有消息为已读
-    const response = await messageApi.markAllMessagesAsRead()
-    if (response.success) {
-      // API调用成功后，更新本地store
-      notificationStore.markAllAsRead()
-      ElMessage.success('所有消息已标记为已读')
-    } else {
-      ElMessage.error('标记消息失败')
-    }
+    // 使用notificationStore的方法，确保与铃铛消息中心同步
+    await notificationStore.markAllAsReadWithAPI()
+    ElMessage.success('所有消息已标记为已读')
   } catch (error) {
     console.error('标记所有消息为已读失败:', error)
     ElMessage.error('标记消息失败，请稍后重试')
@@ -991,11 +985,16 @@ const clearAllMessages = async () => {
         type: 'warning'
       }
     )
-    notificationStore.clearAllMessages()
+    // 🔥 使用notificationStore的方法，确保与铃铛消息中心同步
+    await notificationStore.clearAllMessagesWithAPI()
     ElMessage.success('已清空所有消息')
     showMessageDialog.value = false
-  } catch {
-    // 用户取消操作
+  } catch (error: any) {
+    // 用户取消操作时不显示错误
+    if (error !== 'cancel' && error?.toString() !== 'cancel') {
+      console.error('清空消息失败:', error)
+      ElMessage.error('清空消息失败，请稍后重试')
+    }
   }
 }
 
@@ -1566,10 +1565,11 @@ const loadRealChartData = async () => {
 
     if (chartData && chartData.revenue && chartData.revenue.length > 0) {
       // 更新业绩趋势图数据
+      // 🔥 签收业绩使用 revenue 数组中的 deliveredAmount 字段
       performanceChartData.value = {
-        xAxisData: chartData.revenue.map(item => item.date),
-        orderData: chartData.revenue.map(item => item.amount),
-        signData: chartData.revenue.map(item => item.deliveredAmount || 0),
+        xAxisData: chartData.revenue.map((item: { date: string }) => item.date),
+        orderData: chartData.revenue.map((item: { amount: number }) => item.amount),
+        signData: chartData.revenue.map((item: { deliveredAmount?: number }) => item.deliveredAmount || 0),
         title: getPerformanceTitle()
       }
       console.log('[Dashboard] 业绩趋势图数据已更新:', performanceChartData.value)

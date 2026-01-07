@@ -75,6 +75,7 @@
       <!-- 基本信息 -->
       <div class="basic-info">
         <div class="info-grid">
+          <!-- 第一行：物流公司、收货人、联系电话 -->
           <div class="info-item">
             <span class="label">物流公司：</span>
             <span class="value">{{ trackingResult.companyName }}</span>
@@ -87,10 +88,8 @@
             <span class="label">联系电话：</span>
             <span class="value">{{ trackingResult.receiverPhone }}</span>
           </div>
-          <div class="info-item">
-            <span class="label">收货地址：</span>
-            <span class="value">{{ trackingResult.receiverAddress }}</span>
-          </div>
+          <div class="info-item empty-placeholder"></div>
+          <!-- 第二行：发货时间、预计送达、收货地址 -->
           <div class="info-item">
             <span class="label">发货时间：</span>
             <span class="value">{{ trackingResult.shipTime }}</span>
@@ -98,6 +97,10 @@
           <div class="info-item">
             <span class="label">预计送达：</span>
             <span class="value">{{ trackingResult.estimatedTime }}</span>
+          </div>
+          <div class="info-item info-address" style="grid-column: span 2;">
+            <span class="label">收货地址：</span>
+            <span class="value">{{ trackingResult.receiverAddress }}</span>
           </div>
         </div>
       </div>
@@ -1195,7 +1198,7 @@ onBeforeUnmount(() => {
 
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
 }
 
@@ -1212,6 +1215,17 @@ onBeforeUnmount(() => {
 
 .info-item .value {
   color: #303133;
+}
+
+/* 空占位符 */
+.empty-placeholder {
+  visibility: hidden;
+}
+
+/* 收货地址字段占2列 */
+.info-address .value {
+  white-space: normal;
+  word-break: break-all;
 }
 
 .tracking-timeline h4 {

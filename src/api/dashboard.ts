@@ -34,8 +34,12 @@ export interface DashboardChartData {
   revenue: Array<{
     date: string
     amount: number
-    deliveredAmount?: number  // 🔥 签收业绩金额
+    deliveredAmount?: number  // 🔥 签收业绩金额（旧字段，保留兼容）
     orders?: number
+  }>
+  signRevenue?: Array<{  // 🔥 新增：签收业绩数据
+    date: string
+    amount: number
   }>
   orderStatus: Array<{
     status: string

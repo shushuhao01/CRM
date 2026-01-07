@@ -441,7 +441,7 @@ const paginationConfig = computed(() => ({
   currentPage: pagination.currentPage,
   pageSize: pagination.pageSize,
   total: pagination.total,
-  pageSizes: [10, 20, 50, 100]
+  pageSizes: [10, 20, 50, 100, 200, 300, 500, 1000]
 }))
 
 const selectedRows = ref([])
