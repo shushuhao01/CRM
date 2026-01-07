@@ -1919,6 +1919,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  position: relative;
+  overflow: hidden;
 }
 
 .message-item {
@@ -1964,23 +1966,25 @@ onUnmounted(() => {
   margin-left: auto;
 }
 
-/* 消息滑入动画 */
+/* 消息滑入动画 - 新消息从顶部滑入，旧消息向下滑出 */
 .message-slide-enter-active {
   transition: all 0.4s ease-out;
 }
 
 .message-slide-leave-active {
   transition: all 0.3s ease-in;
+  position: absolute;
+  width: 100%;
 }
 
 .message-slide-enter-from {
   opacity: 0;
-  transform: translateX(-30px);
+  transform: translateY(-20px);
 }
 
 .message-slide-leave-to {
   opacity: 0;
-  transform: translateX(30px);
+  transform: translateY(20px);
 }
 
 .message-slide-move {
