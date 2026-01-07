@@ -34,11 +34,13 @@ export interface DashboardChartData {
   revenue: Array<{
     date: string
     amount: number
-    orders: number
+    deliveredAmount?: number  // 🔥 签收业绩金额
+    orders?: number
   }>
   orderStatus: Array<{
     status: string
     count: number
+    amount?: number  // 🔥 金额
     percentage: number
   }>
 }
@@ -281,14 +283,15 @@ export const getChartData = async (params?: {
       const data = await request.get('/dashboard/charts', { params, showError: false } as any)
       if (data) {
         return {
-          revenue: data.performance?.series?.[1]?.data?.map((amount: number, index: number) => ({
+          revenue: data.performance?.series?.[0]?.data?.map((amount: number, index: number) => ({
             date: data.performance?.categories?.[index] || `${index + 1}月`,
-            amount,
-            orders: data.performance?.series?.[0]?.data?.[index] || 0
+            amount,  // 🔥 下单业绩金额
+            deliveredAmount: data.performance?.series?.[1]?.data?.[index] || 0  // 🔥 签收业绩金额
           })) || [],
           orderStatus: data.orderStatus?.map((item: any) => ({
             status: item.name,
             count: item.value,
+            amount: item.amount || 0,  // 🔥 添加金额字段
             percentage: 0
           })) || []
         }

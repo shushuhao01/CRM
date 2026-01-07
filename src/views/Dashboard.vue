@@ -737,7 +737,7 @@ const orderStatusChartOption = computed(() => ({
     trigger: 'item',
     formatter: (params: unknown) => {
       const data = params.data
-      return `${params.name}: ${data.value}<br/>金额: ¥${data.amount.toLocaleString()}`
+      return `${params.name}: ${data.value}单<br/>金额: ¥${(data.amount || 0).toLocaleString()}`
     }
   },
   legend: {
@@ -745,7 +745,8 @@ const orderStatusChartOption = computed(() => ({
     left: 'left',
     formatter: (name: string) => {
       const item = orderStatusChartData.value.find(d => d.name === name)
-      return item ? `${name}: ${item.value}` : name
+      // 🔥 修复：图例显示订单数和金额
+      return item ? `${name}: ${item.value}单 ¥${(item.amount || 0).toLocaleString()}` : name
     }
   },
   series: [
@@ -1454,7 +1455,7 @@ const loadRealChartData = async () => {
       performanceChartData.value = {
         xAxisData: chartData.revenue.map(item => item.date),
         orderData: chartData.revenue.map(item => item.amount),
-        signData: chartData.revenue.map(item => item.orders), // 暂时用订单数代替签收金额
+        signData: chartData.revenue.map(item => item.deliveredAmount || 0), // 🔥 修复：使用签收业绩金额
         title: getPerformanceTitle()
       }
       console.log('[Dashboard] 业绩趋势图数据已更新')
@@ -1465,7 +1466,7 @@ const loadRealChartData = async () => {
       orderStatusChartData.value = chartData.orderStatus.map((item: any) => ({
         value: item.count,
         name: item.status,
-        amount: 0,
+        amount: item.amount || 0,  // 🔥 添加金额字段
         itemStyle: { color: getStatusColor(item.status) }
       }))
       console.log('[Dashboard] 订单状态分布图数据已更新')

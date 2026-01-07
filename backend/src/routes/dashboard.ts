@@ -311,8 +311,8 @@ router.get('/charts', async (req: Request, res: Response) => {
 
     const now = new Date();
     const categories: string[] = [];
-    const revenueData: number[] = [];
-    const ordersData: number[] = [];
+    const orderRevenueData: number[] = [];  // 下单业绩（金额）
+    const deliveredRevenueData: number[] = [];  // 🔥 签收业绩（金额）
 
     if (period === 'month') {
       // 最近6个月
@@ -329,10 +329,13 @@ router.get('/charts', async (req: Request, res: Response) => {
           select: ['totalAmount', 'status', 'markType']
         });
 
-        // 🔥 使用新的业绩计算规则
+        // 下单业绩
         const validOrders = monthOrders.filter(o => isValidForOrderPerformance(o));
-        ordersData.push(validOrders.length);
-        revenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
+        orderRevenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
+
+        // 🔥 签收业绩（只统计已签收订单的金额）
+        const deliveredOrders = monthOrders.filter(o => isValidForDeliveryPerformance(o));
+        deliveredRevenueData.push(deliveredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
       }
     } else if (period === 'week') {
       // 最近8周
@@ -349,10 +352,13 @@ router.get('/charts', async (req: Request, res: Response) => {
           select: ['totalAmount', 'status', 'markType']
         });
 
-        // 🔥 使用新的业绩计算规则
+        // 下单业绩
         const validOrders = weekOrders.filter(o => isValidForOrderPerformance(o));
-        ordersData.push(validOrders.length);
-        revenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
+        orderRevenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
+
+        // 🔥 签收业绩
+        const deliveredOrders = weekOrders.filter(o => isValidForDeliveryPerformance(o));
+        deliveredRevenueData.push(deliveredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
       }
     } else {
       // 最近7天
@@ -370,32 +376,46 @@ router.get('/charts', async (req: Request, res: Response) => {
           select: ['totalAmount', 'status', 'markType']
         });
 
-        // 🔥 使用新的业绩计算规则
+        // 下单业绩
         const validOrders = dayOrders.filter(o => isValidForOrderPerformance(o));
-        ordersData.push(validOrders.length);
-        revenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
+        orderRevenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
+
+        // 🔥 签收业绩
+        const deliveredOrders = dayOrders.filter(o => isValidForDeliveryPerformance(o));
+        deliveredRevenueData.push(deliveredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
       }
     }
 
-    // 获取订单状态分布
-    const allOrders = await orderRepository.find({
-      select: ['status']
+    // 🔥 获取本月订单状态分布（不是全部订单）
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    const monthlyOrders = await orderRepository.find({
+      where: {
+        createdAt: Between(monthStart, monthEnd)
+      },
+      select: ['status', 'totalAmount']
     });
 
-    const statusMap: Record<string, { name: string; count: number; color: string }> = {
-      pending_transfer: { name: '待流转', count: 0, color: '#909399' },
-      pending_audit: { name: '待审核', count: 0, color: '#E6A23C' },
-      audit_rejected: { name: '审核拒绝', count: 0, color: '#F56C6C' },
-      pending_shipment: { name: '待发货', count: 0, color: '#409EFF' },
-      shipped: { name: '已发货', count: 0, color: '#67C23A' },
-      delivered: { name: '已签收', count: 0, color: '#67C23A' },
-      logistics_returned: { name: '物流部退回', count: 0, color: '#F56C6C' },
-      cancelled: { name: '已取消', count: 0, color: '#909399' }
+    const statusMap: Record<string, { name: string; count: number; amount: number; color: string }> = {
+      pending_transfer: { name: '待流转', count: 0, amount: 0, color: '#909399' },
+      pending_audit: { name: '待审核', count: 0, amount: 0, color: '#E6A23C' },
+      audit_rejected: { name: '审核拒绝', count: 0, amount: 0, color: '#F56C6C' },
+      pending_shipment: { name: '待发货', count: 0, amount: 0, color: '#409EFF' },
+      shipped: { name: '已发货', count: 0, amount: 0, color: '#E6A23C' },
+      delivered: { name: '已签收', count: 0, amount: 0, color: '#67C23A' },
+      logistics_returned: { name: '物流部退回', count: 0, amount: 0, color: '#F56C6C' },
+      logistics_cancelled: { name: '物流部取消', count: 0, amount: 0, color: '#F56C6C' },
+      package_exception: { name: '包裹异常', count: 0, amount: 0, color: '#E6A23C' },
+      rejected: { name: '拒收', count: 0, amount: 0, color: '#F56C6C' },
+      pending_cancel: { name: '待取消', count: 0, amount: 0, color: '#909399' },
+      cancelled: { name: '已取消', count: 0, amount: 0, color: '#909399' }
     };
 
-    allOrders.forEach(order => {
+    monthlyOrders.forEach(order => {
       if (statusMap[order.status]) {
         statusMap[order.status].count += 1;
+        statusMap[order.status].amount += Number(order.totalAmount) || 0;
       }
     });
 
@@ -404,6 +424,7 @@ router.get('/charts', async (req: Request, res: Response) => {
       .map(([_, data]) => ({
         name: data.name,
         value: data.count,
+        amount: data.amount,  // 🔥 添加金额字段
         color: data.color
       }));
 
@@ -415,8 +436,8 @@ router.get('/charts', async (req: Request, res: Response) => {
         performance: {
           categories,
           series: [
-            { name: '订单数量', data: ordersData },
-            { name: '销售额', data: revenueData }
+            { name: '下单业绩', data: orderRevenueData },
+            { name: '签收业绩', data: deliveredRevenueData }  // 🔥 修复：返回签收金额
           ]
         },
         orderStatus
