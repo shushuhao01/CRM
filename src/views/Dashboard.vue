@@ -183,8 +183,11 @@
                 </el-icon>
               </div>
               <div class="message-content">
-                <div class="message-title">{{ message.title }}</div>
-                <div class="message-time">{{ message.time }}</div>
+                <div class="message-header">
+                  <div class="message-title">{{ message.title }}</div>
+                  <div class="message-time">{{ formatMessageTime(message.time) }}</div>
+                </div>
+                <div class="message-desc">{{ message.content }}</div>
               </div>
               <el-badge :is-dot="!message.read" class="message-badge" />
             </div>
@@ -898,6 +901,23 @@ const getMessageTypeName = (type: string): string => {
     'data_batch_assigned': '批量分配完成'
   }
   return typeMap[type] || type
+}
+
+// 格式化消息时间（简短显示）
+const formatMessageTime = (time: string): string => {
+  if (!time) return ''
+  const date = new Date(time)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes}分钟前`
+  if (hours < 24) return `${hours}小时前`
+  if (days < 7) return `${days}天前`
+  return `${date.getMonth() + 1}/${date.getDate()}`
 }
 
 // 方法
@@ -2011,8 +2031,8 @@ onUnmounted(() => {
 
 .message-item {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 10px;
   padding: 8px;
   border-radius: 6px;
   cursor: pointer;
@@ -2024,32 +2044,60 @@ onUnmounted(() => {
 }
 
 .message-icon {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .message-content {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
-.message-title {
-  font-size: 14px;
-  color: #303133;
+.message-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 2px;
 }
 
+.message-title {
+  font-size: 13px;
+  color: #303133;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .message-time {
-  font-size: 12px;
+  font-size: 11px;
   color: #909399;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.message-desc {
+  font-size: 12px;
+  color: #606266;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
 }
 
 .message-badge {
-  margin-left: auto;
+  margin-left: 4px;
+  flex-shrink: 0;
+  margin-top: 8px;
 }
 
 /* 消息滑入动画 - 新消息从顶部滑入，旧消息向下滑出 */
