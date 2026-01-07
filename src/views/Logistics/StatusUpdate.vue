@@ -553,6 +553,7 @@ const handleQuickFilter = (value: string) => {
       const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
       const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
       dateRange.value = [formatDate(lastMonthStart), formatDate(lastMonthEnd)]
+      console.log(`[状态更新] 上月日期范围: ${formatDate(lastMonthStart)} ~ ${formatDate(lastMonthEnd)}`)
       break
     case 'year':
       const yearStart = new Date(today.getFullYear(), 0, 1)

@@ -200,7 +200,7 @@ router.get('/list', async (req: Request, res: Response) => {
 
 /**
  * @route POST /api/v1/data/batch-assign
- * @desc 批量分配数据（更新订单的归属人）
+ * @desc 批量分配客户资料（只更新客户的归属人，不影响订单）
  */
 router.post('/batch-assign', async (req: Request, res: Response) => {
   try {
@@ -211,43 +211,47 @@ router.post('/batch-assign', async (req: Request, res: Response) => {
     }
 
     const userRepository = AppDataSource.getRepository(User);
-    const { Order } = await import('../entities/Order');
-    const orderRepository = AppDataSource.getRepository(Order);
+    const customerRepository = AppDataSource.getRepository(Customer);
 
-    // 获取分配人信息
+    // 获取被分配人信息
     const assignee = await userRepository.findOne({ where: { id: assigneeId } });
     if (!assignee) {
-      return res.status(404).json({ success: false, message: '分配人不存在' });
+      return res.status(404).json({ success: false, message: '被分配人不存在' });
     }
 
     const finalAssigneeName = assigneeName || assignee.realName || assignee.username;
 
     let successCount = 0;
-    for (const id of dataIds) {
+    for (const customerId of dataIds) {
       try {
-        // 更新订单的归属人
-        const order = await orderRepository.findOne({ where: { id } });
-        if (order) {
-          order.createdBy = assigneeId;
-          order.createdByName = finalAssigneeName;
-          order.createdByDepartmentId = assignee.departmentId;
-          order.createdByDepartmentName = assignee.departmentName;
-          await orderRepository.save(order);
+        // 🔥 修复：只更新客户的归属人，不影响订单
+        const customer = await customerRepository.findOne({ where: { id: customerId } });
+        if (customer) {
+          customer.salesPersonId = assigneeId;
+          customer.salesPersonName = finalAssigneeName;
+          await customerRepository.save(customer);
           successCount++;
-
-          // 同时更新关联客户的归属人
-          if (order.customerId) {
-            const customerRepository = AppDataSource.getRepository(Customer);
-            const customer = await customerRepository.findOne({ where: { id: order.customerId } });
-            if (customer) {
-              customer.salesPersonId = assigneeId;
-              customer.salesPersonName = finalAssigneeName;
-              await customerRepository.save(customer);
-            }
-          }
         }
       } catch (e) {
-        console.error('分配单条数据失败:', e);
+        console.error('分配单条客户资料失败:', e);
+      }
+    }
+
+    // 🔥 发送资料分配通知给被分配人
+    if (successCount > 0) {
+      try {
+        const currentUser = (req as any).user;
+        const { orderNotificationService } = await import('../services/OrderNotificationService');
+        await orderNotificationService.notifyDataAssign({
+          dataIds: dataIds,
+          dataCount: successCount,
+          assigneeId: assigneeId,
+          assigneeName: finalAssigneeName,
+          assignerId: currentUser?.userId,
+          assignerName: currentUser?.realName || currentUser?.username
+        });
+      } catch (notifyError) {
+        console.error('[资料分配] 发送通知失败:', notifyError);
       }
     }
 

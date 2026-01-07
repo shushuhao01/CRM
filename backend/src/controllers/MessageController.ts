@@ -3,6 +3,7 @@ import { getDataSource } from '../config/database';
 import { MessageSubscription, DepartmentSubscriptionConfig, MessageType, NotificationMethod } from '../entities/MessageSubscription';
 import { Department } from '../entities/Department';
 import { SystemMessage } from '../entities/SystemMessage';
+import { MessageReadStatus } from '../entities/MessageReadStatus';
 import { Announcement, AnnouncementRead } from '../entities/Announcement';
 import { NotificationChannel, NotificationLog } from '../entities/NotificationChannel';
 import { v4 as uuidv4 } from 'uuid';
@@ -1426,6 +1427,7 @@ export class MessageController {
    * 获取当前用户的系统消息
    * 🔥 修复：支持查询 targetUserId 包含当前用户ID的消息（逗号分隔的多个ID）
    * 🔥 2025-12-29 修复：精确匹配用户ID，避免模糊匹配导致的错误
+   * 🔥 2025-01-07 修复：使用 MessageReadStatus 表判断每个用户的独立已读状态
    */
   async getSystemMessages(req: Request, res: Response): Promise<void> {
     try {
@@ -1447,14 +1449,17 @@ export class MessageController {
       const { limit = 50, offset = 0, unreadOnly = 'false' } = req.query;
 
       const messageRepo = dataSource.getRepository(SystemMessage);
+      const readStatusRepo = dataSource.getRepository(MessageReadStatus);
 
       // 🔥 修复：精确匹配用户ID
       // 支持以下格式：
       // 1. targetUserId = '123' (单个用户)
       // 2. targetUserId = '123,456,789' (多个用户，逗号分隔)
-      // 使用 FIND_IN_SET 或精确匹配，避免 LIKE 模糊匹配的问题
+      // 🔥 修复：排除 targetUserId 为空或NULL的消息，避免广播消息被所有人看到
       const queryBuilder = messageRepo.createQueryBuilder('msg')
-        .where(
+        .where('msg.target_user_id IS NOT NULL')
+        .andWhere("msg.target_user_id != ''")
+        .andWhere(
           '(msg.target_user_id = :userId OR FIND_IN_SET(:userId, msg.target_user_id) > 0)',
           { userId: String(userId) }
         )
@@ -1462,20 +1467,36 @@ export class MessageController {
         .skip(Number(offset))
         .take(Number(limit));
 
-      // 只查询未读消息
+      // 🔥 修复：只查询未读消息时，需要排除已在 message_read_status 表中有记录的消息
       if (unreadOnly === 'true') {
-        queryBuilder.andWhere('msg.is_read = 0');
+        queryBuilder.andWhere(
+          'msg.id NOT IN (SELECT message_id FROM message_read_status WHERE user_id = :userId)',
+          { userId: String(userId) }
+        );
       }
 
       const [messages, total] = await queryBuilder.getManyAndCount();
 
-      // 🔥 修复：统计未读数量也使用精确匹配
+      // 🔥 获取当前用户的已读消息ID列表
+      const readStatuses = await readStatusRepo.find({
+        where: { userId: String(userId) },
+        select: ['messageId', 'readAt']
+      });
+      const readStatusMap = new Map(readStatuses.map(rs => [rs.messageId, rs.readAt]));
+
+      // 🔥 修复：统计未读数量 - 排除已在 message_read_status 表中有记录的消息
+      // 同时排除 targetUserId 为空的消息
       const unreadCount = await messageRepo.createQueryBuilder('msg')
-        .where(
+        .where('msg.target_user_id IS NOT NULL')
+        .andWhere("msg.target_user_id != ''")
+        .andWhere(
           '(msg.target_user_id = :userId OR FIND_IN_SET(:userId, msg.target_user_id) > 0)',
           { userId: String(userId) }
         )
-        .andWhere('msg.is_read = 0')
+        .andWhere(
+          'msg.id NOT IN (SELECT message_id FROM message_read_status WHERE user_id = :userId)',
+          { userId: String(userId) }
+        )
         .getCount();
 
       res.json({
@@ -1491,9 +1512,9 @@ export class MessageController {
             relatedId: msg.relatedId,
             relatedType: msg.relatedType,
             actionUrl: msg.actionUrl,
-            isRead: msg.isRead === 1,
+            isRead: readStatusMap.has(msg.id), // 🔥 使用独立的已读状态
             createdAt: msg.createdAt,
-            readAt: msg.readAt
+            readAt: readStatusMap.get(msg.id) || null // 🔥 使用独立的已读时间
           })),
           total,
           unreadCount
@@ -1629,6 +1650,7 @@ export class MessageController {
 
   /**
    * 标记消息为已读
+   * 🔥 2025-01-07 修复：使用 MessageReadStatus 表记录每个用户的独立已读状态
    */
   async markMessageAsRead(req: Request, res: Response): Promise<void> {
     try {
@@ -1642,13 +1664,28 @@ export class MessageController {
       const currentUser = (req as any).currentUser || (req as any).user;
       const userId = currentUser?.id || currentUser?.userId;
 
-      const messageRepo = dataSource.getRepository(SystemMessage);
+      if (!userId) {
+        res.status(401).json({ success: false, message: '未登录' });
+        return;
+      }
 
-      // 🔥 修复：不限制targetUserId，因为全局消息的targetUserId为null
-      await messageRepo.update(
-        { id },
-        { isRead: 1, readAt: new Date() }
-      );
+      const readStatusRepo = dataSource.getRepository(MessageReadStatus);
+
+      // 🔥 检查是否已经标记为已读
+      const existing = await readStatusRepo.findOne({
+        where: { messageId: id, userId: String(userId) }
+      });
+
+      if (!existing) {
+        // 创建已读记录
+        const readStatus = readStatusRepo.create({
+          id: uuidv4(),
+          messageId: id,
+          userId: String(userId)
+        });
+        await readStatusRepo.save(readStatus);
+        console.log(`[消息] ✅ 用户 ${userId} 标记消息 ${id} 为已读`);
+      }
 
       res.json({
         success: true,
@@ -1662,7 +1699,7 @@ export class MessageController {
 
   /**
    * 标记所有消息为已读
-   * 🔥 2025-12-29 修复：使用 FIND_IN_SET 精确匹配用户ID
+   * 🔥 2025-01-07 修复：使用 MessageReadStatus 表记录每个用户的独立已读状态
    */
   async markAllMessagesAsRead(req: Request, res: Response): Promise<void> {
     try {
@@ -1681,19 +1718,35 @@ export class MessageController {
       }
 
       const messageRepo = dataSource.getRepository(SystemMessage);
+      const readStatusRepo = dataSource.getRepository(MessageReadStatus);
 
-      // 🔥 修复：使用 FIND_IN_SET 精确匹配用户ID
-      const result = await messageRepo
-        .createQueryBuilder()
-        .update()
-        .set({ isRead: 1, readAt: new Date() })
-        .where('isRead = :isRead', { isRead: 0 })
-        .andWhere('(targetUserId = :userId OR FIND_IN_SET(:userId, targetUserId) > 0 OR targetUserId IS NULL)', { userId: String(userId) })
-        .execute();
+      // 🔥 获取当前用户的所有未读消息
+      const unreadMessages = await messageRepo.createQueryBuilder('msg')
+        .where(
+          '(msg.target_user_id = :userId OR FIND_IN_SET(:userId, msg.target_user_id) > 0)',
+          { userId: String(userId) }
+        )
+        .andWhere(
+          'msg.id NOT IN (SELECT message_id FROM message_read_status WHERE user_id = :userId)',
+          { userId: String(userId) }
+        )
+        .select(['msg.id'])
+        .getMany();
+
+      // 🔥 批量创建已读记录
+      if (unreadMessages.length > 0) {
+        const readStatuses = unreadMessages.map(msg => readStatusRepo.create({
+          id: uuidv4(),
+          messageId: msg.id,
+          userId: String(userId)
+        }));
+        await readStatusRepo.save(readStatuses);
+        console.log(`[消息] ✅ 用户 ${userId} 批量标记 ${readStatuses.length} 条消息为已读`);
+      }
 
       res.json({
         success: true,
-        message: `已标记 ${result.affected || 0} 条消息为已读`
+        message: `已标记 ${unreadMessages.length} 条消息为已读`
       });
     } catch (error) {
       console.error('标记所有消息为已读失败:', error);

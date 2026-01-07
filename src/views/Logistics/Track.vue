@@ -117,7 +117,8 @@
             placement="top"
           >
             <div class="timeline-content" :class="{ 'timeline-content-first': index === 0 }">
-              <div class="timeline-status">{{ item.status }}</div>
+              <!-- 🔥 只显示有意义的状态文本，隐藏数字状态码 -->
+              <div class="timeline-status" v-if="getReadableStatus(item.status)">{{ getReadableStatus(item.status) }}</div>
               <div class="timeline-desc">{{ item.description }}</div>
               <div class="timeline-meta">
                 <div class="timeline-location" v-if="item.location">
@@ -515,6 +516,37 @@ const getStatusText = (status: string) => {
     'exception': '异常'
   }
   return textMap[status] || '未知'
+}
+
+/**
+ * 🔥 获取可读的状态文本（过滤掉数字状态码）
+ * 快递100等API返回的状态码是数字，需要转换或隐藏
+ */
+const getReadableStatus = (status: string): string => {
+  // 如果是纯数字，返回空字符串（不显示）
+  if (/^\d+$/.test(status)) {
+    return ''
+  }
+
+  // 如果是已知的状态文本，直接返回
+  const textMap: Record<string, string> = {
+    'pending': '待发货',
+    'shipped': '已发货',
+    'picked_up': '已揽收',
+    'in_transit': '运输中',
+    'delivering': '派送中',
+    'out_for_delivery': '派送中',
+    'delivered': '已签收',
+    'exception': '异常',
+    '已签收': '已签收',
+    '派送中': '派送中',
+    '运输中': '运输中',
+    '已发货': '已发货',
+    '已揽收': '已揽收',
+    '异常': '异常'
+  }
+
+  return textMap[status] || ''
 }
 
 /**

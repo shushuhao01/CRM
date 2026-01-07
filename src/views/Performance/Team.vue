@@ -167,6 +167,7 @@
     <!-- 业绩列表 -->
     <div class="performance-table">
       <el-table
+        ref="teamTableRef"
         :data="memberList"
         stripe
         class="data-table"
@@ -174,6 +175,7 @@
         border
         show-summary
         :summary-method="getSummaries"
+        @click="handleTableClick"
       >
         <el-table-column type="index" label="序号" width="60" align="center" fixed="left" />
         <el-table-column prop="name" label="成员" min-width="80" align="center" fixed="left" show-overflow-tooltip />
@@ -447,6 +449,78 @@
       </div>
     </el-dialog>
 
+    <!-- 🔥 合计订单弹窗 -->
+    <el-dialog
+      v-model="summaryOrdersDialogVisible"
+      :title="summaryOrdersTitle"
+      width="90%"
+      top="5vh"
+      class="summary-orders-dialog"
+    >
+      <div class="summary-orders-content">
+        <el-table :data="paginatedSummaryOrders" stripe border class="order-table" v-loading="summaryOrdersLoading">
+          <el-table-column type="index" label="序号" width="60" align="center" />
+          <el-table-column prop="orderNo" label="订单号" width="140" show-overflow-tooltip />
+          <el-table-column prop="orderDate" label="下单日期" width="110" show-overflow-tooltip />
+          <el-table-column prop="customerName" label="客户姓名" width="110" show-overflow-tooltip />
+          <el-table-column prop="createdByName" label="下单员" width="100" show-overflow-tooltip />
+          <el-table-column prop="amount" label="金额" width="110" align="right">
+            <template #default="{ row }">
+              <span class="amount">¥{{ formatNumber(row.amount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="depositAmount" label="定金" width="100" align="right">
+            <template #default="{ row }">
+              <span class="deposit">¥{{ formatNumber(row.depositAmount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="collectionAmount" label="代收" width="100" align="right">
+            <template #default="{ row }">
+              <span class="collection">¥{{ formatNumber(row.collectionAmount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="订单状态" width="120" align="center">
+            <template #default="{ row }">
+              <el-tag :type="getOrderStatusTagType(row.status)" size="small">
+                {{ getOrderStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="trackingNumber" label="快递单号" width="160" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-link
+                v-if="row.trackingNumber && row.trackingNumber !== '暂无'"
+                type="primary"
+                @click="handleTrackingNoClick(row.trackingNumber, row.logisticsCompany)"
+              >
+                {{ row.trackingNumber }}
+              </el-link>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="productDetails" label="产品详情" min-width="200" show-overflow-tooltip />
+          <el-table-column label="操作" width="100" align="center" fixed="right">
+            <template #default="{ row }">
+              <el-button type="primary" size="small" @click="viewOrderDetail(row)">
+                查看
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <!-- 分页 -->
+        <div class="order-pagination">
+          <el-pagination
+            v-model:current-page="summaryOrdersPage"
+            v-model:page-size="summaryOrdersPageSize"
+            :page-sizes="[20, 50, 100]"
+            :total="summaryOrdersTotal"
+            layout="total, sizes, prev, pager, next, jumper"
+          />
+        </div>
+      </div>
+    </el-dialog>
+
     <!-- 全屏查看对话框 -->
     <el-dialog
       v-model="fullscreenVisible"
@@ -521,10 +595,11 @@
             class="data-table fullscreen-data-table"
             :row-class-name="getRowClassName"
             border
-            height="calc(100vh - 300px)"
+            max-height="calc(100vh - 300px)"
             style="width: 100%;"
             show-summary
             :summary-method="getFullscreenSummaries"
+            @click="handleTableClick"
           >
             <el-table-column type="index" label="序号" width="60" align="center" fixed="left" />
             <el-table-column prop="name" label="成员" min-width="80" align="center" fixed="left" show-overflow-tooltip />
@@ -574,15 +649,12 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="操作" width="120" align="center" fixed="right">
+            <el-table-column label="操作" width="90" align="center" fixed="right">
               <template #default="{ row }">
                 <!-- 🔥 权限控制：只有有权限查看该成员订单的用户才能看到操作按钮 -->
                 <div v-if="canViewMemberOrders(row)" class="operation-buttons">
                   <el-button type="primary" size="small" @click="viewMemberDetail(row)">
                     查看详情
-                  </el-button>
-                  <el-button type="warning" size="small" @click="analyzeMemberPerformance(row)">
-                    分析业绩
                   </el-button>
                 </div>
                 <!-- 无权限时显示占位符 -->
@@ -711,7 +783,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch, onUnmounted, h, type VNode } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useDepartmentStore } from '@/stores/department'
@@ -740,7 +812,7 @@ import {
 
 // 接口定义
 interface TeamMember {
-  id: number
+  id: string  // 🔥 修复：用户ID是字符串类型
   name: string
   username?: string
   employeeNumber?: string
@@ -796,6 +868,9 @@ const departmentStore = useDepartmentStore()
 const orderStore = useOrderStore()
 const customerStore = useCustomerStore()
 const performanceStore = usePerformanceStore()
+
+// 表格引用
+const teamTableRef = ref()
 
 // 响应式数据
 const loading = ref(false)
@@ -1522,71 +1597,14 @@ const memberList = computed(() => {
   })
 })
 
-// 成员订单列表 - 基于真实数据
-const selectedMemberId = ref<number | null>(null)
+// 成员订单列表 - 从API加载
+const selectedMemberId = ref<string | null>(null)
+const memberOrderListData = ref<any[]>([])
+const memberOrderLoading = ref(false)
+
+// 🔥 修复：memberOrderList 现在直接返回从API加载的数据
 const memberOrderList = computed(() => {
-  if (!selectedMemberId.value || !selectedMember.value) {
-    console.log('[订单列表] 未选择成员')
-    return []
-  }
-
-  const member = selectedMember.value
-  console.log('[订单列表] 查询成员订单:', member.name, 'ID:', selectedMemberId.value)
-  console.log('[订单列表] 筛选日期范围:', dateRange.value)
-
-  // 🔥 获取指定成员的订单 - 使用新的业绩计算规则
-  const memberOrders = orderStore.orders.filter(order => {
-    // 先检查业绩计算规则
-    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
-    if (order.status === 'pending_transfer' && order.markType !== 'normal') return false
-    if (excludedStatuses.includes(order.status)) return false
-
-    // 日期筛选 - 使用orderDate(下单日期)而不是createTime(创建时间)
-    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      // 优先使用orderDate(下单日期),如果没有则使用createTime
-      let orderDateStr = (order.orderDate || order.createTime || '').split(' ')[0]
-      // 处理各种日期格式：YYYY/MM/DD 或 YYYY-MM-DD
-      orderDateStr = orderDateStr.replace(/\//g, '-')
-      const startDate = dateRange.value[0].replace(/\//g, '-')
-      const endDate = dateRange.value[1].replace(/\//g, '-')
-      if (orderDateStr < startDate || orderDateStr > endDate) {
-        return false
-      }
-    }
-
-    // 优先使用salesPersonId匹配
-    if (order.salesPersonId && selectedMemberId.value) {
-      if (String(order.salesPersonId) === String(selectedMemberId.value)) return true
-    }
-
-    // 如果salesPersonId不存在，使用createdBy匹配
-    if (order.createdBy && member.name) {
-      if (order.createdBy === member.name) return true
-    }
-
-    return false
-  })
-
-  console.log('[订单列表] 找到订单数量:', memberOrders.length)
-
-  return memberOrders.map(order => {
-    // 获取客户信息
-    const customer = customerStore.customers?.find(c => c.id === order.customerId)
-
-    return {
-      id: order.id,
-      orderNo: order.orderNumber || order.id,
-      orderDate: order.createTime || '',
-      customerName: customer?.name || order.customerName || '未知客户',
-      amount: order.totalAmount,
-      depositAmount: order.depositAmount || 0,
-      collectionAmount: order.totalAmount - (order.depositAmount || 0),
-      status: order.status || 'pending',  // 添加订单状态字段
-      logisticsCompany: (order as unknown).logisticsCompany || '待发货',
-      trackingNumber: order.trackingNumber || '暂无',
-      productDetails: order.products?.map((item: unknown) => `${item.name} x${item.quantity}`).join(', ') || '暂无详情'
-    }
-  })
+  return memberOrderListData.value
 })
 
 // 订单列表分页
@@ -2049,7 +2067,7 @@ const getRowClassName = ({ row }: { row: TeamMember }) => {
 // 表格合计行计算方法
 const getSummaries = (param: { columns: any[]; data: TeamMember[] }) => {
   const { columns, data } = param
-  const sums: string[] = []
+  const sums: (string | VNode)[] = []
 
   columns.forEach((column, index) => {
     // 第一列显示"合计"
@@ -2076,11 +2094,19 @@ const getSummaries = (param: { columns: any[]; data: TeamMember[] }) => {
       return
     }
 
-    // 数量类字段 - 求和
+    // 数量类字段 - 求和，并添加超链接样式（无下划线）
     if (prop.includes('Count')) {
       const total = data.reduce((sum, row) => sum + (Number(row[prop]) || 0), 0)
-      // 整数不显示小数点
-      sums[index] = total % 1 === 0 ? String(total) : total.toFixed(1)
+      const displayValue = total % 1 === 0 ? String(total) : total.toFixed(1)
+      sums[index] = h('span', {
+        class: 'summary-count-link',
+        'data-type': prop,
+        'data-value': total,
+        style: {
+          color: '#409eff',
+          cursor: 'pointer'
+        }
+      }, displayValue)
       return
     }
 
@@ -2125,10 +2151,10 @@ const getSummaries = (param: { columns: any[]; data: TeamMember[] }) => {
 // 全屏表格合计行计算方法
 const getFullscreenSummaries = (param: { columns: unknown[]; data: TeamMember[] }) => {
   const { columns, data } = param
-  const sums: string[] = []
+  const sums: (string | VNode)[] = []
 
   // 全屏表格的列顺序：序号、成员、部门、用户名、工号、创建时间、下单数、下单业绩、发货数、发货业绩、发货率...
-  columns.forEach((column, index) => {
+  columns.forEach((column: any, index) => {
     // 第一列显示"合计"
     if (index === 0) {
       sums[index] = '合计'
@@ -2153,10 +2179,19 @@ const getFullscreenSummaries = (param: { columns: unknown[]; data: TeamMember[] 
       return
     }
 
-    // 数量类字段 - 求和
+    // 数量类字段 - 求和，并添加超链接样式（无下划线）
     if (prop.includes('Count')) {
       const total = data.reduce((sum, row) => sum + (Number(row[prop]) || 0), 0)
-      sums[index] = total % 1 === 0 ? String(total) : total.toFixed(1)
+      const displayValue = total % 1 === 0 ? String(total) : total.toFixed(1)
+      sums[index] = h('span', {
+        class: 'summary-count-link',
+        'data-type': prop,
+        'data-value': total,
+        style: {
+          color: '#409eff',
+          cursor: 'pointer'
+        }
+      }, displayValue)
       return
     }
 
@@ -2210,6 +2245,122 @@ const getRateType = (rate: number) => {
   if (rate >= 70) return 'info'
   return 'danger'
 }
+
+// 🔥 处理表格点击事件（用于合计行的超链接点击）
+const handleTableClick = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  // 检查是否点击了合计行的超链接
+  if (target.classList.contains('summary-count-link')) {
+    const countType = target.getAttribute('data-type')
+    if (countType) {
+      showSummaryOrdersDialog(countType)
+    }
+  }
+}
+
+// 🔥 显示合计订单弹窗
+const summaryOrdersDialogVisible = ref(false)
+const summaryOrdersTitle = ref('')
+const summaryOrdersLoading = ref(false)
+const summaryOrdersList = ref<any[]>([])
+const summaryOrdersTotal = ref(0)
+const summaryOrdersPage = ref(1)
+const summaryOrdersPageSize = ref(20)
+
+const showSummaryOrdersDialog = async (countType: string) => {
+  // 根据类型设置标题
+  const titleMap: Record<string, string> = {
+    orderCount: '全部下单订单',
+    shipCount: '全部发货订单',
+    signCount: '全部签收订单',
+    transitCount: '全部在途订单',
+    rejectCount: '全部拒收订单',
+    returnCount: '全部退货订单'
+  }
+  summaryOrdersTitle.value = titleMap[countType] || '订单列表'
+  summaryOrdersDialogVisible.value = true
+  summaryOrdersLoading.value = true
+  summaryOrdersPage.value = 1
+
+  try {
+    const { orderApi } = await import('@/api/order')
+
+    // 获取当前筛选条件下所有成员的ID
+    const memberIds = memberList.value.map((m: TeamMember) => m.id)
+
+    // 根据类型确定要查询的订单状态
+    let statusFilter = ''
+    if (countType === 'shipCount') {
+      statusFilter = 'shipped'
+    } else if (countType === 'signCount') {
+      statusFilter = 'delivered'
+    } else if (countType === 'transitCount') {
+      statusFilter = 'shipped' // 在途也是已发货状态
+    } else if (countType === 'rejectCount') {
+      statusFilter = 'rejected'
+    } else if (countType === 'returnCount') {
+      statusFilter = 'logistics_returned'
+    }
+
+    // 加载所有成员的订单
+    const allOrders: any[] = []
+    for (const memberId of memberIds) {
+      const params: any = {
+        memberId: memberId,
+        page: 1,
+        pageSize: 500
+      }
+
+      // 添加日期筛选
+      if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+        params.startDate = dateRange.value[0]
+        params.endDate = dateRange.value[1]
+      }
+
+      // 添加状态筛选
+      if (statusFilter) {
+        params.status = statusFilter
+      }
+
+      const response = await orderApi.getMemberOrders(params)
+      if (response && response.data && response.data.list) {
+        allOrders.push(...response.data.list)
+      }
+    }
+
+    // 转换为显示格式
+    summaryOrdersList.value = allOrders.map((order: any) => ({
+      id: order.id,
+      orderNo: order.orderNumber,
+      orderDate: (order.orderDate || order.createTime)?.split(' ')[0] || '',
+      customerName: order.customerName || '未知客户',
+      amount: order.totalAmount || 0,
+      depositAmount: order.depositAmount || 0,
+      collectionAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
+      status: order.status || 'pending',
+      logisticsCompany: order.expressCompany || '待发货',
+      trackingNumber: order.trackingNumber || '暂无',
+      createdByName: order.createdByName || '未知',
+      productDetails: order.products?.map((item: any) => `${item.name || item.productName} x${item.quantity}`).join(', ') || '暂无详情'
+    }))
+
+    summaryOrdersTotal.value = summaryOrdersList.value.length
+    console.log(`[团队业绩] 合计订单加载成功: ${summaryOrdersList.value.length} 条`)
+  } catch (error) {
+    console.error('[团队业绩] 加载合计订单失败:', error)
+    summaryOrdersList.value = []
+    summaryOrdersTotal.value = 0
+  } finally {
+    summaryOrdersLoading.value = false
+  }
+}
+
+// 合计订单分页数据
+const paginatedSummaryOrders = computed(() => {
+  const start = (summaryOrdersPage.value - 1) * summaryOrdersPageSize.value
+  const end = start + summaryOrdersPageSize.value
+  return summaryOrdersList.value.slice(start, end)
+})
 
 const viewMemberDetail = (member: TeamMember) => {
   selectedMember.value = member
@@ -2352,10 +2503,61 @@ const handleOrderTypeSizeChange = async (size: number) => {
   }
 }
 
-const loadMemberOrders = (memberId: number) => {
+const loadMemberOrders = async (memberId: string) => {
   selectedMemberId.value = memberId
   memberOrderPage.value = 1
-  console.log('加载成员订单', memberId, '订单数量:', memberOrderList.value.length)
+  memberOrderLoading.value = true
+
+  try {
+    const { orderApi } = await import('@/api/order')
+
+    const params: any = {
+      memberId: memberId,  // 🔥 直接使用字符串类型的用户ID
+      page: 1,
+      pageSize: 500  // 加载足够多的数据用于分页
+    }
+
+    // 添加日期筛选
+    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+      params.startDate = dateRange.value[0]
+      params.endDate = dateRange.value[1]
+    }
+
+    console.log('[团队业绩] 加载成员订单:', params)
+
+    const response = await orderApi.getMemberOrders(params)
+
+    if (response && response.data) {
+      const { list, total } = response.data
+      orderTotal.value = total || 0
+
+      // 转换为弹窗显示格式
+      memberOrderListData.value = (list || []).map((order: any) => ({
+        id: order.id,
+        orderNo: order.orderNumber,
+        orderDate: (order.orderDate || order.createTime)?.split(' ')[0] || '',
+        customerName: order.customerName || '未知客户',
+        amount: order.totalAmount || 0,
+        depositAmount: order.depositAmount || 0,
+        collectionAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
+        status: order.status || 'pending',
+        logisticsCompany: order.expressCompany || '待发货',
+        trackingNumber: order.trackingNumber || '暂无',
+        productDetails: order.products?.map((item: any) => `${item.name} x${item.quantity}`).join(', ') || '暂无详情'
+      }))
+
+      console.log('[团队业绩] 成员订单加载成功:', memberOrderListData.value.length, '条')
+    } else {
+      memberOrderListData.value = []
+      orderTotal.value = 0
+    }
+  } catch (error) {
+    console.error('[团队业绩] 加载成员订单失败:', error)
+    memberOrderListData.value = []
+    orderTotal.value = 0
+  } finally {
+    memberOrderLoading.value = false
+  }
 }
 
 const _exportMemberData = (member: TeamMember) => {
@@ -2834,7 +3036,7 @@ onUnmounted(() => {
 
 .fullscreen-table .amount {
   font-weight: 600;
-  color: #409eff;
+  color: #67c23a;  /* 🔥 改为绿色，与主视图统一 */
 }
 
 .fullscreen-pagination {
@@ -2914,10 +3116,30 @@ onUnmounted(() => {
   padding: 20px;
 }
 
+/* 🔥 合计订单弹窗 */
+.summary-orders-dialog {
+  border-radius: 12px;
+}
+
+.summary-orders-content {
+  padding: 20px;
+}
+
 /* 单数量链接样式 */
 .count-link {
   cursor: pointer;
   font-weight: 500;
+}
+
+/* 🔥 合计行单数量链接样式（无下划线） */
+.summary-count-link {
+  color: #409eff;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.summary-count-link:hover {
+  color: #66b1ff;
 }
 
 .count-link:hover {

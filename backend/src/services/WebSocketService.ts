@@ -34,8 +34,8 @@ interface PushMessageData {
 
 class WebSocketService {
   private io: any = null;
-  private connectedUsers: Map<number, Set<string>> = new Map();
-  private socketToUser: Map<string, number> = new Map();
+  private connectedUsers: Map<string, Set<string>> = new Map(); // 🔥 修复：用户ID改为string类型
+  private socketToUser: Map<string, string> = new Map(); // 🔥 修复：用户ID改为string类型
   private initialized = false;
 
   /**
@@ -173,7 +173,7 @@ class WebSocketService {
     });
   }
 
-  private addConnection(userId: number, socketId: string): void {
+  private addConnection(userId: string, socketId: string): void {
     if (!this.connectedUsers.has(userId)) {
       this.connectedUsers.set(userId, new Set());
     }
@@ -181,7 +181,7 @@ class WebSocketService {
     this.socketToUser.set(socketId, userId);
   }
 
-  private removeConnection(userId: number, socketId: string): void {
+  private removeConnection(userId: string, socketId: string): void {
     const sockets = this.connectedUsers.get(userId);
     if (sockets) {
       sockets.delete(socketId);
@@ -253,15 +253,17 @@ class WebSocketService {
 
   // ==================== 公共推送方法 ====================
 
-  sendToUser(userId: number, event: string, data: any): void {
+  sendToUser(userId: string | number, event: string, data: any): void {
     if (!this.io || !this.initialized) return;
 
-    this.io.to(`user_${userId}`).emit(event, {
+    // 🔥 修复：支持字符串和数字类型的用户ID
+    const userIdStr = String(userId);
+    this.io.to(`user_${userIdStr}`).emit(event, {
       ...data,
       timestamp: new Date().toISOString()
     });
 
-    logger.debug(`📤 推送消息给用户 ${userId}: ${event}`);
+    logger.debug(`📤 推送消息给用户 ${userIdStr}: ${event}`);
   }
 
   sendToRole(roleName: string, event: string, data: any): void {
@@ -275,15 +277,17 @@ class WebSocketService {
     logger.debug(`📤 推送消息给角色 ${roleName}: ${event}`);
   }
 
-  sendToDepartment(departmentId: number, event: string, data: any): void {
+  sendToDepartment(departmentId: string | number, event: string, data: any): void {
     if (!this.io || !this.initialized) return;
 
-    this.io.to(`department_${departmentId}`).emit(event, {
+    // 🔥 修复：支持字符串和数字类型的部门ID
+    const deptIdStr = String(departmentId);
+    this.io.to(`department_${deptIdStr}`).emit(event, {
       ...data,
       timestamp: new Date().toISOString()
     });
 
-    logger.debug(`📤 推送消息给部门 ${departmentId}: ${event}`);
+    logger.debug(`📤 推送消息给部门 ${deptIdStr}: ${event}`);
   }
 
   broadcast(event: string, data: any): void {
@@ -298,9 +302,9 @@ class WebSocketService {
   }
 
   pushSystemMessage(message: PushMessageData, target?: {
-    userId?: number;
+    userId?: string | number;  // 🔥 修复：支持字符串类型的用户ID
     roleName?: string;
-    departmentId?: number;
+    departmentId?: string | number;  // 🔥 修复：支持字符串类型的部门ID
   }): void {
     if (!this.initialized) return;
 
@@ -319,12 +323,22 @@ class WebSocketService {
     };
 
     // 🔥 修复：确保有有效的目标，避免意外广播
-    if (target?.userId && target.userId > 0) {
-      this.sendToUser(target.userId, event, payload);
+    // 支持字符串和数字类型的用户ID
+    if (target?.userId) {
+      const userIdStr = String(target.userId);
+      if (userIdStr && userIdStr !== 'undefined' && userIdStr !== 'null' && userIdStr !== 'NaN') {
+        this.sendToUser(userIdStr, event, payload);
+        logger.info(`[WebSocket] 📤 推送消息给用户 ${userIdStr}: ${message.title}`);
+      } else {
+        logger.warn(`[WebSocket] ⚠️ 无效的用户ID: ${target.userId}，跳过推送`);
+      }
     } else if (target?.roleName) {
       this.sendToRole(target.roleName, event, payload);
-    } else if (target?.departmentId && target.departmentId > 0) {
-      this.sendToDepartment(target.departmentId, event, payload);
+    } else if (target?.departmentId) {
+      const deptIdStr = String(target.departmentId);
+      if (deptIdStr && deptIdStr !== 'undefined' && deptIdStr !== 'null' && deptIdStr !== 'NaN') {
+        this.sendToDepartment(deptIdStr, event, payload);
+      }
     } else {
       // 🔥 修复：如果没有有效目标，不广播，只记录警告
       logger.warn(`[WebSocket] ⚠️ pushSystemMessage 没有有效目标，跳过推送: ${message.title}`);
@@ -333,7 +347,7 @@ class WebSocketService {
     }
   }
 
-  pushNotificationStatus(userId: number, status: {
+  pushNotificationStatus(userId: string | number, status: {
     channelType: string;
     channelName: string;
     success: boolean;
@@ -346,11 +360,11 @@ class WebSocketService {
     return this.connectedUsers.size;
   }
 
-  isUserOnline(userId: number): boolean {
-    return this.connectedUsers.has(userId);
+  isUserOnline(userId: string | number): boolean {
+    return this.connectedUsers.has(String(userId));
   }
 
-  getOnlineUserIds(): number[] {
+  getOnlineUserIds(): string[] {
     return Array.from(this.connectedUsers.keys());
   }
 
