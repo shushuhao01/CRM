@@ -301,66 +301,67 @@ router.get('/rankings', async (_req: Request, res: Response) => {
 
 /**
  * @route GET /api/v1/dashboard/charts
- * @desc 获取图表数据
+ * @desc 获取图表数据（支持角色权限过滤）
  * @access Private
  */
 router.get('/charts', async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const currentUser = (req as any).user;
+    const userRole = currentUser?.role;
+    const userId = currentUser?.userId;
+    const departmentId = currentUser?.departmentId;
     const { period = 'month' } = req.query;
 
     const now = new Date();
-    const categories: string[] = [];
-    const orderRevenueData: number[] = [];  // 下单业绩（金额）
-    const deliveredRevenueData: number[] = [];  // 🔥 签收业绩（金额）
 
-    if (period === 'month') {
-      // 最近6个月
-      for (let i = 5; i >= 0; i--) {
-        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+    // 🔥 根据用户角色构建查询条件（与metrics保持一致）
+    let userCondition = '';
+    const baseParams: any[] = [];
 
-        categories.push(`${date.getMonth() + 1}月`);
-
-        const monthOrders = await orderRepository.find({
-          where: {
-            createdAt: Between(date, monthEnd)
-          },
-          select: ['totalAmount', 'status', 'markType']
-        });
-
-        // 下单业绩
-        const validOrders = monthOrders.filter(o => isValidForOrderPerformance(o));
-        orderRevenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
-
-        // 🔥 签收业绩（只统计已签收订单的金额）
-        const deliveredOrders = monthOrders.filter(o => isValidForDeliveryPerformance(o));
-        deliveredRevenueData.push(deliveredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
-      }
-    } else if (period === 'week') {
-      // 最近8周
-      for (let i = 7; i >= 0; i--) {
-        const weekStart = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000);
-        const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
-
-        categories.push(`第${8 - i}周`);
-
-        const weekOrders = await orderRepository.find({
-          where: {
-            createdAt: Between(weekStart, weekEnd)
-          },
-          select: ['totalAmount', 'status', 'markType']
-        });
-
-        // 下单业绩
-        const validOrders = weekOrders.filter(o => isValidForOrderPerformance(o));
-        orderRevenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
-
-        // 🔥 签收业绩
-        const deliveredOrders = weekOrders.filter(o => isValidForDeliveryPerformance(o));
-        deliveredRevenueData.push(deliveredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
+    if (userRole === 'super_admin' || userRole === 'admin') {
+      // 管理员看所有数据
+      userCondition = '';
+    } else if (userRole === 'department_manager' || userRole === 'manager') {
+      // 部门经理看本部门数据
+      if (departmentId) {
+        userCondition = ` AND (o.created_by IN (SELECT id FROM users WHERE department_id = ?) OR o.created_by_department_id = ?)`;
+        baseParams.push(departmentId, departmentId);
       }
     } else {
+      // 普通员工看自己的数据
+      userCondition = ` AND o.created_by = ?`;
+      baseParams.push(userId);
+    }
+
+    const categories: string[] = [];
+    const orderRevenueData: number[] = [];  // 下单业绩（金额）
+    const deliveredRevenueData: number[] = [];  // 签收业绩（金额）
+
+    if (period === 'month') {
+      // 本月每天的数据
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      for (let i = 1; i <= daysInMonth; i++) {
+        const dayStart = new Date(now.getFullYear(), now.getMonth(), i);
+        const dayEnd = new Date(now.getFullYear(), now.getMonth(), i, 23, 59, 59);
+
+        categories.push(`${i}日`);
+
+        const dayOrdersData = await AppDataSource.query(
+          `SELECT total_amount as totalAmount, status, mark_type as markType
+           FROM orders o
+           WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
+          [dayStart, dayEnd, ...baseParams]
+        );
+
+        // 下单业绩
+        const validOrders = dayOrdersData.filter((o: any) => isValidForOrderPerformance(o));
+        orderRevenueData.push(validOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+
+        // 签收业绩
+        const deliveredOrders = dayOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
+        deliveredRevenueData.push(deliveredOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+      }
+    } else if (period === 'week') {
       // 最近7天
       for (let i = 6; i >= 0; i--) {
         const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
@@ -369,33 +370,56 @@ router.get('/charts', async (req: Request, res: Response) => {
 
         categories.push(`${date.getMonth() + 1}/${date.getDate()}`);
 
-        const dayOrders = await orderRepository.find({
-          where: {
-            createdAt: Between(dayStart, dayEnd)
-          },
-          select: ['totalAmount', 'status', 'markType']
-        });
+        const dayOrdersData = await AppDataSource.query(
+          `SELECT total_amount as totalAmount, status, mark_type as markType
+           FROM orders o
+           WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
+          [dayStart, dayEnd, ...baseParams]
+        );
 
         // 下单业绩
-        const validOrders = dayOrders.filter(o => isValidForOrderPerformance(o));
-        orderRevenueData.push(validOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
+        const validOrders = dayOrdersData.filter((o: any) => isValidForOrderPerformance(o));
+        orderRevenueData.push(validOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
 
-        // 🔥 签收业绩
-        const deliveredOrders = dayOrders.filter(o => isValidForDeliveryPerformance(o));
-        deliveredRevenueData.push(deliveredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0));
+        // 签收业绩
+        const deliveredOrders = dayOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
+        deliveredRevenueData.push(deliveredOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+      }
+    } else {
+      // day: 今日每小时数据
+      for (let i = 0; i < 24; i++) {
+        const hourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), i, 0, 0);
+        const hourEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), i, 59, 59);
+
+        categories.push(`${i}:00`);
+
+        const hourOrdersData = await AppDataSource.query(
+          `SELECT total_amount as totalAmount, status, mark_type as markType
+           FROM orders o
+           WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
+          [hourStart, hourEnd, ...baseParams]
+        );
+
+        // 下单业绩
+        const validOrders = hourOrdersData.filter((o: any) => isValidForOrderPerformance(o));
+        orderRevenueData.push(validOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+
+        // 签收业绩
+        const deliveredOrders = hourOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
+        deliveredRevenueData.push(deliveredOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
       }
     }
 
-    // 🔥 获取本月订单状态分布（不是全部订单）
+    // 🔥 获取本月订单状态分布（与汇总卡片保持一致的数据范围）
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-    const monthlyOrders = await orderRepository.find({
-      where: {
-        createdAt: Between(monthStart, monthEnd)
-      },
-      select: ['status', 'totalAmount']
-    });
+    const monthlyOrdersData = await AppDataSource.query(
+      `SELECT status, total_amount as totalAmount
+       FROM orders o
+       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
+      [monthStart, monthEnd, ...baseParams]
+    );
 
     const statusMap: Record<string, { name: string; count: number; amount: number; color: string }> = {
       pending_transfer: { name: '待流转', count: 0, amount: 0, color: '#909399' },
@@ -412,7 +436,7 @@ router.get('/charts', async (req: Request, res: Response) => {
       cancelled: { name: '已取消', count: 0, amount: 0, color: '#909399' }
     };
 
-    monthlyOrders.forEach(order => {
+    monthlyOrdersData.forEach((order: any) => {
       if (statusMap[order.status]) {
         statusMap[order.status].count += 1;
         statusMap[order.status].amount += Number(order.totalAmount) || 0;
@@ -424,7 +448,7 @@ router.get('/charts', async (req: Request, res: Response) => {
       .map(([_, data]) => ({
         name: data.name,
         value: data.count,
-        amount: data.amount,  // 🔥 添加金额字段
+        amount: data.amount,
         color: data.color
       }));
 
@@ -437,7 +461,7 @@ router.get('/charts', async (req: Request, res: Response) => {
           categories,
           series: [
             { name: '下单业绩', data: orderRevenueData },
-            { name: '签收业绩', data: deliveredRevenueData }  // 🔥 修复：返回签收金额
+            { name: '签收业绩', data: deliveredRevenueData }
           ]
         },
         orderStatus
