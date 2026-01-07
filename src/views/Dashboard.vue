@@ -1442,11 +1442,12 @@ const loadRankingsFromStore = () => {
 }
 
 // 加载真实的图表数据
+// 🔥 加载真实的图表数据 - 从后端API获取，支持角色权限过滤
 const loadRealChartData = async () => {
   try {
-    console.log('[Dashboard] 开始加载图表数据...')
+    console.log('[Dashboard] 开始加载图表数据，时间段:', performancePeriod.value)
 
-    // 🔥 修复：直接从后端API获取图表数据，不受订单列表筛选影响
+    // 调用后端API获取图表数据（后端会根据用户角色自动过滤数据）
     const chartData = await dashboardApi.getChartData({ period: performancePeriod.value as 'day' | 'week' | 'month' })
     console.log('[Dashboard] 后端返回图表数据:', chartData)
 
@@ -1455,10 +1456,18 @@ const loadRealChartData = async () => {
       performanceChartData.value = {
         xAxisData: chartData.revenue.map(item => item.date),
         orderData: chartData.revenue.map(item => item.amount),
-        signData: chartData.revenue.map(item => item.deliveredAmount || 0), // 🔥 修复：使用签收业绩金额
+        signData: chartData.revenue.map(item => item.deliveredAmount || 0),
         title: getPerformanceTitle()
       }
-      console.log('[Dashboard] 业绩趋势图数据已更新')
+      console.log('[Dashboard] 业绩趋势图数据已更新:', performanceChartData.value)
+    } else {
+      // 如果没有数据，设置空数据
+      performanceChartData.value = {
+        xAxisData: [],
+        orderData: [],
+        signData: [],
+        title: getPerformanceTitle()
+      }
     }
 
     if (chartData && chartData.orderStatus && chartData.orderStatus.length > 0) {
@@ -1466,10 +1475,13 @@ const loadRealChartData = async () => {
       orderStatusChartData.value = chartData.orderStatus.map((item: any) => ({
         value: item.count,
         name: item.status,
-        amount: item.amount || 0,  // 🔥 添加金额字段
+        amount: item.amount || 0,
         itemStyle: { color: getStatusColor(item.status) }
       }))
-      console.log('[Dashboard] 订单状态分布图数据已更新')
+      console.log('[Dashboard] 订单状态分布图数据已更新:', orderStatusChartData.value)
+    } else {
+      // 如果没有数据，设置空数据
+      orderStatusChartData.value = []
     }
 
   } catch (error) {
