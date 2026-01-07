@@ -243,7 +243,7 @@
         <el-pagination
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
-          :page-sizes="[30, 50, 100]"
+          :page-sizes="[30, 50, 100, 200, 300, 500, 1000]"
           :total="total"
           layout="total, sizes, prev, pager, next, jumper"
           @size-change="handleSizeChange"
@@ -344,7 +344,7 @@
             <el-pagination
               v-model:current-page="orderCurrentPage"
               v-model:page-size="orderPageSize"
-              :page-sizes="[30, 50, 100]"
+              :page-sizes="[10, 20, 30, 50, 100, 200, 300, 500, 1000]"
               :total="orderTotal"
               layout="total, sizes, prev, pager, next, jumper"
               @size-change="handleMemberOrderPageChange"
@@ -439,7 +439,7 @@
           <el-pagination
             v-model:current-page="orderTypeCurrentPage"
             v-model:page-size="orderTypePageSize"
-            :page-sizes="[10, 30, 50, 100]"
+            :page-sizes="[10, 20, 30, 50, 100, 200, 300, 500, 1000]"
             :total="orderTypeTotal"
             layout="total, sizes, prev, pager, next, jumper"
             @current-change="handleOrderTypePageChange"
@@ -513,7 +513,7 @@
           <el-pagination
             v-model:current-page="summaryOrdersPage"
             v-model:page-size="summaryOrdersPageSize"
-            :page-sizes="[20, 50, 100]"
+            :page-sizes="[10, 20, 30, 50, 100, 200, 300, 500, 1000]"
             :total="summaryOrdersTotal"
             layout="total, sizes, prev, pager, next, jumper"
           />
@@ -669,7 +669,7 @@
           <el-pagination
             v-model:current-page="currentPage"
             v-model:page-size="pageSize"
-            :page-sizes="[30, 50, 100, 200]"
+            :page-sizes="[30, 50, 100, 200, 300, 500, 1000]"
             :total="total"
             layout="total, sizes, prev, pager, next, jumper"
             @size-change="handleSizeChange"
@@ -1079,7 +1079,7 @@ const getTeamMemberCount = () => {
 const memberDetailVisible = ref(false)
 const selectedMember = ref<TeamMember | null>(null)
 const orderCurrentPage = ref(1)
-const orderPageSize = ref(30)
+const orderPageSize = ref(10)
 const orderTotal = ref(50)
 const memberOrderPage = ref(1)
 
@@ -1093,7 +1093,7 @@ const orderTypeOrders = ref<any[]>([])
 const orderTypeLabel = ref('')
 const orderTypeDetailTitle = ref('')
 const orderTypeCurrentPage = ref(1)
-const orderTypePageSize = ref(30)
+const orderTypePageSize = ref(10)
 
 // 订单类型分页列表
 const paginatedOrderTypeList = computed(() => {
@@ -2069,6 +2069,14 @@ const getSummaries = (param: { columns: any[]; data: TeamMember[] }) => {
   const { columns, data } = param
   const sums: (string | VNode)[] = []
 
+  // 🔥 权限判断：只有超管、管理员、部门经理可以点击合计行
+  const currentUser = userStore.currentUser
+  const canClickSummary = currentUser && (
+    currentUser.role === 'super_admin' ||
+    currentUser.role === 'admin' ||
+    currentUser.role === 'department_manager'
+  )
+
   columns.forEach((column, index) => {
     // 第一列显示"合计"
     if (index === 0) {
@@ -2094,19 +2102,26 @@ const getSummaries = (param: { columns: any[]; data: TeamMember[] }) => {
       return
     }
 
-    // 数量类字段 - 求和，并添加超链接样式（无下划线）
+    // 数量类字段 - 求和，根据权限决定是否可点击
     if (prop.includes('Count')) {
       const total = data.reduce((sum, row) => sum + (Number(row[prop]) || 0), 0)
       const displayValue = total % 1 === 0 ? String(total) : total.toFixed(1)
-      sums[index] = h('span', {
-        class: 'summary-count-link',
-        'data-type': prop,
-        'data-value': total,
-        style: {
-          color: '#409eff',
-          cursor: 'pointer'
-        }
-      }, displayValue)
+
+      // 🔥 只有有权限的用户才显示可点击的链接
+      if (canClickSummary) {
+        sums[index] = h('span', {
+          class: 'summary-count-link',
+          'data-type': prop,
+          'data-value': total,
+          style: {
+            color: '#409eff',
+            cursor: 'pointer'
+          }
+        }, displayValue)
+      } else {
+        // 销售员等无权限用户显示普通文本
+        sums[index] = displayValue
+      }
       return
     }
 
@@ -2153,6 +2168,14 @@ const getFullscreenSummaries = (param: { columns: unknown[]; data: TeamMember[] 
   const { columns, data } = param
   const sums: (string | VNode)[] = []
 
+  // 🔥 权限判断：只有超管、管理员、部门经理可以点击合计行
+  const currentUser = userStore.currentUser
+  const canClickSummary = currentUser && (
+    currentUser.role === 'super_admin' ||
+    currentUser.role === 'admin' ||
+    currentUser.role === 'department_manager'
+  )
+
   // 全屏表格的列顺序：序号、成员、部门、用户名、工号、创建时间、下单数、下单业绩、发货数、发货业绩、发货率...
   columns.forEach((column: any, index) => {
     // 第一列显示"合计"
@@ -2179,19 +2202,26 @@ const getFullscreenSummaries = (param: { columns: unknown[]; data: TeamMember[] 
       return
     }
 
-    // 数量类字段 - 求和，并添加超链接样式（无下划线）
+    // 数量类字段 - 求和，根据权限决定是否可点击
     if (prop.includes('Count')) {
       const total = data.reduce((sum, row) => sum + (Number(row[prop]) || 0), 0)
       const displayValue = total % 1 === 0 ? String(total) : total.toFixed(1)
-      sums[index] = h('span', {
-        class: 'summary-count-link',
-        'data-type': prop,
-        'data-value': total,
-        style: {
-          color: '#409eff',
-          cursor: 'pointer'
-        }
-      }, displayValue)
+
+      // 🔥 只有有权限的用户才显示可点击的链接
+      if (canClickSummary) {
+        sums[index] = h('span', {
+          class: 'summary-count-link',
+          'data-type': prop,
+          'data-value': total,
+          style: {
+            color: '#409eff',
+            cursor: 'pointer'
+          }
+        }, displayValue)
+      } else {
+        // 销售员等无权限用户显示普通文本
+        sums[index] = displayValue
+      }
       return
     }
 
@@ -2265,9 +2295,25 @@ const summaryOrdersLoading = ref(false)
 const summaryOrdersList = ref<any[]>([])
 const summaryOrdersTotal = ref(0)
 const summaryOrdersPage = ref(1)
-const summaryOrdersPageSize = ref(20)
+const summaryOrdersPageSize = ref(10)
 
 const showSummaryOrdersDialog = async (countType: string) => {
+  // 🔥 权限检查：只有超管、管理员、部门经理可以查看合计订单
+  const currentUser = userStore.currentUser
+  if (!currentUser) {
+    ElMessage.warning('请先登录')
+    return
+  }
+
+  const canViewSummary = currentUser.role === 'super_admin' ||
+    currentUser.role === 'admin' ||
+    currentUser.role === 'department_manager'
+
+  if (!canViewSummary) {
+    ElMessage.warning('您没有权限查看合计订单详情')
+    return
+  }
+
   // 根据类型设置标题
   const titleMap: Record<string, string> = {
     orderCount: '全部下单订单',

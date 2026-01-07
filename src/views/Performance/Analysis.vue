@@ -579,7 +579,7 @@
           <el-pagination
             v-model:current-page="orderTypeCurrentPage"
             v-model:page-size="orderTypePageSize"
-            :page-sizes="[30, 50, 100]"
+            :page-sizes="[10, 20, 30, 50, 100]"
             :total="orderTypeOrders.length"
             layout="total, sizes, prev, pager, next, jumper"
           />
@@ -734,7 +734,7 @@ const orderTypeOrders = ref<any[]>([])
 const orderTypeLabel = ref('')
 const orderTypeDetailTitle = ref('')
 const orderTypeCurrentPage = ref(1)
-const orderTypePageSize = ref(30)
+const orderTypePageSize = ref(10)
 
 // 订单类型分页列表
 const paginatedOrderTypeList = computed(() => {
@@ -1026,8 +1026,9 @@ const handleQuickFilter = (filterKey: string) => {
 
   switch (filterKey) {
     case 'all':
-      // 全部：显示所有数据，不设置日期范围
-      dateRange.value = ['', '']
+      // 全部：从5年前到今天（足够覆盖所有历史数据）
+      const fiveYearsAgo = new Date(today.getFullYear() - 5, 0, 1)
+      dateRange.value = [formatDateLocal(fiveYearsAgo), formatDateLocal(today)]
       break
     case 'today':
       dateRange.value = [formatDateLocal(today), formatDateLocal(today)]
@@ -1041,6 +1042,13 @@ const handleQuickFilter = (filterKey: string) => {
       const startOfWeek = new Date(today)
       startOfWeek.setDate(today.getDate() - today.getDay() + 1)
       dateRange.value = [formatDateLocal(startOfWeek), formatDateLocal(today)]
+      break
+    case 'lastWeek':
+      const lastWeekEnd = new Date(today)
+      lastWeekEnd.setDate(today.getDate() - today.getDay())
+      const lastWeekStart = new Date(lastWeekEnd)
+      lastWeekStart.setDate(lastWeekEnd.getDate() - 6)
+      dateRange.value = [formatDateLocal(lastWeekStart), formatDateLocal(lastWeekEnd)]
       break
     case 'thisMonth':
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
@@ -1073,180 +1081,358 @@ const handleQuickFilter = (filterKey: string) => {
 const chartData = ref({
   performanceTrend: {
     xAxis: [] as string[],
-    data: [] as number[]
+    orderData: [] as number[],  // 下单业绩
+    signData: [] as number[]    // 签收业绩
   },
   orderStatus: [] as Array<{ value: number; name: string; amount: number }>
 })
 
-// 加载图表数据
-const loadChartData = () => {
+// 加载图表数据 - 🔥 直接使用前端数据计算，确保与筛选条件一致
+const loadChartData = async () => {
   try {
-    console.log('📊 [业绩分析] 开始加载图表数据')
-    console.log('📊 [业绩分析] 原始订单数量:', orderStore.orders.length)
-    console.log('📊 [业绩分析] 订单状态分布:', orderStore.orders.map(o => ({ status: o.status, markType: o.markType, amount: o.totalAmount })))
-
-    // 🔥 使用新的业绩计算规则
-    let orders = orderStore.orders.filter(order => {
-      const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
-      if (order.status === 'pending_transfer') return order.markType === 'normal'
-      return !excludedStatuses.includes(order.status)
+    console.log('📊 [业绩分析] 开始加载图表数据，使用前端数据计算')
+    console.log('📊 [业绩分析] 当前筛选条件:', {
+      dateRange: dateRange.value,
+      department: selectedDepartment.value
     })
 
-    console.log('📊 [业绩分析] 业绩规则过滤后订单数量:', orders.length)
-
-    // 应用部门筛选（通过销售人员的部门ID）
-    if (selectedDepartment.value) {
-      const departmentUsers = userStore.users?.filter(u => u.departmentId === selectedDepartment.value).map(u => u.id) || []
-      orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
-      console.log('📊 [业绩分析] 部门筛选后订单数量:', orders.length)
-    }
-
-    // 应用日期筛选（只有当日期范围有效时才筛选）- 🔥 使用北京时间字符串比较
-    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      console.log('📊 [业绩分析] 日期筛选范围:', dateRange.value[0], '至', dateRange.value[1])
-      console.log('📊 [业绩分析] 日期筛选前订单数量:', orders.length)
-
-      orders = orders.filter(order =>
-        isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
-      )
-
-      console.log('📊 [业绩分析] 日期筛选后订单数量:', orders.length)
-    }
-
-    // 生成业绩趋势数据（根据日期范围动态生成）
-    const trendData = new Map<string, number>()
-
-    // 确定日期范围
-    let startDate: Date
-    let endDate: Date
-
-    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      // 使用用户选择的日期范围
-      startDate = new Date(dateRange.value[0])
-      endDate = new Date(dateRange.value[1])
-    } else {
-      // 默认使用最近7天
-      endDate = new Date()
-      startDate = new Date()
-      startDate.setDate(endDate.getDate() - 6)
-    }
-
-    // 生成日期范围内的所有日期（使用本地时间格式，避免时区问题）
-    const currentDate = new Date(startDate)
-    while (currentDate <= endDate) {
-      // 🔥 修复：使用本地时间格式生成日期键，避免时区问题
-      const year = currentDate.getFullYear()
-      const month = String(currentDate.getMonth() + 1).padStart(2, '0')
-      const day = String(currentDate.getDate()).padStart(2, '0')
-      const dateKey = `${year}-${month}-${day}`
-      trendData.set(dateKey, 0)
-      currentDate.setDate(currentDate.getDate() + 1)
-    }
-
-    console.log('📊 [业绩趋势] 生成的日期键:', Array.from(trendData.keys()))
-
-    // 统计每天的业绩
-    orders.forEach(order => {
-      // 支持多种日期格式：ISO格式(2025-12-13T03:39:35.000Z)和普通格式(2025-12-13 03:39:35)
-      let orderDate = ''
-      if (order.createTime) {
-        if (order.createTime.includes('T')) {
-          // ISO格式
-          orderDate = order.createTime.split('T')[0]
-        } else if (order.createTime.includes(' ')) {
-          // 普通格式
-          orderDate = order.createTime.split(' ')[0]
-        } else {
-          // 纯日期格式
-          orderDate = order.createTime.substring(0, 10)
-        }
-      }
-      if (orderDate && trendData.has(orderDate)) {
-        trendData.set(orderDate, trendData.get(orderDate)! + order.totalAmount)
-      }
-    })
-
-    // 🔥 修复：使用本地时间格式输出日志
-    const formatLocalDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    console.log('📊 [业绩趋势] 日期范围:', formatLocalDate(startDate), '至', formatLocalDate(endDate))
-    console.log('📊 [业绩趋势] 订单数量:', orders.length)
-    console.log('📊 [业绩趋势] 趋势数据:', Array.from(trendData.entries()))
-
-    chartData.value.performanceTrend = {
-      xAxis: Array.from(trendData.keys()).map(date => {
-        const d = new Date(date)
-        return `${d.getMonth() + 1}/${d.getDate()}`
-      }),
-      data: Array.from(trendData.values())
-    }
-
-    // 生成订单状态分布数据（参考个人业绩页面的逻辑）
-    const statusMap = new Map()
-    const statusNames: Record<string, string> = {
-      // 16个订单状态
-      'pending_transfer': '待流转',
-      'pending_audit': '待审核',
-      'audit_rejected': '审核拒绝',
-      'pending_shipment': '待发货',
-      'shipped': '已发货',
-      'delivered': '已签收',
-      'logistics_returned': '物流部退回',
-      'logistics_cancelled': '物流部取消',
-      'package_exception': '包裹异常',
-      'rejected': '拒收',
-      'rejected_returned': '拒收已退回',
-      'after_sales_created': '已建售后',
-      'pending_cancel': '待取消',
-      'cancel_failed': '取消失败',
-      'cancelled': '已取消',
-      'draft': '草稿',
-      'refunded': '已退款',
-      // 兼容旧状态
-      'pending': '待审核',
-      'paid': '已付款',
-      'completed': '已完成',
-      'signed': '已签收'
-    }
-
-    orders.forEach(order => {
-      const statusName = statusNames[order.status] || order.status
-      if (statusMap.has(statusName)) {
-        const existing = statusMap.get(statusName)
-        statusMap.set(statusName, {
-          count: existing.count + 1,
-          amount: existing.amount + (order.totalAmount || 0)
-        })
-      } else {
-        statusMap.set(statusName, {
-          count: 1,
-          amount: order.totalAmount || 0
-        })
-      }
-    })
-
-    // 转换为图表数据格式 - 🔥 简化：name只存状态名，详细信息在tooltip显示
-    const orderStatusData: Array<{ value: number; name: string; amount: number }> = []
-    statusMap.forEach((data, name) => {
-      orderStatusData.push({
-        value: data.count,
-        name: name,
-        amount: data.amount
-      })
-    })
-
-    chartData.value.orderStatus = orderStatusData
+    // 🔥 直接使用前端数据计算，确保与汇总卡片数据一致
+    loadChartDataFromStore()
+    loadOrderStatusFromStore()
 
     // 初始化图表
     initCharts()
   } catch (error) {
-    console.error('加载图表数据失败:', error)
-    chartData.value.performanceTrend = {
-      xAxis: [],
-      data: []
-    }
+    console.error('📊 [业绩分析] 加载图表数据失败:', error)
+    chartData.value.performanceTrend = { xAxis: [], orderData: [], signData: [] }
     chartData.value.orderStatus = []
     initCharts()
   }
+}
+
+// 🔥 生成日期范围内的所有日期
+const generateDateRange = (startDate: string, endDate: string): string[] => {
+  const dates: string[] = []
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  const current = new Date(start)
+
+  while (current <= end) {
+    const year = current.getFullYear()
+    const month = String(current.getMonth() + 1).padStart(2, '0')
+    const day = String(current.getDate()).padStart(2, '0')
+    dates.push(`${year}-${month}-${day}`)
+    current.setDate(current.getDate() + 1)
+  }
+
+  return dates
+}
+
+// 🔥 计算日期范围的天数
+const getDaysBetween = (startDate: string, endDate: string): number => {
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+}
+
+// 🔥 降级方案：从前端store加载图表数据
+const loadChartDataFromStore = () => {
+  console.log('📊 [业绩分析] 使用前端数据计算图表')
+  console.log('📊 [业绩分析] 原始订单数量:', orderStore.orders.length)
+  console.log('📊 [业绩分析] 当前快速筛选:', selectedQuickFilter.value)
+  console.log('📊 [业绩分析] 当前日期范围:', dateRange.value)
+
+  // 🔥 使用新的业绩计算规则
+  let orders = orderStore.orders.filter(order => {
+    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+    if (order.status === 'pending_transfer') return order.markType === 'normal'
+    return !excludedStatuses.includes(order.status)
+  })
+
+  console.log('📊 [业绩分析] 业绩规则过滤后订单数量:', orders.length)
+
+  // 应用部门筛选（通过销售人员的部门ID）
+  if (selectedDepartment.value) {
+    const departmentUsers = userStore.users?.filter(u => u.departmentId === selectedDepartment.value).map(u => u.id) || []
+    orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
+    console.log('📊 [业绩分析] 部门筛选后订单数量:', orders.length)
+  }
+
+  // 应用日期筛选（只有当日期范围有效时才筛选）
+  if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+    orders = orders.filter(order =>
+      isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+    )
+    console.log('📊 [业绩分析] 日期筛选后订单数量:', orders.length)
+  }
+
+  // 🔥 按日期汇总下单业绩和签收业绩
+  const dailyOrderData = new Map<string, number>()  // 下单业绩
+  const dailySignData = new Map<string, number>()   // 签收业绩
+
+  orders.forEach(order => {
+    if (order.createTime) {
+      // 提取日期部分
+      let dateStr = ''
+      const normalizedTime = order.createTime.replace(/\//g, '-')
+      if (normalizedTime.includes('T')) {
+        dateStr = normalizedTime.split('T')[0]
+      } else if (normalizedTime.includes(' ')) {
+        dateStr = normalizedTime.split(' ')[0]
+      } else {
+        dateStr = normalizedTime.substring(0, 10)
+      }
+
+      if (dateStr && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // 下单业绩
+        dailyOrderData.set(dateStr, (dailyOrderData.get(dateStr) || 0) + (order.totalAmount || 0))
+
+        // 签收业绩（包括delivered和signed状态）
+        if (order.status === 'delivered' || order.status === 'signed') {
+          dailySignData.set(dateStr, (dailySignData.get(dateStr) || 0) + (order.totalAmount || 0))
+        }
+      }
+    }
+  })
+
+  console.log('📊 [业绩分析] 按日汇总下单数据:', Array.from(dailyOrderData.entries()))
+  console.log('📊 [业绩分析] 按日汇总签收数据:', Array.from(dailySignData.entries()))
+
+  // 🔥 根据日期范围生成完整的时间轴
+  const startDateStr = dateRange.value[0]
+  const endDateStr = dateRange.value[1]
+  const dayCount = getDaysBetween(startDateStr, endDateStr)
+  const quickFilter = selectedQuickFilter.value
+
+  console.log('📊 [业绩分析] 日期范围天数:', dayCount, '快速筛选:', quickFilter)
+
+  // 🔥 根据快速筛选类型决定显示粒度
+  if (quickFilter === 'all') {
+    // 全部：按年度汇总
+    const yearlyOrderData = new Map<string, number>()
+    const yearlySignData = new Map<string, number>()
+
+    // 从订单数据中获取实际的年份范围
+    const years = new Set<string>()
+    dailyOrderData.forEach((_, dateStr) => {
+      years.add(dateStr.substring(0, 4))
+    })
+
+    // 如果没有数据，使用当前年份
+    if (years.size === 0) {
+      years.add(new Date().getFullYear().toString())
+    }
+
+    const allYears = Array.from(years).sort()
+    allYears.forEach(year => {
+      yearlyOrderData.set(year, 0)
+      yearlySignData.set(year, 0)
+    })
+
+    // 汇总数据到年份
+    dailyOrderData.forEach((amount, dateStr) => {
+      const year = dateStr.substring(0, 4)
+      if (yearlyOrderData.has(year)) {
+        yearlyOrderData.set(year, (yearlyOrderData.get(year) || 0) + amount)
+      }
+    })
+
+    dailySignData.forEach((amount, dateStr) => {
+      const year = dateStr.substring(0, 4)
+      if (yearlySignData.has(year)) {
+        yearlySignData.set(year, (yearlySignData.get(year) || 0) + amount)
+      }
+    })
+
+    chartData.value.performanceTrend = {
+      xAxis: allYears.map(y => `${y}年`),
+      orderData: allYears.map(y => yearlyOrderData.get(y) || 0),
+      signData: allYears.map(y => yearlySignData.get(y) || 0)
+    }
+    console.log('📊 [业绩分析] 按年度图表数据:', chartData.value.performanceTrend)
+  } else if (quickFilter === 'thisYear') {
+    // 本年：按月汇总
+    const monthlyOrderData = new Map<string, number>()
+    const monthlySignData = new Map<string, number>()
+
+    // 生成本年所有月份
+    const currentYear = new Date().getFullYear()
+    const allMonths: string[] = []
+    for (let m = 1; m <= 12; m++) {
+      const monthKey = `${currentYear}-${String(m).padStart(2, '0')}`
+      allMonths.push(monthKey)
+      monthlyOrderData.set(monthKey, 0)
+      monthlySignData.set(monthKey, 0)
+    }
+
+    // 汇总数据到月份
+    dailyOrderData.forEach((amount, dateStr) => {
+      const monthKey = dateStr.substring(0, 7)
+      if (monthlyOrderData.has(monthKey)) {
+        monthlyOrderData.set(monthKey, (monthlyOrderData.get(monthKey) || 0) + amount)
+      }
+    })
+
+    dailySignData.forEach((amount, dateStr) => {
+      const monthKey = dateStr.substring(0, 7)
+      if (monthlySignData.has(monthKey)) {
+        monthlySignData.set(monthKey, (monthlySignData.get(monthKey) || 0) + amount)
+      }
+    })
+
+    chartData.value.performanceTrend = {
+      xAxis: allMonths.map(m => `${parseInt(m.split('-')[1])}月`),
+      orderData: allMonths.map(m => monthlyOrderData.get(m) || 0),
+      signData: allMonths.map(m => monthlySignData.get(m) || 0)
+    }
+    console.log('📊 [业绩分析] 本年按月图表数据:', chartData.value.performanceTrend)
+  } else if (dayCount <= 1) {
+    // 今日/昨日：显示单天数据，X轴显示日期
+    const orderData = [dailyOrderData.get(startDateStr) || 0]
+    const signData = [dailySignData.get(startDateStr) || 0]
+
+    // 格式化日期显示
+    const parts = startDateStr.split('-')
+    const formattedDate = `${Number(parts[1])}月${Number(parts[2])}日`
+
+    chartData.value.performanceTrend = {
+      xAxis: [formattedDate],
+      orderData,
+      signData
+    }
+    console.log('📊 [业绩分析] 单日图表数据:', chartData.value.performanceTrend)
+  } else if (dayCount <= 31) {
+    // 本周/上周/本月/上月：按日显示
+    const allDates = generateDateRange(startDateStr, endDateStr)
+
+    chartData.value.performanceTrend = {
+      xAxis: allDates.map(date => {
+        const parts = date.split('-')
+        return `${Number(parts[1])}/${Number(parts[2])}`
+      }),
+      orderData: allDates.map(date => dailyOrderData.get(date) || 0),
+      signData: allDates.map(date => dailySignData.get(date) || 0)
+    }
+    console.log('📊 [业绩分析] 按日图表数据:', chartData.value.performanceTrend)
+  } else {
+    // 其他情况（如本季度）：按月汇总
+    const monthlyOrderData = new Map<string, number>()
+    const monthlySignData = new Map<string, number>()
+
+    // 生成所有月份
+    const startMonth = startDateStr.substring(0, 7)
+    const endMonth = endDateStr.substring(0, 7)
+    const allMonths: string[] = []
+
+    let currentMonth = startMonth
+    while (currentMonth <= endMonth) {
+      allMonths.push(currentMonth)
+      monthlyOrderData.set(currentMonth, 0)
+      monthlySignData.set(currentMonth, 0)
+      // 下一个月
+      const [year, month] = currentMonth.split('-').map(Number)
+      const nextMonth = month === 12 ? 1 : month + 1
+      const nextYear = month === 12 ? year + 1 : year
+      currentMonth = `${nextYear}-${String(nextMonth).padStart(2, '0')}`
+    }
+
+    // 汇总数据到月份
+    dailyOrderData.forEach((amount, dateStr) => {
+      const monthKey = dateStr.substring(0, 7)
+      if (monthlyOrderData.has(monthKey)) {
+        monthlyOrderData.set(monthKey, (monthlyOrderData.get(monthKey) || 0) + amount)
+      }
+    })
+
+    dailySignData.forEach((amount, dateStr) => {
+      const monthKey = dateStr.substring(0, 7)
+      if (monthlySignData.has(monthKey)) {
+        monthlySignData.set(monthKey, (monthlySignData.get(monthKey) || 0) + amount)
+      }
+    })
+
+    chartData.value.performanceTrend = {
+      xAxis: allMonths.map(m => {
+        const parts = m.split('-')
+        return `${parts[1]}月`
+      }),
+      orderData: allMonths.map(m => monthlyOrderData.get(m) || 0),
+      signData: allMonths.map(m => monthlySignData.get(m) || 0)
+    }
+    console.log('📊 [业绩分析] 按月图表数据:', chartData.value.performanceTrend)
+  }
+}
+
+// 🔥 降级方案：从前端store加载订单状态分布
+const loadOrderStatusFromStore = () => {
+  let orders = orderStore.orders.filter(order => {
+    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
+    if (order.status === 'pending_transfer') return order.markType === 'normal'
+    return !excludedStatuses.includes(order.status)
+  })
+
+  if (selectedDepartment.value) {
+    const departmentUsers = userStore.users?.filter(u => u.departmentId === selectedDepartment.value).map(u => u.id) || []
+    orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
+  }
+
+  if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+    orders = orders.filter(order =>
+      isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+    )
+  }
+
+  const statusMap = new Map()
+  const statusNames: Record<string, string> = {
+    'pending_transfer': '待流转',
+    'pending_audit': '待审核',
+    'audit_rejected': '审核拒绝',
+    'pending_shipment': '待发货',
+    'shipped': '已发货',
+    'delivered': '已签收',
+    'logistics_returned': '物流部退回',
+    'logistics_cancelled': '物流部取消',
+    'package_exception': '包裹异常',
+    'rejected': '拒收',
+    'rejected_returned': '拒收已退回',
+    'after_sales_created': '已建售后',
+    'pending_cancel': '待取消',
+    'cancel_failed': '取消失败',
+    'cancelled': '已取消',
+    'draft': '草稿',
+    'refunded': '已退款',
+    'pending': '待审核',
+    'paid': '已付款',
+    'completed': '已完成',
+    'signed': '已签收'
+  }
+
+  orders.forEach(order => {
+    const statusName = statusNames[order.status] || order.status
+    if (statusMap.has(statusName)) {
+      const existing = statusMap.get(statusName)
+      statusMap.set(statusName, {
+        count: existing.count + 1,
+        amount: existing.amount + (order.totalAmount || 0)
+      })
+    } else {
+      statusMap.set(statusName, {
+        count: 1,
+        amount: order.totalAmount || 0
+      })
+    }
+  })
+
+  const orderStatusData: Array<{ value: number; name: string; amount: number }> = []
+  statusMap.forEach((data, name) => {
+    orderStatusData.push({
+      value: data.count,
+      name: name,
+      amount: data.amount
+    })
+  })
+
+  chartData.value.orderStatus = orderStatusData
 }
 
 const initCharts = () => {
@@ -1263,18 +1449,27 @@ const initCharts = () => {
       performanceChart.clear()
 
       // 检查是否有数据
-      const hasPerformanceData = chartData.value.performanceTrend.data.length > 0
-      const hasNonZeroData = chartData.value.performanceTrend.data.some(v => v > 0)
+      const hasPerformanceData = chartData.value.performanceTrend.orderData.length > 0
+      const hasNonZeroData = chartData.value.performanceTrend.orderData.some(v => v > 0) ||
+                            chartData.value.performanceTrend.signData.some(v => v > 0)
 
       console.log('📊 [业绩趋势图] 数据检查:', {
         hasData: hasPerformanceData,
         hasNonZeroData,
         xAxis: chartData.value.performanceTrend.xAxis,
-        data: chartData.value.performanceTrend.data
+        orderData: chartData.value.performanceTrend.orderData,
+        signData: chartData.value.performanceTrend.signData
       })
 
       if (hasPerformanceData && hasNonZeroData) {
         performanceChart.setOption({
+          legend: {
+            data: ['下单业绩', '签收业绩'],
+            top: 0,
+            textStyle: {
+              fontSize: 12
+            }
+          },
           grid: {
             left: '3%',
             right: '4%',
@@ -1285,9 +1480,12 @@ const initCharts = () => {
           tooltip: {
             trigger: 'axis',
             formatter: (params: unknown) => {
-              const p = params as Array<{ axisValue: string; value: number }>
-              const value = p[0].value
-              return `${p[0].axisValue}<br/>业绩：¥${value.toLocaleString()}`
+              const p = params as Array<{ axisValue: string; seriesName: string; value: number; color: string }>
+              let result = `${p[0].axisValue}<br/>`
+              p.forEach(item => {
+                result += `<span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:${item.color};"></span>${item.seriesName}：¥${item.value.toLocaleString()}<br/>`
+              })
+              return result
             }
           },
           xAxis: {
@@ -1304,41 +1502,52 @@ const initCharts = () => {
               formatter: (value: number) => value >= 1000 ? `¥${(value / 1000).toFixed(0)}k` : `¥${value}`
             }
           },
-          series: [{
-            name: '业绩',
-            data: chartData.value.performanceTrend.data,
-            type: 'line',
-            smooth: true,
-            symbol: 'circle',
-            symbolSize: 8,
-            showSymbol: true,
-            itemStyle: {
-              color: '#409eff',
-              borderWidth: 2,
-              borderColor: '#fff'
+          series: [
+            {
+              name: '下单业绩',
+              data: chartData.value.performanceTrend.orderData,
+              type: 'line',
+              smooth: true,
+              symbol: 'circle',
+              symbolSize: 6,
+              showSymbol: true,
+              itemStyle: {
+                color: '#409eff'
+              },
+              lineStyle: {
+                width: 2,
+                color: '#409eff'
+              },
+              areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                  { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
+                  { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
+                ])
+              }
             },
-            lineStyle: {
-              width: 3,
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0, color: '#409eff' },
-                { offset: 1, color: '#67c23a' }
-              ])
-            },
-            label: {
-              show: true,
-              position: 'top',
-              fontSize: 10,
-              color: '#409eff',
-              formatter: (params: { value: number }) => params.value > 0 ? `¥${params.value >= 1000 ? (params.value / 1000).toFixed(1) + 'k' : params.value}` : ''
-            },
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: 'rgba(64, 158, 255, 0.4)' },
-                { offset: 0.5, color: 'rgba(64, 158, 255, 0.2)' },
-                { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
-              ])
+            {
+              name: '签收业绩',
+              data: chartData.value.performanceTrend.signData,
+              type: 'line',
+              smooth: true,
+              symbol: 'circle',
+              symbolSize: 6,
+              showSymbol: true,
+              itemStyle: {
+                color: '#67c23a'
+              },
+              lineStyle: {
+                width: 2,
+                color: '#67c23a'
+              },
+              areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                  { offset: 0, color: 'rgba(103, 194, 58, 0.3)' },
+                  { offset: 1, color: 'rgba(103, 194, 58, 0.05)' }
+                ])
+              }
             }
-          }]
+          ]
         })
       } else {
         // 没有数据时显示空状态
@@ -1462,7 +1671,7 @@ const loadData = async () => {
 
     // 同时加载统计指标和图表数据
     loadMetrics()
-    loadChartData()
+    await loadChartData()  // 🔥 修复：异步调用
   } catch (error) {
     console.error('加载业绩分析数据失败:', error)
     ElMessage.error('加载数据失败，请稍后重试')
