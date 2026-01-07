@@ -170,18 +170,25 @@
           </div>
         </template>
         <div class="message-list">
-          <div class="message-item" v-for="message in recentMessages" :key="message.id" @click="handleMessageClick(message)">
-            <div class="message-icon" :style="{ backgroundColor: message.color }">
-              <el-icon :size="16">
-                <component :is="message.icon" />
-              </el-icon>
+          <transition-group name="message-slide" tag="div">
+            <div
+              class="message-item"
+              v-for="message in recentMessages"
+              :key="message.id"
+              @click="handleMessageClick(message)"
+            >
+              <div class="message-icon" :style="{ backgroundColor: message.color }">
+                <el-icon :size="16">
+                  <component :is="message.icon" />
+                </el-icon>
+              </div>
+              <div class="message-content">
+                <div class="message-title">{{ message.title }}</div>
+                <div class="message-time">{{ message.time }}</div>
+              </div>
+              <el-badge :is-dot="!message.read" class="message-badge" />
             </div>
-            <div class="message-content">
-              <div class="message-title">{{ message.title }}</div>
-              <div class="message-time">{{ message.time }}</div>
-            </div>
-            <el-badge :is-dot="!message.read" class="message-badge" />
-          </div>
+          </transition-group>
         </div>
       </el-card>
     </div>
@@ -1955,6 +1962,29 @@ onUnmounted(() => {
 
 .message-badge {
   margin-left: auto;
+}
+
+/* 消息滑入动画 */
+.message-slide-enter-active {
+  transition: all 0.4s ease-out;
+}
+
+.message-slide-leave-active {
+  transition: all 0.3s ease-in;
+}
+
+.message-slide-enter-from {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+
+.message-slide-leave-to {
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+.message-slide-move {
+  transition: transform 0.3s ease;
 }
 
 /* 消息弹窗样式 */
