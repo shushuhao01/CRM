@@ -48,6 +48,14 @@ export const AfterSalesMessageTypes = {
   AFTER_SALES_CANCELLED: 'after_sales_cancelled',   // 已取消
 };
 
+// 🔥 新增：客户、资料、库存相关消息类型
+export const OtherMessageTypes = {
+  CUSTOMER_SHARE: 'customer_share',           // 客户分享
+  DATA_ASSIGN: 'data_assign',                 // 资料分配
+  STOCK_LOW_WARNING: 'stock_low_warning',     // 库存预警
+  STOCK_OUT: 'stock_out',                     // 库存缺货
+};
+
 // 管理员角色列表
 const ADMIN_ROLES = ['super_admin', 'admin', 'customer_service'];
 
@@ -129,9 +137,8 @@ class OrderNotificationService {
 
       // 🔥 通过WebSocket实时推送
       if (global.webSocketService) {
-        const userIdNum = parseInt(targetUserId);
-        // 🔥 修复：确保 userId 是有效的数字，避免广播给所有人
-        if (!isNaN(userIdNum) && userIdNum > 0) {
+        // 🔥 修复：直接使用字符串类型的用户ID，不再转换为数字
+        if (targetUserId && targetUserId !== 'undefined' && targetUserId !== 'null') {
           global.webSocketService.pushSystemMessage({
             id: message.id,
             type: message.type,
@@ -141,7 +148,7 @@ class OrderNotificationService {
             relatedId: message.relatedId,
             relatedType: message.relatedType,
             actionUrl: message.actionUrl
-          }, { userId: userIdNum });
+          }, { userId: targetUserId });
           console.log(`[OrderNotification] 🔌 WebSocket推送: ${title} -> 用户 ${targetUserId}`);
         } else {
           console.warn(`[OrderNotification] ⚠️ 无效的用户ID: ${targetUserId}，跳过WebSocket推送`);
@@ -603,9 +610,8 @@ class OrderNotificationService {
       // 🔥 通过WebSocket实时推送给所有目标用户
       if (global.webSocketService) {
         targetUserIds.forEach(userId => {
-          const userIdNum = parseInt(userId);
-          // 🔥 修复：确保 userId 是有效的数字，避免广播给所有人
-          if (!isNaN(userIdNum) && userIdNum > 0) {
+          // 🔥 修复：直接使用字符串类型的用户ID，不再转换为数字
+          if (userId && userId !== 'undefined' && userId !== 'null') {
             global.webSocketService.pushSystemMessage({
               id: messageId,
               type: message.type,
@@ -615,7 +621,7 @@ class OrderNotificationService {
               relatedId: message.relatedId,
               relatedType: message.relatedType,
               actionUrl: message.actionUrl
-            }, { userId: userIdNum });
+            }, { userId: userId });
           } else {
             console.warn(`[OrderNotification] ⚠️ 无效的用户ID: ${userId}，跳过WebSocket推送`);
           }
@@ -1332,6 +1338,137 @@ class OrderNotificationService {
         relatedType: 'performance_share',
         actionUrl: '/performance/share',
         createdBy: shareInfo.createdBy
+      }
+    );
+  }
+
+  // ==================== 客户分享通知 ====================
+
+  /**
+   * 客户分享通知 - 通知被分享的成员
+   */
+  async notifyCustomerShare(shareInfo: {
+    customerId: string;
+    customerName: string;
+    customerPhone?: string;
+    sharedTo: string;        // 被分享人ID
+    sharedToName?: string;   // 被分享人姓名
+    sharedBy?: string;       // 分享人ID
+    sharedByName?: string;   // 分享人姓名
+    timeLimit?: number;      // 分享时限（天）
+    remark?: string;
+  }): Promise<void> {
+    if (!shareInfo.sharedTo) return;
+
+    const timeLimitText = shareInfo.timeLimit ? `，有效期${shareInfo.timeLimit}天` : '';
+    const content = `【${shareInfo.sharedByName || '同事'}】将客户「${shareInfo.customerName}」（${shareInfo.customerPhone || '无手机号'}）分享给您${timeLimitText}`;
+
+    await this.sendMessage(
+      OtherMessageTypes.CUSTOMER_SHARE,
+      '👥 客户分享通知',
+      content,
+      shareInfo.sharedTo,
+      {
+        priority: 'normal',
+        category: '客户通知',
+        relatedId: shareInfo.customerId,
+        relatedType: 'customer',
+        actionUrl: `/customer/detail/${shareInfo.customerId}`,
+        createdBy: shareInfo.sharedBy
+      }
+    );
+  }
+
+  // ==================== 资料分配通知 ====================
+
+  /**
+   * 资料分配通知 - 通知被分配的成员
+   */
+  async notifyDataAssign(assignInfo: {
+    dataIds: string[];       // 分配的数据ID列表
+    dataCount: number;       // 分配数量
+    assigneeId: string;      // 被分配人ID
+    assigneeName?: string;   // 被分配人姓名
+    assignerId?: string;     // 分配人ID
+    assignerName?: string;   // 分配人姓名
+  }): Promise<void> {
+    if (!assignInfo.assigneeId) return;
+
+    const content = `【${assignInfo.assignerName || '管理员'}】将 ${assignInfo.dataCount} 条资料分配给您，请及时跟进处理`;
+
+    await this.sendMessage(
+      OtherMessageTypes.DATA_ASSIGN,
+      '📋 资料分配通知',
+      content,
+      assignInfo.assigneeId,
+      {
+        priority: 'normal',
+        category: '资料通知',
+        relatedType: 'data',
+        actionUrl: '/data/list',
+        createdBy: assignInfo.assignerId
+      }
+    );
+  }
+
+  // ==================== 库存预警通知 ====================
+
+  /**
+   * 库存预警通知 - 通知管理员
+   */
+  async notifyStockLowWarning(productInfo: {
+    productId: string;
+    productName: string;
+    productCode?: string;
+    currentStock: number;
+    minStock: number;
+    categoryName?: string;
+  }): Promise<void> {
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    if (adminUserIds.length === 0) return;
+
+    const content = `商品「${productInfo.productName}」（${productInfo.productCode || '无编码'}）库存不足，当前库存：${productInfo.currentStock}，预警值：${productInfo.minStock}，请及时补货`;
+
+    await this.sendBatchMessages(
+      OtherMessageTypes.STOCK_LOW_WARNING,
+      '⚠️ 库存预警',
+      content,
+      adminUserIds,
+      {
+        priority: 'high',
+        category: '库存通知',
+        relatedId: productInfo.productId,
+        relatedType: 'product',
+        actionUrl: '/product/list'
+      }
+    );
+  }
+
+  /**
+   * 库存缺货通知 - 通知管理员
+   */
+  async notifyStockOut(productInfo: {
+    productId: string;
+    productName: string;
+    productCode?: string;
+    categoryName?: string;
+  }): Promise<void> {
+    const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
+    if (adminUserIds.length === 0) return;
+
+    const content = `商品「${productInfo.productName}」（${productInfo.productCode || '无编码'}）已缺货，库存为0，请尽快补货`;
+
+    await this.sendBatchMessages(
+      OtherMessageTypes.STOCK_OUT,
+      '🚫 库存缺货',
+      content,
+      adminUserIds,
+      {
+        priority: 'urgent',
+        category: '库存通知',
+        relatedId: productInfo.productId,
+        relatedType: 'product',
+        actionUrl: '/product/list'
       }
     );
   }

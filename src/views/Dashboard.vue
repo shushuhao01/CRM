@@ -1441,203 +1441,47 @@ const loadRankingsFromStore = () => {
 }
 
 // 加载真实的图表数据
-const loadRealChartData = () => {
-  const currentUserId = userStore.currentUser?.id
-  // 🔥 使用新的业绩计算规则
-  let orders = orderStore.orders.filter(order => {
-    const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
-    // 待流转状态只有正常发货单才计入业绩
-    if (order.status === 'pending_transfer') return order.markType === 'normal'
-    return !excludedStatuses.includes(order.status)
-  })
+const loadRealChartData = async () => {
+  try {
+    console.log('[Dashboard] 开始加载图表数据...')
 
-  // 根据用户角色筛选订单
-  if (!userStore.isAdmin && !userStore.isManager) {
-    orders = orders.filter(order => order.salesPersonId === currentUserId)
-  } else if (userStore.isManager && !userStore.isAdmin) {
-    const departmentUsers = userStore.users?.filter(u => u.departmentId === userStore.currentUser?.departmentId).map(u => u.id) || []
-    orders = orders.filter(order => departmentUsers.includes(order.salesPersonId))
-  }
+    // 🔥 修复：直接从后端API获取图表数据，不受订单列表筛选影响
+    const chartData = await dashboardApi.getChartData({ period: performancePeriod.value as 'day' | 'week' | 'month' })
+    console.log('[Dashboard] 后端返回图表数据:', chartData)
 
-  // 生成业绩趋势数据（参考个人业绩页面）
-  const today = new Date()
-  const timeData = new Map()
-
-  // 🔥 筛选已签收订单用于计算签收业绩
-  const deliveredOrders = orders.filter(order => order.status === 'delivered')
-
-  if (performancePeriod.value === 'day') {
-    // 今日每小时数据
-    for (let i = 0; i < 24; i++) {
-      timeData.set(i, { label: `${i}:00`, amount: 0, signAmount: 0 })
+    if (chartData && chartData.revenue && chartData.revenue.length > 0) {
+      // 更新业绩趋势图数据
+      performanceChartData.value = {
+        xAxisData: chartData.revenue.map(item => item.date),
+        orderData: chartData.revenue.map(item => item.amount),
+        signData: chartData.revenue.map(item => item.orders), // 暂时用订单数代替签收金额
+        title: getPerformanceTitle()
+      }
+      console.log('[Dashboard] 业绩趋势图数据已更新')
     }
 
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
-
-    // 下单业绩：按下单时间统计
-    const todayOrders = orders.filter(order => {
-      const orderTime = new Date(order.createTime).getTime()
-      return orderTime >= todayStart
-    })
-    todayOrders.forEach(order => {
-      const hour = new Date(order.createTime).getHours()
-      const data = timeData.get(hour)
-      if (data) {
-        data.amount += order.totalAmount
-      }
-    })
-
-    // 🔥 签收业绩：按签收时间统计
-    const todayDelivered = deliveredOrders.filter(order => {
-      const deliveredTime = order.deliveredAt ? new Date(order.deliveredAt).getTime() : new Date(order.updateTime || order.createTime).getTime()
-      return deliveredTime >= todayStart
-    })
-    todayDelivered.forEach(order => {
-      const deliveredTime = order.deliveredAt ? new Date(order.deliveredAt) : new Date(order.updateTime || order.createTime)
-      const hour = deliveredTime.getHours()
-      const data = timeData.get(hour)
-      if (data) {
-        data.signAmount += order.totalAmount
-      }
-    })
-  } else if (performancePeriod.value === 'week') {
-    // 最近7天
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today.getTime() - i * 24 * 60 * 60 * 1000)
-      const dateKey = date.toISOString().split('T')[0]
-      const dateLabel = `${date.getMonth() + 1}/${date.getDate()}`
-      timeData.set(dateKey, { label: dateLabel, amount: 0, signAmount: 0 })
+    if (chartData && chartData.orderStatus && chartData.orderStatus.length > 0) {
+      // 更新订单状态分布图数据
+      orderStatusChartData.value = chartData.orderStatus.map((item: any) => ({
+        value: item.count,
+        name: item.status,
+        amount: 0,
+        itemStyle: { color: getStatusColor(item.status) }
+      }))
+      console.log('[Dashboard] 订单状态分布图数据已更新')
     }
 
-    // 下单业绩：按下单时间统计
-    orders.forEach(order => {
-      const orderDate = new Date(order.createTime).toISOString().split('T')[0]
-      if (timeData.has(orderDate)) {
-        const data = timeData.get(orderDate)
-        data.amount += order.totalAmount
-      }
-    })
-
-    // 🔥 签收业绩：按签收时间统计
-    deliveredOrders.forEach(order => {
-      const deliveredTime = order.deliveredAt ? new Date(order.deliveredAt) : new Date(order.updateTime || order.createTime)
-      const deliveredDate = deliveredTime.toISOString().split('T')[0]
-      if (timeData.has(deliveredDate)) {
-        const data = timeData.get(deliveredDate)
-        data.signAmount += order.totalAmount
-      }
-    })
-  } else {
-    // 本月每天
-    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
-    for (let i = 1; i <= daysInMonth; i++) {
-      const date = new Date(today.getFullYear(), today.getMonth(), i)
-      const dateKey = date.toISOString().split('T')[0]
-      timeData.set(dateKey, { label: `${i}日`, amount: 0, signAmount: 0 })
+  } catch (error) {
+    console.error('[Dashboard] 加载图表数据失败:', error)
+    // 如果API失败，保持原有的空数据
+    performanceChartData.value = {
+      xAxisData: [],
+      orderData: [],
+      signData: [],
+      title: getPerformanceTitle()
     }
-
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime()
-
-    // 下单业绩：按下单时间统计
-    const monthOrders = orders.filter(order => {
-      const orderTime = new Date(order.createTime).getTime()
-      return orderTime >= monthStart
-    })
-    monthOrders.forEach(order => {
-      const orderDate = new Date(order.createTime).toISOString().split('T')[0]
-      if (timeData.has(orderDate)) {
-        const data = timeData.get(orderDate)
-        data.amount += order.totalAmount
-      }
-    })
-
-    // 🔥 签收业绩：按签收时间统计
-    const monthDelivered = deliveredOrders.filter(order => {
-      const deliveredTime = order.deliveredAt ? new Date(order.deliveredAt).getTime() : new Date(order.updateTime || order.createTime).getTime()
-      return deliveredTime >= monthStart
-    })
-    monthDelivered.forEach(order => {
-      const deliveredTime = order.deliveredAt ? new Date(order.deliveredAt) : new Date(order.updateTime || order.createTime)
-      const deliveredDate = deliveredTime.toISOString().split('T')[0]
-      if (timeData.has(deliveredDate)) {
-        const data = timeData.get(deliveredDate)
-        data.signAmount += order.totalAmount
-      }
-    })
+    orderStatusChartData.value = []
   }
-
-  const xAxisData: string[] = []
-  const orderData: number[] = []
-  const signData: number[] = []
-
-  timeData.forEach(data => {
-    xAxisData.push(data.label)
-    orderData.push(data.amount)
-    signData.push(data.signAmount) // 🔥 修复：使用签收金额而不是订单数量
-  })
-
-  performanceChartData.value = {
-    xAxisData,
-    orderData,
-    signData,
-    title: getPerformanceTitle()
-  }
-
-  // 生成订单状态分布数据（参考个人业绩页面）
-  const statusMap = new Map<string, { count: number; amount: number }>()
-  const statusNames: Record<string, string> = {
-    'pending_transfer': '待流转',
-    'pending_audit': '待审核',
-    'audit_rejected': '审核拒绝',
-    'pending_shipment': '待发货',
-    'shipped': '已发货',
-    'delivered': '已签收',
-    'logistics_returned': '物流部退回',
-    'logistics_cancelled': '物流部取消',
-    'package_exception': '包裹异常',
-    'rejected': '拒收',
-    'rejected_returned': '拒收已退回',
-    'after_sales_created': '已建售后',
-    'pending_cancel': '待取消',
-    'cancel_failed': '取消失败',
-    'cancelled': '已取消',
-    'draft': '草稿',
-    'refunded': '已退款',
-    'pending': '待审核',
-    'paid': '已付款',
-    'completed': '已完成',
-    'signed': '已签收'
-  }
-
-  orders.forEach(order => {
-    const statusName = statusNames[order.status] || order.status
-    if (statusMap.has(statusName)) {
-      const existing = statusMap.get(statusName)!
-      statusMap.set(statusName, {
-        count: existing.count + 1,
-        amount: existing.amount + order.totalAmount
-      })
-    } else {
-      statusMap.set(statusName, {
-        count: 1,
-        amount: order.totalAmount
-      })
-    }
-  })
-
-  const orderStatusData: Array<{ value: number; name: string; amount: number; itemStyle: { color: string } }> = []
-  statusMap.forEach((data, name) => {
-    orderStatusData.push({
-      value: data.count,
-      name: name,  // 只使用状态名，不包含数量
-      amount: data.amount,
-      itemStyle: {
-        color: getStatusColor(name)
-      }
-    })
-  })
-
-  orderStatusChartData.value = orderStatusData
 }
 
 // 获取业绩图表标题
@@ -1655,11 +1499,11 @@ const getPerformanceTitle = () => {
 }
 
 // 监听时间段变化，重新加载图表数据
-watch(performancePeriod, () => {
+watch(performancePeriod, async () => {
   try {
     loading.value = true
     // 重新加载图表数据
-    loadRealChartData()
+    await loadRealChartData()
   } catch (error) {
     console.error('重新加载图表数据失败:', error)
     ElMessage.error('加载图表数据失败')
