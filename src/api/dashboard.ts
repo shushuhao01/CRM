@@ -276,32 +276,31 @@ export const getChartData = async (params?: {
   departmentId?: string,
   period?: 'day' | 'week' | 'month'
 }): Promise<DashboardChartData> => {
-  // 生产环境调用后端 API
-  if (useBackendAPI()) {
-    try {
-      // 🔥 静默处理错误，修复API路径
-      const data = await request.get('/dashboard/charts', { params, showError: false } as any)
-      if (data) {
-        return {
-          revenue: data.performance?.series?.[0]?.data?.map((amount: number, index: number) => ({
-            date: data.performance?.categories?.[index] || `${index + 1}月`,
-            amount,  // 🔥 下单业绩金额
-            deliveredAmount: data.performance?.series?.[1]?.data?.[index] || 0  // 🔥 签收业绩金额
-          })) || [],
-          orderStatus: data.orderStatus?.map((item: any) => ({
-            status: item.name,
-            count: item.value,
-            amount: item.amount || 0,  // 🔥 添加金额字段
-            percentage: 0
-          })) || []
-        }
+  // 🔥 开发环境和生产环境都从后端API加载数据
+  try {
+    console.log('[Dashboard API] 调用后端API获取图表数据, period:', params?.period)
+    const data = await request.get('/dashboard/charts', { params, showError: false } as any)
+    console.log('[Dashboard API] 后端返回图表数据:', data)
+    if (data) {
+      return {
+        revenue: data.performance?.series?.[0]?.data?.map((amount: number, index: number) => ({
+          date: data.performance?.categories?.[index] || `${index + 1}月`,
+          amount,  // 🔥 下单业绩金额
+          deliveredAmount: data.performance?.series?.[1]?.data?.[index] || 0  // 🔥 签收业绩金额
+        })) || [],
+        orderStatus: data.orderStatus?.map((item: any) => ({
+          status: item.name,
+          count: item.value,
+          amount: item.amount || 0,  // 🔥 添加金额字段
+          percentage: 0
+        })) || []
       }
-    } catch (error) {
-      console.log('[Dashboard API] 图表API调用失败（静默处理）:', error)
     }
+  } catch (error) {
+    console.log('[Dashboard API] 图表API调用失败，尝试降级方案:', error)
   }
 
-  // 开发环境或后端API不可用时，从localStorage获取数据
+  // 后端API不可用时，从localStorage获取数据作为降级方案
   try {
     // 从localStorage获取真实数据
     const ordersData = localStorage.getItem('order-store')
