@@ -255,7 +255,7 @@
           <p>{{ selectedMessage.content }}</p>
           <div class="message-detail-info">
             <span>时间：{{ selectedMessage.time }}</span>
-            <span>类型：{{ selectedMessage.type }}</span>
+            <span>类型：{{ getMessageTypeName(selectedMessage.type) }}</span>
           </div>
         </div>
       </div>
@@ -812,6 +812,92 @@ const getStatusColor = (status: string): string => {
     'cancelled': '#F56C6C'
   }
   return colorMap[status] || '#909399'
+}
+
+// 获取消息类型的中文名称
+const getMessageTypeName = (type: string): string => {
+  const typeMap: Record<string, string> = {
+    // 订单相关
+    'order_created': '订单创建',
+    'order_paid': '订单支付',
+    'order_pending_audit': '订单待审核',
+    'order_audit_approved': '订单审核通过',
+    'audit_approved': '审核通过',
+    'order_audit_rejected': '订单审核拒绝',
+    'audit_rejected': '审核拒绝',
+    'order_pending_shipment': '订单待发货',
+    'order_shipped': '订单已发货',
+    'order_delivered': '订单已送达',
+    'order_signed': '订单已签收',
+    'order_rejected': '订单拒收',
+    'order_cancelled': '订单已取消',
+    'order_cancel_request': '订单取消申请',
+    'order_cancel_approved': '订单取消通过',
+    'order_cancel_rejected': '订单取消拒绝',
+    'order_modify_approved': '订单修改通过',
+    'order_refunded': '订单已退款',
+    // 物流异常
+    'order_logistics_returned': '物流退回',
+    'order_logistics_cancelled': '物流取消',
+    'order_package_exception': '包裹异常',
+    // 超时提醒
+    'order_audit_timeout': '审核超时',
+    'order_shipment_timeout': '发货超时',
+    'order_followup_reminder': '跟进提醒',
+    // 售后相关
+    'after_sales_created': '售后创建',
+    'after_sales_assigned': '售后分配',
+    'after_sales_processing': '售后处理中',
+    'after_sales_urgent': '紧急售后',
+    'after_sales_completed': '售后完成',
+    'after_sales_rejected': '售后拒绝',
+    'after_sales_closed': '售后关闭',
+    'after_sales_cancelled': '售后取消',
+    'after_sales_timeout': '售后超时',
+    // 客户相关
+    'customer_created': '客户添加',
+    'customer_updated': '客户更新',
+    'customer_call': '客户通话',
+    'customer_share': '客户分享',
+    'customer_complaint': '客户投诉',
+    'customer_rejected': '客户拒收',
+    'customer_followup_due': '跟进到期',
+    'customer_assigned': '客户分配',
+    // 商品相关
+    'product_created': '商品添加',
+    'product_updated': '商品更新',
+    'product_out_of_stock': '商品缺货',
+    // 系统相关
+    'system_maintenance': '系统维护',
+    'system_update': '系统更新',
+    'user_login': '用户登录',
+    'user_created': '用户添加',
+    'permission_configured': '权限配置',
+    'data_export_success': '导出成功',
+    'data_import_completed': '导入完成',
+    // 物流相关
+    'logistics_pickup': '物流揽收',
+    'logistics_in_transit': '物流运输中',
+    'logistics_delivered': '物流已送达',
+    'package_anomaly': '包裹异常',
+    // 审核相关
+    'audit_pending': '待审核',
+    // 业绩分享
+    'performance_share_created': '业绩分享创建',
+    'performance_share_received': '收到业绩分享',
+    'performance_share_confirmed': '业绩分享确认',
+    'performance_share_rejected': '业绩分享拒绝',
+    // 短信相关
+    'sms_template_applied': '短信模板申请',
+    'sms_template_approved': '短信模板通过',
+    'sms_send_success': '短信发送成功',
+    'sms_send_failed': '短信发送失败',
+    // 资料分配
+    'data_assigned': '资料分配',
+    'data_reassigned': '资料重新分配',
+    'data_batch_assigned': '批量分配完成'
+  }
+  return typeMap[type] || type
 }
 
 // 方法
