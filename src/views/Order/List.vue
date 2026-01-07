@@ -2200,6 +2200,34 @@ const loadOrderList = async (force = false) => {
       params.salesPersonId = searchForm.salesPersonId
     }
 
+    // 🔥 高级筛选：订单状态（多选）
+    if (searchForm.status && searchForm.status.length > 0) {
+      params.statusList = searchForm.status.join(',')
+    }
+
+    // 🔥 高级筛选：金额范围
+    if (searchForm.minAmount !== undefined && searchForm.minAmount !== null) {
+      params.minAmount = searchForm.minAmount
+    }
+    if (searchForm.maxAmount !== undefined && searchForm.maxAmount !== null) {
+      params.maxAmount = searchForm.maxAmount
+    }
+
+    // 🔥 高级筛选：商品名称（模糊搜索）
+    if (searchForm.productName) {
+      params.productName = searchForm.productName
+    }
+
+    // 🔥 高级筛选：客户电话
+    if (searchForm.customerPhone) {
+      params.customerPhone = searchForm.customerPhone
+    }
+
+    // 🔥 高级筛选：支付方式
+    if (searchForm.paymentMethod) {
+      params.paymentMethod = searchForm.paymentMethod
+    }
+
     console.log(`[订单列表] 🚀 加载订单, 页码: ${pagination.page}, 每页: ${pagination.size}, 筛选:`, params)
 
     const response = await orderApi.getList(params)

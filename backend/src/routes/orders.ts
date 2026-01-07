@@ -1655,13 +1655,19 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       page = 1,
       pageSize = 20,
       status,
+      statusList,
       orderNumber,
       customerName,
       startDate,
       endDate,
       markType,
       salesPersonId,
-      departmentId
+      departmentId,
+      minAmount,
+      maxAmount,
+      productName,
+      customerPhone,
+      paymentMethod
     } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
@@ -1752,6 +1758,37 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
     // 🔥 销售人员筛选
     if (salesPersonId) {
       queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
+    }
+
+    // 🔥 高级筛选：订单状态（多选，逗号分隔）
+    if (statusList) {
+      const statusArray = (statusList as string).split(',').filter(s => s.trim());
+      if (statusArray.length > 0) {
+        queryBuilder.andWhere('order.status IN (:...statusArray)', { statusArray });
+      }
+    }
+
+    // 🔥 高级筛选：金额范围
+    if (minAmount) {
+      queryBuilder.andWhere('order.totalAmount >= :minAmount', { minAmount: Number(minAmount) });
+    }
+    if (maxAmount) {
+      queryBuilder.andWhere('order.totalAmount <= :maxAmount', { maxAmount: Number(maxAmount) });
+    }
+
+    // 🔥 高级筛选：商品名称（模糊搜索，搜索JSON字段中的商品名称）
+    if (productName) {
+      queryBuilder.andWhere('order.products LIKE :productName', { productName: `%${productName}%` });
+    }
+
+    // 🔥 高级筛选：客户电话
+    if (customerPhone) {
+      queryBuilder.andWhere('order.customerPhone LIKE :customerPhone', { customerPhone: `%${customerPhone}%` });
+    }
+
+    // 🔥 高级筛选：支付方式
+    if (paymentMethod) {
+      queryBuilder.andWhere('order.paymentMethod = :paymentMethod', { paymentMethod });
     }
 
     // 排序和分页
