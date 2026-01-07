@@ -377,6 +377,34 @@
         {{ getExpressCompanyText(row.expressCompany) }}
       </template>
 
+      <!-- 🔥 新增：总数量列 -->
+      <template #column-totalQuantity="{ row }">
+        {{ row.totalQuantity || row.products?.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) || '-' }}
+      </template>
+
+      <!-- 🔥 新增：客户年龄列 -->
+      <template #column-customerAge="{ row }">
+        {{ row.customerAge || '-' }}
+      </template>
+
+      <!-- 🔥 新增：身高列 -->
+      <template #column-customerHeight="{ row }">
+        {{ row.customerHeight || '-' }}
+      </template>
+
+      <!-- 🔥 新增：体重列 -->
+      <template #column-customerWeight="{ row }">
+        {{ row.customerWeight || '-' }}
+      </template>
+
+      <!-- 🔥 新增：病史列 -->
+      <template #column-medicalHistory="{ row }">
+        <el-tooltip v-if="row.medicalHistory" :content="row.medicalHistory" placement="top">
+          <span class="text-ellipsis">{{ row.medicalHistory }}</span>
+        </el-tooltip>
+        <span v-else>-</span>
+      </template>
+
       <!-- 操作列 -->
       <template #table-actions="{ row }">
         <div class="operation-buttons">
@@ -807,6 +835,12 @@ const baseTableColumns = [
   { prop: 'serviceWechat', label: '客服微信号', visible: true, minWidth: 120 },
   { prop: 'orderSource', label: '订单来源', visible: true, minWidth: 100 },
   { prop: 'expressCompany', label: '指定快递', visible: true, minWidth: 100 },
+  // 🔥 新增：总数量、客户年龄、身高、体重、病史（默认隐藏，可在列设置中勾选显示）
+  { prop: 'totalQuantity', label: '总数量', visible: false, minWidth: 80 },
+  { prop: 'customerAge', label: '年龄', visible: false, minWidth: 80 },
+  { prop: 'customerHeight', label: '身高', visible: false, minWidth: 80 },
+  { prop: 'customerWeight', label: '体重', visible: false, minWidth: 80 },
+  { prop: 'medicalHistory', label: '病史', visible: false, minWidth: 120 },
   // 🔥 预设7个自定义字段位置（默认隐藏，配置后显示）
   { prop: 'customFields.custom_field1', label: '自定义字段1', visible: false, isCustomField: true, fieldKey: 'custom_field1', minWidth: 120 },
   { prop: 'customFields.custom_field2', label: '自定义字段2', visible: false, isCustomField: true, fieldKey: 'custom_field2', minWidth: 120 },
@@ -1719,7 +1753,8 @@ const handleBatchExport = async () => {
       products: Array.isArray(order.products)
         ? order.products.map((p: any) => `${p.name} x${p.quantity}`).join(', ')
         : order.products || '',
-      totalQuantity: order.totalQuantity || 0,
+      // 🔥 修复：totalQuantity 从 products 数组计算
+      totalQuantity: order.totalQuantity || (Array.isArray(order.products) ? order.products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) : 0),
       totalAmount: order.totalAmount || 0,
       depositAmount: order.depositAmount || 0,
       codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
@@ -1737,7 +1772,12 @@ const handleBatchExport = async () => {
       remark: order.remark || '',
       createTime: order.createTime || '',
       status: order.status || '',
-      shippingStatus: order.shippingStatus || ''
+      shippingStatus: order.shippingStatus || '',
+      // 🔥 物流相关字段（修复缺失）
+      specifiedExpress: order.specifiedExpress || '',
+      expressCompany: order.expressCompany || '',
+      expressNo: order.expressNo || '',
+      logisticsStatus: order.logisticsStatus || ''
     }))
 
     await exportBatchOrders(exportData, userStore.isAdmin)
@@ -1780,7 +1820,8 @@ const handleExport = async () => {
       products: Array.isArray(order.products)
         ? order.products.map((p: any) => `${p.name} x${p.quantity}`).join(', ')
         : order.products || '',
-      totalQuantity: order.totalQuantity || 0,
+      // 🔥 修复：totalQuantity 从 products 数组计算
+      totalQuantity: order.totalQuantity || (Array.isArray(order.products) ? order.products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) : 0),
       totalAmount: order.totalAmount || 0,
       depositAmount: order.depositAmount || 0,
       codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
@@ -2876,7 +2917,15 @@ onUnmounted(() => {
   border-top: 1px solid #e9ecef;
 }
 
-
+/* 🔥 文本溢出省略样式 */
+.text-ellipsis {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
 
 
 </style>

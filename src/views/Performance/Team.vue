@@ -3245,7 +3245,7 @@ onUnmounted(() => {
 }
 
 .product-details-cell {
-  max-width: 200px;
+  width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

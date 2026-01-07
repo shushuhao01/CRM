@@ -245,7 +245,7 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
     '订单金额',
     '定金',
     'COD金额',
-    '客户年龄',
+    '年龄',
     '身高',
     '体重',
     '病史',
@@ -357,6 +357,50 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
   // 创建工作表
   const ws = XLSX.utils.aoa_to_sheet(wsData)
 
+  // 🔥 只为客户电话和金额字段设置数字格式，其他保持文本
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
+
+  // 只设置电话和金额字段为数字格式
+  const phoneColumns = ['客户电话', '收货电话']
+  const amountColumns = ['订单金额', '定金', 'COD金额']
+
+  // 设置电话号码为数字格式
+  phoneColumns.forEach(colName => {
+    const colIndex = headers.indexOf(colName)
+    if (colIndex !== -1) {
+      for (let row = 1; row <= range.e.r; row++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: row, c: colIndex })
+        if (ws[cellAddress]) {
+          const cellValue = ws[cellAddress].v
+          // 只有纯数字的电话号码才转换
+          if (cellValue && /^\d+$/.test(String(cellValue))) {
+            ws[cellAddress].t = 'n'
+            ws[cellAddress].v = Number(cellValue)
+            ws[cellAddress].z = '0' // 不使用千分位
+          }
+        }
+      }
+    }
+  })
+
+  // 设置金额字段为数字格式（千分位，2位小数）
+  amountColumns.forEach(colName => {
+    const colIndex = headers.indexOf(colName)
+    if (colIndex !== -1) {
+      for (let row = 1; row <= range.e.r; row++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: row, c: colIndex })
+        if (ws[cellAddress]) {
+          const cellValue = ws[cellAddress].v
+          if (cellValue !== '' && cellValue !== null && cellValue !== undefined && !isNaN(Number(cellValue))) {
+            ws[cellAddress].t = 'n'
+            ws[cellAddress].v = Number(cellValue)
+            ws[cellAddress].z = '#,##0.00'
+          }
+        }
+      }
+    }
+  })
+
   // 根据权限设置列宽（与列标题顺序一致）
   const adminColWidths = [
     { wch: 18 }, // 订单号
@@ -372,7 +416,7 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
     { wch: 12 }, // 订单金额
     { wch: 10 }, // 定金
     { wch: 10 }, // COD金额
-    { wch: 8 },  // 客户年龄
+    { wch: 8 },  // 年龄
     { wch: 8 },  // 身高
     { wch: 8 },  // 体重
     { wch: 15 }, // 病史

@@ -1198,6 +1198,34 @@ const loadChartDataFromStore = () => {
   console.log('📊 [业绩分析] 按日汇总下单数据:', Array.from(dailyOrderData.entries()))
   console.log('📊 [业绩分析] 按日汇总签收数据:', Array.from(dailySignData.entries()))
 
+  // 🔥 按小时汇总数据（用于今日/昨日）
+  const hourlyOrderData = new Map<string, number>()
+  const hourlySignData = new Map<string, number>()
+
+  // 只有今日或昨日才需要按小时汇总
+  if (selectedQuickFilter.value === 'today' || selectedQuickFilter.value === 'yesterday') {
+    orders.forEach(order => {
+      if (order.createTime) {
+        const normalizedTime = order.createTime.replace(/\//g, '-')
+        let hour = '00'
+        if (normalizedTime.includes('T')) {
+          hour = normalizedTime.split('T')[1]?.substring(0, 2) || '00'
+        } else if (normalizedTime.includes(' ')) {
+          hour = normalizedTime.split(' ')[1]?.substring(0, 2) || '00'
+        }
+        const hourKey = `${hour}:00`
+
+        // 下单业绩
+        hourlyOrderData.set(hourKey, (hourlyOrderData.get(hourKey) || 0) + (order.totalAmount || 0))
+
+        // 签收业绩
+        if (order.status === 'delivered' || order.status === 'signed') {
+          hourlySignData.set(hourKey, (hourlySignData.get(hourKey) || 0) + (order.totalAmount || 0))
+        }
+      }
+    })
+  }
+
   // 🔥 根据日期范围生成完整的时间轴
   const startDateStr = dateRange.value[0]
   const endDateStr = dateRange.value[1]
@@ -1207,8 +1235,21 @@ const loadChartDataFromStore = () => {
   console.log('📊 [业绩分析] 日期范围天数:', dayCount, '快速筛选:', quickFilter)
 
   // 🔥 根据快速筛选类型决定显示粒度
-  if (quickFilter === 'all') {
-    // 全部：按年度汇总
+  if (quickFilter === 'today' || quickFilter === 'yesterday') {
+    // 今日/昨日：按小时显示（0:00-23:00）
+    const allHours: string[] = []
+    for (let h = 0; h < 24; h++) {
+      allHours.push(`${String(h).padStart(2, '0')}:00`)
+    }
+
+    chartData.value.performanceTrend = {
+      xAxis: allHours,
+      orderData: allHours.map(h => hourlyOrderData.get(h) || 0),
+      signData: allHours.map(h => hourlySignData.get(h) || 0)
+    }
+    console.log('📊 [业绩分析] 按小时图表数据:', chartData.value.performanceTrend)
+  } else if (quickFilter === 'all') {
+    // 全部：从有数据的最早年份到当前年份，按年度汇总
     const yearlyOrderData = new Map<string, number>()
     const yearlySignData = new Map<string, number>()
 
@@ -1218,16 +1259,25 @@ const loadChartDataFromStore = () => {
       years.add(dateStr.substring(0, 4))
     })
 
+    // 获取当前年份
+    const currentYear = new Date().getFullYear()
+
     // 如果没有数据，使用当前年份
     if (years.size === 0) {
-      years.add(new Date().getFullYear().toString())
+      years.add(currentYear.toString())
     }
 
-    const allYears = Array.from(years).sort()
-    allYears.forEach(year => {
-      yearlyOrderData.set(year, 0)
-      yearlySignData.set(year, 0)
-    })
+    // 找到最早的年份，然后从最早年份的前一年到当前年份
+    const minYear = Math.min(...Array.from(years).map(y => parseInt(y)))
+    const startYear = Math.max(minYear - 1, 2020) // 最早从2020年开始
+
+    // 生成从startYear到currentYear的所有年份
+    const allYears: string[] = []
+    for (let y = startYear; y <= currentYear; y++) {
+      allYears.push(y.toString())
+      yearlyOrderData.set(y.toString(), 0)
+      yearlySignData.set(y.toString(), 0)
+    }
 
     // 汇总数据到年份
     dailyOrderData.forEach((amount, dateStr) => {
@@ -1286,23 +1336,8 @@ const loadChartDataFromStore = () => {
       signData: allMonths.map(m => monthlySignData.get(m) || 0)
     }
     console.log('📊 [业绩分析] 本年按月图表数据:', chartData.value.performanceTrend)
-  } else if (dayCount <= 1) {
-    // 今日/昨日：显示单天数据，X轴显示日期
-    const orderData = [dailyOrderData.get(startDateStr) || 0]
-    const signData = [dailySignData.get(startDateStr) || 0]
-
-    // 格式化日期显示
-    const parts = startDateStr.split('-')
-    const formattedDate = `${Number(parts[1])}月${Number(parts[2])}日`
-
-    chartData.value.performanceTrend = {
-      xAxis: [formattedDate],
-      orderData,
-      signData
-    }
-    console.log('📊 [业绩分析] 单日图表数据:', chartData.value.performanceTrend)
   } else if (dayCount <= 31) {
-    // 本周/上周/本月/上月：按日显示
+    // 本周/上周/本月/上月：按日显示（每一天）
     const allDates = generateDateRange(startDateStr, endDateStr)
 
     chartData.value.performanceTrend = {
@@ -1315,7 +1350,7 @@ const loadChartDataFromStore = () => {
     }
     console.log('📊 [业绩分析] 按日图表数据:', chartData.value.performanceTrend)
   } else {
-    // 其他情况（如本季度）：按月汇总
+    // 其他情况（如本季度、跨度大于31天）：按月汇总
     const monthlyOrderData = new Map<string, number>()
     const monthlySignData = new Map<string, number>()
 

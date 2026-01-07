@@ -924,7 +924,7 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
     console.log(`🚚 [已发货订单] 用户: ${dbUser?.username || jwtUser?.username}, 角色: ${userRole}, 部门ID: ${userDepartmentId}`);
 
     // 🔥 服务端分页参数
-    const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status, logisticsStatus, startDate, endDate, quickFilter, departmentId, salesPersonId, expressCompany } = req.query;
+    const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, customerPhone, customerCode, keyword, status, logisticsStatus, startDate, endDate, quickFilter, departmentId, salesPersonId, expressCompany } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 500); // 🔥 最大500条/页
     const skip = (pageNum - 1) * pageSizeNum;
@@ -1012,10 +1012,17 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
       console.log(`🚚 [已发货订单] ${userRole}角色，查看所有订单`);
     }
 
-    // 🔥 修复：支持关键词搜索（订单号 OR 客户名称）
-    if (orderNumber && customerName && orderNumber === customerName) {
+    // 🔥 修复：支持关键词搜索（订单号 OR 客户名称 OR 物流单号 OR 手机号 OR 客户编码）
+    if (keyword) {
+      // 统一关键词搜索：支持订单号、客户名称、物流单号、手机号、客户编码
+      queryBuilder.andWhere(
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.trackingNumber LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)',
+        { keyword: `%${keyword}%` }
+      );
+      console.log(`🚚 [已发货订单] 统一关键词搜索: "${keyword}"`);
+    } else if (orderNumber && customerName && orderNumber === customerName) {
       // 如果订单号和客户名称相同，说明是同一个搜索关键词，使用 OR 条件
-      queryBuilder.andWhere('(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword)', { keyword: `%${orderNumber}%` });
+      queryBuilder.andWhere('(order.orderNumber LIKE :kw OR order.customerName LIKE :kw OR order.trackingNumber LIKE :kw OR order.customerPhone LIKE :kw OR order.customerId LIKE :kw)', { kw: `%${orderNumber}%` });
       console.log(`🚚 [已发货订单] 关键词搜索: "${orderNumber}"`);
     } else {
       // 分别筛选
@@ -1024,6 +1031,12 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
       }
       if (customerName) {
         queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+      }
+      if (customerPhone) {
+        queryBuilder.andWhere('order.customerPhone LIKE :customerPhone', { customerPhone: `%${customerPhone}%` });
+      }
+      if (customerCode) {
+        queryBuilder.andWhere('order.customerId LIKE :customerCode', { customerCode: `%${customerCode}%` });
       }
     }
     if (trackingNumber) {
@@ -1800,6 +1813,14 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
 
     console.log(`📋 [订单列表] 查询到 ${orders.length} 条订单, 总数: ${total}`);
 
+    // 🔥 获取客户信息（年龄、身高、体重、病史）
+    const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
+    const customerRepository = AppDataSource.getRepository(Customer);
+    const customers = customerIds.length > 0
+      ? await customerRepository.findByIds(customerIds)
+      : [];
+    const customerMap = new Map(customers.map(c => [c.id, c]));
+
     // 转换数据格式以匹配前端期望
     const list = orders.map(order => {
       // 解析products JSON字段
@@ -1811,6 +1832,12 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
           products = [];
         }
       }
+
+      // 🔥 获取客户信息
+      const customer = order.customerId ? customerMap.get(order.customerId) : null;
+
+      // 🔥 计算总数量
+      const totalQuantity = (products as any[]).reduce((sum: number, p: any) => sum + (p.quantity || 0), 0);
 
       // 根据订单状态推断auditStatus
       // 🔥 修复：正确映射auditStatus
@@ -1829,7 +1856,13 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
         customerId: order.customerId || '',
         customerName: order.customerName || '',
         customerPhone: order.customerPhone || '',
+        // 🔥 新增：客户详细信息（从客户表获取）
+        customerAge: customer?.age || null,
+        customerHeight: customer?.height || null,
+        customerWeight: customer?.weight || null,
+        medicalHistory: customer?.medicalHistory || null,
         products: products,
+        totalQuantity,  // 🔥 新增：总数量
         totalAmount: Number(order.totalAmount) || 0,
         depositAmount: Number(order.depositAmount) || 0,
         // 🔥 代收金额 = 订单总额 - 定金

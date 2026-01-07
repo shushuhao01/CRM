@@ -116,7 +116,7 @@
         />
         <el-input
           v-model="searchKeyword"
-          placeholder="搜索订单号、客户名称"
+          placeholder="搜索订单号、客户名称、手机号、物流单号、客户编码"
           clearable
           class="search-input"
           @input="handleSearch"
@@ -837,7 +837,7 @@ const loadData = async (showMessage = false) => {
     console.log(`  - 日期范围: ${startDate || '无'} ~ ${endDate || '无'}`)
     console.log(`  - 页码: ${pagination.currentPage}, 每页: ${pagination.pageSize}`)
 
-    // 🔥 修复：搜索关键词同时传递给 orderNumber 和 customerName
+    // 🔥 修复：搜索关键词使用统一的 keyword 参数，支持多字段搜索
     const keyword = searchKeyword.value?.trim() || undefined
 
     const response = await orderApi.getShippingShipped({
@@ -845,8 +845,7 @@ const loadData = async (showMessage = false) => {
       pageSize: pagination.pageSize,
       status: statusParam,
       logisticsStatus: statusFilter.value || undefined,  // 🔥 传递物流状态筛选参数给后端
-      orderNumber: keyword,  // 🔥 修复：搜索关键词
-      customerName: keyword, // 🔥 修复：同时搜索客户名称
+      keyword,  // 🔥 统一关键词搜索：订单号、客户名称、手机号、物流单号、客户编码
       departmentId: departmentFilter.value || undefined,
       salesPersonId: salesPersonFilter.value || undefined,
       startDate,  // 🔥 传递日期参数给后端
