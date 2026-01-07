@@ -135,6 +135,9 @@ export const orderApi = {
     orderNumber?: string;
     customerName?: string;
     trackingNumber?: string;
+    customerPhone?: string;  // 🔥 新增：手机号搜索
+    customerCode?: string;   // 🔥 新增：客户编码搜索
+    keyword?: string;        // 🔥 新增：统一关键词搜索（订单号、客户名称、手机号、物流单号、客户编码）
     status?: string;
     logisticsStatus?: string;  // 🔥 新增：物流状态筛选
     departmentId?: string;
