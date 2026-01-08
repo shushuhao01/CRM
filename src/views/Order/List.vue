@@ -60,21 +60,18 @@
 
       <!-- 基础搜索 - 第一行 -->
       <el-form :model="searchForm" inline class="basic-search">
-        <el-form-item label="订单号">
+        <el-form-item label="搜索">
           <el-input
-            v-model="searchForm.orderNumber"
-            placeholder="请输入订单号"
+            v-model="searchForm.keyword"
+            placeholder="订单号/客户姓名/电话/商品/客户编码/物流单号"
             clearable
+            style="width: 320px"
             @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="客户姓名">
-          <el-input
-            v-model="searchForm.customerName"
-            placeholder="请输入客户姓名"
-            clearable
-            @keyup.enter="handleSearch"
-          />
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
         </el-form-item>
         <el-form-item label="订单状态">
           <el-select v-model="searchForm.status" placeholder="请选择状态" clearable multiple collapse-tags style="min-width: 200px; width: auto;">
@@ -611,7 +608,6 @@ import { useUserStore } from '@/stores/user'
 import { useDepartmentStore } from '@/stores/department'
 import { useAppStore } from '@/stores/app'
 import { useNotificationStore } from '@/stores/notification'
-import { messageNotificationService } from '@/services/messageNotificationService'
 import { usePerformanceStore } from '@/stores/performance'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { eventBus, EventNames } from '@/utils/eventBus'
@@ -748,12 +744,11 @@ const selectedAuditOrders = ref<OrderItem[]>([])
 const auditSubmitting = ref(false)
 
 const searchForm = reactive({
-  orderNumber: '',
-  customerName: '',
+  keyword: '',  // 综合搜索关键词
   status: [] as string[],
   markType: '',
-  departmentId: '', // 🔥 新增：部门筛选
-  salesPersonId: '', // 🔥 新增：销售人员筛选
+  departmentId: '',
+  salesPersonId: '',
   dateRange: [] as (Date | string)[],
   minAmount: undefined as number | undefined,
   maxAmount: undefined as number | undefined,
@@ -1479,18 +1474,8 @@ const handleSubmitAudit = async (row: OrderItem) => {
       })
     }
 
-    // 发送通知消息给审核员（超管、管理员、客服）
-    if (order) {
-      messageNotificationService.sendToRoles(
-        notificationStore.MessageType.AUDIT_PENDING,
-        `订单 ${order.orderNumber} (客户: ${order.customerName}, 金额: ¥${order.totalAmount?.toLocaleString()}) 已提交审核，请及时处理`,
-        {
-          relatedId: order.id,
-          relatedType: 'order',
-          actionUrl: `/order/audit`
-        }
-      )
-    }
+    // 🔥 移除前端重复通知：后端 submit-audit API 已经发送了待审核通知
+    // 不再需要前端额外发送，避免重复通知
 
     ElMessage.success('订单已提审')
     updateQuickFilterCounts()
@@ -2107,12 +2092,11 @@ const handleSearch = () => {
 }
 
 const handleReset = () => {
-  searchForm.orderNumber = ''
-  searchForm.customerName = ''
+  searchForm.keyword = ''
   searchForm.status = []
   searchForm.markType = ''
-  searchForm.departmentId = '' // 🔥 新增：重置部门筛选
-  searchForm.salesPersonId = '' // 🔥 新增：重置销售人员筛选
+  searchForm.departmentId = ''
+  searchForm.salesPersonId = ''
   searchForm.dateRange = []
   searchForm.minAmount = undefined
   searchForm.maxAmount = undefined
@@ -2122,10 +2106,9 @@ const handleReset = () => {
   searchForm.onlyAuditPendingSubmitted = false
   searchForm.onlyResubmittable = false
   activeQuickFilter.value = 'all'
-  dateQuickFilter.value = 'all' // 🔥 新增：重置日期快捷筛选
+  dateQuickFilter.value = 'all'
   advancedSearchVisible.value = false
   pagination.page = 1
-  // 🔥 修复：重置后调用API重新加载数据
   loadOrderList(true)
 }
 
@@ -2218,12 +2201,9 @@ const loadOrderList = async (force = false) => {
       }
     }
 
-    // 🔥 关键词搜索
-    if (searchForm.orderNumber) {
-      params.orderNumber = searchForm.orderNumber
-    }
-    if (searchForm.customerName) {
-      params.customerName = searchForm.customerName
+    // 🔥 综合关键词搜索
+    if (searchForm.keyword?.trim()) {
+      params.keyword = searchForm.keyword.trim()
     }
 
     // 🔥 标记筛选
