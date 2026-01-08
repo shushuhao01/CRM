@@ -716,7 +716,7 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
     const startTime = Date.now();
 
     // 🔥 服务端分页参数
-    const { page = 1, pageSize = 20, orderNumber, customerName, startDate, endDate, quickFilter, departmentId, salesPersonId } = req.query;
+    const { page = 1, pageSize = 20, orderNumber, customerName, keyword, startDate, endDate, quickFilter, departmentId, salesPersonId } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 500); // 🔥 最大500条/页
     const skip = (pageNum - 1) * pageSizeNum;
@@ -736,12 +736,21 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
       ])
       .where('order.status = :status', { status: 'pending_shipment' });
 
-    // 支持筛选
-    if (orderNumber) {
-      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
-    }
-    if (customerName) {
-      queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+    // 🔥 支持综合关键词搜索（订单号 OR 客户名称 OR 手机号 OR 客户编码）
+    if (keyword) {
+      queryBuilder.andWhere(
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)',
+        { keyword: `%${keyword}%` }
+      );
+      console.log(`📦 [待发货订单] 综合关键词搜索: "${keyword}"`);
+    } else {
+      // 支持单独筛选
+      if (orderNumber) {
+        queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+      }
+      if (customerName) {
+        queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+      }
     }
 
     // 🔥 部门筛选
@@ -1219,7 +1228,7 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
 router.get('/shipping/returned', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
-    const { page = 1, pageSize = 10, orderNumber, customerName, startDate, endDate, departmentId, salesPersonId } = req.query;
+    const { page = 1, pageSize = 10, orderNumber, customerName, keyword, startDate, endDate, departmentId, salesPersonId } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 500);
     const skip = (pageNum - 1) * pageSizeNum;
@@ -1241,11 +1250,20 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
         statuses: ['logistics_returned', 'rejected_returned', 'audit_rejected']
       });
 
-    if (orderNumber) {
-      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
-    }
-    if (customerName) {
-      queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+    // 🔥 支持综合关键词搜索（订单号 OR 客户名称 OR 手机号 OR 客户编码）
+    if (keyword) {
+      queryBuilder.andWhere(
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)',
+        { keyword: `%${keyword}%` }
+      );
+      console.log(`📦 [退回订单] 综合关键词搜索: "${keyword}"`);
+    } else {
+      if (orderNumber) {
+        queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+      }
+      if (customerName) {
+        queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+      }
     }
     // 🔥 部门筛选
     if (departmentId) {
@@ -1671,6 +1689,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       statusList,
       orderNumber,
       customerName,
+      keyword,  // 综合搜索关键词
       startDate,
       endDate,
       markType,
@@ -1735,6 +1754,15 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       }
     } else {
       console.log(`📋 [订单列表] ${userRole}角色，查看所有订单`);
+    }
+
+    // 🔥 综合关键词搜索（商品名称模糊搜索，其他字段精准搜索）
+    if (keyword) {
+      queryBuilder.andWhere(
+        '(order.orderNumber = :exactKeyword OR order.customerName = :exactKeyword OR order.customerPhone = :exactKeyword OR order.customerId = :exactKeyword OR order.trackingNumber = :exactKeyword OR order.products LIKE :fuzzyKeyword)',
+        { exactKeyword: keyword, fuzzyKeyword: `%${keyword}%` }
+      );
+      console.log(`📋 [订单列表] 综合关键词搜索: "${keyword}" (商品模糊，其他精准)`);
     }
 
     // 状态筛选

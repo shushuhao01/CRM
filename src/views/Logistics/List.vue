@@ -19,12 +19,12 @@
             style="width: 200px"
           />
         </el-form-item>
-        <el-form-item label="订单号">
+        <el-form-item label="搜索">
           <el-input
-            v-model="searchForm.orderNo"
-            placeholder="请输入订单号"
+            v-model="searchForm.keyword"
+            placeholder="搜索订单号、客户名称、手机号、客户编码"
             clearable
-            style="width: 200px"
+            style="width: 280px"
           />
         </el-form-item>
         <el-form-item label="部门">
@@ -379,7 +379,7 @@ const useDefaultCompanies = () => {
 // 搜索表单
 const searchForm = reactive({
   trackingNo: '',
-  orderNo: '',
+  keyword: '',  // 🔥 综合搜索关键词
   departmentId: '',
   salesPersonId: '',
   status: '',
@@ -578,7 +578,7 @@ const handleSearch = () => {
 const handleReset = () => {
   Object.assign(searchForm, {
     trackingNo: '',
-    orderNo: '',
+    keyword: '',  // 🔥 综合搜索关键词
     departmentId: '',
     salesPersonId: '',
     status: '',
@@ -648,7 +648,7 @@ const loadData = async () => {
     const response = await orderApi.getShippingShipped({
       page: pagination.page,
       pageSize: pagination.size,
-      orderNumber: searchForm.orderNo || undefined,
+      keyword: searchForm.keyword?.trim() || undefined,  // 🔥 综合搜索关键词
       trackingNumber: searchForm.trackingNo || undefined,
       status: searchForm.status || undefined,
       departmentId: searchForm.departmentId || undefined,

@@ -132,23 +132,14 @@
           />
         </el-select>
         <el-input
-          v-model="searchOrderNo"
-          placeholder="订单号"
+          v-model="searchKeyword"
+          placeholder="搜索订单号、客户名称、客户电话、客户编码"
           class="search-input"
           clearable
+          style="width: 320px"
         >
           <template #prefix>
             <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-        <el-input
-          v-model="searchCustomerPhone"
-          placeholder="客户号码"
-          class="search-input"
-          clearable
-        >
-          <template #prefix>
-            <el-icon><Phone /></el-icon>
           </template>
         </el-input>
       </div>
@@ -568,23 +559,14 @@
               <el-option label="市场部" value="marketing" />
             </el-select>
             <el-input
-              v-model="searchOrderNo"
-              placeholder="订单号"
+              v-model="searchKeyword"
+              placeholder="搜索订单号、客户名称、客户电话、客户编码"
               class="search-input"
               clearable
+              style="width: 320px"
             >
               <template #prefix>
                 <el-icon><Search /></el-icon>
-              </template>
-            </el-input>
-            <el-input
-              v-model="searchCustomerPhone"
-              placeholder="客户号码"
-              class="search-input"
-              clearable
-            >
-              <template #prefix>
-                <el-icon><Phone /></el-icon>
               </template>
             </el-input>
           </div>
@@ -758,7 +740,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Box, Money, Van, Warning, CreditCard, Coin,
-  Search, Phone, Download, View, Printer, ArrowDown, Back, Close, Document,
+  Search, Download, View, Printer, ArrowDown, Back, Close, Document,
   Edit, Check, Delete, FullScreen, CopyDocument, Refresh
 } from '@element-plus/icons-vue'
 import { useOrderStore } from '@/stores/order'
@@ -824,8 +806,7 @@ const tabCounts = reactive({
 const dateRange = ref<[string, string] | null>(null)
 const selectedDepartment = ref('')
 const selectedSalesPerson = ref('')
-const searchOrderNo = ref('')
-const searchCustomerPhone = ref('')
+const searchKeyword = ref('')  // 🔥 综合搜索关键词
 
 // 🔥 销售人员列表（从用户store获取）
 const salesUserList = computed(() => {
@@ -1347,8 +1328,7 @@ const loadOrderList = async () => {
         _t: timestamp,
         page: currentPage.value,
         pageSize: pageSize.value,
-        orderNumber: searchOrderNo.value || undefined,
-        customerName: undefined,
+        keyword: searchKeyword.value?.trim() || undefined,  // 🔥 综合搜索关键词
         // 🔥 日期范围筛选
         startDate: dateRange.value?.[0] || undefined,
         endDate: dateRange.value?.[1] || undefined,
