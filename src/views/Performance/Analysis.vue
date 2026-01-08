@@ -2609,6 +2609,19 @@ onUnmounted(() => {
   border-top: 1px solid #ebeef5;
 }
 
+/* 🔥 修复：确保分页控件在对话框中居中 */
+:deep(.order-type-dialog) .order-pagination {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+  margin-top: 8px;
+  border-top: 1px solid #ebeef5;
+}
+
+:deep(.order-type-dialog) .el-pagination {
+  justify-content: center;
+}
+
 .order-type-dialog .amount {
   color: #409eff;
   font-weight: 600;
