@@ -960,4 +960,207 @@ router.get('/analysis/trend', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @route GET /api/v1/performance/analysis/chart-data
+ * @desc 获取业绩分析图表数据（业绩趋势和订单状态分布）
+ * @access Private
+ *
+ * 支持参数：
+ * - startDate: 开始日期 (YYYY-MM-DD)
+ * - endDate: 结束日期 (YYYY-MM-DD)
+ * - departmentId: 部门ID（可选）
+ * - granularity: 数据粒度 (hour/day/month/year)，默认自动判断
+ */
+router.get('/analysis/chart-data', async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate, departmentId, granularity } = req.query;
+    const _currentUser = (req as any).user;
+
+    console.log(`[业绩图表API] 请求参数: startDate=${startDate}, endDate=${endDate}, departmentId=${departmentId}, granularity=${granularity}`);
+
+    // 🔥 构建基础查询条件
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    // 排除无效订单状态
+    conditions.push(`status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded')`);
+    // 排除预留单
+    conditions.push(`NOT (status = 'pending_transfer' AND mark_type = 'reserved')`);
+
+    // 日期筛选
+    if (startDate && endDate) {
+      conditions.push(`created_at >= ? AND created_at <= ?`);
+      params.push(`${startDate} 00:00:00`, `${endDate} 23:59:59`);
+    }
+
+    // 部门筛选
+    if (departmentId) {
+      conditions.push(`created_by_department_id = ?`);
+      params.push(departmentId);
+    }
+
+    const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    // 🔥 1. 获取业绩趋势数据
+    // 根据日期范围自动选择粒度
+    let groupByFormat: string;
+    let selectFormat: string;
+    let autoGranularity = granularity as string;
+
+    if (!autoGranularity) {
+      // 自动判断粒度
+      if (startDate && endDate) {
+        const start = new Date(startDate as string);
+        const end = new Date(endDate as string);
+        const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (daysDiff <= 1) {
+          autoGranularity = 'hour';
+        } else if (daysDiff <= 31) {
+          autoGranularity = 'day';
+        } else if (daysDiff <= 365) {
+          autoGranularity = 'month';
+        } else {
+          autoGranularity = 'year';
+        }
+      } else {
+        autoGranularity = 'year'; // 默认按年
+      }
+    }
+
+    switch (autoGranularity) {
+      case 'hour':
+        selectFormat = `DATE_FORMAT(created_at, '%Y-%m-%d %H:00') as period`;
+        groupByFormat = `DATE_FORMAT(created_at, '%Y-%m-%d %H:00')`;
+        break;
+      case 'day':
+        selectFormat = `DATE(created_at) as period`;
+        groupByFormat = `DATE(created_at)`;
+        break;
+      case 'month':
+        selectFormat = `DATE_FORMAT(created_at, '%Y-%m') as period`;
+        groupByFormat = `DATE_FORMAT(created_at, '%Y-%m')`;
+        break;
+      case 'year':
+      default:
+        selectFormat = `YEAR(created_at) as period`;
+        groupByFormat = `YEAR(created_at)`;
+        break;
+    }
+
+    // 查询业绩趋势
+    const trendSql = `
+      SELECT
+        ${selectFormat},
+        SUM(total_amount) as orderAmount,
+        SUM(CASE WHEN status = 'delivered' THEN total_amount ELSE 0 END) as signAmount,
+        COUNT(*) as orderCount,
+        SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as signCount
+      FROM orders
+      ${whereClause}
+      GROUP BY ${groupByFormat}
+      ORDER BY period ASC
+    `;
+
+    console.log(`[业绩图表API] 趋势SQL: ${trendSql}`);
+    console.log(`[业绩图表API] 参数: ${JSON.stringify(params)}`);
+
+    const trendData = await AppDataSource.query(trendSql, params);
+
+    console.log(`[业绩图表API] 趋势数据条数: ${trendData.length}`);
+    if (trendData.length > 0) {
+      console.log(`[业绩图表API] 趋势数据示例:`, trendData.slice(0, 3));
+    }
+
+    // 🔥 2. 获取订单状态分布
+    const statusSql = `
+      SELECT
+        status,
+        COUNT(*) as count,
+        SUM(total_amount) as amount
+      FROM orders
+      ${whereClause}
+      GROUP BY status
+      ORDER BY count DESC
+    `;
+
+    const statusData = await AppDataSource.query(statusSql, params);
+
+    // 状态名称映射
+    const statusNames: Record<string, string> = {
+      'pending_transfer': '待流转',
+      'pending_audit': '待审核',
+      'audit_rejected': '审核拒绝',
+      'pending_shipment': '待发货',
+      'shipped': '已发货',
+      'delivered': '已签收',
+      'logistics_returned': '物流部退回',
+      'logistics_cancelled': '物流部取消',
+      'package_exception': '包裹异常',
+      'rejected': '拒收',
+      'rejected_returned': '拒收已退回',
+      'after_sales_created': '已建售后',
+      'pending_cancel': '待取消',
+      'cancel_failed': '取消失败',
+      'cancelled': '已取消',
+      'draft': '草稿',
+      'refunded': '已退款',
+      'pending': '待审核',
+      'paid': '已付款',
+      'completed': '已完成',
+      'signed': '已签收'
+    };
+
+    const orderStatusDistribution = statusData.map((item: any) => ({
+      name: statusNames[item.status] || item.status,
+      value: parseInt(item.count) || 0,
+      amount: parseFloat(item.amount) || 0,
+      status: item.status
+    }));
+
+    // 🔥 3. 格式化趋势数据
+    const performanceTrend = {
+      xAxis: trendData.map((item: any) => {
+        const period = item.period;
+        if (autoGranularity === 'year') {
+          return `${period}年`;
+        } else if (autoGranularity === 'month') {
+          const parts = period.split('-');
+          return `${parseInt(parts[1])}月`;
+        } else if (autoGranularity === 'day') {
+          const parts = period.split('-');
+          return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
+        } else {
+          // hour
+          return period.split(' ')[1] || period;
+        }
+      }),
+      orderData: trendData.map((item: any) => parseFloat(item.orderAmount) || 0),
+      signData: trendData.map((item: any) => parseFloat(item.signAmount) || 0),
+      // 原始数据，方便前端进一步处理
+      rawData: trendData.map((item: any) => ({
+        period: item.period,
+        orderAmount: parseFloat(item.orderAmount) || 0,
+        signAmount: parseFloat(item.signAmount) || 0,
+        orderCount: parseInt(item.orderCount) || 0,
+        signCount: parseInt(item.signCount) || 0
+      }))
+    };
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '获取业绩图表数据成功',
+      data: {
+        performanceTrend,
+        orderStatusDistribution,
+        granularity: autoGranularity
+      }
+    });
+  } catch (error) {
+    console.error('获取业绩图表数据失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取业绩图表数据失败' });
+  }
+});
+
 export default router;
