@@ -1121,18 +1121,27 @@ router.get('/analysis/chart-data', async (req: Request, res: Response) => {
     // 🔥 3. 格式化趋势数据
     const performanceTrend = {
       xAxis: trendData.map((item: any) => {
-        const period = item.period;
+        let period = item.period;
+        // 🔥 修复：处理 MySQL 返回的 Date 对象，转换为字符串
+        if (period instanceof Date) {
+          period = period.toISOString().split('T')[0]; // 转换为 YYYY-MM-DD 格式
+        } else if (typeof period === 'object' && period !== null) {
+          // 处理其他可能的日期对象格式
+          period = String(period);
+        }
+
         if (autoGranularity === 'year') {
           return `${period}年`;
         } else if (autoGranularity === 'month') {
-          const parts = period.split('-');
+          const parts = String(period).split('-');
           return `${parseInt(parts[1])}月`;
         } else if (autoGranularity === 'day') {
-          const parts = period.split('-');
+          const parts = String(period).split('-');
           return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
         } else {
           // hour
-          return period.split(' ')[1] || period;
+          const periodStr = String(period);
+          return periodStr.split(' ')[1] || periodStr;
         }
       }),
       orderData: trendData.map((item: any) => parseFloat(item.orderAmount) || 0),
