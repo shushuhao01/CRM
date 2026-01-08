@@ -38,11 +38,16 @@ const handleDynamicImportError = () => {
   if (isShowingGlobalErrorDialog) return
   isShowingGlobalErrorDialog = true
 
+  // 🔥 检查是否在公开页面，公开页面不需要登录验证
+  const currentPath = window.location.pathname
+  const publicPaths = ['/login', '/public-help', '/register', '/agreement']
+  const isPublicPage = publicPaths.some(path => currentPath.startsWith(path))
+
   // 检查 token 状态
   const savedToken = localStorage.getItem('auth_token')
 
-  if (!savedToken) {
-    // Token 已被清除，说明是登录过期
+  if (!savedToken && !isPublicPage) {
+    // Token 已被清除且不在公开页面，说明是登录过期
     ElMessageBox.alert(
       '您的登录已过期，请重新登录。',
       '登录已过期',
@@ -59,8 +64,8 @@ const handleDynamicImportError = () => {
     }).finally(() => {
       isShowingGlobalErrorDialog = false
     })
-  } else {
-    // 可能是版本更新导致的
+  } else if (!isPublicPage) {
+    // 可能是版本更新导致的（非公开页面）
     ElMessageBox.alert(
       '系统检测到版本更新或页面缓存过期，需要刷新页面以加载最新内容。',
       '页面需要刷新',
@@ -77,6 +82,10 @@ const handleDynamicImportError = () => {
     }).finally(() => {
       isShowingGlobalErrorDialog = false
     })
+  } else {
+    // 公开页面，静默处理
+    console.log('[Main] 公开页面动态导入失败，静默处理')
+    isShowingGlobalErrorDialog = false
   }
 }
 
@@ -197,12 +206,17 @@ const initializeApp = async () => {
     // 先初始化配置存储
     const configStore = useConfigStore()
 
-    // 初始化安全控制台配置（从服务器获取）
-    try {
-      await initSecureConsoleConfig()
-      console.log('[App] 安全控制台配置初始化完成')
-    } catch (error) {
-      console.error('[App] 安全控制台初始化失败:', error)
+    // 🔥 公开页面检查
+    const isPublicPage = window.location.pathname.startsWith('/public-help')
+
+    // 初始化安全控制台配置（从服务器获取）- 公开页面跳过
+    if (!isPublicPage) {
+      try {
+        await initSecureConsoleConfig()
+        console.log('[App] 安全控制台配置初始化完成')
+      } catch (error) {
+        console.error('[App] 安全控制台初始化失败:', error)
+      }
     }
 
     // 安全地初始化主题配置
@@ -213,12 +227,16 @@ const initializeApp = async () => {
       console.error('[App] 主题配置初始化失败:', error)
     }
 
-    // 安全地初始化用户状态
-    try {
-      await userStore.initUser()
-      console.log('[App] 用户状态初始化成功')
-    } catch (error) {
-      console.error('[App] 用户状态初始化失败:', error)
+    // 安全地初始化用户状态（公开页面跳过）
+    if (!isPublicPage) {
+      try {
+        await userStore.initUser()
+        console.log('[App] 用户状态初始化成功')
+      } catch (error) {
+        console.error('[App] 用户状态初始化失败:', error)
+      }
+    } else {
+      console.log('[App] 公开页面，跳过用户状态初始化')
     }
 
     // 注册插件和组件

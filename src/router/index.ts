@@ -534,6 +534,13 @@ const router = createRouter({
       component: () => import('../views/MobileSDKInstall.vue'),
       meta: { title: '移动SDK安装指南', requiresAuth: false }
     },
+    // 公开帮助中心（无需登录）
+    {
+      path: '/public-help',
+      name: 'PublicHelpCenter',
+      component: () => import('../views/PublicHelpCenter.vue'),
+      meta: { title: '帮助中心', requiresAuth: false }
+    },
     // 帮助中心
     {
       path: '/help-center',
@@ -658,6 +665,18 @@ router.onError((error) => {
     error.message.includes('ChunkLoadError')
   )) {
     console.warn('[Router] 动态模块加载失败，可能是版本更新或缓存问题:', error.message)
+
+    // 🔥 检查是否在公开页面，公开页面不需要登录验证
+    const currentPath = window.location.pathname
+    const publicPaths = ['/login', '/public-help', '/register', '/agreement']
+    const isPublicPage = publicPaths.some(path => currentPath.startsWith(path))
+
+    if (isPublicPage) {
+      // 公开页面，静默处理或刷新
+      console.log('[Router] 公开页面动态导入失败，尝试刷新')
+      window.location.reload()
+      return
+    }
 
     // 检查是否是 token 过期导致的
     const userStore = useUserStore()
