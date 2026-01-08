@@ -832,6 +832,14 @@ export const useConfigStore = defineStore('config', () => {
    * 初始化配置
    */
   const initConfig = async () => {
+    // 🔥 公开页面不需要从API加载配置
+    const isPublicPage = window.location.pathname.startsWith('/public-help')
+    if (isPublicPage) {
+      console.log('[ConfigStore] 公开页面，跳过API配置加载')
+      loadConfigFromStorage()
+      return
+    }
+
     // 先从localStorage加载（快速显示）
     loadConfigFromStorage()
     // 然后从API获取最新配置（确保同步）

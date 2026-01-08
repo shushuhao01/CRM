@@ -31,6 +31,7 @@
           @select="handleMenuSelect"
           class="help-menu"
         >
+          <!-- 项目介绍 -->
           <el-sub-menu index="project">
             <template #title>
               <el-icon><InfoFilled /></el-icon>
@@ -39,41 +40,71 @@
             <el-menu-item index="project-overview">系统概述</el-menu-item>
             <el-menu-item index="project-features">核心特性</el-menu-item>
             <el-menu-item index="project-architecture">技术架构</el-menu-item>
+            <el-menu-item index="project-config">配置说明</el-menu-item>
+            <el-menu-item index="project-troubleshoot">故障排除</el-menu-item>
           </el-sub-menu>
 
-          <el-sub-menu index="business">
-            <template #title>
-              <el-icon><Operation /></el-icon>
-              <span>业务逻辑</span>
-            </template>
-            <el-menu-item index="business-logic">业务流程</el-menu-item>
-            <el-menu-item index="business-rules">业务规则</el-menu-item>
-            <el-menu-item index="business-integration">系统集成</el-menu-item>
-          </el-sub-menu>
-
-          <el-sub-menu index="deployment">
-            <template #title>
-              <el-icon><Setting /></el-icon>
-              <span>部署步骤</span>
-            </template>
-            <el-menu-item index="deployment-guide">部署指南</el-menu-item>
-            <el-menu-item index="deployment-config">配置说明</el-menu-item>
-            <el-menu-item index="deployment-troubleshoot">故障排除</el-menu-item>
-          </el-sub-menu>
-
+          <!-- 功能模块 -->
           <el-sub-menu index="modules">
             <template #title>
               <el-icon><Grid /></el-icon>
               <span>功能模块</span>
             </template>
-            <el-menu-item index="system-modules">系统功能模块</el-menu-item>
+            <el-menu-item index="module-dashboard">数据看板</el-menu-item>
             <el-menu-item index="module-customer">客户管理</el-menu-item>
             <el-menu-item index="module-order">订单管理</el-menu-item>
-            <el-menu-item index="module-product">商品管理</el-menu-item>
+            <el-menu-item index="module-service-mgmt">服务管理</el-menu-item>
+            <el-menu-item index="module-performance">业绩统计</el-menu-item>
+            <el-menu-item index="module-logistics">物流管理</el-menu-item>
+            <el-menu-item index="module-aftersale">售后管理</el-menu-item>
+            <el-menu-item index="module-data">资料管理</el-menu-item>
             <el-menu-item index="module-finance">财务管理</el-menu-item>
-            <el-menu-item index="module-report">报表统计</el-menu-item>
+            <el-menu-item index="module-product">商品管理</el-menu-item>
+            <el-menu-item index="module-system">系统管理</el-menu-item>
           </el-sub-menu>
 
+          <!-- 角色权限 -->
+          <el-sub-menu index="roles">
+            <template #title>
+              <el-icon><UserFilled /></el-icon>
+              <span>角色权限</span>
+            </template>
+            <el-menu-item index="role-overview">角色概述</el-menu-item>
+            <el-menu-item index="role-super-admin">超级管理员</el-menu-item>
+            <el-menu-item index="role-admin">管理员</el-menu-item>
+            <el-menu-item index="role-dept-manager">部门经理</el-menu-item>
+            <el-menu-item index="role-sales">销售员</el-menu-item>
+            <el-menu-item index="role-customer-service">客服</el-menu-item>
+            <el-menu-item index="role-permission-config">权限配置</el-menu-item>
+          </el-sub-menu>
+
+          <!-- 移动APP -->
+          <el-sub-menu index="app">
+            <template #title>
+              <el-icon><Iphone /></el-icon>
+              <span>移动APP</span>
+            </template>
+            <el-menu-item index="app-overview">APP概述</el-menu-item>
+            <el-menu-item index="app-install">安装配置</el-menu-item>
+            <el-menu-item index="app-login">登录绑定</el-menu-item>
+            <el-menu-item index="app-call">通话功能</el-menu-item>
+            <el-menu-item index="app-sync">数据同步</el-menu-item>
+          </el-sub-menu>
+
+          <!-- 部署指南 -->
+          <el-sub-menu index="deployment">
+            <template #title>
+              <el-icon><Setting /></el-icon>
+              <span>部署指南</span>
+            </template>
+            <el-menu-item index="deploy-private">私有部署</el-menu-item>
+            <el-menu-item index="deploy-saas">SaaS版本</el-menu-item>
+            <el-menu-item index="deploy-env">环境要求</el-menu-item>
+            <el-menu-item index="deploy-database">数据库配置</el-menu-item>
+            <el-menu-item index="deploy-nginx">Nginx配置</el-menu-item>
+          </el-sub-menu>
+
+          <!-- 常见问题 -->
           <el-sub-menu index="faq">
             <template #title>
               <el-icon><QuestionFilled /></el-icon>
@@ -83,6 +114,7 @@
             <el-menu-item index="faq-operation">操作问题</el-menu-item>
             <el-menu-item index="faq-data">数据问题</el-menu-item>
             <el-menu-item index="faq-performance">性能问题</el-menu-item>
+            <el-menu-item index="faq-app">APP问题</el-menu-item>
           </el-sub-menu>
         </el-menu>
       </div>
@@ -134,17 +166,65 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
-import { Search, InfoFilled, Operation, Setting, Grid, QuestionFilled } from '@element-plus/icons-vue'
+import { Search, InfoFilled, Operation, Setting, Grid, QuestionFilled, UserFilled, Iphone } from '@element-plus/icons-vue'
 
 // 动态导入帮助内容组件
-const helpContentComponents = {
+const helpContentComponents: Record<string, any> = {
+  // 项目介绍
   'project-overview': defineAsyncComponent(() => import('@/components/HelpContent/ProjectOverview.vue')),
+  'project-features': defineAsyncComponent(() => import('@/components/HelpContent/ProjectFeatures.vue')),
+  'project-architecture': defineAsyncComponent(() => import('@/components/HelpContent/ProjectArchitecture.vue')),
+  'project-config': defineAsyncComponent(() => import('@/components/HelpContent/ProjectConfig.vue')),
+  'project-troubleshoot': defineAsyncComponent(() => import('@/components/HelpContent/ProjectTroubleshoot.vue')),
+
+  // 功能模块
+  'module-dashboard': defineAsyncComponent(() => import('@/components/HelpContent/ModuleDashboard.vue')),
+  'module-customer': defineAsyncComponent(() => import('@/components/HelpContent/ModuleCustomer.vue')),
+  'module-order': defineAsyncComponent(() => import('@/components/HelpContent/ModuleOrder.vue')),
+  'module-service-mgmt': defineAsyncComponent(() => import('@/components/HelpContent/ModuleServiceMgmt.vue')),
+  'module-performance': defineAsyncComponent(() => import('@/components/HelpContent/ModulePerformance.vue')),
+  'module-logistics': defineAsyncComponent(() => import('@/components/HelpContent/ModuleLogistics.vue')),
+  'module-aftersale': defineAsyncComponent(() => import('@/components/HelpContent/ModuleAftersale.vue')),
+  'module-data': defineAsyncComponent(() => import('@/components/HelpContent/ModuleData.vue')),
+  'module-finance': defineAsyncComponent(() => import('@/components/HelpContent/ModuleFinance.vue')),
+  'module-product': defineAsyncComponent(() => import('@/components/HelpContent/ModuleProduct.vue')),
+  'module-system': defineAsyncComponent(() => import('@/components/HelpContent/ModuleSystem.vue')),
+
+  // 角色权限
+  'role-overview': defineAsyncComponent(() => import('@/components/HelpContent/RoleOverview.vue')),
+  'role-super-admin': defineAsyncComponent(() => import('@/components/HelpContent/RoleSuperAdmin.vue')),
+  'role-admin': defineAsyncComponent(() => import('@/components/HelpContent/RoleAdmin.vue')),
+  'role-dept-manager': defineAsyncComponent(() => import('@/components/HelpContent/RoleDeptManager.vue')),
+  'role-sales': defineAsyncComponent(() => import('@/components/HelpContent/RoleSales.vue')),
+  'role-customer-service': defineAsyncComponent(() => import('@/components/HelpContent/RoleCustomerService.vue')),
+  'role-permission-config': defineAsyncComponent(() => import('@/components/HelpContent/RolePermissionConfig.vue')),
+
+  // 移动APP
+  'app-overview': defineAsyncComponent(() => import('@/components/HelpContent/AppOverview.vue')),
+  'app-install': defineAsyncComponent(() => import('@/components/HelpContent/AppInstall.vue')),
+  'app-login': defineAsyncComponent(() => import('@/components/HelpContent/AppLogin.vue')),
+  'app-call': defineAsyncComponent(() => import('@/components/HelpContent/AppCall.vue')),
+  'app-sync': defineAsyncComponent(() => import('@/components/HelpContent/AppSync.vue')),
+
+  // 部署指南
+  'deploy-private': defineAsyncComponent(() => import('@/components/HelpContent/DeployPrivate.vue')),
+  'deploy-saas': defineAsyncComponent(() => import('@/components/HelpContent/DeploySaas.vue')),
+  'deploy-env': defineAsyncComponent(() => import('@/components/HelpContent/DeployEnv.vue')),
+  'deploy-database': defineAsyncComponent(() => import('@/components/HelpContent/DeployDatabase.vue')),
+  'deploy-nginx': defineAsyncComponent(() => import('@/components/HelpContent/DeployNginx.vue')),
+
+  // 常见问题
+  'faq-login': defineAsyncComponent(() => import('@/components/HelpContent/FaqLogin.vue')),
+  'faq-operation': defineAsyncComponent(() => import('@/components/HelpContent/FaqOperation.vue')),
+  'faq-data': defineAsyncComponent(() => import('@/components/HelpContent/FaqData.vue')),
+  'faq-performance': defineAsyncComponent(() => import('@/components/HelpContent/FaqPerformance.vue')),
+  'faq-app': defineAsyncComponent(() => import('@/components/HelpContent/FaqApp.vue')),
+
+  // 兼容旧的组件
   'business-logic': defineAsyncComponent(() => import('@/components/HelpContent/BusinessLogic.vue')),
   'deployment-guide': defineAsyncComponent(() => import('@/components/HelpContent/DeploymentGuide.vue')),
   'system-modules': defineAsyncComponent(() => import('@/components/HelpContent/SystemModules.vue')),
-  'module-customer': defineAsyncComponent(() => import('@/components/HelpContent/ModuleCustomer.vue')),
-  'module-order': defineAsyncComponent(() => import('@/components/HelpContent/ModuleOrder.vue')),
-  'faq-login': defineAsyncComponent(() => import('@/components/HelpContent/FaqLogin.vue')),
+
   // 默认组件
   'default': defineAsyncComponent(() => import('@/components/HelpContent/ProjectOverview.vue'))
 }
@@ -231,56 +311,283 @@ const currentContentComponent = computed(() => {
 
 // 模拟搜索数据
 const mockSearchResults = [
+  // 项目介绍
   {
     id: 'project-overview',
     title: '系统概述',
-    excerpt: '智能销售CRM系统是一个全面的客户关系管理平台...',
+    excerpt: '云客CRM是一个全面的客户关系管理平台，专为现代企业的销售团队设计...',
     category: '项目介绍',
-    content: '智能销售CRM系统概述内容'
+    content: '云客CRM系统概述 客户管理 订单处理 业绩统计 物流跟踪 售后服务'
   },
   {
-    id: 'business-logic',
-    title: '业务流程',
-    excerpt: '智能销售CRM系统的核心业务流程围绕客户生命周期管理展开...',
-    category: '业务逻辑',
-    content: '业务流程详细说明'
+    id: 'project-features',
+    title: '核心特性',
+    excerpt: '系统提供数据驱动、效率提升、团队协作等核心价值...',
+    category: '项目介绍',
+    content: '核心特性 数据驱动 效率提升 团队协作 实时通知 权限管理'
   },
   {
-    id: 'deployment-guide',
-    title: '部署指南',
-    excerpt: '详细的系统部署步骤和环境配置说明，包括宝塔面板部署...',
-    category: '部署步骤',
-    content: '部署指南详细内容 宝塔面板 Docker 环境配置'
+    id: 'project-architecture',
+    title: '技术架构',
+    excerpt: 'Vue3 + TypeScript + Element Plus前端，Node.js + Express + MySQL后端...',
+    category: '项目介绍',
+    content: '技术架构 Vue3 TypeScript Element Plus Node.js Express MySQL WebSocket'
   },
   {
-    id: 'system-modules',
-    title: '系统功能模块',
-    excerpt: '完整的系统功能模块介绍，包含10个主要功能模块和所有子菜单功能...',
+    id: 'project-config',
+    title: '配置说明',
+    excerpt: '系统配置包括基础设置、订单设置、物流设置、通知设置等...',
+    category: '项目介绍',
+    content: '配置说明 基础设置 订单设置 物流设置 通知设置 短信配置'
+  },
+  {
+    id: 'project-troubleshoot',
+    title: '故障排除',
+    excerpt: '常见故障排查方法和解决方案...',
+    category: '项目介绍',
+    content: '故障排除 错误处理 日志查看 问题诊断 性能优化'
+  },
+
+  // 功能模块
+  {
+    id: 'module-dashboard',
+    title: '数据看板',
+    excerpt: '实时展示销售数据、订单统计、业绩排名等关键指标...',
     category: '功能模块',
-    content: '数据看板 客户管理 订单管理 服务管理 业绩统计 物流管理 售后管理 资料管理 商品管理 系统管理 菜单 权限'
+    content: '数据看板 销售数据 订单统计 业绩排名 趋势分析 实时更新'
   },
   {
     id: 'module-customer',
     title: '客户管理',
-    excerpt: '客户管理模块提供完整的客户信息管理功能...',
+    excerpt: '客户列表、新增客户、客户分组、客户标签等功能...',
     category: '功能模块',
-    content: '客户管理功能详细说明'
+    content: '客户管理 客户列表 新增客户 客户分组 客户标签 客户详情 跟进记录'
   },
   {
     id: 'module-order',
     title: '订单管理',
-    excerpt: '订单管理模块负责处理从订单创建到订单完成的整个生命周期...',
+    excerpt: '订单列表、新增订单、订单审核、订单状态流转...',
     category: '功能模块',
-    content: '订单管理功能详细说明'
+    content: '订单管理 订单列表 新增订单 订单审核 订单详情 状态流转 提审 审核通过 审核拒绝'
   },
+  {
+    id: 'module-service-mgmt',
+    title: '服务管理',
+    excerpt: '通话管理、短信管理、通话记录、录音回放...',
+    category: '功能模块',
+    content: '服务管理 通话管理 短信管理 通话记录 录音回放 跟进记录 外呼任务'
+  },
+  {
+    id: 'module-performance',
+    title: '业绩统计',
+    excerpt: '个人业绩、团队业绩、业绩分析、业绩分享...',
+    category: '功能模块',
+    content: '业绩统计 个人业绩 团队业绩 业绩分析 业绩分享 排名 趋势'
+  },
+  {
+    id: 'module-logistics',
+    title: '物流管理',
+    excerpt: '发货列表、物流列表、物流跟踪、状态更新、物流公司...',
+    category: '功能模块',
+    content: '物流管理 发货列表 物流列表 物流跟踪 状态更新 物流公司 快递单号 签收 拒收'
+  },
+  {
+    id: 'module-aftersale',
+    title: '售后管理',
+    excerpt: '售后订单、新建售后、售后数据、退换货处理...',
+    category: '功能模块',
+    content: '售后管理 售后订单 新建售后 售后数据 退换货 退款 投诉处理'
+  },
+  {
+    id: 'module-data',
+    title: '资料管理',
+    excerpt: '资料列表、客户查询、回收站、数据导入导出...',
+    category: '功能模块',
+    content: '资料管理 资料列表 客户查询 回收站 数据导入 数据导出 分配'
+  },
+  {
+    id: 'module-finance',
+    title: '财务管理',
+    excerpt: '绩效数据、绩效管理、提成计算、阶梯提成...',
+    category: '功能模块',
+    content: '财务管理 绩效数据 绩效管理 提成计算 阶梯提成 绩效系数'
+  },
+  {
+    id: 'module-product',
+    title: '商品管理',
+    excerpt: '商品列表、新增商品、库存管理、商品分类、商品分析...',
+    category: '功能模块',
+    content: '商品管理 商品列表 新增商品 库存管理 商品分类 商品分析 SKU'
+  },
+  {
+    id: 'module-system',
+    title: '系统管理',
+    excerpt: '部门管理、用户管理、角色权限、系统设置、消息管理...',
+    category: '功能模块',
+    content: '系统管理 部门管理 用户管理 角色权限 系统设置 消息管理 接口管理 客服管理'
+  },
+
+  // 角色权限
+  {
+    id: 'role-overview',
+    title: '角色概述',
+    excerpt: '系统支持超级管理员、管理员、部门经理、销售员、客服等角色...',
+    category: '角色权限',
+    content: '角色概述 超级管理员 管理员 部门经理 销售员 客服 权限分配'
+  },
+  {
+    id: 'role-super-admin',
+    title: '超级管理员',
+    excerpt: '拥有系统全部权限，可管理所有功能和数据...',
+    category: '角色权限',
+    content: '超级管理员 全部权限 系统配置 用户管理 数据管理'
+  },
+  {
+    id: 'role-admin',
+    title: '管理员',
+    excerpt: '拥有大部分管理权限，可管理业务数据和用户...',
+    category: '角色权限',
+    content: '管理员 业务管理 用户管理 数据查看 审核权限'
+  },
+  {
+    id: 'role-dept-manager',
+    title: '部门经理',
+    excerpt: '管理本部门的业务数据和团队成员...',
+    category: '角色权限',
+    content: '部门经理 部门数据 团队管理 业绩查看 数据分析'
+  },
+  {
+    id: 'role-sales',
+    title: '销售员',
+    excerpt: '管理个人客户和订单，查看个人业绩...',
+    category: '角色权限',
+    content: '销售员 个人客户 个人订单 个人业绩 跟进记录'
+  },
+  {
+    id: 'role-customer-service',
+    title: '客服',
+    excerpt: '处理订单审核、物流发货、售后服务等工作...',
+    category: '角色权限',
+    content: '客服 订单审核 物流发货 售后处理 客户查询'
+  },
+  {
+    id: 'role-permission-config',
+    title: '权限配置',
+    excerpt: '如何配置和管理用户权限...',
+    category: '角色权限',
+    content: '权限配置 角色分配 权限设置 数据范围 菜单权限'
+  },
+
+  // 移动APP
+  {
+    id: 'app-overview',
+    title: 'APP概述',
+    excerpt: '云客CRM移动APP，支持Android和iOS平台...',
+    category: '移动APP',
+    content: 'APP概述 移动端 Android iOS 外呼 通话记录'
+  },
+  {
+    id: 'app-install',
+    title: '安装配置',
+    excerpt: 'APP下载安装和服务器配置方法...',
+    category: '移动APP',
+    content: 'APP安装 下载 服务器配置 扫码登录'
+  },
+  {
+    id: 'app-login',
+    title: '登录绑定',
+    excerpt: 'APP登录方式和设备绑定说明...',
+    category: '移动APP',
+    content: 'APP登录 扫码登录 设备绑定 账号绑定'
+  },
+  {
+    id: 'app-call',
+    title: '通话功能',
+    excerpt: 'APP外呼功能使用说明...',
+    category: '移动APP',
+    content: 'APP通话 外呼 拨号盘 通话记录 录音'
+  },
+  {
+    id: 'app-sync',
+    title: '数据同步',
+    excerpt: 'APP与Web端数据同步机制...',
+    category: '移动APP',
+    content: 'APP数据同步 实时同步 通话记录同步 客户数据'
+  },
+
+  // 部署指南
+  {
+    id: 'deploy-private',
+    title: '私有部署',
+    excerpt: '私有化部署完整指南，包括服务器配置、数据库安装等...',
+    category: '部署指南',
+    content: '私有部署 服务器配置 宝塔面板 Docker 环境搭建'
+  },
+  {
+    id: 'deploy-saas',
+    title: 'SaaS版本',
+    excerpt: 'SaaS版本使用说明，包括注册、开通、套餐等...',
+    category: '部署指南',
+    content: 'SaaS版本 注册 开通 套餐 授权码'
+  },
+  {
+    id: 'deploy-env',
+    title: '环境要求',
+    excerpt: '系统运行环境要求，包括Node.js、MySQL、Nginx等...',
+    category: '部署指南',
+    content: '环境要求 Node.js MySQL Nginx 服务器配置'
+  },
+  {
+    id: 'deploy-database',
+    title: '数据库配置',
+    excerpt: 'MySQL数据库安装和配置说明...',
+    category: '部署指南',
+    content: '数据库配置 MySQL 数据库创建 表结构 数据迁移'
+  },
+  {
+    id: 'deploy-nginx',
+    title: 'Nginx配置',
+    excerpt: 'Nginx反向代理和SSL配置说明...',
+    category: '部署指南',
+    content: 'Nginx配置 反向代理 SSL HTTPS WebSocket'
+  },
+
+  // 常见问题
   {
     id: 'faq-login',
     title: '登录问题',
     excerpt: '常见的登录问题及解决方案...',
     category: '常见问题',
-    content: '登录问题解决方案'
+    content: '登录问题 密码错误 账号锁定 忘记密码 验证码'
   },
-  // 更多搜索结果...
+  {
+    id: 'faq-operation',
+    title: '操作问题',
+    excerpt: '系统操作相关的常见问题...',
+    category: '常见问题',
+    content: '操作问题 功能使用 按钮点击 数据提交 页面刷新'
+  },
+  {
+    id: 'faq-data',
+    title: '数据问题',
+    excerpt: '数据显示、导入导出等问题...',
+    category: '常见问题',
+    content: '数据问题 数据显示 导入失败 导出失败 数据丢失'
+  },
+  {
+    id: 'faq-performance',
+    title: '性能问题',
+    excerpt: '系统性能相关问题及优化建议...',
+    category: '常见问题',
+    content: '性能问题 加载慢 卡顿 优化建议 缓存清理'
+  },
+  {
+    id: 'faq-app',
+    title: 'APP问题',
+    excerpt: '移动APP使用中的常见问题...',
+    category: '常见问题',
+    content: 'APP问题 连接失败 通话异常 同步失败 闪退'
+  }
 ]
 
 // 键盘事件处理

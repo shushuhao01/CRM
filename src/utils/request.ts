@@ -47,6 +47,17 @@ service.interceptors.request.use(
     const userStore = useUserStore()
     const appStore = useAppStore()
 
+    // 🔥 公开页面检查：如果是公开页面且没有token，取消需要认证的请求
+    const isPublicPage = window.location.pathname.startsWith('/public-help')
+    if (isPublicPage && !userStore.token) {
+      // 公开页面不需要发送认证请求，直接取消
+      const controller = new AbortController()
+      controller.abort()
+      config.signal = controller.signal
+      console.log('[Request] 公开页面，取消认证请求:', config.url)
+      return config
+    }
+
     // 添加认证token
     if (userStore.token) {
       config.headers = config.headers || {}
@@ -205,6 +216,12 @@ service.interceptors.response.use(
           errorMessage = data?.message || '请求参数错误'
           break
         case 401:
+          // 🔥 公开页面不处理401错误（静默忽略）
+          const currentPath = window.location.pathname
+          if (currentPath.startsWith('/public-help')) {
+            console.log('[Request] 公开页面，静默忽略401错误')
+            return Promise.reject(error)
+          }
           // 🔥 Token过期，显示友好提示并跳转登录页
           console.log('[Request] ⚠️ 收到401错误，Token已过期')
           handleUnauthorized()
@@ -293,9 +310,11 @@ const handleUnauthorized = async () => {
     return
   }
 
-  // 🔥 检查当前是否已经在登录页，如果是则不显示弹窗
-  if (router.currentRoute.value.path === '/login') {
-    console.log('[Request] 已在登录页，跳过401弹窗')
+  // 🔥 检查当前是否已经在登录页或公开页面，如果是则不显示弹窗
+  const currentPath = window.location.pathname
+  const publicPaths = ['/login', '/public-help', '/register', '/agreement']
+  if (publicPaths.some(path => currentPath.startsWith(path))) {
+    console.log('[Request] 在公开页面，跳过401弹窗:', currentPath)
     return
   }
 

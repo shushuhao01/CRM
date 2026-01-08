@@ -292,6 +292,7 @@ import {
   Menu, TrendCharts, User, ArrowDown, Odometer, ShoppingCart,
   Box, Setting, Headset, Service
 } from '@element-plus/icons-vue'
+import { licenseHeartbeatService } from '@/services/licenseHeartbeatService'
 
 
 const route = useRoute()
@@ -338,8 +339,12 @@ const showContactDialog = () => {
 
 
 // 计算属性
+// 🔥 公开页面列表（不需要登录，使用简单布局）
+const publicPages = ['/login', '/public-help']
+
 const isLoginPage = computed(() => {
-  return route.path === '/login' || !userStore.token
+  // 登录页或公开帮助中心页面使用简单布局
+  return publicPages.some(path => route.path.startsWith(path)) || !userStore.token
 })
 
 const sidebarWidth = computed(() => {
@@ -767,6 +772,10 @@ const stopPasswordReminder = () => {
 
 // 监听用户登录状态变化
 watch(() => userStore.isLoggedIn, (isLoggedIn) => {
+  // 🔥 公开页面跳过
+  const isPublicPage = publicPages.some(path => route.path.startsWith(path))
+  if (isPublicPage) return
+
   if (isLoggedIn && userStore.user) {
     checkPasswordStatus()
     startPasswordReminder()
@@ -778,6 +787,14 @@ watch(() => userStore.isLoggedIn, (isLoggedIn) => {
 // 生命周期
 onMounted(async () => {
   checkMobile()
+
+  // 🔥 公开页面（如公开帮助中心）不需要初始化这些需要认证的服务
+  const currentPath = window.location.pathname
+  const isPublicPage = publicPages.some(path => currentPath.startsWith(path))
+  if (isPublicPage && !userStore.token) {
+    console.log('[App] 公开页面，跳过需要认证的初始化')
+    return
+  }
 
   // 初始化配置（异步从API加载最新系统配置）
   await configStore.initConfig()
@@ -802,6 +819,9 @@ onMounted(async () => {
   // 🔥 初始化WebSocket实时推送（优先）+ 消息轮询（降级方案）
   initWebSocketConnection()
   startMessagePollingTimer()
+
+  // 🔥 启动授权心跳检测服务（SaaS模式）
+  licenseHeartbeatService.start()
 
   // 启动订单流转检查定时器（每30秒检查一次）
   startOrderTransferTimer()

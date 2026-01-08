@@ -1,7 +1,7 @@
 <template>
   <div class="help-content-section">
     <h1>登录问题</h1>
-    
+
     <div class="content-block">
       <h2>常见登录问题及解决方案</h2>
       <p>以下是用户在使用系统时经常遇到的登录问题及其解决方法。如果您遇到的问题不在此列表中，请联系系统管理员。</p>
@@ -11,14 +11,20 @@
       <h3>❓ 忘记密码怎么办？</h3>
       <div class="answer">
         <p><strong>解决方案：</strong></p>
+        <p>系统暂不支持自助找回密码，请通过以下方式重置密码：</p>
         <ol>
-          <li>在登录页面点击"忘记密码"链接</li>
-          <li>输入您的用户名或邮箱地址</li>
-          <li>系统会发送重置密码的邮件到您的邮箱</li>
-          <li>点击邮件中的重置链接，设置新密码</li>
-          <li>如果没有收到邮件，请检查垃圾邮件文件夹</li>
+          <li>联系您的直属上级或部门经理</li>
+          <li>由管理员在「系统管理」→「用户管理」中重置您的密码</li>
+          <li>管理员重置后会告知您新的临时密码</li>
+          <li>使用临时密码登录后，请立即修改为新密码</li>
         </ol>
-        <p><strong>注意：</strong>重置链接有效期为24小时，过期后需要重新申请。</p>
+        <div class="contact-tip">
+          <p><strong>联系技术支持：</strong></p>
+          <ul>
+            <li>📧 邮箱：xianhuquwang@163.com</li>
+            <li>📞 电话：135-7072-7364</li>
+          </ul>
+        </div>
       </div>
     </div>
 
@@ -47,8 +53,8 @@
         </ul>
         <p><strong>如果确认信息无误：</strong></p>
         <ul>
-          <li>尝试使用"忘记密码"功能重置密码</li>
           <li>联系管理员确认账号状态</li>
+          <li>请管理员帮您重置密码</li>
         </ul>
       </div>
     </div>
@@ -137,9 +143,10 @@
       <div class="contact-info">
         <p>如果以上方法都无法解决您的问题，请通过以下方式联系我们：</p>
         <ul>
-          <li><strong>技术支持邮箱：</strong>support@company.com</li>
+          <li><strong>技术支持邮箱：</strong>xianhuquwang@163.com</li>
+          <li><strong>技术支持电话：</strong>135-7072-7364</li>
           <li><strong>系统管理员：</strong>联系您的直属上级或IT部门</li>
-          <li><strong>紧急联系：</strong>拨打公司内部技术支持热线</li>
+          <li><strong>在线客服：</strong><a href="https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25" target="_blank">点击咨询微信客服</a></li>
         </ul>
       </div>
     </div>
@@ -272,6 +279,39 @@
 .contact-info li {
   margin: 10px 0;
   font-size: 14px;
+  color: #303133;
+}
+
+.contact-info a {
+  color: #409eff;
+  text-decoration: none;
+}
+
+.contact-info a:hover {
+  text-decoration: underline;
+}
+
+.contact-tip {
+  margin-top: 15px;
+  padding: 15px;
+  background: #ecf5ff;
+  border-radius: 6px;
+  border-left: 3px solid #409eff;
+}
+
+.contact-tip p {
+  margin: 0 0 10px;
+  color: #409eff;
+}
+
+.contact-tip ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.contact-tip li {
+  margin: 5px 0;
   color: #303133;
 }
 </style>
