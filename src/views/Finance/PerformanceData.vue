@@ -67,16 +67,49 @@
         @change="handleDateChange"
         class="filter-date"
       />
-      <el-input
-        v-model="searchKeyword"
-        placeholder="搜索订单号"
-        clearable
-        class="filter-item"
-        @clear="loadData"
-        @keyup.enter="loadData"
+      <el-popover
+        placement="bottom"
+        :width="400"
+        trigger="click"
+        v-model:visible="batchSearchVisible"
       >
-        <template #prefix><el-icon><Search /></el-icon></template>
-      </el-input>
+        <template #reference>
+          <el-input
+            v-model="searchKeyword"
+            :placeholder="batchSearchKeywords ? `已输入 ${batchSearchCount} 条` : '批量搜索（点击展开）'"
+            clearable
+            class="filter-item"
+            @clear="clearBatchSearch"
+            @keyup.enter="loadData"
+            readonly
+          >
+            <template #prefix><el-icon><Search /></el-icon></template>
+            <template #suffix>
+              <el-badge v-if="batchSearchCount > 0" :value="batchSearchCount" :max="999" class="batch-badge" />
+            </template>
+          </el-input>
+        </template>
+        <div class="batch-search-popover">
+          <div class="batch-search-header">
+            <span class="batch-search-title">批量搜索</span>
+            <span class="batch-search-tip">支持订单号、客户名称、客户电话，一行一个，最多3000条</span>
+          </div>
+          <el-input
+            v-model="batchSearchKeywords"
+            type="textarea"
+            :rows="8"
+            placeholder="请输入搜索内容，一行一个&#10;例如：&#10;ORD202601010001&#10;张三&#10;13800138000"
+            class="batch-search-textarea"
+          />
+          <div class="batch-search-footer">
+            <span class="batch-search-count">已输入 {{ batchSearchCount }} 条</span>
+            <div class="batch-search-actions">
+              <el-button size="small" @click="clearBatchSearch">清空</el-button>
+              <el-button size="small" type="primary" @click="applyBatchSearch">搜索</el-button>
+            </div>
+          </div>
+        </div>
+      </el-popover>
       <el-select v-model="departmentFilter" placeholder="选择部门" :clearable="isAdmin" :disabled="isSales" @change="handleDepartmentChange" class="filter-item">
         <el-option v-for="dept in filteredDepartments" :key="dept.id" :label="dept.name" :value="dept.id" />
       </el-select>
@@ -229,6 +262,14 @@ const departmentFilter = ref('')
 const salesPersonFilter = ref('')
 const statusFilter = ref('')
 const coefficientFilter = ref('')
+
+// 批量搜索相关
+const batchSearchVisible = ref(false)
+const batchSearchKeywords = ref('')
+const batchSearchCount = computed(() => {
+  if (!batchSearchKeywords.value) return 0
+  return batchSearchKeywords.value.split(/[\n,;，；]+/).map(k => k.trim()).filter(k => k.length > 0).length
+})
 
 // 快捷日期选项
 const quickDateOptions = [
@@ -385,6 +426,28 @@ const handleFilterChange = () => {
   loadStatistics()
 }
 
+// 清空批量搜索
+const clearBatchSearch = () => {
+  batchSearchKeywords.value = ''
+  searchKeyword.value = ''
+  batchSearchVisible.value = false
+  loadData()
+  loadStatistics()
+}
+
+// 应用批量搜索
+const applyBatchSearch = () => {
+  batchSearchVisible.value = false
+  if (batchSearchCount.value > 0) {
+    searchKeyword.value = `已输入 ${batchSearchCount.value} 条`
+  } else {
+    searchKeyword.value = ''
+  }
+  pagination.currentPage = 1
+  loadData()
+  loadStatistics()
+}
+
 // 加载数据
 const loadData = async () => {
   loading.value = true
@@ -392,7 +455,6 @@ const loadData = async () => {
     const params: any = {
       page: pagination.currentPage,
       pageSize: pagination.pageSize,
-      orderNumber: searchKeyword.value || undefined,
       departmentId: departmentFilter.value || undefined,
       salesPersonId: salesPersonFilter.value || undefined,
       performanceStatus: statusFilter.value || undefined,
@@ -401,6 +463,11 @@ const loadData = async () => {
     if (dateRange.value) {
       params.startDate = dateRange.value[0]
       params.endDate = dateRange.value[1]
+    }
+
+    // 🔥 批量搜索参数
+    if (batchSearchKeywords.value && batchSearchCount.value > 0) {
+      params.batchKeywords = batchSearchKeywords.value
     }
 
     console.log('[PerformanceData] loadData params:', params)
@@ -761,5 +828,60 @@ const getCoefficientClass = (val: number | string) => {
 
 .text-gray-400 {
   color: #909399;
+}
+
+/* 批量搜索弹窗样式 */
+.batch-search-popover {
+  padding: 0;
+}
+
+.batch-search-header {
+  margin-bottom: 12px;
+}
+
+.batch-search-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.batch-search-tip {
+  font-size: 12px;
+  color: #909399;
+}
+
+.batch-search-textarea {
+  margin-bottom: 12px;
+}
+
+.batch-search-textarea :deep(.el-textarea__inner) {
+  font-family: monospace;
+  line-height: 1.6;
+}
+
+.batch-search-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.batch-search-count {
+  font-size: 12px;
+  color: #909399;
+}
+
+.batch-search-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.batch-badge {
+  margin-left: 4px;
+}
+
+.batch-badge :deep(.el-badge__content) {
+  font-size: 10px;
 }
 </style>

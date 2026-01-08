@@ -121,7 +121,7 @@ router.get('/performance-data', async (req: Request, res: Response) => {
     const userId = user?.userId || user?.id || '';
     const userDepartmentId = user?.departmentId || '';
 
-    const { page = 1, pageSize = 10, startDate, endDate, orderNumber, departmentId, salesPersonId, performanceStatus, performanceCoefficient } = req.query;
+    const { page = 1, pageSize = 10, startDate, endDate, orderNumber, departmentId, salesPersonId, performanceStatus, performanceCoefficient, batchKeywords } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 5000);
@@ -169,7 +169,32 @@ router.get('/performance-data', async (req: Request, res: Response) => {
 
     if (startDate) queryBuilder.andWhere('order.createdAt >= :startDate', { startDate });
     if (endDate) queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
-    if (orderNumber) queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+
+    // 🔥 批量搜索：支持订单号、客户名称、客户电话（最多3000条）
+    if (batchKeywords) {
+      const keywordsStr = batchKeywords as string;
+      const keywordList = keywordsStr.split(/[\n,;，；\s]+/).map(k => k.trim()).filter(k => k.length > 0);
+      // 限制最多3000条
+      const limitedKeywords = keywordList.slice(0, 3000);
+
+      if (limitedKeywords.length > 0) {
+        // 构建多字段OR查询
+        const orConditions: string[] = [];
+        const orParams: Record<string, any> = {};
+
+        limitedKeywords.forEach((keyword, index) => {
+          const paramKey = `kw${index}`;
+          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey})`);
+          orParams[paramKey] = `%${keyword}%`;
+        });
+
+        queryBuilder.andWhere(`(${orConditions.join(' OR ')})`, orParams);
+      }
+    } else if (orderNumber) {
+      // 单个关键词搜索（兼容旧逻辑）
+      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    }
+
     if (departmentId) queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
     if (salesPersonId) queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     if (performanceStatus) queryBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
@@ -196,7 +221,29 @@ router.get('/performance-data', async (req: Request, res: Response) => {
       .where('order.status IN (:...statuses)', { statuses: shippedStatuses });
     if (startDate) countBuilder.andWhere('order.createdAt >= :startDate', { startDate });
     if (endDate) countBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
-    if (orderNumber) countBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+
+    // 🔥 批量搜索条件也要应用到count查询
+    if (batchKeywords) {
+      const keywordsStr = batchKeywords as string;
+      const keywordList = keywordsStr.split(/[\n,;，；\s]+/).map(k => k.trim()).filter(k => k.length > 0);
+      const limitedKeywords = keywordList.slice(0, 3000);
+
+      if (limitedKeywords.length > 0) {
+        const orConditions: string[] = [];
+        const orParams: Record<string, any> = {};
+
+        limitedKeywords.forEach((keyword, index) => {
+          const paramKey = `kw${index}`;
+          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey})`);
+          orParams[paramKey] = `%${keyword}%`;
+        });
+
+        countBuilder.andWhere(`(${orConditions.join(' OR ')})`, orParams);
+      }
+    } else if (orderNumber) {
+      countBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    }
+
     if (departmentId) countBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
     if (salesPersonId) countBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     if (performanceStatus) countBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
@@ -283,7 +330,7 @@ router.get('/performance-manage/statistics', async (req: Request, res: Response)
 // Get performance manage list (editable)
 router.get('/performance-manage', async (req: Request, res: Response) => {
   try {
-    const { page = 1, pageSize = 10, startDate, endDate, orderNumber, departmentId, salesPersonId, performanceStatus, performanceCoefficient } = req.query;
+    const { page = 1, pageSize = 10, startDate, endDate, orderNumber, departmentId, salesPersonId, performanceStatus, performanceCoefficient, batchKeywords } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 5000);
@@ -333,7 +380,29 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
 
     if (startDate) queryBuilder.andWhere('order.createdAt >= :startDate', { startDate });
     if (endDate) queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
-    if (orderNumber) queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+
+    // 🔥 批量搜索：支持订单号、客户名称、客户电话（最多3000条）
+    if (batchKeywords) {
+      const keywordsStr = batchKeywords as string;
+      const keywordList = keywordsStr.split(/[\n,;，；\s]+/).map(k => k.trim()).filter(k => k.length > 0);
+      const limitedKeywords = keywordList.slice(0, 3000);
+
+      if (limitedKeywords.length > 0) {
+        const orConditions: string[] = [];
+        const orParams: Record<string, any> = {};
+
+        limitedKeywords.forEach((keyword, index) => {
+          const paramKey = `kw${index}`;
+          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey})`);
+          orParams[paramKey] = `%${keyword}%`;
+        });
+
+        queryBuilder.andWhere(`(${orConditions.join(' OR ')})`, orParams);
+      }
+    } else if (orderNumber) {
+      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    }
+
     if (departmentId) queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
     if (salesPersonId) queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     if (performanceStatus) queryBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
@@ -349,7 +418,29 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
       .where('order.status IN (:...statuses)', { statuses: shippedStatuses });
     if (startDate) countBuilder.andWhere('order.createdAt >= :startDate', { startDate });
     if (endDate) countBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
-    if (orderNumber) countBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+
+    // 🔥 批量搜索条件也要应用到count查询
+    if (batchKeywords) {
+      const keywordsStr = batchKeywords as string;
+      const keywordList = keywordsStr.split(/[\n,;，；\s]+/).map(k => k.trim()).filter(k => k.length > 0);
+      const limitedKeywords = keywordList.slice(0, 3000);
+
+      if (limitedKeywords.length > 0) {
+        const orConditions: string[] = [];
+        const orParams: Record<string, any> = {};
+
+        limitedKeywords.forEach((keyword, index) => {
+          const paramKey = `kw${index}`;
+          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey})`);
+          orParams[paramKey] = `%${keyword}%`;
+        });
+
+        countBuilder.andWhere(`(${orConditions.join(' OR ')})`, orParams);
+      }
+    } else if (orderNumber) {
+      countBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    }
+
     if (departmentId) countBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
     if (salesPersonId) countBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     if (performanceStatus) countBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });

@@ -864,6 +864,51 @@ export const getAnalysisTrend = async (params?: {
 }
 
 /**
+ * 获取业绩分析图表数据（业绩趋势和订单状态分布）
+ * 从数据库直接查询，支持所有年份的数据
+ */
+export const getAnalysisChartData = async (params?: {
+  startDate?: string
+  endDate?: string
+  departmentId?: string
+  granularity?: 'hour' | 'day' | 'month' | 'year'
+}): Promise<{
+  success: boolean
+  data: {
+    performanceTrend: {
+      xAxis: string[]
+      orderData: number[]
+      signData: number[]
+      rawData: Array<{
+        period: string
+        orderAmount: number
+        signAmount: number
+        orderCount: number
+        signCount: number
+      }>
+    }
+    orderStatusDistribution: Array<{
+      name: string
+      value: number
+      amount: number
+      status: string
+    }>
+    granularity: string
+  } | null
+  message?: string
+}> => {
+  console.log('[Performance API] 获取业绩分析图表数据', params)
+  try {
+    const data = await request.get('/performance/analysis/chart-data', { params })
+    console.log('[Performance API] 图表数据返回:', data)
+    return { success: true, data }
+  } catch (error) {
+    console.error('[Performance API] 获取业绩分析图表数据失败:', error)
+    return { success: false, data: null, message: '获取业绩分析图表数据失败' }
+  }
+}
+
+/**
  * 导出业绩分享数据
  */
 export const exportPerformanceShares = async (params: {

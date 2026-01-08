@@ -1087,16 +1087,64 @@ const chartData = ref({
   orderStatus: [] as Array<{ value: number; name: string; amount: number }>
 })
 
-// 加载图表数据 - 🔥 直接使用前端数据计算，确保与筛选条件一致
+// 加载图表数据 - 🔥 优先使用后端API，确保加载所有年份的数据
 const loadChartData = async () => {
   try {
-    console.log('📊 [业绩分析] 开始加载图表数据，使用前端数据计算')
+    console.log('📊 [业绩分析] 开始加载图表数据')
     console.log('📊 [业绩分析] 当前筛选条件:', {
       dateRange: dateRange.value,
-      department: selectedDepartment.value
+      department: selectedDepartment.value,
+      quickFilter: selectedQuickFilter.value
     })
 
-    // 🔥 直接使用前端数据计算，确保与汇总卡片数据一致
+    // 🔥 优先尝试从后端API获取图表数据
+    try {
+      const { getAnalysisChartData } = await import('@/api/performance')
+
+      // 根据快速筛选确定数据粒度
+      let granularity: 'hour' | 'day' | 'month' | 'year' | undefined
+      if (selectedQuickFilter.value === 'today' || selectedQuickFilter.value === 'yesterday') {
+        granularity = 'hour'
+      } else if (selectedQuickFilter.value === 'all') {
+        granularity = 'year'
+      } else if (selectedQuickFilter.value === 'thisYear') {
+        granularity = 'month'
+      }
+      // 其他情况让后端自动判断
+
+      const response = await getAnalysisChartData({
+        startDate: dateRange.value?.[0],
+        endDate: dateRange.value?.[1],
+        departmentId: selectedDepartment.value || undefined,
+        granularity
+      })
+
+      if (response.success && response.data) {
+        console.log('📊 [业绩分析] 后端API返回图表数据:', response.data)
+
+        // 使用后端返回的数据
+        chartData.value.performanceTrend = {
+          xAxis: response.data.performanceTrend.xAxis,
+          orderData: response.data.performanceTrend.orderData,
+          signData: response.data.performanceTrend.signData
+        }
+
+        chartData.value.orderStatus = response.data.orderStatusDistribution.map(item => ({
+          value: item.value,
+          name: item.name,
+          amount: item.amount
+        }))
+
+        console.log('📊 [业绩分析] 使用后端API数据成功')
+        initCharts()
+        return
+      }
+    } catch (apiError) {
+      console.warn('📊 [业绩分析] 后端API调用失败，降级使用前端数据:', apiError)
+    }
+
+    // 🔥 降级方案：使用前端数据计算
+    console.log('📊 [业绩分析] 降级使用前端数据计算')
     loadChartDataFromStore()
     loadOrderStatusFromStore()
 
@@ -2555,8 +2603,10 @@ onUnmounted(() => {
 
 .order-type-dialog .order-pagination {
   display: flex;
-  justify-content: flex-end;
-  padding-top: 16px;
+  justify-content: center;
+  padding: 16px 0;
+  margin-top: 8px;
+  border-top: 1px solid #ebeef5;
 }
 
 .order-type-dialog .amount {
