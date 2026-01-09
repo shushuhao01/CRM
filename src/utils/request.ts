@@ -47,15 +47,12 @@ service.interceptors.request.use(
     const userStore = useUserStore()
     const appStore = useAppStore()
 
-    // 🔥 公开页面检查：如果是公开页面且没有token，取消需要认证的请求
+    // 🔥 公开页面检查：公开页面直接取消所有API请求
     const isPublicPage = window.location.pathname.startsWith('/public-help')
-    if (isPublicPage && !userStore.token) {
-      // 公开页面不需要发送认证请求，直接取消
-      const controller = new AbortController()
-      controller.abort()
-      config.signal = controller.signal
-      console.log('[Request] 公开页面，取消认证请求:', config.url)
-      return config
+    if (isPublicPage) {
+      // 公开页面不需要发送任何API请求，直接抛出取消错误
+      console.log('[Request] 公开页面，取消API请求:', config.url)
+      return Promise.reject(new Error('公开页面，取消API请求'))
     }
 
     // 添加认证token
@@ -198,6 +195,13 @@ service.interceptors.response.use(
     }
 
     console.error(`[API Error] ${config?.method?.toUpperCase()} ${config?.url}`, error)
+
+    // 🔥 公开页面静默处理所有错误
+    const isPublicPage = window.location.pathname.startsWith('/public-help')
+    if (isPublicPage) {
+      console.log('[Request] 公开页面，静默处理错误')
+      return Promise.reject(error)
+    }
 
     // 请求被取消
     if (axios.isCancel(error)) {
