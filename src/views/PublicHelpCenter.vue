@@ -169,19 +169,65 @@
       </div>
     </main>
 
-    <!-- 底部 -->
+    <!-- 底部版权信息 - 和主应用保持一致 -->
     <footer class="public-footer">
-      <p>© {{ new Date().getFullYear() }} 云客CRM. All rights reserved.</p>
+      <div class="footer-content">
+        <span>版权归 {{ systemSettings.companyName || 'CRM系统' }} 所有</span>
+        <span class="separator">|</span>
+        <span>v{{ systemSettings.systemVersion || '1.0.0' }}</span>
+        <span class="separator" v-if="systemSettings.websiteUrl">|</span>
+        <a
+          v-if="systemSettings.websiteUrl"
+          :href="systemSettings.websiteUrl"
+          target="_blank"
+          class="footer-link"
+        >
+          官网
+        </a>
+      </div>
     </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineAsyncComponent } from 'vue'
+import { ref, computed, defineAsyncComponent, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search, InfoFilled, Grid, UserFilled, Iphone, Setting, QuestionFilled } from '@element-plus/icons-vue'
 
 const router = useRouter()
+
+// 系统设置（从公开API获取）
+const systemSettings = reactive({
+  systemName: 'CRM客户管理系统',
+  systemVersion: '1.0.0',
+  companyName: '',
+  websiteUrl: ''
+})
+
+// 初始化时从公开API获取系统配置
+onMounted(async () => {
+  try {
+    // 先从localStorage读取缓存
+    const cachedConfig = localStorage.getItem('crm_public_config')
+    if (cachedConfig) {
+      const cached = JSON.parse(cachedConfig)
+      Object.assign(systemSettings, cached)
+    }
+
+    // 然后从公开API获取最新配置
+    const response = await fetch('/api/v1/system/basic-settings/public')
+    if (response.ok) {
+      const result = await response.json()
+      if (result.success && result.data) {
+        Object.assign(systemSettings, result.data)
+        // 缓存到localStorage
+        localStorage.setItem('crm_public_config', JSON.stringify(result.data))
+      }
+    }
+  } catch (e) {
+    console.warn('获取公开系统配置失败:', e)
+  }
+})
 
 // 动态导入帮助内容组件
 const helpContentComponents: Record<string, any> = {
@@ -283,19 +329,18 @@ const goToLogin = () => {
 
 <style scoped>
 .public-help-container {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   background-color: #f5f7fa;
+  overflow-y: auto; /* 整个页面可滚动 */
 }
 
 /* 顶部导航 */
 .public-header {
   background: white;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  position: sticky;
-  top: 0;
-  z-index: 100;
+  /* 移除 sticky，让整个页面滚动 */
 }
 
 .header-content {
@@ -348,6 +393,7 @@ const goToLogin = () => {
   max-width: 1400px;
   margin: 0 auto;
   width: 100%;
+  /* 移除高度限制，让整个页面滚动 */
 }
 
 /* 侧边栏 */
@@ -355,8 +401,11 @@ const goToLogin = () => {
   width: 280px;
   background: white;
   border-right: 1px solid #e4e7ed;
-  overflow-y: auto;
   flex-shrink: 0;
+  height: calc(100vh - 140px);
+  overflow-y: auto; /* 侧边栏可滚动 */
+  position: sticky;
+  top: 0;
 }
 
 .sidebar-header {
@@ -387,11 +436,12 @@ const goToLogin = () => {
 /* 内容区域 */
 .content-area {
   flex: 1;
-  overflow-y: auto;
   background: white;
   margin: 20px;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  overflow-y: auto; /* 内容区可滚动 */
+  max-height: calc(100vh - 180px);
 }
 
 .content-wrapper {
@@ -455,18 +505,38 @@ const goToLogin = () => {
   border-radius: 4px;
 }
 
-/* 底部 */
+/* 底部版权信息 - 和主应用保持一致 */
 .public-footer {
-  background: white;
+  background: transparent;
   padding: 20px;
   text-align: center;
   border-top: 1px solid #e4e7ed;
 }
 
-.public-footer p {
-  margin: 0;
+.footer-content {
   color: #909399;
-  font-size: 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.footer-content .separator {
+  color: #c0c4cc;
+  margin: 0 8px;
+}
+
+.footer-content .footer-link {
+  color: #909399;
+  text-decoration: none;
+  transition: color 0.3s;
+}
+
+.footer-content .footer-link:hover {
+  color: #409eff;
 }
 
 /* 响应式 */

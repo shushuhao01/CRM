@@ -363,6 +363,48 @@ router.delete('/delete-image', authenticateToken, requireAdmin, (req: Request, r
 // ========== 基本设置路由 ==========
 
 /**
+ * @route GET /api/v1/system/basic-settings/public
+ * @desc 获取系统基本设置（公开API，无需认证）
+ * @access Public
+ */
+router.get('/basic-settings/public', async (_req: Request, res: Response) => {
+  try {
+    const configRepository = AppDataSource.getRepository(SystemConfig);
+
+    // 获取所有基本设置配置
+    const configs = await configRepository.find({
+      where: { configGroup: 'basic_settings', isEnabled: true },
+      order: { sortOrder: 'ASC' }
+    });
+
+    // 转换为键值对格式
+    const settings: Record<string, unknown> = {};
+    configs.forEach(config => {
+      settings[config.configKey] = config.getParsedValue();
+    });
+
+    // 只返回公开需要的字段
+    const publicSettings = {
+      systemName: settings.systemName || 'CRM客户管理系统',
+      systemVersion: settings.systemVersion || '1.0.0',
+      companyName: settings.companyName || '',
+      websiteUrl: settings.websiteUrl || ''
+    };
+
+    res.json({
+      success: true,
+      data: publicSettings
+    });
+  } catch (error) {
+    console.error('获取公开基本设置失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取基本设置失败'
+    });
+  }
+});
+
+/**
  * @route GET /api/v1/system/basic-settings
  * @desc 获取系统基本设置
  * @access Private (All authenticated users)
