@@ -293,14 +293,14 @@ router.post('/configs/:id/test', authenticateToken, requireAdmin, async (req: Re
 router.get('/configs/:id/departments', authenticateToken, async (req: Request, res: Response) => {
   try {
     const configId = parseInt(req.params.id);
-    // 使用通讯录 Secret 获取 access_token
-    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+    // 使用应用 Secret 获取 access_token（应用需要有通讯录读取权限）
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
     const departments = await WecomApiService.getDepartmentList(accessToken);
 
     res.json({ success: true, data: departments });
   } catch (error: any) {
     console.error('[Wecom] Get departments error:', error);
-    res.status(500).json({ success: false, message: error.message || '获取部门列表失败' });
+    res.status(500).json({ success: false, message: error.message || '获取部门列表失败，请确保应用有通讯录读取权限' });
   }
 });
 
@@ -313,14 +313,14 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
     const departmentId = parseInt(req.query.departmentId as string) || 1;
     const fetchChild = req.query.fetchChild === 'true';
 
-    // 使用通讯录 Secret 获取 access_token
-    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+    // 使用应用 Secret 获取 access_token（应用需要有通讯录读取权限）
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
     const users = await WecomApiService.getDepartmentUsers(accessToken, departmentId, fetchChild);
 
     res.json({ success: true, data: users });
   } catch (error: any) {
     console.error('[Wecom] Get users error:', error);
-    res.status(500).json({ success: false, message: error.message || '获取成员列表失败' });
+    res.status(500).json({ success: false, message: error.message || '获取成员列表失败，请确保应用有通讯录读取权限' });
   }
 });
 
