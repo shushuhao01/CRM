@@ -293,7 +293,8 @@ router.post('/configs/:id/test', authenticateToken, requireAdmin, async (req: Re
 router.get('/configs/:id/departments', authenticateToken, async (req: Request, res: Response) => {
   try {
     const configId = parseInt(req.params.id);
-    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId);
+    // 使用通讯录 Secret 获取 access_token
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
     const departments = await WecomApiService.getDepartmentList(accessToken);
 
     res.json({ success: true, data: departments });
@@ -312,7 +313,8 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
     const departmentId = parseInt(req.query.departmentId as string) || 1;
     const fetchChild = req.query.fetchChild === 'true';
 
-    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId);
+    // 使用通讯录 Secret 获取 access_token
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
     const users = await WecomApiService.getDepartmentUsers(accessToken, departmentId, fetchChild);
 
     res.json({ success: true, data: users });
