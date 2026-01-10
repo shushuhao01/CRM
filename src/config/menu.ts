@@ -100,7 +100,7 @@ export const menuConfig: MenuItem[] = [
   {
     id: 'service-management',
     title: '服务管理',
-    icon: 'IconCustomerService',
+    icon: 'Phone',
     roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
     permissions: ['service'],
     children: [
@@ -213,7 +213,7 @@ export const menuConfig: MenuItem[] = [
   {
     id: 'service',
     title: '售后管理',
-    icon: 'IconHeadset',
+    icon: 'Headset',
     roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
     permissions: ['aftersale'],
     children: [
@@ -345,16 +345,16 @@ export const menuConfig: MenuItem[] = [
   {
     id: 'wecom',
     title: '企微管理',
-    icon: 'ChatDotRound',
+    icon: 'ChatLineSquare',
     roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
     permissions: ['wecom'],
     children: [
       {
-        id: 'wecom-config',
-        title: '企微配置',
-        path: '/wecom/config',
-        roles: ['super_admin', 'admin'],
-        permissions: ['wecom:config']
+        id: 'wecom-customer',
+        title: '企业客户',
+        path: '/wecom/customer',
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        permissions: ['wecom:customer']
       },
       {
         id: 'wecom-binding',
@@ -362,13 +362,6 @@ export const menuConfig: MenuItem[] = [
         path: '/wecom/binding',
         roles: ['super_admin', 'admin'],
         permissions: ['wecom:binding']
-      },
-      {
-        id: 'wecom-customer',
-        title: '企业客户',
-        path: '/wecom/customer',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
-        permissions: ['wecom:customer']
       },
       {
         id: 'wecom-acquisition',
@@ -397,6 +390,13 @@ export const menuConfig: MenuItem[] = [
         path: '/wecom/payment',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
         permissions: ['wecom:payment']
+      },
+      {
+        id: 'wecom-config',
+        title: '企微配置',
+        path: '/wecom/config',
+        roles: ['super_admin', 'admin'],
+        permissions: ['wecom:config']
       },
       {
         id: 'wecom-sidebar',

@@ -30,8 +30,11 @@ export class WecomConfig {
   @Column({ name: 'callback_url', type: 'varchar', length: 500, nullable: true, comment: '回调URL' })
   callbackUrl: string;
 
-  @Column({ name: 'contact_secret', type: 'varchar', length: 255, nullable: true, comment: '客户联系Secret' })
+  @Column({ name: 'contact_secret', type: 'varchar', length: 255, nullable: true, comment: '通讯录同步Secret（用于获取部门和成员列表）' })
   contactSecret: string;
+
+  @Column({ name: 'external_contact_secret', type: 'varchar', length: 255, nullable: true, comment: '客户联系Secret（用于获取外部联系人）' })
+  externalContactSecret: string;
 
   @Column({ name: 'chat_archive_secret', type: 'varchar', length: 255, nullable: true, comment: '会话存档Secret' })
   chatArchiveSecret: string;

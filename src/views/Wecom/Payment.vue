@@ -67,17 +67,26 @@ const getStatusText = (s: string) => ({ pending: '待支付', paid: '已支付',
 const fetchConfigs = async () => {
   try {
     const res = await getWecomConfigs()
-    configList.value = (res.data?.data || []).filter((c: any) => c.isEnabled)
-  } catch (e) { console.error(e) }
+    console.log('[WecomPayment] Configs response:', res)
+    const configs = Array.isArray(res) ? res : []
+    configList.value = configs.filter((c: any) => c.isEnabled)
+  } catch (e) { console.error('[WecomPayment] Fetch configs error:', e) }
 }
 
 const fetchList = async () => {
   loading.value = true
   try {
     const res = await getWecomPayments(query.value as any)
-    paymentList.value = res.data?.data?.list || []
-    total.value = res.data?.data?.total || 0
-  } catch (e) { console.error(e) } finally { loading.value = false }
+    console.log('[WecomPayment] Payments response:', res)
+    // res 是 { list: [...], total: number }
+    if (res?.list) {
+      paymentList.value = res.list
+      total.value = res.total || 0
+    } else {
+      paymentList.value = []
+      total.value = 0
+    }
+  } catch (e) { console.error('[WecomPayment] Fetch list error:', e) } finally { loading.value = false }
 }
 
 const handleSearch = () => {

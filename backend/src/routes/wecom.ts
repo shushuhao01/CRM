@@ -82,7 +82,7 @@ router.get('/callback', async (req: Request, res: Response) => {
 router.post('/callback', async (req: Request, res: Response) => {
   try {
     const { msg_signature, timestamp, nonce } = req.query;
-    const body = req.body;
+    const _body = req.body;
     console.log('[Wecom Callback] Message received:', { msg_signature, timestamp, nonce });
 
     // TODO: 解密消息并处理各类事件
@@ -112,6 +112,7 @@ router.get('/configs', authenticateToken, requireAdmin, async (_req: Request, re
       ...c,
       corpSecret: c.corpSecret ? '******' : null,
       contactSecret: c.contactSecret ? '******' : null,
+      externalContactSecret: (c as any).externalContactSecret ? '******' : null,
       chatArchiveSecret: c.chatArchiveSecret ? '******' : null,
       chatArchivePrivateKey: c.chatArchivePrivateKey ? '******' : null,
       encodingAesKey: c.encodingAesKey ? '******' : null
@@ -141,6 +142,7 @@ router.get('/configs/:id', authenticateToken, requireAdmin, async (req: Request,
       ...config,
       corpSecret: config.corpSecret ? '******' : null,
       contactSecret: config.contactSecret ? '******' : null,
+      externalContactSecret: (config as any).externalContactSecret ? '******' : null,
       chatArchiveSecret: config.chatArchiveSecret ? '******' : null,
       chatArchivePrivateKey: config.chatArchivePrivateKey ? '******' : null,
       encodingAesKey: config.encodingAesKey ? '******' : null
@@ -159,7 +161,7 @@ router.get('/configs/:id', authenticateToken, requireAdmin, async (req: Request,
 router.post('/configs', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { name, corpId, corpSecret, agentId, callbackToken, encodingAesKey, callbackUrl,
-            contactSecret, chatArchiveSecret, chatArchivePrivateKey, remark } = req.body;
+            contactSecret, externalContactSecret, chatArchiveSecret, chatArchivePrivateKey, remark } = req.body;
 
     if (!name || !corpId || !corpSecret) {
       return res.status(400).json({ success: false, message: '名称、企业ID和Secret为必填项' });
@@ -183,6 +185,7 @@ router.post('/configs', authenticateToken, requireAdmin, async (req: Request, re
       encodingAesKey,
       callbackUrl,
       contactSecret,
+      externalContactSecret,
       chatArchiveSecret,
       chatArchivePrivateKey,
       remark,
@@ -213,7 +216,7 @@ router.put('/configs/:id', authenticateToken, requireAdmin, async (req: Request,
     }
 
     const { name, corpSecret, agentId, callbackToken, encodingAesKey, callbackUrl,
-            contactSecret, chatArchiveSecret, chatArchivePrivateKey, remark, isEnabled } = req.body;
+            contactSecret, externalContactSecret, chatArchiveSecret, chatArchivePrivateKey, remark, isEnabled } = req.body;
 
     if (name) config.name = name;
     if (corpSecret && corpSecret !== '******') config.corpSecret = corpSecret;
@@ -222,6 +225,7 @@ router.put('/configs/:id', authenticateToken, requireAdmin, async (req: Request,
     if (encodingAesKey && encodingAesKey !== '******') config.encodingAesKey = encodingAesKey;
     if (callbackUrl) config.callbackUrl = callbackUrl;
     if (contactSecret && contactSecret !== '******') config.contactSecret = contactSecret;
+    if (externalContactSecret && externalContactSecret !== '******') (config as any).externalContactSecret = externalContactSecret;
     if (chatArchiveSecret && chatArchiveSecret !== '******') config.chatArchiveSecret = chatArchiveSecret;
     if (chatArchivePrivateKey && chatArchivePrivateKey !== '******') config.chatArchivePrivateKey = chatArchivePrivateKey;
     if (remark !== undefined) config.remark = remark;
@@ -293,13 +297,18 @@ router.post('/configs/:id/test', authenticateToken, requireAdmin, async (req: Re
 router.get('/configs/:id/departments', authenticateToken, async (req: Request, res: Response) => {
   try {
     const configId = parseInt(req.params.id);
+    console.log('[Wecom] Getting departments for config:', configId);
+
     // 优先使用通讯录同步 Secret，如果没有则使用应用 Secret
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+    console.log('[Wecom] Got access token, fetching departments...');
+
     const departments = await WecomApiService.getDepartmentList(accessToken);
+    console.log('[Wecom] Got departments:', departments.length);
 
     res.json({ success: true, data: departments });
   } catch (error: any) {
-    console.error('[Wecom] Get departments error:', error);
+    console.error('[Wecom] Get departments error:', error.message, error.stack);
     res.status(500).json({ success: false, message: error.message || '获取部门列表失败，请确保已配置通讯录Secret' });
   }
 });
@@ -313,13 +322,18 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
     const departmentId = parseInt(req.query.departmentId as string) || 1;
     const fetchChild = req.query.fetchChild === 'true';
 
+    console.log('[Wecom] Getting users for config:', configId, 'department:', departmentId, 'fetchChild:', fetchChild);
+
     // 优先使用通讯录同步 Secret，如果没有则使用应用 Secret
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+    console.log('[Wecom] Got access token, fetching users...');
+
     const users = await WecomApiService.getDepartmentUsers(accessToken, departmentId, fetchChild);
+    console.log('[Wecom] Got users:', users.length);
 
     res.json({ success: true, data: users });
   } catch (error: any) {
-    console.error('[Wecom] Get users error:', error);
+    console.error('[Wecom] Get users error:', error.message, error.stack);
     res.status(500).json({ success: false, message: error.message || '获取成员列表失败，请确保已配置通讯录Secret' });
   }
 });
@@ -508,6 +522,8 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
 router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { configId } = req.body;
+    console.log('[Wecom] Sync customers request, configId:', configId);
+
     if (!configId) {
       return res.status(400).json({ success: false, message: '请选择企微配置' });
     }
@@ -515,24 +531,31 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
     const configRepo = AppDataSource.getRepository(WecomConfig);
     const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
     if (!config) {
+      console.log('[Wecom] Config not found or disabled');
       return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
     }
 
     // 获取绑定的成员
     const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
     const bindings = await bindingRepo.find({ where: { wecomConfigId: configId, isEnabled: true } });
+    console.log('[Wecom] Found bindings:', bindings.length);
 
     if (bindings.length === 0) {
       return res.status(400).json({ success: false, message: '没有绑定的成员，请先在企微联动中绑定成员' });
     }
 
-    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+    // 使用客户联系Secret获取外部联系人
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
+    console.log('[Wecom] Got access token for sync');
+
     const customerRepo = AppDataSource.getRepository(WecomCustomer);
     let syncCount = 0;
 
     for (const binding of bindings) {
       try {
+        console.log('[Wecom] Syncing customers for user:', binding.wecomUserId);
         const externalUserIds = await WecomApiService.getExternalContactList(accessToken, binding.wecomUserId);
+        console.log('[Wecom] Found external contacts:', externalUserIds.length);
 
         for (const externalUserId of externalUserIds) {
           try {
@@ -570,18 +593,19 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
 
             await customerRepo.save(customer);
             syncCount++;
-          } catch (e) {
-            console.error(`[Wecom] Sync customer ${externalUserId} error:`, e);
+          } catch (e: any) {
+            console.error(`[Wecom] Sync customer ${externalUserId} error:`, e.message);
           }
         }
-      } catch (e) {
-        console.error(`[Wecom] Sync user ${binding.wecomUserId} customers error:`, e);
+      } catch (e: any) {
+        console.error(`[Wecom] Sync user ${binding.wecomUserId} customers error:`, e.message);
       }
     }
 
+    console.log('[Wecom] Sync completed, count:', syncCount);
     res.json({ success: true, message: `同步完成，共同步 ${syncCount} 个客户` });
   } catch (error: any) {
-    console.error('[Wecom] Sync customers error:', error);
+    console.error('[Wecom] Sync customers error:', error.message, error.stack);
     res.status(500).json({ success: false, message: error.message || '同步客户失败' });
   }
 });

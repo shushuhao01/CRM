@@ -48,7 +48,10 @@ import {
   Files,
   Box,
   Setting,
-  Money
+  Money,
+  Phone,
+  Headset,
+  ChatLineSquare
 } from '@element-plus/icons-vue'
 import { menuConfig } from '@/config/menu'
 import { getUserAccessibleMenus } from '@/utils/menu'
@@ -65,8 +68,11 @@ const iconComponents = {
   Box,
   Setting,
   Money,
-  IconCustomerService: User, // 临时使用User图标
-  IconHeadset: User // 临时使用User图标
+  Phone,
+  Headset,
+  ChatLineSquare,
+  IconCustomerService: Phone, // 服务管理使用电话图标
+  IconHeadset: Headset // 售后管理使用耳机图标
 }
 
 interface Props {

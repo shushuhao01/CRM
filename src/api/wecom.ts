@@ -25,6 +25,7 @@ export const createWecomConfig = (data: {
   encodingAesKey?: string
   callbackUrl?: string
   contactSecret?: string
+  externalContactSecret?: string
   chatArchiveSecret?: string
   chatArchivePrivateKey?: string
   remark?: string

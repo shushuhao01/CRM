@@ -20,21 +20,26 @@ export class WecomApiService {
     const cached = tokenCache.get(cacheKey);
 
     if (cached && cached.expireTime > Date.now()) {
+      console.log('[WecomApi] Using cached token');
       return cached.token;
     }
 
     try {
+      console.log(`[WecomApi] Fetching new token for corpId: ${corpId}`);
       const response = await axios.get(`${WECOM_API_BASE}/gettoken`, {
         params: { corpid: corpId, corpsecret: secret }
       });
+
+      console.log('[WecomApi] Token response:', response.data.errcode, response.data.errmsg);
 
       if (response.data.errcode === 0) {
         const token = response.data.access_token;
         const expireTime = Date.now() + (response.data.expires_in - 300) * 1000; // 提前5分钟过期
         tokenCache.set(cacheKey, { token, expireTime });
+        console.log('[WecomApi] Token cached successfully');
         return token;
       } else {
-        throw new Error(`获取AccessToken失败: ${response.data.errmsg}`);
+        throw new Error(`获取AccessToken失败: ${response.data.errmsg} (errcode: ${response.data.errcode})`);
       }
     } catch (error: any) {
       console.error('[WecomApi] getAccessToken error:', error.message);
@@ -44,25 +49,43 @@ export class WecomApiService {
 
   /**
    * 根据配置ID获取Access Token
+   * @param secretType - corp: 应用Secret, contact: 通讯录同步Secret, external: 客户联系Secret, chat: 会话存档Secret
    */
-  static async getAccessTokenByConfigId(configId: number, secretType: 'corp' | 'contact' | 'chat' = 'corp'): Promise<string> {
+  static async getAccessTokenByConfigId(configId: number, secretType: 'corp' | 'contact' | 'external' | 'chat' = 'corp'): Promise<string> {
+    console.log(`[WecomApi] getAccessTokenByConfigId called, configId: ${configId}, secretType: ${secretType}`);
+
     const configRepo = AppDataSource.getRepository(WecomConfig);
     const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
 
     if (!config) {
+      console.error('[WecomApi] Config not found or disabled');
       throw new Error('企微配置不存在或已禁用');
     }
 
+    console.log(`[WecomApi] Found config: ${config.name}, corpId: ${config.corpId}`);
+    console.log(`[WecomApi] Has contactSecret: ${!!config.contactSecret}, Has externalContactSecret: ${!!(config as any).externalContactSecret}, Has corpSecret: ${!!config.corpSecret}`);
+
     let secret = config.corpSecret;
+    let secretName = 'corp';
+
     if (secretType === 'contact') {
-      // 优先使用通讯录 Secret，如果没有则使用应用 Secret
+      // 通讯录同步 Secret，用于获取部门和成员列表
       secret = config.contactSecret || config.corpSecret;
-      console.log(`[WecomApi] Using ${config.contactSecret ? 'contact' : 'corp'} secret for contact API`);
+      secretName = config.contactSecret ? 'contact' : 'corp';
+    } else if (secretType === 'external') {
+      // 客户联系 Secret，用于获取外部联系人
+      // 优先使用 externalContactSecret，如果没有则尝试 contactSecret，最后使用 corpSecret
+      secret = (config as any).externalContactSecret || config.contactSecret || config.corpSecret;
+      secretName = (config as any).externalContactSecret ? 'externalContact' : (config.contactSecret ? 'contact' : 'corp');
     } else if (secretType === 'chat' && config.chatArchiveSecret) {
       secret = config.chatArchiveSecret;
+      secretName = 'chat';
     }
 
+    console.log(`[WecomApi] Using ${secretName} secret for ${secretType} API`);
+
     if (!secret) {
+      console.error('[WecomApi] No secret available');
       throw new Error('企微配置缺少必要的Secret');
     }
 
@@ -113,6 +136,7 @@ export class WecomApiService {
    */
   static async getDepartmentUsers(accessToken: string, departmentId: number, fetchChild: boolean = false): Promise<any[]> {
     try {
+      console.log(`[WecomApi] getDepartmentUsers: departmentId=${departmentId}, fetchChild=${fetchChild}`);
       const response = await axios.get(`${WECOM_API_BASE}/user/list`, {
         params: {
           access_token: accessToken,
@@ -121,10 +145,14 @@ export class WecomApiService {
         }
       });
 
+      console.log('[WecomApi] getDepartmentUsers response:', response.data.errcode, response.data.errmsg);
+
       if (response.data.errcode === 0) {
-        return response.data.userlist || [];
+        const users = response.data.userlist || [];
+        console.log(`[WecomApi] Got ${users.length} users`);
+        return users;
       } else {
-        throw new Error(`获取成员列表失败: ${response.data.errmsg}`);
+        throw new Error(`获取成员列表失败: ${response.data.errmsg} (errcode: ${response.data.errcode})`);
       }
     } catch (error: any) {
       console.error('[WecomApi] getDepartmentUsers error:', error.message);

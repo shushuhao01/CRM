@@ -106,13 +106,16 @@ const formatDate = (date: string) => date ? formatDateTime(date) : '-'
 const fetchConfigs = async () => {
   try {
     const res = await getWecomConfigs()
-    configList.value = (res.data?.data || []).filter((c: any) => c.isEnabled)
+    console.log('[WecomBinding] Configs response:', res)
+    // request.ts 拦截器返回的是 response.data.data，所以 res 直接就是数组
+    const configs = Array.isArray(res) ? res : []
+    configList.value = configs.filter((c: any) => c.isEnabled)
     if (configList.value.length > 0 && !selectedConfigId.value) {
       selectedConfigId.value = configList.value[0].id
       fetchBindings()
     }
   } catch (e) {
-    console.error(e)
+    console.error('[WecomBinding] Fetch configs error:', e)
   }
 }
 
@@ -121,9 +124,11 @@ const fetchBindings = async () => {
   loading.value = true
   try {
     const res = await getWecomBindings({ configId: selectedConfigId.value })
-    bindingList.value = res.data?.data || []
+    console.log('[WecomBinding] Bindings response:', res)
+    // res 直接就是数组
+    bindingList.value = Array.isArray(res) ? res : []
   } catch (e) {
-    console.error(e)
+    console.error('[WecomBinding] Fetch bindings error:', e)
   } finally {
     loading.value = false
   }
@@ -133,9 +138,15 @@ const fetchWecomUsers = async () => {
   if (!selectedConfigId.value) return
   try {
     const res = await fetchWecomUsersApi(selectedConfigId.value, 1, true)
-    wecomUsers.value = res.data?.data || []
+    console.log('[WecomBinding] Wecom users response:', res)
+    // res 直接就是数组
+    wecomUsers.value = Array.isArray(res) ? res : []
+    if (wecomUsers.value.length === 0) {
+      ElMessage.warning('未获取到企微成员，请检查通讯录Secret配置')
+    }
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.message || '获取企微成员失败')
+    console.error('[WecomBinding] Fetch wecom users error:', e)
+    ElMessage.error(e.message || '获取企微成员失败')
   }
 }
 
