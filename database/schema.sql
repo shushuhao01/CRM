@@ -595,7 +595,7 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('companyName', '广州仙狐网络科技有限公司', 'string', 'basic_settings', '公司名称', 1, 1, 3),
 ('contactPhone', '13570727364', 'string', 'basic_settings', '联系电话', 1, 1, 4),
 ('contactEmail', 'xianhuquwang@163.com', 'string', 'basic_settings', '联系邮箱', 1, 1, 5),
-('websiteUrl', 'https://xianhuqw.com', 'string', 'basic_settings', '网站地址', 1, 1, 6),
+('websiteUrl', 'https://yunkes.com', 'string', 'basic_settings', '网站地址', 1, 1, 6),
 ('companyAddress', '广州市黄埔区南翔一路68号', 'string', 'basic_settings', '公司地址', 1, 1, 7),
 ('systemDescription', '智能、专业、高效的客户关系管理系统', 'string', 'basic_settings', '系统描述', 1, 1, 8),
 ('systemLogo', '', 'string', 'basic_settings', '系统Logo', 1, 1, 9),
@@ -1639,7 +1639,7 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('companyName', '广州仙狐网络科技有限公司', 'string', 'basic_settings', '公司名称', TRUE, TRUE, 3),
 ('contactPhone', '13570727364', 'string', 'basic_settings', '联系电话', TRUE, TRUE, 4),
 ('contactEmail', 'xianhuquwang@163.com', 'string', 'basic_settings', '联系邮箱', TRUE, TRUE, 5),
-('websiteUrl', 'https://xianhuqw.com', 'string', 'basic_settings', '网站地址', TRUE, TRUE, 6),
+('websiteUrl', 'https://yunkes.com', 'string', 'basic_settings', '网站地址', TRUE, TRUE, 6),
 ('companyAddress', '广州市黄埔区南翔一路68号', 'string', 'basic_settings', '公司地址', TRUE, TRUE, 7),
 ('systemDescription', '智能、专业、高效的客户关系管理系统', 'text', 'basic_settings', '系统描述', TRUE, TRUE, 8),
 ('systemLogo', '', 'text', 'basic_settings', '系统Logo', TRUE, TRUE, 9),
@@ -1944,6 +1944,18 @@ CREATE TABLE `announcement_reads` (
   CONSTRAINT `fk_announcement_reads_announcement` FOREIGN KEY (`announcement_id`) REFERENCES `announcements`(`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_announcement_reads_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公告阅读记录表';
+
+-- 27.1 消息已读状态表（记录每个用户对每条消息的独立已读状态）
+DROP TABLE IF EXISTS `message_read_status`;
+CREATE TABLE `message_read_status` (
+  `id` VARCHAR(36) PRIMARY KEY COMMENT '记录ID',
+  `message_id` VARCHAR(36) NOT NULL COMMENT '消息ID',
+  `user_id` VARCHAR(36) NOT NULL COMMENT '用户ID',
+  `read_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '阅读时间',
+  UNIQUE KEY `uk_message_user` (`message_id`, `user_id`),
+  INDEX `idx_message_id` (`message_id`),
+  INDEX `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息已读状态表';
 
 -- 28. 系统消息表
 DROP TABLE IF EXISTS `system_messages`;
@@ -2683,6 +2695,25 @@ CREATE TABLE IF NOT EXISTS `tenants` (
   INDEX `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='租户表（平台管理后台专用-租户客户）';
 
+-- 租户授权日志表
+CREATE TABLE IF NOT EXISTS `tenant_license_logs` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `tenant_id` VARCHAR(36) COMMENT '租户ID',
+  `license_key` VARCHAR(50) COMMENT '授权码',
+  `action` VARCHAR(50) NOT NULL COMMENT '操作类型: generate/verify/activate/suspend/resume/renew',
+  `result` VARCHAR(20) NOT NULL COMMENT '结果: success/failed',
+  `message` VARCHAR(500) COMMENT '消息',
+  `ip_address` VARCHAR(50) COMMENT 'IP地址',
+  `user_agent` VARCHAR(500) COMMENT 'User Agent',
+  `operator_id` VARCHAR(36) COMMENT '操作人ID',
+  `operator_name` VARCHAR(50) COMMENT '操作人名称',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_tenant_id` (`tenant_id`),
+  INDEX `idx_license_key` (`license_key`),
+  INDEX `idx_action` (`action`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='租户授权日志表';
+
 -- 套餐表
 CREATE TABLE IF NOT EXISTS `tenant_packages` (
   `id` VARCHAR(36) PRIMARY KEY,
@@ -2919,3 +2950,190 @@ CREATE TABLE IF NOT EXISTS `tenant_packages` (
   INDEX `idx_status` (`status`),
   INDEX `idx_visible` (`is_visible`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='租户套餐表';
+
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='租户套餐表';
+
+-- =============================================
+-- 更新现有数据库的网站地址
+-- =============================================
+UPDATE `system_configs` 
+SET `configValue` = 'https://yunkes.com', `updatedAt` = NOW()
+WHERE `configKey` = 'websiteUrl' AND `configGroup` = 'basic_settings';
+
+-- =============================================
+-- 企业微信管理模块表
+-- =============================================
+
+-- 企微配置表
+CREATE TABLE IF NOT EXISTS `wecom_configs` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `name` VARCHAR(100) NOT NULL COMMENT '配置名称',
+  `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
+  `corp_secret` VARCHAR(255) NOT NULL COMMENT '应用Secret',
+  `agent_id` INT NULL COMMENT '应用AgentId',
+  `callback_token` VARCHAR(100) NULL COMMENT '回调Token',
+  `encoding_aes_key` VARCHAR(100) NULL COMMENT '消息加解密密钥',
+  `callback_url` VARCHAR(500) NULL COMMENT '回调URL',
+  `contact_secret` VARCHAR(255) NULL COMMENT '通讯录Secret',
+  `chat_archive_secret` VARCHAR(255) NULL COMMENT '会话存档Secret',
+  `chat_archive_private_key` TEXT NULL COMMENT '会话存档私钥',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `connection_status` VARCHAR(20) DEFAULT 'pending' COMMENT '连接状态: pending/connected/failed',
+  `last_error` TEXT NULL COMMENT '最后错误信息',
+  `last_api_call_time` DATETIME NULL COMMENT '最后API调用时间',
+  `api_call_count` INT DEFAULT 0 COMMENT 'API调用次数',
+  `bind_operator` VARCHAR(50) NULL COMMENT '绑定操作人',
+  `bind_time` DATETIME NULL COMMENT '绑定时间',
+  `remark` TEXT NULL COMMENT '备注',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_corp_id` (`corp_id`),
+  INDEX `idx_is_enabled` (`is_enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微配置表';
+
+-- 企微用户绑定表
+CREATE TABLE IF NOT EXISTS `wecom_user_bindings` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
+  `wecom_user_id` VARCHAR(100) NOT NULL COMMENT '企微成员UserID',
+  `wecom_user_name` VARCHAR(100) NULL COMMENT '企微成员姓名',
+  `wecom_avatar` VARCHAR(500) NULL COMMENT '企微成员头像',
+  `wecom_department_ids` VARCHAR(500) NULL COMMENT '企微部门ID列表',
+  `crm_user_id` VARCHAR(50) NOT NULL COMMENT 'CRM用户ID',
+  `crm_user_name` VARCHAR(100) NULL COMMENT 'CRM用户姓名',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `bind_operator` VARCHAR(50) NULL COMMENT '绑定操作人',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_config_wecom_user` (`wecom_config_id`, `wecom_user_id`),
+  INDEX `idx_crm_user_id` (`crm_user_id`),
+  INDEX `idx_corp_id` (`corp_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微用户绑定表';
+
+-- 企微客户表
+CREATE TABLE IF NOT EXISTS `wecom_customers` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
+  `external_user_id` VARCHAR(100) NOT NULL COMMENT '外部联系人ID',
+  `name` VARCHAR(100) NULL COMMENT '客户名称',
+  `avatar` VARCHAR(500) NULL COMMENT '客户头像',
+  `type` INT DEFAULT 1 COMMENT '类型: 1微信用户 2企业微信用户',
+  `gender` INT DEFAULT 0 COMMENT '性别: 0未知 1男 2女',
+  `corp_name` VARCHAR(200) NULL COMMENT '客户企业名称',
+  `position` VARCHAR(100) NULL COMMENT '职位',
+  `follow_user_id` VARCHAR(100) NULL COMMENT '跟进成员UserID',
+  `follow_user_name` VARCHAR(100) NULL COMMENT '跟进成员姓名',
+  `remark` VARCHAR(500) NULL COMMENT '备注',
+  `description` TEXT NULL COMMENT '描述',
+  `add_time` DATETIME NULL COMMENT '添加时间',
+  `add_way` INT NULL COMMENT '添加方式',
+  `tag_ids` TEXT NULL COMMENT '标签ID列表(JSON)',
+  `status` VARCHAR(20) DEFAULT 'normal' COMMENT '状态: normal/deleted',
+  `delete_time` DATETIME NULL COMMENT '删除时间',
+  `is_dealt` TINYINT(1) DEFAULT 0 COMMENT '是否成交',
+  `crm_customer_id` VARCHAR(50) NULL COMMENT '关联CRM客户ID',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_config_external_user` (`wecom_config_id`, `external_user_id`),
+  INDEX `idx_follow_user_id` (`follow_user_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_add_time` (`add_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微客户表';
+
+-- 企微获客链接表
+CREATE TABLE IF NOT EXISTS `wecom_acquisition_links` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
+  `link_id` VARCHAR(100) NULL COMMENT '企微链接ID',
+  `link_name` VARCHAR(200) NOT NULL COMMENT '链接名称',
+  `link_url` VARCHAR(500) NULL COMMENT '链接地址',
+  `welcome_msg` TEXT NULL COMMENT '欢迎语',
+  `user_ids` TEXT NULL COMMENT '接待成员ID列表(JSON)',
+  `department_ids` TEXT NULL COMMENT '接待部门ID列表(JSON)',
+  `tag_ids` TEXT NULL COMMENT '自动打标签ID列表(JSON)',
+  `click_count` INT DEFAULT 0 COMMENT '点击次数',
+  `add_count` INT DEFAULT 0 COMMENT '添加次数',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_by` VARCHAR(50) NULL COMMENT '创建人',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_wecom_config_id` (`wecom_config_id`),
+  INDEX `idx_is_enabled` (`is_enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微获客链接表';
+
+-- 企微客服账号表
+CREATE TABLE IF NOT EXISTS `wecom_service_accounts` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
+  `open_kf_id` VARCHAR(100) NULL COMMENT '客服账号ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '客服名称',
+  `avatar` VARCHAR(500) NULL COMMENT '客服头像',
+  `kf_url` VARCHAR(500) NULL COMMENT '客服链接',
+  `servicer_user_ids` TEXT NULL COMMENT '接待人员ID列表(JSON)',
+  `welcome_msg` TEXT NULL COMMENT '欢迎语',
+  `session_count` INT DEFAULT 0 COMMENT '会话数',
+  `message_count` INT DEFAULT 0 COMMENT '消息数',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_by` VARCHAR(50) NULL COMMENT '创建人',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_wecom_config_id` (`wecom_config_id`),
+  INDEX `idx_is_enabled` (`is_enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微客服账号表';
+
+-- 企微会话存档表
+CREATE TABLE IF NOT EXISTS `wecom_chat_records` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
+  `msg_id` VARCHAR(100) NOT NULL COMMENT '消息ID',
+  `msg_type` VARCHAR(50) NOT NULL COMMENT '消息类型',
+  `action` VARCHAR(20) NOT NULL COMMENT '消息动作: send/recall/switch',
+  `from_user_id` VARCHAR(100) NOT NULL COMMENT '发送者ID',
+  `from_user_name` VARCHAR(100) NULL COMMENT '发送者姓名',
+  `to_user_ids` TEXT NULL COMMENT '接收者ID列表(JSON)',
+  `room_id` VARCHAR(100) NULL COMMENT '群聊ID',
+  `msg_time` BIGINT NOT NULL COMMENT '消息时间戳(毫秒)',
+  `content` TEXT NULL COMMENT '消息内容(JSON)',
+  `media_key` VARCHAR(255) NULL COMMENT '媒体文件ID',
+  `media_url` VARCHAR(500) NULL COMMENT '媒体文件URL',
+  `audit_remark` TEXT NULL COMMENT '质检备注',
+  `audit_by` VARCHAR(50) NULL COMMENT '质检人',
+  `audit_time` DATETIME NULL COMMENT '质检时间',
+  `is_sensitive` TINYINT(1) DEFAULT 0 COMMENT '是否标记敏感',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_corp_msg` (`corp_id`, `msg_id`),
+  INDEX `idx_wecom_config_id` (`wecom_config_id`),
+  INDEX `idx_from_user_id` (`from_user_id`),
+  INDEX `idx_msg_time` (`msg_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微会话存档表';
+
+-- 企微收款记录表
+CREATE TABLE IF NOT EXISTS `wecom_payment_records` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
+  `trade_no` VARCHAR(100) NOT NULL COMMENT '交易单号',
+  `user_id` VARCHAR(100) NULL COMMENT '收款成员ID',
+  `user_name` VARCHAR(100) NULL COMMENT '收款成员姓名',
+  `external_user_id` VARCHAR(100) NULL COMMENT '付款客户ID',
+  `customer_name` VARCHAR(100) NULL COMMENT '付款客户名称',
+  `amount` INT NOT NULL COMMENT '收款金额(分)',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '状态: pending/paid/refunded',
+  `pay_time` DATETIME NULL COMMENT '支付时间',
+  `refund_time` DATETIME NULL COMMENT '退款时间',
+  `remark` VARCHAR(500) NULL COMMENT '备注',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_trade_no` (`trade_no`),
+  INDEX `idx_wecom_config_id` (`wecom_config_id`),
+  INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_pay_time` (`pay_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微收款记录表';
+
+SET FOREIGN_KEY_CHECKS = 1;
