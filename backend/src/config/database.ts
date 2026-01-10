@@ -57,6 +57,7 @@ import { ServiceOperationLog } from '../entities/ServiceOperationLog';
 import { NotificationChannel, NotificationLog } from '../entities/NotificationChannel';
 import { Announcement, AnnouncementRead } from '../entities/Announcement';
 import { SystemMessage } from '../entities/SystemMessage';
+import { MessageReadStatus } from '../entities/MessageReadStatus';
 import { PerformanceReportConfig, PerformanceReportLog } from '../entities/PerformanceReportConfig';
 import { LogisticsApiConfig } from '../entities/LogisticsApiConfig';
 import { CustomerServicePermission } from '../entities/CustomerServicePermission';
@@ -64,6 +65,17 @@ import { SensitiveInfoPermission } from '../entities/SensitiveInfoPermission';
 import { PerformanceConfig } from '../entities/PerformanceConfig';
 import { CommissionSetting } from '../entities/CommissionSetting';
 import { CommissionLadder } from '../entities/CommissionLadder';
+import { AdminUser } from '../entities/AdminUser';
+import { License } from '../entities/License';
+import { Version } from '../entities/Version';
+import { LicenseLog } from '../entities/LicenseLog';
+import { WecomConfig } from '../entities/WecomConfig';
+import { WecomUserBinding } from '../entities/WecomUserBinding';
+import { WecomCustomer } from '../entities/WecomCustomer';
+import { WecomAcquisitionLink } from '../entities/WecomAcquisitionLink';
+import { WecomServiceAccount } from '../entities/WecomServiceAccount';
+import { WecomChatRecord } from '../entities/WecomChatRecord';
+import { WecomPaymentRecord } from '../entities/WecomPaymentRecord';
 
 // 根据环境变量选择数据库配置
 const dbType = process.env.DB_TYPE || (process.env.NODE_ENV === 'production' ? 'mysql' : 'sqlite');
@@ -128,6 +140,7 @@ const AppDataSource = new DataSource(
           Announcement,
           AnnouncementRead,
           SystemMessage,
+          MessageReadStatus,
           PerformanceReportConfig,
           PerformanceReportLog,
           LogisticsApiConfig,
@@ -135,7 +148,18 @@ const AppDataSource = new DataSource(
           SensitiveInfoPermission,
           PerformanceConfig,
           CommissionSetting,
-          CommissionLadder
+          CommissionLadder,
+          AdminUser,
+          License,
+          Version,
+          LicenseLog,
+          WecomConfig,
+          WecomUserBinding,
+          WecomCustomer,
+          WecomAcquisitionLink,
+          WecomServiceAccount,
+          WecomChatRecord,
+          WecomPaymentRecord
         ],
         migrations: [],
         subscribers: [],
@@ -189,6 +213,7 @@ const AppDataSource = new DataSource(
           Announcement,
           AnnouncementRead,
           SystemMessage,
+          MessageReadStatus,
           PerformanceReportConfig,
           PerformanceReportLog,
           LogisticsApiConfig,
@@ -196,7 +221,18 @@ const AppDataSource = new DataSource(
           SensitiveInfoPermission,
           PerformanceConfig,
           CommissionSetting,
-          CommissionLadder
+          CommissionLadder,
+          AdminUser,
+          License,
+          Version,
+          LicenseLog,
+          WecomConfig,
+          WecomUserBinding,
+          WecomCustomer,
+          WecomAcquisitionLink,
+          WecomServiceAccount,
+          WecomChatRecord,
+          WecomPaymentRecord
         ],
         migrations: [],
         subscribers: [],

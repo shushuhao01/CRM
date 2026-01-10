@@ -534,6 +534,55 @@ const router = createRouter({
       component: () => import('../views/MobileSDKInstall.vue'),
       meta: { title: '移动SDK安装指南', requiresAuth: false }
     },
+    // 企微管理
+    {
+      path: '/wecom/customer',
+      name: 'WecomCustomer',
+      component: () => import('../views/Wecom/Customer.vue'),
+      meta: { title: '企业客户', requiresAuth: true }
+    },
+    {
+      path: '/wecom/acquisition',
+      name: 'WecomAcquisition',
+      component: () => import('../views/Wecom/Acquisition.vue'),
+      meta: { title: '获客助手', requiresAuth: true }
+    },
+    {
+      path: '/wecom/service',
+      name: 'WecomService',
+      component: () => import('../views/Wecom/Service.vue'),
+      meta: { title: '微信客服', requiresAuth: true }
+    },
+    {
+      path: '/wecom/chat-archive',
+      name: 'WecomChatArchive',
+      component: () => import('../views/Wecom/ChatArchive.vue'),
+      meta: { title: '会话存档', requiresAuth: true }
+    },
+    {
+      path: '/wecom/config',
+      name: 'WecomConfig',
+      component: () => import('../views/Wecom/Config.vue'),
+      meta: { title: '企微配置', requiresAuth: true, requiresAdmin: true }
+    },
+    {
+      path: '/wecom/binding',
+      name: 'WecomBinding',
+      component: () => import('../views/Wecom/Binding.vue'),
+      meta: { title: '企微联动', requiresAuth: true, requiresAdmin: true }
+    },
+    {
+      path: '/wecom/payment',
+      name: 'WecomPayment',
+      component: () => import('../views/Wecom/Payment.vue'),
+      meta: { title: '对外收款', requiresAuth: true }
+    },
+    {
+      path: '/wecom/sidebar',
+      name: 'WecomSidebar',
+      component: () => import('../views/Wecom/Sidebar.vue'),
+      meta: { title: '侧边栏', requiresAuth: true, requiresAdmin: true }
+    },
     // 公开帮助中心（无需登录）
     {
       path: '/public-help',
