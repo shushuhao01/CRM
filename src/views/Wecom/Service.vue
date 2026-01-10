@@ -140,13 +140,15 @@ const copyLink = (url: string) => {
 const fetchConfigs = async () => {
   try {
     const res = await getWecomConfigs()
-    configList.value = (res.data?.data || []).filter((c: any) => c.isEnabled)
+    console.log('[WecomService] Configs response:', res)
+    const configs = Array.isArray(res) ? res : []
+    configList.value = configs.filter((c: any) => c.isEnabled)
     if (configList.value.length > 0 && !selectedConfigId.value) {
       selectedConfigId.value = configList.value[0].id
       fetchList()
     }
   } catch (e) {
-    console.error(e)
+    console.error('[WecomService] Fetch configs error:', e)
   }
 }
 
@@ -155,9 +157,10 @@ const fetchList = async () => {
   loading.value = true
   try {
     const res = await getServiceAccounts(selectedConfigId.value)
-    accountList.value = res.data?.data || []
+    console.log('[WecomService] Accounts response:', res)
+    accountList.value = Array.isArray(res) ? res : []
   } catch (e) {
-    console.error(e)
+    console.error('[WecomService] Fetch list error:', e)
   } finally {
     loading.value = false
   }
@@ -167,9 +170,11 @@ const fetchWecomUsers = async () => {
   if (!selectedConfigId.value) return
   try {
     const res = await getWecomUsers(selectedConfigId.value, 1, true)
-    wecomUsers.value = res.data?.data || []
+    console.log('[WecomService] Users response:', res)
+    wecomUsers.value = Array.isArray(res) ? res : []
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.message || '获取成员失败')
+    console.error('[WecomService] Fetch users error:', e)
+    ElMessage.error(e.message || '获取成员失败')
   }
 }
 

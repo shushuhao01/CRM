@@ -120,9 +120,11 @@ const getMsgTypeText = (type: string) => {
 const fetchConfigs = async () => {
   try {
     const res = await getWecomConfigs()
-    configList.value = (res.data?.data || []).filter((c: any) => c.isEnabled && c.chatArchiveSecret)
+    console.log('[WecomChatArchive] Configs response:', res)
+    const configs = Array.isArray(res) ? res : []
+    configList.value = configs.filter((c: any) => c.isEnabled && c.chatArchiveSecret)
   } catch (e) {
-    console.error(e)
+    console.error('[WecomChatArchive] Fetch configs error:', e)
   }
 }
 

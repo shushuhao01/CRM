@@ -79,7 +79,11 @@
         <el-divider content-position="left">扩展配置（可选）</el-divider>
         <el-form-item label="通讯录Secret">
           <el-input v-model="form.contactSecret" type="password" show-password placeholder="管理工具 → 通讯录同步 → Secret" />
-          <div class="form-tip">用于同步企微通讯录和外部联系人</div>
+          <div class="form-tip">用于获取企微通讯录部门和成员列表</div>
+        </el-form-item>
+        <el-form-item label="客户联系Secret">
+          <el-input v-model="form.externalContactSecret" type="password" show-password placeholder="客户联系 → API → Secret" />
+          <div class="form-tip">用于获取外部联系人（企微客户）列表</div>
         </el-form-item>
         <el-form-item label="会话存档Secret">
           <el-input v-model="form.chatArchiveSecret" type="password" show-password placeholder="管理工具 → 会话内容存档 → Secret" />
@@ -115,7 +119,7 @@ const formRef = ref()
 
 const form = ref({
   name: '', corpId: '', corpSecret: '', agentId: undefined as number | undefined,
-  callbackToken: '', encodingAesKey: '', callbackUrl: '', contactSecret: '', chatArchiveSecret: '', remark: ''
+  callbackToken: '', encodingAesKey: '', callbackUrl: '', contactSecret: '', externalContactSecret: '', chatArchiveSecret: '', remark: ''
 })
 
 const rules = {
@@ -135,14 +139,7 @@ const fetchList = async () => {
     const res = await getWecomConfigs()
     console.log('[WecomConfig] Fetch response:', res)
     // request.ts 拦截器返回的是 response.data.data，所以 res 直接就是数组
-    // 但也可能返回整个 response.data（如果拦截器逻辑不同）
-    if (Array.isArray(res)) {
-      configList.value = res
-    } else if (res?.data && Array.isArray(res.data)) {
-      configList.value = res.data
-    } else {
-      configList.value = []
-    }
+    configList.value = Array.isArray(res) ? res : []
     console.log('[WecomConfig] Config list:', configList.value)
   } catch (e) {
     console.error('[WecomConfig] Fetch error:', e)
@@ -153,13 +150,13 @@ const fetchList = async () => {
 
 const handleAdd = () => {
   isEdit.value = false; currentId.value = null
-  form.value = { name: '', corpId: '', corpSecret: '', agentId: undefined, callbackToken: '', encodingAesKey: '', callbackUrl: '', contactSecret: '', chatArchiveSecret: '', remark: '' }
+  form.value = { name: '', corpId: '', corpSecret: '', agentId: undefined, callbackToken: '', encodingAesKey: '', callbackUrl: '', contactSecret: '', externalContactSecret: '', chatArchiveSecret: '', remark: '' }
   dialogVisible.value = true
 }
 
 const handleEdit = (row: any) => {
   isEdit.value = true; currentId.value = row.id
-  form.value = { ...row, corpSecret: '', encodingAesKey: '', contactSecret: '', chatArchiveSecret: '' }
+  form.value = { ...row, corpSecret: '', encodingAesKey: '', contactSecret: '', externalContactSecret: '', chatArchiveSecret: '' }
   dialogVisible.value = true
 }
 
@@ -168,28 +165,17 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     if (isEdit.value && currentId.value) {
-      const res = await updateWecomConfig(currentId.value, form.value)
-      console.log('[WecomConfig] Update response:', res)
-      if (res?.success === false) {
-        ElMessage.error(res?.message || '更新失败')
-        return
-      }
+      await updateWecomConfig(currentId.value, form.value)
       ElMessage.success('更新成功')
     } else {
-      const res = await createWecomConfig(form.value as any)
-      console.log('[WecomConfig] Create response:', res)
-      if (res?.success === false) {
-        ElMessage.error(res?.message || '创建失败')
-        return
-      }
+      await createWecomConfig(form.value as any)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
     fetchList()
   } catch (e: any) {
     console.error('[WecomConfig] Submit error:', e)
-    // 错误可能是 Error 对象或 axios 错误
-    const message = e.response?.data?.message || e.message || '操作失败'
+    const message = e.message || '操作失败'
     ElMessage.error(message)
   } finally { submitting.value = false }
 }
@@ -203,9 +189,8 @@ const handleToggle = async (row: any) => {
 
 const handleTest = async (row: any) => {
   try {
-    const res = await testWecomConnection(row.id)
+    const res = await testWecomConnection(row.id) as any
     console.log('[WecomConfig] Test response:', res)
-    // res 是 response.data.data，即 { connected: true/false }
     if (res?.connected) {
       ElMessage.success('连接测试成功')
       fetchList()
