@@ -44,15 +44,18 @@ export default defineConfig({
     include: ['element-plus'] // 强制预构建Element Plus
   },
   build: {
-    target: 'esnext', // 使用现代浏览器特性
-    chunkSizeWarningLimit: 1000, // 提高警告阈值到1MB
-    minify: 'terser', // 使用 terser 压缩
+    target: 'esnext',
+    chunkSizeWarningLimit: 2000,
+    minify: false, // 禁用压缩以减少内存使用
+    sourcemap: false,
     rollupOptions: {
+      maxParallelFileOps: 2, // 限制并行操作数
       output: {
         manualChunks: {
-          vendor: ['vue', 'vue-router', 'pinia'],
-          elementPlus: ['element-plus', '@element-plus/icons-vue'],
-          utils: ['axios', 'echarts', 'xlsx']
+          'vue-vendor': ['vue', 'vue-router', 'pinia'],
+          'element-plus': ['element-plus', '@element-plus/icons-vue'],
+          'echarts': ['echarts'],
+          'utils': ['axios', 'xlsx']
         }
       }
     }
