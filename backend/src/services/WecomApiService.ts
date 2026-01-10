@@ -54,10 +54,16 @@ export class WecomApiService {
     }
 
     let secret = config.corpSecret;
-    if (secretType === 'contact' && config.contactSecret) {
-      secret = config.contactSecret;
+    if (secretType === 'contact') {
+      // 优先使用通讯录 Secret，如果没有则使用应用 Secret
+      secret = config.contactSecret || config.corpSecret;
+      console.log(`[WecomApi] Using ${config.contactSecret ? 'contact' : 'corp'} secret for contact API`);
     } else if (secretType === 'chat' && config.chatArchiveSecret) {
       secret = config.chatArchiveSecret;
+    }
+
+    if (!secret) {
+      throw new Error('企微配置缺少必要的Secret');
     }
 
     return this.getAccessToken(config.corpId, secret);
