@@ -343,6 +343,71 @@ export const menuConfig: MenuItem[] = [
     ]
   },
   {
+    id: 'wecom',
+    title: '企微管理',
+    icon: 'ChatDotRound',
+    roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+    permissions: ['wecom'],
+    children: [
+      {
+        id: 'wecom-config',
+        title: '企微配置',
+        path: '/wecom/config',
+        roles: ['super_admin', 'admin'],
+        permissions: ['wecom:config']
+      },
+      {
+        id: 'wecom-binding',
+        title: '企微联动',
+        path: '/wecom/binding',
+        roles: ['super_admin', 'admin'],
+        permissions: ['wecom:binding']
+      },
+      {
+        id: 'wecom-customer',
+        title: '企业客户',
+        path: '/wecom/customer',
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        permissions: ['wecom:customer']
+      },
+      {
+        id: 'wecom-acquisition',
+        title: '获客助手',
+        path: '/wecom/acquisition',
+        roles: ['super_admin', 'admin', 'department_manager'],
+        permissions: ['wecom:acquisition']
+      },
+      {
+        id: 'wecom-service',
+        title: '微信客服',
+        path: '/wecom/service',
+        roles: ['super_admin', 'admin'],
+        permissions: ['wecom:service']
+      },
+      {
+        id: 'wecom-chat-archive',
+        title: '会话存档',
+        path: '/wecom/chat-archive',
+        roles: ['super_admin', 'admin'],
+        permissions: ['wecom:chat']
+      },
+      {
+        id: 'wecom-payment',
+        title: '对外收款',
+        path: '/wecom/payment',
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        permissions: ['wecom:payment']
+      },
+      {
+        id: 'wecom-sidebar',
+        title: '侧边栏应用',
+        path: '/wecom/sidebar',
+        roles: ['super_admin', 'admin'],
+        permissions: ['wecom:sidebar']
+      }
+    ]
+  },
+  {
     id: 'system',
     title: '系统管理',
     icon: 'Setting',
@@ -470,7 +535,11 @@ export const rolePermissions: Record<string, string[]> = {
     'system:department', 'system:department:view', 'system:department:add', 'system:department:edit', 'system:department:delete',
     'system:permission', 'system:permission:view', 'system:permission:edit',
     'system:settings', 'system:admin', 'customer_service:manage',
-    'system:message', 'system:message:view', 'system:message:subscription', 'system:message:announcement', 'system:message:config'
+    'system:message', 'system:message:view', 'system:message:subscription', 'system:message:announcement', 'system:message:config',
+
+    // 企微管理（全部权限）
+    'wecom', 'wecom:config', 'wecom:binding', 'wecom:customer', 'wecom:acquisition',
+    'wecom:service', 'wecom:chat', 'wecom:payment', 'wecom:sidebar'
   ],
 
   // 部门管理员：管理本部门的业务
