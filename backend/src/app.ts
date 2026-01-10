@@ -52,6 +52,11 @@ import mobileRoutes from './routes/mobile';
 import callWebhookRoutes from './routes/callWebhook';
 import callConfigRoutes from './routes/callConfig';
 import financeRoutes from './routes/finance';
+import licenseRoutes from './routes/license';
+import tenantLicenseRoutes from './routes/tenantLicense';
+import wecomRoutes from './routes/wecom';
+import adminRoutes from './routes/admin';
+import publicRoutes from './routes/public';
 import * as fs from 'fs';
 
 // 根据NODE_ENV环境变量加载对应配置文件
@@ -262,6 +267,11 @@ app.use(`${API_PREFIX}/mobile`, mobileRoutes);
 app.use(`${API_PREFIX}/calls/webhook`, callWebhookRoutes);
 app.use(`${API_PREFIX}/call-config`, callConfigRoutes);
 app.use(`${API_PREFIX}/finance`, financeRoutes);
+app.use(`${API_PREFIX}/license`, licenseRoutes);
+app.use(`${API_PREFIX}/tenant-license`, tenantLicenseRoutes);
+app.use(`${API_PREFIX}/wecom`, wecomRoutes);
+app.use(`${API_PREFIX}/admin`, adminRoutes);
+app.use(`${API_PREFIX}/public`, publicRoutes);
 
 // 404处理
 app.use(notFoundHandler);
