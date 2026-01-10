@@ -574,19 +574,6 @@ export class UserApiService {
   }
 
   /**
-   * 重置用户密码
-   */
-  async resetPassword(userId: number): Promise<void> {
-    try {
-      await this.api.post(`/users/${userId}/reset-password`)
-      console.log(`[UserAPI] 重置密码成功 (ID: ${userId})`)
-    } catch (error) {
-      console.error(`[UserAPI] 重置密码失败 (ID: ${userId}):`, error)
-      throw error
-    }
-  }
-
-  /**
    * 强制用户下线
    */
   async forceLogout(userId: number): Promise<void> {
