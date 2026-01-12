@@ -71,7 +71,7 @@
         </div>
       </el-popover>
       <el-date-picker v-model="dateRange" type="daterange" range-separator="至" start-placeholder="开始" end-placeholder="结束"
-        value-format="YYYY-MM-DD" @change="handleDateChange" class="filter-date" />
+        value-format="YYYY-MM-DD" @change="handleDateChange" style="width: 240px" />
       <el-select v-model="departmentFilter" placeholder="部门" clearable @change="handleDepartmentChange" class="filter-item">
         <el-option v-for="d in departments" :key="d.id" :label="d.name" :value="d.id" />
       </el-select>
@@ -298,9 +298,8 @@ onMounted(() => { dateRange.value = getDateRange('month'); loadDepartments(); lo
 .quick-btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
 .quick-btn { padding: 8px 16px; border: 1px solid #dcdfe6; border-radius: 20px; background: #fff; color: #606266; cursor: pointer; transition: all 0.2s; font-size: 13px; &:hover { border-color: #409eff; color: #409eff; } &.active { background: #409eff; border-color: #409eff; color: #fff; } }
 .filter-bar { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; background: #fff; padding: 16px; border-radius: 8px; }
-.filter-item { flex: 1; min-width: 120px; max-width: 160px; }
-.filter-search { flex: 1; min-width: 140px; max-width: 180px; }
-.filter-date { flex: 0 0 auto; width: 260px; :deep(.el-range-input) { font-size: 13px; } }
+.filter-item { min-width: 120px; }
+.filter-search { min-width: 140px; }
 .batch-search-popover { .batch-search-header { margin-bottom: 12px; .batch-search-title { font-weight: 600; } .batch-search-tip { display: block; font-size: 12px; color: #909399; margin-top: 4px; } } .batch-search-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; } }
 .action-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; background: #fff; padding: 0 16px; border-radius: 8px; }
 .action-left { .status-tabs { :deep(.el-tabs__header) { margin: 0; } :deep(.el-tabs__nav-wrap::after) { display: none; } } }
