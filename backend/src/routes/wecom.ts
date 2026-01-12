@@ -324,7 +324,22 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
 
     console.log('[Wecom] Getting users for config:', configId, 'department:', departmentId, 'fetchChild:', fetchChild);
 
-    // 优先使用通讯录同步 Secret，如果没有则使用应用 Secret
+    // 先检查配置是否存在
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
+
+    if (!config) {
+      return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
+    }
+
+    if (!config.contactSecret) {
+      return res.status(400).json({
+        success: false,
+        message: '未配置通讯录同步Secret，请在企微配置中填写通讯录Secret'
+      });
+    }
+
+    // 优先使用通讯录同步 Secret
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
     console.log('[Wecom] Got access token, fetching users...');
 
@@ -334,7 +349,16 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
     res.json({ success: true, data: users });
   } catch (error: any) {
     console.error('[Wecom] Get users error:', error.message, error.stack);
-    res.status(500).json({ success: false, message: error.message || '获取成员列表失败，请确保已配置通讯录Secret' });
+
+    // 返回更详细的错误信息
+    let message = error.message || '获取成员列表失败';
+
+    // 检查是否是IP白名单问题
+    if (message.includes('60020') || message.includes('not allow')) {
+      message = '服务器IP不在企微白名单中，请在企微后台 → 管理工具 → 通讯录同步 → 企业可信IP 中添加服务器公网IP';
+    }
+
+    res.status(500).json({ success: false, message });
   }
 });
 
