@@ -369,6 +369,12 @@ CREATE TABLE `orders` (
   `estimated_commission` DECIMAL(10,2) DEFAULT 0.00 COMMENT '预估佣金',
   `performance_updated_at` TIMESTAMP NULL COMMENT '绩效更新时间',
   `performance_updated_by` VARCHAR(50) DEFAULT NULL COMMENT '绩效更新人ID',
+  `cod_amount` DECIMAL(10,2) DEFAULT 0.00 COMMENT '代收金额',
+  `cod_status` VARCHAR(20) DEFAULT 'pending' COMMENT '代收状态: pending-未返款, returned-已返款, cancelled-已取消代收',
+  `cod_returned_amount` DECIMAL(10,2) DEFAULT 0.00 COMMENT '已返款金额',
+  `cod_returned_at` TIMESTAMP NULL COMMENT '返款时间',
+  `cod_cancelled_at` TIMESTAMP NULL COMMENT '取消代收时间',
+  `cod_remark` VARCHAR(500) DEFAULT NULL COMMENT '代收备注',
   `operator_id` VARCHAR(50) COMMENT '操作员ID',
   `operator_name` VARCHAR(50) COMMENT '操作员姓名',
   `created_by` VARCHAR(50) NOT NULL COMMENT '创建人ID',
@@ -394,7 +400,9 @@ CREATE TABLE `orders` (
   INDEX `idx_shipping_time` (`shipping_time`),
   INDEX `idx_expected_delivery_date` (`expected_delivery_date`),
   INDEX `idx_performance_status` (`performance_status`),
-  INDEX `idx_performance_coefficient` (`performance_coefficient`)
+  INDEX `idx_performance_coefficient` (`performance_coefficient`),
+  INDEX `idx_cod_status` (`cod_status`),
+  INDEX `idx_cod_returned_at` (`cod_returned_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单表';
 
 -- 10. 物流表

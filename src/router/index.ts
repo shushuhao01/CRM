@@ -283,6 +283,12 @@ const router = createRouter({
       component: () => import('../views/Finance/PerformanceManage.vue'),
       meta: { title: '绩效管理', requiresAuth: true, requiresAdmin: true }
     },
+    {
+      path: '/finance/cod-collection',
+      name: 'FinanceCodCollection',
+      component: () => import('../views/Finance/CodCollection.vue'),
+      meta: { title: '代收管理', requiresAuth: true }
+    },
 
     // 商品管理
     {
