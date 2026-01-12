@@ -287,7 +287,7 @@ const router = createRouter({
       path: '/finance/cod-collection',
       name: 'FinanceCodCollection',
       component: () => import('../views/Finance/CodCollection.vue'),
-      meta: { title: '代收管理', requiresAuth: true }
+      meta: { title: '代收管理', requiresAuth: true, permissions: ['finance:cod'] }
     },
 
     // 商品管理
