@@ -53,7 +53,7 @@
       <el-popover placement="bottom" :width="400" trigger="click" v-model:visible="batchSearchVisible">
         <template #reference>
           <el-input v-model="searchKeyword" :placeholder="batchSearchKeywords ? `已输入 ${batchSearchCount} 条` : '批量搜索'"
-            clearable class="filter-item filter-search" @clear="clearBatchSearch" readonly>
+            clearable class="filter-search" @clear="clearBatchSearch" readonly>
             <template #prefix><el-icon><Search /></el-icon></template>
           </el-input>
         </template>
@@ -70,18 +70,9 @@
           </div>
         </div>
       </el-popover>
-      <el-date-picker
-        v-model="dateRange"
-        type="daterange"
-        range-separator="至"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        format="YYYY-MM-DD"
-        value-format="YYYY-MM-DD"
-        @change="handleDateChange"
-        size="default"
-        style="width: 240px"
-      />
+      <el-date-picker v-model="startDate" type="date" placeholder="开始日期" format="YYYY-MM-DD" value-format="YYYY-MM-DD" @change="handleDateChange" class="filter-date" />
+      <span class="date-separator">至</span>
+      <el-date-picker v-model="endDate" type="date" placeholder="结束日期" format="YYYY-MM-DD" value-format="YYYY-MM-DD" @change="handleDateChange" class="filter-date" />
       <el-select v-model="departmentFilter" placeholder="部门" clearable @change="handleDepartmentChange" class="filter-item">
         <el-option v-for="d in departments" :key="d.id" :label="d.name" :value="d.id" />
       </el-select>
@@ -216,7 +207,8 @@ const router = useRouter()
 const stats = ref<CodStats>({ todayCod: 0, monthCod: 0, cancelledCod: 0, returnedCod: 0, pendingCod: 0 })
 const quickDateOptions = [{ label: '今日', value: 'today' }, { label: '昨日', value: 'yesterday' }, { label: '本周', value: 'week' }, { label: '本月', value: 'month' }, { label: '上月', value: 'lastMonth' }, { label: '今年', value: 'year' }, { label: '全部', value: 'all' }]
 const quickDateFilter = ref('month')
-const dateRange = ref<string[]>([])
+const startDate = ref('')
+const endDate = ref('')
 const departmentFilter = ref('')
 const salesPersonFilter = ref('')
 const orderStatusFilter = ref('')
@@ -255,12 +247,12 @@ const getDateRange = (type: string): string[] => {
   return []
 }
 
-const loadStats = async () => { try { const p: any = {}; if (dateRange.value?.length === 2) { p.startDate = dateRange.value[0]; p.endDate = dateRange.value[1] }; if (departmentFilter.value) p.departmentId = departmentFilter.value; if (salesPersonFilter.value) p.salesPersonId = salesPersonFilter.value; const r = await getCodStats(p) as any; if (r) stats.value = r } catch (e) { console.error(e) } }
-const loadData = async () => { loading.value = true; try { const p: any = { page: pagination.value.page, pageSize: pagination.value.pageSize, tab: activeTab.value }; if (dateRange.value?.length === 2) { p.startDate = dateRange.value[0]; p.endDate = dateRange.value[1] }; if (departmentFilter.value) p.departmentId = departmentFilter.value; if (salesPersonFilter.value) p.salesPersonId = salesPersonFilter.value; if (orderStatusFilter.value) p.status = orderStatusFilter.value; if (batchSearchKeywords.value) p.keywords = batchSearchKeywords.value; const r = await getCodList(p) as any; if (r) { tableData.value = r.list || []; pagination.value.total = r.total || 0 } } catch (e) { console.error(e) } finally { loading.value = false } }
+const loadStats = async () => { try { const p: any = {}; if (startDate.value) p.startDate = startDate.value; if (endDate.value) p.endDate = endDate.value; if (departmentFilter.value) p.departmentId = departmentFilter.value; if (salesPersonFilter.value) p.salesPersonId = salesPersonFilter.value; const r = await getCodStats(p) as any; if (r) stats.value = r } catch (e) { console.error(e) } }
+const loadData = async () => { loading.value = true; try { const p: any = { page: pagination.value.page, pageSize: pagination.value.pageSize, tab: activeTab.value }; if (startDate.value) p.startDate = startDate.value; if (endDate.value) p.endDate = endDate.value; if (departmentFilter.value) p.departmentId = departmentFilter.value; if (salesPersonFilter.value) p.salesPersonId = salesPersonFilter.value; if (orderStatusFilter.value) p.status = orderStatusFilter.value; if (batchSearchKeywords.value) p.keywords = batchSearchKeywords.value; const r = await getCodList(p) as any; if (r) { tableData.value = r.list || []; pagination.value.total = r.total || 0 } } catch (e) { console.error(e) } finally { loading.value = false } }
 const loadDepartments = async () => { try { const r = await getCodDepartments() as any; departments.value = r || [] } catch (e) { console.error(e) } }
 const loadSalesUsers = async () => { try { const r = await getCodSalesUsers(departmentFilter.value) as any; salesUsers.value = r || [] } catch (e) { console.error(e) } }
 
-const handleQuickDateClick = (v: string) => { quickDateFilter.value = v; dateRange.value = getDateRange(v); pagination.value.page = 1; loadStats(); loadData() }
+const handleQuickDateClick = (v: string) => { quickDateFilter.value = v; const range = getDateRange(v); startDate.value = range[0] || ''; endDate.value = range[1] || ''; pagination.value.page = 1; loadStats(); loadData() }
 const handleDateChange = () => { quickDateFilter.value = ''; pagination.value.page = 1; loadStats(); loadData() }
 const handleDepartmentChange = () => { salesPersonFilter.value = ''; loadSalesUsers(); handleFilterChange() }
 const handleFilterChange = () => { pagination.value.page = 1; loadStats(); loadData() }
@@ -289,7 +281,7 @@ const handleCodSubmit = async () => { submitting.value = true; try { if (isBatch
 const handleReturn = async (r: CodOrder) => { try { await ElMessageBox.confirm(`确定将订单 ${r.orderNumber} 标记为已返款吗？`, '确认', { type: 'warning' }); await markCodReturned(r.id, { returnedAmount: r.codAmount }); ElMessage.success('返款成功'); loadStats(); loadData() } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '失败') } }
 const handleBatchReturn = async () => { if (selectedRows.value.length === 0) { ElMessage.warning('请选择订单'); return }; try { await ElMessageBox.confirm(`确定将 ${selectedRows.value.length} 个订单标记为已返款吗？`, '批量返款', { type: 'warning' }); await batchMarkCodReturned({ orderIds: selectedRows.value.map(r => r.id) }); ElMessage.success(`批量标记 ${selectedRows.value.length} 个订单成功`); loadStats(); loadData() } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '失败') } }
 
-onMounted(() => { dateRange.value = getDateRange('month'); loadDepartments(); loadSalesUsers(); loadStats(); loadData() })
+onMounted(() => { const range = getDateRange('month'); startDate.value = range[0] || ''; endDate.value = range[1] || ''; loadDepartments(); loadSalesUsers(); loadStats(); loadData() })
 </script>
 
 <style scoped lang="scss">
@@ -307,9 +299,11 @@ onMounted(() => { dateRange.value = getDateRange('month'); loadDepartments(); lo
 .quick-filters { margin-bottom: 16px; }
 .quick-btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
 .quick-btn { padding: 8px 16px; border: 1px solid #dcdfe6; border-radius: 20px; background: #fff; color: #606266; cursor: pointer; transition: all 0.2s; font-size: 13px; &:hover { border-color: #409eff; color: #409eff; } &.active { background: #409eff; border-color: #409eff; color: #fff; } }
-.filter-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; background: #fff; padding: 16px; border-radius: 8px; :deep(.el-date-editor.el-range-editor) { width: 240px !important; flex-shrink: 0; } }
-.filter-item { width: 120px; flex-shrink: 0; }
-.filter-search { width: 140px; flex-shrink: 0; }
+.filter-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; background: #fff; padding: 16px; border-radius: 8px; }
+.filter-item { width: 120px; }
+.filter-search { width: 140px; }
+.filter-date { width: 130px; }
+.date-separator { color: #909399; font-size: 13px; }
 .batch-search-popover { .batch-search-header { margin-bottom: 12px; .batch-search-title { font-weight: 600; } .batch-search-tip { display: block; font-size: 12px; color: #909399; margin-top: 4px; } } .batch-search-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; } }
 .action-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; background: #fff; padding: 0 16px; border-radius: 8px; }
 .action-left { .status-tabs { :deep(.el-tabs__header) { margin: 0; } :deep(.el-tabs__nav-wrap::after) { display: none; } } }
