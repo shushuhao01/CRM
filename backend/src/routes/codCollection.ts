@@ -63,9 +63,16 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
         shippedAt: Between(today, todayEnd),
         status: Not(In(EXCLUDED_STATUSES))
       },
-      select: ['codAmount']
+      select: ['codAmount', 'totalAmount', 'depositAmount']
     });
-    const todayCod = todayOrders.reduce((sum, o) => sum + Number(o.codAmount || 0), 0);
+    const todayCod = todayOrders.reduce((sum, o) => {
+      // 代收金额逻辑：如果cod_amount有值则使用，否则使用 总额-定金
+      const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      const codAmount = (o.codAmount !== null && o.codAmount !== undefined && Number(o.codAmount) > 0)
+        ? Number(o.codAmount)
+        : calculatedCod;
+      return sum + codAmount;
+    }, 0);
 
     // 当月代收（当月发货的订单代收金额，排除异常状态）
     const monthOrders = await orderRepo.find({
@@ -74,9 +81,15 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
         shippedAt: Between(monthStart, monthEnd),
         status: Not(In(EXCLUDED_STATUSES))
       },
-      select: ['codAmount']
+      select: ['codAmount', 'totalAmount', 'depositAmount']
     });
-    const monthCod = monthOrders.reduce((sum, o) => sum + Number(o.codAmount || 0), 0);
+    const monthCod = monthOrders.reduce((sum, o) => {
+      const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      const codAmount = (o.codAmount !== null && o.codAmount !== undefined && Number(o.codAmount) > 0)
+        ? Number(o.codAmount)
+        : calculatedCod;
+      return sum + codAmount;
+    }, 0);
 
     // 取消代收金额（当月）
     const cancelledOrders = await orderRepo.find({
@@ -85,9 +98,15 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
         codStatus: 'cancelled',
         codCancelledAt: Between(monthStart, monthEnd)
       },
-      select: ['codAmount']
+      select: ['codAmount', 'totalAmount', 'depositAmount']
     });
-    const cancelledCod = cancelledOrders.reduce((sum, o) => sum + Number(o.codAmount || 0), 0);
+    const cancelledCod = cancelledOrders.reduce((sum, o) => {
+      const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      const codAmount = (o.codAmount !== null && o.codAmount !== undefined && Number(o.codAmount) > 0)
+        ? Number(o.codAmount)
+        : calculatedCod;
+      return sum + codAmount;
+    }, 0);
 
     // 已返款金额（当月）
     const returnedOrders = await orderRepo.find({
@@ -108,9 +127,15 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
         codStatus: 'pending',
         status: Not(In(EXCLUDED_STATUSES))
       },
-      select: ['codAmount']
+      select: ['codAmount', 'totalAmount', 'depositAmount']
     });
-    const pendingCod = pendingOrders.reduce((sum, o) => sum + Number(o.codAmount || 0), 0);
+    const pendingCod = pendingOrders.reduce((sum, o) => {
+      const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      const codAmount = (o.codAmount !== null && o.codAmount !== undefined && Number(o.codAmount) > 0)
+        ? Number(o.codAmount)
+        : calculatedCod;
+      return sum + codAmount;
+    }, 0);
 
     res.json({
       success: true,
@@ -220,32 +245,41 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
     const orders = await queryBuilder.getMany();
 
     // 格式化返回数据
-    const list = orders.map(o => ({
-      id: o.id,
-      orderNumber: o.orderNumber,
-      customerId: o.customerId,
-      customerName: o.customerName,
-      customerPhone: o.customerPhone,
-      status: o.status,
-      totalAmount: o.totalAmount,
-      finalAmount: o.finalAmount,
-      codAmount: o.codAmount || 0,
-      codStatus: o.codStatus || 'pending',
-      codReturnedAmount: o.codReturnedAmount || 0,
-      codReturnedAt: o.codReturnedAt,
-      codCancelledAt: o.codCancelledAt,
-      codRemark: o.codRemark,
-      salesPersonId: o.createdBy,
-      salesPersonName: o.createdByName,
-      departmentId: o.createdByDepartmentId,
-      departmentName: o.createdByDepartmentName,
-      trackingNumber: o.trackingNumber,
-      expressCompany: o.expressCompany,
-      logisticsStatus: o.logisticsStatus,
-      latestLogisticsInfo: o.latestLogisticsInfo,
-      shippedAt: o.shippedAt,
-      createdAt: o.createdAt
-    }));
+    const list = orders.map(o => {
+      // 代收金额逻辑：如果cod_amount有值则使用，否则使用 总额-定金
+      const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      const codAmount = (o.codAmount !== null && o.codAmount !== undefined && Number(o.codAmount) > 0)
+        ? Number(o.codAmount)
+        : calculatedCod;
+
+      return {
+        id: o.id,
+        orderNumber: o.orderNumber,
+        customerId: o.customerId,
+        customerName: o.customerName,
+        customerPhone: o.customerPhone,
+        status: o.status,
+        totalAmount: o.totalAmount,
+        finalAmount: o.finalAmount,
+        depositAmount: o.depositAmount,
+        codAmount: codAmount,
+        codStatus: o.codStatus || 'pending',
+        codReturnedAmount: o.codReturnedAmount || 0,
+        codReturnedAt: o.codReturnedAt,
+        codCancelledAt: o.codCancelledAt,
+        codRemark: o.codRemark,
+        salesPersonId: o.createdBy,
+        salesPersonName: o.createdByName,
+        departmentId: o.createdByDepartmentId,
+        departmentName: o.createdByDepartmentName,
+        trackingNumber: o.trackingNumber,
+        expressCompany: o.expressCompany,
+        logisticsStatus: o.logisticsStatus,
+        latestLogisticsInfo: o.latestLogisticsInfo,
+        shippedAt: o.shippedAt,
+        createdAt: o.createdAt
+      };
+    });
 
     res.json({
       success: true,
@@ -275,6 +309,12 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
       return res.status(404).json({ success: false, message: '订单不存在' });
     }
 
+    // 代收金额逻辑：如果cod_amount有值则使用，否则使用 总额-定金
+    const calculatedCod = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
+    const codAmount = (order.codAmount !== null && order.codAmount !== undefined && Number(order.codAmount) > 0)
+      ? Number(order.codAmount)
+      : calculatedCod;
+
     res.json({
       success: true,
       data: {
@@ -287,7 +327,7 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
         totalAmount: order.totalAmount,
         finalAmount: order.finalAmount,
         depositAmount: order.depositAmount,
-        codAmount: order.codAmount || 0,
+        codAmount: codAmount,
         codStatus: order.codStatus || 'pending',
         codReturnedAmount: order.codReturnedAmount || 0,
         codReturnedAt: order.codReturnedAt,
@@ -372,9 +412,15 @@ router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Re
       return res.status(404).json({ success: false, message: '订单不存在' });
     }
 
+    // 代收金额逻辑：如果cod_amount有值则使用，否则使用 总额-定金
+    const calculatedCod = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
+    const defaultCodAmount = (order.codAmount !== null && order.codAmount !== undefined && Number(order.codAmount) > 0)
+      ? Number(order.codAmount)
+      : calculatedCod;
+
     // 更新返款信息
     order.codStatus = 'returned';
-    order.codReturnedAmount = Number(returnedAmount) || Number(order.codAmount) || 0;
+    order.codReturnedAmount = Number(returnedAmount) || defaultCodAmount;
     order.codReturnedAt = new Date();
 
     if (codRemark !== undefined) {
@@ -470,8 +516,14 @@ router.put('/batch-mark-returned', authenticateToken, async (req: Request, res: 
     const orders = await orderRepo.find({ where: { id: In(orderIds) } });
 
     for (const order of orders) {
+      // 代收金额逻辑：如果cod_amount有值则使用，否则使用 总额-定金
+      const calculatedCod = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
+      const codAmount = (order.codAmount !== null && order.codAmount !== undefined && Number(order.codAmount) > 0)
+        ? Number(order.codAmount)
+        : calculatedCod;
+
       order.codStatus = 'returned';
-      order.codReturnedAmount = Number(order.codAmount) || 0;
+      order.codReturnedAmount = codAmount;
       order.codReturnedAt = new Date();
       if (codRemark) {
         order.codRemark = codRemark;
