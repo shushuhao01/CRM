@@ -419,7 +419,10 @@
                 </div>
                 <div class="amount-content-modern">
                   <div class="amount-label-modern">代收</div>
-                  <div class="amount-value-modern">¥{{ ((orderDetail.totalAmount || 0) - (orderDetail.depositAmount || 0)).toFixed(2) }}</div>
+                  <div class="amount-value-modern" v-if="orderDetail.codStatus === 'cancelled'">
+                    <span style="color: #909399; font-size: 14px;">已取消代收</span>
+                  </div>
+                  <div class="amount-value-modern" v-else>¥{{ ((orderDetail.totalAmount || 0) - (orderDetail.depositAmount || 0)).toFixed(2) }}</div>
                 </div>
               </div>
             </div>

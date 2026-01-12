@@ -70,8 +70,18 @@
           </div>
         </div>
       </el-popover>
-      <el-date-picker v-model="dateRange" type="daterange" range-separator="至" start-placeholder="开始" end-placeholder="结束"
-        value-format="YYYY-MM-DD" @change="handleDateChange" style="width: 240px" />
+      <el-date-picker
+        v-model="dateRange"
+        type="daterange"
+        range-separator="至"
+        start-placeholder="开始日期"
+        end-placeholder="结束日期"
+        format="YYYY-MM-DD"
+        value-format="YYYY-MM-DD"
+        @change="handleDateChange"
+        size="default"
+        style="width: 240px"
+      />
       <el-select v-model="departmentFilter" placeholder="部门" clearable @change="handleDepartmentChange" class="filter-item">
         <el-option v-for="d in departments" :key="d.id" :label="d.name" :value="d.id" />
       </el-select>
@@ -297,7 +307,7 @@ onMounted(() => { dateRange.value = getDateRange('month'); loadDepartments(); lo
 .quick-filters { margin-bottom: 16px; }
 .quick-btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
 .quick-btn { padding: 8px 16px; border: 1px solid #dcdfe6; border-radius: 20px; background: #fff; color: #606266; cursor: pointer; transition: all 0.2s; font-size: 13px; &:hover { border-color: #409eff; color: #409eff; } &.active { background: #409eff; border-color: #409eff; color: #fff; } }
-.filter-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; background: #fff; padding: 16px; border-radius: 8px; }
+.filter-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; background: #fff; padding: 16px; border-radius: 8px; :deep(.el-date-editor) { width: 240px !important; } }
 .filter-item { width: 120px; }
 .filter-search { width: 140px; }
 .batch-search-popover { .batch-search-header { margin-bottom: 12px; .batch-search-title { font-weight: 600; } .batch-search-tip { display: block; font-size: 12px; color: #909399; margin-top: 4px; } } .batch-search-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; } }
