@@ -300,9 +300,9 @@ onMounted(() => { const range = getDateRange('month'); startDate.value = range[0
 .quick-btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
 .quick-btn { padding: 8px 16px; border: 1px solid #dcdfe6; border-radius: 20px; background: #fff; color: #606266; cursor: pointer; transition: all 0.2s; font-size: 13px; &:hover { border-color: #409eff; color: #409eff; } &.active { background: #409eff; border-color: #409eff; color: #fff; } }
 .filter-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; background: #fff; padding: 16px; border-radius: 8px; }
-.filter-item { width: 120px; }
-.filter-search { width: 140px; }
-.filter-date { width: 130px; }
+.filter-item { width: 130px; }
+.filter-search { width: 150px; }
+.filter-date { width: 140px; }
 .date-separator { color: #909399; font-size: 13px; }
 .batch-search-popover { .batch-search-header { margin-bottom: 12px; .batch-search-title { font-weight: 600; } .batch-search-tip { display: block; font-size: 12px; color: #909399; margin-top: 4px; } } .batch-search-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; } }
 .action-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; background: #fff; padding: 0 16px; border-radius: 8px; }
