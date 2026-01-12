@@ -300,7 +300,7 @@ export const menuConfig: MenuItem[] = [
         id: 'finance-cod-collection',
         title: '代收管理',
         path: '/finance/cod-collection',
-        roles: ['super_admin', 'admin', 'department_manager', 'customer_service'],
+        roles: ['super_admin', 'admin'],
         permissions: ['finance:cod']
       }
     ]
