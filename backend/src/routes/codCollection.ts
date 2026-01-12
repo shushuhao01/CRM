@@ -358,13 +358,13 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
 });
 
 /**
- * 修改代收金额
+ * 修改代收金额（改代收）
+ * 场景：客户直接付尾款给商家，不需要快递代收，修改代收金额
  */
 router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { codAmount, codRemark } = req.body;
-    const _currentUser = (req as any).currentUser;
 
     const orderRepo = AppDataSource.getRepository(Order);
     const order = await orderRepo.findOne({ where: { id } });
@@ -377,11 +377,9 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
     const newCodAmount = Number(codAmount) || 0;
     order.codAmount = newCodAmount;
 
-    // 如果代收金额改为0，则标记为已取消代收
-    if (newCodAmount === 0 && order.codStatus === 'pending') {
-      order.codStatus = 'cancelled';
-      order.codCancelledAt = new Date();
-    }
+    // 标记为已改代收状态
+    order.codStatus = 'cancelled';
+    order.codCancelledAt = new Date();
 
     if (codRemark !== undefined) {
       order.codRemark = codRemark;
@@ -398,12 +396,13 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
 
 /**
  * 标记返款
+ * 场景：快递公司代收货款后，把钱返还给商家
+ * 代收金额不变，只记录返款金额
  */
 router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { returnedAmount, codRemark } = req.body;
-    const _currentUser = (req as any).currentUser;
 
     const orderRepo = AppDataSource.getRepository(Order);
     const order = await orderRepo.findOne({ where: { id } });
@@ -412,13 +411,13 @@ router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Re
       return res.status(404).json({ success: false, message: '订单不存在' });
     }
 
-    // 代收金额逻辑：如果cod_amount有值则使用，否则使用 总额-定金
+    // 计算默认代收金额（用于返款金额默认值）
     const calculatedCod = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
     const defaultCodAmount = (order.codAmount !== null && order.codAmount !== undefined && Number(order.codAmount) > 0)
       ? Number(order.codAmount)
       : calculatedCod;
 
-    // 更新返款信息
+    // 更新返款信息（代收金额不变）
     order.codStatus = 'returned';
     order.codReturnedAmount = Number(returnedAmount) || defaultCodAmount;
     order.codReturnedAt = new Date();
@@ -437,12 +436,13 @@ router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Re
 });
 
 /**
- * 取消代收
+ * 取消代收（不修改金额，只改状态）
+ * 场景：客户直接付款给商家，不需要快递代收
  */
 router.put('/cancel-cod/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { codRemark } = req.body;
+    const { codAmount, codRemark } = req.body;
 
     const orderRepo = AppDataSource.getRepository(Order);
     const order = await orderRepo.findOne({ where: { id } });
@@ -451,9 +451,14 @@ router.put('/cancel-cod/:id', authenticateToken, async (req: Request, res: Respo
       return res.status(404).json({ success: false, message: '订单不存在' });
     }
 
-    // 取消代收
+    // 取消代收，可以修改代收金额
     order.codStatus = 'cancelled';
     order.codCancelledAt = new Date();
+
+    // 如果传入了新的代收金额，则更新
+    if (codAmount !== undefined) {
+      order.codAmount = Number(codAmount) || 0;
+    }
 
     if (codRemark !== undefined) {
       order.codRemark = codRemark;
@@ -469,7 +474,8 @@ router.put('/cancel-cod/:id', authenticateToken, async (req: Request, res: Respo
 });
 
 /**
- * 批量修改代收金额
+ * 批量修改代收金额（批量改代收）
+ * 场景：批量将订单标记为已改代收
  */
 router.put('/batch-update-cod', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -482,12 +488,13 @@ router.put('/batch-update-cod', authenticateToken, async (req: Request, res: Res
     const orderRepo = AppDataSource.getRepository(Order);
     const newCodAmount = Number(codAmount) || 0;
 
+    // 批量更新：修改代收金额并标记为已改代收
     await orderRepo.update(
       { id: In(orderIds) },
       {
         codAmount: newCodAmount,
-        codStatus: newCodAmount === 0 ? 'cancelled' : undefined,
-        codCancelledAt: newCodAmount === 0 ? new Date() : undefined,
+        codStatus: 'cancelled',
+        codCancelledAt: new Date(),
         codRemark: codRemark || undefined
       }
     );
@@ -501,6 +508,7 @@ router.put('/batch-update-cod', authenticateToken, async (req: Request, res: Res
 
 /**
  * 批量标记返款
+ * 场景：快递公司批量返款给商家
  */
 router.put('/batch-mark-returned', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -516,12 +524,13 @@ router.put('/batch-mark-returned', authenticateToken, async (req: Request, res: 
     const orders = await orderRepo.find({ where: { id: In(orderIds) } });
 
     for (const order of orders) {
-      // 代收金额逻辑：如果cod_amount有值则使用，否则使用 总额-定金
+      // 计算代收金额（用于返款金额）
       const calculatedCod = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
       const codAmount = (order.codAmount !== null && order.codAmount !== undefined && Number(order.codAmount) > 0)
         ? Number(order.codAmount)
         : calculatedCod;
 
+      // 标记返款（代收金额不变）
       order.codStatus = 'returned';
       order.codReturnedAmount = codAmount;
       order.codReturnedAt = new Date();
