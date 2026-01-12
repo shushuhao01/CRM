@@ -346,12 +346,10 @@
 
       <!-- 代收金额列 -->
       <template #column-collectAmount="{ row }">
-        <template v-if="row.codStatus === 'cancelled'">
-          <span class="cancelled-cod-text">已取消代收</span>
-        </template>
-        <template v-else>
+        <div class="cod-amount-cell">
           <span class="amount-text">¥{{ ((row.totalAmount || 0) - (row.depositAmount || 0)).toLocaleString() }}</span>
-        </template>
+          <span v-if="row.codStatus === 'cancelled'" class="cancelled-cod-tag">已取消代收</span>
+        </div>
       </template>
 
       <!-- 客服微信号列 -->
@@ -2640,9 +2638,17 @@ onUnmounted(() => {
   color: #e6a23c;
 }
 
-.cancelled-cod-text {
+.cancelled-cod-tag {
+  display: block;
   color: #909399;
-  font-size: 12px;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.cod-amount-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .deposit-text {
