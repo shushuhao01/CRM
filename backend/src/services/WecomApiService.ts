@@ -25,12 +25,12 @@ export class WecomApiService {
     }
 
     try {
-      console.log(`[WecomApi] Fetching new token for corpId: ${corpId}`);
+      console.log(`[WecomApi] Fetching new token for corpId: ${corpId}, secret: ${secret.substring(0, 10)}...`);
       const response = await axios.get(`${WECOM_API_BASE}/gettoken`, {
         params: { corpid: corpId, corpsecret: secret }
       });
 
-      console.log('[WecomApi] Token response:', response.data.errcode, response.data.errmsg);
+      console.log('[WecomApi] Token response:', JSON.stringify(response.data));
 
       if (response.data.errcode === 0) {
         const token = response.data.access_token;
@@ -39,7 +39,15 @@ export class WecomApiService {
         console.log('[WecomApi] Token cached successfully');
         return token;
       } else {
-        throw new Error(`获取AccessToken失败: ${response.data.errmsg} (errcode: ${response.data.errcode})`);
+        // 常见错误码说明
+        const errorHints: Record<number, string> = {
+          40001: 'secret无效，请检查是否复制正确',
+          40013: 'corpid无效，请检查企业ID是否正确',
+          40056: '不合法的agentid',
+          60020: '访问IP不在白名单，请在企微后台添加服务器IP到可信IP列表'
+        };
+        const hint = errorHints[response.data.errcode] || '';
+        throw new Error(`获取AccessToken失败: ${response.data.errmsg} (errcode: ${response.data.errcode})${hint ? ' - ' + hint : ''}`);
       }
     } catch (error: any) {
       console.error('[WecomApi] getAccessToken error:', error.message);
@@ -137,6 +145,8 @@ export class WecomApiService {
   static async getDepartmentUsers(accessToken: string, departmentId: number, fetchChild: boolean = false): Promise<any[]> {
     try {
       console.log(`[WecomApi] getDepartmentUsers: departmentId=${departmentId}, fetchChild=${fetchChild}`);
+      console.log(`[WecomApi] Using access_token: ${accessToken.substring(0, 20)}...`);
+
       const response = await axios.get(`${WECOM_API_BASE}/user/list`, {
         params: {
           access_token: accessToken,
@@ -145,14 +155,24 @@ export class WecomApiService {
         }
       });
 
-      console.log('[WecomApi] getDepartmentUsers response:', response.data.errcode, response.data.errmsg);
+      console.log('[WecomApi] getDepartmentUsers full response:', JSON.stringify(response.data));
 
       if (response.data.errcode === 0) {
         const users = response.data.userlist || [];
         console.log(`[WecomApi] Got ${users.length} users`);
         return users;
       } else {
-        throw new Error(`获取成员列表失败: ${response.data.errmsg} (errcode: ${response.data.errcode})`);
+        // 常见错误码说明
+        const errorHints: Record<number, string> = {
+          60020: '访问IP不在白名单，请在企微后台添加服务器IP到可信IP',
+          60011: '无权限访问，请检查通讯录Secret权限配置',
+          40014: 'access_token无效或过期',
+          40001: 'secret无效',
+          41001: '缺少access_token参数',
+          60028: '不允许修改第三方应用的成员'
+        };
+        const hint = errorHints[response.data.errcode] || '';
+        throw new Error(`获取成员列表失败: ${response.data.errmsg} (errcode: ${response.data.errcode})${hint ? ' - ' + hint : ''}`);
       }
     } catch (error: any) {
       console.error('[WecomApi] getDepartmentUsers error:', error.message);

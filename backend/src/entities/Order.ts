@@ -192,6 +192,25 @@ export class Order {
   @Column({ name: 'performance_updated_by', type: 'varchar', length: 50, nullable: true, comment: '绩效更新人ID' })
   performanceUpdatedBy?: string;
 
+  // 代收相关字段
+  @Column({ name: 'cod_amount', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '代收金额' })
+  codAmount?: number;
+
+  @Column({ name: 'cod_status', type: 'varchar', length: 20, default: 'pending', comment: '代收状态: pending-未返款, returned-已返款, cancelled-已取消代收' })
+  codStatus?: string;
+
+  @Column({ name: 'cod_returned_amount', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '已返款金额' })
+  codReturnedAmount?: number;
+
+  @Column({ name: 'cod_returned_at', type: 'datetime', nullable: true, comment: '返款时间' })
+  codReturnedAt?: Date;
+
+  @Column({ name: 'cod_cancelled_at', type: 'datetime', nullable: true, comment: '取消代收时间' })
+  codCancelledAt?: Date;
+
+  @Column({ name: 'cod_remark', type: 'varchar', length: 500, nullable: true, comment: '代收备注' })
+  codRemark?: string;
+
   @Column({ name: 'operator_id', type: 'varchar', length: 50, nullable: true, comment: '操作员ID' })
   operatorId?: string;
 
