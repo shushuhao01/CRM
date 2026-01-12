@@ -1933,7 +1933,9 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
         salesPersonId: order.createdBy || '',
         // 🔥 添加operatorId和operator字段，用于前端权限判断
         operatorId: order.createdBy || '',
-        operator: order.createdByName || ''
+        operator: order.createdByName || '',
+        // 🔥 添加代收状态字段
+        codStatus: order.codStatus || 'pending'
       };
     });
 
