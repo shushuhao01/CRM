@@ -298,7 +298,7 @@ router.get('/performance-manage/statistics', async (req: Request, res: Response)
     if (performanceCoefficient) queryBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
 
     // 🔥 修复：处理 NULL 值，将 NULL 视为 pending
-    const [pendingCount, processedCount, validCount, invalidCount, coefficientSum] = await Promise.all([
+    const [pendingCount, processedCount, validCount, invalidCount, totalCount, coefficientSum] = await Promise.all([
       // 待处理：performanceStatus = 'pending' 或 NULL
       queryBuilder.clone().andWhere('(order.performanceStatus = :ps OR order.performanceStatus IS NULL)', { ps: 'pending' }).getCount(),
       // 已处理：performanceStatus != 'pending' 且不为 NULL
@@ -307,6 +307,8 @@ router.get('/performance-manage/statistics', async (req: Request, res: Response)
       queryBuilder.clone().andWhere('order.performanceStatus = :ps', { ps: 'valid' }).getCount(),
       // 无效：performanceStatus = 'invalid'
       queryBuilder.clone().andWhere('order.performanceStatus = :ps', { ps: 'invalid' }).getCount(),
+      // 🔥 全部：所有已发货订单
+      queryBuilder.clone().getCount(),
       // 系数合计：只计算有效订单且系数>0的
       queryBuilder.clone()
         .andWhere('order.performanceStatus = :ps', { ps: 'valid' })
@@ -315,11 +317,11 @@ router.get('/performance-manage/statistics', async (req: Request, res: Response)
         .getRawOne()
     ]);
 
-    console.log(`[Finance] 绩效管理统计: 待处理=${pendingCount}, 已处理=${processedCount}, 有效=${validCount}, 无效=${invalidCount}, 系数合计=${coefficientSum?.total || 0}`);
+    console.log(`[Finance] 绩效管理统计: 待处理=${pendingCount}, 已处理=${processedCount}, 有效=${validCount}, 无效=${invalidCount}, 全部=${totalCount}, 系数合计=${coefficientSum?.total || 0}`);
 
     res.json({
       success: true,
-      data: { pendingCount, processedCount, validCount, invalidCount, coefficientSum: parseFloat(coefficientSum?.total || '0') }
+      data: { pendingCount, processedCount, validCount, invalidCount, totalCount, coefficientSum: parseFloat(coefficientSum?.total || '0') }
     });
   } catch (error: any) {
     console.error('[Finance] Get manage statistics failed:', error);

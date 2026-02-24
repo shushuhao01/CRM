@@ -771,7 +771,7 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
       queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
     }
 
-    // 🔥 快速筛选
+    // 🔥 快速筛选 - 使用下单时间(createdAt)
     if (quickFilter) {
       const now = new Date();
       switch (quickFilter) {
@@ -795,6 +795,20 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
         case 'thisMonth':
           const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
           queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+        case 'lastMonth':
+          // 上月订单：上个月1号00:00:00 到 上个月最后一天23:59:59
+          const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+          queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
+            lastMonthStart: lastMonthStart.toISOString().split('T')[0] + ' 00:00:00',
+            lastMonthEnd: lastMonthEnd.toISOString().split('T')[0] + ' 23:59:59'
+          });
+          break;
+        case 'thisYear':
+          // 今年订单：今年1月1号00:00:00 到现在
+          const startOfYear = new Date(now.getFullYear(), 0, 1);
+          queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
           break;
         case 'timeout':
           // 🔥 超时订单：待发货超过24小时的订单
@@ -1080,30 +1094,44 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
       console.log(`🚚 [已发货订单] 无日期筛选条件`);
     }
 
-    // 🔥 快速筛选
+    // 🔥 快速筛选 - 使用下单时间(createdAt)而非发货时间(shippedAt)
     if (quickFilter) {
       const now = new Date();
       switch (quickFilter) {
         case 'today':
           const today = now.toISOString().split('T')[0];
-          queryBuilder.andWhere('DATE(order.shippedAt) = :today', { today });
+          queryBuilder.andWhere('DATE(order.createdAt) = :today', { today });
           break;
         case 'yesterday':
           const yesterday = new Date(now);
           yesterday.setDate(yesterday.getDate() - 1);
           const yesterdayStr = yesterday.toISOString().split('T')[0];
-          queryBuilder.andWhere('DATE(order.shippedAt) = :yesterday', { yesterday: yesterdayStr });
+          queryBuilder.andWhere('DATE(order.createdAt) = :yesterday', { yesterday: yesterdayStr });
           break;
         case 'thisWeek':
           const dayOfWeek = now.getDay();
           const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
           const startOfWeek = new Date(now);
           startOfWeek.setDate(now.getDate() - diff);
-          queryBuilder.andWhere('order.shippedAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
+          queryBuilder.andWhere('order.createdAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
           break;
         case 'thisMonth':
           const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-          queryBuilder.andWhere('order.shippedAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+          queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+        case 'lastMonth':
+          // 上月订单：上个月1号00:00:00 到 上个月最后一天23:59:59
+          const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+          queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
+            lastMonthStart: lastMonthStart.toISOString().split('T')[0] + ' 00:00:00',
+            lastMonthEnd: lastMonthEnd.toISOString().split('T')[0] + ' 23:59:59'
+          });
+          break;
+        case 'thisYear':
+          // 今年订单：今年1月1号00:00:00 到现在
+          const startOfYear = new Date(now.getFullYear(), 0, 1);
+          queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
           break;
       }
     }
@@ -1228,12 +1256,12 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
 router.get('/shipping/returned', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
-    const { page = 1, pageSize = 10, orderNumber, customerName, keyword, startDate, endDate, departmentId, salesPersonId } = req.query;
+    const { page = 1, pageSize = 10, orderNumber, customerName, keyword, startDate, endDate, quickFilter, departmentId, salesPersonId } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 500);
     const skip = (pageNum - 1) * pageSizeNum;
 
-    // 🔥 优化：使用QueryBuilder只查询需要的字段（与待发货API保持一致）
+    // 🔥 优化:使用QueryBuilder只查询需要的字段(与待发货API保持一致)
     const queryBuilder = orderRepository.createQueryBuilder('order')
       .select([
         'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
@@ -1250,7 +1278,7 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
         statuses: ['logistics_returned', 'rejected_returned', 'audit_rejected']
       });
 
-    // 🔥 支持综合关键词搜索（订单号 OR 客户名称 OR 手机号 OR 客户编码）
+    // 🔥 支持综合关键词搜索(订单号 OR 客户名称 OR 手机号 OR 客户编码)
     if (keyword) {
       queryBuilder.andWhere(
         '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)',
@@ -1273,6 +1301,47 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
     if (salesPersonId) {
       queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     }
+
+    // 🔥 快速筛选 - 使用下单时间(createdAt)
+    if (quickFilter) {
+      const now = new Date();
+      switch (quickFilter) {
+        case 'today':
+          const today = now.toISOString().split('T')[0];
+          queryBuilder.andWhere('DATE(order.createdAt) = :today', { today });
+          break;
+        case 'yesterday':
+          const yesterday = new Date(now);
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().split('T')[0];
+          queryBuilder.andWhere('DATE(order.createdAt) = :yesterday', { yesterday: yesterdayStr });
+          break;
+        case 'thisWeek':
+          const dayOfWeek = now.getDay();
+          const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+          const startOfWeek = new Date(now);
+          startOfWeek.setDate(now.getDate() - diff);
+          queryBuilder.andWhere('order.createdAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+        case 'thisMonth':
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+        case 'lastMonth':
+          const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+          queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
+            lastMonthStart: lastMonthStart.toISOString().split('T')[0] + ' 00:00:00',
+            lastMonthEnd: lastMonthEnd.toISOString().split('T')[0] + ' 23:59:59'
+          });
+          break;
+        case 'thisYear':
+          const startOfYear = new Date(now.getFullYear(), 0, 1);
+          queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+      }
+    }
+
     // 🔥 日期范围筛选
     if (startDate) {
       queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
@@ -1377,12 +1446,12 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
 router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
-    const { page = 1, pageSize = 10, orderNumber, customerName, startDate, endDate, departmentId, salesPersonId } = req.query;
+    const { page = 1, pageSize = 10, orderNumber, customerName, keyword, startDate, endDate, quickFilter, departmentId, salesPersonId } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 500);
     const skip = (pageNum - 1) * pageSizeNum;
 
-    // 🔥 优化：使用QueryBuilder只查询需要的字段（与待发货API保持一致）
+    // 🔥 优化:使用QueryBuilder只查询需要的字段(与待发货API保持一致)
     const queryBuilder = orderRepository.createQueryBuilder('order')
       .select([
         'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
@@ -1399,11 +1468,19 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
         statuses: ['cancelled', 'logistics_cancelled']
       });
 
-    if (orderNumber) {
-      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
-    }
-    if (customerName) {
-      queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+    // 🔥 支持综合关键词搜索
+    if (keyword) {
+      queryBuilder.andWhere(
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)',
+        { keyword: `%${keyword}%` }
+      );
+    } else {
+      if (orderNumber) {
+        queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+      }
+      if (customerName) {
+        queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+      }
     }
     // 🔥 部门筛选
     if (departmentId) {
@@ -1413,6 +1490,47 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
     if (salesPersonId) {
       queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     }
+
+    // 🔥 快速筛选 - 使用下单时间(createdAt)
+    if (quickFilter) {
+      const now = new Date();
+      switch (quickFilter) {
+        case 'today':
+          const today = now.toISOString().split('T')[0];
+          queryBuilder.andWhere('DATE(order.createdAt) = :today', { today });
+          break;
+        case 'yesterday':
+          const yesterday = new Date(now);
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().split('T')[0];
+          queryBuilder.andWhere('DATE(order.createdAt) = :yesterday', { yesterday: yesterdayStr });
+          break;
+        case 'thisWeek':
+          const dayOfWeek = now.getDay();
+          const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+          const startOfWeek = new Date(now);
+          startOfWeek.setDate(now.getDate() - diff);
+          queryBuilder.andWhere('order.createdAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+        case 'thisMonth':
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+        case 'lastMonth':
+          const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+          queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
+            lastMonthStart: lastMonthStart.toISOString().split('T')[0] + ' 00:00:00',
+            lastMonthEnd: lastMonthEnd.toISOString().split('T')[0] + ' 23:59:59'
+          });
+          break;
+        case 'thisYear':
+          const startOfYear = new Date(now.getFullYear(), 0, 1);
+          queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+      }
+    }
+
     // 🔥 日期范围筛选
     if (startDate) {
       queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
@@ -1517,7 +1635,7 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
 router.get('/shipping/draft', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
-    const { page = 1, pageSize = 10, orderNumber, customerName } = req.query;
+    const { page = 1, pageSize = 10, orderNumber, customerName, keyword, startDate, endDate, quickFilter } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 500);
     const skip = (pageNum - 1) * pageSizeNum;
@@ -1525,11 +1643,67 @@ router.get('/shipping/draft', authenticateToken, async (req: Request, res: Respo
     const queryBuilder = orderRepository.createQueryBuilder('order')
       .where('order.status = :status', { status: 'draft' });
 
-    if (orderNumber) {
-      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+    // 🔥 支持综合关键词搜索
+    if (keyword) {
+      queryBuilder.andWhere(
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword)',
+        { keyword: `%${keyword}%` }
+      );
+    } else {
+      if (orderNumber) {
+        queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+      }
+      if (customerName) {
+        queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+      }
     }
-    if (customerName) {
-      queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+
+    // 🔥 快速筛选 - 使用下单时间(createdAt)
+    if (quickFilter) {
+      const now = new Date();
+      switch (quickFilter) {
+        case 'today':
+          const today = now.toISOString().split('T')[0];
+          queryBuilder.andWhere('DATE(order.createdAt) = :today', { today });
+          break;
+        case 'yesterday':
+          const yesterday = new Date(now);
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().split('T')[0];
+          queryBuilder.andWhere('DATE(order.createdAt) = :yesterday', { yesterday: yesterdayStr });
+          break;
+        case 'thisWeek':
+          const dayOfWeek = now.getDay();
+          const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+          const startOfWeek = new Date(now);
+          startOfWeek.setDate(now.getDate() - diff);
+          queryBuilder.andWhere('order.createdAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+        case 'thisMonth':
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+        case 'lastMonth':
+          const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+          queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
+            lastMonthStart: lastMonthStart.toISOString().split('T')[0] + ' 00:00:00',
+            lastMonthEnd: lastMonthEnd.toISOString().split('T')[0] + ' 23:59:59'
+          });
+          break;
+        case 'thisYear':
+          const startOfYear = new Date(now.getFullYear(), 0, 1);
+          queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+      }
+    }
+
+    // 🔥 日期范围筛选
+    if (startDate) {
+      queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+    }
+    if (endDate) {
+      queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
     }
 
     const total = await queryBuilder.getCount();

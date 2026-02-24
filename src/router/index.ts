@@ -540,7 +540,8 @@ const router = createRouter({
       component: () => import('../views/MobileSDKInstall.vue'),
       meta: { title: '移动SDK安装指南', requiresAuth: false }
     },
-    // 企微管理
+    // 🔥 企微管理（暂停开发，临时注释。恢复时取消注释即可）
+    /*
     {
       path: '/wecom/customer',
       name: 'WecomCustomer',
@@ -589,6 +590,7 @@ const router = createRouter({
       component: () => import('../views/Wecom/Sidebar.vue'),
       meta: { title: '侧边栏', requiresAuth: true, requiresAdmin: true }
     },
+    */
     // 公开帮助中心（无需登录）
     {
       path: '/public-help',
