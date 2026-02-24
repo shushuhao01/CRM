@@ -245,12 +245,12 @@ const getStatLabel = (type: 'today' | 'month') => {
   if (startDate.value && endDate.value) {
     // 用户选择了日期范围
     if (type === 'today') {
-      return '筛选范围代收'
+      return '订单金额'
     }
-    return '筛选范围总计'
+    return '需要代收'
   }
-  // 默认显示
-  return type === 'today' ? '今日代收' : '当月代收'
+  // 默认显示（当月）
+  return type === 'today' ? '订单金额' : '需要代收'
 }
 
 const getDateRange = (type: string): string[] => {
@@ -261,6 +261,8 @@ const getDateRange = (type: string): string[] => {
   if (type === 'month') return [formatDate(new Date(today.getFullYear(), today.getMonth(), 1)), formatDate(today)]
   if (type === 'lastMonth') return [formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 1)), formatDate(new Date(today.getFullYear(), today.getMonth(), 0))]
   if (type === 'year') return [formatDate(new Date(today.getFullYear(), 0, 1)), formatDate(today)]
+  // 🔥 修复：全部按钮返回一个很大的日期范围（5年前到今天）
+  if (type === 'all') return [formatDate(new Date(today.getFullYear() - 5, 0, 1)), formatDate(today)]
   return []
 }
 
