@@ -143,8 +143,20 @@
       <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link size="small" @click="showDetailDialog(row)">详情</el-button>
-          <el-button type="warning" link size="small" @click="showCodDialog(row)">改代收</el-button>
-          <el-button type="success" link size="small" @click="handleReturn(row)" :disabled="row.codStatus === 'returned'">返款</el-button>
+          <el-button
+            type="warning"
+            link
+            size="small"
+            @click="showCodDialog(row)"
+            :disabled="row.codStatus === 'returned' || (row.codStatus === 'cancelled' && row.codAmount === 0)"
+          >改代收</el-button>
+          <el-button
+            type="success"
+            link
+            size="small"
+            @click="handleReturn(row)"
+            :disabled="row.codStatus === 'returned' || row.codAmount === 0"
+          >返款</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -175,9 +187,22 @@
 
     <!-- 修改代收弹窗 -->
     <el-dialog v-model="codDialogVisible" :title="isBatchCod ? '批量修改代收' : '修改代收金额'" width="450px">
-      <el-form :model="codForm" label-width="100px">
-        <el-form-item label="代收金额">
-          <el-input-number v-model="codForm.codAmount" :min="0" :precision="2" :step="10" style="width: 100%" />
+      <el-form :model="codForm" label-width="120px">
+        <el-form-item label="原代收金额" v-if="!isBatchCod && currentOrder">
+          <span style="color: #e6a23c; font-weight: 600;">¥{{ formatMoney(currentOrder.codAmount) }}</span>
+        </el-form-item>
+        <el-form-item label="快递员代收金额">
+          <el-input-number
+            v-model="codForm.codAmount"
+            :min="0"
+            :max="isBatchCod ? undefined : (currentOrder?.codAmount || 0)"
+            :precision="2"
+            :step="10"
+            style="width: 100%"
+          />
+          <div style="font-size: 12px; color: #909399; margin-top: 4px;">
+            {{ isBatchCod ? '默认为0元，表示客户已直接付款' : '修改为0元表示客户已全部付款，修改后不能再改代收和返款' }}
+          </div>
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="codForm.codRemark" type="textarea" :rows="3" placeholder="请输入备注" />
@@ -303,11 +328,51 @@ const getCodStatusText = (r: CodOrder) => {
 const goToOrderDetail = (id: string) => router.push(`/order/detail/${id}`)
 const goToCustomerDetail = (id: string) => router.push(`/customer/detail/${id}`)
 const showDetailDialog = (r: CodOrder) => { currentOrder.value = r; detailDialogVisible.value = true }
-const showCodDialog = (r: CodOrder) => { currentOrder.value = r; isBatchCod.value = false; codForm.value = { codAmount: r.codAmount, codRemark: r.codRemark || '' }; codDialogVisible.value = true }
+const showCodDialog = (r: CodOrder) => {
+  currentOrder.value = r
+  isBatchCod.value = false
+  // 🔥 默认金额为0
+  codForm.value = { codAmount: 0, codRemark: r.codRemark || '' }
+  codDialogVisible.value = true
+}
 const showBatchCodDialog = () => { if (selectedRows.value.length === 0) { ElMessage.warning('请选择订单'); return }; isBatchCod.value = true; codForm.value = { codAmount: 0, codRemark: '' }; codDialogVisible.value = true }
 const showTrackingDialog = (r: CodOrder) => { currentTrackingNo.value = r.trackingNumber; currentCompany.value = r.expressCompany; currentPhone.value = r.customerPhone; trackingDialogVisible.value = true }
 
-const handleCodSubmit = async () => { submitting.value = true; try { if (isBatchCod.value) { await batchUpdateCodAmount({ orderIds: selectedRows.value.map(r => r.id), codAmount: codForm.value.codAmount, codRemark: codForm.value.codRemark }); ElMessage.success(`批量修改 ${selectedRows.value.length} 个订单成功`) } else if (currentOrder.value) { await updateCodAmount(currentOrder.value.id, { codAmount: codForm.value.codAmount, codRemark: codForm.value.codRemark }); ElMessage.success('修改成功') }; codDialogVisible.value = false; loadStats(); loadData() } catch (e: any) { ElMessage.error(e.message || '操作失败') } finally { submitting.value = false } }
+const handleCodSubmit = async () => {
+  submitting.value = true
+  try {
+    // 🔥 验证：修改的金额不能大于原代收金额
+    if (!isBatchCod.value && currentOrder.value) {
+      if (codForm.value.codAmount > currentOrder.value.codAmount) {
+        ElMessage.warning('修改的金额不能大于原代收金额')
+        submitting.value = false
+        return
+      }
+    }
+
+    if (isBatchCod.value) {
+      await batchUpdateCodAmount({
+        orderIds: selectedRows.value.map(r => r.id),
+        codAmount: codForm.value.codAmount,
+        codRemark: codForm.value.codRemark
+      })
+      ElMessage.success(`批量修改 ${selectedRows.value.length} 个订单成功`)
+    } else if (currentOrder.value) {
+      await updateCodAmount(currentOrder.value.id, {
+        codAmount: codForm.value.codAmount,
+        codRemark: codForm.value.codRemark
+      })
+      ElMessage.success('修改成功')
+    }
+    codDialogVisible.value = false
+    loadStats()
+    loadData()
+  } catch (e: any) {
+    ElMessage.error(e.message || '操作失败')
+  } finally {
+    submitting.value = false
+  }
+}
 const handleReturn = async (r: CodOrder) => { try { await ElMessageBox.confirm(`确定将订单 ${r.orderNumber} 标记为已返款吗？`, '确认', { type: 'warning' }); await markCodReturned(r.id, { returnedAmount: r.codAmount }); ElMessage.success('返款成功'); loadStats(); loadData() } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '失败') } }
 const handleBatchReturn = async () => { if (selectedRows.value.length === 0) { ElMessage.warning('请选择订单'); return }; try { await ElMessageBox.confirm(`确定将 ${selectedRows.value.length} 个订单标记为已返款吗？`, '批量返款', { type: 'warning' }); await batchMarkCodReturned({ orderIds: selectedRows.value.map(r => r.id) }); ElMessage.success(`批量标记 ${selectedRows.value.length} 个订单成功`); loadStats(); loadData() } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '失败') } }
 

@@ -362,6 +362,11 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
 /**
  * 修改代收金额（改代收）
  * 场景：客户直接付尾款给商家，不需要快递代收，修改代收金额
+ * 业务规则：
+ * 1. 如果已经标记返款，不能再改代收
+ * 2. 修改的金额不能大于原代收金额
+ * 3. 如果改为0元，则标记为已改代收状态（cancelled）
+ * 4. 如果改为大于0的金额，保持待处理状态（pending），可以继续修改
  */
 router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -375,13 +380,35 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
       return res.status(404).json({ success: false, message: '订单不存在' });
     }
 
-    // 更新代收金额
+    // 🔥 业务规则1：如果已经标记返款，不能再改代收
+    if (order.codStatus === 'returned') {
+      return res.status(400).json({ success: false, message: '订单已返款，不能修改代收金额' });
+    }
+
+    // 计算原代收金额
+    const calculatedCod = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
+    const originalCodAmount = (order.codAmount !== null && order.codAmount !== undefined && Number(order.codAmount) > 0)
+      ? Number(order.codAmount)
+      : calculatedCod;
+
+    // 🔥 业务规则2：修改的金额不能大于原代收金额
     const newCodAmount = Number(codAmount) || 0;
+    if (newCodAmount > originalCodAmount) {
+      return res.status(400).json({ success: false, message: '修改的金额不能大于原代收金额' });
+    }
+
+    // 更新代收金额
     order.codAmount = newCodAmount;
 
-    // 标记为已改代收状态
-    order.codStatus = 'cancelled';
-    order.codCancelledAt = new Date();
+    // 🔥 业务规则3和4：根据新金额决定状态
+    if (newCodAmount === 0) {
+      // 改为0元，标记为已改代收状态（不能再修改）
+      order.codStatus = 'cancelled';
+      order.codCancelledAt = new Date();
+    } else {
+      // 改为大于0的金额，保持待处理状态（可以继续修改）
+      order.codStatus = 'pending';
+    }
 
     if (codRemark !== undefined) {
       order.codRemark = codRemark;
@@ -400,6 +427,9 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
  * 标记返款
  * 场景：快递公司代收货款后，把钱返还给商家
  * 代收金额不变，只记录返款金额
+ * 业务规则：
+ * 1. 如果代收金额为0，不能标记返款
+ * 2. 如果已经标记返款，不能重复标记
  */
 router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -418,6 +448,16 @@ router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Re
     const defaultCodAmount = (order.codAmount !== null && order.codAmount !== undefined && Number(order.codAmount) > 0)
       ? Number(order.codAmount)
       : calculatedCod;
+
+    // 🔥 业务规则1：如果代收金额为0，不能标记返款
+    if (defaultCodAmount === 0) {
+      return res.status(400).json({ success: false, message: '代收金额为0，无需标记返款' });
+    }
+
+    // 🔥 业务规则2：如果已经标记返款，不能重复标记
+    if (order.codStatus === 'returned') {
+      return res.status(400).json({ success: false, message: '订单已返款，不能重复标记' });
+    }
 
     // 更新返款信息（代收金额不变）
     order.codStatus = 'returned';
