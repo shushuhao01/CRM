@@ -8,14 +8,14 @@ import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 import { User } from '../entities/User';
 import { Department } from '../entities/Department';
-import { Between, In, Not } from 'typeorm';
+import { Between, In } from 'typeorm';
 
 const router = Router();
 
-// 排除的订单状态（不计入代收统计）
-const EXCLUDED_STATUSES = ['rejected', 'logistics_returned', 'exception', 'cancelled'];
+// 有效订单状态（计入代收统计的订单）- 只统计已发货且有效的订单
+const VALID_STATUSES = ['shipped', 'delivered', 'completed'];
 
-// 已发货的订单状态（出现在代收列表中）
+// 已发货的订单状态（出现在代收列表中）- 包含所有已发货状态，用于列表展示
 const SHIPPED_STATUSES = ['shipped', 'delivered', 'completed', 'rejected', 'logistics_returned', 'exception'];
 
 /**
@@ -54,8 +54,8 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     const userStartDate = startDate ? new Date(startDate as string) : null;
     const userEndDate = endDate ? new Date(endDate as string + ' 23:59:59') : null;
 
-    // 🔥 修改1：订单金额统计（筛选范围内的订单总金额，排除异常状态）
-    const orderAmountWhere = { ...baseWhere, status: Not(In(EXCLUDED_STATUSES)) };
+    // 🔥 修改1：订单金额统计（筛选范围内的有效订单总金额，只统计已发货且有效的订单）
+    const orderAmountWhere = { ...baseWhere, status: In(VALID_STATUSES) };
     if (userStartDate && userEndDate) {
       orderAmountWhere.createdAt = Between(userStartDate, userEndDate);
     } else {
@@ -69,8 +69,8 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       return sum + (Number(o.finalAmount) || Number(o.totalAmount) || 0);
     }, 0);
 
-    // 🔥 修改2：需要代收金额统计（筛选范围内需要代收的金额，排除异常状态）
-    const needCodWhere = { ...baseWhere, status: Not(In(EXCLUDED_STATUSES)) };
+    // 🔥 修改2：需要代收金额统计（筛选范围内需要代收的金额，只统计有效订单）
+    const needCodWhere = { ...baseWhere, status: In(VALID_STATUSES) };
     if (userStartDate && userEndDate) {
       needCodWhere.createdAt = Between(userStartDate, userEndDate);
     } else {
@@ -88,8 +88,8 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       return sum + codAmount;
     }, 0);
 
-    // 已改代收金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月）
-    const cancelledWhere = { ...baseWhere, codStatus: 'cancelled' };
+    // 已改代收金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月，只统计有效订单）
+    const cancelledWhere = { ...baseWhere, codStatus: 'cancelled', status: In(VALID_STATUSES) };
     if (userStartDate && userEndDate) {
       cancelledWhere.createdAt = Between(userStartDate, userEndDate);
     } else {
@@ -107,8 +107,8 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       return sum + codAmount;
     }, 0);
 
-    // 已返款金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月）
-    const returnedWhere = { ...baseWhere, codStatus: 'returned' };
+    // 已返款金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月，只统计有效订单）
+    const returnedWhere = { ...baseWhere, codStatus: 'returned', status: In(VALID_STATUSES) };
     if (userStartDate && userEndDate) {
       returnedWhere.createdAt = Between(userStartDate, userEndDate);
     } else {
@@ -120,8 +120,8 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     });
     const totalReturnedCod = returnedOrders.reduce((sum, o) => sum + Number(o.codReturnedAmount || 0), 0);
 
-    // 未返款金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月）
-    const pendingWhere = { ...baseWhere, codStatus: 'pending', status: Not(In(EXCLUDED_STATUSES)) };
+    // 未返款金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月，只统计有效订单）
+    const pendingWhere = { ...baseWhere, codStatus: 'pending', status: In(VALID_STATUSES) };
     if (userStartDate && userEndDate) {
       pendingWhere.createdAt = Between(userStartDate, userEndDate);
     } else {
