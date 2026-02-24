@@ -42,7 +42,6 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     }
 
     // 🔥 修复：根据用户选择的日期范围计算统计数据
-    // 如果用户选择了日期范围，使用用户选择的范围；否则使用今日和当月
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
@@ -52,40 +51,36 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
 
     // 用户选择的日期范围（如果有）
-    let userStartDate = startDate ? new Date(startDate as string) : null;
-    let userEndDate = endDate ? new Date(endDate as string + ' 23:59:59') : null;
+    const userStartDate = startDate ? new Date(startDate as string) : null;
+    const userEndDate = endDate ? new Date(endDate as string + ' 23:59:59') : null;
 
-    // 今日代收（如果用户选择了日期范围，则计算该范围内的代收；否则计算今日）
-    const todayWhere = { ...baseWhere, status: Not(In(EXCLUDED_STATUSES)) };
+    // 🔥 修改1：订单金额统计（筛选范围内的订单总金额，排除异常状态）
+    const orderAmountWhere = { ...baseWhere, status: Not(In(EXCLUDED_STATUSES)) };
     if (userStartDate && userEndDate) {
-      todayWhere.createdAt = Between(userStartDate, userEndDate);
+      orderAmountWhere.createdAt = Between(userStartDate, userEndDate);
     } else {
-      todayWhere.createdAt = Between(today, todayEnd);
+      orderAmountWhere.createdAt = Between(monthStart, monthEnd);
     }
-    const todayOrders = await orderRepo.find({
-      where: todayWhere,
-      select: ['codAmount', 'totalAmount', 'depositAmount']
+    const orderAmountOrders = await orderRepo.find({
+      where: orderAmountWhere,
+      select: ['totalAmount', 'finalAmount']
     });
-    const todayCod = todayOrders.reduce((sum, o) => {
-      const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
-      const codAmount = (o.codAmount !== null && o.codAmount !== undefined && Number(o.codAmount) > 0)
-        ? Number(o.codAmount)
-        : calculatedCod;
-      return sum + codAmount;
+    const totalOrderAmount = orderAmountOrders.reduce((sum, o) => {
+      return sum + (Number(o.finalAmount) || Number(o.totalAmount) || 0);
     }, 0);
 
-    // 当月代收（如果用户选择了日期范围，则计算该范围内的代收；否则计算当月）
-    const monthWhere = { ...baseWhere, status: Not(In(EXCLUDED_STATUSES)) };
+    // 🔥 修改2：需要代收金额统计（筛选范围内需要代收的金额，排除异常状态）
+    const needCodWhere = { ...baseWhere, status: Not(In(EXCLUDED_STATUSES)) };
     if (userStartDate && userEndDate) {
-      monthWhere.createdAt = Between(userStartDate, userEndDate);
+      needCodWhere.createdAt = Between(userStartDate, userEndDate);
     } else {
-      monthWhere.createdAt = Between(monthStart, monthEnd);
+      needCodWhere.createdAt = Between(monthStart, monthEnd);
     }
-    const monthOrders = await orderRepo.find({
-      where: monthWhere,
+    const needCodOrders = await orderRepo.find({
+      where: needCodWhere,
       select: ['codAmount', 'totalAmount', 'depositAmount']
     });
-    const monthCod = monthOrders.reduce((sum, o) => {
+    const totalNeedCod = needCodOrders.reduce((sum, o) => {
       const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
       const codAmount = (o.codAmount !== null && o.codAmount !== undefined && Number(o.codAmount) > 0)
         ? Number(o.codAmount)
@@ -104,7 +99,7 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       where: cancelledWhere,
       select: ['codAmount', 'totalAmount', 'depositAmount']
     });
-    const cancelledCod = cancelledOrders.reduce((sum, o) => {
+    const totalCancelledCod = cancelledOrders.reduce((sum, o) => {
       const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
       const codAmount = (o.codAmount !== null && o.codAmount !== undefined && Number(o.codAmount) > 0)
         ? Number(o.codAmount)
@@ -123,7 +118,7 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       where: returnedWhere,
       select: ['codReturnedAmount']
     });
-    const returnedCod = returnedOrders.reduce((sum, o) => sum + Number(o.codReturnedAmount || 0), 0);
+    const totalReturnedCod = returnedOrders.reduce((sum, o) => sum + Number(o.codReturnedAmount || 0), 0);
 
     // 未返款金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月）
     const pendingWhere = { ...baseWhere, codStatus: 'pending', status: Not(In(EXCLUDED_STATUSES)) };
@@ -136,7 +131,7 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       where: pendingWhere,
       select: ['codAmount', 'totalAmount', 'depositAmount']
     });
-    const pendingCod = pendingOrders.reduce((sum, o) => {
+    const totalPendingCod = pendingOrders.reduce((sum, o) => {
       const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
       const codAmount = (o.codAmount !== null && o.codAmount !== undefined && Number(o.codAmount) > 0)
         ? Number(o.codAmount)
@@ -147,11 +142,11 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
-        todayCod: Number(todayCod.toFixed(2)),
-        monthCod: Number(monthCod.toFixed(2)),
-        cancelledCod: Number(cancelledCod.toFixed(2)),
-        returnedCod: Number(returnedCod.toFixed(2)),
-        pendingCod: Number(pendingCod.toFixed(2))
+        todayCod: Number(totalOrderAmount.toFixed(2)),  // 🔥 改为订单金额
+        monthCod: Number(totalNeedCod.toFixed(2)),      // 🔥 改为需要代收金额
+        cancelledCod: Number(totalCancelledCod.toFixed(2)),
+        returnedCod: Number(totalReturnedCod.toFixed(2)),
+        pendingCod: Number(totalPendingCod.toFixed(2))
       }
     });
   } catch (error: any) {
