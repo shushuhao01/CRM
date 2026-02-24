@@ -325,7 +325,7 @@
         <!-- 健康信息 -->
         <div class="form-section">
           <h3 class="section-title">健康信息</h3>
-          <el-form-item label="疾病史" prop="medicalHistory" required>
+          <el-form-item label="疾病史" prop="medicalHistory">
             <el-input
               v-model="customerForm.medicalHistory"
               type="textarea"
@@ -334,7 +334,7 @@
             />
           </el-form-item>
 
-          <el-form-item label="改善问题" prop="improvementGoals" required>
+          <el-form-item label="改善问题" prop="improvementGoals">
             <div class="improvement-goals-section">
               <el-checkbox-group v-model="customerForm.improvementGoals" class="improvement-goals-group">
                 <el-checkbox
@@ -364,7 +364,6 @@
             label="其他改善目标"
             prop="otherGoals"
             v-if="customerForm.improvementGoals.includes('其他')"
-            required
           >
             <el-row :gutter="20">
               <el-col :span="24">
@@ -901,8 +900,8 @@ const formRules: FormRules = {
   status: [
     { required: true, message: '请选择客户状态', trigger: 'change' }
   ],
-  // medicalHistory 改为可选
   medicalHistory: [
+    { required: true, message: '请输入疾病史', trigger: 'blur' },
     { max: 500, message: '疾病史长度不能超过500个字符', trigger: 'blur' }
   ],
   salesPerson: [

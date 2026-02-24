@@ -92,10 +92,12 @@
           <el-tab-pane name="pending" label="待处理" />
           <el-tab-pane name="returned" label="已返款" />
           <el-tab-pane name="cancelled" label="已改代收" />
+          <el-tab-pane name="all" label="全部" />
         </el-tabs>
       </div>
       <div class="action-right">
         <el-button type="primary" :icon="Refresh" @click="handleRefresh">刷新</el-button>
+        <el-button :icon="Download" :disabled="selectedRows.length === 0" @click="handleExport">批量导出</el-button>
         <el-button :icon="Edit" :disabled="selectedRows.length === 0" @click="showBatchCodDialog">批量改代收</el-button>
         <el-button type="success" :icon="Check" :disabled="selectedRows.length === 0" @click="handleBatchReturn">批量改返款</el-button>
       </div>
@@ -196,7 +198,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Edit, Check, Coin, Calendar, CircleClose, CircleCheck, Clock } from '@element-plus/icons-vue'
+import { Search, Refresh, Edit, Check, Coin, Calendar, CircleClose, CircleCheck, Clock, Download } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/date'
 import TrackingDialog from '@/components/Logistics/TrackingDialog.vue'
 import { getCodStats, getCodList, updateCodAmount, markCodReturned, batchUpdateCodAmount, batchMarkCodReturned, getCodDepartments, getCodSalesUsers, type CodOrder, type CodStats } from '@/api/codCollection'
@@ -212,7 +214,7 @@ const endDate = ref('')
 const departmentFilter = ref('')
 const salesPersonFilter = ref('')
 const orderStatusFilter = ref('')
-const activeTab = ref<'pending' | 'returned' | 'cancelled'>('pending')
+const activeTab = ref<'pending' | 'returned' | 'cancelled' | 'all'>('pending')
 const batchSearchVisible = ref(false)
 const batchSearchKeywords = ref('')
 const searchKeyword = ref('')
@@ -280,6 +282,63 @@ const showTrackingDialog = (r: CodOrder) => { currentTrackingNo.value = r.tracki
 const handleCodSubmit = async () => { submitting.value = true; try { if (isBatchCod.value) { await batchUpdateCodAmount({ orderIds: selectedRows.value.map(r => r.id), codAmount: codForm.value.codAmount, codRemark: codForm.value.codRemark }); ElMessage.success(`批量修改 ${selectedRows.value.length} 个订单成功`) } else if (currentOrder.value) { await updateCodAmount(currentOrder.value.id, { codAmount: codForm.value.codAmount, codRemark: codForm.value.codRemark }); ElMessage.success('修改成功') }; codDialogVisible.value = false; loadStats(); loadData() } catch (e: any) { ElMessage.error(e.message || '操作失败') } finally { submitting.value = false } }
 const handleReturn = async (r: CodOrder) => { try { await ElMessageBox.confirm(`确定将订单 ${r.orderNumber} 标记为已返款吗？`, '确认', { type: 'warning' }); await markCodReturned(r.id, { returnedAmount: r.codAmount }); ElMessage.success('返款成功'); loadStats(); loadData() } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '失败') } }
 const handleBatchReturn = async () => { if (selectedRows.value.length === 0) { ElMessage.warning('请选择订单'); return }; try { await ElMessageBox.confirm(`确定将 ${selectedRows.value.length} 个订单标记为已返款吗？`, '批量返款', { type: 'warning' }); await batchMarkCodReturned({ orderIds: selectedRows.value.map(r => r.id) }); ElMessage.success(`批量标记 ${selectedRows.value.length} 个订单成功`); loadStats(); loadData() } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '失败') } }
+
+const handleExport = async () => {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先选择要导出的数据')
+    return
+  }
+
+  try {
+    const XLSX = await import('xlsx')
+
+    // 准备导出数据
+    const exportData = selectedRows.value.map((row) => ({
+      订单号: row.orderNumber,
+      客户姓名: row.customerName,
+      订单状态: getOrderStatusText(row.status),
+      订单金额: Number(row.finalAmount || 0),
+      代收金额: Number(row.codAmount || 0),
+      代收状态: getCodStatusText(row),
+      销售人员: row.salesPersonName || '',
+      物流单号: row.trackingNumber || '',
+      最新物流动态: row.latestLogisticsInfo || '',
+      下单时间: row.createdAt || ''
+    }))
+
+    // 创建工作簿
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(exportData)
+
+    // 设置列宽
+    ws['!cols'] = [
+      { wch: 20 }, // 订单号
+      { wch: 12 }, // 客户姓名
+      { wch: 10 }, // 订单状态
+      { wch: 12 }, // 订单金额
+      { wch: 12 }, // 代收金额
+      { wch: 10 }, // 代收状态
+      { wch: 10 }, // 销售人员
+      { wch: 20 }, // 物流单号
+      { wch: 40 }, // 最新物流动态
+      { wch: 20 }  // 下单时间
+    ]
+
+    XLSX.utils.book_append_sheet(wb, ws, '代收管理')
+
+    // 生成文件名
+    const now = new Date()
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
+    const fileName = `代收管理_${dateStr}.xlsx`
+
+    // 导出
+    XLSX.writeFile(wb, fileName)
+    ElMessage.success(`成功导出 ${exportData.length} 条数据`)
+  } catch (e) {
+    console.error('导出失败:', e)
+    ElMessage.error('导出失败')
+  }
+}
 
 onMounted(() => { const range = getDateRange('month'); startDate.value = range[0] || ''; endDate.value = range[1] || ''; loadDepartments(); loadSalesUsers(); loadStats(); loadData() })
 </script>

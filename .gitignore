@@ -91,3 +91,6 @@ out/
 
 # APP项目（独立仓库管理）
 crmAPP/
+
+# Kiro AI 临时笔记（不需要版本控制）
+docs/kiro-session-notes/

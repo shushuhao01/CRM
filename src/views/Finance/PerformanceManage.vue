@@ -114,7 +114,7 @@
       </el-select>
     </div>
 
-    <!-- 操作栏：左侧标签页 + 右侧操作按钮 -->
+    <!-- 操作栏:左侧标签页 + 右侧操作按钮 -->
     <div class="action-bar">
       <div class="action-left">
         <el-tabs v-model="activeStatusTab" @tab-change="handleStatusTabChange" class="status-tabs">
@@ -131,6 +131,11 @@
           <el-tab-pane name="invalid">
             <template #label>
               <span>无效 <el-badge :value="statistics.invalidCount || 0" :max="999" type="info" class="tab-badge tab-badge-muted" /></span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane name="all">
+            <template #label>
+              <span>全部 <el-badge :value="statistics.totalCount || 0" :max="999" type="info" class="tab-badge tab-badge-muted" /></span>
             </template>
           </el-tab-pane>
         </el-tabs>
@@ -329,6 +334,7 @@ const statistics = reactive<PerformanceManageStatistics>({
   processedCount: 0,
   validCount: 0,
   invalidCount: 0,
+  totalCount: 0,
   coefficientSum: 0
 })
 
@@ -553,7 +559,8 @@ const handleRefresh = () => {
 // 状态标签页切换
 const handleStatusTabChange = (tabName: string) => {
   activeStatusTab.value = tabName
-  statusFilter.value = tabName // 同步到筛选条件
+  // 🔥 如果选择"全部"标签页,不传递performanceStatus参数
+  statusFilter.value = tabName === 'all' ? '' : tabName
   pagination.currentPage = 1
   loadData()
 }

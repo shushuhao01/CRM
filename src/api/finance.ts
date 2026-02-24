@@ -16,6 +16,7 @@ export interface PerformanceManageStatistics {
   processedCount: number
   validCount: number
   invalidCount: number
+  totalCount: number
   coefficientSum: number
 }
 

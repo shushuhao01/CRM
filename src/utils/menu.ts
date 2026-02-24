@@ -104,6 +104,12 @@ export function filterMenuItems(
     console.log(`[filterMenuItems] 菜单项角色要求:`, item.roles)
     console.log(`[filterMenuItems] 菜单项权限要求:`, item.permissions)
 
+    // 🔥 跳过隐藏的菜单项
+    if (item.hidden) {
+      console.log(`[filterMenuItems] 菜单项已隐藏，跳过: ${item.title}`)
+      continue
+    }
+
     // 检查当前菜单项权限
     const hasPermission = hasMenuPermission(item, userRole, userPermissions)
     console.log(`[filterMenuItems] 权限检查结果: ${hasPermission}`)
@@ -162,10 +168,16 @@ export function getUserAccessibleMenus(menuItems: MenuItem[]): MenuItem[] {
   console.log('[getUserAccessibleMenus] 用户角色:', userRole)
   console.log('[getUserAccessibleMenus] 用户权限列表:', userPermissions)
 
-  // 超级管理员和管理员拥有所有权限
+  // 超级管理员和管理员拥有所有权限，但仍需过滤隐藏的菜单项
   if (userRole === 'super_admin' || userRole === 'admin' || userPermissions.includes('*')) {
-    console.log('[getUserAccessibleMenus] 超级管理员或管理员，返回所有菜单')
-    return menuItems
+    console.log('[getUserAccessibleMenus] 超级管理员或管理员，返回所有菜单（排除隐藏项）')
+    // 🔥 过滤掉 hidden: true 的菜单项
+    return menuItems.filter(item => !item.hidden).map(item => {
+      if (item.children) {
+        return { ...item, children: item.children.filter(child => !child.hidden) }
+      }
+      return item
+    })
   }
 
   console.log('[getUserAccessibleMenus] 普通用户，开始过滤菜单')

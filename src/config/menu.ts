@@ -353,6 +353,7 @@ export const menuConfig: MenuItem[] = [
     id: 'wecom',
     title: '企微管理',
     icon: 'ChatLineSquare',
+    hidden: true, // 🔥 暂停开发，临时隐藏企微管理模块
     roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
     permissions: ['wecom'],
     children: [

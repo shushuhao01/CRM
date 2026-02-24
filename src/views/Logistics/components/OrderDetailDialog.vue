@@ -2,177 +2,158 @@
   <el-dialog
     v-model="dialogVisible"
     title="订单详情"
-    width="70%"
+    width="720px"
     :before-close="handleClose"
     class="order-detail-dialog"
-    top="5vh"
+    top="8vh"
   >
     <div v-if="order" class="order-detail-content">
-      <!-- 基本信息和客户信息合并 -->
-      <div class="detail-section">
-        <h3 class="section-title">
+      <!-- 订单基本信息 -->
+      <div class="section-card">
+        <div class="section-title">
           <el-icon><Document /></el-icon>
-          订单基本信息
-        </h3>
-        <div class="info-grid compact">
-          <div class="info-item">
-            <label>订单号：</label>
-            <span class="value">{{ order.orderNo || order.orderNumber || '-' }}</span>
-          </div>
-          <div class="info-item">
-            <label>订单状态：</label>
-            <el-tag :style="getOrderStatusStyle(order.status)" size="small" effect="plain">
-              {{ getUnifiedStatusText(order.status) }}
-            </el-tag>
-          </div>
-          <div class="info-item">
-            <label>客户姓名：</label>
-            <span class="value">{{ order.customerName || '-' }}</span>
-          </div>
-          <div class="info-item">
-            <label>联系电话：</label>
-            <span class="value">{{ displaySensitiveInfoNew(order.phone || order.customerPhone || order.receiverPhone, 'phone') }}</span>
-          </div>
-          <div class="info-item">
-            <label>下单日期：</label>
-            <span class="value">{{ order.createTime || order.orderDate || order.shippingTime || '-' }}</span>
-          </div>
-          <div class="info-item">
-            <label>归属人：</label>
-            <span class="value">{{ order.assignedToName || order.createdByName || order.salesPersonName || order.assignedTo || order.createdBy || '-' }}</span>
-          </div>
-          <div class="info-item">
-            <label>客服微信号：</label>
-            <span class="value">{{ order.serviceWechat || '-' }}</span>
-          </div>
-          <div class="info-item">
-            <label>订单来源：</label>
-            <span class="value">{{ getOrderSourceText(order.orderSource) }}</span>
-          </div>
-          <div class="info-item highlight-red">
-            <label>指定快递：</label>
-            <span class="value express-highlight">{{ getExpressCompanyName(order.expressCompany) || '-' }}</span>
-          </div>
-          <div class="info-item full-width">
-            <label>收货地址：</label>
-            <span class="value">{{ order.address || order.receiverAddress || '-' }}</span>
-          </div>
-          <div class="info-item full-width">
-            <label>备注：</label>
-            <span class="value">{{ order.remark || '-' }}</span>
-          </div>
-          <!-- 自定义字段显示 -->
-          <template v-for="field in fieldConfigStore.customFields" :key="field.fieldKey">
-            <div class="info-item" v-if="order.customFields && order.customFields[field.fieldKey]">
-              <label>{{ field.fieldName }}：</label>
-              <span class="value">{{ order.customFields[field.fieldKey] }}</span>
+          <span>订单基本信息</span>
+        </div>
+        <div class="section-body">
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">订单号：</span>
+              <span class="info-value">{{ getOrderNo() }}</span>
             </div>
-          </template>
+            <div class="info-item">
+              <span class="info-label">订单状态：</span>
+              <el-tag :style="getOrderStatusStyle(order.status)" size="small" effect="plain">
+                {{ getUnifiedStatusText(order.status) }}
+              </el-tag>
+            </div>
+            <div class="info-item">
+              <span class="info-label">客户姓名：</span>
+              <span class="info-value">{{ order.customerName || '-' }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">联系电话：</span>
+              <span class="info-value phone">{{ getPhone() }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">下单日期：</span>
+              <span class="info-value">{{ getOrderDate() }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">归属人：</span>
+              <span class="info-value">{{ getAssignedTo() }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">客服微信号：</span>
+              <span class="info-value">{{ getServiceWechat() }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">订单来源：</span>
+              <span class="info-value">{{ getOrderSourceText() }}</span>
+            </div>
+            <div class="info-item full-width">
+              <span class="info-label">收货地址：</span>
+              <span class="info-value address">{{ getReceiverAddress() }}</span>
+            </div>
+            <div class="info-item" v-if="getDesignatedExpress() !== '-'">
+              <span class="info-label">指定快递：</span>
+              <span class="info-value express-highlight">{{ getDesignatedExpress() }}</span>
+            </div>
+            <div class="info-item" v-if="order.treatmentStandard">
+              <span class="info-label">调理标准：</span>
+              <span class="info-value">{{ order.treatmentStandard }}</span>
+            </div>
+            <div class="info-item" v-if="order.usageDays">
+              <span class="info-label">用药天数：</span>
+              <span class="info-value">{{ order.usageDays }} 天</span>
+            </div>
+            <div class="info-item" v-if="order.auxiliaryCount">
+              <span class="info-label">辅导行数：</span>
+              <span class="info-value">{{ order.auxiliaryCount }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- 物流信息 -->
-      <div class="detail-section compact-section">
-        <h3 class="section-title small">
+      <div class="section-card" v-if="hasLogisticsInfo()">
+        <div class="section-title">
           <el-icon><Van /></el-icon>
-          物流信息
-        </h3>
-        <div class="info-grid compact">
-          <div class="info-item">
-            <label>快递单号：</label>
-            <span class="value">{{ order.expressNo || order.trackingNumber || order.trackingNo || '-' }}</span>
-          </div>
-          <div class="info-item">
-            <label>快递公司：</label>
-            <span class="value">{{ getExpressCompanyName(order.expressCompany) || order.logisticsCompany || '-' }}</span>
-          </div>
-          <div class="info-item full-width">
-            <label>最新动态：</label>
-            <span class="value">{{ order.latestUpdate || order.logisticsStatus || '-' }}</span>
+          <span>物流信息</span>
+        </div>
+        <div class="section-body">
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">快递单号：</span>
+              <span class="info-value tracking-no">{{ getTrackingNo() }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">快递公司：</span>
+              <span class="info-value">{{ getExpressCompanyDisplay() }}</span>
+            </div>
+            <div class="info-item full-width" v-if="order.latestUpdate || order.latestLogistics">
+              <span class="info-label">最新动态：</span>
+              <span class="info-value logistics-update">{{ order.latestUpdate || order.latestLogistics }}</span>
+            </div>
           </div>
         </div>
       </div>
 
       <!-- 商品信息 -->
-      <div class="detail-section">
-        <h3 class="section-title">
+      <div class="section-card">
+        <div class="section-title">
           <el-icon><Box /></el-icon>
-          商品信息
-        </h3>
-        <div class="info-grid compact">
-          <div class="info-item">
-            <label>商品名称：</label>
-            <span class="value">{{ order.productsText || order.productName || getProductsText(order.products) || '-' }}</span>
-          </div>
-          <div class="info-item">
-            <label>数量：</label>
-            <span class="value">{{ order.totalQuantity || order.quantity || getProductsQuantity(order.products) || 0 }}</span>
+          <span>商品信息</span>
+        </div>
+        <div class="section-body">
+          <div class="info-grid">
+            <div class="info-item" style="grid-column: span 2;">
+              <span class="info-label">商品名称：</span>
+              <span class="info-value product-name">{{ getProductName() }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">数量：</span>
+              <span class="info-value">{{ getProductQuantity() }}</span>
+            </div>
           </div>
         </div>
       </div>
 
       <!-- 金额信息 -->
-      <div class="detail-section compact-section">
-        <h3 class="section-title small">
+      <div class="section-card">
+        <div class="section-title">
           <el-icon><Money /></el-icon>
-          金额信息
-        </h3>
-        <div class="amount-summary compact">
-          <div class="amount-row">
+          <span>金额信息</span>
+        </div>
+        <div class="section-body">
+          <div class="amount-grid">
             <div class="amount-item">
-              <label>订单金额：</label>
-              <span class="value total">¥{{ formatNumber(order.totalAmount || order.amount) }}</span>
+              <span class="amount-label">订单金额</span>
+              <span class="amount-value main">¥{{ formatNumber(order.totalAmount || order.amount) }}</span>
             </div>
-            <div class="amount-item" v-if="order.deposit || order.depositAmount">
-              <label>定金：</label>
-              <span class="value">¥{{ formatNumber(order.deposit || order.depositAmount) }}</span>
+            <div class="amount-item">
+              <span class="amount-label">定金</span>
+              <span class="amount-value">¥{{ formatNumber(order.deposit || order.depositAmount || 0) }}</span>
             </div>
-            <div class="amount-item" v-if="order.codAmount || order.collectAmount">
-              <label>代收金额：</label>
-              <span class="value highlight">¥{{ formatNumber(order.codAmount || order.collectAmount) }}</span>
+            <div class="amount-item">
+              <span class="amount-label">代收金额</span>
+              <span class="amount-value cod">¥{{ formatNumber(order.codAmount || order.collectAmount || 0) }}</span>
             </div>
-            <div class="amount-item" v-if="order.paymentMethod">
-              <label>支付方式：</label>
-              <span class="value">{{ getPaymentMethodText(order.paymentMethod) }}</span>
+            <div class="amount-item">
+              <span class="amount-label">支付方式</span>
+              <span class="amount-value">{{ getPaymentMethodText(order.paymentMethod) }}</span>
             </div>
           </div>
         </div>
       </div>
 
       <!-- 订单备注 -->
-      <div class="detail-section" v-if="order.remark">
-        <h3 class="section-title">
+      <div class="section-card" v-if="order.remark">
+        <div class="section-title">
           <el-icon><ChatDotRound /></el-icon>
-          订单备注
-        </h3>
-        <div class="remark-content">
-          <p v-html="highlightKeywords(order.remark)"></p>
+          <span>订单备注</span>
         </div>
-      </div>
-
-      <!-- 审核历史 -->
-      <div class="detail-section compact-section" v-if="order.auditHistory">
-        <h3 class="section-title small">
-          <el-icon><List /></el-icon>
-          审核历史
-        </h3>
-        <div class="audit-timeline compact">
-          <div
-            v-for="(audit, index) in order.auditHistory"
-            :key="index"
-            class="audit-item compact"
-          >
-            <div class="audit-header">
-              <el-tag
-                size="small"
-                :type="audit.result === 'approved' ? 'success' : 'danger'"
-              >
-                {{ audit.result === 'approved' ? '已通过' : '已拒绝' }}
-              </el-tag>
-              <span class="audit-meta">{{ audit.auditor }} · {{ audit.time }}</span>
-            </div>
-            <div v-if="audit.remark" class="audit-comment">{{ audit.remark }}</div>
-          </div>
+        <div class="section-body">
+          <div class="remark-content" v-html="highlightKeywords(order.remark)"></div>
         </div>
       </div>
     </div>
@@ -180,25 +161,17 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="handleClose">关闭</el-button>
-        <el-button
-          v-if="showActionButtons"
-          type="warning"
-          @click="handleSetTodo"
-        >
+        <el-button type="primary" @click="goToOrderDetail">
+          <el-icon><View /></el-icon>
+          查看完整详情
+        </el-button>
+        <el-button v-if="showActionButtons" type="warning" @click="handleSetTodo">
           <el-icon><Timer /></el-icon>
           设置待办
         </el-button>
-        <el-button
-          v-if="showActionButtons"
-          type="success"
-          @click="handleUpdateStatus"
-        >
+        <el-button v-if="showActionButtons" type="success" @click="handleUpdateStatus">
           <el-icon><Edit /></el-icon>
           更新状态
-        </el-button>
-        <el-button type="primary" @click="printOrder">
-          <el-icon><Printer /></el-icon>
-          打印订单
         </el-button>
       </div>
     </template>
@@ -207,18 +180,17 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
 import {
-  Document, Box, Money, Printer, Timer, Edit, Van
+  Document, Box, Money, Timer, Edit, Van, ChatDotRound, View
 } from '@element-plus/icons-vue'
-import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { displaySensitiveInfo as displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
-import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
+import { useOrderStore } from '@/stores/order'
 
-// 自定义字段配置store
-const fieldConfigStore = useOrderFieldConfigStore()
+const router = useRouter()
+const orderStore = useOrderStore()
 
-// 使用any类型避免类型错误，因为这个对话框接收的是物流订单格式
 interface Props {
   visible: boolean
   order: any
@@ -239,100 +211,135 @@ const dialogVisible = computed({
   set: (value) => emit('update:visible', value)
 })
 
-// 格式化数字
-const formatNumber = (num: number | null | undefined) => {
-  if (num === null || num === undefined || isNaN(num)) {
-    return '0'
-  }
-  return num.toLocaleString()
+// 获取完整订单信息
+const getFullOrderInfo = () => {
+  if (!props.order) return null
+  const orderId = props.order.id
+  const orderNo = props.order.orderNo || props.order.orderNumber
+  const orders = orderStore.getOrders()
+  return orders.find((o: any) => o.id === orderId || o.orderNumber === orderNo) || props.order
 }
 
-// 获取状态类型
-const getStatusType = (status: string) => {
-  const statusMap: Record<string, string> = {
-    // 订单状态
-    pending_transfer: 'info',
-    pending_audit: 'warning',
-    audit_rejected: 'danger',
-    pending_shipment: 'warning',  // 待发货用橙色
-    shipped: 'primary',           // 已发货用蓝色
-    delivered: 'success',         // 已签收用绿色
-    logistics_returned: 'warning',
-    logistics_cancelled: 'info',
-    package_exception: 'danger',
-    rejected: 'danger',
-    rejected_returned: 'warning',
-    cancelled: 'info',
-    draft: 'info',
-    // 物流状态
-    picked_up: 'primary',
-    in_transit: 'primary',
-    out_for_delivery: 'warning',
-    exception: 'danger',
-    returned: 'danger',
-    refunded: 'danger',
-    abnormal: 'danger'
-  }
-  return statusMap[status] || 'info'
+// 获取订单号
+const getOrderNo = () => props.order?.orderNo || props.order?.orderNumber || '-'
+
+// 获取电话
+const getPhone = () => {
+  const phone = props.order?.phone || props.order?.customerPhone || props.order?.receiverPhone
+  if (!phone) return '-'
+  return displaySensitiveInfoNew(phone, SensitiveInfoType.PHONE)
 }
 
-// 获取状态文本
-const getStatusText = (status: string) => {
-  const statusMap: Record<string, string> = {
-    // 订单状态
-    pending_transfer: '待流转',
-    pending_audit: '待审核',
-    audit_rejected: '审核拒绝',
-    pending_shipment: '待发货',
-    shipped: '已发货',
-    delivered: '已签收',
-    logistics_returned: '物流部退回',
-    logistics_cancelled: '物流部取消',
-    package_exception: '包裹异常',
-    rejected: '拒收',
-    rejected_returned: '拒收已退回',
-    cancelled: '已取消',
-    draft: '草稿',
-    // 物流状态
-    picked_up: '已揽收',
-    in_transit: '运输中',
-    out_for_delivery: '派送中',
-    exception: '异常',
-    returned: '已退回',
-    refunded: '退货退款',
-    abnormal: '状态异常'
-  }
-  return statusMap[status] || status || '未知'
+// 获取下单日期
+const getOrderDate = () => props.order?.createTime || props.order?.orderDate || props.order?.shippingTime || '-'
+
+// 获取归属人
+const getAssignedTo = () => {
+  return props.order?.assignedToName || props.order?.createdByName || props.order?.salesPersonName ||
+         props.order?.assignedTo || props.order?.createdBy || '-'
+}
+
+// 获取客服微信号
+const getServiceWechat = () => {
+  const fullOrder = getFullOrderInfo()
+  return fullOrder?.serviceWechat || props.order?.serviceWechat || '-'
 }
 
 // 获取订单来源文本
-const getOrderSourceText = (source: string | null | undefined) => {
+const getOrderSourceText = () => {
+  const fullOrder = getFullOrderInfo()
+  const source = fullOrder?.orderSource || props.order?.orderSource
   if (!source) return '-'
   const sourceMap: Record<string, string> = {
-    online_store: '🛒 线上商城',
-    wechat_mini: '📱 微信小程序',
-    wechat_service: '💬 微信客服',
-    phone_call: '📞 电话咨询',
-    offline_store: '🏪 线下门店',
-    referral: '👥 客户推荐',
-    advertisement: '📺 广告投放',
-    other: '🎯 其他渠道'
+    online_store: '线上商城',
+    wechat_mini: '微信小程序',
+    wechat_service: '微信客服',
+    phone_call: '电话咨询',
+    offline_store: '线下门店',
+    referral: '客户推荐',
+    advertisement: '广告投放',
+    other: '其他渠道'
   }
   return sourceMap[source] || source
+}
+
+// 获取指定快递
+const getDesignatedExpress = () => {
+  const fullOrder = getFullOrderInfo()
+  const expressCode = fullOrder?.designatedExpress || fullOrder?.expressCompany ||
+                      props.order?.designatedExpress || props.order?.expressCompany || props.order?.logisticsCompany
+  if (!expressCode) return '-'
+  return getExpressCompanyName(expressCode) || expressCode
+}
+
+// 获取收货地址
+const getReceiverAddress = () => {
+  const fullOrder = getFullOrderInfo()
+  if (fullOrder?.receiverAddress) return fullOrder.receiverAddress
+  if (fullOrder?.address) return fullOrder.address
+  if (props.order?.address) return props.order.address
+  if (props.order?.receiverAddress) return props.order.receiverAddress
+  const orderData = fullOrder || props.order
+  if (orderData?.province || orderData?.city || orderData?.district) {
+    const parts = [orderData.province, orderData.city, orderData.district, orderData.street, orderData.detailAddress].filter(Boolean)
+    if (parts.length > 0) return parts.join('')
+  }
+  return '-'
+}
+
+// 是否有物流信息
+const hasLogisticsInfo = () => !!(props.order?.expressNo || props.order?.trackingNumber || props.order?.trackingNo)
+
+// 获取快递单号
+const getTrackingNo = () => props.order?.expressNo || props.order?.trackingNumber || props.order?.trackingNo || '-'
+
+// 获取快递公司显示名称
+const getExpressCompanyDisplay = () => {
+  const code = props.order?.expressCompany || props.order?.logisticsCompany
+  if (!code) return '-'
+  return getExpressCompanyName(code) || code
+}
+
+// 获取商品名称
+const getProductName = () => {
+  if (props.order?.productsText) return props.order.productsText
+  if (props.order?.productName) return props.order.productName
+  if (props.order?.products?.length > 0) {
+    return props.order.products.map((p: any) => `${p.name} × ${p.quantity}`).join('，')
+  }
+  const fullOrder = getFullOrderInfo()
+  if (fullOrder?.products?.length > 0) {
+    return fullOrder.products.map((p: any) => `${p.name} × ${p.quantity}`).join('，')
+  }
+  return '-'
+}
+
+// 获取商品数量
+const getProductQuantity = () => {
+  if (props.order?.totalQuantity) return props.order.totalQuantity
+  if (props.order?.quantity) return props.order.quantity
+  if (props.order?.products?.length > 0) {
+    return props.order.products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0)
+  }
+  const fullOrder = getFullOrderInfo()
+  if (fullOrder?.products?.length > 0) {
+    return fullOrder.products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0)
+  }
+  return 0
+}
+
+// 格式化数字
+const formatNumber = (num: number | null | undefined) => {
+  if (num === null || num === undefined || isNaN(num)) return '0'
+  return num.toLocaleString()
 }
 
 // 获取支付方式文本
 const getPaymentMethodText = (method: string | null | undefined) => {
   if (!method) return '-'
   const methodMap: Record<string, string> = {
-    wechat: '微信支付',
-    alipay: '支付宝',
-    bank_transfer: '银行转账',
-    unionpay: '云闪付',
-    cod: '货到付款',
-    cash: '现金',
-    card: '刷卡',
-    other: '其他'
+    wechat: '微信支付', alipay: '支付宝', bank_transfer: '银行转账',
+    unionpay: '云闪付', cod: '货到付款', cash: '现金', card: '刷卡', other: '其他'
   }
   return methodMap[method] || method
 }
@@ -341,301 +348,218 @@ const getPaymentMethodText = (method: string | null | undefined) => {
 const getExpressCompanyName = (code: string | null | undefined) => {
   if (!code) return null
   const companyMap: Record<string, string> = {
-    SF: '顺丰速运',
-    YTO: '圆通速递',
-    ZTO: '中通快递',
-    STO: '申通快递',
-    YD: '韵达快递',
-    HTKY: '百世快递',
-    JD: '京东物流',
-    EMS: 'EMS',
-    DBKD: '德邦快递',
-    UC: '优速快递'
+    SF: '顺丰速运', YTO: '圆通速递', ZTO: '中通快递', STO: '申通快递',
+    YD: '韵达快递', HTKY: '百世快递', JD: '京东物流', EMS: 'EMS',
+    DBKD: '德邦快递', UC: '优速快递', shunfeng: '顺丰速运', yuantong: '圆通速递',
+    zhongtong: '中通快递', shentong: '申通快递', yunda: '韵达快递', jd: '京东物流',
+    ems: 'EMS', debang: '德邦快递'
   }
   return companyMap[code] || code
 }
 
-// 获取商品文本
-const getProductsText = (products: any[] | null | undefined) => {
-  if (!products || !Array.isArray(products) || products.length === 0) return null
-  return products.map(p => `${p.name} × ${p.quantity}`).join('，')
-}
-
-// 获取商品总数量
-const getProductsQuantity = (products: any[] | null | undefined) => {
-  if (!products || !Array.isArray(products)) return 0
-  return products.reduce((sum, p) => sum + (p.quantity || 0), 0)
-}
-
-// 高亮关键词（安全版本，防止XSS）
+// 高亮关键词
 const highlightKeywords = (text: string) => {
   if (!text) return ''
-  // 先转义HTML特殊字符
-  const escaped = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-
-  // 再添加高亮标签
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#x27;')
   const keywords = ['紧急', '加急', '重要', '特殊', '注意']
   let result = escaped
   keywords.forEach(keyword => {
-    const regex = new RegExp(keyword, 'gi')
-    result = result.replace(regex, `<span class="highlight-keyword">${keyword}</span>`)
+    result = result.replace(new RegExp(keyword, 'gi'), `<span class="highlight-keyword">${keyword}</span>`)
   })
   return result
 }
 
-// 关闭弹窗
-const handleClose = () => {
-  dialogVisible.value = false
+// 跳转到订单详情页
+const goToOrderDetail = () => {
+  const orderId = props.order?.id
+  if (orderId) {
+    handleClose()
+    router.push(`/order/detail/${orderId}`)
+  }
 }
 
-// 打印订单
-const printOrder = () => {
-  ElMessage.success('打印功能开发中...')
-}
-
-// 更新状态
-const handleUpdateStatus = () => {
-  emit('update-status', props.order)
-}
-
-// 设置待办
-const handleSetTodo = () => {
-  emit('set-todo', props.order)
-}
+const handleClose = () => { dialogVisible.value = false }
+const handleUpdateStatus = () => { emit('update-status', props.order) }
+const handleSetTodo = () => { emit('set-todo', props.order) }
 </script>
 
 <style scoped>
 .order-detail-dialog {
   :deep(.el-dialog__body) {
-    padding: 20px;
+    padding: 16px 20px;
     max-height: 70vh;
     overflow-y: auto;
+  }
+  :deep(.el-dialog__header) {
+    padding: 14px 20px;
+    border-bottom: 1px solid #e4e7ed;
+    margin-right: 0;
+  }
+  :deep(.el-dialog__footer) {
+    padding: 12px 20px;
+    border-top: 1px solid #e4e7ed;
   }
 }
 
 .order-detail-content {
-  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.detail-section {
-  margin-bottom: 30px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 20px;
+/* 区块卡片 */
+.section-card {
+  background: #fafafa;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #ebeef5;
 }
 
 .section-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 16px;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #f5f7fa;
+  font-size: 14px;
   font-weight: 600;
   color: #303133;
-  margin: 0 0 15px 0;
-  padding-bottom: 10px;
-  border-bottom: 2px solid #e4e7ed;
+  border-bottom: 1px solid #ebeef5;
 }
 
+.section-title .el-icon {
+  color: #409eff;
+  font-size: 16px;
+}
+
+.section-body {
+  padding: 14px 16px;
+}
+
+/* 信息网格 */
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 15px;
-}
-
-.info-grid.compact {
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
-.compact-section {
-  margin-bottom: 16px;
-}
-
-.section-title.small {
-  font-size: 14px;
-  margin-bottom: 12px;
-}
-
-.amount-summary.compact {
-  padding: 12px;
-  background: #f8f9fa;
-  border-radius: 6px;
-}
-
-.amount-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
+  gap: 10px 20px;
 }
 
 .info-item {
   display: flex;
-  align-items: center;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .info-item.full-width {
-  grid-column: 1 / -1;
+  grid-column: span 3;
 }
 
-.info-item label {
-  font-weight: 600;
-  color: #606266;
-  min-width: 100px;
-  margin-right: 10px;
+.info-label {
+  color: #909399;
+  min-width: 75px;
+  flex-shrink: 0;
 }
 
-.info-item .value {
+.info-value {
   color: #303133;
   flex: 1;
+  word-break: break-all;
 }
 
-.product-table {
-  margin-top: 10px;
+.info-value.phone {
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
 }
 
-.amount {
-  font-weight: 600;
+.info-value.tracking-no {
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
   color: #409eff;
 }
 
-.amount-summary {
-  background: white;
-  border-radius: 6px;
-  padding: 20px;
-  border: 1px solid #e4e7ed;
+.info-value.express-highlight {
+  color: #e6a23c;
+  font-weight: 600;
+}
+
+.info-value.logistics-update {
+  color: #67c23a;
+}
+
+/* 金额网格 */
+.amount-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
 }
 
 .amount-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #f5f7fa;
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+  padding: 8px;
+  background: #fff;
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
 }
 
-.amount-item:last-child {
-  border-bottom: none;
+.amount-label {
+  font-size: 12px;
+  color: #909399;
 }
 
-.amount-item.total {
-  font-size: 16px;
-  font-weight: 700;
-  color: #303133;
-  border-top: 2px solid #e4e7ed;
-  margin-top: 10px;
-  padding-top: 15px;
-}
-
-.amount-item.cod {
-  color: #f56c6c;
+.amount-value {
+  font-size: 14px;
   font-weight: 600;
+  color: #303133;
 }
 
-.amount-item .value.discount {
-  color: #67c23a;
-}
-
-.amount-item .value.paid {
+.amount-value.main {
   color: #409eff;
+  font-size: 16px;
 }
 
+.amount-value.cod {
+  color: #e6a23c;
+}
+
+/* 备注内容 */
 .remark-content {
-  background: white;
-  border-radius: 6px;
-  padding: 15px;
-  border: 1px solid #e4e7ed;
+  font-size: 13px;
+  color: #606266;
   line-height: 1.6;
+  white-space: pre-wrap;
+  background: #fff;
+  padding: 10px 12px;
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
 }
 
 .highlight-keyword {
   color: #f56c6c;
   font-weight: 600;
   background-color: #fef0f0;
-  padding: 2px 4px;
-  border-radius: 3px;
+  padding: 1px 4px;
+  border-radius: 2px;
 }
 
-/* 指定快递红色高亮样式 */
-.info-item.highlight-red {
-  background-color: #fef0f0;
-  border-radius: 4px;
-  padding: 8px 12px;
-  border: 1px solid #f56c6c;
-}
-
-.info-item.highlight-red label {
-  color: #f56c6c;
-  font-weight: 700;
-}
-
-.express-highlight {
-  color: #f56c6c !important;
-  font-weight: 700 !important;
-  font-size: 14px;
-}
-
-.audit-timeline {
-  margin-top: 10px;
-}
-
-.audit-timeline.compact {
-  margin-top: 12px;
-}
-
-.audit-item {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  background: #f8f9fa;
-  padding: 12px;
-  border-radius: 6px;
-  margin-bottom: 8px;
-}
-
-.audit-item.compact {
-  padding: 10px;
-  margin-bottom: 6px;
-  border-left: 3px solid #e4e7ed;
-}
-
-.audit-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 6px;
-}
-
-.audit-meta {
-  font-size: 12px;
-  color: #909399;
-}
-
-.audit-comment {
-  font-size: 13px;
-  color: #606266;
-  margin-top: 6px;
-  padding-left: 8px;
-  border-left: 2px solid #e4e7ed;
-}
-
-.audit-info {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  font-size: 12px;
-  color: #909399;
-}
-
+/* 底部按钮 */
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .info-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .info-item.full-width {
+    grid-column: span 2;
+  }
+  .amount-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 </style>
