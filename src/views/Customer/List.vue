@@ -868,6 +868,14 @@ const handleQuickFilterChange = (value: string) => {
   const weekAgo = new Date(today)
   weekAgo.setDate(weekAgo.getDate() - 7)
 
+  // 🔥 修复：使用本地时区格式化，避免UTC转换导致日期偏移
+  const formatLocalDate = (date: Date): string => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   const monthAgo = new Date(today)
   monthAgo.setDate(monthAgo.getDate() - 30)
 
@@ -876,47 +884,47 @@ const handleQuickFilterChange = (value: string) => {
   switch (value) {
     case 'today':
       searchForm.dateRange = [
-        today.toISOString().split('T')[0],
-        today.toISOString().split('T')[0]
+        formatLocalDate(today),
+        formatLocalDate(today)
       ]
       break
     case 'yesterday':
       searchForm.dateRange = [
-        yesterday.toISOString().split('T')[0],
-        yesterday.toISOString().split('T')[0]
+        formatLocalDate(yesterday),
+        formatLocalDate(yesterday)
       ]
       break
     case 'week':
       searchForm.dateRange = [
-        weekAgo.toISOString().split('T')[0],
-        today.toISOString().split('T')[0]
+        formatLocalDate(weekAgo),
+        formatLocalDate(today)
       ]
       break
     case 'month':
       searchForm.dateRange = [
-        monthAgo.toISOString().split('T')[0],
-        today.toISOString().split('T')[0]
+        formatLocalDate(monthAgo),
+        formatLocalDate(today)
       ]
       break
     case 'thisMonth':
       const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1)
       searchForm.dateRange = [
-        thisMonthStart.toISOString().split('T')[0],
-        today.toISOString().split('T')[0]
+        formatLocalDate(thisMonthStart),
+        formatLocalDate(today)
       ]
       break
     case 'lastMonth':
       const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
       const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
       searchForm.dateRange = [
-        lastMonthStart.toISOString().split('T')[0],
-        lastMonthEnd.toISOString().split('T')[0]
+        formatLocalDate(lastMonthStart),
+        formatLocalDate(lastMonthEnd)
       ]
       break
     case 'year':
       searchForm.dateRange = [
-        yearStart.toISOString().split('T')[0],
-        today.toISOString().split('T')[0]
+        formatLocalDate(yearStart),
+        formatLocalDate(today)
       ]
       break
     case 'all':

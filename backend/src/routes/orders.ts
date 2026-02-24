@@ -54,6 +54,14 @@ const formatToBeijingTime = (date: Date | string | null | undefined): string => 
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
 
+// 🔥 新增：格式化日期为本地时区的YYYY-MM-DD格式，避免UTC转换导致的日期偏移
+const formatLocalDate = (d: Date): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 // 🔥 注释掉：数据库已配置为北京时区，不需要转换为UTC时间
 // 将北京时间日期字符串转换为UTC时间字符串（用于数据库查询）
 // 输入: "2025-12-31" + "00:00:00" (北京时间)
@@ -799,10 +807,10 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
         case 'lastMonth':
           // 上月订单：上个月1号00:00:00 到 上个月最后一天23:59:59
           const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
           queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
-            lastMonthStart: lastMonthStart.toISOString().split('T')[0] + ' 00:00:00',
-            lastMonthEnd: lastMonthEnd.toISOString().split('T')[0] + ' 23:59:59'
+            lastMonthStart: formatLocalDate(lastMonthStart) + ' 00:00:00',
+            lastMonthEnd: formatLocalDate(lastMonthEnd) + ' 23:59:59'
           });
           break;
         case 'thisYear':
@@ -1122,10 +1130,10 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
         case 'lastMonth':
           // 上月订单：上个月1号00:00:00 到 上个月最后一天23:59:59
           const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
           queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
-            lastMonthStart: lastMonthStart.toISOString().split('T')[0] + ' 00:00:00',
-            lastMonthEnd: lastMonthEnd.toISOString().split('T')[0] + ' 23:59:59'
+            lastMonthStart: formatLocalDate(lastMonthStart) + ' 00:00:00',
+            lastMonthEnd: formatLocalDate(lastMonthEnd) + ' 23:59:59'
           });
           break;
         case 'thisYear':
@@ -1329,10 +1337,10 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
           break;
         case 'lastMonth':
           const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
           queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
-            lastMonthStart: lastMonthStart.toISOString().split('T')[0] + ' 00:00:00',
-            lastMonthEnd: lastMonthEnd.toISOString().split('T')[0] + ' 23:59:59'
+            lastMonthStart: formatLocalDate(lastMonthStart) + ' 00:00:00',
+            lastMonthEnd: formatLocalDate(lastMonthEnd) + ' 23:59:59'
           });
           break;
         case 'thisYear':
@@ -1518,10 +1526,10 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
           break;
         case 'lastMonth':
           const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
           queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
-            lastMonthStart: lastMonthStart.toISOString().split('T')[0] + ' 00:00:00',
-            lastMonthEnd: lastMonthEnd.toISOString().split('T')[0] + ' 23:59:59'
+            lastMonthStart: formatLocalDate(lastMonthStart) + ' 00:00:00',
+            lastMonthEnd: formatLocalDate(lastMonthEnd) + ' 23:59:59'
           });
           break;
         case 'thisYear':
@@ -1685,10 +1693,10 @@ router.get('/shipping/draft', authenticateToken, async (req: Request, res: Respo
           break;
         case 'lastMonth':
           const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
           queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
-            lastMonthStart: lastMonthStart.toISOString().split('T')[0] + ' 00:00:00',
-            lastMonthEnd: lastMonthEnd.toISOString().split('T')[0] + ' 23:59:59'
+            lastMonthStart: formatLocalDate(lastMonthStart) + ' 00:00:00',
+            lastMonthEnd: formatLocalDate(lastMonthEnd) + ' 23:59:59'
           });
           break;
         case 'thisYear':

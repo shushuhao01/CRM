@@ -735,4 +735,7 @@ section {
   line-height: 1.5;
 }
 
-:deep(.el-collapse-item__co
+:deep(.el-collapse-item__content) {
+  padding-bottom: 15px;
+}
+</style>

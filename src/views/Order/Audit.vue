@@ -1836,7 +1836,7 @@ const handleQuickFilter = (filterValue: string) => {
     case 'lastMonth':
       const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
       const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
-      searchForm.dateRange = [lastMonthStart.toISOString().split('T')[0], lastMonthEnd.toISOString().split('T')[0]]
+      searchForm.dateRange = [lastMonthStart, lastMonthEnd]
       break
     case 'thisYear':
       searchForm.dateRange = [startOfYear, today]

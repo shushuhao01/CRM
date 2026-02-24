@@ -508,7 +508,13 @@ const handleQuickFilter = (value: string) => {
   activeQuickFilter.value = value
   // 根据快捷筛选设置日期范围
   const today = new Date()
-  const formatDate = (date: Date) => date.toISOString().split('T')[0]
+  // 🔥 修复：使用本地时区格式化，避免UTC转换导致日期偏移
+  const formatDate = (date: Date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
 
   switch (value) {
     case 'today':

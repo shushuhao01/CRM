@@ -20,7 +20,7 @@
         <div class="stat-icon cancelled"><el-icon><CircleClose /></el-icon></div>
         <div class="stat-info">
           <div class="stat-value">¥{{ formatMoney(stats.cancelledCod) }}</div>
-          <div class="stat-label">取消代收</div>
+          <div class="stat-label">已改代收</div>
         </div>
       </div>
       <div class="stat-card">
@@ -131,9 +131,9 @@
           <span v-else class="no-data">-</span>
         </template>
       </el-table-column>
-      <el-table-column prop="latestLogisticsInfo" label="最新物流动态" min-width="200">
+      <el-table-column prop="latestLogisticsInfo" label="最新物流动态" min-width="200" show-overflow-tooltip>
         <template #default="{ row }">
-          <div v-if="row.latestLogisticsInfo" class="logistics-info" :style="getLogisticsInfoStyle(row.logisticsStatus)">{{ row.latestLogisticsInfo }}</div>
+          <div v-if="row.latestLogisticsInfo" class="logistics-info" :style="getLogisticsInfoStyle(row.latestLogisticsInfo)">{{ row.latestLogisticsInfo }}</div>
           <span v-else class="no-data">-</span>
         </template>
       </el-table-column>
@@ -202,6 +202,7 @@ import { Search, Refresh, Edit, Check, Coin, Calendar, CircleClose, CircleCheck,
 import { formatDateTime } from '@/utils/date'
 import TrackingDialog from '@/components/Logistics/TrackingDialog.vue'
 import { getCodStats, getCodList, updateCodAmount, markCodReturned, batchUpdateCodAmount, batchMarkCodReturned, getCodDepartments, getCodSalesUsers, type CodOrder, type CodStats } from '@/api/codCollection'
+import { getLogisticsInfoStyle } from '@/utils/logisticsStatusConfig'
 
 defineOptions({ name: 'CodCollection' })
 
@@ -269,8 +270,19 @@ const applyBatchSearch = () => { batchSearchVisible.value = false; searchKeyword
 const getOrderStatusType = (s: string) => ({ shipped: 'primary', delivered: 'success', completed: 'success', rejected: 'danger', logistics_returned: 'warning', exception: 'danger' }[s] || 'info')
 const getOrderStatusText = (s: string) => ({ shipped: '已发货', delivered: '已签收', completed: '已完成', rejected: '拒收', logistics_returned: '已退回', exception: '异常' }[s] || s)
 const getCodStatusType = (r: CodOrder) => r.codAmount === 0 ? 'info' : r.codStatus === 'returned' ? 'success' : r.codStatus === 'cancelled' ? 'warning' : 'danger'
-const getCodStatusText = (r: CodOrder) => r.codAmount === 0 ? '无代收' : r.codStatus === 'returned' ? '已返款' : r.codStatus === 'cancelled' ? '已取消' : '未返款'
-const getLogisticsInfoStyle = (s: string) => ({ color: ({ delivered: '#67c23a', in_transit: '#409eff', out_for_delivery: '#e6a23c', rejected: '#f56c6c', returned: '#909399', exception: '#f56c6c' }[s] || '#606266') })
+const getCodStatusText = (r: CodOrder) => {
+  // 🔥 问题3修复：完善代收状态显示逻辑
+  if (r.codAmount === 0) {
+    return '无需代收'
+  }
+  if (r.codStatus === 'returned') {
+    return '已返款'
+  }
+  if (r.codStatus === 'cancelled') {
+    return '已改代收'
+  }
+  return '未返款'
+}
 
 const goToOrderDetail = (id: string) => router.push(`/order/detail/${id}`)
 const goToCustomerDetail = (id: string) => router.push(`/customer/detail/${id}`)
@@ -367,6 +379,6 @@ onMounted(() => { const range = getDateRange('month'); startDate.value = range[0
 .action-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; background: #fff; padding: 0 16px; border-radius: 8px; }
 .action-left { .status-tabs { :deep(.el-tabs__header) { margin: 0; } :deep(.el-tabs__nav-wrap::after) { display: none; } } }
 .action-right { display: flex; gap: 8px; }
-.data-table { background: #fff; border-radius: 8px; .cod-amount { color: #e6a23c; font-weight: 600; } .logistics-info { font-size: 12px; line-height: 1.4; } .no-data { color: #c0c4cc; } }
+.data-table { background: #fff; border-radius: 8px; .cod-amount { color: #e6a23c; font-weight: 600; } .logistics-info { font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .no-data { color: #c0c4cc; } }
 .pagination-wrapper { display: flex; justify-content: flex-end; margin-top: 16px; padding: 16px; background: #fff; border-radius: 8px; }
 </style>
