@@ -87,6 +87,7 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     }, 0);
 
     // 已改代收金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月，只统计有效订单）
+    // 🔥 统计逻辑：原本需要代收的金额 - 修改后的代收金额 = 已经收取的金额
     const cancelledWhere = { ...baseWhere, codStatus: 'cancelled', status: In(VALID_STATUSES) };
     if (userStartDate && userEndDate) {
       cancelledWhere.createdAt = Between(userStartDate, userEndDate);
@@ -95,11 +96,16 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     }
     const cancelledOrders = await orderRepo.find({
       where: cancelledWhere,
-      select: ['codAmount']
+      select: ['codAmount', 'totalAmount', 'depositAmount']
     });
     const totalCancelledCod = cancelledOrders.reduce((sum, o) => {
-      // 已改代收的订单，使用用户修改后的codAmount
-      return sum + (Number(o.codAmount) || 0);
+      // 原本需要代收的金额
+      const originalCodAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      // 修改后的代收金额
+      const modifiedCodAmount = (o.codAmount !== null && o.codAmount !== undefined) ? Number(o.codAmount) : 0;
+      // 已经收取的金额 = 原本需要代收 - 修改后需要代收
+      const collectedAmount = originalCodAmount - modifiedCodAmount;
+      return sum + collectedAmount;
     }, 0);
 
     // 已返款金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月，只统计有效订单）
