@@ -200,8 +200,15 @@
             :step="10"
             style="width: 100%"
           />
-          <div style="font-size: 12px; color: #909399; margin-top: 4px;">
-            {{ isBatchCod ? '默认为0元，表示客户已直接付款' : '修改为0元表示客户已全部付款，修改后不能再改代收和返款' }}
+          <el-alert
+            v-if="!isBatchCod"
+            :title="codForm.codAmount === 0 ? '⚠️ 修改为0元表示客户已全部付款，修改后将不能再改代收和返款！' : '修改的金额不能大于原代收金额'"
+            :type="codForm.codAmount === 0 ? 'error' : 'info'"
+            :closable="false"
+            style="margin-top: 8px;"
+          />
+          <div v-else style="font-size: 12px; color: #909399; margin-top: 4px;">
+            默认为0元，表示客户已直接付款
           </div>
         </el-form-item>
         <el-form-item label="备注">
@@ -348,25 +355,6 @@ const handleCodSubmit = async () => {
         submitting.value = false
         return
       }
-
-      // 🔥 新增：如果改为0元，显示确认提示
-      if (codForm.value.codAmount === 0) {
-        try {
-          await ElMessageBox.confirm(
-            '修改为0元表示客户已直接付款，确定后将不再支持修改代收金额，是否继续？',
-            '重要提示',
-            {
-              confirmButtonText: '确定',
-              cancelButtonText: '取消',
-              type: 'warning',
-              icon: 'WarningFilled'
-            }
-          )
-        } catch {
-          submitting.value = false
-          return
-        }
-      }
     }
 
     if (isBatchCod.value) {
@@ -395,9 +383,11 @@ const handleCodSubmit = async () => {
 const handleReturn = async (r: CodOrder) => {
   try {
     await ElMessageBox.confirm(
-      `确定将订单 ${r.orderNumber} 标记为已返款吗？\n\n⚠️ 重要提示：一旦确定返款将不再支持修改！`,
+      '',
       '确认返款',
       {
+        message: `<p style="margin-bottom: 12px;">确定将订单 <strong>${r.orderNumber}</strong> 标记为已返款吗？</p><p style="color: #e6a23c; font-weight: 600; line-height: 1.8;">⚠️ 重要提示：一旦确定返款将不再支持修改！</p>`,
+        dangerouslyUseHTMLString: true,
         type: 'warning',
         icon: 'WarningFilled',
         confirmButtonText: '确定返款',
@@ -419,9 +409,11 @@ const handleBatchReturn = async () => {
   }
   try {
     await ElMessageBox.confirm(
-      `确定将 ${selectedRows.value.length} 个订单标记为已返款吗？\n\n⚠️ 重要提示：一旦确定返款将不再支持修改！`,
+      '',
       '批量返款',
       {
+        message: `<p style="margin-bottom: 12px;">确定将 <strong>${selectedRows.value.length}</strong> 个订单标记为已返款吗？</p><p style="color: #e6a23c; font-weight: 600; line-height: 1.8;">⚠️ 重要提示：一旦确定返款将不再支持修改！</p>`,
+        dangerouslyUseHTMLString: true,
         type: 'warning',
         icon: 'WarningFilled',
         confirmButtonText: '确定返款',
