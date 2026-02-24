@@ -20,7 +20,9 @@ export interface CodOrder {
   status: string
   totalAmount: number
   finalAmount: number
-  codAmount: number
+  depositAmount: number
+  codAmount: number  // 显示用的代收金额（计算值）
+  actualCodAmount: number | null  // 实际的代收金额（用户修改后的值，用于按钮禁用）
   codStatus: string
   codReturnedAmount: number
   codReturnedAt: string | null

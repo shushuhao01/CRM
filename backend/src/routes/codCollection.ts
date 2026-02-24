@@ -78,15 +78,12 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     }
     const needCodOrders = await orderRepo.find({
       where: needCodWhere,
-      select: ['codAmount', 'totalAmount', 'depositAmount']
+      select: ['totalAmount', 'depositAmount']
     });
     const totalNeedCod = needCodOrders.reduce((sum, o) => {
-      // 🔥 修复：优先使用数据库中的codAmount（包括0），只有null/undefined时才计算
-      if (o.codAmount !== null && o.codAmount !== undefined) {
-        return sum + Number(o.codAmount);
-      }
-      const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
-      return sum + calculatedCod;
+      // 代收金额 = 订单总额 - 定金
+      const codAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      return sum + codAmount;
     }, 0);
 
     // 已改代收金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月，只统计有效订单）
@@ -98,15 +95,11 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     }
     const cancelledOrders = await orderRepo.find({
       where: cancelledWhere,
-      select: ['codAmount', 'totalAmount', 'depositAmount']
+      select: ['codAmount']
     });
     const totalCancelledCod = cancelledOrders.reduce((sum, o) => {
-      // 🔥 修复：优先使用数据库中的codAmount（包括0），只有null/undefined时才计算
-      if (o.codAmount !== null && o.codAmount !== undefined) {
-        return sum + Number(o.codAmount);
-      }
-      const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
-      return sum + calculatedCod;
+      // 已改代收的订单，使用用户修改后的codAmount
+      return sum + (Number(o.codAmount) || 0);
     }, 0);
 
     // 已返款金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月，只统计有效订单）
@@ -131,15 +124,12 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     }
     const pendingOrders = await orderRepo.find({
       where: pendingWhere,
-      select: ['codAmount', 'totalAmount', 'depositAmount']
+      select: ['totalAmount', 'depositAmount']
     });
     const totalPendingCod = pendingOrders.reduce((sum, o) => {
-      // 🔥 修复：优先使用数据库中的codAmount（包括0），只有null/undefined时才计算
-      if (o.codAmount !== null && o.codAmount !== undefined) {
-        return sum + Number(o.codAmount);
-      }
-      const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
-      return sum + calculatedCod;
+      // 待处理订单，代收金额 = 订单总额 - 定金
+      const codAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      return sum + codAmount;
     }, 0);
 
     res.json({
@@ -251,14 +241,10 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
 
     // 格式化返回数据
     const list = orders.map(o => {
-      // 🔥 修复：代收金额逻辑 - 优先使用数据库中的cod_amount（包括0），只有null/undefined时才计算
-      let codAmount: number;
-      if (o.codAmount !== null && o.codAmount !== undefined) {
-        codAmount = Number(o.codAmount);
-      } else {
-        const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
-        codAmount = calculatedCod;
-      }
+      // 显示的代收金额 = 订单总额 - 定金（始终显示原始计算值）
+      const displayCodAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      // 实际的代收金额 = 用户修改后的值（用于按钮禁用判断）
+      const actualCodAmount = o.codAmount;
 
       return {
         id: o.id,
@@ -270,7 +256,8 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
         totalAmount: o.totalAmount,
         finalAmount: o.finalAmount,
         depositAmount: o.depositAmount,
-        codAmount: codAmount,
+        codAmount: displayCodAmount,  // 显示用的代收金额
+        actualCodAmount: actualCodAmount,  // 实际的代收金额（用于按钮禁用）
         codStatus: o.codStatus || 'pending',
         codReturnedAmount: o.codReturnedAmount || 0,
         codReturnedAt: o.codReturnedAt,
@@ -317,14 +304,10 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
       return res.status(404).json({ success: false, message: '订单不存在' });
     }
 
-    // 🔥 修复：代收金额逻辑 - 优先使用数据库中的cod_amount（包括0），只有null/undefined时才计算
-    let codAmount: number;
-    if (order.codAmount !== null && order.codAmount !== undefined) {
-      codAmount = Number(order.codAmount);
-    } else {
-      const calculatedCod = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
-      codAmount = calculatedCod;
-    }
+    // 代收金额 = 订单总额 - 定金（始终显示原始计算值）
+    const displayCodAmount = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
+    // 实际的代收金额 = 用户修改后的值（用于按钮禁用判断）
+    const actualCodAmount = order.codAmount;
 
     res.json({
       success: true,
@@ -338,7 +321,8 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
         totalAmount: order.totalAmount,
         finalAmount: order.finalAmount,
         depositAmount: order.depositAmount,
-        codAmount: codAmount,
+        codAmount: displayCodAmount,  // 显示用的代收金额
+        actualCodAmount: actualCodAmount,  // 实际的代收金额（用于按钮禁用）
         codStatus: order.codStatus || 'pending',
         codReturnedAmount: order.codReturnedAmount || 0,
         codReturnedAt: order.codReturnedAt,
@@ -399,14 +383,8 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
       return res.status(400).json({ success: false, message: '订单已改为0元代收，不能再次修改' });
     }
 
-    // 🔥 修复：计算原代收金额 - 优先使用数据库中的cod_amount（包括0），只有null/undefined时才计算
-    let originalCodAmount: number;
-    if (order.codAmount !== null && order.codAmount !== undefined) {
-      originalCodAmount = Number(order.codAmount);
-    } else {
-      const calculatedCod = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
-      originalCodAmount = calculatedCod;
-    }
+    // 计算原代收金额 = 订单总额 - 定金
+    const originalCodAmount = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
 
     // 🔥 业务规则2：修改的金额不能大于原代收金额
     const newCodAmount = Number(codAmount) || 0;
@@ -461,14 +439,11 @@ router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Re
       return res.status(404).json({ success: false, message: '订单不存在' });
     }
 
-    // 🔥 修复：计算默认代收金额（用于返款金额默认值）- 优先使用数据库中的cod_amount（包括0），只有null/undefined时才计算
-    let defaultCodAmount: number;
-    if (order.codAmount !== null && order.codAmount !== undefined) {
-      defaultCodAmount = Number(order.codAmount);
-    } else {
-      const calculatedCod = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
-      defaultCodAmount = calculatedCod;
-    }
+    // 计算默认代收金额（用于返款金额默认值）
+    // 如果用户修改过代收金额，使用修改后的值；否则使用计算值
+    const defaultCodAmount = (order.codAmount !== null && order.codAmount !== undefined)
+      ? Number(order.codAmount)
+      : (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
 
     // 🔥 业务规则1：如果代收金额为0，不能标记返款
     if (defaultCodAmount === 0) {
@@ -587,14 +562,11 @@ router.put('/batch-mark-returned', authenticateToken, async (req: Request, res: 
     const orders = await orderRepo.find({ where: { id: In(orderIds) } });
 
     for (const order of orders) {
-      // 🔥 修复：计算代收金额（用于返款金额）- 优先使用数据库中的cod_amount（包括0），只有null/undefined时才计算
-      let codAmount: number;
-      if (order.codAmount !== null && order.codAmount !== undefined) {
-        codAmount = Number(order.codAmount);
-      } else {
-        const calculatedCod = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
-        codAmount = calculatedCod;
-      }
+      // 计算代收金额（用于返款金额）
+      // 如果用户修改过代收金额，使用修改后的值；否则使用计算值
+      const codAmount = (order.codAmount !== null && order.codAmount !== undefined)
+        ? Number(order.codAmount)
+        : (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
 
       // 标记返款（代收金额不变）
       order.codStatus = 'returned';
