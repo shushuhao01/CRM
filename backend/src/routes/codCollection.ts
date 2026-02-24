@@ -31,9 +31,9 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       status: In(SHIPPED_STATUSES)
     };
 
-    // 日期筛选
+    // 日期筛选（订单下单时间）
     if (startDate && endDate) {
-      baseWhere.shippedAt = Between(new Date(startDate as string), new Date(endDate as string + ' 23:59:59'));
+      baseWhere.createdAt = Between(new Date(startDate as string), new Date(endDate as string + ' 23:59:59'));
     }
 
     // 部门筛选
@@ -56,11 +56,11 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    // 今日代收（今日发货的订单代收金额，排除异常状态）
+    // 今日代收（今日下单的订单代收金额，排除异常状态）
     const todayOrders = await orderRepo.find({
       where: {
         ...baseWhere,
-        shippedAt: Between(today, todayEnd),
+        createdAt: Between(today, todayEnd),
         status: Not(In(EXCLUDED_STATUSES))
       },
       select: ['codAmount', 'totalAmount', 'depositAmount']
@@ -74,11 +74,11 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       return sum + codAmount;
     }, 0);
 
-    // 当月代收（当月发货的订单代收金额，排除异常状态）
+    // 当月代收（当月下单的订单代收金额，排除异常状态）
     const monthOrders = await orderRepo.find({
       where: {
         ...baseWhere,
-        shippedAt: Between(monthStart, monthEnd),
+        createdAt: Between(monthStart, monthEnd),
         status: Not(In(EXCLUDED_STATUSES))
       },
       select: ['codAmount', 'totalAmount', 'depositAmount']
@@ -119,11 +119,11 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     });
     const returnedCod = returnedOrders.reduce((sum, o) => sum + Number(o.codReturnedAmount || 0), 0);
 
-    // 未返款金额（当月发货且未返款的订单）
+    // 未返款金额（当月下单且未返款的订单）
     const pendingOrders = await orderRepo.find({
       where: {
         ...baseWhere,
-        shippedAt: Between(monthStart, monthEnd),
+        createdAt: Between(monthStart, monthEnd),
         codStatus: 'pending',
         status: Not(In(EXCLUDED_STATUSES))
       },
@@ -186,9 +186,9 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
       queryBuilder.andWhere('o.cod_status = :codStatus', { codStatus: 'cancelled' });
     }
 
-    // 日期筛选（发货日期）
+    // 日期筛选（订单下单时间）
     if (startDate && endDate) {
-      queryBuilder.andWhere('o.shipped_at BETWEEN :startDate AND :endDate', {
+      queryBuilder.andWhere('o.created_at BETWEEN :startDate AND :endDate', {
         startDate: new Date(startDate as string),
         endDate: new Date(endDate as string + ' 23:59:59')
       });
@@ -239,8 +239,8 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
     const size = parseInt(pageSize as string);
     queryBuilder.skip((pageNum - 1) * size).take(size);
 
-    // 排序
-    queryBuilder.orderBy('o.shipped_at', 'DESC');
+    // 排序（按下单时间倒序）
+    queryBuilder.orderBy('o.created_at', 'DESC');
 
     const orders = await queryBuilder.getMany();
 
