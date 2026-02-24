@@ -386,7 +386,7 @@ const handleReturn = async (r: CodOrder) => {
       '',
       '确认返款',
       {
-        message: `<p style="margin-bottom: 12px;">确定将订单 <strong>${r.orderNumber}</strong> 标记为已返款吗？</p><p style="color: #e6a23c; font-weight: 600; line-height: 1.8;">⚠️ 重要提示：一旦确定返款将不再支持修改！</p>`,
+        message: `<p style="margin-bottom: 16px;">确定将订单 <strong>${r.orderNumber}</strong> 标记为已返款吗？</p><div style="border: 2px solid #f56c6c; background-color: #fef0f0; padding: 12px; border-radius: 4px;"><p style="color: #f56c6c; margin: 0; line-height: 1.6;">⚠️ 重要提示：一旦确定返款将不再支持修改！</p></div>`,
         dangerouslyUseHTMLString: true,
         type: 'warning',
         icon: 'WarningFilled',
@@ -412,7 +412,7 @@ const handleBatchReturn = async () => {
       '',
       '批量返款',
       {
-        message: `<p style="margin-bottom: 12px;">确定将 <strong>${selectedRows.value.length}</strong> 个订单标记为已返款吗？</p><p style="color: #e6a23c; font-weight: 600; line-height: 1.8;">⚠️ 重要提示：一旦确定返款将不再支持修改！</p>`,
+        message: `<p style="margin-bottom: 16px;">确定将 <strong>${selectedRows.value.length}</strong> 个订单标记为已返款吗？</p><div style="border: 2px solid #f56c6c; background-color: #fef0f0; padding: 12px; border-radius: 4px;"><p style="color: #f56c6c; margin: 0; line-height: 1.6;">⚠️ 重要提示：一旦确定返款将不再支持修改！</p></div>`,
         dangerouslyUseHTMLString: true,
         type: 'warning',
         icon: 'WarningFilled',
