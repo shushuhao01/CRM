@@ -148,14 +148,14 @@
             link
             size="small"
             @click="showCodDialog(row)"
-            :disabled="row.codStatus === 'returned' || (row.codStatus === 'cancelled' && row.actualCodAmount === 0)"
+            :disabled="row.codStatus === 'returned' || row.codStatus === 'cancelled'"
           >改代收</el-button>
           <el-button
             type="success"
             link
             size="small"
             @click="handleReturn(row)"
-            :disabled="row.codStatus === 'returned' || (row.codStatus === 'cancelled' && row.actualCodAmount === 0)"
+            :disabled="row.codStatus === 'returned' || row.codStatus === 'cancelled'"
           >返款</el-button>
         </template>
       </el-table-column>
