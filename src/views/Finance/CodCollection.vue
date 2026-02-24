@@ -148,14 +148,14 @@
             link
             size="small"
             @click="showCodDialog(row)"
-            :disabled="row.codStatus === 'returned' || (row.codStatus === 'cancelled' && row.codAmount === 0)"
+            :disabled="row.codStatus === 'returned' || (row.codStatus === 'cancelled' && row.actualCodAmount === 0)"
           >改代收</el-button>
           <el-button
             type="success"
             link
             size="small"
             @click="handleReturn(row)"
-            :disabled="row.codStatus === 'returned' || (row.codStatus === 'cancelled' && row.codAmount === 0)"
+            :disabled="row.codStatus === 'returned' || (row.codStatus === 'cancelled' && row.actualCodAmount === 0)"
           >返款</el-button>
         </template>
       </el-table-column>
@@ -317,10 +317,10 @@ const applyBatchSearch = () => { batchSearchVisible.value = false; searchKeyword
 
 const getOrderStatusType = (s: string) => ({ shipped: 'primary', delivered: 'success', completed: 'success', rejected: 'danger', logistics_returned: 'warning', exception: 'danger' }[s] || 'info')
 const getOrderStatusText = (s: string) => ({ shipped: '已发货', delivered: '已签收', completed: '已完成', rejected: '拒收', logistics_returned: '已退回', exception: '异常' }[s] || s)
-const getCodStatusType = (r: CodOrder) => r.codAmount === 0 ? 'info' : r.codStatus === 'returned' ? 'success' : r.codStatus === 'cancelled' ? 'warning' : 'danger'
+const getCodStatusType = (r: CodOrder) => r.actualCodAmount === 0 && r.codStatus === 'cancelled' ? 'info' : r.codStatus === 'returned' ? 'success' : r.codStatus === 'cancelled' ? 'warning' : 'danger'
 const getCodStatusText = (r: CodOrder) => {
-  // 🔥 问题3修复：完善代收状态显示逻辑
-  if (r.codAmount === 0) {
+  // 🔥 代收状态显示逻辑：基于actualCodAmount（用户修改后的值）
+  if (r.actualCodAmount === 0 && r.codStatus === 'cancelled') {
     return '无需代收'
   }
   if (r.codStatus === 'returned') {
