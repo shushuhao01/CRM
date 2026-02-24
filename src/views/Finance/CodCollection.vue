@@ -348,6 +348,25 @@ const handleCodSubmit = async () => {
         submitting.value = false
         return
       }
+
+      // 🔥 新增：如果改为0元，显示确认提示
+      if (codForm.value.codAmount === 0) {
+        try {
+          await ElMessageBox.confirm(
+            '修改为0元表示客户已直接付款，确定后将不再支持修改代收金额，是否继续？',
+            '重要提示',
+            {
+              confirmButtonText: '确定',
+              cancelButtonText: '取消',
+              type: 'warning',
+              icon: 'WarningFilled'
+            }
+          )
+        } catch {
+          submitting.value = false
+          return
+        }
+      }
     }
 
     if (isBatchCod.value) {
@@ -373,8 +392,65 @@ const handleCodSubmit = async () => {
     submitting.value = false
   }
 }
-const handleReturn = async (r: CodOrder) => { try { await ElMessageBox.confirm(`确定将订单 ${r.orderNumber} 标记为已返款吗？`, '确认', { type: 'warning' }); await markCodReturned(r.id, { returnedAmount: r.codAmount }); ElMessage.success('返款成功'); loadStats(); loadData() } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '失败') } }
-const handleBatchReturn = async () => { if (selectedRows.value.length === 0) { ElMessage.warning('请选择订单'); return }; try { await ElMessageBox.confirm(`确定将 ${selectedRows.value.length} 个订单标记为已返款吗？`, '批量返款', { type: 'warning' }); await batchMarkCodReturned({ orderIds: selectedRows.value.map(r => r.id) }); ElMessage.success(`批量标记 ${selectedRows.value.length} 个订单成功`); loadStats(); loadData() } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '失败') } }
+      await updateCodAmount(currentOrder.value.id, {
+        codAmount: codForm.value.codAmount,
+        codRemark: codForm.value.codRemark
+      })
+      ElMessage.success('修改成功')
+    }
+    codDialogVisible.value = false
+    loadStats()
+    loadData()
+  } catch (e: any) {
+    ElMessage.error(e.message || '操作失败')
+  } finally {
+    submitting.value = false
+  }
+}
+const handleReturn = async (r: CodOrder) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定将订单 ${r.orderNumber} 标记为已返款吗？\n\n⚠️ 重要提示：一旦确定返款将不再支持修改！`,
+      '确认返款',
+      {
+        type: 'warning',
+        icon: 'WarningFilled',
+        confirmButtonText: '确定返款',
+        cancelButtonText: '取消'
+      }
+    )
+    await markCodReturned(r.id, { returnedAmount: r.codAmount })
+    ElMessage.success('返款成功')
+    loadStats()
+    loadData()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e.message || '失败')
+  }
+}
+const handleBatchReturn = async () => {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请选择订单')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定将 ${selectedRows.value.length} 个订单标记为已返款吗？\n\n⚠️ 重要提示：一旦确定返款将不再支持修改！`,
+      '批量返款',
+      {
+        type: 'warning',
+        icon: 'WarningFilled',
+        confirmButtonText: '确定返款',
+        cancelButtonText: '取消'
+      }
+    )
+    await batchMarkCodReturned({ orderIds: selectedRows.value.map(r => r.id) })
+    ElMessage.success(`批量标记 ${selectedRows.value.length} 个订单成功`)
+    loadStats()
+    loadData()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e.message || '失败')
+  }
+}
 
 const handleExport = async () => {
   if (selectedRows.value.length === 0) {
