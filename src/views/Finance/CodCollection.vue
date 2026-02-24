@@ -392,21 +392,6 @@ const handleCodSubmit = async () => {
     submitting.value = false
   }
 }
-      await updateCodAmount(currentOrder.value.id, {
-        codAmount: codForm.value.codAmount,
-        codRemark: codForm.value.codRemark
-      })
-      ElMessage.success('修改成功')
-    }
-    codDialogVisible.value = false
-    loadStats()
-    loadData()
-  } catch (e: any) {
-    ElMessage.error(e.message || '操作失败')
-  } finally {
-    submitting.value = false
-  }
-}
 const handleReturn = async (r: CodOrder) => {
   try {
     await ElMessageBox.confirm(
