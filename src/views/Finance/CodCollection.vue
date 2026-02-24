@@ -155,7 +155,7 @@
             link
             size="small"
             @click="handleReturn(row)"
-            :disabled="row.codStatus === 'returned' || row.codAmount === 0"
+            :disabled="row.codStatus === 'returned' || (row.codStatus === 'cancelled' && row.codAmount === 0)"
           >返款</el-button>
         </template>
       </el-table-column>

@@ -385,6 +385,11 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
       return res.status(400).json({ success: false, message: '订单已返款，不能修改代收金额' });
     }
 
+    // 🔥 业务规则2：如果已经改为0元，不能再修改
+    if (order.codStatus === 'cancelled' && Number(order.codAmount) === 0) {
+      return res.status(400).json({ success: false, message: '订单已改为0元代收，不能再次修改' });
+    }
+
     // 计算原代收金额
     const calculatedCod = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
     const originalCodAmount = (order.codAmount !== null && order.codAmount !== undefined && Number(order.codAmount) > 0)
@@ -408,6 +413,7 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
     } else {
       // 改为大于0的金额，保持待处理状态（可以继续修改）
       order.codStatus = 'pending';
+      order.codCancelledAt = null;
     }
 
     if (codRemark !== undefined) {
@@ -631,3 +637,5 @@ router.get('/sales-users', authenticateToken, async (req: Request, res: Response
 });
 
 export default router;
+ 
+ 
