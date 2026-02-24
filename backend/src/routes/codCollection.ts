@@ -31,11 +31,6 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       status: In(SHIPPED_STATUSES)
     };
 
-    // 日期筛选（订单下单时间）
-    if (startDate && endDate) {
-      baseWhere.createdAt = Between(new Date(startDate as string), new Date(endDate as string + ' 23:59:59'));
-    }
-
     // 部门筛选
     if (departmentId) {
       baseWhere.createdByDepartmentId = departmentId;
@@ -46,27 +41,32 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       baseWhere.createdBy = salesPersonId;
     }
 
-    // 今日日期范围
+    // 🔥 修复：根据用户选择的日期范围计算统计数据
+    // 如果用户选择了日期范围，使用用户选择的范围；否则使用今日和当月
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    // 当月日期范围
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    // 今日代收（今日下单的订单代收金额，排除异常状态）
+    // 用户选择的日期范围（如果有）
+    let userStartDate = startDate ? new Date(startDate as string) : null;
+    let userEndDate = endDate ? new Date(endDate as string + ' 23:59:59') : null;
+
+    // 今日代收（如果用户选择了日期范围，则计算该范围内的代收；否则计算今日）
+    const todayWhere = { ...baseWhere, status: Not(In(EXCLUDED_STATUSES)) };
+    if (userStartDate && userEndDate) {
+      todayWhere.createdAt = Between(userStartDate, userEndDate);
+    } else {
+      todayWhere.createdAt = Between(today, todayEnd);
+    }
     const todayOrders = await orderRepo.find({
-      where: {
-        ...baseWhere,
-        createdAt: Between(today, todayEnd),
-        status: Not(In(EXCLUDED_STATUSES))
-      },
+      where: todayWhere,
       select: ['codAmount', 'totalAmount', 'depositAmount']
     });
     const todayCod = todayOrders.reduce((sum, o) => {
-      // 代收金额逻辑：如果cod_amount有值则使用，否则使用 总额-定金
       const calculatedCod = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
       const codAmount = (o.codAmount !== null && o.codAmount !== undefined && Number(o.codAmount) > 0)
         ? Number(o.codAmount)
@@ -74,13 +74,15 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       return sum + codAmount;
     }, 0);
 
-    // 当月代收（当月下单的订单代收金额，排除异常状态）
+    // 当月代收（如果用户选择了日期范围，则计算该范围内的代收；否则计算当月）
+    const monthWhere = { ...baseWhere, status: Not(In(EXCLUDED_STATUSES)) };
+    if (userStartDate && userEndDate) {
+      monthWhere.createdAt = Between(userStartDate, userEndDate);
+    } else {
+      monthWhere.createdAt = Between(monthStart, monthEnd);
+    }
     const monthOrders = await orderRepo.find({
-      where: {
-        ...baseWhere,
-        createdAt: Between(monthStart, monthEnd),
-        status: Not(In(EXCLUDED_STATUSES))
-      },
+      where: monthWhere,
       select: ['codAmount', 'totalAmount', 'depositAmount']
     });
     const monthCod = monthOrders.reduce((sum, o) => {
@@ -91,13 +93,15 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       return sum + codAmount;
     }, 0);
 
-    // 取消代收金额（当月）
+    // 已改代收金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月）
+    const cancelledWhere = { ...baseWhere, codStatus: 'cancelled' };
+    if (userStartDate && userEndDate) {
+      cancelledWhere.createdAt = Between(userStartDate, userEndDate);
+    } else {
+      cancelledWhere.codCancelledAt = Between(monthStart, monthEnd);
+    }
     const cancelledOrders = await orderRepo.find({
-      where: {
-        ...baseWhere,
-        codStatus: 'cancelled',
-        codCancelledAt: Between(monthStart, monthEnd)
-      },
+      where: cancelledWhere,
       select: ['codAmount', 'totalAmount', 'depositAmount']
     });
     const cancelledCod = cancelledOrders.reduce((sum, o) => {
@@ -108,25 +112,28 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       return sum + codAmount;
     }, 0);
 
-    // 已返款金额（当月）
+    // 已返款金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月）
+    const returnedWhere = { ...baseWhere, codStatus: 'returned' };
+    if (userStartDate && userEndDate) {
+      returnedWhere.createdAt = Between(userStartDate, userEndDate);
+    } else {
+      returnedWhere.codReturnedAt = Between(monthStart, monthEnd);
+    }
     const returnedOrders = await orderRepo.find({
-      where: {
-        ...baseWhere,
-        codStatus: 'returned',
-        codReturnedAt: Between(monthStart, monthEnd)
-      },
+      where: returnedWhere,
       select: ['codReturnedAmount']
     });
     const returnedCod = returnedOrders.reduce((sum, o) => sum + Number(o.codReturnedAmount || 0), 0);
 
-    // 未返款金额（当月下单且未返款的订单）
+    // 未返款金额（如果用户选择了日期范围，则计算该范围内的；否则计算当月）
+    const pendingWhere = { ...baseWhere, codStatus: 'pending', status: Not(In(EXCLUDED_STATUSES)) };
+    if (userStartDate && userEndDate) {
+      pendingWhere.createdAt = Between(userStartDate, userEndDate);
+    } else {
+      pendingWhere.createdAt = Between(monthStart, monthEnd);
+    }
     const pendingOrders = await orderRepo.find({
-      where: {
-        ...baseWhere,
-        createdAt: Between(monthStart, monthEnd),
-        codStatus: 'pending',
-        status: Not(In(EXCLUDED_STATUSES))
-      },
+      where: pendingWhere,
       select: ['codAmount', 'totalAmount', 'depositAmount']
     });
     const pendingCod = pendingOrders.reduce((sum, o) => {

@@ -6,14 +6,14 @@
         <div class="stat-icon today"><el-icon><Coin /></el-icon></div>
         <div class="stat-info">
           <div class="stat-value">¥{{ formatMoney(stats.todayCod) }}</div>
-          <div class="stat-label">今日代收</div>
+          <div class="stat-label">{{ getStatLabel('today') }}</div>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-icon month"><el-icon><Calendar /></el-icon></div>
         <div class="stat-info">
           <div class="stat-value">¥{{ formatMoney(stats.monthCod) }}</div>
-          <div class="stat-label">当月代收</div>
+          <div class="stat-label">{{ getStatLabel('month') }}</div>
         </div>
       </div>
       <div class="stat-card">
@@ -239,6 +239,20 @@ const codForm = ref({ codAmount: 0, codRemark: '' })
 
 const formatMoney = (val: number | string | undefined) => (Number(val) || 0).toFixed(2)
 const formatDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+// 🔥 新增：根据筛选条件动态显示统计标签
+const getStatLabel = (type: 'today' | 'month') => {
+  if (startDate.value && endDate.value) {
+    // 用户选择了日期范围
+    if (type === 'today') {
+      return '筛选范围代收'
+    }
+    return '筛选范围总计'
+  }
+  // 默认显示
+  return type === 'today' ? '今日代收' : '当月代收'
+}
+
 const getDateRange = (type: string): string[] => {
   const now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   if (type === 'today') return [formatDate(today), formatDate(today)]
