@@ -76,6 +76,7 @@ import { WecomAcquisitionLink } from '../entities/WecomAcquisitionLink';
 import { WecomServiceAccount } from '../entities/WecomServiceAccount';
 import { WecomChatRecord } from '../entities/WecomChatRecord';
 import { WecomPaymentRecord } from '../entities/WecomPaymentRecord';
+import { CodCancelApplication } from '../entities/CodCancelApplication';
 
 // 根据环境变量选择数据库配置
 const dbType = process.env.DB_TYPE || (process.env.NODE_ENV === 'production' ? 'mysql' : 'sqlite');
@@ -159,7 +160,8 @@ const AppDataSource = new DataSource(
           WecomAcquisitionLink,
           WecomServiceAccount,
           WecomChatRecord,
-          WecomPaymentRecord
+          WecomPaymentRecord,
+          CodCancelApplication
         ],
         migrations: [],
         subscribers: [],
@@ -232,7 +234,8 @@ const AppDataSource = new DataSource(
           WecomAcquisitionLink,
           WecomServiceAccount,
           WecomChatRecord,
-          WecomPaymentRecord
+          WecomPaymentRecord,
+          CodCancelApplication
         ],
         migrations: [],
         subscribers: [],
