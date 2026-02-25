@@ -302,6 +302,20 @@ export const menuConfig: MenuItem[] = [
         path: '/finance/cod-collection',
         roles: ['super_admin', 'admin'],
         permissions: ['finance:cod']
+      },
+      {
+        id: 'finance-cod-application-review',
+        title: '申请审核',
+        path: '/finance/cod-application-review',
+        roles: ['super_admin', 'admin'],
+        permissions: ['finance:cod']
+      },
+      {
+        id: 'finance-my-cod-application',
+        title: '我的申请',
+        path: '/finance/my-cod-application',
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        permissions: ['finance']
       }
     ]
   },
