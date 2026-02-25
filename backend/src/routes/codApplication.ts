@@ -182,11 +182,13 @@ router.get('/my-list', authenticateToken, async (req: Request, res: Response) =>
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取成功',
       data: { list, total, page: pageNum, pageSize: size }
     });
   } catch (error: any) {
     console.error('[CodApplication] Get my list error:', error);
-    res.status(500).json({ success: false, message: '获取申请列表失败' });
+    res.status(500).json({ success: false, code: 500, message: error.message || '获取申请列表失败' });
   }
 });
 
@@ -200,34 +202,63 @@ router.get('/review-list', authenticateToken, async (req: Request, res: Response
     const appRepo = AppDataSource.getRepository(CodCancelApplication);
     const queryBuilder = appRepo.createQueryBuilder('app');
 
+    // 初始化查询条件
+    let hasWhere = false;
+
     // 状态筛选
     if (status && status !== 'all') {
       queryBuilder.where('app.status = :status', { status });
+      hasWhere = true;
     }
 
     // 部门筛选
     if (departmentId) {
-      queryBuilder.andWhere('app.department_id = :departmentId', { departmentId });
+      if (hasWhere) {
+        queryBuilder.andWhere('app.department_id = :departmentId', { departmentId });
+      } else {
+        queryBuilder.where('app.department_id = :departmentId', { departmentId });
+        hasWhere = true;
+      }
     }
 
     // 申请人筛选
     if (applicantId) {
-      queryBuilder.andWhere('app.applicant_id = :applicantId', { applicantId });
+      if (hasWhere) {
+        queryBuilder.andWhere('app.applicant_id = :applicantId', { applicantId });
+      } else {
+        queryBuilder.where('app.applicant_id = :applicantId', { applicantId });
+        hasWhere = true;
+      }
     }
 
     // 日期筛选
     if (startDate && endDate) {
-      queryBuilder.andWhere('app.created_at BETWEEN :startDate AND :endDate', {
-        startDate: new Date(startDate as string),
-        endDate: new Date(endDate as string + ' 23:59:59')
-      });
+      if (hasWhere) {
+        queryBuilder.andWhere('app.created_at BETWEEN :startDate AND :endDate', {
+          startDate: new Date(startDate as string),
+          endDate: new Date(endDate as string + ' 23:59:59')
+        });
+      } else {
+        queryBuilder.where('app.created_at BETWEEN :startDate AND :endDate', {
+          startDate: new Date(startDate as string),
+          endDate: new Date(endDate as string + ' 23:59:59')
+        });
+        hasWhere = true;
+      }
     }
 
     // 关键词搜索
     if (keywords) {
-      queryBuilder.andWhere('(app.order_number LIKE :kw OR app.applicant_name LIKE :kw)', {
-        kw: `%${keywords}%`
-      });
+      if (hasWhere) {
+        queryBuilder.andWhere('(app.order_number LIKE :kw OR app.applicant_name LIKE :kw)', {
+          kw: `%${keywords}%`
+        });
+      } else {
+        queryBuilder.where('(app.order_number LIKE :kw OR app.applicant_name LIKE :kw)', {
+          kw: `%${keywords}%`
+        });
+        hasWhere = true;
+      }
     }
 
     // 获取总数
@@ -245,11 +276,13 @@ router.get('/review-list', authenticateToken, async (req: Request, res: Response
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取成功',
       data: { list, total, page: pageNum, pageSize: size }
     });
   } catch (error: any) {
     console.error('[CodApplication] Get review list error:', error);
-    res.status(500).json({ success: false, message: '获取审核列表失败' });
+    res.status(500).json({ success: false, code: 500, message: error.message || '获取审核列表失败' });
   }
 });
 
@@ -374,26 +407,36 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     const user = (req as any).user;
 
     const appRepo = AppDataSource.getRepository(CodCancelApplication);
-    const queryBuilder = appRepo.createQueryBuilder('app');
+
+    let pending = 0, approved = 0, rejected = 0, total = 0;
 
     if (type === 'my') {
-      queryBuilder.where('app.applicant_id = :userId', { userId: user.id });
+      // 我的申请统计
+      [pending, approved, rejected, total] = await Promise.all([
+        appRepo.count({ where: { applicantId: user.id, status: 'pending' } }),
+        appRepo.count({ where: { applicantId: user.id, status: 'approved' } }),
+        appRepo.count({ where: { applicantId: user.id, status: 'rejected' } }),
+        appRepo.count({ where: { applicantId: user.id } })
+      ]);
+    } else {
+      // 审核统计（全部）
+      [pending, approved, rejected, total] = await Promise.all([
+        appRepo.count({ where: { status: 'pending' } }),
+        appRepo.count({ where: { status: 'approved' } }),
+        appRepo.count({ where: { status: 'rejected' } }),
+        appRepo.count()
+      ]);
     }
-
-    const [pending, approved, rejected, total] = await Promise.all([
-      queryBuilder.clone().andWhere('app.status = :status', { status: 'pending' }).getCount(),
-      queryBuilder.clone().andWhere('app.status = :status', { status: 'approved' }).getCount(),
-      queryBuilder.clone().andWhere('app.status = :status', { status: 'rejected' }).getCount(),
-      queryBuilder.getCount()
-    ]);
 
     res.json({
       success: true,
+      code: 200,
+      message: '获取成功',
       data: { pending, approved, rejected, total }
     });
   } catch (error: any) {
     console.error('[CodApplication] Get stats error:', error);
-    res.status(500).json({ success: false, message: '获取统计数据失败' });
+    res.status(500).json({ success: false, code: 500, message: error.message || '获取统计数据失败' });
   }
 });
 

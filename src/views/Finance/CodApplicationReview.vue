@@ -64,12 +64,15 @@
         </el-tabs>
       </div>
       <div class="action-right">
+        <el-button v-if="selectedIds.length > 0 && activeTab === 'pending'" type="success" :icon="CircleCheck" @click="handleBatchReview(true)">批量通过</el-button>
+        <el-button v-if="selectedIds.length > 0 && activeTab === 'pending'" type="danger" :icon="CircleClose" @click="handleBatchReview(false)">批量驳回</el-button>
         <el-button type="primary" :icon="Refresh" @click="handleRefresh">刷新</el-button>
       </div>
     </div>
 
     <!-- 数据表格 -->
-    <el-table :data="tableData" v-loading="loading" stripe border class="data-table">
+    <el-table :data="tableData" v-loading="loading" stripe border class="data-table" @selection-change="handleSelectionChange">
+      <el-table-column v-if="activeTab === 'pending'" type="selection" width="55" />
       <el-table-column prop="orderNumber" label="订单号" min-width="160">
         <template #default="{ row }"><el-link type="primary" @click="goToOrderDetail(row.orderId)">{{ row.orderNumber }}</el-link></template>
       </el-table-column>
@@ -208,6 +211,9 @@ const detailDialogVisible = ref(false)
 const currentApplication = ref<CodApplication | null>(null)
 const submitting = ref(false)
 const reviewForm = ref({ approved: true, reviewRemark: '' })
+const selectedIds = ref<string[]>([])
+const batchReviewDialogVisible = ref(false)
+const batchReviewForm = ref({ approved: true, reviewRemark: '' })
 
 const formatMoney = (val: number | string | undefined) => (Number(val) || 0).toFixed(2)
 
@@ -289,6 +295,66 @@ const handleReview = async () => {
   }
 }
 
+const handleSelectionChange = (selection: CodApplication[]) => {
+  selectedIds.value = selection.map(item => item.id)
+}
+
+const handleBatchReview = async (approved: boolean) => {
+  if (selectedIds.value.length === 0) {
+    ElMessage.warning('请选择要审核的申请')
+    return
+  }
+
+  try {
+    await ElMessageBox.prompt(
+      `确定要批量${approved ? '通过' : '驳回'}选中的 ${selectedIds.value.length} 条申请吗？`,
+      '批量审核',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputPlaceholder: '请输入审核备注',
+        inputValidator: (value) => {
+          if (!value || value.trim() === '') {
+            return '请输入审核备注'
+          }
+          return true
+        }
+      }
+    ).then(async ({ value }) => {
+      submitting.value = true
+      try {
+        let successCount = 0
+        let failCount = 0
+
+        for (const id of selectedIds.value) {
+          try {
+            await reviewApplication(id, { approved, reviewRemark: value })
+            successCount++
+          } catch (e) {
+            failCount++
+          }
+        }
+
+        if (failCount === 0) {
+          ElMessage.success(`批量审核成功，共 ${successCount} 条`)
+        } else {
+          ElMessage.warning(`批量审核完成，成功 ${successCount} 条，失败 ${failCount} 条`)
+        }
+
+        selectedIds.value = []
+        loadStats()
+        loadData()
+      } catch (err: any) {
+        ElMessage.error(err.message || '批量审核失败')
+      } finally {
+        submitting.value = false
+      }
+    })
+  } catch (e) {
+    // 用户取消
+  }
+}
+
 onMounted(() => {
   loadStats()
   loadData()
@@ -300,10 +366,10 @@ onMounted(() => {
 .stats-cards { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
 .stat-card { flex: 1; min-width: 180px; background: #fff; border-radius: 8px; padding: 20px; display: flex; align-items: center; gap: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
 .stat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px;
-  &.pending { background: linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%); color: #e6a23c; }
-  &.approved { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #67c23a; }
-  &.rejected { background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); color: #f56c6c; }
-  &.total { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
+  &.pending { background: linear-gradient(135deg, #fad0c4 0%, #ffd1ff 100%); color: #f39c12; }
+  &.approved { background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%); color: #27ae60; }
+  &.rejected { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: #e74c3c; }
+  &.total { background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); color: #fff; }
 }
 .stat-info { .stat-value { font-size: 24px; font-weight: 600; color: #303133; } .stat-label { font-size: 13px; color: #909399; margin-top: 4px; } }
 .filter-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; background: #fff; padding: 16px; border-radius: 8px; }
