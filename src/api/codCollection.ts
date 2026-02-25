@@ -21,8 +21,7 @@ export interface CodOrder {
   totalAmount: number
   finalAmount: number
   depositAmount: number
-  codAmount: number  // 显示用的代收金额（计算值）
-  actualCodAmount: number | null  // 实际的代收金额（用户修改后的值，用于按钮禁用）
+  codAmount: number  // 当前实际代收金额（如果修改过则为修改后的值，否则为原始计算值）
   codStatus: string
   codReturnedAmount: number
   codReturnedAt: string | null

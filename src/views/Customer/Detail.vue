@@ -595,20 +595,24 @@
               </el-input>
             </div>
             <el-table :data="filteredOrders" style="width: 100%" v-loading="loadingOrders">
-              <el-table-column prop="orderNo" label="订单号" width="160" show-overflow-tooltip />
-              <el-table-column prop="products" label="商品" min-width="200" show-overflow-tooltip />
-              <el-table-column prop="totalAmount" label="订单金额" width="110">
+              <el-table-column prop="orderNo" label="订单号" width="200" show-overflow-tooltip />
+              <el-table-column prop="products" label="商品名称" min-width="220" show-overflow-tooltip />
+              <el-table-column prop="totalAmount" label="订单金额" width="130">
                 <template #default="{ row }">
                   <span class="amount">¥{{ row.totalAmount.toLocaleString() }}</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="status" label="订单状态" width="90">
+              <el-table-column prop="status" label="订单状态" width="120">
                 <template #default="{ row }">
                   <el-tag :type="getOrderStatusTagType(row.status)" size="small">{{ row.status }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="orderDate" label="下单时间" width="160" show-overflow-tooltip />
-              <el-table-column label="操作" width="180" fixed="right">
+              <el-table-column prop="orderDate" label="下单时间" width="200" show-overflow-tooltip>
+                <template #default="{ row }">
+                  {{ formatDateTime(row.orderDate) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="200" fixed="right">
                 <template #default="{ row }">
                   <el-button @click="viewOrder(row.id)" size="small" type="primary" link>查看</el-button>
                   <el-button @click="editOrder(row.id)" size="small" type="warning" link v-if="row.status === '待付款'">编辑</el-button>
@@ -626,27 +630,31 @@
               <el-button @click="createAfterSales" icon="Plus" type="primary" size="small">新建售后</el-button>
             </div>
             <el-table :data="serviceRecords" style="width: 100%" v-loading="loadingService">
-              <el-table-column prop="serviceNo" label="售后单号" width="160" show-overflow-tooltip />
-              <el-table-column prop="orderNo" label="关联订单" width="160" show-overflow-tooltip />
-              <el-table-column prop="type" label="售后类型" width="90">
+              <el-table-column prop="serviceNo" label="售后单号" width="200" show-overflow-tooltip />
+              <el-table-column prop="orderNo" label="关联订单" width="200" show-overflow-tooltip />
+              <el-table-column prop="type" label="售后类型" width="120">
                 <template #default="{ row }">
                   <el-tag :type="getServiceType(row.type)" size="small">{{ row.type }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="reason" label="售后原因" min-width="180" show-overflow-tooltip />
-              <el-table-column prop="amount" label="退款金额" width="100">
+              <el-table-column prop="reason" label="售后原因" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="amount" label="退款金额" width="130">
                 <template #default="{ row }">
                   <span class="amount" v-if="row.amount">¥{{ row.amount.toLocaleString() }}</span>
                   <span v-else>-</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="status" label="处理状态" width="90">
+              <el-table-column prop="status" label="处理状态" width="120">
                 <template #default="{ row }">
                   <el-tag :type="getServiceStatusType(row.status)" size="small">{{ row.status }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="createTime" label="申请时间" width="160" show-overflow-tooltip />
-              <el-table-column label="操作" width="140" fixed="right">
+              <el-table-column prop="createTime" label="申请时间" width="200" show-overflow-tooltip>
+                <template #default="{ row }">
+                  {{ formatDateTime(row.createTime) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="160" fixed="right">
                 <template #default="{ row }">
                   <el-button @click="viewService(row.id)" size="small" type="primary" link>查看</el-button>
                   <el-button @click="handleService(row.id)" size="small" type="warning" link v-if="row.status === '待处理'">处理</el-button>
@@ -664,25 +672,29 @@
                 v-if="permissionService.checkCallPermission(userStore.userInfo?.id || 'guest', 'MAKE_CALL').hasAccess">发起通话</el-button>
             </div>
             <el-table :data="callRecords" style="width: 100%" v-loading="loadingCalls">
-              <el-table-column prop="callType" label="通话类型" width="90">
+              <el-table-column prop="callType" label="通话类型" width="120">
                 <template #default="{ row }">
                   <el-tag :type="row.callType === '呼出' ? 'success' : 'info'" size="small">{{ row.callType }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="phone" label="电话号码" width="130">
+              <el-table-column prop="phone" label="电话号码" width="150">
                 <template #default="{ row }">
                   {{ displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE) }}
                 </template>
               </el-table-column>
-              <el-table-column prop="duration" label="通话时长" width="100" />
-              <el-table-column prop="status" label="通话状态" width="90">
+              <el-table-column prop="duration" label="通话时长" width="120" />
+              <el-table-column prop="status" label="通话状态" width="120">
                 <template #default="{ row }">
                   <el-tag :type="getCallStatusType(row.status)" size="small">{{ row.status }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="summary" label="通话摘要" min-width="180" show-overflow-tooltip />
-              <el-table-column prop="callTime" label="通话时间" width="160" show-overflow-tooltip />
-              <el-table-column label="操作" width="180" fixed="right">
+              <el-table-column prop="summary" label="通话摘要" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="callTime" label="通话时间" width="200" show-overflow-tooltip>
+                <template #default="{ row }">
+                  {{ formatDateTime(row.callTime) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="200" fixed="right">
                 <template #default="{ row }">
                   <el-button @click="viewCallDetail(row.id)" size="small" type="primary" link
                     v-if="permissionService.checkCallPermission(userStore.userInfo?.id || 'guest', 'VIEW_RECORDS').hasAccess">详情</el-button>
@@ -730,7 +742,7 @@
                 <el-timeline-item
                   v-for="item in followUpRecords"
                   :key="item.id"
-                  :timestamp="item.createTime"
+                  :timestamp="formatDateTime(item.createTime)"
                   :type="getFollowUpType(item.type)"
                 >
                   <el-card class="timeline-card">
@@ -998,6 +1010,7 @@ import { createSafeNavigator } from '@/utils/navigation'
 import { customerDetailApi } from '@/api/customerDetail'
 import { customerApi } from '@/api/customer'
 import { getOrderStatusText as getOrderStatusTextFromConfig, getOrderStatusTagType } from '@/utils/orderStatusConfig'
+import { formatDateTime } from '@/utils/date'
 
 const route = useRoute()
 const router = useRouter()

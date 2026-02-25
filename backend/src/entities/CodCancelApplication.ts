@@ -32,7 +32,7 @@ export class CodCancelApplication {
   @Column('text', { name: 'cancel_reason' })
   cancelReason: string;
 
-  @Column('simple-json', { nullable: true, name: 'payment_proof' })
+  @Column('json', { nullable: true, name: 'payment_proof' })
   paymentProof: string[] | null;
 
   @Column('varchar', { length: 20, default: 'pending' })

@@ -7,6 +7,7 @@ import { SystemConfig } from '../entities/SystemConfig';
 import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
 import { OrderStatusHistory } from '../entities/OrderStatusHistory';
 import { Customer } from '../entities/Customer';  // 🔥 新增：导入Customer实体
+import { CodCancelApplication } from '../entities/CodCancelApplication'; // 🔥 新增：导入CodCancelApplication实体
 import { orderNotificationService } from '../services/OrderNotificationService';
 // Like 和 Between 现在通过 QueryBuilder 使用，不再直接导入
 // import { Like, Between } from 'typeorm';
@@ -2077,6 +2078,9 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
         depositAmount: Number(order.depositAmount) || 0,
         // 🔥 代收金额 = 订单总额 - 定金
         collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+        // 🔥 代收相关字段
+        codAmount: order.codAmount !== undefined && order.codAmount !== null ? Number(order.codAmount) : ((Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0)),
+        codStatus: order.codStatus || 'pending',
         receiverName: order.shippingName || '',
         receiverPhone: order.shippingPhone || '',
         receiverAddress: order.shippingAddress || '',
@@ -2115,9 +2119,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
         salesPersonId: order.createdBy || '',
         // 🔥 添加operatorId和operator字段，用于前端权限判断
         operatorId: order.createdBy || '',
-        operator: order.createdByName || '',
-        // 🔥 添加代收状态字段
-        codStatus: order.codStatus || 'pending'
+        operator: order.createdByName || ''
       };
     });
 
@@ -2363,6 +2365,13 @@ router.get('/:id', async (req: Request, res: Response) => {
       isAuditTransferred = true;
     }
 
+    // 检查是否有待审核的取消代收申请
+    const codApplicationRepo = AppDataSource.getRepository(CodCancelApplication);
+    const pendingApplicationCount = await codApplicationRepo.count({
+      where: { orderId: order.id, status: 'pending' }
+    });
+    const hasPendingCodApplication = pendingApplicationCount > 0;
+
     const data = {
       id: order.id,
       orderNumber: order.orderNumber,
@@ -2374,6 +2383,10 @@ router.get('/:id', async (req: Request, res: Response) => {
       depositAmount: Number(order.depositAmount) || 0,
       // 🔥 代收金额 = 订单总额 - 定金
       collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+      // 🔥 代收相关字段
+      codAmount: order.codAmount !== undefined && order.codAmount !== null ? Number(order.codAmount) : ((Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0)),
+      codStatus: order.codStatus || 'pending',
+      hasPendingCodApplication: hasPendingCodApplication,
       receiverName: order.shippingName || '',
       receiverPhone: order.shippingPhone || '',
       receiverAddress: order.shippingAddress || '',
@@ -2579,6 +2592,9 @@ router.post('/', async (req: Request, res: Response) => {
       expressCompany: expressCompany || '',
       markType: markType || 'normal',
       remark: remark || '',
+      // 🔥 代收相关字段初始化
+      codAmount: finalTotalAmount - finalDepositAmount, // 初始代收金额 = 总额 - 定金
+      codStatus: 'pending', // 初始状态为待处理
       // 🔥 新版自定义字段：7个独立字段
       customField1: customFields?.custom_field1 || undefined,
       customField2: customFields?.custom_field2 || undefined,

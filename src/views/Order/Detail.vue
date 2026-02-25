@@ -419,10 +419,27 @@
                 </div>
                 <div class="amount-content-modern">
                   <div class="amount-label-modern">代收</div>
-                  <div class="amount-value-modern" v-if="orderDetail.codStatus === 'cancelled'">
-                    <span style="color: #909399; font-size: 14px;">已取消代收</span>
+                  <div class="amount-value-modern">
+                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
+                      <span>¥{{ ((orderDetail.totalAmount || 0) - (orderDetail.depositAmount || 0)).toFixed(2) }}</span>
+                      <el-tooltip
+                        :content="codCancelDisabledReason"
+                        :disabled="canApplyCodCancel"
+                        placement="top"
+                      >
+                        <span>
+                          <el-button
+                            type="warning"
+                            size="small"
+                            :disabled="!canApplyCodCancel"
+                            @click="handleApplyCodCancel"
+                          >
+                            改代收
+                          </el-button>
+                        </span>
+                      </el-tooltip>
+                    </div>
                   </div>
-                  <div class="amount-value-modern" v-else>¥{{ ((orderDetail.totalAmount || 0) - (orderDetail.depositAmount || 0)).toFixed(2) }}</div>
                 </div>
               </div>
             </div>
@@ -724,6 +741,9 @@ const orderDetail = reactive({
   discount: 0,
   totalAmount: 0,
   depositAmount: 0,
+  codAmount: 0, // 代收金额
+  codStatus: 'pending', // 代收状态：pending, cancelled, returned
+  hasPendingCodApplication: false, // 是否有待审核的取消代收申请
   depositScreenshot: '',
   depositScreenshots: [],
   paymentMethod: '',
@@ -1140,6 +1160,101 @@ const canChangeToReserved = computed(() => {
          !orderDetail.isAuditTransferred
 })
 
+// 计算是否可以申请改代收
+const canApplyCodCancel = computed(() => {
+  console.log('[改代收按钮] 检查条件:', {
+    status: orderDetail.status,
+    codStatus: orderDetail.codStatus,
+    codAmount: orderDetail.codAmount,
+    totalAmount: orderDetail.totalAmount,
+    depositAmount: orderDetail.depositAmount,
+    hasPendingApplication: orderDetail.hasPendingCodApplication
+  })
+
+  // 🔥 已签收和已完成的订单不能改代收（客户已经把钱给快递员了）
+  const signedStatuses = ['delivered', 'completed']
+  if (signedStatuses.includes(orderDetail.status)) {
+    console.log('[改代收按钮] 订单已签收，不能改代收:', orderDetail.status)
+    return false
+  }
+
+  // 订单需要已发货（但不能是已签收或已完成）
+  if (orderDetail.status !== 'shipped') {
+    console.log('[改代收按钮] 订单状态不符合:', orderDetail.status)
+    return false
+  }
+
+  // 代收状态必须是待处理（pending）
+  if (orderDetail.codStatus !== 'pending') {
+    console.log('[改代收按钮] 代收状态不符合:', orderDetail.codStatus)
+    return false
+  }
+
+  // 🔥 修复：计算原始代收金额（总额-定金），与显示逻辑保持一致
+  const originalCodAmount = (orderDetail.totalAmount || 0) - (orderDetail.depositAmount || 0)
+
+  // 必须有代收金额（使用原始计算值，而不是数据库中可能被修改过的codAmount）
+  if (originalCodAmount <= 0) {
+    console.log('[改代收按钮] 原始代收金额不符合:', originalCodAmount)
+    return false
+  }
+
+  // 不能有待审核的取消代收申请
+  if (orderDetail.hasPendingCodApplication) {
+    console.log('[改代收按钮] 已有待审核申请')
+    return false
+  }
+
+  console.log('[改代收按钮] 所有条件符合，按钮可用')
+  return true
+})
+
+// 计算改代收按钮的禁用原因提示
+const codCancelDisabledReason = computed(() => {
+  // 优先检查是否有待审核申请
+  if (orderDetail.hasPendingCodApplication) {
+    return '该订单已有待审核的取消代收申请'
+  }
+
+  // 🔥 已签收和已完成的订单不能改代收
+  const signedStatuses = ['delivered', 'completed']
+  if (signedStatuses.includes(orderDetail.status)) {
+    return '订单已签收，不支持改代收'
+  }
+
+  // 检查代收状态
+  if (orderDetail.codStatus === 'cancelled') {
+    // 已改代收，显示当前代收金额
+    const currentCodAmount = orderDetail.codAmount !== undefined && orderDetail.codAmount !== null
+      ? Number(orderDetail.codAmount)
+      : 0
+
+    if (currentCodAmount === 0) {
+      return '已审核通过改代收为¥0.00，不再支持改代收'
+    } else {
+      return `已改代收为¥${currentCodAmount.toFixed(2)}，不再支持改代收`
+    }
+  }
+
+  if (orderDetail.codStatus === 'returned') {
+    return '该订单已返款，无法改代收'
+  }
+
+  // 检查订单状态（只允许已发货状态）
+  if (orderDetail.status !== 'shipped') {
+    return '订单需要已发货后才能改代收'
+  }
+
+  // 🔥 修复：计算原始代收金额（总额-定金），与显示和判断逻辑保持一致
+  const originalCodAmount = (orderDetail.totalAmount || 0) - (orderDetail.depositAmount || 0)
+  if (originalCodAmount <= 0) {
+    return '该订单无代收金额'
+  }
+
+  // 如果所有条件都符合，返回空字符串（按钮可用）
+  return ''
+})
+
 // 定金截图列表计算属性
 const depositScreenshotList = computed(() => {
   // 优先使用新的多张截图字段，如果没有则使用单张截图字段
@@ -1154,6 +1269,18 @@ const depositScreenshotList = computed(() => {
 // 方法
 const goBack = () => {
   router.back()
+}
+
+// 跳转到改代收申请页面
+const handleApplyCodCancel = () => {
+  // 跳转到取消代收申请页面，并传递订单ID
+  router.push({
+    path: '/finance/my-cod-application',
+    query: {
+      orderId: orderDetail.id,
+      autoFill: 'true'
+    }
+  })
 }
 
 // 预览定金截图
@@ -1982,6 +2109,9 @@ const loadOrderDetail = async () => {
       discount: order.discount,
       totalAmount: order.totalAmount,
       depositAmount: order.depositAmount,
+      codAmount: order.codAmount !== undefined ? order.codAmount : ((order.totalAmount || 0) - (order.depositAmount || 0)),
+      codStatus: order.codStatus || 'pending',
+      hasPendingCodApplication: order.hasPendingCodApplication || false,
       depositScreenshot: order.depositScreenshot || '',
       depositScreenshots: order.depositScreenshots || [],
       paymentMethod: order.paymentMethod || '',

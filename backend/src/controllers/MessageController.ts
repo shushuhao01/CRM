@@ -2472,6 +2472,11 @@ export class MessageController {
         { value: 'order_cancel_approved', label: '取消通过', description: '取消申请通过时通知', category: '取消审核', primary: false },
         { value: 'order_cancel_rejected', label: '取消拒绝', description: '取消申请拒绝时通知', category: '取消审核', primary: false },
 
+        // 代收取消审核
+        { value: 'cod_cancel_request', label: '代收取消申请', description: '代收取消申请提交时通知', category: '代收审核', primary: false },
+        { value: 'cod_cancel_approved', label: '代收取消通过', description: '代收取消申请通过时通知', category: '代收审核', primary: false },
+        { value: 'cod_cancel_rejected', label: '代收取消拒绝', description: '代收取消申请拒绝时通知', category: '代收审核', primary: false },
+
         // 售后生命周期
         { value: 'after_sales_created', label: '售后创建', description: '创建售后服务时通知', category: '售后通知', primary: false },
         { value: 'after_sales_processing', label: '售后处理中', description: '售后开始处理时通知', category: '售后通知', primary: false },

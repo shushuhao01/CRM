@@ -347,8 +347,16 @@
       <!-- 代收金额列 -->
       <template #column-collectAmount="{ row }">
         <div class="cod-amount-cell">
+          <!-- 始终显示原始代收金额（总额-定金） -->
           <span class="amount-text">¥{{ ((row.totalAmount || 0) - (row.depositAmount || 0)).toLocaleString() }}</span>
-          <span v-if="row.codStatus === 'cancelled'" class="cancelled-cod-tag">已取消代收</span>
+          <!-- 🔥 判断是否修改过代收金额：codAmount不为null且不等于原始金额，且未返款 -->
+          <el-tooltip
+            v-if="row.codStatus !== 'returned' && row.codAmount !== null && row.codAmount !== undefined && row.codAmount !== ((row.totalAmount || 0) - (row.depositAmount || 0))"
+            :content="`已改代收为¥${Number(row.codAmount).toFixed(2)}`"
+            placement="top"
+          >
+            <span class="cancelled-cod-badge">已改</span>
+          </el-tooltip>
         </div>
       </template>
 
@@ -821,7 +829,7 @@ const PRESET_CUSTOM_FIELD_KEYS = [
 ]
 
 const baseTableColumns = [
-  { prop: 'orderNumber', label: '订单号', visible: true, minWidth: 140 },
+  { prop: 'orderNumber', label: '订单号', visible: true, minWidth: 180 },
   { prop: 'customerName', label: '客户姓名', visible: true, minWidth: 100 },
   { prop: 'status', label: '状态', visible: true, minWidth: 90 },
   { prop: 'markType', label: '标记', visible: true, minWidth: 90 },
@@ -829,7 +837,7 @@ const baseTableColumns = [
   { prop: 'salesPersonName', label: '销售人员', visible: true, minWidth: 100 },
   { prop: 'products', label: '商品', visible: true, minWidth: 150 },
   { prop: 'depositAmount', label: '定金', visible: true, minWidth: 90 },
-  { prop: 'collectAmount', label: '代收金额', visible: true, minWidth: 100 },
+  { prop: 'collectAmount', label: '代收金额', visible: true, minWidth: 115 },
   { prop: 'serviceWechat', label: '客服微信号', visible: true, minWidth: 120 },
   { prop: 'orderSource', label: '订单来源', visible: true, minWidth: 100 },
   { prop: 'expressCompany', label: '指定快递', visible: true, minWidth: 100 },
@@ -2548,6 +2556,43 @@ onUnmounted(() => {
   margin-bottom: 18px;
 }
 
+/* 代收金额单元格样式 */
+.cod-amount-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.cod-amount-cell .amount-text {
+  font-weight: 600;
+  color: #e6a23c;
+}
+
+.cod-amount-cell .cancelled-cod-badge {
+  display: inline-block;
+  font-size: 11px;
+  color: #909399;
+  background: #f4f4f5;
+  border: 1px solid #dcdfe6;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  cursor: help;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.cod-amount-cell .returned-cod-tag {
+  font-size: 12px;
+  color: #67c23a;
+  background: #f0f9ff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-block;
+  width: fit-content;
+}
+
 /* 表格式卡片容器样式 */
 .table-card-container {
   margin-bottom: 20px;
@@ -2638,18 +2683,7 @@ onUnmounted(() => {
   color: #e6a23c;
 }
 
-.cancelled-cod-tag {
-  display: block;
-  color: #909399;
-  font-size: 11px;
-  margin-top: 2px;
-}
-
-.cod-amount-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
+/* 已移除重复的 .cancelled-cod-tag 和 .cod-amount-cell 定义 */
 
 .deposit-text {
   color: #67c23a;

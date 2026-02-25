@@ -188,8 +188,12 @@
     <!-- 修改代收弹窗 -->
     <el-dialog v-model="codDialogVisible" :title="isBatchCod ? '批量修改代收' : '修改代收金额'" width="450px">
       <el-form :model="codForm" label-width="120px">
-        <el-form-item label="原代收金额" v-if="!isBatchCod && currentOrder">
+        <el-form-item label="原始代收金额" v-if="!isBatchCod && currentOrder">
+          <span style="color: #909399;">¥{{ formatMoney((currentOrder.totalAmount || 0) - (currentOrder.depositAmount || 0)) }}</span>
+        </el-form-item>
+        <el-form-item label="当前代收金额" v-if="!isBatchCod && currentOrder">
           <span style="color: #e6a23c; font-weight: 600;">¥{{ formatMoney(currentOrder.codAmount) }}</span>
+          <span v-if="hasModifiedCod(currentOrder)" style="color: #f56c6c; font-size: 12px; margin-left: 8px;">（已改代收）</span>
         </el-form-item>
         <el-form-item label="快递员代收金额">
           <el-input-number
@@ -202,7 +206,7 @@
           />
           <el-alert
             v-if="!isBatchCod"
-            :title="codForm.codAmount === 0 ? '⚠️ 修改为0元表示客户已全部付款，修改后将不能再改代收和返款！' : '修改的金额不能大于原代收金额'"
+            :title="codForm.codAmount === 0 ? '⚠️ 修改为0元表示客户已全部付款，修改后将不能再改代收和返款！' : `修改的金额不能大于当前代收金额¥${formatMoney(currentOrder?.codAmount || 0)}`"
             :type="codForm.codAmount === 0 ? 'error' : 'info'"
             :closable="false"
             style="margin-top: 8px;"
@@ -227,7 +231,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Edit, Check, Coin, Calendar, CircleClose, CircleCheck, Clock, Download } from '@element-plus/icons-vue'
@@ -271,6 +275,25 @@ const codForm = ref({ codAmount: 0, codRemark: '' })
 
 const formatMoney = (val: number | string | undefined) => (Number(val) || 0).toFixed(2)
 const formatDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+// 判断订单是否改过代收
+const hasModifiedCod = (order: any) => {
+  if (!order) return false
+  const originalCodAmount = (order.totalAmount || 0) - (order.depositAmount || 0)
+  const currentCodAmount = order.codAmount || 0
+  return currentCodAmount < originalCodAmount
+}
+
+// 🔥 监听代收金额输入，超过最大值时自动重置
+watch(() => codForm.value.codAmount, (newAmount) => {
+  if (!isBatchCod.value && currentOrder.value) {
+    const maxAmount = currentOrder.value.codAmount || 0
+    if (newAmount > maxAmount) {
+      ElMessage.warning(`修改的金额不能大于当前代收金额¥${formatMoney(maxAmount)}，已自动重置`)
+      codForm.value.codAmount = maxAmount
+    }
+  }
+})
 
 // 🔥 新增：根据筛选条件动态显示统计标签
 const getStatLabel = (type: 'today' | 'month') => {
@@ -317,10 +340,10 @@ const applyBatchSearch = () => { batchSearchVisible.value = false; searchKeyword
 
 const getOrderStatusType = (s: string) => ({ shipped: 'primary', delivered: 'success', completed: 'success', rejected: 'danger', logistics_returned: 'warning', exception: 'danger' }[s] || 'info')
 const getOrderStatusText = (s: string) => ({ shipped: '已发货', delivered: '已签收', completed: '已完成', rejected: '拒收', logistics_returned: '已退回', exception: '异常' }[s] || s)
-const getCodStatusType = (r: CodOrder) => r.actualCodAmount === 0 && r.codStatus === 'cancelled' ? 'info' : r.codStatus === 'returned' ? 'success' : r.codStatus === 'cancelled' ? 'warning' : 'danger'
+const getCodStatusType = (r: CodOrder) => r.codAmount === 0 && r.codStatus === 'cancelled' ? 'info' : r.codStatus === 'returned' ? 'success' : r.codStatus === 'cancelled' ? 'warning' : 'danger'
 const getCodStatusText = (r: CodOrder) => {
-  // 🔥 代收状态显示逻辑：基于actualCodAmount（用户修改后的值）
-  if (r.actualCodAmount === 0 && r.codStatus === 'cancelled') {
+  // 🔥 代收状态显示逻辑：基于codAmount（当前实际代收金额）
+  if (r.codAmount === 0 && r.codStatus === 'cancelled') {
     return '无需代收'
   }
   if (r.codStatus === 'returned') {
@@ -335,14 +358,41 @@ const getCodStatusText = (r: CodOrder) => {
 const goToOrderDetail = (id: string) => router.push(`/order/detail/${id}`)
 const goToCustomerDetail = (id: string) => router.push(`/customer/detail/${id}`)
 const showDetailDialog = (r: CodOrder) => { currentOrder.value = r; detailDialogVisible.value = true }
+
 const showCodDialog = (r: CodOrder) => {
+  // 🔥 检查订单状态：已签收和已完成的订单不能改代收
+  const signedStatuses = ['delivered', 'completed']
+  if (signedStatuses.includes(r.status)) {
+    ElMessage.warning('订单已签收，不支持改代收')
+    return
+  }
+
   currentOrder.value = r
   isBatchCod.value = false
   // 🔥 默认金额为0
   codForm.value = { codAmount: 0, codRemark: r.codRemark || '' }
   codDialogVisible.value = true
 }
-const showBatchCodDialog = () => { if (selectedRows.value.length === 0) { ElMessage.warning('请选择订单'); return }; isBatchCod.value = true; codForm.value = { codAmount: 0, codRemark: '' }; codDialogVisible.value = true }
+const showBatchCodDialog = () => {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请选择订单')
+    return
+  }
+
+  // 🔥 检查订单状态：已签收和已完成的订单不能改代收
+  const signedStatuses = ['delivered', 'completed']
+  const invalidOrders = selectedRows.value.filter(r => signedStatuses.includes(r.status))
+
+  if (invalidOrders.length > 0) {
+    const invalidOrderNumbers = invalidOrders.map(r => r.orderNumber).join('、')
+    ElMessage.warning(`以下订单已签收，不支持改代收：${invalidOrderNumbers}`)
+    return
+  }
+
+  isBatchCod.value = true
+  codForm.value = { codAmount: 0, codRemark: '' }
+  codDialogVisible.value = true
+}
 const showTrackingDialog = (r: CodOrder) => { currentTrackingNo.value = r.trackingNumber; currentCompany.value = r.expressCompany; currentPhone.value = r.customerPhone; trackingDialogVisible.value = true }
 
 const handleCodSubmit = async () => {
@@ -382,6 +432,13 @@ const handleCodSubmit = async () => {
 }
 const handleReturn = async (r: CodOrder) => {
   try {
+    // 🔥 检查订单状态：只有已签收或已完成的订单才能返款
+    const allowedStatuses = ['delivered', 'completed']
+    if (!allowedStatuses.includes(r.status)) {
+      ElMessage.warning('订单状态非已签收，请先处理订单签收')
+      return
+    }
+
     await ElMessageBox.confirm(
       '',
       '确认返款',
@@ -407,6 +464,17 @@ const handleBatchReturn = async () => {
     ElMessage.warning('请选择订单')
     return
   }
+
+  // 🔥 检查订单状态：只有已签收或已完成的订单才能返款
+  const allowedStatuses = ['delivered', 'completed']
+  const invalidOrders = selectedRows.value.filter(r => !allowedStatuses.includes(r.status))
+
+  if (invalidOrders.length > 0) {
+    const invalidOrderNumbers = invalidOrders.map(r => r.orderNumber).join('、')
+    ElMessage.warning(`以下订单状态非已签收，请先处理订单签收：${invalidOrderNumbers}`)
+    return
+  }
+
   try {
     await ElMessageBox.confirm(
       '',
@@ -486,7 +554,30 @@ const handleExport = async () => {
   }
 }
 
-onMounted(() => { const range = getDateRange('month'); startDate.value = range[0] || ''; endDate.value = range[1] || ''; loadDepartments(); loadSalesUsers(); loadStats(); loadData() })
+onMounted(() => {
+  const range = getDateRange('month')
+  startDate.value = range[0] || ''
+  endDate.value = range[1] || ''
+  loadDepartments()
+  loadSalesUsers()
+  loadStats()
+  loadData()
+
+  // 🔥 监听订单更新事件，自动刷新列表
+  window.addEventListener('order-update', handleOrderUpdate)
+})
+
+onUnmounted(() => {
+  // 🔥 移除事件监听器
+  window.removeEventListener('order-update', handleOrderUpdate)
+})
+
+// 🔥 处理订单更新事件
+const handleOrderUpdate = () => {
+  console.log('[CodCollection] 收到订单更新事件，刷新列表')
+  loadStats()
+  loadData()
+}
 </script>
 
 <style scoped lang="scss">
