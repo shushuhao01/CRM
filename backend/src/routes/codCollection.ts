@@ -181,10 +181,13 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
     // 标签页筛选
     if (tab === 'pending') {
       queryBuilder.andWhere('o.cod_status = :codStatus', { codStatus: 'pending' });
+      console.log('[CodCollection] 查询待处理订单，条件: cod_status = pending');
     } else if (tab === 'returned') {
       queryBuilder.andWhere('o.cod_status = :codStatus', { codStatus: 'returned' });
+      console.log('[CodCollection] 查询已返款订单，条件: cod_status = returned');
     } else if (tab === 'cancelled') {
       queryBuilder.andWhere('o.cod_status = :codStatus', { codStatus: 'cancelled' });
+      console.log('[CodCollection] 查询已改代收订单，条件: cod_status = cancelled');
     }
 
     // 日期筛选（订单下单时间）
@@ -245,25 +248,67 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
 
     const orders = await queryBuilder.getMany();
 
+    // 🔥 调试日志：打印查询到的订单状态
+    console.log('[CodCollection] 查询结果:', {
+      tab,
+      total,
+      ordersCount: orders.length,
+      orderStatuses: orders.map(o => ({
+        orderNumber: o.orderNumber,
+        codStatus: o.codStatus,
+        codAmount: o.codAmount
+      }))
+    });
+
+    // 获取所有订单的客户ID
+    const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
+
+    // 批量查询客户信息
+    let customerMap: Record<string, any> = {};
+    if (customerIds.length > 0) {
+      try {
+        const { Customer } = await import('../entities/Customer');
+        const customerRepo = AppDataSource.getRepository(Customer);
+        const customers = await customerRepo
+          .createQueryBuilder('c')
+          .where('c.id IN (:...ids)', { ids: customerIds })
+          .select(['c.id', 'c.customerNo'])
+          .getMany();
+
+        customerMap = customers.reduce((map, customer) => {
+          map[customer.id] = customer;
+          return map;
+        }, {} as Record<string, any>);
+      } catch (customerErr: any) {
+        console.error('[CodCollection] Query customers error:', customerErr);
+        // 如果查询客户失败，继续返回订单数据，只是客户编码使用customerId
+      }
+    }
+
     // 格式化返回数据
     const list = orders.map(o => {
-      // 显示的代收金额 = 订单总额 - 定金（始终显示原始计算值）
-      const displayCodAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
-      // 实际的代收金额 = 用户修改后的值（用于按钮禁用判断）
-      const actualCodAmount = o.codAmount;
+      // 🔥 修复：使用数据库中的实际代收金额（如果有修改过）
+      // 如果 codAmount 有值，使用它；否则使用原始计算值
+      const originalCodAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      const currentCodAmount = (o.codAmount !== null && o.codAmount !== undefined)
+        ? Number(o.codAmount)
+        : originalCodAmount;
+
+      // 获取客户编码
+      const customer = customerMap[o.customerId];
+      const customerCode = customer?.customerNo || o.customerId;
 
       return {
         id: o.id,
         orderNumber: o.orderNumber,
-        customerId: o.customerId,
+        customerId: customerCode, // 使用客户编码
         customerName: o.customerName,
         customerPhone: o.customerPhone,
         status: o.status,
         totalAmount: o.totalAmount,
         finalAmount: o.finalAmount,
         depositAmount: o.depositAmount,
-        codAmount: displayCodAmount,  // 显示用的代收金额
-        actualCodAmount: actualCodAmount,  // 实际的代收金额（用于按钮禁用）
+        codAmount: currentCodAmount,  // 🔥 使用当前实际代收金额
         codStatus: o.codStatus || 'pending',
         codReturnedAmount: o.codReturnedAmount || 0,
         codReturnedAt: o.codReturnedAt,
@@ -310,10 +355,11 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
       return res.status(404).json({ success: false, message: '订单不存在' });
     }
 
-    // 代收金额 = 订单总额 - 定金（始终显示原始计算值）
-    const displayCodAmount = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
-    // 实际的代收金额 = 用户修改后的值（用于按钮禁用判断）
-    const actualCodAmount = order.codAmount;
+    // 🔥 修复：使用数据库中的实际代收金额（如果有修改过）
+    const originalCodAmount = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
+    const currentCodAmount = (order.codAmount !== null && order.codAmount !== undefined)
+      ? Number(order.codAmount)
+      : originalCodAmount;
 
     res.json({
       success: true,
@@ -327,8 +373,7 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
         totalAmount: order.totalAmount,
         finalAmount: order.finalAmount,
         depositAmount: order.depositAmount,
-        codAmount: displayCodAmount,  // 显示用的代收金额
-        actualCodAmount: actualCodAmount,  // 实际的代收金额（用于按钮禁用）
+        codAmount: currentCodAmount,  // 🔥 使用当前实际代收金额
         codStatus: order.codStatus || 'pending',
         codReturnedAmount: order.codReturnedAmount || 0,
         codReturnedAt: order.codReturnedAt,

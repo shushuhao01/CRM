@@ -19,6 +19,9 @@ export interface CodApplication {
   reviewedAt: string | null
   createdAt: string
   updatedAt: string
+  trackingNumber?: string | null
+  expressCompany?: string | null
+  customerPhone?: string | null
 }
 
 export interface CodApplicationStats {
@@ -45,6 +48,15 @@ export const createApplication = (data: {
   paymentProof: string[]
 }) => {
   return request.post('/cod-application/create', data)
+}
+
+// 更新申请
+export const updateApplication = (id: string, data: {
+  modifiedCodAmount: number
+  cancelReason: string
+  paymentProof: string[]
+}) => {
+  return request.put(`/cod-application/update/${id}`, data)
 }
 
 // 获取我的申请列表
