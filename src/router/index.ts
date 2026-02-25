@@ -289,6 +289,18 @@ const router = createRouter({
       component: () => import('../views/Finance/CodCollection.vue'),
       meta: { title: '代收管理', requiresAuth: true, permissions: ['finance:cod'] }
     },
+    {
+      path: '/finance/cod-application-review',
+      name: 'CodApplicationReview',
+      component: () => import('../views/Finance/CodApplicationReview.vue'),
+      meta: { title: '代收申请审核', requiresAuth: true, permissions: ['finance:cod'] }
+    },
+    {
+      path: '/finance/my-cod-application',
+      name: 'MyCodApplication',
+      component: () => import('../views/Finance/MyCodApplication.vue'),
+      meta: { title: '我的代收申请', requiresAuth: true }
+    },
 
     // 商品管理
     {
