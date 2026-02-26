@@ -291,14 +291,19 @@
             {{ displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE) }}
           </template>
 
+          <!-- 签收日期列 -->
+          <template #column-signDate="{ row }">
+            {{ row.signDate ? formatDateTime(row.signDate) : '-' }}
+          </template>
+
           <!-- 归属人列 -->
           <template #column-assigneeName="{ row }">
-            {{ row.status === 'assigned' ? (row.assigneeName || '-') : '-' }}
+            {{ row.assigneeName || '-' }}
           </template>
 
           <!-- 操作人列 -->
           <template #column-operatorName="{ row }">
-            {{ (row.status === 'assigned' || row.status === 'archived') ? (row.operatorName || '-') : '-' }}
+            {{ row.operatorName || '-' }}
           </template>
 
           <!-- 分配时间列 -->
