@@ -177,7 +177,7 @@
               v-model="row.roleType"
               size="small"
               @change="handleRoleTypeChange(row)"
-              :disabled="!canEditRole"
+              :disabled="!canEditRole || isSystemPresetRole(row)"
             >
               <el-option label="系统角色" value="system" />
               <el-option label="业务角色" value="business" />
@@ -1201,6 +1201,14 @@ const handleEdit = (row: RoleData) => {
  * 角色类型变更处理
  */
 const handleRoleTypeChange = async (row: RoleData) => {
+  // 🔥 防止系统预设角色修改类型
+  if (isSystemPresetRole(row)) {
+    ElMessage.warning('系统预设角色不可修改类型')
+    // 恢复原值
+    await loadRoleList()
+    return
+  }
+
   try {
     // 调用API更新角色类型
     await roleApiService.updateRole({
@@ -1267,47 +1275,105 @@ const handlePermissions = async (row: RoleData) => {
     permissions: rolePermissions
   })
 
-  checkedPermissions.value = rolePermissions
+  // 🔥 收集所有权限树节点ID，用于验证
+  const allTreeNodeIds = new Set<string>()
+  const collectNodeIds = (nodes: any[]) => {
+    nodes.forEach(node => {
+      allTreeNodeIds.add(node.id)
+      if (node.children && node.children.length > 0) {
+        collectNodeIds(node.children)
+      }
+    })
+  }
+  collectNodeIds(permissionTree.value)
+  console.log('[角色权限] 权限树节点总数:', allTreeNodeIds.size)
+
+  // 🔥 过滤出存在于权限树中的权限ID
+  const validPermissions = rolePermissions.filter(permId => {
+    const exists = allTreeNodeIds.has(permId)
+    if (!exists) {
+      console.warn(`[角色权限] 权限ID不存在于权限树中: ${permId}`)
+    }
+    return exists
+  })
+
+  console.log('[角色权限] 有效权限数量:', validPermissions.length, '/', rolePermissions.length)
+  if (validPermissions.length !== rolePermissions.length) {
+    console.warn('[角色权限] 存在无效权限ID:', rolePermissions.filter(id => !allTreeNodeIds.has(id)))
+  }
+
+  checkedPermissions.value = validPermissions
   permissionDialogVisible.value = true
 
-  // 使用 setTimeout 确保对话框和权限树完全渲染
+  // 🔥 使用 nextTick 确保对话框和权限树完全渲染
+  await nextTick()
+
+  // 再次延迟确保 el-tree 组件完全初始化
   setTimeout(() => {
     console.log('[角色权限] 开始设置权限树选中状态')
     console.log('[角色权限] 权限树引用:', !!permissionTreeRef.value)
-    console.log('[角色权限] 权限数量:', rolePermissions.length)
-    console.log('[角色权限] 权限列表:', rolePermissions)
+    console.log('[角色权限] 有效权限数量:', validPermissions.length)
+    console.log('[角色权限] 有效权限列表:', validPermissions)
 
     if (permissionTreeRef.value) {
-      if (rolePermissions.length > 0) {
+      if (validPermissions.length > 0) {
         try {
-          permissionTreeRef.value.setCheckedKeys(rolePermissions)
-          console.log('✅ 权限树选中状态设置成功:', rolePermissions)
+          // 🔥 先清空所有选中状态
+          permissionTreeRef.value.setCheckedKeys([])
+          console.log('✅ 已清空权限树选中状态')
+
+          // 🔥 使用 setChecked 方法逐个设置（更可靠）
+          console.log('[角色权限] 开始逐个设置权限...')
+          let successCount = 0
+          let failCount = 0
+
+          validPermissions.forEach((permId, index) => {
+            try {
+              // check-strictly=true 时，第三个参数设为 false，不影响父子节点
+              permissionTreeRef.value.setChecked(permId, true, false)
+              successCount++
+              console.log(`  ✅ [${index + 1}/${validPermissions.length}] 设置成功: ${permId}`)
+            } catch (e) {
+              failCount++
+              console.error(`  ❌ [${index + 1}/${validPermissions.length}] 设置失败: ${permId}`, e)
+            }
+          })
+
+          console.log(`[角色权限] 权限设置完成: 成功 ${successCount}, 失败 ${failCount}`)
 
           // 验证设置结果
-          const checkedKeys = permissionTreeRef.value.getCheckedKeys()
-          console.log('✅ 验证选中结果:', checkedKeys)
+          setTimeout(() => {
+            const checkedKeys = permissionTreeRef.value.getCheckedKeys()
+            const halfCheckedKeys = permissionTreeRef.value.getHalfCheckedKeys()
+            console.log('✅ 最终验证结果:')
+            console.log('  - 完全选中:', checkedKeys.length, checkedKeys)
+            console.log('  - 半选状态:', halfCheckedKeys.length, halfCheckedKeys)
+            console.log('  - 总数:', checkedKeys.length + halfCheckedKeys.length)
 
-          if (checkedKeys.length === 0) {
-            console.error('❌ 权限树选中失败,尝试使用 setChecked 方法')
-            // 尝试逐个设置
-            rolePermissions.forEach(key => {
-              try {
-                permissionTreeRef.value.setChecked(key, true, false)
-              } catch (e) {
-                console.error(`设置权限 ${key} 失败:`, e)
-              }
-            })
-          }
+            if (checkedKeys.length === 0 && halfCheckedKeys.length === 0) {
+              console.error('❌ 权限树选中失败！可能的原因:')
+              console.error('  1. 权限ID与权限树节点ID不匹配')
+              console.error('  2. 权限树组件渲染未完成')
+              console.error('  3. check-strictly 属性导致的问题')
+              ElMessage.warning('权限树加载异常，请刷新页面后重试')
+            } else if (checkedKeys.length + halfCheckedKeys.length < validPermissions.length) {
+              console.warn(`⚠️ 部分权限未能正确设置: ${validPermissions.length - checkedKeys.length - halfCheckedKeys.length} 个`)
+            } else {
+              console.log('✅ 权限树选中状态设置成功')
+            }
+          }, 300)
         } catch (error) {
           console.error('❌ 设置权限树选中状态失败:', error)
+          ElMessage.error('权限树加载失败，请刷新页面后重试')
         }
       } else {
-        console.warn('⚠️ 权限列表为空,无法设置选中状态')
+        console.warn('⚠️ 没有有效权限,权限树保持空白')
       }
     } else {
       console.error('❌ 权限树组件引用未找到')
+      ElMessage.error('权限树组件未加载，请刷新页面后重试')
     }
-  }, 1000) // 增加延迟时间到1000ms确保组件完全渲染
+  }, 500) // 减少延迟时间到500ms，因为已经使用了 nextTick
 }
 
 /**
@@ -1958,6 +2024,14 @@ const resetToDefaultPermissions = () => {
     return
   }
 
+  // 🔥 检查是否为系统预设角色
+  const isSystemRole = SYSTEM_PRESET_ROLES.includes(currentRole.value.code)
+
+  if (!isSystemRole) {
+    ElMessage.warning('只有系统预设角色才能恢复默认权限配置')
+    return
+  }
+
   ElMessageBox.confirm(
     `确定要将角色「${currentRole.value.name}」的权限恢复为系统默认配置吗？`,
     '恢复默认权限',
@@ -1997,8 +2071,13 @@ const confirmPermissions = async () => {
   try {
     permissionLoading.value = true
 
-    // 获取选中的权限
+    // 🔥 获取选中的权限（包括半选节点）
+    // check-strictly=true 时，父子节点不联动，需要同时获取完全选中和半选节点
     const checkedKeys = permissionTreeRef.value?.getCheckedKeys() as string[]
+    const halfCheckedKeys = permissionTreeRef.value?.getHalfCheckedKeys() as string[]
+
+    // 合并完全选中和半选节点
+    const allPermissions = [...(checkedKeys || []), ...(halfCheckedKeys || [])]
 
     if (!currentRole.value) {
       ElMessage.error('未选择角色')
@@ -2008,14 +2087,19 @@ const confirmPermissions = async () => {
     console.log('[角色权限] 开始保存权限:', {
       roleId: currentRole.value.id,
       roleName: currentRole.value.name,
-      permissionCount: checkedKeys?.length || 0,
+      checkedCount: checkedKeys?.length || 0,
+      halfCheckedCount: halfCheckedKeys?.length || 0,
+      totalCount: allPermissions.length,
+      checkedKeys,
+      halfCheckedKeys,
+      allPermissions,
       dataScope: currentRoleDataScope.value
     })
 
     // 🔥 调用后端API保存权限和数据范围到数据库
     try {
-      // 保存权限
-      await roleApiService.updateRolePermissions(currentRole.value.id, checkedKeys || [])
+      // 保存权限（包括完全选中和半选节点）
+      await roleApiService.updateRolePermissions(currentRole.value.id, allPermissions)
 
       // 保存数据范围
       await roleApiService.updateRole({
@@ -2025,7 +2109,7 @@ const confirmPermissions = async () => {
 
       console.log('[角色权限] 权限和数据范围已保存到数据库:', {
         role: currentRole.value.name,
-        permissions: checkedKeys?.length || 0,
+        permissions: allPermissions.length,
         dataScope: currentRoleDataScope.value
       })
 
@@ -2034,8 +2118,8 @@ const confirmPermissions = async () => {
         const roles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
         const roleIndex = roles.findIndex((r: any) => r.id === currentRole.value?.id)
         if (roleIndex !== -1) {
-          roles[roleIndex].permissions = checkedKeys || []
-          roles[roleIndex].permissionCount = checkedKeys?.length || 0
+          roles[roleIndex].permissions = allPermissions
+          roles[roleIndex].permissionCount = allPermissions.length
           roles[roleIndex].dataScope = currentRoleDataScope.value
           roles[roleIndex].updatedAt = new Date().toISOString()
           localStorage.setItem('crm_roles', JSON.stringify(roles))
@@ -2048,7 +2132,7 @@ const confirmPermissions = async () => {
       const currentUser = userStore.user
       if (currentUser && (currentUser.roleId === currentRole.value.code || currentUser.role === currentRole.value.code)) {
         console.log('[角色权限] 当前用户角色匹配,更新用户权限')
-        userStore.updatePermissions(checkedKeys || [])
+        userStore.updatePermissions(allPermissions)
       }
 
       ElMessage.success('权限设置成功，已保存到数据库')
@@ -2321,12 +2405,14 @@ const loadRoleList = async () => {
 
     // 计算全部权限数量（用于超级管理员等拥有*通配符的角色）
     let totalPermissionCount = 0
+    const allPermissionIds: string[] = []
     try {
       const allPerms = permissionService.getAllPermissions()
       const countAllPermissions = (perms: any[]): number => {
         let count = 0
         perms.forEach(p => {
           count++
+          allPermissionIds.push(p.id) // 收集所有权限ID
           if (p.children && p.children.length > 0) {
             count += countAllPermissions(p.children)
           }
@@ -2335,6 +2421,7 @@ const loadRoleList = async () => {
       }
       totalPermissionCount = countAllPermissions(allPerms)
       console.log('[角色权限] 系统全部权限数量:', totalPermissionCount)
+      console.log('[角色权限] 系统全部权限ID数量:', allPermissionIds.length)
     } catch (e) {
       console.error('[角色权限] 计算全部权限数量失败:', e)
       totalPermissionCount = 100 // 默认值
@@ -2357,13 +2444,20 @@ const loadRoleList = async () => {
         userCount = roleUserCount[role.name]
       }
 
-      // 计算权限数量：如果包含*通配符，显示全部权限数量
-      const permissionCount = permissions.includes('*') ? totalPermissionCount : permissions.length
+      // 计算权限数量：如果包含*通配符，显示全部权限数量；否则只统计权限树中实际存在的权限ID
+      let permissionCount = 0
+      if (permissions.includes('*')) {
+        permissionCount = totalPermissionCount
+      } else {
+        // 只统计权限树中实际存在的权限ID（过滤掉不存在的ID）
+        const validPermissions = permissions.filter((p: string) => allPermissionIds.includes(p))
+        permissionCount = validPermissions.length
+      }
 
       console.log(`[角色权限] 处理角色: ${role.name} (code: ${role.code})`)
       console.log(`  - 默认权限: ${defaultPermissions.length}个`)
       console.log(`  - 实际权限: ${permissions.length}个`)
-      console.log(`  - 显示权限数量: ${permissionCount}个 ${permissions.includes('*') ? '(全部权限)' : ''}`)
+      console.log(`  - 有效权限: ${permissionCount}个 ${permissions.includes('*') ? '(全部权限)' : ''}`)
       console.log(`  - 用户数量: ${userCount}人 ${userCount === 0 ? '⚠️ 无用户' : '✓'}`)
 
       return {
