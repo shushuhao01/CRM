@@ -383,6 +383,7 @@ CREATE TABLE `orders` (
   `created_by_department_name` VARCHAR(100) COMMENT '创建人部门名称',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `status_updated_at` TIMESTAMP NULL COMMENT '状态更新时间（记录最后一次状态变更的时间，如签收、发货等）',
   INDEX `idx_order_number` (`order_number`),
   INDEX `idx_customer` (`customer_id`),
   INDEX `idx_status` (`status`),
@@ -402,7 +403,8 @@ CREATE TABLE `orders` (
   INDEX `idx_performance_status` (`performance_status`),
   INDEX `idx_performance_coefficient` (`performance_coefficient`),
   INDEX `idx_cod_status` (`cod_status`),
-  INDEX `idx_cod_returned_at` (`cod_returned_at`)
+  INDEX `idx_cod_returned_at` (`cod_returned_at`),
+  INDEX `idx_status_updated_at` (`status_updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单表';
 
 -- 10. 物流表
