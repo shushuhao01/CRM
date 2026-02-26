@@ -1275,7 +1275,16 @@ const handlePermissions = async (row: RoleData) => {
     permissions: rolePermissions
   })
 
-  // 🔥 收集所有权限树节点ID，用于验证
+  // 🔥 先设置选中的权限（在打开对话框之前）
+  checkedPermissions.value = rolePermissions
+
+  // 打开对话框
+  permissionDialogVisible.value = true
+
+  // 🔥 使用 nextTick 确保对话框和权限树完全渲染
+  await nextTick()
+
+  // 🔥 收集所有权限树节点ID（在权限树渲染完成后）
   const allTreeNodeIds = new Set<string>()
   const collectNodeIds = (nodes: any[]) => {
     nodes.forEach(node => {
@@ -1301,12 +1310,6 @@ const handlePermissions = async (row: RoleData) => {
   if (validPermissions.length !== rolePermissions.length) {
     console.warn('[角色权限] 存在无效权限ID:', rolePermissions.filter(id => !allTreeNodeIds.has(id)))
   }
-
-  checkedPermissions.value = validPermissions
-  permissionDialogVisible.value = true
-
-  // 🔥 使用 nextTick 确保对话框和权限树完全渲染
-  await nextTick()
 
   // 🔥 使用更长的延迟确保 el-tree 组件完全初始化（增加到1000ms）
   setTimeout(() => {
