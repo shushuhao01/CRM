@@ -48,7 +48,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
     roleName: '部门经理',
     permissions: [
       // 数据看板
-      'dashboard', 'dashboard.personal', 'dashboard.personal.view', 'dashboard.department', 'dashboard.department.view',
+      'dashboard', 'dashboard.view', 'dashboard.export',
 
       // 客户管理（禁止：客户分组、客户标签）
       'customer', 'customer.list', 'customer.list.view', 'customer.list.edit', 'customer.list.export', 'customer.list.import',
@@ -91,7 +91,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
     roleName: '销售员',
     permissions: [
       // 数据看板
-      'dashboard', 'dashboard.personal', 'dashboard.personal.view',
+      'dashboard', 'dashboard.view',
 
       // 客户管理（移除客户分组、客户标签）
       'customer', 'customer.list', 'customer.list.view',
@@ -132,7 +132,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
     roleName: '客服',
     permissions: [
       // 数据看板
-      'dashboard', 'dashboard.personal', 'dashboard.personal.view',
+      'dashboard', 'dashboard.view',
 
       // 订单审核权限
       'order', 'order.audit', 'order.audit.view', 'order.audit.approve', 'order.audit.reject',
