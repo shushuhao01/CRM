@@ -670,18 +670,34 @@ router.get('/pending-cancel', async (req: Request, res: Response) => {
 
     console.log(`[取消审核] 📊 后端查询到 ${orders.length} 条待审核订单（第${page}页，共${total}条）`);
 
-    const formattedOrders = orders.map(order => ({
-      id: order.id,
-      orderNumber: order.orderNumber,
-      customerName: order.customerName || '',
-      customerPhone: order.customerPhone || '',
-      totalAmount: Number(order.totalAmount),
-      cancelReason: order.cancelReason || '',  // 🔥 修复：使用 cancelReason 字段而不是 remark
-      cancelRequestTime: formatDateTime(order.updatedAt),
-      status: 'pending_cancel',
-      createdBy: order.createdBy || '',
-      createdByName: order.createdByName || ''
-    }));
+    const formattedOrders = orders.map(order => {
+      // 🔥 组合取消原因：cancelReason（取消原因） + remark中的最后一次审核信息
+      let fullCancelReason = order.cancelReason || '';
+
+      // 如果remark中有审核相关信息，取最后一次审核结果
+      if (order.remark && order.remark.includes('审核')) {
+        const parts = order.remark.split('|');
+        const auditParts = parts.filter(part => part.includes('审核'));
+        if (auditParts.length > 0) {
+          // 取最后一次审核结果
+          const lastAudit = auditParts[auditParts.length - 1].trim();
+          fullCancelReason = fullCancelReason ? `${fullCancelReason} | ${lastAudit}` : lastAudit;
+        }
+      }
+
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
+        totalAmount: Number(order.totalAmount),
+        cancelReason: fullCancelReason,
+        cancelRequestTime: formatDateTime(order.updatedAt),
+        status: 'pending_cancel',
+        createdBy: order.createdBy || '',
+        createdByName: order.createdByName || ''
+      };
+    });
 
     res.json({
       success: true,
@@ -737,18 +753,34 @@ router.get('/audited-cancel', async (req: Request, res: Response) => {
       console.log(`  ${index + 1}. ID: ${order.id}, 订单号: ${order.orderNumber}, 状态: ${order.status}`);
     });
 
-    const formattedOrders = orders.map(order => ({
-      id: order.id,
-      orderNumber: order.orderNumber,
-      customerName: order.customerName || '',
-      customerPhone: order.customerPhone || '',
-      totalAmount: Number(order.totalAmount),
-      cancelReason: order.cancelReason || '',  // 🔥 修复：使用 cancelReason 字段而不是 remark
-      cancelRequestTime: formatDateTime(order.updatedAt),
-      status: order.status,
-      createdBy: order.createdBy || '',
-      createdByName: order.createdByName || ''
-    }));
+    const formattedOrders = orders.map(order => {
+      // 🔥 组合取消原因：cancelReason（取消原因） + remark中的最后一次审核信息
+      let fullCancelReason = order.cancelReason || '';
+
+      // 如果remark中有审核相关信息，取最后一次审核结果
+      if (order.remark && order.remark.includes('审核')) {
+        const parts = order.remark.split('|');
+        const auditParts = parts.filter(part => part.includes('审核'));
+        if (auditParts.length > 0) {
+          // 取最后一次审核结果
+          const lastAudit = auditParts[auditParts.length - 1].trim();
+          fullCancelReason = fullCancelReason ? `${fullCancelReason} | ${lastAudit}` : lastAudit;
+        }
+      }
+
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
+        totalAmount: Number(order.totalAmount),
+        cancelReason: fullCancelReason,
+        cancelRequestTime: formatDateTime(order.updatedAt),
+        status: order.status,
+        createdBy: order.createdBy || '',
+        createdByName: order.createdByName || ''
+      };
+    });
 
     console.log(`[取消审核] ✅ 返回 ${formattedOrders.length} 条格式化订单`);
 
