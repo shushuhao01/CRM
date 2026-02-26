@@ -31,6 +31,8 @@ export declare class MessageController {
     /**
      * 获取当前用户的系统消息
      * 🔥 修复：支持查询 targetUserId 包含当前用户ID的消息（逗号分隔的多个ID）
+     * 🔥 2025-12-29 修复：精确匹配用户ID，避免模糊匹配导致的错误
+     * 🔥 2025-01-07 修复：使用 MessageReadStatus 表判断每个用户的独立已读状态
      */
     getSystemMessages(req: Request, res: Response): Promise<void>;
     /**
@@ -44,10 +46,12 @@ export declare class MessageController {
     sendBatchSystemMessages(req: Request, res: Response): Promise<void>;
     /**
      * 标记消息为已读
+     * 🔥 2025-01-07 修复：使用 MessageReadStatus 表记录每个用户的独立已读状态
      */
     markMessageAsRead(req: Request, res: Response): Promise<void>;
     /**
      * 标记所有消息为已读
+     * 🔥 2025-01-07 修复：使用 MessageReadStatus 表记录每个用户的独立已读状态
      */
     markAllMessagesAsRead(req: Request, res: Response): Promise<void>;
     /**

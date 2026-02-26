@@ -157,15 +157,14 @@ router.get('/sales/statistics', async (req, res) => {
     try {
         const { startDate, endDate, categoryId } = req.query;
         const { AppDataSource } = await Promise.resolve().then(() => __importStar(require('../config/database')));
-        const { OrderItem } = await Promise.resolve().then(() => __importStar(require('../entities/OrderItem')));
         const { Order } = await Promise.resolve().then(() => __importStar(require('../entities/Order')));
         const { Product } = await Promise.resolve().then(() => __importStar(require('../entities/Product')));
-        const orderItemRepo = AppDataSource.getRepository(OrderItem);
+        const orderRepo = AppDataSource.getRepository(Order);
         const productRepo = AppDataSource.getRepository(Product);
-        // 构建查询 - 统计有效订单的销售数据
-        let queryBuilder = orderItemRepo
-            .createQueryBuilder('item')
-            .innerJoin(Order, 'order', 'order.id = item.orderId')
+        // 🔥 从Order.products JSON字段统计销售数据
+        let queryBuilder = orderRepo
+            .createQueryBuilder('order')
+            .select(['order.id', 'order.products', 'order.totalAmount'])
             .where('order.status NOT IN (:...excludeStatuses)', {
             excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
         });
@@ -176,17 +175,44 @@ router.get('/sales/statistics', async (req, res) => {
         if (endDate) {
             queryBuilder = queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: endDate + ' 23:59:59' });
         }
-        // 分类过滤
+        const validOrders = await queryBuilder.getMany();
+        // 🔥 统计总销售额和总销量
+        let totalRevenue = 0;
+        let totalSales = 0;
+        // 如果需要按分类过滤，先获取该分类下的商品ID
+        let categoryProductIds = [];
         if (categoryId) {
-            queryBuilder = queryBuilder
-                .innerJoin(Product, 'product', 'product.id = item.productId')
-                .andWhere('product.categoryId = :categoryId', { categoryId });
+            const categoryProducts = await productRepo.find({
+                where: { categoryId: categoryId },
+                select: ['id']
+            });
+            categoryProductIds = categoryProducts.map(p => p.id);
         }
-        // 统计总销售额和总销量
-        const salesStats = await queryBuilder
-            .select('SUM(item.subtotal)', 'totalRevenue')
-            .addSelect('SUM(item.quantity)', 'totalSales')
-            .getRawOne();
+        validOrders.forEach(order => {
+            if (order.products) {
+                try {
+                    const orderProducts = typeof order.products === 'string'
+                        ? JSON.parse(order.products)
+                        : order.products;
+                    if (Array.isArray(orderProducts)) {
+                        orderProducts.forEach((item) => {
+                            const productId = item.productId || item.id;
+                            const quantity = Number(item.quantity) || 1;
+                            const price = Number(item.price) || 0;
+                            // 如果有分类过滤，只统计该分类下的商品
+                            if (categoryId && !categoryProductIds.includes(String(productId))) {
+                                return;
+                            }
+                            totalSales += quantity;
+                            totalRevenue += quantity * price;
+                        });
+                    }
+                }
+                catch (_parseError) {
+                    // JSON解析失败，跳过该订单
+                }
+            }
+        });
         // 获取商品总数
         const totalProducts = await productRepo.count();
         // 获取库存预警数量
@@ -198,8 +224,8 @@ router.get('/sales/statistics', async (req, res) => {
         res.json({
             success: true,
             data: {
-                totalRevenue: parseFloat(salesStats?.totalRevenue) || 0,
-                totalSales: parseInt(salesStats?.totalSales) || 0,
+                totalRevenue: totalRevenue,
+                totalSales: totalSales,
                 totalProducts,
                 lowStockWarning: lowStockCount,
                 revenueChange: '+0%',
@@ -226,9 +252,8 @@ router.get('/sales/trend', async (req, res) => {
     try {
         const { startDate, endDate, period = '30days' } = req.query;
         const { AppDataSource } = await Promise.resolve().then(() => __importStar(require('../config/database')));
-        const { OrderItem } = await Promise.resolve().then(() => __importStar(require('../entities/OrderItem')));
         const { Order } = await Promise.resolve().then(() => __importStar(require('../entities/Order')));
-        const orderItemRepo = AppDataSource.getRepository(OrderItem);
+        const orderRepo = AppDataSource.getRepository(Order);
         // 根据period确定时间范围
         let days = 30;
         if (period === '7days')
@@ -237,28 +262,50 @@ router.get('/sales/trend', async (req, res) => {
             days = 90;
         const endDateObj = endDate ? new Date(endDate) : new Date();
         const startDateObj = startDate ? new Date(startDate) : new Date(endDateObj.getTime() - days * 24 * 60 * 60 * 1000);
-        // 按日期分组统计
-        const trendData = await orderItemRepo
-            .createQueryBuilder('item')
-            .innerJoin(Order, 'order', 'order.id = item.orderId')
-            .select('DATE(order.createdAt)', 'date')
-            .addSelect('SUM(item.quantity)', 'sales')
-            .addSelect('SUM(item.subtotal)', 'revenue')
+        // 🔥 获取有效订单
+        const validOrders = await orderRepo
+            .createQueryBuilder('order')
+            .select(['order.id', 'order.products', 'order.totalAmount', 'order.createdAt'])
             .where('order.status NOT IN (:...excludeStatuses)', {
             excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
         })
             .andWhere('order.createdAt >= :startDate', { startDate: startDateObj.toISOString().split('T')[0] })
             .andWhere('order.createdAt <= :endDate', { endDate: endDateObj.toISOString().split('T')[0] + ' 23:59:59' })
-            .groupBy('DATE(order.createdAt)')
-            .orderBy('date', 'ASC')
-            .getRawMany();
+            .getMany();
+        // 🔥 按日期分组统计
+        const dailyStats = {};
+        validOrders.forEach(order => {
+            const dateKey = order.createdAt.toISOString().split('T')[0];
+            if (!dailyStats[dateKey]) {
+                dailyStats[dateKey] = { sales: 0, revenue: 0 };
+            }
+            if (order.products) {
+                try {
+                    const orderProducts = typeof order.products === 'string'
+                        ? JSON.parse(order.products)
+                        : order.products;
+                    if (Array.isArray(orderProducts)) {
+                        orderProducts.forEach((item) => {
+                            const quantity = Number(item.quantity) || 1;
+                            const price = Number(item.price) || 0;
+                            dailyStats[dateKey].sales += quantity;
+                            dailyStats[dateKey].revenue += quantity * price;
+                        });
+                    }
+                }
+                catch (_parseError) {
+                    // JSON解析失败，跳过该订单
+                }
+            }
+        });
         // 格式化数据
-        const timeLabels = trendData.map(item => {
-            const date = new Date(item.date);
+        const sortedDates = Object.keys(dailyStats).sort();
+        const timeLabels = sortedDates.map(dateStr => {
+            const date = new Date(dateStr);
             return `${date.getMonth() + 1}/${date.getDate()}`;
         });
-        const salesData = trendData.map(item => parseInt(item.sales) || 0);
-        const revenueData = trendData.map(item => parseFloat(item.revenue) || 0);
+        const salesData = sortedDates.map(dateStr => dailyStats[dateStr].sales);
+        const revenueData = sortedDates.map(dateStr => dailyStats[dateStr].revenue);
         res.json({
             success: true,
             data: {
@@ -285,17 +332,20 @@ router.get('/sales/category', async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
         const { AppDataSource } = await Promise.resolve().then(() => __importStar(require('../config/database')));
-        const { OrderItem } = await Promise.resolve().then(() => __importStar(require('../entities/OrderItem')));
         const { Order } = await Promise.resolve().then(() => __importStar(require('../entities/Order')));
         const { Product } = await Promise.resolve().then(() => __importStar(require('../entities/Product')));
-        const orderItemRepo = AppDataSource.getRepository(OrderItem);
-        // 按分类统计销售额
-        let queryBuilder = orderItemRepo
-            .createQueryBuilder('item')
-            .innerJoin(Order, 'order', 'order.id = item.orderId')
-            .innerJoin(Product, 'product', 'product.id = item.productId')
-            .select('product.categoryName', 'name')
-            .addSelect('SUM(item.subtotal)', 'value')
+        const orderRepo = AppDataSource.getRepository(Order);
+        const productRepo = AppDataSource.getRepository(Product);
+        // 🔥 获取所有商品的分类信息
+        const allProducts = await productRepo.find({ select: ['id', 'categoryName'] });
+        const productCategoryMap = {};
+        allProducts.forEach(p => {
+            productCategoryMap[p.id] = p.categoryName || '未分类';
+        });
+        // 🔥 获取有效订单
+        let queryBuilder = orderRepo
+            .createQueryBuilder('order')
+            .select(['order.id', 'order.products'])
             .where('order.status NOT IN (:...excludeStatuses)', {
             excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
         });
@@ -305,17 +355,40 @@ router.get('/sales/category', async (req, res) => {
         if (endDate) {
             queryBuilder = queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: endDate + ' 23:59:59' });
         }
-        const categoryData = await queryBuilder
-            .groupBy('product.categoryName')
-            .orderBy('value', 'DESC')
-            .getRawMany();
+        const validOrders = await queryBuilder.getMany();
+        // 🔥 按分类统计销售额
+        const categoryStats = {};
+        validOrders.forEach(order => {
+            if (order.products) {
+                try {
+                    const orderProducts = typeof order.products === 'string'
+                        ? JSON.parse(order.products)
+                        : order.products;
+                    if (Array.isArray(orderProducts)) {
+                        orderProducts.forEach((item) => {
+                            const productId = item.productId || item.id;
+                            const quantity = Number(item.quantity) || 1;
+                            const price = Number(item.price) || 0;
+                            const categoryName = productCategoryMap[String(productId)] || '未分类';
+                            const revenue = quantity * price;
+                            categoryStats[categoryName] = (categoryStats[categoryName] || 0) + revenue;
+                        });
+                    }
+                }
+                catch (_parseError) {
+                    // JSON解析失败，跳过该订单
+                }
+            }
+        });
         // 计算总额和百分比
-        const totalValue = categoryData.reduce((sum, item) => sum + (parseFloat(item.value) || 0), 0);
-        const result = categoryData.map(item => ({
-            name: item.name || '未分类',
-            value: parseFloat(item.value) || 0,
-            percentage: totalValue > 0 ? Math.round((parseFloat(item.value) / totalValue) * 100) : 0
-        }));
+        const totalValue = Object.values(categoryStats).reduce((sum, value) => sum + value, 0);
+        const result = Object.entries(categoryStats)
+            .map(([name, value]) => ({
+            name,
+            value: Math.round(value),
+            percentage: totalValue > 0 ? Math.round((value / totalValue) * 100) : 0
+        }))
+            .sort((a, b) => b.value - a.value);
         res.json({
             success: true,
             data: result
@@ -338,20 +411,20 @@ router.get('/sales/top', async (req, res) => {
     try {
         const { startDate, endDate, limit = 10 } = req.query;
         const { AppDataSource } = await Promise.resolve().then(() => __importStar(require('../config/database')));
-        const { OrderItem } = await Promise.resolve().then(() => __importStar(require('../entities/OrderItem')));
         const { Order } = await Promise.resolve().then(() => __importStar(require('../entities/Order')));
         const { Product } = await Promise.resolve().then(() => __importStar(require('../entities/Product')));
-        const orderItemRepo = AppDataSource.getRepository(OrderItem);
-        // 按商品统计销量
-        let queryBuilder = orderItemRepo
-            .createQueryBuilder('item')
-            .innerJoin(Order, 'order', 'order.id = item.orderId')
-            .innerJoin(Product, 'product', 'product.id = item.productId')
-            .select('item.productId', 'id')
-            .addSelect('product.name', 'name')
-            .addSelect('product.categoryName', 'categoryName')
-            .addSelect('SUM(item.quantity)', 'sales')
-            .addSelect('SUM(item.subtotal)', 'revenue')
+        const orderRepo = AppDataSource.getRepository(Order);
+        const productRepo = AppDataSource.getRepository(Product);
+        // 🔥 获取所有商品信息
+        const allProducts = await productRepo.find({ select: ['id', 'name', 'categoryName'] });
+        const productInfoMap = {};
+        allProducts.forEach(p => {
+            productInfoMap[p.id] = { name: p.name, categoryName: p.categoryName || '未分类' };
+        });
+        // 🔥 获取有效订单
+        let queryBuilder = orderRepo
+            .createQueryBuilder('order')
+            .select(['order.id', 'order.products'])
             .where('order.status NOT IN (:...excludeStatuses)', {
             excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
         });
@@ -361,20 +434,44 @@ router.get('/sales/top', async (req, res) => {
         if (endDate) {
             queryBuilder = queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: endDate + ' 23:59:59' });
         }
-        const topProducts = await queryBuilder
-            .groupBy('item.productId')
-            .addGroupBy('product.name')
-            .addGroupBy('product.categoryName')
-            .orderBy('sales', 'DESC')
-            .limit(Number(limit))
-            .getRawMany();
-        const result = topProducts.map(item => ({
-            id: item.id,
-            name: item.name,
-            categoryName: item.categoryName || '未分类',
-            sales: parseInt(item.sales) || 0,
-            revenue: parseFloat(item.revenue) || 0
-        }));
+        const validOrders = await queryBuilder.getMany();
+        // 🔥 按商品统计销量
+        const productStats = {};
+        validOrders.forEach(order => {
+            if (order.products) {
+                try {
+                    const orderProducts = typeof order.products === 'string'
+                        ? JSON.parse(order.products)
+                        : order.products;
+                    if (Array.isArray(orderProducts)) {
+                        orderProducts.forEach((item) => {
+                            const productId = String(item.productId || item.id);
+                            const quantity = Number(item.quantity) || 1;
+                            const price = Number(item.price) || 0;
+                            if (!productStats[productId]) {
+                                productStats[productId] = { sales: 0, revenue: 0 };
+                            }
+                            productStats[productId].sales += quantity;
+                            productStats[productId].revenue += quantity * price;
+                        });
+                    }
+                }
+                catch (_parseError) {
+                    // JSON解析失败，跳过该订单
+                }
+            }
+        });
+        // 排序并取前N名
+        const result = Object.entries(productStats)
+            .map(([productId, stats]) => ({
+            id: productId,
+            name: productInfoMap[productId]?.name || '未知商品',
+            categoryName: productInfoMap[productId]?.categoryName || '未分类',
+            sales: stats.sales,
+            revenue: Math.round(stats.revenue)
+        }))
+            .sort((a, b) => b.sales - a.sales)
+            .slice(0, Number(limit));
         res.json({
             success: true,
             data: result

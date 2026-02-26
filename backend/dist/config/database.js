@@ -94,138 +94,125 @@ const ServiceOperationLog_1 = require("../entities/ServiceOperationLog");
 const NotificationChannel_1 = require("../entities/NotificationChannel");
 const Announcement_1 = require("../entities/Announcement");
 const SystemMessage_1 = require("../entities/SystemMessage");
+const MessageReadStatus_1 = require("../entities/MessageReadStatus");
 const PerformanceReportConfig_1 = require("../entities/PerformanceReportConfig");
 const LogisticsApiConfig_1 = require("../entities/LogisticsApiConfig");
 const CustomerServicePermission_1 = require("../entities/CustomerServicePermission");
 const SensitiveInfoPermission_1 = require("../entities/SensitiveInfoPermission");
-// 根据环境变量选择数据库配置
-const dbType = process.env.DB_TYPE || (process.env.NODE_ENV === 'production' ? 'mysql' : 'sqlite');
-const AppDataSource = new typeorm_1.DataSource(dbType === 'mysql'
-    ? {
-        // MySQL配置
-        type: 'mysql',
-        host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '3306'),
-        username: process.env.DB_USERNAME || process.env.DB_USER || 'root',
-        password: process.env.DB_PASSWORD || '',
-        database: process.env.DB_DATABASE || process.env.DB_NAME || 'crm',
-        synchronize: false, // 生产环境不自动同步
-        logging: process.env.NODE_ENV === 'development',
-        // 🔥 统一使用北京时间
-        timezone: '+08:00',
-        extra: {
-            connectionLimit: 10
-        },
-        entities: [
-            User_1.User,
-            Customer_1.Customer,
-            Order_1.Order,
-            Product_1.Product,
-            Department_1.Department,
-            Role_1.Role,
-            Permission_1.Permission,
-            CustomerGroup_1.CustomerGroup,
-            CustomerTag_1.CustomerTag,
-            LogisticsStatus_1.LogisticsStatus,
-            RejectionReason_1.RejectionReason,
-            ImprovementGoal_1.ImprovementGoal,
-            Call_1.Call,
-            Message_1.Message,
-            PerformanceMetric_1.PerformanceMetric,
-            Notification_1.Notification,
-            ServiceRecord_1.ServiceRecord,
-            SmsTemplate_1.SmsTemplate,
-            SmsRecord_1.SmsRecord,
-            Log_1.Log,
-            OperationLog_1.OperationLog,
-            LogisticsTrace_1.LogisticsTrace,
-            LogisticsTracking_1.LogisticsTracking,
-            LogisticsCompany_1.LogisticsCompany,
-            MessageSubscription_1.MessageSubscription,
-            OrderItem_1.OrderItem,
-            OrderStatusHistory_1.OrderStatusHistory,
-            ProductCategory_1.ProductCategory,
-            SystemConfig_1.SystemConfig,
-            UserPermission_1.UserPermission,
-            CustomerShare_1.CustomerShare,
-            PaymentMethodOption_1.PaymentMethodOption,
-            DepartmentOrderLimit_1.DepartmentOrderLimit,
-            FollowUp_1.FollowUp,
-            AfterSalesService_1.AfterSalesService,
-            ServiceFollowUp_1.ServiceFollowUp,
-            ServiceOperationLog_1.ServiceOperationLog,
-            NotificationChannel_1.NotificationChannel,
-            NotificationChannel_1.NotificationLog,
-            Announcement_1.Announcement,
-            Announcement_1.AnnouncementRead,
-            SystemMessage_1.SystemMessage,
-            PerformanceReportConfig_1.PerformanceReportConfig,
-            PerformanceReportConfig_1.PerformanceReportLog,
-            LogisticsApiConfig_1.LogisticsApiConfig,
-            CustomerServicePermission_1.CustomerServicePermission,
-            SensitiveInfoPermission_1.SensitiveInfoPermission
-        ],
-        migrations: [],
-        subscribers: [],
-    }
-    : {
-        // 开发环境使用SQLite
-        type: 'sqlite',
-        database: path.join(process.cwd(), 'data', 'crm.db'),
-        synchronize: true,
-        logging: false,
-        entities: [
-            User_1.User,
-            Customer_1.Customer,
-            Order_1.Order,
-            Product_1.Product,
-            Department_1.Department,
-            Role_1.Role,
-            Permission_1.Permission,
-            CustomerGroup_1.CustomerGroup,
-            CustomerTag_1.CustomerTag,
-            LogisticsStatus_1.LogisticsStatus,
-            RejectionReason_1.RejectionReason,
-            ImprovementGoal_1.ImprovementGoal,
-            Call_1.Call,
-            Message_1.Message,
-            PerformanceMetric_1.PerformanceMetric,
-            Notification_1.Notification,
-            ServiceRecord_1.ServiceRecord,
-            SmsTemplate_1.SmsTemplate,
-            SmsRecord_1.SmsRecord,
-            Log_1.Log,
-            OperationLog_1.OperationLog,
-            LogisticsTrace_1.LogisticsTrace,
-            LogisticsTracking_1.LogisticsTracking,
-            LogisticsCompany_1.LogisticsCompany,
-            MessageSubscription_1.MessageSubscription,
-            OrderItem_1.OrderItem,
-            OrderStatusHistory_1.OrderStatusHistory,
-            ProductCategory_1.ProductCategory,
-            SystemConfig_1.SystemConfig,
-            UserPermission_1.UserPermission,
-            CustomerShare_1.CustomerShare,
-            PaymentMethodOption_1.PaymentMethodOption,
-            DepartmentOrderLimit_1.DepartmentOrderLimit,
-            FollowUp_1.FollowUp,
-            AfterSalesService_1.AfterSalesService,
-            ServiceFollowUp_1.ServiceFollowUp,
-            ServiceOperationLog_1.ServiceOperationLog,
-            NotificationChannel_1.NotificationChannel,
-            NotificationChannel_1.NotificationLog,
-            Announcement_1.Announcement,
-            Announcement_1.AnnouncementRead,
-            SystemMessage_1.SystemMessage,
-            PerformanceReportConfig_1.PerformanceReportConfig,
-            PerformanceReportConfig_1.PerformanceReportLog,
-            LogisticsApiConfig_1.LogisticsApiConfig,
-            CustomerServicePermission_1.CustomerServicePermission,
-            SensitiveInfoPermission_1.SensitiveInfoPermission
-        ],
-        migrations: [],
-        subscribers: [],
-    });
+const PerformanceConfig_1 = require("../entities/PerformanceConfig");
+const CommissionSetting_1 = require("../entities/CommissionSetting");
+const CommissionLadder_1 = require("../entities/CommissionLadder");
+const AdminUser_1 = require("../entities/AdminUser");
+const License_1 = require("../entities/License");
+const Version_1 = require("../entities/Version");
+const LicenseLog_1 = require("../entities/LicenseLog");
+const WecomConfig_1 = require("../entities/WecomConfig");
+const WecomUserBinding_1 = require("../entities/WecomUserBinding");
+const WecomCustomer_1 = require("../entities/WecomCustomer");
+const WecomAcquisitionLink_1 = require("../entities/WecomAcquisitionLink");
+const WecomServiceAccount_1 = require("../entities/WecomServiceAccount");
+const WecomChatRecord_1 = require("../entities/WecomChatRecord");
+const WecomPaymentRecord_1 = require("../entities/WecomPaymentRecord");
+const CodCancelApplication_1 = require("../entities/CodCancelApplication");
+// 🔥 统一使用 MySQL 数据库（开发环境和生产环境）
+// 数据库类型：默认使用 MySQL，除非明确指定其他类型
+const dbType = process.env.DB_TYPE || 'mysql';
+// 实体列表（统一管理）
+const entities = [
+    User_1.User,
+    Customer_1.Customer,
+    Order_1.Order,
+    Product_1.Product,
+    Department_1.Department,
+    Role_1.Role,
+    Permission_1.Permission,
+    CustomerGroup_1.CustomerGroup,
+    CustomerTag_1.CustomerTag,
+    LogisticsStatus_1.LogisticsStatus,
+    RejectionReason_1.RejectionReason,
+    ImprovementGoal_1.ImprovementGoal,
+    Call_1.Call,
+    Message_1.Message,
+    PerformanceMetric_1.PerformanceMetric,
+    Notification_1.Notification,
+    ServiceRecord_1.ServiceRecord,
+    SmsTemplate_1.SmsTemplate,
+    SmsRecord_1.SmsRecord,
+    Log_1.Log,
+    OperationLog_1.OperationLog,
+    LogisticsTrace_1.LogisticsTrace,
+    LogisticsTracking_1.LogisticsTracking,
+    LogisticsCompany_1.LogisticsCompany,
+    MessageSubscription_1.MessageSubscription,
+    OrderItem_1.OrderItem,
+    OrderStatusHistory_1.OrderStatusHistory,
+    ProductCategory_1.ProductCategory,
+    SystemConfig_1.SystemConfig,
+    UserPermission_1.UserPermission,
+    CustomerShare_1.CustomerShare,
+    PaymentMethodOption_1.PaymentMethodOption,
+    DepartmentOrderLimit_1.DepartmentOrderLimit,
+    FollowUp_1.FollowUp,
+    AfterSalesService_1.AfterSalesService,
+    ServiceFollowUp_1.ServiceFollowUp,
+    ServiceOperationLog_1.ServiceOperationLog,
+    NotificationChannel_1.NotificationChannel,
+    NotificationChannel_1.NotificationLog,
+    Announcement_1.Announcement,
+    Announcement_1.AnnouncementRead,
+    SystemMessage_1.SystemMessage,
+    MessageReadStatus_1.MessageReadStatus,
+    PerformanceReportConfig_1.PerformanceReportConfig,
+    PerformanceReportConfig_1.PerformanceReportLog,
+    LogisticsApiConfig_1.LogisticsApiConfig,
+    CustomerServicePermission_1.CustomerServicePermission,
+    SensitiveInfoPermission_1.SensitiveInfoPermission,
+    PerformanceConfig_1.PerformanceConfig,
+    CommissionSetting_1.CommissionSetting,
+    CommissionLadder_1.CommissionLadder,
+    AdminUser_1.AdminUser,
+    License_1.License,
+    Version_1.Version,
+    LicenseLog_1.LicenseLog,
+    WecomConfig_1.WecomConfig,
+    WecomUserBinding_1.WecomUserBinding,
+    WecomCustomer_1.WecomCustomer,
+    WecomAcquisitionLink_1.WecomAcquisitionLink,
+    WecomServiceAccount_1.WecomServiceAccount,
+    WecomChatRecord_1.WecomChatRecord,
+    WecomPaymentRecord_1.WecomPaymentRecord,
+    CodCancelApplication_1.CodCancelApplication
+];
+// MySQL 数据库配置（开发环境和生产环境统一使用）
+const AppDataSource = new typeorm_1.DataSource({
+    type: 'mysql',
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '3306'),
+    username: process.env.DB_USERNAME || process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_DATABASE || process.env.DB_NAME || 'crm',
+    // 🔥 开发环境不自动同步，避免数据丢失
+    synchronize: false,
+    // 🔥 开发环境启用日志，生产环境关闭
+    logging: process.env.NODE_ENV === 'development',
+    // 🔥 统一使用北京时间
+    timezone: '+08:00',
+    // 🔥 字符集配置
+    charset: process.env.DB_CHARSET || 'utf8mb4',
+    // 连接池配置
+    extra: {
+        connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '10'),
+        // 连接超时时间（毫秒）
+        connectTimeout: 60000,
+        // 查询超时时间（毫秒）
+        acquireTimeout: 60000,
+        // 空闲连接超时时间（毫秒）
+        timeout: 60000
+    },
+    entities,
+    migrations: [],
+    subscribers: []
+});
 exports.AppDataSource = AppDataSource;
 // 获取数据源实例
 const getDataSource = () => {
@@ -235,20 +222,34 @@ exports.getDataSource = getDataSource;
 // 初始化数据库连接
 const initializeDatabase = async () => {
     try {
-        // 打印当前连接的数据库信息
-        console.log(`📦 正在连接数据库: ${process.env.DB_DATABASE || 'crm'} @ ${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || '3306'}`);
+        const dbInfo = {
+            database: process.env.DB_DATABASE || 'crm',
+            host: process.env.DB_HOST || 'localhost',
+            port: process.env.DB_PORT || '3306',
+            user: process.env.DB_USERNAME || process.env.DB_USER || 'root',
+            env: process.env.NODE_ENV || 'development'
+        };
+        console.log('� 正在连接 MySQL 数据库...');
+        console.log(`   环境: ${dbInfo.env}`);
+        console.log(`   数据库: ${dbInfo.database}`);
+        console.log(`   地址: ${dbInfo.host}:${dbInfo.port}`);
+        console.log(`   用户: ${dbInfo.user}`);
         await AppDataSource.initialize();
         console.log('✅ 数据库连接成功');
-        // 开发环境下同步数据库结构
+        // 提示：数据库结构变更需要手动执行迁移脚本
         if (process.env.NODE_ENV === 'development') {
-            console.log('🔄 开发环境：同步数据库结构...');
+            console.log('ℹ️  开发环境：数据库结构变更请执行 database-migrations 目录下的迁移脚本');
         }
         // 角色权限初始化已禁用 - 数据库中已有预设数据，无需自动初始化
-        // 如需初始化，请手动执行 database/schema.sql 中的 INSERT 语句
-        console.log('ℹ️ 角色权限初始化已禁用（使用数据库预设数据）');
+        console.log('ℹ️  角色权限使用数据库预设数据（不自动初始化）');
     }
     catch (error) {
         console.error('❌ 数据库连接失败:', error);
+        console.error('   请检查以下配置:');
+        console.error(`   - DB_HOST: ${process.env.DB_HOST || 'localhost'}`);
+        console.error(`   - DB_PORT: ${process.env.DB_PORT || '3306'}`);
+        console.error(`   - DB_DATABASE: ${process.env.DB_DATABASE || 'crm'}`);
+        console.error(`   - DB_USERNAME: ${process.env.DB_USERNAME || process.env.DB_USER || 'root'}`);
         throw error;
     }
 };

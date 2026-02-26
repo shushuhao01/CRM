@@ -523,25 +523,41 @@
             max-height="400"
           >
             <el-table-column type="selection" width="55" />
-            <el-table-column prop="orderNumber" label="订单号" width="180" />
-            <el-table-column prop="customerName" label="客户姓名" width="120" />
+            <el-table-column prop="orderNumber" label="订单号" width="160" />
+            <el-table-column prop="customerName" label="客户姓名" width="100" />
             <el-table-column label="负责销售" width="100">
               <template #default="{ row }">
                 {{ row.createdByName || row.createdBy || '系统用户' }}
               </template>
             </el-table-column>
-            <el-table-column prop="totalAmount" label="金额" width="120">
+            <el-table-column prop="totalAmount" label="金额" width="100">
               <template #default="{ row }">
                 ¥{{ row.totalAmount?.toFixed(2) || '0.00' }}
               </template>
             </el-table-column>
-            <el-table-column prop="cancelRequestTime" label="申请时间" width="180" />
-            <el-table-column label="取消原因" min-width="150">
+            <el-table-column prop="cancelRequestTime" label="申请时间" width="160" />
+            <el-table-column label="取消原因" min-width="200" show-overflow-tooltip>
               <template #default="{ row }">
-                {{ getCancelReasonText(row.cancelReason) }}
+                <div style="white-space: normal; line-height: 1.5; max-height: 3em; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                  {{ getCancelReasonText(row.cancelReason) }}
+                </div>
               </template>
             </el-table-column>
           </el-table>
+
+          <!-- 分页控件 -->
+          <div class="pagination-container" style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <span class="pagination-info">共 {{ pendingPagination.total }} 条记录</span>
+            <el-pagination
+              v-model:current-page="pendingPagination.page"
+              v-model:page-size="pendingPagination.pageSize"
+              :page-sizes="[10, 20, 50, 100]"
+              :total="pendingPagination.total"
+              layout="sizes, prev, pager, next, jumper"
+              @size-change="handlePendingPageSizeChange"
+              @current-change="handlePendingPageChange"
+            />
+          </div>
 
           <div class="audit-footer" style="margin-top: 20px; text-align: right;">
             <el-button @click="handleCloseCancelAudit">关闭</el-button>
@@ -571,22 +587,24 @@
             style="width: 100%"
             max-height="400"
           >
-            <el-table-column prop="orderNumber" label="订单号" width="180" />
-            <el-table-column prop="customerName" label="客户姓名" width="120" />
+            <el-table-column prop="orderNumber" label="订单号" width="160" />
+            <el-table-column prop="customerName" label="客户姓名" width="100" />
             <el-table-column label="负责销售" width="100">
               <template #default="{ row }">
                 {{ row.createdByName || row.createdBy || '系统用户' }}
               </template>
             </el-table-column>
-            <el-table-column prop="totalAmount" label="金额" width="120">
+            <el-table-column prop="totalAmount" label="金额" width="100">
               <template #default="{ row }">
                 ¥{{ row.totalAmount?.toFixed(2) || '0.00' }}
               </template>
             </el-table-column>
-            <el-table-column prop="cancelRequestTime" label="申请时间" width="180" />
-            <el-table-column label="取消原因" width="150">
+            <el-table-column prop="cancelRequestTime" label="申请时间" width="160" />
+            <el-table-column label="取消原因" min-width="200" show-overflow-tooltip>
               <template #default="{ row }">
-                {{ getCancelReasonText(row.cancelReason) }}
+                <div style="white-space: normal; line-height: 1.5; max-height: 3em; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                  {{ getCancelReasonText(row.cancelReason) }}
+                </div>
               </template>
             </el-table-column>
             <el-table-column prop="status" label="审核结果" width="100">
@@ -596,6 +614,20 @@
               </template>
             </el-table-column>
           </el-table>
+
+          <!-- 分页控件 -->
+          <div class="pagination-container" style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <span class="pagination-info">共 {{ auditedPagination.total }} 条记录</span>
+            <el-pagination
+              v-model:current-page="auditedPagination.page"
+              v-model:page-size="auditedPagination.pageSize"
+              :page-sizes="[10, 20, 50, 100]"
+              :total="auditedPagination.total"
+              layout="sizes, prev, pager, next, jumper"
+              @size-change="handleAuditedPageSizeChange"
+              @current-change="handleAuditedPageChange"
+            />
+          </div>
 
           <div class="audit-footer" style="margin-top: 20px; text-align: right;">
             <el-button @click="handleCloseCancelAudit">关闭</el-button>
@@ -752,6 +784,22 @@ const cancelRules = {
 const showCancelAuditDialog = ref(false)
 const auditActiveTab = ref('pending')
 const selectedAuditOrders = ref<OrderItem[]>([])
+
+// 待审核订单分页数据
+const pendingPagination = reactive({
+  page: 1,
+  pageSize: 10,
+  total: 0,
+  totalPages: 0
+})
+
+// 已审核订单分页数据
+const auditedPagination = reactive({
+  page: 1,
+  pageSize: 10,
+  total: 0,
+  totalPages: 0
+})
 const auditSubmitting = ref(false)
 
 const searchForm = reactive({
@@ -1140,9 +1188,15 @@ const pendingCancelOrders = computed(() => {
 
 // 已审核的取消订单列表（包括已取消和取消失败）
 const auditedCancelOrders = computed(() => {
-  return orderList.value.filter(order =>
+  const filtered = orderList.value.filter(order =>
     order.status === 'cancelled' || order.status === 'cancel_failed'
   )
+  console.log('[取消审核] 📊 auditedCancelOrders 计算:', {
+    orderList总数: orderList.value.length,
+    已审核数量: filtered.length,
+    订单ID列表: filtered.map(o => o.id)
+  })
+  return filtered
 })
 
 // 取消原因转换方法
@@ -1994,20 +2048,224 @@ const handleAfterSales = (row: OrderItem) => {
 }
 
 // 取消订单审核相关处理函数
-const handleOpenCancelAudit = () => {
+const handleOpenCancelAudit = async () => {
   showCancelAuditDialog.value = true
   auditActiveTab.value = 'pending'
   selectedAuditOrders.value = []
+
+  // 🔥 修复：打开弹窗前，先清空 orderStore 中的取消审核相关订单
+  console.log('[取消审核] 🧹 清空前 orderStore.orders 数量:', orderStore.orders.length)
+  orderStore.orders = orderStore.orders.filter(order =>
+    order.status !== 'pending_cancel' &&
+    order.status !== 'cancelled' &&
+    order.status !== 'cancel_failed'
+  )
+  console.log('[取消审核] 🧹 清空后 orderStore.orders 数量:', orderStore.orders.length)
+
+  // 🔥 修复：打开弹窗时，单独加载 pending_cancel 和已审核的订单
+  await loadCancelAuditOrders()
+}
+
+// 🔥 修复：使用专门的API加载取消申请审核订单列表
+const loadCancelAuditOrders = async () => {
+  try {
+    loading.value = true
+
+    const { orderApi } = await import('@/api/order')
+
+    console.log('[取消审核] 🚀 开始加载订单...')
+
+    // 🔥 使用专门的API：获取待审核的取消订单
+    console.log('[取消审核] 📡 调用 getPendingCancelOrders...')
+    const pendingResponse = await orderApi.getPendingCancelOrders({
+      page: pendingPagination.page,
+      pageSize: pendingPagination.pageSize
+    })
+    console.log('[取消审核] 待审核订单API响应:', pendingResponse)
+
+    // 🔥 使用专门的API：获取已审核的取消订单
+    console.log('[取消审核] 📡 调用 getAuditedCancelOrders...')
+    const auditedResponse = await orderApi.getAuditedCancelOrders({
+      page: auditedPagination.page,
+      pageSize: auditedPagination.pageSize
+    })
+    console.log('[取消审核] 已审核订单API响应:', auditedResponse)
+
+    // 解析待审核订单数据
+    let pendingOrders: any[] = []
+    if (pendingResponse) {
+      if (Array.isArray(pendingResponse)) {
+        pendingOrders = pendingResponse
+      } else if (pendingResponse.data && Array.isArray(pendingResponse.data)) {
+        pendingOrders = pendingResponse.data
+        // 🔥 更新分页信息
+        if (pendingResponse.pagination) {
+          pendingPagination.total = pendingResponse.pagination.total || 0
+          pendingPagination.totalPages = pendingResponse.pagination.totalPages || 0
+        }
+      }
+    }
+
+    // 解析已审核订单数据
+    let auditedOrders: any[] = []
+    if (auditedResponse) {
+      if (Array.isArray(auditedResponse)) {
+        auditedOrders = auditedResponse
+      } else if (auditedResponse.data && Array.isArray(auditedResponse.data)) {
+        auditedOrders = auditedResponse.data
+        // 🔥 更新分页信息
+        if (auditedResponse.pagination) {
+          auditedPagination.total = auditedResponse.pagination.total || 0
+          auditedPagination.totalPages = auditedResponse.pagination.totalPages || 0
+        }
+      }
+    }
+
+    // 🔥 修复：直接添加新加载的订单到 orderStore（因为打开弹窗时已经清空了）
+    orderStore.orders.push(...pendingOrders, ...auditedOrders)
+
+    console.log('[取消审核] ✅ 添加后 orderStore.orders 数量:', orderStore.orders.length)
+
+    console.log('[取消审核] 加载完成:', {
+      待审核: pendingOrders.length,
+      已审核: auditedOrders.length
+    })
+
+    if (pendingOrders.length === 0) {
+      ElMessage.info('暂无待审核的取消申请')
+    }
+
+  } catch (error) {
+    console.error('[取消审核] 加载订单失败:', error)
+    ElMessage.error('加载取消申请订单失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 const handleCloseCancelAudit = () => {
   showCancelAuditDialog.value = false
   selectedAuditOrders.value = []
+  // 重置分页
+  pendingPagination.page = 1
+  pendingPagination.pageSize = 10
+  pendingPagination.total = 0
+  auditedPagination.page = 1
+  auditedPagination.pageSize = 10
+  auditedPagination.total = 0
 }
 
 const handleAuditTabChange = (tabName: string) => {
   auditActiveTab.value = tabName
   selectedAuditOrders.value = []
+}
+
+// 待审核订单分页处理
+const handlePendingPageChange = async (page: number) => {
+  pendingPagination.page = page
+  await loadPendingCancelOrders()
+}
+
+const handlePendingPageSizeChange = async (pageSize: number) => {
+  pendingPagination.pageSize = pageSize
+  pendingPagination.page = 1 // 重置到第一页
+  await loadPendingCancelOrders()
+}
+
+// 单独加载待审核订单（用于分页）
+const loadPendingCancelOrders = async () => {
+  try {
+    loading.value = true
+
+    const { orderApi } = await import('@/api/order')
+
+    // 先清空待审核订单
+    orderStore.orders = orderStore.orders.filter(order =>
+      order.status !== 'pending_cancel'
+    )
+
+    // 加载新的待审核订单
+    const pendingResponse = await orderApi.getPendingCancelOrders({
+      page: pendingPagination.page,
+      pageSize: pendingPagination.pageSize
+    })
+
+    let pendingOrders: any[] = []
+    if (pendingResponse) {
+      if (Array.isArray(pendingResponse)) {
+        pendingOrders = pendingResponse
+      } else if (pendingResponse.data && Array.isArray(pendingResponse.data)) {
+        pendingOrders = pendingResponse.data
+        if (pendingResponse.pagination) {
+          pendingPagination.total = pendingResponse.pagination.total || 0
+          pendingPagination.totalPages = pendingResponse.pagination.totalPages || 0
+        }
+      }
+    }
+
+    // 添加到 orderStore
+    orderStore.orders.push(...pendingOrders)
+
+  } catch (error) {
+    console.error('[取消审核] 加载待审核订单失败:', error)
+    ElMessage.error('加载待审核订单失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 已审核订单分页处理
+const handleAuditedPageChange = async (page: number) => {
+  auditedPagination.page = page
+  await loadAuditedCancelOrders()
+}
+
+const handleAuditedPageSizeChange = async (pageSize: number) => {
+  auditedPagination.pageSize = pageSize
+  auditedPagination.page = 1 // 重置到第一页
+  await loadAuditedCancelOrders()
+}
+
+// 单独加载已审核订单（用于分页）
+const loadAuditedCancelOrders = async () => {
+  try {
+    loading.value = true
+
+    const { orderApi } = await import('@/api/order')
+
+    // 先清空已审核订单
+    orderStore.orders = orderStore.orders.filter(order =>
+      order.status !== 'cancelled' && order.status !== 'cancel_failed'
+    )
+
+    // 加载新的已审核订单
+    const auditedResponse = await orderApi.getAuditedCancelOrders({
+      page: auditedPagination.page,
+      pageSize: auditedPagination.pageSize
+    })
+
+    let auditedOrders: any[] = []
+    if (auditedResponse) {
+      if (Array.isArray(auditedResponse)) {
+        auditedOrders = auditedResponse
+      } else if (auditedResponse.data && Array.isArray(auditedResponse.data)) {
+        auditedOrders = auditedResponse.data
+        if (auditedResponse.pagination) {
+          auditedPagination.total = auditedResponse.pagination.total || 0
+          auditedPagination.totalPages = auditedResponse.pagination.totalPages || 0
+        }
+      }
+    }
+
+    // 添加到 orderStore
+    orderStore.orders.push(...auditedOrders)
+
+  } catch (error) {
+    console.error('[取消审核] 加载已审核订单失败:', error)
+    ElMessage.error('加载已审核订单失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 const handleAuditSelectionChange = (selection: OrderItem[]) => {

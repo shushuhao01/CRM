@@ -4,6 +4,7 @@ export declare class Customer {
     customerNo?: string;
     name: string;
     phone?: string;
+    otherPhones?: string[];
     wechat?: string;
     qq?: string;
     email?: string;

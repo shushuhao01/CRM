@@ -43,6 +43,10 @@ __decorate([
     __metadata("design:type", String)
 ], Role.prototype, "color", void 0);
 __decorate([
+    (0, typeorm_1.Column)('varchar', { name: 'data_scope', length: 20, default: 'self' }),
+    __metadata("design:type", String)
+], Role.prototype, "dataScope", void 0);
+__decorate([
     (0, typeorm_1.CreateDateColumn)(),
     __metadata("design:type", Date)
 ], Role.prototype, "createdAt", void 0);

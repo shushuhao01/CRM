@@ -6,6 +6,7 @@ export declare class Role {
     status: 'active' | 'inactive';
     level: number;
     color: string;
+    dataScope: 'all' | 'department' | 'self';
     createdAt: Date;
     updatedAt: Date;
     permissions: string[] | null;

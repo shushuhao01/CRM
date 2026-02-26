@@ -287,15 +287,15 @@ router.get('/stats', async (req, res) => {
 });
 /**
  * 🔥 统一的业绩计算规则 - 判断订单是否计入下单业绩
+ * 排除的状态：取消申请、已取消、审核拒绝、物流部退回、物流部取消、已退款
+ * 待流转状态：所有标记类型都计入（包括normal正常发货单）
  */
-const isValidForOrderPerformance = (status, markType) => {
+const isValidForOrderPerformance = (status, _markType) => {
     const excludedStatuses = [
         'pending_cancel', 'cancelled', 'audit_rejected',
         'logistics_returned', 'logistics_cancelled', 'refunded'
     ];
-    if (status === 'pending_transfer') {
-        return markType === 'normal';
-    }
+    // 🔥 修复：待流转状态的所有订单都计入业绩（包括normal正常发货单）
     return !excludedStatuses.includes(status);
 };
 /**
@@ -308,18 +308,21 @@ router.get('/personal', async (req, res) => {
         const userId = req.query.userId || currentUser?.userId;
         const startDate = req.query.startDate;
         const endDate = req.query.endDate;
+        // 🔥 修复：获取用户名，用于同时匹配订单
+        const [userInfo] = await database_1.AppDataSource.query(`SELECT id, username FROM users WHERE id = ?`, [userId]);
+        const username = userInfo?.username;
         // 🔥 数据库已配置为北京时区，直接使用北京时间进行查询
         let dateCondition = '';
-        const orderParams = [userId];
+        const orderParams = [userId, username];
         if (startDate && endDate) {
             dateCondition = ' AND created_at >= ? AND created_at <= ?';
             orderParams.push(startDate + ' 00:00:00', endDate + ' 23:59:59');
             console.log(`[业绩统计] 查询日期范围: ${startDate} 00:00:00 ~ ${endDate} 23:59:59`);
         }
         // 获取所有订单用于业绩计算
-        // 🔥 修复：orders表没有sales_person_id字段，只使用created_by
+        // 🔥 修复：同时匹配用户ID和用户名
         const orders = await database_1.AppDataSource.query(`SELECT status, mark_type as markType, total_amount as totalAmount
-       FROM orders WHERE created_by = ?${dateCondition}`, orderParams);
+       FROM orders WHERE (created_by = ? OR created_by = ?)${dateCondition}`, orderParams);
         // 🔥 使用统一的业绩计算规则
         let orderCount = 0;
         let orderAmount = 0;
@@ -414,32 +417,40 @@ router.get('/personal', async (req, res) => {
 router.get('/team', async (req, res) => {
     try {
         const currentUser = req.user;
-        const departmentId = req.query.departmentId || currentUser?.departmentId;
+        // 🔥 修复：当departmentId为空字符串或'all'时，查询所有部门
+        const departmentIdParam = req.query.departmentId;
+        const departmentId = (departmentIdParam === '' || departmentIdParam === 'all' || departmentIdParam === undefined)
+            ? null // null表示查询所有部门
+            : departmentIdParam;
         const startDate = req.query.startDate;
         const endDate = req.query.endDate;
         const sortBy = req.query.sortBy || 'orderAmount';
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
+        console.log(`[团队业绩API] 🚀 请求参数: departmentId=${departmentIdParam}, 实际使用=${departmentId || '全部部门'}`);
         // 🔥 数据库已配置为北京时区，直接使用北京时间
         let dateCondition = '';
         if (startDate && endDate) {
             dateCondition = ` AND created_at >= '${startDate} 00:00:00' AND created_at <= '${endDate} 23:59:59'`;
         }
-        // 获取部门成员列表
-        let userCondition = '';
-        if (departmentId && departmentId !== 'all') {
-            userCondition = ` WHERE u.department_id = '${departmentId}'`;
+        // 获取部门成员列表 - 🔥 修复：departmentId为null时查询所有用户
+        // 🔥 修复：只查询启用状态(status='active')的用户，停用用户不显示在团队业绩中
+        let userCondition = ` WHERE u.status = 'active'`;
+        if (departmentId) {
+            userCondition += ` AND u.department_id = '${departmentId}'`;
         }
         const users = await database_1.AppDataSource.query(`SELECT u.id, u.real_name as realName, u.username, u.department_name as departmentName,
-              u.department_id as departmentId, u.created_at as createTime
+              u.department_id as departmentId, u.created_at as createTime, u.status
        FROM users u${userCondition}`);
+        console.log(`[团队业绩] 查询到用户数: ${users.length}`);
+        console.log(`[团队业绩] 用户列表:`, users.map((u) => ({ id: u.id, username: u.username, realName: u.realName })));
         // 获取每个成员的订单数据
         const memberStats = [];
         for (const user of users) {
-            // 🔥 修复：orders表没有sales_person_id字段，只使用created_by
+            // 🔥 修复：created_by字段可能存储用户ID或用户名，需要同时匹配
             const orders = await database_1.AppDataSource.query(`SELECT status, mark_type as markType, total_amount as totalAmount
          FROM orders
-         WHERE created_by = ?${dateCondition}`, [user.id]);
+         WHERE (created_by = ? OR created_by = ?)${dateCondition}`, [user.id, user.username]);
             // 🔥 使用统一的业绩计算规则
             let orderCount = 0, orderAmount = 0;
             let signCount = 0, signAmount = 0;
@@ -525,6 +536,7 @@ router.get('/team', async (req, res) => {
         const totalSignAmount = memberStats.reduce((sum, m) => sum + m.signAmount, 0);
         const avgPerformance = memberStats.length > 0 ? totalOrderAmount / memberStats.length : 0;
         const totalSignRate = totalOrderCount > 0 ? parseFloat(((totalSignCount / totalOrderCount) * 100).toFixed(1)) : 0;
+        console.log(`[团队业绩] 汇总统计: 总订单数=${totalOrderCount}, 总金额=${totalOrderAmount}, 成员数=${memberStats.length}`);
         // 分页
         const total = memberStats.length;
         const offset = (page - 1) * limit;
@@ -605,6 +617,10 @@ router.get('/analysis/personal', async (req, res) => {
     try {
         const currentUser = req.user;
         const userId = req.query.userId || currentUser?.userId;
+        // 🔥 修复：同时获取用户名，用于匹配订单
+        const [userInfo] = await database_1.AppDataSource.query(`SELECT id, username FROM users WHERE id = ?`, [userId]);
+        const username = userInfo?.username;
+        // 🔥 修复：同时匹配用户ID和用户名
         const [stats] = await database_1.AppDataSource.query(`SELECT
          COUNT(*) as orderCount,
          SUM(total_amount) as orderAmount,
@@ -616,7 +632,7 @@ router.get('/analysis/personal', async (req, res) => {
          SUM(CASE WHEN status = 'cancelled' THEN total_amount ELSE 0 END) as rejectAmount,
          SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END) as returnCount,
          SUM(CASE WHEN status = 'refunded' THEN total_amount ELSE 0 END) as returnAmount
-       FROM orders WHERE created_by = ?`, [userId]);
+       FROM orders WHERE (created_by = ? OR created_by = ?)`, [userId, username]);
         const orderCount = stats?.orderCount || 1;
         res.json({
             success: true,
@@ -652,6 +668,7 @@ router.get('/analysis/department', async (req, res) => {
     try {
         const currentUser = req.user;
         const departmentId = req.query.departmentId || currentUser?.departmentId;
+        // 🔥 修复：同时匹配用户ID和用户名，避免遗漏订单
         const [stats] = await database_1.AppDataSource.query(`SELECT
          COUNT(o.id) as orderCount,
          SUM(o.total_amount) as orderAmount,
@@ -660,7 +677,7 @@ router.get('/analysis/department', async (req, res) => {
          SUM(CASE WHEN o.status = 'cancelled' THEN 1 ELSE 0 END) as rejectCount,
          SUM(CASE WHEN o.status = 'refunded' THEN 1 ELSE 0 END) as returnCount
        FROM orders o
-       JOIN users u ON o.created_by = u.id
+       JOIN users u ON (o.created_by = u.id OR o.created_by = u.username)
        WHERE u.department_id = ?`, [departmentId]);
         const orderCount = stats?.orderCount || 1;
         res.json({
@@ -728,32 +745,55 @@ router.get('/analysis/company', async (_req, res) => {
 });
 /**
  * @route GET /api/v1/performance/analysis/metrics
- * @desc 获取业绩统计指标
+ * @desc 获取业绩统计指标（支持日期筛选）
  */
 router.get('/analysis/metrics', async (req, res) => {
     try {
-        const { type } = req.query;
+        const { type, startDate, endDate, departmentId } = req.query;
         const currentUser = req.user;
         let whereClause = '';
         const params = [];
+        const conditions = [];
+        // 🔥 日期筛选
+        if (startDate && endDate) {
+            conditions.push(`o.created_at >= '${startDate} 00:00:00' AND o.created_at <= '${endDate} 23:59:59'`);
+        }
+        // 🔥 排除无效订单状态
+        conditions.push(`o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded')`);
+        // 🔥 排除预留单（pending_transfer状态且mark_type为reserved的不计入）
+        conditions.push(`NOT (o.status = 'pending_transfer' AND o.mark_type = 'reserved')`);
         if (type === 'personal') {
-            whereClause = 'WHERE o.created_by = ?';
-            params.push(currentUser?.userId);
+            conditions.push('(o.created_by = ? OR o.created_by = (SELECT username FROM users WHERE id = ?))');
+            params.push(currentUser?.userId, currentUser?.userId);
         }
         else if (type === 'department') {
-            whereClause = 'WHERE u.department_id = ?';
-            params.push(currentUser?.departmentId);
+            const deptId = departmentId || currentUser?.departmentId;
+            if (deptId) {
+                conditions.push('u.department_id = ?');
+                params.push(deptId);
+            }
         }
+        if (conditions.length > 0) {
+            whereClause = 'WHERE ' + conditions.join(' AND ');
+        }
+        // 🔥 修复：JOIN时同时匹配用户ID和用户名
+        const joinClause = type === 'department' || departmentId
+            ? 'JOIN users u ON (o.created_by = u.id OR o.created_by = u.username)'
+            : '';
         const sql = `SELECT
        SUM(o.total_amount) as totalPerformance,
        COUNT(o.id) as totalOrders,
-       SUM(CASE WHEN o.status IN ('delivered', 'completed') THEN 1 ELSE 0 END) as signOrders,
-       SUM(CASE WHEN o.status IN ('delivered', 'completed') THEN o.total_amount ELSE 0 END) as signPerformance
+       SUM(CASE WHEN o.status IN ('shipped', 'delivered') THEN 1 ELSE 0 END) as shipOrders,
+       SUM(CASE WHEN o.status IN ('shipped', 'delivered') THEN o.total_amount ELSE 0 END) as shipPerformance,
+       SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) as signOrders,
+       SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END) as signPerformance
      FROM orders o
-     ${type === 'department' ? 'JOIN users u ON o.created_by = u.id' : ''}
+     ${joinClause}
      ${whereClause}`;
         const [stats] = await database_1.AppDataSource.query(sql, params);
         const totalOrders = stats?.totalOrders || 1;
+        const shipOrders = stats?.shipOrders || 0;
+        const signOrders = stats?.signOrders || 0;
         res.json({
             success: true,
             code: 200,
@@ -762,8 +802,11 @@ router.get('/analysis/metrics', async (req, res) => {
                 totalPerformance: stats?.totalPerformance || 0,
                 totalOrders: stats?.totalOrders || 0,
                 avgPerformance: Math.round((stats?.totalPerformance || 0) / totalOrders),
-                signOrders: stats?.signOrders || 0,
-                signRate: ((stats?.signOrders || 0) / totalOrders * 100).toFixed(1),
+                shipOrders,
+                shipPerformance: stats?.shipPerformance || 0,
+                shipRate: parseFloat(((shipOrders / totalOrders) * 100).toFixed(1)),
+                signOrders,
+                signRate: parseFloat(((signOrders / totalOrders) * 100).toFixed(1)),
                 signPerformance: stats?.signPerformance || 0
             }
         });
@@ -793,6 +836,205 @@ router.get('/analysis/trend', async (req, res) => {
     catch (error) {
         console.error('获取业绩趋势失败:', error);
         res.status(500).json({ success: false, code: 500, message: '获取业绩趋势失败' });
+    }
+});
+/**
+ * @route GET /api/v1/performance/analysis/chart-data
+ * @desc 获取业绩分析图表数据（业绩趋势和订单状态分布）
+ * @access Private
+ *
+ * 支持参数：
+ * - startDate: 开始日期 (YYYY-MM-DD)
+ * - endDate: 结束日期 (YYYY-MM-DD)
+ * - departmentId: 部门ID（可选）
+ * - granularity: 数据粒度 (hour/day/month/year)，默认自动判断
+ */
+router.get('/analysis/chart-data', async (req, res) => {
+    try {
+        const { startDate, endDate, departmentId, granularity } = req.query;
+        const _currentUser = req.user;
+        console.log(`[业绩图表API] 请求参数: startDate=${startDate}, endDate=${endDate}, departmentId=${departmentId}, granularity=${granularity}`);
+        // 🔥 构建基础查询条件
+        const conditions = [];
+        const params = [];
+        // 排除无效订单状态
+        conditions.push(`status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded')`);
+        // 排除预留单
+        conditions.push(`NOT (status = 'pending_transfer' AND mark_type = 'reserved')`);
+        // 日期筛选
+        if (startDate && endDate) {
+            conditions.push(`created_at >= ? AND created_at <= ?`);
+            params.push(`${startDate} 00:00:00`, `${endDate} 23:59:59`);
+        }
+        // 部门筛选
+        if (departmentId) {
+            conditions.push(`created_by_department_id = ?`);
+            params.push(departmentId);
+        }
+        const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+        // 🔥 1. 获取业绩趋势数据
+        // 根据日期范围自动选择粒度
+        let groupByFormat;
+        let selectFormat;
+        let autoGranularity = granularity;
+        if (!autoGranularity) {
+            // 自动判断粒度
+            if (startDate && endDate) {
+                const start = new Date(startDate);
+                const end = new Date(endDate);
+                const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                if (daysDiff <= 1) {
+                    autoGranularity = 'hour';
+                }
+                else if (daysDiff <= 31) {
+                    autoGranularity = 'day';
+                }
+                else if (daysDiff <= 365) {
+                    autoGranularity = 'month';
+                }
+                else {
+                    autoGranularity = 'year';
+                }
+            }
+            else {
+                autoGranularity = 'year'; // 默认按年
+            }
+        }
+        switch (autoGranularity) {
+            case 'hour':
+                selectFormat = `DATE_FORMAT(created_at, '%Y-%m-%d %H:00') as period`;
+                groupByFormat = `DATE_FORMAT(created_at, '%Y-%m-%d %H:00')`;
+                break;
+            case 'day':
+                selectFormat = `DATE(created_at) as period`;
+                groupByFormat = `DATE(created_at)`;
+                break;
+            case 'month':
+                selectFormat = `DATE_FORMAT(created_at, '%Y-%m') as period`;
+                groupByFormat = `DATE_FORMAT(created_at, '%Y-%m')`;
+                break;
+            case 'year':
+            default:
+                selectFormat = `YEAR(created_at) as period`;
+                groupByFormat = `YEAR(created_at)`;
+                break;
+        }
+        // 查询业绩趋势
+        const trendSql = `
+      SELECT
+        ${selectFormat},
+        SUM(total_amount) as orderAmount,
+        SUM(CASE WHEN status = 'delivered' THEN total_amount ELSE 0 END) as signAmount,
+        COUNT(*) as orderCount,
+        SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as signCount
+      FROM orders
+      ${whereClause}
+      GROUP BY ${groupByFormat}
+      ORDER BY period ASC
+    `;
+        console.log(`[业绩图表API] 趋势SQL: ${trendSql}`);
+        console.log(`[业绩图表API] 参数: ${JSON.stringify(params)}`);
+        const trendData = await database_1.AppDataSource.query(trendSql, params);
+        console.log(`[业绩图表API] 趋势数据条数: ${trendData.length}`);
+        if (trendData.length > 0) {
+            console.log(`[业绩图表API] 趋势数据示例:`, trendData.slice(0, 3));
+        }
+        // 🔥 2. 获取订单状态分布
+        const statusSql = `
+      SELECT
+        status,
+        COUNT(*) as count,
+        SUM(total_amount) as amount
+      FROM orders
+      ${whereClause}
+      GROUP BY status
+      ORDER BY count DESC
+    `;
+        const statusData = await database_1.AppDataSource.query(statusSql, params);
+        // 状态名称映射
+        const statusNames = {
+            'pending_transfer': '待流转',
+            'pending_audit': '待审核',
+            'audit_rejected': '审核拒绝',
+            'pending_shipment': '待发货',
+            'shipped': '已发货',
+            'delivered': '已签收',
+            'logistics_returned': '物流部退回',
+            'logistics_cancelled': '物流部取消',
+            'package_exception': '包裹异常',
+            'rejected': '拒收',
+            'rejected_returned': '拒收已退回',
+            'after_sales_created': '已建售后',
+            'pending_cancel': '待取消',
+            'cancel_failed': '取消失败',
+            'cancelled': '已取消',
+            'draft': '草稿',
+            'refunded': '已退款',
+            'pending': '待审核',
+            'paid': '已付款',
+            'completed': '已完成',
+            'signed': '已签收'
+        };
+        const orderStatusDistribution = statusData.map((item) => ({
+            name: statusNames[item.status] || item.status,
+            value: parseInt(item.count) || 0,
+            amount: parseFloat(item.amount) || 0,
+            status: item.status
+        }));
+        // 🔥 3. 格式化趋势数据
+        const performanceTrend = {
+            xAxis: trendData.map((item) => {
+                let period = item.period;
+                // 🔥 修复：处理 MySQL 返回的 Date 对象，转换为字符串
+                if (period instanceof Date) {
+                    period = period.toISOString().split('T')[0]; // 转换为 YYYY-MM-DD 格式
+                }
+                else if (typeof period === 'object' && period !== null) {
+                    // 处理其他可能的日期对象格式
+                    period = String(period);
+                }
+                if (autoGranularity === 'year') {
+                    return `${period}年`;
+                }
+                else if (autoGranularity === 'month') {
+                    const parts = String(period).split('-');
+                    return `${parseInt(parts[1])}月`;
+                }
+                else if (autoGranularity === 'day') {
+                    const parts = String(period).split('-');
+                    return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
+                }
+                else {
+                    // hour
+                    const periodStr = String(period);
+                    return periodStr.split(' ')[1] || periodStr;
+                }
+            }),
+            orderData: trendData.map((item) => parseFloat(item.orderAmount) || 0),
+            signData: trendData.map((item) => parseFloat(item.signAmount) || 0),
+            // 原始数据，方便前端进一步处理
+            rawData: trendData.map((item) => ({
+                period: item.period,
+                orderAmount: parseFloat(item.orderAmount) || 0,
+                signAmount: parseFloat(item.signAmount) || 0,
+                orderCount: parseInt(item.orderCount) || 0,
+                signCount: parseInt(item.signCount) || 0
+            }))
+        };
+        res.json({
+            success: true,
+            code: 200,
+            message: '获取业绩图表数据成功',
+            data: {
+                performanceTrend,
+                orderStatusDistribution,
+                granularity: autoGranularity
+            }
+        });
+    }
+    catch (error) {
+        console.error('获取业绩图表数据失败:', error);
+        res.status(500).json({ success: false, code: 500, message: '获取业绩图表数据失败' });
     }
 });
 exports.default = router;

@@ -36,7 +36,7 @@ export class Order {
     default: 'pending_transfer',
     comment: '订单状态'
   })
-  status: 'pending' | 'pending_transfer' | 'pending_audit' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded' | 'audit_rejected' | 'pending_shipment' | 'logistics_returned' | 'logistics_cancelled';
+  status: 'pending' | 'pending_transfer' | 'pending_audit' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded' | 'audit_rejected' | 'pending_shipment' | 'logistics_returned' | 'logistics_cancelled' | 'pending_cancel' | 'cancel_failed' | 'after_sales_created' | 'package_exception' | 'rejected' | 'rejected_returned';
 
   @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2, comment: '订单总金额' })
   totalAmount: number;
