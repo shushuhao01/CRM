@@ -1228,7 +1228,7 @@ const handleRoleTypeChange = async (row: RoleData) => {
 /**
  * 权限设置
  */
-const handlePermissions = (row: RoleData) => {
+const handlePermissions = async (row: RoleData) => {
   console.log('[角色权限] 开始配置权限:', row)
 
   currentRole.value = row
@@ -1239,39 +1239,49 @@ const handlePermissions = (row: RoleData) => {
   // 重置标签页到权限设置
   permissionActiveTab.value = 'permissions'
 
-  // 根据角色设置默认权限
-  let defaultPermissions = row.permissions || []
+  // 🔥 从数据库加载角色权限
+  let rolePermissions: string[] = []
 
-  // 如果角色还没有权限，根据角色类型设置默认权限
-  if (!defaultPermissions.length) {
-    console.log('[角色权限] 角色权限为空,从默认配置加载:', row.code)
-    defaultPermissions = getDefaultPermissionsByRole(row.code || row.name)
+  try {
+    console.log('[角色权限] 从数据库加载权限...')
+    const permissionData = await roleApiService.getRolePermissions(row.id)
+    rolePermissions = permissionData.permissions || []
+    console.log('[角色权限] 数据库权限加载成功:', rolePermissions.length, rolePermissions)
+  } catch (error) {
+    console.warn('[角色权限] 数据库权限加载失败，使用默认权限:', error)
+    // 如果数据库加载失败，使用默认权限
+    rolePermissions = getDefaultPermissionsByRole(row.code || row.name)
   }
 
-  console.log('[角色权限] 配置权限详情:', {
+  // 如果数据库中没有权限，使用默认权限
+  if (rolePermissions.length === 0) {
+    console.log('[角色权限] 数据库权限为空，使用默认权限')
+    rolePermissions = getDefaultPermissionsByRole(row.code || row.name)
+  }
+
+  console.log('[角色权限] 最终权限配置:', {
     roleId: row.id,
     roleName: row.name,
     roleCode: row.code,
-    originalPermissions: row.permissions?.length || 0,
-    defaultPermissions: defaultPermissions.length,
-    permissions: defaultPermissions
+    permissionCount: rolePermissions.length,
+    permissions: rolePermissions
   })
 
-  checkedPermissions.value = defaultPermissions
+  checkedPermissions.value = rolePermissions
   permissionDialogVisible.value = true
 
-  // 使用 setTimeout 确保对话框和权限树完全渲染 - 增加延迟时间到1000ms
+  // 使用 setTimeout 确保对话框和权限树完全渲染
   setTimeout(() => {
     console.log('[角色权限] 开始设置权限树选中状态')
     console.log('[角色权限] 权限树引用:', !!permissionTreeRef.value)
-    console.log('[角色权限] 权限数量:', defaultPermissions.length)
-    console.log('[角色权限] 权限列表:', defaultPermissions)
+    console.log('[角色权限] 权限数量:', rolePermissions.length)
+    console.log('[角色权限] 权限列表:', rolePermissions)
 
     if (permissionTreeRef.value) {
-      if (defaultPermissions.length > 0) {
+      if (rolePermissions.length > 0) {
         try {
-          permissionTreeRef.value.setCheckedKeys(defaultPermissions)
-          console.log('✅ 权限树选中状态设置成功:', defaultPermissions)
+          permissionTreeRef.value.setCheckedKeys(rolePermissions)
+          console.log('✅ 权限树选中状态设置成功:', rolePermissions)
 
           // 验证设置结果
           const checkedKeys = permissionTreeRef.value.getCheckedKeys()
@@ -1280,7 +1290,7 @@ const handlePermissions = (row: RoleData) => {
           if (checkedKeys.length === 0) {
             console.error('❌ 权限树选中失败,尝试使用 setChecked 方法')
             // 尝试逐个设置
-            defaultPermissions.forEach(key => {
+            rolePermissions.forEach(key => {
               try {
                 permissionTreeRef.value.setChecked(key, true, false)
               } catch (e) {
@@ -2004,9 +2014,12 @@ const confirmPermissions = async () => {
 
     // 🔥 调用后端API保存权限和数据范围到数据库
     try {
+      // 保存权限
+      await roleApiService.updateRolePermissions(currentRole.value.id, checkedKeys || [])
+
+      // 保存数据范围
       await roleApiService.updateRole({
         id: currentRole.value.id,
-        permissions: checkedKeys || [],
         dataScope: currentRoleDataScope.value
       })
 
