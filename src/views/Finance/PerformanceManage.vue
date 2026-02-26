@@ -675,10 +675,11 @@ const loadData = async () => {
     const resData = res as any
     if (resData && Array.isArray(resData.list)) {
       // 🔥 直接使用后端返回的备注值，支持自定义输入
+      // 如果备注为空，默认设置为"正常"
       tableData.value = resData.list.map((item: PerformanceOrder) => ({
         ...item,
-        // 保留原始备注值，无论是预设的还是自定义的
-        performanceRemark: item.performanceRemark || ''
+        // 保留原始备注值，如果为空则默认为"正常"
+        performanceRemark: item.performanceRemark || '正常'
       }))
       pagination.total = resData.total || 0
     } else {
@@ -805,6 +806,18 @@ const handleSelectionChange = (rows: PerformanceOrder[]) => {
 // 更新绩效
 const updatePerformance = async (row: PerformanceOrder, field: string, value: any) => {
   try {
+    // 🔥 如果是有效状态字段，验证订单状态
+    if (field === 'performanceStatus' && value === 'valid') {
+      // 只有已签收(delivered)或已完成(completed)的订单才能设置为有效
+      const validOrderStatuses = ['delivered', 'completed']
+      if (!validOrderStatuses.includes(row.status)) {
+        ElMessage.warning('只有已签收或已完成的订单才能设置为有效')
+        // 恢复原值
+        row.performanceStatus = row.performanceStatus === 'valid' ? 'pending' : row.performanceStatus
+        return
+      }
+    }
+
     const data: any = {}
     data[field] = value
 
@@ -868,6 +881,16 @@ const saveRow = async (row: PerformanceOrder) => {
 // 批量设为有效
 const batchSetValid = async () => {
   if (selectedRows.value.length === 0) return
+
+  // 🔥 验证所有选中的订单状态
+  const validOrderStatuses = ['delivered', 'completed']
+  const invalidOrders = selectedRows.value.filter(row => !validOrderStatuses.includes(row.status))
+
+  if (invalidOrders.length > 0) {
+    ElMessage.warning(`有 ${invalidOrders.length} 个订单不是已签收或已完成状态，无法设置为有效`)
+    return
+  }
+
   try {
     const orderIds = selectedRows.value.map(r => r.id)
     const data: any = {
