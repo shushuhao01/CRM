@@ -568,8 +568,18 @@ async function calculateCommission(
   endDate?: string
 ): Promise<number> {
   try {
+    console.log('[佣金计算] ========== 开始计算 ==========');
+    console.log('[佣金计算] 订单金额:', orderAmount);
+    console.log('[佣金计算] 系数:', coefficient);
+    console.log('[佣金计算] 部门ID:', departmentId);
+    console.log('[佣金计算] 用户ID:', userId);
+    console.log('[佣金计算] 时间范围:', startDate, '至', endDate);
+
     // 系数为0时，佣金为0
-    if (coefficient === 0) return 0;
+    if (coefficient === 0) {
+      console.log('[佣金计算] 系数为0，返回佣金0');
+      return 0;
+    }
 
     const ladderRepo = AppDataSource.getRepository(CommissionLadder);
     const orderRepo = AppDataSource.getRepository(Order);
@@ -582,6 +592,7 @@ async function calculateCommission(
         where: { departmentId: departmentId, isActive: 1 },
         order: { sortOrder: 'ASC' }
       });
+      console.log('[佣金计算] 查找部门阶梯配置:', departmentId, '找到', ladders.length, '个');
     }
 
     // 如果该部门没有配置，查找全局配置
@@ -592,12 +603,23 @@ async function calculateCommission(
         .andWhere('(l.departmentId IS NULL OR l.departmentId = :empty)', { empty: '' })
         .orderBy('l.sortOrder', 'ASC')
         .getMany();
+      console.log('[佣金计算] 查找全局阶梯配置，找到', ladders.length, '个');
     }
 
-    if (ladders.length === 0) return 0;
+    if (ladders.length === 0) {
+      console.log('[佣金计算] 没有找到阶梯配置，返回佣金0');
+      return 0;
+    }
 
     const firstLadder = ladders[0];
     const commissionType = firstLadder.commissionType;
+    console.log('[佣金计算] 计提类型:', commissionType);
+    console.log('[佣金计算] 阶梯配置:', ladders.map(l => ({
+      min: l.minValue,
+      max: l.maxValue,
+      rate: l.commissionRate,
+      perUnit: l.commissionPerUnit
+    })));
 
     // 签收状态
     const signedStatuses = ['delivered', 'completed', 'signed'];
@@ -622,6 +644,7 @@ async function calculateCommission(
 
         const result = await query.getRawOne();
         totalAmount = parseFloat(result?.total || '0');
+        console.log('[佣金计算] 统计签收业绩总金额:', totalAmount);
       }
 
       // 根据总业绩匹配阶梯
@@ -629,14 +652,19 @@ async function calculateCommission(
       for (const ladder of ladders) {
         const min = parseFloat(ladder.minValue?.toString() || '0');
         const max = ladder.maxValue ? parseFloat(ladder.maxValue.toString()) : Infinity;
+        console.log('[佣金计算] 检查阶梯:', min, '-', max, '当前业绩:', totalAmount);
         if (totalAmount >= min && totalAmount < max) {
           rate = parseFloat(ladder.commissionRate?.toString() || '0');
+          console.log('[佣金计算] ✓ 匹配阶梯，比例:', rate);
           break;
         }
       }
 
       // 计算单个订单佣金
-      return orderAmount * coefficient * rate;
+      const commission = orderAmount * coefficient * rate;
+      console.log('[佣金计算] 最终佣金 =', orderAmount, '×', coefficient, '×', rate, '=', commission);
+      console.log('[佣金计算] ========== 计算结束 ==========');
+      return commission;
     }
 
     if (commissionType === 'count') {
@@ -659,6 +687,7 @@ async function calculateCommission(
 
         const result = await query.getRawOne();
         totalCount = parseFloat(result?.total || '0');
+        console.log('[佣金计算] 统计签收订单数量（系数合计）:', totalCount);
       }
 
       // 根据总单数匹配阶梯
@@ -666,16 +695,22 @@ async function calculateCommission(
       for (const ladder of ladders) {
         const min = parseFloat(ladder.minValue?.toString() || '0');
         const max = ladder.maxValue ? parseFloat(ladder.maxValue.toString()) : Infinity;
+        console.log('[佣金计算] 检查阶梯:', min, '-', max, '当前单数:', totalCount);
         if (totalCount >= min && totalCount < max) {
           perUnit = parseFloat(ladder.commissionPerUnit?.toString() || '0');
+          console.log('[佣金计算] ✓ 匹配阶梯，单价:', perUnit);
           break;
         }
       }
 
       // 计算单个订单佣金
-      return coefficient * perUnit;
+      const commission = coefficient * perUnit;
+      console.log('[佣金计算] 最终佣金 =', coefficient, '×', perUnit, '=', commission);
+      console.log('[佣金计算] ========== 计算结束 ==========');
+      return commission;
     }
 
+    console.log('[佣金计算] 未知的计提类型:', commissionType);
     return 0;
   } catch (error) {
     console.error('[Finance] Calculate commission failed:', error);
