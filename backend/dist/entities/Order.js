@@ -243,6 +243,54 @@ __decorate([
     __metadata("design:type", String)
 ], Order.prototype, "remark", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ name: 'performance_status', length: 20, default: 'pending', comment: '绩效状态: pending-待处理, valid-有效, invalid-无效' }),
+    __metadata("design:type", String)
+], Order.prototype, "performanceStatus", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'performance_coefficient', type: 'decimal', precision: 3, scale: 2, default: 1.00, comment: '绩效系数' }),
+    __metadata("design:type", Number)
+], Order.prototype, "performanceCoefficient", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'performance_remark', length: 200, nullable: true, comment: '绩效备注' }),
+    __metadata("design:type", String)
+], Order.prototype, "performanceRemark", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'estimated_commission', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '预估佣金' }),
+    __metadata("design:type", Number)
+], Order.prototype, "estimatedCommission", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'performance_updated_at', type: 'datetime', nullable: true, comment: '绩效更新时间' }),
+    __metadata("design:type", Date)
+], Order.prototype, "performanceUpdatedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'performance_updated_by', type: 'varchar', length: 50, nullable: true, comment: '绩效更新人ID' }),
+    __metadata("design:type", String)
+], Order.prototype, "performanceUpdatedBy", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'cod_amount', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '代收金额' }),
+    __metadata("design:type", Number)
+], Order.prototype, "codAmount", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'cod_status', type: 'varchar', length: 20, default: 'pending', comment: '代收状态: pending-未返款, returned-已返款, cancelled-已取消代收' }),
+    __metadata("design:type", String)
+], Order.prototype, "codStatus", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'cod_returned_amount', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '已返款金额' }),
+    __metadata("design:type", Number)
+], Order.prototype, "codReturnedAmount", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'cod_returned_at', type: 'datetime', nullable: true, comment: '返款时间' }),
+    __metadata("design:type", Date)
+], Order.prototype, "codReturnedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'cod_cancelled_at', type: 'datetime', nullable: true, comment: '取消代收时间' }),
+    __metadata("design:type", Date)
+], Order.prototype, "codCancelledAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'cod_remark', type: 'varchar', length: 500, nullable: true, comment: '代收备注' }),
+    __metadata("design:type", String)
+], Order.prototype, "codRemark", void 0);
+__decorate([
     (0, typeorm_1.Column)({ name: 'operator_id', type: 'varchar', length: 50, nullable: true, comment: '操作员ID' }),
     __metadata("design:type", String)
 ], Order.prototype, "operatorId", void 0);

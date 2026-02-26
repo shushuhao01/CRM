@@ -53,6 +53,18 @@ export declare class Order {
     customField6?: string;
     customField7?: string;
     remark?: string;
+    performanceStatus?: string;
+    performanceCoefficient?: number;
+    performanceRemark?: string;
+    estimatedCommission?: number;
+    performanceUpdatedAt?: Date;
+    performanceUpdatedBy?: string;
+    codAmount?: number;
+    codStatus?: string;
+    codReturnedAmount?: number;
+    codReturnedAt?: Date;
+    codCancelledAt?: Date;
+    codRemark?: string;
     operatorId?: string;
     operatorName?: string;
     createdBy?: string;

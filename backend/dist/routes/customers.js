@@ -55,7 +55,8 @@ router.use(auth_1.authenticateToken);
 router.get('/', async (req, res) => {
     try {
         const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
-        const { page = 1, pageSize = 10, name, phone, level, status, startDate, endDate } = req.query;
+        const { page = 1, pageSize = 10, name, phone, keyword, // 🔥 新增：支持关键词搜索（同时搜索姓名和电话）
+        level, status, startDate, endDate } = req.query;
         const pageNum = parseInt(page) || 1;
         const pageSizeNum = parseInt(pageSize) || 10;
         const skip = (pageNum - 1) * pageSizeNum;
@@ -130,6 +131,10 @@ router.get('/', async (req, res) => {
             }
         }
         // 添加其他筛选条件
+        // 🔥 新增：支持keyword关键词搜索（同时搜索姓名和电话）
+        if (keyword) {
+            queryBuilder.andWhere('(customer.name LIKE :keyword OR customer.phone LIKE :keyword)', { keyword: `%${keyword}%` });
+        }
         if (name) {
             queryBuilder.andWhere('customer.name LIKE :name', { name: `%${name}%` });
         }
@@ -142,13 +147,30 @@ router.get('/', async (req, res) => {
         if (status) {
             queryBuilder.andWhere('customer.status = :status', { status });
         }
-        // 日期范围筛选
+        // 日期范围筛选 - 🔥 修复：确保包含整天的数据
         if (startDate && endDate) {
-            queryBuilder.andWhere('customer.createdAt BETWEEN :startDate AND :endDate', {
-                startDate: new Date(startDate),
-                endDate: new Date(endDate)
-            });
+            queryBuilder.andWhere('customer.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+            queryBuilder.andWhere('customer.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
         }
+        // 🔥 统计数据查询（在应用分页之前，基于相同的筛选条件）
+        const statsQueryBuilder = queryBuilder.clone();
+        // 获取今日日期
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        // 统计总数（筛选后的）
+        const totalCustomers = await statsQueryBuilder.getCount();
+        // 统计活跃客户数（status = 'active'）
+        const activeCustomers = await statsQueryBuilder.clone()
+            .andWhere('customer.status = :activeStatus', { activeStatus: 'active' })
+            .getCount();
+        // 统计今日新增客户数
+        const newCustomers = await customerRepository.createQueryBuilder('customer')
+            .where('DATE(customer.createdAt) = :today', { today: todayStr })
+            .getCount();
+        // 统计高价值客户数（level = 'gold'）
+        const highValueCustomers = await statsQueryBuilder.clone()
+            .andWhere('customer.level = :goldLevel', { goldLevel: 'gold' })
+            .getCount();
         // 排序和分页
         queryBuilder.orderBy('customer.createdAt', 'DESC')
             .skip(skip)
@@ -214,6 +236,7 @@ router.get('/', async (req, res) => {
                 code: customer.customerNo || '',
                 name: customer.name,
                 phone: customer.phone || '',
+                otherPhones: customer.otherPhones || [], // 🔥 添加其他手机号
                 age: customer.age || 0,
                 gender: customer.gender || 'unknown',
                 height: customer.height || null,
@@ -257,7 +280,14 @@ router.get('/', async (req, res) => {
                 list,
                 total,
                 page: pageNum,
-                pageSize: pageSizeNum
+                pageSize: pageSizeNum,
+                // 🔥 新增：统计数据
+                statistics: {
+                    totalCustomers,
+                    activeCustomers,
+                    newCustomers,
+                    highValueCustomers
+                }
             }
         });
     }
@@ -822,6 +852,7 @@ router.get('/search', async (req, res) => {
             code: customer.customerNo || '',
             name: customer.name,
             phone: customer.phone || '',
+            otherPhones: customer.otherPhones || [], // 🔥 添加其他手机号
             gender: customer.gender || 'unknown',
             age: customer.age || 0,
             level: customer.level || 'normal',
@@ -887,10 +918,12 @@ router.get('/:id', async (req, res) => {
             code: customer.customerNo || '',
             name: customer.name,
             phone: customer.phone || '',
+            otherPhones: customer.otherPhones || [],
             age: customer.age || 0,
             gender: customer.gender || 'unknown',
             height: customer.height || null,
             weight: customer.weight || null,
+            birthday: customer.birthday ? (0, dateFormat_1.formatDate)(customer.birthday) : '',
             address: customer.address || '',
             province: customer.province || '',
             city: customer.city || '',
@@ -1096,7 +1129,7 @@ router.put('/:id', async (req, res) => {
                 message: '客户不存在'
             });
         }
-        const { name, phone, email, address, level, source, tags, remarks, remark, company, status, age, gender, height, weight, wechat, wechatId, province, city, district, street, detailAddress, overseasAddress, medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime } = req.body;
+        const { name, phone, email, address, level, source, tags, remarks, remark, company, status, age, gender, height, weight, wechat, wechatId, birthday, province, city, district, street, detailAddress, overseasAddress, medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime, otherPhones } = req.body;
         // 更新字段
         if (name !== undefined)
             customer.name = name;
@@ -1138,6 +1171,8 @@ router.put('/:id', async (req, res) => {
             customer.height = height;
         if (weight !== undefined)
             customer.weight = weight;
+        if (birthday !== undefined)
+            customer.birthday = birthday ? new Date(birthday) : undefined;
         if (wechat !== undefined || wechatId !== undefined)
             customer.wechat = wechat || wechatId;
         if (medicalHistory !== undefined)
@@ -1148,6 +1183,8 @@ router.put('/:id', async (req, res) => {
             customer.otherGoals = otherGoals;
         if (fanAcquisitionTime !== undefined)
             customer.fanAcquisitionTime = fanAcquisitionTime ? new Date(fanAcquisitionTime) : undefined;
+        if (otherPhones !== undefined)
+            customer.otherPhones = otherPhones;
         const updatedCustomer = await customerRepository.save(customer);
         // 转换数据格式返回
         const data = {
@@ -1155,6 +1192,7 @@ router.put('/:id', async (req, res) => {
             code: updatedCustomer.customerNo || '',
             name: updatedCustomer.name,
             phone: updatedCustomer.phone || '',
+            otherPhones: updatedCustomer.otherPhones || [],
             age: updatedCustomer.age || 0,
             gender: updatedCustomer.gender || 'unknown',
             height: updatedCustomer.height || null,
@@ -1170,7 +1208,9 @@ router.put('/:id', async (req, res) => {
             company: updatedCustomer.company || '',
             source: updatedCustomer.source || '',
             tags: updatedCustomer.tags || [],
-            remarks: updatedCustomer.remark || ''
+            remarks: updatedCustomer.remark || '',
+            improvementGoals: updatedCustomer.improvementGoals || [],
+            fanAcquisitionTime: updatedCustomer.fanAcquisitionTime ? (0, dateFormat_1.formatDate)(updatedCustomer.fanAcquisitionTime) : ''
         };
         res.json({
             success: true,

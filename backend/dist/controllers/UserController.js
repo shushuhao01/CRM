@@ -138,6 +138,24 @@ class UserController {
             }
             // 获取客服权限配置
             const customerServicePermissions = await this.getCustomerServicePermissions(user.id);
+            // 🔥 获取用户角色的权限列表
+            let rolePermissions = [];
+            try {
+                const dataSource = (0, database_1.getDataSource)();
+                if (dataSource) {
+                    const roleCode = user.roleId || user.role;
+                    const [roleData] = await dataSource.query('SELECT permissions FROM roles WHERE code = ?', [roleCode]);
+                    if (roleData && roleData.permissions) {
+                        rolePermissions = typeof roleData.permissions === 'string'
+                            ? JSON.parse(roleData.permissions)
+                            : roleData.permissions;
+                        console.log(`[Login] 从数据库加载角色权限: ${roleCode}, ${rolePermissions.length}个权限`);
+                    }
+                }
+            }
+            catch (permError) {
+                console.warn('[Login] 获取角色权限失败:', permError);
+            }
             // 返回用户信息和令牌
             const { password: _, ...userInfo } = user;
             res.json({
@@ -146,7 +164,8 @@ class UserController {
                 data: {
                     user: {
                         ...userInfo,
-                        customerServicePermissions
+                        customerServicePermissions,
+                        rolePermissions // 🔥 返回角色权限列表
                     },
                     tokens
                 }
@@ -612,7 +631,7 @@ class UserController {
          */
         this.updateUser = (0, errorHandler_1.catchAsync)(async (req, res) => {
             const userId = req.params.id;
-            const { realName, name, email, phone, role, roleId, departmentId, position, employeeNumber, status, remark } = req.body;
+            const { realName, name, email, phone, role, roleId, departmentId, departmentName, position, employeeNumber, status, remark, authorizedIps } = req.body;
             const user = await this.userRepository.findOne({
                 where: { id: userId }
             });
@@ -628,12 +647,40 @@ class UserController {
                 user.email = email;
             if (phone !== undefined)
                 user.phone = phone;
-            if (role !== undefined)
+            // 🔥 修复：同时更新 role 和 roleId 字段，确保角色信息一致
+            if (role !== undefined) {
                 user.role = role;
-            if (roleId !== undefined)
-                user.role = roleId; // roleId 也映射到 role 字段
-            if (departmentId !== undefined)
+                user.roleId = role; // 同步更新 roleId
+            }
+            if (roleId !== undefined) {
+                user.role = roleId;
+                user.roleId = roleId; // 同步更新 roleId
+            }
+            // 🔥 修复：更新部门信息时，同时更新 departmentId 和 departmentName
+            if (departmentId !== undefined) {
                 user.departmentId = departmentId ? String(departmentId) : null;
+                // 如果提供了 departmentName，直接使用；否则尝试从数据库查询
+                if (departmentName !== undefined) {
+                    user.departmentName = departmentName || null;
+                }
+                else if (departmentId) {
+                    // 尝试从部门表获取部门名称
+                    try {
+                        const department = await this.departmentRepository.findOne({
+                            where: { id: departmentId }
+                        });
+                        if (department) {
+                            user.departmentName = department.name;
+                        }
+                    }
+                    catch (error) {
+                        console.warn('[UserController] 获取部门名称失败:', error);
+                    }
+                }
+                else {
+                    user.departmentName = null;
+                }
+            }
             if (position !== undefined)
                 user.position = position;
             if (employeeNumber !== undefined)
@@ -642,6 +689,11 @@ class UserController {
                 user.status = status;
             if (remark !== undefined)
                 user.remark = remark;
+            // 🔥 新增：更新授权登录IP
+            if (authorizedIps !== undefined) {
+                user.authorizedIps = Array.isArray(authorizedIps) && authorizedIps.length > 0 ? authorizedIps : null;
+            }
+            console.log(`[UserController] 更新用户角色: role=${user.role}, roleId=${user.roleId}, departmentId=${user.departmentId}, departmentName=${user.departmentName}`);
             const updatedUser = await this.userRepository.save(user);
             // 记录操作日志
             await this.logOperation({

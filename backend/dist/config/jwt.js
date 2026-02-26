@@ -107,7 +107,7 @@ class JwtConfig {
     }
 }
 exports.JwtConfig = JwtConfig;
-JwtConfig.ACCESS_TOKEN_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+JwtConfig.ACCESS_TOKEN_SECRET = process.env.JWT_SECRET || 'crm-secret-key';
 JwtConfig.REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
 JwtConfig.ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 JwtConfig.REFRESH_TOKEN_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '30d';

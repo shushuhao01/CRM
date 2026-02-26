@@ -41,7 +41,7 @@ class RoleController {
             const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
             const offset = (Number(page) - 1) * Number(limit);
             // 查询角色列表
-            const roles = await dataSource.query(`SELECT id, name, code, description, status, level, color, permissions, created_at as createdAt, updated_at as updatedAt
+            const roles = await dataSource.query(`SELECT id, name, code, description, status, level, color, permissions, roleType, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt
          FROM roles ${whereClause} ORDER BY level ASC, created_at DESC LIMIT ? OFFSET ?`, [...params, Number(limit), offset]);
             // 查询总数
             const countResult = await dataSource.query(`SELECT COUNT(*) as total FROM roles ${whereClause}`, params);
@@ -103,7 +103,7 @@ class RoleController {
             if (!dataSource) {
                 throw new Error('数据库连接未初始化');
             }
-            const roles = await dataSource.query('SELECT id, name, code, description, status, level, color, permissions, created_at as createdAt, updated_at as updatedAt FROM roles WHERE id = ?', [id]);
+            const roles = await dataSource.query('SELECT id, name, code, description, status, level, color, permissions, roleType, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt FROM roles WHERE id = ?', [id]);
             if (roles.length === 0) {
                 res.status(404).json({
                     success: false,
@@ -152,7 +152,7 @@ class RoleController {
     // 创建角色
     async createRole(req, res) {
         try {
-            const { name, code, description, status = 'active', level = 0, color, permissions = [] } = req.body;
+            const { name, code, description, status = 'active', level = 0, color, permissions = [], dataScope = 'self' } = req.body;
             const dataSource = (0, database_1.getDataSource)();
             if (!dataSource) {
                 throw new Error('数据库连接未初始化');
@@ -169,11 +169,11 @@ class RoleController {
             // 生成角色ID
             const roleId = `role_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             // 插入角色
-            await dataSource.query(`INSERT INTO roles (id, name, code, description, status, level, color, permissions, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`, [roleId, name, code, description || '', status, level, color || '', JSON.stringify(permissions)]);
+            await dataSource.query(`INSERT INTO roles (id, name, code, description, status, level, color, permissions, data_scope, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`, [roleId, name, code, description || '', status, level, color || '', JSON.stringify(permissions), dataScope]);
             res.status(201).json({
                 success: true,
-                data: { id: roleId, name, code, description, status, level, color, permissions },
+                data: { id: roleId, name, code, description, status, level, color, permissions, dataScope },
                 message: '角色创建成功'
             });
         }
@@ -203,7 +203,7 @@ class RoleController {
     async updateRole(req, res) {
         try {
             const { id } = req.params;
-            const { name, code, description, status, level, color, permissions } = req.body;
+            const { name, code, description, status, level, color, permissions, dataScope } = req.body;
             const dataSource = (0, database_1.getDataSource)();
             if (!dataSource) {
                 throw new Error('数据库连接未初始化');
@@ -247,6 +247,10 @@ class RoleController {
             if (permissions !== undefined) {
                 updates.push('permissions = ?');
                 params.push(JSON.stringify(permissions));
+            }
+            if (dataScope !== undefined) {
+                updates.push('data_scope = ?');
+                params.push(dataScope);
             }
             if (updates.length > 0) {
                 updates.push('updated_at = NOW()');

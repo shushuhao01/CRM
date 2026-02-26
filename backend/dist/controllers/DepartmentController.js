@@ -597,16 +597,19 @@ class DepartmentController {
                 });
                 return;
             }
-            // 更新用户的部门
+            // 🔥 修复：更新用户的部门ID和部门名称
             user.departmentId = departmentId;
+            user.departmentName = department.name; // 同步更新部门名称
             if (role) {
                 user.role = role;
+                user.roleId = role; // 同步更新roleId
             }
             const savedUser = await this.userRepository.save(user);
             const result = {
                 id: savedUser.id.toString(),
                 userId: savedUser.id.toString(),
                 departmentId: departmentId,
+                departmentName: department.name,
                 name: savedUser.realName || savedUser.username,
                 username: savedUser.username,
                 email: savedUser.email,
@@ -649,8 +652,9 @@ class DepartmentController {
                 });
                 return;
             }
-            // 将用户的部门设为null
+            // 🔥 修复：将用户的部门ID和部门名称都设为null
             user.departmentId = null;
+            user.departmentName = null;
             await this.userRepository.save(user);
             res.json({
                 success: true,

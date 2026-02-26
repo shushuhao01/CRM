@@ -9,6 +9,7 @@ import { OrderStatusHistory } from '../entities/OrderStatusHistory';
 import { Customer } from '../entities/Customer';  // 🔥 新增：导入Customer实体
 import { CodCancelApplication } from '../entities/CodCancelApplication'; // 🔥 新增：导入CodCancelApplication实体
 import { orderNotificationService } from '../services/OrderNotificationService';
+import { formatDateTime } from '../utils/dateFormat'; // 🔥 新增：导入时间格式化工具
 // Like 和 Between 现在通过 QueryBuilder 使用，不再直接导入
 // import { Like, Between } from 'typeorm';
 
@@ -597,9 +598,20 @@ router.post('/cancel-request', async (req: Request, res: Response) => {
       });
     }
 
-    const cancelReason = `${reason}${description ? ` - ${description}` : ''}`;
-    order.status = 'pending';
+    // 🔥 修复：将英文取消原因转换为中文
+    const reasonMap: Record<string, string> = {
+      'customer_cancel': '客户主动取消',
+      'out_of_stock': '商品缺货',
+      'price_change': '价格调整',
+      'order_error': '订单信息错误',
+      'other': '其他原因'
+    };
+    const cancelReasonText = reasonMap[reason] || reason;
+    const cancelReason = `${cancelReasonText}${description ? ` - ${description}` : ''}`;
+
+    order.status = 'pending_cancel'; // 🔥 修复：设置为 pending_cancel 状态
     order.remark = `取消原因: ${cancelReason}`;
+    order.cancelReason = cancelReason; // 🔥 保存取消原因到专门的字段
 
     await orderRepository.save(order);
 
@@ -631,34 +643,56 @@ router.post('/cancel-request', async (req: Request, res: Response) => {
 
 /**
  * @route GET /api/v1/orders/pending-cancel
- * @desc 获取待审核的取消订单列表
+ * @desc 获取待审核的取消订单列表（支持分页）
  * @access Private
  */
-router.get('/pending-cancel', async (_req: Request, res: Response) => {
+router.get('/pending-cancel', async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
 
-    const orders = await orderRepository.createQueryBuilder('order')
-      .where('order.status = :status', { status: 'pending' })
-      .andWhere('order.remark LIKE :cancelNote', { cancelNote: '%取消原因%' })
-      .orderBy('order.updatedAt', 'DESC')
-      .getMany();
+    // 🔥 分页参数
+    const page = parseInt(req.query.page as string) || 1;
+    const pageSize = parseInt(req.query.pageSize as string) || 10;
+    const skip = (page - 1) * pageSize;
+
+    // 🔥 查询总数
+    const total = await orderRepository.count({
+      where: { status: 'pending_cancel' }
+    });
+
+    // 🔥 查询分页数据
+    const orders = await orderRepository.find({
+      where: { status: 'pending_cancel' },
+      order: { updatedAt: 'DESC' },
+      skip,
+      take: pageSize
+    });
+
+    console.log(`[取消审核] 📊 后端查询到 ${orders.length} 条待审核订单（第${page}页，共${total}条）`);
 
     const formattedOrders = orders.map(order => ({
       id: order.id,
       orderNumber: order.orderNumber,
       customerName: order.customerName || '',
+      customerPhone: order.customerPhone || '',
       totalAmount: Number(order.totalAmount),
       cancelReason: order.remark || '',
-      cancelRequestTime: order.updatedAt?.toISOString() || '',
+      cancelRequestTime: formatDateTime(order.updatedAt),
       status: 'pending_cancel',
-      createdBy: order.createdBy || ''
+      createdBy: order.createdBy || '',
+      createdByName: order.createdByName || ''
     }));
 
     res.json({
       success: true,
       code: 200,
-      data: formattedOrders
+      data: formattedOrders,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize)
+      }
     });
   } catch (error) {
     console.error('获取待审核取消订单失败:', error);
@@ -673,33 +707,61 @@ router.get('/pending-cancel', async (_req: Request, res: Response) => {
 
 /**
  * @route GET /api/v1/orders/audited-cancel
- * @desc 获取已审核的取消订单列表
+ * @desc 获取已审核的取消订单列表（支持分页）
  * @access Private
  */
-router.get('/audited-cancel', async (_req: Request, res: Response) => {
+router.get('/audited-cancel', async (req: Request, res: Response) => {
   try {
     const orderRepository = AppDataSource.getRepository(Order);
 
-    const orders = await orderRepository.find({
-      where: { status: 'cancelled' },
-      order: { updatedAt: 'DESC' }
+    // 🔥 分页参数
+    const page = parseInt(req.query.page as string) || 1;
+    const pageSize = parseInt(req.query.pageSize as string) || 10;
+    const skip = (page - 1) * pageSize;
+
+    // 🔥 查询总数
+    const total = await orderRepository.createQueryBuilder('order')
+      .where('order.status IN (:...statuses)', { statuses: ['cancelled', 'cancel_failed'] })
+      .getCount();
+
+    // 🔥 查询分页数据
+    const orders = await orderRepository.createQueryBuilder('order')
+      .where('order.status IN (:...statuses)', { statuses: ['cancelled', 'cancel_failed'] })
+      .orderBy('order.updatedAt', 'DESC')
+      .skip(skip)
+      .take(pageSize)
+      .getMany();
+
+    console.log(`[取消审核] 📊 后端查询到 ${orders.length} 条已审核订单（第${page}页，共${total}条）`);
+    orders.forEach((order, index) => {
+      console.log(`  ${index + 1}. ID: ${order.id}, 订单号: ${order.orderNumber}, 状态: ${order.status}`);
     });
 
     const formattedOrders = orders.map(order => ({
       id: order.id,
       orderNumber: order.orderNumber,
       customerName: order.customerName || '',
+      customerPhone: order.customerPhone || '',
       totalAmount: Number(order.totalAmount),
       cancelReason: order.remark || '',
-      cancelRequestTime: order.updatedAt?.toISOString() || '',
-      status: 'cancelled',
-      createdBy: order.createdBy || ''
+      cancelRequestTime: formatDateTime(order.updatedAt),
+      status: order.status,
+      createdBy: order.createdBy || '',
+      createdByName: order.createdByName || ''
     }));
+
+    console.log(`[取消审核] ✅ 返回 ${formattedOrders.length} 条格式化订单`);
 
     res.json({
       success: true,
       code: 200,
-      data: formattedOrders
+      data: formattedOrders,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize)
+      }
     });
   } catch (error) {
     console.error('获取已审核取消订单失败:', error);
@@ -3205,7 +3267,8 @@ router.post('/:id/cancel-audit', authenticateToken, async (req: Request, res: Re
       orderNotificationService.notifyOrderCancelled(orderInfo, remark, auditorName)
         .catch(err => console.error('[取消审核] 发送取消通知失败:', err));
     } else {
-      order.status = 'confirmed';
+      // 🔥 修复：审核拒绝后应该设置为 cancel_failed，而不是 confirmed
+      order.status = 'cancel_failed';
       order.remark = `${order.remark || ''} | 审核拒绝: ${remark || ''}`;
 
       // 🔥 发送取消审核拒绝通知

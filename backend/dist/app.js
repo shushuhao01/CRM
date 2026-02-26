@@ -87,6 +87,14 @@ const messageCleanup_1 = __importDefault(require("./routes/messageCleanup"));
 const mobile_1 = __importDefault(require("./routes/mobile"));
 const callWebhook_1 = __importDefault(require("./routes/callWebhook"));
 const callConfig_1 = __importDefault(require("./routes/callConfig"));
+const finance_1 = __importDefault(require("./routes/finance"));
+const codCollection_1 = __importDefault(require("./routes/codCollection"));
+const codApplication_1 = __importDefault(require("./routes/codApplication"));
+const license_1 = __importDefault(require("./routes/license"));
+const tenantLicense_1 = __importDefault(require("./routes/tenantLicense"));
+const wecom_1 = __importDefault(require("./routes/wecom"));
+const admin_1 = __importDefault(require("./routes/admin"));
+const public_1 = __importDefault(require("./routes/public"));
 const fs = __importStar(require("fs"));
 // 根据NODE_ENV环境变量加载对应配置文件
 // 生产环境(production): 加载 .env
@@ -141,7 +149,7 @@ if (process.env.COMPRESSION_ENABLED !== 'false') {
 // 通用限流中间件 - 开发环境使用更宽松的限制
 const generalLimiter = (0, express_rate_limit_1.default)({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15分钟
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '5000'), // 限制每个IP 15分钟内最多5000个请求
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '10000'), // 🔥 提高到每个IP 15分钟内最多10000个请求（约667次/分钟）
     message: {
         success: false,
         message: '请求过于频繁，请稍后再试',
@@ -157,7 +165,7 @@ const generalLimiter = (0, express_rate_limit_1.default)({
 // 登录专用限流中间件 - 更严格但合理的限制
 const loginLimiter = (0, express_rate_limit_1.default)({
     windowMs: parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || '900000'), // 15分钟
-    max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || '50'), // 限制每个IP 15分钟内最多50次登录尝试
+    max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || '100'), // 🔥 提高到每个IP 15分钟内最多100次登录尝试
     message: {
         success: false,
         message: '登录尝试过于频繁，请15分钟后再试',
@@ -195,6 +203,7 @@ app.use(express_1.default.text({
 }));
 // 静态文件服务
 app.use('/uploads', express_1.default.static(path_1.default.join(process.cwd(), 'uploads')));
+app.use('/recordings', express_1.default.static(path_1.default.join(process.cwd(), 'recordings')));
 // 健康检查端点
 app.get('/health', (req, res) => {
     res.json({
@@ -280,6 +289,14 @@ app.use(`${API_PREFIX}/message-cleanup`, messageCleanup_1.default);
 app.use(`${API_PREFIX}/mobile`, mobile_1.default);
 app.use(`${API_PREFIX}/calls/webhook`, callWebhook_1.default);
 app.use(`${API_PREFIX}/call-config`, callConfig_1.default);
+app.use(`${API_PREFIX}/finance`, finance_1.default);
+app.use(`${API_PREFIX}/cod-collection`, codCollection_1.default);
+app.use(`${API_PREFIX}/cod-application`, codApplication_1.default);
+app.use(`${API_PREFIX}/license`, license_1.default);
+app.use(`${API_PREFIX}/tenant-license`, tenantLicense_1.default);
+app.use(`${API_PREFIX}/wecom`, wecom_1.default);
+app.use(`${API_PREFIX}/admin`, admin_1.default);
+app.use(`${API_PREFIX}/public`, public_1.default);
 // 404处理
 app.use(errorHandler_1.notFoundHandler);
 // 全局错误处理

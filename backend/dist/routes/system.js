@@ -367,6 +367,44 @@ router.delete('/delete-image', auth_1.authenticateToken, auth_1.requireAdmin, (r
 });
 // ========== 基本设置路由 ==========
 /**
+ * @route GET /api/v1/system/basic-settings/public
+ * @desc 获取系统基本设置（公开API，无需认证）
+ * @access Public
+ */
+router.get('/basic-settings/public', async (_req, res) => {
+    try {
+        const configRepository = database_1.AppDataSource.getRepository(SystemConfig_1.SystemConfig);
+        // 获取所有基本设置配置
+        const configs = await configRepository.find({
+            where: { configGroup: 'basic_settings', isEnabled: true },
+            order: { sortOrder: 'ASC' }
+        });
+        // 转换为键值对格式
+        const settings = {};
+        configs.forEach(config => {
+            settings[config.configKey] = config.getParsedValue();
+        });
+        // 只返回公开需要的字段
+        const publicSettings = {
+            systemName: settings.systemName || 'CRM客户管理系统',
+            systemVersion: settings.systemVersion || '1.0.0',
+            companyName: settings.companyName || '',
+            websiteUrl: settings.websiteUrl || ''
+        };
+        res.json({
+            success: true,
+            data: publicSettings
+        });
+    }
+    catch (error) {
+        console.error('获取公开基本设置失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取基本设置失败'
+        });
+    }
+});
+/**
  * @route GET /api/v1/system/basic-settings
  * @desc 获取系统基本设置
  * @access Private (All authenticated users)
@@ -2430,6 +2468,222 @@ router.delete('/backup/cleanup', auth_1.authenticateToken, auth_1.requireAdmin, 
         res.status(500).json({
             success: false,
             message: '清理备份失败'
+        });
+    }
+});
+/**
+ * @route GET /api/v1/system/config/:configKey
+ * @desc 获取单个系统配置（支持用户级和系统级配置）
+ * @access Private
+ */
+router.get('/config/:configKey', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const { configKey } = req.params;
+        const currentUser = req.user;
+        const configRepository = database_1.AppDataSource.getRepository(SystemConfig_1.SystemConfig);
+        // 🔥 对于寄件人手机号配置，支持用户级和系统级
+        if (configKey === 'logistics_sender_phone') {
+            // 1. 先查找用户级配置
+            const userConfigKey = `user_${currentUser.id}_${configKey}`;
+            const userConfig = await configRepository.findOne({
+                where: { configKey: userConfigKey, isEnabled: true }
+            });
+            if (userConfig && userConfig.configValue) {
+                return res.json({
+                    success: true,
+                    data: {
+                        configKey: configKey,
+                        configValue: userConfig.configValue,
+                        valueType: userConfig.valueType,
+                        description: userConfig.description,
+                        isUserLevel: true // 标记为用户级配置
+                    }
+                });
+            }
+            // 2. 没有用户级配置，查找系统级配置（管理员设置的）
+            const systemConfig = await configRepository.findOne({
+                where: { configKey: `system_${configKey}`, isEnabled: true }
+            });
+            if (systemConfig && systemConfig.configValue) {
+                return res.json({
+                    success: true,
+                    data: {
+                        configKey: configKey,
+                        configValue: systemConfig.configValue,
+                        valueType: systemConfig.valueType,
+                        description: systemConfig.description,
+                        isSystemLevel: true // 标记为系统级配置
+                    }
+                });
+            }
+            // 3. 兼容旧数据：查找原来的配置
+            const legacyConfig = await configRepository.findOne({
+                where: { configKey, isEnabled: true }
+            });
+            if (legacyConfig && legacyConfig.configValue) {
+                return res.json({
+                    success: true,
+                    data: {
+                        configKey: configKey,
+                        configValue: legacyConfig.configValue,
+                        valueType: legacyConfig.valueType,
+                        description: legacyConfig.description,
+                        isLegacy: true
+                    }
+                });
+            }
+            // 没有任何配置
+            return res.json({
+                success: true,
+                data: {
+                    configKey,
+                    configValue: null
+                }
+            });
+        }
+        // 其他配置保持原有逻辑
+        const config = await configRepository.findOne({
+            where: { configKey, isEnabled: true }
+        });
+        if (config) {
+            res.json({
+                success: true,
+                data: {
+                    configKey: config.configKey,
+                    configValue: config.configValue,
+                    valueType: config.valueType,
+                    description: config.description
+                }
+            });
+        }
+        else {
+            res.json({
+                success: true,
+                data: {
+                    configKey,
+                    configValue: null
+                }
+            });
+        }
+    }
+    catch (error) {
+        console.error('获取系统配置失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取配置失败'
+        });
+    }
+});
+/**
+ * @route POST /api/v1/system/config/:configKey
+ * @desc 保存单个系统配置（支持用户级和系统级配置）
+ * @access Private
+ */
+router.post('/config/:configKey', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const { configKey } = req.params;
+        const { configValue, description, applyToAll } = req.body;
+        const currentUser = req.user;
+        const configRepository = database_1.AppDataSource.getRepository(SystemConfig_1.SystemConfig);
+        // 🔥 对于寄件人手机号配置，支持用户级和系统级
+        if (configKey === 'logistics_sender_phone') {
+            const isAdmin = currentUser.role === 'super_admin' || currentUser.role === 'admin';
+            // 如果是管理员且选择了"全员生效"
+            if (isAdmin && applyToAll) {
+                const systemConfigKey = `system_${configKey}`;
+                let systemConfig = await configRepository.findOne({
+                    where: { configKey: systemConfigKey }
+                });
+                if (systemConfig) {
+                    systemConfig.configValue = configValue || '';
+                    if (description)
+                        systemConfig.description = description;
+                    systemConfig.updatedAt = new Date();
+                }
+                else {
+                    systemConfig = configRepository.create({
+                        configKey: systemConfigKey,
+                        configValue: configValue || '',
+                        valueType: 'string',
+                        configGroup: 'logistics_settings',
+                        description: description || '物流查询预设寄件人手机号（系统级）',
+                        isEnabled: true,
+                        isSystem: true,
+                        sortOrder: 100
+                    });
+                }
+                await configRepository.save(systemConfig);
+                console.log(`[系统配置] 管理员 ${currentUser.username} 设置了系统级寄件人手机号`);
+                return res.json({
+                    success: true,
+                    message: '系统级配置保存成功，全员生效',
+                    isSystemLevel: true
+                });
+            }
+            // 普通用户或管理员选择个人使用，保存用户级配置
+            const userConfigKey = `user_${currentUser.id}_${configKey}`;
+            let userConfig = await configRepository.findOne({
+                where: { configKey: userConfigKey }
+            });
+            if (userConfig) {
+                userConfig.configValue = configValue || '';
+                if (description)
+                    userConfig.description = description;
+                userConfig.updatedAt = new Date();
+            }
+            else {
+                userConfig = configRepository.create({
+                    configKey: userConfigKey,
+                    configValue: configValue || '',
+                    valueType: 'string',
+                    configGroup: 'user_settings',
+                    description: description || '物流查询预设寄件人手机号（用户级）',
+                    isEnabled: true,
+                    isSystem: false,
+                    sortOrder: 100
+                });
+            }
+            await configRepository.save(userConfig);
+            console.log(`[系统配置] 用户 ${currentUser.username} 设置了个人寄件人手机号`);
+            return res.json({
+                success: true,
+                message: '个人配置保存成功',
+                isUserLevel: true
+            });
+        }
+        // 其他配置保持原有逻辑
+        let config = await configRepository.findOne({
+            where: { configKey }
+        });
+        if (config) {
+            config.configValue = configValue || '';
+            if (description)
+                config.description = description;
+            config.updatedAt = new Date();
+        }
+        else {
+            config = configRepository.create({
+                configKey,
+                configValue: configValue || '',
+                valueType: 'string',
+                configGroup: 'logistics_settings',
+                description: description || '',
+                isEnabled: true,
+                isSystem: false,
+                sortOrder: 100
+            });
+        }
+        await configRepository.save(config);
+        res.json({
+            success: true,
+            message: '配置保存成功'
+        });
+    }
+    catch (error) {
+        console.error('保存系统配置失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '保存配置失败'
         });
     }
 });

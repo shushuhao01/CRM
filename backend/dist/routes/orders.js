@@ -41,6 +41,8 @@ const Product_1 = require("../entities/Product");
 const SystemConfig_1 = require("../entities/SystemConfig");
 const DepartmentOrderLimit_1 = require("../entities/DepartmentOrderLimit");
 const OrderStatusHistory_1 = require("../entities/OrderStatusHistory");
+const Customer_1 = require("../entities/Customer"); // 🔥 新增：导入Customer实体
+const CodCancelApplication_1 = require("../entities/CodCancelApplication"); // 🔥 新增：导入CodCancelApplication实体
 const OrderNotificationService_1 = require("../services/OrderNotificationService");
 // Like 和 Between 现在通过 QueryBuilder 使用，不再直接导入
 // import { Like, Between } from 'typeorm';
@@ -63,23 +65,50 @@ const saveStatusHistory = async (orderId, status, operatorId, operatorName, note
     }
 };
 // 格式化时间为北京时间友好格式 (YYYY/MM/DD HH:mm:ss)
+// 🔥 修复：数据库已配置为北京时区，createdAt存储的已经是北京时间，不需要再转换
 const formatToBeijingTime = (date) => {
     if (!date)
         return '';
     const d = typeof date === 'string' ? new Date(date) : date;
     if (isNaN(d.getTime()))
         return '';
-    // 转换为北京时间 (UTC+8)
-    const beijingOffset = 8 * 60; // 北京时间偏移分钟数
-    const localOffset = d.getTimezoneOffset(); // 本地时区偏移分钟数
-    const beijingTime = new Date(d.getTime() + (beijingOffset + localOffset) * 60 * 1000);
-    const year = beijingTime.getFullYear();
-    const month = String(beijingTime.getMonth() + 1).padStart(2, '0');
-    const day = String(beijingTime.getDate()).padStart(2, '0');
-    const hours = String(beijingTime.getHours()).padStart(2, '0');
-    const minutes = String(beijingTime.getMinutes()).padStart(2, '0');
-    const seconds = String(beijingTime.getSeconds()).padStart(2, '0');
+    // 🔥 数据库已配置为北京时区，直接使用日期对象的值
+    // 不再进行时区转换，避免时间被错误地加8小时
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
     return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+};
+// 🔥 新增：格式化日期为本地时区的YYYY-MM-DD格式，避免UTC转换导致的日期偏移
+const formatLocalDate = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+// 🔥 注释掉：数据库已配置为北京时区，不需要转换为UTC时间
+// 将北京时间日期字符串转换为UTC时间字符串（用于数据库查询）
+// 输入: "2025-12-31" + "00:00:00" (北京时间)
+// 输出: "2025-12-30 16:00:00" (UTC时间，用于数据库查询)
+const _beijingDateToUTC = (dateStr, timeStr) => {
+    // 解析北京时间
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+    // 创建北京时间的Date对象（注意：month是0-indexed）
+    // 先创建UTC时间，然后减去8小时得到对应的UTC时间
+    const beijingDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
+    // 北京时间比UTC快8小时，所以要减去8小时得到UTC时间
+    const utcDate = new Date(beijingDate.getTime() - 8 * 60 * 60 * 1000);
+    const utcYear = utcDate.getUTCFullYear();
+    const utcMonth = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+    const utcDay = String(utcDate.getUTCDate()).padStart(2, '0');
+    const utcHours = String(utcDate.getUTCHours()).padStart(2, '0');
+    const utcMinutes = String(utcDate.getUTCMinutes()).padStart(2, '0');
+    const utcSeconds = String(utcDate.getUTCSeconds()).padStart(2, '0');
+    return `${utcYear}-${utcMonth}-${utcDay} ${utcHours}:${utcMinutes}:${utcSeconds}`;
 };
 const checkDepartmentOrderLimit = async (departmentId, customerId, orderAmount) => {
     try {
@@ -379,12 +408,10 @@ router.get('/audit-list', auth_1.authenticateToken, async (req, res) => {
         if (customerName) {
             queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
         }
-        // 日期范围筛选
+        // 日期范围筛选 - 🔥 修复：数据库已配置为北京时区，直接使用北京时间查询
         if (startDate && endDate) {
-            queryBuilder.andWhere('order.createdAt BETWEEN :startDate AND :endDate', {
-                startDate: new Date(startDate),
-                endDate: new Date(endDate)
-            });
+            queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+            queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
         }
         // 🔥 优化：先获取总数（使用count查询更快）
         const total = await queryBuilder.getCount();
@@ -564,20 +591,23 @@ router.post('/cancel-request', async (req, res) => {
 router.get('/pending-cancel', async (_req, res) => {
     try {
         const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
-        const orders = await orderRepository.createQueryBuilder('order')
-            .where('order.status = :status', { status: 'pending' })
-            .andWhere('order.remark LIKE :cancelNote', { cancelNote: '%取消原因%' })
-            .orderBy('order.updatedAt', 'DESC')
-            .getMany();
+        // 🔥 修复：查询 status = 'pending_cancel' 的订单
+        const orders = await orderRepository.find({
+            where: { status: 'pending_cancel' },
+            order: { updatedAt: 'DESC' },
+            take: 1000 // 最多返回1000条
+        });
         const formattedOrders = orders.map(order => ({
             id: order.id,
             orderNumber: order.orderNumber,
             customerName: order.customerName || '',
+            customerPhone: order.customerPhone || '',
             totalAmount: Number(order.totalAmount),
             cancelReason: order.remark || '',
             cancelRequestTime: order.updatedAt?.toISOString() || '',
             status: 'pending_cancel',
-            createdBy: order.createdBy || ''
+            createdBy: order.createdBy || '',
+            createdByName: order.createdByName || ''
         }));
         res.json({
             success: true,
@@ -603,19 +633,23 @@ router.get('/pending-cancel', async (_req, res) => {
 router.get('/audited-cancel', async (_req, res) => {
     try {
         const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
-        const orders = await orderRepository.find({
-            where: { status: 'cancelled' },
-            order: { updatedAt: 'DESC' }
-        });
+        // 🔥 修复：查询 status = 'cancelled' 或 'cancel_failed' 的订单
+        const orders = await orderRepository.createQueryBuilder('order')
+            .where('order.status IN (:...statuses)', { statuses: ['cancelled', 'cancel_failed'] })
+            .orderBy('order.updatedAt', 'DESC')
+            .take(100) // 只返回最近100条
+            .getMany();
         const formattedOrders = orders.map(order => ({
             id: order.id,
             orderNumber: order.orderNumber,
             customerName: order.customerName || '',
+            customerPhone: order.customerPhone || '',
             totalAmount: Number(order.totalAmount),
             cancelReason: order.remark || '',
             cancelRequestTime: order.updatedAt?.toISOString() || '',
-            status: 'cancelled',
-            createdBy: order.createdBy || ''
+            status: order.status,
+            createdBy: order.createdBy || '',
+            createdByName: order.createdByName || ''
         }));
         res.json({
             success: true,
@@ -636,17 +670,17 @@ router.get('/audited-cancel', async (_req, res) => {
 // ========== 通用路由 ==========
 /**
  * @route GET /api/v1/orders/shipping/pending
- * @desc 获取待发货订单列表（优化版）
+ * @desc 获取待发货订单列表（优化版 - 服务端分页）
  * @access Private
  */
 router.get('/shipping/pending', async (req, res) => {
     try {
         const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
         const startTime = Date.now();
-        // 🔥 优化：默认每页20条，最大100条
-        const { page = 1, pageSize = 20, orderNumber, customerName } = req.query;
+        // 🔥 服务端分页参数
+        const { page = 1, pageSize = 20, orderNumber, customerName, keyword, startDate, endDate, quickFilter, departmentId, salesPersonId } = req.query;
         const pageNum = parseInt(page) || 1;
-        const pageSizeNum = Math.min(parseInt(pageSize) || 20, 100);
+        const pageSizeNum = Math.min(parseInt(pageSize) || 20, 500); // 🔥 最大500条/页
         const skip = (pageNum - 1) * pageSizeNum;
         // 🔥 优化：使用QueryBuilder只查询需要的字段
         const queryBuilder = orderRepository.createQueryBuilder('order')
@@ -657,17 +691,85 @@ router.get('/shipping/pending', async (req, res) => {
             'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt',
             'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
             'order.expressCompany', 'order.logisticsStatus', 'order.serviceWechat',
-            'order.orderSource', 'order.products',
+            'order.orderSource', 'order.products', 'order.createdByDepartmentId',
             'order.customField1', 'order.customField2', 'order.customField3',
             'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
         ])
             .where('order.status = :status', { status: 'pending_shipment' });
-        // 支持筛选
-        if (orderNumber) {
-            queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+        // 🔥 支持综合关键词搜索（订单号 OR 客户名称 OR 手机号 OR 客户编码）
+        if (keyword) {
+            queryBuilder.andWhere('(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)', { keyword: `%${keyword}%` });
+            console.log(`📦 [待发货订单] 综合关键词搜索: "${keyword}"`);
         }
-        if (customerName) {
-            queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+        else {
+            // 支持单独筛选
+            if (orderNumber) {
+                queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+            }
+            if (customerName) {
+                queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+            }
+        }
+        // 🔥 部门筛选
+        if (departmentId) {
+            queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
+        }
+        // 🔥 销售人员筛选
+        if (salesPersonId) {
+            queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
+        }
+        // 🔥 日期范围筛选 - 数据库已配置为北京时区，直接使用北京时间查询
+        if (startDate) {
+            queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+        }
+        if (endDate) {
+            queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+        }
+        // 🔥 快速筛选 - 使用下单时间(createdAt)
+        if (quickFilter) {
+            const now = new Date();
+            switch (quickFilter) {
+                case 'today':
+                    const today = now.toISOString().split('T')[0];
+                    queryBuilder.andWhere('DATE(order.createdAt) = :today', { today });
+                    break;
+                case 'yesterday':
+                    const yesterday = new Date(now);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    const yesterdayStr = yesterday.toISOString().split('T')[0];
+                    queryBuilder.andWhere('DATE(order.createdAt) = :yesterday', { yesterday: yesterdayStr });
+                    break;
+                case 'thisWeek':
+                    const dayOfWeek = now.getDay();
+                    const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                    const startOfWeek = new Date(now);
+                    startOfWeek.setDate(now.getDate() - diff);
+                    queryBuilder.andWhere('order.createdAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+                case 'thisMonth':
+                    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                    queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+                case 'lastMonth':
+                    // 上月订单：上个月1号00:00:00 到 上个月最后一天23:59:59
+                    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+                    queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
+                        lastMonthStart: formatLocalDate(lastMonthStart) + ' 00:00:00',
+                        lastMonthEnd: formatLocalDate(lastMonthEnd) + ' 23:59:59'
+                    });
+                    break;
+                case 'thisYear':
+                    // 今年订单：今年1月1号00:00:00 到现在
+                    const startOfYear = new Date(now.getFullYear(), 0, 1);
+                    queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+                case 'timeout':
+                    // 🔥 超时订单：待发货超过24小时的订单
+                    const timeoutDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                    queryBuilder.andWhere('order.createdAt <= :timeoutDate', { timeoutDate: timeoutDate.toISOString() });
+                    break;
+            }
         }
         // 先获取总数
         const total = await queryBuilder.getCount();
@@ -675,8 +777,14 @@ router.get('/shipping/pending', async (req, res) => {
         queryBuilder.orderBy('order.createdAt', 'DESC').skip(skip).take(pageSizeNum);
         const orders = await queryBuilder.getMany();
         const queryTime = Date.now() - startTime;
-        console.log(`📦 [待发货订单] 查询完成: ${orders.length}条, 总数${total}, 耗时${queryTime}ms`);
-        console.log(`📦 [待发货订单] 查询到 ${orders.length} 条待发货订单, 总数: ${total}`);
+        console.log(`📦 [待发货订单] 查询完成: ${orders.length}条, 总数${total}, 页码${pageNum}, 每页${pageSizeNum}, 耗时${queryTime}ms`);
+        // 🔥 获取所有订单的客户ID，批量查询客户信息
+        const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
+        const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
+        const customers = customerIds.length > 0
+            ? await customerRepository.findByIds(customerIds)
+            : [];
+        const customerMap = new Map(customers.map(c => [c.id, c]));
         // 转换数据格式
         const list = orders.map(order => {
             let products = [];
@@ -688,12 +796,19 @@ router.get('/shipping/pending', async (req, res) => {
                     products = [];
                 }
             }
+            // 🔥 获取客户信息
+            const customer = order.customerId ? customerMap.get(order.customerId) : null;
             return {
                 id: order.id,
                 orderNumber: order.orderNumber,
                 customerId: order.customerId || '',
                 customerName: order.customerName || '',
                 customerPhone: order.customerPhone || '',
+                // 🔥 新增：客户详细信息
+                customerAge: customer?.age || null,
+                customerHeight: customer?.height || null,
+                customerWeight: customer?.weight || null,
+                medicalHistory: customer?.medicalHistory || null,
                 products: products,
                 totalAmount: Number(order.totalAmount) || 0,
                 depositAmount: Number(order.depositAmount) || 0,
@@ -761,17 +876,24 @@ router.get('/shipping/pending', async (req, res) => {
 });
 /**
  * @route GET /api/v1/orders/shipping/shipped
- * @desc 获取已发货订单列表（优化版）
+ * @desc 获取已发货订单列表（优化版 - 服务端分页）
  * @access Private
  */
-router.get('/shipping/shipped', async (req, res) => {
+router.get('/shipping/shipped', auth_1.authenticateToken, async (req, res) => {
     try {
         const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
         const startTime = Date.now();
-        // 🔥 优化：默认每页20条，最大100条
-        const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, status } = req.query;
+        // 🔥 获取当前用户信息，用于数据权限过滤
+        const jwtUser = req.user;
+        const dbUser = req.currentUser;
+        const userRole = dbUser?.role || jwtUser?.role || '';
+        const userId = dbUser?.id || jwtUser?.userId || '';
+        const userDepartmentId = dbUser?.departmentId || jwtUser?.departmentId || '';
+        console.log(`🚚 [已发货订单] 用户: ${dbUser?.username || jwtUser?.username}, 角色: ${userRole}, 部门ID: ${userDepartmentId}`);
+        // 🔥 服务端分页参数
+        const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, customerPhone, customerCode, keyword, status, logisticsStatus, startDate, endDate, quickFilter, departmentId, salesPersonId, expressCompany } = req.query;
         const pageNum = parseInt(page) || 1;
-        const pageSizeNum = Math.min(parseInt(pageSize) || 20, 100);
+        const pageSizeNum = Math.min(parseInt(pageSize) || 20, 500); // 🔥 最大500条/页
         const skip = (pageNum - 1) * pageSizeNum;
         // 🔥 优化：使用QueryBuilder只查询需要的字段
         const queryBuilder = orderRepository.createQueryBuilder('order')
@@ -780,6 +902,7 @@ router.get('/shipping/shipped', async (req, res) => {
             'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
             'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
             'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt',
+            'order.createdByDepartmentId', 'order.createdByDepartmentName',
             'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
             'order.expressCompany', 'order.trackingNumber', 'order.logisticsStatus',
             'order.latestLogisticsInfo', // 🔥 新增：最新物流动态
@@ -787,30 +910,183 @@ router.get('/shipping/shipped', async (req, res) => {
             'order.customField1', 'order.customField2', 'order.customField3',
             'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
         ]);
-        // 状态筛选
-        if (status && status !== 'all') {
+        // 🔥 修复：状态筛选 - 支持 updated 参数查询所有非 shipped 状态
+        if (status === 'updated') {
+            // 已更新 = 所有非 shipped 状态的订单（delivered, rejected, returned 等）
+            // 🔥 修复：使用完整的发货后状态列表
+            const updatedStatuses = ['delivered', 'completed', 'signed', 'rejected', 'rejected_returned', 'returned', 'refunded', 'after_sales_created', 'abnormal', 'exception', 'package_exception'];
+            queryBuilder.where('order.status IN (:...statuses)', { statuses: updatedStatuses });
+            console.log(`🚚 [已发货订单] 查询已更新订单（非shipped状态）`);
+        }
+        else if (status && status !== 'all') {
             queryBuilder.where('order.status = :status', { status });
         }
         else {
-            queryBuilder.where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered'] });
+            // 🔥 修复：使用完整的发货后状态列表
+            const allShippedStatuses = ['shipped', 'delivered', 'completed', 'signed', 'rejected', 'rejected_returned', 'returned', 'refunded', 'after_sales_created', 'abnormal', 'exception', 'package_exception'];
+            queryBuilder.where('order.status IN (:...statuses)', { statuses: allShippedStatuses });
         }
-        // 支持筛选
-        if (orderNumber) {
-            queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+        // 🔥 物流状态筛选
+        if (logisticsStatus) {
+            console.log(`🚚 [已发货订单] 物流状态筛选: "${logisticsStatus}"`);
+            queryBuilder.andWhere('order.logisticsStatus = :logisticsStatus', { logisticsStatus });
         }
-        if (customerName) {
-            queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+        // 🔥 调试：查询数据库中实际的物流状态分布
+        if (!logisticsStatus) {
+            try {
+                const statusDistribution = await orderRepository.createQueryBuilder('order')
+                    .select('order.logisticsStatus', 'status')
+                    .addSelect('COUNT(*)', 'count')
+                    .where('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered'] })
+                    .groupBy('order.logisticsStatus')
+                    .getRawMany();
+                console.log(`🚚 [已发货订单] 数据库中物流状态分布:`, statusDistribution);
+            }
+            catch (e) {
+                console.log(`🚚 [已发货订单] 查询物流状态分布失败:`, e);
+            }
+        }
+        // 🔥 数据权限过滤
+        const allowAllRoles = ['super_admin', 'admin', 'customer_service', 'service'];
+        const managerRoles = ['department_manager', 'manager'];
+        const salesRoles = ['sales_staff', 'sales', 'salesperson'];
+        if (!allowAllRoles.includes(userRole)) {
+            if (managerRoles.includes(userRole)) {
+                // 部门经理可以看本部门所有成员的订单
+                if (userDepartmentId) {
+                    queryBuilder.andWhere('(order.createdByDepartmentId = :userDeptId OR order.createdBy = :userId)', {
+                        userDeptId: userDepartmentId,
+                        userId
+                    });
+                    console.log(`🚚 [已发货订单] 经理过滤: 部门ID = ${userDepartmentId} 或 创建人ID = ${userId}`);
+                }
+                else {
+                    queryBuilder.andWhere('order.createdBy = :userId', { userId });
+                    console.log(`🚚 [已发货订单] 经理无部门ID，只看自己的订单`);
+                }
+            }
+            else if (salesRoles.includes(userRole)) {
+                // 销售员只能看自己的订单
+                queryBuilder.andWhere('order.createdBy = :userId', { userId });
+                console.log(`🚚 [已发货订单] 销售员过滤: 只看自己的订单, userId = ${userId}`);
+            }
+            else {
+                // 其他角色：只能看自己的订单
+                queryBuilder.andWhere('order.createdBy = :userId', { userId });
+                console.log(`🚚 [已发货订单] 其他角色过滤: 只看自己的订单`);
+            }
+        }
+        else {
+            console.log(`🚚 [已发货订单] ${userRole}角色，查看所有订单`);
+        }
+        // 🔥 修复：支持关键词搜索（订单号 OR 客户名称 OR 物流单号 OR 手机号 OR 客户编码）
+        if (keyword) {
+            // 统一关键词搜索：支持订单号、客户名称、物流单号、手机号、客户编码
+            queryBuilder.andWhere('(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.trackingNumber LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)', { keyword: `%${keyword}%` });
+            console.log(`🚚 [已发货订单] 统一关键词搜索: "${keyword}"`);
+        }
+        else if (orderNumber && customerName && orderNumber === customerName) {
+            // 如果订单号和客户名称相同，说明是同一个搜索关键词，使用 OR 条件
+            queryBuilder.andWhere('(order.orderNumber LIKE :kw OR order.customerName LIKE :kw OR order.trackingNumber LIKE :kw OR order.customerPhone LIKE :kw OR order.customerId LIKE :kw)', { kw: `%${orderNumber}%` });
+            console.log(`🚚 [已发货订单] 关键词搜索: "${orderNumber}"`);
+        }
+        else {
+            // 分别筛选
+            if (orderNumber) {
+                queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+            }
+            if (customerName) {
+                queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+            }
+            if (customerPhone) {
+                queryBuilder.andWhere('order.customerPhone LIKE :customerPhone', { customerPhone: `%${customerPhone}%` });
+            }
+            if (customerCode) {
+                queryBuilder.andWhere('order.customerId LIKE :customerCode', { customerCode: `%${customerCode}%` });
+            }
         }
         if (trackingNumber) {
             queryBuilder.andWhere('order.trackingNumber LIKE :trackingNumber', { trackingNumber: `%${trackingNumber}%` });
         }
+        // 🔥 部门筛选（管理员可以筛选特定部门）
+        if (departmentId && allowAllRoles.includes(userRole)) {
+            queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
+        }
+        // 🔥 销售人员筛选（管理员可以筛选特定销售）
+        if (salesPersonId && allowAllRoles.includes(userRole)) {
+            queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
+        }
+        // 🔥 快递公司筛选
+        if (expressCompany) {
+            queryBuilder.andWhere('order.expressCompany = :expressCompany', { expressCompany });
+        }
+        // 🔥 日期范围筛选 - 按下单时间筛选（更符合业务需求，上月下单的订单都应该显示）
+        if (startDate) {
+            queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+            console.log(`🚚 [已发货订单] 日期筛选(下单时间) - 开始日期: ${startDate}`);
+        }
+        if (endDate) {
+            queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+            console.log(`🚚 [已发货订单] 日期筛选(下单时间) - 结束日期: ${endDate}`);
+        }
+        if (!startDate && !endDate) {
+            console.log(`🚚 [已发货订单] 无日期筛选条件`);
+        }
+        // 🔥 快速筛选 - 使用下单时间(createdAt)而非发货时间(shippedAt)
+        if (quickFilter) {
+            const now = new Date();
+            switch (quickFilter) {
+                case 'today':
+                    const today = now.toISOString().split('T')[0];
+                    queryBuilder.andWhere('DATE(order.createdAt) = :today', { today });
+                    break;
+                case 'yesterday':
+                    const yesterday = new Date(now);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    const yesterdayStr = yesterday.toISOString().split('T')[0];
+                    queryBuilder.andWhere('DATE(order.createdAt) = :yesterday', { yesterday: yesterdayStr });
+                    break;
+                case 'thisWeek':
+                    const dayOfWeek = now.getDay();
+                    const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                    const startOfWeek = new Date(now);
+                    startOfWeek.setDate(now.getDate() - diff);
+                    queryBuilder.andWhere('order.createdAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+                case 'thisMonth':
+                    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                    queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+                case 'lastMonth':
+                    // 上月订单：上个月1号00:00:00 到 上个月最后一天23:59:59
+                    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+                    queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
+                        lastMonthStart: formatLocalDate(lastMonthStart) + ' 00:00:00',
+                        lastMonthEnd: formatLocalDate(lastMonthEnd) + ' 23:59:59'
+                    });
+                    break;
+                case 'thisYear':
+                    // 今年订单：今年1月1号00:00:00 到现在
+                    const startOfYear = new Date(now.getFullYear(), 0, 1);
+                    queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+            }
+        }
         // 先获取总数
         const total = await queryBuilder.getCount();
-        // 分页和排序
-        queryBuilder.orderBy('order.createdAt', 'DESC').skip(skip).take(pageSizeNum);
+        // 分页和排序 - 按发货时间倒序
+        queryBuilder.orderBy('order.shippedAt', 'DESC').skip(skip).take(pageSizeNum);
         const orders = await queryBuilder.getMany();
         const queryTime = Date.now() - startTime;
         console.log(`🚚 [已发货订单] 查询完成: ${orders.length}条, 总数${total}, 耗时${queryTime}ms`);
+        // 🔥 获取所有订单的客户ID，批量查询客户信息
+        const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
+        const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
+        const customers = customerIds.length > 0
+            ? await customerRepository.findByIds(customerIds)
+            : [];
+        const customerMap = new Map(customers.map(c => [c.id, c]));
         // 转换数据格式
         const list = orders.map(order => {
             let products = [];
@@ -822,12 +1098,19 @@ router.get('/shipping/shipped', async (req, res) => {
                     products = [];
                 }
             }
+            // 🔥 获取客户信息
+            const customer = order.customerId ? customerMap.get(order.customerId) : null;
             return {
                 id: order.id,
                 orderNumber: order.orderNumber,
                 customerId: order.customerId || '',
                 customerName: order.customerName || '',
                 customerPhone: order.customerPhone || '',
+                // 🔥 新增：客户详细信息
+                customerAge: customer?.age || null,
+                customerHeight: customer?.height || null,
+                customerWeight: customer?.weight || null,
+                medicalHistory: customer?.medicalHistory || null,
                 products: products,
                 totalAmount: Number(order.totalAmount) || 0,
                 depositAmount: Number(order.depositAmount) || 0,
@@ -894,6 +1177,458 @@ router.get('/shipping/shipped', async (req, res) => {
             message: '获取已发货订单失败',
             error: error instanceof Error ? error.message : '未知错误'
         });
+    }
+});
+/**
+ * @route GET /api/v1/orders/shipping/returned
+ * @desc 获取退回订单列表（服务端分页）
+ * @access Private
+ */
+router.get('/shipping/returned', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
+        const { page = 1, pageSize = 10, orderNumber, customerName, keyword, startDate, endDate, quickFilter, departmentId, salesPersonId } = req.query;
+        const pageNum = parseInt(page) || 1;
+        const pageSizeNum = Math.min(parseInt(pageSize) || 10, 500);
+        const skip = (pageNum - 1) * pageSizeNum;
+        // 🔥 优化:使用QueryBuilder只查询需要的字段(与待发货API保持一致)
+        const queryBuilder = orderRepository.createQueryBuilder('order')
+            .select([
+            'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
+            'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
+            'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
+            'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt', 'order.updatedAt',
+            'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
+            'order.expressCompany', 'order.trackingNumber', 'order.logisticsStatus', 'order.serviceWechat',
+            'order.orderSource', 'order.products', 'order.createdByDepartmentId',
+            'order.customField1', 'order.customField2', 'order.customField3',
+            'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
+        ])
+            .where('order.status IN (:...statuses)', {
+            statuses: ['logistics_returned', 'rejected_returned', 'audit_rejected']
+        });
+        // 🔥 支持综合关键词搜索(订单号 OR 客户名称 OR 手机号 OR 客户编码)
+        if (keyword) {
+            queryBuilder.andWhere('(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)', { keyword: `%${keyword}%` });
+            console.log(`📦 [退回订单] 综合关键词搜索: "${keyword}"`);
+        }
+        else {
+            if (orderNumber) {
+                queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+            }
+            if (customerName) {
+                queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+            }
+        }
+        // 🔥 部门筛选
+        if (departmentId) {
+            queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
+        }
+        // 🔥 销售人员筛选
+        if (salesPersonId) {
+            queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
+        }
+        // 🔥 快速筛选 - 使用下单时间(createdAt)
+        if (quickFilter) {
+            const now = new Date();
+            switch (quickFilter) {
+                case 'today':
+                    const today = now.toISOString().split('T')[0];
+                    queryBuilder.andWhere('DATE(order.createdAt) = :today', { today });
+                    break;
+                case 'yesterday':
+                    const yesterday = new Date(now);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    const yesterdayStr = yesterday.toISOString().split('T')[0];
+                    queryBuilder.andWhere('DATE(order.createdAt) = :yesterday', { yesterday: yesterdayStr });
+                    break;
+                case 'thisWeek':
+                    const dayOfWeek = now.getDay();
+                    const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                    const startOfWeek = new Date(now);
+                    startOfWeek.setDate(now.getDate() - diff);
+                    queryBuilder.andWhere('order.createdAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+                case 'thisMonth':
+                    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                    queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+                case 'lastMonth':
+                    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+                    queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
+                        lastMonthStart: formatLocalDate(lastMonthStart) + ' 00:00:00',
+                        lastMonthEnd: formatLocalDate(lastMonthEnd) + ' 23:59:59'
+                    });
+                    break;
+                case 'thisYear':
+                    const startOfYear = new Date(now.getFullYear(), 0, 1);
+                    queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+            }
+        }
+        // 🔥 日期范围筛选
+        if (startDate) {
+            queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+        }
+        if (endDate) {
+            queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+        }
+        const total = await queryBuilder.getCount();
+        queryBuilder.orderBy('order.updatedAt', 'DESC').skip(skip).take(pageSizeNum);
+        const orders = await queryBuilder.getMany();
+        // 🔥 获取所有订单的客户ID，批量查询客户信息
+        const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
+        const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
+        const customers = customerIds.length > 0
+            ? await customerRepository.findByIds(customerIds)
+            : [];
+        const customerMap = new Map(customers.map(c => [c.id, c]));
+        // 🔥 转换数据格式（与待发货API保持一致）
+        const list = orders.map(order => {
+            let products = [];
+            if (order.products) {
+                try {
+                    products = typeof order.products === 'string' ? JSON.parse(order.products) : order.products;
+                }
+                catch {
+                    products = [];
+                }
+            }
+            // 🔥 获取客户信息
+            const customer = order.customerId ? customerMap.get(order.customerId) : null;
+            return {
+                id: order.id,
+                orderNumber: order.orderNumber,
+                customerId: order.customerId || '',
+                customerName: order.customerName || '',
+                customerPhone: order.customerPhone || '',
+                // 🔥 客户详细信息
+                customerAge: customer?.age || null,
+                customerHeight: customer?.height || null,
+                customerWeight: customer?.weight || null,
+                medicalHistory: customer?.medicalHistory || null,
+                products: products,
+                totalAmount: Number(order.totalAmount) || 0,
+                depositAmount: Number(order.depositAmount) || 0,
+                collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+                receiverName: order.shippingName || '',
+                receiverPhone: order.shippingPhone || '',
+                receiverAddress: order.shippingAddress || '',
+                remark: order.remark || '',
+                status: order.status,
+                markType: order.markType || 'normal',
+                paymentStatus: order.paymentStatus || 'unpaid',
+                paymentMethod: order.paymentMethod || '',
+                serviceWechat: order.serviceWechat || '',
+                orderSource: order.orderSource || '',
+                expressCompany: order.expressCompany || '',
+                trackingNumber: order.trackingNumber || '',
+                logisticsStatus: order.logisticsStatus || '',
+                // 🔥 自定义字段
+                customFields: {
+                    custom_field1: order.customField1 || order.customFields?.custom_field1 || '',
+                    custom_field2: order.customField2 || order.customFields?.custom_field2 || '',
+                    custom_field3: order.customField3 || order.customFields?.custom_field3 || '',
+                    custom_field4: order.customField4 || order.customFields?.custom_field4 || '',
+                    custom_field5: order.customField5 || order.customFields?.custom_field5 || '',
+                    custom_field6: order.customField6 || order.customFields?.custom_field6 || '',
+                    custom_field7: order.customField7 || order.customFields?.custom_field7 || ''
+                },
+                customField1: order.customField1 || order.customFields?.custom_field1 || '',
+                customField2: order.customField2 || order.customFields?.custom_field2 || '',
+                customField3: order.customField3 || order.customFields?.custom_field3 || '',
+                customField4: order.customField4 || order.customFields?.custom_field4 || '',
+                customField5: order.customField5 || order.customFields?.custom_field5 || '',
+                customField6: order.customField6 || order.customFields?.custom_field6 || '',
+                customField7: order.customField7 || order.customFields?.custom_field7 || '',
+                createTime: formatToBeijingTime(order.createdAt),
+                updatedAt: formatToBeijingTime(order.updatedAt),
+                createdBy: order.createdBy || '',
+                createdByName: order.createdByName || '',
+                salesPersonId: order.createdBy || '',
+                operatorId: order.createdBy || '',
+                operator: order.createdByName || ''
+            };
+        });
+        res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
+    }
+    catch (error) {
+        console.error('❌ [退回订单] 获取失败:', error);
+        res.status(500).json({ success: false, message: '获取退回订单失败' });
+    }
+});
+/**
+ * @route GET /api/v1/orders/shipping/cancelled
+ * @desc 获取取消订单列表（服务端分页）
+ * @access Private
+ */
+router.get('/shipping/cancelled', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
+        const { page = 1, pageSize = 10, orderNumber, customerName, keyword, startDate, endDate, quickFilter, departmentId, salesPersonId } = req.query;
+        const pageNum = parseInt(page) || 1;
+        const pageSizeNum = Math.min(parseInt(pageSize) || 10, 500);
+        const skip = (pageNum - 1) * pageSizeNum;
+        // 🔥 优化:使用QueryBuilder只查询需要的字段(与待发货API保持一致)
+        const queryBuilder = orderRepository.createQueryBuilder('order')
+            .select([
+            'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
+            'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
+            'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
+            'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt', 'order.updatedAt',
+            'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
+            'order.expressCompany', 'order.trackingNumber', 'order.logisticsStatus', 'order.serviceWechat',
+            'order.orderSource', 'order.products', 'order.createdByDepartmentId',
+            'order.customField1', 'order.customField2', 'order.customField3',
+            'order.customField4', 'order.customField5', 'order.customField6', 'order.customField7'
+        ])
+            .where('order.status IN (:...statuses)', {
+            statuses: ['cancelled', 'logistics_cancelled']
+        });
+        // 🔥 支持综合关键词搜索
+        if (keyword) {
+            queryBuilder.andWhere('(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)', { keyword: `%${keyword}%` });
+        }
+        else {
+            if (orderNumber) {
+                queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+            }
+            if (customerName) {
+                queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+            }
+        }
+        // 🔥 部门筛选
+        if (departmentId) {
+            queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
+        }
+        // 🔥 销售人员筛选
+        if (salesPersonId) {
+            queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
+        }
+        // 🔥 快速筛选 - 使用下单时间(createdAt)
+        if (quickFilter) {
+            const now = new Date();
+            switch (quickFilter) {
+                case 'today':
+                    const today = now.toISOString().split('T')[0];
+                    queryBuilder.andWhere('DATE(order.createdAt) = :today', { today });
+                    break;
+                case 'yesterday':
+                    const yesterday = new Date(now);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    const yesterdayStr = yesterday.toISOString().split('T')[0];
+                    queryBuilder.andWhere('DATE(order.createdAt) = :yesterday', { yesterday: yesterdayStr });
+                    break;
+                case 'thisWeek':
+                    const dayOfWeek = now.getDay();
+                    const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                    const startOfWeek = new Date(now);
+                    startOfWeek.setDate(now.getDate() - diff);
+                    queryBuilder.andWhere('order.createdAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+                case 'thisMonth':
+                    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                    queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+                case 'lastMonth':
+                    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+                    queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
+                        lastMonthStart: formatLocalDate(lastMonthStart) + ' 00:00:00',
+                        lastMonthEnd: formatLocalDate(lastMonthEnd) + ' 23:59:59'
+                    });
+                    break;
+                case 'thisYear':
+                    const startOfYear = new Date(now.getFullYear(), 0, 1);
+                    queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+            }
+        }
+        // 🔥 日期范围筛选
+        if (startDate) {
+            queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+        }
+        if (endDate) {
+            queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+        }
+        const total = await queryBuilder.getCount();
+        queryBuilder.orderBy('order.updatedAt', 'DESC').skip(skip).take(pageSizeNum);
+        const orders = await queryBuilder.getMany();
+        // 🔥 获取所有订单的客户ID，批量查询客户信息
+        const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
+        const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
+        const customers = customerIds.length > 0
+            ? await customerRepository.findByIds(customerIds)
+            : [];
+        const customerMap = new Map(customers.map(c => [c.id, c]));
+        // 🔥 转换数据格式（与待发货API保持一致）
+        const list = orders.map(order => {
+            let products = [];
+            if (order.products) {
+                try {
+                    products = typeof order.products === 'string' ? JSON.parse(order.products) : order.products;
+                }
+                catch {
+                    products = [];
+                }
+            }
+            // 🔥 获取客户信息
+            const customer = order.customerId ? customerMap.get(order.customerId) : null;
+            return {
+                id: order.id,
+                orderNumber: order.orderNumber,
+                customerId: order.customerId || '',
+                customerName: order.customerName || '',
+                customerPhone: order.customerPhone || '',
+                // 🔥 客户详细信息
+                customerAge: customer?.age || null,
+                customerHeight: customer?.height || null,
+                customerWeight: customer?.weight || null,
+                medicalHistory: customer?.medicalHistory || null,
+                products: products,
+                totalAmount: Number(order.totalAmount) || 0,
+                depositAmount: Number(order.depositAmount) || 0,
+                collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+                receiverName: order.shippingName || '',
+                receiverPhone: order.shippingPhone || '',
+                receiverAddress: order.shippingAddress || '',
+                remark: order.remark || '',
+                status: order.status,
+                markType: order.markType || 'normal',
+                paymentStatus: order.paymentStatus || 'unpaid',
+                paymentMethod: order.paymentMethod || '',
+                serviceWechat: order.serviceWechat || '',
+                orderSource: order.orderSource || '',
+                expressCompany: order.expressCompany || '',
+                trackingNumber: order.trackingNumber || '',
+                logisticsStatus: order.logisticsStatus || '',
+                // 🔥 自定义字段
+                customFields: {
+                    custom_field1: order.customField1 || order.customFields?.custom_field1 || '',
+                    custom_field2: order.customField2 || order.customFields?.custom_field2 || '',
+                    custom_field3: order.customField3 || order.customFields?.custom_field3 || '',
+                    custom_field4: order.customField4 || order.customFields?.custom_field4 || '',
+                    custom_field5: order.customField5 || order.customFields?.custom_field5 || '',
+                    custom_field6: order.customField6 || order.customFields?.custom_field6 || '',
+                    custom_field7: order.customField7 || order.customFields?.custom_field7 || ''
+                },
+                customField1: order.customField1 || order.customFields?.custom_field1 || '',
+                customField2: order.customField2 || order.customFields?.custom_field2 || '',
+                customField3: order.customField3 || order.customFields?.custom_field3 || '',
+                customField4: order.customField4 || order.customFields?.custom_field4 || '',
+                customField5: order.customField5 || order.customFields?.custom_field5 || '',
+                customField6: order.customField6 || order.customFields?.custom_field6 || '',
+                customField7: order.customField7 || order.customFields?.custom_field7 || '',
+                createTime: formatToBeijingTime(order.createdAt),
+                updatedAt: formatToBeijingTime(order.updatedAt),
+                createdBy: order.createdBy || '',
+                createdByName: order.createdByName || '',
+                salesPersonId: order.createdBy || '',
+                operatorId: order.createdBy || '',
+                operator: order.createdByName || ''
+            };
+        });
+        res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
+    }
+    catch (error) {
+        console.error('❌ [取消订单] 获取失败:', error);
+        res.status(500).json({ success: false, message: '获取取消订单失败' });
+    }
+});
+/**
+ * @route GET /api/v1/orders/shipping/draft
+ * @desc 获取草稿订单列表（服务端分页）
+ * @access Private
+ */
+router.get('/shipping/draft', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
+        const { page = 1, pageSize = 10, orderNumber, customerName, keyword, startDate, endDate, quickFilter } = req.query;
+        const pageNum = parseInt(page) || 1;
+        const pageSizeNum = Math.min(parseInt(pageSize) || 10, 500);
+        const skip = (pageNum - 1) * pageSizeNum;
+        const queryBuilder = orderRepository.createQueryBuilder('order')
+            .where('order.status = :status', { status: 'draft' });
+        // 🔥 支持综合关键词搜索
+        if (keyword) {
+            queryBuilder.andWhere('(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword)', { keyword: `%${keyword}%` });
+        }
+        else {
+            if (orderNumber) {
+                queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
+            }
+            if (customerName) {
+                queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+            }
+        }
+        // 🔥 快速筛选 - 使用下单时间(createdAt)
+        if (quickFilter) {
+            const now = new Date();
+            switch (quickFilter) {
+                case 'today':
+                    const today = now.toISOString().split('T')[0];
+                    queryBuilder.andWhere('DATE(order.createdAt) = :today', { today });
+                    break;
+                case 'yesterday':
+                    const yesterday = new Date(now);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    const yesterdayStr = yesterday.toISOString().split('T')[0];
+                    queryBuilder.andWhere('DATE(order.createdAt) = :yesterday', { yesterday: yesterdayStr });
+                    break;
+                case 'thisWeek':
+                    const dayOfWeek = now.getDay();
+                    const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                    const startOfWeek = new Date(now);
+                    startOfWeek.setDate(now.getDate() - diff);
+                    queryBuilder.andWhere('order.createdAt >= :startOfWeek', { startOfWeek: startOfWeek.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+                case 'thisMonth':
+                    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                    queryBuilder.andWhere('order.createdAt >= :startOfMonth', { startOfMonth: startOfMonth.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+                case 'lastMonth':
+                    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+                    queryBuilder.andWhere('order.createdAt >= :lastMonthStart AND order.createdAt <= :lastMonthEnd', {
+                        lastMonthStart: formatLocalDate(lastMonthStart) + ' 00:00:00',
+                        lastMonthEnd: formatLocalDate(lastMonthEnd) + ' 23:59:59'
+                    });
+                    break;
+                case 'thisYear':
+                    const startOfYear = new Date(now.getFullYear(), 0, 1);
+                    queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
+                    break;
+            }
+        }
+        // 🔥 日期范围筛选
+        if (startDate) {
+            queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+        }
+        if (endDate) {
+            queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+        }
+        const total = await queryBuilder.getCount();
+        queryBuilder.orderBy('order.updatedAt', 'DESC').skip(skip).take(pageSizeNum);
+        const orders = await queryBuilder.getMany();
+        const list = orders.map(order => ({
+            id: order.id,
+            orderNumber: order.orderNumber,
+            customerName: order.customerName || '',
+            customerPhone: order.customerPhone || '',
+            totalAmount: Number(order.totalAmount) || 0,
+            status: order.status,
+            shippingAddress: order.shippingAddress || '',
+            createdByName: order.createdByName || '',
+            createdAt: formatToBeijingTime(order.createdAt),
+            updatedAt: formatToBeijingTime(order.updatedAt),
+            products: typeof order.products === 'string' ? JSON.parse(order.products || '[]') : (order.products || [])
+        }));
+        res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
+    }
+    catch (error) {
+        console.error('❌ [草稿订单] 获取失败:', error);
+        res.status(500).json({ success: false, message: '获取草稿订单失败' });
     }
 });
 /**
@@ -1010,7 +1745,8 @@ router.get('/by-tracking-no', auth_1.authenticateToken, async (req, res) => {
 router.get('/', auth_1.authenticateToken, async (req, res) => {
     try {
         const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
-        const { page = 1, pageSize = 20, status, orderNumber, customerName, startDate, endDate } = req.query;
+        const { page = 1, pageSize = 20, status, statusList, orderNumber, customerName, keyword, // 综合搜索关键词
+        startDate, endDate, markType, salesPersonId, departmentId, minAmount, maxAmount, productName, customerPhone, paymentMethod } = req.query;
         const pageNum = parseInt(page) || 1;
         const pageSizeNum = parseInt(pageSize) || 20;
         const skip = (pageNum - 1) * pageSizeNum;
@@ -1029,6 +1765,8 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
         const allowAllRoles = ['super_admin', 'admin', 'customer_service', 'service'];
         // 🔥 经理角色（可以看本部门订单）
         const managerRoles = ['department_manager', 'manager'];
+        // 🔥 销售员角色（只能看自己的订单）
+        const salesRoles = ['sales_staff', 'sales', 'salesperson'];
         if (!allowAllRoles.includes(userRole)) {
             if (managerRoles.includes(userRole)) {
                 // 部门经理可以看本部门所有成员的订单，也包括自己的订单
@@ -1046,25 +1784,24 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
                     console.log(`📋 [订单列表] 经理无部门ID，只看自己的订单: userId = ${userId}`);
                 }
             }
+            else if (salesRoles.includes(userRole)) {
+                // 🔥 销售员只能看自己的订单（仅限订单列表页面）
+                queryBuilder.andWhere('order.createdBy = :userId', { userId });
+                console.log(`📋 [订单列表] 销售员过滤: 只看自己的订单, userId = ${userId}`);
+            }
             else {
-                // 🔥 普通员工（销售员等）可以看到同部门成员的订单（用于团队业绩统计）
-                if (userDepartmentId) {
-                    // 🔥 修复：同时匹配部门ID或创建人ID（确保能看到自己的订单）
-                    queryBuilder.andWhere('(order.createdByDepartmentId = :departmentId OR order.createdBy = :userId)', {
-                        departmentId: userDepartmentId,
-                        userId
-                    });
-                    console.log(`📋 [订单列表] 普通员工过滤: 部门ID = ${userDepartmentId} 或 创建人ID = ${userId}`);
-                }
-                else {
-                    // 如果没有部门ID，只能看自己的订单
-                    queryBuilder.andWhere('order.createdBy = :userId', { userId });
-                    console.log(`📋 [订单列表] 普通员工无部门ID，只看自己的订单: userId = ${userId}`);
-                }
+                // 🔥 其他角色：只能看自己的订单
+                queryBuilder.andWhere('order.createdBy = :userId', { userId });
+                console.log(`📋 [订单列表] 其他角色过滤: 只看自己的订单, userId = ${userId}`);
             }
         }
         else {
             console.log(`📋 [订单列表] ${userRole}角色，查看所有订单`);
+        }
+        // 🔥 综合关键词搜索（商品名称模糊搜索，其他字段精准搜索）
+        if (keyword) {
+            queryBuilder.andWhere('(order.orderNumber = :exactKeyword OR order.customerName = :exactKeyword OR order.customerPhone = :exactKeyword OR order.customerId = :exactKeyword OR order.trackingNumber = :exactKeyword OR order.products LIKE :fuzzyKeyword)', { exactKeyword: keyword, fuzzyKeyword: `%${keyword}%` });
+            console.log(`📋 [订单列表] 综合关键词搜索: "${keyword}" (商品模糊，其他精准)`);
         }
         // 状态筛选
         if (status) {
@@ -1078,12 +1815,48 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
         if (customerName) {
             queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
         }
-        // 日期范围筛选
+        // 日期范围筛选 - 🔥 修复：数据库已配置为北京时区，直接使用北京时间查询
         if (startDate && endDate) {
-            queryBuilder.andWhere('order.createdAt BETWEEN :startDate AND :endDate', {
-                startDate: new Date(startDate),
-                endDate: new Date(endDate)
-            });
+            queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
+            queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+        }
+        // 🔥 标记类型筛选
+        if (markType) {
+            queryBuilder.andWhere('order.markType = :markType', { markType });
+        }
+        // 🔥 部门筛选
+        if (departmentId) {
+            queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
+        }
+        // 🔥 销售人员筛选
+        if (salesPersonId) {
+            queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
+        }
+        // 🔥 高级筛选：订单状态（多选，逗号分隔）
+        if (statusList) {
+            const statusArray = statusList.split(',').filter(s => s.trim());
+            if (statusArray.length > 0) {
+                queryBuilder.andWhere('order.status IN (:...statusArray)', { statusArray });
+            }
+        }
+        // 🔥 高级筛选：金额范围
+        if (minAmount) {
+            queryBuilder.andWhere('order.totalAmount >= :minAmount', { minAmount: Number(minAmount) });
+        }
+        if (maxAmount) {
+            queryBuilder.andWhere('order.totalAmount <= :maxAmount', { maxAmount: Number(maxAmount) });
+        }
+        // 🔥 高级筛选：商品名称（模糊搜索，搜索JSON字段中的商品名称）
+        if (productName) {
+            queryBuilder.andWhere('order.products LIKE :productName', { productName: `%${productName}%` });
+        }
+        // 🔥 高级筛选：客户电话
+        if (customerPhone) {
+            queryBuilder.andWhere('order.customerPhone LIKE :customerPhone', { customerPhone: `%${customerPhone}%` });
+        }
+        // 🔥 高级筛选：支付方式
+        if (paymentMethod) {
+            queryBuilder.andWhere('order.paymentMethod = :paymentMethod', { paymentMethod });
         }
         // 排序和分页
         queryBuilder.orderBy('order.createdAt', 'DESC')
@@ -1091,6 +1864,13 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
             .take(pageSizeNum);
         const [orders, total] = await queryBuilder.getManyAndCount();
         console.log(`📋 [订单列表] 查询到 ${orders.length} 条订单, 总数: ${total}`);
+        // 🔥 获取客户信息（年龄、身高、体重、病史）
+        const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
+        const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
+        const customers = customerIds.length > 0
+            ? await customerRepository.findByIds(customerIds)
+            : [];
+        const customerMap = new Map(customers.map(c => [c.id, c]));
         // 转换数据格式以匹配前端期望
         const list = orders.map(order => {
             // 解析products JSON字段
@@ -1103,6 +1883,10 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
                     products = [];
                 }
             }
+            // 🔥 获取客户信息
+            const customer = order.customerId ? customerMap.get(order.customerId) : null;
+            // 🔥 计算总数量
+            const totalQuantity = products.reduce((sum, p) => sum + (p.quantity || 0), 0);
             // 根据订单状态推断auditStatus
             // 🔥 修复：正确映射auditStatus
             let auditStatus = 'pending';
@@ -1121,11 +1905,20 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
                 customerId: order.customerId || '',
                 customerName: order.customerName || '',
                 customerPhone: order.customerPhone || '',
+                // 🔥 新增：客户详细信息（从客户表获取）
+                customerAge: customer?.age || null,
+                customerHeight: customer?.height || null,
+                customerWeight: customer?.weight || null,
+                medicalHistory: customer?.medicalHistory || null,
                 products: products,
+                totalQuantity, // 🔥 新增：总数量
                 totalAmount: Number(order.totalAmount) || 0,
                 depositAmount: Number(order.depositAmount) || 0,
                 // 🔥 代收金额 = 订单总额 - 定金
                 collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+                // 🔥 代收相关字段
+                codAmount: order.codAmount !== undefined && order.codAmount !== null ? Number(order.codAmount) : ((Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0)),
+                codStatus: order.codStatus || 'pending',
                 receiverName: order.shippingName || '',
                 receiverPhone: order.shippingPhone || '',
                 receiverAddress: order.shippingAddress || '',
@@ -1392,6 +2185,12 @@ router.get('/:id', async (req, res) => {
         else if (order.status === 'pending_audit' || order.status === 'pending_shipment' || order.status === 'shipped') {
             isAuditTransferred = true;
         }
+        // 检查是否有待审核的取消代收申请
+        const codApplicationRepo = database_1.AppDataSource.getRepository(CodCancelApplication_1.CodCancelApplication);
+        const pendingApplicationCount = await codApplicationRepo.count({
+            where: { orderId: order.id, status: 'pending' }
+        });
+        const hasPendingCodApplication = pendingApplicationCount > 0;
         const data = {
             id: order.id,
             orderNumber: order.orderNumber,
@@ -1403,6 +2202,10 @@ router.get('/:id', async (req, res) => {
             depositAmount: Number(order.depositAmount) || 0,
             // 🔥 代收金额 = 订单总额 - 定金
             collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+            // 🔥 代收相关字段
+            codAmount: order.codAmount !== undefined && order.codAmount !== null ? Number(order.codAmount) : ((Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0)),
+            codStatus: order.codStatus || 'pending',
+            hasPendingCodApplication: hasPendingCodApplication,
             receiverName: order.shippingName || '',
             receiverPhone: order.shippingPhone || '',
             receiverAddress: order.shippingAddress || '',
@@ -1566,6 +2369,9 @@ router.post('/', async (req, res) => {
             expressCompany: expressCompany || '',
             markType: markType || 'normal',
             remark: remark || '',
+            // 🔥 代收相关字段初始化
+            codAmount: finalTotalAmount - finalDepositAmount, // 初始代收金额 = 总额 - 定金
+            codStatus: 'pending', // 初始状态为待处理
             // 🔥 新版自定义字段：7个独立字段
             customField1: customFields?.custom_field1 || undefined,
             customField2: customFields?.custom_field2 || undefined,

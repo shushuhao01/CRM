@@ -151,31 +151,31 @@ router.get('/departments-members', messageController.getDepartmentsAndMembers.bi
  * @desc 获取当前用户的系统消息列表
  * @access Private
  */
-router.get('/system-messages', messageController.getSystemMessages.bind(messageController));
+router.get('/system-messages', auth_1.authenticateToken, messageController.getSystemMessages.bind(messageController));
 /**
  * @route POST /api/v1/message/system-messages/send
  * @desc 发送系统消息
  * @access Private
  */
-router.post('/system-messages/send', messageController.sendSystemMessage.bind(messageController));
+router.post('/system-messages/send', auth_1.authenticateToken, messageController.sendSystemMessage.bind(messageController));
 /**
  * @route POST /api/v1/message/system-messages/send-batch
  * @desc 批量发送系统消息
  * @access Private
  */
-router.post('/system-messages/send-batch', messageController.sendBatchSystemMessages.bind(messageController));
-/**
- * @route PUT /api/v1/message/system-messages/:id/read
- * @desc 标记消息为已读
- * @access Private
- */
-router.put('/system-messages/:id/read', messageController.markMessageAsRead.bind(messageController));
+router.post('/system-messages/send-batch', auth_1.authenticateToken, messageController.sendBatchSystemMessages.bind(messageController));
 /**
  * @route PUT /api/v1/message/system-messages/read-all
  * @desc 标记所有消息为已读
  * @access Private
  */
-router.put('/system-messages/read-all', messageController.markAllMessagesAsRead.bind(messageController));
+router.put('/system-messages/read-all', auth_1.authenticateToken, messageController.markAllMessagesAsRead.bind(messageController));
+/**
+ * @route PUT /api/v1/message/system-messages/:id/read
+ * @desc 标记消息为已读
+ * @access Private
+ */
+router.put('/system-messages/:id/read', auth_1.authenticateToken, messageController.markMessageAsRead.bind(messageController));
 /**
  * @route GET /api/v1/message/stats
  * @desc 获取消息统计数据
@@ -183,23 +183,23 @@ router.put('/system-messages/read-all', messageController.markAllMessagesAsRead.
  */
 router.get('/stats', auth_1.authenticateToken, messageController.getMessageStats.bind(messageController));
 /**
- * @route DELETE /api/v1/message/system-messages/:id
- * @desc 删除单条消息
- * @access Private
- */
-router.delete('/system-messages/:id', messageController.deleteMessage.bind(messageController));
-/**
  * @route DELETE /api/v1/message/system-messages/clear-all
  * @desc 清空当前用户的所有消息
  * @access Private
  */
-router.delete('/system-messages/clear-all', messageController.clearAllMessages.bind(messageController));
+router.delete('/system-messages/clear-all', auth_1.authenticateToken, messageController.clearAllMessages.bind(messageController));
+/**
+ * @route DELETE /api/v1/message/system-messages/:id
+ * @desc 删除单条消息
+ * @access Private
+ */
+router.delete('/system-messages/:id', auth_1.authenticateToken, messageController.deleteMessage.bind(messageController));
 /**
  * @route POST /api/v1/message/system-messages/cleanup
  * @desc 清理过期消息（超过30天）- 管理员或定时任务调用
  * @access Private (Admin)
  */
-router.post('/system-messages/cleanup', messageController.cleanupExpiredMessages.bind(messageController));
+router.post('/system-messages/cleanup', auth_1.authenticateToken, messageController.cleanupExpiredMessages.bind(messageController));
 // =====================================================
 // 通知渠道配置管理 - 🔥 跨平台通知配置
 // =====================================================

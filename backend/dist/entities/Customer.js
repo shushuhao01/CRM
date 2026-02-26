@@ -32,6 +32,10 @@ __decorate([
     __metadata("design:type", String)
 ], Customer.prototype, "phone", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ name: 'other_phones', type: 'json', nullable: true, comment: '其他手机号' }),
+    __metadata("design:type", Array)
+], Customer.prototype, "otherPhones", void 0);
+__decorate([
     (0, typeorm_1.Column)({ length: 100, nullable: true, comment: '微信号' }),
     __metadata("design:type", String)
 ], Customer.prototype, "wechat", void 0);

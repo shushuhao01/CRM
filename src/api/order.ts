@@ -93,17 +93,17 @@ export const orderApi = {
   cancelRequest: (params: OrderCancelRequestParams) =>
     api.post<{ success: boolean; message: string }>(API_ENDPOINTS.ORDERS.CANCEL_REQUEST, params),
 
-  // 获取待审核的取消订单列表
-  getPendingCancelOrders: () =>
-    api.get<Order[]>(API_ENDPOINTS.ORDERS.PENDING_CANCEL),
+  // 获取待审核的取消订单列表（支持分页）
+  getPendingCancelOrders: (params?: { page?: number; pageSize?: number }) =>
+    api.get<Order[]>(API_ENDPOINTS.ORDERS.PENDING_CANCEL, { params }),
 
   // 审核取消订单申请
   cancelAudit: (id: string, params: OrderCancelAuditParams) =>
     api.post<{ success: boolean; message: string }>(API_ENDPOINTS.ORDERS.CANCEL_AUDIT(id), params),
 
-  // 获取已审核的取消订单列表
-  getAuditedCancelOrders: () =>
-    api.get<Order[]>(API_ENDPOINTS.ORDERS.AUDITED_CANCEL),
+  // 获取已审核的取消订单列表（支持分页）
+  getAuditedCancelOrders: (params?: { page?: number; pageSize?: number }) =>
+    api.get<Order[]>(API_ENDPOINTS.ORDERS.AUDITED_CANCEL, { params }),
 
   // 获取订单统计数据
   getStatistics: () =>
