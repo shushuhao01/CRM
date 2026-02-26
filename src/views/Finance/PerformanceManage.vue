@@ -246,7 +246,7 @@
           </el-select>
         </template>
       </el-table-column>
-      <el-table-column prop="performanceRemark" label="备注" width="180">
+      <el-table-column prop="performanceRemark" label="备注" width="120" show-overflow-tooltip>
         <template #default="{ row }">
           <el-select
             v-model="row.performanceRemark"
@@ -283,7 +283,7 @@
           </el-select>
         </template>
       </el-table-column>
-      <el-table-column prop="estimatedCommission" label="预估佣金" width="100" align="center">
+      <el-table-column prop="estimatedCommission" label="预估佣金" width="120" align="left">
         <template #default="{ row }">
           <span class="commission-value">¥{{ formatMoney(row.estimatedCommission || 0) }}</span>
         </template>
