@@ -246,11 +246,15 @@
           </el-select>
         </template>
       </el-table-column>
-      <el-table-column prop="performanceRemark" label="备注" width="140">
+      <el-table-column prop="performanceRemark" label="备注" width="180">
         <template #default="{ row }">
           <el-select
             v-model="row.performanceRemark"
             size="small"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入备注"
             @change="(val: string) => updatePerformance(row, 'performanceRemark', val)"
           >
             <el-option v-for="r in configData.remarkConfigs" :key="r.id" :label="getRemarkLabel(r.configValue)" :value="r.configValue" />
