@@ -676,7 +676,7 @@ router.get('/pending-cancel', async (req: Request, res: Response) => {
       customerName: order.customerName || '',
       customerPhone: order.customerPhone || '',
       totalAmount: Number(order.totalAmount),
-      cancelReason: order.remark || '',
+      cancelReason: order.cancelReason || '',  // 🔥 修复：使用 cancelReason 字段而不是 remark
       cancelRequestTime: formatDateTime(order.updatedAt),
       status: 'pending_cancel',
       createdBy: order.createdBy || '',
@@ -743,7 +743,7 @@ router.get('/audited-cancel', async (req: Request, res: Response) => {
       customerName: order.customerName || '',
       customerPhone: order.customerPhone || '',
       totalAmount: Number(order.totalAmount),
-      cancelReason: order.remark || '',
+      cancelReason: order.cancelReason || '',  // 🔥 修复：使用 cancelReason 字段而不是 remark
       cancelRequestTime: formatDateTime(order.updatedAt),
       status: order.status,
       createdBy: order.createdBy || '',
