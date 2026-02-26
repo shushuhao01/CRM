@@ -78,169 +78,107 @@ import { WecomChatRecord } from '../entities/WecomChatRecord';
 import { WecomPaymentRecord } from '../entities/WecomPaymentRecord';
 import { CodCancelApplication } from '../entities/CodCancelApplication';
 
-// 根据环境变量选择数据库配置
-const dbType = process.env.DB_TYPE || (process.env.NODE_ENV === 'production' ? 'mysql' : 'sqlite');
+// 🔥 统一使用 MySQL 数据库（开发环境和生产环境）
+// 数据库类型：默认使用 MySQL，除非明确指定其他类型
+const dbType = process.env.DB_TYPE || 'mysql';
 
-const AppDataSource = new DataSource(
-  dbType === 'mysql'
-    ? {
-        // MySQL配置
-        type: 'mysql',
-        host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '3306'),
-        username: process.env.DB_USERNAME || process.env.DB_USER || 'root',
-        password: process.env.DB_PASSWORD || '',
-        database: process.env.DB_DATABASE || process.env.DB_NAME || 'crm',
-        synchronize: false, // 生产环境不自动同步
-        logging: process.env.NODE_ENV === 'development',
-        // 🔥 统一使用北京时间
-        timezone: '+08:00',
-        extra: {
-          connectionLimit: 10
-        },
-        entities: [
-          User,
-          Customer,
-          Order,
-          Product,
-          Department,
-          Role,
-          Permission,
-          CustomerGroup,
-          CustomerTag,
-          LogisticsStatus,
-          RejectionReason,
-          ImprovementGoal,
-          Call,
-          Message,
-          PerformanceMetric,
-          Notification,
-          ServiceRecord,
-          SmsTemplate,
-          SmsRecord,
-          Log,
-          OperationLog,
-          LogisticsTrace,
-          LogisticsTracking,
-          LogisticsCompany,
-          MessageSubscription,
-          OrderItem,
-          OrderStatusHistory,
-          ProductCategory,
-          SystemConfig,
-          UserPermission,
-          CustomerShare,
-          PaymentMethodOption,
-          DepartmentOrderLimit,
-          FollowUp,
-          AfterSalesService,
-          ServiceFollowUp,
-          ServiceOperationLog,
-          NotificationChannel,
-          NotificationLog,
-          Announcement,
-          AnnouncementRead,
-          SystemMessage,
-          MessageReadStatus,
-          PerformanceReportConfig,
-          PerformanceReportLog,
-          LogisticsApiConfig,
-          CustomerServicePermission,
-          SensitiveInfoPermission,
-          PerformanceConfig,
-          CommissionSetting,
-          CommissionLadder,
-          AdminUser,
-          License,
-          Version,
-          LicenseLog,
-          WecomConfig,
-          WecomUserBinding,
-          WecomCustomer,
-          WecomAcquisitionLink,
-          WecomServiceAccount,
-          WecomChatRecord,
-          WecomPaymentRecord,
-          CodCancelApplication
-        ],
-        migrations: [],
-        subscribers: [],
-      }
-    : {
-        // 开发环境使用SQLite
-        type: 'sqlite',
-        database: path.join(process.cwd(), 'data', 'crm.db'),
-        synchronize: true,
-        logging: false,
-        entities: [
-          User,
-          Customer,
-          Order,
-          Product,
-          Department,
-          Role,
-          Permission,
-          CustomerGroup,
-          CustomerTag,
-          LogisticsStatus,
-          RejectionReason,
-          ImprovementGoal,
-          Call,
-          Message,
-          PerformanceMetric,
-          Notification,
-          ServiceRecord,
-          SmsTemplate,
-          SmsRecord,
-          Log,
-          OperationLog,
-          LogisticsTrace,
-          LogisticsTracking,
-          LogisticsCompany,
-          MessageSubscription,
-          OrderItem,
-          OrderStatusHistory,
-          ProductCategory,
-          SystemConfig,
-          UserPermission,
-          CustomerShare,
-          PaymentMethodOption,
-          DepartmentOrderLimit,
-          FollowUp,
-          AfterSalesService,
-          ServiceFollowUp,
-          ServiceOperationLog,
-          NotificationChannel,
-          NotificationLog,
-          Announcement,
-          AnnouncementRead,
-          SystemMessage,
-          MessageReadStatus,
-          PerformanceReportConfig,
-          PerformanceReportLog,
-          LogisticsApiConfig,
-          CustomerServicePermission,
-          SensitiveInfoPermission,
-          PerformanceConfig,
-          CommissionSetting,
-          CommissionLadder,
-          AdminUser,
-          License,
-          Version,
-          LicenseLog,
-          WecomConfig,
-          WecomUserBinding,
-          WecomCustomer,
-          WecomAcquisitionLink,
-          WecomServiceAccount,
-          WecomChatRecord,
-          WecomPaymentRecord,
-          CodCancelApplication
-        ],
-        migrations: [],
-        subscribers: [],
-      }
-);
+// 实体列表（统一管理）
+const entities = [
+  User,
+  Customer,
+  Order,
+  Product,
+  Department,
+  Role,
+  Permission,
+  CustomerGroup,
+  CustomerTag,
+  LogisticsStatus,
+  RejectionReason,
+  ImprovementGoal,
+  Call,
+  Message,
+  PerformanceMetric,
+  Notification,
+  ServiceRecord,
+  SmsTemplate,
+  SmsRecord,
+  Log,
+  OperationLog,
+  LogisticsTrace,
+  LogisticsTracking,
+  LogisticsCompany,
+  MessageSubscription,
+  OrderItem,
+  OrderStatusHistory,
+  ProductCategory,
+  SystemConfig,
+  UserPermission,
+  CustomerShare,
+  PaymentMethodOption,
+  DepartmentOrderLimit,
+  FollowUp,
+  AfterSalesService,
+  ServiceFollowUp,
+  ServiceOperationLog,
+  NotificationChannel,
+  NotificationLog,
+  Announcement,
+  AnnouncementRead,
+  SystemMessage,
+  MessageReadStatus,
+  PerformanceReportConfig,
+  PerformanceReportLog,
+  LogisticsApiConfig,
+  CustomerServicePermission,
+  SensitiveInfoPermission,
+  PerformanceConfig,
+  CommissionSetting,
+  CommissionLadder,
+  AdminUser,
+  License,
+  Version,
+  LicenseLog,
+  WecomConfig,
+  WecomUserBinding,
+  WecomCustomer,
+  WecomAcquisitionLink,
+  WecomServiceAccount,
+  WecomChatRecord,
+  WecomPaymentRecord,
+  CodCancelApplication
+];
+
+// MySQL 数据库配置（开发环境和生产环境统一使用）
+const AppDataSource = new DataSource({
+  type: 'mysql',
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '3306'),
+  username: process.env.DB_USERNAME || process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_DATABASE || process.env.DB_NAME || 'crm',
+  // 🔥 开发环境不自动同步，避免数据丢失
+  synchronize: false,
+  // 🔥 开发环境启用日志，生产环境关闭
+  logging: process.env.NODE_ENV === 'development',
+  // 🔥 统一使用北京时间
+  timezone: '+08:00',
+  // 🔥 字符集配置
+  charset: process.env.DB_CHARSET || 'utf8mb4',
+  // 连接池配置
+  extra: {
+    connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '10'),
+    // 连接超时时间（毫秒）
+    connectTimeout: 60000,
+    // 查询超时时间（毫秒）
+    acquireTimeout: 60000,
+    // 空闲连接超时时间（毫秒）
+    timeout: 60000
+  },
+  entities,
+  migrations: [],
+  subscribers: []
+});
 
 // 导出 AppDataSource
 export { AppDataSource };
@@ -253,22 +191,37 @@ export const getDataSource = (): DataSource | null => {
 // 初始化数据库连接
 export const initializeDatabase = async (): Promise<void> => {
   try {
-    // 打印当前连接的数据库信息
-    console.log(`📦 正在连接数据库: ${process.env.DB_DATABASE || 'crm'} @ ${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || '3306'}`);
+    const dbInfo = {
+      database: process.env.DB_DATABASE || 'crm',
+      host: process.env.DB_HOST || 'localhost',
+      port: process.env.DB_PORT || '3306',
+      user: process.env.DB_USERNAME || process.env.DB_USER || 'root',
+      env: process.env.NODE_ENV || 'development'
+    };
+
+    console.log('� 正在连接 MySQL 数据库...');
+    console.log(`   环境: ${dbInfo.env}`);
+    console.log(`   数据库: ${dbInfo.database}`);
+    console.log(`   地址: ${dbInfo.host}:${dbInfo.port}`);
+    console.log(`   用户: ${dbInfo.user}`);
 
     await AppDataSource.initialize();
     console.log('✅ 数据库连接成功');
 
-    // 开发环境下同步数据库结构
+    // 提示：数据库结构变更需要手动执行迁移脚本
     if (process.env.NODE_ENV === 'development') {
-      console.log('🔄 开发环境：同步数据库结构...');
+      console.log('ℹ️  开发环境：数据库结构变更请执行 database-migrations 目录下的迁移脚本');
     }
 
     // 角色权限初始化已禁用 - 数据库中已有预设数据，无需自动初始化
-    // 如需初始化，请手动执行 database/schema.sql 中的 INSERT 语句
-    console.log('ℹ️ 角色权限初始化已禁用（使用数据库预设数据）');
+    console.log('ℹ️  角色权限使用数据库预设数据（不自动初始化）');
   } catch (error) {
     console.error('❌ 数据库连接失败:', error);
+    console.error('   请检查以下配置:');
+    console.error(`   - DB_HOST: ${process.env.DB_HOST || 'localhost'}`);
+    console.error(`   - DB_PORT: ${process.env.DB_PORT || '3306'}`);
+    console.error(`   - DB_DATABASE: ${process.env.DB_DATABASE || 'crm'}`);
+    console.error(`   - DB_USERNAME: ${process.env.DB_USERNAME || process.env.DB_USER || 'root'}`);
     throw error;
   }
 };

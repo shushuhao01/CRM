@@ -50,7 +50,7 @@ export class RoleController {
 
       // 查询角色列表
       const roles = await dataSource.query(
-        `SELECT id, name, code, description, status, level, color, permissions, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt
+        `SELECT id, name, code, description, status, level, color, permissions, roleType, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt
          FROM roles ${whereClause} ORDER BY level ASC, created_at DESC LIMIT ? OFFSET ?`,
         [...params, Number(limit), offset]
       );
@@ -127,7 +127,7 @@ export class RoleController {
       }
 
       const roles = await dataSource.query(
-        'SELECT id, name, code, description, status, level, color, permissions, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt FROM roles WHERE id = ?',
+        'SELECT id, name, code, description, status, level, color, permissions, roleType, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt FROM roles WHERE id = ?',
         [id]
       );
 
