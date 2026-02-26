@@ -323,6 +323,10 @@ __decorate([
     __metadata("design:type", Date)
 ], Order.prototype, "updatedAt", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ name: 'status_updated_at', type: 'datetime', nullable: true, comment: '状态更新时间（记录最后一次状态变更的时间）' }),
+    __metadata("design:type", Date)
+], Order.prototype, "statusUpdatedAt", void 0);
+__decorate([
     (0, typeorm_1.BeforeInsert)(),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),

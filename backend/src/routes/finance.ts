@@ -515,12 +515,27 @@ router.put('/performance/:orderId', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const userId = user?.userId || user?.id || '';
 
+    console.log('[绩效更新] ========== 开始更新 ==========');
+    console.log('[绩效更新] 订单ID:', orderId);
+    console.log('[绩效更新] 请求参数:', { performanceStatus, performanceCoefficient, performanceRemark, startDate, endDate });
+
     const orderRepo = AppDataSource.getRepository(Order);
     const order = await orderRepo.findOne({ where: { id: orderId } });
 
     if (!order) {
+      console.log('[绩效更新] 订单不存在');
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
+
+    console.log('[绩效更新] 订单信息:', {
+      orderNumber: order.orderNumber,
+      status: order.status,
+      totalAmount: order.totalAmount,
+      createdBy: order.createdBy,
+      createdByDepartmentId: order.createdByDepartmentId,
+      currentPerformanceStatus: order.performanceStatus,
+      currentPerformanceCoefficient: order.performanceCoefficient
+    });
 
     if (performanceStatus !== undefined) order.performanceStatus = performanceStatus;
     if (performanceCoefficient !== undefined) order.performanceCoefficient = performanceCoefficient;
@@ -528,10 +543,14 @@ router.put('/performance/:orderId', async (req: Request, res: Response) => {
     order.performanceUpdatedAt = new Date();
     order.performanceUpdatedBy = userId;
 
+    console.log('[绩效更新] 更新后状态:', order.performanceStatus, '系数:', order.performanceCoefficient);
+
     // 如果状态为无效或系数为0，佣金直接设为0
     if (order.performanceStatus === 'invalid' || order.performanceCoefficient === 0) {
+      console.log('[绩效更新] 状态为无效或系数为0，佣金设为0');
       order.estimatedCommission = 0;
     } else {
+      console.log('[绩效更新] 开始计算佣金...');
       // 根据订单所属部门和创建人计算佣金
       const commission = await calculateCommission(
         order.totalAmount,
@@ -541,10 +560,13 @@ router.put('/performance/:orderId', async (req: Request, res: Response) => {
         startDate as string,
         endDate as string
       );
+      console.log('[绩效更新] 计算完成，佣金:', commission);
       order.estimatedCommission = commission;
     }
 
     await orderRepo.save(order);
+    console.log('[绩效更新] 保存成功，最终佣金:', order.estimatedCommission);
+    console.log('[绩效更新] ========== 更新完成 ==========');
 
     res.json({
       success: true,

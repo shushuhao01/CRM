@@ -11,7 +11,7 @@ export declare class Order {
     serviceWechat?: string;
     orderSource?: string;
     products?: unknown[];
-    status: 'pending' | 'pending_transfer' | 'pending_audit' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded' | 'audit_rejected' | 'pending_shipment' | 'logistics_returned' | 'logistics_cancelled';
+    status: 'pending' | 'pending_transfer' | 'pending_audit' | 'confirmed' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded' | 'audit_rejected' | 'pending_shipment' | 'logistics_returned' | 'logistics_cancelled' | 'pending_cancel' | 'cancel_failed' | 'after_sales_created' | 'package_exception' | 'rejected' | 'rejected_returned';
     totalAmount: number;
     discountAmount: number;
     finalAmount: number;
@@ -73,6 +73,7 @@ export declare class Order {
     createdByDepartmentName?: string;
     createdAt: Date;
     updatedAt: Date;
+    statusUpdatedAt?: Date;
     setCreatedAt(): void;
     setUpdatedAt(): void;
     customer: Customer;
