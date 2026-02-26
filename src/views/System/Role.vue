@@ -1284,6 +1284,12 @@ const handlePermissions = async (row: RoleData) => {
   // 🔥 使用 nextTick 确保对话框和权限树完全渲染
   await nextTick()
 
+  // 🔥 立即清空权限树的勾选状态（重要！避免显示上一次的权限）
+  if (permissionTreeRef.value) {
+    permissionTreeRef.value.setCheckedKeys([])
+    console.log('✅ 已清空权限树选中状态（对话框打开后）')
+  }
+
   // 🔥 收集所有权限树节点ID（在权限树渲染完成后）
   const allTreeNodeIds = new Set<string>()
   const collectNodeIds = (nodes: any[]) => {
@@ -1309,6 +1315,12 @@ const handlePermissions = async (row: RoleData) => {
   console.log('[角色权限] 有效权限数量:', validPermissions.length, '/', rolePermissions.length)
   if (validPermissions.length !== rolePermissions.length) {
     console.warn('[角色权限] 存在无效权限ID:', rolePermissions.filter(id => !allTreeNodeIds.has(id)))
+  }
+
+  // 🔥 如果没有有效权限，直接返回
+  if (validPermissions.length === 0) {
+    console.warn('⚠️ 没有有效权限,权限树保持空白')
+    return
   }
 
   // 🔥 使用更长的延迟确保 el-tree 组件完全初始化（增加到1000ms）
