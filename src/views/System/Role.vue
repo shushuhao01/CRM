@@ -1308,7 +1308,7 @@ const handlePermissions = async (row: RoleData) => {
   // 🔥 使用 nextTick 确保对话框和权限树完全渲染
   await nextTick()
 
-  // 再次延迟确保 el-tree 组件完全初始化
+  // 🔥 使用更长的延迟确保 el-tree 组件完全初始化（增加到1000ms）
   setTimeout(() => {
     console.log('[角色权限] 开始设置权限树选中状态')
     console.log('[角色权限] 权限树引用:', !!permissionTreeRef.value)
@@ -1322,24 +1322,10 @@ const handlePermissions = async (row: RoleData) => {
           permissionTreeRef.value.setCheckedKeys([])
           console.log('✅ 已清空权限树选中状态')
 
-          // 🔥 使用 setChecked 方法逐个设置（更可靠）
-          console.log('[角色权限] 开始逐个设置权限...')
-          let successCount = 0
-          let failCount = 0
-
-          validPermissions.forEach((permId, index) => {
-            try {
-              // check-strictly=true 时，第三个参数设为 false，不影响父子节点
-              permissionTreeRef.value.setChecked(permId, true, false)
-              successCount++
-              console.log(`  ✅ [${index + 1}/${validPermissions.length}] 设置成功: ${permId}`)
-            } catch (e) {
-              failCount++
-              console.error(`  ❌ [${index + 1}/${validPermissions.length}] 设置失败: ${permId}`, e)
-            }
-          })
-
-          console.log(`[角色权限] 权限设置完成: 成功 ${successCount}, 失败 ${failCount}`)
+          // 🔥 直接使用 setCheckedKeys 方法一次性设置所有权限（更快更可靠）
+          console.log('[角色权限] 使用 setCheckedKeys 一次性设置所有权限...')
+          permissionTreeRef.value.setCheckedKeys(validPermissions, false)
+          console.log('✅ 权限已设置')
 
           // 验证设置结果
           setTimeout(() => {
@@ -1355,13 +1341,41 @@ const handlePermissions = async (row: RoleData) => {
               console.error('  1. 权限ID与权限树节点ID不匹配')
               console.error('  2. 权限树组件渲染未完成')
               console.error('  3. check-strictly 属性导致的问题')
-              ElMessage.warning('权限树加载异常，请刷新页面后重试')
+
+              // 🔥 尝试第二次设置（使用逐个设置的方式）
+              console.log('[角色权限] 尝试第二次设置（逐个设置）...')
+              let successCount = 0
+              validPermissions.forEach((permId, index) => {
+                try {
+                  permissionTreeRef.value.setChecked(permId, true, false)
+                  successCount++
+                  if (index < 5) {
+                    console.log(`  ✅ [${index + 1}/${validPermissions.length}] 设置成功: ${permId}`)
+                  }
+                } catch (e) {
+                  if (index < 5) {
+                    console.error(`  ❌ [${index + 1}/${validPermissions.length}] 设置失败: ${permId}`, e)
+                  }
+                }
+              })
+              console.log(`[角色权限] 第二次设置完成: 成功 ${successCount}/${validPermissions.length}`)
+
+              // 再次验证
+              setTimeout(() => {
+                const checkedKeys2 = permissionTreeRef.value.getCheckedKeys()
+                const halfCheckedKeys2 = permissionTreeRef.value.getHalfCheckedKeys()
+                if (checkedKeys2.length === 0 && halfCheckedKeys2.length === 0) {
+                  ElMessage.warning('权限树加载异常，请刷新页面后重试')
+                } else {
+                  console.log('✅ 第二次设置成功:', checkedKeys2.length + halfCheckedKeys2.length, '个权限')
+                }
+              }, 300)
             } else if (checkedKeys.length + halfCheckedKeys.length < validPermissions.length) {
               console.warn(`⚠️ 部分权限未能正确设置: ${validPermissions.length - checkedKeys.length - halfCheckedKeys.length} 个`)
             } else {
               console.log('✅ 权限树选中状态设置成功')
             }
-          }, 300)
+          }, 500)
         } catch (error) {
           console.error('❌ 设置权限树选中状态失败:', error)
           ElMessage.error('权限树加载失败，请刷新页面后重试')
@@ -1373,7 +1387,7 @@ const handlePermissions = async (row: RoleData) => {
       console.error('❌ 权限树组件引用未找到')
       ElMessage.error('权限树组件未加载，请刷新页面后重试')
     }
-  }, 500) // 减少延迟时间到500ms，因为已经使用了 nextTick
+  }, 1000) // 🔥 增加延迟时间到1000ms，确保组件完全渲染
 }
 
 /**
