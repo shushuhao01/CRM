@@ -657,7 +657,11 @@
                     </span>
                   </template>
                 </el-table-column>
-                <el-table-column prop="source" label="来源" width="80" show-overflow-tooltip />
+                <el-table-column prop="assigneeName" label="当前销售" width="100" show-overflow-tooltip>
+                  <template #default="scope">
+                    <span>{{ scope.row.assigneeName || '未分配' }}</span>
+                  </template>
+                </el-table-column>
                 <el-table-column prop="status" label="分配状态" width="100">
                   <template #default="scope">
                     <el-tag size="small" :type="getStatusTagType(scope.row.status)">
