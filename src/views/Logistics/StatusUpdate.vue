@@ -303,6 +303,11 @@
         </el-table-column>
         <el-table-column prop="assignedToName" label="归属人" min-width="90" show-overflow-tooltip />
         <el-table-column prop="orderDate" label="下单日期" min-width="110" show-overflow-tooltip />
+        <el-table-column prop="statusUpdatedAt" label="更新时间" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.statusUpdatedAt ? formatDateTime(row.statusUpdatedAt) : '-' }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <div class="action-buttons">
@@ -393,6 +398,7 @@ import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
 import { useDepartmentStore } from '@/stores/department'
 import { ElMessage } from 'element-plus'
+import { formatDateTime } from '@/utils/dateFormat'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 import {
   getLogisticsStatusText as getLogisticsStatusTextFromConfig,
@@ -897,6 +903,7 @@ const loadData = async (showMessage = false) => {
         customerId: order.customerId || order.customer?.id || '',
         status: order.status || 'shipped',
         logisticsStatus: order.logisticsStatus || '',
+        statusUpdatedAt: order.statusUpdatedAt || order.deliveredAt || order.shippedAt || order.updatedAt,
         amount: order.totalAmount,
         totalAmount: order.totalAmount,
         deposit: order.depositAmount || 0,
