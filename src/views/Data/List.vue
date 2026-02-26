@@ -649,7 +649,11 @@
                 class="preview-table"
               >
                 <el-table-column prop="customerName" label="客户姓名" width="100" show-overflow-tooltip />
-                <el-table-column prop="phone" label="联系电话" width="120" show-overflow-tooltip />
+                <el-table-column prop="phone" label="联系电话" width="120" show-overflow-tooltip>
+                  <template #default="scope">
+                    {{ displaySensitiveInfoNew(scope.row.phone, SensitiveInfoType.PHONE) }}
+                  </template>
+                </el-table-column>
                 <el-table-column prop="orderAmount" label="订单金额" width="100" align="right">
                   <template #default="scope">
                     <span class="amount-text" :class="{ 'high-value': scope.row.orderAmount >= 50000 }">
