@@ -78,8 +78,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       // 资料管理（禁止：回收站）
       'data', 'data.search', 'data.search.basic', 'data.search.advanced',
 
-      // 财务管理（仅绩效数据，本部门数据）
-      'finance', 'finance.performance_data', 'finance.performance_data.view'
+      // 财务管理（绩效数据和取消代收申请，本部门/个人数据）
+      'finance', 'finance.performance_data', 'finance.performance_data.view',
+      'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create'
     ],
     description: '管理本部门业务和团队，查看部门数据'
   },
@@ -118,8 +119,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       // 资料管理（移除回收站）
       'data', 'data.search', 'data.search.basic',
 
-      // 财务管理（仅绩效数据，个人数据）
-      'finance', 'finance.performance_data', 'finance.performance_data.view'
+      // 财务管理（绩效数据和取消代收申请，个人数据）
+      'finance', 'finance.performance_data', 'finance.performance_data.view',
+      'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create'
     ],
     description: '专注于客户开发和订单管理，查看个人数据'
   },
