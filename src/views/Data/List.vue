@@ -658,10 +658,10 @@
                   </template>
                 </el-table-column>
                 <el-table-column prop="source" label="来源" width="80" show-overflow-tooltip />
-                <el-table-column prop="status" label="状态" width="80">
+                <el-table-column prop="status" label="分配状态" width="100">
                   <template #default="scope">
                     <el-tag size="small" :type="getStatusTagType(scope.row.status)">
-                      {{ scope.row.status }}
+                      {{ getStatusText(scope.row.status) }}
                     </el-tag>
                   </template>
                 </el-table-column>
@@ -1353,24 +1353,6 @@ const navigateToCustomerDetail = (customerCode: string) => {
     ElMessage.warning('未找到对应的客户信息')
   }
 }
-
-// 订单状态配置映射
-const ORDER_STATUS_CONFIG: Record<string, { text: string; type: string }> = {
-  pending: { text: '待审核', type: 'warning' },
-  pending_audit: { text: '待审核', type: 'warning' },
-  approved: { text: '已审核', type: 'success' },
-  rejected: { text: '已拒绝', type: 'danger' },
-  shipped: { text: '已发货', type: 'primary' },
-  delivered: { text: '已签收', type: 'success' },
-  cancelled: { text: '已取消', type: 'info' },
-  pending_cancel: { text: '待取消', type: 'warning' },
-  refunded: { text: '已退款', type: 'danger' },
-  after_sales_created: { text: '已建售后', type: 'warning' },
-  package_exception: { text: '包裹异常', type: 'danger' }
-}
-
-const getOrderStatusText = (status: string) => ORDER_STATUS_CONFIG[status]?.text || status || '未知'
-const getOrderStatusType = (status: string) => ORDER_STATUS_CONFIG[status]?.type || 'info'
 
 // 查找订单信息
 const findOrderByNo = (orderNo: string) => {
