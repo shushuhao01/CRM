@@ -58,8 +58,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       'order', 'order.list', 'order.list.view', 'order.list.edit',
       'order.add', 'order.add.create',
 
-      // 服务管理（禁止：短信管理）
-      'service', 'service.call', 'service.call.view', 'service.call.make',
+      // 服务管理（通话管理，禁止：短信管理）
+      'communication', 'communication.call', 'communication.call.view', 'communication.call.make', 'communication.call.record',
 
       // 业绩统计
       'performance', 'performance.personal', 'performance.personal.view',
@@ -101,8 +101,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       'order', 'order.list', 'order.list.view', 'order.list.edit',
       'order.add', 'order.add.create',
 
-      // 服务管理（移除短信管理）
-      'service', 'service.call', 'service.call.view', 'service.call.make',
+      // 服务管理（通话管理，移除短信管理）
+      'communication', 'communication.call', 'communication.call.view', 'communication.call.make',
 
       // 业绩统计
       'performance', 'performance.personal', 'performance.personal.view',
