@@ -308,7 +308,7 @@
 
           <!-- 分配时间列 -->
           <template #column-assignDate="{ row }">
-            {{ row.status === 'pending' ? row.orderDate : (row.assignDate || '-') }}
+            {{ row.assignDate ? formatDateTime(row.assignDate) : '-' }}
           </template>
 
           <!-- 操作列 -->

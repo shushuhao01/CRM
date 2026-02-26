@@ -235,6 +235,9 @@ export class Order {
   @Column({ name: 'updated_at', type: 'datetime', nullable: true, comment: '更新时间' })
   updatedAt: Date;
 
+  @Column({ name: 'status_updated_at', type: 'datetime', nullable: true, comment: '状态更新时间（记录最后一次状态变更的时间）' })
+  statusUpdatedAt?: Date;
+
   @BeforeInsert()
   setCreatedAt() {
     this.createdAt = new Date();
