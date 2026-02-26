@@ -257,7 +257,29 @@
             placeholder="选择或输入备注"
             @change="(val: string) => updatePerformance(row, 'performanceRemark', val)"
           >
-            <el-option v-for="r in configData.remarkConfigs" :key="r.id" :label="getRemarkLabel(r.configValue)" :value="r.configValue" />
+            <!-- 预设备注选项 -->
+            <el-option
+              v-for="r in configData.remarkConfigs"
+              :key="'preset-' + r.id"
+              :label="getRemarkLabel(r.configValue)"
+              :value="r.configValue"
+            />
+            <!-- 自定义备注历史记录 -->
+            <el-option
+              v-for="(customRemark, index) in customRemarkHistory"
+              :key="'custom-' + index"
+              :value="customRemark"
+            >
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>{{ customRemark }}</span>
+                <el-icon
+                  style="color: #f56c6c; cursor: pointer; margin-left: 8px;"
+                  @click.stop="removeCustomRemark(customRemark)"
+                >
+                  <CircleClose />
+                </el-icon>
+              </div>
+            </el-option>
           </el-select>
         </template>
       </el-table-column>
@@ -302,7 +324,7 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Clock, CircleCheck, Select, TrendCharts, Search, Refresh, Setting, ArrowDown, Download } from '@element-plus/icons-vue'
+import { Clock, CircleCheck, Select, TrendCharts, Search, Refresh, Setting, ArrowDown, Download, CircleClose } from '@element-plus/icons-vue'
 import { financeApi, type PerformanceOrder, type PerformanceManageStatistics, type FinanceConfigData } from '@/api/finance'
 import PerformanceConfigDialog from './components/PerformanceConfigDialog.vue'
 import LogisticsTraceDialog from '@/components/Logistics/LogisticsTraceDialog.vue'
@@ -351,6 +373,58 @@ const configData = reactive<FinanceConfigData>({
   countLadders: [],
   settings: {}
 })
+
+// 🔥 自定义备注历史记录（从localStorage加载）
+const CUSTOM_REMARK_STORAGE_KEY = 'performance_custom_remarks'
+const customRemarkHistory = ref<string[]>([])
+
+// 加载自定义备注历史
+const loadCustomRemarkHistory = () => {
+  try {
+    const stored = localStorage.getItem(CUSTOM_REMARK_STORAGE_KEY)
+    if (stored) {
+      customRemarkHistory.value = JSON.parse(stored)
+    }
+  } catch (e) {
+    console.error('加载自定义备注历史失败:', e)
+    customRemarkHistory.value = []
+  }
+}
+
+// 保存自定义备注历史
+const saveCustomRemarkHistory = () => {
+  try {
+    localStorage.setItem(CUSTOM_REMARK_STORAGE_KEY, JSON.stringify(customRemarkHistory.value))
+  } catch (e) {
+    console.error('保存自定义备注历史失败:', e)
+  }
+}
+
+// 添加自定义备注到历史记录
+const addCustomRemarkToHistory = (remark: string) => {
+  if (!remark || remark.trim() === '') return
+
+  // 检查是否是预设备注
+  const isPreset = configData.remarkConfigs.some(r => r.configValue === remark)
+  if (isPreset) return
+
+  // 检查是否已存在
+  if (customRemarkHistory.value.includes(remark)) return
+
+  // 添加到历史记录
+  customRemarkHistory.value.push(remark)
+  saveCustomRemarkHistory()
+}
+
+// 删除自定义备注历史记录
+const removeCustomRemark = (remark: string) => {
+  const index = customRemarkHistory.value.indexOf(remark)
+  if (index > -1) {
+    customRemarkHistory.value.splice(index, 1)
+    saveCustomRemarkHistory()
+    ElMessage.success('已删除备注历史记录')
+  }
+}
 
 // 筛选条件
 const quickDateFilter = ref('thisMonth')
@@ -426,6 +500,8 @@ onMounted(async () => {
   await departmentStore.fetchDepartments()
   await loadSalesPersons()
   await loadConfig()
+  // 🔥 加载自定义备注历史
+  loadCustomRemarkHistory()
   // 根据角色设置默认筛选值
   initDefaultFilters()
   // 默认选择本月
@@ -732,6 +808,11 @@ const updatePerformance = async (row: PerformanceOrder, field: string, value: an
     const data: any = {}
     data[field] = value
 
+    // 🔥 如果是备注字段，添加到自定义历史记录
+    if (field === 'performanceRemark' && value) {
+      addCustomRemarkToHistory(value)
+    }
+
     // 如果状态改为无效，自动将系数设为0
     if (field === 'performanceStatus' && value === 'invalid') {
       data.performanceCoefficient = 0
@@ -762,6 +843,12 @@ const saveRow = async (row: PerformanceOrder) => {
       performanceCoefficient: row.performanceCoefficient,
       performanceRemark: row.performanceRemark
     }
+
+    // 🔥 如果有备注，添加到自定义历史记录
+    if (row.performanceRemark) {
+      addCustomRemarkToHistory(row.performanceRemark)
+    }
+
     // 传入时间范围，用于计算阶梯佣金
     if (dateRange.value) {
       data.startDate = dateRange.value[0]
