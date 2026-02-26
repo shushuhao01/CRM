@@ -598,16 +598,11 @@ const loadData = async () => {
     // 响应拦截器返回 response.data.data，即 { list: [], total: 0 }
     const resData = res as any
     if (resData && Array.isArray(resData.list)) {
-      // 获取配置中的备注值列表
-      const validRemarks = configData.remarkConfigs.map(r => r.configValue)
-      const defaultRemark = validRemarks.length > 0 ? validRemarks[0] : ''
-
-      // 给没有备注或备注不在配置中的订单设置默认值
+      // 🔥 直接使用后端返回的备注值，支持自定义输入
       tableData.value = resData.list.map((item: PerformanceOrder) => ({
         ...item,
-        performanceRemark: (item.performanceRemark && validRemarks.includes(item.performanceRemark))
-          ? item.performanceRemark
-          : defaultRemark
+        // 保留原始备注值，无论是预设的还是自定义的
+        performanceRemark: item.performanceRemark || ''
       }))
       pagination.total = resData.total || 0
     } else {
