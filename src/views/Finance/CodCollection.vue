@@ -92,6 +92,7 @@
           <el-tab-pane name="pending" label="待处理" />
           <el-tab-pane name="returned" label="已返款" />
           <el-tab-pane name="cancelled" label="已改代收" />
+          <el-tab-pane name="zero" label="无需代收" />
           <el-tab-pane name="all" label="全部" />
         </el-tabs>
       </div>
@@ -118,7 +119,12 @@
       <el-table-column prop="finalAmount" label="订单金额" width="100" align="right">
         <template #default="{ row }">¥{{ formatMoney(row.finalAmount) }}</template>
       </el-table-column>
-      <el-table-column prop="codAmount" label="代收金额" width="110" align="right">
+      <el-table-column label="原始代收金额" width="120" align="right">
+        <template #default="{ row }">
+          <span style="color: #909399;">¥{{ formatMoney((row.totalAmount || 0) - (row.depositAmount || 0)) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="codAmount" label="当前代收金额" width="120" align="right">
         <template #default="{ row }"><span class="cod-amount">¥{{ formatMoney(row.codAmount) }}</span></template>
       </el-table-column>
       <el-table-column prop="codStatus" label="代收状态" width="100">
@@ -140,23 +146,42 @@
       <el-table-column prop="createdAt" label="下单时间" width="160">
         <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link size="small" @click="showDetailDialog(row)">详情</el-button>
-          <el-button
-            type="warning"
-            link
-            size="small"
-            @click="showCodDialog(row)"
-            :disabled="row.codStatus === 'returned' || row.codStatus === 'cancelled'"
-          >改代收</el-button>
-          <el-button
-            type="success"
-            link
-            size="small"
-            @click="handleReturn(row)"
-            :disabled="row.codStatus === 'returned' || row.codStatus === 'cancelled'"
-          >返款</el-button>
+          <!-- 无需代收标签页只显示详情按钮 -->
+          <template v-if="activeTab !== 'zero'">
+            <el-tooltip
+              :content="getDisabledReason(row)"
+              :disabled="!getDisabledReason(row)"
+              placement="top"
+            >
+              <span>
+                <el-button
+                  type="warning"
+                  link
+                  size="small"
+                  @click="showCodDialog(row)"
+                  :disabled="row.codStatus === 'returned' || row.codStatus === 'cancelled' || isZeroCodOrder(row)"
+                >改代收</el-button>
+              </span>
+            </el-tooltip>
+            <el-tooltip
+              :content="getDisabledReason(row)"
+              :disabled="!getDisabledReason(row)"
+              placement="top"
+            >
+              <span>
+                <el-button
+                  type="success"
+                  link
+                  size="small"
+                  @click="handleReturn(row)"
+                  :disabled="row.codStatus === 'returned' || row.codStatus === 'cancelled' || isZeroCodOrder(row)"
+                >返款</el-button>
+              </span>
+            </el-tooltip>
+          </template>
         </template>
       </el-table-column>
     </el-table>
@@ -251,7 +276,7 @@ const endDate = ref('')
 const departmentFilter = ref('')
 const salesPersonFilter = ref('')
 const orderStatusFilter = ref('')
-const activeTab = ref<'pending' | 'returned' | 'cancelled' | 'all'>('pending')
+const activeTab = ref<'pending' | 'returned' | 'cancelled' | 'zero' | 'all'>('pending')
 const batchSearchVisible = ref(false)
 const batchSearchKeywords = ref('')
 const searchKeyword = ref('')
@@ -282,6 +307,27 @@ const hasModifiedCod = (order: any) => {
   const originalCodAmount = (order.totalAmount || 0) - (order.depositAmount || 0)
   const currentCodAmount = order.codAmount || 0
   return currentCodAmount < originalCodAmount
+}
+
+// 判断是否是无需代收的订单（原始代收金额为0）
+const isZeroCodOrder = (order: any) => {
+  if (!order) return false
+  const originalCodAmount = (order.totalAmount || 0) - (order.depositAmount || 0)
+  return originalCodAmount === 0
+}
+
+// 获取按钮禁用原因
+const getDisabledReason = (row: any) => {
+  if (isZeroCodOrder(row)) {
+    return '订单无代收金额，客户已前置支付全额'
+  }
+  if (row.codStatus === 'returned') {
+    return '订单已返款，不可再操作'
+  }
+  if (row.codStatus === 'cancelled') {
+    return '订单已改代收，不可再操作'
+  }
+  return ''
 }
 
 // 🔥 监听代收金额输入，超过最大值时自动重置
@@ -322,7 +368,48 @@ const getDateRange = (type: string): string[] => {
 }
 
 const loadStats = async () => { try { const p: any = {}; if (startDate.value) p.startDate = startDate.value; if (endDate.value) p.endDate = endDate.value; if (departmentFilter.value) p.departmentId = departmentFilter.value; if (salesPersonFilter.value) p.salesPersonId = salesPersonFilter.value; const r = await getCodStats(p) as any; if (r) stats.value = r } catch (e) { console.error(e) } }
-const loadData = async () => { loading.value = true; try { const p: any = { page: pagination.value.page, pageSize: pagination.value.pageSize, tab: activeTab.value }; if (startDate.value) p.startDate = startDate.value; if (endDate.value) p.endDate = endDate.value; if (departmentFilter.value) p.departmentId = departmentFilter.value; if (salesPersonFilter.value) p.salesPersonId = salesPersonFilter.value; if (orderStatusFilter.value) p.status = orderStatusFilter.value; if (batchSearchKeywords.value) p.keywords = batchSearchKeywords.value; const r = await getCodList(p) as any; if (r) { tableData.value = r.list || []; pagination.value.total = r.total || 0 } } catch (e) { console.error(e) } finally { loading.value = false } }
+const loadData = async () => {
+  loading.value = true
+  try {
+    const p: any = { page: pagination.value.page, pageSize: pagination.value.pageSize, tab: activeTab.value }
+    if (startDate.value) p.startDate = startDate.value
+    if (endDate.value) p.endDate = endDate.value
+    if (departmentFilter.value) p.departmentId = departmentFilter.value
+    if (salesPersonFilter.value) p.salesPersonId = salesPersonFilter.value
+    if (orderStatusFilter.value) p.status = orderStatusFilter.value
+    if (batchSearchKeywords.value) p.keywords = batchSearchKeywords.value
+    const r = await getCodList(p) as any
+    if (r) {
+      let list = r.list || []
+
+      // 🔥 根据标签页过滤订单
+      if (activeTab.value === 'pending') {
+        // 待处理标签：只显示当前代收金额>0且未返款未改代收的订单
+        list = list.filter((order: CodOrder) => order.codAmount > 0)
+      } else if (activeTab.value === 'returned') {
+        // 已返款标签：只显示当前代收金额>0且已返款的订单
+        list = list.filter((order: CodOrder) => order.codAmount > 0)
+      } else if (activeTab.value === 'cancelled') {
+        // 已改代收标签：显示所有已改代收的订单（由后端tab参数控制）
+        // 不过滤，保持后端返回的结果
+      } else if (activeTab.value === 'zero') {
+        // 无需代收标签：只显示原始代收金额为0的订单
+        list = list.filter((order: CodOrder) => {
+          const originalCodAmount = (order.totalAmount || 0) - (order.depositAmount || 0)
+          return originalCodAmount === 0
+        })
+      }
+      // 全部标签：显示所有订单
+
+      tableData.value = list
+      pagination.value.total = list.length
+    }
+  } catch (e) {
+    console.error(e)
+  } finally {
+    loading.value = false
+  }
+}
 const loadDepartments = async () => { try { const r = await getCodDepartments() as any; departments.value = r || [] } catch (e) { console.error(e) } }
 const loadSalesUsers = async () => { try { const r = await getCodSalesUsers(departmentFilter.value) as any; salesUsers.value = r || [] } catch (e) { console.error(e) } }
 
@@ -340,18 +427,38 @@ const applyBatchSearch = () => { batchSearchVisible.value = false; searchKeyword
 
 const getOrderStatusType = (s: string) => ({ shipped: 'primary', delivered: 'success', completed: 'success', rejected: 'danger', logistics_returned: 'warning', exception: 'danger' }[s] || 'info')
 const getOrderStatusText = (s: string) => ({ shipped: '已发货', delivered: '已签收', completed: '已完成', rejected: '拒收', logistics_returned: '已退回', exception: '异常' }[s] || s)
-const getCodStatusType = (r: CodOrder) => r.codAmount === 0 && r.codStatus === 'cancelled' ? 'info' : r.codStatus === 'returned' ? 'success' : r.codStatus === 'cancelled' ? 'warning' : 'danger'
+const getCodStatusType = (r: CodOrder) => {
+  const originalCodAmount = (r.totalAmount || 0) - (r.depositAmount || 0)
+  // 原始代收金额为0：灰色（info）
+  if (originalCodAmount === 0) return 'info'
+  // 已返款：绿色（success）
+  if (r.codStatus === 'returned') return 'success'
+  // 已改代收：橙色（warning）
+  if (r.codStatus === 'cancelled') return 'warning'
+  // 未返款：红色（danger）
+  return 'danger'
+}
 const getCodStatusText = (r: CodOrder) => {
-  // 🔥 代收状态显示逻辑：基于codAmount（当前实际代收金额）
-  if (r.codAmount === 0 && r.codStatus === 'cancelled') {
+  // 🔥 代收状态显示逻辑
+  // 1. 计算原始代收金额
+  const originalCodAmount = (r.totalAmount || 0) - (r.depositAmount || 0)
+
+  // 2. 如果原始代收金额为0，显示"无需代收"
+  if (originalCodAmount === 0) {
     return '无需代收'
   }
+
+  // 3. 如果已返款，显示"已返款"
   if (r.codStatus === 'returned') {
     return '已返款'
   }
+
+  // 4. 如果改过代收（包括改成0），显示"已改代收"
   if (r.codStatus === 'cancelled') {
     return '已改代收'
   }
+
+  // 5. 其他情况显示"未返款"
   return '未返款'
 }
 
@@ -364,6 +471,12 @@ const showCodDialog = (r: CodOrder) => {
   const signedStatuses = ['delivered', 'completed']
   if (signedStatuses.includes(r.status)) {
     ElMessage.warning('订单已签收，不支持改代收')
+    return
+  }
+
+  // 🔥 检查代收金额：代收金额为0不能改代收
+  if (r.codAmount === 0) {
+    ElMessage.warning('代收金额为0，客户已全额付款，无需改代收')
     return
   }
 
@@ -386,6 +499,14 @@ const showBatchCodDialog = () => {
   if (invalidOrders.length > 0) {
     const invalidOrderNumbers = invalidOrders.map(r => r.orderNumber).join('、')
     ElMessage.warning(`以下订单已签收，不支持改代收：${invalidOrderNumbers}`)
+    return
+  }
+
+  // 🔥 检查代收金额：代收金额为0不能改代收
+  const zeroAmountOrders = selectedRows.value.filter(r => r.codAmount === 0)
+  if (zeroAmountOrders.length > 0) {
+    const zeroOrderNumbers = zeroAmountOrders.map(r => r.orderNumber).join('、')
+    ElMessage.warning(`以下订单代收金额为0，客户已全额付款，无需改代收：${zeroOrderNumbers}`)
     return
   }
 
@@ -439,6 +560,12 @@ const handleReturn = async (r: CodOrder) => {
       return
     }
 
+    // 🔥 检查代收金额：代收金额为0不能返款
+    if (r.codAmount === 0) {
+      ElMessage.warning('代收金额为0，客户已全额付款，无需返款')
+      return
+    }
+
     await ElMessageBox.confirm(
       '',
       '确认返款',
@@ -475,6 +602,14 @@ const handleBatchReturn = async () => {
     return
   }
 
+  // 🔥 检查代收金额：代收金额为0不能返款
+  const zeroAmountOrders = selectedRows.value.filter(r => r.codAmount === 0)
+  if (zeroAmountOrders.length > 0) {
+    const zeroOrderNumbers = zeroAmountOrders.map(r => r.orderNumber).join('、')
+    ElMessage.warning(`以下订单代收金额为0，客户已全额付款，无需返款：${zeroOrderNumbers}`)
+    return
+  }
+
   try {
     await ElMessageBox.confirm(
       '',
@@ -506,39 +641,57 @@ const handleExport = async () => {
   try {
     const XLSX = await import('xlsx')
 
-    // 准备导出数据
+    // 准备订单数据
     const exportData = selectedRows.value.map((row) => ({
       订单号: row.orderNumber,
       客户姓名: row.customerName,
       订单状态: getOrderStatusText(row.status),
       订单金额: Number(row.finalAmount || 0),
-      代收金额: Number(row.codAmount || 0),
+      原始代收金额: Number((row.totalAmount || 0) - (row.depositAmount || 0)),
+      当前代收金额: Number(row.codAmount || 0),
       代收状态: getCodStatusText(row),
       销售人员: row.salesPersonName || '',
       物流单号: row.trackingNumber || '',
       最新物流动态: row.latestLogisticsInfo || '',
-      下单时间: row.createdAt || ''
+      下单时间: formatDateTime(row.createdAt)
     }))
+
+    // 准备统计汇总数据
+    const statsData = [
+      { 统计项: '今日订单金额', 金额: Number(stats.value.todayCod || 0) },
+      { 统计项: '本月订单金额', 金额: Number(stats.value.monthCod || 0) },
+      { 统计项: '已改代收', 金额: Number(stats.value.cancelledCod || 0) },
+      { 统计项: '已返款', 金额: Number(stats.value.returnedCod || 0) },
+      { 统计项: '未返款', 金额: Number(stats.value.pendingCod || 0) }
+    ]
 
     // 创建工作簿
     const wb = XLSX.utils.book_new()
-    const ws = XLSX.utils.json_to_sheet(exportData)
 
-    // 设置列宽
-    ws['!cols'] = [
+    // 创建订单数据工作表
+    const ws1 = XLSX.utils.json_to_sheet(exportData)
+    ws1['!cols'] = [
       { wch: 20 }, // 订单号
       { wch: 12 }, // 客户姓名
       { wch: 10 }, // 订单状态
       { wch: 12 }, // 订单金额
-      { wch: 12 }, // 代收金额
+      { wch: 15 }, // 原始代收金额
+      { wch: 15 }, // 当前代收金额
       { wch: 10 }, // 代收状态
       { wch: 10 }, // 销售人员
       { wch: 20 }, // 物流单号
       { wch: 40 }, // 最新物流动态
       { wch: 20 }  // 下单时间
     ]
+    XLSX.utils.book_append_sheet(wb, ws1, '订单数据')
 
-    XLSX.utils.book_append_sheet(wb, ws, '代收管理')
+    // 创建统计汇总工作表
+    const ws2 = XLSX.utils.json_to_sheet(statsData)
+    ws2['!cols'] = [
+      { wch: 20 }, // 统计项
+      { wch: 15 }  // 金额
+    ]
+    XLSX.utils.book_append_sheet(wb, ws2, '统计汇总')
 
     // 生成文件名
     const now = new Date()
@@ -547,7 +700,7 @@ const handleExport = async () => {
 
     // 导出
     XLSX.writeFile(wb, fileName)
-    ElMessage.success(`成功导出 ${exportData.length} 条数据`)
+    ElMessage.success(`成功导出 ${exportData.length} 条订单数据和统计汇总`)
   } catch (e) {
     console.error('导出失败:', e)
     ElMessage.error('导出失败')
@@ -604,6 +757,21 @@ const handleOrderUpdate = () => {
 .action-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; background: #fff; padding: 0 16px; border-radius: 8px; }
 .action-left { .status-tabs { :deep(.el-tabs__header) { margin: 0; } :deep(.el-tabs__nav-wrap::after) { display: none; } } }
 .action-right { display: flex; gap: 8px; }
-.data-table { background: #fff; border-radius: 8px; .cod-amount { color: #e6a23c; font-weight: 600; } .logistics-info { font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .no-data { color: #c0c4cc; } }
+.data-table {
+  background: #fff;
+  border-radius: 8px;
+  .cod-amount { color: #e6a23c; font-weight: 600; }
+  .logistics-info { font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .no-data { color: #c0c4cc; }
+
+  // 禁用按钮样式：纯灰色
+  :deep(.el-button.is-link.is-disabled) {
+    color: #c0c4cc !important;
+    cursor: not-allowed;
+    &:hover {
+      color: #c0c4cc !important;
+    }
+  }
+}
 .pagination-wrapper { display: flex; justify-content: flex-end; margin-top: 16px; padding: 16px; background: #fff; border-radius: 8px; }
 </style>
