@@ -651,8 +651,8 @@ const getLevelText = (level: string) => {
 
 .detail-item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 8px 0;
   border-bottom: 1px solid #f3f4f6;
 }
@@ -665,16 +665,18 @@ const getLevelText = (level: string) => {
   font-size: 13px;
   color: #6b7280;
   min-width: 60px;
+  flex-shrink: 0;
 }
 
 .detail-value {
   font-size: 14px;
   color: #1f2937;
   font-weight: 500;
+  text-align: left;
 }
 
 .detail-value.address {
-  text-align: right;
+  text-align: left;
   word-break: break-all;
 }
 
