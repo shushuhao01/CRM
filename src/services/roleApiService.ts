@@ -467,6 +467,43 @@ class RoleApiService {
       throw error
     }
   }
+
+  /**
+   * 获取角色权限
+   */
+  async getRolePermissions(roleId: string): Promise<{ roleId: string; roleName: string; permissions: string[] }> {
+    try {
+      console.log(`[RoleAPI] 开始获取角色权限: ${roleId}`)
+      const response = await apiService.get<{ success: boolean; data: { roleId: string; roleName: string; permissions: string[] } }>(`/roles/${roleId}/permissions`)
+      console.log(`[RoleAPI] 获取角色权限成功:`, response.data)
+      return response.data
+    } catch (error) {
+      console.warn(`[RoleAPI] 获取角色权限失败: ${roleId}`, error)
+      // 返回空权限
+      return {
+        roleId,
+        roleName: 'default',
+        permissions: []
+      }
+    }
+  }
+
+  /**
+   * 更新角色权限
+   */
+  async updateRolePermissions(roleId: string, permissions: string[]): Promise<{ roleId: string; roleName: string; permissions: string[] }> {
+    try {
+      console.log(`[RoleAPI] 开始更新角色权限: ${roleId}`, permissions)
+      const response = await apiService.put<{ success: boolean; data: { roleId: string; roleName: string; permissions: string[] }; message: string }>(`/roles/${roleId}/permissions`, {
+        permissions
+      })
+      console.log(`[RoleAPI] 更新角色权限成功:`, response.data)
+      return response.data
+    } catch (error) {
+      console.error(`[RoleAPI] 更新角色权限失败: ${roleId}`, error)
+      throw error
+    }
+  }
 }
 
 export const roleApiService = new RoleApiService()
