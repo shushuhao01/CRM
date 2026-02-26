@@ -713,8 +713,27 @@ const recognizeAddress = () => {
       }
     }
 
-    // 2. 识别城市
-    if (matchedProvince) {
+    // 🔥 2. 如果没有识别到省份，尝试直接识别城市，然后反向查找省份
+    if (!matchedProvince) {
+      console.log('[地址识别] 未识别到省份，尝试直接识别城市...')
+
+      // 遍历所有省份的城市列表
+      for (const province of provinceList) {
+        const cityList = getCitiesByProvince(province.value)
+        for (const city of cityList) {
+          const cityName = city.label.replace(/市|地区|自治州|盟/g, '')
+          if (input.includes(city.label) || input.includes(cityName)) {
+            matchedProvince = province.value
+            matchedCity = city.value
+            remainingAddress = input.replace(city.label, '').replace(cityName, '')
+            console.log(`[地址识别] 通过城市"${city.label}"识别到省份"${province.label}"`)
+            break
+          }
+        }
+        if (matchedProvince) break
+      }
+    } else {
+      // 3. 如果已识别省份，继续识别城市
       const cityList = getCitiesByProvince(matchedProvince)
       for (const city of cityList) {
         const cityName = city.label.replace(/市|地区|自治州|盟/g, '')
@@ -726,7 +745,7 @@ const recognizeAddress = () => {
       }
     }
 
-    // 3. 识别区县
+    // 4. 识别区县
     if (matchedProvince && matchedCity) {
       const districtList = getDistrictsByCity(matchedProvince, matchedCity)
       for (const district of districtList) {
@@ -739,13 +758,13 @@ const recognizeAddress = () => {
       }
     }
 
-    // 4. 清理剩余地址（去除可能的姓名和电话）
+    // 5. 清理剩余地址（去除可能的姓名和电话）
     // 移除电话号码
     remainingAddress = remainingAddress.replace(/1[3-9]\d{9}/g, '')
     // 移除常见分隔符
     remainingAddress = remainingAddress.replace(/^[\s,，、\-]+/, '').trim()
 
-    // 5. 填充表单
+    // 6. 填充表单
     if (matchedProvince) {
       customerForm.province = matchedProvince
       cities.value = getCitiesByProvince(matchedProvince)
@@ -767,7 +786,7 @@ const recognizeAddress = () => {
 
       ElMessage.success('地址识别成功，已自动填充')
     } else {
-      ElMessage.warning('未能识别省份信息，请检查地址格式')
+      ElMessage.warning('未能识别省份或城市信息，请检查地址格式')
     }
   } catch (error) {
     console.error('地址识别失败:', error)
