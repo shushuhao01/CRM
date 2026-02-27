@@ -89,7 +89,10 @@ router.get('/shares', async (req, res) => {
             data: {
                 shares: shares.map((s) => ({
                     ...s,
-                    shareMembers: s.shareMembers ? JSON.parse(s.shareMembers) : []
+                    // 🔥 修复：mysql2 驱动会自动将 JSON 转为对象，不需要再次 parse
+                    shareMembers: s.shareMembers
+                        ? (typeof s.shareMembers === 'string' ? JSON.parse(s.shareMembers) : s.shareMembers)
+                        : []
                 })),
                 total: countResult?.total || 0,
                 page: Number(page),

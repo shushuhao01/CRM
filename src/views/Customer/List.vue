@@ -17,12 +17,12 @@
 
       <el-card class="summary-card">
         <div class="card-content">
-          <div class="card-icon active">
-            <el-icon><UserFilled /></el-icon>
+          <div class="card-icon month">
+            <el-icon><Calendar /></el-icon>
           </div>
           <div class="card-info">
-            <div class="card-value">{{ summaryData.activeCustomers }}</div>
-            <div class="card-label">活跃客户</div>
+            <div class="card-value">{{ summaryData.monthCustomers }}</div>
+            <div class="card-label">当月客户数</div>
           </div>
         </div>
       </el-card>
@@ -34,19 +34,19 @@
           </div>
           <div class="card-info">
             <div class="card-value">{{ summaryData.newCustomers }}</div>
-            <div class="card-label">新增客户</div>
+            <div class="card-label">今日新增</div>
           </div>
         </div>
       </el-card>
 
       <el-card class="summary-card">
         <div class="card-content">
-          <div class="card-icon high-value">
-            <el-icon><Star /></el-icon>
+          <div class="card-icon no-order">
+            <el-icon><WarningFilled /></el-icon>
           </div>
           <div class="card-info">
-            <div class="card-value">{{ summaryData.highValueCustomers }}</div>
-            <div class="card-label">高价值客户</div>
+            <div class="card-value">{{ summaryData.noOrderCustomers }}</div>
+            <div class="card-label">未下单客户数</div>
           </div>
         </div>
       </el-card>
@@ -484,7 +484,7 @@
 import { ref, reactive, onMounted, onUnmounted, computed, watch, onActivated, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Download, Refresh, User, UserFilled, Star, Search, Setting } from '@element-plus/icons-vue'
+import { Plus, Download, Refresh, User, UserFilled, Star, Search, Setting, Calendar, WarningFilled } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
 import { useCustomerStore } from '@/stores/customer'
@@ -558,9 +558,9 @@ const searchForm = reactive({
 // 统计数据
 const summaryData = reactive({
   totalCustomers: 0,
-  activeCustomers: 0,
+  monthCustomers: 0,
   newCustomers: 0,
-  highValueCustomers: 0
+  noOrderCustomers: 0
 })
 
 // 快捷筛选 - 默认显示所有客户，避免新客户被日期过滤隐藏
@@ -1608,9 +1608,9 @@ const loadCustomerList = async (forceReload = false) => {
       // 🔥 更新统计数据（使用后端返回的统计数据）
       if (statistics) {
         summaryData.totalCustomers = statistics.totalCustomers || 0
-        summaryData.activeCustomers = statistics.activeCustomers || 0
+        summaryData.monthCustomers = statistics.monthCustomers || 0
         summaryData.newCustomers = statistics.newCustomers || 0
-        summaryData.highValueCustomers = statistics.highValueCustomers || 0
+        summaryData.noOrderCustomers = statistics.noOrderCustomers || 0
         console.log(`[CustomerList] ✅ 统计数据已更新:`, statistics)
       }
 
@@ -1621,9 +1621,9 @@ const loadCustomerList = async (forceReload = false) => {
       pagination.total = 0
       // 重置统计数据
       summaryData.totalCustomers = 0
-      summaryData.activeCustomers = 0
+      summaryData.monthCustomers = 0
       summaryData.newCustomers = 0
-      summaryData.highValueCustomers = 0
+      summaryData.noOrderCustomers = 0
     }
 
   } catch (error) {
@@ -1907,7 +1907,7 @@ onUnmounted(() => {
   background: #909399;
 }
 
-.card-icon.active {
+.card-icon.month {
   background: #67c23a;
 }
 
@@ -1915,8 +1915,8 @@ onUnmounted(() => {
   background: #409eff;
 }
 
-.card-icon.high-value {
-  background: #e6a23c;
+.card-icon.no-order {
+  background: #f56c6c;
 }
 
 .card-info {
