@@ -47,7 +47,7 @@
                 <el-icon><Money /></el-icon>
               </div>
               <div class="card-info">
-                <div class="card-value">¥{{ shareStats.totalAmount.toLocaleString() }}</div>
+                <div class="card-value">¥{{ (shareStats.totalAmount || 0).toLocaleString() }}</div>
                 <div class="card-label">分享总金额</div>
               </div>
             </div>
@@ -82,166 +82,158 @@
       </el-row>
     </div>
 
-    <!-- 分享记录列表 -->
-    <el-card class="share-records">
-      <template #header>
-        <div class="card-header">
-          <span>分享记录</span>
-          <div class="header-filters">
-            <el-button
-              @click="showFullscreenView"
-              :icon="FullScreen"
-              class="fullscreen-btn"
-              title="全屏查看"
-            >
-              全屏查看
-            </el-button>
-            <el-select v-model="filterStatus" placeholder="状态筛选" clearable style="width: 120px">
-              <el-option label="全部" value="" />
-              <el-option label="生效中" value="active" />
-              <el-option label="已完成" value="completed" />
-              <el-option label="已取消" value="cancelled" />
-            </el-select>
-            <el-date-picker
-              v-model="filterDateRange"
-              type="daterange"
-              range-separator="至"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              format="YYYY-MM-DD"
-              value-format="YYYY-MM-DD"
-              style="width: 240px; margin-left: 10px"
-            />
-            <div class="search-container">
-              <el-input
-                v-model="searchOrderNumber"
-                placeholder="搜索订单号"
-                clearable
-                style="width: 180px"
-                @keyup.enter="handleSearch"
-                @clear="handleClearSearch"
-              >
-                <template #prefix>
-                  <el-icon><Search /></el-icon>
-                </template>
-              </el-input>
-              <el-button
-                type="primary"
-                @click="handleSearch"
-                :disabled="!searchOrderNumber.trim()"
-                class="search-btn"
-              >
-                搜索
-              </el-button>
-              <el-button
-                v-if="isSearching"
-                @click="handleClearSearch"
-                class="clear-btn"
-              >
-                清除
-              </el-button>
-            </div>
-          </div>
-        </div>
-      </template>
-
-      <el-table
-        :data="filteredShareRecords"
-        v-loading="loading"
-        class="share-table"
-        :row-class-name="getTableRowClassName"
-        @row-click="handleRowClick"
-      >
-        <el-table-column prop="shareNumber" label="分享编号" width="140" />
-        <el-table-column prop="orderNumber" label="订单编号" width="140">
-          <template #default="{ row }">
-            <el-link type="primary" @click="viewOrderDetail(row.orderId)">
-              {{ row.orderNumber }}
-            </el-link>
-          </template>
-        </el-table-column>
-        <el-table-column prop="orderAmount" label="订单金额" width="120">
-          <template #default="{ row }">
-            ¥{{ row.orderAmount.toLocaleString() }}
-          </template>
-        </el-table-column>
-        <el-table-column label="分享成员" width="200">
-          <template #default="{ row }">
-            <div class="share-members">
-              <el-tag
-                v-for="member in row.shareMembers"
-                :key="member.userId"
-                size="small"
-                :type="member.userId === userStore.currentUser?.id ? 'success' : 'info'"
-                style="margin-right: 5px"
-              >
-                {{ member.userName }} ({{ member.percentage }}%)
-              </el-tag>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="160" />
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">
-              {{ getStatusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="createdBy" label="创建人" width="100" />
-        <el-table-column label="操作" width="150" fixed="right">
-          <template #default="{ row }">
-            <div class="action-buttons">
-              <el-button
-                type="info"
-                size="small"
-                plain
-                @click="viewShareDetail(row)"
-                class="action-btn view-btn"
-              >
-                <el-icon><View /></el-icon>
-                详情
-              </el-button>
-              <el-button
-                v-if="row.status === 'active' && canEditShare(row)"
-                type="primary"
-                size="small"
-                plain
-                @click="editShare(row)"
-                class="action-btn edit-btn"
-              >
-                <el-icon><Edit /></el-icon>
-                编辑
-              </el-button>
-              <el-button
-                v-if="row.status === 'active' && canCancelShare(row)"
-                type="danger"
-                size="small"
-                plain
-                @click="cancelShare(row)"
-                class="action-btn cancel-btn"
-              >
-                <el-icon><Close /></el-icon>
-                取消
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <!-- 分页 -->
-      <div class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="totalRecords"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
+    <!-- 分享记录筛选栏 -->
+    <div class="table-toolbar">
+      <div class="toolbar-left">
+        <span class="toolbar-title">分享记录</span>
       </div>
-    </el-card>
+      <div class="toolbar-right">
+        <el-select v-model="filterStatus" placeholder="状态筛选" clearable style="width: 120px">
+          <el-option label="全部" value="" />
+          <el-option label="生效中" value="active" />
+          <el-option label="已完成" value="completed" />
+          <el-option label="已取消" value="cancelled" />
+        </el-select>
+        <el-date-picker
+          v-model="filterDateRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          format="YYYY-MM-DD"
+          value-format="YYYY-MM-DD"
+          style="width: 240px"
+        />
+        <el-input
+          v-model="searchOrderNumber"
+          placeholder="搜索订单号"
+          clearable
+          style="width: 180px"
+          @keyup.enter="handleSearch"
+          @clear="handleClearSearch"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-button
+          type="primary"
+          @click="handleSearch"
+          :disabled="!searchOrderNumber.trim()"
+        >
+          搜索
+        </el-button>
+        <el-button
+          v-if="isSearching"
+          @click="handleClearSearch"
+        >
+          清除
+        </el-button>
+        <el-button
+          @click="showFullscreenView"
+          :icon="FullScreen"
+          title="全屏查看"
+        >
+          全屏
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 分享记录表格 -->
+    <el-table
+      :data="filteredShareRecords"
+      v-loading="loading"
+      class="share-table"
+      :row-class-name="getTableRowClassName"
+      @row-click="handleRowClick"
+      stripe
+      border
+    >
+      <el-table-column prop="shareNumber" label="分享编号" min-width="150" />
+      <el-table-column prop="orderNumber" label="订单编号" min-width="150">
+        <template #default="{ row }">
+          <el-link type="primary" @click="viewOrderDetail(row.orderId)">
+            {{ row.orderNumber }}
+          </el-link>
+        </template>
+      </el-table-column>
+      <el-table-column prop="orderAmount" label="订单金额" min-width="120">
+        <template #default="{ row }">
+          ¥{{ (row.orderAmount || 0).toLocaleString() }}
+        </template>
+      </el-table-column>
+      <el-table-column label="分享成员" min-width="300">
+        <template #default="{ row }">
+          <div class="share-members">
+            <el-tag
+              v-for="member in row.shareMembers"
+              :key="member.userId"
+              size="small"
+              :type="member.userId === userStore.currentUser?.id ? 'success' : 'info'"
+              style="margin-right: 5px; margin-bottom: 4px"
+            >
+              {{ member.userName }} ¥{{ (member.shareAmount || 0).toLocaleString() }} ({{ member.percentage }}%)
+            </el-tag>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column prop="createTime" label="创建时间" min-width="160" />
+      <el-table-column prop="status" label="状态" min-width="100">
+        <template #default="{ row }">
+          <el-tag :type="getStatusType(row.status)">
+            {{ getStatusText(row.status) }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="createdBy" label="创建人" min-width="100" />
+      <el-table-column label="操作" width="240" fixed="right">
+        <template #default="{ row }">
+          <div class="action-buttons">
+            <el-button
+              type="info"
+              size="small"
+              plain
+              @click.stop="viewShareDetail(row)"
+              class="action-btn view-btn"
+            >
+              详情
+            </el-button>
+            <el-button
+              v-if="row.status === 'active' && canEditShare(row)"
+              type="primary"
+              size="small"
+              plain
+              @click.stop="editShare(row)"
+              class="action-btn edit-btn"
+            >
+              编辑
+            </el-button>
+            <el-button
+              v-if="row.status === 'active' && canCancelShare(row)"
+              type="danger"
+              size="small"
+              plain
+              @click.stop="cancelShare(row)"
+              class="action-btn cancel-btn"
+            >
+              取消
+            </el-button>
+          </div>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <div style="margin-top: 20px; text-align: center;">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="totalRecords"
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
+    </div>
 
     <!-- 新建分享对话框 -->
     <el-dialog
@@ -305,14 +297,14 @@
               <el-option
                 v-for="order in availableOrders"
                 :key="order.id"
-                :label="`${order.orderNumber} - ¥${order.totalAmount.toLocaleString()} - ${order.customerName}`"
+                :label="`${order.orderNumber} - ¥${(order.totalAmount || 0).toLocaleString()} - ${order.customerName}`"
                 :value="order.id"
               >
                 <div class="order-option">
                   <div class="order-main">
                     <el-tag type="primary" size="small">{{ order.orderNumber }}</el-tag>
                     <span class="customer-name">{{ order.customerName }}</span>
-                    <span class="order-amount">¥{{ order.totalAmount.toLocaleString() }}</span>
+                    <span class="order-amount">¥{{ (order.totalAmount || 0).toLocaleString() }}</span>
                   </div>
                   <div class="order-sub">
                     <span class="phone">{{ order.customerPhone }}</span>
@@ -336,7 +328,7 @@
             </el-descriptions-item>
             <el-descriptions-item label="客户名称">{{ selectedOrder.customerName }}</el-descriptions-item>
             <el-descriptions-item label="订单金额">
-              <span class="amount-text">¥{{ selectedOrder.totalAmount.toLocaleString() }}</span>
+              <span class="amount-text">¥{{ (selectedOrder.totalAmount || 0).toLocaleString() }}</span>
             </el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ selectedOrder.createTime }}</el-descriptions-item>
             <el-descriptions-item label="订单状态">
@@ -441,72 +433,78 @@
     <el-dialog
       v-model="showDetailDialog"
       title="分享详情"
-      width="600px"
+      width="900px"
+      :close-on-click-modal="false"
     >
-      <div v-if="selectedShareDetail" class="share-detail">
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="分享编号">{{ selectedShareDetail.shareNumber }}</el-descriptions-item>
-          <el-descriptions-item label="订单编号">{{ selectedShareDetail.orderNumber }}</el-descriptions-item>
-          <el-descriptions-item label="订单金额">¥{{ selectedShareDetail.orderAmount.toLocaleString() }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ selectedShareDetail.createTime }}</el-descriptions-item>
-          <el-descriptions-item label="创建人">{{ selectedShareDetail.createdBy }}</el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="getStatusType(selectedShareDetail.status)">
-              {{ getStatusText(selectedShareDetail.status) }}
-            </el-tag>
-          </el-descriptions-item>
-        </el-descriptions>
+      <div v-if="selectedShareDetail" class="share-detail-horizontal">
+        <!-- 左侧：基本信息 -->
+        <div class="detail-left">
+          <h4 class="detail-section-title">基本信息</h4>
+          <div class="detail-info-grid">
+            <div class="detail-info-item">
+              <span class="detail-label">分享编号</span>
+              <span class="detail-value">{{ selectedShareDetail.shareNumber }}</span>
+            </div>
+            <div class="detail-info-item">
+              <span class="detail-label">订单编号</span>
+              <span class="detail-value">{{ selectedShareDetail.orderNumber }}</span>
+            </div>
+            <div class="detail-info-item">
+              <span class="detail-label">订单金额</span>
+              <span class="detail-value amount-highlight">¥{{ (selectedShareDetail.orderAmount || 0).toLocaleString() }}</span>
+            </div>
+            <div class="detail-info-item">
+              <span class="detail-label">创建时间</span>
+              <span class="detail-value">{{ selectedShareDetail.createTime }}</span>
+            </div>
+            <div class="detail-info-item">
+              <span class="detail-label">创建人</span>
+              <span class="detail-value">{{ selectedShareDetail.createdBy }}</span>
+            </div>
+            <div class="detail-info-item">
+              <span class="detail-label">状态</span>
+              <span class="detail-value">
+                <el-tag :type="getStatusType(selectedShareDetail.status)">
+                  {{ getStatusText(selectedShareDetail.status) }}
+                </el-tag>
+              </span>
+            </div>
+          </div>
 
-        <div class="share-details-section">
-          <h4 class="section-title">分享明细</h4>
-          <div class="share-members-grid">
+          <div v-if="selectedShareDetail.description" class="detail-description">
+            <h4 class="detail-section-title">分享说明</h4>
+            <p>{{ selectedShareDetail.description }}</p>
+          </div>
+        </div>
+
+        <!-- 右侧：分享成员 -->
+        <div class="detail-right">
+          <h4 class="detail-section-title">分享成员 ({{ selectedShareDetail.shareMembers?.length || 0 }}人)</h4>
+          <div class="members-list">
             <div
               v-for="(member, index) in selectedShareDetail.shareMembers"
               :key="index"
-              class="member-share-card"
+              class="member-item-horizontal"
             >
-              <div class="member-header">
-                <div class="member-avatar">
+              <div class="member-left-info">
+                <div class="member-avatar-small">
                   <el-icon><UserFilled /></el-icon>
                 </div>
-                <div class="member-info">
-                  <div class="member-name">{{ member.userName }}</div>
-                  <el-tag
-                    :type="member.status === 'confirmed' ? 'success' : 'warning'"
-                    size="small"
-                    class="member-status"
-                  >
-                    {{ member.status === 'confirmed' ? '已确认' : '待确认' }}
+                <div>
+                  <div class="member-name-small">{{ member.userName }}</div>
+                  <el-tag type="success" size="small">
+                    已分享
                   </el-tag>
                 </div>
               </div>
-
-              <div class="share-amount-section">
-                <div class="percentage-display">
-                  <div class="percentage-circle">
-                    <span class="percentage-text">{{ member.percentage }}%</span>
-                  </div>
-                </div>
-                <div class="amount-display">
-                  <div class="amount-label">分享金额</div>
-                  <div class="amount-value">
-                    ¥{{ ((selectedShareDetail.orderAmount * member.percentage) / 100).toLocaleString() }}
-                  </div>
-                </div>
-              </div>
-
-              <div class="member-footer">
-                <div class="confirm-time" v-if="member.confirmTime">
-                  确认时间：{{ member.confirmTime }}
+              <div class="member-right-info">
+                <div class="member-percentage">{{ member.percentage }}%</div>
+                <div class="member-amount">
+                  ¥{{ (((selectedShareDetail.orderAmount || 0) * (member.percentage || 0)) / 100).toLocaleString() }}
                 </div>
               </div>
             </div>
           </div>
-        </div>
-
-        <div v-if="selectedShareDetail.description" style="margin-top: 15px">
-          <h4>分享说明</h4>
-          <p>{{ selectedShareDetail.description }}</p>
         </div>
       </div>
     </el-dialog>
@@ -537,7 +535,7 @@
         <el-table-column prop="toMember" label="接收人" width="120" />
         <el-table-column prop="shareAmount" label="分享金额" width="120" align="right">
           <template #default="{ row }">
-            <span class="amount">¥{{ row.shareAmount.toLocaleString() }}</span>
+            <span class="amount">¥{{ (row.shareAmount || 0).toLocaleString() }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="shareRatio" label="分享比例" width="100" align="center">
@@ -597,9 +595,6 @@ import {
   Delete,
   Search,
   InfoFilled,
-  View,
-  Edit,
-  Close,
   QuestionFilled,
   WarningFilled,
   SuccessFilled
@@ -668,7 +663,7 @@ const orderSearchLoading = ref(false)
 
 // 分页数据
 const currentPage = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(10)  // 默认10条/页
 const totalRecords = ref(0)
 
 // 筛选数据
@@ -1296,8 +1291,8 @@ const getTableRowClassName = ({ row, rowIndex }: { row: unknown, rowIndex: numbe
 }
 
 const handleRowClick = (row: unknown) => {
-  // 添加行点击的视觉反馈
-  ElMessage.info(`点击了分享记录: ${row.shareNumber}`)
+  // 移除点击提示,保持静默
+  // 如果需要跳转到详情页,可以在这里添加逻辑
 }
 
 const getAuditStatusType = (status: string) => {
@@ -1411,7 +1406,8 @@ watch([filterStatus, filterDateRange], () => {
 <style scoped>
 .performance-share {
   padding: 24px;
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  padding-bottom: 100px;
+  background: #f5f7fa;
   min-height: 100vh;
   opacity: 0;
   transform: translateY(20px);
@@ -1569,27 +1565,33 @@ watch([filterStatus, filterDateRange], () => {
   color: #909399;
 }
 
-.share-records {
-  margin-bottom: 20px;
-  border: none;
-  border-radius: 12px;
-  background: white;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-}
-
-.card-header {
+/* 表格工具栏 */
+.table-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 16px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.header-filters {
+.toolbar-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+}
+
+.toolbar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
@@ -1612,50 +1614,33 @@ watch([filterStatus, filterDateRange], () => {
   min-width: 60px;
 }
 
-.search-container {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: 16px;
-}
-
 /* 响应式布局优化 */
 @media (max-width: 1200px) {
-  .header-filters {
+  .toolbar-right {
     flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  .search-container {
-    margin-left: 0;
-    margin-top: 8px;
-  }
-
-  .search-input {
-    width: 160px;
+    gap: 10px;
   }
 }
 
 @media (max-width: 768px) {
-  .header-filters {
+  .table-toolbar {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
   }
 
-  .search-container {
-    margin-left: 0;
-    margin-top: 0;
-    justify-content: stretch;
+  .toolbar-left {
+    justify-content: center;
   }
 
-  .search-input {
-    flex: 1;
-    width: auto;
+  .toolbar-right {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
   }
 
-  .search-btn, .clear-btn {
-    flex-shrink: 0;
+  .toolbar-right > * {
+    width: 100%;
   }
 }
 
@@ -1663,15 +1648,6 @@ watch([filterStatus, filterDateRange], () => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-.pagination-wrapper {
-  display: flex;
-  justify-content: center;
-  margin-top: 24px;
-  padding: 24px;
-  background: white;
-  border-radius: 0 0 20px 20px;
 }
 
 .order-info {
@@ -1877,15 +1853,12 @@ watch([filterStatus, filterDateRange], () => {
 
 /* Element Plus 组件样式优化 */
 .share-table {
-  border-radius: 16px;
+  width: 100%;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  border: 1px solid #e2e8f0;
   transition: all 0.3s ease;
-}
-
-.share-table:hover {
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 
 :deep(.table-row-even) {
@@ -1900,9 +1873,9 @@ watch([filterStatus, filterDateRange], () => {
 
 :deep(.table-row-even:hover),
 :deep(.table-row-odd:hover) {
-  background-color: #f0f9ff !important;
-  transform: scale(1.005);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+  background-color: #f5f7fa !important;
+  transform: scale(1.002);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   cursor: pointer;
 }
 
@@ -1921,7 +1894,7 @@ watch([filterStatus, filterDateRange], () => {
   border-bottom: 1px solid #e5e7eb;
   font-size: 13px;
   letter-spacing: 0.3px;
-  padding: 16px 12px;
+  padding: 10px 12px;
   text-transform: uppercase;
 }
 
@@ -1935,7 +1908,7 @@ watch([filterStatus, filterDateRange], () => {
 
 :deep(.el-table td) {
   border-bottom: 1px solid #f3f4f6;
-  padding: 16px 12px;
+  padding: 8px 12px;
   font-size: 14px;
   color: #374151;
   transition: background-color 0.2s ease;
@@ -2102,8 +2075,9 @@ watch([filterStatus, filterDateRange], () => {
 }
 
 :deep(.el-pagination) {
+  display: flex;
   justify-content: center;
-  margin-top: 24px;
+  align-items: center;
 }
 
 :deep(.el-pagination .el-pager li) {
@@ -2281,11 +2255,155 @@ watch([filterStatus, filterDateRange], () => {
   animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.share-records {
+.table-toolbar,
+.share-table {
   animation: fadeInUp 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 分享详情弹窗样式 */
+/* 分享详情弹窗 - 横向布局 */
+.share-detail-horizontal {
+  display: flex;
+  gap: 24px;
+  max-height: 70vh;
+}
+
+.detail-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-right {
+  flex: 1;
+  min-width: 0;
+  border-left: 1px solid #e5e7eb;
+  padding-left: 24px;
+}
+
+.detail-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.detail-info-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.detail-info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.detail-label {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.detail-value {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 500;
+}
+
+.amount-highlight {
+  color: #059669;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.detail-description {
+  margin-top: 20px;
+  padding: 12px;
+  background: #f0f9ff;
+  border-radius: 6px;
+  border: 1px solid #bae6fd;
+}
+
+.detail-description p {
+  margin: 8px 0 0 0;
+  color: #374151;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.members-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.member-item-horizontal {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.member-item-horizontal:hover {
+  background: #f0f9ff;
+  border-color: #3b82f6;
+  transform: translateX(4px);
+}
+
+.member-left-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.member-avatar-small {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 14px;
+}
+
+.member-name-small {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.member-right-info {
+  text-align: right;
+}
+
+.member-percentage {
+  font-size: 16px;
+  font-weight: 700;
+  color: #3b82f6;
+  margin-bottom: 4px;
+}
+
+.member-amount {
+  font-size: 14px;
+  font-weight: 600;
+  color: #059669;
+}
+
+/* 旧的详情样式 - 保留以防需要 */
 .share-details-section {
   margin-top: 24px;
 }
@@ -2432,21 +2550,23 @@ watch([filterStatus, filterDateRange], () => {
 /* 操作按钮样式 */
 .action-buttons {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  align-items: center;
 }
 
 .action-btn {
-  min-width: 70px;
-  height: 32px;
-  border-radius: 6px;
+  min-width: 60px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
   transition: all 0.2s ease;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
 }
 
 .action-btn .el-icon {
@@ -2510,12 +2630,13 @@ watch([filterStatus, filterDateRange], () => {
   }
 
   .action-buttons {
-    flex-direction: column;
+    flex-wrap: wrap;
     gap: 4px;
+    justify-content: center;
   }
 
   .action-btn {
-    width: 100%;
+    min-width: 55px;
     justify-content: center;
   }
 }
