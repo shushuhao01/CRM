@@ -545,7 +545,8 @@ router.put('/performance/:orderId', async (req: Request, res: Response) => {
 
     console.log('[绩效更新] 更新后状态:', order.performanceStatus, '系数:', order.performanceCoefficient);
 
-    // 如果状态为无效或系数为0，佣金直接设为0
+    // 🔥 修复：待处理状态也应该计算预估佣金
+    // 只有无效状态或系数为0时，佣金才设为0
     if (order.performanceStatus === 'invalid' || order.performanceCoefficient === 0) {
       console.log('[绩效更新] 状态为无效或系数为0，佣金设为0');
       order.estimatedCommission = 0;
@@ -580,7 +581,11 @@ router.put('/performance/:orderId', async (req: Request, res: Response) => {
 });
 
 // 根据成员和部门计算佣金
-// 新逻辑：先统计成员的总业绩/总单数，匹配阶梯，再计算单个订单佣金
+// 🔥 核心逻辑：
+// 1. 统计该销售人员的有效订单数量（只统计已经是"有效"状态的订单）
+// 2. 根据有效订单数量匹配阶梯档位
+// 3. 使用匹配的档位计算当前订单的预估佣金
+// 4. 不管当前订单是什么状态（待处理、有效、无效），都按照这个逻辑计算
 async function calculateCommission(
   orderAmount: number,
   coefficient: number,
@@ -666,7 +671,7 @@ async function calculateCommission(
 
         const result = await query.getRawOne();
         totalAmount = parseFloat(result?.total || '0');
-        console.log('[佣金计算] 统计签收业绩总金额:', totalAmount);
+        console.log('[佣金计算] 统计签收业绩总金额（只统计有效订单）:', totalAmount);
       }
 
       // 根据总业绩匹配阶梯
@@ -709,7 +714,7 @@ async function calculateCommission(
 
         const result = await query.getRawOne();
         totalCount = parseFloat(result?.total || '0');
-        console.log('[佣金计算] 统计签收订单数量（系数合计）:', totalCount);
+        console.log('[佣金计算] 统计签收订单数量（系数合计，只统计有效订单）:', totalCount);
       }
 
       // 根据总单数匹配阶梯

@@ -241,6 +241,7 @@
             v-model="row.performanceCoefficient"
             size="small"
             @change="(val: number) => updatePerformance(row, 'performanceCoefficient', val)"
+            @blur="() => handleCoefficientBlur(row)"
           >
             <el-option v-for="c in configData.coefficientConfigs" :key="c.id" :label="c.configValue" :value="parseFloat(c.configValue)" />
           </el-select>
@@ -256,6 +257,7 @@
             default-first-option
             placeholder="选择或输入备注"
             @change="(val: string) => updatePerformance(row, 'performanceRemark', val)"
+            @blur="() => handleRemarkBlur(row)"
           >
             <!-- 预设备注选项 -->
             <el-option
@@ -423,6 +425,98 @@ const removeCustomRemark = (remark: string) => {
     customRemarkHistory.value.splice(index, 1)
     saveCustomRemarkHistory()
     ElMessage.success('已删除备注历史记录')
+  }
+}
+
+// 🔥 备注字段失去焦点时的处理（备用触发方式）
+// 用于处理 allow-create 模式下 @change 事件可能不触发的情况
+const remarkBlurTimers = new Map<string, number>()
+const handleRemarkBlur = (row: PerformanceOrder) => {
+  // 清除之前的定时器
+  const existingTimer = remarkBlurTimers.get(row.id)
+  if (existingTimer) {
+    clearTimeout(existingTimer)
+  }
+
+  // 延迟执行，避免与 @change 事件冲突
+  const timer = window.setTimeout(() => {
+    // 如果备注值存在且不为空，触发更新
+    if (row.performanceRemark && row.performanceRemark.trim() !== '') {
+      console.log('[PerformanceManage] handleRemarkBlur triggered for order:', row.id, 'remark:', row.performanceRemark)
+      // 不显示成功消息，避免重复提示
+      updatePerformanceQuietly(row, 'performanceRemark', row.performanceRemark)
+    }
+    remarkBlurTimers.delete(row.id)
+  }, 300)
+
+  remarkBlurTimers.set(row.id, timer)
+}
+
+// 🔥 系数字段失去焦点时的处理（备用触发方式）
+const coefficientBlurTimers = new Map<string, number>()
+const handleCoefficientBlur = (row: PerformanceOrder) => {
+  // 清除之前的定时器
+  const existingTimer = coefficientBlurTimers.get(row.id)
+  if (existingTimer) {
+    clearTimeout(existingTimer)
+  }
+
+  // 延迟执行，避免与 @change 事件冲突
+  const timer = window.setTimeout(() => {
+    // 如果系数值存在，触发更新
+    if (row.performanceCoefficient !== undefined && row.performanceCoefficient !== null) {
+      console.log('[PerformanceManage] handleCoefficientBlur triggered for order:', row.id, 'coefficient:', row.performanceCoefficient)
+      // 不显示成功消息，避免重复提示
+      updatePerformanceQuietly(row, 'performanceCoefficient', row.performanceCoefficient)
+    }
+    coefficientBlurTimers.delete(row.id)
+  }, 300)
+
+  coefficientBlurTimers.set(row.id, timer)
+}
+
+// 🔥 静默更新绩效（不显示成功消息，用于 blur 事件）
+const updatePerformanceQuietly = async (row: PerformanceOrder, field: string, value: any) => {
+  try {
+    // 🔥 如果是有效状态字段，验证订单状态
+    if (field === 'performanceStatus' && value === 'valid') {
+      // 只有已签收(delivered)或已完成(completed)的订单才能设置为有效
+      const validOrderStatuses = ['delivered', 'completed']
+      if (!validOrderStatuses.includes(row.status)) {
+        return // 静默失败，不显示警告
+      }
+    }
+
+    const data: any = {}
+    data[field] = value
+
+    // 🔥 如果是备注字段，添加到自定义历史记录
+    if (field === 'performanceRemark' && value) {
+      addCustomRemarkToHistory(value)
+    }
+
+    // 如果状态改为无效，自动将系数设为0
+    if (field === 'performanceStatus' && value === 'invalid') {
+      data.performanceCoefficient = 0
+      row.performanceCoefficient = 0 // 同步更新UI
+    }
+
+    // 传入时间范围，用于计算阶梯佣金
+    if (dateRange.value) {
+      data.startDate = dateRange.value[0]
+      data.endDate = dateRange.value[1]
+    }
+
+    console.log('[PerformanceManage] updatePerformanceQuietly API call:', row.id, data)
+    await financeApi.updatePerformance(row.id, data)
+    // 不显示成功消息
+    loadData()
+    loadStatistics()
+    // 发送绩效更新事件，通知其他页面刷新
+    eventBus.emit(EventNames.PERFORMANCE_UPDATED, { type: field, orderIds: [row.id] })
+  } catch (e) {
+    console.error('[PerformanceManage] updatePerformanceQuietly error:', e)
+    // 静默失败，不显示错误消息
   }
 }
 
