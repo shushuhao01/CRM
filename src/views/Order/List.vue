@@ -65,7 +65,7 @@
             v-model="searchForm.keyword"
             placeholder="订单号/客户姓名/电话/商品/客户编码/物流单号"
             clearable
-            style="width: 320px"
+            style="width: 380px"
             @keyup.enter="handleSearch"
           >
             <template #prefix>

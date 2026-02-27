@@ -154,6 +154,37 @@ const PERMISSION_TREE = [
           { id: 'order.audit.reject', name: '拒绝审核', code: 'order.audit.reject', type: 'action', sort: 3, status: 'active' },
           { id: 'order.audit.batch', name: '批量审核', code: 'order.audit.batch', type: 'action', sort: 4, status: 'active' }
         ]
+      },
+      {
+        id: 'order.cod_application',
+        name: '取消代收申请',
+        code: 'order.cod_application',
+        type: 'menu',
+        path: '/order/my-cod-application',
+        icon: 'DocumentRemove',
+        sort: 4,
+        status: 'active',
+        children: [
+          { id: 'order.cod_application.view', name: '查看申请', code: 'order.cod_application.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'order.cod_application.create', name: '创建申请', code: 'order.cod_application.create', type: 'action', sort: 2, status: 'active' },
+          { id: 'order.cod_application.cancel', name: '撤销申请', code: 'order.cod_application.cancel', type: 'action', sort: 3, status: 'active' }
+        ]
+      },
+      {
+        id: 'order.cod_review',
+        name: '取消代收审核',
+        code: 'order.cod_review',
+        type: 'menu',
+        path: '/order/cod-application-review',
+        icon: 'CircleCheck',
+        sort: 5,
+        status: 'active',
+        children: [
+          { id: 'order.cod_review.view', name: '查看审核', code: 'order.cod_review.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'order.cod_review.approve', name: '通过审核', code: 'order.cod_review.approve', type: 'action', sort: 2, status: 'active' },
+          { id: 'order.cod_review.reject', name: '拒绝审核', code: 'order.cod_review.reject', type: 'action', sort: 3, status: 'active' },
+          { id: 'order.cod_review.batch', name: '批量审核', code: 'order.cod_review.batch', type: 'action', sort: 4, status: 'active' }
+        ]
       }
     ]
   },
@@ -621,37 +652,6 @@ const PERMISSION_TREE = [
           { id: 'finance.cod_collection.export', name: '导出代收', code: 'finance.cod_collection.export', type: 'action', sort: 2, status: 'active' },
           { id: 'finance.cod_collection.edit', name: '编辑代收', code: 'finance.cod_collection.edit', type: 'action', sort: 3, status: 'active' },
           { id: 'finance.cod_collection.refund', name: '返款操作', code: 'finance.cod_collection.refund', type: 'action', sort: 4, status: 'active' }
-        ]
-      },
-      {
-        id: 'finance.cod_application',
-        name: '取消代收申请',
-        code: 'finance.cod_application',
-        type: 'menu',
-        path: '/finance/my-cod-application',
-        icon: 'DocumentRemove',
-        sort: 4,
-        status: 'active',
-        children: [
-          { id: 'finance.cod_application.view', name: '查看申请', code: 'finance.cod_application.view', type: 'action', sort: 1, status: 'active' },
-          { id: 'finance.cod_application.create', name: '创建申请', code: 'finance.cod_application.create', type: 'action', sort: 2, status: 'active' },
-          { id: 'finance.cod_application.cancel', name: '撤销申请', code: 'finance.cod_application.cancel', type: 'action', sort: 3, status: 'active' }
-        ]
-      },
-      {
-        id: 'finance.cod_review',
-        name: '取消代收审核',
-        code: 'finance.cod_review',
-        type: 'menu',
-        path: '/finance/cod-application-review',
-        icon: 'CircleCheck',
-        sort: 5,
-        status: 'active',
-        children: [
-          { id: 'finance.cod_review.view', name: '查看审核', code: 'finance.cod_review.view', type: 'action', sort: 1, status: 'active' },
-          { id: 'finance.cod_review.approve', name: '通过审核', code: 'finance.cod_review.approve', type: 'action', sort: 2, status: 'active' },
-          { id: 'finance.cod_review.reject', name: '拒绝审核', code: 'finance.cod_review.reject', type: 'action', sort: 3, status: 'active' },
-          { id: 'finance.cod_review.batch', name: '批量审核', code: 'finance.cod_review.batch', type: 'action', sort: 4, status: 'active' }
         ]
       }
     ]

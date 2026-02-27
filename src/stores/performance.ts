@@ -183,8 +183,13 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     }
 
     const totalShares = shares.length
-    const totalAmount = shares.reduce((sum, share) => sum + share.orderAmount, 0)
-    const involvedMembers = new Set(shares.flatMap(share => share.shareMembers.map(member => member.userId))).size
+    const totalAmount = shares.reduce((sum, share) => sum + (share.orderAmount || 0), 0)
+    // 🔥 修复：添加空值保护，确保 shareMembers 存在且是数组
+    const involvedMembers = new Set(
+      shares
+        .filter(share => share.shareMembers && Array.isArray(share.shareMembers))
+        .flatMap(share => share.shareMembers.map(member => member.userId))
+    ).size
     const sharedOrders = shares.length
     const pendingShares = shares.filter(share => share.status === 'active').length
     const completedShares = shares.filter(share => share.status === 'completed').length
@@ -797,7 +802,11 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
       const response = await performanceApi.getPerformanceShares(params)
       // 🔥 修复：API直接返回 { success, data }，不是 { data: { success, data } }
       if (response.success) {
-        performanceShares.value = response.data.shares || []
+        // 🔥 确保每个 share 都有 shareMembers 数组
+        performanceShares.value = (response.data.shares || []).map(share => ({
+          ...share,
+          shareMembers: share.shareMembers || []
+        }))
         return response.data
       } else {
         throw new Error((response as any).message || '加载业绩分享数据失败')

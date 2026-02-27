@@ -94,6 +94,20 @@ export const menuConfig: MenuItem[] = [
         roles: ['super_admin', 'admin', 'customer_service'],
         permissions: ['order:audit'],
         dataScope: 'all' // 客服处理全公司订单审核
+      },
+      {
+        id: 'order-my-cod-application',
+        title: '取消代收申请',
+        path: '/order/my-cod-application',
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        permissions: ['order']
+      },
+      {
+        id: 'order-cod-application-review',
+        title: '取消代收审核',
+        path: '/order/cod-application-review',
+        roles: ['super_admin', 'admin'],
+        permissions: ['finance:cod']
       }
     ]
   },
@@ -300,20 +314,6 @@ export const menuConfig: MenuItem[] = [
         id: 'finance-cod-collection',
         title: '代收管理',
         path: '/finance/cod-collection',
-        roles: ['super_admin', 'admin'],
-        permissions: ['finance:cod']
-      },
-      {
-        id: 'finance-my-cod-application',
-        title: '取消代收申请',
-        path: '/finance/my-cod-application',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
-        permissions: ['finance']
-      },
-      {
-        id: 'finance-cod-application-review',
-        title: '取消代收审核',
-        path: '/finance/cod-application-review',
         roles: ['super_admin', 'admin'],
         permissions: ['finance:cod']
       }
