@@ -56,13 +56,15 @@
               </div>
               <div class="card-info">
                 <div class="card-value">{{ performanceData.totalSales }}</div>
-                <div class="card-label">总销售额</div>
-                <div class="card-trend">
-                  <span :class="['trend', performanceData.salesTrend > 0 ? 'up' : 'down']">
-                    <el-icon><ArrowUp v-if="performanceData.salesTrend > 0" /><ArrowDown v-else /></el-icon>
-                    {{ Math.abs(performanceData.salesTrend) }}%
-                  </span>
-                  <span class="trend-text">较上期</span>
+                <div class="card-header-row">
+                  <div class="card-label">总销售额</div>
+                  <div class="card-trend">
+                    <span :class="['trend', performanceData.salesTrend > 0 ? 'up' : 'down']">
+                      <el-icon><ArrowUp v-if="performanceData.salesTrend > 0" /><ArrowDown v-else /></el-icon>
+                      {{ Math.abs(performanceData.salesTrend) }}%
+                    </span>
+                    <span class="trend-text">较上期</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -76,13 +78,15 @@
               </div>
               <div class="card-info">
                 <div class="card-value">{{ typeof performanceData.totalOrders === 'number' ? (performanceData.totalOrders % 1 === 0 ? performanceData.totalOrders : performanceData.totalOrders.toFixed(1)) : performanceData.totalOrders }}</div>
-                <div class="card-label">订单数量</div>
-                <div class="card-trend">
-                  <span :class="['trend', performanceData.ordersTrend > 0 ? 'up' : 'down']">
-                    <el-icon><ArrowUp v-if="performanceData.ordersTrend > 0" /><ArrowDown v-else /></el-icon>
-                    {{ Math.abs(performanceData.ordersTrend) }}%
-                  </span>
-                  <span class="trend-text">较上期</span>
+                <div class="card-header-row">
+                  <div class="card-label">订单数量</div>
+                  <div class="card-trend">
+                    <span :class="['trend', performanceData.ordersTrend > 0 ? 'up' : 'down']">
+                      <el-icon><ArrowUp v-if="performanceData.ordersTrend > 0" /><ArrowDown v-else /></el-icon>
+                      {{ Math.abs(performanceData.ordersTrend) }}%
+                    </span>
+                    <span class="trend-text">较上期</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -96,13 +100,15 @@
               </div>
               <div class="card-info">
                 <div class="card-value">¥{{ formatNumber(performanceData.signedAmount) }}</div>
-                <div class="card-label">签收业绩</div>
-                <div class="card-trend">
-                  <span :class="['trend', performanceData.signedTrend > 0 ? 'up' : 'down']">
-                    <el-icon><ArrowUp v-if="performanceData.signedTrend > 0" /><ArrowDown v-else /></el-icon>
-                    {{ Math.abs(performanceData.signedTrend) }}%
-                  </span>
-                  <span class="trend-text">较上期</span>
+                <div class="card-header-row">
+                  <div class="card-label">签收业绩</div>
+                  <div class="card-trend">
+                    <span :class="['trend', performanceData.signedTrend > 0 ? 'up' : 'down']">
+                      <el-icon><ArrowUp v-if="performanceData.signedTrend > 0" /><ArrowDown v-else /></el-icon>
+                      {{ Math.abs(performanceData.signedTrend) }}%
+                    </span>
+                    <span class="trend-text">较上期</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -116,13 +122,15 @@
               </div>
               <div class="card-info">
                 <div class="card-value">{{ typeof performanceData.signedOrders === 'number' ? (performanceData.signedOrders % 1 === 0 ? performanceData.signedOrders : performanceData.signedOrders.toFixed(1)) : performanceData.signedOrders }}</div>
-                <div class="card-label">签收订单数量</div>
-                <div class="card-trend">
-                  <span :class="['trend', performanceData.signedOrdersTrend > 0 ? 'up' : 'down']">
-                    <el-icon><ArrowUp v-if="performanceData.signedOrdersTrend > 0" /><ArrowDown v-else /></el-icon>
-                    {{ Math.abs(performanceData.signedOrdersTrend) }}%
-                  </span>
-                  <span class="trend-text">较上期</span>
+                <div class="card-header-row">
+                  <div class="card-label">签收订单数量</div>
+                  <div class="card-trend">
+                    <span :class="['trend', performanceData.signedOrdersTrend > 0 ? 'up' : 'down']">
+                      <el-icon><ArrowUp v-if="performanceData.signedOrdersTrend > 0" /><ArrowDown v-else /></el-icon>
+                      {{ Math.abs(performanceData.signedOrdersTrend) }}%
+                    </span>
+                    <span class="trend-text">较上期</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2704,11 +2712,16 @@ onUnmounted(() => {
 }
 
 .performance-overview {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .overview-card {
-  height: 120px;
+  height: 100px;
+}
+
+.overview-card :deep(.el-card__body) {
+  padding: 16px 20px;
+  height: 100%;
 }
 
 .card-content {
@@ -2731,6 +2744,7 @@ onUnmounted(() => {
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .card-icon::before {
@@ -2771,25 +2785,41 @@ onUnmounted(() => {
 
 .card-info {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .card-value {
   font-size: 24px;
   font-weight: bold;
   color: #303133;
-  margin-bottom: 4px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
 }
 
 .card-label {
-  font-size: 14px;
+  font-size: 13px;
   color: #909399;
-  margin-bottom: 8px;
+  white-space: nowrap;
 }
 
 .card-trend {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .trend {

@@ -154,30 +154,41 @@ router.get('/', async (req, res) => {
         }
         // 🔥 统计数据查询（在应用分页之前，基于相同的筛选条件）
         const statsQueryBuilder = queryBuilder.clone();
-        // 获取今日日期
+        // 获取今日日期和本月日期范围
         const today = new Date();
         const todayStr = today.toISOString().split('T')[0];
+        const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        const currentMonthStartStr = currentMonthStart.toISOString().split('T')[0];
+        // 获取订单仓库，用于统计
+        const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
         // 统计总数（筛选后的）
         const totalCustomers = await statsQueryBuilder.getCount();
-        // 统计活跃客户数（status = 'active'）
-        const activeCustomers = await statsQueryBuilder.clone()
-            .andWhere('customer.status = :activeStatus', { activeStatus: 'active' })
+        // 统计当月客户数（本月创建的客户）
+        const monthCustomers = await statsQueryBuilder.clone()
+            .andWhere('customer.createdAt >= :monthStart', { monthStart: `${currentMonthStartStr} 00:00:00` })
             .getCount();
         // 统计今日新增客户数
-        const newCustomers = await customerRepository.createQueryBuilder('customer')
-            .where('DATE(customer.createdAt) = :today', { today: todayStr })
+        const newCustomers = await statsQueryBuilder.clone()
+            .andWhere('DATE(customer.createdAt) = :today', { today: todayStr })
             .getCount();
-        // 统计高价值客户数（level = 'gold'）
-        const highValueCustomers = await statsQueryBuilder.clone()
-            .andWhere('customer.level = :goldLevel', { goldLevel: 'gold' })
-            .getCount();
+        // 统计未下单客户数（订单数量为0的客户）
+        const customersWithOrders = await orderRepository
+            .createQueryBuilder('order')
+            .select('DISTINCT order.customerId', 'customerId')
+            .getRawMany();
+        const customerIdsWithOrders = customersWithOrders.map(item => item.customerId);
+        // 获取所有符合筛选条件的客户ID
+        const allFilteredCustomers = await statsQueryBuilder.clone()
+            .select('customer.id')
+            .getRawMany();
+        const allFilteredCustomerIds = allFilteredCustomers.map(item => item.customer_id);
+        // 计算未下单客户数
+        const noOrderCustomers = allFilteredCustomerIds.filter(id => !customerIdsWithOrders.includes(id)).length;
         // 排序和分页
         queryBuilder.orderBy('customer.createdAt', 'DESC')
             .skip(skip)
             .take(pageSizeNum);
         const [customers, total] = await queryBuilder.getManyAndCount();
-        // 获取订单仓库，用于统计每个客户的订单数
-        const orderRepository = database_1.AppDataSource.getRepository(Order_1.Order);
         // 获取分享仓库，用于查询客户的分享状态
         const shareRepository = database_1.AppDataSource.getRepository(CustomerShare_1.CustomerShare);
         // 转换数据格式以匹配前端期望，并动态计算订单数
@@ -284,9 +295,9 @@ router.get('/', async (req, res) => {
                 // 🔥 新增：统计数据
                 statistics: {
                     totalCustomers,
-                    activeCustomers,
+                    monthCustomers,
                     newCustomers,
-                    highValueCustomers
+                    noOrderCustomers
                 }
             }
         });
