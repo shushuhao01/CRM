@@ -1275,7 +1275,7 @@ const goBack = () => {
 const handleApplyCodCancel = () => {
   // 跳转到取消代收申请页面，并传递订单ID
   router.push({
-    path: '/finance/my-cod-application',
+    path: '/order/my-cod-application',
     query: {
       orderId: orderDetail.id,
       autoFill: 'true'
