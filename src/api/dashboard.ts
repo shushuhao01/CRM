@@ -73,11 +73,6 @@ export interface DashboardQuickAction {
 
 import { isProduction } from '@/utils/env'
 
-// 环境检测：判断是否使用后端API
-const useBackendAPI = () => {
-  return isProduction()
-}
-
 // 获取核心指标（使用后端API）
 export const getMetrics = async (params?: {
   userRole?: string,
@@ -90,11 +85,8 @@ export const getMetrics = async (params?: {
   monthlyDeliveredCount?: number
   monthlyDeliveredAmount?: number
 }> => {
-  // 🔥 优先使用后端API
   console.log('[Dashboard API] 使用后端API获取核心指标')
   try {
-    // 🔥 静默处理错误，不显示错误提示
-    // 注意：request.get 返回的是 response.data.data，即直接的数据对象
     const data = await request.get('/dashboard/metrics', { params, showError: false } as any)
     if (data) {
       console.log('[Dashboard API] 后端返回数据:', data)
