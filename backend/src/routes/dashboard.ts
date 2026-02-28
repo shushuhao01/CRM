@@ -64,6 +64,16 @@ router.get('/metrics', async (req: Request, res: Response) => {
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    // 🔥 昨天的时间范围（用于计算日环比）
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+    const yesterdayEnd = new Date(yesterdayStart);
+    yesterdayEnd.setHours(23, 59, 59, 999);
+
+    // 🔥 上月的时间范围（用于计算月环比）
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+
     // 🔥 根据用户角色构建查询条件
     let userCondition = '';
     const params: any[] = [];
@@ -91,6 +101,14 @@ router.get('/metrics', async (req: Request, res: Response) => {
       [todayStart, todayEnd, ...params]
     );
 
+    // 🔥 昨日订单数据（用于计算环比）
+    const yesterdayOrdersData = await AppDataSource.query(
+      `SELECT total_amount as totalAmount, status, mark_type as markType
+       FROM orders o
+       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
+      [yesterdayStart, yesterdayEnd, ...params]
+    );
+
     // 本月订单数据
     const monthlyOrdersData = await AppDataSource.query(
       `SELECT total_amount as totalAmount, status, mark_type as markType
@@ -99,20 +117,65 @@ router.get('/metrics', async (req: Request, res: Response) => {
       [monthStart, todayEnd, ...params]
     );
 
+    // 🔥 上月订单数据（用于计算环比）
+    const lastMonthOrdersData = await AppDataSource.query(
+      `SELECT total_amount as totalAmount, status, mark_type as markType
+       FROM orders o
+       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
+      [lastMonthStart, lastMonthEnd, ...params]
+    );
+
     // 过滤有效订单（计入下单业绩）
     const validTodayOrders = todayOrdersData.filter((o: any) => isValidForOrderPerformance(o));
     const todayOrders = validTodayOrders.length;
     const todayRevenue = validTodayOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
 
+    const validYesterdayOrders = yesterdayOrdersData.filter((o: any) => isValidForOrderPerformance(o));
+    const yesterdayOrders = validYesterdayOrders.length;
+    const yesterdayRevenue = validYesterdayOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
+
     const validMonthlyOrders = monthlyOrdersData.filter((o: any) => isValidForOrderPerformance(o));
     const monthlyOrders = validMonthlyOrders.length;
     const monthlyRevenue = validMonthlyOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
+
+    const validLastMonthOrders = lastMonthOrdersData.filter((o: any) => isValidForOrderPerformance(o));
+    const lastMonthOrders = validLastMonthOrders.length;
+    const lastMonthRevenue = validLastMonthOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
+
+    // 🔥 计算环比的辅助函数
+    const calculateChange = (current: number, previous: number): { change: number; trend: string } => {
+      if (previous === 0) {
+        return { change: current > 0 ? 100 : 0, trend: current > 0 ? 'up' : 'stable' };
+      }
+      const change = Number((((current - previous) / previous) * 100).toFixed(1));
+      const trend = change > 0 ? 'up' : change < 0 ? 'down' : 'stable';
+      return { change, trend };
+    };
+
+    // 🔥 计算各项指标的环比
+    const todayOrdersChange = calculateChange(todayOrders, yesterdayOrders);
+    const todayRevenueChange = calculateChange(todayRevenue, yesterdayRevenue);
+    const monthlyOrdersChange = calculateChange(monthlyOrders, lastMonthOrders);
+    const monthlyRevenueChange = calculateChange(monthlyRevenue, lastMonthRevenue);
 
     // 发货业绩和签收业绩
     const todayShippedOrders = todayOrdersData.filter((o: any) => isValidForShipmentPerformance(o));
     const todayDeliveredOrders = todayOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
     const monthlyShippedOrders = monthlyOrdersData.filter((o: any) => isValidForShipmentPerformance(o));
     const monthlyDeliveredOrders = monthlyOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
+
+    const yesterdayShippedOrders = yesterdayOrdersData.filter((o: any) => isValidForShipmentPerformance(o));
+    const yesterdayDeliveredOrders = yesterdayOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
+    const lastMonthShippedOrders = lastMonthOrdersData.filter((o: any) => isValidForShipmentPerformance(o));
+    const lastMonthDeliveredOrders = lastMonthOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
+
+    const monthlyDeliveredCount = monthlyDeliveredOrders.length;
+    const monthlyDeliveredAmount = monthlyDeliveredOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0);
+    const lastMonthDeliveredCount = lastMonthDeliveredOrders.length;
+    const lastMonthDeliveredAmount = lastMonthDeliveredOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0);
+
+    const monthlyDeliveredCountChange = calculateChange(monthlyDeliveredCount, lastMonthDeliveredCount);
+    const monthlyDeliveredAmountChange = calculateChange(monthlyDeliveredAmount, lastMonthDeliveredAmount);
 
     // 待审核和待发货订单
     const pendingAuditOrders = await AppDataSource.query(
@@ -127,21 +190,35 @@ router.get('/metrics', async (req: Request, res: Response) => {
     // 新增客户
     let customerCondition = '';
     const customerParams: any[] = [todayStart, todayEnd];
+    const yesterdayCustomerParams: any[] = [yesterdayStart, yesterdayEnd];
+
     if (userRole !== 'super_admin' && userRole !== 'admin') {
       if (userRole === 'department_manager' || userRole === 'manager') {
         if (departmentId) {
           customerCondition = ` AND sales_person_id IN (SELECT id FROM users WHERE department_id = ?)`;
           customerParams.push(departmentId);
+          yesterdayCustomerParams.push(departmentId);
         }
       } else {
         customerCondition = ` AND sales_person_id = ?`;
         customerParams.push(userId);
+        yesterdayCustomerParams.push(userId);
       }
     }
+
     const [newCustomersResult] = await AppDataSource.query(
       `SELECT COUNT(*) as count FROM customers WHERE created_at >= ? AND created_at <= ?${customerCondition}`,
       customerParams
     );
+
+    const [yesterdayCustomersResult] = await AppDataSource.query(
+      `SELECT COUNT(*) as count FROM customers WHERE created_at >= ? AND created_at <= ?${customerCondition}`,
+      yesterdayCustomerParams
+    );
+
+    const newCustomers = newCustomersResult?.count || 0;
+    const yesterdayCustomers = yesterdayCustomersResult?.count || 0;
+    const newCustomersChange = calculateChange(newCustomers, yesterdayCustomers);
 
     res.json({
       success: true,
@@ -150,24 +227,55 @@ router.get('/metrics', async (req: Request, res: Response) => {
       data: {
         // 下单业绩
         todayOrders,
+        todayOrdersChange: todayOrdersChange.change,
+        todayOrdersTrend: todayOrdersChange.trend,
+
         todayRevenue,
+        todayRevenueChange: todayRevenueChange.change,
+        todayRevenueTrend: todayRevenueChange.trend,
+
         monthlyOrders,
+        monthlyOrdersChange: monthlyOrdersChange.change,
+        monthlyOrdersTrend: monthlyOrdersChange.trend,
+
         monthlyRevenue,
-        newCustomers: newCustomersResult?.count || 0,
+        monthlyRevenueChange: monthlyRevenueChange.change,
+        monthlyRevenueTrend: monthlyRevenueChange.trend,
+
+        newCustomers,
+        newCustomersChange: newCustomersChange.change,
+        newCustomersTrend: newCustomersChange.trend,
+
         pendingService: 0,
+        pendingServiceChange: 0,
+        pendingServiceTrend: 'stable',
+
         // 待处理
         pendingAudit: pendingAuditOrders[0]?.count || 0,
+        pendingAuditChange: 0,
+        pendingAuditTrend: 'stable',
+
         pendingShipment: pendingShipmentOrders[0]?.count || 0,
+        pendingShipmentChange: 0,
+        pendingShipmentTrend: 'stable',
+
         // 发货业绩
         todayShippedCount: todayShippedOrders.length,
         todayShippedAmount: todayShippedOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0),
         monthlyShippedCount: monthlyShippedOrders.length,
         monthlyShippedAmount: monthlyShippedOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0),
+
         // 签收业绩
         todayDeliveredCount: todayDeliveredOrders.length,
         todayDeliveredAmount: todayDeliveredOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0),
-        monthlyDeliveredCount: monthlyDeliveredOrders.length,
-        monthlyDeliveredAmount: monthlyDeliveredOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0)
+
+        monthlyDeliveredCount,
+        monthlyDeliveredCountChange: monthlyDeliveredCountChange.change,
+        monthlyDeliveredCountTrend: monthlyDeliveredCountChange.trend,
+
+        monthlyDeliveredAmount,
+        monthlyDeliveredAmountChange: monthlyDeliveredAmountChange.change,
+        monthlyDeliveredAmountTrend: monthlyDeliveredAmountChange.trend
       }
     });
   } catch (error) {

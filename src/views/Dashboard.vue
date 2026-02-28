@@ -1080,50 +1080,76 @@ const loadRealMetrics = async () => {
     // 更新指标
     const labels = getMetricLabels()
 
+    // 今日订单
     metrics.value[0].value = (metricsData.todayOrders || 0).toString()
     metrics.value[0].label = labels.orders || '今日订单'
+    metrics.value[0].change = `${metricsData.todayOrdersChange > 0 ? '+' : ''}${metricsData.todayOrdersChange || 0}%`
+    metrics.value[0].trend = metricsData.todayOrdersTrend || 'stable'
 
+    // 新增客户
     metrics.value[1].value = (metricsData.newCustomers || 0).toString()
     metrics.value[1].label = labels.customers || '新增客户'
+    metrics.value[1].change = `${metricsData.newCustomersChange > 0 ? '+' : ''}${metricsData.newCustomersChange || 0}%`
+    metrics.value[1].trend = metricsData.newCustomersTrend || 'stable'
 
+    // 今日业绩
     metrics.value[2].value = `¥${(metricsData.todayRevenue || 0).toLocaleString()}`
     metrics.value[2].label = labels.revenue || '今日业绩'
+    metrics.value[2].change = `${metricsData.todayRevenueChange > 0 ? '+' : ''}${metricsData.todayRevenueChange || 0}%`
+    metrics.value[2].trend = metricsData.todayRevenueTrend || 'stable'
 
+    // 本月单数
     metrics.value[3].value = (metricsData.monthlyOrders || 0).toString()
     metrics.value[3].label = labels.monthlyOrders || '本月单数'
+    metrics.value[3].change = `${metricsData.monthlyOrdersChange > 0 ? '+' : ''}${metricsData.monthlyOrdersChange || 0}%`
+    metrics.value[3].trend = metricsData.monthlyOrdersTrend || 'stable'
 
+    // 本月业绩
     if (metrics.value[4]) {
       metrics.value[4].value = `¥${(metricsData.monthlyRevenue || 0).toLocaleString()}`
       metrics.value[4].label = labels.monthlyRevenue || '本月业绩'
+      metrics.value[4].change = `${metricsData.monthlyRevenueChange > 0 ? '+' : ''}${metricsData.monthlyRevenueChange || 0}%`
+      metrics.value[4].trend = metricsData.monthlyRevenueTrend || 'stable'
     }
 
+    // 待处理售后
     if (metrics.value[5]) {
       metrics.value[5].value = (metricsData.pendingService || 0).toString()
       metrics.value[5].label = labels.service || '待处理售后'
+      metrics.value[5].change = `${metricsData.pendingServiceChange > 0 ? '+' : ''}${metricsData.pendingServiceChange || 0}%`
+      metrics.value[5].trend = metricsData.pendingServiceTrend || 'stable'
     }
 
     // 🔥 待审核订单
     if (metrics.value[6]) {
       metrics.value[6].value = (metricsData.pendingAudit || 0).toString()
       metrics.value[6].label = labels.audit || '待审核订单'
+      metrics.value[6].change = `${metricsData.pendingAuditChange > 0 ? '+' : ''}${metricsData.pendingAuditChange || 0}%`
+      metrics.value[6].trend = metricsData.pendingAuditTrend || 'stable'
     }
 
     // 🔥 待发货订单
     if (metrics.value[7]) {
       metrics.value[7].value = (metricsData.pendingShipment || 0).toString()
       metrics.value[7].label = labels.logistics || '待发货订单'
+      metrics.value[7].change = `${metricsData.pendingShipmentChange > 0 ? '+' : ''}${metricsData.pendingShipmentChange || 0}%`
+      metrics.value[7].trend = metricsData.pendingShipmentTrend || 'stable'
     }
 
     // 🔥 本月签收单数
     if (metrics.value[8]) {
       metrics.value[8].value = (metricsData.monthlyDeliveredCount || 0).toString()
       metrics.value[8].label = labels.monthlySignCount || '本月签收单数'
+      metrics.value[8].change = `${metricsData.monthlyDeliveredCountChange > 0 ? '+' : ''}${metricsData.monthlyDeliveredCountChange || 0}%`
+      metrics.value[8].trend = metricsData.monthlyDeliveredCountTrend || 'stable'
     }
 
     // 🔥 本月签收业绩
     if (metrics.value[9]) {
       metrics.value[9].value = `¥${(metricsData.monthlyDeliveredAmount || 0).toLocaleString()}`
       metrics.value[9].label = labels.monthlySignRevenue || '本月签收业绩'
+      metrics.value[9].change = `${metricsData.monthlyDeliveredAmountChange > 0 ? '+' : ''}${metricsData.monthlyDeliveredAmountChange || 0}%`
+      metrics.value[9].trend = metricsData.monthlyDeliveredAmountTrend || 'stable'
     }
 
   } catch (error) {
