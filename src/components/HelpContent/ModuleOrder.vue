@@ -37,6 +37,23 @@
             <el-tag size="small" type="warning">管理员/客服可见</el-tag>
           </div>
         </div>
+        <div class="menu-item">
+          <div class="menu-icon">💰</div>
+          <div class="menu-info">
+            <h4>取消代收申请</h4>
+            <p>查看和管理个人提交的取消代收申请记录</p>
+            <span class="menu-path">路径：订单管理 → 取消代收申请</span>
+          </div>
+        </div>
+        <div class="menu-item">
+          <div class="menu-icon">📝</div>
+          <div class="menu-info">
+            <h4>取消代收审核</h4>
+            <p>审核销售员提交的取消代收申请，通过或拒绝</p>
+            <span class="menu-path">路径：订单管理 → 取消代收审核</span>
+            <el-tag size="small" type="warning">管理员/客服可见</el-tag>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -215,6 +232,72 @@
     </section>
 
     <section>
+      <h2>代收管理</h2>
+      <p>代收管理功能用于处理订单的代收金额变更申请，确保财务数据的准确性。</p>
+
+      <h3>什么是代收？</h3>
+      <p>代收是指订单发货时，由物流公司代为收取的货款金额。通常情况下，代收金额等于订单总金额减去已支付定金。</p>
+
+      <h3>取消代收申请流程</h3>
+      <ol>
+        <li>
+          <strong>提交申请</strong>
+          <p>在订单详情页面，点击"改代收"按钮，填写申请信息：</p>
+          <ul>
+            <li>新代收金额：修改后的代收金额（可以为0）</li>
+            <li>申请原因：说明为什么要修改代收金额</li>
+            <li>凭证图片：上传相关凭证（可选）</li>
+          </ul>
+        </li>
+        <li>
+          <strong>等待审核</strong>
+          <p>申请提交后，状态变为"待审核"，等待管理员或客服审核</p>
+        </li>
+        <li>
+          <strong>审核结果</strong>
+          <ul>
+            <li>审核通过：订单的代收金额自动更新为新金额</li>
+            <li>审核拒绝：代收金额保持不变，可查看拒绝原因</li>
+          </ul>
+        </li>
+      </ol>
+
+      <h3>我的代收申请</h3>
+      <p>在"订单管理" → "取消代收申请"中可以：</p>
+      <ul>
+        <li>查看所有代收申请记录</li>
+        <li>查看申请状态（待审核、已通过、已拒绝）</li>
+        <li>查看审核意见和审核时间</li>
+        <li>撤销待审核的申请</li>
+      </ul>
+
+      <h3>代收申请审核</h3>
+      <el-tag type="warning">管理员/客服可操作</el-tag>
+      <p>在"订单管理" → "取消代收审核"中可以：</p>
+      <ul>
+        <li>查看所有待审核的代收申请</li>
+        <li>查看申请详情（订单信息、原代收金额、新代收金额、申请原因、凭证）</li>
+        <li>审核通过或拒绝申请</li>
+        <li>填写审核意见</li>
+      </ul>
+
+      <h3>审核要点</h3>
+      <ul>
+        <li>核实申请原因是否合理</li>
+        <li>检查凭证图片是否清晰有效</li>
+        <li>确认新代收金额是否正确</li>
+        <li>注意代收金额为0的情况（客户已全额支付）</li>
+      </ul>
+
+      <h3>常见场景</h3>
+      <ul>
+        <li><strong>客户补齐尾款</strong>：客户在发货前补齐了剩余货款，需要将代收金额改为0</li>
+        <li><strong>订单金额调整</strong>：订单总金额发生变化，需要相应调整代收金额</li>
+        <li><strong>定金金额变更</strong>：客户补交或退还部分定金，需要调整代收金额</li>
+      </ul>
+    </section>
+
+    <section>
       <h2>常见问题</h2>
       <el-collapse>
         <el-collapse-item title="Q: 订单创建后多久会自动流转到审核？" name="1">
@@ -232,6 +315,15 @@
         <el-collapse-item title="Q: 如何查看订单的审核记录？" name="5">
           <p>A: 在订单详情页面的"状态历史"中可以查看所有审核记录，包括审核人、审核时间和审核意见。</p>
         </el-collapse-item>
+        <el-collapse-item title="Q: 什么情况下需要申请取消代收？" name="6">
+          <p>A: 当订单的代收金额需要变更时，例如客户补齐了尾款、订单金额调整、定金变更等情况，都需要提交取消代收申请。</p>
+        </el-collapse-item>
+        <el-collapse-item title="Q: 代收申请被拒绝后怎么办？" name="7">
+          <p>A: 可以查看拒绝原因，补充完善相关信息和凭证后，重新提交申请。</p>
+        </el-collapse-item>
+        <el-collapse-item title="Q: 代收金额可以改为0吗？" name="8">
+          <p>A: 可以。当客户已全额支付订单金额时，可以将代收金额改为0，表示无需物流代收。</p>
+        </el-collapse-item>
       </el-collapse>
     </section>
   </div>
@@ -244,7 +336,8 @@ const operationData = [
   { operation: '提审', condition: '待流转/审核拒绝', description: '提交订单审核' },
   { operation: '审核', condition: '待审核（管理员/客服）', description: '审核通过或拒绝' },
   { operation: '发货', condition: '待发货（管理员/客服）', description: '填写物流信息' },
-  { operation: '取消', condition: '待流转/待审核', description: '取消订单' }
+  { operation: '取消', condition: '待流转/待审核', description: '取消订单' },
+  { operation: '改代收', condition: '待发货/已发货', description: '申请修改代收金额' }
 ]
 </script>
 

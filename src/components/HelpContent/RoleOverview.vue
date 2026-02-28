@@ -252,6 +252,8 @@ const permissionMatrix = [
   { module: '订单列表', superAdmin: true, admin: true, deptManager: true, sales: true, customerService: true },
   { module: '新增订单', superAdmin: true, admin: true, deptManager: true, sales: true, customerService: false },
   { module: '订单审核', superAdmin: true, admin: true, deptManager: false, sales: false, customerService: true },
+  { module: '取消代收申请', superAdmin: true, admin: true, deptManager: true, sales: true, customerService: false },
+  { module: '取消代收审核', superAdmin: true, admin: true, deptManager: false, sales: false, customerService: true },
   { module: '通话管理', superAdmin: true, admin: true, deptManager: true, sales: true, customerService: false },
   { module: '短信管理', superAdmin: true, admin: true, deptManager: false, sales: false, customerService: false },
   { module: '个人业绩', superAdmin: true, admin: true, deptManager: true, sales: true, customerService: false },
@@ -268,6 +270,7 @@ const permissionMatrix = [
   { module: '回收站', superAdmin: true, admin: true, deptManager: false, sales: false, customerService: false },
   { module: '绩效数据', superAdmin: true, admin: true, deptManager: true, sales: true, customerService: false },
   { module: '绩效管理', superAdmin: true, admin: true, deptManager: false, sales: false, customerService: false },
+  { module: '代收管理', superAdmin: true, admin: true, deptManager: false, sales: false, customerService: false },
   { module: '商品管理', superAdmin: true, admin: true, deptManager: false, sales: false, customerService: false },
   { module: '系统管理', superAdmin: true, admin: true, deptManager: false, sales: false, customerService: false }
 ]
