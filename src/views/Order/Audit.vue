@@ -274,13 +274,8 @@
         <span class="amount">¥{{ (row.totalAmount || 0).toLocaleString() }}</span>
       </template>
 
-      <template #waitingTime="{ row }">
-        <el-tag
-          :type="getWaitingTimeType(row.waitingMinutes)"
-          size="small"
-        >
-          {{ formatWaitingTime(row.waitingMinutes) }}
-        </el-tag>
+      <template #depositAmount="{ row }">
+        <span class="deposit-amount">¥{{ (row.depositAmount || 0).toLocaleString() }}</span>
       </template>
 
       <template #auditStatus="{ row }">
@@ -1112,6 +1107,13 @@ const tableColumns = computed(() => [
     visible: true
   },
   {
+    prop: 'depositAmount',
+    label: '定金',
+    width: 120,
+    align: 'right',
+    visible: true
+  },
+  {
     prop: 'productCount',
     label: '商品数量',
     width: 100,
@@ -1124,13 +1126,6 @@ const tableColumns = computed(() => [
     width: 160,
     visible: true,
     formatter: (value: unknown) => formatDateTime(value as string)
-  },
-  {
-    prop: 'waitingTime',
-    label: '等待时间',
-    width: 120,
-    align: 'center',
-    visible: activeTab.value === 'pending'
   },
   {
     prop: 'auditStatus',
