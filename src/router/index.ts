@@ -695,19 +695,33 @@ router.beforeEach(async (to, from, next) => {
 
   // 检查是否需要特殊权限（如物流状态更新）
   if (to.meta.requiresSpecialPermission) {
+    console.log('[路由守卫] 检查特殊权限...')
+    console.log('[路由守卫] 当前用户:', userStore.currentUser)
+    console.log('[路由守卫] 用户角色:', userStore.currentUser?.role)
+    console.log('[路由守卫] 用户权限:', userStore.permissions)
+
+    const role = userStore.currentUser?.role
     const hasSpecialAccess = userStore.isSuperAdmin ||
                             userStore.isWhitelistMember ||
                             userStore.permissions?.includes('logistics:status') ||
-                            userStore.currentUser?.role === 'manager' ||
-                            userStore.currentUser?.role === 'department_head' ||
+                            userStore.permissions?.includes('logistics:status:update') ||
+                            role === 'admin' || role === 'super_admin' || role === '管理员' || role === '超级管理员' ||
+                            role === 'manager' || role === 'department_manager' || role === '部门经理' ||
+                            role === 'department_head' || role === '部门负责人' ||
+                            role === 'customer_service' || role === '客服' || role === '客服人员' ||
                             (userStore.currentUser?.department === 'logistics' &&
                              userStore.currentUser?.position === 'supervisor')
 
+    console.log('[路由守卫] 特殊权限检查结果:', hasSpecialAccess)
+
     if (!hasSpecialAccess) {
+      console.log('[路由守卫] ❌ 权限不足，拦截访问')
       ElMessage.error('您没有访问该功能的权限，请联系管理员')
       next('/dashboard')
       return
     }
+
+    console.log('[路由守卫] ✅ 特殊权限检查通过')
   }
 
   next()
