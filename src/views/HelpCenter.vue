@@ -76,6 +76,7 @@
             <el-menu-item index="role-sales">销售员</el-menu-item>
             <el-menu-item index="role-customer-service">客服</el-menu-item>
             <el-menu-item index="role-permission-config">权限配置</el-menu-item>
+            <el-menu-item index="role-permission-tree">权限树</el-menu-item>
           </el-sub-menu>
 
           <!-- 移动APP -->
@@ -198,6 +199,7 @@ const helpContentComponents: Record<string, any> = {
   'role-sales': defineAsyncComponent(() => import('@/components/HelpContent/RoleSales.vue')),
   'role-customer-service': defineAsyncComponent(() => import('@/components/HelpContent/RoleCustomerService.vue')),
   'role-permission-config': defineAsyncComponent(() => import('@/components/HelpContent/RolePermissionConfig.vue')),
+  'role-permission-tree': defineAsyncComponent(() => import('@/components/HelpContent/RolePermissionTree.vue')),
 
   // 移动APP
   'app-overview': defineAsyncComponent(() => import('@/components/HelpContent/AppOverview.vue')),
@@ -476,6 +478,13 @@ const mockSearchResults = [
     excerpt: '如何配置和管理用户权限...',
     category: '角色权限',
     content: '权限配置 角色分配 权限设置 数据范围 菜单权限'
+  },
+  {
+    id: 'role-permission-tree',
+    title: '权限树',
+    excerpt: '系统权限树形结构详细说明，包含所有模块和子权限...',
+    category: '角色权限',
+    content: '权限树 权限结构 模块权限 路由路径 权限标识 代收管理 取消代收申请 取消代收审核'
   },
 
   // 移动APP
