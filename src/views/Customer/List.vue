@@ -107,14 +107,13 @@
             </el-form-item>
           </el-col>
           <el-col :span="4">
-            <el-form-item label="客户状态">
-              <el-select v-model="searchForm.status" placeholder="请选择" clearable style="width: 100%">
-                <el-option label="活跃" value="active" />
-                <el-option label="非活跃" value="inactive" />
-                <el-option label="潜在客户" value="potential" />
-                <el-option label="流失客户" value="lost" />
-                <el-option label="黑名单" value="blacklist" />
-              </el-select>
+            <el-form-item label="疾病史">
+              <el-input
+                v-model="searchForm.medicalHistory"
+                placeholder="请输入疾病史关键词"
+                clearable
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="4">
@@ -236,18 +235,26 @@
 
       <!-- 客户等级列 -->
       <template #column-level="{ row }">
-        <el-tag :type="getLevelType(row.level)">{{ getLevelText(row.level) }}</el-tag>
+        <div class="level-cell">
+          <el-tag :type="getLevelType(row.level)" size="small">{{ getLevelText(row.level) }}</el-tag>
+        </div>
       </template>
 
       <!-- 分配来源列 -->
       <template #column-allocationSource="{ row }">
-        <span v-if="isAllocatedCustomer(row)" class="allocated">分配</span>
-        <span v-else class="self-created">自建</span>
+        <div class="source-cell">
+          <span v-if="getCustomerSourceType(row) === 'shared'" class="source-tag shared">分享</span>
+          <span v-else-if="getCustomerSourceType(row) === 'allocated'" class="source-tag allocated">分配</span>
+          <span v-else class="source-tag self-created">自建</span>
+        </div>
       </template>
 
-      <!-- 客户状态列 -->
-      <template #column-status="{ row }">
-        <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+      <!-- 疾病史列 -->
+      <template #column-medicalHistory="{ row }">
+        <el-tooltip v-if="row.medicalHistory" :content="row.medicalHistory" placement="top" :show-after="300">
+          <span class="medical-history-text">{{ row.medicalHistory }}</span>
+        </el-tooltip>
+        <span v-else class="no-data">-</span>
       </template>
 
       <!-- 创建人列 -->
@@ -272,10 +279,12 @@
 
       <!-- 操作列 -->
        <template #table-actions="{ row }">
-         <el-button type="text" size="small" @click="handleView(row)">详情</el-button>
-         <el-button type="text" size="small" @click="handleOrder(row)">下单</el-button>
-         <el-button type="text" size="small" @click="handleCall(row)">外呼</el-button>
-         <el-button type="text" size="small" @click="handleShare(row)" v-if="userStore.isAdmin">分享</el-button>
+         <div class="action-buttons">
+           <el-button type="text" size="small" @click="handleView(row)">详情</el-button>
+           <el-button type="text" size="small" @click="handleOrder(row)">下单</el-button>
+           <el-button type="text" size="small" @click="handleCall(row)">外呼</el-button>
+           <el-button type="text" size="small" @click="handleShare(row)" v-if="userStore.isAdmin">分享</el-button>
+         </div>
        </template>
       </DynamicTable>
 
@@ -507,9 +516,12 @@ interface Customer {
   level: string
   status: string
   source: string
+  medicalHistory?: string  // 疾病史
+  allocationSource?: string  // 分配来源：'allocated' 表示从资料管理分配来的
   createdBy?: string
   shareInfo?: {
     status: string
+    shareType?: string  // 分享类型：'allocated' 表示分配
     [key: string]: unknown
   }
   [key: string]: unknown
@@ -550,7 +562,7 @@ const selectedCustomers = ref<Customer[]>([])
 const searchForm = reactive({
   keyword: '',  // 统一搜索框，支持姓名、手机号、编码
   level: '',
-  status: '',
+  medicalHistory: '',  // 疾病史搜索
   source: '',
   dateRange: [] as string[]  // 明确指定类型，确保初始化为空数组
 })
@@ -709,19 +721,14 @@ const canExport = computed(() => {
 
 // 表格列配置
 const tableColumns = computed(() => [
-  { prop: 'code', label: '客户编码', minWidth: 130, visible: true },
-  { prop: 'name', label: '客户姓名', minWidth: 100, visible: true },
-  { prop: 'phone', label: '手机号', width: 130, visible: true },
+  { prop: 'code', label: '客户编码', width: 120, visible: true },
+  { prop: 'name', label: '客户姓名', width: 90, visible: true },
+  { prop: 'phone', label: '手机号', width: 120, visible: true },
   { prop: 'age', label: '年龄', width: 70, visible: true },
   { prop: 'address', label: '地址', minWidth: 180, showOverflowTooltip: true, visible: true },
   { prop: 'level', label: '客户等级', width: 90, visible: true },
+  { prop: 'orderCount', label: '订单数', width: 70, visible: true },
   { prop: 'allocationSource', label: '来源', width: 70, visible: true },
-  {
-    prop: 'status',
-    label: '客户状态',
-    width: 90,
-    visible: userStore.isManager || userStore.isSuperAdmin
-  },
   { prop: 'salesPerson', label: '创建人', minWidth: 100, visible: true },
   {
     prop: 'shareStatus',
@@ -729,7 +736,7 @@ const tableColumns = computed(() => [
     width: 120,
     visible: userStore.isAdmin
   },
-  { prop: 'orderCount', label: '订单数', width: 70, visible: true },
+  { prop: 'medicalHistory', label: '疾病史', minWidth: 150, showOverflowTooltip: true, visible: true },
   { prop: 'createTime', label: '添加时间', width: 160, visible: true, formatter: (value: unknown) => formatDateTime(value as string) }
 ])
 
@@ -818,31 +825,26 @@ const getLevelText = (level: string) => {
   return texts[level] || '铜牌客户'
 }
 
-const getStatusType = (status: string) => {
-  const types: Record<string, string> = {
-    active: 'success',
-    inactive: 'info',
-    potential: 'warning',
-    lost: 'danger',
-    blacklist: 'danger'
+// 获取客户来源类型
+const getCustomerSourceType = (customer: Customer): 'shared' | 'allocated' | 'self-created' => {
+  // 1. 检查是否为分享客户
+  if (customer.shareInfo && customer.shareInfo.isShared) {
+    return 'shared'
   }
-  return types[status] || ''
+  // 2. 检查是否为分配客户
+  if (customer.allocationSource === 'allocated') {
+    return 'allocated'
+  }
+  if (customer.shareInfo && customer.shareInfo.shareType === 'allocated') {
+    return 'allocated'
+  }
+  // 3. 其他情况为自建
+  return 'self-created'
 }
 
-const getStatusText = (status: string) => {
-  const texts: Record<string, string> = {
-    active: '活跃',
-    inactive: '非活跃',
-    potential: '潜在客户',
-    lost: '流失客户',
-    blacklist: '黑名单'
-  }
-  return texts[status] || '未知'
-}
-
+// 判断客户是否为分配来的（保留兼容性）
 const isAllocatedCustomer = (customer: Customer) => {
-  // 判断客户是否为分配来的，如果创建者不是当前用户，则为分配来的
-  return customer.createdBy && customer.createdBy !== userStore.currentUser?.id
+  return getCustomerSourceType(customer) === 'allocated'
 }
 
 const handleRefresh = async () => {
@@ -1994,10 +1996,18 @@ onUnmounted(() => {
 .customer-table :deep(.el-table th) {
   background-color: #fafafa;
   border-bottom: 1px solid #ebeef5;
+  padding: 10px 0;
+  height: 42px;
 }
 
 .customer-table :deep(.el-table td) {
   border-bottom: 1px solid #f5f7fa;
+  padding: 8px 0;
+  height: 48px;
+}
+
+.customer-table :deep(.el-table .el-table__cell) {
+  padding: 8px 0;
 }
 
 .customer-table :deep(.el-table tr:last-child td) {
@@ -2048,6 +2058,22 @@ onUnmounted(() => {
   text-decoration: underline;
 }
 
+/* 操作按钮样式 */
+.action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.action-buttons .el-button {
+  margin: 0 !important;
+  padding: 0 4px !important;
+  height: auto !important;
+  line-height: 1.4 !important;
+}
+
 .name-link:focus, .phone-link:focus {
   outline: none;
 }
@@ -2095,7 +2121,59 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
+/* 客户等级列样式 */
+.level-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+}
+
 /* 分配来源样式 */
+.source-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+}
+
+.source-tag {
+  font-size: 13px;
+  font-weight: normal;
+  line-height: 1.4;
+}
+
+.source-tag.shared {
+  color: #67c23a;
+}
+
+.source-tag.allocated {
+  color: #409eff;
+}
+
+.source-tag.self-created {
+  color: #909399;
+}
+
+/* 疾病史样式 */
+.medical-history-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.4;
+}
+
+.no-data {
+  color: #c0c4cc;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* 旧样式（已废弃） */
 .allocated {
   color: #409eff;
   font-size: 12px;

@@ -64,7 +64,17 @@ router.post('/share', async (req: Request, res: Response) => {
     const { customerId, sharedTo, timeLimit, remark } = req.body;
     const currentUser = (req as any).user;
 
+    console.log('[客户分享] 接收到的参数:', {
+      customerId,
+      customerId_type: typeof customerId,
+      customerId_length: customerId?.length,
+      sharedTo,
+      timeLimit,
+      currentUser: currentUser.userId
+    });
+
     if (!customerId || !sharedTo) {
+      console.log('[客户分享] 参数验证失败');
       return res.status(400).json({ success: false, code: 400, message: '参数不完整' });
     }
 
@@ -73,13 +83,37 @@ router.post('/share', async (req: Request, res: Response) => {
     const shareRepository = AppDataSource.getRepository(CustomerShare);
 
     // 获取客户信息
+    console.log('[客户分享] 开始查询客户, ID:', customerId);
     const customer = await customerRepository.findOne({ where: { id: customerId } });
+    console.log('[客户分享] 查询结果:', customer ? `找到客户: ${customer.name} (${customer.customerNo})` : '客户不存在');
+
     if (!customer) {
-      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+      // 额外调试：查看数据库中的客户ID格式
+      const sampleCustomers = await customerRepository.find({ take: 3, order: { createdAt: 'DESC' } });
+      console.log('[客户分享] 数据库中最近3条客户:', sampleCustomers.map(c => ({
+        id: c.id,
+        id_length: c.id.length,
+        name: c.name,
+        customerNo: c.customerNo
+      })));
+
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        message: '客户不存在',
+        debug: process.env.NODE_ENV === 'development' ? {
+          searchId: customerId,
+          searchIdLength: customerId.length,
+          sampleIds: sampleCustomers.map(c => c.id)
+        } : undefined
+      });
     }
 
     // 获取接收人信息
+    console.log('[客户分享] 查询接收人, ID:', sharedTo);
     const targetUser = await userRepository.findOne({ where: { id: sharedTo } });
+    console.log('[客户分享] 接收人查询结果:', targetUser ? `找到用户: ${targetUser.realName || targetUser.username}` : '用户不存在');
+
     if (!targetUser) {
       return res.status(404).json({ success: false, code: 404, message: '接收人不存在' });
     }
@@ -105,7 +139,36 @@ router.post('/share', async (req: Request, res: Response) => {
       share.expireTime = expireTime;
     }
 
+    console.log('[客户分享] 准备保存分享记录:', {
+      shareId: share.id,
+      customerName: share.customerName,
+      from: share.sharedByName,
+      to: share.sharedToName,
+      timeLimit: share.timeLimit
+    });
+
     await shareRepository.save(share);
+    console.log('[客户分享] 分享记录保存成功');
+
+    // 🔥 发送系统消息给被分享成员
+    try {
+      const messageService = (await import('../services/messageService')).default;
+      await messageService.createSystemMessage({
+        type: 'customer_share',
+        title: '客户分享通知',
+        content: `${share.sharedByName} 将客户"${share.customerName}"分享给了您${share.timeLimit > 0 ? `（有效期${share.timeLimit}天）` : '（永久有效）'}`,
+        priority: 'normal',
+        targetUserId: share.sharedTo,
+        relatedId: share.customerId,
+        relatedType: 'customer',
+        actionUrl: `/customer/detail/${share.customerId}`,
+        createdBy: share.sharedBy
+      });
+      console.log('[客户分享] 系统消息已发送给被分享成员');
+    } catch (msgError) {
+      console.error('[客户分享] 发送系统消息失败:', msgError);
+      // 消息发送失败不影响分享功能
+    }
 
     res.status(201).json({
       success: true,
@@ -114,7 +177,7 @@ router.post('/share', async (req: Request, res: Response) => {
       data: share
     });
   } catch (error) {
-    console.error('分享客户失败:', error);
+    console.error('[客户分享] 分享失败，错误详情:', error);
     res.status(500).json({ success: false, code: 500, message: '分享客户失败' });
   }
 });

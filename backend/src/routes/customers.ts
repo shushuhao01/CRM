@@ -235,6 +235,7 @@ router.get('/', async (req: Request, res: Response) => {
         if (activeShare) {
           shareInfo = {
             id: activeShare.id,
+            isShared: true, // 🔥 添加isShared标记
             status: activeShare.status,
             sharedBy: activeShare.sharedBy,
             sharedByName: activeShare.sharedByName,
@@ -295,7 +296,25 @@ router.get('/', async (req: Request, res: Response) => {
         tags: customer.tags || [],
         remarks: customer.remark || '',
         remark: customer.remark || '',
-        medicalHistory: customer.medicalHistory || '',
+        medicalHistory: (() => {
+          // 解析疾病史，返回最新的一条记录内容
+          if (!customer.medicalHistory) return '';
+          try {
+            const parsed = JSON.parse(customer.medicalHistory);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              // 按创建时间排序，返回最新的一条
+              const sorted = parsed.sort((a: any, b: any) => {
+                const timeA = new Date(a.createTime || 0).getTime();
+                const timeB = new Date(b.createTime || 0).getTime();
+                return timeB - timeA;
+              });
+              return sorted[0]?.content || '';
+            }
+            return customer.medicalHistory;
+          } catch {
+            return customer.medicalHistory;
+          }
+        })(),
         improvementGoals: customer.improvementGoals || [],
         otherGoals: customer.otherGoals || '',
         fanAcquisitionTime: formatDate(customer.fanAcquisitionTime),

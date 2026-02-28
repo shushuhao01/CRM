@@ -374,106 +374,10 @@ export interface CustomerSearchResult {
 }
 
 export const searchCustomer = async (params: CustomerSearchParams): Promise<CustomerSearchResult[]> => {
-  // 生产环境：强制使用真实API，不降级
-  if (isProduction()) {
-    console.log('[Data API] 生产环境：使用后端API搜索客户')
+  try {
+    console.log('[Data API] 使用后端API搜索客户')
     const response = await api.get('/data/search-customer', params)
     return response.data || response
-  }
-
-  // 开发环境：从localStorage搜索
-  console.log('[Data API] 开发环境：使用localStorage搜索客户')
-  try {
-    const customerStore = localStorage.getItem('customer-store')
-    const orderStoreRaw = localStorage.getItem('crm_store_order')
-    const userDatabase = localStorage.getItem('userDatabase')
-
-    if (!customerStore || !orderStoreRaw || !userDatabase) {
-      return []
-    }
-
-    // 解析订单数据（支持新旧格式）
-    let orders: any[] = []
-    try {
-      const parsed = JSON.parse(orderStoreRaw)
-      if (parsed.data && parsed.data.orders) {
-        orders = parsed.data.orders
-      } else if (parsed.orders) {
-        orders = parsed.orders
-      } else if (Array.isArray(parsed)) {
-        orders = parsed
-      }
-    } catch (e) {
-      console.error('[Data API] 解析订单数据失败:', e)
-      return []
-    }
-
-    const customers = JSON.parse(customerStore).customers || []
-    const users = JSON.parse(userDatabase) || []
-
-    const results: CustomerSearchResult[] = []
-    const keyword = params.phone || params.orderNo || params.trackingNo || params.customerName || params.customerCode || ''
-
-    // 搜索匹配的订单
-    for (const order of orders) {
-      const customer = customers.find((c: unknown) => c.id === order.customerId)
-      if (!customer) continue
-
-      const owner = users.find((u: unknown) => u.id === order.salesPersonId)
-
-      let matched = false
-
-      // 匹配逻辑
-      if (params.phone && customer.phone === params.phone) matched = true
-      if (params.customerName && customer.name?.includes(params.customerName)) matched = true
-      if (params.customerCode && customer.code === params.customerCode) matched = true
-      if (params.orderNo && order.orderNumber === params.orderNo) matched = true
-      if (params.trackingNo && order.trackingNumber === params.trackingNo) matched = true
-
-      // 通用关键词匹配
-      if (!matched && keyword) {
-        if (customer.name?.includes(keyword) ||
-            customer.phone === keyword ||
-            customer.code === keyword ||
-            order.orderNumber === keyword ||
-            order.orderNumber?.includes(keyword) ||
-            order.trackingNumber === keyword ||
-            order.trackingNumber?.includes(keyword)) {
-          matched = true
-        }
-      }
-
-      if (matched) {
-        results.push({
-          customerName: customer.name || '未知',
-          phone: customer.phone || '',
-          orderNo: order.orderNumber || '',
-          orderAmount: order.totalAmount || 0,
-          orderDate: order.createTime ? order.createTime.split(' ')[0] : '',
-          trackingNo: order.trackingNumber || '',
-          ownerName: owner ? (owner.realName || owner.name || '未知') : '未知',
-          ownerDepartment: owner ? (owner.department || '未知部门') : '未知部门',
-          ownerPhone: owner ? (owner.phone || '') : '',
-          ownerStatus: 'active',
-          customerId: customer.id,
-          ownerId: owner?.id || ''
-        })
-      }
-    }
-
-    // 去重
-    const uniqueResults = results.reduce((acc: CustomerSearchResult[], current) => {
-      const exists = acc.find(item =>
-        item.customerName === current.customerName &&
-        item.orderNo === current.orderNo
-      )
-      if (!exists) {
-        acc.push(current)
-      }
-      return acc
-    }, [])
-
-    return uniqueResults
   } catch (error) {
     console.error('[Data API] 搜索客户失败:', error)
     return []
