@@ -209,31 +209,46 @@
             <div v-if="stockRecords.length === 0" class="empty-data">
               <el-empty description="暂无库存记录" />
             </div>
-            <el-table v-else :data="stockRecords" style="width: 100%">
-              <el-table-column label="时间" width="180">
-                <template #default="{ row }">
-                  {{ formatTime(row.createTime) }}
-                </template>
-              </el-table-column>
-              <el-table-column label="操作类型" width="100">
-                <template #default="{ row }">
-                  <el-tag :type="getStockTypeColor(row.type)" size="small">
-                    {{ getStockTypeText(row.type) }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="quantity" label="数量变化" width="120">
-                <template #default="{ row }">
-                  <span :class="row.type === 'increase' ? 'increase' : 'decrease'">
-                    {{ row.type === 'increase' ? '+' : '-' }}{{ row.quantity }}
-                  </span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="stockAfter" label="变化后库存" width="120" />
-              <el-table-column prop="reason" label="调整原因" />
-              <el-table-column prop="operator" label="操作人" width="100" />
-              <el-table-column prop="remark" label="备注" show-overflow-tooltip />
-            </el-table>
+            <div v-else>
+              <el-table :data="paginatedStockRecords" style="width: 100%">
+                <el-table-column label="时间" width="180">
+                  <template #default="{ row }">
+                    {{ formatTime(row.createTime) }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作类型" width="100">
+                  <template #default="{ row }">
+                    <el-tag :type="getStockTypeColor(row.type)" size="small">
+                      {{ getStockTypeText(row.type) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="quantity" label="数量变化" width="120">
+                  <template #default="{ row }">
+                    <span :class="row.type === 'increase' ? 'increase' : 'decrease'">
+                      {{ row.type === 'increase' ? '+' : '-' }}{{ row.quantity }}
+                    </span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="stockAfter" label="变化后库存" width="120" />
+                <el-table-column prop="reason" label="调整原因" />
+                <el-table-column prop="operator" label="操作人" width="100" />
+                <el-table-column prop="remark" label="备注" show-overflow-tooltip />
+              </el-table>
+
+              <!-- 翻页控件 -->
+              <div style="margin-top: 16px; text-align: center;">
+                <el-pagination
+                  v-model:current-page="stockPagination.currentPage"
+                  v-model:page-size="stockPagination.pageSize"
+                  :page-sizes="[10, 20, 50, 100]"
+                  :total="stockPagination.total"
+                  layout="total, sizes, prev, pager, next, jumper"
+                  @size-change="handleStockSizeChange"
+                  @current-change="handleStockPageChange"
+                />
+              </div>
+            </div>
           </el-card>
         </el-col>
 
@@ -605,6 +620,20 @@ const priceForm = reactive({
 
 // 库存记录
 const stockRecords = ref([])
+
+// 库存记录分页
+const stockPagination = reactive({
+  currentPage: 1,
+  pageSize: 10,
+  total: 0
+})
+
+// 库存记录显示数据(分页后)
+const paginatedStockRecords = computed(() => {
+  const start = (stockPagination.currentPage - 1) * stockPagination.pageSize
+  const end = start + stockPagination.pageSize
+  return stockRecords.value.slice(start, end)
+})
 
 // 相关统计
 const relatedStats = ref<{
@@ -1083,6 +1112,9 @@ const loadProductInfo = async () => {
 /**
  * 加载库存记录
  */
+/**
+ * 加载库存记录
+ */
 const loadStockRecords = async () => {
   try {
     const productId = route.params.id as string
@@ -1102,60 +1134,98 @@ const loadStockRecords = async () => {
 
     const records = []
 
+    // 🔥 修复：正确计算库存变化
+    // 初始库存（假设商品创建时的库存）
+    let runningStock = currentProduct.stock
+
+    // 计算所有销售出库的总数量
+    let totalSold = 0
+    productOrders.forEach(order => {
+      const product = order.products.find(p => p.id === productId || p.id === Number(productId))
+      if (product) {
+        totalSold += product.quantity
+      }
+    })
+
+    // 初始库存 = 当前库存 + 已售出数量
+    const initialStock = currentProduct.stock + totalSold
+    runningStock = initialStock
+
     // 添加商品创建时的初始库存记录
     records.push({
       id: `initial_${productId}`,
       type: 'increase',
-      quantity: currentProduct.stock,
-      stockAfter: currentProduct.stock,
+      quantity: initialStock,
+      stockAfter: initialStock,
       reason: '商品创建',
       operator: '系统管理员',
       remark: '商品创建时的初始库存',
-      createTime: currentProduct.createTime
+      createTime: currentProduct.createTime,
+      orderId: null,
+      orderNumber: null
     })
 
-    // 添加销售出库记录
-    productOrders.forEach(order => {
+    // 添加销售出库记录（按时间正序处理）
+    const sortedOrders = [...productOrders].sort((a, b) =>
+      new Date(a.shippingTime || a.createTime).getTime() - new Date(b.shippingTime || b.createTime).getTime()
+    )
+
+    sortedOrders.forEach(order => {
       const product = order.products.find(p => p.id === productId || p.id === Number(productId))
       if (product) {
+        // 🔥 修复：正确计算变化后库存
+        runningStock -= product.quantity
+
+        // 获取操作人姓名
+        const operatorName = userStore.getUserById(order.createdBy)?.realName ||
+                            userStore.getUserById(order.createdBy)?.name ||
+                            '系统'
+
         records.push({
           id: `sale_${order.id}`,
           type: 'decrease',
           quantity: product.quantity,
-          stockAfter: Math.max(0, currentProduct.stock - product.quantity), // 计算变化后库存
+          stockAfter: Math.max(0, runningStock), // 确保不为负数
           reason: '销售出库',
-          operator: '系统',
+          operator: operatorName,
           remark: `订单号：${order.orderNumber}`,
-          createTime: order.shippingTime || order.createTime
+          createTime: order.shippingTime || order.createTime,
+          orderId: order.id,
+          orderNumber: order.orderNumber
         })
       }
     })
-
-    // 如果当前库存低于最低库存，添加补货记录
-    if (currentProduct.stock < currentProduct.minStock) {
-      const restockQuantity = currentProduct.maxStock - currentProduct.stock
-      records.push({
-        id: `restock_${Date.now()}`,
-        type: 'increase',
-        quantity: restockQuantity,
-        stockAfter: currentProduct.maxStock,
-        reason: '补货入库',
-        operator: '采购部',
-        remark: '库存不足，紧急补货',
-        createTime: new Date().toLocaleString('zh-CN')
-      })
-    }
 
     // 按时间倒序排列
     stockRecords.value = records.sort((a, b) =>
       new Date(b.createTime).getTime() - new Date(a.createTime).getTime()
     )
 
+    // 🔥 设置分页总数
+    stockPagination.total = stockRecords.value.length
+    stockPagination.currentPage = 1 // 重置到第一页
+
   } catch (error) {
     console.error('加载库存记录失败:', error)
     // 不显示错误消息，而是显示空数据
     stockRecords.value = []
+    stockPagination.total = 0
   }
+}
+
+/**
+ * 库存记录翻页处理
+ */
+const handleStockPageChange = (page: number) => {
+  stockPagination.currentPage = page
+}
+
+/**
+ * 库存记录每页数量变化处理
+ */
+const handleStockSizeChange = (size: number) => {
+  stockPagination.pageSize = size
+  stockPagination.currentPage = 1 // 重置到第一页
 }
 
 /**
@@ -1165,13 +1235,13 @@ const applyDataScopeControl = (orders: unknown[]) => {
   const currentUser = userStore.user
   if (!currentUser) return []
 
-  // 超级管理员可以查看所有订单
-  if (currentUser.role === 'super_admin') {
+  // 超级管理员和管理员可以查看所有订单
+  if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
     return orders
   }
 
-  // 部门负责人可以查看本部门所有订单
-  if (currentUser.role === 'department_head') {
+  // 部门经理可以查看本部门所有订单
+  if (currentUser.role === 'department_manager') {
     return orders.filter(order =>
       order.salesPerson?.departmentId === currentUser.departmentId ||
       order.customerService?.departmentId === currentUser.departmentId
@@ -1179,7 +1249,7 @@ const applyDataScopeControl = (orders: unknown[]) => {
   }
 
   // 销售员只能查看自己的订单
-  if (currentUser.role === 'sales') {
+  if (currentUser.role === 'sales_staff') {
     return orders.filter(order => order.salesPersonId === currentUser.id)
   }
 
@@ -1274,11 +1344,25 @@ const loadRelatedStatsFromLocal = async () => {
   try {
     const productId = route.params.id as string
 
+    console.log('[相关统计] 开始从本地数据加载统计...')
+    console.log('[相关统计] 商品ID:', productId)
+    console.log('[相关统计] 订单总数:', orderStore.orders.length)
+
+    // 🔥 确保订单数据已加载
+    if (orderStore.orders.length === 0) {
+      console.log('[相关统计] 订单数据未加载，开始加载...')
+      await orderStore.loadOrdersFromAPI()
+      console.log('[相关统计] 订单数据加载完成，共', orderStore.orders.length, '个订单')
+    }
+
     // 获取包含该商品的所有订单，应用数据范围控制
     const allOrders = applyDataScopeControl(orderStore.orders)
+    console.log('[相关统计] 应用数据范围控制后的订单数:', allOrders.length)
+
     const productOrders = allOrders.filter(order =>
       order.products.some(p => p.id === productId || p.id === Number(productId))
     )
+    console.log('[相关统计] 包含该商品的订单数:', productOrders.length)
 
     // 计算待处理订单（待审核、待发货状态）
     const pendingOrders = productOrders.filter(order =>
@@ -1320,7 +1404,7 @@ const loadRelatedStatsFromLocal = async () => {
     let dataScope: 'all' | 'department' | 'personal' = 'personal'
     if (currentUser?.role === 'super_admin' || currentUser?.role === 'admin') {
       dataScope = 'all'
-    } else if (currentUser?.role === 'department_head' || currentUser?.role === 'manager') {
+    } else if (currentUser?.role === 'department_manager') {
       dataScope = 'department'
     }
 
@@ -1333,8 +1417,10 @@ const loadRelatedStatsFromLocal = async () => {
       dataScope
     }
 
+    console.log('[相关统计] 统计数据计算完成:', relatedStats.value)
+
   } catch (error) {
-    console.error('从本地加载统计数据失败:', error)
+    console.error('[相关统计] 从本地加载统计数据失败:', error)
     // 设置默认值
     relatedStats.value = {
       pendingOrders: 0,
@@ -1362,10 +1448,58 @@ const loadOperationLogs = async () => {
       return
     }
 
+    // 🔥 确保用户数据已加载
+    if (userStore.users.length === 0) {
+      console.log('[操作日志] 用户数据未加载，开始加载...')
+      await userStore.loadUsers()
+      console.log('[操作日志] 用户数据加载完成，共', userStore.users.length, '个用户')
+    }
+
+    // 🔥 辅助函数：将用户ID转换为姓名
+    const getUserName = (userId: string | undefined) => {
+      if (!userId) {
+        console.log('[操作日志] userId为空，返回"系统"')
+        return '系统'
+      }
+
+      console.log('[操作日志] 查找用户ID:', userId)
+
+      // 尝试通过ID查找用户
+      const user = userStore.getUserById(userId)
+      if (user) {
+        const userName = user.realName || user.name || user.username || userId
+        console.log('[操作日志] 找到用户:', userName)
+        return userName
+      }
+
+      // 🔥 如果ID是特殊格式(如 user_xxx),尝试提取真实ID或匹配username
+      if (typeof userId === 'string' && userId.includes('_')) {
+        console.log('[操作日志] 检测到特殊格式ID，尝试匹配...')
+        // 尝试从users列表中通过username匹配
+        const matchedUser = userStore.users.find(u =>
+          u.username === userId ||
+          u.id === userId ||
+          String(u.id) === userId ||
+          userId.includes(String(u.id)) ||
+          userId.includes(u.username)
+        )
+        if (matchedUser) {
+          const userName = matchedUser.realName || matchedUser.name || matchedUser.username || userId
+          console.log('[操作日志] 通过特殊格式匹配到用户:', userName)
+          return userName
+        }
+      }
+
+      // 如果都找不到,返回原ID
+      console.log('[操作日志] 未找到用户，返回原ID:', userId)
+      console.log('[操作日志] 当前用户列表:', userStore.users.map(u => ({ id: u.id, name: u.name, username: u.username })))
+      return userId
+    }
+
     // 添加商品创建记录（默认必有的记录）
     logs.push({
       id: `product_create_${productId}`,
-      operator: '系统管理员',
+      operator: getUserName(currentProduct.createdBy) || '系统管理员',
       action: '创建商品',
       detail: `商品"${currentProduct.name}"创建成功`,
       createTime: currentProduct.createTime
@@ -1381,7 +1515,7 @@ const loadOperationLogs = async () => {
       // 添加订单创建记录
       logs.push({
         id: `order_create_${order.id}`,
-        operator: order.createdBy || '客服',
+        operator: getUserName(order.createdBy),
         action: '创建订单',
         detail: `创建了包含商品"${currentProduct.name}"的订单 (订单号：${order.orderNumber})`,
         createTime: order.createTime
@@ -1392,7 +1526,7 @@ const loadOperationLogs = async () => {
         order.statusHistory.forEach(status => {
           logs.push({
             id: `status_${order.id}_${status.time}`,
-            operator: status.operator,
+            operator: getUserName(status.operator),
             action: '订单状态变更',
             detail: `${status.description} (订单号：${order.orderNumber})`,
             createTime: status.time
@@ -1405,7 +1539,7 @@ const loadOperationLogs = async () => {
         order.operationLogs.forEach(log => {
           logs.push({
             id: `order_${log.id}`,
-            operator: log.operator,
+            operator: getUserName(log.operator),
             action: `订单${log.action}`,
             detail: `${log.description} (订单号：${order.orderNumber})`,
             createTime: log.time
@@ -1418,7 +1552,7 @@ const loadOperationLogs = async () => {
     if (currentProduct.updateTime && currentProduct.updateTime !== currentProduct.createTime) {
       logs.push({
         id: `product_update_${productId}`,
-        operator: '商品管理员',
+        operator: getUserName(currentProduct.updatedBy) || '商品管理员',
         action: '更新商品信息',
         detail: `商品"${currentProduct.name}"信息已更新`,
         createTime: currentProduct.updateTime
