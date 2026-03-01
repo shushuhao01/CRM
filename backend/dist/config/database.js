@@ -114,6 +114,10 @@ const WecomServiceAccount_1 = require("../entities/WecomServiceAccount");
 const WecomChatRecord_1 = require("../entities/WecomChatRecord");
 const WecomPaymentRecord_1 = require("../entities/WecomPaymentRecord");
 const CodCancelApplication_1 = require("../entities/CodCancelApplication");
+const ValueAddedOrder_1 = require("../entities/ValueAddedOrder");
+const ValueAddedPriceConfig_1 = require("../entities/ValueAddedPriceConfig");
+const OutsourceCompany_1 = require("../entities/OutsourceCompany");
+const ValueAddedStatusConfig_1 = require("../entities/ValueAddedStatusConfig");
 // 🔥 统一使用 MySQL 数据库（开发环境和生产环境）
 // 数据库类型：默认使用 MySQL，除非明确指定其他类型
 const dbType = process.env.DB_TYPE || 'mysql';
@@ -181,7 +185,11 @@ const entities = [
     WecomServiceAccount_1.WecomServiceAccount,
     WecomChatRecord_1.WecomChatRecord,
     WecomPaymentRecord_1.WecomPaymentRecord,
-    CodCancelApplication_1.CodCancelApplication
+    CodCancelApplication_1.CodCancelApplication,
+    ValueAddedOrder_1.ValueAddedOrder,
+    ValueAddedPriceConfig_1.ValueAddedPriceConfig,
+    OutsourceCompany_1.OutsourceCompany,
+    ValueAddedStatusConfig_1.ValueAddedStatusConfig
 ];
 // MySQL 数据库配置（开发环境和生产环境统一使用）
 const AppDataSource = new typeorm_1.DataSource({

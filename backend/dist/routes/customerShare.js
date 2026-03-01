@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_1 = require("../middleware/auth");
@@ -54,19 +87,49 @@ router.post('/share', async (req, res) => {
     try {
         const { customerId, sharedTo, timeLimit, remark } = req.body;
         const currentUser = req.user;
+        console.log('[客户分享] 接收到的参数:', {
+            customerId,
+            customerId_type: typeof customerId,
+            customerId_length: customerId?.length,
+            sharedTo,
+            timeLimit,
+            currentUser: currentUser.userId
+        });
         if (!customerId || !sharedTo) {
+            console.log('[客户分享] 参数验证失败');
             return res.status(400).json({ success: false, code: 400, message: '参数不完整' });
         }
         const customerRepository = database_1.AppDataSource.getRepository(Customer_1.Customer);
         const userRepository = database_1.AppDataSource.getRepository(User_1.User);
         const shareRepository = database_1.AppDataSource.getRepository(CustomerShare_1.CustomerShare);
         // 获取客户信息
+        console.log('[客户分享] 开始查询客户, ID:', customerId);
         const customer = await customerRepository.findOne({ where: { id: customerId } });
+        console.log('[客户分享] 查询结果:', customer ? `找到客户: ${customer.name} (${customer.customerNo})` : '客户不存在');
         if (!customer) {
-            return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+            // 额外调试：查看数据库中的客户ID格式
+            const sampleCustomers = await customerRepository.find({ take: 3, order: { createdAt: 'DESC' } });
+            console.log('[客户分享] 数据库中最近3条客户:', sampleCustomers.map(c => ({
+                id: c.id,
+                id_length: c.id.length,
+                name: c.name,
+                customerNo: c.customerNo
+            })));
+            return res.status(404).json({
+                success: false,
+                code: 404,
+                message: '客户不存在',
+                debug: process.env.NODE_ENV === 'development' ? {
+                    searchId: customerId,
+                    searchIdLength: customerId.length,
+                    sampleIds: sampleCustomers.map(c => c.id)
+                } : undefined
+            });
         }
         // 获取接收人信息
+        console.log('[客户分享] 查询接收人, ID:', sharedTo);
         const targetUser = await userRepository.findOne({ where: { id: sharedTo } });
+        console.log('[客户分享] 接收人查询结果:', targetUser ? `找到用户: ${targetUser.realName || targetUser.username}` : '用户不存在');
         if (!targetUser) {
             return res.status(404).json({ success: false, code: 404, message: '接收人不存在' });
         }
@@ -89,7 +152,35 @@ router.post('/share', async (req, res) => {
             expireTime.setDate(expireTime.getDate() + timeLimit);
             share.expireTime = expireTime;
         }
+        console.log('[客户分享] 准备保存分享记录:', {
+            shareId: share.id,
+            customerName: share.customerName,
+            from: share.sharedByName,
+            to: share.sharedToName,
+            timeLimit: share.timeLimit
+        });
         await shareRepository.save(share);
+        console.log('[客户分享] 分享记录保存成功');
+        // 🔥 发送系统消息给被分享成员
+        try {
+            const messageService = (await Promise.resolve().then(() => __importStar(require('../services/messageService')))).default;
+            await messageService.createSystemMessage({
+                type: 'customer_share',
+                title: '客户分享通知',
+                content: `${share.sharedByName} 将客户"${share.customerName}"分享给了您${share.timeLimit > 0 ? `（有效期${share.timeLimit}天）` : '（永久有效）'}`,
+                priority: 'normal',
+                targetUserId: share.sharedTo,
+                relatedId: share.customerId,
+                relatedType: 'customer',
+                actionUrl: `/customer/detail/${share.customerId}`,
+                createdBy: share.sharedBy
+            });
+            console.log('[客户分享] 系统消息已发送给被分享成员');
+        }
+        catch (msgError) {
+            console.error('[客户分享] 发送系统消息失败:', msgError);
+            // 消息发送失败不影响分享功能
+        }
         res.status(201).json({
             success: true,
             code: 200,
@@ -98,7 +189,7 @@ router.post('/share', async (req, res) => {
         });
     }
     catch (error) {
-        console.error('分享客户失败:', error);
+        console.error('[客户分享] 分享失败，错误详情:', error);
         res.status(500).json({ success: false, code: 500, message: '分享客户失败' });
     }
 });

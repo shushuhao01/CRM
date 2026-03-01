@@ -864,15 +864,15 @@ class ProductController {
             const userId = currentUser?.id;
             const departmentId = currentUser?.departmentId;
             if (userRole === 'super_admin' || userRole === 'admin') {
-                // 管理员：查看全部数据，不添加额外过滤条件
+                // 超级管理员和管理员：查看全部数据，不添加额外过滤条件
             }
-            else if (userRole === 'department_head' || userRole === 'manager') {
-                // 部门经理/负责人：查看本部门数据
+            else if (userRole === 'department_manager') {
+                // 部门经理：查看本部门数据
                 if (departmentId) {
                     queryBuilder = queryBuilder.andWhere('(order.salesPersonDepartmentId = :departmentId OR order.customerServiceDepartmentId = :departmentId)', { departmentId });
                 }
             }
-            else if (userRole === 'sales') {
+            else if (userRole === 'sales_staff') {
                 // 销售员：只看自己的订单
                 queryBuilder = queryBuilder.andWhere('order.salesPersonId = :userId', { userId });
             }
@@ -931,7 +931,7 @@ class ProductController {
                 returnRate: Number(returnRate.toFixed(1)),
                 // 额外信息：数据范围标识
                 dataScope: userRole === 'super_admin' || userRole === 'admin' ? 'all' :
-                    userRole === 'department_head' || userRole === 'manager' ? 'department' : 'personal'
+                    userRole === 'department_manager' ? 'department' : 'personal'
             };
             res.json({
                 success: true,

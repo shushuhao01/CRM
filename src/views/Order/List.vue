@@ -312,9 +312,11 @@
 
       <!-- 标记列 -->
       <template #column-markType="{ row }">
-        <el-tag :type="getMarkTagType(row.markType || 'normal')" size="small" effect="dark">
-          {{ getMarkText(row.markType || 'normal') }}
-        </el-tag>
+        <div class="mark-type-cell">
+          <el-tag :type="getMarkTagType(row.markType || 'normal')" size="small" effect="dark">
+            {{ getMarkText(row.markType || 'normal') }}
+          </el-tag>
+        </div>
       </template>
 
       <!-- 订单金额列 -->
@@ -329,11 +331,15 @@
 
       <!-- 商品列 -->
       <template #column-products="{ row }">
-        <div class="product-list">
-          <el-tooltip v-for="product in row.products" :key="product.id" :content="`${product.name} × ${product.quantity}`" placement="top" :show-after="300">
-            <div class="product-item">
-              {{ product.name }} × {{ product.quantity }}
-            </div>
+        <div class="product-list-inline">
+          <el-tooltip
+            :content="Array.isArray(row.products) ? row.products.map((p: ProductItem) => `${p.name} × ${p.quantity}`).join('，') : (row.products || '暂无商品')"
+            placement="top"
+            :show-after="300"
+          >
+            <span class="product-text">
+              {{ Array.isArray(row.products) ? row.products.map((p: ProductItem) => `${p.name} × ${p.quantity}`).join('，') : (row.products || '-') }}
+            </span>
           </el-tooltip>
         </div>
       </template>
@@ -2913,6 +2919,24 @@ onUnmounted(() => {
 }
 
 /* 商品列表样式 */
+/* 商品列表样式 - 单行显示 */
+.product-list-inline {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.product-text {
+  display: inline-block;
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  line-height: 1.5;
+}
+
+/* 旧的多行样式（已废弃） */
 .product-list {
   display: flex;
   flex-direction: column;
@@ -2933,6 +2957,14 @@ onUnmounted(() => {
 
 .product-item:last-child {
   border-bottom: none;
+}
+
+/* 标记列样式 */
+.mark-type-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 0;
 }
 
 /* 金额样式 */

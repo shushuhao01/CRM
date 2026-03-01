@@ -111,3 +111,12 @@ export async function sendBatchSystemMessages(messages: SendMessageOptions[]): P
     throw error;
   }
 }
+
+
+export const messageService = {
+  sendMessage: sendSystemMessage,
+  sendBatchMessages: sendBatchSystemMessages,
+  createSystemMessage: sendSystemMessage
+};
+
+export default messageService;
