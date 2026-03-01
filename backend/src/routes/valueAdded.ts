@@ -1564,3 +1564,178 @@ function findMatchingPriceTier(tiers: ValueAddedPriceConfig[], orderDate: Date):
 }
 
 export default router;
+
+/**
+ * 获取备注预设列表
+ */
+router.get('/remark-presets', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { category } = req.query;
+
+    const query = `
+      SELECT id, remark_text, category, sort_order, is_active, usage_count
+      FROM value_added_remark_presets
+      WHERE is_active = 1
+      ${category ? 'AND category = ?' : ''}
+      ORDER BY category, sort_order ASC
+    `;
+
+    const params = category ? [category] : [];
+    const presets = await AppDataSource.query(query, params);
+
+    res.json({
+      success: true,
+      data: presets
+    });
+  } catch (error: any) {
+    console.error('获取备注预设失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取备注预设失败',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 创建备注预设
+ */
+router.post('/remark-presets', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { remarkText, category = 'general', sortOrder = 0 } = req.body;
+
+    if (!remarkText) {
+      return res.status(400).json({
+        success: false,
+        message: '备注内容不能为空'
+      });
+    }
+
+    const id = uuidv4();
+    await AppDataSource.query(
+      `INSERT INTO value_added_remark_presets (id, remark_text, category, sort_order, is_active)
+       VALUES (?, ?, ?, ?, 1)`,
+      [id, remarkText, category, sortOrder]
+    );
+
+    res.json({
+      success: true,
+      message: '创建成功',
+      data: { id }
+    });
+  } catch (error: any) {
+    console.error('创建备注预设失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '创建备注预设失败',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 更新备注预设
+ */
+router.put('/remark-presets/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { remarkText, category, sortOrder, isActive } = req.body;
+
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (remarkText !== undefined) {
+      updates.push('remark_text = ?');
+      params.push(remarkText);
+    }
+    if (category !== undefined) {
+      updates.push('category = ?');
+      params.push(category);
+    }
+    if (sortOrder !== undefined) {
+      updates.push('sort_order = ?');
+      params.push(sortOrder);
+    }
+    if (isActive !== undefined) {
+      updates.push('is_active = ?');
+      params.push(isActive ? 1 : 0);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '没有要更新的字段'
+      });
+    }
+
+    params.push(id);
+    await AppDataSource.query(
+      `UPDATE value_added_remark_presets SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    res.json({
+      success: true,
+      message: '更新成功'
+    });
+  } catch (error: any) {
+    console.error('更新备注预设失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '更新备注预设失败',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 删除备注预设
+ */
+router.delete('/remark-presets/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    await AppDataSource.query(
+      'DELETE FROM value_added_remark_presets WHERE id = ?',
+      [id]
+    );
+
+    res.json({
+      success: true,
+      message: '删除成功'
+    });
+  } catch (error: any) {
+    console.error('删除备注预设失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '删除备注预设失败',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 增加备注预设使用次数
+ */
+router.post('/remark-presets/:id/increment-usage', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    await AppDataSource.query(
+      'UPDATE value_added_remark_presets SET usage_count = usage_count + 1 WHERE id = ?',
+      [id]
+    );
+
+    res.json({
+      success: true,
+      message: '更新成功'
+    });
+  } catch (error: any) {
+    console.error('更新使用次数失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '更新使用次数失败',
+      error: error.message
+    });
+  }
+});
