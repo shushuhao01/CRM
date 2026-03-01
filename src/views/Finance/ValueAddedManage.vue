@@ -296,6 +296,18 @@
       <el-table-column prop="settlementDate" label="结算日期" width="110">
         <template #default="{ row }">{{ row.settlementDate ? formatDate(row.settlementDate) : '-' }}</template>
       </el-table-column>
+      <el-table-column prop="remark" label="备注" min-width="180">
+        <template #default="{ row }">
+          <el-tooltip
+            v-if="row.remark && row.remark.length > 20"
+            :content="row.remark"
+            placement="top"
+          >
+            <span class="remark-text">{{ row.remark.substring(0, 20) }}...</span>
+          </el-tooltip>
+          <span v-else class="remark-text">{{ row.remark || '-' }}</span>
+        </template>
+      </el-table-column>
     </el-table>
 
     <!-- 分页 -->
@@ -507,6 +519,74 @@
       :logistics-company="currentExpressCompany"
       :phone="currentPhone"
     />
+
+    <!-- 备注选择对话框 -->
+    <el-dialog
+      v-model="remarkDialogVisible"
+      title="请选择备注"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <div class="remark-dialog-content">
+        <div v-if="remarkDialogType === 'invalid'" class="remark-section">
+          <div class="remark-section-title">请选择无效原因（必选）</div>
+          <el-radio-group v-model="selectedRemarkPreset" class="remark-radio-group">
+            <el-radio
+              v-for="preset in invalidRemarkPresets"
+              :key="preset.id"
+              :label="preset.id"
+              class="remark-radio"
+            >
+              {{ preset.remark_text }}
+            </el-radio>
+            <el-radio label="custom" class="remark-radio">
+              自定义原因
+            </el-radio>
+          </el-radio-group>
+          <el-input
+            v-if="selectedRemarkPreset === 'custom'"
+            v-model="customRemark"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入无效原因"
+            maxlength="200"
+            show-word-limit
+            style="margin-top: 10px;"
+          />
+        </div>
+        <div v-else class="remark-section">
+          <div class="remark-section-title">备注信息（可选）</div>
+          <el-radio-group v-model="selectedRemarkPreset" class="remark-radio-group">
+            <el-radio label="" class="remark-radio">无需备注</el-radio>
+            <el-radio
+              v-for="preset in generalRemarkPresets"
+              :key="preset.id"
+              :label="preset.id"
+              class="remark-radio"
+            >
+              {{ preset.remark_text }}
+            </el-radio>
+            <el-radio label="custom" class="remark-radio">
+              自定义备注
+            </el-radio>
+          </el-radio-group>
+          <el-input
+            v-if="selectedRemarkPreset === 'custom'"
+            v-model="customRemark"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入备注内容"
+            maxlength="200"
+            show-word-limit
+            style="margin-top: 10px;"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="cancelRemarkDialog">取消</el-button>
+        <el-button type="primary" @click="confirmRemark">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -536,10 +616,13 @@ import {
   createOutsourceCompany,
   updateOutsourceCompany,
   getValueAddedStatusConfigs,
+  getRemarkPresets,
+  incrementRemarkPresetUsage,
   type ValueAddedOrder,
   type ValueAddedStats,
   type OutsourceCompany,
-  type StatusConfig
+  type StatusConfig,
+  type RemarkPreset
 } from '@/api/valueAdded'
 import ValueAddedConfigDialog from './components/ValueAddedConfigDialog.vue'
 import PriceTierDialog from './components/PriceTierDialog.vue'
@@ -640,6 +723,16 @@ const currentTrackingNo = ref('')
 const currentExpressCompany = ref('')
 const currentPhone = ref('')
 
+// 备注选择对话框
+const remarkDialogVisible = ref(false)
+const remarkDialogType = ref<'invalid' | 'general'>('invalid')
+const selectedRemarkPreset = ref('')
+const customRemark = ref('')
+const currentEditingRow = ref<ValueAddedOrder | null>(null)
+const remarkPresets = ref<RemarkPreset[]>([])
+const invalidRemarkPresets = computed(() => remarkPresets.value.filter(p => p.category === 'invalid'))
+const generalRemarkPresets = computed(() => remarkPresets.value.filter(p => p.category === 'general'))
+
 // 格式化金额
 const formatMoney = (val: number | string | undefined) => (Number(val) || 0).toFixed(2)
 
@@ -677,6 +770,7 @@ const getOrderStatusText = (status: string) => {
 onMounted(async () => {
   await loadStatusConfigs()
   await loadCompanies()
+  await loadRemarkPresets()
   setThisMonth()
   await loadData()
   await loadStats()
@@ -698,6 +792,16 @@ const loadStatusConfigs = async () => {
     }
   } catch (e) {
     console.error('加载状态配置失败:', e)
+  }
+}
+
+// 加载备注预设
+const loadRemarkPresets = async () => {
+  try {
+    const res = await getRemarkPresets() as any
+    remarkPresets.value = res || []
+  } catch (e) {
+    console.error('加载备注预设失败:', e)
   }
 }
 
@@ -955,6 +1059,17 @@ const handleSelectionChange = (rows: ValueAddedOrder[]) => {
 
 // 更新订单状态
 const updateOrderStatus = async (row: ValueAddedOrder, status: string) => {
+  // 如果改为无效状态，弹出备注选择对话框
+  if (status === 'invalid') {
+    currentEditingRow.value = row
+    remarkDialogType.value = 'invalid'
+    selectedRemarkPreset.value = ''
+    customRemark.value = ''
+    remarkDialogVisible.value = true
+    return
+  }
+
+  // 其他状态直接更新
   try {
     await batchProcessOrders({
       ids: [row.id],
@@ -964,6 +1079,72 @@ const updateOrderStatus = async (row: ValueAddedOrder, status: string) => {
     ElMessage.success('更新成功')
     loadData()
     loadStats()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '更新失败')
+    // 恢复原值
+    row.status = row.status
+  }
+}
+
+// 取消备注对话框
+const cancelRemarkDialog = () => {
+  remarkDialogVisible.value = false
+  // 恢复原状态
+  if (currentEditingRow.value) {
+    loadData() // 重新加载数据以恢复原状态
+  }
+}
+
+// 确认备注
+const confirmRemark = async () => {
+  if (!currentEditingRow.value) return
+
+  // 验证必填
+  if (remarkDialogType.value === 'invalid') {
+    if (!selectedRemarkPreset.value) {
+      ElMessage.warning('请选择无效原因')
+      return
+    }
+    if (selectedRemarkPreset.value === 'custom' && !customRemark.value.trim()) {
+      ElMessage.warning('请输入自定义原因')
+      return
+    }
+  }
+
+  try {
+    // 获取备注内容
+    let remarkText = ''
+    if (selectedRemarkPreset.value === 'custom') {
+      remarkText = customRemark.value.trim()
+    } else if (selectedRemarkPreset.value) {
+      const preset = remarkPresets.value.find(p => p.id === selectedRemarkPreset.value)
+      if (preset) {
+        remarkText = preset.remark_text
+        // 增加使用次数
+        await incrementRemarkPresetUsage(preset.id)
+      }
+    }
+
+    // 格式化备注：状态：内容
+    const statusLabel = validStatusList.value.find(s => s.value === 'invalid')?.label || '无效'
+    const finalRemark = remarkText ? `${statusLabel}：${remarkText}` : ''
+
+    // 更新订单状态和备注
+    await batchProcessOrders({
+      ids: [currentEditingRow.value.id],
+      action: 'updateStatus',
+      data: {
+        status: 'invalid',
+        remark: finalRemark
+      }
+    })
+
+    ElMessage.success('更新成功')
+    remarkDialogVisible.value = false
+    currentEditingRow.value = null
+    loadData()
+    loadStats()
+    loadRemarkPresets() // 重新加载预设以更新使用次数
   } catch (e: any) {
     ElMessage.error(e?.message || '更新失败')
   }
@@ -1721,3 +1902,49 @@ const goToCustomerDetail = (id: string) => {
   margin-bottom: 16px;
 }
 </style>
+
+/* 备注相关样式 */
+.remark-text {
+  font-size: 13px;
+  color: #606266;
+}
+
+.remark-dialog-content {
+  padding: 10px 0;
+}
+
+.remark-section {
+  margin-bottom: 20px;
+}
+
+.remark-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 12px;
+}
+
+.remark-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.remark-radio {
+  margin: 0;
+  padding: 10px 12px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.remark-radio:hover {
+  background: #e8f4ff;
+  border-color: #409eff;
+}
+
+:deep(.remark-radio.is-checked) {
+  background: #e8f4ff;
+  border-color: #409eff;
+}

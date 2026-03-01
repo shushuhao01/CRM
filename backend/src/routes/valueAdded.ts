@@ -510,6 +510,11 @@ router.put('/orders/batch-process', authenticateToken, async (req: Request, res:
           const newStatus = data?.status || order.status;
           order.status = newStatus;
 
+          // 更新备注（如果提供）
+          if (data?.remark !== undefined) {
+            order.remark = data.remark;
+          }
+
           // 业务规则：如果改为非"有效"状态，自动将结算状态改为"未结算"
           if (order.status !== 'valid' && order.settlementStatus === 'settled') {
             order.settlementStatus = 'unsettled';
