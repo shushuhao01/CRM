@@ -77,6 +77,10 @@ import { WecomServiceAccount } from '../entities/WecomServiceAccount';
 import { WecomChatRecord } from '../entities/WecomChatRecord';
 import { WecomPaymentRecord } from '../entities/WecomPaymentRecord';
 import { CodCancelApplication } from '../entities/CodCancelApplication';
+import { ValueAddedOrder } from '../entities/ValueAddedOrder';
+import { ValueAddedPriceConfig } from '../entities/ValueAddedPriceConfig';
+import { OutsourceCompany } from '../entities/OutsourceCompany';
+import { ValueAddedStatusConfig } from '../entities/ValueAddedStatusConfig';
 
 // 🔥 统一使用 MySQL 数据库（开发环境和生产环境）
 // 数据库类型：默认使用 MySQL，除非明确指定其他类型
@@ -146,7 +150,11 @@ const entities = [
   WecomServiceAccount,
   WecomChatRecord,
   WecomPaymentRecord,
-  CodCancelApplication
+  CodCancelApplication,
+  ValueAddedOrder,
+  ValueAddedPriceConfig,
+  OutsourceCompany,
+  ValueAddedStatusConfig
 ];
 
 // MySQL 数据库配置（开发环境和生产环境统一使用）

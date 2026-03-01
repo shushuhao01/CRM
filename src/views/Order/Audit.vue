@@ -266,19 +266,44 @@
         </el-link>
       </template>
 
-      <template #customerPhone="{ row }">
+      <template #column-customerPhone="{ row }">
         {{ displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') }}
       </template>
 
-      <template #totalAmount="{ row }">
+      <template #column-totalAmount="{ row }">
         <span class="amount">¥{{ (row.totalAmount || 0).toLocaleString() }}</span>
       </template>
 
-      <template #depositAmount="{ row }">
+      <template #column-depositAmount="{ row }">
         <span class="deposit-amount">¥{{ (row.depositAmount || 0).toLocaleString() }}</span>
       </template>
 
-      <template #auditStatus="{ row }">
+      <template #column-paymentScreenshots="{ row }">
+        <div class="payment-screenshots-cell">
+          <template v-if="row.paymentScreenshots && row.paymentScreenshots.length > 0">
+            <el-image
+              :src="row.paymentScreenshots[0].url"
+              fit="cover"
+              class="screenshot-thumbnail-small"
+              :preview-src-list="row.paymentScreenshots.map((s: PaymentScreenshot) => s.url)"
+              :initial-index="0"
+              preview-teleported
+            >
+              <template #error>
+                <div class="image-error-small">
+                  <el-icon><Picture /></el-icon>
+                </div>
+              </template>
+            </el-image>
+            <span v-if="row.paymentScreenshots.length > 1" class="screenshot-count">
+              +{{ row.paymentScreenshots.length - 1 }}
+            </span>
+          </template>
+          <span v-else class="no-screenshot">无</span>
+        </div>
+      </template>
+
+      <template #column-auditStatus="{ row }">
         <el-tag
           :style="getOrderStatusStyle(row.auditStatus)"
           size="small"
@@ -1078,80 +1103,87 @@ const tableColumns = computed(() => [
   {
     prop: 'orderNo',
     label: '订单号',
-    width: 160,
+    width: 165,
     visible: true
   },
   {
     prop: 'customerName',
     label: '客户姓名',
-    width: 120,
+    width: 85,
     visible: true
   },
   {
     prop: 'customerPhone',
     label: '客户电话',
-    width: 140,
+    width: 120,
     visible: true
   },
   {
     prop: 'salesPerson',
     label: '销售人员',
-    width: 100,
+    width: 90,
     visible: true
   },
   {
     prop: 'totalAmount',
     label: '订单金额',
-    width: 120,
+    width: 95,
     align: 'right',
     visible: true
   },
   {
     prop: 'depositAmount',
     label: '定金',
-    width: 120,
+    width: 85,
     align: 'right',
+    visible: true
+  },
+  {
+    prop: 'paymentScreenshots',
+    label: '支付截图',
+    width: 100,
+    align: 'center',
     visible: true
   },
   {
     prop: 'productCount',
     label: '商品数量',
-    width: 100,
+    width: 90,
     align: 'center',
     visible: true
   },
   {
     prop: 'createTime',
     label: '创建时间',
-    width: 160,
+    width: 150,
     visible: true,
     formatter: (value: unknown) => formatDateTime(value as string)
   },
   {
     prop: 'auditStatus',
     label: '审核状态',
-    width: 120,
+    width: 100,
     align: 'center',
     visible: activeTab.value !== 'pending'
   },
   {
     prop: 'auditFlag',
     label: '审核标识',
-    width: 100,
+    width: 90,
     align: 'center',
     visible: activeTab.value === 'pending'
   },
   {
     prop: 'auditTime',
     label: '审核时间',
-    width: 160,
+    width: 150,
     visible: activeTab.value !== 'pending',
     formatter: (value: unknown) => formatDateTime(value as string)
   },
   {
     prop: 'auditor',
     label: '审核人',
-    width: 100,
+    width: 90,
     visible: activeTab.value !== 'pending'
   },
   {
@@ -2039,12 +2071,34 @@ const loadOrderList = async () => {
       // 🔥 转换数据格式
       const convertedOrders = list.map((order: any) => {
         // 转换截图数据：将字符串数组转换为对象数组
-        const screenshots = order.depositScreenshots || []
+        // 处理可能是JSON字符串的情况
+        let screenshots: string[] = []
+        if (order.depositScreenshots) {
+          console.log('[订单审核] 原始截图数据:', typeof order.depositScreenshots, order.depositScreenshots)
+          if (typeof order.depositScreenshots === 'string') {
+            try {
+              screenshots = JSON.parse(order.depositScreenshots)
+              console.log('[订单审核] JSON解析成功:', screenshots)
+            } catch (e) {
+              // 如果解析失败，可能是单个URL字符串
+              console.log('[订单审核] JSON解析失败，作为单个URL处理')
+              screenshots = [order.depositScreenshots]
+            }
+          } else if (Array.isArray(order.depositScreenshots)) {
+            screenshots = order.depositScreenshots
+            console.log('[订单审核] 已是数组格式:', screenshots.length, '张')
+          }
+        }
+
         const paymentScreenshots = screenshots.map((url: string, index: number) => ({
           id: index + 1,
           url: url,
           name: `支付截图${index + 1}`
         }))
+
+        if (paymentScreenshots.length > 0) {
+          console.log('[订单审核] 订单', order.orderNo, '转换后的截图:', paymentScreenshots.length, '张')
+        }
 
         return {
           id: order.id,
@@ -2500,6 +2554,65 @@ onUnmounted(() => {
 .cod-amount {
   color: #f56c6c;
   font-weight: bold;
+}
+
+/* 支付截图单元格样式 */
+.payment-screenshots-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  position: relative;
+  padding: 4px 0;
+}
+
+.screenshot-thumbnail-small {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #e4e7ed;
+  transition: all 0.2s ease;
+}
+
+.screenshot-thumbnail-small:hover {
+  border-color: #409eff;
+  transform: scale(1.15);
+  z-index: 10;
+}
+
+.screenshot-count {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.75);
+  color: white;
+  font-size: 10px;
+  padding: 0px 3px;
+  border-radius: 6px;
+  line-height: 1.4;
+  min-width: 16px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.no-screenshot {
+  color: #909399;
+  font-size: 12px;
+}
+
+.image-error-small {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: #f5f7fa;
+  color: #c0c4cc;
+}
+
+.image-error-small .el-icon {
+  font-size: 16px;
 }
 
 /* 支付截图样式 */

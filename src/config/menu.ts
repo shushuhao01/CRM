@@ -316,6 +316,20 @@ export const menuConfig: MenuItem[] = [
         path: '/finance/cod-collection',
         roles: ['super_admin', 'admin'],
         permissions: ['finance:cod']
+      },
+      {
+        id: 'finance-value-added-manage',
+        title: '增值管理',
+        path: '/finance/value-added-manage',
+        roles: ['super_admin', 'admin'],
+        permissions: ['finance:value_added']
+      },
+      {
+        id: 'finance-settlement-report',
+        title: '结算报表',
+        path: '/finance/settlement-report',
+        roles: ['super_admin', 'admin'],
+        permissions: ['finance:settlement_report']
       }
     ]
   },
