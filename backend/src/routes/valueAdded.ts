@@ -1568,8 +1568,6 @@ function findMatchingPriceTier(tiers: ValueAddedPriceConfig[], orderDate: Date):
   return null;
 }
 
-export default router;
-
 /**
  * 获取备注预设列表
  */
@@ -1744,3 +1742,5 @@ router.post('/remark-presets/:id/increment-usage', authenticateToken, async (req
     });
   }
 });
+
+export default router;
