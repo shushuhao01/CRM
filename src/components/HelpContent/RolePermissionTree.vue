@@ -274,6 +274,39 @@
           <p>权限标识：<code>finance:cod</code></p>
           <p>适用角色：超级管理员、管理员</p>
         </div>
+        <div class="tree-item">
+          <strong>增值管理</strong>
+          <p>路径：<code>/finance/value-added-manage</code></p>
+          <p>功能：管理外包公司增值订单、配置价格档位、状态管理</p>
+          <p>权限标识：<code>finance.value_added</code></p>
+          <p>适用角色：超级管理员、管理员</p>
+          <p>按钮权限：</p>
+          <ul style="margin-top: 8px; padding-left: 20px;">
+            <li><code>finance.value_added.view</code> - 查看增值订单</li>
+            <li><code>finance.value_added.create</code> - 创建增值订单</li>
+            <li><code>finance.value_added.edit</code> - 编辑增值订单</li>
+            <li><code>finance.value_added.delete</code> - 删除增值订单</li>
+            <li><code>finance.value_added.batch</code> - 批量操作订单</li>
+            <li><code>finance.value_added.export</code> - 导出订单数据</li>
+            <li><code>finance.value_added.company</code> - 管理外包公司</li>
+            <li><code>finance.value_added.price_tier</code> - 配置价格档位</li>
+            <li><code>finance.value_added.status_config</code> - 配置状态选项</li>
+          </ul>
+        </div>
+        <div class="tree-item">
+          <strong>结算报表</strong>
+          <p>路径：<code>/finance/settlement-report</code></p>
+          <p>功能：查看增值订单结算报表、统计图表、公司排名</p>
+          <p>权限标识：<code>finance.settlement_report</code></p>
+          <p>适用角色：超级管理员、管理员</p>
+          <p>按钮权限：</p>
+          <ul style="margin-top: 8px; padding-left: 20px;">
+            <li><code>finance.settlement_report.view</code> - 查看结算报表</li>
+            <li><code>finance.settlement_report.export</code> - 导出报表数据</li>
+            <li><code>finance.settlement_report.charts</code> - 查看统计图表</li>
+            <li><code>finance.settlement_report.ranking</code> - 查看公司排名</li>
+          </ul>
+        </div>
       </div>
     </section>
 
@@ -463,6 +496,21 @@
 <script setup lang="ts">
 const specialPermissions = [
   { permission: 'finance:cod', description: '代收管理权限', modules: '取消代收审核、代收管理' },
+  { permission: 'finance.value_added', description: '增值管理权限', modules: '增值管理（菜单级）' },
+  { permission: 'finance.value_added.view', description: '查看增值订单权限', modules: '增值管理 - 查看订单列表' },
+  { permission: 'finance.value_added.create', description: '创建增值订单权限', modules: '增值管理 - 创建订单' },
+  { permission: 'finance.value_added.edit', description: '编辑增值订单权限', modules: '增值管理 - 编辑订单' },
+  { permission: 'finance.value_added.delete', description: '删除增值订单权限', modules: '增值管理 - 删除订单' },
+  { permission: 'finance.value_added.batch', description: '批量操作订单权限', modules: '增值管理 - 批量处理' },
+  { permission: 'finance.value_added.export', description: '导出订单数据权限', modules: '增值管理 - 导出Excel' },
+  { permission: 'finance.value_added.company', description: '管理外包公司权限', modules: '增值管理 - 公司管理' },
+  { permission: 'finance.value_added.price_tier', description: '配置价格档位权限', modules: '增值管理 - 价格配置' },
+  { permission: 'finance.value_added.status_config', description: '配置状态选项权限', modules: '增值管理 - 状态配置' },
+  { permission: 'finance.settlement_report', description: '结算报表权限', modules: '结算报表（菜单级）' },
+  { permission: 'finance.settlement_report.view', description: '查看结算报表权限', modules: '结算报表 - 查看报表' },
+  { permission: 'finance.settlement_report.export', description: '导出报表数据权限', modules: '结算报表 - 导出Excel' },
+  { permission: 'finance.settlement_report.charts', description: '查看统计图表权限', modules: '结算报表 - 查看图表' },
+  { permission: 'finance.settlement_report.ranking', description: '查看公司排名权限', modules: '结算报表 - 公司排名' },
   { permission: 'service:list:view', description: '售后列表查看权限', modules: '售后订单列表' },
   { permission: 'service:add', description: '新建售后权限', modules: '新建售后' },
   { permission: 'service:detail:view', description: '售后详情查看权限', modules: '售后详情' },

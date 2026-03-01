@@ -653,6 +653,43 @@ const PERMISSION_TREE = [
           { id: 'finance.cod_collection.edit', name: '编辑代收', code: 'finance.cod_collection.edit', type: 'action', sort: 3, status: 'active' },
           { id: 'finance.cod_collection.refund', name: '返款操作', code: 'finance.cod_collection.refund', type: 'action', sort: 4, status: 'active' }
         ]
+      },
+      {
+        id: 'finance.value_added',
+        name: '增值管理',
+        code: 'finance.value_added',
+        type: 'menu',
+        path: '/finance/value-added-manage',
+        icon: 'Coin',
+        sort: 4,
+        status: 'active',
+        children: [
+          { id: 'finance.value_added.view', name: '查看增值列表', code: 'finance.value_added.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'finance.value_added.create', name: '新增增值', code: 'finance.value_added.create', type: 'action', sort: 2, status: 'active' },
+          { id: 'finance.value_added.edit', name: '编辑增值', code: 'finance.value_added.edit', type: 'action', sort: 3, status: 'active' },
+          { id: 'finance.value_added.delete', name: '删除增值', code: 'finance.value_added.delete', type: 'action', sort: 4, status: 'active' },
+          { id: 'finance.value_added.batch', name: '批量操作', code: 'finance.value_added.batch', type: 'action', sort: 5, status: 'active' },
+          { id: 'finance.value_added.export', name: '导出数据', code: 'finance.value_added.export', type: 'action', sort: 6, status: 'active' },
+          { id: 'finance.value_added.company', name: '外包公司管理', code: 'finance.value_added.company', type: 'action', sort: 7, status: 'active' },
+          { id: 'finance.value_added.price_tier', name: '价格档位管理', code: 'finance.value_added.price_tier', type: 'action', sort: 8, status: 'active' },
+          { id: 'finance.value_added.status_config', name: '状态配置管理', code: 'finance.value_added.status_config', type: 'action', sort: 9, status: 'active' }
+        ]
+      },
+      {
+        id: 'finance.settlement_report',
+        name: '结算报表',
+        code: 'finance.settlement_report',
+        type: 'menu',
+        path: '/finance/settlement-report',
+        icon: 'Document',
+        sort: 5,
+        status: 'active',
+        children: [
+          { id: 'finance.settlement_report.view', name: '查看报表', code: 'finance.settlement_report.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'finance.settlement_report.export', name: '导出报表', code: 'finance.settlement_report.export', type: 'action', sort: 2, status: 'active' },
+          { id: 'finance.settlement_report.charts', name: '查看图表', code: 'finance.settlement_report.charts', type: 'action', sort: 3, status: 'active' },
+          { id: 'finance.settlement_report.ranking', name: '查看排名', code: 'finance.settlement_report.ranking', type: 'action', sort: 4, status: 'active' }
+        ]
       }
     ]
   },
