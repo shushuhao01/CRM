@@ -1350,7 +1350,8 @@ const handleExport = async () => {
       有效状态: row.status || '',
       结算状态: row.settlementStatus || '',
       实际结算: Number(row.settlementAmount || 0),
-      结算日期: row.settlementDate || ''
+      结算日期: row.settlementDate || '',
+      备注: row.remark || ''
     }))
 
     const ws = XLSX.utils.json_to_sheet(exportData)
@@ -1368,7 +1369,8 @@ const handleExport = async () => {
       { wch: 12 }, // 有效状态
       { wch: 12 }, // 结算状态
       { wch: 12 }, // 实际结算
-      { wch: 12 }  // 结算日期
+      { wch: 12 }, // 结算日期
+      { wch: 30 }  // 备注
     ]
 
     const wb = XLSX.utils.book_new()
