@@ -322,14 +322,14 @@ export const menuConfig: MenuItem[] = [
         title: '增值管理',
         path: '/finance/value-added-manage',
         roles: ['super_admin', 'admin'],
-        permissions: ['finance:value_added']
+        permissions: ['finance.value_added']
       },
       {
         id: 'finance-settlement-report',
         title: '结算报表',
         path: '/finance/settlement-report',
         roles: ['super_admin', 'admin'],
-        permissions: ['finance:settlement_report']
+        permissions: ['finance.settlement_report']
       }
     ]
   },

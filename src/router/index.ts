@@ -305,13 +305,13 @@ const router = createRouter({
       path: '/finance/value-added-manage',
       name: 'FinanceValueAddedManage',
       component: () => import('../views/Finance/ValueAddedManage.vue'),
-      meta: { title: '增值管理', requiresAuth: true, permissions: ['finance:value_added'] }
+      meta: { title: '增值管理', requiresAuth: true, permissions: ['finance.value_added'] }
     },
     {
       path: '/finance/settlement-report',
       name: 'FinanceSettlementReport',
       component: () => import('../views/Finance/SettlementReport.vue'),
-      meta: { title: '结算报表', requiresAuth: true, permissions: ['finance:settlement_report'] }
+      meta: { title: '结算报表', requiresAuth: true, permissions: ['finance.settlement_report'] }
     },
 
     // 商品管理
