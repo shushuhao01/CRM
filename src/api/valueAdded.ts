@@ -371,3 +371,58 @@ export function deletePriceTier(companyId: string, tierId: string) {
     method: 'delete'
   })
 }
+
+// ==================== 备注预设相关 ====================
+
+export interface RemarkPreset {
+  id: string
+  remark_text: string
+  category: 'invalid' | 'general'
+  sort_order: number
+  is_active: number
+  usage_count: number
+}
+
+/**
+ * 获取备注预设列表
+ */
+export const getRemarkPresets = (params?: { category?: string }) => {
+  return request.get('/api/v1/value-added/remark-presets', { params })
+}
+
+/**
+ * 创建备注预设
+ */
+export const createRemarkPreset = (data: {
+  remarkText: string
+  category?: 'invalid' | 'general'
+  sortOrder?: number
+}) => {
+  return request.post('/api/v1/value-added/remark-presets', data)
+}
+
+/**
+ * 更新备注预设
+ */
+export const updateRemarkPreset = (id: string, data: {
+  remarkText?: string
+  category?: 'invalid' | 'general'
+  sortOrder?: number
+  isActive?: boolean
+}) => {
+  return request.put(`/api/v1/value-added/remark-presets/${id}`, data)
+}
+
+/**
+ * 删除备注预设
+ */
+export const deleteRemarkPreset = (id: string) => {
+  return request.delete(`/api/v1/value-added/remark-presets/${id}`)
+}
+
+/**
+ * 增加备注预设使用次数
+ */
+export const incrementRemarkPresetUsage = (id: string) => {
+  return request.post(`/api/v1/value-added/remark-presets/${id}/increment-usage`)
+}
