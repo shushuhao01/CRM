@@ -115,10 +115,27 @@ router.get('/metrics', async (req, res) => {
         const lastMonthRevenue = validLastMonthOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
         // 🔥 计算环比的辅助函数
         const calculateChange = (current, previous) => {
+            // 如果昨天/上月为0
             if (previous === 0) {
-                return { change: current > 0 ? 100 : 0, trend: current > 0 ? 'up' : 'stable' };
+                if (current > 0) {
+                    // 从0增长到有数据，显示+100%
+                    return { change: 100, trend: 'up' };
+                }
+                // 都为0，显示0%
+                return { change: 0, trend: 'stable' };
             }
-            const change = Number((((current - previous) / previous) * 100).toFixed(1));
+            // 如果今天/本月为0，但昨天/上月有数据
+            if (current === 0) {
+                // 从有数据降到0，显示-100%
+                return { change: -100, trend: 'down' };
+            }
+            // 正常计算环比
+            const rawChange = ((current - previous) / previous) * 100;
+            let change = Number(rawChange.toFixed(1));
+            // 🔥 修复：如果环比绝对值小于0.1，统一显示为0（避免-0的情况）
+            if (Math.abs(change) < 0.1) {
+                change = 0;
+            }
             const trend = change > 0 ? 'up' : change < 0 ? 'down' : 'stable';
             return { change, trend };
         };
@@ -142,6 +159,12 @@ router.get('/metrics', async (req, res) => {
         const lastMonthDeliveredAmount = lastMonthDeliveredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
         const monthlyDeliveredCountChange = calculateChange(monthlyDeliveredCount, lastMonthDeliveredCount);
         const monthlyDeliveredAmountChange = calculateChange(monthlyDeliveredAmount, lastMonthDeliveredAmount);
+        // 🔥 调试日志：输出环比数据
+        console.log('[Dashboard API] 环比数据:');
+        console.log('  本月订单:', monthlyOrders, '上月订单:', lastMonthOrders, '环比:', monthlyOrdersChange);
+        console.log('  本月业绩:', monthlyRevenue, '上月业绩:', lastMonthRevenue, '环比:', monthlyRevenueChange);
+        console.log('  本月签收单数:', monthlyDeliveredCount, '上月签收单数:', lastMonthDeliveredCount, '环比:', monthlyDeliveredCountChange);
+        console.log('  本月签收业绩:', monthlyDeliveredAmount, '上月签收业绩:', lastMonthDeliveredAmount, '环比:', monthlyDeliveredAmountChange);
         // 待审核和待发货订单
         const pendingAuditOrders = await database_1.AppDataSource.query(`SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_audit'${userCondition}`, params);
         const pendingShipmentOrders = await database_1.AppDataSource.query(`SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_shipment'${userCondition}`, params);
