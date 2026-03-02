@@ -33,17 +33,17 @@ async function diagnose() {
     console.log('=== 数据库配置 ===');
     console.log(`Host: ${env.DB_HOST}`);
     console.log(`Port: ${env.DB_PORT}`);
-    console.log(`User: ${env.DB_USER}`);
-    console.log(`Database: ${env.DB_NAME}`);
+    console.log(`User: ${env.DB_USERNAME || env.DB_USER}`);
+    console.log(`Database: ${env.DB_DATABASE || env.DB_NAME}`);
     console.log('');
 
     console.log('=== 连接数据库 ===');
     connection = await mysql.createConnection({
       host: env.DB_HOST,
       port: parseInt(env.DB_PORT),
-      user: env.DB_USER,
+      user: env.DB_USERNAME || env.DB_USER,
       password: env.DB_PASSWORD,
-      database: env.DB_NAME
+      database: env.DB_DATABASE || env.DB_NAME
     });
 
     console.log('✅ 连接成功\n');
