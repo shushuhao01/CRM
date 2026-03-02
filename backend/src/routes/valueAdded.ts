@@ -32,8 +32,13 @@ router.get('/orders', authenticateToken, async (req: Request, res: Response) => 
 
     const orderRepo = AppDataSource.getRepository(ValueAddedOrder);
 
-    // 🔥 首先从订单表同步已签收和已完成的订单
-    await syncOrdersToValueAdded();
+    // 🔥 恢复同步功能，但使用优化版本
+    try {
+      await syncOrdersToValueAddedOptimized();
+    } catch (syncError) {
+      console.error('[ValueAdded] 同步失败，但继续查询:', syncError);
+      // 同步失败不影响查询
+    }
 
     const queryBuilder = orderRepo.createQueryBuilder('order');
 
