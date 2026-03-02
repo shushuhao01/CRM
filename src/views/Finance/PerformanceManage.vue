@@ -290,11 +290,6 @@
           <span class="commission-value">¥{{ formatMoney(row.estimatedCommission || 0) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="80" fixed="right">
-        <template #default="{ row }">
-          <el-button type="primary" size="small" link @click="saveRow(row)">保存</el-button>
-        </template>
-      </el-table-column>
     </el-table>
 
     <!-- 分页 -->

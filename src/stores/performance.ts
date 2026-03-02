@@ -16,6 +16,11 @@ export interface PerformanceData {
   customersTrend: number
   conversionRate: number
   conversionTrend: number
+  // 🔥 新增：签收业绩相关字段
+  signedAmount?: number
+  signedTrend?: number
+  signedOrders?: number
+  signedOrdersTrend?: number
 }
 
 export interface TeamMember {
@@ -220,19 +225,72 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
       }
     }
 
+    // 🔥 获取日期范围，用于计算环比
+    const now = new Date()
+    let currentStart: Date
+    let currentEnd: Date
+    let previousStart: Date
+    let previousEnd: Date
+
+    if (dateRange.value && dateRange.value.length === 2) {
+      // 用户自定义日期范围
+      currentStart = new Date(dateRange.value[0])
+      currentEnd = new Date(dateRange.value[1])
+      currentEnd.setHours(23, 59, 59, 999)
+
+      // 计算上一期：相同天数的前一个时间段
+      const daysDiff = Math.ceil((currentEnd.getTime() - currentStart.getTime()) / (1000 * 60 * 60 * 24))
+      previousEnd = new Date(currentStart)
+      previousEnd.setDate(previousEnd.getDate() - 1)
+      previousEnd.setHours(23, 59, 59, 999)
+      previousStart = new Date(previousEnd)
+      previousStart.setDate(previousStart.getDate() - daysDiff + 1)
+      previousStart.setHours(0, 0, 0, 0)
+    } else {
+      // 默认：本月至今 vs 上月整月
+      currentStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      currentEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+
+      previousStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      previousEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999)
+    }
+
     // 获取当前用户的订单（已审核通过的）
     const userOrders = orderStore.orders.filter(order =>
       order.salesPersonId === currentUserId &&
       order.auditStatus === 'approved'
     )
 
+    // 🔥 按时间段过滤订单
+    const currentOrders = userOrders.filter(order => {
+      const orderTime = new Date(order.createTime)
+      return orderTime >= currentStart && orderTime <= currentEnd
+    })
+
+    const previousOrders = userOrders.filter(order => {
+      const orderTime = new Date(order.createTime)
+      return orderTime >= previousStart && orderTime <= previousEnd
+    })
+
     // 获取当前用户的客户
     const userCustomers = getCustomerStore().customers.filter(customer =>
       customer.salesPersonId === currentUserId
     )
 
+    // 🔥 按时间段过滤客户
+    const currentCustomers = userCustomers.filter(customer => {
+      const createTime = new Date(customer.createdAt || customer.createTime)
+      return createTime >= currentStart && createTime <= currentEnd
+    })
+
+    const previousCustomers = userCustomers.filter(customer => {
+      const createTime = new Date(customer.createdAt || customer.createTime)
+      return createTime >= previousStart && createTime <= previousEnd
+    })
+
     // 计算业绩，考虑分享情况
     let totalSales = 0
+    let previousTotalSales = 0
 
     // 创建订单分享映射
     const orderShareMap = new Map<string, Array<{ userId: string, percentage: number, shareAmount: number }>>()
@@ -249,18 +307,29 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
         orderShareMap.set(share.orderId, shareDetails)
       })
 
-    // 计算自己下单的订单业绩（扣除分享出去的部分）
-    userOrders.forEach(order => {
+    // 🔥 计算当期业绩
+    currentOrders.forEach(order => {
       const shareDetails = orderShareMap.get(order.id)
       if (shareDetails && shareDetails.length > 0) {
-        // 有分享，计算保留的业绩
         const totalSharedPercentage = shareDetails.reduce((sum, detail) => sum + detail.percentage, 0)
         const remainingPercentage = 100 - totalSharedPercentage
         const remainingAmount = (order.totalAmount * remainingPercentage) / 100
         totalSales += remainingAmount
       } else {
-        // 没有分享，全部业绩归自己
         totalSales += order.totalAmount
+      }
+    })
+
+    // 🔥 计算上期业绩
+    previousOrders.forEach(order => {
+      const shareDetails = orderShareMap.get(order.id)
+      if (shareDetails && shareDetails.length > 0) {
+        const totalSharedPercentage = shareDetails.reduce((sum, detail) => sum + detail.percentage, 0)
+        const remainingPercentage = 100 - totalSharedPercentage
+        const remainingAmount = (order.totalAmount * remainingPercentage) / 100
+        previousTotalSales += remainingAmount
+      } else {
+        previousTotalSales += order.totalAmount
       }
     })
 
@@ -273,23 +342,89 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
           (member.status === 'confirmed' || member.status === 'pending')
         )
         if (myShare) {
-          totalSales += myShare.shareAmount
+          const shareTime = new Date(share.createTime)
+          if (shareTime >= currentStart && shareTime <= currentEnd) {
+            totalSales += myShare.shareAmount
+          }
+          if (shareTime >= previousStart && shareTime <= previousEnd) {
+            previousTotalSales += myShare.shareAmount
+          }
         }
       })
 
-    const totalOrders = userOrders.length
-    const newCustomers = userCustomers.length
+    const totalOrders = currentOrders.length
+    const previousTotalOrders = previousOrders.length
+    const newCustomers = currentCustomers.length
+    const previousNewCustomers = previousCustomers.length
     const conversionRate = newCustomers > 0 ? (totalOrders / newCustomers) * 100 : 0
+    const previousConversionRate = previousNewCustomers > 0 ? (previousTotalOrders / previousNewCustomers) * 100 : 0
+
+    // 🔥 计算签收业绩和签收订单数量
+    const currentSignedOrders = currentOrders.filter(order => order.status === 'delivered')
+    const previousSignedOrders = previousOrders.filter(order => order.status === 'delivered')
+
+    let signedAmount = 0
+    let previousSignedAmount = 0
+
+    // 计算当期签收业绩
+    currentSignedOrders.forEach(order => {
+      const shareDetails = orderShareMap.get(order.id)
+      if (shareDetails && shareDetails.length > 0) {
+        const totalSharedPercentage = shareDetails.reduce((sum, detail) => sum + detail.percentage, 0)
+        const remainingPercentage = 100 - totalSharedPercentage
+        const remainingAmount = (order.totalAmount * remainingPercentage) / 100
+        signedAmount += remainingAmount
+      } else {
+        signedAmount += order.totalAmount
+      }
+    })
+
+    // 计算上期签收业绩
+    previousSignedOrders.forEach(order => {
+      const shareDetails = orderShareMap.get(order.id)
+      if (shareDetails && shareDetails.length > 0) {
+        const totalSharedPercentage = shareDetails.reduce((sum, detail) => sum + detail.percentage, 0)
+        const remainingPercentage = 100 - totalSharedPercentage
+        const remainingAmount = (order.totalAmount * remainingPercentage) / 100
+        previousSignedAmount += remainingAmount
+      } else {
+        previousSignedAmount += order.totalAmount
+      }
+    })
+
+    const signedOrders = currentSignedOrders.length
+    const previousSignedOrdersCount = previousSignedOrders.length
+
+    // 🔥 计算环比的辅助函数
+    const calculateTrend = (current: number, previous: number): number => {
+      if (previous === 0) {
+        return current > 0 ? 100 : 0
+      }
+      if (current === 0) {
+        return -100
+      }
+      const rawChange = ((current - previous) / previous) * 100
+      let change = Number(rawChange.toFixed(1))
+      if (Math.abs(change) < 0.1) {
+        change = 0
+      }
+      return change
+    }
 
     return {
       totalSales,
-      salesTrend: 12.5, // 模拟趋势数据
+      salesTrend: calculateTrend(totalSales, previousTotalSales),
       totalOrders,
-      ordersTrend: 8.3,
+      ordersTrend: calculateTrend(totalOrders, previousTotalOrders),
       newCustomers,
-      customersTrend: -2.1,
+      customersTrend: calculateTrend(newCustomers, previousNewCustomers),
       conversionRate,
-      conversionTrend: 5.2
+      conversionTrend: calculateTrend(conversionRate, previousConversionRate),
+      // 🔥 新增：签收业绩相关数据
+      signedAmount,
+      signedTrend: calculateTrend(signedAmount, previousSignedAmount),
+      signedOrders,
+      signedOrdersTrend: calculateTrend(signedOrders, previousSignedOrdersCount)
     }
   })
 

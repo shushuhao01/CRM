@@ -19,6 +19,7 @@
                 <Minus v-if="metric.trend === 'stable'" />
               </el-icon>
               <span>{{ metric.change }}</span>
+              <span class="trend-period">{{ metric.trendLabel }}</span>
             </div>
           </div>
         </div>
@@ -484,6 +485,7 @@ const metrics = ref([
     value: '0',
     change: '+0%',
     trend: 'up',
+    trendLabel: '较昨日',
     icon: 'ShoppingCart',
     color: '#409EFF'
   },
@@ -493,6 +495,7 @@ const metrics = ref([
     value: '0',
     change: '+0%',
     trend: 'up',
+    trendLabel: '较昨日',
     icon: 'User',
     color: '#67C23A'
   },
@@ -502,6 +505,7 @@ const metrics = ref([
     value: '¥0',
     change: '+0%',
     trend: 'up',
+    trendLabel: '较昨日',
     icon: 'TrendCharts',
     color: '#E6A23C'
   },
@@ -511,6 +515,7 @@ const metrics = ref([
     value: '0',
     change: '+0%',
     trend: 'up',
+    trendLabel: '较上月',
     icon: 'DataBoard',
     color: '#722ED1'
   },
@@ -520,6 +525,7 @@ const metrics = ref([
     value: '¥0',
     change: '+0%',
     trend: 'up',
+    trendLabel: '较上月',
     icon: 'Coin',
     color: '#13C2C2'
   },
@@ -529,6 +535,7 @@ const metrics = ref([
     value: '0',
     change: '+0%',
     trend: 'up',
+    trendLabel: '较昨日',
     icon: 'Headset',
     color: '#F56C6C',
     gradient: 'linear-gradient(135deg, #F56C6C 0%, #E6A23C 100%)'
@@ -539,6 +546,7 @@ const metrics = ref([
     value: '0',
     change: '+0%',
     trend: 'up',
+    trendLabel: '较昨日',
     icon: 'DocumentChecked',
     color: '#909399'
   },
@@ -547,6 +555,7 @@ const metrics = ref([
     label: '待发货订单',
     value: '0',
     change: '+0%',
+    trendLabel: '较昨日',
     trend: 'up',
     icon: 'Van',
     color: '#9C27B0'
@@ -1076,6 +1085,8 @@ const loadRealMetrics = async () => {
     // 调用后端API获取统计数据
     const metricsData = await dashboardApi.getMetrics()
     console.log('[Dashboard] 后端返回指标数据:', metricsData)
+    console.log('[Dashboard] 本月订单环比:', metricsData.monthlyOrdersChange, '%')
+    console.log('[Dashboard] 本月业绩环比:', metricsData.monthlyRevenueChange, '%')
 
     // 更新指标
     const labels = getMetricLabels()
@@ -1083,6 +1094,7 @@ const loadRealMetrics = async () => {
     // 辅助函数：格式化环比显示，避免-0%的情况
     const formatChange = (change: number | null | undefined): string => {
       const value = change ?? 0
+      console.log('[Dashboard] formatChange 输入:', change, '输出:', value)
       // 如果是0或者-0，统一显示为0%
       if (value === 0 || Object.is(value, -0)) {
         return '0%'
@@ -1803,6 +1815,12 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   font-size: 12px;
+}
+
+.metric-change .trend-period {
+  font-size: 10px;
+  opacity: 0.6;
+  margin-left: 2px;
 }
 
 .metric-change.up {

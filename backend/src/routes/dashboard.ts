@@ -198,6 +198,13 @@ router.get('/metrics', async (req: Request, res: Response) => {
     const monthlyDeliveredCountChange = calculateChange(monthlyDeliveredCount, lastMonthDeliveredCount);
     const monthlyDeliveredAmountChange = calculateChange(monthlyDeliveredAmount, lastMonthDeliveredAmount);
 
+    // 🔥 调试日志：输出环比数据
+    console.log('[Dashboard API] 环比数据:');
+    console.log('  本月订单:', monthlyOrders, '上月订单:', lastMonthOrders, '环比:', monthlyOrdersChange);
+    console.log('  本月业绩:', monthlyRevenue, '上月业绩:', lastMonthRevenue, '环比:', monthlyRevenueChange);
+    console.log('  本月签收单数:', monthlyDeliveredCount, '上月签收单数:', lastMonthDeliveredCount, '环比:', monthlyDeliveredCountChange);
+    console.log('  本月签收业绩:', monthlyDeliveredAmount, '上月签收业绩:', lastMonthDeliveredAmount, '环比:', monthlyDeliveredAmountChange);
+
     // 待审核和待发货订单
     const pendingAuditOrders = await AppDataSource.query(
       `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_audit'${userCondition}`,
