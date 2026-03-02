@@ -144,9 +144,23 @@ router.get('/metrics', async (req: Request, res: Response) => {
 
     // 🔥 计算环比的辅助函数
     const calculateChange = (current: number, previous: number): { change: number; trend: string } => {
+      // 如果昨天/上月为0
       if (previous === 0) {
-        return { change: current > 0 ? 100 : 0, trend: current > 0 ? 'up' : 'stable' };
+        if (current > 0) {
+          // 从0增长到有数据，显示+100%
+          return { change: 100, trend: 'up' };
+        }
+        // 都为0，显示0%
+        return { change: 0, trend: 'stable' };
       }
+
+      // 如果今天/本月为0，但昨天/上月有数据
+      if (current === 0) {
+        // 从有数据降到0，显示-100%
+        return { change: -100, trend: 'down' };
+      }
+
+      // 正常计算环比
       const change = Number((((current - previous) / previous) * 100).toFixed(1));
       const trend = change > 0 ? 'up' : change < 0 ? 'down' : 'stable';
       return { change, trend };
