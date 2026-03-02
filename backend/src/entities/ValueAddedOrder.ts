@@ -23,6 +23,9 @@ export class ValueAddedOrder {
   @Column('varchar', { length: 100, nullable: true, name: 'tracking_number' })
   trackingNumber: string | null;
 
+  @Column('varchar', { length: 50, nullable: true, name: 'express_company' })
+  expressCompany: string | null;
+
   @Column('varchar', { length: 20, nullable: true, name: 'order_status' })
   orderStatus: string | null;
 
