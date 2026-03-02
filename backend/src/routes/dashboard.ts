@@ -161,7 +161,14 @@ router.get('/metrics', async (req: Request, res: Response) => {
       }
 
       // 正常计算环比
-      const change = Number((((current - previous) / previous) * 100).toFixed(1));
+      const rawChange = ((current - previous) / previous) * 100;
+      let change = Number(rawChange.toFixed(1));
+
+      // 🔥 修复：如果环比绝对值小于0.1，统一显示为0（避免-0的情况）
+      if (Math.abs(change) < 0.1) {
+        change = 0;
+      }
+
       const trend = change > 0 ? 'up' : change < 0 ? 'down' : 'stable';
       return { change, trend };
     };
