@@ -27,30 +27,13 @@ router.get('/orders', authenticateToken, async (req: Request, res: Response) => 
       endDate,
       dateFilter, // 🔥 添加快捷日期筛选参数
       keywords,
-      tab, // 新增：标签页参数
-      skipSync // 🔥 新增：是否跳过同步（前端可控制）
+      tab // 新增：标签页参数
     } = req.query;
 
     const orderRepo = AppDataSource.getRepository(ValueAddedOrder);
 
-    // 🔥 优化：仅在需要时同步（减少不必要的数据库查询）
-    // 1. 如果前端明确指定跳过同步，则跳过
-    // 2. 如果是分页查询（page > 1），则跳过
-    // 3. 如果有筛选条件，则跳过（用户在查看已有数据）
-    const shouldSync = skipSync !== 'true' &&
-                       parseInt(page as string) === 1 &&
-                       !status &&
-                       !settlementStatus &&
-                       !companyId &&
-                       !keywords &&
-                       (!tab || tab === 'all');
-
-    if (shouldSync) {
-      // 使用异步同步，不阻塞查询
-      syncOrdersToValueAddedOptimized().catch(err => {
-        console.error('[ValueAdded] 后台同步失败:', err);
-      });
-    }
+    // 🔥 首先从订单表同步已签收和已完成的订单
+    await syncOrdersToValueAdded();
 
     const queryBuilder = orderRepo.createQueryBuilder('order');
 
