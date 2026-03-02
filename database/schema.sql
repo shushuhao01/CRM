@@ -3290,27 +3290,16 @@ ON DUPLICATE KEY UPDATE
   `label` = VALUES(`label`),
   `sort_order` = VALUES(`sort_order`);
 
--- 插入备注预设数据（无效原因）
+-- 插入备注预设数据（优化后只保留8个简洁选项）
 INSERT INTO `value_added_remark_presets` (`id`, `remark_text`, `category`, `sort_order`, `is_active`) VALUES
-(REPLACE(UUID(), '-', ''), '客户拒收', 'invalid', 1, 1),
-(REPLACE(UUID(), '-', ''), '地址错误无法送达', 'invalid', 2, 1),
-(REPLACE(UUID(), '-', ''), '客户电话无法接通', 'invalid', 3, 1),
-(REPLACE(UUID(), '-', ''), '客户取消订单', 'invalid', 4, 1),
-(REPLACE(UUID(), '-', ''), '商品质量问题', 'invalid', 5, 1),
-(REPLACE(UUID(), '-', ''), '发货错误', 'invalid', 6, 1),
-(REPLACE(UUID(), '-', ''), '物流丢失', 'invalid', 7, 1),
-(REPLACE(UUID(), '-', ''), '超时未签收', 'invalid', 8, 1),
-(REPLACE(UUID(), '-', ''), '客户信息不符', 'invalid', 9, 1),
-(REPLACE(UUID(), '-', ''), '其他原因', 'invalid', 10, 1)
-ON DUPLICATE KEY UPDATE `remark_text` = VALUES(`remark_text`);
-
--- 插入备注预设数据（通用备注）
-INSERT INTO `value_added_remark_presets` (`id`, `remark_text`, `category`, `sort_order`, `is_active`) VALUES
-(REPLACE(UUID(), '-', ''), '正常处理', 'general', 1, 1),
-(REPLACE(UUID(), '-', ''), '需要跟进', 'general', 2, 1),
-(REPLACE(UUID(), '-', ''), '已联系客户', 'general', 3, 1),
-(REPLACE(UUID(), '-', ''), '待确认', 'general', 4, 1),
-(REPLACE(UUID(), '-', ''), '优先处理', 'general', 5, 1)
+(REPLACE(UUID(), '-', ''), '七天未联系上', 'invalid', 1, 1),
+(REPLACE(UUID(), '-', ''), '重大疾病', 'invalid', 2, 1),
+(REPLACE(UUID(), '-', ''), '哺乳期孕期', 'invalid', 3, 1),
+(REPLACE(UUID(), '-', ''), '退货', 'invalid', 4, 1),
+(REPLACE(UUID(), '-', ''), '拒绝指导', 'invalid', 5, 1),
+(REPLACE(UUID(), '-', ''), '以后再用', 'invalid', 6, 1),
+(REPLACE(UUID(), '-', ''), '空号', 'invalid', 7, 1),
+(REPLACE(UUID(), '-', ''), '其他原因', 'invalid', 8, 1)
 ON DUPLICATE KEY UPDATE `remark_text` = VALUES(`remark_text`);
 
 -- =============================================
