@@ -75,13 +75,13 @@ if (-not $onlyWebsite -and -not $onlyAdmin -and -not $onlyApp) {
             git checkout -b $tempBranch 2>&1 | Out-Null
             
             # 删除不需要的目录（只从索引中删除，不删除实际文件）
-            Write-Host "  移除website、admin、crmAPP目录..." -ForegroundColor Gray
+            Write-Host "  移除website、admin目录..." -ForegroundColor Gray
             git rm -rf website/ --cached --quiet 2>&1 | Out-Null
             git rm -rf admin/ --cached --quiet 2>&1 | Out-Null
-            git rm -rf crmAPP/ --cached --quiet 2>&1 | Out-Null
+            # crmAPP已经是独立仓库，不在索引中
             
             # 提交更改
-            git commit -m "Prepare CRM system for separate repo" --quiet 2>&1 | Out-Null
+            git commit -m "准备CRM系统独立仓库" --quiet 2>&1 | Out-Null
             
             if (-not $dryRun) {
                 # 推送到crm-system仓库
@@ -99,13 +99,13 @@ if (-not $onlyWebsite -and -not $onlyAdmin -and -not $onlyApp) {
             }
             
             # 切回原分支并删除临时分支
-            git checkout $currentBranch --quiet 2>&1 | Out-Null
+            git checkout -f $currentBranch --quiet 2>&1 | Out-Null
             git branch -D $tempBranch --quiet 2>&1 | Out-Null
             
         } catch {
             Write-Host "  ✗ 处理CRM系统时出错: $_" -ForegroundColor Red
             # 确保切回原分支
-            git checkout main --quiet 2>&1 | Out-Null
+            git checkout -f main --quiet 2>&1 | Out-Null
         }
     }
 }
