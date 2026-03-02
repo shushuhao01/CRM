@@ -358,15 +358,36 @@
 
         <!-- 已审核通过状态的操作按钮 -->
         <template v-else-if="activeTab === 'approved'">
-          <el-button
-            @click="handleReAudit(row, 'rejected')"
-            type="danger"
-            link
-            size="small"
-            :icon="Close"
+          <el-tooltip
+            v-if="canRevokeOrder(row)"
+            content="撤销审核"
+            placement="top"
           >
-            撤销
-          </el-button>
+            <el-button
+              @click="handleReAudit(row, 'rejected')"
+              type="danger"
+              link
+              size="small"
+              :icon="Close"
+            >
+              撤销
+            </el-button>
+          </el-tooltip>
+          <el-tooltip
+            v-else
+            content="订单已发货，无法撤销审核"
+            placement="top"
+          >
+            <el-button
+              type="info"
+              link
+              size="small"
+              :icon="Close"
+              disabled
+            >
+              撤销
+            </el-button>
+          </el-tooltip>
         </template>
 
         <!-- 审核拒绝状态的操作按钮 -->
@@ -932,6 +953,7 @@ interface AuditOrder {
   waitingHours?: number
   remark: string
   auditStatus: 'pending' | 'approved' | 'rejected'
+  status?: string         // 订单实际状态（shipped, delivered等）
   auditTime?: string
   auditor?: string
   auditRemark?: string
@@ -1444,10 +1466,36 @@ const handleQuickRemark = (row: AuditOrder) => {
 }
 
 /**
+ * 判断订单是否可以撤销审核
+ * 规则：只有未发货的订单才能撤销（pending_shipment状态）
+ */
+const canRevokeOrder = (row: AuditOrder): boolean => {
+  // 如果没有status字段，默认允许撤销（兼容旧数据）
+  if (!row.status) {
+    return true
+  }
+
+  // 只有待发货状态才能撤销，已发货及之后的状态都不能撤销
+  // pending_shipment: 待发货（可撤销）
+  // shipped: 已发货（不可撤销）
+  // delivered: 已签收（不可撤销）
+  // completed: 已完成（不可撤销）
+  // 其他状态也不可撤销
+  return row.status === 'pending_shipment'
+}
+
+/**
  * 重新审核（撤销或重新通过）
  */
 const handleReAudit = (row: AuditOrder, result: 'approved' | 'rejected') => {
   const actionText = result === 'approved' ? '重新通过' : '撤销'
+
+  // 🔥 如果是撤销操作，检查订单状态
+  if (result === 'rejected' && !canRevokeOrder(row)) {
+    ElMessage.warning('订单已发货，无法撤销审核')
+    return
+  }
+
   ElMessageBox.confirm(
     `确认${actionText}此订单吗？`,
     '操作确认',
@@ -2116,6 +2164,7 @@ const loadOrderList = async () => {
           waitingMinutes: Math.floor((new Date().getTime() - new Date(order.createTime).getTime()) / (1000 * 60)),
           remark: order.remark || '',
           auditStatus: order.auditStatus,
+          status: order.status, // 🔥 保留订单实际状态，用于判断是否可撤销
           auditFlag: order.auditStatus || 'pending',
           hasBeenAudited: order.auditStatus !== 'pending',
           deliveryAddress: order.deliveryAddress || order.receiverAddress || '',
