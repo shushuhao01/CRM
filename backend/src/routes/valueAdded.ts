@@ -189,15 +189,40 @@ router.get('/orders', authenticateToken, async (req: Request, res: Response) => 
     // 排序
     queryBuilder.orderBy('order.created_at', 'DESC');
 
+    console.log(`[ValueAdded] 开始执行查询，分页: page=${pageNum}, size=${size}`);
     const list = await queryBuilder.getMany();
+    console.log(`[ValueAdded] 查询成功，返回 ${list.length} 条记录`);
+
+    // 🔥 数据清理和验证，确保所有字段都有有效值
+    const cleanedList = list.map(item => ({
+      ...item,
+      unitPrice: Number(item.unitPrice) || 0,
+      settlementAmount: Number(item.settlementAmount) || 0,
+      orderNumber: item.orderNumber || '',
+      customerName: item.customerName || '',
+      customerPhone: item.customerPhone || '',
+      trackingNumber: item.trackingNumber || '',
+      expressCompany: item.expressCompany || '',
+      status: item.status || 'pending',
+      settlementStatus: item.settlementStatus || 'unsettled',
+      companyName: item.companyName || '待分配',
+      orderStatus: item.orderStatus || '',
+      remark: item.remark || null
+    }));
 
     res.json({
       success: true,
-      data: { list, total, page: pageNum, pageSize: size }
+      data: { list: cleanedList, total, page: pageNum, pageSize: size }
     });
   } catch (error: any) {
     console.error('[ValueAdded] Get orders error:', error);
-    res.status(500).json({ success: false, message: '获取订单列表失败' });
+    console.error('[ValueAdded] Error stack:', error.stack);
+    console.error('[ValueAdded] Query params:', JSON.stringify(req.query));
+    res.status(500).json({
+      success: false,
+      message: '获取订单列表失败',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
