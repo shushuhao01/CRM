@@ -1686,7 +1686,7 @@ const handleTierSaved = async () => {
 // 显示物流详情弹窗
 const showTrackingDialog = (row: ValueAddedOrder) => {
   currentTrackingNo.value = row.trackingNumber || ''
-  currentExpressCompany.value = '' // 物流公司信息可以从订单详情获取
+  currentExpressCompany.value = row.expressCompany || '' // 🔥 使用订单的物流公司
   currentPhone.value = row.customerPhone || ''
   trackingDialogVisible.value = true
 }

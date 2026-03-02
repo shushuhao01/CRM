@@ -3163,6 +3163,7 @@ CREATE TABLE IF NOT EXISTS `value_added_orders` (
   `customer_name` VARCHAR(100) DEFAULT NULL COMMENT '客户姓名',
   `customer_phone` VARCHAR(20) DEFAULT NULL COMMENT '客户电话',
   `tracking_number` VARCHAR(100) DEFAULT NULL COMMENT '物流单号',
+  `express_company` VARCHAR(50) DEFAULT NULL COMMENT '物流公司',
   `order_status` VARCHAR(20) DEFAULT NULL COMMENT '订单状态',
   `order_date` DATETIME DEFAULT NULL COMMENT '下单日期',
   `company_id` VARCHAR(50) NOT NULL COMMENT '外包公司ID',
