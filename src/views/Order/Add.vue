@@ -1437,6 +1437,18 @@ const handleSaveOrder = async () => {
       return
     }
 
+    // 验证支付方式
+    if (!orderForm.paymentMethod) {
+      ElMessage.warning('请选择支付方式')
+      return
+    }
+
+    // 如果选择了"其他"，验证是否填写了具体支付方式
+    if (orderForm.paymentMethod === 'other' && !orderForm.paymentMethodOther) {
+      ElMessage.warning('请输入具体的支付方式')
+      return
+    }
+
     confirmDialogVisible.value = true
   } catch (error) {
     ElMessage.error('请完善订单信息')
