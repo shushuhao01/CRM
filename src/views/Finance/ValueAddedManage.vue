@@ -263,7 +263,7 @@
       <el-table-column prop="status" label="有效状态" width="120">
         <template #default="{ row }">
           <el-select
-            v-model="row.status"
+            :model-value="row.status"
             size="small"
             @change="(val: string) => updateOrderStatus(row, val)"
           >
@@ -530,29 +530,27 @@
       <div class="remark-dialog-content">
         <!-- 改为无效状态 -->
         <div v-if="remarkDialogType === 'invalid'" class="remark-section">
-          <div class="remark-section-title">请选择无效原因（必选）</div>
-          <el-radio-group v-model="selectedRemarkPreset" class="remark-radio-group">
-            <el-radio
+          <div class="remark-section-title">请选择或输入无效原因（必填）</div>
+          <el-select
+            v-model="selectedRemarkPreset"
+            placeholder="请选择无效原因"
+            style="width: 100%; margin-bottom: 15px;"
+            clearable
+          >
+            <el-option
               v-for="preset in invalidRemarkPresets"
               :key="preset.id"
-              :label="preset.id"
-              class="remark-radio"
-            >
-              {{ preset.remark_text }}
-            </el-radio>
-            <el-radio label="custom" class="remark-radio">
-              自定义原因
-            </el-radio>
-          </el-radio-group>
+              :label="preset.remark_text"
+              :value="preset.id"
+            />
+          </el-select>
           <el-input
-            v-if="selectedRemarkPreset === 'custom'"
             v-model="customRemark"
             type="textarea"
-            :rows="3"
-            placeholder="请输入无效原因"
+            :rows="4"
+            placeholder="或者直接输入自定义原因"
             maxlength="200"
             show-word-limit
-            style="margin-top: 10px;"
           />
         </div>
         <!-- 从无效恢复为有效 -->
@@ -576,29 +574,26 @@
         <!-- 其他备注 -->
         <div v-else class="remark-section">
           <div class="remark-section-title">备注信息（可选）</div>
-          <el-radio-group v-model="selectedRemarkPreset" class="remark-radio-group">
-            <el-radio label="" class="remark-radio">无需备注</el-radio>
-            <el-radio
+          <el-select
+            v-model="selectedRemarkPreset"
+            placeholder="请选择备注（可选）"
+            style="width: 100%; margin-bottom: 15px;"
+            clearable
+          >
+            <el-option
               v-for="preset in generalRemarkPresets"
               :key="preset.id"
-              :label="preset.id"
-              class="remark-radio"
-            >
-              {{ preset.remark_text }}
-            </el-radio>
-            <el-radio label="custom" class="remark-radio">
-              自定义备注
-            </el-radio>
-          </el-radio-group>
+              :label="preset.remark_text"
+              :value="preset.id"
+            />
+          </el-select>
           <el-input
-            v-if="selectedRemarkPreset === 'custom'"
             v-model="customRemark"
             type="textarea"
             :rows="3"
-            placeholder="请输入备注内容"
+            placeholder="或者直接输入自定义备注"
             maxlength="200"
             show-word-limit
-            style="margin-top: 10px;"
           />
         </div>
       </div>
@@ -1139,13 +1134,9 @@ const confirmRemark = async () => {
 
   // 验证必填
   if (remarkDialogType.value === 'invalid') {
-    // 改为无效：必须选择原因
-    if (!selectedRemarkPreset.value) {
-      ElMessage.warning('请选择无效原因')
-      return
-    }
-    if (selectedRemarkPreset.value === 'custom' && !customRemark.value.trim()) {
-      ElMessage.warning('请输入自定义原因')
+    // 改为无效：必须选择预设或输入自定义原因（二选一）
+    if (!customRemark.value.trim() && !selectedRemarkPreset.value) {
+      ElMessage.warning('请选择无效原因或输入自定义原因')
       return
     }
   } else if (remarkDialogType.value === 'restore') {
@@ -1164,11 +1155,13 @@ const confirmRemark = async () => {
       // 改为无效状态
       finalStatus = 'invalid'
 
-      // 获取备注内容
+      // 获取备注内容：优先使用自定义输入，其次使用预设
       let remarkText = ''
-      if (selectedRemarkPreset.value === 'custom') {
+      if (customRemark.value.trim()) {
+        // 优先使用自定义输入
         remarkText = customRemark.value.trim()
       } else if (selectedRemarkPreset.value) {
+        // 使用预设
         const preset = remarkPresets.value.find(p => p.id === selectedRemarkPreset.value)
         if (preset) {
           remarkText = preset.remark_text
