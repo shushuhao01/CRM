@@ -154,27 +154,27 @@ router.get('/orders', authenticateToken, async (req: Request, res: Response) => 
     // 关键词搜索（订单号、客户电话、物流单号）- 支持批量搜索
     if (keywords) {
       // 处理批量关键词：支持换行符和逗号分隔
-      const keywordStr = String(keywords).trim()
+      const keywordStr = String(keywords).trim();
       const keywordList = keywordStr
         .split(/[\n,，;；]+/)
         .map(k => k.trim())
-        .filter(k => k.length > 0)
+        .filter(k => k.length > 0);
 
       if (keywordList.length > 0) {
-        // 🔥 修复：使用 TypeORM 的命名参数而不是 ? 占位符
-        const conditions = keywordList.map((kw, index) =>
+        // 🔥 使用 OR 条件组合多个关键词
+        const conditions = keywordList.map((_kw, index) =>
           `(order.order_number = :kw${index}_1 OR order.customer_phone = :kw${index}_2 OR order.tracking_number = :kw${index}_3 OR order.customer_name LIKE :kw${index}_4)`
-        ).join(' OR ')
+        ).join(' OR ');
 
-        const params: any = {}
+        const params: any = {};
         keywordList.forEach((kw, index) => {
-          params[`kw${index}_1`] = kw
-          params[`kw${index}_2`] = kw
-          params[`kw${index}_3`] = kw
-          params[`kw${index}_4`] = `%${kw}%`
-        })
+          params[`kw${index}_1`] = kw;
+          params[`kw${index}_2`] = kw;
+          params[`kw${index}_3`] = kw;
+          params[`kw${index}_4`] = `%${kw}%`;
+        });
 
-        queryBuilder.andWhere(`(${conditions})`, params)
+        queryBuilder.andWhere(`(${conditions})`, params);
       }
     }
 
