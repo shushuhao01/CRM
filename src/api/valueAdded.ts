@@ -387,7 +387,7 @@ export interface RemarkPreset {
  * 获取备注预设列表
  */
 export const getRemarkPresets = (params?: { category?: string }) => {
-  return request.get('/api/v1/value-added/remark-presets', { params })
+  return request.get('/value-added/remark-presets', { params })
 }
 
 /**
@@ -398,7 +398,7 @@ export const createRemarkPreset = (data: {
   category?: 'invalid' | 'general'
   sortOrder?: number
 }) => {
-  return request.post('/api/v1/value-added/remark-presets', data)
+  return request.post('/value-added/remark-presets', data)
 }
 
 /**
@@ -410,19 +410,19 @@ export const updateRemarkPreset = (id: string, data: {
   sortOrder?: number
   isActive?: boolean
 }) => {
-  return request.put(`/api/v1/value-added/remark-presets/${id}`, data)
+  return request.put(`/value-added/remark-presets/${id}`, data)
 }
 
 /**
  * 删除备注预设
  */
 export const deleteRemarkPreset = (id: string) => {
-  return request.delete(`/api/v1/value-added/remark-presets/${id}`)
+  return request.delete(`/value-added/remark-presets/${id}`)
 }
 
 /**
  * 增加备注预设使用次数
  */
 export const incrementRemarkPresetUsage = (id: string) => {
-  return request.post(`/api/v1/value-added/remark-presets/${id}/increment-usage`)
+  return request.post(`/value-added/remark-presets/${id}/increment-usage`)
 }
