@@ -63,7 +63,7 @@
                       <el-icon><ArrowUp v-if="performanceData.salesTrend > 0" /><ArrowDown v-else /></el-icon>
                       {{ Math.abs(performanceData.salesTrend) }}%
                     </span>
-                    <span class="trend-text">较上期</span>
+                    <span class="trend-text">{{ trendLabel }}</span>
                   </div>
                 </div>
               </div>
@@ -85,7 +85,7 @@
                       <el-icon><ArrowUp v-if="performanceData.ordersTrend > 0" /><ArrowDown v-else /></el-icon>
                       {{ Math.abs(performanceData.ordersTrend) }}%
                     </span>
-                    <span class="trend-text">较上期</span>
+                    <span class="trend-text">{{ trendLabel }}</span>
                   </div>
                 </div>
               </div>
@@ -107,7 +107,7 @@
                       <el-icon><ArrowUp v-if="performanceData.signedTrend > 0" /><ArrowDown v-else /></el-icon>
                       {{ Math.abs(performanceData.signedTrend) }}%
                     </span>
-                    <span class="trend-text">较上期</span>
+                    <span class="trend-text">{{ trendLabel }}</span>
                   </div>
                 </div>
               </div>
@@ -129,7 +129,7 @@
                       <el-icon><ArrowUp v-if="performanceData.signedOrdersTrend > 0" /><ArrowDown v-else /></el-icon>
                       {{ Math.abs(performanceData.signedOrdersTrend) }}%
                     </span>
-                    <span class="trend-text">较上期</span>
+                    <span class="trend-text">{{ trendLabel }}</span>
                   </div>
                 </div>
               </div>
@@ -540,6 +540,54 @@ const quickFilters = [
 ]
 const tableLoading = ref(false)
 
+// 🔥 计算属性：根据筛选条件动态显示环比文字
+const trendLabel = computed(() => {
+  // 如果有选中的快速筛选
+  if (selectedQuickFilter.value) {
+    switch (selectedQuickFilter.value) {
+      case 'today':
+        return '较昨日'
+      case 'yesterday':
+        return '较前日'
+      case 'thisWeek':
+        return '较上周'
+      case 'lastWeek':
+        return '较前周'
+      case 'last7days':
+        return '较前7天'
+      case 'thisMonth':
+        return '较上月'
+      case 'lastMonth':
+        return '较前月'
+      case 'thisYear':
+        return '较去年'
+      case 'all':
+        return '较上期'
+      default:
+        return '较上期'
+    }
+  }
+
+  // 🔥 如果是自定义日期范围，计算天数差异
+  if (dateRange.value && dateRange.value.length === 2) {
+    const start = new Date(dateRange.value[0])
+    const end = new Date(dateRange.value[1])
+    const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+
+    if (daysDiff === 1) {
+      return '较前日'
+    } else if (daysDiff === 7) {
+      return '较前周'
+    } else if (daysDiff >= 28 && daysDiff <= 31) {
+      return '较上月'
+    } else {
+      return `较前${daysDiff}天`
+    }
+  }
+
+  return '较上期'
+})
+
 // 图表引用
 const salesChartRef = ref()
 const orderStatusChartRef = ref()
@@ -650,9 +698,9 @@ const performanceData = computed(() => {
     totalOrders: netTotalOrders,       // 【批次208修复】使用净订单数
     ordersTrend: data.ordersTrend,
     signedAmount: netSignedAmount, // 【批次203修复】使用净签收业绩
-    signedTrend: 0,
+    signedTrend: data.signedTrend || 0, // 🔥 使用store中的签收业绩环比
     signedOrders: signedOrdersCount,
-    signedOrdersTrend: 0
+    signedOrdersTrend: data.signedOrdersTrend || 0 // 🔥 使用store中的签收订单环比
   }
 })
 
@@ -698,19 +746,23 @@ const handleQuickFilter = (value: string) => {
   switch (value) {
     case 'all':
       dateRange.value = []
+      performanceStore.updateDateRange(null) // 🔥 更新store中的日期范围
       break
     case 'today':
       dateRange.value = [formatDate(today), formatDate(today)]
+      performanceStore.updateDateRange([formatDate(today), formatDate(today)]) // 🔥 更新store中的日期范围
       break
     case 'yesterday':
       const yesterday = new Date(today)
       yesterday.setDate(today.getDate() - 1)
       dateRange.value = [formatDate(yesterday), formatDate(yesterday)]
+      performanceStore.updateDateRange([formatDate(yesterday), formatDate(yesterday)]) // 🔥 更新store中的日期范围
       break
     case 'thisWeek':
       const startOfWeek = new Date(today)
       startOfWeek.setDate(today.getDate() - today.getDay())
       dateRange.value = [formatDate(startOfWeek), formatDate(today)]
+      performanceStore.updateDateRange([formatDate(startOfWeek), formatDate(today)]) // 🔥 更新store中的日期范围
       break
     case 'lastWeek':
       const lastWeekEnd = new Date(today)
@@ -718,24 +770,29 @@ const handleQuickFilter = (value: string) => {
       const lastWeekStart = new Date(lastWeekEnd)
       lastWeekStart.setDate(lastWeekEnd.getDate() - 6)
       dateRange.value = [formatDate(lastWeekStart), formatDate(lastWeekEnd)]
+      performanceStore.updateDateRange([formatDate(lastWeekStart), formatDate(lastWeekEnd)]) // 🔥 更新store中的日期范围
       break
     case 'last7days':
       const last7days = new Date(today)
       last7days.setDate(today.getDate() - 7)
       dateRange.value = [formatDate(last7days), formatDate(today)]
+      performanceStore.updateDateRange([formatDate(last7days), formatDate(today)]) // 🔥 更新store中的日期范围
       break
     case 'thisMonth':
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
       dateRange.value = [formatDate(startOfMonth), formatDate(today)]
+      performanceStore.updateDateRange([formatDate(startOfMonth), formatDate(today)]) // 🔥 更新store中的日期范围
       break
     case 'lastMonth':
       const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
       const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
       dateRange.value = [formatDate(lastMonthStart), formatDate(lastMonthEnd)]
+      performanceStore.updateDateRange([formatDate(lastMonthStart), formatDate(lastMonthEnd)]) // 🔥 更新store中的日期范围
       break
     case 'thisYear':
       const startOfYear = new Date(today.getFullYear(), 0, 1)
       dateRange.value = [formatDate(startOfYear), formatDate(today)]
+      performanceStore.updateDateRange([formatDate(startOfYear), formatDate(today)]) // 🔥 更新store中的日期范围
       break
   }
 
@@ -771,7 +828,96 @@ const goToShareSettings = () => {
  * 日期范围变化处理
  */
 const handleDateChange = () => {
-  selectedQuickFilter.value = '' // 清空快捷筛选
+  // 🔥 修复：检查日期范围是否匹配某个快速筛选，如果匹配则保留 selectedQuickFilter
+  // 这样可以确保快速筛选按钮点击后，环比文字始终显示对应的文字
+  const today = new Date()
+  const formatDate = (date: Date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  // 检查当前日期范围是否匹配快速筛选
+  let matchedFilter = ''
+  if (dateRange.value && dateRange.value.length === 2) {
+    const [start, end] = dateRange.value
+
+    // 今日
+    if (start === formatDate(today) && end === formatDate(today)) {
+      matchedFilter = 'today'
+    }
+    // 昨日
+    else {
+      const yesterday = new Date(today)
+      yesterday.setDate(today.getDate() - 1)
+      if (start === formatDate(yesterday) && end === formatDate(yesterday)) {
+        matchedFilter = 'yesterday'
+      }
+    }
+    // 本周
+    if (!matchedFilter) {
+      const startOfWeek = new Date(today)
+      startOfWeek.setDate(today.getDate() - today.getDay())
+      if (start === formatDate(startOfWeek) && end === formatDate(today)) {
+        matchedFilter = 'thisWeek'
+      }
+    }
+    // 上周
+    if (!matchedFilter) {
+      const lastWeekEnd = new Date(today)
+      lastWeekEnd.setDate(today.getDate() - today.getDay() - 1)
+      const lastWeekStart = new Date(lastWeekEnd)
+      lastWeekStart.setDate(lastWeekEnd.getDate() - 6)
+      if (start === formatDate(lastWeekStart) && end === formatDate(lastWeekEnd)) {
+        matchedFilter = 'lastWeek'
+      }
+    }
+    // 近7天
+    if (!matchedFilter) {
+      const last7days = new Date(today)
+      last7days.setDate(today.getDate() - 7)
+      if (start === formatDate(last7days) && end === formatDate(today)) {
+        matchedFilter = 'last7days'
+      }
+    }
+    // 本月
+    if (!matchedFilter) {
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+      if (start === formatDate(startOfMonth) && end === formatDate(today)) {
+        matchedFilter = 'thisMonth'
+      }
+    }
+    // 上月
+    if (!matchedFilter) {
+      const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+      const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
+      if (start === formatDate(lastMonthStart) && end === formatDate(lastMonthEnd)) {
+        matchedFilter = 'lastMonth'
+      }
+    }
+    // 今年
+    if (!matchedFilter) {
+      const startOfYear = new Date(today.getFullYear(), 0, 1)
+      if (start === formatDate(startOfYear) && end === formatDate(today)) {
+        matchedFilter = 'thisYear'
+      }
+    }
+  }
+
+  // 如果匹配到快速筛选，保留它；否则清空
+  if (matchedFilter) {
+    selectedQuickFilter.value = matchedFilter
+  } else {
+    selectedQuickFilter.value = ''
+  }
+
+  // 🔥 更新store中的日期范围
+  if (dateRange.value && dateRange.value.length === 2) {
+    performanceStore.updateDateRange([dateRange.value[0], dateRange.value[1]])
+  } else {
+    performanceStore.updateDateRange(null)
+  }
 }
 
 // 检查是否有导出权限

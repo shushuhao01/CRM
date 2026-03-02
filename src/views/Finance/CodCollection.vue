@@ -146,9 +146,9 @@
       <el-table-column prop="createdAt" label="下单时间" width="160">
         <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="220" fixed="right">
+      <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button type="primary" link size="small" @click="showDetailDialog(row)">详情</el-button>
+          <el-button type="primary" plain size="small" @click="showDetailDialog(row)" class="action-btn">详情</el-button>
           <!-- 无需代收标签页只显示详情按钮 -->
           <template v-if="activeTab !== 'zero'">
             <el-tooltip
@@ -159,10 +159,11 @@
               <span>
                 <el-button
                   type="warning"
-                  link
+                  plain
                   size="small"
                   @click="showCodDialog(row)"
                   :disabled="row.codStatus === 'returned' || row.codStatus === 'cancelled' || isZeroCodOrder(row)"
+                  class="action-btn"
                 >改代收</el-button>
               </span>
             </el-tooltip>
@@ -174,10 +175,11 @@
               <span>
                 <el-button
                   type="success"
-                  link
+                  plain
                   size="small"
                   @click="handleReturn(row)"
                   :disabled="row.codStatus === 'returned' || row.codStatus === 'cancelled' || isZeroCodOrder(row)"
+                  class="action-btn"
                 >返款</el-button>
               </span>
             </el-tooltip>
@@ -770,6 +772,25 @@ const handleOrderUpdate = () => {
     cursor: not-allowed;
     &:hover {
       color: #c0c4cc !important;
+    }
+  }
+
+  // 操作列按钮间距 - 简易按钮样式
+  .action-btn {
+    margin-right: 8px;
+
+    &:last-child {
+      margin-right: 0;
+    }
+  }
+
+  // 确保 tooltip 包裹的元素也有间距
+  :deep(.el-tooltip__trigger) {
+    display: inline-block;
+    margin-right: 8px;
+
+    &:last-child {
+      margin-right: 0;
     }
   }
 }

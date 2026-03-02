@@ -84,23 +84,74 @@ export const getMetrics = async (params?: {
   monthlyRevenue?: number
   monthlyDeliveredCount?: number
   monthlyDeliveredAmount?: number
+  // 🔥 添加环比字段
+  todayOrdersChange?: number
+  todayOrdersTrend?: string
+  todayRevenueChange?: number
+  todayRevenueTrend?: string
+  monthlyOrdersChange?: number
+  monthlyOrdersTrend?: string
+  monthlyRevenueChange?: number
+  monthlyRevenueTrend?: string
+  newCustomersChange?: number
+  newCustomersTrend?: string
+  pendingServiceChange?: number
+  pendingServiceTrend?: string
+  pendingAuditChange?: number
+  pendingAuditTrend?: string
+  pendingShipmentChange?: number
+  pendingShipmentTrend?: string
+  monthlyDeliveredCountChange?: number
+  monthlyDeliveredCountTrend?: string
+  monthlyDeliveredAmountChange?: number
+  monthlyDeliveredAmountTrend?: string
 }> => {
   console.log('[Dashboard API] 使用后端API获取核心指标')
   try {
     const data = await request.get('/dashboard/metrics', { params, showError: false } as any)
     if (data) {
       console.log('[Dashboard API] 后端返回数据:', data)
+      // 🔥 修复：返回完整的数据，包括所有环比字段
       return {
         todayOrders: data.todayOrders || 0,
+        todayOrdersChange: data.todayOrdersChange,
+        todayOrdersTrend: data.todayOrdersTrend,
+
         newCustomers: data.newCustomers || 0,
+        newCustomersChange: data.newCustomersChange,
+        newCustomersTrend: data.newCustomersTrend,
+
         todayRevenue: data.todayRevenue || 0,
+        todayRevenueChange: data.todayRevenueChange,
+        todayRevenueTrend: data.todayRevenueTrend,
+
         monthlyOrders: data.monthlyOrders || 0,
+        monthlyOrdersChange: data.monthlyOrdersChange,
+        monthlyOrdersTrend: data.monthlyOrdersTrend,
+
         monthlyRevenue: data.monthlyRevenue || 0,
+        monthlyRevenueChange: data.monthlyRevenueChange,
+        monthlyRevenueTrend: data.monthlyRevenueTrend,
+
         pendingService: data.pendingService || 0,
+        pendingServiceChange: data.pendingServiceChange,
+        pendingServiceTrend: data.pendingServiceTrend,
+
         pendingAudit: data.pendingAudit || 0,
+        pendingAuditChange: data.pendingAuditChange,
+        pendingAuditTrend: data.pendingAuditTrend,
+
         pendingShipment: data.pendingShipment || 0,
+        pendingShipmentChange: data.pendingShipmentChange,
+        pendingShipmentTrend: data.pendingShipmentTrend,
+
         monthlyDeliveredCount: data.monthlyDeliveredCount || 0,
-        monthlyDeliveredAmount: data.monthlyDeliveredAmount || 0
+        monthlyDeliveredCountChange: data.monthlyDeliveredCountChange,
+        monthlyDeliveredCountTrend: data.monthlyDeliveredCountTrend,
+
+        monthlyDeliveredAmount: data.monthlyDeliveredAmount || 0,
+        monthlyDeliveredAmountChange: data.monthlyDeliveredAmountChange,
+        monthlyDeliveredAmountTrend: data.monthlyDeliveredAmountTrend
       }
     }
   } catch (error) {
