@@ -298,7 +298,10 @@ async function syncOrdersToValueAddedOptimized() {
       valueAddedOrder.customerName = order.customerName;
       valueAddedOrder.customerPhone = order.customerPhone;
       valueAddedOrder.trackingNumber = order.trackingNumber;
-      valueAddedOrder.expressCompany = order.expressCompany; // 🔥 添加物流公司
+      // 🔥 安全处理 expressCompany 字段
+      if (order.expressCompany !== undefined) {
+        valueAddedOrder.expressCompany = order.expressCompany;
+      }
       valueAddedOrder.orderStatus = order.status;
       valueAddedOrder.orderDate = order.createdAt;
       valueAddedOrder.companyId = defaultCompanyId;
@@ -386,7 +389,10 @@ async function syncOrdersToValueAdded() {
         valueAddedOrder.customerName = order.customerName;
         valueAddedOrder.customerPhone = order.customerPhone;
         valueAddedOrder.trackingNumber = order.trackingNumber;
-        valueAddedOrder.expressCompany = order.expressCompany; // 🔥 添加物流公司
+        // 🔥 安全处理 expressCompany 字段
+        if (order.expressCompany !== undefined) {
+          valueAddedOrder.expressCompany = order.expressCompany;
+        }
         valueAddedOrder.orderStatus = order.status;
         valueAddedOrder.orderDate = order.createdAt;
         valueAddedOrder.companyId = defaultCompanyId;
