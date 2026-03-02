@@ -523,11 +523,12 @@
     <!-- 备注选择对话框 -->
     <el-dialog
       v-model="remarkDialogVisible"
-      title="请选择备注"
+      :title="remarkDialogType === 'invalid' ? '请选择无效原因' : remarkDialogType === 'restore' ? '请输入恢复原因' : '请选择备注'"
       width="500px"
       :close-on-click-modal="false"
     >
       <div class="remark-dialog-content">
+        <!-- 改为无效状态 -->
         <div v-if="remarkDialogType === 'invalid'" class="remark-section">
           <div class="remark-section-title">请选择无效原因（必选）</div>
           <el-radio-group v-model="selectedRemarkPreset" class="remark-radio-group">
@@ -554,6 +555,25 @@
             style="margin-top: 10px;"
           />
         </div>
+        <!-- 从无效恢复为有效 -->
+        <div v-else-if="remarkDialogType === 'restore'" class="remark-section">
+          <div class="remark-section-title">请输入恢复为有效的原因（必填）</div>
+          <el-alert
+            title="此订单之前标记为无效，现在要恢复为有效状态，请说明原因"
+            type="info"
+            :closable="false"
+            style="margin-bottom: 15px;"
+          />
+          <el-input
+            v-model="customRemark"
+            type="textarea"
+            :rows="4"
+            placeholder="例如：客户重新确认订单、地址已更正、联系上客户等"
+            maxlength="200"
+            show-word-limit
+          />
+        </div>
+        <!-- 其他备注 -->
         <div v-else class="remark-section">
           <div class="remark-section-title">备注信息（可选）</div>
           <el-radio-group v-model="selectedRemarkPreset" class="remark-radio-group">
@@ -725,7 +745,7 @@ const currentPhone = ref('')
 
 // 备注选择对话框
 const remarkDialogVisible = ref(false)
-const remarkDialogType = ref<'invalid' | 'general'>('invalid')
+const remarkDialogType = ref<'invalid' | 'restore' | 'general'>('invalid')
 const selectedRemarkPreset = ref('')
 const customRemark = ref('')
 const currentEditingRow = ref<ValueAddedOrder | null>(null)
@@ -1059,7 +1079,9 @@ const handleSelectionChange = (rows: ValueAddedOrder[]) => {
 
 // 更新订单状态
 const updateOrderStatus = async (row: ValueAddedOrder, status: string) => {
-  // 如果改为无效状态，弹出备注选择对话框
+  const oldStatus = row.status
+
+  // 情况1：改为无效状态 - 弹窗选择无效原因
   if (status === 'invalid') {
     currentEditingRow.value = row
     remarkDialogType.value = 'invalid'
@@ -1069,12 +1091,28 @@ const updateOrderStatus = async (row: ValueAddedOrder, status: string) => {
     return
   }
 
-  // 其他状态直接更新
+  // 情况2：从无效改回有效 - 弹窗输入恢复原因
+  if (oldStatus === 'invalid' && status === 'valid') {
+    currentEditingRow.value = row
+    remarkDialogType.value = 'restore' // 新增：恢复类型
+    selectedRemarkPreset.value = ''
+    customRemark.value = ''
+    remarkDialogVisible.value = true
+    return
+  }
+
+  // 情况3：其他正常状态切换 - 直接更新，备注为状态名称
   try {
+    const statusLabel = validStatusList.value.find(s => s.value === status)?.label || status
+    const defaultRemark = `${statusLabel}`
+
     await batchProcessOrders({
       ids: [row.id],
       action: 'updateStatus',
-      data: { status }
+      data: {
+        status,
+        remark: defaultRemark
+      }
     })
     ElMessage.success('更新成功')
     loadData()
@@ -1101,6 +1139,7 @@ const confirmRemark = async () => {
 
   // 验证必填
   if (remarkDialogType.value === 'invalid') {
+    // 改为无效：必须选择原因
     if (!selectedRemarkPreset.value) {
       ElMessage.warning('请选择无效原因')
       return
@@ -1109,32 +1148,54 @@ const confirmRemark = async () => {
       ElMessage.warning('请输入自定义原因')
       return
     }
+  } else if (remarkDialogType.value === 'restore') {
+    // 恢复为有效：必须输入恢复原因
+    if (!customRemark.value.trim()) {
+      ElMessage.warning('请输入恢复为有效的原因')
+      return
+    }
   }
 
   try {
-    // 获取备注内容
-    let remarkText = ''
-    if (selectedRemarkPreset.value === 'custom') {
-      remarkText = customRemark.value.trim()
-    } else if (selectedRemarkPreset.value) {
-      const preset = remarkPresets.value.find(p => p.id === selectedRemarkPreset.value)
-      if (preset) {
-        remarkText = preset.remark_text
-        // 增加使用次数
-        await incrementRemarkPresetUsage(preset.id)
-      }
-    }
+    let finalStatus = ''
+    let finalRemark = ''
 
-    // 格式化备注：状态：内容
-    const statusLabel = validStatusList.value.find(s => s.value === 'invalid')?.label || '无效'
-    const finalRemark = remarkText ? `${statusLabel}：${remarkText}` : ''
+    if (remarkDialogType.value === 'invalid') {
+      // 改为无效状态
+      finalStatus = 'invalid'
+
+      // 获取备注内容
+      let remarkText = ''
+      if (selectedRemarkPreset.value === 'custom') {
+        remarkText = customRemark.value.trim()
+      } else if (selectedRemarkPreset.value) {
+        const preset = remarkPresets.value.find(p => p.id === selectedRemarkPreset.value)
+        if (preset) {
+          remarkText = preset.remark_text
+          // 增加使用次数
+          await incrementRemarkPresetUsage(preset.id)
+        }
+      }
+
+      // 格式化备注：无效：原因
+      const statusLabel = validStatusList.value.find(s => s.value === 'invalid')?.label || '无效'
+      finalRemark = remarkText ? `${statusLabel}：${remarkText}` : ''
+
+    } else if (remarkDialogType.value === 'restore') {
+      // 恢复为有效状态
+      finalStatus = 'valid'
+
+      // 格式化备注：有效：恢复原因
+      const statusLabel = validStatusList.value.find(s => s.value === 'valid')?.label || '有效'
+      finalRemark = `${statusLabel}：${customRemark.value.trim()}`
+    }
 
     // 更新订单状态和备注
     await batchProcessOrders({
       ids: [currentEditingRow.value.id],
       action: 'updateStatus',
       data: {
-        status: 'invalid',
+        status: finalStatus,
         remark: finalRemark
       }
     })
@@ -1144,7 +1205,10 @@ const confirmRemark = async () => {
     currentEditingRow.value = null
     loadData()
     loadStats()
-    loadRemarkPresets() // 重新加载预设以更新使用次数
+
+    if (remarkDialogType.value === 'invalid') {
+      loadRemarkPresets() // 重新加载预设以更新使用次数
+    }
   } catch (e: any) {
     ElMessage.error(e?.message || '更新失败')
   }
