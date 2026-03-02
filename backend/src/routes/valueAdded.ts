@@ -27,13 +27,30 @@ router.get('/orders', authenticateToken, async (req: Request, res: Response) => 
       endDate,
       dateFilter, // 🔥 添加快捷日期筛选参数
       keywords,
-      tab // 新增：标签页参数
+      tab, // 新增：标签页参数
+      skipSync // 🔥 新增：是否跳过同步（前端可控制）
     } = req.query;
 
     const orderRepo = AppDataSource.getRepository(ValueAddedOrder);
 
-    // 🔥 首先从订单表同步已签收和已完成的订单
-    await syncOrdersToValueAdded();
+    // 🔥 优化：仅在需要时同步（减少不必要的数据库查询）
+    // 1. 如果前端明确指定跳过同步，则跳过
+    // 2. 如果是分页查询（page > 1），则跳过
+    // 3. 如果有筛选条件，则跳过（用户在查看已有数据）
+    const shouldSync = skipSync !== 'true' &&
+                       parseInt(page as string) === 1 &&
+                       !status &&
+                       !settlementStatus &&
+                       !companyId &&
+                       !keywords &&
+                       (!tab || tab === 'all');
+
+    if (shouldSync) {
+      // 使用异步同步，不阻塞查询
+      syncOrdersToValueAddedOptimized().catch(err => {
+        console.error('[ValueAdded] 后台同步失败:', err);
+      });
+    }
 
     const queryBuilder = orderRepo.createQueryBuilder('order');
 
@@ -185,7 +202,118 @@ router.get('/orders', authenticateToken, async (req: Request, res: Response) => 
 });
 
 /**
- * 从订单表同步已签收和已完成的订单到增值管理
+ * 从订单表同步已签收和已完成的订单到增值管理（优化版）
+ * 优化点：
+ * 1. 只查询最近30天的订单（减少查询量）
+ * 2. 使用批量查询检查是否存在（减少数据库往返）
+ * 3. 使用批量插入（提升插入性能）
+ */
+async function syncOrdersToValueAddedOptimized() {
+  try {
+    const { Order } = await import('../entities/Order');
+    const orderRepo = AppDataSource.getRepository(Order);
+    const valueAddedRepo = AppDataSource.getRepository(ValueAddedOrder);
+    const priceConfigRepo = AppDataSource.getRepository(ValueAddedPriceConfig);
+    const companyRepo = AppDataSource.getRepository(OutsourceCompany);
+
+    // 🔥 优化1：只查询最近30天的已签收和已完成订单
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const orders = await orderRepo
+      .createQueryBuilder('order')
+      .where('order.status IN (:...statuses)', { statuses: ['delivered', 'completed'] })
+      .andWhere('order.created_at >= :startDate', { startDate: thirtyDaysAgo })
+      .getMany();
+
+    if (orders.length === 0) {
+      console.log('[ValueAdded] 没有需要同步的订单');
+      return;
+    }
+
+    console.log(`[ValueAdded] 找到 ${orders.length} 个最近30天的已签收/已完成订单`);
+
+    // 🔥 优化2：批量查询已存在的订单ID
+    const orderIds = orders.map(o => o.id);
+    const existingOrders = await valueAddedRepo
+      .createQueryBuilder('vo')
+      .select('vo.orderId')
+      .where('vo.orderId IN (:...orderIds)', { orderIds })
+      .getMany();
+
+    const existingOrderIds = new Set(existingOrders.map(o => o.orderId));
+    const newOrders = orders.filter(o => !existingOrderIds.has(o.id));
+
+    if (newOrders.length === 0) {
+      console.log('[ValueAdded] 所有订单已同步，无需处理');
+      return;
+    }
+
+    console.log(`[ValueAdded] 需要同步 ${newOrders.length} 个新订单`);
+
+    // 获取默认公司和价格
+    const defaultCompany = await companyRepo.findOne({
+      where: { isDefault: 1, status: 'active' }
+    });
+
+    const firstCompany = defaultCompany || await companyRepo.findOne({
+      where: { status: 'active' },
+      order: { sortOrder: 'ASC', createdAt: 'ASC' }
+    });
+
+    let defaultPrice = 900;
+    if (firstCompany) {
+      const firstTier = await priceConfigRepo.findOne({
+        where: { companyId: firstCompany.id, isActive: 1 },
+        order: { tierOrder: 'ASC', priority: 'DESC' }
+      });
+      if (firstTier) {
+        defaultPrice = firstTier.unitPrice || 900;
+      }
+    }
+
+    const defaultCompanyId = firstCompany?.id || 'default-company';
+    const defaultCompanyName = firstCompany?.companyName || '待分配';
+
+    // 🔥 优化3：批量创建记录
+    const valueAddedOrders = newOrders.map(order => {
+      const valueAddedOrder = new ValueAddedOrder();
+      valueAddedOrder.id = uuidv4();
+      valueAddedOrder.orderId = order.id;
+      valueAddedOrder.orderNumber = order.orderNumber;
+      valueAddedOrder.customerId = order.customerId;
+      valueAddedOrder.customerName = order.customerName;
+      valueAddedOrder.customerPhone = order.customerPhone;
+      valueAddedOrder.trackingNumber = order.trackingNumber;
+      valueAddedOrder.orderStatus = order.status;
+      valueAddedOrder.orderDate = order.createdAt;
+      valueAddedOrder.companyId = defaultCompanyId;
+      valueAddedOrder.companyName = defaultCompanyName;
+      valueAddedOrder.unitPrice = defaultPrice;
+      valueAddedOrder.status = 'pending';
+      valueAddedOrder.settlementStatus = 'unsettled';
+      valueAddedOrder.settlementAmount = 0;
+      valueAddedOrder.createdBy = order.createdBy;
+      valueAddedOrder.createdByName = order.createdByName;
+      return valueAddedOrder;
+    });
+
+    // 批量插入（每次最多500条）
+    const batchSize = 500;
+    for (let i = 0; i < valueAddedOrders.length; i += batchSize) {
+      const batch = valueAddedOrders.slice(i, i + batchSize);
+      await valueAddedRepo.save(batch);
+      console.log(`[ValueAdded] 已同步 ${Math.min(i + batchSize, valueAddedOrders.length)}/${valueAddedOrders.length} 条记录`);
+    }
+
+    console.log('[ValueAdded] 订单同步完成');
+  } catch (error) {
+    console.error('[ValueAdded] 订单同步失败:', error);
+  }
+}
+
+/**
+ * 旧版同步函数（保留用于手动触发）
  */
 async function syncOrdersToValueAdded() {
   try {
@@ -1738,6 +1866,35 @@ router.post('/remark-presets/:id/increment-usage', authenticateToken, async (req
     res.status(500).json({
       success: false,
       message: '更新使用次数失败',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * 手动触发订单同步（管理员功能）
+ */
+router.post('/sync-orders', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { fullSync } = req.body; // fullSync=true 表示全量同步
+
+    if (fullSync) {
+      // 全量同步（使用旧版函数）
+      await syncOrdersToValueAdded();
+    } else {
+      // 增量同步（使用优化版函数）
+      await syncOrdersToValueAddedOptimized();
+    }
+
+    res.json({
+      success: true,
+      message: '订单同步完成'
+    });
+  } catch (error: any) {
+    console.error('[ValueAdded] 手动同步失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '订单同步失败',
       error: error.message
     });
   }
