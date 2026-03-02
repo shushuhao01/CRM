@@ -3148,3 +3148,157 @@ CREATE TABLE IF NOT EXISTS `wecom_payment_records` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微收款记录表';
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+
+-- =============================================
+-- 增值管理系统表（2026-03-02新增）
+-- =============================================
+
+-- 增值订单表
+CREATE TABLE IF NOT EXISTS `value_added_orders` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '订单ID',
+  `order_no` VARCHAR(100) NOT NULL COMMENT '订单号',
+  `customer_name` VARCHAR(100) COMMENT '客户姓名',
+  `customer_phone` VARCHAR(20) COMMENT '客户电话',
+  `customer_address` TEXT COMMENT '客户地址',
+  `order_amount` DECIMAL(10,2) DEFAULT 0.00 COMMENT '订单金额',
+  `cod_amount` DECIMAL(10,2) DEFAULT 0.00 COMMENT '代收金额',
+  `tracking_no` VARCHAR(100) COMMENT '物流单号',
+  `express_company` VARCHAR(100) COMMENT '快递公司',
+  `company_id` VARCHAR(50) COMMENT '外包公司ID',
+  `company_name` VARCHAR(200) DEFAULT '待分配' COMMENT '外包公司名称',
+  `unit_price` DECIMAL(10,2) DEFAULT 0.00 COMMENT '单价',
+  `status` VARCHAR(50) DEFAULT 'pending' COMMENT '有效状态：pending-待处理, valid-有效, invalid-无效, supplemented-已补单',
+  `settlement_status` VARCHAR(50) DEFAULT 'unsettled' COMMENT '结算状态：unsettled-未结算, settled-已结算',
+  `settlement_date` DATE COMMENT '结算日期',
+  `remark` VARCHAR(500) DEFAULT NULL COMMENT '备注信息',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_order_no` (`order_no`),
+  INDEX `idx_tracking_no` (`tracking_no`),
+  INDEX `idx_company_id` (`company_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_settlement_status` (`settlement_status`),
+  INDEX `idx_settlement_date` (`settlement_date`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='增值管理订单表';
+
+-- 外包公司表
+CREATE TABLE IF NOT EXISTS `outsource_companies` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '公司ID',
+  `company_name` VARCHAR(200) NOT NULL COMMENT '公司名称',
+  `contact_person` VARCHAR(100) COMMENT '联系人',
+  `contact_phone` VARCHAR(20) COMMENT '联系电话',
+  `contact_email` VARCHAR(100) COMMENT '联系邮箱',
+  `address` TEXT COMMENT '公司地址',
+  `status` ENUM('active', 'inactive') DEFAULT 'active' COMMENT '状态：active-启用, inactive-停用',
+  `sort_order` INT DEFAULT 999 COMMENT '排序顺序，数字越小越靠前',
+  `is_default` TINYINT(1) DEFAULT 0 COMMENT '是否默认公司（0-否，1-是）',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_company_name` (`company_name`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_sort_order` (`sort_order`),
+  INDEX `idx_is_default` (`is_default`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='外包公司表';
+
+-- 价格档位配置表
+CREATE TABLE IF NOT EXISTS `value_added_price_config` (
+  `id` VARCHAR(50) NOT NULL COMMENT '配置ID',
+  `company_id` VARCHAR(50) NOT NULL COMMENT '外包公司ID',
+  `tier_name` VARCHAR(100) NOT NULL COMMENT '档位名称',
+  `tier_order` INT NOT NULL DEFAULT 1 COMMENT '档位顺序',
+  `pricing_type` VARCHAR(20) NOT NULL DEFAULT 'fixed' COMMENT '计价方式: fixed-按单计价, percentage-按比例计价',
+  `unit_price` DECIMAL(10,2) DEFAULT 0.00 COMMENT '单价（按单计价时使用）',
+  `percentage_rate` DECIMAL(5,2) DEFAULT 0.00 COMMENT '比例（按比例计价时使用，如5.5表示5.5%）',
+  `base_amount_field` VARCHAR(50) DEFAULT 'orderAmount' COMMENT '基数字段',
+  `start_date` DATE NULL COMMENT '生效开始日期',
+  `end_date` DATE NULL COMMENT '生效结束日期',
+  `is_active` TINYINT NOT NULL DEFAULT 1 COMMENT '状态: 1-启用, 0-停用',
+  `priority` INT DEFAULT 0 COMMENT '优先级',
+  `condition_rules` TEXT COMMENT '条件规则JSON',
+  `remark` TEXT COMMENT '备注',
+  `created_by` VARCHAR(50) COMMENT '创建人ID',
+  `created_by_name` VARCHAR(100) COMMENT '创建人姓名',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_company_id` (`company_id`),
+  KEY `idx_tier_order` (`tier_order`),
+  KEY `idx_date_range` (`start_date`, `end_date`),
+  KEY `idx_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='外包公司价格配置表';
+
+-- 状态配置表
+CREATE TABLE IF NOT EXISTS `value_added_status_configs` (
+  `id` VARCHAR(50) NOT NULL COMMENT '配置ID',
+  `type` VARCHAR(50) NOT NULL COMMENT '配置类型：validStatus-有效状态，settlementStatus-结算状态',
+  `value` VARCHAR(50) NOT NULL COMMENT '状态值（英文）',
+  `label` VARCHAR(100) NOT NULL COMMENT '状态标签（中文）',
+  `sort_order` INT DEFAULT 0 COMMENT '排序顺序',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_type_value` (`type`, `value`),
+  KEY `idx_type` (`type`),
+  KEY `idx_sort_order` (`sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='增值管理状态配置表';
+
+-- 备注预设表
+CREATE TABLE IF NOT EXISTS `value_added_remark_presets` (
+  `id` VARCHAR(36) PRIMARY KEY COMMENT '主键ID',
+  `remark_text` VARCHAR(500) NOT NULL COMMENT '备注内容',
+  `category` ENUM('invalid', 'general') DEFAULT 'general' COMMENT '备注分类：invalid-无效原因，general-通用备注',
+  `sort_order` INT DEFAULT 0 COMMENT '排序顺序',
+  `is_active` TINYINT(1) DEFAULT 1 COMMENT '是否启用：1-启用，0-停用',
+  `usage_count` INT DEFAULT 0 COMMENT '使用次数',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_category` (`category`),
+  INDEX `idx_sort_order` (`sort_order`),
+  INDEX `idx_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='增值管理备注预设表';
+
+-- =============================================
+-- 增值管理系统初始数据
+-- =============================================
+
+-- 插入状态配置预设数据
+INSERT INTO `value_added_status_configs` (`id`, `type`, `value`, `label`, `sort_order`, `created_at`) VALUES
+('vs-pending-001', 'validStatus', 'pending', '待处理', 1, NOW()),
+('vs-valid-001', 'validStatus', 'valid', '有效', 2, NOW()),
+('vs-invalid-001', 'validStatus', 'invalid', '无效', 3, NOW()),
+('vs-supplemented-001', 'validStatus', 'supplemented', '已补单', 4, NOW()),
+('ss-unsettled-001', 'settlementStatus', 'unsettled', '未结算', 1, NOW()),
+('ss-settled-001', 'settlementStatus', 'settled', '已结算', 2, NOW())
+ON DUPLICATE KEY UPDATE 
+  `label` = VALUES(`label`),
+  `sort_order` = VALUES(`sort_order`);
+
+-- 插入备注预设数据（无效原因）
+INSERT INTO `value_added_remark_presets` (`id`, `remark_text`, `category`, `sort_order`, `is_active`) VALUES
+(REPLACE(UUID(), '-', ''), '客户拒收', 'invalid', 1, 1),
+(REPLACE(UUID(), '-', ''), '地址错误无法送达', 'invalid', 2, 1),
+(REPLACE(UUID(), '-', ''), '客户电话无法接通', 'invalid', 3, 1),
+(REPLACE(UUID(), '-', ''), '客户取消订单', 'invalid', 4, 1),
+(REPLACE(UUID(), '-', ''), '商品质量问题', 'invalid', 5, 1),
+(REPLACE(UUID(), '-', ''), '发货错误', 'invalid', 6, 1),
+(REPLACE(UUID(), '-', ''), '物流丢失', 'invalid', 7, 1),
+(REPLACE(UUID(), '-', ''), '超时未签收', 'invalid', 8, 1),
+(REPLACE(UUID(), '-', ''), '客户信息不符', 'invalid', 9, 1),
+(REPLACE(UUID(), '-', ''), '其他原因', 'invalid', 10, 1)
+ON DUPLICATE KEY UPDATE `remark_text` = VALUES(`remark_text`);
+
+-- 插入备注预设数据（通用备注）
+INSERT INTO `value_added_remark_presets` (`id`, `remark_text`, `category`, `sort_order`, `is_active`) VALUES
+(REPLACE(UUID(), '-', ''), '正常处理', 'general', 1, 1),
+(REPLACE(UUID(), '-', ''), '需要跟进', 'general', 2, 1),
+(REPLACE(UUID(), '-', ''), '已联系客户', 'general', 3, 1),
+(REPLACE(UUID(), '-', ''), '待确认', 'general', 4, 1),
+(REPLACE(UUID(), '-', ''), '优先处理', 'general', 5, 1)
+ON DUPLICATE KEY UPDATE `remark_text` = VALUES(`remark_text`);
+
+-- =============================================
+-- 结束
+-- =============================================
+SET FOREIGN_KEY_CHECKS = 1;
