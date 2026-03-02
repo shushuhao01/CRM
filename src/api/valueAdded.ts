@@ -8,6 +8,7 @@ export interface ValueAddedOrder {
   customerName?: string
   customerPhone?: string
   trackingNumber?: string
+  expressCompany?: string
   orderStatus?: string
   orderDate?: string
   companyId: string
