@@ -3260,17 +3260,18 @@ CREATE TABLE IF NOT EXISTS `value_added_status_configs` (
 
 -- 备注预设表
 CREATE TABLE IF NOT EXISTS `value_added_remark_presets` (
-  `id` VARCHAR(36) PRIMARY KEY COMMENT '主键ID',
-  `remark_text` VARCHAR(500) NOT NULL COMMENT '备注内容',
-  `category` ENUM('invalid', 'general') DEFAULT 'general' COMMENT '备注分类：invalid-无效原因，general-通用备注',
+  `id` VARCHAR(50) NOT NULL COMMENT '预设ID',
+  `type` VARCHAR(50) NOT NULL COMMENT '预设类型：invalid-无效原因，general-通用备注',
+  `remark_text` VARCHAR(500) NOT NULL COMMENT '备注文本',
   `sort_order` INT DEFAULT 0 COMMENT '排序顺序',
-  `is_active` TINYINT(1) DEFAULT 1 COMMENT '是否启用：1-启用，0-停用',
   `usage_count` INT DEFAULT 0 COMMENT '使用次数',
-  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  INDEX `idx_category` (`category`),
-  INDEX `idx_sort_order` (`sort_order`),
-  INDEX `idx_is_active` (`is_active`)
+  `is_active` TINYINT(1) DEFAULT 1 COMMENT '是否启用（0-否，1-是）',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_type` (`type`),
+  KEY `idx_sort_order` (`sort_order`),
+  KEY `idx_usage_count` (`usage_count`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='增值管理备注预设表';
 
 -- =============================================
