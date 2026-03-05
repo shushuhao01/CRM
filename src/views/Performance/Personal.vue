@@ -2497,10 +2497,12 @@ const loadTableData = async () => {
       if (currentUserId) {
         try {
           // 🔥 调用后端API获取客户列表（后端已根据用户角色进行权限过滤）
+          // 🔥 添加 onlyMine: true 参数，强制只返回当前用户的客户（不管角色）
           const { customerApi } = await import('@/api/customer')
           const response = await customerApi.getList({
             page: customerPagination.currentPage,
-            pageSize: customerPagination.pageSize
+            pageSize: customerPagination.pageSize,
+            onlyMine: true  // 🔥 强制只查询当前用户的客户
           })
 
           console.log('[个人业绩-客户明细] API响应:', response)

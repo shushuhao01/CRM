@@ -116,14 +116,14 @@ export const menuConfig: MenuItem[] = [
     title: '服务管理',
     icon: 'Phone',
     roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
-    permissions: ['service'],
+    permissions: ['communication'],
     children: [
       {
         id: 'service-call',
         title: '通话管理',
         path: '/service-management/call',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
-        permissions: ['service:call'],
+        permissions: ['communication.call'],
         dataScope: 'self' // 销售员看个人通话记录，部门管理员看本部门
       },
       {
@@ -131,7 +131,7 @@ export const menuConfig: MenuItem[] = [
         title: '短信管理',
         path: '/service-management/sms',
         roles: ['super_admin', 'admin', 'customer_service'],
-        permissions: ['service:sms'],
+        permissions: ['communication.sms'],
         dataScope: 'all' // 客服查看全公司短信记录
       }
     ]
@@ -538,9 +538,9 @@ export const rolePermissions: Record<string, string[]> = {
     'order', 'order:list', 'order:view:personal', 'order:view:department', 'order:view:all',
     'order:add', 'order:edit', 'order:delete', 'order:audit',
 
-    // 服务管理（全部权限）
-    'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit', 'service:call:delete',
-    'service:sms',
+    // 服务管理（全部权限，修复：使用communication）
+    'communication', 'communication.call', 'communication.call.view', 'communication.call.make', 'communication.call.record',
+    'communication.sms', 'communication.sms.view', 'communication.sms.send', 'communication.sms.template',
 
     // 业绩统计（全部权限）
     'performance', 'performance:personal', 'performance:personal:view',
@@ -591,8 +591,8 @@ export const rolePermissions: Record<string, string[]> = {
     'order', 'order:list', 'order:view:personal', 'order:view:department',
     'order:add', 'order:edit',
 
-    // 服务管理权限 - 一级菜单和二级菜单
-    'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
+    // 服务管理权限 - 一级菜单和二级菜单（修复：使用communication）
+    'communication', 'communication.call', 'communication.call.view', 'communication.call.make', 'communication.call.record',
 
     // 业绩统计权限 - 一级菜单和二级菜单
     'performance', 'performance:personal', 'performance:personal:view',
@@ -624,8 +624,8 @@ export const rolePermissions: Record<string, string[]> = {
     // 订单管理
     'order', 'order:list', 'order:view:personal', 'order:add',
 
-    // 服务管理（移除短信管理）
-    'service', 'service:call', 'service:call:view', 'service:call:add', 'service:call:edit',
+    // 服务管理（移除短信管理，修复：使用communication）
+    'communication', 'communication.call', 'communication.call.view', 'communication.call.make', 'communication.call.record',
 
     // 业绩统计
     'performance', 'performance:personal', 'performance:personal:view',
