@@ -566,6 +566,7 @@ const metrics = ref([
     value: '0',
     change: '+0%',
     trend: 'up',
+    trendLabel: '较上月',
     icon: 'CircleCheck',
     color: '#52C41A'
   },
@@ -575,6 +576,7 @@ const metrics = ref([
     value: '¥0',
     change: '+0%',
     trend: 'up',
+    trendLabel: '较上月',
     icon: 'Trophy',
     color: '#FA8C16'
   }

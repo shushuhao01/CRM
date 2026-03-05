@@ -4847,26 +4847,74 @@ const viewFollowup = (row: any) => {
 // 加载统计数据
 const loadStatistics = async () => {
   try {
+    // 🔥 修复:根据通话记录列表计算统计数据
     const today = new Date()
-    const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString()
-    const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString()
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
 
-    const response = await callApi.getCallStatistics({
-      startDate,
-      endDate,
-      groupBy: 'day'
+    // 尝试从API获取统计数据
+    try {
+      const startDate = todayStart.toISOString()
+      const endDate = todayEnd.toISOString()
+
+      const response = await callApi.getCallStatistics({
+        startDate,
+        endDate,
+        groupBy: 'day'
+      })
+
+      const data = response.data
+      statistics.todayCalls = data.totalCalls || 0
+      statistics.totalDuration = data.totalDuration || 0
+      statistics.connectionRate = Math.round(data.connectionRate || 0)
+      statistics.activeUsers = data.userStats?.length || 0
+
+      console.log('[通话管理] 从API加载统计数据成功')
+      return
+    } catch (apiError) {
+      console.log('[通话管理] API统计数据加载失败,使用本地计算')
+    }
+
+    // 🔥 如果API失败,从callStore的通话记录中计算统计数据
+    const allRecords = callStore.callRecords || []
+
+    // 筛选今日通话记录
+    const todayRecords = allRecords.filter((record: any) => {
+      const recordDate = new Date(record.startTime || record.createdAt)
+      return recordDate >= todayStart && recordDate < todayEnd
     })
 
-    const data = response.data
-    statistics.todayCalls = data.totalCalls || 0
-    statistics.totalDuration = data.totalDuration || 0
-    statistics.connectionRate = Math.round(data.connectionRate || 0)
+    // 计算今日通话数
+    statistics.todayCalls = todayRecords.length
 
-    // 计算活跃用户数（今日有通话记录的用户数）
-    statistics.activeUsers = data.userStats?.length || 0
+    // 计算总通话时长(秒)
+    statistics.totalDuration = todayRecords.reduce((total: number, record: any) => {
+      return total + (record.duration || 0)
+    }, 0)
+
+    // 计算接通率
+    const connectedCalls = todayRecords.filter((record: any) =>
+      record.callStatus === 'connected' || record.status === 'connected'
+    ).length
+    statistics.connectionRate = todayRecords.length > 0
+      ? Math.round((connectedCalls / todayRecords.length) * 100)
+      : 0
+
+    // 计算活跃用户数(今日有通话记录的不同用户数)
+    const activeUserIds = new Set(
+      todayRecords.map((record: any) => record.userId || record.operatorId).filter(Boolean)
+    )
+    statistics.activeUsers = activeUserIds.size
+
+    console.log('[通话管理] 本地计算统计数据:', {
+      todayCalls: statistics.todayCalls,
+      totalDuration: statistics.totalDuration,
+      connectionRate: statistics.connectionRate,
+      activeUsers: statistics.activeUsers
+    })
   } catch (error) {
     console.error('加载统计数据失败:', error)
-    // 如果API调用失败，使用默认值
+    // 如果所有方法都失败，使用默认值
     statistics.todayCalls = 0
     statistics.totalDuration = 0
     statistics.connectionRate = 0
