@@ -1,0 +1,114 @@
+/* 全局SCSS变量 */
+/* 主题色 */
+/* 功能色 */
+/* 文字颜色 */
+/* 背景色 */
+/* 边框色 */
+/* 圆角 */
+/* 间距 */
+/* 字体大小 */
+/* 渐变色 */
+/* 阴影 */
+.dialpad-page[data-v-1f062f68] {
+  min-height: 100vh;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  padding-bottom: 2.5rem;
+}
+.dialpad-page .header[data-v-1f062f68] {
+  text-align: center;
+  padding: 0.625rem 0;
+}
+.dialpad-page .header .title[data-v-1f062f68] {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+.dialpad-page .display[data-v-1f062f68] {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 6.25rem;
+}
+.dialpad-page .display .number[data-v-1f062f68] {
+  font-size: 1.75rem;
+  font-weight: 300;
+  letter-spacing: 0.125rem;
+  color: #1f2937;
+}
+.dialpad-page .display .number.placeholder[data-v-1f062f68] {
+  color: #d1d5db;
+  font-size: 1.125rem;
+}
+.dialpad-page .keys[data-v-1f062f68] {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  padding: 0 0.625rem;
+}
+.dialpad-page .keys .key[data-v-1f062f68] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 4.0625rem;
+  background: #f9fafb;
+  border-radius: 2.03125rem;
+  transition: background 0.1s;
+}
+.dialpad-page .keys .key[data-v-1f062f68]:active {
+  background: #e5e7eb;
+}
+.dialpad-page .keys .key .key-main[data-v-1f062f68] {
+  font-size: 1.5rem;
+  font-weight: 400;
+  color: #1f2937;
+}
+.dialpad-page .keys .key .key-sub[data-v-1f062f68] {
+  font-size: 0.5625rem;
+  color: #9ca3af;
+  margin-top: 0.125rem;
+  letter-spacing: 0.0625rem;
+}
+.dialpad-page .actions[data-v-1f062f68] {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.5rem;
+  padding: 0 1.875rem;
+}
+.dialpad-page .actions .action-btn[data-v-1f062f68] {
+  width: 3.125rem;
+  height: 3.125rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dialpad-page .actions .action-btn uni-text[data-v-1f062f68] {
+  font-size: 1.25rem;
+}
+.dialpad-page .actions .action-btn.call[data-v-1f062f68] {
+  width: 4.375rem;
+  height: 4.375rem;
+  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  box-shadow: 0 0.25rem 1rem rgba(52, 211, 153, 0.4);
+}
+.dialpad-page .actions .action-btn.call uni-text[data-v-1f062f68] {
+  font-size: 1.75rem;
+}
+.dialpad-page .actions .action-btn.call.disabled[data-v-1f062f68] {
+  opacity: 0.5;
+}
+.dialpad-page .actions .action-btn.call[data-v-1f062f68]:active:not(.disabled) {
+  transform: scale(0.95);
+}
+.dialpad-page .actions .action-btn.delete[data-v-1f062f68] {
+  background: #f3f4f6;
+}
+.dialpad-page .actions .action-btn.delete[data-v-1f062f68]:active {
+  background: #e5e7eb;
+}

@@ -1,0 +1,171 @@
+{
+  "@platforms": [
+    "android",
+    "iPhone",
+    "iPad"
+  ],
+  "id": "__UNI__CRM_DIALER",
+  "name": "云客CRM",
+  "version": {
+    "name": "1.0.0",
+    "code": "100"
+  },
+  "description": "云客CRM外呼助手 - 电销工作手机APP",
+  "developer": {
+    "name": "",
+    "email": "",
+    "url": ""
+  },
+  "permissions": {
+    "Camera": {},
+    "Barcode": {},
+    "UniNView": {
+      "description": "UniNView原生渲染"
+    }
+  },
+  "plus": {
+    "useragent": {
+      "value": "uni-app",
+      "concatenate": true
+    },
+    "splashscreen": {
+      "target": "id:1",
+      "autoclose": true,
+      "waiting": true,
+      "delay": 0
+    },
+    "popGesture": "close",
+    "launchwebview": {
+      "id": "1",
+      "kernel": "WKWebview"
+    },
+    "usingComponents": true,
+    "nvueStyleCompiler": "uni-app",
+    "compilerVersion": 3,
+    "distribute": {
+      "icons": {
+        "android": {
+          "hdpi": "static/icons/logo-48.png",
+          "xhdpi": "static/icons/logo-64.png",
+          "xxhdpi": "static/icons/logo-128.png",
+          "xxxhdpi": "static/icons/logo-192.png"
+        },
+        "ios": {
+          "appstore": "static/icons/logo-1024.png",
+          "iphone": {
+            "app@2x": "static/icons/logo-128.png",
+            "app@3x": "static/icons/logo-192.png"
+          }
+        }
+      },
+      "splashscreen": {
+        "androidStyle": "common"
+      },
+      "google": {
+        "permissions": [
+          "<uses-permission android:name=\"android.permission.CALL_PHONE\"/>",
+          "<uses-permission android:name=\"android.permission.READ_PHONE_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>",
+          "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>",
+          "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>",
+          "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+          "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
+          "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\"/>",
+          "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>"
+        ],
+        "minSdkVersion": 24,
+        "targetSdkVersion": 30,
+        "abiFilters": [
+          "armeabi-v7a",
+          "arm64-v8a"
+        ]
+      },
+      "apple": {
+        "privacyDescription": {
+          "NSPhotoLibraryUsageDescription": "用于选择图片",
+          "NSCameraUsageDescription": "用于扫描二维码",
+          "NSMicrophoneUsageDescription": "用于通话录音"
+        }
+      },
+      "plugins": {
+        "audio": {
+          "mp3": {
+            "description": "Android平台录音支持MP3格式文件"
+          }
+        }
+      }
+    },
+    "statusbar": {
+      "immersed": "supportedDevice",
+      "style": "dark",
+      "background": "#ffffff"
+    },
+    "uniStatistics": {
+      "enable": false
+    },
+    "allowsInlineMediaPlayback": true,
+    "safearea": {
+      "background": "#ffffff",
+      "bottom": {
+        "offset": "auto"
+      }
+    },
+    "uni-app": {
+      "control": "uni-v3",
+      "vueVersion": "3",
+      "compilerVersion": "4.24",
+      "nvueCompiler": "uni-app",
+      "renderer": "auto",
+      "nvue": {
+        "flex-direction": "column"
+      },
+      "nvueLaunchMode": "normal",
+      "webView": {
+        "minUserAgentVersion": "49.0"
+      }
+    },
+    "tabBar": {
+      "position": "bottom",
+      "color": "#999999",
+      "selectedColor": "#34D399",
+      "borderStyle": "rgba(0,0,0,0.4)",
+      "blurEffect": "none",
+      "fontSize": "10px",
+      "iconWidth": "24px",
+      "spacing": "3px",
+      "height": "50px",
+      "backgroundColor": "#ffffff",
+      "list": [
+        {
+          "pagePath": "pages/index/index",
+          "iconPath": "/static/icons/home.png",
+          "selectedIconPath": "/static/icons/home-active.png",
+          "text": "首页"
+        },
+        {
+          "pagePath": "pages/calls/index",
+          "iconPath": "/static/icons/calls.png",
+          "selectedIconPath": "/static/icons/calls-active.png",
+          "text": "通话"
+        },
+        {
+          "pagePath": "pages/stats/index",
+          "iconPath": "/static/icons/stats.png",
+          "selectedIconPath": "/static/icons/stats-active.png",
+          "text": "统计"
+        },
+        {
+          "pagePath": "pages/settings/index",
+          "iconPath": "/static/icons/settings.png",
+          "selectedIconPath": "/static/icons/settings-active.png",
+          "text": "设置"
+        }
+      ],
+      "selectedIndex": 0,
+      "shown": true
+    }
+  },
+  "launch_path": "__uniappview.html"
+}

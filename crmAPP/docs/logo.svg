@@ -1,0 +1,15 @@
+<svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6ee7b7"/>
+      <stop offset="100%" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+  <!-- 圆角矩形背景 -->
+  <rect width="44" height="44" rx="10" fill="url(#logoGrad)"/>
+  <!-- 多样化图形组合 -->
+  <rect x="10" y="10" width="10" height="10" rx="2" fill="white"/>
+  <circle cx="29" cy="15" r="5" fill="white" opacity="0.85"/>
+  <rect x="10" y="24" width="10" height="10" rx="5" fill="white" opacity="0.7"/>
+  <rect x="24" y="24" width="10" height="10" rx="2" fill="white"/>
+</svg>

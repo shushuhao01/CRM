@@ -1,0 +1,89 @@
+{
+  "name": "云客CRM",
+  "appid": "__UNI__CRM_DIALER",
+  "description": "云客CRM外呼助手 - 电销工作手机APP",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "app-plus": {
+    "usingComponents": true,
+    "nvueStyleCompiler": "uni-app",
+    "compilerVersion": 3,
+    "splashscreen": {
+      "alwaysShowBeforeRender": true,
+      "waiting": true,
+      "autoclose": true,
+      "delay": 0
+    },
+    "modules": {
+      "Camera": {},
+      "Barcode": {}
+    },
+    "distribute": {
+      "android": {
+        "permissions": [
+          "<uses-permission android:name=\"android.permission.CALL_PHONE\"/>",
+          "<uses-permission android:name=\"android.permission.READ_PHONE_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>",
+          "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>",
+          "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>",
+          "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+          "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
+          "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\"/>",
+          "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>"
+        ],
+        "minSdkVersion": 24,
+        "targetSdkVersion": 30,
+        "abiFilters": ["armeabi-v7a", "arm64-v8a"]
+      },
+      "ios": {
+        "privacyDescription": {
+          "NSPhotoLibraryUsageDescription": "用于选择图片",
+          "NSCameraUsageDescription": "用于扫描二维码",
+          "NSMicrophoneUsageDescription": "用于通话录音"
+        }
+      },
+      "icons": {
+        "android": {
+          "hdpi": "static/icons/logo-48.png",
+          "xhdpi": "static/icons/logo-64.png",
+          "xxhdpi": "static/icons/logo-128.png",
+          "xxxhdpi": "static/icons/logo-192.png"
+        },
+        "ios": {
+          "appstore": "static/icons/logo-1024.png",
+          "iphone": {
+            "app@2x": "static/icons/logo-128.png",
+            "app@3x": "static/icons/logo-192.png"
+          }
+        }
+      },
+      "splashscreen": {
+        "androidStyle": "common"
+      }
+    }
+  },
+  "quickapp": {},
+  "mp-weixin": {
+    "appid": "",
+    "setting": {
+      "urlCheck": false
+    },
+    "usingComponents": true
+  },
+  "mp-alipay": {
+    "usingComponents": true
+  },
+  "mp-baidu": {
+    "usingComponents": true
+  },
+  "mp-toutiao": {
+    "usingComponents": true
+  },
+  "uniStatistics": {
+    "enable": false
+  },
+  "vueVersion": "3"
+}
