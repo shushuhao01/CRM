@@ -1,0 +1,4 @@
+
+          <el-alert type="info" :closable="false" class="feature-flags-alert">
+            <p>控制CRM系统中哪些功能模块对用户可见。SaaS租户和私有部署客户可分别配置。关闭后对应的设置页或菜单将被隐藏。</p>
+          </el-alert>

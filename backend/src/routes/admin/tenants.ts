@@ -46,13 +46,13 @@ router.get('/', async (req: Request, res: Response) => {
     sql += ` ORDER BY t.created_at DESC LIMIT ? OFFSET ?`;
     params.push(pageSizeNum, offset);
 
-    const [list] = await AppDataSource.query(sql, params);
-    const [countResult] = await AppDataSource.query(countSql, params.slice(0, -2));
+    const list = await AppDataSource.query(sql, params);
+    const countResult = await AppDataSource.query(countSql, params.slice(0, -2));
     const total = countResult[0]?.total || 0;
 
     res.json({
       success: true,
-      data: { list: Array.isArray(list) ? list : [list], total, page: pageNum, pageSize: pageSizeNum }
+      data: { list, total, page: pageNum, pageSize: pageSizeNum }
     });
   } catch (error: any) {
     console.error('[Admin Tenants] Get list failed:', error);
@@ -64,11 +64,11 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const [rows] = await AppDataSource.query(
+    const rows = await AppDataSource.query(
       `SELECT t.*, p.name as package_name FROM tenants t
        LEFT JOIN tenant_packages p ON t.package_id = p.id WHERE t.id = ?`, [id]
     );
-    const tenant = Array.isArray(rows) ? rows[0] : rows;
+    const tenant = rows[0];
 
     if (!tenant) {
       return res.status(404).json({ success: false, message: '租户不存在' });
@@ -92,8 +92,8 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // 检查编码是否已存在
-    const [existing] = await AppDataSource.query('SELECT id FROM tenants WHERE code = ?', [code]);
-    if (existing && (Array.isArray(existing) ? existing.length > 0 : existing)) {
+    const existing = await AppDataSource.query('SELECT id FROM tenants WHERE code = ?', [code]);
+    if (existing && existing.length > 0) {
       return res.status(400).json({ success: false, message: '租户编码已存在' });
     }
 
@@ -143,6 +143,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (maxStorageGb) { updates.push('max_storage_gb = ?'); params.push(maxStorageGb); }
     if (expireDate) { updates.push('expire_date = ?'); params.push(expireDate); }
     if (features) { updates.push('features = ?'); params.push(JSON.stringify(features)); }
+    if (req.body.modules) { updates.push('modules = ?'); params.push(JSON.stringify(req.body.modules)); }
     if (status) { updates.push('status = ?'); params.push(status); }
 
     if (updates.length === 0) {
@@ -165,8 +166,8 @@ router.post('/:id/regenerate-license', async (req: Request, res: Response) => {
     const { id } = req.params;
     const adminUser = (req as any).adminUser;
 
-    const [rows] = await AppDataSource.query('SELECT * FROM tenants WHERE id = ?', [id]);
-    const tenant = Array.isArray(rows) ? rows[0] : rows;
+    const rows = await AppDataSource.query('SELECT * FROM tenants WHERE id = ?', [id]);
+    const tenant = rows[0];
     if (!tenant) {
       return res.status(404).json({ success: false, message: '租户不存在' });
     }
@@ -251,8 +252,8 @@ router.post('/:id/renew', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '请选择新的到期时间' });
     }
 
-    const [rows] = await AppDataSource.query('SELECT expire_date FROM tenants WHERE id = ?', [id]);
-    const tenant = Array.isArray(rows) ? rows[0] : rows;
+    const rows = await AppDataSource.query('SELECT expire_date FROM tenants WHERE id = ?', [id]);
+    const tenant = rows[0];
     const oldExpireDate = tenant?.expire_date;
 
     await AppDataSource.query(
@@ -273,6 +274,40 @@ router.post('/:id/renew', async (req: Request, res: Response) => {
   }
 });
 
+// 获取租户下用户列表
+router.get('/:id/users', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, pageSize = 50 } = req.query;
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 50, 200);
+    const offset = (pageNum - 1) * pageSizeNum;
+
+    const list = await AppDataSource.query(
+      `SELECT u.id, u.username, u.name, u.real_name, u.phone, u.email, u.role,
+              u.department_name, u.position, u.last_login_at, u.login_count, u.status, u.created_at
+       FROM users u WHERE u.tenant_id = ? ORDER BY u.created_at DESC LIMIT ? OFFSET ?`,
+      [id, pageSizeNum, offset]
+    );
+    const countResult = await AppDataSource.query(
+      `SELECT COUNT(*) as total FROM users WHERE tenant_id = ?`, [id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        list,
+        total: countResult[0]?.total || 0,
+        page: pageNum,
+        pageSize: pageSizeNum
+      }
+    });
+  } catch (error: any) {
+    console.error('[Admin Tenants] Get users failed:', error);
+    res.status(500).json({ success: false, message: '获取用户列表失败' });
+  }
+});
+
 // 获取租户授权日志
 router.get('/:id/logs', async (req: Request, res: Response) => {
   try {
@@ -282,18 +317,18 @@ router.get('/:id/logs', async (req: Request, res: Response) => {
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 100);
     const offset = (pageNum - 1) * pageSizeNum;
 
-    const [list] = await AppDataSource.query(
+    const list = await AppDataSource.query(
       `SELECT * FROM tenant_license_logs WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       [id, pageSizeNum, offset]
     );
-    const [countResult] = await AppDataSource.query(
+    const countResult = await AppDataSource.query(
       `SELECT COUNT(*) as total FROM tenant_license_logs WHERE tenant_id = ?`, [id]
     );
 
     res.json({
       success: true,
       data: {
-        list: Array.isArray(list) ? list : [list],
+        list,
         total: countResult[0]?.total || 0,
         page: pageNum,
         pageSize: pageSizeNum
@@ -331,18 +366,18 @@ router.get('/:id/bills', async (req: Request, res: Response) => {
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 100);
     const offset = (pageNum - 1) * pageSizeNum;
 
-    const [list] = await AppDataSource.query(
+    const list = await AppDataSource.query(
       `SELECT * FROM payment_orders WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       [id, pageSizeNum, offset]
     );
-    const [countResult] = await AppDataSource.query(
+    const countResult = await AppDataSource.query(
       `SELECT COUNT(*) as total FROM payment_orders WHERE tenant_id = ?`, [id]
     );
 
     res.json({
       success: true,
       data: {
-        list: Array.isArray(list) ? list : (list ? [list] : []),
+        list,
         total: countResult[0]?.total || 0,
         page: pageNum,
         pageSize: pageSizeNum

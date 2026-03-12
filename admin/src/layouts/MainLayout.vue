@@ -1,10 +1,17 @@
 <template>
-  <el-container class="layout-container">
-    <el-aside :width="isCollapse ? '64px' : '240px'" class="aside">
-      <div class="logo" @click="router.push('/')">
+  <el-container class="layout-container" :class="{ 'is-mobile': isMobile }">
+    <!-- 移动端遮罩 -->
+    <div v-if="isMobile && showMobileMenu" class="mobile-overlay" @click="closeMobileMenu"></div>
+
+    <el-aside
+      :width="isMobile ? '240px' : (isCollapse ? '64px' : '240px')"
+      class="aside"
+      :class="{ 'mobile-aside': isMobile, 'mobile-aside-show': isMobile && showMobileMenu, 'mobile-aside-hide': isMobile && !showMobileMenu }"
+    >
+      <div class="logo" @click="router.push('/'); closeMobileMenu()">
         <el-icon :size="28" color="#409eff"><Platform /></el-icon>
         <transition name="fade">
-          <span v-show="!isCollapse" class="logo-text">平台管理后台</span>
+          <span v-show="isMobile || !isCollapse" class="logo-text">平台管理后台</span>
         </transition>
       </div>
 
@@ -47,6 +54,7 @@
           </template>
           <el-menu-item index="/modules/list">模块列表</el-menu-item>
           <el-menu-item index="/modules/config">基础配置</el-menu-item>
+          <el-menu-item index="/modules/distribute">配置下发</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="/payment">
@@ -56,6 +64,7 @@
           </template>
           <el-menu-item index="/payment/list">支付列表</el-menu-item>
           <el-menu-item index="/payment/config">支付配置</el-menu-item>
+          <el-menu-item index="/payment/reports">支付报表</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="/versions">
@@ -83,10 +92,12 @@
           </template>
           <el-menu-item index="/settings/admins">管理员账号</el-menu-item>
           <el-menu-item index="/settings/basic">基础配置</el-menu-item>
+          <el-menu-item index="/settings/notification-templates">通知模板</el-menu-item>
+          <el-menu-item index="/settings/operation-logs">操作日志</el-menu-item>
         </el-sub-menu>
       </el-menu>
 
-      <div class="collapse-btn" @click="isCollapse = !isCollapse">
+      <div v-if="!isMobile" class="collapse-btn" @click="isCollapse = !isCollapse">
         <el-icon :size="18">
           <Fold v-if="!isCollapse" />
           <Expand v-else />
@@ -97,6 +108,10 @@
     <el-container class="main-container">
       <el-header class="header">
         <div class="header-left">
+          <el-icon v-if="isMobile" class="hamburger-btn" :size="22" @click="toggleMobileMenu">
+            <Fold v-if="showMobileMenu" />
+            <Expand v-else />
+          </el-icon>
           <el-breadcrumb separator="/">
             <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
             <el-breadcrumb-item v-for="(item, index) in breadcrumbs" :key="index">
@@ -146,7 +161,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import {
@@ -159,7 +174,12 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const isCollapse = ref(false)
+const isMobile = ref(false)
+const showMobileMenu = ref(false)
 const defaultOpeneds = ref<string[]>([])
+
+const MOBILE_BREAKPOINT = 768
+const TABLET_BREAKPOINT = 1024
 
 const activeMenu = computed(() => {
   return route.path
@@ -170,8 +190,44 @@ const breadcrumbs = computed(() => {
   return matched.map(item => item.meta?.title as string)
 })
 
+const checkScreenSize = () => {
+  const width = window.innerWidth
+  isMobile.value = width < MOBILE_BREAKPOINT
+  if (width < TABLET_BREAKPOINT) {
+    isCollapse.value = true
+  }
+  if (width >= TABLET_BREAKPOINT) {
+    showMobileMenu.value = false
+  }
+}
+
+const toggleMobileMenu = () => {
+  if (isMobile.value) {
+    showMobileMenu.value = !showMobileMenu.value
+  } else {
+    isCollapse.value = !isCollapse.value
+  }
+}
+
+const closeMobileMenu = () => {
+  if (isMobile.value) {
+    showMobileMenu.value = false
+  }
+}
+
+// 路由切换时自动关闭移动端菜单
+watch(() => route.path, () => {
+  closeMobileMenu()
+})
+
 onMounted(() => {
   userStore.fetchProfile()
+  checkScreenSize()
+  window.addEventListener('resize', checkScreenSize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkScreenSize)
 })
 
 const handleCommand = (command: string) => {
@@ -346,5 +402,84 @@ const handleCommand = (command: string) => {
 .fade-transform-leave-to {
   opacity: 0;
   transform: translateX(10px);
+}
+
+/* ====== 移动端遮罩 ====== */
+.mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 998;
+  transition: opacity 0.3s;
+}
+
+/* ====== 移动端侧边栏 ====== */
+.mobile-aside {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 999;
+  transition: transform 0.3s ease;
+}
+
+.mobile-aside-hide {
+  transform: translateX(-100%);
+}
+
+.mobile-aside-show {
+  transform: translateX(0);
+}
+
+/* ====== 汉堡菜单按钮 ====== */
+.hamburger-btn {
+  cursor: pointer;
+  margin-right: 12px;
+  color: #606266;
+  transition: color 0.3s;
+
+  &:hover {
+    color: #409eff;
+  }
+}
+
+/* ====== 响应式布局 ====== */
+@media screen and (max-width: 768px) {
+  .layout-container.is-mobile {
+    .main-container {
+      margin-left: 0 !important;
+    }
+  }
+
+  .header {
+    padding: 0 12px !important;
+  }
+
+  .main {
+    padding: 12px !important;
+  }
+
+  .footer {
+    font-size: 11px !important;
+  }
+
+  .user-info {
+    .username {
+      display: none;
+    }
+  }
+}
+
+@media screen and (max-width: 1024px) and (min-width: 769px) {
+  .header {
+    padding: 0 16px !important;
+  }
+
+  .main {
+    padding: 16px !important;
+  }
 }
 </style>

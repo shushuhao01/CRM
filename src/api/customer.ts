@@ -12,6 +12,7 @@ export interface CustomerSearchParams {
   dateRange?: [string, string]
   page?: number
   pageSize?: number
+  onlyMine?: boolean  // 🔥 强制只查询当前用户的客户（不管角色）
 }
 
 // 转换搜索参数为请求参数

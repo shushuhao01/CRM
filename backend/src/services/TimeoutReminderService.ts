@@ -429,7 +429,7 @@ class TimeoutReminderService {
   private async sendOrderAuditTimeoutReminder(order: any, hours: number): Promise<void> {
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
 
-    const content = `⚠️ 订单 #${order.orderNumber}（客户：${order.customerName || '未知'}，金额：¥${(order.totalAmount || 0).toFixed(2)}）审核已超时 ${hours} 小时，请尽快处理`;
+    const content = `⚠️ 订单 #${order.orderNumber}（客户：${order.customerName || '未知'}，金额：¥${(parseFloat(order.totalAmount) || 0).toFixed(2)}）审核已超时 ${hours} 小时，请尽快处理`;
 
     await this.sendBatchMessages(
       TimeoutMessageTypes.ORDER_AUDIT_TIMEOUT,

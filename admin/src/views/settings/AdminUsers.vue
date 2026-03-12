@@ -142,7 +142,7 @@ const tableData = ref<any[]>([])
 
 const getRoleType = (role: string) => ({ super_admin: 'danger', admin: 'primary' }[role] || 'info')
 const getRoleText = (role: string) => ({ super_admin: '超级管理员', admin: '管理员' }[role] || role)
-const formatDate = (date: string) => date ? new Date(date).toLocaleString('zh-CN') : '-'
+const formatDate = (date: string) => date ? new Date(date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '-'
 
 const handleAdd = () => {
   editingId.value = null
@@ -221,9 +221,13 @@ const fetchData = async () => {
   try {
     const res = await adminApi.getAdminUsers()
     if (res.success) {
-      tableData.value = res.data || []
+      // 处理分页响应格式 {list: [], total: 0} 或直接数组
+      const userList = res.data?.list || res.data || []
+      tableData.value = userList
     }
   } catch (e) {
+    console.error('获取管理员列表失败:', e)
+    ElMessage.error('获取管理员列表失败')
     // 使用模拟数据
     tableData.value = [
       { id: '1', username: 'admin', name: '超级管理员', email: 'admin@example.com', phone: '13800138000', role: 'super_admin', status: 'active', lastLoginAt: '2026-01-05 10:30:00' },

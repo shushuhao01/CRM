@@ -211,27 +211,6 @@ const searchForm = reactive({
   keyword: ''
 })
 
-// 监听路由参数变化，自动执行搜索
-watch(
-  () => route.query.keyword,
-  (newKeyword) => {
-    if (newKeyword && typeof newKeyword === 'string') {
-      searchForm.keyword = newKeyword
-      handleSearch()
-    }
-  },
-  { immediate: true }
-)
-
-// 页面挂载时检查URL参数
-onMounted(() => {
-  const keyword = route.query.keyword
-  if (keyword && typeof keyword === 'string') {
-    searchForm.keyword = keyword
-    handleSearch()
-  }
-})
-
 // 搜索方法 - 支持多种搜索条件
 const handleSearch = async () => {
   console.log('[客户查询] ========== 开始搜索 ==========')
@@ -376,6 +355,27 @@ const handleReset = () => {
   hasSearched.value = false
   searchResults.value = []
 }
+
+// 监听路由参数变化，自动执行搜索
+watch(
+  () => route.query.keyword,
+  (newKeyword) => {
+    if (newKeyword && typeof newKeyword === 'string') {
+      searchForm.keyword = newKeyword
+      handleSearch()
+    }
+  },
+  { immediate: true }
+)
+
+// 页面挂载时检查URL参数
+onMounted(() => {
+  const keyword = route.query.keyword
+  if (keyword && typeof keyword === 'string') {
+    searchForm.keyword = keyword
+    handleSearch()
+  }
+})
 
 // 获取客户等级类型
 const getLevelType = (level: string) => {

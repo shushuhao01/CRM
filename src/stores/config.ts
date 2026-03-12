@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 // 系统配置接口
@@ -18,6 +18,11 @@ export interface SystemConfig {
   // 🔥 批次275新增：用户协议
   userAgreement?: string // 用户使用协议
   privacyPolicy?: string // 用户隐私协议
+  // 🔥 版权与备案信息
+  copyrightText?: string // 版权文字
+  icpNumber?: string // ICP备案号
+  policeNumber?: string // 公安备案号
+  techSupport?: string // 技术支持
 }
 
 // 安全配置接口
@@ -156,6 +161,36 @@ export const useConfigStore = defineStore('config', () => {
     companyAddress: '北京市朝阳区示例大厦',
     systemDescription: '专业的客户关系管理系统，帮助企业提升客户服务质量和销售效率。',
     systemLogo: ''
+  })
+
+  // 功能开关（从Admin公共API获取）
+  const featureFlags = ref<Record<string, boolean> | null>(null)
+
+
+  // Admin下发配置（从Admin公开API获取）
+  const adminDistributedConfig = ref<Record<string, any> | null>(null)
+
+  // 配置锁定状态（被Admin管控时为true，CRM本地不可编辑）
+  const configLocked = ref<Record<string, boolean>>({
+    security: false,
+    product: false,
+    call: false,
+    order: false,
+    storage: false,
+  })
+  // 平台配置覆盖状态（由Admin后台控制）
+  const platformOverride = ref<{
+    basic: boolean
+    copyright: boolean
+    agreement: boolean
+    copyrightText: boolean  // 版权文字是否由管理后台配置
+    techSupport: boolean    // 技术支持是否由管理后台配置
+  }>({
+    basic: false,
+    copyright: false,
+    agreement: false,
+    copyrightText: false,
+    techSupport: false
   })
 
   // 安全配置
@@ -654,18 +689,111 @@ export const useConfigStore = defineStore('config', () => {
 
   /**
    * 从API加载系统配置（所有用户可访问）
+   * 优先从Admin平台配置加载，再从本地API加载
+   * 未登录时自动使用公开API
    */
   const loadSystemConfigFromAPI = async () => {
     try {
       const { apiService } = await import('@/services/apiService')
-      const apiData = await apiService.get('/system/basic-settings')
+
+      // 第一步：尝试从Admin平台配置加载（公开API，无需认证）
+      try {
+        const platformData = await apiService.get('/admin/public/system-config')
+        if (platformData && typeof platformData === 'object') {
+          // 提取并保存覆盖状态
+          const { hasOverride, featureFlags: apiFeatureFlags, ...configData } = platformData as any
+          // 设置功能开关
+          if (apiFeatureFlags && typeof apiFeatureFlags === 'object') {
+            // Support nested {saas:{...}, private:{...}} structure
+            const deployMode = (import.meta.env.VITE_DEPLOY_MODE || 'saas') as string
+            const modeKey = deployMode === 'private' ? 'private' : 'saas'
+            if (apiFeatureFlags[modeKey] && typeof apiFeatureFlags[modeKey] === 'object') {
+              featureFlags.value = apiFeatureFlags[modeKey] as Record<string, boolean>
+            } else {
+              featureFlags.value = apiFeatureFlags as Record<string, boolean>
+            }
+          }
+          // 提取Admin下发配置
+          const { distributedConfig: apiDistConfig } = platformData as any
+          if (apiDistConfig && typeof apiDistConfig === 'object') {
+            adminDistributedConfig.value = apiDistConfig
+          }
+
+          if (hasOverride) {
+            platformOverride.value = {
+              basic: hasOverride.basic || false,
+              copyright: hasOverride.copyright || false,
+              agreement: hasOverride.agreement || false,
+              copyrightText: hasOverride.copyrightText || false,
+              techSupport: hasOverride.techSupport || false
+            }
+          }
+          // 将平台配置覆盖到系统配置上（仅覆盖已启用的字段）
+          if (Object.keys(configData).length > 0) {
+            Object.assign(systemConfig.value, configData)
+          }
+        }
+      } catch {
+        // Admin平台配置不可用（如未部署Admin后台），静默处理
+      }
+
+      // 第二步：从本地CRM API加载（未被平台覆盖的字段会被本地值补充）
+      const token = localStorage.getItem('token')
+      const endpoint = token ? '/system/basic-settings' : '/system/basic-settings/public'
+      const apiData = await apiService.get(endpoint)
 
       if (apiData && typeof apiData === 'object') {
-        Object.assign(systemConfig.value, apiData)
+        // 如果平台有覆盖，只应用未被覆盖的字段
+        if (platformOverride.value.basic || platformOverride.value.copyright || platformOverride.value.copyrightText || platformOverride.value.techSupport) {
+          const localData = { ...(apiData as any) }
+          // 平台已覆盖基本信息，不用本地值覆盖
+          if (platformOverride.value.basic) {
+            delete localData.systemName
+            delete localData.systemVersion
+            delete localData.companyName
+            delete localData.contactPhone
+            delete localData.contactEmail
+            delete localData.websiteUrl
+            delete localData.companyAddress
+            delete localData.systemDescription
+            delete localData.systemLogo
+            delete localData.contactQRCode
+            delete localData.contactQRCodeLabel
+          }
+          // 平台已覆盖版权信息，不用本地值覆盖
+          if (platformOverride.value.copyright) {
+            delete localData.icpNumber
+            delete localData.policeNumber
+          }
+          // 版权文字和技术支持由管理后台单独控制
+          if (platformOverride.value.copyrightText) {
+            delete localData.copyrightText
+          }
+          if (platformOverride.value.techSupport) {
+            delete localData.techSupport
+          }
+          // 应用剩余的本地字段
+          if (Object.keys(localData).length > 0) {
+            Object.assign(systemConfig.value, localData)
+          }
+        } else {
+          // 平台没有任何覆盖，直接使用本地配置
+          Object.assign(systemConfig.value, apiData)
+        }
         saveConfigToStorage('system', systemConfig.value)
       }
     } catch (_error) {
-      // 静默处理错误
+      // 已登录接口失败时，尝试公开接口兜底
+      try {
+        const { apiService } = await import('@/services/apiService')
+        const apiData = await apiService.get('/system/basic-settings/public')
+        if (apiData && typeof apiData === 'object') {
+          Object.assign(systemConfig.value, apiData)
+          saveConfigToStorage('system', systemConfig.value)
+        }
+      } catch {
+        // 静默处理错误
+      }
     }
   }
 
@@ -674,6 +802,15 @@ export const useConfigStore = defineStore('config', () => {
    */
   const loadSecurityConfigFromAPI = async () => {
     try {
+      // ✅ Admin下发配置优先: 如果Admin配置了该项，直接使用，锁定本地编辑
+      if (adminDistributedConfig.value && adminDistributedConfig.value.security) {
+        Object.assign(securityConfig.value, adminDistributedConfig.value.security)
+        configLocked.value.security = true
+        saveConfigToStorage('security', securityConfig.value)
+        return
+      }
+      configLocked.value.security = false
+
       // 检查是否是管理员，非管理员静默跳过
       const userStr = localStorage.getItem('user')
       if (userStr) {
@@ -701,6 +838,15 @@ export const useConfigStore = defineStore('config', () => {
    */
   const loadStorageConfigFromAPI = async () => {
     try {
+      // ✅ Admin下发配置优先: 如果Admin配置了该项，直接使用，锁定本地编辑
+      if (adminDistributedConfig.value && adminDistributedConfig.value.storage) {
+        Object.assign(storageConfig.value, adminDistributedConfig.value.storage)
+        configLocked.value.storage = true
+        saveConfigToStorage('storage', storageConfig.value)
+        return
+      }
+      configLocked.value.storage = false
+
       const { apiService } = await import('@/services/apiService')
       const apiData = await apiService.get('/system/storage-settings')
 
@@ -718,6 +864,15 @@ export const useConfigStore = defineStore('config', () => {
    */
   const loadProductConfigFromAPI = async () => {
     try {
+      // ✅ Admin下发配置优先: 如果Admin配置了该项，直接使用，锁定本地编辑
+      if (adminDistributedConfig.value && adminDistributedConfig.value.product) {
+        Object.assign(productConfig.value, adminDistributedConfig.value.product)
+        configLocked.value.product = true
+        saveConfigToStorage('product', productConfig.value)
+        return
+      }
+      configLocked.value.product = false
+
       const { apiService } = await import('@/services/apiService')
       // 使用公开API，所有已登录用户都可以访问
       const apiData = await apiService.get('/system/product-settings/public')
@@ -807,6 +962,15 @@ export const useConfigStore = defineStore('config', () => {
    */
   const loadCallConfigFromAPI = async () => {
     try {
+      // ✅ Admin下发配置优先: 如果Admin配置了该项，直接使用，锁定本地编辑
+      if (adminDistributedConfig.value && adminDistributedConfig.value.call) {
+        Object.assign(callConfig.value, adminDistributedConfig.value.call)
+        configLocked.value.call = true
+        saveConfigToStorage('call', callConfig.value)
+        return
+      }
+      configLocked.value.call = false
+
       // 检查是否是管理员，非管理员静默跳过
       const userStr = localStorage.getItem('user')
       if (userStr) {
@@ -857,6 +1021,10 @@ export const useConfigStore = defineStore('config', () => {
   return {
     // 状态
     systemConfig,
+    platformOverride,
+    featureFlags,
+    adminDistributedConfig,
+    configLocked,
     securityConfig,
     productConfig,
     themeConfig,

@@ -71,9 +71,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       'logistics.track', 'logistics.track.view',
 
       // 售后管理
-      'afterSales', 'afterSales.list', 'afterSales.list.view',
-      'afterSales.add', 'afterSales.add.create',
-      'afterSales.data', 'afterSales.data.view', 'afterSales.data.analysis',
+      'aftersale', 'aftersale.list', 'aftersale.list.view',
+      'aftersale.add', 'aftersale.add.create',
+      'aftersale.data', 'aftersale.data.view', 'aftersale.data.analysis',
 
       // 资料管理（禁止：回收站）
       'data', 'data.search', 'data.search.basic', 'data.search.advanced',
@@ -113,8 +113,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       'logistics.track', 'logistics.track.view',
 
       // 售后管理（移除售后数据分析）
-      'afterSales', 'afterSales.list', 'afterSales.list.view',
-      'afterSales.add', 'afterSales.add.create',
+      'aftersale', 'aftersale.list', 'aftersale.list.view',
+      'aftersale.add', 'aftersale.add.create',
 
       // 资料管理（移除回收站）
       'data', 'data.search', 'data.search.basic',
@@ -144,9 +144,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
       'logistics.status', 'logistics.status.view', 'logistics.status.update',
 
       // 售后管理权限
-      'afterSales', 'afterSales.list', 'afterSales.list.view',
-      'afterSales.add', 'afterSales.add.create',
-      'afterSales.data', 'afterSales.data.view', 'afterSales.data.analysis',
+      'aftersale', 'aftersale.list', 'aftersale.list.view',
+      'aftersale.add', 'aftersale.add.create',
+      'aftersale.data', 'aftersale.data.view', 'aftersale.data.analysis',
 
       // 资料管理权限
       'data', 'data.list', 'data.list.view', 'data.search', 'data.search.basic', 'data.search.advanced'

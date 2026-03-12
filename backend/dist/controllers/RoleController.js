@@ -41,7 +41,7 @@ class RoleController {
             const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
             const offset = (Number(page) - 1) * Number(limit);
             // 查询角色列表
-            const roles = await dataSource.query(`SELECT id, name, code, description, status, level, color, permissions, roleType, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt
+            const roles = await dataSource.query(`SELECT id, name, code, description, status, level, color, permissions, role_type as roleType, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt
          FROM roles ${whereClause} ORDER BY level ASC, created_at DESC LIMIT ? OFFSET ?`, [...params, Number(limit), offset]);
             // 查询总数
             const countResult = await dataSource.query(`SELECT COUNT(*) as total FROM roles ${whereClause}`, params);
@@ -103,7 +103,7 @@ class RoleController {
             if (!dataSource) {
                 throw new Error('数据库连接未初始化');
             }
-            const roles = await dataSource.query('SELECT id, name, code, description, status, level, color, permissions, roleType, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt FROM roles WHERE id = ?', [id]);
+            const roles = await dataSource.query('SELECT id, name, code, description, status, level, color, permissions, role_type as roleType, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt FROM roles WHERE id = ?', [id]);
             if (roles.length === 0) {
                 res.status(404).json({
                     success: false,

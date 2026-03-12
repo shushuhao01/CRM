@@ -306,7 +306,25 @@ const handleReset = () => {
 }
 
 const handleExport = () => {
-  ElMessage.info('导出功能开发中')
+  const params = new URLSearchParams()
+  if (searchForm.status) params.set('status', searchForm.status)
+  if (searchForm.payType) params.set('payType', searchForm.payType)
+  if (searchForm.dateRange?.[0]) params.set('startDate', searchForm.dateRange[0])
+  if (searchForm.dateRange?.[1]) params.set('endDate', searchForm.dateRange[1])
+  const token = localStorage.getItem('admin_token')
+  const url = `/api/v1/admin/export/payments?${params.toString()}`
+  fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    .then(res => res.blob())
+    .then(blob => {
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `支付订单列表_${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      ElMessage.success('导出成功')
+    })
+    .catch(() => ElMessage.error('导出失败'))
 }
 
 const handleView = async (row: any) => {
@@ -482,6 +500,49 @@ onMounted(() => {
     color: #f56c6c;
     font-size: 12px;
     margin-left: 8px;
+  }
+}
+
+/* ====== 响应式适配 ====== */
+@media screen and (max-width: 768px) {
+  .search-card :deep(.el-form) {
+    display: flex;
+    flex-direction: column;
+
+    .el-form-item {
+      margin-right: 0;
+      margin-bottom: 12px;
+      width: 100%;
+
+      .el-input, .el-select, .el-date-editor {
+        width: 100% !important;
+      }
+    }
+  }
+
+  .stat-card {
+    padding: 14px;
+
+    .stat-icon {
+      width: 36px;
+      height: 36px;
+    }
+
+    .stat-value {
+      font-size: 18px;
+    }
+  }
+
+  .table-card {
+    :deep(.el-table) {
+      overflow-x: auto;
+    }
+
+    .card-header {
+      flex-direction: column;
+      gap: 8px;
+      align-items: flex-start;
+    }
   }
 }
 </style>

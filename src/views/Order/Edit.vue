@@ -1034,8 +1034,10 @@ const loadOrderData = async () => {
         depositScreenshots.value = []
       }
 
-      // 重新计算金额
+      // 重新计算金额（标记为加载模式，不覆盖totalAmount）
+      isLoadingOrder = true
       calculateSubtotal()
+      isLoadingOrder = false
     }
   } catch (error) {
     console.error('加载订单数据失败:', error)
@@ -1086,6 +1088,9 @@ const removeProduct = (index) => {
   calculateSubtotal()
 }
 
+// 🔥 标志位：是否正在加载已有订单数据（加载时不覆盖totalAmount）
+let isLoadingOrder = false
+
 // 计算小计
 const calculateSubtotal = () => {
   orderForm.products.forEach(item => {
@@ -1097,7 +1102,10 @@ const calculateSubtotal = () => {
 
 // 计算金额
 const calculateAmounts = () => {
-  orderForm.totalAmount = orderForm.subtotal - orderForm.discountAmount
+  // 🔥 修复：加载已有订单时不覆盖totalAmount，保留数据库中的真实值（用户可能给过优惠）
+  if (!isLoadingOrder) {
+    orderForm.totalAmount = orderForm.subtotal - orderForm.discountAmount
+  }
   orderForm.collectedAmount = orderForm.depositAmount
 }
 

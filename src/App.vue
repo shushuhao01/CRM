@@ -151,7 +151,7 @@
             <!-- 🔥 版权信息 - 在滚动区域底部，滚动到底才显示 -->
             <footer class="app-footer">
               <div class="footer-content">
-                <span>版权归 {{ configStore.systemConfig.companyName || 'CRM系统' }} 所有</span>
+                <span>{{ configStore.systemConfig.copyrightText || `版权归 ${configStore.systemConfig.companyName || 'CRM系统'} 所有` }}</span>
                 <span class="separator">|</span>
                 <span>v{{ configStore.systemConfig.systemVersion || '1.0.0' }}</span>
                 <span class="separator" v-if="configStore.systemConfig.websiteUrl">|</span>
@@ -167,6 +167,29 @@
                 <a href="javascript:void(0)" class="footer-link" @click="showContactDialog">
                   联系我们
                 </a>
+              </div>
+              <div class="footer-beian" v-if="configStore.systemConfig.icpNumber || configStore.systemConfig.policeNumber || configStore.systemConfig.techSupport">
+                <a
+                  v-if="configStore.systemConfig.icpNumber"
+                  href="https://beian.miit.gov.cn/"
+                  target="_blank"
+                  class="footer-link beian-link"
+                >
+                  {{ configStore.systemConfig.icpNumber }}
+                </a>
+                <span class="separator" v-if="configStore.systemConfig.icpNumber && configStore.systemConfig.policeNumber">|</span>
+                <a
+                  v-if="configStore.systemConfig.policeNumber"
+                  href="http://www.beian.gov.cn/"
+                  target="_blank"
+                  class="footer-link beian-link"
+                >
+                  🛡️ {{ configStore.systemConfig.policeNumber }}
+                </a>
+                <template v-if="configStore.systemConfig.techSupport">
+                  <span class="separator" v-if="configStore.systemConfig.icpNumber || configStore.systemConfig.policeNumber">|</span>
+                  <span class="tech-support">{{ configStore.systemConfig.techSupport }}</span>
+                </template>
               </div>
             </footer>
           </div>
@@ -1554,6 +1577,30 @@ watch(isMobile, (newValue) => {
 
 .footer-content .footer-link:hover {
   color: #409eff;
+}
+
+.footer-beian {
+  color: #ccc;
+  font-size: 11px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.footer-beian .beian-link {
+  color: #bbb;
+  text-decoration: none;
+  transition: color 0.3s;
+}
+
+.footer-beian .beian-link:hover {
+  color: #409eff;
+}
+
+.footer-beian .tech-support {
+  color: #bbb;
 }
 
 /* 联系我们对话框样式 */

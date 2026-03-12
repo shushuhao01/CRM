@@ -14,6 +14,30 @@
       </div>
     </template>
 
+    <!-- 平台配置覆盖提示 -->
+    <el-alert
+      v-if="hasAnyOverride"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="override-alert"
+    >
+      <template #title>
+        <span v-if="platformOverride.basic && platformOverride.copyright">
+          基本信息和版权备案信息均由平台管理员统一配置，所有字段禁止修改。
+        </span>
+        <span v-else-if="platformOverride.basic">
+          基本信息由平台管理员统一配置，不可修改。版权文字和技术支持由管理后台控制。
+        </span>
+        <span v-else-if="platformOverride.copyright">
+          版权备案信息由平台管理员统一配置，不可修改。基本信息可本地编辑保存。
+        </span>
+        <span v-else>
+          部分设置项由管理后台统一配置，标记为不可修改的字段请在管理后台修改。
+        </span>
+      </template>
+    </el-alert>
+
     <el-form
       ref="formRef"
       :model="form"
@@ -27,6 +51,7 @@
             <el-input
               v-model="form.systemName"
               placeholder="请输入系统名称"
+              :disabled="platformOverride.basic"
             />
           </el-form-item>
         </el-col>
@@ -35,6 +60,7 @@
             <el-input
               v-model="form.systemVersion"
               placeholder="请输入系统版本"
+              :disabled="platformOverride.basic"
             />
           </el-form-item>
         </el-col>
@@ -46,6 +72,7 @@
             <el-input
               v-model="form.companyName"
               placeholder="请输入公司名称"
+              :disabled="platformOverride.basic"
             />
           </el-form-item>
         </el-col>
@@ -54,6 +81,7 @@
             <el-input
               v-model="form.contactPhone"
               placeholder="请输入联系电话"
+              :disabled="platformOverride.basic"
             />
           </el-form-item>
         </el-col>
@@ -65,6 +93,7 @@
             <el-input
               v-model="form.contactEmail"
               placeholder="请输入联系邮箱"
+              :disabled="platformOverride.basic"
             />
           </el-form-item>
         </el-col>
@@ -73,6 +102,7 @@
             <el-input
               v-model="form.websiteUrl"
               placeholder="请输入网站地址"
+              :disabled="platformOverride.basic"
             />
           </el-form-item>
         </el-col>
@@ -82,6 +112,7 @@
         <el-input
           v-model="form.companyAddress"
           placeholder="请输入公司地址"
+          :disabled="platformOverride.basic"
         />
       </el-form-item>
 
@@ -91,6 +122,7 @@
           type="textarea"
           :rows="3"
           placeholder="请输入系统描述"
+          :disabled="platformOverride.basic"
         />
       </el-form-item>
 
@@ -101,6 +133,7 @@
           :show-file-list="false"
           :before-upload="beforeLogoUpload"
           :http-request="handleLogoUpload"
+          :disabled="platformOverride.basic"
         >
           <img v-if="form.systemLogo" :src="form.systemLogo" class="logo" />
           <el-icon v-else class="logo-uploader-icon"><Plus /></el-icon>
@@ -117,6 +150,7 @@
             <el-input
               v-model="form.contactQRCodeLabel"
               placeholder="请输入二维码标签（如：微信、联系我们）"
+              :disabled="platformOverride.basic"
             />
             <div class="upload-tip">用于说明二维码的用途</div>
           </el-form-item>
@@ -124,7 +158,7 @@
 
         <el-col :span="12">
           <el-form-item label="上传二维码">
-            <div class="qr-upload-buttons">
+            <div class="qr-upload-buttons" v-if="!platformOverride.basic">
               <el-button type="primary" size="small" :icon="Upload" @click="triggerQRUpload">
                 点击上传
               </el-button>
@@ -142,6 +176,7 @@
                 </div>
               </div>
               <el-button
+                v-if="!platformOverride.basic"
                 size="small"
                 type="danger"
                 text
@@ -171,6 +206,51 @@
           </el-form-item>
         </el-col>
       </el-row>
+      <!-- 版权与备案信息 -->
+      <el-divider content-position="left">版权与备案信息</el-divider>
+
+      <el-form-item label="版权文字" prop="copyrightText">
+        <el-input
+          v-model="form.copyrightText"
+          placeholder="如：© 2026 XX科技有限公司 版权所有"
+          :disabled="platformOverride.copyrightText"
+        />
+        <div class="upload-tip" v-if="platformOverride.copyrightText" style="color: #e6a23c;">此项已由管理后台统一配置，CRM端不可修改</div>
+        <div class="upload-tip" v-else>自定义底部版权文字，留空则自动使用公司名称生成</div>
+      </el-form-item>
+
+      <el-row :gutter="20">
+        <el-col :span="12">
+          <el-form-item label="ICP备案号" prop="icpNumber">
+            <el-input
+              v-model="form.icpNumber"
+              placeholder="如：粤ICP备2026XXXXXX号"
+              :disabled="platformOverride.copyright"
+            />
+            <div class="upload-tip">工信部ICP备案号，显示在系统底部</div>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="公安备案号" prop="policeNumber">
+            <el-input
+              v-model="form.policeNumber"
+              placeholder="如：粤公网安备 44010XXXXXXXXXX号"
+              :disabled="platformOverride.copyright"
+            />
+            <div class="upload-tip">公安部网络安全备案号，显示在系统底部</div>
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-form-item label="技术支持" prop="techSupport">
+        <el-input
+          v-model="form.techSupport"
+          placeholder="如：XX科技提供技术支持"
+          :disabled="platformOverride.techSupport"
+        />
+        <div class="upload-tip" v-if="platformOverride.techSupport" style="color: #e6a23c;">此项已由管理后台统一配置，CRM端不可修改</div>
+        <div class="upload-tip" v-else>自定义底部显示的技术支持信息</div>
+      </el-form-item>
     </el-form>
   </el-card>
 </template>
@@ -192,8 +272,19 @@ const qrFileInput = ref<HTMLInputElement>()
 // 表单数据 - 从配置store获取
 const form = computed(() => configStore.systemConfig)
 
-// 权限控制
-const canEdit = computed(() => userStore.isAdmin || userStore.isSuperAdmin)
+// 平台配置覆盖状态
+const platformOverride = computed(() => configStore.platformOverride)
+const hasAnyOverride = computed(() => platformOverride.value.basic || platformOverride.value.copyright || platformOverride.value.copyrightText || platformOverride.value.techSupport)
+
+// 权限控制：只要有任何字段可编辑就显示保存按钮
+// 注意：版权文字和技术支持始终由管理后台配置，CRM端不可编辑
+const canEdit = computed(() => {
+  // 如果基本信息和版权备案都被平台覆盖，则完全不可编辑
+  if (platformOverride.value.basic && platformOverride.value.copyright) {
+    return false
+  }
+  return userStore.isAdmin || userStore.isSuperAdmin
+})
 
 // 表单验证规则
 const formRules = {
@@ -305,18 +396,62 @@ const removeQRCode = () => {
 
 // 保存设置
 const handleSave = async () => {
+  // 如果全部被平台覆盖，禁止保存
+  if (platformOverride.value.basic && platformOverride.value.copyright) {
+    ElMessage.warning('所有设置由平台管理员统一配置，不可修改')
+    return
+  }
+
   try {
     await formRef.value?.validate()
     loading.value = true
 
+    // 构建只包含可编辑字段的数据
+    const saveData: Record<string, any> = {}
+
+    // 仅当基本信息未被覆盖时才保存基本信息字段
+    if (!platformOverride.value.basic) {
+      saveData.systemName = form.value.systemName
+      saveData.systemVersion = form.value.systemVersion
+      saveData.companyName = form.value.companyName
+      saveData.contactPhone = form.value.contactPhone
+      saveData.contactEmail = form.value.contactEmail
+      saveData.websiteUrl = form.value.websiteUrl
+      saveData.companyAddress = form.value.companyAddress
+      saveData.systemDescription = form.value.systemDescription
+      saveData.systemLogo = form.value.systemLogo
+      saveData.contactQRCode = form.value.contactQRCode
+      saveData.contactQRCodeLabel = form.value.contactQRCodeLabel
+    }
+
+    // 仅当版权信息未被覆盖时才保存备案号字段
+    if (!platformOverride.value.copyright) {
+      saveData.icpNumber = form.value.icpNumber
+      saveData.policeNumber = form.value.policeNumber
+    }
+
+    // 版权文字和技术支持：仅在管理后台未配置时可本地保存
+    if (!platformOverride.value.copyrightText) {
+      saveData.copyrightText = form.value.copyrightText
+    }
+    if (!platformOverride.value.techSupport) {
+      saveData.techSupport = form.value.techSupport
+    }
+
+    // 如果没有可保存的字段，提示用户
+    if (Object.keys(saveData).length === 0) {
+      ElMessage.warning('没有可修改的设置项')
+      return
+    }
+
     // 保存到localStorage
-    configStore.updateSystemConfig(form.value)
-    console.log('[基本设置] 已保存到localStorage:', form.value)
+    configStore.updateSystemConfig(saveData)
+    console.log('[基本设置] 已保存到localStorage:', saveData)
 
     // 尝试保存到后端API
     try {
       const { apiService } = await import('@/services/apiService')
-      await apiService.put('/system/basic-settings', form.value)
+      await apiService.put('/system/basic-settings', saveData)
       console.log('[基本设置] 已同步到后端API')
       ElMessage.success('基本设置保存成功')
     } catch (apiError) {
@@ -452,5 +587,9 @@ onMounted(() => {
   margin-top: 10px;
   color: #909399;
   font-size: 12px;
+}
+
+.override-alert {
+  margin-bottom: 20px;
 }
 </style>

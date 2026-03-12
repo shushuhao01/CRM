@@ -353,12 +353,12 @@
       <!-- 代收金额列 -->
       <template #column-collectAmount="{ row }">
         <div class="cod-amount-cell">
-          <!-- 始终显示原始代收金额（总额-定金） -->
+          <!-- 显示当前应到付金额（总额-定金） -->
           <span class="amount-text">¥{{ ((row.totalAmount || 0) - (row.depositAmount || 0)).toLocaleString() }}</span>
-          <!-- 🔥 判断是否修改过代收金额：codAmount不为null且不等于原始金额，且未返款 -->
+          <!-- 🔥 判断是否通过代收管理修改过代收金额：codAmount不等于当前应收金额，且未返款 -->
           <el-tooltip
             v-if="row.codStatus !== 'returned' && row.codAmount !== null && row.codAmount !== undefined && row.codAmount !== ((row.totalAmount || 0) - (row.depositAmount || 0))"
-            :content="`已改代收为¥${Number(row.codAmount).toFixed(2)}`"
+            :content="`实际到付¥${Number(row.codAmount).toFixed(2)}`"
             placement="top"
           >
             <span class="cancelled-cod-badge">已改</span>

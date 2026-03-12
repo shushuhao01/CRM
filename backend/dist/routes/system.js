@@ -60,6 +60,7 @@ const FollowUp_1 = require("../entities/FollowUp");
 const CustomerTag_1 = require("../entities/CustomerTag");
 const CustomerGroup_1 = require("../entities/CustomerGroup");
 const SmsTemplate_1 = require("../entities/SmsTemplate");
+const Module_1 = require("../entities/Module");
 const multer_1 = __importDefault(require("multer"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
@@ -191,6 +192,56 @@ router.get('/global-config', auth_1.authenticateToken, (_req, res) => {
             }
         }
     });
+});
+/**
+ * @route GET /api/v1/system/modules/status
+ * @desc 获取启用的模块列表（供CRM前端控制菜单显示）
+ * @access Private (All authenticated users)
+ */
+router.get('/modules/status', auth_1.authenticateToken, async (_req, res) => {
+    try {
+        const moduleRepository = database_1.AppDataSource.getRepository(Module_1.Module);
+        // 获取所有启用的模块
+        const enabledModules = await moduleRepository.find({
+            where: { status: 'enabled' },
+            select: ['code']
+        });
+        // 模块代码映射：Admin后台模块代码 -> CRM前端菜单ID
+        const moduleMapping = {
+            'order_management': 'order',
+            'customer_management': 'customer',
+            'finance_management': 'finance',
+            'logistics_management': 'logistics',
+            'aftersales_management': 'service',
+            'call_management': 'serviceManagement',
+            'data_management': 'data',
+            'performance_management': 'performance',
+            'product_management': 'product',
+            'system_management': 'system'
+        };
+        // 转换为CRM前端的菜单ID
+        const menuIds = enabledModules
+            .map(m => moduleMapping[m.code])
+            .filter(id => id !== undefined);
+        // 始终包含dashboard（数据看板）
+        if (!menuIds.includes('dashboard')) {
+            menuIds.unshift('dashboard');
+        }
+        res.json({
+            success: true,
+            data: {
+                enabledModules: menuIds
+            }
+        });
+    }
+    catch (error) {
+        console.error('[System] 获取模块状态失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取模块状态失败',
+            error: error.message
+        });
+    }
 });
 // ========== 文件上传路由 ==========
 /**
@@ -404,6 +455,7 @@ router.get('/basic-settings/public', async (_req, res) => {
         });
     }
 });
+// ========== 模块状态接口已在上方定义，此处删除重复定义 ==========
 /**
  * @route GET /api/v1/system/basic-settings
  * @desc 获取系统基本设置

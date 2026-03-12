@@ -8,7 +8,7 @@ export class SystemConfig {
   @Column({ length: 100, comment: '配置键名' })
   configKey: string;
 
-  @Column({ type: 'text', comment: '配置值' })
+  @Column({ type: 'mediumtext', comment: '配置值' })
   configValue: string;
 
   @Column({

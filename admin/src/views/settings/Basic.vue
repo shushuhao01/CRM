@@ -123,6 +123,81 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
+
+        <el-tab-pane label="邮件配置" name="email">
+          <el-form :model="emailForm" label-width="140px" class="config-form">
+            <el-alert type="info" :closable="false" style="margin-bottom: 20px">
+              配置SMTP邮件服务，用于系统通知、订单提醒等邮件发送
+            </el-alert>
+            <el-form-item label="启用邮件">
+              <el-switch v-model="emailForm.enabled" />
+            </el-form-item>
+            <el-form-item label="SMTP服务器">
+              <el-input v-model="emailForm.smtpHost" placeholder="如：smtp.qq.com" />
+            </el-form-item>
+            <el-form-item label="SMTP端口">
+              <el-input-number v-model="emailForm.smtpPort" :min="1" :max="65535" />
+              <span class="form-tip">SSL通常使用465，TLS使用587</span>
+            </el-form-item>
+            <el-form-item label="发件人邮箱">
+              <el-input v-model="emailForm.senderEmail" placeholder="如：noreply@example.com" />
+            </el-form-item>
+            <el-form-item label="发件人名称">
+              <el-input v-model="emailForm.senderName" placeholder="如：CRM系统" />
+            </el-form-item>
+            <el-form-item label="邮箱密码">
+              <el-input v-model="emailForm.emailPassword" type="password" show-password placeholder="SMTP授权码或密码" />
+              <div class="form-tip">QQ邮箱需使用授权码，非登录密码</div>
+            </el-form-item>
+            <el-form-item label="启用SSL">
+              <el-switch v-model="emailForm.enableSsl" />
+            </el-form-item>
+            <el-form-item label="启用TLS">
+              <el-switch v-model="emailForm.enableTls" />
+            </el-form-item>
+            <el-form-item label="测试邮箱">
+              <el-input v-model="emailForm.testEmail" placeholder="用于测试的收件邮箱" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="handleTestEmail">发送测试邮件</el-button>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
+        <el-tab-pane label="超时提醒" name="timeout">
+          <el-form :model="timeoutForm" label-width="160px" class="config-form">
+            <el-alert type="info" :closable="false" style="margin-bottom: 20px">
+              配置订单、售后等业务的超时自动提醒功能
+            </el-alert>
+            <el-form-item label="启用超时提醒">
+              <el-switch v-model="timeoutForm.enabled" />
+            </el-form-item>
+            <el-form-item label="订单审核超时">
+              <el-input-number v-model="timeoutForm.orderAuditTimeout" :min="1" :max="168" />
+              <span class="form-tip">小时，超过此时间未审核将发送提醒</span>
+            </el-form-item>
+            <el-form-item label="订单发货超时">
+              <el-input-number v-model="timeoutForm.orderShipmentTimeout" :min="1" :max="168" />
+              <span class="form-tip">小时，审核通过后超过此时间未发货将提醒</span>
+            </el-form-item>
+            <el-form-item label="售后处理超时">
+              <el-input-number v-model="timeoutForm.afterSalesTimeout" :min="1" :max="168" />
+              <span class="form-tip">小时，售后申请超过此时间未处理将提醒</span>
+            </el-form-item>
+            <el-form-item label="订单跟进提醒">
+              <el-input-number v-model="timeoutForm.orderFollowupDays" :min="1" :max="30" />
+              <span class="form-tip">天，订单签收后多少天提醒跟进客户</span>
+            </el-form-item>
+            <el-form-item label="检测间隔">
+              <el-input-number v-model="timeoutForm.checkIntervalMinutes" :min="5" :max="120" />
+              <span class="form-tip">分钟，系统自动检测的时间间隔</span>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="handleManualCheck" :loading="checking">立即检测</el-button>
+              <span class="form-tip" style="margin-left: 12px">手动触发一次超时检测</span>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
   </div>
@@ -144,6 +219,9 @@ const securityForm = reactive({ loginCaptcha: false, maxLoginAttempts: 5, lockDu
 const logForm = reactive({ operationLog: true, loginLog: true, retentionDays: 90 })
 const pwdForm = reactive({ oldPassword: '', newPassword: '', confirmPassword: '' })
 const smsForm = reactive({ enabled: false, accessKeyId: '', accessKeySecret: '', signName: '', templateCode: '' })
+const emailForm = reactive({ enabled: false, smtpHost: '', smtpPort: 465, senderEmail: '', senderName: '', emailPassword: '', enableSsl: true, enableTls: false, testEmail: '' })
+const timeoutForm = reactive({ enabled: false, orderAuditTimeout: 24, orderShipmentTimeout: 48, afterSalesTimeout: 48, orderFollowupDays: 3, checkIntervalMinutes: 30 })
+const checking = ref(false)
 
 const pwdRules: FormRules = {
   oldPassword: [{ required: true, message: '请输入当前密码' }],
@@ -163,6 +241,30 @@ const loadSmsConfig = async () => {
   }
 }
 
+// 加载邮件配置
+const loadEmailConfig = async () => {
+  try {
+    const res = await request.get('/system/email-settings')
+    if (res.data) {
+      Object.assign(emailForm, res.data)
+    }
+  } catch (e) {
+    console.error('加载邮件配置失败', e)
+  }
+}
+
+// 加载超时提醒配置
+const loadTimeoutConfig = async () => {
+  try {
+    const res = await request.get('/timeout-reminder/config')
+    if (res.data) {
+      Object.assign(timeoutForm, res.data)
+    }
+  } catch (e) {
+    console.error('加载超时提醒配置失败', e)
+  }
+}
+
 // 保存配置
 const handleSave = async () => {
   saving.value = true
@@ -170,6 +272,14 @@ const handleSave = async () => {
     // 保存短信配置
     if (activeTab.value === 'sms') {
       await request.post('/system-config/sms', smsForm)
+    }
+    // 保存邮件配置
+    else if (activeTab.value === 'email') {
+      await request.put('/system/email-settings', emailForm)
+    }
+    // 保存超时提醒配置
+    else if (activeTab.value === 'timeout') {
+      await request.put('/timeout-reminder/config', timeoutForm)
     }
     ElMessage.success('保存成功')
   } catch (e) {
@@ -197,11 +307,40 @@ const handleTestSms = async () => {
   }
 }
 
+// 测试邮件
+const handleTestEmail = async () => {
+  if (!emailForm.testEmail) {
+    ElMessage.warning('请先填写测试邮箱')
+    return
+  }
+  try {
+    await request.post('/system/email-settings/test', emailForm)
+    ElMessage.success('测试邮件已发送,请查收')
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '发送失败')
+  }
+}
+
+// 手动触发超时检测
+const handleManualCheck = async () => {
+  checking.value = true
+  try {
+    const res = await request.post('/timeout-reminder/check')
+    ElMessage.success(res.message || '检测完成')
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '检测失败')
+  } finally {
+    checking.value = false
+  }
+}
+
 const handleClearLogs = () => ElMessageBox.confirm('确定清理过期日志？').then(() => ElMessage.success('清理完成'))
 const handleChangePwd = async () => { await pwdFormRef.value?.validate(); ElMessage.success('密码修改成功'); pwdFormRef.value?.resetFields() }
 
 onMounted(() => {
   loadSmsConfig()
+  loadEmailConfig()
+  loadTimeoutConfig()
 })
 </script>
 

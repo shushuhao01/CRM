@@ -323,4 +323,166 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
   }
 })
 
+// 关闭订单
+router.post('/orders/:id/close', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+
+    await AppDataSource.query(
+      `UPDATE payment_orders SET status = 'closed', updated_at = ? WHERE id = ? AND status = 'pending'`,
+      [now, id]
+    )
+
+    res.json({ success: true, message: '订单已关闭' })
+  } catch (error) {
+    res.status(500).json({ success: false, message: '关闭订单失败' })
+  }
+})
+
+// 支付报表数据
+router.get('/reports', async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate, groupBy = 'day', payType, customerType } = req.query as any
+
+    let dateWhere = "AND status = 'paid'"
+    const params: any[] = []
+
+    if (startDate) {
+      dateWhere += ' AND created_at >= ?'
+      params.push(startDate)
+    }
+    if (endDate) {
+      dateWhere += ' AND created_at <= ?'
+      params.push(endDate + ' 23:59:59')
+    }
+    if (payType) {
+      dateWhere += ' AND pay_type = ?'
+      params.push(payType)
+    }
+
+    // 时间格式化模板
+    let dateFormat = '%Y-%m-%d'
+    if (groupBy === 'month') dateFormat = '%Y-%m'
+    else if (groupBy === 'year') dateFormat = '%Y'
+
+    // 时间序列数据
+    const timeSeriesData = await AppDataSource.query(
+      `SELECT DATE_FORMAT(created_at, ?) as date,
+              COALESCE(SUM(amount), 0) as amount,
+              COUNT(*) as count
+       FROM payment_orders
+       WHERE 1=1 ${dateWhere}
+       GROUP BY date ORDER BY date ASC`,
+      [dateFormat, ...params]
+    )
+
+    // 按支付方式分组
+    const byPayType = await AppDataSource.query(
+      `SELECT pay_type as payType,
+              COALESCE(SUM(amount), 0) as amount,
+              COUNT(*) as count
+       FROM payment_orders
+       WHERE 1=1 ${dateWhere}
+       GROUP BY pay_type`,
+      params
+    )
+
+    // 按套餐分组
+    const byPackage = await AppDataSource.query(
+      `SELECT COALESCE(package_name, '未知套餐') as packageName,
+              COALESCE(SUM(amount), 0) as amount,
+              COUNT(*) as count
+       FROM payment_orders
+       WHERE 1=1 ${dateWhere}
+       GROUP BY package_name ORDER BY amount DESC`,
+      params
+    )
+
+    // 按客户类型分组（通过tenant_name判断）
+    const byCustomerType = await AppDataSource.query(
+      `SELECT
+         CASE WHEN tenant_name IS NOT NULL AND tenant_name != '' THEN 'tenant' ELSE 'private' END as customerType,
+         COALESCE(SUM(amount), 0) as amount,
+         COUNT(*) as count
+       FROM payment_orders
+       WHERE 1=1 ${dateWhere}
+       GROUP BY customerType`,
+      params
+    )
+
+    res.json({
+      success: true,
+      data: {
+        timeSeriesData,
+        byPayType,
+        byPackage,
+        byCustomerType
+      }
+    })
+  } catch (error) {
+    console.error('获取支付报表失败:', error)
+    res.status(500).json({ success: false, message: '获取报表失败' })
+  }
+})
+
+// 导出支付报表CSV
+router.get('/export', async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate, payType, customerType } = req.query as any
+
+    let dateWhere = ''
+    const params: any[] = []
+
+    if (startDate) {
+      dateWhere += ' AND created_at >= ?'
+      params.push(startDate)
+    }
+    if (endDate) {
+      dateWhere += ' AND created_at <= ?'
+      params.push(endDate + ' 23:59:59')
+    }
+    if (payType) {
+      dateWhere += ' AND pay_type = ?'
+      params.push(payType)
+    }
+
+    const orders = await AppDataSource.query(
+      `SELECT order_no, tenant_name, package_name, amount, pay_type, status,
+              trade_no, contact_name, contact_phone, created_at, paid_at, refund_amount
+       FROM payment_orders WHERE 1=1 ${dateWhere} ORDER BY created_at DESC`,
+      params
+    )
+
+    // 生成CSV
+    const header = '订单号,客户名称,套餐名称,金额,支付方式,状态,交易号,联系人,联系电话,创建时间,支付时间,退款金额'
+    const payTypeMap: Record<string, string> = { wechat: '微信支付', alipay: '支付宝', bank: '对公转账' }
+    const statusMap: Record<string, string> = { pending: '待支付', paid: '已支付', refunded: '已退款', closed: '已关闭' }
+
+    const rows = orders.map((o: any) => [
+      o.order_no || '',
+      o.tenant_name || '',
+      o.package_name || '',
+      o.amount || 0,
+      payTypeMap[o.pay_type] || o.pay_type || '',
+      statusMap[o.status] || o.status || '',
+      o.trade_no || '',
+      o.contact_name || '',
+      o.contact_phone || '',
+      o.created_at || '',
+      o.paid_at || '',
+      o.refund_amount || 0
+    ].map(v => `"${v}"`).join(','))
+
+    const csv = '\uFEFF' + header + '\n' + rows.join('\n')
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename=payment_report_${Date.now()}.csv`)
+    res.send(csv)
+  } catch (error) {
+    console.error('导出支付报表失败:', error)
+    res.status(500).json({ success: false, message: '导出失败' })
+  }
+})
+
 export default router

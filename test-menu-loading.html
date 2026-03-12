@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>菜单加载诊断</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .section {
+      background: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h2 {
+      color: #333;
+      border-bottom: 2px solid #409eff;
+      padding-bottom: 10px;
+    }
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    .success {
+      background: #f0f9ff;
+      border-left: 4px solid #67c23a;
+    }
+    .error {
+      background: #fef0f0;
+      border-left: 4px solid #f56c6c;
+    }
+    .warning {
+      background: #fdf6ec;
+      border-left: 4px solid #e6a23c;
+    }
+    pre {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    button {
+      background: #409eff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    button:hover {
+      background: #66b1ff;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 CRM菜单加载诊断工具</h1>
+  
+  <div class="section">
+    <h2>1. 检查localStorage数据</h2>
+    <button onclick="checkLocalStorage()">检查localStorage</button>
+    <div id="localStorage-result"></div>
+  </div>
+
+  <div class="section">
+    <h2>2. 检查用户信息</h2>
+    <button onclick="checkUserInfo()">检查用户信息</button>
+    <div id="user-result"></div>
+  </div>
+
+  <div class="section">
+    <h2>3. 检查权限信息</h2>
+    <button onclick="checkPermissions()">检查权限</button>
+    <div id="permissions-result"></div>
+  </div>
+
+  <div class="section">
+    <h2>4. 测试模块状态API</h2>
+    <button onclick="testModuleAPI()">测试API</button>
+    <div id="api-result"></div>
+  </div>
+
+  <div class="section">
+    <h2>5. 清除缓存并重新登录</h2>
+    <button onclick="clearCache()">清除缓存</button>
+    <button onclick="window.location.href='/login'">前往登录</button>
+    <div id="cache-result"></div>
+  </div>
+
+  <script>
+    function checkLocalStorage() {
+      const result = document.getElementById('localStorage-result');
+      const data = {
+        auth_token: localStorage.getItem('auth_token') ? '✅ 存在' : '❌ 不存在',
+        user: localStorage.getItem('user') ? '✅ 存在' : '❌ 不存在',
+        userPermissions: localStorage.getItem('userPermissions') ? '✅ 存在' : '❌ 不存在',
+        token_expiry: localStorage.getItem('token_expiry') ? '✅ 存在' : '❌ 不存在'
+      };
+      
+      result.innerHTML = `
+        <div class="status ${data.auth_token.includes('✅') ? 'success' : 'error'}">
+          <strong>localStorage状态:</strong>
+          <pre>${JSON.stringify(data, null, 2)}</pre>
+        </div>
+      `;
+    }
+
+    function checkUserInfo() {
+      const result = document.getElementById('user-result');
+      const userStr = localStorage.getItem('user');
+      
+      if (!userStr) {
+        result.innerHTML = '<div class="status error">❌ 未找到用户信息</div>';
+        return;
+      }
+      
+      try {
+        const user = JSON.parse(userStr);
+        result.innerHTML = `
+          <div class="status success">
+            <strong>✅ 用户信息:</strong>
+            <pre>${JSON.stringify(user, null, 2)}</pre>
+          </div>
+        `;
+      } catch (e) {
+        result.innerHTML = `<div class="status error">❌ 用户信息解析失败: ${e.message}</div>`;
+      }
+    }
+
+    function checkPermissions() {
+      const result = document.getElementById('permissions-result');
+      const permStr = localStorage.getItem('userPermissions');
+      
+      if (!permStr) {
+        result.innerHTML = '<div class="status error">❌ 未找到权限信息</div>';
+        return;
+      }
+      
+      try {
+        const permissions = JSON.parse(permStr);
+        result.innerHTML = `
+          <div class="status success">
+            <strong>✅ 权限列表 (${permissions.length}个):</strong>
+            <pre>${JSON.stringify(permissions, null, 2)}</pre>
+          </div>
+        `;
+      } catch (e) {
+        result.innerHTML = `<div class="status error">❌ 权限信息解析失败: ${e.message}</div>`;
+      }
+    }
+
+    async function testModuleAPI() {
+      const result = document.getElementById('api-result');
+      result.innerHTML = '<div class="status warning">⏳ 正在测试API...</div>';
+      
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        result.innerHTML = '<div class="status error">❌ 未找到Token，请先登录</div>';
+        return;
+      }
+      
+      try {
+        const response = await fetch('http://localhost:3000/api/v1/system/modules/status', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          result.innerHTML = `
+            <div class="status success">
+              <strong>✅ API响应成功:</strong>
+              <pre>${JSON.stringify(data, null, 2)}</pre>
+            </div>
+          `;
+        } else {
+          result.innerHTML = `
+            <div class="status error">
+              <strong>❌ API响应失败 (${response.status}):</strong>
+              <pre>${JSON.stringify(data, null, 2)}</pre>
+            </div>
+          `;
+        }
+      } catch (e) {
+        result.innerHTML = `<div class="status error">❌ API请求失败: ${e.message}</div>`;
+      }
+    }
+
+    function clearCache() {
+      const result = document.getElementById('cache-result');
+      
+      // 清除所有相关缓存
+      const keys = [
+        'auth_token', 'user', 'userPermissions', 'token_expiry',
+        'user_info', 'refresh_token', 'crm_current_user', 'currentUser'
+      ];
+      
+      keys.forEach(key => localStorage.removeItem(key));
+      sessionStorage.clear();
+      
+      result.innerHTML = `
+        <div class="status success">
+          ✅ 缓存已清除，请重新登录
+        </div>
+      `;
+    }
+
+    // 页面加载时自动检查
+    window.onload = function() {
+      checkLocalStorage();
+      checkUserInfo();
+      checkPermissions();
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+
+          <el-alert type="info" :closable="false" class="feature-flags-alert">
+            <p>控制CRM系统中哪些功能模块对用户可见。SaaS租户和私有部署客户可分别配置。关闭后对应的设置页或菜单将被隐藏。</p>
+          </el-alert>
+
+          <el-row :gutter="20" class="feature-flags-container">
+            <el-col :span="12">
+              <el-card shadow="hover" class="feature-card saas-card">
+                <template #header>
+                  <div class="feature-card-header">
+                    <div class="card-title-area">
+                      <el-tag type="primary" effect="dark" size="small">SaaS</el-tag>
+                      <span class="card-title">SaaS租户</span>
+                    </div>
+                    <el-button text size="small" @click="toggleAll('saas', true)">全开</el-button>
+                    <el-button text size="small" @click="toggleAll('saas', false)">全关</el-button>
+                  </div>
+                </template>
+                <div class="feature-group">
+                  <div class="group-label">核心功能</div>
+                  <div class="switch-row"><span>安全设置</span><el-switch v-model="form.featureFlags.saas.security" /></div>
+                  <div class="switch-row"><span>存储设置</span><el-switch v-model="form.featureFlags.saas.storage" /></div>
+                  <div class="switch-row"><span>商品设置</span><el-switch v-model="form.featureFlags.saas.product" /></div>
+                  <div class="switch-row"><span>订单设置</span><el-switch v-model="form.featureFlags.saas.order" /></div>
+                </div>
+                <div class="feature-group">
+                  <div class="group-label">通信设置</div>
+                  <div class="switch-row"><span>通话设置</span><el-switch v-model="form.featureFlags.saas.call" /></div>
+                  <div class="switch-row"><span>邮件设置</span><el-switch v-model="form.featureFlags.saas.email" /></div>
+                  <div class="switch-row"><span>短信设置</span><el-switch v-model="form.featureFlags.saas.sms" /></div>
+                  <div class="switch-row"><span>通知设置</span><el-switch v-model="form.featureFlags.saas.notification" /></div>
+                </div>
+                <div class="feature-group">
+                  <div class="group-label">数据管理</div>
+                  <div class="switch-row"><span>数据备份</span><el-switch v-model="form.featureFlags.saas.backup" /></div>
+                  <div class="switch-row"><span>系统日志</span><el-switch v-model="form.featureFlags.saas.logs" /></div>
+                  <div class="switch-row"><span>系统监控</span><el-switch v-model="form.featureFlags.saas.monitor" /></div>
+                </div>
+                <div class="feature-group">
+                  <div class="group-label">其他功能</div>
+                  <div class="switch-row"><span>用户协议</span><el-switch v-model="form.featureFlags.saas.agreement" /></div>
+                  <div class="switch-row"><span>移动应用</span><el-switch v-model="form.featureFlags.saas.mobile" /></div>
+                  <div class="switch-row"><span>接口管理</span><el-switch v-model="form.featureFlags.saas.apiManagement" /></div>
+                </div>
+              </el-card>
+            </el-col>
+            <el-col :span="12">
+              <el-card shadow="hover" class="feature-card private-card">
+                <template #header>
+                  <div class="feature-card-header">
+                    <div class="card-title-area">
+                      <el-tag type="success" effect="dark" size="small">私有</el-tag>
+                      <span class="card-title">私有部署</span>
+                    </div>
+                    <el-button text size="small" @click="toggleAll('private', true)">全开</el-button>
+                    <el-button text size="small" @click="toggleAll('private', false)">全关</el-button>
+                  </div>
+                </template>
+                <div class="feature-group">
+                  <div class="group-label">核心功能</div>
+                  <div class="switch-row"><span>安全设置</span><el-switch v-model="form.featureFlags.private.security" /></div>
+                  <div class="switch-row"><span>存储设置</span><el-switch v-model="form.featureFlags.private.storage" /></div>
+                  <div class="switch-row"><span>商品设置</span><el-switch v-model="form.featureFlags.private.product" /></div>
+                  <div class="switch-row"><span>订单设置</span><el-switch v-model="form.featureFlags.private.order" /></div>
+                </div>
+                <div class="feature-group">
+                  <div class="group-label">通信设置</div>
+                  <div class="switch-row"><span>通话设置</span><el-switch v-model="form.featureFlags.private.call" /></div>
+                  <div class="switch-row"><span>邮件设置</span><el-switch v-model="form.featureFlags.private.email" /></div>
+                  <div class="switch-row"><span>短信设置</span><el-switch v-model="form.featureFlags.private.sms" /></div>
+                  <div class="switch-row"><span>通知设置</span><el-switch v-model="form.featureFlags.private.notification" /></div>
+                </div>
+                <div class="feature-group">
+                  <div class="group-label">数据管理</div>
+                  <div class="switch-row"><span>数据备份</span><el-switch v-model="form.featureFlags.private.backup" /></div>
+                  <div class="switch-row"><span>系统日志</span><el-switch v-model="form.featureFlags.private.logs" /></div>
+                  <div class="switch-row"><span>系统监控</span><el-switch v-model="form.featureFlags.private.monitor" /></div>
+                </div>
+                <div class="feature-group">
+                  <div class="group-label">其他功能</div>
+                  <div class="switch-row"><span>用户协议</span><el-switch v-model="form.featureFlags.private.agreement" /></div>
+                  <div class="switch-row"><span>移动应用</span><el-switch v-model="form.featureFlags.private.mobile" /></div>
+                  <div class="switch-row"><span>接口管理</span><el-switch v-model="form.featureFlags.private.apiManagement" /></div>
+                </div>
+              </el-card>
+            </el-col>
+          </el-row>
+
+          <div class="feature-save-area">
+            <el-button type="primary" @click="handleSave" :loading="saving">
+              <el-icon><Check /></el-icon>保存功能开关配置
+            </el-button>
+          </div>
+        </el-tab-pane>

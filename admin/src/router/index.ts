@@ -91,6 +91,12 @@ const router = createRouter({
               name: 'ModuleConfig',
               component: () => import('@/views/modules/Config.vue'),
               meta: { title: '基础配置' }
+            },
+            {
+              path: 'distribute',
+              name: 'ModuleDistribute',
+              component: () => import('@/views/modules/Distribute.vue'),
+              meta: { title: '配置下发' }
             }
           ]
         },
@@ -112,6 +118,12 @@ const router = createRouter({
               name: 'PaymentConfig',
               component: () => import('@/views/payment/Config.vue'),
               meta: { title: '支付配置' }
+            },
+            {
+              path: 'reports',
+              name: 'PaymentReports',
+              component: () => import('@/views/payment/Reports.vue'),
+              meta: { title: '支付报表' }
             }
           ]
         },
@@ -175,6 +187,18 @@ const router = createRouter({
               name: 'BasicSettings',
               component: () => import('@/views/settings/Basic.vue'),
               meta: { title: '基础配置' }
+            },
+            {
+              path: 'notification-templates',
+              name: 'NotificationTemplates',
+              component: () => import('@/views/settings/NotificationTemplates.vue'),
+              meta: { title: '通知模板' }
+            },
+            {
+              path: 'operation-logs',
+              name: 'OperationLogs',
+              component: () => import('@/views/settings/OperationLogs.vue'),
+              meta: { title: '操作日志' }
             }
           ]
         }

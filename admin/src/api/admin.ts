@@ -12,6 +12,10 @@ export const adminApi = {
   // 仪表盘
   getDashboardStats: () =>
     request.get('/dashboard/stats'),
+  getDashboardTrend: (days?: number) =>
+    request.get('/dashboard/trend', { params: { days: days || 30 } }),
+  getDashboardActivities: (limit?: number) =>
+    request.get('/dashboard/activities', { params: { limit: limit || 10 } }),
   getRecentLicenses: () =>
     request.get('/dashboard/recent-licenses'),
   getExpiringLicenses: () =>
@@ -94,10 +98,92 @@ export const adminApi = {
     request.post(`/versions/${id}/deprecate`),
 
   // 管理员用户管理
-  getAdminUsers: () =>
-    request.get('/auth/users'),
+  getAdminUsers: (params?: any) =>
+    request.get('/admin-users', { params }),
+  getAdminUser: (id: string) =>
+    request.get(`/admin-users/${id}`),
   createAdminUser: (data: any) =>
-    request.post('/auth/users', data),
+    request.post('/admin-users', data),
   updateAdminUser: (id: string, data: any) =>
-    request.put(`/auth/users/${id}`, data)
+    request.put(`/admin-users/${id}`, data),
+  deleteAdminUser: (id: string) =>
+    request.delete(`/admin-users/${id}`),
+  changeAdminPassword: (id: string, data: any) =>
+    request.put(`/admin-users/${id}/password`, data),
+  resetAdminPassword: (id: string, data: any) =>
+    request.post(`/admin-users/${id}/reset-password`, data),
+  lockAdminUser: (id: string) =>
+    request.post(`/admin-users/${id}/lock`),
+  unlockAdminUser: (id: string) =>
+    request.post(`/admin-users/${id}/unlock`),
+
+  // 系统设置
+  getSystemSettings: () =>
+    request.get('/system-settings'),
+  updateSystemSettings: (data: any) =>
+    request.put('/system-settings', data),
+  getOperationLogs: (params: any) =>
+    request.get('/system-settings/logs', { params }),
+
+  // 模块管理
+  getModules: (params?: any) =>
+    request.get('/modules', { params }),
+  getModule: (id: string) =>
+    request.get(`/modules/${id}`),
+  createModule: (data: any) =>
+    request.post('/modules', data),
+  updateModule: (id: string, data: any) =>
+    request.put(`/modules/${id}`, data),
+  deleteModule: (id: string) =>
+    request.delete(`/modules/${id}`),
+  enableModule: (id: string) =>
+    request.post(`/modules/${id}/enable`),
+  disableModule: (id: string) =>
+    request.post(`/modules/${id}/disable`),
+  getModuleConfig: (id: string) =>
+    request.get(`/modules/${id}/config`),
+  updateModuleConfig: (id: string, data: any) =>
+    request.put(`/modules/${id}/config`, data),
+
+  // 接口管理
+  getApiConfigs: (params?: any) =>
+    request.get('/api-configs', { params }),
+  getApiConfig: (id: string) =>
+    request.get(`/api-configs/${id}`),
+  createApiConfig: (data: any) =>
+    request.post('/api-configs', data),
+  updateApiConfig: (id: string, data: any) =>
+    request.put(`/api-configs/${id}`, data),
+  deleteApiConfig: (id: string) =>
+    request.delete(`/api-configs/${id}`),
+  regenerateApiKey: (id: string) =>
+    request.post(`/api-configs/${id}/regenerate-key`),
+  getApiCallLogs: (params: any) =>
+    request.get('/api-configs/logs', { params }),
+  getApiConfigLogs: (id: string, params: any) =>
+    request.get(`/api-configs/${id}/logs`, { params }),
+  getApiStatistics: (id: string) =>
+    request.get(`/api-configs/${id}/statistics`),
+  getApiGlobalStatistics: () =>
+    request.get('/api-configs/statistics'),
+
+  // 通知模板管理
+  getNotificationTemplates: (params?: any) =>
+    request.get('/notification-templates', { params }),
+  getNotificationTemplate: (id: string) =>
+    request.get(`/notification-templates/${id}`),
+  createNotificationTemplate: (data: any) =>
+    request.post('/notification-templates', data),
+  updateNotificationTemplate: (id: string, data: any) =>
+    request.put(`/notification-templates/${id}`, data),
+  deleteNotificationTemplate: (id: string) =>
+    request.delete(`/notification-templates/${id}`),
+  testNotificationTemplate: (id: string, data: any) =>
+    request.post(`/notification-templates/${id}/test`, data),
+
+  // 文件上传
+  uploadFile: (formData: FormData) =>
+    request.post('/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }),
 }

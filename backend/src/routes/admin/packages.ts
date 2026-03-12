@@ -27,17 +27,18 @@ router.get('/', async (req: Request, res: Response) => {
 
     const result = packages.map((pkg: any) => ({
       ...pkg,
-      features: typeof pkg.features === 'string' ? JSON.parse(pkg.features) : pkg.features,
+      features: typeof pkg.features === 'string' ? JSON.parse(pkg.features) : (pkg.features || []),
+      modules: typeof pkg.modules === 'string' ? JSON.parse(pkg.modules) : (pkg.modules || []),
       is_trial: Boolean(pkg.is_trial),
       is_recommended: Boolean(pkg.is_recommended),
       is_visible: Boolean(pkg.is_visible),
       status: Boolean(pkg.status)
     }))
 
-    res.json({ code: 0, data: result })
+    res.json({ success: true, data: result })
   } catch (error) {
     console.error('获取套餐列表失败:', error)
-    res.status(500).json({ code: 500, message: '获取套餐列表失败' })
+    res.status(500).json({ success: false, message: '获取套餐列表失败' })
   }
 })
 
@@ -47,11 +48,11 @@ router.post('/', async (req: Request, res: Response) => {
     const {
       name, code, type, description, price, original_price,
       billing_cycle, duration_days, max_users, max_storage_gb,
-      features, is_trial, is_recommended, is_visible, sort_order
+      features, modules, is_trial, is_recommended, is_visible, sort_order
     } = req.body
 
     if (!name || !code || !type) {
-      return res.status(400).json({ code: 400, message: '缺少必要参数' })
+      return res.status(400).json({ success: false, message: '缺少必要参数' })
     }
 
     // 检查 code 是否已存在
@@ -60,28 +61,28 @@ router.post('/', async (req: Request, res: Response) => {
       [code]
     )
     if (existing.length > 0) {
-      return res.status(400).json({ code: 400, message: '套餐代码已存在' })
+      return res.status(400).json({ success: false, message: '套餐代码已存在' })
     }
 
     const result = await AppDataSource.query(
       `INSERT INTO tenant_packages
        (name, code, type, description, price, original_price, billing_cycle,
-        duration_days, max_users, max_storage_gb, features, is_trial,
+        duration_days, max_users, max_storage_gb, features, modules, is_trial,
         is_recommended, is_visible, sort_order, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       [
         name, code, type, description || '', price || 0, original_price || price || 0,
         billing_cycle || 'monthly', duration_days || 30, max_users || 10,
-        max_storage_gb || 5, JSON.stringify(features || []),
+        max_storage_gb || 5, JSON.stringify(features || []), JSON.stringify(modules || []),
         is_trial ? 1 : 0, is_recommended ? 1 : 0, is_visible !== false ? 1 : 0,
         sort_order || 0
       ]
     )
 
-    res.json({ code: 0, data: { id: result.insertId }, message: '创建成功' })
+    res.json({ success: true, data: { id: result.insertId }, message: '创建成功' })
   } catch (error) {
     console.error('创建套餐失败:', error)
-    res.status(500).json({ code: 500, message: '创建套餐失败' })
+    res.status(500).json({ success: false, message: '创建套餐失败' })
   }
 })
 
@@ -92,7 +93,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     const { id } = req.params
     const {
       name, description, price, original_price, billing_cycle,
-      duration_days, max_users, max_storage_gb, features,
+      duration_days, max_users, max_storage_gb, features, modules,
       is_trial, is_recommended, is_visible, sort_order, status
     } = req.body
 
@@ -100,22 +101,22 @@ router.put('/:id', async (req: Request, res: Response) => {
       `UPDATE tenant_packages SET
        name = ?, description = ?, price = ?, original_price = ?,
        billing_cycle = ?, duration_days = ?, max_users = ?,
-       max_storage_gb = ?, features = ?, is_trial = ?,
+       max_storage_gb = ?, features = ?, modules = ?, is_trial = ?,
        is_recommended = ?, is_visible = ?, sort_order = ?, status = ?
        WHERE id = ?`,
       [
         name, description, price, original_price, billing_cycle,
         duration_days, max_users, max_storage_gb,
-        JSON.stringify(features || []), is_trial ? 1 : 0,
+        JSON.stringify(features || []), JSON.stringify(modules || []), is_trial ? 1 : 0,
         is_recommended ? 1 : 0, is_visible ? 1 : 0, sort_order || 0,
         status ? 1 : 0, id
       ]
     )
 
-    res.json({ code: 0, message: '更新成功' })
+    res.json({ success: true, message: '更新成功' })
   } catch (error) {
     console.error('更新套餐失败:', error)
-    res.status(500).json({ code: 500, message: '更新套餐失败' })
+    res.status(500).json({ success: false, message: '更新套餐失败' })
   }
 })
 
@@ -124,10 +125,10 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
     await AppDataSource.query('DELETE FROM tenant_packages WHERE id = ?', [id])
-    res.json({ code: 0, message: '删除成功' })
+    res.json({ success: true, message: '删除成功' })
   } catch (error) {
     console.error('删除套餐失败:', error)
-    res.status(500).json({ code: 500, message: '删除套餐失败' })
+    res.status(500).json({ success: false, message: '删除套餐失败' })
   }
 })
 

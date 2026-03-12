@@ -939,21 +939,43 @@ export const useUserStore = defineStore('user', () => {
       // 【关键修复】优先从crm_roles读取动态配置的权限，没有则使用默认配置
       let userPerms: string[] = []
 
-      // 尝试从crm_roles读取动态配置的权限
+      // 🔥 优先从 localStorage 恢复登录时保存的权限（最准确，来自API）
       try {
-        const savedRoles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
-        const matchedRole = savedRoles.find((r: { code: string; permissions?: string[] }) =>
-          r.code === userData.role
-        )
-        if (matchedRole && matchedRole.permissions && matchedRole.permissions.length > 0) {
-          userPerms = matchedRole.permissions
-          console.log('[Auth] ✅ 从动态配置恢复权限:', userData.role, userPerms.length, '个权限')
+        const savedPerms = localStorage.getItem('userPermissions')
+        if (savedPerms) {
+          const parsedPerms = JSON.parse(savedPerms)
+          if (Array.isArray(parsedPerms) && parsedPerms.length > 0) {
+            userPerms = parsedPerms
+            console.log('[Auth] ✅ 从 userPermissions 恢复权限:', userPerms.length, '个权限')
+          }
         }
       } catch (e) {
-        console.warn('[Auth] 读取动态权限配置失败:', e)
+        console.warn('[Auth] 读取 userPermissions 失败:', e)
       }
 
-      // 如果没有动态配置，使用默认权限
+      // 如果没有，尝试从crm_roles读取动态配置的权限
+      if (userPerms.length === 0) {
+        try {
+          const savedRoles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
+          const matchedRole = savedRoles.find((r: { code: string; permissions?: string[] }) =>
+            r.code === userData.role
+          )
+          if (matchedRole && matchedRole.permissions && matchedRole.permissions.length > 0) {
+            userPerms = matchedRole.permissions
+            console.log('[Auth] ✅ 从动态配置恢复权限:', userData.role, userPerms.length, '个权限')
+          }
+        } catch (e) {
+          console.warn('[Auth] 读取动态权限配置失败:', e)
+        }
+      }
+
+      // 如果没有动态配置，尝试从用户对象中的permissions恢复
+      if (userPerms.length === 0 && userData.permissions && Array.isArray(userData.permissions) && userData.permissions.length > 0) {
+        userPerms = userData.permissions
+        console.log('[Auth] ✅ 从用户对象恢复权限:', userPerms.length, '个权限')
+      }
+
+      // 最后兜底：使用默认权限
       if (userPerms.length === 0) {
         userPerms = getDefaultRolePermissions(userData.role)
         console.log('[Auth] ✅ 使用默认角色权限:', userData.role, userPerms.length, '个权限')
@@ -963,11 +985,6 @@ export const useUserStore = defineStore('user', () => {
       if (userPerms.length > 0) {
         permissions.value = userPerms
         setUserPermissions(userPerms)
-      } else if (userData.permissions && Array.isArray(userData.permissions)) {
-        // 如果都没有，才使用保存的权限
-        permissions.value = userData.permissions
-        setUserPermissions(userData.permissions)
-        console.log('[Auth] ⚠️ 使用保存的权限:', userData.permissions.length, '个权限')
       } else {
         console.warn('[Auth] ⚠️ 无法获取权限配置，角色:', userData.role)
       }

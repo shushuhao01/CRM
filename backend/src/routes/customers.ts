@@ -33,7 +33,8 @@ router.get('/', async (req: Request, res: Response) => {
       level,
       status,
       startDate,
-      endDate
+      endDate,
+      onlyMine  // 🔥 新增：强制只查询当前用户的客户（不管角色）
     } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
@@ -58,10 +59,11 @@ router.get('/', async (req: Request, res: Response) => {
     const queryBuilder = customerRepository.createQueryBuilder('customer');
 
     // 🔥 根据用户角色进行权限过滤
-    // 管理员和超级管理员可以看到所有客户
+    // 管理员和超级管理员可以看到所有客户（除非指定onlyMine=true）
     // 部门经理可以看到本部门的客户
     // 普通成员只能看到自己创建的或分配给自己的客户
-    if (userRole !== 'admin' && userRole !== 'super_admin') {
+    const forceOnlyMine = onlyMine === 'true' || onlyMine === '1';
+    if (forceOnlyMine || (userRole !== 'admin' && userRole !== 'super_admin')) {
       // 获取分享仓库，用于查询分享给当前用户的客户
       const shareRepository = AppDataSource.getRepository(CustomerShare);
       const userRepository = AppDataSource.getRepository(User);
@@ -76,8 +78,8 @@ router.get('/', async (req: Request, res: Response) => {
       });
       const sharedCustomerIds = sharedCustomers.map(s => s.customerId);
 
-      // 🔥 判断是否是部门经理
-      const isManager = userRole === 'department_manager' || userRole === 'manager';
+      // 🔥 判断是否是部门经理（forceOnlyMine时按普通成员处理，只看自己的客户）
+      const isManager = !forceOnlyMine && (userRole === 'department_manager' || userRole === 'manager');
 
       if (isManager && userDepartmentId) {
         // 部门经理：可以看到本部门所有成员创建的或分配给本部门成员的客户
