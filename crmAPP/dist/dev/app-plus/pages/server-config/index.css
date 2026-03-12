@@ -1,0 +1,115 @@
+/* 全局SCSS变量 */
+/* 主题色 */
+/* 功能色 */
+/* 文字颜色 */
+/* 背景色 */
+/* 边框色 */
+/* 圆角 */
+/* 间距 */
+/* 字体大小 */
+/* 渐变色 */
+/* 阴影 */
+.server-config[data-v-dacb39f7] {
+  min-height: 100vh;
+  background: #f5f5f5;
+  padding: 1rem;
+}
+.server-config .section[data-v-dacb39f7] {
+  margin-bottom: 1.25rem;
+}
+.server-config .section .section-title[data-v-dacb39f7] {
+  font-size: 0.875rem;
+  color: #6B7280;
+  margin-bottom: 0.625rem;
+  display: block;
+}
+.server-config .server-card[data-v-dacb39f7] {
+  display: flex;
+  align-items: center;
+  padding: 0.875rem;
+  background: #fff;
+  border-radius: 0.5rem;
+  margin-bottom: 0.5rem;
+  border: 0.0625rem solid #E5E7EB;
+}
+.server-config .server-card.active[data-v-dacb39f7] {
+  border-color: #34D399;
+  background: rgba(52, 211, 153, 0.05);
+}
+.server-config .server-card .server-icon[data-v-dacb39f7] {
+  font-size: 1.375rem;
+  margin-right: 0.75rem;
+}
+.server-config .server-card .server-info[data-v-dacb39f7] {
+  flex: 1;
+}
+.server-config .server-card .server-info .server-host[data-v-dacb39f7] {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #1F2937;
+  display: block;
+}
+.server-config .server-card .server-info .server-status[data-v-dacb39f7], .server-config .server-card .server-info .server-time[data-v-dacb39f7] {
+  font-size: 0.75rem;
+  color: #9CA3AF;
+  margin-top: 0.25rem;
+  display: block;
+}
+.server-config .server-card .server-info .server-status.connected[data-v-dacb39f7], .server-config .server-card .server-info .server-time.connected[data-v-dacb39f7] {
+  color: #34D399;
+}
+.server-config .server-card .server-check[data-v-dacb39f7] {
+  color: #34D399;
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+.server-config .input-wrapper[data-v-dacb39f7] {
+  background: #fff;
+  border-radius: 0.5rem;
+  padding: 0.875rem;
+  border: 0.0625rem solid #E5E7EB;
+}
+.server-config .input-wrapper uni-input[data-v-dacb39f7] {
+  font-size: 1rem;
+  color: #1F2937;
+}
+.server-config .input-wrapper .placeholder[data-v-dacb39f7] {
+  color: #9CA3AF;
+}
+.server-config .hint[data-v-dacb39f7] {
+  font-size: 0.75rem;
+  color: #9CA3AF;
+  margin-top: 0.5rem;
+  display: block;
+}
+.server-config .actions[data-v-dacb39f7] {
+  margin: 1.5rem 0;
+}
+.server-config .actions uni-button[data-v-dacb39f7] {
+  width: 100%;
+  height: 3rem;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+  border: none;
+}
+.server-config .actions uni-button.btn-primary[data-v-dacb39f7] {
+  background: linear-gradient(135deg, #6EE7B7 0%, #34D399 100%);
+  color: #fff;
+}
+.server-config .actions uni-button.btn-primary[disabled][data-v-dacb39f7] {
+  opacity: 0.5;
+}
+.server-config .actions uni-button.btn-secondary[data-v-dacb39f7] {
+  background: #fff;
+  color: #1F2937;
+  border: 0.0625rem solid #E5E7EB;
+}
+.server-config .tips[data-v-dacb39f7] {
+  text-align: center;
+  font-size: 0.75rem;
+  color: #9CA3AF;
+  margin-top: 1.875rem;
+  padding: 0 1.25rem;
+  line-height: 1.6;
+}

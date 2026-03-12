@@ -1,0 +1,85 @@
+/* 全局SCSS变量 */
+/* 主题色 */
+/* 功能色 */
+/* 文字颜色 */
+/* 背景色 */
+/* 边框色 */
+/* 圆角 */
+/* 间距 */
+/* 字体大小 */
+/* 渐变色 */
+/* 阴影 */
+.splash-page[data-v-cf5f955c] {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.875rem;
+}
+.splash-page .content[data-v-cf5f955c] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.splash-page .content .logo[data-v-cf5f955c] {
+  width: 5.625rem;
+  height: 5.625rem;
+  margin-bottom: 1.25rem;
+}
+.splash-page .content .title[data-v-cf5f955c] {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #1F2937;
+  margin-bottom: 0.5rem;
+}
+.splash-page .content .subtitle[data-v-cf5f955c] {
+  font-size: 0.875rem;
+  color: #6B7280;
+}
+.splash-page .loading[data-v-cf5f955c] {
+  margin-top: 3.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.splash-page .loading .loading-dots[data-v-cf5f955c] {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.splash-page .loading .loading-dots .dot[data-v-cf5f955c] {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #34D399;
+  animation: bounce-cf5f955c 1.4s infinite ease-in-out both;
+}
+.splash-page .loading .loading-dots .dot[data-v-cf5f955c]:nth-child(1) {
+  animation-delay: -0.32s;
+}
+.splash-page .loading .loading-dots .dot[data-v-cf5f955c]:nth-child(2) {
+  animation-delay: -0.16s;
+}
+.splash-page .loading .loading-dots .dot[data-v-cf5f955c]:nth-child(3) {
+  animation-delay: 0s;
+}
+.splash-page .loading .loading-text[data-v-cf5f955c] {
+  font-size: 0.8125rem;
+  color: #9CA3AF;
+}
+.splash-page .version[data-v-cf5f955c] {
+  position: fixed;
+  bottom: 1.875rem;
+  font-size: 0.75rem;
+  color: #D1D5DB;
+}
+@keyframes bounce-cf5f955c {
+0%, 80%, 100% {
+    transform: scale(0);
+}
+40% {
+    transform: scale(1);
+}
+}

@@ -1,0 +1,96 @@
+/* 全局SCSS变量 */
+/* 主题色 */
+/* 功能色 */
+/* 文字颜色 */
+/* 背景色 */
+/* 边框色 */
+/* 圆角 */
+/* 间距 */
+/* 字体大小 */
+/* 渐变色 */
+/* 阴影 */
+.scan-page[data-v-99526857] {
+  min-height: 100vh;
+  background: #1a1a1a;
+  display: flex;
+  flex-direction: column;
+}
+.scanning-area[data-v-99526857] {
+  height: 11.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.scan-icon[data-v-99526857] {
+  font-size: 3.75rem;
+  margin-bottom: 0.75rem;
+}
+.scan-text[data-v-99526857] {
+  color: #999;
+  font-size: 0.875rem;
+}
+.tips[data-v-99526857] {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1.25rem;
+  margin: 0 0.75rem;
+  border-radius: 0.75rem;
+}
+.tips-title[data-v-99526857] {
+  font-size: 1.0625rem;
+  color: #fff;
+  text-align: center;
+  margin-bottom: 1.5rem;
+  font-weight: 600;
+}
+.steps[data-v-99526857] {
+  padding: 0 0.625rem;
+}
+.step[data-v-99526857] {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: 1.125rem;
+}
+.step-num[data-v-99526857] {
+  width: 1.5rem;
+  height: 1.5rem;
+  min-width: 1.5rem;
+  background: #34D399;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 0.875rem;
+  text-align: center;
+  line-height: 1.5rem;
+  margin-right: 0.75rem;
+}
+.step-text[data-v-99526857] {
+  font-size: 0.875rem;
+  color: #ccc;
+  line-height: 1.5rem;
+}
+.actions[data-v-99526857] {
+  padding: 1.25rem 0.75rem;
+  display: flex;
+  flex-direction: row;
+}
+.btn-rescan[data-v-99526857] {
+  flex: 1;
+  height: 2.75rem;
+  background: linear-gradient(135deg, #6EE7B7 0%, #34D399 100%);
+  color: #fff;
+  font-size: 0.9375rem;
+  border-radius: 1.375rem;
+  border: none;
+  margin-right: 0.625rem;
+}
+.btn-back[data-v-99526857] {
+  width: 6.25rem;
+  height: 2.75rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 0.9375rem;
+  border-radius: 1.375rem;
+  border: none;
+}

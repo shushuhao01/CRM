@@ -1,0 +1,137 @@
+{
+  "pages": [
+    {
+      "path": "pages/splash/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": ""
+      }
+    },
+    {
+      "path": "pages/server-config/index",
+      "style": {
+        "navigationBarTitleText": "服务器设置"
+      }
+    },
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": ""
+      }
+    },
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "云客CRM外呼助手"
+      }
+    },
+    {
+      "path": "pages/calls/index",
+      "style": {
+        "navigationBarTitleText": "通话记录"
+      }
+    },
+    {
+      "path": "pages/stats/index",
+      "style": {
+        "navigationBarTitleText": "统计"
+      }
+    },
+    {
+      "path": "pages/settings/index",
+      "style": {
+        "navigationBarTitleText": "设置"
+      }
+    },
+    {
+      "path": "pages/scan/index",
+      "style": {
+        "navigationBarTitleText": "扫码绑定"
+      }
+    },
+    {
+      "path": "pages/calling/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "",
+        "disableScroll": true
+      }
+    },
+    {
+      "path": "pages/call-ended/index",
+      "style": {
+        "navigationBarTitleText": "通话记录"
+      }
+    },
+    {
+      "path": "pages/call-detail/index",
+      "style": {
+        "navigationBarTitleText": "通话详情"
+      }
+    },
+    {
+      "path": "pages/dialpad/index",
+      "style": {
+        "navigationBarTitleText": "拨号"
+      }
+    },
+    {
+      "path": "pages/agreement/user-agreement",
+      "style": {
+        "navigationBarTitleText": "用户服务协议"
+      }
+    },
+    {
+      "path": "pages/agreement/privacy-policy",
+      "style": {
+        "navigationBarTitleText": "隐私政策"
+      }
+    },
+    {
+      "path": "pages/about/index",
+      "style": {
+        "navigationBarTitleText": "关于"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "云客CRM",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f5f5f5"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#34D399",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "iconPath": "static/icons/home.png",
+        "selectedIconPath": "static/icons/home-active.png",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/calls/index",
+        "iconPath": "static/icons/calls.png",
+        "selectedIconPath": "static/icons/calls-active.png",
+        "text": "通话"
+      },
+      {
+        "pagePath": "pages/stats/index",
+        "iconPath": "static/icons/stats.png",
+        "selectedIconPath": "static/icons/stats-active.png",
+        "text": "统计"
+      },
+      {
+        "pagePath": "pages/settings/index",
+        "iconPath": "static/icons/settings.png",
+        "selectedIconPath": "static/icons/settings-active.png",
+        "text": "设置"
+      }
+    ]
+  },
+  "uniIdRouter": {}
+}

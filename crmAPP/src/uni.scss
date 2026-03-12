@@ -1,0 +1,59 @@
+/* 全局SCSS变量 */
+
+/* 主题色 */
+$primary-color: #34D399;
+$primary-light: #6EE7B7;
+$primary-dark: #10B981;
+
+/* 功能色 */
+$success-color: #10B981;
+$warning-color: #F59E0B;
+$danger-color: #EF4444;
+$info-color: #3B82F6;
+
+/* 文字颜色 */
+$text-primary: #1F2937;
+$text-secondary: #6B7280;
+$text-placeholder: #9CA3AF;
+$text-disabled: #D1D5DB;
+
+/* 背景色 */
+$bg-page: #F5F5F5;
+$bg-card: #FFFFFF;
+$bg-gray: #F9FAFB;
+
+/* 边框色 */
+$border-color: #E5E7EB;
+$border-light: #F3F4F6;
+
+/* 圆角 */
+$radius-sm: 8rpx;
+$radius-md: 16rpx;
+$radius-lg: 24rpx;
+$radius-xl: 32rpx;
+$radius-round: 9999rpx;
+
+/* 间距 */
+$spacing-xs: 8rpx;
+$spacing-sm: 16rpx;
+$spacing-md: 24rpx;
+$spacing-lg: 32rpx;
+$spacing-xl: 48rpx;
+
+/* 字体大小 */
+$font-xs: 22rpx;
+$font-sm: 24rpx;
+$font-md: 28rpx;
+$font-lg: 32rpx;
+$font-xl: 36rpx;
+$font-xxl: 48rpx;
+
+/* 渐变色 */
+$gradient-primary: linear-gradient(135deg, #6EE7B7 0%, #34D399 100%);
+$gradient-call: linear-gradient(135deg, #34D399 0%, #10B981 100%);
+$gradient-hangup: linear-gradient(135deg, #F87171 0%, #EF4444 100%);
+
+/* 阴影 */
+$shadow-sm: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+$shadow-md: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);
+$shadow-lg: 0 8rpx 32rpx rgba(0, 0, 0, 0.12);
