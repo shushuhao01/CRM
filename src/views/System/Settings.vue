@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="system-settings">
     <!-- 页面头部 -->
     <div class="page-header">
@@ -13,7 +13,7 @@
         <div class="tabs-nav-wrapper">
           <el-tabs v-model="activeTab" class="settings-tabs" ref="tabsRef">
       <!-- 安全设置 -->
-      <el-tab-pane label="安全设置" name="security">
+      <el-tab-pane v-if="isFeatureEnabled('security')" label="安全设置" name="security">
         <el-card class="setting-card">
           <template #header>
             <div class="card-header">
@@ -29,8 +29,15 @@
             </div>
           </template>
 
+          <el-alert v-if="configStore.configLocked.security" type="warning" :closable="false" style="margin-bottom: 16px">
+            <template #title>
+              <span>🔒 该配置由管理后台统一管控，如需修改请联系管理员</span>
+            </template>
+          </el-alert>
+
           <el-form
             ref="securityFormRef"
+            :disabled="configStore.configLocked.security"
             :model="securityForm"
             :rules="securityFormRules"
             label-width="150px"
@@ -125,7 +132,7 @@
       </el-tab-pane>
 
       <!-- 通话设置 -->
-      <el-tab-pane label="通话设置" name="call">
+      <el-tab-pane v-if="isFeatureEnabled('call')" label="通话设置" name="call">
         <el-card class="setting-card">
           <template #header>
             <div class="card-header">
@@ -152,8 +159,15 @@
             </div>
           </template>
 
+          <el-alert v-if="configStore.configLocked.call" type="warning" :closable="false" style="margin-bottom: 16px">
+            <template #title>
+              <span>🔒 该配置由管理后台统一管控，如需修改请联系管理员</span>
+            </template>
+          </el-alert>
+
           <el-form
             ref="callFormRef"
+            :disabled="configStore.configLocked.call"
             :model="callForm"
             :rules="callFormRules"
             label-width="150px"
@@ -369,7 +383,7 @@
       </el-tab-pane>
 
       <!-- 邮件设置 -->
-      <el-tab-pane label="邮件设置" name="email">
+      <el-tab-pane v-if="isFeatureEnabled('email')" label="邮件设置" name="email">
         <el-card class="setting-card">
           <template #header>
             <div class="card-header">
@@ -468,7 +482,7 @@
       </el-tab-pane>
 
       <!-- 短信设置 -->
-      <el-tab-pane label="短信设置" name="sms">
+      <el-tab-pane v-if="isFeatureEnabled('sms')" label="短信设置" name="sms">
         <el-card class="setting-card">
           <template #header>
             <div class="card-header">
@@ -596,7 +610,7 @@
       </el-tab-pane>
 
       <!-- 存储设置 -->
-      <el-tab-pane label="存储设置" name="storage">
+      <el-tab-pane v-if="isFeatureEnabled('storage')" label="存储设置" name="storage">
         <el-card class="setting-card">
           <template #header>
             <div class="card-header">
@@ -623,8 +637,15 @@
             </div>
           </template>
 
+          <el-alert v-if="configStore.configLocked.storage" type="warning" :closable="false" style="margin-bottom: 16px">
+            <template #title>
+              <span>🔒 该配置由管理后台统一管控，如需修改请联系管理员</span>
+            </template>
+          </el-alert>
+
           <el-form
             ref="storageFormRef"
+            :disabled="configStore.configLocked.storage"
             :model="storageForm"
             :rules="storageFormRules"
             label-width="120px"
@@ -940,7 +961,7 @@
       </el-tab-pane>
 
       <!-- 商品设置 -->
-      <el-tab-pane label="商品设置" name="product">
+      <el-tab-pane v-if="isFeatureEnabled('product')" label="商品设置" name="product">
         <el-card class="setting-card">
           <template #header>
             <div class="card-header">
@@ -956,8 +977,15 @@
             </div>
           </template>
 
+          <el-alert v-if="configStore.configLocked.product" type="warning" :closable="false" style="margin-bottom: 16px">
+            <template #title>
+              <span>🔒 该配置由管理后台统一管控，如需修改请联系管理员</span>
+            </template>
+          </el-alert>
+
           <el-form
             ref="productFormRef"
+            :disabled="configStore.configLocked.product"
             :model="productForm"
             :rules="productFormRules"
             label-width="150px"
@@ -1226,7 +1254,7 @@
 
       <!-- 系统监控 -->
       <el-tab-pane
-        v-if="canViewSystemMonitor"
+        v-if="canViewSystemMonitor && isFeatureEnabled('monitor')"
         label="系统监控"
         name="monitor"
       >
@@ -1356,12 +1384,18 @@
       </el-tab-pane>
 
       <!-- 订单设置 -->
-      <el-tab-pane label="订单设置" name="order">
+      <el-tab-pane v-if="isFeatureEnabled('order')" label="订单设置" name="order">
+          <el-alert v-if="configStore.configLocked.order" type="warning" :closable="false" style="margin-bottom: 16px">
+            <template #title>
+              <span>🔒 该配置由管理后台统一管控，如需修改请联系管理员</span>
+            </template>
+          </el-alert>
+
         <OrderSettings />
       </el-tab-pane>
 
       <!-- 数据备份 -->
-      <el-tab-pane label="数据备份" name="backup">
+      <el-tab-pane v-if="isFeatureEnabled('backup')" label="数据备份" name="backup">
         <el-card class="setting-card">
           <template #header>
             <div class="card-header">
@@ -1693,12 +1727,12 @@
       -->
 
       <!-- 通知设置 -->
-      <el-tab-pane label="通知设置" name="notification">
+      <el-tab-pane v-if="isFeatureEnabled('notification')" label="通知设置" name="notification">
         <HealthCheckNotificationSettings />
       </el-tab-pane>
 
       <!-- 🔥 批次287重构：用户协议列表管理 -->
-      <el-tab-pane label="用户协议" name="agreement">
+      <el-tab-pane v-if="isFeatureEnabled('agreement')" label="用户协议" name="agreement">
         <el-card class="setting-card">
           <template #header>
             <div class="card-header">
@@ -1822,7 +1856,7 @@
       </el-tab-pane>
 
       <!-- 移动应用 -->
-      <el-tab-pane label="移动应用" name="mobile">
+      <el-tab-pane v-if="isFeatureEnabled('mobile')" label="移动应用" name="mobile">
         <el-card class="setting-card">
           <template #header>
             <div class="card-header">
@@ -2503,7 +2537,7 @@
       </el-tab-pane>
 
       <!-- 系统日志 -->
-      <el-tab-pane label="系统日志" name="logs">
+      <el-tab-pane v-if="isFeatureEnabled('logs')" label="系统日志" name="logs">
         <!-- 日志清理配置 -->
         <el-card class="setting-card" style="margin-bottom: 16px;">
           <template #header>
@@ -3490,6 +3524,13 @@ const canEditStorageSettings = computed(() => {
 const canEditProductSettings = computed(() => {
   return userStore.isAdmin || userStore.isManager
 })
+
+
+const isFeatureEnabled = (flag: string): boolean => {
+  const flags = configStore.featureFlags
+  if (!flags || typeof flags !== 'object') return true
+  return flags[flag] !== false
+}
 
 const canViewSystemMonitor = computed(() => {
   return userStore.isAdmin || userStore.isManager

@@ -69,7 +69,26 @@ router.get('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: '授权不存在' });
     }
 
-    res.json({ success: true, data: license });
+    // 如果有关联套餐，查询套餐详情
+    let packageInfo = null;
+    if (license.packageId) {
+      try {
+        const pkgRows = await AppDataSource.query(
+          'SELECT id, name, code, type, price, billing_cycle, max_users, max_storage_gb, features, description FROM packages WHERE id = ?',
+          [license.packageId]
+        );
+        if (pkgRows.length > 0) {
+          packageInfo = pkgRows[0];
+          if (typeof packageInfo.features === 'string') {
+            try { packageInfo.features = JSON.parse(packageInfo.features); } catch { packageInfo.features = []; }
+          }
+        }
+      } catch (e) {
+        console.warn('[Admin Licenses] Query package info failed:', e);
+      }
+    }
+
+    res.json({ success: true, data: { ...license, packageInfo } });
   } catch (error: any) {
     console.error('[Admin Licenses] Get detail failed:', error);
     res.status(500).json({ success: false, message: '获取授权详情失败' });
@@ -90,7 +109,9 @@ router.post('/', async (req: Request, res: Response) => {
       maxStorageGb,
       modules,
       expiresAt,
-      remark
+      remark,
+      packageId,
+      packageName
     } = req.body;
 
     if (!customerName) {
@@ -110,6 +131,8 @@ router.post('/', async (req: Request, res: Response) => {
     license.maxUsers = maxUsers || 10;
     license.maxStorageGb = maxStorageGb || 5;
     license.features = modules; // 功能模块
+    if (packageId) license.packageId = packageId;
+    if (packageName) license.packageName = packageName;
     license.status = 'pending';
     license.expiresAt = expiresAt ? new Date(expiresAt) : undefined;
     license.notes = remark;
@@ -139,7 +162,9 @@ router.put('/:id', async (req: Request, res: Response) => {
       modules,
       status,
       expiresAt,
-      remark
+      remark,
+      packageId,
+      packageName
     } = req.body;
 
     const licenseRepo = AppDataSource.getRepository(License);
@@ -157,6 +182,8 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (maxUsers) license.maxUsers = maxUsers;
     if (maxStorageGb) license.maxStorageGb = maxStorageGb;
     if (modules) license.features = modules;
+    if (packageId !== undefined) { license.packageId = packageId || null; }
+    if (packageName !== undefined) { license.packageName = packageName || null; }
     if (status) license.status = status;
     if (expiresAt) license.expiresAt = new Date(expiresAt);
     if (remark !== undefined) license.notes = remark;
@@ -301,18 +328,18 @@ router.get('/:id/bills', async (req: Request, res: Response) => {
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 100);
     const offset = (pageNum - 1) * pageSizeNum;
 
-    const [list] = await AppDataSource.query(
+    const list = await AppDataSource.query(
       `SELECT * FROM payment_orders WHERE license_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       [id, pageSizeNum, offset]
     );
-    const [countResult] = await AppDataSource.query(
+    const countResult = await AppDataSource.query(
       `SELECT COUNT(*) as total FROM payment_orders WHERE license_id = ?`, [id]
     );
 
     res.json({
       success: true,
       data: {
-        list: Array.isArray(list) ? list : (list ? [list] : []),
+        list,
         total: countResult[0]?.total || 0,
         page: pageNum,
         pageSize: pageSizeNum

@@ -118,6 +118,11 @@ const ValueAddedOrder_1 = require("../entities/ValueAddedOrder");
 const ValueAddedPriceConfig_1 = require("../entities/ValueAddedPriceConfig");
 const OutsourceCompany_1 = require("../entities/OutsourceCompany");
 const ValueAddedStatusConfig_1 = require("../entities/ValueAddedStatusConfig");
+const Module_1 = require("../entities/Module");
+const ModuleConfig_1 = require("../entities/ModuleConfig");
+const AdminOperationLog_1 = require("../entities/AdminOperationLog");
+const ApiConfig_1 = require("../entities/ApiConfig");
+const ApiCallLog_1 = require("../entities/ApiCallLog");
 // 🔥 统一使用 MySQL 数据库（开发环境和生产环境）
 // 数据库类型：默认使用 MySQL，除非明确指定其他类型
 const dbType = process.env.DB_TYPE || 'mysql';
@@ -189,7 +194,12 @@ const entities = [
     ValueAddedOrder_1.ValueAddedOrder,
     ValueAddedPriceConfig_1.ValueAddedPriceConfig,
     OutsourceCompany_1.OutsourceCompany,
-    ValueAddedStatusConfig_1.ValueAddedStatusConfig
+    ValueAddedStatusConfig_1.ValueAddedStatusConfig,
+    Module_1.Module,
+    ModuleConfig_1.ModuleConfig,
+    AdminOperationLog_1.AdminOperationLog,
+    ApiConfig_1.ApiConfig,
+    ApiCallLog_1.ApiCallLog
 ];
 // MySQL 数据库配置（开发环境和生产环境统一使用）
 const AppDataSource = new typeorm_1.DataSource({

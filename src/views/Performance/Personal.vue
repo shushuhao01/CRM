@@ -225,7 +225,11 @@
               </el-link>
             </template>
           </el-table-column>
-          <el-table-column prop="customerPhone" label="客户电话" width="120" show-overflow-tooltip />
+          <el-table-column prop="customerPhone" label="客户电话" width="120" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ maskPhone(row.customerPhone) }}
+            </template>
+          </el-table-column>
           <el-table-column prop="totalAmount" label="订单金额" width="110" align="right">
             <template #default="{ row }">
               <span class="amount">¥{{ formatNumber(row.totalAmount) }}</span>
@@ -319,7 +323,11 @@
             </template>
           </el-table-column>
           <el-table-column prop="name" label="客户姓名" min-width="100" />
-          <el-table-column prop="phone" label="电话" min-width="120" />
+          <el-table-column prop="phone" label="电话" min-width="120">
+            <template #default="{ row }">
+              {{ maskPhone(row.phone) }}
+            </template>
+          </el-table-column>
           <el-table-column prop="level" label="客户等级" width="100">
             <template #default="{ row }">
               <el-tag :type="getCustomerLevelType(row.level)" size="small">
@@ -460,6 +468,7 @@ import { useOrderStore } from '@/stores/order'
 import { useCustomerStore } from '@/stores/customer'
 import { useConfigStore } from '@/stores/config'
 import { createSafeNavigator } from '@/utils/navigation'
+import { maskPhone } from '@/utils/phone'
 import html2canvas from 'html2canvas'
 import { getCompanyShortName, getTrackingUrl, KUAIDI100_URL } from '@/utils/logisticsCompanyConfig'
 

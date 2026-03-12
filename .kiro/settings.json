@@ -1,0 +1,8 @@
+{
+  "autoApprove": {
+    "shell": true,
+    "fileWrite": false,
+    "fileDelete": false
+  },
+  "trustedWorkspace": true
+}

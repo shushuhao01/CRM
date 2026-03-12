@@ -28,70 +28,111 @@
       <template #header>
         <div class="card-header">
           <span>租户客户列表</span>
-          <el-button type="primary" @click="handleAdd"><el-icon><Plus /></el-icon>新增租户客户</el-button>
+          <div class="header-actions">
+            <el-button @click="handleExport"><el-icon><Download /></el-icon>导出</el-button>
+            <el-button type="primary" @click="handleAdd"><el-icon><Plus /></el-icon>新增租户客户</el-button>
+          </div>
         </div>
       </template>
 
-      <el-table :data="tableData" v-loading="loading" stripe>
-        <el-table-column prop="name" label="客户名称" min-width="150" />
-        <el-table-column prop="code" label="租户编码" width="120" />
-        <el-table-column prop="contact" label="联系人" width="100" />
-        <el-table-column prop="phone" label="联系电话" width="130" />
-        <el-table-column label="授权码" width="200">
+      <el-table :data="tableData" v-loading="loading" stripe :border="false" table-layout="fixed">
+        <el-table-column prop="name" label="客户名称" min-width="160" show-overflow-tooltip />
+        <el-table-column label="租户编码" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-tag size="small" type="info">{{ row.code || '-' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="contact" label="联系人" min-width="80" show-overflow-tooltip />
+        <el-table-column label="授权码" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="license-key-cell">
-              <span class="license-key">{{ row.showFullKey ? row.license_key : maskKey(row.license_key) }}</span>
-              <el-button link type="primary" size="small" @click="row.showFullKey = !row.showFullKey">
-                {{ row.showFullKey ? '隐藏' : '显示' }}
-              </el-button>
-              <el-button link type="primary" size="small" @click="copyKey(row.license_key)">复制</el-button>
+              <span class="license-key">{{ row.showFullKey ? row.licenseKey : maskKey(row.licenseKey) }}</span>
+              <el-tooltip :content="row.showFullKey ? '隐藏授权码' : '显示授权码'" placement="top">
+                <el-icon class="action-icon" @click="row.showFullKey = !row.showFullKey">
+                  <View v-if="!row.showFullKey" />
+                  <Hide v-else />
+                </el-icon>
+              </el-tooltip>
+              <el-tooltip content="复制授权码" placement="top">
+                <el-icon class="action-icon" @click="copyKey(row.licenseKey)">
+                  <CopyDocument />
+                </el-icon>
+              </el-tooltip>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="授权状态" width="100">
+        <el-table-column label="授权状态" width="85" align="center">
           <template #default="{ row }">
-            <el-tag :type="getLicenseStatusType(row.license_status)" size="small">
-              {{ getLicenseStatusText(row.license_status) }}
+            <el-tag :type="getLicenseStatusType(row.licenseStatus)" size="small">
+              {{ getLicenseStatusText(row.licenseStatus) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="package_name" label="套餐" width="100">
+        <el-table-column label="启用" width="60" align="center">
           <template #default="{ row }">
-            <el-tag :type="getPackageType(row.package_name)">{{ row.package_name || '未设置' }}</el-tag>
+            <el-tooltip :content="row.status === 'active' ? '点击禁用' : '点击启用'" placement="top">
+              <el-switch
+                :model-value="row.status === 'active'"
+                @change="handleToggleStatus(row)"
+                :loading="row.statusLoading"
+                size="small"
+              />
+            </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="用户数" width="100" align="center">
-          <template #default="{ row }">{{ row.user_count || 0 }} / {{ row.max_users }}</template>
-        </el-table-column>
-        <el-table-column prop="expire_date" label="到期时间" width="120">
+        <el-table-column label="套餐" width="80" align="center">
           <template #default="{ row }">
-            <span :class="{ 'text-danger': isExpired(row.expire_date) }">
-              {{ row.expire_date || '永久' }}
+            <el-tag :type="getPackageType(row.packageName)" size="small">{{ row.packageName || '未设置' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="用户数" width="80" align="center">
+          <template #default="{ row }">
+            <span class="usage-text">{{ row.userCount || 0 }}/{{ row.maxUsers }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="存储" width="100" align="center">
+          <template #default="{ row }">
+            <span class="usage-text">{{ formatStorage(row.usedStorageMb) }}/{{ row.maxStorageGb || 0 }}G</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="到期时间" width="105" align="center">
+          <template #default="{ row }">
+            <span :class="{ 'text-danger': isExpired(row.expireDate) }">
+              {{ formatExpireDate(row.expireDate) }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="80">
+        <el-table-column label="操作" width="200" fixed="right" align="center">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="$router.push(`/tenant-customers/detail/${row.id}`)">详情</el-button>
-            <el-button link type="warning" @click="handleEdit(row)">编辑</el-button>
-            <el-dropdown trigger="click" @command="(cmd: string) => handleCommand(cmd, row)">
-              <el-button link type="primary">更多<el-icon><ArrowDown /></el-icon></el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="regenerate">重新生成授权码</el-dropdown-item>
-                  <el-dropdown-item command="renew">续期</el-dropdown-item>
-                  <el-dropdown-item :command="row.license_status === 'suspended' ? 'resume' : 'suspend'" divided>
-                    {{ row.license_status === 'suspended' ? '恢复授权' : '暂停授权' }}
-                  </el-dropdown-item>
-                  <el-dropdown-item command="delete" divided style="color: #f56c6c">删除</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <div class="action-buttons">
+              <el-button link type="primary" size="small" @click="$router.push(`/tenant-customers/detail/${row.id}`)">
+                详情
+              </el-button>
+              <el-button link type="warning" size="small" @click="handleEdit(row)">
+                编辑
+              </el-button>
+              <el-button link :type="row.licenseStatus === 'suspended' ? 'success' : 'danger'" size="small"
+                @click="row.licenseStatus === 'suspended' ? handleResume(row) : handleSuspend(row)"
+                :loading="row.licenseLoading">
+                {{ row.licenseStatus === 'suspended' ? '恢复' : '暂停' }}
+              </el-button>
+              <el-dropdown trigger="click" @command="(cmd: string) => handleCommand(cmd, row)">
+                <el-button link type="info" size="small">更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="renew">
+                      <el-icon><Clock /></el-icon>续期
+                    </el-dropdown-item>
+                    <el-dropdown-item command="regenerate">
+                      <el-icon><RefreshRight /></el-icon>重新生成授权码
+                    </el-dropdown-item>
+                    <el-dropdown-item command="delete" divided>
+                      <span style="color: #f56c6c"><el-icon><Delete /></el-icon>删除</span>
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -109,7 +150,7 @@
           <el-input v-model="form.name" placeholder="请输入客户名称" />
         </el-form-item>
         <el-form-item label="租户编码" prop="code">
-          <el-input v-model="form.code" :disabled="!!editingId" placeholder="唯一标识，如：COMPANY_A" />
+          <el-input v-model="form.code" :disabled="!!editingId" :placeholder="editingId ? '编码不可修改' : '留空自动生成，如 T260303A1B2'" />
         </el-form-item>
         <el-form-item label="联系人" prop="contact">
           <el-input v-model="form.contact" placeholder="请输入联系人" />
@@ -122,7 +163,7 @@
         </el-form-item>
         <el-divider content-position="left">套餐配置</el-divider>
         <el-form-item label="套餐" prop="packageId">
-          <el-select v-model="form.packageId" style="width: 100%" placeholder="请选择套餐">
+          <el-select v-model="form.packageId" style="width: 100%" placeholder="请选择套餐" @change="onPackageChange">
             <el-option v-for="p in packages" :key="p.id" :label="p.name" :value="p.id" />
           </el-select>
         </el-form-item>
@@ -150,9 +191,19 @@
     <el-dialog v-model="showRenewDialog" title="租户续期" width="400px">
       <el-form label-width="100px">
         <el-form-item label="客户名称">{{ renewingTenant?.name }}</el-form-item>
-        <el-form-item label="当前到期">{{ renewingTenant?.expire_date || '永久' }}</el-form-item>
-        <el-form-item label="新到期时间" required>
-          <el-date-picker v-model="renewExpireDate" type="date" placeholder="请选择新的到期时间" style="width: 100%" />
+        <el-form-item label="当前到期">{{ formatExpireDate(renewingTenant?.expireDate) }}</el-form-item>
+        <el-form-item label="续期时长" required>
+          <el-select v-model="renewMonths" placeholder="请选择续期时长" style="width: 100%">
+            <el-option :label="'1个月'" :value="1" />
+            <el-option :label="'3个月'" :value="3" />
+            <el-option :label="'6个月'" :value="6" />
+            <el-option :label="'12个月（1年）'" :value="12" />
+            <el-option :label="'24个月（2年）'" :value="24" />
+            <el-option :label="'36个月（3年）'" :value="36" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="新到期时间">
+          <span style="color: #409eff; font-weight: 500;">{{ computedExpireDate }}</span>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -162,8 +213,8 @@
     </el-dialog>
 
     <!-- 授权码生成成功提示 -->
-    <el-dialog v-model="showLicenseDialog" title="客户创建成功" width="500px">
-      <el-result icon="success" title="租户客户创建成功">
+    <el-dialog v-model="showLicenseDialog" title="授权码信息" width="500px">
+      <el-result icon="success" :title="newLicenseTitle">
         <template #sub-title>
           <div class="license-result">
             <p>请将以下授权码发送给客户，用于登录 SaaS 系统：</p>
@@ -183,9 +234,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Plus, ArrowDown } from '@element-plus/icons-vue'
+import {
+  Search, Plus, ArrowDown, Download, View, Hide,
+  CopyDocument, Clock, RefreshRight, Delete
+} from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import request from '@/api/request'
 
@@ -200,27 +254,34 @@ const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const newLicenseKey = ref('')
+const newLicenseTitle = ref('租户客户创建成功')
 const renewingTenant = ref<any>(null)
-const renewExpireDate = ref<Date | null>(null)
+const renewMonths = ref<number>(12)
 
 const searchForm = reactive({ keyword: '', packageId: '', status: '' })
 const form = reactive({
   name: '', code: '', contact: '', phone: '', email: '',
-  packageId: '', maxUsers: 10, maxStorageGb: 5, expireDate: null as Date | null, remark: ''
+  packageId: '', maxUsers: 10, maxStorageGb: 5, expireDate: null as Date | null, features: [] as string[], remark: ''
 })
 const rules: FormRules = {
   name: [{ required: true, message: '请输入客户名称' }],
-  code: [{ required: true, message: '请输入租户编码' }, { pattern: /^[A-Za-z0-9_]+$/, message: '只能包含字母、数字和下划线' }]
+  phone: [{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' }],
+  email: [{ type: 'email', message: '请输入正确的邮箱', trigger: 'blur' }]
 }
 
 const tableData = ref<any[]>([])
 const packages = ref<any[]>([])
 
+// === 工具方法 ===
+
 const maskKey = (key: string) => {
   if (!key) return ''
+  if (key.startsWith('LIC-')) {
+    return `${key.substring(0, 8)}****${key.substring(key.length - 4)}`
+  }
   const parts = key.split('-')
-  if (parts.length < 3) return key.substring(0, 8) + '****'
-  return `${parts[0]}-${parts[1]}-****-****`
+  if (parts.length >= 4) return `${parts[0]}-${parts[1]}-****-****`
+  return key.substring(0, 8) + '****'
 }
 
 const copyKey = async (key: string) => {
@@ -232,20 +293,96 @@ const copyKey = async (key: string) => {
   }
 }
 
+const formatStorage = (mb: number) => {
+  if (!mb || mb === 0) return '0MB'
+  if (mb < 1024) return `${mb}MB`
+  return `${(mb / 1024).toFixed(1)}GB`
+}
+
 const isExpired = (date: string) => date && new Date(date) < new Date()
 
-const getPackageType = (p: string) => ({ '企业版': 'danger', '专业版': 'warning', '基础版': 'info' }[p] || 'info')
-const getStatusType = (s: string) => ({ active: 'success', expired: 'info', disabled: 'danger' }[s] || 'info')
-const getStatusText = (s: string) => ({ active: '正常', expired: '已过期', disabled: '已禁用' }[s] || s)
-const getLicenseStatusType = (s: string) => ({ active: 'success', pending: 'warning', expired: 'info', suspended: 'danger' }[s] || 'info')
-const getLicenseStatusText = (s: string) => ({ active: '已激活', pending: '待激活', expired: '已过期', suspended: '已暂停' }[s] || s)
+const formatExpireDate = (date: string) => {
+  if (!date) return '永久'
+  return new Date(date).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' })
+}
+
+const getPackageType = (p: string): string => {
+  const map: Record<string, string> = { '企业版': 'danger', '专业版': 'warning', '基础版': 'info' }
+  return map[p] || 'info'
+}
+
+const getLicenseStatusType = (s: string): string => {
+  const map: Record<string, string> = { active: 'success', pending: 'warning', expired: 'info', suspended: 'danger' }
+  return map[s] || 'info'
+}
+const getLicenseStatusText = (s: string): string => {
+  const map: Record<string, string> = { active: '已激活', pending: '待激活', expired: '已过期', suspended: '已暂停' }
+  return map[s] || s
+}
+
+// === 续期计算 ===
+
+const computedExpireDate = computed(() => {
+  if (!renewMonths.value || !renewingTenant.value) return '-'
+  const base = renewingTenant.value.expireDate
+    ? new Date(renewingTenant.value.expireDate)
+    : new Date()
+  const target = new Date(base)
+  target.setMonth(target.getMonth() + renewMonths.value)
+  return target.toISOString().split('T')[0]
+})
+
+// === 搜索 ===
 
 const handleSearch = () => { page.value = 1; fetchData() }
 const handleReset = () => { Object.assign(searchForm, { keyword: '', packageId: '', status: '' }); handleSearch() }
 
+// === 新增/编辑 ===
+
+const onPackageChange = (pkgId: string | number) => {
+  const pkg = packages.value.find((p: any) => p.id === pkgId || String(p.id) === String(pkgId))
+  if (pkg) {
+    form.maxUsers = pkg.max_users ?? pkg.maxUsers ?? 10
+    form.maxStorageGb = pkg.max_storage_gb ?? pkg.maxStorageGb ?? 5
+    // 同步套餐的功能模块
+    form.features = Array.isArray(pkg.features) ? [...pkg.features] : []
+    // 根据 billing_cycle 和 duration_days 计算到期时间
+    const days = pkg.duration_days ?? pkg.durationDays
+    const isTrial = Boolean(pkg.is_trial)
+    const billingCycle = pkg.billing_cycle ?? pkg.billingCycle
+    if (isTrial) {
+      // 试用套餐：根据 duration_days 设置到期时间
+      if (days && days > 0) {
+        const expire = new Date()
+        expire.setDate(expire.getDate() + days)
+        form.expireDate = expire
+      } else {
+        form.expireDate = null
+      }
+    } else if (billingCycle === 'forever' || billingCycle === 'permanent' || (days && days >= 36500)) {
+      // 永久套餐
+      form.expireDate = null
+    } else if (billingCycle === 'yearly' || billingCycle === 'annual') {
+      const expire = new Date()
+      expire.setFullYear(expire.getFullYear() + 1)
+      form.expireDate = expire
+    } else if (billingCycle === 'monthly') {
+      const expire = new Date()
+      expire.setMonth(expire.getMonth() + 1)
+      form.expireDate = expire
+    } else if (days && days > 0 && days < 36500) {
+      const expire = new Date()
+      expire.setDate(expire.getDate() + days)
+      form.expireDate = expire
+    } else {
+      form.expireDate = null // 默认永久
+    }
+  }
+}
+
 const handleAdd = () => {
   editingId.value = null
-  Object.assign(form, { name: '', code: '', contact: '', phone: '', email: '', packageId: '', maxUsers: 10, maxStorageGb: 5, expireDate: null, remark: '' })
+  Object.assign(form, { name: '', code: '', contact: '', phone: '', email: '', packageId: '', maxUsers: 10, maxStorageGb: 5, expireDate: null, features: [], remark: '' })
   showDialog.value = true
 }
 
@@ -253,69 +390,10 @@ const handleEdit = (row: any) => {
   editingId.value = row.id
   Object.assign(form, {
     name: row.name, code: row.code, contact: row.contact || '', phone: row.phone || '', email: row.email || '',
-    packageId: row.package_id, maxUsers: row.max_users, maxStorageGb: row.max_storage_gb || 5,
-    expireDate: row.expire_date ? new Date(row.expire_date) : null, remark: row.remark || ''
+    packageId: row.packageId, maxUsers: row.maxUsers, maxStorageGb: row.maxStorageGb || 5,
+    expireDate: row.expireDate ? new Date(row.expireDate) : null, remark: row.remark || ''
   })
   showDialog.value = true
-}
-
-const handleCommand = async (cmd: string, row: any) => {
-  switch (cmd) {
-    case 'regenerate':
-      ElMessageBox.confirm('重新生成授权码后，原授权码将失效，客户需要使用新授权码登录。确定继续？', '重新生成授权码', { type: 'warning' })
-        .then(async () => {
-          const res = await request.post(`/tenants/${row.id}/regenerate-license`)
-          if (res.success) {
-            newLicenseKey.value = res.data.licenseKey
-            showLicenseDialog.value = true
-            fetchData()
-          }
-        })
-      break
-    case 'renew':
-      renewingTenant.value = row
-      renewExpireDate.value = null
-      showRenewDialog.value = true
-      break
-    case 'suspend':
-      ElMessageBox.confirm('暂停授权后，该客户下所有用户将无法登录。确定继续？', '暂停授权', { type: 'warning' })
-        .then(async () => {
-          const res = await request.post(`/tenants/${row.id}/suspend`)
-          if (res.success) { ElMessage.success('已暂停授权'); fetchData() }
-        })
-      break
-    case 'resume':
-      const res = await request.post(`/tenants/${row.id}/resume`)
-      if (res.success) { ElMessage.success('已恢复授权'); fetchData() }
-      break
-    case 'delete':
-      ElMessageBox.confirm('删除客户将同时删除所有相关数据，此操作不可恢复！', '删除客户', { type: 'error' })
-        .then(async () => {
-          const res = await request.delete(`/tenants/${row.id}`)
-          if (res.success) { ElMessage.success('已删除'); fetchData() }
-        })
-      break
-  }
-}
-
-const handleRenew = async () => {
-  if (!renewExpireDate.value) {
-    ElMessage.warning('请选择新的到期时间')
-    return
-  }
-  submitting.value = true
-  try {
-    const res = await request.post(`/tenants/${renewingTenant.value.id}/renew`, {
-      expireDate: renewExpireDate.value.toISOString().split('T')[0]
-    })
-    if (res.success) {
-      ElMessage.success('续期成功')
-      showRenewDialog.value = false
-      fetchData()
-    }
-  } finally {
-    submitting.value = false
-  }
 }
 
 const handleSubmit = async () => {
@@ -337,6 +415,7 @@ const handleSubmit = async () => {
       const res = await request.post('/tenants', data)
       if (res.success) {
         newLicenseKey.value = res.data.licenseKey
+        newLicenseTitle.value = '租户客户创建成功'
         showDialog.value = false
         showLicenseDialog.value = true
         fetchData()
@@ -347,6 +426,112 @@ const handleSubmit = async () => {
   }
 }
 
+// === 启用/禁用状态 ===
+
+const handleToggleStatus = async (row: any) => {
+  const isActive = row.status === 'active'
+  const action = isActive ? '禁用' : '启用'
+  try {
+    await ElMessageBox.confirm(
+      `确定要${action}该租户吗？${isActive ? '禁用后该租户下所有用户将无法登录。' : ''}`,
+      `${action}租户`, { type: 'warning' }
+    )
+    row.statusLoading = true
+    const newStatus = isActive ? 'inactive' : 'active'
+    const res = await request.put(`/tenants/${row.id}`, { status: newStatus })
+    if (res.success) {
+      ElMessage.success(`已${action}`)
+      fetchData()
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e.message || '操作失败')
+  } finally {
+    row.statusLoading = false
+  }
+}
+
+// === 暂停/恢复授权 ===
+
+const handleSuspend = async (row: any) => {
+  try {
+    await ElMessageBox.confirm('暂停授权后，该客户下所有用户将无法登录。确定继续？', '暂停授权', { type: 'warning' })
+    row.licenseLoading = true
+    const res = await request.post(`/tenants/${row.id}/suspend`)
+    if (res.success) { ElMessage.success('已暂停授权'); fetchData() }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e.message || '操作失败')
+  } finally {
+    row.licenseLoading = false
+  }
+}
+
+const handleResume = async (row: any) => {
+  try {
+    row.licenseLoading = true
+    const res = await request.post(`/tenants/${row.id}/resume`)
+    if (res.success) { ElMessage.success('已恢复授权'); fetchData() }
+  } catch (e: any) {
+    ElMessage.error(e.message || '操作失败')
+  } finally {
+    row.licenseLoading = false
+  }
+}
+
+// === 更多操作 ===
+
+const handleCommand = async (cmd: string, row: any) => {
+  switch (cmd) {
+    case 'regenerate':
+      ElMessageBox.confirm('重新生成授权码后，原授权码将失效，客户需要使用新授权码登录。确定继续？', '重新生成授权码', { type: 'warning' })
+        .then(async () => {
+          const res = await request.post(`/tenants/${row.id}/regenerate-license`)
+          if (res.success) {
+            newLicenseKey.value = res.data.licenseKey
+            newLicenseTitle.value = '授权码已重新生成'
+            showLicenseDialog.value = true
+            fetchData()
+          }
+        })
+      break
+    case 'renew':
+      renewingTenant.value = row
+      renewMonths.value = 12
+      showRenewDialog.value = true
+      break
+    case 'delete':
+      ElMessageBox.confirm('删除客户将同时删除所有相关数据，此操作不可恢复！', '删除客户', { type: 'error' })
+        .then(async () => {
+          const res = await request.delete(`/tenants/${row.id}`)
+          if (res.success) { ElMessage.success('已删除'); fetchData() }
+        })
+      break
+  }
+}
+
+// === 续期 ===
+
+const handleRenew = async () => {
+  if (!renewMonths.value) {
+    ElMessage.warning('请选择续期时长')
+    return
+  }
+  submitting.value = true
+  try {
+    const res = await request.post(`/tenants/${renewingTenant.value.id}/renew`, {
+      expireDate: computedExpireDate.value
+    })
+    if (res.success) {
+      ElMessage.success(`续期${renewMonths.value}个月成功`)
+      showRenewDialog.value = false
+      fetchData()
+    }
+  } finally {
+    submitting.value = false
+  }
+}
+
+// === 数据获取 ===
+
 const fetchData = async () => {
   loading.value = true
   try {
@@ -354,17 +539,34 @@ const fetchData = async () => {
       params: { page: page.value, pageSize: pageSize.value, ...searchForm }
     })
     if (res.success) {
-      tableData.value = (res.data.list || []).map((item: any) => ({ ...item, showFullKey: false }))
+      tableData.value = (res.data.list || []).map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        code: item.code,
+        contact: item.contact,
+        phone: item.phone,
+        email: item.email,
+        // 兼容 snake_case 和 camelCase
+        licenseKey: item.licenseKey || item.license_key,
+        licenseStatus: item.licenseStatus || item.license_status,
+        status: item.status,
+        packageId: item.packageId || item.package_id,
+        packageName: item.packageName || item.package_name,
+        userCount: item.userCount ?? item.user_count ?? 0,
+        maxUsers: item.maxUsers ?? item.max_users ?? 0,
+        maxStorageGb: item.maxStorageGb ?? item.max_storage_gb ?? 0,
+        usedStorageMb: item.usedStorageMb ?? item.used_storage_mb ?? 0,
+        expireDate: item.expireDate || item.expire_date,
+        remark: item.remark,
+        showFullKey: false,
+        statusLoading: false,
+        licenseLoading: false
+      }))
       total.value = res.data.total || 0
     }
   } catch (e) {
-    // 使用模拟数据
-    tableData.value = [
-      { id: '1', name: '深圳电商公司', code: 'SZDS', contact: '陈总', phone: '13600136001', license_key: 'TENANT-A1B2-C3D4-E5F6-G7H8', license_status: 'active', package_name: '企业版', user_count: 45, max_users: 100, expire_date: '2026-12-31', status: 'active', showFullKey: false },
-      { id: '2', name: '杭州科技公司', code: 'HZKJ', contact: '刘经理', phone: '13500135002', license_key: 'TENANT-X1Y2-Z3A4-B5C6-D7E8', license_status: 'pending', package_name: '专业版', user_count: 18, max_users: 50, expire_date: '2026-06-30', status: 'active', showFullKey: false },
-      { id: '3', name: '成都贸易公司', code: 'CDMY', contact: '赵经理', phone: '13400134003', license_key: 'TENANT-M1N2-O3P4-Q5R6-S7T8', license_status: 'active', package_name: '基础版', user_count: 8, max_users: 20, expire_date: '2026-03-15', status: 'active', showFullKey: false }
-    ]
-    total.value = 3
+    tableData.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -373,7 +575,7 @@ const fetchData = async () => {
 const fetchPackages = async () => {
   try {
     const res = await request.get('/packages')
-    if (res.success) packages.value = res.data.list || []
+    if (res.success) packages.value = res.data.list || res.data || []
   } catch {
     packages.value = [
       { id: '1', name: '基础版' },
@@ -384,18 +586,78 @@ const fetchPackages = async () => {
 }
 
 onMounted(() => { fetchData(); fetchPackages() })
+
+// === 导出 ===
+
+const handleExport = () => {
+  const params = new URLSearchParams()
+  if (searchForm.keyword) params.set('keyword', searchForm.keyword)
+  if (searchForm.status) params.set('status', searchForm.status)
+  const token = localStorage.getItem('admin_token')
+  const url = `/api/v1/admin/export/tenants?${params.toString()}`
+  fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    .then(res => res.blob())
+    .then(blob => {
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `租户客户列表_${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      ElMessage.success('导出成功')
+    })
+    .catch(() => ElMessage.error('导出失败'))
+}
 </script>
 
 <style scoped lang="scss">
 .page-container { display: flex; flex-direction: column; gap: 16px; }
 .search-card, .table-card { border-radius: 8px; border: none; }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
+.header-actions { display: flex; gap: 8px; }
 .pagination-wrapper { margin-top: 16px; display: flex; justify-content: flex-end; }
 .text-danger { color: #f56c6c; }
+
 .license-key-cell {
-  display: flex; align-items: center; gap: 4px;
-  .license-key { font-family: monospace; font-size: 12px; }
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  .license-key {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .action-icon {
+    cursor: pointer;
+    font-size: 16px;
+    color: #409eff;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    &:hover {
+      color: #66b1ff;
+      transform: scale(1.1);
+    }
+  }
 }
+
+.action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.usage-text {
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+}
+
 .license-result {
   text-align: center;
   p { margin: 8px 0; color: #606266; }
@@ -405,5 +667,31 @@ onMounted(() => { fetchData(); fetchPackages() })
   display: flex; align-items: center; justify-content: center; gap: 12px;
   padding: 16px; margin: 16px 0; background: #f5f7fa; border-radius: 8px;
   .key { font-family: monospace; font-size: 18px; font-weight: bold; color: #409eff; letter-spacing: 1px; }
+}
+
+/* ====== 响应式适配 ====== */
+@media screen and (max-width: 768px) {
+  .search-card :deep(.el-form) {
+    display: flex;
+    flex-direction: column;
+    .el-form-item {
+      margin-right: 0;
+      margin-bottom: 12px;
+      width: 100%;
+      .el-input, .el-select { width: 100% !important; }
+    }
+  }
+  .card-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+    .header-actions {
+      width: 100%;
+      display: flex;
+      gap: 8px;
+      .el-button { flex: 1; }
+    }
+  }
+  .table-card :deep(.el-table) { overflow-x: auto; }
 }
 </style>

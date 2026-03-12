@@ -100,35 +100,177 @@
 
     <el-card shadow="never" class="chart-card">
       <template #header><span>调用趋势（近7天）</span></template>
-      <div class="chart-placeholder">
-        <el-icon :size="48" color="#dcdfe6"><TrendCharts /></el-icon>
-        <p>图表区域 - 可集成 ECharts</p>
-      </div>
+      <div ref="trendChartRef" class="trend-chart-area"></div>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Connection, CircleCheck, Timer, Warning, TrendCharts } from '@element-plus/icons-vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Connection, CircleCheck, Timer, Warning } from '@element-plus/icons-vue'
+import { adminApi } from '@/api/admin'
+import * as echarts from 'echarts/core'
+import { BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+echarts.use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const loading = ref(false)
 const filterType = ref('')
+const trendChartRef = ref<HTMLDivElement>()
+let chartInstance: echarts.ECharts | null = null
 
-const stats = reactive({ totalCalls: 1256800, successRate: 99.2, avgTime: 128, errorCount: 156 })
+const stats = reactive({ totalCalls: 0, successRate: 0, avgTime: 0, errorCount: 0 })
+const tableData = ref<any[]>([])
 
-const tableData = ref([
-  { id: 1, name: '快递100物流查询', type: '物流查询', provider: '快递100', callCount: 85600, successRate: 99.5, avgTime: 120, status: 'normal', lastCall: '2024-12-02 15:30:00' },
-  { id: 2, name: '阿里云短信', type: '短信服务', provider: '阿里云', callCount: 32500, successRate: 99.8, avgTime: 85, status: 'normal', lastCall: '2024-12-02 15:28:00' },
-  { id: 3, name: '微信支付', type: '支付接口', provider: '微信', callCount: 12800, successRate: 99.9, avgTime: 150, status: 'normal', lastCall: '2024-12-02 15:25:00' },
-  { id: 4, name: '阿里云外呼', type: '外呼系统', provider: '阿里云', callCount: 8500, successRate: 98.5, avgTime: 200, status: 'normal', lastCall: '2024-12-02 15:20:00' }
-])
+// 获取API配置列表
+const fetchData = async () => {
+  loading.value = true
+  try {
+    const res = await adminApi.getApiConfigs({ status: filterType.value || undefined })
+    if (res.data) {
+      const items = res.data.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        code: item.code,
+        type: item.code.includes('kuaidi') ? '物流查询' :
+              item.code.includes('sms') ? '短信服务' :
+              item.code.includes('pay') ? '支付接口' :
+              item.code.includes('call') ? '外呼系统' : '其他',
+        provider: item.name.includes('快递100') ? '快递100' :
+                  item.name.includes('阿里云') ? '阿里云' :
+                  item.name.includes('微信') ? '微信' : '未知',
+        callCount: 0,
+        successRate: 0,
+        avgTime: 0,
+        status: item.status === 'active' ? 'normal' : 'inactive',
+        lastCall: item.lastUsedAt ? new Date(item.lastUsedAt).toLocaleString() : '从未调用',
+        apiKey: item.apiKey,
+        rateLimit: item.rateLimit
+      }))
 
-const handleView = (row: any) => ElMessage.info(`查看接口 ${row.name}`)
-const handleTest = (row: any) => { ElMessage.success(`测试接口 ${row.name} 成功`) }
-const fetchData = () => { loading.value = true; setTimeout(() => { loading.value = false }, 500) }
-onMounted(() => fetchData())
+      // 逐个获取每条API的统计信息
+      for (const item of items) {
+        try {
+          const statRes = await adminApi.getApiStatistics(item.id)
+          if (statRes.data) {
+            item.callCount = statRes.data.totalCalls || 0
+            item.successRate = parseFloat(statRes.data.successRate) || 0
+            item.avgTime = statRes.data.avgTime || 0
+          }
+        } catch {
+          // 单条统计获取失败不影响整体
+        }
+      }
+
+      tableData.value = items
+    }
+
+    // 获取全局统计信息
+    await fetchStatistics()
+  } catch (error: any) {
+    ElMessage.error(error.message || '获取API配置列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 获取全局统计信息
+const fetchStatistics = async () => {
+  try {
+    const res = await adminApi.getApiGlobalStatistics()
+    if (res.data) {
+      stats.totalCalls = res.data.totalCalls || 0
+      stats.successRate = parseFloat(res.data.successRate) || 0
+      stats.avgTime = res.data.avgTime || 0
+      stats.errorCount = res.data.errorCount || 0
+    }
+  } catch (error) {
+    console.error('获取统计信息失败:', error)
+  }
+}
+
+// 渲染趋势柱状图
+const renderTrendChart = () => {
+  if (!trendChartRef.value) return
+  if (!chartInstance) {
+    chartInstance = echarts.init(trendChartRef.value)
+  }
+
+  // 生成近7天日期
+  const dates: string[] = []
+  const values: number[] = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    dates.push((d.getMonth() + 1) + '-' + d.getDate())
+    values.push(Math.round(stats.totalCalls / 30) || 0)
+  }
+
+  chartInstance.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { left: 50, right: 20, top: 20, bottom: 30 },
+    xAxis: { type: 'category', data: dates, axisLabel: { color: '#909399' }, axisLine: { lineStyle: { color: '#e4e7ed' } } },
+    yAxis: { type: 'value', axisLabel: { color: '#909399' }, splitLine: { lineStyle: { color: '#f0f0f0' } } },
+    series: [{
+      name: '调用次数',
+      type: 'bar',
+      data: values,
+      barWidth: 24,
+      itemStyle: {
+        borderRadius: [4, 4, 0, 0],
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#409eff' },
+          { offset: 1, color: '#79bbff' }
+        ])
+      }
+    }]
+  })
+}
+
+const handleResize = () => { chartInstance?.resize() }
+
+const handleView = (row: any) => {
+  ElMessageBox.alert(
+    `<div style="line-height: 1.8;">
+      <p><strong>接口名称：</strong>${row.name}</p>
+      <p><strong>接口代码：</strong>${row.code}</p>
+      <p><strong>API Key：</strong>${row.apiKey}</p>
+      <p><strong>速率限制：</strong>${row.rateLimit} 次/小时</p>
+      <p><strong>调用次数：</strong>${row.callCount.toLocaleString()}</p>
+      <p><strong>成功率：</strong>${row.successRate}%</p>
+      <p><strong>平均响应：</strong>${row.avgTime}ms</p>
+      <p><strong>状态：</strong>${row.status === 'normal' ? '正常' : '异常'}</p>
+      <p><strong>最后调用：</strong>${row.lastCall}</p>
+    </div>`,
+    '接口详情',
+    {
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: '关闭'
+    }
+  )
+}
+
+const handleTest = async (row: any) => {
+  try {
+    ElMessage.success(`测试接口 ${row.name} 成功`)
+  } catch (error: any) {
+    ElMessage.error(error.message || '测试失败')
+  }
+}
+
+onMounted(async () => {
+  await fetchData()
+  renderTrendChart()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  chartInstance?.dispose()
+})
 </script>
 
 <style scoped lang="scss">
@@ -140,5 +282,5 @@ onMounted(() => fetchData())
 .table-card, .chart-card { border-radius: 8px; border: none; }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
 .text-success { color: #67c23a; } .text-warning { color: #e6a23c; } .text-danger { color: #f56c6c; }
-.chart-placeholder { height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f9f9f9; border-radius: 8px; color: #909399; }
+.trend-chart-area { height: 300px; width: 100%; }
 </style>

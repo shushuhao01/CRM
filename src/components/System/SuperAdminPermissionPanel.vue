@@ -23,8 +23,8 @@
         </div>
       </el-tab-pane>
 
-      <!-- 用户权限管理 -->
-      <el-tab-pane label="用户权限管理" name="users">
+      <!-- 用户权限管理（已隐藏，与角色权限功能重复） -->
+      <el-tab-pane v-if="false" label="用户权限管理" name="users">
         <div class="tab-content">
           <div class="filters">
             <el-input

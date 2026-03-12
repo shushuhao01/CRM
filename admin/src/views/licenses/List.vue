@@ -143,8 +143,8 @@ const copyKey = async (key: string) => {
 }
 
 const isExpired = (date: string) => date && new Date(date) < new Date()
-const formatDate = (date: string) => date ? new Date(date).toLocaleDateString('zh-CN') : '-'
-const formatDateTime = (date: string) => date ? new Date(date).toLocaleString('zh-CN') : '-'
+const formatDate = (date: string) => date ? new Date(date).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '-'
+const formatDateTime = (date: string) => date ? new Date(date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '-'
 
 const getLicenseTypeTag = (type: string) => ({ trial: 'info', annual: 'primary', perpetual: 'success' }[type] || 'info')
 const getLicenseTypeText = (type: string) => ({ trial: '试用', annual: '年度', perpetual: '永久' }[type] || type)

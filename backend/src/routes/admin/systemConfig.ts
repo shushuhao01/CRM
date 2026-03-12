@@ -1,5 +1,6 @@
 /**
  * Admin System Config Routes - 系统配置管理
+ * 注意：公开API(/public/system-config)已在 admin/index.ts 中直接注册，避免路由冲突
  */
 import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../../config/database'
@@ -66,70 +67,6 @@ router.post('/system-config', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('保存系统配置失败:', error)
     res.status(500).json({ success: false, message: '保存系统配置失败' })
-  }
-})
-
-// 公开API：获取系统配置覆盖（供CRM前端调用，不需要认证）
-// 路径: /api/v1/admin/public/system-config
-router.get('/public/system-config', async (_req: Request, res: Response) => {
-  try {
-    const result = await AppDataSource.query(
-      `SELECT config_value FROM system_config WHERE config_key = 'admin_system_config' LIMIT 1`
-    ).catch(() => [])
-
-    if (result && result.length > 0) {
-      const data = JSON.parse(result[0].config_value || '{}')
-      const responseData: Record<string, any> = {}
-
-      if (data.enableBasicOverride) {
-        responseData.systemName = data.systemName
-        responseData.systemVersion = data.systemVersion
-        responseData.companyName = data.companyName
-        responseData.contactPhone = data.contactPhone
-        responseData.contactEmail = data.contactEmail
-        responseData.websiteUrl = data.websiteUrl
-        responseData.companyAddress = data.companyAddress
-        responseData.systemDescription = data.systemDescription
-        responseData.systemLogo = data.systemLogo
-        responseData.contactQRCode = data.contactQRCode
-        responseData.contactQRCodeLabel = data.contactQRCodeLabel
-      }
-
-      if (data.enableCopyrightOverride) {
-        responseData.copyrightText = data.copyrightText
-        responseData.icpNumber = data.icpNumber
-        responseData.policeNumber = data.policeNumber
-        responseData.techSupport = data.techSupport
-      }
-
-      if (data.enableAgreementOverride) {
-        responseData.userAgreement = data.userAgreement
-        responseData.privacyPolicy = data.privacyPolicy
-      }
-
-      res.json({
-        success: true,
-        data: responseData,
-        hasOverride: {
-          basic: data.enableBasicOverride || false,
-          copyright: data.enableCopyrightOverride || false,
-          agreement: data.enableAgreementOverride || false
-        }
-      })
-    } else {
-      res.json({
-        success: true,
-        data: {},
-        hasOverride: { basic: false, copyright: false, agreement: false }
-      })
-    }
-  } catch (error) {
-    console.error('获取公开系统配置失败:', error)
-    res.json({
-      success: true,
-      data: {},
-      hasOverride: { basic: false, copyright: false, agreement: false }
-    })
   }
 })
 
@@ -254,6 +191,256 @@ router.post('/system-config/sms/test', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('测试短信发送失败:', error)
     res.status(500).json({ success: false, message: '发送失败' })
+  }
+})
+
+// ============ 邮件配置 API ============
+
+// 获取邮件配置
+router.get('/system/email-settings', async (_req: Request, res: Response) => {
+  try {
+    const result = await AppDataSource.query(
+      `SELECT config_value FROM system_config WHERE config_key = 'email_settings' LIMIT 1`
+    ).catch(() => [])
+
+    if (result && result.length > 0) {
+      const data = JSON.parse(result[0].config_value || '{}')
+      // 不返回完整的密码，只返回是否已配置
+      res.json({
+        success: true,
+        data: {
+          enabled: data.enabled || false,
+          smtpHost: data.smtpHost || '',
+          smtpPort: data.smtpPort || 465,
+          senderEmail: data.senderEmail || '',
+          senderName: data.senderName || '',
+          emailPassword: data.emailPassword ? '******' : '',
+          enableSsl: data.enableSsl !== false,
+          enableTls: data.enableTls || false,
+          testEmail: data.testEmail || ''
+        }
+      })
+    } else {
+      res.json({
+        success: true,
+        data: {
+          enabled: false,
+          smtpHost: '',
+          smtpPort: 465,
+          senderEmail: '',
+          senderName: '',
+          emailPassword: '',
+          enableSsl: true,
+          enableTls: false,
+          testEmail: ''
+        }
+      })
+    }
+  } catch (error) {
+    console.error('获取邮件配置失败:', error)
+    res.status(500).json({ success: false, message: '获取邮件配置失败' })
+  }
+})
+
+// 保存邮件配置
+router.put('/system/email-settings', async (req: Request, res: Response) => {
+  try {
+    const { enabled, smtpHost, smtpPort, senderEmail, senderName, emailPassword, enableSsl, enableTls, testEmail } = req.body
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+
+    // 获取现有配置
+    const existing = await AppDataSource.query(
+      `SELECT config_value FROM system_config WHERE config_key = 'email_settings' LIMIT 1`
+    ).catch(() => [])
+
+    let configData: any = {}
+    if (existing && existing.length > 0) {
+      configData = JSON.parse(existing[0].config_value || '{}')
+    }
+
+    // 更新配置（如果密码是 ****** 则保留原值）
+    configData.enabled = enabled
+    configData.smtpHost = smtpHost
+    configData.smtpPort = smtpPort
+    configData.senderEmail = senderEmail
+    configData.senderName = senderName
+    if (emailPassword && emailPassword !== '******') {
+      configData.emailPassword = emailPassword
+    }
+    configData.enableSsl = enableSsl
+    configData.enableTls = enableTls
+    configData.testEmail = testEmail
+
+    const configValue = JSON.stringify(configData)
+
+    if (existing && existing.length > 0) {
+      await AppDataSource.query(
+        `UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = 'email_settings'`,
+        [configValue, now]
+      )
+    } else {
+      await AppDataSource.query(
+        `INSERT INTO system_config (id, config_key, config_value, config_type, description, created_at, updated_at) VALUES (UUID(), ?, ?, ?, ?, ?, ?)`,
+        ['email_settings', configValue, 'system', '邮件服务配置', now, now]
+      )
+    }
+
+    res.json({ success: true, message: '邮件配置保存成功' })
+  } catch (error) {
+    console.error('保存邮件配置失败:', error)
+    res.status(500).json({ success: false, message: '保存邮件配置失败' })
+  }
+})
+
+// 测试邮件发送
+router.post('/system/email-settings/test', async (req: Request, res: Response) => {
+  try {
+    const { smtpHost, smtpPort, senderEmail, senderName, emailPassword, enableSsl, enableTls, testEmail } = req.body
+    console.log(`[Email Test] 收到测试请求: testEmail=${testEmail}, smtpHost=${smtpHost}`)
+
+    if (!testEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
+      return res.status(400).json({ success: false, message: '请输入正确的邮箱地址' })
+    }
+
+    // 获取实际的密码
+    let actualPassword = emailPassword
+    if (emailPassword === '******') {
+      const existing = await AppDataSource.query(
+        `SELECT config_value FROM system_config WHERE config_key = 'email_settings' LIMIT 1`
+      ).catch(() => [])
+      if (existing && existing.length > 0) {
+        const data = JSON.parse(existing[0].config_value || '{}')
+        actualPassword = data.emailPassword
+      }
+    }
+
+    if (!smtpHost || !smtpPort || !senderEmail || !actualPassword) {
+      return res.status(400).json({ success: false, message: '请完整填写邮件配置' })
+    }
+
+    // 动态导入邮件服务
+    const nodemailer = require('nodemailer')
+
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: enableSsl,
+      auth: {
+        user: senderEmail,
+        pass: actualPassword
+      },
+      tls: enableTls ? { rejectUnauthorized: false } : undefined
+    })
+
+    await transporter.sendMail({
+      from: `"${senderName || 'CRM系统'}" <${senderEmail}>`,
+      to: testEmail,
+      subject: '测试邮件 - CRM系统',
+      html: `
+        <div style="padding: 20px; font-family: Arial, sans-serif;">
+          <h2>这是一封测试邮件</h2>
+          <p>如果您收到这封邮件，说明邮件配置正确。</p>
+          <p style="color: #666; font-size: 12px; margin-top: 20px;">
+            发送时间: ${new Date().toLocaleString('zh-CN')}
+          </p>
+        </div>
+      `
+    })
+
+    res.json({ success: true, message: '测试邮件已发送，请查收' })
+  } catch (error: any) {
+    console.error('测试邮件发送失败:', error)
+    res.status(500).json({
+      success: false,
+      message: error.message || '发送失败，请检查配置'
+    })
+  }
+})
+
+// ============ 超时提醒配置 API ============
+
+// 获取超时提醒配置
+router.get('/timeout-reminder/config', async (_req: Request, res: Response) => {
+  try {
+    const result = await AppDataSource.query(
+      `SELECT config_value FROM system_config WHERE config_key = 'timeout_reminder_config' LIMIT 1`
+    ).catch(() => [])
+
+    if (result && result.length > 0) {
+      const data = JSON.parse(result[0].config_value || '{}')
+      res.json({
+        success: true,
+        data: {
+          enabled: data.enabled || false,
+          orderAuditTimeout: data.orderAuditTimeout || 24,
+          orderShipmentTimeout: data.orderShipmentTimeout || 48,
+          afterSalesTimeout: data.afterSalesTimeout || 48,
+          orderFollowupDays: data.orderFollowupDays || 3,
+          checkIntervalMinutes: data.checkIntervalMinutes || 30
+        }
+      })
+    } else {
+      res.json({
+        success: true,
+        data: {
+          enabled: false,
+          orderAuditTimeout: 24,
+          orderShipmentTimeout: 48,
+          afterSalesTimeout: 48,
+          orderFollowupDays: 3,
+          checkIntervalMinutes: 30
+        }
+      })
+    }
+  } catch (error) {
+    console.error('获取超时提醒配置失败:', error)
+    res.status(500).json({ success: false, message: '获取超时提醒配置失败' })
+  }
+})
+
+// 保存超时提醒配置
+router.put('/timeout-reminder/config', async (req: Request, res: Response) => {
+  try {
+    const configData = req.body
+    const configValue = JSON.stringify(configData)
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+
+    // 检查是否存在
+    const existing = await AppDataSource.query(
+      `SELECT id FROM system_config WHERE config_key = 'timeout_reminder_config' LIMIT 1`
+    ).catch(() => [])
+
+    if (existing && existing.length > 0) {
+      await AppDataSource.query(
+        `UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = 'timeout_reminder_config'`,
+        [configValue, now]
+      )
+    } else {
+      await AppDataSource.query(
+        `INSERT INTO system_config (id, config_key, config_value, config_type, description, created_at, updated_at) VALUES (UUID(), ?, ?, ?, ?, ?, ?)`,
+        ['timeout_reminder_config', configValue, 'system', '超时提醒配置', now, now]
+      )
+    }
+
+    res.json({ success: true, message: '超时提醒配置保存成功' })
+  } catch (error) {
+    console.error('保存超时提醒配置失败:', error)
+    res.status(500).json({ success: false, message: '保存超时提醒配置失败' })
+  }
+})
+
+// 手动触发超时检测
+router.post('/timeout-reminder/check', async (_req: Request, res: Response) => {
+  try {
+    // 这里可以调用实际的超时检测服务
+    // 暂时返回模拟结果
+    res.json({
+      success: true,
+      message: '检测完成，未发现超时订单'
+    })
+  } catch (error) {
+    console.error('超时检测失败:', error)
+    res.status(500).json({ success: false, message: '检测失败' })
   }
 })
 

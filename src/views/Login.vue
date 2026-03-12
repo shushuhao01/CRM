@@ -340,7 +340,12 @@
         </el-form>
 
         <div class="card-footer">
-          <p>© 2025 云客 · 智能销售管理系统</p>
+          <p>{{ configStore.systemConfig.copyrightText || `© ${new Date().getFullYear()} ${configStore.systemConfig.companyName || '云客 · 智能销售管理系统'}` }}</p>
+          <p class="card-footer-beian" v-if="configStore.systemConfig.icpNumber || configStore.systemConfig.policeNumber">
+            <a v-if="configStore.systemConfig.icpNumber" href="https://beian.miit.gov.cn/" target="_blank" class="beian-link">{{ configStore.systemConfig.icpNumber }}</a>
+            <span v-if="configStore.systemConfig.icpNumber && configStore.systemConfig.policeNumber" class="beian-sep">|</span>
+            <a v-if="configStore.systemConfig.policeNumber" href="http://www.beian.gov.cn/" target="_blank" class="beian-link">🛡️ {{ configStore.systemConfig.policeNumber }}</a>
+          </p>
         </div>
       </div>
     </div>
@@ -888,6 +893,31 @@ const handleLogin = async () => {
   font-size: 12px;
   color: #9ca3af;
   margin: 0;
+}
+
+.card-footer-beian {
+  margin-top: 6px !important;
+  font-size: 11px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.card-footer-beian .beian-link {
+  color: #9ca3af;
+  text-decoration: none;
+  transition: color 0.3s;
+}
+
+.card-footer-beian .beian-link:hover {
+  color: #7c3aed;
+}
+
+.card-footer-beian .beian-sep {
+  color: #d1d5db;
+  margin: 0 2px;
 }
 
 /* 弹窗 */

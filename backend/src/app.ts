@@ -297,6 +297,11 @@ const startServer = async () => {
     await recordingStorageService.initialize();
     logger.info('✅ 录音存储服务初始化完成');
 
+    // 启动定时任务调度器
+    const { schedulerService } = await import('./services/SchedulerService');
+    schedulerService.start();
+    logger.info('✅ 定时任务调度器已启动');
+
     // 启动HTTP服务器（使用httpServer以支持WebSocket）
     const server = httpServer.listen(PORT, () => {
       logger.info(`🚀 CRM API服务已启动`);

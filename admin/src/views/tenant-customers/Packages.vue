@@ -52,6 +52,15 @@
             </div>
           </div>
 
+          <div class="package-modules" v-if="pkg.modules?.length">
+            <div class="modules-label">授权模块</div>
+            <div class="modules-tags">
+              <el-tag v-for="mid in pkg.modules" :key="mid" size="small" type="info" effect="plain">
+                {{ getModuleName(mid) }}
+              </el-tag>
+            </div>
+          </div>
+
           <div class="package-meta">
             <el-tag size="small" :type="pkg.is_visible ? 'success' : 'info'">
               {{ pkg.is_visible ? '官网显示' : '官网隐藏' }}
@@ -105,6 +114,19 @@
         <el-form-item label="存储空间">
           <el-input-number v-model="form.max_storage_gb" :min="0" /> GB
         </el-form-item>
+        <el-divider content-position="left">授权模块</el-divider>
+        <el-form-item label="CRM模块">
+          <div class="modules-check-group">
+            <div class="modules-toolbar">
+              <el-button size="small" link type="primary" @click="selectAllModules">全选</el-button>
+              <el-button size="small" link @click="deselectAllModules">全不选</el-button>
+            </div>
+            <el-checkbox-group v-model="form.modules">
+              <el-checkbox v-for="m in crmModuleOptions" :key="m.value" :value="m.value">{{ m.label }}</el-checkbox>
+            </el-checkbox-group>
+          </div>
+        </el-form-item>
+        <el-divider content-position="left">功能特性</el-divider>
         <el-form-item label="功能特性">
           <div v-for="(f, i) in form.features" :key="i" class="feature-input">
             <el-input v-model="form.features[i]" placeholder="输入功能特性" />
@@ -148,6 +170,27 @@ const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
 const packages = ref<Package[]>([])
 
+const crmModuleOptions = [
+  { value: 'dashboard', label: '数据看板' },
+  { value: 'customer', label: '客户管理' },
+  { value: 'order', label: '订单管理' },
+  { value: 'service-management', label: '服务管理' },
+  { value: 'performance', label: '业绩统计' },
+  { value: 'logistics', label: '物流管理' },
+  { value: 'service', label: '售后管理' },
+  { value: 'data', label: '资料管理' },
+  { value: 'finance', label: '财务管理' },
+  { value: 'product', label: '商品管理' },
+  { value: 'system', label: '系统管理' }
+]
+
+const getModuleName = (id: string) => {
+  return crmModuleOptions.find(m => m.value === id)?.label || id
+}
+
+const selectAllModules = () => { form.modules = crmModuleOptions.map(m => m.value) }
+const deselectAllModules = () => { form.modules = [] }
+
 const form = reactive({
   name: '',
   code: '',
@@ -159,6 +202,7 @@ const form = reactive({
   max_users: 10,
   max_storage_gb: 5,
   features: [''] as string[],
+  modules: [] as string[],
   is_trial: false,
   is_recommended: false,
   is_visible: true,
@@ -198,7 +242,7 @@ const resetForm = () => {
   Object.assign(form, {
     name: '', code: '', type: activeTab.value, description: '',
     price: 0, billing_cycle: 'monthly', duration_days: 30,
-    max_users: 10, max_storage_gb: 5, features: [''],
+    max_users: 10, max_storage_gb: 5, features: [''], modules: [],
     is_trial: false, is_recommended: false, is_visible: true,
     sort_order: 0, status: true
   })
@@ -214,7 +258,8 @@ const handleEdit = (pkg: Package) => {
   editingId.value = pkg.id
   Object.assign(form, {
     ...pkg,
-    features: pkg.features?.length ? [...pkg.features] : ['']
+    features: pkg.features?.length ? [...pkg.features] : [''],
+    modules: pkg.modules?.length ? [...pkg.modules] : []
   })
   showDialog.value = true
 }
@@ -246,7 +291,8 @@ const handleSubmit = async () => {
   try {
     const data = {
       ...form,
-      features: form.features.filter(f => f.trim())
+      features: form.features.filter(f => f.trim()),
+      modules: form.modules
     }
     if (editingId.value) {
       await updatePackage(editingId.value, data)
@@ -406,5 +452,32 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.package-modules {
+  padding: 8px 0;
+  border-top: 1px solid #ebeef5;
+
+  .modules-label {
+    font-size: 12px;
+    color: #909399;
+    margin-bottom: 6px;
+  }
+  .modules-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+}
+
+.modules-check-group {
+  width: 100%;
+  .modules-toolbar {
+    margin-bottom: 8px;
+  }
+  .el-checkbox {
+    margin-right: 16px;
+    margin-bottom: 4px;
+  }
 }
 </style>

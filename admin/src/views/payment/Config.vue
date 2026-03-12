@@ -283,6 +283,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, CopyDocument, Upload } from '@element-plus/icons-vue'
 import request from '@/api/request'
+import { adminApi } from '@/api/admin'
 
 const activeTab = ref('wechat')
 const saving = ref(false)
@@ -382,18 +383,37 @@ const handleTestAlipay = () => {
   ElMessage.info('支付宝测试功能开发中')
 }
 
-const handleFileUpload = (file: any, field: string) => {
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    const content = e.target?.result as string
-    if (field.includes('wechat') || ['certPem', 'keyPem', 'publicKeyPath'].includes(field)) {
-      (wechatConfig as any)[field] = content
+const handleFileUpload = async (file: any, field: string) => {
+  try {
+    const formData = new FormData()
+    formData.append('file', file.raw)
+    const res = await request.post('/upload?category=cert', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    if (res.success && res.data?.url) {
+      if (['certPem', 'keyPem', 'publicKeyPath'].includes(field)) {
+        (wechatConfig as any)[field] = res.data.url
+      } else {
+        (alipayConfig as any)[field] = res.data.url
+      }
+      ElMessage.success(`${file.raw.name} 上传成功`)
     } else {
-      (alipayConfig as any)[field] = content
+      ElMessage.error('证书文件上传失败')
     }
-    ElMessage.success('文件已读取')
+  } catch (error) {
+    // 上传失败时回退为读取文件内容
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const content = e.target?.result as string
+      if (['certPem', 'keyPem', 'publicKeyPath'].includes(field)) {
+        (wechatConfig as any)[field] = content
+      } else {
+        (alipayConfig as any)[field] = content
+      }
+      ElMessage.warning('服务器上传失败，已读取文件内容')
+    }
+    reader.readAsText(file.raw)
   }
-  reader.readAsText(file.raw)
 }
 
 const copyUrl = (url: string) => {

@@ -13,6 +13,7 @@ export interface Package {
   max_users: number
   max_storage_gb: number
   features: string[]
+  modules: string[]
   is_trial: boolean
   is_recommended: boolean
   is_visible: boolean

@@ -313,6 +313,10 @@ const startServer = async () => {
         const { recordingStorageService } = await Promise.resolve().then(() => __importStar(require('./services/RecordingStorageService')));
         await recordingStorageService.initialize();
         logger_1.logger.info('✅ 录音存储服务初始化完成');
+        // 启动定时任务调度器
+        const { schedulerService } = await Promise.resolve().then(() => __importStar(require('./services/SchedulerService')));
+        schedulerService.start();
+        logger_1.logger.info('✅ 定时任务调度器已启动');
         // 启动HTTP服务器（使用httpServer以支持WebSocket）
         const server = httpServer.listen(PORT, () => {
             logger_1.logger.info(`🚀 CRM API服务已启动`);

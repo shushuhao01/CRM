@@ -131,6 +131,95 @@ html, body, #app {
   animation: fadeIn 0.3s ease;
 }
 
+// ====== 全局响应式布局 ======
+
+// 移动端全局适配
+@media screen and (max-width: 768px) {
+  // 表格水平滚动
+  .el-table {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  // 弹窗宽度适配
+  .el-dialog {
+    width: 95% !important;
+    margin: 5vh auto !important;
+
+    .el-dialog__body {
+      padding: 16px;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+  }
+
+  // 表单元素全宽
+  .el-form--inline .el-form-item {
+    display: block;
+    margin-right: 0 !important;
+    width: 100%;
+
+    .el-input, .el-select, .el-date-editor {
+      width: 100% !important;
+    }
+  }
+
+  // 分页简化
+  .el-pagination {
+    .el-pagination__sizes, .el-pagination__jump {
+      display: none !important;
+    }
+  }
+
+  // 卡片内边距缩小
+  .el-card {
+    --el-card-padding: 12px;
+  }
+
+  // 通用页面容器
+  .page-container {
+    padding: 12px;
+  }
+
+  // 统计卡片栅格
+  .stat-row .el-col {
+    margin-bottom: 8px;
+  }
+
+  // 按钮组紧凑排列
+  .header-actions {
+    flex-wrap: wrap;
+    gap: 6px !important;
+
+    .el-button {
+      font-size: 12px;
+      padding: 6px 10px;
+    }
+  }
+}
+
+// 平板适配 (769px - 1024px)
+@media screen and (max-width: 1024px) and (min-width: 769px) {
+  .el-dialog {
+    width: 80% !important;
+  }
+
+  .page-container {
+    padding: 16px;
+  }
+
+  .el-card {
+    --el-card-padding: 16px;
+  }
+}
+
+// 大屏优化 (1440px+)
+@media screen and (min-width: 1440px) {
+  .el-table {
+    font-size: 14px;
+  }
+}
+
 .slide-up {
   animation: slideUp 0.3s ease;
 }

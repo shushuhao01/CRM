@@ -22,6 +22,8 @@ import { FollowUp } from '../entities/FollowUp';
 import { CustomerTag } from '../entities/CustomerTag';
 import { CustomerGroup } from '../entities/CustomerGroup';
 import { SmsTemplate } from '../entities/SmsTemplate';
+import { ModuleConfig } from '../entities/ModuleConfig';
+import { Module } from '../entities/Module';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -167,6 +169,61 @@ router.get('/global-config', authenticateToken, (_req, res) => {
       }
     }
   });
+});
+
+/**
+ * @route GET /api/v1/system/modules/status
+ * @desc 获取启用的模块列表（供CRM前端控制菜单显示）
+ * @access Private (All authenticated users)
+ */
+router.get('/modules/status', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const moduleRepository = AppDataSource.getRepository(Module);
+
+    // 获取所有启用的模块
+    const enabledModules = await moduleRepository.find({
+      where: { status: 'enabled' },
+      select: ['code']
+    });
+
+    // 模块代码映射：Admin后台模块代码 -> CRM前端菜单ID
+    const moduleMapping: Record<string, string> = {
+      'order_management': 'order',
+      'customer_management': 'customer',
+      'finance_management': 'finance',
+      'logistics_management': 'logistics',
+      'aftersales_management': 'service',
+      'call_management': 'service-management',
+      'data_management': 'data',
+      'performance_management': 'performance',
+      'product_management': 'product',
+      'system_management': 'system'
+    };
+
+    // 转换为CRM前端的菜单ID
+    const menuIds = enabledModules
+      .map(m => moduleMapping[m.code])
+      .filter(id => id !== undefined);
+
+    // 始终包含dashboard（数据看板）
+    if (!menuIds.includes('dashboard')) {
+      menuIds.unshift('dashboard');
+    }
+
+    res.json({
+      success: true,
+      data: {
+        enabledModules: menuIds
+      }
+    });
+  } catch (error: any) {
+    console.error('[System] 获取模块状态失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取模块状态失败',
+      error: error.message
+    });
+  }
 });
 
 // ========== 文件上传路由 ==========
@@ -388,7 +445,11 @@ router.get('/basic-settings/public', async (_req: Request, res: Response) => {
       systemName: settings.systemName || 'CRM客户管理系统',
       systemVersion: settings.systemVersion || '1.0.0',
       companyName: settings.companyName || '',
-      websiteUrl: settings.websiteUrl || ''
+      websiteUrl: settings.websiteUrl || '',
+      copyrightText: settings.copyrightText || '',
+      icpNumber: settings.icpNumber || '',
+      policeNumber: settings.policeNumber || '',
+      techSupport: settings.techSupport || ''
     };
 
     res.json({
@@ -403,6 +464,8 @@ router.get('/basic-settings/public', async (_req: Request, res: Response) => {
     });
   }
 });
+
+// ========== 模块状态接口已在上方定义，此处删除重复定义 ==========
 
 /**
  * @route GET /api/v1/system/basic-settings
@@ -437,7 +500,11 @@ router.get('/basic-settings', authenticateToken, async (req: Request, res: Respo
       systemDescription: settings.systemDescription || '',
       systemLogo: settings.systemLogo || '',
       contactQRCode: settings.contactQRCode || '',
-      contactQRCodeLabel: settings.contactQRCodeLabel || '扫码联系'
+      contactQRCodeLabel: settings.contactQRCodeLabel || '扫码联系',
+      copyrightText: settings.copyrightText || '',
+      icpNumber: settings.icpNumber || '',
+      policeNumber: settings.policeNumber || '',
+      techSupport: settings.techSupport || ''
     };
 
     res.json({
@@ -475,7 +542,11 @@ router.put('/basic-settings', authenticateToken, requireAdmin, async (req: Reque
       { key: 'systemDescription', type: 'text' as const, desc: '系统描述' },
       { key: 'systemLogo', type: 'text' as const, desc: '系统Logo' },
       { key: 'contactQRCode', type: 'text' as const, desc: '联系二维码' },
-      { key: 'contactQRCodeLabel', type: 'string' as const, desc: '二维码标签' }
+      { key: 'contactQRCodeLabel', type: 'string' as const, desc: '二维码标签' },
+      { key: 'copyrightText', type: 'string' as const, desc: '版权文字' },
+      { key: 'icpNumber', type: 'string' as const, desc: 'ICP备案号' },
+      { key: 'policeNumber', type: 'string' as const, desc: '公安备案号' },
+      { key: 'techSupport', type: 'string' as const, desc: '技术支持' }
     ];
 
     // 保存或更新每个配置项

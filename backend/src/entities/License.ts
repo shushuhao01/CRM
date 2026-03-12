@@ -32,6 +32,12 @@ export class License {
   @Column({ type: 'json', nullable: true })
   features?: string[];
 
+  @Column({ name: 'package_id', type: 'int', nullable: true, comment: '关联套餐ID' })
+  packageId?: number;
+
+  @Column({ name: 'package_name', type: 'varchar', length: 100, nullable: true, comment: '套餐名称（冗余）' })
+  packageName?: string;
+
   @Column({ name: 'machine_id', type: 'varchar', length: 255, nullable: true })
   machineId?: string;
 

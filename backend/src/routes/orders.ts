@@ -2906,10 +2906,31 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
     if (updateData.expressCompany !== undefined) order.expressCompany = updateData.expressCompany;
     if (updateData.trackingNumber !== undefined) order.trackingNumber = updateData.trackingNumber;
     if (updateData.markType !== undefined) order.markType = updateData.markType;
-    // 🔥 修复：添加金额字段的更新
+    // 🔥 修复：添加金额字段的更新，并同步codAmount
+    const oldTotalAmount = Number(order.totalAmount) || 0;
+    const oldDepositAmount = Number(order.depositAmount) || 0;
+    const oldCollectAmount = oldTotalAmount - oldDepositAmount;
+    const oldCodAmount = order.codAmount !== undefined && order.codAmount !== null ? Number(order.codAmount) : oldCollectAmount;
+
     if (updateData.totalAmount !== undefined) order.totalAmount = updateData.totalAmount;
     if (updateData.depositAmount !== undefined) order.depositAmount = updateData.depositAmount;
     if (updateData.discountAmount !== undefined) order.discountAmount = updateData.discountAmount;
+
+    // 🔥 修复Bug2：编辑订单时同步更新codAmount
+    // 只有当codAmount之前没有被代收管理修改过（即codAmount等于旧的totalAmount-depositAmount）时才同步
+    // 如果codAmount已被代收管理或取消审核修改过，则保留不变
+    if (updateData.totalAmount !== undefined || updateData.depositAmount !== undefined) {
+      const isCodUnmodified = Math.abs(oldCodAmount - oldCollectAmount) < 0.01;
+      if (isCodUnmodified) {
+        const newTotalAmount = Number(order.totalAmount) || 0;
+        const newDepositAmount = Number(order.depositAmount) || 0;
+        order.codAmount = newTotalAmount - newDepositAmount;
+        console.log(`[订单编辑] codAmount同步更新: ${oldCodAmount} → ${order.codAmount}`);
+      } else {
+        console.log(`[订单编辑] codAmount已被代收管理修改过(${oldCodAmount} ≠ ${oldCollectAmount})，保留不变`);
+      }
+    }
+
     // 🔥 修复：添加产品列表的更新
     if (updateData.products !== undefined) order.products = updateData.products;
     // 🔥 修复：添加截图字段的更新

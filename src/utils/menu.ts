@@ -1,5 +1,6 @@
 import type { MenuItem } from '@/config/menu'
 import { useUserStore } from '@/stores/user'
+import { moduleStatusService } from '@/services/moduleStatusService'
 
 /**
  * 检查用户是否有权限访问菜单项
@@ -150,39 +151,115 @@ export function filterMenuItems(
  * @param menuItems 完整菜单配置
  * @returns 用户可访问的菜单
  */
-export function getUserAccessibleMenus(menuItems: MenuItem[]): MenuItem[] {
+export async function getUserAccessibleMenus(menuItems: MenuItem[]): Promise<MenuItem[]> {
   const userStore = useUserStore()
 
-  console.log('[getUserAccessibleMenus] 开始获取用户可访问菜单')
-  console.log('[getUserAccessibleMenus] userStore.currentUser:', userStore.currentUser)
-  console.log('[getUserAccessibleMenus] userStore.permissions:', userStore.permissions)
+  console.log('[getUserAccessibleMenus] ========== 开始获取用户可访问菜单 ==========')
+  console.log('[getUserAccessibleMenus] 输入菜单项数量:', menuItems?.length || 0)
 
   if (!userStore.currentUser) {
-    console.log('[getUserAccessibleMenus] 用户未登录，返回空菜单')
+    console.log('[getUserAccessibleMenus] ❌ 用户未登录，返回空菜单')
     return []
   }
 
   const userRole = userStore.currentUser.role
   const userPermissions = userStore.permissions
 
+  console.log('[getUserAccessibleMenus] ✅ 用户已登录')
+  console.log('[getUserAccessibleMenus] 用户ID:', userStore.currentUser.id)
+  console.log('[getUserAccessibleMenus] 用户名:', userStore.currentUser.name)
   console.log('[getUserAccessibleMenus] 用户角色:', userRole)
+  console.log('[getUserAccessibleMenus] 用户权限数量:', userPermissions.length)
   console.log('[getUserAccessibleMenus] 用户权限列表:', userPermissions)
 
-  // 超级管理员和管理员拥有所有权限，但仍需过滤隐藏的菜单项
+  // ========== 第一步: 模块过滤(功能级控制) ==========
+  let enabledModules: string[] = []
+  try {
+    enabledModules = await moduleStatusService.getEnabledModules()
+    console.log('[模块过滤] 成功获取启用的模块:', enabledModules)
+  } catch (error) {
+    console.error('[模块过滤] 获取模块状态失败，使用默认配置:', error)
+    // ✅ 关键: 失败时返回所有模块ID，保证系统可用
+    enabledModules = [
+      'dashboard', 'customer', 'order', 'finance', 'logistics',
+      'service', 'data', 'performance', 'product', 'service-management', 'system'
+    ]
+    console.log('[模块过滤] 使用默认模块列表:', enabledModules)
+  }
+
+  // 根据模块状态过滤菜单
+  const filterByModuleStatus = (items: MenuItem[], isTopLevel = true): MenuItem[] => {
+    console.log(`[filterByModuleStatus] 输入菜单数量: ${items.length}, 是否顶层: ${isTopLevel}`)
+    if (isTopLevel) {
+      console.log('[filterByModuleStatus] 启用的模块:', enabledModules)
+    }
+
+    const result = items.filter(item => {
+      // ✅ 关键1: dashboard始终显示，不受模块控制
+      if (item.id === 'dashboard') {
+        console.log('[filterByModuleStatus] ✅ dashboard始终显示')
+        return true
+      }
+
+      // ✅ 关键2: 只对顶层菜单检查模块状态，子菜单不检查
+      if (isTopLevel && item.id && !enabledModules.includes(item.id)) {
+        console.log(`[filterByModuleStatus] ❌ 模块未启用，过滤菜单: ${item.title} (${item.id})`)
+        return false
+      }
+
+      if (isTopLevel && item.id) {
+        console.log(`[filterByModuleStatus] ✅ 模块已启用: ${item.title} (${item.id})`)
+      }
+
+      // ✅ 子菜单直接保留，不进行模块检查
+      return true
+    }).map(item => {
+      // 🔥 修复: 创建新对象，子菜单不进行模块过滤
+      if (item.children && item.children.length > 0) {
+        return {
+          ...item,
+          children: item.children.map(child => ({ ...child }))
+        }
+      }
+      return { ...item }
+    })
+
+    console.log('[filterByModuleStatus] 输出菜单数量:', result.length)
+    if (isTopLevel) {
+      console.log('[filterByModuleStatus] 输出菜单:', result.map(m => ({ id: m.id, title: m.title, childrenCount: m.children?.length || 0 })))
+    }
+
+    return result
+  }
+
+  // 执行模块过滤
+  let filteredByModule = filterByModuleStatus([...menuItems])
+  console.log('[模块过滤] 过滤后的菜单数量:', filteredByModule.length)
+  console.log('[模块过滤] 过滤后的菜单:', filteredByModule.map(m => ({ id: m.id, title: m.title })))
+
+  // ========== 第二步: 权限过滤(用户级控制) ==========
+  // 超级管理员和管理员看到所有启用的模块
   if (userRole === 'super_admin' || userRole === 'admin' || userPermissions.includes('*')) {
-    console.log('[getUserAccessibleMenus] 超级管理员或管理员，返回所有菜单（排除隐藏项）')
-    // 🔥 过滤掉 hidden: true 的菜单项
-    return menuItems.filter(item => !item.hidden).map(item => {
+    console.log('[权限过滤] ✅ 管理员权限，返回所有启用的模块（排除隐藏项）')
+    // 过滤掉 hidden: true 的菜单项
+    const result = filteredByModule.filter(item => !item.hidden).map(item => {
       if (item.children) {
         return { ...item, children: item.children.filter(child => !child.hidden) }
       }
       return item
     })
+    console.log('[权限过滤] 最终菜单数量:', result.length)
+    console.log('[权限过滤] 最终菜单:', result.map(m => ({ id: m.id, title: m.title })))
+    console.log('[getUserAccessibleMenus] ========== 菜单获取完成 ==========')
+    return result
   }
 
-  console.log('[getUserAccessibleMenus] 普通用户，开始过滤菜单')
-  const filteredMenus = filterMenuItems(menuItems, userRole, userPermissions)
-  console.log('[getUserAccessibleMenus] 过滤后的菜单:', filteredMenus)
+  // 普通用户根据权限过滤
+  console.log('[权限过滤] 普通用户，开始权限过滤')
+  const filteredMenus = filterMenuItems(filteredByModule, userRole, userPermissions)
+  console.log('[权限过滤] 最终菜单数量:', filteredMenus.length)
+  console.log('[权限过滤] 最终菜单:', filteredMenus.map(m => ({ id: m.id, title: m.title })))
+  console.log('[getUserAccessibleMenus] ========== 菜单获取完成 ==========')
 
   return filteredMenus
 }
