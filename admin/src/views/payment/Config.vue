@@ -172,7 +172,9 @@
             <el-button type="primary" @click="handleSaveWechat" :loading="savingWechat">
               保存微信配置
             </el-button>
-            <el-button @click="handleTestWechat">测试连接</el-button>
+            <el-tooltip content="请先保存配置，再点击测试连接验证配置是否正确" placement="top">
+              <el-button @click="handleTestWechat" :loading="testingWechat">测试连接</el-button>
+            </el-tooltip>
           </div>
         </el-card>
       </el-tab-pane>
@@ -270,7 +272,76 @@
             <el-button type="primary" @click="handleSaveAlipay" :loading="savingAlipay">
               保存支付宝配置
             </el-button>
-            <el-button @click="handleTestAlipay">测试连接</el-button>
+            <el-tooltip content="请先保存配置，再点击测试连接验证配置是否正确" placement="top">
+              <el-button @click="handleTestAlipay" :loading="testingAlipay">测试连接</el-button>
+            </el-tooltip>
+          </div>
+        </el-card>
+      </el-tab-pane>
+
+      <!-- 对公转账配置 -->
+      <el-tab-pane label="对公转账配置" name="bank">
+        <el-card shadow="never" class="config-card">
+          <div class="config-header">
+            <div class="config-title">
+              <div class="pay-logo bank">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.5 1L2 6v2h19V6l-9.5-5zM5 10v6H3v2h18v-2h-2v-6h-2v6h-3v-6h-2v6H9v-6H7v6H5v-6zm-3 10v2h20v-2H2z"/></svg>
+              </div>
+              <div>
+                <h3>对公转账</h3>
+                <span class="config-desc">企业客户可通过银行转账方式付款，管理员确认到账后手动激活</span>
+              </div>
+            </div>
+            <el-switch v-model="bankConfig.enabled" active-text="已启用" inactive-text="已禁用" />
+          </div>
+
+          <el-divider />
+
+          <el-form :model="bankConfig" label-width="140px" class="config-form">
+            <el-form-item label="开户银行" required>
+              <el-input v-model="bankConfig.bankName" placeholder="如：中国工商银行" />
+              <div class="form-tip">公司对公账户的开户银行名称</div>
+            </el-form-item>
+
+            <el-form-item label="账户名称" required>
+              <el-input v-model="bankConfig.accountName" placeholder="如：XX科技有限公司" />
+              <div class="form-tip">对公账户的户名，即公司全称</div>
+            </el-form-item>
+
+            <el-form-item label="银行账号" required>
+              <el-input v-model="bankConfig.accountNo" placeholder="请输入对公银行账号" />
+              <div class="form-tip">对公账户的银行账号</div>
+            </el-form-item>
+
+            <el-form-item label="开户支行">
+              <el-input v-model="bankConfig.bankBranch" placeholder="如：中国工商银行XX支行" />
+              <div class="form-tip">开户支行名称，便于客户准确汇款</div>
+            </el-form-item>
+
+            <el-form-item label="转账备注说明">
+              <el-input v-model="bankConfig.remark" type="textarea" :rows="3"
+                placeholder="请在转账备注中注明公司名称和联系方式，以便我们快速确认到账。" />
+              <div class="form-tip">该说明将显示在官网支付页面，引导客户正确填写转账备注</div>
+            </el-form-item>
+          </el-form>
+
+          <el-alert type="info" :closable="false" style="margin-top: 16px">
+            <template #title>
+              <strong>对公转账流程说明</strong>
+            </template>
+            <ol style="margin: 8px 0; padding-left: 20px; line-height: 2">
+              <li>客户在官网选择"对公转账"方式下单</li>
+              <li>系统生成待付订单，向客户展示以上银行账户信息</li>
+              <li>客户通过银行转账将款项汇入对公账户</li>
+              <li>管理员在"支付列表"中找到对应订单，点击"确认到账"</li>
+              <li>系统自动完成租户激活、授权码生成等交付流程</li>
+            </ol>
+          </el-alert>
+
+          <div class="form-footer">
+            <el-button type="primary" @click="handleSaveBank" :loading="savingBank">
+              保存对公转账配置
+            </el-button>
           </div>
         </el-card>
       </el-tab-pane>
@@ -280,7 +351,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElNotification } from 'element-plus'
 import { Check, CopyDocument, Upload } from '@element-plus/icons-vue'
 import request from '@/api/request'
 import { adminApi } from '@/api/admin'
@@ -289,6 +360,7 @@ const activeTab = ref('wechat')
 const saving = ref(false)
 const savingWechat = ref(false)
 const savingAlipay = ref(false)
+const savingBank = ref(false)
 
 const baseUrl = window.location.origin.replace(':5174', ':3000')
 
@@ -323,13 +395,23 @@ const alipayConfig = reactive({
   notifyUrl: `${baseUrl}/api/v1/public/payment/alipay/notify`
 })
 
+const bankConfig = reactive({
+  enabled: false,
+  bankName: '',
+  accountName: '',
+  accountNo: '',
+  bankBranch: '',
+  remark: ''
+})
+
 const fetchConfig = async () => {
   try {
     const res = await request.get('/payment/config')
     if (res.success) {
-      const { wechat, alipay } = res.data
+      const { wechat, alipay, bank } = res.data
       if (wechat) Object.assign(wechatConfig, wechat)
       if (alipay) Object.assign(alipayConfig, alipay)
+      if (bank) Object.assign(bankConfig, bank)
     }
   } catch (error) {
     console.error('获取配置失败:', error)
@@ -372,15 +454,133 @@ const handleSaveAll = async () => {
   saving.value = true
   await handleSaveWechat()
   await handleSaveAlipay()
+  await handleSaveBank()
   saving.value = false
 }
 
-const handleTestWechat = () => {
-  ElMessage.info('微信支付测试功能开发中')
+const handleSaveBank = async () => {
+  savingBank.value = true
+  try {
+    const res = await request.post('/payment/config/bank', bankConfig)
+    if (res.success) {
+      ElMessage.success('对公转账配置已保存')
+    } else {
+      ElMessage.error(res.message || '保存失败')
+    }
+  } catch (error) {
+    ElMessage.error('保存失败')
+  } finally {
+    savingBank.value = false
+  }
 }
 
-const handleTestAlipay = () => {
-  ElMessage.info('支付宝测试功能开发中')
+const testingWechat = ref(false)
+const testingAlipay = ref(false)
+
+const handleTestWechat = async () => {
+  // 前端预校验：检查是否已填写必要配置
+  if (!wechatConfig.mchId || !wechatConfig.appId) {
+    ElMessage.warning('请先填写商户号和AppID，并保存配置后再测试连接')
+    return
+  }
+  if (wechatConfig.apiVersion === 'v2' && !wechatConfig.apiKey) {
+    ElMessage.warning('请先填写API密钥(V2)，并保存配置后再测试连接')
+    return
+  }
+  if (wechatConfig.apiVersion === 'v3' && !wechatConfig.apiKeyV3) {
+    ElMessage.warning('请先填写V3密钥，并保存配置后再测试连接')
+    return
+  }
+
+  testingWechat.value = true
+  try {
+    const res = await request.post('/payment/config/wechat/test')
+    if (res.success && res.data) {
+      const { passed, items, message } = res.data
+      const details = items.map((item: any) =>
+        `<div style="margin: 4px 0;">${item.status ? '✅' : '❌'} <b>${item.name}</b>: ${item.message}</div>`
+      ).join('')
+
+      if (passed) {
+        ElMessage.success(message || '微信支付配置验证通过')
+      } else {
+        ElMessage.warning(message || '部分配置项未通过验证')
+      }
+      ElNotification({
+        title: '微信支付测试结果',
+        message: `<div style="max-width: 400px;">${details}</div>`,
+        type: passed ? 'success' : 'warning',
+        duration: 10000,
+        dangerouslyUseHTMLString: true
+      })
+    } else {
+      ElMessage.error(res.message || '测试失败')
+    }
+  } catch (error: any) {
+    const status = error?.response?.status
+    if (status === 404) {
+      ElMessage.error('测试接口暂不可用，请确认后端服务已重启并加载最新代码')
+    } else if (status === 401) {
+      ElMessage.error('登录已过期，请重新登录后再试')
+    } else if (!window.navigator.onLine) {
+      ElMessage.error('网络连接已断开，请检查网络设置')
+    } else {
+      ElMessage.error('测试请求失败，请检查后端服务是否正常运行')
+    }
+  } finally {
+    testingWechat.value = false
+  }
+}
+
+const handleTestAlipay = async () => {
+  // 前端预校验：检查是否已填写必要配置
+  if (!alipayConfig.appId) {
+    ElMessage.warning('请先填写支付宝AppID，并保存配置后再测试连接')
+    return
+  }
+  if (!alipayConfig.privateKey || alipayConfig.privateKey === '******') {
+    ElMessage.warning('请先填写支付宝商家私钥，并保存配置后再测试连接')
+    return
+  }
+
+  testingAlipay.value = true
+  try {
+    const res = await request.post('/payment/config/alipay/test')
+    if (res.success && res.data) {
+      const { passed, items, message } = res.data
+      const details = items.map((item: any) =>
+        `<div style="margin: 4px 0;">${item.status ? '✅' : '❌'} <b>${item.name}</b>: ${item.message}</div>`
+      ).join('')
+
+      if (passed) {
+        ElMessage.success(message || '支付宝配置验证通过')
+      } else {
+        ElMessage.warning(message || '部分配置项未通过验证')
+      }
+      ElNotification({
+        title: '支付宝测试结果',
+        message: `<div style="max-width: 400px;">${details}</div>`,
+        type: passed ? 'success' : 'warning',
+        duration: 10000,
+        dangerouslyUseHTMLString: true
+      })
+    } else {
+      ElMessage.error(res.message || '测试失败')
+    }
+  } catch (error: any) {
+    const status = error?.response?.status
+    if (status === 404) {
+      ElMessage.error('测试接口暂不可用，请确认后端服务已重启并加载最新代码')
+    } else if (status === 401) {
+      ElMessage.error('登录已过期，请重新登录后再试')
+    } else if (!window.navigator.onLine) {
+      ElMessage.error('网络连接已断开，请检查网络设置')
+    } else {
+      ElMessage.error('测试请求失败，请检查后端服务是否正常运行')
+    }
+  } finally {
+    testingAlipay.value = false
+  }
 }
 
 const handleFileUpload = async (file: any, field: string) => {
@@ -478,6 +678,7 @@ onMounted(() => {
 
   &.wechat { background: linear-gradient(135deg, #07c160 0%, #00b057 100%); color: white; }
   &.alipay { background: linear-gradient(135deg, #1677ff 0%, #0958d9 100%); color: white; }
+  &.bank { background: linear-gradient(135deg, #e6a23c 0%, #d48806 100%); color: white; }
 }
 
 .config-form {

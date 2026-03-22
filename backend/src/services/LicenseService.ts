@@ -7,6 +7,10 @@
  * 2. 在线模式：定期向管理后台验证授权状态
  */
 import { AppDataSource } from '../config/database';
+import { License } from '../entities/License';
+import { LicenseLog } from '../entities/LicenseLog';
+import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 
 export interface LicenseInfo {
   activated: boolean;
@@ -244,6 +248,124 @@ class LicenseService {
    */
   clearCache() {
     onlineVerifyCache = null;
+  }
+
+  // ===== Admin管理后台所需的CRUD方法 =====
+
+  async createLicense(data: {
+    customerName: string; customerContact?: string; customerPhone?: string;
+    customerEmail?: string; licenseType: string; maxUsers?: number;
+    maxStorageGb?: number; features?: string[]; expiresAt?: Date; notes?: string; createdBy?: string;
+  }) {
+    const id = crypto.randomUUID();
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const segs = Array.from({length:4}, () => Array.from({length:4}, () => chars[Math.floor(Math.random()*chars.length)]).join(''));
+    const licenseKey = `PRIVATE-${segs.join('-')}`;
+    const now = new Date().toISOString().slice(0,19).replace('T',' ');
+    const expiresAt = data.expiresAt ? data.expiresAt.toISOString().slice(0,19).replace('T',' ') : null;
+    await AppDataSource.query(
+      `INSERT INTO licenses (id,license_key,customer_name,customer_contact,customer_phone,customer_email,license_type,max_users,max_storage_gb,features,expires_at,status,notes,created_by,customer_type,created_at,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',?,?,?,NOW(),NOW())`,
+      [id,licenseKey,data.customerName,data.customerContact,data.customerPhone,data.customerEmail,
+       data.licenseType,data.maxUsers||10,data.maxStorageGb||5,JSON.stringify(data.features||[]),
+       expiresAt,data.notes,data.createdBy,'saas']
+    );
+    const rows = await AppDataSource.query('SELECT * FROM licenses WHERE id=?',[id]);
+    return rows[0];
+  }
+
+  async getLicenseList(params: { page?:number; pageSize?:number; keyword?:string; status?:string; licenseType?:string; sortBy?:string; sortOrder?:'ASC'|'DESC' }) {
+    const { page=1, pageSize=20, keyword, status, licenseType, sortBy='created_at', sortOrder='DESC' } = params;
+    const offset = (page-1)*pageSize;
+    const conditions: string[] = ['1=1'];
+    const values: any[] = [];
+    if (keyword) { conditions.push('(customer_name LIKE ? OR license_key LIKE ?)'); values.push(`%${keyword}%`,`%${keyword}%`); }
+    if (status)  { conditions.push('status=?'); values.push(status); }
+    if (licenseType) { conditions.push('license_type=?'); values.push(licenseType); }
+    const where = conditions.join(' AND ');
+    const safeSortBy = ['created_at','expires_at','customer_name','status'].includes(sortBy) ? sortBy : 'created_at';
+    const [list, countRows] = await Promise.all([
+      AppDataSource.query(`SELECT * FROM licenses WHERE ${where} ORDER BY ${safeSortBy} ${sortOrder} LIMIT ? OFFSET ?`,[...values,pageSize,offset]),
+      AppDataSource.query(`SELECT COUNT(*) as total FROM licenses WHERE ${where}`,values)
+    ]);
+    return { list, total: Number(countRows[0]?.total)||0 };
+  }
+
+  async getLicenseById(id: string) {
+    const rows = await AppDataSource.query('SELECT * FROM licenses WHERE id=?',[id]);
+    return rows[0] || null;
+  }
+
+  async updateLicense(id: string, data: any) {
+    const sets: string[] = [];
+    const values: any[] = [];
+    const allowed = ['customer_name','customer_contact','customer_phone','customer_email','license_type','max_users','max_storage_gb','features','expires_at','notes','status'];
+    for (const [k,v] of Object.entries(data)) {
+      if (allowed.includes(k)) { sets.push(`${k}=?`); values.push(v); }
+    }
+    if (sets.length===0) { const r = await AppDataSource.query('SELECT * FROM licenses WHERE id=?',[id]); return r[0]; }
+    await AppDataSource.query(`UPDATE licenses SET ${sets.join(',')},updated_at=NOW() WHERE id=?`,[...values,id]);
+    const rows = await AppDataSource.query('SELECT * FROM licenses WHERE id=?',[id]);
+    return rows[0];
+  }
+
+  async deleteLicense(id: string) {
+    await AppDataSource.query('DELETE FROM licenses WHERE id=?',[id]);
+  }
+
+  async activateLicense(id: string, _machineId?: string) {
+    await AppDataSource.query(`UPDATE licenses SET status='active',activated_at=NOW(),updated_at=NOW() WHERE id=?`,[id]);
+    const rows = await AppDataSource.query('SELECT * FROM licenses WHERE id=?',[id]);
+    return rows[0];
+  }
+
+  async deactivateLicense(id: string, _reason?: string) {
+    await AppDataSource.query(`UPDATE licenses SET status='revoked',updated_at=NOW() WHERE id=?`,[id]);
+    const rows = await AppDataSource.query('SELECT * FROM licenses WHERE id=?',[id]);
+    return rows[0];
+  }
+
+  async renewLicense(id: string, expiresAt: Date) {
+    const exp = expiresAt.toISOString().slice(0,19).replace('T',' ');
+    await AppDataSource.query(`UPDATE licenses SET expires_at=?,status='active',updated_at=NOW() WHERE id=?`,[exp,id]);
+    const rows = await AppDataSource.query('SELECT * FROM licenses WHERE id=?',[id]);
+    return rows[0];
+  }
+
+  async verifyLicense(licenseKey: string, _machineId?: string) {
+    const rows = await AppDataSource.query('SELECT * FROM licenses WHERE license_key=?',[licenseKey]);
+    const lic = rows[0];
+    if (!lic) return { valid:false, message:'授权码不存在' };
+    if (lic.status==='revoked') return { valid:false, message:'授权已吊销' };
+    if (lic.expires_at && new Date(lic.expires_at)<new Date()) return { valid:false, message:'授权已过期' };
+    return { valid:true, message:'授权有效', license:lic };
+  }
+
+  async getLicenseLogs(id: string, params: { page?:number; pageSize?:number }) {
+    const { page=1, pageSize=20 } = params;
+    const offset = (page-1)*pageSize;
+    const [list, countRows] = await Promise.all([
+      AppDataSource.query('SELECT * FROM license_logs WHERE license_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?',[id,pageSize,offset]),
+      AppDataSource.query('SELECT COUNT(*) as total FROM license_logs WHERE license_id=?',[id])
+    ]);
+    return { list, total: Number(countRows[0]?.total)||0 };
+  }
+
+  async getStatistics() {
+    const [total,active,expired,pending,revoked] = await Promise.all([
+      AppDataSource.query('SELECT COUNT(*) as c FROM licenses'),
+      AppDataSource.query("SELECT COUNT(*) as c FROM licenses WHERE status='active'"),
+      AppDataSource.query("SELECT COUNT(*) as c FROM licenses WHERE status='expired' OR (expires_at IS NOT NULL AND expires_at < NOW())"),
+      AppDataSource.query("SELECT COUNT(*) as c FROM licenses WHERE status='pending'"),
+      AppDataSource.query("SELECT COUNT(*) as c FROM licenses WHERE status='revoked'")
+    ]);
+    return {
+      total:   Number(total[0]?.c)||0,
+      active:  Number(active[0]?.c)||0,
+      expired: Number(expired[0]?.c)||0,
+      pending: Number(pending[0]?.c)||0,
+      revoked: Number(revoked[0]?.c)||0
+    };
   }
 }
 

@@ -1,14 +1,12 @@
 /**
  * 模块状态服务
  * 用于获取和缓存管理后台设置的模块启用状态
- *
- * 设计原则:
- * 1. 防御性编程: 所有可能失败的地方都有容错处理
- * 2. 降级策略: API失败时返回默认模块列表,保证系统可用
- * 3. 缓存机制: 减少API调用,提升性能
- * 4. 详细日志: 方便排查问题
  */
 import request from '@/utils/request'
+
+// 只在开发环境输出详细日志
+const DEBUG = import.meta.env.DEV
+const debugLog = (...args: any[]) => { if (DEBUG) console.log(...args) }
 
 // 默认启用的所有模块列表(降级策略)
 const DEFAULT_MODULES = [
@@ -34,20 +32,19 @@ class ModuleStatusService {
 
   /**
    * 获取启用的模块列表
-   * @returns 启用的模块ID数组
    */
   async getEnabledModules(): Promise<string[]> {
     const now = Date.now()
 
     // 如果缓存有效,直接返回
     if (this.isInitialized && (now - this.lastFetchTime) < this.CACHE_DURATION) {
-      console.log('[ModuleStatus] 使用缓存的模块状态')
+      debugLog('[ModuleStatus] 使用缓存的模块状态')
       return Array.from(this.enabledModules)
     }
 
     // 防止并发请求
     if (this.isFetching) {
-      console.log('[ModuleStatus] 正在获取模块状态,等待结果...')
+      debugLog('[ModuleStatus] 正在获取模块状态,等待结果...')
       // 等待当前请求完成
       await this.waitForFetch()
       return Array.from(this.enabledModules)
@@ -56,10 +53,8 @@ class ModuleStatusService {
     this.isFetching = true
 
     try {
-      console.log('[ModuleStatus] ========== 开始获取模块状态 ==========')
+      debugLog('[ModuleStatus] ========== 开始获取模块状态 ==========')
       const response = await request.get('/system/modules/status') as any
-
-      console.log('[ModuleStatus] API响应完整对象:', JSON.stringify(response, null, 2))
 
       // 兼容两种响应格式：
       // 1. 响应拦截器已解包: response = { enabledModules: [...] }
@@ -68,18 +63,18 @@ class ModuleStatusService {
       if (response?.enabledModules) {
         // 格式1：拦截器已解包，response 就是 data
         modules = response.enabledModules as string[]
-        console.log('[ModuleStatus] 检测到已解包格式，直接获取 enabledModules')
+        debugLog('[ModuleStatus] 检测到已解包格式，直接获取 enabledModules')
       } else if (response?.success && response?.data?.enabledModules) {
         // 格式2：原始完整格式
         modules = response.data.enabledModules as string[]
-        console.log('[ModuleStatus] 检测到原始格式，从 response.data 获取 enabledModules')
+        debugLog('[ModuleStatus] 检测到原始格式，从 response.data 获取 enabledModules')
       }
 
       if (modules) {
 
-        console.log('[ModuleStatus] 提取的模块列表:', modules)
-        console.log('[ModuleStatus] 是否为数组:', Array.isArray(modules))
-        console.log('[ModuleStatus] 数组长度:', modules.length)
+        debugLog('[ModuleStatus] 提取的模块列表:', modules)
+        debugLog('[ModuleStatus] 是否为数组:', Array.isArray(modules))
+        debugLog('[ModuleStatus] 数组长度:', modules.length)
 
         // 验证返回的数据
         if (Array.isArray(modules) && modules.length > 0) {
@@ -87,8 +82,8 @@ class ModuleStatusService {
           this.lastFetchTime = now
           this.isInitialized = true
 
-          console.log('[ModuleStatus] ✅ 成功更新模块状态:', Array.from(this.enabledModules))
-          console.log('[ModuleStatus] ========== 模块状态获取完成 ==========')
+          debugLog('[ModuleStatus] ✅ 成功更新模块状态:', Array.from(this.enabledModules))
+          debugLog('[ModuleStatus] ========== 模块状态获取完成 ==========')
           return Array.from(this.enabledModules)
         } else {
           console.warn('[ModuleStatus] ⚠️ API返回的模块列表为空,使用默认配置')
@@ -105,7 +100,7 @@ class ModuleStatusService {
 
       // 如果之前有缓存,继续使用旧缓存
       if (this.isInitialized && this.enabledModules.size > 0) {
-        console.log('[ModuleStatus] 使用旧缓存的模块状态')
+        debugLog('[ModuleStatus] 使用旧缓存的模块状态')
         return Array.from(this.enabledModules)
       }
 

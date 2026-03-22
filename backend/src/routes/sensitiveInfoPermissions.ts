@@ -3,6 +3,7 @@ import { AppDataSource } from '../config/database';
 import { SensitiveInfoPermission } from '../entities/SensitiveInfoPermission';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { logger } from '../config/logger';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -11,7 +12,7 @@ const getRepository = () => {
   if (!AppDataSource?.isInitialized) {
     throw new Error('数据库连接未初始化');
   }
-  return AppDataSource.getRepository(SensitiveInfoPermission);
+  return getTenantRepo(SensitiveInfoPermission);
 };
 
 /**

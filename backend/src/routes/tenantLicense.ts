@@ -5,12 +5,78 @@
 import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
+import { adminNotificationService } from '../services/AdminNotificationService';
 
 const router = Router();
 
 /**
+ * 安全解析JSON：兼容TEXT列（字符串）和JSON列（已自动解析为对象/数组）
+ */
+function safeJsonParse(val: any): any {
+  if (val == null) return null;
+  if (typeof val === 'object') return val;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return null; }
+  }
+  return null;
+}
+
+/**
+ * 检查私有部署激活状态（无需认证）
+ * 私有部署模式下，检查是否已有激活的租户
+ * 如果已激活，返回租户信息，前端可直接跳过授权码输入
+ */
+router.get('/check-private', async (_req: Request, res: Response) => {
+  try {
+    const rows = await AppDataSource.query(
+      `SELECT t.id, t.name, t.code, t.license_status, t.status, t.expire_date,
+              t.max_users, t.features,
+              p.name as package_name, p.features as package_features
+       FROM tenants t
+       LEFT JOIN tenant_packages p ON t.package_id = p.id
+       WHERE t.license_status = 'active' AND t.status != 'disabled'
+       ORDER BY t.activated_at DESC
+       LIMIT 1`
+    );
+    const tenant = rows[0];
+
+    if (!tenant) {
+      return res.json({ success: true, data: { activated: false } });
+    }
+
+    if (tenant.expire_date && new Date(tenant.expire_date) < new Date()) {
+      return res.json({
+        success: true,
+        data: { activated: false, message: '授权已过期，请重新激活或续费' }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        activated: true,
+        tenantId: tenant.id,
+        tenantCode: tenant.code,
+        tenantName: tenant.name,
+        packageName: tenant.package_name,
+        maxUsers: tenant.max_users,
+        expireDate: tenant.expire_date,
+        features: safeJsonParse(tenant.features),
+        packageFeatures: safeJsonParse(tenant.package_features),
+        deployType: 'private'   // 私有激活检查返回的始终是private
+      }
+    });
+  } catch (error: any) {
+    console.error('[Tenant License] Check private activation failed:', error);
+    res.json({ success: true, data: { activated: false } });
+  }
+});
+
+/**
  * 验证租户授权码
- * 用于登录前验证租户身份，类似企业微信输入企业ID
+ * 支持两种授权码：
+ *   PRIVATE-XXXX-XXXX-XXXX-XXXX → 私有部署授权码（查 licenses 表）
+ *   TENANT-XXXX 或 LIC-XXXX    → SaaS租户授权码（查 tenants 表）
  */
 router.post('/verify', async (req: Request, res: Response) => {
   try {
@@ -19,76 +85,149 @@ router.post('/verify', async (req: Request, res: Response) => {
     const userAgent = req.headers['user-agent'];
 
     if (!licenseKey) {
-      return res.status(400).json({ success: false, message: '请输入租户授权码' });
+      return res.status(400).json({ success: false, message: '请输入授权码' });
     }
 
-    // 查询租户
-    const [rows] = await AppDataSource.query(
+    // ============ 私有部署授权码（PRIVATE- 前缀）============
+    if (licenseKey.toUpperCase().startsWith('PRIVATE-')) {
+      const rows = await AppDataSource.query(
+        `SELECT l.*, pc.customer_name as company_name
+         FROM licenses l
+         LEFT JOIN private_customers pc ON l.private_customer_id = pc.id
+         WHERE l.license_key = ? AND l.customer_type = 'private'`,
+        [licenseKey]
+      );
+      const lic = rows[0];
+
+      if (!lic) {
+        await AppDataSource.query(
+          `INSERT INTO license_logs (id, license_id, license_key, action, result, message, ip_address, user_agent)
+           VALUES (?, NULL, ?, 'verify', 'failed', '私有授权码不存在', ?, ?)`,
+          [uuidv4(), licenseKey, ip, userAgent]
+        ).catch(() => {});
+        return res.status(404).json({ success: false, message: '授权码无效，请检查后重试' });
+      }
+
+      if (lic.status === 'revoked') {
+        return res.status(403).json({ success: false, message: '该授权已被吊销，请联系管理员' });
+      }
+      if (lic.expires_at && new Date(lic.expires_at) < new Date()) {
+        return res.status(403).json({ success: false, message: '授权已过期，请联系管理员续费', expireDate: lic.expires_at });
+      }
+
+      // 私有授权码激活：检查本地 tenants 表是否已有该授权码对应的租户
+      const existTenants = await AppDataSource.query(
+        `SELECT id, name, code, license_status, expire_date FROM tenants WHERE license_key = ?`,
+        [licenseKey]
+      );
+      let tenant = existTenants[0];
+
+      if (!tenant) {
+        // 首次激活：在本地 tenants 表创建私有租户记录
+        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const tenantId = uuidv4();
+        // 生成私有编码（P前缀区分私有）
+        const tenantCode = `P${new Date().getFullYear().toString().slice(2)}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}${Math.random().toString(36).substring(2,6).toUpperCase()}`;
+        await AppDataSource.query(
+          `INSERT INTO tenants (id, name, code, license_key, license_status, max_users, max_storage_gb, features, status, activated_at, expire_date, last_verify_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
+          [
+            tenantId,
+            lic.customer_name || lic.company_name || '私有部署企业',
+            tenantCode,
+            licenseKey,
+            lic.max_users || 50,
+            lic.max_storage_gb || 50,
+            lic.features || '[]',
+            now, // activated_at
+            lic.expires_at || null,
+            now, // last_verify_at
+            now, // created_at
+            now  // updated_at
+          ]
+        );
+        // 更新 licenses 表状态
+        await AppDataSource.query(`UPDATE licenses SET status = 'active', activated_at = ? WHERE id = ?`, [now, lic.id]);
+        tenant = { id: tenantId, name: lic.customer_name || '私有部署企业', code: tenantCode, license_status: 'active', expire_date: lic.expires_at };
+        console.log(`[TenantLicense] 私有授权码首次激活，创建本地租户: ${tenant.name} (${tenantCode})`);
+
+        // 通知管理员
+        adminNotificationService.notify('tenant_login', {
+          title: `私有客户首次激活：${tenant.name}`,
+          content: `私有部署客户「${tenant.name}」（编码：${tenantCode}）首次激活系统，IP：${ip || '未知'}`,
+          relatedId: tenant.id,
+          relatedType: 'tenant',
+          extraData: { tenantName: tenant.name, tenantCode, ip, deployType: 'private' }
+        }).catch((err: any) => console.error('[TenantLicense] 通知失败:', err.message));
+      } else {
+        // 已激活：更新验证时间
+        await AppDataSource.query(`UPDATE tenants SET last_verify_at = NOW() WHERE id = ?`, [tenant.id]);
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          tenantId: tenant.id,
+          tenantCode: tenant.code,
+          tenantName: tenant.name,
+          packageName: '私有部署版',
+          maxUsers: lic.max_users || 50,
+          expireDate: lic.expires_at,
+          features: safeJsonParse(lic.features),
+          packageFeatures: null,
+          deployType: 'private'   // 🔑 关键标识：告诉前端这是私有部署
+        },
+        message: '私有授权码验证成功'
+      });
+    }
+
+    // ============ SaaS 租户授权码（TENANT- / LIC- 前缀）============
+    const queryResult = await AppDataSource.query(
       `SELECT t.*, p.name as package_name, p.features as package_features
        FROM tenants t
        LEFT JOIN tenant_packages p ON t.package_id = p.id
        WHERE t.license_key = ?`,
       [licenseKey]
     );
-    const tenant = Array.isArray(rows) ? rows[0] : rows;
+    const tenant = queryResult[0];
 
     if (!tenant) {
-      // 记录失败日志
       await AppDataSource.query(
         `INSERT INTO tenant_license_logs (id, tenant_id, license_key, action, result, message, ip_address, user_agent)
          VALUES (?, NULL, ?, 'verify', 'failed', '授权码不存在', ?, ?)`,
         [uuidv4(), licenseKey, ip, userAgent]
-      );
+      ).catch(() => {});
       return res.status(404).json({ success: false, message: '授权码无效，请检查后重试' });
     }
 
-    // 检查租户状态
     if (tenant.status === 'disabled') {
       await logVerify(tenant.id, licenseKey, 'failed', '租户已被禁用', ip, userAgent);
       return res.status(403).json({ success: false, message: '该租户已被禁用，请联系管理员' });
     }
-
-    // 检查授权状态
     if (tenant.license_status === 'suspended') {
       await logVerify(tenant.id, licenseKey, 'failed', '授权已暂停', ip, userAgent);
       return res.status(403).json({ success: false, message: '授权已暂停，请联系管理员' });
     }
-
-    // 检查是否过期
-    if (tenant.expire_date) {
-      const expireDate = new Date(tenant.expire_date);
-      if (expireDate < new Date()) {
-        // 更新状态为过期
-        await AppDataSource.query(
-          `UPDATE tenants SET license_status = 'expired', status = 'expired' WHERE id = ?`,
-          [tenant.id]
-        );
-        await logVerify(tenant.id, licenseKey, 'failed', '授权已过期', ip, userAgent);
-        return res.status(403).json({
-          success: false,
-          message: '授权已过期，请续费后使用',
-          expireDate: tenant.expire_date
-        });
-      }
+    if (tenant.expire_date && new Date(tenant.expire_date) < new Date()) {
+      await AppDataSource.query(`UPDATE tenants SET license_status = 'expired', status = 'expired' WHERE id = ?`, [tenant.id]);
+      await logVerify(tenant.id, licenseKey, 'failed', '授权已过期', ip, userAgent);
+      return res.status(403).json({ success: false, message: '授权已过期，请续费后使用', expireDate: tenant.expire_date });
     }
 
-    // 首次激活
     if (tenant.license_status === 'pending') {
-      await AppDataSource.query(
-        `UPDATE tenants SET license_status = 'active', activated_at = NOW(), last_verify_at = NOW() WHERE id = ?`,
-        [tenant.id]
-      );
+      await AppDataSource.query(`UPDATE tenants SET license_status = 'active', activated_at = NOW(), last_verify_at = NOW() WHERE id = ?`, [tenant.id]);
       await logVerify(tenant.id, licenseKey, 'success', '首次激活成功', ip, userAgent);
+      adminNotificationService.notify('tenant_login', {
+        title: `租户首次激活：${tenant.name}`,
+        content: `租户「${tenant.name}」（编码：${tenant.code}）首次激活，IP：${ip || '未知'}`,
+        relatedId: tenant.id, relatedType: 'tenant',
+        extraData: { tenantName: tenant.name, tenantCode: tenant.code, ip }
+      }).catch((err: any) => console.error('[TenantLicense] 通知失败:', err.message));
     } else {
-      // 更新最后验证时间
-      await AppDataSource.query(
-        `UPDATE tenants SET last_verify_at = NOW() WHERE id = ?`,
-        [tenant.id]
-      );
+      await AppDataSource.query(`UPDATE tenants SET last_verify_at = NOW() WHERE id = ?`, [tenant.id]);
       await logVerify(tenant.id, licenseKey, 'success', '验证成功', ip, userAgent);
     }
 
-    // 返回租户信息（用于登录页显示）
     res.json({
       success: true,
       data: {
@@ -98,13 +237,84 @@ router.post('/verify', async (req: Request, res: Response) => {
         packageName: tenant.package_name,
         maxUsers: tenant.max_users,
         expireDate: tenant.expire_date,
-        features: tenant.features ? JSON.parse(tenant.features) : null,
-        packageFeatures: tenant.package_features ? JSON.parse(tenant.package_features) : null
+        features: safeJsonParse(tenant.features),
+        packageFeatures: safeJsonParse(tenant.package_features),
+        deployType: 'saas'   // 🔑 关键标识：SaaS模式
       },
       message: '授权验证成功'
     });
   } catch (error: any) {
     console.error('[Tenant License] Verify failed:', error);
+    res.status(500).json({ success: false, message: '验证失败，请稍后重试' });
+  }
+});
+
+/**
+ * 通过租户编码识别租户（日常登录用，员工只需输入短编码）
+ */
+router.post('/verify-code', async (req: Request, res: Response) => {
+  try {
+    const { tenantCode } = req.body;
+
+    if (!tenantCode) {
+      return res.status(400).json({ success: false, message: '请输入租户编码' });
+    }
+
+    const rows = await AppDataSource.query(
+      `SELECT t.id, t.name, t.code, t.license_status, t.status, t.expire_date,
+              t.max_users, t.features,
+              p.name as package_name, p.features as package_features
+       FROM tenants t
+       LEFT JOIN tenant_packages p ON t.package_id = p.id
+       WHERE t.code = ?`,
+      [tenantCode.toUpperCase()]
+    );
+    const tenant = rows[0];
+
+    if (!tenant) {
+      return res.status(404).json({ success: false, message: '租户编码不存在，请确认后重试' });
+    }
+
+    if (tenant.license_status === 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: '该租户尚未激活，请先使用授权码激活系统',
+        needActivation: true
+      });
+    }
+
+    if (tenant.status === 'disabled') {
+      return res.status(403).json({ success: false, message: '该租户已被禁用，请联系管理员' });
+    }
+
+    if (tenant.license_status === 'suspended') {
+      return res.status(403).json({ success: false, message: '授权已暂停，请联系管理员' });
+    }
+
+    if (tenant.expire_date && new Date(tenant.expire_date) < new Date()) {
+      return res.status(403).json({
+        success: false,
+        message: '授权已过期，请联系管理员续费',
+        expireDate: tenant.expire_date
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        tenantId: tenant.id,
+        tenantCode: tenant.code,
+        tenantName: tenant.name,
+        packageName: tenant.package_name,
+        maxUsers: tenant.max_users,
+        expireDate: tenant.expire_date,
+        features: safeJsonParse(tenant.features),
+        packageFeatures: safeJsonParse(tenant.package_features)
+      },
+      message: '租户识别成功'
+    });
+  } catch (error: any) {
+    console.error('[Tenant License] Verify code failed:', error);
     res.status(500).json({ success: false, message: '验证失败，请稍后重试' });
   }
 });
@@ -120,7 +330,7 @@ router.get('/info', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '未找到租户信息' });
     }
 
-    const [rows] = await AppDataSource.query(
+    const queryResult = await AppDataSource.query(
       `SELECT t.id, t.name, t.code, t.license_key, t.license_status, t.package_id,
               t.max_users, t.user_count, t.expire_date, t.features, t.activated_at,
               p.name as package_name, p.features as package_features
@@ -129,7 +339,7 @@ router.get('/info', async (req: Request, res: Response) => {
        WHERE t.id = ?`,
       [tenantId]
     );
-    const tenant = Array.isArray(rows) ? rows[0] : rows;
+    const tenant = queryResult[0];
 
     if (!tenant) {
       return res.status(404).json({ success: false, message: '租户不存在' });
@@ -148,8 +358,8 @@ router.get('/info', async (req: Request, res: Response) => {
         userCount: tenant.user_count,
         expireDate: tenant.expire_date,
         activatedAt: tenant.activated_at,
-        features: tenant.features ? JSON.parse(tenant.features) : null,
-        packageFeatures: tenant.package_features ? JSON.parse(tenant.package_features) : null
+        features: safeJsonParse(tenant.features),
+        packageFeatures: safeJsonParse(tenant.package_features)
       }
     });
   } catch (error: any) {
@@ -166,30 +376,27 @@ router.post('/heartbeat', async (req: Request, res: Response) => {
     const tenantId = (req as any).tenantId;
 
     if (!tenantId) {
-      return res.json({ success: true, valid: true }); // 私有部署模式
+      return res.json({ success: true, valid: true });
     }
 
-    const [rows] = await AppDataSource.query(
+    const queryResult = await AppDataSource.query(
       `SELECT license_status, status, expire_date FROM tenants WHERE id = ?`,
       [tenantId]
     );
-    const tenant = Array.isArray(rows) ? rows[0] : rows;
+    const tenant = queryResult[0];
 
     if (!tenant) {
       return res.json({ success: false, valid: false, message: '租户不存在' });
     }
 
-    // 检查状态
     if (tenant.status === 'disabled' || tenant.license_status === 'suspended') {
       return res.json({ success: false, valid: false, message: '授权已暂停' });
     }
 
-    // 检查过期
     if (tenant.expire_date && new Date(tenant.expire_date) < new Date()) {
       return res.json({ success: false, valid: false, message: '授权已过期' });
     }
 
-    // 更新心跳时间
     await AppDataSource.query(
       `UPDATE tenants SET last_verify_at = NOW() WHERE id = ?`,
       [tenantId]
@@ -198,7 +405,7 @@ router.post('/heartbeat', async (req: Request, res: Response) => {
     res.json({ success: true, valid: true });
   } catch (error: any) {
     console.error('[Tenant License] Heartbeat failed:', error);
-    res.json({ success: true, valid: true }); // 出错时不阻断用户
+    res.json({ success: true, valid: true });
   }
 });
 
@@ -224,3 +431,4 @@ function maskLicenseKey(key: string): string {
 }
 
 export default router;
+

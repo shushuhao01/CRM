@@ -50,7 +50,7 @@ __decorate([
     __metadata("design:type", String)
 ], SystemConfig.prototype, "configKey", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'text', comment: '配置值' }),
+    (0, typeorm_1.Column)({ type: 'mediumtext', comment: '配置值' }),
     __metadata("design:type", String)
 ], SystemConfig.prototype, "configValue", void 0);
 __decorate([

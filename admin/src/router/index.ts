@@ -195,6 +195,12 @@ const router = createRouter({
               meta: { title: '通知模板' }
             },
             {
+              path: 'notification-service',
+              name: 'NotificationService',
+              component: () => import('@/views/settings/NotificationService.vue'),
+              meta: { title: '通知服务' }
+            },
+            {
               path: 'operation-logs',
               name: 'OperationLogs',
               component: () => import('@/views/settings/OperationLogs.vue'),

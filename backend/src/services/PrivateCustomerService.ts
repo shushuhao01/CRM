@@ -1,9 +1,12 @@
 import { AppDataSource } from '../config/database';
 import { PrivateCustomer } from '../entities/PrivateCustomer';
 import { v4 as uuidv4 } from 'uuid';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 export class PrivateCustomerService {
-  private customerRepository = AppDataSource.getRepository(PrivateCustomer);
+  private get customerRepository() {
+    return getTenantRepo(PrivateCustomer);
+  }
 
   /**
    * 获取私有客户列表
@@ -159,6 +162,16 @@ export class PrivateCustomerService {
     features: string[];
     expiresAt?: string;
   }) {
+    // 手机号必填验证
+    if (!data.contactPhone || !data.contactPhone.trim()) {
+      throw new Error('联系电话不能为空');
+    }
+
+    // 验证手机号格式
+    if (!/^1[3-9]\d{9}$/.test(data.contactPhone)) {
+      throw new Error('请输入正确的手机号格式');
+    }
+
     const customerId = uuidv4();
 
     // 创建客户记录
@@ -222,11 +235,24 @@ export class PrivateCustomerService {
       [uuidv4(), licenseId, licenseKey, 'activate', '创建授权', '127.0.0.1', 'success']
     );
 
+    // 创建默认管理员账号（使用手机号作为用户名）
+    const { createDefaultAdmin } = await import('../utils/adminAccountHelper');
+    const adminAccount = await createDefaultAdmin({
+      tenantId: null, // 私有部署不需要租户ID
+      phone: data.contactPhone,
+      realName: data.contactPerson || data.customerName,
+      email: data.contactEmail || undefined
+    });
+
     const license = await AppDataSource.query('SELECT * FROM licenses WHERE id = ?', [licenseId]);
 
     return {
       customer,
       license: license[0],
+      adminAccount: {
+        username: adminAccount.username,
+        password: adminAccount.password
+      }
     };
   }
 
@@ -366,19 +392,20 @@ export class PrivateCustomerService {
   }
 
   /**
-   * 生成授权码
+   * 生成私有部署授权码
+   * 格式: PRIVATE-XXXX-XXXX-XXXX-XXXX（可与SaaS租户授权码区分）
    */
   private generateLicenseKey(): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     const segments = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 4; i++) {
       let segment = '';
       for (let j = 0; j < 4; j++) {
         segment += chars.charAt(Math.floor(Math.random() * chars.length));
       }
       segments.push(segment);
     }
-    return segments.join('-');
+    return `PRIVATE-${segments.join('-')}`;
   }
 }
 

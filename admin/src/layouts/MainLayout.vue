@@ -93,6 +93,7 @@
           <el-menu-item index="/settings/admins">管理员账号</el-menu-item>
           <el-menu-item index="/settings/basic">基础配置</el-menu-item>
           <el-menu-item index="/settings/notification-templates">通知模板</el-menu-item>
+          <el-menu-item index="/settings/notification-service">通知服务</el-menu-item>
           <el-menu-item index="/settings/operation-logs">操作日志</el-menu-item>
         </el-sub-menu>
       </el-menu>
@@ -120,6 +121,15 @@
           </el-breadcrumb>
         </div>
         <div class="header-right">
+          <!-- 通知铃铛 -->
+          <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99" class="notification-badge">
+            <el-tooltip content="通知消息" placement="bottom">
+              <el-icon class="notification-bell" :size="20" @click="handleBellClick">
+                <Bell />
+              </el-icon>
+            </el-tooltip>
+          </el-badge>
+
           <el-dropdown @command="handleCommand">
             <div class="user-info">
               <el-avatar :size="32" class="avatar">
@@ -164,9 +174,10 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import request from '@/api/request'
 import {
   Platform, DataAnalysis, Key, Upload, Menu, Setting, Wallet, Connection,
-  Fold, Expand, ArrowDown, User, Lock, SwitchButton, OfficeBuilding
+  Fold, Expand, ArrowDown, User, Lock, SwitchButton, OfficeBuilding, Bell
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -180,6 +191,25 @@ const defaultOpeneds = ref<string[]>([])
 
 const MOBILE_BREAKPOINT = 768
 const TABLET_BREAKPOINT = 1024
+
+// ===== 通知铃铛 =====
+const unreadCount = ref(0)
+let notificationTimer: ReturnType<typeof setInterval> | null = null
+
+const fetchUnreadCount = async () => {
+  try {
+    const res = await request.get('/notifications/unread-count')
+    if (res.success && res.data) {
+      unreadCount.value = res.data.count || 0
+    }
+  } catch {
+    // 静默处理
+  }
+}
+
+const handleBellClick = () => {
+  router.push('/settings/notification-service?tab=history')
+}
 
 const activeMenu = computed(() => {
   return route.path
@@ -224,10 +254,18 @@ onMounted(() => {
   userStore.fetchProfile()
   checkScreenSize()
   window.addEventListener('resize', checkScreenSize)
+  // 加载未读通知数
+  fetchUnreadCount()
+  // 每30秒刷新一次未读数
+  notificationTimer = setInterval(fetchUnreadCount, 30000)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkScreenSize)
+  if (notificationTimer) {
+    clearInterval(notificationTimer)
+    notificationTimer = null
+  }
 })
 
 const handleCommand = (command: string) => {
@@ -339,6 +377,23 @@ const handleCommand = (command: string) => {
 .header-left {
   display: flex;
   align-items: center;
+}
+
+.notification-badge {
+  margin-right: 20px;
+}
+
+.notification-bell {
+  cursor: pointer;
+  color: #606266;
+  transition: color 0.3s;
+  padding: 6px;
+  border-radius: 4px;
+
+  &:hover {
+    color: #409eff;
+    background: #f5f7fa;
+  }
 }
 
 .user-info {

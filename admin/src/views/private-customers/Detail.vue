@@ -296,7 +296,7 @@
       </template>
       <div class="pagination-wrapper" v-if="logsTotal > 10">
         <el-pagination v-model:current-page="logsPage" :page-size="10" :total="logsTotal"
-          layout="total, prev, pager, next" @change="fetchLogs" small />
+          layout="total, prev, pager, next" @current-change="fetchLogs" small />
       </div>
     </el-card>
 
@@ -335,7 +335,7 @@
       </template>
       <div class="pagination-wrapper" v-if="billsTotal > 10">
         <el-pagination v-model:current-page="billsPage" :page-size="10" :total="billsTotal"
-          layout="total, prev, pager, next" @change="fetchBills" small />
+          layout="total, prev, pager, next" @current-change="fetchBills" small />
       </div>
     </el-card>
 
@@ -620,8 +620,8 @@ const getStatusType = (status: string) => ({ pending: 'warning', active: 'succes
 const getStatusText = (status: string) => ({ pending: '待激活', active: '有效', expired: '已过期', revoked: '已吊销' }[status] || status)
 const getBillStatusType = (s: string) => ({ pending: 'warning', paid: 'success', expired: 'info', refunded: 'danger', closed: 'info' }[s] || 'info') as any
 const getBillStatusText = (s: string) => ({ pending: '待支付', paid: '已支付', expired: '已过期', refunded: '已退款', closed: '已关闭' }[s] || s)
-const getLogActionType = (a: string) => ({ activate: 'success', renew: 'primary', revoke: 'danger', heartbeat: 'info', verify: '' }[a] || 'info') as any
-const getLogActionText = (a: string) => ({ activate: '激活', renew: '续期', revoke: '吊销', heartbeat: '心跳', verify: '验证' }[a] || a)
+const getLogActionType = (a: string) => ({ activate: 'success', renew: 'primary', revoke: 'danger', expire: 'warning', heartbeat: 'info', verify: '' }[a] || 'info') as any
+const getLogActionText = (a: string) => ({ activate: '激活', renew: '续期', revoke: '吊销', expire: '到期', heartbeat: '心跳', verify: '验证' }[a] || a)
 
 // ============================================================
 // 编辑基本信息
@@ -687,9 +687,9 @@ const confirmChangePackage = async () => {
       packageName: pkg.name,
       maxUsers: pkg.max_users
     }
-    // 同步套餐功能模块
-    if (syncPackageModules.value && pkg.features?.length) {
-      updateData.modules = pkg.features
+    // 同步套餐功能模块（modules是授权模块ID列表，features是功能特性文本）
+    if (syncPackageModules.value && pkg.modules?.length) {
+      updateData.modules = pkg.modules
     }
     const res = await adminApi.updateLicense(route.params.id as string, updateData)
     if (res.success) {
@@ -776,7 +776,32 @@ const handleHeaderCommand = async (cmd: string) => {
         else { ElMessage.success('操作完成'); fetchDetail() }
       } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '操作失败') }
       break
-    case 'export': ElMessage.info('导出功能开发中'); break
+    case 'export': {
+      try {
+        const d = detail.value
+        const BOM = '\uFEFF'
+        const headers = ['客户名称','联系人','联系电话','邮箱','授权码','授权类型','最大用户数','状态','到期时间','激活时间','创建时间','备注']
+        const typeMap: Record<string, string> = { trial: '试用', annual: '年度', perpetual: '永久' }
+        const statusMap: Record<string, string> = { pending: '待激活', active: '有效', expired: '已过期', revoked: '已吊销' }
+        const vals = [
+          d.customerName, d.customerContact || '', d.customerPhone || '', d.customerEmail || '',
+          d.licenseKey, typeMap[d.licenseType] || d.licenseType, d.maxUsers,
+          statusMap[d.status] || d.status,
+          d.licenseType === 'perpetual' ? '永久' : formatDate(d.expiresAt),
+          d.activatedAt ? formatDateTime(d.activatedAt) : '未激活',
+          formatDateTime(d.createdAt), d.notes || ''
+        ]
+        const csv = BOM + headers.map(h => `"${h}"`).join(',') + '\n' + vals.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = `私有客户_${d.customerName}_${new Date().toISOString().slice(0, 10)}.csv`
+        a.click()
+        URL.revokeObjectURL(a.href)
+        ElMessage.success('导出成功')
+      } catch { ElMessage.error('导出失败') }
+      break
+    }
     case 'delete':
       try {
         await ElMessageBox.confirm('删除客户将同时删除所有授权数据，此操作不可恢复！', '删除客户', { type: 'error', confirmButtonText: '确定删除', confirmButtonClass: 'el-button--danger' })
@@ -795,7 +820,15 @@ const fetchDetail = async () => {
   try {
     const res = await adminApi.getLicenseDetail(route.params.id as string)
     if (res.success) detail.value = res.data
-  } catch { ElMessage.error('获取详情失败') }
+  } catch (e: any) {
+    const status = e?.response?.status
+    if (status === 404) {
+      ElMessage.warning('该客户授权记录不存在或已被删除')
+      setTimeout(() => router.push('/private-customers/list'), 1500)
+    } else {
+      ElMessage.error('获取详情失败')
+    }
+  }
   finally { loading.value = false }
 }
 

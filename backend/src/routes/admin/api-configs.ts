@@ -6,6 +6,7 @@ const router = Router();
 // API配置管理
 router.get('/logs', ApiConfigController.getAllApiCallLogs);
 router.get('/statistics', ApiConfigController.getGlobalApiStatistics);
+router.get('/trends', ApiConfigController.getApiTrends);
 router.get('/:id/statistics', ApiConfigController.getApiStatistics);
 router.get('/:id/logs', ApiConfigController.getApiCallLogs);
 router.get('/:id', ApiConfigController.getApiConfigById);

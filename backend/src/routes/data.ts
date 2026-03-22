@@ -5,6 +5,7 @@ import { Customer } from '../entities/Customer';
 import { User } from '../entities/User';
 import { CustomerServicePermission } from '../entities/CustomerServicePermission';
 import { Not, IsNull } from 'typeorm';
+import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -21,7 +22,7 @@ router.get('/list', async (req: Request, res: Response) => {
 
     // 🔥 从订单表获取已签收的订单数据
     const { Order } = await import('../entities/Order');
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
 
     const queryBuilder = orderRepository.createQueryBuilder('order')
       .leftJoinAndSelect('order.customer', 'customer');
@@ -38,7 +39,7 @@ router.get('/list', async (req: Request, res: Response) => {
       // 管理员可以看到所有数据，不做过滤
     } else if (customerServiceRoles.includes(role)) {
       // 客服角色需要根据客服权限配置的dataScope来过滤
-      const csPermissionRepo = AppDataSource.getRepository(CustomerServicePermission);
+      const csPermissionRepo = getTenantRepo(CustomerServicePermission);
       const csPermission = await csPermissionRepo.findOne({
         where: { userId: currentUser?.userId, status: 'active' }
       });
@@ -210,8 +211,8 @@ router.post('/batch-assign', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '参数不完整' });
     }
 
-    const userRepository = AppDataSource.getRepository(User);
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const userRepository = getTenantRepo(User);
+    const customerRepository = getTenantRepo(Customer);
 
     // 获取被分配人信息
     const assignee = await userRepository.findOne({ where: { id: assigneeId } });
@@ -278,7 +279,7 @@ router.post('/batch-archive', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '参数不完整' });
     }
 
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     let successCount = 0;
 
     for (const id of dataIds) {
@@ -317,7 +318,7 @@ router.post('/recover', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '参数不完整' });
     }
 
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     let successCount = 0;
 
     for (const id of dataIds) {
@@ -350,7 +351,7 @@ router.post('/recover', async (req: Request, res: Response) => {
  */
 router.get('/assignee-options', async (req: Request, res: Response) => {
   try {
-    const userRepository = AppDataSource.getRepository(User);
+    const userRepository = getTenantRepo(User);
     const users = await userRepository.find({
       where: { status: 'active' },
       select: ['id', 'username', 'realName', 'departmentName', 'position']
@@ -378,7 +379,7 @@ router.get('/assignee-options', async (req: Request, res: Response) => {
 router.get('/search', async (req: Request, res: Response) => {
   try {
     const { keyword } = req.query;
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
 
     if (!keyword) {
       return res.json({ success: true, data: null });
@@ -397,12 +398,13 @@ router.get('/search', async (req: Request, res: Response) => {
     // 2. 如果没找到，通过订单号搜索
     if (!customer) {
       console.log('🔍 [客户搜索] 尝试通过订单号查找');
+      const tData = tenantSQL('o.');
       const orderResult = await AppDataSource.query(
         `SELECT c.* FROM customers c
          JOIN orders o ON c.id = o.customer_id
-         WHERE o.order_no = ?
+         WHERE o.order_no = ?${tData.sql}
          LIMIT 1`,
-        [keyword]
+        [keyword, ...tData.params]
       );
       if (orderResult && orderResult.length > 0) {
         // 通过ID重新查询获取完整的Customer实体
@@ -418,13 +420,14 @@ router.get('/search', async (req: Request, res: Response) => {
     // 3. 如果还没找到，通过物流单号搜索
     if (!customer) {
       console.log('🔍 [客户搜索] 尝试通过物流单号查找');
+      const tLogistics = tenantSQL('o.');
       const logisticsResult = await AppDataSource.query(
         `SELECT c.* FROM customers c
          JOIN orders o ON c.id = o.customer_id
          JOIN logistics_tracking l ON o.id = l.order_id
-         WHERE l.tracking_number = ?
+         WHERE l.tracking_number = ?${tLogistics.sql}
          LIMIT 1`,
-        [keyword]
+        [keyword, ...tLogistics.params]
       );
       if (logisticsResult && logisticsResult.length > 0) {
         // 通过ID重新查询获取完整的Customer实体
@@ -444,9 +447,10 @@ router.get('/search', async (req: Request, res: Response) => {
 
     // 获取客户的销售员归属信息
     if (customer.salesPersonId) {
+      const tSales = tenantSQL('');
       const salesPersonResult = await AppDataSource.query(
-        `SELECT id, username, real_name, department_name, position FROM users WHERE id = ?`,
-        [customer.salesPersonId]
+        `SELECT id, username, real_name, department_name, position FROM users WHERE id = ?${tSales.sql}`,
+        [customer.salesPersonId, ...tSales.params]
       );
       if (salesPersonResult && salesPersonResult.length > 0) {
         const salesPerson = salesPersonResult[0];
@@ -478,7 +482,7 @@ router.get('/search', async (req: Request, res: Response) => {
 router.get('/search-customer', async (req: Request, res: Response) => {
   try {
     const { keyword, page = 1, pageSize = 20 } = req.query;
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
 
     if (!keyword) {
       return res.json({ success: true, data: { list: [], total: 0 } });
@@ -512,7 +516,7 @@ router.get('/search-customer', async (req: Request, res: Response) => {
  */
 router.get('/statistics', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
 
     const totalCount = await customerRepository.count();
     const assignedCount = await customerRepository.count({
@@ -545,7 +549,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
 router.get('/recycle', async (req: Request, res: Response) => {
   try {
     const { page = 1, pageSize = 20, keyword, deleteTimeFilter, deletedBy: _deletedBy } = req.query;
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
 
     const queryBuilder = customerRepository.createQueryBuilder('customer')
       .where('customer.status = :status', { status: 'deleted' });
@@ -631,7 +635,7 @@ router.post('/restore', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '参数不完整' });
     }
 
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     let successCount = 0;
 
     for (const id of dataIds) {
@@ -670,7 +674,7 @@ router.post('/permanent-delete', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '参数不完整' });
     }
 
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     let successCount = 0;
 
     for (const id of dataIds) {

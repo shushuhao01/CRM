@@ -108,6 +108,30 @@
         <el-descriptions-item label="账号状态">
           <el-tag :type="getStatusType(detail.status)" size="small">{{ getStatusText(detail.status) }}</el-tag>
         </el-descriptions-item>
+        <el-descriptions-item label="管理员账号">
+          <div v-if="detail.adminUsers && detail.adminUsers.length > 0">
+            <div v-for="admin in detail.adminUsers" :key="admin.id" style="margin-bottom: 4px;">
+              <span>{{ admin.username }}</span>
+              <el-tag
+                v-if="admin.status === 'locked'"
+                type="danger"
+                size="small"
+                style="margin-left: 8px;"
+              >
+                已锁定 (失败{{ admin.login_fail_count }}次)
+              </el-tag>
+              <el-tag
+                v-else
+                type="success"
+                size="small"
+                style="margin-left: 8px;"
+              >
+                正常
+              </el-tag>
+            </div>
+          </div>
+          <span v-else class="text-secondary">未创建</span>
+        </el-descriptions-item>
         <el-descriptions-item label="激活时间">
           {{ detail.activatedAt ? formatDateTime(detail.activatedAt) : '未激活' }}
         </el-descriptions-item>
@@ -393,13 +417,13 @@
             :key="pkg.id"
             class="package-picker-item"
             :class="{
-              selected: newPackageId === pkg.id,
-              current: detail.packageId === pkg.id,
+              selected: String(newPackageId) === String(pkg.id),
+              current: String(detail.packageId) === String(pkg.id),
               recommended: pkg.is_recommended
             }"
-            @click="newPackageId = pkg.id"
+            @click="newPackageId = String(pkg.id)"
           >
-            <div class="pkg-badge" v-if="detail.packageId === pkg.id">当前</div>
+            <div class="pkg-badge" v-if="String(detail.packageId) === String(pkg.id)">当前</div>
             <div class="pkg-badge recommend" v-else-if="pkg.is_recommended">推荐</div>
             <div class="pkg-name">{{ pkg.name }}</div>
             <div class="pkg-price">
@@ -421,7 +445,7 @@
                 +{{ pkg.features.length - 4 }} 项更多功能
               </div>
             </div>
-            <div class="pkg-select-mark" v-if="newPackageId === pkg.id">
+            <div class="pkg-select-mark" v-if="String(newPackageId) === String(pkg.id)">
               <el-icon :size="20"><CircleCheck /></el-icon>
             </div>
           </div>
@@ -497,7 +521,7 @@ import type { Package } from '@/api/packages'
 import { getPackages as fetchPackageList } from '@/api/packages'
 
 const route = useRoute()
-const router = useRouter()
+const _router = useRouter() // 保留备用
 const loading = ref(false)
 const usersLoading = ref(false)
 const submitting = ref(false)
@@ -513,13 +537,12 @@ const renewMonths = ref<number>(12)
 const newLicenseKey = ref('')
 const newMaxUsers = ref(10)
 const newMaxStorageGb = ref(5)
-const newPackageId = ref('')
+const newPackageId = ref<number | string>('')
 const editFormRef = ref<FormInstance>()
 
 const detail = ref<any>({})
 const users = ref<any[]>([])
 const logs = ref<any[]>([])
-const packagesList = ref<any[]>([])
 const logsLoading = ref(false)
 const exporting = ref(false)
 const exportingUsers = ref(false)
@@ -703,7 +726,7 @@ const handleToggleStatus = async () => {
       `${action}租户`, { type: 'warning' }
     )
     statusLoading.value = true
-    const newStatus = isActive ? 'inactive' : 'active'
+    const newStatus = isActive ? 'disabled' : 'active'
     const res = await request.put(`/tenants/${route.params.id}`, { status: newStatus })
     if (res.success) {
       ElMessage.success(`已${action}`)
@@ -958,8 +981,14 @@ const fetchDetail = async () => {
         remark: d.remark
       }
     }
-  } catch (e) {
-    ElMessage.error('获取详情失败')
+  } catch (e: any) {
+    const status = e?.response?.status
+    if (status === 404) {
+      ElMessage.warning('该租户记录不存在或已被删除')
+      setTimeout(() => _router.push('/tenant-customers/list'), 1500)
+    } else {
+      ElMessage.error('获取详情失败')
+    }
   } finally {
     loading.value = false
   }

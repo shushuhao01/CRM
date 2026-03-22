@@ -14,7 +14,6 @@ import { useUserStore } from './stores/user'
 import { useConfigStore } from './stores/config'
 import { autoCheck } from './utils/deploymentCheck'
 import { autoStatusSyncService } from './services/autoStatusSync'
-import permissionPlugin from './plugins/permission'
 import { setupDirectives } from './directives'
 import { initSecureConsoleConfig } from './utils/secureLogger'
 
@@ -242,9 +241,8 @@ const initializeApp = async () => {
     // 注册插件和组件
     app.use(router)
     app.use(ElementPlus, { locale: zhCn })
-    app.use(permissionPlugin)
 
-    // 注册全局指令
+    // 注册全局指令和权限方法
     setupDirectives(app)
 
     // 挂载应用

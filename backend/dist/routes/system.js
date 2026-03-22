@@ -208,12 +208,13 @@ router.get('/modules/status', auth_1.authenticateToken, async (_req, res) => {
         });
         // 模块代码映射：Admin后台模块代码 -> CRM前端菜单ID
         const moduleMapping = {
+            'dashboard': 'dashboard',
             'order_management': 'order',
             'customer_management': 'customer',
             'finance_management': 'finance',
             'logistics_management': 'logistics',
             'aftersales_management': 'service',
-            'call_management': 'serviceManagement',
+            'call_management': 'service-management',
             'data_management': 'data',
             'performance_management': 'performance',
             'product_management': 'product',
@@ -223,7 +224,7 @@ router.get('/modules/status', auth_1.authenticateToken, async (_req, res) => {
         const menuIds = enabledModules
             .map(m => moduleMapping[m.code])
             .filter(id => id !== undefined);
-        // 始终包含dashboard（数据看板）
+        // 始终包含dashboard（数据看板）— 即使数据库中没有或被禁用也保证可用
         if (!menuIds.includes('dashboard')) {
             menuIds.unshift('dashboard');
         }
@@ -440,7 +441,11 @@ router.get('/basic-settings/public', async (_req, res) => {
             systemName: settings.systemName || 'CRM客户管理系统',
             systemVersion: settings.systemVersion || '1.0.0',
             companyName: settings.companyName || '',
-            websiteUrl: settings.websiteUrl || ''
+            websiteUrl: settings.websiteUrl || '',
+            copyrightText: settings.copyrightText || '',
+            icpNumber: settings.icpNumber || '',
+            policeNumber: settings.policeNumber || '',
+            techSupport: settings.techSupport || ''
         };
         res.json({
             success: true,
@@ -486,7 +491,11 @@ router.get('/basic-settings', auth_1.authenticateToken, async (req, res) => {
             systemDescription: settings.systemDescription || '',
             systemLogo: settings.systemLogo || '',
             contactQRCode: settings.contactQRCode || '',
-            contactQRCodeLabel: settings.contactQRCodeLabel || '扫码联系'
+            contactQRCodeLabel: settings.contactQRCodeLabel || '扫码联系',
+            copyrightText: settings.copyrightText || '',
+            icpNumber: settings.icpNumber || '',
+            policeNumber: settings.policeNumber || '',
+            techSupport: settings.techSupport || ''
         };
         res.json({
             success: true,
@@ -522,7 +531,11 @@ router.put('/basic-settings', auth_1.authenticateToken, auth_1.requireAdmin, asy
             { key: 'systemDescription', type: 'text', desc: '系统描述' },
             { key: 'systemLogo', type: 'text', desc: '系统Logo' },
             { key: 'contactQRCode', type: 'text', desc: '联系二维码' },
-            { key: 'contactQRCodeLabel', type: 'string', desc: '二维码标签' }
+            { key: 'contactQRCodeLabel', type: 'string', desc: '二维码标签' },
+            { key: 'copyrightText', type: 'string', desc: '版权文字' },
+            { key: 'icpNumber', type: 'string', desc: 'ICP备案号' },
+            { key: 'policeNumber', type: 'string', desc: '公安备案号' },
+            { key: 'techSupport', type: 'string', desc: '技术支持' }
         ];
         // 保存或更新每个配置项
         for (const item of configItems) {

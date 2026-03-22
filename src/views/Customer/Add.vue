@@ -24,18 +24,61 @@
                 <div class="phone-input-group">
                   <el-input
                     v-model="customerForm.phone"
-                    placeholder="请输入手机号"
-                    clearable
+                    :placeholder="getPhonePlaceholder"
                     @blur="handlePhoneBlur"
                     @input="handlePhoneInput"
                     style="width: 200px;"
-                  />
+                  >
+                    <template #suffix>
+                      <div class="phone-suffix-container">
+                        <!-- 清除按钮 - 放在最前面，使用 visibility 控制显示/隐藏，避免图标位置跳动 -->
+                        <el-icon
+                          class="clear-icon"
+                          :class="{ 'clear-icon-hidden': !customerForm.phone }"
+                          @click="handleClearPhone"
+                        >
+                          <CircleClose />
+                        </el-icon>
+                        <!-- 号码类型选择器 -->
+                        <el-tooltip
+                          :content="`当前：${phoneTypeLabel}，点击切换其他电话格式`"
+                          placement="top"
+                        >
+                          <el-dropdown @command="handlePhoneTypeChange" trigger="click">
+                            <span class="dropdown-trigger">
+                              <el-icon
+                                :class="['phone-type-icon', `phone-type-${customerForm.phoneType}`]"
+                              >
+                                <component :is="phoneTypeIcon" />
+                              </el-icon>
+                            </span>
+                            <template #dropdown>
+                              <el-dropdown-menu>
+                                <el-dropdown-item command="mainland">
+                                  <el-icon color="#409eff"><Iphone /></el-icon>
+                                  中国大陆
+                                </el-dropdown-item>
+                                <el-dropdown-item command="overseas">
+                                  <el-icon color="#67c23a"><Location /></el-icon>
+                                  境外号码
+                                </el-dropdown-item>
+                                <el-dropdown-item command="landline">
+                                  <el-icon color="#e6a23c"><Phone /></el-icon>
+                                  固定电话
+                                </el-dropdown-item>
+                              </el-dropdown-menu>
+                            </template>
+                          </el-dropdown>
+                        </el-tooltip>
+                      </div>
+                    </template>
+                  </el-input>
                   <el-button
                     type="primary"
                     size="default"
                     @click="verifyCustomer"
                     :loading="verifyLoading"
-                    :disabled="!customerForm.phone || customerForm.phone.length !== 11"
+                    :disabled="!isPhoneValid"
                   >
                     验证客户
                   </el-button>
@@ -525,7 +568,7 @@
 import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Warning, InfoFilled, Setting, Location, Check } from '@element-plus/icons-vue'
+import { Warning, InfoFilled, Setting, Location, Check, Phone, LocationFilled, Iphone, CircleClose } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
@@ -646,11 +689,15 @@ if (!hasCreatePermission.value && !isEdit.value) {
   safeNavigator.push('/customer/list')
 }
 
+// 手机号类型
+const phoneType = ref<'mainland' | 'overseas' | 'landline'>('mainland')
+
 // 客户表单数据
 const customerForm = reactive({
   name: '',           // 客户姓名
   gender: '',         // 性别（必填）
   phone: '',          // 手机号
+  phoneType: 'mainland', // 手机号类型：mainland-中国大陆, overseas-境外, landline-固定电话
   age: null,          // 年龄（必填）
   fanAcquisitionTime: '', // 进粉时间（必填）
   email: '',          // 邮箱
@@ -882,6 +929,82 @@ const initForm = () => {
   }
 }
 
+// 计算属性：获取手机号输入框的占位符
+const getPhonePlaceholder = computed(() => {
+  switch (customerForm.phoneType) {
+    case 'mainland':
+      return '请输入11位手机号'
+    case 'overseas':
+      return '请输入境外号码'
+    case 'landline':
+      return '请输入固定电话'
+    default:
+      return '请输入手机号'
+  }
+})
+
+// 计算属性：获取手机号类型标签
+const phoneTypeLabel = computed(() => {
+  switch (customerForm.phoneType) {
+    case 'mainland':
+      return '中国大陆'
+    case 'overseas':
+      return '境外号码'
+    case 'landline':
+      return '固定电话'
+    default:
+      return '中国大陆'
+  }
+})
+
+// 计算属性：获取手机号类型图标
+const phoneTypeIcon = computed(() => {
+  switch (customerForm.phoneType) {
+    case 'mainland':
+      return 'Iphone'  // 蓝色手机图标
+    case 'overseas':
+      return 'Location'  // 绿色地球图标
+    case 'landline':
+      return 'Phone'  // 橙色电话图标
+    default:
+      return 'Iphone'
+  }
+})
+
+// 计算属性：判断手机号是否有效
+const isPhoneValid = computed(() => {
+  if (!customerForm.phone) return false
+
+  switch (customerForm.phoneType) {
+    case 'mainland':
+      // 中国大陆：必须是11位数字
+      return /^1[3-9]\d{9}$/.test(customerForm.phone)
+    case 'overseas':
+      // 境外号码：至少6位，最多20位
+      return customerForm.phone.length >= 6 && customerForm.phone.length <= 20
+    case 'landline':
+      // 固定电话：支持区号+号码格式，如 010-12345678 或 01012345678
+      return /^(\d{3,4}-?)?\d{7,8}$/.test(customerForm.phone)
+    default:
+      return false
+  }
+})
+
+// 处理清除手机号
+const handleClearPhone = () => {
+  customerForm.phone = ''
+  customerVerifyResult.value = null
+}
+
+// 处理手机号类型切换
+const handlePhoneTypeChange = (command: 'mainland' | 'overseas' | 'landline') => {
+  customerForm.phoneType = command
+  phoneType.value = command
+  // 清除验证结果，需要重新验证
+  customerVerifyResult.value = null
+  ElMessage.success(`已切换到${phoneTypeLabel.value}模式`)
+}
+
 // 表单验证规则
 const formRules: FormRules = {
   name: [
@@ -890,7 +1013,41 @@ const formRules: FormRules = {
   ],
   phone: [
     validationRules.required('请输入手机号'),
-    validationRules.phone('请输入正确的手机号格式')
+    {
+      validator: (rule: unknown, value: string, callback: (error?: Error) => void) => {
+        if (!value) {
+          callback(new Error('请输入手机号'))
+          return
+        }
+
+        switch (customerForm.phoneType) {
+          case 'mainland':
+            if (!/^1[3-9]\d{9}$/.test(value)) {
+              callback(new Error('请输入正确的11位手机号'))
+            } else {
+              callback()
+            }
+            break
+          case 'overseas':
+            if (value.length < 6 || value.length > 20) {
+              callback(new Error('境外号码长度应在6-20位之间'))
+            } else {
+              callback()
+            }
+            break
+          case 'landline':
+            if (!/^(\d{3,4}-?)?\d{7,8}$/.test(value)) {
+              callback(new Error('请输入正确的固定电话格式'))
+            } else {
+              callback()
+            }
+            break
+          default:
+            callback()
+        }
+      },
+      trigger: 'blur'
+    }
   ],
   email: [
     validationRules.email('请输入正确的邮箱格式')
@@ -1025,8 +1182,9 @@ const formRules: FormRules = {
  * 验证客户是否已存在
  */
 const verifyCustomer = async () => {
-  if (!customerForm.phone || customerForm.phone.length !== 11) {
-    ElMessage.warning('请输入正确的手机号')
+  // 根据号码类型进行不同的验证
+  if (!isPhoneValid.value) {
+    ElMessage.warning(`请输入正确的${phoneTypeLabel.value}格式`)
     return
   }
 
@@ -1122,8 +1280,8 @@ const handleNameInput = (value: string) => {
  * 手机号失焦时自动验证
  */
 const handlePhoneBlur = async () => {
-  // 如果手机号长度正确，自动触发验证
-  if (customerForm.phone && customerForm.phone.length === 11) {
+  // 如果手机号格式正确，自动触发验证
+  if (isPhoneValid.value) {
     await verifyCustomer()
   } else {
     // 如果手机号不正确，清除之前的验证结果
@@ -1685,6 +1843,81 @@ onMounted(() => {
 .phone-input-group .el-button {
   flex-shrink: 0;
   height: 32px;
+}
+
+/* 手机号后缀容器 - 确保图标位置固定 */
+.phone-suffix-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+}
+
+/* 清除按钮样式 */
+.clear-icon {
+  cursor: pointer;
+  font-size: 14px;
+  color: #c0c4cc;
+  margin-right: 8px;
+  visibility: visible;
+  transition: color 0.3s;
+}
+
+.clear-icon:hover {
+  color: #909399;
+}
+
+/* 隐藏清除按钮但保持占位，避免图标位置跳动 */
+.clear-icon-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 下拉触发器 */
+.dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* 手机号类型图标样式 */
+.phone-type-icon {
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 中国大陆 - 蓝色 */
+.phone-type-icon.phone-type-mainland {
+  color: #409eff;
+}
+
+.phone-type-icon.phone-type-mainland:hover {
+  color: #66b1ff;
+  transform: scale(1.15);
+}
+
+/* 境外号码 - 绿色 */
+.phone-type-icon.phone-type-overseas {
+  color: #67c23a;
+}
+
+.phone-type-icon.phone-type-overseas:hover {
+  color: #85ce61;
+  transform: scale(1.15);
+}
+
+/* 固定电话 - 橙色 */
+.phone-type-icon.phone-type-landline {
+  color: #e6a23c;
+}
+
+.phone-type-icon.phone-type-landline:hover {
+  color: #ebb563;
+  transform: scale(1.15);
 }
 
 /* 验证成功提示 - 放在按钮后面，带淡绿色背景 */

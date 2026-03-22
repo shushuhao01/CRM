@@ -6,6 +6,8 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { deployConfig } from '../config/deploy'
+import { AppDataSource } from '../config/database'
+import { TenantContextManager } from '../utils/tenantContext'
 
 /**
  * 扩展Request接口，添加租户信息
@@ -55,27 +57,55 @@ export const tenantAuth = async (
       if (!req.tenantId) {
         return res.status(403).json({
           success: false,
-          message: '租户信息缺失'
+          message: '租户信息缺失，请重新登录'
         })
       }
 
-      // TODO: 验证租户状态
-      // const tenant = await Tenant.findOne({ where: { id: req.tenantId } })
-      // if (!tenant) {
-      //   return res.status(403).json({ message: '租户不存在' })
-      // }
-      // if (tenant.status !== 'active') {
-      //   return res.status(403).json({ message: '租户已被禁用' })
-      // }
-      // if (tenant.expire_date && new Date(tenant.expire_date) < new Date()) {
-      //   return res.status(403).json({ message: '租户已过期' })
-      // }
-      // req.tenantInfo = tenant
+      // 验证租户状态（查询数据库）
+      try {
+        const tenantRows = await AppDataSource.query(
+          `SELECT id, name, status, license_status, expire_date FROM tenants WHERE id = ?`,
+          [req.tenantId]
+        )
+        const tenant = tenantRows[0]
+        if (!tenant) {
+          return res.status(403).json({ success: false, message: '租户不存在，请联系管理员' })
+        }
+        if (tenant.status === 'disabled') {
+          return res.status(403).json({ success: false, message: '企业账户已被禁用，请联系管理员' })
+        }
+        if (tenant.license_status === 'suspended') {
+          return res.status(403).json({ success: false, message: '企业授权已暂停，请联系管理员续费' })
+        }
+        if (tenant.expire_date && new Date(tenant.expire_date) < new Date()) {
+          return res.status(403).json({ success: false, message: '企业授权已过期，请联系管理员续费', code: 'LICENSE_EXPIRED' })
+        }
+        req.tenantInfo = tenant
+      } catch (dbErr) {
+        // 数据库查询失败时放行（容错，避免数据库抖动导致全部用户掉线）
+        console.error('[TenantAuth] 查询租户状态失败（已放行）:', dbErr)
+      }
+
+      // 更新 TenantContext（关键！让 BaseRepository 能获取到 tenantId）
+      TenantContextManager.setContext({
+        tenantId: req.tenantId,
+        userId: req.userId,
+        tenantInfo: req.tenantInfo
+      })
 
     } else {
-      // 私有部署模式：不需要租户ID
+      // 私有部署模式：从token提取userId即可，不强制tenantId
       req.userId = decoded.userId
-      req.tenantId = undefined
+      // 私有模式也可能有tenantId（私有租户），保持传递
+      if (decoded.tenantId) {
+        req.tenantId = decoded.tenantId
+      }
+
+      // 更新 TenantContext
+      TenantContextManager.setContext({
+        tenantId: req.tenantId,
+        userId: req.userId
+      })
     }
 
     next()
@@ -116,7 +146,7 @@ export const optionalTenantAuth = async (
 
     // 有Token，执行认证
     await tenantAuth(req, res, next)
-  } catch (error) {
+  } catch (_error) {
     // 认证失败，但不阻止请求
     next()
   }

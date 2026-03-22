@@ -9,6 +9,7 @@
 
 import { AppDataSource } from '../config/database';
 import { notificationTemplateService } from './NotificationTemplateService';
+import { adminNotificationService } from './AdminNotificationService';
 
 export class LicenseExpirationReminderService {
   /**
@@ -129,6 +130,16 @@ export class LicenseExpirationReminderService {
       });
 
       console.log(`[LicenseReminder] 已发送到期提醒给租户${tenant.name}(剩余${remainDays}天)`);
+
+      // 通知管理员
+      adminNotificationService.notify('license_expiring', {
+        title: `授权即将到期：${tenant.name}`,
+        content: `租户「${tenant.name}」（编码：${tenant.code}）的授权将在 ${remainDays} 天后到期（${tenant.expire_date}），请关注续费情况`,
+        relatedId: tenant.id,
+        relatedType: 'tenant',
+        extraData: { tenantName: tenant.name, tenantCode: tenant.code, remainDays, expireDate: tenant.expire_date }
+      }).catch(err => console.error('[LicenseReminder] 发送管理员通知失败:', err.message));
+
       return true;
     } catch (error: any) {
       console.error(`[LicenseReminder] 发送提醒失败(租户${tenant.name}):`, error);
@@ -194,6 +205,15 @@ export class LicenseExpirationReminderService {
 
           notified++;
           console.log(`[LicenseReminder] 已发送到期通知给租户${tenant.name}`);
+
+          // 通知管理员
+          adminNotificationService.notify('license_expired', {
+            title: `授权已过期：${tenant.name}`,
+            content: `租户「${tenant.name}」（编码：${tenant.code}）的授权已于 ${tenant.expire_date} 过期，状态已自动更新为已过期`,
+            relatedId: tenant.id,
+            relatedType: 'tenant',
+            extraData: { tenantName: tenant.name, tenantCode: tenant.code, expireDate: tenant.expire_date }
+          }).catch(err => console.error('[LicenseReminder] 发送管理员通知失败:', err.message));
         } catch (error) {
           console.error(`[LicenseReminder] 发送到期通知失败(租户${tenant.name}):`, error);
         }

@@ -5,6 +5,9 @@ export class CustomerShare {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column({ name: 'customer_id' })
   customerId: string;
 

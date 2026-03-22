@@ -9,6 +9,7 @@ import { Order } from '../entities/Order';
 import { User } from '../entities/User';
 import { Department } from '../entities/Department';
 import { Between, In } from 'typeorm';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ const SHIPPED_STATUSES = ['shipped', 'delivered', 'completed', 'rejected', 'logi
 router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { startDate, endDate, departmentId, salesPersonId } = req.query;
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
 
     // 构建基础查询条件
     const baseWhere: any = {
@@ -172,7 +173,7 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
       tab = 'pending' // pending-待处理, returned-已返款, cancelled-已改代收
     } = req.query;
 
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
     const queryBuilder = orderRepo.createQueryBuilder('o');
 
     // 基础条件：已发货的订单
@@ -268,7 +269,7 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
     if (customerIds.length > 0) {
       try {
         const { Customer } = await import('../entities/Customer');
-        const customerRepo = AppDataSource.getRepository(Customer);
+        const customerRepo = getTenantRepo(Customer);
         const customers = await customerRepo
           .createQueryBuilder('c')
           .where('c.id IN (:...ids)', { ids: customerIds })
@@ -348,7 +349,7 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
 router.get('/detail/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
 
     const order = await orderRepo.findOne({ where: { id } });
     if (!order) {
@@ -417,7 +418,7 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
     const { id } = req.params;
     const { codAmount, codRemark } = req.body;
 
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
     const order = await orderRepo.findOne({ where: { id } });
 
     if (!order) {
@@ -483,7 +484,7 @@ router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Re
     const { id } = req.params;
     const { returnedAmount, codRemark } = req.body;
 
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
     const order = await orderRepo.findOne({ where: { id } });
 
     if (!order) {
@@ -533,7 +534,7 @@ router.put('/cancel-cod/:id', authenticateToken, async (req: Request, res: Respo
     const { id } = req.params;
     const { codAmount, codRemark } = req.body;
 
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
     const order = await orderRepo.findOne({ where: { id } });
 
     if (!order) {
@@ -574,7 +575,7 @@ router.put('/batch-update-cod', authenticateToken, async (req: Request, res: Res
       return res.status(400).json({ success: false, message: '请选择要操作的订单' });
     }
 
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
     const newCodAmount = Number(codAmount) || 0;
 
     // 批量更新：修改代收金额并标记为已改代收
@@ -607,7 +608,7 @@ router.put('/batch-mark-returned', authenticateToken, async (req: Request, res: 
       return res.status(400).json({ success: false, message: '请选择要操作的订单' });
     }
 
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
 
     // 获取订单并更新
     const orders = await orderRepo.find({ where: { id: In(orderIds) } });
@@ -642,7 +643,7 @@ router.put('/batch-mark-returned', authenticateToken, async (req: Request, res: 
  */
 router.get('/departments', authenticateToken, async (_req: Request, res: Response) => {
   try {
-    const deptRepo = AppDataSource.getRepository(Department);
+    const deptRepo = getTenantRepo(Department);
     const departments = await deptRepo.find({ order: { name: 'ASC' } });
     res.json({ success: true, data: departments });
   } catch (error: any) {
@@ -657,7 +658,7 @@ router.get('/departments', authenticateToken, async (_req: Request, res: Respons
 router.get('/sales-users', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { departmentId } = req.query;
-    const userRepo = AppDataSource.getRepository(User);
+    const userRepo = getTenantRepo(User);
 
     const where: any = { status: 'active' };
     if (departmentId) {

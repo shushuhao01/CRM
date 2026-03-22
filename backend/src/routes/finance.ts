@@ -10,6 +10,7 @@ import { CommissionSetting } from '../entities/CommissionSetting';
 import { Department } from '../entities/Department';
 import { User } from '../entities/User';
 import { authenticateToken } from '../middleware/auth';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.get('/performance-data/statistics', async (req: Request, res: Response) =
     const userDepartmentId = user?.departmentId || '';
 
     const { startDate, endDate, departmentId, salesPersonId, _performanceStatus, performanceCoefficient } = req.query;
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
 
     // 🔥 已发货后的所有状态（从发货列表提交发货后的订单）- 完整列表
     const shippedStatuses = [
@@ -127,7 +128,7 @@ router.get('/performance-data', async (req: Request, res: Response) => {
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 5000);
     const skip = (pageNum - 1) * pageSizeNum;
 
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
 
     // 🔥 已发货后的所有状态（从发货列表提交发货后的订单）- 完整列表
     const shippedStatuses = [
@@ -270,7 +271,7 @@ router.get('/performance-manage/statistics', async (req: Request, res: Response)
   try {
     const { startDate, endDate, departmentId, salesPersonId, performanceCoefficient } = req.query;
     // 🔥 注意：这里不接收 performanceStatus 参数，因为汇总卡片需要显示所有状态的统计
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
 
     // 🔥 已发货后的所有状态（从发货列表提交发货后的订单）- 完整列表
     const shippedStatuses = [
@@ -338,7 +339,7 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 5000);
     const skip = (pageNum - 1) * pageSizeNum;
 
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
 
     // 🔥 已发货后的所有状态（从发货列表提交发货后的订单）- 完整列表
     const shippedStatuses = [
@@ -467,7 +468,7 @@ router.put('/performance/batch', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Please select orders to update' });
     }
 
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
     let updateCount = 0;
 
     for (const orderId of orderIds) {
@@ -519,7 +520,7 @@ router.put('/performance/:orderId', async (req: Request, res: Response) => {
     console.log('[绩效更新] 订单ID:', orderId);
     console.log('[绩效更新] 请求参数:', { performanceStatus, performanceCoefficient, performanceRemark, startDate, endDate });
 
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
     const order = await orderRepo.findOne({ where: { id: orderId } });
 
     if (!order) {
@@ -608,8 +609,8 @@ async function calculateCommission(
       return 0;
     }
 
-    const ladderRepo = AppDataSource.getRepository(CommissionLadder);
-    const orderRepo = AppDataSource.getRepository(Order);
+    const ladderRepo = getTenantRepo(CommissionLadder);
+    const orderRepo = getTenantRepo(Order);
 
     // 优先查找该部门的阶梯配置
     let ladders: CommissionLadder[] = [];
@@ -749,9 +750,9 @@ async function calculateCommission(
 // Get all config
 router.get('/config', async (_req: Request, res: Response) => {
   try {
-    const configRepo = AppDataSource.getRepository(PerformanceConfig);
-    const ladderRepo = AppDataSource.getRepository(CommissionLadder);
-    const settingRepo = AppDataSource.getRepository(CommissionSetting);
+    const configRepo = getTenantRepo(PerformanceConfig);
+    const ladderRepo = getTenantRepo(CommissionLadder);
+    const settingRepo = getTenantRepo(CommissionSetting);
 
     const [statusConfigs, coefficientConfigs, remarkConfigs, amountLadders, countLadders, settings] = await Promise.all([
       configRepo.find({ where: { configType: 'status', isActive: 1 }, order: { sortOrder: 'ASC' } }),
@@ -780,7 +781,7 @@ router.post('/config', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Missing parameters' });
     }
 
-    const configRepo = AppDataSource.getRepository(PerformanceConfig);
+    const configRepo = getTenantRepo(PerformanceConfig);
     const maxSort = await configRepo.createQueryBuilder('c').select('MAX(c.sortOrder)', 'max').where('c.configType = :configType', { configType }).getRawOne();
 
     const config = configRepo.create({ configType, configValue, configLabel: configLabel || configValue, sortOrder: (maxSort?.max || 0) + 1, isActive: 1 });
@@ -799,7 +800,7 @@ router.put('/config/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     const { configValue, configLabel, sortOrder, isActive } = req.body;
 
-    const configRepo = AppDataSource.getRepository(PerformanceConfig);
+    const configRepo = getTenantRepo(PerformanceConfig);
     const config = await configRepo.findOne({ where: { id: parseInt(id) } });
 
     if (!config) {
@@ -823,7 +824,7 @@ router.put('/config/:id', async (req: Request, res: Response) => {
 router.delete('/config/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const configRepo = AppDataSource.getRepository(PerformanceConfig);
+    const configRepo = getTenantRepo(PerformanceConfig);
     await configRepo.delete({ id: parseInt(id) });
     res.json({ success: true, message: 'Deleted successfully' });
   } catch (error: any) {
@@ -840,7 +841,7 @@ router.post('/ladder', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Missing parameters' });
     }
 
-    const ladderRepo = AppDataSource.getRepository(CommissionLadder);
+    const ladderRepo = getTenantRepo(CommissionLadder);
     const maxSort = await ladderRepo.createQueryBuilder('l').select('MAX(l.sortOrder)', 'max').where('l.commissionType = :commissionType', { commissionType }).getRawOne();
 
     const ladder = ladderRepo.create({
@@ -869,7 +870,7 @@ router.put('/ladder/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     const { minValue, maxValue, commissionRate, commissionPerUnit, sortOrder, isActive, departmentId, departmentName } = req.body;
 
-    const ladderRepo = AppDataSource.getRepository(CommissionLadder);
+    const ladderRepo = getTenantRepo(CommissionLadder);
     const ladder = await ladderRepo.findOne({ where: { id: parseInt(id) } });
 
     if (!ladder) {
@@ -897,7 +898,7 @@ router.put('/ladder/:id', async (req: Request, res: Response) => {
 router.delete('/ladder/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const ladderRepo = AppDataSource.getRepository(CommissionLadder);
+    const ladderRepo = getTenantRepo(CommissionLadder);
     await ladderRepo.delete({ id: parseInt(id) });
     res.json({ success: true, message: 'Deleted successfully' });
   } catch (error: any) {
@@ -914,7 +915,7 @@ router.put('/setting', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Missing parameters' });
     }
 
-    const settingRepo = AppDataSource.getRepository(CommissionSetting);
+    const settingRepo = getTenantRepo(CommissionSetting);
     let setting = await settingRepo.findOne({ where: { settingKey } });
 
     if (setting) {

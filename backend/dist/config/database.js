@@ -123,6 +123,7 @@ const ModuleConfig_1 = require("../entities/ModuleConfig");
 const AdminOperationLog_1 = require("../entities/AdminOperationLog");
 const ApiConfig_1 = require("../entities/ApiConfig");
 const ApiCallLog_1 = require("../entities/ApiCallLog");
+const NotificationTemplate_1 = require("../entities/NotificationTemplate");
 // 🔥 统一使用 MySQL 数据库（开发环境和生产环境）
 // 数据库类型：默认使用 MySQL，除非明确指定其他类型
 const dbType = process.env.DB_TYPE || 'mysql';
@@ -199,7 +200,8 @@ const entities = [
     ModuleConfig_1.ModuleConfig,
     AdminOperationLog_1.AdminOperationLog,
     ApiConfig_1.ApiConfig,
-    ApiCallLog_1.ApiCallLog
+    ApiCallLog_1.ApiCallLog,
+    NotificationTemplate_1.NotificationTemplate
 ];
 // MySQL 数据库配置（开发环境和生产环境统一使用）
 const AppDataSource = new typeorm_1.DataSource({
@@ -254,6 +256,66 @@ const initializeDatabase = async () => {
         console.log(`   用户: ${dbInfo.user}`);
         await AppDataSource.initialize();
         console.log('✅ 数据库连接成功');
+        // 自动迁移：检查并添加缺少的列
+        try {
+            const queryRunner = AppDataSource.createQueryRunner();
+            const licenseTable = await queryRunner.getTable('licenses');
+            if (licenseTable) {
+                if (!licenseTable.findColumnByName('package_id')) {
+                    await queryRunner.query("ALTER TABLE licenses ADD COLUMN package_id INT NULL COMMENT '关联套餐ID' AFTER features");
+                    console.log('  ✅ licenses 表新增 package_id 列');
+                }
+                if (!licenseTable.findColumnByName('package_name')) {
+                    await queryRunner.query("ALTER TABLE licenses ADD COLUMN package_name VARCHAR(100) NULL COMMENT '套餐名称' AFTER package_id");
+                    console.log('  ✅ licenses 表新增 package_name 列');
+                }
+            }
+            // tenant_packages 表自动迁移
+            const pkgTable = await queryRunner.getTable('tenant_packages');
+            if (pkgTable) {
+                if (!pkgTable.findColumnByName('modules')) {
+                    await queryRunner.query("ALTER TABLE tenant_packages ADD COLUMN modules JSON NULL COMMENT '授权模块ID列表（JSON数组）' AFTER features");
+                    console.log('  ✅ tenant_packages 表新增 modules 列');
+                }
+            }
+            // tenants 表自动迁移
+            const tenantsTable = await queryRunner.getTable('tenants');
+            if (tenantsTable) {
+                if (!tenantsTable.findColumnByName('modules')) {
+                    await queryRunner.query("ALTER TABLE tenants ADD COLUMN modules JSON NULL COMMENT '授权模块ID列表（JSON数组）' AFTER features");
+                    console.log('  ✅ tenants 表新增 modules 列');
+                }
+            }
+            // modules 表自动补全：确保所有CRM模块都存在
+            const modulesTable = await queryRunner.getTable('modules');
+            if (modulesTable) {
+                const requiredModules = [
+                    { code: 'dashboard', name: '数据看板', description: '系统数据总览、趋势分析', icon: 'Odometer', sortOrder: 0, isSystem: true },
+                    { code: 'order_management', name: '订单管理', description: '订单创建、审核、发货等功能', icon: 'ShoppingCart', sortOrder: 1 },
+                    { code: 'customer_management', name: '客户管理', description: '客户信息管理、跟进记录', icon: 'User', sortOrder: 2 },
+                    { code: 'finance_management', name: '财务管理', description: '代收管理、结算报表、增值服务', icon: 'Money', sortOrder: 3 },
+                    { code: 'logistics_management', name: '物流管理', description: '物流跟踪、状态更新', icon: 'Van', sortOrder: 4 },
+                    { code: 'aftersales_management', name: '售后管理', description: '售后申请、处理流程', icon: 'Service', sortOrder: 5 },
+                    { code: 'call_management', name: '通话管理', description: '通话记录、录音管理', icon: 'Phone', sortOrder: 6 },
+                    { code: 'data_management', name: '资料管理', description: '客户资料、文档管理', icon: 'Folder', sortOrder: 7 },
+                    { code: 'performance_management', name: '业绩统计', description: '销售业绩、团队绩效', icon: 'TrendCharts', sortOrder: 8 },
+                    { code: 'product_management', name: '商品管理', description: '商品信息、库存、分类管理', icon: 'Goods', sortOrder: 9 },
+                    { code: 'system_management', name: '系统管理', description: '用户、角色、权限管理', icon: 'Setting', sortOrder: 10 }
+                ];
+                for (const mod of requiredModules) {
+                    const exists = await queryRunner.query('SELECT id FROM modules WHERE code = ?', [mod.code]);
+                    if (!exists || exists.length === 0) {
+                        await queryRunner.query(`INSERT INTO modules (id, name, code, description, icon, version, status, is_system, sort_order)
+               VALUES (UUID(), ?, ?, ?, ?, '1.0.0', 'enabled', 1, ?)`, [mod.name, mod.code, mod.description, mod.icon, mod.sortOrder]);
+                        console.log(`  ✅ modules 表补入缺失模块: ${mod.name} (${mod.code})`);
+                    }
+                }
+            }
+            await queryRunner.release();
+        }
+        catch (migrationErr) {
+            console.warn('⚠️  自动迁移检查失败（不影响运行）:', migrationErr);
+        }
         // 提示：数据库结构变更需要手动执行迁移脚本
         if (process.env.NODE_ENV === 'development') {
             console.log('ℹ️  开发环境：数据库结构变更请执行 database-migrations 目录下的迁移脚本');

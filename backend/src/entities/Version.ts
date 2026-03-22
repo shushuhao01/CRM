@@ -14,6 +14,9 @@ export class Version {
   @Column({ name: 'release_type', type: 'enum', enum: ['major', 'minor', 'patch', 'beta'], default: 'patch' })
   releaseType!: string;
 
+  @Column({ type: 'varchar', length: 50, nullable: true, default: 'all' })
+  platform?: string;
+
   @Column({ type: 'text', nullable: true })
   changelog?: string;
 
@@ -34,6 +37,12 @@ export class Version {
 
   @Column({ type: 'enum', enum: ['draft', 'published', 'deprecated'], default: 'draft' })
   status!: string;
+
+  @Column({ name: 'is_published', type: 'tinyint', default: 0 })
+  isPublished!: number;
+
+  @Column({ name: 'download_count', type: 'int', default: 0 })
+  downloadCount!: number;
 
   @Column({ name: 'published_at', type: 'datetime', nullable: true })
   publishedAt?: Date;

@@ -17,7 +17,7 @@ const parseVersionCode = (version: string): number => {
 // 获取版本列表
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { page = 1, pageSize = 20, status } = req.query;
+    const { page = 1, pageSize = 20, status, releaseType } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 100);
     const skip = (pageNum - 1) * pageSizeNum;
@@ -27,6 +27,10 @@ router.get('/', async (req: Request, res: Response) => {
 
     if (status) {
       queryBuilder.andWhere('version.status = :status', { status });
+    }
+
+    if (releaseType) {
+      queryBuilder.andWhere('version.releaseType = :releaseType', { releaseType });
     }
 
     queryBuilder.orderBy('version.versionCode', 'DESC');

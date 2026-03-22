@@ -87,7 +87,8 @@ CREATE TABLE `roles` (
 DROP TABLE IF EXISTS `users`;
 CREATE TABLE `users` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '用户ID',
-  `username` VARCHAR(50) UNIQUE NOT NULL COMMENT '用户名',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID（SaaS模式，私有部署为NULL）',
+  `username` VARCHAR(50) NOT NULL COMMENT '用户名',
   `password` VARCHAR(255) NOT NULL COMMENT '密码',
   `name` VARCHAR(50) NOT NULL COMMENT '姓名',
   `real_name` VARCHAR(50) COMMENT '真实姓名',
@@ -127,6 +128,8 @@ CREATE TABLE `users` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_username` (`username`),
+  INDEX `idx_users_tenant_id` (`tenant_id`),
+  UNIQUE INDEX `uk_tenant_username` (`tenant_id`, `username`),
   INDEX `idx_email` (`email`),
   INDEX `idx_phone` (`phone`),
   INDEX `idx_employee_number` (`employee_number`),
@@ -2710,6 +2713,7 @@ CREATE TABLE IF NOT EXISTS `tenants` (
   `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `last_verify_at` DATETIME DEFAULT NULL COMMENT '最后验证时间',
   INDEX `idx_code` (`code`),
   INDEX `idx_license_key` (`license_key`),
   INDEX `idx_status` (`status`)
@@ -2734,21 +2738,21 @@ CREATE TABLE IF NOT EXISTS `tenant_license_logs` (
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='租户授权日志表';
 
--- 套餐表
-CREATE TABLE IF NOT EXISTS `tenant_packages` (
-  `id` VARCHAR(36) PRIMARY KEY,
-  `name` VARCHAR(100) NOT NULL COMMENT '套餐名称',
-  `price` DECIMAL(10,2) DEFAULT 0.00 COMMENT '价格',
-  `unit` VARCHAR(10) DEFAULT '月' COMMENT '计费单位',
-  `max_users` INT DEFAULT 10 COMMENT '最大用户数',
-  `storage` VARCHAR(20) DEFAULT '5GB' COMMENT '存储空间',
-  `features` TEXT COMMENT '功能列表(JSON)',
-  `recommended` TINYINT(1) DEFAULT 0 COMMENT '是否推荐',
-  `sort_order` INT DEFAULT 0 COMMENT '排序',
-  `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态',
-  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='套餐表（平台管理后台专用）';
+-- 套餐表（旧版已弃用，完整版定义在下方 "租户套餐表（官网和管理后台共用）"）
+-- CREATE TABLE IF NOT EXISTS `tenant_packages` (
+--   `id` VARCHAR(36) PRIMARY KEY,
+--   `name` VARCHAR(100) NOT NULL COMMENT '套餐名称',
+--   `price` DECIMAL(10,2) DEFAULT 0.00 COMMENT '价格',
+--   `unit` VARCHAR(10) DEFAULT '月' COMMENT '计费单位',
+--   `max_users` INT DEFAULT 10 COMMENT '最大用户数',
+--   `storage` VARCHAR(20) DEFAULT '5GB' COMMENT '存储空间',
+--   `features` TEXT COMMENT '功能列表(JSON)',
+--   `recommended` TINYINT(1) DEFAULT 0 COMMENT '是否推荐',
+--   `sort_order` INT DEFAULT 0 COMMENT '排序',
+--   `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态',
+--   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+--   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+-- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='套餐表（平台管理后台专用）';
 
 -- 模块方案表
 CREATE TABLE IF NOT EXISTS `module_schemes` (
@@ -3664,6 +3668,64 @@ INSERT INTO `wechat_official_account_config` (`id`, `app_id`, `app_secret`, `wel
 '欢迎关注云客CRM！回复"绑定"绑定账号，回复"帮助"查看更多。',
 '感谢您的消息！回复"绑定"绑定账号，回复"帮助"查看帮助。',
 0)
+ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
+
+-- =============================================
+-- 管理后台通知服务相关表
+-- =============================================
+
+-- 管理后台通知记录表
+CREATE TABLE IF NOT EXISTS `admin_notifications` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `title` VARCHAR(200) NOT NULL COMMENT '通知标题',
+  `content` TEXT COMMENT '通知内容',
+  `event_type` VARCHAR(50) NOT NULL COMMENT '事件类型',
+  `level` ENUM('info','success','warning','error') DEFAULT 'info' COMMENT '级别',
+  `is_read` TINYINT(1) DEFAULT 0 COMMENT '是否已读',
+  `related_id` VARCHAR(36) DEFAULT NULL COMMENT '关联ID',
+  `related_type` VARCHAR(50) DEFAULT NULL COMMENT '关联类型',
+  `extra_data` JSON DEFAULT NULL COMMENT '额外数据',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_event_type` (`event_type`),
+  INDEX `idx_is_read` (`is_read`),
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_level` (`level`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='管理后台通知记录表';
+
+-- 管理后台通知渠道配置表
+CREATE TABLE IF NOT EXISTS `admin_notification_channels` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `channel_type` VARCHAR(30) NOT NULL UNIQUE COMMENT '渠道类型: system/dingtalk/wecom/wechat_mp/email',
+  `name` VARCHAR(50) NOT NULL COMMENT '渠道名称',
+  `is_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用',
+  `config_data` JSON DEFAULT NULL COMMENT '渠道配置数据(JSON)',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_channel_type` (`channel_type`),
+  INDEX `idx_is_enabled` (`is_enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='管理后台通知渠道配置表';
+
+-- 管理后台通知规则表
+CREATE TABLE IF NOT EXISTS `admin_notification_rules` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `event_type` VARCHAR(50) NOT NULL COMMENT '事件类型',
+  `channel_type` VARCHAR(30) NOT NULL COMMENT '渠道类型',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_event_channel` (`event_type`, `channel_type`),
+  INDEX `idx_event_type` (`event_type`),
+  INDEX `idx_channel_type` (`channel_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='管理后台通知规则表';
+
+-- 插入默认通知渠道
+INSERT INTO `admin_notification_channels` (`id`, `channel_type`, `name`, `is_enabled`, `config_data`) VALUES
+(UUID(), 'system', '系统消息', 1, '{}'),
+(UUID(), 'dingtalk', '钉钉机器人', 0, '{"webhook":"","secret":""}'),
+(UUID(), 'wecom', '企业微信', 0, '{"webhook":""}'),
+(UUID(), 'wechat_mp', '微信公众号', 0, '{"app_id":"","app_secret":"","template_id":"","openids":[]}'),
+(UUID(), 'email', '邮件通知', 0, '{"smtp_host":"","smtp_port":465,"username":"","password":"","from_name":"CRM管理后台","to_emails":[]}')
 ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
 
 -- =============================================

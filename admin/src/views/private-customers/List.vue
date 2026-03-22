@@ -1,5 +1,29 @@
 <template>
   <div class="page-container">
+    <!-- 统计概览 -->
+    <div class="stats-row">
+      <el-card shadow="never" class="stat-card">
+        <div class="stat-value">{{ stats.total }}</div>
+        <div class="stat-label">客户总数</div>
+      </el-card>
+      <el-card shadow="never" class="stat-card active">
+        <div class="stat-value">{{ stats.active }}</div>
+        <div class="stat-label">授权有效</div>
+      </el-card>
+      <el-card shadow="never" class="stat-card warning">
+        <div class="stat-value">{{ stats.pending }}</div>
+        <div class="stat-label">待激活</div>
+      </el-card>
+      <el-card shadow="never" class="stat-card danger">
+        <div class="stat-value">{{ stats.expired }}</div>
+        <div class="stat-label">已过期</div>
+      </el-card>
+      <el-card shadow="never" class="stat-card info">
+        <div class="stat-value">{{ stats.revoked }}</div>
+        <div class="stat-label">已吊销</div>
+      </el-card>
+    </div>
+
     <el-card shadow="never" class="search-card">
       <el-form :model="searchForm" inline>
         <el-form-item label="关键词">
@@ -108,6 +132,9 @@
                 <el-button link type="info" size="small">更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
+                    <el-dropdown-item command="unlock">
+                      <el-icon><Unlock /></el-icon>解锁账号
+                    </el-dropdown-item>
                     <el-dropdown-item v-if="row.status === 'active' || row.status === 'expired'" command="renew">
                       <el-icon><Clock /></el-icon>续期
                     </el-dropdown-item>
@@ -235,21 +262,51 @@
     </el-dialog>
 
     <!-- 授权码生成成功提示 -->
-    <el-dialog v-model="showLicenseDialog" title="操作成功" width="500px">
-      <el-result icon="success" :title="licenseDialogTitle">
+    <el-dialog v-model="showLicenseDialog" title="私有客户创建成功" width="600px">
+      <el-result icon="success" title="私有客户创建成功">
         <template #sub-title>
           <div class="license-result">
-            <p>请将以下授权码发送给客户，用于激活私有部署系统：</p>
-            <div class="license-key-box">
-              <span class="key">{{ newLicenseKey }}</span>
-              <el-button type="primary" size="small" @click="copyKey(newLicenseKey)">复制</el-button>
+            <p class="result-desc">请将以下完整信息发送给客户，用于激活私有部署系统</p>
+
+            <div class="info-box-group">
+              <div class="info-box">
+                <div class="info-label">🔑 授权码</div>
+                <div class="info-value code">{{ loginInfo.licenseKey }}</div>
+              </div>
+
+              <div class="info-box">
+                <div class="info-label">👤 管理员账号</div>
+                <div class="info-value code">{{ loginInfo.username }}</div>
+              </div>
+
+              <div class="info-box">
+                <div class="info-label">🔐 初始密码</div>
+                <div class="info-value code">{{ loginInfo.password }}</div>
+              </div>
             </div>
-            <p class="tip">提示：授权码是私有部署系统激活的唯一凭证，请妥善保管</p>
+
+            <div class="copy-actions">
+              <el-button type="primary" @click="copyAllInfo" size="large">
+                <el-icon><CopyDocument /></el-icon>
+                一键复制全部信息
+              </el-button>
+              <el-button @click="copyLicenseKey" plain>复制授权码</el-button>
+              <el-button @click="copyCredentials" plain>复制账号密码</el-button>
+            </div>
+
+            <div class="tips-box">
+              <p class="tip">💡 提示：</p>
+              <ul>
+                <li>授权码是私有部署系统激活的唯一凭证，请妥善保管</li>
+                <li>首次登录后请立即修改密码</li>
+                <li>此信息仅显示一次，请及时保存</li>
+              </ul>
+            </div>
           </div>
         </template>
       </el-result>
       <template #footer>
-        <el-button type="primary" @click="showLicenseDialog = false">我知道了</el-button>
+        <el-button type="primary" @click="showLicenseDialog = false" size="large">我知道了</el-button>
       </template>
     </el-dialog>
   </div>
@@ -260,7 +317,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Search, Plus, CopyDocument, ArrowDown, Download, View, Hide,
-  Clock, RefreshRight, Delete, CircleClose, CircleCheck
+  Clock, RefreshRight, Delete, CircleClose, CircleCheck, Unlock
 } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { adminApi } from '@/api/admin'
@@ -279,10 +336,17 @@ const renewMonths = ref<number>(12)
 const newLicenseKey = ref('')
 const licenseDialogTitle = ref('私有客户创建成功')
 
+// 登录信息对象
+const loginInfo = reactive({
+  licenseKey: '',
+  username: '',
+  password: ''
+})
+
 const searchForm = reactive({ keyword: '', licenseType: '', status: '' })
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
 const tableData = ref<any[]>([])
-
+const stats = reactive({ total: 0, active: 0, pending: 0, expired: 0, revoked: 0 })
 const form = reactive({
   customerName: '',
   contact: '',
@@ -297,8 +361,23 @@ const form = reactive({
 
 const rules: FormRules = {
   customerName: [{ required: true, message: '请输入客户名称' }],
+  contact: [{ required: true, message: '请输入联系人', trigger: 'blur' }],
+  phone: [
+    { required: true, message: '请输入联系电话', trigger: 'blur' },
+    { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号格式', trigger: 'blur' }
+  ],
   licenseType: [{ required: true, message: '请选择授权类型' }],
-  maxUsers: [{ required: true, message: '请输入最大用户数' }]
+  maxUsers: [{ required: true, message: '请输入最大用户数' }],
+  expiresAt: [{
+    validator: (_rule: any, value: any, callback: any) => {
+      if (form.licenseType !== 'perpetual' && !value) {
+        callback(new Error('请选择到期时间'))
+      } else {
+        callback()
+      }
+    },
+    trigger: 'change'
+  }]
 }
 
 const moduleOptions = [
@@ -436,6 +515,20 @@ const handleEdit = (row: any) => {
 
 const handleCommand = async (cmd: string, row: any) => {
   switch (cmd) {
+    case 'unlock':
+      try {
+        await ElMessageBox.confirm(
+          `确定要解锁 "${row.customerName}" 的管理员账号吗？这将重置登录失败次数并解除账号锁定。`,
+          '解锁账号', { type: 'info', confirmButtonText: '确定解锁', cancelButtonText: '取消' }
+        )
+        const res = await adminApi.unlockPrivateCustomerAdmin(row.id)
+        if (res.success) {
+          ElMessage.success(res.message || '解锁成功')
+        }
+      } catch (e: any) {
+        if (e !== 'cancel') ElMessage.error(e.message || '解锁失败')
+      }
+      break
     case 'renew':
       renewingCustomer.value = row
       renewExpireDate.value = null
@@ -450,7 +543,7 @@ const handleCommand = async (cmd: string, row: any) => {
           '吊销授权', { type: 'warning', confirmButtonText: '确定吊销', cancelButtonText: '取消' }
         )
         const res = await adminApi.revokeLicense(row.id)
-        if (res.success) { ElMessage.success('已吊销'); fetchData() }
+        if (res.success) { ElMessage.success('已吊销'); fetchData(); fetchStats() }
       } catch (e: any) {
         if (e !== 'cancel') ElMessage.error(e.message || '操作失败')
       }
@@ -462,7 +555,7 @@ const handleCommand = async (cmd: string, row: any) => {
           '重新激活', { type: 'info' }
         )
         const res = await adminApi.updateLicense(row.id, { status: 'active' })
-        if (res.success) { ElMessage.success('已重新激活'); fetchData() }
+        if (res.success) { ElMessage.success('已重新激活'); fetchData(); fetchStats() }
       } catch (e: any) {
         if (e !== 'cancel') ElMessage.error(e.message || '操作失败')
       }
@@ -493,7 +586,7 @@ const handleCommand = async (cmd: string, row: any) => {
           type: 'error', confirmButtonText: '确定删除', confirmButtonClass: 'el-button--danger'
         })
         const res = await adminApi.deleteLicense(row.id)
-        if (res.success) { ElMessage.success('已删除'); fetchData() }
+        if (res.success) { ElMessage.success('已删除'); fetchData(); fetchStats() }
       } catch (e: any) {
         if (e !== 'cancel') ElMessage.error(e.message || '删除失败')
       }
@@ -523,7 +616,8 @@ const confirmRenew = async () => {
 }
 
 const handleSubmit = async () => {
-  await formRef.value?.validate()
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
   submitting.value = true
   try {
     const data = {
@@ -540,6 +634,12 @@ const handleSubmit = async () => {
     } else {
       const res = await adminApi.generateLicense(data)
       if (res.success) {
+        // 保存完整登录信息
+        Object.assign(loginInfo, {
+          licenseKey: res.data.licenseKey || '',
+          username: res.data.adminAccount?.username || '',
+          password: res.data.adminAccount?.password || ''
+        })
         newLicenseKey.value = res.data.licenseKey
         licenseDialogTitle.value = '私有客户创建成功'
         showDialog.value = false
@@ -551,6 +651,48 @@ const handleSubmit = async () => {
     ElMessage.error(e.message || '操作失败')
   } finally {
     submitting.value = false
+  }
+}
+
+// 复制全部信息
+const copyAllInfo = async () => {
+  const text = `【云客CRM - 私有部署授权信息】
+
+🔑 授权码：${loginInfo.licenseKey}
+👤 管理员账号：${loginInfo.username}
+🔐 初始密码：${loginInfo.password}
+
+💡 温馨提示：
+1. 请使用授权码激活私有部署系统
+2. 首次登录后请立即修改密码
+3. 如有问题请联系技术支持`
+
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制全部信息到剪贴板')
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
+// 复制授权码
+const copyLicenseKey = async () => {
+  try {
+    await navigator.clipboard.writeText(loginInfo.licenseKey)
+    ElMessage.success('已复制授权码')
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
+
+// 复制账号密码
+const copyCredentials = async () => {
+  const text = `账号：${loginInfo.username}\n密码：${loginInfo.password}`
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制账号密码')
+  } catch {
+    ElMessage.error('复制失败')
   }
 }
 
@@ -577,7 +719,22 @@ const fetchData = async () => {
   }
 }
 
-onMounted(() => fetchData())
+onMounted(() => { fetchData(); fetchStats() })
+
+const fetchStats = async () => {
+  try {
+    const res = await adminApi.getLicenseStats()
+    if (res.success && res.data) {
+      stats.total = res.data.total || 0
+      stats.active = res.data.active || 0
+      stats.pending = res.data.pending || 0
+      stats.expired = res.data.expired || 0
+      stats.revoked = res.data.revoked || 0
+    }
+  } catch {
+    // 统计失败不影响主功能
+  }
+}
 
 // === 导出 ===
 const handleExport = () => {
@@ -610,6 +767,25 @@ const handleExport = () => {
 .pagination-wrapper { margin-top: 16px; display: flex; justify-content: flex-end; }
 .text-danger { color: #f56c6c; }
 .text-bold { font-weight: 600; }
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+
+  .stat-card {
+    border-radius: 8px; border: none; text-align: center;
+    :deep(.el-card__body) { padding: 16px; }
+
+    .stat-value { font-size: 28px; font-weight: 700; color: #303133; line-height: 1.3; }
+    .stat-label { font-size: 13px; color: #909399; margin-top: 4px; }
+
+    &.active .stat-value { color: #67c23a; }
+    &.warning .stat-value { color: #e6a23c; }
+    &.danger .stat-value { color: #f56c6c; }
+    &.info .stat-value { color: #909399; }
+  }
+}
 
 .customer-name-cell {
   display: flex;
@@ -667,8 +843,79 @@ const handleExport = () => {
 
 .license-result {
   text-align: center;
-  p { margin: 8px 0; color: #606266; }
-  .tip { font-size: 12px; color: #909399; }
+
+  .result-desc {
+    margin: 16px 0 24px;
+    color: #606266;
+    font-size: 14px;
+  }
+}
+
+.info-box-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+  text-align: left;
+}
+
+.info-box {
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 12px 16px;
+
+  .info-label {
+    font-size: 13px;
+    color: #909399;
+    margin-bottom: 6px;
+  }
+
+  .info-value {
+    font-size: 15px;
+    color: #303133;
+    font-weight: 500;
+    word-break: break-all;
+
+    &.code {
+      font-family: 'Courier New', monospace;
+      color: #409eff;
+      font-size: 14px;
+    }
+  }
+}
+
+.copy-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.tips-box {
+  background: #fff7e6;
+  border: 1px solid #ffe7ba;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: left;
+
+  .tip {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e6a23c;
+    margin: 0 0 8px 0;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 20px;
+
+    li {
+      font-size: 13px;
+      color: #606266;
+      line-height: 1.8;
+    }
+  }
 }
 
 .license-key-box {
@@ -679,6 +926,11 @@ const handleExport = () => {
 
 /* ====== 响应式适配 ====== */
 @media screen and (max-width: 768px) {
+  .stats-row {
+    grid-template-columns: repeat(3, 1fr);
+    .stat-card .stat-value { font-size: 22px; }
+    .stat-card .stat-label { font-size: 11px; }
+  }
   .search-card :deep(.el-form) {
     display: flex;
     flex-direction: column;

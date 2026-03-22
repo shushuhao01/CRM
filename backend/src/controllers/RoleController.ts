@@ -3,14 +3,11 @@ import { getDataSource } from '../config/database';
 import { Role } from '../entities/Role';
 import { Permission } from '../entities/Permission';
 import { Repository, TreeRepository } from 'typeorm';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 export class RoleController {
   private get roleRepository(): Repository<Role> {
-    const dataSource = getDataSource();
-    if (!dataSource) {
-      throw new Error('数据库连接未初始化');
-    }
-    return dataSource.getRepository(Role);
+    return getTenantRepo(Role);
   }
 
   private get permissionRepository(): TreeRepository<Permission> {

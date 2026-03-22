@@ -5,7 +5,10 @@ export class User {
   @PrimaryColumn('varchar', { length: 50 })
   id: string;
 
-  @Column('varchar', { length: 50, unique: true })
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
+  @Column('varchar', { length: 50 })
   username: string;
 
   @Column('varchar', { length: 255 })

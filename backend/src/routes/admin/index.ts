@@ -23,6 +23,7 @@ import apiConfigsRouter from './api-configs';
 import uploadRouter from './upload';
 import operationLogsRouter from './operation-logs';
 import exportRouter from './export';
+import notificationsRouter from './notifications';
 // import schedulerRouter from './scheduler'; // 暂时禁用
 
 const router = Router();
@@ -84,13 +85,26 @@ router.get('/public/system-config', async (_req: Request, res: Response) => {
         responseData.privacyPolicy = data.privacyPolicy
       }
 
+      // 过滤distributedConfig：去掉__draft草稿（未正式管控的配置不下发）
+      let cleanDistributedConfig: any = null
+      if (data.distributedConfig && typeof data.distributedConfig === 'object') {
+        cleanDistributedConfig = {}
+        for (const [k, v] of Object.entries(data.distributedConfig)) {
+          if (v && typeof v === 'object' && !(v as any).__draft) {
+            cleanDistributedConfig[k] = v
+          } else {
+            cleanDistributedConfig[k] = null
+          }
+        }
+      }
+
       res.json({
         success: true,
         data: {
           ...responseData,
           hasOverride,
           featureFlags: data.featureFlags || null,
-          distributedConfig: data.distributedConfig || null
+          distributedConfig: cleanDistributedConfig
         }
       })
     } else {
@@ -133,6 +147,7 @@ router.use('/api-configs', apiConfigsRouter);
 router.use('/upload', uploadRouter);
 router.use('/operation-logs', operationLogsRouter);
 router.use('/export', exportRouter);
+router.use('/notifications', notificationsRouter);
 router.use('/system-settings', systemSettingsRouter);
 // router.use('/scheduler', schedulerRouter); // 暂时禁用
 // 需要认证的系统配置路由

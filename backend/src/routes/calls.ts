@@ -8,6 +8,7 @@ import { recordingStorageService } from '../services/RecordingStorageService';
 import multer from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
+import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -36,7 +37,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
   try {
     const { startDate, endDate, userId, department } = req.query;
     const currentUser = (req as any).user;
-    const callRepository = AppDataSource.getRepository(Call);
+    const callRepository = getTenantRepo(Call);
 
     const queryBuilder = callRepository.createQueryBuilder('call');
 
@@ -181,7 +182,7 @@ router.get('/records', async (req: Request, res: Response) => {
     } = req.query;
 
     const currentUser = (req as any).user;
-    const callRepository = AppDataSource.getRepository(Call);
+    const callRepository = getTenantRepo(Call);
     const queryBuilder = callRepository.createQueryBuilder('call');
 
     // 🔥 角色权限过滤
@@ -284,7 +285,7 @@ router.get('/records', async (req: Request, res: Response) => {
 router.get('/records/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const callRepository = AppDataSource.getRepository(Call);
+    const callRepository = getTenantRepo(Call);
 
     const record = await callRepository.findOne({ where: { id } });
 
@@ -311,7 +312,7 @@ router.get('/records/:id', async (req: Request, res: Response) => {
 // 创建通话记录
 router.post('/records', async (req: Request, res: Response) => {
   try {
-    const callRepository = AppDataSource.getRepository(Call);
+    const callRepository = getTenantRepo(Call);
     const currentUser = (req as any).user;
     const {
       customerId,
@@ -363,7 +364,7 @@ router.post('/records', async (req: Request, res: Response) => {
 router.put('/records/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const callRepository = AppDataSource.getRepository(Call);
+    const callRepository = getTenantRepo(Call);
 
     const record = await callRepository.findOne({ where: { id } });
 
@@ -398,7 +399,7 @@ router.put('/records/:id/end', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { endTime, duration, notes, followUpRequired } = req.body;
-    const callRepository = AppDataSource.getRepository(Call);
+    const callRepository = getTenantRepo(Call);
 
     const record = await callRepository.findOne({ where: { id } });
 
@@ -436,7 +437,7 @@ router.put('/:id/notes', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { notes } = req.body;
-    const callRepository = AppDataSource.getRepository(Call);
+    const callRepository = getTenantRepo(Call);
 
     console.log('[Calls] 更新通话备注:', { callId: id, notes });
 
@@ -474,7 +475,7 @@ router.put('/:id/notes', async (req: Request, res: Response) => {
 router.delete('/records/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const callRepository = AppDataSource.getRepository(Call);
+    const callRepository = getTenantRepo(Call);
 
     const result = await callRepository.delete(id);
 
@@ -503,7 +504,7 @@ router.delete('/records/:id', async (req: Request, res: Response) => {
 // 发起外呼
 router.post('/outbound', async (req: Request, res: Response) => {
   try {
-    const callRepository = AppDataSource.getRepository(Call);
+    const callRepository = getTenantRepo(Call);
     const currentUser = (req as any).user;
     const { customerId, customerPhone, customerName, notes } = req.body;
 
@@ -567,7 +568,7 @@ router.get('/followups', async (req: Request, res: Response) => {
       endDate
     } = req.query;
 
-    const followUpRepository = AppDataSource.getRepository(FollowUp);
+    const followUpRepository = getTenantRepo(FollowUp);
     const queryBuilder = followUpRepository.createQueryBuilder('followup');
 
     if (customerId) {
@@ -627,7 +628,7 @@ router.get('/followups', async (req: Request, res: Response) => {
 // 创建跟进记录
 router.post('/followups', async (req: Request, res: Response) => {
   try {
-    const followUpRepository = AppDataSource.getRepository(FollowUp);
+    const followUpRepository = getTenantRepo(FollowUp);
     const currentUser = (req as any).user;
     const {
       callId,
@@ -725,7 +726,7 @@ router.post('/followups', async (req: Request, res: Response) => {
 router.put('/followups/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const followUpRepository = AppDataSource.getRepository(FollowUp);
+    const followUpRepository = getTenantRepo(FollowUp);
 
     const record = await followUpRepository.findOne({ where: { id } });
 
@@ -763,7 +764,7 @@ router.put('/followups/:id', async (req: Request, res: Response) => {
 router.delete('/followups/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const followUpRepository = AppDataSource.getRepository(FollowUp);
+    const followUpRepository = getTenantRepo(FollowUp);
 
     const result = await followUpRepository.delete(id);
 
@@ -914,8 +915,9 @@ router.get('/recordings', async (req: Request, res: Response) => {
     } = req.query;
 
     // 优先从call_recordings表查询
-    let whereClause = 'is_deleted = 0';
-    const params: any[] = [];
+    const tRec = tenantSQL('');
+    let whereClause = `is_deleted = 0${tRec.sql}`;
+    const params: any[] = [...tRec.params];
 
     if (callId) {
       whereClause += ' AND call_id = ?';
@@ -948,7 +950,7 @@ router.get('/recordings', async (req: Request, res: Response) => {
 
     // 如果call_recordings表没有数据，从call_records表查询
     if (recordings.length === 0 && !callId && !customerId) {
-      const callRepository = AppDataSource.getRepository(Call);
+      const callRepository = getTenantRepo(Call);
       const queryBuilder = callRepository.createQueryBuilder('call')
         .where('call.hasRecording = :hasRecording', { hasRecording: true });
 
@@ -1104,7 +1106,7 @@ router.delete('/recordings/:id', async (req: Request, res: Response) => {
 
     if (!success) {
       // 回退到旧逻辑
-      const callRepository = AppDataSource.getRepository(Call);
+      const callRepository = getTenantRepo(Call);
       const callId = id.replace('rec_', '');
       const record = await callRepository.findOne({ where: { id: callId } });
 
@@ -1482,7 +1484,7 @@ router.get('/', async (req: Request, res: Response) => {
       keyword
     } = req.query;
 
-    const callRepository = AppDataSource.getRepository(Call);
+    const callRepository = getTenantRepo(Call);
     const queryBuilder = callRepository.createQueryBuilder('call');
 
     if (status) {
@@ -1574,25 +1576,28 @@ router.get('/outbound-tasks', async (req: Request, res: Response) => {
       .addOrderBy('task.created_at', 'DESC');
 
     // 获取总数
+    const tTask = tenantSQL('');
     const countResult = await AppDataSource.query(
-      `SELECT COUNT(*) as total FROM outbound_tasks WHERE 1=1
+      `SELECT COUNT(*) as total FROM outbound_tasks WHERE 1=1${tTask.sql}
        ${status ? `AND status = '${status}'` : ''}
        ${assignedTo ? `AND assigned_to = '${assignedTo}'` : ''}
        ${customerLevel ? `AND customer_level = '${customerLevel}'` : ''}
-       ${keyword ? `AND (customer_name LIKE '%${keyword}%' OR customer_phone LIKE '%${keyword}%')` : ''}`
+       ${keyword ? `AND (customer_name LIKE '%${keyword}%' OR customer_phone LIKE '%${keyword}%')` : ''}`,
+      [...tTask.params]
     );
     const total = countResult[0]?.total || 0;
 
     // 分页查询
     const offset = (Number(page) - 1) * Number(pageSize);
     const tasks = await AppDataSource.query(
-      `SELECT * FROM outbound_tasks WHERE 1=1
+      `SELECT * FROM outbound_tasks WHERE 1=1${tTask.sql}
        ${status ? `AND status = '${status}'` : ''}
        ${assignedTo ? `AND assigned_to = '${assignedTo}'` : ''}
        ${customerLevel ? `AND customer_level = '${customerLevel}'` : ''}
        ${keyword ? `AND (customer_name LIKE '%${keyword}%' OR customer_phone LIKE '%${keyword}%')` : ''}
        ORDER BY priority DESC, created_at DESC
-       LIMIT ${Number(pageSize)} OFFSET ${offset}`
+       LIMIT ${Number(pageSize)} OFFSET ${offset}`,
+      [...tTask.params]
     );
 
     res.json({
@@ -1732,423 +1737,10 @@ router.delete('/outbound-tasks/:id', async (req: Request, res: Response) => {
 // 获取外呼线路列表
 router.get('/lines', async (req: Request, res: Response) => {
   try {
+    const tLine = tenantSQL('');
     const lines = await AppDataSource.query(
-      `SELECT * FROM call_lines ORDER BY sort_order ASC, created_at DESC`
-    );
-
-    res.json({
-      success: true,
-      data: lines
-    });
-  } catch (error) {
-    console.error('获取外呼线路列表失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取外呼线路列表失败'
-    });
-  }
-});
-
-// 创建外呼线路
-router.post('/lines', async (req: Request, res: Response) => {
-  try {
-    const currentUser = (req as any).user;
-    const {
-      name,
-      provider,
-      callerNumber,
-      config,
-      maxConcurrent = 10,
-      dailyLimit = 1000,
-      sortOrder = 0,
-      remark
-    } = req.body;
-
-    if (!name || !provider) {
-      return res.status(400).json({
-        success: false,
-        message: '线路名称和服务商不能为空'
-      });
-    }
-
-    const lineId = `line_${Date.now()}_${uuidv4().substring(0, 8)}`;
-
-    await AppDataSource.query(
-      `INSERT INTO call_lines
-       (id, name, provider, caller_number, config, status, max_concurrent, daily_limit, sort_order, remark, created_by)
-       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
-      [lineId, name, provider, callerNumber, JSON.stringify(config || {}), maxConcurrent, dailyLimit, sortOrder, remark, currentUser?.userId]
-    );
-
-    res.status(201).json({
-      success: true,
-      message: '外呼线路创建成功',
-      data: { id: lineId }
-    });
-  } catch (error) {
-    console.error('创建外呼线路失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '创建外呼线路失败'
-    });
-  }
-});
-
-// 更新外呼线路
-router.put('/lines/:id', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { name, provider, callerNumber, config, status, maxConcurrent, dailyLimit, sortOrder, remark } = req.body;
-
-    const updates: string[] = [];
-    const params: any[] = [];
-
-    if (name) { updates.push('name = ?'); params.push(name); }
-    if (provider) { updates.push('provider = ?'); params.push(provider); }
-    if (callerNumber !== undefined) { updates.push('caller_number = ?'); params.push(callerNumber); }
-    if (config) { updates.push('config = ?'); params.push(JSON.stringify(config)); }
-    if (status) { updates.push('status = ?'); params.push(status); }
-    if (maxConcurrent !== undefined) { updates.push('max_concurrent = ?'); params.push(maxConcurrent); }
-    if (dailyLimit !== undefined) { updates.push('daily_limit = ?'); params.push(dailyLimit); }
-    if (sortOrder !== undefined) { updates.push('sort_order = ?'); params.push(sortOrder); }
-    if (remark !== undefined) { updates.push('remark = ?'); params.push(remark); }
-
-    if (updates.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: '没有要更新的字段'
-      });
-    }
-
-    params.push(id);
-    await AppDataSource.query(
-      `UPDATE call_lines SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`,
-      params
-    );
-
-    res.json({
-      success: true,
-      message: '外呼线路更新成功'
-    });
-  } catch (error) {
-    console.error('更新外呼线路失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '更新外呼线路失败'
-    });
-  }
-});
-
-// 删除外呼线路
-router.delete('/lines/:id', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    await AppDataSource.query('DELETE FROM call_lines WHERE id = ?', [id]);
-
-    res.json({
-      success: true,
-      message: '外呼线路删除成功'
-    });
-  } catch (error) {
-    console.error('删除外呼线路失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '删除外呼线路失败'
-    });
-  }
-});
-
-// ==================== 号码黑名单管理 ====================
-
-// 获取黑名单列表
-router.get('/blacklist', async (req: Request, res: Response) => {
-  try {
-    const { page = 1, pageSize = 20, keyword, isActive } = req.query;
-
-    let whereClause = '1=1';
-    if (keyword) {
-      whereClause += ` AND (phone LIKE '%${keyword}%' OR reason LIKE '%${keyword}%')`;
-    }
-    if (isActive !== undefined) {
-      whereClause += ` AND is_active = ${isActive === 'true' ? 1 : 0}`;
-    }
-
-    const countResult = await AppDataSource.query(
-      `SELECT COUNT(*) as total FROM phone_blacklist WHERE ${whereClause}`
-    );
-    const total = countResult[0]?.total || 0;
-
-    const offset = (Number(page) - 1) * Number(pageSize);
-    const records = await AppDataSource.query(
-      `SELECT * FROM phone_blacklist WHERE ${whereClause} ORDER BY created_at DESC LIMIT ${Number(pageSize)} OFFSET ${offset}`
-    );
-
-    res.json({
-      success: true,
-      data: {
-        records,
-        total: Number(total),
-        page: Number(page),
-        pageSize: Number(pageSize)
-      }
-    });
-  } catch (error) {
-    console.error('获取黑名单列表失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取黑名单列表失败'
-    });
-  }
-});
-
-// 添加号码到黑名单
-router.post('/blacklist', async (req: Request, res: Response) => {
-  try {
-    const currentUser = (req as any).user;
-    const { phone, reason, source = 'manual', expireAt } = req.body;
-
-    if (!phone) {
-      return res.status(400).json({
-        success: false,
-        message: '电话号码不能为空'
-      });
-    }
-
-    const blacklistId = `bl_${Date.now()}_${uuidv4().substring(0, 8)}`;
-
-    await AppDataSource.query(
-      `INSERT INTO phone_blacklist (id, phone, reason, source, expire_at, is_active, created_by, created_by_name)
-       VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-       ON DUPLICATE KEY UPDATE reason = VALUES(reason), is_active = 1, updated_at = NOW()`,
-      [blacklistId, phone, reason, source, expireAt, currentUser?.userId, currentUser?.realName]
-    );
-
-    res.status(201).json({
-      success: true,
-      message: '号码已添加到黑名单'
-    });
-  } catch (error) {
-    console.error('添加黑名单失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '添加黑名单失败'
-    });
-  }
-});
-
-// 从黑名单移除号码
-router.delete('/blacklist/:id', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    await AppDataSource.query('DELETE FROM phone_blacklist WHERE id = ?', [id]);
-
-    res.json({
-      success: true,
-      message: '号码已从黑名单移除'
-    });
-  } catch (error) {
-    console.error('移除黑名单失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '移除黑名单失败'
-    });
-  }
-});
-
-// 检查号码是否在黑名单中
-router.get('/blacklist/check/:phone', async (req: Request, res: Response) => {
-  try {
-    const { phone } = req.params;
-
-    const result = await AppDataSource.query(
-      `SELECT * FROM phone_blacklist WHERE phone = ? AND is_active = 1 AND (expire_at IS NULL OR expire_at > NOW())`,
-      [phone]
-    );
-
-    res.json({
-      success: true,
-      data: {
-        isBlacklisted: result.length > 0,
-        record: result[0] || null
-      }
-    });
-  } catch (error) {
-    console.error('检查黑名单失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '检查黑名单失败'
-    });
-  }
-});
-
-// ==================== 电话配置管理 ====================
-
-// 获取用户电话配置
-router.get('/config', async (req: Request, res: Response) => {
-  try {
-    const currentUser = (req as any).user;
-    const userId = (req.query.userId as string) || currentUser?.userId || currentUser?.id;
-
-    const configs = await AppDataSource.query(
-      `SELECT * FROM phone_configs WHERE user_id = ?`,
-      [userId]
-    );
-
-    if (configs.length === 0) {
-      // 返回默认配置
-      return res.json({
-        success: true,
-        data: {
-          userId,
-          callMethod: 'system',
-          defaultLineId: '',
-          workPhone: '',
-          dialMethod: 'direct',
-          voipProvider: 'aliyun',
-          callMode: 'manual',
-          callInterval: 30,
-          maxRetries: 3,
-          callTimeout: 60,
-          autoRecord: true,
-          autoFollowUp: false,
-          concurrentCalls: 1,
-          priority: 'medium',
-          blacklistCheck: true,
-          showLocation: true
-        }
-      });
-    }
-
-    const config = configs[0];
-    res.json({
-      success: true,
-      data: {
-        id: config.id,
-        userId: config.user_id,
-        callMethod: config.call_method,
-        defaultLineId: config.default_line_id,
-        workPhone: config.work_phone,
-        dialMethod: config.dial_method,
-        voipProvider: config.voip_provider,
-        voipConfig: config.voip_config,
-        callMode: config.call_mode,
-        callInterval: config.call_interval,
-        maxRetries: config.max_retries,
-        callTimeout: config.call_timeout,
-        autoRecord: config.auto_record === 1,
-        autoFollowUp: config.auto_follow_up === 1,
-        concurrentCalls: config.concurrent_calls,
-        priority: config.priority,
-        blacklistCheck: config.blacklist_check === 1,
-        showLocation: config.show_location === 1,
-        createdAt: config.created_at,
-        updatedAt: config.updated_at
-      }
-    });
-  } catch (error) {
-    console.error('获取电话配置失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取电话配置失败'
-    });
-  }
-});
-
-// 保存/更新用户电话配置
-router.put('/config', async (req: Request, res: Response) => {
-  try {
-    const currentUser = (req as any).user;
-    const userId = req.body.userId || currentUser?.userId || currentUser?.id;
-    const {
-      callMethod,
-      defaultLineId,
-      workPhone,
-      dialMethod,
-      voipProvider,
-      voipConfig,
-      callMode,
-      callInterval,
-      maxRetries,
-      callTimeout,
-      autoRecord,
-      autoFollowUp,
-      concurrentCalls,
-      priority,
-      blacklistCheck,
-      showLocation
-    } = req.body;
-
-    const configId = `config_${userId}`;
-
-    await AppDataSource.query(
-      `INSERT INTO phone_configs
-       (id, user_id, call_method, default_line_id, work_phone, dial_method,
-        voip_provider, voip_config, call_mode, call_interval, max_retries,
-        call_timeout, auto_record, auto_follow_up, concurrent_calls, priority,
-        blacklist_check, show_location, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-       ON DUPLICATE KEY UPDATE
-        call_method = VALUES(call_method),
-        default_line_id = VALUES(default_line_id),
-        work_phone = VALUES(work_phone),
-        dial_method = VALUES(dial_method),
-        voip_provider = VALUES(voip_provider),
-        voip_config = VALUES(voip_config),
-        call_mode = VALUES(call_mode),
-        call_interval = VALUES(call_interval),
-        max_retries = VALUES(max_retries),
-        call_timeout = VALUES(call_timeout),
-        auto_record = VALUES(auto_record),
-        auto_follow_up = VALUES(auto_follow_up),
-        concurrent_calls = VALUES(concurrent_calls),
-        priority = VALUES(priority),
-        blacklist_check = VALUES(blacklist_check),
-        show_location = VALUES(show_location),
-        updated_at = NOW()`,
-      [
-        configId,
-        userId,
-        callMethod || 'system',
-        defaultLineId || null,
-        workPhone || null,
-        dialMethod || 'direct',
-        voipProvider || 'aliyun',
-        voipConfig ? (typeof voipConfig === 'string' ? voipConfig : JSON.stringify(voipConfig)) : null,
-        callMode || 'manual',
-        callInterval || 30,
-        maxRetries || 3,
-        callTimeout || 60,
-        autoRecord !== false ? 1 : 0,
-        autoFollowUp ? 1 : 0,
-        concurrentCalls || 1,
-        priority || 'medium',
-        blacklistCheck !== false ? 1 : 0,
-        showLocation !== false ? 1 : 0
-      ]
-    );
-
-    res.json({
-      success: true,
-      message: '配置保存成功'
-    });
-  } catch (error) {
-    console.error('保存电话配置失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '保存电话配置失败'
-    });
-  }
-});
-
-// ==================== 外呼线路管理 ====================
-
-// 获取外呼线路列表
-router.get('/lines', async (req: Request, res: Response) => {
-  try {
-    const lines = await AppDataSource.query(
-      `SELECT * FROM call_lines ORDER BY sort_order ASC, created_at DESC`
+      `SELECT * FROM call_lines WHERE 1=1${tLine.sql} ORDER BY sort_order ASC, created_at DESC`,
+      [...tLine.params]
     );
 
     res.json({

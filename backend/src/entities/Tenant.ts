@@ -1,5 +1,4 @@
 import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
-import { v4 as uuidv4 } from 'uuid';
 
 /**
  * 租户实体
@@ -75,11 +74,20 @@ export class Tenant {
   updatedAt: Date;
 
   /**
-   * 生成授权码
-   * 格式: LIC-XXXXXXXXXXXXXXXXXXXX (20位大写字母数字)
+   * 生成SaaS租户授权码
+   * 格式: TENANT-XXXX-XXXX-XXXX-XXXX（与私有部署PRIVATE-前缀区分）
    */
   static generateLicenseKey(): string {
-    return `LIC-${uuidv4().replace(/-/g, '').substring(0, 20).toUpperCase()}`;
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const segments = [];
+    for (let i = 0; i < 4; i++) {
+      let segment = '';
+      for (let j = 0; j < 4; j++) {
+        segment += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      segments.push(segment);
+    }
+    return `TENANT-${segments.join('-')}`;
   }
 
   /**

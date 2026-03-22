@@ -1,8 +1,10 @@
 import { AppDataSource } from '../config/database';
 import { Version } from '../entities/Version';
 import { Changelog } from '../entities/Changelog';
+import { Tenant } from '../entities/Tenant';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
+import { notificationTemplateService } from './NotificationTemplateService';
 
 export class VersionService {
   private versionRepository: Repository<Version>;
@@ -194,7 +196,79 @@ export class VersionService {
     version.isPublished = 1;
     version.publishedAt = new Date();
 
-    return await this.versionRepository.save(version);
+    const saved = await this.versionRepository.save(version);
+
+    // 异步通知所有活跃租户（不阻塞发布流程）
+    this.notifyTenantsOfNewVersion(saved).catch(err => {
+      console.error('[VersionService] 发送版本发布通知失败:', err);
+    });
+
+    return saved;
+  }
+
+  /**
+   * 通知所有活跃租户新版本发布
+   */
+  private async notifyTenantsOfNewVersion(version: any): Promise<void> {
+    try {
+      const tenantRepo = AppDataSource.getRepository(Tenant);
+      const activeTenants = await tenantRepo.find({
+        where: { status: 'active' },
+        select: ['id', 'name', 'email', 'phone']
+      });
+
+      if (activeTenants.length === 0) {
+        console.log('[VersionService] 没有活跃租户需要通知');
+        return;
+      }
+
+      const releaseTypeMap: Record<string, string> = {
+        'major': '大版本更新',
+        'minor': '功能更新',
+        'patch': '修复更新',
+        'beta': 'Beta测试版'
+      };
+
+      const isForceUpdate = version.isForceUpdate === 1;
+      const forceUpdateTip = isForceUpdate
+        ? '⚠️ 此版本为强制更新，请尽快升级以确保系统正常运行。'
+        : '建议您在方便时进行更新，以获取最新功能和安全修复。';
+
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const tenant of activeTenants) {
+        try {
+          const recipient = tenant.email || tenant.phone;
+          if (!recipient) {
+            console.log(`[VersionService] 租户 ${tenant.name} 没有联系方式，跳过通知`);
+            continue;
+          }
+
+          await notificationTemplateService.sendByTemplate('version_published', {
+            tenantName: tenant.name,
+            version: version.version,
+            releaseType: releaseTypeMap[version.releaseType] || '常规更新',
+            changelog: version.changelog || '详情请查看系统内更新日志',
+            publishTime: new Date().toLocaleString('zh-CN'),
+            forceUpdateTip,
+            downloadUrl: version.downloadUrl || ''
+          }, {
+            to: recipient,
+            priority: isForceUpdate ? 'urgent' : 'high'
+          });
+
+          successCount++;
+        } catch (err) {
+          failCount++;
+          console.error(`[VersionService] 通知租户 ${tenant.name} 失败:`, err);
+        }
+      }
+
+      console.log(`[VersionService] 版本 v${version.version} 发布通知完成: 成功 ${successCount}, 失败 ${failCount}, 共 ${activeTenants.length} 个活跃租户`);
+    } catch (error) {
+      console.error('[VersionService] 批量发送版本通知失败:', error);
+    }
   }
 
   /**

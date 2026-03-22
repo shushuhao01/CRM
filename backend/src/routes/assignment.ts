@@ -4,6 +4,7 @@ import { AppDataSource } from '../config/database';
 import { Customer } from '../entities/Customer';
 import { User } from '../entities/User';
 import { v4 as uuidv4 } from 'uuid';
+import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -21,8 +22,9 @@ router.get('/history', async (req: Request, res: Response) => {
     const { page = 1, pageSize = 20, customerId, toUserId } = req.query;
     const offset = (Number(page) - 1) * Number(pageSize);
 
-    let sql = `SELECT * FROM customer_assignments WHERE 1=1`;
-    const params: any[] = [];
+    const tAssign = tenantSQL('');
+    let sql = `SELECT * FROM customer_assignments WHERE 1=1${tAssign.sql}`;
+    const params: any[] = [...tAssign.params];
 
     if (customerId) {
       sql += ` AND customer_id = ?`;
@@ -40,8 +42,8 @@ router.get('/history', async (req: Request, res: Response) => {
     const list = await AppDataSource.query(sql, params);
 
     // 获取总数
-    let countSql = `SELECT COUNT(*) as total FROM customer_assignments WHERE 1=1`;
-    const countParams: any[] = [];
+    let countSql = `SELECT COUNT(*) as total FROM customer_assignments WHERE 1=1${tAssign.sql}`;
+    const countParams: any[] = [...tAssign.params];
     if (customerId) {
       countSql += ` AND customer_id = ?`;
       countParams.push(customerId);
@@ -87,14 +89,14 @@ router.post('/assign', async (req: Request, res: Response) => {
     }
 
     // 获取客户信息
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customer = await customerRepository.findOne({ where: { id: customerId } });
     if (!customer) {
       return res.status(404).json({ success: false, message: '客户不存在' });
     }
 
     // 获取目标用户信息
-    const userRepository = AppDataSource.getRepository(User);
+    const userRepository = getTenantRepo(User);
     const toUser = await userRepository.findOne({ where: { id: toUserId } });
     if (!toUser) {
       return res.status(404).json({ success: false, message: '目标用户不存在' });
@@ -157,13 +159,13 @@ router.post('/batch-assign', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '参数不完整' });
     }
 
-    const userRepository = AppDataSource.getRepository(User);
+    const userRepository = getTenantRepo(User);
     const toUser = await userRepository.findOne({ where: { id: toUserId } });
     if (!toUser) {
       return res.status(404).json({ success: false, message: '目标用户不存在' });
     }
 
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     let successCount = 0;
 
     for (const customerId of customerIds) {
@@ -222,20 +224,23 @@ router.get('/stats', async (req: Request, res: Response) => {
     const monthAgo = new Date(today);
     monthAgo.setMonth(monthAgo.getMonth() - 1);
 
+    const tStat = tenantSQL('');
+
     const [totalResult] = await AppDataSource.query(
-      `SELECT COUNT(*) as total FROM customer_assignments`
+      `SELECT COUNT(*) as total FROM customer_assignments WHERE 1=1${tStat.sql}`,
+      [...tStat.params]
     );
     const [todayResult] = await AppDataSource.query(
-      `SELECT COUNT(*) as total FROM customer_assignments WHERE created_at >= ?`,
-      [today]
+      `SELECT COUNT(*) as total FROM customer_assignments WHERE created_at >= ?${tStat.sql}`,
+      [today, ...tStat.params]
     );
     const [weekResult] = await AppDataSource.query(
-      `SELECT COUNT(*) as total FROM customer_assignments WHERE created_at >= ?`,
-      [weekAgo]
+      `SELECT COUNT(*) as total FROM customer_assignments WHERE created_at >= ?${tStat.sql}`,
+      [weekAgo, ...tStat.params]
     );
     const [monthResult] = await AppDataSource.query(
-      `SELECT COUNT(*) as total FROM customer_assignments WHERE created_at >= ?`,
-      [monthAgo]
+      `SELECT COUNT(*) as total FROM customer_assignments WHERE created_at >= ?${tStat.sql}`,
+      [monthAgo, ...tStat.params]
     );
 
     res.json({

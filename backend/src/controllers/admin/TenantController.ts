@@ -16,6 +16,7 @@ import { User } from '../../entities/User';
 import { v4 as uuidv4 } from 'uuid';
 import { Like } from 'typeorm';
 import { TenantLogService } from '../../services/TenantLogService';
+import bcrypt from 'bcryptjs';
 
 /**
  * 获取租户列表（分页、搜索、筛选）
@@ -207,10 +208,11 @@ export const createTenant = async (req: Request, res: Response): Promise<void> =
 
     // 验证必填字段
     if (!name) {
-      res.status(400).json({
-        success: false,
-        message: '租户名称为必填项'
-      });
+      res.status(400).json({ success: false, message: '租户名称为必填项' });
+      return;
+    }
+    if (!phone) {
+      res.status(400).json({ success: false, message: '联系电话为必填项（将作为管理员登录账号）' });
       return;
     }
 
@@ -264,6 +266,41 @@ export const createTenant = async (req: Request, res: Response): Promise<void> =
     });
 
     await tenantRepo.save(tenant);
+
+    // 🔥 自动创建该租户的默认管理员用户（admin/admin123）
+    try {
+      const userRepo = AppDataSource.getRepository(User);
+
+      // 检查是否已存在该租户的admin用户
+      const existingAdmin = await userRepo.findOne({
+        where: { tenantId: tenant.id, username: 'admin' }
+      });
+
+      if (!existingAdmin) {
+        const hashedPassword = await bcrypt.hash('admin123', 12);
+        const adminUser = userRepo.create({
+          id: uuidv4(),
+          tenantId: tenant.id,
+          username: 'admin',
+          password: hashedPassword,
+          name: contact || '系统管理员',
+          realName: contact || '系统管理员',
+          email: email || null,
+          phone: phone || null,
+          role: 'admin',
+          roleId: 'admin',
+          status: 'active',
+          employmentStatus: 'active',
+          loginFailCount: 0,
+          loginCount: 0
+        });
+        await userRepo.save(adminUser);
+        console.log(`✅ 已为租户 ${tenant.code} (${tenant.name}) 创建默认管理员账号 (admin/admin123)`);
+      }
+    } catch (err: any) {
+      console.error(`创建租户默认管理员失败:`, err.message);
+      // 不影响租户创建流程
+    }
 
     // 记录操作日志
     await TenantLogService.logFromRequest(req, tenant.id, 'create', {

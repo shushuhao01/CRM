@@ -40,29 +40,38 @@ router.get('/config', async (_req: Request, res: Response) => {
 
     const config: Record<string, any> = {
       wechat: { enabled: false, mchId: '', appId: '', apiKey: '', notifyUrl: '' },
-      alipay: { enabled: false, appId: '', privateKey: '', alipayPublicKey: '', signType: 'RSA2', notifyUrl: '' }
+      alipay: { enabled: false, appId: '', privateKey: '', alipayPublicKey: '', signType: 'RSA2', notifyUrl: '' },
+      bank: { enabled: false, bankName: '', accountName: '', accountNo: '', bankBranch: '', remark: '' }
     }
 
     for (const row of rows) {
       if (row.config_data) {
         try {
           const data = JSON.parse(decrypt(row.config_data) || '{}')
-          config[row.pay_type] = {
-            ...data,
-            enabled: row.enabled === 1,
-            notifyUrl: row.notify_url,
-            // 敏感字段脱敏
-            apiKey: data.apiKey ? '******' : '',
-            privateKey: data.privateKey ? '******' : '',
-            alipayPublicKey: data.alipayPublicKey ? '******' : ''
+          if (row.pay_type === 'bank') {
+            // 对公转账无敏感字段
+            config.bank = {
+              ...data,
+              enabled: row.enabled === 1
+            }
+          } else {
+            config[row.pay_type] = {
+              ...data,
+              enabled: row.enabled === 1,
+              notifyUrl: row.notify_url,
+              // 敏感字段脱敏
+              apiKey: data.apiKey ? '******' : '',
+              privateKey: data.privateKey ? '******' : '',
+              alipayPublicKey: data.alipayPublicKey ? '******' : ''
+            }
           }
         } catch {
           config[row.pay_type].enabled = row.enabled === 1
-          config[row.pay_type].notifyUrl = row.notify_url
+          if (row.notify_url) config[row.pay_type].notifyUrl = row.notify_url
         }
       } else {
         config[row.pay_type].enabled = row.enabled === 1
-        config[row.pay_type].notifyUrl = row.notify_url
+        if (row.notify_url) config[row.pay_type].notifyUrl = row.notify_url
       }
     }
 
@@ -179,6 +188,332 @@ router.post('/config/alipay', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('保存支付宝配置失败:', error)
     res.status(500).json({ success: false, message: '保存失败' })
+  }
+})
+
+// 保存对公转账配置
+router.post('/config/bank', async (req: Request, res: Response) => {
+  try {
+    const { enabled, bankName, accountName, accountNo, bankBranch, remark } = req.body
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+
+    const configData = { bankName, accountName, accountNo, bankBranch, remark }
+    const encryptedData = encrypt(JSON.stringify(configData))
+
+    const existing = await AppDataSource.query(
+      'SELECT id FROM payment_configs WHERE pay_type = ?', ['bank']
+    )
+
+    if (existing.length > 0) {
+      await AppDataSource.query(
+        'UPDATE payment_configs SET enabled = ?, config_data = ?, updated_at = ? WHERE pay_type = ?',
+        [enabled ? 1 : 0, encryptedData, now, 'bank']
+      )
+    } else {
+      await AppDataSource.query(
+        'INSERT INTO payment_configs (id, pay_type, enabled, config_data) VALUES (?, ?, ?, ?)',
+        [uuidv4(), 'bank', enabled ? 1 : 0, encryptedData]
+      )
+    }
+
+    res.json({ success: true, message: '对公转账配置已保存' })
+  } catch (error) {
+    console.error('保存对公转账配置失败:', error)
+    res.status(500).json({ success: false, message: '保存失败' })
+  }
+})
+
+// 测试微信支付连接
+router.post('/config/wechat/test', async (req: Request, res: Response) => {
+  try {
+    // 从数据库读取已保存的配置
+    const rows = await AppDataSource.query(
+      'SELECT config_data, enabled FROM payment_configs WHERE pay_type = ?', ['wechat']
+    )
+
+    if (rows.length === 0 || !rows[0].config_data) {
+      return res.json({ success: false, message: '请先保存微信支付配置' })
+    }
+
+    let configData: any = {}
+    try {
+      configData = JSON.parse(decrypt(rows[0].config_data) || '{}')
+    } catch {
+      return res.json({ success: false, message: '配置数据解析失败，请重新保存配置' })
+    }
+
+    const checkItems: { name: string; status: boolean; message: string }[] = []
+
+    // 检查必填字段
+    const hasAppId = !!configData.appId
+    checkItems.push({
+      name: 'AppID',
+      status: hasAppId,
+      message: hasAppId ? `AppID已配置: ${configData.appId}` : '未配置AppID'
+    })
+
+    const hasMchId = !!configData.mchId
+    checkItems.push({
+      name: '商户号',
+      status: hasMchId,
+      message: hasMchId ? `商户号已配置: ${configData.mchId}` : '未配置商户号'
+    })
+
+    const hasApiKey = !!(configData.apiKey || configData.apiKeyV3)
+    checkItems.push({
+      name: 'API密钥',
+      status: hasApiKey,
+      message: hasApiKey ? 'API密钥已配置' : '未配置API密钥（V2或V3）'
+    })
+
+    const hasCert = !!(configData.certPem || configData.certPath || configData.serialNo)
+    checkItems.push({
+      name: '证书',
+      status: hasCert,
+      message: hasCert ? '证书信息已配置' : '未配置证书信息（可选，V3支付需要）'
+    })
+
+    // 如果有商户号和API密钥，尝试真实连接测试（查询商户信息）
+    let connectionTest = false
+    let connectionMessage = ''
+
+    if (hasMchId && hasApiKey && configData.apiKeyV3) {
+      try {
+        // V3接口：获取平台证书列表来验证配置是否正确
+        const timestamp = Math.floor(Date.now() / 1000).toString()
+        const nonceStr = crypto.randomBytes(16).toString('hex')
+        const method = 'GET'
+        const urlPath = '/v3/certificates'
+
+        // 构建签名串
+        const signStr = `${method}\n${urlPath}\n${timestamp}\n${nonceStr}\n\n`
+
+        // 如果有私钥，用私钥签名
+        if (configData.keyPem) {
+          try {
+            const sign = crypto.createSign('RSA-SHA256')
+            sign.update(signStr)
+            const signature = sign.sign(configData.keyPem, 'base64')
+
+            const authorization = `WECHATPAY2-SHA256-RSA2048 mchid="${configData.mchId}",nonce_str="${nonceStr}",signature="${signature}",timestamp="${timestamp}",serial_no="${configData.serialNo || ''}"`
+
+            const response = await fetch('https://api.mch.weixin.qq.com/v3/certificates', {
+              method: 'GET',
+              headers: {
+                'Authorization': authorization,
+                'Accept': 'application/json',
+                'User-Agent': 'CRM-Platform/1.0'
+              }
+            })
+
+            if (response.ok) {
+              connectionTest = true
+              connectionMessage = '微信支付V3接口连接成功'
+            } else {
+              const errBody = await response.text()
+              connectionMessage = `连接返回 ${response.status}: ${errBody.substring(0, 200)}`
+            }
+          } catch (signErr: any) {
+            connectionMessage = `签名失败: ${signErr.message}`
+          }
+        } else {
+          connectionMessage = '缺少商户私钥(keyPem)，无法进行V3接口验证'
+        }
+      } catch (err: any) {
+        connectionMessage = `连接测试异常: ${err.message}`
+      }
+    } else if (hasMchId && hasApiKey) {
+      // V2接口简单测试：检查配置完整性即可
+      connectionTest = true
+      connectionMessage = '配置项检查通过（V2接口无在线验证，请通过实际支付验证）'
+    } else {
+      connectionMessage = '配置不完整，无法进行连接测试'
+    }
+
+    checkItems.push({
+      name: '连接测试',
+      status: connectionTest,
+      message: connectionMessage
+    })
+
+    const allPassed = checkItems.filter(i => i.name !== '证书').every(i => i.status)
+
+    res.json({
+      success: true,
+      data: {
+        passed: allPassed,
+        items: checkItems,
+        message: allPassed ? '微信支付配置验证通过' : '部分配置项未通过验证，请检查'
+      }
+    })
+  } catch (error: any) {
+    console.error('测试微信支付连接失败:', error)
+    res.status(500).json({ success: false, message: '测试失败: ' + (error.message || '未知错误') })
+  }
+})
+
+// 测试支付宝连接
+router.post('/config/alipay/test', async (req: Request, res: Response) => {
+  try {
+    // 从数据库读取已保存的配置
+    const rows = await AppDataSource.query(
+      'SELECT config_data, enabled FROM payment_configs WHERE pay_type = ?', ['alipay']
+    )
+
+    if (rows.length === 0 || !rows[0].config_data) {
+      return res.json({ success: false, message: '请先保存支付宝配置' })
+    }
+
+    let configData: any = {}
+    try {
+      configData = JSON.parse(decrypt(rows[0].config_data) || '{}')
+    } catch {
+      return res.json({ success: false, message: '配置数据解析失败，请重新保存配置' })
+    }
+
+    const checkItems: { name: string; status: boolean; message: string }[] = []
+
+    // 检查必填字段
+    const hasAppId = !!configData.appId
+    checkItems.push({
+      name: 'AppID',
+      status: hasAppId,
+      message: hasAppId ? `AppID已配置: ${configData.appId}` : '未配置应用AppID'
+    })
+
+    const hasPrivateKey = !!configData.privateKey
+    checkItems.push({
+      name: '商家私钥',
+      status: hasPrivateKey,
+      message: hasPrivateKey ? '商家私钥已配置' : '未配置商家私钥'
+    })
+
+    const hasPublicKey = !!configData.alipayPublicKey
+    checkItems.push({
+      name: '支付宝公钥',
+      status: hasPublicKey,
+      message: hasPublicKey ? '支付宝公钥已配置' : '未配置支付宝公钥'
+    })
+
+    const signType = configData.signType || 'RSA2'
+    checkItems.push({
+      name: '签名类型',
+      status: true,
+      message: `签名类型: ${signType}`
+    })
+
+    // 如果配置完整，尝试调用支付宝网关验证
+    let connectionTest = false
+    let connectionMessage = ''
+
+    if (hasAppId && hasPrivateKey) {
+      try {
+        const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ')
+
+        const bizContent = JSON.stringify({})
+        const params: Record<string, string> = {
+          app_id: configData.appId,
+          method: 'alipay.user.info.share',  // 用一个简单接口测试签名
+          format: 'JSON',
+          charset: 'utf-8',
+          sign_type: signType,
+          timestamp: timestamp,
+          version: '1.0',
+          biz_content: bizContent
+        }
+
+        // 尝试签名验证私钥格式是否正确
+        const sorted = Object.keys(params).sort()
+        const signStr = sorted.map(k => `${k}=${params[k]}`).join('&')
+        const algorithm = signType === 'RSA2' ? 'RSA-SHA256' : 'RSA-SHA1'
+
+        // 格式化私钥
+        let formattedKey = configData.privateKey
+        if (!formattedKey.includes('-----BEGIN')) {
+          formattedKey = `-----BEGIN RSA PRIVATE KEY-----\n${formattedKey}\n-----END RSA PRIVATE KEY-----`
+        }
+
+        const sign = crypto.createSign(algorithm)
+        sign.update(signStr)
+        const signature = sign.sign(formattedKey, 'base64')
+
+        if (signature) {
+          // 签名成功，尝试调用支付宝网关
+          params.sign = signature
+          const queryString = Object.entries(params)
+            .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+            .join('&')
+
+          const response = await fetch(`https://openapi.alipay.com/gateway.do?${queryString}`, {
+            method: 'GET',
+            headers: { 'User-Agent': 'CRM-Platform/1.0' }
+          })
+
+          const result = await response.json() as any
+
+          // 支付宝返回的错误码说明：
+          // 即使业务报错（如权限不足），只要网关能响应且签名正确就说明配置OK
+          if (result.error_response) {
+            const errCode = result.error_response.code
+            if (errCode === '40001') {
+              // Missing Required Arguments - 说明网关可达，但参数不全（正常）
+              connectionTest = true
+              connectionMessage = '支付宝网关连接成功，签名验证通过'
+            } else if (errCode === '40002') {
+              // Invalid Arguments
+              connectionTest = true
+              connectionMessage = '支付宝网关连接成功，AppID和签名验证通过'
+            } else if (errCode === '40006') {
+              // Insufficient Permissions
+              connectionTest = true
+              connectionMessage = '支付宝网关连接成功（接口权限受限，但配置正确）'
+            } else if (errCode === '20001') {
+              // Insufficient Authorization - 授权不足但签名正确
+              connectionTest = true
+              connectionMessage = '支付宝网关连接成功，签名验证通过'
+            } else {
+              connectionMessage = `支付宝返回错误: [${errCode}] ${result.error_response.sub_msg || result.error_response.msg || '未知错误'}`
+              // 如果不是签名错误(isv.invalid-signature)，配置可能是对的
+              if (result.error_response.sub_code !== 'isv.invalid-signature') {
+                connectionTest = true
+                connectionMessage += '（配置可能正确，建议通过实际支付验证）'
+              }
+            }
+          } else {
+            connectionTest = true
+            connectionMessage = '支付宝网关连接成功'
+          }
+        }
+      } catch (signErr: any) {
+        if (signErr.message.includes('key') || signErr.message.includes('private') || signErr.message.includes('PEM')) {
+          connectionMessage = '私钥格式错误，请检查私钥内容是否正确'
+        } else {
+          connectionMessage = `连接测试失败: ${signErr.message}`
+        }
+      }
+    } else {
+      connectionMessage = '配置不完整（缺少AppID或私钥），无法进行连接测试'
+    }
+
+    checkItems.push({
+      name: '连接测试',
+      status: connectionTest,
+      message: connectionMessage
+    })
+
+    const allPassed = checkItems.every(i => i.status)
+
+    res.json({
+      success: true,
+      data: {
+        passed: allPassed,
+        items: checkItems,
+        message: allPassed ? '支付宝配置验证通过' : '部分配置项未通过验证，请检查'
+      }
+    })
+  } catch (error: any) {
+    console.error('测试支付宝连接失败:', error)
+    res.status(500).json({ success: false, message: '测试失败: ' + (error.message || '未知错误') })
   }
 })
 
@@ -299,6 +634,35 @@ router.get('/orders/:id', async (req: Request, res: Response) => {
     res.json({ success: true, data: { ...orders[0], logs } })
   } catch (error) {
     res.status(500).json({ success: false, message: '获取失败' })
+  }
+})
+
+// 确认到账（对公转账-管理员手动确认）
+router.post('/orders/:id/confirm', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+    const { tradeNo, remark } = req.body
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+
+    // 检查订单状态
+    const orders = await AppDataSource.query(
+      'SELECT order_no, status, pay_type FROM payment_orders WHERE id = ?', [id]
+    )
+    if (orders.length === 0) {
+      return res.status(404).json({ success: false, message: '订单不存在' })
+    }
+    if (orders[0].status !== 'pending') {
+      return res.status(400).json({ success: false, message: '只能确认待支付的订单' })
+    }
+
+    // 触发支付成功后的交付流程（激活租户等）
+    const { paymentService } = await import('../../services/PaymentService')
+    await paymentService.updateOrderStatus(orders[0].order_no, 'paid', tradeNo || `BANK${Date.now()}`)
+
+    res.json({ success: true, message: '已确认到账' })
+  } catch (error) {
+    console.error('确认到账失败:', error)
+    res.status(500).json({ success: false, message: '确认到账失败' })
   }
 })
 

@@ -5,6 +5,9 @@ export class FollowUp {
   @PrimaryColumn({ length: 50 })
   id: string;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column({ name: 'call_id', length: 50, nullable: true })
   callId: string;
 

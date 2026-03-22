@@ -11,46 +11,68 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppDataSource } from '../config/database';
 
-// 路径到模块的映射
-const PATH_MODULE_MAP: Record<string, string> = {
-  '/auth': 'auth',
-  '/licenses': 'licenses',
-  '/tenants': 'tenants',
-  '/payment': 'payment',
-  '/packages': 'packages',
-  '/versions': 'versions',
-  '/modules': 'modules',
-  '/admin-users': 'admin_users',
-  '/system-settings': 'system_settings',
-  '/api-configs': 'api_configs',
-  '/notification-templates': 'notification_templates',
-  '/upload': 'upload',
-};
+// 路径到模块的映射（长路径优先匹配）
+const PATH_MODULE_MAP: [string, string][] = [
+  ['/system-config/sms/test', 'system_settings'],
+  ['/system-config/sms', 'system_settings'],
+  ['/system-config', 'system_settings'],
+  ['/system/email-settings/test', 'system_settings'],
+  ['/system/email-settings', 'system_settings'],
+  ['/timeout-reminder', 'system_settings'],
+  ['/system-settings', 'system_settings'],
+  ['/notification-templates', 'notification_templates'],
+  ['/admin-users', 'admin_users'],
+  ['/api-configs', 'api_configs'],
+  ['/auth', 'auth'],
+  ['/licenses', 'licenses'],
+  ['/tenants', 'tenants'],
+  ['/payment', 'payment'],
+  ['/packages', 'packages'],
+  ['/versions', 'versions'],
+  ['/modules', 'modules'],
+  ['/upload', 'upload'],
+];
 
 // 路径到操作对象类型的映射
-const PATH_TARGET_MAP: Record<string, string> = {
-  '/licenses': 'license',
-  '/tenants': 'tenant',
-  '/payment': 'payment_order',
-  '/packages': 'package',
-  '/versions': 'version',
-  '/modules': 'module',
-  '/admin-users': 'admin_user',
-  '/system-settings': 'system_setting',
-  '/api-configs': 'api_config',
-  '/notification-templates': 'notification_template',
-};
+const PATH_TARGET_MAP: [string, string][] = [
+  ['/system-config/sms', 'sms_config'],
+  ['/system-config', 'system_config'],
+  ['/system/email-settings', 'email_settings'],
+  ['/timeout-reminder', 'timeout_config'],
+  ['/system-settings', 'system_setting'],
+  ['/notification-templates', 'notification_template'],
+  ['/admin-users', 'admin_user'],
+  ['/api-configs', 'api_config'],
+  ['/licenses', 'license'],
+  ['/tenants', 'tenant'],
+  ['/payment', 'payment_order'],
+  ['/packages', 'package'],
+  ['/versions', 'version'],
+  ['/modules', 'module'],
+];
 
 // 需要跳过的路径（GET类或不需要记录的操作）
 const SKIP_PATHS = [
-  '/auth/profile',     // 获取个人信息
-  '/export/',          // 导出操作
-  '/upload/',          // 文件上传单独处理
-  '/dashboard/',       // 仪表盘查询
-  '/operation-logs/',  // 操作日志查询本身
-  '/verify/',          // 授权验证
-  '/public/',          // 公开接口
+  '/auth/profile',           // 获取个人信息
+  '/export/',                // 导出操作
+  '/dashboard/',             // 仪表盘查询
+  '/operation-logs',         // 操作日志查询/修复本身
+  '/verify/',                // 授权验证
+  '/public/',                // 公开接口
 ];
+
+// 特殊路径 → 精确的操作描述（路径前缀 → [action, detail]）
+const PATH_DETAIL_MAP: [string, string, string][] = [
+  ['/system-config/sms/test', 'test', '测试短信发送'],
+  ['/system-config/sms', 'update_config', '保存短信配置'],
+  ['/system-config', 'update_config', '保存系统配置'],
+  ['/system/email-settings/test', 'test', '测试邮件发送'],
+  ['/system/email-settings', 'update_config', '保存邮件配置'],
+  ['/timeout-reminder/check', 'test', '手动触发超时检测'],
+  ['/timeout-reminder/config', 'update_config', '保存超时提醒配置'],
+  ['/upload', 'upload', '上传文件'],
+];
+
 
 /**
  * 根据请求路径和方法推断操作类型
@@ -58,7 +80,14 @@ const SKIP_PATHS = [
 function inferAction(method: string, path: string): string {
   const lowerPath = path.toLowerCase();
 
-  // 特殊路径映射
+  // 先检查精确路径映射
+  for (const [prefix, action] of PATH_DETAIL_MAP) {
+    if (lowerPath.startsWith(prefix)) {
+      return action;
+    }
+  }
+
+  // 特殊路径关键词映射
   if (lowerPath.includes('/login')) return 'login';
   if (lowerPath.includes('/logout')) return 'logout';
   if (lowerPath.includes('/password')) return 'change_password';
@@ -76,7 +105,8 @@ function inferAction(method: string, path: string): string {
   if (lowerPath.includes('/regenerate')) return 'regenerate';
   if (lowerPath.includes('/refund')) return 'refund';
   if (lowerPath.includes('/close')) return 'close';
-  if (lowerPath.includes('/config')) return 'update_config';
+  if (lowerPath.includes('/test')) return 'test';
+  if (lowerPath.includes('/send')) return 'send';
 
   // 根据 HTTP 方法推断
   switch (method) {
@@ -89,11 +119,10 @@ function inferAction(method: string, path: string): string {
 }
 
 /**
- * 从请求路径中提取模块名
+ * 从请求路径中提取模块名（使用有序数组，长路径优先）
  */
 function extractModule(path: string): string {
-  // path 格式类似 /licenses/xxx 或 /tenants/xxx/renew
-  for (const [prefix, module] of Object.entries(PATH_MODULE_MAP)) {
+  for (const [prefix, module] of PATH_MODULE_MAP) {
     if (path.startsWith(prefix)) {
       return module;
     }
@@ -105,7 +134,7 @@ function extractModule(path: string): string {
  * 从请求路径中提取目标类型
  */
 function extractTargetType(path: string): string {
-  for (const [prefix, targetType] of Object.entries(PATH_TARGET_MAP)) {
+  for (const [prefix, targetType] of PATH_TARGET_MAP) {
     if (path.startsWith(prefix)) {
       return targetType;
     }
@@ -123,35 +152,83 @@ function extractTargetId(path: string): string {
 }
 
 /**
+ * 提取真实IP地址
+ */
+function extractRealIp(req: Request): string {
+  // 优先从代理头获取
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    const ip = (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',')[0].trim();
+    if (ip && ip !== '::1' && ip !== '::ffff:127.0.0.1') return ip;
+  }
+
+  const realIp = req.headers['x-real-ip'];
+  if (realIp) {
+    const ip = typeof realIp === 'string' ? realIp : realIp[0];
+    if (ip && ip !== '::1' && ip !== '::ffff:127.0.0.1') return ip;
+  }
+
+  let ip = req.ip || req.socket?.remoteAddress || '';
+
+  // 转换 IPv6 回环地址
+  if (ip === '::1' || ip === '::ffff:127.0.0.1') {
+    ip = '127.0.0.1';
+  }
+
+  // 去掉 IPv6 前缀
+  if (ip.startsWith('::ffff:')) {
+    ip = ip.substring(7);
+  }
+
+  return ip || '127.0.0.1';
+}
+
+/**
  * 生成操作详情描述
  */
 function generateDetail(method: string, path: string, body: any, action: string, module: string): string {
+  // 先检查精确路径描述
+  const lowerPath = path.toLowerCase();
+  for (const [prefix, , detail] of PATH_DETAIL_MAP) {
+    if (lowerPath.startsWith(prefix)) {
+      // 尝试追加名称信息
+      const nameInfo = extractNameFromBody(body);
+      return nameInfo ? `${detail}${nameInfo}` : detail;
+    }
+  }
+
   const moduleNames: Record<string, string> = {
-    auth: '认证', licenses: '私有客户', tenants: '租户', payment: '支付',
+    auth: '认证', licenses: '授权', tenants: '租户', payment: '支付订单',
     packages: '套餐', versions: '版本', modules: '模块', admin_users: '管理员',
-    system_settings: '系统设置', api_configs: '接口配置', notification_templates: '通知模板'
+    system_settings: '系统配置', api_configs: '接口配置', notification_templates: '通知模板',
+    upload: '文件', other: ''
   };
 
   const actionNames: Record<string, string> = {
     create: '创建', update: '更新', delete: '删除', enable: '启用', disable: '禁用',
     lock: '锁定', unlock: '解锁', login: '登录', logout: '登出', publish: '发布',
-    deprecate: '废弃', revoke: '吊销', renew: '续期', suspend: '停用', resume: '恢复',
+    deprecate: '废弃', revoke: '吊销', renew: '续期', suspend: '暂停', resume: '恢复',
     regenerate: '重新生成', refund: '退款', close: '关闭', reset_password: '重置密码',
-    change_password: '修改密码', update_config: '更新配置', other: '操作',
-    update_settings: '更新设置'
+    change_password: '修改密码', update_config: '更新配置', test: '测试', send: '发送',
+    upload: '上传', other: '操作'
   };
 
   const moduleName = moduleNames[module] || module;
   const actionName = actionNames[action] || action;
-
-  // 尝试从请求体中获取名称标识
-  let nameInfo = '';
-  if (body) {
-    const name = body.name || body.customerName || body.customer_name || body.username || body.title || body.version || '';
-    if (name) nameInfo = `「${name}」`;
-  }
+  const nameInfo = extractNameFromBody(body);
 
   return `${actionName}${moduleName}${nameInfo}`;
+}
+
+/**
+ * 从请求体中提取名称标识
+ */
+function extractNameFromBody(body: any): string {
+  if (!body) return '';
+  const name = body.name || body.templateName || body.template_name || body.customerName
+    || body.customer_name || body.username || body.title || body.version
+    || body.templateCode || body.template_code || '';
+  return name ? `「${name}」` : '';
 }
 
 /**
@@ -188,7 +265,7 @@ export function adminOperationLoggerMiddleware(req: Request, res: Response, next
         const targetType = extractTargetType(fullPath);
         const targetId = extractTargetId(fullPath) || (body?.data?.id || '');
         const detail = generateDetail(req.method, fullPath, req.body, action, module);
-        const ip = req.ip || req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '';
+        const ip = extractRealIp(req);
         const userAgent = req.headers['user-agent'] || '';
 
         // 异步写入，不等待

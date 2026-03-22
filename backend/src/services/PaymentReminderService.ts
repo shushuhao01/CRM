@@ -9,6 +9,7 @@
 
 import { AppDataSource } from '../config/database';
 import { notificationTemplateService } from './NotificationTemplateService';
+import { adminNotificationService } from './AdminNotificationService';
 
 export class PaymentReminderService {
   /**
@@ -129,6 +130,16 @@ export class PaymentReminderService {
       });
 
       console.log(`[PaymentReminder] 已发送支付提醒给订单${order.order_no}`);
+
+      // 通知管理员：待支付提醒
+      adminNotificationService.notify('payment_pending', {
+        title: `待支付提醒：${order.order_no}`,
+        content: `租户「${order.tenant_name || '未知'}」的订单 ${order.order_no}（金额 ¥${order.amount}）已超过24小时未支付`,
+        relatedId: order.id,
+        relatedType: 'payment_order',
+        extraData: { orderNo: order.order_no, amount: order.amount, tenantName: order.tenant_name }
+      }).catch(err => console.error('[PaymentReminder] 发送管理员通知失败:', err.message));
+
       return true;
     } catch (error: any) {
       console.error(`[PaymentReminder] 发送提醒失败(订单${order.order_no}):`, error);

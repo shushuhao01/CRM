@@ -53,11 +53,19 @@
           </div>
 
           <div class="package-modules" v-if="pkg.modules?.length">
-            <div class="modules-label">授权模块</div>
+            <div class="modules-label">
+              授权模块
+              <el-tag size="small" type="info" style="margin-left: 6px;">{{ pkg.modules.length }}/{{ crmModuleOptions.length }}</el-tag>
+            </div>
             <div class="modules-tags">
               <el-tag v-for="mid in pkg.modules" :key="mid" size="small" type="info" effect="plain">
                 {{ getModuleName(mid) }}
               </el-tag>
+            </div>
+          </div>
+          <div class="package-modules" v-else>
+            <div class="modules-label">
+              授权模块 <el-tag size="small" type="warning" style="margin-left: 6px;">未配置</el-tag>
             </div>
           </div>
 
@@ -128,7 +136,7 @@
         </el-form-item>
         <el-divider content-position="left">功能特性</el-divider>
         <el-form-item label="功能特性">
-          <div v-for="(f, i) in form.features" :key="i" class="feature-input">
+          <div v-for="(_f, i) in form.features" :key="i" class="feature-input">
             <el-input v-model="form.features[i]" placeholder="输入功能特性" />
             <el-button type="danger" link @click="form.features.splice(i, 1)">
               <el-icon><Delete /></el-icon>

@@ -510,12 +510,13 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // 真正的API登录方法
-  const loginWithApi = async (username: string, password: string, rememberMe = false) => {
+  const loginWithApi = async (username: string, password: string, rememberMe = false, tenantId?: string) => {
     try {
       const response = await authApiService.login({
         username,
         password,
-        rememberMe
+        rememberMe,
+        ...(tenantId ? { tenantId } : {})
       })
 
       // 立即设置token和登录状态，确保状态同步
@@ -759,13 +760,13 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // 带重试机制的登录方法
-  const loginWithRetry = async (username: string, password: string, rememberMe = false, maxRetries = 3) => {
+  const loginWithRetry = async (username: string, password: string, rememberMe = false, maxRetries = 3, tenantId?: string) => {
     let lastError: unknown
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         console.log(`[Auth] 登录尝试 ${attempt}/${maxRetries}`)
-        const result = await loginWithApi(username, password, rememberMe)
+        const result = await loginWithApi(username, password, rememberMe, tenantId)
 
         // 【关键修复】只要loginWithApi返回true或没有抛出错误，就认为登录成功
         // 不再检查响应式状态，因为状态已经在loginWithApi中设置
@@ -826,12 +827,17 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem('crm_current_user')
     localStorage.removeItem('currentUser')
 
+    // 🔑 保留租户信息，退出登录后无需重新输入租户编码/授权码
+    // localStorage.removeItem('crm_tenant_info')  // 保留
+    // localStorage.removeItem('crm_tenant_code')  // 保留
+    // localStorage.removeItem('crm_license_key')  // 保留
+
     // 清除sessionStorage中的用户数据
     sessionStorage.removeItem('auth_token')
     sessionStorage.removeItem('user')
     sessionStorage.removeItem('currentUser')
 
-    console.log('[Auth] ✅ 用户数据已清除')
+    console.log('[Auth] ✅ 用户数据已清除（租户信息已保留）')
   }
 
   const logout = async () => {

@@ -4,7 +4,6 @@
 import { AppDataSource } from '../config/database';
 import { Tenant } from '../entities/Tenant';
 import { License } from '../entities/License';
-import { PaymentOrder } from '../entities/PaymentOrder';
 import { PrivateCustomer } from '../entities/PrivateCustomer';
 import { cacheService } from './CacheService';
 
@@ -26,7 +25,6 @@ export class StatisticsService {
   private async fetchDashboardStats(): Promise<any> {
     const tenantRepo = AppDataSource.getRepository(Tenant);
     const licenseRepo = AppDataSource.getRepository(License);
-    const paymentRepo = AppDataSource.getRepository(PaymentOrder);
     const privateRepo = AppDataSource.getRepository(PrivateCustomer);
 
     // 租户统计
@@ -63,52 +61,32 @@ export class StatisticsService {
       .andWhere('license.expiresAt <= :date', { date: thirtyDaysLater })
       .getCount();
 
-    // 收入统计
-    const [totalRevenue, thisMonthRevenue, todayRevenue] = await Promise.all([
-      paymentRepo
-        .createQueryBuilder('payment')
-        .where('payment.status = :status', { status: 'paid' })
-        .select('COALESCE(SUM(payment.amount), 0)', 'total')
-        .getRawOne()
-        .then(r => Number(r.total)),
-      paymentRepo
-        .createQueryBuilder('payment')
-        .where('payment.status = :status', { status: 'paid' })
-        .andWhere('payment.paidAt >= :start', { start: thisMonthStart })
-        .select('COALESCE(SUM(payment.amount), 0)', 'total')
-        .getRawOne()
-        .then(r => Number(r.total)),
-      paymentRepo
-        .createQueryBuilder('payment')
-        .where('payment.status = :status', { status: 'paid' })
-        .andWhere('DATE(payment.paidAt) = CURDATE()')
-        .select('COALESCE(SUM(payment.amount), 0)', 'total')
-        .getRawOne()
-        .then(r => Number(r.total))
+    // 收入统计（直接SQL查询payment_orders表）
+    const [totalRevRow, thisMonthRevRow, todayRevRow, lastMonthRevRow] = await Promise.all([
+      AppDataSource.query("SELECT COALESCE(SUM(amount),0) as total FROM payment_orders WHERE status='paid'"),
+      AppDataSource.query("SELECT COALESCE(SUM(amount),0) as total FROM payment_orders WHERE status='paid' AND paid_at >= ?", [thisMonthStart]),
+      AppDataSource.query("SELECT COALESCE(SUM(amount),0) as total FROM payment_orders WHERE status='paid' AND DATE(paid_at) = CURDATE()"),
+      AppDataSource.query("SELECT COALESCE(SUM(amount),0) as total FROM payment_orders WHERE status='paid' AND paid_at >= ? AND paid_at < ?",
+        [new Date(new Date(thisMonthStart).setMonth(thisMonthStart.getMonth()-1)), thisMonthStart])
     ]);
-
-    // 上月收入（用于计算增长率）
-    const lastMonthStart = new Date(thisMonthStart);
-    lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
-    const lastMonthRevenue = await paymentRepo
-      .createQueryBuilder('payment')
-      .where('payment.status = :status', { status: 'paid' })
-      .andWhere('payment.paidAt >= :start', { start: lastMonthStart })
-      .andWhere('payment.paidAt < :end', { end: thisMonthStart })
-      .select('COALESCE(SUM(payment.amount), 0)', 'total')
-      .getRawOne()
-      .then(r => Number(r.total));
+    const totalRevenue   = Number(totalRevRow[0]?.total   || 0);
+    const thisMonthRevenue = Number(thisMonthRevRow[0]?.total || 0);
+    const todayRevenue   = Number(todayRevRow[0]?.total   || 0);
+    const lastMonthRevenue = Number(lastMonthRevRow[0]?.total || 0);
 
     const revenueGrowthRate = lastMonthRevenue > 0
       ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue * 100).toFixed(2)
       : '0.00';
 
     // 订单统计
-    const [totalOrders, pendingOrders, paidOrders] = await Promise.all([
-      paymentRepo.count(),
-      paymentRepo.count({ where: { status: 'pending' } }),
-      paymentRepo.count({ where: { status: 'paid' } })
+    const [totalOrdersRow, pendingOrdersRow, paidOrdersRow] = await Promise.all([
+      AppDataSource.query("SELECT COUNT(*) as c FROM payment_orders"),
+      AppDataSource.query("SELECT COUNT(*) as c FROM payment_orders WHERE status='pending'"),
+      AppDataSource.query("SELECT COUNT(*) as c FROM payment_orders WHERE status='paid'")
     ]);
+    const totalOrders   = Number(totalOrdersRow[0]?.c   || 0);
+    const pendingOrders = Number(pendingOrdersRow[0]?.c || 0);
+    const paidOrders    = Number(paidOrdersRow[0]?.c    || 0);
 
     // 私有客户统计
     const [totalPrivateCustomers, activePrivateCustomers] = await Promise.all([
@@ -246,52 +224,25 @@ export class StatisticsService {
     endDate?: string;
     groupBy?: 'day' | 'month' | 'year';
   }): Promise<any> {
-    const paymentRepo = AppDataSource.getRepository(PaymentOrder);
+    const conditions: string[] = ["status='paid'"];
+    const values: any[] = [];
+    if (params.startDate) { conditions.push('paid_at >= ?'); values.push(params.startDate); }
+    if (params.endDate)   { conditions.push('paid_at <= ?'); values.push(`${params.endDate} 23:59:59`); }
+    const where = conditions.join(' AND ');
 
-    let query = paymentRepo
-      .createQueryBuilder('payment')
-      .where('payment.status = :status', { status: 'paid' });
+    const dateExpr = params.groupBy === 'month' ? "DATE_FORMAT(paid_at,'%Y-%m')"
+                   : params.groupBy === 'year'  ? "DATE_FORMAT(paid_at,'%Y')"
+                   : "DATE(paid_at)";
 
-    if (params.startDate) {
-      query = query.andWhere('payment.paidAt >= :startDate', { startDate: params.startDate });
-    }
-    if (params.endDate) {
-      query = query.andWhere('payment.paidAt <= :endDate', { endDate: `${params.endDate} 23:59:59` });
-    }
-
-    // 总收入
-    const totalResult = await query.clone()
-      .select('COALESCE(SUM(payment.amount), 0)', 'total')
-      .addSelect('COUNT(*)', 'count')
-      .getRawOne();
-
-    // 按支付方式统计
-    const byPayType = await query.clone()
-      .select('payment.payType', 'payType')
-      .addSelect('COALESCE(SUM(payment.amount), 0)', 'amount')
-      .addSelect('COUNT(*)', 'count')
-      .groupBy('payment.payType')
-      .getRawMany();
-
-    // 按时间统计
-    let dateFormat = 'DATE(payment.paidAt)';
-    if (params.groupBy === 'month') {
-      dateFormat = 'DATE_FORMAT(payment.paidAt, "%Y-%m")';
-    } else if (params.groupBy === 'year') {
-      dateFormat = 'DATE_FORMAT(payment.paidAt, "%Y")';
-    }
-
-    const trend = await query.clone()
-      .select(dateFormat, 'date')
-      .addSelect('COALESCE(SUM(payment.amount), 0)', 'amount')
-      .addSelect('COUNT(*)', 'count')
-      .groupBy('date')
-      .orderBy('date', 'ASC')
-      .getRawMany();
+    const [totalResult, byPayType, trend] = await Promise.all([
+      AppDataSource.query(`SELECT COALESCE(SUM(amount),0) as total, COUNT(*) as count FROM payment_orders WHERE ${where}`, values),
+      AppDataSource.query(`SELECT pay_type as payType, COALESCE(SUM(amount),0) as amount, COUNT(*) as count FROM payment_orders WHERE ${where} GROUP BY pay_type`, values),
+      AppDataSource.query(`SELECT ${dateExpr} as date, COALESCE(SUM(amount),0) as amount, COUNT(*) as count FROM payment_orders WHERE ${where} GROUP BY date ORDER BY date ASC`, values)
+    ]);
 
     return {
-      total: Number(totalResult.total),
-      count: Number(totalResult.count),
+      total: Number(totalResult[0]?.total || 0),
+      count: Number(totalResult[0]?.count || 0),
       byPayType,
       trend
     };
@@ -335,22 +286,17 @@ export class StatisticsService {
    * 获取趋势分析
    */
   async getTrendAnalysis(days: number = 30): Promise<any> {
-    const paymentRepo = AppDataSource.getRepository(PaymentOrder);
     const tenantRepo = AppDataSource.getRepository(Tenant);
-
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    // 收入趋势
-    const revenueTrend = await paymentRepo
-      .createQueryBuilder('payment')
-      .where('payment.status = :status', { status: 'paid' })
-      .andWhere('payment.paidAt >= :startDate', { startDate })
-      .select('DATE(payment.paidAt)', 'date')
-      .addSelect('COALESCE(SUM(payment.amount), 0)', 'amount')
-      .groupBy('date')
-      .orderBy('date', 'ASC')
-      .getRawMany();
+    // 收入趋势（直接SQL）
+    const revenueTrend = await AppDataSource.query(
+      `SELECT DATE(paid_at) as date, COALESCE(SUM(amount),0) as amount
+       FROM payment_orders WHERE status='paid' AND paid_at >= ?
+       GROUP BY date ORDER BY date ASC`,
+      [startDate]
+    );
 
     // 租户增长趋势
     const tenantTrend = await tenantRepo

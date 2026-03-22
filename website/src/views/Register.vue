@@ -255,6 +255,11 @@
                   <span class="payment-icon alipay">💙</span>
                   <span>支付宝</span>
                 </label>
+                <label class="payment-option" :class="{ selected: paymentMethod === 'bank' }">
+                  <input type="radio" v-model="paymentMethod" value="bank" />
+                  <span class="payment-icon bank">🏦</span>
+                  <span>对公转账</span>
+                </label>
               </div>
             </div>
 
@@ -266,14 +271,69 @@
             </div>
           </div>
 
-          <!-- 已创建支付订单，显示二维码 -->
+          <!-- 已创建支付订单，显示二维码或银行信息 -->
           <div v-else class="payment-qrcode">
-            <div class="qr-header">
-              <span class="pay-type-icon" :class="paymentMethod">
-                {{ paymentMethod === 'wechat' ? '💚' : '💙' }}
-              </span>
-              <span>{{ paymentMethod === 'wechat' ? '微信' : '支付宝' }}扫码支付</span>
-            </div>
+            <!-- 对公转账 - 显示银行账户信息 -->
+            <template v-if="paymentMethod === 'bank'">
+              <div class="qr-header">
+                <span class="pay-type-icon bank">🏦</span>
+                <span>对公转账</span>
+              </div>
+
+              <div class="qr-amount">
+                <span class="amount-label">转账金额</span>
+                <span class="amount-value">¥{{ getPlanPrice(selectedPlan) }}</span>
+              </div>
+
+              <div class="bank-info">
+                <div class="bank-info-item" v-if="bankConfig.bankName">
+                  <span class="bank-label">开户银行</span>
+                  <span class="bank-value">{{ bankConfig.bankName }}</span>
+                </div>
+                <div class="bank-info-item" v-if="bankConfig.accountName">
+                  <span class="bank-label">账户名称</span>
+                  <span class="bank-value">{{ bankConfig.accountName }}</span>
+                </div>
+                <div class="bank-info-item" v-if="bankConfig.accountNo">
+                  <span class="bank-label">银行账号</span>
+                  <span class="bank-value monospace">{{ bankConfig.accountNo }}</span>
+                </div>
+                <div class="bank-info-item" v-if="bankConfig.bankBranch">
+                  <span class="bank-label">开户支行</span>
+                  <span class="bank-value">{{ bankConfig.bankBranch }}</span>
+                </div>
+                <div class="bank-info-remark" v-if="bankConfig.remark">
+                  <p>📌 {{ bankConfig.remark }}</p>
+                </div>
+              </div>
+
+              <div class="order-info">
+                <span>订单号：{{ paymentOrder.orderNo }}</span>
+                <span class="bank-tip">转账时请在备注中填写此订单号</span>
+              </div>
+
+              <div class="bank-notice">
+                <p>✅ 订单已创建成功，请按以上信息完成转账</p>
+                <p>⏰ 转账后工作人员将在1-2个工作日内确认到账并激活您的账号</p>
+                <p>📞 如有疑问请联系客服</p>
+              </div>
+
+              <div class="form-actions">
+                <button type="button" class="btn btn-outline" @click="handleCancelPayment">取消订单</button>
+                <button type="button" class="btn btn-primary" @click="handleBankTransferDone">
+                  我已完成转账
+                </button>
+              </div>
+            </template>
+
+            <!-- 微信/支付宝 - 显示二维码 -->
+            <template v-else>
+              <div class="qr-header">
+                <span class="pay-type-icon" :class="paymentMethod">
+                  {{ paymentMethod === 'wechat' ? '💚' : '💙' }}
+                </span>
+                <span>{{ paymentMethod === 'wechat' ? '微信' : '支付宝' }}扫码支付</span>
+              </div>
 
             <div class="qr-amount">
               <span class="amount-label">支付金额</span>
@@ -310,6 +370,7 @@
                 我已完成支付
               </button>
             </div>
+            </template>
           </div>
         </div>
       </div>
@@ -345,6 +406,15 @@ const paymentOrder = ref<{
   qrCode: string
   payUrl: string
 } | null>(null)
+
+// 对公转账银行信息
+const bankConfig = reactive({
+  bankName: '',
+  accountName: '',
+  accountNo: '',
+  bankBranch: '',
+  remark: ''
+})
 
 let paymentCheckTimer: any = null
 let expireTimer: any = null
@@ -570,6 +640,12 @@ const handleCreatePayment = async () => {
 
     if (data.code === 0) {
       paymentOrder.value = data.data
+
+      // 对公转账 - 填充银行信息
+      if (data.data.bankInfo) {
+        Object.assign(bankConfig, data.data.bankInfo)
+      }
+
       startPaymentCheck()
       startExpireCountdown()
     } else {
@@ -659,6 +735,23 @@ const handleCheckPayment = async () => {
   } catch (error) {
     alert('查询失败，请稍后再试')
   }
+}
+
+// 对公转账 - 已完成转账
+const handleBankTransferDone = () => {
+  if (paymentCheckTimer) clearInterval(paymentCheckTimer)
+  if (expireTimer) clearInterval(expireTimer)
+  checkingPayment.value = false
+  // 提示用户等待管理员确认
+  router.push({
+    path: '/pay-success',
+    query: {
+      plan: selectedPlan.value,
+      type: planType.value,
+      payType: 'bank',
+      orderNo: paymentOrder.value?.orderNo || ''
+    }
+  })
 }
 
 // 取消支付

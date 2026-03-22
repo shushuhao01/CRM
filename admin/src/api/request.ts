@@ -72,7 +72,7 @@ instance.interceptors.response.use(
     }
 
     if (status === 404) {
-      ElMessage.error(serverMessage || '请求的资源不存在')
+      // 404 错误不在拦截器中弹提示，由调用方自行处理（避免重复弹窗）
       return Promise.reject(error)
     }
 

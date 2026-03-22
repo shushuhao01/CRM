@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../config/logger';
+import { adminNotificationService } from '../services/AdminNotificationService';
 
 // 自定义错误类
 export class AppError extends Error {
@@ -55,6 +56,9 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+// 系统错误通知防抖（避免短时间内大量重复通知）
+const recentSystemErrors = new Set<string>();
+
 /**
  * 全局错误处理中间件
  */
@@ -74,7 +78,7 @@ export const errorHandler = (
     statusCode = error.statusCode;
     code = error.code;
     message = error.message;
-    
+
     if (error instanceof ValidationError) {
       details = error.details;
     }
@@ -83,7 +87,7 @@ export const errorHandler = (
   else if (error.name === 'QueryFailedError') {
     statusCode = 400;
     code = 'DATABASE_ERROR';
-    
+
     // MySQL错误处理
     const dbError = error as any;
     if (dbError.code === 'ER_DUP_ENTRY') {
@@ -139,6 +143,18 @@ export const errorHandler = (
       request: logData.request,
       user: logData.user
     });
+
+    // 通知管理员：系统异常（防抖：同一错误5分钟内只通知一次）
+    const errorKey = `${error.name}:${error.message}`.slice(0, 100);
+    if (!recentSystemErrors.has(errorKey)) {
+      recentSystemErrors.add(errorKey);
+      setTimeout(() => recentSystemErrors.delete(errorKey), 5 * 60 * 1000); // 5分钟后可再次通知
+      adminNotificationService.notify('system_error', {
+        title: `系统异常：${error.name || '未知错误'}`,
+        content: `${req.method} ${req.url} 发生 ${statusCode} 错误：${error.message}`,
+        extraData: { method: req.method, url: req.url, statusCode, errorName: error.name, ip: req.ip }
+      }).catch(() => {}); // 静默
+    }
   } else {
     logger.warn('客户端错误:', {
       error: {

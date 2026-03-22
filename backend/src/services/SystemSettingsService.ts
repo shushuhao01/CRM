@@ -1,8 +1,11 @@
 import { AppDataSource } from '../config/database';
 import { SystemConfig } from '../entities/SystemConfig';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 export class SystemSettingsService {
-  private configRepository = AppDataSource.getRepository(SystemConfig);
+  private get configRepository() {
+    return getTenantRepo(SystemConfig);
+  }
 
   /**
    * 获取系统设置
