@@ -143,11 +143,12 @@ async function logApiCall(data: {
 /**
  * APP登录
  * POST /api/v1/mobile/login
+ * 支持传入 tenantId 实现多租户隔离（SaaS模式）
  */
 router.post('/login', async (req: Request, res: Response) => {
   const startTime = Date.now()
   try {
-    const { username, password, deviceInfo: _deviceInfo } = req.body
+    const { username, password, tenantId, deviceInfo: _deviceInfo } = req.body
 
     if (!username || !password) {
       return res.status(400).json({
@@ -157,12 +158,18 @@ router.post('/login', async (req: Request, res: Response) => {
       })
     }
 
-    // 查询用户
-    const users = await AppDataSource.query(
-      `SELECT id, username, password, real_name, department_id, role, status
-       FROM users WHERE username = ? AND status = 'active'`,
-      [username]
-    )
+    // 查询用户（支持租户隔离）
+    let userQuery = `SELECT id, username, password, real_name, department_id, role, status, tenant_id
+       FROM users WHERE username = ? AND status = 'active'`
+    const queryParams: any[] = [username]
+
+    // SaaS模式：按租户过滤
+    if (tenantId) {
+      userQuery += ` AND tenant_id = ?`
+      queryParams.push(tenantId)
+    }
+
+    const users = await AppDataSource.query(userQuery, queryParams)
 
     if (users.length === 0) {
       await logApiCall({
@@ -207,11 +214,13 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // 生成Token - 使用 JwtConfig 确保与认证中间件兼容
+    // 🔥 修复：JWT中包含tenantId，确保后续API请求有租户隔离
     const token = JwtConfig.generateAccessToken({
       userId: user.id,
       username: user.username,
       role: user.role,
-      departmentId: user.department_id
+      departmentId: user.department_id,
+      tenantId: user.tenant_id || undefined
     })
 
     // 获取部门信息
@@ -246,7 +255,8 @@ router.post('/login', async (req: Request, res: Response) => {
           username: user.username,
           realName: user.real_name,
           department: departmentName,
-          role: user.role
+          role: user.role,
+          tenantId: user.tenant_id || null
         }
       }
     })

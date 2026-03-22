@@ -37,11 +37,19 @@ export const createDefaultAdmin = async (params: {
 }): Promise<{ username: string; password: string }> => {
   const { tenantId, phone, realName, email } = params;
 
-  // 检查用户名是否已存在
-  const existing = await AppDataSource.query(
-    'SELECT id FROM users WHERE username = ?',
-    [phone]
-  );
+  // 检查用户名是否已存在（同租户内唯一）
+  let existing;
+  if (tenantId) {
+    existing = await AppDataSource.query(
+      'SELECT id FROM users WHERE username = ? AND tenant_id = ?',
+      [phone, tenantId]
+    );
+  } else {
+    existing = await AppDataSource.query(
+      'SELECT id FROM users WHERE username = ? AND tenant_id IS NULL',
+      [phone]
+    );
+  }
 
   if (existing.length > 0) {
     console.warn(`[AdminAccountHelper] 用户名 ${phone} 已存在，跳过创建`);
