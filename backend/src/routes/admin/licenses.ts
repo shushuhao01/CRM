@@ -10,14 +10,48 @@ import crypto from 'crypto';
 
 const router = Router();
 
-// 生成授权码
+// 生成授权码（私有部署）
 const generateLicenseKey = (): string => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   const segments = [];
   for (let i = 0; i < 4; i++) {
-    segments.push(crypto.randomBytes(4).toString('hex').toUpperCase());
+    let segment = '';
+    for (let j = 0; j < 4; j++) {
+      segment += chars[Math.floor(Math.random() * chars.length)];
+    }
+    segments.push(segment);
   }
-  return segments.join('-');
+  return `PRIVATE-${segments.join('-')}`;
 };
+
+// 获取授权统计（聚合接口，一次返回所有状态数量）
+router.get('/stats', async (req: Request, res: Response) => {
+  try {
+    const result = await AppDataSource.query(
+      `SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) as expired,
+        SUM(CASE WHEN status = 'revoked' THEN 1 ELSE 0 END) as revoked
+       FROM licenses`
+    );
+    const row = result[0] || {};
+    res.json({
+      success: true,
+      data: {
+        total: Number(row.total) || 0,
+        active: Number(row.active) || 0,
+        pending: Number(row.pending) || 0,
+        expired: Number(row.expired) || 0,
+        revoked: Number(row.revoked) || 0
+      }
+    });
+  } catch (error: any) {
+    console.error('[Admin Licenses] Get stats failed:', error);
+    res.status(500).json({ success: false, message: '获取统计数据失败' });
+  }
+});
 
 // 获取授权列表
 router.get('/', async (req: Request, res: Response) => {
@@ -74,7 +108,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     if (license.packageId) {
       try {
         const pkgRows = await AppDataSource.query(
-          'SELECT id, name, code, type, price, billing_cycle, max_users, max_storage_gb, features, description FROM packages WHERE id = ?',
+          'SELECT id, name, code, type, price, billing_cycle, max_users, max_storage_gb, features, description FROM tenant_packages WHERE id = ?',
           [license.packageId]
         );
         if (pkgRows.length > 0) {
@@ -164,7 +198,8 @@ router.put('/:id', async (req: Request, res: Response) => {
       expiresAt,
       remark,
       packageId,
-      packageName
+      packageName,
+      regenerateKey
     } = req.body;
 
     const licenseRepo = AppDataSource.getRepository(License);
@@ -174,23 +209,31 @@ router.put('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: '授权不存在' });
     }
 
-    if (customerName) license.customerName = customerName;
+    if (customerName !== undefined && customerName !== null) license.customerName = customerName;
     if (contact !== undefined) license.customerContact = contact;
     if (phone !== undefined) license.customerPhone = phone;
     if (email !== undefined) license.customerEmail = email;
-    if (licenseType) license.licenseType = licenseType;
-    if (maxUsers) license.maxUsers = maxUsers;
-    if (maxStorageGb) license.maxStorageGb = maxStorageGb;
-    if (modules) license.features = modules;
+    if (licenseType !== undefined && licenseType !== null) license.licenseType = licenseType;
+    if (maxUsers !== undefined && maxUsers !== null) license.maxUsers = maxUsers;
+    if (maxStorageGb !== undefined && maxStorageGb !== null) license.maxStorageGb = maxStorageGb;
+    if (modules !== undefined) license.features = modules;
     if (packageId !== undefined) { license.packageId = packageId || null; }
     if (packageName !== undefined) { license.packageName = packageName || null; }
-    if (status) license.status = status;
-    if (expiresAt) license.expiresAt = new Date(expiresAt);
+    if (status !== undefined && status !== null) license.status = status;
+    if (expiresAt !== undefined) license.expiresAt = expiresAt ? new Date(expiresAt) : undefined;
     if (remark !== undefined) license.notes = remark;
+
+    // 重新生成授权码
+    if (regenerateKey) {
+      license.licenseKey = generateLicenseKey();
+      license.status = 'pending';
+      license.activatedAt = undefined;
+      license.machineId = undefined;
+    }
 
     await licenseRepo.save(license);
 
-    res.json({ success: true, data: license, message: '授权更新成功' });
+    res.json({ success: true, data: license, message: regenerateKey ? '授权码已重新生成' : '授权更新成功' });
   } catch (error: any) {
     console.error('[Admin Licenses] Update failed:', error);
     res.status(500).json({ success: false, message: '更新授权失败' });

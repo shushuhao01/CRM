@@ -24,6 +24,8 @@ export const adminApi = {
     request.get('/dashboard/recent-logs'),
 
   // 授权管理（私有客户）
+  getLicenseStats: () =>
+    request.get('/licenses/stats'),
   getLicenses: (params: any) =>
     request.get('/licenses', { params }),
   getLicenseDetail: (id: string) =>
@@ -40,6 +42,8 @@ export const adminApi = {
     request.post(`/licenses/${id}/revoke`),
   renewLicense: (id: string, expiresAt: string) =>
     request.post(`/licenses/${id}/renew`, { expiresAt }),
+  unlockPrivateCustomerAdmin: (id: string) =>
+    request.post(`/private-customers/${id}/unlock-admin`),
   getLicenseLogs: (id: string, params: any) =>
     request.get(`/licenses/${id}/logs`, { params }),
   getLicenseBills: (id: string, params: any) =>
@@ -64,6 +68,8 @@ export const adminApi = {
     request.post(`/tenants/${id}/resume`),
   renewTenant: (id: string, expireDate: string) =>
     request.post(`/tenants/${id}/renew`, { expireDate }),
+  unlockTenantAdmin: (id: string) =>
+    request.post(`/tenants/${id}/unlock-admin`),
   getTenantLogs: (id: string, params: any) =>
     request.get(`/tenants/${id}/logs`, { params }),
   getTenantBills: (id: string, params: any) =>
@@ -166,6 +172,8 @@ export const adminApi = {
     request.get(`/api-configs/${id}/statistics`),
   getApiGlobalStatistics: () =>
     request.get('/api-configs/statistics'),
+  getApiTrends: () =>
+    request.get('/api-configs/trends'),
 
   // 通知模板管理
   getNotificationTemplates: (params?: any) =>

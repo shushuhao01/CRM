@@ -408,8 +408,15 @@
             </div>
           </template>
 
+          <el-alert v-if="configStore.configLocked.email" type="warning" :closable="false" style="margin-bottom: 16px">
+            <template #title>
+              <span>🔒 该配置由管理后台统一管控，如需修改请联系管理员</span>
+            </template>
+          </el-alert>
+
           <el-form
             ref="emailFormRef"
+            :disabled="configStore.configLocked.email"
             :model="emailForm"
             :rules="emailFormRules"
             label-width="120px"
@@ -515,8 +522,15 @@
             </div>
           </template>
 
+          <el-alert v-if="configStore.configLocked.sms" type="warning" :closable="false" style="margin-bottom: 16px">
+            <template #title>
+              <span>🔒 该配置由管理后台统一管控，如需修改请联系管理员</span>
+            </template>
+          </el-alert>
+
           <el-form
             ref="smsFormRef"
+            :disabled="configStore.configLocked.sms"
             :model="smsForm"
             :rules="smsFormRules"
             label-width="120px"

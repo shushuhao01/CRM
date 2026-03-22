@@ -6,6 +6,9 @@ export class Call {
   @PrimaryColumn({ length: 50 })
   id: string;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column({ name: 'customer_id', length: 100, nullable: true })
   customerId: string;
 

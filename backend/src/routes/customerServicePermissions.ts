@@ -8,6 +8,7 @@ import { CustomerServicePermission } from '../entities/CustomerServicePermission
 import { User } from '../entities/User';
 import { logger } from '../config/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -16,14 +17,14 @@ const getPermissionRepository = () => {
   if (!AppDataSource?.isInitialized) {
     throw new Error('数据库连接未初始化');
   }
-  return AppDataSource.getRepository(CustomerServicePermission);
+  return getTenantRepo(CustomerServicePermission);
 };
 
 const getUserRepository = () => {
   if (!AppDataSource?.isInitialized) {
     throw new Error('数据库连接未初始化');
   }
-  return AppDataSource.getRepository(User);
+  return getTenantRepo(User);
 };
 
 /**

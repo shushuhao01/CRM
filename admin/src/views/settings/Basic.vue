@@ -99,8 +99,19 @@
         <el-tab-pane label="短信配置" name="sms">
           <el-form :model="smsForm" label-width="140px" class="config-form">
             <el-alert type="info" :closable="false" style="margin-bottom: 20px">
-              配置阿里云短信服务，用于官网注册验证码发送
+              配置阿里云短信服务，用于官网注册验证码发送、通知短信等
             </el-alert>
+            <el-form-item label="配置状态">
+              <el-tag v-if="smsForm.enabled && smsForm.accessKeyId && smsForm.signName && smsForm.templateCode" type="success" effect="dark">
+                已配置并启用
+              </el-tag>
+              <el-tag v-else-if="smsForm.accessKeyId" type="warning">
+                已配置但未启用
+              </el-tag>
+              <el-tag v-else type="info">
+                未配置
+              </el-tag>
+            </el-form-item>
             <el-form-item label="启用短信">
               <el-switch v-model="smsForm.enabled" />
             </el-form-item>
@@ -119,7 +130,12 @@
               <div class="form-tip">验证码模板，需包含 ${code} 变量</div>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="handleTestSms">发送测试短信</el-button>
+              <el-button type="primary" @click="handleTestSms" :disabled="!smsForm.accessKeyId || !smsForm.signName || !smsForm.templateCode">
+                发送测试短信
+              </el-button>
+              <span v-if="!smsForm.accessKeyId || !smsForm.signName || !smsForm.templateCode" class="form-tip" style="color: #e6a23c;">
+                请先完整填写并保存短信配置
+              </span>
             </el-form-item>
           </el-form>
         </el-tab-pane>
@@ -127,8 +143,19 @@
         <el-tab-pane label="邮件配置" name="email">
           <el-form :model="emailForm" label-width="140px" class="config-form">
             <el-alert type="info" :closable="false" style="margin-bottom: 20px">
-              配置SMTP邮件服务，用于系统通知、订单提醒等邮件发送
+              配置SMTP邮件服务，用于系统通知、订单提醒、注册确认等邮件发送
             </el-alert>
+            <el-form-item label="配置状态">
+              <el-tag v-if="emailForm.enabled && emailForm.smtpHost && emailForm.senderEmail" type="success" effect="dark">
+                已配置并启用
+              </el-tag>
+              <el-tag v-else-if="emailForm.smtpHost" type="warning">
+                已配置但未启用
+              </el-tag>
+              <el-tag v-else type="info">
+                未配置
+              </el-tag>
+            </el-form-item>
             <el-form-item label="启用邮件">
               <el-switch v-model="emailForm.enabled" />
             </el-form-item>
@@ -151,15 +178,25 @@
             </el-form-item>
             <el-form-item label="启用SSL">
               <el-switch v-model="emailForm.enableSsl" />
+              <span class="form-tip">端口465通常启用SSL</span>
             </el-form-item>
             <el-form-item label="启用TLS">
               <el-switch v-model="emailForm.enableTls" />
+              <span class="form-tip">端口587通常启用TLS</span>
             </el-form-item>
             <el-form-item label="测试邮箱">
               <el-input v-model="emailForm.testEmail" placeholder="用于测试的收件邮箱" />
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="handleTestEmail">发送测试邮件</el-button>
+              <el-button type="primary" @click="handleTestEmail" :disabled="!emailForm.smtpHost || !emailForm.senderEmail || !emailForm.testEmail">
+                发送测试邮件
+              </el-button>
+              <span v-if="!emailForm.smtpHost || !emailForm.senderEmail" class="form-tip" style="color: #e6a23c;">
+                请先完整填写并保存邮件配置
+              </span>
+              <span v-else-if="!emailForm.testEmail" class="form-tip" style="color: #e6a23c;">
+                请填写测试邮箱
+              </span>
             </el-form-item>
           </el-form>
         </el-tab-pane>
@@ -269,21 +306,33 @@ const loadTimeoutConfig = async () => {
 const handleSave = async () => {
   saving.value = true
   try {
-    // 保存短信配置
     if (activeTab.value === 'sms') {
+      // 保存短信配置
       await request.post('/system-config/sms', smsForm)
-    }
-    // 保存邮件配置
-    else if (activeTab.value === 'email') {
+      ElMessage.success('短信配置保存成功')
+    } else if (activeTab.value === 'email') {
+      // 保存邮件配置
       await request.put('/system/email-settings', emailForm)
-    }
-    // 保存超时提醒配置
-    else if (activeTab.value === 'timeout') {
+      ElMessage.success('邮件配置保存成功')
+    } else if (activeTab.value === 'timeout') {
+      // 保存超时提醒配置
       await request.put('/timeout-reminder/config', timeoutForm)
+      ElMessage.success('超时提醒配置保存成功')
+    } else if (activeTab.value === 'admin' || activeTab.value === 'security' || activeTab.value === 'log') {
+      // 保存后台设置/安全设置/日志设置到系统配置
+      const configPayload: any = {}
+      if (activeTab.value === 'admin') Object.assign(configPayload, { admin: adminForm })
+      if (activeTab.value === 'security') Object.assign(configPayload, { security: securityForm })
+      if (activeTab.value === 'log') Object.assign(configPayload, { log: logForm })
+      await request.post('/system-config', configPayload)
+      ElMessage.success('配置保存成功')
+    } else if (activeTab.value === 'password') {
+      ElMessage.info('请使用下方「修改密码」按钮')
+    } else {
+      ElMessage.success('保存成功')
     }
-    ElMessage.success('保存成功')
-  } catch (e) {
-    ElMessage.error('保存失败')
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '保存失败')
   } finally {
     saving.value = false
   }

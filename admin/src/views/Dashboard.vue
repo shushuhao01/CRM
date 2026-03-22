@@ -3,7 +3,7 @@
     <!-- 统计卡片 -->
     <el-row :gutter="20" class="stat-cards">
       <el-col :xs="24" :sm="12" :lg="6">
-        <div class="stat-card" style="--accent: #409eff">
+        <div class="stat-card" style="--accent: #409eff" @click="router.push('/private-customers/list')">
           <div class="stat-icon">
             <el-icon :size="28"><Key /></el-icon>
           </div>
@@ -11,14 +11,14 @@
             <div class="stat-value">{{ stats.licenses?.total || 0 }}</div>
             <div class="stat-label">总授权数</div>
           </div>
-          <div class="stat-trend up">
+          <div class="stat-trend" :class="growthData.licenses >= 0 ? 'up' : 'down'">
             <el-icon><TrendCharts /></el-icon>
             <span>{{ growthData.licenses >= 0 ? '+' : '' }}{{ growthData.licenses }}%</span>
           </div>
         </div>
       </el-col>
       <el-col :xs="24" :sm="12" :lg="6">
-        <div class="stat-card" style="--accent: #67c23a">
+        <div class="stat-card" style="--accent: #67c23a" @click="router.push('/private-customers/list')">
           <div class="stat-icon">
             <el-icon :size="28"><CircleCheck /></el-icon>
           </div>
@@ -26,28 +26,29 @@
             <div class="stat-value">{{ stats.licenses?.active || 0 }}</div>
             <div class="stat-label">有效授权</div>
           </div>
-          <div class="stat-trend up">
+          <div class="stat-trend" :class="growthData.licenses >= 0 ? 'up' : 'down'">
+            <el-icon><TrendCharts /></el-icon>
+            <span>{{ activeRate }}%</span>
+          </div>
+        </div>
+      </el-col>
+      <el-col :xs="24" :sm="12" :lg="6">
+        <div class="stat-card" style="--accent: #e6a23c" @click="router.push('/tenant-customers/list')">
+          <div class="stat-icon">
+            <el-icon :size="28"><OfficeBuilding /></el-icon>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ stats.tenants?.total || 0 }}</div>
+            <div class="stat-label">租户总数</div>
+          </div>
+          <div class="stat-trend" :class="growthData.tenants >= 0 ? 'up' : 'down'">
             <el-icon><TrendCharts /></el-icon>
             <span>{{ growthData.tenants >= 0 ? '+' : '' }}{{ growthData.tenants }}%</span>
           </div>
         </div>
       </el-col>
       <el-col :xs="24" :sm="12" :lg="6">
-        <div class="stat-card" style="--accent: #e6a23c">
-          <div class="stat-icon">
-            <el-icon :size="28"><Clock /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ stats.licenses?.pending || 0 }}</div>
-            <div class="stat-label">待激活</div>
-          </div>
-          <div class="stat-trend">
-            <span>待处理</span>
-          </div>
-        </div>
-      </el-col>
-      <el-col :xs="24" :sm="12" :lg="6">
-        <div class="stat-card" style="--accent: #909399">
+        <div class="stat-card" style="--accent: #909399" @click="router.push('/versions/list')">
           <div class="stat-icon">
             <el-icon :size="28"><Box /></el-icon>
           </div>
@@ -56,7 +57,7 @@
             <div class="stat-label">发布版本</div>
           </div>
           <div class="stat-trend">
-            <span>v{{ stats.versions?.latest || '1.0.0' }}</span>
+            <span>{{ stats.versions?.latest ? 'v' + stats.versions.latest : '暂无' }}</span>
           </div>
         </div>
       </el-col>
@@ -173,7 +174,7 @@
       <template #header>
         <div class="card-header">
           <span class="title">最近验证日志</span>
-          <el-button type="primary" link>
+          <el-button type="primary" link @click="router.push('/settings/operation-logs')">
             查看全部 <el-icon><ArrowRight /></el-icon>
           </el-button>
         </div>
@@ -224,8 +225,8 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import {
-  Key, CircleCheck, Clock, Box, TrendCharts, ArrowRight,
-  Document, Checked, Warning, Upload
+  Key, CircleCheck, Box, TrendCharts, ArrowRight,
+  Document, Checked, Warning, Upload, OfficeBuilding
 } from '@element-plus/icons-vue'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
@@ -238,8 +239,9 @@ interface DashboardStats {
     active: number
     expired: number
     pending: number
-    byType?: { trial: number; perpetual: number; annual: number }
+    byType?: { trial: number; perpetual: number; annual: number; monthly: number }
   }
+  tenants?: { total: number; active: number }
   versions?: { total: number; published: number; latest: string | null }
   activity?: { recentVerifications: number }
 }
@@ -255,10 +257,19 @@ let chartInstance: echarts.ECharts | null = null
 const trendRawData = ref<any[]>([])
 const activities = ref<any[]>([])
 
+// 有效授权率（有效/总数）
+const activeRate = computed(() => {
+  const total = stats.value.licenses?.total || 0
+  const active = stats.value.licenses?.active || 0
+  if (total === 0) return 0
+  return Math.round((active / total) * 100)
+})
+
 const licenseTypes = computed(() => [
   { type: 'trial', label: '试用授权', count: stats.value.licenses?.byType?.trial || 0 },
   { type: 'perpetual', label: '永久授权', count: stats.value.licenses?.byType?.perpetual || 0 },
-  { type: 'annual', label: '年度授权', count: stats.value.licenses?.byType?.annual || 0 }
+  { type: 'annual', label: '年度授权', count: stats.value.licenses?.byType?.annual || 0 },
+  { type: 'monthly', label: '月度授权', count: stats.value.licenses?.byType?.monthly || 0 }
 ])
 
 const totalLicenses = computed(() => stats.value.licenses?.total || 0)
@@ -401,6 +412,7 @@ onUnmounted(() => {
   gap: 16px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
   transition: all 0.3s;
+  cursor: pointer;
 
   &:hover {
     transform: translateY(-4px);

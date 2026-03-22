@@ -6,6 +6,7 @@ import { AppDataSource } from '../../config/database'
 import { v4 as uuidv4 } from 'uuid'
 import crypto from 'crypto'
 import { aliyunSmsService } from '../../services/AliyunSmsService'
+import { adminNotificationService } from '../../services/AdminNotificationService'
 
 const router = Router()
 
@@ -156,6 +157,15 @@ router.post('/', async (req: Request, res: Response) => {
       },
       message: isFree ? '注册成功' : '注册成功，请完成支付'
     })
+
+    // 异步通知管理员（不阻塞响应）
+    adminNotificationService.notify('tenant_registered', {
+      title: `新租户注册：${companyName}`,
+      content: `企业「${companyName}」（联系人：${contactName}，手机：${phone}）刚刚注册了${isFree ? '免费试用' : '付费'}套餐。租户编码：${tenantCode}`,
+      relatedId: tenantId,
+      relatedType: 'tenant',
+      extraData: { companyName, contactName, phone, tenantCode, isFree }
+    }).catch(err => console.error('[Register] 发送管理员通知失败:', err.message))
   } catch (error) {
     console.error('注册失败:', error)
     res.status(500).json({ code: 500, message: '注册失败，请稍后重试' })

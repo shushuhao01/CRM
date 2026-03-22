@@ -12,6 +12,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { sendSystemMessage, sendBatchSystemMessages } from '../services/messageService';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -97,8 +98,8 @@ router.post('/create', authenticateToken, async (req: Request, res: Response) =>
       return res.status(400).json({ success: false, message: '请填写完整信息' });
     }
 
-    const orderRepo = AppDataSource.getRepository(Order);
-    const appRepo = AppDataSource.getRepository(CodCancelApplication);
+    const orderRepo = getTenantRepo(Order);
+    const appRepo = getTenantRepo(CodCancelApplication);
 
     // 查询订单
     const order = await orderRepo.findOne({ where: { id: orderId } });
@@ -185,7 +186,7 @@ router.post('/create', authenticateToken, async (req: Request, res: Response) =>
 
     // 🔥 发送消息通知给审核人员（财务/管理员）
     try {
-      const userRepo = AppDataSource.getRepository(User);
+      const userRepo = getTenantRepo(User);
       // 查询所有管理员和超级管理员
       const reviewers = await userRepo.find({
         where: [
@@ -239,7 +240,7 @@ router.put('/update/:id', authenticateToken, async (req: Request, res: Response)
       return res.status(400).json({ success: false, message: '请填写完整信息' });
     }
 
-    const appRepo = AppDataSource.getRepository(CodCancelApplication);
+    const appRepo = getTenantRepo(CodCancelApplication);
     const application = await appRepo.findOne({ where: { id } });
 
     if (!application) {
@@ -258,7 +259,7 @@ router.put('/update/:id', authenticateToken, async (req: Request, res: Response)
     }
 
     // 🔥 获取订单信息，验证当前代收金额
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
     const order = await orderRepo.findOne({ where: { id: application.orderId } });
 
     if (!order) {
@@ -311,8 +312,8 @@ router.get('/my-list', authenticateToken, async (req: Request, res: Response) =>
     const { page = 1, pageSize = 10, status, startDate, endDate, keywords } = req.query;
     const user = (req as any).currentUser; // 使用 currentUser
 
-    const appRepo = AppDataSource.getRepository(CodCancelApplication);
-    const orderRepo = AppDataSource.getRepository(Order);
+    const appRepo = getTenantRepo(CodCancelApplication);
+    const orderRepo = getTenantRepo(Order);
 
     // 如果有关键词搜索，需要先从订单表查询
     let orderIds: string[] = [];
@@ -404,8 +405,8 @@ router.get('/review-list', authenticateToken, async (req: Request, res: Response
   try {
     const { page = 1, pageSize = 10, status, departmentId, applicantId, startDate, endDate, keywords } = req.query;
 
-    const appRepo = AppDataSource.getRepository(CodCancelApplication);
-    const orderRepo = AppDataSource.getRepository(Order);
+    const appRepo = getTenantRepo(CodCancelApplication);
+    const orderRepo = getTenantRepo(Order);
 
     // 如果有关键词搜索，需要先从订单表查询
     let orderIds: string[] = [];
@@ -506,8 +507,8 @@ router.get('/review-list', authenticateToken, async (req: Request, res: Response
 router.get('/detail/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const appRepo = AppDataSource.getRepository(CodCancelApplication);
-    const orderRepo = AppDataSource.getRepository(Order);
+    const appRepo = getTenantRepo(CodCancelApplication);
+    const orderRepo = getTenantRepo(Order);
 
     const application = await appRepo.findOne({ where: { id } });
     if (!application) {
@@ -552,8 +553,8 @@ router.put('/review/:id', authenticateToken, async (req: Request, res: Response)
       return res.status(400).json({ success: false, message: '驳回时必须填写原因' });
     }
 
-    const appRepo = AppDataSource.getRepository(CodCancelApplication);
-    const orderRepo = AppDataSource.getRepository(Order);
+    const appRepo = getTenantRepo(CodCancelApplication);
+    const orderRepo = getTenantRepo(Order);
 
     const application = await appRepo.findOne({ where: { id } });
     if (!application) {
@@ -665,7 +666,7 @@ router.delete('/cancel/:id', authenticateToken, async (req: Request, res: Respon
     const { id } = req.params;
     const user = (req as any).currentUser; // 使用 currentUser
 
-    const appRepo = AppDataSource.getRepository(CodCancelApplication);
+    const appRepo = getTenantRepo(CodCancelApplication);
     const application = await appRepo.findOne({ where: { id } });
 
     if (!application) {
@@ -700,7 +701,7 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     const { type } = req.query; // my-我的, review-审核
     const user = (req as any).currentUser; // 使用 currentUser
 
-    const appRepo = AppDataSource.getRepository(CodCancelApplication);
+    const appRepo = getTenantRepo(CodCancelApplication);
     const queryBuilder = appRepo.createQueryBuilder('app');
 
     if (type === 'my') {

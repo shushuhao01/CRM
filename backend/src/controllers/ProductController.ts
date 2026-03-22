@@ -2,10 +2,11 @@ import { Request, Response } from 'express'
 import { AppDataSource, getDataSource } from '../config/database'
 import { Product } from '../entities/Product'
 import { ProductCategory } from '../entities/ProductCategory'
+import { getTenantRepo } from '../utils/tenantRepo'
 
-// 获取Repository
-const getProductRepository = () => AppDataSource.getRepository(Product)
-const getCategoryRepository = () => AppDataSource.getRepository(ProductCategory)
+// 获取Repository（🔥 使用租户感知仓储，自动添加tenant_id过滤）
+const getProductRepository = () => getTenantRepo(Product)
+const getCategoryRepository = () => getTenantRepo(ProductCategory)
 
 // 生成唯一ID
 function generateId(prefix: string = ''): string {
@@ -334,10 +335,9 @@ export class ProductController {
       if (productIds.length > 0) {
         try {
           const { Order } = await import('../entities/Order')
-          const dataSource = getDataSource()
 
-          if (dataSource) {
-            const orderRepo = dataSource.getRepository(Order)
+          if (true) {
+            const orderRepo = getTenantRepo(Order)
 
             // 🔥 获取有效订单（已审核通过且未取消的订单）
             const validOrders = await orderRepo
@@ -887,8 +887,9 @@ export class ProductController {
         return
       }
 
-      // 获取订单数据（需要根据用户角色过滤）
-      const orderRepository = AppDataSource.getRepository('Order')
+      // 获取订单数据（需要根据用户角色过滤）🔥 使用租户感知仓储
+      const { Order } = await import('../entities/Order')
+      const orderRepository = getTenantRepo(Order)
       let queryBuilder = orderRepository.createQueryBuilder('order')
         .leftJoinAndSelect('order.items', 'items')
         .where('items.productId = :productId', { productId: id })

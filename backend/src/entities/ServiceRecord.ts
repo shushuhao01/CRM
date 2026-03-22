@@ -5,6 +5,9 @@ export class ServiceRecord {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column({ length: 100 })
   customerId: string;
 

@@ -3,20 +3,15 @@ import { AppDataSource } from '../config/database';
 import { Department } from '../entities/Department';
 import { User } from '../entities/User';
 import { IsNull, Not } from 'typeorm';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 export class DepartmentController {
   private get departmentRepository() {
-    if (!AppDataSource) {
-      throw new Error('Database not initialized');
-    }
-    return AppDataSource.getRepository(Department);
+    return getTenantRepo(Department);
   }
 
   private get userRepository() {
-    if (!AppDataSource) {
-      throw new Error('Database not initialized');
-    }
-    return AppDataSource.getRepository(User);
+    return getTenantRepo(User);
   }
 
   /**

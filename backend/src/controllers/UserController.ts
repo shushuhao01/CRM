@@ -8,30 +8,19 @@ import { JwtConfig } from '../config/jwt';
 import { catchAsync, BusinessError, NotFoundError, ValidationError } from '../middleware/errorHandler';
 import { logger, operationLogger } from '../config/logger';
 import bcrypt from 'bcryptjs';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 export class UserController {
   private get userRepository() {
-    const dataSource = getDataSource();
-    if (!dataSource) {
-      throw new BusinessError('数据库连接未初始化');
-    }
-    return dataSource.getRepository(User);
+    return getTenantRepo(User);
   }
 
   private get departmentRepository() {
-    const dataSource = getDataSource();
-    if (!dataSource) {
-      throw new BusinessError('数据库连接未初始化');
-    }
-    return dataSource.getRepository(Department);
+    return getTenantRepo(Department);
   }
 
   private get customerServicePermissionRepository() {
-    const dataSource = getDataSource();
-    if (!dataSource) {
-      throw new BusinessError('数据库连接未初始化');
-    }
-    return dataSource.getRepository(CustomerServicePermission);
+    return getTenantRepo(CustomerServicePermission);
   }
 
   /**
@@ -58,14 +47,39 @@ export class UserController {
   }
 
   /**
+   * 从请求中获取当前租户ID
+   * 优先从JWT payload中获取，其次从请求体获取
+   */
+  private getTenantIdFromRequest(req: Request): string | null {
+    return (req as any).tenantId || req.body?.tenantId || (req as any).user?.tenantId || null;
+  }
+
+  /**
+   * 构建带有租户过滤的查询条件
+   */
+  private buildTenantWhere(req: Request, baseWhere: any = {}): any {
+    const tenantId = this.getTenantIdFromRequest(req);
+    if (tenantId) {
+      return { ...baseWhere, tenantId };
+    }
+    return baseWhere;
+  }
+
+  /**
    * 用户登录
    */
   login = catchAsync(async (req: Request, res: Response) => {
-    const { username, password } = req.body;
+    const { username, password, tenantId } = req.body;
+
+    // 构建查询条件：按租户过滤
+    const whereClause: any = { username };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
 
     // 查找用户
     const user = await this.userRepository.findOne({
-      where: { username }
+      where: whereClause
     });
 
     if (!user) {
@@ -173,7 +187,8 @@ export class UserController {
       userId: user.id,
       username: user.username,
       role: user.roleId || user.role,  // 优先使用 roleId
-      departmentId: user.departmentId
+      departmentId: user.departmentId,
+      tenantId: user.tenantId || undefined  // 租户ID（SaaS模式）
     };
 
     const tokens = JwtConfig.generateTokenPair(tokenPayload);
@@ -263,7 +278,8 @@ export class UserController {
       userId: user.id,
       username: user.username,
       role: user.roleId || user.role,  // 优先使用 roleId
-      departmentId: user.departmentId
+      departmentId: user.departmentId,
+      tenantId: user.tenantId || undefined  // 租户ID（SaaS模式）
     };
 
     const tokens = JwtConfig.generateTokenPair(newTokenPayload);
@@ -403,6 +419,7 @@ export class UserController {
 
   /**
    * 检查用户名是否可用
+   * 🔥 租户隔离：同租户下用户名唯一，不同租户可存在相同用户名
    */
   checkUsername = catchAsync(async (req: Request, res: Response) => {
     const { username } = req.query;
@@ -411,9 +428,15 @@ export class UserController {
       throw new ValidationError('用户名参数不能为空');
     }
 
-    // 检查用户名是否已存在
+    // 🔥 租户隔离：检查同租户下用户名是否已存在
+    const tenantId = this.getTenantIdFromRequest(req);
+    const whereClause: any = { username };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
+
     const existingUser = await this.userRepository.findOne({
-      where: { username }
+      where: whereClause
     });
 
     res.json({
@@ -427,6 +450,7 @@ export class UserController {
 
   /**
    * 创建用户（管理员功能）
+   * 🔥 租户隔离：用户名在同租户下唯一，自动设置tenant_id
    */
   createUser = catchAsync(async (req: Request, res: Response) => {
     const {
@@ -448,19 +472,29 @@ export class UserController {
       throw new ValidationError('用户名、密码、真实姓名和角色为必填项');
     }
 
-    // 检查用户名是否已存在
+    // 🔥 租户隔离：检查同租户下用户名是否已存在
+    const tenantId = this.getTenantIdFromRequest(req);
+    const usernameWhereClause: any = { username };
+    if (tenantId) {
+      usernameWhereClause.tenantId = tenantId;
+    }
+
     const existingUser = await this.userRepository.findOne({
-      where: { username }
+      where: usernameWhereClause
     });
 
     if (existingUser) {
       throw new BusinessError('用户名已存在', 'USERNAME_EXISTS');
     }
 
-    // 检查邮箱是否已存在
+    // 检查邮箱是否已存在（同租户下）
     if (email) {
+      const emailWhereClause: any = { email };
+      if (tenantId) {
+        emailWhereClause.tenantId = tenantId;
+      }
       const existingEmail = await this.userRepository.findOne({
-        where: { email }
+        where: emailWhereClause
       });
 
       if (existingEmail) {
@@ -485,17 +519,18 @@ export class UserController {
     // 生成用户ID
     const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // 创建用户 - 确保所有必需字段都有值
+    // 🔥 租户隔离：创建用户时自动设置tenant_id
     const user = this.userRepository.create({
       id: userId,
+      tenantId: tenantId || null,  // 🔥 关键：设置租户ID
       username,
       password: hashedPassword,
-      name: realName,  // name 是必需字段
+      name: realName,
       realName,
       email: email || null,
       phone: phone || null,
       role,
-      roleId: role,  // roleId 是必需字段，使用 role 值
+      roleId: role,
       departmentId: departmentId || null,
       departmentName: department || null,
       position: position || null,
@@ -535,7 +570,7 @@ export class UserController {
 
   /**
    * 获取同部门成员列表（所有登录用户可访问）
-   * 销售员只能看到同部门成员，经理和管理员可以看到所有用户
+   * 🔥 租户隔离：只返回当前租户的用户
    */
   getDepartmentMembers = catchAsync(async (req: Request, res: Response) => {
     const currentUser = (req as any).user;
@@ -544,7 +579,7 @@ export class UserController {
       throw new BusinessError('用户未登录', 'UNAUTHORIZED');
     }
 
-    console.log('[getDepartmentMembers] 当前用户:', currentUser.username, '角色:', currentUser.role, '部门ID:', currentUser.departmentId);
+    const tenantId = this.getTenantIdFromRequest(req);
 
     const queryBuilder = this.userRepository.createQueryBuilder('user')
       .select([
@@ -565,38 +600,31 @@ export class UserController {
         'user.createdAt'
       ]);
 
+    // 🔥 租户隔离过滤
+    if (tenantId) {
+      queryBuilder.andWhere('user.tenantId = :tenantId', { tenantId });
+    }
+
     // 根据角色过滤数据
     const isAdmin = currentUser.role === 'super_admin' || currentUser.role === 'admin';
     const isManager = currentUser.role === 'department_manager';
 
     if (isAdmin) {
-      // 管理员可以看到所有用户
-      console.log('[getDepartmentMembers] 管理员，返回所有用户');
+      // 管理员可以看到当前租户所有用户
     } else if (isManager || currentUser.role === 'sales_staff') {
-      // 经理和销售员只能看到同部门成员
       if (currentUser.departmentId) {
         queryBuilder.andWhere('user.departmentId = :departmentId', { departmentId: currentUser.departmentId });
-        console.log('[getDepartmentMembers] 非管理员，过滤部门ID:', currentUser.departmentId);
       } else {
-        // 如果没有部门ID，返回空列表
-        console.log('[getDepartmentMembers] 用户没有部门ID，返回空列表');
         return res.json({
           success: true,
-          data: {
-            items: [],
-            users: [],
-            total: 0
-          }
+          data: { items: [], users: [], total: 0 }
         });
       }
     }
 
-    // 只返回启用的用户
     queryBuilder.andWhere('user.status = :status', { status: 'active' });
 
     const users = await queryBuilder.getMany();
-
-    console.log('[getDepartmentMembers] 返回用户数:', users.length);
 
     res.json({
       success: true,
@@ -610,11 +638,12 @@ export class UserController {
 
   /**
    * 获取用户列表（管理员功能）
+   * 🔥 租户隔离：只返回当前租户的用户
    */
   getUsers = catchAsync(async (req: Request, res: Response) => {
     const { page = 1, limit = 20, search, departmentId, role, status } = req.query as any;
+    const tenantId = this.getTenantIdFromRequest(req);
 
-    // User实体没有department关联，直接查询用户表
     const queryBuilder = this.userRepository.createQueryBuilder('user')
       .select([
         'user.id',
@@ -640,6 +669,11 @@ export class UserController {
         'user.updatedAt'
       ]);
 
+    // 🔥 租户隔离过滤
+    if (tenantId) {
+      queryBuilder.andWhere('user.tenantId = :tenantId', { tenantId });
+    }
+
     // 搜索条件
     if (search) {
       queryBuilder.andWhere(
@@ -663,8 +697,6 @@ export class UserController {
     // 分页
     const offset = (page - 1) * limit;
     queryBuilder.skip(offset).take(limit);
-
-    // 排序
     queryBuilder.orderBy('user.createdAt', 'DESC');
 
     const [users, total] = await queryBuilder.getManyAndCount();
@@ -689,8 +721,8 @@ export class UserController {
     res.json({
       success: true,
       data: {
-        items: usersWithOnlineStatus,  // 前端期望 items 字段
-        users: usersWithOnlineStatus,  // 保持兼容
+        items: usersWithOnlineStatus,
+        users: usersWithOnlineStatus,
         total,
         page: parseInt(page),
         limit: parseInt(limit),
@@ -701,53 +733,51 @@ export class UserController {
 
   /**
    * 获取用户统计信息
+   * 🔥 租户隔离：只统计当前租户的用户
    */
   getUserStatistics = catchAsync(async (req: Request, res: Response) => {
-    // 获取总用户数
-    const total = await this.userRepository.count();
+    const tenantId = this.getTenantIdFromRequest(req);
+    const tenantWhere: any = tenantId ? { tenantId } : {};
 
-    // 获取各状态用户数
-    const active = await this.userRepository.count({ where: { status: 'active' } });
-    const inactive = await this.userRepository.count({ where: { status: 'inactive' } });
-    const locked = await this.userRepository.count({ where: { status: 'locked' } });
+    const total = await this.userRepository.count({ where: tenantWhere });
+    const active = await this.userRepository.count({ where: { ...tenantWhere, status: 'active' } });
+    const inactive = await this.userRepository.count({ where: { ...tenantWhere, status: 'inactive' } });
+    const locked = await this.userRepository.count({ where: { ...tenantWhere, status: 'locked' } });
 
-    // 获取各角色用户数
-    const adminCount = await this.userRepository.count({ where: { role: 'admin' } });
-    const superAdminCount = await this.userRepository.count({ where: { role: 'super_admin' } });
-    const managerCount = await this.userRepository.count({ where: { role: 'manager' } });
-    const departmentManagerCount = await this.userRepository.count({ where: { role: 'department_manager' } });
-    const salesCount = await this.userRepository.count({ where: { role: 'sales' } });
-    const salesStaffCount = await this.userRepository.count({ where: { role: 'sales_staff' } });
-    const serviceCount = await this.userRepository.count({ where: { role: 'service' } });
-    const customerServiceCount = await this.userRepository.count({ where: { role: 'customer_service' } });
+    const adminCount = await this.userRepository.count({ where: { ...tenantWhere, role: 'admin' } });
+    const superAdminCount = await this.userRepository.count({ where: { ...tenantWhere, role: 'super_admin' } });
+    const managerCount = await this.userRepository.count({ where: { ...tenantWhere, role: 'manager' } });
+    const departmentManagerCount = await this.userRepository.count({ where: { ...tenantWhere, role: 'department_manager' } });
+    const salesCount = await this.userRepository.count({ where: { ...tenantWhere, role: 'sales' } });
+    const salesStaffCount = await this.userRepository.count({ where: { ...tenantWhere, role: 'sales_staff' } });
+    const serviceCount = await this.userRepository.count({ where: { ...tenantWhere, role: 'service' } });
+    const customerServiceCount = await this.userRepository.count({ where: { ...tenantWhere, role: 'customer_service' } });
 
-    // 获取各部门用户数（使用departmentName字段，不需要关联）
-    const departmentStats = await this.userRepository
+    const deptQueryBuilder = this.userRepository
       .createQueryBuilder('user')
       .select([
         'user.departmentId as departmentId',
         'user.departmentName as departmentName',
         'COUNT(user.id) as count'
       ])
-      .where('user.departmentId IS NOT NULL')
+      .where('user.departmentId IS NOT NULL');
+
+    if (tenantId) {
+      deptQueryBuilder.andWhere('user.tenantId = :tenantId', { tenantId });
+    }
+
+    const departmentStats = await deptQueryBuilder
       .groupBy('user.departmentId')
       .addGroupBy('user.departmentName')
       .getRawMany();
 
     const statistics = {
-      total,
-      active,
-      inactive,
-      locked,
+      total, active, inactive, locked,
       byRole: {
-        admin: adminCount,
-        super_admin: superAdminCount,
-        manager: managerCount,
-        department_manager: departmentManagerCount,
-        sales: salesCount,
-        sales_staff: salesStaffCount,
-        service: serviceCount,
-        customer_service: customerServiceCount
+        admin: adminCount, super_admin: superAdminCount,
+        manager: managerCount, department_manager: departmentManagerCount,
+        sales: salesCount, sales_staff: salesStaffCount,
+        service: serviceCount, customer_service: customerServiceCount
       },
       byDepartment: departmentStats.map(stat => ({
         departmentId: stat.departmentId,
@@ -756,20 +786,23 @@ export class UserController {
       }))
     };
 
-    res.json({
-      success: true,
-      data: statistics
-    });
+    res.json({ success: true, data: statistics });
   });
 
   /**
    * 获取用户详情
+   * 🔥 租户隔离：加上tenantId过滤
    */
   getUserById = catchAsync(async (req: Request, res: Response) => {
     const userId = req.params.id;
+    const tenantId = this.getTenantIdFromRequest(req);
+    const whereClause: any = { id: userId };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
 
     const user = await this.userRepository.findOne({
-      where: { id: userId }
+      where: whereClause
     });
 
     if (!user) {
@@ -786,13 +819,19 @@ export class UserController {
 
   /**
    * 更新用户信息
+   * 🔥 租户隔离
    */
   updateUser = catchAsync(async (req: Request, res: Response) => {
     const userId = req.params.id;
+    const tenantId = this.getTenantIdFromRequest(req);
+    const whereClause: any = { id: userId };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
     const { realName, name, email, phone, role, roleId, departmentId, departmentName, position, employeeNumber, status, remark, authorizedIps } = req.body;
 
     const user = await this.userRepository.findOne({
-      where: { id: userId }
+      where: whereClause
     });
 
     if (!user) {
@@ -805,32 +844,23 @@ export class UserController {
     if (email !== undefined) user.email = email;
     if (phone !== undefined) user.phone = phone;
 
-    // 🔥 修复：同时更新 role 和 roleId 字段，确保角色信息一致
     if (role !== undefined) {
       user.role = role;
-      user.roleId = role;  // 同步更新 roleId
+      user.roleId = role;
     }
     if (roleId !== undefined) {
       user.role = roleId;
-      user.roleId = roleId;  // 同步更新 roleId
+      user.roleId = roleId;
     }
 
-    // 🔥 修复：更新部门信息时，同时更新 departmentId 和 departmentName
     if (departmentId !== undefined) {
       user.departmentId = departmentId ? String(departmentId) : null;
-
-      // 如果提供了 departmentName，直接使用；否则尝试从数据库查询
       if (departmentName !== undefined) {
         user.departmentName = departmentName || null;
       } else if (departmentId) {
-        // 尝试从部门表获取部门名称
         try {
-          const department = await this.departmentRepository.findOne({
-            where: { id: departmentId }
-          });
-          if (department) {
-            user.departmentName = department.name;
-          }
+          const department = await this.departmentRepository.findOne({ where: { id: departmentId } });
+          if (department) user.departmentName = department.name;
         } catch (error) {
           console.warn('[UserController] 获取部门名称失败:', error);
         }
@@ -843,17 +873,12 @@ export class UserController {
     if (employeeNumber !== undefined) user.employeeNumber = employeeNumber;
     if (status !== undefined) user.status = status;
     if (remark !== undefined) (user as any).remark = remark;
-
-    // 🔥 新增：更新授权登录IP
     if (authorizedIps !== undefined) {
       user.authorizedIps = Array.isArray(authorizedIps) && authorizedIps.length > 0 ? authorizedIps : null;
     }
 
-    console.log(`[UserController] 更新用户角色: role=${user.role}, roleId=${user.roleId}, departmentId=${user.departmentId}, departmentName=${user.departmentName}`);
-
     const updatedUser = await this.userRepository.save(user);
 
-    // 记录操作日志
     await this.logOperation({
       userId: req.user?.userId,
       username: req.user?.username,
@@ -867,28 +892,27 @@ export class UserController {
 
     const { password: _, ...userInfo } = updatedUser;
 
-    res.json({
-      success: true,
-      message: '用户更新成功',
-      data: userInfo
-    });
+    res.json({ success: true, message: '用户更新成功', data: userInfo });
   });
 
   /**
    * 删除用户
+   * 🔥 租户隔离
    */
   deleteUser = catchAsync(async (req: Request, res: Response) => {
     const userId = req.params.id;
+    const tenantId = this.getTenantIdFromRequest(req);
+    const whereClause: any = { id: userId };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
 
-    const user = await this.userRepository.findOne({
-      where: { id: userId }
-    });
+    const user = await this.userRepository.findOne({ where: whereClause });
 
     if (!user) {
       throw new NotFoundError('用户不存在');
     }
 
-    // 不允许删除超级管理员
     if (user.role === 'super_admin' || user.username === 'superadmin') {
       throw new BusinessError('不能删除超级管理员账户');
     }
@@ -907,32 +931,32 @@ export class UserController {
       userAgent: req.get('User-Agent')
     });
 
-    res.json({
-      success: true,
-      message: '用户删除成功'
-    });
+    res.json({ success: true, message: '用户删除成功' });
   });
 
   /**
-   * 更新用户状态（启用/禁用/锁定）
+   * 更新用户状态
+   * 🔥 租户隔离
    */
   updateUserStatus = catchAsync(async (req: Request, res: Response) => {
     const userId = req.params.id;
     const { status } = req.body;
+    const tenantId = this.getTenantIdFromRequest(req);
+    const whereClause: any = { id: userId };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
 
     if (!['active', 'inactive', 'locked'].includes(status)) {
       throw new ValidationError('无效的状态值');
     }
 
-    const user = await this.userRepository.findOne({
-      where: { id: userId }
-    });
+    const user = await this.userRepository.findOne({ where: whereClause });
 
     if (!user) {
       throw new NotFoundError('用户不存在');
     }
 
-    // 🔥 防止禁用系统预设用户（超级管理员和管理员）
     const nonDisableableUsers = ['superadmin', 'admin'];
     if (status !== 'active' && nonDisableableUsers.includes(user.username?.toLowerCase())) {
       throw new ValidationError('系统预设用户不可禁用');
@@ -948,7 +972,6 @@ export class UserController {
 
     const updatedUser = await this.userRepository.save(user);
 
-    // 记录操作日志
     await this.logOperation({
       userId: req.user?.userId,
       username: req.user?.username,
@@ -961,12 +984,7 @@ export class UserController {
     });
 
     const { password: _, ...userInfo } = updatedUser;
-
-    res.json({
-      success: true,
-      message: '用户状态更新成功',
-      data: userInfo
-    });
+    res.json({ success: true, message: '用户状态更新成功', data: userInfo });
   });
 
   /**

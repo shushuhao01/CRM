@@ -168,14 +168,14 @@ export class PublicRegisterController {
 
       // 如果是免费试用，创建默认管理员账号
       if (pkg.price == 0) {
-        await this.createDefaultAdmin(tenantId, tenantCode)
+        const adminAccount = await this.createDefaultAdmin(tenantId, tenantCode, phone, contactName)
 
         // 发送注册成功通知
         await this.sendRegistrationNotification({
           tenantName: companyName,
           tenantCode,
-          adminUsername: 'admin',
-          adminPassword: 'admin123',
+          adminUsername: adminAccount.username,
+          adminPassword: adminAccount.password,
           packageName: pkg.name,
           expireDate: expireDateStr,
           phone,
@@ -222,30 +222,22 @@ export class PublicRegisterController {
   /**
    * 创建默认管理员账号
    */
-  private async createDefaultAdmin(tenantId: string, tenantCode: string) {
+  private async createDefaultAdmin(tenantId: string, tenantCode: string, phone: string, contactName: string) {
     try {
-      const userId = uuidv4()
-      const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+      const { createDefaultAdmin } = await import('../../utils/adminAccountHelper');
+      const adminAccount = await createDefaultAdmin({
+        tenantId: tenantId,
+        phone: phone,
+        realName: contactName || '系统管理员',
+        email: undefined
+      });
 
-      // 密码：admin123
-      const salt = crypto.randomBytes(16).toString('hex')
-      const hash = crypto.pbkdf2Sync('admin123', salt, 1000, 64, 'sha512').toString('hex')
-
-      await AppDataSource.query(
-        `INSERT INTO users (
-          id, tenant_id, username, password, salt, real_name, role,
-          status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          userId, tenantId, 'admin', hash, salt, '系统管理员', 'admin',
-          'active', now, now
-        ]
-      )
-
-      console.log(`✓ 已为租户 ${tenantCode} 创建默认管理员账号`)
+      console.log(`✓ 已为租户 ${tenantCode} 创建默认管理员账号: ${adminAccount.username}`);
+      return adminAccount;
     } catch (error) {
-      console.error('创建默认管理员失败:', error)
+      console.error('创建默认管理员失败:', error);
       // 不抛出错误，避免影响注册流程
+      return { username: phone, password: 'Aa123456' };
     }
   }
 

@@ -3,6 +3,7 @@ import { JwtConfig, JwtPayload } from '../config/jwt';
 import { getDataSource } from '../config/database';
 import { User } from '../entities/User';
 import { logger } from '../config/logger';
+import { TenantContextManager } from '../utils/tenantContext';
 
 // 扩展Request接口
 declare global {
@@ -66,6 +67,14 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     }
 
     req.currentUser = user;
+
+    // 从JWT中提取tenantId并注入到请求对象，供租户上下文使用
+    if (payload.tenantId) {
+      (req as any).tenantId = payload.tenantId;
+      // 同步更新AsyncLocalStorage中的租户上下文
+      TenantContextManager.setContext({ tenantId: payload.tenantId, userId: payload.userId });
+    }
+
     next();
   } catch (error) {
     // 仅开发环境输出详细错误信息

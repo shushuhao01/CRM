@@ -15,6 +15,11 @@
             <el-option label="模块管理" value="modules" />
             <el-option label="管理员" value="admin_users" />
             <el-option label="系统设置" value="system_settings" />
+            <el-option label="接口管理" value="api_configs" />
+            <el-option label="套餐管理" value="packages" />
+            <el-option label="通知模板" value="notification_templates" />
+            <el-option label="认证登录" value="auth" />
+            <el-option label="其他" value="other" />
           </el-select>
         </el-form-item>
         <el-form-item label="操作">
@@ -24,6 +29,8 @@
             <el-option label="删除" value="delete" />
             <el-option label="启用" value="enable" />
             <el-option label="禁用" value="disable" />
+            <el-option label="保存配置" value="update_config" />
+            <el-option label="测试" value="test" />
             <el-option label="登录" value="login" />
           </el-select>
         </el-form-item>
@@ -36,6 +43,7 @@
           <el-button type="primary" @click="handleSearch"><el-icon><Search /></el-icon>搜索</el-button>
           <el-button @click="handleReset">重置</el-button>
           <el-button @click="handleExport"><el-icon><Download /></el-icon>导出</el-button>
+          <el-button type="warning" @click="handleFixHistory" :loading="fixing">修复历史数据</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -110,7 +118,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="detail" label="操作详情" min-width="250" show-overflow-tooltip />
-        <el-table-column prop="ip" label="IP地址" width="140" />
+        <el-table-column prop="ip" label="IP地址" width="160">
+          <template #default="{ row }">
+            {{ formatIp(row.ip) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="created_at" label="操作时间" width="180">
           <template #default="{ row }">
             {{ formatDateTime(row.created_at) }}
@@ -135,11 +147,12 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Download, Notebook, User, Menu, Operation } from '@element-plus/icons-vue'
 import request from '@/api/request'
 
 const loading = ref(false)
+const fixing = ref(false)
 const tableData = ref<any[]>([])
 const statistics = ref<any>({ todayCount: 0, byModule: [], byAction: [], byAdmin: [] })
 
@@ -166,7 +179,11 @@ const moduleMap: Record<string, string> = {
   admin_users: '管理员',
   system_settings: '系统设置',
   api_configs: '接口管理',
-  packages: '套餐管理'
+  packages: '套餐管理',
+  notification_templates: '通知模板',
+  upload: '文件上传',
+  auth: '认证登录',
+  other: '其他'
 }
 
 const actionMap: Record<string, string> = {
@@ -180,10 +197,21 @@ const actionMap: Record<string, string> = {
   login: '登录',
   logout: '登出',
   reset_password: '重置密码',
+  change_password: '修改密码',
+  update_config: '保存配置',
   update_settings: '更新设置',
+  test: '测试',
+  send: '发送',
+  upload: '上传',
   publish: '发布',
   revoke: '吊销',
-  renew: '续期'
+  renew: '续期',
+  suspend: '暂停',
+  resume: '恢复',
+  regenerate: '重新生成',
+  refund: '退款',
+  close: '关闭',
+  other: '操作'
 }
 
 const targetTypeMap: Record<string, string> = {
@@ -194,7 +222,13 @@ const targetTypeMap: Record<string, string> = {
   module: '模块',
   payment_order: '支付订单',
   api_config: '接口配置',
-  package: '套餐'
+  package: '套餐',
+  system_config: '系统配置',
+  sms_config: '短信配置',
+  email_settings: '邮件配置',
+  timeout_config: '超时提醒',
+  notification_template: '通知模板',
+  system_setting: '系统设置'
 }
 
 const getModuleLabel = (key: string) => moduleMap[key] || key
@@ -204,7 +238,9 @@ const getTargetTypeLabel = (key: string) => targetTypeMap[key] || key || '-'
 const getModuleTagType = (module: string): string => {
   const map: Record<string, string> = {
     licenses: '', tenants: 'success', payment: 'warning',
-    versions: 'info', admin_users: 'danger', system_settings: 'info'
+    versions: 'info', admin_users: 'danger', system_settings: 'info',
+    api_configs: '', packages: 'success', notification_templates: 'warning',
+    upload: 'info', auth: '', other: 'info'
   }
   return map[module] || ''
 }
@@ -212,7 +248,9 @@ const getModuleTagType = (module: string): string => {
 const getActionTagType = (action: string): string => {
   const map: Record<string, string> = {
     create: 'success', update: 'warning', delete: 'danger',
-    enable: 'success', disable: 'danger', lock: 'danger', unlock: 'success'
+    enable: 'success', disable: 'danger', lock: 'danger', unlock: 'success',
+    update_config: 'warning', test: 'info', send: '', upload: '',
+    login: 'success', logout: 'info'
   }
   return map[action] || 'info'
 }
@@ -220,6 +258,14 @@ const getActionTagType = (action: string): string => {
 const formatDateTime = (date: string) => {
   if (!date) return '-'
   return new Date(date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+}
+
+const formatIp = (ip: string) => {
+  if (!ip || ip === '-') return '-'
+  if (ip === '::1' || ip === '::ffff:127.0.0.1') return '127.0.0.1（本机）'
+  if (ip === '127.0.0.1') return '127.0.0.1（本机）'
+  if (ip.startsWith('::ffff:')) return ip.substring(7)
+  return ip
 }
 
 const fetchData = async () => {
@@ -293,6 +339,29 @@ const handleExport = () => {
       ElMessage.success('导出成功')
     })
     .catch(() => ElMessage.error('导出失败'))
+}
+
+const handleFixHistory = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '将修复历史操作日志中的错误数据：\n• 模块分类"其他"→"系统设置"\n• IP地址"::1"→"127.0.0.1"\n\n确定执行？',
+      '修复历史数据',
+      { type: 'warning', confirmButtonText: '执行修复', cancelButtonText: '取消' }
+    )
+    fixing.value = true
+    const res = await request.post('/operation-logs/fix-history') as any
+    if (res.success) {
+      ElMessage.success(res.message || '修复完成')
+      fetchData()
+      fetchStatistics()
+    }
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.response?.data?.message || '修复失败')
+    }
+  } finally {
+    fixing.value = false
+  }
 }
 
 onMounted(() => {

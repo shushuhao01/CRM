@@ -297,6 +297,123 @@
           <p>登录云客系统，开启智能销售之旅</p>
         </div>
 
+        <!-- 授权验证区域 -->
+        <div class="license-section" v-if="needsLicense">
+          <!-- 已验证状态 -->
+          <div v-if="licenseVerified && tenantInfo" class="license-verified">
+            <div class="license-verified-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>
+              </svg>
+            </div>
+            <div class="license-verified-info">
+              <span class="tenant-name">{{ tenantInfo.tenantName }}</span>
+              <span class="tenant-meta">{{ tenantInfo.packageName || '标准版' }}
+                <template v-if="formatExpireDate(tenantInfo.expireDate)"> · {{ formatExpireDate(tenantInfo.expireDate) }}</template>
+              </span>
+            </div>
+            <el-tooltip content="切换企业" placement="top">
+              <button class="license-switch-btn" @click="handleSwitchTenant">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/>
+                  <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                </svg>
+              </button>
+            </el-tooltip>
+          </div>
+
+          <!-- 未验证状态 -->
+          <div v-else>
+            <!-- 引导入口（未展开时） -->
+            <div v-if="!showLicenseInput" class="license-guide" @click="showLicenseInput = true">
+              <div class="license-guide-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+              </div>
+              <span class="license-guide-text">请先验证企业身份</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+
+            <!-- 展开的输入区域 -->
+            <transition name="license-expand">
+              <div v-if="showLicenseInput" class="license-input-area">
+                <!-- 模式切换 -->
+                <div class="license-mode-tabs">
+                  <button :class="['mode-tab', { active: verifyMode === 'code' }]" @click="verifyMode = 'code'; licenseError = ''">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3h-8l-2 4h12z"/></svg>
+                    租户编码
+                  </button>
+                  <button :class="['mode-tab', { active: verifyMode === 'license' }]" @click="verifyMode = 'license'; licenseError = ''">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    授权码激活
+                  </button>
+                </div>
+
+                <!-- 租户编码模式 -->
+                <div v-if="verifyMode === 'code'">
+                  <div class="license-input-row">
+                    <el-input
+                      v-model="tenantCode"
+                      placeholder="请输入租户编码"
+                      size="large"
+                      clearable
+                      :disabled="licenseLoading"
+                      @keyup.enter="handleVerify"
+                    >
+                      <template #prefix>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2">
+                          <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3h-8l-2 4h12z"/>
+                        </svg>
+                      </template>
+                    </el-input>
+                    <el-button type="primary" :loading="licenseLoading" @click="handleVerify" class="license-verify-btn">
+                      {{ licenseLoading ? '' : '确认' }}
+                    </el-button>
+                  </div>
+                  <div class="license-help">
+                    <span>租户编码由企业管理员提供，如 T20260XXXXX</span>
+                  </div>
+                </div>
+
+                <!-- 授权码模式 -->
+                <div v-if="verifyMode === 'license'">
+                  <div class="license-input-row">
+                    <el-input
+                      v-model="licenseKey"
+                      placeholder="TENANT-XXXX-XXXX-XXXX-XXXX"
+                      size="large"
+                      clearable
+                      :disabled="licenseLoading"
+                      @keyup.enter="handleVerify"
+                    >
+                      <template #prefix>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2">
+                          <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                        </svg>
+                      </template>
+                    </el-input>
+                    <el-button type="primary" :loading="licenseLoading" @click="handleVerify" class="license-verify-btn">
+                      {{ licenseLoading ? '' : '激活' }}
+                    </el-button>
+                  </div>
+                  <div class="license-help">
+                    <span>授权码在购买后通过短信/邮件发送，首次使用需激活</span>
+                  </div>
+                </div>
+
+                <!-- 错误提示 -->
+                <div v-if="licenseError" class="license-error">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                  <span>{{ licenseError }}</span>
+                </div>
+              </div>
+            </transition>
+          </div>
+        </div>
+
         <el-form :model="loginForm" :rules="rules" ref="loginFormRef" class="login-form" @keyup.enter="handleLogin">
           <el-form-item prop="username">
             <div class="input-wrapper">
@@ -351,11 +468,11 @@
     </div>
 
     <!-- 协议弹窗 -->
-    <el-dialog v-model="agreementDialogVisible" :title="agreementDialogTitle" width="650px" class="agreement-dialog">
+    <el-dialog v-model="agreementDialogVisible" :title="agreementDialogTitle" width="680px" class="agreement-dialog" top="6vh">
       <div class="agreement-content" v-html="sanitizeHtml(agreementDialogContent)"></div>
       <template #footer>
-        <el-button @click="agreementDialogVisible = false">关闭</el-button>
-        <el-button type="primary" @click="agreeAndClose">我已阅读并同意</el-button>
+        <el-button @click="agreementDialogVisible = false" round>关闭</el-button>
+        <el-button type="primary" @click="agreeAndClose" round>我已阅读并同意</el-button>
       </template>
     </el-dialog>
   </div>
@@ -363,7 +480,7 @@
 
 
 <script setup lang="ts">
-import { ref, reactive, nextTick } from 'vue'
+import { ref, reactive, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useConfigStore } from '@/stores/config'
@@ -371,6 +488,18 @@ import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { preloadAppData } from '@/services/appInitService'
 import { sanitizeHtml } from '@/utils/sanitize'
+import {
+  verifyTenantLicense,
+  verifyTenantCode,
+  getLocalTenantInfo,
+  saveLocalTenantInfo,
+  clearLocalTenantInfo,
+  needLicenseVerification,
+  checkPrivateActivation,
+  getDeployMode,
+  saveDeployMode,
+  type TenantInfo
+} from '@/api/tenantLicense'
 
 const _router = useRouter()
 const userStore = useUserStore()
@@ -384,31 +513,298 @@ const agreementDialogVisible = ref(false)
 const agreementDialogTitle = ref('')
 const agreementDialogContent = ref('')
 
+// ===== 授权验证相关 =====
+const needsLicense = ref(false)
+const licenseVerified = ref(false)
+const tenantInfo = ref<TenantInfo | null>(null)
+const licenseKey = ref('')
+const tenantCode = ref('')
+const showLicenseInput = ref(false)
+const licenseLoading = ref(false)
+const licenseError = ref('')
+const verifyMode = ref<'code' | 'license'>('code') // 默认租户编码模式
+
+// 格式化到期日期
+const formatExpireDate = (date: string | null) => {
+  if (!date) return ''
+  try {
+    return new Date(date).toLocaleDateString('zh-CN')
+  } catch {
+    return date
+  }
+}
+
+// 初始化授权状态
+onMounted(async () => {
+  needsLicense.value = needLicenseVerification()
+  const deployMode = getDeployMode() // 'private' | 'saas'
+
+  // ---- 第一步：优先从本地缓存恢复（同一浏览器快速登录）----
+  const cached = getLocalTenantInfo()
+  const savedCode = localStorage.getItem('crm_tenant_code')
+  const savedKey  = localStorage.getItem('crm_license_key')
+
+  if (cached && (savedCode || savedKey)) {
+    try {
+      let res
+      if (savedCode) {
+        res = await verifyTenantCode(savedCode)
+      } else if (savedKey) {
+        res = await verifyTenantLicense(savedKey)
+      }
+      if (res?.success && res.data) {
+        tenantInfo.value = res.data
+        saveLocalTenantInfo(res.data)
+        if (res.data.deployType) saveDeployMode(res.data.deployType)
+        licenseVerified.value = true
+        return // 缓存验证成功，直接结束
+      } else {
+        clearLocalCache() // 缓存已失效，清除
+      }
+    } catch {
+      // 网络错误时信任缓存（离线容错）
+      tenantInfo.value = cached
+      licenseVerified.value = true
+      return
+    }
+  }
+
+  // ---- 第二步：无有效缓存时，根据部署模式处理 ----
+  if (deployMode === 'private') {
+    // 私有部署：服务端检查是否已有激活的租户
+    // 已激活 → 自动填充，员工无需手动输入任何编码
+    // 未激活 → 直接展开授权码输入框
+    try {
+      const privateStatus = await checkPrivateActivation()
+      if (privateStatus.activated && privateStatus.tenantId) {
+        const info: TenantInfo = {
+          tenantId: privateStatus.tenantId!,
+          tenantCode: privateStatus.tenantCode!,
+          tenantName: privateStatus.tenantName!,
+          packageName: privateStatus.packageName || '',
+          maxUsers: privateStatus.maxUsers || 50,
+          expireDate: privateStatus.expireDate || null,
+          features: privateStatus.features || null,
+          packageFeatures: privateStatus.packageFeatures || null,
+          deployType: 'private'
+        }
+        tenantInfo.value = info
+        saveLocalTenantInfo(info)
+        saveDeployMode('private')
+        localStorage.setItem('crm_tenant_code', info.tenantCode)
+        licenseVerified.value = true
+      } else {
+        // 私有系统尚未激活，直接展开授权码输入
+        showLicenseInput.value = true
+        verifyMode.value = 'license' // 私有模式默认用授权码激活
+      }
+    } catch {
+      // 检查失败，展开授权码输入（首次激活场景）
+      showLicenseInput.value = true
+      verifyMode.value = 'license'
+    }
+  }
+  // SaaS模式：无缓存时，显示"请先验证企业身份"引导入口（保持默认的 showLicenseInput = false）
+})
+
+// 统一验证（根据当前模式调用不同API）
+const handleVerify = async () => {
+  licenseError.value = ''
+  licenseLoading.value = true
+
+  try {
+    let res
+    if (verifyMode.value === 'code') {
+      const code = tenantCode.value.trim()
+      if (!code) { licenseError.value = '请输入租户编码'; return }
+
+      // 智能识别：检查是否误填了授权码
+      if (code.includes('-') && (code.startsWith('PRIVATE-') || code.startsWith('TENANT-'))) {
+        licenseError.value = '您输入的是授权码，请切换到"授权码激活"模式'
+        verifyMode.value = 'license'
+        licenseKey.value = code
+        tenantCode.value = ''
+        return
+      }
+
+      // 格式验证：租户编码应该是 T/P 开头 + 数字/字母组合
+      if (!code.match(/^[TP]\d{6,}/)) {
+        licenseError.value = '租户编码格式不正确，应为 T 或 P 开头的编码（如：T20260XXXXX）'
+        return
+      }
+
+      res = await verifyTenantCode(code)
+      if (res.success && res.data) {
+        // 保存租户编码到本地
+        localStorage.setItem('crm_tenant_code', res.data.tenantCode)
+      }
+    } else {
+      const key = licenseKey.value.trim()
+      if (!key) { licenseError.value = '请输入授权码'; return }
+
+      // 智能识别：检查是否误填了租户编码
+      if (!key.includes('-') && (key.startsWith('T') || key.startsWith('P'))) {
+        licenseError.value = '您输入的是租户编码，请切换到"租户编码"模式'
+        verifyMode.value = 'code'
+        tenantCode.value = key
+        licenseKey.value = ''
+        return
+      }
+
+      // 格式验证：授权码应该是 PRIVATE-/TENANT- 开头，包含多个 - 分隔的部分
+      if (!key.match(/^(PRIVATE|TENANT)-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/)) {
+        licenseError.value = '授权码格式不正确，应为 PRIVATE-XXXX-XXXX-XXXX-XXXX 或 TENANT-XXXX-XXXX-XXXX-XXXX 格式'
+        return
+      }
+
+      res = await verifyTenantLicense(key)
+      if (res.success && res.data) {
+        // 保存授权码和租户编码到本地
+        localStorage.setItem('crm_license_key', key)
+        localStorage.setItem('crm_tenant_code', res.data.tenantCode)
+      }
+    }
+
+    if (res.success && res.data) {
+      tenantInfo.value = res.data
+      saveLocalTenantInfo(res.data)
+      licenseVerified.value = true
+      // 🔑 根据授权码类型自动保存部署模式（PRIVATE-前缀→private，否则→saas）
+      if (res.data.deployType) {
+        saveDeployMode(res.data.deployType)
+      }
+      ElMessage.success(`验证成功：${res.data.tenantName}`)
+    } else {
+      const errData = res as any
+      licenseError.value = errData.message || '验证失败'
+      // 如果需要激活，自动切换到授权码模式
+      if (errData.needActivation) {
+        verifyMode.value = 'license'
+      }
+    }
+  } catch (e: any) {
+    const errMsg = e?.response?.data?.message || e?.message || '验证失败，请检查网络'
+    licenseError.value = errMsg
+    // 如果后端说需要激活，自动切换到授权码模式
+    if (e?.response?.data?.needActivation) {
+      verifyMode.value = 'license'
+    }
+  } finally {
+    licenseLoading.value = false
+  }
+}
+
+// 切换租户
+const handleSwitchTenant = () => {
+  licenseVerified.value = false
+  tenantInfo.value = null
+  licenseKey.value = ''
+  tenantCode.value = ''
+  clearLocalCache()
+  showLicenseInput.value = true
+}
+
+// 清除本地缓存
+const clearLocalCache = () => {
+  clearLocalTenantInfo()
+  localStorage.removeItem('crm_license_key')
+  localStorage.removeItem('crm_tenant_code')
+}
+
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }, { min: 6, message: '密码至少6位', trigger: 'blur' }]
 }
 
-const getDefaultUserAgreement = () => `<div style="padding:24px;line-height:1.9;color:#374151;">
-<h2 style="text-align:center;color:#111827;margin-bottom:24px;font-size:20px;">用户使用协议</h2>
-<p>欢迎使用云客CRM系统。使用前请仔细阅读本协议。</p>
-<h3 style="color:#6366f1;margin:20px 0 12px;font-size:16px;">一、服务内容</h3>
-<p>本系统提供客户关系管理服务，包括客户管理、订单管理、业绩统计、数据分析等功能。</p>
-<h3 style="color:#6366f1;margin:20px 0 12px;font-size:16px;">二、用户义务</h3>
-<ul style="padding-left:20px;"><li>遵守法律法规</li><li>妥善保管账号密码</li><li>不得恶意攻击系统</li></ul>
-<h3 style="color:#6366f1;margin:20px 0 12px;font-size:16px;">三、免责声明</h3>
-<p style="color:#dc2626;">本系统仅作为工具提供服务，不对用户行为及后果承担责任。</p>
+const getDefaultUserAgreement = () => `<div style="padding:28px 32px;line-height:2;color:#374151;font-size:14px;">
+<h2 style="text-align:center;color:#1f2937;margin-bottom:24px;font-size:22px;font-weight:700;padding-bottom:16px;border-bottom:3px solid #6366f1;letter-spacing:1px;">用户使用协议</h2>
+<p style="background:#f0f1fe;padding:16px 18px;border-radius:8px;border-left:4px solid #6366f1;margin:20px 0;color:#4b5563;">
+  <strong>欢迎使用本CRM客户管理系统</strong>（以下简称"本系统"）。在使用本系统之前，<strong style="color:#6366f1;">请您仔细阅读并充分理解本协议的全部内容</strong>。
+</p>
+<h3 style="color:#6366f1;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #6366f1;">一、协议的接受</h3>
+<p style="margin:10px 0;padding-left:12px;"><strong>1.1</strong> 本协议是您与本系统运营方之间关于使用本系统服务所订立的协议。</p>
+<p style="margin:10px 0;padding-left:12px;"><strong>1.2</strong> 您点击<strong style="color:#6366f1;">"同意"</strong>按钮即表示您完全接受本协议的全部条款。</p>
+<h3 style="color:#6366f1;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #6366f1;">二、服务内容</h3>
+<p style="margin:10px 0;padding-left:12px;"><strong>2.1</strong> 本系统为企业提供客户关系管理服务，包括但不限于：</p>
+<ul style="padding-left:36px;margin:12px 0;line-height:2.2;color:#4b5563;">
+  <li>✓ 客户信息管理</li><li>✓ 订单管理</li><li>✓ 业绩统计</li><li>✓ 数据分析</li><li>✓ 团队协作</li>
+</ul>
+<h3 style="color:#6366f1;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #6366f1;">三、用户权利和义务</h3>
+<p style="margin:14px 0;padding-left:12px;"><strong>3.1 用户权利：</strong></p>
+<ul style="padding-left:36px;margin:12px 0;line-height:2.2;color:#4b5563;">
+  <li>✓ 使用本系统提供的各项功能</li><li>✓ 管理自己的客户数据</li><li>✓ 查看业绩统计报表</li><li>✓ 获得技术支持服务</li>
+</ul>
+<p style="margin:14px 0;padding-left:12px;"><strong>3.2 用户义务：</strong></p>
+<ul style="padding-left:36px;margin:12px 0;line-height:2;color:#4b5563;">
+  <li style="padding:10px 14px;background:#fef2f2;border-left:4px solid #ef4444;border-radius:4px;margin:10px 0;list-style:none;"><strong style="color:#ef4444;">⚠️ 严禁将本系统用于任何违法犯罪活动，包括但不限于诈骗、洗钱、传销等</strong></li>
+  <li>• 遵守国家法律法规和社会公德</li><li>• 不得利用本系统侵害他人合法权益</li><li>• 妥善保管账号密码，对账号下的所有行为负责</li><li>• 不得恶意攻击、破坏系统</li><li>• 不得泄露客户隐私信息</li>
+</ul>
+<h3 style="color:#6366f1;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #6366f1;">四、免责声明</h3>
+<p style="color:#ef4444;font-weight:600;margin:16px 0;padding:14px 16px;background:#fef2f2;border-left:4px solid #ef4444;border-radius:6px;font-size:14px;">
+  ⚠️ 重要提示：本系统仅作为工具提供服务，<strong>不对用户使用本系统产生的内容、行为及后果承担任何责任</strong>。
+</p>
+<p style="margin:10px 0;padding-left:12px;"><strong>4.2</strong> 本系统不对因以下原因导致的损失承担责任：</p>
+<ul style="padding-left:36px;margin:12px 0;line-height:2.2;color:#4b5563;">
+  <li>• 用户违法违规使用本系统</li><li>• 不可抗力因素</li><li>• 网络故障、设备故障</li><li>• 用户操作不当</li><li>• 第三方侵权行为</li>
+</ul>
+<h3 style="color:#6366f1;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #6366f1;">五、数据安全</h3>
+<p style="margin:10px 0;padding-left:12px;"><strong>5.1</strong> 本系统采用<strong style="color:#6366f1;">行业标准的安全措施</strong>保护用户数据。</p>
+<p style="margin:10px 0;padding-left:12px;"><strong>5.2</strong> 用户应定期备份重要数据，本系统不对数据丢失承担责任。</p>
+<h3 style="color:#6366f1;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #6366f1;">六、知识产权</h3>
+<p style="margin:10px 0;padding-left:12px;"><strong>6.1</strong> 本系统的所有内容均受<strong style="color:#6366f1;">知识产权法保护</strong>。</p>
+<p style="margin:10px 0;padding-left:12px;"><strong>6.2</strong> 未经许可，用户不得复制、传播、修改本系统的任何内容。</p>
+<h3 style="color:#6366f1;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #6366f1;">七、违规处理</h3>
+<p style="margin:10px 0;padding-left:12px;"><strong>7.1</strong> 如发现用户违反本协议或从事违法活动，本系统有权立即终止服务、冻结或注销账号、向有关部门报告并追究法律责任。</p>
+<h3 style="color:#6366f1;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #6366f1;">八、协议的变更</h3>
+<p style="margin:10px 0;padding-left:12px;"><strong>8.1</strong> 本系统有权随时修改本协议条款，协议变更后继续使用本系统即视为接受新协议。</p>
+<h3 style="color:#6366f1;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #6366f1;">九、争议解决</h3>
+<p style="margin:10px 0;padding-left:12px;"><strong>9.1</strong> 本协议适用<strong style="color:#6366f1;">中华人民共和国法律</strong>。若发生争议，双方应友好协商解决。</p>
+<div style="margin-top:32px;padding-top:16px;border-top:2px dashed #e5e7eb;text-align:center;">
+  <p style="color:#9ca3af;font-size:12px;margin:0;">最后更新日期：${new Date().toLocaleDateString('zh-CN')}</p>
+</div>
 </div>`
 
-const getDefaultPrivacyPolicy = () => `<div style="padding:24px;line-height:1.9;color:#374151;">
-<h2 style="text-align:center;color:#111827;margin-bottom:24px;font-size:20px;">隐私政策</h2>
-<p>我们重视您的隐私保护。</p>
-<h3 style="color:#6366f1;margin:20px 0 12px;font-size:16px;">一、信息收集</h3>
-<p>我们收集账号信息、业务数据、使用日志等。</p>
-<h3 style="color:#6366f1;margin:20px 0 12px;font-size:16px;">二、信息保护</h3>
-<p>采用加密传输、权限控制等安全措施保护您的数据。</p>
-<h3 style="color:#6366f1;margin:20px 0 12px;font-size:16px;">三、用户权利</h3>
-<p>您有权访问、更正、删除您的个人信息。</p>
+const getDefaultPrivacyPolicy = () => `<div style="padding:28px 32px;line-height:2;color:#374151;font-size:14px;">
+<h2 style="text-align:center;color:#1f2937;margin-bottom:24px;font-size:22px;font-weight:700;padding-bottom:16px;border-bottom:3px solid #10b981;letter-spacing:1px;">隐私政策</h2>
+<p style="background:#ecfdf5;padding:16px 18px;border-radius:8px;border-left:4px solid #10b981;margin:20px 0;color:#4b5563;">
+  本隐私协议适用于本CRM客户管理系统。我们非常重视用户的隐私保护，特制定本协议。
+</p>
+<h3 style="color:#10b981;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #10b981;">一、信息收集</h3>
+<p style="margin:10px 0;padding-left:12px;"><strong>1.1 我们收集的信息类型：</strong></p>
+<ul style="padding-left:36px;margin:12px 0;line-height:2.2;color:#4b5563;">
+  <li><strong>账号信息：</strong>用户名、密码、邮箱、手机号</li>
+  <li><strong>个人信息：</strong>姓名、部门、职位、头像</li>
+  <li><strong>业务信息：</strong>客户数据、订单信息、业绩数据</li>
+  <li><strong>使用信息：</strong>登录日志、操作记录、IP地址</li>
+  <li><strong>设备信息：</strong>浏览器类型、操作系统</li>
+</ul>
+<h3 style="color:#10b981;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #10b981;">二、信息使用</h3>
+<p style="margin:10px 0;padding-left:12px;"><strong>2.1</strong> 我们使用收集的信息用于提供服务、改进体验、安全监控和技术支持。</p>
+<p style="margin:10px 0;padding-left:12px;"><strong>2.2 我们承诺：</strong></p>
+<ul style="padding-left:36px;margin:12px 0;line-height:2.2;color:#4b5563;">
+  <li>不会将用户信息用于本协议未载明的其他用途</li>
+  <li>不会向第三方出售、出租或共享用户信息</li>
+  <li>严格限制信息访问权限</li>
+</ul>
+<h3 style="color:#10b981;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #10b981;">三、信息存储与保护</h3>
+<p style="margin:10px 0;padding-left:12px;"><strong>3.1</strong> 用户数据存储在安全的服务器上，采用加密技术保护敏感信息。</p>
+<p style="margin:10px 0;padding-left:12px;"><strong>3.2 安全措施：</strong></p>
+<ul style="padding-left:36px;margin:12px 0;line-height:2.2;color:#4b5563;">
+  <li>数据加密传输（HTTPS）</li><li>密码加密存储（不可逆加密）</li><li>访问权限控制（角色权限管理）</li><li>定期安全审计</li>
+</ul>
+<h3 style="color:#10b981;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #10b981;">四、信息共享</h3>
+<p style="color:#ef4444;font-weight:600;margin:10px 0;padding-left:12px;">我们不会与第三方共享用户信息，除非获得用户明确同意或法律法规要求。</p>
+<h3 style="color:#10b981;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #10b981;">五、用户权利</h3>
+<p style="margin:10px 0;padding-left:12px;">您享有以下权利：访问、更正、删除您的个人信息，撤回授权，注销账号。</p>
+<h3 style="color:#10b981;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #10b981;">六、未成年人保护</h3>
+<p style="margin:10px 0;padding-left:12px;">本系统不向未满18周岁的未成年人提供服务。</p>
+<h3 style="color:#10b981;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #10b981;">七、隐私协议的变更</h3>
+<p style="margin:10px 0;padding-left:12px;">我们可能适时修订本协议。变更后的协议将在系统内公布，继续使用即视为接受。</p>
+<h3 style="color:#10b981;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #10b981;">八、联系我们</h3>
+<p style="margin:10px 0;padding-left:12px;">如对本隐私协议有任何疑问，请通过系统内的联系方式与我们取得联系，我们将在15个工作日内予以回复。</p>
+<div style="margin-top:32px;padding-top:16px;border-top:2px dashed #e5e7eb;text-align:center;">
+  <p style="color:#9ca3af;font-size:12px;margin:0;">最后更新日期：${new Date().toLocaleDateString('zh-CN')}</p>
+</div>
 </div>`
 
 const showAgreementDialog = (type: 'user' | 'privacy') => {
@@ -427,6 +823,12 @@ if (localStorage.getItem('user_agreed_terms') === 'true') agreeToTerms.value = t
 let debounce: NodeJS.Timeout | null = null
 const handleLogin = async () => {
   if (!agreeToTerms.value) { ElMessage.warning('请先同意用户协议和隐私政策'); return }
+  // SaaS模式下检查授权验证
+  if (needsLicense.value && !licenseVerified.value) {
+    ElMessage.warning('请先验证企业身份（输入租户编码或授权码）')
+    showLicenseInput.value = true
+    return
+  }
   if (!loginFormRef.value || loading.value) return
   if (debounce) clearTimeout(debounce)
 
@@ -434,7 +836,7 @@ const handleLogin = async () => {
     if (valid) {
       loading.value = true
       try {
-        const result = await userStore.loginWithRetry(loginForm.username, loginForm.password, false, 3)
+        const result = await userStore.loginWithRetry(loginForm.username, loginForm.password, false, 3, tenantInfo.value?.tenantId)
         if (result) {
           localStorage.setItem('user_agreed_terms', 'true')
           ElMessage.success('登录成功')
@@ -810,6 +1212,219 @@ const handleLogin = async () => {
   width: 100%;
 }
 
+/* ===== 授权验证区域 ===== */
+.license-section {
+  margin-bottom: 20px;
+}
+
+/* 已验证状态 */
+.license-verified {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  animation: licenseIn 0.4s ease;
+}
+
+.license-verified-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.15);
+}
+
+.license-verified-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tenant-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #065f46;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tenant-meta {
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.3;
+}
+
+.license-switch-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 6px;
+  color: #10b981;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.license-switch-btn:hover {
+  background: rgba(16, 185, 129, 0.2);
+  transform: rotate(180deg);
+}
+
+/* 引导入口 */
+.license-guide {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #eef2ff 0%, #f0f1fe 100%);
+  border: 1px dashed #c7d2fe;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+
+.license-guide:hover {
+  background: linear-gradient(135deg, #e0e7ff 0%, #eef2ff 100%);
+  border-color: #818cf8;
+}
+
+.license-guide-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.12);
+}
+
+.license-guide-text {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #4338ca;
+}
+
+/* 授权码输入区域 */
+.license-input-area {
+  padding: 14px;
+  background: linear-gradient(135deg, #eef2ff 0%, #f8f9fe 100%);
+  border: 1px solid #e0e7ff;
+  border-radius: 10px;
+}
+
+/* 模式切换 */
+.license-mode-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 3px;
+  background: #e0e7ff;
+  border-radius: 8px;
+}
+
+
+.mode-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 0;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+
+.mode-tab.active {
+  background: white;
+  color: #4338ca;
+  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.15);
+}
+
+.mode-tab:not(.active):hover {
+  color: #4338ca;
+}
+
+.license-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.license-input-row :deep(.el-input__wrapper) {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px #d1d5db inset;
+  background: #fff;
+}
+
+.license-input-row :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 2px #6366f1 inset;
+}
+
+.license-verify-btn {
+  flex-shrink: 0;
+  border-radius: 8px !important;
+  min-width: 64px;
+}
+
+.license-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #ef4444;
+}
+
+.license-help {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+/* 展开动画 */
+.license-expand-enter-active {
+  animation: licenseIn 0.35s ease;
+}
+
+.license-expand-leave-active {
+  animation: licenseIn 0.25s ease reverse;
+}
+
+@keyframes licenseIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 200px;
+  }
+}
+
 .input-wrapper label {
   display: block;
   font-size: 13px;
@@ -921,10 +1536,45 @@ const handleLogin = async () => {
 }
 
 /* 弹窗 */
-.agreement-dialog :deep(.el-dialog) { border-radius: 16px; }
-.agreement-dialog :deep(.el-dialog__header) { padding: 20px 24px; border-bottom: 1px solid #f3f4f6; }
-.agreement-dialog :deep(.el-dialog__body) { padding: 0; max-height: 55vh; overflow-y: auto; }
-.agreement-content { padding: 0; }
+.agreement-dialog :deep(.el-dialog) {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.15), 0 10px 30px rgba(99, 102, 241, 0.08);
+}
+.agreement-dialog :deep(.el-dialog__header) {
+  padding: 20px 28px;
+  border-bottom: 1px solid #f3f4f6;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+}
+.agreement-dialog :deep(.el-dialog__title) {
+  font-weight: 600;
+  font-size: 17px;
+  color: #1f2937;
+}
+.agreement-dialog :deep(.el-dialog__body) {
+  padding: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.agreement-dialog :deep(.el-dialog__body::-webkit-scrollbar) {
+  width: 6px;
+}
+.agreement-dialog :deep(.el-dialog__body::-webkit-scrollbar-thumb) {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+.agreement-dialog :deep(.el-dialog__body::-webkit-scrollbar-track) {
+  background: #f9fafb;
+}
+.agreement-dialog :deep(.el-dialog__footer) {
+  padding: 16px 28px;
+  border-top: 1px solid #f3f4f6;
+  background: #fafbfc;
+}
+.agreement-content {
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
 
 /* 登录卡片悬浮效果 */
 .login-card {

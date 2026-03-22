@@ -6,6 +6,9 @@ export class Customer {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column({ name: 'customer_code', length: 50, nullable: true, comment: '客户编号' })
   customerNo?: string;
 

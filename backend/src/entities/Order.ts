@@ -9,6 +9,9 @@ export class Order {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column({ name: 'order_number', length: 50, unique: true, comment: '订单号' })
   orderNumber: string;
 

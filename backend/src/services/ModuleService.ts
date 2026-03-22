@@ -2,10 +2,15 @@ import { AppDataSource } from '../config/database';
 import { Module } from '../entities/Module';
 import { ModuleConfig } from '../entities/ModuleConfig';
 import { v4 as uuidv4 } from 'uuid';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 export class ModuleService {
-  private moduleRepository = AppDataSource.getRepository(Module);
-  private configRepository = AppDataSource.getRepository(ModuleConfig);
+  private get moduleRepository() {
+    return getTenantRepo(Module);
+  }
+  private get configRepository() {
+    return getTenantRepo(ModuleConfig);
+  }
 
   /**
    * 获取模块列表

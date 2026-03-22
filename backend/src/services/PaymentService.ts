@@ -1,9 +1,24 @@
 /**
- * 支付服务 - 微信支付 & 支付宝
+ * 支付服务 - 微信支付 & 支付宝 & 对公转账
  */
 import crypto from 'crypto'
 import { v4 as uuidv4 } from 'uuid'
 import { AppDataSource } from '../config/database'
+import { adminNotificationService } from './AdminNotificationService'
+
+// 解密密钥（与admin/payment.ts保持一致）
+const ENCRYPT_KEY = process.env.PAYMENT_ENCRYPT_KEY || 'crm-payment-secret-key-2024'
+
+const decryptConfig = (encrypted: string): string => {
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-cbc',
+      crypto.scryptSync(ENCRYPT_KEY, 'salt', 32),
+      Buffer.alloc(16, 0))
+    return decipher.update(encrypted, 'hex', 'utf8') + decipher.final('utf8')
+  } catch {
+    return ''
+  }
+}
 
 interface WechatConfig {
   mchId: string        // 商户号
@@ -30,7 +45,7 @@ interface CreateOrderParams {
   packageId: string
   packageName: string
   amount: number
-  payType: 'wechat' | 'alipay'
+  payType: 'wechat' | 'alipay' | 'bank'
   tenantId?: string
   tenantName?: string
   contactName: string
@@ -49,11 +64,20 @@ class PaymentService {
       )
       for (const row of rows) {
         if (row.config_data) {
-          const data = JSON.parse(row.config_data)
-          if (row.pay_type === 'wechat') {
-            this.config.wechat = data
-          } else if (row.pay_type === 'alipay') {
-            this.config.alipay = data
+          // 先尝试解密（admin后台保存时加密了），解密失败再尝试直接解析
+          let jsonStr = decryptConfig(row.config_data)
+          if (!jsonStr) {
+            jsonStr = row.config_data // 可能是未加密的旧数据
+          }
+          try {
+            const data = JSON.parse(jsonStr)
+            if (row.pay_type === 'wechat') {
+              this.config.wechat = data
+            } else if (row.pay_type === 'alipay') {
+              this.config.alipay = data
+            }
+          } catch {
+            console.warn(`[Payment] 解析${row.pay_type}配置失败`)
           }
         }
       }
@@ -105,11 +129,12 @@ class PaymentService {
         const result = await this.createWechatOrder(orderNo, params.amount, params.packageName)
         qrCode = result.qrCode || ''
         payUrl = result.payUrl || ''
-      } else {
+      } else if (params.payType === 'alipay') {
         const result = await this.createAlipayOrder(orderNo, params.amount, params.packageName)
         payUrl = result.payUrl || ''
         qrCode = result.qrCode || ''
       }
+      // bank（对公转账）不需要生成二维码和支付链接，由管理员手动确认到账
 
       // 更新订单的二维码
       await AppDataSource.query(
@@ -118,12 +143,12 @@ class PaymentService {
       )
 
       // 记录日志
-      await this.logPayment(orderId, orderNo, 'create', params.payType, params, { qrCode: '...' }, 'success')
+      await this._logPayment(orderId, orderNo, 'create', params.payType, params, { qrCode: '...' }, 'success')
 
       return { success: true, orderId, orderNo, qrCode, payUrl }
     } catch (error: any) {
       console.error('[Payment] 创建订单失败:', error)
-      await this.logPayment(orderId, orderNo, 'create', params.payType, params, null, 'fail', error.message)
+      await this._logPayment(orderId, orderNo, 'create', params.payType, params, null, 'fail', error.message)
       return { success: false, message: error.message || '创建订单失败' }
     }
   }
@@ -323,8 +348,9 @@ class PaymentService {
     return { success: true }
   }
 
-  // 更新订单状态
-  async updateOrderStatus(orderNo: string, status: string, tradeNo?: string): Promise<string | null> {
+  // 更新订单状态（支持 tradeNo 字符串 或 {tradeNo, paidAt} 对象两种调用方式）
+  async updateOrderStatus(orderNo: string, status: string, tradeNoOrParams?: string | { tradeNo?: string; paidAt?: Date }): Promise<string | null> {
+    const tradeNo = typeof tradeNoOrParams === 'string' ? tradeNoOrParams : tradeNoOrParams?.tradeNo
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
     let licenseKey: string | null = null
 
@@ -350,7 +376,23 @@ class PaymentService {
     // 记录日志
     const orders = await AppDataSource.query('SELECT id FROM payment_orders WHERE order_no = ?', [orderNo])
     if (orders.length > 0) {
-      await this.logPayment(orders[0].id, orderNo, 'notify', null, { tradeNo }, { status, licenseKey }, 'success')
+      await this._logPayment(orders[0].id, orderNo, 'notify', null, { tradeNo }, { status, licenseKey }, 'success')
+    }
+
+    // 支付成功 → 通知管理员
+    if (status === 'paid') {
+      const orderInfo = await AppDataSource.query(
+        'SELECT po.amount, po.pay_type, po.contact_name, po.contact_phone, t.name as tenant_name FROM payment_orders po LEFT JOIN tenants t ON po.tenant_id = t.id WHERE po.order_no = ?',
+        [orderNo]
+      )
+      const info = orderInfo[0] || {}
+      adminNotificationService.notify('payment_success', {
+        title: `支付成功：¥${info.amount || '?'}`,
+        content: `租户「${info.tenant_name || info.contact_name || '未知'}」的订单 ${orderNo} 已支付成功，金额 ¥${info.amount || '?'}（${info.pay_type === 'wechat' ? '微信' : info.pay_type === 'alipay' ? '支付宝' : '对公转账'}）`,
+        relatedId: orderNo,
+        relatedType: 'payment_order',
+        extraData: { orderNo, amount: info.amount, payType: info.pay_type, licenseKey }
+      }).catch(err => console.error('[Payment] 发送支付成功通知失败:', err.message))
     }
 
     return licenseKey
@@ -460,8 +502,17 @@ class PaymentService {
     return true
   }
 
-  // 记录支付日志
-  private async logPayment(
+  // 记录支付日志（公开包装方法，供AlipayService/WechatPayService调用）
+  async logPayment(params: {
+    orderId: string; orderNo: string; action: string; payType?: string | null;
+    requestData?: any; responseData?: any; result: string; errorMsg?: string
+  }): Promise<void> {
+    await this._logPayment(params.orderId, params.orderNo, params.action, params.payType ?? null,
+      params.requestData, params.responseData ?? null, params.result, params.errorMsg);
+  }
+
+  // 记录支付日志（内部实现）
+  private async _logPayment(
     orderId: string, orderNo: string, action: string, payType: string | null,
     requestData: any, responseData: any, result: string, errorMsg?: string
   ): Promise<void> {

@@ -14,6 +14,7 @@ import { logger } from './config/logger';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { webSocketService } from './services/WebSocketService';
 import { mobileWebSocketService } from './services/MobileWebSocketService';
+import { tenantContextMiddleware } from './utils/tenantContext';
 
 // 路由导入
 import authRoutes from './routes/auth';
@@ -181,6 +182,10 @@ app.use(express.text({
 // 静态文件服务
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use('/recordings', express.static(path.join(process.cwd(), 'recordings')));
+
+// 租户上下文中间件 - 在所有路由之前设置AsyncLocalStorage上下文
+// authenticateToken中间件会在JWT验证后通过TenantContextManager.setContext()更新tenantId
+app.use(tenantContextMiddleware);
 
 // 健康检查端点
 app.get('/health', (req, res) => {

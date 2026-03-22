@@ -16,7 +16,12 @@ const loginSchema = {
       'string.min': '密码不能为空',
       'string.max': '密码最多128个字符',
       'any.required': '密码是必需的'
-    })
+    }),
+    tenantId: Joi.string().max(36).optional().allow('', null).messages({
+      'string.base': '租户ID必须是字符串',
+      'string.max': '租户ID最多36个字符'
+    }),
+    rememberMe: Joi.boolean().optional()
   })
 };
 

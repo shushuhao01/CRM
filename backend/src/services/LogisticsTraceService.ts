@@ -7,6 +7,7 @@ import axios from 'axios';
 import { AppDataSource } from '../config/database';
 import { LogisticsApiConfig } from '../entities/LogisticsApiConfig';
 import { ExpressAPIService } from './ExpressAPIService';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 // 快递100公司代码映射（我们的代码 -> 快递100代码）
 const KUAIDI100_COMPANY_MAP: Record<string, string> = {
@@ -391,7 +392,7 @@ class LogisticsTraceService {
    */
   private async getApiConfig(companyCode: string): Promise<LogisticsApiConfig | null> {
     try {
-      const repository = AppDataSource!.getRepository(LogisticsApiConfig);
+      const repository = getTenantRepo(LogisticsApiConfig);
       const config = await repository.findOne({
         where: { companyCode: companyCode.toUpperCase() }
       });

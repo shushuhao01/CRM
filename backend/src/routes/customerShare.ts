@@ -6,6 +6,7 @@ import { Customer } from '../entities/Customer';
 import { User } from '../entities/User';
 import { v4 as uuidv4 } from 'uuid';
 import { LessThan, In } from 'typeorm';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -21,7 +22,7 @@ router.get('/history', async (req: Request, res: Response) => {
     const { page = 1, pageSize = 20, customerId, status } = req.query;
     const currentUser = (req as any).user;
 
-    const shareRepository = AppDataSource.getRepository(CustomerShare);
+    const shareRepository = getTenantRepo(CustomerShare);
     const queryBuilder = shareRepository.createQueryBuilder('share');
 
     // 只能看到自己分享的或分享给自己的
@@ -78,9 +79,9 @@ router.post('/share', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, code: 400, message: '参数不完整' });
     }
 
-    const customerRepository = AppDataSource.getRepository(Customer);
-    const userRepository = AppDataSource.getRepository(User);
-    const shareRepository = AppDataSource.getRepository(CustomerShare);
+    const customerRepository = getTenantRepo(Customer);
+    const userRepository = getTenantRepo(User);
+    const shareRepository = getTenantRepo(CustomerShare);
 
     // 获取客户信息
     console.log('[客户分享] 开始查询客户, ID:', customerId);
@@ -195,7 +196,7 @@ router.post('/recall', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, code: 400, message: '分享ID不能为空' });
     }
 
-    const shareRepository = AppDataSource.getRepository(CustomerShare);
+    const shareRepository = getTenantRepo(CustomerShare);
     const share = await shareRepository.findOne({ where: { id: shareId } });
 
     if (!share) {
@@ -227,7 +228,7 @@ router.post('/recall', async (req: Request, res: Response) => {
 router.get('/my-shared', async (req: Request, res: Response) => {
   try {
     const currentUser = (req as any).user;
-    const shareRepository = AppDataSource.getRepository(CustomerShare);
+    const shareRepository = getTenantRepo(CustomerShare);
 
     const shares = await shareRepository.find({
       where: { sharedBy: currentUser.userId, status: 'active' },
@@ -248,7 +249,7 @@ router.get('/my-shared', async (req: Request, res: Response) => {
 router.get('/shared-to-me', async (req: Request, res: Response) => {
   try {
     const currentUser = (req as any).user;
-    const shareRepository = AppDataSource.getRepository(CustomerShare);
+    const shareRepository = getTenantRepo(CustomerShare);
 
     // 更新过期状态
     await shareRepository.update(
@@ -275,7 +276,7 @@ router.get('/shared-to-me', async (req: Request, res: Response) => {
 router.get('/shareable-users', async (req: Request, res: Response) => {
   try {
     const currentUser = (req as any).user;
-    const userRepository = AppDataSource.getRepository(User);
+    const userRepository = getTenantRepo(User);
 
     // 获取所有活跃用户（排除自己）
     const users = await userRepository.find({

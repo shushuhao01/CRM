@@ -2,6 +2,9 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
+import { tenantSQL } from '../utils/tenantRepo';
+import { TenantContextManager } from '../utils/tenantContext';
+import { deployConfig } from '../config/deploy';
 
 const router = Router();
 
@@ -16,14 +19,16 @@ router.get('/shares', async (req: Request, res: Response) => {
     const { page = 1, limit = 10, status, userId, orderId } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
 
+    const t = tenantSQL('ps.');
+
     let sql = `SELECT ps.*,
                (SELECT JSON_ARRAYAGG(JSON_OBJECT(
                  'id', psm.id, 'userId', psm.user_id, 'userName', psm.user_name,
                  'department', psm.department, 'percentage', psm.share_percentage,
                  'shareAmount', psm.share_amount, 'status', psm.status
                )) FROM performance_share_members psm WHERE psm.share_id = ps.id) as shareMembers
-               FROM performance_shares ps WHERE 1=1`;
-    const params: any[] = [];
+               FROM performance_shares ps WHERE 1=1${t.sql}`;
+    const params: any[] = [...t.params];
 
     if (status) {
       sql += ` AND ps.status = ?`;
@@ -46,8 +51,8 @@ router.get('/shares', async (req: Request, res: Response) => {
     const shares = await AppDataSource.query(sql, params);
 
     // 获取总数
-    let countSql = `SELECT COUNT(*) as total FROM performance_shares ps WHERE 1=1`;
-    const countParams: any[] = [];
+    let countSql = `SELECT COUNT(*) as total FROM performance_shares ps WHERE 1=1${t.sql}`;
+    const countParams: any[] = [...t.params];
     if (status) { countSql += ` AND ps.status = ?`; countParams.push(status); }
     if (orderId) { countSql += ` AND ps.order_id = ?`; countParams.push(orderId); }
 
@@ -275,17 +280,21 @@ router.post('/shares/:id/confirm', async (req: Request, res: Response) => {
 router.get('/stats', async (req: Request, res: Response) => {
   try {
     const currentUser = (req as any).user;
+    const tStats = tenantSQL('');
 
     const [totalResult] = await AppDataSource.query(
-      `SELECT COUNT(*) as total, SUM(order_amount) as totalAmount FROM performance_shares`
+      `SELECT COUNT(*) as total, SUM(order_amount) as totalAmount FROM performance_shares WHERE 1=1${tStats.sql}`,
+      [...tStats.params]
     );
 
     const [pendingResult] = await AppDataSource.query(
-      `SELECT COUNT(*) as count FROM performance_shares WHERE status = 'active'`
+      `SELECT COUNT(*) as count FROM performance_shares WHERE status = 'active'${tStats.sql}`,
+      [...tStats.params]
     );
 
     const [completedResult] = await AppDataSource.query(
-      `SELECT COUNT(*) as count FROM performance_shares WHERE status = 'completed'`
+      `SELECT COUNT(*) as count FROM performance_shares WHERE status = 'completed'${tStats.sql}`,
+      [...tStats.params]
     );
 
     // 用户相关统计
@@ -293,8 +302,8 @@ router.get('/stats', async (req: Request, res: Response) => {
       `SELECT COUNT(DISTINCT ps.id) as count, SUM(psm.share_amount) as amount
        FROM performance_shares ps
        JOIN performance_share_members psm ON ps.id = psm.share_id
-       WHERE psm.user_id = ? OR ps.created_by = ?`,
-      [currentUser?.userId, currentUser?.userId]
+       WHERE (psm.user_id = ? OR ps.created_by = ?)${tStats.sql}`,
+      [currentUser?.userId, currentUser?.userId, ...tStats.params]
     );
 
     res.json({
@@ -361,11 +370,12 @@ router.get('/personal', async (req: Request, res: Response) => {
     }
 
     // 获取所有订单用于业绩计算
-    // 🔥 修复：同时匹配用户ID和用户名
+    // 🔥 修复：同时匹配用户ID和用户名 + 租户隔离
+    const tOrder = tenantSQL('');
     const orders = await AppDataSource.query(
       `SELECT status, mark_type as markType, total_amount as totalAmount
-       FROM orders WHERE (created_by = ? OR created_by = ?)${dateCondition}`,
-      orderParams
+       FROM orders WHERE (created_by = ? OR created_by = ?)${dateCondition}${tOrder.sql}`,
+      [...orderParams, ...tOrder.params]
     );
 
     // 🔥 使用统一的业绩计算规则
@@ -427,9 +437,10 @@ router.get('/personal', async (req: Request, res: Response) => {
       customerDateCondition = ' AND created_at >= ? AND created_at <= ?';
       customerParams.push(startDate + ' 00:00:00', endDate + ' 23:59:59');
     }
+    const tCust = tenantSQL('');
     const [customerStats] = await AppDataSource.query(
-      `SELECT COUNT(*) as newCustomers FROM customers WHERE sales_person_id = ?${customerDateCondition}`,
-      customerParams
+      `SELECT COUNT(*) as newCustomers FROM customers WHERE sales_person_id = ?${customerDateCondition}${tCust.sql}`,
+      [...customerParams, ...tCust.params]
     );
 
     res.json({
@@ -500,10 +511,17 @@ router.get('/team', async (req: Request, res: Response) => {
       userCondition += ` AND u.department_id = '${departmentId}'`;
     }
 
+    // 🔥 租户隔离
+    const tUser = tenantSQL('u.');
+    if (tUser.sql) {
+      userCondition += tUser.sql;
+    }
+
     const users = await AppDataSource.query(
       `SELECT u.id, u.real_name as realName, u.username, u.department_name as departmentName,
               u.department_id as departmentId, u.created_at as createTime, u.status
-       FROM users u${userCondition}`
+       FROM users u${userCondition}`,
+      [...tUser.params]
     );
 
     console.log(`[团队业绩] 查询到用户数: ${users.length}`);
@@ -513,12 +531,13 @@ router.get('/team', async (req: Request, res: Response) => {
     const memberStats: any[] = [];
 
     for (const user of users) {
-      // 🔥 修复：created_by字段可能存储用户ID或用户名，需要同时匹配
+      // 🔥 修复：created_by字段可能存储用户ID或用户名，需要同时匹配 + 租户隔离
+      const tOrd = tenantSQL('');
       const orders = await AppDataSource.query(
         `SELECT status, mark_type as markType, total_amount as totalAmount
          FROM orders
-         WHERE (created_by = ? OR created_by = ?)${dateCondition}`,
-        [user.id, user.username]
+         WHERE (created_by = ? OR created_by = ?)${dateCondition}${tOrd.sql}`,
+        [user.id, user.username, ...tOrd.params]
       );
 
       // 🔥 使用统一的业绩计算规则
@@ -658,20 +677,25 @@ router.get('/team', async (req: Request, res: Response) => {
  */
 router.get('/analysis', async (req: Request, res: Response) => {
   try {
+    // 🔥 租户隔离
+    const t = tenantSQL('');
+
     // 获取最近7天趋势
     const trendData = await AppDataSource.query(
       `SELECT DATE(created_at) as date,
               COUNT(*) as orders,
               SUM(total_amount) as amount
        FROM orders
-       WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+       WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)${t.sql}
        GROUP BY DATE(created_at)
-       ORDER BY date`
+       ORDER BY date`,
+      [...t.params]
     );
 
     // 订单状态分布
     const statusDistribution = await AppDataSource.query(
-      `SELECT status, COUNT(*) as count FROM orders GROUP BY status`
+      `SELECT status, COUNT(*) as count FROM orders WHERE 1=1${t.sql} GROUP BY status`,
+      [...t.params]
     );
 
     // 汇总数据
@@ -679,7 +703,8 @@ router.get('/analysis', async (req: Request, res: Response) => {
       `SELECT COUNT(*) as totalOrders,
               SUM(total_amount) as totalAmount,
               AVG(total_amount) as avgOrderAmount
-       FROM orders`
+       FROM orders WHERE 1=1${t.sql}`,
+      [...t.params]
     );
 
     res.json({
@@ -718,7 +743,8 @@ router.get('/analysis/personal', async (req: Request, res: Response) => {
     );
     const username = userInfo?.username;
 
-    // 🔥 修复：同时匹配用户ID和用户名
+    // 🔥 修复：同时匹配用户ID和用户名 + 租户隔离
+    const tAp = tenantSQL('');
     const [stats] = await AppDataSource.query(
       `SELECT
          COUNT(*) as orderCount,
@@ -731,8 +757,8 @@ router.get('/analysis/personal', async (req: Request, res: Response) => {
          SUM(CASE WHEN status = 'cancelled' THEN total_amount ELSE 0 END) as rejectAmount,
          SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END) as returnCount,
          SUM(CASE WHEN status = 'refunded' THEN total_amount ELSE 0 END) as returnAmount
-       FROM orders WHERE (created_by = ? OR created_by = ?)`,
-      [userId, username]
+       FROM orders WHERE (created_by = ? OR created_by = ?)${tAp.sql}`,
+      [userId, username, ...tAp.params]
     );
 
     const orderCount = stats?.orderCount || 1;
@@ -771,7 +797,8 @@ router.get('/analysis/department', async (req: Request, res: Response) => {
     const currentUser = (req as any).user;
     const departmentId = (req.query.departmentId as string) || currentUser?.departmentId;
 
-    // 🔥 修复：同时匹配用户ID和用户名，避免遗漏订单
+    // 🔥 修复：同时匹配用户ID和用户名，避免遗漏订单 + 租户隔离
+    const tDept = tenantSQL('o.');
     const [stats] = await AppDataSource.query(
       `SELECT
          COUNT(o.id) as orderCount,
@@ -782,8 +809,8 @@ router.get('/analysis/department', async (req: Request, res: Response) => {
          SUM(CASE WHEN o.status = 'refunded' THEN 1 ELSE 0 END) as returnCount
        FROM orders o
        JOIN users u ON (o.created_by = u.id OR o.created_by = u.username)
-       WHERE u.department_id = ?`,
-      [departmentId]
+       WHERE u.department_id = ?${tDept.sql}`,
+      [departmentId, ...tDept.params]
     );
 
     const orderCount = stats?.orderCount || 1;
@@ -817,6 +844,7 @@ router.get('/analysis/department', async (req: Request, res: Response) => {
  */
 router.get('/analysis/company', async (_req: Request, res: Response) => {
   try {
+    const tComp = tenantSQL('');
     const [stats] = await AppDataSource.query(
       `SELECT
          COUNT(*) as orderCount,
@@ -825,7 +853,8 @@ router.get('/analysis/company', async (_req: Request, res: Response) => {
          SUM(CASE WHEN status IN ('delivered', 'completed') THEN 1 ELSE 0 END) as signCount,
          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as rejectCount,
          SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END) as returnCount
-       FROM orders`
+       FROM orders WHERE 1=1${tComp.sql}`,
+      [...tComp.params]
     );
 
     const orderCount = stats?.orderCount || 1;
@@ -865,6 +894,13 @@ router.get('/analysis/metrics', async (req: Request, res: Response) => {
     let whereClause = '';
     const params: unknown[] = [];
     const conditions: string[] = [];
+
+    // 🔥 租户隔离
+    const tMetrics = tenantSQL('o.');
+    if (tMetrics.sql) {
+      conditions.push(`o.tenant_id = ?`);
+      params.push(...tMetrics.params);
+    }
 
     // 🔥 日期筛选
     if (startDate && endDate) {
@@ -945,15 +981,16 @@ router.get('/analysis/trend', async (req: Request, res: Response) => {
     const { period = '7d' } = req.query;
     const days = period === '30d' ? 30 : 7;
 
+    const tTrend = tenantSQL('');
     const trendData = await AppDataSource.query(
       `SELECT DATE(created_at) as date,
               SUM(total_amount) as sales,
               COUNT(*) as orders
        FROM orders
-       WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+       WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)${tTrend.sql}
        GROUP BY DATE(created_at)
        ORDER BY date`,
-      [days]
+      [days, ...tTrend.params]
     );
 
     res.json({ success: true, code: 200, message: '获取业绩趋势成功', data: trendData });
@@ -984,6 +1021,13 @@ router.get('/analysis/chart-data', async (req: Request, res: Response) => {
     // 🔥 构建基础查询条件
     const conditions: string[] = [];
     const params: any[] = [];
+
+    // 🔥 租户隔离
+    const tChart = tenantSQL('');
+    if (tChart.sql) {
+      conditions.push(`tenant_id = ?`);
+      params.push(...tChart.params);
+    }
 
     // 排除无效订单状态
     conditions.push(`status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded')`);

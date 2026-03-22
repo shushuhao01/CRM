@@ -66,7 +66,8 @@ router.get('/stats', async (req: Request, res: Response) => {
       pendingLicenses,
       trialLicenses,
       perpetualLicenses,
-      annualLicenses
+      annualLicenses,
+      monthlyLicenses
     ] = await Promise.all([
       licenseRepo.count(),
       licenseRepo.count({ where: { status: 'active' } }),
@@ -74,8 +75,19 @@ router.get('/stats', async (req: Request, res: Response) => {
       licenseRepo.count({ where: { status: 'pending' } }),
       licenseRepo.count({ where: { licenseType: 'trial' } }),
       licenseRepo.count({ where: { licenseType: 'perpetual' } }),
-      licenseRepo.count({ where: { licenseType: 'annual' } })
+      licenseRepo.count({ where: { licenseType: 'annual' } }),
+      licenseRepo.count({ where: { licenseType: 'monthly' } })
     ]);
+
+    // 租户统计（使用原始SQL，避免实体兼容性问题）
+    let totalTenants = 0, activeTenants = 0;
+    try {
+      const tenantStats = await AppDataSource.query(
+        `SELECT COUNT(*) as total, SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) as active FROM tenants`
+      );
+      totalTenants = parseInt(tenantStats[0]?.total) || 0;
+      activeTenants = parseInt(tenantStats[0]?.active) || 0;
+    } catch (_e) { /* tenants table may not exist */ }
 
     // 版本统计
     const [totalVersions, publishedVersions] = await Promise.all([
@@ -107,8 +119,13 @@ router.get('/stats', async (req: Request, res: Response) => {
           byType: {
             trial: trialLicenses,
             perpetual: perpetualLicenses,
-            annual: annualLicenses
+            annual: annualLicenses,
+            monthly: monthlyLicenses
           }
+        },
+        tenants: {
+          total: totalTenants,
+          active: activeTenants
         },
         versions: {
           total: totalVersions,
@@ -241,7 +258,7 @@ router.get('/trend', async (req: Request, res: Response) => {
          GROUP BY DATE(created_at) ORDER BY date`,
         [startDateStr]
       );
-    } catch (e) {
+    } catch (_e) {
       // payment_orders 表可能不存在 amount 字段或表不存在
     }
 
@@ -335,7 +352,7 @@ router.get('/activities', async (req: Request, res: Response) => {
           time: row.created_at
         });
       }
-    } catch (e) { /* table may not exist */ }
+    } catch (_e) { /* table may not exist */ }
 
     // 2. 最近新增租户
     try {
@@ -353,7 +370,7 @@ router.get('/activities', async (req: Request, res: Response) => {
           time: row.created_at
         });
       }
-    } catch (e) { /* table may not exist */ }
+    } catch (_e) { /* table may not exist */ }
 
     // 3. 最近支付订单
     try {
@@ -362,17 +379,26 @@ router.get('/activities', async (req: Request, res: Response) => {
          FROM payment_orders ORDER BY created_at DESC LIMIT 5`
       );
       for (const row of recentPayments) {
-        const statusText = row.status === 'paid' ? '支付成功' : row.status === 'pending' ? '待支付' : row.status;
+        const statusMap: Record<string, string> = {
+          paid: '已支付', pending: '待支付', closed: '已关闭',
+          pending_transfer: '待转账', refunded: '已退款', expired: '已过期',
+          cancelled: '已取消', failed: '支付失败'
+        };
+        const statusText = statusMap[row.status] || row.status;
+        const colorMap: Record<string, string> = {
+          paid: '#67c23a', pending: '#e6a23c', closed: '#909399',
+          pending_transfer: '#e6a23c', refunded: '#f56c6c', failed: '#f56c6c'
+        };
         activities.push({
           id: `payment_${row.id}`,
           type: `payment_${row.status}`,
-          title: `订单${row.order_no}${statusText}（¥${row.amount}）`,
+          title: `订单 ${row.order_no} ${statusText}（¥${parseFloat(row.amount || 0).toFixed(2)}）`,
           icon: 'Wallet',
-          color: row.status === 'paid' ? '#67c23a' : '#e6a23c',
+          color: colorMap[row.status] || '#e6a23c',
           time: row.created_at
         });
       }
-    } catch (e) { /* table may not exist */ }
+    } catch (_e) { /* table may not exist */ }
 
     // 4. 最近版本发布
     try {
@@ -390,7 +416,7 @@ router.get('/activities', async (req: Request, res: Response) => {
           time: row.created_at
         });
       }
-    } catch (e) { /* table may not exist */ }
+    } catch (_e) { /* table may not exist */ }
 
     // 按时间倒序排列，取前limit条
     activities.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());

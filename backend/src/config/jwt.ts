@@ -5,6 +5,7 @@ export interface JwtPayload {
   username: string;
   role: string;
   departmentId?: string | null;  // 修改为string以匹配Department.id类型
+  tenantId?: string | null;  // 租户ID（SaaS模式）
 }
 
 export interface TokenPair {

@@ -1,8 +1,0 @@
-0000000000000000000000000000000000000000 f5efd77264899cc2c97d71b76468db1bd5e6e7a8 shushuhao01 <xianhuquwang@163.com> 1766734267 +0800	commit (initial): 初始化 CRM外呼助手 APP 项目
-f5efd77264899cc2c97d71b76468db1bd5e6e7a8 f5efd77264899cc2c97d71b76468db1bd5e6e7a8 shushuhao01 <xianhuquwang@163.com> 1766734280 +0800	Branch: renamed refs/heads/master to refs/heads/main
-f5efd77264899cc2c97d71b76468db1bd5e6e7a8 17a3cbe7606a19f581c959be01f3f916de762fe1 shushuhao01 <xianhuquwang@163.com> 1766941206 +0800	commit: feat: 完善APP功能 - 扫码绑定后立即建立WebSocket连接
-17a3cbe7606a19f581c959be01f3f916de762fe1 c04b448b3f13146fffe62b66da1713b49717a4d0 shushuhao01 <xianhuquwang@163.com> 1767000263 +0800	commit: fix: 修复APP通话记录时间显示和录音状态问题
-c04b448b3f13146fffe62b66da1713b49717a4d0 b964466f6c89b8da0210b8c10e36dc6818a8e0b8 shushuhao01 <xianhuquwang@163.com> 1767338118 +0800	commit: fix: 录音上传成功后触发事件刷新通话记录列表
-b964466f6c89b8da0210b8c10e36dc6818a8e0b8 07fdbd1e8d3b38e9edb7e01ce042bef9c51f596a shushuhao01 <xianhuquwang@163.com> 1767342857 +0800	commit: feat: 添加用户协议和隐私政策
-07fdbd1e8d3b38e9edb7e01ce042bef9c51f596a 9575119060d00d3b29b8bcf875c4b7026484cbaf shushuhao01 <xianhuquwang@163.com> 1767343351 +0800	commit: feat: 设置页面添加意见反馈和协议入口
-9575119060d00d3b29b8bcf875c4b7026484cbaf a02d2e2545d96b72d65260f3947b645ec70be586 shushuhao01 <xianhuquwang@163.com> 1767345349 +0800	commit: feat: 优化APP设置和协议页面

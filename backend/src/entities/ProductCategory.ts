@@ -6,6 +6,9 @@ export class ProductCategory {
   @PrimaryColumn({ type: 'varchar', length: 50, comment: '分类ID' })
   id: string
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null
+
   @Column({ length: 100, comment: '分类名称' })
   name: string
 

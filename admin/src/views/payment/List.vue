@@ -10,6 +10,7 @@
           <el-select v-model="searchForm.payType" placeholder="全部" clearable style="width: 120px">
             <el-option label="微信支付" value="wechat" />
             <el-option label="支付宝" value="alipay" />
+            <el-option label="对公转账" value="bank" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
@@ -114,8 +115,8 @@
         </el-table-column>
         <el-table-column prop="pay_type" label="支付方式" width="100" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.pay_type === 'wechat' ? 'success' : 'primary'" size="small" effect="plain">
-              {{ row.pay_type === 'wechat' ? '微信' : '支付宝' }}
+            <el-tag :type="getPayTypeTagType(row.pay_type)" size="small" effect="plain">
+              {{ getPayTypeText(row.pay_type) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -136,9 +137,12 @@
             {{ row.paid_at ? formatTime(row.paid_at) : '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="handleView(row)">详情</el-button>
+            <el-button v-if="row.status === 'pending' && row.pay_type === 'bank'" link type="success" size="small" @click="handleConfirmBank(row)">
+              确认到账
+            </el-button>
             <el-button v-if="row.status === 'paid'" link type="warning" size="small" @click="handleRefund(row)">
               退款
             </el-button>
@@ -169,7 +173,7 @@
         <el-descriptions-item label="套餐">{{ currentOrder.package_name }}</el-descriptions-item>
         <el-descriptions-item label="金额">¥{{ currentOrder.amount?.toFixed(2) }}</el-descriptions-item>
         <el-descriptions-item label="支付方式">
-          {{ currentOrder.pay_type === 'wechat' ? '微信支付' : '支付宝' }}
+          {{ getPayTypeText(currentOrder.pay_type) }}
         </el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="getStatusType(currentOrder.status)" size="small">
@@ -247,8 +251,18 @@ const getStatusText = (s: string) => {
 }
 
 const getActionText = (action: string) => {
-  const map: Record<string, string> = { create: '创建订单', pay: '发起支付', notify: '支付回调', refund: '退款', close: '关闭订单' }
+  const map: Record<string, string> = { create: '创建订单', pay: '发起支付', notify: '支付回调', refund: '退款', close: '关闭订单', confirm: '确认到账' }
   return map[action] || action
+}
+
+const getPayTypeText = (payType: string) => {
+  const map: Record<string, string> = { wechat: '微信支付', alipay: '支付宝', bank: '对公转账' }
+  return map[payType] || payType
+}
+
+const getPayTypeTagType = (payType: string) => {
+  const map: Record<string, string> = { wechat: 'success', alipay: 'primary', bank: 'warning' }
+  return map[payType] || 'info'
 }
 
 const fetchData = async () => {
@@ -267,9 +281,9 @@ const fetchData = async () => {
     }
 
     const res = await request.get('/payment/orders', { params })
-    if (res.data.success) {
-      tableData.value = res.data.data.list
-      total.value = res.data.data.total
+    if (res.success) {
+      tableData.value = res.data.list
+      total.value = res.data.total
     }
   } catch (error) {
     console.error('获取订单失败:', error)
@@ -286,8 +300,8 @@ const fetchStats = async () => {
       params.endDate = searchForm.dateRange[1]
     }
     const res = await request.get('/payment/stats', { params })
-    if (res.data.success) {
-      Object.assign(stats, res.data.data)
+    if (res.success) {
+      Object.assign(stats, res.data)
     }
   } catch (error) {
     console.error('获取统计失败:', error)
@@ -330,8 +344,8 @@ const handleExport = () => {
 const handleView = async (row: any) => {
   try {
     const res = await request.get(`/payment/orders/${row.id}`)
-    if (res.data.success) {
-      currentOrder.value = res.data.data
+    if (res.success) {
+      currentOrder.value = res.data
       detailVisible.value = true
     }
   } catch (error) {
@@ -347,12 +361,12 @@ const handleRefund = (row: any) => {
   }).then(async ({ value }) => {
     try {
       const res = await request.post(`/payment/orders/${row.id}/refund`, { reason: value })
-      if (res.data.success) {
+      if (res.success) {
         ElMessage.success('退款成功')
         fetchData()
         fetchStats()
       } else {
-        ElMessage.error(res.data.message || '退款失败')
+        ElMessage.error(res.message || '退款失败')
       }
     } catch (error) {
       ElMessage.error('退款失败')
@@ -360,18 +374,37 @@ const handleRefund = (row: any) => {
   }).catch(() => {})
 }
 
+const handleConfirmBank = (row: any) => {
+  ElMessageBox.prompt('请输入银行流水号（选填）', '确认到账', {
+    confirmButtonText: '确认到账',
+    cancelButtonText: '取消',
+    inputPlaceholder: '银行转账流水号'
+  }).then(async ({ value }) => {
+    try {
+      const res = await request.post(`/payment/orders/${row.id}/confirm`, { tradeNo: value })
+      if (res.success) {
+        ElMessage.success('已确认到账，租户已自动激活')
+        fetchData()
+        fetchStats()
+      } else {
+        ElMessage.error(res.message || '确认到账失败')
+      }
+    } catch (error) {
+      ElMessage.error('确认到账失败')
+    }
+  }).catch(() => {})
+}
+
 const handleClose = (row: any) => {
   ElMessageBox.confirm('确定关闭此订单？关闭后用户将无法继续支付', '确认关闭').then(async () => {
     try {
-      // 使用fetch直接调用公开API
-      const res = await fetch(`/api/v1/public/payment/close/${row.order_no}`, { method: 'POST' })
-      const data = await res.json()
-      if (data.code === 0) {
+      const res = await request.post(`/payment/orders/${row.id}/close`)
+      if (res.success) {
         ElMessage.success('订单已关闭')
         fetchData()
         fetchStats()
       } else {
-        ElMessage.error(data.message || '关闭失败')
+        ElMessage.error(res.message || '关闭失败')
       }
     } catch (error) {
       ElMessage.error('关闭失败')

@@ -5,35 +5,24 @@ import { ServiceFollowUp } from '../entities/ServiceFollowUp';
 import { ServiceOperationLog } from '../entities/ServiceOperationLog';
 import { authenticateToken } from '../middleware/auth';
 import { orderNotificationService } from '../services/OrderNotificationService';
+import { getTenantRepo } from '../utils/tenantRepo';
 // import { Like, In } from 'typeorm'; // 暂时未使用
 
 const router = Router();
 
-// 获取售后服务仓库
+// 获取售后服务仓库（🔥 使用租户感知仓储）
 const getServiceRepository = () => {
-  const dataSource = getDataSource();
-  if (!dataSource) {
-    throw new Error('数据库连接未初始化');
-  }
-  return dataSource.getRepository(AfterSalesService);
+  return getTenantRepo(AfterSalesService);
 };
 
-// 获取跟进记录仓库
+// 获取跟进记录仓库（🔥 使用租户感知仓储）
 const getFollowUpRepository = () => {
-  const dataSource = getDataSource();
-  if (!dataSource) {
-    throw new Error('数据库连接未初始化');
-  }
-  return dataSource.getRepository(ServiceFollowUp);
+  return getTenantRepo(ServiceFollowUp);
 };
 
-// 获取操作记录仓库
+// 获取操作记录仓库（🔥 使用租户感知仓储）
 const getOperationLogRepository = () => {
-  const dataSource = getDataSource();
-  if (!dataSource) {
-    throw new Error('数据库连接未初始化');
-  }
-  return dataSource.getRepository(ServiceOperationLog);
+  return getTenantRepo(ServiceOperationLog);
 };
 
 // 生成唯一ID

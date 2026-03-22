@@ -173,9 +173,9 @@ export const useConfigStore = defineStore('config', () => {
   // 配置锁定状态（被Admin管控时为true，CRM本地不可编辑）
   const configLocked = ref<Record<string, boolean>>({
     security: false,
-    product: false,
     call: false,
-    order: false,
+    email: false,
+    sms: false,
     storage: false,
   })
   // 平台配置覆盖状态（由Admin后台控制）
@@ -910,6 +910,15 @@ export const useConfigStore = defineStore('config', () => {
    */
   const loadEmailConfigFromAPI = async () => {
     try {
+      // ✅ Admin下发配置优先: 如果Admin配置了该项，直接使用，锁定本地编辑
+      if (adminDistributedConfig.value && adminDistributedConfig.value.email) {
+        Object.assign(emailConfig.value, adminDistributedConfig.value.email)
+        configLocked.value.email = true
+        saveConfigToStorage('email', emailConfig.value)
+        return
+      }
+      configLocked.value.email = false
+
       // 检查是否是管理员，非管理员静默跳过
       const userStr = localStorage.getItem('user')
       if (userStr) {
@@ -936,6 +945,15 @@ export const useConfigStore = defineStore('config', () => {
    */
   const loadSmsConfigFromAPI = async () => {
     try {
+      // ✅ Admin下发配置优先: 如果Admin配置了该项，直接使用，锁定本地编辑
+      if (adminDistributedConfig.value && adminDistributedConfig.value.sms) {
+        Object.assign(smsConfig.value, adminDistributedConfig.value.sms)
+        configLocked.value.sms = true
+        saveConfigToStorage('sms', smsConfig.value)
+        return
+      }
+      configLocked.value.sms = false
+
       // 检查是否是管理员，非管理员静默跳过
       const userStr = localStorage.getItem('user')
       if (userStr) {

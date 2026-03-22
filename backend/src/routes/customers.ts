@@ -9,6 +9,8 @@ import { Order } from '../entities/Order';
 import { CustomerShare } from '../entities/CustomerShare';
 import { Like } from 'typeorm';
 import { formatDateTime, formatDate } from '../utils/dateFormat';
+import { addTenantFilter, withTenant, setTenantOnEntity, tenantRawSQL } from '../utils/tenantHelpers';
+import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -22,7 +24,7 @@ router.use(authenticateToken);
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
 
     const {
       page = 1,
@@ -58,6 +60,9 @@ router.get('/', async (req: Request, res: Response) => {
     // 构建查询
     const queryBuilder = customerRepository.createQueryBuilder('customer');
 
+    // 🔥 租户数据隔离 - 只查询当前租户的客户
+    addTenantFilter(queryBuilder, 'customer');
+
     // 🔥 根据用户角色进行权限过滤
     // 管理员和超级管理员可以看到所有客户（除非指定onlyMine=true）
     // 部门经理可以看到本部门的客户
@@ -65,8 +70,8 @@ router.get('/', async (req: Request, res: Response) => {
     const forceOnlyMine = onlyMine === 'true' || onlyMine === '1';
     if (forceOnlyMine || (userRole !== 'admin' && userRole !== 'super_admin')) {
       // 获取分享仓库，用于查询分享给当前用户的客户
-      const shareRepository = AppDataSource.getRepository(CustomerShare);
-      const userRepository = AppDataSource.getRepository(User);
+      const shareRepository = getTenantRepo(CustomerShare);
+      const userRepository = getTenantRepo(User);
 
       // 查询分享给当前用户的客户ID列表
       const sharedCustomers = await shareRepository.find({
@@ -171,7 +176,7 @@ router.get('/', async (req: Request, res: Response) => {
     const currentMonthStartStr = currentMonthStart.toISOString().split('T')[0];
 
     // 获取订单仓库，用于统计
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
 
     // 统计总数（筛选后的）
     const totalCustomers = await statsQueryBuilder.getCount();
@@ -210,7 +215,7 @@ router.get('/', async (req: Request, res: Response) => {
     const [customers, total] = await queryBuilder.getManyAndCount();
 
     // 获取分享仓库，用于查询客户的分享状态
-    const shareRepository = AppDataSource.getRepository(CustomerShare);
+    const shareRepository = getTenantRepo(CustomerShare);
 
     // 转换数据格式以匹配前端期望，并动态计算订单数
     const list = await Promise.all(customers.map(async customer => {
@@ -256,7 +261,7 @@ router.get('/', async (req: Request, res: Response) => {
       let salesPersonName = '';
       if (customer.salesPersonId) {
         try {
-          const userRepository = AppDataSource.getRepository(User);
+          const userRepository = getTenantRepo(User);
           const salesPerson = await userRepository.findOne({ where: { id: customer.salesPersonId } });
           salesPersonName = salesPerson?.realName || salesPerson?.name || '';
         } catch (e) {
@@ -362,7 +367,7 @@ router.get('/', async (req: Request, res: Response) => {
  */
 router.get('/groups', async (req: Request, res: Response) => {
   try {
-    const groupRepository = AppDataSource.getRepository(CustomerGroup);
+    const groupRepository = getTenantRepo(CustomerGroup);
     const { page = 1, pageSize = 20, name, status: _status } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
@@ -415,7 +420,7 @@ router.get('/groups', async (req: Request, res: Response) => {
  */
 router.post('/groups', async (req: Request, res: Response) => {
   try {
-    const groupRepository = AppDataSource.getRepository(CustomerGroup);
+    const groupRepository = getTenantRepo(CustomerGroup);
     const { name, description } = req.body;
 
     if (!name) {
@@ -466,7 +471,7 @@ router.post('/groups', async (req: Request, res: Response) => {
  */
 router.get('/groups/:id', async (req: Request, res: Response) => {
   try {
-    const groupRepository = AppDataSource.getRepository(CustomerGroup);
+    const groupRepository = getTenantRepo(CustomerGroup);
     const group = await groupRepository.findOne({
       where: { id: req.params.id }
     });
@@ -511,7 +516,7 @@ router.get('/groups/:id', async (req: Request, res: Response) => {
  */
 router.put('/groups/:id', async (req: Request, res: Response) => {
   try {
-    const groupRepository = AppDataSource.getRepository(CustomerGroup);
+    const groupRepository = getTenantRepo(CustomerGroup);
     const group = await groupRepository.findOne({
       where: { id: req.params.id }
     });
@@ -562,7 +567,7 @@ router.put('/groups/:id', async (req: Request, res: Response) => {
  */
 router.delete('/groups/:id', async (req: Request, res: Response) => {
   try {
-    const groupRepository = AppDataSource.getRepository(CustomerGroup);
+    const groupRepository = getTenantRepo(CustomerGroup);
     const group = await groupRepository.findOne({
       where: { id: req.params.id }
     });
@@ -602,7 +607,7 @@ router.delete('/groups/:id', async (req: Request, res: Response) => {
  */
 router.get('/tags', async (req: Request, res: Response) => {
   try {
-    const tagRepository = AppDataSource.getRepository(CustomerTag);
+    const tagRepository = getTenantRepo(CustomerTag);
     const { page = 1, pageSize = 20, name, status: _status } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
@@ -655,7 +660,7 @@ router.get('/tags', async (req: Request, res: Response) => {
  */
 router.post('/tags', async (req: Request, res: Response) => {
   try {
-    const tagRepository = AppDataSource.getRepository(CustomerTag);
+    const tagRepository = getTenantRepo(CustomerTag);
     const { name, color, description } = req.body;
 
     if (!name) {
@@ -707,7 +712,7 @@ router.post('/tags', async (req: Request, res: Response) => {
  */
 router.get('/tags/:id', async (req: Request, res: Response) => {
   try {
-    const tagRepository = AppDataSource.getRepository(CustomerTag);
+    const tagRepository = getTenantRepo(CustomerTag);
     const tag = await tagRepository.findOne({
       where: { id: req.params.id }
     });
@@ -752,7 +757,7 @@ router.get('/tags/:id', async (req: Request, res: Response) => {
  */
 router.put('/tags/:id', async (req: Request, res: Response) => {
   try {
-    const tagRepository = AppDataSource.getRepository(CustomerTag);
+    const tagRepository = getTenantRepo(CustomerTag);
     const tag = await tagRepository.findOne({
       where: { id: req.params.id }
     });
@@ -804,7 +809,7 @@ router.put('/tags/:id', async (req: Request, res: Response) => {
  */
 router.delete('/tags/:id', async (req: Request, res: Response) => {
   try {
-    const tagRepository = AppDataSource.getRepository(CustomerTag);
+    const tagRepository = getTenantRepo(CustomerTag);
     const tag = await tagRepository.findOne({
       where: { id: req.params.id }
     });
@@ -843,7 +848,7 @@ router.delete('/tags/:id', async (req: Request, res: Response) => {
  */
 router.get('/check-exists', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const { phone } = req.query;
 
     if (!phone) {
@@ -870,7 +875,7 @@ router.get('/check-exists', async (req: Request, res: Response) => {
 
       if (ownerId) {
         try {
-          const userRepository = AppDataSource.getRepository(User);
+          const userRepository = getTenantRepo(User);
           const owner = await userRepository.findOne({
             where: { id: ownerId }
           });
@@ -922,7 +927,7 @@ router.get('/check-exists', async (req: Request, res: Response) => {
  */
 router.get('/search', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const { keyword } = req.query;
 
     if (!keyword) {
@@ -990,8 +995,8 @@ router.get('/search', async (req: Request, res: Response) => {
  */
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
-    const userRepository = AppDataSource.getRepository(User);
+    const customerRepository = getTenantRepo(Customer);
+    const userRepository = getTenantRepo(User);
 
     const customer = await customerRepository.findOne({
       where: { id: req.params.id }
@@ -1086,7 +1091,7 @@ router.get('/:id', async (req: Request, res: Response) => {
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const {
       name, phone, email, address, level, source, tags, remarks, remark, company,
       age, gender, height, weight, wechat, wechatId,
@@ -1250,7 +1255,7 @@ router.post('/', async (req: Request, res: Response) => {
  */
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customerId = req.params.id;
 
     const customer = await customerRepository.findOne({ where: { id: customerId } });
@@ -1352,7 +1357,7 @@ router.put('/:id', async (req: Request, res: Response) => {
  */
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customerId = req.params.id;
 
     const customer = await customerRepository.findOne({ where: { id: customerId } });
@@ -1394,7 +1399,7 @@ router.get('/:id/orders', async (req: Request, res: Response) => {
   try {
     const customerId = req.params.id;
     const { Order } = await import('../entities/Order');
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
 
     const orders = await orderRepository.find({
       where: { customerId },
@@ -1439,7 +1444,7 @@ router.get('/:id/services', async (req: Request, res: Response) => {
   try {
     const customerId = req.params.id;
     const { AfterSalesService } = await import('../entities/AfterSalesService');
-    const serviceRepository = AppDataSource.getRepository(AfterSalesService);
+    const serviceRepository = getTenantRepo(AfterSalesService);
 
     const services = await serviceRepository.find({
       where: { customerId },
@@ -1481,7 +1486,7 @@ router.get('/:id/calls', async (req: Request, res: Response) => {
   try {
     const customerId = req.params.id;
     const { Call } = await import('../entities/Call');
-    const callRepository = AppDataSource.getRepository(Call);
+    const callRepository = getTenantRepo(Call);
 
     const calls = await callRepository.find({
       where: { customerId },
@@ -1633,10 +1638,10 @@ router.post('/:id/followups', async (req: Request, res: Response) => {
     const currentUser = (req as any).currentUser;
 
     const { FollowUp } = await import('../entities/FollowUp');
-    const followUpRepository = AppDataSource.getRepository(FollowUp);
+    const followUpRepository = getTenantRepo(FollowUp);
 
     // 获取客户信息
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customer = await customerRepository.findOne({ where: { id: customerId } });
 
     // 生成唯一ID
@@ -1697,7 +1702,7 @@ router.put('/:id/followups/:followUpId', async (req: Request, res: Response) => 
     const { type, content, status, priority, nextFollowUp } = req.body;
 
     const { FollowUp } = await import('../entities/FollowUp');
-    const followUpRepository = AppDataSource.getRepository(FollowUp);
+    const followUpRepository = getTenantRepo(FollowUp);
 
     const followUp = await followUpRepository.findOne({ where: { id: followUpId } });
     if (!followUp) {
@@ -1748,7 +1753,7 @@ router.delete('/:id/followups/:followUpId', async (req: Request, res: Response) 
     const { followUpId } = req.params;
 
     const { FollowUp } = await import('../entities/FollowUp');
-    const followUpRepository = AppDataSource.getRepository(FollowUp);
+    const followUpRepository = getTenantRepo(FollowUp);
 
     const followUp = await followUpRepository.findOne({ where: { id: followUpId } });
     if (!followUp) {
@@ -1771,7 +1776,7 @@ router.delete('/:id/followups/:followUpId', async (req: Request, res: Response) 
  */
 router.get('/:id/tags', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customer = await customerRepository.findOne({ where: { id: req.params.id } });
     res.json({ success: true, code: 200, data: customer?.tags || [] });
   } catch (error) {
@@ -1787,7 +1792,7 @@ router.get('/:id/tags', async (req: Request, res: Response) => {
  */
 router.post('/:id/tags', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customer = await customerRepository.findOne({ where: { id: req.params.id } });
     if (!customer) {
       return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
@@ -1810,7 +1815,7 @@ router.post('/:id/tags', async (req: Request, res: Response) => {
  */
 router.delete('/:id/tags/:tagId', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customer = await customerRepository.findOne({ where: { id: req.params.id } });
     if (!customer) {
       return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
@@ -1832,7 +1837,7 @@ router.delete('/:id/tags/:tagId', async (req: Request, res: Response) => {
  */
 router.get('/:id/medical-history', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customer = await customerRepository.findOne({ where: { id: req.params.id } });
 
     if (!customer) {
@@ -1883,7 +1888,7 @@ router.get('/:id/medical-history', async (req: Request, res: Response) => {
  */
 router.post('/:id/medical-history', async (req: Request, res: Response) => {
   try {
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customer = await customerRepository.findOne({ where: { id: req.params.id } });
 
     if (!customer) {
@@ -1954,8 +1959,8 @@ router.post('/:id/medical-history', async (req: Request, res: Response) => {
 router.get('/:id/stats', async (req: Request, res: Response) => {
   try {
     const customerId = req.params.id;
-    const customerRepository = AppDataSource.getRepository(Customer);
-    const orderRepository = AppDataSource.getRepository(Order);
+    const customerRepository = getTenantRepo(Customer);
+    const orderRepository = getTenantRepo(Order);
 
     // 获取客户基本信息
     const customer = await customerRepository.findOne({ where: { id: customerId } });

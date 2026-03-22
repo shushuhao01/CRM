@@ -3,6 +3,7 @@ import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
 import { SmsTemplate } from '../entities/SmsTemplate';
 import { SmsRecord } from '../entities/SmsRecord';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -12,7 +13,7 @@ router.use(authenticateToken);
 router.get('/templates', async (req: Request, res: Response) => {
   try {
     const { status, category } = req.query;
-    const templateRepository = AppDataSource.getRepository(SmsTemplate);
+    const templateRepository = getTenantRepo(SmsTemplate);
 
     const queryBuilder = templateRepository.createQueryBuilder('template');
 
@@ -38,7 +39,7 @@ router.get('/templates', async (req: Request, res: Response) => {
 // 创建短信模板
 router.post('/templates', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const templateRepository = AppDataSource.getRepository(SmsTemplate);
+    const templateRepository = getTenantRepo(SmsTemplate);
     const currentUser = (req as any).user;
     const { name, category, content, variables, description } = req.body;
 
@@ -66,7 +67,7 @@ router.post('/templates', requireAdmin, async (req: Request, res: Response) => {
 // 审核短信模板
 router.post('/templates/:id/approve', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const templateRepository = AppDataSource.getRepository(SmsTemplate);
+    const templateRepository = getTenantRepo(SmsTemplate);
     const { id } = req.params;
     const { approved } = req.body;
     const currentUser = (req as any).user;
@@ -97,7 +98,7 @@ router.post('/templates/:id/approve', requireAdmin, async (req: Request, res: Re
 router.get('/records', async (req: Request, res: Response) => {
   try {
     const { page = 1, pageSize = 20, status } = req.query;
-    const recordRepository = AppDataSource.getRepository(SmsRecord);
+    const recordRepository = getTenantRepo(SmsRecord);
 
     const queryBuilder = recordRepository.createQueryBuilder('record');
 
@@ -121,7 +122,7 @@ router.get('/records', async (req: Request, res: Response) => {
 // 发送短信
 router.post('/send', async (req: Request, res: Response) => {
   try {
-    const recordRepository = AppDataSource.getRepository(SmsRecord);
+    const recordRepository = getTenantRepo(SmsRecord);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const currentUser = (req as any).user;
     const { templateId, templateName, recipients, content } = req.body;
@@ -156,8 +157,8 @@ router.post('/send', async (req: Request, res: Response) => {
 // 获取短信统计数据
 router.get('/statistics', async (req: Request, res: Response) => {
   try {
-    const templateRepository = AppDataSource.getRepository(SmsTemplate);
-    const recordRepository = AppDataSource.getRepository(SmsRecord);
+    const templateRepository = getTenantRepo(SmsTemplate);
+    const recordRepository = getTenantRepo(SmsRecord);
 
     const pendingTemplates = await templateRepository
       .createQueryBuilder('template')

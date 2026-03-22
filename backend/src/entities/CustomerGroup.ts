@@ -6,6 +6,9 @@ export class CustomerGroup {
   @PrimaryColumn({ length: 50 })
   id: string;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column({ length: 50 })
   name: string;
 

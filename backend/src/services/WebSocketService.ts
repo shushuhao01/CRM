@@ -18,6 +18,7 @@ import { getDataSource } from '../config/database';
 import { User } from '../entities/User';
 import { SystemMessage } from '../entities/SystemMessage';
 import { logger } from '../config/logger';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 // 消息推送数据接口
 interface PushMessageData {
@@ -69,7 +70,7 @@ class WebSocketService {
 
       logger.info('🔌 WebSocket服务已初始化');
     } catch (error: any) {
-      logger.warn('⚠️ WebSocket服务初始化失败（可能未安装socket.io）:', error.message);
+      logger.warn('⚠️ WebSocket服务初始化失败（可能未安装socket.io）', error.message);
       logger.info('💡 请运行: cd backend && npm install socket.io');
     }
   }
@@ -97,7 +98,7 @@ class WebSocketService {
           return next(new Error('数据库连接失败'));
         }
 
-        const userRepo = dataSource.getRepository(User);
+        const userRepo = getTenantRepo(User);
         const user = await userRepo.findOne({
           where: { id: decoded.userId || decoded.id }
         });
@@ -128,7 +129,7 @@ class WebSocketService {
     this.io.on('connection', (socket: any) => {
       const userId = socket.userId;
 
-      logger.info(`👤 用户 ${socket.username}(${userId}) 已连接 WebSocket`);
+      logger.info(`👤 用户 ${socket.username}(${userId}) 已连接WebSocket`);
 
       this.addConnection(userId, socket.id);
 
@@ -197,7 +198,7 @@ class WebSocketService {
       const dataSource = getDataSource();
       if (!dataSource) return;
 
-      const messageRepo = dataSource.getRepository(SystemMessage);
+      const messageRepo = getTenantRepo(SystemMessage);
 
       const count = await messageRepo
         .createQueryBuilder('msg')
@@ -216,7 +217,7 @@ class WebSocketService {
       const dataSource = getDataSource();
       if (!dataSource) return;
 
-      const messageRepo = dataSource.getRepository(SystemMessage);
+      const messageRepo = getTenantRepo(SystemMessage);
       await messageRepo.update(
         { id: messageId },
         { isRead: 1, readAt: new Date() }
@@ -235,7 +236,7 @@ class WebSocketService {
       const dataSource = getDataSource();
       if (!dataSource) return;
 
-      const messageRepo = dataSource.getRepository(SystemMessage);
+      const messageRepo = getTenantRepo(SystemMessage);
       await messageRepo
         .createQueryBuilder()
         .update()

@@ -5,6 +5,9 @@ export class AfterSalesService {
   @PrimaryColumn({ length: 50 })
   id: string;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column({ name: 'service_number', length: 50, unique: true })
   serviceNumber: string;
 

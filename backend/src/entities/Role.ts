@@ -5,6 +5,9 @@ export class Role {
   @PrimaryColumn('varchar', { length: 50 })
   id: string
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null
+
   @Column({ unique: true, length: 50 })
   name: string
 

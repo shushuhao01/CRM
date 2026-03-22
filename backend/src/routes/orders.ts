@@ -10,6 +10,7 @@ import { Customer } from '../entities/Customer';  // 🔥 新增：导入Custome
 import { CodCancelApplication } from '../entities/CodCancelApplication'; // 🔥 新增：导入CodCancelApplication实体
 import { orderNotificationService } from '../services/OrderNotificationService';
 import { formatDateTime } from '../utils/dateFormat'; // 🔥 新增：导入时间格式化工具
+import { getTenantRepo } from '../utils/tenantRepo';
 // Like 和 Between 现在通过 QueryBuilder 使用，不再直接导入
 // import { Like, Between } from 'typeorm';
 
@@ -22,7 +23,7 @@ const saveStatusHistory = async (
   notes?: string
 ): Promise<void> => {
   try {
-    const statusHistoryRepository = AppDataSource.getRepository(OrderStatusHistory);
+    const statusHistoryRepository = getTenantRepo(OrderStatusHistory);
     const history = statusHistoryRepository.create({
       orderId,
       status: status as any,
@@ -103,7 +104,7 @@ const checkDepartmentOrderLimit = async (
 ): Promise<OrderLimitCheckResult> => {
   try {
     // 获取部门下单限制配置
-    const limitRepository = AppDataSource.getRepository(DepartmentOrderLimit);
+    const limitRepository = getTenantRepo(DepartmentOrderLimit);
     const limit = await limitRepository.findOne({
       where: { departmentId, isEnabled: true }
     });
@@ -113,7 +114,7 @@ const checkDepartmentOrderLimit = async (
       return { allowed: true };
     }
 
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
 
     // 检查下单次数限制
     if (limit.orderCountEnabled && limit.maxOrderCount > 0) {
@@ -176,7 +177,7 @@ const checkDepartmentOrderLimit = async (
 // 获取订单流转配置
 const getOrderTransferConfig = async (): Promise<{ mode: string; delayMinutes: number }> => {
   try {
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
     const modeConfig = await configRepository.findOne({
       where: { configKey: 'orderTransferMode', configGroup: 'order_settings', isEnabled: true }
     });
@@ -231,7 +232,7 @@ router.post('/check-transfer', async (_req: Request, res: Response) => {
   try {
     console.log('🔄 [订单流转] 检查待流转订单...');
 
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const transferConfig = await getOrderTransferConfig();
     const now = new Date();
     const delayMs = transferConfig.delayMinutes * 60 * 1000;
@@ -311,7 +312,7 @@ router.post('/check-transfer', async (_req: Request, res: Response) => {
  */
 router.get('/statistics', async (_req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -357,7 +358,7 @@ router.get('/statistics', async (_req: Request, res: Response) => {
  */
 router.get('/audit-list', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const startTime = Date.now();
 
     const {
@@ -533,7 +534,7 @@ router.get('/audit-list', authenticateToken, async (req: Request, res: Response)
  */
 router.get('/audit-statistics', authenticateToken, async (_req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const startTime = Date.now();
 
     // 🔥 优化：使用单个查询获取所有统计数据
@@ -585,7 +586,7 @@ router.get('/audit-statistics', authenticateToken, async (_req: Request, res: Re
  */
 router.post('/cancel-request', async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const { orderId, reason, description } = req.body;
 
     const order = await orderRepository.findOne({ where: { id: orderId } });
@@ -648,7 +649,7 @@ router.post('/cancel-request', async (req: Request, res: Response) => {
  */
 router.get('/pending-cancel', async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
 
     // 🔥 分页参数
     const page = parseInt(req.query.page as string) || 1;
@@ -728,7 +729,7 @@ router.get('/pending-cancel', async (req: Request, res: Response) => {
  */
 router.get('/audited-cancel', async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
 
     // 🔥 分页参数
     const page = parseInt(req.query.page as string) || 1;
@@ -815,7 +816,7 @@ router.get('/audited-cancel', async (req: Request, res: Response) => {
  */
 router.get('/shipping/pending', async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const startTime = Date.now();
 
     // 🔥 服务端分页参数
@@ -933,7 +934,7 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
 
     // 🔥 获取所有订单的客户ID，批量查询客户信息
     const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customers = customerIds.length > 0
       ? await customerRepository.findByIds(customerIds)
       : [];
@@ -1037,7 +1038,7 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
  */
 router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const startTime = Date.now();
 
     // 🔥 获取当前用户信息，用于数据权限过滤
@@ -1251,7 +1252,7 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
 
     // 🔥 获取所有订单的客户ID，批量查询客户信息
     const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customers = customerIds.length > 0
       ? await customerRepository.findByIds(customerIds)
       : [];
@@ -1358,7 +1359,7 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
  */
 router.get('/shipping/returned', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const { page = 1, pageSize = 10, orderNumber, customerName, keyword, startDate, endDate, quickFilter, departmentId, salesPersonId } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 500);
@@ -1459,7 +1460,7 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
 
     // 🔥 获取所有订单的客户ID，批量查询客户信息
     const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customers = customerIds.length > 0
       ? await customerRepository.findByIds(customerIds)
       : [];
@@ -1548,7 +1549,7 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
  */
 router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const { page = 1, pageSize = 10, orderNumber, customerName, keyword, startDate, endDate, quickFilter, departmentId, salesPersonId } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 500);
@@ -1648,7 +1649,7 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
 
     // 🔥 获取所有订单的客户ID，批量查询客户信息
     const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customers = customerIds.length > 0
       ? await customerRepository.findByIds(customerIds)
       : [];
@@ -1737,7 +1738,7 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
  */
 router.get('/shipping/draft', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const { page = 1, pageSize = 10, orderNumber, customerName, keyword, startDate, endDate, quickFilter } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 500);
@@ -1841,7 +1842,7 @@ router.get('/shipping/draft', authenticateToken, async (req: Request, res: Respo
  */
 router.get('/shipping/statistics', authenticateToken, async (_req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const startTime = Date.now();
 
     // 🔥 优化：使用并行查询获取所有统计数据
@@ -1899,7 +1900,7 @@ router.get('/by-tracking-no', authenticateToken, async (req: Request, res: Respo
 
     console.log('[订单API] 根据物流单号查询订单:', trackingNo);
 
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
 
     const order = await orderRepository.findOne({
       where: { trackingNumber: trackingNo as string }
@@ -1957,7 +1958,7 @@ router.get('/by-tracking-no', authenticateToken, async (req: Request, res: Respo
  */
 router.get('/', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
 
     const {
       page = 1,
@@ -2120,7 +2121,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
 
     // 🔥 获取客户信息（年龄、身高、体重、病史）
     const customerIds = [...new Set(orders.map(o => o.customerId).filter(Boolean))];
-    const customerRepository = AppDataSource.getRepository(Customer);
+    const customerRepository = getTenantRepo(Customer);
     const customers = customerIds.length > 0
       ? await customerRepository.findByIds(customerIds)
       : [];
@@ -2255,7 +2256,7 @@ router.get('/:id/status-history', async (req: Request, res: Response) => {
     // 🔥 先检查表是否存在，避免报错
     try {
       const { OrderStatusHistory } = await import('../entities/OrderStatusHistory');
-      const statusHistoryRepository = AppDataSource.getRepository(OrderStatusHistory);
+      const statusHistoryRepository = getTenantRepo(OrderStatusHistory);
 
       const history = await statusHistoryRepository.find({
         where: { orderId },
@@ -2295,7 +2296,7 @@ router.get('/:id/operation-logs', async (req: Request, res: Response) => {
   try {
     const orderId = req.params.id;
     const { OperationLog } = await import('../entities/OperationLog');
-    const logRepository = AppDataSource.getRepository(OperationLog);
+    const logRepository = getTenantRepo(OperationLog);
 
     const logs = await logRepository.find({
       where: { resourceId: orderId, resourceType: 'order' },
@@ -2328,7 +2329,7 @@ router.get('/:id/after-sales', async (req: Request, res: Response) => {
   try {
     const orderId = req.params.id;
     const { AfterSalesService } = await import('../entities/AfterSalesService');
-    const serviceRepository = AppDataSource.getRepository(AfterSalesService);
+    const serviceRepository = getTenantRepo(AfterSalesService);
 
     const services = await serviceRepository.find({
       where: { orderId },
@@ -2362,7 +2363,7 @@ router.get('/:id/after-sales', async (req: Request, res: Response) => {
  */
 router.put('/:id/mark-type', async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const { markType } = req.body;
     const orderId = req.params.id;
 
@@ -2411,7 +2412,7 @@ router.put('/:id/mark-type', async (req: Request, res: Response) => {
  */
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const order = await orderRepository.findOne({
       where: { id: req.params.id }
     });
@@ -2460,7 +2461,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 
     // 检查是否有待审核的取消代收申请
-    const codApplicationRepo = AppDataSource.getRepository(CodCancelApplication);
+    const codApplicationRepo = getTenantRepo(CodCancelApplication);
     const pendingApplicationCount = await codApplicationRepo.count({
       where: { orderId: order.id, status: 'pending' }
     });
@@ -2560,7 +2561,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     console.log('📝 [订单创建] 收到请求数据:', JSON.stringify(req.body, null, 2));
 
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
 
     const {
       customerId,
@@ -2710,7 +2711,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // 更新产品库存
     try {
-      const productRepository = AppDataSource.getRepository(Product);
+      const productRepository = getTenantRepo(Product);
       for (const item of products) {
         const productId = item.id || item.productId;
         const quantity = Number(item.quantity) || 1;
@@ -2859,7 +2860,7 @@ const getStatusName = (status: string): string => {
  */
 router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const order = await orderRepository.findOne({
       where: { id: req.params.id }
     });
@@ -3057,7 +3058,7 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
  */
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const order = await orderRepository.findOne({
       where: { id: req.params.id }
     });
@@ -3095,7 +3096,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
  */
 router.post('/:id/submit-audit', async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const { remark } = req.body;
     const idParam = req.params.id;
 
@@ -3180,7 +3181,7 @@ router.post('/:id/submit-audit', async (req: Request, res: Response) => {
  */
 router.post('/:id/audit', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const { action, auditStatus, remark, auditRemark } = req.body;
     const idParam = req.params.id;
 
@@ -3282,7 +3283,7 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
  */
 router.post('/:id/cancel-audit', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
     const { action, remark } = req.body;
 
     // 获取当前审核员信息

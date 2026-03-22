@@ -7,12 +7,13 @@ import { JwtConfig } from '../config/jwt';
 import { AppDataSource } from '../config/database';
 import { User } from '../entities/User';
 import { Department } from '../entities/Department';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 const router = Router();
 
 // 获取用户仓库
-const getUserRepository = () => AppDataSource.getRepository(User);
-const getDepartmentRepository = () => AppDataSource.getRepository(Department);
+const getUserRepository = () => getTenantRepo(User);
+const getDepartmentRepository = () => getTenantRepo(Department);
 
 // 配置multer用于头像上传
 const storage = multer.diskStorage({

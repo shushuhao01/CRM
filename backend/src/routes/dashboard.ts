@@ -1,9 +1,10 @@
-import { Router, Request, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 import { User } from '../entities/User';
 import { Between, In } from 'typeorm';
+import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -93,36 +94,39 @@ router.get('/metrics', async (req: Request, res: Response) => {
       params.push(userId);
     }
 
+    // 🔥 租户数据隔离
+    const t = tenantSQL('o.');
+
     // 今日订单数据
     const todayOrdersData = await AppDataSource.query(
       `SELECT total_amount as totalAmount, status, mark_type as markType
        FROM orders o
-       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-      [todayStart, todayEnd, ...params]
+       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}${t.sql}`,
+      [todayStart, todayEnd, ...params, ...t.params]
     );
 
     // 🔥 昨日订单数据（用于计算环比）
     const yesterdayOrdersData = await AppDataSource.query(
       `SELECT total_amount as totalAmount, status, mark_type as markType
        FROM orders o
-       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-      [yesterdayStart, yesterdayEnd, ...params]
+       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}${t.sql}`,
+      [yesterdayStart, yesterdayEnd, ...params, ...t.params]
     );
 
     // 本月订单数据
     const monthlyOrdersData = await AppDataSource.query(
       `SELECT total_amount as totalAmount, status, mark_type as markType
        FROM orders o
-       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-      [monthStart, todayEnd, ...params]
+       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}${t.sql}`,
+      [monthStart, todayEnd, ...params, ...t.params]
     );
 
     // 🔥 上月订单数据（用于计算环比）
     const lastMonthOrdersData = await AppDataSource.query(
       `SELECT total_amount as totalAmount, status, mark_type as markType
        FROM orders o
-       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-      [lastMonthStart, lastMonthEnd, ...params]
+       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}${t.sql}`,
+      [lastMonthStart, lastMonthEnd, ...params, ...t.params]
     );
 
     // 过滤有效订单（计入下单业绩）
@@ -205,17 +209,18 @@ router.get('/metrics', async (req: Request, res: Response) => {
     console.log('  本月签收单数:', monthlyDeliveredCount, '上月签收单数:', lastMonthDeliveredCount, '环比:', monthlyDeliveredCountChange);
     console.log('  本月签收业绩:', monthlyDeliveredAmount, '上月签收业绩:', lastMonthDeliveredAmount, '环比:', monthlyDeliveredAmountChange);
 
-    // 待审核和待发货订单
+    // 待审核和待发货订单（🔥 添加租户隔离）
     const pendingAuditOrders = await AppDataSource.query(
-      `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_audit'${userCondition}`,
-      params
+      `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_audit'${userCondition}${t.sql}`,
+      [...params, ...t.params]
     );
     const pendingShipmentOrders = await AppDataSource.query(
-      `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_shipment'${userCondition}`,
-      params
+      `SELECT COUNT(*) as count FROM orders o WHERE o.status = 'pending_shipment'${userCondition}${t.sql}`,
+      [...params, ...t.params]
     );
 
-    // 新增客户
+    // 新增客户（🔥 添加租户隔离）
+    const ct2 = tenantSQL('');
     let customerCondition = '';
     const customerParams: any[] = [todayStart, todayEnd];
     const yesterdayCustomerParams: any[] = [yesterdayStart, yesterdayEnd];
@@ -235,13 +240,13 @@ router.get('/metrics', async (req: Request, res: Response) => {
     }
 
     const [newCustomersResult] = await AppDataSource.query(
-      `SELECT COUNT(*) as count FROM customers WHERE created_at >= ? AND created_at <= ?${customerCondition}`,
-      customerParams
+      `SELECT COUNT(*) as count FROM customers WHERE created_at >= ? AND created_at <= ?${customerCondition}${ct2.sql}`,
+      [...customerParams, ...ct2.params]
     );
 
     const [yesterdayCustomersResult] = await AppDataSource.query(
-      `SELECT COUNT(*) as count FROM customers WHERE created_at >= ? AND created_at <= ?${customerCondition}`,
-      yesterdayCustomerParams
+      `SELECT COUNT(*) as count FROM customers WHERE created_at >= ? AND created_at <= ?${customerCondition}${ct2.sql}`,
+      [...yesterdayCustomerParams, ...ct2.params]
     );
 
     const newCustomers = newCustomersResult?.count || 0;
@@ -324,8 +329,8 @@ router.get('/metrics', async (req: Request, res: Response) => {
  */
 router.get('/rankings', async (_req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
-    const userRepository = AppDataSource.getRepository(User);
+    const orderRepository = getTenantRepo(Order);
+    const userRepository = getTenantRepo(User);
 
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -473,6 +478,9 @@ router.get('/charts', async (req: Request, res: Response) => {
     const orderRevenueData: number[] = [];  // 下单业绩（金额）
     const deliveredRevenueData: number[] = [];  // 签收业绩（金额）
 
+    // 🔥 租户数据隔离 - 图表查询
+    const ct = tenantSQL('o.');
+
     if (period === 'month') {
       // 本月每天的数据
       const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -485,8 +493,8 @@ router.get('/charts', async (req: Request, res: Response) => {
         const dayOrdersData = await AppDataSource.query(
           `SELECT total_amount as totalAmount, status, mark_type as markType
            FROM orders o
-           WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-          [dayStart, dayEnd, ...baseParams]
+           WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}${ct.sql}`,
+          [dayStart, dayEnd, ...baseParams, ...ct.params]
         );
 
         // 下单业绩
@@ -509,8 +517,8 @@ router.get('/charts', async (req: Request, res: Response) => {
         const dayOrdersData = await AppDataSource.query(
           `SELECT total_amount as totalAmount, status, mark_type as markType
            FROM orders o
-           WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-          [dayStart, dayEnd, ...baseParams]
+           WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}${ct.sql}`,
+          [dayStart, dayEnd, ...baseParams, ...ct.params]
         );
 
         // 下单业绩
@@ -532,8 +540,8 @@ router.get('/charts', async (req: Request, res: Response) => {
         const hourOrdersData = await AppDataSource.query(
           `SELECT total_amount as totalAmount, status, mark_type as markType
            FROM orders o
-           WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-          [hourStart, hourEnd, ...baseParams]
+           WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}${ct.sql}`,
+          [hourStart, hourEnd, ...baseParams, ...ct.params]
         );
 
         // 下单业绩
@@ -553,8 +561,8 @@ router.get('/charts', async (req: Request, res: Response) => {
     const monthlyOrdersData = await AppDataSource.query(
       `SELECT status, total_amount as totalAmount
        FROM orders o
-       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}`,
-      [monthStart, monthEnd, ...baseParams]
+       WHERE o.created_at >= ? AND o.created_at <= ?${userCondition}${ct.sql}`,
+      [monthStart, monthEnd, ...baseParams, ...ct.params]
     );
 
     const statusMap: Record<string, { name: string; count: number; amount: number; color: string }> = {
@@ -622,7 +630,7 @@ router.get('/charts', async (req: Request, res: Response) => {
  */
 router.get('/todos', async (_req: Request, res: Response) => {
   try {
-    const orderRepository = AppDataSource.getRepository(Order);
+    const orderRepository = getTenantRepo(Order);
 
     // 获取待处理订单作为待办事项
     const pendingOrders = await orderRepository.find({

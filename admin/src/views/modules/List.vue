@@ -219,6 +219,7 @@ const disabledCount = computed(() => modules.value.filter(m => !m.is_enabled).le
 
 // 模块图标映射（根据 module code 映射到正确的 Element Plus 图标组件）
 const moduleIconMap: Record<string, Component> = {
+  dashboard: Odometer,
   order_management: ShoppingCart,
   customer_management: User,
   finance_management: Money,
@@ -228,8 +229,7 @@ const moduleIconMap: Record<string, Component> = {
   data_management: Folder,
   performance_management: TrendCharts,
   product_management: Goods,
-  system_management: Setting,
-  dashboard: Odometer
+  system_management: Setting
 }
 const getModuleIcon = (key: string): Component => {
   return moduleIconMap[key] || Box
@@ -237,6 +237,7 @@ const getModuleIcon = (key: string): Component => {
 
 // 模块渐变色映射（使用 module_key = code）
 const moduleGradientMap: Record<string, string> = {
+  dashboard: 'linear-gradient(135deg, #409eff 0%, #66b1ff 100%)',
   order_management: 'linear-gradient(135deg, #e6a23c 0%, #f5ba62 100%)',
   customer_management: 'linear-gradient(135deg, #67c23a 0%, #85ce61 100%)',
   finance_management: 'linear-gradient(135deg, #ff9800 0%, #ffb74d 100%)',
@@ -246,13 +247,12 @@ const moduleGradientMap: Record<string, string> = {
   data_management: 'linear-gradient(135deg, #795548 0%, #a1887f 100%)',
   performance_management: 'linear-gradient(135deg, #9c27b0 0%, #ba68c8 100%)',
   product_management: 'linear-gradient(135deg, #f56c6c 0%, #f89898 100%)',
-  system_management: 'linear-gradient(135deg, #607d8b 0%, #90a4ae 100%)',
-  dashboard: 'linear-gradient(135deg, #409eff 0%, #66b1ff 100%)'
+  system_management: 'linear-gradient(135deg, #607d8b 0%, #90a4ae 100%)'
 }
 const getModuleGradient = (key: string) => moduleGradientMap[key] || 'linear-gradient(135deg, #909399 0%, #c0c4cc 100%)'
 
 // 受保护的核心模块（不能停用）
-const protectedModules = ['system_management']
+const protectedModules = ['system_management', 'dashboard']
 const isProtectedModule = (key: string) => protectedModules.includes(key)
 
 const formatTime = (time: string | null) => {

@@ -5,6 +5,9 @@ export class DepartmentOrderLimit {
   @PrimaryColumn({ type: 'varchar', length: 50 })
   id!: string;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column({ name: 'department_id', type: 'varchar', length: 50 })
   departmentId!: string;
 

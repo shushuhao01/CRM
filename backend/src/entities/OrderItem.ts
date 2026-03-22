@@ -7,6 +7,9 @@ export class OrderItem {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column({ type: 'varchar', length: 50, comment: '订单ID' })
   orderId: string;
 

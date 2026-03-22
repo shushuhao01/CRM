@@ -3,10 +3,15 @@ import { ApiConfig } from '../entities/ApiConfig';
 import { ApiCallLog } from '../entities/ApiCallLog';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 export class ApiConfigService {
-  private apiConfigRepository = AppDataSource.getRepository(ApiConfig);
-  private apiCallLogRepository = AppDataSource.getRepository(ApiCallLog);
+  private get apiConfigRepository() {
+    return getTenantRepo(ApiConfig);
+  }
+  private get apiCallLogRepository() {
+    return getTenantRepo(ApiCallLog);
+  }
 
   /**
    * 获取API配置列表

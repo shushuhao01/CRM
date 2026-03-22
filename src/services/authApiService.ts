@@ -9,6 +9,7 @@ export interface LoginRequest {
   username: string
   password: string
   rememberMe?: boolean
+  tenantId?: string  // 租户ID（SaaS模式下传入）
 }
 
 export interface LoginResponse {

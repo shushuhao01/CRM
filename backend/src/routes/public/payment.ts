@@ -4,6 +4,7 @@
 import { Router, Request, Response } from 'express'
 import { paymentService } from '../../services/PaymentService'
 import { AppDataSource } from '../../config/database'
+import { adminNotificationService } from '../../services/AdminNotificationService'
 
 const router = Router()
 
@@ -17,7 +18,7 @@ router.post('/create', async (req: Request, res: Response) => {
       return res.status(400).json({ code: 400, message: '参数不完整' })
     }
 
-    if (!['wechat', 'alipay'].includes(payType)) {
+    if (!['wechat', 'alipay', 'bank'].includes(payType)) {
       return res.status(400).json({ code: 400, message: '不支持的支付方式' })
     }
 
@@ -27,15 +28,65 @@ router.post('/create', async (req: Request, res: Response) => {
     })
 
     if (result.success) {
-      res.json({
-        code: 0,
-        data: {
-          orderId: result.orderId,
-          orderNo: result.orderNo,
-          qrCode: result.qrCode,
-          payUrl: result.payUrl
+      const responseData: any = {
+        orderId: result.orderId,
+        orderNo: result.orderNo,
+        qrCode: result.qrCode,
+        payUrl: result.payUrl
+      }
+
+      // 对公转账 - 返回银行账户信息
+      if (payType === 'bank') {
+        try {
+          const bankRows = await AppDataSource.query(
+            'SELECT config_data FROM payment_configs WHERE pay_type = ? AND enabled = 1', ['bank']
+          )
+          if (bankRows.length > 0 && bankRows[0].config_data) {
+            // 解密配置
+            const crypto = await import('crypto')
+            const ENCRYPT_KEY = process.env.PAYMENT_ENCRYPT_KEY || 'crm-payment-secret-key-2024'
+            try {
+              const decipher = crypto.createDecipheriv('aes-256-cbc',
+                crypto.scryptSync(ENCRYPT_KEY, 'salt', 32),
+                Buffer.alloc(16, 0))
+              const decrypted = decipher.update(bankRows[0].config_data, 'hex', 'utf8') + decipher.final('utf8')
+              const bankData = JSON.parse(decrypted)
+              responseData.bankInfo = {
+                bankName: bankData.bankName || '',
+                accountName: bankData.accountName || '',
+                accountNo: bankData.accountNo || '',
+                bankBranch: bankData.bankBranch || '',
+                remark: bankData.remark || ''
+              }
+            } catch {
+              // 尝试直接解析（未加密的旧数据）
+              try {
+                const bankData = JSON.parse(bankRows[0].config_data)
+                responseData.bankInfo = {
+                  bankName: bankData.bankName || '',
+                  accountName: bankData.accountName || '',
+                  accountNo: bankData.accountNo || '',
+                  bankBranch: bankData.bankBranch || '',
+                  remark: bankData.remark || ''
+                }
+              } catch {}
+            }
+          }
+        } catch (e) {
+          console.error('[Payment] 获取银行配置失败:', e)
         }
-      })
+      }
+
+      res.json({ code: 0, data: responseData })
+
+      // 异步通知管理员（不阻塞响应）
+      adminNotificationService.notify('payment_created', {
+        title: `新支付订单：${packageName || '未知套餐'}`,
+        content: `${contactName}（${contactPhone}）创建了${payType === 'wechat' ? '微信' : payType === 'alipay' ? '支付宝' : '对公转账'}支付订单，金额 ¥${amount}，订单号：${result.orderNo}`,
+        relatedId: result.orderId,
+        relatedType: 'payment_order',
+        extraData: { orderNo: result.orderNo, amount, payType, contactName, contactPhone }
+      }).catch(err => console.error('[Payment] 发送管理员通知失败:', err.message))
     } else {
       res.status(500).json({ code: 500, message: result.message })
     }
@@ -132,9 +183,23 @@ router.post('/alipay/notify', async (req: Request, res: Response) => {
 router.post('/close/:orderNo', async (req: Request, res: Response) => {
   try {
     const { orderNo } = req.params
+
+    // 获取订单信息用于通知
+    const order = await paymentService.queryOrder(orderNo)
     await paymentService.closeOrder(orderNo)
     res.json({ code: 0, message: '订单已关闭' })
-  } catch (error) {
+
+    // 异步通知管理员
+    if (order) {
+      adminNotificationService.notify('payment_cancelled', {
+        title: `订单已取消：${orderNo}`,
+        content: `订单 ${orderNo}（金额 ¥${order.amount || '?'}）已被关闭/取消`,
+        relatedId: orderNo,
+        relatedType: 'payment_order',
+        extraData: { orderNo, amount: order.amount }
+      }).catch(err => console.error('[Payment] 发送取消通知失败:', err.message))
+    }
+  } catch (_error) {
     res.status(500).json({ code: 500, message: '关闭失败' })
   }
 })

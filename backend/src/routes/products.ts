@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { ProductController } from '../controllers/ProductController';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -150,8 +151,8 @@ router.get('/sales/statistics', async (req, res) => {
     const { Order } = await import('../entities/Order');
     const { Product } = await import('../entities/Product');
 
-    const orderRepo = AppDataSource.getRepository(Order);
-    const productRepo = AppDataSource.getRepository(Product);
+    const orderRepo = getTenantRepo(Order);
+    const productRepo = getTenantRepo(Product);
 
     // 🔥 从Order.products JSON字段统计销售数据
     let queryBuilder = orderRepo
@@ -256,7 +257,7 @@ router.get('/sales/trend', async (req, res) => {
     const { AppDataSource } = await import('../config/database');
     const { Order } = await import('../entities/Order');
 
-    const orderRepo = AppDataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
 
     // 根据period确定时间范围
     let days = 30;
@@ -344,8 +345,8 @@ router.get('/sales/category', async (req, res) => {
     const { Order } = await import('../entities/Order');
     const { Product } = await import('../entities/Product');
 
-    const orderRepo = AppDataSource.getRepository(Order);
-    const productRepo = AppDataSource.getRepository(Product);
+    const orderRepo = getTenantRepo(Order);
+    const productRepo = getTenantRepo(Product);
 
     // 🔥 获取所有商品的分类信息
     const allProducts = await productRepo.find({ select: ['id', 'categoryName'] });
@@ -433,8 +434,8 @@ router.get('/sales/top', async (req, res) => {
     const { Order } = await import('../entities/Order');
     const { Product } = await import('../entities/Product');
 
-    const orderRepo = AppDataSource.getRepository(Order);
-    const productRepo = AppDataSource.getRepository(Product);
+    const orderRepo = getTenantRepo(Order);
+    const productRepo = getTenantRepo(Product);
 
     // 🔥 获取所有商品信息
     const allProducts = await productRepo.find({ select: ['id', 'name', 'categoryName'] });
@@ -524,7 +525,7 @@ router.get('/inventory/warning', async (req, res) => {
     const { AppDataSource } = await import('../config/database');
     const { Product } = await import('../entities/Product');
 
-    const productRepo = AppDataSource.getRepository(Product);
+    const productRepo = getTenantRepo(Product);
 
     // 获取低库存商品
     const lowStockProducts = await productRepo

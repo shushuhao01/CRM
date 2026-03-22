@@ -6,20 +6,21 @@ import { Order } from '../entities/Order';
 import { Like, In, Between } from 'typeorm';
 import { ExpressAPIService } from '../services/ExpressAPIService';
 import { logger } from '../config/logger';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 export class LogisticsController {
   private expressAPIService = ExpressAPIService.getInstance();
 
   private get logisticsTrackingRepository() {
-    return AppDataSource!.getRepository(LogisticsTracking);
+    return getTenantRepo(LogisticsTracking);
   }
 
   private get logisticsTraceRepository() {
-    return AppDataSource!.getRepository(LogisticsTrace);
+    return getTenantRepo(LogisticsTrace);
   }
 
   private get orderRepository() {
-    return AppDataSource!.getRepository(Order);
+    return getTenantRepo(Order);
   }
 
   // 获取物流列表
