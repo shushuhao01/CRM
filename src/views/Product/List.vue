@@ -2076,8 +2076,13 @@ const confirmPriceAdjust = async () => {
     const oldPrice = product.price
     const newPrice = priceForm.newPrice
 
-    // 更新store中的商品价格
-    productStore.updateProduct(product.id, { price: newPrice })
+    // 🔥 修复：await 确保后端API调用成功
+    const result = await productStore.updateProduct(product.id, { price: newPrice })
+    if (!result) {
+      ElMessage.error('改价失败，请重试')
+      stockLoading.value = false
+      return
+    }
 
     ElMessage.success('改价成功')
 
@@ -2110,7 +2115,8 @@ const confirmPriceAdjust = async () => {
       loadData()
     }, 1000)
   } catch (error) {
-    console.error('表单验证失败:', error)
+    console.error('改价失败:', error)
+    ElMessage.error('改价操作失败，请重试')
     stockLoading.value = false
   }
 }

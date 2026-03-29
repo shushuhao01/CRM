@@ -36,6 +36,8 @@ export interface DashboardChartData {
     amount: number
     deliveredAmount?: number  // 🔥 签收业绩金额（旧字段，保留兼容）
     orders?: number
+    orderCount?: number  // 🔥 下单单数
+    deliveredCount?: number  // 🔥 签收单数
   }>
   signRevenue?: Array<{  // 🔥 新增：签收业绩数据
     date: string
@@ -333,7 +335,9 @@ export const getChartData = async (params?: {
         revenue: data.performance?.series?.[0]?.data?.map((amount: number, index: number) => ({
           date: data.performance?.categories?.[index] || `${index + 1}月`,
           amount,  // 🔥 下单业绩金额
-          deliveredAmount: data.performance?.series?.[1]?.data?.[index] || 0  // 🔥 签收业绩金额
+          deliveredAmount: data.performance?.series?.[1]?.data?.[index] || 0,  // 🔥 签收业绩金额
+          orderCount: data.performance?.series?.[0]?.counts?.[index] || 0,  // 🔥 下单单数
+          deliveredCount: data.performance?.series?.[1]?.counts?.[index] || 0  // 🔥 签收单数
         })) || [],
         orderStatus: data.orderStatus?.map((item: any) => ({
           status: item.name,

@@ -9,6 +9,9 @@ export interface Package {
   price: number
   original_price: number
   billing_cycle: 'monthly' | 'yearly' | 'once'
+  yearly_discount_rate: number
+  yearly_bonus_months: number
+  yearly_price: number | null
   duration_days: number
   max_users: number
   max_storage_gb: number

@@ -1372,12 +1372,28 @@ const handleSubmit = async () => {
       // 🔥 调用API保存客户到数据库
       console.log('=== 调用 customerApi.create() 保存客户到数据库 ===')
 
-      const apiResult = await customerApi.create(customerData as unknown)
-      console.log('API响应:', apiResult)
+      let apiResult: any
+      try {
+        apiResult = await customerApi.create(customerData as unknown)
+        console.log('API响应:', apiResult)
+        console.log('API响应.success:', apiResult?.success)
+        console.log('API响应.data:', apiResult?.data)
+      } catch (apiError: any) {
+        console.error('❌ API请求异常:', apiError)
+        // 🔥 区分网络错误和业务错误
+        if (apiError?.status === 409) {
+          throw new Error('客户数据冲突（手机号或编码重复），请刷新后重试')
+        } else if (apiError?.status === 400) {
+          throw new Error(apiError?.data?.message || apiError.message || '请求参数错误')
+        } else if (apiError?.message?.includes('fetch') || apiError?.message?.includes('network') || apiError?.message?.includes('超时')) {
+          throw new Error('网络请求失败，请检查网络连接后重试')
+        }
+        throw new Error(apiError?.message || 'API请求失败，客户可能未写入数据库')
+      }
 
-      if (!apiResult.success) {
-        console.error('❌ API保存失败:', apiResult.message)
-        throw new Error(apiResult.message || 'API请求失败，客户未写入数据库')
+      if (!apiResult || !apiResult.success) {
+        console.error('❌ API保存失败:', apiResult?.message)
+        throw new Error(apiResult?.message || 'API请求失败，客户未写入数据库')
       }
 
       // 验证返回的数据
@@ -1582,12 +1598,39 @@ const handleSaveAndOrder = async () => {
 
       console.log('准备创建客户，数据:', customerData)
 
-      // 使用customer store保存数据
-      const newCustomer = await customerStore.createCustomer(customerData)
-      console.log('客户创建成功，新客户信息:', newCustomer)
+      // 🔥🔥🔥 关键修复：必须直接调用API保存到数据库！
+      // 之前错误地使用 customerStore.createCustomer() 在localhost环境只存到本地内存
+      // 导致客户"添加成功"但实际从未写入数据库
+      console.log('=== 调用 customerApi.create() 保存客户到数据库 ===')
 
-      // 不调用forceRefreshCustomers，避免覆盖本地新增的客户数据
-      console.log('客户已保存到本地store，当前客户数量:', customerStore.customers.length)
+      let apiResult: any
+      try {
+        apiResult = await customerApi.create(customerData as any)
+        console.log('[保存并下单] API响应:', apiResult)
+      } catch (apiError: any) {
+        console.error('[保存并下单] ❌ API请求异常:', apiError)
+        if (apiError?.status === 409) {
+          throw new Error('客户数据冲突（手机号或编码重复），请刷新后重试')
+        }
+        throw new Error(apiError?.message || 'API请求失败，客户未写入数据库')
+      }
+
+      if (!apiResult || !apiResult.success) {
+        console.error('[保存并下单] ❌ API保存失败:', apiResult?.message)
+        throw new Error(apiResult?.message || 'API请求失败，客户未写入数据库')
+      }
+
+      if (!apiResult.data || !apiResult.data.id) {
+        console.error('[保存并下单] ❌ API返回成功但无客户ID')
+        throw new Error('保存失败：服务器未返回客户ID')
+      }
+
+      const newCustomer = apiResult.data
+      console.log('[保存并下单] ✅ 客户已成功写入数据库! ID:', newCustomer.id, '姓名:', newCustomer.name)
+
+      // 同步更新本地store缓存
+      customerStore.customers.unshift(newCustomer)
+      console.log('[保存并下单] 本地缓存已更新，当前客户数量:', customerStore.customers.length)
 
       // 发送客户添加成功的消息提醒
       notificationStore.sendMessage(

@@ -624,6 +624,10 @@
             <div class="preview-section-title">💰 当日业绩</div>
             <div v-if="performanceForm.reportTypes.includes('order_count')" class="preview-item">   订单数: {{ previewData.daily?.orderCount || 0 }} 单</div>
             <div v-if="performanceForm.reportTypes.includes('order_amount')" class="preview-item">   订单金额: ¥{{ (previewData.daily?.orderAmount || 0).toLocaleString() }}</div>
+            <div v-if="performanceForm.reportTypes.includes('refund_count')" class="preview-item">   退款单数: {{ previewData.daily?.refundCount || 0 }} 单</div>
+            <div v-if="performanceForm.reportTypes.includes('refund_amount')" class="preview-item">   退款金额: ¥{{ (previewData.daily?.refundAmount || 0).toLocaleString() }}</div>
+            <div v-if="performanceForm.reportTypes.includes('refund_rate')" class="preview-item">   退款率: {{ previewData.daily?.refundRate || 0 }}%</div>
+            <div v-if="performanceForm.reportTypes.includes('avg_order_amount')" class="preview-item">   客单价: ¥{{ (previewData.daily?.avgOrderAmount || 0).toLocaleString() }}</div>
             <template v-if="performanceForm.includeMonthly">
               <div class="preview-section-title">📈 当月累计</div>
               <div class="preview-item">   订单数: {{ previewData.monthly?.orderCount || 0 }} 单</div>
@@ -631,11 +635,15 @@
               <div v-if="performanceForm.reportTypes.includes('monthly_signed_count')" class="preview-item">   签收单数: {{ previewData.monthly?.signedCount || 0 }} 单</div>
               <div v-if="performanceForm.reportTypes.includes('monthly_signed_amount')" class="preview-item">   签收金额: ¥{{ (previewData.monthly?.signedAmount || 0).toLocaleString() }}</div>
               <div v-if="performanceForm.reportTypes.includes('monthly_signed_rate')" class="preview-item">   签收率: {{ previewData.monthly?.signedRate || 0 }}%</div>
+              <div v-if="performanceForm.reportTypes.includes('refund_count') || performanceForm.reportTypes.includes('refund_amount')" class="preview-item">   退款单数: {{ previewData.monthly?.refundCount || 0 }} 单</div>
+              <div v-if="performanceForm.reportTypes.includes('refund_count') || performanceForm.reportTypes.includes('refund_amount')" class="preview-item">   退款金额: ¥{{ (previewData.monthly?.refundAmount || 0).toLocaleString() }}</div>
+              <div v-if="performanceForm.reportTypes.includes('refund_rate')" class="preview-item">   退款率: {{ previewData.monthly?.refundRate || 0 }}%</div>
+              <div v-if="performanceForm.reportTypes.includes('avg_order_amount')" class="preview-item">   客单价: ¥{{ (previewData.monthly?.avgOrderAmount || 0).toLocaleString() }}</div>
             </template>
             <template v-if="performanceForm.includeRanking">
               <div class="preview-section-title">🏆 业绩排行榜</div>
-              <div v-for="(item, index) in (previewData.topRanking || []).slice(0, 3)" :key="index" class="preview-item">
-                   {{ ['🥇', '🥈', '🥉'][index] }} {{ item.name }}: ¥{{ (item.amount || 0).toLocaleString() }} ({{ item.orderCount || 0 }}单)
+              <div v-for="(item, index) in (previewData.topRanking || []).slice(0, performanceForm.rankingLimit || 10)" :key="index" class="preview-item">
+                   {{ ['🥇', '🥈', '🥉'][index] || (index + 1) + '.' }} {{ item.name }}: ¥{{ (item.amount || 0).toLocaleString() }} ({{ item.orderCount || 0 }}单)
               </div>
               <div v-if="!previewData.topRanking || previewData.topRanking.length === 0" class="preview-item" style="color: #909399;">
                    暂无排名数据
@@ -807,10 +815,13 @@ const toggleReportTypesExpand = () => {
   }
 }
 
-// 预览日期
+// 预览日期（使用北京时间）
 const previewDate = computed(() => {
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
+  const now = new Date()
+  const beijingOffset = 8 * 60 * 60 * 1000
+  const utcTime = now.getTime() + (now.getTimezoneOffset() * 60 * 1000)
+  const beijingNow = new Date(utcTime + beijingOffset)
+  const yesterday = new Date(beijingNow.getFullYear(), beijingNow.getMonth(), beijingNow.getDate() - 1)
   const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
   return `${yesterday.getFullYear()}年${yesterday.getMonth() + 1}月${yesterday.getDate()}日 (${weekDays[yesterday.getDay()]})`
 })
@@ -1174,7 +1185,8 @@ const loadPreviewData = async () => {
     const res = await performanceReportApi.previewReport({
       reportTypes: performanceForm.reportTypes,
       viewScope: performanceForm.viewScope,
-      targetDepartments: performanceForm.targetDepartments
+      targetDepartments: performanceForm.targetDepartments,
+      rankingLimit: performanceForm.rankingLimit || 10
     }) as any
     if (res.success) {
       previewData.value = res.data || {}

@@ -8,6 +8,9 @@ export class NotificationChannel {
   @PrimaryColumn({ type: 'varchar', length: 36 })
   id!: string;
 
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
+
   @Column({ type: 'varchar', length: 100, comment: '配置名称' })
   name!: string;
 

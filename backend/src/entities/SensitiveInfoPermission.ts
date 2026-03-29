@@ -5,6 +5,9 @@ export class SensitiveInfoPermission {
   @PrimaryGeneratedColumn()
   id!: number;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId!: string | null;
+
   @Column({ name: 'info_type', length: 50 })
   infoType!: string;
 

@@ -2,10 +2,16 @@ import { Router } from 'express';
 import Joi from 'joi';
 import { UserController } from '../controllers/UserController';
 import { validate, commonValidations } from '../middleware/validation';
-import { authenticateToken, requireManagerOrAdmin } from '../middleware/auth';
+import { authenticateToken, requireManagerOrAdmin, requireRole } from '../middleware/auth';
+import { checkUserLimit } from '../middleware/checkTenantLimits';
 
 const router = Router();
 const userController = new UserController();
+
+// 🔥 用户列表查看权限：管理员、经理、客服都可查看（客服需要在绩效数据等页面筛选用户）
+const requireUserListAccess = requireRole([
+  'admin', 'super_admin', 'superadmin', 'manager', 'department_manager', 'customer_service'
+]);
 
 // 获取用户列表验证规则
 const getUsersSchema = {
@@ -81,16 +87,16 @@ router.get('/department-members', authenticateToken, userController.getDepartmen
 /**
  * @route GET /api/v1/users
  * @desc 获取用户列表
- * @access Private (Manager/Admin)
+ * @access Private (Manager/Admin/CustomerService)
  */
-router.get('/', authenticateToken, requireManagerOrAdmin, validate(getUsersSchema), userController.getUsers);
+router.get('/', authenticateToken, requireUserListAccess, validate(getUsersSchema), userController.getUsers);
 
 /**
  * @route POST /api/v1/users
  * @desc 创建用户
  * @access Private (Manager/Admin)
  */
-router.post('/', authenticateToken, requireManagerOrAdmin, validate(createUserSchema), userController.createUser);
+router.post('/', authenticateToken, requireManagerOrAdmin, checkUserLimit, validate(createUserSchema), userController.createUser);
 
 /**
  * @route GET /api/v1/users/statistics

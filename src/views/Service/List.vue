@@ -9,21 +9,18 @@
     <!-- 搜索和筛选区域 -->
     <el-card class="search-card" shadow="never">
       <el-form :model="searchForm" inline>
-        <el-form-item label="订单号">
+        <el-form-item label="搜索">
           <el-input
-            v-model="searchForm.orderNumber"
-            placeholder="请输入订单号"
+            v-model="searchForm.keyword"
+            placeholder="订单号/客户姓名/电话/客户编码/物流单号/售后单号"
             clearable
-            style="width: 200px"
-          />
-        </el-form-item>
-        <el-form-item label="客户姓名">
-          <el-input
-            v-model="searchForm.customerName"
-            placeholder="请输入客户姓名"
-            clearable
-            style="width: 200px"
-          />
+            style="width: 380px"
+            @keyup.enter="handleSearch"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
         </el-form-item>
         <el-form-item label="服务类型">
           <el-select
@@ -394,8 +391,7 @@ const activeTab = ref('pending')
 
 // 搜索表单
 const searchForm = reactive({
-  orderNumber: '',
-  customerName: '',
+  keyword: '',
   serviceType: '',
   status: '',
   dateRange: []
@@ -415,16 +411,16 @@ const tableData = computed(() => {
   // 根据当前标签页筛选
   services = services.filter((s: AfterSalesService) => s.status === activeTab.value)
 
-  // 应用搜索条件
-  if (searchForm.orderNumber) {
+  // 应用搜索条件 - 统一关键词搜索
+  if (searchForm.keyword) {
+    const kw = searchForm.keyword.toLowerCase()
     services = services.filter((s: AfterSalesService) =>
-      s.orderNumber.includes(searchForm.orderNumber)
-    )
-  }
-
-  if (searchForm.customerName) {
-    services = services.filter((s: AfterSalesService) =>
-      s.customerName.includes(searchForm.customerName)
+      (s.orderNumber && s.orderNumber.toLowerCase().includes(kw)) ||
+      (s.customerName && s.customerName.toLowerCase().includes(kw)) ||
+      (s.customerPhone && s.customerPhone.includes(kw)) ||
+      (s.serviceNumber && s.serviceNumber.toLowerCase().includes(kw)) ||
+      (s.trackingNumber && s.trackingNumber.toLowerCase().includes(kw)) ||
+      (s.customerCode && s.customerCode.toLowerCase().includes(kw))
     )
   }
 
@@ -639,8 +635,7 @@ const handleSearch = () => {
 
 const handleReset = () => {
   Object.assign(searchForm, {
-    orderNumber: '',
-    customerName: '',
+    keyword: '',
     serviceType: '',
     status: '',
     dateRange: []
@@ -913,8 +908,12 @@ const handleDelete = async (row: AfterSalesService) => {
 const loadData = async () => {
   tableLoading.value = true
   try {
-    // 从serviceStore获取数据
-    await serviceStore.loadAfterSalesServices()
+    // 从serviceStore获取数据，传递搜索参数
+    await serviceStore.loadAfterSalesServices({
+      search: searchForm.keyword || undefined,
+      status: searchForm.status || undefined,
+      serviceType: searchForm.serviceType || undefined
+    })
 
     // 强制更新视图
     await nextTick(() => {
@@ -1045,8 +1044,7 @@ watch(
   [
     () => serviceStore.services,
     () => activeTab.value,
-    () => searchForm.orderNumber,
-    () => searchForm.customerName,
+    () => searchForm.keyword,
     () => searchForm.serviceType
   ],
   () => {

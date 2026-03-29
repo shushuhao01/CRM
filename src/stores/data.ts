@@ -42,7 +42,7 @@ export const useDataStore = createPersistentStore('data', () => {
   // 分页参数
   const pagination = ref({
     page: 1,
-    pageSize: 30
+    pageSize: 10
   })
 
   // 筛选参数

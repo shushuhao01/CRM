@@ -10,6 +10,9 @@ export interface Package {
   price: number
   original_price: number
   billing_cycle: 'monthly' | 'yearly' | 'once'
+  yearly_discount_rate: number
+  yearly_bonus_months: number
+  yearly_price: number | null
   duration_days: number
   max_users: number
   max_storage_gb: number
@@ -55,17 +58,60 @@ export async function getPackageByCode(code: string): Promise<Package | null> {
   }
 }
 
-// 计算年付价格（8折）
-export function getYearlyPrice(monthlyPrice: number): number {
+// 计算年付月价（优先使用后端配置的年付价格，否则根据折扣率或赠送月数计算）
+export function getYearlyPrice(monthlyPrice: number, pkg?: Package): number {
+  if (pkg) {
+    // 优先使用后端配置的年付总价
+    if (pkg.yearly_price && pkg.yearly_price > 0) {
+      return Math.round(pkg.yearly_price / 12)
+    }
+    // 其次根据赠送月数计算：付10个月享12+N个月
+    if (pkg.yearly_bonus_months > 0) {
+      const payMonths = 12 - pkg.yearly_bonus_months
+      return Math.round((monthlyPrice * payMonths) / 12)
+    }
+    // 再次根据折扣率计算
+    if (pkg.yearly_discount_rate > 0) {
+      return Math.round(monthlyPrice * (1 - pkg.yearly_discount_rate / 100))
+    }
+  }
+  // 兜底：默认8折
   return Math.round(monthlyPrice * 0.8)
 }
 
 // 计算年付总价
-export function getYearlyTotal(monthlyPrice: number): number {
+export function getYearlyTotal(monthlyPrice: number, pkg?: Package): number {
+  if (pkg) {
+    if (pkg.yearly_price && pkg.yearly_price > 0) {
+      return Math.round(pkg.yearly_price)
+    }
+    if (pkg.yearly_bonus_months > 0) {
+      return monthlyPrice * (12 - pkg.yearly_bonus_months)
+    }
+    if (pkg.yearly_discount_rate > 0) {
+      return Math.round(monthlyPrice * 12 * (1 - pkg.yearly_discount_rate / 100))
+    }
+  }
   return getYearlyPrice(monthlyPrice) * 12
 }
 
 // 计算年付节省金额
-export function getYearlySaving(monthlyPrice: number): number {
-  return monthlyPrice * 12 - getYearlyTotal(monthlyPrice)
+export function getYearlySaving(monthlyPrice: number, pkg?: Package): number {
+  return monthlyPrice * 12 - getYearlyTotal(monthlyPrice, pkg)
+}
+
+// 获取年付优惠描述文本
+export function getYearlyPromoText(pkg: Package): string {
+  if (pkg.yearly_bonus_months > 0) {
+    return `送${pkg.yearly_bonus_months}个月`
+  }
+  if (pkg.yearly_discount_rate > 0) {
+    const discount = Math.round(10 - pkg.yearly_discount_rate / 10)
+    return `${discount}折优惠`
+  }
+  if (pkg.yearly_price && pkg.yearly_price > 0) {
+    const saving = pkg.price * 12 - pkg.yearly_price
+    if (saving > 0) return `省¥${Math.round(saving)}`
+  }
+  return '省20%'
 }

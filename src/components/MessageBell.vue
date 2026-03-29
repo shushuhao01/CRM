@@ -79,7 +79,7 @@
                   {{ message.title }}
                   <el-tag v-if="!message.read" type="danger" size="small">未读</el-tag>
                 </div>
-                <div class="message-text">{{ message.content }}</div>
+                <div class="message-text">{{ stripHtml(message.content) }}</div>
                 <div class="message-meta">
                   <span class="message-category">{{ message.category }}</span>
                   <span class="message-time">{{ message.time }}</span>
@@ -133,7 +133,7 @@
               @click="handleAnnouncementClick(announcement)"
             >
               <div class="announcement-icon">
-                <el-icon color="#409eff" :size="20">
+                <el-icon :color="announcement.source === 'system' ? '#f56c6c' : '#409eff'" :size="20">
                   <ChatDotRound />
                 </el-icon>
               </div>
@@ -142,10 +142,10 @@
                   {{ announcement.title }}
                   <el-tag v-if="!announcement.read" type="danger" size="small">未读</el-tag>
                   <el-tag
-                    :type="announcement.type === 'company' ? 'primary' : 'success'"
+                    :type="announcement.source === 'system' ? 'danger' : 'primary'"
                     size="small"
                   >
-                    {{ announcement.type === 'company' ? '全公司' : '部门' }}
+                    {{ announcement.source === 'system' ? '系统公告' : '公司公告' }}
                   </el-tag>
                 </div>
                 <div class="announcement-text">{{ stripHtml(announcement.content) }}</div>
@@ -180,6 +180,31 @@
         </el-tab-pane>
       </el-tabs>
     </el-dialog>
+
+    <!-- 公告详情弹窗 -->
+    <el-dialog
+      v-model="showAnnouncementDetail"
+      :title="selectedAnnouncement?.title || '公告详情'"
+      width="600px"
+      append-to-body
+      class="announcement-detail-dialog"
+    >
+      <div v-if="selectedAnnouncement" class="announcement-detail">
+        <div class="detail-meta">
+          <el-tag
+            :type="selectedAnnouncement.source === 'system' ? 'danger' : 'primary'"
+            size="small"
+          >
+            {{ selectedAnnouncement.source === 'system' ? '系统公告' : '公司公告' }}
+          </el-tag>
+          <span class="detail-time">{{ formatTime(selectedAnnouncement.publishedAt) }}</span>
+        </div>
+        <div class="detail-content" v-html="sanitizeHtml(selectedAnnouncement.content)"></div>
+      </div>
+      <template #footer>
+        <el-button @click="showAnnouncementDetail = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -188,6 +213,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useNotificationStore } from '@/stores/notification'
 import { useMessageStore } from '@/stores/message'
 import { useUserStore } from '@/stores/user'
+import { sanitizeHtml } from '@/utils/sanitize'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Bell,
@@ -272,14 +298,22 @@ const userStore = useUserStore()
 // 状态
 const showDialog = ref(false)
 const activeTab = ref('messages')
+const showAnnouncementDetail = ref(false)
+const selectedAnnouncement = ref<any>(null)
 
 // 计算属性 - 过滤出当前用户可见的消息
 const systemMessages = computed(() => {
   const currentUserId = userStore.currentUser?.id
-  if (!currentUserId) return notificationStore.messages
+  if (!currentUserId) {
+    // 🔥 修复：排除announcement类型的消息，避免与"系统公告"标签页重复
+    return notificationStore.messages.filter(msg => msg.type !== 'announcement')
+  }
 
   // 过滤消息：显示发给当前用户的消息或没有指定目标用户的全局消息
+  // 🔥 修复：排除announcement类型，公告已在"系统公告"标签页展示
   return notificationStore.messages.filter(msg => {
+    // 排除公告类型的系统消息（避免与系统公告标签页重复）
+    if (msg.type === 'announcement') return false
     // 没有指定目标用户的消息（全局消息）
     if (!msg.targetUserId) return true
     // 发给当前用户的消息
@@ -289,21 +323,38 @@ const systemMessages = computed(() => {
 // 隐藏的公告ID列表（存储在localStorage）
 const hiddenAnnouncementIds = ref<string[]>([])
 
+/**
+ * 🔥 获取当前用户的隐藏公告 localStorage Key（按用户+租户隔离）
+ * 格式: hidden-announcements-{userId}-{tenantId}
+ */
+const getHiddenAnnouncementsKey = (): string => {
+  const currentUser = userStore.currentUser
+  if (currentUser?.id) {
+    const tenantId = (currentUser as any).tenantId || ''
+    return `hidden-announcements-${currentUser.id}-${tenantId}`
+  }
+  return 'hidden-announcements'
+}
+
 // 加载隐藏的公告ID
 const loadHiddenAnnouncements = () => {
   try {
-    const stored = localStorage.getItem('hidden-announcements')
+    const key = getHiddenAnnouncementsKey()
+    const stored = localStorage.getItem(key)
     if (stored) {
       hiddenAnnouncementIds.value = JSON.parse(stored)
+    } else {
+      hiddenAnnouncementIds.value = []
     }
-  } catch (e) {
+  } catch (_e) {
     hiddenAnnouncementIds.value = []
   }
 }
 
 // 保存隐藏的公告ID
 const saveHiddenAnnouncements = () => {
-  localStorage.setItem('hidden-announcements', JSON.stringify(hiddenAnnouncementIds.value))
+  const key = getHiddenAnnouncementsKey()
+  localStorage.setItem(key, JSON.stringify(hiddenAnnouncementIds.value))
 }
 
 const announcements = computed(() => {
@@ -316,7 +367,10 @@ const announcements = computed(() => {
   )
 })
 
-const unreadMessageCount = computed(() => notificationStore.unreadCount)
+// 🔥 修复：未读数基于过滤后的 systemMessages（已排除 announcement 类型），避免虚假计数
+const unreadMessageCount = computed(() =>
+  systemMessages.value.filter(msg => !msg.read).length
+)
 const unreadAnnouncementCount = computed(() =>
   announcements.value.filter(a => !a.read).length
 )
@@ -432,11 +486,9 @@ const handleAnnouncementClick = (announcement: any) => {
     markAnnouncementAsRead(announcement.id)
   }
 
-  // 显示公告详情
-  ElMessageBox.alert(announcement.content, announcement.title, {
-    confirmButtonText: '确定',
-    type: 'info'
-  })
+  // 🔥 使用弹窗对话框显示公告详情（支持富文本HTML渲染）
+  selectedAnnouncement.value = announcement
+  showAnnouncementDetail.value = true
 }
 
 // 去除HTML标签
@@ -674,5 +726,60 @@ onMounted(() => {
   height: 16px;
   line-height: 16px;
   min-width: 16px;
+}
+
+/* 公告详情弹窗样式 */
+:deep(.announcement-detail-dialog) {
+  .el-dialog__body {
+    padding: 16px 24px;
+  }
+}
+
+.announcement-detail {
+  .detail-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #ebeef5;
+  }
+
+  .detail-time {
+    font-size: 13px;
+    color: #909399;
+  }
+
+  .detail-content {
+    font-size: 14px;
+    line-height: 1.8;
+    color: #303133;
+    word-break: break-word;
+
+    :deep(p) {
+      margin: 0 0 8px 0;
+    }
+    :deep(img) {
+      max-width: 100%;
+      height: auto;
+    }
+    :deep(a) {
+      color: #409eff;
+      text-decoration: none;
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+    :deep(ul), :deep(ol) {
+      padding-left: 20px;
+    }
+    :deep(blockquote) {
+      margin: 8px 0;
+      padding: 8px 16px;
+      border-left: 4px solid #dcdfe6;
+      color: #606266;
+      background: #f9f9f9;
+    }
+  }
 }
 </style>

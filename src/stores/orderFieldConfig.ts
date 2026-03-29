@@ -81,6 +81,10 @@ export const useOrderFieldConfigStore = defineStore('orderFieldConfig', () => {
           orderSource: response.data.orderSource || defaultConfig.orderSource,
           customFields: response.data.customFields || []
         }
+        // 同步写入 localStorage，供导出功能等使用
+        try {
+          localStorage.setItem('crm_order_field_config', JSON.stringify(config.value))
+        } catch { /* ignore */ }
         console.log('[订单字段配置] 从数据库加载成功:', config.value)
       }
     } catch (error) {
@@ -99,6 +103,10 @@ export const useOrderFieldConfigStore = defineStore('orderFieldConfig', () => {
       const response = await api.put('/system/order-field-config', config.value)
       if (response.success) {
         console.log('[订单字段配置] 保存到数据库成功')
+        // 同步更新 localStorage 缓存
+        try {
+          localStorage.setItem('crm_order_field_config', JSON.stringify(config.value))
+        } catch { /* ignore */ }
       } else {
         console.error('[订单字段配置] 保存失败:', response.message)
         throw new Error(response.message || '保存失败')

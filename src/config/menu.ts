@@ -204,7 +204,7 @@ export const menuConfig: MenuItem[] = [
         title: '物流跟踪',
         path: '/logistics/track',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
-        permissions: ['logistics:tracking'],
+        permissions: ['logistics:tracking', 'logistics.track'],
         dataScope: 'all' // 客服处理全公司物流跟踪
       },
       {
@@ -236,7 +236,7 @@ export const menuConfig: MenuItem[] = [
         title: '售后订单',
         path: '/service/list',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
-        permissions: ['aftersale:order'],
+        permissions: ['aftersale:order', 'aftersale.list'],
         dataScope: 'all' // 客服处理全公司售后订单
       },
       {
@@ -251,7 +251,7 @@ export const menuConfig: MenuItem[] = [
         title: '售后数据',
         path: '/service/data',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
-        permissions: ['aftersale:analysis'],
+        permissions: ['aftersale:analysis', 'aftersale.data'],
         dataScope: 'all' // 客服处理全公司售后数据
       }
     ]
@@ -276,8 +276,7 @@ export const menuConfig: MenuItem[] = [
         title: '客户查询',
         path: '/data/search',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'],
-        permissions: ['data:customer'],
-        dataScope: 'all' // 客服查询全公司客户
+        permissions: ['data:customer', 'data.search'],
       },
       {
         id: 'data-recycle',
@@ -300,7 +299,7 @@ export const menuConfig: MenuItem[] = [
         title: '绩效数据',
         path: '/finance/performance-data',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
-        permissions: ['finance:data'],
+        permissions: ['finance:data', 'finance.performance_data'],
         dataScope: 'self' // 销售员看个人，经理看部门，管理员看全部
       },
       {
@@ -308,14 +307,14 @@ export const menuConfig: MenuItem[] = [
         title: '绩效管理',
         path: '/finance/performance-manage',
         roles: ['super_admin', 'admin'],
-        permissions: ['finance:manage']
+        permissions: ['finance:manage', 'finance.performance_manage']
       },
       {
         id: 'finance-cod-collection',
         title: '代收管理',
         path: '/finance/cod-collection',
         roles: ['super_admin', 'admin'],
-        permissions: ['finance:cod']
+        permissions: ['finance:cod', 'finance.cod_collection']
       },
       {
         id: 'finance-value-added-manage',
@@ -338,42 +337,42 @@ export const menuConfig: MenuItem[] = [
     title: '商品管理',
     icon: 'Box',
     roles: ['super_admin', 'admin'],
-    permissions: ['sales:product'],
+    permissions: ['sales:product', 'product'],
     children: [
       {
         id: 'product-list',
         title: '商品列表',
         path: '/product/list',
         roles: ['super_admin', 'admin'],
-        permissions: ['sales:product:view']
+        permissions: ['sales:product:view', 'product.list']
       },
       {
         id: 'product-add',
         title: '新增商品',
         path: '/product/add',
         roles: ['super_admin', 'admin'],
-        permissions: ['sales:product:add']
+        permissions: ['sales:product:add', 'product.add']
       },
       {
         id: 'product-inventory',
         title: '库存管理',
         path: '/product/inventory',
         roles: ['super_admin', 'admin'],
-        permissions: ['sales:product:edit']
+        permissions: ['sales:product:edit', 'product.inventory']
       },
       {
         id: 'product-category',
         title: '商品分类',
         path: '/product/category',
         roles: ['super_admin', 'admin'],
-        permissions: ['sales:product:view']
+        permissions: ['sales:product:view', 'product.category']
       },
       {
         id: 'product-analytics',
         title: '商品分析',
         path: '/product/analytics',
         roles: ['super_admin', 'admin'],
-        permissions: ['product:analytics']
+        permissions: ['product:analytics', 'product.analytics']
       }
     ]
   },

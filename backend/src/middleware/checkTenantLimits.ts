@@ -323,10 +323,34 @@ export const getTenantResourceUsage = async (tenantId: string) => {
       where: { tenantId }
     })
 
+    // 🔥 动态计算存储空间使用量
+    let usedStorageMb = tenant.usedStorageMb || 0
+    try {
+      const storageResult = await AppDataSource.query(
+        `SELECT COALESCE(SUM(
+          CASE WHEN file_size IS NOT NULL THEN file_size ELSE 0 END
+        ), 0) as total_bytes FROM (
+          SELECT file_size FROM customer_files WHERE tenant_id = ?
+          UNION ALL
+          SELECT file_size FROM order_attachments WHERE tenant_id = ?
+          UNION ALL
+          SELECT file_size FROM after_sale_attachments WHERE tenant_id = ?
+        ) as all_files`,
+        [tenantId, tenantId, tenantId]
+      )
+      const totalBytes = Number(storageResult[0]?.total_bytes || 0)
+      const calculatedMb = totalBytes / (1024 * 1024)
+      if (calculatedMb > 0) {
+        usedStorageMb = Number(calculatedMb.toFixed(2))
+      }
+    } catch {
+      // 存储计算失败使用数据库记录值
+    }
+
     // 计算使用率
     const maxStorageMb = tenant.maxStorageGb * 1024
     const userUsagePercent = Math.round((actualUserCount / tenant.maxUsers) * 100)
-    const storageUsagePercent = Math.round(((tenant.usedStorageMb || 0) / maxStorageMb) * 100)
+    const storageUsagePercent = Math.round((usedStorageMb / maxStorageMb) * 100)
 
     return {
       tenantId: tenant.id,
@@ -338,13 +362,13 @@ export const getTenantResourceUsage = async (tenantId: string) => {
         available: tenant.maxUsers - actualUserCount
       },
       storage: {
-        usedMb: tenant.usedStorageMb || 0,
-        usedGb: ((tenant.usedStorageMb || 0) / 1024).toFixed(2),
+        usedMb: usedStorageMb,
+        usedGb: (usedStorageMb / 1024).toFixed(2),
         maxGb: tenant.maxStorageGb,
         maxMb: maxStorageMb,
         usagePercent: storageUsagePercent,
-        availableMb: maxStorageMb - (tenant.usedStorageMb || 0),
-        availableGb: ((maxStorageMb - (tenant.usedStorageMb || 0)) / 1024).toFixed(2)
+        availableMb: maxStorageMb - usedStorageMb,
+        availableGb: ((maxStorageMb - usedStorageMb) / 1024).toFixed(2)
       }
     }
   } catch (error) {

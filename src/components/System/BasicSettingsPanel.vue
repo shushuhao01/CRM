@@ -16,14 +16,20 @@
 
     <!-- 平台配置覆盖提示 -->
     <el-alert
-      v-if="hasAnyOverride"
+      v-if="hasAnyOverride || isSaasMode"
       type="warning"
       :closable="false"
       show-icon
       class="override-alert"
     >
       <template #title>
-        <span v-if="platformOverride.basic && platformOverride.copyright">
+        <span v-if="isSaasMode">
+          SaaS租户版权备案信息由平台管理员统一配置，不可修改。基本信息{{ platformOverride.basic ? '同样由平台统一配置' : '可本地编辑保存' }}。
+        </span>
+        <span v-else-if="isPrivateMode && (platformOverride.basic || platformOverride.copyright)">
+          部分设置由平台管理员统一配置。版权文字和技术支持由开发者控制，仅ICP备案和公安备案可自行修改。
+        </span>
+        <span v-else-if="platformOverride.basic && platformOverride.copyright">
           基本信息和版权备案信息均由平台管理员统一配置，所有字段禁止修改。
         </span>
         <span v-else-if="platformOverride.basic">
@@ -126,6 +132,7 @@
         />
       </el-form-item>
 
+      <!-- 系统Logo上传（暂时禁用，功能未实际使用）
       <el-form-item label="系统Logo" prop="systemLogo">
         <el-upload
           class="logo-uploader"
@@ -140,6 +147,7 @@
         </el-upload>
         <div class="upload-tip">建议尺寸：200x60px，支持 jpg、png 格式</div>
       </el-form-item>
+      -->
 
       <!-- 联系二维码 -->
       <el-divider content-position="left">联系二维码</el-divider>
@@ -213,9 +221,13 @@
         <el-input
           v-model="form.copyrightText"
           placeholder="如：© 2026 XX科技有限公司 版权所有"
-          :disabled="platformOverride.copyrightText"
+          :disabled="copyrightTextDisabled"
         />
-        <div class="upload-tip" v-if="platformOverride.copyrightText" style="color: #e6a23c;">此项已由管理后台统一配置，CRM端不可修改</div>
+        <div class="upload-tip" v-if="copyrightTextDisabled" style="color: #e6a23c;">
+          <span v-if="isSaasMode">SaaS租户不可修改版权信息</span>
+          <span v-else-if="isPrivateMode">此项由开发者统一配置，不可修改</span>
+          <span v-else>此项已由管理后台统一配置，CRM端不可修改</span>
+        </div>
         <div class="upload-tip" v-else>自定义底部版权文字，留空则自动使用公司名称生成</div>
       </el-form-item>
 
@@ -225,9 +237,10 @@
             <el-input
               v-model="form.icpNumber"
               placeholder="如：粤ICP备2026XXXXXX号"
-              :disabled="platformOverride.copyright"
+              :disabled="icpDisabled"
             />
-            <div class="upload-tip">工信部ICP备案号，显示在系统底部</div>
+            <div class="upload-tip" v-if="isSaasMode" style="color: #e6a23c;">SaaS租户不可修改备案信息</div>
+            <div class="upload-tip" v-else>工信部ICP备案号，显示在系统底部</div>
           </el-form-item>
         </el-col>
         <el-col :span="12">
@@ -235,9 +248,10 @@
             <el-input
               v-model="form.policeNumber"
               placeholder="如：粤公网安备 44010XXXXXXXXXX号"
-              :disabled="platformOverride.copyright"
+              :disabled="policeDisabled"
             />
-            <div class="upload-tip">公安部网络安全备案号，显示在系统底部</div>
+            <div class="upload-tip" v-if="isSaasMode" style="color: #e6a23c;">SaaS租户不可修改备案信息</div>
+            <div class="upload-tip" v-else>公安部网络安全备案号，显示在系统底部</div>
           </el-form-item>
         </el-col>
       </el-row>
@@ -246,9 +260,13 @@
         <el-input
           v-model="form.techSupport"
           placeholder="如：XX科技提供技术支持"
-          :disabled="platformOverride.techSupport"
+          :disabled="techSupportDisabled"
         />
-        <div class="upload-tip" v-if="platformOverride.techSupport" style="color: #e6a23c;">此项已由管理后台统一配置，CRM端不可修改</div>
+        <div class="upload-tip" v-if="techSupportDisabled" style="color: #e6a23c;">
+          <span v-if="isSaasMode">SaaS租户不可修改技术支持信息</span>
+          <span v-else-if="isPrivateMode">此项由开发者统一配置，不可修改</span>
+          <span v-else>此项已由管理后台统一配置，CRM端不可修改</span>
+        </div>
         <div class="upload-tip" v-else>自定义底部显示的技术支持信息</div>
       </el-form-item>
     </el-form>
@@ -258,9 +276,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Upload, DocumentCopy, Delete, ZoomIn, Picture } from '@element-plus/icons-vue'
+import { Upload, DocumentCopy, Delete, ZoomIn, Picture } from '@element-plus/icons-vue'
+// Plus 图标已随系统Logo上传功能一起注释禁用
 import { useConfigStore } from '@/stores/config'
 import { useUserStore } from '@/stores/user'
+import { getDeployMode } from '@/api/tenantLicense'
 
 const configStore = useConfigStore()
 const userStore = useUserStore()
@@ -268,6 +288,33 @@ const userStore = useUserStore()
 const loading = ref(false)
 const formRef = ref()
 const qrFileInput = ref<HTMLInputElement>()
+
+// 部署模式判断
+const isSaasMode = computed(() => getDeployMode() === 'saas')
+const isPrivateMode = computed(() => getDeployMode() === 'private')
+
+// 版权信息编辑限制：
+// SaaS租户：版权信息全部不可编辑
+// 私有部署：仅ICP备案号和公安备案号可编辑，版权文字和技术支持不可编辑
+const copyrightTextDisabled = computed(() => {
+  // SaaS模式下全部禁用；私有模式下版权文字也禁用；管理后台覆盖时也禁用
+  return isSaasMode.value || isPrivateMode.value || platformOverride.value.copyrightText
+})
+
+const icpDisabled = computed(() => {
+  // SaaS模式下禁用；管理后台覆盖时禁用；私有模式下可编辑
+  return isSaasMode.value || platformOverride.value.copyright
+})
+
+const policeDisabled = computed(() => {
+  // SaaS模式下禁用；管理后台覆盖时禁用；私有模式下可编辑
+  return isSaasMode.value || platformOverride.value.copyright
+})
+
+const techSupportDisabled = computed(() => {
+  // SaaS模式下全部禁用；私有模式下技术支持也禁用；管理后台覆盖时也禁用
+  return isSaasMode.value || isPrivateMode.value || platformOverride.value.techSupport
+})
 
 // 表单数据 - 从配置store获取
 const form = computed(() => configStore.systemConfig)
@@ -293,31 +340,30 @@ const formRules = {
   ]
 }
 
-// Logo上传前验证
-const beforeLogoUpload = (file: File) => {
-  const isImage = file.type.startsWith('image/')
-  const isLt2M = file.size / 1024 / 1024 < 2
+// Logo上传前验证（暂时禁用，功能未实际使用）
+// const beforeLogoUpload = (file: File) => {
+//   const isImage = file.type.startsWith('image/')
+//   const isLt2M = file.size / 1024 / 1024 < 2
+//   if (!isImage) {
+//     ElMessage.error('只能上传图片文件!')
+//     return false
+//   }
+//   if (!isLt2M) {
+//     ElMessage.error('图片大小不能超过 2MB!')
+//     return false
+//   }
+//   return true
+// }
 
-  if (!isImage) {
-    ElMessage.error('只能上传图片文件!')
-    return false
-  }
-  if (!isLt2M) {
-    ElMessage.error('图片大小不能超过 2MB!')
-    return false
-  }
-  return true
-}
-
-// Logo上传处理
-const handleLogoUpload = async (options: any) => {
-  const file = options.file
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    form.value.systemLogo = e.target?.result as string
-  }
-  reader.readAsDataURL(file)
-}
+// Logo上传处理（暂时禁用，功能未实际使用）
+// const handleLogoUpload = async (options: any) => {
+//   const file = options.file
+//   const reader = new FileReader()
+//   reader.onload = (e) => {
+//     form.value.systemLogo = e.target?.result as string
+//   }
+//   reader.readAsDataURL(file)
+// }
 
 // 触发二维码上传
 const triggerQRUpload = () => {
@@ -424,17 +470,18 @@ const handleSave = async () => {
       saveData.contactQRCodeLabel = form.value.contactQRCodeLabel
     }
 
-    // 仅当版权信息未被覆盖时才保存备案号字段
-    if (!platformOverride.value.copyright) {
+    // ICP备案和公安备案：非SaaS模式 && 未被平台覆盖时可保存
+    if (!icpDisabled.value) {
       saveData.icpNumber = form.value.icpNumber
       saveData.policeNumber = form.value.policeNumber
     }
 
-    // 版权文字和技术支持：仅在管理后台未配置时可本地保存
-    if (!platformOverride.value.copyrightText) {
+    // 版权文字：仅在未被禁用时可保存
+    if (!copyrightTextDisabled.value) {
       saveData.copyrightText = form.value.copyrightText
     }
-    if (!platformOverride.value.techSupport) {
+    // 技术支持：仅在未被禁用时可保存
+    if (!techSupportDisabled.value) {
       saveData.techSupport = form.value.techSupport
     }
 

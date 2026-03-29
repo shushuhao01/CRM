@@ -1,9 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+﻿import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity('performance_config')
 export class PerformanceConfig {
   @PrimaryGeneratedColumn()
   id: number;
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
 
   @Column({ name: 'config_type', length: 20, comment: '配置类型: status-有效状态, coefficient-系数, remark-备注' })
   configType: string;

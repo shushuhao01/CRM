@@ -12,7 +12,7 @@ const router = Router()
 router.post('/create', async (req: Request, res: Response) => {
   try {
     const { packageId, packageName, amount, payType, tenantId, tenantName,
-            contactName, contactPhone, contactEmail } = req.body
+            contactName, contactPhone, contactEmail, billingCycle } = req.body
 
     if (!packageId || !amount || !payType || !contactName || !contactPhone) {
       return res.status(400).json({ code: 400, message: '参数不完整' })
@@ -22,9 +22,36 @@ router.post('/create', async (req: Request, res: Response) => {
       return res.status(400).json({ code: 400, message: '不支持的支付方式' })
     }
 
+    // 查询套餐的年付赠送月数
+    let bonusMonths = 0
+    if (billingCycle === 'yearly') {
+      try {
+        const pkgRows = await AppDataSource.query(
+          `SELECT yearly_bonus_months, yearly_discount_rate FROM tenant_packages WHERE id = ? OR code = ? LIMIT 1`,
+          [packageId, packageId]
+        )
+        if (pkgRows.length === 0) {
+          // 兼容 packages 表
+          const pkgRows2 = await AppDataSource.query(
+            `SELECT yearly_bonus_months, yearly_discount_rate FROM packages WHERE id = ? OR code = ? LIMIT 1`,
+            [packageId, packageId]
+          )
+          if (pkgRows2.length > 0) {
+            bonusMonths = Number(pkgRows2[0].yearly_bonus_months) || 0
+          }
+        } else {
+          bonusMonths = Number(pkgRows[0].yearly_bonus_months) || 0
+        }
+      } catch (e) {
+        console.warn('[Payment] 查询套餐赠送月数失败:', e)
+      }
+    }
+
     const result = await paymentService.createOrder({
       packageId, packageName, amount, payType, tenantId, tenantName,
-      contactName, contactPhone, contactEmail
+      contactName, contactPhone, contactEmail,
+      billingCycle: billingCycle || 'monthly',
+      bonusMonths
     })
 
     if (result.success) {

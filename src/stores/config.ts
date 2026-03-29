@@ -193,6 +193,9 @@ export const useConfigStore = defineStore('config', () => {
     techSupport: false
   })
 
+  // Admin全局控制台加密开关（由管理后台全局控制，默认true）
+  const adminConsoleEncryption = ref<boolean | null>(null)
+
   // 安全配置
   const securityConfig = ref<SecurityConfig>({
     passwordMinLength: 8,
@@ -713,6 +716,12 @@ export const useConfigStore = defineStore('config', () => {
               featureFlags.value = apiFeatureFlags as Record<string, boolean>
             }
           }
+          // 读取Admin全局控制台加密开关
+          if ((platformData as any).enableConsoleEncryption !== undefined) {
+            adminConsoleEncryption.value = !!(platformData as any).enableConsoleEncryption
+            // 同步到localStorage供secureLogger同步读取
+            localStorage.setItem('crm_admin_console_encryption', String(adminConsoleEncryption.value))
+          }
           // 提取Admin下发配置
           const { distributedConfig: apiDistConfig } = platformData as any
           if (apiDistConfig && typeof apiDistConfig === 'object') {
@@ -1040,6 +1049,7 @@ export const useConfigStore = defineStore('config', () => {
     // 状态
     systemConfig,
     platformOverride,
+    adminConsoleEncryption,
     featureFlags,
     adminDistributedConfig,
     configLocked,

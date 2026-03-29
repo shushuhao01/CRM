@@ -215,7 +215,7 @@ const statsLoading = ref(false)
 // 配置
 const config = reactive({
   enabled: false,
-  retentionDays: 30,
+  retentionDays: 15,
   cleanupMode: 'auto' as 'auto' | 'scheduled',
   cleanupTime: '02:00',
   cleanupFrequency: 'daily' as 'daily' | 'weekly' | 'monthly'
@@ -236,7 +236,7 @@ const rules = {
 // 手动清理
 const manualCleanup = reactive({
   mode: 'byDays' as 'byDays' | 'byDate',
-  days: 30,
+  days: 15,
   beforeDate: ''
 })
 const cleaning = ref(false)

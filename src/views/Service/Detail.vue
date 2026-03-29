@@ -624,7 +624,6 @@ import { useOrderStore } from '@/stores/order'
 import { useNotificationStore } from '@/stores/notification'
 import { useDepartmentStore } from '@/stores/department'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
-import { formatPhone } from '@/utils/phone'
 import { createSafeNavigator } from '@/utils/navigation'
 import { serviceApi } from '@/api/service'
 

@@ -89,6 +89,35 @@ const initializeColumns = () => {
   }
 }
 
+// 🔥 监听 props.columns 变化，同步更新列标签（如自定义字段名称变化）
+// 保持已有的可见性和顺序不变，仅更新 label
+watch(() => props.columns, (newColumns) => {
+  if (!newColumns || !Array.isArray(newColumns)) return
+  if (tableColumns.value.length === 0) return
+
+  let hasLabelChange = false
+  newColumns.forEach(newCol => {
+    const existing = tableColumns.value.find(col => col.prop === newCol.prop)
+    if (existing && existing.label !== newCol.label) {
+      existing.label = newCol.label
+      hasLabelChange = true
+    }
+  })
+
+  // 添加新列（如果 props 中有但 tableColumns 中没有的）
+  newColumns.forEach(newCol => {
+    if (!tableColumns.value.find(col => col.prop === newCol.prop)) {
+      tableColumns.value.push({ ...newCol })
+      hasLabelChange = true
+    }
+  })
+
+  if (hasLabelChange) {
+    emit('update:columns', [...tableColumns.value])
+    emit('columns-change', [...tableColumns.value])
+  }
+}, { deep: true })
+
 // 获取可见列
 const visibleColumns = computed(() => {
   return tableColumns.value.filter(col => col.visible)
@@ -146,10 +175,24 @@ const loadColumnSettings = () => {
           }
         })
 
-        // 添加新增的列（如果有的话）
+        // 添加新增的列（如果有的话）- 🔥 插入到其定义时的正确位置，而非末尾
+        const originalColumns = props.columns || []
         tableColumns.value.forEach(col => {
           if (!orderedColumns.find(ordered => ordered.prop === col.prop)) {
-            orderedColumns.push(col)
+            // 找到该列在原始定义中的位置
+            const originalIndex = originalColumns.findIndex(c => c.prop === col.prop)
+            if (originalIndex > 0) {
+              // 找到它的前一个兄弟列在 orderedColumns 中的位置
+              const prevSibling = originalColumns[originalIndex - 1]
+              const prevIndex = orderedColumns.findIndex(c => c.prop === prevSibling.prop)
+              if (prevIndex !== -1) {
+                orderedColumns.splice(prevIndex + 1, 0, col)
+              } else {
+                orderedColumns.push(col)
+              }
+            } else {
+              orderedColumns.push(col)
+            }
           }
         })
 

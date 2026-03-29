@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="pricing-page">
     <!-- Hero -->
     <section class="pricing-hero">
@@ -29,8 +29,11 @@
             <span class="slider"></span>
           </label>
           <span :class="{ active: isYearly }">
-            年付 <em>省20%</em>
+            年付 <em class="promo-badge">🎁 {{ yearlyPromoLabel }}</em>
           </span>
+        </div>
+        <div v-if="!isYearly" class="yearly-hint" @click="isYearly = true">
+          💡 切换年付可享 <strong>{{ yearlyPromoLabel }}</strong> 优惠，立省更多！
         </div>
 
         <div v-if="loading" class="loading-state">加载中...</div>
@@ -53,12 +56,21 @@
                 <span class="price free">免费</span>
                 <span class="period">/ {{ pkg.duration_days }}天</span>
               </template>
+              <template v-else-if="isYearly">
+                <div class="yearly-price-display">
+                  <span class="original-monthly">原价 ¥{{ pkg.price }}/月</span>
+                  <span class="price">¥{{ getYearlyPrice(pkg.price, pkg) }}</span>
+                  <span class="period">/月</span>
+                </div>
+                <div class="yearly-promo-tag">
+                  <span class="tag-icon">🎁</span>
+                  <span>年付 ¥{{ getYearlyTotal(pkg.price, pkg) }}，{{ getYearlyPromoText(pkg) }}</span>
+                </div>
+                <div class="yearly-saving">省 ¥{{ getYearlySaving(pkg.price, pkg) }}</div>
+              </template>
               <template v-else>
-                <span class="price">¥{{ isYearly ? getYearlyPrice(pkg.price) : pkg.price }}</span>
+                <span class="price">¥{{ pkg.price }}</span>
                 <span class="period">/月</span>
-                <p class="price-note" v-if="isYearly">
-                  年付 ¥{{ getYearlyTotal(pkg.price) }}，省 ¥{{ getYearlySaving(pkg.price) }}
-                </p>
               </template>
             </div>
             <ul class="card-features">
@@ -85,6 +97,24 @@
     <!-- 私有部署套餐 -->
     <section v-if="currentVersion === 'private'" class="pricing-section">
       <div class="container">
+        <!-- 私有部署计费切换 -->
+        <div class="billing-toggle" v-if="hasPrivateAnnual">
+          <span :class="{ active: isPrivateAnnual }">年度授权</span>
+          <label class="toggle-switch">
+            <input type="checkbox" v-model="isPrivatePerpetual" />
+            <span class="slider"></span>
+          </label>
+          <span :class="{ active: isPrivatePerpetual }">
+            永久买断
+          </span>
+        </div>
+        <div v-if="hasPrivateAnnual && !isPrivatePerpetual" class="yearly-hint" @click="isPrivatePerpetual = true">
+          💡 切换永久买断，<strong>一次付费，终身使用</strong>，长期更划算！
+        </div>
+        <div v-if="hasPrivateAnnual && isPrivatePerpetual" class="yearly-hint" @click="isPrivatePerpetual = false">
+          💡 切换年度授权，<strong>首年低至{{ privateMinDiscount }}折</strong>，先试用再决定！
+        </div>
+
         <div v-if="loading" class="loading-state">加载中...</div>
 
         <div v-else class="pricing-cards">
@@ -100,20 +130,48 @@
               <p>{{ pkg.description }}</p>
             </div>
             <div class="card-price">
-              <span class="price">¥{{ pkg.price.toLocaleString() }}</span>
-              <span class="period">一次性</span>
+              <!-- 永久买断模式 -->
+              <template v-if="isPrivatePerpetual || !getPrivateAnnualPrice(pkg)">
+                <div class="price-line">
+                  <span class="price">¥{{ pkg.price.toLocaleString() }}</span>
+                  <span class="period">一次性买断</span>
+                </div>
+                <div v-if="getPrivateAnnualPrice(pkg)" class="yearly-promo-tag">
+                  <span class="tag-icon">💰</span>
+                  <span>相当于年度版 {{ Math.ceil(pkg.price / getPrivateAnnualPrice(pkg)) }} 年费用</span>
+                </div>
+              </template>
+              <!-- 年度授权模式 -->
+              <template v-else>
+                <div class="yearly-price-display">
+                  <span class="original-monthly">永久买断价 ¥{{ pkg.price.toLocaleString() }}</span>
+                  <span class="price">¥{{ getPrivateAnnualPrice(pkg).toLocaleString() }}</span>
+                  <span class="period">/年</span>
+                </div>
+                <div class="yearly-promo-tag">
+                  <span class="tag-icon">🎉</span>
+                  <span>首年省 ¥{{ (pkg.price - getPrivateAnnualPrice(pkg)).toLocaleString() }}</span>
+                </div>
+                <div class="yearly-saving">约{{ getPrivateAnnualDiscount(pkg) }}折</div>
+              </template>
             </div>
             <ul class="card-features">
               <li>
                 <span class="check">✓</span>
                 {{ pkg.max_users >= 99999 ? '不限用户数' : `最多 ${pkg.max_users} 个用户` }}
               </li>
+              <li v-if="!isPrivatePerpetual && getPrivateAnnualPrice(pkg)">
+                <span class="check">✓</span> 年度授权，到期可续费
+              </li>
+              <li v-if="isPrivatePerpetual || !getPrivateAnnualPrice(pkg)">
+                <span class="check">✓</span> 永久授权，一次买断
+              </li>
               <li v-for="feature in pkg.features" :key="feature">
                 <span class="check">✓</span> {{ feature }}
               </li>
             </ul>
             <router-link
-              :to="`/register?plan=${pkg.code}`"
+              :to="`/register?plan=${pkg.code}&billing=${isPrivatePerpetual ? 'perpetual' : 'annual'}`"
               class="btn"
               :class="pkg.is_recommended ? 'btn-primary' : 'btn-outline'"
             >
@@ -175,10 +233,12 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { getPackages, getYearlyPrice, getYearlyTotal, getYearlySaving, type Package } from '@/api/packages'
+import { getPackages, getYearlyPrice, getYearlyTotal, getYearlySaving, getYearlyPromoText, type Package } from '@/api/packages'
 
 const currentVersion = ref<'saas' | 'private'>('saas')
 const isYearly = ref(false)
+const isPrivatePerpetual = ref(true)
+const isPrivateAnnual = computed(() => !isPrivatePerpetual.value)
 const openFaq = ref<number | null>(null)
 const loading = ref(true)
 const packages = ref<Package[]>([])
@@ -191,6 +251,42 @@ const saasPackages = computed(() =>
 const privatePackages = computed(() =>
   packages.value.filter(p => p.type === 'private').sort((a, b) => a.sort_order - b.sort_order)
 )
+
+// 是否有私有套餐配置了年度价格
+const hasPrivateAnnual = computed(() =>
+  privatePackages.value.some(p => p.yearly_price && Number(p.yearly_price) > 0)
+)
+
+// 获取私有套餐年度价格
+const getPrivateAnnualPrice = (pkg: Package): number => {
+  return (pkg.yearly_price && Number(pkg.yearly_price) > 0) ? Number(pkg.yearly_price) : 0
+}
+
+// 获取私有套餐年度折扣（对比永久价）
+const getPrivateAnnualDiscount = (pkg: Package): string => {
+  const annual = getPrivateAnnualPrice(pkg)
+  if (!annual || !pkg.price) return '—'
+  return ((annual / pkg.price) * 10).toFixed(1)
+}
+
+// 私有套餐中最低折扣（用于提示文案）
+const privateMinDiscount = computed(() => {
+  let min = 10
+  for (const pkg of privatePackages.value) {
+    const annual = getPrivateAnnualPrice(pkg)
+    if (annual > 0 && pkg.price > 0) {
+      const d = (annual / pkg.price) * 10
+      if (d < min) min = d
+    }
+  }
+  return min.toFixed(1)
+})
+
+// 动态获取年付优惠标签文案
+const yearlyPromoLabel = computed(() => {
+  const firstPromo = saasPackages.value.find(p => p.price > 0)
+  return firstPromo ? getYearlyPromoText(firstPromo) : '省20%'
+})
 
 const toggleFaq = (index: number) => {
   openFaq.value = openFaq.value === index ? null : index
@@ -210,7 +306,7 @@ onMounted(async () => {
 const faqs = [
   {
     question: 'SaaS版和私有部署版有什么区别？',
-    answer: 'SaaS版部署在我们的云服务器上，即开即用，按月/年付费；私有部署版安装在您自己的服务器上，数据完全自主可控，一次性买断。'
+    answer: 'SaaS版部署在我们的云服务器上，即开即用，按月/年付费；私有部署版安装在您自己的服务器上，数据完全自主可控，支持年度授权和永久买断两种方式。'
   },
   {
     question: '可以先试用再购买吗？',
@@ -230,7 +326,7 @@ const faqs = [
   },
   {
     question: '私有部署版包含技术支持吗？',
-    answer: '标准版包含1年免费升级，专业版和企业版包含1年技术支持。之后可以购买年度维护服务。'
+    answer: '标准版包含1年免费升级和邮件技术支持；专业版和企业版包含1年技术支持和专属技术顾问。年度授权版每年续费自动包含技术支持，永久买断版到期后可购买年度维护服务。'
   }
 ]
 </script>
@@ -323,6 +419,45 @@ const faqs = [
       font-size: 12px;
       font-style: normal;
     }
+
+    .promo-badge {
+      background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+      color: white;
+      padding: 3px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      font-style: normal;
+      animation: pulse-badge 2s ease-in-out infinite;
+    }
+  }
+}
+
+@keyframes pulse-badge {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.yearly-hint {
+  text-align: center;
+  margin: -36px auto 40px;
+  padding: 8px 20px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(249, 115, 22, 0.08) 100%);
+  border: 1px dashed #f59e0b;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #b45309;
+  cursor: pointer;
+  max-width: 420px;
+  transition: all 0.3s ease;
+
+  &:hover {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(249, 115, 22, 0.15) 100%);
+    transform: translateY(-1px);
+  }
+
+  strong {
+    color: #d97706;
   }
 }
 
@@ -446,15 +581,60 @@ const faqs = [
     }
   }
 
+  .price-line {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    flex-wrap: nowrap;
+  }
+
   .period {
     font-size: 16px;
     color: var(--text-muted);
+    white-space: nowrap;
   }
 
   .price-note {
     font-size: 13px;
     color: var(--success);
     margin-top: 8px;
+  }
+
+  .yearly-price-display {
+    position: relative;
+
+    .original-monthly {
+      display: block;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-decoration: line-through;
+      margin-bottom: 4px;
+    }
+  }
+
+  .yearly-promo-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 10px;
+    padding: 6px 16px;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(249, 115, 22, 0.1) 100%);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 20px;
+    font-size: 13px;
+    color: #b45309;
+    font-weight: 500;
+
+    .tag-icon {
+      font-size: 14px;
+    }
+  }
+
+  .yearly-saving {
+    margin-top: 6px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--success);
   }
 }
 

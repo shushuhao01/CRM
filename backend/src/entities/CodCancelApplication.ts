@@ -1,9 +1,11 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+﻿import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity('cod_cancel_applications')
 export class CodCancelApplication {
   @PrimaryColumn('varchar', { length: 36 })
   id: string;
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
 
   @Column('varchar', { length: 36, name: 'order_id' })
   orderId: string;

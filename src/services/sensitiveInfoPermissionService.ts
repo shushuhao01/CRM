@@ -109,7 +109,7 @@ class SensitiveInfoPermissionService {
   }
 
   /**
-   * 使用默认权限配置（超级管理员和管理员有权限，其他角色无权限）
+   * 使用默认权限配置（只有超级管理员有权限，其他角色无权限）
    */
   private useDefaultPermissions(): void {
     const infoTypes = ['phone', 'id_card', 'email', 'wechat', 'address', 'bank', 'financial']
@@ -120,8 +120,8 @@ class SensitiveInfoPermissionService {
     infoTypes.forEach(infoType => {
       this.permissionMatrix![infoType] = {}
       roles.forEach(role => {
-        // 默认只有超级管理员和管理员有权限
-        this.permissionMatrix![infoType][role] = role === 'super_admin' || role === 'admin'
+        // 默认只有超级管理员有权限，其他角色无权限（加密显示）
+        this.permissionMatrix![infoType][role] = role === 'super_admin'
       })
     })
 
@@ -142,23 +142,19 @@ class SensitiveInfoPermissionService {
 
     // 如果仍然没有权限矩阵，使用默认规则
     if (!this.permissionMatrix) {
-      // 默认规则：超级管理员和管理员有权限
-      return roleCode === 'super_admin' || roleCode === 'admin'
+      // 默认规则：只有超级管理员有权限
+      return roleCode === 'super_admin'
     }
 
-    // 转换infoType为字符串
-    const infoTypeStr = infoType
-
     // 检查权限矩阵
-    const typePermissions = this.permissionMatrix[infoTypeStr]
+    const typePermissions = this.permissionMatrix[infoType]
     if (!typePermissions) {
-      // 如果没有配置该类型，默认只有超级管理员和管理员有权限
-      return roleCode === 'super_admin' || roleCode === 'admin'
+      // 如果没有配置该类型，默认只有超级管理员有权限
+      return roleCode === 'super_admin'
     }
 
     // 返回配置的权限值
-    const hasAccess = typePermissions[roleCode]
-    return hasAccess === true
+    return typePermissions[roleCode]
   }
 
   /**

@@ -252,6 +252,7 @@ import { ElMessage } from 'element-plus'
 import { createSafeNavigator } from '@/utils/navigation'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 import { useUserStore } from '@/stores/user'
+import { displaySensitiveInfo as displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import PhoneVerifyDialog from '@/components/Logistics/PhoneVerifyDialog.vue'
 import {
   Search,
@@ -348,17 +349,15 @@ const loadingCompanies = ref(false)
 const loadLogisticsCompanies = async () => {
   loadingCompanies.value = true
   try {
-    const { apiService } = await import('@/services/apiService')
-    const response = await apiService.get('/logistics/companies/active')
+    const { logisticsApi } = await import('@/api/logistics')
+    const response = await logisticsApi.getActiveCompanies()
 
-    if (response && Array.isArray(response)) {
-      logisticsCompanies.value = response.map((item: { code: string; name: string }) => ({
-        code: item.code,
-        name: item.name
-      }))
-      console.log('[物流跟踪] 从API加载物流公司列表成功:', logisticsCompanies.value.length, '个')
-    } else if (response && response.data && Array.isArray(response.data)) {
-      logisticsCompanies.value = response.data.map((item: { code: string; name: string }) => ({
+    const dataList = (response && response.success && Array.isArray(response.data))
+      ? response.data
+      : (response && Array.isArray(response) ? response as any[] : null)
+
+    if (dataList) {
+      logisticsCompanies.value = dataList.map((item: { code: string; name: string }) => ({
         code: item.code,
         name: item.name
       }))
@@ -481,12 +480,11 @@ const clearSenderPhone = async () => {
 }
 
 /**
- * 🔥 手机号加密显示
+ * 🔥 手机号根据权限显示（使用数据库敏感信息权限控制）
  */
 const maskPhoneNumber = (phone: string): string => {
-  if (!phone || phone.length < 7) return phone
-  // 保留前3位和后4位，中间用*替换
-  return phone.slice(0, 3) + '****' + phone.slice(-4)
+  if (!phone) return phone
+  return displaySensitiveInfoNew(phone, SensitiveInfoType.PHONE)
 }
 
 /**

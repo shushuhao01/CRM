@@ -84,11 +84,11 @@ router.post('/:id/unlock-admin', async (req: Request, res: Response) => {
       }
     }
 
-    // 解锁该手机号对应的管理员账号
+    // 解锁该手机号对应的管理员账号（仅限私有部署）
     const result = await AppDataSource.query(
       `UPDATE users
        SET status = 'active', login_fail_count = 0, locked_at = NULL
-       WHERE username = ? AND status = 'locked' AND role = 'admin'`,
+       WHERE username = ? AND status = 'locked' AND role = 'admin' AND tenant_id IS NULL`,
       [customerPhone]
     );
 

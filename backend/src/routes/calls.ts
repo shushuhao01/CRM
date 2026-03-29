@@ -9,6 +9,8 @@ import multer from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
 import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
+import { getCurrentTenantIdSafe } from '../utils/tenantHelpers';
+import { JwtConfig } from '../config/jwt';
 
 const router = Router();
 
@@ -25,6 +27,77 @@ const recordingUpload = multer({
     } else {
       cb(new Error('不支持的音频格式'));
     }
+  }
+});
+
+// ==================== 录音流播放（放在认证中间件之前，支持 token 查询参数） ====================
+// 🔥 修复：<audio> 标签无法在请求头中携带 JWT token，
+// 因此此端点支持通过 URL 查询参数 ?token=xxx 进行认证
+router.get('/recordings/stream/*', async (req: Request, res: Response) => {
+  try {
+    // 验证身份：优先从 Authorization header 获取，其次从查询参数获取
+    const authHeader = req.headers.authorization;
+    const headerToken = authHeader && authHeader.split(' ')[1];
+    const queryToken = req.query.token as string;
+    const token = headerToken || queryToken;
+
+    if (!token) {
+      return res.status(401).json({ success: false, message: '未提供访问令牌' });
+    }
+
+    try {
+      JwtConfig.verifyAccessToken(token);
+    } catch {
+      return res.status(401).json({ success: false, message: '访问令牌无效或已过期' });
+    }
+
+    // 获取路径参数
+    const recordingPath = req.params[0];
+
+    if (!recordingPath) {
+      return res.status(400).json({ success: false, message: '请提供录音路径' });
+    }
+
+    const result = await recordingStorageService.getRecordingStream(recordingPath);
+
+    if (!result) {
+      return res.status(404).json({ success: false, message: '录音文件不存在' });
+    }
+
+    // 设置响应头
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(result.fileName)}"`);
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    // 支持范围请求（用于音频seek）
+    const range = req.headers.range;
+    if (range && result.stream instanceof fs.ReadStream) {
+      const filePath = (result.stream as any).path;
+      const stat = fs.statSync(filePath as string);
+      const fileSize = stat.size;
+
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = end - start + 1;
+
+      // 关闭原来的流，用新的范围流替代
+      result.stream.destroy();
+
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader('Content-Length', chunkSize);
+
+      const stream = fs.createReadStream(filePath as string, { start, end });
+      stream.pipe(res);
+    } else if (result.stream instanceof fs.ReadStream) {
+      result.stream.pipe(res);
+    } else {
+      res.send(result.stream);
+    }
+  } catch (error) {
+    console.error('播放录音失败:', error);
+    res.status(500).json({ success: false, message: '播放录音失败' });
   }
 });
 
@@ -702,9 +775,10 @@ router.post('/followups', async (req: Request, res: Response) => {
     console.log('[Calls] 跟进记录保存成功:', savedFollowUp.id);
 
     // 验证保存结果
+    const tVerify = tenantSQL('');
     const verifyRecord = await AppDataSource.query(
-      `SELECT * FROM follow_up_records WHERE id = ?`,
-      [savedFollowUp.id]
+      `SELECT * FROM follow_up_records WHERE id = ?${tVerify.sql}`,
+      [savedFollowUp.id, ...tVerify.params]
     );
     console.log('[Calls] 验证保存的记录:', verifyRecord);
 
@@ -843,64 +917,7 @@ router.post('/recordings/upload', recordingUpload.single('file'), async (req: Re
   }
 });
 
-// 流式播放录音
-router.get('/recordings/stream/*', async (req: Request, res: Response) => {
-  try {
-    // 获取路径参数
-    const recordingPath = req.params[0];
-
-    if (!recordingPath) {
-      return res.status(400).json({
-        success: false,
-        message: '请提供录音路径'
-      });
-    }
-
-    const result = await recordingStorageService.getRecordingStream(recordingPath);
-
-    if (!result) {
-      return res.status(404).json({
-        success: false,
-        message: '录音文件不存在'
-      });
-    }
-
-    // 设置响应头
-    res.setHeader('Content-Type', result.contentType);
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(result.fileName)}"`);
-    res.setHeader('Accept-Ranges', 'bytes');
-
-    // 支持范围请求（用于音频seek）
-    const range = req.headers.range;
-    if (range && result.stream instanceof fs.ReadStream) {
-      const filePath = (result.stream as any).path;
-      const stat = fs.statSync(filePath);
-      const fileSize = stat.size;
-
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunkSize = end - start + 1;
-
-      res.status(206);
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
-      res.setHeader('Content-Length', chunkSize);
-
-      const stream = fs.createReadStream(filePath, { start, end });
-      stream.pipe(res);
-    } else if (result.stream instanceof fs.ReadStream) {
-      result.stream.pipe(res);
-    } else {
-      res.send(result.stream);
-    }
-  } catch (error) {
-    console.error('播放录音失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '播放录音失败'
-    });
-  }
-});
+// 🔥 录音流播放已移到认证中间件之前（支持token查询参数认证）
 
 // 获取录音列表
 router.get('/recordings', async (req: Request, res: Response) => {
@@ -1039,9 +1056,10 @@ router.get('/recordings/:id/download', async (req: Request, res: Response) => {
     const callId = id.replace('rec_', '');
 
     // 先查call_recordings表
+    const tRecDl = tenantSQL('');
     const records = await AppDataSource.query(
-      `SELECT * FROM call_recordings WHERE id = ? OR call_id = ?`,
-      [recordingId, callId]
+      `SELECT * FROM call_recordings WHERE (id = ? OR call_id = ?)${tRecDl.sql}`,
+      [recordingId, callId, ...tRecDl.params]
     );
 
     if (records.length > 0) {
@@ -1067,9 +1085,10 @@ router.get('/recordings/:id/download', async (req: Request, res: Response) => {
     }
 
     // 查call_records表
+    const tCallRec = tenantSQL('');
     const callRecords = await AppDataSource.query(
-      `SELECT * FROM call_records WHERE id = ? AND has_recording = 1`,
-      [callId]
+      `SELECT * FROM call_records WHERE id = ? AND has_recording = 1${tCallRec.sql}`,
+      [callId, ...tCallRec.params]
     );
 
     if (callRecords.length > 0 && callRecords[0].recording_url) {
@@ -1228,9 +1247,10 @@ router.get('/config', async (req: Request, res: Response) => {
     }
 
     // 从数据库查询配置
+    const tCfgGet = tenantSQL('');
     const configs = await AppDataSource.query(
-      `SELECT * FROM phone_configs WHERE user_id = ? AND config_type = 'call' AND is_active = 1`,
-      [targetUserId]
+      `SELECT * FROM phone_configs WHERE user_id = ? AND config_type = 'call' AND is_active = 1${tCfgGet.sql}`,
+      [targetUserId, ...tCfgGet.params]
     );
 
     let config;
@@ -1298,9 +1318,10 @@ router.put('/config', async (req: Request, res: Response) => {
     }
 
     // 检查是否已存在配置
+    const tCfgExist = tenantSQL('');
     const existingConfigs = await AppDataSource.query(
-      `SELECT id FROM phone_configs WHERE user_id = ? AND config_type = 'call'`,
-      [userId]
+      `SELECT id FROM phone_configs WHERE user_id = ? AND config_type = 'call'${tCfgExist.sql}`,
+      [userId, ...tCfgExist.params]
     );
 
     const mobileConfig = JSON.stringify(configData.mobileConfig || getDefaultCallConfig(userId).mobileConfig);
@@ -1311,6 +1332,7 @@ router.put('/config', async (req: Request, res: Response) => {
 
     if (existingConfigs.length > 0) {
       // 更新现有配置
+      const tCfgUp = tenantSQL('');
       await AppDataSource.query(
         `UPDATE phone_configs SET
           call_method = ?,
@@ -1337,7 +1359,7 @@ router.put('/config', async (req: Request, res: Response) => {
           show_location = ?,
           is_active = 1,
           updated_at = NOW()
-        WHERE user_id = ? AND config_type = 'call'`,
+        WHERE user_id = ? AND config_type = 'call'${tCfgUp.sql}`,
         [
           configData.callMethod || 'system',
           configData.lineId || null,
@@ -1361,11 +1383,13 @@ router.put('/config', async (req: Request, res: Response) => {
           configData.priority || 'medium',
           configData.blacklistCheck ? 1 : 0,
           configData.showLocation ? 1 : 0,
-          userId
+          userId,
+          ...tCfgUp.params
         ]
       );
     } else {
       // 插入新配置
+      const cfgTenantId = getCurrentTenantIdSafe() || null;
       await AppDataSource.query(
         `INSERT INTO phone_configs (
           user_id, config_type, call_method, line_id, work_phone, dial_method,
@@ -1373,8 +1397,8 @@ router.put('/config', async (req: Request, res: Response) => {
           aliyun_config, tencent_config, huawei_config,
           call_mode, call_interval, max_retries, call_timeout,
           enable_recording, auto_follow_up, concurrent_calls, priority,
-          blacklist_check, show_location, is_active
-        ) VALUES (?, 'call', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+          blacklist_check, show_location, is_active, tenant_id
+        ) VALUES (?, 'call', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
         [
           userId,
           configData.callMethod || 'system',
@@ -1398,7 +1422,8 @@ router.put('/config', async (req: Request, res: Response) => {
           configData.concurrentCalls || 1,
           configData.priority || 'medium',
           configData.blacklistCheck ? 1 : 0,
-          configData.showLocation ? 1 : 0
+          configData.showLocation ? 1 : 0,
+          cfgTenantId
         ]
       );
     }
@@ -1548,56 +1573,40 @@ router.get('/outbound-tasks', async (req: Request, res: Response) => {
       keyword
     } = req.query;
 
-    // 从outbound_tasks表查询
-    const queryBuilder = AppDataSource.createQueryBuilder()
-      .select('*')
-      .from('outbound_tasks', 'task');
+    // 🔥 修复SQL注入：使用参数化查询代替字符串拼接
+    const tTask = tenantSQL('');
+    let whereClauses = `1=1${tTask.sql}`;
+    const queryParams: any[] = [...tTask.params];
 
     if (status) {
-      queryBuilder.andWhere('task.status = :status', { status });
+      whereClauses += ` AND status = ?`;
+      queryParams.push(status);
     }
-
     if (assignedTo) {
-      queryBuilder.andWhere('task.assigned_to = :assignedTo', { assignedTo });
+      whereClauses += ` AND assigned_to = ?`;
+      queryParams.push(assignedTo);
     }
-
     if (customerLevel) {
-      queryBuilder.andWhere('task.customer_level = :customerLevel', { customerLevel });
+      whereClauses += ` AND customer_level = ?`;
+      queryParams.push(customerLevel);
     }
-
     if (keyword) {
-      queryBuilder.andWhere(
-        '(task.customer_name LIKE :keyword OR task.customer_phone LIKE :keyword)',
-        { keyword: `%${keyword}%` }
-      );
+      whereClauses += ` AND (customer_name LIKE ? OR customer_phone LIKE ?)`;
+      queryParams.push(`%${keyword}%`, `%${keyword}%`);
     }
-
-    queryBuilder.orderBy('task.priority', 'DESC')
-      .addOrderBy('task.created_at', 'DESC');
 
     // 获取总数
-    const tTask = tenantSQL('');
     const countResult = await AppDataSource.query(
-      `SELECT COUNT(*) as total FROM outbound_tasks WHERE 1=1${tTask.sql}
-       ${status ? `AND status = '${status}'` : ''}
-       ${assignedTo ? `AND assigned_to = '${assignedTo}'` : ''}
-       ${customerLevel ? `AND customer_level = '${customerLevel}'` : ''}
-       ${keyword ? `AND (customer_name LIKE '%${keyword}%' OR customer_phone LIKE '%${keyword}%')` : ''}`,
-      [...tTask.params]
+      `SELECT COUNT(*) as total FROM outbound_tasks WHERE ${whereClauses}`,
+      queryParams
     );
     const total = countResult[0]?.total || 0;
 
     // 分页查询
     const offset = (Number(page) - 1) * Number(pageSize);
     const tasks = await AppDataSource.query(
-      `SELECT * FROM outbound_tasks WHERE 1=1${tTask.sql}
-       ${status ? `AND status = '${status}'` : ''}
-       ${assignedTo ? `AND assigned_to = '${assignedTo}'` : ''}
-       ${customerLevel ? `AND customer_level = '${customerLevel}'` : ''}
-       ${keyword ? `AND (customer_name LIKE '%${keyword}%' OR customer_phone LIKE '%${keyword}%')` : ''}
-       ORDER BY priority DESC, created_at DESC
-       LIMIT ${Number(pageSize)} OFFSET ${offset}`,
-      [...tTask.params]
+      `SELECT * FROM outbound_tasks WHERE ${whereClauses} ORDER BY priority DESC, created_at DESC LIMIT ? OFFSET ?`,
+      [...queryParams, Number(pageSize), offset]
     );
 
     res.json({
@@ -1642,12 +1651,13 @@ router.post('/outbound-tasks', async (req: Request, res: Response) => {
     }
 
     const taskId = `task_${Date.now()}_${uuidv4().substring(0, 8)}`;
+    const taskTenantId = getCurrentTenantIdSafe() || null;
 
     await AppDataSource.query(
       `INSERT INTO outbound_tasks
-       (id, customer_id, customer_name, customer_phone, customer_level, status, priority, source, assigned_to, assigned_to_name, remark, created_by, created_by_name)
-       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)`,
-      [taskId, customerId, customerName, customerPhone, customerLevel, priority, source, assignedTo, assignedToName, remark, currentUser?.userId, currentUser?.realName]
+       (id, customer_id, customer_name, customer_phone, customer_level, status, priority, source, assigned_to, assigned_to_name, remark, created_by, created_by_name, tenant_id)
+       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [taskId, customerId, customerName, customerPhone, customerLevel, priority, source, assignedTo, assignedToName, remark, currentUser?.userId, currentUser?.realName, taskTenantId]
     );
 
     res.status(201).json({
@@ -1694,9 +1704,10 @@ router.put('/outbound-tasks/:id', async (req: Request, res: Response) => {
     }
 
     params.push(id);
+    const tTaskUp = tenantSQL('');
     await AppDataSource.query(
-      `UPDATE outbound_tasks SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`,
-      params
+      `UPDATE outbound_tasks SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?${tTaskUp.sql}`,
+      [...params, ...tTaskUp.params]
     );
 
     res.json({
@@ -1717,7 +1728,8 @@ router.delete('/outbound-tasks/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    await AppDataSource.query('DELETE FROM outbound_tasks WHERE id = ?', [id]);
+    const tTaskDel = tenantSQL('');
+    await AppDataSource.query(`DELETE FROM outbound_tasks WHERE id = ?${tTaskDel.sql}`, [id, ...tTaskDel.params]);
 
     res.json({
       success: true,
@@ -1797,11 +1809,12 @@ router.post('/lines', async (req: Request, res: Response) => {
     }
 
     const lineId = `line_${Date.now()}_${uuidv4().substring(0, 8)}`;
+    const lineTenantId = getCurrentTenantIdSafe() || null;
 
     await AppDataSource.query(
       `INSERT INTO call_lines
-       (id, name, provider, caller_number, config, status, max_concurrent, daily_limit, sort_order, remark, created_by, created_at)
-       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, NOW())`,
+       (id, name, provider, caller_number, config, status, max_concurrent, daily_limit, sort_order, remark, created_by, tenant_id, created_at)
+       VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, NOW())`,
       [
         lineId,
         name,
@@ -1812,7 +1825,8 @@ router.post('/lines', async (req: Request, res: Response) => {
         dailyLimit,
         sortOrder,
         remark || null,
-        currentUser?.userId || currentUser?.id
+        currentUser?.userId || currentUser?.id,
+        lineTenantId
       ]
     );
 
@@ -1888,9 +1902,10 @@ router.put('/lines/:id', async (req: Request, res: Response) => {
 
     updateParams.push(id);
 
+    const tLineUp = tenantSQL('');
     await AppDataSource.query(
-      `UPDATE call_lines SET ${updateFields.join(', ')} WHERE id = ?`,
-      updateParams
+      `UPDATE call_lines SET ${updateFields.join(', ')} WHERE id = ?${tLineUp.sql}`,
+      [...updateParams, ...tLineUp.params]
     );
 
     res.json({
@@ -1911,7 +1926,8 @@ router.delete('/lines/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    await AppDataSource.query('DELETE FROM call_lines WHERE id = ?', [id]);
+    const tLineDel = tenantSQL('');
+    await AppDataSource.query(`DELETE FROM call_lines WHERE id = ?${tLineDel.sql}`, [id, ...tLineDel.params]);
 
     res.json({
       success: true,
@@ -1932,9 +1948,10 @@ router.post('/lines/:id/test', async (req: Request, res: Response) => {
     const { id } = req.params;
 
     // 获取线路信息
+    const tLineTest = tenantSQL('');
     const lines = await AppDataSource.query(
-      `SELECT * FROM call_lines WHERE id = ?`,
-      [id]
+      `SELECT * FROM call_lines WHERE id = ?${tLineTest.sql}`,
+      [id, ...tLineTest.params]
     );
 
     if (lines.length === 0) {

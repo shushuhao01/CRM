@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../config/database'
 import { authenticateToken } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
+import { tenantRawSQL, getCurrentTenantIdSafe } from '../utils/tenantHelpers'
 
 const router = Router()
 
@@ -15,11 +16,13 @@ router.get('/stats', authenticateToken, async (_req: Request, res: Response) => 
     let expiredRecords = 0
     let oldestRecord = null
     let lastCleanup = null
+    const t = tenantRawSQL()
 
     // 获取总记录数
     try {
       const totalResult = await AppDataSource.query(
-        'SELECT COUNT(*) as count FROM notification_logs'
+        `SELECT COUNT(*) as count FROM notification_logs WHERE 1=1${t.sql}`,
+        [...t.params]
       )
       totalRecords = totalResult[0]?.count || 0
     } catch (_e) {
@@ -27,14 +30,14 @@ router.get('/stats', authenticateToken, async (_req: Request, res: Response) => 
     }
 
     // 获取配置中的保留天数
-    let retentionDays = 30
+    let retentionDays = 15
     try {
       const configResult = await AppDataSource.query(
-        `SELECT configValue FROM system_configs WHERE configKey = ?`,
-        [CONFIG_KEY]
+        `SELECT configValue FROM system_configs WHERE configKey = ?${t.sql}`,
+        [CONFIG_KEY, ...t.params]
       )
-      const config = configResult[0]?.configValue ? JSON.parse(configResult[0].configValue) : { retentionDays: 30 }
-      retentionDays = config.retentionDays || 30
+      const config = configResult[0]?.configValue ? JSON.parse(configResult[0].configValue) : { retentionDays: 15 }
+      retentionDays = config.retentionDays || 15
     } catch (_e) {
       // 配置不存在，使用默认值
     }
@@ -42,8 +45,8 @@ router.get('/stats', authenticateToken, async (_req: Request, res: Response) => 
     // 获取可清理记录数（超过保留天数的记录）
     try {
       const expiredResult = await AppDataSource.query(
-        `SELECT COUNT(*) as count FROM notification_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
-        [retentionDays]
+        `SELECT COUNT(*) as count FROM notification_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)${t.sql}`,
+        [retentionDays, ...t.params]
       )
       expiredRecords = expiredResult[0]?.count || 0
     } catch (_e) {
@@ -53,7 +56,8 @@ router.get('/stats', authenticateToken, async (_req: Request, res: Response) => 
     // 获取最早记录时间
     try {
       const oldestResult = await AppDataSource.query(
-        'SELECT MIN(created_at) as oldest FROM notification_logs'
+        `SELECT MIN(created_at) as oldest FROM notification_logs WHERE 1=1${t.sql}`,
+        [...t.params]
       )
       oldestRecord = oldestResult[0]?.oldest
         ? new Date(oldestResult[0].oldest).toLocaleString('zh-CN')
@@ -65,7 +69,8 @@ router.get('/stats', authenticateToken, async (_req: Request, res: Response) => 
     // 获取上次清理时间
     try {
       const lastCleanupResult = await AppDataSource.query(
-        `SELECT cleanup_time FROM message_cleanup_history ORDER BY cleanup_time DESC LIMIT 1`
+        `SELECT cleanup_time FROM message_cleanup_history WHERE 1=1${t.sql} ORDER BY cleanup_time DESC LIMIT 1`,
+        [...t.params]
       )
       lastCleanup = lastCleanupResult[0]?.cleanup_time
         ? new Date(lastCleanupResult[0].cleanup_time).toLocaleString('zh-CN')
@@ -106,16 +111,17 @@ router.get('/stats', authenticateToken, async (_req: Request, res: Response) => 
 // 获取清理配置
 router.get('/config', authenticateToken, async (_req: Request, res: Response) => {
   try {
+    const t = tenantRawSQL()
     const result = await AppDataSource.query(
-      `SELECT configValue FROM system_configs WHERE configKey = ?`,
-      [CONFIG_KEY]
+      `SELECT configValue FROM system_configs WHERE configKey = ?${t.sql}`,
+      [CONFIG_KEY, ...t.params]
     )
 
     const configData = result[0]?.configValue
       ? JSON.parse(result[0].configValue)
       : {
           enabled: false,
-          retentionDays: 30,
+          retentionDays: 15,
           cleanupMode: 'auto',
           cleanupTime: '02:00',
           cleanupFrequency: 'daily'
@@ -136,7 +142,7 @@ router.get('/config', authenticateToken, async (_req: Request, res: Response) =>
       message: 'success',
       data: {
         enabled: false,
-        retentionDays: 30,
+        retentionDays: 15,
         cleanupMode: 'auto',
         cleanupTime: '02:00',
         cleanupFrequency: 'daily'
@@ -150,23 +156,25 @@ router.post('/config', authenticateToken, async (req: Request, res: Response) =>
   try {
     const config = req.body
     const configJson = JSON.stringify(config)
+    const t = tenantRawSQL()
 
     // 检查配置是否存在
     const existing = await AppDataSource.query(
-      `SELECT id FROM system_configs WHERE configKey = ?`,
-      [CONFIG_KEY]
+      `SELECT id FROM system_configs WHERE configKey = ?${t.sql}`,
+      [CONFIG_KEY, ...t.params]
     )
 
     if (existing.length > 0) {
       await AppDataSource.query(
-        `UPDATE system_configs SET configValue = ?, updatedAt = NOW() WHERE configKey = ?`,
-        [configJson, CONFIG_KEY]
+        `UPDATE system_configs SET configValue = ?, updatedAt = NOW() WHERE configKey = ?${t.sql}`,
+        [configJson, CONFIG_KEY, ...t.params]
       )
     } else {
+      const tenantId = getCurrentTenantIdSafe() || null
       await AppDataSource.query(
-        `INSERT INTO system_configs (configKey, configValue, valueType, configGroup, description, isEnabled, isSystem, sortOrder, createdAt, updatedAt)
-         VALUES (?, ?, 'json', 'message_settings', '消息清理配置', 1, 0, 1, NOW(), NOW())`,
-        [CONFIG_KEY, configJson]
+        `INSERT INTO system_configs (configKey, configValue, valueType, configGroup, description, isEnabled, isSystem, sortOrder, createdAt, updatedAt, tenant_id)
+         VALUES (?, ?, 'json', 'message_settings', '消息清理配置', 1, 0, 1, NOW(), NOW(), ?)`,
+        [CONFIG_KEY, configJson, tenantId]
       )
     }
 
@@ -182,6 +190,7 @@ router.post('/execute', authenticateToken, async (req: Request, res: Response) =
   try {
     const { mode, days, beforeDate } = req.body
     const user = (req as any).user
+    const t = tenantRawSQL()
 
     let deletedCount = 0
     let remark = ''
@@ -192,8 +201,8 @@ router.post('/execute', authenticateToken, async (req: Request, res: Response) =
       }
       // 按天数清理
       const result = await AppDataSource.query(
-        `DELETE FROM notification_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
-        [days]
+        `DELETE FROM notification_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)${t.sql}`,
+        [days, ...t.params]
       )
       deletedCount = result.affectedRows || 0
       remark = `清理 ${days} 天前的记录`
@@ -203,8 +212,8 @@ router.post('/execute', authenticateToken, async (req: Request, res: Response) =
       }
       // 按日期清理
       const result = await AppDataSource.query(
-        `DELETE FROM notification_logs WHERE created_at < ?`,
-        [beforeDate]
+        `DELETE FROM notification_logs WHERE created_at < ?${t.sql}`,
+        [beforeDate, ...t.params]
       )
       deletedCount = result.affectedRows || 0
       remark = `清理 ${beforeDate} 之前的记录`
@@ -214,10 +223,11 @@ router.post('/execute', authenticateToken, async (req: Request, res: Response) =
 
     // 记录清理历史
     try {
+      const tenantId = getCurrentTenantIdSafe() || null
       await AppDataSource.query(
-        `INSERT INTO message_cleanup_history (id, cleanup_type, deleted_count, operator, operator_id, remark, cleanup_time)
-         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-        [uuidv4(), 'manual', deletedCount, user?.name || user?.username || '系统', user?.id, remark]
+        `INSERT INTO message_cleanup_history (id, cleanup_type, deleted_count, operator, operator_id, remark, cleanup_time, tenant_id)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)`,
+        [uuidv4(), 'manual', deletedCount, user?.name || user?.username || '系统', user?.id, remark, tenantId]
       )
     } catch (historyError) {
       console.error('记录清理历史失败:', historyError)
@@ -234,6 +244,7 @@ router.post('/execute', authenticateToken, async (req: Request, res: Response) =
 // 获取清理历史
 router.get('/history', authenticateToken, async (_req: Request, res: Response) => {
   try {
+    const t = tenantRawSQL()
     const result = await AppDataSource.query(
       `SELECT
         id,
@@ -243,8 +254,10 @@ router.get('/history', authenticateToken, async (_req: Request, res: Response) =
         remark,
         DATE_FORMAT(cleanup_time, '%Y-%m-%d %H:%i:%s') as cleanupTime
        FROM message_cleanup_history
+       WHERE 1=1${t.sql}
        ORDER BY cleanup_time DESC
-       LIMIT 50`
+       LIMIT 50`,
+      [...t.params]
     )
 
     res.json({ success: true, code: 200, message: 'success', data: result })

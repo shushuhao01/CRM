@@ -11,6 +11,8 @@ export interface AfterSalesService {
   customerId: string
   customerName: string
   customerPhone: string
+  customerCode?: string
+  trackingNumber?: string
   serviceType: 'return' | 'exchange' | 'repair' | 'refund' | 'complaint' | 'inquiry'
   status: 'pending' | 'processing' | 'resolved' | 'closed'
   priority: 'low' | 'normal' | 'high' | 'urgent'

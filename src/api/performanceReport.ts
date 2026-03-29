@@ -55,6 +55,7 @@ export const performanceReportApi = {
     reportTypes?: string[]
     viewScope?: string
     targetDepartments?: string[]
+    rankingLimit?: number
   }) => {
     return request.post('/performance-report/preview', data)
   },

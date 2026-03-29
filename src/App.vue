@@ -78,6 +78,13 @@
         </div>
       </el-header>
 
+      <!-- 🔥 租户资源配额预警横幅 -->
+      <div v-if="quotaWarning" class="quota-warning-banner" :class="quotaWarning.level">
+        <el-icon><WarningFilled /></el-icon>
+        <span>{{ quotaWarning.message }}</span>
+        <el-button v-if="quotaWarning.level === 'critical'" size="small" type="danger" text @click="quotaWarningDismissed = true">知道了</el-button>
+      </div>
+
       <!-- 公告弹窗 -->
       <AnnouncementPopup />
 
@@ -148,8 +155,9 @@
               </router-view>
             </div>
 
-            <!-- 🔥 版权信息 - 在滚动区域底部，滚动到底才显示 -->
-            <footer class="app-footer">
+            <!-- 🔥 版权信息 - 在滚动区域底部，滚动到底才显示，单行居中 -->
+            <!-- 仅当管理后台配置了技术支持或备案信息时才显示 -->
+            <footer class="app-footer" v-if="configStore.systemConfig.techSupport || configStore.systemConfig.icpNumber || configStore.systemConfig.policeNumber || configStore.systemConfig.copyrightText">
               <div class="footer-content">
                 <span>{{ configStore.systemConfig.copyrightText || `版权归 ${configStore.systemConfig.companyName || 'CRM系统'} 所有` }}</span>
                 <span class="separator">|</span>
@@ -167,28 +175,29 @@
                 <a href="javascript:void(0)" class="footer-link" @click="showContactDialog">
                   联系我们
                 </a>
-              </div>
-              <div class="footer-beian" v-if="configStore.systemConfig.icpNumber || configStore.systemConfig.policeNumber || configStore.systemConfig.techSupport">
-                <a
-                  v-if="configStore.systemConfig.icpNumber"
-                  href="https://beian.miit.gov.cn/"
-                  target="_blank"
-                  class="footer-link beian-link"
-                >
-                  {{ configStore.systemConfig.icpNumber }}
-                </a>
-                <span class="separator" v-if="configStore.systemConfig.icpNumber && configStore.systemConfig.policeNumber">|</span>
-                <a
-                  v-if="configStore.systemConfig.policeNumber"
-                  href="http://www.beian.gov.cn/"
-                  target="_blank"
-                  class="footer-link beian-link"
-                >
-                  🛡️ {{ configStore.systemConfig.policeNumber }}
-                </a>
-                <template v-if="configStore.systemConfig.techSupport">
-                  <span class="separator" v-if="configStore.systemConfig.icpNumber || configStore.systemConfig.policeNumber">|</span>
-                  <span class="tech-support">{{ configStore.systemConfig.techSupport }}</span>
+                <template v-if="configStore.systemConfig.icpNumber || configStore.systemConfig.policeNumber || configStore.systemConfig.techSupport">
+                  <span class="separator" v-if="configStore.systemConfig.icpNumber">|</span>
+                  <a
+                    v-if="configStore.systemConfig.icpNumber"
+                    href="https://beian.miit.gov.cn/"
+                    target="_blank"
+                    class="footer-link beian-link"
+                  >
+                    {{ configStore.systemConfig.icpNumber }}
+                  </a>
+                  <span class="separator" v-if="configStore.systemConfig.policeNumber">|</span>
+                  <a
+                    v-if="configStore.systemConfig.policeNumber"
+                    href="http://www.beian.gov.cn/"
+                    target="_blank"
+                    class="footer-link beian-link"
+                  >
+                    🛡️ {{ configStore.systemConfig.policeNumber }}
+                  </a>
+                  <template v-if="configStore.systemConfig.techSupport">
+                    <span class="separator" v-if="configStore.systemConfig.icpNumber || configStore.systemConfig.policeNumber">|</span>
+                    <span class="tech-support">{{ configStore.systemConfig.techSupport }}</span>
+                  </template>
                 </template>
               </div>
             </footer>
@@ -313,9 +322,10 @@ import DynamicMenu from '@/components/DynamicMenu.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import {
   Menu, TrendCharts, User, ArrowDown, Odometer, ShoppingCart,
-  Box, Setting, Headset, Service
+  Box, Setting, Headset, Service, WarningFilled
 } from '@element-plus/icons-vue'
 import { licenseHeartbeatService } from '@/services/licenseHeartbeatService'
+import { getResourceUsage, type ResourceUsage } from '@/api/tenantLicense'
 
 
 const route = useRoute()
@@ -351,6 +361,88 @@ const showPersonalSettingsModal = ref(false)
 
 // 🔥 批次274新增：联系我们对话框
 const contactDialogVisible = ref(false)
+
+// 🔥 租户资源配额预警
+const quotaWarningDismissed = ref(false)
+const resourceUsage = ref<ResourceUsage | null>(null)
+let quotaCheckTimer: ReturnType<typeof setInterval> | null = null
+
+// 配额预警计算属性
+const quotaWarning = computed(() => {
+  if (quotaWarningDismissed.value) return null
+  const usage = resourceUsage.value
+  if (!usage) return null
+
+  const warnings: string[] = []
+  let level: 'warning' | 'critical' = 'warning'
+
+  // 检查用户数
+  const userPercent = usage.users.usagePercent
+  if (userPercent >= 100) {
+    warnings.push(`用户数已达上限（${usage.users.current}/${usage.users.max}）`)
+    level = 'critical'
+  } else if (userPercent >= 90) {
+    warnings.push(`用户数已使用${userPercent}%（${usage.users.current}/${usage.users.max}）`)
+    level = 'critical'
+  } else if (userPercent >= 80) {
+    warnings.push(`用户数已使用${userPercent}%（${usage.users.current}/${usage.users.max}）`)
+  }
+
+  // 检查存储空间
+  const storagePercent = usage.storage.usagePercent
+  if (storagePercent >= 100) {
+    warnings.push(`存储空间已满（${usage.storage.usedGb}GB/${usage.storage.maxGb}GB）`)
+    level = 'critical'
+  } else if (storagePercent >= 90) {
+    warnings.push(`存储空间已使用${storagePercent}%（${usage.storage.usedGb}GB/${usage.storage.maxGb}GB）`)
+    if (level !== 'critical') level = 'critical'
+  } else if (storagePercent >= 80) {
+    warnings.push(`存储空间已使用${storagePercent}%（${usage.storage.usedGb}GB/${usage.storage.maxGb}GB）`)
+  }
+
+  if (warnings.length === 0) return null
+
+  const suffix = level === 'critical' ? '请联系管理员扩容！' : '请关注资源使用情况。'
+  return {
+    level,
+    message: `⚠️ ${warnings.join('；')}。${suffix}`
+  }
+})
+
+// 获取资源使用情况
+const fetchResourceUsage = async () => {
+  try {
+    const data = await getResourceUsage()
+    if (data) {
+      resourceUsage.value = data
+      // 当预警级别变化时重置dismissed状态
+      quotaWarningDismissed.value = false
+    }
+  } catch {
+    // 静默失败
+  }
+}
+
+// 启动配额检测定时器（每5分钟检测一次）
+const startQuotaCheckTimer = () => {
+  // 延迟3秒首次执行，避免登录时大量并发请求
+  setTimeout(() => {
+    fetchResourceUsage()
+  }, 3000)
+  quotaCheckTimer = setInterval(() => {
+    if (userStore.token && !isLoginPage.value) {
+      fetchResourceUsage()
+    }
+  }, 5 * 60 * 1000)
+}
+
+// 停止配额检测定时器
+const stopQuotaCheckTimer = () => {
+  if (quotaCheckTimer) {
+    clearInterval(quotaCheckTimer)
+    quotaCheckTimer = null
+  }
+}
 
 // 显示联系我们对话框
 const showContactDialog = () => {
@@ -846,6 +938,11 @@ onMounted(async () => {
   // 🔥 启动授权心跳检测服务（SaaS模式）
   licenseHeartbeatService.start()
 
+  // 🔥 启动配额预警检测定时器（每5分钟检测一次用户数和存储空间使用率）
+  if (userStore.token) {
+    startQuotaCheckTimer()
+  }
+
   // 启动订单流转检查定时器（每30秒检查一次）
   startOrderTransferTimer()
 
@@ -964,6 +1061,9 @@ onUnmounted(() => {
     clearInterval(orderTransferTimer)
     orderTransferTimer = null
   }
+
+  // 🔥 清理配额检测定时器
+  stopQuotaCheckTimer()
 })
 
 
@@ -1094,6 +1194,31 @@ watch(isMobile, (newValue) => {
 
 .user-info:hover {
   background-color: #f5f7fa;
+}
+
+/* 🔥 租户配额预警横幅 */
+.quota-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  font-size: 13px;
+  line-height: 1.4;
+  z-index: 10;
+}
+.quota-warning-banner.warning {
+  background: linear-gradient(90deg, #fdf6ec 0%, #fef0e0 100%);
+  color: #e6a23c;
+  border-bottom: 1px solid #faecd8;
+}
+.quota-warning-banner.critical {
+  background: linear-gradient(90deg, #fef0f0 0%, #fde2e2 100%);
+  color: #f56c6c;
+  border-bottom: 1px solid #fbc4c4;
+}
+.quota-warning-banner .el-icon {
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
 .username {
@@ -1546,7 +1671,7 @@ watch(isMobile, (newValue) => {
   }
 }
 
-/* 🔥 版权信息样式 - 在灰色背景底部，滚动到底才显示 */
+/* 🔥 版权信息样式 - 单行居中显示 */
 .app-footer {
   background: transparent;
   padding: 20px;
@@ -1579,27 +1704,15 @@ watch(isMobile, (newValue) => {
   color: #409eff;
 }
 
-.footer-beian {
-  color: #ccc;
-  font-size: 11px;
-  margin-top: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-}
-
-.footer-beian .beian-link {
+.footer-content .beian-link {
   color: #bbb;
-  text-decoration: none;
-  transition: color 0.3s;
 }
 
-.footer-beian .beian-link:hover {
+.footer-content .beian-link:hover {
   color: #409eff;
 }
 
-.footer-beian .tech-support {
+.footer-content .tech-support {
   color: #bbb;
 }
 

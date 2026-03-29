@@ -59,8 +59,33 @@ export interface OrderStatistics {
 
 
 
+// 部门下单限制检查响应接口
+export interface DepartmentLimitCheckResult {
+  hasLimit: boolean
+  exceeded: boolean
+  message?: string
+  departmentName?: string
+  details?: {
+    orderCountEnabled: boolean
+    orderCount: number
+    maxOrderCount: number
+    orderCountExceeded: boolean
+    singleAmountEnabled: boolean
+    maxSingleAmount: number
+    totalAmountEnabled: boolean
+    totalAmount: number
+    maxTotalAmount: number
+    remainingAmount: number
+    totalAmountExceeded: boolean
+  }
+}
+
 // 订单API服务
 export const orderApi = {
+  // 检查部门下单限制（选中客户时预检查）
+  checkDepartmentLimit: (customerId: string) =>
+    api.post<DepartmentLimitCheckResult>(API_ENDPOINTS.ORDERS.CHECK_DEPARTMENT_LIMIT, { customerId }),
+
   // 获取订单列表
   getList: (params?: OrderSearchParams) =>
     api.get<OrderListResponse>(API_ENDPOINTS.ORDERS.LIST, { params }),
@@ -96,6 +121,10 @@ export const orderApi = {
   // 获取待审核的取消订单列表（支持分页）
   getPendingCancelOrders: (params?: { page?: number; pageSize?: number }) =>
     api.get<Order[]>(API_ENDPOINTS.ORDERS.PENDING_CANCEL, { params }),
+
+  // 获取待审核的取消订单数量
+  getPendingCancelCount: () =>
+    api.get<{ count: number }>(API_ENDPOINTS.ORDERS.PENDING_CANCEL_COUNT),
 
   // 审核取消订单申请
   cancelAudit: (id: string, params: OrderCancelAuditParams) =>

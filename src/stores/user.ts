@@ -6,6 +6,87 @@ import { autoStatusSyncService } from '@/services/autoStatusSync'
 import { setUserPermissions } from '@/utils/permission'
 import { rolePermissionService } from '@/services/rolePermissionService'
 import { getDefaultRolePermissions } from '@/config/defaultRolePermissions'
+import { sensitiveInfoPermissionService } from '@/services/sensitiveInfoPermissionService'
+
+/**
+ * 客服自定义权限 → 菜单权限映射表
+ * 将客服权限管理模块配置的 customPermissions 转换为菜单系统能识别的权限 key
+ */
+const CS_PERM_TO_MENU_MAP: Record<string, string[]> = {
+  // 客户管理
+  'customer:list:view': ['customer', 'customer:list', 'customer.list', 'customer.list.view'],
+  'customer:list:edit': ['customer', 'customer:list', 'customer.list', 'customer.list.edit'],
+  'customer:list:create': ['customer', 'customer:list', 'customer:add', 'customer.list', 'customer.add'],
+  'customer:list:assign': ['customer', 'customer:list', 'customer.list'],
+  // 订单管理
+  'order:list:view': ['order', 'order:list', 'order.list', 'order.list.view'],
+  'order:list:edit': ['order', 'order:list', 'order.list', 'order.list.edit'],
+  'order:add:create': ['order', 'order:add', 'order.add', 'order.add.create'],
+  'order:audit:view': ['order', 'order:audit', 'order.audit', 'order.audit.view'],
+  'order:audit:approve': ['order', 'order:audit', 'order.audit', 'order.audit.approve'],
+  'order:detail:cancel': ['order', 'order:list', 'order.list'],
+  'order:cod:cancelAudit': ['order', 'finance:cod'],
+  // 售后管理
+  'service:list:view': ['aftersale', 'aftersale:order', 'aftersale.list', 'aftersale.list.view'],
+  'service:list:edit': ['aftersale', 'aftersale:order', 'aftersale.list', 'aftersale.list.edit'],
+  'service:afterSales:view': ['aftersale', 'aftersale:order', 'aftersale.list'],
+  'service:afterSales:edit': ['aftersale', 'aftersale:order', 'aftersale:add', 'aftersale.add'],
+  // 服务管理（通话/短信）
+  'callService:call:view': ['communication', 'communication.call'],
+  'callService:call:create': ['communication', 'communication.call'],
+  'callService:record:view': ['communication', 'communication.call'],
+  'callService:sms:view': ['communication', 'communication.sms'],
+  'callService:sms:send': ['communication', 'communication.sms'],
+  // 物流管理
+  'logistics:shipping:view': ['logistics', 'logistics:shipping', 'logistics:list', 'logistics:tracking', 'logistics.shipping', 'logistics.list'],
+  'logistics:shipping:edit': ['logistics', 'logistics:shipping', 'logistics:list', 'logistics:status', 'logistics.shipping'],
+  'logistics:shipping:batchExport': ['logistics', 'logistics:shipping', 'logistics.shipping'],
+  // 资料管理
+  'data:record:view': ['data', 'data:list', 'data:customer', 'data.list', 'data.list.view', 'data.search', 'data.search.basic'],
+  'data:record:edit': ['data', 'data:list', 'data.list', 'data.list.edit'],
+  'data:record:create': ['data', 'data:list', 'data.list'],
+  'data:record:export': ['data', 'data:list', 'data.list', 'data.list.export'],
+  // 商品管理
+  'product:list:view': ['sales:product', 'sales:product:view', 'product:analytics'],
+  'product:list:edit': ['sales:product', 'sales:product:view', 'sales:product:edit'],
+  'product:add:create': ['sales:product', 'sales:product:add'],
+  'product:inventory:manage': ['sales:product', 'sales:product:edit'],
+  // 财务管理
+  'finance:payment:view': ['finance', 'finance:data'],
+  'finance:payment:edit': ['finance', 'finance:data', 'finance:manage'],
+  'finance:report:view': ['finance', 'finance:data'],
+  'finance:report:export': ['finance', 'finance:data'],
+  'finance:refund:manage': ['finance', 'finance:manage'],
+  // 业绩统计
+  'performance:personal:view': ['performance', 'performance:personal'],
+  'performance:team:view': ['performance', 'performance:team'],
+  'performance:report:export': ['performance', 'performance:analysis'],
+  'performance:ranking:view': ['performance', 'performance:analysis'],
+}
+
+/**
+ * 将客服 customPermissions 转换为菜单系统权限列表
+ */
+function convertCsPermsToMenuPerms(customPermissions: string[]): string[] {
+  const menuPerms = new Set<string>()
+  // 客服始终拥有数据看板权限
+  menuPerms.add('dashboard')
+  menuPerms.add('dashboard.view')
+  for (const perm of customPermissions) {
+    // 通过映射表转换
+    const mapped = CS_PERM_TO_MENU_MAP[perm]
+    if (mapped) {
+      mapped.forEach(p => menuPerms.add(p))
+    }
+    // 同时保留原始 key 和父级 key
+    menuPerms.add(perm)
+    const parts = perm.split(':')
+    for (let i = 1; i < parts.length; i++) {
+      menuPerms.add(parts.slice(0, i).join(':'))
+    }
+  }
+  return Array.from(menuPerms)
+}
 
 export interface User {
   id: string
@@ -14,6 +95,12 @@ export interface User {
   role: 'super_admin' | 'admin' | 'department_manager' | 'sales_staff' | 'customer_service'
   department: string // 部门名称（用于显示）
   avatar?: string
+  // 基本信息字段
+  username?: string // 用户名（登录名）
+  phone?: string // 手机号
+  realName?: string // 真实姓名
+  roleName?: string // 角色显示名称
+  position?: string // 职位
   // 新增权限相关字段
   userRole?: UserRole
   permissionLevel?: PermissionLevel
@@ -163,19 +250,27 @@ export const useUserStore = defineStore('user', () => {
     return permission?.permissions[0] || PermissionLevel.RESTRICTED
   })
 
-  // 手机号查看权限：使用新的权限服务检查
+  // 手机号查看权限：使用数据库API权限服务检查
   const canViewPhone = computed(() => {
     if (!currentUser.value) return false
-    const result = permissionService.checkSensitiveInfoAccess(currentUser.value.id, SensitiveInfoType.PHONE)
-    return result.hasAccess
+    return sensitiveInfoPermissionService.hasPermission(currentUser.value.role || '', 'phone')
   })
 
-  // 新的敏感信息访问权限检查
+  // 新的敏感信息访问权限检查（使用数据库API权限服务）
   const canAccessSensitiveInfo = computed(() => {
     return (infoType: SensitiveInfoType) => {
       if (!currentUser.value) return false
-      const result = permissionService.checkSensitiveInfoAccess(currentUser.value.id, infoType)
-      return result.hasAccess
+      const INFO_TYPE_DB_KEY: Record<string, string> = {
+        [SensitiveInfoType.PHONE]: 'phone',
+        [SensitiveInfoType.ID_CARD]: 'id_card',
+        [SensitiveInfoType.EMAIL]: 'email',
+        [SensitiveInfoType.WECHAT]: 'wechat',
+        [SensitiveInfoType.ADDRESS]: 'address',
+        [SensitiveInfoType.BANK_ACCOUNT]: 'bank',
+        [SensitiveInfoType.FINANCIAL]: 'financial'
+      }
+      const dbKey = INFO_TYPE_DB_KEY[infoType] || infoType.toString()
+      return sensitiveInfoPermissionService.hasPermission(currentUser.value.role || '', dbKey)
     }
   })
 
@@ -562,6 +657,9 @@ export const useUserStore = defineStore('user', () => {
       currentUser.value = {
         id: userData.id.toString(),
         name: userData.realName || userData.name,
+        username: userData.username, // 🔥 个人信息修复：保存用户名
+        phone: userData.phone || '', // 🔥 个人信息修复：保存手机号
+        realName: userData.realName || userData.name, // 🔥 个人信息修复：保存真实姓名
         email: userData.email,
         role: (userRoleCode === 'admin' || userRoleCode === 'super_admin') ? 'super_admin' :
               userRoleCode === 'department_manager' ? 'department_manager' :
@@ -689,9 +787,29 @@ export const useUserStore = defineStore('user', () => {
         })
       }
 
+      // 🔥 客服自定义权限覆盖：如果是客服角色且后端返回了自定义权限配置，以自定义权限为准（替换默认权限）
+      const csPermsData = userData.customerServicePermissions
+      if ((userRoleCode === 'customer_service' || userData.role === 'customer_service')
+          && csPermsData?.customPermissions?.length > 0) {
+        const csMenuPerms = convertCsPermsToMenuPerms(csPermsData.customPermissions)
+        // 🔥 关键修复：自定义权限完全替换默认权限，不再合并
+        userPermissions = csMenuPerms
+        console.log(`[Auth] ✅ 客服自定义权限已覆盖默认权限: ${csPermsData.customPermissions.length}个原始权限 → 转换${csMenuPerms.length}个菜单权限`)
+        // 保存客服自定义权限到localStorage，便于会话恢复时使用
+        localStorage.setItem('customerServicePermissions', JSON.stringify(csPermsData))
+      }
+
       // 设置权限到新的权限系统
       permissions.value = userPermissions
       setUserPermissions(userPermissions)
+
+      // 🔥 SaaS模式：保存租户授权模块列表，供菜单过滤使用
+      if (userData.tenantModules && Array.isArray(userData.tenantModules) && userData.tenantModules.length > 0) {
+        localStorage.setItem('tenantModules', JSON.stringify(userData.tenantModules))
+        console.log('[Auth] 已保存租户授权模块:', userData.tenantModules)
+      } else {
+        localStorage.removeItem('tenantModules')
+      }
 
       // 【批次190修复】确保权限保存到用户对象中
       const completeUserInfo = {
@@ -738,14 +856,14 @@ export const useUserStore = defineStore('user', () => {
           console.warn('[Auth] ⚠️ 加载敏感信息权限配置失败:', e)
         }
 
-        // 🔐 刷新安全控制台配置
+        // 🔐 刷新安全控制台配置（系统默认加密，始终确保全局替换已启用）
         try {
           const { refreshSecureConsoleConfig, enableGlobalSecureConsole } = await import('@/utils/secureLogger')
-          const enabled = await refreshSecureConsoleConfig()
-          if (enabled) {
-            enableGlobalSecureConsole()
-            console.log('[Auth] 🔐 控制台加密已启用')
-          }
+          // 始终确保全局控制台替换已启用（系统默认=加密）
+          enableGlobalSecureConsole()
+          // 刷新配置（从后端获取最新租户设置，运行时 isSecureConsoleEnabled 实时判断）
+          await refreshSecureConsoleConfig()
+          console.log('[Auth] 🔐 控制台加密配置已刷新')
         } catch (e) {
           console.warn('[Auth] ⚠️ 刷新控制台配置失败:', e)
         }
@@ -826,18 +944,41 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem('token_expiry')
     localStorage.removeItem('crm_current_user')
     localStorage.removeItem('currentUser')
+    localStorage.removeItem('customerServicePermissions')
+    localStorage.removeItem('tenantModules')
 
     // 🔑 保留租户信息，退出登录后无需重新输入租户编码/授权码
     // localStorage.removeItem('crm_tenant_info')  // 保留
     // localStorage.removeItem('crm_tenant_code')  // 保留
     // localStorage.removeItem('crm_license_key')  // 保留
+    // 🔥 清理消息通知缓存（防止切换用户后看到上一个用户的消息）
+    // 直接操作 localStorage，避免循环依赖
+    try {
+      // 清理旧的全局共享Key
+      localStorage.removeItem('notification-messages')
+      // 清理当前用户的隔离Key（从保存的用户信息中推断）
+      const savedUserStr = localStorage.getItem('user') || localStorage.getItem('crm_current_user') || localStorage.getItem('user_info')
+      if (savedUserStr) {
+        const savedUser = JSON.parse(savedUserStr)
+        const uid = savedUser.id || savedUser.userId || ''
+        const tid = savedUser.tenantId || ''
+        if (uid) {
+          localStorage.removeItem(`notification-messages-${uid}-${tid}`)
+          localStorage.removeItem(`hidden-announcements-${uid}-${tid}`)
+          console.log(`[Auth] 🧹 已清理用户 ${uid} 的消息缓存`)
+        }
+      }
+    } catch (_e) {
+      localStorage.removeItem('notification-messages')
+      console.log('[Auth] 清理消息缓存时出错，已执行降级清理')
+    }
 
     // 清除sessionStorage中的用户数据
     sessionStorage.removeItem('auth_token')
     sessionStorage.removeItem('user')
     sessionStorage.removeItem('currentUser')
 
-    console.log('[Auth] ✅ 用户数据已清除（租户信息已保留）')
+    console.log('[Auth] ✅ 用户数据已清除（租户信息已保留，消息缓存已清理）')
   }
 
   const logout = async () => {
@@ -848,6 +989,19 @@ export const useUserStore = defineStore('user', () => {
     setLoggingOutState(true)
 
     try {
+      // 🔥 断开WebSocket连接并重置通知状态（在清除token前执行）
+      try {
+        const { useNotificationStore } = await import('@/stores/notification')
+        const notificationStore = useNotificationStore()
+        await notificationStore.disconnectWebSocket()
+        // 重置内存中的消息状态
+        if (typeof notificationStore.resetNotificationState === 'function') {
+          notificationStore.resetNotificationState()
+        }
+      } catch (_e) {
+        console.log('[Auth] 断开WebSocket/重置通知状态失败（已忽略）')
+      }
+
       // 调用API登出（忽略错误，因为token可能已失效）
       await authApiService.logout().catch(err => {
         console.log('[Auth] API登出调用失败（已忽略）:', err.message)
@@ -985,6 +1139,24 @@ export const useUserStore = defineStore('user', () => {
       if (userPerms.length === 0) {
         userPerms = getDefaultRolePermissions(userData.role)
         console.log('[Auth] ✅ 使用默认角色权限:', userData.role, userPerms.length, '个权限')
+      }
+
+      // 🔥 客服自定义权限覆盖（会话恢复时）
+      if (userData.role === 'customer_service') {
+        try {
+          const savedCsPerms = localStorage.getItem('customerServicePermissions')
+          if (savedCsPerms) {
+            const csPermsData = JSON.parse(savedCsPerms)
+            if (csPermsData?.customPermissions?.length > 0) {
+              const csMenuPerms = convertCsPermsToMenuPerms(csPermsData.customPermissions)
+              // 🔥 关键修复：自定义权限完全替换默认权限，不再合并
+              userPerms = csMenuPerms
+              console.log(`[Auth] ✅ 会话恢复：客服自定义权限已覆盖默认权限: ${csMenuPerms.length}个`)
+            }
+          }
+        } catch (e) {
+          console.warn('[Auth] 恢复客服自定义权限失败:', e)
+        }
       }
 
       // 设置权限

@@ -498,7 +498,7 @@ const confirmMoveMember = async () => {
     await loadDepartmentMembers()
 
     // 刷新部门数据
-    await departmentStore.loadDepartments()
+    await departmentStore.fetchDepartments()
   } catch (error) {
     console.error('移动成员失败:', error)
     ElMessage.error('移动成员失败')

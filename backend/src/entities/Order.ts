@@ -208,8 +208,20 @@ export class Order {
   @Column({ name: 'cod_returned_at', type: 'datetime', nullable: true, comment: '返款时间' })
   codReturnedAt?: Date;
 
+  @Column({ name: 'cod_returned_by', type: 'varchar', length: 50, nullable: true, comment: '返款操作人ID' })
+  codReturnedBy?: string;
+
+  @Column({ name: 'cod_returned_by_name', type: 'varchar', length: 50, nullable: true, comment: '返款操作人姓名' })
+  codReturnedByName?: string;
+
   @Column({ name: 'cod_cancelled_at', type: 'datetime', nullable: true, comment: '取消代收时间' })
   codCancelledAt?: Date;
+
+  @Column({ name: 'cod_cancelled_by', type: 'varchar', length: 50, nullable: true, comment: '取消代收操作人ID' })
+  codCancelledBy?: string;
+
+  @Column({ name: 'cod_cancelled_by_name', type: 'varchar', length: 50, nullable: true, comment: '取消代收操作人姓名' })
+  codCancelledByName?: string;
 
   @Column({ name: 'cod_remark', type: 'varchar', length: 500, nullable: true, comment: '代收备注' })
   codRemark?: string;

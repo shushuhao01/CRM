@@ -1,5 +1,7 @@
 import { AppDataSource } from '../config/database'
 import { v4 as uuidv4 } from 'uuid'
+import { TenantContextManager } from '../utils/tenantContext'
+import { deployConfig } from '../config/deploy'
 
 const CONFIG_KEY = 'message_cleanup_config'
 
@@ -43,17 +45,22 @@ class MessageCleanupService {
 
   /**
    * 检查并执行清理
+   * 🔥 租户隔离：SaaS模式下按租户独立执行清理
    */
   private async checkAndExecute() {
     if (this.isRunning) return
 
     try {
-      const config = await this.getConfig()
-      if (!config || !config.enabled) return
-
-      const shouldExecute = this.shouldExecuteNow(config)
-      if (shouldExecute) {
-        await this.executeCleanup(config)
+      if (deployConfig.isSaaS()) {
+        // SaaS模式：遍历所有租户独立执行
+        await this.executeForAllTenants()
+      } else {
+        // 私有模式：全局执行
+        const config = await this.getConfig(null)
+        if (!config || !config.enabled) return
+        if (this.shouldExecuteNow(config)) {
+          await this.executeCleanup(config, null)
+        }
       }
     } catch (error) {
       console.error('[MessageCleanupService] 检查清理任务失败:', error)
@@ -61,14 +68,61 @@ class MessageCleanupService {
   }
 
   /**
-   * 获取清理配置
+   * 🔥 SaaS模式：遍历所有租户执行清理
    */
-  private async getConfig(): Promise<CleanupConfig | null> {
+  private async executeForAllTenants() {
     try {
-      const result = await AppDataSource.query(
-        `SELECT configValue FROM system_configs WHERE configKey = ?`,
+      // 查询所有有清理配置的租户
+      const rows = await AppDataSource.query(
+        `SELECT DISTINCT tenant_id FROM system_configs WHERE configKey = ? AND tenant_id IS NOT NULL`,
         [CONFIG_KEY]
       )
+
+      // 也处理无租户ID的全局配置
+      const tenantIds: (string | null)[] = rows.map((r: any) => r.tenant_id)
+      if (tenantIds.length === 0) return
+
+      for (const tenantId of tenantIds) {
+        try {
+          const config = await this.getConfig(tenantId)
+          if (!config || !config.enabled) continue
+          if (this.shouldExecuteNow(config)) {
+            if (tenantId) {
+              // 在租户上下文中执行
+              await TenantContextManager.run({ tenantId }, async () => {
+                await this.executeCleanup(config, tenantId)
+              })
+            } else {
+              await this.executeCleanup(config, null)
+            }
+          }
+        } catch (e) {
+          console.error(`[MessageCleanupService] 租户 ${tenantId} 清理失败:`, e)
+        }
+      }
+    } catch (error) {
+      console.error('[MessageCleanupService] 遍历租户清理失败:', error)
+    }
+  }
+
+  /**
+   * 获取清理配置
+   * 🔥 租户隔离：按租户读取独立配置
+   */
+  private async getConfig(tenantId: string | null): Promise<CleanupConfig | null> {
+    try {
+      let result
+      if (tenantId) {
+        result = await AppDataSource.query(
+          `SELECT configValue FROM system_configs WHERE configKey = ? AND tenant_id = ?`,
+          [CONFIG_KEY, tenantId]
+        )
+      } else {
+        result = await AppDataSource.query(
+          `SELECT configValue FROM system_configs WHERE configKey = ? AND tenant_id IS NULL`,
+          [CONFIG_KEY]
+        )
+      }
 
       if (result[0]?.configValue) {
         return JSON.parse(result[0].configValue)
@@ -116,29 +170,38 @@ class MessageCleanupService {
 
   /**
    * 执行清理
+   * 🔥 租户隔离：按租户ID过滤删除
    */
-  private async executeCleanup(config: CleanupConfig) {
+  private async executeCleanup(config: CleanupConfig, tenantId: string | null) {
     this.isRunning = true
-    console.log(`[MessageCleanupService] 开始执行自动清理，保留 ${config.retentionDays} 天内的记录...`)
+    const label = tenantId ? `租户${tenantId}` : '全局'
+    console.log(`[MessageCleanupService] 开始执行${label}自动清理，保留 ${config.retentionDays} 天...`)
 
     try {
-      // 删除过期记录
-      const result = await AppDataSource.query(
-        `DELETE FROM notification_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
-        [config.retentionDays]
-      )
+      let result
+      if (tenantId) {
+        result = await AppDataSource.query(
+          `DELETE FROM notification_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY) AND tenant_id = ?`,
+          [config.retentionDays, tenantId]
+        )
+      } else {
+        result = await AppDataSource.query(
+          `DELETE FROM notification_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY) AND tenant_id IS NULL`,
+          [config.retentionDays]
+        )
+      }
 
       const deletedCount = result.affectedRows || 0
-      console.log(`[MessageCleanupService] 自动清理完成，删除 ${deletedCount} 条记录`)
+      console.log(`[MessageCleanupService] ${label}自动清理完成，删除 ${deletedCount} 条记录`)
 
-      // 记录清理历史
+      // 记录清理历史（带租户ID）
       await AppDataSource.query(
-        `INSERT INTO message_cleanup_history (id, cleanup_type, deleted_count, operator, remark, cleanup_time)
-         VALUES (?, ?, ?, ?, ?, NOW())`,
-        [uuidv4(), 'auto', deletedCount, '系统', `自动清理 ${config.retentionDays} 天前的记录`]
+        `INSERT INTO message_cleanup_history (id, cleanup_type, deleted_count, operator, remark, cleanup_time, tenant_id)
+         VALUES (?, ?, ?, ?, ?, NOW(), ?)`,
+        [uuidv4(), 'auto', deletedCount, '系统', `自动清理 ${config.retentionDays} 天前的记录`, tenantId]
       )
     } catch (error) {
-      console.error('[MessageCleanupService] 执行清理失败:', error)
+      console.error(`[MessageCleanupService] ${label}执行清理失败:`, error)
     } finally {
       this.isRunning = false
     }
@@ -146,21 +209,32 @@ class MessageCleanupService {
 
   /**
    * 手动触发清理（供外部调用）
+   * 🔥 租户隔离：按当前租户上下文过滤
    */
   async manualCleanup(days: number, operator: string, operatorId?: string): Promise<number> {
     try {
-      const result = await AppDataSource.query(
-        `DELETE FROM notification_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
-        [days]
-      )
+      const tenantId = TenantContextManager.getTenantId() || null
+
+      let result
+      if (tenantId) {
+        result = await AppDataSource.query(
+          `DELETE FROM notification_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY) AND tenant_id = ?`,
+          [days, tenantId]
+        )
+      } else {
+        result = await AppDataSource.query(
+          `DELETE FROM notification_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+          [days]
+        )
+      }
 
       const deletedCount = result.affectedRows || 0
 
-      // 记录清理历史
+      // 记录清理历史（带租户ID）
       await AppDataSource.query(
-        `INSERT INTO message_cleanup_history (id, cleanup_type, deleted_count, operator, operator_id, remark, cleanup_time)
-         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-        [uuidv4(), 'manual', deletedCount, operator, operatorId, `手动清理 ${days} 天前的记录`]
+        `INSERT INTO message_cleanup_history (id, cleanup_type, deleted_count, operator, operator_id, remark, cleanup_time, tenant_id)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)`,
+        [uuidv4(), 'manual', deletedCount, operator, operatorId, `手动清理 ${days} 天前的记录`, tenantId]
       )
 
       return deletedCount

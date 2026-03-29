@@ -4,7 +4,6 @@
  */
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
-import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 import { User } from '../entities/User';
 import { Department } from '../entities/Department';
@@ -139,6 +138,40 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       return sum + codAmount;
     }, 0);
 
+    // 🔥 新增：标签统计（订单数量）
+    const tabStatsWhere = { ...baseWhere, status: In(VALID_STATUSES) };
+    if (userStartDate && userEndDate) {
+      tabStatsWhere.createdAt = Between(userStartDate, userEndDate);
+    }
+
+    // 待处理数量
+    const pendingCount = await orderRepo.count({
+      where: { ...tabStatsWhere, codStatus: 'pending' }
+    });
+
+    // 已返款数量
+    const returnedCount = await orderRepo.count({
+      where: { ...tabStatsWhere, codStatus: 'returned' }
+    });
+
+    // 已改代收数量
+    const cancelledCount = await orderRepo.count({
+      where: { ...tabStatsWhere, codStatus: 'cancelled' }
+    });
+
+    // 无需代收数量（原始代收金额为0的订单）
+    const allOrders = await orderRepo.find({
+      where: tabStatsWhere,
+      select: ['id', 'totalAmount', 'depositAmount']
+    });
+    const zeroCount = allOrders.filter(o => {
+      const originalCodAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      return originalCodAmount === 0;
+    }).length;
+
+    // 全部数量
+    const allCount = await orderRepo.count({ where: tabStatsWhere });
+
     res.json({
       success: true,
       data: {
@@ -146,7 +179,15 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
         monthCod: Number(totalNeedCod.toFixed(2)),      // 🔥 改为需要代收金额
         cancelledCod: Number(totalCancelledCod.toFixed(2)),
         returnedCod: Number(totalReturnedCod.toFixed(2)),
-        pendingCod: Number(totalPendingCod.toFixed(2))
+        pendingCod: Number(totalPendingCod.toFixed(2)),
+        // 🔥 新增：标签统计
+        tabStats: {
+          pending: pendingCount,
+          returned: returnedCount,
+          cancelled: cancelledCount,
+          zero: zeroCount,
+          all: allCount
+        }
       }
     });
   } catch (error: any) {
@@ -176,8 +217,8 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
     const orderRepo = getTenantRepo(Order);
     const queryBuilder = orderRepo.createQueryBuilder('o');
 
-    // 基础条件：已发货的订单
-    queryBuilder.where('o.status IN (:...statuses)', { statuses: SHIPPED_STATUSES });
+    // 基础条件：已发货的订单 - 🔥 修复租户隔离：使用 andWhere 而非 where
+    queryBuilder.andWhere('o.status IN (:...statuses)', { statuses: SHIPPED_STATUSES });
 
     // 标签页筛选
     if (tab === 'pending') {
@@ -272,7 +313,7 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
         const customerRepo = getTenantRepo(Customer);
         const customers = await customerRepo
           .createQueryBuilder('c')
-          .where('c.id IN (:...ids)', { ids: customerIds })
+          .andWhere('c.id IN (:...ids)', { ids: customerIds })
           .select(['c.id', 'c.customerNo'])
           .getMany();
 
@@ -378,7 +419,11 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
         codStatus: order.codStatus || 'pending',
         codReturnedAmount: order.codReturnedAmount || 0,
         codReturnedAt: order.codReturnedAt,
+        codReturnedBy: order.codReturnedBy,
+        codReturnedByName: order.codReturnedByName,
         codCancelledAt: order.codCancelledAt,
+        codCancelledBy: order.codCancelledBy,
+        codCancelledByName: order.codCancelledByName,
         codRemark: order.codRemark,
         salesPersonId: order.createdBy,
         salesPersonName: order.createdByName,
@@ -417,6 +462,8 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
   try {
     const { id } = req.params;
     const { codAmount, codRemark } = req.body;
+    const userId = (req as any).user?.id;
+    const userName = (req as any).user?.name;
 
     const orderRepo = getTenantRepo(Order);
     const order = await orderRepo.findOne({ where: { id } });
@@ -452,10 +499,14 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
       // 改为0元，标记为已改代收状态（不能再修改）
       order.codStatus = 'cancelled';
       order.codCancelledAt = new Date();
+      order.codCancelledBy = userId;
+      order.codCancelledByName = userName;
     } else {
       // 改为大于0的金额，保持待处理状态（可以继续修改）
       order.codStatus = 'pending';
       order.codCancelledAt = null;
+      order.codCancelledBy = null;
+      order.codCancelledByName = null;
     }
 
     if (codRemark !== undefined) {
@@ -483,6 +534,8 @@ router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Re
   try {
     const { id } = req.params;
     const { returnedAmount, codRemark } = req.body;
+    const userId = (req as any).user?.id;
+    const userName = (req as any).user?.name;
 
     const orderRepo = getTenantRepo(Order);
     const order = await orderRepo.findOne({ where: { id } });
@@ -511,6 +564,8 @@ router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Re
     order.codStatus = 'returned';
     order.codReturnedAmount = Number(returnedAmount) || defaultCodAmount;
     order.codReturnedAt = new Date();
+    order.codReturnedBy = userId;
+    order.codReturnedByName = userName;
 
     if (codRemark !== undefined) {
       order.codRemark = codRemark;

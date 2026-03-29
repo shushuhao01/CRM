@@ -5,8 +5,9 @@
     </div>
     <div class="marquee-content" @click="handleClick">
       <div class="marquee-text" :style="{ animationDuration: animationDuration }">
-        <span v-for="(ann, index) in visibleAnnouncements" :key="ann.id">
-          {{ ann.title }}
+        <span v-for="(ann, index) in visibleAnnouncements" :key="ann.id" class="marquee-item">
+          <span :class="['source-dot', ann.source === 'system' ? 'system-dot' : 'company-dot']"></span>
+          <span :class="ann.source === 'system' ? 'system-text' : ''">{{ ann.title }}</span>
           <span v-if="index < visibleAnnouncements.length - 1" class="separator">|</span>
         </span>
       </div>
@@ -16,10 +17,19 @@
     </el-button>
 
     <!-- 公告详情弹窗 -->
-    <el-dialog v-model="showDetail" :title="selectedAnnouncement?.title" width="500px" append-to-body>
+    <el-dialog v-model="showDetail" title="公告通知" width="500px" append-to-body>
       <div v-if="selectedAnnouncement" class="announcement-detail">
+        <div class="detail-header-info">
+          <span class="unread-count" v-if="visibleAnnouncements.length > 0">{{ visibleAnnouncements.length }} 条未读公告</span>
+        </div>
         <div class="detail-meta">
-          <el-tag size="small" type="primary">{{ selectedAnnouncement.type === 'notice' ? '全公司' : '部门' }}</el-tag>
+          <el-tag
+            :type="selectedAnnouncement.source === 'system' ? 'danger' : 'primary'"
+            size="small"
+          >
+            {{ selectedAnnouncement.source === 'system' ? '🔧 系统公告' : '🏢 公司公告' }}
+          </el-tag>
+          <span class="detail-title-text">{{ selectedAnnouncement.title }}</span>
           <span class="time">{{ formatTime(selectedAnnouncement.publishedAt) }}</span>
         </div>
         <div class="detail-content" v-html="sanitizeHtml(selectedAnnouncement.content)"></div>
@@ -74,8 +84,9 @@ const visibleAnnouncements = computed(() => {
   if (!messageStore.announcements || !Array.isArray(messageStore.announcements)) {
     return []
   }
+  // 🔥 只显示未读的公告，已读自动从横幅消失
   return messageStore.announcements.filter(
-    (a: any) => a.status === 'published' && a.isMarquee && !closedIds.value.has(a.id)
+    (a: any) => a.status === 'published' && a.isMarquee && !closedIds.value.has(a.id) && !a.read
   ).slice(0, 5)
 })
 
@@ -171,6 +182,33 @@ const saveClosedId = (id: string) => {
   color: #d97706;
 }
 
+.marquee-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.source-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.system-dot {
+  background: #f56c6c;
+}
+
+.company-dot {
+  background: #409eff;
+}
+
+.system-text {
+  color: #f56c6c;
+  font-weight: 500;
+}
+
 @keyframes marquee {
   0% {
     transform: translateX(100%);
@@ -192,6 +230,26 @@ const saveClosedId = (id: string) => {
 
 .announcement-detail {
   padding: 8px 0;
+}
+
+.detail-header-info {
+  margin-bottom: 12px;
+}
+
+.unread-count {
+  display: inline-block;
+  padding: 2px 10px;
+  background: #fef0f0;
+  color: #f56c6c;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.detail-title-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
 }
 
 .detail-meta {

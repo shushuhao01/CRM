@@ -77,6 +77,11 @@ export interface PerformanceShare {
   createdById: string
   description?: string
   completedTime?: string
+  // 订单关联信息（从后端JOIN orders表获取）
+  orderCustomerName?: string
+  orderCustomerPhone?: string
+  orderProducts?: any[]
+  orderCreatedAt?: string
 }
 
 export interface ShareStats {
@@ -188,14 +193,25 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     }
 
     const totalShares = shares.length
-    const totalAmount = shares.reduce((sum, share) => sum + (share.orderAmount || 0), 0)
-    // 🔥 修复：添加空值保护，确保 shareMembers 存在且是数组
-    const involvedMembers = new Set(
-      shares
-        .filter(share => share.shareMembers && Array.isArray(share.shareMembers))
-        .flatMap(share => share.shareMembers.map(member => member.userId))
-    ).size
-    const sharedOrders = shares.length
+    const totalAmount = shares.reduce((sum, share) => {
+      // 分享总金额 = 所有分享成员的shareAmount之和
+      const memberTotal = (share.shareMembers || []).reduce((s, m) => s + (m.shareAmount || 0), 0)
+      return sum + memberTotal
+    }, 0)
+    // 🔥 修复：参与成员应包含分享创建人（原始下单人）
+    const involvedMemberIds = new Set<string>()
+    shares
+      .filter(share => share.shareMembers && Array.isArray(share.shareMembers))
+      .forEach(share => {
+        // 添加原始下单人
+        if (share.createdById) involvedMemberIds.add(share.createdById)
+        // 添加分享成员
+        share.shareMembers.forEach(member => {
+          if (member.userId) involvedMemberIds.add(member.userId)
+        })
+      })
+    const involvedMembers = involvedMemberIds.size
+    const sharedOrders = new Set(shares.map(s => s.orderId)).size
     const pendingShares = shares.filter(share => share.status === 'active').length
     const completedShares = shares.filter(share => share.status === 'completed').length
 
@@ -334,6 +350,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     })
 
     // 加上别人分享给自己的业绩
+    // 🔥 修复：使用订单创建时间而非分享创建时间进行时间筛选，确保业绩守恒
     performanceShares.value
       .filter(share => share.status === 'active' || share.status === 'completed')
       .forEach(share => {
@@ -342,22 +359,93 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
           (member.status === 'confirmed' || member.status === 'pending')
         )
         if (myShare) {
-          const shareTime = new Date(share.createTime)
-          if (shareTime >= currentStart && shareTime <= currentEnd) {
-            totalSales += myShare.shareAmount
-          }
-          if (shareTime >= previousStart && shareTime <= previousEnd) {
-            previousTotalSales += myShare.shareAmount
+          // 🔥 修复：查找原始订单的创建时间，保持与步骤1的时间维度一致
+          const originalOrder = orderStore.orders.find((o: any) => o.id === share.orderId)
+          if (originalOrder) {
+            const orderTime = new Date(originalOrder.createTime)
+            if (orderTime >= currentStart && orderTime <= currentEnd) {
+              totalSales += myShare.shareAmount
+            }
+            if (orderTime >= previousStart && orderTime <= previousEnd) {
+              previousTotalSales += myShare.shareAmount
+            }
+          } else {
+            // 如果找不到原始订单（可能是其他用户的订单），使用分享创建时间作为兜底
+            const shareTime = new Date(share.createTime)
+            if (shareTime >= currentStart && shareTime <= currentEnd) {
+              totalSales += myShare.shareAmount
+            }
+            if (shareTime >= previousStart && shareTime <= previousEnd) {
+              previousTotalSales += myShare.shareAmount
+            }
           }
         }
       })
 
     const totalOrders = currentOrders.length
     const previousTotalOrders = previousOrders.length
+
+    // 🔥 守恒定律：订单数也按分享比例拆分
+    let sharedOrderCount = 0
+    let previousSharedOrderCount = 0
+    let receivedOrderCount = 0
+    let previousReceivedOrderCount = 0
+
+    // 计算当期分享出去的订单数
+    currentOrders.forEach(order => {
+      const shareDetails = orderShareMap.get(order.id)
+      if (shareDetails && shareDetails.length > 0) {
+        const totalSharedPercentage = shareDetails.reduce((sum, detail) => sum + detail.percentage, 0)
+        sharedOrderCount += totalSharedPercentage / 100
+      }
+    })
+
+    // 计算上期分享出去的订单数
+    previousOrders.forEach(order => {
+      const shareDetails = orderShareMap.get(order.id)
+      if (shareDetails && shareDetails.length > 0) {
+        const totalSharedPercentage = shareDetails.reduce((sum, detail) => sum + detail.percentage, 0)
+        previousSharedOrderCount += totalSharedPercentage / 100
+      }
+    })
+
+    // 计算接收到的订单数（按订单创建时间归属）
+    performanceShares.value
+      .filter(share => share.status === 'active' || share.status === 'completed')
+      .forEach(share => {
+        const myShare = share.shareMembers.find(member =>
+          member.userId === currentUserId &&
+          (member.status === 'confirmed' || member.status === 'pending')
+        )
+        if (myShare) {
+          const originalOrder = orderStore.orders.find((o: any) => o.id === share.orderId)
+          if (originalOrder) {
+            const orderTime = new Date(originalOrder.createTime)
+            if (orderTime >= currentStart && orderTime <= currentEnd) {
+              receivedOrderCount += myShare.percentage / 100
+            }
+            if (orderTime >= previousStart && orderTime <= previousEnd) {
+              previousReceivedOrderCount += myShare.percentage / 100
+            }
+          } else {
+            const shareTime = new Date(share.createTime)
+            if (shareTime >= currentStart && shareTime <= currentEnd) {
+              receivedOrderCount += myShare.percentage / 100
+            }
+            if (shareTime >= previousStart && shareTime <= previousEnd) {
+              previousReceivedOrderCount += myShare.percentage / 100
+            }
+          }
+        }
+      })
+
+    // 🔥 净订单数 = 自有订单数 - 分享出的比例 + 接收到的比例（守恒定律）
+    const netTotalOrders = Math.max(0, totalOrders - sharedOrderCount + receivedOrderCount)
+    const netPreviousTotalOrders = Math.max(0, previousTotalOrders - previousSharedOrderCount + previousReceivedOrderCount)
     const newCustomers = currentCustomers.length
     const previousNewCustomers = previousCustomers.length
-    const conversionRate = newCustomers > 0 ? (totalOrders / newCustomers) * 100 : 0
-    const previousConversionRate = previousNewCustomers > 0 ? (previousTotalOrders / previousNewCustomers) * 100 : 0
+    const conversionRate = newCustomers > 0 ? (netTotalOrders / newCustomers) * 100 : 0
+    const previousConversionRate = previousNewCustomers > 0 ? (netPreviousTotalOrders / previousNewCustomers) * 100 : 0
 
     // 🔥 计算签收业绩和签收订单数量
     const currentSignedOrders = currentOrders.filter(order => order.status === 'delivered')
@@ -414,8 +502,8 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     return {
       totalSales,
       salesTrend: calculateTrend(totalSales, previousTotalSales),
-      totalOrders,
-      ordersTrend: calculateTrend(totalOrders, previousTotalOrders),
+      totalOrders: netTotalOrders,
+      ordersTrend: calculateTrend(netTotalOrders, netPreviousTotalOrders),
       newCustomers,
       customersTrend: calculateTrend(newCustomers, previousNewCustomers),
       conversionRate,
@@ -549,7 +637,25 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
 
         // 🔥 修复：API直接返回 { success, data }
         if (response.success) {
-          const newShare = response.data as unknown as PerformanceShare
+          // 🔥 API创建成功后返回的只有 { id, shareNumber }，需要构建完整对象
+          const apiResult = response.data as any
+          const newShare: PerformanceShare = {
+            id: apiResult.id || apiResult.shareId,
+            shareNumber: apiResult.shareNumber || apiResult.share_number || '',
+            orderId: shareData.orderId,
+            orderNumber: shareData.orderNumber,
+            orderAmount: shareData.orderAmount,
+            shareMembers: shareData.shareMembers.map(member => ({
+              ...member,
+              shareAmount: (shareData.orderAmount * member.percentage) / 100,
+              status: 'pending' as const
+            })),
+            status: 'active',
+            createTime: new Date().toLocaleString(),
+            createdBy: shareData.createdBy,
+            createdById: shareData.createdById,
+            description: shareData.description
+          }
           performanceShares.value.unshift(newShare)
           await updateMembersPerformance(newShare)
           await syncPerformanceData()
@@ -622,17 +728,54 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
 
   // 方法 - 取消业绩分享
   const cancelPerformanceShare = async (shareId: string) => {
-    const notificationStore = useNotificationStore()
-
     const share = performanceShares.value.find(s => s.id === shareId)
-    if (share && share.status === 'active') {
-      share.status = 'cancelled'
+    if (!share) {
+      console.error('[Performance Store] 找不到分享记录:', shareId)
+      return false
+    }
+    if (share.status !== 'active') {
+      console.warn('[Performance Store] 分享状态不是active，无法取消:', share.status)
+      return false
+    }
 
-      // 恢复原始业绩数据
-      await revertMembersPerformance(share)
+    // 🔥 关键修复：必须先调用后端API取消，成功后才更新本地状态
+    let apiSuccess = false
+    try {
+      const apiResult = await performanceApi.cancelPerformanceShare(shareId)
+      if (apiResult.success) {
+        apiSuccess = true
+        console.log('[Performance Store] API取消业绩分享成功')
+      } else {
+        console.error('[Performance Store] API取消失败:', apiResult.message)
+        return false
+      }
+    } catch (apiError) {
+      console.error('[Performance Store] API调用异常:', apiError)
+      return false
+    }
 
-      // 发送取消通知给所有相关成员
-      share.shareMembers.forEach(member => {
+    if (!apiSuccess) return false
+
+    // 🔥 API成功后，更新本地状态
+    share.status = 'cancelled'
+
+    // 恢复原始业绩数据
+    await revertMembersPerformance(share)
+
+    // 🔥 重新从后端加载最新数据，确保本地与后端一致
+    try {
+      await loadPerformanceShares({ limit: 500 })
+    } catch (e) {
+      console.warn('[Performance Store] 重新加载分享数据失败:', e)
+    }
+
+    // 🔥 触发业绩数据同步，确保个人/团队/数据看板同步更新
+    await syncPerformanceData()
+
+    // 发送取消通知给所有相关成员（不阻塞取消流程）
+    try {
+      const notificationStore = useNotificationStore()
+      ;(share.shareMembers || []).forEach(member => {
         if (member.userId !== userStore.currentUser?.id) {
           notificationStore.sendMessage(
             MessageType.PERFORMANCE_SHARE_CANCELLED,
@@ -645,10 +788,11 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
           )
         }
       })
-
-      return true
+    } catch (notifyError) {
+      console.warn('[Performance Store] 发送取消通知失败（不影响取消操作）:', notifyError)
     }
-    return false
+
+    return true
   }
 
   // 方法 - 确认分享成员
@@ -728,14 +872,12 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     return performanceShares.value.filter(share => share.orderId === orderId)
   }
 
-  // 辅助方法 - 生成分享编号
+  // 辅助方法 - 生成分享编号（短编码格式）
   const generateShareNumber = () => {
     const now = new Date()
-    const year = now.getFullYear()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    const day = String(now.getDate()).padStart(2, '0')
-    const sequence = String(performanceShares.value.length + 1).padStart(4, '0')
-    return `SH${year}${month}${day}${sequence}`
+    const dateStr = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
+    const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase()
+    return `SH${dateStr}${randomStr}`
   }
 
   // 辅助方法 - 更新成员业绩数据
@@ -767,7 +909,7 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     if (!currentUser) return []
 
     // 超级管理员可以查看所有订单
-    if (currentUser.role === 'admin') {
+    if (currentUser.role === 'admin' || currentUser.role === 'super_admin') {
       return orders
     }
 
@@ -925,6 +1067,48 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     )
   }
 
+  /**
+   * 🔥 工具函数：将后端API返回的snake_case字段映射为前端camelCase
+   * 后端 performance_shares 表列名是 snake_case（如 order_number, created_by 等）
+   * 前端 PerformanceShare 接口使用 camelCase（如 orderNumber, createdBy 等）
+   */
+  const mapShareFromAPI = (raw: any): PerformanceShare => {
+    // 解析 shareMembers（可能是JSON字符串或已解析的数组）
+    let members = raw.shareMembers || raw.share_members || []
+    if (typeof members === 'string') {
+      try { members = JSON.parse(members) } catch { members = [] }
+    }
+    // shareMembers 在SQL的JSON_OBJECT中已定义为camelCase (userId, userName, percentage, shareAmount)
+    const parsedMembers: ShareMember[] = (members || []).map((m: any) => ({
+      userId: m.userId || m.user_id || '',
+      userName: m.userName || m.user_name || '',
+      percentage: Number(m.percentage || m.share_percentage || 0),
+      shareAmount: Number(m.shareAmount || m.share_amount || 0),
+      status: m.status || 'pending',
+      confirmTime: m.confirmTime || m.confirm_time || undefined
+    }))
+
+    return {
+      id: raw.id,
+      shareNumber: raw.shareNumber || raw.share_number || '',
+      orderId: raw.orderId || raw.order_id || '',
+      orderNumber: raw.orderNumber || raw.order_number || '',
+      orderAmount: Number(raw.orderAmount || raw.order_amount || 0),
+      shareMembers: parsedMembers,
+      status: raw.status || 'active',
+      createTime: raw.createTime || raw.created_at || raw.createdAt || '',
+      createdBy: raw.createdBy || raw.created_by_name || '',
+      createdById: raw.createdById || raw.created_by || '',
+      description: raw.description || '',
+      completedTime: raw.completedTime || raw.completed_at || undefined,
+      // 订单关联信息
+      orderCustomerName: raw.orderCustomerName || raw.order_customer_name || undefined,
+      orderCustomerPhone: raw.orderCustomerPhone || raw.order_customer_phone || undefined,
+      orderProducts: raw.orderProducts || raw.order_products || undefined,
+      orderCreatedAt: raw.orderCreatedAt || raw.order_created_at || undefined
+    }
+  }
+
   // 方法 - 加载业绩分享数据
   const loadPerformanceShares = async (params?: {
     page?: number
@@ -937,11 +1121,8 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
       const response = await performanceApi.getPerformanceShares(params)
       // 🔥 修复：API直接返回 { success, data }，不是 { data: { success, data } }
       if (response.success) {
-        // 🔥 确保每个 share 都有 shareMembers 数组
-        performanceShares.value = (response.data.shares || []).map(share => ({
-          ...share,
-          shareMembers: share.shareMembers || []
-        }))
+        // 🔥 关键修复：将后端snake_case字段映射为前端camelCase
+        performanceShares.value = (response.data.shares || []).map((raw: any) => mapShareFromAPI(raw))
         return response.data
       } else {
         throw new Error((response as any).message || '加载业绩分享数据失败')

@@ -137,6 +137,12 @@
             {{ row.paid_at ? formatTime(row.paid_at) : '-' }}
           </template>
         </el-table-column>
+        <el-table-column prop="refund_amount" label="退款金额" width="100" align="right">
+          <template #default="{ row }">
+            <span v-if="row.refund_amount" style="color: #f56c6c; font-weight: 600;">¥{{ Number(row.refund_amount).toFixed(2) }}</span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="handleView(row)">详情</el-button>
@@ -166,7 +172,7 @@
     </el-card>
 
     <!-- 订单详情弹窗 -->
-    <el-dialog v-model="detailVisible" title="订单详情" width="600px">
+    <el-dialog v-model="detailVisible" title="订单详情" width="640px">
       <el-descriptions :column="2" border v-if="currentOrder">
         <el-descriptions-item label="订单号" :span="2">{{ currentOrder.order_no }}</el-descriptions-item>
         <el-descriptions-item label="租户名称">{{ currentOrder.tenant_name || '-' }}</el-descriptions-item>
@@ -186,6 +192,19 @@
         <el-descriptions-item label="创建时间" :span="2">{{ formatTime(currentOrder.created_at) }}</el-descriptions-item>
         <el-descriptions-item label="支付时间" :span="2">{{ currentOrder.paid_at ? formatTime(currentOrder.paid_at) : '-' }}</el-descriptions-item>
       </el-descriptions>
+
+      <!-- 退款信息区域 -->
+      <div v-if="currentOrder?.status === 'refunded'" class="refund-info">
+        <h4>退款信息</h4>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="退款金额">
+            <span style="color: #f56c6c; font-weight: 600;">¥{{ Number(currentOrder.refund_amount || 0).toFixed(2) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="退款时间">{{ currentOrder.refund_at ? formatTime(currentOrder.refund_at) : '-' }}</el-descriptions-item>
+          <el-descriptions-item label="退款原因" :span="2">{{ currentOrder.refund_reason || '未填写' }}</el-descriptions-item>
+          <el-descriptions-item label="操作人" v-if="currentOrder.refunded_by">{{ currentOrder.refunded_by }}</el-descriptions-item>
+        </el-descriptions>
+      </div>
 
       <div v-if="currentOrder?.logs?.length" class="order-logs">
         <h4>操作日志</h4>
@@ -354,15 +373,20 @@ const handleView = async (row: any) => {
 }
 
 const handleRefund = (row: any) => {
-  ElMessageBox.prompt('请输入退款原因', '确认退款', {
-    confirmButtonText: '确认退款',
-    cancelButtonText: '取消',
-    inputPlaceholder: '退款原因（选填）'
-  }).then(async ({ value }) => {
+  ElMessageBox.prompt(
+    `订单号：${row.order_no}\n退款金额：¥${Number(row.amount || 0).toFixed(2)}\n${row.tenant_name ? '关联租户：' + row.tenant_name + '\n⚠️ 退款后将自动暂停该租户授权\n' : ''}\n请输入退款原因：`,
+    '确认退款',
+    {
+      confirmButtonText: '确认退款',
+      cancelButtonText: '取消',
+      inputPlaceholder: '退款原因（选填）',
+      confirmButtonClass: 'el-button--danger'
+    }
+  ).then(async ({ value }) => {
     try {
       const res = await request.post(`/payment/orders/${row.id}/refund`, { reason: value })
       if (res.success) {
-        ElMessage.success('退款成功')
+        ElMessage.success(res.message || '退款成功')
         fetchData()
         fetchStats()
       } else {
@@ -533,6 +557,17 @@ onMounted(() => {
     color: #f56c6c;
     font-size: 12px;
     margin-left: 8px;
+  }
+}
+
+.refund-info {
+  margin-top: 20px;
+
+  h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #f56c6c;
   }
 }
 

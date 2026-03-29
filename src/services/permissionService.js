@@ -860,6 +860,8 @@ const ROLE_DEFAULT_PERMISSIONS = {
     'customer.list.view', 'customer.list.export', 'customer.add.create', 'customer.edit', 'customer.follow',
     'order.list.view', 'order.create', 'order.edit', 'order.status',
     'product.list', 'product.add', 'product.edit', 'product.category', 'product.analytics',
+    // 🔥 售后管理权限 - 经理：查看部门数据 + 查看详情 + 创建售后
+    'aftersale.list.view', 'aftersale.add.create',
     'service.ticket.view', 'service.ticket.create', 'service.ticket.edit', 'service.ticket.assign', 'service.ticket.close', 'service.ticket.export',
     'service.chat.view', 'service.chat.reply', 'service.chat.transfer', 'service.chat.history', 'service.chat.settings',
     'service.knowledge.view', 'service.knowledge.create', 'service.knowledge.edit', 'service.knowledge.category', 'service.knowledge.publish',
@@ -872,6 +874,8 @@ const ROLE_DEFAULT_PERMISSIONS = {
     'customer.list.view', 'customer.follow',
     'order.list.view', 'order.create',
     'product.list',
+    // 🔥 售后管理权限 - 销售员：查看个人数据 + 查看详情 + 创建售后
+    'aftersale.list.view', 'aftersale.add.create',
     'service.ticket.view', 'service.ticket.create', 'service.ticket.edit',
     'service.chat.view', 'service.chat.reply', 'service.chat.history',
     'service.knowledge.view',
@@ -883,6 +887,9 @@ const ROLE_DEFAULT_PERMISSIONS = {
   'CUSTOMER_SERVICE': [
     'customer.list.view', 'customer.follow',
     'order.list.view',
+    // 🔥 售后管理权限 - 客服：查看全部数据 + 完整权限(查看/创建/编辑/删除/导出)
+    'aftersale.list.view', 'aftersale.list.edit', 'aftersale.list.delete', 'aftersale.list.export',
+    'aftersale.add.create', 'aftersale.data.view', 'aftersale.data.export',
     'service.ticket.view', 'service.ticket.create', 'service.ticket.edit', 'service.ticket.assign', 'service.ticket.close',
     'service.chat.view', 'service.chat.reply', 'service.chat.transfer', 'service.chat.history', 'service.chat.settings',
     'service.knowledge.view', 'service.knowledge.create', 'service.knowledge.edit', 'service.knowledge.category',

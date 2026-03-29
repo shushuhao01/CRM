@@ -97,6 +97,12 @@ const router = createRouter({
               name: 'ModuleDistribute',
               component: () => import('@/views/modules/Distribute.vue'),
               meta: { title: '配置下发' }
+            },
+            {
+              path: 'message-management',
+              name: 'MessageManagement',
+              component: () => import('@/views/modules/MessageManagement.vue'),
+              meta: { title: '消息管理' }
             }
           ]
         },

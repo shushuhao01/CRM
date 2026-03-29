@@ -38,14 +38,15 @@
             <el-form-item label="部门编码" prop="code" class="form-item">
               <el-input
                 v-model="formData.code"
-                placeholder="例如：TECH_DEPT、SALES_01"
+                placeholder="例如：TECH_DEPT、SALES_01（输入名称后自动生成）"
                 maxlength="20"
                 show-word-limit
                 class="compact-input"
+                @input="handleCodeInput"
               />
               <div class="form-tip">
                 <el-icon><InfoFilled /></el-icon>
-                <span>只能包含大写字母、数字和下划线</span>
+                <span>只能包含大写字母、数字和下划线，输入部门名称后自动生成</span>
               </div>
             </el-form-item>
 
@@ -365,6 +366,7 @@ import { useDepartmentStore, type Department } from '@/stores/department'
 import { useUserStore } from '@/stores/user'
 import permissionService from '@/services/permissionService'
 import departmentPermissionService from '@/services/departmentPermissionService'
+import { pinyin } from 'pinyin-pro'
 
 interface Props {
   modelValue: boolean
@@ -557,6 +559,61 @@ watch(() => formData.parentId, (newParentId) => {
     formData.level = 1
   }
 })
+
+// 🔥 标记用户是否手动修改了部门编码
+const codeManuallyModified = ref(false)
+
+/**
+ * 🔥 将部门名称自动转化为大写部门编码
+ * - 中文名称：使用拼音首字母大写，如 "技术部" → "JSB"
+ * - 英文名称：转大写并将空格替换为下划线，如 "Sales Dept" → "SALES_DEPT"
+ * - 混合名称：中文部分取拼音首字母，英文部分保留并转大写
+ */
+const generateCodeFromName = (name: string): string => {
+  if (!name || !name.trim()) return ''
+
+  const trimmed = name.trim()
+
+  // 检测是否包含中文
+  const hasChinese = /[\u4e00-\u9fa5]/.test(trimmed)
+
+  if (hasChinese) {
+    // 中文名称：使用 pinyin-pro 提取首字母
+    try {
+      const firstLetters = pinyin(trimmed, { pattern: 'first', toneType: 'none', type: 'array' })
+      const code = firstLetters
+        .map((letter: string) => letter.toUpperCase())
+        .join('')
+        .replace(/[^A-Z0-9]/g, '')
+      return code || 'DEPT'
+    } catch {
+      // pinyin转换失败，使用简单回退
+      return 'DEPT_' + Date.now().toString(36).toUpperCase().slice(-4)
+    }
+  } else {
+    // 纯英文/数字名称：转大写，空格/连字符替换为下划线
+    return trimmed
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_')
+      .replace(/[^A-Z0-9_]/g, '')
+      .replace(/_{2,}/g, '_')
+      .replace(/^_|_$/g, '')
+  }
+}
+
+// 🔥 监听部门名称变化，自动生成编码（仅在新建模式且用户未手动修改编码时触发）
+watch(() => formData.name, (newName) => {
+  if (!props.isEdit && !codeManuallyModified.value) {
+    formData.code = generateCodeFromName(newName)
+  }
+})
+
+// 🔥 当用户手动修改编码时，标记为已手动修改，停止自动生成
+const handleCodeInput = () => {
+  codeManuallyModified.value = true
+  // 自动将输入转为大写
+  formData.code = formData.code.toUpperCase().replace(/[^A-Z0-9_]/g, '')
+}
 
 // 权限展开状态
 const permissionExpanded = ref(false)
@@ -778,6 +835,9 @@ const resetForm = () => {
     permissions: [],
     description: ''
   })
+
+  // 🔥 重置编码手动修改标记
+  codeManuallyModified.value = false
 
   // 重置权限相关状态
   currentTemplate.value = ''

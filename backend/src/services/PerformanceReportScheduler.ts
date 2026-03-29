@@ -15,6 +15,9 @@ import { Order } from '../entities/Order';
 import { User } from '../entities/User';
 import { logger } from '../config/logger';
 import crypto from 'crypto';
+import { getTenantRepo } from '../utils/tenantRepo';
+import { TenantContextManager } from '../utils/tenantContext';
+import { deployConfig } from '../config/deploy';
 
 class PerformanceReportScheduler {
   private timer: NodeJS.Timeout | null = null;
@@ -60,27 +63,32 @@ class PerformanceReportScheduler {
 
       const configRepo = dataSource.getRepository(PerformanceReportConfig);
 
-      // 获取所有启用的配置
+      // 获取所有启用的配置（跨租户查询，定时任务需要处理所有租户的配置）
       const configs = await configRepo.find({
         where: { isEnabled: 1 }
       });
 
       if (configs.length === 0) return;
 
+      // 🔥 修复：统一使用北京时间（UTC+8）判断触发时间，避免服务器时区差异
       const now = new Date();
-      const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-      const currentDay = now.getDay(); // 0=周日, 1=周一, ...
-      const currentDate = now.getDate();
+      const beijingOffset = 8 * 60 * 60 * 1000;
+      const utcTime = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
+      const beijingNow = new Date(utcTime + beijingOffset);
+
+      const currentTime = `${beijingNow.getHours().toString().padStart(2, '0')}:${beijingNow.getMinutes().toString().padStart(2, '0')}`;
+      const currentDay = beijingNow.getDay(); // 0=周日, 1=周一, ...
+      const currentDate = beijingNow.getDate();
 
       for (const config of configs) {
         try {
           // 检查是否到了发送时间
-          if (!this.shouldSendNow(config, currentTime, currentDay, currentDate, now)) {
+          if (!this.shouldSendNow(config, currentTime, currentDay, currentDate, beijingNow)) {
             continue;
           }
 
-          // 检查今天是否已经发送过
-          if (this.hasSentToday(config, now)) {
+          // 检查今天是否已经发送过（基于北京时间）
+          if (this.hasSentToday(config, beijingNow)) {
             continue;
           }
 
@@ -164,13 +172,19 @@ class PerformanceReportScheduler {
   }
 
   /**
-   * 检查今天是否已经发送过
+   * 检查今天是否已经发送过（基于北京时间日期比较）
    */
-  private hasSentToday(config: PerformanceReportConfig, now: Date): boolean {
+  private hasSentToday(config: PerformanceReportConfig, beijingNow: Date): boolean {
     if (!config.lastSentAt) return false;
 
+    // 将 lastSentAt 也转换为北京时间进行日期比较
     const lastSent = new Date(config.lastSentAt);
-    return lastSent.toDateString() === now.toDateString();
+    const beijingOffset = 8 * 60 * 60 * 1000;
+    const lastSentUtc = lastSent.getTime() + (lastSent.getTimezoneOffset() * 60 * 1000);
+    const lastSentBeijing = new Date(lastSentUtc + beijingOffset);
+
+    const toDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return toDateStr(lastSentBeijing) === toDateStr(beijingNow);
   }
 
   /**
@@ -180,40 +194,52 @@ class PerformanceReportScheduler {
     const dataSource = getDataSource();
     if (!dataSource) return;
 
-    // 生成报表数据
-    const reportData = await this.generateReportData(
-      config.reportTypes,
-      config.viewScope,
-      config.targetDepartments || []
-    );
+    // 🔥 在租户上下文中执行，确保数据隔离
+    const tenantId = (config as any).tenantId || (config as any).tenant_id;
+    const runInContext = async () => {
+      // 生成报表数据（使用getTenantRepo自动过滤租户数据）
+      const reportData = await this.generateReportData(
+        config.reportTypes,
+        config.viewScope,
+        config.targetDepartments || [],
+        config.rankingLimit || 10
+      );
 
-    // 根据消息格式生成内容
-    const useMarkdown = config.messageFormat === 'image';
-    const messageContent = useMarkdown
-      ? this.generateMarkdownMessage(reportData, config)
-      : this.generateTextMessage(reportData, config);
+      // 根据消息格式生成内容
+      const useMarkdown = config.messageFormat === 'image';
+      const messageContent = useMarkdown
+        ? this.generateMarkdownMessage(reportData, config)
+        : this.generateTextMessage(reportData, config);
 
-    // 发送消息
-    let result: { success: boolean; message: string };
-    if (config.channelType === 'dingtalk') {
-      result = await this.sendDingtalkMessage(config.webhook, config.secret, messageContent, useMarkdown);
-    } else if (config.channelType === 'wechat_work') {
-      result = await this.sendWechatWorkMessage(config.webhook, messageContent, useMarkdown);
+      // 发送消息
+      let result: { success: boolean; message: string };
+      if (config.channelType === 'dingtalk') {
+        result = await this.sendDingtalkMessage(config.webhook, config.secret, messageContent, useMarkdown);
+      } else if (config.channelType === 'wechat_work') {
+        result = await this.sendWechatWorkMessage(config.webhook, messageContent, useMarkdown);
+      } else {
+        result = { success: false, message: '不支持的渠道类型' };
+      }
+
+      // 🔥 修复：使用 getTenantRepo 更新发送状态，确保租户隔离
+      const configRepo = getTenantRepo(PerformanceReportConfig);
+      config.lastSentAt = new Date();
+      config.lastSentStatus = result.success ? 'success' : 'failed';
+      config.lastSentMessage = result.message;
+      await configRepo.save(config);
+
+      if (result.success) {
+        logger.info(`📊 [业绩报表] ✅ 发送成功: ${config.name}`);
+      } else {
+        logger.error(`📊 [业绩报表] ❌ 发送失败: ${config.name} - ${result.message}`);
+      }
+    };
+
+    // SaaS模式下在租户上下文中运行
+    if (deployConfig.isSaaS() && tenantId) {
+      await TenantContextManager.run({ tenantId }, runInContext);
     } else {
-      result = { success: false, message: '不支持的渠道类型' };
-    }
-
-    // 更新发送状态
-    const configRepo = dataSource.getRepository(PerformanceReportConfig);
-    config.lastSentAt = new Date();
-    config.lastSentStatus = result.success ? 'success' : 'failed';
-    config.lastSentMessage = result.message;
-    await configRepo.save(config);
-
-    if (result.success) {
-      logger.info(`📊 [业绩报表] ✅ 发送成功: ${config.name}`);
-    } else {
-      logger.error(`📊 [业绩报表] ❌ 发送失败: ${config.name} - ${result.message}`);
+      await runInContext();
     }
   }
 
@@ -223,7 +249,8 @@ class PerformanceReportScheduler {
   private async generateReportData(
     reportTypes: string[],
     viewScope: string,
-    targetDepartments: string[]
+    targetDepartments: string[],
+    rankingLimit: number = 10
   ): Promise<any> {
     const dataSource = getDataSource();
     if (!dataSource) return {};
@@ -249,15 +276,16 @@ class PerformanceReportScheduler {
 
     logger.info(`[业绩报表] 📅 统计日期: 昨日=${yesterdayStr}, 本月开始=${monthStartStr}, 当前北京时间=${beijingTime.toISOString()}`);
 
-    const orderRepo = dataSource.getRepository(Order);
+    const orderRepo = getTenantRepo(Order);
 
+    // 🔥 修复：使用 CONVERT_TZ 确保 DATE() 提取的是北京时间日期，避免 MySQL 服务器时区不一致问题
     // 查询昨日数据 - 使用字符串日期比较
     const dailyQuery = orderRepo.createQueryBuilder('o')
-      .where('DATE(o.created_at) = :date', { date: yesterdayStr });
+      .where('DATE(CONVERT_TZ(o.created_at, "+00:00", "+08:00")) = :date', { date: yesterdayStr });
 
     // 查询本月数据
     const monthlyQuery = orderRepo.createQueryBuilder('o')
-      .where('DATE(o.created_at) >= :start', { start: monthStartStr });
+      .where('DATE(CONVERT_TZ(o.created_at, "+00:00", "+08:00")) >= :start', { start: monthStartStr });
 
     if (viewScope === 'department' && targetDepartments.length > 0) {
       dailyQuery.andWhere('o.department_id IN (:...depts)', { depts: targetDepartments });
@@ -269,7 +297,9 @@ class PerformanceReportScheduler {
         `SUM(CASE WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded') AND (o.status != 'pending_transfer' OR o.mark_type = 'normal') THEN 1 ELSE 0 END) as orderCount`,
         `COALESCE(SUM(CASE WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded') AND (o.status != 'pending_transfer' OR o.mark_type = 'normal') THEN o.total_amount ELSE 0 END), 0) as orderAmount`,
         `SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) as signedCount`,
-        `COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END), 0) as signedAmount`
+        `COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END), 0) as signedAmount`,
+        `SUM(CASE WHEN o.status = 'refunded' THEN 1 ELSE 0 END) as refundCount`,
+        `COALESCE(SUM(CASE WHEN o.status = 'refunded' THEN o.total_amount ELSE 0 END), 0) as refundAmount`
       ])
       .getRawOne();
 
@@ -280,7 +310,9 @@ class PerformanceReportScheduler {
         `SUM(CASE WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded') AND (o.status != 'pending_transfer' OR o.mark_type = 'normal') THEN 1 ELSE 0 END) as orderCount`,
         `COALESCE(SUM(CASE WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded') AND (o.status != 'pending_transfer' OR o.mark_type = 'normal') THEN o.total_amount ELSE 0 END), 0) as orderAmount`,
         `SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) as signedCount`,
-        `COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END), 0) as signedAmount`
+        `COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END), 0) as signedAmount`,
+        `SUM(CASE WHEN o.status = 'refunded' THEN 1 ELSE 0 END) as refundCount`,
+        `COALESCE(SUM(CASE WHEN o.status = 'refunded' THEN o.total_amount ELSE 0 END), 0) as refundAmount`
       ])
       .getRawOne();
 
@@ -288,22 +320,39 @@ class PerformanceReportScheduler {
       ? ((monthlyStats.signedCount / monthlyStats.orderCount) * 100).toFixed(1)
       : '0.0';
 
+    // 🔥 计算衍生指标
+    const dailyOrderCount = parseInt(dailyStats?.orderCount || '0');
+    const dailyOrderAmount = parseFloat(dailyStats?.orderAmount || '0');
+    const dailyRefundCount = parseInt(dailyStats?.refundCount || '0');
+    const dailyRefundAmount = parseFloat(dailyStats?.refundAmount || '0');
+    const monthlyOrderCount = parseInt(monthlyStats?.orderCount || '0');
+    const monthlyOrderAmount = parseFloat(monthlyStats?.orderAmount || '0');
+    const monthlyRefundCount = parseInt(monthlyStats?.refundCount || '0');
+    const monthlyRefundAmount = parseFloat(monthlyStats?.refundAmount || '0');
+
+    const dailyRefundRate = dailyOrderCount > 0 ? ((dailyRefundCount / dailyOrderCount) * 100).toFixed(1) : '0.0';
+    const monthlyRefundRate = monthlyOrderCount > 0 ? ((monthlyRefundCount / monthlyOrderCount) * 100).toFixed(1) : '0.0';
+    const dailyAvgAmount = dailyOrderCount > 0 ? Math.round(dailyOrderAmount / dailyOrderCount) : 0;
+    const monthlyAvgAmount = monthlyOrderCount > 0 ? Math.round(monthlyOrderAmount / monthlyOrderCount) : 0;
+
     // 获取排名
-    const userRepo = dataSource.getRepository(User);
+    const userRepo = getTenantRepo(User);
     let rankingQuery = orderRepo.createQueryBuilder('o')
       .select([
         'o.created_by as userId',
         `COALESCE(SUM(CASE WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded') AND (o.status != 'pending_transfer' OR o.mark_type = 'normal') THEN o.total_amount ELSE 0 END), 0) as totalAmount`,
         `SUM(CASE WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded') AND (o.status != 'pending_transfer' OR o.mark_type = 'normal') THEN 1 ELSE 0 END) as orderCount`
       ])
-      .where('DATE(o.created_at) >= :start', { start: monthStartStr })
+      .where('DATE(CONVERT_TZ(o.created_at, "+00:00", "+08:00")) >= :start', { start: monthStartStr })
       .groupBy('o.created_by')
-      .orderBy('totalAmount', 'DESC')
-      .limit(3);
+      .orderBy('totalAmount', 'DESC');
 
     if (viewScope === 'department' && targetDepartments.length > 0) {
       rankingQuery = rankingQuery.andWhere('o.department_id IN (:...depts)', { depts: targetDepartments });
     }
+
+    // 🔥 使用配置的排行数量限制
+    rankingQuery = rankingQuery.limit(rankingLimit);
 
     const rankingData = await rankingQuery.getRawMany();
 
@@ -328,17 +377,25 @@ class PerformanceReportScheduler {
       reportDate: yesterdayStr,
       reportDateText: this.formatDateText(yesterdayBeijing),
       daily: {
-        orderCount: parseInt(dailyStats?.orderCount || '0'),
-        orderAmount: parseFloat(dailyStats?.orderAmount || '0'),
+        orderCount: dailyOrderCount,
+        orderAmount: dailyOrderAmount,
         signedCount: parseInt(dailyStats?.signedCount || '0'),
-        signedAmount: parseFloat(dailyStats?.signedAmount || '0')
+        signedAmount: parseFloat(dailyStats?.signedAmount || '0'),
+        refundCount: dailyRefundCount,
+        refundAmount: dailyRefundAmount,
+        refundRate: dailyRefundRate,
+        avgOrderAmount: dailyAvgAmount
       },
       monthly: {
-        orderCount: parseInt(monthlyStats?.orderCount || '0'),
-        orderAmount: parseFloat(monthlyStats?.orderAmount || '0'),
+        orderCount: monthlyOrderCount,
+        orderAmount: monthlyOrderAmount,
         signedCount: parseInt(monthlyStats?.signedCount || '0'),
         signedAmount: parseFloat(monthlyStats?.signedAmount || '0'),
-        signedRate: monthlySignedRate
+        signedRate: monthlySignedRate,
+        refundCount: monthlyRefundCount,
+        refundAmount: monthlyRefundAmount,
+        refundRate: monthlyRefundRate,
+        avgOrderAmount: monthlyAvgAmount
       },
       topRanking
     };
@@ -351,30 +408,68 @@ class PerformanceReportScheduler {
 
   private generateTextMessage(data: any, config: PerformanceReportConfig): string {
     const lines: string[] = [];
+    const types = config.reportTypes || [];
     lines.push(`📊 ${config.name}`);
     lines.push(`━━━━━━━━━━━━━━━━`);
     lines.push(`📅 ${data.reportDateText}`);
     lines.push('');
-    lines.push('💰 当日业绩');
-    lines.push(`   订单数: ${data.daily.orderCount} 单`);
-    lines.push(`   订单金额: ¥${data.daily.orderAmount.toLocaleString()}`);
 
+    // 当日数据
+    lines.push('💰 当日业绩');
+    if (types.includes('order_count')) {
+      lines.push(`   订单数: ${data.daily.orderCount} 单`);
+    }
+    if (types.includes('order_amount')) {
+      lines.push(`   订单金额: ¥${data.daily.orderAmount.toLocaleString()}`);
+    }
+    if (types.includes('refund_count')) {
+      lines.push(`   退款单数: ${data.daily.refundCount} 单`);
+    }
+    if (types.includes('refund_amount')) {
+      lines.push(`   退款金额: ¥${data.daily.refundAmount.toLocaleString()}`);
+    }
+    if (types.includes('refund_rate')) {
+      lines.push(`   退款率: ${data.daily.refundRate}%`);
+    }
+    if (types.includes('avg_order_amount')) {
+      lines.push(`   客单价: ¥${data.daily.avgOrderAmount.toLocaleString()}`);
+    }
+
+    // 月累计数据
     if (config.includeMonthly === 1) {
       lines.push('');
       lines.push('📈 当月累计');
       lines.push(`   订单数: ${data.monthly.orderCount} 单`);
       lines.push(`   订单金额: ¥${data.monthly.orderAmount.toLocaleString()}`);
-      lines.push(`   签收单数: ${data.monthly.signedCount} 单`);
-      lines.push(`   签收金额: ¥${data.monthly.signedAmount.toLocaleString()}`);
-      lines.push(`   签收率: ${data.monthly.signedRate}%`);
+      if (types.includes('monthly_signed_count')) {
+        lines.push(`   签收单数: ${data.monthly.signedCount} 单`);
+      }
+      if (types.includes('monthly_signed_amount')) {
+        lines.push(`   签收金额: ¥${data.monthly.signedAmount.toLocaleString()}`);
+      }
+      if (types.includes('monthly_signed_rate')) {
+        lines.push(`   签收率: ${data.monthly.signedRate}%`);
+      }
+      if (types.includes('refund_count') || types.includes('refund_amount')) {
+        lines.push(`   退款单数: ${data.monthly.refundCount} 单`);
+        lines.push(`   退款金额: ¥${data.monthly.refundAmount.toLocaleString()}`);
+      }
+      if (types.includes('refund_rate')) {
+        lines.push(`   退款率: ${data.monthly.refundRate}%`);
+      }
+      if (types.includes('avg_order_amount')) {
+        lines.push(`   客单价: ¥${data.monthly.avgOrderAmount.toLocaleString()}`);
+      }
     }
 
     if (config.includeRanking === 1 && data.topRanking?.length > 0) {
       lines.push('');
       lines.push('🏆 业绩排行榜');
       const medals = ['🥇', '🥈', '🥉'];
-      data.topRanking.slice(0, 3).forEach((item: any, index: number) => {
-        lines.push(`   ${medals[index]} ${item.name}: ¥${item.amount.toLocaleString()} (${item.orderCount}单)`);
+      const limit = config.rankingLimit || 10;
+      data.topRanking.slice(0, limit).forEach((item: any, index: number) => {
+        const medal = medals[index] || `${index + 1}.`;
+        lines.push(`${medal} ${item.name}: ¥${item.amount.toLocaleString()} (${item.orderCount}单)`);
       });
     }
 
@@ -386,32 +481,71 @@ class PerformanceReportScheduler {
 
   private generateMarkdownMessage(data: any, config: PerformanceReportConfig): string {
     const lines: string[] = [];
+    const types = config.reportTypes || [];
     lines.push(`## 📊 ${config.name}`);
     lines.push('');
     lines.push(`> 📅 ${data.reportDateText}`);
     lines.push('');
+
+    // 当日数据
     lines.push('### 💰 当日业绩');
-    lines.push(`- **订单数**: ${data.daily.orderCount} 单`);
-    lines.push(`- **订单金额**: ¥${data.daily.orderAmount.toLocaleString()}`);
+    if (types.includes('order_count')) {
+      lines.push(`- **订单数**: ${data.daily.orderCount} 单`);
+    }
+    if (types.includes('order_amount')) {
+      lines.push(`- **订单金额**: ¥${data.daily.orderAmount.toLocaleString()}`);
+    }
+    if (types.includes('refund_count')) {
+      lines.push(`- **退款单数**: ${data.daily.refundCount} 单`);
+    }
+    if (types.includes('refund_amount')) {
+      lines.push(`- **退款金额**: ¥${data.daily.refundAmount.toLocaleString()}`);
+    }
+    if (types.includes('refund_rate')) {
+      lines.push(`- **退款率**: ${data.daily.refundRate}%`);
+    }
+    if (types.includes('avg_order_amount')) {
+      lines.push(`- **客单价**: ¥${data.daily.avgOrderAmount.toLocaleString()}`);
+    }
     lines.push('');
 
+    // 月累计数据
     if (config.includeMonthly === 1) {
       lines.push('### 📈 当月累计');
       lines.push(`- **订单数**: ${data.monthly.orderCount} 单`);
       lines.push(`- **订单金额**: ¥${data.monthly.orderAmount.toLocaleString()}`);
-      lines.push(`- **签收单数**: ${data.monthly.signedCount} 单`);
-      lines.push(`- **签收金额**: ¥${data.monthly.signedAmount.toLocaleString()}`);
-      lines.push(`- **签收率**: ${data.monthly.signedRate}%`);
+      if (types.includes('monthly_signed_count')) {
+        lines.push(`- **签收单数**: ${data.monthly.signedCount} 单`);
+      }
+      if (types.includes('monthly_signed_amount')) {
+        lines.push(`- **签收金额**: ¥${data.monthly.signedAmount.toLocaleString()}`);
+      }
+      if (types.includes('monthly_signed_rate')) {
+        lines.push(`- **签收率**: ${data.monthly.signedRate}%`);
+      }
+      if (types.includes('refund_count') || types.includes('refund_amount')) {
+        lines.push(`- **退款单数**: ${data.monthly.refundCount} 单`);
+        lines.push(`- **退款金额**: ¥${data.monthly.refundAmount.toLocaleString()}`);
+      }
+      if (types.includes('refund_rate')) {
+        lines.push(`- **退款率**: ${data.monthly.refundRate}%`);
+      }
+      if (types.includes('avg_order_amount')) {
+        lines.push(`- **客单价**: ¥${data.monthly.avgOrderAmount.toLocaleString()}`);
+      }
       lines.push('');
     }
 
     if (config.includeRanking === 1 && data.topRanking?.length > 0) {
       lines.push('### 🏆 业绩排行榜');
-      const medals = ['🥇', '🥈', '🥉'];
-      data.topRanking.slice(0, 3).forEach((item: any, index: number) => {
-        lines.push(`${medals[index]} **${item.name}**: ¥${item.amount.toLocaleString()} (${item.orderCount}单)`);
-      });
       lines.push('');
+      const medals = ['🥇', '🥈', '🥉'];
+      const limit = config.rankingLimit || 10;
+      data.topRanking.slice(0, limit).forEach((item: any, index: number) => {
+        const medal = medals[index] || `${index + 1}.`;
+        lines.push(`${medal} **${item.name}**: ¥${item.amount.toLocaleString()} (${item.orderCount}单)`);
+        lines.push('');
+      });
     }
 
     lines.push('---');

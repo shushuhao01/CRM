@@ -233,6 +233,12 @@
         </el-button>
       </template>
 
+      <!-- 地址列 -->
+      <template #column-address="{ row }">
+        <span v-if="row.address">{{ displaySensitiveInfoNew(row.address, SensitiveInfoType.ADDRESS) }}</span>
+        <span v-else class="no-data">-</span>
+      </template>
+
       <!-- 客户等级列 -->
       <template #column-level="{ row }">
         <div class="level-cell">
@@ -498,7 +504,6 @@ import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
 import { useCustomerStore } from '@/stores/customer'
 import { useNotificationStore } from '@/stores/notification'
-import { maskPhone, formatPhone } from '@/utils/phone'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { exportBatchCustomers, exportSingleCustomer, type ExportCustomer } from '@/utils/export'
@@ -657,24 +662,13 @@ const canManageExport = computed(() => {
   return currentUser.role === 'super_admin'
 })
 
-// 【修复】检查是否有新增客户权限 - 销售员、部门经理、管理员都可以新增客户
+// 【修复】检查是否有新增客户权限 - 所有登录用户都可以新增客户
 const canAddCustomer = computed(() => {
   const currentUser = userStore.currentUser
   if (!currentUser) return false
 
-  // 超级管理员和管理员有权限
-  if (userStore.isAdmin || userStore.isSuperAdmin) return true
-
-  // 部门经理有权限
-  if (currentUser.role === 'department_manager') return true
-
-  // 销售员有权限
-  if (currentUser.role === 'sales_staff') return true
-
-  // 检查是否有customer:add权限
-  if (userStore.permissions.includes('customer:add')) return true
-
-  return false
+  // 所有登录用户都有权限新增客户
+  return true
 })
 
 // 检查是否有导出权限
@@ -1587,10 +1581,10 @@ const loadCustomerList = async (forceReload = false) => {
 
     // 🔥 修复：直接调用API，传递分页参数和日期参数，实现后端分页
     const { customerApi } = await import('@/api/customer')
-    console.log(`[CustomerList] 🚀 加载客户, 页码: ${pagination.page}, 每页: ${pagination.size}`)
+    console.log(`[CustomerList] 🚀 加载客户, 页码: ${pagination.page}, 每页: ${pagination.size}, 强制刷新: ${forceReload}`)
 
     // 🔥 修复：传递日期范围参数
-    const response = await customerApi.getList({
+    const requestParams = {
       page: pagination.page,
       pageSize: pagination.size,
       keyword: searchForm.keyword || undefined,
@@ -1598,7 +1592,10 @@ const loadCustomerList = async (forceReload = false) => {
       dateRange: searchForm.dateRange && searchForm.dateRange.length === 2
         ? [searchForm.dateRange[0], searchForm.dateRange[1]]
         : undefined
-    })
+    }
+    console.log('[CustomerList] 请求参数:', JSON.stringify(requestParams))
+
+    const response = await customerApi.getList(requestParams)
 
     if (response && response.data) {
       const { list, total, statistics } = response.data
@@ -1669,6 +1666,9 @@ watch(() => route.path, async (newPath, oldPath) => {
     if (oldPath === '/customer/add') {
       console.log('从添加页面返回，执行强化数据同步流程')
 
+      // 🔥 设置标志防止query watcher重复加载
+      isLoadingFromRouteChange = true
+
       // 1. 重置分页到第一页，确保新客户能被看到
       pagination.page = 1
 
@@ -1682,8 +1682,11 @@ watch(() => route.path, async (newPath, oldPath) => {
       // 3. 等待一个tick确保状态更新
       await nextTick()
 
-      // 4. 强制重新加载列表数据（这会触发forceRefreshCustomers）
+      // 4. 强制重新加载列表数据
       await loadCustomerList(true)
+
+      // 🔥 重置标志
+      isLoadingFromRouteChange = false
 
       console.log('强化数据同步完成，新客户应该已显示，当前客户数量:', customerStore.customers.length)
     } else if (oldPath?.startsWith('/customer/edit/')) {
@@ -1699,9 +1702,19 @@ watch(() => route.path, async (newPath, oldPath) => {
   }
 }, { immediate: true })
 
+// 🔥 防止双重加载的标志
+let isLoadingFromRouteChange = false
+
 // 监听路由查询参数变化，处理刷新请求（参考商品模块的简单实现）
 watch(() => route.query, (newQuery) => {
   if (route.path === '/customer/list' && newQuery.refresh === 'true') {
+    // 🔥 修复：如果路径变化的watcher已经在处理，跳过此处
+    if (isLoadingFromRouteChange) {
+      console.log('[客户列表] 跳过query watcher的重复加载（路径watcher已处理）')
+      // 仍然需要清除刷新参数
+      safeNavigator.replace({ path: '/customer/list' })
+      return
+    }
     console.log('检测到刷新参数，重新加载客户列表')
 
     // 重置分页到第一页

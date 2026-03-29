@@ -4,10 +4,12 @@ import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { JwtConfig } from '../config/jwt';
-import { AppDataSource } from '../config/database';
+import { AppDataSource as _AppDataSource } from '../config/database';
 import { User } from '../entities/User';
 import { Department } from '../entities/Department';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { TenantContextManager } from '../utils/tenantContext';
+import { checkStorageLimit } from '../middleware/checkTenantLimits';
 
 const router = Router();
 
@@ -50,6 +52,7 @@ const upload = multer({
 
 /**
  * 简化的认证中间件，不依赖数据库
+ * 🔥 修复：添加TenantContext设置，确保租户数据隔离
  */
 const simpleAuth = (req: any, res: any, next: any) => {
   try {
@@ -68,6 +71,14 @@ const simpleAuth = (req: any, res: any, next: any) => {
     const payload = JwtConfig.verifyAccessToken(token);
 
     req.user = payload;
+
+    // 🔥 租户隔离修复：从JWT中提取tenantId并设置到TenantContext
+    // 与 authenticateToken 中间件行为保持一致
+    if (payload.tenantId) {
+      req.tenantId = payload.tenantId;
+      TenantContextManager.setContext({ tenantId: payload.tenantId, userId: payload.userId });
+    }
+
     next();
   } catch (error) {
     // 仅开发环境输出错误详情
@@ -321,7 +332,7 @@ router.put('/preferences', simpleAuth, (req, res) => {
  * @desc 上传用户头像（保存文件并更新数据库）
  * @access Private
  */
-router.post('/avatar', simpleAuth, upload.single('avatar'), async (req, res) => {
+router.post('/avatar', simpleAuth, checkStorageLimit, upload.single('avatar'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -444,6 +455,16 @@ router.put('/password', simpleAuth, async (req, res) => {
         success: false,
         message: '当前密码不正确',
         code: 'INVALID_CURRENT_PASSWORD'
+      });
+    }
+
+    // 🔥 修复：检查新密码是否与当前密码相同
+    const isSamePassword = await bcrypt.compare(newPassword, user.password);
+    if (isSamePassword) {
+      return res.status(400).json({
+        success: false,
+        message: '新密码不能与当前密码相同',
+        code: 'SAME_PASSWORD'
       });
     }
 

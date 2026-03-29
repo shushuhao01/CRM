@@ -81,6 +81,9 @@ import { ValueAddedOrder } from '../entities/ValueAddedOrder';
 import { ValueAddedPriceConfig } from '../entities/ValueAddedPriceConfig';
 import { OutsourceCompany } from '../entities/OutsourceCompany';
 import { ValueAddedStatusConfig } from '../entities/ValueAddedStatusConfig';
+import { Module } from '../entities/Module';
+import { ModuleConfig } from '../entities/ModuleConfig';
+import { NotificationTemplate } from '../entities/NotificationTemplate';
 
 // 🔥 统一使用 MySQL 数据库（开发环境和生产环境）
 // 数据库类型：默认使用 MySQL，除非明确指定其他类型
@@ -154,7 +157,10 @@ const entities = [
   ValueAddedOrder,
   ValueAddedPriceConfig,
   OutsourceCompany,
-  ValueAddedStatusConfig
+  ValueAddedStatusConfig,
+  Module,
+  ModuleConfig,
+  NotificationTemplate
 ];
 
 // MySQL 数据库配置（开发环境和生产环境统一使用）
@@ -173,15 +179,20 @@ const AppDataSource = new DataSource({
   timezone: '+08:00',
   // 🔥 字符集配置
   charset: process.env.DB_CHARSET || 'utf8mb4',
-  // 连接池配置
+  // 连接池配置（🔥 优化：多租户场景需要更大的连接池）
   extra: {
-    connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '10'),
+    connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '50'),
     // 连接超时时间（毫秒）
     connectTimeout: 60000,
     // 查询超时时间（毫秒）
     acquireTimeout: 60000,
     // 空闲连接超时时间（毫秒）
-    timeout: 60000
+    timeout: 60000,
+    // 🔥 新增：连接池优化配置
+    waitForConnections: true,
+    queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000,
   },
   entities,
   migrations: [],
@@ -207,7 +218,7 @@ export const initializeDatabase = async (): Promise<void> => {
       env: process.env.NODE_ENV || 'development'
     };
 
-    console.log('� 正在连接 MySQL 数据库...');
+    console.log('📡 正在连接 MySQL 数据库...');
     console.log(`   环境: ${dbInfo.env}`);
     console.log(`   数据库: ${dbInfo.database}`);
     console.log(`   地址: ${dbInfo.host}:${dbInfo.port}`);
@@ -215,6 +226,22 @@ export const initializeDatabase = async (): Promise<void> => {
 
     await AppDataSource.initialize();
     console.log('✅ 数据库连接成功');
+
+    // 自动修复：订单设置相关表结构和预设数据
+    try {
+      const { initOrderSettingsSchema } = await import('../scripts/initOrderSettings');
+      await initOrderSettingsSchema();
+    } catch (err) {
+      console.warn('⚠️ 订单设置自动修复跳过:', (err as Error).message);
+    }
+
+    // 自动修复：敏感信息权限表结构（添加tenant_id列、修复唯一索引）
+    try {
+      const { initSensitiveInfoPermissionsSchema } = await import('../scripts/initSensitiveInfoPermissions');
+      await initSensitiveInfoPermissionsSchema();
+    } catch (err) {
+      console.warn('⚠️ 敏感信息权限自动修复跳过:', (err as Error).message);
+    }
 
     // 提示：数据库结构变更需要手动执行迁移脚本
     if (process.env.NODE_ENV === 'development') {
@@ -224,8 +251,8 @@ export const initializeDatabase = async (): Promise<void> => {
     // 角色权限初始化已禁用 - 数据库中已有预设数据，无需自动初始化
     console.log('ℹ️  角色权限使用数据库预设数据（不自动初始化）');
   } catch (error) {
-    console.error('❌ 数据库连接失败:', error);
-    console.error('   请检查以下配置:');
+    console.error('❌ 数据库连接失败', error);
+    console.error('   请检查以下配置：');
     console.error(`   - DB_HOST: ${process.env.DB_HOST || 'localhost'}`);
     console.error(`   - DB_PORT: ${process.env.DB_PORT || '3306'}`);
     console.error(`   - DB_DATABASE: ${process.env.DB_DATABASE || 'crm'}`);
@@ -242,7 +269,7 @@ export const closeDatabase = async (): Promise<void> => {
       console.log('✅ 数据库连接已关闭');
     }
   } catch (error) {
-    console.error('❌ 关闭数据库连接失败:', error);
+    console.error('❌ 关闭数据库连接失败', error);
     throw error;
   }
 };

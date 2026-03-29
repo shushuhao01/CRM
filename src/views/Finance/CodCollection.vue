@@ -52,9 +52,35 @@
     <div class="filter-bar">
       <el-popover placement="bottom" :width="400" trigger="click" v-model:visible="batchSearchVisible">
         <template #reference>
-          <el-input v-model="searchKeyword" :placeholder="batchSearchKeywords ? `已输入 ${batchSearchCount} 条` : '批量搜索'"
+          <el-input v-model="searchKeyword" :placeholder="batchSearchKeywords ? `已输入 ${batchSearchCount} 条` : '批量搜索（点击展开）'"
             clearable class="filter-search" @clear="clearBatchSearch" readonly>
             <template #prefix><el-icon><Search /></el-icon></template>
+            <template #suffix>
+              <el-badge v-if="batchSearchCount > 0" :value="batchSearchCount" :max="999" class="batch-badge" />
+              <el-popover
+                v-if="missingKeywords.length > 0"
+                placement="bottom"
+                :width="360"
+                trigger="hover"
+              >
+                <template #reference>
+                  <span class="missing-count-tag">缺{{ missingKeywords.length }}</span>
+                </template>
+                <div class="missing-popover">
+                  <div class="missing-popover-header">
+                    <span>以下 <b>{{ missingKeywords.length }}</b> 条未匹配到结果</span>
+                    <el-button type="primary" link size="small" @click="copyMissingKeywords">
+                      <el-icon><DocumentCopy /></el-icon> 一键复制
+                    </el-button>
+                  </div>
+                  <div class="missing-popover-list">
+                    <div v-for="(kw, idx) in missingKeywords" :key="idx" class="missing-item">
+                      <span class="missing-item-text">{{ kw }}</span>
+                    </div>
+                  </div>
+                </div>
+              </el-popover>
+            </template>
           </el-input>
         </template>
         <div class="batch-search-popover">
@@ -89,11 +115,31 @@
     <div class="action-bar">
       <div class="action-left">
         <el-tabs v-model="activeTab" @tab-change="handleTabChange" class="status-tabs">
-          <el-tab-pane name="pending" label="待处理" />
-          <el-tab-pane name="returned" label="已返款" />
-          <el-tab-pane name="cancelled" label="已改代收" />
-          <el-tab-pane name="zero" label="无需代收" />
-          <el-tab-pane name="all" label="全部" />
+          <el-tab-pane name="pending">
+            <template #label>
+              <span class="tab-label">待处理<el-badge v-if="tabStats.pending > 0" :value="tabStats.pending" class="tab-badge danger" /></span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane name="returned">
+            <template #label>
+              <span class="tab-label">已返款<el-badge v-if="tabStats.returned > 0" :value="tabStats.returned" class="tab-badge success" /></span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane name="cancelled">
+            <template #label>
+              <span class="tab-label">已改代收<el-badge v-if="tabStats.cancelled > 0" :value="tabStats.cancelled" class="tab-badge warning" /></span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane name="zero">
+            <template #label>
+              <span class="tab-label">无需代收<el-badge v-if="tabStats.zero > 0" :value="tabStats.zero" class="tab-badge info" /></span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane name="all">
+            <template #label>
+              <span class="tab-label">全部<el-badge v-if="tabStats.all > 0" :value="tabStats.all" class="tab-badge info" /></span>
+            </template>
+          </el-tab-pane>
         </el-tabs>
       </div>
       <div class="action-right">
@@ -196,7 +242,7 @@
     </div>
 
     <!-- 详情弹窗 -->
-    <el-dialog v-model="detailDialogVisible" title="代收订单详情" width="700px">
+    <el-dialog v-model="detailDialogVisible" title="代收订单详情" width="750px">
       <el-descriptions :column="2" border v-if="currentOrder">
         <el-descriptions-item label="订单号">{{ currentOrder.orderNumber }}</el-descriptions-item>
         <el-descriptions-item label="客户姓名">{{ currentOrder.customerName }}</el-descriptions-item>
@@ -204,6 +250,19 @@
         <el-descriptions-item label="代收金额"><span class="cod-amount">¥{{ formatMoney(currentOrder.codAmount) }}</span></el-descriptions-item>
         <el-descriptions-item label="代收状态"><el-tag :type="getCodStatusType(currentOrder)" size="small">{{ getCodStatusText(currentOrder) }}</el-tag></el-descriptions-item>
         <el-descriptions-item label="已返款金额">¥{{ formatMoney(currentOrder.codReturnedAmount) }}</el-descriptions-item>
+
+        <!-- 改代收信息（只在已改代收状态时显示） -->
+        <template v-if="currentOrder.codStatus === 'cancelled' && currentOrder.codCancelledAt">
+          <el-descriptions-item label="改代收时间">{{ formatDateTime(currentOrder.codCancelledAt) }}</el-descriptions-item>
+          <el-descriptions-item label="改代收操作人">{{ currentOrder.codCancelledByName || '-' }}</el-descriptions-item>
+        </template>
+
+        <!-- 返款信息（只在已返款状态时显示） -->
+        <template v-if="currentOrder.codStatus === 'returned' && currentOrder.codReturnedAt">
+          <el-descriptions-item label="返款时间">{{ formatDateTime(currentOrder.codReturnedAt) }}</el-descriptions-item>
+          <el-descriptions-item label="返款操作人">{{ currentOrder.codReturnedByName || '-' }}</el-descriptions-item>
+        </template>
+
         <el-descriptions-item label="销售人员">{{ currentOrder.salesPersonName }}</el-descriptions-item>
         <el-descriptions-item label="物流单号">{{ currentOrder.trackingNumber || '-' }}</el-descriptions-item>
         <el-descriptions-item label="发货时间">{{ formatDateTime(currentOrder.shippedAt) }}</el-descriptions-item>
@@ -261,7 +320,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Edit, Check, Coin, Calendar, CircleClose, CircleCheck, Clock, Download } from '@element-plus/icons-vue'
+import { Search, Refresh, Edit, Check, Coin, Calendar, CircleClose, CircleCheck, Clock, Download, DocumentCopy } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/date'
 import TrackingDialog from '@/components/Logistics/TrackingDialog.vue'
 import { getCodStats, getCodList, updateCodAmount, markCodReturned, batchUpdateCodAmount, batchMarkCodReturned, getCodDepartments, getCodSalesUsers, type CodOrder, type CodStats } from '@/api/codCollection'
@@ -271,6 +330,7 @@ defineOptions({ name: 'CodCollection' })
 
 const router = useRouter()
 const stats = ref<CodStats>({ todayCod: 0, monthCod: 0, cancelledCod: 0, returnedCod: 0, pendingCod: 0 })
+const tabStats = ref({ pending: 0, returned: 0, cancelled: 0, zero: 0, all: 0 })
 const quickDateOptions = [{ label: '今日', value: 'today' }, { label: '昨日', value: 'yesterday' }, { label: '本周', value: 'week' }, { label: '本月', value: 'month' }, { label: '上月', value: 'lastMonth' }, { label: '今年', value: 'year' }, { label: '全部', value: 'all' }]
 const quickDateFilter = ref('month')
 const startDate = ref('')
@@ -283,6 +343,8 @@ const batchSearchVisible = ref(false)
 const batchSearchKeywords = ref('')
 const searchKeyword = ref('')
 const batchSearchCount = computed(() => batchSearchKeywords.value ? batchSearchKeywords.value.split('\n').filter(k => k.trim()).length : 0)
+// 🔥 搜索缺失关键词
+const missingKeywords = ref<string[]>([])
 const loading = ref(false)
 const tableData = ref<CodOrder[]>([])
 const selectedRows = ref<CodOrder[]>([])
@@ -369,7 +431,25 @@ const getDateRange = (type: string): string[] => {
   return []
 }
 
-const loadStats = async () => { try { const p: any = {}; if (startDate.value) p.startDate = startDate.value; if (endDate.value) p.endDate = endDate.value; if (departmentFilter.value) p.departmentId = departmentFilter.value; if (salesPersonFilter.value) p.salesPersonId = salesPersonFilter.value; const r = await getCodStats(p) as any; if (r) stats.value = r } catch (e) { console.error(e) } }
+const loadStats = async () => {
+  try {
+    const p: any = {}
+    if (startDate.value) p.startDate = startDate.value
+    if (endDate.value) p.endDate = endDate.value
+    if (departmentFilter.value) p.departmentId = departmentFilter.value
+    if (salesPersonFilter.value) p.salesPersonId = salesPersonFilter.value
+    const r = await getCodStats(p) as any
+    if (r) {
+      stats.value = r
+      // 更新标签统计
+      if (r.tabStats) {
+        tabStats.value = r.tabStats
+      }
+    }
+  } catch (e) {
+    console.error(e)
+  }
+}
 const loadData = async () => {
   loading.value = true
   try {
@@ -405,6 +485,9 @@ const loadData = async () => {
 
       tableData.value = list
       pagination.value.total = list.length
+
+      // 🔥 计算缺失的搜索关键词
+      computeMissingKeywords()
     }
   } catch (e) {
     console.error(e)
@@ -424,8 +507,46 @@ const handleRefresh = () => { loadStats(); loadData() }
 const handleSizeChange = (s: number) => { pagination.value.pageSize = s; pagination.value.page = 1; loadData() }
 const handlePageChange = (p: number) => { pagination.value.page = p; loadData() }
 const handleSelectionChange = (rows: CodOrder[]) => { selectedRows.value = rows }
-const clearBatchSearch = () => { batchSearchKeywords.value = ''; searchKeyword.value = ''; batchSearchVisible.value = false; handleFilterChange() }
+const clearBatchSearch = () => { batchSearchKeywords.value = ''; searchKeyword.value = ''; missingKeywords.value = []; batchSearchVisible.value = false; handleFilterChange() }
 const applyBatchSearch = () => { batchSearchVisible.value = false; searchKeyword.value = batchSearchCount.value > 0 ? `已输入 ${batchSearchCount.value} 条` : ''; handleFilterChange() }
+
+// 🔥 计算缺失的搜索关键词（在loadData后调用）
+const computeMissingKeywords = () => {
+  if (!batchSearchKeywords.value || batchSearchCount.value === 0) {
+    missingKeywords.value = []
+    return
+  }
+  const keywords = batchSearchKeywords.value.split(/[\n,;，；]+/).map(k => k.trim()).filter(k => k.length > 0)
+  const missing: string[] = []
+  for (const kw of keywords) {
+    const kwLower = kw.toLowerCase()
+    const found = tableData.value.some(row =>
+      (row.orderNumber && row.orderNumber.toLowerCase().includes(kwLower)) ||
+      (row.customerName && row.customerName.toLowerCase().includes(kwLower)) ||
+      (row.customerPhone && row.customerPhone.includes(kw)) ||
+      (row.trackingNumber && row.trackingNumber.toLowerCase().includes(kwLower))
+    )
+    if (!found) missing.push(kw)
+  }
+  missingKeywords.value = missing
+}
+
+// 🔥 一键复制缺失关键词
+const copyMissingKeywords = async () => {
+  if (missingKeywords.value.length === 0) return
+  try {
+    await navigator.clipboard.writeText(missingKeywords.value.join('\n'))
+    ElMessage.success(`已复制 ${missingKeywords.value.length} 条缺失内容`)
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = missingKeywords.value.join('\n')
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+    ElMessage.success(`已复制 ${missingKeywords.value.length} 条缺失内容`)
+  }
+}
 
 const getOrderStatusType = (s: string) => ({ shipped: 'primary', delivered: 'success', completed: 'success', rejected: 'danger', logistics_returned: 'warning', exception: 'danger' }[s] || 'info')
 const getOrderStatusText = (s: string) => ({ shipped: '已发货', delivered: '已签收', completed: '已完成', rejected: '拒收', logistics_returned: '已退回', exception: '异常' }[s] || s)
@@ -757,7 +878,19 @@ const handleOrderUpdate = () => {
 .date-separator { color: #909399; font-size: 13px; flex-shrink: 0; }
 .batch-search-popover { .batch-search-header { margin-bottom: 12px; .batch-search-title { font-weight: 600; } .batch-search-tip { display: block; font-size: 12px; color: #909399; margin-top: 4px; } } .batch-search-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; } }
 .action-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; background: #fff; padding: 0 16px; border-radius: 8px; }
-.action-left { .status-tabs { :deep(.el-tabs__header) { margin: 0; } :deep(.el-tabs__nav-wrap::after) { display: none; } } }
+.action-left {
+  .status-tabs {
+    :deep(.el-tabs__header) { margin: 0; }
+    :deep(.el-tabs__nav-wrap::after) { display: none; }
+    .tab-label { display: inline-flex; align-items: center; gap: 8px; }
+    .tab-badge {
+      &.danger :deep(.el-badge__content) { background-color: #f56c6c; }
+      &.success :deep(.el-badge__content) { background-color: #67c23a; }
+      &.warning :deep(.el-badge__content) { background-color: #e6a23c; }
+      &.info :deep(.el-badge__content) { background-color: #909399; }
+    }
+  }
+}
 .action-right { display: flex; gap: 8px; }
 .data-table {
   background: #fff;
@@ -795,4 +928,53 @@ const handleOrderUpdate = () => {
   }
 }
 .pagination-wrapper { display: flex; justify-content: flex-end; margin-top: 16px; padding: 16px; background: #fff; border-radius: 8px; }
+
+.batch-badge { margin-left: 4px; }
+.batch-badge :deep(.el-badge__content) { font-size: 10px; }
+
+.missing-count-tag {
+  display: inline-block;
+  font-size: 11px;
+  color: #909399;
+  background: #f0f0f0;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  &:hover {
+    color: #e6a23c;
+    background: #fdf6ec;
+  }
+}
+
+.missing-popover {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.missing-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #606266;
+  b { font-weight: 700; color: #e6a23c; }
+}
+
+.missing-popover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.missing-item {
+  padding: 4px 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #606266;
+  word-break: break-all;
+}
 </style>

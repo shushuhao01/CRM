@@ -70,6 +70,41 @@ export const getTenantInfo = async (): Promise<TenantInfo | null> => {
 }
 
 /**
+ * 租户资源使用情况
+ */
+export interface ResourceUsage {
+  tenantId: string
+  tenantName: string
+  users: {
+    current: number
+    max: number
+    usagePercent: number
+    available: number
+  }
+  storage: {
+    usedMb: number
+    usedGb: string
+    maxGb: number
+    maxMb: number
+    usagePercent: number
+    availableMb: number
+    availableGb: string
+  }
+}
+
+/**
+ * 获取租户资源使用情况（用户数和存储空间）
+ */
+export const getResourceUsage = async (): Promise<ResourceUsage | null> => {
+  try {
+    const data = await request.get('/tenant-license/resource-usage')
+    return data as unknown as ResourceUsage || null
+  } catch {
+    return null
+  }
+}
+
+/**
  * 心跳检测 - 检查授权是否有效
  */
 export const checkLicenseHeartbeat = async (): Promise<HeartbeatResponse> => {

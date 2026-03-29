@@ -5,6 +5,7 @@ import { logger } from '../config/logger';
 import { getDataSource } from '../config/database';
 import { SystemConfig } from '../entities/SystemConfig';
 import { authenticateToken } from '../middleware/auth';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -357,7 +358,7 @@ router.get('/config', async (req, res) => {
       return;
     }
 
-    const configRepo = dataSource.getRepository(SystemConfig);
+    const configRepo = getTenantRepo(SystemConfig);
     const configs = await configRepo.find({
       where: [
         { configKey: 'log_auto_cleanup' },
@@ -401,7 +402,7 @@ router.post('/config', async (req, res) => {
       return;
     }
 
-    const configRepo = dataSource.getRepository(SystemConfig);
+    const configRepo = getTenantRepo(SystemConfig);
 
     const configs = [
       { configKey: 'log_auto_cleanup', configValue: autoCleanup ? 'true' : 'false' },

@@ -147,7 +147,6 @@ router.delete('/categories/:id', ProductController.deleteCategory);
 router.get('/sales/statistics', async (req, res) => {
   try {
     const { startDate, endDate, categoryId } = req.query;
-    const { AppDataSource } = await import('../config/database');
     const { Order } = await import('../entities/Order');
     const { Product } = await import('../entities/Product');
 
@@ -254,7 +253,6 @@ router.get('/sales/statistics', async (req, res) => {
 router.get('/sales/trend', async (req, res) => {
   try {
     const { startDate, endDate, period = '30days' } = req.query;
-    const { AppDataSource } = await import('../config/database');
     const { Order } = await import('../entities/Order');
 
     const orderRepo = getTenantRepo(Order);
@@ -341,7 +339,6 @@ router.get('/sales/trend', async (req, res) => {
 router.get('/sales/category', async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    const { AppDataSource } = await import('../config/database');
     const { Order } = await import('../entities/Order');
     const { Product } = await import('../entities/Product');
 
@@ -430,7 +427,6 @@ router.get('/sales/category', async (req, res) => {
 router.get('/sales/top', async (req, res) => {
   try {
     const { startDate, endDate, limit = 10 } = req.query;
-    const { AppDataSource } = await import('../config/database');
     const { Order } = await import('../entities/Order');
     const { Product } = await import('../entities/Product');
 
@@ -522,7 +518,6 @@ router.get('/sales/top', async (req, res) => {
  */
 router.get('/inventory/warning', async (req, res) => {
   try {
-    const { AppDataSource } = await import('../config/database');
     const { Product } = await import('../entities/Product');
 
     const productRepo = getTenantRepo(Product);

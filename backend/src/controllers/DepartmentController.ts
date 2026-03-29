@@ -322,6 +322,25 @@ export class DepartmentController {
         return;
       }
 
+      // 🔥 防止修改系统预设部门（系统管理部）的名称和编码
+      const systemPresetDepartments = ['系统管理部'];
+      if (systemPresetDepartments.includes(department.name)) {
+        if (name && name !== department.name) {
+          res.status(400).json({
+            success: false,
+            message: '系统预设部门名称不可修改'
+          });
+          return;
+        }
+        if (code && code !== department.code) {
+          res.status(400).json({
+            success: false,
+            message: '系统预设部门编码不可修改'
+          });
+          return;
+        }
+      }
+
       // 检查部门名称是否重复（排除自己）
       if (name && name !== department.name) {
         const existingByName = await this.departmentRepository.findOne({
@@ -445,6 +464,16 @@ export class DepartmentController {
         res.status(404).json({
           success: false,
           message: '部门不存在'
+        });
+        return;
+      }
+
+      // 🔥 防止删除系统预设部门（系统管理部）
+      const systemPresetDepartments = ['系统管理部'];
+      if (systemPresetDepartments.includes(department.name)) {
+        res.status(400).json({
+          success: false,
+          message: '系统预设部门不可删除'
         });
         return;
       }
@@ -578,11 +607,14 @@ export class DepartmentController {
       const departmentName = department?.name || '';
       console.log('[部门成员] 部门名称:', departmentName);
 
-      // 查询该部门的所有用户（同时匹配departmentId和departmentName）
+      // 🔥 租户隔离修复：使用括号包裹 OR 条件，避免 orWhere 绕过 tenant_id 过滤
+      // 修复前: .where(departmentId=?).orWhere(departmentName=?)
+      //   => WHERE (tenant_id=? AND departmentId=?) OR departmentName=?  （OR绕过租户过滤！）
+      // 修复后: .where('(departmentId=? OR departmentName=?)')
+      //   => WHERE (departmentId=? OR departmentName=?) AND tenant_id=?  （租户过滤始终生效）
       const users = await this.userRepository
         .createQueryBuilder('user')
-        .where('user.departmentId = :id', { id })
-        .orWhere('user.departmentName = :name', { name: departmentName })
+        .where('(user.departmentId = :id OR user.departmentName = :name)', { id, name: departmentName })
         .getMany();
 
       console.log('[部门成员] 查询到用户数:', users.length);

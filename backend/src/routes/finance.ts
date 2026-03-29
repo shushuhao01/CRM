@@ -2,7 +2,6 @@
  * Finance Management Routes
  */
 import { Router, Request, Response } from 'express';
-import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 import { PerformanceConfig } from '../entities/PerformanceConfig';
 import { CommissionLadder } from '../entities/CommissionLadder';
@@ -11,6 +10,8 @@ import { Department } from '../entities/Department';
 import { User } from '../entities/User';
 import { authenticateToken } from '../middleware/auth';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { TenantContextManager } from '../utils/tenantContext';
+import { deployConfig } from '../config/deploy';
 
 const router = Router();
 
@@ -146,8 +147,9 @@ router.get('/performance-data', async (req: Request, res: Response) => {
     ];
 
     const queryBuilder = orderRepo.createQueryBuilder('order')
-      .leftJoin(Department, 'dept', 'dept.id = order.createdByDepartmentId')
-      .leftJoin(User, 'creator', 'creator.id = order.createdBy')
+      .leftJoin(Department, 'dept', 'dept.id = order.createdByDepartmentId' + (deployConfig.isSaaS() && TenantContextManager.getTenantId() ? ' AND dept.tenant_id = :_joinTid' : ''))
+      .leftJoin(User, 'creator', 'creator.id = order.createdBy' + (deployConfig.isSaaS() && TenantContextManager.getTenantId() ? ' AND creator.tenant_id = :_joinTid' : ''))
+      .setParameter('_joinTid', TenantContextManager.getTenantId() || '')
       .select([
         'order.id AS id',
         'order.orderNumber AS orderNumber',
@@ -171,7 +173,7 @@ router.get('/performance-data', async (req: Request, res: Response) => {
     if (startDate) queryBuilder.andWhere('order.createdAt >= :startDate', { startDate });
     if (endDate) queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
 
-    // 🔥 批量搜索：支持订单号、客户名称、客户电话（最多3000条）
+    // 🔥 批量搜索：支持订单号、客户名称、客户电话、客户其他手机号（最多3000条）
     if (batchKeywords) {
       const keywordsStr = batchKeywords as string;
       const keywordList = keywordsStr.split(/[\n,;，；\s]+/).map(k => k.trim()).filter(k => k.length > 0);
@@ -185,7 +187,7 @@ router.get('/performance-data', async (req: Request, res: Response) => {
 
         limitedKeywords.forEach((keyword, index) => {
           const paramKey = `kw${index}`;
-          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey})`);
+          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
           orParams[paramKey] = `%${keyword}%`;
         });
 
@@ -235,7 +237,7 @@ router.get('/performance-data', async (req: Request, res: Response) => {
 
         limitedKeywords.forEach((keyword, index) => {
           const paramKey = `kw${index}`;
-          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey})`);
+          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
           orParams[paramKey] = `%${keyword}%`;
         });
 
@@ -249,13 +251,19 @@ router.get('/performance-data', async (req: Request, res: Response) => {
     if (salesPersonId) countBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     if (performanceStatus) countBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
     if (performanceCoefficient) countBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
-    if (!allowAllRoles.includes(userRole)) {
-      if (managerRoles.includes(userRole) && userDepartmentId) {
+
+    // 🔥 数据权限控制：与list查询相同的逻辑
+    const allowAllRoles2 = ['super_admin', 'admin', 'customer_service'];
+    const managerRoles2 = ['department_manager', 'manager'];
+
+    if (!allowAllRoles2.includes(userRole)) {
+      if (managerRoles2.includes(userRole) && userDepartmentId) {
         countBuilder.andWhere('order.createdByDepartmentId = :deptId', { deptId: userDepartmentId });
       } else {
         countBuilder.andWhere('order.createdBy = :userId', { userId });
       }
     }
+
     const total = await countBuilder.getCount();
 
     res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
@@ -357,8 +365,9 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
     ];
 
     const queryBuilder = orderRepo.createQueryBuilder('order')
-      .leftJoin(Department, 'dept', 'dept.id = order.createdByDepartmentId')
-      .leftJoin(User, 'creator', 'creator.id = order.createdBy')
+      .leftJoin(Department, 'dept', 'dept.id = order.createdByDepartmentId' + (deployConfig.isSaaS() && TenantContextManager.getTenantId() ? ' AND dept.tenant_id = :_joinTid2' : ''))
+      .leftJoin(User, 'creator', 'creator.id = order.createdBy' + (deployConfig.isSaaS() && TenantContextManager.getTenantId() ? ' AND creator.tenant_id = :_joinTid2' : ''))
+      .setParameter('_joinTid2', TenantContextManager.getTenantId() || '')
       .select([
         'order.id AS id',
         'order.orderNumber AS orderNumber',
@@ -384,7 +393,7 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
     if (startDate) queryBuilder.andWhere('order.createdAt >= :startDate', { startDate });
     if (endDate) queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
 
-    // 🔥 批量搜索：支持订单号、客户名称、客户电话（最多3000条）
+    // 🔥 批量搜索：支持订单号、客户名称、客户电话、客户其他手机号（最多3000条）
     if (batchKeywords) {
       const keywordsStr = batchKeywords as string;
       const keywordList = keywordsStr.split(/[\n,;，；\s]+/).map(k => k.trim()).filter(k => k.length > 0);
@@ -396,7 +405,7 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
 
         limitedKeywords.forEach((keyword, index) => {
           const paramKey = `kw${index}`;
-          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey})`);
+          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
           orParams[paramKey] = `%${keyword}%`;
         });
 
@@ -434,7 +443,7 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
 
         limitedKeywords.forEach((keyword, index) => {
           const paramKey = `kw${index}`;
-          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey})`);
+          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
           orParams[paramKey] = `%${keyword}%`;
         });
 

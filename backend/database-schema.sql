@@ -257,7 +257,11 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `cod_status` VARCHAR(20) DEFAULT 'pending' COMMENT '代收状态: pending-未返款, returned-已返款, cancelled-已取消代收',
   `cod_returned_amount` DECIMAL(10,2) DEFAULT 0 COMMENT '已返款金额',
   `cod_returned_at` DATETIME NULL COMMENT '返款时间',
+  `cod_returned_by` VARCHAR(36) NULL COMMENT '返款操作人ID',
+  `cod_returned_by_name` VARCHAR(50) NULL COMMENT '返款操作人姓名',
   `cod_cancelled_at` DATETIME NULL COMMENT '取消代收时间',
+  `cod_cancelled_by` VARCHAR(36) NULL COMMENT '改代收操作人ID',
+  `cod_cancelled_by_name` VARCHAR(50) NULL COMMENT '改代收操作人姓名',
   `cod_remark` VARCHAR(500) NULL COMMENT '代收备注',
   `operator_id` VARCHAR(50) NULL COMMENT '操作员ID',
   `operator_name` VARCHAR(50) NULL COMMENT '操作员姓名',
@@ -421,7 +425,7 @@ CREATE TABLE IF NOT EXISTS `cod_cancel_applications` (
   `reviewer_id` varchar(36) DEFAULT NULL COMMENT '审核人ID',
   `reviewer_name` varchar(50) DEFAULT NULL COMMENT '审核人姓名',
   `review_remark` text DEFAULT NULL COMMENT '审核备注',
-  `reviewed_at` datetime DEFAULT NULL COMMENT '审核时间',
+  `reviewed_at` datetime DEFAULT NULL COMMENT '审核时间（处理时间）',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '申请时间',
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
@@ -1073,3 +1077,37 @@ NULL,
 '{"tenantName":"租户名称","version":"版本号","releaseType":"更新类型","changelog":"更新内容","publishTime":"发布时间","forceUpdateTip":"强制更新提示","downloadUrl":"下载地址"}',
 '版本发布后自动发送给所有活跃租户的邮箱和手机', 1, 'high', 1, 1)
 ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
+
+
+-- ============================================
+-- 短信配置初始数据
+-- ============================================
+
+-- 插入短信配置（包含多个模板CODE字段）
+INSERT INTO `system_configs` (`config_key`, `config_value`, `config_type`, `description`, `is_public`)
+VALUES (
+  'sms_config',
+  '{"enabled":false,"accessKeyId":"","accessKeySecret":"","signName":"","templateCode":"","templates":{"VERIFY_CODE":"","REGISTER_SUCCESS":"","PAYMENT_SUCCESS":"","RENEW_SUCCESS":"","PACKAGE_CHANGE":"","QUOTA_CHANGE":"","ACCOUNT_SUSPEND":"","ACCOUNT_RESUME":"","ACCOUNT_CANCEL":"","REFUND_SUCCESS":"","EXPIRE_REMIND":"","EXPIRED_NOTICE":""}}',
+  'json',
+  '阿里云短信服务配置',
+  0
+)
+ON DUPLICATE KEY UPDATE
+  `config_value` = JSON_SET(
+    COALESCE(`config_value`, '{}'),
+    '$.templates', JSON_OBJECT(
+      'VERIFY_CODE', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`config_value`, '$.templates.VERIFY_CODE')), ''),
+      'REGISTER_SUCCESS', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`config_value`, '$.templates.REGISTER_SUCCESS')), ''),
+      'PAYMENT_SUCCESS', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`config_value`, '$.templates.PAYMENT_SUCCESS')), ''),
+      'RENEW_SUCCESS', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`config_value`, '$.templates.RENEW_SUCCESS')), ''),
+      'PACKAGE_CHANGE', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`config_value`, '$.templates.PACKAGE_CHANGE')), ''),
+      'QUOTA_CHANGE', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`config_value`, '$.templates.QUOTA_CHANGE')), ''),
+      'ACCOUNT_SUSPEND', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`config_value`, '$.templates.ACCOUNT_SUSPEND')), ''),
+      'ACCOUNT_RESUME', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`config_value`, '$.templates.ACCOUNT_RESUME')), ''),
+      'ACCOUNT_CANCEL', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`config_value`, '$.templates.ACCOUNT_CANCEL')), ''),
+      'REFUND_SUCCESS', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`config_value`, '$.templates.REFUND_SUCCESS')), ''),
+      'EXPIRE_REMIND', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`config_value`, '$.templates.EXPIRE_REMIND')), ''),
+      'EXPIRED_NOTICE', COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`config_value`, '$.templates.EXPIRED_NOTICE')), '')
+    )
+  ),
+  `updated_at` = CURRENT_TIMESTAMP;

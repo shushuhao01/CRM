@@ -1,10 +1,12 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+﻿import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { LogisticsTracking } from './LogisticsTracking';
 
 @Entity('logistics_traces')
 export class LogisticsTrace {
   @PrimaryGeneratedColumn()
   id: number;
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
 
   @Column({ type: 'int', comment: '物流跟踪ID' })
   logisticsTrackingId: number;

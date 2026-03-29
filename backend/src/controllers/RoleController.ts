@@ -4,6 +4,7 @@ import { Role } from '../entities/Role';
 import { Permission } from '../entities/Permission';
 import { Repository, TreeRepository } from 'typeorm';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { tenantRawSQL, getCurrentTenantIdSafe } from '../utils/tenantHelpers';
 
 export class RoleController {
   private get roleRepository(): Repository<Role> {
@@ -42,6 +43,13 @@ export class RoleController {
         params.push(status);
       }
 
+      // 租户隔离条件
+      const tenantId = getCurrentTenantIdSafe();
+      if (tenantId) {
+        conditions.push('tenant_id = ?');
+        params.push(tenantId);
+      }
+
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
       const offset = (Number(page) - 1) * Number(limit);
 
@@ -64,9 +72,10 @@ export class RoleController {
         roles.map(async (role: any) => {
           let userCount = 0;
           try {
+            const tUser = tenantRawSQL();
             const result = await dataSource.query(
-              'SELECT COUNT(*) as count FROM users WHERE role_id = ?',
-              [role.code]
+              'SELECT COUNT(*) as count FROM users WHERE role_id = ?' + tUser.sql,
+              [role.code, ...tUser.params]
             );
             userCount = parseInt(result[0]?.count || '0', 10);
           } catch (err) {
@@ -123,9 +132,10 @@ export class RoleController {
         throw new Error('数据库连接未初始化');
       }
 
+      const t = tenantRawSQL();
       const roles = await dataSource.query(
-        'SELECT id, name, code, description, status, level, color, permissions, role_type as roleType, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt FROM roles WHERE id = ?',
-        [id]
+        'SELECT id, name, code, description, status, level, color, permissions, role_type as roleType, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt FROM roles WHERE id = ?' + t.sql,
+        [id, ...t.params]
       );
 
       if (roles.length === 0) {
@@ -141,9 +151,10 @@ export class RoleController {
       // 获取该角色的用户数量
       let userCount = 0;
       try {
+        const tUser = tenantRawSQL();
         const result = await dataSource.query(
-          'SELECT COUNT(*) as count FROM users WHERE role_id = ?',
-          [role.code]
+          'SELECT COUNT(*) as count FROM users WHERE role_id = ?' + tUser.sql,
+          [role.code, ...tUser.params]
         );
         userCount = parseInt(result[0]?.count || '0', 10);
       } catch (err) {
@@ -188,9 +199,10 @@ export class RoleController {
       }
 
       // 检查角色名称和编码是否已存在
+      const t = tenantRawSQL();
       const existing = await dataSource.query(
-        'SELECT id FROM roles WHERE name = ? OR code = ?',
-        [name, code]
+        'SELECT id FROM roles WHERE (name = ? OR code = ?)' + t.sql,
+        [name, code, ...t.params]
       );
 
       if (existing.length > 0) {
@@ -205,10 +217,11 @@ export class RoleController {
       const roleId = `role_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
       // 插入角色
+      const tenantId = getCurrentTenantIdSafe() || null;
       await dataSource.query(
-        `INSERT INTO roles (id, name, code, description, status, level, color, permissions, data_scope, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-        [roleId, name, code, description || '', status, level, color || '', JSON.stringify(permissions), dataScope]
+        `INSERT INTO roles (id, tenant_id, name, code, description, status, level, color, permissions, data_scope, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [roleId, tenantId, name, code, description || '', status, level, color || '', JSON.stringify(permissions), dataScope]
       );
 
       res.status(201).json({
@@ -252,7 +265,8 @@ export class RoleController {
       }
 
       // 检查角色是否存在
-      const existing = await dataSource.query('SELECT id, code FROM roles WHERE id = ?', [id]);
+      const t = tenantRawSQL();
+      const existing = await dataSource.query('SELECT id, code FROM roles WHERE id = ?' + t.sql, [id, ...t.params]);
       if (existing.length === 0) {
         res.status(404).json({
           success: false,
@@ -276,8 +290,8 @@ export class RoleController {
 
       if (updates.length > 0) {
         updates.push('updated_at = NOW()');
-        params.push(id);
-        await dataSource.query(`UPDATE roles SET ${updates.join(', ')} WHERE id = ?`, params);
+        params.push(id, ...t.params);
+        await dataSource.query(`UPDATE roles SET ${updates.join(', ')} WHERE id = ?` + t.sql, params);
       }
 
       res.json({
@@ -302,8 +316,10 @@ export class RoleController {
         throw new Error('数据库连接未初始化');
       }
 
+      const t = tenantRawSQL();
+
       // 检查角色是否存在
-      const roles = await dataSource.query('SELECT id, code FROM roles WHERE id = ?', [id]);
+      const roles = await dataSource.query('SELECT id, code FROM roles WHERE id = ?' + t.sql, [id, ...t.params]);
       if (roles.length === 0) {
         res.status(404).json({
           success: false,
@@ -315,9 +331,10 @@ export class RoleController {
       const role = roles[0];
 
       // 检查是否有用户使用此角色
+      const tUser = tenantRawSQL();
       const userResult = await dataSource.query(
-        'SELECT COUNT(*) as count FROM users WHERE role_id = ?',
-        [role.code]
+        'SELECT COUNT(*) as count FROM users WHERE role_id = ?' + tUser.sql,
+        [role.code, ...tUser.params]
       );
       const usersWithRole = parseInt(userResult[0]?.count || '0', 10);
 
@@ -329,7 +346,7 @@ export class RoleController {
         return;
       }
 
-      await dataSource.query('DELETE FROM roles WHERE id = ?', [id]);
+      await dataSource.query('DELETE FROM roles WHERE id = ?' + t.sql, [id, ...t.params]);
 
       res.json({
         success: true,
@@ -352,9 +369,10 @@ export class RoleController {
         throw new Error('数据库连接未初始化');
       }
 
-      const totalResult = await dataSource.query('SELECT COUNT(*) as count FROM roles');
-      const activeResult = await dataSource.query("SELECT COUNT(*) as count FROM roles WHERE status = 'active'");
-      const permResult = await dataSource.query('SELECT COUNT(*) as count FROM permissions');
+      const t = tenantRawSQL();
+      const totalResult = await dataSource.query('SELECT COUNT(*) as count FROM roles WHERE 1=1' + t.sql, [...t.params]);
+      const activeResult = await dataSource.query("SELECT COUNT(*) as count FROM roles WHERE status = 'active'" + t.sql, [...t.params]);
+      const permResult = await dataSource.query('SELECT COUNT(*) as count FROM permissions WHERE 1=1' + t.sql, [...t.params]);
 
       res.json({
         success: true,
@@ -391,7 +409,8 @@ export class RoleController {
         return;
       }
 
-      const roles = await dataSource.query('SELECT id, code FROM roles WHERE id = ?', [id]);
+      const t = tenantRawSQL();
+      const roles = await dataSource.query('SELECT id, code FROM roles WHERE id = ?' + t.sql, [id, ...t.params]);
       if (roles.length === 0) {
         res.status(404).json({
           success: false,
@@ -412,7 +431,7 @@ export class RoleController {
         return;
       }
 
-      await dataSource.query('UPDATE roles SET status = ?, updated_at = NOW() WHERE id = ?', [status, id]);
+      await dataSource.query('UPDATE roles SET status = ?, updated_at = NOW() WHERE id = ?' + t.sql, [status, id, ...t.params]);
 
       res.json({
         success: true,
@@ -436,9 +455,10 @@ export class RoleController {
         throw new Error('数据库连接未初始化');
       }
 
+      const t = tenantRawSQL();
       const roles = await dataSource.query(
-        'SELECT id, name, permissions FROM roles WHERE id = ?',
-        [id]
+        'SELECT id, name, permissions FROM roles WHERE id = ?' + t.sql,
+        [id, ...t.params]
       );
 
       if (roles.length === 0) {
@@ -494,7 +514,8 @@ export class RoleController {
         throw new Error('数据库连接未初始化');
       }
 
-      const roles = await dataSource.query('SELECT id, name FROM roles WHERE id = ?', [id]);
+      const t = tenantRawSQL();
+      const roles = await dataSource.query('SELECT id, name FROM roles WHERE id = ?' + t.sql, [id, ...t.params]);
       if (roles.length === 0) {
         res.status(404).json({
           success: false,
@@ -505,8 +526,8 @@ export class RoleController {
 
       const newPermissions = permissions || permissionIds || [];
       await dataSource.query(
-        'UPDATE roles SET permissions = ?, updated_at = NOW() WHERE id = ?',
-        [JSON.stringify(newPermissions), id]
+        'UPDATE roles SET permissions = ?, updated_at = NOW() WHERE id = ?' + t.sql,
+        [JSON.stringify(newPermissions), id, ...t.params]
       );
 
       res.json({

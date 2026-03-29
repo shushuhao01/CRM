@@ -481,7 +481,6 @@ import { useUserStore } from '@/stores/user'
 import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import type { FollowUpRecord } from '@/api/call'
-import { maskPhone } from '@/utils/phone'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import {

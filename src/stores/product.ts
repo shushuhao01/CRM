@@ -241,9 +241,17 @@ export const useProductStore = createPersistentStore('product', () => {
   }
 
   // 恢复商品
-  const restoreProduct = (id: string | number) => {
+  const restoreProduct = async (id: string | number) => {
     const product = products.value.find(p => p.id === id)
     if (product && product.deleted) {
+      // 🔥 修复：调用后端API恢复商品状态
+      try {
+        await productApi.update(String(id), { status: 'active' })
+        console.log('[ProductStore] 服务器恢复商品成功, ID:', id)
+      } catch (error) {
+        console.error('[ProductStore] 服务器恢复商品失败:', error)
+      }
+      // 同时更新本地状态
       product.deleted = false
       product.status = 'active' // 恢复的商品默认设置为上架状态
       product.updateTime = new Date().toISOString()

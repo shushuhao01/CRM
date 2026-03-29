@@ -1,7 +1,7 @@
 -- =============================================
 -- CRM系统数据库初始化脚本（最新版）
--- 版本：1.9.0
--- 更新时间：2026-03-09
+-- 版本：1.9.1
+-- 更新时间：2026-03-24
 -- 适用于：MySQL 8.0+ / 宝塔面板 7.x+
 -- 
 -- 更新内容：
@@ -15,6 +15,8 @@
 -- 8. licenses表新增package_id/package_name列
 -- 9. tenant_packages/tenants表新增modules列
 -- 10. 新增模块默认数据(10个CRM模块+11个模块状态)
+-- 11. 修复物流公司/API配置表唯一约束为租户级复合索引
+-- 12. 修复德邦快递代码 DB -> DBL，补全物流API配置默认数据
 -- =============================================
 
 -- 设置字符集和时区
@@ -30,6 +32,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS `departments`;
 CREATE TABLE `departments` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '部门ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `name` VARCHAR(100) NOT NULL COMMENT '部门名称',
   `code` VARCHAR(50) NULL COMMENT '部门编码',
   `description` TEXT COMMENT '部门描述',
@@ -44,13 +47,15 @@ CREATE TABLE `departments` (
   INDEX `idx_code` (`code`),
   INDEX `idx_parent` (`parent_id`),
   INDEX `idx_manager` (`manager_id`),
-  INDEX `idx_status` (`status`)
+  INDEX `idx_status` (`status`),
+  INDEX `idx_departments_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='部门表';
 
 -- 2. 角色表
 DROP TABLE IF EXISTS `roles`;
 CREATE TABLE `roles` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '角色ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `name` VARCHAR(50) NOT NULL COMMENT '角色名称',
   `code` VARCHAR(50) UNIQUE NOT NULL COMMENT '角色代码',
   `description` TEXT COMMENT '角色描述',
@@ -80,7 +85,8 @@ CREATE TABLE `roles` (
   INDEX `idx_is_system` (`is_system`),
   INDEX `idx_is_template` (`is_template`),
   INDEX `idx_role_type` (`role_type`),
-  INDEX `idx_status` (`status`)
+  INDEX `idx_status` (`status`),
+  INDEX `idx_roles_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色表';
 
 -- 3. 用户表
@@ -145,7 +151,8 @@ CREATE TABLE `users` (
 DROP TABLE IF EXISTS `customers`;
 CREATE TABLE `customers` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '客户ID',
-  `customer_code` VARCHAR(50) UNIQUE COMMENT '客户编号',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID（SaaS模式，私有部署为NULL）',
+  `customer_code` VARCHAR(50) COMMENT '客户编号',
   `name` VARCHAR(100) NOT NULL COMMENT '客户姓名',
   `phone` VARCHAR(20) COMMENT '手机号',
   `other_phones` JSON DEFAULT NULL COMMENT '其他手机号',
@@ -199,38 +206,50 @@ CREATE TABLE `customers` (
   INDEX `idx_status` (`status`),
   INDEX `idx_follow_status` (`follow_status`),
   INDEX `idx_next_follow_time` (`next_follow_time`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_customers_tenant_id` (`tenant_id`),
+  UNIQUE INDEX `uk_tenant_customer_code` (`tenant_id`, `customer_code`),
+  INDEX `idx_customers_tenant_status` (`tenant_id`, `status`),
+  INDEX `idx_customers_tenant_sales` (`tenant_id`, `sales_person_id`),
+  INDEX `idx_customers_tenant_created_by` (`tenant_id`, `created_by`),
+  INDEX `idx_customers_tenant_created_at` (`tenant_id`, `created_at`),
+  INDEX `idx_customers_tenant_phone` (`tenant_id`, `phone`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户表';
 
 -- 5. 客户标签表
 DROP TABLE IF EXISTS `customer_tags`;
 CREATE TABLE `customer_tags` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '标签ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `name` VARCHAR(50) NOT NULL COMMENT '标签名称',
   `color` VARCHAR(20) COMMENT '标签颜色',
   `description` TEXT COMMENT '标签描述',
   `customer_count` INT DEFAULT 0 COMMENT '客户数量',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  INDEX `idx_name` (`name`)
+  INDEX `idx_name` (`name`),
+  INDEX `idx_customer_tags_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户标签表';
 
 -- 6. 客户分组表
 DROP TABLE IF EXISTS `customer_groups`;
 CREATE TABLE `customer_groups` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '分组ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `name` VARCHAR(50) NOT NULL COMMENT '分组名称',
   `description` TEXT COMMENT '分组描述',
   `customer_count` INT DEFAULT 0 COMMENT '客户数量',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  INDEX `idx_name` (`name`)
+  INDEX `idx_name` (`name`),
+  INDEX `idx_customer_groups_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户分组表';
 
 -- 6.1 客户分享表
 DROP TABLE IF EXISTS `customer_shares`;
 CREATE TABLE `customer_shares` (
   `id` CHAR(36) PRIMARY KEY COMMENT '分享ID(UUID)',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
   `customer_name` VARCHAR(100) NOT NULL COMMENT '客户姓名',
   `shared_by` VARCHAR(50) NOT NULL COMMENT '分享人ID',
@@ -251,13 +270,15 @@ CREATE TABLE `customer_shares` (
   INDEX `idx_shared_to` (`shared_to`),
   INDEX `idx_status` (`status`),
   INDEX `idx_expire_time` (`expire_time`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_customer_shares_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户分享表';
 
 -- 6.2 客户分配历史表
 DROP TABLE IF EXISTS `customer_assignments`;
 CREATE TABLE `customer_assignments` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '分配ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
   `customer_name` VARCHAR(100) NULL COMMENT '客户姓名',
   `from_user_id` VARCHAR(50) NULL COMMENT '原归属人ID',
@@ -275,13 +296,15 @@ CREATE TABLE `customer_assignments` (
   INDEX `idx_to_user` (`to_user_id`),
   INDEX `idx_operator` (`operator_id`),
   INDEX `idx_type` (`assignment_type`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_customer_assignments_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户分配历史表';
 
 -- 7. 产品分类表
 DROP TABLE IF EXISTS `product_categories`;
 CREATE TABLE `product_categories` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '分类ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `name` VARCHAR(100) NOT NULL COMMENT '分类名称',
   `parent_id` VARCHAR(50) NULL COMMENT '上级分类ID',
   `description` TEXT COMMENT '分类描述',
@@ -291,13 +314,15 @@ CREATE TABLE `product_categories` (
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_parent` (`parent_id`),
   INDEX `idx_status` (`status`),
-  INDEX `idx_sort` (`sort_order`)
+  INDEX `idx_sort` (`sort_order`),
+  INDEX `idx_product_categories_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='产品分类表';
 
 -- 8. 产品表
 DROP TABLE IF EXISTS `products`;
 CREATE TABLE `products` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '产品ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `code` VARCHAR(50) UNIQUE NOT NULL COMMENT '产品编码',
   `name` VARCHAR(200) NOT NULL COMMENT '产品名称',
   `category_id` VARCHAR(50) COMMENT '分类ID',
@@ -317,14 +342,16 @@ CREATE TABLE `products` (
   INDEX `idx_code` (`code`),
   INDEX `idx_category` (`category_id`),
   INDEX `idx_status` (`status`),
-  INDEX `idx_created_by` (`created_by`)
+  INDEX `idx_created_by` (`created_by`),
+  INDEX `idx_products_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='产品表';
 
 -- 9. 订单表
 DROP TABLE IF EXISTS `orders`;
 CREATE TABLE `orders` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '订单ID',
-  `order_number` VARCHAR(50) UNIQUE NOT NULL COMMENT '订单号',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID（SaaS模式，私有部署为NULL）',
+  `order_number` VARCHAR(50) NOT NULL COMMENT '订单号',
   `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
   `customer_name` VARCHAR(100) COMMENT '客户姓名',
   `customer_phone` VARCHAR(20) COMMENT '客户电话',
@@ -395,6 +422,7 @@ CREATE TABLE `orders` (
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `status_updated_at` TIMESTAMP NULL COMMENT '状态更新时间（记录最后一次状态变更的时间，如签收、发货等）',
   INDEX `idx_order_number` (`order_number`),
+  UNIQUE INDEX `uk_tenant_order_number` (`tenant_id`, `order_number`),
   INDEX `idx_customer` (`customer_id`),
   INDEX `idx_status` (`status`),
   INDEX `idx_payment_status` (`payment_status`),
@@ -411,16 +439,22 @@ CREATE TABLE `orders` (
   INDEX `idx_shipping_time` (`shipping_time`),
   INDEX `idx_expected_delivery_date` (`expected_delivery_date`),
   INDEX `idx_performance_status` (`performance_status`),
-  INDEX `idx_performance_coefficient` (`performance_coefficient`),
   INDEX `idx_cod_status` (`cod_status`),
-  INDEX `idx_cod_returned_at` (`cod_returned_at`),
-  INDEX `idx_status_updated_at` (`status_updated_at`)
+  INDEX `idx_status_updated_at` (`status_updated_at`),
+  INDEX `idx_orders_tenant_id` (`tenant_id`),
+  INDEX `idx_orders_tenant_status` (`tenant_id`, `status`),
+  INDEX `idx_orders_tenant_customer` (`tenant_id`, `customer_id`),
+  INDEX `idx_orders_tenant_created_by` (`tenant_id`, `created_by`),
+  INDEX `idx_orders_tenant_created_at` (`tenant_id`, `created_at`),
+  INDEX `idx_orders_tenant_status_created` (`tenant_id`, `status`, `created_at`),
+  INDEX `idx_orders_updated_at` (`updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单表';
 
 -- 10. 物流表
 DROP TABLE IF EXISTS `logistics`;
 CREATE TABLE `logistics` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '物流ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID',
   `order_number` VARCHAR(50) COMMENT '订单号',
   `tracking_number` VARCHAR(100) COMMENT '物流单号',
@@ -436,13 +470,15 @@ CREATE TABLE `logistics` (
   INDEX `idx_order` (`order_id`),
   INDEX `idx_tracking_number` (`tracking_number`),
   INDEX `idx_status` (`status`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_logistics_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流表';
 
 -- 11. 售后服务表（完整版）
 DROP TABLE IF EXISTS `after_sales_services`;
 CREATE TABLE `after_sales_services` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '售后ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `service_number` VARCHAR(50) UNIQUE NOT NULL COMMENT '售后单号',
   `order_id` VARCHAR(50) NULL COMMENT '关联订单ID',
   `order_number` VARCHAR(50) NULL COMMENT '关联订单号',
@@ -478,13 +514,15 @@ CREATE TABLE `after_sales_services` (
   INDEX `idx_status` (`status`),
   INDEX `idx_created_by_id` (`created_by_id`),
   INDEX `idx_department_id` (`department_id`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_after_sales_services_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='售后服务表';
 
 -- 11.1 旧版售后服务表（兼容）
 DROP TABLE IF EXISTS `service_records`;
 CREATE TABLE `service_records` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '售后ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `service_number` VARCHAR(50) UNIQUE NOT NULL COMMENT '售后单号',
   `order_id` VARCHAR(50) COMMENT '订单ID',
   `order_number` VARCHAR(50) COMMENT '订单号',
@@ -508,13 +546,15 @@ CREATE TABLE `service_records` (
   INDEX `idx_customer` (`customer_id`),
   INDEX `idx_status` (`status`),
   INDEX `idx_assigned_to` (`assigned_to`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_service_records_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='售后服务表(旧版兼容)';
 
 -- 12. 资料表
 DROP TABLE IF EXISTS `data_records`;
 CREATE TABLE `data_records` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '资料ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
   `customer_name` VARCHAR(100) COMMENT '客户姓名',
   `order_id` VARCHAR(50) COMMENT '订单ID',
@@ -529,13 +569,15 @@ CREATE TABLE `data_records` (
   INDEX `idx_customer` (`customer_id`),
   INDEX `idx_order` (`order_id`),
   INDEX `idx_type` (`type`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_data_records_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='资料表';
 
 -- 13. 业绩表
 DROP TABLE IF EXISTS `performance_records`;
 CREATE TABLE `performance_records` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '业绩ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
   `user_name` VARCHAR(50) COMMENT '用户姓名',
   `department_id` VARCHAR(50) COMMENT '部门ID',
@@ -564,13 +606,15 @@ CREATE TABLE `performance_records` (
   INDEX `idx_customer` (`customer_id`),
   INDEX `idx_status` (`status`),
   INDEX `idx_date` (`date`),
-  INDEX `idx_type` (`type`)
+  INDEX `idx_type` (`type`),
+  INDEX `idx_performance_records_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='业绩表';
 
 -- 14. 操作日志表
 DROP TABLE IF EXISTS `operation_logs`;
 CREATE TABLE `operation_logs` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '日志ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `user_id` VARCHAR(50) COMMENT '操作用户ID',
   `user_name` VARCHAR(50) COMMENT '操作用户姓名',
   `action` VARCHAR(100) NOT NULL COMMENT '操作类型',
@@ -585,13 +629,15 @@ CREATE TABLE `operation_logs` (
   INDEX `idx_action` (`action`),
   INDEX `idx_module` (`module`),
   INDEX `idx_resource` (`resource_type`, `resource_id`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_operation_logs_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='操作日志表';
 
 -- 15. 系统配置表
 DROP TABLE IF EXISTS `system_configs`;
 CREATE TABLE `system_configs` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '配置ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `configKey` VARCHAR(100) NOT NULL COMMENT '配置键名',
   `configValue` TEXT COMMENT '配置值',
   `valueType` VARCHAR(50) DEFAULT 'string' COMMENT '值类型: string, number, boolean, json, text',
@@ -602,9 +648,10 @@ CREATE TABLE `system_configs` (
   `sortOrder` INT DEFAULT 0 COMMENT '排序权重',
   `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  UNIQUE INDEX `idx_config_key_group` (`configKey`, `configGroup`),
+  UNIQUE INDEX `idx_tenant_config_key_group` (`tenant_id`, `configKey`, `configGroup`),
   INDEX `idx_config_group` (`configGroup`),
-  INDEX `idx_enabled` (`isEnabled`)
+  INDEX `idx_enabled` (`isEnabled`),
+  INDEX `idx_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置表';
 
 -- 系统配置默认数据
@@ -629,7 +676,7 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('sessionTimeout', '120', 'number', 'security_settings', '会话超时(分钟)', 1, 1, 6),
 ('forceHttps', 'false', 'boolean', 'security_settings', '强制HTTPS', 1, 1, 7),
 ('ipWhitelist', '', 'string', 'security_settings', 'IP白名单', 1, 1, 8),
-('secureConsoleEnabled', 'false', 'boolean', 'security_settings', '控制台日志加密', 1, 1, 9),
+('secureConsoleEnabled', 'true', 'boolean', 'security_settings', '控制台日志加密', 1, 1, 9),
 -- 存储设置
 ('storageType', 'local', 'string', 'storage_settings', '存储类型', 1, 1, 1),
 ('localPath', '/uploads', 'string', 'storage_settings', '本地存储路径', 1, 1, 2),
@@ -691,6 +738,7 @@ ON DUPLICATE KEY UPDATE `configValue` = VALUES(`configValue`), `updatedAt` = CUR
 DROP TABLE IF EXISTS `call_records`;
 CREATE TABLE `call_records` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '通话ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `customer_id` VARCHAR(100) COMMENT '客户ID',
   `customer_name` VARCHAR(100) COMMENT '客户姓名',
   `customer_phone` VARCHAR(20) NOT NULL COMMENT '客户电话',
@@ -720,13 +768,15 @@ CREATE TABLE `call_records` (
   INDEX `idx_user_id` (`user_id`),
   INDEX `idx_start_time` (`start_time`),
   INDEX `idx_has_recording` (`has_recording`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_call_records_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通话记录表';
 
 -- 17. 跟进记录表
 DROP TABLE IF EXISTS `follow_up_records`;
 CREATE TABLE `follow_up_records` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '跟进ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `call_id` VARCHAR(50) COMMENT '关联通话ID',
   `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
   `customer_name` VARCHAR(100) COMMENT '客户姓名',
@@ -749,7 +799,8 @@ CREATE TABLE `follow_up_records` (
   INDEX `idx_status` (`status`),
   INDEX `idx_priority` (`priority`),
   INDEX `idx_next_follow_up` (`next_follow_up_date`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_follow_up_records_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='跟进记录表';
 
 -- 17.1 电话配置表
@@ -804,7 +855,8 @@ CREATE TABLE `phone_configs` (
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   
   UNIQUE KEY `uk_user_type` (`user_id`, `config_type`),
-  INDEX `idx_user_id` (`user_id`)
+  INDEX `idx_user_id` (`user_id`),
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户电话配置表';
 
 -- 17.2 外呼线路表
@@ -837,7 +889,9 @@ CREATE TABLE `call_lines` (
   INDEX `idx_type` (`type`),
   INDEX `idx_status` (`status`),
   INDEX `idx_is_enabled` (`is_enabled`),
-  INDEX `idx_sort` (`sort_order`)
+  INDEX `idx_sort` (`sort_order`),
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  INDEX `idx_call_lines_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='外呼线路表';
 
 -- 17.3 外呼任务表
@@ -870,7 +924,9 @@ CREATE TABLE `outbound_tasks` (
   INDEX `idx_priority` (`priority`),
   INDEX `idx_next_call` (`next_call_time`),
   INDEX `idx_campaign` (`campaign_id`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  INDEX `idx_outbound_tasks_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='外呼任务表';
 
 -- 17.4 通话录音表
@@ -905,7 +961,9 @@ CREATE TABLE `call_recordings` (
   INDEX `idx_user` (`user_id`),
   INDEX `idx_created_at` (`created_at`),
   INDEX `idx_expire` (`expire_at`),
-  INDEX `idx_deleted` (`is_deleted`)
+  INDEX `idx_deleted` (`is_deleted`),
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  INDEX `idx_call_recordings_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通话录音表';
 
 -- 17.5 工作手机绑定表
@@ -937,7 +995,9 @@ CREATE TABLE `work_phones` (
   INDEX `idx_phone` (`phone_number`),
   INDEX `idx_device` (`device_id`),
   INDEX `idx_status` (`status`),
-  INDEX `idx_is_primary` (`is_primary`)
+  INDEX `idx_is_primary` (`is_primary`),
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  INDEX `idx_work_phones_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作手机绑定表';
 
 -- 17.6 号码黑名单表
@@ -955,13 +1015,15 @@ CREATE TABLE `phone_blacklist` (
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   UNIQUE INDEX `idx_phone` (`phone`),
   INDEX `idx_active` (`is_active`),
-  INDEX `idx_expire` (`expire_at`)
+  INDEX `idx_expire` (`expire_at`),
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='号码黑名单表';
 
 -- 18. 短信模板表
 DROP TABLE IF EXISTS `sms_templates`;
 CREATE TABLE `sms_templates` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '模板ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `name` VARCHAR(100) NOT NULL COMMENT '模板名称',
   `category` VARCHAR(50) COMMENT '模板分类',
   `content` TEXT NOT NULL COMMENT '模板内容',
@@ -979,13 +1041,15 @@ CREATE TABLE `sms_templates` (
   INDEX `idx_category` (`category`),
   INDEX `idx_status` (`status`),
   INDEX `idx_applicant` (`applicant`),
-  INDEX `idx_is_system` (`is_system`)
+  INDEX `idx_is_system` (`is_system`),
+  INDEX `idx_sms_templates_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='短信模板表';
 
 -- 19. 短信发送记录表
 DROP TABLE IF EXISTS `sms_records`;
 CREATE TABLE `sms_records` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '记录ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `template_id` VARCHAR(50) COMMENT '模板ID',
   `template_name` VARCHAR(100) COMMENT '模板名称',
   `content` TEXT NOT NULL COMMENT '短信内容',
@@ -1007,13 +1071,15 @@ CREATE TABLE `sms_records` (
   INDEX `idx_template` (`template_id`),
   INDEX `idx_status` (`status`),
   INDEX `idx_applicant` (`applicant`),
-  INDEX `idx_sent_at` (`sent_at`)
+  INDEX `idx_sent_at` (`sent_at`),
+  INDEX `idx_sms_records_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='短信发送记录表';
 
 -- 20. 消息通知表
 DROP TABLE IF EXISTS `notifications`;
 CREATE TABLE `notifications` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '通知ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `user_id` VARCHAR(50) NOT NULL COMMENT '接收用户ID',
   `type` VARCHAR(50) NOT NULL COMMENT '消息类型',
   `title` VARCHAR(200) NOT NULL COMMENT '消息标题',
@@ -1035,13 +1101,15 @@ CREATE TABLE `notifications` (
   INDEX `idx_is_read` (`is_read`),
   INDEX `idx_priority` (`priority`),
   INDEX `idx_related` (`related_type`, `related_id`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_notifications_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息通知表';
 
 -- 21. 系统公告表
 DROP TABLE IF EXISTS `system_announcements`;
 CREATE TABLE `system_announcements` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '公告ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `title` VARCHAR(200) NOT NULL COMMENT '公告标题',
   `content` TEXT NOT NULL COMMENT '公告内容',
   `type` ENUM('system', 'maintenance', 'update', 'notice') DEFAULT 'notice' COMMENT '公告类型',
@@ -1065,13 +1133,15 @@ CREATE TABLE `system_announcements` (
   INDEX `idx_priority` (`priority`),
   INDEX `idx_publish_time` (`publish_time`),
   INDEX `idx_is_top` (`is_top`),
-  INDEX `idx_created_by` (`created_by`)
+  INDEX `idx_created_by` (`created_by`),
+  INDEX `idx_system_announcements_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统公告表';
 
 -- 22. 订单审核记录表
 DROP TABLE IF EXISTS `order_audits`;
 CREATE TABLE `order_audits` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '审核ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID',
   `order_number` VARCHAR(50) NOT NULL COMMENT '订单号',
   `audit_type` ENUM('create', 'modify', 'cancel', 'return') DEFAULT 'create' COMMENT '审核类型',
@@ -1096,13 +1166,15 @@ CREATE TABLE `order_audits` (
   INDEX `idx_audit_status` (`audit_status`),
   INDEX `idx_auditor` (`auditor_id`),
   INDEX `idx_applicant` (`applicant_id`),
-  INDEX `idx_apply_time` (`apply_time`)
+  INDEX `idx_apply_time` (`apply_time`),
+  INDEX `idx_order_audits_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单审核记录表';
 
 -- 23. 业绩分享记录表
 DROP TABLE IF EXISTS `performance_shares`;
 CREATE TABLE `performance_shares` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '分享ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `share_number` VARCHAR(50) UNIQUE NOT NULL COMMENT '分享编号',
   `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID',
   `order_number` VARCHAR(50) NOT NULL COMMENT '订单号',
@@ -1122,13 +1194,15 @@ CREATE TABLE `performance_shares` (
   INDEX `idx_order_number` (`order_number`),
   INDEX `idx_status` (`status`),
   INDEX `idx_created_by` (`created_by`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_performance_shares_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='业绩分享记录表';
 
 -- 24. 业绩分享成员表
 DROP TABLE IF EXISTS `performance_share_members`;
 CREATE TABLE `performance_share_members` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '成员ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `share_id` VARCHAR(50) NOT NULL COMMENT '分享记录ID',
   `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
   `user_name` VARCHAR(50) NOT NULL COMMENT '用户姓名',
@@ -1144,6 +1218,7 @@ CREATE TABLE `performance_share_members` (
   INDEX `idx_user` (`user_id`),
   INDEX `idx_status` (`status`),
   INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_performance_share_members_tenant_id` (`tenant_id`),
   FOREIGN KEY (`share_id`) REFERENCES `performance_shares`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='业绩分享成员表';
 
@@ -1151,7 +1226,8 @@ CREATE TABLE `performance_share_members` (
 DROP TABLE IF EXISTS `logistics_companies`;
 CREATE TABLE `logistics_companies` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '公司ID',
-  `code` VARCHAR(50) UNIQUE NOT NULL COMMENT '公司代码',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `code` VARCHAR(50) NOT NULL COMMENT '公司代码',
   `name` VARCHAR(100) NOT NULL COMMENT '公司名称',
   `short_name` VARCHAR(50) COMMENT '公司简称',
   `logo` VARCHAR(500) COMMENT 'Logo URL',
@@ -1169,6 +1245,8 @@ CREATE TABLE `logistics_companies` (
   `remark` TEXT COMMENT '备注',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE KEY `idx_logistics_companies_tenant_code` (`tenant_id`, `code`),
+  INDEX `idx_tenant_id` (`tenant_id`),
   INDEX `idx_code` (`code`),
   INDEX `idx_name` (`name`),
   INDEX `idx_status` (`status`),
@@ -1179,6 +1257,7 @@ CREATE TABLE `logistics_companies` (
 DROP TABLE IF EXISTS `logistics_api_configs`;
 CREATE TABLE `logistics_api_configs` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '配置ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `company_code` VARCHAR(50) NOT NULL COMMENT '物流公司代码(SF/ZTO/YTO/STO/YD/JTSD/EMS/JD/DBL)',
   `company_name` VARCHAR(100) NOT NULL COMMENT '物流公司名称',
   `app_id` VARCHAR(200) NULL COMMENT '应用ID/AppKey/PartnerId',
@@ -1196,15 +1275,17 @@ CREATE TABLE `logistics_api_configs` (
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `created_by` VARCHAR(50) NULL COMMENT '创建人',
   `updated_by` VARCHAR(50) NULL COMMENT '更新人',
-  UNIQUE KEY `uk_company_code` (`company_code`),
+  UNIQUE KEY `idx_logistics_api_configs_tenant_code` (`tenant_id`, `company_code`),
   INDEX `idx_enabled` (`enabled`),
-  INDEX `idx_api_environment` (`api_environment`)
+  INDEX `idx_api_environment` (`api_environment`),
+  INDEX `idx_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流API配置表';
 
 -- 26. 物流状态历史表
 DROP TABLE IF EXISTS `logistics_status_history`;
 CREATE TABLE `logistics_status_history` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '历史ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `logistics_id` VARCHAR(50) NOT NULL COMMENT '物流记录ID',
   `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID',
   `order_number` VARCHAR(50) NOT NULL COMMENT '订单号',
@@ -1222,13 +1303,15 @@ CREATE TABLE `logistics_status_history` (
   INDEX `idx_order` (`order_id`),
   INDEX `idx_tracking_number` (`tracking_number`),
   INDEX `idx_new_status` (`new_status`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_logistics_status_history_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流状态历史表';
 
 -- 27. 物流异常记录表
 DROP TABLE IF EXISTS `logistics_exceptions`;
 CREATE TABLE `logistics_exceptions` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '异常ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `logistics_id` VARCHAR(50) NOT NULL COMMENT '物流记录ID',
   `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID',
   `order_number` VARCHAR(50) NOT NULL COMMENT '订单号',
@@ -1251,13 +1334,15 @@ CREATE TABLE `logistics_exceptions` (
   INDEX `idx_exception_type` (`exception_type`),
   INDEX `idx_status` (`status`),
   INDEX `idx_handler` (`handler_id`),
-  INDEX `idx_exception_time` (`exception_time`)
+  INDEX `idx_exception_time` (`exception_time`),
+  INDEX `idx_logistics_exceptions_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流异常记录表';
 
 -- 28. 物流待办事项表
 DROP TABLE IF EXISTS `logistics_todos`;
 CREATE TABLE `logistics_todos` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '待办ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `logistics_id` VARCHAR(50) NOT NULL COMMENT '物流记录ID',
   `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID',
   `order_number` VARCHAR(50) NOT NULL COMMENT '订单号',
@@ -1284,13 +1369,15 @@ CREATE TABLE `logistics_todos` (
   INDEX `idx_priority` (`priority`),
   INDEX `idx_assigned_to` (`assigned_to`),
   INDEX `idx_due_date` (`due_date`),
-  INDEX `idx_created_by` (`created_by`)
+  INDEX `idx_created_by` (`created_by`),
+  INDEX `idx_logistics_todos_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流待办事项表';
 
 -- 29. 订单字段配置表
 DROP TABLE IF EXISTS `order_field_configs`;
 CREATE TABLE `order_field_configs` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '配置ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `field_key` VARCHAR(100) UNIQUE NOT NULL COMMENT '字段键名',
   `field_name` VARCHAR(100) NOT NULL COMMENT '字段名称',
   `field_type` ENUM('text', 'number', 'date', 'datetime', 'select', 'radio', 'checkbox') NOT NULL COMMENT '字段类型',
@@ -1308,13 +1395,15 @@ CREATE TABLE `order_field_configs` (
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_field_key` (`field_key`),
   INDEX `idx_is_visible` (`is_visible`),
-  INDEX `idx_sort_order` (`sort_order`)
+  INDEX `idx_sort_order` (`sort_order`),
+  INDEX `idx_order_field_configs_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单字段配置表';
 
 -- 30. 系统设置表
 DROP TABLE IF EXISTS `system_settings`;
 CREATE TABLE `system_settings` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '设置ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `category` VARCHAR(50) NOT NULL COMMENT '配置分类',
   `key` VARCHAR(100) UNIQUE NOT NULL COMMENT '配置键名',
   `value` TEXT COMMENT '配置值',
@@ -1336,13 +1425,15 @@ CREATE TABLE `system_settings` (
   INDEX `idx_category` (`category`),
   INDEX `idx_key` (`key`),
   INDEX `idx_is_public` (`is_public`),
-  INDEX `idx_sort_order` (`sort_order`)
+  INDEX `idx_sort_order` (`sort_order`),
+  INDEX `idx_system_settings_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统设置表';
 
 -- 31. 权限表（系统权限定义）
 DROP TABLE IF EXISTS `permissions`;
 CREATE TABLE `permissions` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '权限ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `name` VARCHAR(100) NOT NULL COMMENT '权限名称',
   `code` VARCHAR(100) UNIQUE NOT NULL COMMENT '权限代码',
   `description` TEXT COMMENT '权限描述',
@@ -1359,33 +1450,39 @@ CREATE TABLE `permissions` (
   INDEX `idx_module` (`module`),
   INDEX `idx_type` (`type`),
   INDEX `idx_status` (`status`),
-  INDEX `idx_parent` (`parentId`)
+  INDEX `idx_parent` (`parentId`),
+  INDEX `idx_permissions_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='权限表';
 
 -- 32. 角色权限关联表
 DROP TABLE IF EXISTS `role_permissions`;
 CREATE TABLE `role_permissions` (
   `roleId` VARCHAR(50) NOT NULL COMMENT '角色ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `permissionId` INT NOT NULL COMMENT '权限ID',
   PRIMARY KEY (`roleId`, `permissionId`),
   INDEX `idx_role` (`roleId`),
-  INDEX `idx_permission` (`permissionId`)
+  INDEX `idx_permission` (`permissionId`),
+  INDEX `idx_role_permissions_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色权限关联表';
 
 -- 33. 权限树形结构闭包表（TypeORM closure-table需要）
 DROP TABLE IF EXISTS `permissions_closure`;
 CREATE TABLE `permissions_closure` (
   `id_ancestor` INT NOT NULL COMMENT '祖先权限ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `id_descendant` INT NOT NULL COMMENT '后代权限ID',
   PRIMARY KEY (`id_ancestor`, `id_descendant`),
   INDEX `idx_ancestor` (`id_ancestor`),
-  INDEX `idx_descendant` (`id_descendant`)
+  INDEX `idx_descendant` (`id_descendant`),
+  INDEX `idx_permissions_closure_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='权限树形结构闭包表';
 
 -- 34. 用户个人权限表
 DROP TABLE IF EXISTS `user_permissions`;
 CREATE TABLE `user_permissions` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '权限ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `userId` INT NOT NULL COMMENT '用户ID',
   `permissionId` INT NOT NULL COMMENT '权限ID',
   `grantedBy` INT NULL COMMENT '授权人ID',
@@ -1393,13 +1490,15 @@ CREATE TABLE `user_permissions` (
   `grantedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '授权时间',
   INDEX `idx_user` (`userId`),
   INDEX `idx_permission` (`permissionId`),
-  INDEX `idx_granted_by` (`grantedBy`)
+  INDEX `idx_granted_by` (`grantedBy`),
+  INDEX `idx_user_permissions_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户个人权限表';
 
 -- 35. 物流状态配置表
 DROP TABLE IF EXISTS `logistics_status`;
 CREATE TABLE `logistics_status` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '状态ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `name` VARCHAR(50) NOT NULL COMMENT '状态名称',
   `color` VARCHAR(7) DEFAULT '#28a745' COMMENT '状态颜色',
   `description` TEXT NULL COMMENT '状态描述',
@@ -1407,13 +1506,15 @@ CREATE TABLE `logistics_status` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_name` (`name`),
-  INDEX `idx_is_active` (`isActive`)
+  INDEX `idx_is_active` (`isActive`),
+  INDEX `idx_logistics_status_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流状态配置表';
 
 -- 36. 物流跟踪表
 DROP TABLE IF EXISTS `logistics_tracking`;
 CREATE TABLE `logistics_tracking` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '跟踪ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `orderId` INT NOT NULL COMMENT '订单ID',
   `trackingNo` VARCHAR(100) NOT NULL COMMENT '物流单号',
   `companyCode` VARCHAR(50) NOT NULL COMMENT '物流公司代码',
@@ -1436,13 +1537,15 @@ CREATE TABLE `logistics_tracking` (
   INDEX `idx_tracking_no` (`trackingNo`),
   INDEX `idx_company_code` (`companyCode`),
   INDEX `idx_status` (`status`),
-  INDEX `idx_next_sync_time` (`nextSyncTime`)
+  INDEX `idx_next_sync_time` (`nextSyncTime`),
+  INDEX `idx_logistics_tracking_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流跟踪表';
 
 -- 37. 物流轨迹表
 DROP TABLE IF EXISTS `logistics_traces`;
 CREATE TABLE `logistics_traces` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '轨迹ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `logisticsTrackingId` INT NOT NULL COMMENT '物流跟踪ID',
   `traceTime` DATETIME NOT NULL COMMENT '轨迹时间',
   `location` VARCHAR(200) NULL COMMENT '轨迹位置',
@@ -1454,13 +1557,15 @@ CREATE TABLE `logistics_traces` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   INDEX `idx_logistics_tracking` (`logisticsTrackingId`),
   INDEX `idx_trace_time` (`traceTime`),
-  INDEX `idx_status` (`status`)
+  INDEX `idx_status` (`status`),
+  INDEX `idx_logistics_traces_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流轨迹表';
 
 -- 38. 订单明细表
 DROP TABLE IF EXISTS `order_items`;
 CREATE TABLE `order_items` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '明细ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `orderId` INT NOT NULL COMMENT '订单ID',
   `productId` INT NOT NULL COMMENT '产品ID',
   `productName` VARCHAR(100) NOT NULL COMMENT '产品名称（快照）',
@@ -1473,13 +1578,15 @@ CREATE TABLE `order_items` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_order` (`orderId`),
-  INDEX `idx_product` (`productId`)
+  INDEX `idx_product` (`productId`),
+  INDEX `idx_order_items_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单明细表';
 
 -- 36. 订单状态历史表
 DROP TABLE IF EXISTS `order_status_history`;
 CREATE TABLE `order_status_history` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '历史ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `orderId` VARCHAR(50) NOT NULL COMMENT '订单ID（UUID格式）',
   `status` VARCHAR(50) NOT NULL COMMENT '状态',
   `notes` TEXT NULL COMMENT '状态变更备注',
@@ -1489,7 +1596,8 @@ CREATE TABLE `order_status_history` (
   INDEX `idx_order` (`orderId`),
   INDEX `idx_status` (`status`),
   INDEX `idx_operator` (`operatorId`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_order_status_history_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单状态历史表';
 
 -- 39. 拒绝原因表
@@ -1501,13 +1609,16 @@ CREATE TABLE `rejection_reasons` (
   `isActive` BOOLEAN DEFAULT TRUE COMMENT '是否启用',
   `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  INDEX `idx_active` (`isActive`)
+  INDEX `idx_active` (`isActive`),
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  INDEX `idx_rejection_reasons_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='拒绝原因表';
 
 -- 40. 业绩指标表
 DROP TABLE IF EXISTS `performance_metrics`;
 CREATE TABLE `performance_metrics` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '指标ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `userId` VARCHAR(100) NOT NULL COMMENT '用户ID',
   `metricType` VARCHAR(50) NOT NULL COMMENT '指标类型',
   `value` DECIMAL(10,2) NOT NULL COMMENT '指标值',
@@ -1516,13 +1627,15 @@ CREATE TABLE `performance_metrics` (
   `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_user` (`userId`),
   INDEX `idx_type` (`metricType`),
-  INDEX `idx_date` (`date`)
+  INDEX `idx_date` (`date`),
+  INDEX `idx_performance_metrics_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='业绩指标表';
 
 -- 41. 消息表
 DROP TABLE IF EXISTS `messages`;
 CREATE TABLE `messages` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '消息ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `senderId` VARCHAR(100) NOT NULL COMMENT '发送者ID',
   `receiverId` VARCHAR(100) NOT NULL COMMENT '接收者ID',
   `content` TEXT NOT NULL COMMENT '消息内容',
@@ -1533,13 +1646,15 @@ CREATE TABLE `messages` (
   INDEX `idx_sender` (`senderId`),
   INDEX `idx_receiver` (`receiverId`),
   INDEX `idx_read` (`isRead`),
-  INDEX `idx_created_at` (`createdAt`)
+  INDEX `idx_created_at` (`createdAt`),
+  INDEX `idx_messages_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息表';
 
 -- 42. 消息订阅表
 DROP TABLE IF EXISTS `message_subscriptions`;
 CREATE TABLE `message_subscriptions` (
   `id` CHAR(36) PRIMARY KEY COMMENT '订阅ID(UUID)',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `messageType` VARCHAR(50) NOT NULL COMMENT '消息类型',
   `name` VARCHAR(100) NOT NULL COMMENT '消息名称',
   `description` TEXT NULL COMMENT '消息描述',
@@ -1550,13 +1665,15 @@ CREATE TABLE `message_subscriptions` (
   `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_type` (`messageType`),
   INDEX `idx_category` (`category`),
-  INDEX `idx_enabled` (`isGlobalEnabled`)
+  INDEX `idx_enabled` (`isGlobalEnabled`),
+  INDEX `idx_message_subscriptions_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息订阅表';
 
 -- 43. 部门订阅配置表
 DROP TABLE IF EXISTS `department_subscription_configs`;
 CREATE TABLE `department_subscription_configs` (
   `id` CHAR(36) PRIMARY KEY COMMENT '配置ID(UUID)',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `messageType` VARCHAR(50) NOT NULL COMMENT '消息类型',
   `departmentId` VARCHAR(50) NOT NULL COMMENT '部门ID',
   `isEnabled` BOOLEAN DEFAULT FALSE COMMENT '是否启用',
@@ -1565,13 +1682,15 @@ CREATE TABLE `department_subscription_configs` (
   `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_type` (`messageType`),
   INDEX `idx_department` (`departmentId`),
-  INDEX `idx_enabled` (`isEnabled`)
+  INDEX `idx_enabled` (`isEnabled`),
+  INDEX `idx_department_subscription_configs_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='部门订阅配置表';
 
 -- 44. 系统日志表
 DROP TABLE IF EXISTS `logs`;
 CREATE TABLE `logs` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '日志ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `level` VARCHAR(50) NOT NULL COMMENT '日志级别',
   `message` TEXT NOT NULL COMMENT '日志消息',
   `meta` TEXT NULL COMMENT '元数据',
@@ -1579,7 +1698,8 @@ CREATE TABLE `logs` (
   `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   INDEX `idx_level` (`level`),
   INDEX `idx_user` (`userId`),
-  INDEX `idx_created_at` (`createdAt`)
+  INDEX `idx_created_at` (`createdAt`),
+  INDEX `idx_logs_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统日志表';
 
 -- 45. 改善目标表
@@ -1595,7 +1715,9 @@ CREATE TABLE `improvement_goals` (
   `updatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_user` (`userId`),
   INDEX `idx_status` (`status`),
-  INDEX `idx_target_date` (`targetDate`)
+  INDEX `idx_target_date` (`targetDate`),
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  INDEX `idx_improvement_goals_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='改善目标表';
 
 -- 46. 通话表（已合并到call_records表，此处保留注释说明）
@@ -1797,7 +1919,7 @@ INSERT INTO `logistics_companies` (`id`, `code`, `name`, `short_name`, `logo`, `
 ('lc-006', 'JTSD', '极兔速递', '极兔', NULL, 'https://www.jtexpress.cn', 'https://www.jtexpress.cn/track/{trackingNo}', '95353', 'active', 6, '极兔速递官方合作'),
 ('lc-007', 'EMS', '邮政EMS', 'EMS', NULL, 'https://www.ems.com.cn', 'https://www.ems.com.cn/queryList?mailNo={trackingNo}', '11183', 'active', 7, '中国邮政EMS'),
 ('lc-008', 'JD', '京东物流', '京东', NULL, 'https://www.jdl.com', 'https://www.jd.com/orderDetail?orderId={trackingNo}', '950616', 'inactive', 8, '京东物流（需开通合作）'),
-('lc-009', 'DB', '德邦快递', '德邦', NULL, 'https://www.deppon.com', 'https://www.deppon.com/tracking/{trackingNo}', '95353', 'inactive', 9, '德邦快递（需开通合作）')
+('lc-009', 'DBL', '德邦快递', '德邦', NULL, 'https://www.deppon.com', 'https://www.deppon.com/tracking/{trackingNo}', '95353', 'inactive', 9, '德邦快递（需开通合作）')
 ON DUPLICATE KEY UPDATE
   `name` = VALUES(`name`),
   `short_name` = VALUES(`short_name`),
@@ -1828,6 +1950,7 @@ ON DUPLICATE KEY UPDATE
 DROP TABLE IF EXISTS `department_order_limits`;
 CREATE TABLE `department_order_limits` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '配置ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `department_id` VARCHAR(50) NOT NULL COMMENT '部门ID',
   `department_name` VARCHAR(100) COMMENT '部门名称（冗余字段）',
   
@@ -1855,8 +1978,9 @@ CREATE TABLE `department_order_limits` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   
-  -- 索引
-  UNIQUE INDEX `idx_department_id` (`department_id`),
+  -- 索引（同一租户同一部门唯一）
+  UNIQUE INDEX `idx_tenant_department` (`tenant_id`, `department_id`),
+  INDEX `idx_tenant_id` (`tenant_id`),
   INDEX `idx_is_enabled` (`is_enabled`),
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='部门下单限制配置表';
@@ -1865,6 +1989,7 @@ CREATE TABLE `department_order_limits` (
 DROP TABLE IF EXISTS `service_follow_up_records`;
 CREATE TABLE `service_follow_up_records` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '跟进记录ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `service_id` VARCHAR(50) NOT NULL COMMENT '售后服务ID',
   `service_number` VARCHAR(50) COMMENT '售后单号',
   `follow_up_time` TIMESTAMP NOT NULL COMMENT '跟进时间',
@@ -1876,13 +2001,15 @@ CREATE TABLE `service_follow_up_records` (
   INDEX `idx_service_id` (`service_id`),
   INDEX `idx_service_number` (`service_number`),
   INDEX `idx_follow_up_time` (`follow_up_time`),
-  INDEX `idx_created_by_id` (`created_by_id`)
+  INDEX `idx_created_by_id` (`created_by_id`),
+  INDEX `idx_service_follow_up_records_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='售后服务跟进记录表';
 
 -- 48. 售后服务操作记录表
 DROP TABLE IF EXISTS `service_operation_logs`;
 CREATE TABLE `service_operation_logs` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '操作记录ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `service_id` VARCHAR(50) NOT NULL COMMENT '售后服务ID',
   `service_number` VARCHAR(50) COMMENT '售后单号',
   `operation_type` VARCHAR(50) NOT NULL COMMENT '操作类型: create/assign/status_change/priority_change/close/follow_up',
@@ -1897,13 +2024,15 @@ CREATE TABLE `service_operation_logs` (
   INDEX `idx_service_number` (`service_number`),
   INDEX `idx_operation_type` (`operation_type`),
   INDEX `idx_operator_id` (`operator_id`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_service_operation_logs_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='售后服务操作记录表';
 
 -- 25. 系统消息表（用于跨设备消息通知）
 DROP TABLE IF EXISTS `system_messages`;
 CREATE TABLE `system_messages` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '消息ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `type` VARCHAR(50) NOT NULL COMMENT '消息类型',
   `title` VARCHAR(200) NOT NULL COMMENT '消息标题',
   `content` TEXT NOT NULL COMMENT '消息内容',
@@ -1920,13 +2049,16 @@ CREATE TABLE `system_messages` (
   INDEX `idx_target_user` (`target_user_id`),
   INDEX `idx_is_read` (`is_read`),
   INDEX `idx_created_at` (`created_at`),
-  INDEX `idx_type` (`type`)
+  INDEX `idx_type` (`type`),
+  INDEX `idx_system_messages_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统消息表';
 
 -- 26. 系统公告表
 DROP TABLE IF EXISTS `announcements`;
 CREATE TABLE `announcements` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '公告ID',
+   `tenant_id` VARCHAR(36) NULL DEFAULT NULL COMMENT '租户ID（公司公告属于租户，系统公告为NULL）',
+  `source` VARCHAR(20) NOT NULL DEFAULT 'company' COMMENT '公告来源: system=系统公告, company=公司公告',
   `title` VARCHAR(200) NOT NULL COMMENT '公告标题',
   `content` TEXT NOT NULL COMMENT '公告内容',
   `type` VARCHAR(50) DEFAULT 'notice' COMMENT '公告类型: notice/update/maintenance/promotion',
@@ -1934,6 +2066,7 @@ CREATE TABLE `announcements` (
   `status` VARCHAR(20) DEFAULT 'draft' COMMENT '状态: draft/published/archived',
   `target_roles` JSON COMMENT '目标角色列表，为空表示所有人',
   `target_departments` JSON COMMENT '目标部门列表，为空表示所有部门',
+  `target_tenants` JSON NULL DEFAULT NULL COMMENT '目标租户列表（系统公告用，NULL=全部租户）',
   `start_time` TIMESTAMP NULL COMMENT '生效开始时间',
   `end_time` TIMESTAMP NULL COMMENT '生效结束时间',
   `is_pinned` TINYINT(1) DEFAULT 0 COMMENT '是否置顶',
@@ -1945,22 +2078,26 @@ CREATE TABLE `announcements` (
   `published_at` TIMESTAMP NULL COMMENT '发布时间',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  INDEX `idx_status` (`status`),
-  INDEX `idx_type` (`type`),
-  INDEX `idx_created_at` (`created_at`),
-  INDEX `idx_published_at` (`published_at`)
+  INDEX `idx_announcements_source` (`source`),
+  INDEX `idx_announcements_status` (`status`),
+  INDEX `idx_announcements_type` (`type`),
+  INDEX `idx_announcements_created_at` (`created_at`),
+  INDEX `idx_announcements_published_at` (`published_at`),
+  INDEX `idx_announcements_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统公告表';
 
 -- 27. 公告阅读记录表
 DROP TABLE IF EXISTS `announcement_reads`;
 CREATE TABLE `announcement_reads` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '记录ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `announcement_id` VARCHAR(36) NOT NULL COMMENT '公告ID',
   `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID，与users表id类型一致',
   `read_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '阅读时间',
   UNIQUE KEY `uk_announcement_user` (`announcement_id`, `user_id`),
   INDEX `idx_announcement_id` (`announcement_id`),
   INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_announcement_reads_tenant_id` (`tenant_id`),
   CONSTRAINT `fk_announcement_reads_announcement` FOREIGN KEY (`announcement_id`) REFERENCES `announcements`(`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_announcement_reads_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公告阅读记录表';
@@ -1969,18 +2106,21 @@ CREATE TABLE `announcement_reads` (
 DROP TABLE IF EXISTS `message_read_status`;
 CREATE TABLE `message_read_status` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '记录ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `message_id` VARCHAR(36) NOT NULL COMMENT '消息ID',
   `user_id` VARCHAR(36) NOT NULL COMMENT '用户ID',
   `read_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '阅读时间',
   UNIQUE KEY `uk_message_user` (`message_id`, `user_id`),
   INDEX `idx_message_id` (`message_id`),
-  INDEX `idx_user_id` (`user_id`)
+  INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_message_read_status_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息已读状态表';
 
 -- 28. 系统消息表
 DROP TABLE IF EXISTS `system_messages`;
 CREATE TABLE `system_messages` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '消息ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `type` VARCHAR(50) NOT NULL COMMENT '消息类型',
   `title` VARCHAR(200) NOT NULL COMMENT '消息标题',
   `content` TEXT NOT NULL COMMENT '消息内容',
@@ -1997,13 +2137,15 @@ CREATE TABLE `system_messages` (
   INDEX `idx_type` (`type`),
   INDEX `idx_target_user_id` (`target_user_id`),
   INDEX `idx_is_read` (`is_read`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_system_messages_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统消息表';
 
 -- 29. 通知渠道配置表
 DROP TABLE IF EXISTS `notification_channels`;
 CREATE TABLE `notification_channels` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '配置ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `name` VARCHAR(100) NOT NULL COMMENT '配置名称',
   `channel_type` VARCHAR(50) NOT NULL COMMENT '通知渠道类型: dingtalk/wechat_work/wechat_mp/email/sms/system',
   `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
@@ -2020,13 +2162,15 @@ CREATE TABLE `notification_channels` (
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_channel_type` (`channel_type`),
   INDEX `idx_is_enabled` (`is_enabled`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_notification_channels_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知渠道配置表';
 
 -- 30. 通知发送记录表
 DROP TABLE IF EXISTS `notification_logs`;
 CREATE TABLE `notification_logs` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '记录ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `channel_id` VARCHAR(36) NOT NULL COMMENT '通知渠道ID',
   `channel_type` VARCHAR(50) NOT NULL COMMENT '通知渠道类型',
   `message_type` VARCHAR(50) NOT NULL COMMENT '消息类型',
@@ -2040,13 +2184,15 @@ CREATE TABLE `notification_logs` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   INDEX `idx_channel_id` (`channel_id`),
   INDEX `idx_status` (`status`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_notification_logs_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知发送记录表';
 
 -- 31. 业绩消息配置表
 DROP TABLE IF EXISTS `performance_report_configs`;
 CREATE TABLE `performance_report_configs` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '配置ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `name` VARCHAR(100) NOT NULL COMMENT '配置名称',
   `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
   `send_frequency` VARCHAR(20) NOT NULL DEFAULT 'daily' COMMENT '发送频率: daily/weekly/monthly/custom',
@@ -2072,13 +2218,15 @@ CREATE TABLE `performance_report_configs` (
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_is_enabled` (`is_enabled`),
   INDEX `idx_send_frequency` (`send_frequency`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_performance_report_configs_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='业绩消息配置表';
 
 -- 32. 业绩消息发送记录表
 DROP TABLE IF EXISTS `performance_report_logs`;
 CREATE TABLE `performance_report_logs` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '记录ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `config_id` VARCHAR(36) NOT NULL COMMENT '配置ID',
   `report_date` DATE NOT NULL COMMENT '报表日期',
   `report_data` JSON COMMENT '报表数据快照',
@@ -2090,7 +2238,8 @@ CREATE TABLE `performance_report_logs` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   INDEX `idx_config_id` (`config_id`),
   INDEX `idx_report_date` (`report_date`),
-  INDEX `idx_status` (`status`)
+  INDEX `idx_status` (`status`),
+  INDEX `idx_performance_report_logs_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='业绩消息发送记录表';
 
 -- 33. 消息清理历史表
@@ -2104,7 +2253,9 @@ CREATE TABLE `message_cleanup_history` (
   `remark` VARCHAR(500) COMMENT '备注',
   `cleanup_time` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '清理时间',
   INDEX `idx_cleanup_time` (`cleanup_time`),
-  INDEX `idx_cleanup_type` (`cleanup_type`)
+  INDEX `idx_cleanup_type` (`cleanup_type`),
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  INDEX `idx_message_cleanup_history_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息清理历史表';
 
 -- =============================================
@@ -2121,7 +2272,9 @@ CREATE TABLE `global_call_config` (
   `description` VARCHAR(255) COMMENT '配置说明',
   `updated_by` VARCHAR(50) COMMENT '最后更新人',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  INDEX `idx_global_call_config_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='全局外呼配置表';
 
 -- 用户线路分配表 (管理员分配号码给成员)
@@ -2141,13 +2294,16 @@ CREATE TABLE `user_line_assignments` (
   UNIQUE KEY `uk_user_line` (`user_id`, `line_id`),
   INDEX `idx_user_id` (`user_id`),
   INDEX `idx_line_id` (`line_id`),
-  INDEX `idx_is_active` (`is_active`)
+  INDEX `idx_is_active` (`is_active`),
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  INDEX `idx_user_line_assignments_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户线路分配表';
 
 -- 设备绑定操作日志表
 DROP TABLE IF EXISTS `device_bindlogs`;
 CREATE TABLE `device_bindlogs` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
   `device_id` VARCHAR(100) COMMENT '设备ID',
   `phone_number` VARCHAR(20) COMMENT '手机号码',
@@ -2163,7 +2319,8 @@ CREATE TABLE `device_bindlogs` (
   INDEX `idx_user_id` (`user_id`),
   INDEX `idx_device_id` (`device_id`),
   INDEX `idx_action` (`action`),
-  INDEX `idx_created_at` (`created_at`)
+  INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_device_bindlogs_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备绑定操作日志表';
 
 -- 二维码绑定状态表 (用于扫码绑定工作手机)
@@ -2190,7 +2347,9 @@ CREATE TABLE `device_bind_logs` (
   INDEX `idx_user_id` (`user_id`),
   INDEX `idx_device_id` (`device_id`),
   INDEX `idx_connection_id` (`connection_id`),
-  INDEX `idx_status` (`status`)
+  INDEX `idx_status` (`status`),
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  INDEX `idx_device_bind_logs_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备绑定日志表';
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -2270,23 +2429,26 @@ WHERE attachments LIKE '%/api/v1/uploads/%';
 DROP TABLE IF EXISTS `payment_method_options`;
 CREATE TABLE `payment_method_options` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '支付方式ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID（NULL表示全局预设，对所有租户可见）',
   `label` VARCHAR(100) NOT NULL COMMENT '显示名称',
   `value` VARCHAR(50) NOT NULL COMMENT '选项值',
   `sort_order` INT DEFAULT 0 COMMENT '排序顺序',
   `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `is_system` TINYINT(1) DEFAULT 0 COMMENT '是否系统预设（不可删除）',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  UNIQUE INDEX `idx_value` (`value`)
+  INDEX `idx_tenant_id` (`tenant_id`),
+  UNIQUE INDEX `idx_tenant_value` (`tenant_id`, `value`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='支付方式配置表';
 
--- 插入预设支付方式
-INSERT INTO `payment_method_options` (`id`, `label`, `value`, `sort_order`, `is_enabled`) VALUES
-('pm_wechat', '微信支付', 'wechat', 1, 1),
-('pm_alipay', '支付宝支付', 'alipay', 2, 1),
-('pm_bank', '银行转账', 'bank_transfer', 3, 1),
-('pm_unionpay', '云闪付', 'unionpay', 4, 1),
-('pm_cod', '货到付款', 'cod', 5, 1),
-('pm_other', '其他', 'other', 6, 1)
+-- 插入预设支付方式（tenant_id=NULL 表示全局预设，所有租户可见）
+INSERT INTO `payment_method_options` (`id`, `tenant_id`, `label`, `value`, `sort_order`, `is_enabled`, `is_system`) VALUES
+('pm_wechat', NULL, '微信支付', 'wechat', 1, 1, 1),
+('pm_alipay', NULL, '支付宝支付', 'alipay', 2, 1, 1),
+('pm_bank', NULL, '银行转账', 'bank_transfer', 3, 1, 1),
+('pm_unionpay', NULL, '云闪付', 'unionpay', 4, 1, 1),
+('pm_cod', NULL, '货到付款', 'cod', 5, 1, 1),
+('pm_other', NULL, '其他', 'other', 6, 1, 1)
 ON DUPLICATE KEY UPDATE `label` = VALUES(`label`), `sort_order` = VALUES(`sort_order`);
 
 -- =============================================
@@ -2298,8 +2460,9 @@ ON DUPLICATE KEY UPDATE `label` = VALUES(`label`), `sort_order` = VALUES(`sort_o
 DROP TABLE IF EXISTS `customer_service_permissions`;
 CREATE TABLE `customer_service_permissions` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '记录ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
-  `customer_service_type` VARCHAR(30) NOT NULL DEFAULT 'general' COMMENT '客服类型: after_sales售后, audit审核, logistics物流, product商品, general通用',
+  `customer_service_type` VARCHAR(30) NOT NULL DEFAULT 'general' COMMENT '客服类型: after_sales售后, audit审核, logistics物流, product商品, finance财务, general通用',
   `data_scope` VARCHAR(20) NOT NULL DEFAULT 'self' COMMENT '数据范围: all全部, department部门, self个人, custom自定义',
   `department_ids` JSON NULL COMMENT '可访问的部门ID列表（data_scope为department或custom时使用）',
   `custom_permissions` JSON NULL COMMENT '自定义权限列表',
@@ -2312,7 +2475,8 @@ CREATE TABLE `customer_service_permissions` (
   `updated_by_name` VARCHAR(50) NULL COMMENT '更新人姓名',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  UNIQUE INDEX `idx_user_id` (`user_id`),
+  UNIQUE INDEX `idx_tenant_user` (`tenant_id`, `user_id`),
+  INDEX `idx_tenant_id` (`tenant_id`),
   INDEX `idx_service_type` (`customer_service_type`),
   INDEX `idx_data_scope` (`data_scope`),
   INDEX `idx_status` (`status`),
@@ -2325,25 +2489,27 @@ CREATE TABLE `customer_service_permissions` (
 DROP TABLE IF EXISTS `sensitive_info_permissions`;
 CREATE TABLE `sensitive_info_permissions` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '配置ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID（NULL表示全局默认）',
   `info_type` VARCHAR(50) NOT NULL COMMENT '敏感信息类型: phone, id_card, email, wechat, address, bank, financial',
   `role_code` VARCHAR(50) NOT NULL COMMENT '角色代码: super_admin, admin, department_manager, sales_staff, customer_service',
   `has_permission` TINYINT(1) DEFAULT 0 COMMENT '是否有权限: 0无权限, 1有权限',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  UNIQUE INDEX `idx_info_role` (`info_type`, `role_code`),
-  INDEX `idx_info_type` (`info_type`),
-  INDEX `idx_role_code` (`role_code`)
+  UNIQUE INDEX `idx_tenant_info_role` (`tenant_id`, `info_type`, `role_code`),
+  INDEX `idx_sip_tenant_id` (`tenant_id`),
+  INDEX `idx_sip_info_type` (`info_type`),
+  INDEX `idx_sip_role_code` (`role_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='敏感信息权限配置表';
 
--- 插入敏感信息权限默认配置（超级管理员和管理员有全部权限）
-INSERT INTO `sensitive_info_permissions` (`info_type`, `role_code`, `has_permission`) VALUES
-('phone', 'super_admin', 1), ('phone', 'admin', 1), ('phone', 'department_manager', 0), ('phone', 'sales_staff', 0), ('phone', 'customer_service', 0),
-('id_card', 'super_admin', 1), ('id_card', 'admin', 1), ('id_card', 'department_manager', 0), ('id_card', 'sales_staff', 0), ('id_card', 'customer_service', 0),
-('email', 'super_admin', 1), ('email', 'admin', 1), ('email', 'department_manager', 0), ('email', 'sales_staff', 0), ('email', 'customer_service', 0),
-('wechat', 'super_admin', 1), ('wechat', 'admin', 1), ('wechat', 'department_manager', 0), ('wechat', 'sales_staff', 0), ('wechat', 'customer_service', 0),
-('address', 'super_admin', 1), ('address', 'admin', 1), ('address', 'department_manager', 0), ('address', 'sales_staff', 0), ('address', 'customer_service', 0),
-('bank', 'super_admin', 1), ('bank', 'admin', 1), ('bank', 'department_manager', 0), ('bank', 'sales_staff', 0), ('bank', 'customer_service', 0),
-('financial', 'super_admin', 1), ('financial', 'admin', 1), ('financial', 'department_manager', 0), ('financial', 'sales_staff', 0), ('financial', 'customer_service', 0)
+-- 插入敏感信息权限默认配置（全局默认：超级管理员和管理员有全部权限，tenant_id=NULL）
+INSERT INTO `sensitive_info_permissions` (`tenant_id`, `info_type`, `role_code`, `has_permission`) VALUES
+(NULL, 'phone', 'super_admin', 1), (NULL, 'phone', 'admin', 1), (NULL, 'phone', 'department_manager', 0), (NULL, 'phone', 'sales_staff', 0), (NULL, 'phone', 'customer_service', 0),
+(NULL, 'id_card', 'super_admin', 1), (NULL, 'id_card', 'admin', 1), (NULL, 'id_card', 'department_manager', 0), (NULL, 'id_card', 'sales_staff', 0), (NULL, 'id_card', 'customer_service', 0),
+(NULL, 'email', 'super_admin', 1), (NULL, 'email', 'admin', 1), (NULL, 'email', 'department_manager', 0), (NULL, 'email', 'sales_staff', 0), (NULL, 'email', 'customer_service', 0),
+(NULL, 'wechat', 'super_admin', 1), (NULL, 'wechat', 'admin', 1), (NULL, 'wechat', 'department_manager', 0), (NULL, 'wechat', 'sales_staff', 0), (NULL, 'wechat', 'customer_service', 0),
+(NULL, 'address', 'super_admin', 1), (NULL, 'address', 'admin', 1), (NULL, 'address', 'department_manager', 0), (NULL, 'address', 'sales_staff', 0), (NULL, 'address', 'customer_service', 0),
+(NULL, 'bank', 'super_admin', 1), (NULL, 'bank', 'admin', 1), (NULL, 'bank', 'department_manager', 0), (NULL, 'bank', 'sales_staff', 0), (NULL, 'bank', 'customer_service', 0),
+(NULL, 'financial', 'super_admin', 1), (NULL, 'financial', 'admin', 1), (NULL, 'financial', 'department_manager', 0), (NULL, 'financial', 'sales_staff', 0), (NULL, 'financial', 'customer_service', 0)
 ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
 
 -- =============================================
@@ -2406,6 +2572,7 @@ CREATE TABLE `api_interfaces` (
 DROP TABLE IF EXISTS `device_bindlogs`;
 CREATE TABLE `device_bindlogs` (
   `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '日志ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
   `user_name` VARCHAR(100) COMMENT '用户姓名',
   `device_id` VARCHAR(100) COMMENT '设备ID',
@@ -2422,7 +2589,8 @@ CREATE TABLE `device_bindlogs` (
   INDEX `idx_device_bindlogs_user_id` (`user_id`),
   INDEX `idx_device_bindlogs_device_id` (`device_id`),
   INDEX `idx_device_bindlogs_action` (`action`),
-  INDEX `idx_device_bindlogs_created_at` (`created_at`)
+  INDEX `idx_device_bindlogs_created_at` (`created_at`),
+  INDEX `idx_device_bindlogs_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='设备绑定日志表';
 
 -- API调用日志表
@@ -2476,7 +2644,9 @@ CREATE TABLE `global_call_config` (
   `description` VARCHAR(255) COMMENT '配置说明',
   `updated_by` VARCHAR(50) COMMENT '最后更新人',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  INDEX `idx_global_call_config_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='全局外呼配置表';
 
 -- 用户线路分配表 (管理员分配号码给成员)
@@ -2496,7 +2666,9 @@ CREATE TABLE `user_line_assignments` (
   UNIQUE KEY `uk_user_line` (`user_id`, `line_id`),
   INDEX `idx_user_id` (`user_id`),
   INDEX `idx_line_id` (`line_id`),
-  INDEX `idx_is_active` (`is_active`)
+  INDEX `idx_is_active` (`is_active`),
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  INDEX `idx_user_line_assignments_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户线路分配表';
 
 -- 插入默认全局外呼配置
@@ -2524,6 +2696,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 DROP TABLE IF EXISTS `performance_config`;
 CREATE TABLE `performance_config` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `config_type` VARCHAR(20) NOT NULL COMMENT '配置类型: status-有效状态, coefficient-系数, remark-备注',
   `config_value` VARCHAR(50) NOT NULL COMMENT '配置值',
   `config_label` VARCHAR(50) DEFAULT NULL COMMENT '显示标签',
@@ -2532,13 +2705,15 @@ CREATE TABLE `performance_config` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_config_type` (`config_type`),
-  INDEX `idx_is_active` (`is_active`)
+  INDEX `idx_is_active` (`is_active`),
+  INDEX `idx_performance_config_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='绩效配置表';
 
 -- 计提阶梯配置表
 DROP TABLE IF EXISTS `commission_ladder`;
 CREATE TABLE `commission_ladder` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `commission_type` ENUM('amount', 'count') NOT NULL DEFAULT 'amount' COMMENT '计提方式: amount-按业绩金额, count-按签收单数',
   `department_id` VARCHAR(36) DEFAULT NULL COMMENT '适用部门ID，为空表示全局',
   `department_name` VARCHAR(100) DEFAULT NULL COMMENT '适用部门名称',
@@ -2553,17 +2728,20 @@ CREATE TABLE `commission_ladder` (
   INDEX `idx_commission_type` (`commission_type`),
   INDEX `idx_department_id` (`department_id`),
   INDEX `idx_is_active` (`is_active`),
-  INDEX `idx_sort_order` (`sort_order`)
+  INDEX `idx_sort_order` (`sort_order`),
+  INDEX `idx_commission_ladder_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='计提阶梯配置表';
 
 -- 计提设置表（存储当前计提模式等全局配置）
 DROP TABLE IF EXISTS `commission_setting`;
 CREATE TABLE `commission_setting` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `setting_key` VARCHAR(50) NOT NULL UNIQUE COMMENT '配置键',
   `setting_value` VARCHAR(200) NOT NULL COMMENT '配置值',
   `setting_desc` VARCHAR(200) DEFAULT NULL COMMENT '配置说明',
-  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_commission_setting_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='计提设置表';
 
 -- 插入默认绩效配置数据
@@ -2990,6 +3168,7 @@ WHERE `configKey` = 'websiteUrl' AND `configGroup` = 'basic_settings';
 -- 企微配置表
 CREATE TABLE IF NOT EXISTS `wecom_configs` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `name` VARCHAR(100) NOT NULL COMMENT '配置名称',
   `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
   `corp_secret` VARCHAR(255) NOT NULL COMMENT '应用Secret',
@@ -3012,12 +3191,14 @@ CREATE TABLE IF NOT EXISTS `wecom_configs` (
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY `uk_corp_id` (`corp_id`),
-  INDEX `idx_is_enabled` (`is_enabled`)
+  INDEX `idx_is_enabled` (`is_enabled`),
+  INDEX `idx_wecom_configs_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微配置表';
 
 -- 企微用户绑定表
 CREATE TABLE IF NOT EXISTS `wecom_user_bindings` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
   `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
   `wecom_user_id` VARCHAR(100) NOT NULL COMMENT '企微成员UserID',
@@ -3032,12 +3213,14 @@ CREATE TABLE IF NOT EXISTS `wecom_user_bindings` (
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY `uk_config_wecom_user` (`wecom_config_id`, `wecom_user_id`),
   INDEX `idx_crm_user_id` (`crm_user_id`),
-  INDEX `idx_corp_id` (`corp_id`)
+  INDEX `idx_corp_id` (`corp_id`),
+  INDEX `idx_wecom_user_bindings_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微用户绑定表';
 
 -- 企微客户表
 CREATE TABLE IF NOT EXISTS `wecom_customers` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
   `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
   `external_user_id` VARCHAR(100) NOT NULL COMMENT '外部联系人ID',
@@ -3063,12 +3246,14 @@ CREATE TABLE IF NOT EXISTS `wecom_customers` (
   UNIQUE KEY `uk_config_external_user` (`wecom_config_id`, `external_user_id`),
   INDEX `idx_follow_user_id` (`follow_user_id`),
   INDEX `idx_status` (`status`),
-  INDEX `idx_add_time` (`add_time`)
+  INDEX `idx_add_time` (`add_time`),
+  INDEX `idx_wecom_customers_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微客户表';
 
 -- 企微获客链接表
 CREATE TABLE IF NOT EXISTS `wecom_acquisition_links` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
   `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
   `link_id` VARCHAR(100) NULL COMMENT '企微链接ID',
@@ -3085,12 +3270,14 @@ CREATE TABLE IF NOT EXISTS `wecom_acquisition_links` (
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_wecom_config_id` (`wecom_config_id`),
-  INDEX `idx_is_enabled` (`is_enabled`)
+  INDEX `idx_is_enabled` (`is_enabled`),
+  INDEX `idx_wecom_acquisition_links_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微获客链接表';
 
 -- 企微客服账号表
 CREATE TABLE IF NOT EXISTS `wecom_service_accounts` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
   `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
   `open_kf_id` VARCHAR(100) NULL COMMENT '客服账号ID',
@@ -3106,12 +3293,14 @@ CREATE TABLE IF NOT EXISTS `wecom_service_accounts` (
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_wecom_config_id` (`wecom_config_id`),
-  INDEX `idx_is_enabled` (`is_enabled`)
+  INDEX `idx_is_enabled` (`is_enabled`),
+  INDEX `idx_wecom_service_accounts_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微客服账号表';
 
 -- 企微会话存档表
 CREATE TABLE IF NOT EXISTS `wecom_chat_records` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
   `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
   `msg_id` VARCHAR(100) NOT NULL COMMENT '消息ID',
@@ -3133,12 +3322,14 @@ CREATE TABLE IF NOT EXISTS `wecom_chat_records` (
   UNIQUE KEY `uk_corp_msg` (`corp_id`, `msg_id`),
   INDEX `idx_wecom_config_id` (`wecom_config_id`),
   INDEX `idx_from_user_id` (`from_user_id`),
-  INDEX `idx_msg_time` (`msg_time`)
+  INDEX `idx_msg_time` (`msg_time`),
+  INDEX `idx_wecom_chat_records_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微会话存档表';
 
 -- 企微收款记录表
 CREATE TABLE IF NOT EXISTS `wecom_payment_records` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
   `corp_id` VARCHAR(50) NOT NULL COMMENT '企业ID',
   `trade_no` VARCHAR(100) NOT NULL COMMENT '交易单号',
@@ -3157,7 +3348,8 @@ CREATE TABLE IF NOT EXISTS `wecom_payment_records` (
   INDEX `idx_wecom_config_id` (`wecom_config_id`),
   INDEX `idx_user_id` (`user_id`),
   INDEX `idx_status` (`status`),
-  INDEX `idx_pay_time` (`pay_time`)
+  INDEX `idx_pay_time` (`pay_time`),
+  INDEX `idx_wecom_payment_records_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微收款记录表';
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -3170,6 +3362,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- 增值订单表
 CREATE TABLE IF NOT EXISTS `value_added_orders` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '订单ID',
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
   `order_id` VARCHAR(50) DEFAULT NULL COMMENT '关联订单ID',
   `order_number` VARCHAR(50) DEFAULT NULL COMMENT '订单号',
   `customer_id` VARCHAR(50) DEFAULT NULL COMMENT '客户ID',
@@ -3198,6 +3391,7 @@ CREATE TABLE IF NOT EXISTS `value_added_orders` (
   `created_by_name` VARCHAR(50) DEFAULT NULL COMMENT '创建人姓名',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_tenant_id` (`tenant_id`),
   INDEX `idx_order_number` (`order_number`),
   INDEX `idx_company_id` (`company_id`),
   INDEX `idx_status` (`status`),
@@ -3213,6 +3407,7 @@ CREATE TABLE IF NOT EXISTS `value_added_orders` (
 -- 外包公司表
 CREATE TABLE IF NOT EXISTS `outsource_companies` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '公司ID',
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
   `company_name` VARCHAR(200) NOT NULL COMMENT '公司名称',
   `contact_person` VARCHAR(100) COMMENT '联系人',
   `contact_phone` VARCHAR(20) COMMENT '联系电话',
@@ -3223,6 +3418,7 @@ CREATE TABLE IF NOT EXISTS `outsource_companies` (
   `is_default` TINYINT(1) DEFAULT 0 COMMENT '是否默认公司（0-否，1-是）',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_tenant_id` (`tenant_id`),
   INDEX `idx_company_name` (`company_name`),
   INDEX `idx_status` (`status`),
   INDEX `idx_sort_order` (`sort_order`),
@@ -3232,6 +3428,7 @@ CREATE TABLE IF NOT EXISTS `outsource_companies` (
 -- 价格档位配置表
 CREATE TABLE IF NOT EXISTS `value_added_price_config` (
   `id` VARCHAR(50) NOT NULL COMMENT '配置ID',
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
   `company_id` VARCHAR(50) NOT NULL COMMENT '外包公司ID',
   `tier_name` VARCHAR(100) NOT NULL COMMENT '档位名称',
   `tier_order` INT NOT NULL DEFAULT 1 COMMENT '档位顺序',
@@ -3250,6 +3447,7 @@ CREATE TABLE IF NOT EXISTS `value_added_price_config` (
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
+  KEY `idx_tenant_id` (`tenant_id`),
   KEY `idx_company_id` (`company_id`),
   KEY `idx_tier_order` (`tier_order`),
   KEY `idx_date_range` (`start_date`, `end_date`),
@@ -3259,14 +3457,16 @@ CREATE TABLE IF NOT EXISTS `value_added_price_config` (
 -- 状态配置表
 CREATE TABLE IF NOT EXISTS `value_added_status_configs` (
   `id` VARCHAR(50) NOT NULL COMMENT '配置ID',
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
   `type` VARCHAR(50) NOT NULL COMMENT '配置类型：validStatus-有效状态，settlementStatus-结算状态',
   `value` VARCHAR(50) NOT NULL COMMENT '状态值（英文）',
   `label` VARCHAR(100) NOT NULL COMMENT '状态标签（中文）',
-  `sort_order` INT DEFAULT 0 COMMENT '排序顺序',
+  `sort_order` INT DEFAULT 999 COMMENT '排序顺序',
+  `is_system` TINYINT DEFAULT 0 COMMENT '是否系统预设: 0-否(可删除), 1-是(不可删除)',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_type_value` (`type`, `value`),
+  UNIQUE KEY `uk_tenant_type_value` (`tenant_id`, `type`, `value`),
+  KEY `idx_tenant_id` (`tenant_id`),
   KEY `idx_type` (`type`),
   KEY `idx_sort_order` (`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='增值管理状态配置表';
@@ -3274,7 +3474,8 @@ CREATE TABLE IF NOT EXISTS `value_added_status_configs` (
 -- 备注预设表
 CREATE TABLE IF NOT EXISTS `value_added_remark_presets` (
   `id` VARCHAR(50) NOT NULL COMMENT '预设ID',
-  `type` VARCHAR(50) NOT NULL COMMENT '预设类型：invalid-无效原因，general-通用备注',
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `category` VARCHAR(50) NOT NULL COMMENT '预设类型：invalid-无效原因，general-通用备注',
   `remark_text` VARCHAR(500) NOT NULL COMMENT '备注文本',
   `sort_order` INT DEFAULT 0 COMMENT '排序顺序',
   `usage_count` INT DEFAULT 0 COMMENT '使用次数',
@@ -3282,38 +3483,39 @@ CREATE TABLE IF NOT EXISTS `value_added_remark_presets` (
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  KEY `idx_type` (`type`),
+  KEY `idx_tenant_id` (`tenant_id`),
+  KEY `idx_category` (`category`),
   KEY `idx_sort_order` (`sort_order`),
   KEY `idx_usage_count` (`usage_count`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='增值管理备注预设表';
 
 -- =============================================
 -- 增值管理系统初始数据
+-- 说明：系统默认预设(is_system=1)全租户生效，不可删除
+-- 注意：tenant_id 由后端 ensureSystemDefaultConfigs() 在每个租户首次访问时自动填充
+-- 此处仅保留数据结构定义，实际初始化由后端自动完成
 -- =============================================
 
--- 插入状态配置预设数据
-INSERT INTO `value_added_status_configs` (`id`, `type`, `value`, `label`, `sort_order`, `created_at`) VALUES
-('vs-pending-001', 'validStatus', 'pending', '待处理', 1, NOW()),
-('vs-valid-001', 'validStatus', 'valid', '有效', 2, NOW()),
-('vs-invalid-001', 'validStatus', 'invalid', '无效', 3, NOW()),
-('vs-supplemented-001', 'validStatus', 'supplemented', '已补单', 4, NOW()),
-('ss-unsettled-001', 'settlementStatus', 'unsettled', '未结算', 1, NOW()),
-('ss-settled-001', 'settlementStatus', 'settled', '已结算', 2, NOW())
-ON DUPLICATE KEY UPDATE 
-  `label` = VALUES(`label`),
-  `sort_order` = VALUES(`sort_order`);
+-- 插入状态配置预设数据（示例：仅供参考，实际由后端 ensureSystemDefaultConfigs 自动初始化）
+-- INSERT INTO `value_added_status_configs` (`id`, `tenant_id`, `type`, `value`, `label`, `sort_order`, `is_system`, `created_at`) VALUES
+-- ('vs-pending-001', NULL, 'validStatus', 'pending', '待处理', 1, 1, NOW()),
+-- ('vs-valid-001', NULL, 'validStatus', 'valid', '有效', 2, 1, NOW()),
+-- ('vs-invalid-001', NULL, 'validStatus', 'invalid', '无效', 3, 1, NOW()),
+-- ('vs-supplemented-001', NULL, 'validStatus', 'supplemented', '已补单', 4, 1, NOW()),
+-- ('ss-unsettled-001', NULL, 'settlementStatus', 'unsettled', '未结算', 1, 1, NOW()),
+-- ('ss-settled-001', NULL, 'settlementStatus', 'settled', '已结算', 2, 1, NOW());
 
 -- 插入备注预设数据（优化后只保留8个简洁选项）
-INSERT INTO `value_added_remark_presets` (`id`, `remark_text`, `category`, `sort_order`, `is_active`) VALUES
-(REPLACE(UUID(), '-', ''), '七天未联系上', 'invalid', 1, 1),
-(REPLACE(UUID(), '-', ''), '重大疾病', 'invalid', 2, 1),
-(REPLACE(UUID(), '-', ''), '哺乳期孕期', 'invalid', 3, 1),
-(REPLACE(UUID(), '-', ''), '退货', 'invalid', 4, 1),
-(REPLACE(UUID(), '-', ''), '拒绝指导', 'invalid', 5, 1),
-(REPLACE(UUID(), '-', ''), '以后再用', 'invalid', 6, 1),
-(REPLACE(UUID(), '-', ''), '空号', 'invalid', 7, 1),
-(REPLACE(UUID(), '-', ''), '其他原因', 'invalid', 8, 1)
-ON DUPLICATE KEY UPDATE `remark_text` = VALUES(`remark_text`);
+-- 注意：这些也由后端按租户自动初始化，此处注释保留供参考
+-- INSERT INTO `value_added_remark_presets` (`id`, `category`, `sort_order`, `is_active`, `remark_text`) VALUES
+-- (REPLACE(UUID(), '-', ''), 'invalid', 1, 1, '七天未联系上'),
+-- (REPLACE(UUID(), '-', ''), 'invalid', 2, 1, '重大疾病'),
+-- (REPLACE(UUID(), '-', ''), 'invalid', 3, 1, '哺乳期孕期'),
+-- (REPLACE(UUID(), '-', ''), 'invalid', 4, 1, '退货'),
+-- (REPLACE(UUID(), '-', ''), 'invalid', 5, 1, '拒绝指导'),
+-- (REPLACE(UUID(), '-', ''), 'invalid', 6, 1, '以后再用'),
+-- (REPLACE(UUID(), '-', ''), 'invalid', 7, 1, '空号'),
+-- (REPLACE(UUID(), '-', ''), 'invalid', 8, 1, '其他原因');
 
 -- =============================================
 -- 模块管理系统表
@@ -3407,6 +3609,7 @@ CREATE TABLE IF NOT EXISTS `api_configs` (
 
 CREATE TABLE IF NOT EXISTS `notification_templates` (
   `id` VARCHAR(36) NOT NULL COMMENT '模板ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `template_code` VARCHAR(100) NOT NULL COMMENT '模板代码(唯一标识)',
   `template_name` VARCHAR(200) NOT NULL COMMENT '模板名称',
   `template_type` VARCHAR(50) NOT NULL COMMENT '模板类型: email/sms/both',
@@ -3429,7 +3632,8 @@ CREATE TABLE IF NOT EXISTS `notification_templates` (
   UNIQUE KEY `uk_template_code` (`template_code`),
   KEY `idx_template_code` (`template_code`),
   KEY `idx_category` (`category`),
-  KEY `idx_scene` (`scene`)
+  KEY `idx_scene` (`scene`),
+  INDEX `idx_notification_templates_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知模板表';
 
 -- =============================================
@@ -3507,6 +3711,7 @@ CREATE TABLE IF NOT EXISTS `wechat_message_logs` (
 -- 微信公众号配置表
 CREATE TABLE IF NOT EXISTS `wechat_official_account_config` (
   `id` VARCHAR(36) NOT NULL COMMENT '配置ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `app_id` VARCHAR(100) NOT NULL COMMENT 'AppID',
   `app_secret` VARCHAR(200) NOT NULL COMMENT 'AppSecret',
   `token` VARCHAR(100) DEFAULT NULL COMMENT 'Token',
@@ -3526,7 +3731,8 @@ CREATE TABLE IF NOT EXISTS `wechat_official_account_config` (
   `total_messages` INT DEFAULT 0 COMMENT '总发送消息数',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  INDEX `idx_wechat_official_account_config_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微信公众号配置表';
 
 -- 微信二维码场景表

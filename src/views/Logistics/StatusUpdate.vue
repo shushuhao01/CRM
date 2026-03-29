@@ -1257,7 +1257,7 @@ onMounted(async () => {
     await userStore.loadUsers()
   }
   if (departmentStore.departments.length === 0) {
-    await departmentStore.loadDepartments()
+    await departmentStore.fetchDepartments()
   }
 
   // 🔥 优化：直接加载当前筛选条件的数据

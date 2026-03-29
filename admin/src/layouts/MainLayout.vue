@@ -55,6 +55,7 @@
           <el-menu-item index="/modules/list">模块列表</el-menu-item>
           <el-menu-item index="/modules/config">基础配置</el-menu-item>
           <el-menu-item index="/modules/distribute">配置下发</el-menu-item>
+          <el-menu-item index="/modules/message-management">消息管理</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="/payment">

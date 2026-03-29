@@ -1,11 +1,15 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 @Entity('logistics_companies')
+@Index('idx_logistics_companies_tenant_code', ['tenantId', 'code'], { unique: true })
 export class LogisticsCompany {
   @PrimaryColumn({ type: 'varchar', length: 50 })
   id!: string;
 
-  @Column({ type: 'varchar', length: 50, unique: true })
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
+
+  @Column({ type: 'varchar', length: 50 })
   code!: string;
 
   @Column({ type: 'varchar', length: 100 })

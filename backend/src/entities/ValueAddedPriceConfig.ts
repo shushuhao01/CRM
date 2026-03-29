@@ -5,6 +5,9 @@ export class ValueAddedPriceConfig {
   @PrimaryColumn('varchar', { length: 50 })
   id: string;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column('varchar', { length: 50, name: 'company_id' })
   companyId: string;
 

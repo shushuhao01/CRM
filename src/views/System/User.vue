@@ -2533,7 +2533,7 @@ const updateDepartmentMemberCount = async (departmentId: string) => {
             console.log('[用户管理] 部门成员数已更新')
 
             // 刷新部门store
-            await departmentStore.loadDepartments()
+            await departmentStore.fetchDepartments()
             break
           }
         } catch (e) {

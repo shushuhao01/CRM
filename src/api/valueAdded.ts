@@ -247,6 +247,7 @@ export interface StatusConfig {
   type: string
   value: string
   label: string
+  isSystem?: number
   createdAt?: string
 }
 
@@ -326,6 +327,17 @@ export function updateOrderCompany(id: string, data: { companyId: string; compan
 }
 
 /**
+ * 🔥 更新单个订单单价（支持手动修改）
+ */
+export function updateOrderUnitPrice(id: string, unitPrice: number) {
+  return request({
+    url: `/value-added/orders/${id}/unit-price`,
+    method: 'put',
+    data: { unitPrice }
+  })
+}
+
+/**
  * ============================================
  * 价格档位管理 API（新版多档位系统）
  * ============================================
@@ -382,6 +394,7 @@ export interface RemarkPreset {
   sort_order: number
   is_active: number
   usage_count: number
+  is_system: number
 }
 
 /**

@@ -1,7 +1,8 @@
-import { Router, Request, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { DepartmentController } from '../controllers/DepartmentController';
 import { AppDataSource } from '../config/database';
+import { getTenantRepo } from '../utils/tenantRepo';
 import { SystemConfig } from '../entities/SystemConfig';
 import { DepartmentOrderLimit } from '../entities/DepartmentOrderLimit';
 import { Department } from '../entities/Department';
@@ -24,6 +25,29 @@ import { CustomerGroup } from '../entities/CustomerGroup';
 import { SmsTemplate } from '../entities/SmsTemplate';
 import { ModuleConfig } from '../entities/ModuleConfig';
 import { Module } from '../entities/Module';
+// 备份功能额外导入
+import { OrderStatusHistory } from '../entities/OrderStatusHistory';
+import { CustomerShare } from '../entities/CustomerShare';
+import { ServiceRecord } from '../entities/ServiceRecord';
+import { ServiceFollowUp } from '../entities/ServiceFollowUp';
+import { ServiceOperationLog } from '../entities/ServiceOperationLog';
+import { OperationLog } from '../entities/OperationLog';
+import { PaymentMethodOption } from '../entities/PaymentMethodOption';
+import { PerformanceConfig } from '../entities/PerformanceConfig';
+import { RejectionReason } from '../entities/RejectionReason';
+import { ImprovementGoal } from '../entities/ImprovementGoal';
+import { CommissionSetting } from '../entities/CommissionSetting';
+import { CommissionLadder } from '../entities/CommissionLadder';
+import { LogisticsTrace } from '../entities/LogisticsTrace';
+import { LogisticsApiConfig } from '../entities/LogisticsApiConfig';
+import { NotificationChannel } from '../entities/NotificationChannel';
+import { CodCancelApplication } from '../entities/CodCancelApplication';
+import { OutsourceCompany } from '../entities/OutsourceCompany';
+import { ValueAddedOrder } from '../entities/ValueAddedOrder';
+import { ValueAddedPriceConfig } from '../entities/ValueAddedPriceConfig';
+import { ValueAddedStatusConfig } from '../entities/ValueAddedStatusConfig';
+import { TenantContextManager } from '../utils/tenantContext';
+import { updateTenantStorage, checkStorageLimit } from '../middleware/checkTenantLimits';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -36,7 +60,7 @@ const departmentController = new DepartmentController();
 // 获取上传配置（从数据库读取maxFileSize）
 const getUploadConfig = async (): Promise<{ maxFileSize: number; allowedTypes: string }> => {
   try {
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
     const maxFileSizeConfig = await configRepository.findOne({
       where: { configKey: 'maxFileSize', configGroup: 'storage_settings', isEnabled: true }
     });
@@ -98,7 +122,7 @@ const serviceImageUpload = createImageUpload('services');
  * 根据配置组获取配置
  */
 const getConfigsByGroup = async (group: string): Promise<Record<string, unknown>> => {
-  const configRepository = AppDataSource.getRepository(SystemConfig);
+  const configRepository = getTenantRepo(SystemConfig);
   const configs = await configRepository.find({
     where: { configGroup: group, isEnabled: true },
     order: { sortOrder: 'ASC' }
@@ -118,19 +142,24 @@ const saveConfigsByGroup = async (
   settings: Record<string, unknown>,
   configItems: Array<{key: string, type: 'string' | 'number' | 'boolean' | 'json' | 'text', desc: string}>
 ): Promise<void> => {
-  const configRepository = AppDataSource.getRepository(SystemConfig);
+  const configRepository = getTenantRepo(SystemConfig);
   for (const item of configItems) {
     if (settings[item.key] !== undefined) {
+      // 🔥 对 json 类型使用 JSON.stringify，其他类型使用 String()
+      const serializedValue = item.type === 'json' && typeof settings[item.key] === 'object'
+        ? JSON.stringify(settings[item.key])
+        : String(settings[item.key]);
+
       let config = await configRepository.findOne({
         where: { configKey: item.key, configGroup: group }
       });
       if (config) {
-        config.configValue = String(settings[item.key]);
+        config.configValue = serializedValue;
         config.valueType = item.type;
       } else {
         config = configRepository.create({
           configKey: item.key,
-          configValue: String(settings[item.key]),
+          configValue: serializedValue,
           valueType: item.type,
           configGroup: group,
           description: item.desc,
@@ -201,13 +230,74 @@ router.get('/modules/status', authenticateToken, async (_req: Request, res: Resp
     };
 
     // 转换为CRM前端的菜单ID
-    const menuIds = enabledModules
+    let menuIds = enabledModules
       .map(m => moduleMapping[m.code])
       .filter(id => id !== undefined);
 
     // 始终包含dashboard（数据看板）
     if (!menuIds.includes('dashboard')) {
       menuIds.unshift('dashboard');
+    }
+
+    // 🔥 SaaS模式：与租户的features（模块ID列表）取交集，只返回该租户被授权的模块
+    const tenantId = (_req as any).tenantId;
+    if (tenantId) {
+      try {
+        const tenantRows = await AppDataSource.query(
+          `SELECT t.features, p.modules as package_modules FROM tenants t
+           LEFT JOIN tenant_packages p ON t.package_id = p.id WHERE t.id = ?`,
+          [tenantId]
+        );
+        if (tenantRows.length > 0) {
+          const tenant = tenantRows[0];
+          let tenantModules: string[] | null = null;
+          let pkgModulesParsed: string[] | null = null;
+
+          // 先解析套餐模块
+          if (tenant.package_modules) {
+            try {
+              const pkgModules = typeof tenant.package_modules === 'string' ? JSON.parse(tenant.package_modules) : tenant.package_modules;
+              if (Array.isArray(pkgModules) && pkgModules.length > 0) {
+                pkgModulesParsed = pkgModules;
+              }
+            } catch { /* ignore */ }
+          }
+
+          // 尝试从tenant.features解析模块ID列表
+          if (tenant.features) {
+            try {
+              const parsed = typeof tenant.features === 'string' ? JSON.parse(tenant.features) : tenant.features;
+              if (Array.isArray(parsed)) {
+                const validModuleIds = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system'];
+                const hasModuleIds = parsed.some((f: string) => validModuleIds.includes(f));
+                if (hasModuleIds) {
+                  const validFeatures = parsed.filter((f: string) => validModuleIds.includes(f));
+                  // 🔥 如果租户features的模块少于套餐模块，优先使用套餐模块（守恒定律）
+                  if (pkgModulesParsed && validFeatures.length < pkgModulesParsed.length) {
+                    tenantModules = pkgModulesParsed;
+                  } else {
+                    tenantModules = validFeatures;
+                  }
+                }
+              }
+            } catch { /* ignore parse error */ }
+          }
+
+          // 如果features不含有效模块ID，使用套餐package_modules
+          if (!tenantModules && pkgModulesParsed) {
+            tenantModules = pkgModulesParsed;
+          }
+
+          // 如果有租户模块配置，取交集
+          if (tenantModules && tenantModules.length > 0) {
+            // dashboard始终保留
+            menuIds = menuIds.filter(id => id === 'dashboard' || tenantModules!.includes(id));
+            console.log(`[ModulesStatus] 租户 ${tenantId} 模块过滤: 全局启用=${enabledModules.length}, 租户授权=${tenantModules.length}, 最终=${menuIds.length}`);
+          }
+        }
+      } catch (tenantErr) {
+        console.warn('[ModulesStatus] 查询租户模块失败，使用全局配置:', (tenantErr as any).message);
+      }
     }
 
     res.json({
@@ -233,7 +323,7 @@ router.get('/modules/status', authenticateToken, async (_req: Request, res: Resp
  */
 const getStorageConfig = async (): Promise<{ localDomain: string; storageType: string }> => {
   try {
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
     const localDomainConfig = await configRepository.findOne({
       where: { configKey: 'localDomain', configGroup: 'storage_settings', isEnabled: true }
     });
@@ -293,6 +383,15 @@ const handleImageUpload = async (req: Request, res: Response, subDir: string) =>
     // 注意：这里使用 /uploads 而不是 /api/v1/uploads，因为后端静态文件服务配置的是 /uploads
     const imageUrl = `/uploads/${subDir}/${req.file.filename}`;
 
+    // 🔥 更新租户存储空间统计（SaaS模式下）
+    const tenantId = (req as any).tenantId;
+    if (tenantId && req.file.size) {
+      const fileSizeMb = req.file.size / (1024 * 1024);
+      await updateTenantStorage(tenantId, fileSizeMb).catch((err: any) => {
+        console.warn('[Upload] 更新租户存储空间统计失败:', err.message);
+      });
+    }
+
     res.json({
       success: true,
       message: '图片上传成功',
@@ -338,7 +437,7 @@ router.get('/upload-config', authenticateToken, async (_req: Request, res: Respo
  * @desc 上传系统图片（Logo、二维码等）
  * @access Private (Admin)
  */
-router.post('/upload-image', authenticateToken, requireAdmin, systemImageUpload.single('image'), (req: Request, res: Response) => {
+router.post('/upload-image', authenticateToken, requireAdmin, checkStorageLimit, systemImageUpload.single('image'), (req: Request, res: Response) => {
   handleImageUpload(req, res, 'system');
 });
 
@@ -347,7 +446,7 @@ router.post('/upload-image', authenticateToken, requireAdmin, systemImageUpload.
  * @desc 上传商品图片
  * @access Private (Admin)
  */
-router.post('/upload-product-image', authenticateToken, requireAdmin, productImageUpload.single('image'), (req: Request, res: Response) => {
+router.post('/upload-product-image', authenticateToken, requireAdmin, checkStorageLimit, productImageUpload.single('image'), (req: Request, res: Response) => {
   console.log('[Upload] 收到商品图片上传请求');
   console.log('[Upload] 用户:', (req as any).user?.username, '角色:', (req as any).user?.role);
   console.log('[Upload] 文件:', req.file ? req.file.originalname : '无文件');
@@ -359,7 +458,7 @@ router.post('/upload-product-image', authenticateToken, requireAdmin, productIma
  * @desc 上传用户头像
  * @access Private
  */
-router.post('/upload-avatar', authenticateToken, avatarImageUpload.single('image'), (req: Request, res: Response) => {
+router.post('/upload-avatar', authenticateToken, checkStorageLimit, avatarImageUpload.single('image'), (req: Request, res: Response) => {
   handleImageUpload(req, res, 'avatars');
 });
 
@@ -368,7 +467,7 @@ router.post('/upload-avatar', authenticateToken, avatarImageUpload.single('image
  * @desc 上传订单相关图片（定金凭证等）
  * @access Private
  */
-router.post('/upload-order-image', authenticateToken, orderImageUpload.single('image'), (req: Request, res: Response) => {
+router.post('/upload-order-image', authenticateToken, checkStorageLimit, orderImageUpload.single('image'), (req: Request, res: Response) => {
   handleImageUpload(req, res, 'orders');
 });
 
@@ -377,7 +476,7 @@ router.post('/upload-order-image', authenticateToken, orderImageUpload.single('i
  * @desc 上传售后服务图片
  * @access Private
  */
-router.post('/upload-service-image', authenticateToken, serviceImageUpload.single('image'), (req: Request, res: Response) => {
+router.post('/upload-service-image', authenticateToken, checkStorageLimit, serviceImageUpload.single('image'), (req: Request, res: Response) => {
   handleImageUpload(req, res, 'services');
 });
 
@@ -426,7 +525,7 @@ router.delete('/delete-image', authenticateToken, requireAdmin, (req: Request, r
  */
 router.get('/basic-settings/public', async (_req: Request, res: Response) => {
   try {
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
 
     // 获取所有基本设置配置
     const configs = await configRepository.find({
@@ -474,7 +573,7 @@ router.get('/basic-settings/public', async (_req: Request, res: Response) => {
  */
 router.get('/basic-settings', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
 
     // 获取所有基本设置配置
     const configs = await configRepository.find({
@@ -527,7 +626,7 @@ router.get('/basic-settings', authenticateToken, async (req: Request, res: Respo
  */
 router.put('/basic-settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
     const settings = req.body;
 
     // 定义需要保存的配置项
@@ -611,7 +710,7 @@ router.get('/security-settings', authenticateToken, requireAdmin, async (_req: R
       sessionTimeout: 120,
       forceHttps: false,
       ipWhitelist: '',
-      secureConsoleEnabled: false  // 控制台日志加密开关
+      secureConsoleEnabled: true  // 控制台日志加密开关（默认启用）
     };
     res.json({ success: true, data: { ...defaultSettings, ...settings } });
   } catch (error) {
@@ -656,7 +755,8 @@ router.put('/security-settings', authenticateToken, requireAdmin, async (req: Re
 router.get('/console-security-config', authenticateToken, async (_req: Request, res: Response) => {
   try {
     const settings = await getConfigsByGroup('security_settings');
-    const secureConsoleEnabled = settings.secureConsoleEnabled === true || settings.secureConsoleEnabled === 'true';
+    // 默认启用：只有明确设置为false时才关闭，未配置或true都视为启用
+    const secureConsoleEnabled = settings.secureConsoleEnabled !== false && settings.secureConsoleEnabled !== 'false';
 
     res.json({
       success: true,
@@ -666,7 +766,50 @@ router.get('/console-security-config', authenticateToken, async (_req: Request, 
     });
   } catch (error) {
     console.error('获取控制台安全配置失败:', error);
-    res.status(500).json({ success: false, message: '获取配置失败' });
+    // 异常时也默认返回启用
+    res.json({ success: true, data: { secureConsoleEnabled: true } });
+  }
+});
+
+/**
+ * @route GET /api/v1/system/admin-encryption-status
+ * @desc 查询管理后台是否强制启用控制台加密（公开接口，所有登录用户可访问）
+ * @access Private (All authenticated users)
+ *
+ * 逻辑：直接读取管理后台 system_config 表的 admin_system_config
+ * 如果 enableConsoleEncryption === true → 管理后台强制加密，CRM端不可关闭
+ * 如果未配置或为 false → CRM端可自行控制
+ * SaaS和私有部署均适用
+ */
+router.get('/admin-encryption-status', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    // 直接查管理后台配置表（非租户隔离表）
+    const result = await AppDataSource.query(
+      `SELECT config_value FROM system_config WHERE config_key = 'admin_system_config' LIMIT 1`
+    ).catch(() => []);
+
+    let adminForcedEncryption = false;
+
+    if (result && result.length > 0) {
+      try {
+        const data = JSON.parse(result[0].config_value || '{}');
+        // 管理后台明确启用加密 → 强制
+        adminForcedEncryption = data.enableConsoleEncryption === true;
+      } catch {
+        // JSON解析失败，默认不强制
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        adminForcedEncryption
+      }
+    });
+  } catch (error) {
+    console.error('查询管理后台加密状态失败:', error);
+    // 查询失败时默认不强制（安全降级，让租户可自行控制）
+    res.json({ success: true, data: { adminForcedEncryption: false } });
   }
 });
 
@@ -1182,7 +1325,7 @@ router.get('/my-departments', authenticateToken, async (req: Request, res: Respo
       departmentId: userDepartmentId
     });
 
-    const departmentRepository = AppDataSource.getRepository(Department);
+    const departmentRepository = getTenantRepo(Department);
 
     // 超级管理员和管理员可以看到所有部门
     if (userRole === 'super_admin' || userRole === 'admin') {
@@ -1194,7 +1337,7 @@ router.get('/my-departments', authenticateToken, async (req: Request, res: Respo
       console.log('[公共部门API] 管理员：返回所有部门', departments.length, '个');
 
       // 获取所有负责人信息
-      const userRepository = AppDataSource.getRepository(User);
+      const userRepository = getTenantRepo(User);
       const managerIds = departments.map(d => d.managerId).filter(Boolean) as string[];
       const managers = managerIds.length > 0
         ? await userRepository.find({ where: managerIds.map(id => ({ id })) })
@@ -1231,7 +1374,7 @@ router.get('/my-departments', authenticateToken, async (req: Request, res: Respo
         // 获取负责人姓名
         let managerName = null;
         if (department.managerId) {
-          const userRepository = AppDataSource.getRepository(User);
+          const userRepository = getTenantRepo(User);
           const manager = await userRepository.findOne({
             where: { id: department.managerId }
           });
@@ -1384,7 +1527,7 @@ router.delete('/departments/:departmentId/members/:userId', authenticateToken, r
  */
 router.get('/order-field-config', authenticateToken, async (_req: Request, res: Response) => {
   try {
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
     const config = await configRepository.findOne({
       where: { configKey: 'orderFieldConfig', configGroup: 'order_settings' }
     });
@@ -1423,7 +1566,7 @@ router.get('/order-field-config', authenticateToken, async (_req: Request, res: 
  */
 router.put('/order-field-config', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
     let config = await configRepository.findOne({
       where: { configKey: 'orderFieldConfig', configGroup: 'order_settings' }
     });
@@ -1459,7 +1602,7 @@ router.put('/order-field-config', authenticateToken, requireAdmin, async (req: R
  */
 router.get('/settings', authenticateToken, async (_req: Request, res: Response) => {
   try {
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
     const configs = await configRepository.find({
       where: { isEnabled: true },
       order: { configGroup: 'ASC', sortOrder: 'ASC' }
@@ -1494,7 +1637,7 @@ router.get('/settings', authenticateToken, async (_req: Request, res: Response) 
 router.post('/settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { type, config } = req.body;
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
 
     if (type && config) {
       // 保存特定类型的配置
@@ -1541,7 +1684,7 @@ router.post('/settings', authenticateToken, requireAdmin, async (req: Request, r
  */
 router.get('/order-transfer-config', authenticateToken, async (_req: Request, res: Response) => {
   try {
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
 
     const modeConfig = await configRepository.findOne({
       where: { configKey: 'orderTransferMode', configGroup: 'order_settings', isEnabled: true }
@@ -1574,7 +1717,7 @@ router.get('/order-transfer-config', authenticateToken, async (_req: Request, re
 router.post('/order-transfer-config', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { mode, delayMinutes } = req.body;
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
 
     // 保存流转模式
     let modeConfig = await configRepository.findOne({
@@ -1638,7 +1781,7 @@ router.post('/order-transfer-config', authenticateToken, requireAdmin, async (re
  */
 router.get('/department-order-limits', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const repository = AppDataSource.getRepository(DepartmentOrderLimit);
+    const repository = getTenantRepo(DepartmentOrderLimit);
     const limits = await repository.find({
       order: { createdAt: 'DESC' }
     });
@@ -1666,7 +1809,7 @@ router.get('/department-order-limits', authenticateToken, requireAdmin, async (_
 router.get('/department-order-limits/:departmentId', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { departmentId } = req.params;
-    const repository = AppDataSource.getRepository(DepartmentOrderLimit);
+    const repository = getTenantRepo(DepartmentOrderLimit);
     const limit = await repository.findOne({
       where: { departmentId, isEnabled: true }
     });
@@ -1714,7 +1857,7 @@ router.post('/department-order-limits', authenticateToken, requireAdmin, async (
       });
     }
 
-    const repository = AppDataSource.getRepository(DepartmentOrderLimit);
+    const repository = getTenantRepo(DepartmentOrderLimit);
     const currentUser = (req as any).currentUser;
 
     // 查找是否已存在配置
@@ -1780,7 +1923,7 @@ router.post('/department-order-limits', authenticateToken, requireAdmin, async (
 router.delete('/department-order-limits/:departmentId', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { departmentId } = req.params;
-    const repository = AppDataSource.getRepository(DepartmentOrderLimit);
+    const repository = getTenantRepo(DepartmentOrderLimit);
 
     const result = await repository.delete({ departmentId });
 
@@ -1813,16 +1956,24 @@ router.delete('/department-order-limits/:departmentId', authenticateToken, requi
 
 /**
  * @route GET /api/v1/system/payment-methods
- * @desc 获取支付方式列表
+ * @desc 获取支付方式列表（包含全局预设 + 当前租户自定义）
  */
 router.get('/payment-methods', authenticateToken, async (_req: Request, res: Response) => {
   try {
     const { PaymentMethodOption } = await import('../entities/PaymentMethodOption');
-    const repository = AppDataSource.getRepository(PaymentMethodOption);
-    const methods = await repository.find({
-      where: { isEnabled: true },
-      order: { sortOrder: 'ASC' }
-    });
+    const repo = AppDataSource.getRepository(PaymentMethodOption);
+    const tenantId = TenantContextManager.getTenantId();
+
+    // 查询全局预设（tenant_id IS NULL）+ 当前租户自定义的支付方式
+    const qb = repo.createQueryBuilder('pm')
+      .where('pm.is_enabled = :enabled', { enabled: true });
+
+    if (tenantId) {
+      qb.andWhere('(pm.tenant_id = :tenantId OR pm.tenant_id IS NULL)', { tenantId });
+    }
+
+    qb.orderBy('pm.sort_order', 'ASC');
+    const methods = await qb.getMany();
 
     res.json({
       success: true,
@@ -1841,15 +1992,22 @@ router.get('/payment-methods', authenticateToken, async (_req: Request, res: Res
 
 /**
  * @route GET /api/v1/system/payment-methods/all
- * @desc 获取所有支付方式（包括禁用的）
+ * @desc 获取所有支付方式（包括禁用的，包含全局预设 + 当前租户自定义）
  */
 router.get('/payment-methods/all', authenticateToken, async (_req: Request, res: Response) => {
   try {
     const { PaymentMethodOption } = await import('../entities/PaymentMethodOption');
-    const repository = AppDataSource.getRepository(PaymentMethodOption);
-    const methods = await repository.find({
-      order: { sortOrder: 'ASC' }
-    });
+    const repo = AppDataSource.getRepository(PaymentMethodOption);
+    const tenantId = TenantContextManager.getTenantId();
+
+    const qb = repo.createQueryBuilder('pm');
+
+    if (tenantId) {
+      qb.where('(pm.tenant_id = :tenantId OR pm.tenant_id IS NULL)', { tenantId });
+    }
+
+    qb.orderBy('pm.sort_order', 'ASC');
+    const methods = await qb.getMany();
 
     res.json({
       success: true,
@@ -1868,7 +2026,7 @@ router.get('/payment-methods/all', authenticateToken, async (_req: Request, res:
 
 /**
  * @route POST /api/v1/system/payment-methods
- * @desc 添加支付方式
+ * @desc 添加支付方式（租户自定义）
  */
 router.post('/payment-methods', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -1883,10 +2041,17 @@ router.post('/payment-methods', authenticateToken, async (req: Request, res: Res
     }
 
     const { PaymentMethodOption } = await import('../entities/PaymentMethodOption');
-    const repository = AppDataSource.getRepository(PaymentMethodOption);
+    const repo = AppDataSource.getRepository(PaymentMethodOption);
+    const tenantId = TenantContextManager.getTenantId();
 
-    // 检查是否已存在
-    const existing = await repository.findOne({ where: { value } });
+    // 检查是否已存在（同时检查全局预设和当前租户的）
+    const existingQb = repo.createQueryBuilder('pm')
+      .where('pm.value = :value', { value });
+    if (tenantId) {
+      existingQb.andWhere('(pm.tenant_id = :tenantId OR pm.tenant_id IS NULL)', { tenantId });
+    }
+    const existing = await existingQb.getOne();
+
     if (existing) {
       return res.status(400).json({
         success: false,
@@ -1895,21 +2060,25 @@ router.post('/payment-methods', authenticateToken, async (req: Request, res: Res
       });
     }
 
-    // 获取最大排序号
-    const maxOrder = await repository
-      .createQueryBuilder('pm')
-      .select('MAX(pm.sortOrder)', 'max')
-      .getRawOne();
+    // 获取最大排序号（含全局预设）
+    const maxOrderQb = repo.createQueryBuilder('pm')
+      .select('MAX(pm.sort_order)', 'max');
+    if (tenantId) {
+      maxOrderQb.where('(pm.tenant_id = :tenantId OR pm.tenant_id IS NULL)', { tenantId });
+    }
+    const maxOrder = await maxOrderQb.getRawOne();
 
-    const newMethod = repository.create({
+    const newMethod = repo.create({
       id: `pm_${Date.now()}`,
+      tenantId: tenantId || undefined,
       label,
       value,
       sortOrder: (maxOrder?.max || 0) + 1,
-      isEnabled: true
+      isEnabled: true,
+      isSystem: false
     });
 
-    await repository.save(newMethod);
+    await repo.save(newMethod);
 
     res.json({
       success: true,
@@ -1929,7 +2098,7 @@ router.post('/payment-methods', authenticateToken, async (req: Request, res: Res
 
 /**
  * @route PUT /api/v1/system/payment-methods/:id
- * @desc 更新支付方式
+ * @desc 更新支付方式（可修改全局预设的启用状态，但不能修改其value）
  */
 router.put('/payment-methods/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -1937,9 +2106,17 @@ router.put('/payment-methods/:id', authenticateToken, async (req: Request, res: 
     const { label, value, isEnabled, sortOrder } = req.body;
 
     const { PaymentMethodOption } = await import('../entities/PaymentMethodOption');
-    const repository = AppDataSource.getRepository(PaymentMethodOption);
+    const repo = AppDataSource.getRepository(PaymentMethodOption);
+    const tenantId = TenantContextManager.getTenantId();
 
-    const method = await repository.findOne({ where: { id } });
+    // 查询时同时包含全局预设和当前租户的
+    const qb = repo.createQueryBuilder('pm')
+      .where('pm.id = :id', { id });
+    if (tenantId) {
+      qb.andWhere('(pm.tenant_id = :tenantId OR pm.tenant_id IS NULL)', { tenantId });
+    }
+    const method = await qb.getOne();
+
     if (!method) {
       return res.status(404).json({
         success: false,
@@ -1948,12 +2125,20 @@ router.put('/payment-methods/:id', authenticateToken, async (req: Request, res: 
       });
     }
 
-    if (label !== undefined) method.label = label;
-    if (value !== undefined) method.value = value;
-    if (isEnabled !== undefined) method.isEnabled = isEnabled;
-    if (sortOrder !== undefined) method.sortOrder = sortOrder;
+    // 系统预设支付方式：只允许修改启用/禁用和排序，不允许修改value
+    if (method.isSystem && method.tenantId === null) {
+      if (isEnabled !== undefined) method.isEnabled = isEnabled;
+      if (sortOrder !== undefined) method.sortOrder = sortOrder;
+      // label可以修改（租户想自定义显示名称）
+      if (label !== undefined) method.label = label;
+    } else {
+      if (label !== undefined) method.label = label;
+      if (value !== undefined) method.value = value;
+      if (isEnabled !== undefined) method.isEnabled = isEnabled;
+      if (sortOrder !== undefined) method.sortOrder = sortOrder;
+    }
 
-    await repository.save(method);
+    await repo.save(method);
 
     res.json({
       success: true,
@@ -1973,16 +2158,23 @@ router.put('/payment-methods/:id', authenticateToken, async (req: Request, res: 
 
 /**
  * @route DELETE /api/v1/system/payment-methods/:id
- * @desc 删除支付方式
+ * @desc 删除支付方式（不允许删除系统预设的支付方式）
  */
 router.delete('/payment-methods/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
     const { PaymentMethodOption } = await import('../entities/PaymentMethodOption');
-    const repository = AppDataSource.getRepository(PaymentMethodOption);
+    const repo = AppDataSource.getRepository(PaymentMethodOption);
+    const tenantId = TenantContextManager.getTenantId();
 
-    const method = await repository.findOne({ where: { id } });
+    const qb = repo.createQueryBuilder('pm')
+      .where('pm.id = :id', { id });
+    if (tenantId) {
+      qb.andWhere('(pm.tenant_id = :tenantId OR pm.tenant_id IS NULL)', { tenantId });
+    }
+    const method = await qb.getOne();
+
     if (!method) {
       return res.status(404).json({
         success: false,
@@ -1991,7 +2183,16 @@ router.delete('/payment-methods/:id', authenticateToken, async (req: Request, re
       });
     }
 
-    await repository.remove(method);
+    // 系统预设不允许删除
+    if (method.isSystem) {
+      return res.status(403).json({
+        success: false,
+        code: 403,
+        message: '系统预设的支付方式不允许删除，只能禁用'
+      });
+    }
+
+    await repo.remove(method);
 
     res.json({
       success: true,
@@ -2028,7 +2229,7 @@ router.get('/user-settings/:settingKey', authenticateToken, async (req: Request,
       });
     }
 
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
     const configKey = `user_${currentUser.id}_${settingKey}`;
 
     const config = await configRepository.findOne({
@@ -2068,7 +2269,7 @@ router.post('/user-settings/:settingKey', authenticateToken, async (req: Request
       });
     }
 
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
     const configKey = `user_${currentUser.id}_${settingKey}`;
 
     let config = await configRepository.findOne({
@@ -2222,30 +2423,102 @@ router.get('/monitor', authenticateToken, requireAdmin, async (_req: Request, re
   }
 });
 
-// ========== 数据库备份路由 ==========
+// ========== 数据库备份路由（租户隔离版） ==========
+
+/**
+ * 🔥 获取当前请求的租户ID（用于备份文件隔离）
+ */
+const getBackupTenantId = (): string => {
+  return TenantContextManager.getTenantId() || 'default';
+};
+
+/**
+ * 🔥 获取租户专属备份目录
+ */
+const getTenantBackupDir = (): string => {
+  const tenantId = getBackupTenantId();
+  const dir = path.join(process.cwd(), 'backups', tenantId);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+};
+
+/**
+ * 🔥 构建租户备份用的完整实体列表（35个核心业务表）
+ * 全部使用 getTenantRepo 确保只备份当前租户的数据
+ */
+const buildBackupEntities = () => [
+  // ===== 基础配置 =====
+  { name: 'system_configs', repo: getTenantRepo(SystemConfig) },
+  { name: 'roles', repo: getTenantRepo(Role) },
+  { name: 'permissions', repo: getTenantRepo(Permission) },
+  { name: 'payment_method_options', repo: getTenantRepo(PaymentMethodOption) },
+  { name: 'rejection_reasons', repo: getTenantRepo(RejectionReason) },
+  { name: 'improvement_goals', repo: getTenantRepo(ImprovementGoal) },
+  // ===== 组织架构 =====
+  { name: 'departments', repo: getTenantRepo(Department) },
+  { name: 'department_order_limits', repo: getTenantRepo(DepartmentOrderLimit) },
+  { name: 'users', repo: getTenantRepo(User) },
+  // ===== 商品相关 =====
+  { name: 'product_categories', repo: getTenantRepo(ProductCategory) },
+  { name: 'products', repo: getTenantRepo(Product) },
+  // ===== 客户相关 =====
+  { name: 'customers', repo: getTenantRepo(Customer) },
+  { name: 'customer_tags', repo: getTenantRepo(CustomerTag) },
+  { name: 'customer_groups', repo: getTenantRepo(CustomerGroup) },
+  { name: 'customer_shares', repo: getTenantRepo(CustomerShare) },
+  { name: 'follow_up_records', repo: getTenantRepo(FollowUp) },
+  // ===== 订单相关 =====
+  { name: 'orders', repo: getTenantRepo(Order) },
+  { name: 'order_items', repo: getTenantRepo(OrderItem) },
+  { name: 'order_status_history', repo: getTenantRepo(OrderStatusHistory) },
+  { name: 'cod_cancel_applications', repo: getTenantRepo(CodCancelApplication) },
+  // ===== 售后服务 =====
+  { name: 'after_sales_services', repo: getTenantRepo(AfterSalesService) },
+  { name: 'service_records', repo: getTenantRepo(ServiceRecord) },
+  { name: 'service_follow_ups', repo: getTenantRepo(ServiceFollowUp) },
+  // ===== 物流相关 =====
+  { name: 'logistics_companies', repo: getTenantRepo(LogisticsCompany) },
+  { name: 'logistics_tracking', repo: getTenantRepo(LogisticsTracking) },
+  { name: 'logistics_traces', repo: getTenantRepo(LogisticsTrace) },
+  { name: 'logistics_api_configs', repo: getTenantRepo(LogisticsApiConfig) },
+  // ===== 业绩/佣金 =====
+  { name: 'performance_metrics', repo: getTenantRepo(PerformanceMetric) },
+  { name: 'performance_configs', repo: getTenantRepo(PerformanceConfig) },
+  { name: 'commission_settings', repo: getTenantRepo(CommissionSetting) },
+  { name: 'commission_ladders', repo: getTenantRepo(CommissionLadder) },
+  // ===== 增值服务 =====
+  { name: 'value_added_orders', repo: getTenantRepo(ValueAddedOrder) },
+  { name: 'value_added_price_config', repo: getTenantRepo(ValueAddedPriceConfig) },
+  { name: 'value_added_status_configs', repo: getTenantRepo(ValueAddedStatusConfig) },
+  // ===== 外包/协作 =====
+  { name: 'outsource_companies', repo: getTenantRepo(OutsourceCompany) },
+  // ===== 通知/消息 =====
+  { name: 'announcements', repo: getTenantRepo(Announcement) },
+  { name: 'notification_channels', repo: getTenantRepo(NotificationChannel) },
+  // ===== 短信/模板 =====
+  { name: 'sms_templates', repo: getTenantRepo(SmsTemplate) },
+  // ===== 操作日志 =====
+  { name: 'operation_logs', repo: getTenantRepo(OperationLog) },
+  { name: 'service_operation_logs', repo: getTenantRepo(ServiceOperationLog) },
+];
 
 /**
  * @route GET /api/v1/system/backup/list
- * @desc 获取备份列表
+ * @desc 获取当前租户的备份列表
  * @access Private (Admin)
  */
 router.get('/backup/list', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const backupDir = path.join(process.cwd(), 'backups');
+    const backupDir = getTenantBackupDir();
 
-    // 确保备份目录存在
-    if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true });
-    }
-
-    // 读取备份文件列表
     const files = fs.readdirSync(backupDir)
-      .filter(file => file.endsWith('.sql') || file.endsWith('.json') || file.endsWith('.gz'))
+      .filter(file => file.endsWith('.json') || file.endsWith('.gz'))
       .map(filename => {
         const filePath = path.join(backupDir, filename);
         const stats = fs.statSync(filePath);
         const isManual = filename.includes('manual');
-
         return {
           filename,
           timestamp: stats.mtime.toISOString(),
@@ -2255,110 +2528,66 @@ router.get('/backup/list', authenticateToken, requireAdmin, async (_req: Request
       })
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-    res.json({
-      success: true,
-      data: files
-    });
+    res.json({ success: true, data: files });
   } catch (error) {
     console.error('获取备份列表失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取备份列表失败'
-    });
+    res.status(500).json({ success: false, message: '获取备份列表失败' });
   }
 });
 
 /**
  * @route POST /api/v1/system/backup/create
- * @desc 创建数据库备份
+ * @desc 创建当前租户的数据备份（仅备份本租户数据）
  * @access Private (Admin)
  */
 router.post('/backup/create', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { type = 'manual' } = req.body;
-    const backupDir = path.join(process.cwd(), 'backups');
-
-    // 确保备份目录存在
-    if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true });
-    }
+    const tenantId = getBackupTenantId();
+    const backupDir = getTenantBackupDir();
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `${type}-backup-${timestamp}.json`;
     const filePath = path.join(backupDir, filename);
 
-    // 导出数据库数据 - 备份所有重要的业务表
     const backupData: Record<string, unknown[]> = {};
+    const entities = buildBackupEntities();
 
-    // 定义需要备份的实体（按依赖顺序排列，共20+个核心业务表）
-    const entities = [
-      // 基础配置表
-      { name: 'system_configs', repo: AppDataSource.getRepository(SystemConfig) },
-      { name: 'roles', repo: AppDataSource.getRepository(Role) },
-      { name: 'permissions', repo: AppDataSource.getRepository(Permission) },
-      // 组织架构
-      { name: 'departments', repo: AppDataSource.getRepository(Department) },
-      { name: 'department_order_limits', repo: AppDataSource.getRepository(DepartmentOrderLimit) },
-      { name: 'users', repo: AppDataSource.getRepository(User) },
-      // 商品相关
-      { name: 'product_categories', repo: AppDataSource.getRepository(ProductCategory) },
-      { name: 'products', repo: AppDataSource.getRepository(Product) },
-      // 客户相关
-      { name: 'customers', repo: AppDataSource.getRepository(Customer) },
-      { name: 'customer_tags', repo: AppDataSource.getRepository(CustomerTag) },
-      { name: 'customer_groups', repo: AppDataSource.getRepository(CustomerGroup) },
-      { name: 'follow_ups', repo: AppDataSource.getRepository(FollowUp) },
-      // 订单相关
-      { name: 'orders', repo: AppDataSource.getRepository(Order) },
-      { name: 'order_items', repo: AppDataSource.getRepository(OrderItem) },
-      // 售后服务
-      { name: 'after_sales_services', repo: AppDataSource.getRepository(AfterSalesService) },
-      // 物流相关
-      { name: 'logistics_companies', repo: AppDataSource.getRepository(LogisticsCompany) },
-      { name: 'logistics_trackings', repo: AppDataSource.getRepository(LogisticsTracking) },
-      // 业绩相关
-      { name: 'performance_metrics', repo: AppDataSource.getRepository(PerformanceMetric) },
-      // 短信模板
-      { name: 'sms_templates', repo: AppDataSource.getRepository(SmsTemplate) },
-      // 公告
-      { name: 'announcements', repo: AppDataSource.getRepository(Announcement) }
-    ];
-
-    console.log(`[备份] 开始备份 ${entities.length} 个数据表...`);
+    console.log(`[备份] 租户 ${tenantId} 开始备份 ${entities.length} 个数据表...`);
 
     for (const entity of entities) {
       try {
+        // getTenantRepo 自动只查询当前租户的数据
         const data = await entity.repo.find();
         backupData[entity.name] = data;
         console.log(`[备份] ${entity.name}: ${data.length} 条记录`);
       } catch (err) {
-        console.warn(`[备份] ${entity.name} 失败:`, err);
+        // 表不存在等情况下跳过，不中断整个备份
+        console.warn(`[备份] ${entity.name} 跳过:`, (err as Error).message?.substring(0, 80));
         backupData[entity.name] = [];
       }
     }
 
-    // 添加元数据
     const totalRecords = Object.values(backupData).reduce((sum, arr) => sum + arr.length, 0);
     const backup = {
-      version: '1.0.0',
+      version: '2.0.0',
       timestamp: new Date().toISOString(),
+      tenantId,
       type,
       data: backupData,
       metadata: {
-        tables: Object.keys(backupData),
+        tables: Object.keys(backupData).filter(k => (backupData[k] as unknown[]).length > 0),
         tableCount: Object.keys(backupData).length,
         totalRecords,
         recordsByTable: Object.fromEntries(
-          Object.entries(backupData).map(([name, data]) => [name, data.length])
+          Object.entries(backupData).map(([name, data]) => [name, (data as unknown[]).length])
         )
       }
     };
 
-    // 写入文件
     fs.writeFileSync(filePath, JSON.stringify(backup, null, 2));
-
     const stats = fs.statSync(filePath);
-    console.log(`[备份] 备份完成: ${filename}, 大小: ${(stats.size / 1024).toFixed(2)} KB, 共 ${totalRecords} 条记录`);
+    console.log(`[备份] 租户 ${tenantId} 备份完成: ${filename}, 大小: ${(stats.size / 1024).toFixed(2)} KB, 共 ${totalRecords} 条记录`);
 
     res.json({
       success: true,
@@ -2383,114 +2612,75 @@ router.post('/backup/create', authenticateToken, requireAdmin, async (req: Reque
 
 /**
  * @route GET /api/v1/system/backup/download/:filename
- * @desc 下载备份文件
+ * @desc 下载当前租户的备份文件
  * @access Private (Admin)
  */
 router.get('/backup/download/:filename', authenticateToken, requireAdmin, (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
-    const backupDir = path.join(process.cwd(), 'backups');
+    const backupDir = getTenantBackupDir();
     const filePath = path.join(backupDir, path.basename(filename));
 
-    // 安全检查
     if (!filePath.startsWith(backupDir)) {
-      return res.status(400).json({
-        success: false,
-        message: '无效的文件路径'
-      });
+      return res.status(400).json({ success: false, message: '无效的文件路径' });
     }
-
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        message: '备份文件不存在'
-      });
+      return res.status(404).json({ success: false, message: '备份文件不存在' });
     }
 
     res.download(filePath, filename);
   } catch (error) {
     console.error('下载备份失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '下载备份失败'
-    });
+    res.status(500).json({ success: false, message: '下载备份失败' });
   }
 });
 
 /**
  * @route DELETE /api/v1/system/backup/:filename
- * @desc 删除备份文件
+ * @desc 删除当前租户的备份文件
  * @access Private (Admin)
  */
 router.delete('/backup/:filename', authenticateToken, requireAdmin, (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
-    const backupDir = path.join(process.cwd(), 'backups');
+    const backupDir = getTenantBackupDir();
     const filePath = path.join(backupDir, path.basename(filename));
 
-    // 安全检查
     if (!filePath.startsWith(backupDir)) {
-      return res.status(400).json({
-        success: false,
-        message: '无效的文件路径'
-      });
+      return res.status(400).json({ success: false, message: '无效的文件路径' });
     }
-
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        message: '备份文件不存在'
-      });
+      return res.status(404).json({ success: false, message: '备份文件不存在' });
     }
 
     fs.unlinkSync(filePath);
-
-    res.json({
-      success: true,
-      message: '备份删除成功'
-    });
+    res.json({ success: true, message: '备份删除成功' });
   } catch (error) {
     console.error('删除备份失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '删除备份失败'
-    });
+    res.status(500).json({ success: false, message: '删除备份失败' });
   }
 });
 
 /**
  * @route GET /api/v1/system/backup/status
- * @desc 获取备份状态
+ * @desc 获取当前租户的备份状态
  * @access Private (Admin)
  */
 router.get('/backup/status', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const backupDir = path.join(process.cwd(), 'backups');
+    const backupDir = getTenantBackupDir();
 
-    // 确保备份目录存在
-    if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true });
-    }
-
-    // 读取备份文件列表
     const files = fs.readdirSync(backupDir)
-      .filter(file => file.endsWith('.sql') || file.endsWith('.json') || file.endsWith('.gz'))
+      .filter(file => file.endsWith('.json') || file.endsWith('.gz'))
       .map(filename => {
         const filePath = path.join(backupDir, filename);
         const stats = fs.statSync(filePath);
-        return {
-          filename,
-          timestamp: stats.mtime,
-          size: stats.size
-        };
+        return { filename, timestamp: stats.mtime, size: stats.size };
       })
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
-    // 计算统计信息
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
     const lastBackup = files.length > 0 ? files[0].timestamp.toISOString() : null;
-
-    // 获取备份配置
     const settings = await getConfigsByGroup('backup_settings');
 
     res.json({
@@ -2504,118 +2694,91 @@ router.get('/backup/status', authenticateToken, requireAdmin, async (_req: Reque
     });
   } catch (error) {
     console.error('获取备份状态失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取备份状态失败'
-    });
+    res.status(500).json({ success: false, message: '获取备份状态失败' });
   }
 });
 
 /**
  * @route POST /api/v1/system/backup/restore/:filename
- * @desc 从备份恢复数据（覆盖现有数据）
+ * @desc 从备份恢复数据（🔥 仅恢复当前租户的数据，不影响其他租户）
  * @access Private (Admin)
  */
 router.post('/backup/restore/:filename', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
-    const backupDir = path.join(process.cwd(), 'backups');
+    const tenantId = getBackupTenantId();
+    const backupDir = getTenantBackupDir();
     const filePath = path.join(backupDir, path.basename(filename));
 
-    // 安全检查
     if (!filePath.startsWith(backupDir)) {
-      return res.status(400).json({
-        success: false,
-        message: '无效的文件路径'
-      });
+      return res.status(400).json({ success: false, message: '无效的文件路径' });
     }
-
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        message: '备份文件不存在'
-      });
+      return res.status(404).json({ success: false, message: '备份文件不存在' });
     }
 
-    // 读取备份文件
     const backupContent = fs.readFileSync(filePath, 'utf-8');
     const backup = JSON.parse(backupContent);
 
     if (!backup.data || !backup.version) {
-      return res.status(400).json({
+      return res.status(400).json({ success: false, message: '备份文件格式无效' });
+    }
+
+    // 🔥 校验备份的租户归属
+    if (backup.tenantId && backup.tenantId !== tenantId) {
+      return res.status(403).json({
         success: false,
-        message: '备份文件格式无效'
+        message: '该备份不属于当前租户，无法恢复'
       });
     }
 
-    console.log(`[恢复] 开始从备份恢复数据: ${filename}`);
+    console.log(`[恢复] 租户 ${tenantId} 开始从备份恢复: ${filename}`);
     console.log(`[恢复] 备份版本: ${backup.version}, 时间: ${backup.timestamp}`);
 
     const restoreResults: Record<string, { success: boolean; count: number; error?: string }> = {};
+    const entities = buildBackupEntities();
 
-    // 定义恢复顺序（先删除依赖表，再恢复基础表）
-    // 注意：恢复是覆盖操作，会先清空表再插入数据
-    const restoreOrder = [
-      // 先恢复基础表
-      { name: 'system_configs', repo: AppDataSource.getRepository(SystemConfig) },
-      { name: 'roles', repo: AppDataSource.getRepository(Role) },
-      { name: 'permissions', repo: AppDataSource.getRepository(Permission) },
-      { name: 'departments', repo: AppDataSource.getRepository(Department) },
-      { name: 'users', repo: AppDataSource.getRepository(User) },
-      { name: 'product_categories', repo: AppDataSource.getRepository(ProductCategory) },
-      { name: 'products', repo: AppDataSource.getRepository(Product) },
-      { name: 'customers', repo: AppDataSource.getRepository(Customer) },
-      { name: 'customer_tags', repo: AppDataSource.getRepository(CustomerTag) },
-      { name: 'customer_groups', repo: AppDataSource.getRepository(CustomerGroup) },
-      { name: 'orders', repo: AppDataSource.getRepository(Order) },
-      { name: 'order_items', repo: AppDataSource.getRepository(OrderItem) },
-      { name: 'after_sales_services', repo: AppDataSource.getRepository(AfterSalesService) },
-      { name: 'logistics_companies', repo: AppDataSource.getRepository(LogisticsCompany) },
-      { name: 'logistics_trackings', repo: AppDataSource.getRepository(LogisticsTracking) },
-      { name: 'performance_metrics', repo: AppDataSource.getRepository(PerformanceMetric) },
-      { name: 'follow_ups', repo: AppDataSource.getRepository(FollowUp) },
-      { name: 'sms_templates', repo: AppDataSource.getRepository(SmsTemplate) },
-      { name: 'announcements', repo: AppDataSource.getRepository(Announcement) },
-      { name: 'department_order_limits', repo: AppDataSource.getRepository(DepartmentOrderLimit) }
-    ];
-
-    // 使用事务进行恢复
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      for (const entity of restoreOrder) {
+      for (const entity of entities) {
         const tableData = backup.data[entity.name];
-        if (!tableData || !Array.isArray(tableData)) {
+        if (!tableData || !Array.isArray(tableData) || tableData.length === 0) {
           restoreResults[entity.name] = { success: true, count: 0 };
           continue;
         }
 
         try {
-          // 清空表（使用TRUNCATE会更快，但需要禁用外键检查）
+          // 🔥 关键修复：只删除当前租户的数据，不影响其他租户
           await queryRunner.query(`SET FOREIGN_KEY_CHECKS = 0`);
-          await queryRunner.query(`TRUNCATE TABLE ${entity.name}`);
+          await queryRunner.query(
+            `DELETE FROM \`${entity.name}\` WHERE tenant_id = ?`,
+            [tenantId]
+          );
           await queryRunner.query(`SET FOREIGN_KEY_CHECKS = 1`);
 
-          // 插入数据
-          if (tableData.length > 0) {
-            // 使用queryRunner直接插入以避免类型问题
-            const repo = entity.repo as any;
-            await repo.save(tableData);
+          // 插入恢复数据
+          const repo = entity.repo as any;
+          // 分批插入避免超大事务
+          const batchSize = 100;
+          for (let i = 0; i < tableData.length; i += batchSize) {
+            const batch = tableData.slice(i, i + batchSize);
+            await repo.save(batch);
           }
 
           restoreResults[entity.name] = { success: true, count: tableData.length };
           console.log(`[恢复] ${entity.name}: 恢复 ${tableData.length} 条记录`);
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : '未知错误';
-          restoreResults[entity.name] = { success: false, count: 0, error: errorMsg };
-          console.error(`[恢复] ${entity.name} 失败:`, err);
+          restoreResults[entity.name] = { success: false, count: 0, error: errorMsg.substring(0, 120) };
+          console.error(`[恢复] ${entity.name} 失败:`, errorMsg.substring(0, 120));
         }
       }
 
       await queryRunner.commitTransaction();
-      console.log(`[恢复] 数据恢复完成`);
+      console.log(`[恢复] 租户 ${tenantId} 数据恢复完成`);
 
       res.json({
         success: true,
@@ -2644,21 +2807,13 @@ router.post('/backup/restore/:filename', authenticateToken, requireAdmin, async 
 
 /**
  * @route DELETE /api/v1/system/backup/cleanup
- * @desc 清理过期备份文件
+ * @desc 清理当前租户的过期备份文件
  * @access Private (Admin)
  */
 router.delete('/backup/cleanup', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { retentionDays = 30 } = req.body;
-    const backupDir = path.join(process.cwd(), 'backups');
-
-    if (!fs.existsSync(backupDir)) {
-      return res.json({
-        success: true,
-        message: '没有需要清理的备份',
-        data: { deletedCount: 0, freedSize: 0 }
-      });
-    }
+    const backupDir = getTenantBackupDir();
 
     const now = Date.now();
     const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
@@ -2667,15 +2822,11 @@ router.delete('/backup/cleanup', authenticateToken, requireAdmin, async (req: Re
 
     const files = fs.readdirSync(backupDir);
     for (const filename of files) {
-      if (!filename.endsWith('.json') && !filename.endsWith('.sql') && !filename.endsWith('.gz')) {
-        continue;
-      }
+      if (!filename.endsWith('.json') && !filename.endsWith('.gz')) continue;
 
       const filePath = path.join(backupDir, filename);
       const stats = fs.statSync(filePath);
-      const fileAge = now - stats.mtime.getTime();
-
-      if (fileAge > retentionMs) {
+      if (now - stats.mtime.getTime() > retentionMs) {
         freedSize += stats.size;
         fs.unlinkSync(filePath);
         deletedCount++;
@@ -2694,10 +2845,7 @@ router.delete('/backup/cleanup', authenticateToken, requireAdmin, async (req: Re
     });
   } catch (error) {
     console.error('清理备份失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '清理备份失败'
-    });
+    res.status(500).json({ success: false, message: '清理备份失败' });
   }
 });
 
@@ -2710,7 +2858,7 @@ router.get('/config/:configKey', authenticateToken, async (req: Request, res: Re
   try {
     const { configKey } = req.params;
     const currentUser = (req as any).user;
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
 
     // 🔥 对于寄件人手机号配置，支持用户级和系统级
     if (configKey === 'logistics_sender_phone') {
@@ -2822,7 +2970,7 @@ router.post('/config/:configKey', authenticateToken, async (req: Request, res: R
     const { configKey } = req.params;
     const { configValue, description, applyToAll } = req.body;
     const currentUser = (req as any).user;
-    const configRepository = AppDataSource.getRepository(SystemConfig);
+    const configRepository = getTenantRepo(SystemConfig);
 
     // 🔥 对于寄件人手机号配置，支持用户级和系统级
     if (configKey === 'logistics_sender_phone') {

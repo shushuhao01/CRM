@@ -128,6 +128,8 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Lock, Check } from '@element-plus/icons-vue'
 import { getSensitiveInfoPermissions, saveSensitiveInfoPermissions } from '@/api/sensitiveInfoPermission'
+import { refreshSensitiveInfoPermissions } from '@/services/sensitiveInfoPermissionService'
+import { roleApiService, type Role } from '@/services/roleApiService'
 
 // 敏感信息类型
 const INFO_TYPES = ['phone', 'id_card', 'email', 'wechat', 'address', 'bank', 'financial']
@@ -138,13 +140,8 @@ const permissionMatrix = ref<Array<{
   permissions: Record<string, boolean>
 }>>([])
 
-const userRoles = ref([
-  { value: 'super_admin', label: '超级管理员' },
-  { value: 'admin', label: '管理员' },
-  { value: 'department_manager', label: '部门经理' },
-  { value: 'sales_staff', label: '销售员' },
-  { value: 'customer_service', label: '客服' }
-])
+// 动态角色列表（从角色管理API获取）
+const userRoles = ref<Array<{ value: string; label: string }>>([])
 
 const selectedRole = ref('')
 const saving = ref(false)
@@ -184,6 +181,35 @@ const sensitiveInfoConfig: Record<string, { name: string; description: string }>
   }
 }
 
+// 默认角色列表（作为降级方案）
+const DEFAULT_ROLES = [
+  { value: 'super_admin', label: '超级管理员' },
+  { value: 'admin', label: '管理员' },
+  { value: 'department_manager', label: '部门经理' },
+  { value: 'sales_staff', label: '销售员' },
+  { value: 'customer_service', label: '客服' }
+]
+
+// 从角色管理API动态加载角色列表
+const loadRoles = async () => {
+  try {
+    const roles: Role[] = await roleApiService.getRoles()
+    if (roles && roles.length > 0) {
+      // 只取激活的角色，按 level 排序
+      const activeRoles = roles
+        .filter(r => r.status === 'active')
+        .sort((a, b) => (a.level || 999) - (b.level || 999))
+      userRoles.value = activeRoles.map(r => ({ value: r.code, label: r.name }))
+      console.log('[SensitiveInfoPermission] 动态加载角色成功:', userRoles.value.length, '个角色')
+    } else {
+      userRoles.value = [...DEFAULT_ROLES]
+    }
+  } catch (error) {
+    console.warn('[SensitiveInfoPermission] 加载角色失败，使用默认角色:', error)
+    userRoles.value = [...DEFAULT_ROLES]
+  }
+}
+
 // 加载权限配置
 const loadPermissions = async () => {
   loading.value = true
@@ -203,8 +229,8 @@ const loadPermissions = async () => {
           if (data[infoType] && data[infoType][role.value] !== undefined) {
             permissions[role.value] = data[infoType][role.value]
           } else {
-            // 默认值：超级管理员和管理员有权限，其他无权限
-            permissions[role.value] = role.value === 'super_admin' || role.value === 'admin'
+            // 新增角色默认无权限（super_admin始终有权限）
+            permissions[role.value] = role.value === 'super_admin'
           }
         })
         matrix.push({ infoType, permissions })
@@ -232,8 +258,8 @@ const initializeDefaultPermissions = () => {
   INFO_TYPES.forEach(infoType => {
     const permissions: Record<string, boolean> = {}
     userRoles.value.forEach(role => {
-      // 超级管理员和管理员默认有权限
-      permissions[role.value] = role.value === 'super_admin' || role.value === 'admin'
+      // 新增角色默认无权限（加密显示），只有super_admin默认有权限
+      permissions[role.value] = role.value === 'super_admin'
     })
     matrix.push({ infoType, permissions })
   })
@@ -322,6 +348,12 @@ const savePermissions = async () => {
 
     if (response.data.success) {
       ElMessage.success('权限配置保存成功！')
+      // 刷新前端敏感信息权限缓存，确保其他页面立即使用新配置
+      try {
+        await refreshSensitiveInfoPermissions()
+      } catch (e) {
+        console.warn('刷新权限缓存失败（不影响保存结果）:', e)
+      }
     } else {
       ElMessage.error(response.data.message || '保存失败')
     }
@@ -349,9 +381,10 @@ const resetPermissions = () => {
   })
 }
 
-// 组件挂载时加载数据
-onMounted(() => {
-  loadPermissions()
+// 组件挂载时加载数据：先加载角色列表，再加载权限配置
+onMounted(async () => {
+  await loadRoles()
+  await loadPermissions()
 })
 </script>
 

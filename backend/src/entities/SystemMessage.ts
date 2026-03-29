@@ -9,6 +9,9 @@ export class SystemMessage {
   @PrimaryColumn({ type: 'varchar', length: 36 })
   id!: string;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column({ type: 'varchar', length: 50, comment: '消息类型' })
   @Index()
   type!: string;

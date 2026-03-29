@@ -1,9 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+﻿import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity('commission_ladder')
 export class CommissionLadder {
   @PrimaryGeneratedColumn()
   id: number;
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
 
   @Column({ name: 'commission_type', type: 'enum', enum: ['amount', 'count'], default: 'amount', comment: '计提方式' })
   commissionType: 'amount' | 'count';

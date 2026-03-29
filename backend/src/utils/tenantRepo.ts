@@ -35,6 +35,42 @@ const TENANT_ENTITIES = new Set([
   'value_added_orders', 'value_added_price_config', 'value_added_status_configs',
   'role_permissions', 'payment_orders', 'payment_records',
   'data_records', 'customer_service_permissions', 'sensitive_info_permissions',
+  // 新增：物流相关
+  'logistics_companies', 'logistics_tracking', 'logistics_traces',
+  // 新增：消息通知相关
+  'announcements', 'announcement_reads', 'message_subscriptions',
+  'department_subscription_configs', 'notification_channels', 'notification_logs',
+  'message_read_status',
+  // 新增：订单历史
+  'order_status_history',
+  // 新增：短信相关
+  'sms_templates',
+  // 新增：业绩报表
+  'performance_report_configs', 'performance_report_logs',
+  // 新增：企业微信相关
+  'wecom_configs', 'wecom_user_bindings', 'wecom_customers',
+  'wecom_acquisition_links', 'wecom_service_accounts', 'wecom_payment_records',
+  'wecom_chat_records',
+  // 新增：外呼配置相关
+  'call_lines', 'user_line_assignments', 'phone_configs',
+  'work_phones', 'device_bind_logs', 'global_call_config',
+  'outbound_tasks', 'call_recordings', 'phone_blacklist',
+  // 新增：佣金相关
+  'commission_settings', 'commission_ladders',
+  // 新增：服务相关（注意：ServiceFollowUp 实体表名是 service_follow_up_records）
+  'service_follow_up_records', 'service_operation_logs',
+  // 新增：通知模板
+  'notification_templates',
+  // 新增：支付/绩效/拒绝原因
+  'payment_method_options', 'performance_configs', 'rejection_reasons',
+  // 新增：消息清理历史
+  'message_cleanup_history',
+  // 新增：物流API配置
+  'logistics_api_configs',
+  // 新增：改善目标
+  'improvement_goals',
+  // 新增：业绩分享相关
+  'performance_shares', 'performance_share_members',
 ]);
 
 /**
@@ -173,14 +209,28 @@ export function getTenantRepo<Entity extends ObjectLiteral>(
       }
 
       // 拦截 createQueryBuilder - 自动添加 WHERE 条件
+      // 🔥 修复：拦截返回的 QueryBuilder 的 .where() 方法，
+      // 确保后续调用 .where() 不会覆盖掉 tenant_id 过滤条件
       if (prop === 'createQueryBuilder') {
         return (alias?: string) => {
           const qb = target.createQueryBuilder(alias);
-          if (alias) {
-            qb.andWhere(`${alias}.tenant_id = :_tid`, { _tid: tenantId });
-          } else {
-            qb.andWhere(`tenant_id = :_tid`, { _tid: tenantId });
-          }
+          const tenantCol = alias ? `${alias}.tenant_id` : `tenant_id`;
+
+          // 设置初始租户过滤条件
+          qb.andWhere(`${tenantCol} = :_tid`, { _tid: tenantId });
+
+          // 🔥 关键修复：拦截 .where() 方法，防止被覆盖
+          // TypeORM 的 .where() 会替换整个 WHERE 子句，导致 tenant_id 条件丢失
+          // 修复方案：在 .where() 被调用后，自动重新追加 tenant_id 条件
+          const originalWhere = qb.where.bind(qb);
+          qb.where = function (...args: any[]) {
+            // 先执行原始 .where()（会替换 WHERE 子句）
+            originalWhere(...args);
+            // 然后重新追加 tenant_id 条件，确保租户隔离不会丢失
+            qb.andWhere(`${tenantCol} = :_tid`, { _tid: tenantId });
+            return qb;
+          } as any;
+
           return qb;
         };
       }

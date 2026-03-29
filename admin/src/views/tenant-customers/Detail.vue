@@ -33,6 +33,10 @@
         <el-descriptions-item label="联系电话">{{ detail.phone || '-' }}</el-descriptions-item>
         <el-descriptions-item label="邮箱">{{ detail.email || '-' }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatDateTime(detail.createdAt) }}</el-descriptions-item>
+        <el-descriptions-item label="创建人">
+          <span v-if="detail.createdByName">{{ detail.createdByName }}</span>
+          <span v-else class="text-secondary">未知</span>
+        </el-descriptions-item>
         <el-descriptions-item label="备注" :span="3">{{ detail.remark || '-' }}</el-descriptions-item>
       </el-descriptions>
     </el-card>
@@ -87,6 +91,7 @@
               style="flex: 1; max-width: 120px;"
               :show-text="false"
             />
+            <el-tag v-if="detail.maxUsers && (detail.userCount || 0) >= detail.maxUsers" type="danger" size="small">已达上限</el-tag>
           </div>
         </el-descriptions-item>
         <el-descriptions-item label="存储空间">
@@ -245,8 +250,8 @@
         </el-table-column>
         <el-table-column label="状态" width="80" fixed="right">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
-              {{ row.status === 'active' ? '正常' : '禁用' }}
+            <el-tag :type="getUserStatusType(row.status)" size="small">
+              {{ getUserStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -261,7 +266,12 @@
           <span>操作日志
             <el-tag size="small" style="margin-left: 8px;">共 {{ logsPagination.total }} 条</el-tag>
           </span>
-          <el-button size="small" @click="fetchLogs">刷新</el-button>
+          <div class="button-group">
+            <el-button size="small" type="danger" text @click="handleClearLogs">
+              <el-icon><Delete /></el-icon>清空日志
+            </el-button>
+            <el-button size="small" @click="fetchLogs">刷新</el-button>
+          </div>
         </div>
       </template>
       <el-table :data="logs" stripe v-loading="logsLoading" :max-height="400">
@@ -285,6 +295,12 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
+        <el-table-column label="IP地址" width="130" show-overflow-tooltip>
+          <template #default="{ row }">
+            <code v-if="row.ipAddress" style="font-size: 12px;">{{ formatIpDisplay(row.ipAddress) }}</code>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作人" width="100">
           <template #default="{ row }">{{ row.operatorName || '-' }}</template>
         </el-table-column>
@@ -303,6 +319,73 @@
         />
       </div>
       <el-empty v-if="!logsLoading && logs.length === 0" description="暂无操作日志" />
+    </el-card>
+
+    <!-- 账单记录卡片 -->
+    <el-card shadow="never" class="info-card">
+      <template #header>
+        <div class="card-header">
+          <span>账单记录
+            <el-tag size="small" style="margin-left: 8px;">共 {{ billsPagination.total }} 条</el-tag>
+          </span>
+          <el-button size="small" @click="fetchBills">刷新</el-button>
+        </div>
+      </template>
+      <el-table :data="bills" stripe v-loading="billsLoading" style="width: 100%" table-layout="fixed">
+        <el-table-column type="index" label="#" width="50" />
+        <el-table-column prop="order_no" label="订单号" min-width="180" show-overflow-tooltip />
+        <el-table-column label="套餐" min-width="100" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.package_name || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="金额" width="110" align="right">
+          <template #default="{ row }">
+            <span style="color: #e6a23c; font-weight: 600;">¥{{ Number(row.amount || 0).toFixed(2) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="支付方式" width="100">
+          <template #default="{ row }">{{ getBillPayTypeText(row.pay_type) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getBillStatusType(row.status)" size="small">{{ getBillStatusText(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="联系人" width="90" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.contact_name || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="联系电话" width="120" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.contact_phone || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="支付时间" width="170" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.paid_at ? formatDateTime(row.paid_at) : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="退款金额" width="110" align="right">
+          <template #default="{ row }">
+            <span v-if="row.refund_amount" style="color: #f56c6c; font-weight: 600;">¥{{ Number(row.refund_amount).toFixed(2) }}</span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="退款原因" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.refund_reason || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="170" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column label="备注" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.remark || '-' }}</template>
+        </el-table-column>
+      </el-table>
+      <div class="pagination-wrapper" v-if="billsPagination.total > billsPagination.pageSize">
+        <el-pagination
+          v-model:current-page="billsPagination.page"
+          :page-size="billsPagination.pageSize"
+          :total="billsPagination.total"
+          layout="total, prev, pager, next"
+          small
+          @current-change="fetchBills"
+        />
+      </div>
+      <el-empty v-if="!billsLoading && bills.length === 0" description="暂无账单记录" />
     </el-card>
 
     <!-- 数据导出卡片 -->
@@ -512,7 +595,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  View, Hide, CopyDocument, Download, Upload, Edit, CircleCheck, CircleClose,
+  View, Hide, CopyDocument, Download, Upload, Edit, CircleCheck, CircleClose, Delete,
   Odometer, User, ShoppingCart, Phone, TrendCharts, Van, Headset, Files, Money, Box, Setting
 } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -548,6 +631,11 @@ const exporting = ref(false)
 const exportingUsers = ref(false)
 const exportingLogs = ref(false)
 const logsPagination = reactive({ page: 1, pageSize: 10, total: 0 })
+
+// === 账单记录 ===
+const bills = ref<any[]>([])
+const billsLoading = ref(false)
+const billsPagination = reactive({ page: 1, pageSize: 10, total: 0 })
 
 // === 模块配置 ===
 const isEditingModules = ref(false)
@@ -661,6 +749,14 @@ const formatStorage = (mb: number) => {
 }
 
 const formatDateTime = (date: string) => date ? new Date(date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '-'
+
+// 🔥 格式化IP地址显示（处理::1等本地回环地址）
+const formatIpDisplay = (ip: string): string => {
+  if (!ip) return '-'
+  const cleaned = ip.replace(/^::ffff:/, '')
+  if (cleaned === '::1' || cleaned === '127.0.0.1') return '127.0.0.1 (本地)'
+  return cleaned
+}
 const formatExpireDate = (date: string) => {
   if (!date) return '永久'
   return new Date(date).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -678,11 +774,11 @@ const getPackageType = (p: string): string => {
   return map[p] || 'info'
 }
 const getStatusType = (s: string): string => {
-  const map: Record<string, string> = { active: 'success', expired: 'info', disabled: 'danger', inactive: 'danger' }
+  const map: Record<string, string> = { active: 'success', expired: 'info', disabled: 'danger', inactive: 'danger', pending: 'warning', suspended: 'warning' }
   return map[s] || 'info'
 }
 const getStatusText = (s: string): string => {
-  const map: Record<string, string> = { active: '正常', expired: '已过期', disabled: '已禁用', inactive: '已禁用' }
+  const map: Record<string, string> = { active: '正常', expired: '已过期', disabled: '已禁用', inactive: '已禁用', pending: '待启用', suspended: '已暂停' }
   return map[s] || s
 }
 const getLicenseStatusType = (s: string): string => {
@@ -696,6 +792,14 @@ const getLicenseStatusText = (s: string): string => {
 const getRoleTagType = (role: string): string => {
   const map: Record<string, string> = { admin: 'danger', '超级管理员': 'danger', manager: 'warning', '经理': 'warning', user: '', '员工': '' }
   return map[role] || ''
+}
+const getUserStatusType = (s: string): string => {
+  const map: Record<string, string> = { active: 'success', normal: 'success', inactive: 'info', disabled: 'danger', resigned: 'info', locked: 'danger', pending: 'warning', suspended: 'warning' }
+  return map[s] || 'info'
+}
+const getUserStatusText = (s: string): string => {
+  const map: Record<string, string> = { active: '正常', normal: '正常', inactive: '已禁用', disabled: '已禁用', resigned: '已离职', locked: '已锁定', pending: '待激活', suspended: '已暂停' }
+  return map[s] || s
 }
 
 // === 计算属性 ===
@@ -858,9 +962,10 @@ const confirmAdjustPackage = async () => {
     if (syncPackageConfig.value) {
       updateData.maxUsers = pkg.max_users
       updateData.maxStorageGb = pkg.max_storage_gb
-      if (pkg.modules?.length) {
-        updateData.modules = pkg.modules
-      }
+      // 🔥 始终传递modules，确保套餐模块同步到租户
+      updateData.modules = Array.isArray(pkg.modules) && pkg.modules.length > 0
+        ? pkg.modules
+        : undefined  // undefined 时后端会自动从套餐同步
     }
     const res = await request.put(`/tenants/${route.params.id}`, updateData)
     if (res.success) {
@@ -968,17 +1073,19 @@ const fetchDetail = async () => {
         status: d.status,
         packageId: d.packageId || d.package_id,
         packageName: d.packageName || d.package_name,
-        userCount: d.userCount ?? d.user_count ?? 0,
-        maxUsers: d.maxUsers ?? d.max_users ?? 0,
-        maxStorageGb: d.maxStorageGb ?? d.max_storage_gb ?? 0,
-        usedStorageMb: d.usedStorageMb ?? d.used_storage_mb ?? 0,
+        userCount: Number(d.userCount ?? d.user_count ?? 0),
+        maxUsers: Number(d.maxUsers ?? d.max_users ?? 0),
+        maxStorageGb: Number(d.maxStorageGb ?? d.max_storage_gb ?? 0),
+        usedStorageMb: Number(d.usedStorageMb ?? d.used_storage_mb ?? 0),
         modules: typeof (d.modules) === 'string' ? JSON.parse(d.modules) : (d.modules || []),
         features: typeof (d.features) === 'string' ? JSON.parse(d.features) : (d.features || []),
         expireDate: d.expireDate || d.expire_date,
         activatedAt: d.activatedAt || d.activated_at,
         createdAt: d.createdAt || d.created_at,
         updatedAt: d.updatedAt || d.updated_at,
-        remark: d.remark
+        createdByName: d.createdByName || d.created_by_name || '未知',
+        remark: d.remark,
+        adminUsers: d.adminUsers || []
       }
     }
   } catch (e: any) {
@@ -1027,12 +1134,30 @@ const fetchUsers = async () => {
 // === 操作日志 ===
 
 const getLogActionType = (action: string): string => {
-  const map: Record<string, string> = { generate: 'success', activate: 'primary', renew: 'warning', suspend: 'danger', resume: 'success', revoke: 'danger' }
+  const map: Record<string, string> = { generate: 'success', activate: 'primary', renew: 'warning', suspend: 'danger', resume: 'success', revoke: 'danger', unlock_admin: 'warning', update: 'primary', verify: '' }
   return map[action] || 'info'
 }
 const getLogActionText = (action: string): string => {
-  const map: Record<string, string> = { generate: '生成授权码', activate: '激活', renew: '续期', suspend: '暂停', resume: '恢复', revoke: '吊销' }
+  const map: Record<string, string> = { generate: '生成授权码', activate: '激活', renew: '续期', suspend: '暂停授权', resume: '恢复授权', revoke: '吊销', unlock_admin: '解锁账号', update: '更新信息', verify: '验证' }
   return map[action] || action
+}
+
+// 清空操作日志
+const handleClearLogs = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要清空该租户的所有操作日志吗？此操作不可恢复。',
+      '清空日志', { type: 'warning', confirmButtonText: '确定清空', cancelButtonText: '取消' }
+    )
+    const res = await request.delete(`/tenants/${route.params.id}/logs`)
+    if (res.success) {
+      ElMessage.success(res.message || '日志已清空')
+      logs.value = []
+      logsPagination.total = 0
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e.message || '清空日志失败')
+  }
 }
 
 const fetchLogs = async () => {
@@ -1048,6 +1173,7 @@ const fetchLogs = async () => {
         result: l.result,
         message: l.message,
         licenseKey: l.licenseKey || l.license_key,
+        ipAddress: l.ipAddress || l.ip_address,
         operatorId: l.operatorId || l.operator_id,
         operatorName: l.operatorName || l.operator_name,
         createdAt: l.createdAt || l.created_at
@@ -1058,6 +1184,38 @@ const fetchLogs = async () => {
     logs.value = []
   } finally {
     logsLoading.value = false
+  }
+}
+
+// === 账单记录 ===
+
+const getBillStatusType = (s: string): string => {
+  const map: Record<string, string> = { pending: 'warning', paid: 'success', expired: 'info', refunded: 'danger', closed: 'info' }
+  return map[s] || 'info'
+}
+const getBillStatusText = (s: string): string => {
+  const map: Record<string, string> = { pending: '待支付', paid: '已支付', expired: '已过期', refunded: '已退款', closed: '已关闭' }
+  return map[s] || s
+}
+const getBillPayTypeText = (t: string): string => {
+  const map: Record<string, string> = { wechat: '微信支付', alipay: '支付宝', bank: '银行转账', manual: '人工' }
+  return map[t] || t || '-'
+}
+
+const fetchBills = async () => {
+  billsLoading.value = true
+  try {
+    const res = await request.get(`/tenants/${route.params.id}/bills`, {
+      params: { page: billsPagination.page, pageSize: billsPagination.pageSize }
+    })
+    if (res.success) {
+      bills.value = res.data.list || res.data || []
+      billsPagination.total = res.data.total || 0
+    }
+  } catch {
+    bills.value = []
+  } finally {
+    billsLoading.value = false
   }
 }
 
@@ -1141,7 +1299,7 @@ const handleExportUsers = () => {
     ], users.value.map(u => ({
       ...u,
       lastLoginAt: u.lastLoginAt ? formatDateTime(u.lastLoginAt) : '-',
-      status: u.status === 'active' ? '正常' : '禁用'
+      status: getUserStatusText(u.status)
     })))
     downloadCSV(csv, `租户用户列表_${detail.value.name || detail.value.code}_${new Date().toISOString().slice(0, 10)}.csv`)
     ElMessage.success('导出成功')
@@ -1197,6 +1355,7 @@ onMounted(() => {
   fetchDetail()
   fetchUsers()
   fetchLogs()
+  fetchBills()
 })
 </script>
 
@@ -1389,3 +1548,4 @@ onMounted(() => {
   }
 }
 </style>
+

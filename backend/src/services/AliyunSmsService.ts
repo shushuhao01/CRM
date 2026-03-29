@@ -7,7 +7,21 @@ interface SmsConfig {
   accessKeyId: string
   accessKeySecret: string
   signName: string
-  templateCode: string
+  templateCode?: string // 保留兼容旧版
+  templates?: {
+    VERIFY_CODE?: string              // 注册验证码
+    ACCOUNT_ACTIVATION?: string       // 账号开通通知（免费试用）
+    PAYMENT_ACTIVATION?: string       // 支付成功账号开通通知（付费套餐）
+    RENEW_SUCCESS?: string            // 续费成功通知
+    PACKAGE_CHANGE?: string           // 套餐变更通知
+    QUOTA_CHANGE?: string             // 配额变更通知
+    ACCOUNT_SUSPEND?: string          // 账号暂停通知
+    ACCOUNT_RESUME?: string           // 账号激活通知
+    ACCOUNT_CANCEL?: string           // 账号注销通知
+    REFUND_SUCCESS?: string           // 退款成功通知
+    EXPIRE_REMIND?: string            // 账号到期提醒
+    EXPIRED_NOTICE?: string           // 账号过期通知
+  }
 }
 
 class AliyunSmsService {
@@ -43,7 +57,8 @@ class AliyunSmsService {
             accessKeyId: data.accessKeyId,
             accessKeySecret: data.accessKeySecret,
             signName: data.signName,
-            templateCode: data.templateCode
+            templateCode: data.templateCode, // 保留兼容旧版
+            templates: data.templates || {}
           }
           return true
         }
@@ -57,20 +72,36 @@ class AliyunSmsService {
 
   // 发送验证码
   async sendVerificationCode(phone: string, code: string): Promise<{ success: boolean; message?: string }> {
-    console.log(`[SMS] 准备发送验证码: ${phone}, 配置状态: ${this.config?.accessKeyId ? '已配置' : '未配置'}`)
+    return this.sendSms(phone, 'VERIFY_CODE', { code })
+  }
+
+  // 发送短信通用方法
+  async sendSms(phone: string, templateType: string, params: Record<string, string>): Promise<{ success: boolean; message?: string }> {
+    console.log(`[SMS] 准备发送短信: ${phone}, 类型: ${templateType}, 配置状态: ${this.config?.accessKeyId ? '已配置' : '未配置'}`)
 
     if (!this.config?.accessKeyId) {
-      console.log(`[SMS] 未配置阿里云短信，验证码: ${phone} -> ${code}`)
-      return { success: true, message: '开发模式，验证码已打印到控制台' }
+      console.log(`[SMS] 未配置阿里云短信，模拟发送: ${phone} -> ${JSON.stringify(params)}`)
+      return { success: true, message: '开发模式，短信内容已打印到控制台' }
+    }
+
+    // 获取模板CODE
+    let templateCode = this.config.templateCode // 默认使用旧版单一模板
+    if (this.config.templates && this.config.templates[templateType as keyof typeof this.config.templates]) {
+      templateCode = this.config.templates[templateType as keyof typeof this.config.templates]
+    }
+
+    if (!templateCode) {
+      console.error(`[SMS] 未配置模板: ${templateType}`)
+      return { success: false, message: `未配置${templateType}模板CODE` }
     }
 
     try {
-      console.log(`[SMS] 使用配置: 签名=${this.config.signName}, 模板=${this.config.templateCode}`)
-      const params = this.buildParams(phone, code)
-      const signature = this.sign(params)
-      params['Signature'] = signature
+      console.log(`[SMS] 使用配置: 签名=${this.config.signName}, 模板=${templateCode}`)
+      const smsParams = this.buildParams(phone, templateCode, params)
+      const signature = this.sign(smsParams)
+      smsParams['Signature'] = signature
 
-      const url = 'https://dysmsapi.aliyuncs.com/?' + new URLSearchParams(params).toString()
+      const url = 'https://dysmsapi.aliyuncs.com/?' + new URLSearchParams(smsParams).toString()
       console.log(`[SMS] 发送请求...`)
       const response = await fetch(url)
       const result = await response.json() as { Code?: string; Message?: string; RequestId?: string }
@@ -110,7 +141,7 @@ class AliyunSmsService {
     return errorMap[code || ''] || message || '未知错误'
   }
 
-  private buildParams(phone: string, code: string): Record<string, string> {
+  private buildParams(phone: string, templateCode: string, templateParams: Record<string, string>): Record<string, string> {
     const timestamp = new Date().toISOString().replace(/\.\d{3}/, '')
     return {
       AccessKeyId: this.config!.accessKeyId,
@@ -121,8 +152,8 @@ class AliyunSmsService {
       SignatureMethod: 'HMAC-SHA1',
       SignatureNonce: crypto.randomUUID(),
       SignatureVersion: '1.0',
-      TemplateCode: this.config!.templateCode,
-      TemplateParam: JSON.stringify({ code }),
+      TemplateCode: templateCode,
+      TemplateParam: JSON.stringify(templateParams),
       Timestamp: timestamp,
       Version: '2017-05-25'
     }

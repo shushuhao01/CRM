@@ -24,6 +24,8 @@ import uploadRouter from './upload';
 import operationLogsRouter from './operation-logs';
 import exportRouter from './export';
 import notificationsRouter from './notifications';
+import announcementsRouter from './announcements';
+import privateCustomersRouter from './private-customers';
 // import schedulerRouter from './scheduler'; // 暂时禁用
 
 const router = Router();
@@ -104,7 +106,8 @@ router.get('/public/system-config', async (_req: Request, res: Response) => {
           ...responseData,
           hasOverride,
           featureFlags: data.featureFlags || null,
-          distributedConfig: cleanDistributedConfig
+          distributedConfig: cleanDistributedConfig,
+          enableConsoleEncryption: data.enableConsoleEncryption === true
         }
       })
     } else {
@@ -113,7 +116,8 @@ router.get('/public/system-config', async (_req: Request, res: Response) => {
         data: {
           hasOverride: { basic: false, copyright: false, agreement: false },
           featureFlags: null,
-          distributedConfig: null
+          distributedConfig: null,
+          enableConsoleEncryption: false
         }
       })
     }
@@ -124,7 +128,8 @@ router.get('/public/system-config', async (_req: Request, res: Response) => {
       data: {
         hasOverride: { basic: false, copyright: false, agreement: false },
           featureFlags: null,
-          distributedConfig: null
+          distributedConfig: null,
+          enableConsoleEncryption: false
       }
     })
   }
@@ -148,6 +153,8 @@ router.use('/upload', uploadRouter);
 router.use('/operation-logs', operationLogsRouter);
 router.use('/export', exportRouter);
 router.use('/notifications', notificationsRouter);
+router.use('/announcements', announcementsRouter);
+router.use('/private-customers', privateCustomersRouter);
 router.use('/system-settings', systemSettingsRouter);
 // router.use('/scheduler', schedulerRouter); // 暂时禁用
 // 需要认证的系统配置路由

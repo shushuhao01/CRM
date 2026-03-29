@@ -72,6 +72,7 @@
               <el-input v-model="form.systemDescription" type="textarea" :rows="3" placeholder="请输入系统描述" />
             </el-form-item>
 
+            <!-- 系统Logo上传（暂时禁用，功能未实际使用）
             <el-form-item label="系统Logo">
               <el-upload
                 class="logo-uploader"
@@ -85,6 +86,7 @@
               </el-upload>
               <div class="upload-tip">建议尺寸：200x60px，支持 jpg、png 格式</div>
             </el-form-item>
+            -->
 
             <el-divider content-position="left">联系二维码</el-divider>
 
@@ -248,6 +250,16 @@
             <el-form-item label="启用用户协议覆盖">
               <el-switch v-model="form.enableAgreementOverride" />
               <span class="form-tip">用户协议、隐私政策</span>
+            </el-form-item>
+
+            <el-divider content-position="left">安全配置</el-divider>
+
+            <el-form-item label="强制控制台加密">
+              <el-switch v-model="form.enableConsoleEncryption" />
+              <span class="form-tip">
+                <strong>启用</strong>：强制所有CRM端控制台日志加密，租户无法自行关闭（开关锁定）。
+                <strong>关闭</strong>：CRM端仍默认启用加密，但租户可在超管面板中自行选择关闭。
+              </span>
             </el-form-item>
           </el-form>
         </el-tab-pane>
@@ -438,6 +450,16 @@
                     </div>
                     <el-switch v-model="form.featureFlags.saas.apiManagement" />
                   </div>
+                  <div class="switch-row">
+                    <div class="switch-info">
+                      <el-icon class="switch-icon"><Setting /></el-icon>
+                      <div class="switch-text">
+                        <span class="switch-name">超管面板</span>
+                        <span class="switch-desc">超级管理员权限配置面板</span>
+                      </div>
+                    </div>
+                    <el-switch v-model="form.featureFlags.saas.superAdminPanel" />
+                  </div>
                 </div>
               </div>
             </el-card>
@@ -618,6 +640,16 @@
                     </div>
                     <el-switch v-model="form.featureFlags.private.apiManagement" />
                   </div>
+                  <div class="switch-row">
+                    <div class="switch-info">
+                      <el-icon class="switch-icon"><Setting /></el-icon>
+                      <div class="switch-text">
+                        <span class="switch-name">超管面板</span>
+                        <span class="switch-desc">超级管理员权限配置面板</span>
+                      </div>
+                    </div>
+                    <el-switch v-model="form.featureFlags.private.superAdminPanel" />
+                  </div>
                 </div>
               </div>
             </el-card>
@@ -721,9 +753,10 @@ const form = reactive({
   enableBasicOverride: false,
   enableCopyrightOverride: false,
   enableAgreementOverride: false,
+  enableConsoleEncryption: false,
   featureFlags: {
-    saas: { security: true, call: true, email: true, sms: true, storage: true, product: true, monitor: true, backup: true, order: true, notification: true, agreement: true, mobile: true, logs: true, apiManagement: true },
-    private: { security: true, call: true, email: true, sms: true, storage: true, product: true, monitor: true, backup: true, order: true, notification: true, agreement: true, mobile: true, logs: true, apiManagement: true }
+    saas: { security: true, call: true, email: true, sms: true, storage: true, product: true, monitor: true, backup: true, order: true, notification: true, agreement: true, mobile: true, logs: true, apiManagement: true, superAdminPanel: true },
+    private: { security: true, call: true, email: true, sms: true, storage: true, product: true, monitor: true, backup: true, order: true, notification: true, agreement: true, mobile: true, logs: true, apiManagement: true, superAdminPanel: true }
   },
   // 配置下发
   distributedConfig: {
@@ -735,30 +768,30 @@ const form = reactive({
   }
 })
 
-// Logo上传处理 - 真实上传到服务器
-const handleLogoChange = async (file: UploadFile) => {
-  if (file.raw) {
-    try {
-      const formData = new FormData()
-      formData.append('file', file.raw)
-      const res = await adminApi.uploadFile(formData)
-      if (res.success && res.data?.url) {
-        form.systemLogo = res.data.url
-        ElMessage.success('Logo上传成功')
-      } else {
-        ElMessage.error('Logo上传失败')
-      }
-    } catch (error) {
-      // 上传失败时回退为本地预览
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        form.systemLogo = e.target?.result as string
-      }
-      reader.readAsDataURL(file.raw)
-      ElMessage.warning('服务器上传失败，使用本地预览')
-    }
-  }
-}
+// Logo上传处理（暂时禁用，功能未实际使用）
+// const handleLogoChange = async (file: UploadFile) => {
+//   if (file.raw) {
+//     try {
+//       const formData = new FormData()
+//       formData.append('file', file.raw)
+//       const res = await adminApi.uploadFile(formData)
+//       if (res.success && res.data?.url) {
+//         form.systemLogo = res.data.url
+//         ElMessage.success('Logo上传成功')
+//       } else {
+//         ElMessage.error('Logo上传失败')
+//       }
+//     } catch (error) {
+//       // 上传失败时回退为本地预览
+//       const reader = new FileReader()
+//       reader.onload = (e) => {
+//         form.systemLogo = e.target?.result as string
+//       }
+//       reader.readAsDataURL(file.raw)
+//       ElMessage.warning('服务器上传失败，使用本地预览')
+//     }
+//   }
+// }
 
 // 二维码上传处理 - 真实上传到服务器
 const handleQRChange = async (file: UploadFile) => {

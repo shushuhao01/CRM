@@ -31,7 +31,6 @@
         </el-form-item>
         <el-form-item label="授权类型">
           <el-select v-model="searchForm.licenseType" placeholder="全部" clearable style="width: 120px">
-            <el-option label="试用" value="trial" />
             <el-option label="年度" value="annual" />
             <el-option label="永久" value="perpetual" />
           </el-select>
@@ -65,10 +64,7 @@
       <el-table :data="tableData" v-loading="loading" stripe :border="false" table-layout="fixed">
         <el-table-column prop="customerName" label="客户名称" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
-            <div class="customer-name-cell">
-              <span class="name">{{ row.customerName }}</span>
-              <el-tag v-if="row.licenseType === 'trial'" size="small" type="info" class="type-badge">试用</el-tag>
-            </div>
+            <span class="name">{{ row.customerName }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="customerContact" label="联系人" width="100" show-overflow-tooltip>
@@ -104,7 +100,7 @@
         </el-table-column>
         <el-table-column label="用户数" width="80" align="center">
           <template #default="{ row }">
-            <span class="usage-text">{{ row.maxUsers || 0 }}</span>
+            <span class="usage-text">{{ row.userCount || 0 }}/{{ row.maxUsers || 0 }}</span>
           </template>
         </el-table-column>
         <el-table-column label="到期时间" width="105" align="center">
@@ -183,7 +179,6 @@
         <el-divider content-position="left">授权配置</el-divider>
         <el-form-item label="授权类型" prop="licenseType">
           <el-radio-group v-model="form.licenseType" @change="onLicenseTypeChange">
-            <el-radio value="trial">试用版</el-radio>
             <el-radio value="annual">年度版</el-radio>
             <el-radio value="perpetual">永久版</el-radio>
           </el-radio-group>
@@ -352,7 +347,7 @@ const form = reactive({
   contact: '',
   phone: '',
   email: '',
-  licenseType: 'annual' as 'trial' | 'annual' | 'perpetual',
+  licenseType: 'annual' as 'annual' | 'perpetual',
   maxUsers: 50,
   expiresAt: null as Date | null,
   modules: ['dashboard', 'customer', 'order'] as string[],
@@ -396,7 +391,6 @@ const moduleOptions = [
 
 // 授权类型对应的默认配置
 const licenseTypePresets: Record<string, { maxUsers: number; durationDays: number; modules: string[]; usersTip: string }> = {
-  trial: { maxUsers: 10, durationDays: 30, modules: ['dashboard', 'customer', 'order', 'data'], usersTip: '试用版建议 ≤10' },
   annual: { maxUsers: 50, durationDays: 365, modules: ['dashboard', 'customer', 'order', 'logistics', 'service', 'data', 'finance', 'performance', 'product'], usersTip: '年度版建议 10~200' },
   perpetual: { maxUsers: 100, durationDays: 0, modules: ['dashboard', 'customer', 'order', 'service-management', 'performance', 'logistics', 'service', 'data', 'finance', 'product', 'system'], usersTip: '永久版无限制' }
 }

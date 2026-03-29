@@ -267,38 +267,24 @@ export const createTenant = async (req: Request, res: Response): Promise<void> =
 
     await tenantRepo.save(tenant);
 
-    // 🔥 自动创建该租户的默认管理员用户（admin/admin123）
+    // 🔥 自动创建该租户的系统管理部和默认管理员用户
     try {
-      const userRepo = AppDataSource.getRepository(User);
+      const { createSystemDepartment, createDefaultAdmin } = await import('../../utils/adminAccountHelper');
 
-      // 检查是否已存在该租户的admin用户
-      const existingAdmin = await userRepo.findOne({
-        where: { tenantId: tenant.id, username: 'admin' }
+      // 创建系统管理部
+      const departmentId = await createSystemDepartment(tenant.id);
+
+      // 创建默认管理员账号（使用手机号作为用户名，归属到系统管理部）
+      const adminAccount = await createDefaultAdmin({
+        tenantId: tenant.id,
+        phone: phone,
+        realName: contact || '系统管理员',
+        email: email || undefined
       });
 
-      if (!existingAdmin) {
-        const hashedPassword = await bcrypt.hash('admin123', 12);
-        const adminUser = userRepo.create({
-          id: uuidv4(),
-          tenantId: tenant.id,
-          username: 'admin',
-          password: hashedPassword,
-          name: contact || '系统管理员',
-          realName: contact || '系统管理员',
-          email: email || null,
-          phone: phone || null,
-          role: 'admin',
-          roleId: 'admin',
-          status: 'active',
-          employmentStatus: 'active',
-          loginFailCount: 0,
-          loginCount: 0
-        });
-        await userRepo.save(adminUser);
-        console.log(`✅ 已为租户 ${tenant.code} (${tenant.name}) 创建默认管理员账号 (admin/admin123)`);
-      }
+      console.log(`✅ 已为租户 ${tenant.code} (${tenant.name}) 创建系统管理部和默认管理员账号 (${adminAccount.username}/${adminAccount.password})`);
     } catch (err: any) {
-      console.error(`创建租户默认管理员失败:`, err.message);
+      console.error(`创建租户系统管理部和默认管理员失败:`, err.message);
       // 不影响租户创建流程
     }
 

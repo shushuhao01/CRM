@@ -3,7 +3,7 @@
  */
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
-import { AppDataSource } from '../config/database';
+import { checkStorageLimit } from '../middleware/checkTenantLimits';
 import { CodCancelApplication } from '../entities/CodCancelApplication';
 import { Order } from '../entities/Order';
 import { User } from '../entities/User';
@@ -49,7 +49,7 @@ const upload = multer({
 /**
  * 上传尾款凭证
  */
-router.post('/upload-proof', authenticateToken, upload.single('file'), async (req: Request, res: Response) => {
+router.post('/upload-proof', authenticateToken, checkStorageLimit, upload.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: '请选择文件' });
@@ -321,7 +321,7 @@ router.get('/my-list', authenticateToken, async (req: Request, res: Response) =>
       const orders = await orderRepo
         .createQueryBuilder('order')
         .select('order.id')
-        .where('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw', {
+        .andWhere('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw', {
           kw: `%${keywords}%`
         })
         .getMany();
@@ -330,8 +330,8 @@ router.get('/my-list', authenticateToken, async (req: Request, res: Response) =>
 
     const queryBuilder = appRepo.createQueryBuilder('app');
 
-    // 只查询自己的申请
-    queryBuilder.where('app.applicant_id = :userId', { userId: user.id });
+    // 只查询自己的申请 - 🔥 修复租户隔离：使用 andWhere 而非 where
+    queryBuilder.andWhere('app.applicant_id = :userId', { userId: user.id });
 
     // 状态筛选
     if (status && status !== 'all') {
@@ -414,7 +414,7 @@ router.get('/review-list', authenticateToken, async (req: Request, res: Response
       const orders = await orderRepo
         .createQueryBuilder('order')
         .select('order.id')
-        .where('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw OR order.tracking_number LIKE :kw', {
+        .andWhere('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw OR order.tracking_number LIKE :kw', {
           kw: `%${keywords}%`
         })
         .getMany();
@@ -423,9 +423,9 @@ router.get('/review-list', authenticateToken, async (req: Request, res: Response
 
     const queryBuilder = appRepo.createQueryBuilder('app');
 
-    // 状态筛选
+    // 状态筛选 - 🔥 修复租户隔离：使用 andWhere 而非 where
     if (status && status !== 'all') {
-      queryBuilder.where('app.status = :status', { status });
+      queryBuilder.andWhere('app.status = :status', { status });
     }
 
     // 部门筛选
@@ -705,7 +705,7 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     const queryBuilder = appRepo.createQueryBuilder('app');
 
     if (type === 'my') {
-      queryBuilder.where('app.applicant_id = :userId', { userId: user.id });
+      queryBuilder.andWhere('app.applicant_id = :userId', { userId: user.id });
     }
 
     const [pending, approved, rejected, total] = await Promise.all([

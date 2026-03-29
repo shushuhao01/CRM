@@ -20,6 +20,38 @@ import { initSecureConsoleConfig } from './utils/secureLogger'
 // 🔥 防止重复弹窗的标志
 let isShowingGlobalErrorDialog = false
 
+// 🔥 动态导入重载防循环：用sessionStorage记录重载次数，避免无限刷新
+const RELOAD_KEY = 'dynamic_import_reload_count'
+const RELOAD_TS_KEY = 'dynamic_import_reload_ts'
+const MAX_RELOAD_ATTEMPTS = 1 // 最多自动重载1次
+
+const getReloadCount = (): number => {
+  try {
+    const ts = sessionStorage.getItem(RELOAD_TS_KEY)
+    // 如果上次重载超过60秒，重置计数
+    if (ts && Date.now() - Number(ts) > 60000) {
+      sessionStorage.removeItem(RELOAD_KEY)
+      sessionStorage.removeItem(RELOAD_TS_KEY)
+      return 0
+    }
+    return Number(sessionStorage.getItem(RELOAD_KEY) || '0')
+  } catch { return 0 }
+}
+
+const incrementReloadCount = () => {
+  try {
+    sessionStorage.setItem(RELOAD_KEY, String(getReloadCount() + 1))
+    sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now()))
+  } catch { /* ignore */ }
+}
+
+const clearReloadCount = () => {
+  try {
+    sessionStorage.removeItem(RELOAD_KEY)
+    sessionStorage.removeItem(RELOAD_TS_KEY)
+  } catch { /* ignore */ }
+}
+
 // 🔥 检查是否是动态导入失败错误
 const isDynamicImportError = (error: Error | string): boolean => {
   const errorMsg = typeof error === 'string' ? error : error.message
@@ -64,27 +96,58 @@ const handleDynamicImportError = () => {
       isShowingGlobalErrorDialog = false
     })
   } else if (!isPublicPage) {
-    // 可能是版本更新导致的（非公开页面）
-    ElMessageBox.alert(
-      '系统检测到版本更新或页面缓存过期，需要刷新页面以加载最新内容。',
-      '页面需要刷新',
-      {
-        confirmButtonText: '立即刷新',
-        type: 'info',
-        showClose: false,
-        closeOnClickModal: false
-      }
-    ).then(() => {
-      window.location.reload()
-    }).catch(() => {
-      window.location.reload()
-    }).finally(() => {
-      isShowingGlobalErrorDialog = false
-    })
+    // 🔥 检查是否已经重载过 —— 防止无限循环
+    const reloadCount = getReloadCount()
+    if (reloadCount >= MAX_RELOAD_ATTEMPTS) {
+      console.warn('[Main] 已达到最大自动刷新次数，不再自动刷新')
+      ElMessageBox.alert(
+        '页面加载失败，自动刷新未能解决问题。请尝试：\n1. 手动清除浏览器缓存（Ctrl+Shift+Delete）\n2. 强制刷新页面（Ctrl+Shift+R）\n3. 返回首页重试',
+        '页面加载失败',
+        {
+          confirmButtonText: '返回首页',
+          type: 'error',
+          showClose: true,
+          closeOnClickModal: true
+        }
+      ).then(() => {
+        clearReloadCount()
+        window.location.href = '/dashboard'
+      }).catch(() => {
+        clearReloadCount()
+        isShowingGlobalErrorDialog = false
+      })
+    } else {
+      // 第一次：提示用户刷新
+      ElMessageBox.alert(
+        '系统检测到版本更新或页面缓存过期，需要刷新页面以加载最新内容。',
+        '页面需要刷新',
+        {
+          confirmButtonText: '立即刷新',
+          type: 'info',
+          showClose: false,
+          closeOnClickModal: false
+        }
+      ).then(() => {
+        incrementReloadCount()
+        window.location.reload()
+      }).catch(() => {
+        incrementReloadCount()
+        window.location.reload()
+      }).finally(() => {
+        isShowingGlobalErrorDialog = false
+      })
+    }
   } else {
-    // 公开页面，静默处理
-    console.log('[Main] 公开页面动态导入失败，静默处理')
-    isShowingGlobalErrorDialog = false
+    // 公开页面：也需要防止无限刷新
+    const reloadCount = getReloadCount()
+    if (reloadCount >= MAX_RELOAD_ATTEMPTS) {
+      console.log('[Main] 公开页面动态导入失败且已重载过，静默处理')
+      isShowingGlobalErrorDialog = false
+    } else {
+      console.log('[Main] 公开页面动态导入失败，尝试刷新')
+      incrementReloadCount()
+      window.location.reload()
+    }
   }
 }
 
@@ -248,6 +311,9 @@ const initializeApp = async () => {
     // 挂载应用
     app.mount('#app')
     console.log('[App] 应用挂载成功')
+
+    // 🔥 应用挂载成功，清除动态导入重载计数
+    clearReloadCount()
 
     // 运行部署检查
     try {

@@ -403,7 +403,7 @@ const searchForm = reactive({
 })
 
 // 表格数据
-const tableData = ref([])
+const tableData = ref<LogisticsCompany[]>([])
 
 // 分页数据
 const pagination = reactive({
@@ -804,26 +804,23 @@ const loadData = async () => {
   loading.value = true
 
   try {
-    const { apiService } = await import('@/services/apiService')
-    const response = await apiService.get('/logistics/companies/list', {
-      params: {
-        name: searchForm.name || undefined,
-        code: searchForm.code || undefined,
-        status: searchForm.status || undefined,
-        page: pagination.page,
-        pageSize: pagination.size
-      }
+    const response = await logisticsApi.getCompanies({
+      name: searchForm.name || undefined,
+      code: searchForm.code || undefined,
+      status: searchForm.status || undefined,
+      page: pagination.page,
+      pageSize: pagination.size
     })
 
     // 检查组件是否已卸载
     if (isUnmounted.value) return
 
-    if (response && response.list) {
-      tableData.value = response.list.map((item: LogisticsCompany) => ({
+    if (response && response.data && response.data.list) {
+      tableData.value = response.data.list.map((item: LogisticsCompany) => ({
         ...item,
         statusLoading: false
       }))
-      pagination.total = response.total || 0
+      pagination.total = response.data.total || 0
     } else {
       tableData.value = []
       pagination.total = 0

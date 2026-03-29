@@ -72,7 +72,7 @@
         </el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatDateTime(detail.createdAt) }}</el-descriptions-item>
         <el-descriptions-item label="更新时间">{{ formatDateTime(detail.updatedAt) }}</el-descriptions-item>
-        <el-descriptions-item label="创建人">{{ detail.createdBy || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="创建人">{{ detail.createdByName || detail.createdBy || '-' }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ detail.notes || '-' }}</el-descriptions-item>
       </el-descriptions>
 
@@ -158,8 +158,9 @@
             <el-button link type="primary" size="small" @click="openChangePackage" style="margin-left: 8px">绑定套餐</el-button>
           </template>
         </el-descriptions-item>
-        <el-descriptions-item label="最大用户数">
-          <span class="text-bold text-primary">{{ detail.maxUsers || 0 }}</span> 人
+        <el-descriptions-item label="用户数">
+          <span class="text-bold text-primary">{{ detail.userCount || 0 }}</span> / {{ detail.maxUsers || 0 }} 人
+          <el-tag v-if="detail.maxUsers && (detail.userCount || 0) >= detail.maxUsers" type="danger" size="small" style="margin-left: 6px">已达上限</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="到期时间">
           <template v-if="detail.licenseType === 'perpetual'">
@@ -183,7 +184,7 @@
           </template>
           <span v-else class="text-muted">未绑定</span>
         </el-descriptions-item>
-        <el-descriptions-item label="创建人">{{ detail.createdBy || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="创建人">{{ detail.createdByName || detail.createdBy || '-' }}</el-descriptions-item>
       </el-descriptions>
     </el-card>
 
@@ -265,29 +266,34 @@
       <template #header>
         <div class="card-header">
           <span><el-icon><Document /></el-icon> 激活/操作记录</span>
-          <el-button link type="primary" @click="fetchLogs" :loading="logsLoading" size="small">
-            <el-icon><Refresh /></el-icon>刷新
-          </el-button>
+          <div class="card-header-actions">
+            <el-button type="danger" link @click="handleClearLogs" :loading="logsLoading" size="small">
+              <el-icon><Delete /></el-icon>清空日志
+            </el-button>
+            <el-button link type="primary" @click="fetchLogs" :loading="logsLoading" size="small">
+              <el-icon><Refresh /></el-icon>刷新
+            </el-button>
+          </div>
         </div>
       </template>
       <el-table :data="activationLogs" v-loading="logsLoading" stripe size="small">
-        <el-table-column prop="action" label="操作" width="80" align="center">
+        <el-table-column prop="action" label="操作类型" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getLogActionType(row.action)" size="small">{{ getLogActionText(row.action) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="result" label="结果" width="70" align="center">
           <template #default="{ row }">
-            <el-icon :color="row.result === 'success' ? '#67c23a' : '#f56c6c'" :size="16">
-              <CircleCheck v-if="row.result === 'success'" /><CircleClose v-else />
-            </el-icon>
+            <el-tag :type="row.result === 'success' ? 'success' : 'danger'" size="small">
+              {{ row.result === 'success' ? '成功' : '失败' }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="ip_address" label="IP 地址" width="140" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.ip_address || row.ipAddress || row.ip || '-' }}</template>
+        <el-table-column prop="message" label="详情" min-width="200" show-overflow-tooltip />
+        <el-table-column label="操作人" width="100">
+          <template #default="{ row }">{{ extractOperator(row) }}</template>
         </el-table-column>
-        <el-table-column prop="message" label="说明" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="createdAt" label="时间" width="170" show-overflow-tooltip>
+        <el-table-column prop="createdAt" label="操作时间" width="170" show-overflow-tooltip>
           <template #default="{ row }">{{ formatDateTime(row.createdAt || row.created_at) }}</template>
         </el-table-column>
       </el-table>
@@ -620,8 +626,34 @@ const getStatusType = (status: string) => ({ pending: 'warning', active: 'succes
 const getStatusText = (status: string) => ({ pending: '待激活', active: '有效', expired: '已过期', revoked: '已吊销' }[status] || status)
 const getBillStatusType = (s: string) => ({ pending: 'warning', paid: 'success', expired: 'info', refunded: 'danger', closed: 'info' }[s] || 'info') as any
 const getBillStatusText = (s: string) => ({ pending: '待支付', paid: '已支付', expired: '已过期', refunded: '已退款', closed: '已关闭' }[s] || s)
-const getLogActionType = (a: string) => ({ activate: 'success', renew: 'primary', revoke: 'danger', expire: 'warning', heartbeat: 'info', verify: '' }[a] || 'info') as any
-const getLogActionText = (a: string) => ({ activate: '激活', renew: '续期', revoke: '吊销', expire: '到期', heartbeat: '心跳', verify: '验证' }[a] || a)
+const getLogActionType = (a: string) => ({ activate: 'success', renew: 'primary', revoke: 'danger', expire: 'warning', heartbeat: 'info', verify: '', generate: 'success', unlock_admin: 'warning', update: 'primary' }[a] || 'info') as any
+const getLogActionText = (a: string) => ({ activate: '激活', renew: '续期', revoke: '吊销', expire: '到期', heartbeat: '心跳', verify: '验证', generate: '生成授权码', unlock_admin: '解锁账号', update: '更新' }[a] || a)
+
+// 从日志 message 中提取操作人
+const extractOperator = (row: any): string => {
+  const msg = row.message || ''
+  const match = msg.match(/^管理员\s*(\S+)/)
+  if (match) return match[1]
+  return row.operatorName || row.operator_name || '-'
+}
+
+// 清空操作日志
+const handleClearLogs = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要清空该客户的所有操作日志吗？此操作不可恢复。',
+      '清空日志', { type: 'warning', confirmButtonText: '确定清空', cancelButtonText: '取消' }
+    )
+    const res = await adminApi.clearLicenseLogs(route.params.id as string)
+    if (res.success) {
+      ElMessage.success(res.message || '日志已清空')
+      activationLogs.value = []
+      logsTotal.value = 0
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e.message || '清空日志失败')
+  }
+}
 
 // ============================================================
 // 编辑基本信息

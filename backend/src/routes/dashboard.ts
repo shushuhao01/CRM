@@ -75,6 +75,9 @@ router.get('/metrics', async (req: Request, res: Response) => {
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
 
+    // 🔥 租户数据隔离
+    const t = tenantSQL('o.');
+
     // 🔥 根据用户角色构建查询条件
     let userCondition = '';
     const params: any[] = [];
@@ -85,8 +88,10 @@ router.get('/metrics', async (req: Request, res: Response) => {
     } else if (userRole === 'department_manager' || userRole === 'manager') {
       // 部门经理看本部门数据
       if (departmentId) {
-        userCondition = ` AND (o.created_by IN (SELECT id FROM users WHERE department_id = ?) OR o.created_by_department_id = ?)`;
-        params.push(departmentId, departmentId);
+        // 🔥 修复：子查询添加租户隔离，避免跨租户查到相同 department_id 的用户
+        const tSub = tenantSQL('');
+        userCondition = ` AND (o.created_by IN (SELECT id FROM users WHERE department_id = ?${tSub.sql}) OR o.created_by_department_id = ?)`;
+        params.push(departmentId, ...tSub.params, departmentId);
       }
     } else {
       // 普通员工看自己的数据
@@ -94,8 +99,6 @@ router.get('/metrics', async (req: Request, res: Response) => {
       params.push(userId);
     }
 
-    // 🔥 租户数据隔离
-    const t = tenantSQL('o.');
 
     // 今日订单数据
     const todayOrdersData = await AppDataSource.query(
@@ -131,20 +134,106 @@ router.get('/metrics', async (req: Request, res: Response) => {
 
     // 过滤有效订单（计入下单业绩）
     const validTodayOrders = todayOrdersData.filter((o: any) => isValidForOrderPerformance(o));
-    const todayOrders = validTodayOrders.length;
-    const todayRevenue = validTodayOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
+    let todayOrders = validTodayOrders.length;
+    let todayRevenue = validTodayOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
 
     const validYesterdayOrders = yesterdayOrdersData.filter((o: any) => isValidForOrderPerformance(o));
-    const yesterdayOrders = validYesterdayOrders.length;
-    const yesterdayRevenue = validYesterdayOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
+    let yesterdayOrders = validYesterdayOrders.length;
+    let yesterdayRevenue = validYesterdayOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
 
     const validMonthlyOrders = monthlyOrdersData.filter((o: any) => isValidForOrderPerformance(o));
-    const monthlyOrders = validMonthlyOrders.length;
-    const monthlyRevenue = validMonthlyOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
+    let monthlyOrders = validMonthlyOrders.length;
+    let monthlyRevenue = validMonthlyOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
 
     const validLastMonthOrders = lastMonthOrdersData.filter((o: any) => isValidForOrderPerformance(o));
-    const lastMonthOrders = validLastMonthOrders.length;
-    const lastMonthRevenue = validLastMonthOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
+    let lastMonthOrders = validLastMonthOrders.length;
+    let lastMonthRevenue = validLastMonthOrders.reduce((sum: number, order: any) => sum + (Number(order.totalAmount) || 0), 0);
+
+    // 🔥 业绩分享调整 - 仅对非管理员用户（个人、经理）进行调整
+    // 管理员看全公司数据，分享是零和重新分配，总量不变
+    if (userRole !== 'super_admin' && userRole !== 'admin') {
+      const tShareDash = tenantSQL('ps.');
+      const tShareDashMem = tenantSQL('psm.');
+
+      // 辅助函数：计算指定时间段内的分享调整
+      const calcShareAdjustment = async (periodStart: Date, periodEnd: Date) => {
+        let sharedCount = 0, sharedAmount = 0, receivedCount = 0, receivedAmount = 0;
+
+        if (userRole === 'department_manager' || userRole === 'manager') {
+          // 部门经理：查询本部门用户相关的分享
+          // 本部门用户创建的分享（扣除分给部门外的）
+          // 部门外用户分享给本部门成员的（增加）
+          // 但由于部门内互相分享是零和，最终只需考虑跨部门的情况
+          // 简化方案：部门经理看到的本部门总业绩，跨部门分享会影响
+          // 暂时保持原始数据不调整（部门汇总层面分享几乎零和）
+          return { sharedCount: 0, sharedAmount: 0, receivedCount: 0, receivedAmount: 0 };
+        }
+
+        // 普通员工：查询自己作为创建者和接收者的分享
+        // 作为创建者的分享（扣除）
+        const creatorShares = await AppDataSource.query(
+          `SELECT ps.id, ps.order_amount
+           FROM performance_shares ps
+           WHERE ps.created_by = ? AND ps.status IN ('active', 'completed')
+             AND ps.created_at >= ? AND ps.created_at <= ?${tShareDash.sql}`,
+          [userId, periodStart, periodEnd, ...tShareDash.params]
+        );
+
+        if (creatorShares.length > 0) {
+          const shareIds = creatorShares.map((s: any) => s.id);
+          const creatorMembers = await AppDataSource.query(
+            `SELECT psm.share_id, psm.share_percentage
+             FROM performance_share_members psm
+             WHERE psm.share_id IN (${shareIds.map(() => '?').join(',')})${tShareDashMem.sql}`,
+            [...shareIds, ...tShareDashMem.params]
+          );
+          const memByShare: Record<string, any[]> = {};
+          creatorMembers.forEach((m: any) => {
+            if (!memByShare[m.share_id]) memByShare[m.share_id] = [];
+            memByShare[m.share_id].push(m);
+          });
+          creatorShares.forEach((s: any) => {
+            const mems = memByShare[s.id] || [];
+            const totalPct = mems.reduce((sum: number, m: any) => sum + (Number(m.share_percentage) || 0), 0) / 100;
+            sharedCount += totalPct;
+            sharedAmount += (Number(s.order_amount) || 0) * totalPct;
+          });
+        }
+
+        // 作为接收者的分享（增加）
+        const receiverShares = await AppDataSource.query(
+          `SELECT psm.share_percentage, ps.order_amount
+           FROM performance_share_members psm
+           JOIN performance_shares ps ON ps.id = psm.share_id
+           WHERE psm.user_id = ? AND ps.status IN ('active', 'completed')
+             AND ps.created_at >= ? AND ps.created_at <= ?${tShareDashMem.sql}${tShareDash.sql}`,
+          [userId, periodStart, periodEnd, ...tShareDashMem.params, ...tShareDash.params]
+        );
+        receiverShares.forEach((r: any) => {
+          const ratio = (Number(r.share_percentage) || 0) / 100;
+          receivedCount += ratio;
+          receivedAmount += (Number(r.order_amount) || 0) * ratio;
+        });
+
+        return { sharedCount, sharedAmount, receivedCount, receivedAmount };
+      };
+
+      // 计算各时间段的分享调整
+      const todayAdj = await calcShareAdjustment(todayStart, todayEnd);
+      const yesterdayAdj = await calcShareAdjustment(yesterdayStart, yesterdayEnd);
+      const monthlyAdj = await calcShareAdjustment(monthStart, todayEnd);
+      const lastMonthAdj = await calcShareAdjustment(lastMonthStart, lastMonthEnd);
+
+      // 应用调整
+      todayOrders = Math.max(0, todayOrders - todayAdj.sharedCount + todayAdj.receivedCount);
+      todayRevenue = Math.max(0, todayRevenue - todayAdj.sharedAmount + todayAdj.receivedAmount);
+      yesterdayOrders = Math.max(0, yesterdayOrders - yesterdayAdj.sharedCount + yesterdayAdj.receivedCount);
+      yesterdayRevenue = Math.max(0, yesterdayRevenue - yesterdayAdj.sharedAmount + yesterdayAdj.receivedAmount);
+      monthlyOrders = Math.max(0, monthlyOrders - monthlyAdj.sharedCount + monthlyAdj.receivedCount);
+      monthlyRevenue = Math.max(0, monthlyRevenue - monthlyAdj.sharedAmount + monthlyAdj.receivedAmount);
+      lastMonthOrders = Math.max(0, lastMonthOrders - lastMonthAdj.sharedCount + lastMonthAdj.receivedCount);
+      lastMonthRevenue = Math.max(0, lastMonthRevenue - lastMonthAdj.sharedAmount + lastMonthAdj.receivedAmount);
+    }
 
     // 🔥 计算环比的辅助函数
     const calculateChange = (current: number, previous: number): { change: number; trend: string } => {
@@ -228,9 +317,11 @@ router.get('/metrics', async (req: Request, res: Response) => {
     if (userRole !== 'super_admin' && userRole !== 'admin') {
       if (userRole === 'department_manager' || userRole === 'manager') {
         if (departmentId) {
-          customerCondition = ` AND sales_person_id IN (SELECT id FROM users WHERE department_id = ?)`;
-          customerParams.push(departmentId);
-          yesterdayCustomerParams.push(departmentId);
+          // 🔥 修复：客户查询子查询也需要添加租户隔离
+          const ctSub2 = tenantSQL('');
+          customerCondition = ` AND sales_person_id IN (SELECT id FROM users WHERE department_id = ?${ctSub2.sql})`;
+          customerParams.push(departmentId, ...ctSub2.params);
+          yesterdayCustomerParams.push(departmentId, ...ctSub2.params);
         }
       } else {
         customerCondition = ` AND sales_person_id = ?`;
@@ -324,18 +415,22 @@ router.get('/metrics', async (req: Request, res: Response) => {
 
 /**
  * @route GET /api/v1/dashboard/rankings
- * @desc 获取排行榜数据
+ * @desc 获取排行榜数据（支持角色权限过滤 + 租户隔离）
  * @access Private
  */
-router.get('/rankings', async (_req: Request, res: Response) => {
+router.get('/rankings', async (req: Request, res: Response) => {
   try {
+    const currentUser = (req as any).user;
+    const userRole = currentUser?.role;
+    const departmentId = currentUser?.departmentId;
+
     const orderRepository = getTenantRepo(Order);
     const userRepository = getTenantRepo(User);
 
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // 获取本月订单
+    // 获取本月订单（getTenantRepo 自动添加租户隔离）
     const monthOrders = await orderRepository.find({
       where: {
         createdAt: Between(monthStart, now)
@@ -345,7 +440,22 @@ router.get('/rankings', async (_req: Request, res: Response) => {
     });
 
     // 🔥 使用新的业绩计算规则过滤有效订单
-    const validOrders = monthOrders.filter(o => isValidForOrderPerformance(o));
+    let validOrders = monthOrders.filter(o => isValidForOrderPerformance(o));
+
+    // 🔥 修复：根据用户角色过滤排名数据
+    if (userRole !== 'super_admin' && userRole !== 'admin') {
+      // 非管理员：只显示本部门的排名
+      if (departmentId) {
+        // 获取本部门所有用户ID（getTenantRepo 自动加租户隔离）
+        const departmentUsers = await userRepository.find({
+          where: { departmentId: departmentId } as any,
+          select: ['id']
+        });
+        const departmentUserIds = new Set(departmentUsers.map(u => u.id));
+        // 只保留本部门用户的订单
+        validOrders = validOrders.filter(o => o.createdBy && departmentUserIds.has(String(o.createdBy)));
+      }
+    }
 
     // 统计销售人员业绩
     const salesStats: Record<string, { sales: number; orders: number }> = {};
@@ -361,7 +471,67 @@ router.get('/rankings', async (_req: Request, res: Response) => {
       salesStats[createdByStr].orders += 1;
     });
 
-    // 获取用户信息
+    // 🔥 业绩分享调整排行榜数据
+    try {
+      const tRankShare = tenantSQL('ps.');
+      const tRankShareMem = tenantSQL('psm.');
+      // 获取本月生效的分享记录
+      const rankShares = await AppDataSource.query(
+        `SELECT ps.id, ps.order_amount, ps.created_by
+         FROM performance_shares ps
+         WHERE ps.status IN ('active', 'completed')
+           AND ps.created_at >= ? AND ps.created_at <= ?${tRankShare.sql}`,
+        [monthStart, now, ...tRankShare.params]
+      );
+
+      if (rankShares.length > 0) {
+        const rankShareIds = rankShares.map((s: any) => s.id);
+        const rankShareMembers = await AppDataSource.query(
+          `SELECT psm.share_id, psm.user_id, psm.share_percentage
+           FROM performance_share_members psm
+           WHERE psm.share_id IN (${rankShareIds.map(() => '?').join(',')})${tRankShareMem.sql}`,
+          [...rankShareIds, ...tRankShareMem.params]
+        );
+
+        // 按share_id分组
+        const rankMemByShare: Record<string, any[]> = {};
+        rankShareMembers.forEach((m: any) => {
+          if (!rankMemByShare[m.share_id]) rankMemByShare[m.share_id] = [];
+          rankMemByShare[m.share_id].push(m);
+        });
+
+        rankShares.forEach((share: any) => {
+          const creatorId = String(share.created_by);
+          const members = rankMemByShare[share.id] || [];
+          const totalPct = members.reduce((sum: number, m: any) => sum + (Number(m.share_percentage) || 0), 0) / 100;
+          const amt = Number(share.order_amount) || 0;
+
+          // 从创建者扣除
+          if (salesStats[creatorId]) {
+            salesStats[creatorId].sales -= amt * totalPct;
+            salesStats[creatorId].orders -= totalPct;
+            // 确保不为负
+            salesStats[creatorId].sales = Math.max(0, salesStats[creatorId].sales);
+            salesStats[creatorId].orders = Math.max(0, salesStats[creatorId].orders);
+          }
+
+          // 给接收者增加
+          members.forEach((mem: any) => {
+            const receiverId = String(mem.user_id);
+            const myRatio = (Number(mem.share_percentage) || 0) / 100;
+            if (!salesStats[receiverId]) {
+              salesStats[receiverId] = { sales: 0, orders: 0 };
+            }
+            salesStats[receiverId].sales += amt * myRatio;
+            salesStats[receiverId].orders += myRatio;
+          });
+        });
+      }
+    } catch (shareError) {
+      console.warn('[排行榜] 分享调整失败，使用原始数据:', shareError);
+    }
+
+    // 获取用户信息（getTenantRepo 自动加租户隔离）
     const userIds = Object.keys(salesStats);
     const users = userIds.length > 0 ? await userRepository.find({
       where: { id: In(userIds) },
@@ -455,6 +625,9 @@ router.get('/charts', async (req: Request, res: Response) => {
 
     const now = new Date();
 
+    // 🔥 租户数据隔离 - 图表查询
+    const ct = tenantSQL('o.');
+
     // 🔥 根据用户角色构建查询条件（与metrics保持一致）
     let userCondition = '';
     const baseParams: any[] = [];
@@ -465,8 +638,10 @@ router.get('/charts', async (req: Request, res: Response) => {
     } else if (userRole === 'department_manager' || userRole === 'manager') {
       // 部门经理看本部门数据
       if (departmentId) {
-        userCondition = ` AND (o.created_by IN (SELECT id FROM users WHERE department_id = ?) OR o.created_by_department_id = ?)`;
-        baseParams.push(departmentId, departmentId);
+        // 🔥 修复：子查询添加租户隔离，避免跨租户查到相同 department_id 的用户
+        const ctSub = tenantSQL('');
+        userCondition = ` AND (o.created_by IN (SELECT id FROM users WHERE department_id = ?${ctSub.sql}) OR o.created_by_department_id = ?)`;
+        baseParams.push(departmentId, ...ctSub.params, departmentId);
       }
     } else {
       // 普通员工看自己的数据
@@ -477,9 +652,9 @@ router.get('/charts', async (req: Request, res: Response) => {
     const categories: string[] = [];
     const orderRevenueData: number[] = [];  // 下单业绩（金额）
     const deliveredRevenueData: number[] = [];  // 签收业绩（金额）
+    const orderCountData: number[] = [];  // 下单单数
+    const deliveredCountData: number[] = [];  // 签收单数
 
-    // 🔥 租户数据隔离 - 图表查询
-    const ct = tenantSQL('o.');
 
     if (period === 'month') {
       // 本月每天的数据
@@ -500,10 +675,12 @@ router.get('/charts', async (req: Request, res: Response) => {
         // 下单业绩
         const validOrders = dayOrdersData.filter((o: any) => isValidForOrderPerformance(o));
         orderRevenueData.push(validOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+        orderCountData.push(validOrders.length);
 
         // 签收业绩
         const deliveredOrders = dayOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
         deliveredRevenueData.push(deliveredOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+        deliveredCountData.push(deliveredOrders.length);
       }
     } else if (period === 'week') {
       // 最近7天
@@ -524,10 +701,12 @@ router.get('/charts', async (req: Request, res: Response) => {
         // 下单业绩
         const validOrders = dayOrdersData.filter((o: any) => isValidForOrderPerformance(o));
         orderRevenueData.push(validOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+        orderCountData.push(validOrders.length);
 
         // 签收业绩
         const deliveredOrders = dayOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
         deliveredRevenueData.push(deliveredOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+        deliveredCountData.push(deliveredOrders.length);
       }
     } else {
       // day: 今日每小时数据
@@ -547,10 +726,12 @@ router.get('/charts', async (req: Request, res: Response) => {
         // 下单业绩
         const validOrders = hourOrdersData.filter((o: any) => isValidForOrderPerformance(o));
         orderRevenueData.push(validOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+        orderCountData.push(validOrders.length);
 
         // 签收业绩
         const deliveredOrders = hourOrdersData.filter((o: any) => isValidForDeliveryPerformance(o));
         deliveredRevenueData.push(deliveredOrders.reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0));
+        deliveredCountData.push(deliveredOrders.length);
       }
     }
 
@@ -604,8 +785,8 @@ router.get('/charts', async (req: Request, res: Response) => {
         performance: {
           categories,
           series: [
-            { name: '下单业绩', data: orderRevenueData },
-            { name: '签收业绩', data: deliveredRevenueData }
+            { name: '下单业绩', data: orderRevenueData, counts: orderCountData },
+            { name: '签收业绩', data: deliveredRevenueData, counts: deliveredCountData }
           ]
         },
         orderStatus
@@ -625,16 +806,28 @@ router.get('/charts', async (req: Request, res: Response) => {
 
 /**
  * @route GET /api/v1/dashboard/todos
- * @desc 获取待办事项数据
+ * @desc 获取待办事项数据（支持角色权限过滤 + 租户隔离）
  * @access Private
  */
-router.get('/todos', async (_req: Request, res: Response) => {
+router.get('/todos', async (req: Request, res: Response) => {
   try {
+    const currentUser = (req as any).user;
+    const userRole = currentUser?.role;
+    const userId = currentUser?.userId;
+
     const orderRepository = getTenantRepo(Order);
 
-    // 获取待处理订单作为待办事项
+    // 🔥 修复：根据用户角色构建查询条件
+    const whereCondition: any = { status: 'pending' };
+
+    // 非管理员只能看到自己创建的待办订单
+    if (userRole !== 'super_admin' && userRole !== 'admin') {
+      whereCondition.createdBy = userId;
+    }
+
+    // 获取待处理订单作为待办事项（getTenantRepo 自动添加租户隔离）
     const pendingOrders = await orderRepository.find({
-      where: { status: 'pending' },
+      where: whereCondition,
       take: 10,
       order: { createdAt: 'DESC' }
     });

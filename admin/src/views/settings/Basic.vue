@@ -97,12 +97,14 @@
         </el-tab-pane>
 
         <el-tab-pane label="短信配置" name="sms">
-          <el-form :model="smsForm" label-width="140px" class="config-form">
+          <el-form :model="smsForm" label-width="160px" class="config-form">
             <el-alert type="info" :closable="false" style="margin-bottom: 20px">
               配置阿里云短信服务，用于官网注册验证码发送、通知短信等
             </el-alert>
+
+            <div class="section-title">基础配置</div>
             <el-form-item label="配置状态">
-              <el-tag v-if="smsForm.enabled && smsForm.accessKeyId && smsForm.signName && smsForm.templateCode" type="success" effect="dark">
+              <el-tag v-if="smsForm.enabled && smsForm.accessKeyId && smsForm.signName" type="success" effect="dark">
                 已配置并启用
               </el-tag>
               <el-tag v-else-if="smsForm.accessKeyId" type="warning">
@@ -125,16 +127,80 @@
               <el-input v-model="smsForm.signName" placeholder="如：云客CRM" />
               <div class="form-tip">需在阿里云短信控制台申请</div>
             </el-form-item>
-            <el-form-item label="模板代码">
-              <el-input v-model="smsForm.templateCode" placeholder="如：SMS_123456789" />
-              <div class="form-tip">验证码模板，需包含 ${code} 变量</div>
+
+            <el-divider />
+
+            <div class="section-title">
+              短信模板CODE配置
+              <el-tooltip content="在阿里云短信控制台申请模板后，将获得的模板CODE填写到对应场景" placement="top">
+                <el-icon style="margin-left: 8px; cursor: help;"><QuestionFilled /></el-icon>
+              </el-tooltip>
+            </div>
+            <el-alert type="warning" :closable="false" style="margin-bottom: 16px">
+              <template #title>
+                <div style="font-size: 13px;">
+                  请按照《阿里云短信模板申请清单.md》逐条申请模板，审核通过后填写对应的模板CODE
+                </div>
+              </template>
+            </el-alert>
+
+            <el-form-item label="验证码模板">
+              <el-input v-model="smsForm.templates.VERIFY_CODE" placeholder="SMS_123456789" />
+              <div class="form-tip">用于注册、登录验证码</div>
             </el-form-item>
+            <el-form-item label="账号开通通知">
+              <el-input v-model="smsForm.templates.ACCOUNT_ACTIVATION" placeholder="SMS_234567890" />
+              <div class="form-tip">免费试用注册成功后立即发送（包含授权码和账号信息）</div>
+            </el-form-item>
+            <el-form-item label="支付成功账号开通通知">
+              <el-input v-model="smsForm.templates.PAYMENT_ACTIVATION" placeholder="SMS_345678901" />
+              <div class="form-tip">付费套餐支付成功后发送（包含订单号、金额、授权码和账号信息）</div>
+            </el-form-item>
+            <el-form-item label="续期成功通知">
+              <el-input v-model="smsForm.templates.RENEW_SUCCESS" placeholder="SMS_456789012" />
+              <div class="form-tip">管理员为租户续期后发送</div>
+            </el-form-item>
+            <el-form-item label="套餐变更通知">
+              <el-input v-model="smsForm.templates.PACKAGE_CHANGE" placeholder="SMS_567890123" />
+              <div class="form-tip">升级/降级套餐时发送</div>
+            </el-form-item>
+            <el-form-item label="配额变更通知">
+              <el-input v-model="smsForm.templates.QUOTA_CHANGE" placeholder="SMS_678901234" />
+              <div class="form-tip">调整用户数或存储空间时发送</div>
+            </el-form-item>
+            <el-form-item label="账号暂停通知">
+              <el-input v-model="smsForm.templates.ACCOUNT_SUSPEND" placeholder="SMS_789012345" />
+              <div class="form-tip">暂停租户授权时发送</div>
+            </el-form-item>
+            <el-form-item label="账号激活通知">
+              <el-input v-model="smsForm.templates.ACCOUNT_RESUME" placeholder="SMS_890123456" />
+              <div class="form-tip">恢复租户授权时发送</div>
+            </el-form-item>
+            <el-form-item label="账号注销通知">
+              <el-input v-model="smsForm.templates.ACCOUNT_CANCEL" placeholder="SMS_901234567" />
+              <div class="form-tip">注销租户时发送</div>
+            </el-form-item>
+            <el-form-item label="退款成功通知">
+              <el-input v-model="smsForm.templates.REFUND_SUCCESS" placeholder="SMS_012345678" />
+              <div class="form-tip">处理退款后发送</div>
+            </el-form-item>
+            <el-form-item label="到期提醒通知">
+              <el-input v-model="smsForm.templates.EXPIRE_REMIND" placeholder="SMS_123450000" />
+              <div class="form-tip">到期前7天、3天、1天自动发送</div>
+            </el-form-item>
+            <el-form-item label="过期通知">
+              <el-input v-model="smsForm.templates.EXPIRED_NOTICE" placeholder="SMS_234560000" />
+              <div class="form-tip">账号过期当天发送</div>
+            </el-form-item>
+
+            <el-divider />
+
             <el-form-item>
-              <el-button type="primary" @click="handleTestSms" :disabled="!smsForm.accessKeyId || !smsForm.signName || !smsForm.templateCode">
+              <el-button type="primary" @click="handleTestSms" :disabled="!smsForm.accessKeyId || !smsForm.signName || !smsForm.templates.VERIFY_CODE">
                 发送测试短信
               </el-button>
-              <span v-if="!smsForm.accessKeyId || !smsForm.signName || !smsForm.templateCode" class="form-tip" style="color: #e6a23c;">
-                请先完整填写并保存短信配置
+              <span v-if="!smsForm.accessKeyId || !smsForm.signName || !smsForm.templates.VERIFY_CODE" class="form-tip" style="color: #e6a23c;">
+                请先完整填写基础配置和验证码模板CODE
               </span>
             </el-form-item>
           </el-form>
@@ -243,7 +309,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Check, Plus } from '@element-plus/icons-vue'
+import { Check, Plus, QuestionFilled } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import request from '@/api/request'
 
@@ -255,7 +321,27 @@ const adminForm = reactive({ name: '平台管理后台', logo: '', loginBg: '', 
 const securityForm = reactive({ loginCaptcha: false, maxLoginAttempts: 5, lockDuration: 30, sessionTimeout: 120, ipWhitelistEnabled: false, ipWhitelist: '' })
 const logForm = reactive({ operationLog: true, loginLog: true, retentionDays: 90 })
 const pwdForm = reactive({ oldPassword: '', newPassword: '', confirmPassword: '' })
-const smsForm = reactive({ enabled: false, accessKeyId: '', accessKeySecret: '', signName: '', templateCode: '' })
+const smsForm = reactive({
+  enabled: false,
+  accessKeyId: '',
+  accessKeySecret: '',
+  signName: '',
+  templateCode: '', // 保留兼容旧版
+  templates: {
+    VERIFY_CODE: '',
+    ACCOUNT_ACTIVATION: '',
+    PAYMENT_ACTIVATION: '',
+    RENEW_SUCCESS: '',
+    PACKAGE_CHANGE: '',
+    QUOTA_CHANGE: '',
+    ACCOUNT_SUSPEND: '',
+    ACCOUNT_RESUME: '',
+    ACCOUNT_CANCEL: '',
+    REFUND_SUCCESS: '',
+    EXPIRE_REMIND: '',
+    EXPIRED_NOTICE: ''
+  }
+})
 const emailForm = reactive({ enabled: false, smtpHost: '', smtpPort: 465, senderEmail: '', senderName: '', emailPassword: '', enableSsl: true, enableTls: false, testEmail: '' })
 const timeoutForm = reactive({ enabled: false, orderAuditTimeout: 24, orderShipmentTimeout: 48, afterSalesTimeout: 48, orderFollowupDays: 3, checkIntervalMinutes: 30 })
 const checking = ref(false)
@@ -404,4 +490,5 @@ onMounted(() => {
 .bg-preview { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
 .bg-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #909399; font-size: 14px; }
 .form-tip { margin-left: 12px; font-size: 12px; color: #909399; }
+.section-title { font-size: 15px; font-weight: 600; color: #303133; margin: 20px 0 16px; display: flex; align-items: center; }
 </style>

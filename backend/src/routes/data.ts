@@ -17,7 +17,7 @@ router.use(authenticateToken);
  */
 router.get('/list', async (req: Request, res: Response) => {
   try {
-    const { page = 1, pageSize = 30, _status, keyword, assigneeId, dateFilter } = req.query;
+    const { page = 1, pageSize = 10, _status, keyword, assigneeId, departmentId, dateFilter } = req.query;
     const currentUser = req.user;
 
     // 🔥 从订单表获取已签收的订单数据
@@ -86,10 +86,10 @@ router.get('/list', async (req: Request, res: Response) => {
       });
     }
 
-    // 关键词搜索
+    // 关键词搜索（支持客户姓名、手机号、订单号、客户编码）
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.orderNumber LIKE :keyword)',
+        '(order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.orderNumber LIKE :keyword OR customer.customerNo LIKE :keyword)',
         { keyword: `%${keyword}%` }
       );
     }
@@ -97,6 +97,11 @@ router.get('/list', async (req: Request, res: Response) => {
     // 分配人筛选
     if (assigneeId) {
       queryBuilder.andWhere('order.createdBy = :assigneeId', { assigneeId });
+    }
+
+    // 部门筛选
+    if (departmentId) {
+      queryBuilder.andWhere('order.createdByDepartmentId = :filterDeptId', { filterDeptId: departmentId });
     }
 
     // 日期筛选
@@ -163,28 +168,65 @@ router.get('/list', async (req: Request, res: Response) => {
       remark: order.remark || ''
     }));
 
-    // 计算汇总数据
-    const allOrders = await orderRepository.find({ where: { status: 'delivered' } });
+    // 🔥 使用SQL聚合查询高效计算汇总数据（带租户隔离）
+    const summaryBuilder = orderRepository.createQueryBuilder('o')
+      .select('COUNT(*)', 'totalCount')
+      .addSelect('COALESCE(SUM(o.totalAmount), 0)', 'totalAmount')
+      .addSelect(`SUM(CASE WHEN DATE(o.deliveredAt) = CURDATE() THEN 1 ELSE 0 END)`, 'todayCount')
+      .addSelect(`SUM(CASE WHEN o.deliveredAt >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END)`, 'weekCount')
+      .addSelect(`SUM(CASE WHEN o.deliveredAt >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END)`, 'monthCount');
+    // 租户隔离已由 getTenantRepo 自动添加
+    summaryBuilder.andWhere('o.status = :deliveredStatus', { deliveredStatus: 'delivered' });
+
+    // 🔥 汇总也需要权限过滤（与列表查询保持一致）
+    if (adminRoles.includes(role)) {
+      // 管理员不做过滤
+    } else if (customerServiceRoles.includes(role)) {
+      const csPermissionRepo2 = getTenantRepo(CustomerServicePermission);
+      const csPermission2 = await csPermissionRepo2.findOne({
+        where: { userId: currentUser?.userId, status: 'active' }
+      });
+      if (csPermission2) {
+        const ds = csPermission2.dataScope || 'self';
+        if (ds === 'all') { /* no filter */ }
+        else if (ds === 'department' && currentUser?.departmentId) {
+          summaryBuilder.andWhere('o.createdByDepartmentId = :sDeptId', { sDeptId: currentUser.departmentId });
+        } else if (ds === 'custom' && csPermission2.departmentIds?.length) {
+          summaryBuilder.andWhere('o.createdByDepartmentId IN (:...sDeptIds)', { sDeptIds: csPermission2.departmentIds });
+        } else {
+          summaryBuilder.andWhere('o.createdBy = :sUserId', { sUserId: currentUser?.userId });
+        }
+      } else {
+        summaryBuilder.andWhere('o.createdBy = :sUserId', { sUserId: currentUser?.userId });
+      }
+    } else if (role === 'manager' || role === 'department_manager') {
+      if (currentUser?.departmentId) {
+        summaryBuilder.andWhere('o.createdByDepartmentId = :sDeptId', { sDeptId: currentUser.departmentId });
+      }
+    } else {
+      summaryBuilder.andWhere('o.createdBy = :sUserId', { sUserId: currentUser?.userId });
+    }
+
+    const summaryRaw = await summaryBuilder.getRawOne();
+
+    // 🔥 同时获取客户维度的已分配和已封存统计
+    const customerRepo = getTenantRepo(Customer);
+    const assignedCount = await customerRepo.count({
+      where: { salesPersonId: Not(IsNull()) } as any
+    });
+    const archivedCount = await customerRepo.count({
+      where: { status: 'archived' }
+    });
+
     const summary = {
-      totalCount: allOrders.length,
-      pendingCount: allOrders.length, // 暂时都算待分配
-      assignedCount: 0,
-      archivedCount: 0,
-      totalAmount: allOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0),
-      todayCount: allOrders.filter(o => {
-        const today = new Date().toDateString();
-        return o.deliveredAt && new Date(o.deliveredAt).toDateString() === today;
-      }).length,
-      weekCount: allOrders.filter(o => {
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        return o.deliveredAt && new Date(o.deliveredAt) >= weekAgo;
-      }).length,
-      monthCount: allOrders.filter(o => {
-        const monthAgo = new Date();
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-        return o.deliveredAt && new Date(o.deliveredAt) >= monthAgo;
-      }).length
+      totalCount: Number(summaryRaw?.totalCount || 0),
+      pendingCount: Math.max(0, Number(summaryRaw?.totalCount || 0) - assignedCount),
+      assignedCount,
+      archivedCount,
+      totalAmount: Number(summaryRaw?.totalAmount || 0),
+      todayCount: Number(summaryRaw?.todayCount || 0),
+      weekCount: Number(summaryRaw?.weekCount || 0),
+      monthCount: Number(summaryRaw?.monthCount || 0)
     };
 
     res.json({
@@ -388,23 +430,23 @@ router.get('/search', async (req: Request, res: Response) => {
     console.log('🔍 [客户搜索] 关键词:', keyword);
 
     // 1. 直接搜索客户信息（客户编码、手机号、姓名）
+    // 🔥 修复：使用单个 .where() 包含所有 OR 条件，防止 .orWhere() 绕过租户隔离
     let customer = await customerRepository
       .createQueryBuilder('customer')
-      .where('customer.customerCode = :keyword', { keyword })
-      .orWhere('customer.phone = :keyword', { keyword })
-      .orWhere('customer.name = :keyword', { keyword })
+      .where('(customer.customerNo = :keyword OR customer.phone = :keyword OR customer.name = :keyword)', { keyword })
       .getOne();
 
     // 2. 如果没找到，通过订单号搜索
     if (!customer) {
       console.log('🔍 [客户搜索] 尝试通过订单号查找');
       const tData = tenantSQL('o.');
+      const tCustomer = tenantSQL('c.');
       const orderResult = await AppDataSource.query(
         `SELECT c.* FROM customers c
          JOIN orders o ON c.id = o.customer_id
-         WHERE o.order_no = ?${tData.sql}
+         WHERE o.order_no = ?${tData.sql}${tCustomer.sql}
          LIMIT 1`,
-        [keyword, ...tData.params]
+        [keyword, ...tData.params, ...tCustomer.params]
       );
       if (orderResult && orderResult.length > 0) {
         // 通过ID重新查询获取完整的Customer实体
@@ -421,13 +463,14 @@ router.get('/search', async (req: Request, res: Response) => {
     if (!customer) {
       console.log('🔍 [客户搜索] 尝试通过物流单号查找');
       const tLogistics = tenantSQL('o.');
+      const tLogisticsC = tenantSQL('c.');
       const logisticsResult = await AppDataSource.query(
         `SELECT c.* FROM customers c
          JOIN orders o ON c.id = o.customer_id
          JOIN logistics_tracking l ON o.id = l.order_id
-         WHERE l.tracking_number = ?${tLogistics.sql}
+         WHERE l.tracking_number = ?${tLogistics.sql}${tLogisticsC.sql}
          LIMIT 1`,
-        [keyword, ...tLogistics.params]
+        [keyword, ...tLogistics.params, ...tLogisticsC.params]
       );
       if (logisticsResult && logisticsResult.length > 0) {
         // 通过ID重新查询获取完整的Customer实体
@@ -490,7 +533,7 @@ router.get('/search-customer', async (req: Request, res: Response) => {
 
     const queryBuilder = customerRepository.createQueryBuilder('customer');
     queryBuilder.where(
-      '(customer.customerCode LIKE :keyword OR customer.name LIKE :keyword OR customer.phone LIKE :keyword)',
+      '(customer.customerNo LIKE :keyword OR customer.name LIKE :keyword OR customer.phone LIKE :keyword)',
       { keyword: `%${keyword}%` }
     );
 

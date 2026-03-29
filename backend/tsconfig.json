@@ -35,5 +35,12 @@
     "**/*.test.ts",
     "**/*.spec.ts",
     "src/scripts/**/*"
-  ]
+  ],
+  "ts-node": {
+    "transpileOnly": true,
+    "files": true,
+    "compilerOptions": {
+      "module": "commonjs"
+    }
+  }
 }

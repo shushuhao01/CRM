@@ -70,10 +70,27 @@
           </div>
           <div class="info-item">
             <span class="info-label">租户授权码</span>
-            <span class="info-value code">
+            <span class="info-value code" :class="{ 'no-key': !hasRealLicenseKey }">
               {{ licenseKey }}
-              <button class="copy-btn" @click="copyText(licenseKey)">复制</button>
+              <button v-if="hasRealLicenseKey" class="copy-btn" @click="copyText(licenseKey)">复制</button>
             </span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">管理员账号</span>
+            <span class="info-value code" v-if="adminUsername">
+              {{ adminUsername }}
+              <button class="copy-btn" @click="copyText(adminUsername)">复制</button>
+            </span>
+            <span class="info-value placeholder" v-else>与注册手机号相同</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">初始密码</span>
+            <span class="info-value code" v-if="adminPassword">
+              {{ adminPassword }}
+              <button class="copy-btn" @click="copyText(adminPassword)">复制</button>
+              <em class="warning">（请登录后立即修改）</em>
+            </span>
+            <span class="info-value placeholder" v-else>Aa123456 <em class="warning">（请登录后立即修改）</em></span>
           </div>
           <div class="info-item">
             <span class="info-label">最大用户数</span>
@@ -83,24 +100,9 @@
             <span class="info-label">试用期限</span>
             <span class="info-value">7天</span>
           </div>
-          <div class="info-item" v-if="adminUsername">
-            <span class="info-label">管理员账号</span>
-            <span class="info-value code">
-              {{ adminUsername }}
-              <button class="copy-btn" @click="copyText(adminUsername)">复制</button>
-            </span>
-          </div>
-          <div class="info-item" v-if="adminPassword">
-            <span class="info-label">初始密码</span>
-            <span class="info-value code">
-              {{ adminPassword }}
-              <button class="copy-btn" @click="copyText(adminPassword)">复制</button>
-              <em class="warning">（请登录后立即修改）</em>
-            </span>
-          </div>
         </div>
 
-        <div class="copy-all-section" v-if="adminUsername && adminPassword">
+        <div class="copy-all-section">
           <button class="copy-all-btn" @click="copyAllInfo">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -114,10 +116,9 @@
           <h4>首次登录步骤：</h4>
           <ol>
             <li>点击下方"立即登录系统"按钮</li>
-            <li v-if="!adminUsername">在登录页点击 🔑 图标，选择"SaaS租户"</li>
-            <li v-if="!adminUsername">输入您的租户授权码</li>
-            <li v-if="adminUsername">系统已自动识别您的租户信息</li>
-            <li>使用管理员账号密码登录</li>
+            <li>在登录页点击 🔑 图标，选择"SaaS租户"</li>
+            <li>输入您的租户授权码进行激活</li>
+            <li>使用管理员账号和初始密码登录</li>
             <li>登录后请立即修改密码</li>
           </ol>
         </div>
@@ -222,10 +223,15 @@ const isBankTransfer = computed(() => route.query.payType === 'bank')
 const orderNo = computed(() => route.query.orderNo as string || '')
 
 // 从URL参数获取真实授权码和账号信息
+const hasRealLicenseKey = computed(() => {
+  const key = route.query.licenseKey as string
+  return !!key && key.length > 0
+})
+
 const licenseKey = computed(() => {
   const key = route.query.licenseKey as string
   if (key) return key
-  return type.value === 'saas' ? '请查看邮件或短信获取授权码' : '请查看邮件或短信获取授权码'
+  return '请查看邮件或短信获取授权码'
 })
 
 const adminUsername = computed(() => route.query.adminUsername as string || '')
@@ -257,18 +263,24 @@ const copyText = async (text: string) => {
 }
 
 const copyAllInfo = async () => {
+  const displayUsername = adminUsername.value || '注册手机号'
+  const displayPassword = adminPassword.value || 'Aa123456'
+  const displayLicense = hasRealLicenseKey.value ? licenseKey.value : '（请查看邮件或短信）'
+
   const text = `【云客CRM - 租户登录信息】
 
 🌐 登录地址：https://app.yunke-crm.com
 🏢 租户编码：${tenantCode.value}
-🔑 授权码：${licenseKey.value}
-👤 管理员账号：${adminUsername.value}
-🔐 初始密码：${adminPassword.value}
+🔑 授权码：${displayLicense}
+👤 管理员账号：${displayUsername}
+🔐 初始密码：${displayPassword}
 
 💡 温馨提示：
-1. 请使用授权码登录系统
-2. 首次登录后请立即修改密码
-3. 如有问题请联系技术支持`
+1. 在登录页点击 🔑 图标，选择"SaaS租户"
+2. 输入租户授权码进行激活
+3. 使用管理员账号和初始密码登录
+4. 首次登录后请立即修改密码
+5. 如有问题请联系技术支持`
 
   try {
     await navigator.clipboard.writeText(text)
@@ -372,6 +384,18 @@ h1 {
       color: var(--warning);
       font-size: 12px;
       font-style: normal;
+    }
+
+    &.placeholder {
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 14px;
+    }
+
+    &.no-key {
+      color: var(--text-muted);
+      font-weight: 400;
+      font-style: italic;
     }
   }
 }

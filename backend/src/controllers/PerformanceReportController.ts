@@ -5,6 +5,7 @@ import { Order } from '../entities/Order';
 import { User } from '../entities/User';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 // 业绩报表类型定义
 export const REPORT_TYPES = [
@@ -18,12 +19,7 @@ export const REPORT_TYPES = [
   { value: 'refund_count', label: '退款单数', category: '退款指标', description: '当日/当月退款订单数', primary: false },
   { value: 'refund_amount', label: '退款金额', category: '退款指标', description: '当日/当月退款金额', primary: false },
   { value: 'refund_rate', label: '退款率', category: '退款指标', description: '退款订单占比', primary: false },
-  { value: 'new_customer', label: '新增客户', category: '客户指标', description: '当日/当月新增客户数', primary: false },
-  { value: 'active_customer', label: '活跃客户', category: '客户指标', description: '有订单的客户数', primary: false },
-  { value: 'avg_order_amount', label: '客单价', category: '效率指标', description: '平均每单金额', primary: false },
-  { value: 'conversion_rate', label: '转化率', category: '效率指标', description: '下单客户/总客户', primary: false },
-  { value: 'team_ranking', label: '团队排名', category: '排名数据', description: '部门业绩排名', primary: false },
-  { value: 'personal_ranking', label: '个人排名', category: '排名数据', description: '销售人员业绩排名', primary: false }
+  { value: 'avg_order_amount', label: '客单价', category: '效率指标', description: '平均每单金额', primary: false }
 ];
 
 export class PerformanceReportController {
@@ -41,7 +37,7 @@ export class PerformanceReportController {
       }
 
       try {
-        const configRepo = dataSource.getRepository(PerformanceReportConfig);
+        const configRepo = getTenantRepo(PerformanceReportConfig);
         const configs = await configRepo.find({
           order: { createdAt: 'DESC' }
         });
@@ -113,7 +109,7 @@ export class PerformanceReportController {
       }
 
       const currentUser = (req as any).currentUser || (req as any).user;
-      const configRepo = dataSource.getRepository(PerformanceReportConfig);
+      const configRepo = getTenantRepo(PerformanceReportConfig);
 
       const config = configRepo.create({
         id: uuidv4(),
@@ -165,7 +161,7 @@ export class PerformanceReportController {
         return;
       }
 
-      const configRepo = dataSource.getRepository(PerformanceReportConfig);
+      const configRepo = getTenantRepo(PerformanceReportConfig);
       const config = await configRepo.findOne({ where: { id } });
 
       if (!config) {
@@ -222,7 +218,7 @@ export class PerformanceReportController {
         return;
       }
 
-      const configRepo = dataSource.getRepository(PerformanceReportConfig);
+      const configRepo = getTenantRepo(PerformanceReportConfig);
       const result = await configRepo.delete({ id });
 
       if (result.affected === 0) {
@@ -252,11 +248,12 @@ export class PerformanceReportController {
    */
   async previewReport(req: Request, res: Response): Promise<void> {
     try {
-      const { reportTypes, viewScope, targetDepartments } = req.body;
+      const { reportTypes, viewScope, targetDepartments, rankingLimit } = req.body;
       const reportData = await this.generateReportData(
         reportTypes || ['order_count', 'order_amount'],
         viewScope || 'company',
-        targetDepartments || []
+        targetDepartments || [],
+        rankingLimit || 10
       );
 
       res.json({
@@ -282,7 +279,7 @@ export class PerformanceReportController {
         return;
       }
 
-      const configRepo = dataSource.getRepository(PerformanceReportConfig);
+      const configRepo = getTenantRepo(PerformanceReportConfig);
       const config = await configRepo.findOne({ where: { id } });
 
       if (!config) {
@@ -294,7 +291,8 @@ export class PerformanceReportController {
       const reportData = await this.generateReportData(
         config.reportTypes,
         config.viewScope,
-        config.targetDepartments || []
+        config.targetDepartments || [],
+        config.rankingLimit || 10
       );
 
       // 根据消息格式生成内容
@@ -332,29 +330,45 @@ export class PerformanceReportController {
   private async generateReportData(
     reportTypes: string[],
     viewScope: string,
-    targetDepartments: string[]
+    targetDepartments: string[],
+    rankingLimit: number = 10
   ): Promise<any> {
     const dataSource = getDataSource();
     if (!dataSource) return {};
 
+    // 🔥 修复：统一使用北京时间（UTC+8）计算日期，避免服务器时区差异导致订单遗漏
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const beijingOffset = 8 * 60 * 60 * 1000;
+    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60 * 1000);
+    const beijingTime = new Date(utcTime + beijingOffset);
 
-    const orderRepo = dataSource.getRepository(Order);
+    const beijingYear = beijingTime.getFullYear();
+    const beijingMonth = beijingTime.getMonth();
+    const beijingDate = beijingTime.getDate();
+
+    // 昨天的日期字符串（北京时间）
+    const yesterdayBeijing = new Date(beijingYear, beijingMonth, beijingDate - 1);
+    const yesterdayStr = `${yesterdayBeijing.getFullYear()}-${String(yesterdayBeijing.getMonth() + 1).padStart(2, '0')}-${String(yesterdayBeijing.getDate()).padStart(2, '0')}`;
+
+    // 本月第一天（北京时间）
+    const monthStartStr = `${beijingYear}-${String(beijingMonth + 1).padStart(2, '0')}-01`;
+
+    console.log(`[业绩报表] 📅 统计日期: 昨日=${yesterdayStr}, 本月开始=${monthStartStr}`);
+
+    const orderRepo = getTenantRepo(Order);
 
     // 🔥 统一的业绩计算规则：
     // 不计入下单业绩的状态: pending_cancel, cancelled, audit_rejected, logistics_returned, logistics_cancelled, refunded
     // 待流转状态需要特殊处理：只有markType='normal'的才计入业绩
 
+    // 🔥 修复：使用 CONVERT_TZ 确保 DATE() 提取的是北京时间日期
     // 查询昨日数据
     const dailyQuery = orderRepo.createQueryBuilder('o')
-      .where('DATE(o.created_at) = :date', { date: yesterday.toISOString().split('T')[0] });
+      .where('DATE(CONVERT_TZ(o.created_at, "+00:00", "+08:00")) = :date', { date: yesterdayStr });
 
     // 查询本月数据
     const monthlyQuery = orderRepo.createQueryBuilder('o')
-      .where('o.created_at >= :start', { start: monthStart });
+      .where('DATE(CONVERT_TZ(o.created_at, "+00:00", "+08:00")) >= :start', { start: monthStartStr });
 
     // 如果是部门视角，添加部门过滤
     if (viewScope === 'department' && targetDepartments.length > 0) {
@@ -406,7 +420,10 @@ export class PerformanceReportController {
         `COALESCE(SUM(CASE WHEN o.status IN ('shipped', 'delivered', 'rejected', 'rejected_returned') THEN o.total_amount ELSE 0 END), 0) as shippedAmount`,
         // 签收业绩
         `SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) as signedCount`,
-        `COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END), 0) as signedAmount`
+        `COALESCE(SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END), 0) as signedAmount`,
+        // 退款统计
+        `SUM(CASE WHEN o.status = 'refunded' THEN 1 ELSE 0 END) as refundCount`,
+        `COALESCE(SUM(CASE WHEN o.status = 'refunded' THEN o.total_amount ELSE 0 END), 0) as refundAmount`
       ])
       .getRawOne();
 
@@ -418,8 +435,21 @@ export class PerformanceReportController {
       ? ((monthlyStats.signedCount / monthlyStats.orderCount) * 100).toFixed(1)
       : '0.0';
 
-    // 🔥 获取本月业绩排名（前三名）- 使用新的业绩计算规则
-    const userRepo = dataSource.getRepository(User);
+    // 🔥 计算衍生指标
+    const dailyOrderCount = parseInt(dailyStats?.orderCount || '0');
+    const dailyOrderAmount = parseFloat(dailyStats?.orderAmount || '0');
+    const dailyRefundCount = parseInt(dailyStats?.refundCount || '0');
+    const dailyRefundAmount = parseFloat(dailyStats?.refundAmount || '0');
+    const monthlyOrderCount = parseInt(monthlyStats?.orderCount || '0');
+    const monthlyOrderAmount = parseFloat(monthlyStats?.orderAmount || '0');
+
+    const dailyRefundRate = dailyOrderCount > 0 ? ((dailyRefundCount / dailyOrderCount) * 100).toFixed(1) : '0.0';
+    const monthlyRefundRate = monthlyOrderCount > 0 ? ((parseInt(monthlyStats?.refundCount || '0') / monthlyOrderCount) * 100).toFixed(1) : '0.0';
+    const dailyAvgAmount = dailyOrderCount > 0 ? Math.round(dailyOrderAmount / dailyOrderCount) : 0;
+    const monthlyAvgAmount = monthlyOrderCount > 0 ? Math.round(monthlyOrderAmount / monthlyOrderCount) : 0;
+
+    // 🔥 获取本月业绩排名 - 使用新的业绩计算规则 + 北京时间
+    const userRepo = getTenantRepo(User);
     let rankingQuery = orderRepo.createQueryBuilder('o')
       .select([
         'o.created_by as userId',
@@ -434,15 +464,17 @@ export class PerformanceReportController {
           AND (o.status != 'pending_transfer' OR o.mark_type = 'normal')
           THEN 1 ELSE 0 END) as orderCount`
       ])
-      .where('o.created_at >= :start', { start: monthStart })
+      .where('DATE(CONVERT_TZ(o.created_at, "+00:00", "+08:00")) >= :start', { start: monthStartStr })
       .groupBy('o.created_by')
-      .orderBy('totalAmount', 'DESC')
-      .limit(3);
+      .orderBy('totalAmount', 'DESC');
 
     // 如果是部门视角，添加部门过滤
     if (viewScope === 'department' && targetDepartments.length > 0) {
       rankingQuery = rankingQuery.andWhere('o.department_id IN (:...depts)', { depts: targetDepartments });
     }
+
+    // 🔥 使用配置的排行数量限制
+    rankingQuery = rankingQuery.limit(rankingLimit);
 
     const rankingData = await rankingQuery.getRawMany();
 
@@ -466,23 +498,29 @@ export class PerformanceReportController {
     );
 
     return {
-      reportDate: yesterday.toISOString().split('T')[0],
-      reportDateText: this.formatDateText(yesterday),
+      reportDate: yesterdayStr,
+      reportDateText: this.formatDateText(yesterdayBeijing),
       daily: {
-        orderCount: parseInt(dailyStats?.orderCount || '0'),
-        orderAmount: parseFloat(dailyStats?.orderAmount || '0'),
+        orderCount: dailyOrderCount,
+        orderAmount: dailyOrderAmount,
         signedCount: parseInt(dailyStats?.signedCount || '0'),
         signedAmount: parseFloat(dailyStats?.signedAmount || '0'),
         signedRate: dailySignedRate,
-        refundCount: parseInt(dailyStats?.refundCount || '0'),
-        refundAmount: parseFloat(dailyStats?.refundAmount || '0')
+        refundCount: dailyRefundCount,
+        refundAmount: dailyRefundAmount,
+        refundRate: dailyRefundRate,
+        avgOrderAmount: dailyAvgAmount
       },
       monthly: {
-        orderCount: parseInt(monthlyStats?.orderCount || '0'),
-        orderAmount: parseFloat(monthlyStats?.orderAmount || '0'),
+        orderCount: monthlyOrderCount,
+        orderAmount: monthlyOrderAmount,
         signedCount: parseInt(monthlyStats?.signedCount || '0'),
         signedAmount: parseFloat(monthlyStats?.signedAmount || '0'),
-        signedRate: monthlySignedRate
+        signedRate: monthlySignedRate,
+        refundCount: parseInt(monthlyStats?.refundCount || '0'),
+        refundAmount: parseFloat(monthlyStats?.refundAmount || '0'),
+        refundRate: monthlyRefundRate,
+        avgOrderAmount: monthlyAvgAmount
       },
       topRanking
     };
@@ -507,6 +545,18 @@ export class PerformanceReportController {
     if (config.reportTypes.includes('order_amount')) {
       lines.push(`   订单金额: ¥${data.daily.orderAmount.toLocaleString()}`);
     }
+    if (config.reportTypes.includes('refund_count')) {
+      lines.push(`   退款单数: ${data.daily.refundCount} 单`);
+    }
+    if (config.reportTypes.includes('refund_amount')) {
+      lines.push(`   退款金额: ¥${data.daily.refundAmount.toLocaleString()}`);
+    }
+    if (config.reportTypes.includes('refund_rate')) {
+      lines.push(`   退款率: ${data.daily.refundRate}%`);
+    }
+    if (config.reportTypes.includes('avg_order_amount')) {
+      lines.push(`   客单价: ¥${data.daily.avgOrderAmount.toLocaleString()}`);
+    }
 
     // 月累计数据（包含签收数据）
     if (config.includeMonthly === 1) {
@@ -523,16 +573,27 @@ export class PerformanceReportController {
       if (config.reportTypes.includes('monthly_signed_rate')) {
         lines.push(`   签收率: ${data.monthly.signedRate}%`);
       }
+      if (config.reportTypes.includes('refund_count') || config.reportTypes.includes('refund_amount')) {
+        lines.push(`   退款单数: ${data.monthly.refundCount} 单`);
+        lines.push(`   退款金额: ¥${data.monthly.refundAmount.toLocaleString()}`);
+      }
+      if (config.reportTypes.includes('refund_rate')) {
+        lines.push(`   退款率: ${data.monthly.refundRate}%`);
+      }
+      if (config.reportTypes.includes('avg_order_amount')) {
+        lines.push(`   客单价: ¥${data.monthly.avgOrderAmount.toLocaleString()}`);
+      }
     }
 
-    // 业绩排名（前三名）
+    // 业绩排名
     if (config.includeRanking === 1 && data.topRanking && data.topRanking.length > 0) {
       lines.push('');
       lines.push('🏆 业绩排行榜');
       const medals = ['🥇', '🥈', '🥉'];
-      data.topRanking.slice(0, 3).forEach((item: any, index: number) => {
+      const limit = config.rankingLimit || 10;
+      data.topRanking.slice(0, limit).forEach((item: any, index: number) => {
         const medal = medals[index] || `${index + 1}.`;
-        lines.push(`   ${medal} ${item.name}: ¥${item.amount.toLocaleString()} (${item.orderCount}单)`);
+        lines.push(`${medal} ${item.name}: ¥${item.amount.toLocaleString()} (${item.orderCount}单)`);
       });
     }
 
@@ -574,6 +635,18 @@ export class PerformanceReportController {
     if (config.reportTypes.includes('order_amount')) {
       lines.push(`- **订单金额**: ¥${data.daily.orderAmount.toLocaleString()}`);
     }
+    if (config.reportTypes.includes('refund_count')) {
+      lines.push(`- **退款单数**: ${data.daily.refundCount} 单`);
+    }
+    if (config.reportTypes.includes('refund_amount')) {
+      lines.push(`- **退款金额**: ¥${data.daily.refundAmount.toLocaleString()}`);
+    }
+    if (config.reportTypes.includes('refund_rate')) {
+      lines.push(`- **退款率**: ${data.daily.refundRate}%`);
+    }
+    if (config.reportTypes.includes('avg_order_amount')) {
+      lines.push(`- **客单价**: ¥${data.daily.avgOrderAmount.toLocaleString()}`);
+    }
     lines.push('');
 
     // 月累计数据
@@ -590,18 +663,30 @@ export class PerformanceReportController {
       if (config.reportTypes.includes('monthly_signed_rate')) {
         lines.push(`- **签收率**: ${data.monthly.signedRate}%`);
       }
+      if (config.reportTypes.includes('refund_count') || config.reportTypes.includes('refund_amount')) {
+        lines.push(`- **退款单数**: ${data.monthly.refundCount} 单`);
+        lines.push(`- **退款金额**: ¥${data.monthly.refundAmount.toLocaleString()}`);
+      }
+      if (config.reportTypes.includes('refund_rate')) {
+        lines.push(`- **退款率**: ${data.monthly.refundRate}%`);
+      }
+      if (config.reportTypes.includes('avg_order_amount')) {
+        lines.push(`- **客单价**: ¥${data.monthly.avgOrderAmount.toLocaleString()}`);
+      }
       lines.push('');
     }
 
-    // 业绩排名（前三名）
+    // 业绩排名
     if (config.includeRanking === 1 && data.topRanking && data.topRanking.length > 0) {
       lines.push('### 🏆 业绩排行榜');
+      lines.push('');
       const medals = ['🥇', '🥈', '🥉'];
-      data.topRanking.slice(0, 3).forEach((item: any, index: number) => {
+      const limit = config.rankingLimit || 10;
+      data.topRanking.slice(0, limit).forEach((item: any, index: number) => {
         const medal = medals[index] || `${index + 1}.`;
         lines.push(`${medal} **${item.name}**: ¥${item.amount.toLocaleString()} (${item.orderCount}单)`);
+        lines.push('');
       });
-      lines.push('');
     }
 
     lines.push('---');

@@ -262,9 +262,10 @@ export class AlipayService {
       // 计算过期时间
       let durationDays = order.duration_days || 30;
 
-      // 如果是年付，加上赠送月数
-      if (order.billing_cycle === 'yearly' && order.bonus_months) {
-        durationDays = (12 + order.bonus_months) * 30;
+      // 如果是年付，计算实际有效期
+      if (order.billing_cycle === 'yearly') {
+        const bonusMonths = Number(order.bonus_months) || 0;
+        durationDays = (12 + bonusMonths) * 30;
       }
 
       const expireDate = new Date();
