@@ -146,7 +146,8 @@
       <el-tab-pane label="系统配置" name="system">
         <div class="tab-content">
           <el-row :gutter="20">
-            <el-col :span="12">
+            <!-- 权限配置卡片（功能尚未完全实现后端联动，暂时隐藏） -->
+            <el-col :span="12" v-if="false">
               <el-card title="权限配置">
                 <template #header>
                   <span>权限配置</span>
@@ -171,7 +172,7 @@
                 </el-form>
               </el-card>
             </el-col>
-            <el-col :span="12">
+            <el-col :span="24">
               <el-card title="安全配置">
                 <template #header>
                   <span>安全配置</span>
@@ -181,10 +182,17 @@
                     <el-switch
                       v-model="systemConfig.secureConsoleEnabled"
                       @change="handleSecureConsoleChange"
+                      :disabled="adminConsoleEncryptionForced"
                     />
                     <el-tooltip content="启用后，所有用户的浏览器控制台输出将被完全加密，包括业务逻辑、数据量、API调用等信息，防止系统被逆向分析。此配置全局生效，同步到所有成员。" placement="top">
                       <el-icon style="margin-left: 8px; color: #909399; cursor: help;"><QuestionFilled /></el-icon>
                     </el-tooltip>
+                    <div v-if="adminConsoleEncryptionForced" style="margin-left: 8px; color: #e6a23c; font-size: 12px;">
+                      🔒 管理后台已强制启用加密，租户无法关闭
+                    </div>
+                    <div v-else style="margin-left: 8px; color: #67c23a; font-size: 12px;">
+                      系统默认启用加密，您可自行选择关闭
+                    </div>
                   </el-form-item>
                   <el-form-item label="敏感操作通知">
                     <el-switch v-model="systemConfig.notifySensitiveOperations" />
@@ -284,7 +292,14 @@ import { userApiService } from '@/services/userApiService'
 import { roleApiService } from '@/services/roleApiService'
 import { DEFAULT_ROLE_PERMISSIONS, getDefaultRolePermissions } from '@/config/defaultRolePermissions'
 import { useConfigStore } from '@/stores/config'
-import { isSecureConsoleEnabled, setSecureConsoleEnabled, enableGlobalSecureConsole } from '@/utils/secureLogger'
+import { isSecureConsoleEnabled, setSecureConsoleEnabled, enableGlobalSecureConsole, isAdminForcedEncryption, refreshSecureConsoleConfig } from '@/utils/secureLogger'
+
+// Admin全局控制台加密开关：当Admin后台启用加密时，租户不可关闭（按钮锁定为开启）
+const configStore = useConfigStore()
+const adminConsoleEncryptionForced = computed(() => {
+  // 仅使用 localStorage 的实时值判断（由 refreshSecureConsoleConfig 刷新，避免 configStore 缓存滞后）
+  return isAdminForcedEncryption()
+})
 
 interface User {
   id: string
@@ -354,7 +369,7 @@ const systemConfig = ref({
   auditLogRetentionDays: 90,            // 审计日志保留天数
   notifySensitiveOperations: true,      // 敏感操作通知
   autoBackupConfig: true,               // 自动备份配置
-  secureConsoleEnabled: false           // 控制台日志加密
+  secureConsoleEnabled: true            // 控制台日志加密（默认启用）
 })
 
 // 从configStore加载配置
@@ -363,8 +378,19 @@ const loadSystemConfigFromStore = () => {
   // 从安全配置中加载相关设置
   systemConfig.value.enforcePasswordPolicy = configStore.securityConfig.passwordMinLength > 6
   systemConfig.value.sessionTimeout = configStore.securityConfig.sessionTimeout
-  // 加载控制台加密配置
-  systemConfig.value.secureConsoleEnabled = isSecureConsoleEnabled()
+  // 加载控制台加密配置（仅用 localStorage 实时值，确保与 refreshSecureConsoleConfig 同步）
+  if (isAdminForcedEncryption()) {
+    // Admin后台强制启用加密 → 直接锁定为true
+    systemConfig.value.secureConsoleEnabled = true
+  } else {
+    // Admin未强制 → 使用租户自己的设置（默认true，租户可主动关闭）
+    const cachedValue = localStorage.getItem('crm_secure_console_enabled')
+    if (cachedValue !== null) {
+      // 有明确缓存值时使用缓存值（租户曾手动设置过）
+      systemConfig.value.secureConsoleEnabled = cachedValue === 'true'
+    }
+    // 无缓存时保持默认值 true（新租户=加密启用）
+  }
 }
 
 // 处理控制台加密开关变化
@@ -1055,11 +1081,11 @@ const resetSystemConfig = async () => {
       auditLogRetentionDays: 90,
       notifySensitiveOperations: true,
       autoBackupConfig: true,
-      secureConsoleEnabled: false
+      secureConsoleEnabled: true
     }
 
-    // 重置控制台加密设置
-    setSecureConsoleEnabled(false)
+    // 重置控制台加密设置（默认启用）
+    setSecureConsoleEnabled(true)
 
     // 清除localStorage中的配置
     localStorage.removeItem('crm_admin_panel_config')
@@ -1151,17 +1177,26 @@ const userSearchForm = ref({
 })
 
 // 初始化
-onMounted(() => {
+onMounted(async () => {
   initializeData()
+
+  // 🔐 先从后端刷新管理后台加密状态 + 租户配置（确保实时同步）
+  try {
+    await refreshSecureConsoleConfig()
+  } catch {
+    // 刷新失败不影响面板加载
+  }
 
   // 加载保存的超管面板配置
   try {
     const savedConfig = localStorage.getItem('crm_admin_panel_config')
     if (savedConfig) {
       const config = JSON.parse(savedConfig)
-      Object.assign(systemConfig.value, config)
+      // 排除secureConsoleEnabled，它走独立的crm_secure_console_enabled通道管理
+      const { secureConsoleEnabled: _ignored, ...restConfig } = config
+      Object.assign(systemConfig.value, restConfig)
     }
-    // 从configStore加载安全配置
+    // 从configStore加载安全配置（含控制台加密状态，此时localStorage已是最新）
     loadSystemConfigFromStore()
   } catch (error) {
     console.warn('加载超管面板配置失败:', error)

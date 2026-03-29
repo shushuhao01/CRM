@@ -1,11 +1,14 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+﻿import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 @Entity('logistics_api_configs')
+@Index('idx_logistics_api_configs_tenant_code', ['tenantId', 'companyCode'], { unique: true })
 export class LogisticsApiConfig {
   @PrimaryColumn({ type: 'varchar', length: 50 })
   id!: string;
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
 
-  @Column({ name: 'company_code', type: 'varchar', length: 50, unique: true })
+  @Column({ name: 'company_code', type: 'varchar', length: 50 })
   companyCode!: string;
 
   @Column({ name: 'company_name', type: 'varchar', length: 100 })

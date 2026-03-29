@@ -2,11 +2,20 @@ import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Inde
 
 /**
  * 系统公告实体
+ * source='company' 为租户内部公告（由租户管理员发布）
+ * source='system' 为平台系统公告（由管理后台发布，可指定目标租户）
  */
 @Entity('announcements')
 export class Announcement {
   @PrimaryColumn({ type: 'varchar', length: 36 })
   id!: string;
+
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
+
+  @Column({ type: 'varchar', length: 20, default: 'company', comment: '公告来源: system=系统公告, company=公司公告' })
+  @Index()
+  source!: string;
 
   @Column({ type: 'varchar', length: 200, comment: '公告标题' })
   title!: string;
@@ -30,6 +39,9 @@ export class Announcement {
 
   @Column({ name: 'target_departments', type: 'json', nullable: true, comment: '目标部门列表' })
   targetDepartments?: string[];
+
+  @Column({ name: 'target_tenants', type: 'json', nullable: true, comment: '目标租户列表（系统公告用，null=全部租户）' })
+  targetTenants?: string[];
 
   @Column({ name: 'start_time', type: 'timestamp', nullable: true, comment: '生效开始时间' })
   startTime?: Date;

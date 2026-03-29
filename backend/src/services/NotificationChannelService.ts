@@ -16,6 +16,7 @@ import { NotificationChannel, NotificationLog } from '../entities/NotificationCh
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { webSocketService } from './WebSocketService';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 // 发送结果接口
 export interface SendResult {
@@ -55,7 +56,7 @@ class NotificationChannelService {
         return [{ success: false, message: '数据库未连接' }];
       }
 
-      const channelRepo = dataSource.getRepository(NotificationChannel);
+      const channelRepo = getTenantRepo(NotificationChannel);
       const channels = await channelRepo.find({ where: { isEnabled: 1 } });
 
       if (channels.length === 0) {
@@ -560,7 +561,7 @@ class NotificationChannelService {
       const dataSource = getDataSource();
       if (!dataSource) return;
 
-      const logRepo = dataSource.getRepository(NotificationLog);
+      const logRepo = getTenantRepo(NotificationLog);
       const log = logRepo.create({
         id: uuidv4(),
         channelId: channel.id,

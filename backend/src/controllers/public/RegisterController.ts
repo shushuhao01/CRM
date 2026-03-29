@@ -170,11 +170,11 @@ export class PublicRegisterController {
       if (pkg.price == 0) {
         const adminAccount = await this.createDefaultAdmin(tenantId, tenantCode, phone, contactName)
 
-        // 发送注册成功通知
-        await this.sendRegistrationNotification({
+        // 发送账号开通通知（免费试用）
+        await this.sendAccountActivationNotification({
           tenantName: companyName,
           tenantCode,
-          adminUsername: adminAccount.username,
+          licenseKey,
           adminPassword: adminAccount.password,
           packageName: pkg.name,
           expireDate: expireDateStr,
@@ -242,12 +242,12 @@ export class PublicRegisterController {
   }
 
   /**
-   * 发送注册成功通知
+   * 发送账号开通通知（免费试用）
    */
-  private async sendRegistrationNotification(params: {
+  private async sendAccountActivationNotification(params: {
     tenantName: string
     tenantCode: string
-    adminUsername: string
+    licenseKey: string
     adminPassword: string
     packageName: string
     expireDate: string
@@ -255,21 +255,27 @@ export class PublicRegisterController {
     email?: string
   }) {
     try {
-      await notificationTemplateService.sendByTemplate('tenant_register_success', {
-        systemName: '云客CRM',
-        tenantName: params.tenantName,
-        adminUsername: params.adminUsername,
-        adminPassword: params.adminPassword,
-        packageName: params.packageName,
-        expireDate: params.expireDate
-      }, {
-        to: params.email || params.phone,
-        priority: 'high'
-      })
+      // 发送短信
+      if (params.phone) {
+        await aliyunSmsService.loadFromDatabase()
+        await aliyunSmsService.sendSms(params.phone, 'ACCOUNT_ACTIVATION', {
+          tenantName: params.tenantName,
+          tenantCode: params.tenantCode,
+          licenseKey: params.licenseKey,
+          adminPassword: params.adminPassword,
+          packageName: params.packageName,
+          expireDate: params.expireDate
+        })
+      }
 
-      console.log(`✓ 已发送注册成功通知给租户 ${params.tenantCode}`)
+      // TODO: 发送邮件通知
+      // if (params.email) {
+      //   await notificationTemplateService.sendByTemplate('account_activation', {...}, { to: params.email })
+      // }
+
+      console.log(`✓ 已发送账号开通通知给租户 ${params.tenantCode}`)
     } catch (error) {
-      console.error('发送注册通知失败:', error)
+      console.error('发送账号开通通知失败:', error)
       // 不抛出错误，避免影响注册流程
     }
   }

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { getDataSource } from '../config/database';
 import { AfterSalesService } from '../entities/AfterSalesService';
+import { Order } from '../entities/Order';
+import { Customer } from '../entities/Customer';
 import { ServiceFollowUp } from '../entities/ServiceFollowUp';
 import { ServiceOperationLog } from '../entities/ServiceOperationLog';
 import { authenticateToken } from '../middleware/auth';
@@ -115,10 +116,12 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       });
     }
 
-    // 关键词搜索
+    // 关键词搜索（支持：售后单号、订单号、客户姓名、客户电话、客户编码、物流单号、客户其他手机号）
     if (search) {
       queryBuilder.andWhere(
-        '(service.serviceNumber LIKE :search OR service.customerName LIKE :search OR service.orderNumber LIKE :search)',
+        '(service.serviceNumber LIKE :search OR service.customerName LIKE :search OR service.orderNumber LIKE :search OR service.customerPhone LIKE :search' +
+        ' OR EXISTS (SELECT 1 FROM customers c WHERE c.id = service.customer_id AND (c.customer_code LIKE :search OR CAST(c.other_phones AS CHAR) LIKE :search))' +
+        ' OR EXISTS (SELECT 1 FROM orders o WHERE o.id = service.order_id AND o.tracking_number LIKE :search))',
         { search: `%${search}%` }
       );
     }
@@ -258,6 +261,30 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     const serviceRepository = getServiceRepository();
     const currentUser = (req as any).user;
     const data = req.body;
+
+    // 🔥 租户数据隔离：验证关联订单归属当前租户
+    if (data.orderId) {
+      const orderRepo = getTenantRepo(Order);
+      const order = await orderRepo.findOne({ where: { id: data.orderId } });
+      if (!order) {
+        return res.status(400).json({
+          success: false,
+          message: '关联订单不存在或无权访问'
+        });
+      }
+    }
+
+    // 🔥 租户数据隔离：验证关联客户归属当前租户
+    if (data.customerId) {
+      const customerRepo = getTenantRepo(Customer);
+      const customer = await customerRepo.findOne({ where: { id: data.customerId } });
+      if (!customer) {
+        return res.status(400).json({
+          success: false,
+          message: '关联客户不存在或无权访问'
+        });
+      }
+    }
 
     // 生成ID和服务单号
     const timestamp = Date.now();
@@ -657,7 +684,8 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
       });
     }
 
-    await serviceRepository.remove(service);
+    // 🔥 使用 delete 而非 remove：delete 被租户 Proxy 拦截，自动添加 tenant_id 条件，提供纵深防御
+    await serviceRepository.delete(id);
 
     console.log('[Services] 删除售后服务成功:', service.serviceNumber);
 

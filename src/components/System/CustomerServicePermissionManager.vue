@@ -25,6 +25,7 @@
         <el-option label="审核客服" value="audit" />
         <el-option label="物流客服" value="logistics" />
         <el-option label="商品客服" value="product" />
+        <el-option label="财务客服" value="finance" />
         <el-option label="通用客服" value="general" />
       </el-select>
       <el-button @click="loadCustomerServices" type="primary">搜索</el-button>
@@ -86,6 +87,7 @@
             <el-option label="审核客服" value="audit" />
             <el-option label="物流客服" value="logistics" />
             <el-option label="商品客服" value="product" />
+            <el-option label="财务客服" value="finance" />
             <el-option label="通用客服" value="general" />
           </el-select>
         </el-form-item>
@@ -132,6 +134,7 @@
             <el-option label="审核客服" value="audit" />
             <el-option label="物流客服" value="logistics" />
             <el-option label="商品客服" value="product" />
+            <el-option label="财务客服" value="finance" />
             <el-option label="通用客服" value="general" />
           </el-select>
         </el-form-item>
@@ -177,6 +180,7 @@
             <el-option label="审核客服" value="audit" />
             <el-option label="物流客服" value="logistics" />
             <el-option label="商品客服" value="product" />
+            <el-option label="财务客服" value="finance" />
             <el-option label="通用客服" value="general" />
           </el-select>
         </el-form-item>
@@ -205,6 +209,7 @@
             <span class="type-item">审核客服</span>
             <span class="type-item">物流客服</span>
             <span class="type-item">商品客服</span>
+            <span class="type-item">财务客服</span>
             <span class="type-item">通用客服</span>
           </div>
         </div>
@@ -238,28 +243,38 @@ const editForm = ref({ customerServiceType: 'general', dataScope: 'self', status
 const batchForm = ref({ customerServiceType: '', dataScope: '' })
 
 const permissionTemplates = [
-  { id: 'basic', name: '基础权限', description: '基本的查看权限', permissions: ['customer:list:view', 'order:list:view', 'service:list:view'] },
-  { id: 'standard', name: '标准权限', description: '常用业务权限', permissions: ['customer:list:view', 'customer:list:edit', 'order:list:view', 'order:list:edit', 'service:list:view', 'service:list:edit', 'logistics:shipping:view'] },
-  { id: 'advanced', name: '高级权限', description: '完整业务权限', permissions: ['customer:list:view', 'customer:list:edit', 'customer:list:create', 'order:list:view', 'order:list:edit', 'order:add:create', 'order:audit:view', 'service:list:view', 'service:list:edit', 'service:afterSales:view', 'service:afterSales:edit', 'logistics:shipping:view', 'logistics:shipping:edit', 'product:list:view'] },
-  { id: 'aftersales', name: '售后专员', description: '售后服务权限', permissions: ['customer:list:view', 'order:list:view', 'service:list:view', 'service:list:edit', 'service:afterSales:view', 'service:afterSales:edit', 'logistics:shipping:view'] },
-  { id: 'audit', name: '审核专员', description: '订单审核权限', permissions: ['customer:list:view', 'order:list:view', 'order:audit:view', 'order:audit:approve', 'service:list:view', 'product:list:view'] },
-  { id: 'logistics', name: '物流专员', description: '物流管理权限', permissions: ['customer:list:view', 'order:list:view', 'logistics:shipping:view', 'logistics:shipping:edit', 'logistics:shipping:batchExport', 'service:list:view'] }
+  { id: 'basic', name: '基础权限', description: '基本的查看权限', permissions: ['customer:list:view', 'order:list:view', 'service:list:view', 'logistics:shipping:view'] },
+  { id: 'standard', name: '标准权限', description: '常用业务权限', permissions: ['customer:list:view', 'customer:list:edit', 'order:list:view', 'order:list:edit', 'service:list:view', 'service:list:edit', 'logistics:shipping:view', 'data:record:view', 'product:list:view', 'callService:call:view'] },
+  { id: 'advanced', name: '高级权限', description: '完整业务权限', permissions: ['customer:list:view', 'customer:list:edit', 'customer:list:create', 'order:list:view', 'order:list:edit', 'order:add:create', 'order:audit:view', 'order:cod:cancelAudit', 'service:list:view', 'service:list:edit', 'service:afterSales:view', 'service:afterSales:edit', 'logistics:shipping:view', 'logistics:shipping:edit', 'product:list:view', 'product:list:edit', 'data:record:view', 'data:record:edit', 'finance:payment:view', 'finance:report:view', 'callService:call:view', 'callService:call:create', 'callService:sms:view', 'performance:personal:view', 'performance:team:view'] },
+  { id: 'aftersales', name: '售后专员', description: '售后服务权限', permissions: ['customer:list:view', 'order:list:view', 'service:list:view', 'service:list:edit', 'service:afterSales:view', 'service:afterSales:edit', 'logistics:shipping:view', 'callService:call:view', 'callService:call:create', 'callService:record:view'] },
+  { id: 'audit', name: '审核专员', description: '订单审核权限', permissions: ['customer:list:view', 'order:list:view', 'order:audit:view', 'order:audit:approve', 'order:cod:cancelAudit', 'service:list:view', 'product:list:view'] },
+  { id: 'logistics', name: '物流专员', description: '物流管理权限', permissions: ['customer:list:view', 'order:list:view', 'logistics:shipping:view', 'logistics:shipping:edit', 'logistics:shipping:batchExport', 'service:list:view'] },
+  { id: 'data', name: '资料专员', description: '资料管理权限', permissions: ['customer:list:view', 'data:record:view', 'data:record:edit', 'data:record:create', 'data:record:export', 'order:list:view'] },
+  { id: 'finance', name: '财务专员', description: '财务管理权限', permissions: ['customer:list:view', 'order:list:view', 'finance:payment:view', 'finance:payment:edit', 'finance:report:view', 'finance:report:export', 'finance:refund:manage', 'performance:personal:view', 'performance:team:view', 'performance:report:export'] }
 ]
 
 const permissionTreeData = [
   { key: 'customer', name: '客户管理', children: [{ key: 'customer:list:view', name: '查看客户列表' }, { key: 'customer:list:edit', name: '编辑客户信息' }, { key: 'customer:list:create', name: '创建客户' }, { key: 'customer:list:assign', name: '分配客户' }] },
-  { key: 'order', name: '订单管理', children: [{ key: 'order:list:view', name: '查看订单列表' }, { key: 'order:list:edit', name: '编辑订单' }, { key: 'order:add:create', name: '创建订单' }, { key: 'order:audit:view', name: '查看审核订单' }, { key: 'order:audit:approve', name: '审核订单' }, { key: 'order:detail:cancel', name: '取消订单' }] },
-  { key: 'service', name: '客服管理', children: [{ key: 'service:list:view', name: '查看服务列表' }, { key: 'service:list:edit', name: '编辑服务记录' }, { key: 'service:afterSales:view', name: '查看售后服务' }, { key: 'service:afterSales:edit', name: '处理售后服务' }] },
+  { key: 'order', name: '订单管理', children: [{ key: 'order:list:view', name: '查看订单列表' }, { key: 'order:list:edit', name: '编辑订单' }, { key: 'order:add:create', name: '创建订单' }, { key: 'order:audit:view', name: '查看审核订单' }, { key: 'order:audit:approve', name: '审核订单' }, { key: 'order:detail:cancel', name: '取消订单' }, { key: 'order:cod:cancelAudit', name: '取消代收审核' }] },
+  { key: 'service', name: '售后管理', children: [{ key: 'service:list:view', name: '查看服务列表' }, { key: 'service:list:edit', name: '编辑服务记录' }, { key: 'service:afterSales:view', name: '查看售后服务' }, { key: 'service:afterSales:edit', name: '处理售后服务' }] },
+  { key: 'callService', name: '服务管理', children: [{ key: 'callService:call:view', name: '查看通话记录' }, { key: 'callService:call:create', name: '发起回电' }, { key: 'callService:record:view', name: '查看服务记录' }, { key: 'callService:sms:view', name: '查看短信记录' }, { key: 'callService:sms:send', name: '发送短信' }] },
   { key: 'logistics', name: '物流管理', children: [{ key: 'logistics:shipping:view', name: '查看发货列表' }, { key: 'logistics:shipping:edit', name: '编辑发货信息' }, { key: 'logistics:shipping:batchExport', name: '批量导出' }] },
-  { key: 'product', name: '商品管理', children: [{ key: 'product:list:view', name: '查看商品列表' }, { key: 'product:list:edit', name: '编辑商品信息' }, { key: 'product:add:create', name: '添加商品' }, { key: 'product:inventory:manage', name: '库存管理' }] }
+  { key: 'data', name: '资料管理', children: [{ key: 'data:record:view', name: '查看资料列表' }, { key: 'data:record:edit', name: '编辑资料信息' }, { key: 'data:record:create', name: '创建资料记录' }, { key: 'data:record:export', name: '导出资料' }] },
+  { key: 'product', name: '商品管理', children: [{ key: 'product:list:view', name: '查看商品列表' }, { key: 'product:list:edit', name: '编辑商品信息' }, { key: 'product:add:create', name: '添加商品' }, { key: 'product:inventory:manage', name: '库存管理' }] },
+  { key: 'finance', name: '财务管理', children: [{ key: 'finance:payment:view', name: '查看收款记录' }, { key: 'finance:payment:edit', name: '编辑收款信息' }, { key: 'finance:report:view', name: '查看财务报表' }, { key: 'finance:report:export', name: '导出财务报表' }, { key: 'finance:refund:manage', name: '退款管理' }] },
+  { key: 'performance', name: '业绩统计', children: [{ key: 'performance:personal:view', name: '查看个人业绩' }, { key: 'performance:team:view', name: '查看团队业绩' }, { key: 'performance:report:export', name: '导出业绩报表' }, { key: 'performance:ranking:view', name: '查看业绩排名' }] }
 ]
 
 const permissionNameMap: Record<string, string> = {
   'customer:list:view': '查看客户', 'customer:list:edit': '编辑客户', 'customer:list:create': '创建客户', 'customer:list:assign': '分配客户',
-  'order:list:view': '查看订单', 'order:list:edit': '编辑订单', 'order:add:create': '创建订单', 'order:audit:view': '查看审核', 'order:audit:approve': '审核订单', 'order:detail:cancel': '取消订单',
+  'order:list:view': '查看订单', 'order:list:edit': '编辑订单', 'order:add:create': '创建订单', 'order:audit:view': '查看审核', 'order:audit:approve': '审核订单', 'order:detail:cancel': '取消订单', 'order:cod:cancelAudit': '取消代收审核',
   'service:list:view': '查看服务', 'service:list:edit': '编辑服务', 'service:afterSales:view': '查看售后', 'service:afterSales:edit': '处理售后',
+  'callService:call:view': '查看通话', 'callService:call:create': '发起回电', 'callService:record:view': '查看服务记录', 'callService:sms:view': '查看短信', 'callService:sms:send': '发送短信',
   'logistics:shipping:view': '查看物流', 'logistics:shipping:edit': '编辑物流', 'logistics:shipping:batchExport': '批量导出',
-  'product:list:view': '查看商品', 'product:list:edit': '编辑商品', 'product:add:create': '添加商品', 'product:inventory:manage': '库存管理'
+  'data:record:view': '查看资料', 'data:record:edit': '编辑资料', 'data:record:create': '创建资料', 'data:record:export': '导出资料',
+  'product:list:view': '查看商品', 'product:list:edit': '编辑商品', 'product:add:create': '添加商品', 'product:inventory:manage': '库存管理',
+  'finance:payment:view': '查看收款', 'finance:payment:edit': '编辑收款', 'finance:report:view': '查看报表', 'finance:report:export': '导出报表', 'finance:refund:manage': '退款管理',
+  'performance:personal:view': '个人业绩', 'performance:team:view': '团队业绩', 'performance:report:export': '导出业绩', 'performance:ranking:view': '业绩排名'
 }
 
 const loadCustomerServices = async () => {
@@ -310,12 +325,12 @@ const onTemplateChange = (templateId: string) => {
 
 const onAddTreeCheck = () => {
   const checked = addTreeRef.value?.getCheckedKeys(false) || []
-  addForm.value.customPermissions = checked.filter(k => !['customer', 'order', 'service', 'logistics', 'product'].includes(k as string)) as string[]
+  addForm.value.customPermissions = checked.filter(k => !['customer', 'order', 'service', 'callService', 'logistics', 'data', 'product', 'finance', 'performance'].includes(k as string)) as string[]
 }
 
 const onEditTreeCheck = () => {
   const checked = editTreeRef.value?.getCheckedKeys(false) || []
-  editForm.value.customPermissions = checked.filter(k => !['customer', 'order', 'service', 'logistics', 'product'].includes(k as string)) as string[]
+  editForm.value.customPermissions = checked.filter(k => !['customer', 'order', 'service', 'callService', 'logistics', 'data', 'product', 'finance', 'performance'].includes(k as string)) as string[]
 }
 
 const selectAllPermissions = (type: 'add' | 'edit') => {
@@ -384,8 +399,8 @@ const deletePermission = async (row: CustomerServicePermission) => {
 const showBatchConfig = () => { batchDialogVisible.value = true }
 const confirmBatchConfig = () => { ElMessage.info('批量配置功能需要先选择用户'); batchDialogVisible.value = false }
 
-const getServiceTypeDisplayName = (type: string) => ({ after_sales: '售后客服', audit: '审核客服', logistics: '物流客服', product: '商品客服', general: '通用客服' }[type] || '未知')
-const getServiceTypeTagType = (type: string) => ({ after_sales: 'warning', audit: 'info', logistics: 'success', product: 'primary', general: '' }[type] || '')
+const getServiceTypeDisplayName = (type: string) => ({ after_sales: '售后客服', audit: '审核客服', logistics: '物流客服', product: '商品客服', finance: '财务客服', general: '通用客服' }[type] || '未知')
+const getServiceTypeTagType = (type: string) => ({ after_sales: 'warning', audit: 'info', logistics: 'success', product: 'primary', finance: 'danger', general: '' }[type] || '')
 const getDataScopeDisplayName = (scope: string) => ({ all: '全部数据', department: '部门数据', self: '个人数据', custom: '自定义' }[scope] || '未知')
 const getDataScopeTagType = (scope: string) => ({ all: 'danger', department: 'warning', self: 'info', custom: 'primary' }[scope] || '')
 const getPermissionDisplayName = (perm: string) => permissionNameMap[perm] || perm
@@ -400,7 +415,7 @@ onMounted(() => { refreshData() })
 .customer-service-permission-manager { padding: 20px; }
 .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #ebeef5; }
 .header-title { flex: 1; }
-.page-title { margin: 0 0 8px 0; font-size: 20px; font-weight: 600; }
+.page-title { margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #303133; }
 .page-subtitle { margin: 0 0 15px 0; color: #666; font-size: 14px; }
 .header-stats { display: flex; gap: 40px; }
 .header-actions { display: flex; gap: 10px; }

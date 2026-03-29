@@ -8,6 +8,8 @@ import { Announcement, AnnouncementRead } from '../entities/Announcement';
 import { NotificationChannel, NotificationLog } from '../entities/NotificationChannel';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import { TenantContextManager } from '../utils/tenantContext';
+import { deployConfig } from '../config/deploy';
 
 // 内存存储订阅规则数据（模拟数据库）
 const subscriptionRulesStorage: any[] = [
@@ -75,6 +77,14 @@ const departmentNames: { [key: string]: string } = {
 
 export class MessageController {
 
+  /**
+   * 🔥 统一获取当前请求的租户ID（SaaS模式下）
+   * 用于 Announcement、NotificationChannel、MessageSubscription 等实体的手动租户过滤
+   */
+  private getTenantId(): string | undefined {
+    return deployConfig.isSaaS() ? TenantContextManager.getTenantId() : undefined;
+  }
+
   async getSubscriptions(req: Request, res: Response): Promise<void> {
     try {
       const dataSource = getDataSource();
@@ -132,7 +142,14 @@ export class MessageController {
       const subscriptionRepo = dataSource.getRepository(MessageSubscription);
       const departmentConfigRepo = dataSource.getRepository(DepartmentSubscriptionConfig);
 
-      const subscriptions = await subscriptionRepo.find();
+      // 🔥 租户数据隔离
+      const tenantId = this.getTenantId();
+      const subWhere: any = {};
+      if (tenantId) {
+        subWhere.tenantId = tenantId;
+      }
+
+      const subscriptions = await subscriptionRepo.find({ where: subWhere });
       const departmentConfigs = await departmentConfigRepo.find({
         relations: ['department']
       });
@@ -181,16 +198,23 @@ export class MessageController {
 
       const subscriptionRepo = dataSource.getRepository(MessageSubscription);
 
+      // 🔥 租户数据隔离
+      const tenantId = this.getTenantId();
+
       // 更新或创建订阅配置
       for (const sub of subscriptions) {
-        await subscriptionRepo.save({
+        const saveData: any = {
           messageType: sub.messageType,
           name: sub.name || sub.messageType,
           description: sub.description || '',
           category: sub.category || '默认',
           isGlobalEnabled: sub.isEnabled,
           globalNotificationMethods: sub.notificationMethods
-        });
+        };
+        if (tenantId) {
+          saveData.tenantId = tenantId;
+        }
+        await subscriptionRepo.save(saveData);
       }
 
       res.json({
@@ -380,15 +404,22 @@ export class MessageController {
 
       const subscriptionRepo = dataSource.getRepository(MessageSubscription);
 
+      // 🔥 租户数据隔离
+      const tenantId = this.getTenantId();
+      const countWhere: any = {};
+      if (tenantId) {
+        countWhere.tenantId = tenantId;
+      }
+
       // 检查是否已经初始化
-      const existingCount = await subscriptionRepo.count();
+      const existingCount = await subscriptionRepo.count({ where: countWhere });
       if (existingCount > 0) {
         res.json({ message: '默认订阅配置已存在' });
         return;
       }
 
       // 创建默认订阅配置
-      const defaultSubscriptions = [
+      const defaultSubscriptions: any[] = [
         {
           messageType: MessageType.ORDER_CREATED,
           name: '订单创建',
@@ -414,6 +445,11 @@ export class MessageController {
           globalNotificationMethods: [NotificationMethod.EMAIL, NotificationMethod.ANNOUNCEMENT, NotificationMethod.SYSTEM_MESSAGE]
         }
       ];
+
+      // 🔥 为每条记录设置 tenantId
+      if (tenantId) {
+        defaultSubscriptions.forEach(sub => { sub.tenantId = tenantId; });
+      }
 
       await subscriptionRepo.save(defaultSubscriptions);
 
@@ -445,6 +481,14 @@ export class MessageController {
       const queryBuilder = announcementRepo.createQueryBuilder('ann')
         .orderBy('ann.is_pinned', 'DESC')
         .addOrderBy('ann.created_at', 'DESC');
+
+      // 🔥 租户数据隔离
+      const tenantId = this.getTenantId();
+      if (tenantId) {
+        queryBuilder.andWhere('ann.tenant_id = :tenantId', { tenantId });
+      }
+      // 🔥 CRM端只显示公司公告（租户自己发布的）
+      queryBuilder.andWhere("(ann.source = 'company' OR ann.source IS NULL)");
 
       if (status) {
         queryBuilder.andWhere('ann.status = :status', { status });
@@ -482,6 +526,7 @@ export class MessageController {
           title: ann.title,
           content: ann.content,
           type: ann.type,
+          source: ann.source || 'company',  // 🔥 公告来源
           priority: ann.priority,
           status: ann.status,
           targetRoles: ann.targetRoles,
@@ -535,10 +580,14 @@ export class MessageController {
       const currentUser = (req as any).currentUser || (req as any).user;
       const announcementRepo = dataSource.getRepository(Announcement);
 
+      // 🔥 租户数据隔离
+      const tenantId = this.getTenantId();
+
       const announcement = announcementRepo.create({
         id: uuidv4(),
         title,
         content,
+        source: 'company',  // 🔥 CRM端创建的公告固定为公司公告
         type: type || 'notice',
         priority: priority || 'normal',
         status: 'draft',
@@ -551,8 +600,9 @@ export class MessageController {
         isMarquee: isMarquee !== false ? 1 : 0,
         viewCount: 0,
         createdBy: currentUser?.id,
-        createdByName: currentUser?.realName || currentUser?.username || '系统'
-      });
+        createdByName: currentUser?.realName || currentUser?.username || '系统',
+        tenantId: tenantId || null
+      } as any);
 
       await announcementRepo.save(announcement);
 
@@ -584,7 +634,13 @@ export class MessageController {
       }
 
       const announcementRepo = dataSource.getRepository(Announcement);
-      const announcement = await announcementRepo.findOne({ where: { id } });
+      // 🔥 租户数据隔离：只能更新本租户的公告
+      const tenantId = this.getTenantId();
+      const findWhere: any = { id };
+      if (tenantId) {
+        findWhere.tenantId = tenantId;
+      }
+      const announcement = await announcementRepo.findOne({ where: findWhere });
 
       if (!announcement) {
         res.status(404).json({ success: false, message: '公告不存在' });
@@ -627,7 +683,13 @@ export class MessageController {
       }
 
       const announcementRepo = dataSource.getRepository(Announcement);
-      const result = await announcementRepo.delete({ id });
+      // 🔥 租户数据隔离：只能删除本租户的公告
+      const tenantId = this.getTenantId();
+      const deleteWhere: any = { id };
+      if (tenantId) {
+        deleteWhere.tenantId = tenantId;
+      }
+      const result = await announcementRepo.delete(deleteWhere);
 
       if (result.affected === 0) {
         res.status(404).json({ success: false, message: '公告不存在' });
@@ -662,7 +724,13 @@ export class MessageController {
       }
 
       const announcementRepo = dataSource.getRepository(Announcement);
-      const announcement = await announcementRepo.findOne({ where: { id } });
+      // 🔥 租户数据隔离：只能发布本租户的公告
+      const tenantId = this.getTenantId();
+      const findWhere: any = { id };
+      if (tenantId) {
+        findWhere.tenantId = tenantId;
+      }
+      const announcement = await announcementRepo.findOne({ where: findWhere });
 
       if (!announcement) {
         res.status(404).json({ success: false, message: '公告不存在' });
@@ -681,27 +749,33 @@ export class MessageController {
       const messageRepo = dataSource.getRepository(SystemMessage);
 
       // 获取目标用户列表
+      // 🔥 租户数据隔离：只获取本租户的用户
+      const userWhere: any = { status: 'active' };
+      if (tenantId) {
+        userWhere.tenantId = tenantId;
+      }
       let targetUsers: any[] = [];
       if (announcement.targetRoles && announcement.targetRoles.length > 0) {
         // 按角色筛选
         targetUsers = await userRepo.find({
-          where: { status: 'active' }
+          where: userWhere
         });
         targetUsers = targetUsers.filter(u => announcement.targetRoles?.includes(u.role));
       } else if (announcement.targetDepartments && announcement.targetDepartments.length > 0) {
         // 按部门筛选
         targetUsers = await userRepo.find({
-          where: { status: 'active' }
+          where: userWhere
         });
         targetUsers = targetUsers.filter(u => announcement.targetDepartments?.includes(u.departmentId));
       } else {
         // 全部用户
         targetUsers = await userRepo.find({
-          where: { status: 'active' }
+          where: userWhere
         });
       }
 
       // 批量创建系统消息
+      // 🔥 租户数据隔离：系统消息也需要设置 tenantId
       const messages = targetUsers.map(user => messageRepo.create({
         id: uuidv4(),
         type: 'announcement',
@@ -712,12 +786,42 @@ export class MessageController {
         category: 'system',
         relatedId: announcement.id,
         actionUrl: `/system/message?tab=announcement&id=${announcement.id}`,
-        isRead: 0
+        isRead: 0,
+        tenantId: tenantId || null
       }));
 
       if (messages.length > 0) {
         await messageRepo.save(messages);
         console.log(`[公告] ✅ 发布成功: ${announcement.title}，已发送给 ${messages.length} 个用户`);
+      }
+
+      // 🔥 通过WebSocket实时推送公告通知给目标用户
+      if (global.webSocketService) {
+        const announcementPayload = {
+          id: announcement.id,
+          title: announcement.title,
+          content: announcement.content,
+          type: announcement.type,
+          priority: announcement.priority,
+          isPopup: announcement.isPopup === 1 || (announcement.isPopup as any) === true,
+          isMarquee: announcement.isMarquee === 1 || (announcement.isMarquee as any) === true,
+          source: announcement.source || 'company',
+          publishedAt: announcement.publishedAt?.toISOString() || new Date().toISOString(),
+          createdByName: (req as any).currentUser?.name || (req as any).currentUser?.username || 'system'
+        };
+
+        // 按目标范围推送
+        if (announcement.targetDepartments && announcement.targetDepartments.length > 0) {
+          // 按部门推送
+          announcement.targetDepartments.forEach((deptId: string) => {
+            (global.webSocketService as any).sendToDepartment(deptId, 'new_announcement', announcementPayload);
+          });
+          console.log(`[公告] 🔌 WebSocket按部门推送: ${announcement.title} -> ${announcement.targetDepartments.join(',')}`);
+        } else {
+          // 全员广播
+          (global.webSocketService as any).broadcast('new_announcement', announcementPayload);
+          console.log(`[公告] 🔌 WebSocket全员广播: ${announcement.title}`);
+        }
       }
 
       res.json({
@@ -736,6 +840,7 @@ export class MessageController {
 
   /**
    * 🔥 获取已发布的公告（供前端展示）
+   * 同时返回：本租户的公司公告 + 面向本租户的系统公告
    */
   async getPublishedAnnouncements(req: Request, res: Response): Promise<void> {
     try {
@@ -751,20 +856,49 @@ export class MessageController {
 
       const announcementRepo = dataSource.getRepository(Announcement);
       const now = new Date();
+      const tenantId = this.getTenantId();
 
-      // 查询已发布且在有效期内的公告
-      const queryBuilder = announcementRepo.createQueryBuilder('ann')
+      // ========== 1. 获取本租户的公司公告 ==========
+      const companyQb = announcementRepo.createQueryBuilder('ann')
         .where('ann.status = :status', { status: 'published' })
+        .andWhere("ann.source = 'company'")
         .andWhere('(ann.start_time IS NULL OR ann.start_time <= :now)', { now })
         .andWhere('(ann.end_time IS NULL OR ann.end_time >= :now)', { now })
         .orderBy('ann.is_pinned', 'DESC')
         .addOrderBy('ann.published_at', 'DESC')
         .take(20);
 
-      const announcements = await queryBuilder.getMany();
+      if (tenantId) {
+        companyQb.andWhere('ann.tenant_id = :tenantId', { tenantId });
+      }
 
-      // 过滤目标角色和部门
-      const filteredAnnouncements = announcements.filter(ann => {
+      const companyAnnouncements = await companyQb.getMany();
+
+      // ========== 2. 获取面向本租户的系统公告 ==========
+      // 系统公告不受 tenant_id 限制，通过 target_tenants 判断
+      const systemQb = announcementRepo.createQueryBuilder('ann')
+        .where('ann.status = :status', { status: 'published' })
+        .andWhere("ann.source = 'system'")
+        .andWhere('(ann.start_time IS NULL OR ann.start_time <= :now)', { now })
+        .andWhere('(ann.end_time IS NULL OR ann.end_time >= :now)', { now })
+        .orderBy('ann.is_pinned', 'DESC')
+        .addOrderBy('ann.published_at', 'DESC')
+        .take(10);
+
+      const systemAnnouncements = await systemQb.getMany();
+
+      // 过滤系统公告：target_tenants 为 null/空 表示全部租户，否则检查是否包含当前租户
+      const filteredSystemAnnouncements = systemAnnouncements.filter(ann => {
+        if (!ann.targetTenants || ann.targetTenants.length === 0) {
+          return true; // 全部租户可见
+        }
+        return tenantId ? ann.targetTenants.includes(tenantId) : false;
+      });
+
+      // ========== 3. 合并并按角色/部门过滤 ==========
+      const allAnnouncements = [...companyAnnouncements, ...filteredSystemAnnouncements];
+
+      const filteredAnnouncements = allAnnouncements.filter(ann => {
         // 如果没有指定目标角色，则所有人可见
         if (!ann.targetRoles || ann.targetRoles.length === 0) {
           // 检查目标部门
@@ -784,18 +918,25 @@ export class MessageController {
         return true;
       });
 
+      // 按置顶 + 发布时间排序
+      filteredAnnouncements.sort((a, b) => {
+        if ((a.isPinned || 0) !== (b.isPinned || 0)) {
+          return (b.isPinned || 0) - (a.isPinned || 0);
+        }
+        return new Date(b.publishedAt || b.createdAt).getTime() - new Date(a.publishedAt || a.createdAt).getTime();
+      });
+
       // 获取用户的阅读记录
       const readRepo = dataSource.getRepository(AnnouncementRead);
-      const userId = currentUser?.id; // userId 是字符串类型
-      console.log('[获取公告] 用户ID:', userId, '(类型:', typeof userId, '), 公告数量:', filteredAnnouncements.length);
+      const userId = currentUser?.id;
+      console.log('[获取公告] 用户ID:', userId, ', 公司公告:', companyAnnouncements.length, ', 系统公告:', filteredSystemAnnouncements.length);
 
       let readIds = new Set<string>();
       if (userId) {
         const readRecords = await readRepo.find({
-          where: { userId: String(userId) } // 确保是字符串类型
+          where: { userId: String(userId) }
         });
         readIds = new Set(readRecords.map(r => r.announcementId));
-        console.log('[获取公告] 已读公告数量:', readIds.size, ', 已读公告IDs:', Array.from(readIds));
       }
 
       res.json({
@@ -805,6 +946,7 @@ export class MessageController {
           title: ann.title,
           content: ann.content,
           type: ann.type,
+          source: ann.source || 'company',  // 🔥 返回公告来源
           priority: ann.priority,
           status: ann.status,
           isPinned: ann.isPinned === 1,
@@ -1462,7 +1604,15 @@ export class MessageController {
         .andWhere(
           '(msg.target_user_id = :userId OR FIND_IN_SET(:userId, msg.target_user_id) > 0)',
           { userId: String(userId) }
-        )
+        );
+
+      // 🔥 租户数据隔离：SaaS模式下只查询当前租户的消息
+      const tenantId = deployConfig.isSaaS() ? TenantContextManager.getTenantId() : undefined;
+      if (tenantId) {
+        queryBuilder.andWhere('msg.tenant_id = :tenantId', { tenantId });
+      }
+
+      queryBuilder
         .orderBy('msg.created_at', 'DESC')
         .skip(Number(offset))
         .take(Number(limit));
@@ -1486,7 +1636,7 @@ export class MessageController {
 
       // 🔥 修复：统计未读数量 - 排除已在 message_read_status 表中有记录的消息
       // 同时排除 targetUserId 为空的消息
-      const unreadCount = await messageRepo.createQueryBuilder('msg')
+      const unreadCountBuilder = messageRepo.createQueryBuilder('msg')
         .where('msg.target_user_id IS NOT NULL')
         .andWhere("msg.target_user_id != ''")
         .andWhere(
@@ -1496,8 +1646,14 @@ export class MessageController {
         .andWhere(
           'msg.id NOT IN (SELECT message_id FROM message_read_status WHERE user_id = :userId)',
           { userId: String(userId) }
-        )
-        .getCount();
+        );
+
+      // 🔥 租户数据隔离：未读数量统计也需要加租户条件
+      if (tenantId) {
+        unreadCountBuilder.andWhere('msg.tenant_id = :tenantId', { tenantId });
+      }
+
+      const unreadCount = await unreadCountBuilder.getCount();
 
       res.json({
         success: true,
@@ -1550,6 +1706,9 @@ export class MessageController {
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
+      // 🔥 租户数据隔离：创建消息时自动设置 tenant_id
+      const tenantId = deployConfig.isSaaS() ? TenantContextManager.getTenantId() : null;
+
       const message = messageRepo.create({
         id: uuidv4(),
         type,
@@ -1562,7 +1721,8 @@ export class MessageController {
         relatedId,
         relatedType,
         actionUrl,
-        isRead: 0
+        isRead: 0,
+        tenantId: tenantId || null
       });
 
       await messageRepo.save(message);
@@ -1618,6 +1778,9 @@ export class MessageController {
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
+      // 🔥 租户数据隔离：批量创建消息时自动设置 tenant_id
+      const tenantId = deployConfig.isSaaS() ? TenantContextManager.getTenantId() : null;
+
       const messageEntities = messages.map(msg => messageRepo.create({
         id: uuidv4(),
         type: msg.type,
@@ -1630,7 +1793,8 @@ export class MessageController {
         relatedId: msg.relatedId,
         relatedType: msg.relatedType,
         actionUrl: msg.actionUrl,
-        isRead: 0
+        isRead: 0,
+        tenantId: tenantId || null
       }));
 
       await messageRepo.save(messageEntities);
@@ -1721,7 +1885,7 @@ export class MessageController {
       const readStatusRepo = dataSource.getRepository(MessageReadStatus);
 
       // 🔥 获取当前用户的所有未读消息
-      const unreadMessages = await messageRepo.createQueryBuilder('msg')
+      const unreadQueryBuilder = messageRepo.createQueryBuilder('msg')
         .where(
           '(msg.target_user_id = :userId OR FIND_IN_SET(:userId, msg.target_user_id) > 0)',
           { userId: String(userId) }
@@ -1729,7 +1893,15 @@ export class MessageController {
         .andWhere(
           'msg.id NOT IN (SELECT message_id FROM message_read_status WHERE user_id = :userId)',
           { userId: String(userId) }
-        )
+        );
+
+      // 🔥 租户数据隔离：只标记当前租户的消息为已读
+      const tenantId = deployConfig.isSaaS() ? TenantContextManager.getTenantId() : undefined;
+      if (tenantId) {
+        unreadQueryBuilder.andWhere('msg.tenant_id = :tenantId', { tenantId });
+      }
+
+      const unreadMessages = await unreadQueryBuilder
         .select(['msg.id'])
         .getMany();
 
@@ -1777,8 +1949,14 @@ export class MessageController {
       let publishedAnnouncements = 0;
       try {
         const announcementRepo = dataSource.getRepository(Announcement);
-        totalAnnouncements = await announcementRepo.count();
-        publishedAnnouncements = await announcementRepo.count({ where: { status: 'published' } });
+        // 🔥 租户数据隔离
+        const tenantId = this.getTenantId();
+        const annWhere: any = {};
+        if (tenantId) {
+          annWhere.tenantId = tenantId;
+        }
+        totalAnnouncements = await announcementRepo.count({ where: annWhere });
+        publishedAnnouncements = await announcementRepo.count({ where: { ...annWhere, status: 'published' } });
       } catch (_e) {
         console.log('[统计] 公告表可能不存在');
       }
@@ -1828,8 +2006,14 @@ export class MessageController {
       if (userId) {
         try {
           const messageRepo = dataSource.getRepository(SystemMessage);
-          totalMessages = await messageRepo.count({ where: { targetUserId: userId } });
-          unreadMessages = await messageRepo.count({ where: { targetUserId: userId, isRead: 0 } });
+          // 🔥 租户数据隔离：统计只计算当前租户的消息
+          const tenantId = deployConfig.isSaaS() ? TenantContextManager.getTenantId() : undefined;
+          const statsCondition: any = { targetUserId: userId };
+          if (tenantId) {
+            statsCondition.tenantId = tenantId;
+          }
+          totalMessages = await messageRepo.count({ where: statsCondition });
+          unreadMessages = await messageRepo.count({ where: { ...statsCondition, isRead: 0 } });
         } catch (_e) {
           console.log('[统计] 系统消息表可能不存在');
         }
@@ -1888,8 +2072,15 @@ export class MessageController {
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
+      // 🔥 租户数据隔离：只能删除当前租户中自己的消息
+      const tenantId = deployConfig.isSaaS() ? TenantContextManager.getTenantId() : undefined;
+      const deleteCondition: any = { id, targetUserId: userId };
+      if (tenantId) {
+        deleteCondition.tenantId = tenantId;
+      }
+
       // 只能删除自己的消息
-      const result = await messageRepo.delete({ id, targetUserId: userId });
+      const result = await messageRepo.delete(deleteCondition);
 
       res.json({
         success: true,
@@ -1922,7 +2113,14 @@ export class MessageController {
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
-      const result = await messageRepo.delete({ targetUserId: userId });
+      // 🔥 租户数据隔离：只删除当前租户中属于当前用户的消息
+      const tenantId = deployConfig.isSaaS() ? TenantContextManager.getTenantId() : undefined;
+      const deleteCondition: any = { targetUserId: userId };
+      if (tenantId) {
+        deleteCondition.tenantId = tenantId;
+      }
+
+      const result = await messageRepo.delete(deleteCondition);
 
       console.log(`[系统消息] 用户 ${userId} 清空了 ${result.affected || 0} 条消息`);
 
@@ -1954,12 +2152,18 @@ export class MessageController {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      // 删除30天前的消息
-      const result = await messageRepo
+      // 🔥 租户数据隔离：SaaS模式下只清理当前租户的过期消息
+      const tenantId = deployConfig.isSaaS() ? TenantContextManager.getTenantId() : undefined;
+      const deleteBuilder = messageRepo
         .createQueryBuilder()
         .delete()
-        .where('created_at < :date', { date: thirtyDaysAgo })
-        .execute();
+        .where('created_at < :date', { date: thirtyDaysAgo });
+
+      if (tenantId) {
+        deleteBuilder.andWhere('tenant_id = :tenantId', { tenantId });
+      }
+
+      const result = await deleteBuilder.execute();
 
       console.log(`[系统消息] 🧹 自动清理了 ${result.affected || 0} 条过期消息（超过30天）`);
 
@@ -1993,9 +2197,15 @@ export class MessageController {
       // 检查表是否存在
       try {
         const channelRepo = dataSource.getRepository(NotificationChannel);
-        const channels = await channelRepo.find({
+        // 🔥 租户数据隔离
+        const tenantId = this.getTenantId();
+        const findOptions: any = {
           order: { createdAt: 'DESC' }
-        });
+        };
+        if (tenantId) {
+          findOptions.where = { tenantId };
+        }
+        const channels = await channelRepo.find(findOptions);
 
         console.log(`[通知配置] 查询到 ${channels.length} 个配置`);
 
@@ -2064,6 +2274,9 @@ export class MessageController {
       const currentUser = (req as any).currentUser || (req as any).user;
       const channelRepo = dataSource.getRepository(NotificationChannel);
 
+      // 🔥 租户数据隔离
+      const tenantId = this.getTenantId();
+
       const channel = channelRepo.create({
         id: uuidv4(),
         name,
@@ -2077,8 +2290,9 @@ export class MessageController {
         targetRoles: targetRoles || null,
         priorityFilter: priorityFilter || 'all',
         createdBy: currentUser?.id,
-        createdByName: currentUser?.realName || currentUser?.username || '系统'
-      });
+        createdByName: currentUser?.realName || currentUser?.username || '系统',
+        tenantId: tenantId || null
+      } as any);
 
       await channelRepo.save(channel);
 
@@ -2109,7 +2323,13 @@ export class MessageController {
       }
 
       const channelRepo = dataSource.getRepository(NotificationChannel);
-      const channel = await channelRepo.findOne({ where: { id } });
+      // 🔥 租户数据隔离：只能更新本租户的通知配置
+      const tenantId = this.getTenantId();
+      const findWhere: any = { id };
+      if (tenantId) {
+        findWhere.tenantId = tenantId;
+      }
+      const channel = await channelRepo.findOne({ where: findWhere });
 
       if (!channel) {
         res.status(404).json({ success: false, message: '通知配置不存在' });
@@ -2165,7 +2385,13 @@ export class MessageController {
       }
 
       const channelRepo = dataSource.getRepository(NotificationChannel);
-      const result = await channelRepo.delete({ id });
+      // 🔥 租户数据隔离：只能删除本租户的通知配置
+      const tenantId = this.getTenantId();
+      const deleteWhere: any = { id };
+      if (tenantId) {
+        deleteWhere.tenantId = tenantId;
+      }
+      const result = await channelRepo.delete(deleteWhere);
 
       if (result.affected === 0) {
         res.status(404).json({ success: false, message: '通知配置不存在' });
@@ -2197,7 +2423,13 @@ export class MessageController {
       }
 
       const channelRepo = dataSource.getRepository(NotificationChannel);
-      const channel = await channelRepo.findOne({ where: { id } });
+      // 🔥 租户数据隔离：只能测试本租户的通知配置
+      const tenantId = this.getTenantId();
+      const findWhere: any = { id };
+      if (tenantId) {
+        findWhere.tenantId = tenantId;
+      }
+      const channel = await channelRepo.findOne({ where: findWhere });
 
       if (!channel) {
         res.status(404).json({ success: false, message: '通知配置不存在' });
@@ -2411,6 +2643,12 @@ export class MessageController {
 
       const queryBuilder = logRepo.createQueryBuilder('log')
         .orderBy('log.created_at', 'DESC');
+
+      // 🔥 租户数据隔离
+      const tenantId = this.getTenantId();
+      if (tenantId) {
+        queryBuilder.andWhere('log.tenant_id = :tenantId', { tenantId });
+      }
 
       if (channelId) {
         queryBuilder.andWhere('log.channel_id = :channelId', { channelId });

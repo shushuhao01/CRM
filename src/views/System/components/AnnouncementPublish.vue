@@ -524,8 +524,11 @@ const publishAnnouncement = async (row: any) => {
       type: 'warning'
     })
 
-    await messageStore.updateAnnouncement(row.id, { status: 'published' })
+    // 🔥 使用正确的发布API（会创建系统消息通知用户）
+    await messageApi.publishAnnouncement(row.id)
     loadAnnouncements()
+    // 🔥 同时刷新用户公告（使横幅和铃铛实时更新）
+    messageStore.loadUserAnnouncements()
   } catch (error) {
     if (error !== 'cancel') {
       console.error('发布公告失败:', error)
@@ -584,6 +587,8 @@ const saveAnnouncement = async () => {
       // 如果是立即发布，还需要调用发布接口
       if (publishType.value === 'immediate' && result && result.id) {
         await messageApi.publishAnnouncement(result.id)
+        // 🔥 刷新用户公告（使横幅和铃铛实时更新）
+        messageStore.loadUserAnnouncements()
       }
     }
 

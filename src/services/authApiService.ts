@@ -44,6 +44,17 @@ export interface User {
   lastLoginAt?: string
   createdAt: string
   updatedAt: string
+  // 🔥 以下字段由后端登录响应动态返回
+  roleId?: string
+  rolePermissions?: string[]
+  tenantModules?: string[] | null
+  customerServicePermissions?: any
+  departmentIds?: string[]
+  departmentName?: string
+  customerServiceType?: string
+  dataScope?: string
+  name?: string
+  [key: string]: any  // 允许其他动态属性
 }
 
 export interface UpdateUserRequest {

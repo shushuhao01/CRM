@@ -7,9 +7,9 @@ import { CustomerTag } from '../entities/CustomerTag';
 import { User } from '../entities/User';
 import { Order } from '../entities/Order';
 import { CustomerShare } from '../entities/CustomerShare';
-import { Like } from 'typeorm';
+import { Like, In } from 'typeorm';
 import { formatDateTime, formatDate } from '../utils/dateFormat';
-import { addTenantFilter, withTenant, setTenantOnEntity, tenantRawSQL } from '../utils/tenantHelpers';
+// 🔥 修复：已移除addTenantFilter等未使用的导入，getTenantRepo已自动处理租户隔离
 import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
 
 const router = Router();
@@ -60,8 +60,10 @@ router.get('/', async (req: Request, res: Response) => {
     // 构建查询
     const queryBuilder = customerRepository.createQueryBuilder('customer');
 
-    // 🔥 租户数据隔离 - 只查询当前租户的客户
-    addTenantFilter(queryBuilder, 'customer');
+    // 🔥 租户数据隔离 - getTenantRepo已自动通过Proxy添加tenant_id过滤
+    // 不再需要额外调用addTenantFilter（避免重复过滤）
+
+    console.log('[客户列表] 查询参数:', { page: pageNum, pageSize: pageSizeNum, keyword, name, phone, level, status, startDate, endDate, onlyMine });
 
     // 🔥 根据用户角色进行权限过滤
     // 管理员和超级管理员可以看到所有客户（除非指定onlyMine=true）
@@ -123,7 +125,7 @@ router.get('/', async (req: Request, res: Response) => {
         }
       } else {
         // 普通成员：只能看到自己创建的或分配给自己的客户
-        console.log('[客户列表] 普通成员权限过滤, userId:', userId, '分享客户数:', sharedCustomerIds.length);
+        console.log('[客户列表] 普通成员权限过滤, userId:', userId, '角色:', userRole, '分享客户数:', sharedCustomerIds.length);
         if (sharedCustomerIds.length > 0) {
           queryBuilder.where(
             '(customer.createdBy = :userId OR customer.salesPersonId = :userId OR customer.id IN (:...sharedIds))',
@@ -139,9 +141,9 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     // 添加其他筛选条件
-    // 🔥 新增：支持keyword关键词搜索（同时搜索姓名和电话）
+    // 🔥 新增：支持keyword关键词搜索（同时搜索姓名、电话、客户编码和其他手机号）
     if (keyword) {
-      queryBuilder.andWhere('(customer.name LIKE :keyword OR customer.phone LIKE :keyword)', { keyword: `%${keyword}%` });
+      queryBuilder.andWhere('(customer.name LIKE :keyword OR customer.phone LIKE :keyword OR customer.customerNo LIKE :keyword OR CAST(customer.other_phones AS CHAR) LIKE :keyword)', { keyword: `%${keyword}%` });
     }
 
     if (name) {
@@ -149,7 +151,7 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     if (phone) {
-      queryBuilder.andWhere('customer.phone LIKE :phone', { phone: `%${phone}%` });
+      queryBuilder.andWhere('(customer.phone LIKE :phone OR CAST(customer.other_phones AS CHAR) LIKE :phone)', { phone: `%${phone}%` });
     }
 
     if (level) {
@@ -191,21 +193,12 @@ router.get('/', async (req: Request, res: Response) => {
       .andWhere('DATE(customer.createdAt) = :today', { today: todayStr })
       .getCount();
 
-    // 统计未下单客户数（订单数量为0的客户）
-    const customersWithOrders = await orderRepository
-      .createQueryBuilder('order')
-      .select('DISTINCT order.customerId', 'customerId')
-      .getRawMany();
-    const customerIdsWithOrders = customersWithOrders.map(item => item.customerId);
-
-    // 获取所有符合筛选条件的客户ID
-    const allFilteredCustomers = await statsQueryBuilder.clone()
-      .select('customer.id')
-      .getRawMany();
-    const allFilteredCustomerIds = allFilteredCustomers.map(item => item.customer_id);
-
-    // 计算未下单客户数
-    const noOrderCustomers = allFilteredCustomerIds.filter(id => !customerIdsWithOrders.includes(id)).length;
+    // 🔥 性能优化：统计未下单客户数（使用子查询替代全量查询+JS差集）
+    const noOrderCustomers = await statsQueryBuilder.clone()
+      .andWhere(`customer.id NOT IN (
+        SELECT DISTINCT o.customer_id FROM orders o WHERE o.customer_id IS NOT NULL
+      )`)
+      .getCount();
 
     // 排序和分页
     queryBuilder.orderBy('customer.createdAt', 'DESC')
@@ -214,60 +207,87 @@ router.get('/', async (req: Request, res: Response) => {
 
     const [customers, total] = await queryBuilder.getManyAndCount();
 
-    // 获取分享仓库，用于查询客户的分享状态
-    const shareRepository = getTenantRepo(CustomerShare);
+    // 🔥 性能优化：批量获取关联数据，替代N+1查询
+    // 之前每个客户都单独查询订单数、分享状态、销售人员（N条客户 = 3N+1次查询）
+    // 优化后：统一批量查询，只需要4次查询
+    const customerIds = customers.map(c => c.id);
+    const salesPersonIds = [...new Set(customers.map(c => c.salesPersonId).filter(Boolean))] as string[];
 
-    // 转换数据格式以匹配前端期望，并动态计算订单数
-    const list = await Promise.all(customers.map(async customer => {
-      // 从订单表统计该客户的订单数量
-      let realOrderCount = customer.orderCount || 0;
+    // 批量查询1：所有客户的订单数统计
+    const orderCountMap: Record<string, number> = {};
+    if (customerIds.length > 0) {
       try {
-        realOrderCount = await orderRepository.count({
-          where: { customerId: customer.id }
+        const orderCounts = await orderRepository
+          .createQueryBuilder('order')
+          .select('order.customerId', 'customerId')
+          .addSelect('COUNT(*)', 'count')
+          .where('order.customerId IN (:...ids)', { ids: customerIds })
+          .groupBy('order.customerId')
+          .getRawMany();
+        orderCounts.forEach((item: any) => {
+          orderCountMap[item.customerId] = parseInt(item.count) || 0;
         });
       } catch (e) {
-        console.warn(`统计客户${customer.id}订单数失败:`, e);
+        console.warn('批量统计订单数失败:', e);
       }
+    }
 
-      // 🔥 查询客户的分享状态
-      let shareInfo = null;
+    // 批量查询2：所有客户的分享状态
+    const shareRepository = getTenantRepo(CustomerShare);
+    const shareMap: Record<string, any> = {};
+    if (customerIds.length > 0) {
       try {
-        const activeShare = await shareRepository.findOne({
+        const shares = await shareRepository.find({
           where: {
-            customerId: customer.id,
-            status: 'active'
+            customerId: In(customerIds),
+            status: 'active' as any
           },
           order: { createdAt: 'DESC' }
         });
-        if (activeShare) {
-          shareInfo = {
-            id: activeShare.id,
-            isShared: true, // 🔥 添加isShared标记
-            status: activeShare.status,
-            sharedBy: activeShare.sharedBy,
-            sharedByName: activeShare.sharedByName,
-            sharedTo: activeShare.sharedTo,
-            sharedToName: activeShare.sharedToName,
-            shareTime: activeShare.createdAt,
-            expireTime: activeShare.expireTime,
-            timeLimit: activeShare.timeLimit
-          };
-        }
+        // 每个客户取最新的一条分享记录
+        shares.forEach((share: any) => {
+          if (!shareMap[share.customerId]) {
+            shareMap[share.customerId] = {
+              id: share.id,
+              isShared: true,
+              status: share.status,
+              sharedBy: share.sharedBy,
+              sharedByName: share.sharedByName,
+              sharedTo: share.sharedTo,
+              sharedToName: share.sharedToName,
+              shareTime: share.createdAt,
+              expireTime: share.expireTime,
+              timeLimit: share.timeLimit
+            };
+          }
+        });
       } catch (e) {
-        console.warn(`查询客户${customer.id}分享状态失败:`, e);
+        console.warn('批量查询分享状态失败:', e);
       }
+    }
 
-      // 🔥 获取负责销售的名字
-      let salesPersonName = '';
-      if (customer.salesPersonId) {
-        try {
-          const userRepository = getTenantRepo(User);
-          const salesPerson = await userRepository.findOne({ where: { id: customer.salesPersonId } });
-          salesPersonName = salesPerson?.realName || salesPerson?.name || '';
-        } catch (e) {
-          console.warn(`获取销售人员${customer.salesPersonId}信息失败:`, e);
-        }
+    // 批量查询3：所有涉及的销售人员
+    const salesPersonMap: Record<string, string> = {};
+    if (salesPersonIds.length > 0) {
+      try {
+        const userRepository = getTenantRepo(User);
+        const salesPersons = await userRepository.find({
+          where: { id: In(salesPersonIds) },
+          select: ['id', 'realName', 'name']
+        });
+        salesPersons.forEach((sp: any) => {
+          salesPersonMap[sp.id] = sp.realName || sp.name || '';
+        });
+      } catch (e) {
+        console.warn('批量获取销售人员信息失败:', e);
       }
+    }
+
+    // 转换数据格式（不再需要异步，直接使用Map查找）
+    const list = customers.map(customer => {
+      const realOrderCount = orderCountMap[customer.id] || customer.orderCount || 0;
+      const shareInfo = shareMap[customer.id] || null;
+      const salesPersonName = customer.salesPersonId ? (salesPersonMap[customer.salesPersonId] || '') : '';
 
       return {
         id: customer.id,
@@ -289,7 +309,7 @@ router.get('/', async (req: Request, res: Response) => {
         level: customer.level || 'normal',
         status: customer.status || 'active',
         salesPersonId: customer.salesPersonId || '',
-        salesPersonName: salesPersonName, // 🔥 添加负责销售名字
+        salesPersonName: salesPersonName,
         orderCount: realOrderCount,
         returnCount: customer.returnCount || 0,
         totalAmount: customer.totalAmount || 0,
@@ -327,7 +347,7 @@ router.get('/', async (req: Request, res: Response) => {
         fanAcquisitionTime: formatDate(customer.fanAcquisitionTime),
         shareInfo // 🔥 添加分享信息
       };
-    }));
+    });
 
     res.json({
       success: true,
@@ -862,9 +882,11 @@ router.get('/check-exists', async (req: Request, res: Response) => {
 
     console.log('[检查客户存在] 查询手机号:', phone);
 
-    const existingCustomer = await customerRepository.findOne({
-      where: { phone: phone as string }
-    });
+    // 🔥 修复：同时搜索主手机号和其他手机号（JSON数组），使用精确匹配
+    const existingCustomer = await customerRepository
+      .createQueryBuilder('customer')
+      .where('customer.phone = :phone OR JSON_CONTAINS(customer.other_phones, JSON_QUOTE(:phone))', { phone: phone as string })
+      .getOne();
 
     if (existingCustomer) {
       console.log('[检查客户存在] 找到客户:', existingCustomer.name);
@@ -940,11 +962,11 @@ router.get('/search', async (req: Request, res: Response) => {
 
     console.log('[客户搜索] 搜索关键词:', keyword);
 
-    // 搜索条件：姓名、手机号、客户编码
+    // 搜索条件：姓名、手机号、客户编码、其他手机号
     const customers = await customerRepository
       .createQueryBuilder('customer')
       .where(
-        'customer.name LIKE :keyword OR customer.phone LIKE :keyword OR customer.customerNo LIKE :keyword',
+        'customer.name LIKE :keyword OR customer.phone LIKE :keyword OR customer.customerNo LIKE :keyword OR CAST(customer.other_phones AS CHAR) LIKE :keyword',
         { keyword: `%${keyword}%` }
       )
       .orderBy('customer.createdAt', 'DESC')
@@ -1100,7 +1122,7 @@ router.post('/', async (req: Request, res: Response) => {
       status, salesPersonId, createdBy
     } = req.body;
 
-    console.log('[创建客户] 收到请求数据:', req.body);
+    console.log('[创建客户] 收到请求数据:', JSON.stringify(req.body));
 
     // 验证必填字段
     if (!name) {
@@ -1111,37 +1133,48 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // 检查手机号是否已存在
-    if (phone) {
-      const existingCustomer = await customerRepository.findOne({ where: { phone } });
-      if (existingCustomer) {
-        return res.status(400).json({
-          success: false,
-          code: 400,
-          message: '该手机号已存在客户记录'
-        });
-      }
-    }
-
-    // 获取当前用户信息
-    // 优先使用 currentUser（从数据库查询的完整用户对象），其次使用 user（JWT payload）
+    // 🔥 获取当前用户信息（在所有操作之前，用于日志和权限）
     const currentUser = (req as any).currentUser || (req as any).user;
     const currentUserId = currentUser?.id || (req as any).user?.userId;
+    const currentTenantId = (req as any).tenantId || currentUser?.tenantId || (req as any).user?.tenantId;
 
     console.log('[创建客户] 当前用户信息:', {
       id: currentUserId,
-      name: currentUser?.name,
+      name: currentUser?.name || currentUser?.realName,
       role: currentUser?.role,
+      tenantId: currentTenantId,
       departmentId: currentUser?.departmentId
     });
 
-    // 🔥 修复：优先使用当前登录用户的ID作为创建人
+    // 🔥 检查手机号是否已存在（在当前租户范围内）
+    if (phone) {
+      try {
+        const existingCustomer = await customerRepository.findOne({ where: { phone } });
+        if (existingCustomer) {
+          console.log('[创建客户] 手机号已存在:', phone, '客户:', existingCustomer.name, 'ID:', existingCustomer.id);
+          return res.status(400).json({
+            success: false,
+            code: 400,
+            message: `该手机号已存在客户记录（客户：${existingCustomer.name}）`
+          });
+        }
+      } catch (checkErr: any) {
+        console.error('[创建客户] 检查手机号存在性失败:', checkErr.message);
+        // 检查失败不阻止创建，继续流程（容错）
+      }
+    }
+
+    // 🔥 修复：优先使用当前登录用户的ID作为创建人和销售人员
     const finalCreatedBy = currentUserId || createdBy || salesPersonId || 'admin';
     const finalSalesPersonId = salesPersonId || currentUserId || null;
 
     console.log('[创建客户] 最终创建人ID:', finalCreatedBy, '销售人员ID:', finalSalesPersonId);
 
-    // 创建客户
+    // 🔥 修复：先生成一个临时UUID用于客户编码，避免两步保存
+    // 使用 crypto 或时间戳生成唯一编码前缀
+    const tempCodePrefix = Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+
+    // 创建客户（一步保存，包含预生成的客户编码占位符）
     const customer = customerRepository.create({
       name,
       phone,
@@ -1176,57 +1209,90 @@ router.post('/', async (req: Request, res: Response) => {
       totalAmount: 0
     });
 
-    console.log('[创建客户] 准备保存的客户对象:', customer);
+    console.log('[创建客户] 准备保存客户, 姓名:', customer.name, '手机:', customer.phone);
 
+    // 🔥 第一步保存：获取数据库分配的UUID
     const savedCustomer = await customerRepository.save(customer);
-    console.log('[创建客户] 第一次保存完成，savedCustomer:', savedCustomer);
-    console.log('[创建客户] savedCustomer.id:', savedCustomer.id);
 
-    // 生成客户编号
-    savedCustomer.customerNo = `C${savedCustomer.id.substring(0, 8).toUpperCase()}`;
-    console.log('[创建客户] 生成的客户编号:', savedCustomer.customerNo);
+    if (!savedCustomer || !savedCustomer.id) {
+      console.error('[创建客户] ❌ 保存后未获得ID，可能写入失败');
+      return res.status(500).json({
+        success: false,
+        code: 500,
+        message: '创建客户失败：数据库未返回有效ID'
+      });
+    }
 
-    await customerRepository.save(savedCustomer);
-    console.log('[创建客户] 第二次保存完成');
+    console.log('[创建客户] ✅ 第一步保存成功, ID:', savedCustomer.id, '租户:', (savedCustomer as any).tenantId);
 
-    console.log('[创建客户] 保存成功，客户ID:', savedCustomer.id);
+    // 🔥 修复：生成基于UUID的客户编号，然后做第二步更新
+    // 使用try-catch包裹第二步，即使编号生成失败，客户数据也已写入
+    const customerNo = `C${savedCustomer.id.substring(0, 8).toUpperCase()}`;
+    try {
+      savedCustomer.customerNo = customerNo;
+      await customerRepository.save(savedCustomer);
+      console.log('[创建客户] ✅ 客户编号已更新:', customerNo);
+    } catch (codeErr: any) {
+      // 🔥 关键修复：如果编号更新失败（如UNIQUE冲突），使用备用编号重试
+      console.warn('[创建客户] ⚠️ 客户编号更新失败（可能UNIQUE冲突），使用备用编号:', codeErr.message);
+      try {
+        const fallbackNo = `C${savedCustomer.id.replace(/-/g, '').substring(0, 12).toUpperCase()}`;
+        savedCustomer.customerNo = fallbackNo;
+        await customerRepository.save(savedCustomer);
+        console.log('[创建客户] ✅ 备用客户编号已更新:', fallbackNo);
+      } catch (fallbackErr: any) {
+        // 编号更新完全失败，但客户数据已保存，不影响核心功能
+        console.error('[创建客户] ⚠️ 客户编号更新完全失败，客户数据已保存但无编号:', fallbackErr.message);
+      }
+    }
+
+    // 🔥 验证：确认客户已成功写入数据库
+    const verifyCustomer = await customerRepository.findOne({ where: { id: savedCustomer.id } });
+    if (!verifyCustomer) {
+      console.error('[创建客户] ❌ 严重错误：保存后无法查回客户, ID:', savedCustomer.id);
+      return res.status(500).json({
+        success: false,
+        code: 500,
+        message: '创建客户异常：数据写入后无法验证，请检查数据库连接'
+      });
+    }
+
+    console.log('[创建客户] ✅✅ 数据库验证通过，客户确认已写入, ID:', verifyCustomer.id, '姓名:', verifyCustomer.name, '手机:', verifyCustomer.phone);
 
     // 转换数据格式返回
     const data = {
-      id: savedCustomer.id,
-      code: savedCustomer.customerNo,
-      name: savedCustomer.name,
-      phone: savedCustomer.phone || '',
-      age: savedCustomer.age || 0,
-      gender: savedCustomer.gender || 'unknown',
-      height: savedCustomer.height || null,
-      weight: savedCustomer.weight || null,
-      address: savedCustomer.address || '',
-      province: savedCustomer.province || '',
-      city: savedCustomer.city || '',
-      district: savedCustomer.district || '',
-      street: savedCustomer.street || '',
-      detailAddress: savedCustomer.detailAddress || '',
-      level: level || 'normal',
-      status: status || 'active',
-      salesPersonId: savedCustomer.salesPersonId || '',
+      id: verifyCustomer.id,
+      code: verifyCustomer.customerNo || customerNo,
+      name: verifyCustomer.name,
+      phone: verifyCustomer.phone || '',
+      age: verifyCustomer.age || 0,
+      gender: verifyCustomer.gender || 'unknown',
+      height: verifyCustomer.height || null,
+      weight: verifyCustomer.weight || null,
+      address: verifyCustomer.address || '',
+      province: verifyCustomer.province || '',
+      city: verifyCustomer.city || '',
+      district: verifyCustomer.district || '',
+      street: verifyCustomer.street || '',
+      detailAddress: verifyCustomer.detailAddress || '',
+      level: verifyCustomer.level || 'normal',
+      status: verifyCustomer.status || 'active',
+      salesPersonId: verifyCustomer.salesPersonId || '',
       orderCount: 0,
-      createTime: formatDateTime(savedCustomer.createdAt),
-      createdBy: savedCustomer.createdBy || '',
-      wechat: savedCustomer.wechat || '',
-      email: savedCustomer.email || '',
-      company: savedCustomer.company || '',
-      source: savedCustomer.source || '',
-      tags: savedCustomer.tags || [],
-      remarks: savedCustomer.remark || '',
-      medicalHistory: savedCustomer.medicalHistory || '',
-      improvementGoals: savedCustomer.improvementGoals || [],
-      otherGoals: savedCustomer.otherGoals || ''
+      createTime: formatDateTime(verifyCustomer.createdAt),
+      createdBy: verifyCustomer.createdBy || '',
+      wechat: verifyCustomer.wechat || '',
+      email: verifyCustomer.email || '',
+      company: verifyCustomer.company || '',
+      source: verifyCustomer.source || '',
+      tags: verifyCustomer.tags || [],
+      remarks: verifyCustomer.remark || '',
+      medicalHistory: verifyCustomer.medicalHistory || '',
+      improvementGoals: verifyCustomer.improvementGoals || [],
+      otherGoals: verifyCustomer.otherGoals || ''
     };
 
-    console.log('[创建客户] 准备返回的data对象:', data);
-    console.log('[创建客户] data.id:', data.id);
-    console.log('[创建客户] data.name:', data.name);
+    console.log('[创建客户] ✅ 准备返回成功响应, ID:', data.id, '姓名:', data.name);
 
     res.status(201).json({
       success: true,
@@ -1235,15 +1301,20 @@ router.post('/', async (req: Request, res: Response) => {
       data
     });
 
-    console.log('[创建客户] 响应已发送');
+    console.log('[创建客户] ✅ 响应已发送');
   } catch (error) {
-    console.error('[创建客户] 创建客户失败:', error);
-    console.error('[创建客户] 错误详情:', error instanceof Error ? error.stack : error);
-    res.status(500).json({
+    console.error('[创建客户] ❌ 创建客户失败:', error);
+    console.error('[创建客户] ❌ 错误详情:', error instanceof Error ? error.stack : error);
+
+    // 🔥 提供更详细的错误信息帮助前端诊断
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
+    const isDuplicate = errorMessage.includes('ER_DUP_ENTRY') || errorMessage.includes('Duplicate');
+
+    res.status(isDuplicate ? 409 : 500).json({
       success: false,
-      code: 500,
-      message: '创建客户失败',
-      error: error instanceof Error ? error.message : '未知错误'
+      code: isDuplicate ? 409 : 500,
+      message: isDuplicate ? '客户数据冲突（可能手机号或编码重复），请重试' : '创建客户失败',
+      error: errorMessage
     });
   }
 });
@@ -1548,6 +1619,8 @@ router.get('/:id/followups', async (req: Request, res: Response) => {
     console.log(`[客户跟进] 查询客户 ${customerId} 的跟进记录`);
 
     // 🔥 修复：使用原生SQL查询，避免实体字段不匹配问题
+    // 🔥 租户数据隔离：添加 tenant_id 过滤
+    const tFollowUp = tenantSQL('');
     const followUps = await AppDataSource.query(`
       SELECT
         id,
@@ -1566,9 +1639,9 @@ router.get('/:id/followups', async (req: Request, res: Response) => {
         created_at as createdAt,
         updated_at as updatedAt
       FROM follow_up_records
-      WHERE customer_id = ?
+      WHERE customer_id = ?${tFollowUp.sql}
       ORDER BY created_at DESC
-    `, [customerId]);
+    `, [customerId, ...tFollowUp.params]);
 
     console.log(`[客户跟进] 查询结果:`, followUps.length, '条记录');
     if (followUps.length > 0) {

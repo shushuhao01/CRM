@@ -10,9 +10,10 @@
         <el-button type="success" :icon="FullScreen" @click="handleFullScreen" class="fullscreen-btn">
           全屏查看
         </el-button>
-        <el-button type="info" :icon="UserFilled" @click="handleRoleManagement" class="role-btn">
+        <!-- 角色管理按钮已注释 - 部门只做组织架构管理，角色管理在独立的角色管理菜单中 -->
+        <!-- <el-button type="info" :icon="UserFilled" @click="handleRoleManagement" class="role-btn">
           角色管理
-        </el-button>
+        </el-button> -->
         <el-button type="primary" :icon="Plus" @click="handleAddDepartment" class="add-btn">
           新建部门
         </el-button>

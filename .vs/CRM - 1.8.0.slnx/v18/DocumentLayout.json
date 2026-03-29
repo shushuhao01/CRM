@@ -1,12 +1,173 @@
 {
   "Version": 1,
   "WorkspaceRootPath": "D:\\kaifa\\CRM - 1.8.0\\",
-  "Documents": [],
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\kaifa\\CRM - 1.8.0\\Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\kaifa\\CRM - 1.8.0\\backend\\src\\controllers\\RoleController.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:backend\\src\\controllers\\RoleController.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\kaifa\\CRM - 1.8.0\\backend\\src\\controllers\\PermissionController.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:backend\\src\\controllers\\PermissionController.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\kaifa\\CRM - 1.8.0\\backend\\src\\controllers\\UserController.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:backend\\src\\controllers\\UserController.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\kaifa\\CRM - 1.8.0\\backend\\src\\entities\\SensitiveInfoPermission.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:backend\\src\\entities\\SensitiveInfoPermission.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\kaifa\\CRM - 1.8.0\\backend\\src\\entities\\CustomerServicePermission.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:backend\\src\\entities\\CustomerServicePermission.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\kaifa\\CRM - 1.8.0\\backend\\src\\entities\\UserPermission.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:backend\\src\\entities\\UserPermission.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\kaifa\\CRM - 1.8.0\\docs\\\u89D2\u8272\u6743\u9650\u4E0E\u79DF\u6237\u9694\u79BB-\u6DF1\u5EA6\u5206\u6790\u62A5\u544AV2.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:docs\\\u89D2\u8272\u6743\u9650\u4E0E\u79DF\u6237\u9694\u79BB-\u6DF1\u5EA6\u5206\u6790\u62A5\u544AV2.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\kaifa\\CRM - 1.8.0\\docs\\Admin\u540E\u53F0\u5F00\u53D1\u6587\u6863-2026-03-04\\Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:docs\\Admin\u540E\u53F0\u5F00\u53D1\u6587\u6863-2026-03-04\\Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}"
+    }
+  ],
   "DocumentGroupContainers": [
     {
       "Orientation": 0,
       "VerticalTabListWidth": 256,
-      "DocumentGroups": []
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 2,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 8,
+              "Title": "Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md",
+              "DocumentMoniker": "D:\\kaifa\\CRM - 1.8.0\\docs\\Admin\u540E\u53F0\u5F00\u53D1\u6587\u6863-2026-03-04\\Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md",
+              "RelativeDocumentMoniker": "docs\\Admin\u540E\u53F0\u5F00\u53D1\u6587\u6863-2026-03-04\\Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md",
+              "ToolTip": "D:\\kaifa\\CRM - 1.8.0\\docs\\Admin\u540E\u53F0\u5F00\u53D1\u6587\u6863-2026-03-04\\Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md",
+              "RelativeToolTip": "docs\\Admin\u540E\u53F0\u5F00\u53D1\u6587\u6863-2026-03-04\\Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAADECAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001818|",
+              "WhenOpened": "2026-03-22T09:31:55.983Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "\u89D2\u8272\u6743\u9650\u4E0E\u79DF\u6237\u9694\u79BB-\u6DF1\u5EA6\u5206\u6790\u62A5\u544AV2.md",
+              "DocumentMoniker": "D:\\kaifa\\CRM - 1.8.0\\docs\\\u89D2\u8272\u6743\u9650\u4E0E\u79DF\u6237\u9694\u79BB-\u6DF1\u5EA6\u5206\u6790\u62A5\u544AV2.md",
+              "RelativeDocumentMoniker": "docs\\\u89D2\u8272\u6743\u9650\u4E0E\u79DF\u6237\u9694\u79BB-\u6DF1\u5EA6\u5206\u6790\u62A5\u544AV2.md",
+              "ToolTip": "D:\\kaifa\\CRM - 1.8.0\\docs\\\u89D2\u8272\u6743\u9650\u4E0E\u79DF\u6237\u9694\u79BB-\u6DF1\u5EA6\u5206\u6790\u62A5\u544AV2.md",
+              "RelativeToolTip": "docs\\\u89D2\u8272\u6743\u9650\u4E0E\u79DF\u6237\u9694\u79BB-\u6DF1\u5EA6\u5206\u6790\u62A5\u544AV2.md",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABQEAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001818|",
+              "WhenOpened": "2026-03-22T09:26:46.754Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md",
+              "DocumentMoniker": "D:\\kaifa\\CRM - 1.8.0\\Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md",
+              "RelativeDocumentMoniker": "Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md",
+              "ToolTip": "D:\\kaifa\\CRM - 1.8.0\\Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md",
+              "RelativeToolTip": "Admin\u540E\u53F0\u7CFB\u7EDF\u8BBE\u7F6E\u529F\u80FD\u5B8C\u6210\u603B\u7ED3.md",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001818|",
+              "WhenOpened": "2026-03-22T08:57:43.387Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "UserController.ts",
+              "DocumentMoniker": "D:\\kaifa\\CRM - 1.8.0\\backend\\src\\controllers\\UserController.ts",
+              "RelativeDocumentMoniker": "backend\\src\\controllers\\UserController.ts",
+              "ToolTip": "D:\\kaifa\\CRM - 1.8.0\\backend\\src\\controllers\\UserController.ts",
+              "RelativeToolTip": "backend\\src\\controllers\\UserController.ts",
+              "ViewState": "AgIAAOAAAAAAAAAAAABIwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-03-22T08:08:10.243Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "PermissionController.ts",
+              "DocumentMoniker": "D:\\kaifa\\CRM - 1.8.0\\backend\\src\\controllers\\PermissionController.ts",
+              "RelativeDocumentMoniker": "backend\\src\\controllers\\PermissionController.ts",
+              "ToolTip": "D:\\kaifa\\CRM - 1.8.0\\backend\\src\\controllers\\PermissionController.ts",
+              "RelativeToolTip": "backend\\src\\controllers\\PermissionController.ts",
+              "ViewState": "AgIAAL8AAAAAAAAAAABIwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-03-22T08:07:42.011Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "RoleController.ts",
+              "DocumentMoniker": "D:\\kaifa\\CRM - 1.8.0\\backend\\src\\controllers\\RoleController.ts",
+              "RelativeDocumentMoniker": "backend\\src\\controllers\\RoleController.ts",
+              "ToolTip": "D:\\kaifa\\CRM - 1.8.0\\backend\\src\\controllers\\RoleController.ts",
+              "RelativeToolTip": "backend\\src\\controllers\\RoleController.ts",
+              "ViewState": "AgIAAGQBAAAAAAAAAAAAwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-03-22T08:06:13.862Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "UserPermission.ts",
+              "DocumentMoniker": "D:\\kaifa\\CRM - 1.8.0\\backend\\src\\entities\\UserPermission.ts",
+              "RelativeDocumentMoniker": "backend\\src\\entities\\UserPermission.ts",
+              "ToolTip": "D:\\kaifa\\CRM - 1.8.0\\backend\\src\\entities\\UserPermission.ts",
+              "RelativeToolTip": "backend\\src\\entities\\UserPermission.ts",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-03-22T08:41:04.777Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "CustomerServicePermission.ts",
+              "DocumentMoniker": "D:\\kaifa\\CRM - 1.8.0\\backend\\src\\entities\\CustomerServicePermission.ts",
+              "RelativeDocumentMoniker": "backend\\src\\entities\\CustomerServicePermission.ts",
+              "ToolTip": "D:\\kaifa\\CRM - 1.8.0\\backend\\src\\entities\\CustomerServicePermission.ts",
+              "RelativeToolTip": "backend\\src\\entities\\CustomerServicePermission.ts",
+              "ViewState": "AgIAAAwAAAAAAAAAAABIwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-03-22T08:08:28.727Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "SensitiveInfoPermission.ts",
+              "DocumentMoniker": "D:\\kaifa\\CRM - 1.8.0\\backend\\src\\entities\\SensitiveInfoPermission.ts",
+              "RelativeDocumentMoniker": "backend\\src\\entities\\SensitiveInfoPermission.ts",
+              "ToolTip": "D:\\kaifa\\CRM - 1.8.0\\backend\\src\\entities\\SensitiveInfoPermission.ts",
+              "RelativeToolTip": "backend\\src\\entities\\SensitiveInfoPermission.ts",
+              "ViewState": "AgIAAAgAAAAAAAAAAABIwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-03-22T08:08:17.678Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
     }
   ]
 }

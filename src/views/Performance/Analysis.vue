@@ -675,12 +675,12 @@ const selectedDepartment = ref(userStore.isAdmin ? '' : userStore.currentUser?.d
 const sortBy = ref('performance')
 const selectedQuickFilter = ref('today')
 
-// 成员信息
+// 成员信息 - 🔥 修复：移除硬编码模拟数据，使用当前登录用户真实信息
 const memberInfo = ref({
   id: '',
-  name: '张三',
-  department: '销售一部',
-  joinDate: '2023-01-15',
+  name: '',
+  department: '',
+  joinDate: '',
   avatar: ''
 })
 
@@ -2114,6 +2114,18 @@ onMounted(async () => {
   // 权限检查
   if (!checkPermission()) {
     return
+  }
+
+  // 🔥 修复：用当前登录用户的真实信息初始化成员信息卡片
+  const currentUser = userStore.currentUser as any
+  if (currentUser) {
+    memberInfo.value = {
+      id: currentUser.id || '',
+      name: currentUser.realName || currentUser.name || currentUser.username || '',
+      department: currentUser.departmentName || currentUser.department || '未分配',
+      joinDate: currentUser.createTime ? String(currentUser.createTime).split(' ')[0] : '',
+      avatar: currentUser.avatar || ''
+    }
   }
 
   // 初始化部门数据

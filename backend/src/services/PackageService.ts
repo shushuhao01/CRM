@@ -82,6 +82,9 @@ export class PackageService {
     price: number;
     original_price?: number;
     billing_cycle: 'monthly' | 'yearly' | 'once';
+    yearly_discount_rate?: number;
+    yearly_bonus_months?: number;
+    yearly_price?: number | null;
     duration_days: number;
     max_users: number;
     max_storage_gb: number;
@@ -100,6 +103,9 @@ export class PackageService {
 
     const pkg = this.packageRepository.create({
       ...data,
+      yearly_discount_rate: data.yearly_discount_rate ?? 0,
+      yearly_bonus_months: data.yearly_bonus_months ?? 0,
+      yearly_price: data.yearly_price ?? null,
       is_trial: data.is_trial ?? false,
       is_recommended: data.is_recommended ?? false,
       is_visible: data.is_visible ?? true,

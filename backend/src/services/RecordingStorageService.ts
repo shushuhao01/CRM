@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { AppDataSource } from '../config/database';
+import { getCurrentTenantIdSafe, tenantRawSQL } from '../utils/tenantHelpers';
 
 // 录音文件信息接口
 export interface RecordingFileInfo {
@@ -234,8 +235,9 @@ class RecordingStorageService {
     await fs.promises.writeFile(fullFilePath, buffer);
 
     // 生成访问URL
-    const relativePath = `recordings/${subPath}/${fileName}`;
-    const fileUrl = `${this.config.localDomain}/api/v1/calls/recordings/stream/${encodeURIComponent(relativePath)}`;
+    // 🔥 修复：不使用 encodeURIComponent 编码整个路径（会把 / 编码为 %2F 导致播放失败）
+    // 只对文件名进行编码，保持路径分隔符不变
+    const fileUrl = `${this.config.localDomain}/api/v1/calls/recordings/stream/recordings/${subPath}/${encodeURIComponent(fileName)}`;
 
     return {
       path: fullFilePath,
@@ -363,10 +365,12 @@ class RecordingStorageService {
    */
   private async saveRecordingToDatabase(info: RecordingFileInfo): Promise<void> {
     try {
+      // 🔥 租户隔离：保存录音记录时写入 tenant_id
+      const tenantId = getCurrentTenantIdSafe() || null;
       await AppDataSource.query(
         `INSERT INTO call_recordings
-         (id, call_id, customer_id, customer_name, customer_phone, file_name, file_path, file_url, file_size, duration, format, storage_type, user_id, user_name)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, call_id, customer_id, customer_name, customer_phone, file_name, file_path, file_url, file_size, duration, format, storage_type, user_id, user_name, tenant_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           info.id,
           info.callId,
@@ -381,7 +385,8 @@ class RecordingStorageService {
           info.format,
           info.storageType,
           info.userId || null,
-          info.userName || null
+          info.userName || null,
+          tenantId
         ]
       );
     } catch (error) {
@@ -399,9 +404,11 @@ class RecordingStorageService {
     recordingSize: number
   ): Promise<void> {
     try {
+      // 🔥 租户隔离：更新通话记录时添加 tenant_id 条件
+      const t = tenantRawSQL();
       await AppDataSource.query(
-        `UPDATE call_records SET recording_url = ?, has_recording = 1, recording_size = ?, updated_at = NOW() WHERE id = ?`,
-        [recordingUrl, recordingSize, callId]
+        `UPDATE call_records SET recording_url = ?, has_recording = 1, recording_size = ?, updated_at = NOW() WHERE id = ?${t.sql}`,
+        [recordingUrl, recordingSize, callId, ...t.params]
       );
     } catch (error) {
       console.error('[RecordingStorageService] 更新通话记录失败:', error);
@@ -445,9 +452,11 @@ class RecordingStorageService {
       }
 
       // 云存储文件需要从数据库获取信息
+      // 🔥 租户隔离：查询录音记录添加 tenant_id 过滤
+      const t = tenantRawSQL();
       const records = await AppDataSource.query(
-        `SELECT * FROM call_recordings WHERE file_path = ? OR file_url LIKE ?`,
-        [decodedPath, `%${decodedPath}%`]
+        `SELECT * FROM call_recordings WHERE (file_path = ? OR file_url LIKE ?) AND is_deleted = 0${t.sql}`,
+        [decodedPath, `%${decodedPath}%`, ...t.params]
       );
 
       if (records.length === 0) {
@@ -481,10 +490,13 @@ class RecordingStorageService {
    */
   async deleteRecording(recordingId: string): Promise<boolean> {
     try {
+      // 🔥 租户隔离：查询和操作都添加 tenant_id 过滤
+      const t = tenantRawSQL();
+
       // 获取录音信息
       const records = await AppDataSource.query(
-        `SELECT * FROM call_recordings WHERE id = ?`,
-        [recordingId]
+        `SELECT * FROM call_recordings WHERE id = ?${t.sql}`,
+        [recordingId, ...t.params]
       );
 
       if (records.length === 0) {
@@ -501,14 +513,14 @@ class RecordingStorageService {
 
       // 更新数据库
       await AppDataSource.query(
-        `UPDATE call_recordings SET is_deleted = 1, deleted_at = NOW() WHERE id = ?`,
-        [recordingId]
+        `UPDATE call_recordings SET is_deleted = 1, deleted_at = NOW() WHERE id = ?${t.sql}`,
+        [recordingId, ...t.params]
       );
 
       // 更新通话记录
       await AppDataSource.query(
-        `UPDATE call_records SET has_recording = 0, recording_url = NULL WHERE id = ?`,
-        [record.call_id]
+        `UPDATE call_records SET has_recording = 0, recording_url = NULL WHERE id = ?${t.sql}`,
+        [record.call_id, ...t.params]
       );
 
       return true;
@@ -523,9 +535,11 @@ class RecordingStorageService {
    */
   async cleanupExpiredRecordings(): Promise<number> {
     try {
-      // 获取过期录音
+      // 🔥 租户隔离：获取过期录音时添加 tenant_id 过滤
+      const t = tenantRawSQL();
       const expiredRecords = await AppDataSource.query(
-        `SELECT * FROM call_recordings WHERE expire_at IS NOT NULL AND expire_at < NOW() AND is_deleted = 0`
+        `SELECT * FROM call_recordings WHERE expire_at IS NOT NULL AND expire_at < NOW() AND is_deleted = 0${t.sql}`,
+        [...t.params]
       );
 
       let deletedCount = 0;
@@ -553,12 +567,15 @@ class RecordingStorageService {
     byStorageType: Record<string, { count: number; size: number }>;
   }> {
     try {
+      // 🔥 租户隔离：统计数据添加 tenant_id 过滤
+      const t = tenantRawSQL();
       const stats = await AppDataSource.query(
         `SELECT
            COUNT(*) as total_count,
            COALESCE(SUM(file_size), 0) as total_size,
            COALESCE(SUM(duration), 0) as total_duration
-         FROM call_recordings WHERE is_deleted = 0`
+         FROM call_recordings WHERE is_deleted = 0${t.sql}`,
+        [...t.params]
       );
 
       const byType = await AppDataSource.query(
@@ -567,8 +584,9 @@ class RecordingStorageService {
            COUNT(*) as count,
            COALESCE(SUM(file_size), 0) as size
          FROM call_recordings
-         WHERE is_deleted = 0
-         GROUP BY storage_type`
+         WHERE is_deleted = 0${t.sql}
+         GROUP BY storage_type`,
+        [...t.params]
       );
 
       const byStorageType: Record<string, { count: number; size: number }> = {};

@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import { timeoutReminderService } from '../services/TimeoutReminderService';
 import { getDataSource } from '../config/database';
 import { SystemConfig } from '../entities/SystemConfig';
+import { getTenantRepo } from '../utils/tenantRepo';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.get('/config', async (_req: Request, res: Response) => {
     let isEnabled = true;
 
     if (dataSource) {
-      const configRepo = dataSource.getRepository(SystemConfig);
+      const configRepo = getTenantRepo(SystemConfig);
       const enabledConfig = await configRepo.findOne({
         where: { configKey: 'timeout_reminder_enabled', configGroup: 'timeout_reminder' }
       });
@@ -68,7 +69,7 @@ router.put('/config', async (req: Request, res: Response) => {
       return;
     }
 
-    const configRepo = dataSource.getRepository(SystemConfig);
+    const configRepo = getTenantRepo(SystemConfig);
 
     // 更新配置
     const updates: Array<{ key: string; value: string }> = [];

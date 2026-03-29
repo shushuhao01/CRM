@@ -497,7 +497,7 @@
               ref="audioPlayer"
               controls
               style="width: 100%;"
-              :src="currentRecord.recordingUrl"
+              :src="getRecordingUrlWithToken(currentRecord.recordingUrl)"
             >
               您的浏览器不支持音频播放
             </audio>
@@ -559,7 +559,6 @@ import { useUserStore } from '@/stores/user'
 import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import type { CallRecord } from '@/api/call'
-import { maskPhone } from '@/utils/phone'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import {
@@ -828,6 +827,15 @@ const playRecording = (record: CallRecord) => {
 
   // 跳转到录音管理页面
   safeNavigator.push(`/service-management/call/recordings?recordId=${record.id}`)
+}
+
+// 🔥 修复：为录音URL附加token，解决audio标签无法携带JWT header的问题
+const getRecordingUrlWithToken = (url: string | undefined): string => {
+  if (!url) return ''
+  const authToken = localStorage.getItem('auth_token')
+  if (!authToken) return url
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}token=${encodeURIComponent(authToken)}`
 }
 
 const downloadRecording = async (record: CallRecord) => {

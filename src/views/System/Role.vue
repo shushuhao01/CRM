@@ -2105,8 +2105,16 @@ const confirmPermissions = async () => {
     const checkedKeys = permissionTreeRef.value?.getCheckedKeys() as string[]
     const halfCheckedKeys = permissionTreeRef.value?.getHalfCheckedKeys() as string[]
 
-    // 合并完全选中和半选节点
-    const allPermissions = [...(checkedKeys || []), ...(halfCheckedKeys || [])]
+    // 🔥 关键修复：过滤掉半选的模块级 key（顶层模块）
+    // 避免半选父节点（如 finance）导致权限放大（所有财务子菜单都可见）
+    // 模块级 key 是权限树顶层节点的 id（不含点号的一级 key）
+    const moduleTopKeys = (permissionTree.value || []).map((m: any) => m.id)
+    const filteredHalfChecked = (halfCheckedKeys || []).filter(
+      (key: string) => !moduleTopKeys.includes(key)
+    )
+
+    // 合并完全选中和过滤后的半选节点
+    const allPermissions = [...(checkedKeys || []), ...filteredHalfChecked]
 
     if (!currentRole.value) {
       ElMessage.error('未选择角色')

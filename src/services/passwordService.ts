@@ -178,7 +178,8 @@ class PasswordService {
         }
       } catch (apiError: unknown) {
         // 如果API调用失败，返回错误信息
-        const errorMessage = apiError.response?.data?.message || apiError.message || '密码修改失败'
+        const err = apiError as any
+        const errorMessage = err?.response?.data?.message || err?.message || '密码修改失败'
         return {
           success: false,
           message: errorMessage

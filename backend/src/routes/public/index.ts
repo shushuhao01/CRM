@@ -6,6 +6,7 @@ import { Router } from 'express';
 import registerRoutes from './register';
 import packagesRoutes from './packages';
 import paymentRoutes from './payment';
+import licenseQueryRoutes from './license-query';
 
 const router = Router();
 
@@ -17,5 +18,8 @@ router.use('/packages', packagesRoutes);
 
 // 支付相关接口
 router.use('/payment', paymentRoutes);
+
+// 授权查询接口（供私有部署系统调用）
+router.use('/license-query', licenseQueryRoutes);
 
 export default router;

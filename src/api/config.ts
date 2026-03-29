@@ -50,10 +50,12 @@ export const API_ENDPOINTS = {
     SUBMIT_AUDIT: (id: string) => `/orders/${id}/submit-audit`,
     CANCEL_REQUEST: '/orders/cancel-request',
     PENDING_CANCEL: '/orders/pending-cancel',
+    PENDING_CANCEL_COUNT: '/orders/pending-cancel-count',
     CANCEL_AUDIT: (id: string) => `/orders/${id}/cancel-audit`,
     AUDITED_CANCEL: '/orders/audited-cancel',
     STATISTICS: '/orders/statistics',
     CHECK_TRANSFER: '/orders/check-transfer',
+    CHECK_DEPARTMENT_LIMIT: '/orders/check-department-limit',
     UPDATE_MARK_TYPE: (id: string) => `/orders/${id}/mark-type`,
   },
 

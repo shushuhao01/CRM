@@ -9,8 +9,13 @@ import { User } from '../entities/User';
 import { logger } from '../config/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { authenticateToken, requireManagerOrAdmin } from '../middleware/auth';
 
 const router = Router();
+
+// 所有路由都需要认证（这样才能正确设置租户上下文）
+router.use(authenticateToken);
+router.use(requireManagerOrAdmin);
 
 // 获取Repository（带错误处理）
 const getPermissionRepository = () => {
@@ -65,7 +70,7 @@ router.get('/', async (req: Request, res: Response) => {
     if (userIds.length > 0) {
       try {
         const userRepo = getUserRepository();
-        const users = await userRepo.createQueryBuilder('user').where('user.id IN (:...ids)', { ids: userIds }).getMany();
+        const users = await userRepo.createQueryBuilder('user').andWhere('user.id IN (:...ids)', { ids: userIds }).getMany();
         users.forEach(user => {
           usersMap.set(user.id, { id: user.id, name: user.realName || user.name, email: user.email, department: user.departmentName, departmentId: user.departmentId, role: user.role });
         });
@@ -176,10 +181,11 @@ router.get('/available-users', async (req: Request, res: Response) => {
       logger.warn('获取已配置用户失败（表可能不存在）:', permError);
     }
 
-    // 获取所有活跃用户
+    // 获取所有活跃用户（排除超管和管理员角色，仅本租户数据由 getTenantRepo 自动过滤）
     const queryBuilder = userRepo
       .createQueryBuilder('user')
-      .where('user.status = :status', { status: 'active' });
+      .andWhere('user.status = :status', { status: 'active' })
+      .andWhere('user.role NOT IN (:...excludeRoles)', { excludeRoles: ['super_admin', 'admin'] });
 
     // 排除已配置的用户
     if (existingUserIds.length > 0) {
@@ -371,6 +377,14 @@ router.post('/', async (req: Request, res: Response) => {
 
     await permissionRepo.save(newPermission);
 
+    // 自动将用户角色更改为 customer_service（仅限本租户内操作）
+    const previousRole = user.role;
+    if (previousRole !== 'customer_service' && previousRole !== 'super_admin' && previousRole !== 'admin') {
+      user.role = 'customer_service';
+      await userRepo.save(user);
+      logger.info(`用户角色已自动更改: userId=${userId}, ${previousRole} -> customer_service`);
+    }
+
     logger.info(`创建客服权限配置成功: userId=${userId}, type=${customerServiceType}`);
 
     res.status(201).json({
@@ -480,6 +494,19 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
     await permissionRepo.remove(permission);
 
+    // 恢复用户角色（仅限本租户内操作）
+    try {
+      const userRepo = getUserRepository();
+      const user = await userRepo.findOne({ where: { id: permission.userId } });
+      if (user && user.role === 'customer_service') {
+        user.role = 'user';
+        await userRepo.save(user);
+        logger.info(`用户角色已恢复: userId=${permission.userId}, customer_service -> user`);
+      }
+    } catch (roleError) {
+      logger.warn('恢复用户角色失败:', roleError);
+    }
+
     logger.info(`删除客服权限配置成功: id=${id}, userId=${permission.userId}`);
 
     res.json({
@@ -561,6 +588,13 @@ router.post('/batch', async (req: Request, res: Response) => {
             createdByName: currentUser.realName || currentUser.name || null
           });
           await permissionRepo.save(newPermission);
+
+          // 自动将用户角色更改为 customer_service
+          if (user.role !== 'customer_service' && user.role !== 'super_admin' && user.role !== 'admin') {
+            user.role = 'customer_service';
+            await userRepo.save(user);
+          }
+
           created++;
         }
       } catch (err) {

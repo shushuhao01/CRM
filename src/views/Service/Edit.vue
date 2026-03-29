@@ -185,7 +185,7 @@
                     <el-option
                       v-for="phone in customerPhones"
                       :key="phone.id"
-                      :label="maskPhone(phone.phone)"
+                      :label="displaySensitiveInfoNew(phone.phone, SensitiveInfoType.PHONE)"
                       :value="phone.phone"
                     />
                   </el-select>
@@ -327,7 +327,7 @@
                     <el-option
                       v-for="phone in contactPhones"
                       :key="phone.id"
-                      :label="maskPhone(phone.phone)"
+                      :label="displaySensitiveInfoNew(phone.phone, SensitiveInfoType.PHONE)"
                       :value="phone.phone"
                     />
                   </el-select>
@@ -536,7 +536,8 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft, Plus, Search } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules, UploadUserFile } from 'element-plus'
 import { useResponsive } from '@/utils/responsive'
-import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 import { PhoneSyncService } from '@/services/phoneSync'
 import { createSafeNavigator } from '@/utils/navigation'
 import { useServiceStore, type AfterSalesService } from '@/stores/service'

@@ -3,17 +3,45 @@ import { AppDataSource } from '../../config/database'
 
 const router = Router()
 
+// 确保私有套餐有年度授权价（首次请求时检查）
+let privateAnnualPriceChecked = false
+async function ensurePrivateAnnualPrice(): Promise<void> {
+  if (privateAnnualPriceChecked) return
+  try {
+    // 检查 yearly_price 字段是否存在
+    const cols = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenant_packages'
+       AND COLUMN_NAME = 'yearly_price'`
+    )
+    if (cols.length === 0) {
+      privateAnnualPriceChecked = true
+      return
+    }
+    // 为缺少年度价格的私有套餐初始化（约永久价的38%，约3年回本）
+    const result = await AppDataSource.query(
+      `UPDATE tenant_packages SET yearly_price = ROUND(price * 0.38, -2)
+       WHERE type = 'private' AND price > 0
+       AND (yearly_price IS NULL OR yearly_price = 0)`
+    )
+    if (result.affectedRows > 0) {
+      console.log(`[public/packages] ✅ 已为 ${result.affectedRows} 个私有套餐初始化年度授权价`)
+    }
+    privateAnnualPriceChecked = true
+  } catch (e) {
+    privateAnnualPriceChecked = true // 避免重复报错
+  }
+}
+
 // 获取官网展示的套餐列表（公开接口）
 router.get('/', async (req: Request, res: Response) => {
   try {
+    await ensurePrivateAnnualPrice()
+
     const { type } = req.query
 
     let sql = `
-      SELECT
-        id, name, code, type, description,
-        price, original_price, billing_cycle, duration_days,
-        max_users, max_storage_gb, features,
-        is_trial, is_recommended, sort_order
+      SELECT *
       FROM tenant_packages
       WHERE status = 1 AND is_visible = 1
     `
@@ -29,12 +57,15 @@ router.get('/', async (req: Request, res: Response) => {
 
     const packages = await AppDataSource.query(sql, params)
 
-    // 解析 features JSON
+    // 解析 features JSON，安全处理年付字段（字段可能不存在）
     const result = packages.map((pkg: any) => ({
       ...pkg,
-      features: typeof pkg.features === 'string' ? JSON.parse(pkg.features) : pkg.features,
+      features: typeof pkg.features === 'string' ? JSON.parse(pkg.features) : (pkg.features || []),
       is_trial: Boolean(pkg.is_trial),
-      is_recommended: Boolean(pkg.is_recommended)
+      is_recommended: Boolean(pkg.is_recommended),
+      yearly_discount_rate: Number(pkg.yearly_discount_rate) || 0,
+      yearly_bonus_months: Number(pkg.yearly_bonus_months) || 0,
+      yearly_price: pkg.yearly_price ? Number(pkg.yearly_price) : null
     }))
 
     res.json({

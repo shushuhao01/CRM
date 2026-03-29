@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -293,7 +293,7 @@ const router = createRouter({
       path: '/finance/performance-manage',
       name: 'FinancePerformanceManage',
       component: () => import('../views/Finance/PerformanceManage.vue'),
-      meta: { title: '绩效管理', requiresAuth: true, requiresAdmin: true }
+      meta: { title: '绩效管理', requiresAuth: true, permissions: ['finance:manage'] }
     },
     {
       path: '/finance/cod-collection',
@@ -691,6 +691,32 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
+  // 🔥 检查路由级权限配置（meta.permissions）
+  if (to.meta.permissions && Array.isArray(to.meta.permissions) && to.meta.permissions.length > 0) {
+    // 管理员跳过权限检查
+    if (!userStore.isAdmin) {
+      const requiredPerms = to.meta.permissions as string[]
+      const userPerms = userStore.permissions || []
+      // 用户需要拥有至少一个所需权限（支持冒号和点号格式匹配）
+      const hasPermission = requiredPerms.some(reqPerm => {
+        if (userPerms.includes(reqPerm)) return true
+        const dotFormat = reqPerm.replace(/:/g, '.')
+        if (userPerms.includes(dotFormat)) return true
+        const colonFormat = reqPerm.replace(/\./g, ':')
+        if (userPerms.includes(colonFormat)) return true
+        // 前缀匹配：如用户拥有 finance 则可访问 finance:manage
+        const parentPerm = reqPerm.split(/[:.]/)[0]
+        if (userPerms.includes(parentPerm)) return true
+        return false
+      })
+      if (!hasPermission) {
+        ElMessage.error('没有访问此功能的权限')
+        next('/dashboard')
+        return
+      }
+    }
+  }
+
   // 检查是否需要经理权限
   if (to.meta.requiresManager && !userStore.isManager && !userStore.isAdmin) {
     ElMessage.error('需要经理权限')
@@ -761,15 +787,33 @@ router.onError((error) => {
   )) {
     console.warn('[Router] 动态模块加载失败，可能是版本更新或缓存问题:', error.message)
 
+    // 🔥 防止无限刷新：使用sessionStorage记录重载次数
+    const RELOAD_KEY = 'dynamic_import_reload_count'
+    const RELOAD_TS_KEY = 'dynamic_import_reload_ts'
+    let reloadCount = 0
+    try {
+      const ts = sessionStorage.getItem(RELOAD_TS_KEY)
+      if (ts && Date.now() - Number(ts) > 60000) {
+        sessionStorage.removeItem(RELOAD_KEY)
+        sessionStorage.removeItem(RELOAD_TS_KEY)
+      }
+      reloadCount = Number(sessionStorage.getItem(RELOAD_KEY) || '0')
+    } catch { /* ignore */ }
+
     // 🔥 检查是否在公开页面，公开页面不需要登录验证
     const currentPath = window.location.pathname
     const publicPaths = ['/login', '/public-help', '/register', '/agreement']
     const isPublicPage = publicPaths.some(path => currentPath.startsWith(path))
 
     if (isPublicPage) {
-      // 公开页面，静默处理或刷新
-      console.log('[Router] 公开页面动态导入失败，尝试刷新')
-      window.location.reload()
+      // 公开页面，最多刷新一次
+      if (reloadCount < 1) {
+        console.log('[Router] 公开页面动态导入失败，尝试刷新')
+        try { sessionStorage.setItem(RELOAD_KEY, String(reloadCount + 1)); sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now())) } catch {}
+        window.location.reload()
+      } else {
+        console.log('[Router] 公开页面已刷新过，静默处理')
+      }
       return
     }
 
@@ -794,8 +838,26 @@ router.onError((error) => {
       }).catch(() => {
         window.location.href = '/login'
       })
+    } else if (reloadCount >= 1) {
+      // 🔥 已重载过一次仍失败，不再自动刷新
+      console.warn('[Router] 已达到最大自动刷新次数，提示用户手动处理')
+      ElMessageBox.alert(
+        '页面加载失败，自动刷新未能解决问题。请尝试：\n1. 手动清除浏览器缓存（Ctrl+Shift+Delete）\n2. 强制刷新页面（Ctrl+Shift+R）\n3. 返回首页重试',
+        '页面加载失败',
+        {
+          confirmButtonText: '返回首页',
+          type: 'error',
+          showClose: true,
+          closeOnClickModal: true
+        }
+      ).then(() => {
+        try { sessionStorage.removeItem(RELOAD_KEY); sessionStorage.removeItem(RELOAD_TS_KEY) } catch {}
+        window.location.href = '/dashboard'
+      }).catch(() => {
+        try { sessionStorage.removeItem(RELOAD_KEY); sessionStorage.removeItem(RELOAD_TS_KEY) } catch {}
+      })
     } else {
-      // 可能是版本更新导致的，提示用户刷新页面
+      // 第一次：提示用户刷新页面
       ElMessageBox.alert(
         '系统检测到版本更新或页面缓存过期，需要刷新页面以加载最新内容。',
         '页面需要刷新',
@@ -806,8 +868,10 @@ router.onError((error) => {
           closeOnClickModal: false
         }
       ).then(() => {
+        try { sessionStorage.setItem(RELOAD_KEY, String(reloadCount + 1)); sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now())) } catch {}
         window.location.reload()
       }).catch(() => {
+        try { sessionStorage.setItem(RELOAD_KEY, String(reloadCount + 1)); sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now())) } catch {}
         window.location.reload()
       })
     }

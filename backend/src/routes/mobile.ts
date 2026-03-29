@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../config/database'
 import { authenticateToken } from '../middleware/auth'
+import { checkStorageLimit } from '../middleware/checkTenantLimits'
 import { JwtConfig } from '../config/jwt'
 import { v4 as uuidv4 } from 'uuid'
 import jwt from 'jsonwebtoken'
@@ -13,6 +14,7 @@ import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
 import bcrypt from 'bcryptjs'
+import { tenantRawSQL, getCurrentTenantIdSafe } from '../utils/tenantHelpers'
 
 const router = Router()
 
@@ -226,9 +228,10 @@ router.post('/login', async (req: Request, res: Response) => {
     // 获取部门信息
     let departmentName = ''
     if (user.department_id) {
+      const deptT = user.tenant_id ? { sql: ' AND tenant_id = ?', params: [user.tenant_id] } : { sql: '', params: [] }
       const depts = await AppDataSource.query(
-        `SELECT name FROM departments WHERE id = ?`,
-        [user.department_id]
+        `SELECT name FROM departments WHERE id = ?${deptT.sql}`,
+        [user.department_id, ...deptT.params]
       )
       departmentName = depts[0]?.name || ''
     }
@@ -307,11 +310,12 @@ router.post('/bindQRCode', authenticateToken, async (req: Request, res: Response
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
 
     // 保存绑定Token到数据库
+    const tenantId = getCurrentTenantIdSafe() || null
     await AppDataSource.query(
-      `INSERT INTO work_phones (user_id, bind_token, bind_token_expires, status, created_at)
-       VALUES (?, ?, ?, 'inactive', NOW())
+      `INSERT INTO work_phones (user_id, bind_token, bind_token_expires, status, created_at, tenant_id)
+       VALUES (?, ?, ?, 'inactive', NOW(), ?)
        ON DUPLICATE KEY UPDATE bind_token = ?, bind_token_expires = ?`,
-      [userId, bindToken, expiresAt, bindToken, expiresAt]
+      [userId, bindToken, expiresAt, tenantId, bindToken, expiresAt]
     )
 
     // 构建二维码数据 - 使用辅助函数生成正确的WebSocket URL
@@ -388,7 +392,7 @@ router.post('/bind', async (req: Request, res: Response) => {
     // 从 device_bind_logs 表查找（connectionId）
     console.log('查询 device_bind_logs 表, bindToken:', bindToken)
     const bindLogs = await AppDataSource.query(
-      `SELECT id, user_id FROM device_bind_logs
+      `SELECT id, user_id, tenant_id FROM device_bind_logs
        WHERE connection_id = ? AND status = 'pending' AND expires_at > NOW()`,
       [bindToken]
     )
@@ -397,12 +401,13 @@ router.post('/bind', async (req: Request, res: Response) => {
     if (bindLogs.length > 0) {
       const bindLog = bindLogs[0]
       userId = bindLog.user_id
-      console.log('找到绑定记录, userId:', userId)
+      const logTenantId = bindLog.tenant_id // 从绑定记录继承租户ID
+      console.log('找到绑定记录, userId:', userId, 'tenantId:', logTenantId)
 
       // 检查用户是否已有 work_phones 记录
       const existingPhones = await AppDataSource.query(
-        `SELECT id FROM work_phones WHERE user_id = ?`,
-        [userId]
+        `SELECT id FROM work_phones WHERE user_id = ?${logTenantId ? ' AND tenant_id = ?' : ''}`,
+        logTenantId ? [userId, logTenantId] : [userId]
       )
       console.log('现有手机记录:', existingPhones)
 
@@ -415,9 +420,9 @@ router.post('/bind', async (req: Request, res: Response) => {
         const tempPhoneNumber = `temp_${Date.now()}`
         try {
           const insertResult = await AppDataSource.query(
-            `INSERT INTO work_phones (user_id, phone_number, status, online_status, created_at, updated_at)
-             VALUES (?, ?, 'inactive', 'offline', NOW(), NOW())`,
-            [userId, tempPhoneNumber]
+            `INSERT INTO work_phones (user_id, phone_number, status, online_status, created_at, updated_at, tenant_id)
+             VALUES (?, ?, 'inactive', 'offline', NOW(), NOW(), ?)`,
+            [userId, tempPhoneNumber, logTenantId || null]
           )
           console.log('插入结果:', insertResult)
           record = { id: insertResult.insertId, user_id: userId }
@@ -491,15 +496,16 @@ router.post('/bind', async (req: Request, res: Response) => {
     try {
       await AppDataSource.query(
         `INSERT INTO device_bind_logs
-         (user_id, device_id, phone_number, device_name, device_model, action, ip_address, status, created_at)
-         VALUES (?, ?, ?, ?, ?, 'bind', ?, 'connected', NOW())`,
+         (user_id, device_id, phone_number, device_name, device_model, action, ip_address, status, created_at, tenant_id)
+         VALUES (?, ?, ?, ?, ?, 'bind', ?, 'connected', NOW(), ?)`,
         [
           userId,
           deviceId,
           finalPhoneNumber,
           deviceInfo?.deviceName || '',
           deviceInfo?.deviceModel || '',
-          req.ip || ''
+          req.ip || '',
+          (bindLogs.length > 0 ? bindLogs[0].tenant_id : null) || null
         ]
       )
     } catch (logError) {
@@ -577,8 +583,9 @@ router.delete('/unbind', authenticateToken, async (req: Request, res: Response) 
     const userId = currentUser?.userId || currentUser?.id
 
     // 查找设备
-    let query = `SELECT id, device_id, user_id FROM work_phones WHERE user_id = ? AND status = 'active'`
-    const params: any[] = [userId]
+    const t = tenantRawSQL()
+    let query = `SELECT id, device_id, user_id FROM work_phones WHERE user_id = ? AND status = 'active'${t.sql}`
+    const params: any[] = [userId, ...t.params]
 
     if (deviceId) {
       query += ` AND device_id = ?`
@@ -603,15 +610,16 @@ router.delete('/unbind', authenticateToken, async (req: Request, res: Response) 
        status = 'inactive',
        online_status = 'offline',
        updated_at = NOW()
-       WHERE id = ?`,
-      [device.id]
+       WHERE id = ?${t.sql}`,
+      [device.id, ...t.params]
     )
 
     // 记录解绑日志
+    const tenantId = getCurrentTenantIdSafe() || null
     await AppDataSource.query(
-      `INSERT INTO device_bind_logs (user_id, device_id, action, ip_address, remark)
-       VALUES (?, ?, 'unbind', ?, '用户主动解绑')`,
-      [userId, device.device_id, req.ip]
+      `INSERT INTO device_bind_logs (user_id, device_id, action, ip_address, remark, tenant_id)
+       VALUES (?, ?, 'unbind', ?, '用户主动解绑', ?)`,
+      [userId, device.device_id, req.ip, tenantId]
     )
 
     await logApiCall({
@@ -663,13 +671,14 @@ router.get('/device/status', authenticateToken, async (req: Request, res: Respon
     const currentUser = (req as any).user
     const userId = (req.query.userId as string) || currentUser?.userId || currentUser?.id
 
+    const t = tenantRawSQL()
     const devices = await AppDataSource.query(
       `SELECT id, phone_number, device_id, device_name, device_model,
               os_type, os_version, app_version, online_status,
               last_active_at, created_at as bind_time
        FROM work_phones
-       WHERE user_id = ? AND status = 'active'`,
-      [userId]
+       WHERE user_id = ? AND status = 'active'${t.sql}`,
+      [userId, ...t.params]
     )
 
     await logApiCall({
@@ -748,13 +757,14 @@ router.post('/call/status', authenticateToken, async (req: Request, res: Respons
     }
 
     // 更新通话记录状态
+    const t = tenantRawSQL()
     await AppDataSource.query(
       `UPDATE call_records SET
        call_status = ?,
        start_time = CASE WHEN ? = 'connected' AND start_time IS NULL THEN NOW() ELSE start_time END,
        updated_at = NOW()
-       WHERE id = ?`,
-      [status, status, callId]
+       WHERE id = ?${t.sql}`,
+      [status, status, callId, ...t.params]
     )
 
     await logApiCall({
@@ -809,9 +819,10 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
     }
 
     // 检查通话记录是否存在
+    const t = tenantRawSQL()
     const existingRecords = await AppDataSource.query(
-      `SELECT id, start_time FROM call_records WHERE id = ?`,
-      [callId]
+      `SELECT id, start_time FROM call_records WHERE id = ?${t.sql}`,
+      [callId, ...t.params]
     )
 
     const callEndTime = endTime ? new Date(endTime) : new Date()
@@ -838,14 +849,15 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
          duration = ?,
          has_recording = ?,
          updated_at = NOW()
-         WHERE id = ?`,
+         WHERE id = ?${t.sql}`,
         [
           status || 'connected',
           finalStartTime,
           callEndTime,
           callDuration,
           hasRecording ? 1 : 0,
-          callId
+          callId,
+          ...t.params
         ]
       )
       console.log('[通话结束] 更新通话记录:', callId)
@@ -863,10 +875,11 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
         finalStartTime = callEndTime
       }
 
+      const tenantId = getCurrentTenantIdSafe() || null
       await AppDataSource.query(
-        `INSERT INTO call_records (id, user_id, customer_phone, call_type, call_status, duration, has_recording, start_time, end_time, created_at, updated_at)
-         VALUES (?, ?, ?, 'outbound', ?, ?, ?, ?, ?, NOW(), NOW())`,
-        [callId, userId, phoneNumber || '', status || 'connected', callDuration, hasRecording ? 1 : 0, finalStartTime, callEndTime]
+        `INSERT INTO call_records (id, user_id, customer_phone, call_type, call_status, duration, has_recording, start_time, end_time, created_at, updated_at, tenant_id)
+         VALUES (?, ?, ?, 'outbound', ?, ?, ?, ?, ?, NOW(), NOW(), ?)`,
+        [callId, userId, phoneNumber || '', status || 'connected', callDuration, hasRecording ? 1 : 0, finalStartTime, callEndTime, tenantId]
       )
       console.log('[通话结束] 创建新通话记录:', callId)
     }
@@ -912,7 +925,7 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
  * 上传录音文件（APP调用）
  * POST /api/v1/mobile/recording/upload
  */
-router.post('/recording/upload', authenticateToken, uploadRecording.single('file'), async (req: Request, res: Response) => {
+router.post('/recording/upload', authenticateToken, checkStorageLimit, uploadRecording.single('file'), async (req: Request, res: Response) => {
   const startTime = Date.now()
   try {
     const currentUser = (req as any).user
@@ -930,13 +943,14 @@ router.post('/recording/upload', authenticateToken, uploadRecording.single('file
     const recordingUrl = `/uploads/recordings/${file.filename}`
 
     // 更新通话记录
+    const t = tenantRawSQL()
     await AppDataSource.query(
       `UPDATE call_records SET
        recording_url = ?,
        has_recording = 1,
        updated_at = NOW()
-       WHERE id = ?`,
-      [recordingUrl, callId]
+       WHERE id = ?${t.sql}`,
+      [recordingUrl, callId, ...t.params]
     )
 
     await logApiCall({
@@ -1023,16 +1037,17 @@ router.post('/call/followup', authenticateToken, async (req: Request, res: Respo
       updateParams.push(followUpRequired ? 1 : 0)
     }
 
+    const t = tenantRawSQL()
     updateParams.push(callId)
     await AppDataSource.query(
-      `UPDATE call_records SET ${updateFields.join(', ')} WHERE id = ?`,
-      updateParams
+      `UPDATE call_records SET ${updateFields.join(', ')} WHERE id = ?${t.sql}`,
+      [...updateParams, ...t.params]
     )
 
     // 2. 获取通话记录信息
     const callRecords = await AppDataSource.query(
-      `SELECT customer_id, customer_name, customer_phone FROM call_records WHERE id = ?`,
-      [callId]
+      `SELECT customer_id, customer_name, customer_phone FROM call_records WHERE id = ?${t.sql}`,
+      [callId, ...t.params]
     )
     const callRecord = callRecords[0]
     const actualCustomerId = customerId || callRecord?.customer_id
@@ -1048,11 +1063,12 @@ router.post('/call/followup', authenticateToken, async (req: Request, res: Respo
       }
 
       // 使用正确的字段名：customer_intent 而不是 intention，call_tags 存储标签
+      const tenantId = getCurrentTenantIdSafe() || null
       await AppDataSource.query(
         `INSERT INTO follow_up_records
          (id, call_id, customer_id, customer_name, follow_up_type, content, customer_intent,
-          call_tags, next_follow_up_date, status, user_id, user_name, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'call', ?, ?, ?, ?, 'completed', ?, ?, NOW(), NOW())`,
+          call_tags, next_follow_up_date, status, user_id, user_name, created_at, updated_at, tenant_id)
+         VALUES (?, ?, ?, ?, 'call', ?, ?, ?, ?, 'completed', ?, ?, NOW(), NOW(), ?)`,
         [
           followUpId,
           callId,
@@ -1063,7 +1079,8 @@ router.post('/call/followup', authenticateToken, async (req: Request, res: Respo
           tags?.length > 0 ? JSON.stringify(tags) : null,
           nextFollowUpDate ? new Date(nextFollowUpDate) : null,
           userId,
-          userName
+          userName,
+          tenantId
         ]
       )
     }
@@ -1083,8 +1100,8 @@ router.post('/call/followup', authenticateToken, async (req: Request, res: Respo
       if (tags?.length > 0) {
         // 获取现有标签
         const customers = await AppDataSource.query(
-          `SELECT tags FROM customers WHERE id = ?`,
-          [actualCustomerId]
+          `SELECT tags FROM customers WHERE id = ?${t.sql}`,
+          [actualCustomerId, ...t.params]
         )
         let existingTags: string[] = []
         if (customers[0]?.tags) {
@@ -1115,8 +1132,8 @@ router.post('/call/followup', authenticateToken, async (req: Request, res: Respo
 
       customerParams.push(actualCustomerId)
       await AppDataSource.query(
-        `UPDATE customers SET ${customerUpdates.join(', ')} WHERE id = ?`,
-        customerParams
+        `UPDATE customers SET ${customerUpdates.join(', ')} WHERE id = ?${t.sql}`,
+        [...customerParams, ...t.params]
       )
     }
 
@@ -1186,9 +1203,10 @@ router.get('/call/:callId', authenticateToken, async (req: Request, res: Respons
     console.log('[Mobile API] 获取通话详情, callId:', callId)
 
     // 获取通话记录 - 简化查询，不依赖 customers 表
+    const t = tenantRawSQL()
     const records = await AppDataSource.query(
-      `SELECT * FROM call_records WHERE id = ?`,
-      [callId]
+      `SELECT * FROM call_records WHERE id = ?${t.sql}`,
+      [callId, ...t.params]
     )
 
     if (records.length === 0) {
@@ -1205,8 +1223,8 @@ router.get('/call/:callId', authenticateToken, async (req: Request, res: Respons
     let followUps: any[] = []
     try {
       followUps = await AppDataSource.query(
-        `SELECT * FROM follow_up_records WHERE call_id = ? ORDER BY created_at DESC`,
-        [callId]
+        `SELECT * FROM follow_up_records WHERE call_id = ?${t.sql} ORDER BY created_at DESC`,
+        [callId, ...t.params]
       )
     } catch (_e) {
       console.log('[Mobile API] 获取跟进记录失败，可能表不存在')
@@ -1293,9 +1311,10 @@ router.get('/calls', authenticateToken, async (req: Request, res: Response) => {
       })
     }
 
-    let query = `SELECT * FROM call_records WHERE user_id = ?`
-    let countQuery = `SELECT COUNT(*) as total FROM call_records WHERE user_id = ?`
-    const params: any[] = [userId]
+    const t = tenantRawSQL()
+    let query = `SELECT * FROM call_records WHERE user_id = ?${t.sql}`
+    let countQuery = `SELECT COUNT(*) as total FROM call_records WHERE user_id = ?${t.sql}`
+    const params: any[] = [userId, ...t.params]
 
     if (callType) {
       query += ` AND call_type = ?`
@@ -1395,6 +1414,7 @@ router.get('/stats/today', authenticateToken, async (req: Request, res: Response
       })
     }
 
+    const t = tenantRawSQL()
     const stats = await AppDataSource.query(
       `SELECT
         COUNT(*) as totalCalls,
@@ -1405,8 +1425,8 @@ router.get('/stats/today', authenticateToken, async (req: Request, res: Response
         SUM(duration) as totalDuration,
         AVG(CASE WHEN call_status = 'connected' THEN duration ELSE NULL END) as avgDuration
        FROM call_records
-       WHERE user_id = ? AND DATE(start_time) = CURDATE()`,
-      [userId]
+       WHERE user_id = ? AND DATE(start_time) = CURDATE()${t.sql}`,
+      [userId, ...t.params]
     )
 
     const stat = stats[0] || {}
@@ -1481,6 +1501,7 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       dateCondition = 'start_time >= DATE_FORMAT(CURDATE(), "%Y-%m-01")'
     }
 
+    const t = tenantRawSQL()
     const stats = await AppDataSource.query(
       `SELECT
         COUNT(*) as totalCalls,
@@ -1491,8 +1512,8 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
         SUM(duration) as totalDuration,
         AVG(CASE WHEN call_status = 'connected' THEN duration ELSE NULL END) as avgDuration
        FROM call_records
-       WHERE user_id = ? AND ${dateCondition}`,
-      [userId]
+       WHERE user_id = ? AND ${dateCondition}${t.sql}`,
+      [userId, ...t.params]
     )
 
     const stat = stats[0] || {}
@@ -1726,12 +1747,14 @@ router.get('/interfaces/stats', authenticateToken, async (req: Request, res: Res
     )
 
     // 绑定设备统计
+    const tDev = tenantRawSQL()
     const deviceStats = await AppDataSource.query(
       `SELECT
         COUNT(*) as totalDevices,
         SUM(CASE WHEN online_status = 'online' THEN 1 ELSE 0 END) as onlineDevices
        FROM work_phones
-       WHERE status = 'active'`
+       WHERE status = 'active'${tDev.sql}`,
+      [...tDev.params]
     )
 
     res.json({

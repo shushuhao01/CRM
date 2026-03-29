@@ -684,7 +684,15 @@ const handleVerify = async () => {
     }
   } catch (e: any) {
     const errMsg = e?.response?.data?.message || e?.message || '验证失败，请检查网络'
-    licenseError.value = errMsg
+    const errorType = e?.response?.data?.errorType
+
+    // 特殊错误类型处理
+    if (errorType === 'WRONG_LICENSE_TYPE') {
+      licenseError.value = '该授权码为私有部署专用，不能在租户系统中使用。如需使用私有部署，请联系管理员获取私有部署安装包'
+    } else {
+      licenseError.value = errMsg
+    }
+
     // 如果后端说需要激活，自动切换到授权码模式
     if (e?.response?.data?.needActivation) {
       verifyMode.value = 'license'

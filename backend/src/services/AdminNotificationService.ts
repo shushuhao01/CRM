@@ -14,6 +14,7 @@ export const EVENT_TYPES = {
   payment_success: { label: '支付成功', level: 'success' as const, category: '支付动态' },
   payment_pending: { label: '待支付提醒', level: 'warning' as const, category: '支付动态' },
   payment_cancelled: { label: '支付取消', level: 'warning' as const, category: '支付动态' },
+  payment_refund: { label: '订单退款', level: 'warning' as const, category: '支付动态' },
   license_expiring: { label: '授权即将到期', level: 'warning' as const, category: '授权动态' },
   license_expired: { label: '授权已过期', level: 'error' as const, category: '授权动态' },
   tenant_login: { label: '租户首次登录', level: 'info' as const, category: '用户动态' },

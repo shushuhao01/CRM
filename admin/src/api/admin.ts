@@ -46,6 +46,8 @@ export const adminApi = {
     request.post(`/private-customers/${id}/unlock-admin`),
   getLicenseLogs: (id: string, params: any) =>
     request.get(`/licenses/${id}/logs`, { params }),
+  clearLicenseLogs: (id: string) =>
+    request.delete(`/licenses/${id}/logs`),
   getLicenseBills: (id: string, params: any) =>
     request.get(`/licenses/${id}/bills`, { params }),
 
@@ -72,6 +74,8 @@ export const adminApi = {
     request.post(`/tenants/${id}/unlock-admin`),
   getTenantLogs: (id: string, params: any) =>
     request.get(`/tenants/${id}/logs`, { params }),
+  clearTenantLogs: (id: string) =>
+    request.delete(`/tenants/${id}/logs`),
   getTenantBills: (id: string, params: any) =>
     request.get(`/tenants/${id}/bills`, { params }),
 

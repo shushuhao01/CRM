@@ -9,6 +9,9 @@ export class WecomConfig {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
+
   @Column({ name: 'name', type: 'varchar', length: 100, comment: '配置名称' })
   name: string;
 

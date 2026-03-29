@@ -20,15 +20,20 @@ router.get('/shares', async (req: Request, res: Response) => {
     const offset = (Number(page) - 1) * Number(limit);
 
     const t = tenantSQL('ps.');
+    const tSub = tenantSQL('psm.');
 
     let sql = `SELECT ps.*,
+               o.customer_name as orderCustomerName, o.customer_phone as orderCustomerPhone,
+               o.products as orderProducts, o.created_at as orderCreatedAt,
                (SELECT JSON_ARRAYAGG(JSON_OBJECT(
                  'id', psm.id, 'userId', psm.user_id, 'userName', psm.user_name,
                  'department', psm.department, 'percentage', psm.share_percentage,
                  'shareAmount', psm.share_amount, 'status', psm.status
-               )) FROM performance_share_members psm WHERE psm.share_id = ps.id) as shareMembers
-               FROM performance_shares ps WHERE 1=1${t.sql}`;
-    const params: any[] = [...t.params];
+               )) FROM performance_share_members psm WHERE psm.share_id = ps.id${tSub.sql}) as shareMembers
+               FROM performance_shares ps
+               LEFT JOIN orders o ON o.id = ps.order_id
+               WHERE 1=1${t.sql}`;
+    const params: any[] = [...tSub.params, ...t.params];
 
     if (status) {
       sql += ` AND ps.status = ?`;
@@ -41,8 +46,10 @@ router.get('/shares', async (req: Request, res: Response) => {
     }
 
     if (userId) {
-      sql += ` AND (ps.created_by = ? OR EXISTS (SELECT 1 FROM performance_share_members psm WHERE psm.share_id = ps.id AND psm.user_id = ?))`;
-      params.push(userId, userId);
+      // 🔥 修复：EXISTS子查询也添加租户隔离条件
+      const tExists = tenantSQL('psm2.');
+      sql += ` AND (ps.created_by = ? OR EXISTS (SELECT 1 FROM performance_share_members psm2 WHERE psm2.share_id = ps.id AND psm2.user_id = ?${tExists.sql}))`;
+      params.push(userId, userId, ...tExists.params);
     }
 
     sql += ` ORDER BY ps.created_at DESC LIMIT ? OFFSET ?`;
@@ -90,16 +97,20 @@ router.get('/shares/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
+    // 🔥 租户隔离
+    const tDetail = tenantSQL('');
     const [share] = await AppDataSource.query(
-      `SELECT * FROM performance_shares WHERE id = ?`, [id]
+      `SELECT * FROM performance_shares WHERE id = ?${tDetail.sql}`, [id, ...tDetail.params]
     );
 
     if (!share) {
       return res.status(404).json({ success: false, code: 404, message: '业绩分享记录不存在' });
     }
 
+    // 🔥 租户隔离
+    const tMember = tenantSQL('');
     const members = await AppDataSource.query(
-      `SELECT * FROM performance_share_members WHERE share_id = ?`, [id]
+      `SELECT * FROM performance_share_members WHERE share_id = ?${tMember.sql}`, [id, ...tMember.params]
     );
 
     res.json({
@@ -129,34 +140,44 @@ router.post('/shares', async (req: Request, res: Response) => {
 
     // 验证分成比例总和
     const totalPercentage = shareMembers.reduce((sum: number, m: any) => sum + m.percentage, 0);
-    if (totalPercentage !== 100) {
-      return res.status(400).json({ success: false, message: '分成比例总和必须为100%' });
+    if (totalPercentage > 100) {
+      return res.status(400).json({ success: false, message: '分成比例总和不能超过100%' });
+    }
+    if (totalPercentage <= 0) {
+      return res.status(400).json({ success: false, message: '分成比例总和必须大于0' });
     }
 
     const shareId = uuidv4();
-    const shareNumber = `SHARE${Date.now()}`;
+    // 🔥 优化：生成更短的分享编码 SH + 日期(6位) + 随机(4位)，如 SH260327A3B2
+    const now = new Date();
+    const dateStr = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const shareNumber = `SH${dateStr}${randomStr}`;
     const totalShareAmount = orderAmount;
 
-    // 插入分享记录
+    // 🔥 获取当前租户ID，写入记录
+    const currentTenantId = deployConfig.isSaaS() ? TenantContextManager.getTenantId() : null;
+
+    // 插入分享记录 - 🔥 租户隔离：写入 tenant_id
     await AppDataSource.query(
       `INSERT INTO performance_shares
-       (id, share_number, order_id, order_number, order_amount, total_share_amount, share_count,
+       (id, tenant_id, share_number, order_id, order_number, order_amount, total_share_amount, share_count,
         status, description, created_by, created_by_name, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [shareId, shareNumber, orderId, orderNumber, orderAmount, totalShareAmount,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [shareId, currentTenantId, shareNumber, orderId, orderNumber, orderAmount, totalShareAmount,
        shareMembers.length, 'active', description || '',
        currentUser?.userId, currentUser?.realName || currentUser?.username]
     );
 
-    // 插入成员记录
+    // 插入成员记录 - 🔥 租户隔离：写入 tenant_id
     for (const member of shareMembers) {
       const memberId = uuidv4();
       const shareAmount = (orderAmount * member.percentage) / 100;
       await AppDataSource.query(
         `INSERT INTO performance_share_members
-         (id, share_id, user_id, user_name, department, share_percentage, share_amount, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`,
-        [memberId, shareId, member.userId, member.userName, member.department || '',
+         (id, tenant_id, share_id, user_id, user_name, department, share_percentage, share_amount, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`,
+        [memberId, currentTenantId, shareId, member.userId, member.userName, member.department || '',
          member.percentage, shareAmount]
       );
     }
@@ -209,15 +230,61 @@ router.delete('/shares/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     const currentUser = (req as any).user;
 
+    // 🔥 租户隔离
+    const tDel = tenantSQL('');
     const [share] = await AppDataSource.query(
-      `SELECT * FROM performance_shares WHERE id = ?`, [id]
+      `SELECT * FROM performance_shares WHERE id = ?${tDel.sql}`, [id, ...tDel.params]
     );
 
     if (!share) {
       return res.status(404).json({ success: false, code: 404, message: '业绩分享记录不存在' });
     }
 
-    if (share.created_by !== currentUser?.userId) {
+    // 🔥 修复：管理员和创建者都可以取消分享
+    const isAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'admin';
+    const isCreator = share.created_by === currentUser?.userId;
+    if (!isAdmin && !isCreator) {
+      return res.status(403).json({ success: false, code: 403, message: '无权限取消此分享记录' });
+    }
+
+    if (share.status !== 'active') {
+      return res.status(400).json({ success: false, code: 400, message: '只能取消活跃状态的分享记录' });
+    }
+
+    // 🔥 租户隔离
+    await AppDataSource.query(
+      `UPDATE performance_shares SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?${tDel.sql}`,
+      [id, ...tDel.params]
+    );
+
+    res.json({ success: true, code: 200, message: '业绩分享已取消' });
+  } catch (error) {
+    console.error('取消业绩分享失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '取消业绩分享失败' });
+  }
+});
+
+/**
+ * @route PATCH /api/v1/performance/shares/:id/cancel
+ * @desc 取消业绩分享（PATCH替代方案，某些环境不支持DELETE）
+ */
+router.patch('/shares/:id/cancel', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const currentUser = (req as any).user;
+
+    const tDel = tenantSQL('');
+    const [share] = await AppDataSource.query(
+      `SELECT * FROM performance_shares WHERE id = ?${tDel.sql}`, [id, ...tDel.params]
+    );
+
+    if (!share) {
+      return res.status(404).json({ success: false, code: 404, message: '业绩分享记录不存在' });
+    }
+
+    const isAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'admin';
+    const isCreator = share.created_by === currentUser?.userId;
+    if (!isAdmin && !isCreator) {
       return res.status(403).json({ success: false, code: 403, message: '无权限取消此分享记录' });
     }
 
@@ -226,8 +293,8 @@ router.delete('/shares/:id', async (req: Request, res: Response) => {
     }
 
     await AppDataSource.query(
-      `UPDATE performance_shares SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?`,
-      [id]
+      `UPDATE performance_shares SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?${tDel.sql}`,
+      [id, ...tDel.params]
     );
 
     res.json({ success: true, code: 200, message: '业绩分享已取消' });
@@ -246,23 +313,27 @@ router.post('/shares/:id/confirm', async (req: Request, res: Response) => {
     const { id } = req.params;
     const currentUser = (req as any).user;
 
-    // 更新成员状态
+    // 🔥 租户隔离
+    const tConfirm = tenantSQL('');
+
+    // 更新成员状态 - 🔥 租户隔离
     await AppDataSource.query(
       `UPDATE performance_share_members SET status = 'confirmed', confirm_time = NOW()
-       WHERE share_id = ? AND user_id = ?`,
-      [id, currentUser?.userId]
+       WHERE share_id = ? AND user_id = ?${tConfirm.sql}`,
+      [id, currentUser?.userId, ...tConfirm.params]
     );
 
-    // 检查是否所有成员都已确认
+    // 检查是否所有成员都已确认 - 🔥 租户隔离
     const [pendingCount] = await AppDataSource.query(
-      `SELECT COUNT(*) as count FROM performance_share_members WHERE share_id = ? AND status != 'confirmed'`,
-      [id]
+      `SELECT COUNT(*) as count FROM performance_share_members WHERE share_id = ? AND status != 'confirmed'${tConfirm.sql}`,
+      [id, ...tConfirm.params]
     );
 
     if (pendingCount?.count === 0) {
+      // 🔥 租户隔离
       await AppDataSource.query(
-        `UPDATE performance_shares SET status = 'completed', completed_at = NOW() WHERE id = ?`,
-        [id]
+        `UPDATE performance_shares SET status = 'completed', completed_at = NOW() WHERE id = ?${tConfirm.sql}`,
+        [id, ...tConfirm.params]
       );
     }
 
@@ -297,13 +368,15 @@ router.get('/stats', async (req: Request, res: Response) => {
       [...tStats.params]
     );
 
-    // 用户相关统计
+    // 用户相关统计 - 🔥 修复：使用 ps. 和 psm. 前缀确保租户隔离条件作用在正确的表
+    const tStatsUser = tenantSQL('ps.');
+    const tStatsUserMember = tenantSQL('psm.');
     const [userResult] = await AppDataSource.query(
       `SELECT COUNT(DISTINCT ps.id) as count, SUM(psm.share_amount) as amount
        FROM performance_shares ps
        JOIN performance_share_members psm ON ps.id = psm.share_id
-       WHERE (psm.user_id = ? OR ps.created_by = ?)${tStats.sql}`,
-      [currentUser?.userId, currentUser?.userId, ...tStats.params]
+       WHERE (psm.user_id = ? OR ps.created_by = ?)${tStatsUser.sql}${tStatsUserMember.sql}`,
+      [currentUser?.userId, currentUser?.userId, ...tStatsUser.params, ...tStatsUserMember.params]
     );
 
     res.json({
@@ -353,10 +426,11 @@ router.get('/personal', async (req: Request, res: Response) => {
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
 
-    // 🔥 修复：获取用户名，用于同时匹配订单
+    // 🔥 修复：获取用户名，用于同时匹配订单 + 租户隔离
+    const tUserLookup = tenantSQL('');
     const [userInfo] = await AppDataSource.query(
-      `SELECT id, username FROM users WHERE id = ?`,
-      [userId]
+      `SELECT id, username FROM users WHERE id = ?${tUserLookup.sql}`,
+      [userId, ...tUserLookup.params]
     );
     const username = userInfo?.username;
 
@@ -373,7 +447,7 @@ router.get('/personal', async (req: Request, res: Response) => {
     // 🔥 修复：同时匹配用户ID和用户名 + 租户隔离
     const tOrder = tenantSQL('');
     const orders = await AppDataSource.query(
-      `SELECT status, mark_type as markType, total_amount as totalAmount
+      `SELECT id, order_number as orderNumber, status, mark_type as markType, total_amount as totalAmount
        FROM orders WHERE (created_by = ? OR created_by = ?)${dateCondition}${tOrder.sql}`,
       [...orderParams, ...tOrder.params]
     );
@@ -390,8 +464,12 @@ router.get('/personal', async (req: Request, res: Response) => {
     let returnCount = 0;
     let returnAmount = 0;
 
+    // 🔥 构建用户订单映射
+    const userOrderMap: Record<string, any> = {};
+
     orders.forEach((order: any) => {
       const amount = Number(order.totalAmount) || 0;
+      userOrderMap[order.orderNumber] = order;
 
       // 下单业绩
       if (isValidForOrderPerformance(order.status, order.markType)) {
@@ -424,6 +502,110 @@ router.get('/personal', async (req: Request, res: Response) => {
       }
     });
 
+    // 🔥 业绩分享调整
+    let shareDateCond = '';
+    if (startDate && endDate) {
+      shareDateCond = ` AND ps.created_at >= '${startDate} 00:00:00' AND ps.created_at <= '${endDate} 23:59:59'`;
+    }
+
+    // 查询当前用户作为创建者的分享记录（需要扣除）
+    const tShareCreator = tenantSQL('ps.');
+    const creatorShares = await AppDataSource.query(
+      `SELECT ps.id, ps.order_number, ps.order_amount
+       FROM performance_shares ps
+       WHERE ps.created_by = ? AND ps.status IN ('active', 'completed')${shareDateCond}${tShareCreator.sql}`,
+      [userId, ...tShareCreator.params]
+    );
+
+    if (creatorShares.length > 0) {
+      const tShareMem = tenantSQL('psm.');
+      const creatorShareMembers = await AppDataSource.query(
+        `SELECT psm.share_id, psm.share_percentage
+         FROM performance_share_members psm
+         WHERE psm.share_id IN (${creatorShares.map(() => '?').join(',')})${tShareMem.sql}`,
+        [...creatorShares.map((s: any) => s.id), ...tShareMem.params]
+      );
+
+      // 按share_id分组
+      const memByShare: Record<string, any[]> = {};
+      creatorShareMembers.forEach((m: any) => {
+        if (!memByShare[m.share_id]) memByShare[m.share_id] = [];
+        memByShare[m.share_id].push(m);
+      });
+
+      creatorShares.forEach((share: any) => {
+        const members = memByShare[share.id] || [];
+        const totalPct = members.reduce((sum: number, m: any) => sum + (Number(m.share_percentage) || 0), 0);
+        const ratio = totalPct / 100;
+        const amt = Number(share.order_amount) || 0;
+        const matchedOrder = userOrderMap[share.order_number];
+        if (matchedOrder && isValidForOrderPerformance(matchedOrder.status, matchedOrder.markType)) {
+          // 🔥 订单数守恒：只调整金额，不调整订单数量
+          orderAmount -= amt * ratio;
+          const status = matchedOrder.status;
+          if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(status)) {
+            shipAmount -= amt * ratio;
+          }
+          if (status === 'delivered') { signAmount -= amt * ratio; }
+          if (['rejected', 'rejected_returned'].includes(status)) { rejectAmount -= amt * ratio; }
+          if (status === 'refunded') { returnAmount -= amt * ratio; }
+        }
+      });
+    }
+
+    // 查询当前用户作为接收者的分享记录（需要加上）
+    const tShareReceiver = tenantSQL('psm.');
+    const tShareReceiverPs = tenantSQL('ps.');
+    const receivedShares = await AppDataSource.query(
+      `SELECT psm.share_id, psm.share_percentage, ps.order_id, ps.order_number, ps.order_amount
+       FROM performance_share_members psm
+       JOIN performance_shares ps ON ps.id = psm.share_id
+       WHERE psm.user_id = ? AND ps.status IN ('active', 'completed')${shareDateCond}${tShareReceiver.sql}${tShareReceiverPs.sql}`,
+      [userId, ...tShareReceiver.params, ...tShareReceiverPs.params]
+    );
+
+    if (receivedShares.length > 0) {
+      // 获取原始订单状态
+      const recvOrderIds = [...new Set(receivedShares.map((r: any) => r.order_id))];
+      const tRecvOrd = tenantSQL('');
+      const recvOrders = await AppDataSource.query(
+        `SELECT id, status, mark_type as markType FROM orders WHERE id IN (${recvOrderIds.map(() => '?').join(',')})${tRecvOrd.sql}`,
+        [...recvOrderIds, ...tRecvOrd.params]
+      );
+      const recvOrderMap: Record<string, any> = {};
+      recvOrders.forEach((o: any) => { recvOrderMap[o.id] = o; });
+
+      receivedShares.forEach((recv: any) => {
+        const myRatio = (Number(recv.share_percentage) || 0) / 100;
+        const amt = Number(recv.order_amount) || 0;
+        const origOrder = recvOrderMap[recv.order_id];
+        if (!origOrder) return;
+        if (isValidForOrderPerformance(origOrder.status, origOrder.markType)) {
+          // 🔥 订单数守恒：只调整金额，不调整订单数量
+          orderAmount += amt * myRatio;
+          const status = origOrder.status;
+          if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(status)) {
+            shipAmount += amt * myRatio;
+          }
+          if (status === 'delivered') { signAmount += amt * myRatio; }
+          if (['rejected', 'rejected_returned'].includes(status)) { rejectAmount += amt * myRatio; }
+          if (status === 'refunded') { returnAmount += amt * myRatio; }
+        }
+      });
+    }
+
+    // 🔥 确保不出现负数
+    orderCount = Math.max(0, orderCount);
+    orderAmount = Math.max(0, orderAmount);
+    signCount = Math.max(0, signCount);
+    signAmount = Math.max(0, signAmount);
+    shipCount = Math.max(0, shipCount);
+    shipAmount = Math.max(0, shipAmount);
+    rejectCount = Math.max(0, rejectCount);
+    rejectAmount = Math.max(0, rejectAmount);
+    returnCount = Math.max(0, returnCount);
+    returnAmount = Math.max(0, returnAmount);
+
     // 计算比率
     const signRate = orderCount > 0 ? ((signCount / orderCount) * 100).toFixed(1) : '0.0';
     const shipRate = orderCount > 0 ? ((shipCount / orderCount) * 100).toFixed(1) : '0.0';
@@ -450,23 +632,23 @@ router.get('/personal', async (req: Request, res: Response) => {
       data: {
         userId,
         // 下单业绩
-        orderCount,
-        orderAmount,
+        orderCount: Math.round(orderCount),
+        orderAmount: parseFloat(orderAmount.toFixed(2)),
         // 签收业绩
-        signCount,
-        signAmount,
+        signCount: Math.round(signCount),
+        signAmount: parseFloat(signAmount.toFixed(2)),
         signRate: parseFloat(signRate),
         // 发货业绩
-        shipCount,
-        shipAmount,
+        shipCount: Math.round(shipCount),
+        shipAmount: parseFloat(shipAmount.toFixed(2)),
         shipRate: parseFloat(shipRate),
         // 拒收
-        rejectCount,
-        rejectAmount,
+        rejectCount: Math.round(rejectCount),
+        rejectAmount: parseFloat(rejectAmount.toFixed(2)),
         rejectRate: parseFloat(rejectRate),
         // 退货
-        returnCount,
-        returnAmount,
+        returnCount: Math.round(returnCount),
+        returnAmount: parseFloat(returnAmount.toFixed(2)),
         returnRate: parseFloat(returnRate),
         // 客户
         newCustomers: customerStats?.newCustomers || 0
@@ -530,11 +712,70 @@ router.get('/team', async (req: Request, res: Response) => {
     // 获取每个成员的订单数据
     const memberStats: any[] = [];
 
+    // 🔥 预加载所有生效中的业绩分享数据（避免在循环中重复查询）
+    const tSharePre = tenantSQL('ps.');
+    const tShareMemberPre = tenantSQL('psm.');
+    let shareDateCondition = '';
+    if (startDate && endDate) {
+      shareDateCondition = ` AND ps.created_at >= '${startDate} 00:00:00' AND ps.created_at <= '${endDate} 23:59:59'`;
+    }
+    const allShares = await AppDataSource.query(
+      `SELECT ps.id, ps.order_id, ps.order_number, ps.order_amount, ps.created_by,
+              ps.status as share_status
+       FROM performance_shares ps
+       WHERE ps.status IN ('active', 'completed')${shareDateCondition}${tSharePre.sql}`,
+      [...tSharePre.params]
+    );
+    // 获取所有分享成员
+    const allShareMembers = allShares.length > 0 ? await AppDataSource.query(
+      `SELECT psm.share_id, psm.user_id, psm.share_percentage, psm.share_amount
+       FROM performance_share_members psm
+       WHERE psm.share_id IN (${allShares.map(() => '?').join(',')})${tShareMemberPre.sql}`,
+      [...allShares.map((s: any) => s.id), ...tShareMemberPre.params]
+    ) : [];
+
+    // 🔥 构建分享映射
+    const sharesByCreator: Record<string, any[]> = {};
+    const shareMemsByUser: Record<string, any[]> = {};
+    allShares.forEach((share: any) => {
+      const creatorId = share.created_by;
+      if (!sharesByCreator[creatorId]) sharesByCreator[creatorId] = [];
+      sharesByCreator[creatorId].push(share);
+    });
+    allShareMembers.forEach((mem: any) => {
+      const userId = mem.user_id;
+      if (!shareMemsByUser[userId]) shareMemsByUser[userId] = [];
+      shareMemsByUser[userId].push(mem);
+    });
+
+    // 🔥 构建 shareId -> members 映射
+    const membersByShareId: Record<string, any[]> = {};
+    allShareMembers.forEach((mem: any) => {
+      if (!membersByShareId[mem.share_id]) membersByShareId[mem.share_id] = [];
+      membersByShareId[mem.share_id].push(mem);
+    });
+
+    // 🔥 预加载所有被分享订单的状态信息（用于按状态计算接收的业绩）
+    const sharedOrderIds = [...new Set(allShares.map((s: any) => s.order_id))];
+    let sharedOrderStatusMap: Record<string, any> = {};
+    if (sharedOrderIds.length > 0) {
+      const tOrdStatus = tenantSQL('');
+      const sharedOrders = await AppDataSource.query(
+        `SELECT id, order_number, status, mark_type as markType, total_amount as totalAmount
+         FROM orders WHERE id IN (${sharedOrderIds.map(() => '?').join(',')})${tOrdStatus.sql}`,
+        [...sharedOrderIds, ...tOrdStatus.params]
+      );
+      sharedOrders.forEach((o: any) => {
+        sharedOrderStatusMap[o.id] = o;
+        sharedOrderStatusMap[o.order_number] = o;
+      });
+    }
+
     for (const user of users) {
       // 🔥 修复：created_by字段可能存储用户ID或用户名，需要同时匹配 + 租户隔离
       const tOrd = tenantSQL('');
       const orders = await AppDataSource.query(
-        `SELECT status, mark_type as markType, total_amount as totalAmount
+        `SELECT id, order_number as orderNumber, status, mark_type as markType, total_amount as totalAmount
          FROM orders
          WHERE (created_by = ? OR created_by = ?)${dateCondition}${tOrd.sql}`,
         [user.id, user.username, ...tOrd.params]
@@ -548,8 +789,12 @@ router.get('/team', async (req: Request, res: Response) => {
       let rejectCount = 0, rejectAmount = 0;
       let returnCount = 0, returnAmount = 0;
 
+      // 🔥 构建当前用户的订单映射（用于分享扣除时查找订单状态）
+      const userOrderMap: Record<string, any> = {};
+
       orders.forEach((order: any) => {
         const amount = Number(order.totalAmount) || 0;
+        userOrderMap[order.orderNumber] = order;
 
         // 下单业绩
         if (isValidForOrderPerformance(order.status, order.markType)) {
@@ -588,6 +833,89 @@ router.get('/team', async (req: Request, res: Response) => {
         }
       });
 
+      // 🔥 业绩分享调整 - 扣除分享出去的部分（只调整金额，订单数守恒）
+      const userShares = sharesByCreator[user.id] || [];
+      userShares.forEach((share: any) => {
+        const shareMembers = membersByShareId[share.id] || [];
+        const totalSharedPct = shareMembers.reduce((sum: number, m: any) => sum + (Number(m.share_percentage) || 0), 0);
+        const sharedRatio = totalSharedPct / 100;
+        const shareAmount = Number(share.order_amount) || 0;
+
+        // 查找该订单在当前用户的订单列表中
+        const matchedOrder = userOrderMap[share.order_number];
+        if (matchedOrder && isValidForOrderPerformance(matchedOrder.status, matchedOrder.markType)) {
+          // 🔥 订单数守恒：只调整金额，不调整订单数量
+          orderAmount -= shareAmount * sharedRatio;
+
+          // 按订单状态扣除金额
+          const status = matchedOrder.status;
+          if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(status)) {
+            shipAmount -= shareAmount * sharedRatio;
+          }
+          if (status === 'delivered') {
+            signAmount -= shareAmount * sharedRatio;
+          }
+          if (status === 'shipped') {
+            transitAmount -= shareAmount * sharedRatio;
+          }
+          if (['rejected', 'rejected_returned'].includes(status)) {
+            rejectAmount -= shareAmount * sharedRatio;
+          }
+          if (status === 'refunded') {
+            returnAmount -= shareAmount * sharedRatio;
+          }
+        }
+      });
+
+      // 🔥 业绩分享调整 - 加上接收到的部分
+      const receivedShares = shareMemsByUser[user.id] || [];
+      receivedShares.forEach((mem: any) => {
+        const myRatio = (Number(mem.share_percentage) || 0) / 100;
+        // 找到对应的分享记录
+        const parentShare = allShares.find((s: any) => s.id === mem.share_id);
+        if (!parentShare) return;
+        const shareAmount = Number(parentShare.order_amount) || 0;
+        // 找到原始订单的状态
+        const originalOrder = sharedOrderStatusMap[parentShare.order_id] || sharedOrderStatusMap[parentShare.order_number];
+        if (!originalOrder) return;
+
+        if (isValidForOrderPerformance(originalOrder.status, originalOrder.markType)) {
+          // 🔥 订单数守恒：只调整金额，不调整订单数量
+          orderAmount += shareAmount * myRatio;
+
+          const status = originalOrder.status;
+          if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(status)) {
+            shipAmount += shareAmount * myRatio;
+          }
+          if (status === 'delivered') {
+            signAmount += shareAmount * myRatio;
+          }
+          if (status === 'shipped') {
+            transitAmount += shareAmount * myRatio;
+          }
+          if (['rejected', 'rejected_returned'].includes(status)) {
+            rejectAmount += shareAmount * myRatio;
+          }
+          if (status === 'refunded') {
+            returnAmount += shareAmount * myRatio;
+          }
+        }
+      });
+
+      // 🔥 确保不出现负数
+      orderCount = Math.max(0, orderCount);
+      orderAmount = Math.max(0, orderAmount);
+      signCount = Math.max(0, signCount);
+      signAmount = Math.max(0, signAmount);
+      shipCount = Math.max(0, shipCount);
+      shipAmount = Math.max(0, shipAmount);
+      transitCount = Math.max(0, transitCount);
+      transitAmount = Math.max(0, transitAmount);
+      rejectCount = Math.max(0, rejectCount);
+      rejectAmount = Math.max(0, rejectAmount);
+      returnCount = Math.max(0, returnCount);
+      returnAmount = Math.max(0, returnAmount);
+
       // 计算比率
       const signRate = orderCount > 0 ? parseFloat(((signCount / orderCount) * 100).toFixed(1)) : 0;
       const shipRate = orderCount > 0 ? parseFloat(((shipCount / orderCount) * 100).toFixed(1)) : 0;
@@ -602,22 +930,22 @@ router.get('/team', async (req: Request, res: Response) => {
         department: user.departmentName,
         departmentId: user.departmentId,
         createTime: user.createTime,
-        orderCount,
-        orderAmount,
-        signCount,
-        signAmount,
+        orderCount: Math.round(orderCount),
+        orderAmount: parseFloat(orderAmount.toFixed(2)),
+        signCount: Math.round(signCount),
+        signAmount: parseFloat(signAmount.toFixed(2)),
         signRate,
-        shipCount,
-        shipAmount,
+        shipCount: Math.round(shipCount),
+        shipAmount: parseFloat(shipAmount.toFixed(2)),
         shipRate,
-        transitCount,
-        transitAmount,
+        transitCount: Math.round(transitCount),
+        transitAmount: parseFloat(transitAmount.toFixed(2)),
         transitRate,
-        rejectCount,
-        rejectAmount,
+        rejectCount: Math.round(rejectCount),
+        rejectAmount: parseFloat(rejectAmount.toFixed(2)),
         rejectRate,
-        returnCount,
-        returnAmount,
+        returnCount: Math.round(returnCount),
+        returnAmount: parseFloat(returnAmount.toFixed(2)),
         returnRate,
         isCurrentUser: user.id === currentUser?.userId
       });
@@ -736,10 +1064,11 @@ router.get('/analysis/personal', async (req: Request, res: Response) => {
     const currentUser = (req as any).user;
     const userId = (req.query.userId as string) || currentUser?.userId;
 
-    // 🔥 修复：同时获取用户名，用于匹配订单
+    // 🔥 修复：同时获取用户名，用于匹配订单 + 租户隔离
+    const tApUser = tenantSQL('');
     const [userInfo] = await AppDataSource.query(
-      `SELECT id, username FROM users WHERE id = ?`,
-      [userId]
+      `SELECT id, username FROM users WHERE id = ?${tApUser.sql}`,
+      [userId, ...tApUser.params]
     );
     const username = userInfo?.username;
 
@@ -797,8 +1126,9 @@ router.get('/analysis/department', async (req: Request, res: Response) => {
     const currentUser = (req as any).user;
     const departmentId = (req.query.departmentId as string) || currentUser?.departmentId;
 
-    // 🔥 修复：同时匹配用户ID和用户名，避免遗漏订单 + 租户隔离
+    // 🔥 修复：同时匹配用户ID和用户名，避免遗漏订单 + 租户隔离（同时隔离 orders 和 users）
     const tDept = tenantSQL('o.');
+    const tDeptUser = tenantSQL('u.');
     const [stats] = await AppDataSource.query(
       `SELECT
          COUNT(o.id) as orderCount,
@@ -809,8 +1139,8 @@ router.get('/analysis/department', async (req: Request, res: Response) => {
          SUM(CASE WHEN o.status = 'refunded' THEN 1 ELSE 0 END) as returnCount
        FROM orders o
        JOIN users u ON (o.created_by = u.id OR o.created_by = u.username)
-       WHERE u.department_id = ?${tDept.sql}`,
-      [departmentId, ...tDept.params]
+       WHERE u.department_id = ?${tDept.sql}${tDeptUser.sql}`,
+      [departmentId, ...tDept.params, ...tDeptUser.params]
     );
 
     const orderCount = stats?.orderCount || 1;
@@ -914,13 +1244,26 @@ router.get('/analysis/metrics', async (req: Request, res: Response) => {
     conditions.push(`NOT (o.status = 'pending_transfer' AND o.mark_type = 'reserved')`);
 
     if (type === 'personal') {
-      conditions.push('(o.created_by = ? OR o.created_by = (SELECT username FROM users WHERE id = ?))');
-      params.push(currentUser?.userId, currentUser?.userId);
+      // 🔥 修复：子查询也添加租户隔离
+      const tMetricsUser = tenantSQL('');
+      if (tMetricsUser.sql) {
+        conditions.push(`(o.created_by = ? OR o.created_by = (SELECT username FROM users WHERE id = ?${tMetricsUser.sql}))`);
+        params.push(currentUser?.userId, currentUser?.userId, ...tMetricsUser.params);
+      } else {
+        conditions.push('(o.created_by = ? OR o.created_by = (SELECT username FROM users WHERE id = ?))');
+        params.push(currentUser?.userId, currentUser?.userId);
+      }
     } else if (type === 'department') {
       const deptId = departmentId || currentUser?.departmentId;
       if (deptId) {
         conditions.push('u.department_id = ?');
         params.push(deptId);
+        // 🔥 修复：对 users 表也添加租户隔离
+        const tMetricsJoinUser = tenantSQL('u.');
+        if (tMetricsJoinUser.sql) {
+          conditions.push(`u.tenant_id = ?`);
+          params.push(...tMetricsJoinUser.params);
+        }
       }
     }
 

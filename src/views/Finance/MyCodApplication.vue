@@ -185,7 +185,7 @@
           <el-alert v-else-if="selectedOrder" title="已选订单信息" type="success" :closable="false" style="margin-top: 16px;">
             <div class="selected-order-info">
               <div><strong>订单号：</strong>{{ selectedOrder.orderNumber }}</div>
-              <div><strong>客户：</strong>{{ selectedOrder.customerName }} ({{ maskPhone(selectedOrder.customerPhone) }})</div>
+              <div><strong>客户：</strong>{{ selectedOrder.customerName }} ({{ displaySensitiveInfoNew(selectedOrder.customerPhone, SensitiveInfoType.PHONE) }})</div>
               <div><strong>客户编码：</strong>{{ selectedOrder.customerId }}</div>
               <div><strong>原始代收金额：</strong><span style="color: #909399;">¥{{ formatMoney((selectedOrder.totalAmount || 0) - (selectedOrder.depositAmount || 0)) }}</span></div>
               <div><strong>当前代收金额：</strong><span style="color: #e6a23c; font-weight: 600;">¥{{ formatMoney(selectedOrder.codAmount) }}</span></div>
@@ -202,7 +202,7 @@
       <div v-if="currentStep === 1 || isEditMode">
         <el-form :model="createForm" label-width="120px">
           <el-form-item label="订单信息">
-            <span>{{ selectedOrder?.orderNumber }} - {{ selectedOrder?.customerName }} ({{ maskPhone(selectedOrder?.customerPhone || '') }})</span>
+            <span>{{ selectedOrder?.orderNumber }} - {{ selectedOrder?.customerName }} ({{ displaySensitiveInfoNew(selectedOrder?.customerPhone || '', SensitiveInfoType.PHONE) }})</span>
           </el-form-item>
           <el-form-item label="原始代收金额">
             <span style="color: #909399;">¥{{ formatMoney((selectedOrder?.totalAmount || 0) - (selectedOrder?.depositAmount || 0)) }}</span>
@@ -303,6 +303,8 @@ import { Search, Refresh, Plus, Clock, CircleCheck, CircleClose, Document, Close
 import { formatDateTime } from '@/utils/date'
 import { getMyApplications, createApplication, updateApplication, cancelApplication, getApplicationStats, uploadProof, type CodApplication, type CodApplicationStats } from '@/api/codApplication'
 import { getCodList, type CodOrder } from '@/api/codCollection'
+import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 
 defineOptions({ name: 'MyCodApplication' })
 
@@ -338,10 +340,6 @@ const createForm = ref({
 
 const formatMoney = (val: number | string | undefined) => (Number(val) || 0).toFixed(2)
 
-const maskPhone = (phone: string) => {
-  if (!phone || phone.length < 11) return phone
-  return phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
-}
 
 // 判断订单是否改过代收
 const hasModifiedCod = (order: any) => {
@@ -458,10 +456,7 @@ const loadAvailableOrders = async (query?: string) => {
           return false
         }
         // 🔥 如果代收金额为0，不显示（客户已全额付款）
-        if (order.codAmount === 0) {
-          return false
-        }
-        return true
+        return order.codAmount !== 0
       })
 
       console.log('[订单加载] 成功加载订单:', availableOrders.value.length, '个（已过滤待审核、已处理和已签收订单）')
@@ -913,4 +908,3 @@ onUnmounted(() => {
   .el-select-dropdown__list { max-height: 280px !important; }
 }
 </style>
-""

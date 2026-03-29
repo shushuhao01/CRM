@@ -1,9 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, UpdateDateColumn } from 'typeorm';
+﻿import { Entity, PrimaryGeneratedColumn, Column, UpdateDateColumn } from 'typeorm';
 
 @Entity('commission_setting')
 export class CommissionSetting {
   @PrimaryGeneratedColumn()
   id: number;
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
 
   @Column({ name: 'setting_key', length: 50, unique: true, comment: '配置键' })
   settingKey: string;

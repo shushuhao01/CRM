@@ -417,7 +417,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import ImagePreview from '@/components/ImagePreview.vue'
 
 const previewVisible = ref(false)
@@ -448,13 +448,19 @@ const closeVideoModal = () => {
 }
 
 // ESC 键关闭视频弹窗
-if (typeof window !== 'undefined') {
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && showVideoModal.value) {
-      closeVideoModal()
-    }
-  })
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && showVideoModal.value) {
+    closeVideoModal()
+  }
 }
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
 </script>
 
 <style lang="scss" scoped>

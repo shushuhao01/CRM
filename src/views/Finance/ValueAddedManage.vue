@@ -74,6 +74,29 @@
               <template #prefix><el-icon><Search /></el-icon></template>
               <template #suffix>
                 <el-badge v-if="batchSearchCount > 0" :value="batchSearchCount" :max="999" class="batch-badge" />
+                <el-popover
+                  v-if="missingKeywords.length > 0"
+                  placement="bottom"
+                  :width="360"
+                  trigger="hover"
+                >
+                  <template #reference>
+                    <span class="missing-count-tag">缺{{ missingKeywords.length }}</span>
+                  </template>
+                  <div class="missing-popover">
+                    <div class="missing-popover-header">
+                      <span>以下 <b>{{ missingKeywords.length }}</b> 条未匹配到结果</span>
+                      <el-button type="primary" link size="small" @click="copyMissingKeywords">
+                        <el-icon><DocumentCopy /></el-icon> 一键复制
+                      </el-button>
+                    </div>
+                    <div class="missing-popover-list">
+                      <div v-for="(kw, idx) in missingKeywords" :key="idx" class="missing-item">
+                        <span class="missing-item-text">{{ kw }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </el-popover>
               </template>
             </el-input>
           </template>
@@ -155,6 +178,7 @@
       <div class="action-buttons" :class="{ 'has-selection': selectedRows.length > 0 }">
         <!-- 批量操作按钮（勾选订单后显示） -->
         <div v-if="selectedRows.length > 0" class="batch-actions">
+          <span class="selection-count-tip">已勾选 <b>{{ selectedRows.length }}</b> 条 <span class="selection-amount">¥{{ formatMoney(selectedTotalAmount) }}</span></span>
           <el-dropdown @command="handleBatchCompany">
             <el-button type="primary">
               批量选择公司 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
@@ -255,9 +279,18 @@
           </el-select>
         </template>
       </el-table-column>
-      <el-table-column prop="unitPrice" label="单价" width="90" align="right">
+      <el-table-column prop="unitPrice" label="单价" width="120" align="right">
         <template #default="{ row }">
-          <span style="color: #909399;">¥{{ formatMoney(row.unitPrice) }}</span>
+          <el-input-number
+            v-model="row.unitPrice"
+            :min="0"
+            :precision="2"
+            :step="1"
+            :controls="false"
+            size="small"
+            style="width: 100px;"
+            @change="(val: number) => handleUnitPriceChange(row, val)"
+          />
         </template>
       </el-table-column>
       <el-table-column prop="status" label="有效状态" width="120">
@@ -296,16 +329,17 @@
       <el-table-column prop="settlementDate" label="结算日期" width="110">
         <template #default="{ row }">{{ row.settlementDate ? formatDate(row.settlementDate) : '-' }}</template>
       </el-table-column>
-      <el-table-column prop="remark" label="备注" min-width="180">
+      <el-table-column prop="remark" label="备注" min-width="250">
         <template #default="{ row }">
           <el-tooltip
-            v-if="row.remark && row.remark.length > 20"
+            v-if="row.remark"
             :content="row.remark"
             placement="top"
+            :show-after="300"
           >
-            <span class="remark-text">{{ row.remark.substring(0, 20) }}...</span>
+            <span class="remark-text remark-ellipsis">{{ row.remark }}</span>
           </el-tooltip>
-          <span v-else class="remark-text">{{ row.remark || '-' }}</span>
+          <span v-else class="remark-text">-</span>
         </template>
       </el-table-column>
     </el-table>
@@ -333,9 +367,10 @@
     <el-dialog v-model="companyDialogVisible" title="外包公司管理" width="1200px">
       <div class="company-manage-header">
         <el-button type="primary" :icon="Plus" @click="showAddCompanyDialog">添加公司</el-button>
+        <el-button :icon="Refresh" @click="refreshCompanyList" :loading="companyListLoading">刷新</el-button>
       </div>
       <el-table :data="companies" stripe border>
-        <el-table-column prop="sortOrder" label="排序" width="70" align="center" />
+        <el-table-column type="index" label="排序" width="70" align="center" />
         <el-table-column prop="status" label="状态" width="80">
           <template #default="{ row }">
             <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
@@ -520,82 +555,196 @@
       :phone="currentPhone"
     />
 
-    <!-- 备注选择对话框 -->
+    <!-- 备注选择对话框（单行模式） -->
     <el-dialog
       v-model="remarkDialogVisible"
-      :title="remarkDialogType === 'invalid' ? '请选择无效原因' : remarkDialogType === 'restore' ? '请输入恢复原因' : '请选择备注'"
-      width="500px"
+      :title="remarkDialogTitle"
+      :width="batchRemarkContext ? '960px' : '500px'"
       :close-on-click-modal="false"
+      class="remark-dialog"
     >
       <div class="remark-dialog-content">
-        <!-- 改为无效状态 -->
-        <div v-if="remarkDialogType === 'invalid'" class="remark-section">
-          <div class="remark-section-title">请选择或输入无效原因（必填）</div>
-          <el-select
-            v-model="selectedRemarkPreset"
-            placeholder="请选择无效原因"
-            style="width: 100%; margin-bottom: 15px;"
-            clearable
-          >
-            <el-option
-              v-for="preset in invalidRemarkPresets"
-              :key="preset.id"
-              :label="preset.remark_text"
-              :value="preset.id"
+        <!-- ========== 单行模式 ========== -->
+        <template v-if="!batchRemarkContext">
+          <!-- 改为无效状态 -->
+          <div v-if="remarkDialogType === 'invalid'" class="remark-section">
+            <div class="remark-section-title">请选择或输入无效原因（必填）</div>
+            <el-select
+              v-model="selectedRemarkPreset"
+              placeholder="请选择无效原因"
+              style="width: 100%; margin-bottom: 15px;"
+              clearable
+            >
+              <el-option
+                v-for="preset in invalidRemarkPresets"
+                :key="preset.id"
+                :label="preset.remark_text"
+                :value="preset.id"
+              />
+            </el-select>
+            <el-input
+              v-model="customRemark"
+              type="textarea"
+              :rows="4"
+              placeholder="或者直接输入自定义原因"
+              maxlength="200"
+              show-word-limit
             />
-          </el-select>
-          <el-input
-            v-model="customRemark"
-            type="textarea"
-            :rows="4"
-            placeholder="或者直接输入自定义原因"
-            maxlength="200"
-            show-word-limit
-          />
-        </div>
-        <!-- 从无效恢复为有效 -->
-        <div v-else-if="remarkDialogType === 'restore'" class="remark-section">
-          <div class="remark-section-title">请输入恢复为有效的原因（必填）</div>
-          <el-alert
-            title="此订单之前标记为无效，现在要恢复为有效状态，请说明原因"
-            type="info"
-            :closable="false"
-            style="margin-bottom: 15px;"
-          />
-          <el-input
-            v-model="customRemark"
-            type="textarea"
-            :rows="4"
-            placeholder="例如：客户重新确认订单、地址已更正、联系上客户等"
-            maxlength="200"
-            show-word-limit
-          />
-        </div>
-        <!-- 其他备注 -->
-        <div v-else class="remark-section">
-          <div class="remark-section-title">备注信息（可选）</div>
-          <el-select
-            v-model="selectedRemarkPreset"
-            placeholder="请选择备注（可选）"
-            style="width: 100%; margin-bottom: 15px;"
-            clearable
-          >
-            <el-option
-              v-for="preset in generalRemarkPresets"
-              :key="preset.id"
-              :label="preset.remark_text"
-              :value="preset.id"
+          </div>
+          <!-- 从无效恢复为有效 -->
+          <div v-else-if="remarkDialogType === 'restore'" class="remark-section">
+            <div class="remark-section-title">请输入恢复为有效的原因（必填）</div>
+            <el-alert
+              title="此订单之前标记为无效，现在要恢复为有效状态，请说明原因"
+              type="info"
+              :closable="false"
+              style="margin-bottom: 15px;"
             />
-          </el-select>
-          <el-input
-            v-model="customRemark"
-            type="textarea"
-            :rows="3"
-            placeholder="或者直接输入自定义备注"
-            maxlength="200"
-            show-word-limit
-          />
-        </div>
+            <el-input
+              v-model="customRemark"
+              type="textarea"
+              :rows="4"
+              placeholder="例如：客户重新确认订单、地址已更正、联系上客户等"
+              maxlength="200"
+              show-word-limit
+            />
+          </div>
+          <!-- 补单原因 -->
+          <div v-else-if="remarkDialogType === 'supplement'" class="remark-section">
+            <div class="remark-section-title">请输入补单原因（必填）</div>
+            <el-input
+              v-model="customRemark"
+              type="textarea"
+              :rows="4"
+              placeholder="请输入补单原因，例如：原订单异常需补发、客户要求补发等"
+              maxlength="200"
+              show-word-limit
+            />
+          </div>
+          <!-- 其他备注 -->
+          <div v-else class="remark-section">
+            <div class="remark-section-title">备注信息（可选）</div>
+            <el-select
+              v-model="selectedRemarkPreset"
+              placeholder="请选择备注（可选）"
+              style="width: 100%; margin-bottom: 15px;"
+              clearable
+            >
+              <el-option
+                v-for="preset in generalRemarkPresets"
+                :key="preset.id"
+                :label="preset.remark_text"
+                :value="preset.id"
+              />
+            </el-select>
+            <el-input
+              v-model="customRemark"
+              type="textarea"
+              :rows="3"
+              placeholder="或者直接输入自定义备注"
+              maxlength="200"
+              show-word-limit
+            />
+          </div>
+        </template>
+
+        <!-- ========== 批量模式 ========== -->
+        <template v-else>
+          <!-- 统一设置区域 -->
+          <div class="batch-unified-section">
+            <div class="batch-unified-header">
+              <span class="batch-unified-label">统一设置原因</span>
+              <el-tag type="info" size="small">共 {{ batchOrderItems.length }} 条订单</el-tag>
+            </div>
+            <div class="batch-unified-row">
+              <el-select
+                v-model="unifiedReasonPreset"
+                :placeholder="remarkDialogType === 'invalid' ? '选择统一无效原因' : '选择统一原因'"
+                clearable
+                style="width: 260px;"
+              >
+                <el-option
+                  v-for="preset in (remarkDialogType === 'invalid' ? invalidRemarkPresets : generalRemarkPresets)"
+                  :key="preset.id"
+                  :label="preset.remark_text"
+                  :value="preset.id"
+                />
+              </el-select>
+              <el-input
+                v-model="unifiedRemarkText"
+                :placeholder="remarkDialogType === 'invalid' ? '或输入统一无效原因' : '或输入统一备注'"
+                clearable
+                style="flex: 1;"
+              />
+              <el-button type="primary" @click="applyUnifiedToAll">
+                应用到全部
+              </el-button>
+            </div>
+          </div>
+
+          <!-- 分割线 -->
+          <el-divider style="margin: 12px 0;" />
+
+          <!-- 受影响订单预览 -->
+          <div class="batch-preview-section">
+            <div class="batch-preview-header">
+              <span class="batch-preview-label">受影响订单预览</span>
+              <span class="batch-preview-tip">可单独修改每条订单的原因和备注</span>
+            </div>
+            <div class="batch-preview-table-wrapper">
+              <el-table :data="batchOrderItems" border size="small" max-height="360" class="batch-preview-table">
+                <el-table-column prop="customerName" label="姓名" width="90">
+                  <template #default="{ row }">{{ row.customerName || '-' }}</template>
+                </el-table-column>
+                <el-table-column prop="orderNumber" label="订单号" width="170">
+                  <template #default="{ row }">
+                    <span style="font-size: 12px; color: #409eff;">{{ row.orderNumber || '-' }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="unitPrice" label="单价" width="90" align="right">
+                  <template #default="{ row }">
+                    <span style="color: #909399;">¥{{ formatMoney(row.unitPrice) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="修改后状态" width="90" align="center">
+                  <template #default>
+                    <el-tag :type="batchTargetStatusType" size="small">{{ batchTargetStatusLabel }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="原因" min-width="180">
+                  <template #default="{ row }">
+                    <el-select
+                      v-model="row.reasonPresetId"
+                      :placeholder="remarkDialogType === 'invalid' ? '选择原因' : '选择原因'"
+                      clearable
+                      size="small"
+                      style="width: 100%;"
+                      @change="handleItemReasonChange(row)"
+                    >
+                      <el-option
+                        v-for="preset in (remarkDialogType === 'invalid' ? invalidRemarkPresets : generalRemarkPresets)"
+                        :key="preset.id"
+                        :label="preset.remark_text"
+                        :value="preset.id"
+                      />
+                    </el-select>
+                  </template>
+                </el-table-column>
+                <el-table-column label="备注" min-width="180">
+                  <template #default="{ row }">
+                    <el-input
+                      v-model="row.customRemark"
+                      size="small"
+                      placeholder="输入自定义备注"
+                      clearable
+                      maxlength="200"
+                    />
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </div>
+        </template>
       </div>
       <template #footer>
         <el-button @click="cancelRemarkDialog">取消</el-button>
@@ -621,7 +770,8 @@ import {
   Plus,
   Download,
   ArrowDown,
-  InfoFilled
+  InfoFilled,
+  DocumentCopy
 } from '@element-plus/icons-vue'
 import {
   getValueAddedOrders,
@@ -678,6 +828,53 @@ const batchSearchCount = computed(() => {
   return batchSearchKeywords.value.split(/[\n,;，；]+/).map(k => k.trim()).filter(k => k.length > 0).length
 })
 
+// 🔥 已选订单合计单价
+const selectedTotalAmount = computed(() => {
+  return selectedRows.value.reduce((sum, row) => sum + (Number(row.unitPrice) || 0), 0)
+})
+
+// 🔥 搜索缺失关键词
+const missingKeywords = ref<string[]>([])
+
+// 🔥 计算缺失的搜索关键词（在loadData后调用）
+const computeMissingKeywords = () => {
+  if (!batchSearchKeywords.value || batchSearchCount.value === 0) {
+    missingKeywords.value = []
+    return
+  }
+  const keywords = batchSearchKeywords.value.split(/[\n,;，；]+/).map(k => k.trim()).filter(k => k.length > 0)
+  const missing: string[] = []
+  for (const kw of keywords) {
+    const kwLower = kw.toLowerCase()
+    const found = tableData.value.some(row =>
+      (row.orderNumber && row.orderNumber.toLowerCase().includes(kwLower)) ||
+      (row.customerName && row.customerName.toLowerCase().includes(kwLower)) ||
+      (row.customerPhone && row.customerPhone.includes(kw)) ||
+      (row.trackingNumber && row.trackingNumber.toLowerCase().includes(kwLower))
+    )
+    if (!found) missing.push(kw)
+  }
+  missingKeywords.value = missing
+}
+
+// 🔥 一键复制缺失关键词
+const copyMissingKeywords = async () => {
+  if (missingKeywords.value.length === 0) return
+  try {
+    await navigator.clipboard.writeText(missingKeywords.value.join('\n'))
+    ElMessage.success(`已复制 ${missingKeywords.value.length} 条缺失内容`)
+  } catch {
+    // fallback
+    const textarea = document.createElement('textarea')
+    textarea.value = missingKeywords.value.join('\n')
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+    ElMessage.success(`已复制 ${missingKeywords.value.length} 条缺失内容`)
+  }
+}
+
 // 快捷日期选项
 const quickDateOptions = [
   { label: '今日', value: 'today' },
@@ -703,6 +900,7 @@ const pagination = reactive({
 // 外包公司
 const companies = ref<OutsourceCompany[]>([])
 const companyDialogVisible = ref(false)
+const companyListLoading = ref(false)
 const addCompanyDialogVisible = ref(false)
 const companyFormTab = ref('basic') // 添加公司弹窗的标签页
 const editingCompany = ref<OutsourceCompany | null>(null)
@@ -740,16 +938,119 @@ const currentPhone = ref('')
 
 // 备注选择对话框
 const remarkDialogVisible = ref(false)
-const remarkDialogType = ref<'invalid' | 'restore' | 'general'>('invalid')
+const remarkDialogType = ref<'invalid' | 'restore' | 'general' | 'supplement'>('invalid')
 const selectedRemarkPreset = ref('')
 const customRemark = ref('')
 const currentEditingRow = ref<ValueAddedOrder | null>(null)
+const pendingSingleStatus = ref('') // 🔥 单行操作时记录目标状态（用于补单等需要原因的状态）
 const remarkPresets = ref<RemarkPreset[]>([])
 const invalidRemarkPresets = computed(() => remarkPresets.value.filter(p => p.category === 'invalid'))
 const generalRemarkPresets = computed(() => remarkPresets.value.filter(p => p.category === 'general'))
 
+// 🔥 批量模式：每行订单的独立原因/备注
+interface BatchOrderItem {
+  id: string
+  orderNumber: string
+  customerName: string
+  unitPrice: number
+  reasonPresetId: string   // 下拉选中的预设原因ID
+  customRemark: string     // 自定义备注
+}
+const batchOrderItems = ref<BatchOrderItem[]>([])
+const unifiedReasonPreset = ref('')   // 统一原因下拉
+const unifiedRemarkText = ref('')     // 统一备注输入
+
+// 🔥 批量模式：目标状态的标签和类型
+const batchTargetStatusLabel = computed(() => {
+  if (!batchRemarkContext.value) return ''
+  return validStatusList.value.find(s => s.value === batchRemarkContext.value!.status)?.label || batchRemarkContext.value!.status
+})
+const batchTargetStatusType = computed(() => {
+  if (!batchRemarkContext.value) return 'info'
+  const status = batchRemarkContext.value.status
+  if (status === 'valid') return 'success'
+  if (status === 'invalid') return 'danger'
+  return 'warning'
+})
+
+// 🔥 统一原因应用到全部
+const applyUnifiedToAll = () => {
+  if (!unifiedReasonPreset.value && !unifiedRemarkText.value) {
+    ElMessage.warning('请先选择原因或输入备注')
+    return
+  }
+  for (const item of batchOrderItems.value) {
+    if (unifiedReasonPreset.value) {
+      item.reasonPresetId = unifiedReasonPreset.value
+    }
+    if (unifiedRemarkText.value) {
+      item.customRemark = unifiedRemarkText.value
+    }
+  }
+  ElMessage.success('已应用到全部订单')
+}
+
+// 🔥 单条原因下拉变化时（如需清空自定义备注可在此处理）
+const handleItemReasonChange = (_row: BatchOrderItem) => {
+  // 预留扩展，目前不做特殊处理
+}
+
+// 🔥 备注对话框标题
+const remarkDialogTitle = computed(() => {
+  const isBatch = !!batchRemarkContext.value
+  const prefix = isBatch ? '批量' : ''
+  switch (remarkDialogType.value) {
+    case 'invalid': return `${prefix}请选择无效原因`
+    case 'restore': return '请输入恢复原因'
+    case 'supplement': return `${prefix}请输入补单原因`
+    default: return `${prefix}请选择备注`
+  }
+})
+
 // 格式化金额
 const formatMoney = (val: number | string | undefined) => (Number(val) || 0).toFixed(2)
+
+// 🔥 手动修改单价处理
+const handleUnitPriceChange = async (row: ValueAddedOrder, val: number) => {
+  if (val === undefined || val === null) return
+  try {
+    const { updateOrderUnitPrice } = await import('@/api/valueAdded')
+    await updateOrderUnitPrice(row.id, val)
+    row.unitPrice = val
+    ElMessage.success('单价更新成功')
+    loadStats()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '单价更新失败')
+    loadData() // 失败时重新加载
+  }
+}
+
+// 🔥 获取有效状态中文标签（用于导出等）
+const getValidStatusLabel = (status: string) => {
+  if (!status) return ''
+  const found = validStatusList.value.find(s => s.value === status)
+  if (found) return found.label
+  // 内置兜底映射
+  const builtinMap: Record<string, string> = {
+    pending: '待处理',
+    valid: '有效',
+    invalid: '无效'
+  }
+  return builtinMap[status] || status
+}
+
+// 🔥 获取结算状态中文标签（用于导出等）
+const getSettlementStatusLabel = (status: string) => {
+  if (!status) return ''
+  const found = settlementStatusList.value.find(s => s.value === status)
+  if (found) return found.label
+  // 内置兜底映射
+  const builtinMap: Record<string, string> = {
+    unsettled: '未结算',
+    settled: '已结算'
+  }
+  return builtinMap[status] || status
+}
 
 // 格式化日期
 const formatDate = (dateStr: string) => {
@@ -826,26 +1127,42 @@ const loadCompanies = async () => {
     const res = await getOutsourceCompanies({ pageSize: 1000 }) as any
     const companiesList = res?.data?.list || res?.list || []
 
-    // 为每个公司加载最高优先级的档位
+    // 为每个公司加载当前日期有效的档位
     const { getCompanyPriceTiers } = await import('@/api/valueAdded')
+    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
     for (const company of companiesList) {
       try {
         const tiersRes = await getCompanyPriceTiers(company.id)
-        // 🔥 修复：axios拦截器已经返回data，tiersRes就是档位数组
         const tiers = Array.isArray(tiersRes) ? tiersRes : (tiersRes?.data || [])
-        console.log(`[loadCompanies] 公司${company.companyName}的档位:`, tiers)
-        // 找到最高优先级且启用的档位
+        // 找到启用的档位
         const activeTiers = tiers.filter((t: any) => t.isActive === 1)
         if (activeTiers.length > 0) {
-          // 按优先级降序、档位顺序升序排序
-          activeTiers.sort((a: any, b: any) => {
-            if (b.priority !== a.priority) return b.priority - a.priority
-            return a.tierOrder - b.tierOrder
+          // 🔥 优先找时间范围覆盖当前日期的档位
+          const matchedTiers = activeTiers.filter((t: any) => {
+            const start = t.startDate ? String(t.startDate).split('T')[0] : null
+            const end = t.endDate ? String(t.endDate).split('T')[0] : null
+            if (start && today < start) return false
+            if (end && today > end) return false
+            return true
           })
-          company.topTier = activeTiers[0]
-          console.log(`[loadCompanies] 公司${company.companyName}的最高档位:`, company.topTier)
-        } else {
-          console.log(`[loadCompanies] 公司${company.companyName}没有启用的档位`)
+
+          if (matchedTiers.length > 0) {
+            // 匹配到日期范围的档位，按优先级排序取第一个（priority越小越优先）
+            matchedTiers.sort((a: any, b: any) => {
+              if (a.priority !== b.priority) return a.priority - b.priority
+              return a.tierOrder - b.tierOrder
+            })
+            company.topTier = matchedTiers[0]
+          } else {
+            // 没有匹配到日期范围，使用最高优先级的作为兜底
+            activeTiers.sort((a: any, b: any) => {
+              if (a.priority !== b.priority) return a.priority - b.priority
+              return a.tierOrder - b.tierOrder
+            })
+            company.topTier = activeTiers[0]
+          }
+          // 保存所有档位供后续订单级别日期匹配使用
+          company.allTiers = activeTiers
         }
       } catch (e) {
         console.error(`加载公司${company.companyName}的档位失败:`, e)
@@ -884,6 +1201,9 @@ const loadData = async () => {
     const res = await getValueAddedOrders(params) as any
     tableData.value = res?.data?.list || res?.list || []
     pagination.total = res?.data?.total || res?.total || 0
+
+    // 🔥 计算缺失的搜索关键词
+    computeMissingKeywords()
   } catch (e) {
     console.error('加载数据失败:', e)
     ElMessage.error('加载数据失败')
@@ -1014,6 +1334,7 @@ const handleCustomDateChange = (dates: [string, string] | null) => {
 const clearBatchSearch = () => {
   batchSearchKeywords.value = ''
   searchKeyword.value = ''
+  missingKeywords.value = []
   batchSearchVisible.value = false
   handleSearch()
 }
@@ -1079,6 +1400,7 @@ const updateOrderStatus = async (row: ValueAddedOrder, status: string) => {
   // 情况1：改为无效状态 - 弹窗选择无效原因
   if (status === 'invalid') {
     currentEditingRow.value = row
+    batchRemarkContext.value = null // 确保非批量模式
     remarkDialogType.value = 'invalid'
     selectedRemarkPreset.value = ''
     customRemark.value = ''
@@ -1086,9 +1408,24 @@ const updateOrderStatus = async (row: ValueAddedOrder, status: string) => {
     return
   }
 
+  // 情况1.5：改为补单状态 - 弹窗选择/输入补单原因
+  if (isStatusNeedReason(status) && status !== 'invalid') {
+    currentEditingRow.value = row
+    batchRemarkContext.value = null
+    // 🔥 使用补单专用类型
+    remarkDialogType.value = 'supplement'
+    selectedRemarkPreset.value = ''
+    customRemark.value = ''
+    // 记录目标状态
+    pendingSingleStatus.value = status
+    remarkDialogVisible.value = true
+    return
+  }
+
   // 情况2：从无效改回有效 - 弹窗输入恢复原因
   if (oldStatus === 'invalid' && status === 'valid') {
     currentEditingRow.value = row
+    batchRemarkContext.value = null
     remarkDialogType.value = 'restore' // 新增：恢复类型
     selectedRemarkPreset.value = ''
     customRemark.value = ''
@@ -1122,6 +1459,11 @@ const updateOrderStatus = async (row: ValueAddedOrder, status: string) => {
 // 取消备注对话框
 const cancelRemarkDialog = () => {
   remarkDialogVisible.value = false
+  batchRemarkContext.value = null
+  batchOrderItems.value = []
+  unifiedReasonPreset.value = ''
+  unifiedRemarkText.value = ''
+  pendingSingleStatus.value = ''
   // 恢复原状态
   if (currentEditingRow.value) {
     loadData() // 重新加载数据以恢复原状态
@@ -1130,19 +1472,93 @@ const cancelRemarkDialog = () => {
 
 // 确认备注
 const confirmRemark = async () => {
-  if (!currentEditingRow.value) return
+  const isBatch = !!batchRemarkContext.value
 
+  if (!isBatch && !currentEditingRow.value) return
+
+  // ========== 批量模式 ==========
+  if (isBatch) {
+    const finalStatus = batchRemarkContext.value!.status
+    const statusLabel = validStatusList.value.find(s => s.value === finalStatus)?.label || finalStatus
+
+    // 验证：无效状态至少要有一条订单填了原因
+    if (remarkDialogType.value === 'invalid') {
+      const hasAnyReason = batchOrderItems.value.some(item => item.reasonPresetId || item.customRemark.trim())
+      if (!hasAnyReason) {
+        ElMessage.warning('请至少为一条订单选择或输入无效原因')
+        return
+      }
+    }
+
+    try {
+      // 为每条订单生成最终备注
+      const orderRemarkMap: { id: string; remark: string }[] = batchOrderItems.value.map(item => {
+        let remarkText = ''
+        if (item.customRemark.trim()) {
+          remarkText = item.customRemark.trim()
+        } else if (item.reasonPresetId) {
+          const preset = remarkPresets.value.find(p => p.id === item.reasonPresetId)
+          if (preset) remarkText = preset.remark_text
+        }
+        const finalRemark = remarkText ? `${statusLabel}：${remarkText}` : statusLabel
+        return { id: item.id, remark: finalRemark }
+      })
+
+      // 按备注内容分组，同一备注的订单一起批量处理
+      const remarkGroups = new Map<string, string[]>()
+      for (const item of orderRemarkMap) {
+        const ids = remarkGroups.get(item.remark) || []
+        ids.push(item.id)
+        remarkGroups.set(item.remark, ids)
+      }
+
+      // 依次执行每组的批量操作
+      for (const [remark, ids] of remarkGroups) {
+        await batchProcessOrders({
+          ids,
+          action: 'updateStatus',
+          data: { status: finalStatus, remark }
+        })
+      }
+
+      // 递增使用过的预设原因的使用次数
+      const usedPresetIds = new Set(batchOrderItems.value.map(item => item.reasonPresetId).filter(Boolean))
+      for (const presetId of usedPresetIds) {
+        try { await incrementRemarkPresetUsage(presetId) } catch {}
+      }
+
+      ElMessage.success(`批量更新 ${batchOrderItems.value.length} 条成功`)
+      remarkDialogVisible.value = false
+      currentEditingRow.value = null
+      batchRemarkContext.value = null
+      batchOrderItems.value = []
+      unifiedReasonPreset.value = ''
+      unifiedRemarkText.value = ''
+      pendingSingleStatus.value = ''
+      loadData()
+      loadStats()
+      if (remarkDialogType.value === 'invalid') loadRemarkPresets()
+    } catch (e: any) {
+      ElMessage.error(e?.message || '批量更新失败')
+    }
+    return
+  }
+
+  // ========== 单行模式（保持原有逻辑） ==========
   // 验证必填
   if (remarkDialogType.value === 'invalid') {
-    // 改为无效：必须选择预设或输入自定义原因（二选一）
     if (!customRemark.value.trim() && !selectedRemarkPreset.value) {
       ElMessage.warning('请选择无效原因或输入自定义原因')
       return
     }
   } else if (remarkDialogType.value === 'restore') {
-    // 恢复为有效：必须输入恢复原因
     if (!customRemark.value.trim()) {
       ElMessage.warning('请输入恢复为有效的原因')
+      return
+    }
+  } else if (remarkDialogType.value === 'supplement') {
+    if (!customRemark.value.trim()) {
+      ElMessage.warning('请输入补单原因')
       return
     }
   }
@@ -1152,40 +1568,48 @@ const confirmRemark = async () => {
     let finalRemark = ''
 
     if (remarkDialogType.value === 'invalid') {
-      // 改为无效状态
       finalStatus = 'invalid'
-
-      // 获取备注内容：优先使用自定义输入，其次使用预设
       let remarkText = ''
       if (customRemark.value.trim()) {
-        // 优先使用自定义输入
         remarkText = customRemark.value.trim()
       } else if (selectedRemarkPreset.value) {
-        // 使用预设
         const preset = remarkPresets.value.find(p => p.id === selectedRemarkPreset.value)
         if (preset) {
           remarkText = preset.remark_text
-          // 增加使用次数
           await incrementRemarkPresetUsage(preset.id)
         }
       }
-
-      // 格式化备注：无效：原因
       const statusLabel = validStatusList.value.find(s => s.value === 'invalid')?.label || '无效'
       finalRemark = remarkText ? `${statusLabel}：${remarkText}` : ''
 
     } else if (remarkDialogType.value === 'restore') {
-      // 恢复为有效状态
       finalStatus = 'valid'
-
-      // 格式化备注：有效：恢复原因
       const statusLabel = validStatusList.value.find(s => s.value === 'valid')?.label || '有效'
       finalRemark = `${statusLabel}：${customRemark.value.trim()}`
+
+    } else if (remarkDialogType.value === 'supplement') {
+      finalStatus = pendingSingleStatus.value
+      const statusLabel = validStatusList.value.find(s => s.value === finalStatus)?.label || finalStatus
+      finalRemark = `${statusLabel}：${customRemark.value.trim()}`
+
+    } else if (remarkDialogType.value === 'general') {
+      finalStatus = ''
+      let remarkText = ''
+      if (customRemark.value.trim()) {
+        remarkText = customRemark.value.trim()
+      } else if (selectedRemarkPreset.value) {
+        const preset = remarkPresets.value.find(p => p.id === selectedRemarkPreset.value)
+        if (preset) {
+          remarkText = preset.remark_text
+          await incrementRemarkPresetUsage(preset.id)
+        }
+      }
+      const statusLabel = validStatusList.value.find(s => s.value === finalStatus)?.label || finalStatus
+      finalRemark = remarkText ? `${statusLabel}：${remarkText}` : ''
     }
 
-    // 更新订单状态和备注
     await batchProcessOrders({
-      ids: [currentEditingRow.value.id],
+      ids: [currentEditingRow.value!.id],
       action: 'updateStatus',
       data: {
         status: finalStatus,
@@ -1196,11 +1620,13 @@ const confirmRemark = async () => {
     ElMessage.success('更新成功')
     remarkDialogVisible.value = false
     currentEditingRow.value = null
+    batchRemarkContext.value = null
+    pendingSingleStatus.value = ''
     loadData()
     loadStats()
 
     if (remarkDialogType.value === 'invalid') {
-      loadRemarkPresets() // 重新加载预设以更新使用次数
+      loadRemarkPresets()
     }
   } catch (e: any) {
     ElMessage.error(e?.message || '更新失败')
@@ -1234,44 +1660,30 @@ const updateSettlementStatus = async (row: ValueAddedOrder, settlementStatus: st
 // 更新订单公司
 const updateOrderCompany = async (row: ValueAddedOrder, companyId: string) => {
   let companyName = '待分配'
-  let unitPrice = 0 // 业务规则：待分配时单价为0
 
   if (companyId !== 'default-company') {
     const company = companies.value.find(c => c.id === companyId)
     if (!company) return
     companyName = company.companyName
-
-    // 🔥 业务规则：使用公司最高优先级档位的单价
-    if (company.topTier) {
-      if (company.topTier.pricingType === 'fixed') {
-        unitPrice = Number(company.topTier.unitPrice) || 0
-      } else {
-        // 按比例计价时，这里暂时设为0，实际计算需要订单金额
-        // TODO: 如果需要立即计算比例价格，需要获取订单金额
-        unitPrice = 0
-      }
-    } else {
-      // 没有配置档位时，单价为0
-      unitPrice = 0
-    }
-
-    console.log(`[updateOrderCompany] 公司=${companyName}, 档位=${company.topTier?.tierName || '未配置'}, 单价=${unitPrice}`)
   }
 
   try {
     const { updateOrderCompany: updateAPI } = await import('@/api/valueAdded')
-    await updateAPI(row.id, {
+    // 🔥 不传递单价，让后端根据订单下单日期动态匹配价格档位
+    const result = await updateAPI(row.id, {
       companyId,
-      companyName,
-      unitPrice // 🔥 添加单价参数
-    })
+      companyName
+    }) as any
 
-    // 更新本地数据
+    // 更新本地数据，使用后端返回的动态匹配的单价
     row.companyId = companyId
     row.companyName = companyName
-    row.unitPrice = unitPrice as any // 类型兼容处理
+    if (result?.data?.unitPrice !== undefined) {
+      row.unitPrice = result.data.unitPrice
+    }
 
     ElMessage.success('修改成功')
+    loadData()
     loadStats()
   } catch (e: any) {
     ElMessage.error(e?.message || '修改失败')
@@ -1287,24 +1699,16 @@ const handleBatchCompany = async (companyId: string) => {
   }
 
   let companyName = '待分配'
-  let unitPrice = 0
 
   if (companyId !== 'default-company') {
     const company = companies.value.find(c => c.id === companyId)
     if (!company) return
     companyName = company.companyName
-
-    // 使用公司最高优先级档位的单价
-    if (company.topTier) {
-      if (company.topTier.pricingType === 'fixed') {
-        unitPrice = Number(company.topTier.unitPrice) || 0
-      }
-    }
   }
 
   try {
     await ElMessageBox.confirm(
-      `确定将 ${selectedRows.value.length} 个订单的外包公司改为"${companyName}"吗？`,
+      `确定将 ${selectedRows.value.length} 个订单的外包公司改为"${companyName}"吗？\n系统将根据每个订单的下单日期自动匹配对应的价格档位。`,
       '提示',
       { type: 'warning' }
     )
@@ -1312,11 +1716,11 @@ const handleBatchCompany = async (companyId: string) => {
 
   try {
     const { batchUpdateOrderCompany } = await import('@/api/valueAdded')
+    // 🔥 不传单价，让后端根据每个订单的下单日期动态匹配价格
     await batchUpdateOrderCompany({
       ids: selectedRows.value.map(r => r.id),
       companyId,
-      companyName,
-      unitPrice
+      companyName
     })
     ElMessage.success('批量设置成功')
     loadData()
@@ -1327,10 +1731,47 @@ const handleBatchCompany = async (companyId: string) => {
   }
 }
 
+// 🔥 批量操作上下文（用于对话框确认后执行批量操作）
+const batchRemarkContext = ref<{ ids: string[], status: string } | null>(null)
+
+// 🔥 判断状态是否需要弹出原因对话框
+const isStatusNeedReason = (status: string): boolean => {
+  if (status === 'invalid') return true
+  // 补单相关状态也需要原因
+  const label = validStatusList.value.find(s => s.value === status)?.label || ''
+  if (label.includes('补单') || label.includes('补') || status.includes('supplement') || status.includes('budan')) return true
+  return false
+}
+
 // 批量改有效状态
 const handleBatchValidStatus = async (status: string) => {
   if (selectedRows.value.length === 0) {
     ElMessage.warning('请选择订单')
+    return
+  }
+
+  // 🔥 无效状态或补单状态：弹出原因对话框
+  if (isStatusNeedReason(status)) {
+    batchRemarkContext.value = {
+      ids: selectedRows.value.map(r => r.id),
+      status
+    }
+    remarkDialogType.value = status === 'invalid' ? 'invalid' : 'general'
+    selectedRemarkPreset.value = ''
+    customRemark.value = ''
+    currentEditingRow.value = null // 批量模式不针对单行
+    // 🔥 初始化每行订单数据
+    batchOrderItems.value = selectedRows.value.map(r => ({
+      id: r.id,
+      orderNumber: r.orderNumber || '',
+      customerName: r.customerName || '',
+      unitPrice: r.unitPrice || 0,
+      reasonPresetId: '',
+      customRemark: ''
+    }))
+    unifiedReasonPreset.value = ''
+    unifiedRemarkText.value = ''
+    remarkDialogVisible.value = true
     return
   }
 
@@ -1339,10 +1780,13 @@ const handleBatchValidStatus = async (status: string) => {
   } catch { return }
 
   try {
+    const statusLabel = validStatusList.value.find(s => s.value === status)?.label || status
+    const defaultRemark = `${statusLabel}`
+
     await batchProcessOrders({
       ids: selectedRows.value.map(r => r.id),
       action: 'updateStatus',
-      data: { status }
+      data: { status, remark: defaultRemark }
     })
     ElMessage.success('批量设置成功')
     loadData()
@@ -1404,10 +1848,10 @@ const handleExport = async () => {
       下单日期: row.orderDate || '',
       外包公司: row.companyName || '',
       单价: Number(row.unitPrice || 0),
-      有效状态: row.status || '',
-      结算状态: row.settlementStatus || '',
-      实际结算: Number(row.settlementAmount || 0),
-      结算日期: row.settlementDate || '',
+      有效状态: getValidStatusLabel(row.status),
+      结算状态: getSettlementStatusLabel(row.settlementStatus),
+      实际结算: (row.settlementStatus === 'settled' && row.status === 'valid') ? Number(row.unitPrice || 0) : 0,
+      结算日期: row.settlementDate ? formatDate(row.settlementDate) : '',
       备注: row.remark || ''
     }))
 
@@ -1449,6 +1893,17 @@ const showStatusConfigDialog = () => {
 const showCompanyDialog = async () => {
   await loadCompanies()
   companyDialogVisible.value = true
+}
+
+// 🔥 刷新公司列表（带loading状态）
+const refreshCompanyList = async () => {
+  companyListLoading.value = true
+  try {
+    await loadCompanies()
+    ElMessage.success('刷新成功')
+  } finally {
+    companyListLoading.value = false
+  }
 }
 
 // 显示添加公司弹窗
@@ -1521,13 +1976,17 @@ const saveCompany = async () => {
         await loadCompanyTiers(editingCompany.value.id)
       }
     } else {
-      const result = await createOutsourceCompany(companyForm)
+      const result = await createOutsourceCompany(companyForm) as any
       ElMessage.success('添加成功，可以继续配置价格档位')
+      // 🔥 修复：axios拦截器已返回data，result就是company对象（或在data字段中）
+      const newCompany = result?.data || result
       // 保存后切换到编辑模式，允许配置档位
-      editingCompany.value = result.data
+      editingCompany.value = newCompany
       companyFormTab.value = 'tiers'
-      await loadCompanyTiers(result.data.id)
-      // 不关闭弹窗，让用户继续配置档位
+      if (newCompany?.id) {
+        await loadCompanyTiers(newCompany.id)
+      }
+      // 🔥 刷新外包公司列表，实时显示新公司
       await loadCompanies()
       return
     }
@@ -1923,6 +2382,67 @@ const goToCustomerDetail = (id: string) => {
   align-items: center;
 }
 
+.selection-count-tip {
+  font-size: 13px;
+  color: #409eff;
+  background: #ecf5ff;
+  padding: 4px 12px;
+  border-radius: 12px;
+  white-space: nowrap;
+  b { font-weight: 700; }
+  .selection-amount {
+    color: #f56c6c;
+    font-weight: 700;
+    margin-left: 4px;
+  }
+}
+
+.missing-count-tag {
+  display: inline-block;
+  font-size: 11px;
+  color: #909399;
+  background: #f0f0f0;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  &:hover {
+    color: #e6a23c;
+    background: #fdf6ec;
+  }
+}
+
+.missing-popover {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.missing-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #606266;
+  b { font-weight: 700; color: #e6a23c; }
+}
+
+.missing-popover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.missing-item {
+  padding: 4px 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #606266;
+  word-break: break-all;
+}
+
 .regular-actions {
   display: flex;
   gap: 8px;
@@ -1959,13 +2479,23 @@ const goToCustomerDetail = (id: string) => {
 .company-manage-header,
 .price-config-header {
   margin-bottom: 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
-</style>
 
 /* 备注相关样式 */
 .remark-text {
   font-size: 13px;
   color: #606266;
+}
+
+.remark-ellipsis {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .remark-dialog-content {
@@ -2007,3 +2537,68 @@ const goToCustomerDetail = (id: string) => {
   background: #e8f4ff;
   border-color: #409eff;
 }
+
+/* 批量备注对话框 - 统一设置区域 */
+.batch-unified-section {
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.batch-unified-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.batch-unified-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.batch-unified-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* 批量备注对话框 - 预览区域 */
+.batch-preview-section {
+  margin-top: 4px;
+}
+
+.batch-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.batch-preview-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.batch-preview-tip {
+  font-size: 12px;
+  color: #909399;
+}
+
+.batch-preview-table-wrapper {
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.batch-preview-table :deep(.el-table__header th) {
+  background: #f5f7fa;
+  font-size: 12px;
+}
+
+.batch-preview-table :deep(.el-table__body td) {
+  padding: 6px 0;
+}
+</style>
+

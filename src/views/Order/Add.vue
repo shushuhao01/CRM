@@ -20,24 +20,54 @@
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="选择客户" prop="customerId" required>
-              <el-select
-                v-model="orderForm.customerId"
-                placeholder="请选择客户"
-                style="width: 100%"
-                filterable
-                remote
-                :remote-method="searchCustomers"
-                :loading="customerLoading"
-                @change="handleCustomerChange"
-                size="large"
-              >
-                <el-option
-                  v-for="customer in customerOptions"
-                  :key="customer.id"
-                  :label="`${customer.name} (${displaySensitiveInfoNew(customer.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '')})`"
-                  :value="customer.id"
-                />
-              </el-select>
+              <div class="customer-select-wrapper">
+                <el-select
+                  v-model="orderForm.customerId"
+                  placeholder="请选择客户"
+                  style="flex: 1"
+                  filterable
+                  remote
+                  :remote-method="searchCustomers"
+                  :loading="customerLoading"
+                  @change="handleCustomerChange"
+                  size="large"
+                >
+                  <el-option
+                    v-for="customer in customerOptions"
+                    :key="customer.id"
+                    :label="`${customer.name} (${displaySensitiveInfoNew(customer.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '')})`"
+                    :value="customer.id"
+                  />
+                </el-select>
+                <!-- 🔥 配额查看图标按钮 -->
+                <el-tooltip
+                  v-if="orderLimitResult?.hasLimit"
+                  content="查看下单配额详情"
+                  placement="top"
+                >
+                  <el-icon
+                    class="limit-info-icon"
+                    :class="{ 'is-exceeded': orderLimitExceeded }"
+                    @click="orderLimitDialogVisible = true"
+                  >
+                    <InfoFilled />
+                  </el-icon>
+                </el-tooltip>
+              </div>
+              <!-- 🔥 内联限制提示文字 -->
+              <div v-if="orderLimitResult?.hasLimit && orderLimitResult.details" class="limit-inline-hint" :class="{ 'is-exceeded': orderLimitExceeded }">
+                <span class="limit-dot"></span>
+                <template v-if="orderLimitExceeded">
+                  <span v-if="orderLimitResult.details.orderCountEnabled && orderLimitResult.details.orderCountExceeded">已下{{ orderLimitResult.details.orderCount }}/{{ orderLimitResult.details.maxOrderCount }}次 </span>
+                  <span v-if="orderLimitResult.details.totalAmountEnabled && orderLimitResult.details.totalAmountExceeded">累计¥{{ Number(orderLimitResult.details.totalAmount).toFixed(0) }}/¥{{ Number(orderLimitResult.details.maxTotalAmount).toFixed(0) }} </span>
+                  <span>超出限制</span>
+                </template>
+                <template v-else>
+                  <span v-if="orderLimitResult.details.orderCountEnabled">剩{{ orderLimitResult.details.maxOrderCount - orderLimitResult.details.orderCount }}次 </span>
+                  <span v-if="orderLimitResult.details.totalAmountEnabled">余¥{{ Number(orderLimitResult.details.remainingAmount).toFixed(0) }} </span>
+                  <span v-if="orderLimitResult.details.singleAmountEnabled">单笔≤¥{{ Number(orderLimitResult.details.maxSingleAmount).toFixed(0) }}</span>
+                </template>
+              </div>
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -98,7 +128,7 @@
                     <el-option
                       v-for="phone in customerPhones"
                       :key="phone.id"
-                      :label="maskPhone(phone.number) + (phone.remark ? ` (${phone.remark})` : '')"
+                      :label="displaySensitiveInfoNew(phone.number, SensitiveInfoType.PHONE) + (phone.remark ? ` (${phone.remark})` : '')"
                       :value="phone.id"
                     />
                   </el-select>
@@ -464,9 +494,13 @@
         <!-- 操作按钮 -->
         <div class="form-footer">
           <el-button @click="handleCancel" size="large">取消</el-button>
-          <el-button @click="handleSaveOrder" type="primary" size="large" :loading="saving">
-            保存订单
+          <el-button @click="handleSaveOrder" type="primary" size="large" :loading="saving" :disabled="orderLimitExceeded">
+            {{ orderLimitExceeded ? '下单受限' : '保存订单' }}
           </el-button>
+          <span v-if="orderLimitExceeded" class="limit-exceeded-tip">
+            <span class="limit-dot" style="background:#f56c6c"></span>
+            <span style="color: #f56c6c; font-size: 12px;">超出部门下单限制</span>
+          </span>
         </div>
       </el-card>
     </el-form>
@@ -581,8 +615,8 @@
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="confirmDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="handleSubmitOrder" :loading="submitting">
-            确认提交审核
+          <el-button type="primary" @click="handleSubmitOrder" :loading="submitting" :disabled="orderLimitExceeded">
+            {{ orderLimitExceeded ? '下单受限' : '确认提交审核' }}
           </el-button>
         </span>
       </template>
@@ -627,6 +661,93 @@
       </template>
     </el-dialog>
 
+    <!-- 🔥 部门下单限制详情弹窗（点击图标打开） -->
+    <el-dialog
+      v-model="orderLimitDialogVisible"
+      :title="orderLimitExceeded ? '⚠️ 下单限制已超出' : '📋 下单配额详情'"
+      width="520px"
+    >
+      <div class="order-limit-dialog" v-if="orderLimitResult?.details">
+        <el-alert
+          v-if="orderLimitExceeded"
+          title="当前客户在本部门的下单限制已超出，无法提交订单"
+          type="error"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px;"
+        />
+        <el-alert
+          v-else
+          title="当前客户在本部门有下单限制，请注意以下配额信息"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px;"
+        />
+
+        <el-descriptions :column="2" border size="default">
+          <!-- 下单次数 -->
+          <template v-if="orderLimitResult.details.orderCountEnabled">
+            <el-descriptions-item label="已下次数" :span="1">
+              <el-tag :type="orderLimitResult.details.orderCountExceeded ? 'danger' : 'info'" size="default">
+                {{ orderLimitResult.details.orderCount }} 次
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="可下次数" :span="1">
+              <el-tag type="success" size="default">
+                {{ orderLimitResult.details.maxOrderCount }} 次
+              </el-tag>
+            </el-descriptions-item>
+          </template>
+
+          <!-- 累计金额 -->
+          <template v-if="orderLimitResult.details.totalAmountEnabled">
+            <el-descriptions-item label="已下金额" :span="1">
+              <el-tag :type="orderLimitResult.details.totalAmountExceeded ? 'danger' : 'info'" size="default">
+                ¥{{ Number(orderLimitResult.details.totalAmount).toFixed(2) }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="可下金额" :span="1">
+              <el-tag type="success" size="default">
+                ¥{{ Number(orderLimitResult.details.maxTotalAmount).toFixed(2) }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="剩余额度" :span="2">
+              <el-tag :type="orderLimitResult.details.remainingAmount <= 0 ? 'danger' : 'warning'" size="default">
+                ¥{{ Number(orderLimitResult.details.remainingAmount).toFixed(2) }}
+              </el-tag>
+            </el-descriptions-item>
+          </template>
+
+          <!-- 单笔金额 -->
+          <template v-if="orderLimitResult.details.singleAmountEnabled">
+            <el-descriptions-item label="当前单笔金额" :span="1">
+              <el-tag :type="(orderForm.totalAmount > orderLimitResult.details.maxSingleAmount) ? 'danger' : 'info'" size="default">
+                ¥{{ (orderForm.totalAmount || 0).toFixed(2) }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="最高单笔金额" :span="1">
+              <el-tag type="success" size="default">
+                ¥{{ Number(orderLimitResult.details.maxSingleAmount).toFixed(2) }}
+              </el-tag>
+            </el-descriptions-item>
+          </template>
+        </el-descriptions>
+
+        <div v-if="orderLimitExceeded" style="margin-top: 16px; text-align: center;">
+          <el-text type="danger" size="default" tag="b">
+            提交按钮已锁定，请联系管理员调整限制配置
+          </el-text>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="orderLimitDialogVisible = false" type="primary">
+          知道了
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 图片查看器 -->
     <el-image-viewer
       v-if="showImageViewer"
@@ -637,12 +758,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, ElImageViewer } from 'element-plus'
 import {
   User, Message, Location, ShoppingBag, Search, Plus,
-  Delete, Money, Upload, Check, DocumentCopy, ZoomIn, Refresh, View
+  Delete, Money, Upload, Check, DocumentCopy, ZoomIn, Refresh, View, InfoFilled, Warning
 } from '@element-plus/icons-vue'
 import { useOrderStore } from '@/stores/order'
 import { useCustomerStore } from '@/stores/customer'
@@ -653,8 +774,9 @@ import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { createSafeNavigator } from '@/utils/navigation'
-import { maskPhone } from '@/utils/dataMask'
 import CustomFieldsCard from '@/components/Order/CustomFieldsCard.vue'
+import { orderApi } from '@/api/order'
+import type { DepartmentLimitCheckResult } from '@/api/order'
 
 // 接口定义
 interface Product {
@@ -864,6 +986,12 @@ const addPhoneRules = {
   ]
 }
 
+// 🔥 部门下单限制检查
+const orderLimitResult = ref<DepartmentLimitCheckResult | null>(null)
+const orderLimitExceeded = ref(false)
+const orderLimitDialogVisible = ref(false)
+const orderLimitChecking = ref(false)
+
 // 订单表单数据
 const orderForm = reactive<OrderForm>({
   customerId: '',
@@ -1037,6 +1165,11 @@ const searchCustomers = (query: string) => {
 }
 
 const handleCustomerChange = (customerId: string) => {
+  // 🔥 先重置限制状态
+  orderLimitResult.value = null
+  orderLimitExceeded.value = false
+  orderLimitDialogVisible.value = false
+
   const customer = customerOptions.value.find(c => c.id === customerId)
   if (customer) {
     selectedCustomer.value = customer
@@ -1046,8 +1179,71 @@ const handleCustomerChange = (customerId: string) => {
 
     // 加载客户手机号列表
     loadCustomerPhones(customerId)
+
+    // 🔥 检查部门下单限制（仅正常发货单检查）
+    if (orderForm.markType !== 'reserved' && orderForm.markType !== 'return') {
+      checkDepartmentLimit(customerId)
+    }
   }
 }
+
+// 🔥 检查部门下单限制
+const checkDepartmentLimit = async (customerId: string) => {
+  try {
+    orderLimitChecking.value = true
+    const response = await orderApi.checkDepartmentLimit(customerId)
+    const data = (response as any)?.data || response
+
+    if (data && data.hasLimit) {
+      orderLimitResult.value = data
+      const details = data.details
+
+      // 判断是否有任一维度超限
+      let exceeded = false
+      if (details) {
+        if (details.orderCountExceeded) exceeded = true
+        if (details.totalAmountExceeded) exceeded = true
+      }
+
+      orderLimitExceeded.value = exceeded
+
+      // 不自动弹窗，用户可点击图标查看详情
+    } else {
+      orderLimitResult.value = null
+      orderLimitExceeded.value = false
+    }
+  } catch (error) {
+    console.error('检查部门下单限制失败:', error)
+    // 出错不阻止下单
+    orderLimitResult.value = null
+    orderLimitExceeded.value = false
+  } finally {
+    orderLimitChecking.value = false
+  }
+}
+
+// 🔥 监听订单总额变化，实时检查单笔金额限制
+watch(() => orderForm.totalAmount, (newAmount) => {
+  if (orderLimitResult.value?.hasLimit && orderLimitResult.value.details) {
+    const details = orderLimitResult.value.details
+    let exceeded = false
+
+    // 重新检查次数限制
+    if (details.orderCountExceeded) exceeded = true
+    // 检查单笔金额限制
+    if (details.singleAmountEnabled && details.maxSingleAmount > 0 && newAmount > details.maxSingleAmount) {
+      exceeded = true
+    }
+    // 检查累计金额限制（当前累计 + 本单金额 > 最大累计）
+    if (details.totalAmountEnabled && details.maxTotalAmount > 0) {
+      if (details.totalAmount + newAmount > details.maxTotalAmount) {
+        exceeded = true
+      }
+    }
+
+    orderLimitExceeded.value = exceeded
+  }
+})
 
 // 加载客户手机号列表
 const loadCustomerPhones = async (customerId: string) => {
@@ -1423,8 +1619,16 @@ const handleUploadError = () => {
 const handleMarkTypeChange = (value: string) => {
   if (value === 'reserved') {
     ElMessage.info('已选择预留单，订单将保留在您处，不会流转到审核员')
+    // 🔥 预留单不受部门下单限制
+    orderLimitExceeded.value = false
+    orderLimitResult.value = null
+    orderLimitDialogVisible.value = false
   } else {
     ElMessage.info('已选择正常发货单，订单将按正常流程进行审核')
+    // 🔥 切换回正常发货单时重新检查
+    if (orderForm.customerId) {
+      checkDepartmentLimit(orderForm.customerId)
+    }
   }
 }
 
@@ -1447,6 +1651,28 @@ const handleSaveOrder = async () => {
     if (orderForm.paymentMethod === 'other' && !orderForm.paymentMethodOther) {
       ElMessage.warning('请输入具体的支付方式')
       return
+    }
+
+    // 🔥 检查部门下单限制（双重保障）
+    if (orderLimitExceeded.value) {
+      ElMessage.error('部门下单限制已超出，无法提交订单')
+      return
+    }
+
+    // 🔥 实时检查单笔金额限制
+    if (orderLimitResult.value?.hasLimit && orderLimitResult.value.details) {
+      const d = orderLimitResult.value.details
+      const currentAmount = orderForm.totalAmount || 0
+      if (d.singleAmountEnabled && d.maxSingleAmount > 0 && currentAmount > d.maxSingleAmount) {
+        orderLimitExceeded.value = true
+        ElMessage.error(`当前订单金额 ¥${currentAmount.toFixed(2)} 超出单笔金额限制 ¥${d.maxSingleAmount.toFixed(2)}`)
+        return
+      }
+      if (d.totalAmountEnabled && d.maxTotalAmount > 0 && (d.totalAmount + currentAmount) > d.maxTotalAmount) {
+        orderLimitExceeded.value = true
+        ElMessage.error(`累计金额将达到 ¥${(d.totalAmount + currentAmount).toFixed(2)}，超出限制 ¥${d.maxTotalAmount.toFixed(2)}`)
+        return
+      }
     }
 
     confirmDialogVisible.value = true
@@ -1618,11 +1844,14 @@ const getExpressCompanyText = (code: string) => {
 const loadExpressCompanies = async () => {
   expressCompanyLoading.value = true
   try {
-    const { apiService } = await import('@/services/apiService')
-    const response = await apiService.get('/logistics/companies/active')
-    if (response && Array.isArray(response)) {
+    const { logisticsApi } = await import('@/api/logistics')
+    const response = await logisticsApi.getActiveCompanies()
+    const dataList = (response && response.success && Array.isArray(response.data))
+      ? response.data
+      : (response && Array.isArray(response) ? response as any[] : null)
+    if (dataList) {
       // 🔥 使用完整名称而不是简称
-      expressCompanyList.value = response.map((item: { code: string; name: string; shortName?: string; logo?: string }) => ({
+      expressCompanyList.value = dataList.map((item: { code: string; name: string; shortName?: string; logo?: string }) => ({
         code: item.code,
         name: item.name, // 使用完整名称
         logo: item.logo
@@ -1737,6 +1966,9 @@ onMounted(async () => {
       selectedPhoneId.value = 1
 
       ElMessage.success(`已自动选择客户：${customerInfo.name}`)
+
+      // 🔥 检查部门下单限制
+      checkDepartmentLimit(customerInfo.id)
     } else if (customerName && customerPhone) {
       // 如果store中找不到但有传递的客户信息，使用传递的信息
       console.log('[新增订单] 使用路由传递的客户信息')
@@ -1782,6 +2014,9 @@ onMounted(async () => {
       selectedPhoneId.value = 1
 
       ElMessage.success(`已自动选择客户：${customerName}`)
+
+      // 🔥 检查部门下单限制
+      checkDepartmentLimit(customerId as string)
     } else {
       // 只有customerId但找不到客户信息
       ElMessage.warning('未找到指定的客户信息，请手动选择客户')
@@ -3040,5 +3275,81 @@ onMounted(async () => {
 .required-star {
   color: #f56c6c;
   margin-left: 2px;
+}
+
+/* 🔥 部门下单限制提示样式 */
+.customer-select-wrapper {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
+}
+
+.limit-info-icon {
+  font-size: 16px;
+  color: #909399;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.2s;
+}
+.limit-info-icon:hover {
+  color: #409eff;
+}
+.limit-info-icon.is-exceeded {
+  color: #f56c6c;
+}
+.limit-info-icon.is-exceeded:hover {
+  color: #c45656;
+}
+
+.limit-inline-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1;
+  margin-top: 4px;
+  color: #67c23a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.limit-inline-hint.is-exceeded {
+  color: #f56c6c;
+}
+
+.limit-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #67c23a;
+  flex-shrink: 0;
+}
+.limit-inline-hint.is-exceeded .limit-dot {
+  background: #f56c6c;
+}
+
+.limit-exceeded-tip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 12px;
+  gap: 6px;
+}
+
+.order-limit-dialog :deep(.el-descriptions__label) {
+  font-weight: 600;
+  min-width: 100px;
+}
+
+.order-limit-dialog :deep(.el-tag) {
+  font-size: 14px;
+  padding: 4px 12px;
+}
+
+.form-footer {
+  display: flex;
+  align-items: center;
 }
 </style>

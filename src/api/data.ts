@@ -14,6 +14,7 @@ export interface DataListParams {
   dateFilter?: 'today' | 'yesterday' | 'thisWeek' | 'last30Days' | 'thisMonth' | 'thisYear' | 'all'
   searchKeyword?: string
   assigneeId?: string
+  departmentId?: string
   orderAmountRange?: number[]
 }
 
@@ -139,8 +140,9 @@ export interface DataListResponse {
 export const getDataList = async (params: DataListParams): Promise<DataListResponse> => {
   // 🔥 始终尝试从后端API获取数据
   try {
-    console.log('[Data API] 从后端API获取资料列表...')
-    const response = await api.get('/data/list', params)
+    console.log('[Data API] 从后端API获取资料列表...', params)
+    // 🔥 修复：正确传递查询参数 { params } 而非直接传 params
+    const response = await api.get('/data/list', { params: params as any })
 
     // 处理API响应格式
     if (response && response.data) {
@@ -196,7 +198,7 @@ export const getDataList = async (params: DataListParams): Promise<DataListRespo
       }
     }
 
-    const { page = 1, pageSize = 30 } = params
+    const { page = 1, pageSize = 10 } = params
     const startIndex = (page - 1) * pageSize
     const endIndex = startIndex + pageSize
 
@@ -376,7 +378,7 @@ export interface CustomerSearchResult {
 export const searchCustomer = async (params: CustomerSearchParams): Promise<CustomerSearchResult[]> => {
   try {
     console.log('[Data API] 使用后端API搜索客户')
-    const response = await api.get('/data/search-customer', params)
+    const response = await api.get('/data/search-customer', { params: params as any })
     return response.data || response
   } catch (error) {
     console.error('[Data API] 搜索客户失败:', error)
@@ -450,7 +452,7 @@ export interface DataStatistics {
 
 export const getDataStatistics = (dateRange?: string[]): Promise<DataStatistics> => {
   return api.get('/data/statistics',
-    dateRange ? { startDate: dateRange[0], endDate: dateRange[1] } : {}
+    dateRange ? { params: { startDate: dateRange[0], endDate: dateRange[1] } as any } : {}
   )
 }
 
@@ -463,7 +465,7 @@ export interface ExportDataParams {
 }
 
 export const exportDataList = (params: ExportDataParams): Promise<unknown> => {
-  return api.get('/data/export', params)
+  return api.get('/data/export', { params: params as any })
 }
 
 // 回收站相关接口
@@ -513,7 +515,7 @@ export const getRecycleList = async (params: RecycleListParams = {}): Promise<Re
     })
   }
 
-  const response = await api.get('/data/recycle', params)
+  const response = await api.get('/data/recycle', { params: params as any })
   return response.data || response
 }
 

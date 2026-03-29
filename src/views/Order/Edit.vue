@@ -106,7 +106,7 @@
                       <el-option
                         v-for="phone in customerPhones"
                         :key="phone.id"
-                        :label="maskPhone(phone.number)"
+                        :label="displaySensitiveInfoNew(phone.number, SensitiveInfoType.PHONE)"
                         :value="phone.id"
                       />
                     </el-select>
@@ -508,8 +508,16 @@
           style="width: 100%"
         >
           <el-table-column prop="name" label="客户姓名" />
-          <el-table-column prop="phone" label="联系电话" />
-          <el-table-column prop="address" label="地址" />
+          <el-table-column prop="phone" label="联系电话">
+            <template #default="{ row }">
+              {{ displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="address" label="地址">
+            <template #default="{ row }">
+              {{ row.address ? displaySensitiveInfoNew(row.address, SensitiveInfoType.ADDRESS) : '-' }}
+            </template>
+          </el-table-column>
         </el-table>
       </div>
     </el-dialog>
@@ -671,7 +679,6 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, ZoomIn, Delete, ArrowDown, User, Message, Location, Plus, ShoppingBag, Refresh, View, Upload, DocumentCopy, Money } from '@element-plus/icons-vue'
-import { maskPhone } from '@/utils/phone'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { useOrderStore } from '@/stores/order'
@@ -881,11 +888,14 @@ const customerOptions = computed(() => {
 const loadExpressCompanies = async () => {
   expressCompanyLoading.value = true
   try {
-    const { apiService } = await import('@/services/apiService')
-    const response = await apiService.get('/logistics/companies/active')
-    if (response && Array.isArray(response)) {
+    const { logisticsApi } = await import('@/api/logistics')
+    const response = await logisticsApi.getActiveCompanies()
+    const dataList = (response && response.success && Array.isArray(response.data))
+      ? response.data
+      : (response && Array.isArray(response) ? response as any[] : null)
+    if (dataList) {
       // 🔥 使用完整名称而不是简称
-      expressCompanyList.value = response.map((item: { code: string; name: string; shortName?: string; logo?: string }) => ({
+      expressCompanyList.value = dataList.map((item: { code: string; name: string; shortName?: string; logo?: string }) => ({
         code: item.code,
         name: item.name, // 使用完整名称
         logo: item.logo

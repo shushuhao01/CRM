@@ -338,108 +338,60 @@ export const useCustomerStore = createPersistentStore('customer', () => {
     })
   }
 
-  // 添加客户（智能处理：生产环境调用API，开发环境使用本地存储）
+  // 添加客户 - 🔥🔥🔥 修复：始终调用API写入数据库，移除错误的hostname环境判断
   const createCustomer = async (customerData: Omit<Customer, 'id' | 'code' | 'createTime' | 'orderCount'>) => {
     console.log('🔥 createCustomer方法被调用！实例ID:', instanceId)
     console.log('🔥 传入的客户数据:', customerData)
 
-    // 检查是否为生产环境（直接检查hostname，不依赖其他函数）
-    const hostname = window.location.hostname
-    const isProdEnv = !(
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname.includes('192.168') ||
-      hostname.includes('dev.') ||
-      hostname.includes('test.')
-    )
-
-    console.log('[CustomerStore] 环境检测: hostname=', hostname, ', isProdEnv=', isProdEnv)
-
-    // 生产环境强制使用API，不管其他设置
-    if (isProdEnv) {
-      console.log('[CustomerStore] 🌐 生产环境：调用真实API保存客户到数据库')
-      try {
-        const { customerApi } = await import('@/api/customer')
-        // 生成客户编码，API可能需要这个字段
-        const dataWithCode = {
-          ...customerData,
-          code: generateCustomerCode()
-        }
-        console.log('[CustomerStore] 准备发送到API的数据:', dataWithCode)
-
-        const response = await customerApi.create(dataWithCode)
-        console.log('[CustomerStore] API响应:', response)
-        console.log('[CustomerStore] API响应类型:', typeof response)
-        console.log('[CustomerStore] API响应.data:', response.data)
-        console.log('[CustomerStore] API响应.success:', response.success)
-
-        // 检查API是否成功
-        if (response.success && response.data) {
-          const newCustomer = {
-            ...response.data,
-            // 确保使用前端生成的客户编码，不使用后端返回的短编码
-            code: dataWithCode.code
-          }
-          console.log('[CustomerStore] ✅ API保存成功，客户ID:', newCustomer.id, '客户编码:', newCustomer.code)
-
-          // 同时更新本地缓存
-          customers.value.unshift(newCustomer)
-          console.log('[CustomerStore] 本地缓存已更新，客户总数:', customers.value.length)
-
-          return newCustomer
-        } else if (response.success && !response.data) {
-          // API成功但没有返回data，可能是后端返回格式问题
-          console.warn('[CustomerStore] API成功但没有返回客户数据，尝试从响应中提取')
-          // 尝试直接使用response作为客户数据（如果后端直接返回客户对象）
-          const possibleCustomer = response as unknown as Customer
-          if (possibleCustomer.id || possibleCustomer.name) {
-            customers.value.unshift(possibleCustomer)
-            return possibleCustomer
-          }
-          throw new Error('API返回成功但没有客户数据')
-        } else {
-          console.error('[CustomerStore] API响应失败:', response)
-          throw new Error((response as { message?: string }).message || '创建客户失败')
-        }
-      } catch (apiError) {
-        console.error('[CustomerStore] ❌ API保存失败:', apiError)
-        throw apiError
+    // 🔥 关键修复：无论什么环境，都必须调用API保存到数据库
+    // 之前的hostname判断逻辑导致localhost环境下客户只存到本地内存，从未写入数据库
+    console.log('[CustomerStore] 🌐 调用真实API保存客户到数据库')
+    try {
+      const { customerApi } = await import('@/api/customer')
+      // 生成客户编码，API可能需要这个字段
+      const dataWithCode = {
+        ...customerData,
+        code: generateCustomerCode()
       }
-    }
+      console.log('[CustomerStore] 准备发送到API的数据:', dataWithCode)
 
-    // 开发环境：使用本地存储
-    console.log('[CustomerStore] 💻 开发环境：使用本地存储')
+      const response = await customerApi.create(dataWithCode)
+      console.log('[CustomerStore] API响应:', response)
+      console.log('[CustomerStore] API响应.success:', response.success)
 
-    // 使用ISO格式的时间，与其他地方保持一致
-    const now = new Date()
-    const newCustomer: Customer = {
-      ...customerData,
-      id: `customer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      code: generateCustomerCode(),
-      createTime: now.toISOString(), // 使用ISO格式，确保时间格式一致
-      orderCount: 0
-    }
+      // 检查API是否成功
+      if (response.success && response.data) {
+        const newCustomer = {
+          ...response.data,
+          // 确保使用前端生成的客户编码，不使用后端返回的短编码
+          code: dataWithCode.code
+        }
+        console.log('[CustomerStore] ✅ API保存成功，客户ID:', newCustomer.id, '客户编码:', newCustomer.code)
 
-    console.log('[CustomerStore] 准备添加新客户:', newCustomer.name, 'ID:', newCustomer.id)
-    console.log('[CustomerStore] 保存前客户总数:', customers.value.length)
+        // 同时更新本地缓存
+        customers.value.unshift(newCustomer)
+        console.log('[CustomerStore] 本地缓存已更新，客户总数:', customers.value.length)
 
-    // 添加到列表开头
-    customers.value.unshift(newCustomer)
-
-    console.log('[CustomerStore] 添加后客户总数:', customers.value.length)
-    console.log('[CustomerStore] 客户创建时间:', newCustomer.createTime)
-
-    // 立即保存到localStorage
-    setTimeout(() => {
-      const storeInstance = useCustomerStore() as { saveImmediately?: () => void }
-      if (storeInstance && typeof storeInstance.saveImmediately === 'function') {
-        storeInstance.saveImmediately()
-        console.log('[CustomerStore] ✅ 创建客户后立即保存完成')
+        return newCustomer
+      } else if (response.success && !response.data) {
+        // API成功但没有返回data，可能是后端返回格式问题
+        console.warn('[CustomerStore] API成功但没有返回客户数据，尝试从响应中提取')
+        const possibleCustomer = response as unknown as Customer
+        if (possibleCustomer.id || possibleCustomer.name) {
+          customers.value.unshift(possibleCustomer)
+          return possibleCustomer
+        }
+        throw new Error('API返回成功但没有客户数据')
+      } else {
+        console.error('[CustomerStore] API响应失败:', response)
+        throw new Error((response as { message?: string }).message || '创建客户失败')
       }
-    }, 10)
-
-    return newCustomer
+    } catch (apiError) {
+      console.error('[CustomerStore] ❌ API保存失败:', apiError)
+      throw apiError
+    }
   }
+
 
 
   // 加载客户列表（智能处理开发环境和生产环境）

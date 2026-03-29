@@ -256,7 +256,9 @@
     >
       <div class="message-detail" v-if="selectedMessage">
         <div class="message-detail-content">
-          <p>{{ selectedMessage.content }}</p>
+          <!-- 🔥 公告类型使用v-html渲染富文本内容 -->
+          <div v-if="(selectedMessage as any).isAnnouncement" class="announcement-html-content" v-html="sanitizeHtml(selectedMessage.content)"></div>
+          <p v-else>{{ selectedMessage.content }}</p>
           <div class="message-detail-info">
             <span>时间：{{ selectedMessage.time }}</span>
             <span>类型：{{ getMessageTypeName(selectedMessage.type) }}</span>
@@ -296,12 +298,14 @@ import {
 import VChart from 'vue-echarts'
 import { useUserStore } from '@/stores/user'
 import { useNotificationStore } from '@/stores/notification'
+import { useMessageStore } from '@/stores/message'
 import { useOrderStore } from '@/stores/order'
 import { usePerformanceStore } from '@/stores/performance'
 import { useDepartmentStore } from '@/stores/department'
 import { useCustomerStore } from '@/stores/customer'
 import { dashboardApi, type DashboardTodo, type DashboardQuickAction } from '@/api/dashboard'
 import { messageApi } from '@/api/message'
+import { sanitizeHtml } from '@/utils/sanitize'
 
 // 定义组件名称
 defineOptions({
@@ -341,8 +345,10 @@ const safeNavigator = createSafeNavigator(router)
 // 使用 stores
 const userStore = useUserStore()
 const notificationStore = useNotificationStore()
+const messageStore = useMessageStore()
 const orderStore = useOrderStore()
 const departmentStore = useDepartmentStore()
+const performanceStore = usePerformanceStore()
 
 // 响应式数据
 const performancePeriod = ref('day')
@@ -356,29 +362,58 @@ const selectedMessage = ref<Message | null>(null)
 const messages = computed(() => {
   const currentUserId = userStore.currentUser?.id
   const allMessages = notificationStore.messages || []
-  if (!currentUserId) return allMessages
+  if (!currentUserId) {
+    // 🔥 修复：排除announcement类型，公告已单独合并到recentMessages
+    return allMessages.filter(msg => msg.type !== 'announcement')
+  }
 
   // 过滤消息：显示发给当前用户的消息或没有指定目标用户的全局消息
+  // 🔥 修复：排除announcement类型，避免与公告重复
   return allMessages.filter(msg => {
+    if (msg.type === 'announcement') return false
     if (!msg.targetUserId) return true
     return String(msg.targetUserId) === String(currentUserId)
   })
 })
 
-// 计算属性 - 使用新的消息服务
+// 计算属性 - 使用新的消息服务（去重：排除与公告重复的系统消息）
 const unreadCount = computed(() => {
-  return messages.value.filter(msg => !msg.read).length
+  // 🔥 系统消息未读数（messages已排除announcement类型）
+  const msgUnread = messages.value.filter(msg => !msg.read).length
+  // 🔥 公告未读数
+  const annUnread = (messageStore.announcements || []).filter((a: any) => a.status === 'published' && !a.read).length
+  return msgUnread + annUnread
 })
 
 const recentMessages = computed(() => {
-  // 确保消息按时间倒序排列（最新的在前）
+  // 系统消息（已排除announcement类型）- 按时间排序
   const sortedMessages = [...messages.value]
     .sort((a, b) => {
       const timeA = new Date(a.time).getTime()
       const timeB = new Date(b.time).getTime()
       return timeB - timeA // 倒序：最新的在前
     })
-  return sortedMessages.slice(0, 5)
+
+  // 🔥 将公告也合并到消息提醒列表中（仅显示未读公告）
+  const announcementMessages = (messageStore.announcements || [])
+    .filter((a: any) => a.status === 'published' && !a.read)
+    .map((a: any) => ({
+      id: 'ann_' + a.id,
+      title: `📢 ${a.title}`,
+      content: a.content ? a.content.replace(/<[^>]+>/g, '').substring(0, 80) : '',
+      time: a.publishedAt || a.createdAt,
+      read: !!a.read,
+      icon: 'ChatDotRound',
+      color: a.source === 'system' ? '#f56c6c' : '#409eff',
+      type: 'announcement',
+      category: a.source === 'system' ? '系统公告' : '公司公告'
+    }))
+
+  // 合并并按时间排序
+  const allItems = [...sortedMessages, ...announcementMessages]
+    .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+
+  return allItems.slice(0, 5)
 })
 
 // 核心指标数据 - 根据用户权限动态生成标签
@@ -653,6 +688,8 @@ const performanceChartData = ref({
   xAxisData: [] as string[],
   orderData: [] as number[],
   signData: [] as number[],
+  orderCountData: [] as number[],
+  signCountData: [] as number[],
   title: '业绩趋势'
 })
 
@@ -665,12 +702,19 @@ const performanceChartOption = computed(() => {
       axisPointer: {
         type: 'cross'
       },
-      formatter: function(params: Array<{axisValue: string, value: number, marker: string, seriesName: string}>) {
+      formatter: function(params: Array<{axisValue: string, value: number, marker: string, seriesName: string, dataIndex: number}>) {
         let result = `${params[0].axisValue}<br/>`
         params.forEach((param) => {
-          // 🔥 修复：业绩趋势图始终显示金额，单位为¥
+          // 🔥 修复：业绩趋势图显示金额和单数
           const value = `¥${param.value.toLocaleString()}`
-          result += `${param.marker}${param.seriesName}: ${value}<br/>`
+          // 根据系列名称获取对应的单数
+          let count = 0
+          if (param.seriesName === '下单业绩') {
+            count = performanceChartData.value.orderCountData[param.dataIndex] || 0
+          } else if (param.seriesName === '签收业绩') {
+            count = performanceChartData.value.signCountData[param.dataIndex] || 0
+          }
+          result += `${param.marker}${param.seriesName}: ${value}（${count}单）<br/>`
         })
         return result
       }
@@ -909,7 +953,9 @@ const getMessageTypeName = (type: string): string => {
     // 资料分配
     'data_assigned': '资料分配',
     'data_reassigned': '资料重新分配',
-    'data_batch_assigned': '批量分配完成'
+    'data_batch_assigned': '批量分配完成',
+    // 公告
+    'announcement': '系统公告'
   }
   return typeMap[type] || type
 }
@@ -942,6 +988,25 @@ const handleViewMoreRankings = () => {
 
 // 消息处理方法
 const handleMessageClick = (message: Message) => {
+  // 🔥 如果是公告类型消息，找到原始公告显示完整内容
+  if (message.type === 'announcement' && message.id?.startsWith('ann_')) {
+    const annId = message.id.replace('ann_', '')
+    const announcement = (messageStore.announcements || []).find((a: any) => a.id === annId)
+    if (announcement) {
+      // 标记公告为已读
+      if (!announcement.read) {
+        messageStore.markAnnouncementAsRead(annId)
+      }
+      // 显示公告详情
+      selectedMessage.value = {
+        ...message,
+        content: announcement.content, // 使用完整的HTML内容
+        isAnnouncement: true
+      } as any
+      showMessageDetailDialog.value = true
+      return
+    }
+  }
   selectedMessage.value = message
   showMessageDetailDialog.value = true
 }
@@ -973,11 +1038,13 @@ const markAsReadAndClose = () => {
   }
   showMessageDetailDialog.value = false
 }
-// 标记所有消息为已读 - 🔥 使用notificationStore保持与铃铛消息中心同步
+// 标记所有消息为已读 - 🔥 同时处理系统消息和公告
 const markAllAsRead = async () => {
   try {
-    // 使用notificationStore的方法，确保与铃铛消息中心同步
+    // 标记所有系统消息为已读
     await notificationStore.markAllAsReadWithAPI()
+    // 🔥 标记所有公告为已读
+    await messageStore.markAllAnnouncementsAsRead()
     ElMessage.success('所有消息已标记为已读')
   } catch (error) {
     console.error('标记所有消息为已读失败:', error)
@@ -996,8 +1063,10 @@ const clearAllMessages = async () => {
         type: 'warning'
       }
     )
-    // 🔥 使用notificationStore的方法，确保与铃铛消息中心同步
+    // 🔥 清空系统消息
     await notificationStore.clearAllMessagesWithAPI()
+    // 🔥 标记所有公告为已读（公告不删除，只标记已读）
+    await messageStore.markAllAnnouncementsAsRead()
     ElMessage.success('已清空所有消息')
     showMessageDialog.value = false
   } catch (error: any) {
@@ -1305,16 +1374,52 @@ const loadRankingsFromAPI = async (): Promise<boolean> => {
     if (response.success && response.data && response.data.members) {
       const members = response.data.members
 
-      // 转换为排名格式
+      // 🔥 【守恒定律】后端API只处理了金额拆分，需要前端补充订单数拆分
+      // 构建成员ID到订单数调整量的映射
+      const orderCountAdjust = new Map<string, number>()
+      if (performanceStore.performanceShares) {
+        performanceStore.performanceShares.forEach(share => {
+          if (share.status !== 'active' && share.status !== 'completed') return
+          // 检查分享的订单是否在本月
+          const shareOrder = orderStore.orders.find((o: any) =>
+            o.orderNumber === share.orderNumber || o.id === share.orderId
+          )
+          // 🔥 找不到原始订单时，使用分享记录的createTime作为兜底
+          const orderTimeStr = shareOrder?.createTime || share.createTime || ''
+          if (orderTimeStr) {
+            const orderTime = new Date(orderTimeStr.replace(/\//g, '-')).getTime()
+            if (orderTime < monthStart.getTime()) return
+          }
+
+          const totalSharedPct = (share.shareMembers || []).reduce((sum: number, m: any) => sum + (m.percentage || 0), 0)
+          const sharedRatio = totalSharedPct / 100
+
+          // 原始下单人扣减
+          const creatorId = String(share.createdById)
+          orderCountAdjust.set(creatorId, (orderCountAdjust.get(creatorId) || 0) - sharedRatio)
+
+          // 接收人增加
+          ;(share.shareMembers || []).forEach((sm: any) => {
+            const receiverId = String(sm.userId)
+            const myRatio = (sm.percentage || 0) / 100
+            orderCountAdjust.set(receiverId, (orderCountAdjust.get(receiverId) || 0) + myRatio)
+          })
+        })
+      }
+
+      // 转换为排名格式，应用订单数调整
       const salesRankings = members
-        .map((m: any) => ({
-          id: m.id,
-          name: m.name || m.username || '未知',
-          avatar: '',
-          department: m.department || '未分配部门',
-          orders: m.orderCount || 0,
-          revenue: m.orderAmount || 0
-        }))
+        .map((m: any) => {
+          const adjust = orderCountAdjust.get(String(m.id)) || 0
+          return {
+            id: m.id,
+            name: m.name || m.username || '未知',
+            avatar: '',
+            department: m.department || '未分配部门',
+            orders: Math.max(0, (m.orderCount || 0) + adjust),
+            revenue: m.orderAmount || 0
+          }
+        })
         .sort((a: any, b: any) => b.revenue - a.revenue)
         .slice(0, 10) // 只取前10名
 
@@ -1530,20 +1635,24 @@ const loadRankingsFromStore = () => {
   const performanceStore = usePerformanceStore()
   if (performanceStore.performanceShares) {
     performanceStore.performanceShares.forEach(share => {
-      if (share.status !== 'active') return
+      if (share.status !== 'active' && share.status !== 'completed') return
 
       // 检查分享的订单是否在本月
       const shareOrder = monthOrders.find(o => o.orderNumber === share.orderNumber)
       if (!shareOrder) return
 
+      // 🔥 修复：计算分享出去的总比例，按比例扣减
+      const totalSharedPercentage = (share.shareMembers || []).reduce((sum: number, m: any) => sum + (m.percentage || 0), 0)
+      const sharedRatio = totalSharedPercentage / 100
+
       // 【批次207修复】减少原下单员的业绩和订单数
       if (salesMap.has(share.createdById)) {
         const creator = salesMap.get(share.createdById)
-        creator.sharedAmount = (creator.sharedAmount || 0) + share.orderAmount
+        creator.sharedAmount = (creator.sharedAmount || 0) + share.orderAmount * sharedRatio
         if (!creator.sharedOrderCount) {
           creator.sharedOrderCount = 0
         }
-        creator.sharedOrderCount += 1
+        creator.sharedOrderCount += sharedRatio
       }
 
       // 【批次207修复】增加被分享用户的业绩和订单数量
@@ -1605,13 +1714,21 @@ const loadRankingsFromStore = () => {
 
 // 加载真实的图表数据
 // 🔥 加载真实的图表数据 - 从后端API获取，支持角色权限过滤
+let chartRequestSeq = 0 // 🔥 竞态保护：图表请求序号
 const loadRealChartData = async () => {
+  const mySeq = ++chartRequestSeq // 记录本次请求序号
   try {
-    console.log('[Dashboard] 开始加载图表数据，时间段:', performancePeriod.value)
+    console.log('[Dashboard] 开始加载图表数据，时间段:', performancePeriod.value, '请求序号:', mySeq)
 
     // 调用后端API获取图表数据（后端会根据用户角色自动过滤数据）
     const chartData = await dashboardApi.getChartData({ period: performancePeriod.value as 'day' | 'week' | 'month' })
-    console.log('[Dashboard] 后端返回图表数据:', chartData)
+    console.log('[Dashboard] 后端返回图表数据:', chartData, '请求序号:', mySeq)
+
+    // 🔥 竞态保护：如果在等待API返回期间又有新请求，丢弃当前旧请求的结果
+    if (mySeq !== chartRequestSeq) {
+      console.log('[Dashboard] 图表请求已过期，丢弃结果。当前序号:', mySeq, '最新序号:', chartRequestSeq)
+      return
+    }
 
     if (chartData && chartData.revenue && chartData.revenue.length > 0) {
       // 更新业绩趋势图数据
@@ -1620,32 +1737,248 @@ const loadRealChartData = async () => {
         xAxisData: chartData.revenue.map((item: { date: string }) => item.date),
         orderData: chartData.revenue.map((item: { amount: number }) => item.amount),
         signData: chartData.revenue.map((item: { deliveredAmount?: number }) => item.deliveredAmount || 0),
+        orderCountData: chartData.revenue.map((item: { orderCount?: number }) => item.orderCount || 0),
+        signCountData: chartData.revenue.map((item: { deliveredCount?: number }) => item.deliveredCount || 0),
         title: getPerformanceTitle()
       }
-      console.log('[Dashboard] 业绩趋势图数据已更新:', performanceChartData.value)
     } else {
       // 如果没有数据，设置空数据
       performanceChartData.value = {
         xAxisData: [],
         orderData: [],
         signData: [],
+        orderCountData: [],
+        signCountData: [],
         title: getPerformanceTitle()
       }
     }
 
+    // 🔥 对非管理员用户，将接收到的分享业绩叠加到趋势图中（在if-else之后，确保空数据也能执行）
+    const curUser = userStore.currentUser
+    const isAdminUser = curUser?.role === 'super_admin' || curUser?.role === 'admin'
+    const sharesArr = performanceStore.performanceShares || []
+    console.log('[Dashboard 图表分享叠加] isAdmin:', isAdminUser, 'userId:', curUser?.id, '分享记录数:', sharesArr.length, 'xAxis长度:', performanceChartData.value.xAxisData.length)
+    if (!isAdminUser && curUser?.id && sharesArr.length > 0) {
+      // 🔥 如果后端返回空数据（接收人没有自己的订单），需要先生成日期轴框架
+      if (performanceChartData.value.xAxisData.length === 0) {
+        const now = new Date()
+        const period = performancePeriod.value
+        if (period === 'day') {
+          // 按小时：00:00 ~ 23:00
+          for (let h = 0; h < 24; h++) {
+            performanceChartData.value.xAxisData.push(`${String(h).padStart(2, '0')}:00`)
+            performanceChartData.value.orderData.push(0)
+            performanceChartData.value.signData.push(0)
+            performanceChartData.value.orderCountData.push(0)
+            performanceChartData.value.signCountData.push(0)
+          }
+        } else if (period === 'week') {
+          // 最近7天
+          for (let i = 6; i >= 0; i--) {
+            const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
+            const mm = String(d.getMonth() + 1).padStart(2, '0')
+            const dd = String(d.getDate()).padStart(2, '0')
+            performanceChartData.value.xAxisData.push(`${mm}-${dd}`)
+            performanceChartData.value.orderData.push(0)
+            performanceChartData.value.signData.push(0)
+            performanceChartData.value.orderCountData.push(0)
+            performanceChartData.value.signCountData.push(0)
+          }
+        } else {
+          // 本月每天
+          const year = now.getFullYear()
+          const month = now.getMonth()
+          const daysInMonth = new Date(year, month + 1, 0).getDate()
+          for (let day = 1; day <= daysInMonth; day++) {
+            performanceChartData.value.xAxisData.push(`${day}日`)
+            performanceChartData.value.orderData.push(0)
+            performanceChartData.value.signData.push(0)
+            performanceChartData.value.orderCountData.push(0)
+            performanceChartData.value.signCountData.push(0)
+          }
+        }
+        console.log('[Dashboard 图表分享叠加] 已生成日期轴框架:', performanceChartData.value.xAxisData.length, '个点')
+      }
+
+      const xAxisDates = performanceChartData.value.xAxisData
+      let overlayCount = 0
+      sharesArr.forEach(share => {
+        if (share.status !== 'active' && share.status !== 'completed') return
+
+        // 🔥 原始下单人：扣除分享出去的比例
+        if (String(share.createdById) === String(curUser.id)) {
+          const shareOrder = orderStore.orders.find((o: any) =>
+            o.orderNumber === share.orderNumber || o.id === share.orderId
+          )
+          if (shareOrder) {
+            const totalSharedPct = share.shareMembers.reduce((sum, m) => sum + m.percentage, 0)
+            const sharedRatio = totalSharedPct / 100
+            const orderTime = shareOrder.createTime || share.createTime || ''
+            const orderDateObj = new Date(String(orderTime).replace(/\//g, '-'))
+            if (!isNaN(orderDateObj.getTime())) {
+              const dayNum = orderDateObj.getDate()
+              const mmS = String(orderDateObj.getMonth() + 1).padStart(2, '0')
+              const ddS = String(orderDateObj.getDate()).padStart(2, '0')
+              const yyyyS = orderDateObj.getFullYear()
+              const hourS = String(orderDateObj.getHours()).padStart(2, '0')
+              const candidates = [
+                `${dayNum}日`, `${mmS}-${ddS}`, `${yyyyS}-${mmS}-${ddS}`,
+                `${Number(mmS)}-${Number(ddS)}`, `${hourS}:00`,
+                `${Number(mmS)}/${Number(ddS)}`, `${mmS}/${ddS}`, `${hourS}时`
+              ]
+              const idx = xAxisDates.findIndex((d: string) => candidates.includes(d))
+              if (idx >= 0) {
+                const deductAmount = (share.orderAmount || 0) * sharedRatio
+                performanceChartData.value.orderData[idx] = Math.round(((performanceChartData.value.orderData[idx] || 0) - deductAmount) * 100) / 100
+                performanceChartData.value.orderCountData[idx] = Math.round(((performanceChartData.value.orderCountData[idx] || 0) - sharedRatio) * 100) / 100
+                overlayCount++
+                console.log('[Dashboard 图表分享叠加] 下单人扣除:', share.orderNumber, '金额:', deductAmount, '日期idx:', idx)
+              }
+            }
+          }
+        }
+
+        // 🔥 接收人：增加接收到的比例
+        share.shareMembers.forEach(member => {
+          if (String(member.userId) !== String(curUser.id)) return
+          const myRatio = member.percentage / 100
+          const myAmount = (share.orderAmount || 0) * myRatio
+          // 用原始订单的时间，找不到就用分享的createTime
+          const originalOrder = orderStore.orders.find((o: any) =>
+            o.orderNumber === share.orderNumber || o.id === share.orderId
+          )
+          const orderTime = originalOrder?.createTime || share.createTime || ''
+          console.log('[Dashboard 图表分享叠加] 检查分享:', share.id, 'member:', member.userId, '==', curUser.id, 'orderTime:', orderTime, 'amount:', myAmount)
+          const orderDateObj = new Date(String(orderTime).replace(/\//g, '-'))
+          if (isNaN(orderDateObj.getTime())) {
+            console.warn('[Dashboard 图表分享叠加] 日期解析失败:', orderTime)
+            return
+          }
+          const mm = String(orderDateObj.getMonth() + 1).padStart(2, '0')
+          const dd = String(orderDateObj.getDate()).padStart(2, '0')
+          const yyyy = orderDateObj.getFullYear()
+          const dayNum = orderDateObj.getDate()
+          const hour = String(orderDateObj.getHours()).padStart(2, '0')
+          // 尝试多种日期格式匹配（月模式用"X日"，周模式用"M/D"或"MM-DD"，日模式用"H:00"或"HH:00"）
+          const candidates = [
+            `${dayNum}日`, `${mm}-${dd}`, `${yyyy}-${mm}-${dd}`,
+            `${Number(mm)}-${Number(dd)}`, `${hour}:00`,
+            `${Number(mm)}/${Number(dd)}`, `${mm}/${dd}`,
+            `${Number(hour)}:00`, `${hour}时`
+          ]
+          const idx = xAxisDates.findIndex((d: string) => candidates.includes(d))
+          console.log('[Dashboard 图表分享叠加] 日期匹配:', dayNum, '日 candidates:', candidates, 'xAxis前3个:', xAxisDates.slice(0, 3), 'idx:', idx)
+          if (idx >= 0) {
+            performanceChartData.value.orderData[idx] = Math.round(((performanceChartData.value.orderData[idx] || 0) + myAmount) * 100) / 100
+            performanceChartData.value.orderCountData[idx] = Math.round(((performanceChartData.value.orderCountData[idx] || 0) + myRatio) * 100) / 100
+            overlayCount++
+            console.log('[Dashboard 图表分享叠加] ✅ 已叠加:', share.orderNumber, '金额:', myAmount, '到索引:', idx)
+          } else {
+            console.warn('[Dashboard 图表分享叠加] ❌ 未匹配到日期:', orderTime, 'candidates:', candidates)
+          }
+        })
+      })
+      console.log('[Dashboard 图表分享叠加] 共叠加', overlayCount, '条分享数据')
+    }
+
+    console.log('[Dashboard] 业绩趋势图数据已更新:', performanceChartData.value)
+
+    let statusData: Array<{ value: number; name: string; amount: number; itemStyle: { color: string } }> = []
+
     if (chartData && chartData.orderStatus && chartData.orderStatus.length > 0) {
       // 更新订单状态分布图数据
-      orderStatusChartData.value = chartData.orderStatus.map((item: any) => ({
+      statusData = chartData.orderStatus.map((item: any) => ({
         value: item.count,
         name: item.status,
         amount: item.amount || 0,
         itemStyle: { color: getStatusColor(item.status) }
       }))
-      console.log('[Dashboard] 订单状态分布图数据已更新:', orderStatusChartData.value)
-    } else {
-      // 如果没有数据，设置空数据
-      orderStatusChartData.value = []
     }
+
+    // 🔥 对非管理员用户，应用分享守恒定律调整订单状态分布（无论后端数据是否为空都执行）
+    {
+      const currentUser = userStore.currentUser
+      const isAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'admin'
+      const sharesForStatus = performanceStore.performanceShares || []
+      console.log('[Dashboard 状态分布分享叠加] isAdmin:', isAdmin, 'userId:', currentUser?.id, '分享记录数:', sharesForStatus.length)
+      if (!isAdmin && currentUser?.id && sharesForStatus.length > 0) {
+        const statusAdjust = new Map<string, { countDelta: number; amountDelta: number }>()
+
+        const statusNames: Record<string, string> = {
+          'pending_transfer': '待流转', 'pending_audit': '待审核', 'audit_rejected': '审核拒绝',
+          'pending_shipment': '待发货', 'shipped': '已发货', 'delivered': '已签收',
+          'logistics_returned': '物流部退回', 'logistics_cancelled': '物流部取消',
+          'package_exception': '包裹异常', 'rejected': '拒收', 'rejected_returned': '拒收已退回',
+          'after_sales_created': '已建售后', 'pending_cancel': '待取消', 'cancel_failed': '取消失败',
+          'cancelled': '已取消', 'draft': '草稿', 'refunded': '已退款',
+          'pending': '待审核', 'paid': '已付款', 'completed': '已完成', 'signed': '已签收'
+        }
+
+        const addAdjust = (statusName: string, countDelta: number, amountDelta: number) => {
+          if (statusAdjust.has(statusName)) {
+            const existing = statusAdjust.get(statusName)!
+            existing.countDelta += countDelta
+            existing.amountDelta += amountDelta
+          } else {
+            statusAdjust.set(statusName, { countDelta, amountDelta })
+          }
+        }
+
+        performanceStore.performanceShares.forEach(share => {
+          if (share.status !== 'active' && share.status !== 'completed') return
+
+          // 原始下单人：扣除分享出去的比例
+          if (String(share.createdById) === String(currentUser.id)) {
+            const shareOrder = orderStore.orders.find((o: any) =>
+              o.orderNumber === share.orderNumber || o.id === share.orderId
+            )
+            if (shareOrder) {
+              const totalSharedPct = share.shareMembers.reduce((sum, m) => sum + m.percentage, 0)
+              const sharedRatio = totalSharedPct / 100
+              const statusName = statusNames[shareOrder.status] || shareOrder.status
+              addAdjust(statusName, -sharedRatio, -(share.orderAmount || 0) * sharedRatio)
+            }
+          }
+
+          // 接收人：增加接收到的比例
+          share.shareMembers.forEach(member => {
+            if (String(member.userId) === String(currentUser.id)) {
+              const originalOrder = orderStore.orders.find((o: any) =>
+                o.orderNumber === share.orderNumber || o.id === share.orderId
+              )
+              const myRatio = member.percentage / 100
+              // 🔥 找不到原始订单时（接收人的orderStore没有），归入"已分享接收"类别
+              const statusName = originalOrder
+                ? (statusNames[originalOrder.status] || originalOrder.status)
+                : '已分享接收'
+              addAdjust(statusName, myRatio, (share.orderAmount || 0) * myRatio)
+            }
+          })
+        })
+
+        // 应用调整量到状态数据
+        statusAdjust.forEach((adjust, statusName) => {
+          const existing = statusData.find((d: any) => d.name === statusName)
+          if (existing) {
+            existing.value = Math.max(0, Math.round((existing.value + adjust.countDelta) * 10) / 10)
+            existing.amount = Math.max(0, Math.round((existing.amount + adjust.amountDelta) * 100) / 100)
+          } else if (adjust.countDelta > 0) {
+            statusData.push({
+              value: Math.round(adjust.countDelta * 10) / 10,
+              name: statusName,
+              amount: Math.round(adjust.amountDelta * 100) / 100,
+              itemStyle: { color: getStatusColor(statusName) }
+            })
+          }
+        })
+
+        // 过滤掉 value 为 0 的状态
+        statusData = statusData.filter((d: any) => d.value > 0)
+      }
+    }
+
+    orderStatusChartData.value = statusData
+    console.log('[Dashboard] 订单状态分布图数据已更新:', orderStatusChartData.value)
 
   } catch (error) {
     console.error('[Dashboard] 加载图表数据失败:', error)
@@ -1654,6 +1987,8 @@ const loadRealChartData = async () => {
       xAxisData: [],
       orderData: [],
       signData: [],
+      orderCountData: [],
+      signCountData: [],
       title: getPerformanceTitle()
     }
     orderStatusChartData.value = []
@@ -1694,6 +2029,23 @@ const handleOrderStatusChanged = () => {
   loadDashboardData()
 }
 
+/**
+ * 🔥 处理业绩数据更新事件（来自分享页面的取消/创建/编辑操作）
+ */
+const handlePerformanceDataUpdate = async () => {
+  console.log('[Dashboard] 收到业绩数据更新事件，重新加载数据')
+  try {
+    await Promise.all([
+      performanceStore.loadPerformanceShares({ limit: 500 }),
+      orderStore.loadOrdersFromAPI?.(true)
+    ])
+  } catch (e) {
+    console.warn('[Dashboard] 重新加载数据失败:', e)
+  }
+  // 重新计算仪表板数据
+  loadDashboardData()
+}
+
 onMounted(async () => {
   // 🔥 优化：先显示页面，再加载数据，提升用户体验
   const startTime = Date.now()
@@ -1719,6 +2071,14 @@ onMounted(async () => {
       console.log(`[Dashboard] 订单数据加载完成，共 ${orderStore.orders.length} 个订单`)
     }
 
+    // 🔥 关键修复：加载业绩分享数据，确保数据看板能正确反映分享调整
+    try {
+      await performanceStore.loadPerformanceShares({ limit: 500 })
+      console.log(`[Dashboard] 业绩分享数据加载完成，共 ${performanceStore.performanceShares?.length || 0} 条`)
+    } catch (e) {
+      console.warn('[Dashboard] 加载业绩分享数据失败:', e)
+    }
+
     // 🔥 第四步：重新计算仪表板数据（使用完整数据）
     loadDashboardData()
     console.log(`[Dashboard] 数据刷新完成，总耗时: ${Date.now() - startTime}ms`)
@@ -1729,12 +2089,20 @@ onMounted(async () => {
   // 监听订单状态变化事件
   eventBus.on(EventNames.ORDER_STATUS_CHANGED, handleOrderStatusChanged)
   eventBus.on(EventNames.REFRESH_ORDER_LIST, handleOrderStatusChanged)
+
+  // 🔥 关键修复：监听业绩数据更新事件（来自分享页面的取消/创建/编辑操作）
+  window.addEventListener('performanceDataUpdate', handlePerformanceDataUpdate)
+  window.addEventListener('dataSync', handlePerformanceDataUpdate)
 })
 
 onUnmounted(() => {
   // 清理事件监听
   eventBus.off(EventNames.ORDER_STATUS_CHANGED, handleOrderStatusChanged)
   eventBus.off(EventNames.REFRESH_ORDER_LIST, handleOrderStatusChanged)
+
+  // 🔥 清理全局事件监听
+  window.removeEventListener('performanceDataUpdate', handlePerformanceDataUpdate)
+  window.removeEventListener('dataSync', handlePerformanceDataUpdate)
 })
 </script>
 
@@ -2282,6 +2650,36 @@ onUnmounted(() => {
   margin-bottom: 16px;
 }
 
+/* 公告富文本内容样式 */
+.announcement-html-content {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #303133;
+  margin-bottom: 16px;
+  word-break: break-word;
+}
+
+.announcement-html-content :deep(p) {
+  margin: 0 0 8px 0;
+}
+
+.announcement-html-content :deep(img) {
+  max-width: 100%;
+  height: auto;
+}
+
+.announcement-html-content :deep(a) {
+  color: #409eff;
+}
+
+.announcement-html-content :deep(blockquote) {
+  margin: 8px 0;
+  padding: 8px 16px;
+  border-left: 4px solid #dcdfe6;
+  color: #606266;
+  background: #f9f9f9;
+}
+
 .message-detail-info {
   display: flex;
   gap: 24px;
@@ -2320,9 +2718,6 @@ onUnmounted(() => {
 .action-icon-btn:disabled {
   color: #c0c4cc;
   cursor: not-allowed;
-}
-
-.action-icon-btn:disabled:hover {
   background-color: transparent;
 }
 </style>

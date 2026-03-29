@@ -5,6 +5,9 @@ export class Notification {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
+
   @Column({ length: 100 })
   userId: string;
 

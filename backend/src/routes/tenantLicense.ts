@@ -6,8 +6,24 @@ import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
 import { adminNotificationService } from '../services/AdminNotificationService';
+import { getTenantResourceUsage } from '../middleware/checkTenantLimits';
 
 const router = Router();
+
+// 🔥 正确获取客户端IP（支持代理/反向代理）
+const getClientIp = (req: Request): string => {
+  const xff = req.headers['x-forwarded-for'];
+  if (xff) {
+    const first = Array.isArray(xff) ? xff[0] : xff.split(',')[0];
+    return first.trim();
+  }
+  const xri = req.headers['x-real-ip'];
+  if (xri) {
+    return Array.isArray(xri) ? xri[0] : xri;
+  }
+  const ip = req.ip || req.socket?.remoteAddress || '';
+  return ip.replace(/^::ffff:/, '');
+};
 
 /**
  * 安全解析JSON：兼容TEXT列（字符串）和JSON列（已自动解析为对象/数组）
@@ -81,7 +97,7 @@ router.get('/check-private', async (_req: Request, res: Response) => {
 router.post('/verify', async (req: Request, res: Response) => {
   try {
     const { licenseKey } = req.body;
-    const ip = req.ip || req.socket.remoteAddress;
+    const ip = getClientIp(req);
     const userAgent = req.headers['user-agent'];
 
     if (!licenseKey) {
@@ -105,7 +121,11 @@ router.post('/verify', async (req: Request, res: Response) => {
            VALUES (?, NULL, ?, 'verify', 'failed', '私有授权码不存在', ?, ?)`,
           [uuidv4(), licenseKey, ip, userAgent]
         ).catch(() => {});
-        return res.status(404).json({ success: false, message: '授权码无效，请检查后重试' });
+        return res.status(404).json({
+          success: false,
+          message: '该授权码为私有部署专用，不能在租户系统中使用。请使用租户授权码（TENANT-前缀）或联系管理员',
+          errorType: 'WRONG_LICENSE_TYPE'
+        });
       }
 
       if (lic.status === 'revoked') {
@@ -406,6 +426,29 @@ router.post('/heartbeat', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[Tenant License] Heartbeat failed:', error);
     res.json({ success: true, valid: true });
+  }
+});
+
+/**
+ * 获取租户资源使用情况（用户数、存储空间）
+ * CRM前端定时调用，用于顶部预警提示
+ */
+router.get('/resource-usage', async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).tenantId;
+    if (!tenantId) {
+      return res.json({ success: true, data: null });
+    }
+
+    const usage = await getTenantResourceUsage(tenantId);
+    if (!usage) {
+      return res.json({ success: true, data: null });
+    }
+
+    res.json({ success: true, data: usage });
+  } catch (error: any) {
+    console.error('[Tenant License] Get resource usage failed:', error);
+    res.json({ success: true, data: null });
   }
 });
 

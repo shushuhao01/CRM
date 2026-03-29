@@ -5,6 +5,9 @@ export class SmsRecord {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
+
   @Column({ name: 'template_id', length: 50, nullable: true })
   templateId: string;
 

@@ -569,15 +569,26 @@ export const createPerformanceShare = async (data: PerformanceShareCreateParams)
 
 /**
  * 取消业绩分享
+ * 🔥 修复：先尝试 PATCH（兼容性更好），失败再降级到 DELETE
  */
 export const cancelPerformanceShare = async (shareId: string): Promise<{ success: boolean; message?: string }> => {
   console.log('[Performance API] 取消业绩分享:', shareId)
   try {
-    await request.delete(`/performance/shares/${shareId}`)
-    return { success: true }
-  } catch (error) {
-    console.error('[Performance API] 取消业绩分享失败:', error)
-    return { success: false, message: '取消业绩分享失败' }
+    // 优先使用 PATCH（某些环境不支持 DELETE）
+    await request.patch(`/performance/shares/${shareId}/cancel`)
+    console.log('[Performance API] PATCH取消成功')
+    return { success: true, message: '业绩分享已取消' }
+  } catch (patchError: any) {
+    console.warn('[Performance API] PATCH取消失败，尝试DELETE:', patchError?.message || patchError)
+    try {
+      await request.delete(`/performance/shares/${shareId}`)
+      console.log('[Performance API] DELETE取消成功')
+      return { success: true, message: '业绩分享已取消' }
+    } catch (deleteError: any) {
+      const errorMsg = deleteError?.message || '取消业绩分享失败'
+      console.error('[Performance API] 取消业绩分享彻底失败:', errorMsg)
+      return { success: false, message: errorMsg }
+    }
   }
 }
 
@@ -826,3 +837,4 @@ export const exportPerformanceShares = async (params: {
     return { success: false, data: [] }
   }
 }
+

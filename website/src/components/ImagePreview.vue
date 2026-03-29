@@ -76,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps<{
   visible: boolean
@@ -196,23 +196,29 @@ watch(() => props.visible, (newVal) => {
 })
 
 // 监听 ESC 键关闭
-if (typeof window !== 'undefined') {
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && props.visible) {
-      closePreview()
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && props.visible) {
+    closePreview()
+  }
+  // 快捷键
+  if (props.visible) {
+    if (e.key === '+' || e.key === '=') {
+      zoomIn()
+    } else if (e.key === '-') {
+      zoomOut()
+    } else if (e.key === '0') {
+      resetZoom()
     }
-    // 快捷键
-    if (props.visible) {
-      if (e.key === '+' || e.key === '=') {
-        zoomIn()
-      } else if (e.key === '-') {
-        zoomOut()
-      } else if (e.key === '0') {
-        resetZoom()
-      }
-    }
-  })
+  }
 }
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
 </script>
 
 <style lang="scss" scoped>

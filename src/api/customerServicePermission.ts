@@ -9,6 +9,7 @@ export enum CustomerServiceType {
   AUDIT = 'audit',
   LOGISTICS = 'logistics',
   PRODUCT = 'product',
+  FINANCE = 'finance',
   GENERAL = 'general'
 }
 

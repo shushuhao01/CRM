@@ -1,4 +1,4 @@
-<template>
+，<template>
   <div class="performance-manage-page">
     <!-- 统计卡片 -->
     <div class="stats-cards">
@@ -79,6 +79,29 @@
             <template #prefix><el-icon><Search /></el-icon></template>
             <template #suffix>
               <el-badge v-if="batchSearchCount > 0" :value="batchSearchCount" :max="999" class="batch-badge" />
+              <el-popover
+                v-if="missingKeywords.length > 0"
+                placement="bottom"
+                :width="360"
+                trigger="hover"
+              >
+                <template #reference>
+                  <span class="missing-count-tag">缺{{ missingKeywords.length }}</span>
+                </template>
+                <div class="missing-popover">
+                  <div class="missing-popover-header">
+                    <span>以下 <b>{{ missingKeywords.length }}</b> 条未匹配到结果</span>
+                    <el-button type="primary" link size="small" @click="copyMissingKeywords">
+                      <el-icon><DocumentCopy /></el-icon> 一键复制
+                    </el-button>
+                  </div>
+                  <div class="missing-popover-list">
+                    <div v-for="(kw, idx) in missingKeywords" :key="idx" class="missing-item">
+                      <span class="missing-item-text">{{ kw }}</span>
+                    </div>
+                  </div>
+                </div>
+              </el-popover>
             </template>
           </el-input>
         </template>
@@ -321,7 +344,7 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Clock, CircleCheck, Select, TrendCharts, Search, Refresh, Setting, ArrowDown, Download, CircleClose } from '@element-plus/icons-vue'
+import { Clock, CircleCheck, Select, TrendCharts, Search, Refresh, Setting, ArrowDown, Download, CircleClose, DocumentCopy } from '@element-plus/icons-vue'
 import { financeApi, type PerformanceOrder, type PerformanceManageStatistics, type FinanceConfigData } from '@/api/finance'
 import PerformanceConfigDialog from './components/PerformanceConfigDialog.vue'
 import LogisticsTraceDialog from '@/components/Logistics/LogisticsTraceDialog.vue'
@@ -532,6 +555,47 @@ const batchSearchCount = computed(() => {
   return batchSearchKeywords.value.split(/[\n,;，；]+/).map(k => k.trim()).filter(k => k.length > 0).length
 })
 
+// 🔥 搜索缺失关键词
+const missingKeywords = ref<string[]>([])
+
+// 🔥 计算缺失的搜索关键词（在loadData后调用）
+const computeMissingKeywords = () => {
+  if (!batchSearchKeywords.value || batchSearchCount.value === 0) {
+    missingKeywords.value = []
+    return
+  }
+  const keywords = batchSearchKeywords.value.split(/[\n,;，；]+/).map(k => k.trim()).filter(k => k.length > 0)
+  const missing: string[] = []
+  for (const kw of keywords) {
+    const kwLower = kw.toLowerCase()
+    const found = tableData.value.some(row =>
+      (row.orderNumber && row.orderNumber.toLowerCase().includes(kwLower)) ||
+      (row.customerName && row.customerName.toLowerCase().includes(kwLower)) ||
+      (row.trackingNumber && row.trackingNumber.toLowerCase().includes(kwLower))
+    )
+    if (!found) missing.push(kw)
+  }
+  missingKeywords.value = missing
+}
+
+// 🔥 一键复制缺失关键词
+const copyMissingKeywords = async () => {
+  if (missingKeywords.value.length === 0) return
+  try {
+    await navigator.clipboard.writeText(missingKeywords.value.join('\n'))
+    ElMessage.success(`已复制 ${missingKeywords.value.length} 条缺失内容`)
+  } catch {
+    // fallback
+    const textarea = document.createElement('textarea')
+    textarea.value = missingKeywords.value.join('\n')
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+    ElMessage.success(`已复制 ${missingKeywords.value.length} 条缺失内容`)
+  }
+}
+
 // 状态标签页
 const activeStatusTab = ref('pending')
 
@@ -701,6 +765,7 @@ const handleFilterChange = () => {
 const clearBatchSearch = () => {
   batchSearchKeywords.value = ''
   searchKeyword.value = ''
+  missingKeywords.value = []
   batchSearchVisible.value = false
   loadData()
   loadStatistics()
@@ -775,6 +840,9 @@ const loadData = async () => {
       tableData.value = []
       pagination.total = 0
     }
+
+    // 🔥 计算缺失的搜索关键词
+    computeMissingKeywords()
   } catch (e) {
     console.error('[PerformanceManage] loadData error:', e)
     ElMessage.error('加载数据失败')
@@ -1491,5 +1559,51 @@ const getRemarkLabel = (value: string) => {
 
 .batch-badge :deep(.el-badge__content) {
   font-size: 10px;
+}
+
+.missing-count-tag {
+  display: inline-block;
+  font-size: 11px;
+  color: #909399;
+  background: #f0f0f0;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  &:hover {
+    color: #e6a23c;
+    background: #fdf6ec;
+  }
+}
+
+.missing-popover {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.missing-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #606266;
+  b { font-weight: 700; color: #e6a23c; }
+}
+
+.missing-popover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.missing-item {
+  padding: 4px 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #606266;
+  word-break: break-all;
 }
 </style>

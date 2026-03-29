@@ -120,8 +120,8 @@
             v-model="dateRange"
             type="daterange"
             range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
+            start-placeholder="开始"
+            end-placeholder="结束"
             @change="handleCustomDateChange"
             class="date-picker"
             size="default"
@@ -137,6 +137,37 @@
             <el-option label="已分配" value="assigned" />
             <el-option label="已封存" value="archived" />
             <el-option label="已回收" value="recovered" />
+          </el-select>
+
+          <el-select
+            v-model="departmentFilter"
+            placeholder="部门筛选"
+            clearable
+            class="department-filter"
+            @change="handleDepartmentFilterChange"
+          >
+            <el-option
+              v-for="dept in departmentOptions"
+              :key="dept.id"
+              :label="dept.name"
+              :value="dept.id"
+            />
+          </el-select>
+
+          <el-select
+            v-model="ownerFilter"
+            placeholder="归属人"
+            clearable
+            filterable
+            class="owner-filter"
+            @change="handleOwnerFilterChange"
+          >
+            <el-option
+              v-for="user in ownerOptions"
+              :key="user.id"
+              :label="user.name"
+              :value="user.id"
+            />
           </el-select>
         </div>
       </div>
@@ -751,7 +782,7 @@ import {
 import { useDataStore } from '@/stores/data'
 import { useUserStore } from '@/stores/user'
 import { useDepartmentStore } from '@/stores/department'
-import type { DataListItem } from '@/api/data'
+import type { DataListItem, DataListParams } from '@/api/data'
 import CustomerDetailDialog from './CustomerDetailDialog.vue'
 import ArchiveDialog from './ArchiveDialog.vue'
 import LeaderAssignDialog from './LeaderAssignDialog.vue'
@@ -780,46 +811,19 @@ const currentArchiveData = ref<DataListItem | null>(null)
 const pendingLeaderAssignments = ref<any[]>([])
 const columnSettingsRef = ref()
 
-// 汇总数据 - 根据当前筛选条件动态计算
+// 汇总数据 - 🔥 修复：使用后端API返回的汇总统计数据，而非从当前页数据计算
 const summaryData = computed(() => {
-  const filteredData = dataStore.filteredDataList
-
-  // 确保filteredData不为null或undefined
-  if (!filteredData || !Array.isArray(filteredData)) {
-    return {
-      totalCount: 0,
-      pendingCount: 0,
-      assignedCount: 0,
-      archivedCount: 0,
-      recoveredCount: 0,
-      totalAmount: 0,
-      todayCount: 0,
-      weekCount: 0,
-      monthCount: 0
-    }
-  }
-
+  const s = dataStore.summary
   return {
-    totalCount: filteredData.length,
-    pendingCount: filteredData.filter(item => item.status === 'pending').length,
-    assignedCount: filteredData.filter(item => item.status === 'assigned').length,
-    archivedCount: filteredData.filter(item => item.status === 'archived').length,
-    recoveredCount: filteredData.filter(item => item.status === 'recovered').length,
-    totalAmount: (filteredData || []).reduce((sum, item) => sum + (item.orderAmount || 0), 0),
-    todayCount: filteredData.filter(item => {
-      const today = new Date().toDateString()
-      return new Date(item.orderDate).toDateString() === today
-    }).length,
-    weekCount: filteredData.filter(item => {
-      const weekAgo = new Date()
-      weekAgo.setDate(weekAgo.getDate() - 7)
-      return new Date(item.orderDate) >= weekAgo
-    }).length,
-    monthCount: filteredData.filter(item => {
-      const monthAgo = new Date()
-      monthAgo.setMonth(monthAgo.getMonth() - 1)
-      return new Date(item.orderDate) >= monthAgo
-    }).length
+    totalCount: s?.totalCount || 0,
+    pendingCount: s?.pendingCount || 0,
+    assignedCount: s?.assignedCount || 0,
+    archivedCount: s?.archivedCount || 0,
+    recoveredCount: s?.recoveredCount || 0,
+    totalAmount: s?.totalAmount || 0,
+    todayCount: s?.todayCount || 0,
+    weekCount: s?.weekCount || 0,
+    monthCount: s?.monthCount || 0
   }
 })
 
@@ -847,6 +851,29 @@ const currentDateFilter = ref('all')  // 🔥 修复：默认选中"全部"
 const dateRange = ref<[Date, Date] | null>(null)
 const searchKeyword = ref('')
 const statusFilter = ref('')
+const departmentFilter = ref('')
+const ownerFilter = ref('')
+
+// 部门选项
+const departmentOptions = computed(() => {
+  return (departmentStore.departments || []).map((dept: any) => ({
+    id: dept.id,
+    name: dept.name
+  }))
+})
+
+// 归属人选项（如果选了部门则只显示该部门的用户）
+const ownerOptions = computed(() => {
+  const users = userStore.users || []
+  let filtered = users.filter((u: any) => !u.status || u.status === 'active')
+  if (departmentFilter.value) {
+    filtered = filtered.filter((u: any) => u.departmentId === departmentFilter.value)
+  }
+  return filtered.map((u: any) => ({
+    id: u.id,
+    name: u.realName || u.name || u.username || `用户${u.id}`
+  }))
+})
 
 // 日期筛选选项
 const dateFilters = [
@@ -1020,10 +1047,7 @@ const tableColumns = computed(() => {
   return allTableColumns.filter(col => visibleColumns.value.includes(col.prop))
 })
 
-// 监听分页变化
-watch([currentPage, pageSize], ([page, size]) => {
-  dataStore.setPagination(page, size)
-})
+// 🔥 分页由 handlePageChange / handlePageSizeChange 触发后端请求，无需额外 watch
 const total = computed(() => dataStore.total)
 
 // 分配表单
@@ -1218,7 +1242,9 @@ const handleCustomDateChange = () => applyDateFilter(null, dateRange.value)
 const handleSearch = () => {
   currentPage.value = 1
   const filters: Partial<DataListParams> = {
-    searchKeyword: searchKeyword.value
+    searchKeyword: searchKeyword.value,
+    assigneeId: ownerFilter.value || undefined,
+    departmentId: departmentFilter.value || undefined
   }
 
   if (dateRange.value) {
@@ -1232,6 +1258,20 @@ const handleSearch = () => {
 const handleStatusFilter = () => {
   currentPage.value = 1
   dataStore.setFilters({ status: statusFilter.value })
+}
+
+// 部门筛选处理
+const handleDepartmentFilterChange = () => {
+  // 切换部门时清空归属人（因为归属人选项会随部门变化）
+  ownerFilter.value = ''
+  currentPage.value = 1
+  handleSearch()
+}
+
+// 归属人筛选处理
+const handleOwnerFilterChange = () => {
+  currentPage.value = 1
+  handleSearch()
 }
 
 // 标签页切换
@@ -1938,9 +1978,9 @@ onMounted(async () => {
 
     // 加载用户列表（用于资料分配）
     await userStore.loadUsers()
-    // 🔥 修复：设置默认日期筛选为全部，每页20条
+    // 🔥 修复：设置默认日期筛选为全部，每页10条
     dataStore.setFilters({ dateFilter: 'all' })
-    dataStore.setPagination(1, 20)
+    dataStore.setPagination(1, 10)
     // 获取可分配成员列表
     await dataStore.fetchAssigneeOptions()
     // 初始化部门数据
@@ -2186,12 +2226,22 @@ onMounted(async () => {
 }
 
 .search-filters .date-picker {
-  width: 240px;
+  width: 200px;
   flex-shrink: 0;
-  min-width: 240px;
+  min-width: 200px;
 }
 
 .search-filters .status-filter {
+  width: 130px;
+  flex-shrink: 0;
+}
+
+.search-filters .department-filter {
+  width: 140px;
+  flex-shrink: 0;
+}
+
+.search-filters .owner-filter {
   width: 140px;
   flex-shrink: 0;
 }
@@ -2225,7 +2275,7 @@ onMounted(async () => {
 }
 
 .date-picker {
-  width: 240px;
+  width: 200px;
   flex-shrink: 0;
 }
 
@@ -2322,7 +2372,7 @@ onMounted(async () => {
 }
 
 .date-picker {
-  width: 240px;
+  width: 200px;
 }
 
 .batch-operations {
@@ -2939,7 +2989,9 @@ onMounted(async () => {
 
   .date-picker,
   .search-input,
-  .status-select {
+  .status-select,
+  .department-filter,
+  .owner-filter {
     width: 100%;
   }
 

@@ -18,6 +18,9 @@ export class LogisticsTracking {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
+
   @Column({ type: 'varchar', length: 50, comment: '订单ID' })
   orderId: string;
 

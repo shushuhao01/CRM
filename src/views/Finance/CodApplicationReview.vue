@@ -188,15 +188,17 @@
     </div>
 
     <!-- 审核弹窗 -->
-    <el-dialog v-model="reviewDialogVisible" title="审核代收取消申请" width="700px" :close-on-click-modal="false">
-      <el-descriptions :column="2" border v-if="currentApplication">
+    <el-dialog v-model="reviewDialogVisible" title="代收取消申请详情" width="750px" :close-on-click-modal="false">
+      <el-descriptions :column="2" border v-if="currentApplication" class="detail-descriptions">
         <el-descriptions-item label="申请状态" :span="2">
           <el-tag :type="getStatusType(currentApplication.status)" size="large">{{ getStatusText(currentApplication.status) }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="订单号">
+        <el-descriptions-item label="订单号" :span="2">
           <el-link type="primary" @click="goToOrderDetail(currentApplication.orderId)">{{ currentApplication.orderNumber }}</el-link>
         </el-descriptions-item>
-        <el-descriptions-item label="申请人">{{ currentApplication.applicantName }}（{{ currentApplication.departmentName }}）</el-descriptions-item>
+        <el-descriptions-item label="申请人">{{ currentApplication.applicantName }}</el-descriptions-item>
+        <el-descriptions-item label="所属部门">{{ currentApplication.departmentName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="申请时间" :span="2">{{ formatDateTime(currentApplication.createdAt) }}</el-descriptions-item>
         <el-descriptions-item label="物流单号" :span="2">
           <div v-if="currentApplication.trackingNumber" class="tracking-cell">
             <el-link type="primary" @click="showTrackingDialog(currentApplication)">{{ currentApplication.trackingNumber }}</el-link>
@@ -204,18 +206,32 @@
           </div>
           <span v-else class="no-data">-</span>
         </el-descriptions-item>
-        <el-descriptions-item label="原代收金额">¥{{ formatMoney(currentApplication.originalCodAmount) }}</el-descriptions-item>
-        <el-descriptions-item label="修改后金额">¥{{ formatMoney(currentApplication.modifiedCodAmount) }}</el-descriptions-item>
-        <el-descriptions-item label="实际取消">
-          <span style="color: #f56c6c; font-weight: 600;">¥{{ formatMoney(currentApplication.originalCodAmount - currentApplication.modifiedCodAmount) }}</span>
+        <el-descriptions-item label="原代收金额">
+          <span style="color: #303133; font-weight: 600;">¥{{ formatMoney(currentApplication.originalCodAmount) }}</span>
         </el-descriptions-item>
-        <el-descriptions-item label="申请时间">{{ formatDateTime(currentApplication.createdAt) }}</el-descriptions-item>
-        <el-descriptions-item label="取消原因" :span="2">{{ currentApplication.cancelReason }}</el-descriptions-item>
+        <el-descriptions-item label="修改后金额">
+          <span style="color: #409eff; font-weight: 600;">¥{{ formatMoney(currentApplication.modifiedCodAmount) }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="实际取消金额" :span="2">
+          <span style="color: #f56c6c; font-weight: 600; font-size: 16px;">¥{{ formatMoney(currentApplication.originalCodAmount - currentApplication.modifiedCodAmount) }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="取消原因" :span="2">
+          <div style="white-space: pre-wrap; word-break: break-word;">{{ currentApplication.cancelReason }}</div>
+        </el-descriptions-item>
         <el-descriptions-item label="尾款凭证" :span="2">
-          <div class="proof-images">
-            <el-image v-for="(img, index) in currentApplication.paymentProof" :key="index" :src="img" :preview-src-list="currentApplication.paymentProof" fit="cover" style="width: 100px; height: 100px; margin-right: 8px;" />
+          <div class="proof-images" v-if="currentApplication.paymentProof && currentApplication.paymentProof.length > 0">
+            <el-image v-for="(img, index) in currentApplication.paymentProof" :key="index" :src="img" :preview-src-list="currentApplication.paymentProof" fit="cover" style="width: 100px; height: 100px; margin-right: 8px; border-radius: 4px; cursor: pointer;" />
           </div>
+          <span v-else class="no-data">暂无凭证</span>
         </el-descriptions-item>
+        <!-- 审核信息 -->
+        <template v-if="currentApplication.status !== 'pending'">
+          <el-descriptions-item label="审核人">{{ currentApplication.reviewerName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="审核时间">{{ currentApplication.reviewedAt ? formatDateTime(currentApplication.reviewedAt) : '-' }}</el-descriptions-item>
+          <el-descriptions-item label="审核备注" :span="2" v-if="currentApplication.reviewRemark">
+            <div style="white-space: pre-wrap; word-break: break-word;">{{ currentApplication.reviewRemark }}</div>
+          </el-descriptions-item>
+        </template>
       </el-descriptions>
 
       <el-divider />
@@ -620,4 +636,14 @@ onMounted(() => {
   &:hover { color: #409eff; }
 }
 .no-data { color: #c0c4cc; }
+.detail-descriptions {
+  :deep(.el-descriptions__label) {
+    width: 120px;
+    font-weight: 600;
+    background-color: #fafafa;
+  }
+  :deep(.el-descriptions__content) {
+    word-break: break-word;
+  }
+}
 </style>

@@ -53,6 +53,8 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@swc/core": "^1.15.21",
+    "@swc/helpers": "^0.5.20",
     "@types/bcryptjs": "^2.4.6",
     "@types/compression": "^1.7.5",
     "@types/cors": "^2.8.17",
@@ -74,6 +76,7 @@
     "nodemon": "^3.1.7",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.2"
   },
   "engines": {

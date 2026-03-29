@@ -143,6 +143,7 @@ const loadMenus = async () => {
         // 菜单ID与功能开关的映射表
         const menuFlagMap: Record<string, string> = {
           'system-api-management': 'apiManagement',
+          'system-super-admin-panel': 'superAdminPanel',
           'order': 'order',
           'product': 'product',
         }

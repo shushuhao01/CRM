@@ -3531,6 +3531,14 @@ const playRecording = (record: any) => {
     }
   }
 
+  // 🔥 修复：audio 标签无法在请求头中携带 JWT token，
+  // 通过 URL 查询参数传递 token 以通过后端认证
+  const authToken = localStorage.getItem('auth_token')
+  if (authToken) {
+    const separator = recordingUrl.includes('?') ? '&' : '?'
+    recordingUrl = `${recordingUrl}${separator}token=${encodeURIComponent(authToken)}`
+  }
+
   console.log('[录音播放] 原始URL:', record.recordingUrl, '处理后URL:', recordingUrl)
 
   currentRecording.value = {
@@ -3862,10 +3870,6 @@ const handleCurrentChange = (page: number) => {
   loadOutboundList()
 }
 
-const maskPhone = (phone: string) => {
-  if (!phone) return ''
-  return phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
-}
 
 const getLevelType = (level: string) => {
   const levelMap: Record<string, string> = {

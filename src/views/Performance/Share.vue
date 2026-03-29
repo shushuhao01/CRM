@@ -148,63 +148,83 @@
       @row-click="handleRowClick"
       stripe
       border
+      :show-overflow-tooltip="true"
+      style="width: 100%"
     >
-      <el-table-column prop="shareNumber" label="分享编号" min-width="150" />
-      <el-table-column prop="orderNumber" label="订单编号" min-width="150">
+      <el-table-column label="分享编号" min-width="90" align="center">
+        <template #default="{ row }">
+          <span class="short-code" :title="row.shareNumber">{{ getShortShareCode(row.shareNumber) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="orderNumber" label="订单编号" min-width="140" show-overflow-tooltip>
         <template #default="{ row }">
           <el-link type="primary" @click="viewOrderDetail(row.orderId)">
             {{ row.orderNumber }}
           </el-link>
         </template>
       </el-table-column>
-      <el-table-column prop="orderAmount" label="订单金额" min-width="120">
+      <el-table-column prop="orderAmount" label="订单金额" min-width="90" align="right">
         <template #default="{ row }">
-          ¥{{ (row.orderAmount || 0).toLocaleString() }}
+          <span class="amount-text-compact">¥{{ (row.orderAmount || 0).toLocaleString() }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="分享成员" min-width="300">
+      <el-table-column label="分享成员" min-width="200">
         <template #default="{ row }">
-          <div class="share-members">
+          <div class="share-members-inline">
+            <!-- 🔥 原始下单人（创建人保留部分）- 显示金额 -->
+            <el-tag size="small" type="primary" class="member-tag-compact" :title="`${getOperatorName(row.createdById, row.createdBy)} ${getOwnerRetainedPercentage(row)}% ¥${getMemberAmount(row, getOwnerRetainedPercentage(row)).toLocaleString()}`">
+              {{ getOperatorName(row.createdById, row.createdBy) }}
+              {{ getOwnerRetainedPercentage(row) }}%
+              ¥{{ getMemberAmount(row, getOwnerRetainedPercentage(row)).toLocaleString() }}📌
+            </el-tag>
+            <!-- 🔥 分享成员 - 显示金额 -->
             <el-tag
-              v-for="member in row.shareMembers"
+              v-for="member in (row.shareMembers || [])"
               :key="member.userId"
               size="small"
               :type="member.userId === userStore.currentUser?.id ? 'success' : 'info'"
-              style="margin-right: 5px; margin-bottom: 4px"
+              class="member-tag-compact"
+              :title="`${getOperatorName(member.userId, member.userName)} ${member.percentage}% ¥${getMemberAmount(row, member.percentage).toLocaleString()}`"
             >
-              {{ member.userName }} ¥{{ (member.shareAmount || 0).toLocaleString() }} ({{ member.percentage }}%)
+              {{ getOperatorName(member.userId, member.userName) }} {{ member.percentage }}% ¥{{ getMemberAmount(row, member.percentage).toLocaleString() }}
             </el-tag>
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="createTime" label="创建时间" min-width="160" />
-      <el-table-column prop="status" label="状态" min-width="100">
+      <el-table-column label="创建时间" min-width="120" align="center">
         <template #default="{ row }">
-          <el-tag :type="getStatusType(row.status)">
+          <span class="time-text-compact">{{ formatBeijingTime(row.createTime, false) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="status" label="状态" min-width="70" align="center">
+        <template #default="{ row }">
+          <el-tag :type="getStatusType(row.status)" size="small">
             {{ getStatusText(row.status) }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="createdBy" label="创建人" min-width="100" />
-      <el-table-column label="操作" width="240" fixed="right">
+      <el-table-column label="操作人" min-width="70" align="center">
+        <template #default="{ row }">
+          <span class="operator-name-compact">{{ getOperatorName(row.createdById, row.createdBy) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" min-width="160" align="center">
         <template #default="{ row }">
           <div class="action-buttons">
             <el-button
-              type="info"
+              type="primary"
               size="small"
-              plain
+              text
               @click.stop="viewShareDetail(row)"
-              class="action-btn view-btn"
             >
               详情
             </el-button>
             <el-button
               v-if="row.status === 'active' && canEditShare(row)"
-              type="primary"
+              type="warning"
               size="small"
-              plain
+              text
               @click.stop="editShare(row)"
-              class="action-btn edit-btn"
             >
               编辑
             </el-button>
@@ -212,9 +232,9 @@
               v-if="row.status === 'active' && canCancelShare(row)"
               type="danger"
               size="small"
-              plain
+              text
               @click.stop="cancelShare(row)"
-              class="action-btn cancel-btn"
+              :loading="cancelLoading === row.id"
             >
               取消
             </el-button>
@@ -370,13 +390,16 @@
               </el-select>
               <el-input-number
                 v-model="member.percentage"
-                :min="1"
-                :max="100"
-                :precision="1"
-                style="width: 120px; margin-left: 10px"
+                :min="0.01"
+                :max="1"
+                :step="0.05"
+                :precision="2"
+                style="width: 140px; margin-left: 10px"
                 @change="validatePercentages"
               />
-              <span style="margin-left: 5px">%</span>
+              <span style="margin-left: 5px; color: #909399; font-size: 12px;">
+                占比{{ Math.round((member.percentage || 0) * 100) }}%
+              </span>
               <el-button
                 v-if="shareForm.shareMembers.length > 1"
                 type="danger"
@@ -397,9 +420,24 @@
               添加成员
             </el-button>
             <div class="percentage-summary">
-              总比例: {{ totalPercentage }}%
-              <span v-if="totalPercentage !== 100" class="error-text">
-                (比例总和必须为100%)
+              <div class="share-allocation-row">
+                <span class="share-ratio-text">分享比例: {{ totalPercentageDisplay }}%</span>
+                <span v-if="selectedOrder" class="owner-retained-text">
+                  | 原始下单人保留: {{ 100 - totalPercentageDisplay }}%
+                  (¥{{ (((selectedOrder.totalAmount || 0) * (100 - totalPercentageDisplay)) / 100).toLocaleString() }})
+                </span>
+              </div>
+              <span v-if="totalPercentage > 1" class="error-text">
+                (分享比例不能超过1，即100%)
+              </span>
+              <span v-else-if="totalPercentage === 0" class="error-text">
+                (请设置分享比例)
+              </span>
+              <span v-else-if="totalPercentage >= 1" class="warning-text">
+                ⚠️ 原始下单人将不保留任何业绩和单数
+              </span>
+              <span v-else class="success-text">
+                ✅ 守恒：下单人保留 {{ 100 - totalPercentageDisplay }}%，分享 {{ totalPercentageDisplay }}%
               </span>
             </div>
           </div>
@@ -422,7 +460,7 @@
           type="primary"
           @click="submitShare"
           :loading="submitLoading"
-          :disabled="totalPercentage !== 100"
+          :disabled="totalPercentage > 1 || totalPercentage === 0"
         >
           {{ isEditMode ? '更新' : '确认分享' }}
         </el-button>
@@ -455,11 +493,11 @@
             </div>
             <div class="detail-info-item">
               <span class="detail-label">创建时间</span>
-              <span class="detail-value">{{ selectedShareDetail.createTime }}</span>
+              <span class="detail-value">{{ formatBeijingTime(selectedShareDetail.createTime, false) }}</span>
             </div>
             <div class="detail-info-item">
               <span class="detail-label">创建人</span>
-              <span class="detail-value">{{ selectedShareDetail.createdBy }}</span>
+              <span class="detail-value">{{ getOperatorName(selectedShareDetail.createdById, selectedShareDetail.createdBy) }}</span>
             </div>
             <div class="detail-info-item">
               <span class="detail-label">状态</span>
@@ -479,8 +517,29 @@
 
         <!-- 右侧：分享成员 -->
         <div class="detail-right">
-          <h4 class="detail-section-title">分享成员 ({{ selectedShareDetail.shareMembers?.length || 0 }}人)</h4>
+          <h4 class="detail-section-title">参与成员 ({{ (selectedShareDetail.shareMembers?.length || 0) + 1 }}人)</h4>
           <div class="members-list">
+            <!-- 🔥 原始下单人 -->
+            <div class="member-item-horizontal" style="background: #f0f9ff; border-radius: 6px; padding: 8px;">
+              <div class="member-left-info">
+                <div class="member-avatar-small" style="background: #3b82f6;">
+                  <el-icon><UserFilled /></el-icon>
+                </div>
+                <div>
+                  <div class="member-name-small">{{ getOperatorName(selectedShareDetail.createdById, selectedShareDetail.createdBy) || '下单人' }}</div>
+                  <el-tag type="primary" size="small">
+                    原始下单人
+                  </el-tag>
+                </div>
+              </div>
+              <div class="member-right-info">
+                <div class="member-percentage">{{ getOwnerRetainedPercentage(selectedShareDetail) }}%</div>
+                <div class="member-amount">
+                  ¥{{ getOwnerRetainedAmount(selectedShareDetail).toLocaleString() }}
+                </div>
+              </div>
+            </div>
+            <!-- 🔥 分享成员 -->
             <div
               v-for="(member, index) in selectedShareDetail.shareMembers"
               :key="index"
@@ -491,7 +550,7 @@
                   <el-icon><UserFilled /></el-icon>
                 </div>
                 <div>
-                  <div class="member-name-small">{{ member.userName }}</div>
+                  <div class="member-name-small">{{ getOperatorName(member.userId, member.userName) }}</div>
                   <el-tag type="success" size="small">
                     已分享
                   </el-tag>
@@ -523,50 +582,80 @@
         height="calc(100vh - 200px)"
         :row-class-name="getTableRowClassName"
       >
-        <el-table-column prop="shareNumber" label="分享编号" width="140" fixed />
-        <el-table-column prop="orderNumber" label="订单编号" width="140" fixed>
+        <el-table-column label="分享编号" width="100" fixed align="center">
+          <template #default="{ row }">
+            <span class="short-code" :title="row.shareNumber">{{ getShortShareCode(row.shareNumber) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="orderNumber" label="订单编号" width="150" fixed>
           <template #default="{ row }">
             <el-link type="primary" @click="viewOrderDetail(row.orderId)">
               {{ row.orderNumber }}
             </el-link>
           </template>
         </el-table-column>
-        <el-table-column prop="fromMember" label="分享人" width="120" />
-        <el-table-column prop="toMember" label="接收人" width="120" />
-        <el-table-column prop="shareAmount" label="分享金额" width="120" align="right">
+        <el-table-column label="操作人" width="90" align="center">
           <template #default="{ row }">
-            <span class="amount">¥{{ (row.shareAmount || 0).toLocaleString() }}</span>
+            <span class="operator-name-compact">{{ getOperatorName(row.createdById, row.createdBy) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="shareRatio" label="分享比例" width="100" align="center">
+        <el-table-column label="分享成员" min-width="280">
           <template #default="{ row }">
-            {{ row.shareRatio }}%
+            <div class="share-members-inline">
+              <el-tag size="small" type="primary" class="member-tag-compact">
+                {{ getOperatorName(row.createdById, row.createdBy) }} {{ getOwnerRetainedPercentage(row) }}% ¥{{ getMemberAmount(row, getOwnerRetainedPercentage(row)).toLocaleString() }}📌
+              </el-tag>
+              <el-tag
+                v-for="member in (row.shareMembers || [])"
+                :key="member.userId"
+                size="small"
+                :type="member.userId === userStore.currentUser?.id ? 'success' : 'info'"
+                class="member-tag-compact"
+              >
+                {{ getOperatorName(member.userId, member.userName) }} {{ member.percentage }}% ¥{{ getMemberAmount(row, member.percentage).toLocaleString() }}
+              </el-tag>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="100" align="center">
+        <el-table-column prop="shareAmount" label="订单金额" width="110" align="right">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">
+            <span class="amount-text-compact">¥{{ (row.orderAmount || 0).toLocaleString() }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getStatusType(row.status)" size="small">
               {{ getStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="shareDate" label="分享日期" width="180" />
-        <el-table-column prop="effectiveDate" label="生效日期" width="180" />
-        <el-table-column prop="description" label="分享说明" min-width="200" show-overflow-tooltip />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="创建时间" width="145" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="viewShareDetail(row)">
-              查看详情
-            </el-button>
-            <el-button
-              v-if="row.status === 'active' && canCancelShare(row)"
-              link
-              type="danger"
-              size="small"
-              @click="handleCancelShare(row)"
-            >
-              取消分享
-            </el-button>
+            <span class="time-text-compact">{{ formatBeijingTime(row.createTime, false) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="分享说明" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.description || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="170" fixed="right">
+          <template #default="{ row }">
+            <div class="action-buttons">
+              <el-button type="primary" size="small" text @click="viewShareDetail(row)">
+                详情
+              </el-button>
+              <el-button
+                v-if="row.status === 'active' && canCancelShare(row)"
+                type="danger"
+                size="small"
+                text
+                @click="cancelShare(row)"
+                :loading="cancelLoading === row.id"
+              >
+                取消
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -603,6 +692,7 @@ import { usePerformanceStore } from '@/stores/performance'
 import { useUserStore } from '@/stores/user'
 import { useOrderStore } from '@/stores/order'
 import * as performanceApi from '@/api/performance'
+import { formatDateTime as formatBeijingTime } from '@/utils/date'
 import type { FormInstance, FormRules } from 'element-plus'
 
 // 接口定义
@@ -624,6 +714,7 @@ interface ShareUser {
 
 interface ShareDetail {
   id: string
+  orderId?: string
   orderNumber: string
   orderAmount: number
   shareMembers: Array<{
@@ -635,6 +726,8 @@ interface ShareDetail {
   }>
   status: string
   createTime: string
+  createdBy?: string
+  createdById?: string
   description?: string
 }
 
@@ -660,6 +753,7 @@ const fullscreenVisible = ref(false)
 const isEditMode = ref(false)
 const submitLoading = ref(false)
 const orderSearchLoading = ref(false)
+const cancelLoading = ref<string | null>(null)
 
 // 分页数据
 const currentPage = ref(1)
@@ -684,8 +778,7 @@ const shareFormRef = ref<FormInstance>()
 const shareForm = ref({
   orderId: '',
   shareMembers: [
-    { userId: '', percentage: 50 },
-    { userId: '', percentage: 50 }
+    { userId: '', percentage: 0.5 }
   ],
   description: ''
 })
@@ -712,20 +805,17 @@ const filteredShareRecords = computed(() => {
   // 权限控制：根据用户角色过滤数据
   const currentUser = userStore.currentUser
   if (currentUser) {
+    const currentUserId = String(currentUser.id || '')
+    const currentUserName = currentUser.name || currentUser.realName || ''
     // 超级管理员和管理员可以查看所有分享记录
     if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
       // 不做过滤，显示所有记录
-    } else if (currentUser.role === 'department_manager') {
-      // 部门经理只能查看自己创建的分享记录
-      records = records.filter(record =>
-        record.createdById === currentUser.id ||
-        record.createdBy === currentUser.name
-      )
     } else {
-      // 其他角色（如销售员）只能查看自己创建的分享记录
+      // 🔥 其他角色只能查看自己创建的或参与的分享记录
       records = records.filter(record =>
-        record.createdById === currentUser.id ||
-        record.createdBy === currentUser.name
+        String(record.createdById || '') === currentUserId ||
+        record.createdBy === currentUserName ||
+        (record.shareMembers || []).some((m: any) => String(m.userId || '') === currentUserId)
       )
     }
   }
@@ -753,8 +843,63 @@ const filteredShareRecords = computed(() => {
   return records
 })
 
+/**
+ * 🔥 获取原始下单人保留的百分比
+ */
+const getOwnerRetainedPercentage = (share: any) => {
+  const totalShared = (share.shareMembers || []).reduce((sum: number, m: any) => sum + (m.percentage || 0), 0)
+  return Math.max(0, 100 - totalShared)
+}
+
+/**
+ * 🔥 获取原始下单人保留的金额
+ */
+const getOwnerRetainedAmount = (share: any) => {
+  const retainedPct = getOwnerRetainedPercentage(share)
+  return ((share.orderAmount || 0) * retainedPct) / 100
+}
+
+/**
+ * 🔥 根据百分比计算成员分享金额
+ */
+const getMemberAmount = (share: any, percentage: number) => {
+  return Math.round(((share.orderAmount || 0) * (percentage || 0)) / 100)
+}
+
+/**
+ * 🔥 获取短分享编码（如 SH20260327001 → SH…7001）
+ * 保留前缀 + 最后4位，确保在表格中紧凑显示
+ */
+const getShortShareCode = (shareNumber: string) => {
+  if (!shareNumber) return '-'
+  // 较长的分享编号，截取前缀+后4位
+  if (shareNumber.length > 8) {
+    return shareNumber.slice(0, 2) + '…' + shareNumber.slice(-4)
+  }
+  return shareNumber
+}
+
+/**
+ * 🔥 操作人/创建人映射为姓名（优先使用userStore中的真实姓名）
+ */
+const getOperatorName = (userId?: string, fallbackName?: string) => {
+  if (userId) {
+    const user = userStore.users?.find((u: any) => String(u.id) === String(userId))
+    if (user) {
+      return user.realName || user.name || user.username || fallbackName || '未知'
+    }
+  }
+  return fallbackName || '未知'
+}
+
+// 🔥 totalPercentage 现在是0-1范围的比例值（如0.5表示50%）
 const totalPercentage = computed(() => {
   return shareForm.value.shareMembers.reduce((sum, member) => sum + (member.percentage || 0), 0)
+})
+
+// 🔥 显示用的百分比值（0-100范围）
+const totalPercentageDisplay = computed(() => {
+  return Math.round(totalPercentage.value * 100)
 })
 
 // 方法
@@ -771,43 +916,6 @@ const loadShareRecords = async () => {
 
     const result = await performanceStore.loadPerformanceShares(params)
     totalRecords.value = result.total
-
-    // 如果没有数据，创建一些示例数据（仅在开发环境）
-    if (result.shares.length === 0 && process.env.NODE_ENV === 'development') {
-      try {
-        await performanceStore.createPerformanceShare({
-          orderId: '1',
-          orderNumber: 'ORD202401150001',
-          orderAmount: 15800,
-          shareMembers: [
-            { userId: 'sales1', userName: '小明', percentage: 60, shareAmount: 0, status: 'pending' },
-            { userId: 'sales2', userName: '张三', percentage: 40, shareAmount: 0, status: 'pending' }
-          ],
-          createdBy: '超级管理员',
-          createdById: userStore.currentUser?.id || 'admin',
-          description: '重要客户订单，按贡献度分配'
-        })
-
-        await performanceStore.createPerformanceShare({
-          orderId: '2',
-          orderNumber: 'ORD202401160002',
-          orderAmount: 28900,
-          shareMembers: [
-            { userId: 'sales1', userName: '小明', percentage: 50, shareAmount: 0, status: 'pending' },
-            { userId: 'sales3', userName: '李四', percentage: 50, shareAmount: 0, status: 'pending' }
-          ],
-          createdBy: '超级管理员',
-          createdById: userStore.currentUser?.id || 'admin',
-          description: '团队协作订单'
-        })
-
-        // 重新加载数据
-        const newResult = await performanceStore.loadPerformanceShares(params)
-        totalRecords.value = newResult.total
-      } catch (createError) {
-        console.warn('创建示例数据失败:', createError)
-      }
-    }
   } catch (error) {
     // 🔥 完全静默处理：不显示任何错误提示，只在控制台记录
     console.warn('[业绩分享] 加载数据失败，可能是表不存在或无数据:', error)
@@ -854,7 +962,7 @@ const applyDataScopeControl = (orderList: unknown[]) => {
   if (!currentUser) return []
 
   // 超级管理员可以查看所有订单
-  if (currentUser.role === 'admin') {
+  if (currentUser.role === 'admin' || currentUser.role === 'super_admin') {
     return orderList
   }
 
@@ -962,7 +1070,7 @@ const isUserSelected = (userId: string, currentIndex: number) => {
 
 const addMember = () => {
   if (shareForm.value.shareMembers.length < 5) {
-    shareForm.value.shareMembers.push({ userId: '', percentage: 0 })
+    shareForm.value.shareMembers.push({ userId: '', percentage: 0.1, userName: '' })
   }
 }
 
@@ -981,8 +1089,14 @@ const submitShare = async () => {
   try {
     await shareFormRef.value.validate()
 
-    if (totalPercentage.value !== 100) {
-      ElMessage.error('分享比例总和必须为100%')
+    // 🔥 比例格式：totalPercentage 是0-1范围
+    if (totalPercentage.value > 1) {
+      ElMessage.error('分享比例总和不能超过1（即100%）')
+      return
+    }
+
+    if (totalPercentage.value === 0) {
+      ElMessage.error('请设置分享比例')
       return
     }
 
@@ -990,17 +1104,18 @@ const submitShare = async () => {
 
     console.log('[业绩分享] 开始提交分享数据')
 
-    // 准备分享数据
+    // 准备分享数据 - 🔥 将比例(0.5)转换为百分比(50)发送给后端
     const shareData = {
       orderId: shareForm.value.orderId,
       orderNumber: selectedOrder.value?.orderNumber || '',
       orderAmount: selectedOrder.value?.totalAmount || 0,
       shareMembers: shareForm.value.shareMembers.map(member => {
-        const shareAmount = (selectedOrder.value?.totalAmount || 0) * member.percentage / 100
+        const pct = member.percentage * 100 // 🔥 0.5 → 50
+        const shareAmount = (selectedOrder.value?.totalAmount || 0) * member.percentage // 比例直接乘以金额
         return {
           userId: member.userId,
           userName: availableUsers.value.find(u => u.id === member.userId)?.name || '',
-          percentage: member.percentage,
+          percentage: pct, // 🔥 后端存储百分比格式 (50, 30 等)
           shareAmount: shareAmount,
           status: 'pending' as const
         }
@@ -1036,10 +1151,14 @@ const submitShare = async () => {
     console.log('[业绩分享] 触发业绩数据同步')
     await performanceStore.syncPerformanceData()
 
+    // 🔥 发送全局事件通知其他页面刷新（个人业绩、团队业绩、数据看板）
+    window.dispatchEvent(new CustomEvent('performanceDataUpdate', { detail: { type: isEditMode.value ? 'share_updated' : 'share_created' } }))
+    window.dispatchEvent(new CustomEvent('dataSync', { detail: { type: isEditMode.value ? 'share_updated' : 'share_created' } }))
+
     console.log('[业绩分享] 分享流程完成')
 
     // 只在这里显示成功提示
-    ElMessage.success('分享创建成功')
+    ElMessage.success(isEditMode.value ? '分享更新成功' : '分享创建成功')
   } catch (error) {
     console.error('[业绩分享] 提交分享失败:', error)
     ElMessage.error('提交分享失败')
@@ -1048,21 +1167,7 @@ const submitShare = async () => {
   }
 }
 
-const sendShareNotifications = async (shareData: ShareDetail) => {
-  // 给每个分享成员发送通知
-  for (const member of shareData.shareMembers) {
-    if (member.userId !== userStore.currentUser?.id) {
-      await notificationStore.addMessage({
-        type: 'PERFORMANCE_SHARE',
-        title: '业绩分享通知',
-        content: `您收到了来自${shareData.createdBy}的业绩分享，订单${shareData.orderNumber}，分享比例${member.percentage}%`,
-        priority: 'normal',
-        relatedId: shareData.id,
-        relatedType: 'performance_share'
-      })
-    }
-  }
-}
+
 
 
 
@@ -1080,8 +1185,7 @@ const cancelShareForm = () => {
   shareForm.value = {
     orderId: '',
     shareMembers: [
-      { userId: '', percentage: 50 },
-      { userId: '', percentage: 50 }
+      { userId: '', percentage: 0.5 }
     ],
     description: ''
   }
@@ -1100,7 +1204,11 @@ const editShare = (share: ShareDetail) => {
   isEditMode.value = true
   shareForm.value = {
     orderId: share.orderId,
-    shareMembers: [...share.shareMembers],
+    // 🔥 后端存储的是百分比(50)，前端表单需要比例(0.5)
+    shareMembers: (share.shareMembers || []).map(m => ({
+      ...m,
+      percentage: m.percentage > 1 ? m.percentage / 100 : m.percentage
+    })),
     description: share.description
   }
   selectedOrder.value = availableOrders.value.find(order => order.id === share.orderId)
@@ -1109,32 +1217,53 @@ const editShare = (share: ShareDetail) => {
 
 const cancelShare = async (share: ShareDetail) => {
   try {
-    await ElMessageBox.confirm('确定要取消这个业绩分享吗？', '确认取消', {
-      type: 'warning'
+    await ElMessageBox.confirm('确定要取消这个业绩分享吗？取消后相关业绩数据将恢复。', '确认取消', {
+      type: 'warning',
+      confirmButtonText: '确认取消',
+      cancelButtonText: '暂不取消'
     })
+
+    // 🔥 设置取消中状态
+    cancelLoading.value = share.id
+    console.log('[业绩分享] 开始取消分享:', share.id)
 
     const success = await performanceStore.cancelPerformanceShare(share.id)
     if (success) {
       ElMessage.success('业绩分享已取消')
-      // 重新加载数据
+      // 重新加载数据（store中已重新加载过，这里再刷新总数）
       await loadShareRecords()
-      // 触发数据同步
-      await performanceStore.syncPerformanceData()
+      // 🔥 发送全局事件通知其他页面刷新（同时支持 CustomEvent 和 EventBus）
+      window.dispatchEvent(new CustomEvent('performanceDataUpdate', { detail: { type: 'share_cancelled', shareId: share.id } }))
+      window.dispatchEvent(new CustomEvent('dataSync', { detail: { type: 'share_cancelled', shareId: share.id } }))
     } else {
-      ElMessage.error('取消失败，请重试')
+      ElMessage.error('取消失败，请检查网络连接或联系管理员')
     }
-  } catch (error) {
+  } catch (error: any) {
+    // ElMessageBox.confirm 被用户取消时会抛出 'cancel'
+    if (error === 'cancel' || error?.toString?.()?.includes('cancel')) return
     console.error('取消分享失败:', error)
-    ElMessage.error('取消失败')
+    ElMessage.error('取消失败: ' + (error?.message || '请重试'))
+  } finally {
+    cancelLoading.value = null
   }
 }
 
 const canEditShare = (share: ShareDetail) => {
-  return userStore.isAdmin && share.status === 'active'
+  // 管理员或创建者都可以编辑
+  const currentUserId = String(userStore.currentUser?.id || '')
+  const isCreator = String(share.createdById || '') === currentUserId ||
+                    share.createdBy === userStore.currentUser?.name ||
+                    share.createdBy === userStore.currentUser?.realName
+  return (userStore.isAdmin || isCreator) && share.status === 'active'
 }
 
 const canCancelShare = (share: ShareDetail) => {
-  return userStore.isAdmin && share.status === 'active'
+  // 🔥 修复：管理员和创建者都可以取消分享（类型安全比较）
+  const currentUserId = String(userStore.currentUser?.id || '')
+  const isCreator = String(share.createdById || '') === currentUserId ||
+                    share.createdBy === userStore.currentUser?.name ||
+                    share.createdBy === userStore.currentUser?.realName
+  return (userStore.isAdmin || isCreator) && share.status === 'active'
 }
 
 const viewOrderDetail = (orderId: string) => {
@@ -1201,7 +1330,7 @@ const exportShareRecords = async () => {
       params.endDate = exportDateRange.value[1]
     }
 
-    ElMessage.loading('正在导出数据...')
+    ElMessage.info('正在导出数据...')
 
     // 调用导出API
     const response = await performanceApi.exportPerformanceShares(params)
@@ -1644,10 +1773,59 @@ watch([filterStatus, filterDateRange], () => {
   }
 }
 
-.share-members {
+.share-members-inline {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  gap: 4px;
+}
+
+.member-tag-compact {
+  flex-shrink: 0;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 0 6px;
+  height: 22px;
+  line-height: 22px;
+}
+
+.tag-label-mini {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.short-code {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: #606266;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.amount-text-compact {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  white-space: nowrap;
+}
+
+.time-text-compact {
+  font-size: 12px;
+  color: #606266;
+  white-space: nowrap;
+}
+
+.operator-name-compact {
+  font-size: 13px;
+  color: #303133;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  max-width: 100%;
 }
 
 .order-info {
@@ -1687,12 +1865,45 @@ watch([filterStatus, filterDateRange], () => {
   border-radius: 12px;
   border: 2px solid #81e6d9;
   text-align: center;
-  font-size: 18px;
+  font-size: 16px;
+}
+
+.share-allocation-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.share-ratio-text {
+  color: #2d3748;
+}
+
+.owner-retained-text {
+  color: #2b6cb0;
+  font-size: 14px;
 }
 
 .error-text {
   color: #e53e3e;
   font-weight: 700;
+}
+
+.warning-text {
+  color: #dd6b20;
+  font-weight: 600;
+  font-size: 14px;
+  display: block;
+  margin-top: 6px;
+}
+
+.success-text {
+  color: #2f855a;
+  font-weight: 600;
+  font-size: 14px;
+  display: block;
+  margin-top: 6px;
 }
 
 /* 订单搜索样式 */
@@ -1859,6 +2070,15 @@ watch([filterStatus, filterDateRange], () => {
   border-radius: 8px;
   overflow: hidden;
   transition: all 0.3s ease;
+}
+
+/* 🔥 确保表格不溢出，所有内容自适应铺满 */
+:deep(.el-table__body-wrapper) {
+  overflow-x: hidden !important;
+}
+
+:deep(.el-table .el-table__header-wrapper) {
+  overflow-x: hidden !important;
 }
 
 :deep(.table-row-even) {
@@ -2547,69 +2767,47 @@ watch([filterStatus, filterDateRange], () => {
   text-align: center;
 }
 
-/* 操作按钮样式 */
+/* 操作按钮样式 - text 模式精致风格 */
 .action-buttons {
   display: flex;
-  gap: 6px;
-  flex-wrap: nowrap;
-  justify-content: flex-start;
+  gap: 4px;
+  justify-content: center;
   align-items: center;
 }
 
-.action-btn {
-  min-width: 60px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 4px;
+.action-buttons :deep(.el-button) {
+  padding: 5px 10px;
   font-size: 12px;
   font-weight: 500;
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.25s ease;
 }
 
-.action-btn .el-icon {
-  font-size: 14px;
+/* 详情按钮 - 蓝色 text */
+.action-buttons :deep(.el-button--primary.is-text) {
+  color: #409eff;
+}
+.action-buttons :deep(.el-button--primary.is-text:hover) {
+  color: #337ecc;
+  background-color: #ecf5ff;
 }
 
-.view-btn {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #475569;
+/* 编辑按钮 - 橙色 text */
+.action-buttons :deep(.el-button--warning.is-text) {
+  color: #e6a23c;
+}
+.action-buttons :deep(.el-button--warning.is-text:hover) {
+  color: #cf8a2e;
+  background-color: #fdf6ec;
 }
 
-.view-btn:hover {
-  background: #e2e8f0;
-  border-color: #94a3b8;
-  color: #334155;
-  transform: translateY(-1px);
+/* 取消按钮 - 红色 text */
+.action-buttons :deep(.el-button--danger.is-text) {
+  color: #f56c6c;
 }
-
-.edit-btn {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #1d4ed8;
-}
-
-.edit-btn:hover {
-  background: #dbeafe;
-  border-color: #93c5fd;
-  color: #1e40af;
-  transform: translateY(-1px);
-}
-
-.cancel-btn {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #dc2626;
-}
-
-.cancel-btn:hover {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  color: #b91c1c;
-  transform: translateY(-1px);
+.action-buttons :deep(.el-button--danger.is-text:hover) {
+  color: #d9534f;
+  background-color: #fef0f0;
 }
 
 /* 响应式设计 */
@@ -2630,14 +2828,7 @@ watch([filterStatus, filterDateRange], () => {
   }
 
   .action-buttons {
-    flex-wrap: wrap;
     gap: 4px;
-    justify-content: center;
-  }
-
-  .action-btn {
-    min-width: 55px;
-    justify-content: center;
   }
 }
 
@@ -2744,20 +2935,5 @@ watch([filterStatus, filterDateRange], () => {
   font-weight: 600;
   color: #e53e3e;
   margin-left: auto;
-}
-
-.order-sub {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: #718096;
-}
-
-.order-sub .phone {
-  color: #4a5568;
-}
-
-.order-sub .time {
-  color: #a0aec0;
 }
 </style>

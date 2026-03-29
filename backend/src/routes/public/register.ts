@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid'
 import crypto from 'crypto'
 import { aliyunSmsService } from '../../services/AliyunSmsService'
 import { adminNotificationService } from '../../services/AdminNotificationService'
+import { createDefaultAdmin } from '../../utils/adminAccountHelper'
 
 const router = Router()
 
@@ -111,9 +112,9 @@ router.post('/', async (req: Request, res: Response) => {
       )
       if (packages && packages.length > 0) {
         packageId = packages[0].id
-        maxUsers = packages[0].max_users
-        expireDays = packages[0].duration_days
-        packagePrice = packages[0].price || 0
+        maxUsers = packages[0].max_users || 3
+        expireDays = packages[0].duration_days || 7  // 防止NULL覆盖默认值
+        packagePrice = Number(packages[0].price) || 0  // 🔥 MySQL返回字符串"0.00"，必须转数字
         isFree = packagePrice === 0
       }
     }
@@ -146,6 +147,23 @@ router.post('/', async (req: Request, res: Response) => {
       )
     }
 
+    // 🔥 免费套餐：创建默认管理员账号（用手机号作为用户名，默认密码 Aa123456）
+    let adminAccount: { username: string; password: string } | null = null
+    if (isFree) {
+      try {
+        const result = await createDefaultAdmin({
+          tenantId,
+          phone,
+          realName: contactName,
+          email: email || undefined
+        })
+        adminAccount = { username: result.username, password: result.password }
+        console.log(`[Register] ✅ 已为租户 ${tenantCode} 创建默认管理员: ${result.username}`)
+      } catch (adminErr: any) {
+        console.error('[Register] 创建默认管理员失败（不影响注册）:', adminErr.message?.substring(0, 100))
+      }
+    }
+
     res.json({
       code: 0,
       data: {
@@ -153,7 +171,9 @@ router.post('/', async (req: Request, res: Response) => {
         tenantCode,
         licenseKey: licenseKey || null, // 付费套餐返回null
         expireDate: expireDate ? expireDate.toISOString().split('T')[0] : null,
-        needPay: !isFree
+        needPay: !isFree,
+        adminUsername: adminAccount?.username || null,
+        adminPassword: adminAccount?.password || null
       },
       message: isFree ? '注册成功' : '注册成功，请完成支付'
     })

@@ -157,7 +157,12 @@
             <el-icon class="drag-handle" style="cursor: move; color: #999;"><Rank /></el-icon>
           </template>
         </el-table-column>
-        <el-table-column prop="label" label="支付方式名称" width="200" />
+        <el-table-column prop="label" label="支付方式名称" width="200">
+          <template #default="{ row }">
+            {{ row.label }}
+            <el-tag v-if="row.isSystem || !row.tenantId" type="info" size="small" style="margin-left: 6px;">预设</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="value" label="选项值" width="150" />
         <el-table-column prop="sortOrder" label="排序" width="100" />
         <el-table-column label="启用" width="100">
@@ -174,7 +179,13 @@
             <el-button size="small" type="primary" link @click="editPaymentMethod(row)">
               编辑
             </el-button>
-            <el-button size="small" type="danger" link @click="deletePaymentMethod(row)">
+            <el-button
+              size="small"
+              type="danger"
+              link
+              @click="deletePaymentMethod(row)"
+              v-if="!row.isSystem"
+            >
               删除
             </el-button>
           </template>
@@ -727,6 +738,11 @@ const togglePaymentMethod = async (row: any) => {
 
 // 删除支付方式
 const deletePaymentMethod = async (row: any) => {
+  // 前端保护：系统预设不允许删除
+  if (row.isSystem) {
+    ElMessage.warning('系统预设的支付方式不允许删除，只能禁用')
+    return
+  }
   try {
     await ElMessageBox.confirm('确定要删除该支付方式吗？', '确认删除', { type: 'warning' })
     const token = localStorage.getItem('auth_token')
@@ -738,6 +754,8 @@ const deletePaymentMethod = async (row: any) => {
     if (result.success) {
       ElMessage.success('删除成功')
       loadPaymentMethods()
+    } else {
+      ElMessage.error(result.message || '删除失败')
     }
   } catch (error) {
     if (error !== 'cancel') {

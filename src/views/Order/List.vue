@@ -268,15 +268,22 @@
         </el-button>
 
         <!-- 4. 取消订单审核 -->
-        <el-button
+        <el-badge
           v-if="canViewCancelAudit"
-          @click="handleOpenCancelAudit"
-          size="small"
-          :icon="DocumentChecked"
-          type="warning"
+          :value="pendingCancelCount"
+          :hidden="pendingCancelCount === 0"
+          :max="99"
+          type="danger"
         >
-          取消订单审核
-        </el-button>
+          <el-button
+            @click="handleOpenCancelAudit"
+            size="small"
+            :icon="DocumentChecked"
+            type="warning"
+          >
+            取消订单审核
+          </el-button>
+        </el-badge>
 
         <!-- 5. 刷新 -->
         <el-button
@@ -665,7 +672,6 @@ import { request } from '@/api/request'
 import { exportBatchOrders, type ExportOrder } from '@/utils/export'
 import { orderApi } from '@/api/order'
 import { createSafeNavigator } from '@/utils/navigation'
-import { maskPhone } from '@/utils/phone'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
@@ -790,6 +796,7 @@ const cancelRules = {
 const showCancelAuditDialog = ref(false)
 const auditActiveTab = ref('pending')
 const selectedAuditOrders = ref<OrderItem[]>([])
+const pendingCancelCount = ref(0) // 🔥 新增：待审核的取消申请数量
 
 // 待审核订单分页数据
 const pendingPagination = reactive({
@@ -1814,6 +1821,7 @@ const handleBatchExport = async () => {
       totalAmount: order.totalAmount || 0,
       depositAmount: order.depositAmount || 0,
       codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
+      customerGender: order.customerGender || '',
       customerAge: order.customerAge || '',
       customerHeight: order.customerHeight || '',
       customerWeight: order.customerWeight || '',
@@ -1881,6 +1889,7 @@ const handleExport = async () => {
       totalAmount: order.totalAmount || 0,
       depositAmount: order.depositAmount || 0,
       codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
+      customerGender: order.customerGender || '',
       customerAge: order.customerAge || '',
       customerHeight: order.customerHeight || '',
       customerWeight: order.customerWeight || '',
@@ -2016,6 +2025,9 @@ const submitCancelRequest = async () => {
     showCancelDialog.value = false
     updateQuickFilterCounts()
 
+    // 🔥 更新待审核数量
+    await loadPendingCancelCount()
+
   } catch (error) {
     console.error('取消订单申请失败:', error)
 
@@ -2146,6 +2158,21 @@ const loadCancelAuditOrders = async () => {
     ElMessage.error('加载取消申请订单失败')
   } finally {
     loading.value = false
+  }
+}
+
+// 🔥 新增：获取待审核取消订单数量
+const loadPendingCancelCount = async () => {
+  try {
+    const { orderApi } = await import('@/api/order')
+    const response = await orderApi.getPendingCancelCount()
+
+    if (response && response.data) {
+      pendingCancelCount.value = response.data.count || 0
+    }
+  } catch (error) {
+    console.error('获取待审核取消订单数量失败:', error)
+    // 静默失败，不影响用户体验
   }
 }
 
@@ -2309,6 +2336,9 @@ const handleAuditApprove = async () => {
     // 刷新订单列表
     await loadOrderList()
 
+    // 🔥 更新待审核数量
+    await loadPendingCancelCount()
+
     // 关闭审核弹窗
     handleCloseCancelAudit()
   } catch (error) {
@@ -2349,6 +2379,9 @@ const handleAuditReject = async () => {
 
     // 刷新订单列表
     await loadOrderList()
+
+    // 🔥 更新待审核数量
+    await loadPendingCancelCount()
 
     // 关闭审核弹窗
     handleCloseCancelAudit()
@@ -2602,7 +2635,8 @@ onMounted(async () => {
   const loadPromises = [
     loadCustomFieldColumns(),
     userStore.loadUsers(),
-    loadOrderList(false) // 不强制刷新，使用缓存
+    loadOrderList(false), // 不强制刷新，使用缓存
+    loadPendingCancelCount() // 🔥 加载待审核取消订单数量
   ]
 
   // 同步加载列设置和支付方式（不需要await）

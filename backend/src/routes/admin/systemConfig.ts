@@ -28,7 +28,8 @@ router.get('/system-config', async (_req: Request, res: Response) => {
           systemLogo: '', contactQRCode: '', contactQRCodeLabel: '',
           copyrightText: '', icpNumber: '', policeNumber: '', techSupport: '',
           userAgreement: '', privacyPolicy: '',
-          enableBasicOverride: false, enableCopyrightOverride: false, enableAgreementOverride: false
+          enableBasicOverride: false, enableCopyrightOverride: false, enableAgreementOverride: false,
+          enableConsoleEncryption: false
         }
       })
     }
@@ -89,13 +90,47 @@ router.get('/system-config/sms', async (_req: Request, res: Response) => {
           accessKeyId: data.accessKeyId || '',
           accessKeySecret: data.accessKeySecret ? '******' : '',
           signName: data.signName || '',
-          templateCode: data.templateCode || ''
+          templateCode: data.templateCode || '', // 保留兼容旧版
+          templates: data.templates || {
+            VERIFY_CODE: '',
+            REGISTER_SUCCESS: '',
+            PAYMENT_SUCCESS: '',
+            RENEW_SUCCESS: '',
+            PACKAGE_CHANGE: '',
+            QUOTA_CHANGE: '',
+            ACCOUNT_SUSPEND: '',
+            ACCOUNT_RESUME: '',
+            ACCOUNT_CANCEL: '',
+            REFUND_SUCCESS: '',
+            EXPIRE_REMIND: '',
+            EXPIRED_NOTICE: ''
+          }
         }
       })
     } else {
       res.json({
         success: true,
-        data: { enabled: false, accessKeyId: '', accessKeySecret: '', signName: '', templateCode: '' }
+        data: {
+          enabled: false,
+          accessKeyId: '',
+          accessKeySecret: '',
+          signName: '',
+          templateCode: '',
+          templates: {
+            VERIFY_CODE: '',
+            REGISTER_SUCCESS: '',
+            PAYMENT_SUCCESS: '',
+            RENEW_SUCCESS: '',
+            PACKAGE_CHANGE: '',
+            QUOTA_CHANGE: '',
+            ACCOUNT_SUSPEND: '',
+            ACCOUNT_RESUME: '',
+            ACCOUNT_CANCEL: '',
+            REFUND_SUCCESS: '',
+            EXPIRE_REMIND: '',
+            EXPIRED_NOTICE: ''
+          }
+        }
       })
     }
   } catch (error) {
@@ -107,7 +142,7 @@ router.get('/system-config/sms', async (_req: Request, res: Response) => {
 // 保存短信配置
 router.post('/system-config/sms', async (req: Request, res: Response) => {
   try {
-    const { enabled, accessKeyId, accessKeySecret, signName, templateCode } = req.body
+    const { enabled, accessKeyId, accessKeySecret, signName, templateCode, templates } = req.body
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
     // 获取现有配置
@@ -127,7 +162,12 @@ router.post('/system-config/sms', async (req: Request, res: Response) => {
       configData.accessKeySecret = accessKeySecret
     }
     configData.signName = signName
-    configData.templateCode = templateCode
+    configData.templateCode = templateCode // 保留兼容旧版
+
+    // 更新模板配置
+    if (templates) {
+      configData.templates = templates
+    }
 
     const configValue = JSON.stringify(configData)
 
@@ -153,8 +193,8 @@ router.post('/system-config/sms', async (req: Request, res: Response) => {
 // 测试短信发送
 router.post('/system-config/sms/test', async (req: Request, res: Response) => {
   try {
-    const { phone, accessKeyId, accessKeySecret, signName, templateCode } = req.body
-    console.log(`[SMS Test] 收到测试请求: phone=${phone}, signName=${signName}, templateCode=${templateCode}`)
+    const { phone, accessKeyId, accessKeySecret, signName, templateCode, templates } = req.body
+    console.log(`[SMS Test] 收到测试请求: phone=${phone}, signName=${signName}`)
 
     if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
       return res.status(400).json({ success: false, message: '请输入正确的手机号' })
@@ -172,13 +212,25 @@ router.post('/system-config/sms/test', async (req: Request, res: Response) => {
       }
     }
 
-    if (!accessKeyId || !actualSecret || !signName || !templateCode) {
-      return res.status(400).json({ success: false, message: '请完整填写短信配置' })
+    // 确定使用哪个模板CODE
+    let testTemplateCode = templateCode
+    if (templates && templates.VERIFY_CODE) {
+      testTemplateCode = templates.VERIFY_CODE
+    }
+
+    if (!accessKeyId || !actualSecret || !signName || !testTemplateCode) {
+      return res.status(400).json({ success: false, message: '请完整填写短信配置和验证码模板CODE' })
     }
 
     // 动态导入短信服务
     const { aliyunSmsService } = await import('../../services/AliyunSmsService')
-    aliyunSmsService.init({ accessKeyId, accessKeySecret: actualSecret, signName, templateCode })
+    aliyunSmsService.init({
+      accessKeyId,
+      accessKeySecret: actualSecret,
+      signName,
+      templateCode: testTemplateCode,
+      templates: templates || {}
+    })
 
     const code = '123456'
     const result = await aliyunSmsService.sendVerificationCode(phone, code)

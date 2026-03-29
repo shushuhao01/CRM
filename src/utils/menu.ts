@@ -29,7 +29,8 @@ export function hasMenuPermission(
   const isSystemRole = systemRoles.includes(userRole)
 
   // 检查角色权限 - 只对系统预设角色进行角色检查，自定义角色跳过角色检查
-  if (menuItem.roles && menuItem.roles.length > 0 && isSystemRole) {
+  // 🔥 customer_service 角色的菜单可见性完全由自定义权限决定，跳过 roles 数组检查
+  if (menuItem.roles && menuItem.roles.length > 0 && isSystemRole && userRole !== 'customer_service') {
     if (!menuItem.roles.includes(userRole)) {
       return false
     }
@@ -46,6 +47,10 @@ export function hasMenuPermission(
       if (userPerms.includes(colonFormat)) return true
       const parentPerm = requiredPerm.split(/[:.]/)[0]
       if (userPerms.includes(parentPerm)) return true
+      // 🔥 前缀匹配：检查用户是否拥有更细粒度的子权限（如 requiredPerm='customer' 且用户有 'customer:list:view'）
+      const colonPrefix = colonFormat + ':'
+      const dotPrefix = dotFormat + '.'
+      if (userPerms.some(p => p.startsWith(colonPrefix) || p.startsWith(dotPrefix))) return true
       return false
     }
 

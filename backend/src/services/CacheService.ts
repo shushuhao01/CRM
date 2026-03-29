@@ -1,6 +1,7 @@
 /**
  * 缓存服务
  * 使用内存缓存，生产环境建议使用Redis
+ * 🔥 优化：添加最大容量限制(LRU淘汰)，防止多租户大流量场景下内存泄漏
  */
 
 interface CacheItem {
@@ -11,8 +12,10 @@ interface CacheItem {
 class CacheService {
   private cache: Map<string, CacheItem> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
+  private maxSize: number;
 
-  constructor() {
+  constructor(maxSize: number = 10000) {
+    this.maxSize = maxSize;
     // 每5分钟清理一次过期缓存
     this.cleanupInterval = setInterval(() => {
       this.cleanup();
@@ -26,6 +29,13 @@ class CacheService {
    * @param ttl 过期时间（秒），默认5分钟
    */
   set(key: string, data: any, ttl: number = 300): void {
+    // 🔥 LRU淘汰：超过最大容量时删除最早的条目
+    if (this.cache.size >= this.maxSize && !this.cache.has(key)) {
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey);
+      }
+    }
     const expireAt = Date.now() + ttl * 1000;
     this.cache.set(key, { data, expireAt });
   }

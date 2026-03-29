@@ -426,8 +426,10 @@ const onPackageChange = (pkgId: string | number) => {
   if (pkg) {
     form.maxUsers = pkg.max_users ?? pkg.maxUsers ?? 10
     form.maxStorageGb = pkg.max_storage_gb ?? pkg.maxStorageGb ?? 5
-    // 同步套餐的功能模块
-    form.features = Array.isArray(pkg.features) ? [...pkg.features] : []
+    // 🔥 同步套餐的功能模块：优先使用 modules（模块ID列表），其次 features
+    form.features = Array.isArray(pkg.modules) && pkg.modules.length > 0
+      ? [...pkg.modules]
+      : (Array.isArray(pkg.features) ? [...pkg.features] : [])
     // 根据 billing_cycle 和 duration_days 计算到期时间
     const days = pkg.duration_days ?? pkg.durationDays
     const isTrial = Boolean(pkg.is_trial)
@@ -446,7 +448,10 @@ const onPackageChange = (pkgId: string | number) => {
       form.expireDate = null
     } else if (billingCycle === 'yearly' || billingCycle === 'annual') {
       const expire = new Date()
-      expire.setFullYear(expire.getFullYear() + 1)
+      // 年付加上赠送月数
+      const bonusMonths = Number(pkg.yearly_bonus_months) || 0
+      const totalMonths = 12 + bonusMonths
+      expire.setMonth(expire.getMonth() + totalMonths)
       form.expireDate = expire
     } else if (billingCycle === 'monthly') {
       const expire = new Date()
@@ -479,7 +484,12 @@ const handleEdit = (row: any) => {
 }
 
 const handleSubmit = async () => {
-  await formRef.value?.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    ElMessage.warning('请填写完整的必填信息')
+    return
+  }
   submitting.value = true
   try {
     const data = {
@@ -511,6 +521,9 @@ const handleSubmit = async () => {
         fetchData()
       }
     }
+  } catch (e: any) {
+    console.error('[TenantCustomer] 保存失败:', e)
+    // 拦截器已展示错误提示，这里不再重复
   } finally {
     submitting.value = false
   }
@@ -702,10 +715,10 @@ const fetchData = async () => {
         status: item.status,
         packageId: item.packageId || item.package_id,
         packageName: item.packageName || item.package_name,
-        userCount: item.userCount ?? item.user_count ?? 0,
-        maxUsers: item.maxUsers ?? item.max_users ?? 0,
-        maxStorageGb: item.maxStorageGb ?? item.max_storage_gb ?? 0,
-        usedStorageMb: item.usedStorageMb ?? item.used_storage_mb ?? 0,
+        userCount: Number(item.userCount ?? item.user_count ?? 0),
+        maxUsers: Number(item.maxUsers ?? item.max_users ?? 0),
+        maxStorageGb: Number(item.maxStorageGb ?? item.max_storage_gb ?? 0),
+        usedStorageMb: Number(item.usedStorageMb ?? item.used_storage_mb ?? 0),
         expireDate: item.expireDate || item.expire_date,
         remark: item.remark,
         showFullKey: false,
@@ -724,7 +737,7 @@ const fetchData = async () => {
 
 const fetchPackages = async () => {
   try {
-    const res = await request.get('/packages')
+    const res = await request.get('/packages', { params: { type: 'saas' } })
     if (res.success) packages.value = res.data.list || res.data || []
   } catch {
     packages.value = []

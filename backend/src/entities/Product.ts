@@ -1,7 +1,8 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm'
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm'
 import { ProductCategory } from './ProductCategory'
 
 @Entity('products')
+@Index('IDX_products_tenant_code', ['tenantId', 'code'], { unique: true })
 export class Product {
   @PrimaryColumn({ type: 'varchar', length: 50, comment: '产品ID' })
   id: string
@@ -9,7 +10,7 @@ export class Product {
   @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
   tenantId: string | null
 
-  @Column({ type: 'varchar', length: 50, unique: true, comment: '产品编码' })
+  @Column({ type: 'varchar', length: 50, comment: '产品编码' })
   code: string
 
   @Column({ type: 'varchar', length: 200, comment: '产品名称' })

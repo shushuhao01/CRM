@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, Index } from 'typeorm';
+﻿import { Entity, PrimaryColumn, Column, CreateDateColumn, Index } from 'typeorm';
 
 /**
  * 消息已读状态实体
@@ -9,6 +9,8 @@ import { Entity, PrimaryColumn, Column, CreateDateColumn, Index } from 'typeorm'
 export class MessageReadStatus {
   @PrimaryColumn({ type: 'varchar', length: 36 })
   id!: string;
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
 
   @Column({ name: 'message_id', type: 'varchar', length: 36, comment: '消息ID' })
   @Index()

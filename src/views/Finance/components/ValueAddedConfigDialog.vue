@@ -28,12 +28,13 @@
               <el-tag
                 v-for="item in validStatusList"
                 :key="item.id"
-                closable
+                :closable="item.isSystem !== 1"
                 class="config-tag"
                 :type="getValidStatusTagType(item.value)"
                 @close="deleteValidStatus(item.id)"
               >
                 {{ item.label }}
+                <span v-if="item.isSystem === 1" style="font-size: 10px; opacity: 0.6; margin-left: 2px;">🔒</span>
               </el-tag>
               <span v-if="validStatusList.length === 0" class="empty-hint">暂无配置，请添加</span>
             </div>
@@ -62,12 +63,13 @@
               <el-tag
                 v-for="item in settlementStatusList"
                 :key="item.id"
-                closable
+                :closable="item.isSystem !== 1"
                 class="config-tag"
                 :type="getSettlementStatusTagType(item.value)"
                 @close="deleteSettlementStatus(item.id)"
               >
                 {{ item.label }}
+                <span v-if="item.isSystem === 1" style="font-size: 10px; opacity: 0.6; margin-left: 2px;">🔒</span>
               </el-tag>
               <span v-if="settlementStatusList.length === 0" class="empty-hint">暂无配置，请添加</span>
             </div>
@@ -95,10 +97,14 @@
             </div>
             <div class="remark-list">
               <div v-for="item in invalidRemarkList" :key="item.id" class="remark-item">
-                <span class="remark-text">{{ item.remark_text }}</span>
+                <span class="remark-text">
+                  {{ item.remark_text }}
+                  <span v-if="item.is_system === 1" style="font-size: 10px; opacity: 0.6; margin-left: 2px;">🔒</span>
+                </span>
                 <div class="remark-actions">
                   <el-tag size="small" type="info">使用{{ item.usage_count }}次</el-tag>
-                  <el-button link type="danger" size="small" @click="deleteRemark(item.id)">删除</el-button>
+                  <el-button v-if="item.is_system !== 1" link type="danger" size="small" @click="deleteRemark(item.id)">删除</el-button>
+                  <el-tag v-else size="small" type="info">系统预设</el-tag>
                 </div>
               </div>
               <div v-if="invalidRemarkList.length === 0" class="empty-hint">暂无配置，请添加</div>
@@ -122,10 +128,14 @@
             </div>
             <div class="remark-list">
               <div v-for="item in generalRemarkList" :key="item.id" class="remark-item">
-                <span class="remark-text">{{ item.remark_text }}</span>
+                <span class="remark-text">
+                  {{ item.remark_text }}
+                  <span v-if="item.is_system === 1" style="font-size: 10px; opacity: 0.6; margin-left: 2px;">🔒</span>
+                </span>
                 <div class="remark-actions">
                   <el-tag size="small" type="info">使用{{ item.usage_count }}次</el-tag>
-                  <el-button link type="danger" size="small" @click="deleteRemark(item.id)">删除</el-button>
+                  <el-button v-if="item.is_system !== 1" link type="danger" size="small" @click="deleteRemark(item.id)">删除</el-button>
+                  <el-tag v-else size="small" type="info">系统预设</el-tag>
                 </div>
               </div>
               <div v-if="generalRemarkList.length === 0" class="empty-hint">暂无配置，请添加</div>

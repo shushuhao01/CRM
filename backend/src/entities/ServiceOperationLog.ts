@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn } from 'typeorm';
+﻿import { Entity, PrimaryColumn, Column, CreateDateColumn } from 'typeorm';
 
 /**
  * 售后服务操作记录实体
@@ -7,6 +7,8 @@ import { Entity, PrimaryColumn, Column, CreateDateColumn } from 'typeorm';
 export class ServiceOperationLog {
   @PrimaryColumn({ length: 50 })
   id: string;
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
 
   @Column({ name: 'service_id', length: 50 })
   serviceId: string;

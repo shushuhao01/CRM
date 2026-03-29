@@ -154,9 +154,16 @@ service.interceptors.response.use(
           console.log('[Request] ⚠️ 收到401错误，Token已过期')
           handleUnauthorized()
           break
-        case 403:
-          ElMessage.error('没有权限访问此资源')
+        case 403: {
+          // 🔥 租户资源配额超限
+          const respData = response.data as any
+          if (respData?.code === 'USER_LIMIT_EXCEEDED' || respData?.code === 'STORAGE_LIMIT_EXCEEDED') {
+            ElMessage.error({ message: errorMessage, duration: 5000 })
+          } else {
+            ElMessage.error('没有权限访问此资源')
+          }
           break
+        }
         case 404:
           ElMessage.error('请求的资源不存在')
           break
@@ -231,7 +238,18 @@ service.interceptors.response.use(
           handleUnauthorized()
           return Promise.reject(error)
         case 403:
-          errorMessage = '没有权限访问此资源'
+          // 🔥 租户资源配额超限的友好提示
+          if (data?.code === 'USER_LIMIT_EXCEEDED') {
+            errorMessage = data?.message || '用户数已达上限，请联系管理员扩容或删除现有用户后重试'
+            ElMessage.error({ message: errorMessage, duration: 5000 })
+            return Promise.reject(error)
+          }
+          if (data?.code === 'STORAGE_LIMIT_EXCEEDED') {
+            errorMessage = data?.message || '存储空间不足，请联系管理员扩容后重试'
+            ElMessage.error({ message: errorMessage, duration: 5000 })
+            return Promise.reject(error)
+          }
+          errorMessage = data?.message || '没有权限访问此资源'
           break
         case 404:
           errorMessage = '请求的资源不存在'

@@ -227,7 +227,7 @@
           </el-table-column>
           <el-table-column prop="customerPhone" label="客户电话" width="120" show-overflow-tooltip>
             <template #default="{ row }">
-              {{ maskPhone(row.customerPhone) }}
+              {{ displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE) }}
             </template>
           </el-table-column>
           <el-table-column prop="totalAmount" label="订单金额" width="110" align="right">
@@ -273,7 +273,53 @@
               <span v-else class="no-data">未发货</span>
             </template>
           </el-table-column>
-          <el-table-column prop="createTime" label="下单时间" width="160" />
+          <el-table-column prop="createTime" label="下单时间" width="160">
+            <template #default="{ row }">
+              {{ formatBeijingTime(row.createTime) }}
+            </template>
+          </el-table-column>
+          <!-- 🔥 阶段3：分享标记列 -->
+          <el-table-column label="分享" width="100" align="center">
+            <template #default="{ row }">
+              <el-tooltip
+                v-if="row.shareInfo"
+                placement="top"
+                :show-after="200"
+              >
+                <template #content>
+                  <div style="max-width: 260px;">
+                    <div v-if="row.shareInfo.isShared" style="margin-bottom: 4px;">
+                      <strong>已分享出去</strong>（保留 {{ row.shareInfo.ownerRetainedPercentage }}%）
+                    </div>
+                    <div v-else-if="row.shareInfo.isReceived" style="margin-bottom: 4px;">
+                      <strong>接收到的分享</strong>
+                    </div>
+                    <div v-for="(m, i) in row.shareInfo.members" :key="i" style="font-size: 12px;">
+                      {{ m.userName }}：{{ m.percentage }}%（¥{{ m.shareAmount.toLocaleString() }}）
+                    </div>
+                  </div>
+                </template>
+                <el-tag
+                  v-if="row.shareInfo.isShared"
+                  type="warning"
+                  size="small"
+                  effect="light"
+                >
+                  已分享
+                </el-tag>
+                <el-tag
+                  v-else-if="row.shareInfo.isReceived"
+                  type="success"
+                  size="small"
+                  effect="light"
+                >
+                  已接收
+                </el-tag>
+                <el-tag v-else type="info" size="small" effect="light">有分享</el-tag>
+              </el-tooltip>
+              <span v-else class="no-data">-</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="productInfo" label="商品信息" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">
               <div class="product-info-cell">
@@ -325,7 +371,7 @@
           <el-table-column prop="name" label="客户姓名" min-width="100" />
           <el-table-column prop="phone" label="电话" min-width="120">
             <template #default="{ row }">
-              {{ maskPhone(row.phone) }}
+              {{ displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE) }}
             </template>
           </el-table-column>
           <el-table-column prop="level" label="客户等级" width="100">
@@ -468,9 +514,11 @@ import { useOrderStore } from '@/stores/order'
 import { useCustomerStore } from '@/stores/customer'
 import { useConfigStore } from '@/stores/config'
 import { createSafeNavigator } from '@/utils/navigation'
-import { maskPhone } from '@/utils/phone'
+import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 import html2canvas from 'html2canvas'
 import { getCompanyShortName, getTrackingUrl, KUAIDI100_URL } from '@/utils/logisticsCompanyConfig'
+import { formatDateTime as formatBeijingTime } from '@/utils/date'
 
 // 接口定义
 interface OrderDetail {
@@ -486,6 +534,14 @@ interface OrderDetail {
   auditStatus: string
   trackingNumber: string
   createTime: string
+  // 🔥 阶段3：分享标记字段
+  shareInfo?: {
+    isShared: boolean       // 是否被分享
+    isReceived: boolean     // 是否是接收到的分享
+    totalSharedPercentage: number  // 分享总比例
+    ownerRetainedPercentage: number // 下单人保留比例
+    members: { userName: string; percentage: number; shareAmount: number }[]
+  }
 }
 
 interface CustomerDetail {
@@ -649,17 +705,21 @@ const performanceData = computed(() => {
   const originalTotalSales = userOrders.reduce((sum, order) => sum + order.totalAmount, 0)
   const originalTotalOrders = userOrders.length
 
-  // 【批次208修复】计算业绩分享影响 - 同时处理金额和订单数量
+  // 🔥 计算业绩分享影响 - 金额和订单数都按比例拆分（守恒定律）
   let sharedAmount = 0  // 分享出去的业绩
   let receivedAmount = 0 // 接收到的业绩
-  let sharedOrderCount = 0  // 分享出去的订单数量
-  let receivedOrderCount = 0 // 接收到的订单数量
+  let sharedOrderCount = 0  // 分享出去的订单数（按比例）
+  let receivedOrderCount = 0 // 接收到的订单数（按比例）
+  let sharedSignedOrderCount = 0  // 分享出去的签收订单数
+  let receivedSignedOrderCount = 0 // 接收到的签收订单数
+  let sharedSignedAmount = 0  // 分享出去的签收业绩
+  let receivedSignedAmount = 0 // 接收到的签收业绩
 
   if (currentUserId && performanceStore.performanceShares) {
     performanceStore.performanceShares.forEach(share => {
-      if (share.status !== 'active') return
+      if (share.status !== 'active' && share.status !== 'completed') return
 
-      // 【批次208修复】只计算属于当前用户订单的分享
+      // 只计算属于当前用户订单的分享（作为原始下单人）
       if (String(share.createdById) === String(currentUserId)) {
         // 检查分享的订单是否在当前筛选的订单中
         const shareOrder = userOrders.find(o => o.orderNumber === share.orderNumber)
@@ -668,48 +728,75 @@ const performanceData = computed(() => {
           const totalSharedPercentage = share.shareMembers.reduce((sum, member) => sum + member.percentage, 0)
           const sharedRatio = totalSharedPercentage / 100
 
-          // 按实际分享比例扣除业绩和订单数
+          // 🔥 扣除金额和订单数
           sharedAmount += (share.orderAmount || 0) * sharedRatio
           sharedOrderCount += sharedRatio
+
+          // 🔥 如果是签收订单，也要扣除签收部分
+          if (shareOrder.status === 'delivered') {
+            sharedSignedOrderCount += sharedRatio
+            sharedSignedAmount += (share.orderAmount || 0) * sharedRatio
+          }
         }
       }
 
-      // 计算接收到的业绩和订单数量
+      // 计算接收到的业绩（作为分享接收人）
       share.shareMembers.forEach(member => {
         if (String(member.userId) === String(currentUserId)) {
           const percentage = member.percentage / 100
-          receivedAmount += (share.orderAmount || 0) * percentage
-          receivedOrderCount += percentage
+
+          // 🔥 查找原始订单，找不到时回退到分享记录的createTime
+          const originalOrder = orderStore.orders.find((o: any) => o.orderNumber === share.orderNumber || o.id === share.orderId)
+          const orderTimeStr = (originalOrder?.createTime || share.createTime || '')?.replace(/\//g, '-') || ''
+          let inDateRange = true
+          if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+            const startDateStr = dateRange.value[0] + ' 00:00:00'
+            const endDateStr = dateRange.value[1] + ' 23:59:59'
+            inDateRange = orderTimeStr >= startDateStr && orderTimeStr <= endDateStr
+          }
+
+          if (inDateRange) {
+            receivedAmount += (share.orderAmount || 0) * percentage
+            receivedOrderCount += percentage
+
+            // 🔥 如果原始订单是签收状态，也增加签收部分
+            if (originalOrder && originalOrder.status === 'delivered') {
+              receivedSignedOrderCount += percentage
+              receivedSignedAmount += (share.orderAmount || 0) * percentage
+            }
+          }
         }
       })
     })
   }
 
-  // 【批次208修复】计算净业绩和净订单数,确保不小于0
+  // 🔥 守恒定律：金额和订单数都按分享比例拆分
+  // 净金额 = 原始金额 - 分享出去金额 + 接收到金额
+  // 净订单数 = 原始订单数 - 分享出去比例 + 接收到比例
   const netTotalSales = Math.max(0, originalTotalSales - sharedAmount + receivedAmount)
   const netTotalOrders = Math.max(0, originalTotalOrders - sharedOrderCount + receivedOrderCount)
 
   // 计算签收业绩和签收订单数量
   const signedOrders = userOrders.filter(order => order.status === 'delivered')
   const originalSignedAmount = signedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+  const originalSignedOrdersCount = signedOrders.length
 
-  // 【批次205修复】签收业绩也需要考虑分享影响,确保不小于0
-  const netSignedAmount = Math.max(0, originalSignedAmount - sharedAmount + receivedAmount)
-
-  const signedOrdersCount = signedOrders.length
+  // 🔥 签收业绩和签收订单数也需要按分享比例拆分
+  const netSignedAmount = Math.max(0, originalSignedAmount - sharedSignedAmount + receivedSignedAmount)
+  const netSignedOrdersCount = Math.max(0, originalSignedOrdersCount - sharedSignedOrderCount + receivedSignedOrderCount)
 
   return {
-    totalSales: `¥${netTotalSales.toLocaleString()}`, // 【批次208修复】使用净业绩
-    originalSales: originalTotalSales, // 【批次203新增】原始业绩
-    sharedAmount: sharedAmount,        // 【批次203新增】分享出去的业绩
-    receivedAmount: receivedAmount,    // 【批次203新增】接收到的业绩
+    totalSales: `¥${netTotalSales.toLocaleString()}`, // 🔥 金额守恒：使用净业绩
+    originalSales: originalTotalSales, // 原始业绩
+    sharedAmount: sharedAmount,        // 分享出去的业绩
+    receivedAmount: receivedAmount,    // 接收到的业绩
     salesTrend: data.salesTrend,
-    totalOrders: netTotalOrders,       // 【批次208修复】使用净订单数
+    totalOrders: netTotalOrders,       // 🔥 订单数守恒：按分享比例拆分
     ordersTrend: data.ordersTrend,
-    signedAmount: netSignedAmount, // 【批次203修复】使用净签收业绩
-    signedTrend: data.signedTrend || 0, // 🔥 使用store中的签收业绩环比
-    signedOrders: signedOrdersCount,
-    signedOrdersTrend: data.signedOrdersTrend || 0 // 🔥 使用store中的签收订单环比
+    signedAmount: netSignedAmount, // 🔥 签收业绩守恒
+    signedTrend: data.signedTrend || 0,
+    signedOrders: netSignedOrdersCount, // 🔥 签收订单数守恒
+    signedOrdersTrend: data.signedOrdersTrend || 0
   }
 })
 
@@ -809,15 +896,19 @@ const handleQuickFilter = (value: string) => {
   queryData()
 }
 
+
 /**
  * 查询数据
  */
 const queryData = async () => {
-  // 🔥 强制从服务器重新加载订单数据，确保数据实时更新
+  // 🔥 强制从服务器重新加载订单数据和分享数据，确保数据实时更新
   try {
-    await orderStore.loadOrdersFromAPI(true)
+    await Promise.all([
+      orderStore.loadOrdersFromAPI(true),
+      performanceStore.loadPerformanceShares({ limit: 500 })
+    ])
   } catch (error) {
-    console.error('[个人业绩] 加载订单数据失败:', error)
+    console.error('[个人业绩] 加载数据失败:', error)
   }
 
   nextTick(() => {
@@ -1698,11 +1789,71 @@ const getSalesTrendData = () => {
     return !excludedStatuses.includes(order.status)
   })
 
-  // 应用日期筛选 - 🔥 使用北京时间字符串比较
+  // 应用日期筛选 - 🔥 修复：使用北京时间进行比较
   if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
     userOrders = userOrders.filter(order =>
       isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
     )
+  }
+
+  // 🔥 构建分享调整后的"贡献列表"：每条记录包含 createTime, amount, orderCount
+  // 包括：(1) 自有订单的保留部分 (2) 从别人那里接收到的分享部分
+  interface ChartContribution {
+    createTime: string
+    amount: number
+    orderCount: number
+  }
+  const contributions: ChartContribution[] = []
+
+  // 🔥 构建当前用户订单的分享映射
+  const orderShareMap = new Map<string, number>() // orderNumber -> totalSharedPercentage
+  if (performanceStore.performanceShares) {
+    performanceStore.performanceShares.forEach(share => {
+      if (share.status !== 'active' && share.status !== 'completed') return
+      if (String(share.createdById) === String(currentUserId)) {
+        const totalSharedPct = share.shareMembers.reduce((sum, m) => sum + m.percentage, 0)
+        orderShareMap.set(share.orderNumber, totalSharedPct)
+      }
+    })
+  }
+
+  // (1) 自有订单的保留部分
+  userOrders.forEach(order => {
+    const sharedPct = orderShareMap.get(order.orderNumber) || 0
+    const retainedRatio = (100 - sharedPct) / 100
+    contributions.push({
+      createTime: order.createTime,
+      amount: order.totalAmount * retainedRatio,
+      orderCount: retainedRatio
+    })
+  })
+
+  // (2) 接收到的分享部分（别人的订单分享给当前用户）
+  if (performanceStore.performanceShares) {
+    performanceStore.performanceShares.forEach(share => {
+      if (share.status !== 'active' && share.status !== 'completed') return
+      share.shareMembers.forEach(member => {
+        if (String(member.userId) === String(currentUserId)) {
+          const originalOrder = orderStore.orders.find((o: any) =>
+            o.orderNumber === share.orderNumber || o.id === share.orderId
+          )
+          // 🔥 使用原始订单的createTime，找不到时回退到分享的createTime
+          const orderCreateTime = originalOrder?.createTime || share.createTime
+          const myRatio = member.percentage / 100
+          let inDateRange = true
+          if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+            inDateRange = isOrderInDateRange(orderCreateTime, dateRange.value[0], dateRange.value[1])
+          }
+          if (inDateRange) {
+            contributions.push({
+              createTime: orderCreateTime,
+              amount: (share.orderAmount || 0) * myRatio,
+              orderCount: myRatio
+            })
+          }
+        }
+      })
+    })
   }
 
   const currentDate = new Date()
@@ -1711,11 +1862,35 @@ const getSalesTrendData = () => {
   const salesAmounts: number[] = []
   const orderCounts: number[] = []
 
+  // 🔥 通用累加：按key匹配
+  const accumulateByKey = (getKey: (c: ChartContribution) => string | null) => {
+    contributions.forEach(c => {
+      const key = getKey(c)
+      if (key && timeData.has(key)) {
+        const data = timeData.get(key)
+        data.salesAmount += c.amount
+        data.orderCount += c.orderCount
+      }
+    })
+  }
+
+  // 🔥 通用累加：按时间戳范围匹配
+  const accumulateByTimestamp = () => {
+    contributions.forEach(c => {
+      const cTime = new Date(c.createTime).getTime()
+      timeData.forEach((data) => {
+        if (cTime >= data.startDate && cTime < data.endDate) {
+          data.salesAmount += c.amount
+          data.orderCount += c.orderCount
+        }
+      })
+    })
+  }
+
   // 根据图表类型生成不同的时间维度数据
   console.log('[个人业绩] getSalesTrendData - 图表类型:', salesChartType.value)
 
   if (salesChartType.value === 'daily' || salesChartType.value === 'day') {
-    // 🔥 根据dateRange动态生成日期范围，如果没有选择日期则显示最近7天
     let startDate: Date
     let endDate: Date
 
@@ -1723,191 +1898,101 @@ const getSalesTrendData = () => {
       startDate = new Date(dateRange.value[0])
       endDate = new Date(dateRange.value[1])
     } else {
-      // 默认最近7天
       endDate = new Date(currentDate)
       startDate = new Date(currentDate.getTime() - 6 * 24 * 60 * 60 * 1000)
     }
 
-    // 计算日期范围内的天数
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) + 1
-    const daysToShow = Math.min(daysDiff, 30) // 最多显示30天
+    const daysToShow = Math.min(daysDiff, 30)
 
-    // 如果只选择了一天，显示那一天
     if (daysDiff === 1) {
       const dateKey = startDate.toISOString().split('T')[0]
       const dateLabel = `${startDate.getMonth() + 1}/${startDate.getDate()}`
-      timeData.set(dateKey, {
-        label: dateLabel,
-        salesAmount: 0,
-        orderCount: 0
-      })
+      timeData.set(dateKey, { label: dateLabel, salesAmount: 0, orderCount: 0 })
     } else {
-      // 显示日期范围内的每一天
       for (let i = 0; i < daysToShow; i++) {
         const date = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000)
         const dateKey = date.toISOString().split('T')[0]
         const dateLabel = `${date.getMonth() + 1}/${date.getDate()}`
-        timeData.set(dateKey, {
-          label: dateLabel,
-          salesAmount: 0,
-          orderCount: 0
-        })
+        timeData.set(dateKey, { label: dateLabel, salesAmount: 0, orderCount: 0 })
       }
     }
 
-    // 统计每日数据
-    userOrders.forEach(order => {
-      const orderDate = new Date(order.createTime).toISOString().split('T')[0]
-      if (timeData.has(orderDate)) {
-        const data = timeData.get(orderDate)
-        data.salesAmount += order.totalAmount
-        data.orderCount += 1
-      }
-    })
+    // 🔥 使用贡献列表统计每日数据
+    accumulateByKey(c => new Date(c.createTime).toISOString().split('T')[0])
   } else if (salesChartType.value === 'weekly' || salesChartType.value === 'week') {
-    // 最近8周
-    for (let i = 7; i >= 0; i--) {
-      const weekStart = new Date(currentDate.getTime() - i * 7 * 24 * 60 * 60 * 1000)
-      const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000)
-      const weekNum = Math.ceil((weekStart.getDate() - weekStart.getDay()) / 7)
-      const weekKey = `${weekStart.getFullYear()}-W${weekNum}`
-      timeData.set(weekKey, {
-        label: `第${weekNum}周`,
-        salesAmount: 0,
-        orderCount: 0,
-        startDate: weekStart.getTime(),
-        endDate: weekEnd.getTime()
-      })
-    }
-
-    // 统计每周数据
-    userOrders.forEach(order => {
-      const orderTime = new Date(order.createTime).getTime()
-      timeData.forEach((data) => {
-        if (orderTime >= data.startDate && orderTime < data.endDate) {
-          data.salesAmount += order.totalAmount
-          data.orderCount += 1
-        }
-      })
-    })
-  } else if (salesChartType.value === 'quarterly') {
-    // 最近4个季度
-    for (let i = 3; i >= 0; i--) {
-      const currentQuarter = Math.floor(currentDate.getMonth() / 3)
-      const quarterIndex = currentQuarter - i
-      const year = currentDate.getFullYear() + Math.floor(quarterIndex / 4)
-      const quarter = ((quarterIndex % 4) + 4) % 4
-      const quarterKey = `${year}-Q${quarter + 1}`
-      const quarterLabel = `Q${quarter + 1}`
-
-      const quarterStartMonth = quarter * 3
-      const quarterStart = new Date(year, quarterStartMonth, 1).getTime()
-      const quarterEnd = new Date(year, quarterStartMonth + 3, 1).getTime()
-
-      timeData.set(quarterKey, {
-        label: quarterLabel,
-        salesAmount: 0,
-        orderCount: 0,
-        startDate: quarterStart,
-        endDate: quarterEnd
-      })
-    }
-
-    // 统计每季度数据
-    userOrders.forEach(order => {
-      const orderTime = new Date(order.createTime).getTime()
-      timeData.forEach((data) => {
-        if (orderTime >= data.startDate && orderTime < data.endDate) {
-          data.salesAmount += order.totalAmount
-          data.orderCount += 1
-        }
-      })
-    })
-  } else if (salesChartType.value === 'yearly') {
-    // 最近3年
-    for (let i = 2; i >= 0; i--) {
-      const year = currentDate.getFullYear() - i
-      const yearKey = `${year}`
-      const yearLabel = `${year}年`
-
-      const yearStart = new Date(year, 0, 1).getTime()
-      const yearEnd = new Date(year + 1, 0, 1).getTime()
-
-      timeData.set(yearKey, {
-        label: yearLabel,
-        salesAmount: 0,
-        orderCount: 0,
-        startDate: yearStart,
-        endDate: yearEnd
-      })
-    }
-
-    // 统计每年数据
-    userOrders.forEach(order => {
-      const orderTime = new Date(order.createTime).getTime()
-      timeData.forEach((data) => {
-        if (orderTime >= data.startDate && orderTime < data.endDate) {
-          data.salesAmount += order.totalAmount
-          data.orderCount += 1
-        }
-      })
-    })
-  } else if (salesChartType.value === 'all') {
-    // 全部：按月统计所有数据
-    const allMonths = new Map()
-
-    userOrders.forEach(order => {
-      const orderDate = new Date(order.createTime)
-      const monthKey = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}`
-      const monthLabel = `${orderDate.getFullYear()}年${orderDate.getMonth() + 1}月`
-
-      if (!allMonths.has(monthKey)) {
-        allMonths.set(monthKey, {
-          label: monthLabel,
-          salesAmount: 0,
-          orderCount: 0
+      for (let i = 7; i >= 0; i--) {
+        const weekStart = new Date(currentDate.getTime() - i * 7 * 24 * 60 * 60 * 1000)
+        const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000)
+        const weekNum = Math.ceil((weekStart.getDate() - weekStart.getDay()) / 7)
+        const weekKey = `${weekStart.getFullYear()}-W${weekNum}`
+        timeData.set(weekKey, {
+          label: `第${weekNum}周`, salesAmount: 0, orderCount: 0,
+          startDate: weekStart.getTime(), endDate: weekEnd.getTime()
         })
       }
-
-      const data = allMonths.get(monthKey)
-      data.salesAmount += order.totalAmount
-      data.orderCount += 1
-    })
-
-    // 按时间排序
-    const sortedMonths = Array.from(allMonths.entries()).sort((a, b) => a[0].localeCompare(b[0]))
-    sortedMonths.forEach(([_, data]) => {
-      timeData.set(_, data)
-    })
-  } else {
-    // 最近6个月（默认）
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1)
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-      const monthLabel = `${date.getMonth() + 1}月`
-      timeData.set(monthKey, {
-        label: monthLabel,
-        salesAmount: 0,
-        orderCount: 0
-      })
-    }
-
-    // 统计每月数据
-    userOrders.forEach(order => {
-      const orderDate = new Date(order.createTime)
-      const monthKey = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}`
-      if (timeData.has(monthKey)) {
-        const data = timeData.get(monthKey)
-        data.salesAmount += order.totalAmount
-        data.orderCount += 1
+      accumulateByTimestamp()
+    } else if (salesChartType.value === 'quarterly') {
+      for (let i = 3; i >= 0; i--) {
+        const currentQuarter = Math.floor(currentDate.getMonth() / 3)
+        const quarterIndex = currentQuarter - i
+        const year = currentDate.getFullYear() + Math.floor(quarterIndex / 4)
+        const quarter = ((quarterIndex % 4) + 4) % 4
+        const quarterKey = `${year}-Q${quarter + 1}`
+        const quarterLabel = `Q${quarter + 1}`
+        const quarterStartMonth = quarter * 3
+        const quarterStart = new Date(year, quarterStartMonth, 1).getTime()
+        const quarterEnd = new Date(year, quarterStartMonth + 3, 1).getTime()
+        timeData.set(quarterKey, {
+          label: quarterLabel, salesAmount: 0, orderCount: 0,
+          startDate: quarterStart, endDate: quarterEnd
+        })
       }
-    })
+      accumulateByTimestamp()
+    } else if (salesChartType.value === 'yearly') {
+      for (let i = 2; i >= 0; i--) {
+        const year = currentDate.getFullYear() - i
+        const yearKey = `${year}`
+        const yearStart = new Date(year, 0, 1).getTime()
+        const yearEnd = new Date(year + 1, 0, 1).getTime()
+        timeData.set(yearKey, {
+          label: `${year}年`, salesAmount: 0, orderCount: 0,
+          startDate: yearStart, endDate: yearEnd
+        })
+      }
+      accumulateByTimestamp()
+    } else if (salesChartType.value === 'all') {
+      const allMonths = new Map()
+      contributions.forEach(c => {
+        const orderDate = new Date(c.createTime)
+        const monthKey = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}`
+        const monthLabel = `${orderDate.getFullYear()}年${orderDate.getMonth() + 1}月`
+        if (!allMonths.has(monthKey)) {
+          allMonths.set(monthKey, { label: monthLabel, salesAmount: 0, orderCount: 0 })
+        }
+        const data = allMonths.get(monthKey)
+        data.salesAmount += c.amount
+        data.orderCount += c.orderCount
+      })
+      const sortedMonths = Array.from(allMonths.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+      sortedMonths.forEach(([key, data]) => { timeData.set(key, data) })
+    } else {
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1)
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+        const monthLabel = `${date.getMonth() + 1}月`
+        timeData.set(monthKey, { label: monthLabel, salesAmount: 0, orderCount: 0 })
+      }
+      accumulateByKey(c => {
+        const orderDate = new Date(c.createTime)
+        return `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}`
+      })
   }
 
   timeData.forEach(data => {
     months.push(data.label)
-    salesAmounts.push(data.salesAmount) // 使用原始金额，不转换为万元
-    orderCounts.push(data.orderCount)
+    salesAmounts.push(Math.round(data.salesAmount * 100) / 100)
+    orderCounts.push(Math.round(data.orderCount * 100) / 100)
   })
 
   return { months, salesAmounts, orderCounts }
@@ -2006,7 +2091,7 @@ const getOrderStatusData = () => {
   }
 
   // 统计各状态的订单数量和业绩
-  const statusMap = new Map()
+  const statusMap = new Map<string, { count: number; amount: number }>()
   const statusNames: Record<string, string> = {
     // 16个订单状态
     'pending_transfer': '待流转',
@@ -2033,43 +2118,92 @@ const getOrderStatusData = () => {
     'signed': '已签收'
   }
 
+  // 🔥 构建当前用户订单的分享映射
+  const orderShareMap = new Map<string, number>() // orderNumber -> totalSharedPercentage
+  if (performanceStore.performanceShares) {
+    performanceStore.performanceShares.forEach(share => {
+      if (share.status !== 'active' && share.status !== 'completed') return
+      if (String(share.createdById) === String(currentUserId)) {
+        const totalSharedPct = share.shareMembers.reduce((sum, m) => sum + m.percentage, 0)
+        orderShareMap.set(share.orderNumber, totalSharedPct)
+      }
+    })
+  }
+
+  // 🔥 按分享比例累加函数
+  const addToStatus = (statusName: string, count: number, amount: number) => {
+    if (statusMap.has(statusName)) {
+      const existing = statusMap.get(statusName)!
+      existing.count += count
+      existing.amount += amount
+    } else {
+      statusMap.set(statusName, { count, amount })
+    }
+  }
+
   // 计算总数和总金额
   let totalCount = 0
   let totalAmount = 0
 
+  // 🔥 (1) 自有订单按保留比例累加
   userOrders.forEach(order => {
     const statusName = statusNames[order.status] || order.status
-    const amount = order.totalAmount || 0
-    totalCount++
-    totalAmount += amount
+    const sharedPct = orderShareMap.get(order.orderNumber) || 0
+    const retainedRatio = (100 - sharedPct) / 100
+    const retainedAmount = (order.totalAmount || 0) * retainedRatio
+    const retainedCount = retainedRatio
 
-    if (statusMap.has(statusName)) {
-      const existing = statusMap.get(statusName)
-      statusMap.set(statusName, {
-        count: existing.count + 1,
-        amount: existing.amount + amount
-      })
-    } else {
-      statusMap.set(statusName, {
-        count: 1,
-        amount: amount
-      })
-    }
+    totalCount += retainedCount
+    totalAmount += retainedAmount
+    addToStatus(statusName, retainedCount, retainedAmount)
   })
 
-  // 转换为图表数据格式（简化name，详细信息在tooltip中显示）
+  // 🔥 (2) 接收到的分享部分（按原始订单状态分类）
+  if (performanceStore.performanceShares) {
+    performanceStore.performanceShares.forEach(share => {
+      if (share.status !== 'active' && share.status !== 'completed') return
+      share.shareMembers.forEach(member => {
+        if (String(member.userId) === String(currentUserId)) {
+          const originalOrder = orderStore.orders.find((o: any) =>
+            o.orderNumber === share.orderNumber || o.id === share.orderId
+          )
+          // 🔥 找不到原始订单时（接收人的orderStore没有），使用分享记录的数据作为兜底
+          const orderCreateTime = originalOrder?.createTime || share.createTime
+          let inDateRange = true
+          if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+            inDateRange = isOrderInDateRange(orderCreateTime, dateRange.value[0], dateRange.value[1])
+          }
+          if (inDateRange) {
+            const myRatio = member.percentage / 100
+            const receivedAmount = (share.orderAmount || 0) * myRatio
+            // 有原始订单时按真实状态分类，没有时归入"已分享接收"
+            const statusName = originalOrder
+              ? (statusNames[originalOrder.status] || originalOrder.status)
+              : '已分享接收'
+            totalCount += myRatio
+            totalAmount += receivedAmount
+            addToStatus(statusName, myRatio, receivedAmount)
+          }
+        }
+      })
+    })
+  }
+
+  // 转换为图表数据格式
   const chartData: Array<{ value: number; name: string; statusName: string; count: number; amount: number }> = []
   statusMap.forEach((value, name) => {
+    const displayCount = Math.round(value.count * 10) / 10
+    const displayAmount = Math.round(value.amount * 100) / 100
     chartData.push({
-      value: value.count,
-      name: `${name}(${value.count}单/¥${value.amount.toLocaleString()})`,
+      value: displayCount,
+      name: `${name}(${displayCount}单/¥${displayAmount.toLocaleString()})`,
       statusName: name,
-      count: value.count,
-      amount: value.amount
+      count: displayCount,
+      amount: displayAmount
     })
   })
 
-  return { chartData, totalCount, totalAmount }
+  return { chartData, totalCount: Math.round(totalCount * 10) / 10, totalAmount: Math.round(totalAmount * 100) / 100 }
 }
 
 /**
@@ -2450,7 +2584,7 @@ const loadTableData = async () => {
           return !excludedStatuses.includes(order.status)
         })
 
-        // 应用日期筛选 - 🔥 使用北京时间字符串比较
+        // 应用日期筛选 - 🔥 修复：使用北京时间进行比较
         if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
           userOrders = userOrders.filter(order =>
             isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
@@ -2476,6 +2610,41 @@ const loadTableData = async () => {
             ? order.products.map(p => `${p.name} x${p.quantity}`).join(', ')
             : '暂无商品信息'
 
+          // 🔥 阶段3：获取订单的分享信息
+          const currentUserId = userStore.currentUser?.id
+          const orderShares = (performanceStore.performanceShares || []).filter(
+            share => share.orderNumber === order.orderNumber &&
+              (share.status === 'active' || share.status === 'completed')
+          )
+          let shareInfo: OrderDetail['shareInfo'] = undefined
+          if (orderShares.length > 0) {
+            const share = orderShares[0]
+            const totalSharedPct = (share.shareMembers || []).reduce((sum: number, m: any) => sum + (m.percentage || 0), 0)
+            const isShared = String(share.createdById) === String(currentUserId)
+            const isReceived = !isShared && (share.shareMembers || []).some((m: any) => String(m.userId) === String(currentUserId))
+            shareInfo = {
+              isShared,
+              isReceived,
+              totalSharedPercentage: totalSharedPct,
+              ownerRetainedPercentage: Math.max(0, 100 - totalSharedPct),
+              members: (share.shareMembers || []).map((m: any) => ({
+                userName: m.userName || m.user_name || '未知',
+                percentage: m.percentage || 0,
+                shareAmount: m.shareAmount || m.share_amount || 0
+              }))
+            }
+          }
+
+          // 🔥 计算分享调整后的订单金额（守恒定律）
+          let adjustedAmount = order.totalAmount
+          if (shareInfo) {
+            if (shareInfo.isShared) {
+              // 原始下单人：只保留自己的比例
+              adjustedAmount = order.totalAmount * (shareInfo.ownerRetainedPercentage / 100)
+            }
+            // 注意：isReceived 的情况在这个列表中不会出现，因为列表只显示当前用户自己的订单
+          }
+
           return {
             id: order.id,
             customerId: order.customerId,
@@ -2483,16 +2652,81 @@ const loadTableData = async () => {
             customerName: order.customerName,
             customerPhone: order.customerPhone || '未填写',
             productInfo,
-            totalAmount: order.totalAmount,
+            totalAmount: adjustedAmount,
             depositAmount: order.depositAmount || 0,
             status: order.status,
             auditStatus: order.auditStatus,
             trackingNumber: order.trackingNumber || '',
-            createTime: order.createTime
+            createTime: order.createTime,
+            shareInfo
           }
         })
 
-        orderPagination.total = userOrders.length
+        // 🔥 注入接收到的分享订单（当前用户是分享接收人但不是下单人的订单）
+        const existingOrderNos = new Set(paginatedOrders.map(o => o.orderNumber))
+        const receivedShareOrders: OrderDetail[] = []
+        if (currentUserId && performanceStore.performanceShares) {
+          performanceStore.performanceShares.forEach(share => {
+            if (share.status !== 'active' && share.status !== 'completed') return
+            if (existingOrderNos.has(share.orderNumber)) return // 自己的订单已处理
+            const myMember = (share.shareMembers || []).find((m: any) => String(m.userId) === String(currentUserId))
+            if (!myMember) return
+            // 尝试查找原始订单
+            const originalOrder = orderStore.orders.find((o: any) =>
+              o.orderNumber === share.orderNumber || o.id === share.orderId
+            )
+            const myRatio = (myMember.percentage || 0) / 100
+            const myAmount = (share.orderAmount || 0) * myRatio
+            const orderCreateTime = originalOrder?.createTime || share.orderCreatedAt || share.createTime
+            // 日期筛选
+            if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+              if (!isOrderInDateRange(orderCreateTime, dateRange.value[0], dateRange.value[1])) return
+            }
+            const totalSharedPct = (share.shareMembers || []).reduce((sum: number, m: any) => sum + (m.percentage || 0), 0)
+
+            // 🔥 优先使用 originalOrder 的信息，其次使用 share 中从后端JOIN获取的订单信息
+            const shareProducts = share.orderProducts ? (typeof share.orderProducts === 'string' ? JSON.parse(share.orderProducts) : share.orderProducts) : null
+
+            receivedShareOrders.push({
+              id: share.orderId || share.id,
+              customerId: originalOrder?.customerId || '',
+              orderNo: share.orderNumber,
+              customerName: originalOrder?.customerName || share.orderCustomerName || '(分享订单)',
+              customerPhone: originalOrder?.customerPhone || share.orderCustomerPhone || '',
+              productInfo: originalOrder?.products?.map((p: any) => `${p.name} x${p.quantity}`).join(', ')
+                || (shareProducts ? shareProducts.map((p: any) => `${p.name} x${p.quantity}`).join(', ') : '分享订单'),
+              totalAmount: Math.round(myAmount * 100) / 100,
+              depositAmount: 0,
+              status: originalOrder?.status || 'pending_audit',
+              auditStatus: originalOrder?.auditStatus || 'approved',
+              trackingNumber: originalOrder?.trackingNumber || '',
+              createTime: orderCreateTime,
+              shareInfo: {
+                isShared: false,
+                isReceived: true,
+                totalSharedPercentage: totalSharedPct,
+                ownerRetainedPercentage: Math.max(0, 100 - totalSharedPct),
+                members: (share.shareMembers || []).map((m: any) => ({
+                  userName: m.userName || m.user_name || '未知',
+                  percentage: m.percentage || 0,
+                  shareAmount: m.shareAmount || m.share_amount || 0
+                }))
+              }
+            })
+          })
+        }
+
+        // 合并自有订单和接收的分享订单
+        const allOrderDetails = [...orderDetails.value, ...receivedShareOrders]
+        // 按时间倒序排列
+        allOrderDetails.sort((a, b) => {
+          const timeA = (a.createTime || '').replace(/\//g, '-')
+          const timeB = (b.createTime || '').replace(/\//g, '-')
+          return timeB.localeCompare(timeA)
+        })
+        orderDetails.value = allOrderDetails
+
+        orderPagination.total = userOrders.length + receivedShareOrders.length
       } else {
         orderDetails.value = []
         orderPagination.total = 0
@@ -2584,7 +2818,7 @@ const loadTableData = async () => {
           return !excludedStatuses.includes(order.status)
         })
 
-        // 应用日期筛选 - 🔥 使用北京时间字符串比较
+        // 应用日期筛选 - 🔥 修复：使用北京时间进行比较
         if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
           userOrders = userOrders.filter(order =>
             isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
@@ -2738,7 +2972,7 @@ watch(dateRange, () => {
 })
 
 // 生命周期钩子
-onMounted(() => {
+onMounted(async () => {
   // 设置默认日期范围为本月
   const today = new Date()
   // 🔥 使用本地时间格式化日期，避免UTC时区问题
@@ -2751,6 +2985,14 @@ onMounted(() => {
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
   dateRange.value = [formatDate(startOfMonth), formatDate(today)]
   selectedQuickFilter.value = 'thisMonth'
+
+  // 🔥 关键修复：加载业绩分享数据，确保个人业绩能正确反映分享调整
+  try {
+    await performanceStore.loadPerformanceShares({ limit: 500 })
+    console.log('[个人业绩] ✅ 业绩分享数据加载成功，共', performanceStore.performanceShares?.length || 0, '条')
+  } catch (e) {
+    console.warn('[个人业绩] 加载业绩分享数据失败:', e)
+  }
 
   // 加载数据
   loadTableData()
@@ -2798,7 +3040,13 @@ const handleTodoStatusUpdate = (event: Event) => {
 /**
  * 处理数据同步事件
  */
-const handleDataSync = () => {
+const handleDataSync = async () => {
+  console.log('[个人业绩] 收到数据同步事件，重新加载数据')
+  try {
+    await performanceStore.loadPerformanceShares({ limit: 500 })
+  } catch (e) {
+    console.warn('[个人业绩] 重新加载分享数据失败:', e)
+  }
   // 重新加载所有数据
   loadTableData()
   nextTick(() => {
@@ -2807,10 +3055,21 @@ const handleDataSync = () => {
 }
 
 /**
- * 处理业绩数据更新事件
+ * 处理业绩数据更新事件（来自分享页面的取消/创建/编辑操作）
  */
-const handlePerformanceDataUpdate = () => {
-  // 重新加载业绩数据和图表
+const handlePerformanceDataUpdate = async () => {
+  console.log('[个人业绩] 收到业绩数据更新事件，重新加载数据')
+  try {
+    // 🔥 关键修复：重新从后端加载分享数据和订单数据
+    await Promise.all([
+      performanceStore.loadPerformanceShares({ limit: 500 }),
+      orderStore.loadOrdersFromAPI?.(true)
+    ])
+  } catch (e) {
+    console.warn('[个人业绩] 重新加载数据失败:', e)
+  }
+  // 重新加载表格数据和图表
+  loadTableData()
   nextTick(() => {
     initAllCharts()
   })
@@ -3185,22 +3444,5 @@ onUnmounted(() => {
 /* 订单明细表格优化 */
 .order-detail-table {
   font-size: 13px;
-}
-
-.order-detail-table :deep(.el-table__cell) {
-  padding: 10px 0;
-  white-space: nowrap;
-}
-
-.product-info-cell {
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.4;
-}
-
-.order-detail-table :deep(.el-table__fixed-right) {
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
 }
 </style>

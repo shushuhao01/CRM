@@ -8,6 +8,8 @@ const router = Router();
 const userController = new UserController();
 
 // 登录验证规则
+// 🔥 tenantId 在 Joi 中标记为 optional，因为非 SaaS 模式无需传入
+// SaaS 模式下的强制校验在 UserController.login 中处理
 const loginSchema = {
   body: Joi.object({
     username: commonValidations.username,

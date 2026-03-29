@@ -30,8 +30,23 @@
             <h3>{{ pkg.name }}</h3>
             <div class="price">
               <span v-if="pkg.price === 0" class="amount free">免费</span>
-              <span v-else class="amount">¥{{ pkg.price }}</span>
+              <span v-else class="amount">¥{{ pkg.price.toLocaleString() }}</span>
               <span class="unit">/{{ getBillingText(pkg.billing_cycle) }}</span>
+            </div>
+            <!-- SaaS年付优惠信息 -->
+            <div v-if="pkg.price > 0 && pkg.billing_cycle === 'monthly' && hasYearlyPromo(pkg)" class="yearly-promo-info">
+              <el-tag type="warning" size="small" effect="dark" round>
+                {{ getYearlyPromoLabel(pkg) }}
+              </el-tag>
+              <span class="yearly-price-text">年付 ¥{{ getYearlyTotalPrice(pkg) }}</span>
+            </div>
+            <!-- 私有部署年度授权价 -->
+            <div v-if="pkg.type === 'private' && pkg.yearly_price && Number(pkg.yearly_price) > 0" class="private-annual-info">
+              <div class="private-annual-tag">
+                <span class="annual-label">年度授权</span>
+                <span class="annual-price">¥{{ Number(pkg.yearly_price).toLocaleString() }}/年</span>
+              </div>
+              <span class="private-annual-saving">首年省 ¥{{ (Number(pkg.price) - Number(pkg.yearly_price)).toLocaleString() }}</span>
             </div>
           </div>
 
@@ -88,7 +103,7 @@
     </el-card>
 
     <!-- 编辑弹窗 -->
-    <el-dialog v-model="showDialog" :title="editingId ? '编辑套餐' : '新增套餐'" width="600px">
+    <el-dialog v-model="showDialog" :title="editingId ? '编辑套餐' : '新增套餐'" width="640px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="套餐名称" prop="name">
           <el-input v-model="form.name" placeholder="如：基础版" />
@@ -103,26 +118,138 @@
           </el-select>
         </el-form-item>
         <el-form-item label="套餐描述">
-          <el-input v-model="form.description" type="textarea" rows="2" />
+          <el-input v-model="form.description" type="textarea" rows="2" :placeholder="form.type === 'saas' ? '如：适合小型团队起步' : '如：适合中型企业私有化部署'" />
         </el-form-item>
-        <el-form-item label="价格" prop="price">
-          <el-input-number v-model="form.price" :min="0" :precision="2" style="width: 150px" />
-          <el-select v-model="form.billing_cycle" style="width: 120px; margin-left: 8px">
-            <el-option label="月付" value="monthly" />
-            <el-option label="年付" value="yearly" />
-            <el-option label="一次性" value="once" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="有效期">
-          <el-input-number v-model="form.duration_days" :min="1" /> 天
-        </el-form-item>
-        <el-form-item label="用户数上限">
-          <el-input-number v-model="form.max_users" :min="1" />
-        </el-form-item>
-        <el-form-item label="存储空间">
-          <el-input-number v-model="form.max_storage_gb" :min="0" /> GB
-        </el-form-item>
-        <el-divider content-position="left">授权模块</el-divider>
+
+        <!-- ==================== SaaS 云端版特有配置 ==================== -->
+        <template v-if="form.type === 'saas'">
+          <el-divider content-position="left">💰 SaaS 定价配置</el-divider>
+          <el-form-item label="月付价格" prop="price">
+            <el-input-number v-model="form.price" :min="0" :precision="2" style="width: 180px" />
+            <span style="margin-left: 8px; color: #909399;">元/月</span>
+          </el-form-item>
+          <el-form-item label="计费周期">
+            <el-select v-model="form.billing_cycle" style="width: 180px">
+              <el-option label="月付" value="monthly" />
+              <el-option label="年付" value="yearly" />
+            </el-select>
+          </el-form-item>
+
+          <!-- 年付优惠配置（仅月付套餐且价格>0时显示） -->
+          <div v-if="form.billing_cycle === 'monthly' && form.price > 0" class="yearly-promo-section">
+            <el-divider content-position="left">🎁 年付优惠配置</el-divider>
+            <el-form-item label="优惠方式">
+              <el-radio-group v-model="yearlyPromoType" size="small">
+                <el-radio-button value="none">不设置</el-radio-button>
+                <el-radio-button value="bonus">赠送月数</el-radio-button>
+                <el-radio-button value="discount">折扣优惠</el-radio-button>
+                <el-radio-button value="fixed">固定年价</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item v-if="yearlyPromoType === 'bonus'" label="赠送月数">
+              <el-input-number v-model="form.yearly_bonus_months" :min="1" :max="6" />
+              <span style="margin-left: 8px; color: #909399;">个月（年付即送，相当于付{{ 12 - form.yearly_bonus_months }}个月价格）</span>
+            </el-form-item>
+            <el-form-item v-if="yearlyPromoType === 'discount'" label="折扣比例">
+              <el-input-number v-model="form.yearly_discount_rate" :min="1" :max="50" :precision="1" />
+              <span style="margin-left: 8px; color: #909399;">%（如20即8折，16.7即约8.3折）</span>
+            </el-form-item>
+            <el-form-item v-if="yearlyPromoType === 'fixed'" label="年付总价">
+              <el-input-number v-model="form.yearly_price" :min="0" :precision="2" style="width: 180px" />
+              <span style="margin-left: 8px; color: #909399;">元/年</span>
+            </el-form-item>
+            <!-- 年付价格预览 -->
+            <el-form-item v-if="yearlyPromoType !== 'none'" label="价格预览">
+              <div class="price-preview">
+                <div class="preview-row">
+                  <span class="label">月付价格</span>
+                  <span>¥{{ form.price }}/月</span>
+                </div>
+                <div class="preview-row">
+                  <span class="label">年付原价</span>
+                  <span class="original">¥{{ (form.price * 12).toFixed(2) }}</span>
+                </div>
+                <div class="preview-row highlight">
+                  <span class="label">年付实付</span>
+                  <strong>¥{{ computedYearlyTotal.toFixed(2) }}</strong>
+                  <span class="saving">省 ¥{{ computedYearlySaving.toFixed(2) }}</span>
+                </div>
+                <div class="preview-row">
+                  <span class="label">折算月价</span>
+                  <span>¥{{ computedYearlyMonthly.toFixed(2) }}/月</span>
+                </div>
+                <div v-if="yearlyPromoType === 'bonus'" class="preview-row tip">
+                  官网显示：🎁 年付送{{ form.yearly_bonus_months }}个月 = {{ 12 + form.yearly_bonus_months }}个月有效期
+                </div>
+                <div v-if="yearlyPromoType === 'discount'" class="preview-row tip">
+                  官网显示：🏷️ 年付{{ (10 - form.yearly_discount_rate / 10).toFixed(1) }}折优惠
+                </div>
+              </div>
+            </el-form-item>
+          </div>
+
+          <el-divider content-position="left">📦 SaaS 资源配置</el-divider>
+          <el-form-item label="有效期">
+            <el-input-number v-model="form.duration_days" :min="1" style="width: 150px" />
+            <span style="margin-left: 8px; color: #909399;">天（月付套餐通常30天）</span>
+          </el-form-item>
+          <el-form-item label="用户数上限">
+            <el-input-number v-model="form.max_users" :min="1" style="width: 150px" />
+            <span style="margin-left: 8px; color: #909399;">个用户</span>
+          </el-form-item>
+          <el-form-item label="存储空间">
+            <el-input-number v-model="form.max_storage_gb" :min="0" style="width: 150px" />
+            <span style="margin-left: 8px; color: #909399;">GB</span>
+          </el-form-item>
+        </template>
+
+        <!-- ==================== 私有部署版特有配置 ==================== -->
+        <template v-if="form.type === 'private'">
+          <el-divider content-position="left">💰 私有部署定价</el-divider>
+          <el-form-item label="永久买断价" prop="price">
+            <el-input-number v-model="form.price" :min="0" :precision="2" style="width: 180px" />
+            <span style="margin-left: 8px; color: #909399;">元（一次性买断，永久授权）</span>
+          </el-form-item>
+          <el-form-item label="年度授权价">
+            <el-input-number v-model="form.yearly_price" :min="0" :precision="2" style="width: 180px" :placeholder="'不填则不提供年度版'" />
+            <span style="margin-left: 8px; color: #909399;">元/年（不填则不提供年度版）</span>
+          </el-form-item>
+          <!-- 双价格预览 -->
+          <el-form-item v-if="form.price > 0 && form.yearly_price && form.yearly_price > 0" label="价格预览">
+            <div class="price-preview">
+              <div class="preview-row">
+                <span class="label">永久买断</span>
+                <strong>¥{{ form.price.toFixed(2) }}</strong>
+                <span style="color: #909399; font-size: 12px;">（一次性）</span>
+              </div>
+              <div class="preview-row">
+                <span class="label">年度授权</span>
+                <strong>¥{{ (form.yearly_price as number).toFixed(2) }}</strong>
+                <span style="color: #909399; font-size: 12px;">/ 年</span>
+              </div>
+              <div class="preview-row highlight">
+                <span class="label">年度折算</span>
+                <span>约{{ (((form.yearly_price as number) / form.price) * 10).toFixed(1) }}折（对比永久价）</span>
+                <span class="saving">首年省 ¥{{ (form.price - (form.yearly_price as number)).toFixed(0) }}</span>
+              </div>
+              <div class="preview-row tip">
+                💡 约 {{ Math.ceil(form.price / (form.yearly_price as number)) }} 年后年度累计超过永久买断价，适合先试用再决定
+              </div>
+            </div>
+          </el-form-item>
+          <el-divider content-position="left">🏢 私有部署资源</el-divider>
+          <el-form-item label="授权用户数">
+            <el-input-number v-model="form.max_users" :min="1" :max="99999" style="width: 150px" />
+            <el-checkbox v-model="unlimitedUsers" style="margin-left: 12px;" @change="onUnlimitedUsersChange">不限用户</el-checkbox>
+          </el-form-item>
+          <el-form-item label="存储空间">
+            <el-input-number v-model="form.max_storage_gb" :min="0" style="width: 150px" />
+            <span style="margin-left: 8px; color: #909399;">GB（私有部署通常不限）</span>
+          </el-form-item>
+        </template>
+
+        <!-- ==================== 通用配置 ==================== -->
+        <el-divider content-position="left">📋 授权模块</el-divider>
         <el-form-item label="CRM模块">
           <div class="modules-check-group">
             <div class="modules-toolbar">
@@ -147,7 +274,7 @@
           </el-button>
         </el-form-item>
         <el-form-item label="选项">
-          <el-checkbox v-model="form.is_trial">试用套餐</el-checkbox>
+          <el-checkbox v-model="form.is_trial" v-if="form.type === 'saas'">试用套餐</el-checkbox>
           <el-checkbox v-model="form.is_recommended">推荐套餐</el-checkbox>
           <el-checkbox v-model="form.is_visible">官网显示</el-checkbox>
         </el-form-item>
@@ -164,7 +291,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, User, Files, Check, Delete } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -177,6 +304,8 @@ const showDialog = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
 const packages = ref<Package[]>([])
+const yearlyPromoType = ref<'none' | 'bonus' | 'discount' | 'fixed'>('none')
+const unlimitedUsers = ref(false)
 
 const crmModuleOptions = [
   { value: 'dashboard', label: '数据看板' },
@@ -206,6 +335,9 @@ const form = reactive({
   description: '',
   price: 0,
   billing_cycle: 'monthly' as 'monthly' | 'yearly' | 'once',
+  yearly_discount_rate: 0,
+  yearly_bonus_months: 0,
+  yearly_price: 0 as number | null,
   duration_days: 30,
   max_users: 10,
   max_storage_gb: 5,
@@ -234,6 +366,100 @@ const getBillingText = (cycle: string) => {
   return map[cycle] || cycle
 }
 
+// 不限用户切换
+const onUnlimitedUsersChange = (val: boolean | string | number) => {
+  if (val) form.max_users = 99999
+  else form.max_users = 50
+}
+
+
+// 套餐类型切换时，自动设置合理的默认值
+watch(() => form.type, (val) => {
+  if (!editingId.value) {
+    if (val === 'private') {
+      form.billing_cycle = 'once'
+      form.duration_days = 36500
+      form.max_users = 50
+      form.max_storage_gb = 0
+      form.yearly_discount_rate = 0
+      form.yearly_bonus_months = 0
+      form.yearly_price = null
+      yearlyPromoType.value = 'none'
+    } else {
+      form.billing_cycle = 'monthly'
+      form.duration_days = 30
+      form.max_users = 10
+      form.max_storage_gb = 5
+    }
+  }
+})
+
+// 年付优惠类型切换时，清理不相关的字段
+watch(yearlyPromoType, (val) => {
+  if (val === 'none') {
+    form.yearly_discount_rate = 0
+    form.yearly_bonus_months = 0
+    form.yearly_price = null
+  } else if (val === 'bonus') {
+    form.yearly_discount_rate = 0
+    form.yearly_price = null
+    if (!form.yearly_bonus_months) form.yearly_bonus_months = 2
+  } else if (val === 'discount') {
+    form.yearly_bonus_months = 0
+    form.yearly_price = null
+    if (!form.yearly_discount_rate) form.yearly_discount_rate = 16.67
+  } else if (val === 'fixed') {
+    form.yearly_discount_rate = 0
+    form.yearly_bonus_months = 0
+    if (!form.yearly_price) form.yearly_price = Math.round(form.price * 10)
+  }
+})
+
+// 年付计算属性 - 用于表单中的价格预览
+const computedYearlyTotal = computed(() => {
+  if (yearlyPromoType.value === 'bonus') {
+    return form.price * (12 - form.yearly_bonus_months)
+  } else if (yearlyPromoType.value === 'discount') {
+    return form.price * 12 * (1 - form.yearly_discount_rate / 100)
+  } else if (yearlyPromoType.value === 'fixed' && form.yearly_price) {
+    return form.yearly_price
+  }
+  return form.price * 12
+})
+
+const computedYearlySaving = computed(() => {
+  return form.price * 12 - computedYearlyTotal.value
+})
+
+const computedYearlyMonthly = computed(() => {
+  return computedYearlyTotal.value / 12
+})
+
+// 卡片展示辅助方法
+const hasYearlyPromo = (pkg: Package) => {
+  return (pkg.yearly_bonus_months > 0) || (pkg.yearly_discount_rate > 0) || (pkg.yearly_price && Number(pkg.yearly_price) > 0)
+}
+
+const getYearlyPromoLabel = (pkg: Package) => {
+  if (pkg.yearly_bonus_months > 0) return `年付送${pkg.yearly_bonus_months}个月`
+  if (pkg.yearly_discount_rate > 0) {
+    const discount = (10 - pkg.yearly_discount_rate / 10).toFixed(1)
+    return `年付${discount}折`
+  }
+  if (pkg.yearly_price && Number(pkg.yearly_price) > 0) {
+    const saving = Number(pkg.price) * 12 - Number(pkg.yearly_price)
+    return `年付省¥${Math.round(saving)}`
+  }
+  return ''
+}
+
+const getYearlyTotalPrice = (pkg: Package) => {
+  if (pkg.yearly_price && Number(pkg.yearly_price) > 0) return Math.round(Number(pkg.yearly_price))
+  if (pkg.yearly_bonus_months > 0) return Math.round(Number(pkg.price) * (12 - pkg.yearly_bonus_months))
+  if (pkg.yearly_discount_rate > 0) return Math.round(Number(pkg.price) * 12 * (1 - pkg.yearly_discount_rate / 100))
+  return Math.round(Number(pkg.price) * 12)
+}
+
 const loadPackages = async () => {
   loading.value = true
   try {
@@ -247,13 +473,19 @@ const loadPackages = async () => {
 }
 
 const resetForm = () => {
+  const isPrivate = activeTab.value === 'private'
   Object.assign(form, {
     name: '', code: '', type: activeTab.value, description: '',
-    price: 0, billing_cycle: 'monthly', duration_days: 30,
-    max_users: 10, max_storage_gb: 5, features: [''], modules: [],
+    price: 0, billing_cycle: isPrivate ? 'once' : 'monthly',
+    yearly_discount_rate: 0, yearly_bonus_months: 0, yearly_price: null,
+    duration_days: isPrivate ? 36500 : 30,
+    max_users: isPrivate ? 50 : 10, max_storage_gb: isPrivate ? 0 : 5,
+    features: [''], modules: [],
     is_trial: false, is_recommended: false, is_visible: true,
     sort_order: 0, status: true
   })
+  yearlyPromoType.value = 'none'
+  unlimitedUsers.value = false
 }
 
 const handleAdd = () => {
@@ -266,9 +498,24 @@ const handleEdit = (pkg: Package) => {
   editingId.value = pkg.id
   Object.assign(form, {
     ...pkg,
+    yearly_discount_rate: Number(pkg.yearly_discount_rate) || 0,
+    yearly_bonus_months: Number(pkg.yearly_bonus_months) || 0,
+    yearly_price: pkg.yearly_price ? Number(pkg.yearly_price) : null,
     features: pkg.features?.length ? [...pkg.features] : [''],
     modules: pkg.modules?.length ? [...pkg.modules] : []
   })
+  // 回填不限用户
+  unlimitedUsers.value = pkg.max_users >= 99999
+  // 自动识别年付优惠类型
+  if (pkg.yearly_bonus_months > 0) {
+    yearlyPromoType.value = 'bonus'
+  } else if (pkg.yearly_discount_rate > 0) {
+    yearlyPromoType.value = 'discount'
+  } else if (pkg.yearly_price && Number(pkg.yearly_price) > 0) {
+    yearlyPromoType.value = 'fixed'
+  } else {
+    yearlyPromoType.value = 'none'
+  }
   showDialog.value = true
 }
 
@@ -487,5 +734,97 @@ onMounted(() => {
     margin-right: 16px;
     margin-bottom: 4px;
   }
+}
+
+.yearly-promo-info {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.yearly-price-text {
+  font-size: 13px;
+  color: #e6a23c;
+  font-weight: 500;
+}
+.private-annual-info {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.private-annual-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(249, 115, 22, 0.1));
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 16px;
+  font-size: 13px;
+}
+.private-annual-tag .annual-label {
+  color: #b45309;
+  font-weight: 500;
+}
+.private-annual-tag .annual-price {
+  color: #d97706;
+  font-weight: 700;
+}
+.private-annual-saving {
+  font-size: 12px;
+  color: #16a34a;
+  font-weight: 600;
+}
+.yearly-promo-section {
+  background: #fdf6ec;
+  border-radius: 8px;
+  padding: 12px 8px 4px;
+  margin-bottom: 8px;
+}
+.yearly-promo-section :deep(.el-divider__text) {
+  color: #e6a23c;
+  font-weight: 600;
+  font-size: 13px;
+}
+.price-preview {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.price-preview .preview-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.price-preview .preview-row .label {
+  color: #64748b;
+  min-width: 60px;
+}
+.price-preview .preview-row.highlight {
+  color: #0369a1;
+  font-size: 14px;
+}
+.price-preview .preview-row .original {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+.price-preview .preview-row .saving {
+  background: #dcfce7;
+  color: #16a34a;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.price-preview .preview-row.tip {
+  color: #d97706;
+  font-size: 12px;
+  margin-top: 4px;
 }
 </style>

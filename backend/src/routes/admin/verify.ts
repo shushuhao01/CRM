@@ -10,11 +10,23 @@ import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
+// 🔥 正确获取客户端IP
+const getClientIp = (req: Request): string => {
+  const xff = req.headers['x-forwarded-for'];
+  if (xff) {
+    const first = Array.isArray(xff) ? xff[0] : xff.split(',')[0];
+    return first.trim();
+  }
+  const xri = req.headers['x-real-ip'];
+  if (xri) { return Array.isArray(xri) ? xri[0] : xri; }
+  return (req.ip || req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+};
+
 // 验证授权码
 router.post('/license', async (req: Request, res: Response) => {
   try {
     const { licenseKey, machineId } = req.body;
-    const clientIp = req.ip || req.socket.remoteAddress || '';
+    const clientIp = getClientIp(req);
     const userAgent = req.headers['user-agent'] || '';
 
     if (!licenseKey) {

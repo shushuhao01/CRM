@@ -8,6 +8,26 @@ import crypto from 'crypto'
 
 const router = Router()
 
+// 自动迁移：确保 payment_orders 表有退款操作人字段
+const ensureRefundColumns = async () => {
+  try {
+    const cols = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_orders'`
+    )
+    const existingCols = cols.map((c: any) => c.COLUMN_NAME)
+    if (!existingCols.includes('refunded_by')) {
+      await AppDataSource.query(
+        `ALTER TABLE payment_orders ADD COLUMN refunded_by VARCHAR(100) DEFAULT NULL COMMENT '退款操作人'`
+      )
+      console.log('[Payment] 已添加 refunded_by 字段')
+    }
+  } catch (_e) {
+    // 忽略错误（如表不存在等）
+  }
+}
+// 延迟执行，等数据库连接就绪
+setTimeout(() => ensureRefundColumns(), 3000)
+
 // 加密密钥（生产环境应从环境变量读取）
 const ENCRYPT_KEY = process.env.PAYMENT_ENCRYPT_KEY || 'crm-payment-secret-key-2024'
 
@@ -596,7 +616,7 @@ router.get('/stats', async (req: Request, res: Response) => {
 
     // 待处理订单
     const pendingResult = await AppDataSource.query(
-      `SELECT COUNT(*) as pendingCount FROM payment_orders WHERE status = 'pending'`
+      `SELECT COUNT(*) as pendingCount FROM payment_orders WHERE status = 'pending' ${dateWhere}`, params
     )
 
     res.json({
@@ -672,17 +692,91 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
     const { id } = req.params
     const { reason } = req.body
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const adminUser = (req as any).adminUser
 
-    // TODO: 调用微信/支付宝退款API
+    // 1. 验证订单存在性和当前状态
+    const orders = await AppDataSource.query(
+      'SELECT id, order_no, status, amount, pay_type, tenant_id, tenant_name, contact_name, contact_phone, package_name FROM payment_orders WHERE id = ?',
+      [id]
+    )
+    if (orders.length === 0) {
+      return res.status(404).json({ success: false, message: '订单不存在' })
+    }
+    const order = orders[0]
+    if (order.status !== 'paid') {
+      return res.status(400).json({ success: false, message: '只能对已支付的订单进行退款' })
+    }
 
-    await AppDataSource.query(
+    // TODO: 调用微信/支付宝退款API（对公转账无需调用第三方退款接口）
+
+    // 2. 更新订单状态为已退款
+    const updateResult = await AppDataSource.query(
       `UPDATE payment_orders SET status = 'refunded', refund_amount = amount,
-       refund_at = ?, refund_reason = ? WHERE id = ? AND status = 'paid'`,
-      [now, reason, id]
+       refund_at = ?, refund_reason = ?, refunded_by = ? WHERE id = ? AND status = 'paid'`,
+      [now, reason || '', adminUser?.username || 'admin', id]
     )
 
-    res.json({ success: true, message: '退款成功' })
+    // 检查是否实际更新了记录（防止并发重复退款）
+    if (updateResult.affectedRows === 0) {
+      return res.status(400).json({ success: false, message: '退款失败，订单状态已变更' })
+    }
+
+    // 3. 退款后暂停关联租户的授权
+    if (order.tenant_id) {
+      try {
+        await AppDataSource.query(
+          `UPDATE tenants SET license_status = 'suspended', status = 'suspended', updated_at = NOW()
+           WHERE id = ? AND license_status = 'active'`,
+          [order.tenant_id]
+        )
+
+        // 记录租户授权日志
+        const { v4: logUuidv4 } = await import('uuid')
+        await AppDataSource.query(
+          `INSERT INTO tenant_license_logs (id, tenant_id, action, result, message)
+           VALUES (?, ?, 'suspend', 'success', ?)`,
+          [logUuidv4(), order.tenant_id, `退款导致授权暂停，订单号: ${order.order_no}，退款金额: ¥${order.amount}，原因: ${reason || '无'}`]
+        ).catch(() => {})
+
+        console.log(`[Payment Refund] 已暂停租户授权: ${order.tenant_id}，订单号: ${order.order_no}`)
+      } catch (tenantErr) {
+        console.error('[Payment Refund] 暂停租户授权失败:', tenantErr)
+        // 不影响退款主流程
+      }
+    }
+
+    // 4. 记录退款操作日志到 payment_logs
+    try {
+      await AppDataSource.query(
+        `INSERT INTO payment_logs (id, order_id, order_no, action, pay_type, request_data, response_data, result, error_msg)
+         VALUES (?, ?, ?, 'refund', ?, ?, ?, 'success', NULL)`,
+        [
+          uuidv4(), order.id, order.order_no, order.pay_type,
+          JSON.stringify({ reason: reason || '', operator: adminUser?.username || 'admin' }),
+          JSON.stringify({ refundAmount: order.amount, refundAt: now, tenantSuspended: !!order.tenant_id })
+        ]
+      )
+    } catch (logErr) {
+      console.error('[Payment Refund] 记录操作日志失败:', logErr)
+    }
+
+    // 5. 发送退款通知
+    try {
+      const { adminNotificationService } = await import('../../services/AdminNotificationService')
+      await adminNotificationService.notify('payment_refund', {
+        title: `订单退款：¥${order.amount}`,
+        content: `订单 ${order.order_no}（${order.tenant_name || order.contact_name || '未知客户'}）已退款 ¥${order.amount}，退款原因：${reason || '未填写'}，操作人：${adminUser?.username || 'admin'}`,
+        relatedId: order.order_no,
+        relatedType: 'payment_order',
+        extraData: { orderNo: order.order_no, amount: order.amount, reason, operator: adminUser?.username }
+      })
+    } catch (notifyErr) {
+      console.error('[Payment Refund] 发送退款通知失败:', notifyErr)
+    }
+
+    res.json({ success: true, message: order.tenant_id ? '退款成功，已暂停关联租户授权' : '退款成功' })
   } catch (error) {
+    console.error('退款失败:', error)
     res.status(500).json({ success: false, message: '退款失败' })
   }
 })

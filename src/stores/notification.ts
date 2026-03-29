@@ -703,17 +703,56 @@ export const useNotificationStore = defineStore('notification', () => {
   // 🔥 WebSocket服务引用
   let wsUnsubscribers: (() => void)[] = []
 
+  // 🔥 当前用户标识缓存（用于生成隔离的localStorage Key）
+  let currentStorageKey = 'notification-messages'
+
+  /**
+   * 🔥 获取当前登录用户的唯一标识，用于隔离 localStorage Key
+   * 格式: notification-messages-{userId}-{tenantId}
+   * 这样不同用户/不同租户的消息缓存完全隔离，不会串数据
+   */
+  const getStorageKey = (): string => {
+    try {
+      // 优先从 localStorage 获取用户信息（确保 store 初始化时也能拿到）
+      const userStr = localStorage.getItem('user') || localStorage.getItem('crm_current_user') || localStorage.getItem('user_info')
+      if (userStr) {
+        const user = JSON.parse(userStr)
+        const userId = user.id || user.userId || ''
+        const tenantId = user.tenantId || ''
+        if (userId) {
+          return `notification-messages-${userId}-${tenantId}`
+        }
+      }
+    } catch (_e) {
+      // 解析失败则使用默认 key
+    }
+    // 未登录时使用默认 key（不会缓存任何消息）
+    return 'notification-messages'
+  }
+
+  /**
+   * 🔥 更新当前 storage key（登录/切换用户后调用）
+   */
+  const refreshStorageKey = () => {
+    currentStorageKey = getStorageKey()
+    console.log('[Notification] 🔑 Storage Key 已更新:', currentStorageKey)
+  }
+
   // 检查是否需要清理旧的模拟数据
   const checkAndCleanOldMockData = () => {
-    const cleanedKey = 'notification-mock-cleaned-v2'
+    // 🔥 v3: 清理旧的全局共享缓存数据（修复跨用户数据泄露）
+    const cleanedKey = 'notification-mock-cleaned-v3'
     if (localStorage.getItem(cleanedKey)) {
       return // 已经清理过
     }
 
-    // 清理旧的模拟消息数据
+    // 清理旧的全局共享消息数据（不带用户标识的旧Key）
     localStorage.removeItem('notification-messages')
+    localStorage.removeItem('notification-mock-cleaned-v2')
+    // 🔥 清理旧的全局共享的隐藏公告数据
+    localStorage.removeItem('hidden-announcements')
     localStorage.setItem(cleanedKey, 'true')
-    console.log('[Notification] 已清理旧的模拟消息数据')
+    console.log('[Notification] 🧹 已清理旧的全局共享缓存数据（v3迁移）')
   }
 
   // 从localStorage加载消息
@@ -722,7 +761,10 @@ export const useNotificationStore = defineStore('notification', () => {
       // 首先检查并清理旧数据
       checkAndCleanOldMockData()
 
-      const stored = localStorage.getItem('notification-messages')
+      // 🔥 初始化时刷新 storage key
+      refreshStorageKey()
+
+      const stored = localStorage.getItem(currentStorageKey)
       if (stored) {
         return JSON.parse(stored)
       }
@@ -735,7 +777,8 @@ export const useNotificationStore = defineStore('notification', () => {
   // 保存消息到localStorage
   const saveMessagesToStorage = (msgs: NotificationMessage[]) => {
     try {
-      localStorage.setItem('notification-messages', JSON.stringify(msgs))
+      // 🔥 使用用户隔离的 Key 保存
+      localStorage.setItem(currentStorageKey, JSON.stringify(msgs))
     } catch (error) {
       console.error('保存消息失败:', error)
     }
@@ -885,6 +928,9 @@ export const useNotificationStore = defineStore('notification', () => {
   // 🔥 从API加载消息（跨设备消息通知的核心）
   const loadMessagesFromAPI = async (options?: { limit?: number; unreadOnly?: boolean }) => {
     try {
+      // 🔥 每次从API加载前，先刷新 storage key（确保切换用户后使用新Key）
+      refreshStorageKey()
+
       // 动态导入messageApi以避免循环依赖
       const { messageApi } = await import('@/api/message')
 
@@ -897,9 +943,11 @@ export const useNotificationStore = defineStore('notification', () => {
         const responseData = response.data as { messages?: any[]; total?: number; unreadCount?: number }
         const apiMessages = responseData.messages || []
 
-        // 🔥 修复：如果API返回空消息，保留本地缓存，不清空
+        // 🔥 修复：API返回空消息时，清空本地缓存（不再保留上一个用户的数据）
         if (apiMessages.length === 0) {
-          console.log('[Notification] API返回空消息，保留本地缓存')
+          console.log('[Notification] API返回空消息，清空本地缓存')
+          messages.value = []
+          saveMessagesToStorage(messages.value)
           return []
         }
 
@@ -933,15 +981,11 @@ export const useNotificationStore = defineStore('notification', () => {
           newMessages.push(notificationMessage)
         })
 
-        // 🔥 合并消息：API消息优先，本地消息补充（避免重复）
-        const existingIds = new Set(newMessages.map(m => m.id))
-        const localOnlyMessages = messages.value.filter(m => !existingIds.has(m.id))
-
-        // 合并：API消息 + 本地独有消息
-        messages.value = [...newMessages, ...localOnlyMessages]
+        // 🔥 修复：完全以服务端数据为准，不再合并本地旧数据（防止跨用户数据泄露）
+        messages.value = newMessages
         saveMessagesToStorage(messages.value)
 
-        console.log(`[Notification] ✅ 从数据库加载了 ${newMessages.length} 条消息，本地独有 ${localOnlyMessages.length} 条，未读 ${responseData.unreadCount || 0} 条`)
+        console.log(`[Notification] ✅ 从数据库加载了 ${newMessages.length} 条消息，未读 ${responseData.unreadCount || 0} 条`)
 
         return apiMessages
       }
@@ -1058,6 +1102,22 @@ export const useNotificationStore = defineStore('notification', () => {
         })
       )
 
+      // 🔥 订阅新公告事件 - 实时刷新公告列表和触发弹窗
+      wsUnsubscribers.push(
+        webSocketService.on('announcement:new', async (data: any) => {
+          console.log('[Notification] 📢 收到新公告推送:', data.title)
+          try {
+            // 动态导入message store以刷新公告列表
+            const { useMessageStore } = await import('@/stores/message')
+            const messageStore = useMessageStore()
+            await messageStore.loadUserAnnouncements()
+            console.log('[Notification] ✅ 公告列表已刷新')
+          } catch (error) {
+            console.error('[Notification] 刷新公告列表失败:', error)
+          }
+        })
+      )
+
       // 连接WebSocket
       await webSocketService.connect(token)
 
@@ -1127,6 +1187,34 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
 
+  /**
+   * 🔥 重置通知状态（登出时调用）
+   * 清空内存中的消息数据和当前用户的localStorage缓存
+   * 防止切换用户后看到上一个用户的消息
+   */
+  const resetNotificationState = () => {
+    console.log('[Notification] 🔄 重置通知状态（用户登出）')
+
+    // 清空内存中的消息
+    messages.value = []
+
+    // 清空当前用户的localStorage缓存
+    try {
+      if (currentStorageKey && currentStorageKey !== 'notification-messages') {
+        localStorage.removeItem(currentStorageKey)
+      }
+      // 也清理旧的全局Key（兼容）
+      localStorage.removeItem('notification-messages')
+    } catch (e) {
+      console.error('[Notification] 清理缓存失败:', e)
+    }
+
+    // 重置 storage key
+    currentStorageKey = 'notification-messages'
+
+    console.log('[Notification] ✅ 通知状态已重置')
+  }
+
   return {
     // 状态
     messages,
@@ -1155,6 +1243,9 @@ export const useNotificationStore = defineStore('notification', () => {
     disconnectWebSocket,
     markAsReadWithWS,
     markAllAsReadWithWS,
+    // 🔥 用户隔离方法
+    resetNotificationState,
+    refreshStorageKey,
 
     // 导出枚举供外部使用
     MessageType,

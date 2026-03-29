@@ -25,8 +25,8 @@ router.get('/history', async (req: Request, res: Response) => {
     const shareRepository = getTenantRepo(CustomerShare);
     const queryBuilder = shareRepository.createQueryBuilder('share');
 
-    // 只能看到自己分享的或分享给自己的
-    queryBuilder.where('(share.sharedBy = :userId OR share.sharedTo = :userId)', {
+    // 只能看到自己分享的或分享给自己的 - 🔥 修复租户隔离
+    queryBuilder.andWhere('(share.sharedBy = :userId OR share.sharedTo = :userId)', {
       userId: currentUser.userId
     });
 

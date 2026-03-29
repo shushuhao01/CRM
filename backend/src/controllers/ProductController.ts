@@ -1,5 +1,4 @@
 import { Request, Response } from 'express'
-import { AppDataSource, getDataSource } from '../config/database'
 import { Product } from '../entities/Product'
 import { ProductCategory } from '../entities/ProductCategory'
 import { getTenantRepo } from '../utils/tenantRepo'
@@ -335,45 +334,42 @@ export class ProductController {
       if (productIds.length > 0) {
         try {
           const { Order } = await import('../entities/Order')
+          const orderRepo = getTenantRepo(Order)
 
-          if (true) {
-            const orderRepo = getTenantRepo(Order)
-
-            // 🔥 获取有效订单（已审核通过且未取消的订单）
-            const validOrders = await orderRepo
-              .createQueryBuilder('order')
-              .select(['order.id', 'order.products'])
-              .where('order.status NOT IN (:...excludeStatuses)', {
-                excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
-              })
-              .getMany()
-
-            // 🔥 从每个订单的products JSON字段中统计销量
-            validOrders.forEach(order => {
-              if (order.products) {
-                try {
-                  const orderProducts = typeof order.products === 'string'
-                    ? JSON.parse(order.products)
-                    : order.products
-
-                  if (Array.isArray(orderProducts)) {
-                    orderProducts.forEach((item: any) => {
-                      const productId = item.productId || item.id
-                      const quantity = Number(item.quantity) || 1
-                      if (productId && productIds.includes(String(productId))) {
-                        salesCountMap[String(productId)] = (salesCountMap[String(productId)] || 0) + quantity
-                      }
-                    })
-                  }
-                } catch (_parseError) {
-                  // JSON解析失败，跳过该订单
-                  console.warn('[商品列表] 解析订单商品JSON失败:', order.id)
-                }
-              }
+          // 🔥 获取有效订单（已审核通过且未取消的订单）
+          const validOrders = await orderRepo
+            .createQueryBuilder('order')
+            .select(['order.id', 'order.products'])
+            .where('order.status NOT IN (:...excludeStatuses)', {
+              excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
             })
+            .getMany()
 
-            console.log('[商品列表] 销量统计:', salesCountMap)
-          }
+          // 🔥 从每个订单的products JSON字段中统计销量
+          validOrders.forEach(order => {
+            if (order.products) {
+              try {
+                const orderProducts = typeof order.products === 'string'
+                  ? JSON.parse(order.products)
+                  : order.products
+
+                if (Array.isArray(orderProducts)) {
+                  orderProducts.forEach((item: any) => {
+                    const productId = item.productId || item.id
+                    const quantity = Number(item.quantity) || 1
+                    if (productId && productIds.includes(String(productId))) {
+                      salesCountMap[String(productId)] = (salesCountMap[String(productId)] || 0) + quantity
+                    }
+                  })
+                }
+              } catch (_parseError) {
+                // JSON解析失败，跳过该订单
+                console.warn('[商品列表] 解析订单商品JSON失败:', order.id)
+              }
+            }
+          })
+
+          console.log('[商品列表] 销量统计:', salesCountMap)
         } catch (salesError) {
           console.error('[商品列表] 统计销量失败:', salesError)
           // 销量统计失败不影响商品列表返回
@@ -793,6 +789,14 @@ export class ProductController {
 
           const productId = generateId('prod_')
           const productCode = productData.code || `P${Date.now().toString().slice(-8)}${Math.random().toString(36).slice(-4)}`
+
+          // 🔥 修复：检查同租户内编码是否已存在，避免违反唯一约束
+          const existingProduct = await productRepo.findOne({ where: { code: productCode } })
+          if (existingProduct) {
+            results.failed++
+            results.errors.push(`产品 ${productCode}: 编码已存在，跳过`)
+            continue
+          }
 
           const newProduct = productRepo.create({
             id: productId,

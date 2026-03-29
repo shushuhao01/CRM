@@ -1,21 +1,56 @@
 import { Request, Response } from 'express';
-import { AppDataSource } from '../config/database';
+import { getDataSource } from '../config/database';
 import { Permission } from '../entities/Permission';
 import { TreeRepository } from 'typeorm';
+import { getCurrentTenantIdSafe } from '../utils/tenantHelpers';
 
 export class PermissionController {
   private get permissionRepository(): TreeRepository<Permission> {
-    return AppDataSource!.getTreeRepository(Permission);
+    const dataSource = getDataSource();
+    if (!dataSource) {
+      throw new Error('数据库连接未初始化');
+    }
+    return dataSource.getTreeRepository(Permission);
+  }
+
+  /**
+   * 🔥 统一获取租户ID，用于所有方法的租户过滤
+   * 由于 Permission 使用 TreeRepository（不支持 getTenantRepo Proxy），
+   * 需要在每个方法中手动添加租户过滤
+   */
+  private getTenantId(): string | undefined {
+    return getCurrentTenantIdSafe();
   }
 
   // 获取权限树
   async getPermissionTree(req: Request, res: Response) {
     try {
-      const permissions = await this.permissionRepository.findTrees();
+      const tenantId = this.getTenantId();
+      const qb = this.permissionRepository.createQueryBuilder('permission');
+      if (tenantId) {
+        qb.andWhere('permission.tenant_id = :_tenantId', { _tenantId: tenantId });
+      }
+      qb.orderBy('permission.sort', 'ASC');
+      const allPermissions = await qb.getMany();
+
+      // 手动构建权限树
+      const permMap = new Map<number, any>();
+      const roots: any[] = [];
+      allPermissions.forEach((p: any) => {
+        permMap.set(p.id, { ...p, children: [] });
+      });
+      allPermissions.forEach((p: any) => {
+        const node = permMap.get(p.id)!;
+        if (p.parentId && permMap.has(p.parentId)) {
+          permMap.get(p.parentId)!.children.push(node);
+        } else {
+          roots.push(node);
+        }
+      });
 
       res.json({
         success: true,
-        data: permissions
+        data: roots
       });
     } catch (error) {
       console.error('获取权限树失败:', error);
@@ -32,6 +67,11 @@ export class PermissionController {
       const { type, module, status } = req.query;
 
       const queryBuilder = this.permissionRepository.createQueryBuilder('permission');
+
+      const tenantId = this.getTenantId();
+      if (tenantId) {
+        queryBuilder.andWhere('permission.tenant_id = :_tenantId', { _tenantId: tenantId });
+      }
 
       if (type) {
         queryBuilder.andWhere('permission.type = :type', { type });
@@ -79,8 +119,13 @@ export class PermissionController {
       } = req.body;
 
       // 检查权限编码是否已存在
+      const tenantId = this.getTenantId();
+      const existingWhere: any = { code };
+      if (tenantId) {
+        existingWhere.tenantId = tenantId;
+      }
       const existingPermission = await this.permissionRepository.findOne({
-        where: { code }
+        where: existingWhere
       });
 
       if (existingPermission) {
@@ -93,8 +138,12 @@ export class PermissionController {
       // 获取父权限
       let parent: Permission | undefined = undefined;
       if (parentId) {
+        const parentWhere: any = { id: parentId };
+        if (tenantId) {
+          parentWhere.tenantId = tenantId;
+        }
         const foundParent = await this.permissionRepository.findOne({
-          where: { id: parentId }
+          where: parentWhere
         });
         if (!foundParent) {
           return res.status(400).json({
@@ -117,6 +166,10 @@ export class PermissionController {
         sort,
         status: status as 'active' | 'inactive'
       };
+
+      if (tenantId) {
+        permissionData.tenantId = tenantId;
+      }
 
       if (parent) {
         permissionData.parent = parent;
@@ -146,8 +199,13 @@ export class PermissionController {
       const { id } = req.params;
       const { name, code, description, module, type, path, icon, sort, status, parentId } = req.body;
 
+      const tenantId = this.getTenantId();
+      const findWhere: any = { id: Number(id) };
+      if (tenantId) {
+        findWhere.tenantId = tenantId;
+      }
       const permission = await this.permissionRepository.findOne({
-        where: { id: Number(id) }
+        where: findWhere
       });
 
       if (!permission) {
@@ -159,7 +217,11 @@ export class PermissionController {
 
       // 检查编码是否与其他权限冲突
       if (code && code !== permission.code) {
-        const existingPermission = await this.permissionRepository.findOne({ where: { code } });
+        const codeWhere: any = { code };
+        if (tenantId) {
+          codeWhere.tenantId = tenantId;
+        }
+        const existingPermission = await this.permissionRepository.findOne({ where: codeWhere });
         if (existingPermission) {
           return res.status(400).json({
             success: false,
@@ -182,8 +244,12 @@ export class PermissionController {
       // 更新父权限
       if (parentId !== undefined) {
         if (parentId) {
+          const parentWhere: any = { id: parentId };
+          if (tenantId) {
+            parentWhere.tenantId = tenantId;
+          }
           const parent = await this.permissionRepository.findOne({
-            where: { id: parentId }
+            where: parentWhere
           });
           if (!parent) {
             return res.status(400).json({
@@ -218,8 +284,13 @@ export class PermissionController {
     try {
       const { id } = req.params;
 
+      const tenantId = this.getTenantId();
+      const findWhere: any = { id: Number(id) };
+      if (tenantId) {
+        findWhere.tenantId = tenantId;
+      }
       const permission = await this.permissionRepository.findOne({
-        where: { id: Number(id) }
+        where: findWhere
       });
 
       if (!permission) {
@@ -230,8 +301,12 @@ export class PermissionController {
       }
 
       // 检查是否有子权限
-      const children = await this.permissionRepository.findDescendants(permission);
-      if (children.length > 1) { // 包含自己，所以大于1表示有子权限
+      const childWhere: any = { parentId: permission.id };
+      if (tenantId) {
+        childWhere.tenantId = tenantId;
+      }
+      const children = await this.permissionRepository.find({ where: childWhere });
+      if (children.length > 0) {
         return res.status(400).json({
           success: false,
           message: '该权限下还有子权限，无法删除'

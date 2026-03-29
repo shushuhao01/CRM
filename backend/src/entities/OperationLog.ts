@@ -5,6 +5,9 @@ export class OperationLog {
   @PrimaryColumn('varchar', { length: 50 })
   id: string;
 
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
   @Column('varchar', { name: 'user_id', length: 50, nullable: true })
   userId: string | null;
 

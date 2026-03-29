@@ -9,6 +9,7 @@ import { catchAsync, BusinessError, NotFoundError, ValidationError } from '../mi
 import { logger, operationLogger } from '../config/logger';
 import bcrypt from 'bcryptjs';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { deployConfig } from '../config/deploy';
 
 export class UserController {
   private get userRepository() {
@@ -67,17 +68,25 @@ export class UserController {
 
   /**
    * 用户登录
+   * 🔥 租户隔离：SaaS模式下强制要求 tenantId，防止跨租户登录
    */
   login = catchAsync(async (req: Request, res: Response) => {
     const { username, password, tenantId } = req.body;
 
+    // 🔥 SaaS模式下强制要求租户编码
+    if (deployConfig.isSaaS() && !tenantId) {
+      throw new ValidationError('SaaS模式下必须提供租户编码才能登录');
+    }
+
     // 构建查询条件：按租户过滤
+    // 🔥 登录时无JWT，TenantContext未设置，getTenantRepo的Proxy不会自动注入tenant_id
+    // 因此必须在此处显式添加 tenantId 条件
     const whereClause: any = { username };
     if (tenantId) {
       whereClause.tenantId = tenantId;
     }
 
-    // 查找用户
+    // 查找用户（使用原始仓储，因登录时Proxy无租户上下文）
     const user = await this.userRepository.findOne({
       where: whereClause
     });
@@ -218,10 +227,13 @@ export class UserController {
       const dataSource = getDataSource();
       if (dataSource) {
         const roleCode = user.roleId || user.role;
-        const [roleData] = await dataSource.query(
-          'SELECT permissions FROM roles WHERE code = ?',
-          [roleCode]
-        );
+        let roleQuery = 'SELECT permissions FROM roles WHERE code = ?';
+        const roleParams: any[] = [roleCode];
+        if (user.tenantId) {
+          roleQuery += ' AND tenant_id = ?';
+          roleParams.push(user.tenantId);
+        }
+        const [roleData] = await dataSource.query(roleQuery, roleParams);
         if (roleData && roleData.permissions) {
           rolePermissions = typeof roleData.permissions === 'string'
             ? JSON.parse(roleData.permissions)
@@ -231,6 +243,53 @@ export class UserController {
       }
     } catch (permError) {
       console.warn('[Login] 获取角色权限失败:', permError);
+    }
+
+    // 🔥 SaaS模式：获取租户授权的模块列表，供前端菜单过滤
+    let tenantModules: string[] | null = null;
+    if (user.tenantId) {
+      try {
+        const dataSource = getDataSource();
+        if (dataSource) {
+          const tenantRows = await dataSource.query(
+            `SELECT t.features, t.package_id, p.modules as package_modules FROM tenants t
+             LEFT JOIN tenant_packages p ON t.package_id = p.id WHERE t.id = ?`,
+            [user.tenantId]
+          );
+          if (tenantRows.length > 0) {
+            const tenant = tenantRows[0];
+            const validModuleIds = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system'];
+            // 尝试从features解析模块ID
+            if (tenant.features) {
+              try {
+                const parsed = typeof tenant.features === 'string' ? JSON.parse(tenant.features) : tenant.features;
+                if (Array.isArray(parsed) && parsed.some((f: string) => validModuleIds.includes(f))) {
+                  tenantModules = parsed.filter((f: string) => validModuleIds.includes(f));
+                }
+              } catch { /* ignore */ }
+            }
+            // 回退到套餐模块
+            if (!tenantModules && tenant.package_modules) {
+              try {
+                const pkgModules = typeof tenant.package_modules === 'string' ? JSON.parse(tenant.package_modules) : tenant.package_modules;
+                if (Array.isArray(pkgModules) && pkgModules.length > 0) {
+                  tenantModules = pkgModules;
+                }
+              } catch { /* ignore */ }
+            }
+            // 🔥 兜底：有套餐但无模块配置时，给默认核心模块
+            if (!tenantModules && tenant.package_id) {
+              tenantModules = ['dashboard', 'customer', 'order', 'system'];
+            }
+            // 🔥 自动同步修复：如果模块找到了但features为空，写回DB（一次性修复）
+            if (tenantModules && tenantModules.length > 0 && !tenant.features) {
+              dataSource.query('UPDATE tenants SET features = ? WHERE id = ?', [JSON.stringify(tenantModules), user.tenantId]).catch(() => {});
+            }
+          }
+        }
+      } catch (tenantModErr) {
+        console.warn('[Login] 获取租户模块失败:', tenantModErr);
+      }
     }
 
     // 返回用户信息和令牌
@@ -243,7 +302,8 @@ export class UserController {
         user: {
           ...userInfo,
           customerServicePermissions,
-          rolePermissions  // 🔥 返回角色权限列表
+          rolePermissions,  // 🔥 返回角色权限列表
+          tenantModules     // 🔥 返回租户授权模块列表（SaaS模式）
         },
         tokens
       }
@@ -264,8 +324,14 @@ export class UserController {
     const payload = JwtConfig.verifyRefreshToken(refreshToken);
 
     // 检查用户是否存在且状态正常
+    // 🔥 租户隔离：使用JWT payload中的tenantId进行显式过滤
+    // refreshToken接口无authenticateToken中间件，Proxy不会自动注入tenant_id
+    const refreshWhere: any = { id: payload.userId };
+    if (payload.tenantId) {
+      refreshWhere.tenantId = payload.tenantId;
+    }
     const user = await this.userRepository.findOne({
-      where: { id: payload.userId }
+      where: refreshWhere
     });
 
     if (!user || user.status !== 'active') {
@@ -989,17 +1055,24 @@ export class UserController {
 
   /**
    * 更新用户在职状态
+   * 🔥 租户隔离：添加显式 tenantId 过滤
    */
   updateEmploymentStatus = catchAsync(async (req: Request, res: Response) => {
     const userId = req.params.id;
     const { employmentStatus } = req.body;
+    const tenantId = this.getTenantIdFromRequest(req);
 
     if (!['active', 'resigned'].includes(employmentStatus)) {
       throw new ValidationError('无效的在职状态值');
     }
 
+    const whereClause: any = { id: userId };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
+
     const user = await this.userRepository.findOne({
-      where: { id: userId }
+      where: whereClause
     });
 
     if (!user) {
@@ -1036,13 +1109,19 @@ export class UserController {
 
   /**
    * 重置用户密码
+   * 🔥 租户隔离：添加显式 tenantId 过滤，防止跨租户重置密码
    */
   resetUserPassword = catchAsync(async (req: Request, res: Response) => {
     const userId = req.params.id;
     const { newPassword } = req.body;
+    const tenantId = this.getTenantIdFromRequest(req);
+    const whereClause: any = { id: userId };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
 
     const user = await this.userRepository.findOne({
-      where: { id: userId }
+      where: whereClause
     });
 
     if (!user) {
@@ -1108,12 +1187,18 @@ export class UserController {
 
   /**
    * 强制用户下线
+   * 🔥 租户隔离：添加显式 tenantId 过滤
    */
   forceUserLogout = catchAsync(async (req: Request, res: Response) => {
     const userId = req.params.id;
+    const tenantId = this.getTenantIdFromRequest(req);
+    const whereClause: any = { id: userId };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
 
     const user = await this.userRepository.findOne({
-      where: { id: userId }
+      where: whereClause
     });
 
     if (!user) {
@@ -1145,13 +1230,19 @@ export class UserController {
 
   /**
    * 切换双因子认证
+   * 🔥 租户隔离：添加显式 tenantId 过滤
    */
   toggleTwoFactor = catchAsync(async (req: Request, res: Response) => {
     const userId = req.params.id;
     const { enabled } = req.body;
+    const tenantId = this.getTenantIdFromRequest(req);
+    const whereClause: any = { id: userId };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
 
     const user = await this.userRepository.findOne({
-      where: { id: userId }
+      where: whereClause
     });
 
     if (!user) {
@@ -1181,12 +1272,18 @@ export class UserController {
 
   /**
    * 解锁用户账户
+   * 🔥 租户隔离：添加显式 tenantId 过滤
    */
   unlockAccount = catchAsync(async (req: Request, res: Response) => {
     const userId = req.params.id;
+    const tenantId = this.getTenantIdFromRequest(req);
+    const whereClause: any = { id: userId };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
 
     const user = await this.userRepository.findOne({
-      where: { id: userId }
+      where: whereClause
     });
 
     if (!user) {
@@ -1223,12 +1320,18 @@ export class UserController {
 
   /**
    * 获取用户权限详情
+   * 🔥 租户隔离：添加显式 tenantId 过滤
    */
   getUserPermissions = catchAsync(async (req: Request, res: Response) => {
     const userId = req.params.id;
+    const tenantId = this.getTenantIdFromRequest(req);
+    const whereClause: any = { id: userId };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
 
     const user = await this.userRepository.findOne({
-      where: { id: userId }
+      where: whereClause
     });
 
     if (!user) {

@@ -158,13 +158,21 @@ const bills = ref<any[]>([])
 const billsPage = ref(1)
 const billsTotal = ref(0)
 
-const usedStorage = ref('6.5GB')
-const totalStorage = ref('10GB')
-const storagePercent = ref(65)
+const usedStorage = computed(() => {
+  const mb = detail.value.used_storage_mb || 0
+  if (mb < 1024) return `${mb}MB`
+  return `${(mb / 1024).toFixed(1)}GB`
+})
+const totalStorage = computed(() => `${detail.value.max_storage_gb || 0}GB`)
+const storagePercent = computed(() => {
+  const maxGb = detail.value.max_storage_gb || 1
+  const usedMb = detail.value.used_storage_mb || 0
+  return Math.min(100, Math.round(usedMb / 1024 / maxGb * 100))
+})
 const userPercent = computed(() => Math.round((detail.value.user_count || 0) / (detail.value.max_users || 1) * 100))
-const apiCalls = ref(3000)
+const apiCalls = ref(0)
 const apiLimit = ref(10000)
-const apiPercent = ref(30)
+const apiPercent = ref(0)
 
 const maskKey = (key: string) => {
   if (!key) return ''

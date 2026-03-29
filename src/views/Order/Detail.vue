@@ -99,11 +99,11 @@
                 </div>
                 <div class="contact-item-modern">
                   <el-icon class="contact-icon"><Message /></el-icon>
-                  <span class="contact-text">{{ orderDetail.customer.wechat || '未设置微信' }}</span>
+                  <span class="contact-text">{{ orderDetail.customer.wechat ? displaySensitiveInfoNew(orderDetail.customer.wechat, SensitiveInfoType.WECHAT) : '未设置微信' }}</span>
                 </div>
                 <div class="contact-item-modern address-item">
                   <el-icon class="contact-icon"><Location /></el-icon>
-                  <span class="contact-text">{{ orderDetail.customer.address }}</span>
+                  <span class="contact-text">{{ orderDetail.customer.address ? displaySensitiveInfoNew(orderDetail.customer.address, SensitiveInfoType.ADDRESS) : '' }}</span>
                 </div>
               </div>
             </div>
@@ -201,7 +201,7 @@
             </div>
             <div class="delivery-field-modern address-field-modern">
               <div class="field-label-modern">收货地址</div>
-              <div class="field-value-modern address-value-modern">{{ orderDetail.receiverAddress }}</div>
+              <div class="field-value-modern address-value-modern">{{ orderDetail.receiverAddress ? displaySensitiveInfoNew(orderDetail.receiverAddress, SensitiveInfoType.ADDRESS) : '' }}</div>
             </div>
           </div>
         </div>
@@ -668,7 +668,6 @@ import { useNotificationStore } from '@/stores/notification'
 import { orderApi } from '@/api/order'
 import { orderDetailApi } from '@/api/orderDetail'
 import { useServiceStore } from '@/stores/service'
-import { maskPhone } from '@/utils/phone'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { useUserStore } from '@/stores/user'
@@ -677,6 +676,7 @@ import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 import { formatDateTime } from '@/utils/dateFormat'
 import { getCompanyShortName, getTrackingUrl, KUAIDI100_URL } from '@/utils/logisticsCompanyConfig'
+import { calculateEstimatedDelivery, detectLogisticsStatusFromDescription } from '@/utils/logisticsStatusConfig'
 
 const router = useRouter()
 const route = useRoute()
@@ -1539,47 +1539,34 @@ const trackExpress = async () => {
   })
 }
 
-// 动态更新预计到达时间
+// 动态更新预计到达时间（使用智能计算）
 const updateEstimatedDeliveryTime = (logisticsResult: any) => {
   try {
-    // 根据物流状态和位置信息计算预计到达时间
-    const tracks = logisticsResult.tracks || []
+    const tracks = logisticsResult.tracks || logisticsResult.traces || []
     const latestTrack = tracks[0] // 最新的物流信息
 
     if (!latestTrack) return
 
-    // 根据物流状态判断预计到达时间
-    const currentTime = new Date()
-    let estimatedDays = 0
+    const latestDescription = latestTrack.description || latestTrack.status || latestTrack.statusText || ''
 
-    // 根据物流状态和快递公司估算剩余时间
-    const status = latestTrack.status || latestTrack.statusText || ''
-    const expressCompany = orderDetail.expressCompany
+    // 使用智能物流状态检测
+    const detectedStatus = detectLogisticsStatusFromDescription(latestDescription)
 
-    if (status.includes('已签收') || status.includes('delivered')) {
-      // 已签收，无需更新
-      return
-    } else if (status.includes('派送中') || status.includes('out_for_delivery')) {
-      estimatedDays = 0.5 // 半天内到达
-    } else if (status.includes('到达') || status.includes('arrived')) {
-      estimatedDays = 1 // 1天内到达
-    } else if (status.includes('运输中') || status.includes('in_transit')) {
-      // 根据快递公司和距离估算
-      if (expressCompany === 'SF') {
-        estimatedDays = 1 // 顺丰较快
-      } else if (expressCompany === 'YTO' || expressCompany === 'ZTO') {
-        estimatedDays = 2 // 中通、圆通中等
-      } else {
-        estimatedDays = 3 // 其他快递
-      }
-    } else {
-      estimatedDays = 3 // 默认3天
+    // 已签收，无需更新
+    if (detectedStatus === 'delivered') return
+
+    // 使用智能计算预计送达时间
+    const estimated = calculateEstimatedDelivery({
+      logisticsStatus: detectedStatus,
+      companyCode: orderDetail.expressCompany,
+      shipDate: orderDetail.shippedAt || orderDetail.shippingTime || '',
+      latestLogisticsInfo: latestDescription,
+      existingEstimatedDate: orderDetail.expectedDeliveryDate
+    })
+
+    if (estimated) {
+      orderDetail.expectedDeliveryDate = estimated
     }
-
-    // 计算预计到达时间
-    const estimatedDate = new Date(currentTime.getTime() + estimatedDays * 24 * 60 * 60 * 1000)
-    orderDetail.expectedDeliveryDate = estimatedDate.toISOString().split('T')[0]
-
   } catch (error) {
     console.error('更新预计到达时间失败:', error)
   }

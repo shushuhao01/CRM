@@ -63,13 +63,16 @@ export interface Announcement {
   title: string
   content: string
   type: 'company' | 'department'
+  source?: 'system' | 'company'  // 🔥 公告来源: system=系统公告, company=公司公告
   targetDepartments: string[]
   isPopup: boolean
   isMarquee: boolean
   scheduledAt?: string
   publishedAt?: string
   status: 'draft' | 'scheduled' | 'published' | 'expired'
+  read?: boolean
   createdBy: string
+  createdByName?: string
   createdAt: string
   updatedAt: string
 }
@@ -356,20 +359,18 @@ export const useMessageStore = defineStore('message', () => {
       const response = await messageApi.markAnnouncementAsRead(id)
       console.log('[MessageStore] API响应:', response)
 
-      // 更新本地状态
-      const announcement = announcements.value.find(ann => ann.id === id)
-      if (announcement) {
-        (announcement as any).read = true
-        console.log('[MessageStore] 本地状态已更新:', announcement.title)
-      }
+      // 🔥 强制触发Vue响应式更新：替换整个数组引用
+      announcements.value = announcements.value.map(ann =>
+        ann.id === id ? { ...ann, read: true } as any : ann
+      )
+      console.log('[MessageStore] 本地状态已更新')
       return response
     } catch (error) {
       console.error('[MessageStore] 标记公告已读失败:', error)
       // 即使API失败，也更新本地状态（降级处理）
-      const announcement = announcements.value.find(ann => ann.id === id)
-      if (announcement) {
-        (announcement as any).read = true
-      }
+      announcements.value = announcements.value.map(ann =>
+        ann.id === id ? { ...ann, read: true } as any : ann
+      )
       throw error
     }
   }
@@ -383,13 +384,16 @@ export const useMessageStore = defineStore('message', () => {
       for (const announcement of unreadAnnouncements) {
         try {
           await messageApi.markAnnouncementAsRead(announcement.id)
-          ;(announcement as any).read = true
         } catch (error) {
           console.error('[MessageStore] 标记公告已读失败:', announcement.id, error)
-          // 即使API失败，也更新本地状态
-          ;(announcement as any).read = true
         }
       }
+
+      // 🔥 强制触发Vue响应式更新：替换整个数组引用
+      announcements.value = announcements.value.map(ann => ({
+        ...ann,
+        read: true
+      })) as any
       console.log('[MessageStore] 所有公告已标记为已读')
     } catch (error) {
       console.error('[MessageStore] 批量标记公告已读失败:', error)

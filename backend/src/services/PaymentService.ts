@@ -51,6 +51,8 @@ interface CreateOrderParams {
   contactName: string
   contactPhone: string
   contactEmail?: string
+  billingCycle?: 'monthly' | 'yearly' | 'once'
+  bonusMonths?: number
 }
 
 class PaymentService {
@@ -95,6 +97,28 @@ class PaymentService {
     return `PAY${dateStr}${timeStr}${random}`
   }
 
+  // 确保 payment_orders 表有 billing_cycle 和 bonus_months 字段
+  private async ensurePaymentOrderColumns(): Promise<void> {
+    try {
+      const cols = await AppDataSource.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_orders'`
+      )
+      const existingCols = cols.map((c: any) => c.COLUMN_NAME)
+      if (!existingCols.includes('billing_cycle')) {
+        await AppDataSource.query(
+          `ALTER TABLE payment_orders ADD COLUMN billing_cycle VARCHAR(20) DEFAULT 'monthly' COMMENT '计费周期: monthly/yearly/once'`
+        )
+      }
+      if (!existingCols.includes('bonus_months')) {
+        await AppDataSource.query(
+          `ALTER TABLE payment_orders ADD COLUMN bonus_months INT DEFAULT 0 COMMENT '赠送月数'`
+        )
+      }
+    } catch (e) {
+      // 忽略错误（如非MySQL、表不存在等）
+    }
+  }
+
   // 创建支付订单
   async createOrder(params: CreateOrderParams): Promise<{
     success: boolean
@@ -105,6 +129,7 @@ class PaymentService {
     message?: string
   }> {
     await this.loadConfig()
+    await this.ensurePaymentOrderColumns()
 
     const orderId = uuidv4()
     const orderNo = this.generateOrderNo()
@@ -115,11 +140,13 @@ class PaymentService {
       await AppDataSource.query(
         `INSERT INTO payment_orders
          (id, order_no, tenant_id, tenant_name, package_id, package_name, amount, pay_type,
-          contact_name, contact_phone, contact_email, expire_time, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+          contact_name, contact_phone, contact_email, billing_cycle, bonus_months, expire_time, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
         [orderId, orderNo, params.tenantId, params.tenantName, params.packageId,
          params.packageName, params.amount, params.payType, params.contactName,
-         params.contactPhone, params.contactEmail, expireTime]
+         params.contactPhone, params.contactEmail,
+         params.billingCycle || 'monthly', params.bonusMonths || 0,
+         expireTime]
       )
 
       let qrCode = ''
@@ -401,22 +428,55 @@ class PaymentService {
   // 激活租户（支付成功后调用）
   private async activateTenant(tenantId: string, packageId: string): Promise<string | null> {
     try {
+      // 获取租户信息
+      const tenants = await AppDataSource.query(
+        'SELECT code, name, phone, contact FROM tenants WHERE id = ?', [tenantId]
+      )
+
+      if (tenants.length === 0) {
+        console.error('[Payment] 租户不存在:', tenantId)
+        return null
+      }
+
+      const tenant = tenants[0]
+
       // 获取套餐信息
       const packages = await AppDataSource.query(
-        'SELECT duration_days, max_users FROM tenant_packages WHERE id = ?', [packageId]
+        'SELECT name, duration_days, max_users FROM tenant_packages WHERE id = ?', [packageId]
       )
 
       if (packages.length > 0) {
+        const pkg = packages[0]
         const expireDate = new Date()
-        expireDate.setDate(expireDate.getDate() + packages[0].duration_days)
+        expireDate.setDate(expireDate.getDate() + pkg.duration_days)
+        const expireDateStr = expireDate.toISOString().slice(0, 10)
 
         // 生成授权码
         const licenseKey = this.generateLicenseKey()
 
+        // 更新租户状态
         await AppDataSource.query(
-          `UPDATE tenants SET license_key = ?, license_status = 'active', expire_date = ?, max_users = ? WHERE id = ?`,
-          [licenseKey, expireDate, packages[0].max_users, tenantId]
+          `UPDATE tenants SET
+            license_key = ?,
+            license_status = 'active',
+            status = 'active',
+            expire_date = ?,
+            max_users = ?,
+            updated_at = NOW()
+          WHERE id = ?`,
+          [licenseKey, expireDateStr, pkg.max_users, tenantId]
         )
+
+        // 创建默认管理员账号
+        const { createDefaultAdmin } = await import('../utils/adminAccountHelper')
+        const adminAccount = await createDefaultAdmin({
+          tenantId: tenantId,
+          phone: tenant.phone,
+          realName: tenant.contact || '系统管理员',
+          email: undefined
+        })
+
+        console.log(`✓ 已为租户 ${tenant.code} 创建默认管理员账号: ${adminAccount.username}`)
 
         // 记录授权日志
         const { v4: uuidv4 } = await import('uuid')
@@ -426,8 +486,14 @@ class PaymentService {
           [uuidv4(), tenantId, licenseKey]
         )
 
-        // 发送短信通知
-        await this.sendActivationNotification(tenantId, licenseKey)
+        // 发送支付成功账号开通通知（包含完整账号信息）
+        await this.sendActivationNotification(tenantId, licenseKey, {
+          tenantCode: tenant.code,
+          tenantName: tenant.name,
+          adminPassword: adminAccount.password,
+          packageName: pkg.name,
+          expireDate: expireDateStr
+        })
 
         console.log(`[Payment] 租户激活成功: ${tenantId}, 授权码: ${licenseKey}`)
         return licenseKey
@@ -440,11 +506,21 @@ class PaymentService {
   }
 
   // 发送激活通知（短信+邮件）
-  private async sendActivationNotification(tenantId: string, licenseKey: string): Promise<void> {
+  private async sendActivationNotification(
+    tenantId: string,
+    licenseKey: string,
+    accountInfo?: {
+      tenantCode: string
+      tenantName: string
+      adminPassword: string
+      packageName: string
+      expireDate: string
+    }
+  ): Promise<void> {
     try {
       // 获取租户联系信息
       const tenants = await AppDataSource.query(
-        'SELECT name, phone, email FROM tenants WHERE id = ?', [tenantId]
+        'SELECT name, phone, email, code FROM tenants WHERE id = ?', [tenantId]
       )
 
       if (tenants.length === 0) return
@@ -452,16 +528,32 @@ class PaymentService {
       const tenant = tenants[0]
 
       // 发送短信
-      if (tenant.phone) {
+      if (tenant.phone && accountInfo) {
         try {
           const { aliyunSmsService } = await import('./AliyunSmsService')
           await aliyunSmsService.loadFromDatabase()
 
-          // 使用验证码接口发送授权码（临时方案，实际应使用专门的通知模板）
-          // 授权码格式：TENANT-XXXX-XXXX-XXXX-XXXX，取后8位作为"验证码"
-          const shortCode = licenseKey.slice(-8)
-          await aliyunSmsService.sendVerificationCode(tenant.phone, shortCode)
-          console.log(`[Payment] 授权码短信已发送至: ${tenant.phone}`)
+          // 获取订单信息（用于短信）
+          const orders = await AppDataSource.query(
+            'SELECT order_no, amount FROM payment_orders WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 1',
+            [tenantId]
+          )
+
+          const orderInfo = orders.length > 0 ? orders[0] : null
+
+          // 使用支付成功账号开通通知模板
+          await aliyunSmsService.sendSms(tenant.phone, 'PAYMENT_ACTIVATION', {
+            tenantName: accountInfo.tenantName,
+            orderNo: orderInfo?.order_no || 'N/A',
+            amount: orderInfo?.amount?.toString() || '0',
+            tenantCode: accountInfo.tenantCode,
+            licenseKey: licenseKey,
+            adminPassword: accountInfo.adminPassword,
+            packageName: accountInfo.packageName,
+            expireDate: accountInfo.expireDate
+          })
+
+          console.log(`[Payment] 支付成功账号开通通知已发送至: ${tenant.phone}`)
         } catch (smsError) {
           console.error('[Payment] 发送短信失败:', smsError)
         }

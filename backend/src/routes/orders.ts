@@ -201,6 +201,114 @@ router.use(authenticateToken);
 // ========== 特殊路由（必须在 /:id 之前定义）==========
 
 /**
+ * @route POST /api/v1/orders/check-department-limit
+ * @desc 预检查部门下单限制（选中客户时调用）
+ * @access Private
+ */
+router.post('/check-department-limit', async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).currentUser;
+    const departmentId = currentUser?.departmentId || '';
+    const { customerId } = req.body;
+
+    if (!customerId) {
+      return res.json({
+        success: true,
+        code: 200,
+        data: { hasLimit: false, exceeded: false }
+      });
+    }
+
+    if (!departmentId) {
+      return res.json({
+        success: true,
+        code: 200,
+        data: { hasLimit: false, exceeded: false, message: '当前用户未分配部门' }
+      });
+    }
+
+    // 获取部门下单限制配置
+    const limitRepository = getTenantRepo(DepartmentOrderLimit);
+    const limit = await limitRepository.findOne({
+      where: { departmentId, isEnabled: true }
+    });
+
+    if (!limit) {
+      return res.json({
+        success: true,
+        code: 200,
+        data: { hasLimit: false, exceeded: false }
+      });
+    }
+
+    const orderRepository = getTenantRepo(Order);
+
+    // 查询已下单次数
+    let orderCount = 0;
+    if (limit.orderCountEnabled && limit.maxOrderCount > 0) {
+      orderCount = await orderRepository.count({
+        where: {
+          customerId: String(customerId),
+          createdByDepartmentId: departmentId
+        }
+      });
+    }
+
+    // 查询累计金额
+    let totalAmount = 0;
+    if (limit.totalAmountEnabled && limit.maxTotalAmount > 0) {
+      const result = await orderRepository
+        .createQueryBuilder('order')
+        .select('COALESCE(SUM(order.totalAmount), 0)', 'total')
+        .where('order.customerId = :customerId', { customerId: String(customerId) })
+        .andWhere('order.createdByDepartmentId = :departmentId', { departmentId })
+        .getRawOne();
+      totalAmount = Number(result?.total || 0);
+    }
+
+    // 判断是否超出限制
+    const details = {
+      // 下单次数
+      orderCountEnabled: limit.orderCountEnabled,
+      orderCount,
+      maxOrderCount: limit.maxOrderCount,
+      orderCountExceeded: limit.orderCountEnabled && limit.maxOrderCount > 0 && orderCount >= limit.maxOrderCount,
+      // 单笔金额
+      singleAmountEnabled: limit.singleAmountEnabled,
+      maxSingleAmount: Number(limit.maxSingleAmount),
+      // 累计金额
+      totalAmountEnabled: limit.totalAmountEnabled,
+      totalAmount,
+      maxTotalAmount: Number(limit.maxTotalAmount),
+      remainingAmount: limit.totalAmountEnabled && limit.maxTotalAmount > 0
+        ? Math.max(0, Number(limit.maxTotalAmount) - totalAmount)
+        : 0,
+      totalAmountExceeded: limit.totalAmountEnabled && limit.maxTotalAmount > 0 && totalAmount >= Number(limit.maxTotalAmount),
+    };
+
+    const exceeded = !!(details.orderCountExceeded || details.totalAmountExceeded);
+
+    res.json({
+      success: true,
+      code: 200,
+      data: {
+        hasLimit: true,
+        exceeded,
+        details,
+        departmentName: limit.departmentName || ''
+      }
+    });
+  } catch (error) {
+    console.error('检查部门下单限制失败:', error);
+    res.json({
+      success: true,
+      code: 200,
+      data: { hasLimit: false, exceeded: false, message: '检查失败，默认允许下单' }
+    });
+  }
+});
+
+/**
  * @route GET /api/v1/orders/transfer-config
  * @desc 获取订单流转配置
  * @access Private
@@ -840,10 +948,10 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
       ])
       .where('order.status = :status', { status: 'pending_shipment' });
 
-    // 🔥 支持综合关键词搜索（订单号 OR 客户名称 OR 手机号 OR 客户编码）
+    // 🔥 支持综合关键词搜索（订单号 OR 客户名称 OR 手机号 OR 客户编码 OR 客户其他手机号）
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)',
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
         { keyword: `%${keyword}%` }
       );
       console.log(`📦 [待发货订单] 综合关键词搜索: "${keyword}"`);
@@ -961,6 +1069,7 @@ router.get('/shipping/pending', async (req: Request, res: Response) => {
         customerName: order.customerName || '',
         customerPhone: order.customerPhone || '',
         // 🔥 新增：客户详细信息
+        customerGender: customer?.gender || null,
         customerAge: customer?.age || null,
         customerHeight: customer?.height || null,
         customerWeight: customer?.weight || null,
@@ -1139,17 +1248,17 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
       console.log(`🚚 [已发货订单] ${userRole}角色，查看所有订单`);
     }
 
-    // 🔥 修复：支持关键词搜索（订单号 OR 客户名称 OR 物流单号 OR 手机号 OR 客户编码）
+    // 🔥 修复：支持关键词搜索（订单号 OR 客户名称 OR 物流单号 OR 手机号 OR 客户编码 OR 客户其他手机号）
     if (keyword) {
-      // 统一关键词搜索：支持订单号、客户名称、物流单号、手机号、客户编码
+      // 统一关键词搜索：支持订单号、客户名称、物流单号、手机号、客户编码、客户其他手机号
       queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.trackingNumber LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)',
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.trackingNumber LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
         { keyword: `%${keyword}%` }
       );
       console.log(`🚚 [已发货订单] 统一关键词搜索: "${keyword}"`);
     } else if (orderNumber && customerName && orderNumber === customerName) {
       // 如果订单号和客户名称相同，说明是同一个搜索关键词，使用 OR 条件
-      queryBuilder.andWhere('(order.orderNumber LIKE :kw OR order.customerName LIKE :kw OR order.trackingNumber LIKE :kw OR order.customerPhone LIKE :kw OR order.customerId LIKE :kw)', { kw: `%${orderNumber}%` });
+      queryBuilder.andWhere('(order.orderNumber LIKE :kw OR order.customerName LIKE :kw OR order.trackingNumber LIKE :kw OR order.customerPhone LIKE :kw OR order.customerId LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND (c.customer_code LIKE :kw OR CAST(c.other_phones AS CHAR) LIKE :kw)))', { kw: `%${orderNumber}%` });
       console.log(`🚚 [已发货订单] 关键词搜索: "${orderNumber}"`);
     } else {
       // 分别筛选
@@ -1160,10 +1269,10 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
         queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
       }
       if (customerPhone) {
-        queryBuilder.andWhere('order.customerPhone LIKE :customerPhone', { customerPhone: `%${customerPhone}%` });
+        queryBuilder.andWhere('(order.customerPhone LIKE :customerPhone OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND CAST(c.other_phones AS CHAR) LIKE :customerPhone))', { customerPhone: `%${customerPhone}%` });
       }
       if (customerCode) {
-        queryBuilder.andWhere('order.customerId LIKE :customerCode', { customerCode: `%${customerCode}%` });
+        queryBuilder.andWhere('EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.customer_code LIKE :customerCode)', { customerCode: `%${customerCode}%` });
       }
     }
     if (trackingNumber) {
@@ -1279,6 +1388,7 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
         customerName: order.customerName || '',
         customerPhone: order.customerPhone || '',
         // 🔥 新增：客户详细信息
+        customerGender: customer?.gender || null,
         customerAge: customer?.age || null,
         customerHeight: customer?.height || null,
         customerWeight: customer?.weight || null,
@@ -1382,10 +1492,10 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
         statuses: ['logistics_returned', 'rejected_returned', 'audit_rejected']
       });
 
-    // 🔥 支持综合关键词搜索(订单号 OR 客户名称 OR 手机号 OR 客户编码)
+    // 🔥 支持综合关键词搜索(订单号 OR 客户名称 OR 手机号 OR 客户编码 OR 客户其他手机号)
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)',
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
         { keyword: `%${keyword}%` }
       );
       console.log(`📦 [退回订单] 综合关键词搜索: "${keyword}"`);
@@ -1487,6 +1597,7 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
         customerName: order.customerName || '',
         customerPhone: order.customerPhone || '',
         // 🔥 客户详细信息
+        customerGender: customer?.gender || null,
         customerAge: customer?.age || null,
         customerHeight: customer?.height || null,
         customerWeight: customer?.weight || null,
@@ -1575,7 +1686,7 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
     // 🔥 支持综合关键词搜索
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword)',
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
         { keyword: `%${keyword}%` }
       );
     } else {
@@ -1676,6 +1787,7 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
         customerName: order.customerName || '',
         customerPhone: order.customerPhone || '',
         // 🔥 客户详细信息
+        customerGender: customer?.gender || null,
         customerAge: customer?.age || null,
         customerHeight: customer?.height || null,
         customerWeight: customer?.weight || null,
@@ -1750,7 +1862,7 @@ router.get('/shipping/draft', authenticateToken, async (req: Request, res: Respo
     // 🔥 支持综合关键词搜索
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword)',
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
         { keyword: `%${keyword}%` }
       );
     } else {
@@ -2034,13 +2146,13 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       console.log(`📋 [订单列表] ${userRole}角色，查看所有订单`);
     }
 
-    // 🔥 综合关键词搜索（商品名称模糊搜索，其他字段精准搜索）
+    // 🔥 综合关键词搜索（商品名称模糊搜索，其他字段精准搜索，客户编码和其他手机号通过子查询关联customers表）
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.orderNumber = :exactKeyword OR order.customerName = :exactKeyword OR order.customerPhone = :exactKeyword OR order.customerId = :exactKeyword OR order.trackingNumber = :exactKeyword OR order.products LIKE :fuzzyKeyword)',
+        '(order.orderNumber = :exactKeyword OR order.customerName = :exactKeyword OR order.customerPhone = :exactKeyword OR order.customerId = :exactKeyword OR order.trackingNumber = :exactKeyword OR order.products LIKE :fuzzyKeyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND (c.customer_code LIKE :fuzzyKeyword OR c.phone = :exactKeyword OR JSON_CONTAINS(c.other_phones, JSON_QUOTE(:exactKeyword)))))',
         { exactKeyword: keyword, fuzzyKeyword: `%${keyword}%` }
       );
-      console.log(`📋 [订单列表] 综合关键词搜索: "${keyword}" (商品模糊，其他精准)`);
+      console.log(`📋 [订单列表] 综合关键词搜索: "${keyword}" (商品模糊，其他精准，支持客户编码和其他手机号)`);
     }
 
     // 状态筛选
@@ -2100,9 +2212,9 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       queryBuilder.andWhere('order.products LIKE :productName', { productName: `%${productName}%` });
     }
 
-    // 🔥 高级筛选：客户电话
+    // 🔥 高级筛选：客户电话（同时搜索客户其他手机号）
     if (customerPhone) {
-      queryBuilder.andWhere('order.customerPhone LIKE :customerPhone', { customerPhone: `%${customerPhone}%` });
+      queryBuilder.andWhere('(order.customerPhone LIKE :customerPhone OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND CAST(c.other_phones AS CHAR) LIKE :customerPhone))', { customerPhone: `%${customerPhone}%` });
     }
 
     // 🔥 高级筛选：支付方式
@@ -2163,6 +2275,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
         customerName: order.customerName || '',
         customerPhone: order.customerPhone || '',
         // 🔥 新增：客户详细信息（从客户表获取）
+        customerGender: customer?.gender || null,
         customerAge: customer?.age || null,
         customerHeight: customer?.height || null,
         customerWeight: customer?.weight || null,

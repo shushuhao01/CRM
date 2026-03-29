@@ -20,6 +20,8 @@ import { SystemConfig } from '../entities/SystemConfig';
 import { v4 as uuidv4 } from 'uuid';
 import { LessThan, In } from 'typeorm';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { TenantContextManager } from '../utils/tenantContext';
+import { deployConfig } from '../config/deploy';
 
 // 超时消息类型
 export const TimeoutMessageTypes = {
@@ -88,6 +90,7 @@ class TimeoutReminderService {
 
   /**
    * 执行所有超时检测
+   * 🔥 租户隔离：SaaS模式下按租户独立执行
    */
   async runAllChecks(): Promise<void> {
     console.log('[TimeoutReminder] 🔍 开始执行超时检测..');
@@ -97,24 +100,68 @@ class TimeoutReminderService {
       // 清理过期的提醒缓存
       this.cleanupReminderCache();
 
-      // 获取超时配置
-      const config = await this.getTimeoutConfig();
+      if (deployConfig.isSaaS()) {
+        // SaaS模式：遍历所有活跃租户分别执行
+        await this.runChecksForAllTenants();
+      } else {
+        // 私有模式：直接执行
+        await this.runChecksOnce();
+      }
 
-      // 并行执行所有检测
-      const results = await Promise.allSettled([
-        this.checkOrderAuditTimeout(config.orderAuditTimeout),
-        this.checkOrderShipmentTimeout(config.orderShipmentTimeout),
-        this.checkAfterSalesTimeout(config.afterSalesTimeout),
-        this.checkOrderFollowupReminder(config.orderFollowupDays),
-        this.checkCustomerFollowupReminder(),
-      ]);
-
-      const successCount = results.filter(r => r.status === 'fulfilled').length;
       const duration = Date.now() - startTime;
-
-      console.log(`[TimeoutReminder] 超时检测完成，成功${successCount}/5，耗时${duration}ms`);
+      console.log(`[TimeoutReminder] 超时检测完成，耗时${duration}ms`);
     } catch (error) {
       console.error('[TimeoutReminder] 超时检测失败', error);
+    }
+  }
+
+  /**
+   * 🔥 SaaS模式下遍历所有租户执行检测
+   */
+  private async runChecksForAllTenants(): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource) return;
+
+      // 获取所有活跃租户
+      const tenants = await dataSource.query(
+        `SELECT id FROM tenants WHERE status = 'active'`
+      ).catch(() => []);
+
+      for (const tenant of tenants) {
+        try {
+          await TenantContextManager.run({ tenantId: tenant.id }, async () => {
+            await this.runChecksOnce();
+          });
+        } catch (e) {
+          console.error(`[TimeoutReminder] 租户 ${tenant.id} 检测失败:`, e);
+        }
+      }
+    } catch (error) {
+      console.error('[TimeoutReminder] 遍历租户检测失败:', error);
+    }
+  }
+
+  /**
+   * 执行一次超时检测（当前租户上下文）
+   */
+  private async runChecksOnce(): Promise<void> {
+    // 获取超时配置
+    const config = await this.getTimeoutConfig();
+
+    // 并行执行所有检测
+    const results = await Promise.allSettled([
+      this.checkOrderAuditTimeout(config.orderAuditTimeout),
+      this.checkOrderShipmentTimeout(config.orderShipmentTimeout),
+      this.checkAfterSalesTimeout(config.afterSalesTimeout),
+      this.checkOrderFollowupReminder(config.orderFollowupDays),
+      this.checkCustomerFollowupReminder(),
+    ]);
+
+    const successCount = results.filter(r => r.status === 'fulfilled').length;
+    const tenantId = TenantContextManager.getTenantId();
+    if (tenantId) {
+      console.log(`[TimeoutReminder] 租户 ${tenantId} 检测完成，成功${successCount}/5`);
     }
   }
 

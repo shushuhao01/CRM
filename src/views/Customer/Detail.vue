@@ -177,7 +177,7 @@
           <div class="customer-info-row">
             <div class="info-item address-item">
               <span class="field-label">详细地址</span>
-              <div class="address-content">{{ customerInfo.address || '暂无' }}</div>
+              <div class="address-content">{{ customerInfo.address ? displaySensitiveInfoNew(customerInfo.address, SensitiveInfoType.ADDRESS) : '暂无' }}</div>
             </div>
           </div>
 
@@ -1000,7 +1000,6 @@ import { useServiceStore } from '@/stores/service'
 import { useCustomerStore } from '@/stores/customer'
 import { useCallStore } from '@/stores/call'
 
-import { displaySensitiveInfo } from '@/utils/sensitive'
 import { permissionService, CallPermissionType } from '@/services/permission'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'

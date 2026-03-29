@@ -68,15 +68,14 @@
             style="width: 120px"
             @change="handleStatusChange"
           >
-            <el-option label="待发货" value="pending" />
-            <el-option label="已发货" value="shipped" />
+            <el-option label="待揽收" value="pending" />
             <el-option label="已揽收" value="picked_up" />
             <el-option label="运输中" value="in_transit" />
             <el-option label="派送中" value="out_for_delivery" />
             <el-option label="已签收" value="delivered" />
+            <el-option label="派送异常" value="exception" />
             <el-option label="拒收" value="rejected" />
             <el-option label="已退回" value="returned" />
-            <el-option label="异常" value="exception" />
           </el-select>
         </el-form-item>
         <el-form-item label="物流公司">
@@ -216,8 +215,14 @@
         <span v-if="row.logisticsStatus === 'delivered'" class="delivered-text">
           已签收
         </span>
+        <span v-else-if="row.logisticsStatus === 'rejected' || row.logisticsStatus === 'rejected_returned'" class="exception-text">
+          已拒收
+        </span>
+        <span v-else-if="row.logisticsStatus === 'returned'" class="exception-text">
+          已退回
+        </span>
         <span v-else-if="row.estimatedDate" class="estimated-date">
-          {{ formatEstimatedDate(row.estimatedDate) }}
+          {{ formatEstimatedDate(row.estimatedDate, row.logisticsStatus) }}
         </span>
         <span v-else class="no-data">-</span>
       </template>
@@ -266,7 +271,9 @@ import { eventBus, EventNames } from '@/utils/eventBus'
 import { getOrderStatusStyle, getOrderStatusText } from '@/utils/orderStatusConfig'
 import {
   getLogisticsInfoStyle as getLogisticsInfoStyleFromConfig,
-  detectLogisticsStatusFromDescription as _detectLogisticsStatusFromDescription
+  detectLogisticsStatusFromDescription as _detectLogisticsStatusFromDescription,
+  calculateEstimatedDelivery,
+  formatEstimatedDeliveryText
 } from '@/utils/logisticsStatusConfig'
 import { formatDateTime } from '@/utils/dateFormat'
 
@@ -335,17 +342,17 @@ const loadingCompanies = ref(false)
 const loadLogisticsCompanies = async () => {
   loadingCompanies.value = true
   try {
-    const { apiService } = await import('@/services/apiService')
-    const response = await apiService.get('/logistics/companies/active')
+    const { logisticsApi } = await import('@/api/logistics')
+    const response = await logisticsApi.getActiveCompanies()
 
-    if (response && Array.isArray(response)) {
-      logisticsCompanies.value = response.map((item: { code: string; name: string }) => ({
+    if (response && response.success && Array.isArray(response.data)) {
+      logisticsCompanies.value = response.data.map((item: { code: string; name: string }) => ({
         code: item.code,
         name: item.name
       }))
       console.log('[物流列表] 从API加载物流公司列表成功:', logisticsCompanies.value.length, '个')
-    } else if (response && response.data && Array.isArray(response.data)) {
-      logisticsCompanies.value = response.data.map((item: { code: string; name: string }) => ({
+    } else if (response && Array.isArray(response)) {
+      logisticsCompanies.value = (response as any[]).map((item: { code: string; name: string }) => ({
         code: item.code,
         name: item.name
       }))
@@ -650,7 +657,7 @@ const loadData = async () => {
       pageSize: pagination.size,
       keyword: searchForm.keyword?.trim() || undefined,  // 🔥 综合搜索关键词
       trackingNumber: searchForm.trackingNo || undefined,
-      status: searchForm.status || undefined,
+      logisticsStatus: searchForm.status || undefined,  // 🔥 修复：物流状态筛选应使用 logisticsStatus 参数
       departmentId: searchForm.departmentId || undefined,
       salesPersonId: searchForm.salesPersonId || undefined,
       expressCompany: searchForm.company || undefined,
@@ -684,10 +691,20 @@ const loadData = async () => {
         logisticsStatus = mapOrderStatusToLogisticsStatus(order.status, order.latestLogisticsInfo || '')
       }
 
-      // 🔥 预计送达时间处理：已签收的订单不显示预计送达
+      // 🔥 预计送达时间处理：使用智能计算
       let estimatedDate = ''
-      if (order.status !== 'delivered' && logisticsStatus !== 'delivered') {
-        estimatedDate = order.expectedDeliveryDate || order.estimatedDeliveryTime || order.estimatedDelivery || order.estimatedDate || ''
+      if (order.status !== 'delivered' && logisticsStatus !== 'delivered' &&
+          logisticsStatus !== 'rejected' && logisticsStatus !== 'returned') {
+        // 优先使用API返回的预计送达时间
+        const apiEstimated = order.expectedDeliveryDate || order.estimatedDeliveryTime || order.estimatedDelivery || order.estimatedDate || ''
+        // 如果没有API数据，使用智能计算
+        estimatedDate = apiEstimated || calculateEstimatedDelivery({
+          logisticsStatus,
+          companyCode: order.expressCompany || '',
+          shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
+          latestLogisticsInfo: order.latestLogisticsInfo || '',
+          existingEstimatedDate: apiEstimated
+        })
       }
 
       // 🔥 调试：打印手机号字段
@@ -811,29 +828,9 @@ const mapOrderStatusToLogisticsStatus = (orderStatus: string, logisticsInfo: str
   return statusMap[orderStatus] || 'shipped'
 }
 
-// 🔥 格式化预计送达日期
-const formatEstimatedDate = (dateStr: string): string => {
-  if (!dateStr) return '-'
-  try {
-    const date = new Date(dateStr)
-    if (isNaN(date.getTime())) return dateStr
-    const now = new Date()
-    const diffDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-
-    if (diffDays < 0) {
-      return '已超期'
-    } else if (diffDays === 0) {
-      return '今天'
-    } else if (diffDays === 1) {
-      return '明天'
-    } else if (diffDays <= 3) {
-      return `${diffDays}天后`
-    } else {
-      return `${date.getMonth() + 1}/${date.getDate()}`
-    }
-  } catch {
-    return dateStr
-  }
+// 🔥 格式化预计送达日期（使用智能格式化）
+const formatEstimatedDate = (dateStr: string, logisticsStatus?: string): string => {
+  return formatEstimatedDeliveryText(dateStr, logisticsStatus)
 }
 
 /**
@@ -916,9 +913,18 @@ const fetchLatestLogisticsUpdates = async () => {
               }
             }
 
-            // 🔥 更新预计送达时间
+            // 🔥 更新预计送达时间（智能计算）
             if (result.estimatedDeliveryTime) {
               order.estimatedDate = result.estimatedDeliveryTime
+            } else {
+              // API没有返回预计送达时间，使用智能计算
+              order.estimatedDate = calculateEstimatedDelivery({
+                logisticsStatus: order.logisticsStatus,
+                companyCode: order.company,
+                shipDate: order.shipDate,
+                latestLogisticsInfo: order.latestLogisticsInfo,
+                existingEstimatedDate: order.estimatedDate
+              })
             }
           } else if (result?.status === 'need_phone_verify') {
             order.latestLogisticsInfo = '需验证手机号，点击单号查询'
@@ -1087,7 +1093,7 @@ onMounted(async () => {
     await userStore.loadUsers()
   }
   if (departmentStore.departments.length === 0) {
-    await departmentStore.loadDepartments()
+    await departmentStore.fetchDepartments()
   }
 
   // 🔥 加载物流公司列表
@@ -1254,6 +1260,11 @@ onUnmounted(() => {
 /* 🔥 预计送达样式 */
 .delivered-text {
   color: #52c41a;
+  font-weight: 500;
+}
+
+.exception-text {
+  color: #f5222d;
   font-weight: 500;
 }
 

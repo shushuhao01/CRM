@@ -160,18 +160,15 @@ const loadingCompanies = ref(false)
 const loadLogisticsCompanies = async () => {
   loadingCompanies.value = true
   try {
-    const { apiService } = await import('@/services/apiService')
-    const response = await apiService.get('/logistics/companies/active')
+    const { logisticsApi } = await import('@/api/logistics')
+    const response = await logisticsApi.getActiveCompanies()
 
-    if (response && Array.isArray(response)) {
-      logisticsCompanies.value = response.map((item: { code: string; name: string; shortName?: string }) => ({
-        code: item.code,
-        name: item.name,
-        prefix: item.code.toUpperCase().substring(0, 2)
-      }))
-      console.log('[发货弹窗] 从API加载物流公司列表成功:', logisticsCompanies.value.length, '个')
-    } else if (response && response.data && Array.isArray(response.data)) {
-      logisticsCompanies.value = response.data.map((item: { code: string; name: string; shortName?: string }) => ({
+    const dataList = (response && response.success && Array.isArray(response.data))
+      ? response.data
+      : (response && Array.isArray(response) ? response as any[] : null)
+
+    if (dataList) {
+      logisticsCompanies.value = dataList.map((item: { code: string; name: string; shortName?: string }) => ({
         code: item.code,
         name: item.name,
         prefix: item.code.toUpperCase().substring(0, 2)

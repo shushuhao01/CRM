@@ -130,7 +130,7 @@
                   <span class="option-content">
                     <span class="option-title">
                       年付
-                      <span class="discount-badge">送2个月</span>
+                      <span class="discount-badge">{{ getYearlyBadgeText(selectedPlan) }}</span>
                     </span>
                     <span class="option-price">
                       ¥{{ getYearlyPrice(selectedPlan) }}/年
@@ -222,7 +222,7 @@
               <span class="item-label">计费周期</span>
               <span class="item-value">
                 {{ billingCycle === 'yearly' ? '年付（12个月）' : '月付' }}
-                <span v-if="billingCycle === 'yearly'" class="gift-tag">🎁 送2个月</span>
+                <span v-if="billingCycle === 'yearly'" class="gift-tag">🎁 {{ getYearlyBadgeText(selectedPlan) }}</span>
               </span>
             </div>
             <div class="order-item">
@@ -360,7 +360,7 @@
             </div>
 
             <div class="payment-status" v-if="checkingPayment">
-              <el-icon class="is-loading"><Loading /></el-icon>
+              <span class="loading-spinner"></span>
               <span>正在等待支付结果...</span>
             </div>
 
@@ -381,6 +381,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { getPackages as fetchPackages, getYearlyPromoText, type Package } from '@/api/packages'
 
 const API_BASE = '/api/v1'
 const route = useRoute()
@@ -439,7 +440,17 @@ const planCodeMap: Record<string, string> = {
   'private-enterprise': 'PRIVATE_ENTERPRISE'
 }
 
-onMounted(() => {
+// 套餐数据（从API加载）
+const packagesData = ref<Package[]>([])
+
+onMounted(async () => {
+  // 加载套餐数据
+  try {
+    packagesData.value = await fetchPackages()
+  } catch (e) {
+    console.error('加载套餐数据失败:', e)
+  }
+
   const plan = route.query.plan as string
   if (plan) {
     if (plan === 'FREE_TRIAL') {
@@ -507,26 +518,41 @@ const getPlanName = (plan: string) => {
   return names[plan] || plan
 }
 
-// 月付价格
-const monthlyPrices: Record<string, number> = {
+// 月付价格（兜底硬编码，优先用API数据）
+const fallbackPrices: Record<string, number> = {
   basic: 99,
   pro: 299,
   enterprise: 599
 }
 
-const getMonthlyPrice = (plan: string) => {
-  return monthlyPrices[plan] || 0
+// 根据plan名称获取套餐数据
+const getPackageByPlan = (plan: string): Package | undefined => {
+  const code = planCodeMap[plan]
+  if (!code) return undefined
+  return packagesData.value.find(p => p.code === code)
 }
 
-// 年付价格（10个月的价格，送2个月）
+const getMonthlyPrice = (plan: string) => {
+  const pkg = getPackageByPlan(plan)
+  if (pkg) return Number(pkg.price)
+  return fallbackPrices[plan] || 0
+}
+
+// 年付价格（使用后端配置的优惠策略）
 const getYearlyPrice = (plan: string) => {
-  const monthly = monthlyPrices[plan] || 0
-  return monthly * 10
+  const pkg = getPackageByPlan(plan)
+  const monthly = getMonthlyPrice(plan)
+  if (pkg) {
+    if (pkg.yearly_price && Number(pkg.yearly_price) > 0) return Math.round(Number(pkg.yearly_price))
+    if (pkg.yearly_bonus_months > 0) return monthly * (12 - pkg.yearly_bonus_months)
+    if (pkg.yearly_discount_rate > 0) return Math.round(monthly * 12 * (1 - pkg.yearly_discount_rate / 100))
+  }
+  return monthly * 10 // 兜底：送2个月
 }
 
 // 年付原价（12个月）
 const getYearlyOriginalPrice = (plan: string) => {
-  const monthly = monthlyPrices[plan] || 0
+  const monthly = getMonthlyPrice(plan)
   return monthly * 12
 }
 
@@ -538,8 +564,15 @@ const getYearlyMonthlyPrice = (plan: string) => {
 
 // 年付节省金额
 const getSaveAmount = (plan: string) => {
-  const monthly = monthlyPrices[plan] || 0
-  return monthly * 2 // 送2个月
+  const monthly = getMonthlyPrice(plan)
+  return monthly * 12 - getYearlyPrice(plan)
+}
+
+// 年付优惠描述文案（动态）
+const getYearlyBadgeText = (plan: string) => {
+  const pkg = getPackageByPlan(plan)
+  if (pkg) return getYearlyPromoText(pkg)
+  return '送2个月'
 }
 
 const getPlanPrice = (plan: string) => {
@@ -596,7 +629,9 @@ const handleSubmitInfo = async () => {
             plan: selectedPlan.value,
             type: planType.value,
             tenantCode: data.data.tenantCode,
-            licenseKey: data.data.licenseKey
+            licenseKey: data.data.licenseKey,
+            adminUsername: data.data.adminUsername || '',
+            adminPassword: data.data.adminPassword || ''
           }
         })
       } else {
@@ -1546,7 +1581,13 @@ const generateQRCodeUrl = (content: string) => {
   font-size: 13px;
   margin-bottom: 16px;
 
-  .is-loading {
+  .loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(99, 102, 241, 0.3);
+    border-top-color: var(--primary);
+    border-radius: 50%;
     animation: rotate 1s linear infinite;
   }
 }

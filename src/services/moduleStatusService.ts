@@ -78,6 +78,18 @@ class ModuleStatusService {
 
         // 验证返回的数据
         if (Array.isArray(modules) && modules.length > 0) {
+          // 🔥 SaaS模式：如果有租户模块配置（登录时保存），做客户端侧交集过滤
+          const tenantModulesStr = localStorage.getItem('tenantModules')
+          if (tenantModulesStr) {
+            try {
+              const tenantModules: string[] = JSON.parse(tenantModulesStr)
+              if (Array.isArray(tenantModules) && tenantModules.length > 0) {
+                modules = modules.filter(id => id === 'dashboard' || tenantModules.includes(id))
+                debugLog('[ModuleStatus] 租户模块过滤后:', modules)
+              }
+            } catch { /* ignore */ }
+          }
+
           this.enabledModules = new Set(modules)
           this.lastFetchTime = now
           this.isInitialized = true

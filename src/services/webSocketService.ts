@@ -159,6 +159,23 @@ class WebSocketService {
       this.handleNewMessage(data)
     })
 
+    // 🔥 监听新公告推送事件（实时通知）
+    this.socket.on('new_announcement', (data: any) => {
+      console.log('[WebSocket] 📢 收到新公告:', data.title)
+      this.emitEvent('announcement:new', data)
+
+      // 仅系统公告弹窗提示（右下角），系统消息不弹窗
+      if (data.isPopup) {
+        ElNotification({
+          title: '📢 新公告',
+          message: data.title || '您收到一条新的系统公告',
+          type: 'info',
+          duration: 8000,
+          position: 'bottom-right'
+        })
+      }
+    })
+
     this.socket.on('unread_count', (data: { count: number }) => {
       this.unreadCallbacks.forEach(cb => cb(data.count))
     })

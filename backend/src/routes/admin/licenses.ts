@@ -82,9 +82,26 @@ router.get('/', async (req: Request, res: Response) => {
 
     const [list, total] = await queryBuilder.getManyAndCount();
 
+    // 批量查询每个 license 的实际已创建用户数
+    const listWithUserCount = await Promise.all(
+      list.map(async (license) => {
+        let userCount = 0;
+        if (license.customerPhone) {
+          try {
+            const countResult = await AppDataSource.query(
+              `SELECT COUNT(*) as cnt FROM users WHERE username = ? AND tenant_id IS NULL`,
+              [license.customerPhone]
+            );
+            userCount = Number(countResult[0]?.cnt) || 0;
+          } catch { /* ignore */ }
+        }
+        return { ...license, userCount };
+      })
+    );
+
     res.json({
       success: true,
-      data: { list, total, page: pageNum, pageSize: pageSizeNum }
+      data: { list: listWithUserCount, total, page: pageNum, pageSize: pageSizeNum }
     });
   } catch (error: any) {
     console.error('[Admin Licenses] Get list failed:', error);
@@ -105,10 +122,11 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     // 如果有关联套餐，查询套餐详情
     let packageInfo = null;
+    let packageModules: string[] = [];
     if (license.packageId) {
       try {
         const pkgRows = await AppDataSource.query(
-          'SELECT id, name, code, type, price, billing_cycle, max_users, max_storage_gb, features, description FROM tenant_packages WHERE id = ?',
+          'SELECT id, name, code, type, price, billing_cycle, max_users, max_storage_gb, features, modules, description FROM tenant_packages WHERE id = ?',
           [license.packageId]
         );
         if (pkgRows.length > 0) {
@@ -116,13 +134,83 @@ router.get('/:id', async (req: Request, res: Response) => {
           if (typeof packageInfo.features === 'string') {
             try { packageInfo.features = JSON.parse(packageInfo.features); } catch { packageInfo.features = []; }
           }
+          // 解析套餐modules
+          if (packageInfo.modules) {
+            try {
+              packageModules = typeof packageInfo.modules === 'string' ? JSON.parse(packageInfo.modules) : packageInfo.modules;
+            } catch { packageModules = []; }
+          }
         }
       } catch (e) {
         console.warn('[Admin Licenses] Query package info failed:', e);
       }
     }
 
-    res.json({ success: true, data: { ...license, packageInfo } });
+    // 🔥 解析license的功能模块：检查features是否包含有效模块ID
+    const moduleIds = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system'];
+    let resolvedFeatures = license.features;
+    if (resolvedFeatures) {
+      const parsed = Array.isArray(resolvedFeatures) ? resolvedFeatures : (typeof resolvedFeatures === 'string' ? (() => { try { return JSON.parse(resolvedFeatures as string); } catch { return []; } })() : []);
+      const hasModuleIds = parsed.some((f: string) => moduleIds.includes(f));
+      if (!hasModuleIds && packageModules.length > 0) {
+        // features不包含有效模块ID，使用套餐默认modules
+        resolvedFeatures = packageModules;
+      } else if (hasModuleIds) {
+        resolvedFeatures = parsed;
+      }
+    } else if (packageModules.length > 0) {
+      resolvedFeatures = packageModules;
+    }
+
+    // 查询实际已创建用户数
+    let userCount = 0;
+    if (license.customerPhone) {
+      try {
+        const countResult = await AppDataSource.query(
+          `SELECT COUNT(*) as cnt FROM users WHERE username = ? AND tenant_id IS NULL`,
+          [license.customerPhone]
+        );
+        userCount = Number(countResult[0]?.cnt) || 0;
+      } catch { /* ignore */ }
+    }
+
+    // 🔥 解析createdBy：将UUID转换为实际用户名
+    let createdByName: string | null = null;
+    if (license.createdBy) {
+      try {
+        // 先查 admin_users 表（管理后台操作员）
+        const adminRows = await AppDataSource.query(
+          'SELECT username, name FROM admin_users WHERE id = ? LIMIT 1',
+          [license.createdBy]
+        );
+        if (adminRows.length > 0) {
+          createdByName = adminRows[0].name || adminRows[0].username || null;
+        }
+      } catch { /* ignore - table might not exist */ }
+
+      // 如果 admin_users 没找到，尝试查 users 表（租户自建）
+      if (!createdByName) {
+        try {
+          const userRows = await AppDataSource.query(
+            'SELECT username, name, real_name FROM users WHERE id = ? LIMIT 1',
+            [license.createdBy]
+          );
+          if (userRows.length > 0) {
+            createdByName = userRows[0].real_name || userRows[0].name || userRows[0].username || null;
+            if (createdByName) createdByName += '（自建）';
+          }
+        } catch { /* ignore */ }
+      }
+
+      // 都查不到，显示"系统创建"
+      if (!createdByName) {
+        createdByName = '系统创建';
+      }
+    } else {
+      createdByName = '系统创建';
+    }
+
+    res.json({ success: true, data: { ...license, features: resolvedFeatures, packageInfo, userCount, createdByName } });
   } catch (error: any) {
     console.error('[Admin Licenses] Get detail failed:', error);
     res.status(500).json({ success: false, message: '获取授权详情失败' });
@@ -344,6 +432,14 @@ router.get('/:id/logs', async (req: Request, res: Response) => {
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 100);
     const skip = (pageNum - 1) * pageSizeNum;
 
+    // 自动清理超过30天的旧日志
+    try {
+      await AppDataSource.query(
+        `DELETE FROM license_logs WHERE license_id = ? AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)`,
+        [id]
+      );
+    } catch { /* 清理失败不影响查询 */ }
+
     const logRepo = AppDataSource.getRepository(LicenseLog);
     const [list, total] = await logRepo.findAndCount({
       where: { licenseId: id },
@@ -359,6 +455,34 @@ router.get('/:id/logs', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[Admin Licenses] Get logs failed:', error);
     res.status(500).json({ success: false, message: '获取日志失败' });
+  }
+});
+
+// 清空授权操作日志
+router.delete('/:id/logs', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // 验证授权是否存在
+    const licenseRepo = AppDataSource.getRepository(License);
+    const license = await licenseRepo.findOne({ where: { id } });
+    if (!license) {
+      return res.status(404).json({ success: false, message: '授权不存在' });
+    }
+
+    const result = await AppDataSource.query(
+      `DELETE FROM license_logs WHERE license_id = ?`,
+      [id]
+    );
+    const deletedCount = result.affectedRows || 0;
+
+    res.json({
+      success: true,
+      message: `已清空 ${deletedCount} 条操作日志`
+    });
+  } catch (error: any) {
+    console.error('[Admin Licenses] Clear logs failed:', error);
+    res.status(500).json({ success: false, message: '清空日志失败' });
   }
 });
 
@@ -395,3 +519,4 @@ router.get('/:id/bills', async (req: Request, res: Response) => {
 });
 
 export default router;
+

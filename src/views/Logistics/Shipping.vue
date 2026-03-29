@@ -613,7 +613,11 @@
                 {{ displaySensitiveInfoNew(row.phone, 'phone') }}
               </template>
             </el-table-column>
-            <el-table-column prop="address" label="收货地址" width="180" align="left" show-overflow-tooltip />
+            <el-table-column prop="address" label="收货地址" width="180" align="left" show-overflow-tooltip>
+              <template #default="{ row }">
+                {{ row.address ? displaySensitiveInfoNew(row.address, SensitiveInfoType.ADDRESS) : '-' }}
+              </template>
+            </el-table-column>
             <el-table-column prop="serviceWechat" label="客服微信号" width="120" align="center" show-overflow-tooltip>
               <template #default="{ row }">
                 {{ row.serviceWechat || '-' }}
@@ -751,6 +755,7 @@ import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 import { exportBatchOrders, exportSingleOrder, type ExportOrder } from '@/utils/export'
 import { useUserStore } from '@/stores/user'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 import { createSafeNavigator } from '@/utils/navigation'
 import { getOrderStatusColor, getOrderStatusText as getUnifiedStatusText, getOrderStatusStyle } from '@/utils/orderStatusConfig'
 import { eventBus, EventNames } from '@/utils/eventBus'
@@ -981,6 +986,17 @@ const baseTableColumns = [
     width: 80,
     align: 'center',
     visible: true
+  },
+  {
+    prop: 'customerGender',
+    label: '性别',
+    width: 80,
+    align: 'center',
+    visible: true,
+    formatter: (value: unknown) => {
+      const genderMap: Record<string, string> = { male: '男', female: '女', unknown: '未知', '男': '男', '女': '女' }
+      return genderMap[String(value)] || value || '-'
+    }
   },
   {
     prop: 'medicalHistory',
@@ -1412,6 +1428,7 @@ const loadOrderList = async () => {
 
       // 🔥 修复：优先使用API返回的客户信息，其次从customerStore获取
       let customerInfo: Record<string, unknown> = {
+        customerGender: order.customerGender || null,
         customerAge: order.customerAge || null,
         customerHeight: order.customerHeight || null,
         customerWeight: order.customerWeight || null,
@@ -1423,6 +1440,7 @@ const loadOrderList = async () => {
         const customer = customerStore.getCustomerById(order.customerId)
         if (customer) {
           customerInfo = {
+            customerGender: customer.gender || null,
             customerAge: customer.age || null,
             customerHeight: customer.height || null,
             customerWeight: customer.weight || null,
@@ -1614,9 +1632,18 @@ const fetchLatestLogisticsForShipping = async () => {
             if (result.status) {
               order.logisticsStatus = result.status
             }
-            // 🔥 更新预计送达时间
+            // 🔥 更新预计送达时间（智能计算）
             if (result.estimatedDeliveryTime) {
               order.estimatedDeliveryTime = result.estimatedDeliveryTime
+            } else {
+              // API没有返回预计送达，使用智能计算
+              order.estimatedDeliveryTime = calculateEstimatedDelivery({
+                logisticsStatus: order.logisticsStatus || '',
+                companyCode: order.expressCompany || '',
+                shipDate: order.shipTime || order.createTime || '',
+                latestLogisticsInfo: order.latestLogistics || '',
+                existingEstimatedDate: order.estimatedDeliveryTime || ''
+              })
             }
           } else {
             order.latestLogistics = '暂无物流信息'
@@ -1818,6 +1845,7 @@ const exportSelected = async () => {
       totalAmount: order.totalAmount || 0,
       depositAmount: order.depositAmount || order.deposit || 0,
       codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
+      customerGender: order.customerGender || '',
       customerAge: order.customerAge || '',
       customerHeight: order.customerHeight || '',
       customerWeight: order.customerWeight || '',
@@ -1880,6 +1908,7 @@ const handleCommand = async ({ action, row }: { action: string, row: any }) => {
           totalAmount: row.totalAmount || 0,
           depositAmount: row.depositAmount || row.deposit || 0,
           codAmount: row.codAmount || (row.totalAmount || 0) - (row.depositAmount || 0),
+          customerGender: row.customerGender || '',
           customerAge: row.customerAge || '',
           customerHeight: row.customerHeight || '',
           customerWeight: row.customerWeight || '',
@@ -1923,11 +1952,15 @@ const handleOrderShipped = async (shippingData: any) => {
   // 🔥 注意：ShippingDialog已经调用了后端API更新订单状态
   // 这里只需要更新本地缓存和刷新列表，不需要再调用API
   if (shippingData.orderId && shippingData.logisticsCompany && shippingData.trackingNumber) {
-    // 🔥 计算预计送达时间（发货时间 + 3天）
+    // 🔥 使用智能预计送达计算
     const now = new Date()
     const shippingTime = now.toISOString().slice(0, 19).replace('T', ' ')
-    const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000)
-    const expectedDeliveryDate = shippingData.estimatedDelivery || threeDaysLater.toISOString().split('T')[0]
+    const expectedDeliveryDate = shippingData.estimatedDelivery || calculateEstimatedDelivery({
+      logisticsStatus: 'picked_up',
+      companyCode: shippingData.logisticsCompany,
+      shipDate: shippingTime,
+      latestLogisticsInfo: ''
+    })
 
     console.log('[发货列表] 发货数据:', {
       orderId: shippingData.orderId,

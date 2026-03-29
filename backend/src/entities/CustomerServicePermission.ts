@@ -9,7 +9,10 @@ export class CustomerServicePermission {
   @PrimaryColumn('varchar', { length: 50 })
   id: string;
 
-  @Column('varchar', { name: 'user_id', length: 50, unique: true })
+  @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
+  tenantId: string | null;
+
+  @Column('varchar', { name: 'user_id', length: 50 })
   userId: string;
 
   @Column('varchar', { name: 'customer_service_type', length: 30, default: 'general' })

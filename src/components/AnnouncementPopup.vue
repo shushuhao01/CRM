@@ -35,7 +35,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useMessageStore } from '@/stores/message'
 import { Bell, Close } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
@@ -46,6 +46,9 @@ const visible = ref(false)
 const currentIndex = ref(0)
 const pendingAnnouncements = ref<any[]>([])
 const dismissedIds = ref<Set<string>>(new Set())
+
+// 🔥 WebSocket监听器取消函数
+let wsUnsubscribe: (() => void) | null = null
 
 // 从localStorage读取已关闭的公告ID
 const loadDismissedIds = () => {
@@ -170,15 +173,45 @@ const checkPopupAnnouncements = () => {
   }
 }
 
-// 监听公告变化
-watch(() => messageStore.announcements, () => {
-  checkPopupAnnouncements()
+// 监听公告变化（messageStore.announcements 被刷新时触发）
+watch(() => messageStore.announcements, (newVal, _oldVal) => {
+  // 🔥 只有在列表真正变化时才检查弹窗
+  if (newVal && newVal.length > 0) {
+    checkPopupAnnouncements()
+  }
 }, { deep: true })
+
+// 🔥 初始化WebSocket公告监听（直接监听实时推送，不依赖store刷新延迟）
+const initWebSocketListener = async () => {
+  try {
+    const { webSocketService } = await import('@/services/webSocketService')
+    wsUnsubscribe = webSocketService.on('announcement:new', (data: any) => {
+      console.log('🔔 [公告弹窗] WebSocket收到新公告:', data.title, 'isPopup:', data.isPopup)
+      // 仅弹窗类型公告触发弹窗，系统消息不弹窗
+      if (data.isPopup) {
+        // 等待messageStore刷新完成后再检查弹窗
+        setTimeout(checkPopupAnnouncements, 1000)
+      }
+    })
+  } catch (_e) {
+    console.log('🔔 [公告弹窗] WebSocket监听初始化跳过（未安装socket.io-client）')
+  }
+}
 
 onMounted(() => {
   loadDismissedIds()
   // 延迟检查，等待数据加载
   setTimeout(checkPopupAnnouncements, 1500)
+  // 🔥 初始化WebSocket直接监听
+  initWebSocketListener()
+})
+
+onUnmounted(() => {
+  // 🔥 清理WebSocket监听器
+  if (wsUnsubscribe) {
+    wsUnsubscribe()
+    wsUnsubscribe = null
+  }
 })
 </script>
 
